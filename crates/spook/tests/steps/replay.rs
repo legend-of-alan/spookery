@@ -5,7 +5,7 @@ use serde_json::Value;
 
 use crate::World;
 
-use super::steps_run::{read_round, read_steps_run};
+use super::record::{read_round, read_steps_run};
 use super::table;
 
 #[given(expr = "an empty directory")]
@@ -68,21 +68,21 @@ fn two_players_play_a_round(world: &mut World) {
     table::wait_humans(world, &pack, 1);
     table::close_actor(world, "pc_rowan");
     table::wait_humans(world, &pack, 0);
-    table::stop_server(world);
+    table::stop_host(world);
 }
 
-#[when(expr = "a seated player's server is killed and restarted")]
-fn a_seated_player_is_killed_and_restarted(world: &mut World) {
+#[when(expr = "a seated player's host is killed and restarted")]
+fn a_seated_players_host_is_killed_and_restarted(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
     table::listen(world, &pack);
     table::seat_actor(world, &pack, "pc_rowan");
     table::wait_humans(world, &pack, 1);
     // A hard kill, so the restart has a crashed presence to repair.
-    table::live_mut(world).server.take();
-    table::stop_server(world);
+    table::live_mut(world).host.take();
+    table::stop_host(world);
     table::listen(world, &pack);
     table::wait_humans(world, &pack, 0);
-    table::stop_server(world);
+    table::stop_host(world);
 }
 
 #[when(expr = "a queued intent the round never had is written into its record")]
@@ -112,7 +112,7 @@ fn a_queued_intent_is_written_into_a_round_record(world: &mut World) {
 
 #[when(expr = "the pack bytes are remembered")]
 fn the_pack_bytes_are_remembered(world: &mut World) {
-    world.before = table::files(table::pack(world));
+    world.before = table::read_files(table::pack(world));
 }
 
 #[then(expr = "stdout says the save was verified")]
@@ -232,7 +232,7 @@ fn each_journal_record_parses_back(world: &mut World) {
         let key = spookery_engine::testing::journal::format_record_key(entry);
         let path = spookery_engine::testing::journal::locate(pack, &key)
             .unwrap_or_else(|err| panic!("{}", err.detail));
-        let again = spookery_engine::testing::journal::emit_entry(entry);
+        let again = spookery_engine::testing::journal::emit_record(entry);
         let text = fs::read_to_string(&path).unwrap();
         assert!(
             text.lines().any(|line| line == again.trim_end()),
@@ -273,7 +273,7 @@ fn the_live_bundle_gains_a_torn_tail(world: &mut World) {
     let pack = table::pack(world);
     let path = spookery_engine::testing::journal::find_live_bundle(pack)
         .unwrap_or_else(|| panic!("no live bundle"));
-    let entries = spookery_engine::testing::journal::read_entries(pack)
+    let entries = spookery_engine::testing::journal::read_records(pack)
         .unwrap_or_else(|err| panic!("{}", err.detail));
     let last = entries
         .iter()
@@ -313,7 +313,7 @@ fn the_opened_state_matches_the_last_complete_record(world: &mut World) {
         .unwrap_or_else(|err| panic!("{err}"));
     assert_eq!(report.state_rev, world.mark as u64);
     assert_eq!(
-        spookery_engine::testing::journal::hash_now(&report.now_yaml),
+        spookery_engine::testing::journal::blake2s_tagged(&report.now_yaml),
         world.scratch
     );
 }
@@ -400,21 +400,21 @@ fn the_save_snapshot_is_removed(world: &mut World) {
     fs::remove_file(&path).unwrap();
 }
 
-#[when(expr = "the operator rebuilds the snapshot")]
-fn the_operator_rebuilds_the_snapshot(world: &mut World) {
+#[when(expr = "the operator rebuilds the save")]
+fn the_operator_rebuilds_the_save(world: &mut World) {
     resume_as_writer(table::pack(world));
 }
 
 #[then(expr = "the save hash matches the latest checkpoint")]
 fn the_save_hash_matches_the_latest_checkpoint(world: &mut World) {
     let pack = table::pack(world);
-    let entries = spookery_engine::testing::journal::read_entries(pack)
+    let entries = spookery_engine::testing::journal::read_records(pack)
         .unwrap_or_else(|err| panic!("{}", err.detail));
     let mark = spookery_engine::testing::journal::latest_checkpoint(&entries)
         .unwrap_or_else(|| panic!("no checkpoint"));
     let save = fs::read(pack.join("state/save.yaml")).unwrap();
     assert_eq!(
-        spookery_engine::testing::journal::hash_now(&save),
+        spookery_engine::testing::journal::blake2s_tagged(&save),
         mark.state_hash
     );
 }
@@ -465,7 +465,7 @@ fn the_save_is_kept(world: &mut World) {
 #[when(expr = "the checkpoint's save and snapshot are rolled back")]
 fn the_checkpoints_save_and_snapshot_are_rolled_back(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
-    let entries = spookery_engine::testing::journal::read_entries(&pack)
+    let entries = spookery_engine::testing::journal::read_records(&pack)
         .unwrap_or_else(|err| panic!("{}", err.detail));
     let mark = spookery_engine::testing::journal::latest_checkpoint(&entries)
         .unwrap_or_else(|| panic!("no checkpoint"));

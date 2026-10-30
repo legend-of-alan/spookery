@@ -1,7 +1,7 @@
 ---
 schema: item
 id: latch
-name: Iron latch
+display_name: Iron latch
 tags: []
 rules: []
 ---

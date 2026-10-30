@@ -5,9 +5,9 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use spookery_engine::{check_pack, Diagnostic, Reason, Severity};
+use spookery_engine::{check_pack, Code, Diagnostic, Reason};
 
-const EFFECTS: &[&str] = &[
+const EFFECT_KEYS: &[&str] = &[
     "- meter:",
     "- flag:",
     "- location:",
@@ -122,17 +122,17 @@ fn a_drifted_example_fails_spook_check() {
     assert!(
         found
             .iter()
-            .any(|diag| diag.code == Severity::Error(Reason::Schema)),
+            .any(|diag| diag.code == Code::Error(Reason::Schema)),
         "{}",
         report(&found)
     );
 }
 
 fn assert_catalog(examples: &[Example]) {
-    expect_keys(examples, "rules/verbs.yaml", EFFECTS);
-    expect_keys(examples, "rules/verbs.yaml", VERB_KEYS);
-    expect_keys(examples, "world/places/yard.md", EXIT_KEYS);
-    expect_keys(examples, "cast/keeper.md", CONDITION_KEYS);
+    assert_keys(examples, "rules/verbs.yaml", EFFECT_KEYS);
+    assert_keys(examples, "rules/verbs.yaml", VERB_KEYS);
+    assert_keys(examples, "world/places/yard.md", EXIT_KEYS);
+    assert_keys(examples, "cast/keeper.md", CONDITION_KEYS);
     assert!(
         examples
             .iter()
@@ -141,7 +141,7 @@ fn assert_catalog(examples: &[Example]) {
     );
 }
 
-fn expect_keys(examples: &[Example], file: &str, keys: &[&str]) {
+fn assert_keys(examples: &[Example], file: &str, keys: &[&str]) {
     let body = body_of(examples, file);
     for key in keys {
         assert!(body.contains(key), "{file} is missing {key}");

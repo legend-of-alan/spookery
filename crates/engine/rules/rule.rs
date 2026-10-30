@@ -29,7 +29,7 @@ impl Rule {
         place
     }
 
-    pub fn top_effects(&self) -> impl Iterator<Item = &EffectTemplate> {
+    pub fn top_templates(&self) -> impl Iterator<Item = &EffectTemplate> {
         self.do_
             .iter()
             .chain(&self.success)
@@ -37,7 +37,7 @@ impl Rule {
             .chain(&self.failure)
     }
 
-    pub fn visit_effects<'a>(&'a self, mut visit: impl FnMut(&'a EffectTemplate)) {
+    pub fn visit_templates<'a>(&'a self, mut visit: impl FnMut(&'a EffectTemplate)) {
         fn walk<'a>(effects: &'a [EffectTemplate], visit: &mut impl FnMut(&'a EffectTemplate)) {
             for effect in effects {
                 visit(effect);
@@ -73,7 +73,7 @@ impl Owner {
         }
     }
 
-    pub fn id(&self, local: &str) -> String {
+    pub fn rule_id(&self, local: &str) -> String {
         match self {
             Owner::Verb => format!("verb:{local}"),
             Owner::Place(owner) => format!("place:{owner}/{local}"),
@@ -101,7 +101,7 @@ pub enum TargetKind {
 }
 
 impl TargetKind {
-    pub fn word(self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             TargetKind::None => "none",
             TargetKind::Actor => "actor",
@@ -140,7 +140,7 @@ pub struct RollSpec {
 
 /// Where a parsed meter read sits in the pack file. Line and column are 1-based.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Spot {
+pub struct LineColumn {
     pub line: u32,
     pub column: u32,
 }

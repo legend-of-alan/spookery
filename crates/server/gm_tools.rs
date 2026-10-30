@@ -1,18 +1,18 @@
 //! The GM tools: status, perceive, intent, say, commit, and close.
 
 use serde_json::{Map, Value};
-use spookery_engine::{GmIntentSpec, Heard, Presence, QueuedMove, Reason, RoundOutput, World};
+use spookery_engine::{Address, IntentCall, Presence, QueuedMove, Reason, RoundOutput, World};
 
-use super::frames::{self, Spoken};
+use super::frames::{self, SayOutput};
 use super::world_loop::commit_then_fast_forward;
-use crate::protocol::OutgoingSay;
+use crate::protocol::SayArgs;
 
-pub struct GmToolReply {
+pub struct Reply {
     pub value: Value,
     /// Written on the GM socket after this call's response line.
-    pub after: Vec<Vec<u8>>,
+    pub gm_events: Vec<Vec<u8>>,
     pub player_line: Option<(Vec<String>, Vec<u8>)>,
-    pub tape: Option<String>,
+    pub tape_line: Option<String>,
     /// The GM seat is cleared before this reply is sent.
     pub release_seat: bool,
     /// Set when the call was refused; the host logs it.
@@ -21,13 +21,13 @@ pub struct GmToolReply {
     pub outputs: Vec<RoundOutput>,
 }
 
-impl GmToolReply {
+impl Reply {
     fn new(value: Value) -> Self {
         Self {
             value,
-            after: Vec::new(),
+            gm_events: Vec::new(),
             player_line: None,
-            tape: None,
+            tape_line: None,
             release_seat: false,
             refused: None,
             outputs: Vec::new(),
@@ -37,53 +37,53 @@ impl GmToolReply {
 
 /// Sitting `tools/list` order. Each name is one handler.
 /// Any other name is `NOT_IN_SPEC` and writes nothing.
-pub(super) struct GmTool {
+pub(super) struct Tool {
     pub(super) name: &'static str,
     pub(super) about: &'static str,
     pub(super) schema: fn() -> Map<String, Value>,
-    run: fn(&mut World, &Presence, Option<Map<String, Value>>) -> GmToolReply,
+    run: fn(&mut World, &Presence, Option<Map<String, Value>>) -> Reply,
 }
 
-const SEAT_FACTS: &str = "Player mechanical lines stay queued until commit_round. say appends speech and does not tick. perceive requires as set to an actor id. When a notification does not arrive, session_status with since returns player speech and the queue.";
+const SEAT_NOTES: &str = "Player mechanical lines stay queued until commit_round. say appends speech and does not tick. perceive requires as set to an actor id. When a notification does not arrive, table_status with since returns player speech and the queue.";
 
-impl GmTool {
+impl Tool {
     pub(super) fn description(&self) -> String {
-        format!("{} {}", self.about, SEAT_FACTS)
+        format!("{} {}", self.about, SEAT_NOTES)
     }
 }
 
-pub(super) const GM_LIST: &[GmTool] = &[
-    GmTool {
-        name: "session_status",
-        about: "session_status takes no required key. An empty object stays legal. since is the only other accepted key.",
+pub(super) const TOOLS: &[Tool] = &[
+    Tool {
+        name: "table_status",
+        about: "table_status takes no required key. An empty object stays legal. since is the only other accepted key.",
         schema: status_schema,
-        run: run_session_status,
+        run: run_table_status,
     },
-    GmTool {
+    Tool {
         name: "perceive",
-        about: "perceive requires as. budget_tokens may be sent. A missing as is UNSCOPED_PERCEIVE.",
+        about: "perceive requires as. max_body_chars may be sent. A missing as is UNSCOPED_PERCEIVE.",
         schema: perceive_schema,
         run: run_perceive,
     },
-    GmTool {
-        name: "intent",
-        about: "intent requires actor_id and move. A habit row is legal when actor_id is an npc.",
+    Tool {
+        name: "queue_intent",
+        about: "queue_intent requires actor_id and move. A habit row is legal when actor_id is an npc.",
         schema: intent_schema,
         run: run_intent,
     },
-    GmTool {
+    Tool {
         name: "say",
         about: "say requires address and text. place is required when address is place. actor is required when address is actor. table takes neither place nor actor. A supplied from is SCHEMA.",
         schema: say_schema,
         run: run_say,
     },
-    GmTool {
+    Tool {
         name: "commit_round",
         about: "commit_round requires include_round. session_id may be a string.",
         schema: commit_schema,
         run: run_commit_round,
     },
-    GmTool {
+    Tool {
         name: "close",
         about: "close takes no keys. The result is sent after this GM seat is free.",
         schema: close_schema,
@@ -97,10 +97,10 @@ pub fn call_gm_tool(
     presence: &Presence,
     name: &str,
     arguments: Option<Map<String, Value>>,
-) -> GmToolReply {
-    match GM_LIST.iter().find(|tool| tool.name == name) {
+) -> Reply {
+    match TOOLS.iter().find(|tool| tool.name == name) {
         Some(tool) => (tool.run)(world, presence, arguments),
-        None => refused_tool(Reason::NotInSpec),
+        None => refused_reply(Reason::NotInSpec),
     }
 }
 
@@ -108,10 +108,10 @@ fn run_intent(
     world: &mut World,
     _presence: &Presence,
     arguments: Option<Map<String, Value>>,
-) -> GmToolReply {
+) -> Reply {
     match queue_tool_intent(world, arguments) {
-        Ok(queued) => GmToolReply::new(crate::protocol::queued_ack(&queued.id)),
-        Err(code) => refused_tool(code),
+        Ok(queued) => Reply::new(crate::protocol::queued_result(&queued.id)),
+        Err(code) => refused_reply(code),
     }
 }
 
@@ -119,10 +119,10 @@ fn run_commit_round(
     world: &mut World,
     presence: &Presence,
     arguments: Option<Map<String, Value>>,
-) -> GmToolReply {
-    match commit_tool(world, presence, arguments) {
+) -> Reply {
+    match try_commit_round(world, presence, arguments) {
         Ok(done) => done,
-        Err(code) => refused_tool(code),
+        Err(code) => refused_reply(code),
     }
 }
 
@@ -130,28 +130,24 @@ fn run_perceive(
     world: &mut World,
     presence: &Presence,
     arguments: Option<Map<String, Value>>,
-) -> GmToolReply {
-    match perceive_tool(world, presence, arguments) {
-        Ok(value) => GmToolReply::new(value),
-        Err(code) => refused_tool(code),
+) -> Reply {
+    match try_perceive(world, presence, arguments) {
+        Ok(value) => Reply::new(value),
+        Err(code) => refused_reply(code),
     }
 }
 
-fn run_say(
-    world: &mut World,
-    presence: &Presence,
-    arguments: Option<Map<String, Value>>,
-) -> GmToolReply {
+fn run_say(world: &mut World, presence: &Presence, arguments: Option<Map<String, Value>>) -> Reply {
     match try_say(world, presence, arguments) {
         Ok(spoken) => {
-            let mut done = GmToolReply::new(spoken.tool);
+            let mut done = Reply::new(spoken.tool_result);
             // Same object as the tool result, after that response. Ahead of it, the client stalls.
-            done.after.push(spoken.gm_event);
-            done.player_line = Some((spoken.recipients, spoken.player_event.into_bytes()));
-            done.tape = Some(spoken.tape);
+            done.gm_events.push(spoken.gm_event);
+            done.player_line = Some((spoken.recipients, spoken.player_line.into_bytes()));
+            done.tape_line = Some(spoken.tape_line);
             done
         }
-        Err(code) => refused_tool(code),
+        Err(code) => refused_reply(code),
     }
 }
 
@@ -160,25 +156,25 @@ fn try_say(
     world: &World,
     presence: &Presence,
     arguments: Option<Map<String, Value>>,
-) -> Result<Spoken, Reason> {
-    let say = crate::protocol::read_say_args(arguments.as_ref()).map_err(|_| Reason::Schema)?;
+) -> Result<SayOutput, Reason> {
+    let say = crate::protocol::parse_say_args(arguments.as_ref()).map_err(|_| Reason::Schema)?;
     let heard = match &say {
-        OutgoingSay::Table { .. } => Heard::Table,
-        OutgoingSay::Place { place, .. } => Heard::Place(place),
-        OutgoingSay::Actor { actor, .. } => Heard::Actor(actor),
+        SayArgs::Table { .. } => Address::Table,
+        SayArgs::Place { place, .. } => Address::Place(place),
+        SayArgs::Actor { actor, .. } => Address::Actor(actor),
     };
-    let stored = world.speak_gm(presence, heard, say.text())?;
-    Ok(Spoken::from(&stored))
+    let stored = world.say_as_gm(presence, heard, say.text())?;
+    Ok(SayOutput::from(&stored))
 }
 
-fn run_session_status(
+fn run_table_status(
     world: &mut World,
     presence: &Presence,
     arguments: Option<Map<String, Value>>,
-) -> GmToolReply {
-    match session_status_tool(world, presence, arguments) {
-        Ok(value) => GmToolReply::new(value),
-        Err(code) => refused_tool(code),
+) -> Reply {
+    match try_table_status(world, presence, arguments) {
+        Ok(value) => Reply::new(value),
+        Err(code) => refused_reply(code),
     }
 }
 
@@ -186,11 +182,11 @@ fn run_close(
     _world: &mut World,
     _presence: &Presence,
     arguments: Option<Map<String, Value>>,
-) -> GmToolReply {
+) -> Reply {
     if arguments.is_some_and(|args| !args.is_empty()) {
-        return refused_tool(Reason::Schema);
+        return refused_reply(Reason::Schema);
     }
-    let mut done = GmToolReply::new(crate::protocol::released_result());
+    let mut done = Reply::new(crate::protocol::released_result());
     done.release_seat = true;
     done
 }
@@ -254,7 +250,7 @@ fn perceive_schema() -> Map<String, Value> {
         "type": "object",
         "properties": {
             "as": { "type": "string" },
-            "budget_tokens": { "type": "integer", "minimum": 0 }
+            "max_body_chars": { "type": "integer", "minimum": 0 }
         },
         "required": ["as"],
         "additionalProperties": false
@@ -315,15 +311,15 @@ fn schema_object(value: Value) -> Map<String, Value> {
     }
 }
 
-fn commit_tool(
+fn try_commit_round(
     world: &mut World,
     presence: &Presence,
     arguments: Option<Map<String, Value>>,
-) -> Result<GmToolReply, Reason> {
-    let include_round = commit_include_round(arguments)?;
+) -> Result<Reply, Reason> {
+    let include_round = read_include_round(arguments)?;
     if !include_round {
         if world.queued_intents().is_empty() {
-            return Ok(noop(world));
+            return Ok(empty_commit(world));
         }
         return Err(Reason::NotInSpec);
     }
@@ -332,20 +328,20 @@ fn commit_tool(
     let mut done = if committed {
         let output = &outputs[0];
         let outcome = output
-            .outcome
+            .commit
             .as_ref()
             .expect("a flush round writes the journal");
-        GmToolReply::new(frames::commit_reply(
+        Reply::new(frames::commit_reply(
             outcome.state_rev,
             &output.summary,
             Some(&outcome.log_path),
             &outputs,
         ))
     } else if outputs.is_empty() {
-        return Ok(noop(world));
+        return Ok(empty_commit(world));
     } else {
-        GmToolReply::new(frames::commit_reply(
-            world.now().state_rev,
+        Reply::new(frames::commit_reply(
+            world.state().state_rev,
             &[],
             None,
             &outputs,
@@ -355,42 +351,47 @@ fn commit_tool(
     Ok(done)
 }
 
-fn noop(world: &World) -> GmToolReply {
-    GmToolReply::new(frames::commit_reply(world.now().state_rev, &[], None, &[]))
+fn empty_commit(world: &World) -> Reply {
+    Reply::new(frames::commit_reply(
+        world.state().state_rev,
+        &[],
+        None,
+        &[],
+    ))
 }
 
-fn refused_tool(code: Reason) -> GmToolReply {
-    let mut done = GmToolReply::new(crate::protocol::code_result(code.token()));
+fn refused_reply(code: Reason) -> Reply {
+    let mut done = Reply::new(crate::protocol::code_result(code.as_str()));
     done.refused = Some(code);
     done
 }
 
-fn perceive_tool(
+fn try_perceive(
     world: &World,
     presence: &Presence,
     arguments: Option<Map<String, Value>>,
 ) -> Result<Value, Reason> {
     let args =
-        crate::protocol::read_perceive_args(arguments.as_ref()).map_err(|_| Reason::Schema)?;
+        crate::protocol::parse_perceive_args(arguments.as_ref()).map_err(|_| Reason::Schema)?;
     let as_arg = args.as_viewer.ok_or(Reason::UnscopedPerceive)?;
-    let budget = usize::try_from(args.budget_tokens.unwrap_or(800)).map_err(|_| Reason::Schema)?;
-    let view = world.perceive_budget(presence, &as_arg, budget)?;
+    let budget = usize::try_from(args.max_body_chars.unwrap_or(800)).map_err(|_| Reason::Schema)?;
+    let view = world.perceive_trimmed(presence, &as_arg, budget)?;
     Ok(frames::perceive_value(&view))
 }
 
-fn session_status_tool(
+fn try_table_status(
     world: &World,
     presence: &Presence,
     arguments: Option<Map<String, Value>>,
 ) -> Result<Value, Reason> {
-    let since = status_since(arguments)?;
+    let since = read_since(arguments)?;
     let events = match since {
         Some(since) => Some(world.tape_after(since)?),
         None => None,
     };
     let last_seq = world.last_tape_seq()?;
-    Ok(frames::session_status(
-        world.now(),
+    Ok(frames::table_status(
+        world.state(),
         presence,
         world.queued_intents(),
         last_seq,
@@ -399,13 +400,15 @@ fn session_status_tool(
     ))
 }
 
-fn status_since(arguments: Option<Map<String, Value>>) -> Result<Option<u64>, Reason> {
-    let args = crate::protocol::read_status_args(arguments.as_ref()).map_err(|_| Reason::Schema)?;
+fn read_since(arguments: Option<Map<String, Value>>) -> Result<Option<u64>, Reason> {
+    let args =
+        crate::protocol::parse_status_args(arguments.as_ref()).map_err(|_| Reason::Schema)?;
     Ok(args.since)
 }
 
-fn commit_include_round(arguments: Option<Map<String, Value>>) -> Result<bool, Reason> {
-    let args = crate::protocol::read_commit_args(arguments.as_ref()).map_err(|_| Reason::Schema)?;
+fn read_include_round(arguments: Option<Map<String, Value>>) -> Result<bool, Reason> {
+    let args =
+        crate::protocol::parse_commit_args(arguments.as_ref()).map_err(|_| Reason::Schema)?;
     Ok(args.include_round)
 }
 
@@ -413,9 +416,10 @@ fn queue_tool_intent(
     world: &mut World,
     arguments: Option<Map<String, Value>>,
 ) -> Result<QueuedMove, Reason> {
-    let call = crate::protocol::read_intent_args(arguments.as_ref()).map_err(|_| Reason::Schema)?;
+    let call =
+        crate::protocol::parse_intent_args(arguments.as_ref()).map_err(|_| Reason::Schema)?;
     world.queue_gm_intent(
-        GmIntentSpec {
+        IntentCall {
             id: call.id,
             round_index: call.round_index,
             actor_id: call.actor_id,

@@ -11,7 +11,7 @@ use std::time::Duration;
 use spookery_engine::Reason;
 
 use super::mcp_http;
-use super::world_loop::{self, refused_line, HelloReply, WorldMsg};
+use super::world_loop::{self, refused_line, HelloReply, Request};
 
 #[derive(Debug)]
 pub enum Error {
@@ -41,7 +41,7 @@ impl Config {
         Self {
             addr,
             door: None,
-            hello_timeout: super::limits::HELLO_LIMIT,
+            hello_timeout: super::limits::HELLO_TIMEOUT,
             out: Box::new(io::sink()),
             err: Box::new(io::sink()),
         }
@@ -57,7 +57,7 @@ pub async fn serve(
     shutdown: impl Future<Output = ()>,
 ) -> Result<(), Error> {
     let listener = bind(config.addr).await?;
-    let http_listener = bind(door_request(config.addr, config.door)?).await?;
+    let http_listener = bind(door_addr(config.addr, config.door)?).await?;
     let game = listener.local_addr().map_err(Error::Io)?;
     let door = http_listener.local_addr().map_err(Error::Io)?;
     report_bound(&mut *config.out, game, door)?;
@@ -77,7 +77,7 @@ pub async fn serve(
             }
             let id = ids.fetch_add(1, Ordering::Relaxed);
             let tx_conn = tx_accept.clone();
-            tokio::spawn(connection(stream, tx_conn, id, hello_timeout));
+            tokio::spawn(serve_connection(stream, tx_conn, id, hello_timeout));
         }
     });
     tasks.spawn(mcp_http::serve(http_listener, tx.clone(), next_conn));
@@ -88,7 +88,7 @@ pub async fn serve(
             loop {
                 tokio::select! {
                     _ = tokio::time::sleep(Duration::from_secs(keepalive_secs)) => {
-                        if tx_timer.send(WorldMsg::Wake).is_err() {
+                        if tx_timer.send(Request::Wake).is_err() {
                             break;
                         }
                     }
@@ -102,13 +102,13 @@ pub async fn serve(
         });
     }
     let mut world_loop = tokio::task::spawn_blocking(move || {
-        world_loop::run_world_loop(world, rx, &restart_tx, &mut *config.out, &mut *config.err)
+        world_loop::run(world, rx, &restart_tx, &mut *config.out, &mut *config.err)
     });
     // A world loop that ends on its own (a store fault) ends `serve` too.
     let done = tokio::select! {
         done = &mut world_loop => done,
         () = shutdown => {
-            let _ = tx.send(WorldMsg::Stop);
+            let _ = tx.send(Request::Stop);
             world_loop.await
         }
     };
@@ -120,8 +120,8 @@ async fn bind(addr: SocketAddr) -> Result<tokio::net::TcpListener, Error> {
 }
 
 /// The agent door to bind. A fixed game port keeps the next port. Port 0, on
-/// the game address or on `--mcp-http`, asks the OS for a port of its own.
-pub fn door_request(game: SocketAddr, mcp_addr: Option<SocketAddr>) -> Result<SocketAddr, Error> {
+/// the game address or on `--door`, asks the OS for a port of its own.
+pub fn door_addr(game: SocketAddr, mcp_addr: Option<SocketAddr>) -> Result<SocketAddr, Error> {
     if let Some(door) = mcp_addr {
         return Ok(door);
     }
@@ -151,9 +151,9 @@ fn tune(stream: &tokio::net::TcpStream, keepalive_secs: u64) -> io::Result<()> {
     socket2::SockRef::from(stream).set_tcp_keepalive(&keepalive)
 }
 
-async fn connection(
+async fn serve_connection(
     mut stream: tokio::net::TcpStream,
-    tx: Sender<WorldMsg>,
+    tx: Sender<Request>,
     conn: u64,
     hello_timeout: Duration,
 ) {
@@ -165,15 +165,15 @@ async fn connection(
         match tokio::time::timeout(hello_timeout, read).await {
             Err(_) => return,
             Ok(Ok(Some(line))) => line,
-            Ok(Ok(None)) | Ok(Err(super::limits::LineReadError::Io)) => {
-                report_fault(&tx, conn).await;
+            Ok(Ok(None)) | Ok(Err(super::limits::ReadLineError::Io)) => {
+                report_hangup(&tx, conn).await;
                 return;
             }
-            Ok(Err(super::limits::LineReadError::TooLong)) => {
+            Ok(Err(super::limits::ReadLineError::TooLong)) => {
                 refuse(&mut stream, &refused_line(Reason::LineTooLong).into_bytes()).await;
                 return;
             }
-            Ok(Err(super::limits::LineReadError::BadUtf8)) => {
+            Ok(Err(super::limits::ReadLineError::BadUtf8)) => {
                 refuse(&mut stream, &refused_line(Reason::Schema).into_bytes()).await;
                 return;
             }
@@ -182,10 +182,10 @@ async fn connection(
     let (out_tx, out_rx, cancel_tx, cancel_rx) = super::outbound::channel();
     let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
     if tx
-        .send(WorldMsg::Hello {
+        .send(Request::Hello {
             conn,
             line,
-            out: out_tx.clone(),
+            outbound: out_tx.clone(),
             cancel: cancel_tx,
             reply: reply_tx,
         })
@@ -203,20 +203,20 @@ async fn connection(
             drop(cancel_rx);
             refuse(&mut stream, line.as_bytes()).await;
         }
-        HelloReply::Player => {
+        HelloReply::Line => {
             // The queue is the bound. Ask for a small send buffer so a client
             // that stops reading fills the queue. The OS may grant more, and
             // the queue's byte cap still drops that seat.
             let _ = socket2::SockRef::from(&stream)
                 .set_send_buffer_size(super::limits::REQUESTED_SEND_BUFFER);
-            player_session(stream, tx, conn, out_tx, out_rx, cancel_rx).await;
+            serve_player(stream, tx, conn, out_tx, out_rx, cancel_rx).await;
         }
     }
 }
 
-async fn player_session(
+async fn serve_player(
     stream: tokio::net::TcpStream,
-    tx: Sender<WorldMsg>,
+    tx: Sender<Request>,
     conn: u64,
     out_tx: super::outbound::OutTx,
     out_rx: super::outbound::OutRx,
@@ -235,7 +235,7 @@ async fn player_session(
         super::limits::TokenBucket::new(super::limits::RATE_PER_SEC, super::limits::BURST);
     loop {
         // Wait before reading so a full window slows the sender. The line is kept.
-        if !super::limits::wait_turn(&mut bucket, &mut cancel_rx).await {
+        if !super::limits::wait_for_token(&mut bucket, &mut cancel_rx).await {
             break;
         }
         let read = super::limits::read_capped_line(&mut reader, super::limits::PLAYER_LINE_CAP);
@@ -252,10 +252,10 @@ async fn player_session(
         };
         match line {
             Ok(Some(line)) => {
-                let _ = bucket.allow(std::time::Instant::now());
+                let _ = bucket.try_take(std::time::Instant::now());
                 let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
                 if tx
-                    .send(WorldMsg::Player {
+                    .send(Request::Seated {
                         conn,
                         line,
                         reply: reply_tx,
@@ -269,20 +269,23 @@ async fn player_session(
                     break;
                 }
             }
-            Ok(None) | Err(super::limits::LineReadError::Io) => {
-                report_fault(&tx, conn).await;
+            Ok(None) | Err(super::limits::ReadLineError::Io) => {
+                report_hangup(&tx, conn).await;
                 break;
             }
-            Err(super::limits::LineReadError::TooLong) => {
+            Err(super::limits::ReadLineError::TooLong) => {
                 super::outbound::send_last(&out_tx, refused_line(Reason::LineTooLong).into_bytes())
                     .await;
-                report_fault(&tx, conn).await;
+                report_hangup(&tx, conn).await;
                 break;
             }
-            Err(super::limits::LineReadError::BadUtf8) => {
-                let _ = bucket.allow(std::time::Instant::now());
-                if !super::outbound::try_frame(&out_tx, refused_line(Reason::Schema).into_bytes()) {
-                    report_fault(&tx, conn).await;
+            Err(super::limits::ReadLineError::BadUtf8) => {
+                let _ = bucket.try_take(std::time::Instant::now());
+                if !super::outbound::try_send_frame(
+                    &out_tx,
+                    refused_line(Reason::Schema).into_bytes(),
+                ) {
+                    report_hangup(&tx, conn).await;
                     break;
                 }
             }
@@ -292,16 +295,16 @@ async fn player_session(
     let _ = writer.await;
 }
 
-pub(super) async fn report_fault(tx: &Sender<WorldMsg>, conn: u64) {
+pub(super) async fn report_hangup(tx: &Sender<Request>, conn: u64) {
     let (ack_tx, ack_rx) = tokio::sync::oneshot::channel();
-    if tx.send(WorldMsg::Fault { conn, ack: ack_tx }).is_err() {
+    if tx.send(Request::Hangup { conn, ack: ack_tx }).is_err() {
         return;
     }
     let _ = ack_rx.await;
 }
 
 /// How long a refused socket waits for its client to hang up.
-const REFUSE_DRAIN: Duration = Duration::from_secs(2);
+const REFUSE_DRAIN_TIMEOUT: Duration = Duration::from_secs(2);
 
 /// Most bytes a refused socket reads before it closes anyway.
 const REFUSE_DRAIN_BYTES: usize = 64 * 1024;
@@ -312,7 +315,7 @@ const REFUSE_DRAIN_BYTES: usize = 64 * 1024;
 /// holds unread bytes sends RST on
 /// Windows, and the client's stack then drops the refusal it already got. So
 /// the seat sends FIN after the refusal and reads until the client hangs up,
-/// for at most `REFUSE_DRAIN` and `REFUSE_DRAIN_BYTES`.
+/// for at most `REFUSE_DRAIN_TIMEOUT` and `REFUSE_DRAIN_BYTES`.
 async fn refuse(stream: &mut tokio::net::TcpStream, line: &[u8]) {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     if stream.write_all(line).await.is_err()
@@ -331,14 +334,14 @@ async fn refuse(stream: &mut tokio::net::TcpStream, line: &[u8]) {
             }
         }
     };
-    let _ = tokio::time::timeout(REFUSE_DRAIN, drain).await;
+    let _ = tokio::time::timeout(REFUSE_DRAIN_TIMEOUT, drain).await;
 }
 
 #[cfg(test)]
 mod tests {
     use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
-    use super::door_request;
+    use super::door_addr;
 
     fn addr(port: u16) -> SocketAddr {
         SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), port)
@@ -346,22 +349,22 @@ mod tests {
 
     #[test]
     fn a_fixed_game_port_uses_the_next_port() {
-        assert_eq!(door_request(addr(9737), None).ok(), Some(addr(9738)));
+        assert_eq!(door_addr(addr(9737), None).ok(), Some(addr(9738)));
     }
 
     #[test]
     fn port_zero_asks_for_a_door_of_its_own() {
-        assert_eq!(door_request(addr(0), None).ok(), Some(addr(0)));
+        assert_eq!(door_addr(addr(0), None).ok(), Some(addr(0)));
     }
 
     #[test]
     fn an_explicit_door_wins() {
-        assert_eq!(door_request(addr(0), Some(addr(9))).ok(), Some(addr(9)));
-        assert_eq!(door_request(addr(9737), Some(addr(0))).ok(), Some(addr(0)));
+        assert_eq!(door_addr(addr(0), Some(addr(9))).ok(), Some(addr(9)));
+        assert_eq!(door_addr(addr(9737), Some(addr(0))).ok(), Some(addr(0)));
     }
 
     #[test]
     fn the_last_port_has_no_next_port() {
-        assert!(door_request(addr(65535), None).is_err());
+        assert!(door_addr(addr(65535), None).is_err());
     }
 }

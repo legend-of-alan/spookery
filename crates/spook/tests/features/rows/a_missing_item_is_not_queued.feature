@@ -9,4 +9,4 @@ Feature: A missing item is not queued
     Given a docks table where mark needs a knife
     When the player marks nell
     Then world_time is 1080
-    And no round file was written
+    And no round record was written

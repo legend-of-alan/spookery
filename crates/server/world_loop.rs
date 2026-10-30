@@ -2,7 +2,7 @@
 
 use std::io::Write;
 
-use spookery_engine::{GateRefusal, Heard, Presence, Reason, RecipientLine, RoundOutput, World};
+use spookery_engine::{Address, GateRefusal, Presence, Reason, RecipientLine, RoundOutput, World};
 
 use crate::protocol::Missing;
 
@@ -23,19 +23,19 @@ pub fn commit_then_fast_forward(
     world.commit_then_fast_forward(presence, &wall)
 }
 
-pub(super) fn run_world_loop(
+pub(super) fn run(
     mut world: World,
-    rx: std::sync::mpsc::Receiver<WorldMsg>,
+    rx: std::sync::mpsc::Receiver<Request>,
     restart: &tokio::sync::watch::Sender<u64>,
     out: &mut dyn Write,
     err: &mut dyn Write,
-) -> Result<(), super::listen::Error> {
+) -> Result<(), super::listener::Error> {
     let mut seats = Seats::default();
     loop {
         let msg = rx
             .recv()
-            .map_err(|_| super::listen::Error::Reason(Reason::NotInSpec))?;
-        if matches!(msg, WorldMsg::Stop) {
+            .map_err(|_| super::listener::Error::Reason(Reason::NotInSpec))?;
+        if matches!(msg, Request::Stop) {
             shutdown(&world, &mut seats, out);
             return Ok(());
         }
@@ -44,12 +44,12 @@ pub(super) fn run_world_loop(
             let _ = writeln!(err, "{warning}");
             let _ = err.flush();
         }
-        handled.map_err(super::listen::Error::Reason)?;
+        handled.map_err(super::listener::Error::Reason)?;
     }
 }
 
-fn write_host(out: &mut dyn Write, world: &World, outputs: &[RoundOutput]) {
-    let text = world.host_lines(outputs);
+fn write_digest(out: &mut dyn Write, world: &World, outputs: &[RoundOutput]) {
+    let text = world.digest(outputs);
     if !text.is_empty() {
         let _ = out.write_all(text.as_bytes());
         let _ = out.flush();
@@ -59,7 +59,7 @@ fn write_host(out: &mut dyn Write, world: &World, outputs: &[RoundOutput]) {
 /// The one owner of who is seated. Rounds and readers take `presence()`.
 #[derive(Default)]
 struct Seats {
-    players: Vec<HeldPlayer>,
+    players: Vec<PlayerSeat>,
     gm: Option<GmSeat>,
 }
 
@@ -78,24 +78,24 @@ impl Seats {
         }
     }
 
-    fn player(&self, conn: u64) -> Option<&HeldPlayer> {
+    fn player(&self, conn: u64) -> Option<&PlayerSeat> {
         self.players.iter().find(|player| player.conn == conn)
     }
 
-    fn take_player(&mut self, conn: u64) -> Option<HeldPlayer> {
+    fn take_player(&mut self, conn: u64) -> Option<PlayerSeat> {
         let index = self.players.iter().position(|player| player.conn == conn)?;
         Some(self.players.remove(index))
     }
 }
 
-struct HeldPlayer {
+struct PlayerSeat {
     conn: u64,
     actor_id: String,
     out: OutTx,
     cancel: CancelTx,
 }
 
-impl Drop for HeldPlayer {
+impl Drop for PlayerSeat {
     fn drop(&mut self) {
         let _ = self.cancel.send(true);
     }
@@ -113,20 +113,20 @@ impl Drop for GmSeat {
     }
 }
 
-pub(super) enum WorldMsg {
+pub(super) enum Request {
     Hello {
         conn: u64,
         line: String,
-        out: OutTx,
+        outbound: OutTx,
         cancel: CancelTx,
         reply: tokio::sync::oneshot::Sender<HelloReply>,
     },
-    Player {
+    Seated {
         conn: u64,
         line: String,
         reply: tokio::sync::oneshot::Sender<()>,
     },
-    Fault {
+    Hangup {
         conn: u64,
         ack: tokio::sync::oneshot::Sender<()>,
     },
@@ -137,7 +137,7 @@ pub(super) enum WorldMsg {
         reply: tokio::sync::oneshot::Sender<serde_json::Value>,
     },
     /// The HTTP session takes the one GM seat. The game port does not.
-    Claim {
+    SeatGm {
         conn: u64,
         out: OutTx,
         cancel: CancelTx,
@@ -149,7 +149,7 @@ pub(super) enum WorldMsg {
 
 pub(super) enum HelloReply {
     Refused(String),
-    Player,
+    Line,
 }
 
 fn handle(
@@ -157,20 +157,20 @@ fn handle(
     seats: &mut Seats,
     restart: &tokio::sync::watch::Sender<u64>,
     out: &mut dyn Write,
-    msg: WorldMsg,
+    msg: Request,
 ) -> Result<(), Reason> {
     match msg {
-        WorldMsg::Hello {
+        Request::Hello {
             conn,
             line,
-            out: out_tx,
+            outbound: out_tx,
             cancel,
             reply,
         } => {
             let answer = on_hello(world, seats, conn, &line, out_tx, cancel, out);
             let _ = reply.send(answer);
         }
-        WorldMsg::Claim {
+        Request::SeatGm {
             conn,
             out: out_tx,
             cancel,
@@ -185,43 +185,43 @@ fn handle(
                 let _ = reply.send(Err(code));
             }
         },
-        WorldMsg::Player { conn, line, reply } => {
+        Request::Seated { conn, line, reply } => {
             on_player(world, seats, restart, conn, &line, out);
             let _ = reply.send(());
         }
-        WorldMsg::Fault { conn, ack } => on_fault(world, seats, conn, ack, out),
-        WorldMsg::Tool {
+        Request::Hangup { conn, ack } => on_hangup(world, seats, conn, ack, out),
+        Request::Tool {
             conn,
             name,
             arguments,
             reply,
         } => {
             if seats.gm.as_ref().is_none_or(|gm| gm.conn != conn) {
-                let _ = reply.send(crate::protocol::code_result(Reason::NotInSpec.token()));
+                let _ = reply.send(crate::protocol::code_result(Reason::NotInSpec.as_str()));
                 return Ok(());
             }
             let presence = seats.presence();
             let mut done = super::gm_tools::call_gm_tool(world, &presence, &name, arguments);
             if let Some(code) = &done.refused {
-                let _ = writeln!(out, "refused {name} {}", code.token());
+                let _ = writeln!(out, "refused {name} {}", code.as_str());
                 let _ = out.flush();
             }
             let outputs = std::mem::take(&mut done.outputs);
             let reports: Vec<_> = outputs.iter().flat_map(|o| o.reports.clone()).collect();
             if !outputs.is_empty() {
                 refresh_players(world, seats, &outputs, out);
-                write_host(out, world, &outputs);
-                bump_sleep(restart);
+                write_digest(out, world, &outputs);
+                restart_idle_timer(restart);
             }
-            if let Some(tape) = &done.tape {
+            if let Some(tape) = &done.tape_line {
                 let _ = writeln!(out, "{tape}");
                 let _ = out.flush();
             }
             if let Some((recipients, line)) = &done.player_line {
                 send_recipients(world, seats, recipients, line.clone(), out);
             }
-            let mut after = done.after;
-            after.extend(frames::gm_check_frames(&reports));
+            let mut after = done.gm_events;
+            after.extend(frames::check_events(&reports));
             for frame in after {
                 send_gm(seats, frame);
             }
@@ -231,18 +231,17 @@ fn handle(
             }
             let _ = reply.send(done.value);
         }
-        WorldMsg::Wake => {
-            if idle_clock::on_scheduled_wake(world, !seats.players.is_empty(), seats.gm.is_some())?
-            {
-                bump_sleep(restart);
+        Request::Wake => {
+            if idle_clock::catch_up_if_due(world, !seats.players.is_empty(), seats.gm.is_some())? {
+                restart_idle_timer(restart);
             }
         }
-        WorldMsg::Stop => {}
+        Request::Stop => {}
     }
     Ok(())
 }
 
-fn narrate_for(lines: &[RecipientLine], viewer: &str) -> Vec<String> {
+fn narrate_lines_for(lines: &[RecipientLine], viewer: &str) -> Vec<String> {
     let mut out = Vec::new();
     for line in lines {
         if line.to == viewer && !out.contains(&line.text) {
@@ -252,7 +251,7 @@ fn narrate_for(lines: &[RecipientLine], viewer: &str) -> Vec<String> {
     out
 }
 
-fn bump_sleep(restart: &tokio::sync::watch::Sender<u64>) {
+fn restart_idle_timer(restart: &tokio::sync::watch::Sender<u64>) {
     let next = restart.borrow().wrapping_add(1);
     let _ = restart.send(next);
 }
@@ -262,12 +261,12 @@ fn refresh_players(world: &World, seats: &mut Seats, outputs: &[RoundOutput], ou
     let presence = seats.presence();
     let mut failed = Vec::new();
     for player in &seats.players {
-        let bytes = match player_refresh(world, &presence, &player.actor_id) {
+        let bytes = match refresh_lines(world, &presence, &player.actor_id) {
             Ok(text) => {
                 let mut out = frames::player_report_lines(&reports, &player.actor_id);
                 out.push_str(&text);
                 for output in outputs {
-                    for line in narrate_for(&output.lines, &player.actor_id) {
+                    for line in narrate_lines_for(&output.lines, &player.actor_id) {
                         out.push_str(&frames::player_lines(&line));
                     }
                     for item in &output.seen {
@@ -280,7 +279,7 @@ fn refresh_players(world: &World, seats: &mut Seats, outputs: &[RoundOutput], ou
             }
             Err(code) => refused_line(code).into_bytes(),
         };
-        if !super::outbound::try_frame(&player.out, bytes) {
+        if !super::outbound::try_send_frame(&player.out, bytes) {
             failed.push(player.conn);
         }
     }
@@ -311,24 +310,24 @@ fn on_hello(
     }
     if line.is_empty() {
         if seats.players.len() >= MAX_PLAYER_SEATS {
-            return HelloReply::Refused(refused_line(Reason::SessionFull));
+            return HelloReply::Refused(refused_line(Reason::TableFull));
         }
-        return HelloReply::Refused(frames::player_refused(
-            Reason::ChoosePc.token(),
+        return HelloReply::Refused(frames::player_refused_line(
+            Reason::ChoosePc.as_str(),
             Some(Missing::Many(world.free_pcs(&seats.presence()))),
         ));
     }
-    let Some(id) = player_hello(line) else {
+    let Some(id) = read_hello(line) else {
         return HelloReply::Refused(refused_line(Reason::Schema));
     };
     if seats.players.len() >= MAX_PLAYER_SEATS {
-        return HelloReply::Refused(refused_line(Reason::SessionFull));
+        return HelloReply::Refused(refused_line(Reason::TableFull));
     }
     if seats.players.iter().any(|player| player.actor_id == id) {
         return HelloReply::Refused(refused_line(Reason::SeatTaken));
     }
     if !world
-        .now()
+        .state()
         .actors
         .get(id)
         .is_some_and(|actor| actor.is_pc())
@@ -336,7 +335,7 @@ fn on_hello(
         return HelloReply::Refused(refused_line(Reason::Schema));
     }
     // Seat first, so the welcome view counts this player as present.
-    seats.players.push(HeldPlayer {
+    seats.players.push(PlayerSeat {
         conn,
         actor_id: id.to_string(),
         out: out_tx,
@@ -345,7 +344,7 @@ fn on_hello(
     let sent = welcome(world, &seats.presence(), id).and_then(|bytes| {
         let seated = seats
             .player(conn)
-            .is_some_and(|player| super::outbound::try_frame(&player.out, bytes));
+            .is_some_and(|player| super::outbound::try_send_frame(&player.out, bytes));
         if seated {
             Ok(())
         } else {
@@ -356,20 +355,20 @@ fn on_hello(
         drop_conn(world, seats, conn, out);
         return HelloReply::Refused(refused_line(code));
     }
-    write_host(out, world, &[]);
-    HelloReply::Player
+    write_digest(out, world, &[]);
+    HelloReply::Line
 }
 
 fn seat_gm(seats: &mut Seats, conn: u64, out: OutTx, cancel: CancelTx) -> Result<(), Reason> {
     if seats.gm.is_some() {
-        return Err(Reason::SessionFull);
+        return Err(Reason::TableFull);
     }
     seats.gm = Some(GmSeat { conn, out, cancel });
     Ok(())
 }
 
-fn player_hello(line: &str) -> Option<&str> {
-    crate::protocol::read_player_hello(line)
+fn read_hello(line: &str) -> Option<&str> {
+    crate::protocol::parse_player_hello(line)
 }
 
 fn welcome(world: &World, presence: &Presence, actor_id: &str) -> Result<Vec<u8>, Reason> {
@@ -377,11 +376,11 @@ fn welcome(world: &World, presence: &Presence, actor_id: &str) -> Result<Vec<u8>
     for stored in world.player_scrollback(actor_id)? {
         out.push_str(&frames::say_line(&stored, true));
     }
-    out.push_str(&player_refresh(world, presence, actor_id)?);
+    out.push_str(&refresh_lines(world, presence, actor_id)?);
     Ok(out.into_bytes())
 }
 
-fn player_refresh(world: &World, presence: &Presence, actor_id: &str) -> Result<String, Reason> {
+fn refresh_lines(world: &World, presence: &Presence, actor_id: &str) -> Result<String, Reason> {
     let view = world.perceive(presence, actor_id)?;
     let mut out = frames::player_resume_line(&view);
     out.push_str(&frames::player_perceive_line(&view));
@@ -389,9 +388,9 @@ fn player_refresh(world: &World, presence: &Presence, actor_id: &str) -> Result<
 }
 
 enum PlayerCommand<'w, 'l> {
-    Speech(Heard<'w>, &'l str),
+    Speech(Address<'w>, &'l str),
     Lines(String),
-    Turn(&'l str, Option<&'l str>),
+    Move(&'l str, Option<&'l str>),
 }
 
 fn parse_player_command<'w, 'l: 'w>(
@@ -400,7 +399,7 @@ fn parse_player_command<'w, 'l: 'w>(
     seated: &str,
     line: &'l str,
 ) -> Result<PlayerCommand<'w, 'l>, Reason> {
-    let (verb, rest) = verb_line(line, seated)?;
+    let (verb, rest) = split_verb(line, seated)?;
     if verb.is_empty() {
         return Err(Reason::Schema);
     }
@@ -409,7 +408,7 @@ fn parse_player_command<'w, 'l: 'w>(
             return Err(Reason::Schema);
         }
         let place = world
-            .now()
+            .state()
             .actors
             .get(seated)
             .filter(|actor| actor.is_pc())
@@ -417,30 +416,30 @@ fn parse_player_command<'w, 'l: 'w>(
             .place();
         let (target, text) = split_token(rest);
         let (heard, text) = if !text.is_empty() && target == "place" {
-            (Heard::Place(place), text)
-        } else if !text.is_empty() && world.now().actors.contains_key(target) {
-            (Heard::Actor(target), text)
+            (Address::Place(place), text)
+        } else if !text.is_empty() && world.state().actors.contains_key(target) {
+            (Address::Actor(target), text)
         } else {
-            (Heard::Table, rest)
+            (Address::Table, rest)
         };
         return Ok(PlayerCommand::Speech(heard, text));
     }
     if rest.is_empty() {
         return Ok(match verb {
             "help" => PlayerCommand::Lines(world.help_lines(presence, seated)),
-            "map" => PlayerCommand::Lines(world.player_lines(presence, seated)),
+            "map" => PlayerCommand::Lines(world.map_lines(presence, seated)),
             "look" => PlayerCommand::Lines(world.look_lines(presence, seated)),
-            _ => PlayerCommand::Turn(verb, None),
+            _ => PlayerCommand::Move(verb, None),
         });
     }
     let (target, extra) = split_token(rest);
     if target.is_empty() || !extra.is_empty() {
         return Err(Reason::Schema);
     }
-    Ok(PlayerCommand::Turn(verb, Some(target)))
+    Ok(PlayerCommand::Move(verb, Some(target)))
 }
 
-fn verb_line<'a>(line: &'a str, seated: &str) -> Result<(&'a str, &'a str), Reason> {
+fn split_verb<'a>(line: &'a str, seated: &str) -> Result<(&'a str, &'a str), Reason> {
     if line.is_empty() {
         return Err(Reason::Schema);
     }
@@ -479,17 +478,17 @@ fn on_player(
     let presence = seats.presence();
     match parse_player_command(world, &presence, &actor_id, line) {
         Ok(PlayerCommand::Speech(heard, text)) => {
-            match world.speak_player(&presence, &actor_id, heard, text) {
+            match world.say_as_player(&presence, &actor_id, heard, text) {
                 Ok(stored) => {
-                    let spoken = frames::Spoken::from(&stored);
-                    let _ = writeln!(out, "{}", spoken.tape);
+                    let spoken = frames::SayOutput::from(&stored);
+                    let _ = writeln!(out, "{}", spoken.tape_line);
                     let _ = out.flush();
                     send_gm(seats, spoken.gm_event);
                     send_recipients(
                         world,
                         seats,
                         &spoken.recipients,
-                        spoken.player_event.into_bytes(),
+                        spoken.player_line.into_bytes(),
                         out,
                     );
                 }
@@ -505,8 +504,8 @@ fn on_player(
                 out,
             );
         }
-        Ok(PlayerCommand::Turn(verb, target)) => {
-            on_mechanical(world, seats, restart, conn, &actor_id, (verb, target), out);
+        Ok(PlayerCommand::Move(verb, target)) => {
+            on_move(world, seats, restart, conn, &actor_id, (verb, target), out);
         }
         Err(code) => send_player(world, seats, conn, refused_line(code).into_bytes(), out),
     }
@@ -514,7 +513,7 @@ fn on_player(
 
 /// With a GM seated, a line waits for `commit_round`. Without one it commits its
 /// own round, and a busy PC's line plays the rounds its action still needs.
-fn on_mechanical(
+fn on_move(
     world: &mut World,
     seats: &mut Seats,
     restart: &tokio::sync::watch::Sender<u64>,
@@ -551,24 +550,24 @@ fn on_mechanical(
     };
     match &busy {
         Some(refusal) => send_player(world, seats, conn, refusal_line(refusal), out),
-        None if !outputs.is_empty() => bump_sleep(restart),
+        None if !outputs.is_empty() => restart_idle_timer(restart),
         None => {}
     }
     if !outputs.is_empty() {
-        write_host(out, world, &outputs);
+        write_digest(out, world, &outputs);
         refresh_players(world, seats, &outputs, out);
     }
 }
 
 fn refusal_line(refusal: &GateRefusal) -> Vec<u8> {
     let missing = refusal.missing().map(|text| Missing::One(text.to_string()));
-    frames::player_refused(refusal.token(), missing).into_bytes()
+    frames::player_refused_line(refusal.token(), missing).into_bytes()
 }
 
 /// A full or closed queue drops that seat. The world thread does not wait.
 fn send_player(world: &World, seats: &mut Seats, conn: u64, bytes: Vec<u8>, out: &mut dyn Write) {
     let failed = match seats.player(conn) {
-        Some(player) => !super::outbound::try_frame(&player.out, bytes),
+        Some(player) => !super::outbound::try_send_frame(&player.out, bytes),
         None => false,
     };
     if failed {
@@ -578,7 +577,7 @@ fn send_player(world: &World, seats: &mut Seats, conn: u64, bytes: Vec<u8>, out:
 
 fn send_gm(seats: &mut Seats, frame: Vec<u8>) {
     let failed = match seats.gm.as_ref() {
-        Some(gm) => !super::outbound::try_frame(&gm.out, frame),
+        Some(gm) => !super::outbound::try_send_frame(&gm.out, frame),
         None => false,
     };
     if failed {
@@ -596,7 +595,7 @@ fn send_recipients(
     let mut failed = Vec::new();
     for player in &seats.players {
         if recipients.iter().any(|id| id == &player.actor_id)
-            && !super::outbound::try_frame(&player.out, line.clone())
+            && !super::outbound::try_send_frame(&player.out, line.clone())
         {
             failed.push(player.conn);
         }
@@ -609,11 +608,11 @@ fn send_recipients(
 /// Drops a seated player and tells the host. Dropping the seat cancels its socket.
 fn drop_conn(world: &World, seats: &mut Seats, conn: u64, out: &mut dyn Write) {
     if seats.take_player(conn).is_some() {
-        write_host(out, world, &[]);
+        write_digest(out, world, &[]);
     }
 }
 
-fn on_fault(
+fn on_hangup(
     world: &World,
     seats: &mut Seats,
     conn: u64,
@@ -628,5 +627,5 @@ fn on_fault(
 }
 
 pub(super) fn refused_line(code: Reason) -> String {
-    frames::player_refused(code.token(), None)
+    frames::player_refused_line(code.as_str(), None)
 }

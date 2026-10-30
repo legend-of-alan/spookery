@@ -7,22 +7,22 @@ use cucumber::{given, then, when};
 use crate::support::{self, text_of};
 use crate::World;
 
-use super::common::play_stdout;
+use super::common::capture_play_stdout;
 use super::table;
 
 #[given(expr = "a sample-d20 table")]
 fn a_sample_d20_table(world: &mut World) {
-    sit(world, None, true);
+    seat_lark(world, None, true);
 }
 
 #[given(expr = "a sample-d20 table where Lark's might is {int}")]
 fn a_sample_d20_table_where_larks_might_is(world: &mut World, might: usize) {
-    sit(world, Some(might as i64), true);
+    seat_lark(world, Some(might as i64), true);
 }
 
 #[given(expr = "a sample-d20 table where Lark has no tonic")]
 fn a_sample_d20_table_where_lark_has_no_tonic(world: &mut World) {
-    sit(world, None, false);
+    seat_lark(world, None, false);
 }
 
 #[when(expr = "the player strikes the raider")]
@@ -35,7 +35,7 @@ fn the_player_strikes_the_raider(world: &mut World) {
 #[when(expr = "the player waits {int} and strikes the raider")]
 fn the_player_waits_and_strikes(world: &mut World, times: usize) {
     for _ in 0..times {
-        table::player_send(world, "wait", "\"kind\":\"perceive\"");
+        table::player_send(world, "wait", "\"kind\":\"view\"");
     }
     let (mark, added) = table::player_send(world, "strike npc_briar", "\"kind\":\"check\"");
     world.mark = mark;
@@ -61,7 +61,7 @@ fn the_player_drinks(world: &mut World) {
 
 #[when(expr = "the save before the fight is kept")]
 fn the_save_before_the_fight_is_kept(world: &mut World) {
-    world.scratch = snapshot_of(table::pack(world)).display().to_string();
+    world.scratch = copy_to_fresh_dir(table::pack(world)).display().to_string();
 }
 
 #[then(expr = "the raider's hp is {int}")]
@@ -79,7 +79,7 @@ fn play_shows_successful_rolls(world: &mut World, rolls: usize) {
     let needle = "Your roll succeeded.";
     let start = Instant::now();
     loop {
-        let stdout = play_stdout(world);
+        let stdout = capture_play_stdout(world);
         if stdout.matches(needle).count() >= rolls {
             return;
         }
@@ -100,13 +100,13 @@ fn play_shows_successful_rolls(world: &mut World, rolls: usize) {
     }
 }
 
-fn sit(world: &mut World, might: Option<i64>, tonic: bool) {
+fn seat_lark(world: &mut World, might: Option<i64>, tonic: bool) {
     let pack = support::copy_pack("sample-d20", "sample-table");
     if let Some(might) = might {
         set_lark_might(&pack, might);
     }
     if !tonic {
-        take_tonic(&pack);
+        remove_larks_tonic(&pack);
     }
     table::listen(world, &pack);
     table::seat_actor(world, &pack, "pc_lark");
@@ -126,7 +126,7 @@ fn set_lark_might(pack: &Path, base: i64) {
     fs::write(&path, next).unwrap_or_else(|err| panic!("write now: {err}"));
 }
 
-fn take_tonic(pack: &Path) {
+fn remove_larks_tonic(pack: &Path) {
     let path = pack.join("state/save.yaml");
     let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read now: {err}"));
     let from = "    inventory:\n      tonic: 1\n";
@@ -140,11 +140,11 @@ fn hp_of(pack: &Path, actor_id: &str) -> i64 {
     let canon = spookery_engine::load_canon(pack).unwrap_or_else(|err| {
         panic!(
             "load canon: {}",
-            spookery_engine::first_reason(&err).token()
+            spookery_engine::first_reason(&err).as_str()
         )
     });
     now.meter_value(&canon, actor_id, "hp")
-        .unwrap_or_else(|err| panic!("hp: {}", err.token()))
+        .unwrap_or_else(|err| panic!("hp: {}", err.as_str()))
 }
 
 fn wait_hp(world: &mut World, actor_id: &str, expected: i64) {
@@ -165,7 +165,7 @@ fn wait_hp(world: &mut World, actor_id: &str, expected: i64) {
     }
 }
 
-fn snapshot_of(pack: &Path) -> PathBuf {
+fn copy_to_fresh_dir(pack: &Path) -> PathBuf {
     let dest = support::fresh_dir("before");
     support::copy_dir(pack, &dest);
     dest

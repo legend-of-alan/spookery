@@ -6,7 +6,7 @@ use cucumber::{then, when};
 use crate::support;
 use crate::World;
 
-use super::common::{join_play, play_stdout, wait_play, wait_play_until};
+use super::common::{capture_play_stdout, join_play, wait_play, wait_play_until};
 use super::table;
 
 #[when(expr = "the operator asks spook for help")]
@@ -58,9 +58,9 @@ fn play_says(world: &mut World, text: String) {
 
 #[when(expr = "another play joins that table")]
 fn another_play_joins_that_table(world: &mut World) {
-    let port = table::live_mut(world).port;
+    let port = table::live_mut(world).game_port;
     let addr = format!("127.0.0.1:{port}");
-    let output = support::spook(&["play", "--addr", &addr, "--as", "player:pc_rowan"]);
+    let output = support::run_spook(&["play", "--addr", &addr, "--as", "player:pc_rowan"]);
     world.code = output.status.code();
     world.stdout = String::from_utf8_lossy(&output.stdout).into_owned();
     world.stderr = String::from_utf8_lossy(&output.stderr).into_owned();
@@ -68,20 +68,20 @@ fn another_play_joins_that_table(world: &mut World) {
 
 #[then(expr = "play received the first perceive")]
 fn play_received_the_first_perceive(world: &mut World) {
-    let stdout = play_stdout(world);
+    let stdout = capture_play_stdout(world);
     assert!(stdout.contains("Docks Shop"), "{stdout}");
-    assert!(!stdout.contains("\"kind\":\"perceive\""), "{stdout}");
+    assert!(!stdout.contains("\"kind\":\"view\""), "{stdout}");
 }
 
 #[then(expr = "play does not show {string}")]
 fn play_does_not_show(world: &mut World, text: String) {
-    let stdout = play_stdout(world);
+    let stdout = capture_play_stdout(world);
     assert!(!stdout.contains(&text), "{stdout}");
 }
 
 #[then(expr = "play does not show the line {string}")]
 fn play_does_not_show_the_line(world: &mut World, text: String) {
-    let stdout = play_stdout(world);
+    let stdout = capture_play_stdout(world);
     assert!(stdout.lines().all(|line| line != text), "{stdout}");
 }
 
@@ -96,7 +96,7 @@ fn play_error_shows(world: &mut World, text: String) {
             return;
         }
         if start.elapsed() > Duration::from_secs(8) {
-            let stdout = play_stdout(world);
+            let stdout = capture_play_stdout(world);
             panic!("missing {text}\nstdout:\n{stdout}\nstderr:\n{stderr}");
         }
         std::thread::sleep(Duration::from_millis(20));
@@ -105,8 +105,8 @@ fn play_error_shows(world: &mut World, text: String) {
 
 #[then(expr = "play shows protocol frames")]
 fn play_shows_protocol_frames(world: &mut World) {
-    wait_play(world, "\"kind\":\"perceive\"");
-    let stdout = play_stdout(world);
+    wait_play(world, "\"kind\":\"view\"");
+    let stdout = capture_play_stdout(world);
     assert!(stdout.contains("\"kind\":\"resume\""), "{stdout}");
     assert!(stdout.contains('{'), "{stdout}");
 }
@@ -119,7 +119,7 @@ Back at dusk. Oil on the shelf.
 Assassination debt: 2/6, paused
 ";
     wait_play(world, away);
-    let stdout = play_stdout(world);
+    let stdout = capture_play_stdout(world);
     assert!(!stdout.contains("note_mira_door"), "{stdout}");
     assert!(!stdout.contains("clock assassination_debt"), "{stdout}");
     assert!(!stdout.contains("message "), "{stdout}");
@@ -132,7 +132,7 @@ fn the_round_shows_no_away_heading(world: &mut World) {
         |stdout| stdout.matches("You are in").count() >= 2,
         "a second You are in",
     );
-    let stdout = play_stdout(world);
+    let stdout = capture_play_stdout(world);
     let after = stdout.split_once("You are in").unwrap().1;
     assert!(!after.contains("While you were away:"), "{stdout}");
 }
@@ -145,7 +145,7 @@ fn the_rounds_update_shows_the_door_note_only_under_notes(world: &mut World) {
         |stdout| stdout.matches("You are in").count() >= 2,
         "a second You are in",
     );
-    let stdout = play_stdout(world);
+    let stdout = capture_play_stdout(world);
     let second = stdout
         .match_indices("You are in")
         .nth(1)
@@ -167,7 +167,7 @@ fn the_rounds_update_shows_the_door_note_only_under_notes(world: &mut World) {
 
 #[then(expr = "play shows earlier speech under one heading")]
 fn play_shows_earlier_speech_under_one_heading(world: &mut World) {
-    let stdout = play_stdout(world);
+    let stdout = capture_play_stdout(world);
     let earlier = "\
 Earlier:
 You: hello Briar
@@ -182,8 +182,8 @@ You: hello Briar
 
 #[then(expr = "play shows the raw resume digest")]
 fn play_shows_the_raw_resume_digest(world: &mut World) {
-    wait_play(world, "\"kind\":\"perceive\"");
-    let stdout = play_stdout(world);
+    wait_play(world, "\"kind\":\"view\"");
+    let stdout = capture_play_stdout(world);
     let resume = stdout
         .lines()
         .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())

@@ -95,9 +95,9 @@ the player no roll line. Host status shows the host-only trace. The player's
 resume leaves that trace out. The resume digest shows only notes the view shows. A place lists only its own stock.
 
 Tested in `features/seats/one_gm_and_three_players.feature`,
-`features/firewall/a_hidden_fact_stays_hidden.feature`,
-`features/checks/the_player_sees_success_and_the_gm_sees_faces.feature`,
-`features/checks/an_npc_rolls_its_own_check.feature`,
+`features/visibility/a_hidden_fact_stays_hidden.feature`,
+`features/rolls/the_player_sees_success_and_the_gm_sees_faces.feature`,
+`features/rolls/an_npc_rolls_its_own_check.feature`,
 `features/digest/status_is_the_host_view.feature`, and
 `features/digest/resume_follows_the_view.feature`.
 
@@ -119,7 +119,7 @@ Tested in `features/round/a_rules_effects_are_all_or_nothing.feature`,
 `features/round/apply_pays_the_rule_that_rolled.feature`,
 `features/rules/rules_live_with_their_owner.feature`,
 `features/items/items_are_real.feature`, and
-`features/stock/the_shop_restocks_and_a_busy_npc_skips.feature`.
+`features/habits/the_shop_restocks_and_a_busy_npc_skips.feature`.
 
 ## Triggers
 
@@ -165,13 +165,13 @@ rounds run ahead without waiting on the wall clock, up to the pack's cap, and
 the rest waits for the next action. With a GM seated, nothing advances until the
 GM commits.
 
-Tested in `features/map/travel_follows_the_map.feature` and
-`features/map/travel_follows_an_exit.feature`.
+Tested in `features/travel/travel_follows_the_map.feature` and
+`features/travel/travel_follows_an_exit.feature`.
 
 ## Rules version
 
 The save carries the engine's rules version. `spook run` and `spook verify`
-refuse a different version. The refusal prints `RULES_REV` and says to start a
+refuse a different version. The refusal prints `RULES_REV_MISMATCH` and says to start a
 fresh save. Saves and journals from older rules are refused, not migrated. A
 journal that still holds `presence-NNNN.json` records is refused the same way.
 
@@ -186,7 +186,7 @@ A refusal names one code, and the refused change is not kept.
 there, or dropping one they do not hold. `OUT_OF_RANGE` is a removal that would
 pass below zero from a count above zero, and the rest of that rule is not kept.
 `NOT_A_WEAPON` is wielding an item that is not a weapon. `UNKNOWN_MOVE` is a
-move the actor does not have. `SESSION_FULL` is a fourth player or a second GM.
+move the actor does not have. `TABLE_FULL` is a fourth player or a second GM.
 `SEAT_TAKEN` is a hello for a character another seat holds. `LINE_TOO_LONG`
 closes the connection. `NOT_IN_SPEC` is a full rule id used as a move, a GM
 hello on the game port, an address that is not loopback, or a verb no rule
@@ -207,7 +207,7 @@ Tested in `features/rules/rules_live_with_their_owner.feature`,
 `features/limits/the_listener_bounds_input.feature`,
 `features/loopback/only_loopback_binds.feature`,
 `features/replay/typed_journal_records.feature`,
-`features/map/travel_follows_the_map.feature`,
+`features/travel/travel_follows_the_map.feature`,
 `features/check/spook_check_explains_a_broken_pack.feature`, and
 `features/rules/rule_versions.feature`.
 
@@ -242,7 +242,7 @@ word and takes no round. A pack that omits `display_name` fails check. An
 unknown word tells the player to type help.
 
 Tested in `features/seats/a_player_knows_the_place.feature`,
-`features/seats/actions_visibly_matter.feature` and
+`features/changes/actions_visibly_matter.feature` and
 `features/items/items_are_real.feature`.
 
 ## What the engine does not do

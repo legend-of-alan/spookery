@@ -1,9 +1,9 @@
 //! The Spookery AI GM state machine.
 
-pub mod llm;
+pub mod model;
 mod prompt;
 
-pub use llm::*;
+pub use model::*;
 use prompt::*;
 use spookery_protocol as protocol;
 
@@ -11,25 +11,25 @@ use std::collections::{BTreeMap, VecDeque};
 
 use serde_json::{json, Value};
 
-use crate::protocol::{CommitBody, EventBody, GmSay, PlayerMessage, Roll, SessionStatus};
+use crate::protocol::{CommitBody, EventBody, PlayerFrame, Roll, SayEvent, TableStatus};
 
-/// A server built before the pack summary moved onto `session_status`.
+/// A server built before the pack summary moved onto `table_status`.
 const OLDER_SERVER: &str = "this spook run is older than spook ai-gm, rebuild both";
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum AgentInput {
+pub enum Input {
     GmEvent(EventBody),
     ToolResult {
         body: Value,
         refused: bool,
         raw: String,
     },
-    PlayerFrame(PlayerMessage),
-    ModelReply(Result<Option<String>, CompleteError>),
+    PlayerFrame(PlayerFrame),
+    ModelReply(Result<Option<String>, CompletionError>),
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum AgentStep {
+pub enum Step {
     Idle,
     CallTool {
         name: &'static str,
@@ -57,11 +57,11 @@ pub struct Agent {
 #[derive(Default)]
 struct Turn {
     wake: Option<Wake>,
-    status: Option<SessionStatus>,
+    status: Option<TableStatus>,
     views: BTreeMap<String, Result<Value, String>>,
     view: Option<(TurnView, PromptContext)>,
-    says: VecDeque<OutgoingSay>,
-    intent: Option<IntentDraft>,
+    says: VecDeque<SayArgs>,
+    intent: Option<Intent>,
     submitted: Vec<HandledSay>,
     checks: Vec<Roll>,
 }
@@ -74,58 +74,58 @@ enum Phase {
     TurnStatus,
     Perceive(String),
     Model(bool),
-    Say(OutgoingSay, bool),
-    TurnIntent,
-    AfterStatus,
+    Say(SayArgs, bool),
+    Intent,
+    PreCommitStatus,
     Commit,
     PostCommitStatus,
 }
 
 impl Agent {
-    pub fn new_gm() -> Self {
+    pub fn new() -> Self {
         Self {
             high_water: u64::MAX,
             ..Self::default()
         }
     }
 
-    pub fn start(&self) -> AgentStep {
-        tool("session_status", json!({}))
+    pub fn start(&self) -> Step {
+        call_tool("table_status", json!({}))
     }
 
-    pub fn feed(&mut self, input: AgentInput) -> Result<AgentStep, String> {
-        if let AgentInput::GmEvent(body) = input {
+    pub fn feed(&mut self, input: Input) -> Result<Step, String> {
+        if let Input::GmEvent(body) = input {
             self.absorb(body);
             return match self.phase {
                 Phase::Idle => Ok(self.next_turn()),
-                _ => Ok(AgentStep::Idle),
+                _ => Ok(Step::Idle),
             };
         }
         match (std::mem::replace(&mut self.phase, Phase::Idle), input) {
-            (Phase::InitStatus, AgentInput::ToolResult { body, refused, raw }) => {
+            (Phase::InitStatus, Input::ToolResult { body, refused, raw }) => {
                 let mut status = parse_status(body, refused, raw)?;
                 self.pack = status.pack.take().ok_or(OLDER_SERVER)?;
                 Ok(self.finish_init(status))
             }
-            (Phase::TurnStatus, AgentInput::ToolResult { body, refused, raw }) => {
+            (Phase::TurnStatus, Input::ToolResult { body, refused, raw }) => {
                 self.turn.status = Some(parse_status(body, refused, raw)?);
                 Ok(self.advance_prepare())
             }
-            (Phase::Perceive(viewer), AgentInput::ToolResult { body, refused, .. }) => {
+            (Phase::Perceive(viewer), Input::ToolResult { body, refused, .. }) => {
                 let res = (!refused).then_some(body).ok_or_else(|| "code".into());
                 self.turn.views.insert(viewer, res);
                 Ok(self.advance_prepare())
             }
-            (Phase::Model(epilogue), AgentInput::ModelReply(reply)) => {
-                if let Some(kept) = self.kept_from_reply(reply, epilogue) {
+            (Phase::Model(epilogue), Input::ModelReply(reply)) => {
+                if let Some(kept) = self.parse_reply(reply, epilogue) {
                     self.turn.says = kept.says.into();
                     self.turn.intent = kept.intent;
                 }
                 Ok(self.advance_actions(epilogue))
             }
-            (Phase::Say(say, epilogue), AgentInput::ToolResult { body, refused, raw }) => {
+            (Phase::Say(say, epilogue), Input::ToolResult { body, refused, raw }) => {
                 if !refused {
-                    let spoken: GmSay = serde_json::from_value(body).map_err(|_| raw)?;
+                    let spoken: SayEvent = serde_json::from_value(body).map_err(|_| raw)?;
                     let handled = HandledSay::from_outgoing(&say, Some(spoken.seq));
                     if epilogue {
                         push_handled(&mut self.buffer, handled);
@@ -135,29 +135,29 @@ impl Agent {
                 }
                 Ok(self.advance_actions(epilogue))
             }
-            (Phase::TurnIntent, AgentInput::ToolResult { .. }) => Ok(self.advance_actions(false)),
-            (Phase::AfterStatus, AgentInput::ToolResult { body, refused, raw }) => {
+            (Phase::Intent, Input::ToolResult { .. }) => Ok(self.advance_actions(false)),
+            (Phase::PreCommitStatus, Input::ToolResult { body, refused, raw }) => {
                 if parse_status(body, refused, raw)?.queued.is_empty() {
                     Ok(self.finish_commit(false))
                 } else {
                     self.phase = Phase::Commit;
-                    Ok(tool("commit_round", json!({ "include_round": true })))
+                    Ok(call_tool("commit_round", json!({ "include_round": true })))
                 }
             }
-            (Phase::Commit, AgentInput::ToolResult { body, refused, raw }) => {
+            (Phase::Commit, Input::ToolResult { body, refused, raw }) => {
                 if refused {
                     Ok(self.finish_commit(false))
                 } else {
                     let commit: CommitBody = serde_json::from_value(body).map_err(|_| raw)?;
-                    self.turn.checks = commit.checks;
+                    self.turn.checks = commit.rolls;
                     Ok(self.finish_commit(true))
                 }
             }
-            (Phase::PostCommitStatus, AgentInput::ToolResult { body, refused, raw }) => {
+            (Phase::PostCommitStatus, Input::ToolResult { body, refused, raw }) => {
                 if !parse_status(body, refused, raw)?.queued.is_empty() {
                     self.wakes.push_back(Wake::Queued);
                 }
-                Ok(self.start_checks())
+                Ok(self.narrate_checks())
             }
             _ => Err("unexpected agent input".into()),
         }
@@ -180,7 +180,7 @@ impl Agent {
         }
     }
 
-    fn finish_init(&mut self, status: SessionStatus) -> AgentStep {
+    fn finish_init(&mut self, status: TableStatus) -> Step {
         self.high_water = status.last_seq;
         self.sit_seq = Some(status.last_seq);
         if !status.queued.is_empty() && !self.wakes.contains(&Wake::Queued) {
@@ -189,26 +189,26 @@ impl Agent {
         self.next_turn()
     }
 
-    fn next_turn(&mut self) -> AgentStep {
+    fn next_turn(&mut self) -> Step {
         let Some(wake) = self.wakes.pop_front() else {
             self.phase = Phase::Idle;
-            return AgentStep::Idle;
+            return Step::Idle;
         };
         self.turn = Turn {
             wake: Some(wake),
             ..Turn::default()
         };
         self.phase = Phase::TurnStatus;
-        tool("session_status", json!({ "since": self.high_water }))
+        call_tool("table_status", json!({ "since": self.high_water }))
     }
 
-    fn advance_prepare(&mut self) -> AgentStep {
+    fn advance_prepare(&mut self) -> Step {
         let pack = &self.pack;
         let wake = self.turn.wake.as_ref().expect("wake");
         let status = self.turn.status.as_ref().expect("status");
         let views = &self.turn.views;
         let mut missing = None;
-        let prepared = prepare_with(pack, wake, &status.presence.actors_present, &mut |viewer| {
+        let prepared = prepare_turn(pack, wake, &status.presence.actors_present, &mut |viewer| {
             if let Some(res) = views.get(viewer) {
                 res.clone()
             } else {
@@ -219,7 +219,7 @@ impl Agent {
         if let Some(viewer) = missing {
             let args = json!({ "as": viewer });
             self.phase = Phase::Perceive(viewer);
-            return tool("perceive", args);
+            return call_tool("perceive", args);
         }
         match prepared {
             PreparedTurn::NoModel { says } => {
@@ -240,17 +240,17 @@ impl Agent {
         }
     }
 
-    fn call_model(&mut self, prompt: String, says_only: bool) -> AgentStep {
+    fn call_model(&mut self, prompt: String, says_only: bool) -> Step {
         self.phase = Phase::Model(says_only);
-        AgentStep::CallModel {
+        Step::CallModel {
             request: CompletionRequest { prompt, says_only },
             warning: self.warning.take(),
         }
     }
 
-    fn kept_from_reply(
+    fn parse_reply(
         &mut self,
-        reply: Result<Option<String>, CompleteError>,
+        reply: Result<Option<String>, CompletionError>,
         says_only: bool,
     ) -> Option<KeptActions> {
         let text = match reply {
@@ -269,24 +269,24 @@ impl Agent {
         parse_actions(&text, says_only).map(|actions| keep_actions(actions, scope, &self.pack.menu))
     }
 
-    fn advance_actions(&mut self, epilogue: bool) -> AgentStep {
+    fn advance_actions(&mut self, epilogue: bool) -> Step {
         if let Some(say) = self.turn.says.pop_front() {
-            let args = say.arguments();
+            let args = say.to_value();
             self.phase = Phase::Say(say, epilogue);
-            return tool("say", args);
+            return call_tool("say", args);
         }
         if epilogue {
             return self.next_turn();
         }
         if let Some(intent) = self.turn.intent.take() {
-            self.phase = Phase::TurnIntent;
-            return tool("intent", intent.arguments());
+            self.phase = Phase::Intent;
+            return call_tool("queue_intent", intent.to_value());
         }
-        self.phase = Phase::AfterStatus;
-        tool("session_status", json!({}))
+        self.phase = Phase::PreCommitStatus;
+        call_tool("table_status", json!({}))
     }
 
-    fn finish_commit(&mut self, committed: bool) -> AgentStep {
+    fn finish_commit(&mut self, committed: bool) -> Step {
         let status = self.turn.status.as_ref().expect("status");
         let window = player_lines(status, self.high_water);
         if let Some(max) = window.iter().filter_map(|say| say.seq).max() {
@@ -301,12 +301,12 @@ impl Agent {
         });
         if committed {
             self.phase = Phase::PostCommitStatus;
-            return tool("session_status", json!({}));
+            return call_tool("table_status", json!({}));
         }
-        self.start_checks()
+        self.narrate_checks()
     }
 
-    fn start_checks(&mut self) -> AgentStep {
+    fn narrate_checks(&mut self) -> Step {
         if !self.turn.checks.is_empty() {
             if let Some((turn_view, context)) = &mut self.turn.view {
                 context.buffer = self.buffer.clone();
@@ -319,18 +319,18 @@ impl Agent {
     }
 }
 
-fn tool(name: &'static str, arguments: Value) -> AgentStep {
-    AgentStep::CallTool { name, arguments }
+fn call_tool(name: &'static str, arguments: Value) -> Step {
+    Step::CallTool { name, arguments }
 }
 
-fn parse_status(body: Value, refused: bool, raw: String) -> Result<SessionStatus, String> {
+fn parse_status(body: Value, refused: bool, raw: String) -> Result<TableStatus, String> {
     if refused {
         return Err(raw);
     }
     serde_json::from_value(body).map_err(|_| raw)
 }
 
-fn player_lines(status: &SessionStatus, high: u64) -> Vec<HandledSay> {
+fn player_lines(status: &TableStatus, high: u64) -> Vec<HandledSay> {
     status
         .events
         .iter()
@@ -345,14 +345,14 @@ fn player_lines(status: &SessionStatus, high: u64) -> Vec<HandledSay> {
 mod tests {
     use super::*;
 
-    const Q_ST: &str = r#"{"presence":{"humans":1,"actors_present":["pc"]},"pause":{"named_plot_clocks":"running"},"world_time":0,"round_index":0,"state_rev":1,"pack_rev":"p","last_round_at":"","queued":[{"id":"q1","actor_id":"pc","move":"wait"}],"last_seq":1}"#;
-    const E_ST: &str = r#"{"presence":{"humans":1,"actors_present":["pc"]},"pause":{"named_plot_clocks":"running"},"world_time":0,"round_index":0,"state_rev":1,"pack_rev":"p","last_round_at":"","queued":[],"last_seq":1}"#;
+    const QUEUED_STATUS: &str = r#"{"presence":{"humans":1,"actors_present":["pc"]},"pause":{"named_plot_clocks":"running"},"world_time":0,"round_index":0,"state_rev":1,"pack_rev":"p","last_round_at":"","queued":[{"id":"q1","actor_id":"pc","move":"wait"}],"last_seq":1}"#;
+    const EMPTY_STATUS: &str = r#"{"presence":{"humans":1,"actors_present":["pc"]},"pause":{"named_plot_clocks":"running"},"world_time":0,"round_index":0,"state_rev":1,"pack_rev":"p","last_round_at":"","queued":[],"last_seq":1}"#;
     const VIEW: &str = r#"{"viewer":"pc","place":"docks","visible_actors":["pc"]}"#;
-    const COMMIT: &str = r#"{"state_rev":2,"diff_summary":[],"log_path":null,"checks":[{"faces":[6,6],"stat":1,"total":13,"target":10,"outcome":"success"}]}"#;
+    const COMMIT: &str = r#"{"state_rev":2,"changed_keys":[],"journal_path":null,"rolls":[{"faces":[6,6],"stat":1,"total":13,"target":10,"outcome":"success"}]}"#;
     const SAY: &str = r#"{"kind":"say","seq":2,"from":"player:pc","address":"table","place":null,"actor":null,"recipients":[],"text":"ok"}"#;
 
-    fn ok(a: &mut Agent, s: &str) -> AgentStep {
-        let in_msg = AgentInput::ToolResult {
+    fn feed_result(a: &mut Agent, s: &str) -> Step {
+        let in_msg = Input::ToolResult {
             body: serde_json::from_str(s).unwrap(),
             refused: false,
             raw: String::new(),
@@ -360,60 +360,65 @@ mod tests {
         a.feed(in_msg).unwrap()
     }
 
-    fn model(a: &mut Agent, s: &str) -> AgentStep {
-        a.feed(AgentInput::ModelReply(Ok(Some(s.into())))).unwrap()
+    fn feed_reply(a: &mut Agent, s: &str) -> Step {
+        a.feed(Input::ModelReply(Ok(Some(s.into())))).unwrap()
     }
 
-    fn sit_queued(since: &AgentStep) -> Agent {
-        let mut a = Agent::new_gm();
-        let mut first: Value = serde_json::from_str(Q_ST).unwrap();
+    fn sit_queued(since: &Step) -> Agent {
+        let mut a = Agent::new();
+        let mut first: Value = serde_json::from_str(QUEUED_STATUS).unwrap();
         first["pack"] =
             json!({"menu": [], "kinds": {"pc": "pc_template"}, "places": {}, "cast": {}});
-        assert_eq!(&ok(&mut a, &first.to_string()), since);
-        prep(&mut a, Q_ST);
+        assert_eq!(&feed_result(&mut a, &first.to_string()), since);
+        prepare(&mut a, QUEUED_STATUS);
         a
     }
 
-    fn prep(a: &mut Agent, s: &str) {
-        assert_eq!(ok(a, s), tool("perceive", json!({"as": "pc"})));
-        assert!(matches!(ok(a, VIEW), AgentStep::CallModel { request: r, .. } if !r.says_only));
+    fn prepare(a: &mut Agent, s: &str) {
+        assert_eq!(
+            feed_result(a, s),
+            call_tool("perceive", json!({"as": "pc"}))
+        );
+        assert!(matches!(feed_result(a, VIEW), Step::CallModel { request: r, .. } if !r.says_only));
     }
 
     #[test]
     fn gm_turns_handle_queue_says_epilogue_and_transport_warnings() {
-        let st = tool("session_status", json!({}));
-        let since = tool("session_status", json!({"since": 1}));
-        let cm = tool("commit_round", json!({"include_round": true}));
-        let say = tool("say", json!({"address": "table", "text": "ok"}));
+        let st = call_tool("table_status", json!({}));
+        let since = call_tool("table_status", json!({"since": 1}));
+        let cm = call_tool("commit_round", json!({"include_round": true}));
+        let say = call_tool("say", json!({"address": "table", "text": "ok"}));
 
         let mut a = sit_queued(&since);
-        assert_eq!(model(&mut a, r#"{"says":[],"intents":[]}"#), st);
-        assert_eq!(ok(&mut a, Q_ST), cm);
-        assert_eq!(ok(&mut a, COMMIT), st);
-        assert!(matches!(ok(&mut a, E_ST), AgentStep::CallModel { request: r, .. } if r.says_only));
-        assert!(model(&mut a, r#"{"says":[{"address":"table","text":"ok"}]}"#) == say);
-        assert_eq!(ok(&mut a, SAY), AgentStep::Idle);
+        assert_eq!(feed_reply(&mut a, r#"{"says":[],"intents":[]}"#), st);
+        assert_eq!(feed_result(&mut a, QUEUED_STATUS), cm);
+        assert_eq!(feed_result(&mut a, COMMIT), st);
+        assert!(
+            matches!(feed_result(&mut a, EMPTY_STATUS), Step::CallModel { request: r, .. } if r.says_only)
+        );
+        assert!(feed_reply(&mut a, r#"{"says":[{"address":"table","text":"ok"}]}"#) == say);
+        assert_eq!(feed_result(&mut a, SAY), Step::Idle);
 
-        let ev = AgentInput::GmEvent(serde_json::from_str(SAY).unwrap());
+        let ev = Input::GmEvent(serde_json::from_str(SAY).unwrap());
         assert_eq!(a.feed(ev).unwrap(), since);
-        prep(&mut a, E_ST);
+        prepare(&mut a, EMPTY_STATUS);
         let full = r#"{"says":[{"address":"table","text":"ok"}],"intents":[]}"#;
-        assert_eq!(model(&mut a, full), say);
-        assert_eq!(ok(&mut a, SAY), st);
-        assert_eq!(ok(&mut a, E_ST), AgentStep::Idle);
+        assert_eq!(feed_reply(&mut a, full), say);
+        assert_eq!(feed_result(&mut a, SAY), st);
+        assert_eq!(feed_result(&mut a, EMPTY_STATUS), Step::Idle);
 
         let mut a = sit_queued(&since);
-        let err = AgentInput::ModelReply(Err(CompleteError::Transport("boom".into())));
+        let err = Input::ModelReply(Err(CompletionError::Transport("boom".into())));
         assert_eq!(a.feed(err).unwrap(), st);
         assert_eq!(a.warning.as_deref(), Some("boom"));
-        assert_eq!(ok(&mut a, Q_ST), cm);
+        assert_eq!(feed_result(&mut a, QUEUED_STATUS), cm);
     }
 
     #[test]
     fn a_first_status_without_a_pack_summary_is_an_older_server() {
-        let mut a = Agent::new_gm();
-        let first = AgentInput::ToolResult {
-            body: serde_json::from_str(E_ST).unwrap(),
+        let mut a = Agent::new();
+        let first = Input::ToolResult {
+            body: serde_json::from_str(EMPTY_STATUS).unwrap(),
             refused: false,
             raw: String::new(),
         };

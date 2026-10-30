@@ -2,9 +2,9 @@
 
 use crate::canon::Canon;
 use crate::draft::Draft;
-use crate::intent::{trigger_intent_id, Intent, Source, Target, ViewerId};
+use crate::intent::{trigger_intent_id, Intent, Source, Target, Viewer};
 use crate::journal::{Rejected, Step};
-use crate::key::{ChangeRecord, StateKey, StateValue};
+use crate::key::{Change, StateKey, StateValue};
 use crate::rule::{ChangeWatch, Op, Rule, WatchWho, When};
 use crate::rules::cond;
 use crate::rules::expr::Ctx;
@@ -19,7 +19,7 @@ pub(crate) fn run(
     draft: &mut Draft,
     dice: &mut RoundDice,
     log: &mut RoundLog,
-) -> Result<Vec<ChangeRecord>, Reason> {
+) -> Result<Vec<Change>, Reason> {
     let max = draft.budget().max_trigger_depth;
     let canon = draft.shared_canon();
     let rules = change_rules(&canon);
@@ -31,7 +31,7 @@ pub(crate) fn run(
             break;
         }
         all_changes.extend(changes.iter().cloned());
-        let matched_triggers = triggered(draft, &rules, &changes);
+        let matched_triggers = match_rules(draft, &rules, &changes);
         if matched_triggers.is_empty() {
             break;
         }
@@ -47,7 +47,7 @@ pub(crate) fn run(
     Ok(all_changes)
 }
 
-struct TriggerMatch<'a> {
+struct Match<'a> {
     rule: &'a Rule,
     subject: String,
 }
@@ -69,11 +69,7 @@ fn change_rules(canon: &Canon) -> Vec<&Rule> {
 }
 
 /// Which rules a batch of changes triggers, and for whom.
-fn triggered<'a>(
-    draft: &Draft,
-    rules: &[&'a Rule],
-    changes: &[ChangeRecord],
-) -> Vec<TriggerMatch<'a>> {
+fn match_rules<'a>(draft: &Draft, rules: &[&'a Rule], changes: &[Change]) -> Vec<Match<'a>> {
     let mut matched_triggers = Vec::new();
     for &rule in rules {
         let When::Change(watch) = &rule.when else {
@@ -92,7 +88,7 @@ fn triggered<'a>(
         }
         subjects.sort();
         for subject in subjects {
-            matched_triggers.push(TriggerMatch { rule, subject });
+            matched_triggers.push(Match { rule, subject });
         }
     }
     matched_triggers
@@ -100,17 +96,17 @@ fn triggered<'a>(
 
 fn fire(draft: &mut Draft, dice: &mut RoundDice, log: &mut RoundLog, rule: &Rule, subject: &str) {
     let Some(viewer) = draft
-        .now()
+        .state()
         .actors
         .get(subject)
         .map(|actor| actor.viewer(subject))
     else {
         return;
     };
-    let intent = trigger_intent(draft.now().round_index, viewer, &rule.id);
+    let intent = trigger_intent(draft.state().round_index, viewer, &rule.id);
     if cond::holds(
         draft.canon(),
-        draft.now(),
+        draft.state(),
         &Ctx {
             intent: &intent,
             presence: draft.presence,
@@ -144,7 +140,7 @@ fn fire(draft: &mut Draft, dice: &mut RoundDice, log: &mut RoundLog, rule: &Rule
     if let Some(out) = expanded.rolled {
         log.reports.push(MoveReport::Rolled {
             actor_id: subject.to_string(),
-            out,
+            roll: out,
         });
     }
     log.reports.extend(expanded.resisted);
@@ -161,7 +157,7 @@ fn expand_trigger(
     intent: &Intent,
     subject: &str,
 ) -> Result<Expansion, Reason> {
-    let (now, canon, presence) = (draft.now(), draft.canon(), draft.presence);
+    let (now, canon, presence) = (draft.state(), draft.canon(), draft.presence);
     let mut roller = dice.roller(log, &rule.id, subject);
     let rolled = match &rule.roll {
         Some(spec) => Some(roller.roll_spec(canon, now, presence, intent, spec)?),
@@ -175,11 +171,11 @@ fn expand_trigger(
     Ok(Expansion {
         effects,
         rolled,
-        resisted: roller.finish(),
+        resisted: roller.into_reports(),
     })
 }
 
-fn trigger_intent(round_index: u64, actor: ViewerId, rule_id: &str) -> Intent {
+fn trigger_intent(round_index: u64, actor: Viewer, rule_id: &str) -> Intent {
     Intent::new(
         trigger_intent_id(rule_id, actor.actor_id()),
         round_index,
@@ -196,7 +192,7 @@ fn subjects_of(draft: &Draft, key: &StateKey) -> Vec<String> {
             .presence
             .actors_present
             .iter()
-            .filter(|id| draft.now().actors.contains_key(id.as_str()))
+            .filter(|id| draft.state().actors.contains_key(id.as_str()))
             .cloned()
             .collect();
     }
@@ -206,28 +202,28 @@ fn subjects_of(draft: &Draft, key: &StateKey) -> Vec<String> {
 fn subject_of(draft: &Draft, key: &StateKey) -> Option<String> {
     match key {
         StateKey::ClockValue(id) | StateKey::ClockPaused(id) => draft
-            .now()
+            .state()
             .clocks
             .get(id)
             .and_then(|clock| {
                 clock
                     .owners
                     .iter()
-                    .find(|owner| draft.now().actors.contains_key(owner.as_str()))
+                    .find(|owner| draft.state().actors.contains_key(owner.as_str()))
             })
             .cloned(),
         other => other.actor().map(str::to_string),
     }
 }
 
-fn matches_watch(draft: &Draft, rule: &Rule, watch: &ChangeWatch, change: &ChangeRecord) -> bool {
+fn matches_watch(draft: &Draft, rule: &Rule, watch: &ChangeWatch, change: &Change) -> bool {
     match watch {
         ChangeWatch::Arrive { place, who } => match &change.key {
             StateKey::ActorPlace(actor) => {
                 let place = rule.watched_place(place);
                 change.before.as_text() != Some(place)
                     && change.after.as_text() == Some(place)
-                    && watcher_matches(draft, who, actor)
+                    && matches_who(draft, who, actor)
             }
             _ => false,
         },
@@ -236,26 +232,26 @@ fn matches_watch(draft: &Draft, rule: &Rule, watch: &ChangeWatch, change: &Chang
                 let place = rule.watched_place(place);
                 change.before.as_text() == Some(place)
                     && change.after.as_text() != Some(place)
-                    && watcher_matches(draft, who, actor)
+                    && matches_who(draft, who, actor)
             }
             _ => false,
         },
         ChangeWatch::Meter { key, op, bound } => match &change.key {
             StateKey::ActorMeter(_, meter) if meter == key => {
-                crossed(&change.before, &change.after, *op, *bound)
+                crosses(&change.before, &change.after, *op, *bound)
             }
             _ => false,
         },
         ChangeWatch::Flag { key, becomes } => match &change.key {
             StateKey::ActorFlag(_, flag) | StateKey::WorldFlag(flag) if flag == key => {
-                change.before.as_mark() == Some(!becomes)
-                    && change.after.as_mark() == Some(*becomes)
+                change.before.as_bool() == Some(!becomes)
+                    && change.after.as_bool() == Some(*becomes)
             }
             _ => false,
         },
         ChangeWatch::Clock { id } => match &change.key {
             StateKey::ClockValue(clock) if clock == id => {
-                let Some(max) = draft.now().clocks.get(id).map(|clock| clock.max) else {
+                let Some(max) = draft.state().clocks.get(id).map(|clock| clock.max) else {
                     return false;
                 };
                 matches!(
@@ -276,14 +272,16 @@ fn matches_watch(draft: &Draft, rule: &Rule, watch: &ChangeWatch, change: &Chang
             _ => false,
         },
         ChangeWatch::Knows { fact } => match &change.key {
-            StateKey::ActorKnownFact(_) => change.after.lists(fact) && !change.before.lists(fact),
+            StateKey::ActorKnownFact(_) => {
+                change.after.contains(fact) && !change.before.contains(fact)
+            }
             _ => false,
         },
     }
 }
 
-fn watcher_matches(draft: &Draft, who: &WatchWho, actor_id: &str) -> bool {
-    let Some(actor) = draft.now().actors.get(actor_id) else {
+fn matches_who(draft: &Draft, who: &WatchWho, actor_id: &str) -> bool {
+    let Some(actor) = draft.state().actors.get(actor_id) else {
         return false;
     };
     match who {
@@ -294,7 +292,7 @@ fn watcher_matches(draft: &Draft, who: &WatchWho, actor_id: &str) -> bool {
     }
 }
 
-fn crossed(before: &StateValue, after: &StateValue, op: Op, bound: i64) -> bool {
+fn crosses(before: &StateValue, after: &StateValue, op: Op, bound: i64) -> bool {
     let (Some(before), Some(after)) = (before.as_number(), after.as_number()) else {
         return false;
     };

@@ -4,4 +4,4 @@ meters:
     min: 0
     base_cap: 100
     max: 110
-    start: 1
+    base: 1

@@ -9,11 +9,11 @@ use serde::{Deserialize, Serialize};
 
 use meter::MeterLive;
 
-use crate::intent::{Target, ViewerId};
+use crate::intent::{Target, Viewer};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct Now {
+pub struct State {
     pub schema: String,
     pub shard_id: String,
     pub pack_rev: String,
@@ -24,7 +24,7 @@ pub struct Now {
     pub round_index: u64,
     pub world_time: u64,
     pub last_round_at: String,
-    pub pause: PauseView,
+    pub pause: Pause,
     pub places: BTreeMap<String, PlaceLive>,
     pub actors: BTreeMap<String, ActorLive>,
     pub clocks: BTreeMap<String, Clock>,
@@ -34,7 +34,7 @@ pub struct Now {
     pub flags: Vec<String>,
 }
 
-impl Now {
+impl State {
     pub fn meter_value(
         &self,
         canon: &crate::canon::Canon,
@@ -74,7 +74,7 @@ pub enum RunState {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 // Emit order is the docks `save.yaml` pause mapping.
-pub struct PauseView {
+pub struct Pause {
     pub named_plot_clocks: RunState,
 }
 
@@ -98,7 +98,7 @@ pub enum ActorLive {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         wielded: Option<String>,
         known_facts: Vec<String>,
-        act: ActCounters,
+        act: Act,
     },
     #[serde(rename = "pc")]
     Pc {
@@ -111,7 +111,7 @@ pub enum ActorLive {
         known_facts: Vec<String>,
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         visited: Vec<String>,
-        act: ActCounters,
+        act: Act,
     },
 }
 
@@ -128,13 +128,13 @@ impl ActorLive {
         }
     }
 
-    pub fn act(&self) -> &ActCounters {
+    pub fn act(&self) -> &Act {
         match self {
             ActorLive::Npc { act, .. } | ActorLive::Pc { act, .. } => act,
         }
     }
 
-    pub fn act_mut(&mut self) -> &mut ActCounters {
+    pub fn act_mut(&mut self) -> &mut Act {
         match self {
             ActorLive::Npc { act, .. } | ActorLive::Pc { act, .. } => act,
         }
@@ -199,10 +199,10 @@ impl ActorLive {
     }
 
     /// The seat this actor acts from, given its own id.
-    pub fn viewer(&self, id: &str) -> ViewerId {
+    pub fn viewer(&self, id: &str) -> Viewer {
         match self {
-            ActorLive::Pc { .. } => ViewerId::Player(id.to_string()),
-            ActorLive::Npc { .. } => ViewerId::Npc(id.to_string()),
+            ActorLive::Pc { .. } => Viewer::Player(id.to_string()),
+            ActorLive::Npc { .. } => Viewer::Npc(id.to_string()),
         }
     }
 
@@ -230,7 +230,7 @@ impl ActorLive {
         }
     }
 
-    pub fn count(&self, id: &str) -> u32 {
+    pub fn item_count(&self, id: &str) -> u32 {
         self.inventory().get(id).copied().unwrap_or(0)
     }
 
@@ -251,7 +251,7 @@ impl ActorLive {
         let Some(id) = self.wielded().map(str::to_string) else {
             return false;
         };
-        if self.count(&id) > 0 {
+        if self.item_count(&id) > 0 {
             return false;
         }
         *self.wielded_mut() = None;
@@ -300,7 +300,7 @@ pub(crate) fn shift_count(
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 /// How many times an actor has acted, and the journey they are still on.
-pub struct ActCounters {
+pub struct Act {
     pub last_act_round: u64,
     pub idle_acts_today: u32,
     pub live_acts_this_hour: u32,

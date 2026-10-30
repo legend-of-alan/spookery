@@ -2,9 +2,9 @@ use std::fs;
 use std::path::Path;
 
 use cucumber::{given, then, when};
-use spookery_engine::testing::{self as support, stamp_pack_rev};
+use spookery_engine::testing::{self, stamp_pack_rev};
 use spookery_engine::Presence;
-use spookery_engine::World as Shard;
+use spookery_engine::World as EngineWorld;
 
 use crate::World;
 
@@ -15,7 +15,7 @@ const SECRET_TEXT: &str = "the sealed name";
 fn sample_d20_with_lark_facing_briar(world: &mut World, player: String, facing: String) {
     assert_eq!(player, "lark");
     assert_eq!(facing, "briar");
-    world.pack = Some(support::copy_pack("sample-d20", "matters"));
+    world.pack = Some(testing::copy_pack("sample-d20", "matters"));
 }
 
 #[given(expr = "lark has a hidden meter")]
@@ -23,7 +23,7 @@ fn lark_has_a_hidden_meter(world: &mut World) {
     let pack = world.pack();
     let mut meters = fs::read_to_string(pack.join("rules/meters.yaml")).unwrap();
     meters.push_str(
-        "  - id: omen\n    min: 0\n    base_cap: 5\n    max: 5\n    start: 1\n    hidden: true\n",
+        "  - id: omen\n    min: 0\n    base_cap: 5\n    max: 5\n    base: 1\n    hidden: true\n",
     );
     fs::write(pack.join("rules/meters.yaml"), meters).unwrap();
     stamp_pack_rev(pack);
@@ -45,16 +45,16 @@ fn a_round_that_changes_a_hidden_fact(world: &mut World) {
     ));
     fs::write(pack.join("rules/verbs.yaml"), verbs).unwrap();
     stamp_pack_rev(&pack);
-    let mut shard = seat(&pack);
+    let mut shard = resume_with_lark(&pack);
     let output = play(&mut shard, "spill");
-    world.summary = output.summary.clone();
-    world.stdout = change_line(&output);
+    world.wait_order = output.summary.clone();
+    world.seen = change_line(&output);
 }
 
 #[when(expr = "lark's might is raised and the seeded strike succeeds")]
 fn larks_might_is_raised(world: &mut World) {
     let pack = world.pack().to_path_buf();
-    support::edit_save(&pack, |now| {
+    testing::edit_save(&pack, |now| {
         let might = now
             .actors
             .get_mut("pc_lark")
@@ -65,17 +65,17 @@ fn larks_might_is_raised(world: &mut World) {
         might.base = 40;
         might.offset = 0;
     });
-    let mut shard = seat(&pack);
+    let mut shard = resume_with_lark(&pack);
     let output = play(&mut shard, "strike npc_briar");
-    world.stdout = change_line(&output);
+    world.seen = change_line(&output);
 }
 
 #[when(expr = "lark uses a tonic")]
 fn lark_uses_a_tonic(world: &mut World) {
     let pack = world.pack().to_path_buf();
-    let mut shard = seat(&pack);
+    let mut shard = resume_with_lark(&pack);
     let output = play(&mut shard, "use tonic");
-    world.stdout = change_line(&output);
+    world.seen = change_line(&output);
 }
 
 #[when(expr = "lark uses her tonic while someone out of sight gains one")]
@@ -88,23 +88,23 @@ fn lark_uses_her_tonic_while_oden_gains_one(world: &mut World) {
     );
     fs::write(pack.join("rules/verbs.yaml"), verbs).unwrap();
     stamp_pack_rev(&pack);
-    let mut shard = seat(&pack);
+    let mut shard = resume_with_lark(&pack);
     let output = play(&mut shard, "sip");
-    world.summary = output.summary.clone();
-    world.stdout = change_line(&output);
+    world.wait_order = output.summary.clone();
+    world.seen = change_line(&output);
 }
 
 #[then(expr = "that line does not mention the unseen gain")]
 fn the_line_skips_the_unseen_gain(world: &mut World) {
     assert!(
         world
-            .summary
+            .wait_order
             .iter()
             .any(|item| item.contains("actor_item npc_oden tonic")),
         "{:?}",
-        world.summary
+        world.wait_order
     );
-    let line = one_line(&world.stdout);
+    let line = one_line(&world.seen);
     let lower = line.to_lowercase();
     assert!(lower.contains("used up"), "{line}");
     assert!(!lower.contains("lost"), "{line}");
@@ -115,15 +115,15 @@ fn the_line_skips_the_unseen_gain(world: &mut World) {
 #[when(expr = "lark drops the tonic")]
 fn lark_drops_the_tonic(world: &mut World) {
     let pack = world.pack().to_path_buf();
-    let mut shard = seat(&pack);
+    let mut shard = resume_with_lark(&pack);
     let output = play(&mut shard, "drop tonic");
-    world.stdout = change_line(&output);
+    world.seen = change_line(&output);
 }
 
 #[given(expr = "a tonic is on the ground")]
 fn a_tonic_is_on_the_ground(world: &mut World) {
     let pack = world.pack().to_path_buf();
-    support::edit_save(&pack, |now| {
+    testing::edit_save(&pack, |now| {
         now.places
             .get_mut("gate_yard")
             .unwrap()
@@ -135,21 +135,21 @@ fn a_tonic_is_on_the_ground(world: &mut World) {
 #[when(expr = "lark takes the tonic")]
 fn lark_takes_the_tonic(world: &mut World) {
     let pack = world.pack().to_path_buf();
-    let mut shard = seat(&pack);
+    let mut shard = resume_with_lark(&pack);
     let output = play(&mut shard, "take tonic");
-    world.stdout = change_line(&output);
+    world.seen = change_line(&output);
 }
 
 #[when(expr = "lark looks at their view")]
 fn lark_looks_at_their_view(world: &mut World) {
     let pack = world.pack().to_path_buf();
-    let shard = seat(&pack);
-    world.stdout = shown_text(&shard);
+    let shard = resume_with_lark(&pack);
+    world.seen = meter_lines(&shard);
 }
 
 #[then(expr = "lark sees one line naming the change to briar's hp")]
 fn lark_sees_briars_hp_change(world: &mut World) {
-    let line = one_line(&world.stdout);
+    let line = one_line(&world.seen);
     let lower = line.to_lowercase();
     assert!(lower.contains("briar") && lower.contains("hp"), "{line}");
     assert!(!line.contains("actor_meter"), "{line}");
@@ -158,7 +158,7 @@ fn lark_sees_briars_hp_change(world: &mut World) {
 
 #[then(expr = "lark sees one line saying the tonic was used up")]
 fn lark_sees_the_tonic_used_up(world: &mut World) {
-    let line = one_line(&world.stdout);
+    let line = one_line(&world.seen);
     let lower = line.to_lowercase();
     assert!(
         lower.contains("tonic") && lower.contains("used up"),
@@ -168,48 +168,48 @@ fn lark_sees_the_tonic_used_up(world: &mut World) {
 
 #[then(expr = "lark sees one line saying she dropped the tonic")]
 fn lark_sees_she_dropped_the_tonic(world: &mut World) {
-    let line = one_line(&world.stdout);
+    let line = one_line(&world.seen);
     assert_eq!(line, "You dropped the Bitter tonic.");
 }
 
 #[then(expr = "lark sees one line saying she picked up the tonic")]
 fn lark_sees_she_picked_up_the_tonic(world: &mut World) {
-    let line = one_line(&world.stdout);
+    let line = one_line(&world.seen);
     assert_eq!(line, "You picked up the Bitter tonic.");
 }
 
 #[then(expr = "lark sees lark's hp and might")]
 fn lark_sees_hp_and_might(world: &mut World) {
-    assert!(world.stdout.contains("hp: 8"), "{}", world.stdout);
-    assert!(world.stdout.contains("might: 30"), "{}", world.stdout);
-    assert!(!world.stdout.contains("might: 2"), "{}", world.stdout);
+    assert!(world.seen.contains("hp: 8"), "{}", world.seen);
+    assert!(world.seen.contains("might: 30"), "{}", world.seen);
+    assert!(!world.seen.contains("might: 2"), "{}", world.seen);
 }
 
 #[then(expr = "lark does not see a hidden meter")]
 fn lark_does_not_see_a_hidden_meter(world: &mut World) {
     assert!(
-        !world.stdout.to_lowercase().contains("omen"),
+        !world.seen.to_lowercase().contains("omen"),
         "{}",
-        world.stdout
+        world.seen
     );
 }
 
 #[then(expr = "the player's change line does not mention it")]
 fn the_change_line_hides_the_fact(world: &mut World) {
     assert!(
-        world.summary.iter().any(|item| item.contains(SECRET_ID)),
+        world.wait_order.iter().any(|item| item.contains(SECRET_ID)),
         "{:?}",
-        world.summary
+        world.wait_order
     );
     assert!(
         world
-            .summary
+            .wait_order
             .iter()
             .any(|item| item.contains("actor_meter npc_briar hp")),
         "{:?}",
-        world.summary
+        world.wait_order
     );
-    let line = one_line(&world.stdout);
+    let line = one_line(&world.seen);
     let lower = line.to_lowercase();
     assert!(lower.contains("briar") && lower.contains("hp"), "{line}");
     assert!(line.contains('7'), "{line}");
@@ -223,18 +223,19 @@ fn one_line(text: &str) -> &str {
     text
 }
 
-fn seat(pack: &Path) -> Shard {
-    let world = match spookery_engine::lock_pack(pack).and_then(|lock| Shard::resume(pack, lock)) {
-        Ok(world) => world,
-        Err(err) => {
-            let report = spookery_engine::check_pack(pack)
-                .iter()
-                .map(|diag| diag.to_string())
-                .collect::<Vec<_>>()
-                .join("\n");
-            panic!("open: {}\n{report}", err.token());
-        }
-    };
+fn resume_with_lark(pack: &Path) -> EngineWorld {
+    let world =
+        match spookery_engine::lock_pack(pack).and_then(|lock| EngineWorld::resume(pack, lock)) {
+            Ok(world) => world,
+            Err(err) => {
+                let report = spookery_engine::check_pack(pack)
+                    .iter()
+                    .map(|diag| diag.to_string())
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                panic!("open: {}\n{report}", err.as_str());
+            }
+        };
     world
 }
 
@@ -246,9 +247,9 @@ fn lark() -> Presence {
     }
 }
 
-fn play(world: &mut Shard, line: &str) -> spookery_engine::RoundOutput {
-    let (verb, target) = support::split_move(line);
-    let wall = world.now().last_round_at.clone();
+fn play(world: &mut EngineWorld, line: &str) -> spookery_engine::RoundOutput {
+    let (verb, target) = testing::split_move(line);
+    let wall = world.state().last_round_at.clone();
     world
         .queue_player_move(&lark(), "pc_lark", verb, target)
         .unwrap_or_else(|err| panic!("{line}: {}", err.token()));
@@ -267,10 +268,10 @@ fn change_line(output: &spookery_engine::RoundOutput) -> String {
         .unwrap_or_default()
 }
 
-fn shown_text(world: &Shard) -> String {
+fn meter_lines(world: &EngineWorld) -> String {
     let view = world
         .perceive(&lark(), "pc_lark")
-        .unwrap_or_else(|err| panic!("perceive: {}", err.token()));
+        .unwrap_or_else(|err| panic!("perceive: {}", err.as_str()));
     view.meters
         .iter()
         .map(|meter| format!("{}: {}", meter.id, meter.value))

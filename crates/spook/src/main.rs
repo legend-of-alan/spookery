@@ -26,15 +26,15 @@ enum Command {
         /// Pack directory.
         pack: PathBuf,
         /// Agent door. Defaults to the next port. Port 0 lets the OS choose.
-        #[arg(long = "mcp-http", value_name = "127.0.0.1:<port>")]
-        mcp_http: Option<String>,
+        #[arg(long = "door", value_name = "127.0.0.1:<port>")]
+        door: Option<String>,
     },
     /// Sit the player seat.
     #[cfg(feature = "client")]
     Play {
         /// Actor to sit. A pack id, or `player:<id>`.
         #[arg(long = "as", value_name = "ID")]
-        as_player: Option<String>,
+        pc: Option<String>,
         /// Print each protocol frame as one JSON line.
         #[arg(long)]
         raw: bool,
@@ -43,8 +43,8 @@ enum Command {
     #[cfg(feature = "client")]
     Gm {
         /// Agent door. Defaults to the game port plus one.
-        #[arg(long = "mcp-http", value_name = "127.0.0.1:<port>")]
-        mcp_http: Option<String>,
+        #[arg(long = "door", value_name = "127.0.0.1:<port>")]
+        door: Option<String>,
         /// Print each protocol frame as one JSON line.
         #[arg(long)]
         raw: bool,
@@ -54,8 +54,8 @@ enum Command {
     #[command(name = "ai-gm")]
     AiGm {
         /// Agent door. Defaults to the game port plus one.
-        #[arg(long = "mcp-http", value_name = "127.0.0.1:<port>")]
-        mcp_http: Option<String>,
+        #[arg(long = "door", value_name = "127.0.0.1:<port>")]
+        door: Option<String>,
     },
     /// Play one round on the pack.
     #[cfg(feature = "server")]
@@ -122,8 +122,11 @@ async fn dispatch(cli: Cli) -> Result<(), String> {
     let addr = parse_loopback(&cli.addr)?;
     match cli.command {
         #[cfg(feature = "server")]
-        Command::Run { pack, mcp_http } => {
-            let door = door_addr(mcp_http)?;
+        Command::Run {
+            pack,
+            door: mcp_http,
+        } => {
+            let door = parse_door(mcp_http)?;
             // Lock before resume: taking the lock repairs a crashed pack, which is a write.
             let lock = spookery_engine::lock_pack(&pack).map_err(|e| e.to_string())?;
             let world = spookery_engine::World::resume(&pack, lock).map_err(|e| e.to_string())?;
@@ -155,20 +158,21 @@ async fn dispatch(cli: Cli) -> Result<(), String> {
                 .map_err(|e| e.to_string())
         }
         #[cfg(feature = "client")]
-        Command::Play { as_player, raw } => {
+        Command::Play { pc: as_player, raw } => {
             spookery::terminal::run_player(as_player.as_deref(), addr, raw)
                 .await
                 .map_err(|err| err.to_string())
         }
         #[cfg(feature = "client")]
-        Command::Gm { mcp_http, raw } => {
-            spookery::terminal::run_gm(addr, door_addr(mcp_http)?, raw)
-                .await
-                .map_err(|err| err.to_string())
-        }
+        Command::Gm {
+            door: mcp_http,
+            raw,
+        } => spookery::terminal::run_gm(addr, parse_door(mcp_http)?, raw)
+            .await
+            .map_err(|err| err.to_string()),
         #[cfg(feature = "client")]
-        Command::AiGm { mcp_http } => {
-            let door = door_addr(mcp_http)?;
+        Command::AiGm { door: mcp_http } => {
+            let door = parse_door(mcp_http)?;
             if spookery::ai::sit(addr, door).await.is_err() {
                 std::process::exit(1);
             }
@@ -186,7 +190,7 @@ async fn dispatch(cli: Cli) -> Result<(), String> {
         #[cfg(feature = "server")]
         Command::Status { pack } => {
             // Status holds a read guard, not the pack lock, and writes nothing but that lock file.
-            let text = spookery_engine::World::peek_summary(&pack).map_err(|e| e.to_string())?;
+            let text = spookery_engine::World::peek_digest(&pack).map_err(|e| e.to_string())?;
             print!("{text}");
             Ok(())
         }
@@ -250,7 +254,7 @@ async fn dispatch(cli: Cli) -> Result<(), String> {
         }
         #[cfg(feature = "server")]
         Command::New { dir } => {
-            let next = spookery::host::starter::write_starter(&dir).map_err(|e| e.to_string())?;
+            let next = spookery::host::starter::write(&dir).map_err(|e| e.to_string())?;
             print!("{next}");
             Ok(())
         }
@@ -270,7 +274,7 @@ fn parse_loopback(addr: &str) -> Result<SocketAddr, String> {
     Ok(SocketAddr::from(([127, 0, 0, 1], port)))
 }
 
-fn door_addr(mcp_http: Option<String>) -> Result<Option<SocketAddr>, String> {
+fn parse_door(mcp_http: Option<String>) -> Result<Option<SocketAddr>, String> {
     mcp_http.as_deref().map(parse_loopback).transpose()
 }
 
@@ -343,37 +347,36 @@ mod tests {
         assert!(Cli::try_parse_from(["spook"]).is_err());
         assert!(Cli::try_parse_from(["spook", "mcp"]).is_err());
         assert!(Cli::try_parse_from(["spook", "mcp", "--addr", "127.0.0.1:9737"]).is_err());
-        let http = Cli::try_parse_from(["spook", "run", "--mcp-http", "0.0.0.0:9", "no-such-pack"])
-            .unwrap();
+        let http =
+            Cli::try_parse_from(["spook", "run", "--door", "0.0.0.0:9", "no-such-pack"]).unwrap();
         assert_eq!(dispatch(http).await.unwrap_err(), "NOT_IN_SPEC");
         let http_loopback =
-            Cli::try_parse_from(["spook", "run", "--mcp-http", "127.0.0.1:9801", "pack"]).unwrap();
+            Cli::try_parse_from(["spook", "run", "--door", "127.0.0.1:9801", "pack"]).unwrap();
         assert!(matches!(
             http_loopback.command,
             Command::Run {
-                mcp_http: Some(text),
+                door: Some(text),
                 ..
             } if text == "127.0.0.1:9801"
         ));
         for command in ["gm", "ai-gm"] {
-            let open = Cli::try_parse_from(["spook", command, "--mcp-http", "0.0.0.0:9"]).unwrap();
+            let open = Cli::try_parse_from(["spook", command, "--door", "0.0.0.0:9"]).unwrap();
             assert_eq!(
                 dispatch(open).await.unwrap_err(),
                 "NOT_IN_SPEC",
-                "{command} --mcp-http"
+                "{command} --door"
             );
-            let door =
-                Cli::try_parse_from(["spook", command, "--mcp-http", "127.0.0.1:9801"]).unwrap();
+            let door = Cli::try_parse_from(["spook", command, "--door", "127.0.0.1:9801"]).unwrap();
             let text = match door.command {
-                Command::Gm { mcp_http, .. } | Command::AiGm { mcp_http, .. } => mcp_http,
+                Command::Gm { door, .. } | Command::AiGm { door, .. } => door,
                 _ => panic!("{command}"),
             };
             assert_eq!(text.as_deref(), Some("127.0.0.1:9801"));
         }
         let play = Cli::try_parse_from(["spook", "play", "--as", "pc_rowan"]).unwrap();
         match play.command {
-            Command::Play { as_player, raw } => {
-                assert_eq!(as_player.as_deref(), Some("pc_rowan"));
+            Command::Play { pc, raw } => {
+                assert_eq!(pc.as_deref(), Some("pc_rowan"));
                 assert!(!raw);
             }
             _ => panic!("play"),

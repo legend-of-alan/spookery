@@ -4,12 +4,12 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::canon::pack_rev;
-use crate::intent::{player_intent_id, Intent, IntentArgs, Source, Target, ViewerId};
+use crate::intent::{player_intent_id, Intent, IntentArgs, Source, Target, Viewer};
 use crate::journal;
-use crate::map::visible;
 use crate::model::Presence;
 use crate::rules::gate::gate;
-use crate::store::codec::{emit_save, load_save};
+use crate::store::codec::{emit_save, parse_save};
+use crate::travel::visible_exits;
 use crate::world::World;
 use proptest::prelude::*;
 use proptest::test_runner::{Config, RngSeed, TestCaseError};
@@ -44,7 +44,7 @@ impl Drop for TempPack {
     }
 }
 
-pub(crate) fn configure_runner() -> Config {
+pub(crate) fn runner_config() -> Config {
     Config {
         cases: CASES,
         failure_persistence: None,
@@ -53,7 +53,7 @@ pub(crate) fn configure_runner() -> Config {
     }
 }
 
-pub(crate) fn pick_rounds() -> impl Strategy<Value = Vec<RoundPlan>> {
+pub(crate) fn arb_rounds() -> impl Strategy<Value = Vec<RoundPlan>> {
     prop::collection::vec(
         prop::collection::vec(pick_move(), 0..=3).prop_map(|moves| RoundPlan { moves }),
         1..=5,
@@ -70,7 +70,7 @@ fn pick_move() -> impl Strategy<Value = MovePlan> {
 
 /// Queue the moves `gate` accepts, then play the round. Habits are gathered with them.
 pub(crate) fn play_rounds(pack: &Path, rounds: &[RoundPlan]) -> Result<(), String> {
-    arm_check(pack)?;
+    add_grit_success(pack)?;
     let lock = crate::lock_pack(pack).map_err(|err| err.to_string())?;
     let mut world = World::resume(pack, lock).map_err(|err| err.to_string())?;
     let grit = VERBS.iter().position(|verb| *verb == "grit").expect("grit");
@@ -90,7 +90,7 @@ pub(crate) fn play_rounds(pack: &Path, rounds: &[RoundPlan]) -> Result<(), Strin
                 },
             );
         }
-        let wall = world.now().last_round_at.clone();
+        let wall = world.state().last_round_at.clone();
         play_round(&mut world, &Presence::default(), &wall, false)
             .map_err(|err| format!("round {} refused to play: {err}", index + 1))?;
     }
@@ -99,7 +99,7 @@ pub(crate) fn play_rounds(pack: &Path, rounds: &[RoundPlan]) -> Result<(), Strin
 
 fn pc_count(world: &World) -> usize {
     world
-        .now()
+        .state()
         .actors
         .values()
         .filter(|actor| actor.is_pc())
@@ -108,7 +108,7 @@ fn pc_count(world: &World) -> usize {
 
 /// A successful `grit` check adds one lamp oil. The docks list is empty, so the
 /// roll would not otherwise change the save.
-fn arm_check(pack: &Path) -> Result<(), String> {
+fn add_grit_success(pack: &Path) -> Result<(), String> {
     let path = pack.join("rules/verbs.yaml");
     let text = fs::read_to_string(&path).map_err(|err| err.to_string())?;
     let needle = "      target: 0\n    do: []\n";
@@ -120,7 +120,7 @@ fn arm_check(pack: &Path) -> Result<(), String> {
     let rev = pack_rev(pack).map_err(|err| err.to_string())?;
     let save_path = pack.join("state/save.yaml");
     let save_text = fs::read_to_string(&save_path).map_err(|err| err.to_string())?;
-    let mut now = load_save(&save_text).map_err(|err| format!("{err:?}"))?;
+    let mut now = parse_save(&save_text).map_err(|err| format!("{err:?}"))?;
     now.pack_rev = rev;
     fs::write(&save_path, emit_save(&now).map_err(|err| err.to_string())?)
         .map_err(|err| err.to_string())
@@ -128,7 +128,7 @@ fn arm_check(pack: &Path) -> Result<(), String> {
 
 fn queue_move(world: &mut World, plan: &MovePlan) {
     let pcs: Vec<String> = world
-        .now()
+        .state()
         .actors
         .iter()
         .filter(|(_, actor)| actor.is_pc())
@@ -142,7 +142,7 @@ fn queue_move(world: &mut World, plan: &MovePlan) {
     let Some(target) = target_for(world, actor, verb, plan.token) else {
         return;
     };
-    let intent = player_intent(world.now(), actor, verb, target);
+    let intent = player_intent(world.state(), actor, verb, target);
     if world
         .queued_intents()
         .iter()
@@ -150,17 +150,17 @@ fn queue_move(world: &mut World, plan: &MovePlan) {
     {
         return;
     }
-    if gate(world.canon(), world.now(), &Presence::default(), &intent).is_err() {
+    if gate(world.canon(), world.state(), &Presence::default(), &intent).is_err() {
         return;
     }
-    world.queue(intent);
+    world.queue_intent(intent);
 }
 
 fn target_for(world: &World, actor: &str, verb: &str, token: usize) -> Option<Target> {
     match verb {
         "wait" | "grit" | "unwield" => Some(Target::Empty),
         "travel" => {
-            let exits = visible(world.canon(), world.now(), &Presence::default(), actor);
+            let exits = visible_exits(world.canon(), world.state(), &Presence::default(), actor);
             if exits.is_empty() {
                 return None;
             }
@@ -179,9 +179,9 @@ fn target_for(world: &World, actor: &str, verb: &str, token: usize) -> Option<Ta
 
 fn item_tokens(world: &World, actor: &str) -> Vec<String> {
     let mut ids: Vec<String> = world.canon().items.keys().cloned().collect();
-    if let Some(actor) = world.now().actors.get(actor) {
+    if let Some(actor) = world.state().actors.get(actor) {
         ids.extend(actor.inventory().keys().cloned());
-        if let Some(place) = world.now().places.get(actor.place()) {
+        if let Some(place) = world.state().places.get(actor.place()) {
             ids.extend(place.items.keys().cloned());
         }
     }
@@ -190,7 +190,7 @@ fn item_tokens(world: &World, actor: &str) -> Vec<String> {
     ids
 }
 
-fn player_intent(now: &crate::model::Now, actor: &str, verb: &str, target: Target) -> Intent {
+fn player_intent(now: &crate::model::State, actor: &str, verb: &str, target: Target) -> Intent {
     let token = match &target {
         Target::Empty => "",
         Target::Actor(id) | Target::Place(id) => id.as_str(),
@@ -205,7 +205,7 @@ fn player_intent(now: &crate::model::Now, actor: &str, verb: &str, target: Targe
     Intent {
         id: player_intent_id(&now.shard_id, round_index, actor, &line),
         round_index: now.round_index,
-        actor: ViewerId::Player(actor.to_string()),
+        actor: Viewer::Player(actor.to_string()),
         source: Source::Player,
         move_name: verb.to_string(),
         target,
@@ -215,23 +215,22 @@ fn player_intent(now: &crate::model::Now, actor: &str, verb: &str, target: Targe
 }
 
 /// Replay the journal and compare it with the state hash on the last record.
-pub(crate) fn same_save(pack: &Path) -> Result<(), TestCaseError> {
-    let report = replay_journal(pack, None, None).map_err(|err| fail_msg(err.to_string()))?;
-    let entries = journal::read_entries(pack)
-        .map_err(|fault| fail_msg(format!("{}: {}", fault.file, fault.detail)))?;
+pub(crate) fn assert_replay_matches(pack: &Path) -> Result<(), TestCaseError> {
+    let report =
+        replay_journal(pack, None, None).map_err(|err| TestCaseError::fail(err.to_string()))?;
+    let entries = journal::read_records(pack)
+        .map_err(|fault| TestCaseError::fail(format!("{}: {}", fault.file, fault.detail)))?;
     let Some(last) = entries.iter().rev().find(|entry| entry.changes_state()) else {
-        return Err(fail_msg("the rounds wrote no record".to_string()));
+        return Err(TestCaseError::fail(
+            "the rounds wrote no record".to_string(),
+        ));
     };
-    let replayed = journal::hash_now(&report.now_yaml);
+    let replayed = journal::blake2s_tagged(&report.now_yaml);
     if replayed == last.now_hash() {
         return Ok(());
     }
-    Err(fail_msg(format!(
+    Err(TestCaseError::fail(format!(
         "state hash differed: record {} replayed {replayed}",
         last.now_hash()
     )))
-}
-
-pub(crate) fn fail_msg(message: String) -> TestCaseError {
-    TestCaseError::fail(message)
 }

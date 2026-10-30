@@ -24,13 +24,13 @@ use std::fs;
 use std::path::Path;
 
 use crate::effect::EffectKind;
-use crate::journal::{self, JournalEntry, RoundRecord, Step};
+use crate::journal::{self, Record, RoundRecord, Step};
 use crate::world::World;
 use proptest::prelude::*;
 use proptest::test_runner::{TestCaseError, TestRunner};
 
-use super::play::{configure_runner, fail_msg, pick_rounds, play_rounds, same_save, TempPack};
-use crate::testing::temp_pack;
+use super::support::{arb_rounds, assert_replay_matches, play_rounds, runner_config, TempPack};
+use crate::testing::copy_docks;
 
 #[derive(Clone, Debug)]
 struct Chain {
@@ -48,15 +48,15 @@ struct RuleSpec {
 
 #[test]
 fn random_play_stops_trigger_chains_at_the_cap() {
-    let mut runner = TestRunner::new(configure_runner());
-    let rounds = pick_rounds();
+    let mut runner = TestRunner::new(runner_config());
+    let rounds = arb_rounds();
     let chain = pick_chain();
     runner
         .run(&(rounds, chain), |(rounds, chain)| {
-            let pack = TempPack(temp_pack("prop-triggers"));
-            let rules = install(&pack.0, &chain).map_err(fail_msg)?;
-            play_rounds(&pack.0, &rounds).map_err(fail_msg)?;
-            triggers_stop(&pack.0, &rules, rounds.len())
+            let pack = TempPack(copy_docks("prop-triggers"));
+            let rules = install(&pack.0, &chain).map_err(TestCaseError::fail)?;
+            play_rounds(&pack.0, &rounds).map_err(TestCaseError::fail)?;
+            assert_triggers_stop(&pack.0, &rules, rounds.len())
         })
         .unwrap_or_else(|err| panic!("triggers property failed: {err}"));
 }
@@ -67,22 +67,26 @@ fn pick_chain() -> impl Strategy<Value = Chain> {
     })
 }
 
-fn triggers_stop(pack: &Path, rules: &[RuleSpec], rounds: usize) -> Result<(), TestCaseError> {
+fn assert_triggers_stop(
+    pack: &Path,
+    rules: &[RuleSpec],
+    rounds: usize,
+) -> Result<(), TestCaseError> {
     let max = World::open(pack)
-        .map_err(|err| fail_msg(err.to_string()))?
+        .map_err(|err| TestCaseError::fail(err.to_string()))?
         .budget()
         .max_trigger_depth;
-    let entries = journal::read_entries(pack)
-        .map_err(|fault| fail_msg(format!("{}: {}", fault.file, fault.detail)))?;
+    let entries = journal::read_records(pack)
+        .map_err(|fault| TestCaseError::fail(format!("{}: {}", fault.file, fault.detail)))?;
     let records: Vec<&RoundRecord> = entries
         .iter()
         .filter_map(|entry| match entry {
-            JournalEntry::Round(record) => Some(record),
+            Record::Round(record) => Some(record),
             _ => None,
         })
         .collect();
     if records.len() != rounds {
-        return Err(fail_msg(format!(
+        return Err(TestCaseError::fail(format!(
             "played {rounds} rounds but the journal has {} round records",
             records.len()
         )));
@@ -91,7 +95,7 @@ fn triggers_stop(pack: &Path, rules: &[RuleSpec], rounds: usize) -> Result<(), T
     for record in records {
         held = check_round(record, rules, max, held, rowan_gained_oil(record))?;
     }
-    same_save(pack)
+    assert_replay_matches(pack)
 }
 
 /// Trigger watches see the net write. Dropping the oil and gaining it back
@@ -136,17 +140,17 @@ fn check_round(
     let mut index = 0usize;
     let mut passes = 0u64;
     loop {
-        let ready = pick_ready(rules, oil, &armed);
+        let ready = ready_rules(rules, oil, &armed);
         if ready.is_empty() {
             if index != logged.len() {
-                return Err(fail_msg(format!(
+                return Err(TestCaseError::fail(format!(
                     "round {} logged trigger rules after the chain stopped: {}",
                     record.round_index,
                     logged.join(",")
                 )));
             }
             if hit_cap {
-                return Err(fail_msg(format!(
+                return Err(TestCaseError::fail(format!(
                     "round {} logged trigger_depth after {passes} passes, under the cap {max}",
                     record.round_index
                 )));
@@ -155,14 +159,14 @@ fn check_round(
         }
         if passes >= max {
             if index != logged.len() {
-                return Err(fail_msg(format!(
+                return Err(TestCaseError::fail(format!(
                     "round {} ran more than {max} trigger passes: {}",
                     record.round_index,
                     logged.join(",")
                 )));
             }
             if !hit_cap {
-                return Err(fail_msg(format!(
+                return Err(TestCaseError::fail(format!(
                     "round {} hit the cap after {max} trigger passes without trigger_depth: {:?}",
                     record.round_index, record.steps_run
                 )));
@@ -174,7 +178,7 @@ fn check_round(
         let mut next_armed = BTreeSet::new();
         for rule in ready {
             let Some(got) = logged.get(index) else {
-                return Err(fail_msg(format!(
+                return Err(TestCaseError::fail(format!(
                     "round {} stopped during pass {} before {}",
                     record.round_index,
                     passes + 1,
@@ -182,7 +186,7 @@ fn check_round(
                 )));
             };
             if *got != rule.id {
-                return Err(fail_msg(format!(
+                return Err(TestCaseError::fail(format!(
                     "round {} pass {} expected {} but logged {got}",
                     record.round_index,
                     passes + 1,
@@ -198,7 +202,11 @@ fn check_round(
     }
 }
 
-fn pick_ready<'a>(rules: &'a [RuleSpec], oil: bool, armed: &BTreeSet<String>) -> Vec<&'a RuleSpec> {
+fn ready_rules<'a>(
+    rules: &'a [RuleSpec],
+    oil: bool,
+    armed: &BTreeSet<String>,
+) -> Vec<&'a RuleSpec> {
     rules
         .iter()
         .filter(|rule| match &rule.watch {

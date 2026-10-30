@@ -10,7 +10,7 @@ pub struct ViewScene {
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub place_name: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub prose: String,
+    pub body: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub actor_names: Vec<String>,
     #[serde(default, skip_serializing_if = "String::is_empty")]
@@ -20,12 +20,12 @@ pub struct ViewScene {
 /// A line on the player socket. No GM field, and no roll faces.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "lowercase")]
-pub enum PlayerMessage {
+pub enum PlayerFrame {
     Say {
         from: String,
         address: String,
         text: String,
-        #[serde(default, skip_serializing_if = "skip_false")]
+        #[serde(default, skip_serializing_if = "is_false")]
         replay: bool,
     },
     Queued {
@@ -47,9 +47,8 @@ pub enum PlayerMessage {
     Refused {
         code: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        missing: Option<Missing>,
+        detail: Option<Missing>,
     },
-    #[serde(rename = "perceive")]
     View {
         viewer: String,
         place: String,
@@ -57,8 +56,8 @@ pub enum PlayerMessage {
         scene: Box<ViewScene>,
         visible_actors: Vec<String>,
         known_facts: Vec<KnownFact>,
-        messages: Vec<MessageView>,
-        unknown_mentioned: Vec<String>,
+        notes: Vec<MessageView>,
+        unknown_mentions: Vec<String>,
         clocks: Vec<ClockView>,
         items: Vec<ItemStack>,
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -98,7 +97,7 @@ pub struct ExitView {
 pub struct KnownFact {
     pub id: String,
     pub text: String,
-    pub body: String,
+    pub owner_body: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -140,22 +139,22 @@ pub fn exit_phrase(name: &str, minutes: u64, locked: bool) -> String {
     }
 }
 
-pub fn write_player(message: &PlayerMessage) -> String {
+pub fn emit_player(message: &PlayerFrame) -> String {
     let mut line = serde_json::to_string(message).expect("player line");
     line.push('\n');
     line
 }
 
-pub fn read_player(line: &str) -> Result<PlayerMessage, Error> {
+pub fn parse_player(line: &str) -> Result<PlayerFrame, Error> {
     serde_json::from_str(line).map_err(|_| Error)
 }
 
 /// `player:{id}\n`. An empty id, or an id with whitespace, is not a hello.
-pub fn write_player_hello(id: &str) -> String {
+pub fn emit_player_hello(id: &str) -> String {
     format!("player:{id}\n")
 }
 
-pub fn read_player_hello(line: &str) -> Option<&str> {
+pub fn parse_player_hello(line: &str) -> Option<&str> {
     let id = line.strip_prefix("player:")?;
     if id.is_empty() || id.chars().any(char::is_whitespace) {
         None
@@ -164,7 +163,7 @@ pub fn read_player_hello(line: &str) -> Option<&str> {
     }
 }
 
-fn skip_false(value: &bool) -> bool {
+fn is_false(value: &bool) -> bool {
     !*value
 }
 
@@ -174,61 +173,61 @@ mod tests {
 
     #[test]
     fn a_say_line_round_trips() {
-        let message = PlayerMessage::Say {
+        let message = PlayerFrame::Say {
             from: "player:rowan".to_string(),
             address: "table".to_string(),
             text: "hello".to_string(),
             replay: false,
         };
-        let line = write_player(&message);
+        let line = emit_player(&message);
         assert_eq!(
             line,
             "{\"kind\":\"say\",\"from\":\"player:rowan\",\"address\":\"table\",\"text\":\"hello\"}\n"
         );
-        assert_eq!(read_player(&line).unwrap(), message);
+        assert_eq!(parse_player(&line).unwrap(), message);
     }
 
     #[test]
     fn a_check_line_has_no_faces() {
-        let line = write_player(&PlayerMessage::Check {
+        let line = emit_player(&PlayerFrame::Check {
             outcome: Outcome::Success,
         });
         assert_eq!(line, "{\"kind\":\"check\",\"outcome\":\"success\"}\n");
         assert_eq!(
-            read_player(&line).unwrap(),
-            PlayerMessage::Check {
+            parse_player(&line).unwrap(),
+            PlayerFrame::Check {
                 outcome: Outcome::Success,
             }
         );
-        let partial = write_player(&PlayerMessage::Check {
+        let partial = emit_player(&PlayerFrame::Check {
             outcome: Outcome::Partial,
         });
         assert_eq!(partial, "{\"kind\":\"check\",\"outcome\":\"partial\"}\n");
-        let miss = write_player(&PlayerMessage::Check {
+        let miss = emit_player(&PlayerFrame::Check {
             outcome: Outcome::Miss,
         });
         assert_eq!(miss, "{\"kind\":\"check\",\"outcome\":\"miss\"}\n");
         assert_eq!(
-            read_player(r#"{"kind":"check","outcome":"success","faces":[1]}"#).unwrap(),
-            PlayerMessage::Check {
+            parse_player(r#"{"kind":"check","outcome":"success","faces":[1]}"#).unwrap(),
+            PlayerFrame::Check {
                 outcome: Outcome::Success,
             }
         );
-        assert!(read_player(r#"{"kind":"check","success":true}"#).is_err());
+        assert!(parse_player(r#"{"kind":"check","success":true}"#).is_err());
     }
 
     #[test]
     fn a_player_hello_round_trips() {
-        let line = write_player_hello("rowan");
+        let line = emit_player_hello("rowan");
         assert_eq!(line, "player:rowan\n");
-        assert_eq!(read_player_hello(line.trim_end()), Some("rowan"));
-        assert_eq!(read_player_hello("player:"), None);
-        assert_eq!(read_player_hello("player:row an"), None);
+        assert_eq!(parse_player_hello(line.trim_end()), Some("rowan"));
+        assert_eq!(parse_player_hello("player:"), None);
+        assert_eq!(parse_player_hello("player:row an"), None);
     }
 
     #[test]
     fn a_perceive_frame_ignores_unknown_fields() {
-        let line = r#"{"kind":"perceive","viewer":"rowan","place":"shop","visible_actors":[],"known_facts":[],"messages":[],"unknown_mentioned":[],"clocks":[],"items":[{"id":"oil","count":1,"extra":true}],"habits":[],"future":1}"#;
-        assert!(matches!(read_player(line), Ok(PlayerMessage::View { .. })));
+        let line = r#"{"kind":"view","viewer":"rowan","place":"shop","visible_actors":[],"known_facts":[],"notes":[],"unknown_mentions":[],"clocks":[],"items":[{"id":"oil","count":1,"extra":true}],"habits":[],"future":1}"#;
+        assert!(matches!(parse_player(line), Ok(PlayerFrame::View { .. })));
     }
 }

@@ -10,7 +10,7 @@ use crate::error::Reason;
 use crate::hash::blake2s_hex;
 use crate::meter::MeterDef;
 use crate::rule::{Cond, Cost, Owner, RuleTable, TargetKind, When};
-use crate::rules::roll::CheckDef;
+use crate::rules::roll::Check;
 pub use spookery_protocol::{CastKind, MenuRow, PackSummary};
 
 mod budget;
@@ -35,15 +35,15 @@ use fact::Facts;
 use item::add_item;
 pub(crate) use lint::check_canon;
 use lint::{
-    broken_exits, find_bare_resist, reveal_problems, unknown_checks, unknown_exprs, unknown_meters,
-    unknown_rule_items,
+    broken_exits, resist_same_without_roll, reveal_problems, unknown_checks, unknown_meters,
+    unknown_reads, unknown_rule_items,
 };
 use meters::load_meters;
-use pack::load_pack;
+use pack::load_pack_yaml;
 use place::add_place;
 use rule_list::load_verbs;
-pub(crate) use save::{check_save, migrate_save, pending_meters};
-use source::{collect_files, markdown_files, read_text, At, Diags, Source};
+pub(crate) use save::{check_save, migrate_save, missing_meters};
+use source::{collect_files, collect_markdown_files, read_text, Diags, FileText, Locator};
 use story::load_stories;
 
 #[derive(Clone, Debug)]
@@ -53,27 +53,27 @@ pub struct Canon {
     pub system: String,
     pub start_place: String,
     pub start_pc: String,
-    pub places: BTreeMap<String, PlaceCanon>,
-    pub cast: BTreeMap<String, CastCanon>,
-    pub facts: BTreeMap<String, FactCanon>,
+    pub places: BTreeMap<String, PlaceDef>,
+    pub cast: BTreeMap<String, CastDef>,
+    pub facts: BTreeMap<String, FactDef>,
     pub rules: RuleTable,
-    pub checks: BTreeMap<String, CheckDef>,
+    pub checks: BTreeMap<String, Check>,
     pub meters: BTreeMap<String, MeterDef>,
-    pub items: BTreeMap<String, ItemCanon>,
+    pub items: BTreeMap<String, ItemDef>,
     pub budget: Budget,
     /// Rounds between journal checkpoints. `save.yaml` is rewritten then.
     pub checkpoint_every: u64,
 }
 
 #[derive(Clone, Debug)]
-pub struct ItemCanon {
+pub struct ItemDef {
     pub name: String,
     pub tags: Vec<String>,
     pub body: String,
 }
 
 #[derive(Clone, Debug)]
-pub struct FactCanon {
+pub struct FactDef {
     pub text: String,
     pub hidden: bool,
     pub owner_id: String,
@@ -94,7 +94,7 @@ pub struct Exit {
 }
 
 #[derive(Clone, Debug)]
-pub struct PlaceCanon {
+pub struct PlaceDef {
     pub display_name: String,
     pub facts: Vec<String>,
     pub body: String,
@@ -102,7 +102,7 @@ pub struct PlaceCanon {
 }
 
 #[derive(Clone, Debug)]
-pub struct CastCanon {
+pub struct CastDef {
     pub kind: CastKind,
     pub display_name: String,
     pub facts: Vec<String>,
@@ -119,21 +119,21 @@ pub struct IdleProfile {
 }
 
 impl Canon {
-    pub fn pack_summary(&self) -> PackSummary {
+    pub fn to_pack_summary(&self) -> PackSummary {
         let menu = self
             .rules
             .iter()
             .filter_map(|rule| match &rule.when {
                 When::Verb { verb, target } if matches!(rule.owner, Owner::Verb) => {
-                    Some((verb.clone(), "verb", target.word()))
+                    Some((verb.clone(), "verb", target.as_str()))
                 }
-                When::Habit => Some((rule.local_id.clone(), "habit", TargetKind::None.word())),
+                When::Habit => Some((rule.local_id.clone(), "habit", TargetKind::None.as_str())),
                 _ => None,
             })
             .map(|(name, audience, token)| MenuRow {
                 name,
-                audience: audience.to_string(),
-                token: token.to_string(),
+                kind: audience.to_string(),
+                target: token.to_string(),
             })
             .collect();
         let kinds = self.cast.iter().map(|(k, m)| (k.clone(), m.kind)).collect();
@@ -206,9 +206,9 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
     let mut items = BTreeMap::new();
     let mut loaded = Vec::new();
     // 1. pack.yaml: missing, unreadable, tag, shape, empty id.
-    let pack = diags.keep(read_text(root, "pack.yaml").and_then(|text| load_pack(&text)));
+    let pack = diags.keep(read_text(root, "pack.yaml").and_then(|text| load_pack_yaml(&text)));
     // 2. One walk of world/: items and places by path prefix; other files are skipped.
-    for page in markdown_files(root, "world") {
+    for page in collect_markdown_files(root, "world") {
         let Some(page) = diags.keep(page) else {
             continue;
         };
@@ -222,7 +222,7 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
         loaded.extend(rules.unwrap_or_default());
     }
     // 3. One walk of cast/.
-    for page in markdown_files(root, "cast") {
+    for page in collect_markdown_files(root, "cast") {
         let Some(page) = diags.keep(page) else {
             continue;
         };
@@ -251,8 +251,8 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
     for rule in &loaded {
         let twice = ("rule", "is already defined", "keep one rule with this id");
         let taken = !seen_ids.insert(rule.id.clone());
-        let source = Source::named(&rule.file);
-        diags.extend(taken.then(|| source.repeat(&rule.id, "", At::Nowhere, twice)));
+        let source = FileText::named(&rule.file);
+        diags.extend(taken.then(|| source.refuse_duplicate(&rule.id, "", Locator::Nowhere, twice)));
     }
     let rules = RuleTable::new(loaded);
     // 9. Checks. 10. Meters. 11. Budget.
@@ -267,17 +267,17 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
         diags.extend(unknown_meters(meters, checks, &rules));
     }
     if let Some(meters) = &meters {
-        diags.extend(unknown_exprs(meters, &cast, &places, &rules));
+        diags.extend(unknown_reads(meters, &cast, &places, &rules));
     }
     diags.extend(unknown_rule_items(&rules, &items));
     diags.extend(reveal_problems(&rules, &facts.0));
-    diags.extend(find_bare_resist(&rules));
+    diags.extend(resist_same_without_roll(&rules));
     diags.extend(broken_exits(&places, &facts.0, &items));
     // 13. checkpoint_every.
     let checkpoint_every = pack
         .as_ref()
         .and_then(|pack| diags.keep(pack.checkpoint_every()));
-    diags.result(())?;
+    diags.into_result(())?;
     let (Some(pack), Some(checks), Some(meters), Some(budget), Some(checkpoint_every)) =
         (pack, checks, meters, budget, checkpoint_every)
     else {
@@ -317,7 +317,7 @@ mod tests {
     use crate::error::Reason;
 
     #[test]
-    fn docks_pack_rev_matches_now_yaml() {
+    fn docks_pack_rev_matches_save_yaml() {
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packs/oneshot-docks");
         let rev = pack_rev(&root).unwrap();
         let text = fs::read_to_string(root.join("state/save.yaml")).unwrap();
@@ -351,20 +351,20 @@ mod tests {
     }
 
     #[test]
-    fn menu_rows_keep_player_and_habit_and_kinds() {
+    fn menu_rows_keep_verbs_and_habits_and_kinds() {
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packs/oneshot-docks");
         let mut canon = load_canon(&root).expect("docks canon");
         canon.cast.get_mut("mira").unwrap().body = "CAST-BODY-SENTINEL".to_string();
-        let summary = canon.pack_summary();
-        assert!(summary.menu.iter().all(|row| row.audience != "system"));
+        let summary = canon.to_pack_summary();
+        assert!(summary.menu.iter().all(|row| row.kind != "system"));
         assert!(summary
             .menu
             .iter()
-            .any(|row| row.name == "travel" && row.audience == "verb" && row.token == "exit"));
+            .any(|row| row.name == "travel" && row.kind == "verb" && row.target == "exit"));
         assert!(summary
             .menu
             .iter()
-            .any(|row| row.name == "restock_lamp_oil" && row.audience == "habit"));
+            .any(|row| row.name == "restock_lamp_oil" && row.kind == "habit"));
         assert_eq!(summary.kinds.get("mira"), Some(&CastKind::Npc));
         assert_eq!(summary.kinds.get("pc_rowan"), Some(&CastKind::PcTemplate));
         let rendered = format!("{:?}{:?}", summary.menu, summary.kinds);

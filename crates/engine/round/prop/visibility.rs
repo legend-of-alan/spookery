@@ -16,15 +16,14 @@
 use std::path::PathBuf;
 
 use crate::canon::Canon;
-use crate::intent::ViewerId;
-use crate::model::{sort_unique, Message, Now, Presence};
-use crate::perceive::{perceive_viewer, View};
+use crate::intent::Viewer;
+use crate::model::{sort_unique, Message, Presence, State};
+use crate::perceive::{perceive_as, View};
 use crate::world::World;
-use proptest::prelude::*;
-use proptest::test_runner::{Config, RngSeed, TestCaseError, TestRunner};
 
-const CASES: u32 = 64;
-const SEED: u64 = 0x0018_0018;
+use super::support::runner_config;
+use proptest::prelude::*;
+use proptest::test_runner::{TestCaseError, TestRunner};
 
 #[derive(Clone, Debug)]
 struct NotePlan {
@@ -44,16 +43,16 @@ struct Scene {
 #[test]
 fn no_hidden_fact_reaches_a_player() {
     let world = World::open(&docks()).expect("docks pack opens");
-    let actors: Vec<String> = world.now().actors.keys().cloned().collect();
-    let places: Vec<String> = world.now().places.keys().cloned().collect();
+    let actors: Vec<String> = world.state().actors.keys().cloned().collect();
+    let places: Vec<String> = world.state().places.keys().cloned().collect();
     let facts: Vec<String> = world.canon().facts.keys().cloned().collect();
     assert!(
         !actors.is_empty() && !places.is_empty() && !facts.is_empty(),
         "the pack needs actors, places, and facts"
     );
     let canon = world.canon().clone();
-    let now = world.now().clone();
-    let mut runner = TestRunner::new(configure_runner());
+    let now = world.state().clone();
+    let mut runner = TestRunner::new(runner_config());
     runner
         .run(
             &pick_scene(actors.len(), places.len(), facts.len()),
@@ -61,19 +60,10 @@ fn no_hidden_fact_reaches_a_player() {
                 let mut canon = canon.clone();
                 let mut now = now.clone();
                 apply_scene(&mut canon, &mut now, &actors, &places, &facts, &scene);
-                hidden_stays_hidden(&canon, &now)
+                assert_hidden_stays_hidden(&canon, &now)
             },
         )
         .unwrap_or_else(|err| panic!("firewall property failed: {err}"));
-}
-
-fn configure_runner() -> Config {
-    Config {
-        cases: CASES,
-        failure_persistence: None,
-        rng_seed: RngSeed::Fixed(SEED),
-        ..Config::default()
-    }
 }
 
 fn pick_scene(
@@ -117,7 +107,7 @@ fn pick_note(
 
 fn apply_scene(
     canon: &mut Canon,
-    now: &mut Now,
+    now: &mut State,
     actors: &[String],
     places: &[String],
     facts: &[String],
@@ -165,7 +155,7 @@ fn apply_scene(
     }
 }
 
-fn move_actor(now: &mut Now, actor_id: &str, place: &str) {
+fn move_actor(now: &mut State, actor_id: &str, place: &str) {
     let old = now
         .actors
         .get(actor_id)
@@ -186,16 +176,16 @@ fn move_actor(now: &mut Now, actor_id: &str, place: &str) {
     }
 }
 
-fn hidden_stays_hidden(canon: &Canon, now: &Now) -> Result<(), TestCaseError> {
+fn assert_hidden_stays_hidden(canon: &Canon, now: &State) -> Result<(), TestCaseError> {
     for (pc, actor) in &now.actors {
         if !actor.is_pc() {
             continue;
         }
-        let view = perceive_viewer(
+        let view = perceive_as(
             canon,
             now,
             &Presence::default(),
-            &ViewerId::Player(pc.clone()),
+            &Viewer::Player(pc.clone()),
         )
         .map_err(|err| fail(err.to_string()))?;
         for (id, fact) in &canon.facts {

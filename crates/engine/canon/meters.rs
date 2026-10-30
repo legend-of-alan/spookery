@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 
 use serde::Deserialize;
 
-use crate::canon::source::{load_headed, At, Diags, Problem, Source, METERS_SCHEMA};
+use crate::canon::source::{load_tagged, Diags, FileText, Locator, Problem, METERS_SCHEMA};
 use crate::diagnostic::Diagnostic;
 use crate::meter::MeterDef;
 
@@ -12,8 +12,8 @@ pub(super) fn load_meters(
     rel: &str,
     text: &str,
 ) -> Result<BTreeMap<String, MeterDef>, Vec<Diagnostic>> {
-    let file: MetersFile = load_headed(rel, text, METERS_SCHEMA, 0)?;
-    let source = Source {
+    let file: MetersFile = load_tagged(rel, text, METERS_SCHEMA, 0)?;
+    let source = FileText {
         file: rel,
         text,
         line_base: 0,
@@ -24,27 +24,27 @@ pub(super) fn load_meters(
         let path = format!("meters[{row}]");
         let mut found = Vec::new();
         let id_path = format!("{path}.id");
-        let id_at = At::Row {
+        let id_at = Locator::Row {
             list: "meters:",
             row,
             key: "id:",
         };
         let empty = ("a meter id is empty", "set id to a short name");
-        found.extend(source.required(&entry.id, &id_path, id_at, empty));
+        found.extend(source.refuse_empty(&entry.id, &id_path, id_at, empty));
         if entry.min > entry.base_cap {
             found.push(
                 Problem {
                     source: &source,
                     path: &format!("{path}.min"),
-                    at: At::Row {
+                    at: Locator::Row {
                         list: "meters:",
                         row,
                         key: "min:",
                     },
-                    problem: format!("meter '{}' has min above base_cap", entry.id),
+                    message: format!("meter '{}' has min above base_cap", entry.id),
                     hint: "set min at or below base_cap",
                 }
-                .schema(),
+                .into_diagnostic(),
             );
         }
         if entry.base_cap > entry.max {
@@ -52,37 +52,37 @@ pub(super) fn load_meters(
                 Problem {
                     source: &source,
                     path: &format!("{path}.base_cap"),
-                    at: At::Row {
+                    at: Locator::Row {
                         list: "meters:",
                         row,
                         key: "base_cap:",
                     },
-                    problem: format!("meter '{}' has base_cap above max", entry.id),
+                    message: format!("meter '{}' has base_cap above max", entry.id),
                     hint: "set base_cap at or below max",
                 }
-                .schema(),
+                .into_diagnostic(),
             );
         }
-        if !(entry.min..=entry.base_cap).contains(&entry.start) {
+        if !(entry.min..=entry.base_cap).contains(&entry.base) {
             found.push(
                 Problem {
                     source: &source,
-                    path: &format!("{path}.start"),
-                    at: At::Row {
+                    path: &format!("{path}.base"),
+                    at: Locator::Row {
                         list: "meters:",
                         row,
-                        key: "start:",
+                        key: "base:",
                     },
-                    problem: format!("meter '{}' has start outside min and base_cap", entry.id),
-                    hint: "set start between min and base_cap",
+                    message: format!("meter '{}' has base outside min and base_cap", entry.id),
+                    hint: "set base between min and base_cap",
                 }
-                .schema(),
+                .into_diagnostic(),
             );
         }
         let twice = ("meter", "is listed twice", "keep one meter");
         // A repeat is checked only on a row with nothing else wrong.
         let taken = found.is_empty() && meters.contains_key(&entry.id);
-        found.extend(taken.then(|| source.repeat(&entry.id, &id_path, id_at, twice)));
+        found.extend(taken.then(|| source.refuse_duplicate(&entry.id, &id_path, id_at, twice)));
         if !found.is_empty() {
             diags.extend(found);
             continue;
@@ -93,12 +93,12 @@ pub(super) fn load_meters(
                 min: entry.min,
                 base_cap: entry.base_cap,
                 max: entry.max,
-                start: entry.start,
+                start: entry.base,
                 hidden: entry.hidden,
             },
         );
     }
-    diags.result(meters)
+    diags.into_result(meters)
 }
 
 #[derive(Deserialize)]
@@ -106,17 +106,17 @@ pub(super) fn load_meters(
 struct MetersFile {
     #[serde(rename = "schema")]
     _schema: String,
-    meters: Vec<MeterEntryFile>,
+    meters: Vec<MeterYaml>,
 }
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct MeterEntryFile {
+struct MeterYaml {
     id: String,
     min: i64,
     base_cap: i64,
     max: i64,
-    start: i64,
+    base: i64,
     #[serde(default)]
     hidden: bool,
 }
@@ -141,7 +141,7 @@ meters:
     min: 2
     base_cap: 1
     max: 3
-    start: 1
+    base: 1
 ";
         let err = load_meters(broken).unwrap_err();
         assert!(
@@ -157,12 +157,12 @@ meters:
     min: 0
     base_cap: 1
     max: 1
-    start: 1
+    base: 1
   - id: grit
     min: 0
     base_cap: 1
     max: 1
-    start: 0
+    base: 0
 ";
         let err = load_meters(duplicate).unwrap_err();
         assert!(
@@ -177,7 +177,7 @@ meters:
     min: 0
     base_cap: 1
     max: 1
-    start: 1
+    base: 1
     kind: stat
 ";
         let err = load_meters(unknown).unwrap_err();
@@ -195,12 +195,12 @@ meters:
     min: 0
     base_cap: 1
     max: 1
-    start: 1
+    base: 1
   - id: nerve
     min: 2
     base_cap: 1
     max: 3
-    start: 1
+    base: 1
 ";
         let err = load_meters(text).unwrap_err();
         let min = err

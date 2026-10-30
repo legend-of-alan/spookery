@@ -13,28 +13,25 @@ use std::time::{Duration, Instant};
 use cucumber::{then, when};
 use serde_json::json;
 use spookery::ai::{
-    parse_tool_line, run_gm, Clock, CompleteError, CompletionRequest, Env, HttpModel, Limits,
-    Model, ScriptedModel, TurnWatch, WallClock,
+    parse_tool_result, run_gm, CompletionError, CompletionRequest, HttpModel, Limits, Model,
+    ScriptedModel, Settings, Timer, TurnWatch, WallClock,
 };
-use spookery::gm_connection::GmConnection;
+use spookery::gm_connection::Connection;
 
-use crate::support::{self, temp_pack};
+use crate::support::{self, copy_docks};
 use crate::World;
 
 use super::table;
 
 #[when(expr = "the operator runs ai-gm with an extra argument")]
-fn the_operator_runs_host_with_an_extra_argument(world: &mut World) {
-    let ([addr, door], listeners) = bind_game_and_agent();
+fn the_operator_runs_ai_gm_with_an_extra_argument(world: &mut World) {
+    let ([addr, door], listeners) = bind_game_and_door();
     world.listeners = listeners;
-    table::run(
-        world,
-        &["ai-gm", "extra", "--addr", &addr, "--mcp-http", &door],
-    );
+    table::run(world, &["ai-gm", "extra", "--addr", &addr, "--door", &door]);
 }
 
 #[when(expr = "the operator runs ai-gm with nothing listening")]
-fn the_operator_runs_host_with_nothing_listening(world: &mut World) {
+fn the_operator_runs_ai_gm_with_nothing_listening(world: &mut World) {
     let mut command = Command::new(env!("CARGO_BIN_EXE_spook"));
     command.args(["ai-gm", "--addr", "127.0.0.1:1"]);
     apply_model_env(&mut command, None);
@@ -47,10 +44,10 @@ fn the_operator_runs_host_with_nothing_listening(world: &mut World) {
 }
 
 #[when(expr = "the operator runs ai-gm without {string}")]
-fn the_operator_runs_host_without(world: &mut World, name: String) {
-    let ([addr, door], listeners) = bind_game_and_agent();
+fn the_operator_runs_ai_gm_without(world: &mut World, name: String) {
+    let ([addr, door], listeners) = bind_game_and_door();
     let mut command = Command::new(env!("CARGO_BIN_EXE_spook"));
-    command.args(["ai-gm", "--addr", &addr, "--mcp-http", &door]);
+    command.args(["ai-gm", "--addr", &addr, "--door", &door]);
     apply_model_env(&mut command, Some(&name));
     let output = command
         .output()
@@ -86,15 +83,15 @@ fn nothing_was_dialed(world: &mut World) {
     }
 }
 
-#[when(expr = "the host is pointed at an overridden agent door")]
-fn the_host_is_pointed_at_an_overridden_agent_door(world: &mut World) {
+#[when(expr = "the AI GM is pointed at an overridden agent door")]
+fn ai_gm_is_pointed_at_an_overridden_agent_door(world: &mut World) {
     let (listener, http) = free_listener();
     // Port 1's next port is 2, which an ephemeral door is not, so ignoring
-    // `--mcp-http` and dialing the next port misses this listener.
+    // `--door` and dialing the next port misses this listener.
     let addr = "127.0.0.1:1".to_string();
     let mut command = Command::new(env!("CARGO_BIN_EXE_spook"));
     command
-        .args(["ai-gm", "--addr", &addr, "--mcp-http", &http])
+        .args(["ai-gm", "--addr", &addr, "--door", &http])
         .stdin(Stdio::null());
     apply_model_env(&mut command, None);
     let child = command
@@ -121,21 +118,21 @@ fn the_host_is_pointed_at_an_overridden_agent_door(world: &mut World) {
     }
 }
 
-#[then(expr = "the host dialed that address")]
-fn the_host_dialed_that_address(world: &mut World) {
+#[then(expr = "the AI GM dialed that address")]
+fn ai_gm_dialed_that_address(world: &mut World) {
     assert_eq!(world.scratch, "dialed");
 }
 
-#[when(expr = "the host seat says good evening and calls an unknown tool")]
-fn the_host_seat_says(world: &mut World) {
-    let mark = table::player_len(world);
+#[when(expr = "the GM seat says good evening and calls an unknown tool")]
+fn the_gm_seat_says(world: &mut World) {
+    let mark = table::player_mark(world);
     let door = table::door_addr(world).parse().unwrap();
     let mut seat =
-        support::block_on(GmConnection::connect_door(door)).unwrap_or_else(|err| panic!("{err}"));
+        support::block_on(Connection::connect_door(door)).unwrap_or_else(|err| panic!("{err}"));
     let say =
         support::block_on(seat.call("say", json!({"address": "table", "text": "good evening"})))
             .unwrap_or_else(|err| panic!("{err}"));
-    let again = parse_tool_line(&say.raw).unwrap_or_else(|err| panic!("{err}"));
+    let again = parse_tool_result(&say.raw).unwrap_or_else(|err| panic!("{err}"));
     assert!(!say.refused, "{}", say.raw);
     assert!(!again.refused, "{}", again.raw);
     assert_eq!(again.body, say.body);
@@ -167,13 +164,13 @@ fn the_tape_from_is_gm(world: &mut World) {
     assert!(tape.contains("\"from\":\"gm\""), "{tape}");
 }
 
-#[then(expr = "the host call was refused")]
-fn the_host_call_was_refused(world: &mut World) {
+#[then(expr = "the GM call was refused")]
+fn the_gm_call_was_refused(world: &mut World) {
     assert_eq!(world.stdout, "refused", "{}", world.scratch);
 }
 
-#[when(expr = "the scripted host plays the turn checks")]
-fn the_scripted_host_plays_the_turn_checks(world: &mut World) {
+#[when(expr = "the scripted AI GM plays the turn checks")]
+fn the_scripted_ai_gm_plays_the_turn_checks(world: &mut World) {
     speech_leaves_world_time_and_a_gm_say_does_not_call(world);
     travel_rounds_once(world, false);
     travel_rounds_once(world, true);
@@ -181,21 +178,21 @@ fn the_scripted_host_plays_the_turn_checks(world: &mut World) {
     sit_commits_the_waiting_queue(world);
 }
 
-#[when(expr = "play and host and a stub run a speech turn and a travel turn")]
-fn play_and_host_and_a_stub(world: &mut World) {
-    let pack = temp_pack("host-stub");
+#[when(expr = "play and the AI GM and a stub run a speech turn and a travel turn")]
+fn play_and_ai_gm_and_a_stub(world: &mut World) {
+    let pack = copy_docks("host-stub");
     let aldric = pack.join("cast/aldric.md");
     let mut body = fs::read_to_string(&aldric).unwrap();
     body.push_str("\nCASTBODYONLY-FIXTURE\n");
     fs::write(&aldric, body).unwrap();
     spookery_engine::migrate_pack(&pack).unwrap_or_else(|err| panic!("migrate: {err}"));
-    let (stub_port, posts) = stub_server();
+    let (stub_port, posts) = start_empty_act_stub();
     table::listen(world, &pack);
     let addr = table::game_addr(world);
     let door = table::door_addr(world);
     let mut host_cmd = Command::new(env!("CARGO_BIN_EXE_spook"));
     host_cmd
-        .args(["ai-gm", "--addr", &addr, "--mcp-http", &door])
+        .args(["ai-gm", "--addr", &addr, "--door", &door])
         .stdin(Stdio::null());
     apply_model_env(&mut host_cmd, None);
     let mut host = host_cmd
@@ -250,26 +247,26 @@ fn play_and_host_and_a_stub(world: &mut World) {
     );
     drop(play_in);
     drop(play);
-    table::stop_server(world);
+    table::stop_host(world);
     let _ = fs::remove_dir_all(&pack);
 }
 
 fn speech_leaves_world_time_and_a_gm_say_does_not_call(world: &mut World) {
-    with_host(world, "host-speech", |world, pack, _port, model, watch| {
-        table::seat_player(world, pack);
+    run_ai_gm(world, "host-speech", |world, pack, _port, model, watch| {
+        table::seat_rowan(world, pack);
         let sit = world_time(pack);
         model.push(Ok(Some(
             r#"{"says":[{"address":"table","text":"evening"}],"intents":[]}"#.to_string(),
         )));
         table::player_send(world, "say hello", "\"kind\":\"say\"");
-        wait_idle(watch, model, 1);
+        wait_not_busy(watch, model, 1);
         assert_eq!(world_time(pack), sit, "speech changed world_time");
         let tape = tape_text(pack);
         assert!(tape.contains("\"from\":\"gm\""), "{tape}");
         assert!(tape.contains("evening"), "{tape}");
         // The world loop answers this look after it sent the GM its own say.
-        table::player_send(world, "look", table::LINES);
-        wait_idle(watch, model, 1);
+        table::player_send(world, "look", table::LINES_KIND);
+        wait_not_busy(watch, model, 1);
         assert_eq!(model.calls().len(), 1, "a gm say called the model");
         assert!(!watch.busy.load(Ordering::Acquire));
         assert_eq!(world_time(pack), sit);
@@ -282,22 +279,22 @@ fn travel_rounds_once(world: &mut World, transport_error: bool) {
     } else {
         "host-travel"
     };
-    with_host(world, label, |world, pack, _port, model, watch| {
+    run_ai_gm(world, label, |world, pack, _port, model, watch| {
         if transport_error {
-            model.push(Err(CompleteError::Transport(
+            model.push(Err(CompletionError::Transport(
                 "model transport error".to_string(),
             )));
         } else {
             model.push(Ok(Some(r#"{"says":[],"intents":[]}"#.to_string())));
         }
-        table::seat_player(world, pack);
+        table::seat_rowan(world, pack);
         let sit = world_time(pack);
         table::player_send(world, "travel docks_street", "\"kind\":\"queued\"");
         table::wait_world_time(pack, sit + 5);
-        wait_idle(watch, model, 1);
+        wait_not_busy(watch, model, 1);
         // The world loop answers this look after any second round or GM event queued before it.
-        table::player_send(world, "look", table::LINES);
-        wait_idle(watch, model, 1);
+        table::player_send(world, "look", table::LINES_KIND);
+        wait_not_busy(watch, model, 1);
         assert_eq!(world_time(pack), sit + 5, "travel ran twice");
         assert_eq!(model.calls().len(), 1, "{}", model.calls().len());
         assert_eq!(
@@ -311,7 +308,7 @@ fn travel_rounds_once(world: &mut World, transport_error: bool) {
 }
 
 fn epilogue_does_not_play_another_round(world: &mut World) {
-    with_host(
+    run_ai_gm(
         world,
         "host-epilogue",
         |world, pack, _port, model, watch| {
@@ -319,11 +316,11 @@ fn epilogue_does_not_play_another_round(world: &mut World) {
             model.push(Ok(Some(
                 r#"{"says":[{"address":"table","text":"the roll lands"}]}"#.to_string(),
             )));
-            table::seat_player(world, pack);
+            table::seat_rowan(world, pack);
             let sit = world_time(pack);
             table::player_send(world, "grit", "\"kind\":\"queued\"");
             table::wait_world_time(pack, sit + 5);
-            wait_idle(watch, model, 2);
+            wait_not_busy(watch, model, 2);
             let tape = tape_text(pack);
             assert!(tape.contains("the roll lands"), "{tape}");
             let calls = model.calls();
@@ -336,8 +333,8 @@ fn epilogue_does_not_play_another_round(world: &mut World) {
                 calls[1].prompt
             );
             // The world loop answers this look after the epilogue say and any round it caused.
-            table::player_send(world, "look", table::LINES);
-            wait_idle(watch, model, 2);
+            table::player_send(world, "look", table::LINES_KIND);
+            wait_not_busy(watch, model, 2);
             assert_eq!(world_time(pack), sit + 5, "epilogue played a round");
             assert_eq!(model.calls().len(), 2);
         },
@@ -345,19 +342,19 @@ fn epilogue_does_not_play_another_round(world: &mut World) {
 }
 
 fn sit_commits_the_waiting_queue(world: &mut World) {
-    let pack = temp_pack("host-sit");
+    let pack = copy_docks("host-sit");
     table::listen(world, &pack);
     table::seat_gm(world);
-    table::seat_player(world, &pack);
+    table::seat_rowan(world, &pack);
     table::player_send(world, "say good evening", "\"kind\":\"say\"");
     table::player_send(world, "travel docks_street", "\"kind\":\"queued\"");
     assert_eq!(world_time(&pack), 1080);
     table::release_gm(world);
     let model = ScriptedModel::new();
     model.push(Ok(Some(r#"{"says":[],"intents":[]}"#.to_string())));
-    let (handle, watch) = start_host(world, &model);
+    let (handle, watch) = start_ai_gm(world, &model);
     table::wait_world_time(&pack, 1085);
-    wait_idle(&watch, &model, 1);
+    wait_not_busy(&watch, &model, 1);
     assert_eq!(
         watch.high_water.load(Ordering::Acquire),
         watch.sit_seq.load(Ordering::Acquire),
@@ -365,35 +362,35 @@ fn sit_commits_the_waiting_queue(world: &mut World) {
     );
     assert!(watch.sit_seq.load(Ordering::Acquire) > 0);
     // The world loop answers this look after the sit's commit and any GM event it sent.
-    table::player_send(world, "look", table::LINES);
-    wait_idle(&watch, &model, 1);
+    table::player_send(world, "look", table::LINES_KIND);
+    wait_not_busy(&watch, &model, 1);
     assert_eq!(world_time(&pack), 1085);
     assert_eq!(model.calls().len(), 1);
-    stop_host(world, handle);
+    stop_ai_gm(world, handle);
     let _ = fs::remove_dir_all(&pack);
 }
 
-fn with_host(
+fn run_ai_gm(
     world: &mut World,
     label: &str,
     body: impl FnOnce(&mut World, &Path, u16, &ScriptedModel, &TurnWatch),
 ) {
-    let pack = temp_pack(label);
+    let pack = copy_docks(label);
     table::listen(world, &pack);
-    let port = table::live_mut(world).port;
+    let port = table::live_mut(world).game_port;
     let model = ScriptedModel::new();
-    let (handle, watch) = start_host(world, &model);
+    let (handle, watch) = start_ai_gm(world, &model);
     body(world, &pack, port, &model, &watch);
-    stop_host(world, handle);
+    stop_ai_gm(world, handle);
     let _ = fs::remove_dir_all(&pack);
 }
 
-fn stop_host(world: &mut World, handle: thread::JoinHandle<Result<(), spookery::ai::Error>>) {
-    table::live_mut(world).server.take();
+fn stop_ai_gm(world: &mut World, handle: thread::JoinHandle<Result<(), spookery::ai::Error>>) {
+    table::live_mut(world).host.take();
     let _ = handle.join();
 }
 
-fn start_host(
+fn start_ai_gm(
     world: &mut World,
     model: &ScriptedModel,
 ) -> (
@@ -424,7 +421,7 @@ fn wait_listening(watch: &TurnWatch) {
     }
 }
 
-fn wait_idle(watch: &TurnWatch, model: &ScriptedModel, calls: usize) {
+fn wait_not_busy(watch: &TurnWatch, model: &ScriptedModel, calls: usize) {
     let start = Instant::now();
     loop {
         let ready = model.calls().len() >= calls && !watch.busy.load(Ordering::Acquire);
@@ -446,7 +443,7 @@ fn world_time(pack: &Path) -> u64 {
     let report = spookery_engine::testing::replay_journal(pack, None, None)
         .unwrap_or_else(|err| panic!("{err}"));
     let text = std::str::from_utf8(&report.now_yaml).unwrap();
-    spookery_engine::load_save(text).unwrap().world_time
+    spookery_engine::parse_save(text).unwrap().world_time
 }
 
 fn tape_text(pack: &Path) -> String {
@@ -454,8 +451,8 @@ fn tape_text(pack: &Path) -> String {
 }
 
 /// The game port and the agent door, each a free port of its own. Callers
-/// pass the door with `--mcp-http`, so no step needs two adjacent ports.
-fn bind_game_and_agent() -> ([String; 2], Vec<TcpListener>) {
+/// pass the door with `--door`, so no step needs two adjacent ports.
+fn bind_game_and_door() -> ([String; 2], Vec<TcpListener>) {
     let (game, game_addr) = free_listener();
     let (door, door_addr) = free_listener();
     ([game_addr, door_addr], vec![game, door])
@@ -493,12 +490,12 @@ fn a_hung_model_call_meets_a_queued_player_line(world: &mut World) {
     let total = Duration::from_secs(1);
     let backoff = Duration::from_secs(2);
     let clock = TestClock::new();
-    let (stub, events) = hang_server(clock.clone(), total, backoff);
-    let (handle, watch) = drive_when_free(world, stub, total, backoff, clock);
-    let advanced = wait_time(&pack, sit + 5, Duration::from_secs(8));
+    let (stub, events) = start_hung_stub(clock.clone(), total, backoff);
+    let (handle, watch) = start_http_ai_gm(world, stub, total, backoff, clock);
+    let advanced = wait_for_world_time(&pack, sit + 5, Duration::from_secs(8));
     let log = events.lock().unwrap().clone();
     let up = watch.listening.load(Ordering::Acquire) && !handle.is_finished();
-    stop_host(world, handle);
+    stop_ai_gm(world, handle);
     let _ = fs::remove_dir_all(&pack);
     world.stdout = if advanced {
         "advanced".to_string()
@@ -510,12 +507,12 @@ fn a_hung_model_call_meets_a_queued_player_line(world: &mut World) {
     } else {
         "down".to_string()
     };
-    world.scratch = hung_scratch(&log, total, backoff);
+    world.scratch = hang_report(&log, total, backoff);
 }
 
 #[when(expr = "a model answers 500 once and then a say")]
 fn a_model_answers_500_once_and_then_a_say(world: &mut World) {
-    status_turn(
+    play_http_status_turn(
         world,
         "host-retry",
         vec![
@@ -527,7 +524,7 @@ fn a_model_answers_500_once_and_then_a_say(world: &mut World) {
 
 #[when(expr = "a model answers 401")]
 fn a_model_answers_401(world: &mut World) {
-    status_turn(
+    play_http_status_turn(
         world,
         "host-unauthorized",
         vec![(401, UNAUTHORIZED_BODY.to_string())],
@@ -542,7 +539,7 @@ const UNAUTHORIZED_BODY: &str =
 /// One call straight through the HTTP model against a scripted stub, returning
 /// the error line the host would print.
 fn direct_error(replies: Vec<(u16, String)>) -> String {
-    let (stub, _posts) = scripted_stub(replies);
+    let (stub, _posts) = start_scripted_stub(replies);
     let mut model = http_model(
         stub,
         Duration::from_secs(5),
@@ -609,23 +606,23 @@ fn the_models_say_did_not_land(world: &mut World) {
     assert_eq!(world.scratch, "silent");
 }
 
-fn status_turn(world: &mut World, label: &str, replies: Vec<(u16, String)>) {
+fn play_http_status_turn(world: &mut World, label: &str, replies: Vec<(u16, String)>) {
     let (pack, sit) = queued_travel(world, label);
-    let (stub, posts) = scripted_stub(replies);
-    let (handle, _watch) = drive_when_free(
+    let (stub, posts) = start_scripted_stub(replies);
+    let (handle, _watch) = start_http_ai_gm(
         world,
         stub,
         Duration::from_secs(5),
         Duration::from_millis(50),
         WallClock,
     );
-    let advanced = wait_time(&pack, sit + 5, Duration::from_secs(8));
+    let advanced = wait_for_world_time(&pack, sit + 5, Duration::from_secs(8));
     let tape = tape_text(&pack);
     let recorded = posts.lock().unwrap().clone();
     for post in &recorded {
         assert_chat_post(post);
     }
-    stop_host(world, handle);
+    stop_ai_gm(world, handle);
     let _ = fs::remove_dir_all(&pack);
     world.stdout = if advanced {
         "advanced".to_string()
@@ -641,10 +638,10 @@ fn status_turn(world: &mut World, label: &str, replies: Vec<(u16, String)>) {
 }
 
 fn queued_travel(world: &mut World, label: &str) -> (std::path::PathBuf, u64) {
-    let pack = temp_pack(label);
+    let pack = copy_docks(label);
     table::listen(world, &pack);
     table::seat_gm(world);
-    table::seat_player(world, &pack);
+    table::seat_rowan(world, &pack);
     let sit = world_time(&pack);
     table::player_send(world, "travel docks_street", "\"kind\":\"queued\"");
     assert_eq!(world_time(&pack), sit, "travel committed before the host");
@@ -652,7 +649,7 @@ fn queued_travel(world: &mut World, label: &str) -> (std::path::PathBuf, u64) {
     (pack, sit)
 }
 
-fn drive_when_free<C>(
+fn start_http_ai_gm<C>(
     world: &World,
     stub: u16,
     total: Duration,
@@ -663,11 +660,11 @@ fn drive_when_free<C>(
     Arc<TurnWatch>,
 )
 where
-    C: Clock + Clone + 'static,
+    C: Timer + Clone + 'static,
 {
     let mut last = String::new();
     for _ in 0..40 {
-        let (handle, watch) = spawn_model(world, stub, total, backoff, clock.clone());
+        let (handle, watch) = spawn_http_ai_gm(world, stub, total, backoff, clock.clone());
         let start = Instant::now();
         while start.elapsed() < Duration::from_millis(500) {
             if watch.listening.load(Ordering::Acquire) {
@@ -706,9 +703,9 @@ where
     panic!("host did not listen: {last}");
 }
 
-fn http_model<C: Clock>(port: u16, total: Duration, backoff: Duration, clock: C) -> HttpModel<C> {
+fn http_model<C: Timer>(port: u16, total: Duration, backoff: Duration, clock: C) -> HttpModel<C> {
     HttpModel::with_limits(
-        Env::new("test-key", format!("http://127.0.0.1:{port}"), "grok-test"),
+        Settings::new("test-key", format!("http://127.0.0.1:{port}"), "grok-test"),
         Limits {
             total,
             connect: Duration::from_secs(1),
@@ -719,7 +716,7 @@ fn http_model<C: Clock>(port: u16, total: Duration, backoff: Duration, clock: C)
     .unwrap_or_else(|err| panic!("{err}"))
 }
 
-fn spawn_model<C>(
+fn spawn_http_ai_gm<C>(
     world: &World,
     stub: u16,
     total: Duration,
@@ -730,7 +727,7 @@ fn spawn_model<C>(
     Arc<TurnWatch>,
 )
 where
-    C: Clock + 'static,
+    C: Timer + 'static,
 {
     let watch = Arc::new(TurnWatch::default());
     let watch_bg = Arc::clone(&watch);
@@ -744,12 +741,12 @@ where
     (handle, watch)
 }
 
-fn wait_time(pack: &Path, expected: u64, bound: Duration) -> bool {
+fn wait_for_world_time(pack: &Path, expected: u64, bound: Duration) -> bool {
     let start = Instant::now();
     while start.elapsed() < bound {
         if let Ok(report) = spookery_engine::testing::replay_journal(pack, None, None) {
             if let Ok(text) = std::str::from_utf8(&report.now_yaml) {
-                if let Ok(now) = spookery_engine::load_save(text) {
+                if let Ok(now) = spookery_engine::parse_save(text) {
                     if now.world_time == expected {
                         return true;
                     }
@@ -783,7 +780,7 @@ enum Waiter {
 }
 
 impl TestClockState {
-    fn waker(&mut self, waiter: Waiter) -> &mut Option<Waker> {
+    fn waker_mut(&mut self, waiter: Waiter) -> &mut Option<Waker> {
         &mut self.wakers[waiter as usize]
     }
 }
@@ -809,10 +806,10 @@ fn poll_grant(
         *done = true;
         return Poll::Ready(());
     }
-    *state.waker(waiter) = Some(waker.clone());
+    *state.waker_mut(waiter) = Some(waker.clone());
     if granted(state) {
         *done = true;
-        *state.waker(waiter) = None;
+        *state.waker_mut(waiter) = None;
         return Poll::Ready(());
     }
     Poll::Pending
@@ -840,7 +837,7 @@ impl TestClock {
             let mut state = self.inner.lock().unwrap();
             state.now += duration;
             state.credit += duration;
-            state.waker(Waiter::Credit).take()
+            state.waker_mut(Waiter::Credit).take()
         };
         wake(waker);
     }
@@ -849,13 +846,13 @@ impl TestClock {
         let waker = {
             let mut state = self.inner.lock().unwrap();
             state.closes += 1;
-            state.waker(Waiter::Close).take()
+            state.waker_mut(Waiter::Close).take()
         };
         wake(waker);
     }
 }
 
-impl Clock for TestClock {
+impl Timer for TestClock {
     fn wait(&self, duration: Duration) -> impl Future<Output = ()> + Send {
         let clock = self.clone();
         let mut done = false;
@@ -877,7 +874,7 @@ impl Clock for TestClock {
         })
     }
 
-    fn abandon(&self) -> impl Future<Output = ()> + Send {
+    fn on_abandon(&self) -> impl Future<Output = ()> + Send {
         let clock = self.clone();
         let mut done = false;
         std::future::poll_fn(move |cx| {
@@ -905,7 +902,7 @@ enum HangEvent {
     Closed,
 }
 
-fn hung_scratch(log: &[HangEvent], timeout: Duration, backoff: Duration) -> String {
+fn hang_report(log: &[HangEvent], timeout: Duration, backoff: Duration) -> String {
     let opens: Vec<Duration> = log
         .iter()
         .filter_map(|event| match event {
@@ -945,7 +942,7 @@ fn hung_field(scratch: &str, key: &str) -> u128 {
         .unwrap_or_else(|| panic!("missing {key} in {scratch}"))
 }
 
-fn hang_server(
+fn start_hung_stub(
     clock: TestClock,
     timeout: Duration,
     backoff: Duration,
@@ -986,7 +983,7 @@ fn hang_server(
     (port, events)
 }
 
-fn scripted_stub(replies: Vec<(u16, String)>) -> (u16, Arc<Mutex<Vec<String>>>) {
+fn start_scripted_stub(replies: Vec<(u16, String)>) -> (u16, Arc<Mutex<Vec<String>>>) {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap_or_else(|err| panic!("bind: {err}"));
     let port = listener
         .local_addr()
@@ -1051,7 +1048,7 @@ fn assert_chat_post(raw: &str) {
     );
 }
 
-fn stub_server() -> (u16, Arc<Mutex<Vec<String>>>) {
+fn start_empty_act_stub() -> (u16, Arc<Mutex<Vec<String>>>) {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let port = listener.local_addr().unwrap().port();
     let posts = Arc::new(Mutex::new(Vec::new()));

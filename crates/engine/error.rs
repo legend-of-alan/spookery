@@ -20,14 +20,14 @@ pub enum Reason {
     ActorMismatch,
     TableEmpty,
     PackRevMismatch,
-    RulesRev,
+    RulesRevMismatch,
     UnknownMove,
     UnscopedPerceive,
     CommitConflict,
     HandEdit,
     Schema,
     NotInSpec,
-    SessionFull,
+    TableFull,
     SeatTaken,
     ChoosePc,
     MissingItem,
@@ -40,7 +40,7 @@ pub enum Reason {
 }
 
 impl Reason {
-    pub fn token(self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             Reason::IllegalClass => "ILLEGAL_CLASS",
             Reason::IllegalKnowledge => "ILLEGAL_KNOWLEDGE",
@@ -54,14 +54,14 @@ impl Reason {
             Reason::ActorMismatch => "ACTOR_MISMATCH",
             Reason::TableEmpty => "TABLE_EMPTY",
             Reason::PackRevMismatch => "PACK_REV_MISMATCH",
-            Reason::RulesRev => "RULES_REV",
+            Reason::RulesRevMismatch => "RULES_REV_MISMATCH",
             Reason::UnknownMove => "UNKNOWN_MOVE",
             Reason::UnscopedPerceive => "UNSCOPED_PERCEIVE",
             Reason::CommitConflict => "COMMIT_CONFLICT",
             Reason::HandEdit => "HAND_EDIT",
             Reason::Schema => "SCHEMA",
             Reason::NotInSpec => "NOT_IN_SPEC",
-            Reason::SessionFull => "SESSION_FULL",
+            Reason::TableFull => "TABLE_FULL",
             Reason::SeatTaken => "SEAT_TAKEN",
             Reason::ChoosePc => "CHOOSE_PC",
             Reason::MissingItem => "MISSING_ITEM",
@@ -77,10 +77,10 @@ impl Reason {
 
 impl fmt::Display for Reason {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if let Reason::RulesRev = self {
-            return f.write_str("RULES_REV: start a fresh save");
+        if let Reason::RulesRevMismatch = self {
+            return f.write_str("RULES_REV_MISMATCH: start a fresh save");
         }
-        f.write_str(self.token())
+        f.write_str(self.as_str())
     }
 }
 
@@ -103,7 +103,7 @@ mod tests {
         Reason::ActorMismatch,
         Reason::TableEmpty,
         Reason::PackRevMismatch,
-        Reason::RulesRev,
+        Reason::RulesRevMismatch,
         Reason::UnknownMove,
         Reason::UnscopedPerceive,
         Reason::CommitConflict,
@@ -111,7 +111,7 @@ mod tests {
         Reason::TriggerLeak,
         Reason::Schema,
         Reason::NotInSpec,
-        Reason::SessionFull,
+        Reason::TableFull,
         Reason::SeatTaken,
         Reason::ChoosePc,
         Reason::MissingItem,
@@ -123,7 +123,7 @@ mod tests {
     ];
 
     /// A new variant fails to compile here until it is added to `ALL`.
-    fn listed(reason: Reason) -> bool {
+    fn is_listed(reason: Reason) -> bool {
         match reason {
             Reason::IllegalClass
             | Reason::IllegalKnowledge
@@ -137,7 +137,7 @@ mod tests {
             | Reason::ActorMismatch
             | Reason::TableEmpty
             | Reason::PackRevMismatch
-            | Reason::RulesRev
+            | Reason::RulesRevMismatch
             | Reason::UnknownMove
             | Reason::UnscopedPerceive
             | Reason::CommitConflict
@@ -145,7 +145,7 @@ mod tests {
             | Reason::TriggerLeak
             | Reason::Schema
             | Reason::NotInSpec
-            | Reason::SessionFull
+            | Reason::TableFull
             | Reason::SeatTaken
             | Reason::ChoosePc
             | Reason::MissingItem
@@ -160,10 +160,10 @@ mod tests {
     #[test]
     fn every_token_round_trips() {
         for reason in ALL {
-            assert!(listed(reason));
-            assert!(!reason.token().is_empty());
+            assert!(is_listed(reason));
+            assert!(!reason.as_str().is_empty());
             let stored = serde_json::to_string(&reason).unwrap();
-            assert_eq!(stored, format!("\"{}\"", reason.token()));
+            assert_eq!(stored, format!("\"{}\"", reason.as_str()));
             assert_eq!(serde_json::from_str::<Reason>(&stored).unwrap(), reason);
         }
     }

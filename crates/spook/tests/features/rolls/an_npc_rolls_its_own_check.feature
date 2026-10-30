@@ -43,4 +43,4 @@ Feature: An NPC rolls its own check
     Given a docks table with a seated player
     When the player names another PC
     Then world_time is 1080
-    And no round file was written
+    And no round record was written

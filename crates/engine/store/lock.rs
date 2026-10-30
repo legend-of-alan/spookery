@@ -4,7 +4,7 @@ use std::fs::{File, OpenOptions};
 use std::path::Path;
 
 use crate::error::Reason;
-use crate::store::recover::recover;
+use crate::store::recovery::recover;
 
 const RW_LOCK: &str = "state/.pack.rw.lock";
 
@@ -63,12 +63,12 @@ mod locked {
 
 /// Held for as long as a process has the pack open for writing.
 /// Dropping it unlocks the file, which releases the lock.
-pub struct LockGuard {
+pub struct PackGuard {
     _file: LockedFile,
 }
 
 #[cfg(feature = "testing")]
-impl LockGuard {
+impl PackGuard {
     pub(crate) fn file(&self) -> &File {
         self._file.file()
     }
@@ -79,14 +79,14 @@ impl LockGuard {
 ///
 /// ```compile_fail
 /// # let root = std::path::Path::new("pack");
-/// spookery_engine::testing::append_bundle(root, "{}\n");
+/// spookery_engine::testing::append_to_bundle(root, "{}\n");
 /// ```
 ///
 /// ```no_run
 /// # let root = std::path::Path::new("pack");
-/// let world = spookery_engine::testing::open(root);
+/// let world = spookery_engine::testing::resume(root);
 /// let write = spookery_engine::testing::lock_write(&world).unwrap();
-/// spookery_engine::testing::append_bundle(root, "{}\n", &write).unwrap();
+/// spookery_engine::testing::append_to_bundle(root, "{}\n", &write).unwrap();
 /// ```
 pub struct WriteGuard {
     _file: LockedFile,
@@ -100,9 +100,9 @@ pub struct ReadGuard {
 /// Take `state/.pack.lock`, then finish or roll back a commit a crash left half done.
 /// The lock makes this process the pack's writer, so only it repairs the pack.
 /// A path with no `state/` is `NOT_IN_SPEC`. A second writer is refused with `COMMIT_CONFLICT`.
-pub fn lock_pack(root: &Path) -> Result<LockGuard, Reason> {
+pub fn lock_pack(root: &Path) -> Result<PackGuard, Reason> {
     let file = open_lock(root, "state/.pack.lock")?;
-    let lock = LockGuard {
+    let lock = PackGuard {
         _file: LockedFile::try_lock(file)?,
     };
     recover(root, &lock_write(root, &lock)?)?;
@@ -111,7 +111,7 @@ pub fn lock_pack(root: &Path) -> Result<LockGuard, Reason> {
 
 /// Wait for readers to finish, then keep new ones out until the guard drops.
 /// Only the pack's writer takes it, and never inside another write guard.
-pub fn lock_write(root: &Path, _lock: &LockGuard) -> Result<WriteGuard, Reason> {
+pub fn lock_write(root: &Path, _lock: &PackGuard) -> Result<WriteGuard, Reason> {
     Ok(WriteGuard {
         _file: LockedFile::lock(open_lock(root, RW_LOCK)?)?,
     })
@@ -145,7 +145,7 @@ static READER_WAIT: std::sync::Mutex<Option<std::sync::mpsc::Sender<&'static str
 
 /// Send "waited" to `tx` the next time a reader waits out a write.
 #[cfg(feature = "testing")]
-pub fn on_reader_wait(tx: std::sync::mpsc::Sender<&'static str>) {
+pub fn watch_reader_wait(tx: std::sync::mpsc::Sender<&'static str>) {
     *READER_WAIT
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(tx);

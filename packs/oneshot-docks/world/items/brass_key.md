@@ -1,7 +1,7 @@
 ---
 schema: item
 id: brass_key
-name: Brass key
+display_name: Brass key
 tags: []
 rules: []
 ---

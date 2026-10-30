@@ -5,13 +5,12 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use spookery_engine::testing::{
-    self as support, insert_nell, journal::list_round_keys, now_of, open,
-    read_round as round_value, save_now, stamp_pack_rev, ActCounters, ActorLive, PauseView,
-    PlaceLive,
+    self as support, insert_nell, journal::list_round_keys, read_round as round_value, resume,
+    stamp_pack_rev, state_of, write_save, Act, ActorLive, Pause, PlaceLive,
 };
 use spookery_engine::{
-    emit_save, play_pack_once, GmIntentSpec, Message, MeterLive, MoveReport, Now, Outcome,
-    Presence, RunState, World as Shard,
+    emit_save, play_pack_once, IntentCall, Message, MeterLive, MoveReport, Outcome, Presence,
+    RunState, State, World as Shard,
 };
 
 use crate::World;
@@ -39,7 +38,7 @@ fn write_text(path: &Path, text: &str) {
     fs::write(path, text).unwrap_or_else(|err| panic!("write {}: {err}", path.display()));
 }
 
-fn lamp_oil(now: &Now) -> u32 {
+fn lamp_oil(now: &State) -> u32 {
     now.places
         .get("docks_shop")
         .and_then(|place| place.items.get("lamp_oil"))
@@ -47,7 +46,7 @@ fn lamp_oil(now: &Now) -> u32 {
         .unwrap_or_else(|| panic!("lamp_oil missing"))
 }
 
-fn flags_of(now: &Now, id: &str) -> Vec<String> {
+fn flags_of(now: &State, id: &str) -> Vec<String> {
     match now.actors.get(id) {
         Some(ActorLive::Npc { flags, .. } | ActorLive::Pc { flags, .. }) => flags.clone(),
         None => panic!("{id} missing"),
@@ -76,12 +75,12 @@ fn snapshot(root: &Path) -> Vec<(PathBuf, Vec<u8>)> {
     out
 }
 
-fn no_self_win() {
-    let pack = support::temp_pack("self-win");
+fn the_debt_clock_does_not_run_itself() {
+    let pack = support::copy_docks("self-win");
     for round in 1..=12 {
         play_pack_once(&pack).unwrap_or_else(|err| panic!("round {round}: {err}"));
     }
-    let now = now_of(&pack);
+    let now = state_of(&pack);
     assert_eq!(now.round_index, 12, "twelve empty-table rounds commit");
     let clock = now
         .clocks
@@ -114,9 +113,9 @@ fn rowan() -> Presence {
 }
 
 fn evening_note() {
-    let pack = support::temp_pack("evening");
+    let pack = support::copy_docks("evening");
     play_pack_once(&pack).unwrap_or_else(|err| panic!("round: {err}"));
-    let now = now_of(&pack);
+    let now = state_of(&pack);
     assert_eq!(lamp_oil(&now), 4);
     assert_eq!(now.actors.get("mira").unwrap().place(), "mira_rooms");
     assert_eq!(now.messages.len(), 1);
@@ -126,22 +125,22 @@ fn evening_note() {
 }
 
 fn morning_restock() {
-    let pack = support::temp_pack("morning");
+    let pack = support::copy_docks("morning");
     {
-        let shard = open(&pack);
-        let mut now = shard.now().clone();
+        let shard = resume(&pack);
+        let mut now = shard.state().clone();
         drop(shard);
         now.world_time = 600;
         now.messages.push(door_message());
         *now.actors.get_mut("pc_rowan").unwrap().place_mut() = "docks_street".to_string();
-        save_now(&pack, &now);
+        write_save(&pack, &now);
     }
     assert_eq!(
-        now_of(&pack).actors.get("mira").unwrap().place(),
+        state_of(&pack).actors.get("mira").unwrap().place(),
         "mira_rooms"
     );
     play_pack_once(&pack).unwrap_or_else(|err| panic!("round: {err}"));
-    let now = now_of(&pack);
+    let now = state_of(&pack);
     assert_eq!(lamp_oil(&now), 8);
     assert_eq!(now.actors.get("mira").unwrap().place(), "mira_rooms");
     assert_eq!(now.messages.len(), 1);
@@ -149,10 +148,10 @@ fn morning_restock() {
 }
 
 fn capped_restock() -> u32 {
-    let pack = support::temp_pack("capped");
+    let pack = support::copy_docks("capped");
     {
-        let shard = open(&pack);
-        let mut now = shard.now().clone();
+        let shard = resume(&pack);
+        let mut now = shard.state().clone();
         drop(shard);
         now.world_time = 600;
         now.messages.push(door_message());
@@ -162,57 +161,57 @@ fn capped_restock() -> u32 {
             .unwrap()
             .items
             .insert("lamp_oil".to_string(), 6);
-        save_now(&pack, &now);
+        write_save(&pack, &now);
     }
     play_pack_once(&pack).unwrap_or_else(|err| panic!("round: {err}"));
-    let oil = lamp_oil(&now_of(&pack));
+    let oil = lamp_oil(&state_of(&pack));
     let _ = fs::remove_dir_all(&pack);
     oil
 }
 
 fn off_hours_hold() {
-    let pack = support::temp_pack("off-hours");
+    let pack = support::copy_docks("off-hours");
     {
-        let shard = open(&pack);
-        let mut now = shard.now().clone();
+        let shard = resume(&pack);
+        let mut now = shard.state().clone();
         drop(shard);
         now.messages.push(door_message());
-        save_now(&pack, &now);
+        write_save(&pack, &now);
     }
     play_pack_once(&pack).unwrap_or_else(|err| panic!("round: {err}"));
-    let now = now_of(&pack);
+    let now = state_of(&pack);
     assert_eq!(lamp_oil(&now), 4);
     assert_eq!(now.messages.len(), 1);
     let _ = fs::remove_dir_all(&pack);
 }
 
 fn player_in_the_shop() {
-    let pack = support::temp_pack("present");
+    let pack = support::copy_docks("present");
     {
-        let shard = open(&pack);
-        let mut now = shard.now().clone();
+        let shard = resume(&pack);
+        let mut now = shard.state().clone();
         drop(shard);
         now.world_time = 600;
         now.messages.push(door_message());
         *now.actors.get_mut("mira").unwrap().place_mut() = "docks_shop".to_string();
-        save_now(&pack, &now);
+        write_save(&pack, &now);
     }
-    let mut shard = open(&pack);
-    let wall = shard.now().last_round_at.clone();
+    let mut shard = resume(&pack);
+    let wall = shard.state().last_round_at.clone();
     shard
         .play(&rowan(), &wall)
         .unwrap_or_else(|err| panic!("round: {err}"));
-    let now = now_of(&pack);
+    let now = state_of(&pack);
     assert_eq!(lamp_oil(&now), 4);
     assert_eq!(now.messages.len(), 1);
     assert_eq!(now.actors.get("mira").unwrap().act().last_act_round, 0);
     let _ = fs::remove_dir_all(&pack);
 }
 
-fn queue_gm(shard: &mut Shard, id: &str, actor: &str, move_name: &str) {
+fn queue_gm_intent(shard: &mut Shard, id: &str, actor: &str, move_name: &str) {
     shard
         .queue_gm_intent(
-            GmIntentSpec {
+            IntentCall {
                 id: None,
                 round_index: None,
                 actor_id: Some(actor.to_string()),
@@ -227,41 +226,41 @@ fn queue_gm(shard: &mut Shard, id: &str, actor: &str, move_name: &str) {
 }
 
 fn gm_restocks() {
-    let pack = support::temp_pack("gm-restock");
+    let pack = support::copy_docks("gm-restock");
     {
-        let shard = open(&pack);
-        let mut now = shard.now().clone();
+        let shard = resume(&pack);
+        let mut now = shard.state().clone();
         drop(shard);
         now.world_time = 600;
         now.messages.push(door_message());
         *now.actors.get_mut("mira").unwrap().place_mut() = "docks_shop".to_string();
-        save_now(&pack, &now);
+        write_save(&pack, &now);
     }
-    let mut shard = open(&pack);
-    let wall = shard.now().last_round_at.clone();
-    queue_gm(&mut shard, "gm-1", "mira", "restock_lamp_oil");
+    let mut shard = resume(&pack);
+    let wall = shard.state().last_round_at.clone();
+    queue_gm_intent(&mut shard, "gm-1", "mira", "restock_lamp_oil");
     shard.play(&rowan(), &wall).unwrap();
-    assert_eq!(lamp_oil(shard.now()), 8);
-    assert_eq!(shard.now().messages.len(), 1);
+    assert_eq!(lamp_oil(shard.state()), 8);
+    assert_eq!(shard.state().messages.len(), 1);
     let _ = fs::remove_dir_all(&pack);
 }
 
 fn claimed_note_sorts_first() {
-    let pack = support::temp_pack("claimed");
+    let pack = support::copy_docks("claimed");
     {
-        let shard = open(&pack);
-        let mut now = shard.now().clone();
+        let shard = resume(&pack);
+        let mut now = shard.state().clone();
         drop(shard);
         *now.actors.get_mut("mira").unwrap().place_mut() = "docks_shop".to_string();
-        save_now(&pack, &now);
+        write_save(&pack, &now);
     }
-    let mut shard = open(&pack);
-    let wall = shard.now().last_round_at.clone();
+    let mut shard = resume(&pack);
+    let wall = shard.state().last_round_at.clone();
     for (id, actor, move_name) in [
         ("gm-1", "bram", "wait"),
         ("gm-2", "mira", "leave_door_note"),
     ] {
-        queue_gm(&mut shard, id, actor, move_name);
+        queue_gm_intent(&mut shard, id, actor, move_name);
     }
     shard.play(&rowan(), &wall).unwrap();
     let log = round_value(&pack, "round-0001");
@@ -282,11 +281,11 @@ fn claimed_note_sorts_first() {
     let _ = fs::remove_dir_all(&pack);
 }
 
-fn catchup_cap() {
-    catchup_for(72, 12);
+fn catch_up_to_cap() {
+    catch_up_for(72, 12);
 }
 
-fn catchup_for(hours: u64, rounds: u64) {
+fn catch_up_for(hours: u64, rounds: u64) {
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let pack = support::fresh_dir("catchup");
     let _ = fs::remove_dir_all(&pack);
@@ -360,10 +359,10 @@ Rowan.
             wielded: None,
             known_facts: Vec::new(),
             visited: vec!["gate".to_string()],
-            act: ActCounters::default(),
+            act: Act::default(),
         },
     );
-    let now = Now {
+    let now = State {
         schema: "now".to_string(),
         shard_id: "ex".to_string(),
         pack_rev: rev,
@@ -372,7 +371,7 @@ Rowan.
         round_index: 0,
         world_time: 0,
         last_round_at: "2026-01-01T00:00:00Z".to_string(),
-        pause: PauseView {
+        pause: Pause {
             named_plot_clocks: RunState::Paused,
         },
         places,
@@ -384,13 +383,13 @@ Rowan.
     write_text(&pack.join("state/save.yaml"), &emit_save(&now).unwrap());
     let place_before = fs::read(pack.join("world/places/gate.md")).unwrap();
     let cast_before = fs::read(pack.join("cast/pc_rowan.md")).unwrap();
-    let mut shard = open(&pack);
-    let wall = shard.now().last_round_at.clone();
+    let mut shard = resume(&pack);
+    let wall = shard.state().last_round_at.clone();
     shard
         .catch_up(&wall, hours)
         .unwrap_or_else(|err| panic!("catch-up: {err}"));
     let saved = Shard::peek(&pack).unwrap_or_else(|err| panic!("peek: {err}"));
-    let now = saved.now();
+    let now = saved.state();
     assert_eq!(now.state_rev, rounds, "{hours} hours");
     assert_eq!(now.round_index, rounds);
     assert_eq!(now.world_time, rounds * 60);
@@ -407,20 +406,20 @@ Rowan.
     let _ = fs::remove_dir_all(&pack);
 }
 
-fn busy_skip() {
-    let pack = support::temp_pack("busy");
+fn a_busy_npc_skips() {
+    let pack = support::copy_docks("busy");
     {
-        let shard = open(&pack);
-        let mut now = shard.now().clone();
+        let shard = resume(&pack);
+        let mut now = shard.state().clone();
         drop(shard);
         now.world_time = 600;
         now.messages.push(door_message());
         now.actors.get_mut("mira").unwrap().act_mut().busy_until = Some(u64::MAX);
         *now.actors.get_mut("pc_rowan").unwrap().place_mut() = "docks_street".to_string();
-        save_now(&pack, &now);
+        write_save(&pack, &now);
     }
     play_pack_once(&pack).unwrap_or_else(|err| panic!("round: {err}"));
-    let now = now_of(&pack);
+    let now = state_of(&pack);
     assert_eq!(lamp_oil(&now), 4);
     assert_eq!(now.actors.get("mira").unwrap().act().last_act_round, 0);
     assert_eq!(now.actors.get("bram").unwrap().act().last_act_round, 0);
@@ -428,8 +427,8 @@ fn busy_skip() {
 }
 
 fn sealed_round(pack: &Path, state_rev: u64) -> String {
-    use spookery_engine::testing::journal::{genesis_hash, seal, JournalEntry, RoundRecord};
-    let entry = JournalEntry::Round(RoundRecord {
+    use spookery_engine::testing::journal::{genesis_hash, seal, Record, RoundRecord};
+    let entry = Record::Round(RoundRecord {
         round_index: 1,
         rules_rev: spookery_engine::testing::RULES_REV,
         state_rev_before: state_rev.saturating_sub(1),
@@ -464,12 +463,12 @@ fn sealed_round(pack: &Path, state_rev: u64) -> String {
 }
 
 fn an_open_transaction_writes_nothing() {
-    let dropped = support::temp_pack("drop");
+    let dropped = support::copy_docks("drop");
     let now_path = dropped.join("state/save.yaml");
     let before = fs::read(&now_path).unwrap();
-    let mut shard = open(&dropped);
-    let state_rev = shard.now().state_rev;
-    let oil = lamp_oil(shard.now());
+    let mut shard = resume(&dropped);
+    let state_rev = shard.state().state_rev;
+    let oil = lamp_oil(shard.state());
     shard
         .queue_player_move(&rowan(), "pc_rowan", "take", Some("lamp_oil"))
         .unwrap();
@@ -477,36 +476,36 @@ fn an_open_transaction_writes_nothing() {
     drop(shard);
     assert!(!dropped.join("state/.txn").exists());
     assert_eq!(fs::read(&now_path).unwrap(), before);
-    let restarted = open(&dropped);
-    assert_eq!(restarted.now().state_rev, state_rev);
-    assert_eq!(lamp_oil(restarted.now()), oil);
+    let restarted = resume(&dropped);
+    assert_eq!(restarted.state().state_rev, state_rev);
+    assert_eq!(lamp_oil(restarted.state()), oil);
     assert!(!dropped.join("state/memories").exists());
     let _ = fs::remove_dir_all(&dropped);
 }
 
 fn an_incomplete_transaction_is_discarded() {
-    let incomplete = support::temp_pack("incomplete");
+    let incomplete = support::copy_docks("incomplete");
     let now_path = incomplete.join("state/save.yaml");
     let before = fs::read(&now_path).unwrap();
     let txn = incomplete.join("state/.txn");
     fs::create_dir_all(txn.join("prev")).unwrap();
     fs::write(txn.join("prev/save.yaml"), b"not-yaml\n").unwrap();
-    let opened = open(&incomplete);
+    let opened = resume(&incomplete);
     assert_eq!(fs::read(&now_path).unwrap(), before);
     assert_eq!(
-        lamp_oil(opened.now()),
-        lamp_oil(&spookery_engine::load_save(std::str::from_utf8(&before).unwrap()).unwrap())
+        lamp_oil(opened.state()),
+        lamp_oil(&spookery_engine::parse_save(std::str::from_utf8(&before).unwrap()).unwrap())
     );
     assert!(!txn.exists());
     let _ = fs::remove_dir_all(&incomplete);
 }
 
-fn the_same_revision_restores_the_previous_save() {
-    let same = support::temp_pack("same-rev");
+fn a_leftover_transaction_keeps_the_save() {
+    let same = support::copy_docks("same-rev");
     let now_path = same.join("state/save.yaml");
     let original = fs::read(&now_path).unwrap();
-    let shard = open(&same);
-    let mut dirty = shard.now().clone();
+    let shard = resume(&same);
+    let mut dirty = shard.state().clone();
     drop(shard);
     dirty
         .places
@@ -520,17 +519,17 @@ fn the_same_revision_restores_the_previous_save() {
     fs::create_dir_all(txn.join("prev")).unwrap();
     fs::write(txn.join("prev/save.yaml"), &original).unwrap();
     fs::write(txn.join("COMPLETE"), b"").unwrap();
-    let opened = open(&same);
+    let opened = resume(&same);
     assert_eq!(fs::read(&now_path).unwrap(), dirty_bytes.as_bytes());
-    assert_eq!(lamp_oil(opened.now()), 999);
+    assert_eq!(lamp_oil(opened.state()), 999);
     assert!(!txn.exists());
     let _ = fs::remove_dir_all(&same);
 }
 
 fn the_next_revision_keeps_the_new_save() {
-    let next = support::temp_pack("next-rev");
-    let shard = open(&next);
-    let prev = shard.now().clone();
+    let next = support::copy_docks("next-rev");
+    let shard = resume(&next);
+    let prev = shard.state().clone();
     let mut live = prev.clone();
     drop(shard);
     live.state_rev = prev.state_rev.saturating_add(1);
@@ -559,9 +558,9 @@ fn the_next_revision_keeps_the_new_save() {
         "{\"round_index\":1,\"text\":\"kept-line\"}\n{\"round_index\":99,\"text\":\"orphan-line\"}\n",
     )
     .unwrap();
-    let opened = open(&next);
-    assert_eq!(opened.now().state_rev, live.state_rev);
-    assert_eq!(lamp_oil(opened.now()), kept_oil);
+    let opened = resume(&next);
+    assert_eq!(opened.state().state_rev, live.state_rev);
+    assert_eq!(lamp_oil(opened.state()), kept_oil);
     assert!(!txn.exists());
     let bundle_text = fs::read_to_string(&bundle).unwrap();
     assert!(bundle_text.ends_with('\n'), "{bundle_text}");
@@ -637,7 +636,7 @@ rules:
                 inventory: BTreeMap::new(),
                 wielded: None,
                 known_facts: Vec::new(),
-                act: ActCounters::default(),
+                act: Act::default(),
             },
         );
     }
@@ -656,7 +655,7 @@ rules:
             actors: Vec::new(),
         },
     );
-    let now = Now {
+    let now = State {
         schema: "now".to_string(),
         shard_id: "crowd".to_string(),
         pack_rev: rev,
@@ -665,7 +664,7 @@ rules:
         round_index: 0,
         world_time: 0,
         last_round_at: "2026-01-01T00:00:00Z".to_string(),
-        pause: PauseView {
+        pause: Pause {
             named_plot_clocks: RunState::Paused,
         },
         places,
@@ -676,7 +675,7 @@ rules:
     };
     write_text(&pack.join("state/save.yaml"), &emit_save(&now).unwrap());
     play_pack_once(&pack).unwrap_or_else(|err| panic!("round: {err}"));
-    let now = now_of(&pack);
+    let now = state_of(&pack);
     assert_eq!(now.round_index, 1);
     assert_eq!(
         now.actors.values().filter(|actor| actor.is_npc()).count(),
@@ -698,19 +697,25 @@ rules:
     let _ = fs::remove_dir_all(&pack);
 }
 
-fn tool_scope() {
-    let pack = support::temp_pack("scope");
+fn a_zero_budget_strips_fact_bodies() {
+    let pack = support::copy_docks("scope");
     let before = snapshot(&pack);
     let shard = Shard::open(&pack).unwrap();
     let call = |as_viewer: &str, budget: usize| {
-        shard.perceive_budget(&Presence::default(), as_viewer, budget)
+        shard.perceive_trimmed(&Presence::default(), as_viewer, budget)
     };
     let kernel = shard.perceive(&Presence::default(), "mira").unwrap();
     assert_eq!(call("mira", 800).unwrap(), kernel);
     let capped = call("mira", 0).unwrap();
-    assert!(kernel.known_facts.iter().any(|fact| !fact.body.is_empty()));
+    assert!(kernel
+        .known_facts
+        .iter()
+        .any(|fact| !fact.owner_body.is_empty()));
     assert_eq!(capped.known_facts.len(), kernel.known_facts.len());
-    assert!(capped.known_facts.iter().all(|fact| fact.body.is_empty()));
+    assert!(capped
+        .known_facts
+        .iter()
+        .all(|fact| fact.owner_body.is_empty()));
     let ledger = capped
         .known_facts
         .iter()
@@ -732,7 +737,7 @@ fn tool_scope() {
     let _ = fs::remove_dir_all(&pack);
 }
 
-fn markdown_files(dir: &Path, out: &mut Vec<PathBuf>) {
+fn collect_markdown_files(dir: &Path, out: &mut Vec<PathBuf>) {
     if !dir.exists() {
         return;
     }
@@ -744,7 +749,7 @@ fn markdown_files(dir: &Path, out: &mut Vec<PathBuf>) {
     for entry in entries {
         let path = entry.path();
         if path.is_dir() {
-            markdown_files(&path, out);
+            collect_markdown_files(&path, out);
         } else if path.extension().and_then(|ext| ext.to_str()) == Some("md") {
             out.push(path);
         }
@@ -752,10 +757,10 @@ fn markdown_files(dir: &Path, out: &mut Vec<PathBuf>) {
 }
 
 fn strip_bodies() {
-    let pack = support::temp_pack("strip");
+    let pack = support::copy_docks("strip");
     let mut files = Vec::new();
-    markdown_files(&pack.join("cast"), &mut files);
-    markdown_files(&pack.join("world"), &mut files);
+    collect_markdown_files(&pack.join("cast"), &mut files);
+    collect_markdown_files(&pack.join("world"), &mut files);
     assert!(!files.is_empty());
     for path in &files {
         let text = fs::read_to_string(path).unwrap();
@@ -774,11 +779,11 @@ fn strip_bodies() {
         .unwrap()
         .contains(LEDGER));
     stamp_pack_rev(&pack);
-    open(&pack);
+    resume(&pack);
     play_pack_once(&pack).unwrap_or_else(|err| panic!("stripped pack did not tick: {err}"));
     let perceive = format!(
         "{:?}",
-        open(&pack)
+        resume(&pack)
             .perceive(&Presence::default(), "aldric")
             .unwrap()
     );
@@ -786,7 +791,7 @@ fn strip_bodies() {
     let _ = fs::remove_dir_all(&pack);
 }
 
-fn patch_mira_flags(pack: &Path, flags: &str) {
+fn patch_mira_flags_and_place(pack: &Path, flags: &str) {
     let path = pack.join("cast/mira.md");
     let text = fs::read_to_string(&path).unwrap();
     let next = text.replacen(
@@ -797,31 +802,31 @@ fn patch_mira_flags(pack: &Path, flags: &str) {
     assert_ne!(next, text, "mira round block was not patched");
     fs::write(&path, next).unwrap();
     let now_path = pack.join("state/save.yaml");
-    let mut now = spookery_engine::load_save(&fs::read_to_string(&now_path).unwrap()).unwrap();
-    support::place_of(&mut now, "mira", "docks_shop");
-    save_now(pack, &now);
+    let mut now = spookery_engine::parse_save(&fs::read_to_string(&now_path).unwrap()).unwrap();
+    support::set_actor_place(&mut now, "mira", "docks_shop");
+    write_save(pack, &now);
 }
 
-fn play_mark(pack: &Path) -> Now {
-    let mut shard = open(pack);
-    let wall = shard.now().last_round_at.clone();
+fn play_mark(pack: &Path) -> State {
+    let mut shard = resume(pack);
+    let wall = shard.state().last_round_at.clone();
     shard
         .queue_player_move(&rowan(), "pc_rowan", "mark", Some("mira"))
         .unwrap();
     let played = shard.commit_then_fast_forward(&rowan(), &wall).unwrap();
     assert!(!played.is_empty(), "mark mira did not commit");
-    shard.now().clone()
+    shard.state().clone()
 }
 
 fn effects_run_on_both_outcomes_and_lists_run_on_one() {
     for (label, difficulty, success) in [("effects-pass", 0, true), ("effects-fail", 14, false)] {
-        let pack = support::temp_pack(label);
+        let pack = support::copy_docks(label);
         let mut moves = fs::read_to_string(pack.join("rules/verbs.yaml")).unwrap();
         moves.push_str(&format!(
             "\n  - id: mark\n    when:\n      verb: mark\n      target: actor\n    roll:\n      check: grit\n      target: {difficulty}\n    do:\n      - flag:\n          who: target\n          key: marked\n          value: true\n",
         ));
         fs::write(pack.join("rules/verbs.yaml"), moves).unwrap();
-        patch_mira_flags(&pack, "    - marked\n");
+        patch_mira_flags_and_place(&pack, "    - marked\n");
         stamp_pack_rev(&pack);
         let now = play_mark(&pack);
         assert_eq!(now.world_time, 1085);
@@ -845,13 +850,13 @@ fn effects_run_on_both_outcomes_and_lists_run_on_one() {
     }
 
     for (label, difficulty, flag) in [("lists-pass", 0, "marked"), ("lists-fail", 14, "missed")] {
-        let pack = support::temp_pack(label);
+        let pack = support::copy_docks(label);
         let mut moves = fs::read_to_string(pack.join("rules/verbs.yaml")).unwrap();
         moves.push_str(&format!(
-            "\n  - id: mark\n    when:\n      verb: mark\n      target: actor\n    roll:\n      check: grit\n      target: {difficulty}\n    success:\n      - flag:\n          who: target\n          key: marked\n          value: true\n    failure:\n      - flag:\n          who: target\n          key: missed\n          value: true\n",
+            "\n  - id: mark\n    when:\n      verb: mark\n      target: actor\n    roll:\n      check: grit\n      target: {difficulty}\n    success:\n      - flag:\n          who: target\n          key: marked\n          value: true\n    miss:\n      - flag:\n          who: target\n          key: missed\n          value: true\n",
         ));
         fs::write(pack.join("rules/verbs.yaml"), moves).unwrap();
-        patch_mira_flags(&pack, "    - marked\n    - missed\n");
+        patch_mira_flags_and_place(&pack, "    - marked\n    - missed\n");
         stamp_pack_rev(&pack);
         let now = play_mark(&pack);
         assert_eq!(flags_of(&now, "mira"), vec![flag.to_string()], "{label}");
@@ -860,11 +865,11 @@ fn effects_run_on_both_outcomes_and_lists_run_on_one() {
     }
 }
 
-fn rolled_stat(reports: &[MoveReport], stat: i64) -> spookery_engine::Roll {
+fn roll_with_stat(reports: &[MoveReport], stat: i64) -> spookery_engine::Roll {
     reports
         .iter()
         .find_map(|report| match report {
-            MoveReport::Rolled { out, .. } if out.stat == stat => Some(out.clone()),
+            MoveReport::Rolled { roll: out, .. } if out.stat == stat => Some(out.clone()),
             _ => None,
         })
         .unwrap_or_else(|| panic!("no stat {stat} in {reports:?}"))
@@ -873,61 +878,64 @@ fn rolled_stat(reports: &[MoveReport], stat: i64) -> spookery_engine::Roll {
 fn opposing_total_reused() {
     for opposed in [false, true] {
         let label = if opposed { "opposed" } else { "open-check" };
-        let pack = support::temp_pack(label);
+        let pack = support::copy_docks(label);
         let mut moves = fs::read_to_string(pack.join("rules/verbs.yaml")).unwrap();
         moves.push_str(
-            "\n  - id: mark\n    when:\n      verb: mark\n      target: actor\n    roll:\n      check: grit\n      target: 0\n    success:\n      - flag:\n          who: target\n          key: marked\n          value: true\n    failure:\n      - flag:\n          who: target\n          key: missed\n          value: true\n  - id: defend\n    when:\n      verb: defend\n    roll:\n      check: grit\n      target: 0\n    success:\n      - flag:\n          who: self\n          key: guarded\n          value: true\n",
+            "\n  - id: mark\n    when:\n      verb: mark\n      target: actor\n    roll:\n      check: grit\n      target: 0\n    success:\n      - flag:\n          who: target\n          key: marked\n          value: true\n    miss:\n      - flag:\n          who: target\n          key: missed\n          value: true\n  - id: defend\n    when:\n      verb: defend\n    roll:\n      check: grit\n      target: 0\n    success:\n      - flag:\n          who: self\n          key: guarded\n          value: true\n",
         );
         fs::write(pack.join("rules/verbs.yaml"), moves).unwrap();
         insert_nell(&pack);
         stamp_pack_rev(&pack);
-        let mut shard = open(&pack);
+        let mut shard = resume(&pack);
         if opposed {
-            queue_gm(&mut shard, "gm-1", "pc_nell", "defend");
+            queue_gm_intent(&mut shard, "gm-1", "pc_nell", "defend");
         }
-        let wall = shard.now().last_round_at.clone();
+        let wall = shard.state().last_round_at.clone();
         shard
             .queue_player_move(&rowan(), "pc_rowan", "mark", Some("pc_nell"))
             .unwrap();
-        assert_eq!(shard.now().world_time, 1080);
+        assert_eq!(shard.state().world_time, 1080);
         let outputs = shard.commit_then_fast_forward(&rowan(), &wall).unwrap();
         let reports = outputs.into_iter().next().unwrap().reports;
-        let rowan = rolled_stat(&reports, 1);
-        assert_eq!(shard.now().world_time, 1085);
+        let rowan = roll_with_stat(&reports, 1);
+        assert_eq!(shard.state().world_time, 1085);
         let round = spookery_engine::testing::journal::read_record_line(&pack, "round-0001")
             .unwrap_or_else(|err| panic!("{}", err.detail));
         assert!(!round.contains("faces"));
         if opposed {
-            let nell = rolled_stat(&reports, 100);
+            let nell = roll_with_stat(&reports, 100);
             assert_eq!(nell.target, 0);
             assert_eq!(nell.outcome, Outcome::Success);
             assert!(nell.total >= 102, "{nell:?}");
             assert_eq!(rowan.target, nell.total);
             assert_eq!(rowan.outcome, Outcome::Miss);
-            let mut flags = flags_of(shard.now(), "pc_nell");
+            let mut flags = flags_of(shard.state(), "pc_nell");
             flags.sort();
             assert_eq!(flags, vec!["guarded".to_string(), "missed".to_string()]);
         } else {
             assert_eq!(rowan.target, 0);
             assert_eq!(rowan.outcome, Outcome::Success);
-            assert_eq!(flags_of(shard.now(), "pc_nell"), vec!["marked".to_string()]);
+            assert_eq!(
+                flags_of(shard.state(), "pc_nell"),
+                vec!["marked".to_string()]
+            );
         }
         let _ = fs::remove_dir_all(&pack);
     }
 }
 
 fn a_held_knife_still_runs_the_opposed_row() {
-    let held = support::temp_pack("item-held");
+    let held = support::copy_docks("item-held");
     let mut moves = fs::read_to_string(held.join("rules/verbs.yaml")).unwrap();
     moves.push_str(
-        "\n  - id: mark\n    when:\n      verb: mark\n      target: actor\n    if:\n      - has_item:\n          who: self\n          id: knife\n    roll:\n      check: grit\n      target: 0\n    success:\n      - flag:\n          who: target\n          key: marked\n          value: true\n    failure:\n      - flag:\n          who: target\n          key: missed\n          value: true\n  - id: defend\n    when:\n      verb: defend\n    roll:\n      check: grit\n      target: 0\n    success:\n      - flag:\n          who: self\n          key: guarded\n          value: true\n",
+        "\n  - id: mark\n    when:\n      verb: mark\n      target: actor\n    if:\n      - has_item:\n          who: self\n          id: knife\n    roll:\n      check: grit\n      target: 0\n    success:\n      - flag:\n          who: target\n          key: marked\n          value: true\n    miss:\n      - flag:\n          who: target\n          key: missed\n          value: true\n  - id: defend\n    when:\n      verb: defend\n    roll:\n      check: grit\n      target: 0\n    success:\n      - flag:\n          who: self\n          key: guarded\n          value: true\n",
     );
     fs::write(held.join("rules/verbs.yaml"), moves).unwrap();
     let knife = held.join("world/items/knife.md");
     fs::create_dir_all(knife.parent().unwrap()).unwrap();
     fs::write(
         &knife,
-        "---\nschema: item\nid: knife\nname: Knife\ntags: []\nrules: []\n---\n\nA knife.\n",
+        "---\nschema: item\nid: knife\ndisplay_name: Knife\ntags: []\nrules: []\n---\n\nA knife.\n",
     )
     .unwrap();
     insert_nell(&held);
@@ -941,16 +949,16 @@ fn a_held_knife_still_runs_the_opposed_row() {
     assert_ne!(next, text);
     fs::write(&now_path, next).unwrap();
     stamp_pack_rev(&held);
-    let mut shard = open(&held);
-    queue_gm(&mut shard, "gm-1", "pc_nell", "defend");
-    let wall = shard.now().last_round_at.clone();
+    let mut shard = resume(&held);
+    queue_gm_intent(&mut shard, "gm-1", "pc_nell", "defend");
+    let wall = shard.state().last_round_at.clone();
     shard
         .queue_player_move(&rowan(), "pc_rowan", "mark", Some("pc_nell"))
         .unwrap();
-    let before = shard.now().world_time;
+    let before = shard.state().world_time;
     let outputs = shard.commit_then_fast_forward(&rowan(), &wall).unwrap();
-    assert_ne!(shard.now().world_time, before);
-    let rowan = rolled_stat(&outputs[0].reports, 1);
+    assert_ne!(shard.state().world_time, before);
+    let rowan = roll_with_stat(&outputs[0].reports, 1);
     assert_eq!(rowan.outcome, Outcome::Miss);
     assert!(
         !spookery_engine::testing::journal::read_record_line(&held, "round-0001")
@@ -962,7 +970,7 @@ fn a_held_knife_still_runs_the_opposed_row() {
 
 #[when(expr = "twelve empty rounds pass")]
 fn twelve_empty_rounds_pass(_world: &mut World) {
-    no_self_win();
+    the_debt_clock_does_not_run_itself();
 }
 
 #[when(expr = "the evening round runs with Rowan away")]
@@ -1006,18 +1014,18 @@ fn the_gm_queues_the_door_note(_world: &mut World) {
 }
 
 #[when(expr = "seventy-two hours of catch-up run")]
-fn seventy_two_hours(_world: &mut World) {
-    catchup_cap();
+fn seventy_two_hours_of_catch_up_run(_world: &mut World) {
+    catch_up_to_cap();
 }
 
 #[when(expr = "one hour of catch-up runs")]
 fn one_hour_of_catch_up(_world: &mut World) {
-    catchup_for(1, 8);
+    catch_up_for(1, 8);
 }
 
 #[when(expr = "Mira is busy and a round runs")]
 fn mira_is_busy(_world: &mut World) {
-    busy_skip();
+    a_busy_npc_skips();
 }
 
 #[when(expr = "an open transaction is dropped")]
@@ -1032,7 +1040,7 @@ fn an_incomplete_transaction_is_opened(_world: &mut World) {
 
 #[when(expr = "a finished transaction repeats the current revision")]
 fn a_finished_transaction_repeats(_world: &mut World) {
-    the_same_revision_restores_the_previous_save();
+    a_leftover_transaction_keeps_the_save();
 }
 
 #[when(expr = "a finished transaction advances the revision")]
@@ -1041,13 +1049,13 @@ fn a_finished_transaction_advances(_world: &mut World) {
 }
 
 #[when(expr = "fifty NPCs share one round")]
-fn fifty_npcs(_world: &mut World) {
+fn fifty_npcs_share_one_round(_world: &mut World) {
     budget_caps();
 }
 
 #[when(expr = "an npc perceive is called with a zero budget")]
 fn an_npc_perceive_is_called(_world: &mut World) {
-    tool_scope();
+    a_zero_budget_strips_fact_bodies();
 }
 
 #[when(expr = "prose is stripped")]
@@ -1056,7 +1064,7 @@ fn prose_is_stripped(_world: &mut World) {
 }
 
 #[when(expr = "effect rows and outcome lists are played")]
-fn effect_rows_and_outcome_lists(_world: &mut World) {
+fn effect_rows_and_outcome_lists_are_played(_world: &mut World) {
     effects_run_on_both_outcomes_and_lists_run_on_one();
 }
 

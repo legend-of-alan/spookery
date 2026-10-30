@@ -5,7 +5,7 @@ use std::thread;
 
 use cucumber::{given, then, when};
 
-use spookery_engine::testing::{journal, lock_write, on_reader_wait, temp_pack};
+use spookery_engine::testing::{copy_docks, journal, lock_write, watch_reader_wait};
 use spookery_engine::{emit_save, lock_pack, World as Shard};
 
 use crate::{World, Writer};
@@ -32,14 +32,14 @@ fn commit_round(world: &mut World) {
         .as_mut()
         .expect("no writer holds the pack")
         .world;
-    let wall = shard.now().last_round_at.clone();
+    let wall = shard.state().last_round_at.clone();
     shard
         .play(&spookery_engine::Presence::default(), &wall)
         .unwrap_or_else(|err| panic!("play: {err}"));
 }
 
-fn peek_status(pack: &Path) -> Result<String, String> {
-    Shard::peek_summary(pack).map_err(|err| err.to_string())
+fn peek_digest(pack: &Path) -> Result<String, String> {
+    Shard::peek_digest(pack).map_err(|err| err.to_string())
 }
 
 /// Hold the write guard while the disk is `halfway`, start status, then `finish` and drop it.
@@ -47,12 +47,12 @@ fn peek_status(pack: &Path) -> Result<String, String> {
 fn peek_during(world: &mut World, halfway: impl FnOnce(), finish: impl FnOnce()) {
     let pack = world.pack().to_path_buf();
     let (tx, rx) = mpsc::channel();
-    on_reader_wait(tx.clone());
+    watch_reader_wait(tx.clone());
     let write = lock_write(writer(world)).unwrap_or_else(|err| panic!("write guard: {err}"));
     halfway();
     let peeked = thread::scope(|scope| {
         let status = scope.spawn(|| {
-            let peeked = peek_status(&pack);
+            let peeked = peek_digest(&pack);
             let _ = tx.send("peeked");
             peeked
         });
@@ -60,8 +60,8 @@ fn peek_during(world: &mut World, halfway: impl FnOnce(), finish: impl FnOnce())
         finish();
         drop(write);
         let peeked = status.join().expect("status panicked");
-        world.summary = vec![first.to_string()];
-        world.summary.extend(rx.try_iter().map(str::to_string));
+        world.wait_order = vec![first.to_string()];
+        world.wait_order.extend(rx.try_iter().map(str::to_string));
         peeked
     });
     world.scratch = peeked.unwrap_or_else(|err| panic!("status: {err}"));
@@ -69,12 +69,12 @@ fn peek_during(world: &mut World, halfway: impl FnOnce(), finish: impl FnOnce())
 
 #[given(expr = "the writer holds a docks pack")]
 fn the_writer_holds_a_docks_pack(world: &mut World) {
-    hold(world, temp_pack("read-lock"));
+    hold(world, copy_docks("read-lock"));
 }
 
 #[given(expr = "the writer holds a docks pack that checkpoints every round")]
 fn the_writer_holds_a_checkpointing_pack(world: &mut World) {
-    let pack = temp_pack("read-lock-checkpoint");
+    let pack = copy_docks("read-lock-checkpoint");
     let path = pack.join("pack.yaml");
     let mut text = fs::read_to_string(&path).unwrap();
     if !text.ends_with('\n') {
@@ -110,7 +110,7 @@ fn status_peeks_mid_checkpoint(world: &mut World) {
     commit_round(world);
     let snap = pack.join(format!(
         "state/checkpoints/{}.yaml",
-        writer(world).now().state_rev
+        writer(world).state().state_rev
     ));
     let after = fs::read(&save).unwrap();
     // The head is published and the save and snapshot are not yet.
@@ -129,18 +129,18 @@ fn status_peeks_mid_checkpoint(world: &mut World) {
 
 #[then(expr = "status waited for the write to finish")]
 fn status_waited(world: &mut World) {
-    assert_eq!(world.summary, ["waited", "peeked"]);
+    assert_eq!(world.wait_order, ["waited", "peeked"]);
 }
 
 /// With no write in progress, the tip is the writer's round and its text is the truth.
 #[then(expr = "status prints the round the writer committed")]
 fn status_prints_the_committed_round(world: &mut World) {
     let pack = world.pack();
-    let now = writer(world).now();
+    let now = writer(world).state();
     assert!(now.state_rev > 0, "the writer committed nothing");
     let tip = Shard::peek(pack).unwrap_or_else(|err| panic!("peek: {err}"));
-    assert_eq!(emit_save(tip.now()).unwrap(), emit_save(now).unwrap());
-    let text = peek_status(pack).unwrap_or_else(|err| panic!("status: {err}"));
+    assert_eq!(emit_save(tip.state()).unwrap(), emit_save(now).unwrap());
+    let text = peek_digest(pack).unwrap_or_else(|err| panic!("status: {err}"));
     assert!(text.contains("clock "), "{text}");
     assert_eq!(world.scratch, text);
 }

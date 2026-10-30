@@ -2,14 +2,14 @@
 
 use crate::canon::Canon;
 use crate::error::Reason;
-use crate::intent::{Intent, Source, Target, ViewerId};
-use crate::model::{Now, Presence};
+use crate::intent::{Intent, Source, Target, Viewer};
+use crate::model::{Presence, State};
 use crate::rule::{Owner, Rule, TargetKind, When};
 use crate::rules::cond;
 use crate::rules::cost;
 use crate::rules::expr::Ctx;
 use crate::rules::habits::is_eligible;
-use crate::rules::perceive::perceive_viewer;
+use crate::rules::perceive::perceive_as;
 
 /// A gate refusal. `Reason` stays fieldless. A cost shortfall keeps the missing name.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -32,7 +32,7 @@ impl GateRefusal {
     }
 
     pub fn token(&self) -> &'static str {
-        self.reason().token()
+        self.reason().as_str()
     }
 
     /// The shortfall, or the sentence a locked exit shows.
@@ -53,7 +53,7 @@ impl From<Reason> for GateRefusal {
 }
 
 /// A verb word, or this actor's habit local id. A full id does not select a rule.
-pub fn resolve<'a>(canon: &'a Canon, now: &Now, intent: &Intent) -> Result<&'a Rule, Reason> {
+pub fn rule_for<'a>(canon: &'a Canon, now: &State, intent: &Intent) -> Result<&'a Rule, Reason> {
     let habit = canon
         .rules
         .habits_of(intent.actor.actor_id())
@@ -62,7 +62,7 @@ pub fn resolve<'a>(canon: &'a Canon, now: &Now, intent: &Intent) -> Result<&'a R
     let verb = verb_rule(canon, now, intent);
     match intent.source {
         Source::Kernel => habit.or(verb).ok_or(Reason::UnknownMove),
-        Source::Player | Source::System if matches!(intent.actor, ViewerId::Npc(_)) => {
+        Source::Player | Source::System if matches!(intent.actor, Viewer::Npc(_)) => {
             habit.or(verb).ok_or(Reason::UnknownMove)
         }
         Source::Player | Source::System => {
@@ -74,7 +74,7 @@ pub fn resolve<'a>(canon: &'a Canon, now: &Now, intent: &Intent) -> Result<&'a R
     }
 }
 
-fn verb_rule<'a>(canon: &'a Canon, now: &Now, intent: &Intent) -> Option<&'a Rule> {
+fn verb_rule<'a>(canon: &'a Canon, now: &State, intent: &Intent) -> Option<&'a Rule> {
     let hint = match &intent.target {
         Target::Actor(token) => Some(token.as_str()),
         _ => None,
@@ -125,18 +125,18 @@ fn owner_verb<'a>(canon: &'a Canon, owner: &Owner, verb: &str) -> Option<&'a Rul
 /// Pick the rule for an intent, then `admit` it.
 pub fn gate<'a>(
     canon: &'a Canon,
-    now: &Now,
+    now: &State,
     presence: &Presence,
     intent: &Intent,
 ) -> Result<&'a Rule, GateRefusal> {
-    let rule = resolve(canon, now, intent)?;
+    let rule = rule_for(canon, now, intent)?;
     admit(canon, now, presence, intent, rule).map(|()| rule)
 }
 
 /// Check a rule already picked. A player-sourced habit skips its `if`. Cost is checked for every rule.
 pub fn admit(
     canon: &Canon,
-    now: &Now,
+    now: &State,
     presence: &Presence,
     intent: &Intent,
     rule: &Rule,
@@ -146,8 +146,8 @@ pub fn admit(
             return Err(Reason::Busy.into());
         }
     }
-    crate::map::admit(canon, now, presence, intent, rule)?;
-    if intent.source == Source::Player && !sees(canon, now, presence, intent) {
+    crate::travel::admit(canon, now, presence, intent, rule)?;
+    if intent.source == Source::Player && !can_name(canon, now, presence, intent) {
         return Err(Reason::NotInSpec.into());
     }
     if let When::Verb { target, .. } = &rule.when {
@@ -160,11 +160,11 @@ pub fn admit(
             return Err(Reason::Schema.into());
         }
     }
-    if intent.source == Source::Kernel && matches!(intent.actor, ViewerId::Player(_)) {
+    if intent.source == Source::Kernel && matches!(intent.actor, Viewer::Player(_)) {
         return Err(Reason::KernelOnPlayer.into());
     }
     if intent.source == Source::Kernel
-        && matches!(intent.actor, ViewerId::Npc(_))
+        && matches!(intent.actor, Viewer::Npc(_))
         && !is_eligible(canon, now, presence, intent.actor.actor_id())
     {
         return Err(Reason::Ineligible.into());
@@ -174,7 +174,7 @@ pub fn admit(
         cond::holds(canon, now, &Ctx { intent, presence }, &rule.if_)?;
     }
     if let Some(cost) = &rule.cost {
-        if let Err(shortfall) = cost::can_pay(canon, now, presence, intent, cost) {
+        if let Err(shortfall) = cost::afford(canon, now, presence, intent, cost) {
             return Err(GateRefusal::CantAfford(shortfall.missing));
         }
     }
@@ -182,7 +182,7 @@ pub fn admit(
 }
 
 /// A player names only what they hold or what `look` shows them.
-fn sees(canon: &Canon, now: &Now, presence: &Presence, intent: &Intent) -> bool {
+fn can_name(canon: &Canon, now: &State, presence: &Presence, intent: &Intent) -> bool {
     let id = match &intent.target {
         Target::Empty => return true,
         Target::Actor(id) | Target::Place(id) | Target::Clock(id) => id.as_str(),
@@ -190,11 +190,11 @@ fn sees(canon: &Canon, now: &Now, presence: &Presence, intent: &Intent) -> bool 
     if now
         .actors
         .get(intent.actor.actor_id())
-        .is_some_and(|actor| actor.count(id) > 0)
+        .is_some_and(|actor| actor.item_count(id) > 0)
     {
         return true;
     }
-    let Ok(view) = perceive_viewer(canon, now, presence, &intent.actor) else {
+    let Ok(view) = perceive_as(canon, now, presence, &intent.actor) else {
         return false;
     };
     view.place == id

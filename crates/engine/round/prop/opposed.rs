@@ -3,12 +3,12 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::journal::{self, JournalEntry, Step};
+use crate::journal::{self, Record, Step};
 use crate::model::Presence;
-use crate::world::{GmIntentSpec, World};
+use crate::world::{IntentCall, World};
 use crate::Reason;
 
-use super::play::TempPack;
+use super::support::TempPack;
 use crate::testing::{copy_dir, copy_pack, fresh_dir};
 
 const LUNGE: &str = "
@@ -17,7 +17,7 @@ const LUNGE: &str = "
     roll: { check: strike, target: 38, partial_at: 32 }
     success: [meter: { who: target, key: hp, add: -1 }, meter: { who: target, key: hp, add: -1 }]
     partial: [meter: { who: target, key: hp, add: -1 }, meter: { who: target, key: hp, add: -1 }]
-    failure: [meter: { who: self, key: hp, add: -1 }, meter: { who: self, key: hp, add: -1 }]
+    miss: [meter: { who: self, key: hp, add: -1 }, meter: { who: self, key: hp, add: -1 }]
 ";
 
 #[test]
@@ -78,7 +78,7 @@ fn fight(base: &Path, warmup: u32, refused: Option<Reason>) -> Result<(), String
         humans: 1,
         actors_present: vec!["pc_lark".to_string()],
     };
-    let wall = world.now().last_round_at.clone();
+    let wall = world.state().last_round_at.clone();
     for _ in 0..warmup {
         world
             .play(&lark, &wall)
@@ -88,7 +88,7 @@ fn fight(base: &Path, warmup: u32, refused: Option<Reason>) -> Result<(), String
         ("briar-strike", "npc_briar", "strike", "pc_lark"),
         ("lark-lunge", "pc_lark", "lunge", "npc_briar"),
     ] {
-        let spec = GmIntentSpec {
+        let spec = IntentCall {
             id: Some(id.to_string()),
             round_index: None,
             actor_id: Some(actor.to_string()),
@@ -104,9 +104,8 @@ fn fight(base: &Path, warmup: u32, refused: Option<Reason>) -> Result<(), String
     world
         .play(&lark, &wall)
         .map_err(|err| fail("fight", err.to_string()))?;
-    let entries = journal::read_entries(&pack.0).map_err(|fault| fail("journal", fault.detail))?;
-    let Some(JournalEntry::Round(last)) = entries.iter().rev().find(|entry| entry.changes_state())
-    else {
+    let entries = journal::read_records(&pack.0).map_err(|fault| fail("journal", fault.detail))?;
+    let Some(Record::Round(last)) = entries.iter().rev().find(|entry| entry.changes_state()) else {
         return Err(fail("journal", "no round record".to_string()));
     };
     let ran = |rule: &str| last.steps_run.contains(&Step::Rule(rule.to_string()));

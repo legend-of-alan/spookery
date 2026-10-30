@@ -4,7 +4,7 @@ use std::path::Path;
 use cucumber::{given, then, when};
 use spookery_engine::{ItemStack, Presence};
 
-use crate::support::spook;
+use crate::support::run_spook;
 use crate::World;
 
 use super::table;
@@ -14,7 +14,7 @@ clock assassination_debt 2 6 paused
 clock shop_day 1 1 running
 ";
 
-const DOOR: &str = "effect message 1 {\"message_id\":\"note_mira_door\",\"to\":[\"pc_rowan\"],\"place\":\"docks_shop\",\"fact_ids\":[],\"text\":\"Back at dusk. Oil on the shelf.\"}";
+const DOOR_NOTE: &str = "effect message 1 {\"message_id\":\"note_mira_door\",\"to\":[\"pc_rowan\"],\"place\":\"docks_shop\",\"fact_ids\":[],\"text\":\"Back at dusk. Oil on the shelf.\"}";
 
 const HOST: &str = "\
 effect message 1 {\"message_id\":\"note_mira_door\",\"to\":[\"pc_rowan\"],\"place\":\"docks_shop\",\"fact_ids\":[],\"text\":\"Back at dusk. Oil on the shelf.\"}
@@ -27,7 +27,7 @@ fn thirteen_rounds_pass(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
     let arg = pack.to_str().unwrap();
     for round in 1..=13 {
-        let output = spook(&["round", arg]);
+        let output = run_spook(&["round", arg]);
         assert!(
             output.status.success(),
             "round {round}\nstdout:\n{}\nstderr:\n{}",
@@ -35,7 +35,7 @@ fn thirteen_rounds_pass(world: &mut World) {
             String::from_utf8_lossy(&output.stderr)
         );
     }
-    world.before = table::files(&pack);
+    world.before = table::read_files(&pack);
 }
 
 #[then(expr = "the host text lists the clocks")]
@@ -64,7 +64,7 @@ fn the_host_text_lists_the_door_note(world: &mut World) {
 
 #[given(expr = "a docks table with {string} seated and no GM")]
 fn a_docks_table_with_one_pc_and_no_gm(world: &mut World, actor: String) {
-    let pack = crate::support::temp_pack("host-round");
+    let pack = crate::support::copy_docks("host-round");
     table::listen(world, &pack);
     table::seat_actor(world, &pack, &actor);
     world.pack = Some(pack);
@@ -95,13 +95,13 @@ fn closes_the_seat(world: &mut World, actor: String) {
 
 #[then(expr = "the status lists the door note")]
 fn the_status_lists_the_door_note(world: &mut World) {
-    assert!(world.stdout.contains(DOOR), "{}", world.stdout);
+    assert!(world.stdout.contains(DOOR_NOTE), "{}", world.stdout);
 }
 
 #[then(expr = "the host printed the door note exactly once")]
 fn the_host_printed_the_door_note_exactly_once(world: &mut World) {
     let text = table::host_stdout(world);
-    assert_eq!(text.matches(DOOR).count(), 1, "{text}");
+    assert_eq!(text.matches(DOOR_NOTE).count(), 1, "{text}");
 }
 
 #[then(expr = "every host printout ends with the clocks")]
@@ -150,7 +150,7 @@ fn the_hosts_last_printout_lists_the_clocks(world: &mut World) {
 
 #[given(expr = "the docks pack where Mira's door note carries the hidden fact {string}")]
 fn the_docks_pack_where_miras_door_note_carries(world: &mut World, fact_id: String) {
-    let pack = crate::support::temp_pack("hidden-note");
+    let pack = crate::support::copy_docks("hidden-note");
     rewrite_mira(
         &pack,
         "          fact_ids: []\n",

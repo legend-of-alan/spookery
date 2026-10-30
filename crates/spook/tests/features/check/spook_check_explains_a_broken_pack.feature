@@ -93,7 +93,7 @@ Feature: spook check explains a broken pack
   Scenario: An unreachable place is a warning and the check still exits 0
     Given a docks table
     When the street exit is removed
-    And the save hash is restamped
+    And the pack_rev is restamped
     And the operator runs spook check
     Then the check exits 0
     And the report names "WARNING"
@@ -108,7 +108,7 @@ Feature: spook check explains a broken pack
   Scenario: Teleport in verbs.yaml is a warning and the check still exits 0
     Given a docks table
     When travel in verbs.yaml teleports
-    And the save hash is restamped
+    And the pack_rev is restamped
     And the operator runs spook check
     Then the check exits 0
     And the report names "WARNING"

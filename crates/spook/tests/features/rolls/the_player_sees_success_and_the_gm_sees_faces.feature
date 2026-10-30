@@ -12,7 +12,7 @@ Feature: The player sees success and the GM sees faces
     When the player rolls grit
     Then the player line is queued
     And world_time is 1080
-    And no round file was written
+    And no round record was written
     When the GM commits the round
     Then the GM sees the grit faces
     And the player sees a check result without faces

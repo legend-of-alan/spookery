@@ -1,28 +1,31 @@
 //! Readable text for one player frame.
 
 use crate::protocol::{
-    exit_phrase, named_refusal, ClockView, ExitView, MessageView, MeterView, Outcome, PlayerMessage,
+    exit_phrase, named_refusal, ClockView, ExitView, MessageView, MeterView, Outcome, PlayerFrame,
 };
 
-/// Readable text for one player frame. A new [`PlayerMessage`] variant fails here until it is rendered.
-pub fn render(message: &PlayerMessage) -> String {
+/// Readable text for one player frame. A new [`PlayerFrame`] variant fails here until it is rendered.
+pub fn render(message: &PlayerFrame) -> String {
     match message {
-        PlayerMessage::Say {
+        PlayerFrame::Say {
             from,
             address: _,
             text,
             replay: _,
         } => format!("{}: {text}", speaker(from)),
-        PlayerMessage::Queued { id: _ } => "Your action is queued.".to_string(),
-        PlayerMessage::Check { outcome } => match outcome {
+        PlayerFrame::Queued { id: _ } => "Your action is queued.".to_string(),
+        PlayerFrame::Check { outcome } => match outcome {
             Outcome::Success => "Your roll succeeded.".to_string(),
             Outcome::Partial => "Your roll partly succeeded.".to_string(),
             Outcome::Miss => "Your roll missed.".to_string(),
         },
-        PlayerMessage::Resume { messages, clocks } => resume(messages, clocks),
-        PlayerMessage::Lines { text } => text.clone(),
-        PlayerMessage::Refused { code, missing } => named_refusal(code, missing.as_ref()),
-        PlayerMessage::View { .. } => view_text(message),
+        PlayerFrame::Resume { messages, clocks } => render_resume(messages, clocks),
+        PlayerFrame::Lines { text } => text.clone(),
+        PlayerFrame::Refused {
+            code,
+            detail: missing,
+        } => named_refusal(code, missing.as_ref()),
+        PlayerFrame::View { .. } => render_view(message),
     }
 }
 
@@ -56,20 +59,20 @@ impl PlayerFormatter {
 
     /// Text for this frame. Empty means print nothing.
     /// A leading newline is the blank line before the first live frame.
-    pub fn show(&mut self, message: &PlayerMessage) -> String {
+    pub fn format(&mut self, message: &PlayerFrame) -> String {
         match message {
-            PlayerMessage::Say {
+            PlayerFrame::Say {
                 from,
                 text,
                 replay: true,
                 ..
             } => self.open_earlier(format!("{}: {text}", speaker(from))),
-            PlayerMessage::Resume { messages, clocks } => {
+            PlayerFrame::Resume { messages, clocks } => {
                 if self.seen_resume {
                     return String::new();
                 }
                 self.seen_resume = true;
-                self.close_earlier(resume(messages, clocks))
+                self.close_earlier(render_resume(messages, clocks))
             }
             _ => self.close_earlier(render(message)),
         }
@@ -93,7 +96,7 @@ impl PlayerFormatter {
     }
 }
 
-fn resume(messages: &[MessageView], clocks: &[ClockView]) -> String {
+fn render_resume(messages: &[MessageView], clocks: &[ClockView]) -> String {
     let mut lines = Vec::new();
     for message in messages {
         let text = message.text.trim();
@@ -111,19 +114,19 @@ fn resume(messages: &[MessageView], clocks: &[ClockView]) -> String {
     }
 }
 
-fn view_text(message: &PlayerMessage) -> String {
-    let PlayerMessage::View {
+fn render_view(message: &PlayerFrame) -> String {
+    let PlayerFrame::View {
         viewer,
         place,
         scene,
         visible_actors,
         known_facts,
-        messages,
+        notes: messages,
         clocks,
         items,
         meters,
         exits,
-        unknown_mentioned: _,
+        unknown_mentions: _,
         habits: _,
     } = message
     else {
@@ -141,7 +144,7 @@ fn view_text(message: &PlayerMessage) -> String {
     if !scene.status.is_empty() {
         sections.push(scene.status.clone());
     }
-    let prose = scene.prose.trim();
+    let prose = scene.body.trim();
     if !prose.is_empty() {
         sections.push(prose.to_string());
     }
@@ -274,7 +277,7 @@ mod tests {
 
     #[test]
     fn a_say_is_a_name_and_the_text() {
-        let mira = render(&PlayerMessage::Say {
+        let mira = render(&PlayerFrame::Say {
             from: "npc:mira".to_string(),
             address: "table".to_string(),
             text: "the lamp is lit".to_string(),
@@ -283,7 +286,7 @@ mod tests {
         assert_eq!(mira, "Mira: the lamp is lit");
         assert_readable(&mira);
 
-        let gm = render(&PlayerMessage::Say {
+        let gm = render(&PlayerFrame::Say {
             from: "gm".to_string(),
             address: "table".to_string(),
             text: "evening".to_string(),
@@ -292,7 +295,7 @@ mod tests {
         assert_eq!(gm, "GM: evening");
         assert_readable(&gm);
 
-        let you = render(&PlayerMessage::Say {
+        let you = render(&PlayerFrame::Say {
             from: "player:pc_rowan".to_string(),
             address: "actor".to_string(),
             text: "hello".to_string(),
@@ -304,7 +307,7 @@ mod tests {
 
     #[test]
     fn a_queued_action_is_a_sentence() {
-        let text = render(&PlayerMessage::Queued {
+        let text = render(&PlayerFrame::Queued {
             id: "queue-id-42".to_string(),
         });
         assert_eq!(text, "Your action is queued.");
@@ -314,13 +317,13 @@ mod tests {
 
     #[test]
     fn a_check_is_a_short_sentence() {
-        let yes = render(&PlayerMessage::Check {
+        let yes = render(&PlayerFrame::Check {
             outcome: crate::protocol::Outcome::Success,
         });
-        let partial = render(&PlayerMessage::Check {
+        let partial = render(&PlayerFrame::Check {
             outcome: crate::protocol::Outcome::Partial,
         });
-        let miss = render(&PlayerMessage::Check {
+        let miss = render(&PlayerFrame::Check {
             outcome: crate::protocol::Outcome::Miss,
         });
         assert_eq!(yes, "Your roll succeeded.");
@@ -343,14 +346,14 @@ mod tests {
 
     #[test]
     fn a_resume_is_an_away_block() {
-        let text = render(&PlayerMessage::Resume {
+        let text = render(&PlayerFrame::Resume {
             messages: vec![note("note_shop", "the shop restocked")],
             clocks: Vec::new(),
         });
         assert_eq!(text, "While you were away:\nthe shop restocked");
         assert_readable(&text);
         assert_eq!(
-            render(&PlayerMessage::Resume {
+            render(&PlayerFrame::Resume {
                 messages: Vec::new(),
                 clocks: Vec::new(),
             }),
@@ -361,19 +364,19 @@ mod tests {
     #[test]
     fn a_later_resume_has_no_away_heading() {
         let mut formatter = PlayerFormatter::new();
-        let first = formatter.show(&PlayerMessage::Resume {
+        let first = formatter.format(&PlayerFrame::Resume {
             messages: vec![note("note_shop", "the shop restocked")],
             clocks: Vec::new(),
         });
         assert_eq!(first, "While you were away:\nthe shop restocked");
         assert_eq!(
-            formatter.show(&PlayerMessage::Resume {
+            formatter.format(&PlayerFrame::Resume {
                 messages: Vec::new(),
                 clocks: Vec::new(),
             }),
             ""
         );
-        let later = formatter.show(&PlayerMessage::Resume {
+        let later = formatter.format(&PlayerFrame::Resume {
             messages: vec![note("note_yard", "the yard stays watched")],
             clocks: Vec::new(),
         });
@@ -383,14 +386,14 @@ mod tests {
     #[test]
     fn replayed_speech_sits_under_one_heading() {
         let mut formatter = PlayerFormatter::new();
-        let first = formatter.show(&PlayerMessage::Say {
+        let first = formatter.format(&PlayerFrame::Say {
             from: "player:pc_lark".to_string(),
             address: "table".to_string(),
             text: "hello Briar".to_string(),
             replay: true,
         });
         assert_eq!(first, "Earlier:\nYou: hello Briar");
-        let second = formatter.show(&PlayerMessage::Say {
+        let second = formatter.format(&PlayerFrame::Say {
             from: "gm".to_string(),
             address: "table".to_string(),
             text: "evening".to_string(),
@@ -398,13 +401,13 @@ mod tests {
         });
         assert_eq!(second, "GM: evening");
         assert_eq!(
-            formatter.show(&PlayerMessage::Resume {
+            formatter.format(&PlayerFrame::Resume {
                 messages: Vec::new(),
                 clocks: Vec::new(),
             }),
             ""
         );
-        let place = formatter.show(&PlayerMessage::Lines {
+        let place = formatter.format(&PlayerFrame::Lines {
             text: "You are in Gate Yard.".to_string(),
         });
         assert_eq!(place, "\nYou are in Gate Yard.");
@@ -412,7 +415,7 @@ mod tests {
 
     #[test]
     fn a_resume_turns_digest_rows_into_sentences() {
-        let text = render(&PlayerMessage::Resume {
+        let text = render(&PlayerFrame::Resume {
             messages: vec![note("note_mira_door", "Back at dusk. Oil on the shelf.")],
             clocks: vec![
                 ClockView {
@@ -445,12 +448,12 @@ Shop day: 1/1"
 
     #[test]
     fn a_perceive_names_the_place_and_skips_empty_sections() {
-        let text = render(&PlayerMessage::View {
+        let text = render(&PlayerFrame::View {
             viewer: "pc_rowan".to_string(),
             place: "docks_shop".to_string(),
             scene: Box::new(crate::protocol::ViewScene {
                 place_name: "Docks Shop".to_string(),
-                prose: "The shop faces the water. Tins sit in a row.".to_string(),
+                body: "The shop faces the water. Tins sit in a row.".to_string(),
                 actor_names: vec!["Aldric".to_string(), "Rowan".to_string()],
                 status: String::new(),
             }),
@@ -458,16 +461,16 @@ Shop day: 1/1"
             known_facts: vec![KnownFact {
                 id: "fact_oil_on_shelf".to_string(),
                 text: "Oil is on the shelf.".to_string(),
-                body: "CANON-BODY".to_string(),
+                owner_body: "CANON-BODY".to_string(),
             }],
-            messages: vec![MessageView {
+            notes: vec![MessageView {
                 id: "note_door".to_string(),
                 to: vec!["pc_rowan".to_string()],
                 place: Some("docks_shop".to_string()),
                 fact_ids: vec!["fact_oil_on_shelf".to_string()],
                 text: "Back in an hour.".to_string(),
             }],
-            unknown_mentioned: vec!["secret_fact".to_string()],
+            unknown_mentions: vec!["secret_fact".to_string()],
             clocks: vec![
                 ClockView {
                     id: "assassination_debt".to_string(),
@@ -535,19 +538,19 @@ stairs (locked) — 2 min"
         assert!(!text.contains("docks_shop"), "{text}");
         assert_readable(&text);
 
-        let quiet = render(&PlayerMessage::View {
+        let quiet = render(&PlayerFrame::View {
             viewer: "pc_rowan".to_string(),
             place: "docks_street".to_string(),
             scene: Box::new(crate::protocol::ViewScene {
                 place_name: "Docks Street".to_string(),
-                prose: String::new(),
+                body: String::new(),
                 actor_names: vec!["Bram".to_string()],
                 status: "on the stairs until 21:40".to_string(),
             }),
             visible_actors: vec!["bram".to_string()],
             known_facts: Vec::new(),
-            messages: Vec::new(),
-            unknown_mentioned: Vec::new(),
+            notes: Vec::new(),
+            unknown_mentions: Vec::new(),
             clocks: Vec::new(),
             items: Vec::new(),
             meters: Vec::new(),

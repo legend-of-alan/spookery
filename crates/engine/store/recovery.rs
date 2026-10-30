@@ -5,10 +5,10 @@ use std::fs::{self, OpenOptions};
 use std::path::{Path, PathBuf};
 
 use crate::error::Reason;
-use crate::journal::{self, JournalEntry};
+use crate::journal::{self, Record};
 use crate::model::MemoryLine;
 use crate::store::codec::emit_memory_line;
-use crate::store::durable::{atomic_publish, fsync_dir, fsync_file, rename, tmp_path};
+use crate::store::durability::{fsync_dir, fsync_file, rename, tmp_path, write_atomic};
 use crate::store::lock::WriteGuard;
 
 /// Run by `lock_pack` before the writer reads a pack that a crash may have left mid-commit.
@@ -21,7 +21,7 @@ pub fn recover(root: &Path, write: &WriteGuard) -> Result<(), Reason> {
     cut_torn_tail(root)?;
     rebuild_memory_files(root)?;
     close_finished(root, write)?;
-    delete_tmp(&state);
+    remove_tmp(&state);
     Ok(())
 }
 
@@ -65,7 +65,7 @@ fn snapshot_matches(root: &Path, plain: &Path) -> bool {
     };
     fs::read(journal::checkpoint_path(root, mark.state_rev))
         .ok()
-        .is_some_and(|bytes| journal::hash_now(&bytes) == mark.state_hash)
+        .is_some_and(|bytes| journal::blake2s_tagged(&bytes) == mark.state_hash)
 }
 
 fn gz_matches(gz: &Path, plain: &[u8]) -> bool {
@@ -115,19 +115,19 @@ fn gzip_path(plain: &Path) -> PathBuf {
 /// the last checkpoint. A line for a round the live bundle does not have, and
 /// that the checkpoint does not cover, is dropped.
 fn rebuild_memory_files(root: &Path) -> Result<(), Reason> {
-    let records = journal::read_live(root).map_err(|fault| fault.reason)?;
+    let records = journal::read_live_records(root).map_err(|fault| fault.reason)?;
     let head = journal::read_head(root).map_err(|fault| fault.reason)?;
     let live_rounds: BTreeSet<u64> = records
         .iter()
         .filter_map(|entry| match entry {
-            JournalEntry::Round(record) => Some(record.round_index),
+            Record::Round(record) => Some(record.round_index),
             _ => None,
         })
         .collect();
     let fresh: Vec<MemoryLine> = records
         .iter()
         .filter_map(|entry| match entry {
-            JournalEntry::Round(record) => Some(record.memories.clone()),
+            Record::Round(record) => Some(record.memories.clone()),
             _ => None,
         })
         .flatten()
@@ -165,7 +165,7 @@ fn rebuild_memory_files(root: &Path) -> Result<(), Reason> {
                     continue;
                 }
                 if memory_round(line)
-                    .is_some_and(|round| keep_round(round, head.as_ref(), &live_rounds))
+                    .is_some_and(|round| is_round_kept(round, head.as_ref(), &live_rounds))
                 {
                     kept.push(line.to_string());
                 }
@@ -188,12 +188,16 @@ fn rebuild_memory_files(root: &Path) -> Result<(), Reason> {
         if body.is_empty() && !path.is_file() {
             continue;
         }
-        atomic_publish(&path, body.as_bytes())?;
+        write_atomic(&path, body.as_bytes())?;
     }
     Ok(())
 }
 
-fn keep_round(round: u64, head: Option<&journal::BundleHead>, live_rounds: &BTreeSet<u64>) -> bool {
+fn is_round_kept(
+    round: u64,
+    head: Option<&journal::CheckpointHead>,
+    live_rounds: &BTreeSet<u64>,
+) -> bool {
     if live_rounds.contains(&round) {
         return true;
     }
@@ -236,7 +240,7 @@ fn memory_round(line: &str) -> Option<u64> {
         .map(|row| row.round_index)
 }
 
-fn delete_tmp(dir: &Path) {
+fn remove_tmp(dir: &Path) {
     let Ok(entries) = fs::read_dir(dir) else {
         return;
     };
@@ -246,7 +250,7 @@ fn delete_tmp(dir: &Path) {
             if entry.file_name() == ".txn" {
                 continue;
             }
-            delete_tmp(&path);
+            remove_tmp(&path);
         } else if path
             .file_name()
             .and_then(|name| name.to_str())
@@ -264,20 +268,20 @@ mod tests {
     use crate::commit::commit;
     use crate::draft::Draft;
     use crate::model::Presence;
-    use crate::round::log::{RoundLine, RoundLog};
-    use crate::round::stage::advance::Clock;
+    use crate::round::log::{PlayedRound, RoundLog};
+    use crate::round::stage::advance::RoundTime;
     use crate::store::lock::lock_pack;
-    use crate::testing::temp_pack;
+    use crate::testing::copy_docks;
     use crate::world::World;
 
     #[test]
     fn a_torn_tail_is_cut_off_and_the_save_stays() {
-        let root = temp_pack("torn-tail");
-        let mut world = crate::testing::open(&root);
+        let root = copy_docks("torn-tail");
+        let mut world = crate::testing::resume(&root);
         let pre = fs::read(root.join("state/save.yaml")).unwrap();
         let nobody = crate::model::Presence::default();
         let draft = Draft::begin(&world, &nobody);
-        commit(&mut world, draft, journal_line()).unwrap();
+        commit(&mut world, draft, round_line()).unwrap();
         drop(world);
         let bundle = root.join("state/journal/bundle-0000.jsonl");
         let kept = fs::read(&bundle).unwrap();
@@ -286,7 +290,7 @@ mod tests {
         fs::write(&bundle, &torn).unwrap();
         drop(lock_pack(&root).unwrap());
         let opened = World::open(&root).unwrap();
-        assert_eq!(opened.now().state_rev, 0);
+        assert_eq!(opened.state().state_rev, 0);
         assert_eq!(fs::read(root.join("state/save.yaml")).unwrap(), pre);
         assert_eq!(fs::read(&bundle).unwrap(), kept);
         let _ = fs::remove_dir_all(&root);
@@ -294,30 +298,30 @@ mod tests {
 
     #[test]
     fn an_old_one_file_record_is_refused() {
-        let root = temp_pack("old-layout");
+        let root = copy_docks("old-layout");
         let log = root.join("state/journal");
         fs::create_dir_all(&log).unwrap();
         fs::write(log.join("migrate-0001.json"), "{}\n").unwrap();
         match lock_pack(&root) {
             Ok(_) => panic!("old layout locked"),
-            Err(err) => assert_eq!(err, crate::error::Reason::RulesRev),
+            Err(err) => assert_eq!(err, crate::error::Reason::RulesRevMismatch),
         }
         let _ = fs::remove_dir_all(&root);
     }
 
-    fn journal_line() -> RoundLine {
-        RoundLine {
-            clock: Clock {
+    fn round_line() -> PlayedRound {
+        PlayedRound {
+            clock: RoundTime {
                 round_index: 0,
                 world_time_before: 0,
                 world_time_after: 0,
             },
             presence: Presence::default(),
             seed: String::new(),
-            wall: String::new(),
+            last_round_at: String::new(),
             fast_forward: false,
             log: RoundLog::default(),
-            queue: Vec::new(),
+            intents: Vec::new(),
         }
     }
 }

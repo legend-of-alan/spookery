@@ -4,9 +4,9 @@ use std::path::Path;
 
 use serde::Deserialize;
 
-use crate::canon::rule_list::{self, RuleEntry};
-use crate::canon::source::{collect_files, load_headed, unreadable, Diags, STORY_SCHEMA};
-use crate::diagnostic::schema as schema_error;
+use crate::canon::rule_list::{self, RuleYaml};
+use crate::canon::source::{collect_files, load_tagged, unreadable_dir, Diags, STORY_SCHEMA};
+use crate::diagnostic::schema_error;
 use crate::rule::{Owner, Rule};
 
 /// Every `story/*.yaml` file in directory order, compiled. A pack without `story/` has none.
@@ -14,7 +14,7 @@ pub(super) fn load_stories(root: &Path, diags: &mut Diags) -> Vec<Rule> {
     let dir = root.join("story");
     let mut files = Vec::new();
     if dir.is_dir() && collect_files(&dir, root, &mut files).is_err() {
-        diags.push(unreadable("story"));
+        diags.push(unreadable_dir("story"));
     }
     let mut rules = Vec::new();
     for (file, bytes) in files {
@@ -29,7 +29,7 @@ pub(super) fn load_stories(root: &Path, diags: &mut Diags) -> Vec<Rule> {
             ));
             continue;
         };
-        let Some(story) = diags.keep(load_headed::<StoryFile>(&file, text, STORY_SCHEMA, 0)) else {
+        let Some(story) = diags.keep(load_tagged::<StoryFile>(&file, text, STORY_SCHEMA, 0)) else {
             continue;
         };
         let compiled = rule_list::compile(&file, story.rules, &Owner::Story(story.id));
@@ -45,5 +45,5 @@ struct StoryFile {
     _schema: String,
     id: String,
     #[serde(default)]
-    rules: Vec<RuleEntry>,
+    rules: Vec<RuleYaml>,
 }

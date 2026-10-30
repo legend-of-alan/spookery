@@ -4,13 +4,13 @@ Feature: One writer per pack
     Given spook run is serving a docks table
     When the host runs spook round on that pack
     Then spook round exits non-zero with COMMIT_CONFLICT
-    And the journal is unchanged
+    And the state is unchanged
 
   Scenario: spook migrate is refused while spook run holds the pack
     Given spook run is serving a docks table
     When the host runs spook migrate on that pack
     Then spook migrate exits non-zero with COMMIT_CONFLICT
-    And the journal is unchanged
+    And the state is unchanged
 
   Scenario: spook status reads the pack spook run holds and writes nothing
     Given spook run is serving a docks table
@@ -18,7 +18,7 @@ Feature: One writer per pack
     When the host runs spook status on that pack
     Then the command exits 0
     And the host text lists the clocks
-    And the journal is unchanged
+    And the state is unchanged
 
   Scenario: the table keeps a verifiable journal after a refused round
     Given spook run is serving a docks table

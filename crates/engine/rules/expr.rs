@@ -3,8 +3,8 @@
 use crate::canon::Canon;
 use crate::error::Reason;
 use crate::intent::{Intent, Target};
-use crate::model::{Now, Presence};
-use crate::rule::{Spot, Who};
+use crate::model::{Presence, State};
+use crate::rule::{LineColumn, Who};
 use crate::rules::roll::Outcome;
 
 pub struct Ctx<'a> {
@@ -17,12 +17,12 @@ pub struct Ctx<'a> {
 pub trait Dice {
     fn begin(&mut self);
     fn draw(&mut self, count: u32, sides: u32) -> Result<Vec<u32>, Reason>;
-    fn note(&mut self, text: String);
+    fn log(&mut self, text: String);
     /// The band of `actor_id`'s resist roll against `target`.
     fn resist(
         &mut self,
         canon: &Canon,
-        now: &Now,
+        now: &State,
         actor_id: &str,
         check_id: &str,
         target: i64,
@@ -39,9 +39,16 @@ impl Dice for NoDice {
         Err(Reason::Schema)
     }
 
-    fn note(&mut self, _text: String) {}
+    fn log(&mut self, _text: String) {}
 
-    fn resist(&mut self, _: &Canon, _: &Now, _: &str, _: &str, _: i64) -> Result<Outcome, Reason> {
+    fn resist(
+        &mut self,
+        _: &Canon,
+        _: &State,
+        _: &str,
+        _: &str,
+        _: i64,
+    ) -> Result<Outcome, Reason> {
         Err(Reason::Schema)
     }
 }
@@ -50,14 +57,14 @@ pub struct EvalOutput {
     pub value: i64,
 }
 
-pub fn eval(canon: &Canon, now: &Now, ctx: &Ctx<'_>, expr: &Expr) -> Result<i64, Reason> {
+pub fn eval(canon: &Canon, now: &State, ctx: &Ctx<'_>, expr: &Expr) -> Result<i64, Reason> {
     Ok(eval_with_dice(canon, now, ctx, expr, &mut NoDice)?.value)
 }
 
 /// Evaluate `expr`, drawing dice from `dice` and noting a line when any fall.
 pub fn eval_with_dice(
     canon: &Canon,
-    now: &Now,
+    now: &State,
     ctx: &Ctx<'_>,
     expr: &Expr,
     dice: &mut dyn Dice,
@@ -65,20 +72,20 @@ pub fn eval_with_dice(
     dice.begin();
     let step = eval_node(canon, now, ctx, expr, dice)?;
     if !step.dice.is_empty() {
-        dice.note(format!("{} = {}", step.dice.join("; "), step.body));
+        dice.log(format!("{} = {}", step.dice.join("; "), step.text));
     }
     Ok(EvalOutput { value: step.value })
 }
 
 struct EvalStep {
     value: i64,
-    body: String,
+    text: String,
     dice: Vec<String>,
 }
 
 fn eval_node(
     canon: &Canon,
-    now: &Now,
+    now: &State,
     ctx: &Ctx<'_>,
     expr: &Expr,
     dice: &mut dyn Dice,
@@ -86,10 +93,14 @@ fn eval_node(
     match expr {
         Expr::Num(n) => Ok(EvalStep {
             value: *n,
-            body: n.to_string(),
+            text: n.to_string(),
             dice: Vec::new(),
         }),
-        Expr::Dice { n, sides, keep } => {
+        Expr::Dice {
+            count: n,
+            sides,
+            keep,
+        } => {
             let faces = dice.draw(*n, *sides)?;
             let value = keep_faces(&faces, *keep)?;
             let listed = faces
@@ -99,7 +110,7 @@ fn eval_node(
                 .join(", ");
             Ok(EvalStep {
                 value,
-                body: value.to_string(),
+                text: value.to_string(),
                 dice: vec![format!("{} → {listed}", name_dice(*n, *sides, *keep))],
             })
         }
@@ -107,7 +118,7 @@ fn eval_node(
             let value = read_meter(canon, now, ctx, who, key)?;
             Ok(EvalStep {
                 value,
-                body: value.to_string(),
+                text: value.to_string(),
                 dice: Vec::new(),
             })
         }
@@ -116,11 +127,11 @@ fn eval_node(
             let value = inner.value.checked_neg().ok_or(Reason::OutOfRange)?;
             Ok(EvalStep {
                 value,
-                body: negate_body(&inner.body),
+                text: negate_body(&inner.text),
                 dice: inner.dice,
             })
         }
-        Expr::Bin { op, left, right } => {
+        Expr::Binary { op, left, right } => {
             let left = eval_node(canon, now, ctx, left, dice)?;
             let right = eval_node(canon, now, ctx, right, dice)?;
             let value = op.eval(left.value, right.value)?;
@@ -128,7 +139,7 @@ fn eval_node(
             rolled.extend(right.dice);
             Ok(EvalStep {
                 value,
-                body: format!("{} {} {}", left.body, name_op(*op), right.body),
+                text: format!("{} {} {}", left.text, name_op(*op), right.text),
                 dice: rolled,
             })
         }
@@ -136,18 +147,18 @@ fn eval_node(
             let left = eval_node(canon, now, ctx, left, dice)?;
             let right = eval_node(canon, now, ctx, right, dice)?;
             let value = match fun {
-                Fun::Min => left.value.min(right.value),
-                Fun::Max => left.value.max(right.value),
+                Func::Min => left.value.min(right.value),
+                Func::Max => left.value.max(right.value),
             };
             let mut rolled = left.dice;
             rolled.extend(right.dice);
             let name = match fun {
-                Fun::Min => "min",
-                Fun::Max => "max",
+                Func::Min => "min",
+                Func::Max => "max",
             };
             Ok(EvalStep {
                 value,
-                body: format!("{name}({}, {})", left.body, right.body),
+                text: format!("{name}({}, {})", left.text, right.text),
                 dice: rolled,
             })
         }
@@ -174,12 +185,12 @@ fn name_dice(n: u32, sides: u32, keep: Option<Keep>) -> String {
     }
 }
 
-fn name_op(op: Arith) -> &'static str {
+fn name_op(op: BinOp) -> &'static str {
     match op {
-        Arith::Add => "+",
-        Arith::Sub => "-",
-        Arith::Mul => "*",
-        Arith::Div => "/",
+        BinOp::Add => "+",
+        BinOp::Sub => "-",
+        BinOp::Mul => "*",
+        BinOp::Div => "/",
     }
 }
 
@@ -194,7 +205,7 @@ fn negate_body(body: &str) -> String {
 
 fn read_meter(
     canon: &Canon,
-    now: &Now,
+    now: &State,
     ctx: &Ctx<'_>,
     who: &Who,
     key: &str,
@@ -214,7 +225,7 @@ pub(crate) fn resolve_item_id(intent: &Intent, id: &str) -> Result<String, Reaso
     Ok(id.to_string())
 }
 
-pub(crate) fn resolve_who_id(now: &Now, ctx: &Ctx<'_>, who: &Who) -> Result<String, Reason> {
+pub(crate) fn resolve_who_id(now: &State, ctx: &Ctx<'_>, who: &Who) -> Result<String, Reason> {
     match who {
         Who::Self_ => Ok(ctx.intent.actor.actor_id().to_string()),
         Who::Target => match &ctx.intent.target {
@@ -233,7 +244,7 @@ pub(crate) fn resolve_who_id(now: &Now, ctx: &Ctx<'_>, who: &Who) -> Result<Stri
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Arith {
+pub enum BinOp {
     Add,
     Sub,
     Mul,
@@ -247,7 +258,7 @@ pub enum Keep {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Fun {
+pub enum Func {
     Min,
     Max,
 }
@@ -257,36 +268,36 @@ pub enum Fun {
 pub enum Expr {
     Num(i64),
     Dice {
-        n: u32,
+        count: u32,
         sides: u32,
         keep: Option<Keep>,
     },
     Meter {
         who: Who,
         key: String,
-        spot: Option<Spot>,
+        spot: Option<LineColumn>,
     },
-    Bin {
-        op: Arith,
+    Binary {
+        op: BinOp,
         left: Box<Expr>,
         right: Box<Expr>,
     },
     Neg(Box<Expr>),
     Call {
-        fun: Fun,
+        fun: Func,
         left: Box<Expr>,
         right: Box<Expr>,
     },
 }
 
-impl Arith {
+impl BinOp {
     /// Checked arithmetic. Division rounds down. Overflow and a zero divisor are errors.
     pub(crate) fn eval(self, left: i64, right: i64) -> Result<i64, Reason> {
         match self {
-            Arith::Add => left.checked_add(right).ok_or(Reason::OutOfRange),
-            Arith::Sub => left.checked_sub(right).ok_or(Reason::OutOfRange),
-            Arith::Mul => left.checked_mul(right).ok_or(Reason::OutOfRange),
-            Arith::Div => floor_div(left, right),
+            BinOp::Add => left.checked_add(right).ok_or(Reason::OutOfRange),
+            BinOp::Sub => left.checked_sub(right).ok_or(Reason::OutOfRange),
+            BinOp::Mul => left.checked_mul(right).ok_or(Reason::OutOfRange),
+            BinOp::Div => floor_div(left, right),
         }
     }
 }
@@ -311,7 +322,7 @@ impl Expr {
             Expr::Num(n) => Some(*n),
             Expr::Dice { .. } | Expr::Meter { .. } => None,
             Expr::Neg(inner) => inner.constant().and_then(|n| n.checked_neg()),
-            Expr::Bin { op, left, right } => {
+            Expr::Binary { op, left, right } => {
                 let left = left.constant()?;
                 let right = right.constant()?;
                 op.eval(left, right).ok()
@@ -320,8 +331,8 @@ impl Expr {
                 let left = left.constant()?;
                 let right = right.constant()?;
                 Some(match fun {
-                    Fun::Min => left.min(right),
-                    Fun::Max => left.max(right),
+                    Func::Min => left.min(right),
+                    Func::Max => left.max(right),
                 })
             }
         }
@@ -331,18 +342,18 @@ impl Expr {
         match self {
             Expr::Dice { .. } => true,
             Expr::Neg(inner) => inner.needs_dice(),
-            Expr::Bin { left, right, .. } | Expr::Call { left, right, .. } => {
+            Expr::Binary { left, right, .. } | Expr::Call { left, right, .. } => {
                 left.needs_dice() || right.needs_dice()
             }
             Expr::Num(_) | Expr::Meter { .. } => false,
         }
     }
 
-    pub(crate) fn meter_reads(&self) -> Vec<(&Who, &str, Option<Spot>)> {
+    pub(crate) fn meter_reads(&self) -> Vec<(&Who, &str, Option<LineColumn>)> {
         match self {
             Expr::Meter { who, key, spot } => vec![(who, key, *spot)],
             Expr::Neg(inner) => inner.meter_reads(),
-            Expr::Bin { left, right, .. } | Expr::Call { left, right, .. } => {
+            Expr::Binary { left, right, .. } | Expr::Call { left, right, .. } => {
                 let mut reads = left.meter_reads();
                 reads.extend(right.meter_reads());
                 reads
@@ -353,15 +364,15 @@ impl Expr {
 
     /// Parse one expression. A literal zero divisor and `0dN` fail here.
     pub(crate) fn parse(src: &str) -> Result<Expr, String> {
-        let mut parser = Parser { src, i: 0 };
-        parser.skip();
-        if parser.done() {
-            return Err(parser.bad());
+        let mut parser = Parser { src, pos: 0 };
+        parser.skip_whitespace();
+        if parser.is_at_end() {
+            return Err(parser.error());
         }
         let expr = parser.expr()?;
-        parser.skip();
-        if !parser.done() {
-            return Err(parser.bad());
+        parser.skip_whitespace();
+        if !parser.is_at_end() {
+            return Err(parser.error());
         }
         if divides_by_zero(&expr) {
             return Err(format!("expression '{src}' divides by zero"));
@@ -375,11 +386,11 @@ pub(crate) fn stamp_expr(expr: &mut Expr, line: u32, column: u32) {
     if line == 0 {
         return;
     }
-    let spot = Spot { line, column };
+    let spot = LineColumn { line, column };
     stamp_at(expr, spot);
 }
 
-fn stamp_at(expr: &mut Expr, spot: Spot) {
+fn stamp_at(expr: &mut Expr, spot: LineColumn) {
     match expr {
         Expr::Meter { spot: slot, .. } => {
             if slot.is_none() {
@@ -387,7 +398,7 @@ fn stamp_at(expr: &mut Expr, spot: Spot) {
             }
         }
         Expr::Neg(inner) => stamp_at(inner, spot),
-        Expr::Bin { left, right, .. } | Expr::Call { left, right, .. } => {
+        Expr::Binary { left, right, .. } | Expr::Call { left, right, .. } => {
             stamp_at(left, spot);
             stamp_at(right, spot);
         }
@@ -397,12 +408,12 @@ fn stamp_at(expr: &mut Expr, spot: Spot) {
 
 fn divides_by_zero(expr: &Expr) -> bool {
     match expr {
-        Expr::Bin {
-            op: Arith::Div,
+        Expr::Binary {
+            op: BinOp::Div,
             right,
             ..
         } if matches!(right.as_ref(), Expr::Num(0)) => true,
-        Expr::Bin { left, right, .. } | Expr::Call { left, right, .. } => {
+        Expr::Binary { left, right, .. } | Expr::Call { left, right, .. } => {
             divides_by_zero(left) || divides_by_zero(right)
         }
         Expr::Neg(inner) => divides_by_zero(inner),
@@ -415,23 +426,23 @@ const MAX_DICE: u32 = 1000;
 
 struct Parser<'a> {
     src: &'a str,
-    i: usize,
+    pos: usize,
 }
 
 impl<'a> Parser<'a> {
     fn expr(&mut self) -> Result<Expr, String> {
         let mut left = self.term()?;
         loop {
-            self.skip();
+            self.skip_whitespace();
             let op = if self.eat('+') {
-                Arith::Add
+                BinOp::Add
             } else if self.eat('-') {
-                Arith::Sub
+                BinOp::Sub
             } else {
                 return Ok(left);
             };
             let right = self.term()?;
-            left = Expr::Bin {
+            left = Expr::Binary {
                 op,
                 left: Box::new(left),
                 right: Box::new(right),
@@ -442,16 +453,16 @@ impl<'a> Parser<'a> {
     fn term(&mut self) -> Result<Expr, String> {
         let mut left = self.unary()?;
         loop {
-            self.skip();
+            self.skip_whitespace();
             let op = if self.eat('*') {
-                Arith::Mul
+                BinOp::Mul
             } else if self.eat('/') {
-                Arith::Div
+                BinOp::Div
             } else {
                 return Ok(left);
             };
             let right = self.unary()?;
-            left = Expr::Bin {
+            left = Expr::Binary {
                 op,
                 left: Box::new(left),
                 right: Box::new(right),
@@ -460,7 +471,7 @@ impl<'a> Parser<'a> {
     }
 
     fn unary(&mut self) -> Result<Expr, String> {
-        self.skip();
+        self.skip_whitespace();
         if self.eat('-') {
             let inner = self.unary()?;
             return Ok(Expr::Neg(Box::new(inner)));
@@ -469,12 +480,12 @@ impl<'a> Parser<'a> {
     }
 
     fn primary(&mut self) -> Result<Expr, String> {
-        self.skip();
+        self.skip_whitespace();
         if self.eat('(') {
             let inner = self.expr()?;
-            self.skip();
+            self.skip_whitespace();
             if !self.eat(')') {
-                return Err(self.bad());
+                return Err(self.error());
             }
             return Ok(inner);
         }
@@ -484,7 +495,7 @@ impl<'a> Parser<'a> {
         if self.peek().is_ascii_alphabetic() || self.peek() == '_' {
             return self.call_or_meter();
         }
-        Err(self.bad())
+        Err(self.error())
     }
 
     fn number_or_dice(&mut self) -> Result<Expr, String> {
@@ -502,26 +513,26 @@ impl<'a> Parser<'a> {
                 ));
             }
             return Ok(Expr::Dice {
-                n: n as u32,
+                count: n as u32,
                 sides: sides as u32,
                 keep,
             });
         }
         if n > i64::MAX as u64 {
-            return Err(self.bad());
+            return Err(self.error());
         }
         Ok(Expr::Num(n as i64))
     }
 
     fn keep(&mut self) -> Result<Option<Keep>, String> {
-        if self.starts("kh1") {
-            self.i += 3;
+        if self.starts_with("kh1") {
+            self.pos += 3;
             Ok(Some(Keep::High))
-        } else if self.starts("kl1") {
-            self.i += 3;
+        } else if self.starts_with("kl1") {
+            self.pos += 3;
             Ok(Some(Keep::Low))
         } else if self.peek() == 'k' {
-            Err(self.bad())
+            Err(self.error())
         } else {
             Ok(None)
         }
@@ -529,18 +540,18 @@ impl<'a> Parser<'a> {
 
     fn call_or_meter(&mut self) -> Result<Expr, String> {
         let word = self.ident()?;
-        self.skip();
+        self.skip_whitespace();
         if (word == "min" || word == "max") && self.eat('(') {
-            let fun = if word == "min" { Fun::Min } else { Fun::Max };
+            let fun = if word == "min" { Func::Min } else { Func::Max };
             let left = self.expr()?;
-            self.skip();
+            self.skip_whitespace();
             if !self.eat(',') {
-                return Err(self.bad());
+                return Err(self.error());
             }
             let right = self.expr()?;
-            self.skip();
+            self.skip_whitespace();
             if !self.eat(')') {
-                return Err(self.bad());
+                return Err(self.error());
             }
             return Ok(Expr::Call {
                 fun,
@@ -559,9 +570,9 @@ impl<'a> Parser<'a> {
                 _ => Who::Actor(word),
             }
         };
-        self.skip();
+        self.skip_whitespace();
         if !self.eat('.') {
-            return Err(self.bad());
+            return Err(self.error());
         }
         let key = self.ident()?;
         Ok(Expr::Meter {
@@ -572,60 +583,60 @@ impl<'a> Parser<'a> {
     }
 
     fn digits(&mut self) -> Result<u64, String> {
-        let start = self.i;
+        let start = self.pos;
         if !self.peek().is_ascii_digit() {
-            return Err(self.bad());
+            return Err(self.error());
         }
         while self.peek().is_ascii_digit() {
-            self.i += 1;
+            self.pos += 1;
         }
-        self.src[start..self.i]
+        self.src[start..self.pos]
             .parse::<u64>()
-            .map_err(|_| self.bad())
+            .map_err(|_| self.error())
     }
 
     fn ident(&mut self) -> Result<String, String> {
-        let start = self.i;
+        let start = self.pos;
         let ch = self.peek();
         if !(ch.is_ascii_alphabetic() || ch == '_') {
-            return Err(self.bad());
+            return Err(self.error());
         }
-        self.i += 1;
+        self.pos += 1;
         while self.peek().is_ascii_alphanumeric() || self.peek() == '_' {
-            self.i += 1;
+            self.pos += 1;
         }
-        Ok(self.src[start..self.i].to_string())
+        Ok(self.src[start..self.pos].to_string())
     }
 
-    fn skip(&mut self) {
+    fn skip_whitespace(&mut self) {
         while self.peek().is_whitespace() {
             let ch = self.peek();
-            self.i += ch.len_utf8();
+            self.pos += ch.len_utf8();
         }
     }
 
     fn eat(&mut self, want: char) -> bool {
         if self.peek() == want {
-            self.i += want.len_utf8();
+            self.pos += want.len_utf8();
             true
         } else {
             false
         }
     }
 
-    fn starts(&self, prefix: &str) -> bool {
-        self.src[self.i..].starts_with(prefix)
+    fn starts_with(&self, prefix: &str) -> bool {
+        self.src[self.pos..].starts_with(prefix)
     }
 
     fn peek(&self) -> char {
-        self.src[self.i..].chars().next().unwrap_or('\0')
+        self.src[self.pos..].chars().next().unwrap_or('\0')
     }
 
-    fn done(&self) -> bool {
-        self.i >= self.src.len()
+    fn is_at_end(&self) -> bool {
+        self.pos >= self.src.len()
     }
 
-    fn bad(&self) -> String {
+    fn error(&self) -> String {
         format!("expression '{}' is not a number", self.src)
     }
 }
@@ -634,12 +645,12 @@ impl<'a> Parser<'a> {
 mod tests {
     use std::collections::BTreeMap;
 
-    use super::{eval_with_dice, Arith, Ctx, Dice, Expr, Fun, Keep};
+    use super::{eval_with_dice, BinOp, Ctx, Dice, Expr, Func, Keep};
     use crate::canon::Canon;
     use crate::error::Reason;
-    use crate::intent::{Intent, IntentArgs, Source, Target, ViewerId};
+    use crate::intent::{Intent, IntentArgs, Source, Target, Viewer};
     use crate::meter::{MeterDef, MeterLive};
-    use crate::model::{ActCounters, ActorLive, Now, Presence};
+    use crate::model::{Act, ActorLive, Presence, State};
     use crate::rule::Who;
 
     static EMPTY: Presence = Presence {
@@ -666,14 +677,14 @@ mod tests {
             Ok(out)
         }
 
-        fn note(&mut self, text: String) {
+        fn log(&mut self, text: String) {
             self.notes.push(text);
         }
 
         fn resist(
             &mut self,
             _: &Canon,
-            _: &Now,
+            _: &State,
             _: &str,
             _: &str,
             _: i64,
@@ -693,7 +704,7 @@ mod tests {
         Intent {
             id: "t".to_string(),
             round_index: 0,
-            actor: ViewerId::Player(actor.to_string()),
+            actor: Viewer::Player(actor.to_string()),
             source: Source::Player,
             move_name: "hit".to_string(),
             target: Target::Actor(target.to_string()),
@@ -730,10 +741,10 @@ mod tests {
         }
     }
 
-    fn now() -> Now {
+    fn now() -> State {
         let mut meters = BTreeMap::new();
         meters.insert("str_mod".to_string(), MeterLive { base: 3, offset: 0 });
-        Now {
+        State {
             schema: "now".to_string(),
             shard_id: "t".to_string(),
             pack_rev: String::new(),
@@ -742,7 +753,7 @@ mod tests {
             round_index: 0,
             world_time: 0,
             last_round_at: String::new(),
-            pause: crate::model::PauseView {
+            pause: crate::model::Pause {
                 named_plot_clocks: crate::model::RunState::Running,
             },
             places: BTreeMap::new(),
@@ -756,7 +767,7 @@ mod tests {
                     wielded: None,
                     known_facts: Vec::new(),
                     visited: Vec::new(),
-                    act: ActCounters::default(),
+                    act: Act::default(),
                 },
             )]),
             clocks: BTreeMap::new(),
@@ -816,7 +827,7 @@ mod tests {
         assert_eq!(Expr::parse("-4").unwrap().constant(), Some(-4));
         match Expr::parse("2d20kh1").unwrap() {
             Expr::Dice {
-                n: 2,
+                count: 2,
                 sides: 20,
                 keep: Some(Keep::High),
             } => {}
@@ -836,7 +847,7 @@ mod tests {
         let expr = Expr::parse("-(2d6 + self.str_mod)").unwrap();
         match expr {
             Expr::Neg(inner) => match *inner {
-                Expr::Bin { op: Arith::Add, .. } => {}
+                Expr::Binary { op: BinOp::Add, .. } => {}
                 other => panic!("{other:?}"),
             },
             other => panic!("{other:?}"),
@@ -853,7 +864,7 @@ mod tests {
             other => panic!("{other:?}"),
         }
         match Expr::parse("min(self.hp, 4)").unwrap() {
-            Expr::Call { fun: Fun::Min, .. } => {}
+            Expr::Call { fun: Func::Min, .. } => {}
             other => panic!("{other:?}"),
         }
         assert_eq!(Expr::parse("(10 + 2) / 3").unwrap().constant(), Some(4));

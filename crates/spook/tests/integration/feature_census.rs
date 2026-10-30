@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 use spookery_engine::testing as engine;
 
-use crate::feature_paths::{HOST, WORLD};
+use crate::feature_dirs::{HOST, WORLD};
 
 #[test]
 fn every_feature_folder_runs_in_one_program() {
@@ -27,7 +27,7 @@ fn assert_folders_match(rel: &str, lists: &[&[&str]]) {
         }
     }
     found.sort();
-    let mut owned = owners(lists);
+    let mut owned = listed_folders(lists);
     owned.sort();
     assert_eq!(
         found, owned,
@@ -54,7 +54,7 @@ fn entries(rel: &str) -> Vec<PathBuf> {
         .collect()
 }
 
-fn owners(lists: &[&[&str]]) -> Vec<String> {
+fn listed_folders(lists: &[&[&str]]) -> Vec<String> {
     lists
         .iter()
         .flat_map(|list| list.iter())

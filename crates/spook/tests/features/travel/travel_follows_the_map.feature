@@ -3,7 +3,7 @@ Feature: Travel follows the map
   Scenario: No exit, no travel
     Given docks_street has no exit to mira_rooms
     When rowan travels to mira_rooms from docks_street
-    Then the intent is rejected with NO_EXIT and rowan stays put
+    Then the intent is refused with NO_EXIT and rowan stays put
 
   Scenario: Locked exit
     Given the stairs exit needs brass_key and rowan has none

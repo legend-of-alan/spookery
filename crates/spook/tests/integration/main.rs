@@ -6,8 +6,8 @@
 #[allow(dead_code)]
 mod support;
 
-#[path = "../feature_paths.rs"]
-mod feature_paths;
+#[path = "../feature_dirs.rs"]
+mod feature_dirs;
 
 mod engine_guarantees;
 mod feature_census;

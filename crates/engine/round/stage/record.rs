@@ -5,13 +5,13 @@ use crate::world::World;
 use crate::Reason;
 
 use crate::round::dice::round_seed;
-use crate::round::log::{RoundLine, RoundLog};
+use crate::round::log::{PlayedRound, RoundLog};
 use crate::round::play::RoundOutput;
-use crate::round::stage::advance::Clock;
-use crate::round::stage::deliver::Delivered;
+use crate::round::stage::advance::RoundTime;
+use crate::round::stage::deliver::Deliveries;
 
 /// What the round showed. A live round adds its commit outcome.
-pub(crate) fn take_output(log: &mut RoundLog, delivered: Delivered) -> RoundOutput {
+pub(crate) fn take_output(log: &mut RoundLog, delivered: Deliveries) -> RoundOutput {
     RoundOutput {
         reports: std::mem::take(&mut log.reports),
         dice: log.dice.clone(),
@@ -19,42 +19,42 @@ pub(crate) fn take_output(log: &mut RoundLog, delivered: Delivered) -> RoundOutp
         lines: delivered.lines,
         seen: delivered.seen,
         effects: log.effects.clone(),
-        outcome: None,
+        commit: None,
     }
 }
 
 /// Write the round line and commit it. The World owns the pack lock.
-pub(crate) fn commit_round(
+pub(crate) fn run(
     world: &mut World,
     draft: Draft,
     wall: &str,
-    clock: Clock,
+    clock: RoundTime,
     mut log: RoundLog,
-    delivered: Delivered,
+    delivered: Deliveries,
     fast_forward: bool,
 ) -> Result<RoundOutput, Reason> {
     let mut output = take_output(&mut log, delivered);
-    let line = RoundLine {
+    let line = PlayedRound {
         presence: draft.presence.clone(),
-        seed: round_seed(&draft.now().shard_id, clock.round_index),
+        seed: round_seed(&draft.state().shard_id, clock.round_index),
         clock,
-        wall: wall.to_string(),
+        last_round_at: wall.to_string(),
         fast_forward,
         log,
-        queue: world.queued_intents().to_vec(),
+        intents: world.queued_intents().to_vec(),
     };
-    output.outcome = Some(crate::commit::commit(world, draft, line)?);
+    output.commit = Some(crate::commit::commit(world, draft, line)?);
     Ok(output)
 }
 
 #[cfg(test)]
 mod tests {
     use crate::effect::{Effect, EffectKind};
-    use crate::intent::ViewerId;
-    use crate::journal::{emit_entry, JournalEntry, RoundRecord};
+    use crate::intent::Viewer;
+    use crate::journal::{emit_record, Record, RoundRecord};
 
     #[test]
-    fn round_line_embeds_the_flat_effect() {
+    fn round_record_embeds_the_flat_effect() {
         let effect = Effect {
             class: EffectKind::Item {
                 actor_id: None,
@@ -63,10 +63,10 @@ mod tests {
                 delta: -1,
                 max: None,
             },
-            as_viewer: ViewerId::Npc("mira".to_string()),
+            viewer: Viewer::Npc("mira".to_string()),
             intent_id: "i".to_string(),
         };
-        let line = emit_entry(&JournalEntry::Round(RoundRecord {
+        let line = emit_record(&Record::Round(RoundRecord {
             round_index: 1,
             rules_rev: crate::store::RULES_REV,
             state_rev_before: 0,

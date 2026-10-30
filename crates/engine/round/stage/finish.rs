@@ -2,7 +2,7 @@
 
 use crate::draft::Draft;
 use crate::effect::{Effect, EffectKind};
-use crate::intent::{arrival_intent_id, Intent, Source, Target};
+use crate::intent::{due_intent_id, Intent, Source, Target};
 use crate::journal::Arrival;
 use crate::model::{PendingAction, PendingKind};
 use crate::rules::MoveReport;
@@ -18,7 +18,7 @@ pub(crate) fn run(
     dice: &mut RoundDice,
     log: &mut RoundLog,
 ) -> Result<(), Reason> {
-    let due_actions = crate::map::take_due_actions(draft, end)?;
+    let due_actions = crate::travel::take_due_actions(draft, end)?;
     for due_action in due_actions {
         let PendingAction { verb, source, kind } = due_action.pending;
         let actor_id = &due_action.actor_id;
@@ -29,7 +29,7 @@ pub(crate) fn run(
             }
             PendingKind::Finish { target, rule } => {
                 let intent = due_intent(draft, actor_id, source, &verb, target)?;
-                perform(dice, log, draft, &intent, &rule)?;
+                finish_timed_action(dice, log, draft, &intent, &rule)?;
             }
         }
     }
@@ -43,10 +43,14 @@ fn due_intent(
     verb: &str,
     target: Target,
 ) -> Result<Intent, Reason> {
-    let actor = draft.now().actors.get(actor_id).ok_or(Reason::UnknownKey)?;
+    let actor = draft
+        .state()
+        .actors
+        .get(actor_id)
+        .ok_or(Reason::UnknownKey)?;
     Ok(Intent::new(
-        arrival_intent_id(actor_id),
-        draft.now().round_index,
+        due_intent_id(actor_id),
+        draft.state().round_index,
         actor.viewer(actor_id),
         source,
         verb,
@@ -63,7 +67,11 @@ fn arrive(
     via: String,
 ) -> Result<(), Reason> {
     let actor_id = intent.actor.actor_id();
-    let actor = draft.now().actors.get(actor_id).ok_or(Reason::UnknownKey)?;
+    let actor = draft
+        .state()
+        .actors
+        .get(actor_id)
+        .ok_or(Reason::UnknownKey)?;
     let from = actor.place().to_string();
     let effect = Effect {
         class: EffectKind::Location {
@@ -72,7 +80,7 @@ fn arrive(
             to: to.clone(),
             arrived_at: Some(until),
         },
-        as_viewer: intent.actor.clone(),
+        viewer: intent.actor.clone(),
         intent_id: intent.id.clone(),
     };
     effect.clone().apply(draft, intent)?;
@@ -86,7 +94,7 @@ fn arrive(
     Ok(())
 }
 
-fn perform(
+fn finish_timed_action(
     dice: &mut RoundDice,
     log: &mut RoundLog,
     draft: &mut Draft,
@@ -94,7 +102,7 @@ fn perform(
     rule_id: &str,
 ) -> Result<(), Reason> {
     let actor_id = intent.actor.actor_id();
-    let (canon, snapshot, presence) = (draft.canon(), draft.now(), draft.presence);
+    let (canon, snapshot, presence) = (draft.canon(), draft.state(), draft.presence);
     let rule = canon.rules.get(rule_id).ok_or(Reason::UnknownMove)?;
     let mut roller = dice.roller(log, &rule.id, actor_id);
     let rolled = match &rule.roll {
@@ -103,10 +111,12 @@ fn perform(
     };
     let outcome = rolled.as_ref().map(|out| out.outcome);
     let effects = rule.expand(canon, snapshot, presence, intent, outcome, &mut roller)?;
-    let resisted = roller.finish();
+    let resisted = roller.into_reports();
     let actor_id = actor_id.to_string();
-    log.reports
-        .extend(rolled.map(|out| MoveReport::Rolled { actor_id, out }));
+    log.reports.extend(rolled.map(|out| MoveReport::Rolled {
+        actor_id,
+        roll: out,
+    }));
     log.reports.extend(resisted);
     for effect in effects {
         if matches!(effect.class, EffectKind::Location { .. }) {

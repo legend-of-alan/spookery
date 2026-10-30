@@ -29,7 +29,7 @@ Feature: Hash-chained journal bundles
     And checkpoints are taken every 2 rounds
     When the operator plays 4 rounds
     And the save snapshot is removed
-    And the operator rebuilds the snapshot
+    And the operator rebuilds the save
     Then the save hash matches the latest checkpoint
 
   Scenario: Quick verification reports the latest bundle

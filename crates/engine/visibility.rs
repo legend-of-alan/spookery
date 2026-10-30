@@ -4,11 +4,11 @@ use std::collections::BTreeSet;
 
 use crate::canon::Canon;
 use crate::effect::{Effect, EffectKind};
-use crate::intent::ViewerId;
-use crate::key::{ChangeRecord, StateKey, StateValue};
-use crate::model::Now;
+use crate::intent::Viewer;
+use crate::key::{Change, StateKey, StateValue};
+use crate::model::State;
 
-pub(crate) fn allows(canon: &Canon, now: &Now, viewer: &ViewerId, fact_id: &str) -> bool {
+pub(crate) fn can_see_fact(canon: &Canon, now: &State, viewer: &Viewer, fact_id: &str) -> bool {
     let Some(actor) = now.actors.get(viewer.actor_id()) else {
         return false;
     };
@@ -39,7 +39,7 @@ pub(crate) fn allows(canon: &Canon, now: &Now, viewer: &ViewerId, fact_id: &str)
 }
 
 /// Who is asking.
-pub enum Seat {
+pub enum Recipient {
     /// The referee sees every change.
     Gm,
     Actor(String),
@@ -50,7 +50,7 @@ pub struct Delivery {
     pub changes: Vec<String>,
     /// One plain line of the meter and item changes this seat may know.
     pub line: String,
-    pub lines: Vec<String>,
+    pub narrations: Vec<String>,
 }
 
 /// One narrate line addressed to one person.
@@ -69,16 +69,16 @@ pub struct ViewerChanges {
 /// Changes and narrate lines this seat can receive.
 pub fn observe(
     canon: &Canon,
-    now: &Now,
-    seat: &Seat,
-    changes: &[ChangeRecord],
+    now: &State,
+    seat: &Recipient,
+    changes: &[Change],
     effects: &[Effect],
 ) -> Delivery {
     let actor = match seat {
-        Seat::Gm => None,
-        Seat::Actor(id) => Some(id.as_str()),
+        Recipient::Gm => None,
+        Recipient::Actor(id) => Some(id.as_str()),
     };
-    let visible: Vec<ChangeRecord> = changes
+    let visible: Vec<Change> = changes
         .iter()
         .filter(|change| actor.is_none_or(|id| can_see(canon, now, id, change)))
         .cloned()
@@ -100,17 +100,12 @@ pub fn observe(
     Delivery {
         changes: keys.into_iter().collect(),
         line: spoken.join(" "),
-        lines,
+        narrations: lines,
     }
 }
 
 /// One sentence for a meter or item change this viewer may know.
-fn sentence(
-    canon: &Canon,
-    viewer: &str,
-    change: &ChangeRecord,
-    changes: &[ChangeRecord],
-) -> Option<String> {
+fn sentence(canon: &Canon, viewer: &str, change: &Change, changes: &[Change]) -> Option<String> {
     match &change.key {
         StateKey::ActorMeter(actor, key) => {
             meter_sentence(canon, actor, key, viewer, &change.after)
@@ -146,8 +141,8 @@ fn actor_item_sentence(
     viewer: &str,
     actor: &str,
     id: &str,
-    change: &ChangeRecord,
-    changes: &[ChangeRecord],
+    change: &Change,
+    changes: &[Change],
 ) -> Option<String> {
     let (before, after) = counts(change)?;
     let name = item_name(canon, id);
@@ -169,8 +164,8 @@ fn actor_item_sentence(
 fn place_item_sentence(
     canon: &Canon,
     id: &str,
-    change: &ChangeRecord,
-    changes: &[ChangeRecord],
+    change: &Change,
+    changes: &[Change],
 ) -> Option<String> {
     let (before, after) = counts(change)?;
     if other_side(changes, change, id) == Some(Holder::Actor) {
@@ -185,7 +180,7 @@ fn place_item_sentence(
 }
 
 /// The before and after counts of an item change, when the count changed.
-fn counts(change: &ChangeRecord) -> Option<(i64, i64)> {
+fn counts(change: &Change) -> Option<(i64, i64)> {
     let (before, after) = (change.before.as_number()?, change.after.as_number()?);
     (before != after).then_some((before, after))
 }
@@ -198,7 +193,7 @@ enum Holder {
 }
 
 /// Where the item went to or came from, among changes this viewer can see.
-fn other_side(changes: &[ChangeRecord], change: &ChangeRecord, id: &str) -> Option<Holder> {
+fn other_side(changes: &[Change], change: &Change, id: &str) -> Option<Holder> {
     let (before, after) = counts(change)?;
     let down = after < before;
     changes.iter().find_map(|other| {
@@ -240,7 +235,7 @@ fn item_name(canon: &Canon, id: &str) -> String {
         .unwrap_or_else(|| id.replace('_', " "))
 }
 
-fn narrations(canon: &Canon, now: &Now, effects: &[Effect], viewer: Option<&str>) -> Vec<String> {
+fn narrations(canon: &Canon, now: &State, effects: &[Effect], viewer: Option<&str>) -> Vec<String> {
     let mut lines = Vec::new();
     for effect in effects {
         let EffectKind::Narrate { to, fact_ids, text } = &effect.class else {
@@ -250,21 +245,23 @@ fn narrations(canon: &Canon, now: &Now, effects: &[Effect], viewer: Option<&str>
             lines.push(text.clone());
             continue;
         };
-        if to.iter().any(|name| name == id) && narrate_allowed(canon, now, id, fact_ids) {
+        if to.iter().any(|name| name == id) && can_see_facts(canon, now, id, fact_ids) {
             lines.push(text.clone());
         }
     }
     lines
 }
 
-fn narrate_allowed(canon: &Canon, now: &Now, viewer: &str, fact_ids: &[String]) -> bool {
+fn can_see_facts(canon: &Canon, now: &State, viewer: &str, fact_ids: &[String]) -> bool {
     let Some(seat) = now.actors.get(viewer).map(|actor| actor.viewer(viewer)) else {
         return false;
     };
-    fact_ids.iter().all(|fact| allows(canon, now, &seat, fact))
+    fact_ids
+        .iter()
+        .all(|fact| can_see_fact(canon, now, &seat, fact))
 }
 
-fn can_see(canon: &Canon, now: &Now, viewer: &str, change: &ChangeRecord) -> bool {
+fn can_see(canon: &Canon, now: &State, viewer: &str, change: &Change) -> bool {
     if !now.actors.contains_key(viewer) {
         return false;
     }
@@ -274,14 +271,14 @@ fn can_see(canon: &Canon, now: &Now, viewer: &str, change: &ChangeRecord) -> boo
             false
         }
         StateKey::ActorKnownFact(actor) => actor == viewer,
-        StateKey::PlaceItem(place, _) => here(now, viewer) == Some(place.as_str()),
-        StateKey::Message(id) => message_visible(canon, now, viewer, id),
-        StateKey::ClockValue(id) | StateKey::ClockPaused(id) => clock_owned(now, viewer, id),
+        StateKey::PlaceItem(place, _) => place_of(now, viewer) == Some(place.as_str()),
+        StateKey::Message(id) => can_see_message(canon, now, viewer, id),
+        StateKey::ClockValue(id) | StateKey::ClockPaused(id) => is_clock_owner(now, viewer, id),
         StateKey::ActorPlace(actor) => {
             actor == viewer
                 || same_place(now, viewer, actor)
-                || at(now, viewer, &change.before)
-                || at(now, viewer, &change.after)
+                || is_at(now, viewer, &change.before)
+                || is_at(now, viewer, &change.after)
         }
         StateKey::ActorFlag(actor, _)
         | StateKey::ActorMeter(actor, _)
@@ -291,35 +288,35 @@ fn can_see(canon: &Canon, now: &Now, viewer: &str, change: &ChangeRecord) -> boo
     }
 }
 
-fn here<'a>(now: &'a Now, viewer: &str) -> Option<&'a str> {
+fn place_of<'a>(now: &'a State, viewer: &str) -> Option<&'a str> {
     now.actors.get(viewer).map(|actor| actor.place())
 }
 
-fn same_place(now: &Now, viewer: &str, actor: &str) -> bool {
-    match (here(now, viewer), here(now, actor)) {
+fn same_place(now: &State, viewer: &str, actor: &str) -> bool {
+    match (place_of(now, viewer), place_of(now, actor)) {
         (Some(left), Some(right)) => left == right,
         _ => false,
     }
 }
 
-fn at(now: &Now, viewer: &str, value: &StateValue) -> bool {
-    match (here(now, viewer), value) {
+fn is_at(now: &State, viewer: &str, value: &StateValue) -> bool {
+    match (place_of(now, viewer), value) {
         (Some(place), StateValue::Text(text)) => place == text,
         _ => false,
     }
 }
 
-fn clock_owned(now: &Now, viewer: &str, id: &str) -> bool {
+fn is_clock_owner(now: &State, viewer: &str, id: &str) -> bool {
     now.clocks
         .get(id)
         .is_some_and(|clock| clock.owners.iter().any(|owner| owner == viewer))
 }
 
-fn message_visible(canon: &Canon, now: &Now, viewer: &str, id: &str) -> bool {
+fn can_see_message(canon: &Canon, now: &State, viewer: &str, id: &str) -> bool {
     let Some(message) = now.messages.iter().find(|message| message.id == id) else {
         return false;
     };
-    let in_room = message.place.as_deref() == here(now, viewer);
+    let in_room = message.place.as_deref() == place_of(now, viewer);
     let addressed = message.to.iter().any(|name| name == viewer);
     if !in_room && !addressed {
         return false;
@@ -330,5 +327,5 @@ fn message_visible(canon: &Canon, now: &Now, viewer: &str, id: &str) -> bool {
     message
         .fact_ids
         .iter()
-        .all(|fact| allows(canon, now, &seat, fact))
+        .all(|fact| can_see_fact(canon, now, &seat, fact))
 }

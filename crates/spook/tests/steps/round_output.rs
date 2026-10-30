@@ -6,12 +6,12 @@ use spookery_engine::testing::journal::list_round_keys;
 
 use super::common::{edit_save, set_busy};
 use super::table;
-use crate::support::{self, temp_pack};
+use crate::support::{self, copy_docks};
 use crate::World;
 
 #[given(expr = "a docks table with a GM and pc_rowan seated")]
 fn a_docks_table_with_a_gm_and_one_pc(world: &mut World) {
-    let pack = temp_pack("round-output");
+    let pack = copy_docks("round-output");
     let path = pack.join("world/places/docks_shop.md");
     let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read shop: {err}"));
     let from = "  - to: docks_street\n    name: docks_street\n";
@@ -33,7 +33,7 @@ fn a_docks_table_with_a_gm_and_one_pc(world: &mut World) {
 
 #[given(expr = "a docks table with pc_rowan and pc_wren seated and no GM")]
 fn a_docks_table_with_two_players_and_no_gm(world: &mut World) {
-    let pack = temp_pack("round-output-busy");
+    let pack = copy_docks("round-output-busy");
     edit_save(&pack, |now| {
         let until = now.world_time + 10;
         set_busy(now, "pc_rowan", until, "docks_street", "docks_street");
@@ -80,13 +80,13 @@ fn the_player_sends_a_move(world: &mut World, actor: String) {
     world.mark = rowan;
     world.host_mark = host;
     world.wren_mark = wren;
-    table::actor_line(world, &actor, "wait");
+    table::actor_write(world, &actor, "wait");
 }
 
 #[then(expr = "the commit reply lists one check for {string}")]
 fn the_commit_reply_lists_one_check(world: &mut World, actor: String) {
     let body = commit_body(world);
-    let checks = body["checks"]
+    let checks = body["rolls"]
         .as_array()
         .unwrap_or_else(|| panic!("checks\n{}", world.stdout));
     assert_eq!(checks.len(), 1, "checks\n{}", world.stdout);
@@ -122,7 +122,7 @@ fn the_player_is_refused(world: &mut World, actor: String, code: String) {
 
 #[then(expr = "each seated player then gets a resume line and a perceive line")]
 fn each_player_gets_one_refresh(world: &mut World) {
-    let rowan = table::wait_actor_from(world, "pc_rowan", world.mark, "\"kind\":\"perceive\"");
+    let rowan = table::wait_actor_from(world, "pc_rowan", world.mark, "\"kind\":\"view\"");
     let busy = rowan
         .find("\"code\":\"BUSY\"")
         .unwrap_or_else(|| panic!("no refusal\n{rowan}"));
@@ -130,15 +130,15 @@ fn each_player_gets_one_refresh(world: &mut World) {
         .find("\"kind\":\"resume\"")
         .unwrap_or_else(|| panic!("no resume\n{rowan}"));
     let perceive = rowan
-        .find("\"kind\":\"perceive\"")
+        .find("\"kind\":\"view\"")
         .unwrap_or_else(|| panic!("no perceive\n{rowan}"));
     assert!(busy < resume && resume < perceive, "{rowan}");
     assert_eq!(rowan.matches("\"kind\":\"resume\"").count(), 1, "{rowan}");
-    assert_eq!(rowan.matches("\"kind\":\"perceive\"").count(), 1, "{rowan}");
+    assert_eq!(rowan.matches("\"kind\":\"view\"").count(), 1, "{rowan}");
     let wren_mark = world.wren_mark;
-    let wren = table::wait_actor_from(world, "pc_wren", wren_mark, "\"kind\":\"perceive\"");
+    let wren = table::wait_actor_from(world, "pc_wren", wren_mark, "\"kind\":\"view\"");
     assert_eq!(wren.matches("\"kind\":\"resume\"").count(), 1, "{wren}");
-    assert_eq!(wren.matches("\"kind\":\"perceive\"").count(), 1, "{wren}");
+    assert_eq!(wren.matches("\"kind\":\"view\"").count(), 1, "{wren}");
 }
 
 #[then(expr = "the host prints its status once")]
@@ -163,9 +163,9 @@ fn queue_move(world: &mut World, actor: &str, move_name: &str, place: Option<&st
         None => String::new(),
     };
     let args = format!(r#"{{"actor_id":"{actor}","move":"{move_name}"{target}}}"#);
-    let text = table::gm_call(world, 4, "intent", &args);
+    let text = table::gm_call(world, 4, "queue_intent", &args);
     assert!(
-        text.contains("\"queued\""),
+        text.contains("\"id\""),
         "queue {move_name} for {actor}\n{text}"
     );
 }

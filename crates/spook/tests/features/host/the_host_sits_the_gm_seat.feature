@@ -50,18 +50,18 @@ Feature: The host sits the GM seat
 
   Scenario: The host seat submits a say and reports a refused call
     Given a docks table with a seated player
-    When the host seat says good evening and calls an unknown tool
+    When the GM seat says good evening and calls an unknown tool
     Then the player saw a say from the host
     And the tape from is gm
-    And the host call was refused
+    And the GM call was refused
 
   Scenario: A scripted host follows the turn rules
-    When the scripted host plays the turn checks
+    When the scripted AI GM plays the turn checks
 
   Scenario: Play, host, and a stub share one speech turn and one travel turn
-    When play and host and a stub run a speech turn and a travel turn
+    When play and the AI GM and a stub run a speech turn and a travel turn
 
   Scenario: The host dials an overridden agent door
     Given a docks table
-    When the host is pointed at an overridden agent door
-    Then the host dialed that address
+    When the AI GM is pointed at an overridden agent door
+    Then the AI GM dialed that address

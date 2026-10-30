@@ -4,18 +4,18 @@ use serde::{Deserialize, Serialize};
 
 use crate::draft::Draft;
 use crate::error::Reason;
-use crate::intent::{Intent, ViewerId};
+use crate::intent::{Intent, Viewer};
 use crate::key::{StateKey, StateValue};
 use crate::meter::{self, MeterWrite};
 use crate::model::{self, MemoryLine, Message, PlaceLive};
-use crate::visibility::allows;
+use crate::visibility::can_see_fact;
 
 /// One effect. JSON is `class`, `as`, `intent_id`, then the fields of `class`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[serde(into = "EffectRecord")]
 pub struct Effect {
     pub class: EffectKind,
-    pub as_viewer: ViewerId,
+    pub viewer: Viewer,
     pub intent_id: String,
 }
 
@@ -86,10 +86,10 @@ pub enum EffectKind {
 pub const WORLD: &str = "world";
 
 impl Effect {
-    pub(crate) fn new(viewer: &ViewerId, intent_id: &str, class: EffectKind) -> Self {
+    pub(crate) fn new(viewer: &Viewer, intent_id: &str, class: EffectKind) -> Self {
         Effect {
             class,
-            as_viewer: viewer.clone(),
+            viewer: viewer.clone(),
             intent_id: intent_id.to_string(),
         }
     }
@@ -145,17 +145,17 @@ impl Effect {
         }
     }
 
-    pub fn as_viewer(&self) -> &ViewerId {
-        &self.as_viewer
+    pub fn viewer(&self) -> &Viewer {
+        &self.viewer
     }
 
     pub(crate) fn class_name(&self) -> &'static str {
-        self.class.name()
+        self.class.as_str()
     }
 }
 
 impl EffectKind {
-    pub fn name(&self) -> &'static str {
+    pub fn as_str(&self) -> &'static str {
         match self {
             EffectKind::Clock { .. } => "clock",
             EffectKind::Meter { .. } => "meter",
@@ -189,7 +189,7 @@ fn is_false(value: &bool) -> bool {
 pub(crate) enum EffectRecord {
     Clock {
         #[serde(rename = "as")]
-        as_viewer: ViewerId,
+        as_viewer: Viewer,
         intent_id: String,
         clock_id: String,
         delta: i64,
@@ -198,7 +198,7 @@ pub(crate) enum EffectRecord {
     },
     Meter {
         #[serde(rename = "as")]
-        as_viewer: ViewerId,
+        as_viewer: Viewer,
         intent_id: String,
         actor_id: String,
         key: String,
@@ -208,7 +208,7 @@ pub(crate) enum EffectRecord {
     },
     Item {
         #[serde(rename = "as")]
-        as_viewer: ViewerId,
+        as_viewer: Viewer,
         intent_id: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         actor_id: Option<String>,
@@ -221,20 +221,20 @@ pub(crate) enum EffectRecord {
     },
     Wield {
         #[serde(rename = "as")]
-        as_viewer: ViewerId,
+        as_viewer: Viewer,
         intent_id: String,
         actor_id: String,
         id: String,
     },
     Unwield {
         #[serde(rename = "as")]
-        as_viewer: ViewerId,
+        as_viewer: Viewer,
         intent_id: String,
         actor_id: String,
     },
     Location {
         #[serde(rename = "as")]
-        as_viewer: ViewerId,
+        as_viewer: Viewer,
         intent_id: String,
         actor_id: String,
         from: String,
@@ -244,7 +244,7 @@ pub(crate) enum EffectRecord {
     },
     Memory {
         #[serde(rename = "as")]
-        as_viewer: ViewerId,
+        as_viewer: Viewer,
         intent_id: String,
         actor_id: String,
         fact_ids: Vec<String>,
@@ -254,7 +254,7 @@ pub(crate) enum EffectRecord {
     },
     Flag {
         #[serde(rename = "as")]
-        as_viewer: ViewerId,
+        as_viewer: Viewer,
         intent_id: String,
         actor_id: String,
         key: String,
@@ -262,7 +262,7 @@ pub(crate) enum EffectRecord {
     },
     Message {
         #[serde(rename = "as")]
-        as_viewer: ViewerId,
+        as_viewer: Viewer,
         intent_id: String,
         message_id: String,
         to: Vec<String>,
@@ -273,7 +273,7 @@ pub(crate) enum EffectRecord {
     },
     Narrate {
         #[serde(rename = "as")]
-        as_viewer: ViewerId,
+        as_viewer: Viewer,
         intent_id: String,
         to: Vec<String>,
         fact_ids: Vec<String>,
@@ -281,7 +281,7 @@ pub(crate) enum EffectRecord {
     },
     Reveal {
         #[serde(rename = "as")]
-        as_viewer: ViewerId,
+        as_viewer: Viewer,
         intent_id: String,
         actor_id: String,
         fact: String,
@@ -292,7 +292,7 @@ pub(crate) enum EffectRecord {
 
 impl From<Effect> for EffectRecord {
     fn from(effect: Effect) -> Self {
-        let as_viewer = effect.as_viewer;
+        let as_viewer = effect.viewer;
         let intent_id = effect.intent_id;
         match effect.class {
             EffectKind::Clock {
@@ -580,7 +580,7 @@ impl TryFrom<EffectRecord> for Effect {
         };
         Ok(Effect {
             class,
-            as_viewer,
+            viewer: as_viewer,
             intent_id,
         })
     }
@@ -610,7 +610,7 @@ pub(crate) fn payload_json(effect: &Effect) -> String {
 }
 
 fn viewer_matches(intent: &Intent, effect: &Effect) -> bool {
-    effect.as_viewer() == &intent.actor
+    effect.viewer() == &intent.actor
 }
 
 fn apply_clock(
@@ -621,20 +621,28 @@ fn apply_clock(
     start: bool,
 ) -> Result<(), Reason> {
     let humans = draft.presence.humans;
-    let clock = draft.now().clocks.get(clock_id).ok_or(Reason::UnknownKey)?;
+    let clock = draft
+        .state()
+        .clocks
+        .get(clock_id)
+        .ok_or(Reason::UnknownKey)?;
     if !clock.owners.iter().any(|owner| owner == actor_id) {
         return Err(Reason::UnknownKey);
     }
     if start && clock.paused {
         draft.track(StateKey::ClockPaused(clock_id.to_string()))?;
         draft
-            .now_mut()
+            .state_mut()
             .clocks
             .get_mut(clock_id)
             .ok_or(Reason::UnknownKey)?
             .paused = false;
     }
-    let clock = draft.now().clocks.get(clock_id).ok_or(Reason::UnknownKey)?;
+    let clock = draft
+        .state()
+        .clocks
+        .get(clock_id)
+        .ok_or(Reason::UnknownKey)?;
     if delta == 0 && start {
         return Ok(());
     }
@@ -650,7 +658,7 @@ fn apply_clock(
         draft.track(StateKey::ClockValue(clock_id.to_string()))?;
     }
     draft
-        .now_mut()
+        .state_mut()
         .clocks
         .get_mut(clock_id)
         .ok_or(Reason::UnknownKey)?
@@ -666,7 +674,7 @@ fn apply_meter(
 ) -> Result<(), Reason> {
     let def = *draft.canon().meters.get(key).ok_or(Reason::UnknownKey)?;
     let mut live = draft
-        .now()
+        .state()
         .actors
         .get(actor_id)
         .ok_or(Reason::UnknownKey)?
@@ -679,7 +687,7 @@ fn apply_meter(
         draft.track(StateKey::ActorMeter(actor_id.to_string(), key.to_string()))?;
     }
     *draft
-        .now_mut()
+        .state_mut()
         .actors
         .get_mut(actor_id)
         .ok_or(Reason::UnknownKey)?
@@ -701,14 +709,14 @@ fn apply_item(
         (Some(actor_id), None) => {
             let before = i64::from(
                 draft
-                    .now()
+                    .state()
                     .actors
                     .get(&actor_id)
                     .ok_or(Reason::UnknownKey)?
-                    .count(id),
+                    .item_count(id),
             );
             let wielded = draft
-                .now()
+                .state()
                 .actors
                 .get(&actor_id)
                 .ok_or(Reason::UnknownKey)?
@@ -716,7 +724,7 @@ fn apply_item(
                 .map(str::to_string);
             let changed = {
                 let inventory = draft
-                    .now_mut()
+                    .state_mut()
                     .actors
                     .get_mut(&actor_id)
                     .ok_or(Reason::UnknownKey)?
@@ -730,7 +738,7 @@ fn apply_item(
                 )?;
             }
             let released = draft
-                .now_mut()
+                .state_mut()
                 .actors
                 .get_mut(&actor_id)
                 .ok_or(Reason::UnknownKey)?
@@ -746,7 +754,7 @@ fn apply_item(
         (None, Some(place)) => {
             let before = i64::from(
                 draft
-                    .now()
+                    .state()
                     .places
                     .get(&place)
                     .ok_or(Reason::UnknownKey)?
@@ -757,7 +765,7 @@ fn apply_item(
             );
             let changed = {
                 let items = &mut draft
-                    .now_mut()
+                    .state_mut()
                     .places
                     .get_mut(&place)
                     .ok_or(Reason::UnknownKey)?
@@ -784,16 +792,16 @@ fn apply_wield(draft: &mut Draft, actor_id: &str, item_id: &str) -> Result<(), R
         return Err(Reason::NotAWeapon);
     }
     let held = draft
-        .now()
+        .state()
         .actors
         .get(actor_id)
         .ok_or(Reason::UnknownKey)?
-        .count(item_id);
+        .item_count(item_id);
     if held == 0 {
         return Err(Reason::MissingItem);
     }
     let current = draft
-        .now()
+        .state()
         .actors
         .get(actor_id)
         .ok_or(Reason::UnknownKey)?
@@ -804,7 +812,7 @@ fn apply_wield(draft: &mut Draft, actor_id: &str, item_id: &str) -> Result<(), R
     }
     draft.track(StateKey::ActorWielded(actor_id.to_string()))?;
     *draft
-        .now_mut()
+        .state_mut()
         .actors
         .get_mut(actor_id)
         .ok_or(Reason::UnknownKey)?
@@ -814,7 +822,7 @@ fn apply_wield(draft: &mut Draft, actor_id: &str, item_id: &str) -> Result<(), R
 
 fn apply_unwield(draft: &mut Draft, actor_id: &str) -> Result<(), Reason> {
     let set = draft
-        .now()
+        .state()
         .actors
         .get(actor_id)
         .ok_or(Reason::UnknownKey)?
@@ -825,7 +833,7 @@ fn apply_unwield(draft: &mut Draft, actor_id: &str) -> Result<(), Reason> {
     }
     draft.track(StateKey::ActorWielded(actor_id.to_string()))?;
     *draft
-        .now_mut()
+        .state_mut()
         .actors
         .get_mut(actor_id)
         .ok_or(Reason::UnknownKey)?
@@ -843,14 +851,18 @@ fn apply_location(
     if actor_id != intent.actor.actor_id() {
         return Err(Reason::ActorMismatch);
     }
-    let actor = draft.now().actors.get(actor_id).ok_or(Reason::UnknownKey)?;
+    let actor = draft
+        .state()
+        .actors
+        .get(actor_id)
+        .ok_or(Reason::UnknownKey)?;
     if draft.presence.humans == 0 && actor.is_pc() {
         return Err(Reason::TableEmpty);
     }
     if actor.place() != from {
         return Err(Reason::OutOfRange);
     }
-    if !draft.canon().places.contains_key(to) && !draft.now().places.contains_key(to) {
+    if !draft.canon().places.contains_key(to) && !draft.state().places.contains_key(to) {
         return Err(Reason::NoExit);
     }
     let place_changed = actor.place() != to;
@@ -858,14 +870,14 @@ fn apply_location(
         draft.track(StateKey::ActorPlace(actor_id.to_string()))?;
     }
     let actor = draft
-        .now_mut()
+        .state_mut()
         .actors
         .get_mut(actor_id)
         .ok_or(Reason::UnknownKey)?;
     *actor.place_mut() = to.to_string();
     actor.visit(to);
-    if !draft.now().places.contains_key(to) {
-        draft.now_mut().places.insert(
+    if !draft.state().places.contains_key(to) {
+        draft.state_mut().places.insert(
             to.to_string(),
             PlaceLive {
                 items: std::collections::BTreeMap::new(),
@@ -892,16 +904,16 @@ fn apply_memory(
         return Err(Reason::Schema);
     }
     for fact in &fact_ids {
-        if !allows(draft.canon(), draft.now(), &intent.actor, fact) {
+        if !can_see_fact(draft.canon(), draft.state(), &intent.actor, fact) {
             return Err(Reason::IllegalKnowledge);
         }
     }
-    draft.bump_memory()?;
+    draft.count_memory_write()?;
     let mut fact_ids = fact_ids;
     fact_ids.sort();
     fact_ids.dedup();
     let known = draft
-        .now()
+        .state()
         .actors
         .get(actor_id)
         .map(|actor| actor.known_facts().to_vec())
@@ -912,7 +924,7 @@ fn apply_memory(
     {
         draft.track(StateKey::ActorKnownFact(actor_id.to_string()))?;
         let facts = draft
-            .now_mut()
+            .state_mut()
             .actors
             .get_mut(actor_id)
             .ok_or(Reason::UnknownKey)?
@@ -927,8 +939,8 @@ fn apply_memory(
     let mut tags = tags;
     tags.sort();
     tags.dedup();
-    draft.stage_memory(MemoryLine {
-        round_index: draft.now().round_index,
+    draft.push_memory(MemoryLine {
+        round_index: draft.state().round_index,
         actor_id: actor_id.to_string(),
         intent_id: intent.id.clone(),
         fact_ids,
@@ -951,7 +963,7 @@ fn apply_flag(draft: &mut Draft, actor_id: &str, key: &str, value: bool) -> Resu
         return Err(Reason::UnknownKey);
     }
     let has = draft
-        .now()
+        .state()
         .actors
         .get(actor_id)
         .is_some_and(|actor| match actor {
@@ -962,7 +974,7 @@ fn apply_flag(draft: &mut Draft, actor_id: &str, key: &str, value: bool) -> Resu
         draft.track(StateKey::ActorFlag(actor_id.to_string(), key.to_string()))?;
     }
     let flags = draft
-        .now_mut()
+        .state_mut()
         .actors
         .get_mut(actor_id)
         .ok_or(Reason::UnknownKey)?
@@ -981,11 +993,11 @@ fn apply_world_flag(draft: &mut Draft, key: &str, value: bool) -> Result<(), Rea
     if key.is_empty() || key == "busy" {
         return Err(Reason::UnknownKey);
     }
-    let has = draft.now().flags.iter().any(|flag| flag == key);
+    let has = draft.state().flags.iter().any(|flag| flag == key);
     if has != value {
         draft.track(StateKey::WorldFlag(key.to_string()))?;
     }
-    let flags = &mut draft.now_mut().flags;
+    let flags = &mut draft.state_mut().flags;
     if value {
         if !flags.iter().any(|flag| flag == key) {
             flags.push(key.to_string());
@@ -1001,7 +1013,7 @@ fn apply_reveal(draft: &mut Draft, actor_id: &str, fact: &str) -> Result<(), Rea
         return Err(Reason::UnknownKey);
     }
     let known = draft
-        .now()
+        .state()
         .actors
         .get(actor_id)
         .ok_or(Reason::UnknownKey)?
@@ -1011,7 +1023,7 @@ fn apply_reveal(draft: &mut Draft, actor_id: &str, fact: &str) -> Result<(), Rea
     }
     draft.track(StateKey::ActorKnownFact(actor_id.to_string()))?;
     let facts = draft
-        .now_mut()
+        .state_mut()
         .actors
         .get_mut(actor_id)
         .ok_or(Reason::UnknownKey)?
@@ -1030,7 +1042,7 @@ fn apply_message(
     text: String,
 ) -> Result<(), Reason> {
     if draft
-        .now()
+        .state()
         .messages
         .iter()
         .any(|message| message.id == message_id)
@@ -1038,14 +1050,14 @@ fn apply_message(
         return Err(Reason::UnknownKey);
     }
     if let Some(place_id) = &place {
-        if !draft.now().places.contains_key(place_id) {
+        if !draft.state().places.contains_key(place_id) {
             return Err(Reason::UnknownKey);
         }
     }
     draft.track(StateKey::Message(message_id.clone()))?;
     if let Some(place_id) = &place {
         let mut notes = draft
-            .now()
+            .state()
             .places
             .get(place_id)
             .map(|place_live| place_live.notes.clone())
@@ -1053,7 +1065,7 @@ fn apply_message(
         notes.push(message_id.clone());
         notes.sort();
         notes.dedup();
-        if let Some(place_live) = draft.now_mut().places.get_mut(place_id) {
+        if let Some(place_live) = draft.state_mut().places.get_mut(place_id) {
             place_live.notes = notes;
         }
     }
@@ -1063,7 +1075,7 @@ fn apply_message(
     let mut fact_ids = fact_ids;
     fact_ids.sort();
     fact_ids.dedup();
-    draft.now_mut().messages.push(Message {
+    draft.state_mut().messages.push(Message {
         id: message_id,
         to,
         place,

@@ -7,7 +7,7 @@ Feature: Speech appends to the tape and does not play a round
     And the tape address is "table"
     And save.yaml is unchanged since the seat
     And state_rev is unchanged
-    And no round file was written
+    And no round record was written
 
   Scenario: A seated player says a line to the room
     Given a docks table with a seated player
@@ -17,7 +17,7 @@ Feature: Speech appends to the tape and does not play a round
     And the tape names the place "docks_shop"
     And the tape recipients are "pc_rowan"
     And save.yaml is unchanged since the seat
-    And no round file was written
+    And no round record was written
 
   Scenario: A seated player says a line to mira
     Given a docks table with a seated player
@@ -26,7 +26,7 @@ Feature: Speech appends to the tape and does not play a round
     And the tape address is "actor"
     And the tape names the actor "mira"
     And save.yaml is unchanged since the seat
-    And no round file was written
+    And no round record was written
 
   Scenario: A sentence that does not name an actor stays at the table
     Given a docks table with a seated player
@@ -34,7 +34,7 @@ Feature: Speech appends to the tape and does not play a round
     Then the tape contains the text "good evening mira"
     And the tape address is "table"
     And save.yaml is unchanged since the seat
-    And no round file was written
+    And no round record was written
 
   Scenario: Say to mira while nobody is seated
     Given a docks table
@@ -43,7 +43,7 @@ Feature: Speech appends to the tape and does not play a round
     And the tape address is "actor"
     And the tape names the actor "mira"
     And save.yaml matches the bytes from before the line
-    And no round file was written
+    And no round record was written
 
   Scenario: A rejoining player gets the newest speech
     Given a docks table with "pc_rowan" seated

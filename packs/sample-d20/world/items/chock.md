@@ -1,7 +1,7 @@
 ---
 schema: item
 id: chock
-name: Wheel chock
+display_name: Wheel chock
 tags: []
 rules: []
 ---

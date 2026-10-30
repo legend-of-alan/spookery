@@ -4,4 +4,4 @@ checks:
     dice:
       count: 1
       sides: 20
-    stat: might
+    meter: might

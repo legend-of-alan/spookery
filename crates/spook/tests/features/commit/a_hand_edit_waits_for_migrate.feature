@@ -13,7 +13,7 @@ Feature: A hand edit waits for migrate
     Then state_rev is 2
     And world_time is 1080
     And round index is 0
-    And no round file was written
+    And no round record was written
     And the journal has two migrate records, at state_rev 1 and 2
 
   Scenario: Migrate keeps a hand edit and rewrites pack_rev
@@ -167,5 +167,5 @@ Feature: A hand edit waits for migrate
     Then the command exits 0
     And the journal line migrate-0001 is
       """
-      {"kind":"migrate","pack_rev_before":"blake2s:5599af7634e836f6a07ff4cbb20fc46ba29f3a74967b9a7c6f6e0fead076ebac","pack_rev_after":"blake2s:5599af7634e836f6a07ff4cbb20fc46ba29f3a74967b9a7c6f6e0fead076ebac","state_rev_before":0,"state_rev_after":1,"now_hash":"blake2s:859cd4e6ab885098a0dadd2f436ba753983fb87dad226113051f4704d4cb385a","prev":"blake2s:d43a4915ee8c0a497ec6d736022e9b5d14887b50b5403fab73b2a20883f4bb04","chain":"blake2s:71471cb723b2596bf4cef8a6ea049bdd3c9d4313ad81c9503e401b339a09dbe7"}
+      {"kind":"migrate","pack_rev_before":"blake2s:770a9922b8093d1bf17f33cd33c8d68b4588ee9d3cc0ffba3c7cb2f78a4aabb5","pack_rev_after":"blake2s:770a9922b8093d1bf17f33cd33c8d68b4588ee9d3cc0ffba3c7cb2f78a4aabb5","state_rev_before":0,"state_rev_after":1,"now_hash":"blake2s:26db8e0b59cb7f259d859c81d98a97dd65db3a3266020d09cc35c8e02eed0ae2","prev":"blake2s:5b62900663fba3d7c2b8ff9c80e63d5eccaa0a13137178d8b7d850637ce9fe27","chain":"blake2s:971ecb5b3f3aa069db433b066e5838b769ba45e224e675a06ba5b0db3cf287b1"}
       """

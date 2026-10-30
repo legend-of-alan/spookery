@@ -16,7 +16,7 @@ pub fn block_on<T: Send>(work: impl std::future::Future<Output = T> + Send) -> T
     })
 }
 
-pub fn spook(args: &[&str]) -> std::process::Output {
+pub fn run_spook(args: &[&str]) -> std::process::Output {
     Command::new(env!("CARGO_BIN_EXE_spook"))
         .args(args)
         .output()
@@ -24,25 +24,25 @@ pub fn spook(args: &[&str]) -> std::process::Output {
 }
 
 #[derive(Debug)]
-pub struct Proc {
+pub struct Process {
     pub child: Child,
     pub stdin: Option<ChildStdin>,
     pub stdout: Arc<Mutex<String>>,
     pub stderr: Arc<Mutex<String>>,
 }
 
-impl Drop for Proc {
+impl Drop for Process {
     fn drop(&mut self) {
         let _ = self.child.kill();
         let _ = self.child.wait();
     }
 }
 
-pub fn spawn(args: &[&str]) -> Proc {
-    spawn_env(args, &[])
+pub fn spawn(args: &[&str]) -> Process {
+    spawn_with_env(args, &[])
 }
 
-pub fn spawn_env(args: &[&str], env: &[(&str, &str)]) -> Proc {
+pub fn spawn_with_env(args: &[&str], env: &[(&str, &str)]) -> Process {
     let mut command = Command::new(env!("CARGO_BIN_EXE_spook"));
     command.args(args);
     for (key, value) in env {
@@ -62,7 +62,7 @@ pub fn spawn_env(args: &[&str], env: &[(&str, &str)]) -> Proc {
     let stderr_buf = Arc::new(Mutex::new(String::new()));
     drain(stdout, Arc::clone(&stdout_buf));
     drain(stderr, Arc::clone(&stderr_buf));
-    Proc {
+    Process {
         child,
         stdin,
         stdout: stdout_buf,

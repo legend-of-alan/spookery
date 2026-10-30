@@ -48,7 +48,7 @@ fn the_packs_hit_requires(world: &mut World, value: String) {
     let path = pack.join("rules/verbs.yaml");
     let mut text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read verbs: {err}"));
     text.push_str(&format!(
-        "\n  - id: hit\n    when:\n      verb: hit\n    if:\n      - meter:\n          who: self\n          key: grit\n          op: \">=\"\n          value: \"{value}\"\n    do:\n      - meter:\n          who: self\n          key: grit\n          add: 1\n"
+        "\n  - id: hit\n    when:\n      verb: hit\n    if:\n      - meter:\n          who: self\n          id: grit\n          op: \">=\"\n          value: \"{value}\"\n    do:\n      - meter:\n          who: self\n          key: grit\n          add: 1\n"
     ));
     fs::write(&path, text).unwrap_or_else(|err| panic!("write verbs: {err}"));
 }
@@ -60,10 +60,10 @@ fn the_player_hits_and_the_gm_commits(world: &mut World) {
     crate::support::copy_dir(&pack, &snap);
     world.scratch = snap.display().to_string();
     table::listen(world, &pack);
-    table::seat_player(world, &pack);
+    table::seat_rowan(world, &pack);
     table::seat_gm(world);
     let _ = table::player_send(world, "hit", "\"kind\":\"queued\"");
-    world.mark = table::player_len(world);
+    world.mark = table::player_mark(world);
     world.stdout = table::gm_call(world, 7, "commit_round", r#"{"include_round":true}"#);
 }
 

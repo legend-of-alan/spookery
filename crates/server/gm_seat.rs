@@ -13,15 +13,15 @@ use rmcp::{ErrorData as McpError, ServerHandler};
 use spookery_engine::Reason;
 
 use super::gm_tools;
-use super::world_loop::WorldMsg;
+use super::world_loop::Request;
 
-pub(super) struct GmSeatHandler {
-    tx: Sender<WorldMsg>,
+pub(super) struct Handler {
+    tx: Sender<Request>,
     conn: OnceLock<u64>,
 }
 
-impl GmSeatHandler {
-    pub(super) fn new(tx: Sender<WorldMsg>) -> Self {
+impl Handler {
+    pub(super) fn new(tx: Sender<Request>) -> Self {
         Self {
             tx,
             conn: OnceLock::new(),
@@ -29,7 +29,7 @@ impl GmSeatHandler {
     }
 }
 
-impl ServerHandler for GmSeatHandler {
+impl ServerHandler for Handler {
     fn get_info(&self) -> ServerConfig {
         let mut info = ServerConfig::default();
         info.capabilities.tools = Some(ToolsCapability::default());
@@ -41,7 +41,7 @@ impl ServerHandler for GmSeatHandler {
         _request: Option<PaginatedRequestParams>,
         _context: RequestContext<RoleServer>,
     ) -> impl std::future::Future<Output = Result<ListToolsResult, McpError>> + Send + '_ {
-        let tools = gm_tools::GM_LIST
+        let tools = gm_tools::TOOLS
             .iter()
             .map(|tool| {
                 Tool::new(
@@ -65,7 +65,7 @@ impl ServerHandler for GmSeatHandler {
             .map(|seat| seat.0)
             .ok_or_else(|| McpError::internal_error("no seat", None))?;
         let _ = self.conn.set(conn);
-        self.claim(conn, &context).await?;
+        self.seat_gm(conn, &context).await?;
         context.peer.set_peer_info(request.clone());
         self.negotiate_initialize(&request)
     }
@@ -82,7 +82,7 @@ impl ServerHandler for GmSeatHandler {
         let name = request.name.into_owned();
         let arguments = request.arguments;
         let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
-        tx.send(WorldMsg::Tool {
+        tx.send(Request::Tool {
             conn,
             name,
             arguments,
@@ -96,12 +96,16 @@ impl ServerHandler for GmSeatHandler {
     }
 }
 
-impl GmSeatHandler {
-    async fn claim(&self, conn: u64, context: &RequestContext<RoleServer>) -> Result<(), McpError> {
+impl Handler {
+    async fn seat_gm(
+        &self,
+        conn: u64,
+        context: &RequestContext<RoleServer>,
+    ) -> Result<(), McpError> {
         let (out_tx, out_rx, cancel_tx, cancel_rx) = super::outbound::channel();
         let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
         self.tx
-            .send(WorldMsg::Claim {
+            .send(Request::SeatGm {
                 conn,
                 out: out_tx,
                 cancel: cancel_tx,
@@ -117,7 +121,7 @@ impl GmSeatHandler {
                 // One writer drains this queue, so two tool calls cannot pass each other.
                 tokio::spawn(super::outbound::write_frames(
                     async move |frame: &[u8]| {
-                        emit_event(&peer, frame).await;
+                        send_event(&peer, frame).await;
                         true
                     },
                     out_rx,
@@ -131,10 +135,10 @@ impl GmSeatHandler {
 }
 
 fn refusal_error(code: Reason) -> McpError {
-    McpError::internal_error(crate::protocol::refusal(code.token()), None)
+    McpError::internal_error(crate::protocol::refusal(code.as_str()), None)
 }
 
-async fn emit_event(peer: &Peer<RoleServer>, frame: &[u8]) {
+async fn send_event(peer: &Peer<RoleServer>, frame: &[u8]) {
     let Ok(body) = serde_json::from_slice(frame) else {
         return;
     };

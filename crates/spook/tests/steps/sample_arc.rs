@@ -11,7 +11,7 @@ use super::table;
 use crate::support;
 use crate::World;
 
-const EVENING: u64 = 1080;
+const START_TIME: u64 = 1080;
 const OPENING: &[&str] = &["strike npc_briar", "use tonic"];
 const SCRIPT: &[&str] = &[
     "strike npc_briar",
@@ -66,17 +66,17 @@ fn sample_d20_and_a_recorded_line_script(world: &mut World) {
 #[when(expr = "the script is played with the stub GM")]
 fn the_script_is_played_with_the_stub_gm(world: &mut World) {
     let lines: Vec<String> = world.scratch.lines().map(str::to_string).collect();
-    let pack = sit(world, "showcase-script");
+    let pack = seat_gm_and_lark(world, "showcase-script");
     for (index, line) in lines.iter().enumerate() {
         commit_line(world, line);
         if index + 1 == OPENING.len() {
             let now = table::now_of(&pack);
             assert!(
-                now.world_time <= EVENING + 10,
+                now.world_time <= START_TIME + 10,
                 "the opening ran past 10 minutes at {}",
                 now.world_time
             );
-            assert_eq!(tonic_of(&now), 0, "the tonic is still in inventory");
+            assert_eq!(larks_tonic(&now), 0, "the tonic is still in inventory");
             assert!(
                 table::player_text(world).contains("\"kind\":\"check\""),
                 "the opening roll was not shown\n{}",
@@ -89,32 +89,35 @@ fn the_script_is_played_with_the_stub_gm(world: &mut World) {
 
 #[then(expr = "the ending flag is set within the session")]
 fn the_ending_flag_is_set(world: &mut World) {
-    assert!(finished(table::pack(world)), "finished is not set");
+    assert!(is_finished(table::pack(world)), "finished is not set");
 }
 
 #[then(expr = "spook verify passes on the save")]
 fn verify_passes_on_the_save(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
-    table::stop_server(world);
-    prove(&pack);
+    table::stop_host(world);
+    assert_verifies(&pack);
 }
 
 #[then(expr = "each of the 2-3 branch scripts reaches an ending")]
 fn each_branch_reaches_an_ending(world: &mut World) {
     for (index, lines) in BRANCHES.iter().enumerate() {
-        let pack = sit(world, &format!("showcase-branch-{index}"));
+        let pack = seat_gm_and_lark(world, &format!("showcase-branch-{index}"));
         for line in *lines {
             commit_line(world, line);
         }
-        assert!(finished(&pack), "branch {index} did not finish: {lines:?}");
-        table::stop_server(world);
-        prove(&pack);
+        assert!(
+            is_finished(&pack),
+            "branch {index} did not finish: {lines:?}"
+        );
+        table::stop_host(world);
+        assert_verifies(&pack);
     }
 }
 
 #[when(expr = "the party travels through the locked exit after unlocking it")]
 fn the_party_travels_through_the_locked_exit(world: &mut World) {
-    let pack = sit(world, "showcase-journey");
+    let pack = seat_gm_and_lark(world, "showcase-journey");
     commit_line(world, "ask_briar");
     commit_line(world, "travel wheel_shed");
     commit_line(world, "take chock");
@@ -136,9 +139,9 @@ fn they_arrive_at_the_exits_cost(world: &mut World) {
     assert_eq!(now.actors.get("pc_lark").unwrap().place(), "mill_lane");
     assert_eq!(arrived.saturating_sub(started), cost);
     assert!(cost > 0);
-    assert!(finished(&pack));
+    assert!(is_finished(&pack));
     assert!(
-        rounds(&pack).iter().any(|r| r["fast_forward"] == true),
+        read_rounds(&pack).iter().any(|r| r["fast_forward"] == true),
         "the journey did not fast-forward"
     );
     assert!(
@@ -161,7 +164,7 @@ fn a_player_uses_the_consumable(world: &mut World) {
 #[then(expr = "it leaves their inventory")]
 fn it_leaves_their_inventory(world: &mut World) {
     let now = table::now_of(table::pack(world));
-    assert_eq!(tonic_of(&now), 0, "{}", world.player_added);
+    assert_eq!(larks_tonic(&now), 0, "{}", world.player_added);
 }
 
 #[given(expr = "the stub GM attempts to set gold directly")]
@@ -181,10 +184,10 @@ fn the_attempt_is_refused_and_in_the_log(world: &mut World) {
     });
     let saved = fs::read(table::pack(world).join("state/save.yaml"))
         .unwrap_or_else(|err| panic!("read save: {err}"));
-    assert_eq!(saved, table::live_mut(world).opened_now);
+    assert_eq!(saved, table::live_mut(world).opened_save);
 }
 
-fn sit(world: &mut World, label: &str) -> PathBuf {
+fn seat_gm_and_lark(world: &mut World, label: &str) -> PathBuf {
     let pack = support::copy_pack("sample-d20", label);
     table::listen(world, &pack);
     table::seat_gm(world);
@@ -201,11 +204,11 @@ fn commit_line(world: &mut World, line: &str) {
     table::wait_round_count(table::pack(world), before + 1);
 }
 
-fn tonic_of(now: &spookery_engine::Now) -> u32 {
-    now.actors.get("pc_lark").unwrap().count("tonic")
+fn larks_tonic(now: &spookery_engine::State) -> u32 {
+    now.actors.get("pc_lark").unwrap().item_count("tonic")
 }
 
-fn finished(pack: &Path) -> bool {
+fn is_finished(pack: &Path) -> bool {
     table::now_of(pack)
         .flags
         .iter()
@@ -228,7 +231,7 @@ fn lane_cost(pack: &Path) -> u64 {
 }
 
 fn arrival_minute(pack: &Path) -> u64 {
-    rounds(pack)
+    read_rounds(pack)
         .into_iter()
         .flat_map(|round| round["arrivals"].as_array().cloned().unwrap_or_default())
         .find(|arrival| arrival["to"] == "mill_lane")
@@ -237,7 +240,7 @@ fn arrival_minute(pack: &Path) -> u64 {
         .unwrap()
 }
 
-fn rounds(pack: &Path) -> Vec<Value> {
+fn read_rounds(pack: &Path) -> Vec<Value> {
     list_round_keys(pack)
         .into_iter()
         .map(|name| {
@@ -248,9 +251,9 @@ fn rounds(pack: &Path) -> Vec<Value> {
         .collect()
 }
 
-fn prove(pack: &Path) {
+fn assert_verifies(pack: &Path) {
     let arg = pack.to_str().unwrap();
-    let verified = support::spook(&["verify", arg]);
+    let verified = support::run_spook(&["verify", arg]);
     let verify_out = String::from_utf8_lossy(&verified.stdout);
     let verify_err = String::from_utf8_lossy(&verified.stderr);
     assert!(

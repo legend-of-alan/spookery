@@ -1,7 +1,7 @@
+#[path = "steps/docks.rs"]
+mod docks;
 #[path = "steps/no_facts.rs"]
 mod no_facts;
-#[path = "steps/proofs.rs"]
-mod proofs;
 #[path = "steps/read_lock.rs"]
 mod read_lock;
 #[path = "steps/round_play.rs"]

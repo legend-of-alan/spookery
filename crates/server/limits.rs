@@ -23,23 +23,23 @@ pub(super) const RATE_PER_SEC: u64 = 5;
 pub(super) const BURST: u64 = 10;
 
 /// Frames queued toward one socket before that socket is dropped.
-pub const OUTBOUND_FRAMES: usize = 256;
+pub const OUTBOUND_FRAME_CAP: usize = 256;
 
 /// Bytes queued toward one socket before that socket is dropped.
 /// A 256-frame queue of large says fills the tape before a large TCP
 /// window fills, so the byte cap is what drops a stopped reader there.
-pub const OUTBOUND_BYTES: usize = 64 * 1024;
+pub const OUTBOUND_BYTE_CAP: usize = 64 * 1024;
 
 /// Send buffer the player socket asks for. The OS may grant more.
 pub const REQUESTED_SEND_BUFFER: usize = 8 * 1024;
 
-pub const HELLO_LIMIT: Duration = Duration::from_secs(10);
+pub const HELLO_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Millitokens per line. Refill uses this scale so the bucket stays integer.
-const SCALE: u128 = 1000;
+const MILLITOKENS_PER_TOKEN: u128 = 1000;
 
 #[derive(Debug)]
-pub(super) enum LineReadError {
+pub(super) enum ReadLineError {
     Io,
     TooLong,
     BadUtf8,
@@ -50,16 +50,16 @@ pub(super) enum LineReadError {
 pub(super) async fn read_capped_line<R: AsyncBufRead + Unpin>(
     reader: &mut R,
     cap: usize,
-) -> Result<Option<String>, LineReadError> {
+) -> Result<Option<String>, ReadLineError> {
     use tokio::io::AsyncBufReadExt;
     let mut buf = Vec::new();
     loop {
         if buf.len() > cap {
-            return Err(LineReadError::TooLong);
+            return Err(ReadLineError::TooLong);
         }
         let room = cap - buf.len();
         let (take, finished, too_long, eof) = {
-            let filled = reader.fill_buf().await.map_err(|_| LineReadError::Io)?;
+            let filled = reader.fill_buf().await.map_err(|_| ReadLineError::Io)?;
             if filled.is_empty() {
                 (0, true, false, true)
             } else if let Some(pos) = filled.iter().position(|byte| *byte == b'\n') {
@@ -81,12 +81,12 @@ pub(super) async fn read_capped_line<R: AsyncBufRead + Unpin>(
             return finish(buf);
         }
         if take > 0 {
-            let filled = reader.fill_buf().await.map_err(|_| LineReadError::Io)?;
+            let filled = reader.fill_buf().await.map_err(|_| ReadLineError::Io)?;
             buf.extend_from_slice(&filled[..take]);
             reader.consume(take);
         }
         if too_long {
-            return Err(LineReadError::TooLong);
+            return Err(ReadLineError::TooLong);
         }
         if finished {
             if buf.last() == Some(&b'\n') {
@@ -100,10 +100,10 @@ pub(super) async fn read_capped_line<R: AsyncBufRead + Unpin>(
     }
 }
 
-fn finish(buf: Vec<u8>) -> Result<Option<String>, LineReadError> {
+fn finish(buf: Vec<u8>) -> Result<Option<String>, ReadLineError> {
     match String::from_utf8(buf) {
         Ok(text) => Ok(Some(text)),
-        Err(_) => Err(LineReadError::BadUtf8),
+        Err(_) => Err(ReadLineError::BadUtf8),
     }
 }
 
@@ -212,16 +212,16 @@ impl TokenBucket {
         Self {
             rate_per_sec: u128::from(rate_per_sec),
             burst,
-            tokens: burst * SCALE,
+            tokens: burst * MILLITOKENS_PER_TOKEN,
             updated: Instant::now(),
         }
     }
 
     /// Spends one token when one is available.
-    pub(super) fn allow(&mut self, now: Instant) -> bool {
+    pub(super) fn try_take(&mut self, now: Instant) -> bool {
         self.refill(now);
-        if self.tokens >= SCALE {
-            self.tokens -= SCALE;
+        if self.tokens >= MILLITOKENS_PER_TOKEN {
+            self.tokens -= MILLITOKENS_PER_TOKEN;
             true
         } else {
             false
@@ -231,14 +231,14 @@ impl TokenBucket {
     /// How long until one line token is available. Zero means one is ready.
     pub(super) fn until_token(&mut self, now: Instant) -> Duration {
         self.refill(now);
-        if self.tokens >= SCALE {
+        if self.tokens >= MILLITOKENS_PER_TOKEN {
             return Duration::ZERO;
         }
         if self.rate_per_sec == 0 {
             return Duration::from_secs(60);
         }
-        let need = SCALE - self.tokens;
-        let per_ns = self.rate_per_sec.saturating_mul(SCALE);
+        let need = MILLITOKENS_PER_TOKEN - self.tokens;
+        let per_ns = self.rate_per_sec.saturating_mul(MILLITOKENS_PER_TOKEN);
         let need_ns = need.saturating_mul(1_000_000_000).div_ceil(per_ns);
         let residual = now.saturating_duration_since(self.updated).as_nanos();
         let ns = need_ns.saturating_sub(residual);
@@ -246,13 +246,13 @@ impl TokenBucket {
     }
 
     fn refill(&mut self, now: Instant) {
-        let cap = self.burst.saturating_mul(SCALE);
+        let cap = self.burst.saturating_mul(MILLITOKENS_PER_TOKEN);
         if self.rate_per_sec == 0 || self.tokens >= cap {
             self.updated = now;
             return;
         }
         let elapsed_ns = now.saturating_duration_since(self.updated).as_nanos();
-        let per_ns = self.rate_per_sec.saturating_mul(SCALE);
+        let per_ns = self.rate_per_sec.saturating_mul(MILLITOKENS_PER_TOKEN);
         let refill = elapsed_ns.saturating_mul(per_ns) / 1_000_000_000;
         if refill == 0 {
             return;
@@ -265,7 +265,7 @@ impl TokenBucket {
 }
 
 /// Waits until a line token is ready. False means the seat was dropped.
-pub(super) async fn wait_turn(
+pub(super) async fn wait_for_token(
     bucket: &mut TokenBucket,
     cancel: &mut tokio::sync::watch::Receiver<bool>,
 ) -> bool {
@@ -307,10 +307,10 @@ mod tests {
         let start = Instant::now();
         let mut bucket = TokenBucket::new(RATE_PER_SEC, BURST);
         for _ in 0..BURST {
-            assert!(bucket.allow(start));
+            assert!(bucket.try_take(start));
         }
-        assert!(!bucket.allow(start));
-        assert!(!bucket.allow(start));
+        assert!(!bucket.try_take(start));
+        assert!(!bucket.try_take(start));
     }
 
     #[test]
@@ -318,56 +318,56 @@ mod tests {
         let start = Instant::now();
         let mut bucket = TokenBucket::new(5, 10);
         for _ in 0..10 {
-            assert!(bucket.allow(start));
+            assert!(bucket.try_take(start));
         }
-        assert!(!bucket.allow(start));
-        assert!(!bucket.allow(start));
+        assert!(!bucket.try_take(start));
+        assert!(!bucket.try_take(start));
         let later = start + Duration::from_millis(200);
-        assert!(bucket.allow(later));
-        assert!(!bucket.allow(later));
+        assert!(bucket.try_take(later));
+        assert!(!bucket.try_take(later));
         let after = later + Duration::from_secs(1);
         for _ in 0..5 {
-            assert!(bucket.allow(after));
+            assert!(bucket.try_take(after));
         }
-        assert!(!bucket.allow(after));
+        assert!(!bucket.try_take(after));
     }
 
     #[test]
     fn a_bucket_does_not_refill_from_an_earlier_instant() {
         let start = Instant::now();
         let mut bucket = TokenBucket::new(5, 1);
-        assert!(bucket.allow(start + Duration::from_secs(1)));
-        assert!(!bucket.allow(start));
+        assert!(bucket.try_take(start + Duration::from_secs(1)));
+        assert!(!bucket.try_take(start));
     }
 
     #[test]
     fn a_bucket_keeps_time_that_did_not_fill_a_millitoken() {
         let start = Instant::now();
         let mut bucket = TokenBucket::new(5, 1);
-        assert!(bucket.allow(start));
-        assert!(!bucket.allow(start));
+        assert!(bucket.try_take(start));
+        assert!(!bucket.try_take(start));
         let mut now = start;
         for _ in 0..1999 {
             now += Duration::from_micros(100);
             assert!(
-                !bucket.allow(now),
+                !bucket.try_take(now),
                 "{:?}",
                 now.saturating_duration_since(start)
             );
         }
         now += Duration::from_micros(100);
-        assert!(bucket.allow(now));
+        assert!(bucket.try_take(now));
     }
 
     #[test]
     fn a_bucket_waits_only_for_the_missing_token() {
         let start = Instant::now();
         let mut bucket = TokenBucket::new(5, 1);
-        assert!(bucket.allow(start));
+        assert!(bucket.try_take(start));
         let full = bucket.until_token(start);
         assert_eq!(full, Duration::from_millis(200));
         let later = start + Duration::from_micros(100);
-        assert!(!bucket.allow(later));
+        assert!(!bucket.try_take(later));
         let rest = bucket.until_token(later);
         assert!(rest < full, "{rest:?}");
         assert!(rest > Duration::from_millis(199), "{rest:?}");
@@ -390,7 +390,7 @@ mod tests {
         let err = read_capped_line(&mut reader, PLAYER_LINE_CAP)
             .await
             .expect_err("cap");
-        assert!(matches!(err, LineReadError::TooLong));
+        assert!(matches!(err, ReadLineError::TooLong));
     }
 
     #[tokio::test]
@@ -408,7 +408,7 @@ mod tests {
 
         let mut reader = BufReader::new(Cursor::new(&b"\xff\n"[..]));
         let err = read_capped_line(&mut reader, 8).await.unwrap_err();
-        assert!(matches!(err, LineReadError::BadUtf8));
+        assert!(matches!(err, ReadLineError::BadUtf8));
     }
 
     #[tokio::test]

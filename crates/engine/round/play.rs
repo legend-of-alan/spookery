@@ -16,7 +16,7 @@ use crate::Reason;
 
 use crate::round::dice::RoundDice;
 use crate::round::log::RoundLog;
-use crate::round::stage::advance::Clock;
+use crate::round::stage::advance::RoundTime;
 use crate::round::stage::{advance, apply, deliver, finish, pick, record, resolve, triggers};
 
 /// What one round showed. Lines and seen are empty when no human was seated.
@@ -29,14 +29,14 @@ pub struct RoundOutput {
     pub seen: Vec<ViewerChanges>,
     pub(crate) effects: Vec<Effect>,
     /// Set when this round wrote the journal.
-    pub outcome: Option<CommitOutcome>,
+    pub commit: Option<CommitOutcome>,
 }
 
 /// Play one round from the save. `Some` is a warning the host prints: the round
 /// was committed, and the checkpoint bundle was not closed.
 pub fn play_pack_once(path: &Path) -> Result<Option<&'static str>, Reason> {
     let mut world = World::resume(path, lock_pack(path)?)?;
-    let wall = world.now().last_round_at.clone();
+    let wall = world.state().last_round_at.clone();
     play_round(&mut world, &Presence::default(), &wall, false)?;
     Ok(world.take_warning())
 }
@@ -76,7 +76,7 @@ fn planned_rounds(budget: &Budget, hours: u64) -> Result<u64, Reason> {
 /// Keep playing while a seated PC is still busy. The burst starts only when every
 /// seated PC is busy. `already` counts a round this call did not play, and the burst
 /// stops at `max_fastforward_rounds` including that round.
-pub(crate) fn play_while_busy(
+pub(crate) fn fast_forward(
     world: &mut World,
     presence: &Presence,
     wall: &str,
@@ -101,7 +101,7 @@ pub(crate) fn play_while_busy(
 
 /// Whether each seated PC is busy at the current world time.
 fn seated_busy<L>(world: &World<L>, presence: &Presence) -> Vec<bool> {
-    let now = world.now();
+    let now = world.state();
     presence
         .actors_present
         .iter()
@@ -121,7 +121,7 @@ pub(crate) fn play_round(
     fast_forward: bool,
 ) -> Result<RoundOutput, Reason> {
     let (draft, clock, log, delivered) = run_stages(world, presence, wall, world.queued_intents())?;
-    record::commit_round(world, draft, wall, clock, log, delivered, fast_forward)
+    record::run(world, draft, wall, clock, log, delivered, fast_forward)
 }
 
 /// Play the queue a journal line kept, in memory, with the seats it recorded.
@@ -142,13 +142,13 @@ fn run_stages<'p, L>(
     presence: &'p Presence,
     wall: &str,
     queue: &[Intent],
-) -> Result<(Draft<'p>, Clock, RoundLog, deliver::Delivered), Reason> {
+) -> Result<(Draft<'p>, RoundTime, RoundLog, deliver::Deliveries), Reason> {
     let mut draft = Draft::begin(world, presence);
     let clock = advance::run(&mut draft, wall)?;
-    let mut dice = RoundDice::new(draft.now().shard_id.clone(), clock.round_index);
+    let mut dice = RoundDice::new(draft.state().shard_id.clone(), clock.round_index);
     let mut log = RoundLog::default();
     let candidates = pick::run(&draft, queue)?;
-    let snapshot = draft.now().clone();
+    let snapshot = draft.state().clone();
     let resolved = resolve::run(
         draft.canon(),
         &snapshot,
@@ -163,7 +163,7 @@ fn run_stages<'p, L>(
     let changes = triggers::run(&mut draft, &mut dice, &mut log)?;
     let delivered = deliver::run(
         draft.canon(),
-        draft.now(),
+        draft.state(),
         draft.presence,
         &changes,
         &log.effects,

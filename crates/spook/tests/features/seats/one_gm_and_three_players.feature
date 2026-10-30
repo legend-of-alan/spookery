@@ -10,7 +10,7 @@ Feature: One GM seat and up to three player seats
     Given a docks table whose pack defines four PCs
     When three players sit
     And a fourth player connects
-    Then the hello is refused with "SESSION_FULL"
+    Then the hello is refused with "TABLE_FULL"
     And save.yaml is unchanged since the seat
 
   Scenario: A hello for a held PC changes nothing
@@ -29,7 +29,7 @@ Feature: One GM seat and up to three player seats
   Scenario: A second GM leaves the table unchanged
     Given a docks table with a seated GM
     When a second GM connects over HTTP
-    Then the hello is refused with "SESSION_FULL"
+    Then the hello is refused with "TABLE_FULL"
     And save.yaml is unchanged since the table opened
     And humans is 0
 
@@ -49,7 +49,7 @@ Feature: One GM seat and up to three player seats
     Given a one-player docks table
     When the player waits
     Then world_time is 1085
-    And a round file was written
+    And a round record was written
     When a second player connects
     Then the hello is refused with "SEAT_TAKEN"
     And humans is 1
@@ -75,7 +75,7 @@ Feature: One GM seat and up to three player seats
     Given a docks table with a GM and two seated players
     When both players wait
     Then both lines are queued for the GM
-    And session status lists both queued lines
+    And table status lists both queued lines
     When the GM commits the round
     Then the round log records both waits
 

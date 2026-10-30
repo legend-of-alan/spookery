@@ -25,14 +25,14 @@ impl Outcome {
 }
 
 pub use gm::{
-    code_result, queued_ack, read_commit_args, read_intent_args, read_perceive_args, read_say_args,
-    read_status_args, read_tool_result, released_result, CastKind, CommitArgs, CommitBody,
-    EventBody, GmSay, IntentCall, MenuRow, OutgoingSay, PackSummary, PerceiveArgs, QueueRow, Roll,
-    SessionStatus, StatusArgs, StatusPause, StatusPresence,
+    code_result, parse_commit_args, parse_intent_args, parse_perceive_args, parse_say_args,
+    parse_status_args, parse_tool_result, queued_result, released_result, CastKind, CommitArgs,
+    CommitBody, EventBody, IntentCall, MenuRow, PackSummary, PerceiveArgs, QueuedMove, Roll,
+    SayArgs, SayEvent, StatusArgs, StatusPause, StatusPresence, TableStatus,
 };
 pub use player::{
-    exit_phrase, read_player, read_player_hello, write_player, write_player_hello, ClockView,
-    ExitView, ItemStack, KnownFact, MessageView, MeterView, Missing, PlayerMessage, ViewScene,
+    emit_player, emit_player_hello, exit_phrase, parse_player, parse_player_hello, ClockView,
+    ExitView, ItemStack, KnownFact, MessageView, MeterView, Missing, PlayerFrame, ViewScene,
 };
 
 /// The agent door for a fixed game port: the next port, on the same address.
@@ -68,7 +68,7 @@ pub fn named_refusal(code: &str, missing: Option<&Missing>) -> String {
         "HAND_EDIT" => "The save was edited by hand.",
         "SCHEMA" => "That line is not valid.",
         "NOT_IN_SPEC" => "The table does not understand that. Type help.",
-        "SESSION_FULL" => "The table is full.",
+        "TABLE_FULL" => "The table is full.",
         "SEAT_TAKEN" => "That character is already taken.",
         "MISSING_ITEM" => "You do not have that.",
         "NOT_A_WEAPON" => "That is not a weapon.",
@@ -111,7 +111,7 @@ mod tests {
 
     #[test]
     fn a_refusal_is_a_sentence_with_the_code() {
-        assert_eq!(refusal("SESSION_FULL"), "The table is full. [SESSION_FULL]");
+        assert_eq!(refusal("TABLE_FULL"), "The table is full. [TABLE_FULL]");
         assert!(refusal("SEAT_TAKEN") == "That character is already taken. [SEAT_TAKEN]");
         assert!(refusal("LINE_TOO_LONG") == "That line is too long. [LINE_TOO_LONG]");
         assert_eq!(refusal("NEW_CODE"), "The table refused that. [NEW_CODE]");
@@ -125,12 +125,12 @@ mod tests {
             "You cannot afford g. [CANT_AFFORD]"
         );
         for raw in [
-            r#"{"kind":"refused","code":"CANT_AFFORD","missing":"grit"}"#,
-            r#"{"kind":"refused","code":"CHOOSE_PC","missing":["pc_rowan"]}"#,
+            r#"{"kind":"refused","code":"CANT_AFFORD","detail":"grit"}"#,
+            r#"{"kind":"refused","code":"CHOOSE_PC","detail":["pc_rowan"]}"#,
             r#"{"kind":"refused","code":"SCHEMA"}"#,
         ] {
-            let msg = read_player(raw).unwrap();
-            assert!(matches!(msg, PlayerMessage::Refused { .. }));
+            let msg = parse_player(raw).unwrap();
+            assert!(matches!(msg, PlayerFrame::Refused { .. }));
             assert_eq!(serde_json::to_string(&msg).unwrap(), raw);
         }
     }

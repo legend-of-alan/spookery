@@ -4,16 +4,16 @@ use std::collections::BTreeMap;
 
 use serde::Deserialize;
 
-use crate::canon::source::{load_headed, At, Diags, Problem, Source, CHECKS_SCHEMA};
+use crate::canon::source::{load_tagged, Diags, FileText, Locator, Problem, CHECKS_SCHEMA};
 use crate::diagnostic::Diagnostic;
-use crate::rules::roll::CheckDef;
+use crate::rules::roll::Check;
 
 pub(super) fn load_checks(
     rel: &str,
     text: &str,
-) -> Result<BTreeMap<String, CheckDef>, Vec<Diagnostic>> {
-    let file: ChecksFile = load_headed(rel, text, CHECKS_SCHEMA, 0)?;
-    let source = Source {
+) -> Result<BTreeMap<String, Check>, Vec<Diagnostic>> {
+    let file: ChecksFile = load_tagged(rel, text, CHECKS_SCHEMA, 0)?;
+    let source = FileText {
         file: rel,
         text,
         line_base: 0,
@@ -24,27 +24,27 @@ pub(super) fn load_checks(
         let path = format!("checks[{row}]");
         let mut found = Vec::new();
         let id_path = format!("{path}.id");
-        let id_at = At::Row {
+        let id_at = Locator::Row {
             list: "checks:",
             row,
             key: "id:",
         };
         let empty = ("a check id is empty", "set id to a short name");
-        found.extend(source.required(&entry.id, &id_path, id_at, empty));
+        found.extend(source.refuse_empty(&entry.id, &id_path, id_at, empty));
         if entry.dice.count == 0 {
             found.push(
                 Problem {
                     source: &source,
                     path: &format!("{path}.dice.count"),
-                    at: At::Row {
+                    at: Locator::Row {
                         list: "checks:",
                         row,
                         key: "count:",
                     },
-                    problem: format!("check '{}' rolls zero dice", entry.id),
+                    message: format!("check '{}' rolls zero dice", entry.id),
                     hint: "set dice.count to 1 or more",
                 }
-                .schema(),
+                .into_diagnostic(),
             );
         }
         if entry.dice.sides == 0 {
@@ -52,51 +52,51 @@ pub(super) fn load_checks(
                 Problem {
                     source: &source,
                     path: &format!("{path}.dice.sides"),
-                    at: At::Row {
+                    at: Locator::Row {
                         list: "checks:",
                         row,
                         key: "sides:",
                     },
-                    problem: format!("check '{}' has a die with zero sides", entry.id),
+                    message: format!("check '{}' has a die with zero sides", entry.id),
                     hint: "set dice.sides to 2 or more",
                 }
-                .schema(),
+                .into_diagnostic(),
             );
         }
-        if entry.stat.is_empty() {
+        if entry.meter.is_empty() {
             found.push(
                 Problem {
                     source: &source,
-                    path: &format!("{path}.stat"),
-                    at: At::Row {
+                    path: &format!("{path}.meter"),
+                    at: Locator::Row {
                         list: "checks:",
                         row,
-                        key: "stat:",
+                        key: "meter:",
                     },
-                    problem: format!("check '{}' names no meter", entry.id),
-                    hint: "set stat to a meter id from rules/meters.yaml",
+                    message: format!("check '{}' names no meter", entry.id),
+                    hint: "set meter to a meter id from rules/meters.yaml",
                 }
-                .schema(),
+                .into_diagnostic(),
             );
         }
         let twice = ("check", "is listed twice", "keep one check");
         // A repeat is checked only on a row with nothing else wrong.
         let taken = found.is_empty() && checks.contains_key(&entry.id);
-        found.extend(taken.then(|| source.repeat(&entry.id, &id_path, id_at, twice)));
+        found.extend(taken.then(|| source.refuse_duplicate(&entry.id, &id_path, id_at, twice)));
         if !found.is_empty() {
             diags.extend(found);
             continue;
         }
         checks.insert(
             entry.id,
-            CheckDef {
+            Check {
                 dice_count: entry.dice.count,
                 dice_sides: entry.dice.sides,
-                stat: entry.stat,
+                stat: entry.meter,
             },
         );
     }
-    diags.result(checks)
+    diags.into_result(checks)
 }
 
 #[derive(Deserialize)]
@@ -104,20 +104,20 @@ pub(super) fn load_checks(
 struct ChecksFile {
     #[serde(rename = "schema")]
     _schema: String,
-    checks: Vec<CheckEntryFile>,
+    checks: Vec<CheckYaml>,
 }
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct CheckEntryFile {
+struct CheckYaml {
     id: String,
-    dice: CheckDiceFile,
-    stat: String,
+    dice: DiceYaml,
+    meter: String,
 }
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct CheckDiceFile {
+struct DiceYaml {
     count: u32,
     sides: u32,
 }
@@ -127,7 +127,7 @@ mod tests {
     use super::*;
     use crate::canon::tests::rejects;
 
-    fn load_checks(text: &str) -> Result<BTreeMap<String, CheckDef>, Vec<Diagnostic>> {
+    fn load_checks(text: &str) -> Result<BTreeMap<String, Check>, Vec<Diagnostic>> {
         super::load_checks("rules/checks.yaml", text)
     }
 
@@ -142,7 +142,7 @@ mod tests {
     }
 
     #[test]
-    fn a_check_refusal_names_the_fix() {
+    fn a_check_refusal_names_the_row() {
         let duplicate = "\
 schema: checks
 checks:
@@ -150,12 +150,12 @@ checks:
     dice:
       count: 2
       sides: 6
-    stat: grit
+    meter: grit
   - id: grit
     dice:
       count: 1
       sides: 6
-    stat: grit
+    meter: grit
 ";
         let err = load_checks(duplicate).unwrap_err();
         assert!(
@@ -173,7 +173,7 @@ checks:
     dice:
       count: 0
       sides: 0
-    stat: grit
+    meter: grit
 ";
         let err = load_checks(zero).unwrap_err();
         assert!(err.iter().any(|diag| diag.message.contains("zero dice")));

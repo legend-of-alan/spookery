@@ -30,7 +30,7 @@ pub enum MeterWrite {
 
 /// `base` is inside `[min, base_cap]`, and `base + offset` fits in `i64`.
 /// A sum outside `[min, max]` still returns true. `current` clamps that.
-pub fn stored(def: &MeterDef, base: i64, offset: i64) -> bool {
+pub fn is_storable(def: &MeterDef, base: i64, offset: i64) -> bool {
     (def.min..=def.base_cap).contains(&base) && base.checked_add(offset).is_some()
 }
 
@@ -57,7 +57,7 @@ pub fn write(def: &MeterDef, live: &mut MeterLive, write: MeterWrite) -> Result<
         }
         MeterWrite::Snap => (live.base, 0),
     };
-    if !stored(def, next_base, next_offset) {
+    if !is_storable(def, next_base, next_offset) {
         return Err(Reason::OutOfRange);
     }
     let changed = next_base != live.base || next_offset != live.offset;
@@ -83,7 +83,7 @@ mod tests {
     #[test]
     fn stored_accepts_a_sum_past_max_and_current_clamps() {
         let def = grit();
-        assert!(stored(&def, 100, 20));
+        assert!(is_storable(&def, 100, 20));
         let live = MeterLive {
             base: 100,
             offset: 20,
@@ -93,6 +93,6 @@ mod tests {
 
     #[test]
     fn stored_rejects_a_sum_that_does_not_fit() {
-        assert!(!stored(&grit(), 3, i64::MAX));
+        assert!(!is_storable(&grit(), 3, i64::MAX));
     }
 }

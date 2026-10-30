@@ -16,7 +16,7 @@ Feature: Travel follows an exit
     Then the player line is queued
     And Rowan is in docks_shop
     And world_time is 1080
-    And no round file was written
+    And no round record was written
     When the GM commits the round
     Then world_time is 1085
     And Rowan is in docks_street

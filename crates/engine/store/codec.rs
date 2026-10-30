@@ -3,13 +3,12 @@
 use serde::Deserialize;
 use serde_saphyr::SerializerOptions;
 
-use crate::diagnostic::{coded, locate_nth, parse_file, schema, tag_diagnostic, Diagnostic};
+use crate::diagnostic::{check_tag, error, locate_nth, parse_file, schema_error, Diagnostic};
 use crate::effect::Effect;
 use crate::error::Reason;
-use crate::model::{sort_unique, MemoryLine, Now};
+use crate::model::{sort_unique, MemoryLine, State};
 
-#[allow(non_snake_case)]
-pub(crate) fn SAVE_EMIT_OPTIONS() -> SerializerOptions {
+pub(crate) fn save_emit_options() -> SerializerOptions {
     serde_saphyr::ser_options! {
         empty_as_braces: true,
         indent_step: 2,
@@ -24,13 +23,13 @@ pub(crate) fn SAVE_EMIT_OPTIONS() -> SerializerOptions {
     }
 }
 
-pub fn load_save(text: &str) -> Result<Now, Vec<Diagnostic>> {
+pub fn parse_save(text: &str) -> Result<State, Vec<Diagnostic>> {
     const FILE: &str = "state/save.yaml";
-    if let Some(diag) = tag_diagnostic(text, crate::diagnostic::NOW_SCHEMA, FILE, 0) {
+    if let Some(diag) = check_tag(text, crate::diagnostic::NOW_SCHEMA, FILE, 0) {
         return Err(vec![diag]);
     }
     // Check the rules version before the full shape, so a save from older rules
-    // (for example one that still carries `presence`) is refused as RULES_REV.
+    // (for example one that still carries `presence`) is refused as RULES_REV_MISMATCH.
     #[derive(Deserialize)]
     struct RulesProbe {
         #[serde(default)]
@@ -41,7 +40,7 @@ pub fn load_save(text: &str) -> Result<Now, Vec<Diagnostic>> {
             return Err(vec![rules_rev_diagnostic(text)]);
         }
     }
-    let now: Now = parse_file(FILE, text, 0)?;
+    let now: State = parse_file(FILE, text, 0)?;
     let diags = occupancy_problems(&now);
     if diags.is_empty() {
         Ok(now)
@@ -50,24 +49,24 @@ pub fn load_save(text: &str) -> Result<Now, Vec<Diagnostic>> {
     }
 }
 
-pub fn emit_save(now: &Now) -> Result<String, Reason> {
+pub fn emit_save(now: &State) -> Result<String, Reason> {
     let mut canonical = now.clone();
     canonical.schema = crate::diagnostic::NOW_SCHEMA.to_string();
     canonical.rules_rev = super::RULES_REV;
-    canonicalize(&mut canonical);
-    let text = serde_saphyr::to_string_with_options(&canonical, SAVE_EMIT_OPTIONS())
+    normalize(&mut canonical);
+    let text = serde_saphyr::to_string_with_options(&canonical, save_emit_options())
         .map_err(|_| Reason::Schema)?;
     Ok(one_trailing_lf(text))
 }
 
 fn rules_rev_diagnostic(text: &str) -> Diagnostic {
-    let mut diag = coded(
+    let mut diag = error(
         "state/save.yaml",
-        Reason::RulesRev,
+        Reason::RulesRevMismatch,
         "this save was written by different rules",
         "start a fresh save",
     )
-    .with_path("rules_rev");
+    .at_path("rules_rev");
     if let Some((line, column)) = locate_nth(text, "rules_rev:", 0) {
         diag = diag.at_line(line, Some(column));
     }
@@ -82,7 +81,7 @@ fn one_trailing_lf(mut text: String) -> String {
     text
 }
 
-pub fn canonicalize(now: &mut Now) {
+pub fn normalize(now: &mut State) {
     now.messages.sort_by(|a, b| a.id.cmp(&b.id));
     for message in &mut now.messages {
         sort_unique(&mut message.to);
@@ -103,7 +102,7 @@ pub fn canonicalize(now: &mut Now) {
     }
 }
 
-fn rebuilt_occupancy(now: &Now) -> std::collections::BTreeMap<String, Vec<String>> {
+fn rebuilt_occupancy(now: &State) -> std::collections::BTreeMap<String, Vec<String>> {
     let mut out: std::collections::BTreeMap<String, Vec<String>> = now
         .places
         .keys()
@@ -120,7 +119,7 @@ fn rebuilt_occupancy(now: &Now) -> std::collections::BTreeMap<String, Vec<String
     out
 }
 
-fn occupancy_problems(now: &Now) -> Vec<Diagnostic> {
+fn occupancy_problems(now: &State) -> Vec<Diagnostic> {
     const FILE: &str = "state/save.yaml";
     let mut diags = Vec::new();
     for (id, actor) in &now.actors {
@@ -128,7 +127,7 @@ fn occupancy_problems(now: &Now) -> Vec<Diagnostic> {
             continue;
         }
         diags.push(
-            schema(
+            schema_error(
                 FILE,
                 &format!(
                     "actor '{id}' is in place '{}', which is not in places",
@@ -136,7 +135,7 @@ fn occupancy_problems(now: &Now) -> Vec<Diagnostic> {
                 ),
                 "add the place or move the actor",
             )
-            .with_path(format!("actors.{id}.place")),
+            .at_path(format!("actors.{id}.place")),
         );
     }
     let expected = rebuilt_occupancy(now);
@@ -146,14 +145,14 @@ fn occupancy_problems(now: &Now) -> Vec<Diagnostic> {
         let got = expected.get(place_id).map(Vec::as_slice).unwrap_or(&[]);
         if listed != got {
             diags.push(
-                schema(
+                schema_error(
                     FILE,
                     &format!(
                         "place '{place_id}' lists actors that do not match where the actors stand"
                     ),
                     "list the actors whose place is this one, or run spook migrate",
                 )
-                .with_path(format!("places.{place_id}.actors")),
+                .at_path(format!("places.{place_id}.actors")),
             );
         }
     }
@@ -185,10 +184,10 @@ mod tests {
         let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("../../packs/oneshot-docks/state/save.yaml");
         let original = fs::read_to_string(&path).unwrap();
-        let now = load_save(&original).unwrap();
+        let now = parse_save(&original).unwrap();
         let emitted = emit_save(&now).unwrap();
         assert_eq!(emitted, original);
-        assert_eq!(load_save(&emitted).unwrap(), now);
+        assert_eq!(parse_save(&emitted).unwrap(), now);
     }
 
     fn now_text(tag: &str) -> String {
@@ -219,43 +218,43 @@ messages: []
 
     #[test]
     fn an_unknown_tag_and_the_old_versioned_tag_are_schema() {
-        assert!(load_save(&now_text("now")).is_ok());
-        let old = load_save(&now_text(concat!("now/", "v0"))).unwrap_err();
+        assert!(parse_save(&now_text("now")).is_ok());
+        let old = parse_save(&now_text(concat!("now/", "v0"))).unwrap_err();
         assert!(old[0].message.contains("no version"), "{old:?}");
         assert_eq!(crate::diagnostic::first_reason(&old), Reason::Schema);
-        let bogus = load_save(&now_text("bogus")).unwrap_err();
+        let bogus = parse_save(&now_text("bogus")).unwrap_err();
         assert!(bogus[0].message.contains("does not use"), "{bogus:?}");
         assert_eq!(crate::diagnostic::first_reason(&bogus), Reason::Schema);
     }
 
     #[test]
     fn emit_save_writes_the_now_tag() {
-        let mut now = load_save(&now_text("now")).unwrap();
+        let mut now = parse_save(&now_text("now")).unwrap();
         now.schema = concat!("now/", "v0").to_string();
         let emitted = emit_save(&now).unwrap();
         assert!(emitted.starts_with("schema: now\n"), "{emitted}");
-        assert_eq!(load_save(&emitted).unwrap().schema, "now");
+        assert_eq!(parse_save(&emitted).unwrap().schema, "now");
     }
 
     use crate::effect::EffectKind;
     use crate::error::Reason;
-    use crate::intent::ViewerId;
+    use crate::intent::Viewer;
     use crate::model::MemoryLine;
 
-    fn effect(class: EffectKind, viewer: ViewerId, intent_id: &str) -> super::Effect {
+    fn effect(class: EffectKind, viewer: Viewer, intent_id: &str) -> super::Effect {
         super::Effect {
             class,
-            as_viewer: viewer,
+            viewer,
             intent_id: intent_id.to_string(),
         }
     }
 
-    fn npc(id: &str) -> ViewerId {
-        ViewerId::Npc(id.to_string())
+    fn npc(id: &str) -> Viewer {
+        Viewer::Npc(id.to_string())
     }
 
-    fn player(id: &str) -> ViewerId {
-        ViewerId::Player(id.to_string())
+    fn player(id: &str) -> Viewer {
+        Viewer::Player(id.to_string())
     }
 
     #[test]
@@ -480,7 +479,7 @@ messages: []
             memory,
             r#"{"round_index":3,"actor_id":"mi\"ra","intent_id":"abc","fact_ids":["f"],"tags":[],"text":null}"#
         );
-        let migrate = crate::journal::emit_entry(&crate::journal::migrate_entry(
+        let migrate = crate::journal::emit_record(&crate::journal::migrate_record(
             "blake2s:aa",
             "blake2s:bb",
             0,

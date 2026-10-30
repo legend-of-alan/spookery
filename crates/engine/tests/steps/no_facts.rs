@@ -21,7 +21,7 @@ fn lark_plays(world: &mut World, line: String) {
 
 #[then(expr = "the journal commits two location effects for Lark")]
 fn two_location_effects_for_lark(world: &mut World) {
-    let moves = location_moves(world.pack(), "pc_lark");
+    let moves = location_effects(world.pack(), "pc_lark");
     assert_eq!(
         moves,
         vec![
@@ -65,7 +65,7 @@ fn the_wait_commits_with_nothing_rejected(world: &mut World) {
 
 #[given(expr = "Mira stands in a place with no facts")]
 fn mira_stands_in_a_place_with_no_facts(world: &mut World) {
-    let pack = support::temp_pack("no-facts");
+    let pack = support::copy_docks("no-facts");
     strip_room_facts(&pack);
     support::edit_save(&pack, |now| {
         now.actors
@@ -108,7 +108,7 @@ fn miras_habit_fires(world: &mut World) {
             })
     });
     assert!(fired, "leave_door_note did not run");
-    let now = support::now_of(pack);
+    let now = support::state_of(pack);
     assert!(
         now.messages
             .iter()
@@ -127,7 +127,7 @@ fn play(world: &mut World, actor: &str, line: &str) {
         actors_present: vec![actor.to_string()],
     };
     let (verb, target) = support::split_move(line);
-    let wall = opened.now().last_round_at.clone();
+    let wall = opened.state().last_round_at.clone();
     opened
         .queue_player_move(&seated, actor, verb, target)
         .unwrap_or_else(|err| panic!("{line}: {}", err.token()));
@@ -148,7 +148,7 @@ fn strip_room_facts(pack: &Path) {
 }
 
 fn place_of(pack: &Path, actor: &str) -> String {
-    support::now_of(pack)
+    support::state_of(pack)
         .actors
         .get(actor)
         .unwrap_or_else(|| panic!("{actor} missing"))
@@ -156,7 +156,7 @@ fn place_of(pack: &Path, actor: &str) -> String {
         .to_string()
 }
 
-fn location_moves(pack: &Path, actor: &str) -> Vec<(String, String)> {
+fn location_effects(pack: &Path, actor: &str) -> Vec<(String, String)> {
     let mut moves = Vec::new();
     for key in list_round_keys(pack) {
         for effect in support::read_round(pack, &key)["effects"]

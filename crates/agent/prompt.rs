@@ -5,8 +5,8 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-pub use crate::protocol::{CastKind, MenuRow, OutgoingSay, PackSummary};
-use crate::protocol::{QueueRow, Roll};
+pub use crate::protocol::{CastKind, MenuRow, PackSummary, SayArgs};
+use crate::protocol::{QueuedMove, Roll};
 
 /// Characters. The same budget `perceive` uses when it trims this prose.
 const PROSE_BUDGET: usize = 800;
@@ -25,9 +25,9 @@ pub struct HandledSay {
 }
 
 impl HandledSay {
-    pub fn from_outgoing(say: &OutgoingSay, seq: Option<u64>) -> Self {
+    pub fn from_outgoing(say: &SayArgs, seq: Option<u64>) -> Self {
         match say {
-            OutgoingSay::Table { text } => Self {
+            SayArgs::Table { text } => Self {
                 seq,
                 from: "gm".to_string(),
                 address: "table".to_string(),
@@ -35,7 +35,7 @@ impl HandledSay {
                 actor: None,
                 text: text.clone(),
             },
-            OutgoingSay::Place { place, text } => Self {
+            SayArgs::Place { place, text } => Self {
                 seq,
                 from: "gm".to_string(),
                 address: "place".to_string(),
@@ -43,7 +43,7 @@ impl HandledSay {
                 actor: None,
                 text: text.clone(),
             },
-            OutgoingSay::Actor { actor, text } => Self {
+            SayArgs::Actor { actor, text } => Self {
                 seq,
                 from: "gm".to_string(),
                 address: "actor".to_string(),
@@ -55,8 +55,8 @@ impl HandledSay {
     }
 }
 
-impl From<crate::protocol::GmSay> for HandledSay {
-    fn from(say: crate::protocol::GmSay) -> Self {
+impl From<crate::protocol::SayEvent> for HandledSay {
+    fn from(say: crate::protocol::SayEvent) -> Self {
         Self {
             seq: Some(say.seq),
             from: say.from,
@@ -69,14 +69,14 @@ impl From<crate::protocol::GmSay> for HandledSay {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct IntentDraft {
+pub struct Intent {
     pub actor_id: String,
     pub move_name: String,
     pub target: Option<String>,
 }
 
-impl IntentDraft {
-    pub fn arguments(&self) -> Value {
+impl Intent {
+    pub fn to_value(&self) -> Value {
         let mut body = serde_json::json!({
             "actor_id": self.actor_id,
             "move": self.move_name,
@@ -90,8 +90,8 @@ impl IntentDraft {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ModelActions {
-    pub says: Vec<OutgoingSay>,
-    pub intents: Vec<IntentDraft>,
+    pub says: Vec<SayArgs>,
+    pub intents: Vec<Intent>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -102,8 +102,8 @@ pub enum SceneScope {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct KeptActions {
-    pub says: Vec<OutgoingSay>,
-    pub intent: Option<IntentDraft>,
+    pub says: Vec<SayArgs>,
+    pub intent: Option<Intent>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -130,7 +130,7 @@ pub struct TurnView {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum PreparedTurn {
-    NoModel { says: Vec<OutgoingSay> },
+    NoModel { says: Vec<SayArgs> },
     Model(TurnView),
 }
 
@@ -139,7 +139,7 @@ pub enum PreparedTurn {
 pub struct PromptContext {
     pub buffer: Vec<HandledSay>,
     pub new_lines: Vec<HandledSay>,
-    pub queue: Vec<QueueRow>,
+    pub queue: Vec<QueuedMove>,
     pub checks: Vec<Roll>,
 }
 
@@ -157,7 +157,7 @@ pub fn parse_actions(text: &str, says_only: bool) -> Option<ModelActions> {
         #[derive(Deserialize)]
         #[serde(deny_unknown_fields)]
         struct SaysOnly {
-            says: Vec<OutgoingSay>,
+            says: Vec<SayArgs>,
         }
         let parsed: SaysOnly = serde_json::from_str(text).ok()?;
         return Some(ModelActions {
@@ -168,7 +168,7 @@ pub fn parse_actions(text: &str, says_only: bool) -> Option<ModelActions> {
     #[derive(Deserialize)]
     #[serde(deny_unknown_fields)]
     struct FullActions {
-        says: Vec<OutgoingSay>,
+        says: Vec<SayArgs>,
         intents: Vec<IntentJson>,
     }
     let parsed: FullActions = serde_json::from_str(text).ok()?;
@@ -186,7 +186,7 @@ pub fn parse_actions(text: &str, says_only: bool) -> Option<ModelActions> {
 pub fn keep_actions(actions: ModelActions, scope: &SceneScope, menu: &[MenuRow]) -> KeptActions {
     let mut says = Vec::new();
     for say in actions.says {
-        if !accept_say(&say, scope) {
+        if !is_say_in_scope(&say, scope) {
             continue;
         }
         if says.len() == 2 {
@@ -196,7 +196,7 @@ pub fn keep_actions(actions: ModelActions, scope: &SceneScope, menu: &[MenuRow])
     }
     let mut intent = None;
     for item in actions.intents {
-        if !accept_intent(&item, menu) {
+        if !is_intent_on_menu(&item, menu) {
             continue;
         }
         if intent.is_some() {
@@ -207,7 +207,7 @@ pub fn keep_actions(actions: ModelActions, scope: &SceneScope, menu: &[MenuRow])
     KeptActions { says, intent }
 }
 
-pub fn prepare_with(
+pub fn prepare_turn(
     pack: &PackSummary,
     wake: &Wake,
     present: &[String],
@@ -221,17 +221,17 @@ pub fn prepare_with(
             ..
         } if address == "actor" => {
             let Some(actor) = actor.as_deref().filter(|id| !id.is_empty()) else {
-                return absent();
+                return absent_turn();
             };
             let speaker = speaker_id(from);
             let Some(&kind) = pack.kinds.get(actor) else {
-                return absent();
+                return absent_turn();
             };
             let Ok(view) = perceive(actor) else {
-                return absent();
+                return absent_turn();
             };
-            if !visible_has(&view, &speaker) {
-                return absent();
+            if !has_visible_actor(&view, &speaker) {
+                return absent_turn();
             }
             match kind {
                 CastKind::Npc => PreparedTurn::Model(build_view(
@@ -239,14 +239,14 @@ pub fn prepare_with(
                         actor: actor.to_string(),
                     },
                     None,
-                    vec![strip_npc(&view)],
+                    vec![trim_npc_view(&view)],
                     pack,
                 )),
                 CastKind::PcTemplate => PreparedTurn::Model(build_view(
                     SceneScope::Actor {
                         actor: actor.to_string(),
                     },
-                    Some(strip_player(&view)),
+                    Some(trim_player_view(&view)),
                     Vec::new(),
                     pack,
                 )),
@@ -274,7 +274,7 @@ pub fn prepare_with(
             let npcs = npc_views(&player, &pack.kinds, &filter, perceive);
             PreparedTurn::Model(build_view(
                 SceneScope::Place { place: filter },
-                Some(strip_player(&player)),
+                Some(trim_player_view(&player)),
                 npcs,
                 pack,
             ))
@@ -296,7 +296,7 @@ pub fn prepare_with(
             let npcs = npc_views(&player, &pack.kinds, &place, perceive);
             PreparedTurn::Model(build_view(
                 SceneScope::Place { place },
-                Some(strip_player(&player)),
+                Some(trim_player_view(&player)),
                 npcs,
                 pack,
             ))
@@ -328,7 +328,7 @@ pub fn render_prompt(
         menu: &'a [MenuRow],
         buffer: &'a [HandledSay],
         lines: &'a [HandledSay],
-        queue: &'a [QueueRow],
+        queue: &'a [QueuedMove],
         views: Views<'a>,
         #[serde(skip_serializing_if = "<[_]>::is_empty")]
         checks: &'a [Roll],
@@ -353,9 +353,9 @@ pub fn render_prompt(
     serde_json::to_string(&prompt).expect("prompt json")
 }
 
-fn absent() -> PreparedTurn {
+fn absent_turn() -> PreparedTurn {
     PreparedTurn::NoModel {
-        says: vec![OutgoingSay::Table {
+        says: vec![SayArgs::Table {
             text: "They are not here.".to_string(),
         }],
     }
@@ -384,12 +384,12 @@ fn npc_views(
         if view.get("place").and_then(Value::as_str) != Some(place) {
             continue;
         }
-        out.push(strip_npc(&view));
+        out.push(trim_npc_view(&view));
     }
     out
 }
 
-fn strip_player(view: &Value) -> Value {
+fn trim_player_view(view: &Value) -> Value {
     serde_json::json!({
         "viewer": view.get("viewer").cloned().unwrap_or(Value::Null),
         "place": view.get("place").cloned().unwrap_or(Value::Null),
@@ -400,7 +400,7 @@ fn strip_player(view: &Value) -> Value {
     })
 }
 
-fn strip_npc(view: &Value) -> Value {
+fn trim_npc_view(view: &Value) -> Value {
     let facts = view
         .get("known_facts")
         .and_then(Value::as_array)
@@ -421,7 +421,7 @@ fn strip_npc(view: &Value) -> Value {
         "place": view.get("place").cloned().unwrap_or(Value::Null),
         "visible_actors": view.get("visible_actors").cloned().unwrap_or(Value::Array(Vec::new())),
         "facts": facts,
-        "messages": view.get("messages").cloned().unwrap_or(Value::Array(Vec::new())),
+        "messages": view.get("notes").cloned().unwrap_or(Value::Array(Vec::new())),
         "clocks": view.get("clocks").cloned().unwrap_or(Value::Array(Vec::new())),
         "items": view.get("items").cloned().unwrap_or(Value::Array(Vec::new())),
         "habits": view.get("habits").cloned().unwrap_or(Value::Array(Vec::new())),
@@ -484,24 +484,24 @@ fn include_cast(bodies: &mut BTreeMap<String, String>, pack: &PackSummary, id: &
     }
 }
 
-fn accept_say(say: &OutgoingSay, scope: &SceneScope) -> bool {
+fn is_say_in_scope(say: &SayArgs, scope: &SceneScope) -> bool {
     match scope {
         SceneScope::Actor { actor } => {
-            matches!(say, OutgoingSay::Actor { actor: id, .. } if id == actor)
+            matches!(say, SayArgs::Actor { actor: id, .. } if id == actor)
         }
         SceneScope::Place { place } => match say {
-            OutgoingSay::Table { .. } => true,
-            OutgoingSay::Place { place: named, .. } => named == place,
-            OutgoingSay::Actor { .. } => false,
+            SayArgs::Table { .. } => true,
+            SayArgs::Place { place: named, .. } => named == place,
+            SayArgs::Actor { .. } => false,
         },
     }
 }
 
-fn accept_intent(intent: &IntentDraft, menu: &[MenuRow]) -> bool {
+fn is_intent_on_menu(intent: &Intent, menu: &[MenuRow]) -> bool {
     let Some(row) = menu.iter().find(|row| row.name == intent.move_name) else {
         return false;
     };
-    if row.token == "none" {
+    if row.target == "none" {
         intent.target.is_none()
     } else {
         intent.target.is_some()
@@ -519,12 +519,12 @@ struct IntentJson {
 }
 
 impl IntentJson {
-    fn into_intent(self) -> Option<IntentDraft> {
+    fn into_intent(self) -> Option<Intent> {
         if self.actor_id.is_empty() || self.move_name.is_empty() {
             return None;
         }
         let target = self.target.filter(|t| !t.is_empty());
-        Some(IntentDraft {
+        Some(Intent {
             actor_id: self.actor_id,
             move_name: self.move_name,
             target,
@@ -532,7 +532,7 @@ impl IntentJson {
     }
 }
 
-fn visible_has(view: &Value, id: &str) -> bool {
+fn has_visible_actor(view: &Value, id: &str) -> bool {
     view.get("visible_actors")
         .and_then(Value::as_array)
         .is_some_and(|ids| ids.iter().any(|item| item.as_str() == Some(id)))
@@ -559,8 +559,8 @@ mod tests {
     fn docks() -> PackSummary {
         let row = |n: &str, a: &str, t: &str| MenuRow {
             name: n.into(),
-            audience: a.into(),
-            token: t.into(),
+            kind: a.into(),
+            target: t.into(),
         };
         PackSummary {
             menu: vec![
@@ -585,16 +585,16 @@ mod tests {
         }
     }
 
-    fn say(address: &str, actor: Option<&str>, text: &str) -> OutgoingSay {
+    fn say(address: &str, actor: Option<&str>, text: &str) -> SayArgs {
         match address {
-            "table" => OutgoingSay::Table {
+            "table" => SayArgs::Table {
                 text: text.to_string(),
             },
-            "actor" => OutgoingSay::Actor {
+            "actor" => SayArgs::Actor {
                 actor: actor.unwrap().to_string(),
                 text: text.to_string(),
             },
-            "place" => OutgoingSay::Place {
+            "place" => SayArgs::Place {
                 place: actor.unwrap().to_string(),
                 text: text.to_string(),
             },
@@ -602,8 +602,8 @@ mod tests {
         }
     }
 
-    fn intent(move_name: &str, target: Option<&str>) -> IntentDraft {
-        IntentDraft {
+    fn intent(move_name: &str, target: Option<&str>) -> Intent {
+        Intent {
             actor_id: "mira".to_string(),
             move_name: move_name.to_string(),
             target: target.map(str::to_string),
@@ -627,8 +627,8 @@ mod tests {
             "place": "docks_shop",
             "visible_actors": actors,
             "known_facts": [],
-            "messages": [],
-            "unknown_mentioned": [],
+            "notes": [],
+            "unknown_mentions": [],
             "clocks": [],
             "items": [],
             "habits": []
@@ -639,7 +639,7 @@ mod tests {
         pack: &PackSummary,
         mut perceive: impl FnMut(&str) -> Result<Value, String>,
     ) -> String {
-        let prepared = prepare_with(pack, &table_wake(), &[], &mut perceive);
+        let prepared = prepare_turn(pack, &table_wake(), &[], &mut perceive);
         let PreparedTurn::Model(view) = prepared else {
             panic!("model was not called");
         };
@@ -676,7 +676,7 @@ mod tests {
         let prompt = prompt_for(&pack, |viewer| {
             let mut view = shop(viewer, &["aldric", "mira", "pc_rowan"]);
             view["known_facts"] = serde_json::json!([
-                {"id": "fact_ledger_short", "text": "The lamp-oil ledger is short.", "body": "BODY-SENTINEL"}
+                {"id": "fact_ledger_short", "text": "The lamp-oil ledger is short.", "owner_body": "BODY-SENTINEL"}
             ]);
             Ok(view)
         });
@@ -699,16 +699,16 @@ mod tests {
         pack.cast
             .insert("mira".to_string(), "MIRA-PROSE-SENTINEL".to_string());
         let mut calls = 0;
-        let prepared = prepare_with(&pack, &table_wake(), &[], &mut |viewer| {
+        let prepared = prepare_turn(&pack, &table_wake(), &[], &mut |viewer| {
             calls += 1;
             if viewer == "pc_rowan" {
                 return Ok(serde_json::json!({
                     "viewer": "pc_rowan",
                     "place": "docks_shop",
                     "visible_actors": ["aldric", "mira", "pc_rowan"],
-                    "known_facts": [{"id": "k", "text": "KNOWN-SENTINEL", "body": "KNOWN-BODY"}],
-                    "messages": [{"id": "m", "text": "MESSAGE-SENTINEL"}],
-                    "unknown_mentioned": ["UNKNOWN-SENTINEL"],
+                    "known_facts": [{"id": "k", "text": "KNOWN-SENTINEL", "owner_body": "KNOWN-BODY"}],
+                    "notes": [{"id": "m", "text": "MESSAGE-SENTINEL"}],
+                    "unknown_mentions": ["UNKNOWN-SENTINEL"],
                     "clocks": [],
                     "items": [],
                     "habits": []
@@ -719,9 +719,9 @@ mod tests {
                     "viewer": "aldric",
                     "place": "docks_shop",
                     "visible_actors": ["aldric", "mira", "pc_rowan"],
-                    "known_facts": [{"id": "f", "text": "FACT-TEXT-SENTINEL", "body": "BODY-SENTINEL"}],
-                    "messages": [],
-                    "unknown_mentioned": [],
+                    "known_facts": [{"id": "f", "text": "FACT-TEXT-SENTINEL", "owner_body": "BODY-SENTINEL"}],
+                    "notes": [],
+                    "unknown_mentions": [],
                     "clocks": [],
                     "items": [],
                     "habits": []
@@ -767,7 +767,7 @@ mod tests {
             &menu,
         );
         assert_eq!(
-            kept.says.iter().map(OutgoingSay::text).collect::<Vec<_>>(),
+            kept.says.iter().map(SayArgs::text).collect::<Vec<_>>(),
             vec!["one", "two"]
         );
         assert_eq!(kept.intent.unwrap().move_name, "wait");
@@ -819,7 +819,7 @@ mod tests {
     fn sit_with_no_pc_skips_the_model() {
         let pack = docks();
         let mut called = false;
-        let prepared = prepare_with(&pack, &Wake::Queued, &[], &mut |_| {
+        let prepared = prepare_turn(&pack, &Wake::Queued, &[], &mut |_| {
             called = true;
             Err("called".into())
         });
@@ -842,15 +842,15 @@ mod tests {
             text: "good evening".to_string(),
         };
         let mut calls = Vec::new();
-        let prepared = prepare_with(&pack, &wake, &[], &mut |viewer| {
+        let prepared = prepare_turn(&pack, &wake, &[], &mut |viewer| {
             calls.push(viewer.to_string());
             Ok(serde_json::json!({
                 "viewer": viewer,
                 "place": "mira_rooms",
                 "visible_actors": ["mira"],
                 "known_facts": [],
-                "messages": [],
-                "unknown_mentioned": [],
+                "notes": [],
+                "unknown_mentions": [],
                 "clocks": [],
                 "items": [],
                 "habits": []
@@ -860,7 +860,7 @@ mod tests {
             PreparedTurn::NoModel { says } => {
                 assert_eq!(says.len(), 1);
                 assert_eq!(says[0].text(), "They are not here.");
-                assert!(matches!(says[0], OutgoingSay::Table { .. }));
+                assert!(matches!(says[0], SayArgs::Table { .. }));
             }
             PreparedTurn::Model(_) => panic!("model request"),
         }

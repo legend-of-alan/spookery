@@ -5,13 +5,13 @@ use std::path::Path;
 use std::sync::Arc;
 
 use crate::canon::{check_save, load_canon, migrate_save};
-use crate::commit::atomic_publish;
+use crate::commit::write_atomic;
 use crate::diagnostic::first_reason;
 use crate::effect::Effect;
-use crate::journal::{self, hash_now, JournalEntry, MigrateRecord, RoundRecord};
-use crate::lock::{lock_pack, lock_write, LockGuard};
-use crate::model::{Now, Presence};
-use crate::store::codec::{emit_effect, emit_save, load_save};
+use crate::journal::{self, blake2s_tagged, MigrateRecord, Record, RoundRecord};
+use crate::lock::{lock_pack, lock_write, PackGuard};
+use crate::model::{Presence, State};
+use crate::store::codec::{emit_effect, emit_save, parse_save};
 use crate::store::require_rules_rev;
 use crate::world::World;
 use crate::Reason;
@@ -20,7 +20,7 @@ use crate::round::dice::round_seed;
 use crate::round::play::replay_round;
 
 #[derive(Debug)]
-pub struct ReplayReport {
+pub struct Report {
     pub state_rev: u64,
     pub applied: u64,
     pub now_yaml: Vec<u8>,
@@ -49,18 +49,18 @@ impl DivergenceKind {
     }
 }
 
-impl From<&JournalEntry> for DivergenceKind {
-    fn from(entry: &JournalEntry) -> Self {
+impl From<&Record> for DivergenceKind {
+    fn from(entry: &Record) -> Self {
         match entry {
-            JournalEntry::Round(_) => Self::Round,
-            JournalEntry::Migrate(_) => Self::Migrate,
-            JournalEntry::Checkpoint(_) => Self::Checkpoint,
+            Record::Round(_) => Self::Round,
+            Record::Migrate(_) => Self::Migrate,
+            Record::Checkpoint(_) => Self::Checkpoint,
         }
     }
 }
 
 #[derive(Debug)]
-pub struct ReplayDivergence {
+pub struct Divergence {
     pub state_rev: u64,
     pub kind: DivergenceKind,
     pub round_index: Option<u64>,
@@ -70,7 +70,7 @@ pub struct ReplayDivergence {
     pub save_line: Option<(u32, String)>,
 }
 
-impl ReplayDivergence {
+impl Divergence {
     pub(crate) fn new(
         kind: DivergenceKind,
         state_rev: u64,
@@ -95,7 +95,7 @@ impl ReplayDivergence {
     }
 }
 
-impl std::fmt::Display for ReplayDivergence {
+impl std::fmt::Display for Divergence {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "state_rev {} {}", self.state_rev, self.kind.as_str())?;
         if let Some(round) = self.round_index {
@@ -109,21 +109,21 @@ impl std::fmt::Display for ReplayDivergence {
     }
 }
 
-impl std::error::Error for ReplayDivergence {}
+impl std::error::Error for Divergence {}
 
 #[derive(Debug)]
-pub enum ReplayError {
+pub enum Error {
     Reason(Reason),
-    Diverged(ReplayDivergence),
+    Diverged(Divergence),
 }
 
-impl From<ReplayDivergence> for ReplayError {
-    fn from(diverged: ReplayDivergence) -> Self {
+impl From<Divergence> for Error {
+    fn from(diverged: Divergence) -> Self {
         Self::Diverged(diverged)
     }
 }
 
-impl std::fmt::Display for ReplayError {
+impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Reason(reason) => write!(f, "{reason}"),
@@ -132,11 +132,11 @@ impl std::fmt::Display for ReplayError {
     }
 }
 
-impl std::error::Error for ReplayError {}
+impl std::error::Error for Error {}
 
 /// A round record that did not replay as written.
-fn round_diverged(record: &RoundRecord, detail: impl Into<String>) -> ReplayDivergence {
-    ReplayDivergence::new(
+fn round_diverged(record: &RoundRecord, detail: impl Into<String>) -> Divergence {
+    Divergence::new(
         DivergenceKind::Round,
         record.state_rev_after,
         Some(record.round_index),
@@ -149,8 +149,8 @@ pub(crate) fn checkpoint_diverged(
     state_rev: u64,
     round_index: u64,
     detail: impl Into<String>,
-) -> ReplayDivergence {
-    ReplayDivergence::new(
+) -> Divergence {
+    Divergence::new(
         DivergenceKind::Checkpoint,
         state_rev,
         Some(round_index),
@@ -164,22 +164,21 @@ pub fn replay_journal(
     pack: &Path,
     from: Option<&Path>,
     until: Option<u64>,
-) -> Result<ReplayReport, ReplayError> {
+) -> Result<Report, Error> {
     if !pack.join("pack.yaml").is_file() {
-        return Err(ReplayError::Reason(Reason::NotInSpec));
+        return Err(Error::Reason(Reason::NotInSpec));
     }
-    let records = journal::read_entries(pack)?;
-    let base_path = pack.join("state").join(journal::base_rel());
+    let records = journal::read_records(pack)?;
+    let base_path = pack.join("state").join(journal::base_path());
     let save_path = pack.join("state/save.yaml");
     let base_bytes = if let Some(from) = from {
-        fs::read(from.join("state/save.yaml"))
-            .map_err(|_| ReplayError::Reason(Reason::NotInSpec))?
+        fs::read(from.join("state/save.yaml")).map_err(|_| Error::Reason(Reason::NotInSpec))?
     } else if base_path.is_file() {
-        fs::read(&base_path).map_err(|_| ReplayError::Reason(Reason::Schema))?
+        fs::read(&base_path).map_err(|_| Error::Reason(Reason::Schema))?
     } else if save_path.is_file() {
-        let now_yaml = fs::read(&save_path).map_err(|_| ReplayError::Reason(Reason::NotInSpec))?;
+        let now_yaml = fs::read(&save_path).map_err(|_| Error::Reason(Reason::NotInSpec))?;
         if records.is_empty() {
-            return Ok(ReplayReport {
+            return Ok(Report {
                 state_rev: state_rev_of(&now_yaml)?,
                 applied: 0,
                 now_yaml,
@@ -187,13 +186,13 @@ pub fn replay_journal(
         }
         now_yaml
     } else {
-        return Err(ReplayError::Reason(Reason::NotInSpec));
+        return Err(Error::Reason(Reason::NotInSpec));
     };
     let base_rev = state_rev_of(&base_bytes)?;
     let cap = until.unwrap_or_else(|| {
         records
             .iter()
-            .map(JournalEntry::state_rev_after)
+            .map(Record::state_rev_after)
             .max()
             .unwrap_or(base_rev)
     });
@@ -204,7 +203,7 @@ pub fn replay_journal(
         entry.changes_state() && rev > base_rev && rev <= cap
     });
     if !needs_apply {
-        return Ok(ReplayReport {
+        return Ok(Report {
             state_rev: base_rev,
             applied: 0,
             now_yaml: base_bytes,
@@ -216,25 +215,25 @@ pub fn replay_journal(
         if rev <= base_rev || rev > cap {
             continue;
         }
-        apply_entry(&mut world, entry)?;
+        replay_record(&mut world, entry)?;
         if entry.changes_state() {
             applied += 1;
         }
     }
-    Ok(ReplayReport {
-        state_rev: world.now().state_rev,
+    Ok(Report {
+        state_rev: world.state().state_rev,
         applied,
-        now_yaml: read_now_bytes(&world)?,
+        now_yaml: emit_save_bytes(&world)?,
     })
 }
 
 /// Open the pack at the journal tip. `save.yaml` stays the last checkpoint.
 /// Records after that checkpoint are in the live bundle, so closed bundles stay unread.
 /// The caller holds the pack lock, so a crash is repaired and the checkpoint settled.
-pub(crate) fn open_at_tip(path: &Path, lock: &LockGuard) -> Result<World<()>, Reason> {
-    rebuild_snapshot(path, lock).map_err(replay_reason)?;
+pub(crate) fn open_at_tip(path: &Path, lock: &PackGuard) -> Result<World<()>, Reason> {
+    rebuild_save(path, lock).map_err(Error::into_reason)?;
     let world = peek_at_tip(path)?;
-    crate::commit::settle_open_checkpoint(&world, lock)?;
+    crate::commit::finish_live_checkpoint(&world, lock)?;
     Ok(world)
 }
 
@@ -243,7 +242,7 @@ pub(crate) fn peek_at_tip(path: &Path) -> Result<World<()>, Reason> {
     let mut world = World::open(path)?;
     // Open checked a save with nothing past it. A replayed tip is checked here.
     if replay_tail(&mut world)? {
-        check_save(world.canon(), world.now()).map_err(|diags| first_reason(&diags))?;
+        check_save(world.canon(), world.state()).map_err(|diags| first_reason(&diags))?;
     }
     Ok(world)
 }
@@ -251,88 +250,90 @@ pub(crate) fn peek_at_tip(path: &Path) -> Result<World<()>, Reason> {
 /// Migrate the journal tip. A save that the journal has not passed is migrated as it stands.
 pub fn migrate_pack(path: &Path) -> Result<(), Reason> {
     let lock = lock_pack(path)?;
-    let (now, edited) = journal_tip(path, &lock)?;
-    crate::commit::migrate_journal(path, now, edited, &lock)
+    let (now, edited) = load_migrate_tip(path, &lock)?;
+    crate::commit::commit_migrate(path, now, edited, &lock)
 }
 
 /// The state to migrate, and whether it is a hand edit of the checkpoint head.
 /// A hand edit with live rounds past it is refused, because the tip does not hold it.
-fn journal_tip(path: &Path, lock: &LockGuard) -> Result<(Now, bool), Reason> {
+fn load_migrate_tip(path: &Path, lock: &PackGuard) -> Result<(State, bool), Reason> {
     let bytes = fs::read(path.join("state/save.yaml")).map_err(|_| Reason::NotInSpec)?;
     let text = std::str::from_utf8(&bytes).map_err(|_| Reason::Schema)?;
-    let file_now = load_save(text).map_err(|diags| first_reason(&diags))?;
+    let file_now = parse_save(text).map_err(|diags| first_reason(&diags))?;
     // A save from before the head is a checkpoint that did not land, not an edit.
     let edited = journal::read_head(path)
         .map_err(|fault| fault.reason)?
         .is_some_and(|head| {
-            head.state_rev == file_now.state_rev && head.state_hash != hash_now(&bytes)
+            head.state_rev == file_now.state_rev && head.state_hash != blake2s_tagged(&bytes)
         });
-    let ahead = journal::read_live(path)
+    let ahead = journal::read_live_records(path)
         .map_err(|_| Reason::Schema)?
         .iter()
         .any(|entry| {
-            !matches!(entry, JournalEntry::Checkpoint(_))
-                && entry.state_rev_after() > file_now.state_rev
+            !matches!(entry, Record::Checkpoint(_)) && entry.state_rev_after() > file_now.state_rev
         });
     match (ahead, edited) {
         (true, true) => Err(Reason::HandEdit),
-        (true, false) => Ok((replay_tip_unchecked(path, lock)?.now().clone(), false)),
+        (true, false) => Ok((replay_tip_unchecked(path, lock)?.state().clone(), false)),
         (false, _) => Ok((file_now, edited)),
     }
 }
 
 /// The journal tip in memory and unchecked. Migrate checks it after adding its meters.
 /// The caller holds the pack lock.
-fn replay_tip_unchecked(path: &Path, lock: &LockGuard) -> Result<World<()>, Reason> {
-    rebuild_snapshot(path, lock).map_err(replay_reason)?;
+fn replay_tip_unchecked(path: &Path, lock: &PackGuard) -> Result<World<()>, Reason> {
+    rebuild_save(path, lock).map_err(Error::into_reason)?;
     let save = fs::read(path.join("state/save.yaml")).map_err(|_| Reason::NotInSpec)?;
-    let mut world = open_for_replay(path, &save).map_err(replay_reason)?;
+    let mut world = open_for_replay(path, &save).map_err(Error::into_reason)?;
     replay_tail(&mut world)?;
-    crate::commit::settle_open_checkpoint(&world, lock)?;
+    crate::commit::finish_live_checkpoint(&world, lock)?;
     Ok(world)
 }
 
 /// A replay world at `base` with the pack's canon.
-pub(crate) fn open_for_replay(pack: &Path, base: &[u8]) -> Result<World<()>, ReplayError> {
-    let now = load_base(base)?;
-    let canon = load_canon(pack).map_err(|diags| ReplayError::Reason(first_reason(&diags)))?;
-    Ok(World::open_for_replay(pack, Arc::new(canon), now))
+pub(crate) fn open_for_replay(pack: &Path, base: &[u8]) -> Result<World<()>, Error> {
+    let now = load_save_bytes(base)?;
+    let canon = load_canon(pack).map_err(|diags| Error::Reason(first_reason(&diags)))?;
+    Ok(World::from_parts(pack, Arc::new(canon), now))
 }
 
 /// Replay the live records past the save. `true` when any record was replayed.
 fn replay_tail(world: &mut World<()>) -> Result<bool, Reason> {
-    let entries = journal::read_live(world.root()).map_err(|fault| replay_reason(fault.into()))?;
-    let base_rev = world.now().state_rev;
+    let entries = journal::read_live_records(world.root())
+        .map_err(|fault| Error::from(fault).into_reason())?;
+    let base_rev = world.state().state_rev;
     let mut replayed = false;
     for entry in &entries {
         if entry.state_rev_after() <= base_rev {
             continue;
         }
-        apply_entry(world, entry).map_err(replay_reason)?;
+        replay_record(world, entry).map_err(Error::into_reason)?;
         replayed = true;
     }
     Ok(replayed)
 }
 
-fn replay_reason(err: ReplayError) -> Reason {
-    match err {
-        ReplayError::Reason(reason) => reason,
-        ReplayError::Diverged(_) => Reason::Schema,
+impl Error {
+    fn into_reason(self) -> Reason {
+        match self {
+            Error::Reason(reason) => reason,
+            Error::Diverged(_) => Reason::Schema,
+        }
     }
 }
 
-fn rebuild_snapshot(path: &Path, lock: &LockGuard) -> Result<(), ReplayError> {
+fn rebuild_save(path: &Path, lock: &PackGuard) -> Result<(), Error> {
     let Some(mark) = journal::read_head(path)? else {
         return Ok(());
     };
     let save = path.join("state/save.yaml");
     if save.is_file() {
-        let bytes = fs::read(&save).map_err(|_| ReplayError::Reason(Reason::NotInSpec))?;
-        if hash_now(&bytes) == mark.state_hash {
+        let bytes = fs::read(&save).map_err(|_| Error::Reason(Reason::NotInSpec))?;
+        if blake2s_tagged(&bytes) == mark.state_hash {
             return Ok(());
         }
         if let Ok(text) = std::str::from_utf8(&bytes) {
-            if let Ok(now) = load_save(text) {
+            if let Ok(now) = parse_save(text) {
                 if emit_save(&now)
                     .map(|emitted| emitted.into_bytes())
                     .ok()
@@ -345,24 +346,24 @@ fn rebuild_snapshot(path: &Path, lock: &LockGuard) -> Result<(), ReplayError> {
         }
     }
     let report = replay_journal(path, None, Some(mark.state_rev))?;
-    if hash_now(&report.now_yaml) != mark.state_hash {
+    if blake2s_tagged(&report.now_yaml) != mark.state_hash {
         return Err(
             checkpoint_diverged(mark.state_rev, mark.round_index, "state hash differed")
                 .replayed(report.now_yaml)
                 .into(),
         );
     }
-    let _write = lock_write(path, lock).map_err(ReplayError::Reason)?;
-    atomic_publish(&save, &report.now_yaml).map_err(ReplayError::Reason)?;
+    let _write = lock_write(path, lock).map_err(Error::Reason)?;
+    write_atomic(&save, &report.now_yaml).map_err(Error::Reason)?;
     Ok(())
 }
 
-impl From<crate::journal::JournalFault> for ReplayError {
-    fn from(fault: crate::journal::JournalFault) -> Self {
-        if fault.reason == Reason::RulesRev {
-            return ReplayError::Reason(Reason::RulesRev);
+impl From<crate::journal::Error> for Error {
+    fn from(fault: crate::journal::Error) -> Self {
+        if fault.reason == Reason::RulesRevMismatch {
+            return Error::Reason(Reason::RulesRevMismatch);
         }
-        ReplayDivergence::new(
+        Divergence::new(
             DivergenceKind::Journal,
             0,
             None,
@@ -373,12 +374,12 @@ impl From<crate::journal::JournalFault> for ReplayError {
 }
 
 fn check_sequence(
-    records: &[JournalEntry],
+    records: &[Record],
     cap: u64,
     base_rev: u64,
     engine_base: bool,
     base_bytes: &[u8],
-) -> Result<(), ReplayError> {
+) -> Result<(), Error> {
     let mut marks: Vec<(u64, u64, usize)> = Vec::new();
     for (index, entry) in records.iter().enumerate() {
         if !entry.changes_state() {
@@ -392,7 +393,7 @@ fn check_sequence(
     }
     marks.sort_by_key(|mark| mark.0);
     let missing = |expected| {
-        ReplayDivergence::new(DivergenceKind::Missing, expected, None, "no journal record")
+        Divergence::new(DivergenceKind::Missing, expected, None, "no journal record")
             .replayed(base_bytes.to_vec())
     };
     let mut expected = 1u64;
@@ -402,7 +403,7 @@ fn check_sequence(
         }
         let entry = &records[index];
         if before.saturating_add(1) != rev {
-            return Err(ReplayDivergence::new(
+            return Err(Divergence::new(
                 entry.into(),
                 rev,
                 entry.round_index(),
@@ -412,7 +413,7 @@ fn check_sequence(
             .into());
         }
         if engine_base && rev == base_rev {
-            check_mark(entry, base_bytes)?;
+            check_base_migrate(entry, base_bytes)?;
         }
         expected += 1;
     }
@@ -422,9 +423,9 @@ fn check_sequence(
     Ok(())
 }
 
-fn check_mark(entry: &JournalEntry, base_bytes: &[u8]) -> Result<(), ReplayError> {
-    let JournalEntry::Migrate(record) = entry else {
-        return Err(ReplayDivergence::new(
+fn check_base_migrate(entry: &Record, base_bytes: &[u8]) -> Result<(), Error> {
+    let Record::Migrate(record) = entry else {
+        return Err(Divergence::new(
             entry.into(),
             entry.state_rev_after(),
             entry.round_index(),
@@ -434,7 +435,7 @@ fn check_mark(entry: &JournalEntry, base_bytes: &[u8]) -> Result<(), ReplayError
         .into());
     };
     let migrate_diverged = |detail| {
-        ReplayDivergence::new(
+        Divergence::new(
             DivergenceKind::Migrate,
             record.state_rev_after,
             None,
@@ -442,23 +443,23 @@ fn check_mark(entry: &JournalEntry, base_bytes: &[u8]) -> Result<(), ReplayError
         )
         .replayed(base_bytes.to_vec())
     };
-    if record.now_hash != hash_now(base_bytes) {
+    if record.now_hash != blake2s_tagged(base_bytes) {
         return Err(migrate_diverged("now_hash differed").into());
     }
-    let base_now = load_base(base_bytes)?;
+    let base_now = load_save_bytes(base_bytes)?;
     if record.pack_rev_after != base_now.pack_rev {
         return Err(migrate_diverged("pack_rev differed").into());
     }
     Ok(())
 }
 
-pub(crate) fn apply_entry(world: &mut World<()>, entry: &JournalEntry) -> Result<(), ReplayError> {
+pub(crate) fn replay_record(world: &mut World<()>, entry: &Record) -> Result<(), Error> {
     match entry {
-        JournalEntry::Round(record) => apply_recorded_round(world, record),
-        JournalEntry::Migrate(record) => apply_migrate(world, record),
-        JournalEntry::Checkpoint(record) => {
-            let written = read_now_bytes(world)?;
-            if hash_now(&written) != record.state_hash {
+        Record::Round(record) => apply_recorded_round(world, record),
+        Record::Migrate(record) => apply_migrate(world, record),
+        Record::Checkpoint(record) => {
+            let written = emit_save_bytes(world)?;
+            if blake2s_tagged(&written) != record.state_hash {
                 return Err(checkpoint_diverged(
                     record.state_rev,
                     record.round_index,
@@ -472,12 +473,12 @@ pub(crate) fn apply_entry(world: &mut World<()>, entry: &JournalEntry) -> Result
     }
 }
 
-fn apply_recorded_round(world: &mut World<()>, record: &RoundRecord) -> Result<(), ReplayError> {
-    require_rules_rev(record.rules_rev).map_err(ReplayError::Reason)?;
-    if world.now().round_index + 1 != record.round_index {
+fn apply_recorded_round(world: &mut World<()>, record: &RoundRecord) -> Result<(), Error> {
+    require_rules_rev(record.rules_rev).map_err(Error::Reason)?;
+    if world.state().round_index + 1 != record.round_index {
         return Err(round_diverged(record, "round_index differed").into());
     }
-    let seed = round_seed(&world.now().shard_id, record.round_index);
+    let seed = round_seed(&world.state().shard_id, record.round_index);
     if record.seed != seed {
         return Err(round_diverged(record, "seed differed").into());
     }
@@ -491,20 +492,20 @@ fn apply_recorded_round(world: &mut World<()>, record: &RoundRecord) -> Result<(
         },
     )
     .map(|output| output.effects)
-    .map_err(|code| ReplayDivergence {
-        replayed: read_now_bytes(world).ok(),
-        ..round_diverged(record, code.token())
+    .map_err(|code| Divergence {
+        replayed: emit_save_bytes(world).ok(),
+        ..round_diverged(record, code.as_str())
     })?;
-    let effect_diff = first_effect_difference(&record.effects, &replayed);
-    if world.now().state_rev != record.state_rev_after {
-        return Err(ReplayDivergence {
-            replayed: read_now_bytes(world).ok(),
+    let effect_diff = first_effect_diff(&record.effects, &replayed);
+    if world.state().state_rev != record.state_rev_after {
+        return Err(Divergence {
+            replayed: emit_save_bytes(world).ok(),
             ..round_diverged(record, "state_rev differed")
         }
         .into());
     }
-    let written = read_now_bytes(world)?;
-    if hash_now(&written) != record.now_hash {
+    let written = emit_save_bytes(world)?;
+    if blake2s_tagged(&written) != record.now_hash {
         let detail = effect_diff.unwrap_or_else(|| "now_hash differed".to_string());
         return Err(round_diverged(record, detail).replayed(written).into());
     }
@@ -514,7 +515,7 @@ fn apply_recorded_round(world: &mut World<()>, record: &RoundRecord) -> Result<(
     Ok(())
 }
 
-pub(crate) fn first_effect_difference(logged: &[Effect], replayed: &[Effect]) -> Option<String> {
+pub(crate) fn first_effect_diff(logged: &[Effect], replayed: &[Effect]) -> Option<String> {
     let count = logged.len().max(replayed.len());
     for index in 0..count {
         let left = logged.get(index);
@@ -538,55 +539,55 @@ fn effect_text(effect: Option<&Effect>) -> String {
     }
 }
 
-fn apply_migrate(world: &mut World<()>, record: &MigrateRecord) -> Result<(), ReplayError> {
+fn apply_migrate(world: &mut World<()>, record: &MigrateRecord) -> Result<(), Error> {
     let diverged = |detail| {
-        ReplayDivergence::new(
+        Divergence::new(
             DivergenceKind::Migrate,
             record.state_rev_after,
             None,
             detail,
         )
     };
-    if world.now().pack_rev != record.pack_rev_before {
+    if world.state().pack_rev != record.pack_rev_before {
         return Err(diverged("pack_rev differed").into());
     }
     if record.edited {
         // A migrate of a hand edit restarts from the checkpoint written with it.
         let path = journal::checkpoint_path(world.root(), record.state_rev_after);
         let bytes = fs::read(path).map_err(|_| diverged("missing snapshot"))?;
-        if hash_now(&bytes) != record.now_hash {
+        if blake2s_tagged(&bytes) != record.now_hash {
             return Err(diverged("now_hash differed").replayed(bytes).into());
         }
-        world.install_replayed(load_base(&bytes)?);
+        world.set_state(load_save_bytes(&bytes)?);
         return Ok(());
     }
     let next = migrate_save(
-        world.now().clone(),
+        world.state().clone(),
         &record.pack_rev_after,
         record.state_rev_after,
         &record.meters,
     );
-    let bytes = emit_save(&next).map_err(ReplayError::Reason)?.into_bytes();
-    if hash_now(&bytes) != record.now_hash {
+    let bytes = emit_save(&next).map_err(Error::Reason)?.into_bytes();
+    if blake2s_tagged(&bytes) != record.now_hash {
         return Err(diverged("now_hash differed").replayed(bytes).into());
     }
-    world.install_replayed(next);
+    world.set_state(next);
     Ok(())
 }
 
-pub(crate) fn load_base(bytes: &[u8]) -> Result<Now, ReplayError> {
-    let text = std::str::from_utf8(bytes).map_err(|_| ReplayError::Reason(Reason::Schema))?;
-    load_save(text).map_err(|diag| ReplayError::Reason(first_reason(&diag)))
+pub(crate) fn load_save_bytes(bytes: &[u8]) -> Result<State, Error> {
+    let text = std::str::from_utf8(bytes).map_err(|_| Error::Reason(Reason::Schema))?;
+    parse_save(text).map_err(|diag| Error::Reason(first_reason(&diag)))
 }
 
-pub(crate) fn state_rev_of(bytes: &[u8]) -> Result<u64, ReplayError> {
-    Ok(load_base(bytes)?.state_rev)
+pub(crate) fn state_rev_of(bytes: &[u8]) -> Result<u64, Error> {
+    Ok(load_save_bytes(bytes)?.state_rev)
 }
 
-pub(crate) fn read_now_bytes<L>(world: &World<L>) -> Result<Vec<u8>, ReplayError> {
-    emit_save(world.now())
+pub(crate) fn emit_save_bytes<L>(world: &World<L>) -> Result<Vec<u8>, Error> {
+    emit_save(world.state())
         .map(|text| text.into_bytes())
-        .map_err(ReplayError::Reason)
+        .map_err(Error::Reason)
 }
 
 #[cfg(test)]
@@ -595,11 +596,11 @@ mod tests {
 
     use super::replay_journal;
     use crate::round::play_pack_once;
-    use crate::testing::temp_pack;
+    use crate::testing::copy_docks;
 
     #[test]
     fn two_replays_in_one_process_do_not_collide() {
-        let pack = temp_pack("replay-collide");
+        let pack = copy_docks("replay-collide");
         play_pack_once(&pack).unwrap();
         let left = replay_journal(&pack, None, None).unwrap();
         let right = replay_journal(&pack, None, None).unwrap();

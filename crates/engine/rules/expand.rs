@@ -3,9 +3,9 @@
 use crate::canon::Canon;
 use crate::effect::{Effect, EffectKind};
 use crate::error::Reason;
-use crate::intent::{Intent, Target, ViewerId};
+use crate::intent::{Intent, Target, Viewer};
 use crate::meter::MeterWrite;
-use crate::model::{Now, Presence};
+use crate::model::{Presence, State};
 use crate::rule::{EffectTemplate, LocationTo, NarrateTo, ResistSpec, Rule, TargetKind, When, Who};
 use crate::rules::expr::{self, Ctx, Dice, Expr};
 use crate::rules::gate;
@@ -13,15 +13,15 @@ use crate::rules::roll::Outcome;
 
 /// `outcome` selects `success`, `partial`, or `failure`. `None` means the rule did not roll.
 /// `do` is included either way. `dice.resist` returns the subject's band. Success shrugs the effect off.
-pub fn expand_outcome(
+pub fn expand_intent(
     canon: &Canon,
-    now: &Now,
+    now: &State,
     presence: &Presence,
     intent: &Intent,
     outcome: Option<Outcome>,
     dice: &mut dyn Dice,
 ) -> Result<Vec<Effect>, Reason> {
-    let rule = gate::resolve(canon, now, intent)?;
+    let rule = gate::rule_for(canon, now, intent)?;
     rule.expand(canon, now, presence, intent, outcome, dice)
 }
 
@@ -30,7 +30,7 @@ impl Rule {
     pub fn expand(
         &self,
         canon: &Canon,
-        now: &Now,
+        now: &State,
         presence: &Presence,
         intent: &Intent,
         outcome: Option<Outcome>,
@@ -62,9 +62,9 @@ impl Rule {
 
 struct ExpandCtx<'a> {
     canon: &'a Canon,
-    now: &'a Now,
+    now: &'a State,
     ctx: &'a Ctx<'a>,
-    viewer: &'a ViewerId,
+    viewer: &'a Viewer,
 }
 
 fn expand_template(
@@ -144,7 +144,8 @@ fn expand_template(
                         .get(intent.actor.actor_id())
                         .map(|actor| actor.place())
                         .ok_or(Reason::UnknownKey)?;
-                    let exit = crate::map::named(canon, from, &name).ok_or(Reason::NoExit)?;
+                    let exit =
+                        crate::travel::find_exit(canon, from, &name).ok_or(Reason::NoExit)?;
                     exit.to.clone()
                 }
                 LocationTo::Place(id) if *teleport => id.clone(),
@@ -160,7 +161,7 @@ fn expand_template(
             who, key, add, set, ..
         } => {
             let actor_id = expr::resolve_who_id(now, ctx, who)?;
-            let write = meter_write(
+            let write = eval_meter_write(
                 canon,
                 now,
                 &actor_id,
@@ -308,9 +309,9 @@ struct MeterChange<'a> {
     dice: &'a mut dyn Dice,
 }
 
-fn meter_write(
+fn eval_meter_write(
     canon: &Canon,
-    now: &Now,
+    now: &State,
     actor_id: &str,
     key: &str,
     change: MeterChange<'_>,
@@ -335,7 +336,7 @@ fn meter_write(
 
 /// An item holder. `place:` and `here` are the place. Anyone else is an actor.
 fn resolve_holder(
-    now: &Now,
+    now: &State,
     ctx: &Ctx<'_>,
     who: &Who,
 ) -> Result<(Option<String>, Option<String>), Reason> {
@@ -347,7 +348,7 @@ fn resolve_holder(
     }
 }
 
-fn resolve_actors_here(now: &Now, ctx: &Ctx<'_>) -> Result<Vec<String>, Reason> {
+fn resolve_actors_here(now: &State, ctx: &Ctx<'_>) -> Result<Vec<String>, Reason> {
     let place = expr::resolve_who_id(now, ctx, &Who::Here)?;
     let mut ids: Vec<String> = now
         .actors
@@ -359,7 +360,7 @@ fn resolve_actors_here(now: &Now, ctx: &Ctx<'_>) -> Result<Vec<String>, Reason> 
     Ok(ids)
 }
 
-fn location_effect(now: &Now, intent: &Intent, to: &str) -> Result<Effect, Reason> {
+fn location_effect(now: &State, intent: &Intent, to: &str) -> Result<Effect, Reason> {
     let from = now
         .actors
         .get(intent.actor.actor_id())
@@ -372,18 +373,18 @@ fn location_effect(now: &Now, intent: &Intent, to: &str) -> Result<Effect, Reaso
             to: to.to_string(),
             arrived_at: None,
         },
-        as_viewer: intent.actor.clone(),
+        viewer: intent.actor.clone(),
         intent_id: intent.id.clone(),
     })
 }
 
-pub fn stamp_for_priority(canon: &Canon, now: &Now, presence: &Presence, intent: &mut Intent) {
-    let Ok(effects) = expand_outcome(canon, now, presence, intent, None, &mut PreviewDice) else {
+pub fn stamp_for_priority(canon: &Canon, now: &State, presence: &Presence, intent: &mut Intent) {
+    let Ok(effects) = expand_intent(canon, now, presence, intent, None, &mut PreviewDice) else {
         return;
     };
     // A verb with no target must stay empty. Filling it from a location effect
     // makes the later gate call report SCHEMA.
-    let keeps_empty = gate::resolve(canon, now, intent).ok().is_some_and(|rule| {
+    let keeps_empty = gate::rule_for(canon, now, intent).ok().is_some_and(|rule| {
         matches!(
             &rule.when,
             When::Verb {
@@ -414,10 +415,17 @@ impl Dice for PreviewDice {
         Ok(vec![1; count as usize])
     }
 
-    fn note(&mut self, _text: String) {}
+    fn log(&mut self, _text: String) {}
 
     /// A resist roll that does not shrug the effect off.
-    fn resist(&mut self, _: &Canon, _: &Now, _: &str, _: &str, _: i64) -> Result<Outcome, Reason> {
+    fn resist(
+        &mut self,
+        _: &Canon,
+        _: &State,
+        _: &str,
+        _: &str,
+        _: i64,
+    ) -> Result<Outcome, Reason> {
         Ok(Outcome::Miss)
     }
 }

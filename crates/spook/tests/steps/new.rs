@@ -39,7 +39,10 @@ fn stdout_names_the_next_commands(world: &mut World) {
 #[then(expr = "the written files match the starter template")]
 fn the_written_files_match_the_starter_template(world: &mut World) {
     let pack = table::pack(world);
-    assert_eq!(relative_files(pack), relative_files(&template_dir()));
+    assert_eq!(
+        read_relative_files(pack),
+        read_relative_files(&template_dir())
+    );
 }
 
 #[given(expr = "a non-empty directory")]
@@ -48,7 +51,7 @@ fn a_non_empty_directory(world: &mut World) {
     fs::create_dir(&dir).unwrap_or_else(|err| panic!("mkdir: {err}"));
     fs::write(dir.join("keep.txt"), b"keep\n").unwrap();
     world.pack = Some(dir);
-    world.before = table::files(table::pack(world));
+    world.before = table::read_files(table::pack(world));
 }
 
 #[when(expr = "the operator runs spook new on that directory")]
@@ -83,7 +86,7 @@ fn the_operator_runs_spook_new_beside_a_marker_file(world: &mut World) {
     let parent = fresh_path("sandbox");
     fs::create_dir(&parent).unwrap_or_else(|err| panic!("mkdir: {err}"));
     fs::write(parent.join("keep.txt"), b"keep\n").unwrap();
-    world.before = table::files(&template_dir());
+    world.before = table::read_files(&template_dir());
     world.now_bytes = fs::read(parent.join("keep.txt")).unwrap();
     let pack = parent.join("pack");
     run_new(world, &pack);
@@ -108,12 +111,15 @@ fn the_parent_gained_only_the_new_pack(world: &mut World) {
     names.sort();
     assert_eq!(names, vec!["keep.txt".to_string(), "pack".to_string()]);
     let pack = parent.join("pack");
-    assert_eq!(relative_files(&pack), relative_files(&template_dir()));
+    assert_eq!(
+        read_relative_files(&pack),
+        read_relative_files(&template_dir())
+    );
 }
 
 #[then(expr = "the starter template is unchanged")]
 fn the_starter_template_is_unchanged(world: &mut World) {
-    assert_eq!(table::files(&template_dir()), world.before);
+    assert_eq!(table::read_files(&template_dir()), world.before);
 }
 
 #[when(expr = "the operator runs spook check --json on the starter template")]
@@ -178,7 +184,7 @@ fn the_keeper_habit_has_set_tended(world: &mut World) {
 #[when(expr = "the first-pack guide steps are applied in order")]
 fn the_first_pack_guide_steps_are_applied_in_order(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
-    let edits = guide_edits();
+    let edits = read_guide_edits();
     assert!(edits.len() >= 4, "the guide has {} steps", edits.len());
     assert!(edits.iter().any(|edit| edit.mode == "create"));
     assert!(edits.iter().any(|edit| edit.mode == "append"));
@@ -206,7 +212,7 @@ struct Edit {
     body: String,
 }
 
-fn guide_edits() -> Vec<Edit> {
+fn read_guide_edits() -> Vec<Edit> {
     let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs/first-pack.md");
     let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read guide: {err}"));
     let text = text.replace('\r', "");
@@ -324,8 +330,8 @@ fn template_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../server/templates/starter")
 }
 
-fn relative_files(root: &Path) -> Vec<(String, Vec<u8>)> {
-    table::files(root)
+fn read_relative_files(root: &Path) -> Vec<(String, Vec<u8>)> {
+    table::read_files(root)
         .into_iter()
         .map(|(path, bytes)| {
             let rel = path

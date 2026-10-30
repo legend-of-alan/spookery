@@ -1,16 +1,16 @@
 use std::fs;
 
 use cucumber::{given, then};
-use spookery_engine::{emit_save, load_save};
+use spookery_engine::{emit_save, parse_save};
 
 use super::table;
 use crate::World;
 
 #[given(expr = "rowan starts in docks_street")]
 fn rowan_starts_in_docks_street(world: &mut World) {
-    let pack = crate::support::temp_pack("arrive");
+    let pack = crate::support::copy_docks("arrive");
     let path = pack.join("state/save.yaml");
-    let mut now = load_save(&fs::read_to_string(&path).unwrap()).unwrap();
+    let mut now = parse_save(&fs::read_to_string(&path).unwrap()).unwrap();
     *now.actors.get_mut("pc_rowan").unwrap().place_mut() = "docks_street".to_string();
     now.places
         .get_mut("docks_shop")

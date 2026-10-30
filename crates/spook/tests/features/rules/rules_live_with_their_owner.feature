@@ -34,7 +34,7 @@ Feature: Rules live with their owner
 
   Scenario: A cost the actor cannot pay changes nothing
     Given steady costs 5 grit and the sitter has 1
-    When the sitter plays steady
+    When the seated PC plays steady
     Then the refusal is CANT_AFFORD naming grit and world_time stays 1080
 
   Scenario: A full id does not select a rule
@@ -44,7 +44,7 @@ Feature: Rules live with their owner
 
   Scenario: An owned rule names how the next token is read
     Given use on tonic targets an actor and the shared use takes no target
-    When the sitter lines up use tonic
+    When the seated PC queues use tonic
     Then the queued target is that actor and the save is unchanged
 
   Scenario: A time cost is quiet at check

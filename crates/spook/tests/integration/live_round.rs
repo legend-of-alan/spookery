@@ -23,7 +23,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use crate::support::{pack_arg, temp_pack, text_of, Proc};
+use crate::support::{copy_docks, pack_arg, text_of, Process};
 
 /// Long enough for one call, one retry, and a slow CPU-only model.
 const ROUND_BOUND: Duration = Duration::from_secs(240);
@@ -36,12 +36,12 @@ struct Call {
 #[test]
 #[ignore = "needs a live provider: set SPOOK_GM_KEY, SPOOK_GM_URL, SPOOK_GM_MODEL"]
 fn a_live_model_plays_one_round() {
-    let key = setting("SPOOK_GM_KEY");
-    let upstream = setting("SPOOK_GM_URL").trim_end_matches('/').to_string();
-    let model = setting("SPOOK_GM_MODEL");
+    let key = env_var("SPOOK_GM_KEY");
+    let upstream = env_var("SPOOK_GM_URL").trim_end_matches('/').to_string();
+    let model = env_var("SPOOK_GM_MODEL");
     println!("live round: model {model} at {upstream}");
 
-    let pack = temp_pack("live-round");
+    let pack = copy_docks("live-round");
     let pack_text = pack_arg(&pack);
     let port = free_port();
     let addr = format!("127.0.0.1:{port}");
@@ -49,8 +49,8 @@ fn a_live_model_plays_one_round() {
     let mut server = crate::support::spawn(&["--addr", &addr, "run", &pack_text]);
     wait_port(&addr, &mut server);
 
-    let (proxy, calls) = proxy(upstream);
-    let mut host = spawn_host(&addr, &key, &format!("http://{proxy}"), &model);
+    let (proxy, calls) = start_proxy(upstream);
+    let mut host = spawn_ai_gm(&addr, &key, &format!("http://{proxy}"), &model);
     wait_text(&host, &host.stderr, "listening", Duration::from_secs(20));
 
     let sit = world_time(&pack);
@@ -82,7 +82,7 @@ fn a_live_model_plays_one_round() {
         println!(
             "model call {}: HTTP {status}, tool call: {acted}, reply: {}",
             index + 1,
-            short(body)
+            shorten(body)
         );
     }
 
@@ -99,7 +99,7 @@ fn a_live_model_plays_one_round() {
         assert!(
             (200..300).contains(status),
             "model call returned {status}: {}",
-            short(body)
+            shorten(body)
         );
     }
     let failures: Vec<&str> = host_err
@@ -118,14 +118,14 @@ fn a_live_model_plays_one_round() {
     );
 }
 
-fn setting(name: &str) -> String {
+fn env_var(name: &str) -> String {
     match std::env::var(name) {
         Ok(value) if !value.is_empty() => value,
         _ => panic!("{name} is unset; this test needs a live provider"),
     }
 }
 
-fn spawn_host(addr: &str, key: &str, url: &str, model: &str) -> Proc {
+fn spawn_ai_gm(addr: &str, key: &str, url: &str, model: &str) -> Process {
     let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_spook"));
     command
         .args(["--addr", addr, "ai-gm"])
@@ -142,7 +142,7 @@ fn spawn_host(addr: &str, key: &str, url: &str, model: &str) -> Proc {
     let stderr = Arc::new(Mutex::new(String::new()));
     drain(child.stdout.take().unwrap(), Arc::clone(&stdout));
     drain(child.stderr.take().unwrap(), Arc::clone(&stderr));
-    Proc {
+    Process {
         child,
         stdin: None,
         stdout,
@@ -169,7 +169,7 @@ fn drain(reader: impl Read + Send + 'static, slot: Arc<Mutex<String>>) {
 /// Forward each POST to `{upstream}/chat/completions` and record the status
 /// and reply body. Request headers are never logged, so the key stays out of
 /// the output.
-fn proxy(upstream: String) -> (String, Arc<Mutex<Vec<Call>>>) {
+fn start_proxy(upstream: String) -> (String, Arc<Mutex<Vec<Call>>>) {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap_or_else(|err| panic!("bind: {err}"));
     let addr = listener.local_addr().unwrap().to_string();
     let calls = Arc::new(Mutex::new(Vec::new()));
@@ -248,7 +248,7 @@ fn free_port() -> u16 {
         .port()
 }
 
-fn wait_port(addr: &str, server: &mut Proc) {
+fn wait_port(addr: &str, server: &mut Process) {
     let start = Instant::now();
     while TcpStream::connect(addr).is_err() {
         if let Some(status) = server.child.try_wait().unwrap() {
@@ -261,7 +261,7 @@ fn wait_port(addr: &str, server: &mut Proc) {
     }
 }
 
-fn wait_text(proc: &Proc, slot: &Arc<Mutex<String>>, needle: &str, bound: Duration) {
+fn wait_text(proc: &Process, slot: &Arc<Mutex<String>>, needle: &str, bound: Duration) {
     let start = Instant::now();
     while !text_of(slot).contains(needle) {
         if start.elapsed() > bound {
@@ -278,17 +278,17 @@ fn wait_text(proc: &Proc, slot: &Arc<Mutex<String>>, needle: &str, bound: Durati
 fn world_time(pack: &Path) -> u64 {
     let report = spookery_engine::testing::replay_journal(pack, None, None).expect("replay");
     let text = std::str::from_utf8(&report.now_yaml).expect("save text");
-    spookery_engine::load_save(text)
+    spookery_engine::parse_save(text)
         .expect("load now")
         .world_time
 }
 
-fn wait_advance(pack: &Path, sit: u64, host: &mut Proc) -> bool {
+fn wait_advance(pack: &Path, sit: u64, host: &mut Process) -> bool {
     let start = Instant::now();
     while start.elapsed() < ROUND_BOUND {
         if let Ok(report) = spookery_engine::testing::replay_journal(pack, None, None) {
             if let Ok(text) = std::str::from_utf8(&report.now_yaml) {
-                if let Ok(now) = spookery_engine::load_save(text) {
+                if let Ok(now) = spookery_engine::parse_save(text) {
                     if now.world_time > sit {
                         return true;
                     }
@@ -303,7 +303,7 @@ fn wait_advance(pack: &Path, sit: u64, host: &mut Proc) -> bool {
     false
 }
 
-fn short(text: &str) -> String {
+fn shorten(text: &str) -> String {
     let line = text.split_whitespace().collect::<Vec<_>>().join(" ");
     if line.chars().count() <= 300 {
         return line;

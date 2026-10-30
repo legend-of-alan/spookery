@@ -6,7 +6,7 @@ use spookery_engine::testing::journal::list_round_keys;
 
 use super::common::{add_trapdoor, edit_save, give_key, set_busy, EVENING};
 use super::table;
-use crate::support::{self, temp_pack};
+use crate::support::{self, copy_docks};
 use crate::World;
 
 fn add_toll(pack: &Path) {
@@ -22,12 +22,12 @@ fn add_toll(pack: &Path) {
 
 #[given(expr = "docks_street has no exit to mira_rooms")]
 fn docks_street_has_no_exit_to_mira_rooms(world: &mut World) {
-    let pack = temp_pack("no-exit");
+    let pack = copy_docks("no-exit");
     edit_save(&pack, |now| {
         *now.actors.get_mut("pc_rowan").unwrap().place_mut() = "docks_street".to_string();
     });
     table::listen(world, &pack);
-    table::seat_player(world, &pack);
+    table::seat_rowan(world, &pack);
     world.pack = Some(pack);
 }
 
@@ -38,8 +38,8 @@ fn rowan_travels_to_mira_rooms(world: &mut World) {
     world.player_added = added;
 }
 
-#[then(expr = "the intent is rejected with NO_EXIT and rowan stays put")]
-fn rejected_no_exit_and_stays(world: &mut World) {
+#[then(expr = "the intent is refused with NO_EXIT and rowan stays put")]
+fn refused_no_exit_and_stays(world: &mut World) {
     assert!(
         world.player_added.contains("NO_EXIT"),
         "{}",
@@ -56,9 +56,9 @@ fn rejected_no_exit_and_stays(world: &mut World) {
 
 #[given(expr = "the stairs exit needs brass_key and rowan has none")]
 fn stairs_need_a_key(world: &mut World) {
-    let pack = temp_pack("locked");
+    let pack = copy_docks("locked");
     table::listen(world, &pack);
-    table::seat_player(world, &pack);
+    table::seat_rowan(world, &pack);
     world.pack = Some(pack);
 }
 
@@ -86,16 +86,19 @@ fn rowan_sees_locked_and_nothing_changes(world: &mut World, text: String) {
         now.actors.get("pc_rowan").unwrap().place(),
         parts.next().unwrap()
     );
-    assert_eq!(now.actors.get("pc_rowan").unwrap().count("brass_key"), 0);
+    assert_eq!(
+        now.actors.get("pc_rowan").unwrap().item_count("brass_key"),
+        0
+    );
 }
 
 #[when(expr = "rowan travels via stairs holding brass_key")]
 fn rowan_travels_holding_the_key(world: &mut World) {
-    let pack = temp_pack("stairs-key");
+    let pack = copy_docks("stairs-key");
     add_trapdoor(&pack);
     edit_save(&pack, give_key);
     table::listen(world, &pack);
-    table::seat_player(world, &pack);
+    table::seat_rowan(world, &pack);
     let (_mark, added) = table::player_send(world, "travel stairs", "mira_rooms");
     world.player_added = added;
     world.pack = Some(pack);
@@ -115,7 +118,7 @@ fn rowan_arrives_and_the_cost_is_stamped(world: &mut World) {
 
 #[given(expr = "a place rule with location to cellar, teleport true")]
 fn a_place_rule_teleports(world: &mut World) {
-    let pack = temp_pack("teleport");
+    let pack = copy_docks("teleport");
     add_trapdoor(&pack);
     let path = pack.join("world/places/docks_shop.md");
     let text = fs::read_to_string(&path).unwrap();
@@ -134,7 +137,7 @@ fn a_place_rule_teleports(world: &mut World) {
         );
     });
     table::listen(world, &pack);
-    table::seat_player(world, &pack);
+    table::seat_rowan(world, &pack);
     world.pack = Some(pack);
 }
 
@@ -153,7 +156,7 @@ fn the_pc_reaches_the_cellar(world: &mut World) {
 }
 
 #[then(expr = "the world is at 21:40 and rowan is in mira_rooms")]
-fn rowan_has_arrived_by_half_past(world: &mut World) {
+fn rowan_is_in_mira_rooms_at_21_40(world: &mut World) {
     let now = table::now_of(table::pack(world));
     let rowan = now.actors.get("pc_rowan").unwrap();
     assert_eq!(now.world_time, EVENING + 10);
@@ -169,7 +172,7 @@ fn rowans_line_shows(world: &mut World, text: String) {
 
 #[given(expr = "rowan arrives at 21:40 and nell at 21:35")]
 fn two_arrivals(world: &mut World) {
-    let pack = temp_pack("two-arrivals");
+    let pack = copy_docks("two-arrivals");
     fs::write(
         pack.join("cast/pc-nell.md"),
         "---\nschema: cast\nid: pc_nell\nkind: pc_template\ndisplay_name: Nell\nfacts: []\nidle:\n  eligible: false\n---\nNell.\n",
@@ -189,7 +192,7 @@ fn two_arrivals(world: &mut World) {
                 wielded: None,
                 known_facts: Vec::new(),
                 visited: vec!["docks_shop".to_string()],
-                act: spookery_engine::testing::ActCounters {
+                act: spookery_engine::testing::Act {
                     busy_until: Some(EVENING + 5),
                     busy_for: Some(spookery_engine::testing::PendingAction {
                         verb: "travel".to_string(),
@@ -205,7 +208,7 @@ fn two_arrivals(world: &mut World) {
         );
     });
     table::listen(world, &pack);
-    table::seat_player(world, &pack);
+    table::seat_rowan(world, &pack);
     table::seat_actor(world, &pack, "pc_nell");
     world.pack = Some(pack);
 }
@@ -227,13 +230,13 @@ fn arrivals_are_in_time_order(world: &mut World) {
 
 #[given(expr = "rounds are 5 minutes while seated and the stairs exit costs 2 minutes")]
 fn seated_rounds_are_five_minutes(world: &mut World) {
-    let pack = temp_pack("exact-minute");
+    let pack = copy_docks("exact-minute");
     edit_save(&pack, |now| {
         give_key(now);
         now.world_time = EVENING;
     });
     table::listen(world, &pack);
-    table::seat_player(world, &pack);
+    table::seat_rowan(world, &pack);
     world.pack = Some(pack);
 }
 
@@ -244,7 +247,7 @@ fn rowan_travels_in_the_evening_round(world: &mut World) {
 }
 
 #[then(expr = "the round still ends at 21:35")]
-fn the_round_ends_at_half(world: &mut World) {
+fn the_round_still_ends_at_21_35(world: &mut World) {
     let round = crate::support::read_round(table::pack(world), "round-0001");
     assert_eq!(round["world_time_before"], EVENING);
     assert_eq!(round["world_time_after"], EVENING + 5);
@@ -276,16 +279,16 @@ fn the_next_round_accepts_a_move(world: &mut World) {
     expr = "every round line shows world_time_after minus world_time_before equal to 5 seated or 60 unseated"
 )]
 fn rounds_never_shorten(_world: &mut World) {
-    let seated = temp_pack("seated-length");
-    let mut seated_world = spookery_engine::testing::open(&seated);
+    let seated = copy_docks("seated-length");
+    let mut seated_world = spookery_engine::testing::resume(&seated);
     let one_human = spookery_engine::Presence {
         humans: 1,
         actors_present: Vec::new(),
     };
-    let wall = seated_world.now().last_round_at.clone();
+    let wall = seated_world.state().last_round_at.clone();
     seated_world.play(&one_human, &wall).unwrap();
     drop(seated_world);
-    let idle = temp_pack("idle-length");
+    let idle = copy_docks("idle-length");
     spookery_engine::play_pack_once(&idle).unwrap();
     let seated_round = crate::support::read_round(&seated, "round-0001");
     let idle_round = crate::support::read_round(&idle, "round-0001");
@@ -303,7 +306,7 @@ fn rounds_never_shorten(_world: &mut World) {
 
 #[given(expr = "rowan and nell are seated and both busy, with no GM")]
 fn both_busy_without_a_gm(world: &mut World) {
-    let pack = temp_pack("fast-forward");
+    let pack = copy_docks("fast-forward");
     add_toll(&pack);
     edit_save(&pack, |now| {
         now.world_time = EVENING;
@@ -326,13 +329,13 @@ fn both_busy_without_a_gm(world: &mut World) {
                 wielded: None,
                 known_facts: Vec::new(),
                 visited: vec!["docks_shop".to_string()],
-                act: spookery_engine::testing::ActCounters::default(),
+                act: spookery_engine::testing::Act::default(),
             },
         );
         set_busy(now, "pc_nell", EVENING + 5, "docks_street", "docks_street");
     });
     table::listen(world, &pack);
-    table::seat_player(world, &pack);
+    table::seat_rowan(world, &pack);
     table::seat_actor(world, &pack, "pc_nell");
     world.pack = Some(pack);
 }
@@ -355,7 +358,7 @@ fn the_shard_plays_rounds_through_both_arrivals(world: &mut World) {
 }
 
 #[then(expr = "an NPC habit due at 21:35 runs in that round")]
-fn the_habit_runs_at_half(world: &mut World) {
+fn the_habit_due_at_21_35_runs(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
     let round = list_round_keys(&pack)
         .into_iter()
@@ -384,13 +387,13 @@ fn nothing_advances_until_commit(world: &mut World) {
 
 #[given(expr = "busy_until is 200 rounds away and max_fastforward_rounds is 12")]
 fn a_long_journey_and_the_cap(world: &mut World) {
-    let pack = temp_pack("cap");
+    let pack = copy_docks("cap");
     edit_save(&pack, |now| {
         now.world_time = EVENING;
         set_busy(now, "pc_rowan", EVENING + 200 * 5, "mira_rooms", "stairs");
     });
     table::listen(world, &pack);
-    table::seat_player(world, &pack);
+    table::seat_rowan(world, &pack);
     world.pack = Some(pack);
 }
 
@@ -420,17 +423,17 @@ fn twelve_rounds_then_more(world: &mut World) {
 
 #[then(expr = "spook verify passes over a fast-forwarded journey")]
 fn verify_passes(world: &mut World) {
-    let pack = temp_pack("verify-journey");
+    let pack = copy_docks("verify-journey");
     edit_save(&pack, |now| {
         now.world_time = EVENING;
         set_busy(now, "pc_rowan", EVENING + 10, "mira_rooms", "stairs");
     });
     table::listen(world, &pack);
-    table::seat_player(world, &pack);
+    table::seat_rowan(world, &pack);
     let (_mark, _) = table::player_send(world, "wait", "BUSY");
     world.pack = Some(pack.clone());
     let arg = pack.to_str().unwrap();
-    let output = support::spook(&["verify", arg]);
+    let output = support::run_spook(&["verify", arg]);
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(output.status.success(), "{stdout}\n{stderr}");
