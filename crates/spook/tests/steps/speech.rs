@@ -29,6 +29,31 @@ fn say_to_mira_on_an_empty_table(world: &mut World, text: String) {
         .unwrap_or_else(|err| panic!("speak: {err}"));
 }
 
+#[given(expr = "the tape already holds a full 1 MiB of old speech")]
+fn the_tape_already_holds_a_full_mib(world: &mut World) {
+    let mut lines = String::new();
+    for seq in 1.. {
+        let mut line = spookery_engine::emit_tape_record(&spookery_engine::TapeRecord {
+            seq,
+            from: "gm".to_string(),
+            address: "table".to_string(),
+            place: None,
+            actor: None,
+            recipients: vec!["pc_rowan".to_string()],
+            text: format!("old line {seq}"),
+            round_index: 0,
+            world_time: 0,
+        });
+        line.push('\n');
+        if lines.len() + line.len() > 1024 * 1024 {
+            break;
+        }
+        lines.push_str(&line);
+    }
+    fs::write(table::pack(world).join("state/tape.jsonl"), lines)
+        .unwrap_or_else(|err| panic!("write tape: {err}"));
+}
+
 #[then(expr = "the tape contains the text {string}")]
 fn the_tape_contains(world: &mut World, text: String) {
     let tape = tape_text(world);
@@ -149,6 +174,12 @@ fn each_replayed_line_has_flag(world: &mut World, field: String) {
     for say in &says {
         assert_eq!(say.get("replay"), Some(&Value::Bool(true)), "{say}");
     }
+}
+
+#[then(expr = "the newest replayed say line is {string}")]
+fn the_newest_replayed_say_line_is(world: &mut World, text: String) {
+    let actor = latest_actor(world);
+    assert_eq!(replay_texts(world, &actor).last(), Some(&text));
 }
 
 #[then(expr = "{string} gets exactly those {int} lines, in order")]
