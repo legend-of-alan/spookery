@@ -222,10 +222,10 @@ messages: []
         assert!(load_save(&now_text("now")).is_ok());
         let old = load_save(&now_text(concat!("now/", "v0"))).unwrap_err();
         assert!(old[0].message.contains("no version"), "{old:?}");
-        assert_eq!(crate::diagnostic::reason_of(old), Reason::Schema);
+        assert_eq!(crate::diagnostic::first_reason(&old), Reason::Schema);
         let bogus = load_save(&now_text("bogus")).unwrap_err();
         assert!(bogus[0].message.contains("does not use"), "{bogus:?}");
-        assert_eq!(crate::diagnostic::reason_of(bogus), Reason::Schema);
+        assert_eq!(crate::diagnostic::first_reason(&bogus), Reason::Schema);
     }
 
     #[test]

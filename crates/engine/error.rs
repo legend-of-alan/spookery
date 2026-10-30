@@ -17,7 +17,6 @@ pub enum Reason {
     ViewerMismatch,
     KernelOnPlayer,
     Ineligible,
-    NoProfile,
     ActorMismatch,
     TableEmpty,
     PackRevMismatch,
@@ -52,7 +51,6 @@ impl Reason {
             Reason::ViewerMismatch => "VIEWER_MISMATCH",
             Reason::KernelOnPlayer => "KERNEL_ON_PLAYER",
             Reason::Ineligible => "INELIGIBLE",
-            Reason::NoProfile => "NO_PROFILE",
             Reason::ActorMismatch => "ACTOR_MISMATCH",
             Reason::TableEmpty => "TABLE_EMPTY",
             Reason::PackRevMismatch => "PACK_REV_MISMATCH",
@@ -92,7 +90,7 @@ impl std::error::Error for Reason {}
 mod tests {
     use super::Reason;
 
-    const ALL: [Reason; 30] = [
+    const ALL: [Reason; 29] = [
         Reason::IllegalClass,
         Reason::IllegalKnowledge,
         Reason::OutOfRange,
@@ -102,7 +100,6 @@ mod tests {
         Reason::ViewerMismatch,
         Reason::KernelOnPlayer,
         Reason::Ineligible,
-        Reason::NoProfile,
         Reason::ActorMismatch,
         Reason::TableEmpty,
         Reason::PackRevMismatch,
@@ -137,7 +134,6 @@ mod tests {
             | Reason::ViewerMismatch
             | Reason::KernelOnPlayer
             | Reason::Ineligible
-            | Reason::NoProfile
             | Reason::ActorMismatch
             | Reason::TableEmpty
             | Reason::PackRevMismatch

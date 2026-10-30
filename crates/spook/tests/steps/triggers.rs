@@ -3,12 +3,13 @@ use std::path::Path;
 
 use cucumber::{given, then, when};
 use serde_json::Value;
-use spookery_engine::testing::Clock;
+use spookery_engine::testing::{now_of, Clock};
 use spookery_engine::MeterLive;
 use spookery_engine::{emit_save, load_save};
 use spookery_engine::{Intent, IntentArgs, Source, Target, ViewerId};
 use spookery_engine::{Now, Presence};
 
+use super::common::replace_file;
 use super::steps_run::read_steps_run;
 use crate::support::{self, temp_pack};
 use crate::World;
@@ -100,7 +101,7 @@ fn briar_has_flag_downed(world: &mut World) {
         "the downed rule did not fire\n{round}"
     );
     assert!(
-        load(pack)
+        now_of(pack)
             .actors
             .get("briar")
             .unwrap()
@@ -147,7 +148,7 @@ fn the_rule_does_not_fire_again(world: &mut World) {
 fn nell_arrives_with_the_key(world: &mut World) {
     let pack = temp_pack("trigger-ledger");
     add_rooms(&pack);
-    append(
+    replace_file(
         &pack.join("world/places/mira_rooms.md"),
         "    hidden: false\n",
         "    hidden: false\n  - id: fact_ledger\n    text: The ledger is in the desk.\n    hidden: false\n",
@@ -214,7 +215,7 @@ rules:
 
 #[then(expr = "nell knows fact_ledger and clock tide is running")]
 fn nell_knows_the_ledger(world: &mut World) {
-    let now = load(world.pack.as_ref().unwrap());
+    let now = now_of(world.pack.as_ref().unwrap());
     assert!(
         now.actors
             .get("pc_nell")
@@ -385,7 +386,7 @@ fn verify_passes_after_triggers(world: &mut World) {
 #[when(expr = "nell enters the bog")]
 fn nell_enters_the_bog(world: &mut World) {
     let pack = temp_pack("trigger-bog");
-    append(
+    replace_file(
         &pack.join("world/places/docks_street.md"),
         "    name: docks_shop\n",
         "    name: docks_shop\n  - to: bog\n    name: bog\n",
@@ -423,7 +424,7 @@ The ground gives.
 ",
     )
     .unwrap();
-    append(
+    replace_file(
         &pack.join("rules/checks.yaml"),
         "    stat: grit\n",
         "    stat: grit\n  - id: stamina\n    dice:\n      count: 1\n      sides: 6\n    stat: grit\n",
@@ -452,7 +453,7 @@ The ground gives.
 fn the_bog_roll_reproduces(world: &mut World) {
     assert_eq!(world.scratch, "rolled");
     let pack = world.pack.as_ref().unwrap();
-    let now = load(pack);
+    let now = now_of(pack);
     let grit = now
         .actors
         .get("pc_nell")
@@ -540,12 +541,12 @@ fn the_viewer_is_told(world: &mut World, viewer: String, text: String) {
 #[given(expr = "the street has a hidden trapdoor")]
 fn the_street_has_a_hidden_trapdoor(world: &mut World) {
     let pack = temp_pack("trigger-reveal");
-    append(
+    replace_file(
         &pack.join("world/places/docks_street.md"),
         "    name: docks_shop\n",
         "    name: docks_shop\n  - to: cellar\n    name: trapdoor\n    hidden: true\n    revealed_by: fact_trapdoor\n",
     );
-    append(
+    replace_file(
         &pack.join("world/places/docks_street.md"),
         "    hidden: false\n",
         "    hidden: false\n  - id: fact_trapdoor\n    text: A trapdoor sits under the boards.\n    hidden: true\n",
@@ -664,7 +665,7 @@ fn nell_sets_the_tide(world: &mut World) {
 
 #[then(expr = "the world has flag tide_turned")]
 fn the_world_has_the_tide(world: &mut World) {
-    let now = load(world.pack.as_ref().unwrap());
+    let now = now_of(world.pack.as_ref().unwrap());
     assert!(
         now.flags.iter().any(|flag| flag == "tide_turned"),
         "flags: {:?}",
@@ -674,7 +675,7 @@ fn the_world_has_the_tide(world: &mut World) {
 
 #[then(expr = "pc_nell has flag saw_tide")]
 fn nell_has_saw_tide(world: &mut World) {
-    let now = load(world.pack.as_ref().unwrap());
+    let now = now_of(world.pack.as_ref().unwrap());
     assert!(
         now.actors
             .get("pc_nell")
@@ -745,7 +746,7 @@ fn the_viewer_summary_omits_round_counters(world: &mut World, viewer: String) {
 #[when(expr = "pc_nell learns fact_trapdoor while pc_wren is in the same room")]
 fn nell_learns_the_trapdoor_beside_wren(world: &mut World) {
     let pack = temp_pack("trigger-known-fact");
-    append(
+    replace_file(
         &pack.join("world/places/docks_street.md"),
         "    hidden: false\n",
         "    hidden: false\n  - id: fact_trapdoor\n    text: A trapdoor sits under the boards.\n    hidden: true\n",
@@ -877,7 +878,7 @@ fn a_rule_sets_the_tide(world: &mut World) {
 #[then(expr = "every seated player's summary lists {string}")]
 fn every_seated_summary_lists(world: &mut World, key: String) {
     let pack = world.pack.as_ref().unwrap();
-    let now = load(pack);
+    let now = now_of(pack);
     // Seats live in memory, not in the save, so read the ones `edit_table` remembered.
     let presence = remembered_presence(world, pack).unwrap_or_default();
     let seated: Vec<String> = presence
@@ -1052,7 +1053,7 @@ fn narrates(round: &Value, text: &str, viewer: &str) -> bool {
 }
 
 fn add_bell_narrate(pack: &Path) {
-    append(
+    replace_file(
         &pack.join("world/places/docks_shop.md"),
         "    locked_text: The stair door is locked.\n",
         "    locked_text: The stair door is locked.\nrules:\n  - id: bell\n    when:\n      change:\n        arrive: here\n        who: pc\n    do:\n      - flag:\n          who: self\n          key: heard_bell\n          value: true\n      - narrate:\n          to: here\n          text: The bell rings.\n",
@@ -1067,7 +1068,7 @@ fn downed_pack(
     crosses: &str,
 ) -> std::path::PathBuf {
     let pack = temp_pack(label);
-    append(
+    replace_file(
         &pack.join("rules/meters.yaml"),
         "    start: 1\n",
         "    start: 1\n  - id: hp\n    min: 0\n    base_cap: 12\n    max: 16\n    start: 8\n",
@@ -1085,10 +1086,10 @@ id: briar
 kind: npc
 display_name: Briar
 facts: []
+flags:
+  - downed
 idle:
   eligible: false
-  flags:
-    - downed
 ---
 Briar keeps their feet until they cannot.
 ",
@@ -1136,7 +1137,7 @@ rules:
 }
 
 fn add_door(pack: &Path) {
-    append(
+    replace_file(
         &pack.join("world/places/docks_street.md"),
         "    name: docks_shop\n",
         "    name: docks_shop\n  - to: docks_shop\n    name: door\n",
@@ -1144,7 +1145,7 @@ fn add_door(pack: &Path) {
 }
 
 fn add_rooms(pack: &Path) {
-    append(
+    replace_file(
         &pack.join("world/places/docks_street.md"),
         "    name: docks_shop\n",
         "    name: docks_shop\n  - to: mira_rooms\n    name: rooms\n",
@@ -1152,7 +1153,7 @@ fn add_rooms(pack: &Path) {
 }
 
 fn add_bell(pack: &Path) {
-    append(
+    replace_file(
         &pack.join("world/places/docks_shop.md"),
         "    locked_text: The stair door is locked.\n",
         "    locked_text: The stair door is locked.\nrules:\n  - id: bell\n    when:\n      change:\n        arrive: here\n        who: pc\n    do:\n      - flag:\n          who: self\n          key: heard_bell\n          value: true\n",
@@ -1171,10 +1172,10 @@ fn add_verb(pack: &Path, yaml: &str) {
 
 fn flag_pcs(pack: &Path, flag: &str) {
     for name in ["pc-rowan.md", "pc-wren.md", "pc-harbormouse.md"] {
-        append(
+        replace_file(
             &pack.join("cast").join(name),
             "  eligible: false\n",
-            &format!("  eligible: false\n  flags:\n    - {flag}\n"),
+            &format!("  eligible: false\nflags:\n    - {flag}\n"),
         );
     }
 }
@@ -1187,7 +1188,7 @@ fn write_nell(pack: &Path, flags: &[&str]) {
     let flags = if listed.is_empty() {
         String::new()
     } else {
-        format!("  flags:\n{listed}")
+        format!("flags:\n{listed}")
     };
     fs::write(
         pack.join("cast/pc-nell.md"),
@@ -1301,20 +1302,6 @@ fn intent(id: &str, actor: &str, verb: &str, target: Target) -> Intent {
         args: IntentArgs::default(),
         rationale_code: "test".to_string(),
     }
-}
-
-fn append(path: &Path, from: &str, to: &str) {
-    let text = fs::read_to_string(path).unwrap();
-    let next = text.replacen(from, to, 1);
-    assert_ne!(text, next, "missing {from} in {}", path.display());
-    fs::write(path, next).unwrap();
-}
-
-fn load(pack: &Path) -> Now {
-    let report = spookery_engine::testing::replay_journal(pack, None, None)
-        .unwrap_or_else(|err| panic!("{err}"));
-    let text = std::str::from_utf8(&report.now_yaml).unwrap();
-    load_save(text).unwrap()
 }
 
 fn latest(pack: &Path) -> Value {

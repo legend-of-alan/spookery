@@ -3,7 +3,6 @@
 use std::collections::BTreeMap;
 
 use crate::canon::Canon;
-use crate::check::Outcome;
 use crate::effect::Effect;
 use crate::hash::blake2s_256;
 use crate::intent::Intent;
@@ -11,6 +10,7 @@ use crate::model::{Now, Presence};
 use crate::round::log::RoundLog;
 use crate::rule::RollSpec;
 use crate::rules::expr::{eval_with_dice, Ctx, Dice};
+use crate::rules::roll::Outcome;
 use crate::rules::{faces_from, roll, MoveReport, Roll, RollInput, RollKey};
 use crate::Reason;
 

@@ -133,15 +133,15 @@ pub(crate) fn check_chain(pack: &Path, entries: &[JournalEntry]) -> Result<(), J
     let mut prev = genesis_hash(pack)?;
     for entry in entries {
         if entry.prev() != prev {
-            return Err(fault_name(
-                &bundle_name_of(pack, entry),
+            return Err(fault(
+                Path::new(&bundle_name_of(pack, entry)),
                 "the record does not follow the previous hash",
             ));
         }
         let expect = chain_of(entry);
         if entry.chain() != expect {
-            return Err(fault_name(
-                &bundle_name_of(pack, entry),
+            return Err(fault(
+                Path::new(&bundle_name_of(pack, entry)),
                 "the chain hash does not cover this record",
             ));
         }
@@ -263,16 +263,12 @@ pub fn read_record_line(pack: &Path, key: &str) -> Result<String, JournalFault> 
         .find(|entry| format_record_key(entry) == key);
     match found {
         Some(entry) => Ok(emit_entry(&entry).trim_end().to_string()),
-        None => Err(fault_name(key, "the journal record is missing")),
+        None => Err(fault(Path::new(key), "the journal record is missing")),
     }
 }
 
-/// Where a logical record lives, so a test can edit that line.
-pub struct Located {
-    pub path: PathBuf,
-}
-
-pub fn locate(pack: &Path, key: &str) -> Result<Located, JournalFault> {
+/// The bundle a logical record lives in, so a test can edit that line.
+pub fn locate(pack: &Path, key: &str) -> Result<PathBuf, JournalFault> {
     let dir = pack.join("state/journal");
     for (file_name, path) in bundle_files(&dir)? {
         let text = read_bundle(&file_name, &path)?;
@@ -282,11 +278,11 @@ pub fn locate(pack: &Path, key: &str) -> Result<Located, JournalFault> {
             }
             let entry = parse_line(&file_name, raw)?;
             if format_record_key(&entry) == key {
-                return Ok(Located { path });
+                return Ok(path);
             }
         }
     }
-    Err(fault_name(key, "the journal record is missing"))
+    Err(fault(Path::new(key), "the journal record is missing"))
 }
 
 #[cfg(any(test, feature = "testing"))]
@@ -387,10 +383,8 @@ pub fn format_record_key(entry: &JournalEntry) -> String {
 
 fn bundle_name_of(pack: &Path, entry: &JournalEntry) -> String {
     locate(pack, &format_record_key(entry))
-        .map(|found| {
-            found
-                .path
-                .file_name()
+        .map(|path| {
+            path.file_name()
                 .and_then(|name| name.to_str())
                 .unwrap_or("bundle")
                 .to_string()
@@ -400,7 +394,7 @@ fn bundle_name_of(pack: &Path, entry: &JournalEntry) -> String {
 
 fn parse_line(name: &str, line: &str) -> Result<JournalEntry, JournalFault> {
     let value: serde_json::Value =
-        serde_json::from_str(line).map_err(|err| fault_name(name, &err.to_string()))?;
+        serde_json::from_str(line).map_err(|err| fault(Path::new(name), &err.to_string()))?;
     let kind = value.get("kind").and_then(|kind| kind.as_str());
     if kind == Some("checkpoint") {
         return Ok(JournalEntry::Checkpoint(read_json(name, line)?));
@@ -493,8 +487,8 @@ fn check_line_chain(name: &str, line: &str) -> Result<String, JournalFault> {
     let entry = parse_line(name, line)?;
     let expect = chain_of(&entry);
     if entry.chain() != expect {
-        return Err(fault_name(
-            name,
+        return Err(fault(
+            Path::new(name),
             "the chain hash does not cover this record",
         ));
     }
@@ -602,14 +596,6 @@ fn fault_coded(path: &Path, reason: Reason, detail: &str) -> JournalFault {
         file: path.to_string_lossy().replace('\\', "/"),
         detail: detail.to_string(),
         reason,
-    }
-}
-
-fn fault_name(name: &str, detail: &str) -> JournalFault {
-    JournalFault {
-        file: name.to_string(),
-        detail: detail.to_string(),
-        reason: Reason::Schema,
     }
 }
 

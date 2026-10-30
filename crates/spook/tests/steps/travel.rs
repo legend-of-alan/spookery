@@ -9,19 +9,12 @@ use super::table;
 use crate::support::{self, temp_pack};
 use crate::World;
 
-fn pack_of(world: &World) -> std::path::PathBuf {
-    world
-        .pack
-        .clone()
-        .unwrap_or_else(|| table::pack(world).to_path_buf())
-}
-
 fn add_toll(pack: &Path) {
     let path = pack.join("cast/bram.md");
     let text = fs::read_to_string(&path).unwrap();
     let next = text.replace(
         "  eligible: true\n",
-        "  eligible: true\n  flags:\n    - tolled\nrules:\n  - id: toll\n    when: habit\n    if:\n      - hour:\n          from: 21\n          to: 22\n    do:\n      - flag:\n          who: self\n          key: tolled\n          value: true\n",
+        "  eligible: true\nflags:\n    - tolled\nrules:\n  - id: toll\n    when: habit\n    if:\n      - hour:\n          from: 21\n          to: 22\n    do:\n      - flag:\n          who: self\n          key: tolled\n          value: true\n",
     );
     assert_ne!(text, next);
     fs::write(path, next).unwrap();
@@ -52,11 +45,11 @@ fn rejected_no_exit_and_stays(world: &mut World) {
         "{}",
         world.player_added
     );
-    let now = table::now_of(&pack_of(world));
+    let now = table::now_of(table::pack(world));
     assert_eq!(now.actors.get("pc_rowan").unwrap().place(), "docks_street");
     assert_eq!(now.world_time, 1080);
     assert!(
-        list_round_keys(&pack_of(world)).is_empty(),
+        list_round_keys(table::pack(world)).is_empty(),
         "a refused exit played a round"
     );
 }
@@ -71,7 +64,7 @@ fn stairs_need_a_key(world: &mut World) {
 
 #[when(expr = "rowan travels via stairs")]
 fn rowan_travels_via_stairs(world: &mut World) {
-    let before = table::now_of(&pack_of(world));
+    let before = table::now_of(table::pack(world));
     world.scratch = format!(
         "{} {} {}",
         before.world_time,
@@ -85,7 +78,7 @@ fn rowan_travels_via_stairs(world: &mut World) {
 #[then(expr = "rowan sees {string} and no state changes")]
 fn rowan_sees_locked_and_nothing_changes(world: &mut World, text: String) {
     assert!(world.player_added.contains(&text), "{}", world.player_added);
-    let now = table::now_of(&pack_of(world));
+    let now = table::now_of(table::pack(world));
     let mut parts = world.scratch.split(' ');
     assert_eq!(now.world_time.to_string(), parts.next().unwrap());
     assert_eq!(now.round_index.to_string(), parts.next().unwrap());
@@ -110,7 +103,7 @@ fn rowan_travels_holding_the_key(world: &mut World) {
 
 #[then(expr = "rowan is in mira_rooms and the 2 minute cost is stamped on the arrival")]
 fn rowan_arrives_and_the_cost_is_stamped(world: &mut World) {
-    let pack = pack_of(world);
+    let pack = table::pack(world).to_path_buf();
     let now = table::now_of(&pack);
     assert_eq!(now.actors.get("pc_rowan").unwrap().place(), "mira_rooms");
     assert_eq!(now.world_time, 1085, "the round shortened or skipped");
@@ -149,7 +142,7 @@ fn a_place_rule_teleports(world: &mut World) {
 fn the_pc_reaches_the_cellar(world: &mut World) {
     let (_mark, added) = table::player_send(world, "slip", "cellar");
     assert_eq!(
-        table::now_of(&pack_of(world))
+        table::now_of(table::pack(world))
             .actors
             .get("pc_rowan")
             .unwrap()
@@ -161,7 +154,7 @@ fn the_pc_reaches_the_cellar(world: &mut World) {
 
 #[then(expr = "the world is at 21:40 and rowan is in mira_rooms")]
 fn rowan_has_arrived_by_half_past(world: &mut World) {
-    let now = table::now_of(&pack_of(world));
+    let now = table::now_of(table::pack(world));
     let rowan = now.actors.get("pc_rowan").unwrap();
     assert_eq!(now.world_time, EVENING + 10);
     assert_eq!(rowan.place(), "mira_rooms");
@@ -196,18 +189,17 @@ fn two_arrivals(world: &mut World) {
                 wielded: None,
                 known_facts: Vec::new(),
                 visited: vec!["docks_shop".to_string()],
-                act: {
-                    let mut act = spookery_engine::testing::ActCounters::fresh();
-                    act.busy_until = Some(EVENING + 5);
-                    act.busy_for = Some(spookery_engine::testing::PendingAction {
+                act: spookery_engine::testing::ActCounters {
+                    busy_until: Some(EVENING + 5),
+                    busy_for: Some(spookery_engine::testing::PendingAction {
                         verb: "travel".to_string(),
                         source: spookery_engine::Source::Player,
                         kind: spookery_engine::testing::PendingKind::Arrive {
                             place: "docks_street".to_string(),
                             via: "docks_street".to_string(),
                         },
-                    });
-                    act
+                    }),
+                    ..Default::default()
                 },
             },
         );
@@ -221,7 +213,7 @@ fn two_arrivals(world: &mut World) {
 #[then(expr = "nell's arrival is applied before rowan's, in separate rounds")]
 fn arrivals_are_in_time_order(world: &mut World) {
     let (_mark, _added) = table::player_send(world, "wait", "BUSY");
-    let pack = pack_of(world);
+    let pack = table::pack(world).to_path_buf();
     let names = list_round_keys(&pack);
     assert!(names.len() >= 2, "{names:?}");
     let first = crate::support::read_round(&pack, &names[0]);
@@ -253,14 +245,14 @@ fn rowan_travels_in_the_evening_round(world: &mut World) {
 
 #[then(expr = "the round still ends at 21:35")]
 fn the_round_ends_at_half(world: &mut World) {
-    let round = crate::support::read_round(&pack_of(world), "round-0001");
+    let round = crate::support::read_round(table::pack(world), "round-0001");
     assert_eq!(round["world_time_before"], EVENING);
     assert_eq!(round["world_time_after"], EVENING + 5);
 }
 
 #[then(expr = "rowan's arrival is recorded with arrived_at 21:32 in that round's line")]
 fn arrival_is_stamped(world: &mut World) {
-    let round = crate::support::read_round(&pack_of(world), "round-0001");
+    let round = crate::support::read_round(table::pack(world), "round-0001");
     assert_eq!(round["arrivals"][0]["actor_id"], "pc_rowan");
     assert_eq!(round["arrivals"][0]["arrived_at"], EVENING + 2);
     let stamped = round["effects"]
@@ -275,7 +267,7 @@ fn arrival_is_stamped(world: &mut World) {
 fn the_next_round_accepts_a_move(world: &mut World) {
     let (_mark, added) = table::player_send(world, "wait", "\"kind\":");
     assert!(!added.contains("BUSY"), "{added}");
-    let now = table::now_of(&pack_of(world));
+    let now = table::now_of(table::pack(world));
     assert_eq!(now.world_time, EVENING + 10);
     assert!(!now.actors.get("pc_rowan").unwrap().is_busy(now.world_time));
 }
@@ -334,7 +326,7 @@ fn both_busy_without_a_gm(world: &mut World) {
                 wielded: None,
                 known_facts: Vec::new(),
                 visited: vec!["docks_shop".to_string()],
-                act: spookery_engine::testing::ActCounters::fresh(),
+                act: spookery_engine::testing::ActCounters::default(),
             },
         );
         set_busy(now, "pc_nell", EVENING + 5, "docks_street", "docks_street");
@@ -348,7 +340,7 @@ fn both_busy_without_a_gm(world: &mut World) {
 #[then(expr = "the shard plays rounds to 21:35 then 21:40 without waiting on the wall clock")]
 fn the_shard_plays_rounds_through_both_arrivals(world: &mut World) {
     let (_mark, _added) = table::player_send(world, "wait", "BUSY");
-    let pack = pack_of(world);
+    let pack = table::pack(world).to_path_buf();
     let names = list_round_keys(&pack);
     let ends: Vec<u64> = names
         .iter()
@@ -364,7 +356,7 @@ fn the_shard_plays_rounds_through_both_arrivals(world: &mut World) {
 
 #[then(expr = "an NPC habit due at 21:35 runs in that round")]
 fn the_habit_runs_at_half(world: &mut World) {
-    let pack = pack_of(world);
+    let pack = table::pack(world).to_path_buf();
     let round = list_round_keys(&pack)
         .into_iter()
         .find(|name| crate::support::read_round(&pack, name)["world_time_after"] == EVENING + 5)
@@ -381,7 +373,7 @@ fn a_gm_and_two_busy_pcs(world: &mut World) {
 
 #[then(expr = "nothing advances until the GM commits")]
 fn nothing_advances_until_commit(world: &mut World) {
-    let pack = pack_of(world);
+    let pack = table::pack(world).to_path_buf();
     let before = table::now_of(&pack).world_time;
     let (_mark, added) = table::player_send(world, "wait", "BUSY");
     assert!(added.contains("BUSY"), "{added}");
@@ -404,7 +396,7 @@ fn a_long_journey_and_the_cap(world: &mut World) {
 
 #[then(expr = "12 rounds run and the rest continues on the next action")]
 fn twelve_rounds_then_more(world: &mut World) {
-    let pack = pack_of(world);
+    let pack = table::pack(world).to_path_buf();
     // BUSY is sent after the burst commits, so wait on the journal first.
     let mark = table::player_write(world, "wait");
     table::wait_round_count(&pack, 12);

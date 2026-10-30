@@ -7,7 +7,7 @@ use serde_json::Value;
 use crate::support::{self, temp_pack};
 use crate::World;
 
-use super::table;
+use super::{common, table};
 
 // Docks grit is 2d6 plus a meter of 1, so the total is 3..=13.
 const NOTICE_ROWS: &str = "
@@ -266,7 +266,7 @@ fn the_gm_sees_both_rolls(world: &mut World) {
 
 #[then(expr = "the round log records Mira's kernel brace")]
 fn the_round_log_records_miras_kernel_brace(world: &mut World) {
-    let round = round_json(world);
+    let round = common::round_json(world);
     let ran: Vec<_> = super::steps_run::read_steps_run(&round)
         .into_iter()
         .filter(|step| step == "cast:mira/brace")
@@ -335,7 +335,7 @@ fn insert_flags(pack: &Path, flags: &str) {
     let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read mira: {err}"));
     let next = text.replacen(
         "idle:\n  eligible: true\n",
-        &format!("idle:\n  eligible: true\n  flags:\n{flags}"),
+        &format!("idle:\n  eligible: true\nflags:\n{flags}"),
         1,
     );
     assert_ne!(next, text, "mira flags were not inserted");
@@ -378,10 +378,6 @@ fn flags_of(world: &World, id: &str) -> Vec<String> {
     };
     flags.sort();
     flags
-}
-
-fn round_json(world: &World) -> Value {
-    crate::support::read_round(table::pack(world), "round-0001")
 }
 
 fn assert_one_roll(world: &mut World, stat: i64, target: i64, outcome: &str) {

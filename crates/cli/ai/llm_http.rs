@@ -16,7 +16,7 @@ pub struct Env {
     url: String,
 }
 
-/// Fixed bounds for one model call. Production uses 60s total, 10s to connect,
+/// Fixed bounds for one model call. The default is 60s total, 10s to connect,
 /// and one retry after 2s. Tests pass a shorter total, and a clock, through
 /// `with_limits`.
 pub struct Limits {
@@ -51,8 +51,8 @@ impl Clock for WallClock {
     }
 }
 
-impl Limits {
-    pub const fn production() -> Self {
+impl Default for Limits {
+    fn default() -> Self {
         Self {
             total: Duration::from_secs(60),
             connect: Duration::from_secs(10),
@@ -68,13 +68,6 @@ pub struct HttpModel<C> {
     clock: C,
 }
 
-pub fn require_env() -> Result<Env, Error> {
-    let key = env_var("SPOOK_GM_KEY")?;
-    let url = env_var("SPOOK_GM_URL")?;
-    let model = env_var("SPOOK_GM_MODEL")?;
-    Ok(Env::new(key, url, model))
-}
-
 fn env_var(name: &str) -> Result<String, Error> {
     match std::env::var(name) {
         Ok(value) => Ok(value),
@@ -83,6 +76,13 @@ fn env_var(name: &str) -> Result<String, Error> {
 }
 
 impl Env {
+    pub fn from_env() -> Result<Self, Error> {
+        let key = env_var("SPOOK_GM_KEY")?;
+        let url = env_var("SPOOK_GM_URL")?;
+        let model = env_var("SPOOK_GM_MODEL")?;
+        Ok(Env::new(key, url, model))
+    }
+
     pub fn new(key: impl Into<String>, url: impl Into<String>, model: impl Into<String>) -> Self {
         Self {
             key: key.into(),
@@ -94,7 +94,7 @@ impl Env {
 
 impl HttpModel<WallClock> {
     pub fn new(env: Env) -> Result<Self, Error> {
-        Self::with_limits(env, Limits::production(), WallClock)
+        Self::with_limits(env, Limits::default(), WallClock)
     }
 }
 
@@ -248,7 +248,7 @@ mod tests {
             }
         }
         clear_settings();
-        let err = require_env().err().expect("all missing should fail");
+        let err = Env::from_env().err().expect("all missing should fail");
         assert!(
             err.message.contains("SPOOK_GM_KEY is unset"),
             "{}",
@@ -265,7 +265,7 @@ mod tests {
         std::env::set_var("SPOOK_GM_KEY", "test-key");
         std::env::set_var("SPOOK_GM_URL", "http://127.0.0.1:9/");
         std::env::set_var("SPOOK_GM_MODEL", "test-model");
-        let env = require_env().expect("settings present");
+        let env = Env::from_env().expect("settings present");
         assert_eq!(env.key, "test-key");
         assert_eq!(env.url, "http://127.0.0.1:9");
         assert_eq!(env.model, "test-model");

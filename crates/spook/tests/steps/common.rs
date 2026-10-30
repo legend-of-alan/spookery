@@ -53,6 +53,11 @@ pub(crate) fn run_check_json(world: &mut World) {
     );
 }
 
+/// The first round record of the table's journal.
+pub(crate) fn round_json(world: &World) -> serde_json::Value {
+    crate::support::read_round(table::pack(world), "round-0001")
+}
+
 pub(crate) fn replace_file(path: &Path, from: &str, to: &str) {
     let text = fs::read_to_string(path).unwrap();
     assert!(text.contains(from), "missing {from} in {}", path.display());
@@ -119,6 +124,16 @@ fn break_pack(pack: &Path, fault: &str) {
             &pack.join("cast/pc-rowan.md"),
             "facts: []\n",
             "facts:\n  - id: fact_rowan_shop\n    text: \"He said: the shop.\"\n    hidden: false\n  - id: fact_rowan_shop\n    text: The shop again.\n    hidden: false\n",
+        ),
+        "a target alias" => replace_file(
+            &pack.join("rules/verbs.yaml"),
+            "      target: item\n",
+            "      target: item_here\n",
+        ),
+        "flags under idle" => replace_file(
+            &pack.join("cast/pc-rowan.md"),
+            "  eligible: false\n",
+            "  eligible: false\n  flags: []\n",
         ),
         "idle maybe" => replace_file(
             &pack.join("rules/budget.yaml"),

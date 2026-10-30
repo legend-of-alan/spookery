@@ -156,11 +156,15 @@ async fn dispatch(cli: Cli) -> Result<(), String> {
         }
         #[cfg(feature = "client")]
         Command::Play { as_player, raw } => {
-            from_terminal(spookery::terminal::run_player(as_player.as_deref(), addr, raw).await)
+            spookery::terminal::run_player(as_player.as_deref(), addr, raw)
+                .await
+                .map_err(|err| err.to_string())
         }
         #[cfg(feature = "client")]
         Command::Gm { mcp_http, raw } => {
-            from_terminal(spookery::terminal::run_gm(addr, door_addr(mcp_http)?, raw).await)
+            spookery::terminal::run_gm(addr, door_addr(mcp_http)?, raw)
+                .await
+                .map_err(|err| err.to_string())
         }
         #[cfg(feature = "client")]
         Command::AiGm { mcp_http } => {
@@ -215,7 +219,7 @@ async fn dispatch(cli: Cli) -> Result<(), String> {
             let mut found = spookery_engine::check_pack(&pack);
             if rules && found.is_empty() {
                 let canon = spookery_engine::load_canon(&pack)
-                    .map_err(|diags| spookery_engine::reason_of(diags).to_string())?;
+                    .map_err(|diags| spookery_engine::first_reason(&diags).to_string())?;
                 for id in canon.rules.ids_in_order() {
                     println!("{id}");
                 }
@@ -236,7 +240,7 @@ async fn dispatch(cli: Cli) -> Result<(), String> {
                 println!("no problems");
             } else {
                 for item in &found {
-                    eprintln!("{}", item.report_line());
+                    eprintln!("{item}");
                 }
             }
             if found.iter().any(spookery_engine::Diagnostic::is_error) {
@@ -251,14 +255,6 @@ async fn dispatch(cli: Cli) -> Result<(), String> {
             Ok(())
         }
     }
-}
-
-#[cfg(feature = "client")]
-fn from_terminal(result: Result<(), spookery::terminal::Error>) -> Result<(), String> {
-    result.map_err(|err| match err {
-        spookery::terminal::Error::Reason(reason) => reason,
-        spookery::terminal::Error::Io(err) => err.to_string(),
-    })
 }
 
 fn parse_loopback(addr: &str) -> Result<SocketAddr, String> {

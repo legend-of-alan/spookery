@@ -1,8 +1,6 @@
 //! Pay each intent cost and write the effects it earned.
 
-use crate::apply::apply_effect;
 use crate::draft::Draft;
-use crate::expand::expand_rule;
 use crate::intent::{Intent, ViewerId};
 use crate::journal::{Rejected, Step};
 use crate::map;
@@ -50,7 +48,7 @@ pub(crate) fn run(
             }
             Resolution::CannotRoll(code) => {
                 let refusal = GateRefusal::from(code);
-                log.rejected.push(rejected(&intent, &refusal));
+                log.rejected.push(Rejected::new(&intent, &refusal));
                 log.reports.push(refused_report(&intent, &refusal));
                 continue;
             }
@@ -72,15 +70,7 @@ pub(crate) fn run(
         let outcome = rolled.as_ref().map(|out| out.outcome);
         let mut roller = dice.roller(log, &rule_id, intent.actor.actor_id());
         let presence = draft.presence;
-        let expanded = expand_rule(
-            &canon,
-            snapshot,
-            presence,
-            rule,
-            &intent,
-            outcome,
-            &mut roller,
-        );
+        let expanded = rule.expand(&canon, snapshot, presence, &intent, outcome, &mut roller);
         let resisted = roller.finish();
         let effects = match expanded {
             Ok(effects) => effects,
@@ -153,7 +143,7 @@ fn apply_instant_intent(
         }
     }
     let staged = expansion.effects.iter().try_for_each(|effect| {
-        apply_effect(draft, intent, effect.clone())?;
+        effect.clone().apply(draft, intent)?;
         log.steps.push(Step::EffectApplied);
         Ok(())
     });
@@ -180,17 +170,9 @@ fn apply_instant_intent(
 /// Journal the refusal and tell a player its code and what was missing.
 fn reject(log: &mut RoundLog, intent: &Intent, refusal: impl Into<GateRefusal>) {
     let refusal = refusal.into();
-    log.rejected.push(rejected(intent, &refusal));
+    log.rejected.push(Rejected::new(intent, &refusal));
     if matches!(intent.actor, ViewerId::Player(_)) {
         log.reports.push(refused_report(intent, &refusal));
-    }
-}
-
-fn rejected(intent: &Intent, refusal: &GateRefusal) -> Rejected {
-    Rejected {
-        id: intent.id.clone(),
-        code: refusal.reason(),
-        missing: refusal.missing().map(str::to_string),
     }
 }
 

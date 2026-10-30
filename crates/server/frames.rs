@@ -1,13 +1,13 @@
 //! Player lines, `spook/event` frames, and tool results.
 
 use crate::protocol::{
-    CommitBody, EventBody, GmSay, MessageView, Missing, Outcome, OutgoingSay, PackSummary,
-    PlayerMessage, QueueRow, SessionStatus, StatusPause, StatusPresence, ViewScene,
+    CommitBody, EventBody, GmSay, MessageView, Missing, Outcome, PackSummary, PlayerMessage,
+    QueueRow, SessionStatus, StatusPause, StatusPresence, ViewScene,
 };
-use serde_json::{Map, Value};
+use serde_json::Value;
 use spookery_engine::{
-    record_line, Heard, Intent, Message, MoveReport, Now, Presence, Reason, Roll, RoundOutput,
-    RunState, TapeRecord, View, World,
+    record_line, Intent, Message, MoveReport, Now, Presence, Roll, RoundOutput, RunState,
+    TapeRecord, View,
 };
 
 #[derive(Debug)]
@@ -19,29 +19,15 @@ pub struct Spoken {
     pub recipients: Vec<String>,
 }
 
-/// GM `say`. `from` is the seat. A supplied `from` appends nothing.
-pub fn speak_tool(
-    world: &World,
-    presence: &Presence,
-    arguments: Option<Map<String, Value>>,
-) -> Result<Spoken, Reason> {
-    let say = crate::protocol::read_say_args(arguments.as_ref()).map_err(|_| Reason::Schema)?;
-    let heard = match &say {
-        OutgoingSay::Table { .. } => Heard::Table,
-        OutgoingSay::Place { place, .. } => Heard::Place(place),
-        OutgoingSay::Actor { actor, .. } => Heard::Actor(actor),
-    };
-    let stored = world.speak_gm(presence, heard, say.text())?;
-    Ok(spoken_from(&stored))
-}
-
-pub(super) fn spoken_from(stored: &TapeRecord) -> Spoken {
-    Spoken {
-        tape: record_line(stored),
-        player_event: say_line(stored, false),
-        gm_event: say_event(stored),
-        tool: say_value(stored),
-        recipients: stored.recipients.clone(),
+impl From<&TapeRecord> for Spoken {
+    fn from(stored: &TapeRecord) -> Self {
+        Spoken {
+            tape: record_line(stored),
+            player_event: say_line(stored, false),
+            gm_event: say_event(stored),
+            tool: say_value(stored),
+            recipients: stored.recipients.clone(),
+        }
     }
 }
 

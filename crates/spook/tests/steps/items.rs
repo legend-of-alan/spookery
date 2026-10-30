@@ -516,7 +516,7 @@ fn nell_resists_on_a_seeded_roll(world: &mut World) {
     let nell = fs::read_to_string(pack.join("cast/pc-nell.md")).unwrap();
     let next = nell.replace(
         "  eligible: false\n",
-        "  eligible: false\n  flags:\n    - poisoned\n",
+        "  eligible: false\nflags:\n    - poisoned\n",
     );
     assert_ne!(nell, next);
     fs::write(pack.join("cast/pc-nell.md"), next).unwrap();

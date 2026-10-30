@@ -120,9 +120,9 @@ fn logged_effects_that_differ_from_the_re_run(world: &mut World) {
     world.pack = Some(pack.clone());
     table::run(world, &["round", pack.to_str().unwrap()]);
     assert_eq!(world.code, Some(0), "{}", world.stderr);
-    let located = spookery_engine::testing::journal::locate(&pack, "round-0001")
+    let path = spookery_engine::testing::journal::locate(&pack, "round-0001")
         .unwrap_or_else(|err| panic!("{}", err.detail));
-    let text = fs::read_to_string(&located.path).unwrap_or_else(|err| panic!("read round: {err}"));
+    let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read round: {err}"));
     let line = text
         .lines()
         .find(|l| serde_json::from_str::<Value>(l).unwrap()["round_index"] == 1)
@@ -140,7 +140,7 @@ fn logged_effects_that_differ_from_the_re_run(world: &mut World) {
     let encoded = serde_json::to_string(&round).unwrap_or_else(|err| panic!("encode: {err}"));
     let rewritten = text.replacen(line, &encoded, 1);
     assert_ne!(rewritten, text);
-    fs::write(&located.path, rewritten).unwrap_or_else(|err| panic!("write round: {err}"));
+    fs::write(&path, rewritten).unwrap_or_else(|err| panic!("write round: {err}"));
 }
 
 #[then(expr = "spook verify names the round and the first differing effect")]
@@ -263,7 +263,7 @@ The ferry waits at the dock.
     let text = fs::read_to_string(&rowan).unwrap();
     let next = text.replace(
         "idle:\n  eligible: false\n",
-        "idle:\n  eligible: false\n  flags:\n    - took_the_ferry\n",
+        "idle:\n  eligible: false\nflags:\n    - took_the_ferry\n",
     );
     assert_ne!(text, next, "rowan profile was not found");
     fs::write(&rowan, next).unwrap();
@@ -365,7 +365,7 @@ fn an_empty_round_at_hour_7(world: &mut World) {
                 err.token(),
                 spookery_engine::check_pack(&pack)
                     .iter()
-                    .map(|diag| diag.report_line())
+                    .map(|diag| diag.to_string())
                     .collect::<Vec<_>>()
                     .join("\n")
             )
@@ -416,7 +416,7 @@ fn attack_targets_defense(world: &mut World) {
     let text = fs::read_to_string(&briar).unwrap();
     let next = text.replace(
         "  eligible: true\n",
-        "  eligible: true\n  flags:\n    - hit\n    - missed\n",
+        "  eligible: true\nflags:\n    - hit\n    - missed\n",
     );
     assert_ne!(text, next, "briar profile was not found");
     fs::write(&briar, next).unwrap();
@@ -919,7 +919,7 @@ pub(super) fn open_pack(pack: &Path) -> spookery_engine::World {
             err.token(),
             spookery_engine::check_pack(pack)
                 .iter()
-                .map(|diag| diag.report_line())
+                .map(|diag| diag.to_string())
                 .collect::<Vec<_>>()
                 .join("\n")
         )

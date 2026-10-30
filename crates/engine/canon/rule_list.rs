@@ -12,9 +12,10 @@ use crate::canon::source::{
 };
 use crate::diagnostic::{schema, Diagnostic};
 use crate::rule::{
-    parse_expr, stamp_expr, Arith, ChangeWatch, Cond, Cost, EffectTemplate, Expr, LocationTo,
-    NarrateTo, Op, Owner, ResistSpec, RollSpec, Rule, Spot, TargetKind, WatchWho, When, Who,
+    ChangeWatch, Cond, Cost, EffectTemplate, LocationTo, NarrateTo, Op, Owner, ResistSpec,
+    RollSpec, Rule, Spot, TargetKind, WatchWho, When, Who,
 };
+use crate::rules::expr::{stamp_expr, Arith, Expr};
 
 const REPLACED: &str = "rules/moves.yaml was replaced by rules/verbs.yaml";
 
@@ -579,10 +580,10 @@ fn when_of(yaml: &WhenYaml) -> Result<When, String> {
                 }
                 let target = match map.target.as_deref() {
                     None | Some("none") => TargetKind::None,
-                    Some("actor") | Some("actor_here") => TargetKind::Actor,
+                    Some("actor") => TargetKind::Actor,
                     Some("place") => TargetKind::Place,
                     Some("exit") => TargetKind::Exit,
-                    Some("item") | Some("item_here") | Some("item_held") => TargetKind::Item,
+                    Some("item") => TargetKind::Item,
                     Some(other) => return Err(format!("target '{other}' is not a target kind")),
                 };
                 Ok(When::Verb {
@@ -831,7 +832,7 @@ fn number_of(yaml: &Spanned<NumberYaml>) -> Result<Expr, Fault> {
     match &yaml.value {
         NumberYaml::Literal(n) => Ok(Expr::Num(*n)),
         NumberYaml::Text(text) => {
-            let mut expr = parse_expr(text).map_err(|message| Fault { message, spot })?;
+            let mut expr = Expr::parse(text).map_err(|message| Fault { message, spot })?;
             if let Some(Spot { line, column }) = spot {
                 stamp_expr(&mut expr, line, column);
             }

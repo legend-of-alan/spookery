@@ -64,25 +64,13 @@ fn planned_rounds(budget: &Budget, hours: u64) -> Result<u64, Reason> {
     }
     let absence_minutes = hours.checked_mul(60).ok_or(Reason::OutOfRange)?;
     let absence_seconds = hours.checked_mul(3600).ok_or(Reason::OutOfRange)?;
-    let printed = ceil_div(absence_seconds, every);
+    let printed = absence_seconds.div_ceil(every);
     let minute_cap = budget
         .idle_max_world_hours_per_real_hour
         .checked_mul(absence_minutes)
         .ok_or(Reason::OutOfRange)?;
     let by_minutes = minute_cap / idle_minutes;
     Ok(printed.min(budget.idle_catchup_max_rounds).min(by_minutes))
-}
-
-fn ceil_div(numerator: u64, denominator: u64) -> u64 {
-    if numerator == 0 {
-        return 0;
-    }
-    let quotient = numerator / denominator;
-    if numerator.is_multiple_of(denominator) {
-        quotient
-    } else {
-        quotient.saturating_add(1)
-    }
 }
 
 /// Keep playing while a seated PC is still busy. The burst starts only when every

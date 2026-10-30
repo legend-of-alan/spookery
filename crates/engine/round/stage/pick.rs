@@ -3,9 +3,10 @@
 use std::collections::BTreeSet;
 
 use crate::draft::Draft;
-use crate::expand::{habit_intents, stamp_for_priority};
+use crate::expand::stamp_for_priority;
 use crate::intent::{Intent, Target, ViewerId};
 use crate::model::{Now, Presence};
+use crate::rules::habits::habit_intents;
 use crate::Reason;
 
 use crate::round::dice::shuffle_key;

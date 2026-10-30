@@ -2,8 +2,8 @@
 
 use std::collections::BTreeMap;
 
-use crate::check::classify;
 use crate::rules::gate::{gate, GateRefusal};
+use crate::rules::roll::classify;
 
 use crate::canon::Canon;
 use crate::intent::{Intent, Source, Target};

@@ -51,7 +51,9 @@ fn the_player_travels_to(world: &mut World, place: String) {
 #[then(expr = "the load refusal is SCHEMA")]
 fn the_load_refusal_is_schema(world: &mut World) {
     assert_eq!(
-        spookery_engine::reason_of(spookery_engine::load_canon(table::pack(world)).unwrap_err()),
+        spookery_engine::first_reason(
+            &spookery_engine::load_canon(table::pack(world)).unwrap_err()
+        ),
         Reason::Schema
     );
 }

@@ -125,7 +125,7 @@ struct MeterEntryFile {
 mod tests {
     use super::*;
     use crate::canon::tests::rejects;
-    use crate::diagnostic::reason_of;
+    use crate::diagnostic::first_reason;
     use crate::error::Reason;
 
     fn load_meters(text: &str) -> Result<BTreeMap<String, MeterDef>, Vec<Diagnostic>> {
@@ -149,7 +149,7 @@ meters:
                 .any(|diag| diag.message.contains("min above base_cap")),
             "{err:?}"
         );
-        assert_eq!(reason_of(err), Reason::Schema);
+        assert_eq!(first_reason(&err), Reason::Schema);
         let duplicate = "\
 schema: meters
 meters:
@@ -169,7 +169,7 @@ meters:
             err.iter().any(|diag| diag.message.contains("listed twice")),
             "{err:?}"
         );
-        assert_eq!(reason_of(err), Reason::Schema);
+        assert_eq!(first_reason(&err), Reason::Schema);
         let unknown = "\
 schema: meters
 meters:
@@ -184,7 +184,7 @@ meters:
         assert_eq!(err.len(), 1, "{err:?}");
         assert!(err[0].message.contains("unknown field 'kind'"), "{err:?}");
         assert_eq!(err[0].line, Some(8), "{err:?}");
-        assert_eq!(reason_of(err), Reason::Schema);
+        assert_eq!(first_reason(&err), Reason::Schema);
     }
 
     #[test]

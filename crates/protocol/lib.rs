@@ -59,7 +59,6 @@ pub fn named_refusal(code: &str, missing: Option<&Missing>) -> String {
         "VIEWER_MISMATCH" => "That is not your view.",
         "KERNEL_ON_PLAYER" => "The table cannot do that for you.",
         "INELIGIBLE" => "You cannot do that right now.",
-        "NO_PROFILE" => "There is no profile for that.",
         "ACTOR_MISMATCH" => "That action is not yours.",
         "TABLE_EMPTY" => "Nobody is seated.",
         "PACK_REV_MISMATCH" => "The save does not match this pack.",

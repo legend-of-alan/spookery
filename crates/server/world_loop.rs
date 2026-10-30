@@ -8,7 +8,7 @@ use crate::protocol::Missing;
 
 use super::frames;
 use super::idle_clock::{self, wall_now};
-use super::limits::{CancelTx, OutTx};
+use super::outbound::{CancelTx, OutTx};
 
 /// The host's cap. A pack may define more PCs than this.
 const MAX_PLAYER_SEATS: usize = 3;
@@ -280,7 +280,7 @@ fn refresh_players(world: &World, seats: &mut Seats, outputs: &[RoundOutput], ou
             }
             Err(code) => refused_line(code).into_bytes(),
         };
-        if !super::limits::try_frame(&player.out, bytes) {
+        if !super::outbound::try_frame(&player.out, bytes) {
             failed.push(player.conn);
         }
     }
@@ -345,7 +345,7 @@ fn on_hello(
     let sent = welcome(world, &seats.presence(), id).and_then(|bytes| {
         let seated = seats
             .player(conn)
-            .is_some_and(|player| super::limits::try_frame(&player.out, bytes));
+            .is_some_and(|player| super::outbound::try_frame(&player.out, bytes));
         if seated {
             Ok(())
         } else {
@@ -481,7 +481,7 @@ fn on_player(
         Ok(PlayerCommand::Speech(heard, text)) => {
             match world.speak_player(&presence, &actor_id, heard, text) {
                 Ok(stored) => {
-                    let spoken = frames::spoken_from(&stored);
+                    let spoken = frames::Spoken::from(&stored);
                     let _ = writeln!(out, "{}", spoken.tape);
                     let _ = out.flush();
                     send_gm(seats, spoken.gm_event);
@@ -568,7 +568,7 @@ fn refusal_line(refusal: &GateRefusal) -> Vec<u8> {
 /// A full or closed queue drops that seat. The world thread does not wait.
 fn send_player(world: &World, seats: &mut Seats, conn: u64, bytes: Vec<u8>, out: &mut dyn Write) {
     let failed = match seats.player(conn) {
-        Some(player) => !super::limits::try_frame(&player.out, bytes),
+        Some(player) => !super::outbound::try_frame(&player.out, bytes),
         None => false,
     };
     if failed {
@@ -578,7 +578,7 @@ fn send_player(world: &World, seats: &mut Seats, conn: u64, bytes: Vec<u8>, out:
 
 fn send_gm(seats: &mut Seats, frame: Vec<u8>) {
     let failed = match seats.gm.as_ref() {
-        Some(gm) => !super::limits::try_frame(&gm.out, frame),
+        Some(gm) => !super::outbound::try_frame(&gm.out, frame),
         None => false,
     };
     if failed {
@@ -596,7 +596,7 @@ fn send_recipients(
     let mut failed = Vec::new();
     for player in &seats.players {
         if recipients.iter().any(|id| id == &player.actor_id)
-            && !super::limits::try_frame(&player.out, line.clone())
+            && !super::outbound::try_frame(&player.out, line.clone())
         {
             failed.push(player.conn);
         }
@@ -627,6 +627,6 @@ fn on_fault(
     let _ = ack.send(());
 }
 
-fn refused_line(code: Reason) -> String {
+pub(super) fn refused_line(code: Reason) -> String {
     frames::player_refused(code.token(), None)
 }

@@ -4,11 +4,11 @@ id: pc_nell
 kind: pc_template
 display_name: Nell
 facts: []
+flags:
+  - marked
+  - missed
+  - guarded
 idle:
   eligible: false
-  flags:
-    - marked
-    - missed
-    - guarded
 ---
 Nell keeps a guard up.

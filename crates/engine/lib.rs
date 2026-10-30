@@ -16,8 +16,6 @@ pub(crate) mod world;
 
 pub(crate) use model::key;
 pub(crate) use model::meter;
-pub(crate) use rules::apply;
-pub(crate) use rules::check;
 pub(crate) use rules::effect;
 pub(crate) use rules::expand;
 pub(crate) use rules::perceive;
@@ -27,8 +25,7 @@ pub(crate) use store::journal;
 pub(crate) use store::lock;
 
 pub use canon::{load_canon, pack_rev};
-pub use check::Outcome;
-pub use diagnostic::{reason_of, Diagnostic, Severity};
+pub use diagnostic::{first_reason, Diagnostic, Severity};
 pub use error::Reason;
 pub use intent::{Intent, IntentArgs, Source, Target, ViewerId};
 pub use map::ExitView;
@@ -37,7 +34,7 @@ pub use model::{Message, Now, Presence, RunState};
 pub use perceive::{ClockView, ItemStack, KnownFact, MeterView, View};
 pub use round::{migrate_pack, play_pack_once, verify_pack, verify_quick, RoundOutput};
 pub use rule::When;
-pub use rules::{GateRefusal, MoveReport, Roll};
+pub use rules::{GateRefusal, MoveReport, Outcome, Roll};
 pub use store::{emit_save, load_save, lock_pack, record_line, LockGuard, TapeRecord};
 pub use visibility::RecipientLine;
 pub use world::{check_pack, GmIntentSpec, Heard, QueuedMove, World};
@@ -242,7 +239,7 @@ pub mod testing {
                     wielded: None,
                     known_facts: Vec::new(),
                     visited: vec!["docks_shop".to_string()],
-                    act: crate::model::ActCounters::fresh(),
+                    act: crate::model::ActCounters::default(),
                 },
             );
         });

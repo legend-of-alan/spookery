@@ -7,6 +7,7 @@ pub mod idle_clock;
 mod limits;
 mod listen;
 mod mcp_http;
+mod outbound;
 pub mod starter;
 mod world_loop;
 

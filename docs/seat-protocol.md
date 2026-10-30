@@ -475,56 +475,47 @@ No key is required. `since` is the only other accepted key. It is a tape sequenc
       {
         "name": "leave_door_note",
         "audience": "habit",
-        "token": "none",
-        "on": "self"
+        "token": "none"
       },
       {
         "name": "restock_lamp_oil",
         "audience": "habit",
-        "token": "none",
-        "on": "self"
+        "token": "none"
       },
       {
         "name": "wait",
         "audience": "verb",
-        "token": "none",
-        "on": "self"
+        "token": "none"
       },
       {
         "name": "travel",
         "audience": "verb",
-        "token": "exit",
-        "on": "self"
+        "token": "exit"
       },
       {
         "name": "grit",
         "audience": "verb",
-        "token": "none",
-        "on": "self"
+        "token": "none"
       },
       {
         "name": "take",
         "audience": "verb",
-        "token": "item",
-        "on": "self"
+        "token": "item"
       },
       {
         "name": "drop",
         "audience": "verb",
-        "token": "item",
-        "on": "self"
+        "token": "item"
       },
       {
         "name": "wield",
         "audience": "verb",
-        "token": "item",
-        "on": "self"
+        "token": "item"
       },
       {
         "name": "unwield",
         "audience": "verb",
-        "token": "none",
-        "on": "self"
+        "token": "none"
       }
     ],
     "kinds": {
@@ -621,7 +612,7 @@ After the two says above, `since` 0 returns them:
 
 #### perceive
 
-`as` is required. It is a bare actor id. It is not `player:<id>` or `npc:<id>`. A missing `as`, or `as` set to `gm`, is `UNSCOPED_PERCEIVE`. `focus` may be `place` or `actor`. `budget_tokens` may be a non-negative integer. The default budget is 800.
+`as` is required. It is a bare actor id. It is not `player:<id>` or `npc:<id>`. A missing `as`, or `as` set to `gm`, is `UNSCOPED_PERCEIVE`. `budget_tokens` may be a non-negative integer. The default budget is 800.
 
 The result is the same object as the player `perceive` line above.
 
@@ -969,7 +960,6 @@ Each player socket, and the HTTP GM session, has an outbound queue of at most 25
 | `VIEWER_MISMATCH` | The effect is not for this viewer. |
 | `KERNEL_ON_PLAYER` | The table does not take that action for a player. |
 | `ACTOR_MISMATCH` | The action is not this actor's. |
-| `NO_PROFILE` | The move has no profile. |
 | `TABLE_EMPTY` | Nobody is seated. |
 | `COMMIT_CONFLICT` | The table was already writing. Send `commit_round` again. |
 | `HAND_EDIT` | The save was edited by hand. Stop sending moves until it is migrated. |

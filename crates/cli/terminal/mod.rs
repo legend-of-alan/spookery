@@ -1,5 +1,6 @@
 //! The human player view and the human GM view.
 
+use std::fmt;
 use std::io;
 
 mod gm_view;
@@ -13,6 +14,15 @@ pub use player_view::run_player;
 pub enum Error {
     Reason(String),
     Io(io::Error),
+}
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Error::Reason(reason) => f.write_str(reason),
+            Error::Io(err) => err.fmt(f),
+        }
+    }
 }
 
 /// Stdin lines from a plain thread. A read on `tokio::io::stdin` can't be

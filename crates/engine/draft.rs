@@ -417,7 +417,6 @@ pub(crate) struct DraftPoint {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::apply::apply_effect;
     use crate::effect::{Effect, EffectKind};
     use crate::intent::{Intent, Source, Target, ViewerId};
     use crate::World;
@@ -440,20 +439,17 @@ mod tests {
             rationale_code: "habit".to_string(),
             source: Source::Kernel,
         };
-        apply_effect(
-            &mut draft,
-            &intent,
-            Effect {
-                class: EffectKind::Clock {
-                    clock_id: "shop_day".to_string(),
-                    delta: -1,
-                    start: false,
-                },
-                as_viewer: ViewerId::Npc("mira".to_string()),
-                intent_id: "i1".to_string(),
+        Effect {
+            class: EffectKind::Clock {
+                clock_id: "shop_day".to_string(),
+                delta: -1,
+                start: false,
             },
-        )
-        .expect("apply_effect");
+            as_viewer: ViewerId::Npc("mira".to_string()),
+            intent_id: "i1".to_string(),
+        }
+        .apply(&mut draft, &intent)
+        .expect("apply");
         drop(draft);
         drop(world);
         let save_after = std::fs::read(pack.join("state/save.yaml")).expect("read save");

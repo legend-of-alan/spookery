@@ -8,8 +8,8 @@ use crate::store::codec::emit_save;
 use crate::Reason;
 
 use crate::round::replay::{
-    apply_entry, checkpoint_diverged, journal_fault, load_base, load_entries, open_for_replay,
-    read_now_bytes, replay_journal, state_rev_of, DivergenceKind, ReplayDivergence, ReplayError,
+    apply_entry, checkpoint_diverged, load_base, open_for_replay, read_now_bytes, replay_journal,
+    state_rev_of, DivergenceKind, ReplayDivergence, ReplayError,
 };
 
 #[derive(Debug)]
@@ -30,7 +30,7 @@ pub fn verify_pack(pack: &Path, from: Option<&Path>) -> Result<VerifyReport, Rep
     {
         return Err(ReplayError::Reason(Reason::NotInSpec));
     }
-    let records = load_entries(pack)?;
+    let records = journal::read_entries(pack)?;
     if records.is_empty() && from.is_none() {
         let genesis = read_genesis(pack)?;
         verify_save_file(pack, &records, &genesis)?;
@@ -57,9 +57,9 @@ pub fn verify_pack(pack: &Path, from: Option<&Path>) -> Result<VerifyReport, Rep
     if from.is_some() {
         return Ok(verified);
     }
-    journal::check_chain(pack, &records).map_err(journal_fault)?;
+    journal::check_chain(pack, &records)?;
     let genesis = read_genesis(pack)?;
-    let bundles = journal::bundle_entries(pack).map_err(journal_fault)?;
+    let bundles = journal::bundle_entries(pack)?;
     bundle_starts(pack, &genesis, &bundles)?;
     verify_save_file(pack, &records, &genesis)?;
     Ok(verified)
@@ -67,10 +67,10 @@ pub fn verify_pack(pack: &Path, from: Option<&Path>) -> Result<VerifyReport, Rep
 
 /// Check every chain hash, then replay the latest bundle from the snapshot it starts at.
 pub fn verify_quick(pack: &Path) -> Result<VerifyReport, ReplayError> {
-    let records = load_entries(pack)?;
-    journal::check_chain(pack, &records).map_err(journal_fault)?;
+    let records = journal::read_entries(pack)?;
+    journal::check_chain(pack, &records)?;
     let genesis = read_genesis(pack)?;
-    let bundles = journal::bundle_entries(pack).map_err(journal_fault)?;
+    let bundles = journal::bundle_entries(pack)?;
     let Some((start, entries)) = bundle_starts(pack, &genesis, &bundles)?.pop() else {
         verify_save_file(pack, &records, &genesis)?;
         return Ok(VerifyReport {

@@ -1,9 +1,7 @@
 //! Change rules, edge-triggered, to a fixpoint.
 
-use crate::apply::apply_effect;
 use crate::canon::Canon;
 use crate::draft::Draft;
-use crate::expand::expand_rule;
 use crate::intent::{trigger_intent_id, Intent, Source, Target, ViewerId};
 use crate::journal::{Rejected, Step};
 use crate::key::{ChangeRecord, StateKey, StateValue};
@@ -127,7 +125,7 @@ fn fire(draft: &mut Draft, dice: &mut RoundDice, log: &mut RoundLog, rule: &Rule
     let expanded = expand_trigger(dice, log, draft, rule, &intent, subject);
     let landed = expanded.and_then(|expanded| {
         for effect in &expanded.effects {
-            apply_effect(draft, &intent, effect.clone())?;
+            effect.clone().apply(draft, &intent)?;
         }
         Ok(expanded)
     });
@@ -170,7 +168,7 @@ fn expand_trigger(
         None => None,
     };
     let outcome = rolled.as_ref().map(|out| out.outcome);
-    let effects = expand_rule(canon, now, presence, rule, intent, outcome, &mut roller)?;
+    let effects = rule.expand(canon, now, presence, intent, outcome, &mut roller)?;
     if effects.len() > draft.budget().max_effects_per_intent as usize {
         return Err(Reason::Budget);
     }

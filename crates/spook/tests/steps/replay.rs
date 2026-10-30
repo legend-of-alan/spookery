@@ -230,10 +230,10 @@ fn each_journal_record_parses_back(world: &mut World) {
     assert!(rounds >= 3, "rounds {rounds}");
     for entry in &entries {
         let key = spookery_engine::testing::journal::format_record_key(entry);
-        let located = spookery_engine::testing::journal::locate(pack, &key)
+        let path = spookery_engine::testing::journal::locate(pack, &key)
             .unwrap_or_else(|err| panic!("{}", err.detail));
         let again = spookery_engine::testing::journal::emit_entry(entry);
-        let text = fs::read_to_string(located.path).unwrap();
+        let text = fs::read_to_string(&path).unwrap();
         assert!(
             text.lines().any(|line| line == again.trim_end()),
             "{key}: {again}"
@@ -242,9 +242,9 @@ fn each_journal_record_parses_back(world: &mut World) {
 }
 
 fn edit_round(world: &mut World, edit: impl FnOnce(&mut Value)) {
-    let located = spookery_engine::testing::journal::locate(table::pack(world), "round-0001")
+    let path = spookery_engine::testing::journal::locate(table::pack(world), "round-0001")
         .unwrap_or_else(|err| panic!("{}", err.detail));
-    let text = fs::read_to_string(&located.path).unwrap();
+    let text = fs::read_to_string(&path).unwrap();
     let line = text
         .lines()
         .find(|l| serde_json::from_str::<Value>(l).unwrap()["round_index"] == 1)
@@ -254,7 +254,7 @@ fn edit_round(world: &mut World, edit: impl FnOnce(&mut Value)) {
     let next = serde_json::to_string(&round).unwrap();
     let rewritten = text.replacen(line, &next, 1);
     assert_ne!(rewritten, text);
-    fs::write(&located.path, rewritten).unwrap();
+    fs::write(&path, rewritten).unwrap();
 }
 
 #[given(expr = "checkpoints are taken every {int} rounds")]

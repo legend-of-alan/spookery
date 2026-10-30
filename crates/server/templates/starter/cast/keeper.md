@@ -4,10 +4,10 @@ id: keeper
 kind: npc
 display_name: Keeper
 facts: []
+flags:
+  - tended
 idle:
   eligible: true
-  flags:
-    - tended
 rules:
   - id: tend_the_yard
     when: habit

@@ -4,14 +4,15 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::canon::source::{At, Problem, Source};
 use crate::canon::{Canon, CastCanon, FactCanon, ItemCanon, PlaceCanon};
-use crate::check::CheckDef;
 use crate::diagnostic::{coded, schema as schema_error, warning, Diagnostic};
 use crate::error::Reason;
 use crate::meter::MeterDef;
 use crate::rule::{
-    ChangeWatch, Cond, Cost, EffectTemplate, Expr, LocationTo, NarrateTo, Owner, ResistSpec, Rule,
+    ChangeWatch, Cond, Cost, EffectTemplate, LocationTo, NarrateTo, Owner, ResistSpec, Rule,
     RuleTable, When, Who,
 };
+use crate::rules::expr::Expr;
+use crate::rules::roll::CheckDef;
 
 /// Exits whose `to` is not a place, and facts or items an exit names but the pack does not.
 pub(super) fn broken_exits(
@@ -313,9 +314,7 @@ impl Known<'_> {
     /// The unknown reads in `exprs`, at `path` in `source` and at each read's spot.
     fn check(&self, source: &Source, path: &str, exprs: &[&Expr], diags: &mut Vec<Diagnostic>) {
         for expr in exprs {
-            let mut reads = Vec::new();
-            expr.meters(&mut reads);
-            for (who, key, spot) in reads {
+            for (who, key, spot) in expr.meter_reads() {
                 let at = At::Spot(spot);
                 let refuse = |problem, hint| {
                     Problem {

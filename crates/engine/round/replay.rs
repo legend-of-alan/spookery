@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use crate::canon::{check_save, load_canon, migrate_save};
 use crate::commit::atomic_publish;
-use crate::diagnostic::reason_of;
+use crate::diagnostic::first_reason;
 use crate::effect::Effect;
 use crate::journal::{self, hash_now, JournalEntry, MigrateRecord, RoundRecord};
 use crate::lock::{lock_pack, lock_write, LockGuard};
@@ -168,7 +168,7 @@ pub fn replay_journal(
     if !pack.join("pack.yaml").is_file() {
         return Err(ReplayError::Reason(Reason::NotInSpec));
     }
-    let records = load_entries(pack)?;
+    let records = journal::read_entries(pack)?;
     let base_path = pack.join("state").join(journal::base_rel());
     let save_path = pack.join("state/save.yaml");
     let base_bytes = if let Some(from) = from {
@@ -243,7 +243,7 @@ pub(crate) fn peek_at_tip(path: &Path) -> Result<World<()>, Reason> {
     let mut world = World::open(path)?;
     // Open checked a save with nothing past it. A replayed tip is checked here.
     if replay_tail(&mut world)? {
-        check_save(world.canon(), world.now()).map_err(reason_of)?;
+        check_save(world.canon(), world.now()).map_err(|diags| first_reason(&diags))?;
     }
     Ok(world)
 }
@@ -260,7 +260,7 @@ pub fn migrate_pack(path: &Path) -> Result<(), Reason> {
 fn journal_tip(path: &Path, lock: &LockGuard) -> Result<(Now, bool), Reason> {
     let bytes = fs::read(path.join("state/save.yaml")).map_err(|_| Reason::NotInSpec)?;
     let text = std::str::from_utf8(&bytes).map_err(|_| Reason::Schema)?;
-    let file_now = load_save(text).map_err(reason_of)?;
+    let file_now = load_save(text).map_err(|diags| first_reason(&diags))?;
     // A save from before the head is a checkpoint that did not land, not an edit.
     let edited = journal::read_head(path)
         .map_err(|fault| fault.reason)?
@@ -295,14 +295,13 @@ fn replay_tip_unchecked(path: &Path, lock: &LockGuard) -> Result<World<()>, Reas
 /// A replay world at `base` with the pack's canon.
 pub(crate) fn open_for_replay(pack: &Path, base: &[u8]) -> Result<World<()>, ReplayError> {
     let now = load_base(base)?;
-    let canon = load_canon(pack).map_err(|diags| ReplayError::Reason(reason_of(diags)))?;
+    let canon = load_canon(pack).map_err(|diags| ReplayError::Reason(first_reason(&diags)))?;
     Ok(World::open_for_replay(pack, Arc::new(canon), now))
 }
 
 /// Replay the live records past the save. `true` when any record was replayed.
 fn replay_tail(world: &mut World<()>) -> Result<bool, Reason> {
-    let entries =
-        journal::read_live(world.root()).map_err(|fault| replay_reason(journal_fault(fault)))?;
+    let entries = journal::read_live(world.root()).map_err(|fault| replay_reason(fault.into()))?;
     let base_rev = world.now().state_rev;
     let mut replayed = false;
     for entry in &entries {
@@ -323,7 +322,7 @@ fn replay_reason(err: ReplayError) -> Reason {
 }
 
 fn rebuild_snapshot(path: &Path, lock: &LockGuard) -> Result<(), ReplayError> {
-    let Some(mark) = journal::read_head(path).map_err(journal_fault)? else {
+    let Some(mark) = journal::read_head(path)? else {
         return Ok(());
     };
     let save = path.join("state/save.yaml");
@@ -358,21 +357,19 @@ fn rebuild_snapshot(path: &Path, lock: &LockGuard) -> Result<(), ReplayError> {
     Ok(())
 }
 
-pub(crate) fn load_entries(pack: &Path) -> Result<Vec<JournalEntry>, ReplayError> {
-    journal::read_entries(pack).map_err(journal_fault)
-}
-
-pub(crate) fn journal_fault(fault: crate::journal::JournalFault) -> ReplayError {
-    if fault.reason == Reason::RulesRev {
-        return ReplayError::Reason(Reason::RulesRev);
+impl From<crate::journal::JournalFault> for ReplayError {
+    fn from(fault: crate::journal::JournalFault) -> Self {
+        if fault.reason == Reason::RulesRev {
+            return ReplayError::Reason(Reason::RulesRev);
+        }
+        ReplayDivergence::new(
+            DivergenceKind::Journal,
+            0,
+            None,
+            format!("{}: {}", fault.file, fault.detail),
+        )
+        .into()
     }
-    ReplayDivergence::new(
-        DivergenceKind::Journal,
-        0,
-        None,
-        format!("{}: {}", fault.file, fault.detail),
-    )
-    .into()
 }
 
 fn check_sequence(
@@ -579,7 +576,7 @@ fn apply_migrate(world: &mut World<()>, record: &MigrateRecord) -> Result<(), Re
 
 pub(crate) fn load_base(bytes: &[u8]) -> Result<Now, ReplayError> {
     let text = std::str::from_utf8(bytes).map_err(|_| ReplayError::Reason(Reason::Schema))?;
-    load_save(text).map_err(|diag| ReplayError::Reason(reason_of(diag)))
+    load_save(text).map_err(|diag| ReplayError::Reason(first_reason(&diag)))
 }
 
 pub(crate) fn state_rev_of(bytes: &[u8]) -> Result<u64, ReplayError> {

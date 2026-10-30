@@ -98,7 +98,7 @@ impl ServerHandler for GmSeatHandler {
 
 impl GmSeatHandler {
     async fn claim(&self, conn: u64, context: &RequestContext<RoleServer>) -> Result<(), McpError> {
-        let (out_tx, out_rx, cancel_tx, cancel_rx) = super::limits::outbound();
+        let (out_tx, out_rx, cancel_tx, cancel_rx) = super::outbound::channel();
         let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
         self.tx
             .send(WorldMsg::Claim {
@@ -115,7 +115,7 @@ impl GmSeatHandler {
             Ok(()) => {
                 let peer = context.peer.clone();
                 // One writer drains this queue, so two tool calls cannot pass each other.
-                tokio::spawn(super::limits::write_frames(
+                tokio::spawn(super::outbound::write_frames(
                     async move |frame: &[u8]| {
                         emit_event(&peer, frame).await;
                         true

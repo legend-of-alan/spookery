@@ -1,13 +1,34 @@
-//! Roll one check and keep the faces, the total, and the band.
+//! Check definitions, one roll of a check, and the band its total lands in.
 
 use std::collections::BTreeMap;
 
-use crate::check::{classify, CheckDef};
 use crate::error::Reason;
 use crate::hash::blake2s_256;
 use crate::intent::ViewerId;
 use crate::meter::{self, MeterDef};
 use crate::model::ActorLive;
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CheckDef {
+    pub dice_count: u32,
+    pub dice_sides: u32,
+    pub stat: String,
+}
+
+pub use spookery_protocol::Outcome;
+
+/// `total` against `target`, with an optional lower band.
+/// `total >= target` is success. `partial_at <= total < target` is partial.
+/// Anything lower, and any binary roll, is a miss.
+pub fn classify(total: i64, target: i64, partial_at: Option<i64>) -> Outcome {
+    if total >= target {
+        Outcome::Success
+    } else if partial_at.is_some_and(|band| total >= band) {
+        Outcome::Partial
+    } else {
+        Outcome::Miss
+    }
+}
 
 /// One roll's dice, total, and band. Not stored in `Now`.
 pub use spookery_protocol::Roll;
@@ -138,8 +159,7 @@ fn block_bytes(seed: &[u8; 32], block: usize) -> [u8; 32] {
 mod tests {
     use std::collections::BTreeMap;
 
-    use super::{face_at, roll, RollInput, RollKey};
-    use crate::check::{CheckDef, Outcome};
+    use super::{classify, face_at, roll, CheckDef, Outcome, RollInput, RollKey};
     use crate::error::Reason;
     use crate::intent::ViewerId;
     use crate::meter::{MeterDef, MeterLive};
@@ -164,7 +184,7 @@ mod tests {
             inventory: BTreeMap::new(),
             wielded: None,
             known_facts: Vec::new(),
-            act: ActCounters::fresh(),
+            act: ActCounters::default(),
         }
     }
 
@@ -284,5 +304,33 @@ mod tests {
         .unwrap();
         assert_eq!(out.faces.len(), 10);
         assert_eq!(out.outcome, Outcome::Success);
+    }
+
+    #[test]
+    fn classification_meets_every_threshold() {
+        let success = Outcome::Success;
+        let partial = Outcome::Partial;
+        let miss = Outcome::Miss;
+        let cases = [
+            (10, 10, None, success),
+            (9, 10, None, miss),
+            (11, 10, None, success),
+            (10, 10, Some(7), success),
+            (9, 10, Some(7), partial),
+            (7, 10, Some(7), partial),
+            (6, 10, Some(7), miss),
+            (11, 10, Some(7), success),
+            (0, 0, None, success),
+            (0, 0, Some(-1), success),
+            (-1, 0, Some(-1), partial),
+            (-2, 0, Some(-1), miss),
+        ];
+        for (total, target, partial_at, expected) in cases {
+            assert_eq!(
+                classify(total, target, partial_at),
+                expected,
+                "{total} vs {target} band {partial_at:?}"
+            );
+        }
     }
 }

@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use crate::canon::Budget;
 use crate::canon::{check_save, load_canon, pack_rev, Canon};
-use crate::diagnostic::{coded, locate_nth, reason_of, schema, Diagnostic, Severity};
+use crate::diagnostic::{coded, first_reason, locate_nth, schema, Diagnostic, Severity};
 use crate::effect::{payload_json, Effect};
 use crate::error::Reason;
 use crate::intent::{player_intent_id, Intent, IntentArgs, Source, Target, ViewerId};
@@ -487,10 +487,10 @@ impl World<()> {
         if !root.join("pack.yaml").is_file() || !root.join("state/save.yaml").is_file() {
             return Err(Reason::NotInSpec);
         }
-        let canon = Arc::new(load_canon(root).map_err(reason_of)?);
+        let canon = Arc::new(load_canon(root).map_err(|diags| first_reason(&diags))?);
         let now_bytes = fs::read(root.join("state/save.yaml")).map_err(|_| Reason::NotInSpec)?;
         let now_text = std::str::from_utf8(&now_bytes).map_err(|_| Reason::Schema)?;
-        let now = load_save(now_text).map_err(reason_of)?;
+        let now = load_save(now_text).map_err(|diags| first_reason(&diags))?;
         let mut problems = save_problems(&now, &now_bytes);
         if let Some(diag) = pack_rev_problem(root, &now, &now_bytes) {
             problems.insert(0, diag);
@@ -500,10 +500,10 @@ impl World<()> {
             problems.retain(|diag| diag.code != Severity::Error(Reason::HandEdit));
         }
         if !problems.is_empty() {
-            return Err(reason_of(problems));
+            return Err(first_reason(&problems));
         }
         if !continues {
-            check_save(&canon, &now).map_err(reason_of)?;
+            check_save(&canon, &now).map_err(|diags| first_reason(&diags))?;
         }
         Ok(Self {
             root: root.to_path_buf(),

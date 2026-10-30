@@ -297,7 +297,7 @@ pub(crate) fn shift_count(
     Ok(changed)
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 /// How many times an actor has acted, and the journey they are still on.
 pub struct ActCounters {
@@ -308,18 +308,6 @@ pub struct ActCounters {
     pub busy_until: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub busy_for: Option<PendingAction>,
-}
-
-impl ActCounters {
-    pub fn fresh() -> Self {
-        Self {
-            last_act_round: 0,
-            idle_acts_today: 0,
-            live_acts_this_hour: 0,
-            busy_until: None,
-            busy_for: None,
-        }
-    }
 }
 
 /// Work that finishes when `busy_until` is reached.

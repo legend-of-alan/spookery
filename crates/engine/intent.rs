@@ -1,8 +1,11 @@
 //! Who is asking, and the action they asked the round to take.
 
+use std::fmt;
+
 use serde::{Deserialize, Serialize};
 
 use crate::error::Reason;
+use crate::rule::TargetKind;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(try_from = "String", into = "String")]
@@ -31,18 +34,20 @@ impl ViewerId {
             ViewerId::Player(id) | ViewerId::Npc(id) => id,
         }
     }
+}
 
-    pub fn token(&self) -> String {
+impl fmt::Display for ViewerId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ViewerId::Player(id) => format!("player:{id}"),
-            ViewerId::Npc(id) => format!("npc:{id}"),
+            ViewerId::Player(id) => write!(f, "player:{id}"),
+            ViewerId::Npc(id) => write!(f, "npc:{id}"),
         }
     }
 }
 
 impl From<ViewerId> for String {
     fn from(id: ViewerId) -> Self {
-        id.token()
+        id.to_string()
     }
 }
 
@@ -83,6 +88,15 @@ pub enum Target {
 }
 
 impl Target {
+    /// Exit names ride as places. Item ids ride as actors. Both are one typed token.
+    pub fn new(kind: TargetKind, token: &str) -> Self {
+        match kind {
+            TargetKind::None => Target::Empty,
+            TargetKind::Place | TargetKind::Exit => Target::Place(token.to_string()),
+            TargetKind::Actor | TargetKind::Item => Target::Actor(token.to_string()),
+        }
+    }
+
     pub fn is_empty(&self) -> bool {
         matches!(self, Target::Empty)
     }
@@ -134,11 +148,11 @@ impl Intent {
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct TargetWire {
-    #[serde(default, skip_serializing_if = "absent")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     place: Option<String>,
-    #[serde(default, skip_serializing_if = "absent")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     actor: Option<String>,
-    #[serde(default, skip_serializing_if = "absent")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     clock: Option<String>,
 }
 
@@ -186,7 +200,7 @@ impl TryFrom<TargetWire> for Target {
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct ArgsWire {
-    #[serde(rename = "to", default, skip_serializing_if = "absent")]
+    #[serde(rename = "to", default, skip_serializing_if = "Option::is_none")]
     message_to: Option<Vec<String>>,
 }
 
@@ -223,10 +237,6 @@ pub(crate) mod args_as {
     ) -> Result<IntentArgs, D::Error> {
         Ok(IntentArgs::from(ArgsWire::deserialize(deserializer)?))
     }
-}
-
-fn absent<T>(value: &Option<T>) -> bool {
-    value.is_none()
 }
 
 /// Blake2s of `shard|round|actor|row`. The P37 preimage stays.

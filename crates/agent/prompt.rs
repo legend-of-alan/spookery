@@ -561,7 +561,6 @@ mod tests {
             name: n.into(),
             audience: a.into(),
             token: t.into(),
-            on: "self".into(),
         };
         PackSummary {
             menu: vec![
