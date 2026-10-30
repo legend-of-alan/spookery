@@ -35,21 +35,8 @@ pub fn read_status_args(arguments: Option<&Map<String, Value>>) -> Result<Status
 pub struct PerceiveArgs {
     #[serde(rename = "as", default)]
     pub as_viewer: Option<String>,
-    #[serde(default, deserialize_with = "deserialize_focus")]
-    pub focus: Option<String>,
     #[serde(default)]
     pub budget_tokens: Option<u64>,
-}
-
-fn deserialize_focus<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    let text = String::deserialize(deserializer)?;
-    match text.as_str() {
-        "place" | "actor" => Ok(Some(text)),
-        _ => Err(serde::de::Error::custom("focus")),
-    }
 }
 
 pub fn read_perceive_args(arguments: Option<&Map<String, Value>>) -> Result<PerceiveArgs, Error> {
@@ -263,7 +250,6 @@ pub struct MenuRow {
     pub name: String,
     pub audience: String,
     pub token: String,
-    pub on: String,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -356,5 +342,13 @@ mod tests {
         assert_eq!(c.actor_id.as_deref(), Some("a"));
         assert_eq!(c.move_name.as_deref(), Some("m"));
         assert_eq!(c.target.as_deref(), Some("t"));
+    }
+
+    #[test]
+    fn perceive_takes_as_and_budget_tokens_only() {
+        let args = |raw: &str| serde_json::from_str::<Map<String, Value>>(raw).unwrap();
+        let read = read_perceive_args(Some(&args(r#"{"as":"pc_rowan","budget_tokens":200}"#)));
+        assert_eq!(read.unwrap().budget_tokens, Some(200));
+        assert!(read_perceive_args(Some(&args(r#"{"as":"pc_rowan","focus":"place"}"#))).is_err());
     }
 }

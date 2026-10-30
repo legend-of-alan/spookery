@@ -1,9 +1,7 @@
 //! Finishes due pending actions, journeys arriving and timed actions completing.
 
-use crate::apply::apply_effect;
 use crate::draft::Draft;
 use crate::effect::{Effect, EffectKind};
-use crate::expand::expand_rule;
 use crate::intent::{arrival_intent_id, Intent, Source, Target};
 use crate::journal::Arrival;
 use crate::model::{PendingAction, PendingKind};
@@ -77,7 +75,7 @@ fn arrive(
         as_viewer: intent.actor.clone(),
         intent_id: intent.id.clone(),
     };
-    apply_effect(draft, intent, effect.clone())?;
+    effect.clone().apply(draft, intent)?;
     log.effects.push(effect);
     log.arrivals.push(Arrival {
         actor_id: actor_id.to_string(),
@@ -104,15 +102,7 @@ fn perform(
         None => None,
     };
     let outcome = rolled.as_ref().map(|out| out.outcome);
-    let effects = expand_rule(
-        canon,
-        snapshot,
-        presence,
-        rule,
-        intent,
-        outcome,
-        &mut roller,
-    )?;
+    let effects = rule.expand(canon, snapshot, presence, intent, outcome, &mut roller)?;
     let resisted = roller.finish();
     let actor_id = actor_id.to_string();
     log.reports
@@ -122,7 +112,7 @@ fn perform(
         if matches!(effect.class, EffectKind::Location { .. }) {
             continue;
         }
-        apply_effect(draft, intent, effect.clone())?;
+        effect.clone().apply(draft, intent)?;
         log.effects.push(effect);
     }
     Ok(())

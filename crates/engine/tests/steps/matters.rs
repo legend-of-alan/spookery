@@ -229,7 +229,7 @@ fn seat(pack: &Path) -> Shard {
         Err(err) => {
             let report = spookery_engine::check_pack(pack)
                 .iter()
-                .map(|diag| diag.report_line())
+                .map(|diag| diag.to_string())
                 .collect::<Vec<_>>()
                 .join("\n");
             panic!("open: {}\n{report}", err.token());

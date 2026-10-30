@@ -304,7 +304,7 @@ fn rule_yaml(id: &str, watch: Option<&str>, effects: &[(String, bool)]) -> Strin
 fn write_flags(pack: &Path, flags: &[String]) -> Result<(), String> {
     let path = pack.join("cast/pc-rowan.md");
     let text = fs::read_to_string(&path).map_err(|err| err.to_string())?;
-    let mut listed = String::from("  flags:\n");
+    let mut listed = String::from("flags:\n");
     for flag in flags {
         listed.push_str(&format!("    - {flag}\n"));
     }

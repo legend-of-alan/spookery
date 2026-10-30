@@ -14,7 +14,6 @@
 //!
 //! Deterministic in CI: 64 cases, seed `0x0018_0018`, no failure file.
 
-use crate::apply::apply_effect;
 use crate::draft::Draft;
 use crate::effect::{Effect, EffectKind};
 use crate::intent::{Intent, IntentArgs, Source, Target, ViewerId};
@@ -78,7 +77,7 @@ fn apply_changes(world: &World<()>, steps: &[ItemChange]) -> Result<(), TestCase
         let before = draft.now().clone();
         let known = holder_known(draft.now(), &step.holder);
         let held = count_of(draft.now(), &step.holder, &step.id);
-        let outcome = apply_effect(&mut draft, &intent, item_effect(step));
+        let outcome = item_effect(step).apply(&mut draft, &intent);
         assert_no_stored_zero(draft.now())?;
         if !known {
             if outcome.is_ok() {

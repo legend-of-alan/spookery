@@ -5,12 +5,12 @@ use std::path::Path;
 
 use serde::Deserialize;
 
-use crate::check::CheckDef;
 use crate::diagnostic::Diagnostic;
 use crate::error::Reason;
 use crate::hash::blake2s_hex;
 use crate::meter::MeterDef;
 use crate::rule::{Cond, Cost, Owner, RuleTable, TargetKind, When};
+use crate::rules::roll::CheckDef;
 pub use spookery_protocol::{CastKind, MenuRow, PackSummary};
 
 mod budget;
@@ -106,6 +106,8 @@ pub struct CastCanon {
     pub kind: CastKind,
     pub display_name: String,
     pub facts: Vec<String>,
+    /// The flags an effect may set on this actor.
+    pub flags: Vec<String>,
     pub body: String,
     pub idle: Option<IdleProfile>,
 }
@@ -114,8 +116,6 @@ pub struct CastCanon {
 #[serde(deny_unknown_fields)]
 pub struct IdleProfile {
     pub eligible: bool,
-    #[serde(default)]
-    pub flags: Vec<String>,
 }
 
 impl Canon {
@@ -134,7 +134,6 @@ impl Canon {
                 name,
                 audience: audience.to_string(),
                 token: token.to_string(),
-                on: "self".to_string(),
             })
             .collect();
         let kinds = self.cast.iter().map(|(k, m)| (k.clone(), m.kind)).collect();
@@ -314,7 +313,7 @@ mod tests {
     use std::fs;
 
     use super::*;
-    use crate::diagnostic::reason_of;
+    use crate::diagnostic::first_reason;
     use crate::error::Reason;
 
     #[test]
@@ -339,10 +338,10 @@ mod tests {
         assert!(load(&text(good)).is_ok());
         let old_err = load(&text(old)).unwrap_err();
         assert!(old_err[0].message.contains("no version"), "{old_err:?}");
-        assert_eq!(reason_of(old_err), Reason::Schema);
+        assert_eq!(first_reason(&old_err), Reason::Schema);
         let bogus = load(&text("bogus")).unwrap_err();
         assert!(bogus[0].message.contains("does not use"), "{bogus:?}");
-        assert_eq!(reason_of(bogus), Reason::Schema);
+        assert_eq!(first_reason(&bogus), Reason::Schema);
     }
 
     #[test]
@@ -358,10 +357,10 @@ mod tests {
         canon.cast.get_mut("mira").unwrap().body = "CAST-BODY-SENTINEL".to_string();
         let summary = canon.pack_summary();
         assert!(summary.menu.iter().all(|row| row.audience != "system"));
-        assert!(summary.menu.iter().any(|row| row.name == "travel"
-            && row.audience == "verb"
-            && row.token == "exit"
-            && row.on == "self"));
+        assert!(summary
+            .menu
+            .iter()
+            .any(|row| row.name == "travel" && row.audience == "verb" && row.token == "exit"));
         assert!(summary
             .menu
             .iter()

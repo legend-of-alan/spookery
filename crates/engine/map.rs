@@ -420,7 +420,7 @@ fn verb_open(
             viewer.clone(),
             Source::Player,
             verb,
-            chosen.store(&token),
+            Target::new(*chosen, &token),
         );
         if cond::holds(
             canon,

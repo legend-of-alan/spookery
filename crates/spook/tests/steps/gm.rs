@@ -8,7 +8,7 @@ use spookery_engine::testing::journal::list_round_keys;
 use crate::support::{self, Proc};
 use crate::World;
 
-use super::table;
+use super::{common, table};
 
 #[when(expr = "play and a human GM share a free loopback port")]
 fn play_and_a_human_gm_share_a_port(world: &mut World) {
@@ -261,7 +261,7 @@ fn world_time_advanced(world: &mut World) {
 
 #[then(expr = "the round log records Mira's restock")]
 fn the_round_log_records_the_restock(world: &mut World) {
-    let round = round_json(world);
+    let round = common::round_json(world);
     let ran = round["steps_run"].as_array().is_some_and(|steps| {
         steps
             .iter()
@@ -289,7 +289,7 @@ fn the_round_log_records_rowan_and_wren(world: &mut World) {
         }
         break;
     }
-    let round = round_json(world);
+    let round = common::round_json(world);
     let waits = round["intents"]
         .as_array()
         .unwrap_or_else(|| panic!("{round}"))
@@ -430,8 +430,4 @@ fn gm_stdout(world: &mut World) -> String {
 fn gm_stderr(world: &mut World) -> String {
     let gm = world.gm.as_ref().unwrap_or_else(|| panic!("no gm"));
     support::text_of(&gm.stderr)
-}
-
-fn round_json(world: &mut World) -> serde_json::Value {
-    crate::support::read_round(table::pack(world), "round-0001")
 }

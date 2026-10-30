@@ -188,7 +188,7 @@ A short knife.
 
 `kind` is `npc` or `pc_template`. A template does not sit a player. The save does. The file name is not the id: `cast/pc-ada.md` has id `pc_ada`. `display_name` is required, and it is the name a player sees.
 
-`idle.eligible` says whether the idle runner may pick this NPC. `when: habit` is a habit of that NPC. The runner takes the first habit whose `if` holds and whose `do` list expands.
+`flags` lists the flags an effect may set on this actor. `idle.eligible` says whether the idle runner may pick this NPC. `when: habit` is a habit of that NPC. The runner takes the first habit whose `if` holds and whose `do` list expands.
 
 ```yaml file=cast/pc-ada.md
 ---
@@ -197,9 +197,9 @@ id: pc_ada
 kind: pc_template
 display_name: Ada
 facts: []
+flags: []
 idle:
   eligible: false
-  flags: []
 ---
 Ada keeps the yard.
 ```
@@ -214,9 +214,9 @@ facts:
   - id: fact_ledger_short
     text: The oil ledger is one tin short.
     hidden: true
+flags: []
 idle:
   eligible: true
-  flags: []
 rules:
   - id: tend
     when: habit

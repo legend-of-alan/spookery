@@ -46,6 +46,7 @@ pub(super) fn add_cast(
             kind,
             display_name: file.display_name,
             facts: ids,
+            flags: file.flags,
             body: page.body,
             idle: file.idle,
         },
@@ -100,6 +101,8 @@ struct CastFile {
     kind: String,
     display_name: String,
     facts: Vec<FactFile>,
+    #[serde(default)]
+    flags: Vec<String>,
     idle: Option<IdleProfile>,
     #[serde(default)]
     rules: Vec<RuleEntry>,

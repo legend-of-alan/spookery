@@ -235,7 +235,7 @@ fn write_pack(examples: &[Example], label: &str) -> PackDir {
 fn report(found: &[Diagnostic]) -> String {
     found
         .iter()
-        .map(Diagnostic::report_line)
+        .map(Diagnostic::to_string)
         .collect::<Vec<_>>()
         .join("\n")
 }

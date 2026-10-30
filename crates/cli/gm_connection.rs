@@ -138,11 +138,9 @@ async fn dial(door: std::net::SocketAddr) -> Result<GmConnection, Error> {
         // event stream and reports the stream as closed. Read that refusal
         // from a fresh response body.
         Err(err @ ClientInitializeError::ConnectionClosed(_)) => {
-            return Err(read_seat_refusal(&url)
-                .await
-                .unwrap_or_else(|| from_initialize(err)));
+            return Err(read_seat_refusal(&url).await.unwrap_or_else(|| err.into()));
         }
-        Err(err) => return Err(from_initialize(err)),
+        Err(err) => return Err(err.into()),
     };
     // rmcp keeps no read on the agent port once a tool call's stream
     // ends, so a killed `spook run` never looks closed. A plain connection
@@ -345,11 +343,13 @@ async fn read_seat_refusal(url: &str) -> Option<Error> {
     Some(Error::Refused { code, raw: text })
 }
 
-fn from_initialize(err: ClientInitializeError) -> Error {
-    if let Some(refused) = refusal_of(&err) {
-        return refused;
+impl From<ClientInitializeError> for Error {
+    fn from(err: ClientInitializeError) -> Self {
+        if let Some(refused) = refusal_of(&err) {
+            return refused;
+        }
+        Error::Io(std::io::Error::other(err.to_string()))
     }
-    Error::Io(std::io::Error::other(err.to_string()))
 }
 
 fn refusal_of(err: &ClientInitializeError) -> Option<Error> {

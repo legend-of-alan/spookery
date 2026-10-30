@@ -137,8 +137,12 @@ fn take_tonic(pack: &Path) {
 
 fn hp_of(pack: &Path, actor_id: &str) -> i64 {
     let now = table::now_of(pack);
-    let canon = spookery_engine::load_canon(pack)
-        .unwrap_or_else(|err| panic!("load canon: {}", spookery_engine::reason_of(err).token()));
+    let canon = spookery_engine::load_canon(pack).unwrap_or_else(|err| {
+        panic!(
+            "load canon: {}",
+            spookery_engine::first_reason(&err).token()
+        )
+    });
     now.meter_value(&canon, actor_id, "hp")
         .unwrap_or_else(|err| panic!("hp: {}", err.token()))
 }

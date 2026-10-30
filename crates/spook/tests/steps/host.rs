@@ -162,7 +162,7 @@ fn the_player_saw_a_say(world: &mut World) {
 
 #[then(expr = "the tape from is gm")]
 fn the_tape_from_is_gm(world: &mut World) {
-    let tape = fs::read_to_string(table::pack(world).join("state/journal/session.jsonl"))
+    let tape = fs::read_to_string(table::pack(world).join("state/tape.jsonl"))
         .unwrap_or_else(|err| panic!("read tape: {err}"));
     assert!(tape.contains("\"from\":\"gm\""), "{tape}");
 }
@@ -450,7 +450,7 @@ fn world_time(pack: &Path) -> u64 {
 }
 
 fn tape_text(pack: &Path) -> String {
-    fs::read_to_string(pack.join("state/journal/session.jsonl")).unwrap_or_default()
+    fs::read_to_string(pack.join("state/tape.jsonl")).unwrap_or_default()
 }
 
 /// The game port and the agent door, each a free port of its own. Callers

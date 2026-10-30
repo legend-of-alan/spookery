@@ -3,6 +3,8 @@
 //! `code` is an [`Error`](Severity::Error) [`Reason`] or a [`Warning`](Severity::Warning).
 //! The struct is plain data so a later JSON printer can serialize it as it stands.
 
+use std::fmt;
+
 use serde::{Serialize, Serializer};
 use serde_saphyr::Error as YamlError;
 
@@ -102,24 +104,30 @@ impl Diagnostic {
         self
     }
 
+    /// At `spot`, a line and column `line_base` lines into the file. No spot leaves it as is.
+    pub(crate) fn at_spot(self, spot: Option<(u32, u32)>, line_base: u32) -> Self {
+        match spot {
+            Some((line, column)) => self.at_line(line + line_base, Some(column)),
+            None => self,
+        }
+    }
+
     pub(crate) fn with_path(mut self, path: impl Into<String>) -> Self {
         self.path = Some(path.into());
         self
     }
-
-    /// `file:line: message (CODE)`, or `file: path: message (CODE)` when there is no line.
-    pub fn report_line(&self) -> String {
-        let head = match (self.line, self.path.as_deref()) {
-            (Some(line), _) => format!("{}:{line}", self.file),
-            (None, Some(path)) => format!("{}: {path}", self.file),
-            (None, None) => self.file.clone(),
-        };
-        format!("{head}: {} ({})", self.message, self.code.token())
-    }
 }
 
-pub fn reason_of(diagnostics: Vec<Diagnostic>) -> Reason {
-    first_reason(&diagnostics)
+/// `file:line: message (CODE)`, or `file: path: message (CODE)` when there is no line.
+impl fmt::Display for Diagnostic {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match (self.line, self.path.as_deref()) {
+            (Some(line), _) => write!(f, "{}:{line}", self.file)?,
+            (None, Some(path)) => write!(f, "{}: {path}", self.file)?,
+            (None, None) => f.write_str(&self.file)?,
+        }
+        write!(f, ": {} ({})", self.message, self.code.token())
+    }
 }
 
 pub fn first_reason(diagnostics: &[Diagnostic]) -> Reason {
@@ -281,7 +289,7 @@ mod tests {
         .with_path("rules[0].when")
         .at_line(14, Some(5));
         assert_eq!(
-            diag.report_line(),
+            diag.to_string(),
             "rules/verbs.yaml:14: rule 'grit' is missing when; add when (SCHEMA)"
         );
         let json = serde_json::to_value(&diag).unwrap();
@@ -304,7 +312,7 @@ mod tests {
         )
         .with_path("pack_rev");
         assert_eq!(
-            diag.report_line(),
+            diag.to_string(),
             "state/save.yaml: pack_rev: pack_rev does not match the canon hash; run spook migrate to store the current hash (PACK_REV_MISMATCH)"
         );
     }

@@ -1,4 +1,4 @@
-//! The session tape at `state/journal/session.jsonl`.
+//! The session tape at `state/tape.jsonl`.
 
 use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use crate::error::Reason;
 use crate::store::durable::fsync_dir;
 
-/// Hard cap for `state/journal/session.jsonl`.
+/// Hard cap for `state/tape.jsonl`.
 pub const MAX_TAPE_BYTES: u64 = 1024 * 1024;
 
 const DEFAULT_TAPE_LIMIT: usize = 64;
@@ -43,9 +43,9 @@ pub fn append_record(
     root: &Path,
     body: impl FnOnce(u64) -> TapeRecord,
 ) -> Result<TapeRecord, Reason> {
-    let log_dir = root.join("state/journal");
-    fs::create_dir_all(&log_dir).map_err(|_| Reason::CommitConflict)?;
-    let path = log_dir.join("session.jsonl");
+    let state = root.join("state");
+    fs::create_dir_all(&state).map_err(|_| Reason::CommitConflict)?;
+    let path = state.join("tape.jsonl");
     let mut file = OpenOptions::new()
         .read(true)
         .write(true)
@@ -77,7 +77,7 @@ pub fn append_record(
     file.write_all(line.as_bytes())
         .map_err(|_| Reason::CommitConflict)?;
     file.sync_all().map_err(|_| Reason::CommitConflict)?;
-    fsync_dir(&log_dir)?;
+    fsync_dir(&state)?;
     Ok(record)
 }
 
@@ -120,7 +120,7 @@ pub fn read_tail(root: &Path, player: &str, n: usize) -> Result<Vec<TapeRecord>,
 /// Every complete record, oldest first. A missing file is empty. A trailing partial line is
 /// not a record. A complete line that does not parse is `SCHEMA`. Past 1 MiB is `OUT_OF_RANGE`.
 pub fn read_records(root: &Path) -> Result<Vec<TapeRecord>, Reason> {
-    let path = root.join("state/journal/session.jsonl");
+    let path = root.join("state/tape.jsonl");
     if !path.is_file() {
         return Ok(Vec::new());
     }
@@ -225,7 +225,7 @@ mod tests {
             world_time: 1080,
         })
         .unwrap();
-        let bytes = fs::read(root.join("state/journal/session.jsonl")).unwrap();
+        let bytes = fs::read(root.join("state/tape.jsonl")).unwrap();
         let line = "{\"seq\":1,\"from\":\"gm\",\"address\":\"actor\",\"place\":null,\"actor\":\"pc_rowan\",\"recipients\":[\"pc_rowan\"],\"text\":\"line0\",\"round_index\":0,\"world_time\":1080}\n";
         assert_eq!(bytes, line.as_bytes());
         assert_eq!(parse_record(line.trim_end()).unwrap(), stored);
@@ -286,7 +286,7 @@ mod tests {
     #[test]
     fn a_tape_past_one_mib_is_out_of_range() {
         let root = fresh_dir("tape-cap-bytes");
-        let path = root.join("state/journal/session.jsonl");
+        let path = root.join("state/tape.jsonl");
         fs::create_dir_all(path.parent().unwrap()).unwrap();
         fs::write(&path, vec![b'\n'; (MAX_TAPE_BYTES as usize) + 1]).unwrap();
         assert_eq!(read_records(&root).unwrap_err(), Reason::OutOfRange);
@@ -318,7 +318,7 @@ mod tests {
     }
 
     fn write_tape(root: &Path, lines: &str) {
-        let path = root.join("state/journal/session.jsonl");
+        let path = root.join("state/tape.jsonl");
         fs::create_dir_all(path.parent().unwrap()).unwrap();
         fs::write(path, lines).unwrap();
     }

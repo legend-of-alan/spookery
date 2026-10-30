@@ -40,8 +40,8 @@ pub enum PausePolicy {
     AlwaysRun,
 }
 
-impl Budget {
-    pub(crate) fn defaults() -> Self {
+impl Default for Budget {
+    fn default() -> Self {
         Self {
             max_intents_applied: 12,
             max_npcs_acting: 8,
@@ -73,7 +73,7 @@ pub(crate) fn load_budget(rel: &str, text: &str) -> Result<Budget, Vec<Diagnosti
         line_base: 0,
     };
     let mut diags = Vec::new();
-    let mut budget = Budget::defaults();
+    let mut budget = Budget::default();
     // Each row is a counter key and the least value it allows, in report order.
     macro_rules! counters {
         ($($key:ident >= $least:literal),* $(,)?) => {$(
@@ -215,14 +215,14 @@ mod tests {
 
     #[test]
     fn an_unknown_tag_and_the_old_versioned_tag_are_schema() {
-        use crate::diagnostic::reason_of;
+        use crate::diagnostic::first_reason;
         assert!(load_budget(&text("budget")).is_ok());
         let old = load_budget(&text(concat!("budget/", "v0"))).unwrap_err();
         assert!(old[0].message.contains("no version"), "{old:?}");
-        assert_eq!(reason_of(old), Reason::Schema);
+        assert_eq!(first_reason(&old), Reason::Schema);
         let bogus = load_budget(&text("bogus")).unwrap_err();
         assert!(bogus[0].message.contains("does not use"), "{bogus:?}");
-        assert_eq!(reason_of(bogus), Reason::Schema);
+        assert_eq!(first_reason(&bogus), Reason::Schema);
     }
 
     #[test]
@@ -239,11 +239,11 @@ mod tests {
 
     #[test]
     fn the_removed_live_tick_key_is_refused() {
-        use crate::diagnostic::reason_of;
+        use crate::diagnostic::first_reason;
         let mut stale = text("budget");
         stale.push_str("live_tick_every_real_seconds: 60\n");
         let err = load_budget(&stale).unwrap_err();
-        assert_eq!(reason_of(err), Reason::Schema);
+        assert_eq!(first_reason(&err), Reason::Schema);
     }
 
     #[test]
@@ -271,11 +271,11 @@ mod tests {
 
     #[test]
     fn a_bad_idle_word_and_a_zero_interval_are_schema() {
-        use crate::diagnostic::reason_of;
+        use crate::diagnostic::first_reason;
         let mut maybe = text("budget");
         maybe.push_str("idle: maybe\n");
         let err = load_budget(&maybe).unwrap_err();
-        assert_eq!(reason_of(err.clone()), Reason::Schema);
+        assert_eq!(first_reason(&err), Reason::Schema);
         assert_eq!(err[0].file, "rules/budget.yaml");
         assert!(err[0].line.is_some(), "{err:?}");
         assert!(err[0].message.contains("maybe"), "{err:?}");
@@ -305,6 +305,6 @@ mod tests {
 
         let empty = "schema: budget\npause:\n  named_plot_clocks: pause_when_empty\nidle:\n";
         let err = load_budget(empty).unwrap_err();
-        assert_eq!(reason_of(err), Reason::Schema);
+        assert_eq!(first_reason(&err), Reason::Schema);
     }
 }

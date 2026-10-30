@@ -6,7 +6,7 @@ use std::io::Write;
 use std::path::Path;
 
 use crate::canon::{check_save, migrate_save, pack_rev, pending_meters};
-use crate::diagnostic::reason_of;
+use crate::diagnostic::first_reason;
 use crate::draft::Draft;
 use crate::error::Reason;
 use crate::journal::{self, hash_now};
@@ -92,7 +92,7 @@ pub fn migrate_journal(
     if !root.join("pack.yaml").is_file() {
         return Err(Reason::NotInSpec);
     }
-    let canon = crate::canon::load_canon(root).map_err(reason_of)?;
+    let canon = crate::canon::load_canon(root).map_err(|diags| first_reason(&diags))?;
     let pack_rev_after = pack_rev(root)?;
     let pack_rev_before = now.pack_rev.clone();
     let state_rev_before = now.state_rev;
@@ -101,7 +101,7 @@ pub fn migrate_journal(
         .ok_or(Reason::CommitConflict)?;
     let added = pending_meters(&canon, &now);
     let now = migrate_save(now, &pack_rev_after, state_rev_after, &added);
-    check_save(&canon, &now).map_err(reason_of)?;
+    check_save(&canon, &now).map_err(|diags| first_reason(&diags))?;
     let emitted = emit_save(&now)?.into_bytes();
     let entry = journal::migrate_entry(
         &pack_rev_before,

@@ -11,7 +11,7 @@ use std::time::Duration;
 use spookery_engine::Reason;
 
 use super::mcp_http;
-use super::world_loop::{self, HelloReply, WorldMsg};
+use super::world_loop::{self, refused_line, HelloReply, WorldMsg};
 
 #[derive(Debug)]
 pub enum Error {
@@ -170,16 +170,16 @@ async fn connection(
                 return;
             }
             Ok(Err(super::limits::LineReadError::TooLong)) => {
-                refuse(&mut stream, &refused_frame(Reason::LineTooLong)).await;
+                refuse(&mut stream, &refused_line(Reason::LineTooLong).into_bytes()).await;
                 return;
             }
             Ok(Err(super::limits::LineReadError::BadUtf8)) => {
-                refuse(&mut stream, &refused_frame(Reason::Schema)).await;
+                refuse(&mut stream, &refused_line(Reason::Schema).into_bytes()).await;
                 return;
             }
         }
     };
-    let (out_tx, out_rx, cancel_tx, cancel_rx) = super::limits::outbound();
+    let (out_tx, out_rx, cancel_tx, cancel_rx) = super::outbound::channel();
     let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
     if tx
         .send(WorldMsg::Hello {
@@ -218,15 +218,15 @@ async fn player_session(
     stream: tokio::net::TcpStream,
     tx: Sender<WorldMsg>,
     conn: u64,
-    out_tx: super::limits::OutTx,
-    out_rx: super::limits::OutRx,
+    out_tx: super::outbound::OutTx,
+    out_rx: super::outbound::OutRx,
     mut cancel_rx: tokio::sync::watch::Receiver<bool>,
 ) {
     let (read_half, mut write_half) = stream.into_split();
     let mut reader =
         tokio::io::BufReader::with_capacity(super::limits::PLAYER_LINE_CAP + 1, read_half);
     // The sink owns the write half, so it shuts down when `write_frames` returns.
-    let writer = tokio::spawn(super::limits::write_frames(
+    let writer = tokio::spawn(super::outbound::write_frames(
         async move |frame: &[u8]| super::limits::write_all_flush(&mut write_half, frame).await,
         out_rx,
         cancel_rx.clone(),
@@ -274,13 +274,14 @@ async fn player_session(
                 break;
             }
             Err(super::limits::LineReadError::TooLong) => {
-                super::limits::send_last(&out_tx, refused_frame(Reason::LineTooLong)).await;
+                super::outbound::send_last(&out_tx, refused_line(Reason::LineTooLong).into_bytes())
+                    .await;
                 report_fault(&tx, conn).await;
                 break;
             }
             Err(super::limits::LineReadError::BadUtf8) => {
                 let _ = bucket.allow(std::time::Instant::now());
-                if !super::limits::try_frame(&out_tx, refused_frame(Reason::Schema)) {
+                if !super::outbound::try_frame(&out_tx, refused_line(Reason::Schema).into_bytes()) {
                     report_fault(&tx, conn).await;
                     break;
                 }
@@ -289,10 +290,6 @@ async fn player_session(
     }
     drop(out_tx);
     let _ = writer.await;
-}
-
-fn refused_frame(code: Reason) -> Vec<u8> {
-    super::frames::player_refused(code.token(), None).into_bytes()
 }
 
 pub(super) async fn report_fault(tx: &Sender<WorldMsg>, conn: u64) {

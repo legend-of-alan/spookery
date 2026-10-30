@@ -360,7 +360,7 @@ Rowan.
             wielded: None,
             known_facts: Vec::new(),
             visited: vec!["gate".to_string()],
-            act: ActCounters::fresh(),
+            act: ActCounters::default(),
         },
     );
     let now = Now {
@@ -637,7 +637,7 @@ rules:
                 inventory: BTreeMap::new(),
                 wielded: None,
                 known_facts: Vec::new(),
-                act: ActCounters::fresh(),
+                act: ActCounters::default(),
             },
         );
     }
@@ -791,7 +791,7 @@ fn patch_mira_flags(pack: &Path, flags: &str) {
     let text = fs::read_to_string(&path).unwrap();
     let next = text.replacen(
         "idle:\n  eligible: true\n",
-        &format!("idle:\n  eligible: true\n  flags:\n{flags}"),
+        &format!("idle:\n  eligible: true\nflags:\n{flags}"),
         1,
     );
     assert_ne!(next, text, "mira round block was not patched");

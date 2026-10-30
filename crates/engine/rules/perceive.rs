@@ -45,7 +45,16 @@ pub fn perceive_budget<L>(
     as_arg: &str,
     budget_tokens: usize,
 ) -> Result<View, Reason> {
-    perceive_at_budget(world.canon(), world.now(), presence, as_arg, budget_tokens)
+    if as_arg.is_empty()
+        || as_arg == "gm"
+        || as_arg.contains(':')
+        || as_arg.chars().any(char::is_whitespace)
+    {
+        return Err(Reason::UnscopedPerceive);
+    }
+    let (canon, now) = (world.canon(), world.now());
+    let actor = now.actors.get(as_arg).ok_or(Reason::UnknownKey)?;
+    perceive_viewer_budget(canon, now, presence, &actor.viewer(as_arg), budget_tokens)
 }
 
 pub(crate) fn perceive_viewer(
@@ -55,24 +64,6 @@ pub(crate) fn perceive_viewer(
     viewer: &ViewerId,
 ) -> Result<View, Reason> {
     perceive_viewer_budget(canon, now, presence, viewer, BUDGET_TOKENS)
-}
-
-fn perceive_at_budget(
-    canon: &Canon,
-    now: &Now,
-    presence: &Presence,
-    as_arg: &str,
-    budget_tokens: usize,
-) -> Result<View, Reason> {
-    if as_arg.is_empty()
-        || as_arg == "gm"
-        || as_arg.contains(':')
-        || as_arg.chars().any(char::is_whitespace)
-    {
-        return Err(Reason::UnscopedPerceive);
-    }
-    let actor = now.actors.get(as_arg).ok_or(Reason::UnknownKey)?;
-    perceive_viewer_budget(canon, now, presence, &actor.viewer(as_arg), budget_tokens)
 }
 
 fn perceive_viewer_budget(

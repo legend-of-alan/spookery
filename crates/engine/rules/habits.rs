@@ -3,8 +3,52 @@
 use crate::canon::Canon;
 use crate::intent::{kernel_intent_id, Intent, Source, Target, ViewerId};
 use crate::model::{Now, Presence};
+use crate::rule::When;
 use crate::rules::cond;
+use crate::rules::expand::{expand_outcome, stamp, PreviewDice};
 use crate::rules::expr::Ctx;
+use crate::rules::gate;
+
+pub(crate) fn habit_intents(canon: &Canon, now: &Now, presence: &Presence) -> Vec<Intent> {
+    let mut intents = Vec::new();
+    for actor_id in now.actors.keys() {
+        if !is_eligible(canon, now, presence, actor_id) {
+            continue;
+        }
+        if let Some(intent) = select_one(canon, now, presence, actor_id) {
+            intents.push(intent);
+        }
+    }
+    intents
+}
+
+fn select_one(canon: &Canon, now: &Now, presence: &Presence, actor_id: &str) -> Option<Intent> {
+    for rule in canon.rules.habits_of(actor_id) {
+        if !matches!(rule.when, When::Habit) {
+            continue;
+        }
+        let intent = mint(now, actor_id, &rule.local_id);
+        let ctx = Ctx {
+            intent: &intent,
+            presence,
+        };
+        if cond::holds(canon, now, &ctx, &rule.if_).is_err() {
+            continue;
+        }
+        if gate::gate(canon, now, presence, &intent).is_err() {
+            continue;
+        }
+        match expand_outcome(canon, now, presence, &intent, None, &mut PreviewDice) {
+            Ok(effects) => {
+                let mut intent = intent;
+                stamp(&mut intent, &effects);
+                return Some(intent);
+            }
+            Err(_) => continue,
+        }
+    }
+    None
+}
 
 pub(crate) fn habits_on(
     canon: &Canon,

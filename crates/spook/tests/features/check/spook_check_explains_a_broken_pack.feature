@@ -31,6 +31,8 @@ Feature: spook check explains a broken pack
       | pack_rev mismatch             | state/save.yaml              | PACK_REV_MISMATCH   | pack_rev            |
       | exit to an unknown place      | world/places/docks_shop.md   | SCHEMA              | not a place         |
       | duplicate exit                | world/places/docks_shop.md   | SCHEMA              | listed twice        |
+      | a target alias                | rules/verbs.yaml             | SCHEMA              | not a target kind   |
+      | flags under idle              | cast/pc-rowan.md             | SCHEMA              | unknown field       |
 
   Scenario: Two problems in two files are both reported
     Given a docks table

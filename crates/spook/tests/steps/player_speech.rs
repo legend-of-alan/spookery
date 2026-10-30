@@ -66,7 +66,7 @@ fn the_tape_names_the_place(world: &mut World, place: String) {
 }
 
 fn tape_text(world: &World) -> String {
-    fs::read_to_string(table::pack(world).join("state/journal/session.jsonl"))
+    fs::read_to_string(table::pack(world).join("state/tape.jsonl"))
         .unwrap_or_else(|err| panic!("read tape: {err}"))
 }
 

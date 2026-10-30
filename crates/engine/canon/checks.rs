@@ -5,8 +5,8 @@ use std::collections::BTreeMap;
 use serde::Deserialize;
 
 use crate::canon::source::{load_headed, At, Diags, Problem, Source, CHECKS_SCHEMA};
-use crate::check::CheckDef;
 use crate::diagnostic::Diagnostic;
+use crate::rules::roll::CheckDef;
 
 pub(super) fn load_checks(
     rel: &str,

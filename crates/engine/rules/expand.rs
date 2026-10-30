@@ -1,19 +1,15 @@
 //! Turn a rule template into effects for one intent.
 
 use crate::canon::Canon;
-use crate::check::Outcome;
 use crate::effect::{Effect, EffectKind};
 use crate::error::Reason;
 use crate::intent::{Intent, Target, ViewerId};
 use crate::meter::MeterWrite;
 use crate::model::{Now, Presence};
-use crate::rule::{
-    EffectTemplate, Expr, LocationTo, NarrateTo, ResistSpec, Rule, TargetKind, When, Who,
-};
-use crate::rules::cond;
-use crate::rules::expr::{self, Ctx, Dice};
+use crate::rule::{EffectTemplate, LocationTo, NarrateTo, ResistSpec, Rule, TargetKind, When, Who};
+use crate::rules::expr::{self, Ctx, Dice, Expr};
 use crate::rules::gate;
-use crate::rules::habits;
+use crate::rules::roll::Outcome;
 
 /// `outcome` selects `success`, `partial`, or `failure`. `None` means the rule did not roll.
 /// `do` is included either way. `dice.resist` returns the subject's band. Success shrugs the effect off.
@@ -26,40 +22,42 @@ pub fn expand_outcome(
     dice: &mut dyn Dice,
 ) -> Result<Vec<Effect>, Reason> {
     let rule = gate::resolve(canon, now, intent)?;
-    expand_rule(canon, now, presence, rule, intent, outcome, dice)
+    rule.expand(canon, now, presence, intent, outcome, dice)
 }
 
-/// Expand one rule's lists. Change rules are not verbs, so they pass the rule in.
-pub fn expand_rule(
-    canon: &Canon,
-    now: &Now,
-    presence: &Presence,
-    rule: &Rule,
-    intent: &Intent,
-    outcome: Option<Outcome>,
-    dice: &mut dyn Dice,
-) -> Result<Vec<Effect>, Reason> {
-    let mut selected = Vec::new();
-    selected.extend(rule.do_.iter());
-    match outcome {
-        Some(Outcome::Success) => selected.extend(rule.success.iter()),
-        Some(Outcome::Partial) => selected.extend(rule.partial.iter()),
-        Some(Outcome::Miss) => selected.extend(rule.failure.iter()),
-        None => {}
+impl Rule {
+    /// Expand this rule's lists. Change rules are not verbs, so they pass the rule in.
+    pub fn expand(
+        &self,
+        canon: &Canon,
+        now: &Now,
+        presence: &Presence,
+        intent: &Intent,
+        outcome: Option<Outcome>,
+        dice: &mut dyn Dice,
+    ) -> Result<Vec<Effect>, Reason> {
+        let mut selected = Vec::new();
+        selected.extend(self.do_.iter());
+        match outcome {
+            Some(Outcome::Success) => selected.extend(self.success.iter()),
+            Some(Outcome::Partial) => selected.extend(self.partial.iter()),
+            Some(Outcome::Miss) => selected.extend(self.failure.iter()),
+            None => {}
+        }
+        let ctx = Ctx { intent, presence };
+        let expand = ExpandCtx {
+            canon,
+            now,
+            ctx: &ctx,
+            viewer: &intent.actor,
+        };
+        let mut effects = Vec::with_capacity(selected.len());
+        let mut last_resist = None;
+        for template in selected {
+            expand_template(&expand, template, &mut effects, &mut last_resist, dice)?;
+        }
+        Ok(effects)
     }
-    let ctx = Ctx { intent, presence };
-    let expand = ExpandCtx {
-        canon,
-        now,
-        ctx: &ctx,
-        viewer: &intent.actor,
-    };
-    let mut effects = Vec::with_capacity(selected.len());
-    let mut last_resist = None;
-    for template in selected {
-        expand_template(&expand, template, &mut effects, &mut last_resist, dice)?;
-    }
-    Ok(effects)
 }
 
 struct ExpandCtx<'a> {
@@ -120,7 +118,7 @@ fn expand_template(
             } else {
                 expr::resolve_who_id(now, ctx, who)?
             };
-            effects.push(wrap(
+            effects.push(Effect::new(
                 viewer,
                 &intent.id,
                 EffectKind::Flag {
@@ -174,7 +172,7 @@ fn expand_template(
                     dice,
                 },
             )?;
-            effects.push(wrap(
+            effects.push(Effect::new(
                 viewer,
                 &intent.id,
                 EffectKind::Meter {
@@ -189,7 +187,7 @@ fn expand_template(
         } => {
             let item_id = expr::resolve_item_id(intent, id)?;
             let (actor_id, place) = resolve_holder(now, ctx, who)?;
-            effects.push(wrap(
+            effects.push(Effect::new(
                 viewer,
                 &intent.id,
                 EffectKind::Item {
@@ -203,7 +201,7 @@ fn expand_template(
         }
         EffectTemplate::Wield { who, id } => {
             let actor_id = expr::resolve_who_id(now, ctx, who)?;
-            effects.push(wrap(
+            effects.push(Effect::new(
                 viewer,
                 &intent.id,
                 EffectKind::Wield {
@@ -214,10 +212,14 @@ fn expand_template(
         }
         EffectTemplate::Unwield { who } => {
             let actor_id = expr::resolve_who_id(now, ctx, who)?;
-            effects.push(wrap(viewer, &intent.id, EffectKind::Unwield { actor_id }));
+            effects.push(Effect::new(
+                viewer,
+                &intent.id,
+                EffectKind::Unwield { actor_id },
+            ));
         }
         EffectTemplate::Clock { id, add, start } => {
-            effects.push(wrap(
+            effects.push(Effect::new(
                 viewer,
                 &intent.id,
                 EffectKind::Clock {
@@ -234,7 +236,7 @@ fn expand_template(
             fact_ids,
             text,
         } => {
-            effects.push(wrap(
+            effects.push(Effect::new(
                 viewer,
                 &intent.id,
                 EffectKind::Message {
@@ -254,7 +256,7 @@ fn expand_template(
                 NarrateTo::Self_ => vec![intent.actor.actor_id().to_string()],
                 NarrateTo::Actors(ids) => ids.clone(),
             };
-            effects.push(wrap(
+            effects.push(Effect::new(
                 viewer,
                 &intent.id,
                 EffectKind::Narrate {
@@ -270,7 +272,7 @@ fn expand_template(
             text,
         } => {
             let actor_id = expr::resolve_who_id(now, ctx, who)?;
-            effects.push(wrap(
+            effects.push(Effect::new(
                 viewer,
                 &intent.id,
                 EffectKind::Memory {
@@ -286,7 +288,7 @@ fn expand_template(
                 return Err(Reason::Schema);
             }
             let actor_id = expr::resolve_who_id(now, ctx, who)?;
-            effects.push(wrap(
+            effects.push(Effect::new(
                 viewer,
                 &intent.id,
                 EffectKind::Reveal {
@@ -357,14 +359,6 @@ fn resolve_actors_here(now: &Now, ctx: &Ctx<'_>) -> Result<Vec<String>, Reason> 
     Ok(ids)
 }
 
-fn wrap(viewer: &ViewerId, intent_id: &str, class: EffectKind) -> Effect {
-    Effect {
-        class,
-        as_viewer: viewer.clone(),
-        intent_id: intent_id.to_string(),
-    }
-}
-
 fn location_effect(now: &Now, intent: &Intent, to: &str) -> Result<Effect, Reason> {
     let from = now
         .actors
@@ -381,19 +375,6 @@ fn location_effect(now: &Now, intent: &Intent, to: &str) -> Result<Effect, Reaso
         as_viewer: intent.actor.clone(),
         intent_id: intent.id.clone(),
     })
-}
-
-pub fn habit_intents(canon: &Canon, now: &Now, presence: &Presence) -> Vec<Intent> {
-    let mut intents = Vec::new();
-    for actor_id in now.actors.keys() {
-        if !habits::is_eligible(canon, now, presence, actor_id) {
-            continue;
-        }
-        if let Some(intent) = select_one(canon, now, presence, actor_id) {
-            intents.push(intent);
-        }
-    }
-    intents
 }
 
 pub fn stamp_for_priority(canon: &Canon, now: &Now, presence: &Presence, intent: &mut Intent) {
@@ -422,37 +403,9 @@ pub fn stamp_for_priority(canon: &Canon, now: &Now, presence: &Presence, intent:
     stamp(intent, &effects);
 }
 
-fn select_one(canon: &Canon, now: &Now, presence: &Presence, actor_id: &str) -> Option<Intent> {
-    for rule in canon.rules.habits_of(actor_id) {
-        if !matches!(rule.when, When::Habit) {
-            continue;
-        }
-        let intent = habits::mint(now, actor_id, &rule.local_id);
-        let ctx = Ctx {
-            intent: &intent,
-            presence,
-        };
-        if cond::holds(canon, now, &ctx, &rule.if_).is_err() {
-            continue;
-        }
-        if gate::gate(canon, now, presence, &intent).is_err() {
-            continue;
-        }
-        match expand_outcome(canon, now, presence, &intent, None, &mut PreviewDice) {
-            Ok(effects) => {
-                let mut intent = intent;
-                stamp(&mut intent, &effects);
-                return Some(intent);
-            }
-            Err(_) => continue,
-        }
-    }
-    None
-}
-
 /// Faces of 1, and no journal line. Gather only needs the effect shape.
 /// The round rolls the real faces when it applies the intent.
-struct PreviewDice;
+pub(crate) struct PreviewDice;
 
 impl Dice for PreviewDice {
     fn begin(&mut self) {}
@@ -469,7 +422,7 @@ impl Dice for PreviewDice {
     }
 }
 
-fn stamp(intent: &mut Intent, effects: &[Effect]) {
+pub(crate) fn stamp(intent: &mut Intent, effects: &[Effect]) {
     for effect in effects {
         if intent.target == Target::Empty {
             match &effect.class {

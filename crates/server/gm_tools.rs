@@ -1,10 +1,11 @@
 //! The GM tools: status, perceive, intent, say, commit, and close.
 
 use serde_json::{Map, Value};
-use spookery_engine::{GmIntentSpec, Presence, QueuedMove, Reason, RoundOutput, World};
+use spookery_engine::{GmIntentSpec, Heard, Presence, QueuedMove, Reason, RoundOutput, World};
 
-use super::frames;
+use super::frames::{self, Spoken};
 use super::world_loop::commit_then_fast_forward;
+use crate::protocol::OutgoingSay;
 
 pub struct GmToolReply {
     pub value: Value,
@@ -43,7 +44,7 @@ pub(super) struct GmTool {
     run: fn(&mut World, &Presence, Option<Map<String, Value>>) -> GmToolReply,
 }
 
-const SEAT_FACTS: &str = "Player mechanical lines stay queued until commit_round. say appends speech and does not tick. perceive requires as set to an actor id. This seat does not call session_open or patch_entity. When a notification does not arrive, session_status with since returns player speech and the queue.";
+const SEAT_FACTS: &str = "Player mechanical lines stay queued until commit_round. say appends speech and does not tick. perceive requires as set to an actor id. When a notification does not arrive, session_status with since returns player speech and the queue.";
 
 impl GmTool {
     pub(super) fn description(&self) -> String {
@@ -60,7 +61,7 @@ pub(super) const GM_LIST: &[GmTool] = &[
     },
     GmTool {
         name: "perceive",
-        about: "perceive requires as. focus and budget_tokens may be sent. A missing as is UNSCOPED_PERCEIVE.",
+        about: "perceive requires as. budget_tokens may be sent. A missing as is UNSCOPED_PERCEIVE.",
         schema: perceive_schema,
         run: run_perceive,
     },
@@ -141,7 +142,7 @@ fn run_say(
     presence: &Presence,
     arguments: Option<Map<String, Value>>,
 ) -> GmToolReply {
-    match frames::speak_tool(world, presence, arguments) {
+    match try_say(world, presence, arguments) {
         Ok(spoken) => {
             let mut done = GmToolReply::new(spoken.tool);
             // Same object as the tool result, after that response. Ahead of it, the client stalls.
@@ -152,6 +153,22 @@ fn run_say(
         }
         Err(code) => refused_tool(code),
     }
+}
+
+/// GM `say`. `from` is the seat. A supplied `from` appends nothing.
+fn try_say(
+    world: &World,
+    presence: &Presence,
+    arguments: Option<Map<String, Value>>,
+) -> Result<Spoken, Reason> {
+    let say = crate::protocol::read_say_args(arguments.as_ref()).map_err(|_| Reason::Schema)?;
+    let heard = match &say {
+        OutgoingSay::Table { .. } => Heard::Table,
+        OutgoingSay::Place { place, .. } => Heard::Place(place),
+        OutgoingSay::Actor { actor, .. } => Heard::Actor(actor),
+    };
+    let stored = world.speak_gm(presence, heard, say.text())?;
+    Ok(Spoken::from(&stored))
 }
 
 fn run_session_status(
@@ -237,7 +254,6 @@ fn perceive_schema() -> Map<String, Value> {
         "type": "object",
         "properties": {
             "as": { "type": "string" },
-            "focus": { "type": "string", "enum": ["place", "actor"] },
             "budget_tokens": { "type": "integer", "minimum": 0 }
         },
         "required": ["as"],

@@ -1,7 +1,5 @@
 //! Conditions, costs, gates, rolls, and effects.
 
-pub(crate) mod apply;
-pub(crate) mod check;
 pub(crate) mod cond;
 pub(crate) mod cost;
 pub(crate) mod effect;
@@ -15,4 +13,4 @@ pub(crate) mod rule;
 
 pub use gate::GateRefusal;
 pub(crate) use roll::{faces_from, roll, RollInput, RollKey};
-pub use roll::{MoveReport, Roll};
+pub use roll::{MoveReport, Outcome, Roll};

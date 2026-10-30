@@ -6,6 +6,7 @@ use crate::effect::Effect;
 use crate::error::Reason;
 use crate::intent::Intent;
 use crate::model::MemoryLine;
+use crate::rules::GateRefusal;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -74,6 +75,16 @@ pub struct Rejected {
     /// The cost shortfall, or the sentence a locked exit shows.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub missing: Option<String>,
+}
+
+impl Rejected {
+    pub(crate) fn new(intent: &Intent, refusal: &GateRefusal) -> Self {
+        Self {
+            id: intent.id.clone(),
+            code: refusal.reason(),
+            missing: refusal.missing().map(str::to_string),
+        }
+    }
 }
 
 /// One step off the standard order of a round.

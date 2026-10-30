@@ -46,7 +46,7 @@ pub fn parse_tool_line(raw: &str) -> Result<ToolCallResult, Error> {
 ///
 /// A missing `SPOOK_GM_KEY`, `SPOOK_GM_URL`, or `SPOOK_GM_MODEL` is reported before the dial.
 pub async fn sit(addr: SocketAddr, door: Option<SocketAddr>) -> Result<(), Error> {
-    let env = llm_http::require_env()?;
+    let env = llm_http::Env::from_env()?;
     let mut model = llm_http::HttpModel::new(env)?;
     run_gm(addr, door, &mut model, &TurnWatch::default()).await
 }
