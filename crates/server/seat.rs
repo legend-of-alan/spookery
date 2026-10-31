@@ -157,8 +157,8 @@ impl FrameSender {
 }
 
 fn release(queued: &AtomicUsize, len: usize) {
-    let _ = queued.try_update(Ordering::AcqRel, Ordering::Acquire, |cur| {
-        Some(cur.saturating_sub(len))
+    queued.update(Ordering::AcqRel, Ordering::Acquire, |cur| {
+        cur.saturating_sub(len)
     });
 }
 
