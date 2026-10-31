@@ -160,13 +160,12 @@ async fn dispatch(cli: Cli) -> Result<(), String> {
         Command::Gm {
             door: mcp_http,
             raw,
-        } => spookery::terminal::run_gm(addr, parse_door(mcp_http)?, raw)
+        } => spookery::terminal::run_gm(gm_door(addr, mcp_http)?, raw)
             .await
             .map_err(|err| err.to_string()),
         #[cfg(feature = "client")]
         Command::AiGm { door: mcp_http } => {
-            let door = parse_door(mcp_http)?;
-            if spookery::ai::sit(addr, door).await.is_err() {
+            if spookery::ai::sit(gm_door(addr, mcp_http)?).await.is_err() {
                 std::process::exit(1);
             }
             Ok(())
@@ -268,6 +267,14 @@ fn parse_loopback(addr: &str) -> Result<SocketAddr, String> {
 
 fn parse_door(mcp_http: Option<String>) -> Result<Option<SocketAddr>, String> {
     mcp_http.as_deref().map(parse_loopback).transpose()
+}
+
+/// The agent door a GM dials: `--door`, else the port after the game port `addr`.
+#[cfg(feature = "client")]
+fn gm_door(addr: SocketAddr, mcp_http: Option<String>) -> Result<SocketAddr, String> {
+    parse_door(mcp_http)?
+        .or_else(|| spookery::protocol::default_door(addr))
+        .ok_or_else(|| addr.to_string())
 }
 
 #[cfg(all(test, feature = "server", feature = "client"))]

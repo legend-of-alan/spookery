@@ -4,10 +4,14 @@ use std::collections::VecDeque;
 use std::io::{self, Write};
 use std::net::SocketAddr;
 
-use serde_json::{json, Value};
+use rmcp::model::ErrorCode;
+use serde::Serialize;
+use serde_json::json;
 
-use crate::gm_connection::{self, Connection, Event, GmEvent, Incoming, ToolResult};
-use crate::protocol::{CommitBody, PlayerFrame, Refusal, SayArgs, TableStatus};
+use crate::gm_connection::{event_line, GmClient, Incoming};
+use crate::protocol::{
+    CommitBody, GmEvent, IntentCall, PlayerFrame, Refusal, SayArgs, TableStatus,
+};
 
 use super::frame_text::{self, humanize};
 
@@ -33,37 +37,38 @@ Commands:
       Leave the seat.
 An unknown command prints this list and sends nothing.";
 
-pub async fn run_gm(
-    addr: SocketAddr,
-    door: Option<SocketAddr>,
-    raw: bool,
-) -> Result<(), super::Error> {
-    let connected = match door {
-        Some(door) => Connection::connect_door(door).await,
-        None => Connection::connect_default_door(addr).await,
-    };
-    let client = match connected {
+pub async fn run_gm(door: SocketAddr, raw: bool) -> Result<(), super::Error> {
+    let client = match GmClient::connect(door).await {
         Ok(client) => client,
-        Err(gm_connection::Error::Io(err)) => return Err(super::Error::Io(err)),
-        Err(gm_connection::Error::Refused { refusal, raw: line }) => {
+        Err(crate::Error::Io(err)) => return Err(super::Error::Io(err)),
+        Err(crate::Error::Refused(refusal)) => {
+            let error = json!({
+                "code": ErrorCode::INTERNAL_ERROR,
+                "message": refusal.to_string(),
+                "data": &refusal,
+            });
+            let line = json!({ "jsonrpc": "2.0", "id": 1, "error": error }).to_string();
             return Err(super::Error::Message(echo_refusal(&refusal, &line, raw)));
         }
-        Err(gm_connection::Error::Invalid(line)) => return Err(super::Error::Message(line)),
+        Err(err) => return Err(super::Error::Message(err.to_string())),
     };
     let mut session = Session {
-        connection: client,
+        client,
         is_raw: raw,
+        next_id: 2,
         printed_checks: PrintedChecks::default(),
     };
-    if raw && !session.connection.initialize_line().is_empty() {
-        emit(session.connection.initialize_line());
+    if raw {
+        let version = session.client.protocol_version();
+        let result = json!({ "protocolVersion": version });
+        emit(&json!({ "jsonrpc": "2.0", "id": 1, "result": result }).to_string());
     }
     emit(HELP);
     let mut input = super::stdin_lines();
     let result = async {
         loop {
             tokio::select! {
-                incoming = session.connection.next_incoming() => {
+                incoming = session.client.next_incoming() => {
                     if !session.show_incoming(incoming) {
                         return Ok(());
                     }
@@ -76,13 +81,15 @@ pub async fn run_gm(
         }
     }
     .await;
-    session.connection.close().await;
+    session.client.close().await;
     result
 }
 
 struct Session {
-    connection: Connection,
+    client: GmClient,
     is_raw: bool,
+    /// The id of the next result line raw mode prints. The initialize line is 1.
+    next_id: u64,
     printed_checks: PrintedChecks,
 }
 
@@ -144,41 +151,26 @@ impl Session {
     }
 
     async fn on_status(&mut self) -> Result<(), super::Error> {
-        let Some(outcome) = self.call_tool("table_status", json!({})).await? else {
-            return Ok(());
-        };
-        self.show_result(&outcome, |_session, outcome| {
-            match read_status(&outcome.body) {
-                Some(status) => emit(&render_status(&status)),
-                None => report_unreadable(),
-            }
-        });
-        Ok(())
+        let reply = self.client.table_status(None).await;
+        self.show_result(reply, &[], |_session, status| {
+            emit(&render_status(&status));
+        })
     }
 
     async fn on_look(&mut self, actor: &str) -> Result<(), super::Error> {
-        let Some(outcome) = self.call_tool("perceive", json!({ "as": actor })).await? else {
-            return Ok(());
-        };
-        self.show_result(&outcome, |_session, outcome| {
-            match serde_json::from_value::<PlayerFrame>(outcome.body.clone()) {
-                Ok(message) => emit(&frame_text::render(&message)),
-                Err(_) => {
-                    eprintln!("The reply could not be read.");
-                    let _ = io::stderr().flush();
-                }
-            }
-        });
-        Ok(())
+        let reply = self.client.perceive(actor).await;
+        // The table sends the view as the player `view` frame, `kind` included.
+        let reply = reply.map(|reply| reply.map(|view| PlayerFrame::View(Box::new(view))));
+        self.show_result(reply, &[], |_session, frame| {
+            emit(&frame_text::render(&frame));
+        })
     }
 
     async fn on_say(&mut self, address: SayArgs) -> Result<(), super::Error> {
-        let arguments = serde_json::to_value(&address).expect("say arguments");
-        let Some(outcome) = self.call_tool("say", arguments).await? else {
-            return Ok(());
-        };
-        self.show_result(&outcome, |_session, _outcome| {});
-        Ok(())
+        let reply = self.client.say(&address).await;
+        // The table answers with the say event, `kind` included.
+        let reply = reply.map(|reply| reply.map(GmEvent::Say));
+        self.show_result(reply, &[], |_session, _said| {})
     }
 
     async fn on_queue(
@@ -188,113 +180,90 @@ impl Session {
         target: Option<&str>,
     ) -> Result<(), super::Error> {
         let shown = format!("{} queued: {move_name}", actor_name(actor));
-        let mut arguments = json!({
-            "actor_id": actor,
-            "move": move_name,
-        });
-        if let Some(t) = target {
-            arguments["target"] = json!(t);
-        }
-        let Some(outcome) = self.call_tool("queue_intent", arguments).await? else {
-            return Ok(());
+        let call = IntentCall {
+            id: None,
+            round_index: None,
+            actor_id: Some(actor.to_string()),
+            move_name: Some(move_name.to_string()),
+            target: target.map(str::to_string),
+            message_to: None,
+            rationale_code: String::new(),
         };
-        self.show_result(&outcome, move |_session, _outcome| {
+        let reply = self.client.queue_intent(&call).await;
+        self.show_result(reply, &[], move |_session, _queued| {
             emit(&shown);
-        });
-        Ok(())
+        })
     }
 
     async fn on_commit(&mut self) -> Result<(), super::Error> {
-        let Some(outcome) = self
-            .call_tool("commit_round", json!({ "include_round": true }))
-            .await?
-        else {
-            return Ok(());
-        };
-        let reply = if outcome.refused {
-            None
-        } else {
-            read_commit(&outcome.body)
-        };
+        let reply = self.client.commit_round().await;
         // This commit's check events can arrive before or after the tool
         // result. The result text prints each roll. A matching event on
         // either side is shown once. Raw mode and a failed read show none.
-        let checks = reply.as_ref().filter(|_| !self.is_raw).map(render_checks);
-        self.show_arrived(checks.as_deref().unwrap_or(&[]));
-        if outcome.refused {
-            self.show_tool_refusal(&outcome);
-        } else if let Some(reply) = reply {
-            if self.is_raw {
-                emit(&outcome.raw);
-            } else if let Some(checks) = checks {
-                emit(&render_diff(&reply));
-                for line in &checks {
-                    emit(line);
-                }
-                for line in &render_dice(&reply) {
-                    emit(line);
-                }
-                self.printed_checks.replace(checks);
+        let checks = match &reply {
+            Ok(Ok(body)) if !self.is_raw => render_checks(body),
+            _ => Vec::new(),
+        };
+        let printed = checks.clone();
+        self.show_result(reply, &checks, move |session, body| {
+            emit(&render_diff(&body));
+            for line in &printed {
+                emit(line);
             }
-        } else {
-            report_unreadable();
+            for line in &render_dice(&body) {
+                emit(line);
+            }
+            session.printed_checks.replace(printed);
+        })
+    }
+
+    /// Show one tool reply after the events that came before it, then anything that
+    /// arrived since. Raw mode prints the reply's result line, text mode `render`s it.
+    /// `checks` are rolls `render` prints, so a matching check event is not printed
+    /// again. A refusal or a reply that could not be read is shown instead; a call that
+    /// failed prints its message alone.
+    fn show_result<T: Serialize>(
+        &mut self,
+        reply: Result<Result<T, Refusal>, crate::Error>,
+        checks: &[String],
+        render: impl FnOnce(&mut Self, T),
+    ) -> Result<(), super::Error> {
+        let id = self.next_id;
+        self.next_id = self.next_id.saturating_add(1);
+        let reply = match reply {
+            Ok(reply) => Ok(reply),
+            Err(crate::Error::Unreadable(body)) => Err(body),
+            Err(crate::Error::Io(err)) => return Err(super::Error::Io(err)),
+            Err(err) => {
+                if self.is_raw {
+                    emit(&err.to_string());
+                } else {
+                    eprintln!("{err}");
+                    let _ = io::stderr().flush();
+                }
+                return Ok(());
+            }
+        };
+        self.show_arrived(checks);
+        match reply {
+            Ok(Err(refusal)) => self.show_refusal(&refusal, &result_line(id, &refusal)),
+            Ok(Ok(body)) if self.is_raw => emit(&result_line(id, &body)),
+            Ok(Ok(body)) => render(self, body),
+            Err(body) if self.is_raw => emit(&result_line(id, &body)),
+            Err(_) => report_unreadable(),
         }
         self.show_ready();
         Ok(())
-    }
-
-    async fn call_tool(
-        &mut self,
-        name: &str,
-        arguments: Value,
-    ) -> Result<Option<ToolResult>, super::Error> {
-        match self.connection.call(name, arguments).await {
-            Ok(outcome) => Ok(Some(outcome)),
-            Err(gm_connection::Error::Io(err)) => Err(super::Error::Io(err)),
-            Err(gm_connection::Error::Refused { refusal, raw }) => {
-                self.show_refusal(&refusal, &raw);
-                Ok(None)
-            }
-            Err(gm_connection::Error::Invalid(line)) => {
-                if self.is_raw {
-                    emit(&line);
-                } else {
-                    eprintln!("{line}");
-                    let _ = io::stderr().flush();
-                }
-                Ok(None)
-            }
-        }
-    }
-
-    /// Text mode prints `frame_text`. Raw mode already printed the result line.
-    fn show_result(&mut self, outcome: &ToolResult, render: impl FnOnce(&mut Self, &ToolResult)) {
-        self.show_early();
-        if outcome.refused {
-            self.show_tool_refusal(outcome);
-            self.show_ready();
-            return;
-        }
-        if self.is_raw {
-            emit(&outcome.raw);
-        } else {
-            render(self, outcome);
-        }
-        self.show_ready();
-    }
-
-    fn show_early(&mut self) {
-        self.show_arrived(&[]);
     }
 
     /// Events buffered before this result. `checks` are rolls this result
     /// will print; a matching check event is not printed again.
     fn show_arrived(&mut self, checks: &[String]) {
         let mut pending: VecDeque<&str> = checks.iter().map(String::as_str).collect();
-        let events = self.connection.take_events();
+        let events = self.client.take_events();
         for event in &events {
-            if let GmEvent::Check(_) = event.body {
-                let line = render_event(&event.body);
+            if let GmEvent::Check(_) = event {
+                let line = render_event(event);
                 if pending.front().copied() == Some(line.as_str()) {
                     pending.pop_front();
                     continue;
@@ -307,7 +276,7 @@ impl Session {
     }
 
     fn show_ready(&mut self) {
-        let ready = self.connection.drain_ready();
+        let ready = self.client.drain_ready();
         for incoming in ready {
             let _ = self.show_incoming(incoming);
         }
@@ -316,38 +285,25 @@ impl Session {
     fn show_incoming(&mut self, incoming: Incoming) -> bool {
         match incoming {
             Incoming::Event(event) => self.show_event(&event),
-            Incoming::Result { raw, .. } => {
-                if self.is_raw {
-                    emit(&raw);
-                }
-            }
-            Incoming::Invalid(line) => {
+            Incoming::Unreadable(line) => {
                 eprintln!("{line}");
                 let _ = io::stderr().flush();
             }
-            Incoming::Refused { refusal, raw } => self.show_refusal(&refusal, &raw),
             Incoming::Eof => return false,
         }
         true
     }
 
-    fn show_event(&mut self, event: &Event) {
+    fn show_event(&mut self, event: &GmEvent) {
         if self.is_raw {
-            emit(&event.raw);
+            emit(&event_line(event));
             return;
         }
-        let line = render_event(&event.body);
-        if matches!(event.body, GmEvent::Check(_)) && self.printed_checks.skip(&line) {
+        let line = render_event(event);
+        if matches!(event, GmEvent::Check(_)) && self.printed_checks.skip(&line) {
             return;
         }
         emit(&line);
-    }
-
-    fn show_tool_refusal(&self, outcome: &ToolResult) {
-        match serde_json::from_value::<Refusal>(outcome.body.clone()) {
-            Ok(refusal) => self.show_refusal(&refusal, &outcome.raw),
-            Err(_) => report_unreadable(),
-        }
     }
 
     fn show_refusal(&self, refusal: &Refusal, raw: &str) {
@@ -370,12 +326,9 @@ fn emit(line: &str) {
     let _ = io::stdout().flush();
 }
 
-fn read_status(body: &Value) -> Option<TableStatus> {
-    serde_json::from_value(body.clone()).ok()
-}
-
-fn read_commit(body: &Value) -> Option<CommitBody> {
-    serde_json::from_value(body.clone()).ok()
+/// A tool reply as the JSON-RPC result line raw mode prints.
+fn result_line(id: u64, body: &impl Serialize) -> String {
+    json!({ "jsonrpc": "2.0", "id": id, "result": { "structuredContent": body } }).to_string()
 }
 
 fn report_unreadable() {

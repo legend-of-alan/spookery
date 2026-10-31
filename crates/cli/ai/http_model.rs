@@ -236,7 +236,7 @@ mod tests {
                     std::env::set_var(name, val);
                 }
             }
-            let err = crate::ai::sit(addr, None).await.expect_err(missing);
+            let err = crate::ai::sit(addr).await.expect_err(missing);
             assert!(
                 err.message.contains(&format!("{missing} is unset")),
                 "{}",

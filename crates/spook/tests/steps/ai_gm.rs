@@ -13,10 +13,11 @@ use std::time::{Duration, Instant};
 use cucumber::{then, when};
 use serde_json::json;
 use spookery::ai::{
-    parse_tool_result, run_gm, CompletionError, CompletionRequest, HttpModel, Limits, Model,
-    ScriptedModel, Settings, Timer, TurnWatch, WallClock,
+    run_gm, CompletionError, CompletionRequest, HttpModel, Limits, Model, ScriptedModel, Settings,
+    Timer, TurnWatch, WallClock,
 };
-use spookery::gm_connection::Connection;
+use spookery::gm_connection::GmClient;
+use spookery::protocol::SayArgs;
 
 use crate::support::{self, copy_docks};
 use crate::World;
@@ -127,24 +128,21 @@ fn ai_gm_dialed_that_address(world: &mut World) {
 fn the_gm_seat_says(world: &mut World) {
     let mark = table::player_mark(world);
     let door = table::door_addr(world).parse().unwrap();
-    let mut seat =
-        support::block_on(Connection::connect_door(door)).unwrap_or_else(|err| panic!("{err}"));
-    let say =
-        support::block_on(seat.call("say", json!({"address": "table", "text": "good evening"})))
-            .unwrap_or_else(|err| panic!("{err}"));
-    let again = parse_tool_result(&say.raw).unwrap_or_else(|err| panic!("{err}"));
-    assert!(!say.refused, "{}", say.raw);
-    assert!(!again.refused, "{}", again.raw);
-    assert_eq!(again.body, say.body);
+    let mut gm = support::block_on(GmClient::connect(door)).unwrap_or_else(|err| panic!("{err}"));
+    let evening = SayArgs::Table {
+        text: "good evening".to_string(),
+    };
+    let said = support::block_on(gm.say(&evening))
+        .unwrap_or_else(|err| panic!("{err}"))
+        .unwrap_or_else(|refusal| panic!("{refusal}"));
     world.player_added = table::wait_player_from(world, mark, "{\"kind\":\"say\"");
-    world.scratch = say.raw;
-    let refused = support::block_on(seat.call("not_in_spec", json!({})))
+    world.scratch = json!(said).to_string();
+    let reply = support::block_on(gm.call::<serde_json::Value>("not_in_spec", &json!({})))
         .unwrap_or_else(|err| panic!("{err}"));
-    support::block_on(seat.close());
-    world.stdout = if refused.refused && refused.body.get("code").is_some() {
-        "refused".to_string()
-    } else {
-        refused.raw
+    support::block_on(gm.close());
+    world.stdout = match reply {
+        Err(_) => "refused".to_string(),
+        Ok(body) => body.to_string(),
     };
 }
 
@@ -400,12 +398,11 @@ fn start_ai_gm(
     let watch = Arc::new(TurnWatch::default());
     let watch_bg = Arc::clone(&watch);
     let model_bg = model.clone();
-    let addr = table::game_addr(world).parse().unwrap();
     let door = table::door_addr(world).parse().unwrap();
     let runtime = tokio::runtime::Handle::current();
     let handle = thread::spawn(move || {
         let mut model = model_bg;
-        runtime.block_on(run_gm(addr, Some(door), &mut model, &watch_bg))
+        runtime.block_on(run_gm(door, &mut model, &watch_bg))
     });
     wait_listening(&watch);
     (handle, watch)
@@ -731,12 +728,11 @@ where
 {
     let watch = Arc::new(TurnWatch::default());
     let watch_bg = Arc::clone(&watch);
-    let addr = table::game_addr(world).parse().unwrap();
     let door = table::door_addr(world).parse().unwrap();
     let runtime = tokio::runtime::Handle::current();
     let handle = thread::spawn(move || {
         let mut model = http_model(stub, total, backoff, clock);
-        runtime.block_on(run_gm(addr, Some(door), &mut model, &watch_bg))
+        runtime.block_on(run_gm(door, &mut model, &watch_bg))
     });
     (handle, watch)
 }

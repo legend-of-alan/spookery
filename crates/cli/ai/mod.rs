@@ -9,8 +9,6 @@ pub use gm_loop::{run_gm, TurnWatch};
 pub use http_model::{HttpModel, Limits, Settings, Timer, WallClock};
 pub use spookery_agent::*;
 
-use crate::gm_connection::ToolResult;
-
 #[derive(Debug)]
 pub struct Error {
     pub message: String,
@@ -31,28 +29,11 @@ pub(crate) fn report_error(message: impl Into<String>) -> Error {
     Error { message }
 }
 
-/// Parse a JSON-RPC tool-result line from the GM seat into a [`ToolResult`].
-pub fn parse_tool_result(raw: &str) -> Result<ToolResult, Error> {
-    let line: serde_json::Value = serde_json::from_str(raw).map_err(|_| report_error(raw))?;
-    let result = line.get("result").ok_or_else(|| report_error(raw))?;
-    let body = result
-        .get("structuredContent")
-        .or_else(|| result.get("structured_content"))
-        .cloned()
-        .unwrap_or_default();
-    let refused = body.get("code").is_some();
-    Ok(ToolResult {
-        raw: raw.to_string(),
-        body,
-        refused,
-    })
-}
-
-/// Sit the GM seat on `addr` and call the model.
+/// Sit the GM seat at the agent door `door` and call the model.
 ///
 /// A missing `SPOOK_GM_KEY`, `SPOOK_GM_URL`, or `SPOOK_GM_MODEL` is reported before the dial.
-pub async fn sit(addr: SocketAddr, door: Option<SocketAddr>) -> Result<(), Error> {
+pub async fn sit(door: SocketAddr) -> Result<(), Error> {
     let env = http_model::Settings::from_env()?;
     let mut model = http_model::HttpModel::new(env)?;
-    run_gm(addr, door, &mut model, &TurnWatch::default()).await
+    run_gm(door, &mut model, &TurnWatch::default()).await
 }

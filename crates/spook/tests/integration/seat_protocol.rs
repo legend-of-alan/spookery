@@ -13,7 +13,7 @@ use std::time::Duration;
 
 use rmcp::model::ProtocolVersion;
 use serde_json::Value;
-use spookery::gm_connection::{Connection, Incoming};
+use spookery::gm_connection::{event_line, GmClient, Incoming};
 use spookery::protocol::Addrs;
 
 use crate::support;
@@ -30,7 +30,7 @@ enum Example {
     Text(String),
 }
 
-struct Seat {
+struct PlayerClient {
     write: TcpStream,
     lines: Receiver<String>,
 }
@@ -96,7 +96,7 @@ async fn the_seat_page_matches_a_live_table() {
 fn capture() -> BTreeMap<String, Example> {
     let mut out = BTreeMap::new();
     let table = listen();
-    let mut player = seat(table.game, "pc_rowan");
+    let mut player = connect_player(table.game, "pc_rowan");
 
     let addrs = serde_json::from_str(&table.addrs_line)
         .unwrap_or_else(|err| panic!("addrs: {err}\n{}", table.addrs_line));
@@ -163,11 +163,9 @@ fn capture() -> BTreeMap<String, Example> {
     // with 405, so the header is the version the handshake returned.
     delete_session(table.door, &session, &negotiated);
 
-    let mut gm = support::block_on(Connection::connect_door(std::net::SocketAddr::from((
-        [127, 0, 0, 1],
-        table.door,
-    ))))
-    .unwrap_or_else(|err| panic!("seat GM: {err}"));
+    let door = std::net::SocketAddr::from(([127, 0, 0, 1], table.door));
+    let mut gm =
+        support::block_on(GmClient::connect(door)).unwrap_or_else(|err| panic!("seat GM: {err}"));
 
     let status_args = serde_json::json!({});
     insert_json(
@@ -330,8 +328,8 @@ fn capture() -> BTreeMap<String, Example> {
         call(&mut gm, "perceive", unscoped),
     );
 
-    let mouse = seat(table.game, "pc_harbormouse");
-    let wren = seat(table.game, "pc_wren");
+    let mouse = connect_player(table.game, "pc_harbormouse");
+    let wren = connect_player(table.game, "pc_wren");
     // The welcome line means that hello has the seat. The fourth hello comes after both.
     assert_eq!(next_json(&mouse)["kind"], "resume");
     assert_eq!(next_json(&wren)["kind"], "resume");
@@ -354,7 +352,7 @@ fn capture() -> BTreeMap<String, Example> {
         .unwrap_or_else(|err| panic!("shutdown: {err}"));
     drop(player);
     wait_host_grew(&table, mark);
-    let again = seat(table.game, "pc_rowan");
+    let again = connect_player(table.game, "pc_rowan");
     let replay = next_json(&again);
     assert_eq!(replay["kind"], "say", "{replay}");
     assert_eq!(replay["replay"], true, "{replay}");
@@ -466,7 +464,7 @@ fn read_addrs(stdout: &mut impl Read) -> (u16, u16, String) {
     }
 }
 
-fn seat(port: u16, actor: &str) -> Seat {
+fn connect_player(port: u16, actor: &str) -> PlayerClient {
     let write = connect(port);
     let read = write
         .try_clone()
@@ -493,26 +491,28 @@ fn seat(port: u16, actor: &str) -> Seat {
             }
         }
     });
-    let mut seated = Seat { write, lines };
-    send(&mut seated, &format!("player:{actor}"));
-    seated
+    let mut player = PlayerClient { write, lines };
+    send(&mut player, &format!("player:{actor}"));
+    player
 }
 
-fn send(seat: &mut Seat, line: &str) {
-    writeln!(seat.write, "{line}").unwrap_or_else(|err| panic!("write: {err}"));
-    seat.write
+fn send(player: &mut PlayerClient, line: &str) {
+    writeln!(player.write, "{line}").unwrap_or_else(|err| panic!("write: {err}"));
+    player
+        .write
         .flush()
         .unwrap_or_else(|err| panic!("flush: {err}"));
 }
 
-fn next_line(seat: &Seat) -> String {
-    seat.lines
+fn next_line(player: &PlayerClient) -> String {
+    player
+        .lines
         .recv_timeout(READ_TIMEOUT)
         .unwrap_or_else(|err| panic!("no player line: {err}"))
 }
 
-fn next_json(seat: &Seat) -> Value {
-    let line = next_line(seat);
+fn next_json(player: &PlayerClient) -> Value {
+    let line = next_line(player);
     serde_json::from_str(&line).unwrap_or_else(|err| panic!("{err} in {line}"))
 }
 
@@ -569,13 +569,13 @@ fn read_line(stream: &mut TcpStream) -> String {
     String::from_utf8(buf).unwrap_or_else(|err| panic!("utf-8: {err}"))
 }
 
-fn call(gm: &mut Connection, name: &str, arguments: Value) -> Value {
-    support::block_on(gm.call(name, arguments))
+fn call(gm: &mut GmClient, name: &str, arguments: Value) -> Value {
+    support::block_on(gm.call::<Value>(name, &arguments))
         .unwrap_or_else(|err| panic!("{name}: {err}"))
-        .body
+        .unwrap_or_else(|refusal| serde_json::json!(refusal))
 }
 
-fn one_event(gm: &mut Connection) -> Value {
+fn one_event(gm: &mut GmClient) -> Value {
     let mut ready = gm.take_events();
     if ready.is_empty() {
         match support::block_on(gm.next_incoming()) {
@@ -584,7 +584,8 @@ fn one_event(gm: &mut Connection) -> Value {
         }
     }
     assert_eq!(ready.len(), 1, "GM events: {ready:?}");
-    serde_json::from_str(&ready[0].raw).unwrap_or_else(|err| panic!("{err} in {}", ready[0].raw))
+    let line = event_line(&ready[0]);
+    serde_json::from_str(&line).unwrap_or_else(|err| panic!("{err} in {line}"))
 }
 
 fn tool_call(id: u64, name: &str, arguments: &Value) -> Value {

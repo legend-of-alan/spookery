@@ -421,12 +421,15 @@ A second initialize, while a GM is sat, does not sit:
   "id": 1,
   "error": {
     "code": -32603,
-    "message": "The table is full. [TABLE_FULL]"
+    "message": "The table is full. [TABLE_FULL]",
+    "data": {
+      "code": "TABLE_FULL"
+    }
   }
 }
 ```
 
-The JSON-RPC error code is the transport's. The seat token is the bracketed word in `message`.
+The JSON-RPC error code is the transport's. The seat token is the bracketed word in `message`. The seat token is also `error.data.code`.
 
 ### Tools
 
