@@ -141,7 +141,7 @@ impl FrameSender {
     /// An empty queue takes one frame of any size, so a welcome still fits.
     fn reserve(&self, len: usize) -> bool {
         self.queued_bytes
-            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |cur| {
+            .try_update(Ordering::AcqRel, Ordering::Acquire, |cur| {
                 if cur == 0 {
                     return Some(len);
                 }
@@ -157,8 +157,8 @@ impl FrameSender {
 }
 
 fn release(queued: &AtomicUsize, len: usize) {
-    let _ = queued.fetch_update(Ordering::AcqRel, Ordering::Acquire, |cur| {
-        Some(cur.saturating_sub(len))
+    queued.update(Ordering::AcqRel, Ordering::Acquire, |cur| {
+        cur.saturating_sub(len)
     });
 }
 

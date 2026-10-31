@@ -6,7 +6,7 @@ Spookery is a Rust workspace that hosts a "pack" (a folder of YAML rules and Mar
 
 ## Commands
 
-Rust 1.89 (CI pins 1.89.0). CI runs exactly these, and all must be clean:
+The Rust version is pinned in `rust-toolchain.toml`. CI runs exactly these, and all must be clean:
 
 ```sh
 cargo fmt --all -- --check

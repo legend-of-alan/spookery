@@ -10,7 +10,7 @@ New words like seat and tick are explained in the [glossary](docs/README.md#glos
 
 ## Build
 
-You need Rust 1.89 or newer from [rustup](https://rustup.rs), plus `pkg-config` and the OpenSSL headers.
+You need [rustup](https://rustup.rs), which installs the Rust version pinned in `rust-toolchain.toml`, plus `pkg-config` and the OpenSSL headers.
 
 ```sh
 sudo apt install pkg-config libssl-dev

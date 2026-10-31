@@ -14,7 +14,7 @@ Feature scenarios live under `crates/engine/tests/features` and `crates/spook/te
 cargo test --workspace --test features_host --test features_world
 ```
 
-You need Rust 1.89 or newer, and CI pins 1.89.0. Pull requests only run CI on Linux. Pushes to main also run it on macOS and Windows.
+`rust-toolchain.toml` pins the Rust version, and rustup installs it for you. Pull requests only run CI on Linux. Pushes to main also run it on macOS and Windows.
 
 ## Issues and PRs
 
