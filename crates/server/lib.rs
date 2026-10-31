@@ -69,8 +69,6 @@ pub async fn serve(
     let game = listener.local_addr().map_err(Error::Io)?;
     let door = http_listener.local_addr().map_err(Error::Io)?;
     print_addrs(&mut *config.out, game, door)?;
-    // Keepalive stays the pack interval. The idle switch does not change it.
-    let keepalive_secs = world.budget().round_every_real_seconds;
     let idle_rounds = world.budget().idle_rounds;
     let (tx, rx) = std::sync::mpsc::channel();
     let mut tasks = tokio::task::JoinSet::new();
@@ -79,13 +77,16 @@ pub async fn serve(
         listener,
         tx.clone(),
         Arc::clone(&next_conn),
-        keepalive_secs,
         config.hello_timeout,
     ));
     tasks.spawn(door::serve(http_listener, tx.clone(), next_conn));
     let (restart_tx, restart_rx) = tokio::sync::watch::channel(0u64);
     if idle_rounds {
-        tasks.spawn(idle::run(tx.clone(), restart_rx, keepalive_secs));
+        tasks.spawn(idle::run(
+            tx.clone(),
+            restart_rx,
+            world.budget().round_every_real_seconds,
+        ));
     }
     let mut table = tokio::task::spawn_blocking(move || {
         Table::new(world, restart_tx, config.out, config.err).run(rx)

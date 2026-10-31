@@ -18,11 +18,10 @@ pub(super) async fn serve(
     listener: tokio::net::TcpListener,
     tx: Sender<Request>,
     next_conn: Arc<AtomicU64>,
-    keepalive_secs: u64,
     hello_timeout: Duration,
 ) {
     while let Ok((stream, _)) = listener.accept().await {
-        if set_socket_options(&stream, keepalive_secs).is_err() {
+        if set_socket_options(&stream).is_err() {
             continue;
         }
         let conn = Conn::new(&next_conn);
@@ -31,13 +30,9 @@ pub(super) async fn serve(
 }
 
 /// Sends small lines at once and drops a peer that stops answering keepalive probes.
-fn set_socket_options(stream: &tokio::net::TcpStream, keepalive_secs: u64) -> io::Result<()> {
+fn set_socket_options(stream: &tokio::net::TcpStream) -> io::Result<()> {
     stream.set_nodelay(true)?;
-    let keepalive = socket2::TcpKeepalive::new()
-        .with_time(Duration::from_secs(keepalive_secs))
-        .with_interval(Duration::from_secs(1))
-        .with_retries(3);
-    socket2::SockRef::from(stream).set_tcp_keepalive(&keepalive)
+    socket2::SockRef::from(stream).set_tcp_keepalive(&super::limits::KEEPALIVE)
 }
 
 async fn read_hello(
