@@ -126,7 +126,7 @@ impl SessionManager for SeatSessions {
         mut message: ClientJsonRpcMessage,
     ) -> Result<ServerJsonRpcMessage, Self::Error> {
         if let ClientJsonRpcMessage::Request(request) = &mut message {
-            let conn = Conn::mint(&self.next_conn);
+            let conn = Conn::new(&self.next_conn);
             self.conns
                 .lock()
                 .unwrap_or_else(|err| err.into_inner())

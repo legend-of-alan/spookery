@@ -15,7 +15,7 @@ pub(crate) struct Conn(u64);
 
 impl Conn {
     /// The next id from the one counter both ports share.
-    pub(crate) fn mint(next: &AtomicU64) -> Self {
+    pub(crate) fn new(next: &AtomicU64) -> Self {
         Self(next.fetch_add(1, Ordering::Relaxed))
     }
 }

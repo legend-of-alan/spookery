@@ -25,7 +25,7 @@ pub(super) async fn serve(
         if tune(&stream, keepalive_secs).is_err() {
             continue;
         }
-        let conn = Conn::mint(&next_conn);
+        let conn = Conn::new(&next_conn);
         tokio::spawn(serve_connection(stream, tx.clone(), conn, hello_timeout));
     }
 }
