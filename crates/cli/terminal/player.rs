@@ -163,10 +163,7 @@ fn show_readable(formatter: &mut frame_text::PlayerFormatter, line: &str) -> Fra
 
 fn refused_code(line: &str) -> Option<String> {
     match crate::protocol::PlayerFrame::from_line(line) {
-        Ok(PlayerFrame::Refused(refusal)) => Some(match refusal.code {
-            protocol::Code::Known(reason) => reason.as_str().to_string(),
-            protocol::Code::Other(code) => code,
-        }),
+        Ok(PlayerFrame::Refused(refusal)) => Some(refusal.code.as_str().to_string()),
         _ => None,
     }
 }

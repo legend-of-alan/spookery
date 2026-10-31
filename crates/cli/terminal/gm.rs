@@ -328,10 +328,7 @@ fn echo_refusal(refusal: &Refusal, raw: &str, raw_mode: bool) -> String {
         return refusal.to_string();
     }
     emit(raw);
-    match &refusal.code {
-        protocol::Code::Known(reason) => reason.as_str().to_string(),
-        protocol::Code::Other(code) => code.clone(),
-    }
+    refusal.code.as_str().to_string()
 }
 
 fn emit(line: &str) {

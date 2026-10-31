@@ -125,7 +125,7 @@ pub struct Queued {
 
 /// Sent from the table to a GM client as the `close` result, after the GM seat is free.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct CloseReply {
+pub struct CloseBody {
     pub released: bool,
 }
 
