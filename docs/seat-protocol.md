@@ -363,7 +363,7 @@ The terminal shows the digest once per sitting. The per-round `resume` is for ra
 }
 ```
 
-`close` leaves the seat. It has no reply.
+`close` leaves the seat. It has no reply. A command line is one word and its target. A line that starts with `player:<id>` is not a word the table knows and is `NOT_IN_SPEC`, including `player:<id> close`.
 
 A player connection may send 5 lines a second, and it may burst to 10. A line past that waits on that connection until the next line is allowed. The line is kept. The wait does not delay another seat.
 

@@ -277,7 +277,7 @@ impl Table {
             Ok(_) => None,
             Err(refusal) if !gm_seated && refusal.reason() == Reason::Busy => Some(refusal),
             Err(refusal) => {
-                let line = frames::refused_move_line(&refusal);
+                let line = frames::refused_move_line(refusal.reason(), refusal.missing());
                 return self.send_player(conn, line.into_bytes());
             }
         };
@@ -288,7 +288,8 @@ impl Table {
             }
         };
         if let Some(refusal) = &busy {
-            self.send_player(conn, frames::refused_move_line(refusal).into_bytes());
+            let line = frames::refused_move_line(refusal.reason(), refusal.missing());
+            self.send_player(conn, line.into_bytes());
         }
         self.after_rounds(&outputs);
     }
@@ -497,7 +498,6 @@ enum PlayerCommand<'w, 'l> {
     Move(&'l str, Option<&'l str>),
 }
 
-/// `close` is matched on the raw line, so `player:<id> close` is a move.
 fn parse_command<'w, 'l: 'w>(
     world: &'w World,
     seated: &str,
@@ -506,7 +506,7 @@ fn parse_command<'w, 'l: 'w>(
     if split_token(line) == ("close", "") {
         return Ok(PlayerCommand::Close);
     }
-    let (verb, rest) = split_verb(line, seated)?;
+    let (verb, rest) = split_token(line);
     if verb.is_empty() {
         return Err(Reason::Schema.into());
     }
@@ -544,20 +544,6 @@ fn parse_command<'w, 'l: 'w>(
         return Err(Reason::Schema.into());
     }
     Ok(PlayerCommand::Move(verb, Some(target)))
-}
-
-fn split_verb<'a>(line: &'a str, seated: &str) -> Result<(&'a str, &'a str), Reason> {
-    if line.is_empty() {
-        return Err(Reason::Schema);
-    }
-    let (first, rest) = split_token(line);
-    if let Some(id) = first.strip_prefix("player:") {
-        if id.is_empty() || id != seated || rest.is_empty() {
-            return Err(Reason::Schema);
-        }
-        return Ok(split_token(rest));
-    }
-    Ok((first, rest))
 }
 
 fn split_token(line: &str) -> (&str, &str) {

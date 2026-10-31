@@ -9,6 +9,10 @@ license = "MIT"
 [lib]
 path = "lib.rs"
 
+[features]
+schema = ["dep:schemars"]
+
 [dependencies]
+schemars = { version = "1", optional = true }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
