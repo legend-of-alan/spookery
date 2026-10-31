@@ -40,6 +40,7 @@ Every issue gets a priority label from `P0` (most urgent) to `P4` (a parked idea
 - **Use the words people already know.** Good code reads the way people expect, so it needs no tutorial, like WASD in a game. Names follow [Naming](#naming) below.
 - **Fix the cause.** When something fails, find out why. Don't paper over it with sleeps, retries or longer timeouts.
 - **Scenario first.** Write the BDD scenario that describes what a player or GM sees, then the code. Scenarios test behavior, not how the code does it, so a refactor shouldn't break them.
+- **Libraries are for others too.** `protocol` and `agent` exist so other clients and GMs can be written. That a crate has one consumer in this repository today is not a reason to fold it into that consumer.
 
 ## Naming
 

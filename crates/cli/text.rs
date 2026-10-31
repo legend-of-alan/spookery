@@ -2,18 +2,22 @@
 
 use crate::protocol::{
     self, exit_phrase, ClockView, CommitBody, ExitView, GmEvent, MeterView, NoteView, Outcome,
-    PlayerFrame, Speaker, TableStatus,
+    PlayerFrame, Roll, Speaker, TableStatus,
 };
 
 /// Readable text for one player frame. A new [`PlayerFrame`] variant fails here until it is rendered.
-pub fn render(message: &PlayerFrame) -> String {
-    match message {
+pub fn render(frame: &PlayerFrame) -> String {
+    match frame {
         PlayerFrame::Say {
             from,
             address: _,
             text,
             replay: _,
-        } => format!("{}: {text}", speaker(from)),
+        } => match from {
+            // One player sits this socket, so a player id is the seated PC.
+            Speaker::Player(_) => format!("You: {text}"),
+            Speaker::Gm | Speaker::Npc(_) => format!("{}: {text}", speaker_name(from)),
+        },
         PlayerFrame::Queued(_) => "Your action is queued.".to_string(),
         PlayerFrame::Check { outcome } => match outcome {
             Outcome::Success => "Your roll succeeded.".to_string(),
@@ -27,22 +31,13 @@ pub fn render(message: &PlayerFrame) -> String {
     }
 }
 
-fn speaker(from: &Speaker) -> String {
-    match from {
-        Speaker::Gm => "GM".to_string(),
-        // One player sits this socket, so a player id is the seated PC.
-        Speaker::Player(_) => "You".to_string(),
-        Speaker::Npc(id) => humanize(id),
-    }
-}
-
 /// Readable text for the frames of one sitting.
-pub struct PlayerFormatter {
+pub struct Sitting {
     seen_resume: bool,
     earlier_open: bool,
 }
 
-impl PlayerFormatter {
+impl Sitting {
     pub fn new() -> Self {
         Self {
             seen_resume: false,
@@ -52,14 +47,9 @@ impl PlayerFormatter {
 
     /// Text for this frame. Empty means print nothing.
     /// A leading newline is the blank line before the first live frame.
-    pub fn format(&mut self, message: &PlayerFrame) -> String {
-        match message {
-            PlayerFrame::Say {
-                from,
-                text,
-                replay: true,
-                ..
-            } => self.open_earlier(format!("{}: {text}", speaker(from))),
+    pub fn render(&mut self, frame: &PlayerFrame) -> String {
+        match frame {
+            PlayerFrame::Say { replay: true, .. } => self.open_earlier(render(frame)),
             PlayerFrame::Resume { notes, clocks } => {
                 if self.seen_resume {
                     return String::new();
@@ -67,7 +57,7 @@ impl PlayerFormatter {
                 self.seen_resume = true;
                 self.close_earlier(render_resume(notes, clocks))
             }
-            _ => self.close_earlier(render(message)),
+            _ => self.close_earlier(render(frame)),
         }
     }
 
@@ -231,13 +221,9 @@ fn clock_line(clock: &ClockView) -> String {
     }
 }
 
-/// `docks_shop` becomes "Docks shop". A `player:` or `npc:` prefix is not part of the name.
+/// `docks_shop` becomes "Docks shop".
 pub(crate) fn humanize(id: &str) -> String {
-    let bare = id
-        .strip_prefix("player:")
-        .or_else(|| id.strip_prefix("npc:"))
-        .unwrap_or(id);
-    let spaced = bare.replace('_', " ");
+    let spaced = id.replace('_', " ");
     let mut chars = spaced.chars();
     let Some(first) = chars.next() else {
         return spaced;
@@ -248,36 +234,25 @@ pub(crate) fn humanize(id: &str) -> String {
     titled
 }
 
-fn seated_ids(body: &TableStatus) -> Vec<String> {
-    body.presence.actors_present.clone()
-}
-
-fn queue_rows(body: &TableStatus) -> Vec<(String, String)> {
-    body.queued
-        .iter()
-        .map(|row| (row.actor_id.clone(), row.move_name.clone()))
-        .collect()
-}
-
-pub fn render_status(body: &TableStatus) -> String {
-    let names = seated_ids(body);
-    let seated = if names.is_empty() {
+pub fn render_status(status: &TableStatus) -> String {
+    let present = &status.presence.actors_present;
+    let seated = if present.is_empty() {
         "Seated: nobody".to_string()
     } else {
-        let names = names
+        let names = present
             .iter()
-            .map(|id| actor_name(id))
+            .map(|id| humanize(id))
             .collect::<Vec<_>>()
             .join(", ");
         format!("Seated: {names}")
     };
-    let queue = queue_rows(body);
-    let queued = if queue.is_empty() {
+    let queued = if status.queued.is_empty() {
         "Queue: empty".to_string()
     } else {
-        let lines = queue
+        let lines = status
+            .queued
             .iter()
-            .map(|(id, move_name)| format!("{}: {move_name}", actor_name(id)))
+            .map(|row| format!("{}: {}", humanize(&row.actor_id), row.move_name))
             .collect::<Vec<_>>()
             .join("\n");
         format!("Queue:\n{lines}")
@@ -301,51 +276,42 @@ pub fn render_dice(body: &CommitBody) -> Vec<String> {
 }
 
 pub fn render_checks(body: &CommitBody) -> Vec<String> {
-    body.rolls
-        .iter()
-        .map(|roll| {
-            render_check(
-                &roll.faces,
-                roll.stat,
-                roll.total,
-                roll.target,
-                roll.outcome.as_str(),
-            )
-        })
-        .collect()
+    body.rolls.iter().map(render_check).collect()
 }
 
-pub fn actor_name(id: &str) -> String {
-    if id == "gm" {
-        "GM".to_string()
-    } else {
-        humanize(id)
+/// The name a say shows for who spoke: `GM`, or the speaker's id as words.
+fn speaker_name(from: &Speaker) -> String {
+    match from {
+        Speaker::Gm => "GM".to_string(),
+        Speaker::Player(id) | Speaker::Npc(id) => humanize(id),
     }
 }
 
-pub fn render_event(body: &GmEvent) -> String {
-    match body {
-        GmEvent::Say(say) => format!("{}: {}", actor_name(&say.from.to_string()), say.text),
+pub fn render_event(event: &GmEvent) -> String {
+    match event {
+        GmEvent::Say(say) => format!("{}: {}", speaker_name(&say.from), say.text),
         GmEvent::Queued(row) => {
-            format!("{} queued: {}", actor_name(&row.actor_id), row.move_name)
+            format!("{} queued: {}", humanize(&row.actor_id), row.move_name)
         }
-        GmEvent::Check(roll) => render_check(
-            &roll.faces,
-            roll.stat,
-            roll.total,
-            roll.target,
-            roll.outcome.as_str(),
-        ),
+        GmEvent::Check(roll) => render_check(roll),
     }
 }
 
-pub fn render_check(faces: &[u32], stat: i64, total: i64, target: i64, outcome: &str) -> String {
+pub fn render_check(roll: &Roll) -> String {
+    let Roll {
+        faces,
+        stat,
+        total,
+        target,
+        outcome,
+    } = roll;
+    let outcome = outcome.as_str();
     let dice = faces
         .iter()
         .map(u32::to_string)
         .collect::<Vec<_>>()
         .join(" + ");
-    let sign = if stat >= 0 {
+    let sign = if *stat >= 0 {
         format!("+{stat}")
     } else {
         stat.to_string()
@@ -371,9 +337,7 @@ mod tests {
     }
 
     #[test]
-    fn a_player_prefix_is_not_part_of_the_name() {
-        assert_eq!(humanize("player:pc_rowan"), "Pc rowan");
-        assert_eq!(humanize("npc:mira"), "Mira");
+    fn an_id_reads_as_words() {
         assert_eq!(humanize("docks_shop"), "Docks shop");
         assert_eq!(humanize("pc_rowan"), "Pc rowan");
         assert_eq!(humanize("mira"), "Mira");
@@ -467,20 +431,20 @@ mod tests {
 
     #[test]
     fn a_later_resume_has_no_away_heading() {
-        let mut formatter = PlayerFormatter::new();
-        let first = formatter.format(&PlayerFrame::Resume {
+        let mut sitting = Sitting::new();
+        let first = sitting.render(&PlayerFrame::Resume {
             notes: vec![note("note_shop", "the shop restocked")],
             clocks: Vec::new(),
         });
         assert_eq!(first, "While you were away:\nthe shop restocked");
         assert_eq!(
-            formatter.format(&PlayerFrame::Resume {
+            sitting.render(&PlayerFrame::Resume {
                 notes: Vec::new(),
                 clocks: Vec::new(),
             }),
             ""
         );
-        let later = formatter.format(&PlayerFrame::Resume {
+        let later = sitting.render(&PlayerFrame::Resume {
             notes: vec![note("note_yard", "the yard stays watched")],
             clocks: Vec::new(),
         });
@@ -489,15 +453,15 @@ mod tests {
 
     #[test]
     fn replayed_speech_sits_under_one_heading() {
-        let mut formatter = PlayerFormatter::new();
-        let first = formatter.format(&PlayerFrame::Say {
+        let mut sitting = Sitting::new();
+        let first = sitting.render(&PlayerFrame::Say {
             from: Speaker::Player("pc_lark".to_string()),
             address: "table".to_string(),
             text: "hello Briar".to_string(),
             replay: true,
         });
         assert_eq!(first, "Earlier:\nYou: hello Briar");
-        let second = formatter.format(&PlayerFrame::Say {
+        let second = sitting.render(&PlayerFrame::Say {
             from: Speaker::Gm,
             address: "table".to_string(),
             text: "evening".to_string(),
@@ -505,13 +469,13 @@ mod tests {
         });
         assert_eq!(second, "GM: evening");
         assert_eq!(
-            formatter.format(&PlayerFrame::Resume {
+            sitting.render(&PlayerFrame::Resume {
                 notes: Vec::new(),
                 clocks: Vec::new(),
             }),
             ""
         );
-        let place = formatter.format(&PlayerFrame::Lines {
+        let place = sitting.render(&PlayerFrame::Lines {
             text: "You are in Gate Yard.".to_string(),
         });
         assert_eq!(place, "\nYou are in Gate Yard.");

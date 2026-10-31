@@ -66,26 +66,28 @@ struct Attempt {
     result: Result<Option<ModelReply>, CompletionError>,
 }
 
-fn fail_transport(err: &reqwest::Error) -> Attempt {
-    let kind = kind_of(err);
-    Attempt {
-        retry: kind.is_retryable(),
-        result: Err(CompletionError::transport(
-            kind,
-            MODEL_CALL_TIMEOUT,
-            &err.to_string(),
-        )),
+impl Attempt {
+    fn transport_failed(err: &reqwest::Error) -> Self {
+        let kind = kind_of(err);
+        Attempt {
+            retry: kind.is_retryable(),
+            result: Err(CompletionError::transport(
+                kind,
+                MODEL_CALL_TIMEOUT,
+                &err.to_string(),
+            )),
+        }
     }
-}
 
-fn time_out() -> Attempt {
-    Attempt {
-        retry: true,
-        result: Err(CompletionError::transport(
-            FailureKind::Timeout,
-            MODEL_CALL_TIMEOUT,
-            "",
-        )),
+    fn timed_out() -> Self {
+        Attempt {
+            retry: true,
+            result: Err(CompletionError::transport(
+                FailureKind::Timeout,
+                MODEL_CALL_TIMEOUT,
+                "",
+            )),
+        }
     }
 }
 
@@ -112,7 +114,7 @@ impl HttpModel {
             .await
         {
             Ok(response) => response,
-            Err(err) => return fail_transport(&err),
+            Err(err) => return Attempt::transport_failed(&err),
         };
         let status = response.status();
         if !status.is_success() {
@@ -130,7 +132,7 @@ impl HttpModel {
         }
         let text = match response.text().await {
             Ok(text) => text,
-            Err(err) => return fail_transport(&err),
+            Err(err) => return Attempt::transport_failed(&err),
         };
         Attempt {
             retry: false,
@@ -142,7 +144,7 @@ impl HttpModel {
         // A timed-out attempt is dropped before this returns, which closes its socket.
         match tokio::time::timeout(MODEL_CALL_TIMEOUT, self.post_completion(request)).await {
             Ok(attempt) => attempt,
-            Err(_) => time_out(),
+            Err(_) => Attempt::timed_out(),
         }
     }
 }
@@ -201,10 +203,10 @@ mod tests {
         std::env::set_var("SPOOK_GM_KEY", "test-key");
         std::env::set_var("SPOOK_GM_URL", "http://127.0.0.1:9/");
         std::env::set_var("SPOOK_GM_MODEL", "test-model");
-        let env = Settings::from_env().expect("settings present");
-        assert_eq!(env.key, "test-key");
-        assert_eq!(env.url, "http://127.0.0.1:9");
-        assert_eq!(env.model, "test-model");
+        let settings = Settings::from_env().expect("settings present");
+        assert_eq!(settings.key, "test-key");
+        assert_eq!(settings.url, "http://127.0.0.1:9");
+        assert_eq!(settings.model, "test-model");
         restore_settings(saved);
     }
 

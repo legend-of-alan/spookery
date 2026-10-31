@@ -15,6 +15,8 @@ pub struct CompletionRequest {
     pub says_only: bool,
 }
 
+/// Returned from a `Model` to its client, which feeds it to `Agent` in `Input::ModelReply`:
+/// why one call brought no reply. Display is the warning line the client prints.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum CompletionError {
     Transport(String),
@@ -55,6 +57,8 @@ pub trait Model {
     ) -> impl Future<Output = Result<Option<ModelReply>, CompletionError>>;
 }
 
+/// How a model call failed on the transport, as the client that made it saw it. The client
+/// passes it to `CompletionError::transport`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum FailureKind {
     Timeout,

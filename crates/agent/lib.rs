@@ -330,12 +330,12 @@ impl Agent {
     }
 }
 
-fn player_lines(status: &TableStatus, high: u64) -> Vec<TapeLine> {
+fn player_lines(status: &TableStatus, high_water: u64) -> Vec<TapeLine> {
     status
         .events
         .iter()
         .flatten()
-        .filter(|say| matches!(say.from, Speaker::Player(_)) && say.seq > high)
+        .filter(|say| matches!(say.from, Speaker::Player(_)) && say.seq > high_water)
         .cloned()
         .map(TapeLine::from)
         .collect()

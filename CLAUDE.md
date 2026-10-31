@@ -37,7 +37,7 @@ The `dependency-and-feature-checks` job in `.github/workflows/ci.yml` fails the 
 - `protocol` (`spookery-protocol`): player and GM wire types. MIT licensed, so every dependency must be permissively licensed.
 - `engine` (`spookery-engine`): world model, rules, rounds, save and journal. Synchronous; depends only on `protocol`.
 - `server` (`spookery-server`): the table, seats over loopback TCP, idle timer, the MCP "agent door". Must not depend on `cli`, `agent` or `reqwest`.
-- `agent` (`spookery-agent`): the model-GM turn state machine and prompt. Pure logic: no `engine`, `server`, `cli`, `tokio`, `reqwest` or `socket2`.
+- `agent` (`spookery-agent`): the GM brain any client can reuse: the turn state machine, the prompt, the `Model` trait; no I/O. Pure logic: no `engine`, `server`, `cli`, `tokio`, `reqwest` or `socket2`.
 - `cli` (`spookery-cli`): one module per job. `play` and `gm` are the `spook play` / `spook gm` terminals and `text` their readable text, `door` is the MCP GM client, `ai_gm` is the `spook ai-gm` loop around `agent`, and `http_model` calls the model over HTTP. Must not depend on `engine` or `server`; it only talks to the host over the wire.
 - `spook`: the clap binary (`src/main.rs`) and library `spookery`. Feature `server` pulls in engine+server, `client` pulls in cli; both builds must work alone (`--no-default-features --features server|client`).
 

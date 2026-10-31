@@ -11,7 +11,7 @@ use serde_json::json;
 use crate::door::{event_line, GmClient, Incoming};
 use crate::protocol::{GmEvent, IntentCall, PlayerFrame, Refusal, SayArgs};
 use crate::text::{
-    self, actor_name, render_checks, render_dice, render_diff, render_event, render_status,
+    self, humanize, render_checks, render_dice, render_diff, render_event, render_status,
 };
 use crate::Error;
 
@@ -20,7 +20,7 @@ Commands:
   status
       Who is seated, and the queue.
   look <actor>
-      Perceive as that actor. A pack id, or player:<id>, or npc:<id>.
+      Perceive as that actor. A bare actor id.
   say <text>
       Speak to the whole table.
   say @<place> <text>
@@ -41,19 +41,21 @@ pub async fn run(door: SocketAddr, raw: bool) -> Result<(), Error> {
     let client = match GmClient::connect(door).await {
         Ok(client) => client,
         Err(Error::Refused(refusal)) => {
-            let error = json!({
-                "code": ErrorCode::INTERNAL_ERROR,
-                "message": refusal.to_string(),
-                "data": &refusal,
-            });
-            let line = json!({ "jsonrpc": "2.0", "id": 1, "error": error }).to_string();
-            return Err(Error::Message(echo_refusal(&refusal, &line, raw)));
+            if raw {
+                let error = json!({
+                    "code": ErrorCode::INTERNAL_ERROR,
+                    "message": refusal.to_string(),
+                    "data": &refusal,
+                });
+                emit(&json!({ "jsonrpc": "2.0", "id": 1, "error": error }).to_string());
+            }
+            return Err(Error::Message(refusal_text(&refusal, raw)));
         }
         Err(err) => return Err(err),
     };
     let mut session = Session {
         client,
-        is_raw: raw,
+        raw,
         next_id: 2,
         printed_checks: PrintedChecks::default(),
     };
@@ -73,7 +75,7 @@ pub async fn run(door: SocketAddr, raw: bool) -> Result<(), Error> {
                     }
                 }
                 line = input.recv() => match line {
-                    Some(line) if session.on_line(&line).await? => {}
+                    Some(line) if session.handle_line(&line).await? => {}
                     _ => return Ok(()),
                 },
             }
@@ -86,7 +88,7 @@ pub async fn run(door: SocketAddr, raw: bool) -> Result<(), Error> {
 
 struct Session {
     client: GmClient,
-    is_raw: bool,
+    raw: bool,
     /// The id of the next result line raw mode prints. The initialize line is 1.
     next_id: u64,
     printed_checks: PrintedChecks,
@@ -121,42 +123,41 @@ impl PrintedChecks {
 }
 
 impl Session {
-    async fn on_line(&mut self, line: &str) -> Result<bool, Error> {
-        match parse_command(line) {
-            Parsed::Empty => Ok(true),
-            Parsed::Unknown => {
-                emit(HELP);
-                Ok(true)
-            }
-            Parsed::Command(command) => self.on_command(command).await,
+    /// Run one typed line. An empty line does nothing; a line that is not a command prints
+    /// `HELP`, as `help` does. False means leave the seat.
+    async fn handle_line(&mut self, line: &str) -> Result<bool, Error> {
+        if line.trim().is_empty() {
+            return Ok(true);
         }
+        self.dispatch(parse_command(line).unwrap_or(Command::Help))
+            .await
     }
 
-    async fn on_command(&mut self, command: Command) -> Result<bool, Error> {
+    async fn dispatch(&mut self, command: Command) -> Result<bool, Error> {
         match command {
             Command::Help => emit(HELP),
             Command::Quit => return Ok(false),
-            Command::Status => self.on_status().await?,
-            Command::Look { actor } => self.on_look(&actor).await?,
-            Command::Say(address) => self.on_say(address).await?,
+            Command::Status => self.status().await?,
+            Command::Look { actor } => self.look(&actor).await?,
+            Command::Say(args) => self.say(args).await?,
             Command::Queue {
                 actor,
                 move_name,
                 target,
-            } => self.on_queue(&actor, &move_name, target.as_deref()).await?,
-            Command::Commit => self.on_commit().await?,
+            } => self.queue(&actor, &move_name, target.as_deref()).await?,
+            Command::Commit => self.commit().await?,
         }
         Ok(true)
     }
 
-    async fn on_status(&mut self) -> Result<(), Error> {
+    async fn status(&mut self) -> Result<(), Error> {
         let reply = self.client.table_status(None).await;
         self.show_result(reply, &[], |_session, status| {
             emit(&render_status(&status));
         })
     }
 
-    async fn on_look(&mut self, actor: &str) -> Result<(), Error> {
+    async fn look(&mut self, actor: &str) -> Result<(), Error> {
         let reply = self.client.perceive(actor).await;
         // The table sends the view as the player `view` frame, `kind` included.
         let reply = reply.map(|reply| reply.map(|view| PlayerFrame::View(Box::new(view))));
@@ -165,20 +166,20 @@ impl Session {
         })
     }
 
-    async fn on_say(&mut self, address: SayArgs) -> Result<(), Error> {
-        let reply = self.client.say(&address).await;
+    async fn say(&mut self, args: SayArgs) -> Result<(), Error> {
+        let reply = self.client.say(&args).await;
         // The table answers with the say event, `kind` included.
         let reply = reply.map(|reply| reply.map(GmEvent::Say));
         self.show_result(reply, &[], |_session, _said| {})
     }
 
-    async fn on_queue(
+    async fn queue(
         &mut self,
         actor: &str,
         move_name: &str,
         target: Option<&str>,
     ) -> Result<(), Error> {
-        let shown = format!("{} queued: {move_name}", actor_name(actor));
+        let shown = format!("{} queued: {move_name}", humanize(actor));
         let call = IntentCall {
             id: None,
             round_index: None,
@@ -194,13 +195,13 @@ impl Session {
         })
     }
 
-    async fn on_commit(&mut self) -> Result<(), Error> {
+    async fn commit(&mut self) -> Result<(), Error> {
         let reply = self.client.commit_round().await;
         // This commit's check events can arrive before or after the tool
         // result. The result text prints each roll. A matching event on
         // either side is shown once. Raw mode and a failed read show none.
         let checks = match &reply {
-            Ok(Ok(body)) if !self.is_raw => render_checks(body),
+            Ok(Ok(body)) if !self.raw => render_checks(body),
             _ => Vec::new(),
         };
         let printed = checks.clone();
@@ -234,7 +235,7 @@ impl Session {
             Err(Error::Unreadable(body)) => Err(body),
             Err(Error::Io(err)) => return Err(Error::Io(err)),
             Err(err) => {
-                if self.is_raw {
+                if self.raw {
                     emit(&err.to_string());
                 } else {
                     eprintln!("{err}");
@@ -246,9 +247,9 @@ impl Session {
         self.show_arrived(checks);
         match reply {
             Ok(Err(refusal)) => self.show_refusal(&refusal, &result_line(id, &refusal)),
-            Ok(Ok(body)) if self.is_raw => emit(&result_line(id, &body)),
+            Ok(Ok(body)) if self.raw => emit(&result_line(id, &body)),
             Ok(Ok(body)) => render(self, body),
-            Err(body) if self.is_raw => emit(&result_line(id, &body)),
+            Err(body) if self.raw => emit(&result_line(id, &body)),
             Err(_) => report_unreadable(),
         }
         self.show_ready();
@@ -294,7 +295,7 @@ impl Session {
     }
 
     fn show_event(&mut self, event: &GmEvent) {
-        if self.is_raw {
+        if self.raw {
             emit(&event_line(event));
             return;
         }
@@ -305,19 +306,23 @@ impl Session {
         emit(&line);
     }
 
-    fn show_refusal(&self, refusal: &Refusal, raw: &str) {
-        eprintln!("{}", echo_refusal(refusal, raw, self.is_raw));
+    /// Raw mode prints `line`, the refusal's result line, then the code on stderr.
+    fn show_refusal(&self, refusal: &Refusal, line: &str) {
+        if self.raw {
+            emit(line);
+        }
+        eprintln!("{}", refusal_text(refusal, self.raw));
         let _ = io::stderr().flush();
     }
 }
 
-/// Raw mode echoes the frame and names the code. Text mode names the refusal.
-fn echo_refusal(refusal: &Refusal, raw: &str, raw_mode: bool) -> String {
-    if !raw_mode {
-        return refusal.to_string();
+/// What a refusal prints on stderr: the code in raw mode, the sentence in text mode.
+fn refusal_text(refusal: &Refusal, raw: bool) -> String {
+    if raw {
+        refusal.code.as_str().to_string()
+    } else {
+        refusal.to_string()
     }
-    emit(raw);
-    refusal.code.as_str().to_string()
 }
 
 fn emit(line: &str) {
@@ -352,48 +357,39 @@ enum Command {
     Quit,
 }
 
-enum Parsed {
-    Empty,
-    Command(Command),
-    Unknown,
-}
-
-fn parse_command(line: &str) -> Parsed {
-    let line = line.trim();
-    if line.is_empty() {
-        return Parsed::Empty;
-    }
+/// The command a typed line names, or `None` when it names none.
+fn parse_command(line: &str) -> Option<Command> {
     let (head, rest) = split_word(line);
     match head {
-        "status" if rest.is_empty() => Parsed::Command(Command::Status),
-        "commit" if rest.is_empty() => Parsed::Command(Command::Commit),
-        "help" if rest.is_empty() => Parsed::Command(Command::Help),
-        "quit" if rest.is_empty() => Parsed::Command(Command::Quit),
+        "status" if rest.is_empty() => Some(Command::Status),
+        "commit" if rest.is_empty() => Some(Command::Commit),
+        "help" if rest.is_empty() => Some(Command::Help),
+        "quit" if rest.is_empty() => Some(Command::Quit),
         "look" => {
             if rest.is_empty() || rest.split_whitespace().nth(1).is_some() {
-                Parsed::Unknown
+                None
             } else {
-                Parsed::Command(Command::Look {
+                Some(Command::Look {
                     actor: rest.to_string(),
                 })
             }
         }
         "say" => parse_say(rest),
         "queue" => parse_queue(rest),
-        _ => Parsed::Unknown,
+        _ => None,
     }
 }
 
-fn parse_say(rest: &str) -> Parsed {
+fn parse_say(rest: &str) -> Option<Command> {
     if rest.is_empty() {
-        return Parsed::Unknown;
+        return None;
     }
     if let Some(rest) = rest.strip_prefix('@') {
         let (place, text) = split_word(rest.trim());
         if place.is_empty() || text.is_empty() {
-            return Parsed::Unknown;
+            return None;
         }
-        return Parsed::Command(Command::Say(SayArgs::Place {
+        return Some(Command::Say(SayArgs::Place {
             place: place.to_string(),
             text: text.to_string(),
         }));
@@ -401,31 +397,27 @@ fn parse_say(rest: &str) -> Parsed {
     if let Some(rest) = rest.strip_prefix('#') {
         let (actor, text) = split_word(rest.trim());
         if actor.is_empty() || text.is_empty() {
-            return Parsed::Unknown;
+            return None;
         }
-        return Parsed::Command(Command::Say(SayArgs::Actor {
+        return Some(Command::Say(SayArgs::Actor {
             actor: actor.to_string(),
             text: text.to_string(),
         }));
     }
-    Parsed::Command(Command::Say(SayArgs::Table {
+    Some(Command::Say(SayArgs::Table {
         text: rest.to_string(),
     }))
 }
 
-fn parse_queue(rest: &str) -> Parsed {
+fn parse_queue(rest: &str) -> Option<Command> {
     let mut parts = rest.split_whitespace();
-    let Some(actor) = parts.next() else {
-        return Parsed::Unknown;
-    };
-    let Some(move_name) = parts.next() else {
-        return Parsed::Unknown;
-    };
+    let actor = parts.next()?;
+    let move_name = parts.next()?;
     let target = parts.next().map(str::to_string);
     if parts.next().is_some() {
-        return Parsed::Unknown;
+        return None;
     }
-    Parsed::Command(Command::Queue {
+    Some(Command::Queue {
         actor: actor.to_string(),
         move_name: move_name.to_string(),
         target,
@@ -443,11 +435,22 @@ fn split_word(text: &str) -> (&str, &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::protocol::{Outcome, Roll};
     use crate::text::render_check;
+
+    fn check_line(faces: &[u32], stat: i64, total: i64, target: i64, outcome: Outcome) -> String {
+        render_check(&Roll {
+            faces: faces.to_vec(),
+            stat,
+            total,
+            target,
+            outcome,
+        })
+    }
 
     #[test]
     fn a_commit_skips_its_own_check_events_once() {
-        let roll = render_check(&[4, 2], 1, 7, 0, "success");
+        let roll = check_line(&[4, 2], 1, 7, 0, Outcome::Success);
         let mut printed = PrintedChecks::default();
         printed.replace(vec![roll.clone()]);
         assert!(printed.skip(&roll));
@@ -458,7 +461,7 @@ mod tests {
 
     #[test]
     fn checks_after_a_new_result_are_not_skipped() {
-        let roll = render_check(&[3, 3], 0, 6, 0, "success");
+        let roll = check_line(&[3, 3], 0, 6, 0, Outcome::Success);
         let mut printed = PrintedChecks::default();
         printed.replace(vec![roll.clone()]);
         printed.clear();
@@ -467,8 +470,8 @@ mod tests {
 
     #[test]
     fn a_check_that_is_not_next_ends_the_skip() {
-        let first = render_check(&[1, 1], 0, 2, 7, "miss");
-        let second = render_check(&[6, 6], 0, 12, 7, "success");
+        let first = check_line(&[1, 1], 0, 2, 7, Outcome::Miss);
+        let second = check_line(&[6, 6], 0, 12, 7, Outcome::Success);
         let mut printed = PrintedChecks::default();
         printed.replace(vec![first.clone(), second.clone()]);
         assert!(!printed.skip(&second));
@@ -477,8 +480,8 @@ mod tests {
 
     #[test]
     fn a_commit_with_two_checks_skips_both_in_order() {
-        let first = render_check(&[1, 2], 0, 3, 7, "miss");
-        let second = render_check(&[5, 6], 0, 11, 7, "success");
+        let first = check_line(&[1, 2], 0, 3, 7, Outcome::Miss);
+        let second = check_line(&[5, 6], 0, 11, 7, Outcome::Success);
         let mut printed = PrintedChecks::default();
         printed.replace(vec![first.clone(), second.clone()]);
         assert!(printed.skip(&first));
@@ -487,11 +490,7 @@ mod tests {
     }
 
     fn command(line: &str) -> Command {
-        match parse_command(line) {
-            Parsed::Command(command) => command,
-            Parsed::Empty => panic!("empty"),
-            Parsed::Unknown => panic!("unknown"),
-        }
+        parse_command(line).unwrap_or_else(|| panic!("not a command: {line}"))
     }
 
     #[test]
@@ -550,19 +549,16 @@ mod tests {
 
     #[test]
     fn an_unknown_line_sends_nothing() {
-        assert!(matches!(parse_command(""), Parsed::Empty));
-        assert!(matches!(parse_command("   "), Parsed::Empty));
-        assert!(matches!(parse_command("dance"), Parsed::Unknown));
-        assert!(matches!(parse_command("status now"), Parsed::Unknown));
-        assert!(matches!(parse_command("look"), Parsed::Unknown));
-        assert!(matches!(parse_command("look a b"), Parsed::Unknown));
-        assert!(matches!(parse_command("say"), Parsed::Unknown));
-        assert!(matches!(parse_command("say @docks_shop"), Parsed::Unknown));
-        assert!(matches!(parse_command("say #mira"), Parsed::Unknown));
-        assert!(matches!(parse_command("queue mira"), Parsed::Unknown));
-        assert!(matches!(
-            parse_command("queue mira travel docks_street extra"),
-            Parsed::Unknown
-        ));
+        assert!(parse_command("").is_none());
+        assert!(parse_command("   ").is_none());
+        assert!(parse_command("dance").is_none());
+        assert!(parse_command("status now").is_none());
+        assert!(parse_command("look").is_none());
+        assert!(parse_command("look a b").is_none());
+        assert!(parse_command("say").is_none());
+        assert!(parse_command("say @docks_shop").is_none());
+        assert!(parse_command("say #mira").is_none());
+        assert!(parse_command("queue mira").is_none());
+        assert!(parse_command("queue mira travel docks_street extra").is_none());
     }
 }
