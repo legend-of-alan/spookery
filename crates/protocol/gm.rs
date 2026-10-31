@@ -27,7 +27,10 @@ pub struct StatusArgs {
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct PerceiveArgs {
-    #[serde(rename = "as", default)]
+    // An `Option` so the table can refuse a missing `as` with its own code; a missing
+    // field reads as `None` without `default`, and the schema says it is required.
+    #[cfg_attr(feature = "schema", schemars(required))]
+    #[serde(rename = "as")]
     pub as_viewer: Option<String>,
     #[serde(default)]
     pub max_body_chars: Option<u64>,
@@ -112,9 +115,13 @@ pub struct IntentCall {
     pub id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub round_index: Option<u64>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    // `Option`s so the table can refuse a missing actor or move as `SCHEMA` itself; a
+    // missing field reads as `None` without `default`, and the schema says both are required.
+    #[cfg_attr(feature = "schema", schemars(required))]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub actor_id: Option<String>,
-    #[serde(rename = "move", default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "schema", schemars(required))]
+    #[serde(rename = "move", skip_serializing_if = "Option::is_none")]
     pub move_name: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub target: Option<String>,
