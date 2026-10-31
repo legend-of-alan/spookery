@@ -188,13 +188,13 @@ pub(super) fn frame_queue() -> (FrameSender, FrameReceiver) {
 /// cancelled, or `sink` fails. A frame's bytes are released once it is sent.
 pub(super) async fn write_frames(
     mut sink: impl AsyncFnMut(&[u8]) -> bool,
-    mut inbound: FrameReceiver,
+    mut frames_rx: FrameReceiver,
 ) {
     loop {
         let frame = tokio::select! {
             biased;
-            frame = inbound.rx.recv() => frame,
-            _ = inbound.cancel.changed() => break,
+            frame = frames_rx.rx.recv() => frame,
+            _ = frames_rx.cancel.changed() => break,
         };
         let Some(frame) = frame else {
             break;
@@ -207,9 +207,9 @@ pub(super) async fn write_frames(
                         if !sent {
                             break;
                         }
-                        release(&inbound.queued_bytes, bytes.len());
+                        release(&frames_rx.queued_bytes, bytes.len());
                     }
-                    _ = inbound.cancel.changed() => break,
+                    _ = frames_rx.cancel.changed() => break,
                 }
             }
             Message::Last(bytes, ack) => {
@@ -234,16 +234,16 @@ mod tests {
     async fn the_last_frame_is_flushed_before_its_ack() {
         use tokio::io::AsyncReadExt;
         let (mut client, mut server) = tokio::io::duplex(256);
-        let (out, inbound) = frame_queue();
+        let (frames_tx, frames_rx) = frame_queue();
         let writer = tokio::spawn(write_frames(
             async move |frame: &[u8]| write_all_flush(&mut server, frame).await,
-            inbound,
+            frames_rx,
         ));
-        assert!(out.send(b"one\n".to_vec()));
+        assert!(frames_tx.send(b"one\n".to_vec()));
         let (ack_tx, ack_rx) = oneshot::channel();
-        assert!(out.try_send(Message::Last(b"bye\n".to_vec(), ack_tx)));
+        assert!(frames_tx.try_send(Message::Last(b"bye\n".to_vec(), ack_tx)));
         ack_rx.await.expect("ack");
-        drop(out);
+        drop(frames_tx);
         writer.await.expect("writer");
         let mut buf = Vec::new();
         client.read_to_end(&mut buf).await.expect("read");
@@ -252,31 +252,31 @@ mod tests {
 
     #[test]
     fn the_frame_cap_rejects_before_the_byte_cap() {
-        let (out, _inbound) = frame_queue();
+        let (frames_tx, _frames_rx) = frame_queue();
         for _ in 0..OUTBOUND_FRAME_CAP {
-            assert!(out.send(b"n".to_vec()));
+            assert!(frames_tx.send(b"n".to_vec()));
         }
-        assert!(!out.send(b"n".to_vec()));
+        assert!(!frames_tx.send(b"n".to_vec()));
     }
 
     #[tokio::test]
     async fn the_byte_cap_rejects_until_a_frame_is_written() {
-        let (out, mut inbound) = frame_queue();
-        assert!(out.send(vec![b'a'; OUTBOUND_BYTE_CAP + 8]));
+        let (frames_tx, mut frames_rx) = frame_queue();
+        assert!(frames_tx.send(vec![b'a'; OUTBOUND_BYTE_CAP + 8]));
         assert!(
-            !out.send(b"n".to_vec()),
+            !frames_tx.send(b"n".to_vec()),
             "a second frame was queued past the byte cap"
         );
-        let taken = inbound.rx.recv().await.expect("frame");
+        let taken = frames_rx.rx.recv().await.expect("frame");
         let Message::Frame(bytes) = taken else {
             panic!("expected a frame");
         };
         assert_eq!(bytes.len(), OUTBOUND_BYTE_CAP + 8);
         assert!(
-            !out.send(b"n".to_vec()),
+            !frames_tx.send(b"n".to_vec()),
             "a taken frame was released before it was written"
         );
-        release(&inbound.queued_bytes, bytes.len());
-        assert!(out.send(b"n".to_vec()));
+        release(&frames_rx.queued_bytes, bytes.len());
+        assert!(frames_tx.send(b"n".to_vec()));
     }
 }

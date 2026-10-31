@@ -277,12 +277,12 @@ impl Handler {
         conn: Conn,
         context: &RequestContext<RoleServer>,
     ) -> Result<(), McpError> {
-        let (out, inbound) = frame_queue();
+        let (frames_tx, frames_rx) = frame_queue();
         let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
         self.tx
             .send(Request::SeatGm {
                 conn,
-                seat: out,
+                frames_tx,
                 reply: reply_tx,
             })
             .map_err(|_| table_closed())?;
@@ -296,7 +296,7 @@ impl Handler {
                         send_event(&peer, frame).await;
                         true
                     },
-                    inbound,
+                    frames_rx,
                 ));
                 Ok(())
             }
@@ -342,7 +342,7 @@ mod tests {
                 match msg {
                     Request::SeatGm {
                         conn,
-                        seat: out,
+                        frames_tx: out,
                         reply,
                     } => {
                         if seat.is_some() {

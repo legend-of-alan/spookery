@@ -99,7 +99,7 @@ fn capture() -> BTreeMap<String, Example> {
     let mut player = seat(table.game, "pc_rowan");
 
     let addrs = serde_json::from_str(&table.addrs_line)
-        .unwrap_or_else(|err| panic!("listening: {err}\n{}", table.addrs_line));
+        .unwrap_or_else(|err| panic!("addrs: {err}\n{}", table.addrs_line));
     insert_json(&mut out, "listening", addrs);
     insert_text(&mut out, "player-hello", "player:pc_rowan");
     let resume = next_json(&player);
@@ -454,7 +454,7 @@ fn read_addrs(stdout: &mut impl Read) -> (u16, u16, String) {
                         .unwrap_or_else(|err| panic!("{err}"))
                         .trim_end_matches('\r');
                     let addrs: Addrs = serde_json::from_str(line)
-                        .unwrap_or_else(|err| panic!("listening: {err}\n{line}"));
+                        .unwrap_or_else(|err| panic!("addrs: {err}\n{line}"));
                     let port = |addr: &str| {
                         loopback_port(addr).unwrap_or_else(|| panic!("not loopback\n{line}"))
                     };

@@ -33,7 +33,7 @@ pub(super) enum Request {
     Hello {
         conn: Conn,
         line: String,
-        seat: FrameSender,
+        frames_tx: FrameSender,
         reply: oneshot::Sender<HelloReply>,
     },
     Line {
@@ -54,7 +54,7 @@ pub(super) enum Request {
     /// The HTTP session takes the one GM seat. The game port does not.
     SeatGm {
         conn: Conn,
-        seat: FrameSender,
+        frames_tx: FrameSender,
         reply: oneshot::Sender<Result<(), Refusal>>,
     },
     Wake,
@@ -110,13 +110,17 @@ impl Table {
                 Request::Hello {
                     conn,
                     line,
-                    seat,
+                    frames_tx,
                     reply,
                 } => {
-                    let _ = reply.send(self.hello(conn, &line, seat));
+                    let _ = reply.send(self.hello(conn, &line, frames_tx));
                 }
-                Request::SeatGm { conn, seat, reply } => {
-                    let seated = self.seat_gm(conn, seat);
+                Request::SeatGm {
+                    conn,
+                    frames_tx,
+                    reply,
+                } => {
+                    let seated = self.seat_gm(conn, frames_tx);
                     let took = seated.is_ok();
                     if reply.send(seated).is_err() && took {
                         self.seats.release_gm();
@@ -152,7 +156,7 @@ impl Table {
         }
     }
 
-    fn hello(&mut self, conn: Conn, line: &str, seat: FrameSender) -> HelloReply {
+    fn hello(&mut self, conn: Conn, line: &str, frames_tx: FrameSender) -> HelloReply {
         let named = match line {
             "gm" => return HelloReply::Refused(Reason::NotInSpec.into()),
             "" => None,
@@ -189,7 +193,7 @@ impl Table {
         self.seats.players.push(PlayerSeat {
             conn,
             actor_id: id.to_string(),
-            out: seat,
+            out: frames_tx,
         });
         let sent = welcome(&self.world, &self.seats.presence(), id).and_then(|bytes| {
             let seated = self
@@ -210,11 +214,14 @@ impl Table {
         HelloReply::Seated
     }
 
-    fn seat_gm(&mut self, conn: Conn, seat: FrameSender) -> Result<(), Refusal> {
+    fn seat_gm(&mut self, conn: Conn, frames_tx: FrameSender) -> Result<(), Refusal> {
         if self.seats.gm.is_some() {
             return Err(Reason::TableFull.into());
         }
-        self.seats.gm = Some(GmSeat { conn, out: seat });
+        self.seats.gm = Some(GmSeat {
+            conn,
+            out: frames_tx,
+        });
         Ok(())
     }
 

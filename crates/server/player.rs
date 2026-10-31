@@ -12,7 +12,7 @@ use super::frames::Refusal;
 use super::seat::{frame_queue, write_all_flush, write_frames, Conn, FrameReceiver, FrameSender};
 use super::table::{report_hangup, HelloReply, Request};
 
-/// Accept players until the listener fails. Each socket is tuned, then served
+/// Accept players until the listener fails. Each socket gets its options set, then is served
 /// on a task of its own.
 pub(super) async fn serve(
     listener: tokio::net::TcpListener,
@@ -68,13 +68,13 @@ async fn read_hello(
             }
         }
     };
-    let (out, inbound) = frame_queue();
+    let (frames_tx, frames_rx) = frame_queue();
     let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
     if tx
         .send(Request::Hello {
             conn,
             line,
-            seat: out.clone(),
+            frames_tx: frames_tx.clone(),
             reply: reply_tx,
         })
         .is_err()
@@ -86,8 +86,8 @@ async fn read_hello(
     };
     match reply {
         HelloReply::Refused(refusal) => {
-            drop(out);
-            drop(inbound);
+            drop(frames_tx);
+            drop(frames_rx);
             refuse(&mut stream, &refusal).await;
         }
         HelloReply::Seated => {
@@ -96,7 +96,7 @@ async fn read_hello(
             // the queue's byte cap still drops that seat.
             let _ = socket2::SockRef::from(&stream)
                 .set_send_buffer_size(super::limits::REQUESTED_SEND_BUFFER);
-            read_lines(stream, tx, conn, out, inbound).await;
+            read_lines(stream, tx, conn, frames_tx, frames_rx).await;
         }
     }
 }
@@ -105,17 +105,17 @@ async fn read_lines(
     stream: tokio::net::TcpStream,
     tx: Sender<Request>,
     conn: Conn,
-    out: FrameSender,
-    inbound: FrameReceiver,
+    frames_tx: FrameSender,
+    frames_rx: FrameReceiver,
 ) {
     let (read_half, mut write_half) = stream.into_split();
     let mut reader =
         tokio::io::BufReader::with_capacity(super::limits::PLAYER_LINE_CAP + 1, read_half);
-    let mut cancel_rx = inbound.cancel.clone();
+    let mut cancel_rx = frames_rx.cancel.clone();
     // The sink owns the write half, so it shuts down when `write_frames` returns.
     let writer = tokio::spawn(write_frames(
         async move |frame: &[u8]| write_all_flush(&mut write_half, frame).await,
-        inbound,
+        frames_rx,
     ));
     let mut bucket =
         super::limits::TokenBucket::new(super::limits::RATE_PER_SEC, super::limits::BURST);
@@ -161,21 +161,21 @@ async fn read_lines(
             }
             Err(super::limits::ReadLineError::TooLong) => {
                 let line = Refusal::from(Reason::LineTooLong).line();
-                out.send_last(line.into_bytes()).await;
+                frames_tx.send_last(line.into_bytes()).await;
                 report_hangup(&tx, conn).await;
                 break;
             }
             Err(super::limits::ReadLineError::BadUtf8) => {
                 let _ = bucket.try_take(tokio::time::Instant::now());
                 let line = Refusal::from(Reason::Schema).line();
-                if !out.send(line.into_bytes()) {
+                if !frames_tx.send(line.into_bytes()) {
                     report_hangup(&tx, conn).await;
                     break;
                 }
             }
         }
     }
-    drop(out);
+    drop(frames_tx);
     let _ = writer.await;
 }
 

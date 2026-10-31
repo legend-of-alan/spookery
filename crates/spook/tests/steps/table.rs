@@ -273,7 +273,7 @@ pub struct Pending {
     stderr_drain: Option<JoinHandle<()>>,
 }
 
-pub struct Listening {
+pub struct RunningTable {
     pub game: SocketAddr,
     pub door: SocketAddr,
     pub host: Process,
@@ -347,11 +347,11 @@ pub fn spawn_table(pack: &Path, flags: &[&str]) -> Pending {
     }
 }
 
-pub fn wait_addrs(mut pending: Pending) -> Listening {
-    let (game, door, seen) = read_report(&mut pending);
+pub fn wait_addrs(mut pending: Pending) -> RunningTable {
+    let (game, door, seen) = expect_addrs(&mut pending);
     let stdout = Arc::new(Mutex::new(seen));
     drop(drain(pending.stdout, Arc::clone(&stdout)));
-    Listening {
+    RunningTable {
         game,
         door,
         host: Process {
@@ -390,7 +390,7 @@ fn attach_host<'w>(
     })
 }
 
-fn read_report(pending: &mut Pending) -> (SocketAddr, SocketAddr, String) {
+fn expect_addrs(pending: &mut Pending) -> (SocketAddr, SocketAddr, String) {
     read_addrs(&mut pending.stdout).unwrap_or_else(|got| {
         let status = pending
             .child
@@ -406,7 +406,7 @@ fn read_report(pending: &mut Pending) -> (SocketAddr, SocketAddr, String) {
     })
 }
 
-/// Reads the host's stdout up to its listening line: the two addresses and
+/// Reads the host's stdout up to its `listening` line: the two addresses and
 /// the text so far. `Err` is the text before stdout closed without one.
 fn read_addrs(stdout: &mut impl Read) -> Result<(SocketAddr, SocketAddr, String), String> {
     let mut got = Vec::new();
@@ -540,7 +540,7 @@ fn seat<'w>(world: &'w World, actor_id: &str) -> &'w Seat {
 pub fn gm_call(world: &mut World, id: u64, name: &str, arguments: &str) -> String {
     let live = live_mut(world);
     let gm = live.gm.as_mut().unwrap_or_else(|| panic!("no seated GM"));
-    call_gm_tool(gm, &live.gm_text, id, name, arguments)
+    send_tool_call(gm, &live.gm_text, id, name, arguments)
 }
 
 /// A call from the GM that called `close` and kept its session.
@@ -550,11 +550,11 @@ pub fn closed_gm_call(world: &mut World, name: &str, arguments: &str) -> String 
         .closed_gm
         .as_mut()
         .unwrap_or_else(|| panic!("no closed GM"));
-    call_gm_tool(gm, &live.gm_text, 92, name, arguments)
+    send_tool_call(gm, &live.gm_text, 92, name, arguments)
 }
 
 /// One tool call. Its events and its result land in the GM text.
-fn call_gm_tool(
+fn send_tool_call(
     gm: &mut Connection,
     gm_text: &Arc<Mutex<String>>,
     id: u64,
