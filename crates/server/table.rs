@@ -277,7 +277,7 @@ impl Table {
             Ok(_) => None,
             Err(refusal) if !gm_seated && refusal.reason() == Reason::Busy => Some(refusal),
             Err(refusal) => {
-                let line = frames::refused_move_line(&refusal);
+                let line = frames::refused_move_line(refusal.reason(), refusal.missing());
                 return self.send_player(conn, line.into_bytes());
             }
         };
@@ -288,7 +288,8 @@ impl Table {
             }
         };
         if let Some(refusal) = &busy {
-            self.send_player(conn, frames::refused_move_line(refusal).into_bytes());
+            let line = frames::refused_move_line(refusal.reason(), refusal.missing());
+            self.send_player(conn, line.into_bytes());
         }
         self.after_rounds(&outputs);
     }
