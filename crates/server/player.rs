@@ -22,7 +22,7 @@ pub(super) async fn serve(
     hello_timeout: Duration,
 ) {
     while let Ok((stream, _)) = listener.accept().await {
-        if tune(&stream, keepalive_secs).is_err() {
+        if set_socket_options(&stream, keepalive_secs).is_err() {
             continue;
         }
         let conn = Conn::new(&next_conn);
@@ -30,7 +30,8 @@ pub(super) async fn serve(
     }
 }
 
-fn tune(stream: &tokio::net::TcpStream, keepalive_secs: u64) -> io::Result<()> {
+/// Sends small lines at once and drops a peer that stops answering keepalive probes.
+fn set_socket_options(stream: &tokio::net::TcpStream, keepalive_secs: u64) -> io::Result<()> {
     stream.set_nodelay(true)?;
     let keepalive = socket2::TcpKeepalive::new()
         .with_time(Duration::from_secs(keepalive_secs))
