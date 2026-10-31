@@ -10,7 +10,7 @@ use spookery_engine::{
 use tokio::sync::{oneshot, watch};
 
 use super::frames::{self, Refusal};
-use super::idle::{self, wall_now};
+use super::idle::{self, now_stamp};
 use super::seat::{Conn, GmSeat, Outbound, PlayerSeat, Seats};
 use super::tools::call_gm_tool;
 use super::Error;
@@ -24,7 +24,7 @@ pub(crate) fn commit_then_fast_forward(
     world: &mut World,
     presence: &Presence,
 ) -> Result<Vec<RoundOutput>, Reason> {
-    let wall = wall_now();
+    let wall = now_stamp();
     world.commit_then_fast_forward(presence, &wall)
 }
 
@@ -123,11 +123,11 @@ impl Table {
                     }
                 }
                 Request::Line { conn, line, reply } => {
-                    self.line(conn, &line);
+                    self.handle_line(conn, &line);
                     let _ = reply.send(());
                 }
                 Request::Hangup { conn, ack } => {
-                    self.hangup(conn);
+                    self.handle_hangup(conn);
                     let _ = ack.send(());
                 }
                 Request::Tool {
@@ -136,7 +136,7 @@ impl Table {
                     arguments,
                     reply,
                 } => {
-                    let _ = reply.send(self.tool(conn, &name, arguments));
+                    let _ = reply.send(self.call_tool(conn, &name, arguments));
                 }
                 Request::Wake => handled = self.wake(),
                 Request::Stop => {
@@ -218,7 +218,7 @@ impl Table {
         Ok(())
     }
 
-    fn line(&mut self, conn: Conn, line: &str) {
+    fn handle_line(&mut self, conn: Conn, line: &str) {
         let Some(actor_id) = self
             .seats
             .player(conn)
@@ -229,9 +229,15 @@ impl Table {
         let presence = self.seats.presence();
         let reply = match parse_command(&self.world, &actor_id, line) {
             Ok(PlayerCommand::Close) => return self.drop_player(conn),
-            Ok(PlayerCommand::Help) => frames::lines(&self.world.help_lines(&presence, &actor_id)),
-            Ok(PlayerCommand::Look) => frames::lines(&self.world.look_lines(&presence, &actor_id)),
-            Ok(PlayerCommand::Map) => frames::lines(&self.world.map_lines(&presence, &actor_id)),
+            Ok(PlayerCommand::Help) => {
+                frames::text_line(&self.world.help_lines(&presence, &actor_id))
+            }
+            Ok(PlayerCommand::Look) => {
+                frames::text_line(&self.world.look_lines(&presence, &actor_id))
+            }
+            Ok(PlayerCommand::Map) => {
+                frames::text_line(&self.world.map_lines(&presence, &actor_id))
+            }
             Ok(PlayerCommand::Say(heard, text)) => {
                 match self.world.say_as_player(&presence, &actor_id, heard, text) {
                     Ok(said) => return self.deliver_say(&said),
@@ -275,33 +281,38 @@ impl Table {
         self.after_rounds(&outputs);
     }
 
-    fn tool(&mut self, conn: Conn, name: &str, arguments: Option<Map<String, Value>>) -> Value {
+    fn call_tool(
+        &mut self,
+        conn: Conn,
+        name: &str,
+        arguments: Option<Map<String, Value>>,
+    ) -> Value {
         if self.seats.gm.as_ref().is_none_or(|gm| gm.conn != conn) {
             return Refusal::from(Reason::NotInSpec).tool_result();
         }
         let presence = self.seats.presence();
-        let done = call_gm_tool(&mut self.world, &presence, name, arguments);
-        if let Some(code) = &done.refused {
+        let reply = call_gm_tool(&mut self.world, &presence, name, arguments);
+        if let Some(code) = &reply.refused {
             let _ = writeln!(self.out, "refused {name} {}", code.as_str());
             let _ = self.out.flush();
         }
-        self.after_rounds(&done.outputs);
-        if let Some(said) = &done.said {
+        self.after_rounds(&reply.outputs);
+        if let Some(said) = &reply.said {
             self.deliver_say(said);
         }
-        for output in &done.outputs {
+        for output in &reply.outputs {
             for frame in frames::check_events(&output.reports) {
                 self.send_gm(frame);
             }
         }
         // Free the seat before the client can read this result.
-        if done.release_seat {
+        if reply.release_seat {
             self.seats.release_gm();
         }
-        done.value
+        reply.value
     }
 
-    fn hangup(&mut self, conn: Conn) {
+    fn handle_hangup(&mut self, conn: Conn) {
         self.drop_player(conn);
         if self.seats.gm.as_ref().is_some_and(|gm| gm.conn == conn) {
             self.seats.release_gm();
@@ -350,11 +361,11 @@ impl Table {
                     out.push_str(&text);
                     for output in outputs {
                         for line in narrate_lines_for(&output.lines, &player.actor_id) {
-                            out.push_str(&frames::lines(&line));
+                            out.push_str(&frames::text_line(&line));
                         }
                         for item in &output.seen {
                             if item.viewer == player.actor_id && !item.line.is_empty() {
-                                out.push_str(&frames::lines(&item.line));
+                                out.push_str(&frames::text_line(&item.line));
                             }
                         }
                     }

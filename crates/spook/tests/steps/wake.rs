@@ -41,7 +41,7 @@ fn serve_docks(world: &mut World, name: &str, idle: Option<&str>) -> PathBuf {
         write_idle(&pack, value);
     }
     world.pack = Some(pack.clone());
-    table::listen_in_process(world, &pack);
+    table::serve_in_process(world, &pack);
     pack
 }
 
@@ -64,7 +64,7 @@ fn commit_rowan_wait(world: &mut World, pack: &Path) {
 }
 
 /// Advance one interval, then read status so the wake it sent has run.
-fn wake(world: &mut World, by: Duration) {
+fn advance_and_settle(world: &mut World, by: Duration) {
     table::advance(world, by);
     let _ = table::read_presence(world);
 }
@@ -72,14 +72,14 @@ fn wake(world: &mut World, by: Duration) {
 fn queued_line_survives_a_dropped_seat(world: &mut World) {
     let pack = serve_docks(world, "held", None);
     table::seat_rowan(world, &pack);
-    wake(world, INTERVAL);
+    advance_and_settle(world, INTERVAL);
     table::release_probe_gm(world);
     table::seat_gm(world);
     let id = queue_rowan_wait(world);
-    wake(world, INTERVAL);
+    advance_and_settle(world, INTERVAL);
     table::close_actor(world, "pc_rowan");
     table::wait_players(world, &pack, 0);
-    wake(world, INTERVAL);
+    advance_and_settle(world, INTERVAL);
     let status = table::gm_call(world, 4, "table_status", "{}");
     let value: Value = serde_json::from_str(&status).unwrap();
     let rows = value["result"]["structuredContent"]["queued"]
@@ -101,7 +101,7 @@ fn early_wake_does_not_play_another_round(world: &mut World) {
     table::wait_players(world, &pack, 0);
     table::release_probe_gm(world);
     // The timer fires a full interval later, but the save's stamp is seconds old.
-    wake(world, INTERVAL);
+    advance_and_settle(world, INTERVAL);
     let now = table::now_of(&pack);
     assert_eq!(now.world_time, committed.world_time);
     assert_eq!(now.round_index, committed.round_index);
@@ -126,7 +126,7 @@ fn write_idle(pack: &Path, value: &str) {
 /// long it sits. The docks save's stamp is already past due.
 fn idle_off_empty_table_writes_nothing(world: &mut World, name: &str, by: Duration) {
     let pack = serve_docks(world, name, Some("off"));
-    wake(world, by);
+    advance_and_settle(world, by);
     let opened = table::live_mut(world).opened_save.clone();
     let now = fs::read(pack.join("state/save.yaml")).unwrap();
     assert_eq!(now, opened, "the save changed");
@@ -183,7 +183,7 @@ fn a_due_wake_applies_the_queued_wait(world: &mut World) {
     table::close_actor(world, "pc_rowan");
     table::wait_players(world, &pack, 0);
     let _ = table::release_gm(world);
-    wake(world, INTERVAL);
+    advance_and_settle(world, INTERVAL);
     let now = table::now_of(&pack);
     assert_eq!(now.round_index, 12);
     assert_eq!(now.world_time, 1800);
@@ -191,7 +191,7 @@ fn a_due_wake_applies_the_queued_wait(world: &mut World) {
     assert!(player_wait_ids(&read_round(&pack, "round-0002")).is_empty());
     // The catch-up stamped the save, so the next wake is not due.
     table::release_probe_gm(world);
-    wake(world, INTERVAL);
+    advance_and_settle(world, INTERVAL);
     assert_eq!(table::now_of(&pack).round_index, 12);
 }
 

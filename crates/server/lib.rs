@@ -68,10 +68,10 @@ pub async fn serve(
     let http_listener = bind(door_addr(config.addr, config.door)?).await?;
     let game = listener.local_addr().map_err(Error::Io)?;
     let door = http_listener.local_addr().map_err(Error::Io)?;
-    report_bound(&mut *config.out, game, door)?;
+    print_addrs(&mut *config.out, game, door)?;
     // Keepalive stays the pack interval. The idle switch does not change it.
     let keepalive_secs = world.budget().round_every_real_seconds;
-    let arm_idle_timer = world.budget().idle_rounds;
+    let idle_rounds = world.budget().idle_rounds;
     let (tx, rx) = std::sync::mpsc::channel();
     let mut tasks = tokio::task::JoinSet::new();
     let next_conn = Arc::new(AtomicU64::new(1));
@@ -84,7 +84,7 @@ pub async fn serve(
     ));
     tasks.spawn(door::serve(http_listener, tx.clone(), next_conn));
     let (restart_tx, restart_rx) = tokio::sync::watch::channel(0u64);
-    if arm_idle_timer {
+    if idle_rounds {
         tasks.spawn(idle::run(tx.clone(), restart_rx, keepalive_secs));
     }
     let mut table = tokio::task::spawn_blocking(move || {
@@ -107,8 +107,8 @@ async fn bind(addr: SocketAddr) -> Result<tokio::net::TcpListener, Error> {
 
 /// The agent door to bind. A fixed game port keeps the next port. Port 0, on
 /// the game address or on `--door`, asks the OS for a port of its own.
-fn door_addr(game: SocketAddr, mcp_addr: Option<SocketAddr>) -> Result<SocketAddr, Error> {
-    if let Some(door) = mcp_addr {
+fn door_addr(game: SocketAddr, door: Option<SocketAddr>) -> Result<SocketAddr, Error> {
+    if let Some(door) = door {
         return Ok(door);
     }
     if game.port() == 0 {
@@ -117,7 +117,7 @@ fn door_addr(game: SocketAddr, mcp_addr: Option<SocketAddr>) -> Result<SocketAdd
     protocol::default_door(game).ok_or(Error::Reason(Reason::NotInSpec))
 }
 
-fn report_bound(out: &mut dyn Write, game: SocketAddr, door: SocketAddr) -> Result<(), Error> {
+fn print_addrs(out: &mut dyn Write, game: SocketAddr, door: SocketAddr) -> Result<(), Error> {
     let line = serde_json::to_string(&protocol::Addrs {
         game: game.to_string(),
         door: door.to_string(),

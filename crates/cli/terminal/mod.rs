@@ -7,7 +7,7 @@ mod frame_text;
 mod gm;
 mod player;
 
-pub(crate) use crate::protocol::refusal;
+pub(crate) use crate::protocol::refusal_line;
 pub use gm::{actor_name, run_gm};
 pub use player::run_player;
 

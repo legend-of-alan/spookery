@@ -25,7 +25,7 @@ fn the_host_reports_the_game_port_and_the_agent_door(world: &mut World) {
         .unwrap_or_default();
     let game = live.game_port;
     let door = live.door_port;
-    let (reported_game, reported_door) = table::parse_listening(&stdout);
+    let (reported_game, reported_door) = table::parse_addrs(&stdout);
     assert_eq!(reported_game.port(), game, "{stdout}");
     assert_eq!(reported_door.port(), door, "{stdout}");
     assert_ne!(game, door, "{stdout}");
@@ -62,8 +62,8 @@ fn two_tables_listen_on_port_0_at_the_same_time(world: &mut World) {
     world.scratch = second.to_string_lossy().into_owned();
     let started_first = table::spawn_table(&first, &["--addr", "127.0.0.1:0"]);
     let started_second = table::spawn_table(&second, &["--addr", "127.0.0.1:0"]);
-    let first = table::wait_listening(started_first);
-    let second = table::wait_listening(started_second);
+    let first = table::wait_addrs(started_first);
+    let second = table::wait_addrs(started_second);
     world.stdout = format!(
         "{} {} {} {}",
         first.game, first.door, second.game, second.door

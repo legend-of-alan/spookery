@@ -26,7 +26,7 @@ use rmcp::{ErrorData as McpError, ServerHandler};
 use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
 
 use super::limits::GM_BODY_CAP;
-use super::seat::{seat, write_frames, Conn};
+use super::seat::{frame_queue, write_frames, Conn};
 use super::table::{report_hangup, Request};
 use super::tools;
 
@@ -35,11 +35,11 @@ pub(super) async fn serve(
     tx: Sender<Request>,
     next_conn: Arc<AtomicU64>,
 ) {
-    let (hangup_tx, mut hang_ups) = unbounded_channel();
+    let (hangup_tx, mut hangups) = unbounded_channel();
     let sessions = Arc::new(SeatSessions::new(tx.clone(), next_conn, hangup_tx));
     let closer = Arc::clone(&sessions);
     tokio::spawn(async move {
-        while let Some(id) = hang_ups.recv().await {
+        while let Some(id) = hangups.recv().await {
             let _ = closer.close_session(&id).await;
         }
     });
@@ -277,7 +277,7 @@ impl Handler {
         conn: Conn,
         context: &RequestContext<RoleServer>,
     ) -> Result<(), McpError> {
-        let (out, inbound) = seat();
+        let (out, inbound) = frame_queue();
         let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
         self.tx
             .send(Request::SeatGm {

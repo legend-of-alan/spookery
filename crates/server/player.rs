@@ -9,7 +9,7 @@ use std::time::Duration;
 use spookery_engine::Reason;
 
 use super::frames::Refusal;
-use super::seat::{seat, write_all_flush, write_frames, Conn, Inbound, Outbound};
+use super::seat::{frame_queue, write_all_flush, write_frames, Conn, Inbound, Outbound};
 use super::table::{report_hangup, HelloReply, Request};
 
 /// Accept players until the listener fails. Each socket is tuned, then served
@@ -26,7 +26,7 @@ pub(super) async fn serve(
             continue;
         }
         let conn = Conn::new(&next_conn);
-        tokio::spawn(serve_connection(stream, tx.clone(), conn, hello_timeout));
+        tokio::spawn(read_hello(stream, tx.clone(), conn, hello_timeout));
     }
 }
 
@@ -40,7 +40,7 @@ fn set_socket_options(stream: &tokio::net::TcpStream, keepalive_secs: u64) -> io
     socket2::SockRef::from(stream).set_tcp_keepalive(&keepalive)
 }
 
-async fn serve_connection(
+async fn read_hello(
     mut stream: tokio::net::TcpStream,
     tx: Sender<Request>,
     conn: Conn,
@@ -68,7 +68,7 @@ async fn serve_connection(
             }
         }
     };
-    let (out, inbound) = seat();
+    let (out, inbound) = frame_queue();
     let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
     if tx
         .send(Request::Hello {
@@ -96,12 +96,12 @@ async fn serve_connection(
             // the queue's byte cap still drops that seat.
             let _ = socket2::SockRef::from(&stream)
                 .set_send_buffer_size(super::limits::REQUESTED_SEND_BUFFER);
-            serve_lines(stream, tx, conn, out, inbound).await;
+            read_lines(stream, tx, conn, out, inbound).await;
         }
     }
 }
 
-async fn serve_lines(
+async fn read_lines(
     stream: tokio::net::TcpStream,
     tx: Sender<Request>,
     conn: Conn,

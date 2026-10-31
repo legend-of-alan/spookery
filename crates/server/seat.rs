@@ -162,10 +162,11 @@ fn release(queued: &AtomicUsize, len: usize) {
     });
 }
 
-/// One seat's queue. A frame is counted against `OUTBOUND_FRAME_CAP` and
+/// One seat's frame queue. Like `mpsc::channel()`, it returns the sender and
+/// receiver halves. A frame is counted against `OUTBOUND_FRAME_CAP` and
 /// `OUTBOUND_BYTE_CAP` from the moment it is queued until the writer has sent
 /// it. The hello keeps a clone of `Outbound` for `send_last`.
-pub(super) fn seat() -> (Outbound, Inbound) {
+pub(super) fn frame_queue() -> (Outbound, Inbound) {
     let (tx, rx) = mpsc::channel(OUTBOUND_FRAME_CAP);
     let (cancel_tx, cancel_rx) = watch::channel(false);
     let queued_bytes = Arc::new(AtomicUsize::new(0));
@@ -230,7 +231,7 @@ mod tests {
     async fn the_last_frame_is_flushed_before_its_ack() {
         use tokio::io::AsyncReadExt;
         let (mut client, mut server) = tokio::io::duplex(256);
-        let (out, inbound) = seat();
+        let (out, inbound) = frame_queue();
         let writer = tokio::spawn(write_frames(
             async move |frame: &[u8]| write_all_flush(&mut server, frame).await,
             inbound,
@@ -248,7 +249,7 @@ mod tests {
 
     #[test]
     fn the_frame_cap_rejects_before_the_byte_cap() {
-        let (out, _inbound) = seat();
+        let (out, _inbound) = frame_queue();
         for _ in 0..OUTBOUND_FRAME_CAP {
             assert!(out.send(b"n".to_vec()));
         }
@@ -257,7 +258,7 @@ mod tests {
 
     #[tokio::test]
     async fn the_byte_cap_rejects_until_a_frame_is_written() {
-        let (out, mut inbound) = seat();
+        let (out, mut inbound) = frame_queue();
         assert!(out.send(vec![b'a'; OUTBOUND_BYTE_CAP + 8]));
         assert!(
             !out.send(b"n".to_vec()),

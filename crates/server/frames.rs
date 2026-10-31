@@ -61,7 +61,7 @@ impl Refusal {
     }
 
     pub(super) fn mcp_error(&self) -> McpError {
-        McpError::internal_error(crate::protocol::refusal(self.code.as_str()), None)
+        McpError::internal_error(crate::protocol::refusal_line(self.code.as_str()), None)
     }
 }
 
@@ -152,7 +152,7 @@ pub(super) fn resume_line(view: &View) -> String {
     })
 }
 
-pub(super) fn lines(text: &str) -> String {
+pub(super) fn text_line(text: &str) -> String {
     crate::protocol::emit_player(&PlayerFrame::Lines {
         text: text.to_string(),
     })
@@ -166,7 +166,7 @@ pub(super) fn perceive_value(view: &View) -> Value {
     serde_json::to_value(player_view(view)).expect("perceive")
 }
 
-pub(super) fn commit(
+pub(super) fn commit_value(
     state_rev: u64,
     changed_keys: &[String],
     journal_path: Option<&str>,
@@ -189,7 +189,7 @@ pub(super) fn commit(
     .to_value()
 }
 
-pub(super) fn status(
+pub(super) fn status_value(
     now: &State,
     presence: &Presence,
     queued: &[Intent],

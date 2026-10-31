@@ -238,7 +238,7 @@ fn the_player_can_wait(world: &mut World) {
 #[when(expr = "a socket connects and sends nothing")]
 fn a_socket_connects_and_sends_nothing(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
-    table::listen_in_process(world, &pack);
+    table::serve_in_process(world, &pack);
     let mut stream = connect(table::live_mut(world).game_port);
     // The status round trip runs after the accept, so the deadline is set.
     let _ = table::read_presence(world);
@@ -268,7 +268,7 @@ fn the_socket_is_closed_before_the_hello(world: &mut World) {
 fn one_player_sends_200_lines(world: &mut World) {
     // The flood's pace is paused time, so serve this table in process.
     let pack = table::pack(world).to_path_buf();
-    table::listen_in_process(world, &pack);
+    table::serve_in_process(world, &pack);
     table::seat_actor(world, &pack, "pc_rowan");
     table::seat_actor(world, &pack, "pc_harbormouse");
     let before = list_round_keys(&pack).len();

@@ -38,11 +38,11 @@ pub(super) struct Tool {
     pub(super) name: &'static str,
     pub(super) about: &'static str,
     pub(super) schema: fn() -> Map<String, Value>,
-    run: Handler,
+    run: ToolFn,
 }
 
 /// A refused call returns its code, and `call_gm_tool` renders it.
-type Handler = fn(&mut World, &Presence, Option<Map<String, Value>>) -> Result<Reply, Reason>;
+type ToolFn = fn(&mut World, &Presence, Option<Map<String, Value>>) -> Result<Reply, Reason>;
 
 const SEAT_NOTES: &str = "Player mechanical lines stay queued until commit_round. say appends speech and does not tick. perceive requires as set to an actor id. When a notification does not arrive, table_status with since returns player speech and the queue.";
 
@@ -98,11 +98,11 @@ pub(super) fn call_gm_tool(
     name: &str,
     arguments: Option<Map<String, Value>>,
 ) -> Reply {
-    let done = match TOOLS.iter().find(|tool| tool.name == name) {
+    let reply = match TOOLS.iter().find(|tool| tool.name == name) {
         Some(tool) => (tool.run)(world, presence, arguments),
         None => Err(Reason::NotInSpec),
     };
-    done.unwrap_or_else(|code| Reply {
+    reply.unwrap_or_else(|code| Reply {
         refused: Some(code),
         ..Reply::new(Refusal::from(code).tool_result())
     })
@@ -122,9 +122,9 @@ fn say(
         SayArgs::Actor { actor, .. } => Address::Actor(actor),
     };
     let said = world.say_as_gm(presence, heard, args.text())?;
-    let mut done = Reply::new(frames::say_value(&said));
-    done.said = Some(said);
-    Ok(done)
+    let mut reply = Reply::new(frames::say_value(&said));
+    reply.said = Some(said);
+    Ok(reply)
 }
 
 fn close(
@@ -291,7 +291,7 @@ fn commit_round(
         }
         None => (world.state().state_rev, &[][..], None),
     };
-    let value = frames::commit(state_rev, changed_keys, journal_path, &outputs);
+    let value = frames::commit_value(state_rev, changed_keys, journal_path, &outputs);
     Ok(Reply {
         outputs,
         ..Reply::new(value)
@@ -324,7 +324,7 @@ fn table_status(
         None => None,
     };
     let last_seq = world.last_tape_seq()?;
-    Ok(Reply::new(frames::status(
+    Ok(Reply::new(frames::status_value(
         world.state(),
         presence,
         world.queued_intents(),

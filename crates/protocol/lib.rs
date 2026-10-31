@@ -49,11 +49,11 @@ pub fn default_door(game: std::net::SocketAddr) -> Option<std::net::SocketAddr> 
     Some(std::net::SocketAddr::new(game.ip(), port))
 }
 
-pub fn refusal(code: &str) -> String {
-    named_refusal(code, None)
+pub fn refusal_line(code: &str) -> String {
+    detailed_refusal_line(code, None)
 }
 
-pub fn named_refusal(code: &str, missing: Option<&Missing>) -> String {
+pub fn detailed_refusal_line(code: &str, missing: Option<&Missing>) -> String {
     let named = missing
         .and_then(Missing::as_str)
         .filter(|text| !text.is_empty());
@@ -119,17 +119,23 @@ mod tests {
 
     #[test]
     fn a_refusal_is_a_sentence_with_the_code() {
-        assert_eq!(refusal("TABLE_FULL"), "The table is full. [TABLE_FULL]");
-        assert!(refusal("SEAT_TAKEN") == "That character is already taken. [SEAT_TAKEN]");
-        assert!(refusal("LINE_TOO_LONG") == "That line is too long. [LINE_TOO_LONG]");
-        assert_eq!(refusal("NEW_CODE"), "The table refused that. [NEW_CODE]");
-        assert_eq!(refusal("CHOOSE_PC"), "Choose a character. [CHOOSE_PC]");
         assert_eq!(
-            named_refusal("CHOOSE_PC", Some(&Missing::Many(vec!["pc_rowan".into()]))),
+            refusal_line("TABLE_FULL"),
+            "The table is full. [TABLE_FULL]"
+        );
+        assert!(refusal_line("SEAT_TAKEN") == "That character is already taken. [SEAT_TAKEN]");
+        assert!(refusal_line("LINE_TOO_LONG") == "That line is too long. [LINE_TOO_LONG]");
+        assert_eq!(
+            refusal_line("NEW_CODE"),
+            "The table refused that. [NEW_CODE]"
+        );
+        assert_eq!(refusal_line("CHOOSE_PC"), "Choose a character. [CHOOSE_PC]");
+        assert_eq!(
+            detailed_refusal_line("CHOOSE_PC", Some(&Missing::Many(vec!["pc_rowan".into()]))),
             "Choose a character: pc_rowan. [CHOOSE_PC]"
         );
         assert_eq!(
-            named_refusal("CANT_AFFORD", Some(&Missing::One("g".into()))),
+            detailed_refusal_line("CANT_AFFORD", Some(&Missing::One("g".into()))),
             "You cannot afford g. [CANT_AFFORD]"
         );
         for raw in [

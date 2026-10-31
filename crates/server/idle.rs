@@ -35,7 +35,7 @@ pub(super) async fn run(
     }
 }
 
-pub(super) fn wall_now() -> String {
+pub(super) fn now_stamp() -> String {
     format_utc(Utc::now())
 }
 

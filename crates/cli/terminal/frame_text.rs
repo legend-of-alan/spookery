@@ -1,7 +1,8 @@
 //! Readable text for one player frame.
 
 use crate::protocol::{
-    exit_phrase, named_refusal, ClockView, ExitView, MeterView, NoteView, Outcome, PlayerFrame,
+    detailed_refusal_line, exit_phrase, ClockView, ExitView, MeterView, NoteView, Outcome,
+    PlayerFrame,
 };
 
 /// Readable text for one player frame. A new [`PlayerFrame`] variant fails here until it is rendered.
@@ -24,7 +25,7 @@ pub fn render(message: &PlayerFrame) -> String {
         PlayerFrame::Refused {
             code,
             detail: missing,
-        } => named_refusal(code, missing.as_ref()),
+        } => detailed_refusal_line(code, missing.as_ref()),
         PlayerFrame::View { .. } => render_view(message),
     }
 }

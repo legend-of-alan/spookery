@@ -42,7 +42,7 @@ struct Table {
     game: u16,
     door: u16,
     /// The `listening` line `spook run` printed.
-    listening: String,
+    addrs_line: String,
     host_text: Arc<Mutex<String>>,
     host_grew: Receiver<()>,
 }
@@ -98,9 +98,9 @@ fn capture() -> BTreeMap<String, Example> {
     let table = listen();
     let mut player = seat(table.game, "pc_rowan");
 
-    let listening = serde_json::from_str(&table.listening)
-        .unwrap_or_else(|err| panic!("listening: {err}\n{}", table.listening));
-    insert_json(&mut out, "listening", listening);
+    let addrs = serde_json::from_str(&table.addrs_line)
+        .unwrap_or_else(|err| panic!("listening: {err}\n{}", table.addrs_line));
+    insert_json(&mut out, "listening", addrs);
     insert_text(&mut out, "player-hello", "player:pc_rowan");
     let resume = next_json(&player);
     assert_eq!(resume["kind"], "resume", "{resume}");
@@ -391,7 +391,7 @@ fn listen() -> Table {
         let mut buf = [0u8; 256];
         while stderr.read(&mut buf).unwrap_or(0) > 0 {}
     });
-    let (game, door, listening) = read_listening(&mut stdout);
+    let (game, door, addrs_line) = read_addrs(&mut stdout);
     let host_text = Arc::new(Mutex::new(String::new()));
     let (host_tx, host_more) = mpsc::channel();
     let slot = Arc::clone(&host_text);
@@ -416,7 +416,7 @@ fn listen() -> Table {
         pack,
         game,
         door,
-        listening,
+        addrs_line,
         host_text,
         host_grew: host_more,
     }
@@ -441,7 +441,7 @@ fn wait_host_grew(table: &Table, mark: usize) {
 }
 
 /// The first stdout line, which is the `listening` line: its two ports and the line.
-fn read_listening(stdout: &mut impl Read) -> (u16, u16, String) {
+fn read_addrs(stdout: &mut impl Read) -> (u16, u16, String) {
     let mut got = Vec::new();
     let mut buf = [0u8; 256];
     loop {
@@ -453,12 +453,12 @@ fn read_listening(stdout: &mut impl Read) -> (u16, u16, String) {
                     let line = std::str::from_utf8(&got[..end])
                         .unwrap_or_else(|err| panic!("{err}"))
                         .trim_end_matches('\r');
-                    let listening: Addrs = serde_json::from_str(line)
+                    let addrs: Addrs = serde_json::from_str(line)
                         .unwrap_or_else(|err| panic!("listening: {err}\n{line}"));
                     let port = |addr: &str| {
                         loopback_port(addr).unwrap_or_else(|| panic!("not loopback\n{line}"))
                     };
-                    return (port(&listening.game), port(&listening.door), line.into());
+                    return (port(&addrs.game), port(&addrs.door), line.into());
                 }
             }
             Err(err) => panic!("stdout: {err}"),

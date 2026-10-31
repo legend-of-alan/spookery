@@ -68,7 +68,7 @@ impl Drop for InProcess {
 }
 
 /// Opens the pack the way `spook run` does and serves it in this process.
-pub fn listen_in_process(world: &mut World, pack: &Path) {
+pub fn serve_in_process(world: &mut World, pack: &Path) {
     drop(world.live.take());
     // `lock_pack` then `World::resume`, as `spook run` opens it.
     let opened = support::resume(pack);
@@ -105,7 +105,7 @@ pub fn listen_in_process(world: &mut World, pack: &Path) {
             }
         });
     });
-    let (game, door, seen) = match read_listening(&mut out) {
+    let (game, door, seen) = match read_addrs(&mut out) {
         Ok(report) => report,
         Err(got) => {
             let _ = thread.join();
@@ -115,7 +115,7 @@ pub fn listen_in_process(world: &mut World, pack: &Path) {
     };
     let stdout = Arc::new(Mutex::new(seen));
     drop(drain(out, Arc::clone(&stdout)));
-    install(world, pack, game, door).in_process = Some(InProcess {
+    attach_host(world, pack, game, door).in_process = Some(InProcess {
         stdout,
         stderr,
         advance,
@@ -280,12 +280,12 @@ pub struct Listening {
 }
 
 pub fn listen(world: &mut World, pack: &Path) {
-    let _ = listen_with_flags(world, pack, &["--addr", "127.0.0.1:0"]);
+    let _ = run_with_flags(world, pack, &["--addr", "127.0.0.1:0"]);
 }
 
 /// `spook run` with an agent door the operating system chooses on its own.
 pub fn listen_door(world: &mut World, pack: &Path) -> u16 {
-    listen_with_flags(
+    run_with_flags(
         world,
         pack,
         &["--addr", "127.0.0.1:0", "--door", "127.0.0.1:0"],
@@ -293,11 +293,11 @@ pub fn listen_door(world: &mut World, pack: &Path) -> u16 {
     .1
 }
 
-pub fn listen_with_flags(world: &mut World, pack: &Path, flags: &[&str]) -> (u16, u16) {
+pub fn run_with_flags(world: &mut World, pack: &Path, flags: &[&str]) -> (u16, u16) {
     drop(world.live.take());
-    let listening = wait_listening(spawn_table(pack, flags));
-    let ports = (listening.game.port(), listening.door.port());
-    install(world, pack, listening.game, listening.door).host = Some(listening.host);
+    let addrs = wait_addrs(spawn_table(pack, flags));
+    let ports = (addrs.game.port(), addrs.door.port());
+    attach_host(world, pack, addrs.game, addrs.door).host = Some(addrs.host);
     ports
 }
 
@@ -310,10 +310,10 @@ pub fn door_addr(world: &World) -> String {
 }
 
 /// The listening line `spook run` wrote, as the addresses it bound.
-pub fn parse_listening(stdout: &str) -> (SocketAddr, SocketAddr) {
+pub fn parse_addrs(stdout: &str) -> (SocketAddr, SocketAddr) {
     stdout
         .lines()
-        .find_map(parse_listening_line)
+        .find_map(parse_addrs_line)
         .unwrap_or_else(|| panic!("no listening line\n{stdout}"))
 }
 
@@ -347,7 +347,7 @@ pub fn spawn_table(pack: &Path, flags: &[&str]) -> Pending {
     }
 }
 
-pub fn wait_listening(mut pending: Pending) -> Listening {
+pub fn wait_addrs(mut pending: Pending) -> Listening {
     let (game, door, seen) = read_report(&mut pending);
     let stdout = Arc::new(Mutex::new(seen));
     drop(drain(pending.stdout, Arc::clone(&stdout)));
@@ -363,7 +363,7 @@ pub fn wait_listening(mut pending: Pending) -> Listening {
     }
 }
 
-fn install<'w>(
+fn attach_host<'w>(
     world: &'w mut World,
     pack: &Path,
     game: SocketAddr,
@@ -391,7 +391,7 @@ fn install<'w>(
 }
 
 fn read_report(pending: &mut Pending) -> (SocketAddr, SocketAddr, String) {
-    read_listening(&mut pending.stdout).unwrap_or_else(|got| {
+    read_addrs(&mut pending.stdout).unwrap_or_else(|got| {
         let status = pending
             .child
             .wait()
@@ -408,7 +408,7 @@ fn read_report(pending: &mut Pending) -> (SocketAddr, SocketAddr, String) {
 
 /// Reads the host's stdout up to its listening line: the two addresses and
 /// the text so far. `Err` is the text before stdout closed without one.
-fn read_listening(stdout: &mut impl Read) -> Result<(SocketAddr, SocketAddr, String), String> {
+fn read_addrs(stdout: &mut impl Read) -> Result<(SocketAddr, SocketAddr, String), String> {
     let mut got = Vec::new();
     let mut buf = [0u8; 256];
     loop {
@@ -416,7 +416,7 @@ fn read_listening(stdout: &mut impl Read) -> Result<(SocketAddr, SocketAddr, Str
             Ok(0) => return Err(String::from_utf8_lossy(&got).into_owned()),
             Ok(n) => {
                 got.extend_from_slice(&buf[..n]);
-                if let Some((game, door)) = find_listening(&got) {
+                if let Some((game, door)) = find_addrs(&got) {
                     return Ok((game, door, String::from_utf8_lossy(&got).into_owned()));
                 }
             }
@@ -425,15 +425,15 @@ fn read_listening(stdout: &mut impl Read) -> Result<(SocketAddr, SocketAddr, Str
     }
 }
 
-fn find_listening(buf: &[u8]) -> Option<(SocketAddr, SocketAddr)> {
+fn find_addrs(buf: &[u8]) -> Option<(SocketAddr, SocketAddr)> {
     let end = buf.iter().rposition(|byte| *byte == b'\n')? + 1;
     let text = std::str::from_utf8(&buf[..end]).unwrap_or_else(|err| panic!("stdout: {err}"));
-    text.lines().find_map(parse_listening_line)
+    text.lines().find_map(parse_addrs_line)
 }
 
-fn parse_listening_line(line: &str) -> Option<(SocketAddr, SocketAddr)> {
-    let listening: protocol::Addrs = serde_json::from_str(line.trim()).ok()?;
-    Some((listening.game.parse().ok()?, listening.door.parse().ok()?))
+fn parse_addrs_line(line: &str) -> Option<(SocketAddr, SocketAddr)> {
+    let addrs: protocol::Addrs = serde_json::from_str(line.trim()).ok()?;
+    Some((addrs.game.parse().ok()?, addrs.door.parse().ok()?))
 }
 
 fn drain(reader: impl Read + Send + 'static, slot: Arc<Mutex<String>>) -> JoinHandle<()> {
@@ -540,7 +540,7 @@ fn seat<'w>(world: &'w World, actor_id: &str) -> &'w Seat {
 pub fn gm_call(world: &mut World, id: u64, name: &str, arguments: &str) -> String {
     let live = live_mut(world);
     let gm = live.gm.as_mut().unwrap_or_else(|| panic!("no seated GM"));
-    call(gm, &live.gm_text, id, name, arguments)
+    call_gm_tool(gm, &live.gm_text, id, name, arguments)
 }
 
 /// A call from the GM that called `close` and kept its session.
@@ -550,11 +550,11 @@ pub fn closed_gm_call(world: &mut World, name: &str, arguments: &str) -> String 
         .closed_gm
         .as_mut()
         .unwrap_or_else(|| panic!("no closed GM"));
-    call(gm, &live.gm_text, 92, name, arguments)
+    call_gm_tool(gm, &live.gm_text, 92, name, arguments)
 }
 
 /// One tool call. Its events and its result land in the GM text.
-fn call(
+fn call_gm_tool(
     gm: &mut Connection,
     gm_text: &Arc<Mutex<String>>,
     id: u64,
@@ -727,15 +727,15 @@ pub fn close_actor(world: &mut World, actor_id: &str) {
 
 /// `close` answers after the seat is free. Dropping the socket does not.
 pub fn release_gm(world: &mut World) -> String {
-    release(world, false)
+    close_gm(world, false)
 }
 
 /// `close`, keeping the session so a later call can be refused.
 pub fn release_gm_keep_session(world: &mut World) -> String {
-    release(world, true)
+    close_gm(world, true)
 }
 
-fn release(world: &mut World, keep_session: bool) -> String {
+fn close_gm(world: &mut World, keep_session: bool) -> String {
     let text = gm_call(world, 91, "close", "{}");
     assert!(
         text.contains("\"released\":true"),
