@@ -238,6 +238,7 @@ pub struct SayEvent {
     pub text: String,
 }
 
+/// Whether a `MenuRow` is a PC or an NPC, sent from the table to the GM's MCP client.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CastKind {
