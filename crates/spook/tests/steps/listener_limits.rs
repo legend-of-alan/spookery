@@ -352,7 +352,7 @@ fn one_player_stops_reading(world: &mut World) {
     writeln!(quiet, "player:pc_rowan").unwrap_or_else(|err| panic!("hello: {err}"));
     quiet.flush().unwrap_or_else(|err| panic!("flush: {err}"));
     read_until(&mut quiet, "\"kind\":\"view\"", Duration::from_secs(2));
-    table::live_mut(world).players.push(table::Seat {
+    table::live_mut(world).players.push(table::PlayerClient {
         actor_id: "pc_rowan".to_string(),
         write: quiet,
         text: Arc::new(Mutex::new(String::new())),
@@ -571,7 +571,7 @@ fn read_until(stream: &mut TcpStream, needle: &str, limit: Duration) {
 
 fn try_sit_gm(port: u16) -> Result<(), String> {
     let door = std::net::SocketAddr::from(([127, 0, 0, 1], port));
-    match support::block_on(spookery::gm_connection::Connection::connect_door(door)) {
+    match support::block_on(spookery::gm_connection::GmClient::connect(door)) {
         Ok(gm) => {
             support::block_on(gm.close());
             Ok(())

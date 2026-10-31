@@ -8,15 +8,15 @@ use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
 use serde_json::Value;
-use spookery::gm_connection::{Connection, Incoming};
-use spookery::protocol;
+use spookery::gm_connection::{GmClient, Incoming};
+use spookery::protocol::{self, GmEvent};
 use spookery_engine::testing::journal::list_round_keys;
 use spookery_engine::State;
 
 use crate::support::{self, Process};
 use crate::World;
 
-pub struct Seat {
+pub struct PlayerClient {
     pub actor_id: String,
     pub write: TcpStream,
     pub text: Arc<Mutex<String>>,
@@ -26,10 +26,10 @@ pub struct Host {
     pub game_port: u16,
     pub first_stream: Option<TcpStream>,
     pub player_text: Arc<Mutex<String>>,
-    pub players: Vec<Seat>,
-    pub gm: Option<Connection>,
-    /// The GM connection that called `close` and has not been dropped.
-    pub closed_gm: Option<Connection>,
+    pub players: Vec<PlayerClient>,
+    pub gm: Option<GmClient>,
+    /// The GM client that called `close` and has not been dropped.
+    pub closed_gm: Option<GmClient>,
     /// Set when `read_presence` opened a GM only to read seats.
     pub gm_probe: bool,
     pub door_port: u16,
@@ -471,7 +471,7 @@ pub fn seat_actor(world: &mut World, pack: &Path, actor_id: &str) {
         );
         live.player_text = Arc::clone(&text);
     }
-    live.players.push(Seat {
+    live.players.push(PlayerClient {
         actor_id: actor_id.to_string(),
         write,
         text,
@@ -482,12 +482,9 @@ pub fn seat_actor(world: &mut World, pack: &Path, actor_id: &str) {
 
 pub fn seat_gm(world: &mut World) {
     let door = door_addr(world).parse().unwrap();
-    let gm = support::block_on(Connection::connect_door(door))
-        .unwrap_or_else(|err| panic!("seat GM: {err}"));
-    let opened = gm.initialize_line().to_string();
-    let live = live_mut(world);
-    push_line(&live.gm_text, &opened);
-    live.gm = Some(gm);
+    let gm =
+        support::block_on(GmClient::connect(door)).unwrap_or_else(|err| panic!("seat GM: {err}"));
+    live_mut(world).gm = Some(gm);
 }
 
 pub fn player_mark(world: &World) -> usize {
@@ -525,11 +522,11 @@ pub fn wait_player_from(world: &World, mark: usize, needle: &str) -> String {
 }
 
 pub fn wait_actor_from(world: &World, actor_id: &str, mark: usize, needle: &str) -> String {
-    let slot = Arc::clone(&seat(world, actor_id).text);
+    let slot = Arc::clone(&player_client(world, actor_id).text);
     wait_suffix(&slot, mark, needle)
 }
 /// The seated player for `actor_id`.
-fn seat<'w>(world: &'w World, actor_id: &str) -> &'w Seat {
+fn player_client<'w>(world: &'w World, actor_id: &str) -> &'w PlayerClient {
     live(world)
         .players
         .iter()
@@ -555,7 +552,7 @@ pub fn closed_gm_call(world: &mut World, name: &str, arguments: &str) -> String 
 
 /// One tool call. Its events and its result land in the GM text.
 fn send_tool_call(
-    gm: &mut Connection,
+    gm: &mut GmClient,
     gm_text: &Arc<Mutex<String>>,
     id: u64,
     name: &str,
@@ -563,19 +560,25 @@ fn send_tool_call(
 ) -> String {
     let value: Value =
         serde_json::from_str(arguments).unwrap_or_else(|err| panic!("arguments: {err}"));
-    let outcome =
-        support::block_on(gm.call(name, value)).unwrap_or_else(|err| panic!("gm call: {err}"));
+    let reply = support::block_on(gm.call::<Value>(name, &value))
+        .unwrap_or_else(|err| panic!("gm call: {err}"));
     for event in gm.take_events() {
-        push_line(gm_text, &event.raw);
+        push_line(gm_text, &event_line(&event));
     }
+    let body = reply.unwrap_or_else(|refusal| serde_json::json!(refusal));
     let raw = serde_json::json!({
         "jsonrpc": "2.0",
         "id": id,
-        "result": { "structuredContent": outcome.body }
+        "result": { "structuredContent": body }
     })
     .to_string();
     push_line(gm_text, &raw);
     raw
+}
+
+/// The `spook/event` notification line the GM text keeps for one event.
+fn event_line(event: &GmEvent) -> String {
+    serde_json::json!({ "jsonrpc": "2.0", "method": "spook/event", "params": event }).to_string()
 }
 
 pub fn wait_gm(world: &mut World, needle: &str) -> String {
@@ -668,16 +671,14 @@ fn push_line(slot: &Arc<Mutex<String>>, line: &str) {
 
 fn incoming_line(incoming: Incoming) -> Option<String> {
     match incoming {
-        Incoming::Event(event) => Some(event.raw),
-        Incoming::Result { raw, .. } | Incoming::Invalid(raw) | Incoming::Refused { raw, .. } => {
-            Some(raw)
-        }
+        Incoming::Event(event) => Some(event_line(&event)),
+        Incoming::Unreadable(line) => Some(line),
         Incoming::Eof => None,
     }
 }
 
 pub fn actor_text(world: &World, actor_id: &str) -> String {
-    support::text_of(&seat(world, actor_id).text)
+    support::text_of(&player_client(world, actor_id).text)
 }
 
 pub fn actor_send(world: &mut World, actor_id: &str, line: &str, needle: &str) -> String {
@@ -686,7 +687,7 @@ pub fn actor_send(world: &mut World, actor_id: &str, line: &str, needle: &str) -
 }
 
 pub fn actor_write(world: &mut World, actor_id: &str, line: &str) -> usize {
-    let player = seat(world, actor_id);
+    let player = player_client(world, actor_id);
     let mark = support::text_of(&player.text).len();
     // `&TcpStream` writes too, so a shared seat is enough.
     let mut write = &player.write;
@@ -777,7 +778,7 @@ pub fn read_presence(world: &mut World) -> (u32, Vec<String>) {
 fn call_table_status(world: &mut World) -> Value {
     if live(world).gm.is_none() {
         let door = door_addr(world).parse().unwrap();
-        let gm = support::block_on(Connection::connect_door(door))
+        let gm = support::block_on(GmClient::connect(door))
             .unwrap_or_else(|err| panic!("status: {err}"));
         let live = live_mut(world);
         live.gm = Some(gm);

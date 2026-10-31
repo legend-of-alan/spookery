@@ -3,10 +3,12 @@
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
+use serde_json::Value;
 use spookery_agent::{Agent, Input, Model, Step};
 
 use crate::ai::{report_error, Error};
-use crate::gm_connection::{self, Connection, Incoming};
+use crate::gm_connection::{GmClient, Incoming};
+use crate::protocol;
 
 #[derive(Default)]
 pub struct TurnWatch {
@@ -22,11 +24,12 @@ pub async fn run_gm<M: Model>(
     model: &mut M,
     watch: &TurnWatch,
 ) -> Result<(), Error> {
-    let mut client = match door {
-        Some(door) => Connection::connect_door(door).await,
-        None => Connection::connect_default_door(addr).await,
-    }
-    .map_err(report_connection_error)?;
+    let door = door
+        .or_else(|| protocol::default_door(addr))
+        .ok_or_else(|| report_error(addr.to_string()))?;
+    let mut client = GmClient::connect(door)
+        .await
+        .map_err(|err| report_error(err.to_string()))?;
     let result = async {
         let mut agent = Agent::new();
         let mut step = agent.start();
@@ -49,21 +52,21 @@ pub async fn run_gm<M: Model>(
                     if watch.listening.load(Ordering::Acquire) {
                         watch.busy.store(true, Ordering::Release);
                     }
-                    let outcome = client
-                        .call(name, arguments)
+                    // The agent still asks for tools by name and reads replies as JSON.
+                    let reply = client
+                        .call::<Value>(name, &arguments)
                         .await
-                        .map_err(report_connection_error)?;
+                        .map_err(|err| report_error(err.to_string()))?;
                     for event in client.take_events() {
-                        agent
-                            .feed(Input::GmEvent(event.body))
-                            .map_err(report_error)?;
+                        agent.feed(Input::GmEvent(event)).map_err(report_error)?;
                     }
+                    let refused = reply.is_err();
+                    let body = reply.unwrap_or_else(|refusal| {
+                        serde_json::to_value(refusal).expect("a refusal serializes")
+                    });
+                    let raw = body.to_string();
                     step = agent
-                        .feed(Input::ToolResult {
-                            body: outcome.body,
-                            refused: outcome.refused,
-                            raw: outcome.raw,
-                        })
+                        .feed(Input::ToolResult { body, refused, raw })
                         .map_err(report_error)?;
                 }
                 Step::CallModel { request, warning } => {
@@ -78,16 +81,12 @@ pub async fn run_gm<M: Model>(
                     watch.busy.store(false, Ordering::Release);
                     match client.next_incoming().await {
                         Incoming::Event(event) => {
-                            step = agent
-                                .feed(Input::GmEvent(event.body))
-                                .map_err(report_error)?;
+                            step = agent.feed(Input::GmEvent(event)).map_err(report_error)?;
                             if step != Step::Idle && watch.listening.load(Ordering::Acquire) {
                                 watch.busy.store(true, Ordering::Release);
                             }
                         }
-                        Incoming::Result { raw, .. }
-                        | Incoming::Invalid(raw)
-                        | Incoming::Refused { raw, .. } => return Err(report_error(raw)),
+                        Incoming::Unreadable(line) => return Err(report_error(line)),
                         Incoming::Eof if agent.sit_seq.is_some() => return Ok(()),
                         Incoming::Eof => return Err(report_error("seat closed")),
                     }
@@ -103,12 +102,4 @@ pub async fn run_gm<M: Model>(
 fn report(line: &str) {
     eprintln!("{line}");
     let _ = std::io::Write::flush(&mut std::io::stderr());
-}
-
-fn report_connection_error(err: gm_connection::Error) -> Error {
-    match err {
-        gm_connection::Error::Io(err) => report_error(err.to_string()),
-        gm_connection::Error::Invalid(line) => report_error(line),
-        gm_connection::Error::Refused { raw, .. } => report_error(raw),
-    }
 }

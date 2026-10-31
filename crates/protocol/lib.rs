@@ -55,8 +55,9 @@ pub fn default_door(game: std::net::SocketAddr) -> Option<std::net::SocketAddr> 
 /// and the prompt's cast cut.
 pub const PERCEIVE_BODY_CHARS: usize = 800;
 
-/// Every refusal code. The `code` of a player `refused` line and a GM tool refusal, and
-/// the token the journal stores on a round line (the engine's `store::records::Refusal`).
+/// Every refusal code. The `code` of a player `refused` line, a GM tool refusal and the MCP
+/// error's `data`, and the token the journal stores on a round line (the engine's
+/// `store::records::Refusal`).
 /// Strict and `Copy` on purpose: `spook verify` must fail on a code it does not know.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
@@ -149,8 +150,9 @@ pub enum Code {
 }
 
 /// Sent from the table to a player client as the `refused` line's body, and to a GM
-/// client as a tool refusal (`{"code"}`); the MCP initialize error's message is its
-/// Display, the sentence with the code in brackets, `The table is full. [TABLE_FULL]`.
+/// client as a tool refusal (`{"code"}`) and as the MCP initialize error's `data`.
+/// Display is that error's message, the sentence with the code in brackets,
+/// `The table is full. [TABLE_FULL]`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Refusal {
     pub code: Code,
@@ -411,6 +413,13 @@ mod tests {
             assert!(matches!(msg, PlayerFrame::Refused(_)));
             assert_eq!(serde_json::to_string(&msg).unwrap(), raw);
         }
+    }
+
+    #[test]
+    fn a_fixed_game_port_dials_the_next_port() {
+        let game = std::net::SocketAddr::from(([127, 0, 0, 1], 9737));
+        let door = std::net::SocketAddr::from(([127, 0, 0, 1], 9738));
+        assert_eq!(default_door(game), Some(door));
     }
 
     #[test]

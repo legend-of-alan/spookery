@@ -31,9 +31,10 @@ pub(super) fn refused_value(code: Reason) -> Value {
     serde_json::to_value(Refusal::from(code)).expect("refusal")
 }
 
-/// The MCP initialize error. Its message is the refusal's sentence.
+/// The MCP initialize error. Its message is the refusal's sentence and its data the refusal.
 pub(super) fn mcp_error(refusal: &Refusal) -> McpError {
-    McpError::internal_error(refusal.to_string(), None)
+    let data = serde_json::to_value(refusal).expect("refusal");
+    McpError::internal_error(refusal.to_string(), Some(data))
 }
 
 /// `CHOOSE_PC` names the free PCs.

@@ -14,29 +14,29 @@ pub fn parse_args<T: DeserializeOwned>(
 }
 
 /// `table_status` arguments, sent from the GM's MCP client to the table.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct StatusArgs {
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub since: Option<u64>,
 }
 
 /// `perceive` arguments, sent from the GM's MCP client to the table.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PerceiveArgs {
-    #[serde(rename = "as", default)]
+    #[serde(rename = "as", default, skip_serializing_if = "Option::is_none")]
     pub as_viewer: Option<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_body_chars: Option<u64>,
 }
 
 /// `commit_round` arguments, sent from the GM's MCP client to the table.
-#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CommitArgs {
     pub include_round: bool,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub session_id: Option<String>,
 }
 
