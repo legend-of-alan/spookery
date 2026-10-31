@@ -14,7 +14,7 @@ use super::idle::{self, now_stamp};
 use super::seat::{Conn, FrameSender, GmSeat, PlayerSeat, Seats};
 use super::tools::call_gm_tool;
 use super::Error;
-use crate::protocol::{Refusal, Speaker};
+use crate::protocol::{self, Detail, Refusal, Speaker};
 
 /// The host's cap. A pack may define more PCs than this.
 const MAX_PLAYER_SEATS: usize = 3;
@@ -169,7 +169,10 @@ impl Table {
         }
         let Some(id) = named else {
             let free = self.world.free_pcs(&self.seats.presence());
-            return HelloReply::Refused(frames::choose_pc(free));
+            return HelloReply::Refused(Refusal {
+                code: protocol::Code::Known(Reason::ChoosePc),
+                detail: Some(Detail::Many(free)),
+            });
         };
         if self
             .seats

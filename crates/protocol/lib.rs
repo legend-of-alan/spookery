@@ -28,7 +28,7 @@ impl Outcome {
 }
 
 pub use gm::{
-    parse_args, CastKind, CloseArgs, CloseReply, CommitArgs, CommitBody, GmEvent, IntentCall,
+    parse_args, CastKind, CloseArgs, CloseBody, CommitArgs, CommitBody, GmEvent, IntentCall,
     MenuRow, PackSummary, PerceiveArgs, Queued, QueuedMove, Roll, SayArgs, SayEvent, StatusArgs,
     StatusPause, StatusPresence, TableStatus,
 };
@@ -146,6 +146,26 @@ impl std::error::Error for Reason {}
 pub enum Code {
     Known(Reason),
     Other(String),
+}
+
+impl Code {
+    /// The token as it is written on the wire.
+    pub fn as_str(&self) -> &str {
+        match self {
+            Code::Known(reason) => reason.as_str(),
+            Code::Other(code) => code,
+        }
+    }
+}
+
+impl From<String> for Code {
+    /// A `Reason` this build knows, read through its serde token, or the text as it came.
+    fn from(code: String) -> Self {
+        match serde_json::from_value(serde_json::Value::String(code.clone())) {
+            Ok(reason) => Code::Known(reason),
+            Err(_) => Code::Other(code),
+        }
+    }
 }
 
 /// Sent from the table to a player client as the `refused` line's body, and to a GM
