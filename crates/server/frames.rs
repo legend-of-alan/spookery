@@ -49,10 +49,11 @@ impl Refusal {
 
     /// The player `refused` line. `detail` is left out when there is none.
     pub(super) fn line(&self) -> String {
-        crate::protocol::emit_player(&PlayerFrame::Refused {
+        PlayerFrame::Refused {
             code: self.code.as_str().to_string(),
             detail: self.detail.clone(),
-        })
+        }
+        .to_line()
     }
 
     /// The GM tool result names the code only.
@@ -66,12 +67,13 @@ impl Refusal {
 }
 
 pub(super) fn say_line(tape: &TapeRecord, replay: bool) -> String {
-    crate::protocol::emit_player(&PlayerFrame::Say {
+    PlayerFrame::Say {
         from: tape.from.clone(),
         address: tape.address.clone(),
         text: tape.text.clone(),
         replay,
-    })
+    }
+    .to_line()
 }
 
 pub(super) fn say_value(tape: &TapeRecord) -> Value {
@@ -95,7 +97,7 @@ fn gm_say(tape: &TapeRecord) -> SayEvent {
 }
 
 pub(super) fn queued_line(id: &str) -> String {
-    crate::protocol::emit_player(&PlayerFrame::Queued { id: id.to_string() })
+    PlayerFrame::Queued { id: id.to_string() }.to_line()
 }
 
 pub(super) fn queued_event(queued: &QueuedMove) -> Vec<u8> {
@@ -103,7 +105,7 @@ pub(super) fn queued_event(queued: &QueuedMove) -> Vec<u8> {
 }
 
 pub(super) fn check_line(outcome: Outcome) -> String {
-    crate::protocol::emit_player(&PlayerFrame::Check { outcome })
+    PlayerFrame::Check { outcome }.to_line()
 }
 
 pub(super) fn check_event(out: &Roll) -> Vec<u8> {
@@ -146,20 +148,22 @@ pub(super) fn resume_line(view: &View) -> String {
         .filter(|note| note.to.iter().any(|to| to == actor_id))
         .map(note_view)
         .collect();
-    crate::protocol::emit_player(&PlayerFrame::Resume {
+    PlayerFrame::Resume {
         notes,
         clocks: view.clocks.clone(),
-    })
+    }
+    .to_line()
 }
 
 pub(super) fn text_line(text: &str) -> String {
-    crate::protocol::emit_player(&PlayerFrame::Lines {
+    PlayerFrame::Lines {
         text: text.to_string(),
-    })
+    }
+    .to_line()
 }
 
 pub(super) fn view_line(view: &View) -> String {
-    crate::protocol::emit_player(&player_view(view))
+    player_view(view).to_line()
 }
 
 pub(super) fn perceive_value(view: &View) -> Value {

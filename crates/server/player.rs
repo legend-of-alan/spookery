@@ -9,7 +9,7 @@ use std::time::Duration;
 use spookery_engine::Reason;
 
 use super::frames::Refusal;
-use super::seat::{frame_queue, write_all_flush, write_frames, Conn, Inbound, Outbound};
+use super::seat::{frame_queue, write_all_flush, write_frames, Conn, FrameReceiver, FrameSender};
 use super::table::{report_hangup, HelloReply, Request};
 
 /// Accept players until the listener fails. Each socket is tuned, then served
@@ -105,8 +105,8 @@ async fn read_lines(
     stream: tokio::net::TcpStream,
     tx: Sender<Request>,
     conn: Conn,
-    out: Outbound,
-    inbound: Inbound,
+    out: FrameSender,
+    inbound: FrameReceiver,
 ) {
     let (read_half, mut write_half) = stream.into_split();
     let mut reader =

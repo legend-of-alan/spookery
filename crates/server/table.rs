@@ -11,7 +11,7 @@ use tokio::sync::{oneshot, watch};
 
 use super::frames::{self, Refusal};
 use super::idle::{self, now_stamp};
-use super::seat::{Conn, GmSeat, Outbound, PlayerSeat, Seats};
+use super::seat::{Conn, FrameSender, GmSeat, PlayerSeat, Seats};
 use super::tools::call_gm_tool;
 use super::Error;
 
@@ -33,7 +33,7 @@ pub(super) enum Request {
     Hello {
         conn: Conn,
         line: String,
-        seat: Outbound,
+        seat: FrameSender,
         reply: oneshot::Sender<HelloReply>,
     },
     Line {
@@ -54,7 +54,7 @@ pub(super) enum Request {
     /// The HTTP session takes the one GM seat. The game port does not.
     SeatGm {
         conn: Conn,
-        seat: Outbound,
+        seat: FrameSender,
         reply: oneshot::Sender<Result<(), Refusal>>,
     },
     Wake,
@@ -152,11 +152,11 @@ impl Table {
         }
     }
 
-    fn hello(&mut self, conn: Conn, line: &str, seat: Outbound) -> HelloReply {
+    fn hello(&mut self, conn: Conn, line: &str, seat: FrameSender) -> HelloReply {
         let named = match line {
             "gm" => return HelloReply::Refused(Reason::NotInSpec.into()),
             "" => None,
-            _ => match crate::protocol::parse_player_hello(line) {
+            _ => match crate::protocol::parse_hello(line) {
                 None => return HelloReply::Refused(Reason::Schema.into()),
                 named => named,
             },
@@ -210,7 +210,7 @@ impl Table {
         HelloReply::Seated
     }
 
-    fn seat_gm(&mut self, conn: Conn, seat: Outbound) -> Result<(), Refusal> {
+    fn seat_gm(&mut self, conn: Conn, seat: FrameSender) -> Result<(), Refusal> {
         if self.seats.gm.is_some() {
             return Err(Reason::TableFull.into());
         }

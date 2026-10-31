@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 use cucumber::{then, when};
 use spookery_engine::testing::journal::list_round_keys;
 
-use spookery::protocol::{emit_player, PlayerFrame};
+use spookery::protocol::PlayerFrame;
 
 use crate::support;
 use crate::World;
@@ -362,12 +362,13 @@ fn one_player_stops_reading(world: &mut World) {
         text: Arc::new(Mutex::new(String::new())),
     });
     let say = "n".repeat(SAY_TEXT_BYTES);
-    let frame = emit_player(&PlayerFrame::Say {
+    let frame = PlayerFrame::Say {
         from: "gm".to_string(),
         address: "table".to_string(),
         text: say.clone(),
         replay: false,
-    })
+    }
+    .to_line()
     .len();
     // Granted kernel windows, then the userspace queue, then one extra
     // buffer so a getsockopt that under-reports still reaches the drop.

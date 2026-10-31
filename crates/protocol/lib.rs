@@ -31,8 +31,8 @@ pub use gm::{
     SayArgs, SayEvent, StatusArgs, StatusPause, StatusPresence, TableStatus,
 };
 pub use player::{
-    emit_player, emit_player_hello, exit_phrase, parse_player, parse_player_hello, ClockView,
-    ExitView, ItemStack, KnownFact, MeterView, Missing, NoteView, PlayerFrame, ViewScene,
+    exit_phrase, hello_line, parse_hello, ClockView, ExitView, ItemStack, KnownFact, MeterView,
+    Missing, NoteView, PlayerFrame, ViewScene,
 };
 
 /// The game and door addresses `spook run` prints on stdout once both ports are bound.
@@ -143,7 +143,7 @@ mod tests {
             r#"{"kind":"refused","code":"CHOOSE_PC","detail":["pc_rowan"]}"#,
             r#"{"kind":"refused","code":"SCHEMA"}"#,
         ] {
-            let msg = parse_player(raw).unwrap();
+            let msg = PlayerFrame::from_line(raw).unwrap();
             assert!(matches!(msg, PlayerFrame::Refused { .. }));
             assert_eq!(serde_json::to_string(&msg).unwrap(), raw);
         }

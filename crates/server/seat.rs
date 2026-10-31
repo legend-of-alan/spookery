@@ -60,7 +60,7 @@ impl Seats {
 pub(super) struct PlayerSeat {
     pub(super) conn: Conn,
     pub(super) actor_id: String,
-    pub(super) out: Outbound,
+    pub(super) out: FrameSender,
 }
 
 impl Drop for PlayerSeat {
@@ -71,7 +71,7 @@ impl Drop for PlayerSeat {
 
 pub(super) struct GmSeat {
     pub(super) conn: Conn,
-    pub(super) out: Outbound,
+    pub(super) out: FrameSender,
 }
 
 impl Drop for GmSeat {
@@ -90,7 +90,7 @@ enum Message {
 /// The table's end of one seat's frame queue. The table sends that seat frames with it.
 /// Also holds the seat's cancel.
 #[derive(Clone)]
-pub(super) struct Outbound {
+pub(super) struct FrameSender {
     tx: mpsc::Sender<Message>,
     queued_bytes: Arc<AtomicUsize>,
     cancel: watch::Sender<bool>,
@@ -98,7 +98,7 @@ pub(super) struct Outbound {
 
 /// The writer's end of one seat's frame queue. That seat's socket or event writer reads from it.
 /// A frame's bytes stay counted until it is written.
-pub(super) struct Inbound {
+pub(super) struct FrameReceiver {
     rx: mpsc::Receiver<Message>,
     queued_bytes: Arc<AtomicUsize>,
     pub(super) cancel: watch::Receiver<bool>,
@@ -112,7 +112,7 @@ impl Message {
     }
 }
 
-impl Outbound {
+impl FrameSender {
     /// Queues one frame. False when the queue is full or closed.
     pub(super) fn send(&self, frame: Vec<u8>) -> bool {
         self.try_send(Message::Frame(frame))
@@ -165,18 +165,18 @@ fn release(queued: &AtomicUsize, len: usize) {
 /// One seat's frame queue. Like `mpsc::channel()`, it returns the sender and
 /// receiver halves. A frame is counted against `OUTBOUND_FRAME_CAP` and
 /// `OUTBOUND_BYTE_CAP` from the moment it is queued until the writer has sent
-/// it. The hello keeps a clone of `Outbound` for `send_last`.
-pub(super) fn frame_queue() -> (Outbound, Inbound) {
+/// it. The hello keeps a clone of `FrameSender` for `send_last`.
+pub(super) fn frame_queue() -> (FrameSender, FrameReceiver) {
     let (tx, rx) = mpsc::channel(OUTBOUND_FRAME_CAP);
     let (cancel_tx, cancel_rx) = watch::channel(false);
     let queued_bytes = Arc::new(AtomicUsize::new(0));
     (
-        Outbound {
+        FrameSender {
             tx,
             queued_bytes: Arc::clone(&queued_bytes),
             cancel: cancel_tx,
         },
-        Inbound {
+        FrameReceiver {
             rx,
             queued_bytes,
             cancel: cancel_rx,
@@ -186,7 +186,10 @@ pub(super) fn frame_queue() -> (Outbound, Inbound) {
 
 /// Sends each queued frame to `sink` until the queue closes, the seat is
 /// cancelled, or `sink` fails. A frame's bytes are released once it is sent.
-pub(super) async fn write_frames(mut sink: impl AsyncFnMut(&[u8]) -> bool, mut inbound: Inbound) {
+pub(super) async fn write_frames(
+    mut sink: impl AsyncFnMut(&[u8]) -> bool,
+    mut inbound: FrameReceiver,
+) {
     loop {
         let frame = tokio::select! {
             biased;
