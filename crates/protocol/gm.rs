@@ -15,6 +15,7 @@ pub fn parse_args<T: DeserializeOwned>(
 
 /// `table_status` arguments, sent from the GM's MCP client to the table.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct StatusArgs {
     #[serde(default)]
@@ -23,9 +24,13 @@ pub struct StatusArgs {
 
 /// `perceive` arguments, sent from the GM's MCP client to the table.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct PerceiveArgs {
-    #[serde(rename = "as", default)]
+    // An `Option` so the table can refuse a missing `as` with its own code; a missing
+    // field reads as `None` without `default`, and the schema says it is required.
+    #[cfg_attr(feature = "schema", schemars(required))]
+    #[serde(rename = "as")]
     pub as_viewer: Option<String>,
     #[serde(default)]
     pub max_body_chars: Option<u64>,
@@ -33,6 +38,7 @@ pub struct PerceiveArgs {
 
 /// `commit_round` arguments, sent from the GM's MCP client to the table.
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct CommitArgs {
     pub include_round: bool,
@@ -42,6 +48,7 @@ pub struct CommitArgs {
 
 /// `close` arguments, sent from the GM's MCP client to the table. No key is accepted.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct CloseArgs {}
 
@@ -59,6 +66,9 @@ struct SayWire {
 
 /// `say` arguments, sent from the GM's MCP client to the table.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+// The schema shows the tagged shape, not `SayWire`, and MCP wants an object at its root.
+#[cfg_attr(feature = "schema", schemars(!try_from, extend("type" = "object")))]
 #[serde(tag = "address", rename_all = "lowercase", try_from = "SayWire")]
 pub enum SayArgs {
     Table { text: String },
@@ -98,15 +108,20 @@ impl TryFrom<SayWire> for SayArgs {
 /// `queue_intent` arguments, sent from the GM's MCP client to the table.
 /// Serialized, a call names only the fields that are set.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct IntentCall {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub round_index: Option<u64>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    // `Option`s so the table can refuse a missing actor or move as `SCHEMA` itself; a
+    // missing field reads as `None` without `default`, and the schema says both are required.
+    #[cfg_attr(feature = "schema", schemars(required))]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub actor_id: Option<String>,
-    #[serde(rename = "move", default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "schema", schemars(required))]
+    #[serde(rename = "move", skip_serializing_if = "Option::is_none")]
     pub move_name: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub target: Option<String>,
