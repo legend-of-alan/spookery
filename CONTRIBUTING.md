@@ -37,10 +37,28 @@ Every issue gets a priority label from `P0` (most urgent) to `P4` (a parked idea
 - **Keep it simple.** The best fix is often deleting code, not adding it. Before you write something new, check whether you can remove, reuse or derive what you need from what's already there. Build only as much as the job needs. In your PR, say how many lines it adds or removes, and if it grows the code, say why.
 - **Say it once.** Each message, rule, check or format should live in one place. If you find the same thing in two places, merge them instead of adding a flag to keep them in sync.
 - **No side doors.** Tests should use the same code path as the real program. If a test needs a shortcut, fix the test or the design.
-- **Use the words people already know.** Good code reads the way people expect, so it needs no tutorial, like WASD in a game. Borrow names from Rust, its standard library and this codebase rather than inventing new ones. Types are nouns and functions are verbs, though a getter can be a noun as in std. Don't repeat the module name inside a name. Use game terms like tick and round only in the sense the [glossary](docs/README.md#glossary) gives them.
-- **Say where a message goes.** A type that carries messages between layers, such as a request, reply, frame, event or queue half, says in its doc comment which layers it connects.
+- **Use the words people already know.** Good code reads the way people expect, so it needs no tutorial, like WASD in a game. Names follow [Naming](#naming) below.
 - **Fix the cause.** When something fails, find out why. Don't paper over it with sleeps, retries or longer timeouts.
 - **Scenario first.** Write the BDD scenario that describes what a player or GM sees, then the code. Scenarios test behavior, not how the code does it, so a refactor shouldn't break them.
+
+## Naming
+
+Default to the [Rust API Guidelines](https://rust-lang.github.io/api-guidelines/checklist.html) (casing, `as_`/`to_`/`into_` conversions, getters, constructors, typed units and the rest), with these exceptions and additions:
+
+1. A newcomer should follow a file top to bottom from its names and types alone.
+2. Types are nouns and functions are verbs. A getter can be a noun. A pair constructor that mirrors `mpsc::channel()`, like `frame_queue()`, can be a noun when its doc comment says so.
+3. Borrow words from Rust, std, the crates we use and this codebase before inventing new ones. If std says `try_lock`, say that.
+4. No vague words. A name says what the thing shows, sends, reads or refuses.
+5. Two names that look alike must do alike jobs.
+6. Use game terms like tick and round only in the sense the [glossary](docs/README.md#glossary) gives them. A tick is game time, and a batch of work is a round.
+7. A type that carries messages between layers, such as a request, reply, frame, event or queue half, says in its doc comment which two layers it connects. Similar names get that comment, not a rename.
+8. Don't repeat the module name inside a name (Clippy's `module_name_repetitions`).
+9. A comment shouldn't have to explain a name. If it does, fix the name.
+10. Names collide only within one namespace, so `tokio::fs` and `std::fs` are fine. When a name exists in two namespaces anywhere in the project, a `use` keeps the path prefix (`fs::read`, never a bare `read`).
+11. Fix a bad name in the code you touch, even if it is older than your change. A rename-only commit changes no logic and updates the docs that mention the name.
+12. Prefer a typed unit such as `Duration`, which carries its own unit. A bare number carries the unit as a suffix, such as `_secs` or `_bytes`.
+
+Items in the guidelines that only matter for a published library, such as stability and future-proofing, don't apply yet.
 
 ## Prove the log
 
