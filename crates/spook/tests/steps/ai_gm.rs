@@ -13,7 +13,7 @@ use serde_json::json;
 use spookery::agent::{parse_completion, CompletionError, CompletionRequest, Model, ModelReply};
 use spookery::ai_gm;
 use spookery::door::GmClient;
-use spookery::http_model::{HttpModel, Settings};
+use spookery::http_model::{HttpModel, Settings, MODEL_CALL_TIMEOUT, RETRY_BACKOFF};
 use spookery::protocol::SayArgs;
 
 use crate::support::{self, copy_docks};
@@ -513,11 +513,6 @@ const SAY_ARGUMENTS: &str =
     r#"{"says":[{"address":"table","text":"STUB-SAY-FIXTURE"}],"intents":[]}"#;
 
 const EMPTY_ACT: &str = r#"{"says":[],"intents":[]}"#;
-
-/// `spook ai-gm`'s limit on one attempt at a model call. A step moves the paused clock by it.
-const MODEL_CALL_TIMEOUT: Duration = Duration::from_secs(60);
-/// `spook ai-gm`'s pause before it retries a model call. A step moves the paused clock by it.
-const RETRY_BACKOFF: Duration = Duration::from_secs(2);
 
 #[when(expr = "a hung model call meets a queued player line")]
 fn a_hung_model_call_meets_a_queued_player_line(world: &mut World) {

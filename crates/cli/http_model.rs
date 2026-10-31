@@ -10,11 +10,11 @@ use spookery_agent::{
 use crate::Error;
 
 /// The longest one attempt at a model call may take, connect to last byte.
-const MODEL_CALL_TIMEOUT: Duration = Duration::from_secs(60);
+pub const MODEL_CALL_TIMEOUT: Duration = Duration::from_secs(60);
 /// The longest the connect may take within one attempt.
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 /// The pause before the one retry of an attempt that failed in a way worth retrying.
-const RETRY_BACKOFF: Duration = Duration::from_secs(2);
+pub const RETRY_BACKOFF: Duration = Duration::from_secs(2);
 
 pub struct Settings {
     key: String,
