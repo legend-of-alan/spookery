@@ -83,7 +83,9 @@ fn the_gm_queues_for_and_commits(world: &mut World, move_name: String, actor: St
 
 #[then(expr = "the GM terminal shows one check line and one dice line for {string}")]
 fn the_gm_terminal_shows_one_check_and_one_dice(world: &mut World, actor: String) {
-    let queued = format!("{} queued:", spookery::gm::actor_name(&actor));
+    // The terminal shows `pc_rowan` as `Pc rowan`.
+    let name = actor.replace('_', " ");
+    let queued = format!("{}{} queued:", name[..1].to_uppercase(), &name[1..]);
     wait_gm(world, "Roll:");
     let stdout = capture_gm_stdout(world);
     let checks = stdout

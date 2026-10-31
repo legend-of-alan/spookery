@@ -168,7 +168,7 @@ async fn dispatch(cli: Cli) -> Result<(), String> {
             let mut model = spookery::http_model::Settings::from_env()
                 .and_then(spookery::http_model::HttpModel::new)
                 .map_err(|err| err.to_string())?;
-            spookery::ai_gm::run(door, &mut model, &spookery::ai_gm::TurnWatch::default())
+            spookery::ai_gm::run(door, &mut model, &mut std::io::stderr())
                 .await
                 .map_err(|err| err.to_string())
         }

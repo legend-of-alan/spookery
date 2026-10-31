@@ -42,7 +42,9 @@ pub struct Host {
     pub in_process: Option<InProcess>,
 }
 
-type Advance = (Duration, tokio::sync::oneshot::Sender<()>);
+/// Sent from a step to a thread whose runtime's clock is paused: how far to move it, and the
+/// reply once it has moved.
+pub type Advance = (Duration, tokio::sync::oneshot::Sender<()>);
 
 /// `serve` on its own thread, on a current-thread runtime whose clock starts
 /// paused. The table's blocking task keeps tokio from auto-advancing, so
@@ -75,7 +77,7 @@ pub fn serve_in_process(world: &mut World, pack: &Path) {
     let (mut out, out_pipe) = std::io::pipe().unwrap_or_else(|err| panic!("pipe: {err}"));
     let (err, err_pipe) = std::io::pipe().unwrap_or_else(|err| panic!("pipe: {err}"));
     let stderr = Arc::new(Mutex::new(String::new()));
-    drop(drain(err, Arc::clone(&stderr)));
+    drop(support::drain(err, Arc::clone(&stderr)));
     let loopback: SocketAddr = "127.0.0.1:0".parse().unwrap();
     let mut config = spookery_server::Config::new(loopback);
     config.door = Some(loopback);
@@ -114,7 +116,7 @@ pub fn serve_in_process(world: &mut World, pack: &Path) {
         }
     };
     let stdout = Arc::new(Mutex::new(seen));
-    drop(drain(out, Arc::clone(&stdout)));
+    drop(support::drain(out, Arc::clone(&stdout)));
     attach_host(world, pack, game, door).in_process = Some(InProcess {
         stdout,
         stderr,
@@ -337,7 +339,7 @@ pub fn spawn_table(pack: &Path, flags: &[&str]) -> Pending {
         .take()
         .unwrap_or_else(|| panic!("stderr was not piped"));
     let stderr = Arc::new(Mutex::new(String::new()));
-    let stderr_drain = drain(stderr_pipe, Arc::clone(&stderr));
+    let stderr_drain = support::drain(stderr_pipe, Arc::clone(&stderr));
     Pending {
         child,
         stdin,
@@ -350,7 +352,7 @@ pub fn spawn_table(pack: &Path, flags: &[&str]) -> Pending {
 pub fn wait_addrs(mut pending: Pending) -> RunningTable {
     let (game, door, seen) = expect_addrs(&mut pending);
     let stdout = Arc::new(Mutex::new(seen));
-    drop(drain(pending.stdout, Arc::clone(&stdout)));
+    drop(support::drain(pending.stdout, Arc::clone(&stdout)));
     RunningTable {
         game,
         door,
@@ -434,22 +436,6 @@ fn find_addrs(buf: &[u8]) -> Option<(SocketAddr, SocketAddr)> {
 fn parse_addrs_line(line: &str) -> Option<(SocketAddr, SocketAddr)> {
     let addrs: protocol::Addrs = serde_json::from_str(line.trim()).ok()?;
     Some((addrs.game.parse().ok()?, addrs.door.parse().ok()?))
-}
-
-fn drain(reader: impl Read + Send + 'static, slot: Arc<Mutex<String>>) -> JoinHandle<()> {
-    std::thread::spawn(move || {
-        let mut reader = reader;
-        let mut buf = [0u8; 256];
-        loop {
-            match reader.read(&mut buf) {
-                Ok(0) | Err(_) => break,
-                Ok(n) => slot
-                    .lock()
-                    .unwrap_or_else(|err| err.into_inner())
-                    .push_str(&String::from_utf8_lossy(&buf[..n])),
-            }
-        }
-    })
 }
 
 pub fn seat_rowan(world: &mut World, pack: &Path) {
@@ -608,7 +594,7 @@ const WAIT: Duration = Duration::from_secs(5);
 
 /// Calls `check` until it returns `Ok`. After `WAIT` it panics with `want` and
 /// the last `Err`, which says what was seen instead.
-fn poll_until<T, Seen: std::fmt::Debug>(
+pub fn poll_until<T, Seen: std::fmt::Debug>(
     want: &str,
     mut check: impl FnMut() -> Result<T, Seen>,
 ) -> T {

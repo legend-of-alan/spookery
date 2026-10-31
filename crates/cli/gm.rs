@@ -10,8 +10,9 @@ use serde_json::json;
 
 use crate::door::{event_line, GmClient, Incoming};
 use crate::protocol::{GmEvent, IntentCall, PlayerFrame, Refusal, SayArgs};
-pub use crate::text::actor_name;
-use crate::text::{self, render_checks, render_dice, render_diff, render_event, render_status};
+use crate::text::{
+    self, actor_name, render_checks, render_dice, render_diff, render_event, render_status,
+};
 use crate::Error;
 
 const HELP: &str = "\

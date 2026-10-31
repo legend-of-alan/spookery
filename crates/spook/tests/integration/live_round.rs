@@ -23,7 +23,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use crate::support::{copy_docks, pack_arg, text_of, Process};
+use crate::support::{copy_docks, drain, pack_arg, text_of, Process};
 
 /// Long enough for one call, one retry, and a slow CPU-only model.
 const ROUND_BOUND: Duration = Duration::from_secs(240);
@@ -148,22 +148,6 @@ fn spawn_ai_gm(addr: &str, key: &str, url: &str, model: &str) -> Process {
         stdout,
         stderr,
     }
-}
-
-fn drain(reader: impl Read + Send + 'static, slot: Arc<Mutex<String>>) {
-    thread::spawn(move || {
-        let mut reader = reader;
-        let mut buf = [0u8; 512];
-        loop {
-            match reader.read(&mut buf) {
-                Ok(0) | Err(_) => break,
-                Ok(n) => slot
-                    .lock()
-                    .unwrap()
-                    .push_str(&String::from_utf8_lossy(&buf[..n])),
-            }
-        }
-    });
 }
 
 /// Forward each POST to `{upstream}/chat/completions` and record the status

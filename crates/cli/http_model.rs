@@ -1,6 +1,5 @@
 //! The HTTP client that calls the model.
 
-use std::future::Future;
 use std::time::Duration;
 
 use spookery_agent::{
@@ -10,62 +9,22 @@ use spookery_agent::{
 
 use crate::Error;
 
+/// The longest one attempt at a model call may take, connect to last byte.
+const MODEL_CALL_TIMEOUT: Duration = Duration::from_secs(60);
+/// The longest the connect may take within one attempt.
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+/// The pause before the one retry of an attempt that failed in a way worth retrying.
+const RETRY_BACKOFF: Duration = Duration::from_secs(2);
+
 pub struct Settings {
     key: String,
     model: String,
     url: String,
 }
 
-/// Fixed bounds for one model call. The default is 60s total, 10s to connect,
-/// and one retry after 2s. Tests pass a shorter total, and a clock, through
-/// `with_limits`.
-pub struct Limits {
-    pub total: Duration,
-    pub connect: Duration,
-    pub backoff: Duration,
-}
-
-/// Time source for one model call's limit and the pause before its retry.
-///
-/// [`WallClock`] sleeps. A test clock's `wait` finishes when the test says the
-/// time has passed, so a hung call can time out without a real delay.
-pub trait Timer: Send + Sync {
-    fn wait(&self, duration: Duration) -> impl Future<Output = ()> + Send;
-
-    /// The attempt's socket has been dropped.
-    ///
-    /// The wall clock returns at once. A test clock can wait until its stub
-    /// has observed the close, which keeps a later commit after that close.
-    fn on_abandon(&self) -> impl Future<Output = ()> + Send {
-        std::future::ready(())
-    }
-}
-
-/// Production clock. `wait` sleeps for the duration.
-#[derive(Clone, Copy, Debug, Default)]
-pub struct WallClock;
-
-impl Timer for WallClock {
-    fn wait(&self, duration: Duration) -> impl Future<Output = ()> + Send {
-        tokio::time::sleep(duration)
-    }
-}
-
-impl Default for Limits {
-    fn default() -> Self {
-        Self {
-            total: Duration::from_secs(60),
-            connect: Duration::from_secs(10),
-            backoff: Duration::from_secs(2),
-        }
-    }
-}
-
-pub struct HttpModel<C> {
-    env: Settings,
+pub struct HttpModel {
+    settings: Settings,
     client: reqwest::Client,
-    limits: Limits,
-    clock: C,
 }
 
 fn env_var(name: &str) -> Result<String, Error> {
@@ -92,29 +51,6 @@ impl Settings {
     }
 }
 
-impl HttpModel<WallClock> {
-    pub fn new(env: Settings) -> Result<Self, Error> {
-        Self::with_limits(env, Limits::default(), WallClock)
-    }
-}
-
-impl<C: Timer> HttpModel<C> {
-    pub fn with_limits(env: Settings, limits: Limits, clock: C) -> Result<Self, Error> {
-        // No reqwest total timeout. That timer is the wall clock. `clock.wait`
-        // is the limit, and dropping the request closes the socket.
-        let client = reqwest::Client::builder()
-            .connect_timeout(limits.connect)
-            .build()
-            .map_err(|err| Error::Message(err.to_string()))?;
-        Ok(Self {
-            env,
-            client,
-            limits,
-            clock,
-        })
-    }
-}
-
 fn kind_of(err: &reqwest::Error) -> FailureKind {
     if err.is_timeout() {
         FailureKind::Timeout
@@ -130,57 +66,71 @@ struct Attempt {
     result: Result<Option<ModelReply>, CompletionError>,
 }
 
-impl<C: Timer> HttpModel<C> {
-    fn fail_transport(&self, err: &reqwest::Error) -> Attempt {
-        let kind = kind_of(err);
-        Attempt {
-            retry: kind.is_retryable(),
-            result: Err(CompletionError::transport(
-                kind,
-                self.limits.total,
-                &err.to_string(),
-            )),
-        }
+fn fail_transport(err: &reqwest::Error) -> Attempt {
+    let kind = kind_of(err);
+    Attempt {
+        retry: kind.is_retryable(),
+        result: Err(CompletionError::transport(
+            kind,
+            MODEL_CALL_TIMEOUT,
+            &err.to_string(),
+        )),
     }
+}
 
-    fn time_out(&self) -> Attempt {
-        Attempt {
-            retry: true,
-            result: Err(CompletionError::transport(
-                FailureKind::Timeout,
-                self.limits.total,
-                "",
-            )),
-        }
+fn time_out() -> Attempt {
+    Attempt {
+        retry: true,
+        result: Err(CompletionError::transport(
+            FailureKind::Timeout,
+            MODEL_CALL_TIMEOUT,
+            "",
+        )),
+    }
+}
+
+impl HttpModel {
+    pub fn new(settings: Settings) -> Result<Self, Error> {
+        // No reqwest total timeout: `attempt` holds the limit, and dropping
+        // the request closes the socket.
+        let client = reqwest::Client::builder()
+            .connect_timeout(CONNECT_TIMEOUT)
+            .build()
+            .map_err(|err| Error::Message(err.to_string()))?;
+        Ok(Self { settings, client })
     }
 
     async fn post_completion(&self, request: &CompletionRequest) -> Attempt {
-        let body = chat_body(&self.env.model, &request.prompt, request.says_only);
-        let url = format!("{}/chat/completions", self.env.url);
+        let body = chat_body(&self.settings.model, &request.prompt, request.says_only);
+        let url = format!("{}/chat/completions", self.settings.url);
         let response = match self
             .client
             .post(url)
-            .bearer_auth(&self.env.key)
+            .bearer_auth(&self.settings.key)
             .json(&body)
             .send()
             .await
         {
             Ok(response) => response,
-            Err(err) => return self.fail_transport(&err),
+            Err(err) => return fail_transport(&err),
         };
         let status = response.status();
         if !status.is_success() {
             let kind = FailureKind::Status(status.as_u16());
             let body = response.text().await.unwrap_or_default();
-            let detail = provider_detail(&body, &self.env.key);
+            let detail = provider_detail(&body, &self.settings.key);
             return Attempt {
                 retry: kind.is_retryable(),
-                result: Err(CompletionError::transport(kind, self.limits.total, &detail)),
+                result: Err(CompletionError::transport(
+                    kind,
+                    MODEL_CALL_TIMEOUT,
+                    &detail,
+                )),
             };
         }
         let text = match response.text().await {
             Ok(text) => text,
-            Err(err) => return self.fail_transport(&err),
+            Err(err) => return fail_transport(&err),
         };
         Attempt {
             retry: false,
@@ -189,25 +139,15 @@ impl<C: Timer> HttpModel<C> {
     }
 
     async fn attempt(&self, request: &CompletionRequest) -> Attempt {
-        // The block owns the request. Leaving it drops the socket before
-        // `on_abandon`, so a test clock can see the close before this returns.
-        {
-            let attempt = self.post_completion(request);
-            tokio::pin!(attempt);
-            let limit = self.clock.wait(self.limits.total);
-            tokio::pin!(limit);
-            tokio::select! {
-                biased;
-                result = &mut attempt => return result,
-                _ = &mut limit => {}
-            }
+        // A timed-out attempt is dropped before this returns, which closes its socket.
+        match tokio::time::timeout(MODEL_CALL_TIMEOUT, self.post_completion(request)).await {
+            Ok(attempt) => attempt,
+            Err(_) => time_out(),
         }
-        self.clock.on_abandon().await;
-        self.time_out()
     }
 }
 
-impl<C: Timer> Model for HttpModel<C> {
+impl Model for HttpModel {
     async fn complete(
         &mut self,
         request: &CompletionRequest,
@@ -216,7 +156,7 @@ impl<C: Timer> Model for HttpModel<C> {
         if !first.retry {
             return first.result;
         }
-        self.clock.wait(self.limits.backoff).await;
+        tokio::time::sleep(RETRY_BACKOFF).await;
         self.attempt(request).await.result
     }
 }

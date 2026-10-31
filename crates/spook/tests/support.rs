@@ -2,6 +2,7 @@ use std::io::Read;
 use std::path::Path;
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::{Arc, Mutex};
+use std::thread::JoinHandle;
 
 pub use spookery_engine::testing::*;
 
@@ -63,7 +64,8 @@ pub fn spawn(args: &[&str]) -> Process {
     }
 }
 
-fn drain(reader: impl Read + Send + 'static, slot: Arc<Mutex<String>>) {
+/// Copies everything `reader` yields into `slot` on its own thread, until EOF.
+pub fn drain(reader: impl Read + Send + 'static, slot: Arc<Mutex<String>>) -> JoinHandle<()> {
     std::thread::spawn(move || {
         let mut reader = reader;
         let mut buf = [0u8; 256];
@@ -72,11 +74,11 @@ fn drain(reader: impl Read + Send + 'static, slot: Arc<Mutex<String>>) {
                 Ok(0) | Err(_) => break,
                 Ok(n) => slot
                     .lock()
-                    .unwrap()
+                    .unwrap_or_else(|err| err.into_inner())
                     .push_str(&String::from_utf8_lossy(&buf[..n])),
             }
         }
-    });
+    })
 }
 
 pub fn text_of(slot: &Arc<Mutex<String>>) -> String {
