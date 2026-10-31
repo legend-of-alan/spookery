@@ -1,10 +1,7 @@
 Feature: A queued wait survives the seat
 
-  Scenario: A wake does not drain a queued wait when the seat drops
-    When a queued wait meets a wake and the seat drops
-
-  Scenario: Sitting again keeps the same queued wait
-    When the player drops and sits again with a queued wait
+  Scenario: A queued wait outlasts wakes while the player drops and sits again
+    When a queued wait meets wakes while the player drops and sits again
 
   Scenario: An early wake after a commit does not play a round
     When a committed wait wakes early

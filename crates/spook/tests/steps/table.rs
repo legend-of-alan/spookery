@@ -789,7 +789,7 @@ fn call_table_status(world: &mut World) -> Value {
     value["result"]["structuredContent"].clone()
 }
 
-pub fn wait_players(world: &mut World, _pack: &Path, expected: u32) {
+pub fn wait_players(world: &mut World, expected: u32) {
     wait_presence(world, &format!("players {expected}"), |players, _| {
         players == expected
     });

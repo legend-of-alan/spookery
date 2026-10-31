@@ -65,9 +65,9 @@ fn two_players_play_a_round(world: &mut World) {
     let _ = table::actor_send(world, "pc_rowan", "wait", "\"kind\":");
     let _ = table::gm_call(world, 7, "commit_round", r#"{"include_round":true}"#);
     table::close_actor(world, "pc_harbormouse");
-    table::wait_players(world, &pack, 1);
+    table::wait_players(world, 1);
     table::close_actor(world, "pc_rowan");
-    table::wait_players(world, &pack, 0);
+    table::wait_players(world, 0);
     table::stop_host(world);
 }
 
@@ -76,12 +76,12 @@ fn a_seated_players_host_is_killed_and_restarted(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
     table::listen(world, &pack);
     table::seat_actor(world, &pack, "pc_rowan");
-    table::wait_players(world, &pack, 1);
+    table::wait_players(world, 1);
     // A hard kill, so the restart has a crashed presence to repair.
     table::live_mut(world).host.take();
     table::stop_host(world);
     table::listen(world, &pack);
-    table::wait_players(world, &pack, 0);
+    table::wait_players(world, 0);
     table::stop_host(world);
 }
 

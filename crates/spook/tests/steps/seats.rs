@@ -107,8 +107,7 @@ fn a_player_sits(world: &mut World) {
 #[when(expr = "the player leaves")]
 fn the_player_leaves(world: &mut World) {
     table::close_actor(world, "pc_rowan");
-    let pack = table::pack(world).to_path_buf();
-    table::wait_players(world, &pack, 0);
+    table::wait_players(world, 0);
 }
 
 #[when(expr = "the host restarts")]
@@ -224,8 +223,7 @@ fn a_docks_table_with_three_seated_players(world: &mut World) {
 #[when(expr = "the first player drops")]
 fn the_first_player_drops(world: &mut World) {
     table::close_actor(world, "pc_rowan");
-    let pack = table::pack(world).to_path_buf();
-    table::wait_players(world, &pack, 2);
+    table::wait_players(world, 2);
 }
 
 #[then(expr = "the present actors are pc_harbormouse and pc_wren")]
