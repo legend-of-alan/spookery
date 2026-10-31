@@ -15,6 +15,7 @@ pub fn parse_args<T: DeserializeOwned>(
 
 /// `table_status` arguments, sent from the GM's MCP client to the table.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct StatusArgs {
     #[serde(default)]
@@ -23,6 +24,7 @@ pub struct StatusArgs {
 
 /// `perceive` arguments, sent from the GM's MCP client to the table.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct PerceiveArgs {
     #[serde(rename = "as", default)]
@@ -33,6 +35,7 @@ pub struct PerceiveArgs {
 
 /// `commit_round` arguments, sent from the GM's MCP client to the table.
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct CommitArgs {
     pub include_round: bool,
@@ -42,6 +45,7 @@ pub struct CommitArgs {
 
 /// `close` arguments, sent from the GM's MCP client to the table. No key is accepted.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct CloseArgs {}
 
@@ -59,6 +63,9 @@ struct SayWire {
 
 /// `say` arguments, sent from the GM's MCP client to the table.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+// The schema shows the tagged shape, not `SayWire`, and MCP wants an object at its root.
+#[cfg_attr(feature = "schema", schemars(!try_from, extend("type" = "object")))]
 #[serde(tag = "address", rename_all = "lowercase", try_from = "SayWire")]
 pub enum SayArgs {
     Table { text: String },
@@ -98,6 +105,7 @@ impl TryFrom<SayWire> for SayArgs {
 /// `queue_intent` arguments, sent from the GM's MCP client to the table.
 /// Serialized, a call names only the fields that are set.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct IntentCall {
     #[serde(default, skip_serializing_if = "Option::is_none")]

@@ -226,7 +226,7 @@ impl ServerHandler for Handler {
     ) -> impl std::future::Future<Output = Result<ListToolsResult, McpError>> + Send + '_ {
         let tools = tools::TOOLS
             .iter()
-            .map(|tool| Tool::new(tool.name, tool.description(), Arc::new((tool.schema)())))
+            .map(|tool| Tool::new(tool.name, tool.description(), (tool.schema)()))
             .collect();
         std::future::ready(Ok(ListToolsResult::with_all_items(tools)))
     }
