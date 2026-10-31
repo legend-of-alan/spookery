@@ -3,12 +3,12 @@
 use serde::{Deserialize, Serialize};
 
 use crate::draft::Draft;
-use crate::error::Reason;
 use crate::intent::{Intent, Viewer};
 use crate::key::{StateKey, StateValue};
 use crate::meter::{self, MeterWrite};
 use crate::model::{self, MemoryLine, Note, PlaceLive};
 use crate::visibility::can_see_fact;
+use crate::Reason;
 
 /// One effect. JSON is `kind`, `as`, `intent_id`, then the fields of `kind`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

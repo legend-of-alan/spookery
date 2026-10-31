@@ -6,8 +6,9 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
-use crate::error::Reason;
 use crate::store::durability::{fsync_dir, write_atomic};
+use crate::Reason;
+use spookery_protocol::Speaker;
 
 /// Size bound for `state/tape.jsonl`. An append that would pass it first drops the oldest half.
 pub const MAX_BYTES: u64 = 1024 * 1024;
@@ -17,11 +18,12 @@ const MAX_LIMIT: usize = 256;
 
 /// Written by the engine to the tape and handed to the host table, which relays it to players and the GM.
 /// One tape line. Field order is the order of the bytes on disk.
-/// `place` and `actor` may be null. A missing key is not a record.
+/// `from` is stored as the `Speaker`'s text. `place` and `actor` may be null. A missing key
+/// is not a record.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TapeRecord {
     pub seq: u64,
-    pub from: String,
+    pub from: Speaker,
     pub address: String,
     #[serde(deserialize_with = "Option::deserialize")]
     pub place: Option<String>,
@@ -225,7 +227,7 @@ mod tests {
         let root = fresh_dir("tape-bytes");
         let stored = append_record(&root, |seq| TapeRecord {
             seq,
-            from: "gm".to_string(),
+            from: Speaker::Gm,
             address: "actor".to_string(),
             place: None,
             actor: Some("pc_rowan".to_string()),
@@ -316,7 +318,7 @@ mod tests {
     fn sample(seq: u64, player: &str, text: &str) -> TapeRecord {
         TapeRecord {
             seq,
-            from: "gm".to_string(),
+            from: Speaker::Gm,
             address: "actor".to_string(),
             place: None,
             actor: Some(player.to_string()),

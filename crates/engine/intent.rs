@@ -4,8 +4,8 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
-use crate::error::Reason;
 use crate::rule::TargetKind;
+use crate::Reason;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(try_from = "String", into = "String")]

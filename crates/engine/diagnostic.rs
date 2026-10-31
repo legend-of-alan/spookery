@@ -8,7 +8,7 @@ use std::fmt;
 use serde::{Serialize, Serializer};
 use serde_saphyr::Error as YamlError;
 
-use crate::error::Reason;
+use crate::Reason;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Code {

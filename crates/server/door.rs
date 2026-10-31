@@ -300,7 +300,7 @@ impl Handler {
                 ));
                 Ok(())
             }
-            Err(refusal) => Err(refusal.mcp_error()),
+            Err(refusal) => Err(super::frames::mcp_error(&refusal)),
         }
     }
 }

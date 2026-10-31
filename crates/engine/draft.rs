@@ -7,9 +7,9 @@ use std::sync::Arc;
 
 use crate::canon::Canon;
 use crate::canon::{Budget, PausePolicy};
-use crate::error::Reason;
 use crate::key::{Change, StateKey, StateValue};
 use crate::model::{MemoryLine, Presence, RunState, State};
+use crate::Reason;
 
 pub(crate) struct Draft<'p> {
     canon: Arc<Canon>,

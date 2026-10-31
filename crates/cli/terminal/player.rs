@@ -6,7 +6,7 @@ use std::net::SocketAddr;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::TcpStream;
 
-use crate::protocol::{Missing, PlayerFrame};
+use crate::protocol::{self, Detail, PlayerFrame, Reason, Refusal};
 
 use super::frame_text;
 use super::Error;
@@ -27,12 +27,12 @@ pub async fn run_player(as_player: Option<&str>, addr: SocketAddr, raw: bool) ->
                 return Err(Error::Message("NOT_IN_SPEC".into()));
             };
             match crate::protocol::PlayerFrame::from_line(&line) {
-                Ok(PlayerFrame::Refused {
-                    code,
-                    detail: missing,
-                }) if code == "CHOOSE_PC" => {
-                    let pcs = match missing {
-                        Some(Missing::Many(pcs)) => pcs,
+                Ok(PlayerFrame::Refused(Refusal {
+                    code: protocol::Code::Known(Reason::ChoosePc),
+                    detail,
+                })) => {
+                    let pcs = match detail {
+                        Some(Detail::Many(pcs)) => pcs,
                         _ => Vec::new(),
                     };
                     match pcs.as_slice() {
@@ -108,9 +108,7 @@ async fn dial(addr: SocketAddr, hello: &[u8]) -> Result<TcpStream, Error> {
 fn parse_player_id(token: &str) -> Result<String, Error> {
     let token = token.trim();
     let id = token.strip_prefix("player:").unwrap_or(token);
-    crate::protocol::parse_hello(&format!("player:{id}"))
-        .map(str::to_string)
-        .ok_or(Error::Message("SCHEMA".into()))
+    crate::protocol::parse_hello(&format!("player:{id}")).ok_or(Error::Message("SCHEMA".into()))
 }
 
 enum FrameFlow {
@@ -148,10 +146,10 @@ fn show_readable(formatter: &mut frame_text::PlayerFormatter, line: &str) -> Fra
     };
     let shown = formatter.format(&message);
     let effect = match message {
-        PlayerFrame::Refused { .. } => return FrameFlow::Refused(shown),
-        PlayerFrame::View { .. } => FrameFlow::View,
+        PlayerFrame::Refused(_) => return FrameFlow::Refused(shown),
+        PlayerFrame::View(_) => FrameFlow::View,
         PlayerFrame::Say { .. }
-        | PlayerFrame::Queued { .. }
+        | PlayerFrame::Queued(_)
         | PlayerFrame::Check { .. }
         | PlayerFrame::Resume { .. }
         | PlayerFrame::Lines { .. } => FrameFlow::Continue,
@@ -165,7 +163,7 @@ fn show_readable(formatter: &mut frame_text::PlayerFormatter, line: &str) -> Fra
 
 fn refused_code(line: &str) -> Option<String> {
     match crate::protocol::PlayerFrame::from_line(line) {
-        Ok(PlayerFrame::Refused { code, .. }) => Some(code),
+        Ok(PlayerFrame::Refused(refusal)) => Some(refusal.code.as_str().to_string()),
         _ => None,
     }
 }
@@ -173,7 +171,7 @@ fn refused_code(line: &str) -> Option<String> {
 fn is_view(line: &str) -> bool {
     matches!(
         crate::protocol::PlayerFrame::from_line(line),
-        Ok(PlayerFrame::View { .. })
+        Ok(PlayerFrame::View(_))
     )
 }
 

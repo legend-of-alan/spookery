@@ -4,12 +4,12 @@ use std::collections::BTreeSet;
 use std::fs::{self, OpenOptions};
 use std::path::{Path, PathBuf};
 
-use crate::error::Reason;
 use crate::journal::{self, Record};
 use crate::model::MemoryLine;
 use crate::store::codec::emit_memory_line;
 use crate::store::durability::{fsync_dir, fsync_file, rename, tmp_path, write_atomic};
 use crate::store::lock::WriteGuard;
+use crate::Reason;
 
 /// Run by `lock_pack` before the writer reads a pack that a crash may have left mid-commit.
 pub fn recover(root: &Path, write: &WriteGuard) -> Result<(), Reason> {

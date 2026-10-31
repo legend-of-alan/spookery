@@ -2,13 +2,13 @@
 
 use crate::canon::Canon;
 use crate::draft::Draft;
-use crate::error::Reason;
 use crate::intent::Intent;
 use crate::key::{StateKey, StateValue};
 use crate::meter::{self, MeterWrite};
 use crate::model::{self, Presence, State};
 use crate::rule::Cost;
 use crate::rules::expr::{self, Ctx, Dice};
+use crate::Reason;
 
 /// What the actor cannot pay. The token is `CANT_AFFORD`; `missing` names the shortfall.
 #[derive(Clone, Debug, PartialEq, Eq)]

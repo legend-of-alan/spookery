@@ -1,11 +1,11 @@
 //! Dice and arithmetic inside a rule number.
 
 use crate::canon::Canon;
-use crate::error::Reason;
 use crate::intent::{Intent, Target};
 use crate::model::{Presence, State};
 use crate::rule::{LineColumn, Who};
 use crate::rules::roll::Outcome;
+use crate::Reason;
 
 pub struct Ctx<'a> {
     pub intent: &'a Intent,
@@ -652,11 +652,11 @@ mod tests {
 
     use super::{eval_with_dice, BinOp, Ctx, Dice, Expr, Func, Keep};
     use crate::canon::Canon;
-    use crate::error::Reason;
     use crate::intent::{Intent, IntentArgs, Source, Target, Viewer};
     use crate::meter::{MeterDef, MeterLive};
     use crate::model::{Act, ActorLive, Presence, State};
     use crate::rule::Who;
+    use crate::Reason;
 
     static EMPTY: Presence = Presence {
         players: 0,

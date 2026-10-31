@@ -9,7 +9,6 @@ use crate::canon::Budget;
 use crate::canon::{check_save, load_canon, pack_rev, Canon};
 use crate::diagnostic::{error, first_reason, locate_nth, schema_error, Code, Diagnostic};
 use crate::effect::{payload_json, Effect};
-use crate::error::Reason;
 use crate::intent::{player_intent_id, Intent, IntentArgs, Source, Target, Viewer};
 use crate::journal::{self, Record};
 use crate::model::{ActorLive, Presence, State};
@@ -17,7 +16,9 @@ use crate::rule::{TargetKind, When};
 use crate::rules::gate::{gate, verb_for, GateRefusal};
 use crate::store::codec::{emit_save, parse_save};
 use crate::store::tape::{append_record, last_seq, read_after, read_tail, TapeRecord};
+use crate::Reason;
 use crate::{IntentCall, QueuedMove};
+use spookery_protocol::Speaker;
 
 use crate::draft::Draft;
 
@@ -109,8 +110,8 @@ impl World {
         {
             return Err(Reason::Schema);
         }
-        let from = format!("player:{actor_id}");
-        self.append_speech(presence, &from, Some(actor_id), heard, text)
+        let from = Speaker::Player(actor_id.to_string());
+        self.append_speech(presence, from, Some(actor_id), heard, text)
     }
 
     pub fn say_as_gm(
@@ -119,13 +120,13 @@ impl World {
         heard: Address<'_>,
         text: &str,
     ) -> Result<TapeRecord, Reason> {
-        self.append_speech(presence, "gm", None, heard, text)
+        self.append_speech(presence, Speaker::Gm, None, heard, text)
     }
 
     fn append_speech(
         &self,
         presence: &Presence,
-        from: &str,
+        from: Speaker,
         speaker: Option<&str>,
         heard: Address<'_>,
         text: &str,
@@ -146,7 +147,7 @@ impl World {
         let world_time = self.state.world_time;
         append_record(&self.root, |seq| TapeRecord {
             seq,
-            from: from.to_string(),
+            from,
             address: address.to_string(),
             place,
             actor,
