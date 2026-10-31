@@ -9,7 +9,7 @@ use spookery_engine::{Address, Presence, Reason, RoundOutput, TapeRecord, World}
 use super::frames;
 use super::table::commit_then_fast_forward;
 use crate::protocol::{
-    parse_args, CloseArgs, CloseReply, CommitArgs, IntentCall, PerceiveArgs, Queued, SayArgs,
+    parse_args, CloseArgs, CloseBody, CommitArgs, IntentCall, PerceiveArgs, Queued, SayArgs,
     StatusArgs, PERCEIVE_BODY_CHARS,
 };
 
@@ -141,7 +141,7 @@ fn close(
     parse_args::<CloseArgs>(arguments.as_ref()).map_err(|_| Reason::Schema)?;
     Ok(Reply {
         release_seat: true,
-        ..Reply::new(serde_json::to_value(CloseReply { released: true }).expect("close"))
+        ..Reply::new(serde_json::to_value(CloseBody { released: true }).expect("close"))
     })
 }
 

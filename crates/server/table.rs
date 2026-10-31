@@ -14,7 +14,7 @@ use super::idle::{self, now_stamp};
 use super::seat::{Conn, FrameSender, GmSeat, PlayerSeat, Seats};
 use super::tools::call_gm_tool;
 use super::Error;
-use crate::protocol::{Refusal, Speaker};
+use crate::protocol::{self, Detail, Refusal, Speaker};
 
 /// The host's cap. A pack may define more PCs than this.
 const MAX_PLAYER_SEATS: usize = 3;
@@ -169,7 +169,10 @@ impl Table {
         }
         let Some(id) = named else {
             let free = self.world.free_pcs(&self.seats.presence());
-            return HelloReply::Refused(frames::choose_pc(free));
+            return HelloReply::Refused(Refusal {
+                code: protocol::Code::Known(Reason::ChoosePc),
+                detail: Some(Detail::Many(free)),
+            });
         };
         if self
             .seats
@@ -495,7 +498,6 @@ enum PlayerCommand<'w, 'l> {
     Move(&'l str, Option<&'l str>),
 }
 
-/// `close` is matched on the raw line, so `player:<id> close` is a move.
 fn parse_command<'w, 'l: 'w>(
     world: &'w World,
     seated: &str,
@@ -504,7 +506,7 @@ fn parse_command<'w, 'l: 'w>(
     if split_token(line) == ("close", "") {
         return Ok(PlayerCommand::Close);
     }
-    let (verb, rest) = split_verb(line, seated)?;
+    let (verb, rest) = split_token(line);
     if verb.is_empty() {
         return Err(Reason::Schema.into());
     }
@@ -542,20 +544,6 @@ fn parse_command<'w, 'l: 'w>(
         return Err(Reason::Schema.into());
     }
     Ok(PlayerCommand::Move(verb, Some(target)))
-}
-
-fn split_verb<'a>(line: &'a str, seated: &str) -> Result<(&'a str, &'a str), Reason> {
-    if line.is_empty() {
-        return Err(Reason::Schema);
-    }
-    let (first, rest) = split_token(line);
-    if let Some(id) = first.strip_prefix("player:") {
-        if id.is_empty() || id != seated || rest.is_empty() {
-            return Err(Reason::Schema);
-        }
-        return Ok(split_token(rest));
-    }
-    Ok((first, rest))
 }
 
 fn split_token(line: &str) -> (&str, &str) {

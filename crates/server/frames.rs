@@ -36,17 +36,9 @@ pub(super) fn mcp_error(refusal: &Refusal) -> McpError {
     McpError::internal_error(refusal.to_string(), None)
 }
 
-/// `CHOOSE_PC` names the free PCs.
-pub(super) fn choose_pc(free: Vec<String>) -> Refusal {
-    Refusal {
-        code: protocol::Code::Known(Reason::ChoosePc),
-        detail: Some(Detail::Many(free)),
-    }
-}
-
 pub(super) fn say_line(tape: &TapeRecord, replay: bool) -> String {
     PlayerFrame::Say {
-        from: tape.from.parse().expect("the tape reader checks from"),
+        from: tape.from.clone(),
         address: tape.address.clone(),
         text: tape.text.clone(),
         replay,
@@ -65,7 +57,7 @@ pub(super) fn say_event(tape: &TapeRecord) -> Vec<u8> {
 fn gm_say(tape: &TapeRecord) -> SayEvent {
     SayEvent {
         seq: tape.seq,
-        from: tape.from.parse().expect("the tape reader checks from"),
+        from: tape.from.clone(),
         address: tape.address.clone(),
         place: tape.place.clone(),
         actor: tape.actor.clone(),

@@ -110,8 +110,8 @@ impl World {
         {
             return Err(Reason::Schema);
         }
-        let from = Speaker::Player(actor_id.to_string()).to_string();
-        self.append_speech(presence, &from, Some(actor_id), heard, text)
+        let from = Speaker::Player(actor_id.to_string());
+        self.append_speech(presence, from, Some(actor_id), heard, text)
     }
 
     pub fn say_as_gm(
@@ -120,13 +120,13 @@ impl World {
         heard: Address<'_>,
         text: &str,
     ) -> Result<TapeRecord, Reason> {
-        self.append_speech(presence, &Speaker::Gm.to_string(), None, heard, text)
+        self.append_speech(presence, Speaker::Gm, None, heard, text)
     }
 
     fn append_speech(
         &self,
         presence: &Presence,
-        from: &str,
+        from: Speaker,
         speaker: Option<&str>,
         heard: Address<'_>,
         text: &str,
@@ -147,7 +147,7 @@ impl World {
         let world_time = self.state.world_time;
         append_record(&self.root, |seq| TapeRecord {
             seq,
-            from: from.to_string(),
+            from,
             address: address.to_string(),
             place,
             actor,

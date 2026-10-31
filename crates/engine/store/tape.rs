@@ -18,11 +18,12 @@ const MAX_LIMIT: usize = 256;
 
 /// Written by the engine to the tape and handed to the host table, which relays it to players and the GM.
 /// One tape line. Field order is the order of the bytes on disk.
-/// `from` is a `Speaker`'s text. `place` and `actor` may be null. A missing key is not a record.
+/// `from` is stored as the `Speaker`'s text. `place` and `actor` may be null. A missing key
+/// is not a record.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TapeRecord {
     pub seq: u64,
-    pub from: String,
+    pub from: Speaker,
     pub address: String,
     #[serde(deserialize_with = "Option::deserialize")]
     pub place: Option<String>,
@@ -163,11 +164,8 @@ pub fn last_seq(root: &Path) -> Result<u64, Reason> {
         .unwrap_or(0))
 }
 
-/// A line whose `from` is not a `Speaker` does not parse either.
 fn parse_record(line: &str) -> Result<TapeRecord, Reason> {
-    let record: TapeRecord = serde_json::from_str(line).map_err(|_| Reason::Schema)?;
-    record.from.parse::<Speaker>()?;
-    Ok(record)
+    serde_json::from_str(line).map_err(|_| Reason::Schema)
 }
 
 /// `(kept_end, last_seq)` from the file tail. A torn suffix is not a record.
@@ -229,7 +227,7 @@ mod tests {
         let root = fresh_dir("tape-bytes");
         let stored = append_record(&root, |seq| TapeRecord {
             seq,
-            from: "gm".to_string(),
+            from: Speaker::Gm,
             address: "actor".to_string(),
             place: None,
             actor: Some("pc_rowan".to_string()),
@@ -320,7 +318,7 @@ mod tests {
     fn sample(seq: u64, player: &str, text: &str) -> TapeRecord {
         TapeRecord {
             seq,
-            from: "gm".to_string(),
+            from: Speaker::Gm,
             address: "actor".to_string(),
             place: None,
             actor: Some(player.to_string()),

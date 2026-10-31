@@ -386,7 +386,10 @@ fn bracket_refusal(text: &str) -> Option<Refusal> {
     if code.is_empty() || code.contains([' ', '[']) {
         return None;
     }
-    serde_json::from_value(serde_json::json!({ "code": code })).ok()
+    Some(Refusal {
+        code: code.to_string().into(),
+        detail: None,
+    })
 }
 
 /// Read one `spook/event` notification. A body that is not a say, a queued
