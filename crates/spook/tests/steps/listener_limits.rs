@@ -45,7 +45,7 @@ fn a_player_sends_a_mebibyte_line(world: &mut World) {
         .unwrap_or_else(|err| panic!("clone: {err}"));
     let join = std::thread::spawn(move || write_all_ignoring(writer, vec![b'a'; MIB]));
     world.player_added = wait_text(&text, "\"code\":\"LINE_TOO_LONG\"", Duration::from_secs(8));
-    table::wait_players(world, &pack, 0);
+    table::wait_players(world, 0);
     join.join().unwrap_or_else(|_| panic!("writer thread"));
 }
 
@@ -256,12 +256,12 @@ fn a_socket_connects_and_sends_nothing(world: &mut World) {
         }
         Err(_) => true,
     };
-    world.scratch = format!("closed={closed}");
+    world.hello_closed = closed;
 }
 
 #[then(expr = "the socket is closed before the hello")]
 fn the_socket_is_closed_before_the_hello(world: &mut World) {
-    assert_eq!(world.scratch, "closed=true");
+    assert!(world.hello_closed);
 }
 
 #[when(expr = "one player sends 200 lines as fast as it can")]
@@ -315,34 +315,30 @@ fn one_player_sends_200_lines(world: &mut World) {
     let _ = table::wait_round_count(&pack, before + paced + 1);
     let _ = table::read_presence(world);
     table::release_probe_gm(world);
-    let refilled = list_round_keys(&pack).len() - before;
-    world.scratch = format!("{paced} {refilled} {other_at}");
+    world.flood_paced = paced;
+    world.flood_refilled = list_round_keys(&pack).len() - before;
+    world.flood_other_at = other_at;
 }
 
 #[then(expr = "the committed rounds stay within the rate allowance")]
 fn rounds_stay_within_the_allowance(world: &mut World) {
-    let rounds: Vec<usize> = world
-        .scratch
-        .split_whitespace()
-        .map(|part| part.parse().unwrap_or_else(|_| panic!("{}", world.scratch)))
-        .collect();
     // The burst and the other player's line, then one line per refill. The
     // round after the refill is a line past the burst that was kept.
-    assert_eq!(rounds[..2], [BURST + 1, BURST + 2], "{}", world.scratch);
+    assert_eq!(
+        [world.flood_paced, world.flood_refilled],
+        [BURST + 1, BURST + 2]
+    );
 }
 
 #[then(expr = "the other player's line commits before the flood's burst is spent")]
 fn the_other_player_commits_inside_the_burst(world: &mut World) {
-    let other_at: usize = world
-        .scratch
-        .split_whitespace()
-        .nth(2)
-        .unwrap_or("99999")
-        .parse()
-        .unwrap_or(99999);
     // Each session sends one line at a time, so the other line waits behind at
     // most the flood's burst and commits before any refill.
-    assert!(other_at <= BURST + 1, "{}", world.scratch);
+    assert!(
+        world.flood_other_at <= BURST + 1,
+        "{}",
+        world.flood_other_at
+    );
 }
 
 #[when(expr = "one player stops reading and the GM says many lines")]
