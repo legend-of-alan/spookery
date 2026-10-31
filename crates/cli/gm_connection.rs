@@ -203,7 +203,7 @@ impl GmClient {
         }
         T::deserialize(&body)
             .map(Ok)
-            .map_err(|_| Error::Unreadable(body.to_string()))
+            .map_err(|_| Error::Unreadable(body))
     }
 
     /// Events read while waiting for the latest tool result, in arrival order.
@@ -358,7 +358,7 @@ fn read_event(params: Option<Value>) -> Incoming {
 }
 
 /// One `spook/event` notification as its JSON-RPC line.
-pub(crate) fn event_line(params: &impl Serialize) -> String {
+pub fn event_line(params: &impl Serialize) -> String {
     serde_json::json!({
         "jsonrpc": "2.0",
         "method": "spook/event",

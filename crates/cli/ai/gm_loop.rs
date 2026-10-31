@@ -8,7 +8,6 @@ use spookery_agent::{Agent, Input, Model, Step};
 
 use crate::ai::{report_error, Error};
 use crate::gm_connection::{GmClient, Incoming};
-use crate::protocol;
 
 #[derive(Default)]
 pub struct TurnWatch {
@@ -19,14 +18,10 @@ pub struct TurnWatch {
 }
 
 pub async fn run_gm<M: Model>(
-    addr: SocketAddr,
-    door: Option<SocketAddr>,
+    door: SocketAddr,
     model: &mut M,
     watch: &TurnWatch,
 ) -> Result<(), Error> {
-    let door = door
-        .or_else(|| protocol::default_door(addr))
-        .ok_or_else(|| report_error(addr.to_string()))?;
     let mut client = GmClient::connect(door)
         .await
         .map_err(|err| report_error(err.to_string()))?;

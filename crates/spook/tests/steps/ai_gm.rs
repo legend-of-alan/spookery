@@ -398,12 +398,11 @@ fn start_ai_gm(
     let watch = Arc::new(TurnWatch::default());
     let watch_bg = Arc::clone(&watch);
     let model_bg = model.clone();
-    let addr = table::game_addr(world).parse().unwrap();
     let door = table::door_addr(world).parse().unwrap();
     let runtime = tokio::runtime::Handle::current();
     let handle = thread::spawn(move || {
         let mut model = model_bg;
-        runtime.block_on(run_gm(addr, Some(door), &mut model, &watch_bg))
+        runtime.block_on(run_gm(door, &mut model, &watch_bg))
     });
     wait_listening(&watch);
     (handle, watch)
@@ -729,12 +728,11 @@ where
 {
     let watch = Arc::new(TurnWatch::default());
     let watch_bg = Arc::clone(&watch);
-    let addr = table::game_addr(world).parse().unwrap();
     let door = table::door_addr(world).parse().unwrap();
     let runtime = tokio::runtime::Handle::current();
     let handle = thread::spawn(move || {
         let mut model = http_model(stub, total, backoff, clock);
-        runtime.block_on(run_gm(addr, Some(door), &mut model, &watch_bg))
+        runtime.block_on(run_gm(door, &mut model, &watch_bg))
     });
     (handle, watch)
 }

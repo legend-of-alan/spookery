@@ -8,8 +8,8 @@ use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
 use serde_json::Value;
-use spookery::gm_connection::{GmClient, Incoming};
-use spookery::protocol::{self, GmEvent};
+use spookery::gm_connection::{event_line, GmClient, Incoming};
+use spookery::protocol;
 use spookery_engine::testing::journal::list_round_keys;
 use spookery_engine::State;
 
@@ -574,11 +574,6 @@ fn send_tool_call(
     .to_string();
     push_line(gm_text, &raw);
     raw
-}
-
-/// The `spook/event` notification line the GM text keeps for one event.
-fn event_line(event: &GmEvent) -> String {
-    serde_json::json!({ "jsonrpc": "2.0", "method": "spook/event", "params": event }).to_string()
 }
 
 pub fn wait_gm(world: &mut World, needle: &str) -> String {

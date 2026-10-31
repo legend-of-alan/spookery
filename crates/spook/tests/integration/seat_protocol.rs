@@ -13,7 +13,7 @@ use std::time::Duration;
 
 use rmcp::model::ProtocolVersion;
 use serde_json::Value;
-use spookery::gm_connection::{GmClient, Incoming};
+use spookery::gm_connection::{event_line, GmClient, Incoming};
 use spookery::protocol::Addrs;
 
 use crate::support;
@@ -584,7 +584,8 @@ fn one_event(gm: &mut GmClient) -> Value {
         }
     }
     assert_eq!(ready.len(), 1, "GM events: {ready:?}");
-    serde_json::json!({ "jsonrpc": "2.0", "method": "spook/event", "params": ready[0] })
+    let line = event_line(&ready[0]);
+    serde_json::from_str(&line).unwrap_or_else(|err| panic!("{err} in {line}"))
 }
 
 fn tool_call(id: u64, name: &str, arguments: &Value) -> Value {

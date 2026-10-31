@@ -6,11 +6,11 @@ use std::net::SocketAddr;
 
 use rmcp::model::ErrorCode;
 use serde::Serialize;
-use serde_json::{json, Value};
+use serde_json::json;
 
 use crate::gm_connection::{event_line, GmClient, Incoming};
 use crate::protocol::{
-    self, CommitBody, GmEvent, IntentCall, PlayerFrame, Refusal, SayArgs, TableStatus,
+    CommitBody, GmEvent, IntentCall, PlayerFrame, Refusal, SayArgs, TableStatus,
 };
 
 use super::frame_text::{self, humanize};
@@ -37,14 +37,7 @@ Commands:
       Leave the seat.
 An unknown command prints this list and sends nothing.";
 
-pub async fn run_gm(
-    addr: SocketAddr,
-    door: Option<SocketAddr>,
-    raw: bool,
-) -> Result<(), super::Error> {
-    let door = door
-        .or_else(|| protocol::default_door(addr))
-        .ok_or_else(|| super::Error::Message(addr.to_string()))?;
+pub async fn run_gm(door: SocketAddr, raw: bool) -> Result<(), super::Error> {
     let client = match GmClient::connect(door).await {
         Ok(client) => client,
         Err(crate::Error::Io(err)) => return Err(super::Error::Io(err)),
@@ -60,13 +53,13 @@ pub async fn run_gm(
         Err(err) => return Err(super::Error::Message(err.to_string())),
     };
     let mut session = Session {
-        connection: client,
+        client,
         is_raw: raw,
         next_id: 2,
         printed_checks: PrintedChecks::default(),
     };
     if raw {
-        let version = session.connection.protocol_version();
+        let version = session.client.protocol_version();
         let result = json!({ "protocolVersion": version });
         emit(&json!({ "jsonrpc": "2.0", "id": 1, "result": result }).to_string());
     }
@@ -75,7 +68,7 @@ pub async fn run_gm(
     let result = async {
         loop {
             tokio::select! {
-                incoming = session.connection.next_incoming() => {
+                incoming = session.client.next_incoming() => {
                     if !session.show_incoming(incoming) {
                         return Ok(());
                     }
@@ -88,12 +81,12 @@ pub async fn run_gm(
         }
     }
     .await;
-    session.connection.close().await;
+    session.client.close().await;
     result
 }
 
 struct Session {
-    connection: GmClient,
+    client: GmClient,
     is_raw: bool,
     /// The id of the next result line raw mode prints. The initialize line is 1.
     next_id: u64,
@@ -158,14 +151,14 @@ impl Session {
     }
 
     async fn on_status(&mut self) -> Result<(), super::Error> {
-        let reply = self.connection.table_status(None).await;
+        let reply = self.client.table_status(None).await;
         self.show_result(reply, &[], |_session, status| {
             emit(&render_status(&status));
         })
     }
 
     async fn on_look(&mut self, actor: &str) -> Result<(), super::Error> {
-        let reply = self.connection.perceive(actor).await;
+        let reply = self.client.perceive(actor).await;
         // The table sends the view as the player `view` frame, `kind` included.
         let reply = reply.map(|reply| reply.map(|view| PlayerFrame::View(Box::new(view))));
         self.show_result(reply, &[], |_session, frame| {
@@ -174,7 +167,7 @@ impl Session {
     }
 
     async fn on_say(&mut self, address: SayArgs) -> Result<(), super::Error> {
-        let reply = self.connection.say(&address).await;
+        let reply = self.client.say(&address).await;
         // The table answers with the say event, `kind` included.
         let reply = reply.map(|reply| reply.map(GmEvent::Say));
         self.show_result(reply, &[], |_session, _said| {})
@@ -196,14 +189,14 @@ impl Session {
             message_to: None,
             rationale_code: String::new(),
         };
-        let reply = self.connection.queue_intent(&call).await;
+        let reply = self.client.queue_intent(&call).await;
         self.show_result(reply, &[], move |_session, _queued| {
             emit(&shown);
         })
     }
 
     async fn on_commit(&mut self) -> Result<(), super::Error> {
-        let reply = self.connection.commit_round().await;
+        let reply = self.client.commit_round().await;
         // This commit's check events can arrive before or after the tool
         // result. The result text prints each roll. A matching event on
         // either side is shown once. Raw mode and a failed read show none.
@@ -256,10 +249,7 @@ impl Session {
             Ok(Err(refusal)) => self.show_refusal(&refusal, &result_line(id, &refusal)),
             Ok(Ok(body)) if self.is_raw => emit(&result_line(id, &body)),
             Ok(Ok(body)) => render(self, body),
-            Err(body) if self.is_raw => {
-                let body: Value = serde_json::from_str(&body).unwrap_or_default();
-                emit(&result_line(id, &body));
-            }
+            Err(body) if self.is_raw => emit(&result_line(id, &body)),
             Err(_) => report_unreadable(),
         }
         self.show_ready();
@@ -270,7 +260,7 @@ impl Session {
     /// will print; a matching check event is not printed again.
     fn show_arrived(&mut self, checks: &[String]) {
         let mut pending: VecDeque<&str> = checks.iter().map(String::as_str).collect();
-        let events = self.connection.take_events();
+        let events = self.client.take_events();
         for event in &events {
             if let GmEvent::Check(_) = event {
                 let line = render_event(event);
@@ -286,7 +276,7 @@ impl Session {
     }
 
     fn show_ready(&mut self) {
-        let ready = self.connection.drain_ready();
+        let ready = self.client.drain_ready();
         for incoming in ready {
             let _ = self.show_incoming(incoming);
         }

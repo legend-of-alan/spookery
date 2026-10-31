@@ -29,11 +29,11 @@ pub(crate) fn report_error(message: impl Into<String>) -> Error {
     Error { message }
 }
 
-/// Sit the GM seat on `addr` and call the model.
+/// Sit the GM seat at the agent door `door` and call the model.
 ///
 /// A missing `SPOOK_GM_KEY`, `SPOOK_GM_URL`, or `SPOOK_GM_MODEL` is reported before the dial.
-pub async fn sit(addr: SocketAddr, door: Option<SocketAddr>) -> Result<(), Error> {
+pub async fn sit(door: SocketAddr) -> Result<(), Error> {
     let env = http_model::Settings::from_env()?;
     let mut model = http_model::HttpModel::new(env)?;
-    run_gm(addr, door, &mut model, &TurnWatch::default()).await
+    run_gm(door, &mut model, &TurnWatch::default()).await
 }
