@@ -12,16 +12,16 @@ use super::table::Request;
 
 const STAMP_FORMAT: &str = "%Y-%m-%dT%H:%M:%SZ";
 
-/// Wakes the table every `keepalive_secs`. Each restart from the table starts
-/// the wait again.
+/// Wakes the table every `round_every_real_seconds`. Each restart from the
+/// table starts the wait again.
 pub(super) async fn run(
     tx: Sender<Request>,
     mut restart: watch::Receiver<u64>,
-    keepalive_secs: u64,
+    round_every_real_seconds: u64,
 ) {
     loop {
         tokio::select! {
-            _ = tokio::time::sleep(Duration::from_secs(keepalive_secs)) => {
+            _ = tokio::time::sleep(Duration::from_secs(round_every_real_seconds)) => {
                 if tx.send(Request::Wake).is_err() {
                     break;
                 }
