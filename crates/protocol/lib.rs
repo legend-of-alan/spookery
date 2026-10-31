@@ -31,9 +31,17 @@ pub use gm::{
     SayArgs, SayEvent, StatusArgs, StatusPause, StatusPresence, TableStatus,
 };
 pub use player::{
-    emit_player, emit_player_hello, exit_phrase, parse_player, parse_player_hello, ClockView,
-    ExitView, ItemStack, KnownFact, MeterView, Missing, NoteView, PlayerFrame, ViewScene,
+    exit_phrase, hello_line, parse_hello, ClockView, ExitView, ItemStack, KnownFact, MeterView,
+    Missing, NoteView, PlayerFrame, ViewScene,
 };
+
+/// The game and door addresses `spook run` prints on stdout once both ports are bound.
+#[derive(Serialize, Deserialize)]
+#[serde(tag = "kind", rename = "listening")]
+pub struct Addrs {
+    pub game: String,
+    pub door: String,
+}
 
 /// The agent door for a fixed game port: the next port, on the same address.
 pub fn default_door(game: std::net::SocketAddr) -> Option<std::net::SocketAddr> {
@@ -41,11 +49,11 @@ pub fn default_door(game: std::net::SocketAddr) -> Option<std::net::SocketAddr> 
     Some(std::net::SocketAddr::new(game.ip(), port))
 }
 
-pub fn refusal(code: &str) -> String {
-    named_refusal(code, None)
+pub fn refusal_line(code: &str) -> String {
+    detailed_refusal_line(code, None)
 }
 
-pub fn named_refusal(code: &str, missing: Option<&Missing>) -> String {
+pub fn detailed_refusal_line(code: &str, missing: Option<&Missing>) -> String {
     let named = missing
         .and_then(Missing::as_str)
         .filter(|text| !text.is_empty());
@@ -111,17 +119,23 @@ mod tests {
 
     #[test]
     fn a_refusal_is_a_sentence_with_the_code() {
-        assert_eq!(refusal("TABLE_FULL"), "The table is full. [TABLE_FULL]");
-        assert!(refusal("SEAT_TAKEN") == "That character is already taken. [SEAT_TAKEN]");
-        assert!(refusal("LINE_TOO_LONG") == "That line is too long. [LINE_TOO_LONG]");
-        assert_eq!(refusal("NEW_CODE"), "The table refused that. [NEW_CODE]");
-        assert_eq!(refusal("CHOOSE_PC"), "Choose a character. [CHOOSE_PC]");
         assert_eq!(
-            named_refusal("CHOOSE_PC", Some(&Missing::Many(vec!["pc_rowan".into()]))),
+            refusal_line("TABLE_FULL"),
+            "The table is full. [TABLE_FULL]"
+        );
+        assert!(refusal_line("SEAT_TAKEN") == "That character is already taken. [SEAT_TAKEN]");
+        assert!(refusal_line("LINE_TOO_LONG") == "That line is too long. [LINE_TOO_LONG]");
+        assert_eq!(
+            refusal_line("NEW_CODE"),
+            "The table refused that. [NEW_CODE]"
+        );
+        assert_eq!(refusal_line("CHOOSE_PC"), "Choose a character. [CHOOSE_PC]");
+        assert_eq!(
+            detailed_refusal_line("CHOOSE_PC", Some(&Missing::Many(vec!["pc_rowan".into()]))),
             "Choose a character: pc_rowan. [CHOOSE_PC]"
         );
         assert_eq!(
-            named_refusal("CANT_AFFORD", Some(&Missing::One("g".into()))),
+            detailed_refusal_line("CANT_AFFORD", Some(&Missing::One("g".into()))),
             "You cannot afford g. [CANT_AFFORD]"
         );
         for raw in [
@@ -129,7 +143,7 @@ mod tests {
             r#"{"kind":"refused","code":"CHOOSE_PC","detail":["pc_rowan"]}"#,
             r#"{"kind":"refused","code":"SCHEMA"}"#,
         ] {
-            let msg = parse_player(raw).unwrap();
+            let msg = PlayerFrame::from_line(raw).unwrap();
             assert!(matches!(msg, PlayerFrame::Refused { .. }));
             assert_eq!(serde_json::to_string(&msg).unwrap(), raw);
         }

@@ -10,7 +10,7 @@ use crate::gm_connection::{self, Connection, Event, EventBody, Incoming, ToolRes
 use crate::protocol::{CommitBody, PlayerFrame, SayArgs, TableStatus};
 
 use super::frame_text::{self, humanize};
-use super::refusal;
+use super::refusal_line;
 
 const HELP: &str = "\
 Commands:
@@ -365,7 +365,7 @@ fn echo_refusal(code: &str, raw: &str, raw_mode: bool) -> String {
         emit(raw);
         code.to_string()
     } else {
-        refusal(code)
+        refusal_line(code)
     }
 }
 

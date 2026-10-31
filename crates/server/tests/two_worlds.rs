@@ -32,8 +32,8 @@ fn host(
     }));
     let mut line = String::new();
     BufReader::new(reader).read_line(&mut line).unwrap();
-    let listening: serde_json::Value = serde_json::from_str(&line).unwrap();
-    let game = listening["game"].as_str().unwrap();
+    let addrs: serde_json::Value = serde_json::from_str(&line).unwrap();
+    let game = addrs["game"].as_str().unwrap();
     (
         BufReader::new(TcpStream::connect(game).unwrap()),
         stop,

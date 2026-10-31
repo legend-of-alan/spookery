@@ -205,8 +205,8 @@ fn the_player_resume_for_does_not_list(world: &mut World, actor: String, note: S
 #[then(expr = "the perceive view for {string} does not list {string}")]
 fn the_perceive_view_for_does_not_list(world: &mut World, actor: String, note: String) {
     let pack = table::pack(world);
-    let shard = spookery_engine::World::peek(pack).unwrap();
-    let view = shard.perceive(&Presence::default(), &actor).unwrap();
+    let opened = spookery_engine::World::peek(pack).unwrap();
+    let view = opened.perceive(&Presence::default(), &actor).unwrap();
     assert!(
         view.notes.iter().all(|message| message.id != note),
         "view listed {note}"
@@ -248,17 +248,21 @@ fn the_perceive_view_does_not_list_the_fact(world: &mut World, actor: String, fa
 }
 
 fn view_has_fact(world: &World, actor: &str, fact_id: &str) -> bool {
-    let shard = spookery_engine::World::peek(table::pack(world)).unwrap();
-    let view = shard.perceive(&Presence::default(), actor).unwrap();
+    let opened = spookery_engine::World::peek(table::pack(world)).unwrap();
+    let view = opened.perceive(&Presence::default(), actor).unwrap();
     view.known_facts.iter().any(|fact| fact.id == fact_id)
 }
 
-fn read_player_resume(world: &World, actor: &str) -> String {
-    let pack = table::pack(world);
-    let shard = spookery_engine::World::peek(pack).unwrap();
-    let view = shard.perceive(&Presence::default(), actor).unwrap();
-    spookery::host::player_resume_line(&view)
-        .trim_end()
+/// The resume frame the host sends when `actor` sits at a table on this pack.
+fn read_player_resume(world: &mut World, actor: &str) -> String {
+    let pack = table::pack(world).to_path_buf();
+    table::listen(world, &pack);
+    table::seat_actor(world, &pack, actor);
+    let text = table::actor_text(world, actor);
+    table::stop_host(world);
+    text.lines()
+        .find(|line| line.contains("\"kind\":\"resume\""))
+        .unwrap_or_else(|| panic!("no resume frame\n{text}"))
         .to_string()
 }
 
@@ -274,8 +278,8 @@ fn rewrite_mira(pack: &Path, from: &str, to: &str) {
 #[then(expr = "the shop lists the oil and the rooms do not")]
 fn the_shop_lists_the_oil(world: &mut World) {
     let pack = table::pack(world);
-    let shard = spookery_engine::World::peek(pack).unwrap();
-    let shop = shard.perceive(&Presence::default(), "pc_rowan").unwrap();
+    let opened = spookery_engine::World::peek(pack).unwrap();
+    let shop = opened.perceive(&Presence::default(), "pc_rowan").unwrap();
     assert_eq!(shop.place, "docks_shop");
     assert_eq!(
         shop.items,
@@ -284,7 +288,7 @@ fn the_shop_lists_the_oil(world: &mut World) {
             count: 4,
         }]
     );
-    let rooms = shard.perceive(&Presence::default(), "mira").unwrap();
+    let rooms = opened.perceive(&Presence::default(), "mira").unwrap();
     assert_eq!(rooms.place, "mira_rooms");
     assert!(rooms.items.iter().all(|item| item.id != "lamp_oil"));
 }

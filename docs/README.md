@@ -58,7 +58,7 @@ crates/
   engine/              spookery-engine: world model, rules, rounds, and journal
   agent/               spookery-agent: model GM turn state machine
   cli/                 spookery-cli: spook play, spook gm, and spook ai-gm
-  server/              spookery-server: world loop, seats, idle clock, and MCP door
+  server/              spookery-server: the table, player port, agent door, GM tools, seats, idle timer
   spook/               package and binary spook, library spookery
     tests/features/    BDD scenarios
 ```

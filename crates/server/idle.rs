@@ -1,30 +1,42 @@
-//! Decide when an idle table plays a round, and stamp the wall time.
+//! The idle timer, when an idle table plays a round, and the wall time stamp.
 
-use chrono::{DateTime, NaiveDateTime, TimeDelta, Utc};
+use std::sync::mpsc::Sender;
+use std::time::Duration;
+
+use chrono::{DateTime, NaiveDateTime, Utc};
+use tokio::sync::watch;
 
 use spookery_engine::{Reason, World};
 
+use super::table::Request;
+
 const STAMP_FORMAT: &str = "%Y-%m-%dT%H:%M:%SZ";
 
-/// Test support: seconds since a UTC stamp. Not part of the API.
-#[doc(hidden)]
-pub fn secs_since(last_round_at: &str) -> Result<u64, Reason> {
-    elapsed_secs(last_round_at, Utc::now())
+/// Wakes the table every `keepalive_secs`. Each restart from the table starts
+/// the wait again.
+pub(super) async fn run(
+    tx: Sender<Request>,
+    mut restart: watch::Receiver<u64>,
+    keepalive_secs: u64,
+) {
+    loop {
+        tokio::select! {
+            _ = tokio::time::sleep(Duration::from_secs(keepalive_secs)) => {
+                if tx.send(Request::Wake).is_err() {
+                    break;
+                }
+            }
+            changed = restart.changed() => {
+                if changed.is_err() {
+                    break;
+                }
+            }
+        }
+    }
 }
 
-pub fn wall_now() -> String {
+pub(super) fn now_stamp() -> String {
     format_utc(Utc::now())
-}
-
-/// Test support: a UTC stamp `seconds` in the past. Not part of the API.
-#[doc(hidden)]
-pub fn wall_ago(seconds: u64) -> Result<String, Reason> {
-    let ago = i64::try_from(seconds)
-        .ok()
-        .and_then(TimeDelta::try_seconds)
-        .and_then(|ago| Utc::now().checked_sub_signed(ago))
-        .ok_or(Reason::Schema)?;
-    Ok(format_utc(ago))
 }
 
 fn elapsed_secs(last_round_at: &str, now: DateTime<Utc>) -> Result<u64, Reason> {
@@ -45,19 +57,9 @@ fn format_utc(now: DateTime<Utc>) -> String {
     now.format(STAMP_FORMAT).to_string()
 }
 
-/// Seat check and interval check. A round that runs borrows this `World`.
+/// Plays the catch-up rounds when the last round is an interval old.
 /// Returns whether `world_time` advanced.
-pub fn catch_up_if_due(
-    world: &mut World,
-    player_held: bool,
-    gm_held: bool,
-) -> Result<bool, Reason> {
-    if player_held || gm_held {
-        return Ok(false);
-    }
-    if !world.budget().idle_rounds {
-        return Ok(false);
-    }
+pub(super) fn catch_up_if_due(world: &mut World) -> Result<bool, Reason> {
     let now = Utc::now();
     let elapsed = elapsed_secs(&world.state().last_round_at, now)?;
     if elapsed < world.budget().round_every_real_seconds {

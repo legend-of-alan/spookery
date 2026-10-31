@@ -16,10 +16,10 @@ fn the_player_says(world: &mut World, text: String) {
 #[when(expr = "say to mira is submitted on an empty table saying {string}")]
 fn say_to_mira_on_an_empty_table(world: &mut World, text: String) {
     let pack = table::pack(world);
-    let shard = spookery_engine::testing::resume(pack);
+    let opened = spookery_engine::testing::resume(pack);
     world.now_bytes = fs::read(pack.join("state/save.yaml"))
         .unwrap_or_else(|err| panic!("read save.yaml: {err}"));
-    shard
+    opened
         .say_as_player(
             &spookery_engine::Presence::default(),
             "pc_rowan",

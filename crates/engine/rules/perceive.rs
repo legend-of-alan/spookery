@@ -15,6 +15,7 @@ pub use spookery_protocol::{ClockView, ItemStack, KnownFact, MeterView};
 
 const MAX_BODY_CHARS: usize = 800;
 
+/// Returned from the engine to the host table, which renders it as a player or GM view.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct View {
     pub viewer: Viewer,

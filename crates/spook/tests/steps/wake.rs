@@ -1,18 +1,20 @@
 use cucumber::when;
 
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::time::Duration;
 
-use serde_json::{json, Value};
-use spookery::host::idle_clock::catch_up_if_due;
-use spookery::host::{call_gm_tool, commit_then_fast_forward};
+use serde_json::Value;
 use spookery_engine::testing::journal::list_round_keys;
-use spookery_engine::{Presence, World as Shard};
+use spookery_engine::Presence;
 
-use crate::support::{self, read_round, resume, stamp_pack_rev, state_of, write_save};
+use crate::support::{self, read_round, stamp_pack_rev, state_of};
 use crate::World;
 
 use super::table;
+
+/// The docks pack's `round_every_real_seconds`: one idle timer interval.
+const INTERVAL: Duration = Duration::from_secs(300);
 
 fn player_wait_ids(round: &Value) -> Vec<String> {
     round["intents"]
@@ -32,35 +34,78 @@ fn rowan() -> Presence {
     }
 }
 
-fn queued_line_survives_a_dropped_seat() {
-    let held = support::copy_docks("held");
-    let mut shard = resume(&held);
-    assert!(!catch_up_if_due(&mut shard, true, false).unwrap());
-    let queued = shard.queue_wait(&rowan(), "pc_rowan").unwrap();
-    assert!(!catch_up_if_due(&mut shard, true, true).unwrap());
-    assert_eq!(shard.queued_intents().len(), 1);
-    assert_eq!(shard.queued_intents()[0].id, queued.id);
-    assert_eq!(shard.state().world_time, 1080);
-    assert!(list_round_keys(&held).is_empty());
-    assert!(!catch_up_if_due(&mut shard, false, true).unwrap());
-    assert_eq!(shard.queued_intents().len(), 1);
-    assert_eq!(shard.state().round_index, 0);
-    assert!(list_round_keys(&held).is_empty());
-    let _ = fs::remove_dir_all(&held);
+/// A docks copy served in this process, on a paused clock.
+fn serve_docks(world: &mut World, name: &str, idle: Option<&str>) -> PathBuf {
+    let pack = support::copy_docks(name);
+    if let Some(value) = idle {
+        write_idle(&pack, value);
+    }
+    world.pack = Some(pack.clone());
+    table::serve_in_process(world, &pack);
+    pack
 }
 
-fn early_wake_does_not_play_another_round() {
-    let early = support::copy_docks("early-wake");
-    let mut shard = resume(&early);
-    shard.queue_wait(&rowan(), "pc_rowan").unwrap();
-    commit_then_fast_forward(&mut shard, &rowan()).unwrap();
-    let committed = shard.state().clone();
+/// Rowan's `wait` with a GM seated: the id of the queued line.
+fn queue_rowan_wait(world: &mut World) -> String {
+    let text = table::actor_send(world, "pc_rowan", "wait", "\"kind\":\"queued\"");
+    let line = text
+        .lines()
+        .find(|line| line.contains("\"kind\":\"queued\""))
+        .unwrap_or_else(|| panic!("no queued line\n{text}"));
+    let queued: Value = serde_json::from_str(line).unwrap_or_else(|err| panic!("{err}\n{line}"));
+    queued["id"].as_str().unwrap().to_string()
+}
+
+/// Rowan's `wait` with no GM seated commits its own round.
+fn commit_rowan_wait(world: &mut World, pack: &Path) {
+    let before = list_round_keys(pack).len();
+    table::actor_write(world, "pc_rowan", "wait");
+    table::wait_committed_wait(pack, "pc_rowan", before);
+}
+
+/// Advance one interval, then read status so the wake it sent has run.
+fn advance_and_settle(world: &mut World, by: Duration) {
+    table::advance(world, by);
+    let _ = table::read_presence(world);
+}
+
+fn queued_line_survives_a_dropped_seat(world: &mut World) {
+    let pack = serve_docks(world, "held", None);
+    table::seat_rowan(world, &pack);
+    advance_and_settle(world, INTERVAL);
+    table::release_probe_gm(world);
+    table::seat_gm(world);
+    let id = queue_rowan_wait(world);
+    advance_and_settle(world, INTERVAL);
+    table::close_actor(world, "pc_rowan");
+    table::wait_players(world, &pack, 0);
+    advance_and_settle(world, INTERVAL);
+    let status = table::gm_call(world, 4, "table_status", "{}");
+    let value: Value = serde_json::from_str(&status).unwrap();
+    let rows = value["result"]["structuredContent"]["queued"]
+        .as_array()
+        .unwrap_or_else(|| panic!("no queue\n{status}"));
+    assert_eq!(rows.len(), 1, "{status}");
+    assert_eq!(rows[0]["id"], id.as_str(), "{status}");
+    assert_eq!(table::now_of(&pack).world_time, 1080);
+    assert!(list_round_keys(&pack).is_empty());
+}
+
+fn early_wake_does_not_play_another_round(world: &mut World) {
+    let pack = serve_docks(world, "early-wake", None);
+    table::seat_rowan(world, &pack);
+    commit_rowan_wait(world, &pack);
+    let committed = table::now_of(&pack);
     assert_eq!(committed.world_time, 1085);
-    assert!(!catch_up_if_due(&mut shard, false, false).unwrap());
-    assert_eq!(shard.state().world_time, committed.world_time);
-    assert_eq!(shard.state().round_index, committed.round_index);
-    assert_eq!(list_round_keys(&early), vec!["round-0001".to_string()]);
-    let _ = fs::remove_dir_all(&early);
+    table::close_actor(world, "pc_rowan");
+    table::wait_players(world, &pack, 0);
+    table::release_probe_gm(world);
+    // The timer fires a full interval later, but the save's stamp is seconds old.
+    advance_and_settle(world, INTERVAL);
+    let now = table::now_of(&pack);
+    assert_eq!(now.world_time, committed.world_time);
+    assert_eq!(now.round_index, committed.round_index);
+    assert_eq!(list_round_keys(&pack), vec!["round-0001".to_string()]);
 }
 
 fn write_idle(pack: &Path, value: &str) {
@@ -77,80 +122,29 @@ fn write_idle(pack: &Path, value: &str) {
     stamp_pack_rev(pack);
 }
 
-fn idle_off_past_due_wake_writes_nothing() {
-    let pack = support::copy_docks("idle-off-due");
-    write_idle(&pack, "off");
-    let (world_time, state_rev, round_index, stamp) = {
-        let shard = resume(&pack);
-        let every = shard.budget().round_every_real_seconds;
-        assert!(
-            every > 0 && every + 60 < 3600,
-            "interval {every} is not inside one hour"
-        );
-        assert!(!shard.budget().idle_rounds);
-        let stamp = spookery::host::idle_clock::wall_ago(every + 60).unwrap();
-        let mut now = shard.state().clone();
-        let world_time = now.world_time;
-        let state_rev = now.state_rev;
-        let round_index = now.round_index;
-        drop(shard);
-        now.last_round_at = stamp.clone();
-        write_save(&pack, &now);
-        (world_time, state_rev, round_index, stamp)
-    };
-    let mut shard = resume(&pack);
-    let elapsed = spookery::host::idle_clock::secs_since(&stamp).unwrap();
-    assert!(elapsed >= shard.budget().round_every_real_seconds);
-    assert!(elapsed < 3600);
-    assert!(!catch_up_if_due(&mut shard, false, false).unwrap());
-    assert_eq!(shard.state().world_time, world_time);
-    assert_eq!(shard.state().last_round_at, stamp);
-    assert_eq!(shard.state().state_rev, state_rev);
-    assert_eq!(shard.state().round_index, round_index);
-    drop(shard);
-    let saved = state_of(&pack);
-    assert_eq!(saved.world_time, world_time);
-    assert_eq!(saved.last_round_at, stamp);
-    assert_eq!(saved.state_rev, state_rev);
+/// With idle off no timer is armed, so an empty table writes nothing however
+/// long it sits. The docks save's stamp is already past due.
+fn idle_off_empty_table_writes_nothing(world: &mut World, name: &str, by: Duration) {
+    let pack = serve_docks(world, name, Some("off"));
+    advance_and_settle(world, by);
+    let opened = table::live_mut(world).opened_save.clone();
+    let now = fs::read(pack.join("state/save.yaml")).unwrap();
+    assert_eq!(now, opened, "the save changed");
     assert!(list_round_keys(&pack).is_empty());
-    let _ = fs::remove_dir_all(&pack);
 }
 
-fn idle_off_long_absence_writes_no_catchup() {
-    let pack = support::copy_docks("idle-off-absence");
-    write_idle(&pack, "off");
-    let mut shard = resume(&pack);
-    let world_time = shard.state().world_time;
-    let last = shard.state().last_round_at.clone();
-    let state_rev = shard.state().state_rev;
-    let round_index = shard.state().round_index;
-    assert!(spookery::host::idle_clock::secs_since(&last).unwrap() >= 3600);
-    assert!(!catch_up_if_due(&mut shard, false, false).unwrap());
-    assert_eq!(shard.state().world_time, world_time);
-    assert_eq!(shard.state().last_round_at, last);
-    assert_eq!(shard.state().round_index, round_index);
-    drop(shard);
-    let saved = state_of(&pack);
-    assert_eq!(saved.world_time, world_time);
-    assert_eq!(saved.last_round_at, last);
-    assert_eq!(saved.state_rev, state_rev);
-    assert!(list_round_keys(&pack).is_empty());
-    let _ = fs::remove_dir_all(&pack);
-}
-
-fn idle_off_seated_line_and_spook_round_still_advance() {
-    let pack = support::copy_docks("idle-off-play");
-    write_idle(&pack, "off");
-    let mut shard = resume(&pack);
-    shard.queue_wait(&rowan(), "pc_rowan").unwrap();
-    let outputs = commit_then_fast_forward(&mut shard, &rowan()).unwrap();
-    assert!(!outputs.is_empty());
-    assert_eq!(shard.state().world_time, 1085);
-    assert_eq!(shard.state().round_index, 1);
-    drop(shard);
+fn idle_off_seated_line_and_spook_round_still_advance(world: &mut World) {
+    let pack = serve_docks(world, "idle-off-play", Some("off"));
+    table::seat_rowan(world, &pack);
+    commit_rowan_wait(world, &pack);
+    table::stop_host(world);
+    let now = state_of(&pack);
+    assert_eq!(now.world_time, 1085);
+    assert_eq!(now.round_index, 1);
     assert_eq!(list_round_keys(&pack), vec!["round-0001".to_string()]);
     let lock = spookery_engine::lock_pack(&pack).unwrap();
-    let mut again = Shard::resume(&pack, lock).unwrap_or_else(|err| panic!("resume: {err}"));
+    let mut again =
+        spookery_engine::World::resume(&pack, lock).unwrap_or_else(|err| panic!("resume: {err}"));
     let wall = again.state().last_round_at.clone();
     again
         .play(&rowan(), &wall)
@@ -162,57 +156,48 @@ fn idle_off_seated_line_and_spook_round_still_advance() {
         list_round_keys(&pack),
         vec!["round-0001".to_string(), "round-0002".to_string()]
     );
-    let _ = fs::remove_dir_all(&pack);
 }
 
-fn idle_off_commit_round_still_commits() {
-    let pack = support::copy_docks("idle-off-commit");
-    write_idle(&pack, "off");
-    let mut shard = resume(&pack);
-    shard.queue_wait(&rowan(), "pc_rowan").unwrap();
-    assert_eq!(shard.state().world_time, 1080);
+fn idle_off_commit_round_still_commits(world: &mut World) {
+    let pack = serve_docks(world, "idle-off-commit", Some("off"));
+    table::seat_gm(world);
+    table::seat_rowan(world, &pack);
+    let _ = queue_rowan_wait(world);
     assert!(list_round_keys(&pack).is_empty());
-    let done = call_gm_tool(
-        &mut shard,
-        &rowan(),
-        "commit_round",
-        Some(
-            json!({ "include_round": true })
-                .as_object()
-                .unwrap()
-                .clone(),
-        ),
-    );
-    assert!(done.value.get("code").is_none(), "{}", done.value);
-    assert!(!done.outputs.is_empty());
-    assert_eq!(shard.state().world_time, 1085);
-    assert_eq!(shard.state().round_index, 1);
+    let done = table::gm_call(world, 5, "commit_round", r#"{"include_round":true}"#);
+    let value: Value = serde_json::from_str(&done).unwrap();
+    let body = &value["result"]["structuredContent"];
+    assert!(body.get("code").is_none(), "{done}");
+    let now = table::now_of(&pack);
+    assert_eq!(now.world_time, 1085);
+    assert_eq!(now.round_index, 1);
     assert_eq!(list_round_keys(&pack), vec!["round-0001".to_string()]);
-    let _ = fs::remove_dir_all(&pack);
 }
 
-fn a_due_wake_applies_the_queued_wait() {
-    let due = support::copy_docks("due-wake");
-    let mut shard = resume(&due);
-    let note = shard.queue_wait(&Presence::default(), "pc_rowan").unwrap();
-    assert_eq!(shard.state().last_round_at, "2026-01-01T00:00:00Z");
-    assert!(catch_up_if_due(&mut shard, false, false).unwrap());
-    assert_eq!(shard.state().round_index, 12);
-    assert_eq!(shard.state().world_time, 1800);
-    assert!(shard.queued_intents().is_empty());
-    assert_eq!(
-        player_wait_ids(&read_round(&due, "round-0001")),
-        vec![note.id]
-    );
-    assert!(player_wait_ids(&read_round(&due, "round-0002")).is_empty());
-    assert!(!catch_up_if_due(&mut shard, false, false).unwrap());
-    assert_eq!(shard.state().round_index, 12);
-    let _ = fs::remove_dir_all(&due);
+fn a_due_wake_applies_the_queued_wait(world: &mut World) {
+    let pack = serve_docks(world, "due-wake", None);
+    assert_eq!(table::now_of(&pack).last_round_at, "2026-01-01T00:00:00Z");
+    table::seat_gm(world);
+    table::seat_rowan(world, &pack);
+    let id = queue_rowan_wait(world);
+    table::close_actor(world, "pc_rowan");
+    table::wait_players(world, &pack, 0);
+    let _ = table::release_gm(world);
+    advance_and_settle(world, INTERVAL);
+    let now = table::now_of(&pack);
+    assert_eq!(now.round_index, 12);
+    assert_eq!(now.world_time, 1800);
+    assert_eq!(player_wait_ids(&read_round(&pack, "round-0001")), vec![id]);
+    assert!(player_wait_ids(&read_round(&pack, "round-0002")).is_empty());
+    // The catch-up stamped the save, so the next wake is not due.
+    table::release_probe_gm(world);
+    advance_and_settle(world, INTERVAL);
+    assert_eq!(table::now_of(&pack).round_index, 12);
 }
 
 #[when(expr = "a queued wait meets a wake and the seat drops")]
-fn a_queued_wait_meets_a_wake(_world: &mut World) {
-    queued_line_survives_a_dropped_seat();
+fn a_queued_wait_meets_a_wake(world: &mut World) {
+    queued_line_survives_a_dropped_seat(world);
 }
 
 /// With a GM seated, Rowan queues a wait, leaves, and sits again. The wait stays queued.
@@ -244,31 +229,31 @@ fn the_player_drops_and_sits_again(world: &mut World) {
 }
 
 #[when(expr = "a committed wait wakes early")]
-fn a_committed_wait_wakes_early(_world: &mut World) {
-    early_wake_does_not_play_another_round();
+fn a_committed_wait_wakes_early(world: &mut World) {
+    early_wake_does_not_play_another_round(world);
 }
 
 #[when(expr = "a queued wait is due")]
-fn a_queued_wait_is_due(_world: &mut World) {
-    a_due_wake_applies_the_queued_wait();
+fn a_queued_wait_is_due(world: &mut World) {
+    a_due_wake_applies_the_queued_wait(world);
 }
 
 #[when(expr = "idle is off and a past-due wake arrives")]
-fn idle_is_off_and_a_past_due_wake_arrives(_world: &mut World) {
-    idle_off_past_due_wake_writes_nothing();
+fn idle_is_off_and_a_past_due_wake_arrives(world: &mut World) {
+    idle_off_empty_table_writes_nothing(world, "idle-off-due", Duration::from_secs(360));
 }
 
 #[when(expr = "idle is off and a long absence wakes")]
-fn idle_is_off_and_a_long_absence_wakes(_world: &mut World) {
-    idle_off_long_absence_writes_no_catchup();
+fn idle_is_off_and_a_long_absence_wakes(world: &mut World) {
+    idle_off_empty_table_writes_nothing(world, "idle-off-absence", Duration::from_secs(3700));
 }
 
 #[when(expr = "idle is off and a player waits and spook round runs")]
-fn idle_is_off_and_a_player_waits(_world: &mut World) {
-    idle_off_seated_line_and_spook_round_still_advance();
+fn idle_is_off_and_a_player_waits(world: &mut World) {
+    idle_off_seated_line_and_spook_round_still_advance(world);
 }
 
 #[when(expr = "idle is off and the GM commits a queued wait")]
-fn idle_is_off_and_the_gm_commits(_world: &mut World) {
-    idle_off_commit_round_still_commits();
+fn idle_is_off_and_the_gm_commits(world: &mut World) {
+    idle_off_commit_round_still_commits(world);
 }

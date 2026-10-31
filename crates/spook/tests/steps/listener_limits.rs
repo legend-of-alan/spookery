@@ -6,8 +6,7 @@ use std::time::{Duration, Instant};
 use cucumber::{then, when};
 use spookery_engine::testing::journal::list_round_keys;
 
-use spookery::host::{OUTBOUND_BYTE_CAP, OUTBOUND_FRAME_CAP, REQUESTED_SEND_BUFFER};
-use spookery::protocol::{emit_player, PlayerFrame};
+use spookery::protocol::PlayerFrame;
 
 use crate::support;
 use crate::World;
@@ -16,6 +15,21 @@ use super::table;
 
 const MIB: usize = 1024 * 1024;
 const SAY_TEXT_BYTES: usize = 4 * 1024;
+
+// The limits `docs/seat-protocol.md` states.
+/// A hello that does not finish within 10 seconds closes.
+const HELLO_TIMEOUT: Duration = Duration::from_secs(10);
+/// A player connection may burst to 10 lines.
+const BURST: usize = 10;
+/// Then it may send 5 lines a second: one line per 200 ms.
+const REFILL: Duration = Duration::from_millis(200);
+/// Each player socket's outbound queue holds at most 256 frames.
+const FRAME_CAP: usize = 256;
+/// And at most 64 KiB.
+const BYTE_CAP: usize = 64 * 1024;
+/// The window this test asks for: the stopped reader's receive buffer, and
+/// the send buffer it budgets for the host's side of that socket.
+const WINDOW: usize = 8 * 1024;
 
 #[when(expr = "a player sends a 1 MiB line with no newline")]
 fn a_player_sends_a_mebibyte_line(world: &mut World) {
@@ -224,12 +238,15 @@ fn the_player_can_wait(world: &mut World) {
 #[when(expr = "a socket connects and sends nothing")]
 fn a_socket_connects_and_sends_nothing(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
-    table::listen_with_env(world, &pack, &[("SPOOK_HELLO_TIMEOUT_MS", "200")]);
+    table::serve_in_process(world, &pack);
     let mut stream = connect(table::live_mut(world).game_port);
+    // The status round trip runs after the accept, so the deadline is set.
+    let _ = table::read_presence(world);
+    table::release_probe_gm(world);
+    table::advance(world, HELLO_TIMEOUT);
     stream
-        .set_read_timeout(Some(Duration::from_secs(2)))
+        .set_read_timeout(Some(Duration::from_secs(5)))
         .unwrap_or_else(|err| panic!("timeout: {err}"));
-    let start = Instant::now();
     let mut buf = [0u8; 8];
     let closed = match stream.read(&mut buf) {
         Ok(0) => true,
@@ -239,31 +256,22 @@ fn a_socket_connects_and_sends_nothing(world: &mut World) {
         }
         Err(_) => true,
     };
-    world.scratch = format!("closed={closed} elapsed_ms={}", start.elapsed().as_millis());
+    world.scratch = format!("closed={closed}");
 }
 
 #[then(expr = "the socket is closed before the hello")]
 fn the_socket_is_closed_before_the_hello(world: &mut World) {
-    assert!(
-        world.scratch.starts_with("closed=true"),
-        "{}",
-        world.scratch
-    );
-    let ms: u128 = world
-        .scratch
-        .split("elapsed_ms=")
-        .nth(1)
-        .unwrap_or("99999")
-        .parse()
-        .unwrap_or(99999);
-    assert!(ms < 2_000, "{}", world.scratch);
+    assert_eq!(world.scratch, "closed=true");
 }
 
 #[when(expr = "one player sends 200 lines as fast as it can")]
 fn one_player_sends_200_lines(world: &mut World) {
+    // The flood's pace is paused time, so serve this table in process.
     let pack = table::pack(world).to_path_buf();
+    table::serve_in_process(world, &pack);
+    table::seat_actor(world, &pack, "pc_rowan");
+    table::seat_actor(world, &pack, "pc_harbormouse");
     let before = list_round_keys(&pack).len();
-    let started = Instant::now();
     for (actor_id, count) in [("pc_rowan", 200), ("pc_harbormouse", 1)] {
         let player = table::live_mut(world)
             .players
@@ -285,11 +293,10 @@ fn one_player_sends_200_lines(world: &mut World) {
             .iter()
             .any(|id| id == "pc_harbormouse")
     };
-    let keys = table::wait_rounds_until(&pack, "the other player's wait", |keys| {
-        keys.get(before..)
-            .unwrap_or_default()
-            .iter()
-            .any(other_waits)
+    // Paused time refills nothing: the flood's burst and the other line commit.
+    let keys = table::wait_rounds_until(&pack, "the burst and the other player's wait", |keys| {
+        let added = keys.get(before..).unwrap_or_default();
+        added.len() > BURST && added.iter().any(other_waits)
     });
     let other_at = keys
         .get(before..)
@@ -298,32 +305,30 @@ fn one_player_sends_200_lines(world: &mut World) {
         .position(other_waits)
         .unwrap_or_else(|| panic!("no other player round"))
         + 1;
-    // Past the burst means a later line was kept. A drop would stop at 11 rounds.
-    let rounds = table::wait_round_count(&pack, before + 12).len() - before;
-    world.scratch = format!("{rounds} {} {other_at}", started.elapsed().as_millis());
+    // A GM would queue the next line instead of committing it, so the status
+    // probe leaves before time moves.
+    let _ = table::read_presence(world);
+    table::release_probe_gm(world);
+    let paced = list_round_keys(&pack).len() - before;
+    // One refill is one more line. A dropped line would stop the count here.
+    table::advance(world, REFILL);
+    let _ = table::wait_round_count(&pack, before + paced + 1);
+    let _ = table::read_presence(world);
+    table::release_probe_gm(world);
+    let refilled = list_round_keys(&pack).len() - before;
+    world.scratch = format!("{paced} {refilled} {other_at}");
 }
 
 #[then(expr = "the committed rounds stay within the rate allowance")]
 fn rounds_stay_within_the_allowance(world: &mut World) {
-    let mut parts = world.scratch.split_whitespace();
-    let rounds: f64 = parts
-        .next()
-        .unwrap_or("0")
-        .parse()
-        .unwrap_or_else(|_| panic!("{}", world.scratch));
-    let elapsed_ms: f64 = parts
-        .next()
-        .unwrap_or("0")
-        .parse()
-        .unwrap_or_else(|_| panic!("{}", world.scratch));
-    // Burst 10, then 5 lines per second, plus the other player's line and rounding.
-    // 12 means a line past the burst was kept. 200 would mean the flood was not paced.
-    let allowance = 10.0 + 5.0 * (elapsed_ms / 1000.0) + 2.0;
-    assert!(
-        rounds >= 12.0 && rounds <= allowance && rounds < 200.0,
-        "rounds {rounds} allowance {allowance} ({})",
-        world.scratch
-    );
+    let rounds: Vec<usize> = world
+        .scratch
+        .split_whitespace()
+        .map(|part| part.parse().unwrap_or_else(|_| panic!("{}", world.scratch)))
+        .collect();
+    // The burst and the other player's line, then one line per refill. The
+    // round after the refill is a line past the burst that was kept.
+    assert_eq!(rounds[..2], [BURST + 1, BURST + 2], "{}", world.scratch);
 }
 
 #[then(expr = "the other player's line commits before the flood's burst is spent")]
@@ -336,8 +341,8 @@ fn the_other_player_commits_inside_the_burst(world: &mut World) {
         .parse()
         .unwrap_or(99999);
     // Each session sends one line at a time, so the other line waits behind at
-    // most the flood's burst of 10 and the line in flight, whatever the speed.
-    assert!(other_at <= 12, "{}", world.scratch);
+    // most the flood's burst and commits before any refill.
+    assert!(other_at <= BURST + 1, "{}", world.scratch);
 }
 
 #[when(expr = "one player stops reading and the GM says many lines")]
@@ -347,7 +352,7 @@ fn one_player_stops_reading(world: &mut World) {
     table::seat_gm(world);
     table::seat_actor(world, &pack, "pc_harbormouse");
     let (mut quiet, recv) = connect_small_window(table::live_mut(world).game_port);
-    let send = granted_send_buffer(REQUESTED_SEND_BUFFER);
+    let send = granted_send_buffer(WINDOW);
     writeln!(quiet, "player:pc_rowan").unwrap_or_else(|err| panic!("hello: {err}"));
     quiet.flush().unwrap_or_else(|err| panic!("flush: {err}"));
     read_until(&mut quiet, "\"kind\":\"view\"", Duration::from_secs(2));
@@ -357,16 +362,17 @@ fn one_player_stops_reading(world: &mut World) {
         text: Arc::new(Mutex::new(String::new())),
     });
     let say = "n".repeat(SAY_TEXT_BYTES);
-    let frame = emit_player(&PlayerFrame::Say {
+    let frame = PlayerFrame::Say {
         from: "gm".to_string(),
         address: "table".to_string(),
         text: say.clone(),
         replay: false,
-    })
+    }
+    .to_line()
     .len();
     // Granted kernel windows, then the userspace queue, then one extra
     // buffer so a getsockopt that under-reports still reaches the drop.
-    let queue = OUTBOUND_BYTE_CAP.min(OUTBOUND_FRAME_CAP.saturating_mul(frame));
+    let queue = BYTE_CAP.min(FRAME_CAP.saturating_mul(frame));
     let margin = recv.max(send).max(frame);
     let budget = recv
         .saturating_add(send)
@@ -446,7 +452,7 @@ fn connect_small_window(port: u16) -> (TcpStream, usize) {
     )
     .unwrap_or_else(|err| panic!("socket: {err}"));
     socket
-        .set_recv_buffer_size(REQUESTED_SEND_BUFFER)
+        .set_recv_buffer_size(WINDOW)
         .unwrap_or_else(|err| panic!("recv buffer: {err}"));
     socket
         .set_tcp_nodelay(true)

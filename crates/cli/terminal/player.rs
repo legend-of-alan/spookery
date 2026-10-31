@@ -26,7 +26,7 @@ pub async fn run_player(as_player: Option<&str>, addr: SocketAddr, raw: bool) ->
             else {
                 return Err(Error::Message("NOT_IN_SPEC".into()));
             };
-            match crate::protocol::parse_player(&line) {
+            match crate::protocol::PlayerFrame::from_line(&line) {
                 Ok(PlayerFrame::Refused {
                     code,
                     detail: missing,
@@ -58,7 +58,7 @@ pub async fn run_player(as_player: Option<&str>, addr: SocketAddr, raw: bool) ->
             }
         }
     };
-    let hello = crate::protocol::emit_player_hello(&actor);
+    let hello = crate::protocol::hello_line(&actor);
     let (reader, mut writer) = dial(addr, hello.as_bytes()).await?.into_split();
     let mut frames = BufReader::new(reader).lines();
     loop {
@@ -108,7 +108,7 @@ async fn dial(addr: SocketAddr, hello: &[u8]) -> Result<TcpStream, Error> {
 fn parse_player_id(token: &str) -> Result<String, Error> {
     let token = token.trim();
     let id = token.strip_prefix("player:").unwrap_or(token);
-    crate::protocol::parse_player_hello(&format!("player:{id}"))
+    crate::protocol::parse_hello(&format!("player:{id}"))
         .map(str::to_string)
         .ok_or(Error::Message("SCHEMA".into()))
 }
@@ -141,7 +141,7 @@ fn show_raw(line: &str) -> FrameFlow {
 }
 
 fn show_readable(formatter: &mut frame_text::PlayerFormatter, line: &str) -> FrameFlow {
-    let Ok(message) = crate::protocol::parse_player(line) else {
+    let Ok(message) = crate::protocol::PlayerFrame::from_line(line) else {
         eprintln!("{line}");
         let _ = io::stderr().flush();
         return FrameFlow::Continue;
@@ -164,7 +164,7 @@ fn show_readable(formatter: &mut frame_text::PlayerFormatter, line: &str) -> Fra
 }
 
 fn refused_code(line: &str) -> Option<String> {
-    match crate::protocol::parse_player(line) {
+    match crate::protocol::PlayerFrame::from_line(line) {
         Ok(PlayerFrame::Refused { code, .. }) => Some(code),
         _ => None,
     }
@@ -172,7 +172,7 @@ fn refused_code(line: &str) -> Option<String> {
 
 fn is_view(line: &str) -> bool {
     matches!(
-        crate::protocol::parse_player(line),
+        crate::protocol::PlayerFrame::from_line(line),
         Ok(PlayerFrame::View { .. })
     )
 }

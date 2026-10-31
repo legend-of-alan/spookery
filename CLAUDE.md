@@ -36,7 +36,7 @@ The `dependency-and-feature-checks` job in `.github/workflows/ci.yml` fails the 
 
 - `protocol` (`spookery-protocol`): player and GM wire types. MIT licensed, so every dependency must be permissively licensed.
 - `engine` (`spookery-engine`): world model, rules, rounds, save and journal. Synchronous; depends only on `protocol`.
-- `server` (`spookery-server`): table loop, seats over loopback TCP, idle clock, the MCP "agent door". Must not depend on `cli`, `agent` or `reqwest`.
+- `server` (`spookery-server`): the table, seats over loopback TCP, idle timer, the MCP "agent door". Must not depend on `cli`, `agent` or `reqwest`.
 - `agent` (`spookery-agent`): the model-GM turn state machine and prompt. Pure logic: no `engine`, `server`, `cli`, `tokio`, `reqwest` or `socket2`.
 - `cli` (`spookery-cli`): `spook play` / `spook gm` terminals, the MCP GM client, and the `ai-gm` HTTP loop around `agent`. Must not depend on `engine` or `server`; it only talks to the host over the wire.
 - `spook`: the clap binary (`src/main.rs`) and library `spookery`. Feature `server` pulls in engine+server, `client` pulls in cli; both builds must work alone (`--no-default-features --features server|client`).
@@ -61,7 +61,7 @@ Crates other than `spook` keep sources at the crate root (`lib.rs`, not `src/lib
 - BDD scenarios live in `crates/engine/tests/features/<folder>` and `crates/spook/tests/features/<folder>`, run by cucumber in two programs per crate (`features_host`, `features_world`). A new feature folder must be added to exactly one list: `crates/spook/tests/feature_dirs.rs` or `testing::HOST`/`WORLD` in `crates/engine/lib.rs`. New step modules are registered with `#[path]` in `features_host.rs` / `features_world.rs`. The `feature_census` test fails on unlisted, doubly listed, or loose `.feature` files.
 - `docs/engine-guarantees.md` states what the engine promises; every `##` section must cite feature files that exist (`engine_guarantees` test). The feature files win if the two disagree.
 - Every YAML fence in `docs/pack-reference.md` must form a pack that `spook check` accepts (`pack_reference` test), so pack schema changes need doc updates in the same PR.
-- `packs/sample-d20` is played to its ending by tests; `packs/oneshot-docks` is the multi-PC fixture the engine and seat tests rely on, so leave it unchanged. `spook new` writes the template in `crates/server/templates/starter/`.
+- `packs/sample-d20` is played to its ending by tests; `packs/oneshot-docks` is the multi-PC fixture the engine and seat tests rely on, so leave it unchanged. `spook new` writes the template in `crates/spook/templates/starter/`.
 - Tests copy packs into temp dirs (`testing::copy_pack`, `testing::fresh_dir`); never let a test write into `packs/`.
 
 ## Conventions
@@ -69,6 +69,6 @@ Crates other than `spook` keep sources at the crate root (`lib.rs`, not `src/lib
 - Follow the design principles and the issue and PR title format in `CONTRIBUTING.md`.
 - In PR bodies, use `Closes #N` only for the closing keyword; elsewhere write "issue #N" / "PR #N", never a bare `#N`.
 - Never merge a PR. Never force-push or rebase a pushed branch; merge `main` into it instead.
-- PR CI runs Linux only; `main` also runs macOS and Windows, and Windows runs clippy for the `cfg(windows)` code in `engine/store/lock.rs`, `engine/store/durability.rs` and `server/gm_tools.rs`.
+- PR CI runs Linux only; `main` also runs macOS and Windows, and Windows runs clippy for the `cfg(windows)` code in `engine/store/durability.rs`.
 - Do not restore `docs/legacy_architecture/` or `docs/adr/`.
 - Pack authoring workflow (edit a copy, loop on `spook check --json`, `spook migrate` after canon edits) is in `.grok/skills/author-pack/SKILL.md`.

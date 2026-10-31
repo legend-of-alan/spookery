@@ -11,6 +11,7 @@ use crate::rules::expr::Ctx;
 use crate::rules::habits::is_eligible;
 use crate::rules::perceive::perceive_as;
 
+/// Returned from the engine to the host table, which turns it into a `Refusal`.
 /// A gate refusal. `Reason` stays fieldless. A cost shortfall keeps the missing name.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum GateRefusal {

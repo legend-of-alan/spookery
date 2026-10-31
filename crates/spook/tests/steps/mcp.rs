@@ -397,11 +397,10 @@ async fn connect_door(
 
 fn listen_door(world: &mut World) -> (u16, u16) {
     let pack = table::pack(world).to_path_buf();
-    table::listen_with_flags(
+    table::run_with_flags(
         world,
         &pack,
         &["--addr", "127.0.0.1:0", "--door", "127.0.0.1:0"],
-        &[],
     )
 }
 

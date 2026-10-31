@@ -1,14 +1,20 @@
-//! Serve the agent door over HTTP.
+//! The agent door: the GM seat over MCP streamable HTTP.
 
 use std::collections::HashMap;
 use std::pin::Pin;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::AtomicU64;
 use std::sync::mpsc::Sender;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::task::{Context, Poll};
 
 use futures_core::Stream;
-use rmcp::model::{ClientJsonRpcMessage, GetExtensions, ServerJsonRpcMessage};
+use rmcp::model::{
+    CallToolRequestParams, CallToolResponse, CallToolResult, ClientJsonRpcMessage,
+    CustomNotification, GetExtensions, InitializeRequestParams, InitializeResult, ListToolsResult,
+    PaginatedRequestParams, ServerConfig, ServerJsonRpcMessage, ServerNotification, Tool,
+    ToolsCapability,
+};
+use rmcp::service::{Peer, RequestContext, RoleServer};
 use rmcp::transport::streamable_http_server::session::local::{
     LocalSessionManager, LocalSessionManagerError,
 };
@@ -16,24 +22,24 @@ use rmcp::transport::streamable_http_server::session::{
     ServerSseMessage, SessionId, SessionManager,
 };
 use rmcp::transport::streamable_http_server::{StreamableHttpServerConfig, StreamableHttpService};
+use rmcp::{ErrorData as McpError, ServerHandler};
 use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
-use tokio::sync::oneshot;
 
-use super::gm_seat::Handler;
 use super::limits::GM_BODY_CAP;
-use super::world_loop::Request;
+use super::seat::{frame_queue, write_frames, Conn};
+use super::table::{report_hangup, Request};
+use super::tools;
 
-// HTTP POST bodies on the agent door stop at this cap.
 pub(super) async fn serve(
     listener: tokio::net::TcpListener,
     tx: Sender<Request>,
     next_conn: Arc<AtomicU64>,
 ) {
-    let (hangup_tx, mut hang_ups) = unbounded_channel();
+    let (hangup_tx, mut hangups) = unbounded_channel();
     let sessions = Arc::new(SeatSessions::new(tx.clone(), next_conn, hangup_tx));
     let closer = Arc::clone(&sessions);
     tokio::spawn(async move {
-        while let Some(id) = hang_ups.recv().await {
+        while let Some(id) = hangups.recv().await {
             let _ = closer.close_session(&id).await;
         }
     });
@@ -50,22 +56,19 @@ fn http_config() -> StreamableHttpServerConfig {
     let mut config = StreamableHttpServerConfig::default()
         .with_allowed_hosts(["127.0.0.1"])
         .with_allowed_origins(["http://127.0.0.1:*"]);
+    // HTTP POST bodies on the agent door stop at this cap.
     config.max_request_body_bytes = GM_BODY_CAP;
     config
 }
 
-/// The shard connection id for this HTTP session. `Handler` reads it during initialize.
-#[derive(Clone, Copy)]
-pub(super) struct SeatConn(pub(super) u64);
-
-/// rmcp's local sessions. Closing one answers only after the shard thread has
+/// rmcp's local sessions. Closing one answers only after the table has
 /// freed that session's GM seat. A session ends on DELETE or when the GM's
 /// event stream hangs up, never on an idle timer.
 struct SeatSessions {
     inner: LocalSessionManager,
     tx: Sender<Request>,
     next_conn: Arc<AtomicU64>,
-    conns: Mutex<HashMap<SessionId, u64>>,
+    conns: Mutex<HashMap<SessionId, Conn>>,
     hangup_tx: UnboundedSender<SessionId>,
 }
 
@@ -87,6 +90,7 @@ impl SeatSessions {
     }
 }
 
+/// Carries `spook/event` frames from the table to the GM's MCP client over SSE.
 /// The GM's event stream. The connection under it lives as long as the GM,
 /// so when it is dropped the session is closed.
 struct EventStream<S> {
@@ -123,12 +127,13 @@ impl SessionManager for SeatSessions {
         mut message: ClientJsonRpcMessage,
     ) -> Result<ServerJsonRpcMessage, Self::Error> {
         if let ClientJsonRpcMessage::Request(request) = &mut message {
-            let conn = self.next_conn.fetch_add(1, Ordering::Relaxed);
+            let conn = Conn::new(&self.next_conn);
             self.conns
                 .lock()
                 .unwrap_or_else(|err| err.into_inner())
                 .insert(id.clone(), conn);
-            request.request.extensions_mut().insert(SeatConn(conn));
+            // `Handler` reads the id back during initialize.
+            request.request.extensions_mut().insert(conn);
         }
         self.inner.initialize_session(id, message).await
     }
@@ -146,10 +151,7 @@ impl SessionManager for SeatSessions {
             .remove(id);
         let closed = self.inner.close_session(id).await;
         if let Some(conn) = conn {
-            let (ack_tx, ack_rx) = oneshot::channel();
-            if self.tx.send(Request::Hangup { conn, ack: ack_tx }).is_ok() {
-                let _ = ack_rx.await;
-            }
+            report_hangup(&self.tx, conn).await;
         }
         closed
     }
@@ -191,6 +193,128 @@ impl SessionManager for SeatSessions {
     }
 }
 
+/// The error a tool call gets once the table has stopped.
+fn table_closed() -> McpError {
+    McpError::internal_error("table closed", None)
+}
+
+struct Handler {
+    tx: Sender<Request>,
+    conn: OnceLock<Conn>,
+}
+
+impl Handler {
+    fn new(tx: Sender<Request>) -> Self {
+        Self {
+            tx,
+            conn: OnceLock::new(),
+        }
+    }
+}
+
+impl ServerHandler for Handler {
+    fn get_info(&self) -> ServerConfig {
+        let mut info = ServerConfig::default();
+        info.capabilities.tools = Some(ToolsCapability::default());
+        info
+    }
+
+    fn list_tools(
+        &self,
+        _request: Option<PaginatedRequestParams>,
+        _context: RequestContext<RoleServer>,
+    ) -> impl std::future::Future<Output = Result<ListToolsResult, McpError>> + Send + '_ {
+        let tools = tools::TOOLS
+            .iter()
+            .map(|tool| Tool::new(tool.name, tool.description(), Arc::new((tool.schema)())))
+            .collect();
+        std::future::ready(Ok(ListToolsResult::with_all_items(tools)))
+    }
+
+    async fn initialize(
+        &self,
+        request: InitializeRequestParams,
+        context: RequestContext<RoleServer>,
+    ) -> Result<InitializeResult, McpError> {
+        let conn = context
+            .extensions
+            .get::<Conn>()
+            .copied()
+            .ok_or_else(|| McpError::internal_error("no seat", None))?;
+        let _ = self.conn.set(conn);
+        self.seat_gm(conn, &context).await?;
+        context.peer.set_peer_info(request.clone());
+        self.negotiate_initialize(&request)
+    }
+
+    async fn call_tool(
+        &self,
+        request: CallToolRequestParams,
+        _context: RequestContext<RoleServer>,
+    ) -> Result<CallToolResponse, McpError> {
+        let Some(&conn) = self.conn.get() else {
+            return Err(McpError::internal_error("no seat", None));
+        };
+        let tx = self.tx.clone();
+        let name = request.name.into_owned();
+        let arguments = request.arguments;
+        let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
+        tx.send(Request::Tool {
+            conn,
+            name,
+            arguments,
+            reply: reply_tx,
+        })
+        .map_err(|_| table_closed())?;
+        let value = reply_rx.await.map_err(|_| table_closed())?;
+        Ok(CallToolResult::structured(value).into())
+    }
+}
+
+impl Handler {
+    async fn seat_gm(
+        &self,
+        conn: Conn,
+        context: &RequestContext<RoleServer>,
+    ) -> Result<(), McpError> {
+        let (frames_tx, frames_rx) = frame_queue();
+        let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
+        self.tx
+            .send(Request::SeatGm {
+                conn,
+                frames_tx,
+                reply: reply_tx,
+            })
+            .map_err(|_| table_closed())?;
+        let reply = reply_rx.await.map_err(|_| table_closed())?;
+        match reply {
+            Ok(()) => {
+                let peer = context.peer.clone();
+                // One writer drains this queue, so two tool calls cannot pass each other.
+                tokio::spawn(write_frames(
+                    async move |frame: &[u8]| {
+                        send_event(&peer, frame).await;
+                        true
+                    },
+                    frames_rx,
+                ));
+                Ok(())
+            }
+            Err(refusal) => Err(refusal.mcp_error()),
+        }
+    }
+}
+
+async fn send_event(peer: &Peer<RoleServer>, frame: &[u8]) {
+    let Ok(body) = serde_json::from_slice(frame) else {
+        return;
+    };
+    let note = CustomNotification::new("spook/event", Some(body));
+    let _ = peer
+        .send_notification(ServerNotification::CustomNotification(note))
+        .await;
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::atomic::AtomicU64;
@@ -199,33 +323,33 @@ mod tests {
     use rmcp::model::ProtocolVersion;
     use serde_json::Value;
 
-    use super::super::world_loop::Request;
     use super::serve;
+    use crate::seat::Conn;
+    use crate::table::Request;
 
-    /// A stand-in for the shard thread with one GM seat. It refuses a second
+    /// A stand-in for the table thread with one GM seat. It refuses a second
     /// claim while the seat is held, like the real table. On a fault it tells
     /// the test, then holds the seat until the test lets the release through.
-    fn spawn_fake_world_loop(
+    fn spawn_fake_table(
         rx: mpsc::Receiver<Request>,
         fault_seen: tokio::sync::mpsc::UnboundedSender<()>,
         let_go: mpsc::Receiver<()>,
     ) {
         std::thread::spawn(move || {
-            let mut seat: Option<u64> = None;
+            let mut seat: Option<Conn> = None;
             let mut kept = Vec::new();
             for msg in rx {
                 match msg {
                     Request::SeatGm {
                         conn,
-                        out,
-                        cancel,
+                        frames_tx: out,
                         reply,
                     } => {
                         if seat.is_some() {
-                            let _ = reply.send(Err(spookery_engine::Reason::TableFull));
+                            let _ = reply.send(Err(spookery_engine::Reason::TableFull.into()));
                         } else {
                             seat = Some(conn);
-                            kept.push((out, cancel));
+                            kept.push(out);
                             let _ = reply.send(Ok(()));
                         }
                     }
@@ -367,7 +491,7 @@ mod tests {
         let (tx, rx) = mpsc::channel();
         let (fault_tx, fault_seen) = tokio::sync::mpsc::unbounded_channel();
         let (let_go, held) = mpsc::channel();
-        spawn_fake_world_loop(rx, fault_tx, held);
+        spawn_fake_table(rx, fault_tx, held);
         tokio::spawn(serve(listener, tx, Arc::new(AtomicU64::new(1))));
         (port, fault_seen, let_go)
     }
@@ -438,7 +562,7 @@ mod tests {
         assert!(fault_seen.try_recv().is_err(), "the quiet GM lost the seat");
     }
 
-    // End to end over HTTP: the handler's drop reaches the shard thread, the
+    // End to end over HTTP: the handler's drop reaches the table thread, the
     // DELETE reply waits for the release, and a GM that reconnects as soon as
     // DELETE answers is not told the table is full (issue #214).
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -454,7 +578,7 @@ mod tests {
                 async move { send_http(port, "DELETE", Some(&session), &version, "").await },
             );
 
-        // The release reaches the shard thread, which holds the seat for now.
+        // The release reaches the table thread, which holds the seat for now.
         tokio::select! {
             biased;
             reply = &mut delete => {
@@ -466,7 +590,7 @@ mod tests {
         }
         assert!(
             !delete.is_finished(),
-            "DELETE answered while the shard thread still held the seat"
+            "DELETE answered while the table thread still held the seat"
         );
 
         // Let the release through. Only now may DELETE answer.

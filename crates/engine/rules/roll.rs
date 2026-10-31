@@ -33,6 +33,7 @@ pub fn classify(total: i64, target: i64, partial_at: Option<i64>) -> Outcome {
 /// One roll's dice, total, and band. Not stored in `Now`.
 pub use spookery_protocol::Roll;
 
+/// Returned from the engine's round to the host table, which turns it into check frames.
 /// What the round did with a player's move: the roll, or a refusal and its reason.
 /// Not stored in `Now` or the tick JSONL.
 #[derive(Clone, Debug, PartialEq, Eq)]

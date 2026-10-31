@@ -15,6 +15,7 @@ pub const MAX_BYTES: u64 = 1024 * 1024;
 const DEFAULT_LIMIT: usize = 64;
 const MAX_LIMIT: usize = 256;
 
+/// Written by the engine to the tape and handed to the host table, which relays it to players and the GM.
 /// One tape line. Field order is the order of the bytes on disk.
 /// `place` and `actor` may be null. A missing key is not a record.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
