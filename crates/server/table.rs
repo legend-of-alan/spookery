@@ -123,7 +123,7 @@ impl Table {
                     let seated = self.seat_gm(conn, frames_tx);
                     let took = seated.is_ok();
                     if reply.send(seated).is_err() && took {
-                        self.seats.release_gm();
+                        self.release_gm();
                     }
                 }
                 Request::Line { conn, line, reply } => {
@@ -314,7 +314,7 @@ impl Table {
         }
         // Free the seat before the client can read this result.
         if reply.release_seat {
-            self.seats.release_gm();
+            self.release_gm();
         }
         reply.value
     }
@@ -322,8 +322,15 @@ impl Table {
     fn handle_hangup(&mut self, conn: Conn) {
         self.drop_player(conn);
         if self.seats.gm.as_ref().is_some_and(|gm| gm.conn == conn) {
-            self.seats.release_gm();
+            self.release_gm();
         }
+    }
+
+    /// Frees the GM seat and says so on the host log, so the operator sees the seat is open.
+    fn release_gm(&mut self) {
+        self.seats.release_gm();
+        let _ = writeln!(self.out, "gm seat free");
+        let _ = self.out.flush();
     }
 
     fn wake(&mut self) -> Result<(), Reason> {
@@ -429,7 +436,7 @@ impl Table {
 
     fn send_gm(&mut self, frame: Vec<u8>) {
         if self.seats.gm.as_ref().is_some_and(|gm| !gm.out.send(frame)) {
-            self.seats.release_gm();
+            self.release_gm();
         }
     }
 

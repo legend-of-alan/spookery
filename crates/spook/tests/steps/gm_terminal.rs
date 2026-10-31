@@ -141,7 +141,12 @@ fn another_gm_joins(world: &mut World) {
 #[when(expr = "the GM is killed")]
 fn the_gm_is_killed(world: &mut World) {
     // Dropping the process kills it, so it never sends DELETE.
+    let mark = table::host_stdout(world).len();
     world.gm.take();
+    table::wait_host_until(world, "the GM seat freed", |text| {
+        text.get(mark..)
+            .is_some_and(|added| added.contains("gm seat free"))
+    });
 }
 
 #[when(expr = "another GM sits in that seat")]
