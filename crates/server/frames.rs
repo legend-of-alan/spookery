@@ -8,8 +8,8 @@ use crate::protocol::{
 use rmcp::ErrorData as McpError;
 use serde_json::Value;
 use spookery_engine::{
-    self as engine, Intent, MoveReport, Note, Presence, Reason, Roll, RoundOutput, State,
-    TapeRecord,
+    self as engine, GateRefusal, Intent, MoveReport, Note, Presence, Reason, Roll, RoundOutput,
+    State, TapeRecord,
 };
 
 /// The player `refused` line. `detail` is left out when there is none.
@@ -17,12 +17,12 @@ pub(super) fn refused_line(refusal: Refusal) -> String {
     PlayerFrame::Refused(refusal).to_line()
 }
 
-/// The `refused` line of a move the gate or a round refused. `missing` is the meter or
-/// item id, or the sentence a locked exit shows.
-pub(super) fn refused_move_line(code: Reason, missing: Option<&str>) -> String {
+/// The `refused` line of a move the gate refused. Its `missing` is the meter or item id,
+/// or the sentence a locked exit shows.
+pub(super) fn refused_move_line(refusal: &GateRefusal) -> String {
     refused_line(Refusal {
-        code: protocol::Code::Known(code),
-        detail: missing.map(|text| Detail::One(text.to_string())),
+        code: protocol::Code::Known(refusal.reason()),
+        detail: refusal.missing().map(|text| Detail::One(text.to_string())),
     })
 }
 
@@ -36,17 +36,9 @@ pub(super) fn mcp_error(refusal: &Refusal) -> McpError {
     McpError::internal_error(refusal.to_string(), None)
 }
 
-/// `CHOOSE_PC` names the free PCs.
-pub(super) fn choose_pc(free: Vec<String>) -> Refusal {
-    Refusal {
-        code: protocol::Code::Known(Reason::ChoosePc),
-        detail: Some(Detail::Many(free)),
-    }
-}
-
 pub(super) fn say_line(tape: &TapeRecord, replay: bool) -> String {
     PlayerFrame::Say {
-        from: tape.from.parse().expect("the tape reader checks from"),
+        from: tape.from.clone(),
         address: tape.address.clone(),
         text: tape.text.clone(),
         replay,
@@ -65,7 +57,7 @@ pub(super) fn say_event(tape: &TapeRecord) -> Vec<u8> {
 fn gm_say(tape: &TapeRecord) -> SayEvent {
     SayEvent {
         seq: tape.seq,
-        from: tape.from.parse().expect("the tape reader checks from"),
+        from: tape.from.clone(),
         address: tape.address.clone(),
         place: tape.place.clone(),
         actor: tape.actor.clone(),
@@ -99,9 +91,10 @@ pub(super) fn check_lines(reports: &[MoveReport], actor_id: &str) -> String {
         }
         match report {
             MoveReport::Rolled { roll: rolled, .. } => out.push_str(&check_line(rolled.outcome)),
-            MoveReport::Refused { code, missing, .. } => {
-                out.push_str(&refused_move_line(*code, missing.as_deref()))
-            }
+            MoveReport::Refused { code, missing, .. } => out.push_str(&refused_line(Refusal {
+                code: protocol::Code::Known(*code),
+                detail: missing.clone().map(Detail::One),
+            })),
         }
     }
     out

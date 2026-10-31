@@ -7,7 +7,7 @@ use std::net::SocketAddr;
 use serde_json::{json, Value};
 
 use crate::gm_connection::{self, Connection, Event, GmEvent, Incoming, ToolResult};
-use crate::protocol::{self, CommitBody, PlayerFrame, Refusal, SayArgs, TableStatus};
+use crate::protocol::{CommitBody, PlayerFrame, Refusal, SayArgs, TableStatus};
 
 use super::frame_text::{self, humanize};
 
@@ -362,10 +362,7 @@ fn echo_refusal(refusal: &Refusal, raw: &str, raw_mode: bool) -> String {
         return refusal.to_string();
     }
     emit(raw);
-    match &refusal.code {
-        protocol::Code::Known(reason) => reason.as_str().to_string(),
-        protocol::Code::Other(code) => code.clone(),
-    }
+    refusal.code.as_str().to_string()
 }
 
 fn emit(line: &str) {
