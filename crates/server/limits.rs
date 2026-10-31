@@ -34,9 +34,12 @@ pub(super) const OUTBOUND_BYTE_CAP: usize = 64 * 1024;
 /// Send buffer the player socket asks for. The OS may grant more.
 pub(super) const REQUESTED_SEND_BUFFER: usize = 8 * 1024;
 
-/// Idle time before the first keepalive probe on a player socket. With three
-/// one-second probes, a silent socket holds its seat for about 33 seconds.
-pub(super) const KEEPALIVE_IDLE: Duration = Duration::from_secs(30);
+/// Keepalive probes on a player socket: the first after 30 idle seconds, then
+/// three more one second apart. A silent socket holds its seat for about 33 seconds.
+pub(super) const KEEPALIVE: socket2::TcpKeepalive = socket2::TcpKeepalive::new()
+    .with_time(Duration::from_secs(30))
+    .with_interval(Duration::from_secs(1))
+    .with_retries(3);
 
 pub(super) const HELLO_TIMEOUT: Duration = Duration::from_secs(10);
 

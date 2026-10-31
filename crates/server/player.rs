@@ -32,11 +32,7 @@ pub(super) async fn serve(
 /// Sends small lines at once and drops a peer that stops answering keepalive probes.
 fn set_socket_options(stream: &tokio::net::TcpStream) -> io::Result<()> {
     stream.set_nodelay(true)?;
-    let keepalive = socket2::TcpKeepalive::new()
-        .with_time(super::limits::KEEPALIVE_IDLE)
-        .with_interval(Duration::from_secs(1))
-        .with_retries(3);
-    socket2::SockRef::from(stream).set_tcp_keepalive(&keepalive)
+    socket2::SockRef::from(stream).set_tcp_keepalive(&super::limits::KEEPALIVE)
 }
 
 async fn read_hello(
