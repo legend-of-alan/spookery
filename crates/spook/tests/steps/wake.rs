@@ -93,12 +93,7 @@ fn a_queued_wait_meets_wakes(world: &mut World) {
     let value: Value = serde_json::from_str(&status).unwrap();
     let rows = value["result"]["structuredContent"]["queued"]
         .as_array()
-        .unwrap_or_else(|| {
-            panic!(
-                "no queue
-{status}"
-            )
-        });
+        .unwrap_or_else(|| panic!("no queue\n{status}"));
     assert_eq!(rows.len(), 1, "{status}");
     assert_eq!(rows[0]["id"], id.as_str(), "{status}");
     assert_eq!(rows[0]["actor_id"], "pc_rowan", "{status}");
