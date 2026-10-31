@@ -3,7 +3,6 @@
 pub(crate) mod canon;
 pub(crate) mod diagnostic;
 pub(crate) mod draft;
-pub(crate) mod error;
 pub(crate) mod hash;
 pub(crate) mod intent;
 pub(crate) mod model;
@@ -26,7 +25,6 @@ pub(crate) use store::lock;
 
 pub use canon::{load_canon, pack_rev};
 pub use diagnostic::{first_reason, Code, Diagnostic};
-pub use error::Reason;
 pub use intent::{Intent, IntentArgs, Source, Target, Viewer};
 pub use meter::MeterLive;
 pub use model::{Note, Presence, RunState, State};
@@ -34,7 +32,7 @@ pub use perceive::{ClockView, ItemStack, KnownFact, MeterView, View};
 pub use round::{migrate_pack, play_pack_once, verify_pack, verify_quick, RoundOutput};
 pub use rule::When;
 pub use rules::{GateRefusal, MoveReport, Outcome, Roll};
-pub use spookery_protocol::{IntentCall, QueuedMove};
+pub use spookery_protocol::{IntentCall, QueuedMove, Reason};
 pub use store::{emit_save, emit_tape_record, lock_pack, parse_save, PackGuard, TapeRecord};
 pub use travel::ExitView;
 pub use visibility::RecipientLine;

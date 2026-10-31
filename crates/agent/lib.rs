@@ -11,14 +11,14 @@ use std::collections::{BTreeMap, VecDeque};
 
 use serde_json::{json, Value};
 
-use crate::protocol::{CommitBody, EventBody, PlayerFrame, Roll, SayEvent, TableStatus};
+use crate::protocol::{CommitBody, GmEvent, PlayerFrame, Roll, SayEvent, Speaker, TableStatus};
 
 /// A server built before the pack summary moved onto `table_status`.
 const OLDER_SERVER: &str = "this spook run is older than spook ai-gm, rebuild both";
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Input {
-    GmEvent(EventBody),
+    GmEvent(GmEvent),
     ToolResult {
         body: Value,
         refused: bool,
@@ -163,9 +163,11 @@ impl Agent {
         }
     }
 
-    fn absorb(&mut self, body: EventBody) {
+    fn absorb(&mut self, body: GmEvent) {
         match body {
-            EventBody::Say(say) if say.from.starts_with("player:") && say.seq > self.high_water => {
+            GmEvent::Say(say)
+                if matches!(say.from, Speaker::Player(_)) && say.seq > self.high_water =>
+            {
                 self.wakes.push_back(Wake::Say {
                     from: say.from,
                     seq: say.seq,
@@ -175,8 +177,8 @@ impl Agent {
                     text: say.text,
                 });
             }
-            EventBody::Queued(_) => self.wakes.push_back(Wake::Queued),
-            EventBody::Say(_) | EventBody::Check(_) => {}
+            GmEvent::Queued(_) => self.wakes.push_back(Wake::Queued),
+            GmEvent::Say(_) | GmEvent::Check(_) => {}
         }
     }
 
@@ -271,7 +273,7 @@ impl Agent {
 
     fn advance_actions(&mut self, epilogue: bool) -> Step {
         if let Some(say) = self.turn.says.pop_front() {
-            let args = say.to_value();
+            let args = serde_json::to_value(&say).expect("say arguments");
             self.phase = Phase::Say(say, epilogue);
             return call_tool("say", args);
         }
@@ -335,7 +337,7 @@ fn player_lines(status: &TableStatus, high: u64) -> Vec<HandledSay> {
         .events
         .iter()
         .flatten()
-        .filter(|say| say.from.starts_with("player:") && say.seq > high)
+        .filter(|say| matches!(say.from, Speaker::Player(_)) && say.seq > high)
         .cloned()
         .map(HandledSay::from)
         .collect()

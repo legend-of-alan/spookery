@@ -1,6 +1,6 @@
 //! Save, journal, and the rules version stamped on both.
 
-use crate::error::Reason;
+use crate::Reason;
 
 pub(crate) mod codec;
 pub(crate) mod commit;

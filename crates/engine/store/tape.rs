@@ -6,8 +6,9 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
-use crate::error::Reason;
 use crate::store::durability::{fsync_dir, write_atomic};
+use crate::Reason;
+use spookery_protocol::Speaker;
 
 /// Size bound for `state/tape.jsonl`. An append that would pass it first drops the oldest half.
 pub const MAX_BYTES: u64 = 1024 * 1024;
@@ -17,7 +18,7 @@ const MAX_LIMIT: usize = 256;
 
 /// Written by the engine to the tape and handed to the host table, which relays it to players and the GM.
 /// One tape line. Field order is the order of the bytes on disk.
-/// `place` and `actor` may be null. A missing key is not a record.
+/// `from` is a `Speaker`'s text. `place` and `actor` may be null. A missing key is not a record.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TapeRecord {
     pub seq: u64,
@@ -162,8 +163,11 @@ pub fn last_seq(root: &Path) -> Result<u64, Reason> {
         .unwrap_or(0))
 }
 
+/// A line whose `from` is not a `Speaker` does not parse either.
 fn parse_record(line: &str) -> Result<TapeRecord, Reason> {
-    serde_json::from_str(line).map_err(|_| Reason::Schema)
+    let record: TapeRecord = serde_json::from_str(line).map_err(|_| Reason::Schema)?;
+    record.from.parse::<Speaker>()?;
+    Ok(record)
 }
 
 /// `(kept_end, last_seq)` from the file tail. A torn suffix is not a record.

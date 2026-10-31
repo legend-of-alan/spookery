@@ -1,7 +1,6 @@
 //! Admit an intent, or refuse it with a reason.
 
 use crate::canon::Canon;
-use crate::error::Reason;
 use crate::intent::{Intent, Source, Target, Viewer};
 use crate::model::{Presence, State};
 use crate::rule::{Owner, Rule, TargetKind, When};
@@ -10,6 +9,7 @@ use crate::rules::cost;
 use crate::rules::expr::Ctx;
 use crate::rules::habits::is_eligible;
 use crate::rules::perceive::perceive_as;
+use crate::Reason;
 
 /// Returned from the engine to the host table, which turns it into a `Refusal`.
 /// A gate refusal. `Reason` stays fieldless. A cost shortfall keeps the missing name.

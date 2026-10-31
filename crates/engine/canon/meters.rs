@@ -126,7 +126,7 @@ mod tests {
     use super::*;
     use crate::canon::tests::rejects;
     use crate::diagnostic::first_reason;
-    use crate::error::Reason;
+    use crate::Reason;
 
     fn load_meters(text: &str) -> Result<BTreeMap<String, MeterDef>, Vec<Diagnostic>> {
         super::load_meters("rules/meters.yaml", text)

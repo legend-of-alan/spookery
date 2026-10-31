@@ -3,7 +3,6 @@
 use std::collections::BTreeSet;
 
 use crate::canon::Canon;
-use crate::error::Reason;
 use crate::intent::Viewer;
 use crate::meter;
 use crate::model::{Note, Presence, State};
@@ -11,9 +10,9 @@ use crate::rules::habits::habits_that_hold;
 use crate::travel::ExitView;
 use crate::visibility::can_see_fact;
 use crate::world::World;
+use crate::Reason;
+use spookery_protocol::PERCEIVE_BODY_CHARS;
 pub use spookery_protocol::{ClockView, ItemStack, KnownFact, MeterView};
-
-const MAX_BODY_CHARS: usize = 800;
 
 /// Returned from the engine to the host table, which renders it as a player or GM view.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -37,7 +36,7 @@ pub struct View {
 }
 
 pub fn perceive<L>(world: &World<L>, presence: &Presence, as_arg: &str) -> Result<View, Reason> {
-    perceive_budget(world, presence, as_arg, MAX_BODY_CHARS)
+    perceive_budget(world, presence, as_arg, PERCEIVE_BODY_CHARS)
 }
 
 pub fn perceive_budget<L>(
@@ -64,7 +63,7 @@ pub(crate) fn perceive_as(
     presence: &Presence,
     viewer: &Viewer,
 ) -> Result<View, Reason> {
-    perceive_viewer_budget(canon, now, presence, viewer, MAX_BODY_CHARS)
+    perceive_viewer_budget(canon, now, presence, viewer, PERCEIVE_BODY_CHARS)
 }
 
 fn perceive_viewer_budget(

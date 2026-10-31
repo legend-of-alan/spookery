@@ -15,12 +15,14 @@ use rmcp::{ClientHandler, ServiceExt};
 use serde_json::Value;
 use tokio::sync::mpsc;
 
+use crate::protocol::{Reason, Refusal};
+
 /// A GM-seat failure. The display text is the seat's message or the I/O error.
 #[derive(Debug)]
 pub enum Error {
     Io(std::io::Error),
     Invalid(String),
-    Refused { code: String, raw: String },
+    Refused { refusal: Refusal, raw: String },
 }
 
 impl std::fmt::Display for Error {
@@ -35,13 +37,13 @@ impl std::fmt::Display for Error {
 
 impl std::error::Error for Error {}
 
-pub use crate::protocol::EventBody;
+pub use crate::protocol::GmEvent;
 
 /// One `spook/event` the seat already sent. `raw` is the notification line.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Event {
     pub raw: String,
-    pub body: EventBody,
+    pub body: GmEvent,
 }
 
 /// A message from the GM seat, before a client's own turn rules.
@@ -50,7 +52,7 @@ pub enum Incoming {
     Result { id: u64, raw: String },
     Event(Event),
     Invalid(String),
-    Refused { code: String, raw: String },
+    Refused { refusal: Refusal, raw: String },
     Eof,
 }
 
@@ -339,8 +341,8 @@ async fn probe_seat_refusal(url: &str) -> Option<Error> {
             .send()
             .await;
     }
-    let code = bracket_code(&text)?;
-    Some(Error::Refused { code, raw: text })
+    let refusal = bracket_refusal(&text)?;
+    Some(Error::Refused { refusal, raw: text })
 }
 
 impl From<ClientInitializeError> for Error {
@@ -360,20 +362,21 @@ fn refusal_of(err: &ClientInitializeError) -> Option<Error> {
         }
         other => {
             let text = other.to_string();
-            bracket_code(&text).map(|code| Error::Refused { code, raw: text })
+            bracket_refusal(&text).map(|refusal| Error::Refused { refusal, raw: text })
         }
     }
 }
 
 fn parse_refused(raw: &str) -> Error {
-    let code = bracket_code(raw).unwrap_or_else(|| "TABLE_FULL".to_string());
+    let refusal = bracket_refusal(raw).unwrap_or_else(|| Reason::TableFull.into());
     Error::Refused {
-        code,
+        refusal,
         raw: raw.to_string(),
     }
 }
 
-fn bracket_code(text: &str) -> Option<String> {
+/// The refusal whose code is the last `[...]` in `text`.
+fn bracket_refusal(text: &str) -> Option<Refusal> {
     let start = text.rfind('[')?;
     let end = text.rfind(']')?;
     if end <= start + 1 {
@@ -383,7 +386,7 @@ fn bracket_code(text: &str) -> Option<String> {
     if code.is_empty() || code.contains([' ', '[']) {
         return None;
     }
-    Some(code.to_string())
+    serde_json::from_value(serde_json::json!({ "code": code })).ok()
 }
 
 /// Read one `spook/event` notification. A body that is not a say, a queued

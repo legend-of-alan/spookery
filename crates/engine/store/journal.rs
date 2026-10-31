@@ -16,8 +16,8 @@ use flate2::write::GzEncoder;
 use flate2::Compression;
 use serde::de::DeserializeOwned;
 
-use crate::error::Reason;
 use crate::hash::blake2s_hex;
+use crate::Reason;
 
 pub(crate) use super::records::{
     AddedMeter, Arrival, CheckpointRecord, MigrateRecord, Refusal, Step,

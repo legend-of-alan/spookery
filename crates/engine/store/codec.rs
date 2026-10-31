@@ -5,8 +5,8 @@ use serde_saphyr::SerializerOptions;
 
 use crate::diagnostic::{check_tag, error, locate_nth, parse_file, schema_error, Diagnostic};
 use crate::effect::Effect;
-use crate::error::Reason;
 use crate::model::{sort_unique, MemoryLine, State};
+use crate::Reason;
 
 pub(crate) fn save_emit_options() -> SerializerOptions {
     serde_saphyr::ser_options! {
@@ -237,9 +237,9 @@ notes: []
     }
 
     use crate::effect::EffectKind;
-    use crate::error::Reason;
     use crate::intent::Viewer;
     use crate::model::MemoryLine;
+    use crate::Reason;
 
     fn effect(kind: EffectKind, viewer: Viewer, intent_id: &str) -> super::Effect {
         super::Effect {

@@ -1,19 +1,16 @@
 //! JSON lines for the GM seat: tool calls, events, and status.
 
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
-use crate::{Error, Outcome};
+use crate::{Outcome, Speaker};
 
-/// The structured body of a tool-result line.
-pub fn parse_tool_result(line: &str) -> Result<Value, Error> {
-    let value: Value = serde_json::from_str(line).map_err(|_| Error)?;
-    let result = value.get("result").ok_or(Error)?;
-    Ok(result
-        .get("structuredContent")
-        .or_else(|| result.get("structured_content"))
-        .cloned()
-        .unwrap_or(Value::Null))
+/// Deserialize a tool's arguments. `None` is `{}`; the argument types decide what is required.
+pub fn parse_args<T: DeserializeOwned>(
+    arguments: Option<&Map<String, Value>>,
+) -> Result<T, serde_json::Error> {
+    serde_json::from_value(Value::Object(arguments.cloned().unwrap_or_default()))
 }
 
 /// `table_status` arguments, sent from the GM's MCP client to the table.
@@ -22,13 +19,6 @@ pub fn parse_tool_result(line: &str) -> Result<Value, Error> {
 pub struct StatusArgs {
     #[serde(default)]
     pub since: Option<u64>,
-}
-
-pub fn parse_status_args(arguments: Option<&Map<String, Value>>) -> Result<StatusArgs, Error> {
-    match arguments {
-        None => Ok(StatusArgs::default()),
-        Some(arguments) => parse_args(arguments),
-    }
 }
 
 /// `perceive` arguments, sent from the GM's MCP client to the table.
@@ -41,13 +31,6 @@ pub struct PerceiveArgs {
     pub max_body_chars: Option<u64>,
 }
 
-pub fn parse_perceive_args(arguments: Option<&Map<String, Value>>) -> Result<PerceiveArgs, Error> {
-    match arguments {
-        None => Ok(PerceiveArgs::default()),
-        Some(arguments) => parse_args(arguments),
-    }
-}
-
 /// `commit_round` arguments, sent from the GM's MCP client to the table.
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -57,9 +40,10 @@ pub struct CommitArgs {
     pub session_id: Option<String>,
 }
 
-pub fn parse_commit_args(arguments: Option<&Map<String, Value>>) -> Result<CommitArgs, Error> {
-    parse_args(arguments.ok_or(Error)?)
-}
+/// `close` arguments, sent from the GM's MCP client to the table. No key is accepted.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CloseArgs {}
 
 /// The raw `say` arguments from the GM's MCP client, before `SayArgs` checks them.
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
@@ -90,10 +74,6 @@ impl SayArgs {
             }
         }
     }
-
-    pub fn to_value(&self) -> Value {
-        serde_json::to_value(self).expect("say arguments")
-    }
 }
 
 impl TryFrom<SayWire> for SayArgs {
@@ -115,36 +95,38 @@ impl TryFrom<SayWire> for SayArgs {
     }
 }
 
-pub fn parse_say_args(arguments: Option<&Map<String, Value>>) -> Result<SayArgs, Error> {
-    parse_args(arguments.ok_or(Error)?)
-}
-
 /// `queue_intent` arguments, sent from the GM's MCP client to the table.
-#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
+/// Serialized, a call names only the fields that are set.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct IntentCall {
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub round_index: Option<u64>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub actor_id: Option<String>,
-    #[serde(rename = "move", default)]
+    #[serde(rename = "move", default, skip_serializing_if = "Option::is_none")]
     pub move_name: Option<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub target: Option<String>,
-    #[serde(rename = "to", default)]
+    #[serde(rename = "to", default, skip_serializing_if = "Option::is_none")]
     pub message_to: Option<Vec<String>>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub rationale_code: String,
 }
 
-pub fn parse_intent_args(arguments: Option<&Map<String, Value>>) -> Result<IntentCall, Error> {
-    parse_args(arguments.ok_or(Error)?)
+/// Sent from the table to a player client as the `queued` line and to a GM client as the
+/// `queue_intent` result: the one intent id.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Queued {
+    pub id: String,
 }
 
-fn parse_args<T: serde::de::DeserializeOwned>(arguments: &Map<String, Value>) -> Result<T, Error> {
-    serde_json::from_value(Value::Object(arguments.clone())).map_err(|_| Error)
+/// Sent from the table to a GM client as the `close` result, after the GM seat is free.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CloseReply {
+    pub released: bool,
 }
 
 /// The `table_status` result, sent from the table to the GM's MCP client.
@@ -193,12 +175,6 @@ pub struct QueuedMove {
     pub move_name: String,
 }
 
-impl TableStatus {
-    pub fn to_value(&self) -> Value {
-        serde_json::to_value(self).expect("table status")
-    }
-}
-
 /// The `commit_round` result, sent from the table to the GM's MCP client.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CommitBody {
@@ -208,12 +184,6 @@ pub struct CommitBody {
     pub rolls: Vec<Roll>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub dice: Vec<String>,
-}
-
-impl CommitBody {
-    pub fn to_value(&self) -> Value {
-        serde_json::to_value(self).expect("commit")
-    }
 }
 
 /// One check roll, sent from the table to the GM's MCP client.
@@ -230,7 +200,7 @@ pub struct Roll {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SayEvent {
     pub seq: u64,
-    pub from: String,
+    pub from: Speaker,
     pub address: String,
     pub place: Option<String>,
     pub actor: Option<String>,
@@ -263,20 +233,15 @@ pub struct PackSummary {
     pub cast: std::collections::BTreeMap<String, String>,
 }
 
-/// Sent from the table to the GM's MCP client as a `spook/event` notification.
-/// A `spook/event` body. `kind` is the serde tag, not a stored field.
+/// Sent from the table to a GM client as a `spook/event` notification; the same objects
+/// come back from `table_status` with `since`, and a `say` result is a `Say`.
+/// `kind` is the serde tag, not a stored field.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "lowercase")]
-pub enum EventBody {
+pub enum GmEvent {
     Say(SayEvent),
     Queued(QueuedMove),
     Check(Roll),
-}
-
-impl SayEvent {
-    pub fn to_value(&self) -> Value {
-        serde_json::to_value(EventBody::Say(self.clone())).expect("say")
-    }
 }
 
 fn serialize_says<S>(events: &Option<Vec<SayEvent>>, serializer: S) -> Result<S::Ok, S::Error>
@@ -285,7 +250,7 @@ where
 {
     events
         .as_ref()
-        .map(|says| says.iter().cloned().map(EventBody::Say).collect::<Vec<_>>())
+        .map(|says| says.iter().cloned().map(GmEvent::Say).collect::<Vec<_>>())
         .serialize(serializer)
 }
 
@@ -293,28 +258,15 @@ fn deserialize_says<'de, D>(deserializer: D) -> Result<Option<Vec<SayEvent>>, D:
 where
     D: serde::Deserializer<'de>,
 {
-    let events = Vec::<EventBody>::deserialize(deserializer)?;
+    let events = Vec::<GmEvent>::deserialize(deserializer)?;
     events
         .into_iter()
         .map(|event| match event {
-            EventBody::Say(say) => Ok(say),
-            EventBody::Queued(_) | EventBody::Check(_) => Err(serde::de::Error::custom("say")),
+            GmEvent::Say(say) => Ok(say),
+            GmEvent::Queued(_) | GmEvent::Check(_) => Err(serde::de::Error::custom("say")),
         })
         .collect::<Result<Vec<_>, _>>()
         .map(Some)
-}
-
-pub fn queued_result(id: &str) -> Value {
-    serde_json::json!({ "id": id })
-}
-
-pub fn code_result(code: &str) -> Value {
-    serde_json::json!({ "code": code })
-}
-
-/// Sent after the GM seat is free. The client waits on this result.
-pub fn released_result() -> Value {
-    serde_json::json!({ "released": true })
 }
 
 #[cfg(test)]
@@ -343,25 +295,49 @@ mod tests {
             r#"{"kind":"queued","id":"q1","actor_id":"pc_rowan","move":"wait","x":1}"#,
             r#"{"kind":"check","faces":[6,6],"stat":0,"total":12,"target":10,"outcome":"success","x":1}"#,
         ] {
-            assert_reencodes::<EventBody>(raw);
+            assert_reencodes::<GmEvent>(raw);
         }
         let m =
             serde_json::from_str(r#"{"actor_id":"a","move":"m","target":"t","to":["b"]}"#).unwrap();
-        let c = parse_intent_args(Some(&m)).unwrap();
+        let c: IntentCall = parse_args(Some(&m)).unwrap();
         assert_eq!(c.actor_id.as_deref(), Some("a"));
         assert_eq!(c.move_name.as_deref(), Some("m"));
         assert_eq!(c.target.as_deref(), Some("t"));
         assert_eq!(c.message_to, Some(vec!["b".to_string()]));
         let nested =
             serde_json::from_str(r#"{"actor_id":"a","move":"m","args":{"to":["b"]}}"#).unwrap();
-        assert!(parse_intent_args(Some(&nested)).is_err());
+        assert!(parse_args::<IntentCall>(Some(&nested)).is_err());
     }
 
     #[test]
-    fn perceive_takes_as_and_max_body_chars_only() {
+    fn an_intent_call_names_only_the_set_fields() {
+        let call = |raw: &str| {
+            let args = serde_json::from_str(raw).unwrap();
+            serde_json::to_string(&parse_args::<IntentCall>(Some(&args)).unwrap()).unwrap()
+        };
+        let bare = r#"{"actor_id":"mira","move":"restock_lamp_oil"}"#;
+        assert_eq!(call(bare), bare);
+        let aimed = r#"{"actor_id":"pc_rowan","move":"travel","target":"docks_street"}"#;
+        assert_eq!(call(aimed), aimed);
+    }
+
+    #[test]
+    fn missing_arguments_are_an_empty_object() {
         let args = |raw: &str| serde_json::from_str::<Map<String, Value>>(raw).unwrap();
-        let read = parse_perceive_args(Some(&args(r#"{"as":"pc_rowan","max_body_chars":200}"#)));
+        let read =
+            parse_args::<PerceiveArgs>(Some(&args(r#"{"as":"pc_rowan","max_body_chars":200}"#)));
         assert_eq!(read.unwrap().max_body_chars, Some(200));
-        assert!(parse_perceive_args(Some(&args(r#"{"as":"pc_rowan","focus":"place"}"#))).is_err());
+        assert!(
+            parse_args::<PerceiveArgs>(Some(&args(r#"{"as":"pc_rowan","focus":"place"}"#)))
+                .is_err()
+        );
+        assert_eq!(
+            parse_args::<StatusArgs>(None).unwrap(),
+            StatusArgs::default()
+        );
+        assert!(parse_args::<CommitArgs>(None).is_err());
+        assert!(parse_args::<SayArgs>(None).is_err());
+        assert!(parse_args::<CloseArgs>(None).is_ok());
+        assert!(parse_args::<CloseArgs>(Some(&args(r#"{"x":1}"#))).is_err());
     }
 }

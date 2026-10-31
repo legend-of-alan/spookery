@@ -2,11 +2,11 @@
 
 use std::collections::BTreeMap;
 
-use crate::error::Reason;
 use crate::hash::blake2s_256;
 use crate::intent::Viewer;
 use crate::meter::{self, MeterDef};
 use crate::model::ActorLive;
+use crate::Reason;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Check {
@@ -161,10 +161,10 @@ mod tests {
     use std::collections::BTreeMap;
 
     use super::{classify, face_at, roll_check, Check, Outcome, RollInput, RollKey};
-    use crate::error::Reason;
     use crate::intent::Viewer;
     use crate::meter::{MeterDef, MeterLive};
     use crate::model::{Act, ActorLive};
+    use crate::Reason;
 
     fn grit_def() -> MeterDef {
         MeterDef {

@@ -9,11 +9,12 @@ use spookery_engine::{
 };
 use tokio::sync::{oneshot, watch};
 
-use super::frames::{self, Refusal};
+use super::frames;
 use super::idle::{self, now_stamp};
 use super::seat::{Conn, FrameSender, GmSeat, PlayerSeat, Seats};
 use super::tools::call_gm_tool;
 use super::Error;
+use crate::protocol::{Refusal, Speaker};
 
 /// The host's cap. A pack may define more PCs than this.
 const MAX_PLAYER_SEATS: usize = 3;
@@ -157,20 +158,18 @@ impl Table {
     }
 
     fn hello(&mut self, conn: Conn, line: &str, frames_tx: FrameSender) -> HelloReply {
-        let named = match line {
-            "gm" => return HelloReply::Refused(Reason::NotInSpec.into()),
-            "" => None,
-            _ => match crate::protocol::parse_hello(line) {
-                None => return HelloReply::Refused(Reason::Schema.into()),
-                named => named,
-            },
+        let named = match line.parse() {
+            _ if line.is_empty() => None,
+            Ok(Speaker::Gm) => return HelloReply::Refused(Reason::NotInSpec.into()),
+            Ok(Speaker::Player(id)) => Some(id),
+            Ok(Speaker::Npc(_)) | Err(_) => return HelloReply::Refused(Reason::Schema.into()),
         };
         if self.seats.players.len() >= MAX_PLAYER_SEATS {
             return HelloReply::Refused(Reason::TableFull.into());
         }
         let Some(id) = named else {
             let free = self.world.free_pcs(&self.seats.presence());
-            return HelloReply::Refused(Refusal::choose_pc(free));
+            return HelloReply::Refused(frames::choose_pc(free));
         };
         if self
             .seats
@@ -184,7 +183,7 @@ impl Table {
             .world
             .state()
             .actors
-            .get(id)
+            .get(&id)
             .is_some_and(|actor| actor.is_pc())
         {
             return HelloReply::Refused(Reason::Schema.into());
@@ -192,10 +191,10 @@ impl Table {
         // Seat first, so the welcome view counts this player as present.
         self.seats.players.push(PlayerSeat {
             conn,
-            actor_id: id.to_string(),
+            actor_id: id.clone(),
             out: frames_tx,
         });
-        let sent = welcome(&self.world, &self.seats.presence(), id).and_then(|bytes| {
+        let sent = welcome(&self.world, &self.seats.presence(), &id).and_then(|bytes| {
             let seated = self
                 .seats
                 .player(conn)
@@ -248,13 +247,13 @@ impl Table {
             Ok(PlayerCommand::Say(heard, text)) => {
                 match self.world.say_as_player(&presence, &actor_id, heard, text) {
                     Ok(said) => return self.deliver_say(&said),
-                    Err(code) => Refusal::from(code).line(),
+                    Err(code) => frames::refused_line(code.into()),
                 }
             }
             Ok(PlayerCommand::Move(verb, target)) => {
                 return self.play_move(conn, &actor_id, verb, target);
             }
-            Err(refusal) => refusal.line(),
+            Err(refusal) => frames::refused_line(refusal),
         };
         self.send_player(conn, reply.into_bytes());
     }
@@ -275,15 +274,19 @@ impl Table {
             Ok(_) => None,
             Err(refusal) if !gm_seated && refusal.reason() == Reason::Busy => Some(refusal),
             Err(refusal) => {
-                return self.send_player(conn, Refusal::from(&refusal).line().into_bytes());
+                let line = frames::refused_move_line(refusal.reason(), refusal.missing());
+                return self.send_player(conn, line.into_bytes());
             }
         };
         let outputs = match commit_then_fast_forward(&mut self.world, &presence) {
             Ok(outputs) => outputs,
-            Err(code) => return self.send_player(conn, Refusal::from(code).line().into_bytes()),
+            Err(code) => {
+                return self.send_player(conn, frames::refused_line(code.into()).into_bytes())
+            }
         };
         if let Some(refusal) = &busy {
-            self.send_player(conn, Refusal::from(refusal).line().into_bytes());
+            let line = frames::refused_move_line(refusal.reason(), refusal.missing());
+            self.send_player(conn, line.into_bytes());
         }
         self.after_rounds(&outputs);
     }
@@ -295,7 +298,7 @@ impl Table {
         arguments: Option<Map<String, Value>>,
     ) -> Value {
         if self.seats.gm.as_ref().is_none_or(|gm| gm.conn != conn) {
-            return Refusal::from(Reason::NotInSpec).tool_result();
+            return frames::refused_value(Reason::NotInSpec);
         }
         let presence = self.seats.presence();
         let reply = call_gm_tool(&mut self.world, &presence, name, arguments);
@@ -385,7 +388,7 @@ impl Table {
                     }
                     out.into_bytes()
                 }
-                Err(code) => Refusal::from(code).line().into_bytes(),
+                Err(code) => frames::refused_line(code.into()).into_bytes(),
             };
             if !player.out.send(bytes) {
                 failed.push(player.conn);
