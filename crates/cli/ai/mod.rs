@@ -3,27 +3,27 @@
 mod gm_loop;
 mod http_model;
 
+use std::fmt;
 use std::net::SocketAddr;
 
 pub use gm_loop::{run_gm, TurnWatch};
 pub use http_model::{HttpModel, Limits, Settings, Timer, WallClock};
-pub use spookery_agent::*;
 
 #[derive(Debug)]
 pub struct Error {
     pub message: String,
 }
 
-impl std::fmt::Display for Error {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(&self.message)
     }
 }
 
 impl std::error::Error for Error {}
 
-pub(crate) fn report_error(message: impl Into<String>) -> Error {
-    let message = message.into();
+pub(crate) fn report_error(message: impl fmt::Display) -> Error {
+    let message = message.to_string();
     eprintln!("{message}");
     let _ = std::io::Write::flush(&mut std::io::stderr());
     Error { message }

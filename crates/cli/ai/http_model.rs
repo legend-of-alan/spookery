@@ -3,9 +3,9 @@
 use std::future::Future;
 use std::time::Duration;
 
-use spookery_agent::model::{
-    chat_body, is_retryable, parse_completion, provider_detail, transport_error, CompletionError,
-    CompletionRequest, FailureKind, Model,
+use spookery_agent::{
+    chat_body, parse_completion, provider_detail, CompletionError, CompletionRequest, FailureKind,
+    Model, ModelReply,
 };
 
 use crate::ai::{report_error, Error};
@@ -105,7 +105,7 @@ impl<C: Timer> HttpModel<C> {
         let client = reqwest::Client::builder()
             .connect_timeout(limits.connect)
             .build()
-            .map_err(|err| report_error(err.to_string()))?;
+            .map_err(report_error)?;
         Ok(Self {
             env,
             client,
@@ -115,7 +115,7 @@ impl<C: Timer> HttpModel<C> {
     }
 }
 
-fn class_of(err: &reqwest::Error) -> FailureKind {
+fn kind_of(err: &reqwest::Error) -> FailureKind {
     if err.is_timeout() {
         FailureKind::Timeout
     } else if err.is_connect() {
@@ -127,22 +127,30 @@ fn class_of(err: &reqwest::Error) -> FailureKind {
 
 struct Attempt {
     retry: bool,
-    result: Result<Option<String>, CompletionError>,
+    result: Result<Option<ModelReply>, CompletionError>,
 }
 
 impl<C: Timer> HttpModel<C> {
     fn fail_transport(&self, err: &reqwest::Error) -> Attempt {
-        let class = class_of(err);
+        let kind = kind_of(err);
         Attempt {
-            retry: is_retryable(class),
-            result: Err(transport_error(class, self.limits.total, &err.to_string())),
+            retry: kind.is_retryable(),
+            result: Err(CompletionError::transport(
+                kind,
+                self.limits.total,
+                &err.to_string(),
+            )),
         }
     }
 
     fn time_out(&self) -> Attempt {
         Attempt {
             retry: true,
-            result: Err(transport_error(FailureKind::Timeout, self.limits.total, "")),
+            result: Err(CompletionError::transport(
+                FailureKind::Timeout,
+                self.limits.total,
+                "",
+            )),
         }
     }
 
@@ -162,12 +170,12 @@ impl<C: Timer> HttpModel<C> {
         };
         let status = response.status();
         if !status.is_success() {
-            let class = FailureKind::Status(status.as_u16());
+            let kind = FailureKind::Status(status.as_u16());
             let body = response.text().await.unwrap_or_default();
             let detail = provider_detail(&body, &self.env.key);
             return Attempt {
-                retry: is_retryable(class),
-                result: Err(transport_error(class, self.limits.total, &detail)),
+                retry: kind.is_retryable(),
+                result: Err(CompletionError::transport(kind, self.limits.total, &detail)),
             };
         }
         let text = match response.text().await {
@@ -176,7 +184,7 @@ impl<C: Timer> HttpModel<C> {
         };
         Attempt {
             retry: false,
-            result: parse_completion(&text),
+            result: parse_completion(&text, request.says_only),
         }
     }
 
@@ -203,7 +211,7 @@ impl<C: Timer> Model for HttpModel<C> {
     async fn complete(
         &mut self,
         request: &CompletionRequest,
-    ) -> Result<Option<String>, CompletionError> {
+    ) -> Result<Option<ModelReply>, CompletionError> {
         let first = self.attempt(request).await;
         if !first.retry {
             return first.result;

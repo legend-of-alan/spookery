@@ -2075,6 +2075,7 @@ dependencies = [
  "serde-saphyr",
  "serde_json",
  "socket2",
+ "spookery-agent",
  "spookery-cli",
  "spookery-engine",
  "spookery-protocol",

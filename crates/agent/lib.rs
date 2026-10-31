@@ -1,56 +1,89 @@
 //! The Spookery AI GM state machine.
 
-pub mod model;
+mod model;
 mod prompt;
 
-pub use model::*;
-use prompt::*;
+use std::collections::{BTreeMap, VecDeque};
+use std::fmt;
+
 use spookery_protocol as protocol;
 
-use std::collections::{BTreeMap, VecDeque};
+pub use crate::model::{
+    chat_body, parse_completion, provider_detail, CompletionError, CompletionRequest, FailureKind,
+    Model, MAX_DETAIL_CHARS,
+};
+pub use crate::prompt::ModelReply;
+use crate::prompt::{
+    keep_actions, keep_recent, prepare_turn, render_prompt, PreparedTurn, PromptContext, TapeLine,
+    TurnView, Wake,
+};
+use crate::protocol::{
+    CommitBody, GmEvent, IntentCall, PackSummary, Queued, Refusal, Roll, SayArgs, SayEvent,
+    Speaker, TableStatus,
+};
 
-use serde_json::{json, Value};
-
-use crate::protocol::{CommitBody, GmEvent, PlayerFrame, Roll, SayEvent, Speaker, TableStatus};
-
-/// A server built before the pack summary moved onto `table_status`.
-const OLDER_SERVER: &str = "this spook run is older than spook ai-gm, rebuild both";
-
+/// What a client feeds the state machine: an event, or a tool's reply.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Input {
-    GmEvent(GmEvent),
-    ToolResult {
-        body: Value,
-        refused: bool,
-        raw: String,
-    },
-    PlayerFrame(PlayerFrame),
-    ModelReply(Result<Option<String>, CompletionError>),
+    Event(GmEvent),
+    StatusReply(Result<TableStatus, Refusal>),
+    ViewReply(Result<protocol::View, Refusal>),
+    SayReply(Result<SayEvent, Refusal>),
+    QueueReply(Result<Queued, Refusal>),
+    CommitReply(Result<CommitBody, Refusal>),
+    ModelReply(Result<Option<ModelReply>, CompletionError>),
 }
 
+/// What the state machine asks the client to do next.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Step {
     Idle,
-    CallTool {
-        name: &'static str,
-        arguments: Value,
-    },
-    SendPlayerLine(String),
-    CallModel {
-        request: CompletionRequest,
-        warning: Option<String>,
-    },
+    FetchStatus { since: Option<u64> },
+    Perceive { viewer: String },
+    Say(SayArgs),
+    QueueIntent(IntentCall),
+    CommitRound,
+    CallModel(CompletionRequest),
 }
 
+/// Why the agent cannot go on, returned from `Agent::feed` to its client. Display is the
+/// line the client prints.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Error {
+    /// The first `table_status` has no pack summary: a server built before the summary
+    /// moved onto `table_status`.
+    OlderServer,
+    /// The table refused a `table_status` the turn needs. Display is the refusal's body.
+    Refused(Refusal),
+    /// A reply to a step the agent did not ask for.
+    Unexpected,
+}
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Error::OlderServer => {
+                f.write_str("this spook run is older than spook ai-gm, rebuild both")
+            }
+            Error::Refused(refusal) => {
+                f.write_str(&serde_json::to_string(refusal).map_err(|_| fmt::Error)?)
+            }
+            Error::Unexpected => f.write_str("unexpected agent input"),
+        }
+    }
+}
+
+impl std::error::Error for Error {}
+
+/// The AI GM's turns at one GM seat: fed `Input`s, it answers with the next `Step`.
 #[derive(Default)]
 pub struct Agent {
-    pub sit_seq: Option<u64>,
-    pub high_water: u64,
-    pub warning: Option<String>,
+    high_water: u64,
+    warning: Option<String>,
     phase: Phase,
     pack: PackSummary,
     wakes: VecDeque<Wake>,
-    buffer: Vec<HandledSay>,
+    buffer: Vec<TapeLine>,
     turn: Turn,
 }
 
@@ -58,11 +91,11 @@ pub struct Agent {
 struct Turn {
     wake: Option<Wake>,
     status: Option<TableStatus>,
-    views: BTreeMap<String, Result<Value, String>>,
+    views: BTreeMap<String, Result<protocol::View, Refusal>>,
     view: Option<(TurnView, PromptContext)>,
     says: VecDeque<SayArgs>,
-    intent: Option<Intent>,
-    submitted: Vec<HandledSay>,
+    intent: Option<IntentCall>,
+    submitted: Vec<TapeLine>,
     checks: Vec<Roll>,
 }
 
@@ -74,7 +107,7 @@ enum Phase {
     TurnStatus,
     Perceive(String),
     Model(bool),
-    Say(SayArgs, bool),
+    Say(bool),
     Intent,
     PreCommitStatus,
     Commit,
@@ -90,92 +123,93 @@ impl Agent {
     }
 
     pub fn start(&self) -> Step {
-        call_tool("table_status", json!({}))
+        Step::FetchStatus { since: None }
     }
 
-    pub fn feed(&mut self, input: Input) -> Result<Step, String> {
-        if let Input::GmEvent(body) = input {
-            self.absorb(body);
+    /// The warning the client should print before its next step. `Option<String>`, not
+    /// `World::take_warning`'s `Option<&'static str>`: the engine's warnings are fixed
+    /// sentences, the agent's carry a model call's error text.
+    pub fn take_warning(&mut self) -> Option<String> {
+        self.warning.take()
+    }
+
+    pub fn feed(&mut self, input: Input) -> Result<Step, Error> {
+        if let Input::Event(event) = input {
+            self.absorb(event);
             return match self.phase {
                 Phase::Idle => Ok(self.next_turn()),
                 _ => Ok(Step::Idle),
             };
         }
         match (std::mem::replace(&mut self.phase, Phase::Idle), input) {
-            (Phase::InitStatus, Input::ToolResult { body, refused, raw }) => {
-                let mut status = parse_status(body, refused, raw)?;
-                self.pack = status.pack.take().ok_or(OLDER_SERVER)?;
+            (Phase::InitStatus, Input::StatusReply(reply)) => {
+                let mut status = reply.map_err(Error::Refused)?;
+                self.pack = status.pack.take().ok_or(Error::OlderServer)?;
                 Ok(self.finish_init(status))
             }
-            (Phase::TurnStatus, Input::ToolResult { body, refused, raw }) => {
-                self.turn.status = Some(parse_status(body, refused, raw)?);
+            (Phase::TurnStatus, Input::StatusReply(reply)) => {
+                self.turn.status = Some(reply.map_err(Error::Refused)?);
                 Ok(self.advance_prepare())
             }
-            (Phase::Perceive(viewer), Input::ToolResult { body, refused, .. }) => {
-                let res = (!refused).then_some(body).ok_or_else(|| "code".into());
-                self.turn.views.insert(viewer, res);
+            (Phase::Perceive(viewer), Input::ViewReply(reply)) => {
+                self.turn.views.insert(viewer, reply);
                 Ok(self.advance_prepare())
             }
             (Phase::Model(epilogue), Input::ModelReply(reply)) => {
-                if let Some(kept) = self.parse_reply(reply, epilogue) {
-                    self.turn.says = kept.says.into();
-                    self.turn.intent = kept.intent;
-                }
-                Ok(self.advance_actions(epilogue))
-            }
-            (Phase::Say(say, epilogue), Input::ToolResult { body, refused, raw }) => {
-                if !refused {
-                    let spoken: SayEvent = serde_json::from_value(body).map_err(|_| raw)?;
-                    let handled = HandledSay::from_outgoing(&say, Some(spoken.seq));
-                    if epilogue {
-                        push_handled(&mut self.buffer, handled);
-                    } else {
-                        self.turn.submitted.push(handled);
+                match reply {
+                    Err(err) => self.warning = Some(err.to_string()),
+                    Ok(None) => {}
+                    Ok(Some(reply)) => {
+                        let scope = &self.turn.view.as_ref().expect("view").0.scope;
+                        let (says, intent) = keep_actions(reply, scope, &self.pack.menu);
+                        self.turn.says = says.into();
+                        self.turn.intent = intent;
                     }
                 }
                 Ok(self.advance_actions(epilogue))
             }
-            (Phase::Intent, Input::ToolResult { .. }) => Ok(self.advance_actions(false)),
-            (Phase::PreCommitStatus, Input::ToolResult { body, refused, raw }) => {
-                if parse_status(body, refused, raw)?.queued.is_empty() {
+            (Phase::Say(epilogue), Input::SayReply(reply)) => {
+                if let Ok(said) = reply {
+                    if epilogue {
+                        keep_recent(&mut self.buffer, said.into());
+                    } else {
+                        self.turn.submitted.push(said.into());
+                    }
+                }
+                Ok(self.advance_actions(epilogue))
+            }
+            (Phase::Intent, Input::QueueReply(_)) => Ok(self.advance_actions(false)),
+            (Phase::PreCommitStatus, Input::StatusReply(reply)) => {
+                if reply.map_err(Error::Refused)?.queued.is_empty() {
                     Ok(self.finish_commit(false))
                 } else {
                     self.phase = Phase::Commit;
-                    Ok(call_tool("commit_round", json!({ "include_round": true })))
+                    Ok(Step::CommitRound)
                 }
             }
-            (Phase::Commit, Input::ToolResult { body, refused, raw }) => {
-                if refused {
-                    Ok(self.finish_commit(false))
-                } else {
-                    let commit: CommitBody = serde_json::from_value(body).map_err(|_| raw)?;
+            (Phase::Commit, Input::CommitReply(reply)) => match reply {
+                Ok(commit) => {
                     self.turn.checks = commit.rolls;
                     Ok(self.finish_commit(true))
                 }
-            }
-            (Phase::PostCommitStatus, Input::ToolResult { body, refused, raw }) => {
-                if !parse_status(body, refused, raw)?.queued.is_empty() {
+                Err(_) => Ok(self.finish_commit(false)),
+            },
+            (Phase::PostCommitStatus, Input::StatusReply(reply)) => {
+                if !reply.map_err(Error::Refused)?.queued.is_empty() {
                     self.wakes.push_back(Wake::Queued);
                 }
                 Ok(self.narrate_checks())
             }
-            _ => Err("unexpected agent input".into()),
+            _ => Err(Error::Unexpected),
         }
     }
 
-    fn absorb(&mut self, body: GmEvent) {
-        match body {
+    fn absorb(&mut self, event: GmEvent) {
+        match event {
             GmEvent::Say(say)
                 if matches!(say.from, Speaker::Player(_)) && say.seq > self.high_water =>
             {
-                self.wakes.push_back(Wake::Say {
-                    from: say.from,
-                    seq: say.seq,
-                    address: say.address,
-                    place: say.place,
-                    actor: say.actor,
-                    text: say.text,
-                });
+                self.wakes.push_back(Wake::Say(say));
             }
             GmEvent::Queued(_) => self.wakes.push_back(Wake::Queued),
             GmEvent::Say(_) | GmEvent::Check(_) => {}
@@ -184,7 +218,6 @@ impl Agent {
 
     fn finish_init(&mut self, status: TableStatus) -> Step {
         self.high_water = status.last_seq;
-        self.sit_seq = Some(status.last_seq);
         if !status.queued.is_empty() && !self.wakes.contains(&Wake::Queued) {
             self.wakes.push_front(Wake::Queued);
         }
@@ -201,7 +234,9 @@ impl Agent {
             ..Turn::default()
         };
         self.phase = Phase::TurnStatus;
-        call_tool("table_status", json!({ "since": self.high_water }))
+        Step::FetchStatus {
+            since: Some(self.high_water),
+        }
     }
 
     fn advance_prepare(&mut self) -> Step {
@@ -211,17 +246,16 @@ impl Agent {
         let views = &self.turn.views;
         let mut missing = None;
         let prepared = prepare_turn(pack, wake, &status.presence.actors_present, &mut |viewer| {
-            if let Some(res) = views.get(viewer) {
-                res.clone()
+            if let Some(reply) = views.get(viewer) {
+                reply.as_ref().ok().cloned()
             } else {
                 missing.get_or_insert_with(|| viewer.to_string());
-                Err(String::new())
+                None
             }
         });
         if let Some(viewer) = missing {
-            let args = json!({ "as": viewer });
-            self.phase = Phase::Perceive(viewer);
-            return call_tool("perceive", args);
+            self.phase = Phase::Perceive(viewer.clone());
+            return Step::Perceive { viewer };
         }
         match prepared {
             PreparedTurn::NoModel { says } => {
@@ -236,7 +270,7 @@ impl Agent {
                     checks: Vec::new(),
                 };
                 let prompt = render_prompt(&pack.menu, &context, &turn_view, &[]);
-                self.turn.view = Some((turn_view, context));
+                self.turn.view = Some((*turn_view, context));
                 self.call_model(prompt, false)
             }
         }
@@ -244,66 +278,41 @@ impl Agent {
 
     fn call_model(&mut self, prompt: String, says_only: bool) -> Step {
         self.phase = Phase::Model(says_only);
-        Step::CallModel {
-            request: CompletionRequest { prompt, says_only },
-            warning: self.warning.take(),
-        }
-    }
-
-    fn parse_reply(
-        &mut self,
-        reply: Result<Option<String>, CompletionError>,
-        says_only: bool,
-    ) -> Option<KeptActions> {
-        let text = match reply {
-            Err(err) => {
-                self.warning = Some(err.to_string());
-                return None;
-            }
-            Ok(None) => return None,
-            Ok(Some(text)) => text,
-        };
-        if serde_json::from_str::<Value>(&text).is_err() {
-            self.warning = Some("empty parse".into());
-            return None;
-        }
-        let scope = &self.turn.view.as_ref().expect("view").0.scope;
-        parse_actions(&text, says_only).map(|actions| keep_actions(actions, scope, &self.pack.menu))
+        Step::CallModel(CompletionRequest { prompt, says_only })
     }
 
     fn advance_actions(&mut self, epilogue: bool) -> Step {
         if let Some(say) = self.turn.says.pop_front() {
-            let args = serde_json::to_value(&say).expect("say arguments");
-            self.phase = Phase::Say(say, epilogue);
-            return call_tool("say", args);
+            self.phase = Phase::Say(epilogue);
+            return Step::Say(say);
         }
         if epilogue {
             return self.next_turn();
         }
         if let Some(intent) = self.turn.intent.take() {
             self.phase = Phase::Intent;
-            return call_tool("queue_intent", intent.to_value());
+            return Step::QueueIntent(intent);
         }
         self.phase = Phase::PreCommitStatus;
-        call_tool("table_status", json!({}))
+        Step::FetchStatus { since: None }
     }
 
     fn finish_commit(&mut self, committed: bool) -> Step {
         let status = self.turn.status.as_ref().expect("status");
         let window = player_lines(status, self.high_water);
-        if let Some(max) = window.iter().filter_map(|say| say.seq).max() {
+        if let Some(max) = window.iter().map(|line| line.seq).max() {
             self.high_water = max;
         }
-        for say in window.into_iter().chain(self.turn.submitted.drain(..)) {
-            push_handled(&mut self.buffer, say);
+        for line in window.into_iter().chain(self.turn.submitted.drain(..)) {
+            keep_recent(&mut self.buffer, line);
         }
         self.wakes.retain(|wake| match wake {
-            Wake::Say { seq, .. } => *seq > self.high_water,
+            Wake::Say(say) => say.seq > self.high_water,
             Wake::Queued => !committed,
         });
         if committed {
             self.phase = Phase::PostCommitStatus;
-            return call_tool("table_status", json!({}));
+            return Step::FetchStatus { since: None };
         }
         self.narrate_checks()
     }
@@ -321,25 +330,14 @@ impl Agent {
     }
 }
 
-fn call_tool(name: &'static str, arguments: Value) -> Step {
-    Step::CallTool { name, arguments }
-}
-
-fn parse_status(body: Value, refused: bool, raw: String) -> Result<TableStatus, String> {
-    if refused {
-        return Err(raw);
-    }
-    serde_json::from_value(body).map_err(|_| raw)
-}
-
-fn player_lines(status: &TableStatus, high: u64) -> Vec<HandledSay> {
+fn player_lines(status: &TableStatus, high: u64) -> Vec<TapeLine> {
     status
         .events
         .iter()
         .flatten()
         .filter(|say| matches!(say.from, Speaker::Player(_)) && say.seq > high)
         .cloned()
-        .map(HandledSay::from)
+        .map(TapeLine::from)
         .collect()
 }
 
@@ -349,82 +347,92 @@ mod tests {
 
     const QUEUED_STATUS: &str = r#"{"presence":{"players":1,"actors_present":["pc"]},"pause":{"presence_clocks":"running"},"world_time":0,"round_index":0,"state_rev":1,"pack_rev":"p","last_round_at":"","queued":[{"id":"q1","actor_id":"pc","move":"wait"}],"last_seq":1}"#;
     const EMPTY_STATUS: &str = r#"{"presence":{"players":1,"actors_present":["pc"]},"pause":{"presence_clocks":"running"},"world_time":0,"round_index":0,"state_rev":1,"pack_rev":"p","last_round_at":"","queued":[],"last_seq":1}"#;
-    const VIEW: &str = r#"{"viewer":"pc","place":"docks","visible_actors":["pc"]}"#;
+    const VIEW: &str = r#"{"viewer":"pc","place":"docks","visible_actors":["pc"],"known_facts":[],"notes":[],"unknown_mentions":[],"clocks":[],"items":[],"habits":[]}"#;
     const COMMIT: &str = r#"{"state_rev":2,"changed_keys":[],"journal_path":null,"rolls":[{"faces":[6,6],"stat":1,"total":13,"target":10,"outcome":"success"}]}"#;
     const SAY: &str = r#"{"kind":"say","seq":2,"from":"player:pc","address":"table","place":null,"actor":null,"recipients":[],"text":"ok"}"#;
 
-    fn feed_result(a: &mut Agent, s: &str) -> Step {
-        let in_msg = Input::ToolResult {
-            body: serde_json::from_str(s).unwrap(),
-            refused: false,
-            raw: String::new(),
-        };
-        a.feed(in_msg).unwrap()
+    fn status(raw: &str) -> Input {
+        Input::StatusReply(Ok(serde_json::from_str(raw).unwrap()))
     }
 
-    fn feed_reply(a: &mut Agent, s: &str) -> Step {
-        a.feed(Input::ModelReply(Ok(Some(s.into())))).unwrap()
+    fn feed(a: &mut Agent, input: Input) -> Step {
+        a.feed(input).unwrap()
+    }
+
+    fn feed_reply(a: &mut Agent, says: &str) -> Step {
+        let says = serde_json::from_str(says).unwrap();
+        let reply = ModelReply {
+            says,
+            intents: Vec::new(),
+        };
+        feed(a, Input::ModelReply(Ok(Some(reply))))
     }
 
     fn sit_queued(since: &Step) -> Agent {
         let mut a = Agent::new();
-        let mut first: Value = serde_json::from_str(QUEUED_STATUS).unwrap();
-        first["pack"] =
-            json!({"menu": [], "kinds": {"pc": "pc_template"}, "places": {}, "cast": {}});
-        assert_eq!(&feed_result(&mut a, &first.to_string()), since);
+        let mut first: TableStatus = serde_json::from_str(QUEUED_STATUS).unwrap();
+        first.pack = Some(
+            serde_json::from_str(
+                r#"{"menu": [], "kinds": {"pc": "pc_template"}, "places": {}, "cast": {}}"#,
+            )
+            .unwrap(),
+        );
+        assert_eq!(&feed(&mut a, Input::StatusReply(Ok(first))), since);
         prepare(&mut a, QUEUED_STATUS);
         a
     }
 
-    fn prepare(a: &mut Agent, s: &str) {
-        assert_eq!(
-            feed_result(a, s),
-            call_tool("perceive", json!({"as": "pc"}))
-        );
-        assert!(matches!(feed_result(a, VIEW), Step::CallModel { request: r, .. } if !r.says_only));
+    fn prepare(a: &mut Agent, raw: &str) {
+        let perceive = Step::Perceive {
+            viewer: "pc".to_string(),
+        };
+        assert_eq!(feed(a, status(raw)), perceive);
+        let view = Input::ViewReply(Ok(serde_json::from_str(VIEW).unwrap()));
+        assert!(matches!(feed(a, view), Step::CallModel(r) if !r.says_only));
     }
 
     #[test]
     fn gm_turns_handle_queue_says_epilogue_and_transport_warnings() {
-        let st = call_tool("table_status", json!({}));
-        let since = call_tool("table_status", json!({"since": 1}));
-        let cm = call_tool("commit_round", json!({"include_round": true}));
-        let say = call_tool("say", json!({"address": "table", "text": "ok"}));
+        let st = Step::FetchStatus { since: None };
+        let since = Step::FetchStatus { since: Some(1) };
+        let say = Step::Say(SayArgs::Table {
+            text: "ok".to_string(),
+        });
+        let said = || Input::SayReply(Ok(serde_json::from_str(SAY).unwrap()));
+        let commit = Input::CommitReply(Ok(serde_json::from_str(COMMIT).unwrap()));
 
         let mut a = sit_queued(&since);
-        assert_eq!(feed_reply(&mut a, r#"{"says":[],"intents":[]}"#), st);
-        assert_eq!(feed_result(&mut a, QUEUED_STATUS), cm);
-        assert_eq!(feed_result(&mut a, COMMIT), st);
-        assert!(
-            matches!(feed_result(&mut a, EMPTY_STATUS), Step::CallModel { request: r, .. } if r.says_only)
+        assert_eq!(feed_reply(&mut a, "[]"), st);
+        assert_eq!(feed(&mut a, status(QUEUED_STATUS)), Step::CommitRound);
+        assert_eq!(feed(&mut a, commit), st);
+        assert!(matches!(feed(&mut a, status(EMPTY_STATUS)), Step::CallModel(r) if r.says_only));
+        assert_eq!(
+            feed_reply(&mut a, r#"[{"address":"table","text":"ok"}]"#),
+            say
         );
-        assert!(feed_reply(&mut a, r#"{"says":[{"address":"table","text":"ok"}]}"#) == say);
-        assert_eq!(feed_result(&mut a, SAY), Step::Idle);
+        assert_eq!(feed(&mut a, said()), Step::Idle);
 
-        let ev = Input::GmEvent(serde_json::from_str(SAY).unwrap());
-        assert_eq!(a.feed(ev).unwrap(), since);
+        let event = Input::Event(serde_json::from_str(SAY).unwrap());
+        assert_eq!(feed(&mut a, event), since);
         prepare(&mut a, EMPTY_STATUS);
-        let full = r#"{"says":[{"address":"table","text":"ok"}],"intents":[]}"#;
-        assert_eq!(feed_reply(&mut a, full), say);
-        assert_eq!(feed_result(&mut a, SAY), st);
-        assert_eq!(feed_result(&mut a, EMPTY_STATUS), Step::Idle);
+        assert_eq!(
+            feed_reply(&mut a, r#"[{"address":"table","text":"ok"}]"#),
+            say
+        );
+        assert_eq!(feed(&mut a, said()), st);
+        assert_eq!(feed(&mut a, status(EMPTY_STATUS)), Step::Idle);
 
         let mut a = sit_queued(&since);
         let err = Input::ModelReply(Err(CompletionError::Transport("boom".into())));
-        assert_eq!(a.feed(err).unwrap(), st);
-        assert_eq!(a.warning.as_deref(), Some("boom"));
-        assert_eq!(feed_result(&mut a, QUEUED_STATUS), cm);
+        assert_eq!(feed(&mut a, err), st);
+        assert_eq!(a.take_warning().as_deref(), Some("boom"));
+        assert_eq!(a.take_warning(), None);
+        assert_eq!(feed(&mut a, status(QUEUED_STATUS)), Step::CommitRound);
     }
 
     #[test]
     fn a_first_status_without_a_pack_summary_is_an_older_server() {
         let mut a = Agent::new();
-        let first = Input::ToolResult {
-            body: serde_json::from_str(EMPTY_STATUS).unwrap(),
-            refused: false,
-            raw: String::new(),
-        };
-        assert_eq!(a.feed(first), Err(OLDER_SERVER.to_string()));
-        assert_eq!(a.sit_seq, None);
+        assert_eq!(a.feed(status(EMPTY_STATUS)), Err(Error::OlderServer));
     }
 }

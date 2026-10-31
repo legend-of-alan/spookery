@@ -1,3 +1,4 @@
+use std::collections::VecDeque;
 use std::fs;
 use std::future::Future;
 use std::io::{Read, Write};
@@ -12,10 +13,8 @@ use std::time::{Duration, Instant};
 
 use cucumber::{then, when};
 use serde_json::json;
-use spookery::ai::{
-    run_gm, CompletionError, CompletionRequest, HttpModel, Limits, Model, ScriptedModel, Settings,
-    Timer, TurnWatch, WallClock,
-};
+use spookery::agent::{parse_completion, CompletionError, CompletionRequest, Model, ModelReply};
+use spookery::ai::{run_gm, HttpModel, Limits, Settings, Timer, TurnWatch, WallClock};
 use spookery::gm_connection::GmClient;
 use spookery::protocol::SayArgs;
 
@@ -253,9 +252,9 @@ fn speech_leaves_world_time_and_a_gm_say_does_not_call(world: &mut World) {
     run_ai_gm(world, "host-speech", |world, pack, _port, model, watch| {
         table::seat_rowan(world, pack);
         let sit = world_time(pack);
-        model.push(Ok(Some(
-            r#"{"says":[{"address":"table","text":"evening"}],"intents":[]}"#.to_string(),
-        )));
+        model.push(Ok(
+            r#"{"says":[{"address":"table","text":"evening"}],"intents":[]}"#,
+        ));
         table::player_send(world, "say hello", "\"kind\":\"say\"");
         wait_not_busy(watch, model, 1);
         assert_eq!(world_time(pack), sit, "speech changed world_time");
@@ -283,7 +282,7 @@ fn travel_rounds_once(world: &mut World, transport_error: bool) {
                 "model transport error".to_string(),
             )));
         } else {
-            model.push(Ok(Some(r#"{"says":[],"intents":[]}"#.to_string())));
+            model.push(Ok(r#"{"says":[],"intents":[]}"#));
         }
         table::seat_rowan(world, pack);
         let sit = world_time(pack);
@@ -310,10 +309,10 @@ fn epilogue_does_not_play_another_round(world: &mut World) {
         world,
         "host-epilogue",
         |world, pack, _port, model, watch| {
-            model.push(Ok(Some(r#"{"says":[],"intents":[]}"#.to_string())));
-            model.push(Ok(Some(
-                r#"{"says":[{"address":"table","text":"the roll lands"}]}"#.to_string(),
-            )));
+            model.push(Ok(r#"{"says":[],"intents":[]}"#));
+            model.push(Ok(
+                r#"{"says":[{"address":"table","text":"the roll lands"}]}"#,
+            ));
             table::seat_rowan(world, pack);
             let sit = world_time(pack);
             table::player_send(world, "grit", "\"kind\":\"queued\"");
@@ -348,17 +347,11 @@ fn sit_commits_the_waiting_queue(world: &mut World) {
     table::player_send(world, "travel docks_street", "\"kind\":\"queued\"");
     assert_eq!(world_time(&pack), 1080);
     table::release_gm(world);
-    let model = ScriptedModel::new();
-    model.push(Ok(Some(r#"{"says":[],"intents":[]}"#.to_string())));
+    let model = ScriptedModel::default();
+    model.push(Ok(r#"{"says":[],"intents":[]}"#));
     let (handle, watch) = start_ai_gm(world, &model);
     table::wait_world_time(&pack, 1085);
     wait_not_busy(&watch, &model, 1);
-    assert_eq!(
-        watch.high_water.load(Ordering::Acquire),
-        watch.sit_seq.load(Ordering::Acquire),
-        "sit moved the high water"
-    );
-    assert!(watch.sit_seq.load(Ordering::Acquire) > 0);
     // The world loop answers this look after the sit's commit and any GM event it sent.
     table::player_send(world, "look", table::LINES_KIND);
     wait_not_busy(&watch, &model, 1);
@@ -366,6 +359,45 @@ fn sit_commits_the_waiting_queue(world: &mut World) {
     assert_eq!(model.calls().len(), 1);
     stop_ai_gm(world, handle);
     let _ = fs::remove_dir_all(&pack);
+}
+
+/// A model that answers each call with the next scripted `act` arguments, read through
+/// `parse_completion` the way `HttpModel` reads a reply. With no script left it answers
+/// without an `act` call.
+#[derive(Clone, Default)]
+struct ScriptedModel {
+    script: Arc<Mutex<Script>>,
+}
+
+#[derive(Default)]
+struct Script {
+    replies: VecDeque<Result<&'static str, CompletionError>>,
+    calls: Vec<CompletionRequest>,
+}
+
+impl ScriptedModel {
+    fn push(&self, reply: Result<&'static str, CompletionError>) {
+        self.script.lock().unwrap().replies.push_back(reply);
+    }
+
+    fn calls(&self) -> Vec<CompletionRequest> {
+        self.script.lock().unwrap().calls.clone()
+    }
+}
+
+impl Model for ScriptedModel {
+    async fn complete(
+        &mut self,
+        request: &CompletionRequest,
+    ) -> Result<Option<ModelReply>, CompletionError> {
+        let mut script = self.script.lock().unwrap();
+        script.calls.push(request.clone());
+        match script.replies.pop_front() {
+            Some(Ok(arguments)) => parse_completion(&act_reply(arguments), request.says_only),
+            Some(Err(err)) => Err(err),
+            None => Ok(None),
+        }
+    }
 }
 
 fn run_ai_gm(
@@ -376,7 +408,7 @@ fn run_ai_gm(
     let pack = copy_docks(label);
     table::listen(world, &pack);
     let port = table::live_mut(world).game_port;
-    let model = ScriptedModel::new();
+    let model = ScriptedModel::default();
     let (handle, watch) = start_ai_gm(world, &model);
     body(world, &pack, port, &model, &watch);
     stop_ai_gm(world, handle);
