@@ -38,7 +38,7 @@ The `dependency-and-feature-checks` job in `.github/workflows/ci.yml` fails the 
 - `engine` (`spookery-engine`): world model, rules, rounds, save and journal. Synchronous; depends only on `protocol`.
 - `server` (`spookery-server`): the table, seats over loopback TCP, idle timer, the MCP "agent door". Must not depend on `cli`, `agent` or `reqwest`.
 - `agent` (`spookery-agent`): the model-GM turn state machine and prompt. Pure logic: no `engine`, `server`, `cli`, `tokio`, `reqwest` or `socket2`.
-- `cli` (`spookery-cli`): `spook play` / `spook gm` terminals, the MCP GM client, and the `ai-gm` HTTP loop around `agent`. Must not depend on `engine` or `server`; it only talks to the host over the wire.
+- `cli` (`spookery-cli`): one module per job. `play` and `gm` are the `spook play` / `spook gm` terminals and `text` their readable text, `door` is the MCP GM client, `ai_gm` is the `spook ai-gm` loop around `agent`, and `http_model` calls the model over HTTP. Must not depend on `engine` or `server`; it only talks to the host over the wire.
 - `spook`: the clap binary (`src/main.rs`) and library `spookery`. Feature `server` pulls in engine+server, `client` pulls in cli; both builds must work alone (`--no-default-features --features server|client`).
 
 Crates other than `spook` keep sources at the crate root (`lib.rs`, not `src/lib.rs`). Engine modules are `pub(crate)`; the public surface is the re-export list in `crates/engine/lib.rs`, and test-only hooks live behind its `testing` feature.

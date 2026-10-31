@@ -13,7 +13,7 @@ use std::time::Duration;
 
 use rmcp::model::ProtocolVersion;
 use serde_json::Value;
-use spookery::gm_connection::{event_line, GmClient, Incoming};
+use spookery::door::{event_line, GmClient, Incoming};
 use spookery::protocol::Addrs;
 
 use crate::support;

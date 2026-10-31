@@ -7,14 +7,13 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::TcpStream;
 
 use crate::protocol::{self, Detail, PlayerFrame, Reason, Refusal};
+use crate::text;
+use crate::Error;
 
-use super::frame_text;
-use super::Error;
-
-pub async fn run_player(as_player: Option<&str>, addr: SocketAddr, raw: bool) -> Result<(), Error> {
-    let mut formatter = frame_text::PlayerFormatter::new();
-    let mut input = super::stdin_lines();
-    let actor = match as_player {
+pub async fn run(pc: Option<&str>, addr: SocketAddr, raw: bool) -> Result<(), Error> {
+    let mut formatter = text::PlayerFormatter::new();
+    let mut input = crate::stdin_lines();
+    let actor = match pc {
         Some(token) => parse_player_id(token)?,
         None => {
             let probe = dial(addr, b"\n").await?;
@@ -118,7 +117,7 @@ enum FrameFlow {
     Refused(String),
 }
 
-fn show_frame(formatter: &mut frame_text::PlayerFormatter, line: &str, raw: bool) -> FrameFlow {
+fn show_frame(formatter: &mut text::PlayerFormatter, line: &str, raw: bool) -> FrameFlow {
     if raw {
         return show_raw(line);
     }
@@ -138,7 +137,7 @@ fn show_raw(line: &str) -> FrameFlow {
     }
 }
 
-fn show_readable(formatter: &mut frame_text::PlayerFormatter, line: &str) -> FrameFlow {
+fn show_readable(formatter: &mut text::PlayerFormatter, line: &str) -> FrameFlow {
     let Ok(message) = crate::protocol::PlayerFrame::from_line(line) else {
         eprintln!("{line}");
         let _ = io::stderr().flush();

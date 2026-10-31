@@ -8,12 +8,11 @@ use rmcp::model::ErrorCode;
 use serde::Serialize;
 use serde_json::json;
 
-use crate::gm_connection::{event_line, GmClient, Incoming};
-use crate::protocol::{
-    CommitBody, GmEvent, IntentCall, PlayerFrame, Refusal, SayArgs, TableStatus,
-};
-
-use super::frame_text::{self, humanize};
+use crate::door::{event_line, GmClient, Incoming};
+use crate::protocol::{GmEvent, IntentCall, PlayerFrame, Refusal, SayArgs};
+pub use crate::text::actor_name;
+use crate::text::{self, render_checks, render_dice, render_diff, render_event, render_status};
+use crate::Error;
 
 const HELP: &str = "\
 Commands:
@@ -37,20 +36,19 @@ Commands:
       Leave the seat.
 An unknown command prints this list and sends nothing.";
 
-pub async fn run_gm(door: SocketAddr, raw: bool) -> Result<(), super::Error> {
+pub async fn run(door: SocketAddr, raw: bool) -> Result<(), Error> {
     let client = match GmClient::connect(door).await {
         Ok(client) => client,
-        Err(crate::Error::Io(err)) => return Err(super::Error::Io(err)),
-        Err(crate::Error::Refused(refusal)) => {
+        Err(Error::Refused(refusal)) => {
             let error = json!({
                 "code": ErrorCode::INTERNAL_ERROR,
                 "message": refusal.to_string(),
                 "data": &refusal,
             });
             let line = json!({ "jsonrpc": "2.0", "id": 1, "error": error }).to_string();
-            return Err(super::Error::Message(echo_refusal(&refusal, &line, raw)));
+            return Err(Error::Message(echo_refusal(&refusal, &line, raw)));
         }
-        Err(err) => return Err(super::Error::Message(err.to_string())),
+        Err(err) => return Err(err),
     };
     let mut session = Session {
         client,
@@ -64,7 +62,7 @@ pub async fn run_gm(door: SocketAddr, raw: bool) -> Result<(), super::Error> {
         emit(&json!({ "jsonrpc": "2.0", "id": 1, "result": result }).to_string());
     }
     emit(HELP);
-    let mut input = super::stdin_lines();
+    let mut input = crate::stdin_lines();
     let result = async {
         loop {
             tokio::select! {
@@ -122,7 +120,7 @@ impl PrintedChecks {
 }
 
 impl Session {
-    async fn on_line(&mut self, line: &str) -> Result<bool, super::Error> {
+    async fn on_line(&mut self, line: &str) -> Result<bool, Error> {
         match parse_command(line) {
             Parsed::Empty => Ok(true),
             Parsed::Unknown => {
@@ -133,7 +131,7 @@ impl Session {
         }
     }
 
-    async fn on_command(&mut self, command: Command) -> Result<bool, super::Error> {
+    async fn on_command(&mut self, command: Command) -> Result<bool, Error> {
         match command {
             Command::Help => emit(HELP),
             Command::Quit => return Ok(false),
@@ -150,23 +148,23 @@ impl Session {
         Ok(true)
     }
 
-    async fn on_status(&mut self) -> Result<(), super::Error> {
+    async fn on_status(&mut self) -> Result<(), Error> {
         let reply = self.client.table_status(None).await;
         self.show_result(reply, &[], |_session, status| {
             emit(&render_status(&status));
         })
     }
 
-    async fn on_look(&mut self, actor: &str) -> Result<(), super::Error> {
+    async fn on_look(&mut self, actor: &str) -> Result<(), Error> {
         let reply = self.client.perceive(actor).await;
         // The table sends the view as the player `view` frame, `kind` included.
         let reply = reply.map(|reply| reply.map(|view| PlayerFrame::View(Box::new(view))));
         self.show_result(reply, &[], |_session, frame| {
-            emit(&frame_text::render(&frame));
+            emit(&text::render(&frame));
         })
     }
 
-    async fn on_say(&mut self, address: SayArgs) -> Result<(), super::Error> {
+    async fn on_say(&mut self, address: SayArgs) -> Result<(), Error> {
         let reply = self.client.say(&address).await;
         // The table answers with the say event, `kind` included.
         let reply = reply.map(|reply| reply.map(GmEvent::Say));
@@ -178,7 +176,7 @@ impl Session {
         actor: &str,
         move_name: &str,
         target: Option<&str>,
-    ) -> Result<(), super::Error> {
+    ) -> Result<(), Error> {
         let shown = format!("{} queued: {move_name}", actor_name(actor));
         let call = IntentCall {
             id: None,
@@ -195,7 +193,7 @@ impl Session {
         })
     }
 
-    async fn on_commit(&mut self) -> Result<(), super::Error> {
+    async fn on_commit(&mut self) -> Result<(), Error> {
         let reply = self.client.commit_round().await;
         // This commit's check events can arrive before or after the tool
         // result. The result text prints each roll. A matching event on
@@ -224,16 +222,16 @@ impl Session {
     /// failed prints its message alone.
     fn show_result<T: Serialize>(
         &mut self,
-        reply: Result<Result<T, Refusal>, crate::Error>,
+        reply: Result<Result<T, Refusal>, Error>,
         checks: &[String],
         render: impl FnOnce(&mut Self, T),
-    ) -> Result<(), super::Error> {
+    ) -> Result<(), Error> {
         let id = self.next_id;
         self.next_id = self.next_id.saturating_add(1);
         let reply = match reply {
             Ok(reply) => Ok(reply),
-            Err(crate::Error::Unreadable(body)) => Err(body),
-            Err(crate::Error::Io(err)) => return Err(super::Error::Io(err)),
+            Err(Error::Unreadable(body)) => Err(body),
+            Err(Error::Io(err)) => return Err(Error::Io(err)),
             Err(err) => {
                 if self.is_raw {
                     emit(&err.to_string());
@@ -336,117 +334,8 @@ fn report_unreadable() {
     let _ = io::stderr().flush();
 }
 
-fn seated_ids(body: &TableStatus) -> Vec<String> {
-    body.presence.actors_present.clone()
-}
-
-fn queue_rows(body: &TableStatus) -> Vec<(String, String)> {
-    body.queued
-        .iter()
-        .map(|row| (row.actor_id.clone(), row.move_name.clone()))
-        .collect()
-}
-
-fn render_status(body: &TableStatus) -> String {
-    let names = seated_ids(body);
-    let seated = if names.is_empty() {
-        "Seated: nobody".to_string()
-    } else {
-        let names = names
-            .iter()
-            .map(|id| actor_name(id))
-            .collect::<Vec<_>>()
-            .join(", ");
-        format!("Seated: {names}")
-    };
-    let queue = queue_rows(body);
-    let queued = if queue.is_empty() {
-        "Queue: empty".to_string()
-    } else {
-        let lines = queue
-            .iter()
-            .map(|(id, move_name)| format!("{}: {move_name}", actor_name(id)))
-            .collect::<Vec<_>>()
-            .join("\n");
-        format!("Queue:\n{lines}")
-    };
-    format!("{seated}\n{queued}")
-}
-
-fn render_diff(body: &CommitBody) -> String {
-    if body.changed_keys.is_empty() {
-        "Nothing changed.".to_string()
-    } else {
-        format!("Changed:\n{}", body.changed_keys.join("\n"))
-    }
-}
-
-fn render_dice(body: &CommitBody) -> Vec<String> {
-    body.dice
-        .iter()
-        .map(|line| format!("dice {line}"))
-        .collect()
-}
-
-fn render_checks(body: &CommitBody) -> Vec<String> {
-    body.rolls
-        .iter()
-        .map(|roll| {
-            render_check(
-                &roll.faces,
-                roll.stat,
-                roll.total,
-                roll.target,
-                roll.outcome.as_str(),
-            )
-        })
-        .collect()
-}
-
-pub fn actor_name(id: &str) -> String {
-    if id == "gm" {
-        "GM".to_string()
-    } else {
-        humanize(id)
-    }
-}
-
-pub fn render_event(body: &GmEvent) -> String {
-    match body {
-        GmEvent::Say(say) => format!("{}: {}", actor_name(&say.from.to_string()), say.text),
-        GmEvent::Queued(row) => {
-            format!("{} queued: {}", actor_name(&row.actor_id), row.move_name)
-        }
-        GmEvent::Check(roll) => render_check(
-            &roll.faces,
-            roll.stat,
-            roll.total,
-            roll.target,
-            roll.outcome.as_str(),
-        ),
-    }
-}
-
-pub fn render_check(faces: &[u32], stat: i64, total: i64, target: i64, outcome: &str) -> String {
-    let dice = faces
-        .iter()
-        .map(u32::to_string)
-        .collect::<Vec<_>>()
-        .join(" + ");
-    let sign = if stat >= 0 {
-        format!("+{stat}")
-    } else {
-        stat.to_string()
-    };
-    if dice.is_empty() {
-        format!("Roll: {sign} = {total} vs {target}, {outcome}")
-    } else {
-        format!("Roll: {dice}, {sign} = {total} vs {target}, {outcome}")
-    }
-}
-
 #[derive(Debug)]
-pub enum Command {
+enum Command {
     Status,
     Look {
         actor: String,
@@ -462,13 +351,13 @@ pub enum Command {
     Quit,
 }
 
-pub enum Parsed {
+enum Parsed {
     Empty,
     Command(Command),
     Unknown,
 }
 
-pub fn parse_command(line: &str) -> Parsed {
+fn parse_command(line: &str) -> Parsed {
     let line = line.trim();
     if line.is_empty() {
         return Parsed::Empty;
@@ -553,50 +442,7 @@ fn split_word(text: &str) -> (&str, &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::protocol::{Outcome, QueuedMove, Roll, SayEvent, StatusPause, StatusPresence};
-
-    fn say(from: &str, seq: u64, text: &str) -> GmEvent {
-        GmEvent::Say(SayEvent {
-            seq,
-            from: from.parse().unwrap(),
-            address: "table".to_string(),
-            place: None,
-            actor: None,
-            recipients: Vec::new(),
-            text: text.to_string(),
-        })
-    }
-
-    fn roll(faces: Vec<u32>, stat: i64, total: i64, target: i64, outcome: Outcome) -> GmEvent {
-        GmEvent::Check(Roll {
-            faces,
-            stat,
-            total,
-            target,
-            outcome,
-        })
-    }
-
-    fn status(present: Vec<&str>, queued: Vec<QueuedMove>) -> TableStatus {
-        TableStatus {
-            presence: StatusPresence {
-                players: u32::try_from(present.len()).unwrap_or(0),
-                actors_present: present.into_iter().map(str::to_string).collect(),
-            },
-            pause: StatusPause {
-                presence_clocks: "running".to_string(),
-            },
-            world_time: 0,
-            round_index: 0,
-            state_rev: 0,
-            pack_rev: String::new(),
-            last_round_at: String::new(),
-            queued,
-            last_seq: 0,
-            events: None,
-            pack: None,
-        }
-    }
+    use crate::text::render_check;
 
     #[test]
     fn a_commit_skips_its_own_check_events_once() {
@@ -717,55 +563,5 @@ mod tests {
             parse_command("queue mira travel docks_street extra"),
             Parsed::Unknown
         ));
-    }
-
-    #[test]
-    fn each_event_renders_as_text() {
-        let player = render_event(&say("player:pc_rowan", 1, "hello"));
-        assert_eq!(player, "Pc rowan: hello");
-        assert!(!player.contains('{'));
-
-        let gm = render_event(&say("gm", 2, "good evening"));
-        assert_eq!(gm, "GM: good evening");
-
-        let npc = render_event(&say("npc:mira", 3, "oil"));
-        assert_eq!(npc, "Mira: oil");
-
-        let queued = render_event(&GmEvent::Queued(QueuedMove {
-            id: "id-1".to_string(),
-            actor_id: "pc_wren".to_string(),
-            move_name: "wait".to_string(),
-        }));
-        assert_eq!(queued, "Pc wren queued: wait");
-
-        let success = render_event(&roll(vec![4, 2], 1, 7, 0, Outcome::Success));
-        assert_eq!(success, "Roll: 4 + 2, +1 = 7 vs 0, success");
-
-        let partial = render_event(&roll(vec![3, 3], 1, 7, 10, Outcome::Partial));
-        assert_eq!(partial, "Roll: 3 + 3, +1 = 7 vs 10, partial");
-
-        let failure = render_event(&roll(vec![1], -2, -1, 3, Outcome::Miss));
-        assert_eq!(failure, "Roll: 1, -2 = -1 vs 3, miss");
-        assert!(!failure.contains('{'));
-    }
-
-    #[test]
-    fn a_status_names_the_seated_players_and_the_queue() {
-        let body = status(
-            vec!["pc_rowan"],
-            vec![QueuedMove {
-                id: "q".to_string(),
-                actor_id: "pc_rowan".to_string(),
-                move_name: "wait".to_string(),
-            }],
-        );
-        assert_eq!(
-            render_status(&body),
-            "Seated: Pc rowan\nQueue:\nPc rowan: wait"
-        );
-        assert_eq!(
-            render_status(&status(Vec::new(), Vec::new())),
-            "Seated: nobody\nQueue: empty"
-        );
     }
 }

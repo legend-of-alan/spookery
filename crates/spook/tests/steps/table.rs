@@ -8,7 +8,7 @@ use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
 use serde_json::Value;
-use spookery::gm_connection::{event_line, GmClient, Incoming};
+use spookery::door::{event_line, GmClient, Incoming};
 use spookery::protocol;
 use spookery_engine::testing::journal::list_round_keys;
 use spookery_engine::State;

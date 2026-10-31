@@ -57,7 +57,7 @@ crates/
   protocol/            spookery-protocol: player and GM message types
   engine/              spookery-engine: world model, rules, rounds, and journal
   agent/               spookery-agent: model GM turn state machine
-  cli/                 spookery-cli: spook play, spook gm, and spook ai-gm
+  cli/                 spookery-cli: play, gm, ai_gm (the three clients), door, http_model, text
   server/              spookery-server: the table, player port, agent door, GM tools, seats, idle timer
   spook/               package and binary spook, library spookery
     tests/features/    BDD scenarios

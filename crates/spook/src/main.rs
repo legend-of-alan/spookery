@@ -151,24 +151,26 @@ async fn dispatch(cli: Cli) -> Result<(), String> {
                 .map_err(|e| e.to_string())
         }
         #[cfg(feature = "client")]
-        Command::Play { pc: as_player, raw } => {
-            spookery::terminal::run_player(as_player.as_deref(), addr, raw)
-                .await
-                .map_err(|err| err.to_string())
-        }
+        Command::Play { pc, raw } => spookery::play::run(pc.as_deref(), addr, raw)
+            .await
+            .map_err(|err| err.to_string()),
         #[cfg(feature = "client")]
         Command::Gm {
             door: mcp_http,
             raw,
-        } => spookery::terminal::run_gm(gm_door(addr, mcp_http)?, raw)
+        } => spookery::gm::run(gm_door(addr, mcp_http)?, raw)
             .await
             .map_err(|err| err.to_string()),
         #[cfg(feature = "client")]
         Command::AiGm { door: mcp_http } => {
-            if spookery::ai::sit(gm_door(addr, mcp_http)?).await.is_err() {
-                std::process::exit(1);
-            }
-            Ok(())
+            let door = gm_door(addr, mcp_http)?;
+            // A missing model setting is reported before the dial.
+            let mut model = spookery::http_model::Settings::from_env()
+                .and_then(spookery::http_model::HttpModel::new)
+                .map_err(|err| err.to_string())?;
+            spookery::ai_gm::run(door, &mut model, &spookery::ai_gm::TurnWatch::default())
+                .await
+                .map_err(|err| err.to_string())
         }
         #[cfg(feature = "server")]
         Command::Round { pack } => {

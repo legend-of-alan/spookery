@@ -5,8 +5,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use spookery_agent::{Agent, Input, Model, Step};
 
-use crate::ai::{report_error, Error};
-use crate::gm_connection::{GmClient, Incoming};
+use crate::door::{GmClient, Incoming};
+use crate::Error;
 
 #[derive(Default)]
 pub struct TurnWatch {
@@ -14,12 +14,12 @@ pub struct TurnWatch {
     pub busy: AtomicBool,
 }
 
-pub async fn run_gm<M: Model>(
+pub async fn run<M: Model>(
     door: SocketAddr,
     model: &mut M,
     watch: &TurnWatch,
 ) -> Result<(), Error> {
-    let mut client = GmClient::connect(door).await.map_err(report_error)?;
+    let mut client = GmClient::connect(door).await?;
     let result = async {
         let mut agent = Agent::new();
         let mut step = agent.start();
@@ -32,19 +32,19 @@ pub async fn run_gm<M: Model>(
                     watch.busy.store(false, Ordering::Release);
                     match client.next_incoming().await {
                         Incoming::Event(event) => {
-                            step = agent.feed(Input::Event(event)).map_err(report_error)?;
+                            step = agent.feed(Input::Event(event))?;
                             if step != Step::Idle && watch.listening.load(Ordering::Acquire) {
                                 watch.busy.store(true, Ordering::Release);
                             }
                             continue;
                         }
-                        Incoming::Unreadable(line) => return Err(report_error(line)),
+                        Incoming::Unreadable(line) => return Err(Error::Message(line)),
                         Incoming::Eof => return Ok(()),
                     }
                 }
                 Step::CallModel(request) => {
                     let reply = model.complete(&request).await;
-                    step = agent.feed(Input::ModelReply(reply)).map_err(report_error)?;
+                    step = agent.feed(Input::ModelReply(reply))?;
                     continue;
                 }
                 Step::FetchStatus { since } => {
@@ -55,11 +55,11 @@ pub async fn run_gm<M: Model>(
                 Step::QueueIntent(call) => client.queue_intent(&call).await.map(Input::QueueReply),
                 Step::CommitRound => client.commit_round().await.map(Input::CommitReply),
             };
-            let reply = reply.map_err(report_error)?;
+            let reply = reply?;
             for event in client.take_events() {
-                agent.feed(Input::Event(event)).map_err(report_error)?;
+                agent.feed(Input::Event(event))?;
             }
-            step = agent.feed(reply).map_err(report_error)?;
+            step = agent.feed(reply)?;
             // The first reply is the sit's table_status: the agent is seated once it is read.
             if !watch.listening.load(Ordering::Acquire) {
                 report("listening");
@@ -71,6 +71,12 @@ pub async fn run_gm<M: Model>(
     .await;
     client.close().await;
     result
+}
+
+impl From<spookery_agent::Error> for Error {
+    fn from(err: spookery_agent::Error) -> Self {
+        Error::Message(err.to_string())
+    }
 }
 
 fn report(line: &str) {

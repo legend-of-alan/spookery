@@ -8,7 +8,7 @@ use spookery_agent::{
     Model, ModelReply,
 };
 
-use crate::ai::{report_error, Error};
+use crate::Error;
 
 pub struct Settings {
     key: String,
@@ -71,7 +71,7 @@ pub struct HttpModel<C> {
 fn env_var(name: &str) -> Result<String, Error> {
     match std::env::var(name) {
         Ok(value) => Ok(value),
-        Err(_) => Err(report_error(format!("{name} is unset"))),
+        Err(_) => Err(Error::Message(format!("{name} is unset"))),
     }
 }
 
@@ -105,7 +105,7 @@ impl<C: Timer> HttpModel<C> {
         let client = reqwest::Client::builder()
             .connect_timeout(limits.connect)
             .build()
-            .map_err(report_error)?;
+            .map_err(|err| Error::Message(err.to_string()))?;
         Ok(Self {
             env,
             client,
@@ -226,12 +226,9 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn each_missing_setting_is_named_and_does_not_dial() {
+    async fn each_missing_setting_is_named() {
         let _guard = ENV_LOCK.lock().await;
         let saved = save_settings();
-        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
-        listener.set_nonblocking(true).unwrap();
-        let addr = listener.local_addr().unwrap();
         for missing in ["SPOOK_GM_KEY", "SPOOK_GM_URL", "SPOOK_GM_MODEL"] {
             clear_settings();
             for name in ["SPOOK_GM_KEY", "SPOOK_GM_URL", "SPOOK_GM_MODEL"] {
@@ -244,24 +241,15 @@ mod tests {
                     std::env::set_var(name, val);
                 }
             }
-            let err = crate::ai::sit(addr).await.expect_err(missing);
+            let err = Settings::from_env().err().expect(missing);
             assert!(
-                err.message.contains(&format!("{missing} is unset")),
-                "{}",
-                err.message
+                err.to_string().contains(&format!("{missing} is unset")),
+                "{err}"
             );
-            match listener.accept() {
-                Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => {}
-                other => panic!("listener saw a connection: {other:?}"),
-            }
         }
         clear_settings();
         let err = Settings::from_env().err().expect("all missing should fail");
-        assert!(
-            err.message.contains("SPOOK_GM_KEY is unset"),
-            "{}",
-            err.message
-        );
+        assert!(err.to_string().contains("SPOOK_GM_KEY is unset"), "{err}");
         restore_settings(saved);
     }
 

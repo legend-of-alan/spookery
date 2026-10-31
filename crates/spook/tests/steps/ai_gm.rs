@@ -14,8 +14,9 @@ use std::time::{Duration, Instant};
 use cucumber::{then, when};
 use serde_json::json;
 use spookery::agent::{parse_completion, CompletionError, CompletionRequest, Model, ModelReply};
-use spookery::ai::{run_gm, HttpModel, Limits, Settings, Timer, TurnWatch, WallClock};
-use spookery::gm_connection::GmClient;
+use spookery::ai_gm::{self, TurnWatch};
+use spookery::door::GmClient;
+use spookery::http_model::{HttpModel, Limits, Settings, Timer, WallClock};
 use spookery::protocol::SayArgs;
 
 use crate::support::{self, copy_docks};
@@ -415,7 +416,7 @@ fn run_ai_gm(
     let _ = fs::remove_dir_all(&pack);
 }
 
-fn stop_ai_gm(world: &mut World, handle: thread::JoinHandle<Result<(), spookery::ai::Error>>) {
+fn stop_ai_gm(world: &mut World, handle: thread::JoinHandle<Result<(), spookery_cli::Error>>) {
     table::live_mut(world).host.take();
     let _ = handle.join();
 }
@@ -424,7 +425,7 @@ fn start_ai_gm(
     world: &mut World,
     model: &ScriptedModel,
 ) -> (
-    thread::JoinHandle<Result<(), spookery::ai::Error>>,
+    thread::JoinHandle<Result<(), spookery_cli::Error>>,
     Arc<TurnWatch>,
 ) {
     let watch = Arc::new(TurnWatch::default());
@@ -434,7 +435,7 @@ fn start_ai_gm(
     let runtime = tokio::runtime::Handle::current();
     let handle = thread::spawn(move || {
         let mut model = model_bg;
-        runtime.block_on(run_gm(door, &mut model, &watch_bg))
+        runtime.block_on(ai_gm::run(door, &mut model, &watch_bg))
     });
     wait_listening(&watch);
     (handle, watch)
@@ -685,7 +686,7 @@ fn start_http_ai_gm<C>(
     backoff: Duration,
     clock: C,
 ) -> (
-    thread::JoinHandle<Result<(), spookery::ai::Error>>,
+    thread::JoinHandle<Result<(), spookery_cli::Error>>,
     Arc<TurnWatch>,
 )
 where
@@ -723,7 +724,7 @@ where
             return (handle, watch);
         }
         match handle.join() {
-            Ok(Err(err)) => last = err.message,
+            Ok(Err(err)) => last = err.to_string(),
             Ok(Ok(())) => last = "host exited".to_string(),
             Err(_) => last = "host thread panicked".to_string(),
         }
@@ -752,7 +753,7 @@ fn spawn_http_ai_gm<C>(
     backoff: Duration,
     clock: C,
 ) -> (
-    thread::JoinHandle<Result<(), spookery::ai::Error>>,
+    thread::JoinHandle<Result<(), spookery_cli::Error>>,
     Arc<TurnWatch>,
 )
 where
@@ -764,7 +765,7 @@ where
     let runtime = tokio::runtime::Handle::current();
     let handle = thread::spawn(move || {
         let mut model = http_model(stub, total, backoff, clock);
-        runtime.block_on(run_gm(door, &mut model, &watch_bg))
+        runtime.block_on(ai_gm::run(door, &mut model, &watch_bg))
     });
     (handle, watch)
 }

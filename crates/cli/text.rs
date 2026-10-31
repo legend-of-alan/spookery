@@ -1,7 +1,8 @@
-//! Readable text for one player frame.
+//! Readable text for player frames, GM events, and the status and commit replies.
 
 use crate::protocol::{
-    self, exit_phrase, ClockView, ExitView, MeterView, NoteView, Outcome, PlayerFrame, Speaker,
+    self, exit_phrase, ClockView, CommitBody, ExitView, GmEvent, MeterView, NoteView, Outcome,
+    PlayerFrame, Speaker, TableStatus,
 };
 
 /// Readable text for one player frame. A new [`PlayerFrame`] variant fails here until it is rendered.
@@ -247,10 +248,122 @@ pub(crate) fn humanize(id: &str) -> String {
     titled
 }
 
+fn seated_ids(body: &TableStatus) -> Vec<String> {
+    body.presence.actors_present.clone()
+}
+
+fn queue_rows(body: &TableStatus) -> Vec<(String, String)> {
+    body.queued
+        .iter()
+        .map(|row| (row.actor_id.clone(), row.move_name.clone()))
+        .collect()
+}
+
+pub fn render_status(body: &TableStatus) -> String {
+    let names = seated_ids(body);
+    let seated = if names.is_empty() {
+        "Seated: nobody".to_string()
+    } else {
+        let names = names
+            .iter()
+            .map(|id| actor_name(id))
+            .collect::<Vec<_>>()
+            .join(", ");
+        format!("Seated: {names}")
+    };
+    let queue = queue_rows(body);
+    let queued = if queue.is_empty() {
+        "Queue: empty".to_string()
+    } else {
+        let lines = queue
+            .iter()
+            .map(|(id, move_name)| format!("{}: {move_name}", actor_name(id)))
+            .collect::<Vec<_>>()
+            .join("\n");
+        format!("Queue:\n{lines}")
+    };
+    format!("{seated}\n{queued}")
+}
+
+pub fn render_diff(body: &CommitBody) -> String {
+    if body.changed_keys.is_empty() {
+        "Nothing changed.".to_string()
+    } else {
+        format!("Changed:\n{}", body.changed_keys.join("\n"))
+    }
+}
+
+pub fn render_dice(body: &CommitBody) -> Vec<String> {
+    body.dice
+        .iter()
+        .map(|line| format!("dice {line}"))
+        .collect()
+}
+
+pub fn render_checks(body: &CommitBody) -> Vec<String> {
+    body.rolls
+        .iter()
+        .map(|roll| {
+            render_check(
+                &roll.faces,
+                roll.stat,
+                roll.total,
+                roll.target,
+                roll.outcome.as_str(),
+            )
+        })
+        .collect()
+}
+
+pub fn actor_name(id: &str) -> String {
+    if id == "gm" {
+        "GM".to_string()
+    } else {
+        humanize(id)
+    }
+}
+
+pub fn render_event(body: &GmEvent) -> String {
+    match body {
+        GmEvent::Say(say) => format!("{}: {}", actor_name(&say.from.to_string()), say.text),
+        GmEvent::Queued(row) => {
+            format!("{} queued: {}", actor_name(&row.actor_id), row.move_name)
+        }
+        GmEvent::Check(roll) => render_check(
+            &roll.faces,
+            roll.stat,
+            roll.total,
+            roll.target,
+            roll.outcome.as_str(),
+        ),
+    }
+}
+
+pub fn render_check(faces: &[u32], stat: i64, total: i64, target: i64, outcome: &str) -> String {
+    let dice = faces
+        .iter()
+        .map(u32::to_string)
+        .collect::<Vec<_>>()
+        .join(" + ");
+    let sign = if stat >= 0 {
+        format!("+{stat}")
+    } else {
+        stat.to_string()
+    };
+    if dice.is_empty() {
+        format!("Roll: {sign} = {total} vs {target}, {outcome}")
+    } else {
+        format!("Roll: {dice}, {sign} = {total} vs {target}, {outcome}")
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::protocol::{ItemStack, KnownFact, NoteView, Queued};
+    use crate::protocol::{
+        ItemStack, KnownFact, NoteView, Queued, QueuedMove, Roll, SayEvent, StatusPause,
+        StatusPresence,
+    };
 
     fn assert_readable(text: &str) {
         assert!(!text.contains('{'), "{text}");
@@ -562,5 +675,98 @@ none"
         assert!(!quiet.contains("Items:"), "{quiet}");
         assert!(!quiet.contains("Meters:"), "{quiet}");
         assert_readable(&quiet);
+    }
+
+    fn say(from: &str, seq: u64, text: &str) -> GmEvent {
+        GmEvent::Say(SayEvent {
+            seq,
+            from: from.parse().unwrap(),
+            address: "table".to_string(),
+            place: None,
+            actor: None,
+            recipients: Vec::new(),
+            text: text.to_string(),
+        })
+    }
+
+    fn roll(faces: Vec<u32>, stat: i64, total: i64, target: i64, outcome: Outcome) -> GmEvent {
+        GmEvent::Check(Roll {
+            faces,
+            stat,
+            total,
+            target,
+            outcome,
+        })
+    }
+
+    fn status(present: Vec<&str>, queued: Vec<QueuedMove>) -> TableStatus {
+        TableStatus {
+            presence: StatusPresence {
+                players: u32::try_from(present.len()).unwrap_or(0),
+                actors_present: present.into_iter().map(str::to_string).collect(),
+            },
+            pause: StatusPause {
+                presence_clocks: "running".to_string(),
+            },
+            world_time: 0,
+            round_index: 0,
+            state_rev: 0,
+            pack_rev: String::new(),
+            last_round_at: String::new(),
+            queued,
+            last_seq: 0,
+            events: None,
+            pack: None,
+        }
+    }
+
+    #[test]
+    fn each_event_renders_as_text() {
+        let player = render_event(&say("player:pc_rowan", 1, "hello"));
+        assert_eq!(player, "Pc rowan: hello");
+        assert!(!player.contains('{'));
+
+        let gm = render_event(&say("gm", 2, "good evening"));
+        assert_eq!(gm, "GM: good evening");
+
+        let npc = render_event(&say("npc:mira", 3, "oil"));
+        assert_eq!(npc, "Mira: oil");
+
+        let queued = render_event(&GmEvent::Queued(QueuedMove {
+            id: "id-1".to_string(),
+            actor_id: "pc_wren".to_string(),
+            move_name: "wait".to_string(),
+        }));
+        assert_eq!(queued, "Pc wren queued: wait");
+
+        let success = render_event(&roll(vec![4, 2], 1, 7, 0, Outcome::Success));
+        assert_eq!(success, "Roll: 4 + 2, +1 = 7 vs 0, success");
+
+        let partial = render_event(&roll(vec![3, 3], 1, 7, 10, Outcome::Partial));
+        assert_eq!(partial, "Roll: 3 + 3, +1 = 7 vs 10, partial");
+
+        let failure = render_event(&roll(vec![1], -2, -1, 3, Outcome::Miss));
+        assert_eq!(failure, "Roll: 1, -2 = -1 vs 3, miss");
+        assert!(!failure.contains('{'));
+    }
+
+    #[test]
+    fn a_status_names_the_seated_players_and_the_queue() {
+        let body = status(
+            vec!["pc_rowan"],
+            vec![QueuedMove {
+                id: "q".to_string(),
+                actor_id: "pc_rowan".to_string(),
+                move_name: "wait".to_string(),
+            }],
+        );
+        assert_eq!(
+            render_status(&body),
+            "Seated: Pc rowan\nQueue:\nPc rowan: wait"
+        );
+        assert_eq!(
+            render_status(&status(Vec::new(), Vec::new())),
+            "Seated: nobody\nQueue: empty"
+        );
     }
 }

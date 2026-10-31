@@ -3,22 +3,25 @@
 use std::fmt;
 use std::io;
 
-pub mod ai;
-pub mod gm_connection;
+pub mod ai_gm;
+pub mod door;
+pub mod gm;
+pub mod http_model;
+pub mod play;
 use spookery_protocol as protocol;
-pub mod terminal;
+mod text;
 
-/// A GM client failure, returned from the agent door client to `spook gm` and the AI GM
-/// loop. Display is the line either prints for it.
+/// A client failure: what `play::run`, `gm::run` and `ai_gm::run` return to `spook`, and what
+/// the door client and `HttpModel` return to them. Display is the line `spook` prints for it.
 #[derive(Debug)]
 pub enum Error {
-    /// The agent door could not be reached.
+    /// A socket could not be dialed, read or written.
     Io(io::Error),
     /// The table refused the GM seat. Display is the refusal's sentence.
     Refused(protocol::Refusal),
     /// A tool reply that is neither its reply type nor a refusal, with the JSON the door sent.
     Unreadable(serde_json::Value),
-    /// A tool call the MCP client could not finish, as its message.
+    /// Any other failure, as the line to print.
     Message(String),
 }
 
@@ -34,3 +37,17 @@ impl fmt::Display for Error {
 }
 
 impl std::error::Error for Error {}
+
+/// Stdin lines from a plain thread. A read on `tokio::io::stdin` can't be
+/// cancelled, so the runtime would wait on exit for the next Enter.
+fn stdin_lines() -> tokio::sync::mpsc::UnboundedReceiver<String> {
+    let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+    std::thread::spawn(move || {
+        for line in io::stdin().lines().map_while(Result::ok) {
+            if tx.send(line).is_err() {
+                return;
+            }
+        }
+    });
+    rx
+}
