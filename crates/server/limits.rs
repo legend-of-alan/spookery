@@ -39,6 +39,7 @@ pub(super) const HELLO_TIMEOUT: Duration = Duration::from_secs(10);
 /// Millitokens per line. Refill uses this scale so the bucket stays integer.
 const MILLITOKENS_PER_TOKEN: u128 = 1000;
 
+/// Sent from the capped line reader to a player's socket task.
 #[derive(Debug)]
 pub(super) enum ReadLineError {
     Io,

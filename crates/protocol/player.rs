@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{Error, Outcome};
 
+/// Part of a `PlayerFrame` view, sent from the table to a player client.
 /// Names and prose for one place view. Boxed on the wire so the message stays small.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ViewScene {
@@ -17,6 +18,7 @@ pub struct ViewScene {
     pub status: String,
 }
 
+/// Sent from the table to a player client over the game port.
 /// A line on the player socket. No GM field, and no roll faces.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "lowercase")]
@@ -68,6 +70,7 @@ pub enum PlayerFrame {
     },
 }
 
+/// Refusal detail, sent from the table to a player client.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum Missing {
@@ -84,6 +87,7 @@ impl Missing {
     }
 }
 
+/// Part of a `PlayerFrame` view, sent from the table to a player client.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ExitView {
     pub name: String,
@@ -93,6 +97,7 @@ pub struct ExitView {
     pub locked: bool,
 }
 
+/// Part of a `PlayerFrame` view, sent from the table to a player client.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct KnownFact {
     pub id: String,
@@ -100,6 +105,7 @@ pub struct KnownFact {
     pub owner_body: String,
 }
 
+/// Part of a `PlayerFrame` view, sent from the table to a player client.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NoteView {
     pub id: String,
@@ -110,6 +116,7 @@ pub struct NoteView {
     pub text: String,
 }
 
+/// Part of a `PlayerFrame` view, sent from the table to a player client.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ClockView {
     pub id: String,
@@ -118,12 +125,14 @@ pub struct ClockView {
     pub paused: bool,
 }
 
+/// Part of a `PlayerFrame` view, sent from the table to a player client.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ItemStack {
     pub id: String,
     pub count: u32,
 }
 
+/// Part of a `PlayerFrame` view, sent from the table to a player client.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MeterView {
     pub id: String,

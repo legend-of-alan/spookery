@@ -7,13 +7,14 @@ use super::frames::{self, Refusal};
 use super::table::commit_then_fast_forward;
 use crate::protocol::SayArgs;
 
+/// Sent from a GM tool handler back to the table, which answers the GM and updates seats.
 pub(super) struct Reply {
     pub(super) value: Value,
     /// The speech this call put on the tape. The host delivers it.
     pub(super) said: Option<TapeRecord>,
     /// The GM seat is cleared before this reply is sent.
     pub(super) release_seat: bool,
-    /// Set when the call was refused; the host logs it.
+    /// Set when the call was refused. The host logs it.
     pub(super) refused: Option<Reason>,
     /// Rounds this call played, commit first.
     pub(super) outputs: Vec<RoundOutput>,

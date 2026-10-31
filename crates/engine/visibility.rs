@@ -36,6 +36,7 @@ pub struct Delivery {
     pub narrations: Vec<String>,
 }
 
+/// Returned from the engine to the host table, which sends it to that one player.
 /// One narrate line addressed to one person.
 pub struct RecipientLine {
     pub to: String,

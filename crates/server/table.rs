@@ -28,6 +28,7 @@ pub(crate) fn commit_then_fast_forward(
     world.commit_then_fast_forward(presence, &wall)
 }
 
+/// Sent from the socket tasks, the agent door and the idle timer to the table thread.
 pub(super) enum Request {
     Hello {
         conn: Conn,
@@ -69,6 +70,7 @@ pub(super) async fn report_hangup(tx: &Sender<Request>, conn: Conn) {
     let _ = ack_rx.await;
 }
 
+/// Sent from the table back to a player's socket task, answering its hello.
 pub(super) enum HelloReply {
     Refused(Refusal),
     Seated,
@@ -455,6 +457,7 @@ fn refresh_lines(world: &World, presence: &Presence, actor_id: &str) -> Result<S
     Ok(out)
 }
 
+/// One player line, parsed by the table for the table's own dispatch.
 enum PlayerCommand<'w, 'l> {
     Close,
     Help,

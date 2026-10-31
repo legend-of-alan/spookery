@@ -80,13 +80,15 @@ impl Drop for GmSeat {
     }
 }
 
+/// One queued frame, passed from the table to a seat's socket or event writer.
 enum Message {
     Frame(Vec<u8>),
     /// Flushed, then acknowledged, then the writer shuts the socket down.
     Last(Vec<u8>, oneshot::Sender<()>),
 }
 
-/// Sender half of one seat's queue, and the seat's cancel.
+/// The table's end of one seat's frame queue. The table sends that seat frames with it.
+/// Also holds the seat's cancel.
 #[derive(Clone)]
 pub(super) struct Outbound {
     tx: mpsc::Sender<Message>,
@@ -94,7 +96,8 @@ pub(super) struct Outbound {
     cancel: watch::Sender<bool>,
 }
 
-/// Receiver half. A frame's bytes stay counted until it is written.
+/// The writer's end of one seat's frame queue. That seat's socket or event writer reads from it.
+/// A frame's bytes stay counted until it is written.
 pub(super) struct Inbound {
     rx: mpsc::Receiver<Message>,
     queued_bytes: Arc<AtomicUsize>,

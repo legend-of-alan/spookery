@@ -16,6 +16,7 @@ pub fn parse_tool_result(line: &str) -> Result<Value, Error> {
         .unwrap_or(Value::Null))
 }
 
+/// `table_status` arguments, sent from the GM's MCP client to the table.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct StatusArgs {
@@ -30,6 +31,7 @@ pub fn parse_status_args(arguments: Option<&Map<String, Value>>) -> Result<Statu
     }
 }
 
+/// `perceive` arguments, sent from the GM's MCP client to the table.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PerceiveArgs {
@@ -46,6 +48,7 @@ pub fn parse_perceive_args(arguments: Option<&Map<String, Value>>) -> Result<Per
     }
 }
 
+/// `commit_round` arguments, sent from the GM's MCP client to the table.
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CommitArgs {
@@ -58,6 +61,7 @@ pub fn parse_commit_args(arguments: Option<&Map<String, Value>>) -> Result<Commi
     parse_args(arguments.ok_or(Error)?)
 }
 
+/// The raw `say` arguments from the GM's MCP client, before `SayArgs` checks them.
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct SayWire {
@@ -69,6 +73,7 @@ struct SayWire {
     actor: Option<String>,
 }
 
+/// `say` arguments, sent from the GM's MCP client to the table.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "address", rename_all = "lowercase", try_from = "SayWire")]
 pub enum SayArgs {
@@ -114,6 +119,7 @@ pub fn parse_say_args(arguments: Option<&Map<String, Value>>) -> Result<SayArgs,
     parse_args(arguments.ok_or(Error)?)
 }
 
+/// `queue_intent` arguments, sent from the GM's MCP client to the table.
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct IntentCall {
@@ -141,6 +147,7 @@ fn parse_args<T: serde::de::DeserializeOwned>(arguments: &Map<String, Value>) ->
     serde_json::from_value(Value::Object(arguments.clone())).map_err(|_| Error)
 }
 
+/// The `table_status` result, sent from the table to the GM's MCP client.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TableStatus {
     pub presence: StatusPresence,
@@ -164,17 +171,20 @@ pub struct TableStatus {
     pub pack: Option<PackSummary>,
 }
 
+/// Part of `TableStatus`, sent from the table to the GM's MCP client.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StatusPresence {
     pub players: u32,
     pub actors_present: Vec<String>,
 }
 
+/// Part of `TableStatus`, sent from the table to the GM's MCP client.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StatusPause {
     pub presence_clocks: String,
 }
 
+/// A queued player move, sent from the table to the GM's MCP client.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct QueuedMove {
     pub id: String,
@@ -189,6 +199,7 @@ impl TableStatus {
     }
 }
 
+/// The `commit_round` result, sent from the table to the GM's MCP client.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CommitBody {
     pub state_rev: u64,
@@ -205,6 +216,7 @@ impl CommitBody {
     }
 }
 
+/// One check roll, sent from the table to the GM's MCP client.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Roll {
     pub faces: Vec<u32>,
@@ -214,6 +226,7 @@ pub struct Roll {
     pub outcome: Outcome,
 }
 
+/// A `say` event or result, sent from the table to the GM's MCP client.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SayEvent {
     pub seq: u64,
@@ -232,6 +245,7 @@ pub enum CastKind {
     PcTemplate,
 }
 
+/// One cast row in a `PackSummary`, sent from the table to the GM's MCP client.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MenuRow {
     pub name: String,
@@ -239,6 +253,7 @@ pub struct MenuRow {
     pub target: String,
 }
 
+/// Part of `TableStatus`, sent from the table to the GM's MCP client.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PackSummary {
     pub menu: Vec<MenuRow>,
@@ -247,6 +262,7 @@ pub struct PackSummary {
     pub cast: std::collections::BTreeMap<String, String>,
 }
 
+/// Sent from the table to the GM's MCP client as a `spook/event` notification.
 /// A `spook/event` body. `kind` is the serde tag, not a stored field.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "lowercase")]

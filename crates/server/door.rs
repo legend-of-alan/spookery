@@ -90,6 +90,7 @@ impl SeatSessions {
     }
 }
 
+/// Carries `spook/event` frames from the table to the GM's MCP client over SSE.
 /// The GM's event stream. The connection under it lives as long as the GM,
 /// so when it is dropped the session is closed.
 struct EventStream<S> {
