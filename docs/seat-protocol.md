@@ -410,7 +410,7 @@ POST the initialize body. Send `Accept` and `Content-Type` as in Connect. The re
 
 The result's `protocolVersion` is the negotiated version. Use that version on `MCP-Protocol-Version` for the rest of the session, including DELETE. A DELETE that names `2026-07-28` is HTTP 405 and does not release the seat. DELETE with the negotiated version, and the session id, releases it and answers after the seat is free. So does `close`.
 
-Then open one event stream: `GET /mcp` with the `mcp-session-id`, the negotiated `MCP-Protocol-Version` and `Accept: text/event-stream`. Keep it open for the whole session. When it closes, the host ends the session and frees the seat, so a GM process that dies without DELETE frees it as soon as its connection drops. Open only one: the seat ends when any event stream on the session closes. There is no idle timeout, so a GM with no open event stream keeps the seat until it sends DELETE or `close`.
+Then open one event stream: `GET /mcp` with the `mcp-session-id`, the negotiated `MCP-Protocol-Version` and `Accept: text/event-stream`. Keep it open for the whole session. When it closes, the host ends the session and frees the seat, so a GM process that dies without DELETE frees it once the host sees its connection close. The host prints `gm seat free` on its stdout when it frees the seat. Open only one: the seat ends when any event stream on the session closes. There is no idle timeout, so a GM with no open event stream keeps the seat until it sends DELETE or `close`.
 
 A second initialize, while a GM is sat, does not sit:
 
