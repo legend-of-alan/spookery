@@ -57,16 +57,9 @@ fn format_utc(now: DateTime<Utc>) -> String {
     now.format(STAMP_FORMAT).to_string()
 }
 
-/// Seat check and interval check. A round that runs borrows this `World`.
+/// Plays the catch-up rounds when the last round is an interval old.
 /// Returns whether `world_time` advanced.
-pub(super) fn catch_up_if_due(
-    world: &mut World,
-    player_held: bool,
-    gm_held: bool,
-) -> Result<bool, Reason> {
-    if player_held || gm_held {
-        return Ok(false);
-    }
+pub(super) fn catch_up_if_due(world: &mut World) -> Result<bool, Reason> {
     let now = Utc::now();
     let elapsed = elapsed_secs(&world.state().last_round_at, now)?;
     if elapsed < world.budget().round_every_real_seconds {

@@ -432,7 +432,7 @@ fn find_listening(buf: &[u8]) -> Option<(SocketAddr, SocketAddr)> {
 }
 
 fn parse_listening_line(line: &str) -> Option<(SocketAddr, SocketAddr)> {
-    let listening: protocol::Listening = serde_json::from_str(line.trim()).ok()?;
+    let listening: protocol::Addrs = serde_json::from_str(line.trim()).ok()?;
     Some((listening.game.parse().ok()?, listening.door.parse().ok()?))
 }
 

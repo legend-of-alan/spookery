@@ -30,7 +30,6 @@ use super::seat::{seat, write_frames, Conn};
 use super::table::{report_hangup, Request};
 use super::tools;
 
-// HTTP POST bodies on the agent door stop at this cap.
 pub(super) async fn serve(
     listener: tokio::net::TcpListener,
     tx: Sender<Request>,
@@ -57,6 +56,7 @@ fn http_config() -> StreamableHttpServerConfig {
     let mut config = StreamableHttpServerConfig::default()
         .with_allowed_hosts(["127.0.0.1"])
         .with_allowed_origins(["http://127.0.0.1:*"]);
+    // HTTP POST bodies on the agent door stop at this cap.
     config.max_request_body_bytes = GM_BODY_CAP;
     config
 }
@@ -192,6 +192,11 @@ impl SessionManager for SeatSessions {
     }
 }
 
+/// The error a tool call gets once the table has stopped.
+fn table_closed() -> McpError {
+    McpError::internal_error("table closed", None)
+}
+
 struct Handler {
     tx: Sender<Request>,
     conn: OnceLock<Conn>,
@@ -259,10 +264,8 @@ impl ServerHandler for Handler {
             arguments,
             reply: reply_tx,
         })
-        .map_err(|_| McpError::internal_error("table closed", None))?;
-        let value = reply_rx
-            .await
-            .map_err(|_| McpError::internal_error("table closed", None))?;
+        .map_err(|_| table_closed())?;
+        let value = reply_rx.await.map_err(|_| table_closed())?;
         Ok(CallToolResult::structured(value).into())
     }
 }
@@ -281,10 +284,8 @@ impl Handler {
                 seat: out,
                 reply: reply_tx,
             })
-            .map_err(|_| McpError::internal_error("table closed", None))?;
-        let reply = reply_rx
-            .await
-            .map_err(|_| McpError::internal_error("table closed", None))?;
+            .map_err(|_| table_closed())?;
+        let reply = reply_rx.await.map_err(|_| table_closed())?;
         match reply {
             Ok(()) => {
                 let peer = context.peer.clone();

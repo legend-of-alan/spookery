@@ -118,7 +118,7 @@ fn door_addr(game: SocketAddr, mcp_addr: Option<SocketAddr>) -> Result<SocketAdd
 }
 
 fn report_bound(out: &mut dyn Write, game: SocketAddr, door: SocketAddr) -> Result<(), Error> {
-    let line = serde_json::to_string(&protocol::Listening {
+    let line = serde_json::to_string(&protocol::Addrs {
         game: game.to_string(),
         door: door.to_string(),
     })

@@ -7,16 +7,16 @@ use super::frames::{self, Refusal};
 use super::table::commit_then_fast_forward;
 use crate::protocol::SayArgs;
 
-pub struct Reply {
-    pub value: Value,
+pub(super) struct Reply {
+    pub(super) value: Value,
     /// The speech this call put on the tape. The host delivers it.
-    pub said: Option<TapeRecord>,
+    pub(super) said: Option<TapeRecord>,
     /// The GM seat is cleared before this reply is sent.
-    pub release_seat: bool,
+    pub(super) release_seat: bool,
     /// Set when the call was refused; the host logs it.
-    pub refused: Option<Reason>,
+    pub(super) refused: Option<Reason>,
     /// Rounds this call played, commit first.
-    pub outputs: Vec<RoundOutput>,
+    pub(super) outputs: Vec<RoundOutput>,
 }
 
 impl Reply {
@@ -266,7 +266,9 @@ fn commit_round(
     presence: &Presence,
     arguments: Option<Map<String, Value>>,
 ) -> Result<Reply, Reason> {
-    let include_round = read_include_round(arguments)?;
+    let include_round = crate::protocol::parse_commit_args(arguments.as_ref())
+        .map_err(|_| Reason::Schema)?
+        .include_round;
     let committed = !world.queued_intents().is_empty();
     if committed && !include_round {
         return Err(Reason::NotInSpec);
@@ -313,7 +315,9 @@ fn table_status(
     presence: &Presence,
     arguments: Option<Map<String, Value>>,
 ) -> Result<Reply, Reason> {
-    let since = read_since(arguments)?;
+    let since = crate::protocol::parse_status_args(arguments.as_ref())
+        .map_err(|_| Reason::Schema)?
+        .since;
     let events = match since {
         Some(since) => Some(world.tape_after(since)?),
         None => None,
@@ -327,18 +331,6 @@ fn table_status(
         events.as_deref(),
         since.is_none().then(|| world.pack_summary()),
     )))
-}
-
-fn read_since(arguments: Option<Map<String, Value>>) -> Result<Option<u64>, Reason> {
-    let args =
-        crate::protocol::parse_status_args(arguments.as_ref()).map_err(|_| Reason::Schema)?;
-    Ok(args.since)
-}
-
-fn read_include_round(arguments: Option<Map<String, Value>>) -> Result<bool, Reason> {
-    let args =
-        crate::protocol::parse_commit_args(arguments.as_ref()).map_err(|_| Reason::Schema)?;
-    Ok(args.include_round)
 }
 
 fn queue_intent(

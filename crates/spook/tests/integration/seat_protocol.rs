@@ -14,7 +14,7 @@ use std::time::Duration;
 use rmcp::model::ProtocolVersion;
 use serde_json::Value;
 use spookery::gm_connection::{Connection, Incoming};
-use spookery::protocol::Listening;
+use spookery::protocol::Addrs;
 
 use crate::support;
 
@@ -453,7 +453,7 @@ fn read_listening(stdout: &mut impl Read) -> (u16, u16, String) {
                     let line = std::str::from_utf8(&got[..end])
                         .unwrap_or_else(|err| panic!("{err}"))
                         .trim_end_matches('\r');
-                    let listening: Listening = serde_json::from_str(line)
+                    let listening: Addrs = serde_json::from_str(line)
                         .unwrap_or_else(|err| panic!("listening: {err}\n{line}"));
                     let port = |addr: &str| {
                         loopback_port(addr).unwrap_or_else(|| panic!("not loopback\n{line}"))
@@ -786,7 +786,7 @@ fn differ(name: &str, live: &Example, documented: &Example) -> Option<String> {
 }
 
 fn scrub(value: &mut Value) {
-    let Ok(Listening { game, door }) = serde_json::from_value(value.clone()) else {
+    let Ok(Addrs { game, door }) = serde_json::from_value(value.clone()) else {
         return;
     };
     assert!(loopback_port(&game).is_some(), "{game}");

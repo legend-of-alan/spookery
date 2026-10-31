@@ -35,10 +35,10 @@ pub use player::{
     ExitView, ItemStack, KnownFact, MeterView, Missing, NoteView, PlayerFrame, ViewScene,
 };
 
-/// The line `spook run` prints on stdout once both ports are bound.
+/// The game and door addresses `spook run` prints on stdout once both ports are bound.
 #[derive(Serialize, Deserialize)]
 #[serde(tag = "kind", rename = "listening")]
-pub struct Listening {
+pub struct Addrs {
     pub game: String,
     pub door: String,
 }

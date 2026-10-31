@@ -13,7 +13,7 @@ use spookery_engine::{
 
 /// The one place a refusal becomes bytes: a player line, a GM tool result or an MCP error.
 #[derive(Debug)]
-pub(crate) struct Refusal {
+pub(super) struct Refusal {
     code: Reason,
     detail: Option<Missing>,
 }
@@ -32,7 +32,7 @@ impl From<&GateRefusal> for Refusal {
 
 impl Refusal {
     /// `CHOOSE_PC` names the free PCs.
-    pub(crate) fn choose_pc(free: Vec<String>) -> Self {
+    pub(super) fn choose_pc(free: Vec<String>) -> Self {
         Self {
             code: Reason::ChoosePc,
             detail: Some(Missing::Many(free)),
@@ -48,7 +48,7 @@ impl Refusal {
     }
 
     /// The player `refused` line. `detail` is left out when there is none.
-    pub(crate) fn line(&self) -> String {
+    pub(super) fn line(&self) -> String {
         crate::protocol::emit_player(&PlayerFrame::Refused {
             code: self.code.as_str().to_string(),
             detail: self.detail.clone(),
@@ -56,16 +56,16 @@ impl Refusal {
     }
 
     /// The GM tool result names the code only.
-    pub(crate) fn tool_result(&self) -> Value {
+    pub(super) fn tool_result(&self) -> Value {
         crate::protocol::code_result(self.code.as_str())
     }
 
-    pub(crate) fn mcp_error(&self) -> McpError {
+    pub(super) fn mcp_error(&self) -> McpError {
         McpError::internal_error(crate::protocol::refusal(self.code.as_str()), None)
     }
 }
 
-pub fn say(tape: &TapeRecord, replay: bool) -> String {
+pub(super) fn say_line(tape: &TapeRecord, replay: bool) -> String {
     crate::protocol::emit_player(&PlayerFrame::Say {
         from: tape.from.clone(),
         address: tape.address.clone(),
@@ -74,11 +74,11 @@ pub fn say(tape: &TapeRecord, replay: bool) -> String {
     })
 }
 
-pub fn say_value(tape: &TapeRecord) -> Value {
+pub(super) fn say_value(tape: &TapeRecord) -> Value {
     gm_say(tape).to_value()
 }
 
-pub fn say_event(tape: &TapeRecord) -> Vec<u8> {
+pub(super) fn say_event(tape: &TapeRecord) -> Vec<u8> {
     serde_json::to_vec(&EventBody::Say(gm_say(tape))).expect("say event")
 }
 
@@ -94,31 +94,31 @@ fn gm_say(tape: &TapeRecord) -> SayEvent {
     }
 }
 
-pub fn queued(id: &str) -> String {
+pub(super) fn queued_line(id: &str) -> String {
     crate::protocol::emit_player(&PlayerFrame::Queued { id: id.to_string() })
 }
 
-pub fn queued_event(queued: &QueuedMove) -> Vec<u8> {
+pub(super) fn queued_event(queued: &QueuedMove) -> Vec<u8> {
     serde_json::to_vec(&EventBody::Queued(queued.clone())).expect("queued event")
 }
 
-pub fn check(outcome: Outcome) -> String {
+pub(super) fn check_line(outcome: Outcome) -> String {
     crate::protocol::emit_player(&PlayerFrame::Check { outcome })
 }
 
-pub fn check_event(out: &Roll) -> Vec<u8> {
+pub(super) fn check_event(out: &Roll) -> Vec<u8> {
     serde_json::to_vec(&EventBody::Check(out.clone())).expect("check event")
 }
 
 /// The `check` and `refused` lines of this actor's moves.
-pub fn reports(reports: &[MoveReport], actor_id: &str) -> String {
+pub(super) fn check_lines(reports: &[MoveReport], actor_id: &str) -> String {
     let mut out = String::new();
     for report in reports {
         if report.actor_id() != actor_id {
             continue;
         }
         match report {
-            MoveReport::Rolled { roll: rolled, .. } => out.push_str(&check(rolled.outcome)),
+            MoveReport::Rolled { roll: rolled, .. } => out.push_str(&check_line(rolled.outcome)),
             MoveReport::Refused { code, missing, .. } => {
                 out.push_str(&Refusal::short(*code, missing.as_deref()).line())
             }
@@ -127,7 +127,7 @@ pub fn reports(reports: &[MoveReport], actor_id: &str) -> String {
     out
 }
 
-pub fn check_events(reports: &[MoveReport]) -> Vec<Vec<u8>> {
+pub(super) fn check_events(reports: &[MoveReport]) -> Vec<Vec<u8>> {
     rolls(reports).map(check_event).collect()
 }
 
@@ -138,7 +138,7 @@ fn rolls<'a>(reports: impl IntoIterator<Item = &'a MoveReport>) -> impl Iterator
     })
 }
 
-pub(crate) fn resume(view: &View) -> String {
+pub(super) fn resume_line(view: &View) -> String {
     let actor_id = view.viewer.actor_id();
     let notes = view
         .notes
@@ -152,21 +152,21 @@ pub(crate) fn resume(view: &View) -> String {
     })
 }
 
-pub fn lines(text: &str) -> String {
+pub(super) fn lines(text: &str) -> String {
     crate::protocol::emit_player(&PlayerFrame::Lines {
         text: text.to_string(),
     })
 }
 
-pub fn view(view: &View) -> String {
+pub(super) fn view_line(view: &View) -> String {
     crate::protocol::emit_player(&player_view(view))
 }
 
-pub fn perceive_value(view: &View) -> Value {
+pub(super) fn perceive_value(view: &View) -> Value {
     serde_json::to_value(player_view(view)).expect("perceive")
 }
 
-pub fn commit(
+pub(super) fn commit(
     state_rev: u64,
     changed_keys: &[String],
     journal_path: Option<&str>,
@@ -189,7 +189,7 @@ pub fn commit(
     .to_value()
 }
 
-pub fn status(
+pub(super) fn status(
     now: &State,
     presence: &Presence,
     queued: &[Intent],

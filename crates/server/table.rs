@@ -255,7 +255,7 @@ impl Table {
         {
             Ok(queued) if gm_seated => {
                 self.send_gm(frames::queued_event(&queued));
-                return self.send_player(conn, frames::queued(&queued.id).into_bytes());
+                return self.send_player(conn, frames::queued_line(&queued.id).into_bytes());
             }
             Ok(_) => None,
             Err(refusal) if !gm_seated && refusal.reason() == Reason::Busy => Some(refusal),
@@ -307,8 +307,11 @@ impl Table {
     }
 
     fn wake(&mut self) -> Result<(), Reason> {
-        let players = !self.seats.players.is_empty();
-        if idle::catch_up_if_due(&mut self.world, players, self.seats.gm.is_some())? {
+        // A seated table plays its own rounds.
+        if !self.seats.players.is_empty() || self.seats.gm.is_some() {
+            return Ok(());
+        }
+        if idle::catch_up_if_due(&mut self.world)? {
             self.restart_idle_timer();
         }
         Ok(())
@@ -340,7 +343,7 @@ impl Table {
                 Ok(text) => {
                     let mut out: String = outputs
                         .iter()
-                        .map(|output| frames::reports(&output.reports, &player.actor_id))
+                        .map(|output| frames::check_lines(&output.reports, &player.actor_id))
                         .collect();
                     out.push_str(&text);
                     for output in outputs {
@@ -379,7 +382,7 @@ impl Table {
         let _ = writeln!(self.out, "{}", emit_tape_record(said));
         let _ = self.out.flush();
         self.send_gm(frames::say_event(said));
-        let line = frames::say(said, false).into_bytes();
+        let line = frames::say_line(said, false).into_bytes();
         let mut failed = Vec::new();
         for player in &self.seats.players {
             if said.recipients.iter().any(|id| id == &player.actor_id)
@@ -439,7 +442,7 @@ fn narrate_lines_for(lines: &[RecipientLine], viewer: &str) -> Vec<String> {
 fn welcome(world: &World, presence: &Presence, actor_id: &str) -> Result<Vec<u8>, Reason> {
     let mut out = String::new();
     for stored in world.player_scrollback(actor_id)? {
-        out.push_str(&frames::say(&stored, true));
+        out.push_str(&frames::say_line(&stored, true));
     }
     out.push_str(&refresh_lines(world, presence, actor_id)?);
     Ok(out.into_bytes())
@@ -447,8 +450,8 @@ fn welcome(world: &World, presence: &Presence, actor_id: &str) -> Result<Vec<u8>
 
 fn refresh_lines(world: &World, presence: &Presence, actor_id: &str) -> Result<String, Reason> {
     let view = world.perceive(presence, actor_id)?;
-    let mut out = frames::resume(&view);
-    out.push_str(&frames::view(&view));
+    let mut out = frames::resume_line(&view);
+    out.push_str(&frames::view_line(&view));
     Ok(out)
 }
 

@@ -34,7 +34,7 @@ pub(super) const OUTBOUND_BYTE_CAP: usize = 64 * 1024;
 /// Send buffer the player socket asks for. The OS may grant more.
 pub(super) const REQUESTED_SEND_BUFFER: usize = 8 * 1024;
 
-pub const HELLO_TIMEOUT: Duration = Duration::from_secs(10);
+pub(super) const HELLO_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Millitokens per line. Refill uses this scale so the bucket stays integer.
 const MILLITOKENS_PER_TOKEN: u128 = 1000;
