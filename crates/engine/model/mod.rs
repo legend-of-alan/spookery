@@ -7,6 +7,7 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
+use key::StateKey;
 use meter::MeterLive;
 
 use crate::intent::{Target, Viewer};
@@ -335,6 +336,24 @@ pub struct Act {
 pub(crate) enum ActCounter {
     IdleActsToday,
     LiveActsThisHour,
+}
+
+impl ActCounter {
+    /// The key this count is tracked under for actor `id`.
+    pub(crate) fn key(self, id: String) -> StateKey {
+        match self {
+            ActCounter::IdleActsToday => StateKey::IdleActsToday(id),
+            ActCounter::LiveActsThisHour => StateKey::LiveActsThisHour(id),
+        }
+    }
+
+    /// This count on `act`, to write.
+    pub(crate) fn count_mut(self, act: &mut Act) -> &mut u32 {
+        match self {
+            ActCounter::IdleActsToday => &mut act.idle_acts_today,
+            ActCounter::LiveActsThisHour => &mut act.live_acts_this_hour,
+        }
+    }
 }
 
 /// Work that finishes when `busy_until` is reached.
