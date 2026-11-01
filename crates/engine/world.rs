@@ -231,7 +231,7 @@ impl<L> World<L> {
         }
         let (actor, verb) = (&line.actor, &line.move_name);
         let rule = gate::pick(&self.canon, &self.state, actor, line.source, verb, token)?;
-        let target = target_for(rule, token)?;
+        let target = target_for(rule, token, &self.state)?;
         if self.queue.iter().any(|queued| queued.id == line.id) {
             return Err(Reason::Schema);
         }
@@ -255,7 +255,7 @@ impl<L> World<L> {
         let token = spec.target.as_deref().filter(|t| !t.is_empty());
         let (canon, now) = (&self.canon, &self.state);
         let rule = gate::pick(canon, now, &viewer, Source::Player, &move_name, token)?;
-        let target = target_for(rule, token)?;
+        let target = target_for(rule, token, now)?;
         let id = match spec.id {
             Some(id) if !id.is_empty() => id,
             Some(_) => return Err(Reason::Schema),
@@ -515,14 +515,16 @@ fn speech_recipients(
 }
 
 /// The target a typed token is for `rule`: none for a habit or a verb that takes none, else
-/// the token as the kind the verb takes. A token where none fits, or none where one is
-/// needed, is `SCHEMA`.
-fn target_for(rule: &Rule, token: Option<&str>) -> Result<Target, Reason> {
+/// the token as the kind the verb takes. With no token, a cast member's rule that takes an
+/// actor is for that member (`gate::implied_target`). A token where none fits, or none where
+/// one is needed, is `SCHEMA`.
+fn target_for(rule: &Rule, token: Option<&str>, now: &State) -> Result<Target, Reason> {
     let kind = match &rule.when {
         When::Verb { target, .. } => *target,
         When::Habit | When::Change(_) => TargetKind::None,
     };
-    match (kind, token) {
+    let implied = gate::implied_target(rule, now);
+    match (kind, token.or(implied.as_deref())) {
         (TargetKind::None, None) => Ok(Target::Empty),
         (TargetKind::None, Some(_)) | (_, None) => Err(Reason::Schema),
         (kind, Some(id)) => Ok(Target::new(kind, id)),

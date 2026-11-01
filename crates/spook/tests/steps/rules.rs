@@ -8,7 +8,8 @@ use spookery_engine::MoveReport;
 use spookery_engine::{Presence, Reason};
 
 use super::table;
-use crate::support::{append, copy_docks, copy_pack, edit_save, run_spook, state_of};
+use crate::support::{append, copy_docks, copy_pack, edit_save, read_round, run_spook};
+use crate::support::{set_actor_place, state_of};
 use crate::World;
 #[given(expr = "a save from older rules")]
 fn a_save_from_older_rules(world: &mut World) {
@@ -852,6 +853,137 @@ fn check_accepts_resist_same_after_a_roll(world: &mut World) {
         "{}",
         world.stderr
     );
+}
+
+/// Briar's `ask` as `packs/sample-d20/cast/briar.md` holds it.
+const BRIAR_ASK: &str = "  - id: ask
+    when:
+      verb: ask
+      target: actor
+    do:
+      - flag:
+          who: world
+          key: passage
+          value: true
+";
+
+#[given(
+    expr = "briar's cast file holds a verb \"ask\" that targets an actor and sets the world flag passage"
+)]
+fn briar_holds_ask(world: &mut World) {
+    world.pack = Some(sample_with_briar_ask("rules-scoped-here"));
+}
+
+#[given(
+    expr = "briar's cast file holds a verb \"ask\" that targets an actor, and the save puts briar in the lane"
+)]
+fn briar_holds_ask_in_the_lane(world: &mut World) {
+    let pack = sample_with_briar_ask("rules-scoped-gone");
+    edit_save(&pack, |now| set_actor_place(now, "npc_briar", "mill_lane"));
+    world.pack = Some(pack);
+}
+
+#[when(expr = "lark, in the yard with briar, plays ask")]
+fn lark_in_the_yard_plays_ask(world: &mut World) {
+    let pack = world.pack.clone().unwrap();
+    let now = state_of(&pack);
+    for actor in ["pc_lark", "npc_briar"] {
+        assert_eq!(
+            now.actors.get(actor).unwrap().place(),
+            "gate_yard",
+            "{actor}"
+        );
+    }
+    let lark = seated_lark();
+    let mut opened = open(&pack);
+    let mut runs = Vec::new();
+    for (index, target) in [None, Some("npc_briar")].into_iter().enumerate() {
+        opened
+            .queue_player_move(&lark, "pc_lark", "ask", target)
+            .unwrap_or_else(|err| panic!("ask {target:?}: {}", err.code.as_str()));
+        let wall = opened.state().last_round_at.clone();
+        opened
+            .play(&lark, &wall)
+            .unwrap_or_else(|err| panic!("ask {target:?}: {err}"));
+        let round = read_round(&pack, &format!("round-{:04}", index + 1));
+        let rules: Vec<&str> = round["extra_steps"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|step| step["rule"].as_str())
+            .collect();
+        runs.push(format!(
+            "{} {}",
+            round["intents"][0]["target"],
+            rules.join(" ")
+        ));
+    }
+    world.scratch = runs.join("\n");
+}
+
+#[then(
+    expr = "cast:npc_briar\\/ask runs with briar as its target, passage is set, and ask npc_briar picks the same rule"
+)]
+fn briars_ask_runs_on_briar(world: &mut World) {
+    let run = r#"{"actor":"npc_briar"} cast:npc_briar/ask"#;
+    assert_eq!(world.scratch, format!("{run}\n{run}"));
+    let now = state_of(world.pack.as_ref().unwrap());
+    assert!(
+        now.flags.iter().any(|flag| flag == "passage"),
+        "{:?}",
+        now.flags
+    );
+}
+
+#[when(expr = "lark, alone in the yard, plays ask")]
+fn lark_alone_plays_ask(world: &mut World) {
+    let pack = world.pack.clone().unwrap();
+    let now = state_of(&pack);
+    let yard = now
+        .actors
+        .iter()
+        .filter(|(_, actor)| actor.place() == "gate_yard");
+    assert_eq!(
+        yard.map(|(id, _)| id.as_str()).collect::<Vec<_>>(),
+        ["pc_lark"]
+    );
+    let mut opened = open(&pack);
+    world.scratch = match opened.queue_player_move(&seated_lark(), "pc_lark", "ask", None) {
+        Err(refusal) => refusal.code.as_str().to_string(),
+        Ok(queued) => format!("queued {}", queued.id),
+    };
+}
+
+#[then(expr = "the move is refused NOT_IN_SPEC before the round and the save is unchanged")]
+fn ask_is_refused_before_the_round(world: &mut World) {
+    assert_eq!(world.scratch, Reason::NotInSpec.as_str());
+    let now = state_of(world.pack.as_ref().unwrap());
+    assert_eq!(now.round_index, 0);
+    assert_eq!(now.world_time, 1080);
+    assert!(
+        !now.flags.iter().any(|flag| flag == "passage"),
+        "{:?}",
+        now.flags
+    );
+    assert_eq!(now.actors.get("npc_briar").unwrap().place(), "mill_lane");
+}
+
+/// A copy of sample-d20, whose `cast/briar.md` holds `ask`.
+fn sample_with_briar_ask(label: &str) -> std::path::PathBuf {
+    let pack = copy_pack("sample-d20", label);
+    let text = fs::read_to_string(pack.join("cast/briar.md")).unwrap();
+    assert!(
+        text.contains(BRIAR_ASK),
+        "briar's ask is not\n{BRIAR_ASK}\nin\n{text}"
+    );
+    pack
+}
+
+fn seated_lark() -> Presence {
+    Presence {
+        players: 1,
+        actors_present: vec!["pc_lark".to_string()],
+    }
 }
 
 fn run(world: &mut World, args: &[&str]) {

@@ -58,3 +58,13 @@ Feature: Rules live with their owner
   Scenario: Resist same after a roll is quiet
     Given a verb whose resist same follows a roll
     Then spook check does not report a bare resist same
+
+  Scenario: A cast member's rule is at hand while they share the room
+    Given briar's cast file holds a verb "ask" that targets an actor and sets the world flag passage
+    When lark, in the yard with briar, plays ask
+    Then cast:npc_briar/ask runs with briar as its target, passage is set, and ask npc_briar picks the same rule
+
+  Scenario: A cast member's rule leaves with them
+    Given briar's cast file holds a verb "ask" that targets an actor, and the save puts briar in the lane
+    When lark, alone in the yard, plays ask
+    Then the move is refused NOT_IN_SPEC before the round and the save is unchanged

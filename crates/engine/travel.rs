@@ -354,7 +354,7 @@ fn allowed_verbs(canon: &Canon, now: &State, presence: &Presence, actor_id: &str
     let Some(actor) = now.actors.get(actor_id) else {
         return Vec::new();
     };
-    let (viewer, place, wielded) = (actor.viewer(actor_id), Some(actor.place()), actor.wielded());
+    let viewer = actor.viewer(actor_id);
     let mut seen = BTreeSet::new();
     let mut names = Vec::new();
     for rule in canon.rules.player_verbs() {
@@ -366,7 +366,7 @@ fn allowed_verbs(canon: &Canon, now: &State, presence: &Presence, actor_id: &str
         }
         let hints = target_candidates(canon, now, presence, actor_id, *target);
         let allowed = hints.into_iter().any(|hint| {
-            let Some(rule) = gate::verb_for(canon, place, verb, hint.as_deref(), wielded) else {
+            let Some(rule) = gate::verb_for(canon, now, actor_id, verb, hint.as_deref()) else {
                 return false;
             };
             let When::Verb { target: chosen, .. } = &rule.when else {
