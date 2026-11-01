@@ -8,12 +8,12 @@ use std::sync::Arc;
 use crate::canon::Canon;
 use crate::canon::{Budget, PausePolicy};
 use crate::key::{Change, StateKey, StateValue};
-use crate::model::{MemoryLine, Presence, RunState, State};
+use crate::model::{ActCounter, MemoryLine, Presence, RunState, State};
+use crate::world::World;
 use crate::Reason;
 
 pub(crate) struct Draft<'p> {
     canon: Arc<Canon>,
-    budget: Budget,
     pub(crate) state: State,
     /// Who is seated for this round. The round reads it and never writes it.
     pub(crate) presence: &'p Presence,
@@ -25,16 +25,11 @@ pub(crate) struct Draft<'p> {
 }
 
 impl<'p> Draft<'p> {
-    pub(crate) fn from_parts(
-        canon: Arc<Canon>,
-        budget: Budget,
-        state: State,
-        presence: &'p Presence,
-    ) -> Self {
+    /// Stage a round on a copy of the world's save, with `presence` seated.
+    pub(crate) fn begin<L>(world: &World<L>, presence: &'p Presence) -> Self {
         Self {
-            canon,
-            budget,
-            state,
+            canon: Arc::clone(&world.canon),
+            state: world.state.clone(),
             presence,
             keys: BTreeSet::new(),
             priors: Vec::new(),
@@ -57,7 +52,7 @@ impl<'p> Draft<'p> {
     }
 
     pub(crate) fn budget(&self) -> &Budget {
-        &self.budget
+        &self.canon.budget
     }
 
     pub(crate) fn state_mut(&mut self) -> &mut State {
@@ -72,7 +67,7 @@ impl<'p> Draft<'p> {
 
     pub(crate) fn apply_pause_policy(&mut self) -> Result<(), Reason> {
         let players = self.presence.players;
-        let policies = self.budget.pause;
+        let policies = self.canon.budget.pause;
         let clock_ids: Vec<String> = self.state.clocks.keys().cloned().collect();
         for clock_id in clock_ids {
             let Some(clock) = self.state.clocks.get(&clock_id) else {
@@ -96,50 +91,28 @@ impl<'p> Draft<'p> {
     }
 
     fn set_clock_paused(&mut self, clock_id: &str, paused: bool) -> Result<(), Reason> {
-        let current = self.state.clocks.get(clock_id).map(|clock| clock.paused);
-        if current != Some(paused) {
-            self.track(StateKey::ClockPaused(clock_id.to_string()))?;
-        }
-        if let Some(clock) = self.state.clocks.get_mut(clock_id) {
-            clock.paused = paused;
-        }
-        Ok(())
+        self.mutate(StateKey::ClockPaused(clock_id.to_string()), |state| {
+            let clock = state.clocks.get_mut(clock_id).ok_or(Reason::UnknownId)?;
+            Ok(std::mem::replace(&mut clock.paused, paused) != paused)
+        })
     }
 
-    pub(crate) fn reset_idle_acts(&mut self) -> Result<(), Reason> {
+    /// Set `counter` back to 0 on every actor.
+    pub(crate) fn reset_acts(&mut self, counter: ActCounter) -> Result<(), Reason> {
         let ids: Vec<String> = self.state.actors.keys().cloned().collect();
         for id in ids {
-            let current = self
-                .state
-                .actors
-                .get(&id)
-                .map(|actor| actor.act().idle_acts_today)
-                .unwrap_or(0);
-            if current != 0 {
-                self.track(StateKey::IdleActsToday(id.clone()))?;
-            }
-            if let Some(actor) = self.state.actors.get_mut(&id) {
-                actor.act_mut().idle_acts_today = 0;
-            }
-        }
-        Ok(())
-    }
-
-    pub(crate) fn reset_live_acts(&mut self) -> Result<(), Reason> {
-        let ids: Vec<String> = self.state.actors.keys().cloned().collect();
-        for id in ids {
-            let current = self
-                .state
-                .actors
-                .get(&id)
-                .map(|actor| actor.act().live_acts_this_hour)
-                .unwrap_or(0);
-            if current != 0 {
-                self.track(StateKey::LiveActsThisHour(id.clone()))?;
-            }
-            if let Some(actor) = self.state.actors.get_mut(&id) {
-                actor.act_mut().live_acts_this_hour = 0;
-            }
+            let key = match counter {
+                ActCounter::IdleActsToday => StateKey::IdleActsToday(id.clone()),
+                ActCounter::LiveActsThisHour => StateKey::LiveActsThisHour(id.clone()),
+            };
+            self.mutate(key, |state| {
+                let act = state.actor_mut(&id)?.act_mut();
+                let count = match counter {
+                    ActCounter::IdleActsToday => &mut act.idle_acts_today,
+                    ActCounter::LiveActsThisHour => &mut act.live_acts_this_hour,
+                };
+                Ok(std::mem::take(count) != 0)
+            })?;
         }
         Ok(())
     }
@@ -172,12 +145,7 @@ impl<'p> Draft<'p> {
             keys.push(StateKey::LiveActsThisHour(actor_id.to_string()));
         }
         self.track_many(&keys)?;
-        let counters = self
-            .state
-            .actors
-            .get_mut(actor_id)
-            .ok_or(Reason::UnknownId)?
-            .act_mut();
+        let counters = self.state.actor_mut(actor_id)?.act_mut();
         counters.last_act_round = round_index;
         if players == 0 {
             counters.idle_acts_today = new_idle;
@@ -187,17 +155,38 @@ impl<'p> Draft<'p> {
         Ok(())
     }
 
+    /// Runs `write` on the state, tracks `key` only if its value changed, and keeps the
+    /// key budget's order: a key that does not change is never counted. `write` returns
+    /// whether it changed the stored value; a meter's is its base and offset, which can move
+    /// while the clamped value the key reads stays.
+    pub(crate) fn mutate(
+        &mut self,
+        key: StateKey,
+        write: impl FnOnce(&mut State) -> Result<bool, Reason>,
+    ) -> Result<(), Reason> {
+        let before = self.read_value(&key);
+        if write(&mut self.state)? {
+            self.track_before(key, before)?;
+        }
+        Ok(())
+    }
+
     pub(crate) fn track(&mut self, key: StateKey) -> Result<(), Reason> {
         self.track_many(std::slice::from_ref(&key))
     }
 
     /// Record `before` as this key's value from before the write that just landed.
-    pub(crate) fn track_before(&mut self, key: StateKey, before: StateValue) -> Result<(), Reason> {
-        self.record_prior(key, Some(before))
+    fn track_before(&mut self, key: StateKey, before: StateValue) -> Result<(), Reason> {
+        let max = self.canon.budget.max_state_keys_mutated as usize;
+        self.admit(&key, &mut Vec::new(), max)?;
+        if !self.priors.iter().any(|prior| prior.key == key) {
+            self.priors.push(PriorValue { key, before });
+        }
+        Ok(())
     }
 
-    pub(crate) fn track_many(&mut self, keys: &[StateKey]) -> Result<(), Reason> {
-        let max = self.budget.max_state_keys_mutated as usize;
+    fn track_many(&mut self, keys: &[StateKey]) -> Result<(), Reason> {
+        let max = self.canon.budget.max_state_keys_mutated as usize;
         let mut added = Vec::new();
         for key in keys {
             self.admit(key, &mut added, max)?;
@@ -208,17 +197,6 @@ impl<'p> Draft<'p> {
                     before,
                 });
             }
-        }
-        Ok(())
-    }
-
-    fn record_prior(&mut self, key: StateKey, before: Option<StateValue>) -> Result<(), Reason> {
-        let max = self.budget.max_state_keys_mutated as usize;
-        let mut added = Vec::new();
-        self.admit(&key, &mut added, max)?;
-        if !self.priors.iter().any(|prior| prior.key == key) {
-            let before = before.unwrap_or_else(|| self.read_value(&key));
-            self.priors.push(PriorValue { key, before });
         }
         Ok(())
     }
@@ -370,7 +348,7 @@ impl<'p> Draft<'p> {
     }
 
     pub(crate) fn count_memory_write(&mut self) -> Result<(), Reason> {
-        if u64::from(self.memory_writes) >= self.budget.max_memory_writes {
+        if u64::from(self.memory_writes) >= self.canon.budget.max_memory_writes {
             return Err(Reason::Budget);
         }
         self.memory_writes += 1;
@@ -419,6 +397,7 @@ mod tests {
     use super::*;
     use crate::effect::{Effect, EffectKind};
     use crate::intent::{Intent, Source, Target, Viewer};
+    use crate::meter::MeterWrite;
     use crate::World;
 
     #[test]
@@ -454,5 +433,35 @@ mod tests {
         drop(world);
         let save_after = std::fs::read(pack.join("state/save.yaml")).expect("read save");
         assert_eq!(save_after, save_before);
+    }
+
+    #[test]
+    fn a_key_counts_toward_the_budget_only_once_a_write_changes_it() {
+        let pack =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packs/oneshot-docks");
+        let opened = World::open(&pack).expect("open");
+        let mut canon = opened.canon().clone();
+        canon.budget.max_state_keys_mutated = 2;
+        let world = World::from_parts(&pack, Arc::new(canon), opened.state().clone());
+        let nobody = crate::model::Presence::default();
+        let mut draft = Draft::begin(&world, &nobody);
+        // Bram's grit sits clamped at its minimum: taking more moves the offset, not the value.
+        let meters = draft.state.actor_mut("bram").unwrap().meters_mut();
+        meters.get_mut("grit").unwrap().offset = -5;
+        let intent = Intent::habit(world.state(), "mira", "leave_door_note");
+        let mut write = |actor: &str, key: &str, delta: i64| {
+            let kind = EffectKind::Meter {
+                actor_id: actor.to_string(),
+                key: key.to_string(),
+                write: MeterWrite::Offset(delta),
+            };
+            Effect::new(&intent.actor, &intent.id, kind).apply(&mut draft, &intent)
+        };
+        assert_eq!(write("mira", "rest", 0), Ok(()), "unchanged: no key");
+        assert_eq!(write("mira", "rest", 1), Ok(()), "the first key");
+        assert_eq!(write("bram", "grit", -1), Ok(()), "offset moved: key two");
+        assert_eq!(write("mira", "rest", 1), Ok(()), "a counted key is free");
+        assert_eq!(write("aldric", "rest", 0), Ok(()), "unchanged: no key");
+        assert_eq!(write("aldric", "rest", 1), Err(Reason::Budget));
     }
 }

@@ -2,7 +2,7 @@
 
 use crate::canon::Budget;
 use crate::draft::Draft;
-use crate::model::{MINUTES_PER_DAY, MINUTES_PER_HOUR};
+use crate::model::{ActCounter, MINUTES_PER_DAY, MINUTES_PER_HOUR};
 use crate::Reason;
 
 /// Where the round's clock stands: its index and the world minutes it spans.
@@ -21,10 +21,10 @@ pub(crate) fn run(draft: &mut Draft, wall: &str) -> Result<RoundTime, Reason> {
     let hour_changed = world_before / MINUTES_PER_HOUR != world_after / MINUTES_PER_HOUR;
     draft.stamp_round(round_index, world_after, wall);
     if day_changed {
-        draft.reset_idle_acts()?;
+        draft.reset_acts(ActCounter::IdleActsToday)?;
     }
     if hour_changed {
-        draft.reset_live_acts()?;
+        draft.reset_acts(ActCounter::LiveActsThisHour)?;
     }
     draft.apply_pause_policy()?;
     Ok(RoundTime {

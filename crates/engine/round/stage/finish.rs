@@ -52,16 +52,16 @@ fn arrive(
         .get(actor_id)
         .ok_or(Reason::UnknownId)?;
     let from = actor.place().to_string();
-    let effect = Effect {
-        kind: EffectKind::Location {
+    let effect = Effect::new(
+        &intent.actor,
+        &intent.id,
+        EffectKind::Location {
             actor_id: actor_id.to_string(),
             from,
             to: to.clone(),
             arrived_at: Some(until),
         },
-        viewer: intent.actor.clone(),
-        intent_id: intent.id.clone(),
-    };
+    );
     effect.clone().apply(draft, intent)?;
     log.effects.push(effect);
     log.arrivals.push(Arrival {
