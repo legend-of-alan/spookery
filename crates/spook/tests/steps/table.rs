@@ -8,7 +8,7 @@ use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
 use serde_json::Value;
-use spookery::door::{event_line, GmClient, Incoming};
+use spookery::mcp::{event_line, GmClient};
 use spookery::protocol;
 use spookery_engine::testing::journal::list_round_keys;
 use spookery_engine::State;
@@ -548,7 +548,7 @@ fn send_tool_call(
         serde_json::from_str(arguments).unwrap_or_else(|err| panic!("arguments: {err}"));
     let reply = support::block_on(gm.call::<Value>(name, &value))
         .unwrap_or_else(|err| panic!("gm call: {err}"));
-    for event in gm.take_events() {
+    for event in gm.drain_events() {
         push_line(gm_text, &event_line(&event));
     }
     let body = reply.unwrap_or_else(|refusal| serde_json::json!(refusal));
@@ -632,11 +632,12 @@ pub fn wait_host_until(world: &World, want: &str, done: impl Fn(&str) -> bool) -
 pub fn drain_gm_text(world: &mut World) -> String {
     let live = live_mut(world);
     if let Some(gm) = live.gm.as_mut() {
-        let ready = gm.drain_ready();
-        for incoming in ready {
-            if let Some(line) = incoming_line(incoming) {
-                push_line(&live.gm_text, &line);
-            }
+        for received in gm.drain() {
+            let line = match received {
+                Ok(event) => event_line(&event),
+                Err(err) => err.to_string(),
+            };
+            push_line(&live.gm_text, &line);
         }
     }
     support::text_of(&live.gm_text)
@@ -647,14 +648,6 @@ fn push_line(slot: &Arc<Mutex<String>>, line: &str) {
     text.push_str(line);
     if !line.ends_with('\n') {
         text.push('\n');
-    }
-}
-
-fn incoming_line(incoming: Incoming) -> Option<String> {
-    match incoming {
-        Incoming::Event(event) => Some(event_line(&event)),
-        Incoming::Unreadable(line) => Some(line),
-        Incoming::Eof => None,
     }
 }
 

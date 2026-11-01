@@ -11,7 +11,7 @@ use crate::text;
 use crate::Error;
 
 pub async fn run(pc: Option<&str>, addr: SocketAddr, raw: bool) -> Result<(), Error> {
-    let mut sitting = text::Sitting::new();
+    let mut player_text = text::PlayerText::new();
     let mut input = crate::stdin_lines();
     let actor = match pc {
         Some(token) => parse_pc_id(token)?,
@@ -48,7 +48,7 @@ pub async fn run(pc: Option<&str>, addr: SocketAddr, raw: bool) -> Result<(), Er
                     }
                 }
                 _ => {
-                    let reason = match show_frame(&mut sitting, &line, raw) {
+                    let reason = match show_frame(&mut player_text, &line, raw) {
                         FrameAction::Refused(shown) => shown,
                         FrameAction::Continue | FrameAction::View => "NOT_IN_SPEC".into(),
                     };
@@ -64,7 +64,7 @@ pub async fn run(pc: Option<&str>, addr: SocketAddr, raw: bool) -> Result<(), Er
         let Some(line) = frames.next_line().await.map_err(Error::Io)? else {
             return Err(Error::Message("NOT_IN_SPEC".into()));
         };
-        match show_frame(&mut sitting, &line, raw) {
+        match show_frame(&mut player_text, &line, raw) {
             FrameAction::Refused(shown) => return Err(Error::Message(shown)),
             FrameAction::View => break,
             FrameAction::Continue => {}
@@ -78,7 +78,7 @@ pub async fn run(pc: Option<&str>, addr: SocketAddr, raw: bool) -> Result<(), Er
                     eprintln!("host closed");
                     return Ok(());
                 };
-                if let FrameAction::Refused(shown) = show_frame(&mut sitting, &line, raw) {
+                if let FrameAction::Refused(shown) = show_frame(&mut player_text, &line, raw) {
                     eprintln!("{shown}");
                     let _ = io::stderr().flush();
                 }
@@ -118,11 +118,11 @@ enum FrameAction {
     Refused(String),
 }
 
-fn show_frame(sitting: &mut text::Sitting, line: &str, raw: bool) -> FrameAction {
+fn show_frame(player_text: &mut text::PlayerText, line: &str, raw: bool) -> FrameAction {
     if raw {
         return show_raw(line);
     }
-    show_readable(sitting, line)
+    show_readable(player_text, line)
 }
 
 fn show_raw(line: &str) -> FrameAction {
@@ -138,13 +138,13 @@ fn show_raw(line: &str) -> FrameAction {
     }
 }
 
-fn show_readable(sitting: &mut text::Sitting, line: &str) -> FrameAction {
+fn show_readable(player_text: &mut text::PlayerText, line: &str) -> FrameAction {
     let Ok(frame) = crate::protocol::PlayerFrame::from_line(line) else {
         eprintln!("{line}");
         let _ = io::stderr().flush();
         return FrameAction::Continue;
     };
-    let shown = sitting.render(&frame);
+    let shown = player_text.render(&frame);
     let action = match frame {
         PlayerFrame::Refused(_) => return FrameAction::Refused(shown),
         PlayerFrame::View(_) => FrameAction::View,

@@ -18,19 +18,26 @@ use crate::prompt::{
     TurnView, Wake,
 };
 use crate::protocol::{
-    CommitBody, GmEvent, IntentCall, PackSummary, Queued, Refusal, Roll, SayArgs, SayEvent,
-    Speaker, TableStatus,
+    CommitBody, GmEvent, PackSummary, Queued, Refusal, Roll, SayArgs, SayEvent, Speaker,
+    TableStatus,
 };
 
 /// What a client feeds the state machine: an event, or a tool's reply.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Input {
     Event(GmEvent),
+    /// The agent's input carrying the `table_status` body back, or the table's refusal.
     StatusReply(Result<TableStatus, Refusal>),
+    /// The agent's input carrying the `perceive` body back, or the table's refusal.
     ViewReply(Result<protocol::View, Refusal>),
+    /// The agent's input carrying the `say` body back, or the table's refusal.
     SayReply(Result<SayEvent, Refusal>),
+    /// The agent's input carrying the `queue_intent` body back, or the table's refusal.
     QueueReply(Result<Queued, Refusal>),
+    /// The agent's input carrying the `commit_round` body back, or the table's refusal.
     CommitReply(Result<CommitBody, Refusal>),
+    /// The agent's input carrying the `Model`'s answer back: the `act` arguments, `None`
+    /// when the model made no `act` call, or the call's error.
     ModelReply(Result<Option<ModelReply>, CompletionError>),
 }
 
@@ -38,10 +45,10 @@ pub enum Input {
 #[derive(Clone, Debug, PartialEq)]
 pub enum Step {
     Idle,
-    FetchStatus { since: Option<u64> },
+    TableStatus { since: Option<u64> },
     Perceive { viewer: String },
     Say(SayArgs),
-    QueueIntent(IntentCall),
+    QueueIntent(protocol::IntentArgs),
     CommitRound,
     CallModel(CompletionRequest),
 }
@@ -78,7 +85,7 @@ impl std::error::Error for Error {}
 /// The AI GM's turns at one GM seat: fed `Input`s, it answers with the next `Step`.
 #[derive(Default)]
 pub struct Agent {
-    high_water: u64,
+    since_seq: u64,
     warning: Option<String>,
     phase: Phase,
     pack: PackSummary,
@@ -94,7 +101,7 @@ struct Turn {
     views: BTreeMap<String, Result<protocol::View, Refusal>>,
     view: Option<(TurnView, PromptContext)>,
     says: VecDeque<SayArgs>,
-    intent: Option<IntentCall>,
+    intent: Option<protocol::IntentArgs>,
     submitted: Vec<TapeLine>,
     checks: Vec<Roll>,
 }
@@ -117,13 +124,13 @@ enum Phase {
 impl Agent {
     pub fn new() -> Self {
         Self {
-            high_water: u64::MAX,
+            since_seq: u64::MAX,
             ..Self::default()
         }
     }
 
     pub fn start(&self) -> Step {
-        Step::FetchStatus { since: None }
+        Step::TableStatus { since: None }
     }
 
     /// The warning the client should print before its next step. `Option<String>`, not
@@ -135,7 +142,7 @@ impl Agent {
 
     pub fn feed(&mut self, input: Input) -> Result<Step, Error> {
         if let Input::Event(event) = input {
-            self.absorb(event);
+            self.record_event(event);
             return match self.phase {
                 Phase::Idle => Ok(self.next_turn()),
                 _ => Ok(Step::Idle),
@@ -204,10 +211,10 @@ impl Agent {
         }
     }
 
-    fn absorb(&mut self, event: GmEvent) {
+    fn record_event(&mut self, event: GmEvent) {
         match event {
             GmEvent::Say(say)
-                if matches!(say.from, Speaker::Player(_)) && say.seq > self.high_water =>
+                if matches!(say.from, Speaker::Player(_)) && say.seq > self.since_seq =>
             {
                 self.wakes.push_back(Wake::Say(say));
             }
@@ -217,7 +224,7 @@ impl Agent {
     }
 
     fn finish_init(&mut self, status: TableStatus) -> Step {
-        self.high_water = status.last_seq;
+        self.since_seq = status.last_seq;
         if !status.queued.is_empty() && !self.wakes.contains(&Wake::Queued) {
             self.wakes.push_front(Wake::Queued);
         }
@@ -234,8 +241,8 @@ impl Agent {
             ..Turn::default()
         };
         self.phase = Phase::TurnStatus;
-        Step::FetchStatus {
-            since: Some(self.high_water),
+        Step::TableStatus {
+            since: Some(self.since_seq),
         }
     }
 
@@ -265,7 +272,7 @@ impl Agent {
             PreparedTurn::Model(turn_view) => {
                 let context = PromptContext {
                     buffer: self.buffer.clone(),
-                    new_lines: player_lines(status, self.high_water),
+                    new_lines: player_lines(status, self.since_seq),
                     queue: status.queued.clone(),
                     checks: Vec::new(),
                 };
@@ -294,25 +301,25 @@ impl Agent {
             return Step::QueueIntent(intent);
         }
         self.phase = Phase::PreCommitStatus;
-        Step::FetchStatus { since: None }
+        Step::TableStatus { since: None }
     }
 
     fn finish_commit(&mut self, committed: bool) -> Step {
         let status = self.turn.status.as_ref().expect("status");
-        let window = player_lines(status, self.high_water);
+        let window = player_lines(status, self.since_seq);
         if let Some(max) = window.iter().map(|line| line.seq).max() {
-            self.high_water = max;
+            self.since_seq = max;
         }
         for line in window.into_iter().chain(self.turn.submitted.drain(..)) {
             keep_recent(&mut self.buffer, line);
         }
         self.wakes.retain(|wake| match wake {
-            Wake::Say(say) => say.seq > self.high_water,
+            Wake::Say(say) => say.seq > self.since_seq,
             Wake::Queued => !committed,
         });
         if committed {
             self.phase = Phase::PostCommitStatus;
-            return Step::FetchStatus { since: None };
+            return Step::TableStatus { since: None };
         }
         self.narrate_checks()
     }
@@ -330,12 +337,12 @@ impl Agent {
     }
 }
 
-fn player_lines(status: &TableStatus, high_water: u64) -> Vec<TapeLine> {
+fn player_lines(status: &TableStatus, since_seq: u64) -> Vec<TapeLine> {
     status
         .events
         .iter()
         .flatten()
-        .filter(|say| matches!(say.from, Speaker::Player(_)) && say.seq > high_water)
+        .filter(|say| matches!(say.from, Speaker::Player(_)) && say.seq > since_seq)
         .cloned()
         .map(TapeLine::from)
         .collect()
@@ -393,8 +400,8 @@ mod tests {
 
     #[test]
     fn gm_turns_handle_queue_says_epilogue_and_transport_warnings() {
-        let st = Step::FetchStatus { since: None };
-        let since = Step::FetchStatus { since: Some(1) };
+        let st = Step::TableStatus { since: None };
+        let since = Step::TableStatus { since: Some(1) };
         let say = Step::Say(SayArgs::Table {
             text: "ok".to_string(),
         });

@@ -5,8 +5,8 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
 use crate::protocol::{
-    self, CastKind, ClockView, IntentCall, ItemStack, MenuRow, NoteView, PackSummary, QueuedMove,
-    Roll, SayArgs, SayEvent, Speaker, PERCEIVE_BODY_CHARS,
+    self, CastKind, ClockView, ItemStack, MenuRow, NoteView, PackSummary, QueuedMove, Roll,
+    SayArgs, SayEvent, Speaker, PERCEIVE_BODY_CHARS,
 };
 
 /// How many tape lines the prompt's `buffer` keeps.
@@ -46,7 +46,7 @@ impl From<SayEvent> for TapeLine {
 pub struct ModelReply {
     pub says: Vec<SayArgs>,
     #[serde(default)]
-    pub intents: Vec<IntentCall>,
+    pub intents: Vec<protocol::IntentArgs>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -202,7 +202,7 @@ pub fn keep_actions(
     reply: ModelReply,
     scope: &SceneScope,
     menu: &[MenuRow],
-) -> (Vec<SayArgs>, Option<IntentCall>) {
+) -> (Vec<SayArgs>, Option<protocol::IntentArgs>) {
     let says = reply
         .says
         .into_iter()
@@ -395,9 +395,9 @@ fn is_say_in_scope(say: &SayArgs, scope: &SceneScope) -> bool {
 }
 
 /// Whether `call` names an actor and a move on the menu, with a target exactly when the
-/// move takes one. A missing or empty actor or move is the one rule `IntentCall` cannot
+/// move takes one. A missing or empty actor or move is the one rule `protocol::IntentArgs` cannot
 /// express.
-fn is_intent_on_menu(call: &IntentCall, menu: &[MenuRow]) -> bool {
+fn is_intent_on_menu(call: &protocol::IntentArgs, menu: &[MenuRow]) -> bool {
     let named = |id: &Option<String>| id.as_deref().is_some_and(|id| !id.is_empty());
     let Some(row) = menu
         .iter()
@@ -462,7 +462,7 @@ mod tests {
         }
     }
 
-    fn intent(call: serde_json::Value) -> IntentCall {
+    fn intent(call: serde_json::Value) -> protocol::IntentArgs {
         serde_json::from_value(call).unwrap()
     }
 

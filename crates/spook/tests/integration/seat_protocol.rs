@@ -13,7 +13,7 @@ use std::time::Duration;
 
 use rmcp::model::ProtocolVersion;
 use serde_json::Value;
-use spookery::door::{event_line, GmClient, Incoming};
+use spookery::mcp::{event_line, GmClient};
 use spookery::protocol::Addrs;
 
 use crate::support;
@@ -576,10 +576,10 @@ fn call(gm: &mut GmClient, name: &str, arguments: Value) -> Value {
 }
 
 fn one_event(gm: &mut GmClient) -> Value {
-    let mut ready = gm.take_events();
+    let mut ready = gm.drain_events();
     if ready.is_empty() {
-        match support::block_on(gm.next_incoming()) {
-            Incoming::Event(event) => ready.push(event),
+        match support::block_on(gm.recv()) {
+            Some(Ok(event)) => ready.push(event),
             other => panic!("expected a GM event, got {other:?}"),
         }
     }

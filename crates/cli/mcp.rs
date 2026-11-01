@@ -6,8 +6,8 @@ use std::sync::Arc;
 
 use rmcp::model::{
     CallToolRequestParams, ClientCapabilities, ClientConfig, ClientJsonRpcMessage, ClientRequest,
-    CustomNotification, ErrorData, Implementation, InitializeRequest, JsonRpcError,
-    ProtocolVersion, RequestId,
+    CustomNotification, Implementation, InitializeRequest, JsonRpcError, ProtocolVersion,
+    RequestId,
 };
 use rmcp::service::{ClientInitializeError, NotificationContext, RoleClient, RunningService};
 use rmcp::transport::common::client_side_sse::NeverRetry;
@@ -20,32 +20,25 @@ use serde_json::Value;
 use tokio::sync::mpsc;
 
 use crate::protocol::{
-    self, CommitArgs, CommitBody, GmEvent, IntentCall, PerceiveArgs, Queued, Refusal, SayArgs,
-    SayEvent, StatusArgs, TableStatus,
+    self, CommitArgs, CommitBody, GmEvent, PerceiveArgs, Queued, Refusal, SayArgs, SayEvent,
+    StatusArgs, TableStatus,
 };
 use crate::Error;
 
-/// Sent from the agent door to a GM client between its tool calls: an event, an event the
-/// client could not read (as its JSON-RPC line), or the end of the seat.
-#[derive(Clone, Debug, PartialEq)]
-pub enum Incoming {
-    Event(GmEvent),
-    Unreadable(String),
-    Eof,
+/// Hands each `spook/event` notification to the `GmClient`: an event, or the error for one
+/// it could not read. `None` on the same channel is the end of the seat.
+struct EventSender {
+    tx: mpsc::UnboundedSender<Option<Result<GmEvent, Error>>>,
 }
 
-struct Inbox {
-    incoming: mpsc::UnboundedSender<Incoming>,
-}
-
-impl ClientHandler for Inbox {
+impl ClientHandler for EventSender {
     fn on_custom_notification(
         &self,
         notification: CustomNotification,
         _context: NotificationContext<RoleClient>,
     ) -> impl std::future::Future<Output = ()> + Send + '_ {
         if notification.method == "spook/event" {
-            let _ = self.incoming.send(read_event(notification.params));
+            let _ = self.tx.send(Some(parse_event(notification.params)));
         }
         std::future::ready(())
     }
@@ -61,11 +54,11 @@ impl ClientHandler for Inbox {
 
 /// The client side of the GM seat: dials the agent door, calls the six tools, hears events.
 pub struct GmClient {
-    service: RunningService<RoleClient, Inbox>,
+    service: RunningService<RoleClient, EventSender>,
     /// Finishes when the host closes the agent door.
     watch: tokio::task::JoinHandle<()>,
-    incoming: mpsc::UnboundedReceiver<Incoming>,
-    buffered: VecDeque<Incoming>,
+    incoming: mpsc::UnboundedReceiver<Option<Result<GmEvent, Error>>>,
+    buffered: VecDeque<Option<Result<GmEvent, Error>>>,
     protocol_version: String,
 }
 
@@ -82,14 +75,12 @@ impl GmClient {
         config.reinit_on_expired_session = false;
         let transport = ClientTransport {
             inner: StreamableHttpClientTransport::from_config(config),
-            incoming: events.clone(),
+            tx: events.clone(),
             closed: false,
         };
-        let inbox = Inbox {
-            incoming: events.clone(),
-        };
-        let info = inbox.get_info();
-        let service = match inbox.serve(transport).await {
+        let sender = EventSender { tx: events.clone() };
+        let info = sender.get_info();
+        let service = match sender.serve(transport).await {
             Ok(service) => service,
             // The streamable client skips a JSON-RPC error on the initialize
             // event stream and reports the stream as closed. Read that refusal
@@ -113,7 +104,7 @@ impl GmClient {
                     () = events.closed() => return,
                 }
             }
-            let _ = events.send(Incoming::Eof);
+            let _ = events.send(None);
         });
         let protocol_version = service
             .peer_info()
@@ -157,7 +148,7 @@ impl GmClient {
     /// Queue one move. The table answers with the intent's id.
     pub async fn queue_intent(
         &mut self,
-        call: &IntentCall,
+        call: &protocol::IntentArgs,
     ) -> Result<Result<Queued, Refusal>, Error> {
         self.call("queue_intent", call).await
     }
@@ -207,28 +198,31 @@ impl GmClient {
     }
 
     /// Events read while waiting for the latest tool result, in arrival order.
-    pub fn take_events(&mut self) -> Vec<GmEvent> {
+    pub fn drain_events(&mut self) -> Vec<GmEvent> {
         let mut out = Vec::new();
-        while matches!(self.buffered.front(), Some(Incoming::Event(_))) {
-            if let Some(Incoming::Event(event)) = self.buffered.pop_front() {
+        while matches!(self.buffered.front(), Some(Some(Ok(_)))) {
+            if let Some(Some(Ok(event))) = self.buffered.pop_front() {
                 out.push(event);
             }
         }
         out
     }
 
-    pub async fn next_incoming(&mut self) -> Incoming {
+    /// The next event, or the error for one that could not be read. `None` when the seat
+    /// ends.
+    pub async fn recv(&mut self) -> Option<Result<GmEvent, Error>> {
         if let Some(item) = self.buffered.pop_front() {
             return item;
         }
-        self.incoming.recv().await.unwrap_or(Incoming::Eof)
+        self.incoming.recv().await.flatten()
     }
 
-    /// Buffered lines, then anything the reader has already queued.
-    pub fn drain_ready(&mut self) -> Vec<Incoming> {
-        let mut out: Vec<Incoming> = self.buffered.drain(..).collect();
+    /// Buffered events, then any the reader has already queued. An end of the seat among
+    /// them is dropped.
+    pub fn drain(&mut self) -> Vec<Result<GmEvent, Error>> {
+        let mut out: Vec<Result<GmEvent, Error>> = self.buffered.drain(..).flatten().collect();
         while let Ok(item) = self.incoming.try_recv() {
-            out.push(item);
+            out.extend(item);
         }
         out
     }
@@ -245,12 +239,12 @@ impl GmClient {
 
 /// The client side of the streamable HTTP transport, plus one end-of-seat notice.
 ///
-/// `receive` returning nothing is the seat going away. The TCP client turned
-/// that into `Incoming::Eof`. Callers waiting on the next event use the same
-/// signal to leave.
+/// `receive` returning nothing is the seat going away. The transport sends `None` on the
+/// event channel then, so `GmClient::recv` returns `None` and callers waiting on the next
+/// event leave.
 struct ClientTransport<T> {
     inner: T,
-    incoming: mpsc::UnboundedSender<Incoming>,
+    tx: mpsc::UnboundedSender<Option<Result<GmEvent, Error>>>,
     closed: bool,
 }
 
@@ -271,7 +265,7 @@ where
         let message = self.inner.receive().await;
         if message.is_none() && !self.closed {
             self.closed = true;
-            let _ = self.incoming.send(Incoming::Eof);
+            let _ = self.tx.send(None);
         }
         message
     }
@@ -320,51 +314,50 @@ async fn probe_seat_refusal(url: &str, info: ClientConfig) -> Option<Refusal> {
     text.lines()
         .filter_map(|line| line.strip_prefix("data:"))
         .find_map(|data| serde_json::from_str::<JsonRpcError>(data.trim()).ok())
-        .and_then(|reply| refusal_in(&reply.error))
+        .and_then(|reply| refusal_from(&ClientInitializeError::JsonRpcError(reply.error)))
 }
 
 impl From<ClientInitializeError> for Error {
     fn from(err: ClientInitializeError) -> Self {
-        match refusal_of(&err) {
+        match refusal_from(&err) {
             Some(refusal) => Error::Refused(refusal),
             None => Error::Io(std::io::Error::other(err.to_string())),
         }
     }
 }
 
-fn refusal_of(err: &ClientInitializeError) -> Option<Refusal> {
+/// The refusal the table puts in the `data` of the MCP error that ends an initialize.
+fn refusal_from(err: &ClientInitializeError) -> Option<Refusal> {
     match err {
-        ClientInitializeError::JsonRpcError(error) => refusal_in(error),
+        ClientInitializeError::JsonRpcError(error) => {
+            Refusal::deserialize(error.data.as_ref()?).ok()
+        }
         ClientInitializeError::LegacyFallbackFailed { discover, fallback } => {
-            refusal_of(discover).or_else(|| refusal_of(fallback))
+            refusal_from(discover).or_else(|| refusal_from(fallback))
         }
         _ => None,
     }
 }
 
-/// The refusal the table puts in an MCP error's `data`.
-fn refusal_in(error: &ErrorData) -> Option<Refusal> {
-    Refusal::deserialize(error.data.as_ref()?).ok()
-}
-
-/// Read one `spook/event` notification. A body that is not a say, a queued move, or a
-/// check is `Incoming::Unreadable`.
-fn read_event(params: Option<Value>) -> Incoming {
+/// Read one `spook/event` notification's params. A body that is not a say, a queued move,
+/// or a check is `Error::Unreadable`, carrying the notification.
+fn parse_event(params: Option<Value>) -> Result<GmEvent, Error> {
     let params = params.unwrap_or(Value::Null);
-    match GmEvent::deserialize(&params) {
-        Ok(event) => Incoming::Event(event),
-        Err(_) => Incoming::Unreadable(event_line(&params)),
-    }
+    GmEvent::deserialize(&params).map_err(|_| Error::Unreadable(event_message(&params)))
 }
 
-/// One `spook/event` notification as its JSON-RPC line.
-pub fn event_line(params: &impl Serialize) -> String {
+/// One `spook/event` notification as its JSON-RPC message.
+fn event_message(params: &impl Serialize) -> Value {
     serde_json::json!({
         "jsonrpc": "2.0",
         "method": "spook/event",
         "params": params,
     })
-    .to_string()
+}
+
+/// One `spook/event` notification as its JSON-RPC line.
+pub fn event_line(params: &impl Serialize) -> String {
+    event_message(params).to_string()
 }
 
 #[cfg(test)]
@@ -373,10 +366,12 @@ mod tests {
 
     #[test]
     fn a_body_that_matches_no_known_type_is_unreadable() {
-        let Incoming::Unreadable(line) = read_event(Some(serde_json::json!({"kind": "nope"})))
+        let Err(Error::Unreadable(message)) =
+            parse_event(Some(serde_json::json!({"kind": "nope"})))
         else {
             panic!("malformed event was dropped");
         };
+        let line = message.to_string();
         assert!(line.contains("\"kind\":\"nope\""), "{line}");
     }
 }

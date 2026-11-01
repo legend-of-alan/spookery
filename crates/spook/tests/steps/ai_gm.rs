@@ -12,8 +12,8 @@ use cucumber::{then, when};
 use serde_json::json;
 use spookery::agent::{parse_completion, CompletionError, CompletionRequest, Model, ModelReply};
 use spookery::ai_gm;
-use spookery::door::GmClient;
 use spookery::http_model::{HttpModel, Settings, MODEL_CALL_TIMEOUT, RETRY_BACKOFF};
+use spookery::mcp::GmClient;
 use spookery::protocol::SayArgs;
 
 use crate::support::{self, copy_docks};

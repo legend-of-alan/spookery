@@ -58,6 +58,10 @@ Default to the [Rust API Guidelines](https://rust-lang.github.io/api-guidelines/
 10. Names collide only within one namespace, so `tokio::fs` and `std::fs` are fine. When a name exists in two namespaces anywhere in the project, a `use` keeps the path prefix (`fs::read`, never a bare `read`).
 11. Fix a bad name in the code you touch, even if it is older than your change. A rename-only commit changes no logic and updates the docs that mention the name.
 12. Prefer a typed unit such as `Duration`, which carries its own unit. A bare number carries the unit as a suffix, such as `_secs` or `_bytes`.
+13. Name a module after the protocol or job it handles, never a metaphor. Say `mcp`, not `door`.
+14. End a stream with `None` and report a failure with `Err`. Don't add `Eof` or `Unreadable` variants for them.
+15. A name that mirrors a tool or wire name uses that exact name, such as `Step::TableStatus` for `table_status`.
+16. Use one word per wire concept across docs, code and flags. The player side is the game port everywhere.
 
 Items in the guidelines that only matter for a published library, such as stability and future-proofing, don't apply yet.
 

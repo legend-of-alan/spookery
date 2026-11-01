@@ -110,7 +110,7 @@ impl TryFrom<SayWire> for SayArgs {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(deny_unknown_fields)]
-pub struct IntentCall {
+pub struct IntentArgs {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -138,7 +138,8 @@ pub struct Queued {
     pub id: String,
 }
 
-/// Sent from the table to a GM client as the `close` result, after the GM seat is free.
+/// The `close` result on the wire: the body the table returns to a GM client for that tool,
+/// after the GM seat is free.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CloseBody {
     pub released: bool,
@@ -190,7 +191,8 @@ pub struct QueuedMove {
     pub move_name: String,
 }
 
-/// The `commit_round` result, sent from the table to the GM's MCP client.
+/// The `commit_round` result on the wire: the body the table returns to the GM's MCP client
+/// for that tool.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CommitBody {
     pub state_rev: u64,
@@ -314,21 +316,21 @@ mod tests {
         }
         let m =
             serde_json::from_str(r#"{"actor_id":"a","move":"m","target":"t","to":["b"]}"#).unwrap();
-        let c: IntentCall = parse_args(Some(&m)).unwrap();
+        let c: IntentArgs = parse_args(Some(&m)).unwrap();
         assert_eq!(c.actor_id.as_deref(), Some("a"));
         assert_eq!(c.move_name.as_deref(), Some("m"));
         assert_eq!(c.target.as_deref(), Some("t"));
         assert_eq!(c.message_to, Some(vec!["b".to_string()]));
         let nested =
             serde_json::from_str(r#"{"actor_id":"a","move":"m","args":{"to":["b"]}}"#).unwrap();
-        assert!(parse_args::<IntentCall>(Some(&nested)).is_err());
+        assert!(parse_args::<IntentArgs>(Some(&nested)).is_err());
     }
 
     #[test]
     fn an_intent_call_names_only_the_set_fields() {
         let call = |raw: &str| {
             let args = serde_json::from_str(raw).unwrap();
-            serde_json::to_string(&parse_args::<IntentCall>(Some(&args)).unwrap()).unwrap()
+            serde_json::to_string(&parse_args::<IntentArgs>(Some(&args)).unwrap()).unwrap()
         };
         let bare = r#"{"actor_id":"mira","move":"restock_lamp_oil"}"#;
         assert_eq!(call(bare), bare);

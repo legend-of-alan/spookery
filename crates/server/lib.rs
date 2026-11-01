@@ -1,9 +1,9 @@
 //! The Spookery table server: bind the game port and the agent door, then run the table.
 
-mod door;
 mod frames;
 mod idle;
 mod limits;
+mod mcp;
 mod player;
 mod seat;
 mod table;
@@ -79,7 +79,7 @@ pub async fn serve(
         Arc::clone(&next_conn),
         config.hello_timeout,
     ));
-    tasks.spawn(door::serve(http_listener, tx.clone(), next_conn));
+    tasks.spawn(mcp::serve(http_listener, tx.clone(), next_conn));
     let (restart_tx, restart_rx) = tokio::sync::watch::channel(0u64);
     if idle_rounds {
         tasks.spawn(idle::run(

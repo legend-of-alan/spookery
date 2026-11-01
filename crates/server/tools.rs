@@ -9,8 +9,8 @@ use spookery_engine::{Address, Presence, Reason, RoundOutput, TapeRecord, World}
 use super::frames;
 use super::table::commit_then_fast_forward;
 use crate::protocol::{
-    parse_args, CloseArgs, CloseBody, CommitArgs, IntentCall, PerceiveArgs, Queued, SayArgs,
-    StatusArgs, PERCEIVE_BODY_CHARS,
+    self, parse_args, CloseArgs, CloseBody, CommitArgs, PerceiveArgs, Queued, SayArgs, StatusArgs,
+    PERCEIVE_BODY_CHARS,
 };
 
 /// Sent from a GM tool handler back to the table, which answers the GM and updates seats.
@@ -74,7 +74,7 @@ pub(super) const TOOLS: &[Tool] = &[
     Tool {
         name: "queue_intent",
         about: "queue_intent requires actor_id and move. A habit row is legal when actor_id is an npc.",
-        schema: schema_for_type::<IntentCall>,
+        schema: schema_for_type::<protocol::IntentArgs>,
         run: queue_intent,
     },
     Tool {

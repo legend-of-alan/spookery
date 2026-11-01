@@ -9,8 +9,7 @@ use spookery_engine::testing::{
     stamp_pack_rev, state_of, write_save, Act, ActorLive, Pause, PlaceLive,
 };
 use spookery_engine::{
-    emit_save, play_pack_once, IntentCall, MeterLive, MoveReport, Note, Outcome, Presence,
-    RunState, State,
+    emit_save, play_pack_once, MeterLive, MoveReport, Note, Outcome, Presence, RunState, State,
 };
 
 use crate::World;
@@ -211,7 +210,7 @@ fn player_in_the_shop() {
 fn queue_gm_intent(opened: &mut spookery_engine::World, id: &str, actor: &str, move_name: &str) {
     opened
         .queue_gm_intent(
-            IntentCall {
+            spookery_protocol::IntentArgs {
                 id: None,
                 round_index: None,
                 actor_id: Some(actor.to_string()),

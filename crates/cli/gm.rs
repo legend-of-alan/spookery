@@ -8,8 +8,8 @@ use rmcp::model::ErrorCode;
 use serde::Serialize;
 use serde_json::json;
 
-use crate::door::{event_line, GmClient, Incoming};
-use crate::protocol::{GmEvent, IntentCall, PlayerFrame, Refusal, SayArgs};
+use crate::mcp::{event_line, GmClient};
+use crate::protocol::{self, GmEvent, PlayerFrame, Refusal, SayArgs};
 use crate::text::{
     self, humanize, render_checks, render_dice, render_diff, render_event, render_status,
 };
@@ -69,11 +69,10 @@ pub async fn run(door: SocketAddr, raw: bool) -> Result<(), Error> {
     let result = async {
         loop {
             tokio::select! {
-                incoming = session.client.next_incoming() => {
-                    if !session.show_incoming(incoming) {
-                        return Ok(());
-                    }
-                }
+                received = session.client.recv() => match received {
+                    Some(received) => session.show_received(received),
+                    None => return Ok(()),
+                },
                 line = input.recv() => match line {
                     Some(line) if session.handle_line(&line).await? => {}
                     _ => return Ok(()),
@@ -180,7 +179,7 @@ impl Session {
         target: Option<&str>,
     ) -> Result<(), Error> {
         let shown = format!("{} queued: {move_name}", humanize(actor));
-        let call = IntentCall {
+        let call = protocol::IntentArgs {
             id: None,
             round_index: None,
             actor_id: Some(actor.to_string()),
@@ -260,7 +259,7 @@ impl Session {
     /// will print; a matching check event is not printed again.
     fn show_arrived(&mut self, checks: &[String]) {
         let mut pending: VecDeque<&str> = checks.iter().map(String::as_str).collect();
-        let events = self.client.take_events();
+        let events = self.client.drain_events();
         for event in &events {
             if let GmEvent::Check(_) = event {
                 let line = render_event(event);
@@ -276,22 +275,21 @@ impl Session {
     }
 
     fn show_ready(&mut self) {
-        let ready = self.client.drain_ready();
-        for incoming in ready {
-            let _ = self.show_incoming(incoming);
+        for received in self.client.drain() {
+            self.show_received(received);
         }
     }
 
-    fn show_incoming(&mut self, incoming: Incoming) -> bool {
-        match incoming {
-            Incoming::Event(event) => self.show_event(&event),
-            Incoming::Unreadable(line) => {
-                eprintln!("{line}");
+    /// An event as `show_event` shows it, or an event that could not be read as its line
+    /// on stderr.
+    fn show_received(&mut self, received: Result<GmEvent, Error>) {
+        match received {
+            Ok(event) => self.show_event(&event),
+            Err(err) => {
+                eprintln!("{err}");
                 let _ = io::stderr().flush();
             }
-            Incoming::Eof => return false,
         }
-        true
     }
 
     fn show_event(&mut self, event: &GmEvent) {

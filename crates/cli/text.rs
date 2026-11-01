@@ -32,16 +32,16 @@ pub fn render(frame: &PlayerFrame) -> String {
 }
 
 /// Readable text for the frames of one sitting.
-pub struct Sitting {
+pub struct PlayerText {
     seen_resume: bool,
-    earlier_open: bool,
+    replay_section_open: bool,
 }
 
-impl Sitting {
+impl PlayerText {
     pub fn new() -> Self {
         Self {
             seen_resume: false,
-            earlier_open: false,
+            replay_section_open: false,
         }
     }
 
@@ -49,32 +49,34 @@ impl Sitting {
     /// A leading newline is the blank line before the first live frame.
     pub fn render(&mut self, frame: &PlayerFrame) -> String {
         match frame {
-            PlayerFrame::Say { replay: true, .. } => self.open_earlier(render(frame)),
+            PlayerFrame::Say { replay: true, .. } => self.start_replay_section(render(frame)),
             PlayerFrame::Resume { notes, clocks } => {
                 if self.seen_resume {
                     return String::new();
                 }
                 self.seen_resume = true;
-                self.close_earlier(render_resume(notes, clocks))
+                self.end_replay_section(render_resume(notes, clocks))
             }
-            _ => self.close_earlier(render(frame)),
+            _ => self.end_replay_section(render(frame)),
         }
     }
 
-    fn open_earlier(&mut self, line: String) -> String {
-        if self.earlier_open {
+    /// A replayed line, under an `Earlier:` heading when it is the first of its section.
+    fn start_replay_section(&mut self, line: String) -> String {
+        if self.replay_section_open {
             line
         } else {
-            self.earlier_open = true;
+            self.replay_section_open = true;
             format!("Earlier:\n{line}")
         }
     }
 
-    fn close_earlier(&mut self, text: String) -> String {
-        if text.is_empty() || !self.earlier_open {
+    /// A live frame's text, after a blank line when it is the first after a replay section.
+    fn end_replay_section(&mut self, text: String) -> String {
+        if text.is_empty() || !self.replay_section_open {
             return text;
         }
-        self.earlier_open = false;
+        self.replay_section_open = false;
         format!("\n{text}")
     }
 }
@@ -431,20 +433,20 @@ mod tests {
 
     #[test]
     fn a_later_resume_has_no_away_heading() {
-        let mut sitting = Sitting::new();
-        let first = sitting.render(&PlayerFrame::Resume {
+        let mut player_text = PlayerText::new();
+        let first = player_text.render(&PlayerFrame::Resume {
             notes: vec![note("note_shop", "the shop restocked")],
             clocks: Vec::new(),
         });
         assert_eq!(first, "While you were away:\nthe shop restocked");
         assert_eq!(
-            sitting.render(&PlayerFrame::Resume {
+            player_text.render(&PlayerFrame::Resume {
                 notes: Vec::new(),
                 clocks: Vec::new(),
             }),
             ""
         );
-        let later = sitting.render(&PlayerFrame::Resume {
+        let later = player_text.render(&PlayerFrame::Resume {
             notes: vec![note("note_yard", "the yard stays watched")],
             clocks: Vec::new(),
         });
@@ -453,15 +455,15 @@ mod tests {
 
     #[test]
     fn replayed_speech_sits_under_one_heading() {
-        let mut sitting = Sitting::new();
-        let first = sitting.render(&PlayerFrame::Say {
+        let mut player_text = PlayerText::new();
+        let first = player_text.render(&PlayerFrame::Say {
             from: Speaker::Player("pc_lark".to_string()),
             address: "table".to_string(),
             text: "hello Briar".to_string(),
             replay: true,
         });
         assert_eq!(first, "Earlier:\nYou: hello Briar");
-        let second = sitting.render(&PlayerFrame::Say {
+        let second = player_text.render(&PlayerFrame::Say {
             from: Speaker::Gm,
             address: "table".to_string(),
             text: "evening".to_string(),
@@ -469,13 +471,13 @@ mod tests {
         });
         assert_eq!(second, "GM: evening");
         assert_eq!(
-            sitting.render(&PlayerFrame::Resume {
+            player_text.render(&PlayerFrame::Resume {
                 notes: Vec::new(),
                 clocks: Vec::new(),
             }),
             ""
         );
-        let place = sitting.render(&PlayerFrame::Lines {
+        let place = player_text.render(&PlayerFrame::Lines {
             text: "You are in Gate Yard.".to_string(),
         });
         assert_eq!(place, "\nYou are in Gate Yard.");

@@ -28,7 +28,7 @@ impl Outcome {
 }
 
 pub use gm::{
-    parse_args, CastKind, CloseArgs, CloseBody, CommitArgs, CommitBody, GmEvent, IntentCall,
+    parse_args, CastKind, CloseArgs, CloseBody, CommitArgs, CommitBody, GmEvent, IntentArgs,
     MenuRow, PackSummary, PerceiveArgs, Queued, QueuedMove, Roll, SayArgs, SayEvent, StatusArgs,
     StatusPause, StatusPresence, TableStatus,
 };

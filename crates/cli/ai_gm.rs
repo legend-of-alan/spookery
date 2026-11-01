@@ -5,7 +5,7 @@ use std::net::SocketAddr;
 
 use spookery_agent::{Agent, Input, Model, Step};
 
-use crate::door::{GmClient, Incoming};
+use crate::mcp::GmClient;
 use crate::Error;
 
 /// Sit the GM seat at `door` and play each turn through `model` until the host closes the
@@ -25,20 +25,20 @@ pub async fn run(
                 report(err, &warning)?;
             }
             let reply = match step {
-                Step::Idle => match client.next_incoming().await {
-                    Incoming::Event(event) => {
+                Step::Idle => match client.recv().await {
+                    Some(Ok(event)) => {
                         step = agent.feed(Input::Event(event))?;
                         continue;
                     }
-                    Incoming::Unreadable(line) => return Err(Error::Message(line)),
-                    Incoming::Eof => return Ok(()),
+                    Some(Err(err)) => return Err(err),
+                    None => return Ok(()),
                 },
                 Step::CallModel(request) => {
                     let reply = model.complete(&request).await;
                     step = agent.feed(Input::ModelReply(reply))?;
                     continue;
                 }
-                Step::FetchStatus { since } => {
+                Step::TableStatus { since } => {
                     client.table_status(since).await.map(Input::StatusReply)
                 }
                 Step::Perceive { viewer } => client.perceive(&viewer).await.map(Input::ViewReply),
@@ -47,7 +47,7 @@ pub async fn run(
                 Step::CommitRound => client.commit_round().await.map(Input::CommitReply),
             };
             let reply = reply?;
-            for event in client.take_events() {
+            for event in client.drain_events() {
                 agent.feed(Input::Event(event))?;
             }
             step = agent.feed(reply)?;

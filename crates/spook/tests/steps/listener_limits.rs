@@ -571,7 +571,7 @@ fn read_until(stream: &mut TcpStream, needle: &str, limit: Duration) {
 
 fn try_sit_gm(port: u16) -> Result<(), String> {
     let door = std::net::SocketAddr::from(([127, 0, 0, 1], port));
-    match support::block_on(spookery::door::GmClient::connect(door)) {
+    match support::block_on(spookery::mcp::GmClient::connect(door)) {
         Ok(gm) => {
             support::block_on(gm.close());
             Ok(())

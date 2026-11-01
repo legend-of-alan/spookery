@@ -4,9 +4,9 @@ use std::fmt;
 use std::io;
 
 pub mod ai_gm;
-pub mod door;
 pub mod gm;
 pub mod http_model;
+pub mod mcp;
 pub mod play;
 use spookery_protocol as protocol;
 mod text;
