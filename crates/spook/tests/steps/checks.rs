@@ -204,8 +204,8 @@ fn an_engine_habit_rolls_a_check_for_mira(world: &mut World) {
     world.scratch = before.display().to_string();
 }
 
-#[when(expr = "the player names another PC")]
-fn the_player_names_another_pc(world: &mut World) {
+#[when(expr = "the player sends a line with a player prefix")]
+fn the_player_sends_a_line_with_a_player_prefix(world: &mut World) {
     let (mark, added) = table::player_send(world, "player:pc_nell grit", "\"kind\":\"refused\"");
     world.mark = mark;
     world.player_added = added;
