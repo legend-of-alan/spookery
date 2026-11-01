@@ -48,6 +48,7 @@ Default to the [Rust API Guidelines](https://rust-lang.github.io/api-guidelines/
 
 1. A newcomer should follow a file top to bottom from its names and types alone.
 2. Types are nouns and functions are verbs. A getter can be a noun. A pair constructor that mirrors `mpsc::channel()`, like `frame_queue()`, can be a noun when its doc comment says so.
+   Ask "a value of this type is a ___". If the answer is a noun, that noun is the name, so not `Evaluated` but `Verdict`. A past participle or adjective names a type only as an enum variant for a state or past event of its enum's noun (`Cow::Borrowed`, `Bound::Excluded`, `ErrorKind::TimedOut`), as the type a same-named method returns (`Iterator::copied()` returns `Copied`), or under rule 15.
 3. Borrow words from Rust, std, the crates we use and this codebase before inventing new ones. If std says `try_lock`, say that.
 4. No vague words. A name says what the thing shows, sends, reads or refuses.
 5. Two names that look alike must do alike jobs.
