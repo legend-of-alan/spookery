@@ -39,8 +39,8 @@ Feature: An NPC rolls its own check
     And the round log resolves the check without faces
     And replaying the round reproduces the save
 
-  Scenario: A player line for another PC is not queued
+  Scenario: A command line with a player prefix is refused
     Given a docks table with a seated player
-    When the player names another PC
+    When the player sends a line with a player prefix
     Then world_time is 1080
     And no round record was written
