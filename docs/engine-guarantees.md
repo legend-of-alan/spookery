@@ -109,13 +109,13 @@ whole, not cut short, and the log records the refusal. That holds for a change
 rule too. A refused roll is not reported as a success. A move pays the cost of
 the rule it rolled for, even when an earlier move that round changed which rule
 its verb would pick. A place's verb rule beats the shared rule. A cast
-member's verb rule is at hand while they share the actor's place, and names
-them. A wielded weapon's attack beats the shared attack. With nothing wielded,
-the shared attack runs. Typing a full rule id is refused and the save stays put.
-A note addressed to someone present runs before an unclaimed wait, even if the
-wait was queued first. So does a move through an exit into a seated player's
-room. An NPC habit stays quiet while a player shares the room. The GM can still
-queue it.
+member's verb rule is picked by naming them while they share the actor's place,
+and a bare verb never reaches it. A wielded weapon's attack beats the shared
+attack. With nothing wielded, the shared attack runs. Typing a full rule id is
+refused and the save stays put. A note addressed to someone present runs before
+an unclaimed wait, even if the wait was queued first. So does a move through an
+exit into a seated player's room. An NPC habit stays quiet while a player shares
+the room. The GM can still queue it.
 
 Tested in `features/round/a_rules_effects_are_all_or_nothing.feature`,
 `features/round/apply_pays_the_rule_that_rolled.feature`,
