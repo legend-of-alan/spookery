@@ -161,11 +161,7 @@ pub fn admit(
             .map_err(|code| Refusal::new(intent, code))?;
     }
     if let Some(cost) = &rule.cost {
-        cost::afford(canon, now, presence, intent, cost).map_err(|missing| Refusal {
-            id: intent.id.clone(),
-            code: Reason::CantAfford,
-            detail: Some(missing),
-        })?;
+        cost::afford(canon, now, presence, intent, cost)?;
     }
     Ok(())
 }

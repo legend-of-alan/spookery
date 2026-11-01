@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use crate::effect::Effect;
 use crate::intent::Intent;
 use crate::model::MemoryLine;
-use crate::rules::gate::Refusal;
+use crate::rules::gate;
 
 /// One meter a migrate added, stored at that meter's `start`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -90,7 +90,7 @@ pub struct RoundRecord {
     pub last_round_at: String,
     /// The intents queued for this round, before stamping and habits, which replay plays again.
     pub intents: Vec<Intent>,
-    pub refused: Vec<Refusal>,
+    pub refused: Vec<gate::Refusal>,
     pub effects: Vec<Effect>,
     pub arrivals: Vec<Arrival>,
     pub fast_forward: bool,

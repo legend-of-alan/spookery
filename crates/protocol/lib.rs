@@ -57,8 +57,7 @@ pub fn default_mcp_addr(game: std::net::SocketAddr) -> Option<std::net::SocketAd
 pub const PERCEIVE_BODY_CHARS: usize = 800;
 
 /// Every refusal code. The `code` of a player `refused` line, a GM tool refusal and the MCP
-/// error's `data`, and the token the journal stores on a round line (the engine's
-/// `store::records::Refusal`).
+/// error's `data`, and the token the journal stores on a round line (`engine::Refusal`).
 /// Strict and `Copy` on purpose: `spook verify` must fail on a code it does not know.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]

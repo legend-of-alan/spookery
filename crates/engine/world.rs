@@ -13,7 +13,7 @@ use crate::intent::{player_intent_id, Intent, IntentArgs, Source, Target, Viewer
 use crate::journal::{self, Record};
 use crate::model::{ActorLive, Presence, State};
 use crate::rule::{TargetKind, When};
-use crate::rules::gate::{gate, verb_for, Refusal};
+use crate::rules::gate;
 use crate::store::codec::{emit_save, parse_save};
 use crate::store::tape::{append_record, last_seq, read_after, read_tail, TapeRecord};
 use crate::QueuedMove;
@@ -200,7 +200,7 @@ impl<L> World<L> {
         actor_id: &str,
         verb: &str,
         target: Option<&str>,
-    ) -> Result<QueuedMove, Refusal> {
+    ) -> Result<QueuedMove, gate::Refusal> {
         let intent = self
             .state
             .actors
@@ -209,12 +209,12 @@ impl<L> World<L> {
             .ok_or(Reason::Schema)
             .and_then(|actor| self.verb_target(actor, verb, target, Reason::NotInSpec))
             .and_then(|target| self.player_intent(actor_id, verb, target))
-            .map_err(|code| Refusal {
+            .map_err(|code| gate::Refusal {
                 id: String::new(),
                 code,
                 detail: None,
             })?;
-        gate(&self.canon, &self.state, presence, &intent)?;
+        gate::gate(&self.canon, &self.state, presence, &intent)?;
         let queued = QueuedMove {
             id: intent.id.clone(),
             actor_id: actor_id.to_string(),
@@ -232,7 +232,7 @@ impl<L> World<L> {
         missing: Reason,
     ) -> Result<Target, Reason> {
         let token = target.filter(|t| !t.is_empty());
-        let rule = verb_for(
+        let rule = gate::verb_for(
             &self.canon,
             Some(actor.place()),
             verb,

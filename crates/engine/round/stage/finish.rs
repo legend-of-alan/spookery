@@ -9,7 +9,6 @@ use crate::Reason;
 
 use crate::round::dice::RoundDice;
 use crate::round::log::RoundLog;
-use crate::round::stage::apply::report_roll;
 
 /// Finish every due action, earliest first.
 pub(crate) fn run(
@@ -112,7 +111,7 @@ fn finish_timed_action(
     let outcome = rolled.as_ref().map(|out| out.outcome);
     let effects = rule.expand(canon, snapshot, presence, intent, outcome, &mut roller)?;
     let resisted = roller.into_reports();
-    report_roll(log, rolled, actor_id);
+    log.report_roll(rolled, actor_id);
     log.reports.extend(resisted);
     for effect in effects {
         if matches!(effect.kind, EffectKind::Location { .. }) {

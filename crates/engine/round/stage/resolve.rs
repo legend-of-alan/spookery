@@ -2,7 +2,7 @@
 
 use std::collections::BTreeMap;
 
-use crate::rules::gate::{gate, Refusal};
+use crate::rules::gate;
 use crate::rules::roll::classify;
 
 use crate::canon::Canon;
@@ -29,7 +29,7 @@ pub(crate) enum Resolution {
         rolled: Option<Roll>,
     },
     /// Refused by the gate: journaled, and told to a player.
-    Refused(Refusal),
+    Refused(gate::Refusal),
     /// The check could not be set up (no check or meter): journaled, and told to the actor whoever it is.
     CannotRoll(Reason),
 }
@@ -73,7 +73,7 @@ pub(crate) fn run(
 
 fn gate_and_roll(rolls: &mut Resolver<'_>, intent: &Intent) -> Result<Resolution, Reason> {
     let (canon, snapshot) = (rolls.canon, rolls.snapshot);
-    let rule = match gate(canon, snapshot, rolls.presence, intent) {
+    let rule = match gate::gate(canon, snapshot, rolls.presence, intent) {
         Ok(rule) => rule,
         Err(refusal) => return Ok(Resolution::Refused(refusal)),
     };
@@ -144,7 +144,7 @@ fn roll_opposing_total(rolls: &mut Resolver<'_>, intent: &Intent) -> Result<Opti
         {
             return None;
         }
-        let rule = gate(canon, snapshot, presence, other).ok()?;
+        let rule = gate::gate(canon, snapshot, presence, other).ok()?;
         Some((other, &rule.id, &rule.roll.as_ref()?.check))
     }) else {
         return Ok(None);

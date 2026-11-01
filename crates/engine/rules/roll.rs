@@ -6,7 +6,7 @@ use crate::hash::blake2s_256;
 use crate::intent::Viewer;
 use crate::meter::{self, MeterDef};
 use crate::model::ActorLive;
-use crate::rules::gate::Refusal;
+use crate::rules::gate;
 use crate::Reason;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -39,8 +39,14 @@ pub use spookery_protocol::Roll;
 /// Not stored in `Now` or the tick JSONL.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum MoveReport {
-    Rolled { actor_id: String, roll: Roll },
-    Refused { actor_id: String, refusal: Refusal },
+    Rolled {
+        actor_id: String,
+        roll: Roll,
+    },
+    Refused {
+        actor_id: String,
+        refusal: gate::Refusal,
+    },
 }
 
 impl MoveReport {
