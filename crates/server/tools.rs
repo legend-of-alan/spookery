@@ -1,13 +1,16 @@
 //! The GM tool table: each tool's name, description, schema and run.
 
+use std::sync::Arc;
+
+use rmcp::handler::server::tool::schema_for_type;
 use serde_json::{Map, Value};
 use spookery_engine::{Address, Presence, Reason, RoundOutput, TapeRecord, World};
 
 use super::frames;
 use super::table::commit_then_fast_forward;
 use crate::protocol::{
-    parse_args, CloseArgs, CloseBody, CommitArgs, PerceiveArgs, Queued, SayArgs, StatusArgs,
-    PERCEIVE_BODY_CHARS,
+    parse_args, CloseArgs, CloseBody, CommitArgs, IntentCall, PerceiveArgs, Queued, SayArgs,
+    StatusArgs, PERCEIVE_BODY_CHARS,
 };
 
 /// Sent from a GM tool handler back to the table, which answers the GM and updates seats.
@@ -40,7 +43,7 @@ impl Reply {
 pub(super) struct Tool {
     pub(super) name: &'static str,
     pub(super) about: &'static str,
-    pub(super) schema: fn() -> Map<String, Value>,
+    pub(super) schema: fn() -> Arc<Map<String, Value>>,
     run: ToolFn,
 }
 
@@ -59,37 +62,37 @@ pub(super) const TOOLS: &[Tool] = &[
     Tool {
         name: "table_status",
         about: "table_status takes no required key. An empty object stays legal. since is the only other accepted key.",
-        schema: status_schema,
+        schema: schema_for_type::<StatusArgs>,
         run: table_status,
     },
     Tool {
         name: "perceive",
         about: "perceive requires as. max_body_chars may be sent. A missing as is UNSCOPED_PERCEIVE.",
-        schema: perceive_schema,
+        schema: schema_for_type::<PerceiveArgs>,
         run: perceive,
     },
     Tool {
         name: "queue_intent",
         about: "queue_intent requires actor_id and move. A habit row is legal when actor_id is an npc.",
-        schema: intent_schema,
+        schema: schema_for_type::<IntentCall>,
         run: queue_intent,
     },
     Tool {
         name: "say",
         about: "say requires address and text. place is required when address is place. actor is required when address is actor. table takes neither place nor actor. A supplied from is SCHEMA.",
-        schema: say_schema,
+        schema: schema_for_type::<SayArgs>,
         run: say,
     },
     Tool {
         name: "commit_round",
         about: "commit_round requires include_round. session_id may be a string.",
-        schema: commit_schema,
+        schema: schema_for_type::<CommitArgs>,
         run: commit_round,
     },
     Tool {
         name: "close",
         about: "close takes no keys. The result is sent after this GM seat is free.",
-        schema: close_schema,
+        schema: schema_for_type::<CloseArgs>,
         run: close,
     },
 ];
@@ -140,126 +143,6 @@ fn close(
         release_seat: true,
         ..Reply::new(serde_json::to_value(CloseBody { released: true }).expect("close"))
     })
-}
-
-fn say_schema() -> Map<String, Value> {
-    schema_object(serde_json::json!({
-        "type": "object",
-        "properties": {
-            "address": { "type": "string", "enum": ["table", "place", "actor"] },
-            "text": { "type": "string" },
-            "place": { "type": ["string", "null"] },
-            "actor": { "type": ["string", "null"] }
-        },
-        "required": ["address", "text"],
-        "additionalProperties": false,
-        "allOf": [
-            {
-                "if": {
-                    "properties": { "address": { "const": "place" } },
-                    "required": ["address"]
-                },
-                "then": {
-                    "required": ["place"],
-                    "properties": {
-                        "place": { "type": "string", "minLength": 1 },
-                        "actor": { "type": "null" }
-                    }
-                }
-            },
-            {
-                "if": {
-                    "properties": { "address": { "const": "actor" } },
-                    "required": ["address"]
-                },
-                "then": {
-                    "required": ["actor"],
-                    "properties": {
-                        "actor": { "type": "string", "minLength": 1 },
-                        "place": { "type": "null" }
-                    }
-                }
-            },
-            {
-                "if": {
-                    "properties": { "address": { "const": "table" } },
-                    "required": ["address"]
-                },
-                "then": {
-                    "properties": {
-                        "place": { "type": "null" },
-                        "actor": { "type": "null" }
-                    }
-                }
-            }
-        ]
-    }))
-}
-
-fn perceive_schema() -> Map<String, Value> {
-    schema_object(serde_json::json!({
-        "type": "object",
-        "properties": {
-            "as": { "type": "string" },
-            "max_body_chars": { "type": "integer", "minimum": 0 }
-        },
-        "required": ["as"],
-        "additionalProperties": false
-    }))
-}
-
-fn commit_schema() -> Map<String, Value> {
-    schema_object(serde_json::json!({
-        "type": "object",
-        "properties": {
-            "include_round": { "type": "boolean" },
-            "session_id": { "type": "string" }
-        },
-        "required": ["include_round"],
-        "additionalProperties": false
-    }))
-}
-
-fn close_schema() -> Map<String, Value> {
-    schema_object(serde_json::json!({
-        "type": "object",
-        "properties": {},
-        "additionalProperties": false
-    }))
-}
-
-fn status_schema() -> Map<String, Value> {
-    schema_object(serde_json::json!({
-        "type": "object",
-        "properties": {
-            "since": { "type": "integer", "minimum": 0 }
-        },
-        "additionalProperties": false
-    }))
-}
-
-fn intent_schema() -> Map<String, Value> {
-    schema_object(serde_json::json!({
-        "type": "object",
-        "properties": {
-            "actor_id": { "type": "string" },
-            "move": { "type": "string" },
-            "id": { "type": "string" },
-            "round_index": { "type": "integer", "minimum": 0 },
-            "target": { "type": "string" },
-            "to": { "type": "array", "items": { "type": "string" } },
-            "rationale_code": { "type": "string" }
-        },
-        "required": ["actor_id", "move"],
-        "additionalProperties": false
-    }))
-}
-
-fn schema_object(value: Value) -> Map<String, Value> {
-    match value {
-        Value::Object(map) => map,
-        _ => Map::new(),
-    }
 }
 
 /// Without `include_round` only an empty queue commits, and it plays nothing.

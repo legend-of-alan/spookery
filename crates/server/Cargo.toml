@@ -18,7 +18,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 socket2 = { version = "0.6", features = ["all"] }
 spookery-engine = { path = "../engine" }
-spookery-protocol = { path = "../protocol" }
+spookery-protocol = { path = "../protocol", features = ["schema"] }
 tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread", "time", "net", "io-util", "sync"] }
 uuid = { version = "1", features = ["v4"] }
 
