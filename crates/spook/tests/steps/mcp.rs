@@ -2,6 +2,7 @@ use std::io::{Read, Write};
 use std::net::TcpStream;
 use std::time::{Duration, Instant};
 
+use cucumber::gherkin::Step;
 use cucumber::{given, then, when};
 use rmcp::model::{
     CallToolRequestParams, CallToolResult, ClientCapabilities, Implementation, ProtocolVersion,
@@ -280,6 +281,80 @@ fn try_sit_gm(port: u16) -> Result<(), String> {
         let _ = running.cancel().await;
         Ok(())
     })
+}
+
+#[when(expr = "the GM lists the tools")]
+fn the_gm_lists_the_tools(world: &mut World) {
+    let running = world
+        .http_gm
+        .as_ref()
+        .unwrap_or_else(|| panic!("no GM holds the seat"));
+    let tools = support::block_on(running.list_all_tools())
+        .unwrap_or_else(|err| panic!("tools/list: {err}"));
+    world.scratch = serde_json::to_string(&tools).unwrap_or_else(|err| panic!("tools: {err}"));
+}
+
+/// One row per shape a tool accepts: a `oneOf` schema has one shape per branch. Each
+/// shape must refuse keys it does not name, so its fields are all a GM may send.
+#[then(expr = "each tool's input schema names the same fields as before")]
+fn each_tool_names_the_same_fields(world: &mut World, step: &Step) {
+    let tools: Vec<Value> =
+        serde_json::from_str(&world.scratch).unwrap_or_else(|err| panic!("tools: {err}"));
+    let mut shapes = Vec::new();
+    for tool in &tools {
+        let name = tool["name"].as_str().unwrap_or_default();
+        let schema = &tool["inputSchema"];
+        let branches = match schema.get("oneOf").and_then(Value::as_array) {
+            Some(branches) => branches.iter().collect(),
+            None => vec![schema],
+        };
+        for shape in branches {
+            let closed = shape["additionalProperties"] == false;
+            assert!(closed, "{name} takes keys it does not name: {shape}");
+            let fields = shape["properties"]
+                .as_object()
+                .into_iter()
+                .flat_map(Map::keys);
+            let required = shape["required"].as_array().into_iter().flatten();
+            shapes.push([
+                name.to_string(),
+                sort_words(fields.map(String::as_str)),
+                sort_words(required.filter_map(Value::as_str)),
+            ]);
+        }
+    }
+    let table = step
+        .table
+        .as_ref()
+        .unwrap_or_else(|| panic!("no tool table"));
+    let want: Vec<_> = table.rows[1..]
+        .iter()
+        .map(|row| {
+            [
+                row[0].clone(),
+                sort_words(row[1].split_whitespace()),
+                sort_words(row[2].split_whitespace()),
+            ]
+        })
+        .collect();
+    assert_eq!(shapes, want);
+}
+
+fn sort_words<'a>(words: impl Iterator<Item = &'a str>) -> String {
+    let mut words: Vec<_> = words.collect();
+    words.sort_unstable();
+    words.join(" ")
+}
+
+#[then(regex = r#"^a queue_intent call with "actor_id", "move" and "to" is accepted$"#)]
+fn a_queue_intent_call_with_to_is_accepted(world: &mut World) {
+    let running = world
+        .http_gm
+        .as_ref()
+        .unwrap_or_else(|| panic!("no GM holds the seat"));
+    let arguments = json!({"actor_id": "pc_rowan", "move": "wait", "to": ["pc_wren"]});
+    let queued = support::block_on(call(running, "queue_intent", Some(arguments)));
+    assert_not_refused(&queued, "queue_intent");
 }
 
 #[then(expr = "world time moved forward")]

@@ -503,10 +503,10 @@ fn parse_command<'w, 'l: 'w>(
     seated: &str,
     line: &'l str,
 ) -> Result<PlayerCommand<'w, 'l>, Refusal> {
-    if split_token(line) == ("close", "") {
+    let (verb, rest) = split_token(line);
+    if (verb, rest) == ("close", "") {
         return Ok(PlayerCommand::Close);
     }
-    let (verb, rest) = split_token(line);
     if verb.is_empty() {
         return Err(Reason::Schema.into());
     }
