@@ -43,7 +43,7 @@ pub use player::{
 #[serde(tag = "kind", rename = "listening")]
 pub struct Addrs {
     pub game: String,
-    pub mcp_addr: String,
+    pub mcp: String,
 }
 
 /// The MCP address for a fixed game port: the next port, on the same address.

@@ -38,13 +38,19 @@ pub async fn run(
                     step = agent.feed(Input::ModelReply(reply))?;
                     continue;
                 }
-                Step::TableStatus { since } => {
-                    client.table_status(since).await.map(Input::StatusReply)
+                Step::TableStatus { since } => client
+                    .table_status(since)
+                    .await
+                    .map(Input::TableStatusReply),
+                Step::Perceive { viewer } => {
+                    client.perceive(&viewer).await.map(Input::PerceiveReply)
                 }
-                Step::Perceive { viewer } => client.perceive(&viewer).await.map(Input::ViewReply),
                 Step::Say(args) => client.say(&args).await.map(Input::SayReply),
-                Step::QueueIntent(call) => client.queue_intent(&call).await.map(Input::QueueReply),
-                Step::CommitRound => client.commit_round().await.map(Input::CommitReply),
+                Step::QueueIntent(call) => client
+                    .queue_intent(&call)
+                    .await
+                    .map(Input::QueueIntentReply),
+                Step::CommitRound => client.commit_round().await.map(Input::CommitRoundReply),
             };
             let reply = reply?;
             for event in client.drain_events() {

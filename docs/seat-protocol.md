@@ -21,11 +21,11 @@ After both sockets are bound, and before the table serves, `spook run` prints on
 {
   "kind": "listening",
   "game": "127.0.0.1:61762",
-  "mcp_addr": "127.0.0.1:61763"
+  "mcp": "127.0.0.1:61763"
 }
 ```
 
-`game` and `mcp_addr` are `127.0.0.1` and a port. They are different ports. This run happened to draw two adjacent ports. The next run draws its own.
+`game` and `mcp` are `127.0.0.1` and a port. They are different ports. This run happened to draw two adjacent ports. The next run draws its own.
 
 The MCP endpoint requires:
 

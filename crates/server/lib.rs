@@ -121,7 +121,7 @@ fn mcp_bind_addr(game: SocketAddr, mcp_addr: Option<SocketAddr>) -> Result<Socke
 fn print_addrs(out: &mut dyn Write, game: SocketAddr, mcp_addr: SocketAddr) -> Result<(), Error> {
     let line = serde_json::to_string(&protocol::Addrs {
         game: game.to_string(),
-        mcp_addr: mcp_addr.to_string(),
+        mcp: mcp_addr.to_string(),
     })
     .map_err(|err| Error::Io(err.into()))?;
     writeln!(out, "{line}")

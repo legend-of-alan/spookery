@@ -27,15 +27,15 @@ use crate::protocol::{
 pub enum Input {
     Event(GmEvent),
     /// The agent's input carrying the `table_status` body back, or the table's refusal.
-    StatusReply(Result<TableStatus, Refusal>),
+    TableStatusReply(Result<TableStatus, Refusal>),
     /// The agent's input carrying the `perceive` body back, or the table's refusal.
-    ViewReply(Result<protocol::View, Refusal>),
+    PerceiveReply(Result<protocol::View, Refusal>),
     /// The agent's input carrying the `say` body back, or the table's refusal.
     SayReply(Result<SayEvent, Refusal>),
     /// The agent's input carrying the `queue_intent` body back, or the table's refusal.
-    QueueReply(Result<Queued, Refusal>),
+    QueueIntentReply(Result<Queued, Refusal>),
     /// The agent's input carrying the `commit_round` body back, or the table's refusal.
-    CommitReply(Result<CommitBody, Refusal>),
+    CommitRoundReply(Result<CommitBody, Refusal>),
     /// The agent's input carrying the `Model`'s answer back: the `act` arguments, `None`
     /// when the model made no `act` call, or the call's error.
     ModelReply(Result<Option<ModelReply>, CompletionError>),
@@ -149,16 +149,16 @@ impl Agent {
             };
         }
         match (std::mem::replace(&mut self.phase, Phase::Idle), input) {
-            (Phase::InitStatus, Input::StatusReply(reply)) => {
+            (Phase::InitStatus, Input::TableStatusReply(reply)) => {
                 let mut status = reply.map_err(Error::Refused)?;
                 self.pack = status.pack.take().ok_or(Error::OlderServer)?;
                 Ok(self.finish_init(status))
             }
-            (Phase::TurnStatus, Input::StatusReply(reply)) => {
+            (Phase::TurnStatus, Input::TableStatusReply(reply)) => {
                 self.turn.status = Some(reply.map_err(Error::Refused)?);
                 Ok(self.advance_prepare())
             }
-            (Phase::Perceive(viewer), Input::ViewReply(reply)) => {
+            (Phase::Perceive(viewer), Input::PerceiveReply(reply)) => {
                 self.turn.views.insert(viewer, reply);
                 Ok(self.advance_prepare())
             }
@@ -185,8 +185,8 @@ impl Agent {
                 }
                 Ok(self.advance_actions(epilogue))
             }
-            (Phase::Intent, Input::QueueReply(_)) => Ok(self.advance_actions(false)),
-            (Phase::PreCommitStatus, Input::StatusReply(reply)) => {
+            (Phase::Intent, Input::QueueIntentReply(_)) => Ok(self.advance_actions(false)),
+            (Phase::PreCommitStatus, Input::TableStatusReply(reply)) => {
                 if reply.map_err(Error::Refused)?.queued.is_empty() {
                     Ok(self.finish_commit(false))
                 } else {
@@ -194,14 +194,14 @@ impl Agent {
                     Ok(Step::CommitRound)
                 }
             }
-            (Phase::Commit, Input::CommitReply(reply)) => match reply {
+            (Phase::Commit, Input::CommitRoundReply(reply)) => match reply {
                 Ok(commit) => {
                     self.turn.checks = commit.rolls;
                     Ok(self.finish_commit(true))
                 }
                 Err(_) => Ok(self.finish_commit(false)),
             },
-            (Phase::PostCommitStatus, Input::StatusReply(reply)) => {
+            (Phase::PostCommitStatus, Input::TableStatusReply(reply)) => {
                 if !reply.map_err(Error::Refused)?.queued.is_empty() {
                     self.wakes.push_back(Wake::Queued);
                 }
@@ -359,7 +359,7 @@ mod tests {
     const SAY: &str = r#"{"kind":"say","seq":2,"from":"player:pc","address":"table","place":null,"actor":null,"recipients":[],"text":"ok"}"#;
 
     fn status(raw: &str) -> Input {
-        Input::StatusReply(Ok(serde_json::from_str(raw).unwrap()))
+        Input::TableStatusReply(Ok(serde_json::from_str(raw).unwrap()))
     }
 
     fn feed(a: &mut Agent, input: Input) -> Step {
@@ -384,7 +384,7 @@ mod tests {
             )
             .unwrap(),
         );
-        assert_eq!(&feed(&mut a, Input::StatusReply(Ok(first))), since);
+        assert_eq!(&feed(&mut a, Input::TableStatusReply(Ok(first))), since);
         prepare(&mut a, QUEUED_STATUS);
         a
     }
@@ -394,7 +394,7 @@ mod tests {
             viewer: "pc".to_string(),
         };
         assert_eq!(feed(a, status(raw)), perceive);
-        let view = Input::ViewReply(Ok(serde_json::from_str(VIEW).unwrap()));
+        let view = Input::PerceiveReply(Ok(serde_json::from_str(VIEW).unwrap()));
         assert!(matches!(feed(a, view), Step::CallModel(r) if !r.says_only));
     }
 
@@ -406,7 +406,7 @@ mod tests {
             text: "ok".to_string(),
         });
         let said = || Input::SayReply(Ok(serde_json::from_str(SAY).unwrap()));
-        let commit = Input::CommitReply(Ok(serde_json::from_str(COMMIT).unwrap()));
+        let commit = Input::CommitRoundReply(Ok(serde_json::from_str(COMMIT).unwrap()));
 
         let mut a = sit_queued(&since);
         assert_eq!(feed_reply(&mut a, "[]"), st);

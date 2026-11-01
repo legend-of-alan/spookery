@@ -139,7 +139,7 @@ spook gm
 
 Type `help` to see the GM commands. `spook gm --raw` prints each protocol frame as one JSON line instead.
 
-Both `spook gm` and `spook ai-gm` connect to the MCP endpoint. Use `--mcp-addr 127.0.0.1:<port>` to point them somewhere else. If you started the host with `--addr 127.0.0.1:0`, the OS picks the ports and the listening line's `mcp_addr` tells you the address. Pass that to `--mcp-addr`.
+Both `spook gm` and `spook ai-gm` connect to the MCP endpoint. Use `--mcp-addr 127.0.0.1:<port>` to point them somewhere else. If you started the host with `--addr 127.0.0.1:0`, the OS picks the ports and the listening line's `mcp` tells you the address. Pass that to `--mcp-addr`.
 
 ## Privacy
 

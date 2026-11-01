@@ -456,7 +456,7 @@ fn read_addrs(stdout: &mut impl Read) -> (u16, u16, String) {
                     let port = |addr: &str| {
                         loopback_port(addr).unwrap_or_else(|| panic!("not loopback\n{line}"))
                     };
-                    return (port(&addrs.game), port(&addrs.mcp_addr), line.into());
+                    return (port(&addrs.game), port(&addrs.mcp), line.into());
                 }
             }
             Err(err) => panic!("stdout: {err}"),
@@ -787,12 +787,12 @@ fn differ(name: &str, live: &Example, documented: &Example) -> Option<String> {
 }
 
 fn scrub(value: &mut Value) {
-    let Ok(Addrs { game, mcp_addr }) = serde_json::from_value(value.clone()) else {
+    let Ok(Addrs { game, mcp }) = serde_json::from_value(value.clone()) else {
         return;
     };
     assert!(loopback_port(&game).is_some(), "{game}");
-    assert!(loopback_port(&mcp_addr).is_some(), "{mcp_addr}");
-    assert_ne!(game, mcp_addr, "game and MCP ports");
+    assert!(loopback_port(&mcp).is_some(), "{mcp}");
+    assert_ne!(game, mcp, "game and MCP ports");
     let Some(object) = value.as_object_mut() else {
         return;
     };
@@ -801,7 +801,7 @@ fn scrub(value: &mut Value) {
         Value::String(SCRUBBED_GAME_ADDR.to_string()),
     );
     object.insert(
-        "mcp_addr".to_string(),
+        "mcp".to_string(),
         Value::String(SCRUBBED_MCP_ADDR.to_string()),
     );
 }

@@ -435,7 +435,7 @@ fn find_addrs(buf: &[u8]) -> Option<(SocketAddr, SocketAddr)> {
 
 fn parse_addrs_line(line: &str) -> Option<(SocketAddr, SocketAddr)> {
     let addrs: protocol::Addrs = serde_json::from_str(line.trim()).ok()?;
-    Some((addrs.game.parse().ok()?, addrs.mcp_addr.parse().ok()?))
+    Some((addrs.game.parse().ok()?, addrs.mcp.parse().ok()?))
 }
 
 pub fn seat_rowan(world: &mut World, pack: &Path) {
