@@ -67,13 +67,24 @@ struct SayWire {
 /// `say` arguments, sent from the GM's MCP client to the table.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
-// The schema shows the tagged shape, not `SayWire`, and MCP wants an object at its root.
-#[cfg_attr(feature = "schema", schemars(!try_from, extend("type" = "object")))]
+// The schema shows the three tagged shapes, closed and with non-empty names as `SayWire`
+// checks them, and an object at its root, which MCP wants.
+#[cfg_attr(feature = "schema", schemars(!try_from, deny_unknown_fields, extend("type" = "object")))]
 #[serde(tag = "address", rename_all = "lowercase", try_from = "SayWire")]
 pub enum SayArgs {
-    Table { text: String },
-    Place { place: String, text: String },
-    Actor { actor: String, text: String },
+    Table {
+        text: String,
+    },
+    Place {
+        #[cfg_attr(feature = "schema", schemars(length(min = 1)))]
+        place: String,
+        text: String,
+    },
+    Actor {
+        #[cfg_attr(feature = "schema", schemars(length(min = 1)))]
+        actor: String,
+        text: String,
+    },
 }
 
 impl SayArgs {
