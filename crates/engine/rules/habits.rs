@@ -1,72 +1,45 @@
 //! Which habits an NPC may run this round.
 
 use crate::canon::Canon;
-use crate::intent::{engine_intent_id, Intent, Source, Target, Viewer};
-use crate::model::{Presence, State};
-use crate::rule::When;
-use crate::rules::cond;
-use crate::rules::expand::{expand_intent, stamp, PreviewDice};
-use crate::rules::expr::Ctx;
+use crate::intent::{Intent, Target, Viewer};
+use crate::model::{ActorLive, Presence, State};
+use crate::rules::case::Case;
+use crate::rules::expand::PreviewDice;
 use crate::rules::gate;
+use crate::travel;
 
-pub(crate) fn habit_intents(canon: &Canon, now: &State, presence: &Presence) -> Vec<Intent> {
-    let mut intents = Vec::new();
-    for actor_id in now.actors.keys() {
-        if !is_eligible(canon, now, presence, actor_id) {
-            continue;
-        }
-        if let Some(intent) = first_habit(canon, now, presence, actor_id) {
-            intents.push(intent);
-        }
-    }
-    intents
+/// One habit intent per NPC whose habit the gate admits, its target not yet stamped.
+pub(crate) fn intents(canon: &Canon, now: &State, presence: &Presence) -> Vec<Intent> {
+    let actors = now.actors.keys();
+    let intents = actors.filter_map(|actor_id| intent_of(canon, now, presence, actor_id));
+    intents.collect()
 }
 
-fn first_habit(canon: &Canon, now: &State, presence: &Presence, actor_id: &str) -> Option<Intent> {
-    for rule in canon.rules.habits_of(actor_id) {
-        if !matches!(rule.when, When::Habit) {
-            continue;
-        }
-        let intent = intent_for(now, actor_id, &rule.local_id);
-        let ctx = Ctx {
-            intent: &intent,
-            presence,
-        };
-        if cond::holds(canon, now, &ctx, &rule.if_).is_err() {
-            continue;
-        }
-        if gate::gate(canon, now, presence, &intent).is_err() {
-            continue;
-        }
-        match expand_intent(canon, now, presence, &intent, None, &mut PreviewDice) {
-            Ok(effects) => {
-                let mut intent = intent;
-                stamp(&mut intent, &effects);
-                return Some(intent);
-            }
-            Err(_) => continue,
-        }
-    }
-    None
+/// The first habit, in file order, that the gate admits and whose effects expand.
+fn intent_of(canon: &Canon, now: &State, presence: &Presence, actor_id: &str) -> Option<Intent> {
+    let habits = canon.rules.habits_of(actor_id);
+    habits.into_iter().find_map(|rule| {
+        let intent = Intent::habit(now, actor_id, &rule.local_id);
+        let case = Case::new(canon, now, presence, &intent);
+        let runs =
+            gate::admit(&case, rule).is_ok() && rule.expand(&case, None, &mut PreviewDice).is_ok();
+        runs.then_some(intent)
+    })
 }
 
-pub(crate) fn habits_that_hold(
+/// This NPC's habits whose `if` holds, for its view.
+pub(crate) fn list_whose_if_holds(
     canon: &Canon,
     now: &State,
     presence: &Presence,
-    actor_id: &str,
+    npc_id: &str,
 ) -> Vec<String> {
-    canon
-        .rules
-        .habits_of(actor_id)
-        .into_iter()
+    let npc = Viewer::Npc(npc_id.to_string());
+    let habits = canon.rules.habits_of(npc_id).into_iter();
+    habits
         .filter(|rule| {
-            let intent = intent_for(now, actor_id, &rule.local_id);
-            let ctx = Ctx {
-                intent: &intent,
-                presence,
-            };
-            cond::holds(canon, now, &ctx, &rule.if_).is_ok()
+            let (verb, conds) = (&rule.local_id, &rule.if_);
+            travel::if_holds(canon, now, presence, &npc, verb, Target::Empty, conds)
         })
         .map(|rule| rule.local_id.clone())
         .collect()
@@ -99,21 +72,9 @@ pub(crate) fn is_eligible(canon: &Canon, now: &State, presence: &Presence, npc_i
     }
 }
 
+/// A seated player's PC is in `place`.
 pub(crate) fn is_player_at(now: &State, presence: &Presence, place: &str) -> bool {
-    presence.actors_present.iter().any(|id| {
-        now.actors
-            .get(id)
-            .is_some_and(|actor| actor.is_pc() && actor.place() == place)
+    now.actors_at(place).iter().any(|id| {
+        presence.actors_present.contains(id) && now.actors.get(id).is_some_and(ActorLive::is_pc)
     })
-}
-
-pub(crate) fn intent_for(now: &State, actor_id: &str, local_id: &str) -> Intent {
-    Intent::new(
-        engine_intent_id(&now.world_id, now.round_index, actor_id, local_id),
-        now.round_index,
-        Viewer::Npc(actor_id.to_string()),
-        Source::Engine,
-        local_id,
-        Target::Empty,
-    )
 }

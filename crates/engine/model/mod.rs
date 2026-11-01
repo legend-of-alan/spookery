@@ -11,6 +11,10 @@ use meter::MeterLive;
 
 use crate::intent::{Target, Viewer};
 
+/// World minutes in an hour and in a day. World time is minutes from the start of day 0.
+pub(crate) const MINUTES_PER_HOUR: u64 = 60;
+pub(crate) const MINUTES_PER_DAY: u64 = 24 * MINUTES_PER_HOUR;
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct State {
@@ -50,6 +54,20 @@ impl State {
             .get(key)
             .ok_or(crate::Reason::UnknownId)?;
         meter::current(def, live)
+    }
+
+    /// The seat actor `id` acts from.
+    pub(crate) fn viewer_of(&self, id: &str) -> Option<Viewer> {
+        self.actors.get(id).map(|actor| actor.viewer(id))
+    }
+
+    /// The actors in `place`, in id order.
+    pub(crate) fn actors_at(&self, place: &str) -> Vec<String> {
+        self.actors
+            .iter()
+            .filter(|(_, actor)| actor.place() == place)
+            .map(|(id, _)| id.clone())
+            .collect()
     }
 }
 
@@ -351,7 +369,7 @@ pub struct Note {
     pub text: String,
 }
 
-pub fn sort_unique(items: &mut Vec<String>) {
+pub(crate) fn sort_unique(items: &mut Vec<String>) {
     items.sort();
     items.dedup();
 }

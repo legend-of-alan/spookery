@@ -21,7 +21,7 @@ pub use spookery_protocol::Outcome;
 /// `total` against `target`, with an optional lower band.
 /// `total >= target` is success. `partial_at <= total < target` is partial.
 /// Anything lower, and any binary roll, is a miss.
-pub fn classify(total: i64, target: i64, partial_at: Option<i64>) -> Outcome {
+pub(crate) fn classify(total: i64, target: i64, partial_at: Option<i64>) -> Outcome {
     if total >= target {
         Outcome::Success
     } else if partial_at.is_some_and(|band| total >= band) {
@@ -94,7 +94,12 @@ pub fn faces(key: &RollKey, count: u32, sides: u32) -> Result<Vec<u32>, Reason> 
 }
 
 /// Faces starting at die `start` of this key's seed. A later group in the same expression continues.
-pub fn faces_from(key: &RollKey, start: usize, count: u32, sides: u32) -> Result<Vec<u32>, Reason> {
+pub(crate) fn faces_from(
+    key: &RollKey,
+    start: usize,
+    count: u32,
+    sides: u32,
+) -> Result<Vec<u32>, Reason> {
     let seed = blake2s_256(key.preimage().as_bytes());
     let mut faces = Vec::with_capacity(count as usize);
     for n in 0..count {
@@ -104,7 +109,7 @@ pub fn faces_from(key: &RollKey, start: usize, count: u32, sides: u32) -> Result
 }
 
 /// The only roll. The viewer must be the actor. Each die reads this key's own seed.
-pub fn roll_check(input: RollInput<'_>, key: &RollKey) -> Result<Roll, Reason> {
+pub(crate) fn roll_check(input: RollInput<'_>, key: &RollKey) -> Result<Roll, Reason> {
     if input.viewer.actor_id() != input.actor_id {
         return Err(Reason::UnknownId);
     }

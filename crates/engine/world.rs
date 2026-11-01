@@ -9,10 +9,11 @@ use crate::canon::Budget;
 use crate::canon::{check_save, load_canon, pack_rev, Canon};
 use crate::diagnostic::{error, first_reason, locate_nth, schema_error, Code, Diagnostic};
 use crate::effect::{payload_json, Effect};
-use crate::intent::{player_intent_id, Intent, IntentArgs, Source, Target, Viewer};
+use crate::intent::{Intent, IntentArgs, Source, Target};
 use crate::journal::{self, Record};
 use crate::model::{ActorLive, Presence, State};
-use crate::rule::{TargetKind, When};
+use crate::rule::{Rule, TargetKind, When};
+use crate::rules::case::Case;
 use crate::rules::gate;
 use crate::store::codec::{emit_save, parse_save};
 use crate::store::tape::{append_record, last_seq, read_after, read_tail, TapeRecord};
@@ -192,8 +193,9 @@ impl<L> World<L> {
         self.state = now;
     }
 
-    /// Gate a player's move with `presence` seated, then queue it. A move refused before it
-    /// is an intent has no intent id, so its refusal's `id` is empty.
+    /// Gate a player's line with `presence` seated, then queue it. The line is an intent
+    /// from the start, so each refusal names its id. Only a save at the last round index has
+    /// no next round to name, and refuses `SCHEMA` with an empty id.
     pub fn queue_player_move(
         &mut self,
         presence: &Presence,
@@ -201,20 +203,17 @@ impl<L> World<L> {
         verb: &str,
         target: Option<&str>,
     ) -> Result<QueuedMove, gate::Refusal> {
-        let intent = self
-            .state
-            .actors
-            .get(actor_id)
-            .filter(|actor| actor.is_pc())
-            .ok_or(Reason::Schema)
-            .and_then(|actor| self.verb_target(actor, verb, target, Reason::NotInSpec))
-            .and_then(|target| self.player_intent(actor_id, verb, target))
-            .map_err(|code| gate::Refusal {
+        let token = target.filter(|token| !token.is_empty());
+        let Ok(mut intent) = Intent::player(&self.state, actor_id, verb, token) else {
+            return Err(gate::Refusal {
                 id: String::new(),
-                code,
+                code: Reason::Schema,
                 detail: None,
-            })?;
-        gate::gate(&self.canon, &self.state, presence, &intent)?;
+            });
+        };
+        let shaped = self.shape_line(&intent, token);
+        intent.target = shaped.map_err(|code| gate::Refusal::new(&intent, code))?;
+        gate::gate(&Case::new(&self.canon, &self.state, presence, &intent))?;
         let queued = QueuedMove {
             id: intent.id.clone(),
             actor_id: actor_id.to_string(),
@@ -224,62 +223,19 @@ impl<L> World<L> {
         Ok(queued)
     }
 
-    fn verb_target(
-        &self,
-        actor: &ActorLive,
-        verb: &str,
-        target: Option<&str>,
-        missing: Reason,
-    ) -> Result<Target, Reason> {
-        let token = target.filter(|t| !t.is_empty());
-        let rule = gate::verb_for(
-            &self.canon,
-            Some(actor.place()),
-            verb,
-            token,
-            actor.wielded(),
-        )
-        .ok_or(missing)?;
-        let When::Verb { target: kind, .. } = &rule.when else {
-            return Err(missing);
-        };
-        match (kind, token) {
-            (TargetKind::None, None) => Ok(Target::Empty),
-            (TargetKind::None, Some(_)) | (_, None) => Err(Reason::Schema),
-            (kind, Some(id)) => Ok(Target::new(*kind, id)),
-        }
-    }
-
-    fn player_intent(&self, actor_id: &str, verb: &str, target: Target) -> Result<Intent, Reason> {
-        let token = match &target {
-            Target::Empty => "",
-            Target::Actor(id) | Target::Item(id) | Target::Place(id) | Target::Exit(id) => {
-                id.as_str()
-            }
-            Target::Clock(_) => return Err(Reason::Schema),
-        };
-        let round_index = self
-            .state
-            .round_index
-            .checked_add(1)
-            .ok_or(Reason::Schema)?;
-        let id = player_intent_id(
-            &self.state.world_id,
-            round_index,
-            actor_id,
-            &join_move(verb, token),
-        );
-        if self.queue.iter().any(|intent| intent.id == id) {
+    /// The target a PC's line names for the rule it picks. A line already queued is `SCHEMA`.
+    fn shape_line(&self, line: &Intent, token: Option<&str>) -> Result<Target, Reason> {
+        let actor = self.state.actors.get(line.actor.actor_id());
+        if !actor.is_some_and(ActorLive::is_pc) {
             return Err(Reason::Schema);
         }
-        Ok(Intent::new(
-            id,
-            round_index,
-            Viewer::Player(actor_id.to_string()),
-            Source::Player,
-            verb,
-            target,
-        ))
+        let (actor, verb) = (&line.actor, &line.move_name);
+        let rule = gate::pick(&self.canon, &self.state, actor, line.source, verb, token)?;
+        let target = target_for(rule, token)?;
+        if self.queue.iter().any(|queued| queued.id == line.id) {
+            return Err(Reason::Schema);
+        }
+        Ok(target)
     }
 
     pub fn queue_gm_intent(
@@ -295,25 +251,11 @@ impl<L> World<L> {
             .move_name
             .filter(|m| !m.is_empty())
             .ok_or(Reason::Schema)?;
-        let actor = self.state.actors.get(&actor_id).ok_or(Reason::UnknownId)?;
-        let viewer = actor.viewer(&actor_id);
+        let viewer = self.state.viewer_of(&actor_id).ok_or(Reason::UnknownId)?;
         let token = spec.target.as_deref().filter(|t| !t.is_empty());
-        let is_npc = matches!(viewer, Viewer::Npc(_));
-        let is_habit = is_npc
-            && self
-                .canon
-                .rules
-                .habits_of(&actor_id)
-                .iter()
-                .any(|r| r.local_id == move_name);
-        let target = match (is_habit, token) {
-            (true, None) => Target::Empty,
-            (true, Some(_)) => return Err(Reason::Schema),
-            (false, _) if is_npc => {
-                self.verb_target(actor, &move_name, token, Reason::UnknownMove)?
-            }
-            (false, _) => self.verb_target(actor, &move_name, token, Reason::NotInSpec)?,
-        };
+        let (canon, now) = (&self.canon, &self.state);
+        let rule = gate::pick(canon, now, &viewer, Source::Player, &move_name, token)?;
+        let target = target_for(rule, token)?;
         let id = match spec.id {
             Some(id) if !id.is_empty() => id,
             Some(_) => return Err(Reason::Schema),
@@ -557,15 +499,8 @@ fn speech_recipients(
             ids.extend(seated.iter().cloned());
         }
         Address::Place(place) => {
-            for id in seated {
-                if now
-                    .actors
-                    .get(id)
-                    .is_some_and(|actor| actor.place() == place)
-                {
-                    ids.insert(id.clone());
-                }
-            }
+            let here = now.actors_at(place);
+            ids.extend(seated.iter().filter(|id| here.contains(id)).cloned());
         }
         Address::Actor(actor) => {
             if seated.iter().any(|id| id == actor) {
@@ -579,11 +514,18 @@ fn speech_recipients(
     ids.into_iter().collect()
 }
 
-fn join_move(verb: &str, token: &str) -> String {
-    if token.is_empty() {
-        verb.to_string()
-    } else {
-        format!("{verb} {token}")
+/// The target a typed token is for `rule`: none for a habit or a verb that takes none, else
+/// the token as the kind the verb takes. A token where none fits, or none where one is
+/// needed, is `SCHEMA`.
+fn target_for(rule: &Rule, token: Option<&str>) -> Result<Target, Reason> {
+    let kind = match &rule.when {
+        When::Verb { target, .. } => *target,
+        When::Habit | When::Change(_) => TargetKind::None,
+    };
+    match (kind, token) {
+        (TargetKind::None, None) => Ok(Target::Empty),
+        (TargetKind::None, Some(_)) | (_, None) => Err(Reason::Schema),
+        (kind, Some(id)) => Ok(Target::new(kind, id)),
     }
 }
 

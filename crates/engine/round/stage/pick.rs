@@ -4,26 +4,69 @@ use std::collections::BTreeSet;
 
 use crate::canon::Canon;
 use crate::draft::Draft;
-use crate::expand::stamp_for_priority;
+use crate::effect::EffectKind;
+use crate::expand::PreviewDice;
 use crate::intent::{Intent, Target, Viewer};
 use crate::model::{Presence, State};
-use crate::rules::habits::{habit_intents, is_player_at};
+use crate::rule::{TargetKind, When};
+use crate::rules::case::Case;
+use crate::rules::gate;
+use crate::rules::habits::{self, is_player_at};
 use crate::travel::find_exit;
 use crate::Reason;
 
 use crate::round::dice::shuffle_key;
 
-/// The queue stamped, with habits, in priority order, cut to the budget.
+/// The queue and the habits, stamped, in priority order, cut to the budget.
 pub(crate) fn run(draft: &Draft, queue: &[Intent]) -> Result<Vec<Intent>, Reason> {
-    let mut candidates = queue.to_vec();
-    for intent in &mut candidates {
-        stamp_for_priority(draft.canon(), draft.state(), draft.presence, intent);
-    }
-    candidates.extend(habit_intents(draft.canon(), draft.state(), draft.presence));
     let (canon, now, presence) = (draft.canon(), draft.state(), draft.presence);
+    let mut candidates = queue.to_vec();
+    candidates.extend(habits::intents(canon, now, presence));
+    for intent in &mut candidates {
+        stamp_target(canon, now, presence, intent);
+    }
     candidates.sort_by_cached_key(|intent| priority(canon, now, presence, intent));
     candidates.truncate(draft.budget().max_intents_applied as usize);
     check_unique_ids(candidates)
+}
+
+/// Fill an empty target from a preview of the intent's effects, a place it moves to or a
+/// clock it advances, and its note recipients, so priority sees what it touches. A verb
+/// with no target keeps it empty: a filled one would make the gate refuse `SCHEMA`.
+fn stamp_target(canon: &Canon, now: &State, presence: &Presence, intent: &mut Intent) {
+    let (actor, verb, hint) = (
+        &intent.actor,
+        &intent.move_name,
+        gate::hint_of(&intent.target),
+    );
+    let Ok(rule) = gate::pick(canon, now, actor, intent.source, verb, hint) else {
+        return;
+    };
+    let case = Case::new(canon, now, presence, intent);
+    let Ok(effects) = rule.expand(&case, None, &mut PreviewDice) else {
+        return;
+    };
+    let keeps_empty = matches!(
+        &rule.when,
+        When::Verb {
+            target: TargetKind::None,
+            ..
+        }
+    );
+    for effect in &effects {
+        if !keeps_empty && intent.target == Target::Empty {
+            match &effect.kind {
+                EffectKind::Location { to, .. } => intent.target = Target::Place(to.clone()),
+                EffectKind::Clock { clock_id, .. } => {
+                    intent.target = Target::Clock(clock_id.clone());
+                }
+                _ => {}
+            }
+        }
+        if let EffectKind::Note { to, .. } = &effect.kind {
+            intent.args.message_to = Some(to.clone());
+        }
+    }
 }
 
 fn check_unique_ids(candidates: Vec<Intent>) -> Result<Vec<Intent>, Reason> {

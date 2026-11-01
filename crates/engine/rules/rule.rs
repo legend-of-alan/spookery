@@ -20,7 +20,7 @@ pub struct Rule {
 }
 
 impl Rule {
-    pub fn watched_place<'a>(&'a self, place: &'a str) -> &'a str {
+    pub(crate) fn watched_place<'a>(&'a self, place: &'a str) -> &'a str {
         if place == "here" {
             if let Owner::Place(id) = &self.owner {
                 return id;
@@ -29,7 +29,7 @@ impl Rule {
         place
     }
 
-    pub fn top_templates(&self) -> impl Iterator<Item = &EffectTemplate> {
+    pub(crate) fn top_templates(&self) -> impl Iterator<Item = &EffectTemplate> {
         self.do_
             .iter()
             .chain(&self.success)
@@ -37,7 +37,7 @@ impl Rule {
             .chain(&self.failure)
     }
 
-    pub fn visit_templates<'a>(&'a self, mut visit: impl FnMut(&'a EffectTemplate)) {
+    pub(crate) fn visit_templates<'a>(&'a self, mut visit: impl FnMut(&'a EffectTemplate)) {
         fn walk<'a>(effects: &'a [EffectTemplate], visit: &mut impl FnMut(&'a EffectTemplate)) {
             for effect in effects {
                 visit(effect);
@@ -63,7 +63,7 @@ pub enum Owner {
 }
 
 impl Owner {
-    pub fn rank(&self) -> u8 {
+    pub(crate) fn rank(&self) -> u8 {
         match self {
             Owner::Verb => 0,
             Owner::Place(_) => 1,
@@ -73,7 +73,7 @@ impl Owner {
         }
     }
 
-    pub fn rule_id(&self, local: &str) -> String {
+    pub(crate) fn rule_id(&self, local: &str) -> String {
         match self {
             Owner::Verb => format!("verb:{local}"),
             Owner::Place(owner) => format!("place:{owner}/{local}"),
@@ -101,7 +101,7 @@ pub enum TargetKind {
 }
 
 impl TargetKind {
-    pub fn as_str(self) -> &'static str {
+    pub(crate) fn as_str(self) -> &'static str {
         match self {
             TargetKind::None => "none",
             TargetKind::Actor => "actor",
@@ -211,7 +211,7 @@ pub enum Op {
 }
 
 impl Op {
-    pub fn parse(word: &str) -> Option<Self> {
+    pub(crate) fn parse(word: &str) -> Option<Self> {
         match word {
             "<" => Some(Op::Lt),
             "<=" => Some(Op::Le),
@@ -222,7 +222,7 @@ impl Op {
         }
     }
 
-    pub fn holds(self, left: i64, right: i64) -> bool {
+    pub(crate) fn holds(self, left: i64, right: i64) -> bool {
         match self {
             Op::Lt => left < right,
             Op::Le => left <= right,
@@ -306,7 +306,7 @@ pub enum EffectTemplate {
 }
 
 impl EffectTemplate {
-    pub fn resist(&self) -> Option<&ResistSpec> {
+    pub(crate) fn resist(&self) -> Option<&ResistSpec> {
         match self {
             EffectTemplate::Meter { resist, .. }
             | EffectTemplate::Flag { resist, .. }
@@ -348,19 +348,19 @@ pub struct RuleTable {
 }
 
 impl RuleTable {
-    pub fn new(rules: Vec<Rule>) -> Self {
+    pub(crate) fn new(rules: Vec<Rule>) -> Self {
         Self { rules }
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = &Rule> {
+    pub(crate) fn iter(&self) -> impl Iterator<Item = &Rule> {
         self.rules.iter()
     }
 
-    pub fn get(&self, id: &str) -> Option<&Rule> {
+    pub(crate) fn get(&self, id: &str) -> Option<&Rule> {
         self.rules.iter().find(|rule| rule.id == id)
     }
 
-    pub fn verb(&self, name: &str) -> Option<&Rule> {
+    pub(crate) fn verb(&self, name: &str) -> Option<&Rule> {
         self.rules.iter().find(|rule| {
             matches!(&rule.owner, Owner::Verb)
                 && matches!(&rule.when, When::Verb { verb, .. } if verb == name)

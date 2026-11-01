@@ -2,15 +2,17 @@
 
 use std::collections::BTreeSet;
 
-use crate::canon::{Canon, Exit};
+use crate::canon::{Canon, Exit, PlaceDef};
 use crate::draft::Draft;
-use crate::intent::{Intent, Source, Target};
+use crate::intent::{Intent, Source, Target, Viewer};
 use crate::key::StateKey;
-use crate::model::{PendingAction, PendingKind, Presence, State};
-use crate::rule::{EffectTemplate, LocationTo, Rule, TargetKind, When};
+use crate::model::{ActorLive, PendingAction, PendingKind, Presence, State};
+use crate::model::{MINUTES_PER_DAY, MINUTES_PER_HOUR};
+use crate::rule::{Cond, EffectTemplate, LocationTo, Rule, TargetKind, When};
+use crate::rules::case::Case;
 use crate::rules::cond;
 use crate::rules::cost;
-use crate::rules::expr::{Ctx, Dice};
+use crate::rules::expr::Dice;
 use crate::rules::gate;
 use crate::visibility::can_see_fact;
 use crate::Reason;
@@ -23,49 +25,47 @@ pub(crate) fn find_exit<'a>(canon: &'a Canon, from: &str, name: &str) -> Option<
         .and_then(|place| place.exits.iter().find(|exit| exit.name == name))
 }
 
-/// The exit a `location via` effect names, if this rule travels.
-pub(crate) fn exit_name(rule: &Rule, intent: &Intent) -> Option<String> {
-    for effect in rule.top_templates() {
-        if let EffectTemplate::Location {
+/// The exit this rule travels by: the one its first `location via` that is not a teleport
+/// names. `None` when the rule does not travel.
+pub(crate) fn exit_of<'a>(case: &Case<'a>, rule: &Rule) -> Result<Option<&'a Exit>, gate::Refusal> {
+    let via = rule.top_templates().find_map(|effect| match effect {
+        EffectTemplate::Location {
             to: LocationTo::Via(via),
             teleport: false,
-        } = effect
-        {
-            if via == "target" {
-                if let Target::Exit(name) = &intent.target {
-                    return Some(name.clone());
-                }
-                return None;
-            }
-            return Some(via.clone());
-        }
+        } => Some(via),
+        _ => None,
+    });
+    match via {
+        Some(via) => exit_via(case, via).map_err(|code| gate::Refusal::new(case.intent, code)),
+        None => Ok(None),
     }
-    None
+}
+
+/// The exit `via` names from the actor's place, or `NO_EXIT`. `via: target` is the intent's
+/// exit target, and `None` when the target is not an exit; any other word is an exit name.
+pub(crate) fn exit_via<'a>(case: &Case<'a>, via: &str) -> Result<Option<&'a Exit>, Reason> {
+    let name = match (via, &case.intent.target) {
+        ("target", Target::Exit(name)) => name.as_str(),
+        ("target", _) => return Ok(None),
+        (name, _) => name,
+    };
+    let actor = case.now.actors.get(case.intent.actor.actor_id());
+    let from = actor.map(ActorLive::place).unwrap_or("");
+    find_exit(case.canon, from, name)
+        .map(Some)
+        .ok_or(Reason::NoExit)
 }
 
 /// Refuse a missing, hidden, locked, or unpaid exit. A clear exit is `Ok`.
-pub(crate) fn admit(
-    canon: &Canon,
-    now: &State,
-    presence: &Presence,
-    intent: &Intent,
-    rule: &Rule,
-) -> Result<(), gate::Refusal> {
-    let Some(token) = exit_name(rule, intent) else {
+pub(crate) fn admit(case: &Case, rule: &Rule) -> Result<(), gate::Refusal> {
+    let Some(exit) = exit_of(case, rule)? else {
         return Ok(());
     };
-    let from = now
-        .actors
-        .get(intent.actor.actor_id())
-        .map(|actor| actor.place())
-        .unwrap_or("");
-    let Some(exit) = find_exit(canon, from, &token) else {
-        return Err(gate::Refusal::new(intent, Reason::NoExit));
-    };
+    let (canon, now, intent) = (case.canon, case.now, case.intent);
     if !is_revealed(canon, now, intent.actor.actor_id(), exit) {
         return Err(gate::Refusal::new(intent, Reason::NoExit));
     }
-    if is_locked(canon, now, presence, intent.actor.actor_id(), exit) {
+    if is_locked(canon, now, case.presence, intent.actor.actor_id(), exit) {
         let text = if exit.locked_text.is_empty() {
             "The way is locked.".to_string()
         } else {
@@ -77,68 +77,63 @@ pub(crate) fn admit(
             detail: Some(text),
         });
     }
-    cost::afford(canon, now, presence, intent, &exit.cost)
+    cost::afford(case, &exit.cost)
 }
 
-pub(crate) fn is_revealed(canon: &Canon, now: &State, actor_id: &str, exit: &Exit) -> bool {
+fn is_revealed(canon: &Canon, now: &State, actor_id: &str, exit: &Exit) -> bool {
     if !exit.hidden {
         return true;
     }
     let Some(fact) = &exit.revealed_by else {
         return false;
     };
-    let Some(viewer) = now.actors.get(actor_id).map(|actor| actor.viewer(actor_id)) else {
+    let Some(viewer) = now.viewer_of(actor_id) else {
         return false;
     };
     can_see_fact(canon, now, &viewer, fact)
 }
 
-pub(crate) fn is_locked(
-    canon: &Canon,
-    now: &State,
-    presence: &Presence,
-    actor_id: &str,
-    exit: &Exit,
-) -> bool {
+fn is_locked(canon: &Canon, now: &State, presence: &Presence, actor_id: &str, exit: &Exit) -> bool {
     if exit.if_.is_empty() {
         return false;
     }
-    let Some(actor) = now.actors.get(actor_id) else {
+    let Some(viewer) = now.viewer_of(actor_id) else {
         return true;
     };
-    let intent = Intent::new(
-        String::new(),
-        now.round_index,
-        actor.viewer(actor_id),
-        Source::Player,
-        "travel",
-        Target::Exit(exit.name.clone()),
-    );
-    cond::holds(
-        canon,
-        now,
-        &Ctx {
-            intent: &intent,
-            presence,
-        },
-        &exit.if_,
-    )
-    .is_err()
+    let target = Target::Exit(exit.name.clone());
+    !if_holds(canon, now, presence, &viewer, "travel", target, &exit.if_)
 }
 
-/// Exits this actor is allowed to see. A hidden exit stays off the list.
-pub fn visible_exits(
+/// Whether `conds` hold for `viewer` doing `verb` to `target`. `help` and exit locks read an
+/// `if` this way: they have no intent, so they read it against a probe with no id.
+pub(crate) fn if_holds(
+    canon: &Canon,
+    now: &State,
+    presence: &Presence,
+    viewer: &Viewer,
+    verb: &str,
+    target: Target,
+    conds: &[Cond],
+) -> bool {
+    let probe = Intent::new(
+        String::new(),
+        now.round_index,
+        viewer.clone(),
+        Source::Player,
+        verb,
+        target,
+    );
+    cond::holds(&Case::new(canon, now, presence, &probe), conds).is_ok()
+}
+
+/// The exits of `place` this actor is allowed to see. A hidden exit stays off the list.
+pub(crate) fn exits_at(
     canon: &Canon,
     now: &State,
     presence: &Presence,
     actor_id: &str,
+    place: &PlaceDef,
 ) -> Vec<ExitView> {
-    let Some(actor) = now.actors.get(actor_id) else {
-        return Vec::new();
-    };
-    let Some(place) = canon.places.get(actor.place()) else {
-        return Vec::new();
-    };
     place
         .exits
         .iter()
@@ -153,35 +148,38 @@ pub fn visible_exits(
         .collect()
 }
 
+/// The exits of this actor's place that they are allowed to see.
+pub(crate) fn visible_exits(
+    canon: &Canon,
+    now: &State,
+    presence: &Presence,
+    actor_id: &str,
+) -> Vec<ExitView> {
+    let actor = now.actors.get(actor_id);
+    match actor.and_then(|actor| canon.places.get(actor.place())) {
+        Some(place) => exits_at(canon, now, presence, actor_id, place),
+        None => Vec::new(),
+    }
+}
+
 /// World minutes until the rule and its exit finish. Zero means it finishes now.
-pub fn span(canon: &Canon, now: &State, intent: &Intent, rule: &Rule) -> u64 {
+pub(crate) fn span(case: &Case, rule: &Rule) -> u64 {
     let mut minutes = rule.cost.as_ref().map(|cost| cost.minutes).unwrap_or(0);
-    if let Some(exit) = used_exit(canon, now, intent, rule) {
+    if let Ok(Some(exit)) = exit_of(case, rule) {
         minutes = minutes.saturating_add(exit.cost.minutes);
     }
     minutes
 }
 
-pub(crate) fn used_exit<'a>(
-    canon: &'a Canon,
-    now: &State,
-    intent: &Intent,
-    rule: &Rule,
-) -> Option<&'a Exit> {
-    let token = exit_name(rule, intent)?;
-    let from = now.actors.get(intent.actor.actor_id())?.place();
-    find_exit(canon, from, &token)
-}
-
 /// One journey whose minute has been reached. The actor is no longer busy.
-pub struct DueAction {
+pub(crate) struct DueAction {
     pub actor_id: String,
     pub until: u64,
     pub pending: PendingAction,
 }
 
 /// Clear every journey that finishes at or before `end`, earliest first.
-pub fn take_due_actions(draft: &mut Draft, end: u64) -> Result<Vec<DueAction>, Reason> {
+pub(crate) fn take_due_actions(draft: &mut Draft, end: u64) -> Result<Vec<DueAction>, Reason> {
     let mut due_keys: Vec<(u64, String)> = draft
         .state()
         .actors
@@ -222,7 +220,7 @@ pub fn take_due_actions(draft: &mut Draft, end: u64) -> Result<Vec<DueAction>, R
 }
 
 /// Pay the exit, then remember the finish minute. The move itself waits.
-pub fn begin_action(
+pub(crate) fn begin_action(
     draft: &mut Draft,
     intent: &Intent,
     rule: &Rule,
@@ -230,7 +228,8 @@ pub fn begin_action(
     minutes: u64,
     dice: &mut dyn Dice,
 ) -> Result<(), Reason> {
-    let kind = match used_exit(draft.canon(), draft.state(), intent, rule).cloned() {
+    let case = Case::new(draft.canon(), draft.state(), draft.presence, intent);
+    let kind = match exit_of(&case, rule).ok().flatten().cloned() {
         Some(exit) => {
             cost::pay(draft, intent, &exit.cost, dice)?;
             PendingKind::Arrive {
@@ -261,7 +260,7 @@ pub fn begin_action(
     Ok(())
 }
 
-pub fn map_lines(canon: &Canon, now: &State, presence: &Presence, actor_id: &str) -> String {
+pub(crate) fn map_lines(canon: &Canon, now: &State, presence: &Presence, actor_id: &str) -> String {
     let Some(actor) = now.actors.get(actor_id) else {
         return String::new();
     };
@@ -271,21 +270,21 @@ pub fn map_lines(canon: &Canon, now: &State, presence: &Presence, actor_id: &str
             continue;
         };
         lines.push(place_name(canon, place_id));
-        for exit in &place.exits {
-            if !is_revealed(canon, now, actor_id, exit) {
-                continue;
-            }
-            lines.push(format!(
-                "  {}",
-                exit_line(canon, now, presence, actor_id, exit)
-            ));
+        for view in exits_at(canon, now, presence, actor_id, place) {
+            let phrase = exit_phrase(&view.name, view.minutes, view.locked);
+            lines.push(format!("  {phrase}"));
         }
     }
     lines.join("\n")
 }
 
 /// Verbs whose `if` holds for this actor, then the visible exits, then a busy line.
-pub fn help_lines(canon: &Canon, now: &State, presence: &Presence, actor_id: &str) -> String {
+pub(crate) fn help_lines(
+    canon: &Canon,
+    now: &State,
+    presence: &Presence,
+    actor_id: &str,
+) -> String {
     let mut lines = allowed_verbs(canon, now, presence, actor_id);
     lines.extend(exit_phrases(canon, now, presence, actor_id));
     if let Some(status) = busy_line(now, actor_id) {
@@ -295,7 +294,12 @@ pub fn help_lines(canon: &Canon, now: &State, presence: &Presence, actor_id: &st
 }
 
 /// The place name, the prose this actor may read, and the visible exits.
-pub fn look_lines(canon: &Canon, now: &State, presence: &Presence, actor_id: &str) -> String {
+pub(crate) fn look_lines(
+    canon: &Canon,
+    now: &State,
+    presence: &Presence,
+    actor_id: &str,
+) -> String {
     let mut head = Vec::new();
     if let Some(actor) = now.actors.get(actor_id) {
         let name = place_name(canon, actor.place());
@@ -317,7 +321,7 @@ pub fn look_lines(canon: &Canon, now: &State, presence: &Presence, actor_id: &st
 }
 
 /// `on the stairs until 21:40` while a journey is still running.
-pub fn busy_line(now: &State, actor_id: &str) -> Option<String> {
+pub(crate) fn busy_line(now: &State, actor_id: &str) -> Option<String> {
     let actor = now.actors.get(actor_id)?;
     if !actor.is_busy(now.world_time) {
         return None;
@@ -331,7 +335,7 @@ pub fn busy_line(now: &State, actor_id: &str) -> Option<String> {
 }
 
 /// Place prose for this actor's current place.
-pub fn place_prose(canon: &Canon, now: &State, actor_id: &str) -> String {
+pub(crate) fn place_prose(canon: &Canon, now: &State, actor_id: &str) -> String {
     let Some(actor) = now.actors.get(actor_id) else {
         return String::new();
     };
@@ -348,9 +352,9 @@ pub fn place_prose(canon: &Canon, now: &State, actor_id: &str) -> String {
 }
 
 /// Minutes from midnight as `21:40`.
-pub fn time_of_day(minutes: u64) -> String {
-    let hour = (minutes / 60) % 24;
-    let minute = minutes % 60;
+fn time_of_day(minutes: u64) -> String {
+    let hour = (minutes % MINUTES_PER_DAY) / MINUTES_PER_HOUR;
+    let minute = minutes % MINUTES_PER_HOUR;
     format!("{hour:02}:{minute:02}")
 }
 
@@ -366,10 +370,13 @@ fn exit_phrases(canon: &Canon, now: &State, presence: &Presence, actor_id: &str)
     lines
 }
 
+/// A verb is listed when its `if` holds for one of the targets it could name. Busy, cost and
+/// locks are not read.
 fn allowed_verbs(canon: &Canon, now: &State, presence: &Presence, actor_id: &str) -> Vec<String> {
-    if !now.actors.contains_key(actor_id) {
+    let Some(actor) = now.actors.get(actor_id) else {
         return Vec::new();
-    }
+    };
+    let (viewer, place, wielded) = (actor.viewer(actor_id), Some(actor.place()), actor.wielded());
     let mut seen = BTreeSet::new();
     let mut names = Vec::new();
     for rule in canon.rules.player_verbs() {
@@ -379,67 +386,22 @@ fn allowed_verbs(canon: &Canon, now: &State, presence: &Presence, actor_id: &str
         if !seen.insert(verb.clone()) {
             continue;
         }
-        if is_verb_allowed(canon, now, presence, actor_id, verb, *target) {
+        let hints = target_candidates(canon, now, presence, actor_id, *target);
+        let allowed = hints.into_iter().any(|hint| {
+            let Some(rule) = gate::verb_for(canon, place, verb, hint.as_deref(), wielded) else {
+                return false;
+            };
+            let When::Verb { target: chosen, .. } = &rule.when else {
+                return false;
+            };
+            let target = Target::new(*chosen, &hint.unwrap_or_default());
+            if_holds(canon, now, presence, &viewer, verb, target, &rule.if_)
+        });
+        if allowed {
             names.push(verb.clone());
         }
     }
     names
-}
-
-fn is_verb_allowed(
-    canon: &Canon,
-    now: &State,
-    presence: &Presence,
-    actor_id: &str,
-    verb: &str,
-    target: TargetKind,
-) -> bool {
-    let Some(actor) = now.actors.get(actor_id) else {
-        return false;
-    };
-    let place = actor.place().to_string();
-    let wielded = actor.wielded().map(str::to_string);
-    let viewer = actor.viewer(actor_id);
-    for hint in target_candidates(canon, now, presence, actor_id, target) {
-        let Some(rule) = gate::verb_for(
-            canon,
-            Some(place.as_str()),
-            verb,
-            hint.as_deref(),
-            wielded.as_deref(),
-        ) else {
-            continue;
-        };
-        if rule.if_.is_empty() {
-            return true;
-        }
-        let When::Verb { target: chosen, .. } = &rule.when else {
-            continue;
-        };
-        let token = hint.unwrap_or_default();
-        let intent = Intent::new(
-            String::new(),
-            now.round_index,
-            viewer.clone(),
-            Source::Player,
-            verb,
-            Target::new(*chosen, &token),
-        );
-        if cond::holds(
-            canon,
-            now,
-            &Ctx {
-                intent: &intent,
-                presence,
-            },
-            &rule.if_,
-        )
-        .is_ok()
-        {
-            return true;
-        }
-    }
-    false
 }
 
 fn target_candidates(
@@ -461,14 +423,10 @@ fn target_candidates(
             .get(actor_id)
             .map(|actor| actor.inventory().keys().cloned().collect())
             .unwrap_or_default(),
-        TargetKind::Actor => {
-            let here = now.actors.get(actor_id).map(|actor| actor.place());
-            now.actors
-                .iter()
-                .filter(|(_, actor)| here.is_some_and(|place| actor.place() == place))
-                .map(|(id, _)| id.clone())
-                .collect()
-        }
+        TargetKind::Actor => match now.actors.get(actor_id) {
+            Some(actor) => now.actors_at(actor.place()),
+            None => Vec::new(),
+        },
     };
     if hints.is_empty() {
         vec![None]
@@ -477,18 +435,7 @@ fn target_candidates(
     }
 }
 
-fn exit_line(
-    canon: &Canon,
-    now: &State,
-    presence: &Presence,
-    actor_id: &str,
-    exit: &Exit,
-) -> String {
-    let locked = is_locked(canon, now, presence, actor_id, exit);
-    exit_phrase(&exit.name, exit.cost.minutes, locked)
-}
-
-pub fn place_name(canon: &Canon, id: &str) -> String {
+pub(crate) fn place_name(canon: &Canon, id: &str) -> String {
     canon
         .places
         .get(id)

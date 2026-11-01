@@ -2,37 +2,22 @@
 
 use crate::canon::Canon;
 use crate::effect::{Effect, EffectKind};
-use crate::intent::{Intent, Target, Viewer};
+use crate::intent::Target;
 use crate::meter::MeterWrite;
-use crate::model::{Presence, State};
-use crate::rule::{EffectTemplate, LocationTo, NarrateTo, ResistSpec, Rule, TargetKind, When, Who};
-use crate::rules::expr::{self, Ctx, Dice, Expr};
-use crate::rules::gate;
+use crate::model::State;
+use crate::rule::{EffectTemplate, LocationTo, NarrateTo, ResistSpec, Rule, Who};
+use crate::rules::case::Case;
+use crate::rules::expr::{self, Dice, Expr};
 use crate::rules::roll::Outcome;
 use crate::Reason;
 
-/// `outcome` selects `success`, `partial`, or `failure`. `None` means the rule did not roll.
-/// `do` is included either way. `dice.resist` returns the subject's band. Success shrugs the effect off.
-pub fn expand_intent(
-    canon: &Canon,
-    now: &State,
-    presence: &Presence,
-    intent: &Intent,
-    outcome: Option<Outcome>,
-    dice: &mut dyn Dice,
-) -> Result<Vec<Effect>, Reason> {
-    let rule = gate::rule_for(canon, now, intent)?;
-    rule.expand(canon, now, presence, intent, outcome, dice)
-}
-
 impl Rule {
-    /// Expand this rule's lists. Change rules are not verbs, so they pass the rule in.
-    pub fn expand(
+    /// Expand this rule's lists for the case's intent. `outcome` selects `success`, `partial`,
+    /// or `failure`; `None` means the rule did not roll. `do` is included either way.
+    /// `dice.resist` returns the subject's band. Success shrugs the effect off.
+    pub(crate) fn expand(
         &self,
-        canon: &Canon,
-        now: &State,
-        presence: &Presence,
-        intent: &Intent,
+        case: &Case,
         outcome: Option<Outcome>,
         dice: &mut dyn Dice,
     ) -> Result<Vec<Effect>, Reason> {
@@ -44,40 +29,24 @@ impl Rule {
             Some(Outcome::Miss) => selected.extend(self.failure.iter()),
             None => {}
         }
-        let ctx = Ctx { intent, presence };
-        let expand = ExpandCtx {
-            canon,
-            now,
-            ctx: &ctx,
-            viewer: &intent.actor,
-        };
         let mut effects = Vec::with_capacity(selected.len());
         let mut last_resist = None;
         for template in selected {
-            expand_template(&expand, template, &mut effects, &mut last_resist, dice)?;
+            expand_template(case, template, &mut effects, &mut last_resist, dice)?;
         }
         Ok(effects)
     }
 }
 
-struct ExpandCtx<'a> {
-    canon: &'a Canon,
-    now: &'a State,
-    ctx: &'a Ctx<'a>,
-    viewer: &'a Viewer,
-}
-
 fn expand_template(
-    expand: &ExpandCtx<'_>,
+    case: &Case,
     template: &EffectTemplate,
     effects: &mut Vec<Effect>,
     last_resist: &mut Option<Outcome>,
     dice: &mut dyn Dice,
 ) -> Result<(), Reason> {
-    let canon = expand.canon;
-    let now = expand.now;
-    let ctx = expand.ctx;
-    let viewer = expand.viewer;
+    let (canon, now, intent) = (case.canon, case.now, case.intent);
+    let viewer = &intent.actor;
     if let Some(spec) = template.resist() {
         let shrugged = match spec {
             ResistSpec::Same => match last_resist {
@@ -91,13 +60,13 @@ fn expand_template(
                 target,
                 resisted,
             } => {
-                let actor = expr::resolve_who_id(now, ctx, who)?;
-                let number = expr::eval_with_dice(canon, now, ctx, target, dice)?.value;
+                let actor = expr::resolve_who_id(case, who)?;
+                let number = expr::eval_with_dice(case, target, dice)?;
                 let band = dice.resist(canon, now, &actor, check, number)?;
                 *last_resist = Some(band);
                 if band == Outcome::Success {
                     for alt in resisted {
-                        expand_template(expand, alt, effects, last_resist, dice)?;
+                        expand_template(case, alt, effects, last_resist, dice)?;
                     }
                     return Ok(());
                 }
@@ -108,7 +77,6 @@ fn expand_template(
             return Ok(());
         }
     }
-    let intent = ctx.intent;
     match template {
         EffectTemplate::Flag {
             who, key, value, ..
@@ -116,7 +84,7 @@ fn expand_template(
             let actor_id = if matches!(who, Who::World) {
                 crate::effect::WORLD.to_string()
             } else {
-                expr::resolve_who_id(now, ctx, who)?
+                expr::resolve_who_id(case, who)?
             };
             effects.push(Effect::new(
                 viewer,
@@ -131,22 +99,8 @@ fn expand_template(
         EffectTemplate::Location { to, teleport } => {
             let place = match to {
                 LocationTo::Via(via) => {
-                    let name = if via == "target" {
-                        match &intent.target {
-                            Target::Exit(name) => name.clone(),
-                            _ => return Err(Reason::Schema),
-                        }
-                    } else {
-                        via.clone()
-                    };
-                    let from = now
-                        .actors
-                        .get(intent.actor.actor_id())
-                        .map(|actor| actor.place())
-                        .ok_or(Reason::UnknownId)?;
-                    let exit =
-                        crate::travel::find_exit(canon, from, &name).ok_or(Reason::NoExit)?;
-                    exit.to.clone()
+                    let exit = crate::travel::exit_via(case, via)?;
+                    exit.ok_or(Reason::Schema)?.to.clone()
                 }
                 LocationTo::Place(id) if *teleport => id.clone(),
                 LocationTo::Target if *teleport => match &intent.target {
@@ -155,24 +109,13 @@ fn expand_template(
                 },
                 LocationTo::Place(_) | LocationTo::Target => return Err(Reason::NotInSpec),
             };
-            effects.push(location_effect(now, intent, &place)?);
+            effects.push(location_effect(case, &place)?);
         }
         EffectTemplate::Meter {
             who, key, add, set, ..
         } => {
-            let actor_id = expr::resolve_who_id(now, ctx, who)?;
-            let write = eval_meter_write(
-                canon,
-                now,
-                &actor_id,
-                key,
-                MeterChange {
-                    ctx,
-                    add: add.as_ref(),
-                    set: set.as_ref(),
-                    dice,
-                },
-            )?;
+            let actor_id = expr::resolve_who_id(case, who)?;
+            let write = eval_meter_write(case, &actor_id, key, add.as_ref(), set.as_ref(), dice)?;
             effects.push(Effect::new(
                 viewer,
                 &intent.id,
@@ -186,8 +129,8 @@ fn expand_template(
         EffectTemplate::Item {
             who, id, add, max, ..
         } => {
-            let item_id = expr::resolve_item_id(intent, id)?;
-            let (actor_id, place) = resolve_holder(now, ctx, who)?;
+            let item_id = expr::resolve_item_id(case, id)?;
+            let (actor_id, place) = resolve_holder(case, who)?;
             effects.push(Effect::new(
                 viewer,
                 &intent.id,
@@ -201,18 +144,18 @@ fn expand_template(
             ));
         }
         EffectTemplate::Wield { who, id } => {
-            let actor_id = expr::resolve_who_id(now, ctx, who)?;
+            let actor_id = expr::resolve_who_id(case, who)?;
             effects.push(Effect::new(
                 viewer,
                 &intent.id,
                 EffectKind::Wield {
                     actor_id,
-                    id: expr::resolve_item_id(intent, id)?,
+                    id: expr::resolve_item_id(case, id)?,
                 },
             ));
         }
         EffectTemplate::Unwield { who } => {
-            let actor_id = expr::resolve_who_id(now, ctx, who)?;
+            let actor_id = expr::resolve_who_id(case, who)?;
             effects.push(Effect::new(
                 viewer,
                 &intent.id,
@@ -253,7 +196,7 @@ fn expand_template(
             to, text, fact_ids, ..
         } => {
             let to = match to {
-                NarrateTo::Here => resolve_actors_here(now, ctx)?,
+                NarrateTo::Here => now.actors_at(&expr::resolve_who_id(case, &Who::Here)?),
                 NarrateTo::Self_ => vec![intent.actor.actor_id().to_string()],
                 NarrateTo::Actors(ids) => ids.clone(),
             };
@@ -272,7 +215,7 @@ fn expand_template(
             fact_ids,
             text,
         } => {
-            let actor_id = expr::resolve_who_id(now, ctx, who)?;
+            let actor_id = expr::resolve_who_id(case, who)?;
             effects.push(Effect::new(
                 viewer,
                 &intent.id,
@@ -288,7 +231,7 @@ fn expand_template(
             if matches!(who, Who::World) {
                 return Err(Reason::Schema);
             }
-            let actor_id = expr::resolve_who_id(now, ctx, who)?;
+            let actor_id = expr::resolve_who_id(case, who)?;
             effects.push(Effect::new(
                 viewer,
                 &intent.id,
@@ -302,66 +245,38 @@ fn expand_template(
     Ok(())
 }
 
-struct MeterChange<'a> {
-    ctx: &'a Ctx<'a>,
-    add: Option<&'a Expr>,
-    set: Option<&'a Expr>,
-    dice: &'a mut dyn Dice,
-}
-
 fn eval_meter_write(
-    canon: &Canon,
-    now: &State,
+    case: &Case,
     actor_id: &str,
     key: &str,
-    change: MeterChange<'_>,
+    add: Option<&Expr>,
+    set: Option<&Expr>,
+    dice: &mut dyn Dice,
 ) -> Result<MeterWrite, Reason> {
-    if let Some(expr) = change.add {
-        let delta = expr::eval_with_dice(canon, now, change.ctx, expr, change.dice)?.value;
-        return Ok(MeterWrite::Offset(delta));
+    if let Some(expr) = add {
+        return Ok(MeterWrite::Offset(expr::eval_with_dice(case, expr, dice)?));
     }
-    let desired = expr::eval_with_dice(
-        canon,
-        now,
-        change.ctx,
-        change.set.ok_or(Reason::Schema)?,
-        change.dice,
-    )?
-    .value;
-    let current = now.meter_value(canon, actor_id, key)?;
+    let desired = expr::eval_with_dice(case, set.ok_or(Reason::Schema)?, dice)?;
+    let current = case.now.meter_value(case.canon, actor_id, key)?;
     Ok(MeterWrite::Offset(
         desired.checked_sub(current).ok_or(Reason::OutOfRange)?,
     ))
 }
 
 /// An item holder. `place:` and `here` are the place. Anyone else is an actor.
-fn resolve_holder(
-    now: &State,
-    ctx: &Ctx<'_>,
-    who: &Who,
-) -> Result<(Option<String>, Option<String>), Reason> {
+fn resolve_holder(case: &Case, who: &Who) -> Result<(Option<String>, Option<String>), Reason> {
     match who {
         Who::Place(id) => Ok((None, Some(id.clone()))),
-        Who::Here => Ok((None, Some(expr::resolve_who_id(now, ctx, &Who::Here)?))),
+        Who::Here => Ok((None, Some(expr::resolve_who_id(case, &Who::Here)?))),
         Who::World => Err(Reason::Schema),
-        other => Ok((Some(expr::resolve_who_id(now, ctx, other)?), None)),
+        other => Ok((Some(expr::resolve_who_id(case, other)?), None)),
     }
 }
 
-fn resolve_actors_here(now: &State, ctx: &Ctx<'_>) -> Result<Vec<String>, Reason> {
-    let place = expr::resolve_who_id(now, ctx, &Who::Here)?;
-    let mut ids: Vec<String> = now
-        .actors
-        .iter()
-        .filter(|(_, actor)| actor.place() == place)
-        .map(|(id, _)| id.clone())
-        .collect();
-    ids.sort();
-    Ok(ids)
-}
-
-fn location_effect(now: &State, intent: &Intent, to: &str) -> Result<Effect, Reason> {
-    let from = now
+fn location_effect(case: &Case, to: &str) -> Result<Effect, Reason> {
+    let intent = case.intent;
+    let from = case
+        .now
         .actors
         .get(intent.actor.actor_id())
         .map(|actor| actor.place().to_string())
@@ -376,32 +291,6 @@ fn location_effect(now: &State, intent: &Intent, to: &str) -> Result<Effect, Rea
         viewer: intent.actor.clone(),
         intent_id: intent.id.clone(),
     })
-}
-
-pub fn stamp_for_priority(canon: &Canon, now: &State, presence: &Presence, intent: &mut Intent) {
-    let Ok(effects) = expand_intent(canon, now, presence, intent, None, &mut PreviewDice) else {
-        return;
-    };
-    // A verb with no target must stay empty. Filling it from a location effect
-    // makes the later gate call report SCHEMA.
-    let keeps_empty = gate::rule_for(canon, now, intent).ok().is_some_and(|rule| {
-        matches!(
-            &rule.when,
-            When::Verb {
-                target: TargetKind::None,
-                ..
-            }
-        )
-    });
-    if keeps_empty {
-        for effect in &effects {
-            if let EffectKind::Note { to, .. } = &effect.kind {
-                intent.args.message_to = Some(to.clone());
-            }
-        }
-        return;
-    }
-    stamp(intent, &effects);
 }
 
 /// Faces of 1, and no journal line. Gather only needs the effect shape.
@@ -427,24 +316,5 @@ impl Dice for PreviewDice {
         _: i64,
     ) -> Result<Outcome, Reason> {
         Ok(Outcome::Miss)
-    }
-}
-
-pub(crate) fn stamp(intent: &mut Intent, effects: &[Effect]) {
-    for effect in effects {
-        if intent.target == Target::Empty {
-            match &effect.kind {
-                EffectKind::Location { to, .. } => {
-                    intent.target = Target::Place(to.clone());
-                }
-                EffectKind::Clock { clock_id, .. } => {
-                    intent.target = Target::Clock(clock_id.clone());
-                }
-                _ => {}
-            }
-        }
-        if let EffectKind::Note { to, .. } = &effect.kind {
-            intent.args.message_to = Some(to.clone());
-        }
     }
 }

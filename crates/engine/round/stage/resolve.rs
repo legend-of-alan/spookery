@@ -2,6 +2,7 @@
 
 use std::collections::BTreeMap;
 
+use crate::rules::case::Case;
 use crate::rules::gate;
 use crate::rules::roll::classify;
 
@@ -72,13 +73,13 @@ pub(crate) fn run(
 }
 
 fn gate_and_roll(rolls: &mut Resolver<'_>, intent: &Intent) -> Result<Resolution, Reason> {
-    let (canon, snapshot) = (rolls.canon, rolls.snapshot);
-    let rule = match gate::gate(canon, snapshot, rolls.presence, intent) {
+    let case = Case::new(rolls.canon, rolls.snapshot, rolls.presence, intent);
+    let rule = match gate::gate(&case) {
         Ok(rule) => rule,
         Err(refusal) => return Ok(Resolution::Refused(refusal)),
     };
     match &rule.roll {
-        Some(roll) if crate::travel::span(canon, snapshot, intent, rule) == 0 => {
+        Some(roll) if crate::travel::span(&case, rule) == 0 => {
             rolls.log.extra_steps.push(Step::CheckRolled);
             roll_intent_check(rolls, intent, rule, roll)
         }
@@ -100,13 +101,13 @@ fn roll_intent_check(
         Ok(total) => total,
         Err(code) => return Ok(Resolution::CannotRoll(code)),
     };
-    let (canon, snapshot, presence) = (rolls.canon, rolls.snapshot, rolls.presence);
+    let (canon, snapshot) = (rolls.canon, rolls.snapshot);
     let (target, partial_at) = match opposed {
         Some(total) => (total, None),
         None => rolls
             .dice
             .roller(rolls.log, &rule.id, actor_id)
-            .eval_thresholds(canon, snapshot, presence, intent, roll)?,
+            .eval_thresholds(&Case::new(canon, snapshot, rolls.presence, intent), roll)?,
     };
     let rule_id = rule.id.clone();
     if let Some(out) = rolls.rolled.get(&intent.id) {
@@ -144,7 +145,7 @@ fn roll_opposing_total(rolls: &mut Resolver<'_>, intent: &Intent) -> Result<Opti
         {
             return None;
         }
-        let rule = gate::gate(canon, snapshot, presence, other).ok()?;
+        let rule = gate::gate(&Case::new(canon, snapshot, presence, other)).ok()?;
         Some((other, &rule.id, &rule.roll.as_ref()?.check))
     }) else {
         return Ok(None);

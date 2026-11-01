@@ -1,20 +1,14 @@
 //! Dice and arithmetic inside a rule number.
 
 use crate::canon::Canon;
-use crate::intent::{Intent, Target};
-use crate::model::{Presence, State};
+use crate::model::State;
 use crate::rule::{LineColumn, Who};
+use crate::rules::case::Case;
 use crate::rules::roll::Outcome;
 use crate::Reason;
 
-pub struct Ctx<'a> {
-    pub intent: &'a Intent,
-    /// Who is seated, for the `players:` condition and NPC habits.
-    pub presence: &'a Presence,
-}
-
 /// Faces for one expression. `begin` starts a new roll seed. `note` records the shown line.
-pub trait Dice {
+pub(crate) trait Dice {
     fn begin(&mut self);
     fn draw(&mut self, count: u32, sides: u32) -> Result<Vec<u32>, Reason>;
     fn log(&mut self, text: String);
@@ -30,7 +24,7 @@ pub trait Dice {
 }
 
 /// No dice. A rule that rolls here is refused.
-pub struct NoDice;
+struct NoDice;
 
 impl Dice for NoDice {
     fn begin(&mut self) {}
@@ -53,28 +47,18 @@ impl Dice for NoDice {
     }
 }
 
-pub struct EvalOutput {
-    pub value: i64,
-}
-
-pub fn eval(canon: &Canon, now: &State, ctx: &Ctx<'_>, expr: &Expr) -> Result<i64, Reason> {
-    Ok(eval_with_dice(canon, now, ctx, expr, &mut NoDice)?.value)
+pub(crate) fn eval(case: &Case, expr: &Expr) -> Result<i64, Reason> {
+    eval_with_dice(case, expr, &mut NoDice)
 }
 
 /// Evaluate `expr`, drawing dice from `dice` and noting a line when any fall.
-pub fn eval_with_dice(
-    canon: &Canon,
-    now: &State,
-    ctx: &Ctx<'_>,
-    expr: &Expr,
-    dice: &mut dyn Dice,
-) -> Result<EvalOutput, Reason> {
+pub(crate) fn eval_with_dice(case: &Case, expr: &Expr, dice: &mut dyn Dice) -> Result<i64, Reason> {
     dice.begin();
-    let step = eval_node(canon, now, ctx, expr, dice)?;
+    let step = eval_node(case, expr, dice)?;
     if !step.dice.is_empty() {
         dice.log(format!("{} = {}", step.dice.join("; "), step.text));
     }
-    Ok(EvalOutput { value: step.value })
+    Ok(step.value)
 }
 
 struct EvalStep {
@@ -83,13 +67,7 @@ struct EvalStep {
     dice: Vec<String>,
 }
 
-fn eval_node(
-    canon: &Canon,
-    now: &State,
-    ctx: &Ctx<'_>,
-    expr: &Expr,
-    dice: &mut dyn Dice,
-) -> Result<EvalStep, Reason> {
+fn eval_node(case: &Case, expr: &Expr, dice: &mut dyn Dice) -> Result<EvalStep, Reason> {
     match expr {
         Expr::Num(n) => Ok(EvalStep {
             value: *n,
@@ -115,7 +93,7 @@ fn eval_node(
             })
         }
         Expr::Meter { who, key, .. } => {
-            let value = read_meter(canon, now, ctx, who, key)?;
+            let value = read_meter(case, who, key)?;
             Ok(EvalStep {
                 value,
                 text: value.to_string(),
@@ -123,7 +101,7 @@ fn eval_node(
             })
         }
         Expr::Neg(inner) => {
-            let inner = eval_node(canon, now, ctx, inner, dice)?;
+            let inner = eval_node(case, inner, dice)?;
             let value = inner.value.checked_neg().ok_or(Reason::OutOfRange)?;
             Ok(EvalStep {
                 value,
@@ -132,8 +110,8 @@ fn eval_node(
             })
         }
         Expr::Binary { op, left, right } => {
-            let left = eval_node(canon, now, ctx, left, dice)?;
-            let right = eval_node(canon, now, ctx, right, dice)?;
+            let left = eval_node(case, left, dice)?;
+            let right = eval_node(case, right, dice)?;
             let value = op.eval(left.value, right.value)?;
             let mut rolled = left.dice;
             rolled.extend(right.dice);
@@ -144,8 +122,8 @@ fn eval_node(
             })
         }
         Expr::Call { fun, left, right } => {
-            let left = eval_node(canon, now, ctx, left, dice)?;
-            let right = eval_node(canon, now, ctx, right, dice)?;
+            let left = eval_node(case, left, dice)?;
+            let right = eval_node(case, right, dice)?;
             let value = match fun {
                 Func::Min => left.value.min(right.value),
                 Func::Max => left.value.max(right.value),
@@ -203,43 +181,37 @@ fn negate_body(body: &str) -> String {
     }
 }
 
-fn read_meter(
-    canon: &Canon,
-    now: &State,
-    ctx: &Ctx<'_>,
-    who: &Who,
-    key: &str,
-) -> Result<i64, Reason> {
-    let actor_id = resolve_who_id(now, ctx, who)?;
-    now.meter_value(canon, &actor_id, key)
+fn read_meter(case: &Case, who: &Who, key: &str) -> Result<i64, Reason> {
+    let actor_id = resolve_who_id(case, who)?;
+    case.now.meter_value(case.canon, &actor_id, key)
 }
 
 /// `id: target` is the intent's target token. Any other id is itself.
-pub(crate) fn resolve_item_id(intent: &Intent, id: &str) -> Result<String, Reason> {
+pub(crate) fn resolve_item_id(case: &Case, id: &str) -> Result<String, Reason> {
     if id == "target" {
-        return match &intent.target {
-            Target::Actor(token)
-            | Target::Item(token)
-            | Target::Place(token)
-            | Target::Exit(token) => Ok(token.clone()),
-            _ => Err(Reason::Schema),
-        };
+        return case
+            .intent
+            .target
+            .token()
+            .map(str::to_string)
+            .ok_or(Reason::Schema);
     }
     Ok(id.to_string())
 }
 
-pub(crate) fn resolve_who_id(now: &State, ctx: &Ctx<'_>, who: &Who) -> Result<String, Reason> {
+pub(crate) fn resolve_who_id(case: &Case, who: &Who) -> Result<String, Reason> {
     match who {
-        Who::Self_ => Ok(ctx.intent.actor.actor_id().to_string()),
-        Who::Target => match &ctx.intent.target {
-            Target::Actor(id) | Target::Item(id) | Target::Place(id) | Target::Exit(id) => {
-                Ok(id.clone())
-            }
-            _ => Err(Reason::Schema),
-        },
-        Who::Here => now
+        Who::Self_ => Ok(case.intent.actor.actor_id().to_string()),
+        Who::Target => case
+            .intent
+            .target
+            .token()
+            .map(str::to_string)
+            .ok_or(Reason::Schema),
+        Who::Here => case
+            .now
             .actors
-            .get(ctx.intent.actor.actor_id())
+            .get(case.intent.actor.actor_id())
             .map(|actor| actor.place().to_string())
             .ok_or(Reason::UnknownId),
         Who::Actor(id) => Ok(id.clone()),
@@ -650,12 +622,13 @@ impl<'a> Parser<'a> {
 mod tests {
     use std::collections::BTreeMap;
 
-    use super::{eval_with_dice, BinOp, Ctx, Dice, Expr, Func, Keep};
+    use super::{eval_with_dice, BinOp, Dice, Expr, Func, Keep};
     use crate::canon::Canon;
     use crate::intent::{Intent, IntentArgs, Source, Target, Viewer};
     use crate::meter::{MeterDef, MeterLive};
     use crate::model::{Act, ActorLive, Presence, State};
     use crate::rule::Who;
+    use crate::rules::case::Case;
     use crate::Reason;
 
     static EMPTY: Presence = Presence {
@@ -695,13 +668,6 @@ mod tests {
             _: i64,
         ) -> Result<crate::rules::roll::Outcome, Reason> {
             Err(Reason::Schema)
-        }
-    }
-
-    fn ctx(intent: &Intent) -> Ctx<'_> {
-        Ctx {
-            intent,
-            presence: &EMPTY,
         }
     }
 
@@ -784,28 +750,28 @@ mod tests {
     #[test]
     fn damage_dice_show_faces_and_the_modifier() {
         let expr = Expr::parse("2d6 + self.str_mod").unwrap();
-        let intent = intent("ada", "ada");
+        let (canon, now, intent) = (canon(), now(), intent("ada", "ada"));
         let mut dice = Script {
             faces: vec![4, 5],
             at: 0,
             notes: Vec::new(),
         };
-        let evaluated = eval_with_dice(&canon(), &now(), &ctx(&intent), &expr, &mut dice).unwrap();
-        assert_eq!(evaluated.value, 12);
+        let case = Case::new(&canon, &now, &EMPTY, &intent);
+        assert_eq!(eval_with_dice(&case, &expr, &mut dice), Ok(12));
         assert_eq!(dice.notes, vec!["2d6 → 4, 5 = 9 + 3".to_string()]);
     }
 
     #[test]
     fn the_higher_face_is_kept() {
         let expr = Expr::parse("2d20kh1").unwrap();
-        let intent = intent("ada", "ada");
+        let (canon, now, intent) = (canon(), now(), intent("ada", "ada"));
         let mut dice = Script {
             faces: vec![7, 18],
             at: 0,
             notes: Vec::new(),
         };
-        let evaluated = eval_with_dice(&canon(), &now(), &ctx(&intent), &expr, &mut dice).unwrap();
-        assert_eq!(evaluated.value, 18);
+        let case = Case::new(&canon, &now, &EMPTY, &intent);
+        assert_eq!(eval_with_dice(&case, &expr, &mut dice), Ok(18));
         assert!(matches!(
             expr,
             Expr::Dice {
@@ -818,12 +784,10 @@ mod tests {
     #[test]
     fn overflow_is_an_error() {
         let expr = Expr::parse("9223372036854775807 + 1").unwrap();
-        let intent = intent("ada", "ada");
-        let err = eval_with_dice(&canon(), &now(), &ctx(&intent), &expr, &mut super::NoDice);
-        assert_eq!(
-            err.map(|evaluated| evaluated.value),
-            Err(Reason::OutOfRange)
-        );
+        let (canon, now, intent) = (canon(), now(), intent("ada", "ada"));
+        let case = Case::new(&canon, &now, &EMPTY, &intent);
+        let err = eval_with_dice(&case, &expr, &mut super::NoDice);
+        assert_eq!(err, Err(Reason::OutOfRange));
     }
 
     #[test]
