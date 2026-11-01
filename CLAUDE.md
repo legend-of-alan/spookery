@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-Spookery is a Rust workspace that hosts a "pack" (a folder of YAML rules and Markdown pages) as a living world for up to three players and one GM seat. The GM may be a human or a model, but only the engine changes the world: dice are seeded, every commit is journaled, and `spook verify` replays the journal to prove the save. Read `docs/README.md` for the glossary (pack, seat, canon, tick, round, intent, effect) before naming things.
+Spookery is a Rust workspace that hosts a "pack" (a folder of YAML rules and Markdown pages) as a living world for up to three players and one GM seat. The GM may be a human or a model, but only the engine changes the world: dice are seeded, every commit is journaled, and `spook verify` replays the journal to prove the save. Read `docs/README.md` for the glossary (pack, seat, canon, tick, round, intent, effect) before naming things, and follow the Naming rules in `CONTRIBUTING.md`.
 
 ## Commands
 
