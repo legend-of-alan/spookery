@@ -61,15 +61,20 @@ Feature: Rules live with their owner
 
   Scenario: A cast member's rule is at hand while they share the room
     Given briar's cast file holds a verb "ask" that targets an actor and sets the world flag passage
-    When lark, in the yard with briar, plays ask
-    Then cast:npc_briar/ask runs with briar as its target, passage is set, and ask npc_briar picks the same rule
+    When lark, in the yard with briar, plays ask npc_briar
+    Then cast:npc_briar/ask runs with briar as its target and passage is set
 
-  Scenario: A cast member's rule does not run on someone else
+  Scenario: A cast member's rule needs its owner named
+    Given briar's cast file holds a verb "ask" that targets an actor and sets the world flag passage
+    When lark, in the yard with briar, plays ask
+    Then the move is refused NOT_IN_SPEC before the round and the save is unchanged
+
+  Scenario: A cast member's rule refuses a target other than its owner
     Given briar's cast file holds a verb "ask" that targets an actor and sets the world flag passage
     When lark, in the yard with briar, plays ask pc_lark
     Then the move is refused NOT_IN_SPEC before the round and the save is unchanged
 
   Scenario: A cast member's rule leaves with them
     Given briar's cast file holds a verb "ask" that targets an actor, and the save puts briar in the lane
-    When lark, alone in the yard, plays ask
+    When lark, alone in the yard, plays ask npc_briar
     Then the move is refused NOT_IN_SPEC before the round and the save is unchanged

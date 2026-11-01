@@ -871,67 +871,17 @@ fn briar_holds_ask_in_the_lane(world: &mut World) {
     world.pack = Some(pack);
 }
 
-#[when(expr = "lark, in the yard with briar, plays ask")]
-fn lark_in_the_yard_plays_ask(world: &mut World) {
-    let pack = world.pack.clone().unwrap();
-    let now = state_of(&pack);
+#[when(regex = r"^lark, in the yard with briar, plays (.+)$")]
+fn lark_in_the_yard_plays(world: &mut World, line: String) {
+    let now = state_of(world.pack.as_ref().unwrap());
     for actor in ["pc_lark", "npc_briar"] {
-        assert_eq!(
-            now.actors.get(actor).unwrap().place(),
-            "gate_yard",
-            "{actor}"
-        );
+        assert_eq!(now.actors.get(actor).unwrap().place(), "gate_yard");
     }
-    let lark = seated_lark();
-    let mut opened = open(&pack);
-    let mut runs = Vec::new();
-    for (index, target) in [None, Some("npc_briar")].into_iter().enumerate() {
-        opened
-            .queue_player_move(&lark, "pc_lark", "ask", target)
-            .unwrap_or_else(|err| panic!("ask {target:?}: {}", err.code.as_str()));
-        let wall = opened.state().last_round_at.clone();
-        opened
-            .play(&lark, &wall)
-            .unwrap_or_else(|err| panic!("ask {target:?}: {err}"));
-        let round = read_round(&pack, &format!("round-{:04}", index + 1));
-        let rules: Vec<&str> = round["extra_steps"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .filter_map(|step| step["rule"].as_str())
-            .collect();
-        runs.push(format!(
-            "{} {}",
-            round["intents"][0]["target"],
-            rules.join(" ")
-        ));
-    }
-    world.scratch = runs.join("\n");
+    play_larks_line(world, &line);
 }
 
-#[then(
-    expr = "cast:npc_briar\\/ask runs with briar as its target, passage is set, and ask npc_briar picks the same rule"
-)]
-fn briars_ask_runs_on_briar(world: &mut World) {
-    let run = r#"{"actor":"npc_briar"} cast:npc_briar/ask"#;
-    assert_eq!(world.scratch, format!("{run}\n{run}"));
-    let now = state_of(world.pack.as_ref().unwrap());
-    assert!(
-        now.flags.iter().any(|flag| flag == "passage"),
-        "{:?}",
-        now.flags
-    );
-}
-
-#[when(expr = "lark, in the yard with briar, plays ask pc_lark")]
-fn lark_in_the_yard_asks_herself(world: &mut World) {
-    let now = state_of(world.pack.as_ref().unwrap());
-    assert_eq!(now.actors.get("npc_briar").unwrap().place(), "gate_yard");
-    queue_larks_ask(world, Some("pc_lark"));
-}
-
-#[when(expr = "lark, alone in the yard, plays ask")]
-fn lark_alone_plays_ask(world: &mut World) {
+#[when(regex = r"^lark, alone in the yard, plays (.+)$")]
+fn lark_alone_plays(world: &mut World, line: String) {
     let now = state_of(world.pack.as_ref().unwrap());
     let yard = now
         .actors
@@ -941,7 +891,18 @@ fn lark_alone_plays_ask(world: &mut World) {
         yard.map(|(id, _)| id.as_str()).collect::<Vec<_>>(),
         ["pc_lark"]
     );
-    queue_larks_ask(world, None);
+    play_larks_line(world, &line);
+}
+
+#[then(expr = "cast:npc_briar\\/ask runs with briar as its target and passage is set")]
+fn briars_ask_runs_on_briar(world: &mut World) {
+    assert_eq!(world.scratch, r#"{"actor":"npc_briar"} cast:npc_briar/ask"#);
+    let now = state_of(world.pack.as_ref().unwrap());
+    assert!(
+        now.flags.iter().any(|flag| flag == "passage"),
+        "{:?}",
+        now.flags
+    );
 }
 
 #[then(expr = "the move is refused NOT_IN_SPEC before the round and the save is unchanged")]
@@ -955,15 +916,30 @@ fn ask_is_refused_before_the_round(world: &mut World) {
     );
 }
 
-/// Queue Lark's `ask` with her seated, keeping the pack's bytes from before.
-fn queue_larks_ask(world: &mut World, target: Option<&str>) {
+/// Lark plays `line` seated, keeping the pack's bytes from before. A queued line plays its
+/// round, and the scratch holds that round's target and rule steps, else the refusal code.
+fn play_larks_line(world: &mut World, line: &str) {
     let pack = world.pack.clone().unwrap();
     world.before = table::read_files(&pack);
-    let mut opened = open(&pack);
-    world.scratch = match opened.queue_player_move(&seated_lark(), "pc_lark", "ask", target) {
-        Err(refusal) => refusal.code.as_str().to_string(),
-        Ok(queued) => format!("queued {}", queued.id),
-    };
+    let (verb, target) = line
+        .split_once(' ')
+        .map_or((line, None), |(v, t)| (v, Some(t)));
+    let (lark, mut opened) = (seated_lark(), open(&pack));
+    if let Err(refusal) = opened.queue_player_move(&lark, "pc_lark", verb, target) {
+        world.scratch = refusal.code.as_str().to_string();
+        return;
+    }
+    let wall = opened.state().last_round_at.clone();
+    opened
+        .play(&lark, &wall)
+        .unwrap_or_else(|err| panic!("{line}: {err}"));
+    let round = read_round(&pack, "round-0001");
+    let steps = round["extra_steps"].as_array().unwrap();
+    let rules: Vec<&str> = steps
+        .iter()
+        .filter_map(|step| step["rule"].as_str())
+        .collect();
+    world.scratch = format!("{} {}", round["intents"][0]["target"], rules.join(" "));
 }
 
 fn seated_lark() -> Presence {
