@@ -61,7 +61,7 @@ Feature: The host sits the GM seat
   Scenario: Play, host, and a stub share one speech turn and one travel turn
     When play and the AI GM and a stub run a speech turn and a travel turn
 
-  Scenario: The host dials an overridden agent door
+  Scenario: The host dials an overridden MCP address
     Given a docks table
-    When the AI GM is pointed at an overridden agent door
+    When the AI GM is pointed at an overridden MCP address
     Then the AI GM dialed that address

@@ -1,4 +1,4 @@
-//! The Spookery table server: bind the game port and the agent door, then run the table.
+//! The Spookery table server: bind the game port and the MCP endpoint, then run the table.
 
 mod frames;
 mod idle;
@@ -38,7 +38,7 @@ impl std::fmt::Display for Error {
 
 pub struct Config {
     pub addr: SocketAddr,
-    pub door: Option<SocketAddr>,
+    pub mcp_addr: Option<SocketAddr>,
     pub hello_timeout: Duration,
     pub out: Box<dyn Write + Send>,
     pub err: Box<dyn Write + Send>,
@@ -48,7 +48,7 @@ impl Config {
     pub fn new(addr: SocketAddr) -> Self {
         Self {
             addr,
-            door: None,
+            mcp_addr: None,
             hello_timeout: limits::HELLO_TIMEOUT,
             out: Box::new(io::sink()),
             err: Box::new(io::sink()),
@@ -65,10 +65,10 @@ pub async fn serve(
     shutdown: impl Future<Output = ()>,
 ) -> Result<(), Error> {
     let listener = bind(config.addr).await?;
-    let http_listener = bind(door_addr(config.addr, config.door)?).await?;
+    let mcp_listener = bind(mcp_bind_addr(config.addr, config.mcp_addr)?).await?;
     let game = listener.local_addr().map_err(Error::Io)?;
-    let door = http_listener.local_addr().map_err(Error::Io)?;
-    print_addrs(&mut *config.out, game, door)?;
+    let mcp_addr = mcp_listener.local_addr().map_err(Error::Io)?;
+    print_addrs(&mut *config.out, game, mcp_addr)?;
     let idle_rounds = world.budget().idle_rounds;
     let (tx, rx) = std::sync::mpsc::channel();
     let mut tasks = tokio::task::JoinSet::new();
@@ -79,7 +79,7 @@ pub async fn serve(
         Arc::clone(&next_conn),
         config.hello_timeout,
     ));
-    tasks.spawn(mcp::serve(http_listener, tx.clone(), next_conn));
+    tasks.spawn(mcp::serve(mcp_listener, tx.clone(), next_conn));
     let (restart_tx, restart_rx) = tokio::sync::watch::channel(0u64);
     if idle_rounds {
         tasks.spawn(idle::run(
@@ -106,22 +106,22 @@ async fn bind(addr: SocketAddr) -> Result<tokio::net::TcpListener, Error> {
     tokio::net::TcpListener::bind(addr).await.map_err(Error::Io)
 }
 
-/// The agent door to bind. A fixed game port keeps the next port. Port 0, on
-/// the game address or on `--door`, asks the OS for a port of its own.
-fn door_addr(game: SocketAddr, door: Option<SocketAddr>) -> Result<SocketAddr, Error> {
-    if let Some(door) = door {
-        return Ok(door);
+/// The MCP address to bind. A fixed game port keeps the next port. Port 0, on
+/// the game address or on `--mcp-addr`, asks the OS for a port of its own.
+fn mcp_bind_addr(game: SocketAddr, mcp_addr: Option<SocketAddr>) -> Result<SocketAddr, Error> {
+    if let Some(mcp_addr) = mcp_addr {
+        return Ok(mcp_addr);
     }
     if game.port() == 0 {
         return Ok(SocketAddr::new(game.ip(), 0));
     }
-    protocol::default_door(game).ok_or(Error::Reason(Reason::NotInSpec))
+    protocol::default_mcp_addr(game).ok_or(Error::Reason(Reason::NotInSpec))
 }
 
-fn print_addrs(out: &mut dyn Write, game: SocketAddr, door: SocketAddr) -> Result<(), Error> {
+fn print_addrs(out: &mut dyn Write, game: SocketAddr, mcp_addr: SocketAddr) -> Result<(), Error> {
     let line = serde_json::to_string(&protocol::Addrs {
         game: game.to_string(),
-        door: door.to_string(),
+        mcp_addr: mcp_addr.to_string(),
     })
     .map_err(|err| Error::Io(err.into()))?;
     writeln!(out, "{line}")
@@ -133,7 +133,7 @@ fn print_addrs(out: &mut dyn Write, game: SocketAddr, door: SocketAddr) -> Resul
 mod tests {
     use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
-    use super::door_addr;
+    use super::mcp_bind_addr;
 
     fn addr(port: u16) -> SocketAddr {
         SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), port)
@@ -141,22 +141,22 @@ mod tests {
 
     #[test]
     fn a_fixed_game_port_uses_the_next_port() {
-        assert_eq!(door_addr(addr(9737), None).ok(), Some(addr(9738)));
+        assert_eq!(mcp_bind_addr(addr(9737), None).ok(), Some(addr(9738)));
     }
 
     #[test]
-    fn port_zero_asks_for_a_door_of_its_own() {
-        assert_eq!(door_addr(addr(0), None).ok(), Some(addr(0)));
+    fn port_zero_asks_for_an_mcp_port_of_its_own() {
+        assert_eq!(mcp_bind_addr(addr(0), None).ok(), Some(addr(0)));
     }
 
     #[test]
-    fn an_explicit_door_wins() {
-        assert_eq!(door_addr(addr(0), Some(addr(9))).ok(), Some(addr(9)));
-        assert_eq!(door_addr(addr(9737), Some(addr(0))).ok(), Some(addr(0)));
+    fn an_explicit_mcp_addr_wins() {
+        assert_eq!(mcp_bind_addr(addr(0), Some(addr(9))).ok(), Some(addr(9)));
+        assert_eq!(mcp_bind_addr(addr(9737), Some(addr(0))).ok(), Some(addr(0)));
     }
 
     #[test]
     fn the_last_port_has_no_next_port() {
-        assert!(door_addr(addr(65535), None).is_err());
+        assert!(mcp_bind_addr(addr(65535), None).is_err());
     }
 }

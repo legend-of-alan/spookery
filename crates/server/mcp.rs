@@ -1,4 +1,4 @@
-//! The agent door: the GM seat over MCP streamable HTTP.
+//! The MCP endpoint: the GM seat over MCP streamable HTTP.
 
 use std::collections::HashMap;
 use std::pin::Pin;
@@ -56,7 +56,7 @@ fn http_config() -> StreamableHttpServerConfig {
     let mut config = StreamableHttpServerConfig::default()
         .with_allowed_hosts(["127.0.0.1"])
         .with_allowed_origins(["http://127.0.0.1:*"]);
-    // HTTP POST bodies on the agent door stop at this cap.
+    // HTTP POST bodies on the MCP endpoint stop at this cap.
     config.max_request_body_bytes = GM_BODY_CAP;
     config
 }
@@ -476,7 +476,7 @@ mod tests {
             .unwrap_or_else(|| panic!("no protocol version\n{body}"))
     }
 
-    async fn bind_door() -> (
+    async fn bind_mcp() -> (
         u16,
         tokio::sync::mpsc::UnboundedReceiver<()>,
         mpsc::Sender<()>,
@@ -520,7 +520,7 @@ mod tests {
     // the seat, so the next GM sits at once (issue #313).
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn a_gm_that_hangs_up_frees_the_seat() {
-        let (port, mut fault_seen, let_go) = bind_door().await;
+        let (port, mut fault_seen, let_go) = bind_mcp().await;
         let (session, version) = sit(port).await;
         let events = open_event_stream(port, &session, &version).await;
 
@@ -545,7 +545,7 @@ mod tests {
     // past rmcp's old 300 s idle window (issue #313).
     #[tokio::test]
     async fn a_quiet_gm_keeps_the_seat() {
-        let (port, mut fault_seen, _let_go) = bind_door().await;
+        let (port, mut fault_seen, _let_go) = bind_mcp().await;
         let (session, version) = sit(port).await;
         let _events = open_event_stream(port, &session, &version).await;
 
@@ -567,7 +567,7 @@ mod tests {
     // DELETE answers is not told the table is full (issue #214).
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn a_gm_can_sit_again_as_soon_as_delete_answers() {
-        let (port, mut fault_seen, let_go) = bind_door().await;
+        let (port, mut fault_seen, let_go) = bind_mcp().await;
 
         let (session, body) = open(port).await;
         let session = session.unwrap_or_else(|| panic!("no session\n{body}"));

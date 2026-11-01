@@ -32,7 +32,7 @@ pub struct Host {
     pub closed_gm: Option<GmClient>,
     /// Set when `read_presence` opened a GM only to read seats.
     pub gm_probe: bool,
-    pub door_port: u16,
+    pub mcp_port: u16,
     pub gm_text: Arc<Mutex<String>>,
     pub opened_save: Vec<u8>,
     pub seated_save: Vec<u8>,
@@ -80,7 +80,7 @@ pub fn serve_in_process(world: &mut World, pack: &Path) {
     drop(support::drain(err, Arc::clone(&stderr)));
     let loopback: SocketAddr = "127.0.0.1:0".parse().unwrap();
     let mut config = spookery_server::Config::new(loopback);
-    config.door = Some(loopback);
+    config.mcp_addr = Some(loopback);
     config.out = Box::new(out_pipe);
     config.err = Box::new(err_pipe);
     let (advance, mut advances) = tokio::sync::mpsc::unbounded_channel::<Advance>();
@@ -107,7 +107,7 @@ pub fn serve_in_process(world: &mut World, pack: &Path) {
             }
         });
     });
-    let (game, door, seen) = match read_addrs(&mut out) {
+    let (game, mcp_addr, seen) = match read_addrs(&mut out) {
         Ok(report) => report,
         Err(got) => {
             let _ = thread.join();
@@ -117,7 +117,7 @@ pub fn serve_in_process(world: &mut World, pack: &Path) {
     };
     let stdout = Arc::new(Mutex::new(seen));
     drop(support::drain(out, Arc::clone(&stdout)));
-    attach_host(world, pack, game, door).in_process = Some(InProcess {
+    attach_host(world, pack, game, mcp_addr).in_process = Some(InProcess {
         stdout,
         stderr,
         advance,
@@ -277,7 +277,7 @@ pub struct Pending {
 
 pub struct RunningTable {
     pub game: SocketAddr,
-    pub door: SocketAddr,
+    pub mcp_addr: SocketAddr,
     pub host: Process,
 }
 
@@ -285,12 +285,12 @@ pub fn listen(world: &mut World, pack: &Path) {
     let _ = run_with_flags(world, pack, &["--addr", "127.0.0.1:0"]);
 }
 
-/// `spook run` with an agent door the operating system chooses on its own.
-pub fn listen_door(world: &mut World, pack: &Path) -> u16 {
+/// `spook run` with an MCP address the operating system chooses on its own.
+pub fn listen_on_free_ports(world: &mut World, pack: &Path) -> u16 {
     run_with_flags(
         world,
         pack,
-        &["--addr", "127.0.0.1:0", "--door", "127.0.0.1:0"],
+        &["--addr", "127.0.0.1:0", "--mcp-addr", "127.0.0.1:0"],
     )
     .1
 }
@@ -298,8 +298,8 @@ pub fn listen_door(world: &mut World, pack: &Path) -> u16 {
 pub fn run_with_flags(world: &mut World, pack: &Path, flags: &[&str]) -> (u16, u16) {
     drop(world.live.take());
     let addrs = wait_addrs(spawn_table(pack, flags));
-    let ports = (addrs.game.port(), addrs.door.port());
-    attach_host(world, pack, addrs.game, addrs.door).host = Some(addrs.host);
+    let ports = (addrs.game.port(), addrs.mcp_addr.port());
+    attach_host(world, pack, addrs.game, addrs.mcp_addr).host = Some(addrs.host);
     ports
 }
 
@@ -307,8 +307,8 @@ pub fn game_addr(world: &World) -> String {
     format!("127.0.0.1:{}", live(world).game_port)
 }
 
-pub fn door_addr(world: &World) -> String {
-    format!("127.0.0.1:{}", live(world).door_port)
+pub fn mcp_addr(world: &World) -> String {
+    format!("127.0.0.1:{}", live(world).mcp_port)
 }
 
 /// The listening line `spook run` wrote, as the addresses it bound.
@@ -350,12 +350,12 @@ pub fn spawn_table(pack: &Path, flags: &[&str]) -> Pending {
 }
 
 pub fn wait_addrs(mut pending: Pending) -> RunningTable {
-    let (game, door, seen) = expect_addrs(&mut pending);
+    let (game, mcp_addr, seen) = expect_addrs(&mut pending);
     let stdout = Arc::new(Mutex::new(seen));
     drop(support::drain(pending.stdout, Arc::clone(&stdout)));
     RunningTable {
         game,
-        door,
+        mcp_addr,
         host: Process {
             child: pending.child,
             stdin: pending.stdin,
@@ -369,7 +369,7 @@ fn attach_host<'w>(
     world: &'w mut World,
     pack: &Path,
     game: SocketAddr,
-    door: SocketAddr,
+    mcp_addr: SocketAddr,
 ) -> &'w mut Host {
     let opened_now = fs::read(pack.join("state/save.yaml"))
         .unwrap_or_else(|err| panic!("read save.yaml: {err}"));
@@ -382,7 +382,7 @@ fn attach_host<'w>(
         gm: None,
         closed_gm: None,
         gm_probe: false,
-        door_port: door.port(),
+        mcp_port: mcp_addr.port(),
         gm_text: Arc::new(Mutex::new(String::new())),
         opened_save: opened_now.clone(),
         seated_save: opened_now,
@@ -418,8 +418,8 @@ fn read_addrs(stdout: &mut impl Read) -> Result<(SocketAddr, SocketAddr, String)
             Ok(0) => return Err(String::from_utf8_lossy(&got).into_owned()),
             Ok(n) => {
                 got.extend_from_slice(&buf[..n]);
-                if let Some((game, door)) = find_addrs(&got) {
-                    return Ok((game, door, String::from_utf8_lossy(&got).into_owned()));
+                if let Some((game, mcp_addr)) = find_addrs(&got) {
+                    return Ok((game, mcp_addr, String::from_utf8_lossy(&got).into_owned()));
                 }
             }
             Err(err) => panic!("read stdout: {err}"),
@@ -435,7 +435,7 @@ fn find_addrs(buf: &[u8]) -> Option<(SocketAddr, SocketAddr)> {
 
 fn parse_addrs_line(line: &str) -> Option<(SocketAddr, SocketAddr)> {
     let addrs: protocol::Addrs = serde_json::from_str(line.trim()).ok()?;
-    Some((addrs.game.parse().ok()?, addrs.door.parse().ok()?))
+    Some((addrs.game.parse().ok()?, addrs.mcp_addr.parse().ok()?))
 }
 
 pub fn seat_rowan(world: &mut World, pack: &Path) {
@@ -467,9 +467,9 @@ pub fn seat_actor(world: &mut World, pack: &Path, actor_id: &str) {
 }
 
 pub fn seat_gm(world: &mut World) {
-    let door = door_addr(world).parse().unwrap();
-    let gm =
-        support::block_on(GmClient::connect(door)).unwrap_or_else(|err| panic!("seat GM: {err}"));
+    let mcp_addr = mcp_addr(world).parse().unwrap();
+    let gm = support::block_on(GmClient::connect(mcp_addr))
+        .unwrap_or_else(|err| panic!("seat GM: {err}"));
     live_mut(world).gm = Some(gm);
 }
 
@@ -751,8 +751,8 @@ pub fn read_presence(world: &mut World) -> (u32, Vec<String>) {
 
 fn call_table_status(world: &mut World) -> Value {
     if live(world).gm.is_none() {
-        let door = door_addr(world).parse().unwrap();
-        let gm = support::block_on(GmClient::connect(door))
+        let mcp_addr = mcp_addr(world).parse().unwrap();
+        let gm = support::block_on(GmClient::connect(mcp_addr))
             .unwrap_or_else(|err| panic!("status: {err}"));
         let live = live_mut(world);
         live.gm = Some(gm);

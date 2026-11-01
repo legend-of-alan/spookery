@@ -1,4 +1,4 @@
-//! The client side of the GM seat over the agent door.
+//! The client side of the GM seat over the MCP endpoint.
 
 use std::collections::VecDeque;
 use std::net::SocketAddr;
@@ -52,10 +52,10 @@ impl ClientHandler for EventSender {
     }
 }
 
-/// The client side of the GM seat: dials the agent door, calls the six tools, hears events.
+/// The client side of the GM seat: dials the MCP endpoint, calls the six tools, hears events.
 pub struct GmClient {
     service: RunningService<RoleClient, EventSender>,
-    /// Finishes when the host closes the agent door.
+    /// Finishes when the host closes the MCP endpoint.
     watch: tokio::task::JoinHandle<()>,
     incoming: mpsc::UnboundedReceiver<Option<Result<GmEvent, Error>>>,
     buffered: VecDeque<Option<Result<GmEvent, Error>>>,
@@ -63,10 +63,10 @@ pub struct GmClient {
 }
 
 impl GmClient {
-    /// Dial `http://<door>/mcp` and finish the handshake. `door` is the agent door, not the
-    /// game port.
-    pub async fn connect(door: SocketAddr) -> Result<Self, Error> {
-        let url = format!("http://{door}/mcp");
+    /// Dial `http://<mcp_addr>/mcp` and finish the handshake. `mcp_addr` is the MCP address,
+    /// not the game port.
+    pub async fn connect(mcp_addr: SocketAddr) -> Result<Self, Error> {
+        let url = format!("http://{mcp_addr}/mcp");
         let (events, incoming) = mpsc::unbounded_channel();
         // A closed loopback seat ends the stream. The default client retries
         // that stream forever, so a dropped `spook run` never looks closed.
@@ -97,7 +97,7 @@ impl GmClient {
         // ends, so a killed `spook run` never looks closed. A plain connection
         // with a pending read sees that close the way the TCP client did.
         let watch = tokio::spawn(async move {
-            if let Ok(mut socket) = tokio::net::TcpStream::connect(door).await {
+            if let Ok(mut socket) = tokio::net::TcpStream::connect(mcp_addr).await {
                 let mut buf = [0u8; 1];
                 tokio::select! {
                     _ = tokio::io::AsyncReadExt::read(&mut socket, &mut buf) => {}
@@ -119,7 +119,7 @@ impl GmClient {
         })
     }
 
-    /// The protocol version the door answered the initialize with.
+    /// The protocol version the MCP endpoint answered the initialize with.
     pub fn protocol_version(&self) -> &str {
         &self.protocol_version
     }

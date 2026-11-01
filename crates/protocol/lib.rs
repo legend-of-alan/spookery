@@ -37,16 +37,17 @@ pub use player::{
     NoteView, PlayerFrame, View,
 };
 
-/// The game and door addresses `spook run` prints on stdout once both ports are bound.
+/// The listening line `spook run` prints on stdout once both ports are bound: the game port
+/// and the MCP address.
 #[derive(Serialize, Deserialize)]
 #[serde(tag = "kind", rename = "listening")]
 pub struct Addrs {
     pub game: String,
-    pub door: String,
+    pub mcp_addr: String,
 }
 
-/// The agent door for a fixed game port: the next port, on the same address.
-pub fn default_door(game: std::net::SocketAddr) -> Option<std::net::SocketAddr> {
+/// The MCP address for a fixed game port: the next port, on the same address.
+pub fn default_mcp_addr(game: std::net::SocketAddr) -> Option<std::net::SocketAddr> {
     let port = game.port().checked_add(1)?;
     Some(std::net::SocketAddr::new(game.ip(), port))
 }
@@ -438,8 +439,8 @@ mod tests {
     #[test]
     fn a_fixed_game_port_dials_the_next_port() {
         let game = std::net::SocketAddr::from(([127, 0, 0, 1], 9737));
-        let door = std::net::SocketAddr::from(([127, 0, 0, 1], 9738));
-        assert_eq!(default_door(game), Some(door));
+        let mcp_addr = std::net::SocketAddr::from(([127, 0, 0, 1], 9738));
+        assert_eq!(default_mcp_addr(game), Some(mcp_addr));
     }
 
     #[test]

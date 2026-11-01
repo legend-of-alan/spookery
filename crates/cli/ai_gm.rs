@@ -8,14 +8,14 @@ use spookery_agent::{Agent, Input, Model, Step};
 use crate::mcp::GmClient;
 use crate::Error;
 
-/// Sit the GM seat at `door` and play each turn through `model` until the host closes the
+/// Sit the GM seat at `mcp_addr` and play each turn through `model` until the host closes the
 /// seat. `listening`, warnings and model-call errors go to `err`, one line each.
 pub async fn run(
-    door: SocketAddr,
+    mcp_addr: SocketAddr,
     model: &mut impl Model,
     err: &mut (impl Write + Send),
 ) -> Result<(), Error> {
-    let mut client = GmClient::connect(door).await?;
+    let mut client = GmClient::connect(mcp_addr).await?;
     let result = async {
         let mut agent = Agent::new();
         let mut step = agent.start();

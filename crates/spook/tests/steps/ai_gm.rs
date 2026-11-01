@@ -23,9 +23,12 @@ use super::table;
 
 #[when(expr = "the operator runs ai-gm with an extra argument")]
 fn the_operator_runs_ai_gm_with_an_extra_argument(world: &mut World) {
-    let ([addr, door], listeners) = bind_game_and_door();
+    let ([addr, mcp_addr], listeners) = bind_game_and_mcp();
     world.listeners = listeners;
-    table::run(world, &["ai-gm", "extra", "--addr", &addr, "--door", &door]);
+    table::run(
+        world,
+        &["ai-gm", "extra", "--addr", &addr, "--mcp-addr", &mcp_addr],
+    );
 }
 
 #[when(expr = "the operator runs ai-gm with nothing listening")]
@@ -43,9 +46,9 @@ fn the_operator_runs_ai_gm_with_nothing_listening(world: &mut World) {
 
 #[when(expr = "the operator runs ai-gm without {string}")]
 fn the_operator_runs_ai_gm_without(world: &mut World, name: String) {
-    let ([addr, door], listeners) = bind_game_and_door();
+    let ([addr, mcp_addr], listeners) = bind_game_and_mcp();
     let mut command = Command::new(env!("CARGO_BIN_EXE_spook"));
-    command.args(["ai-gm", "--addr", &addr, "--door", &door]);
+    command.args(["ai-gm", "--addr", &addr, "--mcp-addr", &mcp_addr]);
     apply_model_env(&mut command, Some(&name));
     let output = command
         .output()
@@ -81,15 +84,15 @@ fn nothing_was_dialed(world: &mut World) {
     }
 }
 
-#[when(expr = "the AI GM is pointed at an overridden agent door")]
-fn ai_gm_is_pointed_at_an_overridden_agent_door(world: &mut World) {
+#[when(expr = "the AI GM is pointed at an overridden MCP address")]
+fn ai_gm_is_pointed_at_an_overridden_mcp_addr(world: &mut World) {
     let (listener, http) = free_listener();
-    // Port 1's next port is 2, which an ephemeral door is not, so ignoring
-    // `--door` and dialing the next port misses this listener.
+    // Port 1's next port is 2, which an ephemeral MCP port is not, so ignoring
+    // `--mcp-addr` and dialing the next port misses this listener.
     let addr = "127.0.0.1:1".to_string();
     let mut command = Command::new(env!("CARGO_BIN_EXE_spook"));
     command
-        .args(["ai-gm", "--addr", &addr, "--door", &http])
+        .args(["ai-gm", "--addr", &addr, "--mcp-addr", &http])
         .stdin(Stdio::null());
     apply_model_env(&mut command, None);
     let child = command
@@ -114,8 +117,9 @@ fn ai_gm_dialed_that_address(world: &mut World) {
 #[when(expr = "the GM seat says good evening and calls an unknown tool")]
 fn the_gm_seat_says(world: &mut World) {
     let mark = table::player_mark(world);
-    let door = table::door_addr(world).parse().unwrap();
-    let mut gm = support::block_on(GmClient::connect(door)).unwrap_or_else(|err| panic!("{err}"));
+    let mcp_addr = table::mcp_addr(world).parse().unwrap();
+    let mut gm =
+        support::block_on(GmClient::connect(mcp_addr)).unwrap_or_else(|err| panic!("{err}"));
     let evening = SayArgs::Table {
         text: "good evening".to_string(),
     };
@@ -174,10 +178,10 @@ fn play_and_ai_gm_and_a_stub(world: &mut World) {
     let (stub_port, seen) = start_model_stub(std::iter::repeat(Reply::Act(EMPTY_ACT)));
     table::listen(world, &pack);
     let addr = table::game_addr(world);
-    let door = table::door_addr(world);
+    let mcp_addr = table::mcp_addr(world);
     let mut host_cmd = Command::new(env!("CARGO_BIN_EXE_spook"));
     host_cmd
-        .args(["ai-gm", "--addr", &addr, "--door", &door])
+        .args(["ai-gm", "--addr", &addr, "--mcp-addr", &mcp_addr])
         .stdin(Stdio::null());
     apply_model_env(&mut host_cmd, None);
     let mut host = host_cmd
@@ -427,7 +431,7 @@ impl AiGm {
 
 /// Sits `model` as the AI GM and returns once it has written `listening`.
 fn start_ai_gm(world: &World, mut model: impl Model + Send + 'static) -> AiGm {
-    let door: SocketAddr = table::door_addr(world).parse().unwrap();
+    let mcp_addr: SocketAddr = table::mcp_addr(world).parse().unwrap();
     let (read, mut write) = std::io::pipe().unwrap_or_else(|err| panic!("pipe: {err}"));
     let err = Arc::new(Mutex::new(String::new()));
     support::drain(read, Arc::clone(&err));
@@ -441,7 +445,7 @@ fn start_ai_gm(world: &World, mut model: impl Model + Send + 'static) -> AiGm {
         let result = runtime.block_on(async {
             let (_hold, held) = std::sync::mpsc::channel::<()>();
             tokio::task::spawn_blocking(move || held.recv());
-            let run = ai_gm::run(door, &mut model, &mut write);
+            let run = ai_gm::run(mcp_addr, &mut model, &mut write);
             tokio::pin!(run);
             loop {
                 tokio::select! {
@@ -478,12 +482,12 @@ fn tape_text(pack: &Path) -> String {
     fs::read_to_string(pack.join("state/tape.jsonl")).unwrap_or_default()
 }
 
-/// The game port and the agent door, each a free port of its own. Callers
-/// pass the door with `--door`, so no step needs two adjacent ports.
-fn bind_game_and_door() -> ([String; 2], Vec<TcpListener>) {
+/// The game port and the MCP port, each a free port of its own. Callers
+/// pass the MCP address with `--mcp-addr`, so no step needs two adjacent ports.
+fn bind_game_and_mcp() -> ([String; 2], Vec<TcpListener>) {
     let (game, game_addr) = free_listener();
-    let (door, door_addr) = free_listener();
-    ([game_addr, door_addr], vec![game, door])
+    let (mcp, mcp_addr) = free_listener();
+    ([game_addr, mcp_addr], vec![game, mcp])
 }
 
 fn free_listener() -> (TcpListener, String) {

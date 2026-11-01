@@ -134,7 +134,7 @@ fn a_socket_sends_an_oversized_hello(world: &mut World) {
 fn an_http_body_over_a_mebibyte(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
     table::listen(world, &pack);
-    let http = table::live_mut(world).door_port;
+    let http = table::live_mut(world).mcp_port;
     let body = vec![b'x'; MIB + 1];
     let request = format!(
         "POST /mcp HTTP/1.1\r\nHost: 127.0.0.1:{http}\r\nContent-Type: application/json\r\nAccept: application/json, text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
@@ -158,7 +158,7 @@ fn an_http_body_over_a_mebibyte(world: &mut World) {
 
 #[then(expr = "a new GM can sit")]
 fn a_new_gm_can_sit(world: &mut World) {
-    let port = table::live_mut(world).door_port;
+    let port = table::live_mut(world).mcp_port;
     let start = Instant::now();
     loop {
         match try_sit_gm(port) {
@@ -570,8 +570,8 @@ fn read_until(stream: &mut TcpStream, needle: &str, limit: Duration) {
 }
 
 fn try_sit_gm(port: u16) -> Result<(), String> {
-    let door = std::net::SocketAddr::from(([127, 0, 0, 1], port));
-    match support::block_on(spookery::mcp::GmClient::connect(door)) {
+    let mcp_addr = std::net::SocketAddr::from(([127, 0, 0, 1], port));
+    match support::block_on(spookery::mcp::GmClient::connect(mcp_addr)) {
         Ok(gm) => {
             support::block_on(gm.close());
             Ok(())

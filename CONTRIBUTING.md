@@ -83,7 +83,7 @@ The `Live AI` workflow runs the live round test (`crates/spook/tests/integration
 
 ## Coding agent clients
 
-`spook run` serves one agent door at `/mcp` on the game port plus one. The default is `http://127.0.0.1:9738/mcp`. `--door 127.0.0.1:<port>` overrides it, and `--door 127.0.0.1:0` lets the operating system choose. `--addr 127.0.0.1:0` does the same for the game port and chooses the door on its own. The process prints the bound addresses once, as one JSON line on stdout, before it serves. Point the agent at `127.0.0.1`, not `localhost`. The endpoint checks the `Host` header, and `http://localhost:9738/mcp` gets a 403.
+`spook run` serves one MCP endpoint at `/mcp` on the game port plus one. The default is `http://127.0.0.1:9738/mcp`. `--mcp-addr 127.0.0.1:<port>` overrides it, and `--mcp-addr 127.0.0.1:0` lets the operating system choose. `--addr 127.0.0.1:0` does the same for the game port and chooses the MCP endpoint's port on its own. The process prints the bound addresses once, as one JSON line on stdout, before it serves. Point the agent at `127.0.0.1`, not `localhost`. The endpoint checks the `Host` header, and `http://localhost:9738/mcp` gets a 403.
 
 ```sh
 cp -r packs/oneshot-docks /tmp/docks
@@ -154,7 +154,7 @@ Windsurf, in `~/.codeium/windsurf/mcp_config.json`. The key is `serverUrl`.
 }
 ```
 
-Claude Desktop's config file only takes stdio. `mcp-remote` reaches the HTTP door:
+Claude Desktop's config file only takes stdio. `mcp-remote` reaches the MCP endpoint:
 
 ```json
 {

@@ -37,8 +37,8 @@ Commands:
       Leave the seat.
 An unknown command prints this list and sends nothing.";
 
-pub async fn run(door: SocketAddr, raw: bool) -> Result<(), Error> {
-    let client = match GmClient::connect(door).await {
+pub async fn run(mcp_addr: SocketAddr, raw: bool) -> Result<(), Error> {
+    let client = match GmClient::connect(mcp_addr).await {
         Ok(client) => client,
         Err(Error::Refused(refusal)) => {
             if raw {

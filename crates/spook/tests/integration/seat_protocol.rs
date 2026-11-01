@@ -23,7 +23,7 @@ use crate::support;
 const READ_TIMEOUT: Duration = Duration::from_secs(5);
 
 const SCRUBBED_GAME_ADDR: &str = "127.0.0.1:<game>";
-const SCRUBBED_DOOR_ADDR: &str = "127.0.0.1:<door>";
+const SCRUBBED_MCP_ADDR: &str = "127.0.0.1:<mcp>";
 
 enum Example {
     Json(Value),
@@ -40,7 +40,7 @@ struct Table {
     _stdin: ChildStdin,
     pack: PathBuf,
     game: u16,
-    door: u16,
+    mcp_port: u16,
     /// The `listening` line `spook run` printed.
     addrs_line: String,
     host_text: Arc<Mutex<String>>,
@@ -153,7 +153,7 @@ fn capture() -> BTreeMap<String, Example> {
         }
     });
     insert_json(&mut out, "initialize-request", initialize.clone());
-    let (opened, session) = post_initialize(table.door, &initialize);
+    let (opened, session) = post_initialize(table.mcp_port, &initialize);
     insert_json(&mut out, "initialize-result", opened.clone());
     let negotiated = opened["result"]["protocolVersion"]
         .as_str()
@@ -161,11 +161,11 @@ fn capture() -> BTreeMap<String, Example> {
         .to_string();
     // DELETE is a legacy-lifecycle call. The newest protocol version is refused
     // with 405, so the header is the version the handshake returned.
-    delete_session(table.door, &session, &negotiated);
+    delete_session(table.mcp_port, &session, &negotiated);
 
-    let door = std::net::SocketAddr::from(([127, 0, 0, 1], table.door));
-    let mut gm =
-        support::block_on(GmClient::connect(door)).unwrap_or_else(|err| panic!("seat GM: {err}"));
+    let mcp_addr = std::net::SocketAddr::from(([127, 0, 0, 1], table.mcp_port));
+    let mut gm = support::block_on(GmClient::connect(mcp_addr))
+        .unwrap_or_else(|err| panic!("seat GM: {err}"));
 
     let status_args = serde_json::json!({});
     insert_json(
@@ -342,7 +342,7 @@ fn capture() -> BTreeMap<String, Example> {
     insert_json(
         &mut out,
         "gm-session-full",
-        post_initialize_when_full(table.door, &initialize),
+        post_initialize_when_full(table.mcp_port, &initialize),
     );
 
     let mark = table.host_text.lock().unwrap().len();
@@ -389,7 +389,7 @@ fn listen() -> Table {
         let mut buf = [0u8; 256];
         while stderr.read(&mut buf).unwrap_or(0) > 0 {}
     });
-    let (game, door, addrs_line) = read_addrs(&mut stdout);
+    let (game, mcp_port, addrs_line) = read_addrs(&mut stdout);
     let host_text = Arc::new(Mutex::new(String::new()));
     let (host_tx, host_more) = mpsc::channel();
     let slot = Arc::clone(&host_text);
@@ -413,7 +413,7 @@ fn listen() -> Table {
         _stdin: stdin,
         pack,
         game,
-        door,
+        mcp_port,
         addrs_line,
         host_text,
         host_grew: host_more,
@@ -456,7 +456,7 @@ fn read_addrs(stdout: &mut impl Read) -> (u16, u16, String) {
                     let port = |addr: &str| {
                         loopback_port(addr).unwrap_or_else(|| panic!("not loopback\n{line}"))
                     };
-                    return (port(&addrs.game), port(&addrs.door), line.into());
+                    return (port(&addrs.game), port(&addrs.mcp_addr), line.into());
                 }
             }
             Err(err) => panic!("stdout: {err}"),
@@ -787,12 +787,12 @@ fn differ(name: &str, live: &Example, documented: &Example) -> Option<String> {
 }
 
 fn scrub(value: &mut Value) {
-    let Ok(Addrs { game, door }) = serde_json::from_value(value.clone()) else {
+    let Ok(Addrs { game, mcp_addr }) = serde_json::from_value(value.clone()) else {
         return;
     };
     assert!(loopback_port(&game).is_some(), "{game}");
-    assert!(loopback_port(&door).is_some(), "{door}");
-    assert_ne!(game, door, "game and door ports");
+    assert!(loopback_port(&mcp_addr).is_some(), "{mcp_addr}");
+    assert_ne!(game, mcp_addr, "game and MCP ports");
     let Some(object) = value.as_object_mut() else {
         return;
     };
@@ -801,8 +801,8 @@ fn scrub(value: &mut Value) {
         Value::String(SCRUBBED_GAME_ADDR.to_string()),
     );
     object.insert(
-        "door".to_string(),
-        Value::String(SCRUBBED_DOOR_ADDR.to_string()),
+        "mcp_addr".to_string(),
+        Value::String(SCRUBBED_MCP_ADDR.to_string()),
     );
 }
 

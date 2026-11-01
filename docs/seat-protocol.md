@@ -10,7 +10,7 @@ A tick is game time. A round is one batch of queued moves.
 
 The game port is TCP. It accepts player hellos only. The default is `127.0.0.1:9737`.
 
-The agent door is streamable HTTP at `http://127.0.0.1:<door>/mcp`. When the game port is fixed, the door is that port plus one, so the default door is `http://127.0.0.1:9738/mcp`. `--addr 127.0.0.1:0` asks the operating system for the game port, and the door is its own bind. `--door 127.0.0.1:<port>` overrides the door, including port 0. Do not add one to a port-0 game port. Read the listening line.
+The MCP endpoint is streamable HTTP at `http://127.0.0.1:<port>/mcp`. When the game port is fixed, the MCP endpoint's port is the game port plus one, so the default MCP endpoint is `http://127.0.0.1:9738/mcp`. `--addr 127.0.0.1:0` asks the operating system for the game port, and the MCP endpoint is its own bind. `--mcp-addr 127.0.0.1:<port>` overrides the MCP endpoint's address, including port 0. Do not add one to a port-0 game port. Read the listening line.
 
 Both binds are loopback. Any other host is refused before the pack opens.
 
@@ -21,13 +21,13 @@ After both sockets are bound, and before the table serves, `spook run` prints on
 {
   "kind": "listening",
   "game": "127.0.0.1:61762",
-  "door": "127.0.0.1:61763"
+  "mcp_addr": "127.0.0.1:61763"
 }
 ```
 
-`game` and `door` are `127.0.0.1` and a port. They are different ports. This run happened to draw two adjacent ports. The next run draws its own.
+`game` and `mcp_addr` are `127.0.0.1` and a port. They are different ports. This run happened to draw two adjacent ports. The next run draws its own.
 
-The door requires:
+The MCP endpoint requires:
 
 - `Host: 127.0.0.1`. `localhost` is 403.
 - `Origin`, when the request sends one, is `http://127.0.0.1` on any port. Anything else is 403. A missing `Origin` is accepted.
@@ -369,7 +369,7 @@ A player connection may send 5 lines a second, and it may burst to 10. A line pa
 
 ## GM seat
 
-The GM seat is the agent door. One GM. Initialize claims it. A second GM is `TABLE_FULL`.
+The GM seat is reached at the MCP endpoint. One GM. Initialize claims it. A second GM is `TABLE_FULL`.
 
 POST the initialize body. Send `Accept` and `Content-Type` as in Connect. The response is an SSE event. The JSON-RPC object is the `data` line. Keep the `mcp-session-id` response header on later requests.
 
@@ -974,7 +974,7 @@ HTTP statuses, before a seat token:
 | Status | What the client should do |
 |---|---|
 | 400 | `MCP-Protocol-Version` names a version the server does not know. Omit the header, or send a version from a previous handshake. |
-| 403 | `Host` is not `127.0.0.1`, or `Origin` is present and is not `http://127.0.0.1` on any port. Dial `http://127.0.0.1:<door>/mcp`. |
+| 403 | `Host` is not `127.0.0.1`, or `Origin` is present and is not `http://127.0.0.1` on any port. Dial `http://127.0.0.1:<port>/mcp`. |
 | 405 | DELETE named a protocol version that has no session to delete. Send the negotiated `protocolVersion` from the initialize result. |
 | 406 | `Accept` did not list both `application/json` and `text/event-stream`. |
 | 413 | The POST body is over 1 MiB. Shrink it. The seat was not taken. |

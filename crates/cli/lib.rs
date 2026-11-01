@@ -12,14 +12,15 @@ use spookery_protocol as protocol;
 mod text;
 
 /// A client failure: what `play::run`, `gm::run` and `ai_gm::run` return to `spook`, and what
-/// the door client and `HttpModel` return to them. Display is the line `spook` prints for it.
+/// the MCP client and `HttpModel` return to them. Display is the line `spook` prints for it.
 #[derive(Debug)]
 pub enum Error {
     /// A socket could not be dialed, read or written.
     Io(io::Error),
     /// The table refused the GM seat. Display is the refusal's sentence.
     Refused(protocol::Refusal),
-    /// A tool reply that is neither its reply type nor a refusal, with the JSON the door sent.
+    /// A tool reply that is neither its reply type nor a refusal, or an event that is no
+    /// `GmEvent`, with the JSON the MCP endpoint sent.
     Unreadable(serde_json::Value),
     /// Any other failure, as the line to print.
     Message(String),

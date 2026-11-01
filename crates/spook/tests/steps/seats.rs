@@ -14,7 +14,7 @@ fn a_second_player_connects(world: &mut World) {
 
 #[when(expr = "a second GM connects over HTTP")]
 fn a_second_gm_connects_over_http(world: &mut World) {
-    let http = table::live_mut(world).door_port;
+    let http = table::live_mut(world).mcp_port;
     world.scratch = super::mcp::post_initialize(http, "127.0.0.1", None);
 }
 

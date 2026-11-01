@@ -71,8 +71,8 @@ Feature: A human GM runs a round
     And spook run stops
     Then the GM exits
 
-  Scenario: spook gm dials an overridden agent door
+  Scenario: spook gm dials an overridden MCP address
     Given a docks table
-    When spook run listens with an overridden agent door
-    And a human GM dials that door
+    When spook run listens with an overridden MCP address
+    And a human GM dials that MCP address
     Then the GM shows "Commands:"
