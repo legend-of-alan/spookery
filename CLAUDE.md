@@ -36,9 +36,9 @@ The `dependency-and-feature-checks` job in `.github/workflows/ci.yml` fails the 
 
 - `protocol` (`spookery-protocol`): player and GM wire types. MIT licensed, so every dependency must be permissively licensed.
 - `engine` (`spookery-engine`): world model, rules, rounds, save and journal. Synchronous; depends only on `protocol`.
-- `server` (`spookery-server`): the table, seats over loopback TCP, idle timer, the MCP "agent door". Must not depend on `cli`, `agent` or `reqwest`.
-- `agent` (`spookery-agent`): the model-GM turn state machine and prompt. Pure logic: no `engine`, `server`, `cli`, `tokio`, `reqwest` or `socket2`.
-- `cli` (`spookery-cli`): `spook play` / `spook gm` terminals, the MCP GM client, and the `ai-gm` HTTP loop around `agent`. Must not depend on `engine` or `server`; it only talks to the host over the wire.
+- `server` (`spookery-server`): the table, seats over loopback TCP, idle timer, the MCP endpoint. Must not depend on `cli`, `agent` or `reqwest`.
+- `agent` (`spookery-agent`): the GM brain any client can reuse: the turn state machine, the prompt, the `Model` trait; no I/O. Pure logic: no `engine`, `server`, `cli`, `tokio`, `reqwest` or `socket2`.
+- `cli` (`spookery-cli`): one module per job. `play` and `gm` are the `spook play` / `spook gm` terminals and `text` their readable text, `mcp` is the MCP GM client, `ai_gm` is the `spook ai-gm` loop around `agent`, and `http_model` calls the model over HTTP. Must not depend on `engine` or `server`; it only talks to the host over the wire.
 - `spook`: the clap binary (`src/main.rs`) and library `spookery`. Feature `server` pulls in engine+server, `client` pulls in cli; both builds must work alone (`--no-default-features --features server|client`).
 
 Crates other than `spook` keep sources at the crate root (`lib.rs`, not `src/lib.rs`). Engine modules are `pub(crate)`; the public surface is the re-export list in `crates/engine/lib.rs`, and test-only hooks live behind its `testing` feature.
@@ -54,7 +54,7 @@ Crates other than `spook` keep sources at the crate root (`lib.rs`, not `src/lib
 
 ## Host and seats
 
-`spook run` binds only loopback: the game port (default `127.0.0.1:9737`) and the MCP agent door on the next port (`/mcp`, streamable HTTP via `rmcp`). The door checks the `Host` header, so clients must use `127.0.0.1`, not `localhost`. GM tools are `table_status`, `perceive`, `queue_intent`, `say`, `commit_round`, `close`. With the GM seat empty, each player line commits its own round. `spook gm` and `spook ai-gm` are both clients of the agent door. The wire format is specified in `docs/seat-protocol.md`.
+`spook run` binds only loopback: the game port (default `127.0.0.1:9737`) and the MCP endpoint on the next port (`/mcp`, streamable HTTP via `rmcp`; `--mcp-addr` moves it). The endpoint checks the `Host` header, so clients must use `127.0.0.1`, not `localhost`. GM tools are `table_status`, `perceive`, `queue_intent`, `say`, `commit_round`, `close`. With the GM seat empty, each player line commits its own round. `spook gm` and `spook ai-gm` are both clients of the MCP endpoint. The wire format is specified in `docs/seat-protocol.md`.
 
 ## Tests and docs that are wired together
 

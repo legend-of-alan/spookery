@@ -70,8 +70,14 @@ fn a_docks_table_with_a_gm_terminal(world: &mut World, actor: String) {
     table::listen(world, &pack);
     table::seat_actor(world, &pack, &actor);
     let addr = table::game_addr(world);
-    let door = table::door_addr(world);
-    world.gm = Some(support::spawn(&["gm", "--addr", &addr, "--door", &door]));
+    let mcp_addr = table::mcp_addr(world);
+    world.gm = Some(support::spawn(&[
+        "gm",
+        "--addr",
+        &addr,
+        "--mcp-addr",
+        &mcp_addr,
+    ]));
     wait_gm(world, "Commands:");
 }
 
@@ -82,8 +88,8 @@ fn the_gm_queues_for_and_commits(world: &mut World, move_name: String, actor: St
 }
 
 #[then(expr = "the GM terminal shows one check line and one dice line for {string}")]
-fn the_gm_terminal_shows_one_check_and_one_dice(world: &mut World, actor: String) {
-    let queued = format!("{} queued:", spookery::terminal::actor_name(&actor));
+fn the_gm_terminal_shows_one_check_and_one_dice(world: &mut World, shown: String) {
+    let queued = format!("{shown} queued:");
     wait_gm(world, "Roll:");
     let stdout = capture_gm_stdout(world);
     let checks = stdout
@@ -131,8 +137,8 @@ fn the_gm_commits(world: &mut World) {
 #[when(expr = "another GM joins that seat")]
 fn another_gm_joins(world: &mut World) {
     let addr = table::game_addr(world);
-    let door = table::door_addr(world);
-    let output = support::run_spook(&["gm", "--addr", &addr, "--door", &door]);
+    let mcp_addr = table::mcp_addr(world);
+    let output = support::run_spook(&["gm", "--addr", &addr, "--mcp-addr", &mcp_addr]);
     world.code = output.status.code();
     world.stdout = String::from_utf8_lossy(&output.stdout).into_owned();
     world.stderr = String::from_utf8_lossy(&output.stderr).into_owned();
@@ -152,8 +158,14 @@ fn the_gm_is_killed(world: &mut World) {
 #[when(expr = "another GM sits in that seat")]
 fn another_gm_sits_in_that_seat(world: &mut World) {
     let addr = table::game_addr(world);
-    let door = table::door_addr(world);
-    world.gm = Some(support::spawn(&["gm", "--addr", &addr, "--door", &door]));
+    let mcp_addr = table::mcp_addr(world);
+    world.gm = Some(support::spawn(&[
+        "gm",
+        "--addr",
+        &addr,
+        "--mcp-addr",
+        &mcp_addr,
+    ]));
 }
 
 #[when(expr = "the GM queues an unknown move")]
@@ -182,19 +194,25 @@ fn the_gm_exits(world: &mut World) {
     }
 }
 
-#[when(expr = "spook run listens with an overridden agent door")]
-fn spook_run_listens_with_an_overridden_agent_door(world: &mut World) {
+#[when(expr = "spook run listens with an overridden MCP address")]
+fn spook_run_listens_with_an_overridden_mcp_addr(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
-    let _ = table::listen_door(world, &pack);
+    let _ = table::listen_on_free_ports(world, &pack);
 }
 
-#[when(expr = "a human GM dials that door")]
-fn a_human_gm_dials_that_door(world: &mut World) {
+#[when(expr = "a human GM dials that MCP address")]
+fn a_human_gm_dials_that_mcp_addr(world: &mut World) {
     let live = table::live_mut(world);
-    let (game, http) = (live.game_port, live.door_port);
+    let (game, http) = (live.game_port, live.mcp_port);
     let game = format!("127.0.0.1:{game}");
     let http = format!("127.0.0.1:{http}");
-    world.gm = Some(support::spawn(&["gm", "--addr", &game, "--door", &http]));
+    world.gm = Some(support::spawn(&[
+        "gm",
+        "--addr",
+        &game,
+        "--mcp-addr",
+        &http,
+    ]));
     wait_gm(world, "Commands:");
 }
 
@@ -318,13 +336,13 @@ fn sit_gm(world: &mut World, raw: bool) -> String {
     let pack = table::pack(world).to_path_buf();
     table::listen(world, &pack);
     let addr = table::game_addr(world);
-    let door = table::door_addr(world);
+    let mcp_addr = table::mcp_addr(world);
     let mut args = vec![
         "gm".to_string(),
         "--addr".to_string(),
         addr.clone(),
-        "--door".to_string(),
-        door,
+        "--mcp-addr".to_string(),
+        mcp_addr,
     ];
     if raw {
         args.push("--raw".to_string());

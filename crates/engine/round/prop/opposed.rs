@@ -6,7 +6,6 @@ use std::path::{Path, PathBuf};
 use crate::journal::{self, Record, Step};
 use crate::model::Presence;
 use crate::world::World;
-use crate::IntentCall;
 use crate::Reason;
 
 use super::support::TempPack;
@@ -89,7 +88,7 @@ fn fight(base: &Path, warmup: u32, refused: Option<Reason>) -> Result<(), String
         ("briar-strike", "npc_briar", "strike", "pc_lark"),
         ("lark-lunge", "pc_lark", "lunge", "npc_briar"),
     ] {
-        let spec = IntentCall {
+        let spec = spookery_protocol::IntentArgs {
             id: Some(id.to_string()),
             round_index: None,
             actor_id: Some(actor.to_string()),

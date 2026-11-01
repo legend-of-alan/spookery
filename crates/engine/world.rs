@@ -16,8 +16,8 @@ use crate::rule::{TargetKind, When};
 use crate::rules::gate::{gate, verb_for, GateRefusal};
 use crate::store::codec::{emit_save, parse_save};
 use crate::store::tape::{append_record, last_seq, read_after, read_tail, TapeRecord};
+use crate::QueuedMove;
 use crate::Reason;
-use crate::{IntentCall, QueuedMove};
 use spookery_protocol::Speaker;
 
 use crate::draft::Draft;
@@ -278,7 +278,7 @@ impl<L> World<L> {
 
     pub fn queue_gm_intent(
         &mut self,
-        spec: IntentCall,
+        spec: spookery_protocol::IntentArgs,
         mint_id: impl FnOnce() -> Result<String, Reason>,
     ) -> Result<QueuedMove, Reason> {
         let actor_id = spec

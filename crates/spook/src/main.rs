@@ -26,9 +26,9 @@ enum Command {
     Run {
         /// Pack directory.
         pack: PathBuf,
-        /// Agent door. Defaults to the next port. Port 0 lets the OS choose.
-        #[arg(long = "door", value_name = "127.0.0.1:<port>")]
-        door: Option<String>,
+        /// MCP endpoint address. Defaults to the game port plus one. Port 0 lets the OS choose.
+        #[arg(long = "mcp-addr", value_name = "127.0.0.1:<port>")]
+        mcp_addr: Option<String>,
     },
     /// Sit the player seat.
     #[cfg(feature = "client")]
@@ -43,9 +43,9 @@ enum Command {
     /// Sit the GM seat.
     #[cfg(feature = "client")]
     Gm {
-        /// Agent door. Defaults to the game port plus one.
-        #[arg(long = "door", value_name = "127.0.0.1:<port>")]
-        door: Option<String>,
+        /// MCP endpoint address. Defaults to the game port plus one.
+        #[arg(long = "mcp-addr", value_name = "127.0.0.1:<port>")]
+        mcp_addr: Option<String>,
         /// Print each protocol frame as one JSON line.
         #[arg(long)]
         raw: bool,
@@ -54,9 +54,9 @@ enum Command {
     #[cfg(feature = "client")]
     #[command(name = "ai-gm")]
     AiGm {
-        /// Agent door. Defaults to the game port plus one.
-        #[arg(long = "door", value_name = "127.0.0.1:<port>")]
-        door: Option<String>,
+        /// MCP endpoint address. Defaults to the game port plus one.
+        #[arg(long = "mcp-addr", value_name = "127.0.0.1:<port>")]
+        mcp_addr: Option<String>,
     },
     /// Play one round on the pack.
     #[cfg(feature = "server")]
@@ -122,16 +122,13 @@ async fn dispatch(cli: Cli) -> Result<(), String> {
     let addr = parse_loopback(&cli.addr)?;
     match cli.command {
         #[cfg(feature = "server")]
-        Command::Run {
-            pack,
-            door: mcp_http,
-        } => {
-            let door = parse_door(mcp_http)?;
+        Command::Run { pack, mcp_addr } => {
+            let mcp_addr = parse_mcp_addr(mcp_addr)?;
             // Lock before resume: taking the lock repairs a crashed pack, which is a write.
             let lock = spookery_engine::lock_pack(&pack).map_err(|e| e.to_string())?;
             let world = spookery_engine::World::resume(&pack, lock).map_err(|e| e.to_string())?;
             let mut config = spookery_server::Config::new(addr);
-            config.door = door;
+            config.mcp_addr = mcp_addr;
             config.out = Box::new(std::io::stdout());
             config.err = Box::new(std::io::stderr());
             // Ctrl+C stops the host. Listen before serving so an early one is caught.
@@ -151,25 +148,23 @@ async fn dispatch(cli: Cli) -> Result<(), String> {
                 .map_err(|e| e.to_string())
         }
         #[cfg(feature = "client")]
-        Command::Play { pc: as_player, raw } => {
-            spookery::terminal::run_player(as_player.as_deref(), addr, raw)
-                .await
-                .map_err(|err| err.to_string())
-        }
-        #[cfg(feature = "client")]
-        Command::Gm {
-            door: mcp_http,
-            raw,
-        } => spookery::terminal::run_gm(addr, parse_door(mcp_http)?, raw)
+        Command::Play { pc, raw } => spookery::play::run(pc.as_deref(), addr, raw)
             .await
             .map_err(|err| err.to_string()),
         #[cfg(feature = "client")]
-        Command::AiGm { door: mcp_http } => {
-            let door = parse_door(mcp_http)?;
-            if spookery::ai::sit(addr, door).await.is_err() {
-                std::process::exit(1);
-            }
-            Ok(())
+        Command::Gm { mcp_addr, raw } => spookery::gm::run(gm_mcp_addr(addr, mcp_addr)?, raw)
+            .await
+            .map_err(|err| err.to_string()),
+        #[cfg(feature = "client")]
+        Command::AiGm { mcp_addr } => {
+            let mcp_addr = gm_mcp_addr(addr, mcp_addr)?;
+            // A missing model setting is reported before the dial.
+            let mut model = spookery::http_model::Settings::from_env()
+                .and_then(spookery::http_model::HttpModel::new)
+                .map_err(|err| err.to_string())?;
+            spookery::ai_gm::run(mcp_addr, &mut model, &mut std::io::stderr())
+                .await
+                .map_err(|err| err.to_string())
         }
         #[cfg(feature = "server")]
         Command::Round { pack } => {
@@ -266,8 +261,16 @@ fn parse_loopback(addr: &str) -> Result<SocketAddr, String> {
     Ok(SocketAddr::from(([127, 0, 0, 1], port)))
 }
 
-fn parse_door(mcp_http: Option<String>) -> Result<Option<SocketAddr>, String> {
-    mcp_http.as_deref().map(parse_loopback).transpose()
+fn parse_mcp_addr(mcp_addr: Option<String>) -> Result<Option<SocketAddr>, String> {
+    mcp_addr.as_deref().map(parse_loopback).transpose()
+}
+
+/// The MCP address a GM dials: `--mcp-addr`, else the port after the game port `addr`.
+#[cfg(feature = "client")]
+fn gm_mcp_addr(addr: SocketAddr, mcp_addr: Option<String>) -> Result<SocketAddr, String> {
+    parse_mcp_addr(mcp_addr)?
+        .or_else(|| spookery::protocol::default_mcp_addr(addr))
+        .ok_or_else(|| addr.to_string())
 }
 
 #[cfg(all(test, feature = "server", feature = "client"))]
@@ -339,28 +342,29 @@ mod tests {
         assert!(Cli::try_parse_from(["spook"]).is_err());
         assert!(Cli::try_parse_from(["spook", "mcp"]).is_err());
         assert!(Cli::try_parse_from(["spook", "mcp", "--addr", "127.0.0.1:9737"]).is_err());
-        let http =
-            Cli::try_parse_from(["spook", "run", "--door", "0.0.0.0:9", "no-such-pack"]).unwrap();
+        let http = Cli::try_parse_from(["spook", "run", "--mcp-addr", "0.0.0.0:9", "no-such-pack"])
+            .unwrap();
         assert_eq!(dispatch(http).await.unwrap_err(), "NOT_IN_SPEC");
         let http_loopback =
-            Cli::try_parse_from(["spook", "run", "--door", "127.0.0.1:9801", "pack"]).unwrap();
+            Cli::try_parse_from(["spook", "run", "--mcp-addr", "127.0.0.1:9801", "pack"]).unwrap();
         assert!(matches!(
             http_loopback.command,
             Command::Run {
-                door: Some(text),
+                mcp_addr: Some(text),
                 ..
             } if text == "127.0.0.1:9801"
         ));
         for command in ["gm", "ai-gm"] {
-            let open = Cli::try_parse_from(["spook", command, "--door", "0.0.0.0:9"]).unwrap();
+            let open = Cli::try_parse_from(["spook", command, "--mcp-addr", "0.0.0.0:9"]).unwrap();
             assert_eq!(
                 dispatch(open).await.unwrap_err(),
                 "NOT_IN_SPEC",
-                "{command} --door"
+                "{command} --mcp-addr"
             );
-            let door = Cli::try_parse_from(["spook", command, "--door", "127.0.0.1:9801"]).unwrap();
-            let text = match door.command {
-                Command::Gm { door, .. } | Command::AiGm { door, .. } => door,
+            let parsed =
+                Cli::try_parse_from(["spook", command, "--mcp-addr", "127.0.0.1:9801"]).unwrap();
+            let text = match parsed.command {
+                Command::Gm { mcp_addr, .. } | Command::AiGm { mcp_addr, .. } => mcp_addr,
                 _ => panic!("{command}"),
             };
             assert_eq!(text.as_deref(), Some("127.0.0.1:9801"));

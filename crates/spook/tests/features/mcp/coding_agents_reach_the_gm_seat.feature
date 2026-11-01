@@ -45,16 +45,16 @@ Feature: Coding agents reach the GM seat
 
   Scenario: spook gm and a coding agent share one seat
     Given a docks table
-    When a human GM sits on the default agent door
-    And a coding agent tries to sit that door
+    When a human GM sits on the default MCP address
+    And a coding agent tries to sit at that MCP endpoint
     Then the agent is told the table is full
     When the human GM leaves
-    Then a coding agent can sit that door
+    Then a coding agent can sit at that MCP endpoint
 
   Scenario: spook run serves /mcp without a flag
     Given a docks table
     When spook run listens with no MCP flag
-    Then the reported agent door serves /mcp
+    Then the reported MCP address serves /mcp
 
   Scenario: A request with an unknown MCP-Protocol-Version is refused
     Given a docks table
@@ -83,6 +83,6 @@ Feature: Coding agents reach the GM seat
     Then the response is accepted
 
   Scenario: An HTTP agent delivers a say to a seated player
-    Given a docks table with a seated player and an open HTTP door
+    Given a docks table with a seated player and an open MCP endpoint
     When a coding agent says good evening over HTTP
     Then the player saw a say from the host

@@ -28,7 +28,7 @@ impl Outcome {
 }
 
 pub use gm::{
-    parse_args, CastKind, CloseArgs, CloseBody, CommitArgs, CommitBody, GmEvent, IntentCall,
+    parse_args, CastKind, CloseArgs, CloseBody, CommitArgs, CommitBody, GmEvent, IntentArgs,
     MenuRow, PackSummary, PerceiveArgs, Queued, QueuedMove, Roll, SayArgs, SayEvent, StatusArgs,
     StatusPause, StatusPresence, TableStatus,
 };
@@ -37,16 +37,17 @@ pub use player::{
     NoteView, PlayerFrame, View,
 };
 
-/// The game and door addresses `spook run` prints on stdout once both ports are bound.
+/// The listening line `spook run` prints on stdout once both ports are bound: the game port
+/// and the MCP address.
 #[derive(Serialize, Deserialize)]
 #[serde(tag = "kind", rename = "listening")]
 pub struct Addrs {
     pub game: String,
-    pub door: String,
+    pub mcp: String,
 }
 
-/// The agent door for a fixed game port: the next port, on the same address.
-pub fn default_door(game: std::net::SocketAddr) -> Option<std::net::SocketAddr> {
+/// The MCP address for a fixed game port: the next port, on the same address.
+pub fn default_mcp_addr(game: std::net::SocketAddr) -> Option<std::net::SocketAddr> {
     let port = game.port().checked_add(1)?;
     Some(std::net::SocketAddr::new(game.ip(), port))
 }
@@ -55,8 +56,9 @@ pub fn default_door(game: std::net::SocketAddr) -> Option<std::net::SocketAddr> 
 /// and the prompt's cast cut.
 pub const PERCEIVE_BODY_CHARS: usize = 800;
 
-/// Every refusal code. The `code` of a player `refused` line and a GM tool refusal, and
-/// the token the journal stores on a round line (the engine's `store::records::Refusal`).
+/// Every refusal code. The `code` of a player `refused` line, a GM tool refusal and the MCP
+/// error's `data`, and the token the journal stores on a round line (the engine's
+/// `store::records::Refusal`).
 /// Strict and `Copy` on purpose: `spook verify` must fail on a code it does not know.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
@@ -169,8 +171,9 @@ impl From<String> for Code {
 }
 
 /// Sent from the table to a player client as the `refused` line's body, and to a GM
-/// client as a tool refusal (`{"code"}`); the MCP initialize error's message is its
-/// Display, the sentence with the code in brackets, `The table is full. [TABLE_FULL]`.
+/// client as a tool refusal (`{"code"}`) and as the MCP initialize error's `data`.
+/// Display is that error's message, the sentence with the code in brackets,
+/// `The table is full. [TABLE_FULL]`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Refusal {
     pub code: Code,
@@ -431,6 +434,13 @@ mod tests {
             assert!(matches!(msg, PlayerFrame::Refused(_)));
             assert_eq!(serde_json::to_string(&msg).unwrap(), raw);
         }
+    }
+
+    #[test]
+    fn a_fixed_game_port_dials_the_next_port() {
+        let game = std::net::SocketAddr::from(([127, 0, 0, 1], 9737));
+        let mcp_addr = std::net::SocketAddr::from(([127, 0, 0, 1], 9738));
+        assert_eq!(default_mcp_addr(game), Some(mcp_addr));
     }
 
     #[test]

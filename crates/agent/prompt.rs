@@ -1,17 +1,22 @@
-//! The prose and the menu the model sees on one turn.
+//! The prose and the menu the model sees on one turn, and what it may answer.
 
 use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 
-pub use crate::protocol::{CastKind, MenuRow, PackSummary, SayArgs};
-use crate::protocol::{QueuedMove, Roll, Speaker, PERCEIVE_BODY_CHARS};
+use crate::protocol::{
+    self, CastKind, ClockView, ItemStack, MenuRow, NoteView, PackSummary, QueuedMove, Roll,
+    SayArgs, SayEvent, Speaker, PERCEIVE_BODY_CHARS,
+};
 
+/// How many tape lines the prompt's `buffer` keeps.
+const RECENT_LINES: usize = 16;
+
+/// One tape line as the model reads it in the prompt's `buffer` and `lines`: a `SayEvent`
+/// without `recipients`. The GM's own lines carry the `seq` the table answered with.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
-pub struct HandledSay {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub seq: Option<u64>,
+pub struct TapeLine {
+    pub seq: u64,
     pub from: Speaker,
     pub address: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -21,41 +26,10 @@ pub struct HandledSay {
     pub text: String,
 }
 
-impl HandledSay {
-    pub fn from_outgoing(say: &SayArgs, seq: Option<u64>) -> Self {
-        match say {
-            SayArgs::Table { text } => Self {
-                seq,
-                from: Speaker::Gm,
-                address: "table".to_string(),
-                place: None,
-                actor: None,
-                text: text.clone(),
-            },
-            SayArgs::Place { place, text } => Self {
-                seq,
-                from: Speaker::Gm,
-                address: "place".to_string(),
-                place: Some(place.clone()),
-                actor: None,
-                text: text.clone(),
-            },
-            SayArgs::Actor { actor, text } => Self {
-                seq,
-                from: Speaker::Gm,
-                address: "actor".to_string(),
-                place: None,
-                actor: Some(actor.clone()),
-                text: text.clone(),
-            },
-        }
-    }
-}
-
-impl From<crate::protocol::SayEvent> for HandledSay {
-    fn from(say: crate::protocol::SayEvent) -> Self {
+impl From<SayEvent> for TapeLine {
+    fn from(say: SayEvent) -> Self {
         Self {
-            seq: Some(say.seq),
+            seq: say.seq,
             from: say.from,
             address: say.address,
             place: say.place,
@@ -65,30 +39,14 @@ impl From<crate::protocol::SayEvent> for HandledSay {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Intent {
-    pub actor_id: String,
-    pub move_name: String,
-    pub target: Option<String>,
-}
-
-impl Intent {
-    pub fn to_value(&self) -> Value {
-        let mut body = serde_json::json!({
-            "actor_id": self.actor_id,
-            "move": self.move_name,
-        });
-        if let Some(target) = &self.target {
-            body["target"] = serde_json::json!(target);
-        }
-        body
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ModelActions {
+/// The model's answer to one prompt, the `act` arguments typed once: says and intents.
+/// Read from the model's reply by `parse_completion` and fed to `Agent` as `Input::ModelReply`.
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ModelReply {
     pub says: Vec<SayArgs>,
-    pub intents: Vec<Intent>,
+    #[serde(default)]
+    pub intents: Vec<protocol::IntentArgs>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -97,208 +55,243 @@ pub enum SceneScope {
     Place { place: String },
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct KeptActions {
-    pub says: Vec<SayArgs>,
-    pub intent: Option<Intent>,
-}
-
+/// What starts a turn: a player's say, or a move in the queue.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Wake {
-    Say {
-        from: Speaker,
-        seq: u64,
-        address: String,
-        place: Option<String>,
-        actor: Option<String>,
-        text: String,
-    },
+    Say(SayEvent),
     Queued,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TurnView {
     pub scope: SceneScope,
-    pub player: Option<Value>,
-    pub npcs: Vec<Value>,
+    pub player: Option<PlayerView>,
+    pub npcs: Vec<NpcView>,
     pub place_body: String,
     pub cast_bodies: BTreeMap<String, String>,
+}
+
+/// A player's view as the prompt shows it: who and what is here, no facts and no notes.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct PlayerView {
+    pub viewer: String,
+    pub place: String,
+    pub visible_actors: Vec<String>,
+    pub clocks: Vec<ClockView>,
+    pub items: Vec<ItemStack>,
+    pub habits: Vec<String>,
+}
+
+/// An NPC's view as the prompt shows it: a player's, plus its facts and its notes as
+/// `messages`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct NpcView {
+    pub viewer: String,
+    pub place: String,
+    pub visible_actors: Vec<String>,
+    pub facts: Vec<FactLine>,
+    pub messages: Vec<NoteView>,
+    pub clocks: Vec<ClockView>,
+    pub items: Vec<ItemStack>,
+    pub habits: Vec<String>,
+}
+
+/// A known fact as the prompt shows it. Never `owner_body`: a type rule, not a filter.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct FactLine {
+    pub id: String,
+    pub text: String,
+}
+
+impl From<protocol::View> for PlayerView {
+    fn from(view: protocol::View) -> Self {
+        Self {
+            viewer: view.viewer,
+            place: view.place,
+            visible_actors: view.visible_actors,
+            clocks: view.clocks,
+            items: view.items,
+            habits: view.habits,
+        }
+    }
+}
+
+impl From<protocol::View> for NpcView {
+    fn from(view: protocol::View) -> Self {
+        Self {
+            viewer: view.viewer,
+            place: view.place,
+            visible_actors: view.visible_actors,
+            facts: view
+                .known_facts
+                .into_iter()
+                .map(|fact| FactLine {
+                    id: fact.id,
+                    text: fact.text,
+                })
+                .collect(),
+            messages: view.notes,
+            clocks: view.clocks,
+            items: view.items,
+            habits: view.habits,
+        }
+    }
+}
+
+impl TurnView {
+    /// The turn's views with the scene's place prose and the cast prose of everyone they
+    /// show, each cut at the perceive budget.
+    fn new(
+        scope: SceneScope,
+        player: Option<PlayerView>,
+        npcs: Vec<NpcView>,
+        pack: &PackSummary,
+    ) -> Self {
+        let place = match &scope {
+            SceneScope::Place { place } => place.as_str(),
+            SceneScope::Actor { .. } => player
+                .as_ref()
+                .map(|view| view.place.as_str())
+                .filter(|place| !place.is_empty())
+                .or_else(|| npcs.first().map(|view| view.place.as_str()))
+                .unwrap_or_default(),
+        };
+        let place_body = pack.places.get(place).cloned().unwrap_or_default();
+        let mut cast_bodies = BTreeMap::new();
+        if let Some(view) = &player {
+            include_cast(&mut cast_bodies, pack, &view.viewer, &view.visible_actors);
+        }
+        for view in &npcs {
+            include_cast(&mut cast_bodies, pack, &view.viewer, &view.visible_actors);
+        }
+        Self {
+            scope,
+            player,
+            npcs,
+            place_body,
+            cast_bodies,
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum PreparedTurn {
     NoModel { says: Vec<SayArgs> },
-    Model(TurnView),
+    Model(Box<TurnView>),
 }
 
 /// Lines and queue that ride with the views. The prompt function does not take a canon.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct PromptContext {
-    pub buffer: Vec<HandledSay>,
-    pub new_lines: Vec<HandledSay>,
+    pub buffer: Vec<TapeLine>,
+    pub new_lines: Vec<TapeLine>,
     pub queue: Vec<QueuedMove>,
     pub checks: Vec<Roll>,
 }
 
-pub fn push_handled(buffer: &mut Vec<HandledSay>, say: HandledSay) {
-    buffer.push(say);
-    if buffer.len() > 16 {
-        let extra = buffer.len() - 16;
-        buffer.drain(0..extra);
+/// Add `line` to the prompt's `buffer`, which keeps the latest `RECENT_LINES`.
+pub fn keep_recent(buffer: &mut Vec<TapeLine>, line: TapeLine) {
+    buffer.push(line);
+    if buffer.len() > RECENT_LINES {
+        buffer.drain(..buffer.len() - RECENT_LINES);
     }
 }
 
-/// `None` means the JSON is not the action object. That is an empty action list.
-pub fn parse_actions(text: &str, says_only: bool) -> Option<ModelActions> {
-    if says_only {
-        #[derive(Deserialize)]
-        #[serde(deny_unknown_fields)]
-        struct SaysOnly {
-            says: Vec<SayArgs>,
-        }
-        let parsed: SaysOnly = serde_json::from_str(text).ok()?;
-        return Some(ModelActions {
-            says: parsed.says,
-            intents: Vec::new(),
-        });
-    }
-    #[derive(Deserialize)]
-    #[serde(deny_unknown_fields)]
-    struct FullActions {
-        says: Vec<SayArgs>,
-        intents: Vec<IntentJson>,
-    }
-    let parsed: FullActions = serde_json::from_str(text).ok()?;
-    let intents = parsed
+/// The says in `scope`, at most two, and the first intent on the menu.
+pub fn keep_actions(
+    reply: ModelReply,
+    scope: &SceneScope,
+    menu: &[MenuRow],
+) -> (Vec<SayArgs>, Option<protocol::IntentArgs>) {
+    let says = reply
+        .says
+        .into_iter()
+        .filter(|say| is_say_in_scope(say, scope))
+        .take(2)
+        .collect();
+    let intent = reply
         .intents
         .into_iter()
-        .map(IntentJson::into_intent)
-        .collect::<Option<Vec<_>>>()?;
-    Some(ModelActions {
-        says: parsed.says,
-        intents,
-    })
-}
-
-pub fn keep_actions(actions: ModelActions, scope: &SceneScope, menu: &[MenuRow]) -> KeptActions {
-    let mut says = Vec::new();
-    for say in actions.says {
-        if !is_say_in_scope(&say, scope) {
-            continue;
-        }
-        if says.len() == 2 {
-            continue;
-        }
-        says.push(say);
-    }
-    let mut intent = None;
-    for item in actions.intents {
-        if !is_intent_on_menu(&item, menu) {
-            continue;
-        }
-        if intent.is_some() {
-            continue;
-        }
-        intent = Some(item);
-    }
-    KeptActions { says, intent }
+        .map(|mut call| {
+            call.target = call.target.filter(|target| !target.is_empty());
+            call
+        })
+        .find(|call| is_intent_on_menu(call, menu));
+    (says, intent)
 }
 
 pub fn prepare_turn(
     pack: &PackSummary,
     wake: &Wake,
     present: &[String],
-    perceive: &mut dyn FnMut(&str) -> Result<Value, String>,
+    perceive: &mut dyn FnMut(&str) -> Option<protocol::View>,
 ) -> PreparedTurn {
-    match wake {
-        Wake::Say {
-            from,
+    let no_model = || PreparedTurn::NoModel { says: Vec::new() };
+    let (speaker, place) = match wake {
+        Wake::Say(SayEvent {
+            from: Speaker::Player(speaker),
             address,
             actor,
             ..
-        } if address == "actor" => {
+        }) if address == "actor" => {
             let Some(actor) = actor.as_deref().filter(|id| !id.is_empty()) else {
                 return absent_turn();
             };
-            let speaker = speaker_id(from);
             let Some(&kind) = pack.kinds.get(actor) else {
                 return absent_turn();
             };
-            let Ok(view) = perceive(actor) else {
+            let Some(view) = perceive(actor) else {
                 return absent_turn();
             };
-            if !has_visible_actor(&view, speaker) {
+            if !view.visible_actors.contains(speaker) {
                 return absent_turn();
             }
-            match kind {
-                CastKind::Npc => PreparedTurn::Model(build_view(
-                    SceneScope::Actor {
-                        actor: actor.to_string(),
-                    },
-                    None,
-                    vec![trim_npc_view(&view)],
-                    pack,
-                )),
-                CastKind::PcTemplate => PreparedTurn::Model(build_view(
-                    SceneScope::Actor {
-                        actor: actor.to_string(),
-                    },
-                    Some(trim_player_view(&view)),
-                    Vec::new(),
-                    pack,
-                )),
-            }
+            let scope = SceneScope::Actor {
+                actor: actor.to_string(),
+            };
+            return PreparedTurn::Model(Box::new(match kind {
+                CastKind::Npc => TurnView::new(scope, None, vec![NpcView::from(view)], pack),
+                CastKind::PcTemplate => {
+                    TurnView::new(scope, Some(PlayerView::from(view)), Vec::new(), pack)
+                }
+            }));
         }
-        Wake::Say {
-            from,
+        Wake::Say(SayEvent {
+            from: Speaker::Player(speaker),
             address,
             place,
             ..
-        } => {
-            let speaker = speaker_id(from);
-            let Ok(player) = perceive(speaker) else {
-                return PreparedTurn::NoModel { says: Vec::new() };
-            };
-            let speaker_place = place_of(&player);
-            let filter = if address == "place" {
-                place
-                    .clone()
-                    .filter(|id| !id.is_empty())
-                    .unwrap_or(speaker_place)
-            } else {
-                speaker_place
-            };
-            let npcs = npc_views(&player, &pack.kinds, &filter, perceive);
-            PreparedTurn::Model(build_view(
-                SceneScope::Place { place: filter },
-                Some(trim_player_view(&player)),
-                npcs,
-                pack,
-            ))
+        }) => {
+            let named = place
+                .as_ref()
+                .filter(|id| address == "place" && !id.is_empty());
+            (speaker.as_str(), named.cloned())
         }
+        // The agent wakes only on a player's say.
+        Wake::Say(_) => return no_model(),
         Wake::Queued => {
-            let pcs: Vec<&str> = present
+            let pcs: Vec<&String> = present
                 .iter()
                 .filter(|id| pack.kinds.get(id.as_str()) == Some(&CastKind::PcTemplate))
-                .map(String::as_str)
                 .collect();
-            if pcs.len() != 1 {
-                return PreparedTurn::NoModel { says: Vec::new() };
-            }
-            let speaker = pcs[0];
-            let Ok(player) = perceive(speaker) else {
-                return PreparedTurn::NoModel { says: Vec::new() };
+            let [speaker] = pcs[..] else {
+                return no_model();
             };
-            let place = place_of(&player);
-            let npcs = npc_views(&player, &pack.kinds, &place, perceive);
-            PreparedTurn::Model(build_view(
-                SceneScope::Place { place },
-                Some(trim_player_view(&player)),
-                npcs,
-                pack,
-            ))
+            (speaker.as_str(), None)
         }
-    }
+    };
+    let Some(player) = perceive(speaker) else {
+        return no_model();
+    };
+    let place = place.unwrap_or_else(|| player.place.clone());
+    let npcs = npc_views(&player.visible_actors, &pack.kinds, &place, perceive);
+    let scope = SceneScope::Place { place };
+    PreparedTurn::Model(Box::new(TurnView::new(
+        scope,
+        Some(player.into()),
+        npcs,
+        pack,
+    )))
 }
 
 pub fn render_prompt(
@@ -315,16 +308,16 @@ pub fn render_prompt(
     #[derive(Serialize)]
     struct Views<'a> {
         #[serde(skip_serializing_if = "Option::is_none")]
-        player: Option<&'a Value>,
-        npcs: &'a [Value],
+        player: Option<&'a PlayerView>,
+        npcs: &'a [NpcView],
         place_body: &'a str,
         cast: Vec<CastBody<'a>>,
     }
     #[derive(Serialize)]
     struct Prompt<'a> {
         menu: &'a [MenuRow],
-        buffer: &'a [HandledSay],
-        lines: &'a [HandledSay],
+        buffer: &'a [TapeLine],
+        lines: &'a [TapeLine],
         queue: &'a [QueuedMove],
         views: Views<'a>,
         #[serde(skip_serializing_if = "<[_]>::is_empty")]
@@ -358,127 +351,33 @@ fn absent_turn() -> PreparedTurn {
     }
 }
 
+/// The views of the NPCs among `actors` who stand in `place`.
 fn npc_views(
-    player: &Value,
+    actors: &[String],
     kinds: &BTreeMap<String, CastKind>,
     place: &str,
-    perceive: &mut dyn FnMut(&str) -> Result<Value, String>,
-) -> Vec<Value> {
-    let Some(ids) = player.get("visible_actors").and_then(Value::as_array) else {
-        return Vec::new();
-    };
-    let mut out = Vec::new();
-    for id in ids {
-        let Some(id) = id.as_str() else {
-            continue;
-        };
-        if kinds.get(id) != Some(&CastKind::Npc) {
-            continue;
-        }
-        let Ok(view) = perceive(id) else {
-            continue;
-        };
-        if view.get("place").and_then(Value::as_str) != Some(place) {
-            continue;
-        }
-        out.push(trim_npc_view(&view));
-    }
-    out
+    perceive: &mut dyn FnMut(&str) -> Option<protocol::View>,
+) -> Vec<NpcView> {
+    actors
+        .iter()
+        .filter(|id| kinds.get(id.as_str()) == Some(&CastKind::Npc))
+        .filter_map(|id| perceive(id))
+        .filter(|view| view.place == place)
+        .map(NpcView::from)
+        .collect()
 }
 
-fn trim_player_view(view: &Value) -> Value {
-    serde_json::json!({
-        "viewer": view.get("viewer").cloned().unwrap_or(Value::Null),
-        "place": view.get("place").cloned().unwrap_or(Value::Null),
-        "visible_actors": view.get("visible_actors").cloned().unwrap_or(Value::Array(Vec::new())),
-        "clocks": view.get("clocks").cloned().unwrap_or(Value::Array(Vec::new())),
-        "items": view.get("items").cloned().unwrap_or(Value::Array(Vec::new())),
-        "habits": view.get("habits").cloned().unwrap_or(Value::Array(Vec::new())),
-    })
-}
-
-fn trim_npc_view(view: &Value) -> Value {
-    let facts = view
-        .get("known_facts")
-        .and_then(Value::as_array)
-        .map(|facts| {
-            facts
-                .iter()
-                .map(|fact| {
-                    serde_json::json!({
-                        "id": fact.get("id").cloned().unwrap_or(Value::Null),
-                        "text": fact.get("text").cloned().unwrap_or(Value::Null),
-                    })
-                })
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_default();
-    serde_json::json!({
-        "viewer": view.get("viewer").cloned().unwrap_or(Value::Null),
-        "place": view.get("place").cloned().unwrap_or(Value::Null),
-        "visible_actors": view.get("visible_actors").cloned().unwrap_or(Value::Array(Vec::new())),
-        "facts": facts,
-        "messages": view.get("notes").cloned().unwrap_or(Value::Array(Vec::new())),
-        "clocks": view.get("clocks").cloned().unwrap_or(Value::Array(Vec::new())),
-        "items": view.get("items").cloned().unwrap_or(Value::Array(Vec::new())),
-        "habits": view.get("habits").cloned().unwrap_or(Value::Array(Vec::new())),
-    })
-}
-
-fn build_view(
-    scope: SceneScope,
-    player: Option<Value>,
-    npcs: Vec<Value>,
+fn include_cast(
+    bodies: &mut BTreeMap<String, String>,
     pack: &PackSummary,
-) -> TurnView {
-    let place = scene_place(&scope, &player, &npcs);
-    let place_body = pack.places.get(&place).cloned().unwrap_or_default();
-    let mut cast_bodies = BTreeMap::new();
-    if let Some(view) = &player {
-        include_view(&mut cast_bodies, pack, view);
-    }
-    for view in &npcs {
-        include_view(&mut cast_bodies, pack, view);
-    }
-    TurnView {
-        scope,
-        player,
-        npcs,
-        place_body,
-        cast_bodies,
-    }
-}
-
-fn scene_place(scope: &SceneScope, player: &Option<Value>, npcs: &[Value]) -> String {
-    match scope {
-        SceneScope::Place { place } => place.clone(),
-        SceneScope::Actor { .. } => player
-            .as_ref()
-            .map(place_of)
-            .filter(|place| !place.is_empty())
-            .or_else(|| npcs.first().map(place_of))
-            .unwrap_or_default(),
-    }
-}
-
-fn include_view(bodies: &mut BTreeMap<String, String>, pack: &PackSummary, view: &Value) {
-    if let Some(viewer) = view.get("viewer").and_then(Value::as_str) {
-        include_cast(bodies, pack, viewer);
-    }
-    let Some(actors) = view.get("visible_actors").and_then(Value::as_array) else {
-        return;
-    };
-    for actor in actors {
-        if let Some(id) = actor.as_str() {
-            include_cast(bodies, pack, id);
+    viewer: &str,
+    actors: &[String],
+) {
+    for id in std::iter::once(viewer).chain(actors.iter().map(String::as_str)) {
+        if let Some(body) = pack.cast.get(id) {
+            let cut = body.chars().take(PERCEIVE_BODY_CHARS).collect();
+            bodies.insert(id.to_string(), cut);
         }
-    }
-}
-
-fn include_cast(bodies: &mut BTreeMap<String, String>, pack: &PackSummary, id: &str) {
-    if let Some(body) = pack.cast.get(id) {
-        let cut = body.chars().take(PERCEIVE_BODY_CHARS).collect();
-        bodies.insert(id.to_string(), cut);
     }
 }
 
@@ -495,63 +394,26 @@ fn is_say_in_scope(say: &SayArgs, scope: &SceneScope) -> bool {
     }
 }
 
-fn is_intent_on_menu(intent: &Intent, menu: &[MenuRow]) -> bool {
-    let Some(row) = menu.iter().find(|row| row.name == intent.move_name) else {
+/// Whether `call` names an actor and a move on the menu, with a target exactly when the
+/// move takes one. A missing or empty actor or move is the one rule `protocol::IntentArgs` cannot
+/// express.
+fn is_intent_on_menu(call: &protocol::IntentArgs, menu: &[MenuRow]) -> bool {
+    let named = |id: &Option<String>| id.as_deref().is_some_and(|id| !id.is_empty());
+    let Some(row) = menu
+        .iter()
+        .find(|row| call.move_name.as_ref() == Some(&row.name))
+    else {
         return false;
     };
-    if row.target == "none" {
-        intent.target.is_none()
-    } else {
-        intent.target.is_some()
-    }
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct IntentJson {
-    actor_id: String,
-    #[serde(rename = "move")]
-    move_name: String,
-    #[serde(default)]
-    target: Option<String>,
-}
-
-impl IntentJson {
-    fn into_intent(self) -> Option<Intent> {
-        if self.actor_id.is_empty() || self.move_name.is_empty() {
-            return None;
-        }
-        let target = self.target.filter(|t| !t.is_empty());
-        Some(Intent {
-            actor_id: self.actor_id,
-            move_name: self.move_name,
-            target,
-        })
-    }
-}
-
-fn has_visible_actor(view: &Value, id: &str) -> bool {
-    view.get("visible_actors")
-        .and_then(Value::as_array)
-        .is_some_and(|ids| ids.iter().any(|item| item.as_str() == Some(id)))
-}
-
-fn place_of(view: &Value) -> String {
-    view.get("place")
-        .and_then(Value::as_str)
-        .unwrap_or("")
-        .to_string()
-}
-
-fn speaker_id(from: &Speaker) -> &str {
-    match from {
-        Speaker::Player(id) => id,
-        Speaker::Gm | Speaker::Npc(_) => "",
-    }
+    named(&call.actor_id)
+        && named(&call.move_name)
+        && call.target.is_some() == (row.target != "none")
 }
 
 #[cfg(test)]
 mod tests {
+    use serde_json::json;
+
     use super::*;
 
     fn docks() -> PackSummary {
@@ -600,29 +462,32 @@ mod tests {
         }
     }
 
-    fn intent(move_name: &str, target: Option<&str>) -> Intent {
-        Intent {
-            actor_id: "mira".to_string(),
-            move_name: move_name.to_string(),
-            target: target.map(str::to_string),
-        }
+    fn intent(call: serde_json::Value) -> protocol::IntentArgs {
+        serde_json::from_value(call).unwrap()
     }
 
-    fn table_wake() -> Wake {
-        Wake::Say {
-            from: Speaker::Player("pc_rowan".to_string()),
+    fn wake(address: &str, actor: Option<&str>) -> Wake {
+        Wake::Say(SayEvent {
             seq: 1,
-            address: "table".to_string(),
+            from: Speaker::Player("pc_rowan".to_string()),
+            address: address.to_string(),
             place: None,
-            actor: None,
+            actor: actor.map(str::to_string),
+            recipients: Vec::new(),
             text: "hello".to_string(),
-        }
+        })
     }
 
-    fn shop(viewer: &str, actors: &[&str]) -> Value {
-        serde_json::json!({
+    /// A view of `place` with `extra` fields, such as `known_facts` or `notes`, set.
+    fn view_at(
+        viewer: &str,
+        place: &str,
+        actors: &[&str],
+        extra: serde_json::Value,
+    ) -> protocol::View {
+        let mut view = json!({
             "viewer": viewer,
-            "place": "docks_shop",
+            "place": place,
             "visible_actors": actors,
             "known_facts": [],
             "notes": [],
@@ -630,14 +495,22 @@ mod tests {
             "clocks": [],
             "items": [],
             "habits": []
-        })
+        });
+        for (key, value) in extra.as_object().unwrap() {
+            view[key] = value.clone();
+        }
+        serde_json::from_value(view).unwrap()
+    }
+
+    fn shop(viewer: &str, actors: &[&str]) -> protocol::View {
+        view_at(viewer, "docks_shop", actors, json!({}))
     }
 
     fn prompt_for(
         pack: &PackSummary,
-        mut perceive: impl FnMut(&str) -> Result<Value, String>,
+        mut perceive: impl FnMut(&str) -> Option<protocol::View>,
     ) -> String {
-        let prepared = prepare_turn(pack, &table_wake(), &[], &mut perceive);
+        let prepared = prepare_turn(pack, &wake("table", None), &[], &mut perceive);
         let PreparedTurn::Model(view) = prepared else {
             panic!("model was not called");
         };
@@ -658,27 +531,11 @@ mod tests {
         assert!(!mira.is_empty(), "mira has cast prose");
         assert!(!place.is_empty(), "the shop has place prose");
         let prompt = prompt_for(&pack, |viewer| {
-            Ok(shop(viewer, &["aldric", "mira", "pc_rowan"]))
+            Some(shop(viewer, &["aldric", "mira", "pc_rowan"]))
         });
         assert!(prompt.contains(&mira), "{prompt}");
         assert!(prompt.contains(&place), "{prompt}");
         assert!(!prompt.contains("BRAM-ABSENT"), "{prompt}");
-    }
-
-    /// Scenario: Hidden facts never do
-    ///   Given a hidden fact body "BODY-SENTINEL"
-    ///   Then the prompt does not contain "BODY-SENTINEL"
-    #[test]
-    fn hidden_facts_never_reach_the_prompt() {
-        let pack = docks();
-        let prompt = prompt_for(&pack, |viewer| {
-            let mut view = shop(viewer, &["aldric", "mira", "pc_rowan"]);
-            view["known_facts"] = serde_json::json!([
-                {"id": "fact_ledger_short", "text": "The lamp-oil ledger is short.", "owner_body": "BODY-SENTINEL"}
-            ]);
-            Ok(view)
-        });
-        assert!(!prompt.contains("BODY-SENTINEL"), "{prompt}");
     }
 
     #[test]
@@ -687,51 +544,36 @@ mod tests {
         let budget = PERCEIVE_BODY_CHARS;
         pack.cast
             .insert("aldric".to_string(), "Z".repeat(budget + 1));
-        let prompt = prompt_for(&pack, |viewer| Ok(shop(viewer, &["aldric", "pc_rowan"])));
+        let prompt = prompt_for(&pack, |viewer| Some(shop(viewer, &["aldric", "pc_rowan"])));
         assert!(prompt.contains(&"Z".repeat(budget)), "{prompt}");
         assert!(!prompt.contains(&"Z".repeat(budget + 1)), "{prompt}");
     }
 
+    /// Scenario: Hidden facts never do
+    ///   Given a hidden fact body "BODY-SENTINEL"
+    ///   Then the prompt does not contain "BODY-SENTINEL"
     #[test]
     fn prompt_omits_dropped_strings_and_keeps_fact_text() {
         let mut pack = docks();
         pack.cast
             .insert("mira".to_string(), "MIRA-PROSE-SENTINEL".to_string());
+        let actors = ["aldric", "mira", "pc_rowan"];
         let mut calls = 0;
-        let prepared = prepare_turn(&pack, &table_wake(), &[], &mut |viewer| {
+        let prompt = prompt_for(&pack, |viewer| {
             calls += 1;
-            if viewer == "pc_rowan" {
-                return Ok(serde_json::json!({
-                    "viewer": "pc_rowan",
-                    "place": "docks_shop",
-                    "visible_actors": ["aldric", "mira", "pc_rowan"],
+            let extra = match viewer {
+                "pc_rowan" => json!({
                     "known_facts": [{"id": "k", "text": "KNOWN-SENTINEL", "owner_body": "KNOWN-BODY"}],
-                    "notes": [{"id": "m", "text": "MESSAGE-SENTINEL"}],
-                    "unknown_mentions": ["UNKNOWN-SENTINEL"],
-                    "clocks": [],
-                    "items": [],
-                    "habits": []
-                }));
-            }
-            if viewer == "aldric" {
-                return Ok(serde_json::json!({
-                    "viewer": "aldric",
-                    "place": "docks_shop",
-                    "visible_actors": ["aldric", "mira", "pc_rowan"],
-                    "known_facts": [{"id": "f", "text": "FACT-TEXT-SENTINEL", "owner_body": "BODY-SENTINEL"}],
-                    "notes": [],
-                    "unknown_mentions": [],
-                    "clocks": [],
-                    "items": [],
-                    "habits": []
-                }));
-            }
-            Err("no".into())
+                    "notes": [{"id": "m", "to": [], "fact_ids": [], "text": "MESSAGE-SENTINEL"}],
+                    "unknown_mentions": ["UNKNOWN-SENTINEL"]
+                }),
+                "aldric" => json!({
+                    "known_facts": [{"id": "f", "text": "FACT-TEXT-SENTINEL", "owner_body": "BODY-SENTINEL"}]
+                }),
+                _ => return None,
+            };
+            Some(view_at(viewer, "docks_shop", &actors, extra))
         });
-        let PreparedTurn::Model(view) = prepared else {
-            panic!("model was not called");
-        };
-        let prompt = render_prompt(&pack.menu, &PromptContext::default(), &view, &[]);
         assert!(!prompt.contains("KNOWN-SENTINEL"), "{prompt}");
         assert!(!prompt.contains("KNOWN-BODY"), "{prompt}");
         assert!(!prompt.contains("BODY-SENTINEL"), "{prompt}");
@@ -743,9 +585,8 @@ mod tests {
     }
 
     #[test]
-    fn address_rule_runs_before_the_cap() {
-        let menu = docks().menu;
-        let actions = ModelActions {
+    fn address_rule_runs_before_the_cap_and_a_bad_intent_keeps_the_says() {
+        let reply = ModelReply {
             says: vec![
                 say("table", None, "rejected"),
                 say("actor", Some("mira"), "one"),
@@ -753,65 +594,40 @@ mod tests {
                 say("actor", Some("mira"), "three"),
             ],
             intents: vec![
-                intent("not_a_move", None),
-                intent("wait", None),
-                intent("grit", None),
+                intent(json!({"move": "wait"})),
+                intent(json!({"actor_id": "mira", "move": "not_a_move"})),
+                intent(json!({"actor_id": "mira", "move": "wait", "target": ""})),
+                intent(json!({"actor_id": "mira", "move": "grit"})),
             ],
         };
-        let kept = keep_actions(
-            actions,
-            &SceneScope::Actor {
-                actor: "mira".to_string(),
-            },
-            &menu,
-        );
+        let scope = SceneScope::Actor {
+            actor: "mira".to_string(),
+        };
+        let (says, intent) = keep_actions(reply, &scope, &docks().menu);
         assert_eq!(
-            kept.says.iter().map(SayArgs::text).collect::<Vec<_>>(),
+            says.iter().map(SayArgs::text).collect::<Vec<_>>(),
             vec!["one", "two"]
         );
-        assert_eq!(kept.intent.unwrap().move_name, "wait");
-    }
-
-    #[test]
-    fn actor_wake_drops_a_table_say() {
-        let menu = docks().menu;
-        let actions = ModelActions {
-            says: vec![
-                say("table", None, "nope"),
-                say("actor", Some("mira"), "yes"),
-            ],
-            intents: vec![],
-        };
-        let kept = keep_actions(
-            actions,
-            &SceneScope::Actor {
-                actor: "mira".to_string(),
-            },
-            &menu,
-        );
-        assert_eq!(kept.says.len(), 1);
-        assert_eq!(kept.says[0].text(), "yes");
+        let intent = intent.unwrap();
+        assert_eq!(intent.move_name.as_deref(), Some("wait"));
+        assert_eq!(intent.target, None);
     }
 
     #[test]
     fn queued_wake_keeps_a_table_say_and_drops_an_actor_say() {
-        let menu = docks().menu;
-        let actions = ModelActions {
+        let reply = ModelReply {
             says: vec![
                 say("table", None, "here"),
                 say("actor", Some("mira"), "aside"),
             ],
             intents: vec![],
         };
-        let kept = keep_actions(
-            actions,
-            &SceneScope::Place {
-                place: "docks_shop".to_string(),
-            },
-            &menu,
-        );
-        assert_eq!(kept.says.len(), 1);
-        assert_eq!(kept.says[0].text(), "here");
+        let scope = SceneScope::Place {
+            place: "docks_shop".to_string(),
+        };
+        let (says, _) = keep_actions(reply, &scope, &docks().menu);
+        assert_eq!(says.len(), 1);
+        assert_eq!(says[0].text(), "here");
     }
 
     #[test]
@@ -820,49 +636,21 @@ mod tests {
         let mut called = false;
         let prepared = prepare_turn(&pack, &Wake::Queued, &[], &mut |_| {
             called = true;
-            Err("called".into())
+            None
         });
-        match prepared {
-            PreparedTurn::NoModel { says } => assert!(says.is_empty()),
-            PreparedTurn::Model(_) => panic!("model request"),
-        }
+        assert_eq!(prepared, PreparedTurn::NoModel { says: Vec::new() });
         assert!(!called);
     }
 
     #[test]
     fn different_places_say_they_are_not_here() {
         let pack = docks();
-        let wake = Wake::Say {
-            from: Speaker::Player("pc_rowan".to_string()),
-            seq: 4,
-            address: "actor".to_string(),
-            place: None,
-            actor: Some("mira".to_string()),
-            text: "good evening".to_string(),
-        };
         let mut calls = Vec::new();
-        let prepared = prepare_turn(&pack, &wake, &[], &mut |viewer| {
+        let prepared = prepare_turn(&pack, &wake("actor", Some("mira")), &[], &mut |viewer| {
             calls.push(viewer.to_string());
-            Ok(serde_json::json!({
-                "viewer": viewer,
-                "place": "mira_rooms",
-                "visible_actors": ["mira"],
-                "known_facts": [],
-                "notes": [],
-                "unknown_mentions": [],
-                "clocks": [],
-                "items": [],
-                "habits": []
-            }))
+            Some(view_at(viewer, "mira_rooms", &["mira"], json!({})))
         });
-        match prepared {
-            PreparedTurn::NoModel { says } => {
-                assert_eq!(says.len(), 1);
-                assert_eq!(says[0].text(), "They are not here.");
-                assert!(matches!(says[0], SayArgs::Table { .. }));
-            }
-            PreparedTurn::Model(_) => panic!("model request"),
-        }
+        assert_eq!(prepared, absent_turn());
         assert_eq!(calls, vec!["mira".to_string()]);
     }
 
@@ -870,19 +658,17 @@ mod tests {
     fn the_buffer_keeps_sixteen_and_drops_the_oldest() {
         let mut buffer = Vec::new();
         for index in 0..20 {
-            push_handled(
-                &mut buffer,
-                HandledSay {
-                    seq: Some(index),
-                    from: Speaker::Player("pc_rowan".to_string()),
-                    address: "table".to_string(),
-                    place: None,
-                    actor: None,
-                    text: index.to_string(),
-                },
-            );
+            let line = TapeLine {
+                seq: index,
+                from: Speaker::Player("pc_rowan".to_string()),
+                address: "table".to_string(),
+                place: None,
+                actor: None,
+                text: index.to_string(),
+            };
+            keep_recent(&mut buffer, line);
         }
-        assert_eq!(buffer.len(), 16);
+        assert_eq!(buffer.len(), RECENT_LINES);
         assert_eq!(buffer[0].text, "4");
         assert_eq!(buffer[15].text, "19");
     }

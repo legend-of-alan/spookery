@@ -40,6 +40,7 @@ Every issue gets a priority label from `P0` (most urgent) to `P4` (a parked idea
 - **Use the words people already know.** Good code reads the way people expect, so it needs no tutorial, like WASD in a game. Names follow [Naming](#naming) below.
 - **Fix the cause.** When something fails, find out why. Don't paper over it with sleeps, retries or longer timeouts.
 - **Scenario first.** Write the BDD scenario that describes what a player or GM sees, then the code. Scenarios test behavior, not how the code does it, so a refactor shouldn't break them.
+- **Libraries are for others too.** `protocol` and `agent` exist so other clients and GMs can be written. That a crate has one consumer in this repository today is not a reason to fold it into that consumer.
 
 ## Naming
 
@@ -57,6 +58,10 @@ Default to the [Rust API Guidelines](https://rust-lang.github.io/api-guidelines/
 10. Names collide only within one namespace, so `tokio::fs` and `std::fs` are fine. When a name exists in two namespaces anywhere in the project, a `use` keeps the path prefix (`fs::read`, never a bare `read`).
 11. Fix a bad name in the code you touch, even if it is older than your change. A rename-only commit changes no logic and updates the docs that mention the name.
 12. Prefer a typed unit such as `Duration`, which carries its own unit. A bare number carries the unit as a suffix, such as `_secs` or `_bytes`.
+13. Name a module after the protocol or job it handles, never a metaphor. Say `mcp`, not `door`.
+14. End a stream with `None` and report a failure with `Err`. Don't add `Eof` or `Unreadable` variants for them.
+15. A name that mirrors a tool or wire name uses that exact name, such as `Step::TableStatus` for `table_status`.
+16. Use one word per wire concept across docs, code and flags. The player side is the game port everywhere.
 
 Items in the guidelines that only matter for a published library, such as stability and future-proofing, don't apply yet.
 
@@ -78,7 +83,7 @@ The `Live AI` workflow runs the live round test (`crates/spook/tests/integration
 
 ## Coding agent clients
 
-`spook run` serves one agent door at `/mcp` on the game port plus one. The default is `http://127.0.0.1:9738/mcp`. `--door 127.0.0.1:<port>` overrides it, and `--door 127.0.0.1:0` lets the operating system choose. `--addr 127.0.0.1:0` does the same for the game port and chooses the door on its own. The process prints the bound addresses once, as one JSON line on stdout, before it serves. Point the agent at `127.0.0.1`, not `localhost`. The endpoint checks the `Host` header, and `http://localhost:9738/mcp` gets a 403.
+`spook run` serves one MCP endpoint at `/mcp` on the game port plus one. The default is `http://127.0.0.1:9738/mcp`. `--mcp-addr 127.0.0.1:<port>` overrides it, and `--mcp-addr 127.0.0.1:0` lets the operating system choose. `--addr 127.0.0.1:0` does the same for the game port and chooses the MCP endpoint's port on its own. The process prints the bound addresses once, as one JSON line on stdout, before it serves. Point the agent at `127.0.0.1`, not `localhost`. The endpoint checks the `Host` header, and `http://localhost:9738/mcp` gets a 403.
 
 ```sh
 cp -r packs/oneshot-docks /tmp/docks
@@ -149,7 +154,7 @@ Windsurf, in `~/.codeium/windsurf/mcp_config.json`. The key is `serverUrl`.
 }
 ```
 
-Claude Desktop's config file only takes stdio. `mcp-remote` reaches the HTTP door:
+Claude Desktop's config file only takes stdio. `mcp-remote` reaches the MCP endpoint:
 
 ```json
 {

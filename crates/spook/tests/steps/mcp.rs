@@ -18,19 +18,19 @@ use super::table;
 
 #[when(expr = "a coding agent calls the GM tools over loopback HTTP")]
 fn agent_calls_over_http(world: &mut World) {
-    let (_tcp, http) = listen_door(world);
+    let (_tcp, http) = listen_on_free_ports(world);
     support::block_on(exercise_http(http));
 }
 
 #[when(expr = "the operator runs with an open MCP HTTP address")]
 fn the_operator_runs_with_an_open_mcp_http_address(world: &mut World) {
     let pack = support::pack_arg(table::pack(world));
-    table::run(world, &["run", &pack, "--door", "0.0.0.0:9"]);
+    table::run(world, &["run", &pack, "--mcp-addr", "0.0.0.0:9"]);
 }
 
 #[when(expr = "an HTTP request arrives with a public Origin")]
 fn an_http_request_arrives_with_a_public_origin(world: &mut World) {
-    let (_tcp, http) = listen_door(world);
+    let (_tcp, http) = listen_on_free_ports(world);
     world.scratch = post_initialize(http, "127.0.0.1", Some("https://evil.example"));
 }
 
@@ -55,18 +55,24 @@ fn a_gm_hello_still_sits(world: &mut World) {
 
 #[when(regex = r"^an HTTP request arrives with Host (\S+)$")]
 fn an_http_request_arrives_with_host(world: &mut World, host: String) {
-    let (_tcp, http) = listen_door(world);
+    let (_tcp, http) = listen_on_free_ports(world);
     world.scratch = post_initialize(http, &host, None);
 }
 
-#[when(expr = "a human GM sits on the default agent door")]
-fn a_human_gm_sits_on_the_default_agent_door(world: &mut World) {
+#[when(expr = "a human GM sits on the default MCP address")]
+fn a_human_gm_sits_on_the_default_mcp_addr(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
     table::listen(world, &pack);
     let addr = table::game_addr(world);
-    let door = table::door_addr(world);
-    world.gm = Some(support::spawn(&["gm", "--addr", &addr, "--door", &door]));
-    world.mark = usize::from(table::live_mut(world).door_port);
+    let mcp_addr = table::mcp_addr(world);
+    world.gm = Some(support::spawn(&[
+        "gm",
+        "--addr",
+        &addr,
+        "--mcp-addr",
+        &mcp_addr,
+    ]));
+    world.mark = usize::from(table::live_mut(world).mcp_port);
     let start = Instant::now();
     loop {
         let gm = world.gm.as_mut().unwrap_or_else(|| panic!("no gm"));
@@ -84,9 +90,9 @@ fn a_human_gm_sits_on_the_default_agent_door(world: &mut World) {
     }
 }
 
-#[when(expr = "a coding agent tries to sit that door")]
-fn a_coding_agent_tries_to_sit_that_door(world: &mut World) {
-    let http = u16::try_from(world.mark).unwrap_or_else(|_| panic!("no agent door port"));
+#[when(expr = "a coding agent tries to sit at that MCP endpoint")]
+fn a_coding_agent_tries_to_sit_at_that_mcp_endpoint(world: &mut World) {
+    let http = u16::try_from(world.mark).unwrap_or_else(|_| panic!("no MCP port"));
     world.scratch = post_initialize(http, "127.0.0.1", None);
 }
 
@@ -113,9 +119,9 @@ fn the_human_gm_leaves(world: &mut World) {
     assert!(status.success(), "gm quit exited {status:?}");
 }
 
-#[then(expr = "a coding agent can sit that door")]
-fn a_coding_agent_can_sit_that_door(world: &mut World) {
-    let http = u16::try_from(world.mark).unwrap_or_else(|_| panic!("no agent door port"));
+#[then(expr = "a coding agent can sit at that MCP endpoint")]
+fn a_coding_agent_can_sit_at_that_mcp_endpoint(world: &mut World) {
+    let http = u16::try_from(world.mark).unwrap_or_else(|_| panic!("no MCP port"));
     let start = Instant::now();
     let mut last = String::new();
     while start.elapsed() < Duration::from_secs(5) {
@@ -133,12 +139,12 @@ fn a_coding_agent_can_sit_that_door(world: &mut World) {
 fn spook_run_listens_with_no_mcp_flag(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
     table::listen(world, &pack);
-    world.mark = usize::from(table::live_mut(world).door_port);
+    world.mark = usize::from(table::live_mut(world).mcp_port);
 }
 
-#[then(expr = "the reported agent door serves \\/mcp")]
-fn the_reported_agent_door_serves_mcp(world: &mut World) {
-    let http = u16::try_from(world.mark).unwrap_or_else(|_| panic!("no door port"));
+#[then(expr = "the reported MCP address serves \\/mcp")]
+fn the_reported_mcp_addr_serves_mcp(world: &mut World) {
+    let http = u16::try_from(world.mark).unwrap_or_else(|_| panic!("no MCP port"));
     let raw = post_initialize(http, "127.0.0.1", None);
     assert!(
         raw.lines().next().unwrap_or("").contains(" 200 "),
@@ -149,13 +155,13 @@ fn the_reported_agent_door_serves_mcp(world: &mut World) {
 
 #[when(expr = "an HTTP request arrives with an unknown MCP-Protocol-Version")]
 fn an_http_request_arrives_with_an_unknown_version(world: &mut World) {
-    let (_tcp, http) = listen_door(world);
+    let (_tcp, http) = listen_on_free_ports(world);
     world.scratch = post_initialize_with_version(http, "1999-01-01");
 }
 
 #[when(expr = "an HTTP request arrives with the negotiated MCP-Protocol-Version")]
 fn an_http_request_arrives_with_the_negotiated_version(world: &mut World) {
-    let (_tcp, http) = listen_door(world);
+    let (_tcp, http) = listen_on_free_ports(world);
     world.scratch = post_initialize_with_version(http, ProtocolVersion::LATEST.as_str());
 }
 
@@ -189,14 +195,14 @@ fn the_response_is_accepted(world: &mut World) {
     );
 }
 
-fn door_port(world: &World) -> u16 {
-    u16::try_from(world.mark).unwrap_or_else(|_| panic!("no agent door port"))
+fn mcp_port(world: &World) -> u16 {
+    u16::try_from(world.mark).unwrap_or_else(|_| panic!("no MCP port"))
 }
 
-#[given(expr = "a docks table with a seated player and an open HTTP door")]
-fn a_docks_table_with_a_seated_player_and_an_open_http_door(world: &mut World) {
+#[given(expr = "a docks table with a seated player and an open MCP endpoint")]
+fn a_docks_table_with_a_seated_player_and_an_open_mcp_endpoint(world: &mut World) {
     world.pack = Some(support::copy_docks("http-say"));
-    let (_tcp, http) = listen_door(world);
+    let (_tcp, http) = listen_on_free_ports(world);
     let pack = table::pack(world).to_path_buf();
     table::seat_rowan(world, &pack);
     world.mark = usize::from(http);
@@ -204,10 +210,10 @@ fn a_docks_table_with_a_seated_player_and_an_open_http_door(world: &mut World) {
 
 #[when(expr = "a GM holds the seat over HTTP")]
 fn gm_holds_over_http(world: &mut World) {
-    let (_tcp, http) = listen_door(world);
+    let (_tcp, http) = listen_on_free_ports(world);
     world.mark = usize::from(http);
     let holder = support::block_on(async move {
-        let running = connect_door(http)
+        let running = connect_mcp(http)
             .await
             .unwrap_or_else(|err| panic!("HTTP GM: {err}"));
         let status = call(&running, "table_status", None).await;
@@ -221,10 +227,10 @@ fn gm_holds_over_http(world: &mut World) {
 fn another_gm_tries_http(world: &mut World) {
     // rmcp's client error drops the JSON-RPC message, so read the
     // refusal from a raw initialize, then check a real client fails too.
-    let http = door_port(world);
+    let http = mcp_port(world);
     let raw = post_initialize(http, "127.0.0.1", None);
     let sat = support::block_on(async move {
-        match connect_door(http).await {
+        match connect_mcp(http).await {
             Ok(running) => {
                 let _ = running.cancel().await;
                 true
@@ -262,14 +268,14 @@ fn the_http_gm_leaves(world: &mut World) {
 #[then(expr = "a GM can sit over HTTP")]
 fn a_gm_can_sit_over_http(world: &mut World) {
     // One attempt: the DELETE reply waits for the seat release (issue #214).
-    if let Err(err) = try_sit_gm(door_port(world)) {
+    if let Err(err) = try_sit_gm(mcp_port(world)) {
         panic!("no GM could sit over HTTP: {err}");
     }
 }
 
 fn try_sit_gm(port: u16) -> Result<(), String> {
     support::block_on(async move {
-        let running = connect_door(port).await.map_err(|err| format!("{err:?}"))?;
+        let running = connect_mcp(port).await.map_err(|err| format!("{err:?}"))?;
         let status = call(&running, "table_status", None).await;
         assert_not_refused(&status, "table_status");
         let _ = running.cancel().await;
@@ -359,10 +365,10 @@ fn world_time_moved_forward(world: &mut World) {
 
 #[when(expr = "a coding agent says good evening over HTTP")]
 fn agent_says_over_http(world: &mut World) {
-    let http = door_port(world);
+    let http = mcp_port(world);
     let mark = table::player_mark(world);
     support::block_on(async move {
-        let running = connect_door(http)
+        let running = connect_mcp(http)
             .await
             .unwrap_or_else(|err| panic!("HTTP: {err}"));
         let said = call(
@@ -378,7 +384,7 @@ fn agent_says_over_http(world: &mut World) {
 }
 
 async fn exercise_http(port: u16) {
-    let running = connect_door(port)
+    let running = connect_mcp(port)
         .await
         .unwrap_or_else(|err| panic!("HTTP: {err}"));
     call_each_gm_tool(&running).await;
@@ -460,7 +466,7 @@ fn client_config() -> rmcp::model::ClientConfig {
     .with_protocol_version(ProtocolVersion::LATEST)
 }
 
-async fn connect_door(
+async fn connect_mcp(
     port: u16,
 ) -> Result<
     rmcp::service::RunningService<rmcp::RoleClient, rmcp::model::ClientConfig>,
@@ -470,12 +476,12 @@ async fn connect_door(
     client_config().serve(transport).await.map_err(Box::new)
 }
 
-fn listen_door(world: &mut World) -> (u16, u16) {
+fn listen_on_free_ports(world: &mut World) -> (u16, u16) {
     let pack = table::pack(world).to_path_buf();
     table::run_with_flags(
         world,
         &pack,
-        &["--addr", "127.0.0.1:0", "--door", "127.0.0.1:0"],
+        &["--addr", "127.0.0.1:0", "--mcp-addr", "127.0.0.1:0"],
     )
 }
 

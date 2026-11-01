@@ -42,9 +42,7 @@ The model does not keep the world. It can talk, and it can ask the engine to com
 | **Intent** | A proposed move from a player, an NPC or the engine's scheduler. |
 | **Effect** | A checked change to the world, produced from an intent. |
 | **Expression** | A number in a rule. An integer, dice such as `2d6` or `2d20kh1`, a meter read such as `self.might`, and `+`, `-`, `*`, `/`, `min`, and `max`. A condition's value does not roll dice. |
-| **GM** | The storyteller seat. Usually an agent that talks to the agent door. `spook ai-gm` is the built-in model GM. |
-| **Play door** | The human client, `spook play`, over loopback. |
-| **Agent door** | The MCP endpoint `spook run` serves, `http://127.0.0.1:9738/mcp` by default. |
+| **GM** | The storyteller seat. Usually an agent that talks to the MCP endpoint. `spook ai-gm` is the built-in model GM. |
 
 ## Repo layout
 
@@ -56,12 +54,14 @@ packs/                 sample-d20 is the starter. oneshot-docks is the multi-PC 
 crates/
   protocol/            spookery-protocol: player and GM message types
   engine/              spookery-engine: world model, rules, rounds, and journal
-  agent/               spookery-agent: model GM turn state machine
-  cli/                 spookery-cli: spook play, spook gm, and spook ai-gm
-  server/              spookery-server: the table, player port, agent door, GM tools, seats, idle timer
+  agent/               spookery-agent: the reusable GM brain: turn state machine, prompt, Model trait
+  cli/                 spookery-cli: play, gm, ai_gm (the three clients), mcp, http_model, text
+  server/              spookery-server: the table, game port, MCP endpoint, GM tools, seats, idle timer
   spook/               package and binary spook, library spookery
     tests/features/    BDD scenarios
 ```
+
+`spook run`, `spook play`, `spook gm` and `spook ai-gm` are one bundled implementation of the seat protocol. `protocol` and `agent` are built so others can write their own clients and GMs against the same table.
 
 ## At the table
 
@@ -70,7 +70,7 @@ These are the host options and the commands that touch a save.
 | Option or command | What it does |
 | --- | --- |
 | `--addr <addr>` | Sets the game address. The default is `127.0.0.1:9737`, and plain `127.0.0.1` means that same port. Only loopback is allowed. Anything else is refused before the pack opens. |
-| `--door 127.0.0.1:<port>` | Sets the agent door. By default it's the game port plus one, so `127.0.0.1:9738`. |
+| `--mcp-addr 127.0.0.1:<port>` | Sets the MCP endpoint's address. By default it's the game port plus one, so `127.0.0.1:9738`. |
 | `--as <id>` | Picks your character in `spook play`. `pc_rowan` and `player:pc_rowan` mean the same seat. |
 | `spook status <pack>` | Prints the host digest. It doesn't write the pack. |
 | `spook round <pack>` | Plays one round and writes `state/`. |
@@ -139,7 +139,7 @@ spook gm
 
 Type `help` to see the GM commands. `spook gm --raw` prints each protocol frame as one JSON line instead.
 
-Both `spook gm` and `spook ai-gm` connect to the agent door. Use `--door 127.0.0.1:<port>` to point them somewhere else. If you started the host with `--addr 127.0.0.1:0`, the OS picks the ports and the listening line tells you the door. Pass that to `--door`.
+Both `spook gm` and `spook ai-gm` connect to the MCP endpoint. Use `--mcp-addr 127.0.0.1:<port>` to point them somewhere else. If you started the host with `--addr 127.0.0.1:0`, the OS picks the ports and the listening line's `mcp` tells you the address. Pass that to `--mcp-addr`.
 
 ## Privacy
 

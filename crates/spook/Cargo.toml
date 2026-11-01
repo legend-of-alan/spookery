@@ -19,11 +19,12 @@ path = "src/main.rs"
 [features]
 default = ["server", "client"]
 server = ["dep:spookery-engine", "dep:spookery-server", "dep:serde_json"]
-client = ["dep:spookery-cli"]
+client = ["dep:spookery-agent", "dep:spookery-cli"]
 
 [dependencies]
 clap = { version = "4.6.7", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"], optional = true }
+spookery-agent = { path = "../agent", optional = true }
 spookery-cli = { path = "../cli", optional = true }
 spookery-engine = { path = "../engine", optional = true }
 spookery-protocol = { path = "../protocol" }

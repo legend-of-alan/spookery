@@ -15,8 +15,8 @@ fn the_table_listens_on_port_0(world: &mut World) {
     table::listen(world, &pack);
 }
 
-#[then(expr = "the host reports the game port and the agent door")]
-fn the_host_reports_the_game_port_and_the_agent_door(world: &mut World) {
+#[then(expr = "the host reports the game port and the MCP address")]
+fn the_host_reports_the_game_port_and_the_mcp_addr(world: &mut World) {
     let live = table::live_mut(world);
     let stdout = live
         .host
@@ -24,13 +24,13 @@ fn the_host_reports_the_game_port_and_the_agent_door(world: &mut World) {
         .map(|server| support::text_of(&server.stdout))
         .unwrap_or_default();
     let game = live.game_port;
-    let door = live.door_port;
-    let (reported_game, reported_door) = table::parse_addrs(&stdout);
+    let mcp_port = live.mcp_port;
+    let (reported_game, reported_mcp_addr) = table::parse_addrs(&stdout);
     assert_eq!(reported_game.port(), game, "{stdout}");
-    assert_eq!(reported_door.port(), door, "{stdout}");
-    assert_ne!(game, door, "{stdout}");
+    assert_eq!(reported_mcp_addr.port(), mcp_port, "{stdout}");
+    assert_ne!(game, mcp_port, "{stdout}");
     assert_ne!(game, 0, "{stdout}");
-    assert_ne!(door, 0, "{stdout}");
+    assert_ne!(mcp_port, 0, "{stdout}");
     assert_eq!(
         stdout
             .lines()
@@ -40,7 +40,7 @@ fn the_host_reports_the_game_port_and_the_agent_door(world: &mut World) {
         "{stdout}"
     );
     TcpStream::connect(("127.0.0.1", game)).unwrap_or_else(|err| panic!("game: {err}"));
-    TcpStream::connect(("127.0.0.1", door)).unwrap_or_else(|err| panic!("door: {err}"));
+    TcpStream::connect(("127.0.0.1", mcp_port)).unwrap_or_else(|err| panic!("mcp: {err}"));
 }
 
 #[when(expr = "a player connects to the reported game port")]
@@ -66,7 +66,7 @@ fn two_tables_listen_on_port_0_at_the_same_time(world: &mut World) {
     let second = table::wait_addrs(started_second);
     world.stdout = format!(
         "{} {} {} {}",
-        first.game, first.door, second.game, second.door
+        first.game, first.mcp_addr, second.game, second.mcp_addr
     );
     world.plays.push(first.host);
     world.plays.push(second.host);

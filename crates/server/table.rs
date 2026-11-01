@@ -29,7 +29,7 @@ pub(crate) fn commit_then_fast_forward(
     world.commit_then_fast_forward(presence, &wall)
 }
 
-/// Sent from the socket tasks, the agent door and the idle timer to the table thread.
+/// Sent from the socket tasks, the MCP endpoint and the idle timer to the table thread.
 pub(super) enum Request {
     Hello {
         conn: Conn,

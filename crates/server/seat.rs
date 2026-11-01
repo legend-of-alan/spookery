@@ -9,7 +9,7 @@ use tokio::sync::{mpsc, oneshot, watch};
 
 use super::limits::{OUTBOUND_BYTE_CAP, OUTBOUND_FRAME_CAP};
 
-/// One connection's id, on the game port or the agent door.
+/// One connection's id, on the game port or the MCP endpoint.
 #[derive(Clone, Copy, PartialEq)]
 pub(crate) struct Conn(u64);
 

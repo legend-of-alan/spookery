@@ -1,23 +1,40 @@
 //! One model call and the request/response codecs it uses.
 
-use std::collections::VecDeque;
 use std::fmt;
 use std::future::Future;
-use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use serde_json::{json, Value};
 
+use crate::prompt::ModelReply;
+
+/// Sent from the agent to its `Model`: the prompt, and whether only says may come back.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CompletionRequest {
     pub prompt: String,
     pub says_only: bool,
 }
 
+/// Returned from a `Model` to its client, which feeds it to `Agent` in `Input::ModelReply`:
+/// why one call brought no reply. Display is the warning line the client prints.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum CompletionError {
     Transport(String),
     InvalidReply(String),
+}
+
+impl CompletionError {
+    /// The error line for a model call that failed as `kind`. `total` is the call's limit.
+    pub fn transport(kind: FailureKind, total: Duration, detail: &str) -> Self {
+        let message = match kind {
+            FailureKind::Timeout => format!("model call timed out after {}s", total.as_secs()),
+            FailureKind::Connect => "model call failed to connect".to_string(),
+            FailureKind::Status(code) if detail.is_empty() => format!("model call returned {code}"),
+            FailureKind::Status(code) => format!("model call returned {code}: {detail}"),
+            FailureKind::Other => format!("model call failed: {detail}"),
+        };
+        CompletionError::Transport(message)
+    }
 }
 
 impl fmt::Display for CompletionError {
@@ -32,50 +49,16 @@ impl fmt::Display for CompletionError {
 
 impl std::error::Error for CompletionError {}
 
-/// One model call. The HTTP client and the scripted model both implement this.
+/// One model call. The HTTP client and the tests' scripted model both implement this.
 pub trait Model {
     fn complete(
         &mut self,
         request: &CompletionRequest,
-    ) -> impl Future<Output = Result<Option<String>, CompletionError>>;
+    ) -> impl Future<Output = Result<Option<ModelReply>, CompletionError>>;
 }
 
-#[derive(Clone, Default)]
-pub struct ScriptedModel {
-    inner: Arc<Mutex<ScriptedModelInner>>,
-}
-
-#[derive(Default)]
-struct ScriptedModelInner {
-    replies: VecDeque<Result<Option<String>, CompletionError>>,
-    calls: Vec<CompletionRequest>,
-}
-
-impl ScriptedModel {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    pub fn push(&self, reply: Result<Option<String>, CompletionError>) {
-        self.inner.lock().expect("script").replies.push_back(reply);
-    }
-
-    pub fn calls(&self) -> Vec<CompletionRequest> {
-        self.inner.lock().expect("script").calls.clone()
-    }
-}
-
-impl Model for ScriptedModel {
-    async fn complete(
-        &mut self,
-        request: &CompletionRequest,
-    ) -> Result<Option<String>, CompletionError> {
-        let mut inner = self.inner.lock().expect("script");
-        inner.calls.push(request.clone());
-        inner.replies.pop_front().unwrap_or(Ok(None))
-    }
-}
-
+/// How a model call failed on the transport, as the client that made it saw it. The client
+/// passes it to `CompletionError::transport`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum FailureKind {
     Timeout,
@@ -84,23 +67,15 @@ pub enum FailureKind {
     Other,
 }
 
-pub fn is_retryable(class: FailureKind) -> bool {
-    match class {
-        FailureKind::Timeout | FailureKind::Connect => true,
-        FailureKind::Status(code) => matches!(code, 429 | 500..=599),
-        FailureKind::Other => false,
+impl FailureKind {
+    /// A timeout, a failed connect, 429 and 5xx are worth one more attempt.
+    pub fn is_retryable(self) -> bool {
+        match self {
+            FailureKind::Timeout | FailureKind::Connect => true,
+            FailureKind::Status(code) => matches!(code, 429 | 500..=599),
+            FailureKind::Other => false,
+        }
     }
-}
-
-pub fn transport_error(class: FailureKind, total: Duration, detail: &str) -> CompletionError {
-    let message = match class {
-        FailureKind::Timeout => format!("model call timed out after {}s", total.as_secs()),
-        FailureKind::Connect => "model call failed to connect".to_string(),
-        FailureKind::Status(code) if detail.is_empty() => format!("model call returned {code}"),
-        FailureKind::Status(code) => format!("model call returned {code}: {detail}"),
-        FailureKind::Other => format!("model call failed: {detail}"),
-    };
-    CompletionError::Transport(message)
 }
 
 /// Longest provider error text kept on the error line, in characters.
@@ -195,7 +170,13 @@ fn act_parameters(says_only: bool) -> Value {
     })
 }
 
-pub fn parse_completion(text: &str) -> Result<Option<String>, CompletionError> {
+/// Read a chat-completions reply: the first `act` call's arguments as a `ModelReply`, with
+/// no intents when `says_only`. No `act` call, or arguments that are JSON but not the act
+/// shape, is `None`; arguments that are not JSON are an `InvalidReply`.
+pub fn parse_completion(
+    text: &str,
+    says_only: bool,
+) -> Result<Option<ModelReply>, CompletionError> {
     let value: Value =
         serde_json::from_str(text).map_err(|err| CompletionError::InvalidReply(err.to_string()))?;
     let choices = value
@@ -226,19 +207,19 @@ pub fn parse_completion(text: &str) -> Result<Option<String>, CompletionError> {
         {
             continue;
         }
-        let Some(arguments) = function.and_then(|item| item.get("arguments")) else {
-            return Err(CompletionError::InvalidReply("arguments".to_string()));
+        let invalid = || CompletionError::InvalidReply("arguments".to_string());
+        let arguments = match function.and_then(|item| item.get("arguments")) {
+            Some(Value::String(text)) => serde_json::from_str(text).map_err(|_| invalid())?,
+            Some(arguments @ Value::Object(_)) => arguments.clone(),
+            _ => return Err(invalid()),
         };
-        if let Some(text) = arguments.as_str() {
-            if serde_json::from_str::<Value>(text).is_err() {
-                return Err(CompletionError::InvalidReply("arguments".to_string()));
-            }
-            return Ok(Some(text.to_string()));
+        let Ok(mut reply) = serde_json::from_value::<ModelReply>(arguments) else {
+            return Ok(None);
+        };
+        if says_only {
+            reply.intents.clear();
         }
-        if arguments.is_object() {
-            return Ok(Some(arguments.to_string()));
-        }
-        return Err(CompletionError::InvalidReply("arguments".to_string()));
+        return Ok(Some(reply));
     }
     Ok(None)
 }
@@ -261,30 +242,41 @@ mod tests {
     #[test]
     fn prose_without_a_function_call_is_empty() {
         let text = r#"{"choices":[{"message":{"role":"assistant","content":"hello"}}]}"#;
-        let parsed = parse_completion(text).unwrap();
+        let parsed = parse_completion(text, false).unwrap();
         assert!(parsed.is_none());
     }
 
     #[test]
-    fn act_arguments_are_returned() {
-        let text = r#"{"choices":[{"message":{"role":"assistant","content":"ignored","tool_calls":[{"type":"function","function":{"name":"act","arguments":"{\"says\":[],\"intents\":[]}"}}]}}]}"#;
-        let parsed = parse_completion(text).unwrap().unwrap();
-        assert!(parsed.contains("\"says\""));
+    fn act_arguments_are_typed_once() {
+        let act = |arguments: &str| {
+            let arguments = serde_json::to_string(arguments).unwrap();
+            format!(
+                r#"{{"choices":[{{"message":{{"role":"assistant","content":"ignored","tool_calls":[{{"type":"function","function":{{"name":"act","arguments":{arguments}}}}}]}}}}]}}"#
+            )
+        };
+        let full = act(r#"{"says":[],"intents":[{"actor_id":"mira","move":"wait"}]}"#);
+        let reply = parse_completion(&full, false).unwrap().unwrap();
+        assert_eq!(reply.intents[0].move_name.as_deref(), Some("wait"));
+        assert!(parse_completion(&full, true)
+            .unwrap()
+            .unwrap()
+            .intents
+            .is_empty());
+        assert_eq!(parse_completion(&act(r#"{"nope":1}"#), false), Ok(None));
+        assert!(parse_completion(&act("not json"), false).is_err());
     }
 
     #[test]
     fn retry_classifier_retries_timeout_connect_429_and_5xx_only() {
-        assert!(is_retryable(FailureKind::Timeout));
-        assert!(is_retryable(FailureKind::Connect));
-        assert!(is_retryable(FailureKind::Status(429)));
-        assert!(is_retryable(FailureKind::Status(500)));
-        assert!(is_retryable(FailureKind::Status(503)));
-        assert!(is_retryable(FailureKind::Status(599)));
-        assert!(!is_retryable(FailureKind::Status(400)));
-        assert!(!is_retryable(FailureKind::Status(401)));
-        assert!(!is_retryable(FailureKind::Status(404)));
-        assert!(!is_retryable(FailureKind::Status(418)));
-        assert!(!is_retryable(FailureKind::Other));
+        assert!(FailureKind::Timeout.is_retryable());
+        assert!(FailureKind::Connect.is_retryable());
+        for code in [429, 500, 503, 599] {
+            assert!(FailureKind::Status(code).is_retryable(), "{code}");
+        }
+        for code in [400, 401, 404, 418] {
+            assert!(!FailureKind::Status(code).is_retryable(), "{code}");
+        }
+        assert!(!FailureKind::Other.is_retryable());
         assert_eq!(
             line(FailureKind::Timeout, 60),
             "model call timed out after 60s"
@@ -327,23 +319,19 @@ mod tests {
         assert_eq!(detail.chars().count(), MAX_DETAIL_CHARS + 3, "{detail}");
         assert!(detail.ends_with("..."), "{detail}");
         assert_eq!(provider_detail("", key), "");
-        assert_eq!(
-            match transport_error(FailureKind::Status(401), Duration::from_secs(60), "bad key") {
-                CompletionError::Transport(message) => message,
-                CompletionError::InvalidReply(message) => message,
-            },
-            "model call returned 401: bad key"
+        let error = CompletionError::transport(
+            FailureKind::Status(401),
+            Duration::from_secs(60),
+            "bad key",
         );
+        assert_eq!(error.to_string(), "model call returned 401: bad key");
     }
 
-    fn line(class: FailureKind, secs: u64) -> String {
-        let detail = match class {
+    fn line(kind: FailureKind, secs: u64) -> String {
+        let detail = match kind {
             FailureKind::Status(_) => "",
             _ => "detail",
         };
-        match transport_error(class, Duration::from_secs(secs), detail) {
-            CompletionError::Transport(message) => message,
-            CompletionError::InvalidReply(message) => message,
-        }
+        CompletionError::transport(kind, Duration::from_secs(secs), detail).to_string()
     }
 }

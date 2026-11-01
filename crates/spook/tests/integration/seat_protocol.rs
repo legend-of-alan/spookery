@@ -13,7 +13,7 @@ use std::time::Duration;
 
 use rmcp::model::ProtocolVersion;
 use serde_json::Value;
-use spookery::gm_connection::{Connection, Incoming};
+use spookery::mcp::{event_line, GmClient};
 use spookery::protocol::Addrs;
 
 use crate::support;
@@ -23,14 +23,14 @@ use crate::support;
 const READ_TIMEOUT: Duration = Duration::from_secs(5);
 
 const SCRUBBED_GAME_ADDR: &str = "127.0.0.1:<game>";
-const SCRUBBED_DOOR_ADDR: &str = "127.0.0.1:<door>";
+const SCRUBBED_MCP_ADDR: &str = "127.0.0.1:<mcp>";
 
 enum Example {
     Json(Value),
     Text(String),
 }
 
-struct Seat {
+struct PlayerClient {
     write: TcpStream,
     lines: Receiver<String>,
 }
@@ -40,7 +40,7 @@ struct Table {
     _stdin: ChildStdin,
     pack: PathBuf,
     game: u16,
-    door: u16,
+    mcp_port: u16,
     /// The `listening` line `spook run` printed.
     addrs_line: String,
     host_text: Arc<Mutex<String>>,
@@ -96,7 +96,7 @@ async fn the_seat_page_matches_a_live_table() {
 fn capture() -> BTreeMap<String, Example> {
     let mut out = BTreeMap::new();
     let table = listen();
-    let mut player = seat(table.game, "pc_rowan");
+    let mut player = connect_player(table.game, "pc_rowan");
 
     let addrs = serde_json::from_str(&table.addrs_line)
         .unwrap_or_else(|err| panic!("addrs: {err}\n{}", table.addrs_line));
@@ -153,7 +153,7 @@ fn capture() -> BTreeMap<String, Example> {
         }
     });
     insert_json(&mut out, "initialize-request", initialize.clone());
-    let (opened, session) = post_initialize(table.door, &initialize);
+    let (opened, session) = post_initialize(table.mcp_port, &initialize);
     insert_json(&mut out, "initialize-result", opened.clone());
     let negotiated = opened["result"]["protocolVersion"]
         .as_str()
@@ -161,13 +161,11 @@ fn capture() -> BTreeMap<String, Example> {
         .to_string();
     // DELETE is a legacy-lifecycle call. The newest protocol version is refused
     // with 405, so the header is the version the handshake returned.
-    delete_session(table.door, &session, &negotiated);
+    delete_session(table.mcp_port, &session, &negotiated);
 
-    let mut gm = support::block_on(Connection::connect_door(std::net::SocketAddr::from((
-        [127, 0, 0, 1],
-        table.door,
-    ))))
-    .unwrap_or_else(|err| panic!("seat GM: {err}"));
+    let mcp_addr = std::net::SocketAddr::from(([127, 0, 0, 1], table.mcp_port));
+    let mut gm = support::block_on(GmClient::connect(mcp_addr))
+        .unwrap_or_else(|err| panic!("seat GM: {err}"));
 
     let status_args = serde_json::json!({});
     insert_json(
@@ -330,8 +328,8 @@ fn capture() -> BTreeMap<String, Example> {
         call(&mut gm, "perceive", unscoped),
     );
 
-    let mouse = seat(table.game, "pc_harbormouse");
-    let wren = seat(table.game, "pc_wren");
+    let mouse = connect_player(table.game, "pc_harbormouse");
+    let wren = connect_player(table.game, "pc_wren");
     // The welcome line means that hello has the seat. The fourth hello comes after both.
     assert_eq!(next_json(&mouse)["kind"], "resume");
     assert_eq!(next_json(&wren)["kind"], "resume");
@@ -344,7 +342,7 @@ fn capture() -> BTreeMap<String, Example> {
     insert_json(
         &mut out,
         "gm-session-full",
-        post_initialize_when_full(table.door, &initialize),
+        post_initialize_when_full(table.mcp_port, &initialize),
     );
 
     let mark = table.host_text.lock().unwrap().len();
@@ -354,7 +352,7 @@ fn capture() -> BTreeMap<String, Example> {
         .unwrap_or_else(|err| panic!("shutdown: {err}"));
     drop(player);
     wait_host_grew(&table, mark);
-    let again = seat(table.game, "pc_rowan");
+    let again = connect_player(table.game, "pc_rowan");
     let replay = next_json(&again);
     assert_eq!(replay["kind"], "say", "{replay}");
     assert_eq!(replay["replay"], true, "{replay}");
@@ -391,7 +389,7 @@ fn listen() -> Table {
         let mut buf = [0u8; 256];
         while stderr.read(&mut buf).unwrap_or(0) > 0 {}
     });
-    let (game, door, addrs_line) = read_addrs(&mut stdout);
+    let (game, mcp_port, addrs_line) = read_addrs(&mut stdout);
     let host_text = Arc::new(Mutex::new(String::new()));
     let (host_tx, host_more) = mpsc::channel();
     let slot = Arc::clone(&host_text);
@@ -415,7 +413,7 @@ fn listen() -> Table {
         _stdin: stdin,
         pack,
         game,
-        door,
+        mcp_port,
         addrs_line,
         host_text,
         host_grew: host_more,
@@ -458,7 +456,7 @@ fn read_addrs(stdout: &mut impl Read) -> (u16, u16, String) {
                     let port = |addr: &str| {
                         loopback_port(addr).unwrap_or_else(|| panic!("not loopback\n{line}"))
                     };
-                    return (port(&addrs.game), port(&addrs.door), line.into());
+                    return (port(&addrs.game), port(&addrs.mcp), line.into());
                 }
             }
             Err(err) => panic!("stdout: {err}"),
@@ -466,7 +464,7 @@ fn read_addrs(stdout: &mut impl Read) -> (u16, u16, String) {
     }
 }
 
-fn seat(port: u16, actor: &str) -> Seat {
+fn connect_player(port: u16, actor: &str) -> PlayerClient {
     let write = connect(port);
     let read = write
         .try_clone()
@@ -493,26 +491,28 @@ fn seat(port: u16, actor: &str) -> Seat {
             }
         }
     });
-    let mut seated = Seat { write, lines };
-    send(&mut seated, &format!("player:{actor}"));
-    seated
+    let mut player = PlayerClient { write, lines };
+    send(&mut player, &format!("player:{actor}"));
+    player
 }
 
-fn send(seat: &mut Seat, line: &str) {
-    writeln!(seat.write, "{line}").unwrap_or_else(|err| panic!("write: {err}"));
-    seat.write
+fn send(player: &mut PlayerClient, line: &str) {
+    writeln!(player.write, "{line}").unwrap_or_else(|err| panic!("write: {err}"));
+    player
+        .write
         .flush()
         .unwrap_or_else(|err| panic!("flush: {err}"));
 }
 
-fn next_line(seat: &Seat) -> String {
-    seat.lines
+fn next_line(player: &PlayerClient) -> String {
+    player
+        .lines
         .recv_timeout(READ_TIMEOUT)
         .unwrap_or_else(|err| panic!("no player line: {err}"))
 }
 
-fn next_json(seat: &Seat) -> Value {
-    let line = next_line(seat);
+fn next_json(player: &PlayerClient) -> Value {
+    let line = next_line(player);
     serde_json::from_str(&line).unwrap_or_else(|err| panic!("{err} in {line}"))
 }
 
@@ -569,22 +569,23 @@ fn read_line(stream: &mut TcpStream) -> String {
     String::from_utf8(buf).unwrap_or_else(|err| panic!("utf-8: {err}"))
 }
 
-fn call(gm: &mut Connection, name: &str, arguments: Value) -> Value {
-    support::block_on(gm.call(name, arguments))
+fn call(gm: &mut GmClient, name: &str, arguments: Value) -> Value {
+    support::block_on(gm.call::<Value>(name, &arguments))
         .unwrap_or_else(|err| panic!("{name}: {err}"))
-        .body
+        .unwrap_or_else(|refusal| serde_json::json!(refusal))
 }
 
-fn one_event(gm: &mut Connection) -> Value {
-    let mut ready = gm.take_events();
+fn one_event(gm: &mut GmClient) -> Value {
+    let mut ready = gm.drain_events();
     if ready.is_empty() {
-        match support::block_on(gm.next_incoming()) {
-            Incoming::Event(event) => ready.push(event),
+        match support::block_on(gm.recv()) {
+            Some(Ok(event)) => ready.push(event),
             other => panic!("expected a GM event, got {other:?}"),
         }
     }
     assert_eq!(ready.len(), 1, "GM events: {ready:?}");
-    serde_json::from_str(&ready[0].raw).unwrap_or_else(|err| panic!("{err} in {}", ready[0].raw))
+    let line = event_line(&ready[0]);
+    serde_json::from_str(&line).unwrap_or_else(|err| panic!("{err} in {line}"))
 }
 
 fn tool_call(id: u64, name: &str, arguments: &Value) -> Value {
@@ -786,12 +787,12 @@ fn differ(name: &str, live: &Example, documented: &Example) -> Option<String> {
 }
 
 fn scrub(value: &mut Value) {
-    let Ok(Addrs { game, door }) = serde_json::from_value(value.clone()) else {
+    let Ok(Addrs { game, mcp }) = serde_json::from_value(value.clone()) else {
         return;
     };
     assert!(loopback_port(&game).is_some(), "{game}");
-    assert!(loopback_port(&door).is_some(), "{door}");
-    assert_ne!(game, door, "game and door ports");
+    assert!(loopback_port(&mcp).is_some(), "{mcp}");
+    assert_ne!(game, mcp, "game and MCP ports");
     let Some(object) = value.as_object_mut() else {
         return;
     };
@@ -800,8 +801,8 @@ fn scrub(value: &mut Value) {
         Value::String(SCRUBBED_GAME_ADDR.to_string()),
     );
     object.insert(
-        "door".to_string(),
-        Value::String(SCRUBBED_DOOR_ADDR.to_string()),
+        "mcp".to_string(),
+        Value::String(SCRUBBED_MCP_ADDR.to_string()),
     );
 }
 
