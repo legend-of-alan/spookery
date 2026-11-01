@@ -13,7 +13,7 @@ use crate::intent::{player_intent_id, Intent, IntentArgs, Source, Target, Viewer
 use crate::journal::{self, Record};
 use crate::model::{ActorLive, Presence, State};
 use crate::rule::{TargetKind, When};
-use crate::rules::gate::{gate, verb_for, GateRefusal};
+use crate::rules::gate::{gate, verb_for, Refusal};
 use crate::store::codec::{emit_save, parse_save};
 use crate::store::tape::{append_record, last_seq, read_after, read_tail, TapeRecord};
 use crate::QueuedMove;
@@ -192,22 +192,28 @@ impl<L> World<L> {
         self.state = now;
     }
 
-    /// Gate a player's move with `presence` seated, then queue it.
+    /// Gate a player's move with `presence` seated, then queue it. A move refused before it
+    /// is an intent has no intent id, so its refusal's `id` is empty.
     pub fn queue_player_move(
         &mut self,
         presence: &Presence,
         actor_id: &str,
         verb: &str,
         target: Option<&str>,
-    ) -> Result<QueuedMove, GateRefusal> {
-        let actor = self
+    ) -> Result<QueuedMove, Refusal> {
+        let intent = self
             .state
             .actors
             .get(actor_id)
             .filter(|actor| actor.is_pc())
-            .ok_or(Reason::Schema)?;
-        let target = self.verb_target(actor, verb, target, Reason::NotInSpec)?;
-        let intent = self.player_intent(actor_id, verb, target)?;
+            .ok_or(Reason::Schema)
+            .and_then(|actor| self.verb_target(actor, verb, target, Reason::NotInSpec))
+            .and_then(|target| self.player_intent(actor_id, verb, target))
+            .map_err(|code| Refusal {
+                id: String::new(),
+                code,
+                detail: None,
+            })?;
         gate(&self.canon, &self.state, presence, &intent)?;
         let queued = QueuedMove {
             id: intent.id.clone(),

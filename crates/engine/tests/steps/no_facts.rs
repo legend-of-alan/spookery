@@ -130,7 +130,7 @@ fn play(world: &mut World, actor: &str, line: &str) {
     let wall = opened.state().last_round_at.clone();
     opened
         .queue_player_move(&seated, actor, verb, target)
-        .unwrap_or_else(|err| panic!("{line}: {}", err.token()));
+        .unwrap_or_else(|err| panic!("{line}: {}", err.code.as_str()));
     opened
         .commit_then_fast_forward(&seated, &wall)
         .unwrap_or_else(|err| panic!("{line}: {err}"));

@@ -3,16 +3,17 @@
 use crate::canon::Canon;
 use crate::draft::Draft;
 use crate::intent::{trigger_intent_id, Intent, Source, Target, Viewer};
-use crate::journal::{Refusal, Step};
+use crate::journal::Step;
 use crate::key::{Change, StateKey, StateValue};
 use crate::rule::{ChangeWatch, Op, Rule, WatchWho, When};
 use crate::rules::cond;
 use crate::rules::expr::Ctx;
-use crate::rules::MoveReport;
+use crate::rules::gate::Refusal;
 use crate::Reason;
 
 use crate::round::dice::{Expansion, RoundDice};
 use crate::round::log::RoundLog;
+use crate::round::stage::apply::report_roll;
 
 /// Every change record of the round, pass by pass.
 pub(crate) fn run(
@@ -129,20 +130,11 @@ fn fire(draft: &mut Draft, dice: &mut RoundDice, log: &mut RoundLog, rule: &Rule
         Ok(expanded) => expanded,
         Err(code) => {
             draft.rollback(point);
-            log.refused.push(Refusal {
-                id: intent.id,
-                code,
-                detail: None,
-            });
+            log.refused.push(Refusal::new(&intent, code));
             return;
         }
     };
-    if let Some(out) = expanded.rolled {
-        log.reports.push(MoveReport::Rolled {
-            actor_id: subject.to_string(),
-            roll: out,
-        });
-    }
+    report_roll(log, expanded.rolled, subject);
     log.reports.extend(expanded.resisted);
     log.effects.extend(expanded.effects);
     log.extra_steps.push(Step::Rule(rule.id.clone()));

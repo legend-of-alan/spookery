@@ -2,9 +2,10 @@
 
 use crate::effect::Effect;
 use crate::intent::Intent;
-use crate::journal::{Arrival, Refusal, Step};
+use crate::journal::{Arrival, Step};
 use crate::model::Presence;
 use crate::round::stage::advance::RoundTime;
+use crate::rules::gate::Refusal;
 use crate::rules::MoveReport;
 
 /// Everything a round writes down, in the order it happened. `record` consumes it.

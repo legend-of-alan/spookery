@@ -2,7 +2,7 @@
 
 use std::collections::BTreeMap;
 
-use crate::rules::gate::{gate, GateRefusal};
+use crate::rules::gate::{gate, Refusal};
 use crate::rules::roll::classify;
 
 use crate::canon::Canon;
@@ -29,7 +29,7 @@ pub(crate) enum Resolution {
         rolled: Option<Roll>,
     },
     /// Refused by the gate: journaled, and told to a player.
-    Refused(GateRefusal),
+    Refused(Refusal),
     /// The check could not be set up (no check or meter): journaled, and told to the actor whoever it is.
     CannotRoll(Reason),
 }

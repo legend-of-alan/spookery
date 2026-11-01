@@ -42,13 +42,15 @@ fn handle_move(
     pack: &Path,
     actor: &str,
     line: &str,
-) -> Result<Vec<spookery_engine::RoundOutput>, spookery_engine::GateRefusal> {
+) -> Result<Vec<spookery_engine::RoundOutput>, spookery_engine::Refusal> {
     let mut world = super::rules::open(pack);
     let (verb, target) = support::split_move(line);
     let nobody = spookery_engine::Presence::default();
     world.queue_player_move(&nobody, actor, verb, target)?;
     let stamp = world.state().last_round_at.clone();
-    Ok(world.commit_then_fast_forward(&nobody, &stamp)?)
+    Ok(world
+        .commit_then_fast_forward(&nobody, &stamp)
+        .unwrap_or_else(|err| panic!("{line}: {err}")))
 }
 
 fn read_first_round_line(pack: &Path) -> String {
@@ -160,7 +162,7 @@ fn nell_types(world: &mut World, line: String) {
     let pack = world.pack.clone().unwrap();
     match handle_move(&pack, "pc_nell", &line) {
         Ok(_) => world.scratch = "ok".to_string(),
-        Err(err) => world.scratch = err.token().to_string(),
+        Err(err) => world.scratch = err.code.as_str().to_string(),
     }
 }
 
@@ -178,7 +180,7 @@ fn again_is_refused(world: &mut World, line: String, code: String) {
         Err(err) => err,
         Ok(_) => panic!("the second use was accepted"),
     };
-    assert_eq!(err.token(), code);
+    assert_eq!(err.code.as_str(), code);
     assert_eq!(hp(pack, "pc_nell"), 7);
     assert_eq!(count(pack, "pc_nell", "tonic"), 0);
     assert_eq!(
@@ -204,7 +206,8 @@ fn docks_shop_has_3_lamp_oil(world: &mut World) {
 #[when(expr = "rowan takes lamp_oil")]
 fn rowan_takes_oil(world: &mut World) {
     let pack = world.pack.clone().unwrap();
-    handle_move(&pack, "pc_rowan", "take lamp_oil").unwrap_or_else(|err| panic!("{}", err.token()));
+    handle_move(&pack, "pc_rowan", "take lamp_oil")
+        .unwrap_or_else(|err| panic!("{}", err.code.as_str()));
 }
 
 #[then(expr = "docks_shop has 2 and rowan has 1")]
@@ -253,7 +256,7 @@ fn rowan_types(world: &mut World, line: String) {
     let pack = world.pack.clone().unwrap();
     world.scratch = match handle_move(&pack, "pc_rowan", &line) {
         Ok(_) => "ok".to_string(),
-        Err(err) => err.token().to_string(),
+        Err(err) => err.code.as_str().to_string(),
     };
 }
 
@@ -327,7 +330,8 @@ fn the_shop_has_no_oil(world: &mut World) {
 #[when(expr = "rowan drops lamp_oil")]
 fn rowan_drops_oil(world: &mut World) {
     let pack = world.pack.clone().unwrap();
-    handle_move(&pack, "pc_rowan", "drop lamp_oil").unwrap_or_else(|err| panic!("{}", err.token()));
+    handle_move(&pack, "pc_rowan", "drop lamp_oil")
+        .unwrap_or_else(|err| panic!("{}", err.code.as_str()));
 }
 
 fn assert_round_rejects_missing_item(pack: &Path) {
@@ -412,7 +416,7 @@ fn lark_types(world: &mut World, line: String) {
     });
     match handle_move(&pack, "pc_lark", &line) {
         Ok(_) => {}
-        Err(err) => world.scratch = err.token().to_string(),
+        Err(err) => world.scratch = err.code.as_str().to_string(),
     }
     world.player_added = line;
 }
@@ -456,13 +460,15 @@ fn lark_wields_nothing(world: &mut World) {
 #[when(expr = "lark attacks nell and hits")]
 fn lark_attacks_and_hits(world: &mut World) {
     let pack = world.pack.clone().unwrap();
-    handle_move(&pack, "pc_lark", "attack pc_nell").unwrap_or_else(|err| panic!("{}", err.token()));
+    handle_move(&pack, "pc_lark", "attack pc_nell")
+        .unwrap_or_else(|err| panic!("{}", err.code.as_str()));
 }
 
 #[when(expr = "lark attacks nell")]
 fn lark_attacks(world: &mut World) {
     let pack = world.pack.clone().unwrap();
-    handle_move(&pack, "pc_lark", "attack pc_nell").unwrap_or_else(|err| panic!("{}", err.token()));
+    handle_move(&pack, "pc_lark", "attack pc_nell")
+        .unwrap_or_else(|err| panic!("{}", err.code.as_str()));
 }
 
 #[then(expr = "item:poisoned_dagger\\/attack ran, not verb:attack")]
@@ -489,7 +495,7 @@ fn bare_hands_ran(world: &mut World) {
 fn lark_drops_the_dagger(world: &mut World) {
     let pack = world.pack.clone().unwrap();
     handle_move(&pack, "pc_lark", "drop poisoned_dagger")
-        .unwrap_or_else(|err| panic!("{}", err.token()));
+        .unwrap_or_else(|err| panic!("{}", err.code.as_str()));
 }
 
 #[then(expr = "lark's wielded slot is empty in the same round")]
@@ -622,7 +628,7 @@ fn nell_resists_on_a_seeded_roll(world: &mut World) {
 fn lark_hits_with_the_dagger(world: &mut World) {
     let pack = world.pack.clone().unwrap();
     let outputs = handle_move(&pack, "pc_lark", "attack pc_nell")
-        .unwrap_or_else(|err| panic!("{}", err.token()));
+        .unwrap_or_else(|err| panic!("{}", err.code.as_str()));
     let output = &outputs[0];
     let nell = output.reports.iter().find_map(|report| match report {
         spookery_engine::MoveReport::Rolled { actor_id, roll } if actor_id == "pc_nell" => {

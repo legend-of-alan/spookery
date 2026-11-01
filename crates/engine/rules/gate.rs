@@ -1,5 +1,7 @@
 //! Admit an intent, or refuse it with a reason.
 
+use serde::{Deserialize, Serialize};
+
 use crate::canon::Canon;
 use crate::intent::{Intent, Source, Target, Viewer};
 use crate::model::{Presence, State};
@@ -11,45 +13,26 @@ use crate::rules::habits::is_eligible;
 use crate::rules::perceive::perceive_as;
 use crate::Reason;
 
-/// Returned from the engine to the host table, which turns it into a `Refusal`.
-/// A gate refusal. `Reason` stays fieldless. A cost shortfall keeps the missing name.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum GateRefusal {
-    Code(Reason),
-    CantAfford(String),
-    /// A refusal whose player text is not the token. `code` is still the token.
-    Text {
-        code: Reason,
-        text: String,
-    },
+/// Returned from the gate or a stage to the host table, which turns it into a
+/// `protocol::Refusal`, and stored as written on the round line's `refused`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Refusal {
+    pub id: String,
+    pub code: Reason,
+    /// The cost shortfall, or the sentence a locked exit shows.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
 }
 
-impl GateRefusal {
-    pub fn reason(&self) -> Reason {
-        match self {
-            GateRefusal::Code(reason) | GateRefusal::Text { code: reason, .. } => *reason,
-            GateRefusal::CantAfford(_) => Reason::CantAfford,
+impl Refusal {
+    /// `intent` refused with `code` and no detail.
+    pub(crate) fn new(intent: &Intent, code: Reason) -> Self {
+        Self {
+            id: intent.id.clone(),
+            code,
+            detail: None,
         }
-    }
-
-    pub fn token(&self) -> &'static str {
-        self.reason().as_str()
-    }
-
-    /// The shortfall, or the sentence a locked exit shows.
-    pub fn missing(&self) -> Option<&str> {
-        match self {
-            GateRefusal::CantAfford(what) | GateRefusal::Text { text: what, .. } => {
-                Some(what.as_str())
-            }
-            GateRefusal::Code(_) => None,
-        }
-    }
-}
-
-impl From<Reason> for GateRefusal {
-    fn from(reason: Reason) -> Self {
-        GateRefusal::Code(reason)
     }
 }
 
@@ -129,8 +112,8 @@ pub fn gate<'a>(
     now: &State,
     presence: &Presence,
     intent: &Intent,
-) -> Result<&'a Rule, GateRefusal> {
-    let rule = rule_for(canon, now, intent)?;
+) -> Result<&'a Rule, Refusal> {
+    let rule = rule_for(canon, now, intent).map_err(|code| Refusal::new(intent, code))?;
     admit(canon, now, presence, intent, rule).map(|()| rule)
 }
 
@@ -141,15 +124,15 @@ pub fn admit(
     presence: &Presence,
     intent: &Intent,
     rule: &Rule,
-) -> Result<(), GateRefusal> {
+) -> Result<(), Refusal> {
     if let Some(actor) = now.actors.get(intent.actor.actor_id()) {
         if actor.is_busy(now.world_time) && matches!(rule.when, When::Verb { .. }) {
-            return Err(Reason::Busy.into());
+            return Err(Refusal::new(intent, Reason::Busy));
         }
     }
     crate::travel::admit(canon, now, presence, intent, rule)?;
     if intent.source == Source::Player && !can_name(canon, now, presence, intent) {
-        return Err(Reason::NotInSpec.into());
+        return Err(Refusal::new(intent, Reason::NotInSpec));
     }
     if let When::Verb { target, .. } = &rule.when {
         let shaped = match target {
@@ -160,26 +143,29 @@ pub fn admit(
             TargetKind::Item => matches!(intent.target, Target::Item(_)),
         };
         if !shaped {
-            return Err(Reason::Schema.into());
+            return Err(Refusal::new(intent, Reason::Schema));
         }
     }
     if intent.source == Source::Engine && matches!(intent.actor, Viewer::Player(_)) {
-        return Err(Reason::EngineOnPlayer.into());
+        return Err(Refusal::new(intent, Reason::EngineOnPlayer));
     }
     if intent.source == Source::Engine
         && matches!(intent.actor, Viewer::Npc(_))
         && !is_eligible(canon, now, presence, intent.actor.actor_id())
     {
-        return Err(Reason::Ineligible.into());
+        return Err(Refusal::new(intent, Reason::Ineligible));
     }
     let skip_if = intent.source == Source::Player && matches!(rule.when, When::Habit);
     if !skip_if {
-        cond::holds(canon, now, &Ctx { intent, presence }, &rule.if_)?;
+        cond::holds(canon, now, &Ctx { intent, presence }, &rule.if_)
+            .map_err(|code| Refusal::new(intent, code))?;
     }
     if let Some(cost) = &rule.cost {
-        if let Err(shortfall) = cost::afford(canon, now, presence, intent, cost) {
-            return Err(GateRefusal::CantAfford(shortfall.missing));
-        }
+        cost::afford(canon, now, presence, intent, cost).map_err(|missing| Refusal {
+            id: intent.id.clone(),
+            code: Reason::CantAfford,
+            detail: Some(missing),
+        })?;
     }
     Ok(())
 }

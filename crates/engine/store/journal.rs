@@ -19,9 +19,7 @@ use serde::de::DeserializeOwned;
 use crate::hash::blake2s_hex;
 use crate::Reason;
 
-pub(crate) use super::records::{
-    AddedMeter, Arrival, CheckpointRecord, MigrateRecord, Refusal, Step,
-};
+pub(crate) use super::records::{AddedMeter, Arrival, CheckpointRecord, MigrateRecord, Step};
 pub use super::records::{Record, RoundRecord};
 
 pub fn blake2s_tagged(bytes: &[u8]) -> String {

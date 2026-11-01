@@ -11,7 +11,7 @@ use crate::rule::{EffectTemplate, LocationTo, Rule, TargetKind, When};
 use crate::rules::cond;
 use crate::rules::cost;
 use crate::rules::expr::{Ctx, Dice};
-use crate::rules::gate::{self, GateRefusal};
+use crate::rules::gate::{self, Refusal};
 use crate::visibility::can_see_fact;
 use crate::Reason;
 pub use spookery_protocol::{exit_phrase, ExitView};
@@ -50,7 +50,7 @@ pub(crate) fn admit(
     presence: &Presence,
     intent: &Intent,
     rule: &Rule,
-) -> Result<(), GateRefusal> {
+) -> Result<(), Refusal> {
     let Some(token) = exit_name(rule, intent) else {
         return Ok(());
     };
@@ -60,10 +60,10 @@ pub(crate) fn admit(
         .map(|actor| actor.place())
         .unwrap_or("");
     let Some(exit) = find_exit(canon, from, &token) else {
-        return Err(Reason::NoExit.into());
+        return Err(Refusal::new(intent, Reason::NoExit));
     };
     if !is_revealed(canon, now, intent.actor.actor_id(), exit) {
-        return Err(Reason::NoExit.into());
+        return Err(Refusal::new(intent, Reason::NoExit));
     }
     if is_locked(canon, now, presence, intent.actor.actor_id(), exit) {
         let text = if exit.locked_text.is_empty() {
@@ -71,15 +71,17 @@ pub(crate) fn admit(
         } else {
             exit.locked_text.clone()
         };
-        return Err(GateRefusal::Text {
+        return Err(Refusal {
+            id: intent.id.clone(),
             code: Reason::NoExit,
-            text,
+            detail: Some(text),
         });
     }
-    if let Err(shortfall) = cost::afford(canon, now, presence, intent, &exit.cost) {
-        return Err(GateRefusal::CantAfford(shortfall.missing));
-    }
-    Ok(())
+    cost::afford(canon, now, presence, intent, &exit.cost).map_err(|missing| Refusal {
+        id: intent.id.clone(),
+        code: Reason::CantAfford,
+        detail: Some(missing),
+    })
 }
 
 pub(crate) fn is_revealed(canon: &Canon, now: &State, actor_id: &str, exit: &Exit) -> bool {

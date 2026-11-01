@@ -256,7 +256,7 @@ fn play(world: &mut EngineWorld, line: &str) -> spookery_engine::RoundOutput {
     let wall = world.state().last_round_at.clone();
     world
         .queue_player_move(&lark(), "pc_lark", verb, target)
-        .unwrap_or_else(|err| panic!("{line}: {}", err.token()));
+        .unwrap_or_else(|err| panic!("{line}: {}", err.code.as_str()));
     let outputs = world
         .commit_then_fast_forward(&lark(), &wall)
         .unwrap_or_else(|err| panic!("{line}: {err}"));
