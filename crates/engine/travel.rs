@@ -4,11 +4,11 @@ use std::collections::BTreeSet;
 
 use crate::canon::{Canon, Exit, PlaceDef};
 use crate::draft::Draft;
-use crate::intent::{Intent, Source, Target, Viewer};
+use crate::intent::{Intent, Target};
 use crate::key::StateKey;
 use crate::model::{ActorLive, PendingAction, PendingKind, Presence, State};
 use crate::model::{MINUTES_PER_DAY, MINUTES_PER_HOUR};
-use crate::rule::{Cond, EffectTemplate, LocationTo, Rule, TargetKind, When};
+use crate::rule::{EffectTemplate, LocationTo, Rule, TargetKind, When};
 use crate::rules::case::Case;
 use crate::rules::cond;
 use crate::rules::cost;
@@ -101,29 +101,7 @@ fn is_locked(canon: &Canon, now: &State, presence: &Presence, actor_id: &str, ex
         return true;
     };
     let target = Target::Exit(exit.name.clone());
-    !if_holds(canon, now, presence, &viewer, "travel", target, &exit.if_)
-}
-
-/// Whether `conds` hold for `viewer` doing `verb` to `target`. `help` and exit locks read an
-/// `if` this way: they have no intent, so they read it against a probe with no id.
-pub(crate) fn if_holds(
-    canon: &Canon,
-    now: &State,
-    presence: &Presence,
-    viewer: &Viewer,
-    verb: &str,
-    target: Target,
-    conds: &[Cond],
-) -> bool {
-    let probe = Intent::new(
-        String::new(),
-        now.round_index,
-        viewer.clone(),
-        Source::Player,
-        verb,
-        target,
-    );
-    cond::holds(&Case::new(canon, now, presence, &probe), conds).is_ok()
+    !cond::if_holds(canon, now, presence, &viewer, "travel", target, &exit.if_)
 }
 
 /// The exits of `place` this actor is allowed to see. A hidden exit stays off the list.
@@ -395,7 +373,7 @@ fn allowed_verbs(canon: &Canon, now: &State, presence: &Presence, actor_id: &str
                 return false;
             };
             let target = Target::new(*chosen, &hint.unwrap_or_default());
-            if_holds(canon, now, presence, &viewer, verb, target, &rule.if_)
+            cond::if_holds(canon, now, presence, &viewer, verb, target, &rule.if_)
         });
         if allowed {
             names.push(verb.clone());

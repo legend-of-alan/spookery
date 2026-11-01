@@ -4,9 +4,9 @@ use crate::canon::Canon;
 use crate::intent::{Intent, Target, Viewer};
 use crate::model::{ActorLive, Presence, State};
 use crate::rules::case::Case;
+use crate::rules::cond;
 use crate::rules::expand::PreviewDice;
 use crate::rules::gate;
-use crate::travel;
 
 /// One habit intent per NPC whose habit the gate admits, its target not yet stamped.
 pub(crate) fn intents(canon: &Canon, now: &State, presence: &Presence) -> Vec<Intent> {
@@ -39,7 +39,7 @@ pub(crate) fn list_whose_if_holds(
     habits
         .filter(|rule| {
             let (verb, conds) = (&rule.local_id, &rule.if_);
-            travel::if_holds(canon, now, presence, &npc, verb, Target::Empty, conds)
+            cond::if_holds(canon, now, presence, &npc, verb, Target::Empty, conds)
         })
         .map(|rule| rule.local_id.clone())
         .collect()

@@ -95,10 +95,9 @@ fn match_rules<'a>(draft: &Draft, rules: &[&'a Rule], changes: &[Change]) -> Vec
 }
 
 fn fire(draft: &mut Draft, dice: &mut RoundDice, log: &mut RoundLog, rule: &Rule, subject: &str) {
-    let Some(viewer) = draft.state().viewer_of(subject) else {
+    let Ok(intent) = Intent::trigger(draft.state(), subject, &rule.id) else {
         return;
     };
-    let intent = Intent::trigger(draft.state().round_index, viewer, &rule.id);
     let case = Case::new(draft.canon(), draft.state(), draft.presence, &intent);
     if cond::holds(&case, &rule.if_).is_err() {
         return;

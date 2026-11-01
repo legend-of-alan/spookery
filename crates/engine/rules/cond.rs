@@ -1,6 +1,8 @@
 //! Whether the conditions on a rule hold.
 
-use crate::model::{MINUTES_PER_DAY, MINUTES_PER_HOUR};
+use crate::canon::Canon;
+use crate::intent::{Intent, Source, Target, Viewer};
+use crate::model::{Presence, State, MINUTES_PER_DAY, MINUTES_PER_HOUR};
 use crate::rule::{Cond, Who};
 use crate::rules::case::Case;
 use crate::rules::expr;
@@ -14,6 +16,29 @@ pub(crate) fn holds(case: &Case, conds: &[Cond]) -> Result<(), Reason> {
         }
     }
     Ok(())
+}
+
+/// Whether `conds` hold for `viewer` doing `verb` to `target`. `help`, exit locks and an
+/// NPC's habit list read an `if` this way: they have no intent, so they read it against a
+/// probe with no id.
+pub(crate) fn if_holds(
+    canon: &Canon,
+    now: &State,
+    presence: &Presence,
+    viewer: &Viewer,
+    verb: &str,
+    target: Target,
+    conds: &[Cond],
+) -> bool {
+    let probe = Intent::new(
+        String::new(),
+        now.round_index,
+        viewer.clone(),
+        Source::Player,
+        verb,
+        target,
+    );
+    holds(&Case::new(canon, now, presence, &probe), conds).is_ok()
 }
 
 fn reason_of(cond: &Cond) -> Reason {

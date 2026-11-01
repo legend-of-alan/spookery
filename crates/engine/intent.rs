@@ -172,14 +172,8 @@ impl Intent {
         };
         let id = intent_id(&now.world_id, round, actor_id, &line);
         let actor = Viewer::Player(actor_id.to_string());
-        Ok(Self::new(
-            id,
-            round,
-            actor,
-            Source::Player,
-            verb,
-            Target::Empty,
-        ))
+        let intent = Self::new(id, round, actor, Source::Player, verb, Target::Empty);
+        Ok(intent)
     }
 
     /// The engine running `actor_id`'s habit `local_id` this round.
@@ -189,10 +183,13 @@ impl Intent {
         Self::new(id, round, npc, Source::Engine, local_id, Target::Empty)
     }
 
-    /// The engine firing change rule `rule_id` for `actor`, as `trigger:<rule>:<actor>`.
-    pub(crate) fn trigger(round: u64, actor: Viewer, rule_id: &str) -> Self {
-        let id = format!("trigger:{rule_id}:{}", actor.actor_id());
-        Self::new(id, round, actor, Source::Engine, rule_id, Target::Empty)
+    /// The engine firing change rule `rule_id` for `actor_id` this round, as
+    /// `trigger:<rule>:<actor>`.
+    pub(crate) fn trigger(now: &State, actor_id: &str, rule_id: &str) -> Result<Self, Reason> {
+        let actor = now.viewer_of(actor_id).ok_or(Reason::UnknownId)?;
+        let (round, id) = (now.round_index, format!("trigger:{rule_id}:{actor_id}"));
+        let intent = Self::new(id, round, actor, Source::Engine, rule_id, Target::Empty);
+        Ok(intent)
     }
 
     /// The finish of `actor_id`'s timed action, as `arrival:<actor>`, with the source, verb
