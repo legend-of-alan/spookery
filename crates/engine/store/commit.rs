@@ -8,7 +8,6 @@ use std::path::Path;
 use crate::canon::{check_save, migrate_save, missing_meters, pack_rev};
 use crate::diagnostic::first_reason;
 use crate::draft::Draft;
-use crate::error::Reason;
 use crate::journal::{self, blake2s_tagged};
 use crate::model::{MemoryLine, State};
 use crate::round::log::PlayedRound;
@@ -18,6 +17,7 @@ use crate::store::durability::{fsync_dir, fsync_file};
 use crate::store::lock::{lock_write, PackGuard, WriteGuard};
 use crate::store::recovery::close_finished;
 use crate::world::World;
+use crate::Reason;
 
 const CHECKPOINT_WARNING: &str = "the checkpoint bundle was not closed";
 

@@ -40,18 +40,15 @@ impl State {
         canon: &crate::canon::Canon,
         actor_id: &str,
         key: &str,
-    ) -> Result<i64, crate::error::Reason> {
-        let def = canon
-            .meters
-            .get(key)
-            .ok_or(crate::error::Reason::UnknownId)?;
+    ) -> Result<i64, crate::Reason> {
+        let def = canon.meters.get(key).ok_or(crate::Reason::UnknownId)?;
         let live = self
             .actors
             .get(actor_id)
-            .ok_or(crate::error::Reason::UnknownId)?
+            .ok_or(crate::Reason::UnknownId)?
             .meters()
             .get(key)
-            .ok_or(crate::error::Reason::UnknownId)?;
+            .ok_or(crate::Reason::UnknownId)?;
         meter::current(def, live)
     }
 }
@@ -266,28 +263,28 @@ pub(crate) fn shift_count(
     id: &str,
     delta: i64,
     max: Option<i64>,
-) -> Result<bool, crate::error::Reason> {
+) -> Result<bool, crate::Reason> {
     let current = i64::from(counts.get(id).copied().unwrap_or(0));
     let mut next = current
         .checked_add(delta)
-        .ok_or(crate::error::Reason::OutOfRange)?;
+        .ok_or(crate::Reason::OutOfRange)?;
     if next < 0 {
         if current == 0 {
-            return Err(crate::error::Reason::MissingItem);
+            return Err(crate::Reason::MissingItem);
         }
-        return Err(crate::error::Reason::OutOfRange);
+        return Err(crate::Reason::OutOfRange);
     }
     if delta > 0 {
         if let Some(cap) = max {
             if cap < 0 {
-                return Err(crate::error::Reason::OutOfRange);
+                return Err(crate::Reason::OutOfRange);
             }
             if next > cap {
                 next = cap;
             }
         }
     }
-    let stored = u32::try_from(next).map_err(|_| crate::error::Reason::OutOfRange)?;
+    let stored = u32::try_from(next).map_err(|_| crate::Reason::OutOfRange)?;
     let changed = stored != u32::try_from(current).unwrap_or(0);
     if stored == 0 {
         counts.remove(id);

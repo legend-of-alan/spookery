@@ -6,11 +6,10 @@ use std::net::SocketAddr;
 
 use serde_json::{json, Value};
 
-use crate::gm_connection::{self, Connection, Event, EventBody, Incoming, ToolResult};
-use crate::protocol::{CommitBody, PlayerFrame, SayArgs, TableStatus};
+use crate::gm_connection::{self, Connection, Event, GmEvent, Incoming, ToolResult};
+use crate::protocol::{CommitBody, PlayerFrame, Refusal, SayArgs, TableStatus};
 
 use super::frame_text::{self, humanize};
-use super::refusal_line;
 
 const HELP: &str = "\
 Commands:
@@ -46,8 +45,8 @@ pub async fn run_gm(
     let client = match connected {
         Ok(client) => client,
         Err(gm_connection::Error::Io(err)) => return Err(super::Error::Io(err)),
-        Err(gm_connection::Error::Refused { code, raw: line }) => {
-            return Err(super::Error::Message(echo_refusal(&code, &line, raw)));
+        Err(gm_connection::Error::Refused { refusal, raw: line }) => {
+            return Err(super::Error::Message(echo_refusal(&refusal, &line, raw)));
         }
         Err(gm_connection::Error::Invalid(line)) => return Err(super::Error::Message(line)),
     };
@@ -174,7 +173,7 @@ impl Session {
     }
 
     async fn on_say(&mut self, address: SayArgs) -> Result<(), super::Error> {
-        let arguments = address.to_value();
+        let arguments = serde_json::to_value(&address).expect("say arguments");
         let Some(outcome) = self.call_tool("say", arguments).await? else {
             return Ok(());
         };
@@ -252,8 +251,8 @@ impl Session {
         match self.connection.call(name, arguments).await {
             Ok(outcome) => Ok(Some(outcome)),
             Err(gm_connection::Error::Io(err)) => Err(super::Error::Io(err)),
-            Err(gm_connection::Error::Refused { code, raw }) => {
-                self.show_refusal(&code, &raw);
+            Err(gm_connection::Error::Refused { refusal, raw }) => {
+                self.show_refusal(&refusal, &raw);
                 Ok(None)
             }
             Err(gm_connection::Error::Invalid(line)) => {
@@ -294,7 +293,7 @@ impl Session {
         let mut pending: VecDeque<&str> = checks.iter().map(String::as_str).collect();
         let events = self.connection.take_events();
         for event in &events {
-            if let EventBody::Check(_) = event.body {
+            if let GmEvent::Check(_) = event.body {
                 let line = render_event(&event.body);
                 if pending.front().copied() == Some(line.as_str()) {
                     pending.pop_front();
@@ -326,7 +325,7 @@ impl Session {
                 eprintln!("{line}");
                 let _ = io::stderr().flush();
             }
-            Incoming::Refused { code, raw } => self.show_refusal(&code, &raw),
+            Incoming::Refused { refusal, raw } => self.show_refusal(&refusal, &raw),
             Incoming::Eof => return false,
         }
         true
@@ -338,35 +337,32 @@ impl Session {
             return;
         }
         let line = render_event(&event.body);
-        if matches!(event.body, EventBody::Check(_)) && self.printed_checks.skip(&line) {
+        if matches!(event.body, GmEvent::Check(_)) && self.printed_checks.skip(&line) {
             return;
         }
         emit(&line);
     }
 
     fn show_tool_refusal(&self, outcome: &ToolResult) {
-        let code = outcome
-            .body
-            .get("code")
-            .and_then(Value::as_str)
-            .unwrap_or("");
-        self.show_refusal(code, &outcome.raw);
+        match serde_json::from_value::<Refusal>(outcome.body.clone()) {
+            Ok(refusal) => self.show_refusal(&refusal, &outcome.raw),
+            Err(_) => report_unreadable(),
+        }
     }
 
-    fn show_refusal(&self, code: &str, raw: &str) {
-        eprintln!("{}", echo_refusal(code, raw, self.is_raw));
+    fn show_refusal(&self, refusal: &Refusal, raw: &str) {
+        eprintln!("{}", echo_refusal(refusal, raw, self.is_raw));
         let _ = io::stderr().flush();
     }
 }
 
 /// Raw mode echoes the frame and names the code. Text mode names the refusal.
-fn echo_refusal(code: &str, raw: &str, raw_mode: bool) -> String {
-    if raw_mode {
-        emit(raw);
-        code.to_string()
-    } else {
-        refusal_line(code)
+fn echo_refusal(refusal: &Refusal, raw: &str, raw_mode: bool) -> String {
+    if !raw_mode {
+        return refusal.to_string();
     }
+    emit(raw);
+    refusal.code.as_str().to_string()
 }
 
 fn emit(line: &str) {
@@ -462,13 +458,13 @@ pub fn actor_name(id: &str) -> String {
     }
 }
 
-pub fn render_event(body: &EventBody) -> String {
+pub fn render_event(body: &GmEvent) -> String {
     match body {
-        EventBody::Say(say) => format!("{}: {}", actor_name(&say.from), say.text),
-        EventBody::Queued(row) => {
+        GmEvent::Say(say) => format!("{}: {}", actor_name(&say.from.to_string()), say.text),
+        GmEvent::Queued(row) => {
             format!("{} queued: {}", actor_name(&row.actor_id), row.move_name)
         }
-        EventBody::Check(roll) => render_check(
+        GmEvent::Check(roll) => render_check(
             &roll.faces,
             roll.stat,
             roll.total,
@@ -606,10 +602,10 @@ mod tests {
     use super::*;
     use crate::protocol::{Outcome, QueuedMove, Roll, SayEvent, StatusPause, StatusPresence};
 
-    fn say(from: &str, seq: u64, text: &str) -> EventBody {
-        EventBody::Say(SayEvent {
+    fn say(from: &str, seq: u64, text: &str) -> GmEvent {
+        GmEvent::Say(SayEvent {
             seq,
-            from: from.to_string(),
+            from: from.parse().unwrap(),
             address: "table".to_string(),
             place: None,
             actor: None,
@@ -618,8 +614,8 @@ mod tests {
         })
     }
 
-    fn roll(faces: Vec<u32>, stat: i64, total: i64, target: i64, outcome: Outcome) -> EventBody {
-        EventBody::Check(Roll {
+    fn roll(faces: Vec<u32>, stat: i64, total: i64, target: i64, outcome: Outcome) -> GmEvent {
+        GmEvent::Check(Roll {
             faces,
             stat,
             total,
@@ -782,7 +778,7 @@ mod tests {
         let npc = render_event(&say("npc:mira", 3, "oil"));
         assert_eq!(npc, "Mira: oil");
 
-        let queued = render_event(&EventBody::Queued(QueuedMove {
+        let queued = render_event(&GmEvent::Queued(QueuedMove {
             id: "id-1".to_string(),
             actor_id: "pc_wren".to_string(),
             move_name: "wait".to_string(),

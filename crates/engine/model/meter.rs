@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::error::Reason;
+use crate::Reason;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct MeterDef {

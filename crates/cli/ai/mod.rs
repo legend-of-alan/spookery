@@ -33,8 +33,13 @@ pub(crate) fn report_error(message: impl Into<String>) -> Error {
 
 /// Parse a JSON-RPC tool-result line from the GM seat into a [`ToolResult`].
 pub fn parse_tool_result(raw: &str) -> Result<ToolResult, Error> {
-    let body =
-        crate::protocol::parse_tool_result(raw).map_err(|_| report_error(raw.to_string()))?;
+    let line: serde_json::Value = serde_json::from_str(raw).map_err(|_| report_error(raw))?;
+    let result = line.get("result").ok_or_else(|| report_error(raw))?;
+    let body = result
+        .get("structuredContent")
+        .or_else(|| result.get("structured_content"))
+        .cloned()
+        .unwrap_or_default();
     let refused = body.get("code").is_some();
     Ok(ToolResult {
         raw: raw.to_string(),

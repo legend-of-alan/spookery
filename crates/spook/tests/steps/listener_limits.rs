@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 use cucumber::{then, when};
 use spookery_engine::testing::journal::list_round_keys;
 
-use spookery::protocol::PlayerFrame;
+use spookery::protocol::{PlayerFrame, Speaker};
 
 use crate::support;
 use crate::World;
@@ -359,7 +359,7 @@ fn one_player_stops_reading(world: &mut World) {
     });
     let say = "n".repeat(SAY_TEXT_BYTES);
     let frame = PlayerFrame::Say {
-        from: "gm".to_string(),
+        from: Speaker::Gm,
         address: "table".to_string(),
         text: say.clone(),
         replay: false,

@@ -1,10 +1,10 @@
 //! Whether the conditions on a rule hold.
 
 use crate::canon::Canon;
-use crate::error::Reason;
 use crate::model::State;
 use crate::rule::{Cond, Who};
 use crate::rules::expr::{self, Ctx};
+use crate::Reason;
 
 /// Every condition holds. A failed `has_item` is [`Reason::MissingItem`].
 pub fn holds(canon: &Canon, now: &State, ctx: &Ctx<'_>, conds: &[Cond]) -> Result<(), Reason> {

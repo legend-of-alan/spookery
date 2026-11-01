@@ -4,7 +4,6 @@ use std::collections::BTreeSet;
 
 use crate::canon::{Canon, Exit};
 use crate::draft::Draft;
-use crate::error::Reason;
 use crate::intent::{Intent, Source, Target};
 use crate::key::StateKey;
 use crate::model::{PendingAction, PendingKind, Presence, State};
@@ -14,6 +13,7 @@ use crate::rules::cost;
 use crate::rules::expr::{Ctx, Dice};
 use crate::rules::gate::{self, GateRefusal};
 use crate::visibility::can_see_fact;
+use crate::Reason;
 pub use spookery_protocol::{exit_phrase, ExitView};
 
 pub(crate) fn find_exit<'a>(canon: &'a Canon, from: &str, name: &str) -> Option<&'a Exit> {

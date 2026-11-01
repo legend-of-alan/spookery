@@ -6,16 +6,13 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 pub use crate::protocol::{CastKind, MenuRow, PackSummary, SayArgs};
-use crate::protocol::{QueuedMove, Roll};
-
-/// Characters. The same budget `perceive` uses when it trims this prose.
-const PROSE_BUDGET: usize = 800;
+use crate::protocol::{QueuedMove, Roll, Speaker, PERCEIVE_BODY_CHARS};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct HandledSay {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub seq: Option<u64>,
-    pub from: String,
+    pub from: Speaker,
     pub address: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub place: Option<String>,
@@ -29,7 +26,7 @@ impl HandledSay {
         match say {
             SayArgs::Table { text } => Self {
                 seq,
-                from: "gm".to_string(),
+                from: Speaker::Gm,
                 address: "table".to_string(),
                 place: None,
                 actor: None,
@@ -37,7 +34,7 @@ impl HandledSay {
             },
             SayArgs::Place { place, text } => Self {
                 seq,
-                from: "gm".to_string(),
+                from: Speaker::Gm,
                 address: "place".to_string(),
                 place: Some(place.clone()),
                 actor: None,
@@ -45,7 +42,7 @@ impl HandledSay {
             },
             SayArgs::Actor { actor, text } => Self {
                 seq,
-                from: "gm".to_string(),
+                from: Speaker::Gm,
                 address: "actor".to_string(),
                 place: None,
                 actor: Some(actor.clone()),
@@ -109,7 +106,7 @@ pub struct KeptActions {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Wake {
     Say {
-        from: String,
+        from: Speaker,
         seq: u64,
         address: String,
         place: Option<String>,
@@ -230,7 +227,7 @@ pub fn prepare_turn(
             let Ok(view) = perceive(actor) else {
                 return absent_turn();
             };
-            if !has_visible_actor(&view, &speaker) {
+            if !has_visible_actor(&view, speaker) {
                 return absent_turn();
             }
             match kind {
@@ -259,7 +256,7 @@ pub fn prepare_turn(
             ..
         } => {
             let speaker = speaker_id(from);
-            let Ok(player) = perceive(&speaker) else {
+            let Ok(player) = perceive(speaker) else {
                 return PreparedTurn::NoModel { says: Vec::new() };
             };
             let speaker_place = place_of(&player);
@@ -480,7 +477,8 @@ fn include_view(bodies: &mut BTreeMap<String, String>, pack: &PackSummary, view:
 
 fn include_cast(bodies: &mut BTreeMap<String, String>, pack: &PackSummary, id: &str) {
     if let Some(body) = pack.cast.get(id) {
-        bodies.insert(id.to_string(), body.chars().take(PROSE_BUDGET).collect());
+        let cut = body.chars().take(PERCEIVE_BODY_CHARS).collect();
+        bodies.insert(id.to_string(), cut);
     }
 }
 
@@ -545,11 +543,11 @@ fn place_of(view: &Value) -> String {
         .to_string()
 }
 
-fn speaker_id(from: &str) -> String {
-    from.strip_prefix("player:")
-        .filter(|id| !id.is_empty())
-        .unwrap_or("")
-        .to_string()
+fn speaker_id(from: &Speaker) -> &str {
+    match from {
+        Speaker::Player(id) => id,
+        Speaker::Gm | Speaker::Npc(_) => "",
+    }
 }
 
 #[cfg(test)]
@@ -612,7 +610,7 @@ mod tests {
 
     fn table_wake() -> Wake {
         Wake::Say {
-            from: "player:pc_rowan".to_string(),
+            from: Speaker::Player("pc_rowan".to_string()),
             seq: 1,
             address: "table".to_string(),
             place: None,
@@ -686,11 +684,12 @@ mod tests {
     #[test]
     fn a_long_cast_body_is_cut_at_the_budget() {
         let mut pack = docks();
+        let budget = PERCEIVE_BODY_CHARS;
         pack.cast
-            .insert("aldric".to_string(), "Z".repeat(PROSE_BUDGET + 1));
+            .insert("aldric".to_string(), "Z".repeat(budget + 1));
         let prompt = prompt_for(&pack, |viewer| Ok(shop(viewer, &["aldric", "pc_rowan"])));
-        assert!(prompt.contains(&"Z".repeat(PROSE_BUDGET)), "{prompt}");
-        assert!(!prompt.contains(&"Z".repeat(PROSE_BUDGET + 1)), "{prompt}");
+        assert!(prompt.contains(&"Z".repeat(budget)), "{prompt}");
+        assert!(!prompt.contains(&"Z".repeat(budget + 1)), "{prompt}");
     }
 
     #[test]
@@ -834,7 +833,7 @@ mod tests {
     fn different_places_say_they_are_not_here() {
         let pack = docks();
         let wake = Wake::Say {
-            from: "player:pc_rowan".to_string(),
+            from: Speaker::Player("pc_rowan".to_string()),
             seq: 4,
             address: "actor".to_string(),
             place: None,
@@ -875,7 +874,7 @@ mod tests {
                 &mut buffer,
                 HandledSay {
                     seq: Some(index),
-                    from: "player:pc_rowan".to_string(),
+                    from: Speaker::Player("pc_rowan".to_string()),
                     address: "table".to_string(),
                     place: None,
                     actor: None,

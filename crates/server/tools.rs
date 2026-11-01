@@ -3,9 +3,12 @@
 use serde_json::{Map, Value};
 use spookery_engine::{Address, Presence, Reason, RoundOutput, TapeRecord, World};
 
-use super::frames::{self, Refusal};
+use super::frames;
 use super::table::commit_then_fast_forward;
-use crate::protocol::SayArgs;
+use crate::protocol::{
+    parse_args, CloseArgs, CloseBody, CommitArgs, PerceiveArgs, Queued, SayArgs, StatusArgs,
+    PERCEIVE_BODY_CHARS,
+};
 
 /// Sent from a GM tool handler back to the table, which answers the GM and updates seats.
 pub(super) struct Reply {
@@ -104,7 +107,7 @@ pub(super) fn call_gm_tool(
     };
     reply.unwrap_or_else(|code| Reply {
         refused: Some(code),
-        ..Reply::new(Refusal::from(code).tool_result())
+        ..Reply::new(frames::refused_value(code))
     })
 }
 
@@ -115,7 +118,7 @@ fn say(
     presence: &Presence,
     arguments: Option<Map<String, Value>>,
 ) -> Result<Reply, Reason> {
-    let args = crate::protocol::parse_say_args(arguments.as_ref()).map_err(|_| Reason::Schema)?;
+    let args: SayArgs = parse_args(arguments.as_ref()).map_err(|_| Reason::Schema)?;
     let heard = match &args {
         SayArgs::Table { .. } => Address::Table,
         SayArgs::Place { place, .. } => Address::Place(place),
@@ -132,12 +135,10 @@ fn close(
     _presence: &Presence,
     arguments: Option<Map<String, Value>>,
 ) -> Result<Reply, Reason> {
-    if arguments.is_some_and(|args| !args.is_empty()) {
-        return Err(Reason::Schema);
-    }
+    parse_args::<CloseArgs>(arguments.as_ref()).map_err(|_| Reason::Schema)?;
     Ok(Reply {
         release_seat: true,
-        ..Reply::new(crate::protocol::released_result())
+        ..Reply::new(serde_json::to_value(CloseBody { released: true }).expect("close"))
     })
 }
 
@@ -267,7 +268,7 @@ fn commit_round(
     presence: &Presence,
     arguments: Option<Map<String, Value>>,
 ) -> Result<Reply, Reason> {
-    let include_round = crate::protocol::parse_commit_args(arguments.as_ref())
+    let include_round = parse_args::<CommitArgs>(arguments.as_ref())
         .map_err(|_| Reason::Schema)?
         .include_round;
     let committed = !world.queued_intents().is_empty();
@@ -303,10 +304,12 @@ fn perceive(
     presence: &Presence,
     arguments: Option<Map<String, Value>>,
 ) -> Result<Reply, Reason> {
-    let args =
-        crate::protocol::parse_perceive_args(arguments.as_ref()).map_err(|_| Reason::Schema)?;
+    let args: PerceiveArgs = parse_args(arguments.as_ref()).map_err(|_| Reason::Schema)?;
     let as_arg = args.as_viewer.ok_or(Reason::UnscopedPerceive)?;
-    let budget = usize::try_from(args.max_body_chars.unwrap_or(800)).map_err(|_| Reason::Schema)?;
+    let budget = args
+        .max_body_chars
+        .map_or(Ok(PERCEIVE_BODY_CHARS), usize::try_from)
+        .map_err(|_| Reason::Schema)?;
     let view = world.perceive_trimmed(presence, &as_arg, budget)?;
     Ok(Reply::new(frames::perceive_value(&view)))
 }
@@ -316,7 +319,7 @@ fn table_status(
     presence: &Presence,
     arguments: Option<Map<String, Value>>,
 ) -> Result<Reply, Reason> {
-    let since = crate::protocol::parse_status_args(arguments.as_ref())
+    let since = parse_args::<StatusArgs>(arguments.as_ref())
         .map_err(|_| Reason::Schema)?
         .since;
     let events = match since {
@@ -339,10 +342,11 @@ fn queue_intent(
     _presence: &Presence,
     arguments: Option<Map<String, Value>>,
 ) -> Result<Reply, Reason> {
-    let call =
-        crate::protocol::parse_intent_args(arguments.as_ref()).map_err(|_| Reason::Schema)?;
+    let call = parse_args(arguments.as_ref()).map_err(|_| Reason::Schema)?;
     let queued = world.queue_gm_intent(call, || Ok(uuid::Uuid::new_v4().to_string()))?;
-    Ok(Reply::new(crate::protocol::queued_result(&queued.id)))
+    Ok(Reply::new(
+        serde_json::to_value(Queued { id: queued.id }).expect("queued"),
+    ))
 }
 
 #[cfg(test)]
@@ -355,7 +359,7 @@ mod tests {
         let pack = copy_pack("oneshot-docks", "tools_intent");
         let mut world = World::open(&pack).unwrap();
         let args = json!({"actor_id": "pc_rowan", "move": "wait", "to": ["pc_wren"]});
-        let call = crate::protocol::parse_intent_args(args.as_object()).unwrap();
+        let call = crate::protocol::parse_args(args.as_object()).unwrap();
         let queued = world.queue_gm_intent(call, || Ok("i1".into())).unwrap();
         let want = QueuedMove {
             id: "i1".into(),

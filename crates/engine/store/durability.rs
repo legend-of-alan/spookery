@@ -4,7 +4,7 @@ use std::fs::{self, File, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
-use crate::error::Reason;
+use crate::Reason;
 
 /// Write `bytes` to a temp file, flush it, and rename it over `target`.
 pub fn write_atomic(target: &Path, bytes: &[u8]) -> Result<(), Reason> {

@@ -2,21 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::{Error, Outcome};
-
-/// Part of a `PlayerFrame` view, sent from the table to a player client.
-/// Names and prose for one place view. Boxed on the wire so the message stays small.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ViewScene {
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub place_name: String,
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub body: String,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub actor_names: Vec<String>,
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub status: String,
-}
+use crate::{Outcome, Queued, Refusal, Speaker};
 
 /// Sent from the table to a player client over the game port.
 /// A line on the player socket. No GM field, and no roll faces.
@@ -24,15 +10,13 @@ pub struct ViewScene {
 #[serde(tag = "kind", rename_all = "lowercase")]
 pub enum PlayerFrame {
     Say {
-        from: String,
+        from: Speaker,
         address: String,
         text: String,
         #[serde(default, skip_serializing_if = "is_false")]
         replay: bool,
     },
-    Queued {
-        id: String,
-    },
+    Queued(Queued),
     Check {
         outcome: Outcome,
     },
@@ -46,48 +30,39 @@ pub enum PlayerFrame {
     Lines {
         text: String,
     },
-    Refused {
-        code: String,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        detail: Option<Missing>,
-    },
-    View {
-        viewer: String,
-        place: String,
-        #[serde(flatten, default)]
-        scene: Box<ViewScene>,
-        visible_actors: Vec<String>,
-        known_facts: Vec<KnownFact>,
-        notes: Vec<NoteView>,
-        unknown_mentions: Vec<String>,
-        clocks: Vec<ClockView>,
-        items: Vec<ItemStack>,
-        #[serde(default, skip_serializing_if = "Vec::is_empty")]
-        meters: Vec<MeterView>,
-        habits: Vec<String>,
-        #[serde(default, skip_serializing_if = "Vec::is_empty")]
-        exits: Vec<ExitView>,
-    },
+    Refused(Refusal),
+    View(Box<View>),
 }
 
-/// Refusal detail, sent from the table to a player client.
+/// Sent from the table to a player client as the `view` line and to a GM client as the
+/// `perceive` result. Always written `protocol::View`: the engine's `View` is what the
+/// server renders this from.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(untagged)]
-pub enum Missing {
-    One(String),
-    Many(Vec<String>),
+pub struct View {
+    pub viewer: String,
+    pub place: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub place_name: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub body: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub actor_names: Vec<String>,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub status: String,
+    pub visible_actors: Vec<String>,
+    pub known_facts: Vec<KnownFact>,
+    pub notes: Vec<NoteView>,
+    pub unknown_mentions: Vec<String>,
+    pub clocks: Vec<ClockView>,
+    pub items: Vec<ItemStack>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub meters: Vec<MeterView>,
+    pub habits: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub exits: Vec<ExitView>,
 }
 
-impl Missing {
-    pub fn as_str(&self) -> Option<&str> {
-        match self {
-            Self::One(text) => Some(text),
-            Self::Many(_) => None,
-        }
-    }
-}
-
-/// Part of a `PlayerFrame` view, sent from the table to a player client.
+/// Part of a `View`, sent from the table to a player client.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ExitView {
     pub name: String,
@@ -97,7 +72,7 @@ pub struct ExitView {
     pub locked: bool,
 }
 
-/// Part of a `PlayerFrame` view, sent from the table to a player client.
+/// Part of a `View`, sent from the table to a player client.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct KnownFact {
     pub id: String,
@@ -105,7 +80,7 @@ pub struct KnownFact {
     pub owner_body: String,
 }
 
-/// Part of a `PlayerFrame` view, sent from the table to a player client.
+/// Part of a `View`, sent from the table to a player client.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NoteView {
     pub id: String,
@@ -116,7 +91,7 @@ pub struct NoteView {
     pub text: String,
 }
 
-/// Part of a `PlayerFrame` view, sent from the table to a player client.
+/// Part of a `View`, sent from the table to a player client.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ClockView {
     pub id: String,
@@ -125,14 +100,14 @@ pub struct ClockView {
     pub paused: bool,
 }
 
-/// Part of a `PlayerFrame` view, sent from the table to a player client.
+/// Part of a `View`, sent from the table to a player client.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ItemStack {
     pub id: String,
     pub count: u32,
 }
 
-/// Part of a `PlayerFrame` view, sent from the table to a player client.
+/// Part of a `View`, sent from the table to a player client.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MeterView {
     pub id: String,
@@ -156,22 +131,21 @@ impl PlayerFrame {
         line
     }
 
-    pub fn from_line(line: &str) -> Result<Self, Error> {
-        serde_json::from_str(line).map_err(|_| Error)
+    pub fn from_line(line: &str) -> Result<Self, serde_json::Error> {
+        serde_json::from_str(line)
     }
 }
 
-/// `player:{id}\n`. An empty id, or an id with whitespace, is not a hello.
+/// `player:{id}\n`, the first line a player client sends the table.
 pub fn hello_line(id: &str) -> String {
-    format!("player:{id}\n")
+    format!("{}\n", Speaker::Player(id.to_string()))
 }
 
-pub fn parse_hello(line: &str) -> Option<&str> {
-    let id = line.strip_prefix("player:")?;
-    if id.is_empty() || id.chars().any(char::is_whitespace) {
-        None
-    } else {
-        Some(id)
+/// The PC id of a hello. An empty id, an id with whitespace, or another speaker is not one.
+pub fn parse_hello(line: &str) -> Option<String> {
+    match line.parse() {
+        Ok(Speaker::Player(id)) => Some(id),
+        _ => None,
     }
 }
 
@@ -186,7 +160,7 @@ mod tests {
     #[test]
     fn a_say_line_round_trips() {
         let message = PlayerFrame::Say {
-            from: "player:rowan".to_string(),
+            from: Speaker::Player("rowan".to_string()),
             address: "table".to_string(),
             text: "hello".to_string(),
             replay: false,
@@ -197,6 +171,8 @@ mod tests {
             "{\"kind\":\"say\",\"from\":\"player:rowan\",\"address\":\"table\",\"text\":\"hello\"}\n"
         );
         assert_eq!(PlayerFrame::from_line(&line).unwrap(), message);
+        let stranger = r#"{"kind":"say","from":"somebody","address":"table","text":"x"}"#;
+        assert!(PlayerFrame::from_line(stranger).is_err());
     }
 
     #[test]
@@ -235,9 +211,10 @@ mod tests {
     fn a_player_hello_round_trips() {
         let line = hello_line("rowan");
         assert_eq!(line, "player:rowan\n");
-        assert_eq!(parse_hello(line.trim_end()), Some("rowan"));
+        assert_eq!(parse_hello(line.trim_end()).as_deref(), Some("rowan"));
         assert_eq!(parse_hello("player:"), None);
         assert_eq!(parse_hello("player:row an"), None);
+        assert_eq!(parse_hello("gm"), None);
     }
 
     #[test]
@@ -245,7 +222,14 @@ mod tests {
         let line = r#"{"kind":"view","viewer":"rowan","place":"shop","visible_actors":[],"known_facts":[],"notes":[],"unknown_mentions":[],"clocks":[],"items":[{"id":"oil","count":1,"extra":true}],"habits":[],"future":1}"#;
         assert!(matches!(
             PlayerFrame::from_line(line),
-            Ok(PlayerFrame::View { .. })
+            Ok(PlayerFrame::View(_))
         ));
+    }
+
+    #[test]
+    fn a_view_line_keeps_the_scene_after_the_place() {
+        let line = r#"{"kind":"view","viewer":"rowan","place":"shop","place_name":"Shop","body":"b","actor_names":["Rowan"],"status":"s","visible_actors":["rowan"],"known_facts":[],"notes":[],"unknown_mentions":[],"clocks":[],"items":[],"habits":[]}"#;
+        let frame = PlayerFrame::from_line(line).unwrap();
+        assert_eq!(frame.to_line(), format!("{line}\n"));
     }
 }

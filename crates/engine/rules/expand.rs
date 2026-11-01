@@ -2,7 +2,6 @@
 
 use crate::canon::Canon;
 use crate::effect::{Effect, EffectKind};
-use crate::error::Reason;
 use crate::intent::{Intent, Target, Viewer};
 use crate::meter::MeterWrite;
 use crate::model::{Presence, State};
@@ -10,6 +9,7 @@ use crate::rule::{EffectTemplate, LocationTo, NarrateTo, ResistSpec, Rule, Targe
 use crate::rules::expr::{self, Ctx, Dice, Expr};
 use crate::rules::gate;
 use crate::rules::roll::Outcome;
+use crate::Reason;
 
 /// `outcome` selects `success`, `partial`, or `failure`. `None` means the rule did not roll.
 /// `do` is included either way. `dice.resist` returns the subject's band. Success shrugs the effect off.

@@ -35,7 +35,7 @@ fn the_tape_already_holds_a_full_mib(world: &mut World) {
     for seq in 1.. {
         let mut line = spookery_engine::emit_tape_record(&spookery_engine::TapeRecord {
             seq,
-            from: "gm".to_string(),
+            from: spookery::protocol::Speaker::Gm,
             address: "table".to_string(),
             place: None,
             actor: None,

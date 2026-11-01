@@ -1,8 +1,7 @@
 //! Readable text for one player frame.
 
 use crate::protocol::{
-    detailed_refusal_line, exit_phrase, ClockView, ExitView, MeterView, NoteView, Outcome,
-    PlayerFrame,
+    self, exit_phrase, ClockView, ExitView, MeterView, NoteView, Outcome, PlayerFrame, Speaker,
 };
 
 /// Readable text for one player frame. A new [`PlayerFrame`] variant fails here until it is rendered.
@@ -14,7 +13,7 @@ pub fn render(message: &PlayerFrame) -> String {
             text,
             replay: _,
         } => format!("{}: {text}", speaker(from)),
-        PlayerFrame::Queued { id: _ } => "Your action is queued.".to_string(),
+        PlayerFrame::Queued(_) => "Your action is queued.".to_string(),
         PlayerFrame::Check { outcome } => match outcome {
             Outcome::Success => "Your roll succeeded.".to_string(),
             Outcome::Partial => "Your roll partly succeeded.".to_string(),
@@ -22,26 +21,18 @@ pub fn render(message: &PlayerFrame) -> String {
         },
         PlayerFrame::Resume { notes, clocks } => render_resume(notes, clocks),
         PlayerFrame::Lines { text } => text.clone(),
-        PlayerFrame::Refused {
-            code,
-            detail: missing,
-        } => detailed_refusal_line(code, missing.as_ref()),
-        PlayerFrame::View { .. } => render_view(message),
+        PlayerFrame::Refused(refusal) => refusal.to_string(),
+        PlayerFrame::View(view) => render_view(view),
     }
 }
 
-fn speaker(from: &str) -> String {
-    if from == "gm" {
-        return "GM".to_string();
+fn speaker(from: &Speaker) -> String {
+    match from {
+        Speaker::Gm => "GM".to_string(),
+        // One player sits this socket, so a player id is the seated PC.
+        Speaker::Player(_) => "You".to_string(),
+        Speaker::Npc(id) => humanize(id),
     }
-    // One player sits this socket, so a player id is the seated PC.
-    if from
-        .strip_prefix("player:")
-        .is_some_and(|id| !id.is_empty())
-    {
-        return "You".to_string();
-    }
-    humanize(from)
 }
 
 /// Readable text for the frames of one sitting.
@@ -115,11 +106,14 @@ fn render_resume(notes: &[NoteView], clocks: &[ClockView]) -> String {
     }
 }
 
-fn render_view(message: &PlayerFrame) -> String {
-    let PlayerFrame::View {
+fn render_view(view: &protocol::View) -> String {
+    let protocol::View {
         viewer,
         place,
-        scene,
+        place_name,
+        body,
+        actor_names,
+        status,
         visible_actors,
         known_facts,
         notes,
@@ -129,23 +123,20 @@ fn render_view(message: &PlayerFrame) -> String {
         exits,
         unknown_mentions: _,
         habits: _,
-    } = message
-    else {
-        return String::new();
-    };
+    } = view;
     let mut sections = Vec::new();
-    let titled = if !scene.place_name.is_empty() {
-        scene.place_name.as_str()
+    let titled = if !place_name.is_empty() {
+        place_name.as_str()
     } else {
         place.as_str()
     };
     if !titled.is_empty() {
         sections.push(format!("You are in {titled}."));
     }
-    if !scene.status.is_empty() {
-        sections.push(scene.status.clone());
+    if !status.is_empty() {
+        sections.push(status.clone());
     }
-    let prose = scene.body.trim();
+    let prose = body.trim();
     if !prose.is_empty() {
         sections.push(prose.to_string());
     }
@@ -157,8 +148,7 @@ fn render_view(message: &PlayerFrame) -> String {
                 if id == viewer {
                     "You".to_string()
                 } else {
-                    scene
-                        .actor_names
+                    actor_names
                         .get(index)
                         .filter(|name| !name.is_empty())
                         .cloned()
@@ -260,7 +250,7 @@ pub(crate) fn humanize(id: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::protocol::{ItemStack, KnownFact, NoteView};
+    use crate::protocol::{ItemStack, KnownFact, NoteView, Queued};
 
     fn assert_readable(text: &str) {
         assert!(!text.contains('{'), "{text}");
@@ -279,7 +269,7 @@ mod tests {
     #[test]
     fn a_say_is_a_name_and_the_text() {
         let mira = render(&PlayerFrame::Say {
-            from: "npc:mira".to_string(),
+            from: Speaker::Npc("mira".to_string()),
             address: "table".to_string(),
             text: "the lamp is lit".to_string(),
             replay: false,
@@ -288,7 +278,7 @@ mod tests {
         assert_readable(&mira);
 
         let gm = render(&PlayerFrame::Say {
-            from: "gm".to_string(),
+            from: Speaker::Gm,
             address: "table".to_string(),
             text: "evening".to_string(),
             replay: false,
@@ -297,7 +287,7 @@ mod tests {
         assert_readable(&gm);
 
         let you = render(&PlayerFrame::Say {
-            from: "player:pc_rowan".to_string(),
+            from: Speaker::Player("pc_rowan".to_string()),
             address: "actor".to_string(),
             text: "hello".to_string(),
             replay: false,
@@ -308,9 +298,9 @@ mod tests {
 
     #[test]
     fn a_queued_action_is_a_sentence() {
-        let text = render(&PlayerFrame::Queued {
+        let text = render(&PlayerFrame::Queued(Queued {
             id: "queue-id-42".to_string(),
-        });
+        }));
         assert_eq!(text, "Your action is queued.");
         assert!(!text.contains("queue-id-42"), "{text}");
         assert_readable(&text);
@@ -388,14 +378,14 @@ mod tests {
     fn replayed_speech_sits_under_one_heading() {
         let mut formatter = PlayerFormatter::new();
         let first = formatter.format(&PlayerFrame::Say {
-            from: "player:pc_lark".to_string(),
+            from: Speaker::Player("pc_lark".to_string()),
             address: "table".to_string(),
             text: "hello Briar".to_string(),
             replay: true,
         });
         assert_eq!(first, "Earlier:\nYou: hello Briar");
         let second = formatter.format(&PlayerFrame::Say {
-            from: "gm".to_string(),
+            from: Speaker::Gm,
             address: "table".to_string(),
             text: "evening".to_string(),
             replay: true,
@@ -449,15 +439,13 @@ Shop day: 1/1"
 
     #[test]
     fn a_perceive_names_the_place_and_skips_empty_sections() {
-        let text = render(&PlayerFrame::View {
+        let text = render(&PlayerFrame::View(Box::new(protocol::View {
             viewer: "pc_rowan".to_string(),
             place: "docks_shop".to_string(),
-            scene: Box::new(crate::protocol::ViewScene {
-                place_name: "Docks Shop".to_string(),
-                body: "The shop faces the water. Tins sit in a row.".to_string(),
-                actor_names: vec!["Aldric".to_string(), "Rowan".to_string()],
-                status: String::new(),
-            }),
+            place_name: "Docks Shop".to_string(),
+            body: "The shop faces the water. Tins sit in a row.".to_string(),
+            actor_names: vec!["Aldric".to_string(), "Rowan".to_string()],
+            status: String::new(),
             visible_actors: vec!["aldric".to_string(), "pc_rowan".to_string()],
             known_facts: vec![KnownFact {
                 id: "fact_oil_on_shelf".to_string(),
@@ -503,7 +491,7 @@ Shop day: 1/1"
                 minutes: 2,
                 locked: true,
             }],
-        });
+        })));
         assert_eq!(
             text,
             "\
@@ -539,15 +527,13 @@ stairs (locked) — 2 min"
         assert!(!text.contains("docks_shop"), "{text}");
         assert_readable(&text);
 
-        let quiet = render(&PlayerFrame::View {
+        let quiet = render(&PlayerFrame::View(Box::new(protocol::View {
             viewer: "pc_rowan".to_string(),
             place: "docks_street".to_string(),
-            scene: Box::new(crate::protocol::ViewScene {
-                place_name: "Docks Street".to_string(),
-                body: String::new(),
-                actor_names: vec!["Bram".to_string()],
-                status: "on the stairs until 21:40".to_string(),
-            }),
+            place_name: "Docks Street".to_string(),
+            body: String::new(),
+            actor_names: vec!["Bram".to_string()],
+            status: "on the stairs until 21:40".to_string(),
             visible_actors: vec!["bram".to_string()],
             known_facts: Vec::new(),
             notes: Vec::new(),
@@ -557,7 +543,7 @@ stairs (locked) — 2 min"
             meters: Vec::new(),
             habits: Vec::new(),
             exits: Vec::new(),
-        });
+        })));
         assert_eq!(
             quiet,
             "\

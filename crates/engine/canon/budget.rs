@@ -203,7 +203,7 @@ where
 mod tests {
     use super::Budget;
     use crate::diagnostic::Diagnostic;
-    use crate::error::Reason;
+    use crate::Reason;
 
     fn load_budget(text: &str) -> Result<Budget, Vec<Diagnostic>> {
         super::load_budget("rules/budget.yaml", text)

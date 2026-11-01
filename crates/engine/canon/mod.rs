@@ -6,11 +6,11 @@ use std::path::Path;
 use serde::Deserialize;
 
 use crate::diagnostic::Diagnostic;
-use crate::error::Reason;
 use crate::hash::blake2s_hex;
 use crate::meter::MeterDef;
 use crate::rule::{Cond, Cost, Owner, RuleTable, TargetKind, When};
 use crate::rules::roll::Check;
+use crate::Reason;
 pub use spookery_protocol::{CastKind, MenuRow, PackSummary};
 
 mod budget;
@@ -308,7 +308,7 @@ mod tests {
 
     use super::*;
     use crate::diagnostic::first_reason;
-    use crate::error::Reason;
+    use crate::Reason;
 
     #[test]
     fn docks_pack_rev_matches_save_yaml() {

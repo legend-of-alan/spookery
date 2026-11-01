@@ -6,8 +6,8 @@ use std::path::Path;
 use serde_saphyr::Spanned;
 
 use crate::diagnostic::{check_tag, error, locate_nth, parse_file, schema_error, Code, Diagnostic};
-use crate::error::Reason;
 use crate::rule::LineColumn;
+use crate::Reason;
 
 pub(super) const PACK_SCHEMA: &str = "pack";
 pub(super) const PLACE_SCHEMA: &str = "place";

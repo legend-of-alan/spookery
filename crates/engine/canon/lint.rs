@@ -5,7 +5,6 @@ use std::collections::{BTreeMap, BTreeSet};
 use crate::canon::source::{FileText, Locator, Problem};
 use crate::canon::{Canon, CastDef, FactDef, ItemDef, PlaceDef};
 use crate::diagnostic::{error, schema_error, warning, Diagnostic};
-use crate::error::Reason;
 use crate::meter::MeterDef;
 use crate::rule::{
     ChangeWatch, Cond, Cost, EffectTemplate, LocationTo, NarrateTo, Owner, ResistSpec, Rule,
@@ -13,6 +12,7 @@ use crate::rule::{
 };
 use crate::rules::expr::Expr;
 use crate::rules::roll::Check;
+use crate::Reason;
 
 /// Exits whose `to` is not a place, and facts or items an exit names but the pack does not.
 pub(super) fn broken_exits(

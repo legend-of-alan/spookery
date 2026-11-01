@@ -3,10 +3,10 @@
 use serde::{Deserialize, Serialize};
 
 use crate::effect::Effect;
-use crate::error::Reason;
 use crate::intent::Intent;
 use crate::model::MemoryLine;
 use crate::rules::GateRefusal;
+use crate::Reason;
 
 /// One meter a migrate added, stored at that meter's `start`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -52,7 +52,8 @@ pub struct CheckpointRecord {
     pub chain: String,
 }
 
-/// One refusal stored on a round line.
+/// Written by the round onto its journal line and replayed by `spook verify`; `code` is
+/// the strict `Reason`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Refusal {

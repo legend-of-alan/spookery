@@ -3,8 +3,8 @@
 use std::fs::{File, OpenOptions};
 use std::path::Path;
 
-use crate::error::Reason;
 use crate::store::recovery::recover;
+use crate::Reason;
 
 const RW_LOCK: &str = "state/.pack.rw.lock";
 
@@ -13,7 +13,7 @@ use locked::LockedFile;
 mod locked {
     use std::fs::{File, TryLockError};
 
-    use crate::error::Reason;
+    use crate::Reason;
 
     /// A locked file that unlocks on drop. Closing alone is not enough, since a child
     /// spawned by another thread holds a copy of the handle until it execs.
