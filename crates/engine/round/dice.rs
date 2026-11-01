@@ -3,7 +3,6 @@
 use std::collections::BTreeMap;
 
 use crate::canon::Canon;
-use crate::effect::Effect;
 use crate::hash::blake2s_256;
 use crate::model::State;
 use crate::round::log::RoundLog;
@@ -11,7 +10,7 @@ use crate::rule::RollSpec;
 use crate::rules::case::Case;
 use crate::rules::expr::{eval_with_dice, Dice};
 use crate::rules::roll::Outcome;
-use crate::rules::{faces_from, roll_check, MoveReport, Roll, RollInput, RollKey};
+use crate::rules::{faces_from, roll_check, MoveReport, Roll, RollKey};
 use crate::Reason;
 
 /// The round line's `seed` field. A roll uses `RollKey`, not this string.
@@ -67,20 +66,8 @@ impl RoundDice {
         partial_at: Option<i64>,
     ) -> Result<Roll, Reason> {
         let actor = now.actors.get(&key.subject_id).ok_or(Reason::UnknownId)?;
-        let viewer = actor.viewer(&key.subject_id);
         let check = canon.checks.get(check_id).ok_or(Reason::UnknownId)?;
-        roll_check(
-            RollInput {
-                check,
-                meters: &canon.meters,
-                actor_id: &key.subject_id,
-                actor,
-                viewer: &viewer,
-                target,
-                partial_at,
-            },
-            &key,
-        )
+        roll_check(check, &canon.meters, actor, &key, target, partial_at)
     }
 
     pub(crate) fn roller<'a>(
@@ -99,13 +86,6 @@ impl RoundDice {
             reports: Vec::new(),
         }
     }
-}
-
-/// What a rule's effects came to: the effects, the roll that picked them, and the resist rolls made on the way.
-pub(crate) struct Expansion {
-    pub effects: Vec<Effect>,
-    pub rolled: Option<Roll>,
-    pub resisted: Vec<MoveReport>,
 }
 
 /// Expression dice and resist rolls for one rule and subject, all keyed by the rule id.

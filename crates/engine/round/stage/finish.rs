@@ -1,19 +1,24 @@
 //! Finishes due pending actions, journeys arriving and timed actions completing.
 
+use crate::canon::Canon;
 use crate::draft::Draft;
 use crate::effect::{Effect, EffectKind};
 use crate::intent::{Intent, Target};
 use crate::journal::Arrival;
 use crate::model::{PendingAction, PendingKind};
 use crate::rules::case::Case;
+use crate::rules::expand;
+use crate::rules::gate;
 use crate::Reason;
 
 use crate::round::dice::RoundDice;
 use crate::round::log::RoundLog;
+use crate::round::stage::apply;
 
 /// Finish every due action, earliest first.
 pub(crate) fn run(
     draft: &mut Draft,
+    canon: &Canon,
     end: u64,
     dice: &mut RoundDice,
     log: &mut RoundLog,
@@ -30,7 +35,7 @@ pub(crate) fn run(
             }
             PendingKind::Finish { target, rule } => {
                 let intent = Intent::arrival(draft.state(), actor_id, source, &verb, target)?;
-                finish_timed_action(dice, log, draft, &intent, &rule)?;
+                finish_action(draft, canon, &intent, &rule, dice, log)?;
             }
         }
     }
@@ -73,32 +78,27 @@ fn arrive(
     Ok(())
 }
 
-fn finish_timed_action(
-    dice: &mut RoundDice,
-    log: &mut RoundLog,
+/// Roll and expand the timed action's rule against the draft, then land it. A refusal is
+/// journaled and the round goes on; the actor is no longer busy either way.
+fn finish_action(
     draft: &mut Draft,
+    canon: &Canon,
     intent: &Intent,
     rule_id: &str,
+    dice: &mut RoundDice,
+    log: &mut RoundLog,
 ) -> Result<(), Reason> {
-    let actor_id = intent.actor.actor_id();
-    let case = Case::new(draft.canon(), draft.state(), draft.presence, intent);
-    let rule = case.canon.rules.get(rule_id).ok_or(Reason::UnknownMove)?;
-    let mut roller = dice.roller(log, &rule.id, actor_id);
-    let rolled = match &rule.roll {
-        Some(spec) => Some(roller.roll_spec(&case, spec)?),
-        None => None,
-    };
-    let outcome = rolled.as_ref().map(|out| out.outcome);
-    let effects = rule.expand(&case, outcome, &mut roller)?;
-    let resisted = roller.into_reports();
-    log.report_roll(rolled, actor_id);
-    log.reports.extend(resisted);
-    for effect in effects {
-        if matches!(effect.kind, EffectKind::Location { .. }) {
-            continue;
+    let rule = canon.rules.get(rule_id).ok_or(Reason::UnknownMove)?;
+    let case = Case::new(canon, draft.state(), draft.presence, intent);
+    let roller = dice.roller(log, &rule.id, intent.actor.actor_id());
+    match expand::expand(&case, rule, None, roller) {
+        Ok(mut expansion) => {
+            // A timed finish does not move the actor.
+            let effects = &mut expansion.effects;
+            effects.retain(|effect| !matches!(effect.kind, EffectKind::Location { .. }));
+            apply::land(draft, intent, rule, expansion, false, log);
         }
-        effect.clone().apply(draft, intent)?;
-        log.effects.push(effect);
+        Err(code) => apply::refuse(log, intent, gate::Refusal::new(intent, code), false),
     }
     Ok(())
 }

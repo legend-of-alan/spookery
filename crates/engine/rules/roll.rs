@@ -3,7 +3,6 @@
 use std::collections::BTreeMap;
 
 use crate::hash::blake2s_256;
-use crate::intent::Viewer;
 use crate::meter::{self, MeterDef};
 use crate::model::ActorLive;
 use crate::rules::gate;
@@ -76,17 +75,6 @@ impl RollKey {
     }
 }
 
-pub struct RollInput<'a> {
-    pub check: &'a Check,
-    pub meters: &'a BTreeMap<String, MeterDef>,
-    pub actor_id: &'a str,
-    pub actor: &'a ActorLive,
-    pub viewer: &'a Viewer,
-    pub target: i64,
-    /// `None` keeps the roll binary. An opposing total passes `None`.
-    pub partial_at: Option<i64>,
-}
-
 /// The faces this key would roll, without a stat or a band.
 #[cfg(any(test, feature = "testing"))]
 pub fn faces(key: &RollKey, count: u32, sides: u32) -> Result<Vec<u32>, Reason> {
@@ -108,33 +96,27 @@ pub(crate) fn faces_from(
     Ok(faces)
 }
 
-/// The only roll. The viewer must be the actor. Each die reads this key's own seed.
-pub(crate) fn roll_check(input: RollInput<'_>, key: &RollKey) -> Result<Roll, Reason> {
-    if input.viewer.actor_id() != input.actor_id {
-        return Err(Reason::UnknownId);
-    }
-    let def = input
-        .meters
-        .get(&input.check.stat)
-        .ok_or(Reason::UnknownId)?;
-    let live = input
-        .actor
-        .meters()
-        .get(&input.check.stat)
-        .ok_or(Reason::UnknownId)?;
+/// The only roll: `check`'s dice from this key's own seed, plus the actor's stat, against
+/// `target`. `partial_at` `None` keeps the roll binary; an opposing total passes `None`.
+pub(crate) fn roll_check(
+    check: &Check,
+    meters: &BTreeMap<String, MeterDef>,
+    actor: &ActorLive,
+    key: &RollKey,
+    target: i64,
+    partial_at: Option<i64>,
+) -> Result<Roll, Reason> {
+    let def = meters.get(&check.stat).ok_or(Reason::UnknownId)?;
+    let live = actor.meters().get(&check.stat).ok_or(Reason::UnknownId)?;
     let stat = meter::current(def, live)?;
-    let seed = blake2s_256(key.preimage().as_bytes());
-    let mut faces = Vec::with_capacity(input.check.dice_count as usize);
-    for n in 0..input.check.dice_count {
-        faces.push(face_at(&seed, n as usize, input.check.dice_sides)?);
-    }
+    let faces = faces_from(key, 0, check.dice_count, check.dice_sides)?;
     let total = faces.iter().map(|face| i64::from(*face)).sum::<i64>() + stat;
     Ok(Roll {
         faces,
         stat,
         total,
-        target: input.target,
-        outcome: classify(total, input.target, input.partial_at),
+        target,
+        outcome: classify(total, target, partial_at),
     })
 }
 
@@ -164,11 +146,9 @@ fn block_bytes(seed: &[u8; 32], block: usize) -> [u8; 32] {
 mod tests {
     use std::collections::BTreeMap;
 
-    use super::{classify, face_at, roll_check, Check, Outcome, RollInput, RollKey};
-    use crate::intent::Viewer;
+    use super::{classify, face_at, roll_check, Check, Outcome, RollKey};
     use crate::meter::{MeterDef, MeterLive};
     use crate::model::{Act, ActorLive};
-    use crate::Reason;
 
     fn grit_def() -> MeterDef {
         MeterDef {
@@ -239,54 +219,10 @@ mod tests {
         let actor = npc();
         let defs = BTreeMap::from([("grit".to_string(), grit_def())]);
         let check = check_of(2);
-        let once = roll_check(
-            RollInput {
-                check: &check,
-                meters: &defs,
-                actor_id: "mira",
-                actor: &actor,
-                viewer: &Viewer::Npc("mira".to_string()),
-                target: 9,
-                partial_at: None,
-            },
-            &key(0),
-        )
-        .unwrap();
-        let twice = roll_check(
-            RollInput {
-                check: &check,
-                meters: &defs,
-                actor_id: "mira",
-                actor: &actor,
-                viewer: &Viewer::Player("mira".to_string()),
-                target: 9,
-                partial_at: None,
-            },
-            &key(0),
-        )
-        .unwrap();
+        let once = roll_check(&check, &defs, &actor, &key(0), 9, None).unwrap();
+        let twice = roll_check(&check, &defs, &actor, &key(0), 9, None).unwrap();
         assert_eq!(once, twice);
         assert_eq!(once.faces.len(), 2);
-    }
-
-    #[test]
-    fn a_different_viewer_is_refused() {
-        let actor = npc();
-        let defs = BTreeMap::from([("grit".to_string(), grit_def())]);
-        let check = check_of(2);
-        let refused = roll_check(
-            RollInput {
-                check: &check,
-                meters: &defs,
-                actor_id: "mira",
-                actor: &actor,
-                viewer: &Viewer::Npc("bram".to_string()),
-                target: 9,
-                partial_at: None,
-            },
-            &key(0),
-        );
-        assert_eq!(refused, Err(Reason::UnknownId));
     }
 
     #[test]
@@ -294,19 +230,7 @@ mod tests {
         let actor = npc();
         let defs = BTreeMap::from([("grit".to_string(), grit_def())]);
         let check = check_of(10);
-        let out = roll_check(
-            RollInput {
-                check: &check,
-                meters: &defs,
-                actor_id: "mira",
-                actor: &actor,
-                viewer: &Viewer::Npc("mira".to_string()),
-                target: 0,
-                partial_at: None,
-            },
-            &key(0),
-        )
-        .unwrap();
+        let out = roll_check(&check, &defs, &actor, &key(0), 0, None).unwrap();
         assert_eq!(out.faces.len(), 10);
         assert_eq!(out.outcome, Outcome::Success);
     }

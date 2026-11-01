@@ -5,37 +5,75 @@ use crate::effect::{Effect, EffectKind};
 use crate::intent::Target;
 use crate::meter::MeterWrite;
 use crate::model::State;
+use crate::round::dice::Roller;
 use crate::rule::{EffectTemplate, LocationTo, NarrateTo, ResistSpec, Rule, Who};
 use crate::rules::case::Case;
 use crate::rules::expr::{self, Dice, Expr};
 use crate::rules::roll::Outcome;
+use crate::rules::{MoveReport, Roll};
 use crate::Reason;
 
-impl Rule {
-    /// Expand this rule's lists for the case's intent. `outcome` selects `success`, `partial`,
-    /// or `failure`; `None` means the rule did not roll. `do` is included either way.
-    /// `dice.resist` returns the subject's band. Success shrugs the effect off.
-    pub(crate) fn expand(
-        &self,
-        case: &Case,
-        outcome: Option<Outcome>,
-        dice: &mut dyn Dice,
-    ) -> Result<Vec<Effect>, Reason> {
-        let mut selected = Vec::new();
-        selected.extend(self.do_.iter());
-        match outcome {
-            Some(Outcome::Success) => selected.extend(self.success.iter()),
-            Some(Outcome::Partial) => selected.extend(self.partial.iter()),
-            Some(Outcome::Miss) => selected.extend(self.failure.iter()),
-            None => {}
-        }
-        let mut effects = Vec::with_capacity(selected.len());
-        let mut last_resist = None;
-        for template in selected {
-            expand_template(case, template, &mut effects, &mut last_resist, dice)?;
-        }
-        Ok(effects)
+/// What a rule's effects came to: the effects, the roll that picked them, and the resist rolls
+/// made on the way.
+pub(crate) struct Expansion {
+    pub effects: Vec<Effect>,
+    pub rolled: Option<Roll>,
+    pub resisted: Vec<MoveReport>,
+}
+
+/// Roll the rule's `roll:` spec unless `rolled` already holds its roll, then expand the lists
+/// its band picks, with the resist rolls `roller` makes on the way. More effects than
+/// `max_effects_per_intent` is `BUDGET`.
+pub(crate) fn expand(
+    case: &Case,
+    rule: &Rule,
+    rolled: Option<Roll>,
+    mut roller: Roller,
+) -> Result<Expansion, Reason> {
+    let rolled = match (rolled, &rule.roll) {
+        (None, Some(spec)) => Some(roller.roll_spec(case, spec)?),
+        (rolled, _) => rolled,
+    };
+    let outcome = rolled.as_ref().map(|out| out.outcome);
+    let effects = expand_lists(case, rule, outcome, &mut roller)?;
+    if effects.len() > case.canon.budget.max_effects_per_intent as usize {
+        return Err(Reason::Budget);
     }
+    Ok(Expansion {
+        effects,
+        rolled,
+        resisted: roller.into_reports(),
+    })
+}
+
+/// The effects the rule's `do` list makes, with faces of 1 and no resist: their shapes are
+/// what the pick stage and habits read before the round rolls.
+pub(crate) fn preview(case: &Case, rule: &Rule) -> Result<Vec<Effect>, Reason> {
+    expand_lists(case, rule, None, &mut PreviewDice)
+}
+
+/// `do`, then the list `outcome` picks: `success`, `partial` or `failure`. `None` means the
+/// rule did not roll. `dice.resist` returns the subject's band; success shrugs the effect off.
+fn expand_lists(
+    case: &Case,
+    rule: &Rule,
+    outcome: Option<Outcome>,
+    dice: &mut dyn Dice,
+) -> Result<Vec<Effect>, Reason> {
+    let mut selected = Vec::new();
+    selected.extend(rule.do_.iter());
+    match outcome {
+        Some(Outcome::Success) => selected.extend(rule.success.iter()),
+        Some(Outcome::Partial) => selected.extend(rule.partial.iter()),
+        Some(Outcome::Miss) => selected.extend(rule.failure.iter()),
+        None => {}
+    }
+    let mut effects = Vec::with_capacity(selected.len());
+    let mut last_resist = None;
+    for template in selected {
+        expand_template(case, template, &mut effects, &mut last_resist, dice)?;
+    }
+    Ok(effects)
 }
 
 fn expand_template(
@@ -293,9 +331,9 @@ fn location_effect(case: &Case, to: &str) -> Result<Effect, Reason> {
     ))
 }
 
-/// Faces of 1, and no journal line. Gather only needs the effect shape.
+/// Faces of 1, and no journal line. A preview only needs the effect shape.
 /// The round rolls the real faces when it applies the intent.
-pub(crate) struct PreviewDice;
+struct PreviewDice;
 
 impl Dice for PreviewDice {
     fn begin(&mut self) {}

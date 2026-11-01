@@ -8,21 +8,23 @@ use crate::key::{Change, StateKey, StateValue};
 use crate::rule::{ChangeWatch, Op, Rule, WatchWho, When};
 use crate::rules::case::Case;
 use crate::rules::cond;
+use crate::rules::expand;
 use crate::rules::gate;
 use crate::Reason;
 
-use crate::round::dice::{Expansion, RoundDice};
+use crate::round::dice::RoundDice;
 use crate::round::log::RoundLog;
+use crate::round::stage::apply;
 
 /// Every change record of the round, pass by pass.
 pub(crate) fn run(
     draft: &mut Draft,
+    canon: &Canon,
     dice: &mut RoundDice,
     log: &mut RoundLog,
 ) -> Result<Vec<Change>, Reason> {
     let max = draft.budget().max_trigger_depth;
-    let canon = draft.shared_canon();
-    let rules = change_rules(&canon);
+    let rules = change_rules(canon);
     let mut depth = 0u64;
     let mut all_changes = Vec::new();
     loop {
@@ -94,6 +96,7 @@ fn match_rules<'a>(draft: &Draft, rules: &[&'a Rule], changes: &[Change]) -> Vec
     matched_triggers
 }
 
+/// Run a change rule for `subject` when its `if` holds. A refusal is journaled and told to nobody.
 fn fire(draft: &mut Draft, dice: &mut RoundDice, log: &mut RoundLog, rule: &Rule, subject: &str) {
     let Ok(intent) = Intent::trigger(draft.state(), subject, &rule.id) else {
         return;
@@ -102,53 +105,12 @@ fn fire(draft: &mut Draft, dice: &mut RoundDice, log: &mut RoundLog, rule: &Rule
     if cond::holds(&case, &rule.if_).is_err() {
         return;
     }
-    let point = draft.savepoint();
-    let expanded = expand_trigger(dice, log, draft, rule, &intent, subject);
-    let landed = expanded.and_then(|expanded| {
-        for effect in &expanded.effects {
-            effect.clone().apply(draft, &intent)?;
+    match expand::expand(&case, rule, None, dice.roller(log, &rule.id, subject)) {
+        Ok(expansion) => {
+            apply::land(draft, &intent, rule, expansion, false, log);
         }
-        Ok(expanded)
-    });
-    let expanded = match landed {
-        Ok(expanded) => expanded,
-        Err(code) => {
-            draft.rollback(point);
-            log.refused.push(gate::Refusal::new(&intent, code));
-            return;
-        }
-    };
-    log.report_roll(expanded.rolled, subject);
-    log.reports.extend(expanded.resisted);
-    log.effects.extend(expanded.effects);
-    log.extra_steps.push(Step::Rule(rule.id.clone()));
-}
-
-/// A change rule's effects, or why it is refused. Over the effect cap is `BUDGET`.
-fn expand_trigger(
-    dice: &mut RoundDice,
-    log: &mut RoundLog,
-    draft: &Draft,
-    rule: &Rule,
-    intent: &Intent,
-    subject: &str,
-) -> Result<Expansion, Reason> {
-    let case = Case::new(draft.canon(), draft.state(), draft.presence, intent);
-    let mut roller = dice.roller(log, &rule.id, subject);
-    let rolled = match &rule.roll {
-        Some(spec) => Some(roller.roll_spec(&case, spec)?),
-        None => None,
-    };
-    let outcome = rolled.as_ref().map(|out| out.outcome);
-    let effects = rule.expand(&case, outcome, &mut roller)?;
-    if effects.len() > draft.budget().max_effects_per_intent as usize {
-        return Err(Reason::Budget);
+        Err(code) => log.refused.push(gate::Refusal::new(&intent, code)),
     }
-    Ok(Expansion {
-        effects,
-        rolled,
-        resisted: roller.into_reports(),
-    })
 }
 
 fn subjects_of(draft: &Draft, key: &StateKey) -> Vec<String> {

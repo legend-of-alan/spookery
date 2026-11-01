@@ -5,11 +5,11 @@ use std::collections::BTreeSet;
 use crate::canon::Canon;
 use crate::draft::Draft;
 use crate::effect::EffectKind;
-use crate::expand::PreviewDice;
 use crate::intent::{Intent, Target, Viewer};
 use crate::model::{Presence, State};
 use crate::rule::{TargetKind, When};
 use crate::rules::case::Case;
+use crate::rules::expand;
 use crate::rules::gate;
 use crate::rules::habits::{self, is_player_at};
 use crate::travel::find_exit;
@@ -43,7 +43,7 @@ fn stamp_target(canon: &Canon, now: &State, presence: &Presence, intent: &mut In
         return;
     };
     let case = Case::new(canon, now, presence, intent);
-    let Ok(effects) = rule.expand(&case, None, &mut PreviewDice) else {
+    let Ok(effects) = expand::preview(&case, rule) else {
         return;
     };
     let keeps_empty = matches!(

@@ -13,5 +13,5 @@ pub(crate) mod roll;
 pub(crate) mod rule;
 
 pub use gate::Refusal;
-pub(crate) use roll::{faces_from, roll_check, RollInput, RollKey};
+pub(crate) use roll::{faces_from, roll_check, RollKey};
 pub use roll::{MoveReport, Outcome, Roll};
