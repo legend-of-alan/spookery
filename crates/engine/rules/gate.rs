@@ -67,8 +67,9 @@ pub(crate) fn hint_of(target: &Target) -> Option<&str> {
 
 /// A wielded weapon's `attack` rule, then the rule of the item or cast member `hint` names,
 /// then that of another cast member in the actor's place, the first in id order, then the
-/// place's own, then the shared verb. Only `when: verb` rules are read, never a habit. A
-/// place's rule is picked only there, so its `here` is that place.
+/// place's own, then the shared verb. A present member's rule that takes an actor is for
+/// that member, so a move naming anyone else passes it by. Only `when: verb` rules are
+/// read, never a habit. A place's rule is picked only there, so its `here` is that place.
 pub(crate) fn verb_for<'a>(
     canon: &'a Canon,
     now: &State,
@@ -77,6 +78,7 @@ pub(crate) fn verb_for<'a>(
     hint: Option<&str>,
 ) -> Option<&'a Rule> {
     let actor = now.actors.get(actor_id);
+    let hint = hint.filter(|token| !token.is_empty());
     if verb == "attack" {
         let wielded = actor.and_then(ActorLive::wielded);
         if let Some(item) = wielded.filter(|item| !item.is_empty()) {
@@ -85,7 +87,7 @@ pub(crate) fn verb_for<'a>(
             }
         }
     }
-    if let Some(token) = hint.filter(|token| !token.is_empty()) {
+    if let Some(token) = hint {
         if let Some(rule) = owner_verb(canon, &Owner::Item(token.to_string()), verb) {
             return Some(rule);
         }
@@ -95,7 +97,10 @@ pub(crate) fn verb_for<'a>(
     }
     if let Some(place) = actor.map(ActorLive::place) {
         let mut others = now.actors_at(place).into_iter().filter(|id| id != actor_id);
-        let present = others.find_map(|id| owner_verb(canon, &Owner::Cast(id), verb));
+        let present = others.find_map(|id| {
+            let rule = owner_verb(canon, &Owner::Cast(id), verb);
+            rule.filter(|rule| hint.is_none() || !takes_actor(rule))
+        });
         let here = || owner_verb(canon, &Owner::Place(place.to_string()), verb);
         if let Some(rule) = present.or_else(here) {
             return Some(rule);
@@ -107,14 +112,16 @@ pub(crate) fn verb_for<'a>(
 /// Whom a cast member's verb rule is for when the move names nobody: its owner, when the
 /// rule takes an actor and the owner is in the save.
 pub(crate) fn implied_target(rule: &Rule, now: &State) -> Option<String> {
-    match (&rule.owner, &rule.when) {
-        (Owner::Cast(owner), When::Verb { target, .. })
-            if *target == TargetKind::Actor && now.actors.contains_key(owner) =>
-        {
+    match &rule.owner {
+        Owner::Cast(owner) if takes_actor(rule) && now.actors.contains_key(owner) => {
             Some(owner.clone())
         }
         _ => None,
     }
+}
+
+fn takes_actor(rule: &Rule) -> bool {
+    matches!(&rule.when, When::Verb { target, .. } if *target == TargetKind::Actor)
 }
 
 fn owner_verb<'a>(canon: &'a Canon, owner: &Owner, verb: &str) -> Option<&'a Rule> {

@@ -855,30 +855,18 @@ fn check_accepts_resist_same_after_a_roll(world: &mut World) {
     );
 }
 
-/// Briar's `ask` as `packs/sample-d20/cast/briar.md` holds it.
-const BRIAR_ASK: &str = "  - id: ask
-    when:
-      verb: ask
-      target: actor
-    do:
-      - flag:
-          who: world
-          key: passage
-          value: true
-";
-
 #[given(
     expr = "briar's cast file holds a verb \"ask\" that targets an actor and sets the world flag passage"
 )]
 fn briar_holds_ask(world: &mut World) {
-    world.pack = Some(sample_with_briar_ask("rules-scoped-here"));
+    world.pack = Some(copy_pack("sample-d20", "rules-scoped-here"));
 }
 
 #[given(
     expr = "briar's cast file holds a verb \"ask\" that targets an actor, and the save puts briar in the lane"
 )]
 fn briar_holds_ask_in_the_lane(world: &mut World) {
-    let pack = sample_with_briar_ask("rules-scoped-gone");
+    let pack = copy_pack("sample-d20", "rules-scoped-gone");
     edit_save(&pack, |now| set_actor_place(now, "npc_briar", "mill_lane"));
     world.pack = Some(pack);
 }
@@ -935,10 +923,16 @@ fn briars_ask_runs_on_briar(world: &mut World) {
     );
 }
 
+#[when(expr = "lark, in the yard with briar, plays ask pc_lark")]
+fn lark_in_the_yard_asks_herself(world: &mut World) {
+    let now = state_of(world.pack.as_ref().unwrap());
+    assert_eq!(now.actors.get("npc_briar").unwrap().place(), "gate_yard");
+    queue_larks_ask(world, Some("pc_lark"));
+}
+
 #[when(expr = "lark, alone in the yard, plays ask")]
 fn lark_alone_plays_ask(world: &mut World) {
-    let pack = world.pack.clone().unwrap();
-    let now = state_of(&pack);
+    let now = state_of(world.pack.as_ref().unwrap());
     let yard = now
         .actors
         .iter()
@@ -947,36 +941,29 @@ fn lark_alone_plays_ask(world: &mut World) {
         yard.map(|(id, _)| id.as_str()).collect::<Vec<_>>(),
         ["pc_lark"]
     );
-    let mut opened = open(&pack);
-    world.scratch = match opened.queue_player_move(&seated_lark(), "pc_lark", "ask", None) {
-        Err(refusal) => refusal.code.as_str().to_string(),
-        Ok(queued) => format!("queued {}", queued.id),
-    };
+    queue_larks_ask(world, None);
 }
 
 #[then(expr = "the move is refused NOT_IN_SPEC before the round and the save is unchanged")]
 fn ask_is_refused_before_the_round(world: &mut World) {
     assert_eq!(world.scratch, Reason::NotInSpec.as_str());
-    let now = state_of(world.pack.as_ref().unwrap());
-    assert_eq!(now.round_index, 0);
-    assert_eq!(now.world_time, 1080);
-    assert!(
-        !now.flags.iter().any(|flag| flag == "passage"),
-        "{:?}",
-        now.flags
+    let pack = world.pack.as_ref().unwrap();
+    assert_eq!(
+        table::read_files(pack),
+        world.before,
+        "the ask wrote the pack"
     );
-    assert_eq!(now.actors.get("npc_briar").unwrap().place(), "mill_lane");
 }
 
-/// A copy of sample-d20, whose `cast/briar.md` holds `ask`.
-fn sample_with_briar_ask(label: &str) -> std::path::PathBuf {
-    let pack = copy_pack("sample-d20", label);
-    let text = fs::read_to_string(pack.join("cast/briar.md")).unwrap();
-    assert!(
-        text.contains(BRIAR_ASK),
-        "briar's ask is not\n{BRIAR_ASK}\nin\n{text}"
-    );
-    pack
+/// Queue Lark's `ask` with her seated, keeping the pack's bytes from before.
+fn queue_larks_ask(world: &mut World, target: Option<&str>) {
+    let pack = world.pack.clone().unwrap();
+    world.before = table::read_files(&pack);
+    let mut opened = open(&pack);
+    world.scratch = match opened.queue_player_move(&seated_lark(), "pc_lark", "ask", target) {
+        Err(refusal) => refusal.code.as_str().to_string(),
+        Ok(queued) => format!("queued {}", queued.id),
+    };
 }
 
 fn seated_lark() -> Presence {
