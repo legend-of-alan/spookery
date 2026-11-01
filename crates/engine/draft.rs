@@ -101,17 +101,8 @@ impl<'p> Draft<'p> {
     pub(crate) fn reset_acts(&mut self, counter: ActCounter) -> Result<(), Reason> {
         let ids: Vec<String> = self.state.actors.keys().cloned().collect();
         for id in ids {
-            let key = match counter {
-                ActCounter::IdleActsToday => StateKey::IdleActsToday(id.clone()),
-                ActCounter::LiveActsThisHour => StateKey::LiveActsThisHour(id.clone()),
-            };
-            self.mutate(key, |state| {
-                let act = state.actor_mut(&id)?.act_mut();
-                let count = match counter {
-                    ActCounter::IdleActsToday => &mut act.idle_acts_today,
-                    ActCounter::LiveActsThisHour => &mut act.live_acts_this_hour,
-                };
-                Ok(std::mem::take(count) != 0)
+            self.mutate(counter.key(id.clone()), |state| {
+                Ok(std::mem::take(counter.count_mut(state.actor_mut(&id)?.act_mut())) != 0)
             })?;
         }
         Ok(())
@@ -158,7 +149,8 @@ impl<'p> Draft<'p> {
     /// Runs `write` on the state, tracks `key` only if its value changed, and keeps the
     /// key budget's order: a key that does not change is never counted. `write` returns
     /// whether it changed the stored value; a meter's is its base and offset, which can move
-    /// while the clamped value the key reads stays.
+    /// while the clamped value the key reads stays. The key is counted after the write, so an
+    /// `Err` from the budget can leave the write in place: the caller's savepoint undoes it.
     pub(crate) fn mutate(
         &mut self,
         key: StateKey,
