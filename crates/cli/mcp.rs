@@ -25,10 +25,13 @@ use crate::protocol::{
 };
 use crate::Error;
 
-/// Hands each `spook/event` notification to the `GmClient`: an event, or the error for one
-/// it could not read. `None` on the same channel is the end of the seat.
+/// One item on the event channel from the MCP endpoint's handlers to the `GmClient`: an
+/// event, the error for one that could not be read, or `None` for the end of the seat.
+type EventItem = Option<Result<GmEvent, Error>>;
+
+/// Hands each `spook/event` notification to the `GmClient` as an `EventItem`.
 struct EventSender {
-    tx: mpsc::UnboundedSender<Option<Result<GmEvent, Error>>>,
+    tx: mpsc::UnboundedSender<EventItem>,
 }
 
 impl ClientHandler for EventSender {
@@ -57,8 +60,8 @@ pub struct GmClient {
     service: RunningService<RoleClient, EventSender>,
     /// Finishes when the host closes the MCP endpoint.
     watch: tokio::task::JoinHandle<()>,
-    incoming: mpsc::UnboundedReceiver<Option<Result<GmEvent, Error>>>,
-    buffered: VecDeque<Option<Result<GmEvent, Error>>>,
+    rx: mpsc::UnboundedReceiver<EventItem>,
+    buffered: VecDeque<EventItem>,
     protocol_version: String,
 }
 
@@ -67,7 +70,7 @@ impl GmClient {
     /// not the game port.
     pub async fn connect(mcp_addr: SocketAddr) -> Result<Self, Error> {
         let url = format!("http://{mcp_addr}/mcp");
-        let (events, incoming) = mpsc::unbounded_channel();
+        let (tx, rx) = mpsc::unbounded_channel();
         // A closed loopback seat ends the stream. The default client retries
         // that stream forever, so a dropped `spook run` never looks closed.
         let mut config = StreamableHttpClientTransportConfig::with_uri(url.clone());
@@ -75,10 +78,10 @@ impl GmClient {
         config.reinit_on_expired_session = false;
         let transport = ClientTransport {
             inner: StreamableHttpClientTransport::from_config(config),
-            tx: events.clone(),
+            tx: tx.clone(),
             closed: false,
         };
-        let sender = EventSender { tx: events.clone() };
+        let sender = EventSender { tx: tx.clone() };
         let info = sender.get_info();
         let service = match sender.serve(transport).await {
             Ok(service) => service,
@@ -93,7 +96,7 @@ impl GmClient {
             }
             Err(err) => return Err(err.into()),
         };
-        // rmcp keeps no read on the agent port once a tool call's stream
+        // rmcp keeps no read on the MCP port once a tool call's stream
         // ends, so a killed `spook run` never looks closed. A plain connection
         // with a pending read sees that close the way the TCP client did.
         let watch = tokio::spawn(async move {
@@ -101,10 +104,10 @@ impl GmClient {
                 let mut buf = [0u8; 1];
                 tokio::select! {
                     _ = tokio::io::AsyncReadExt::read(&mut socket, &mut buf) => {}
-                    () = events.closed() => return,
+                    () = tx.closed() => return,
                 }
             }
-            let _ = events.send(None);
+            let _ = tx.send(None);
         });
         let protocol_version = service
             .peer_info()
@@ -113,7 +116,7 @@ impl GmClient {
         Ok(GmClient {
             service,
             watch,
-            incoming,
+            rx,
             buffered: VecDeque::new(),
             protocol_version,
         })
@@ -185,7 +188,7 @@ impl GmClient {
             .call_tool(params)
             .await
             .map_err(|err| Error::Message(err.to_string()))?;
-        while let Ok(item) = self.incoming.try_recv() {
+        while let Ok(item) = self.rx.try_recv() {
             self.buffered.push_back(item);
         }
         let body = result.structured_content.unwrap_or(Value::Null);
@@ -210,18 +213,18 @@ impl GmClient {
 
     /// The next event, or the error for one that could not be read. `None` when the seat
     /// ends.
-    pub async fn recv(&mut self) -> Option<Result<GmEvent, Error>> {
+    pub async fn recv(&mut self) -> EventItem {
         if let Some(item) = self.buffered.pop_front() {
             return item;
         }
-        self.incoming.recv().await.flatten()
+        self.rx.recv().await.flatten()
     }
 
     /// Buffered events, then any the reader has already queued. An end of the seat among
     /// them is dropped.
     pub fn drain(&mut self) -> Vec<Result<GmEvent, Error>> {
         let mut out: Vec<Result<GmEvent, Error>> = self.buffered.drain(..).flatten().collect();
-        while let Ok(item) = self.incoming.try_recv() {
+        while let Ok(item) = self.rx.try_recv() {
             out.extend(item);
         }
         out
@@ -244,7 +247,7 @@ impl GmClient {
 /// event leave.
 struct ClientTransport<T> {
     inner: T,
-    tx: mpsc::UnboundedSender<Option<Result<GmEvent, Error>>>,
+    tx: mpsc::UnboundedSender<EventItem>,
     closed: bool,
 }
 
