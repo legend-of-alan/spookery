@@ -23,8 +23,8 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::path::Path;
 
-use crate::effect::EffectKind;
-use crate::journal::{self, Record, RoundRecord, Step};
+use crate::rules::effect::EffectKind;
+use crate::store::journal::{self, Record, RoundRecord, Step};
 use crate::world::World;
 use proptest::prelude::*;
 use proptest::test_runner::{TestCaseError, TestRunner};

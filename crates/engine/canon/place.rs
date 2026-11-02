@@ -9,7 +9,7 @@ use crate::canon::rule_list::{self, RuleYaml};
 use crate::canon::source::{load_tagged, Diags, FileText, Locator, Page, PLACE_SCHEMA};
 use crate::canon::{Exit, PlaceDef};
 use crate::diagnostic::{schema_error, Diagnostic};
-use crate::rule::{Cost, Owner, Rule};
+use crate::rules::rule::{Cost, Owner, Rule};
 
 /// One place page into `places` and its facts into `facts`, and its rules. A bad fact
 /// stops the file; the exits compile before the duplicate id check.

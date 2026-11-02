@@ -4,8 +4,8 @@ use serde::Deserialize;
 use serde_saphyr::SerializerOptions;
 
 use crate::diagnostic::{check_tag, error, locate_nth, parse_file, schema_error, Diagnostic};
-use crate::effect::Effect;
 use crate::model::{sort_unique, MemoryLine, State};
+use crate::rules::effect::Effect;
 use crate::Reason;
 
 pub(crate) fn save_emit_options() -> SerializerOptions {
@@ -174,7 +174,7 @@ mod tests {
     use std::fs;
 
     fn parse_effect(text: &str) -> Result<Effect, Reason> {
-        let record: crate::effect::EffectRecord =
+        let record: crate::rules::effect::EffectRecord =
             serde_json::from_str(text).map_err(|_| Reason::Schema)?;
         Effect::try_from(record)
     }
@@ -236,9 +236,9 @@ notes: []
         assert_eq!(parse_save(&emitted).unwrap().schema, "save");
     }
 
-    use crate::effect::EffectKind;
     use crate::intent::Viewer;
     use crate::model::MemoryLine;
+    use crate::rules::effect::EffectKind;
     use crate::Reason;
 
     fn effect(kind: EffectKind, viewer: Viewer, intent_id: &str) -> super::Effect {
@@ -277,7 +277,7 @@ notes: []
                     EffectKind::Meter {
                         actor_id: "mira".to_string(),
                         key: "rest".to_string(),
-                        write: crate::meter::MeterWrite::Base(1),
+                        write: crate::model::meter::MeterWrite::Base(1),
                     },
                     npc("mira"),
                     "i2",
@@ -342,7 +342,7 @@ notes: []
                     EffectKind::Meter {
                         actor_id: "pc_rowan".to_string(),
                         key: "grit".to_string(),
-                        write: crate::meter::MeterWrite::ClearOffset,
+                        write: crate::model::meter::MeterWrite::ClearOffset,
                     },
                     player("pc_rowan"),
                     "i9",
@@ -452,7 +452,7 @@ notes: []
         )
         .unwrap();
         assert_eq!(
-            crate::effect::payload_json(&effect),
+            crate::rules::effect::payload_json(&effect),
             r#"{"place":"p","id":"s","delta":-1}"#
         );
     }
@@ -479,7 +479,7 @@ notes: []
             memory,
             r#"{"round_index":3,"actor_id":"mi\"ra","intent_id":"abc","fact_ids":["f"],"tags":[],"text":null}"#
         );
-        let migrate = crate::journal::emit_record(&crate::journal::migrate_record(
+        let migrate = crate::store::journal::emit_record(&crate::store::journal::migrate_record(
             "blake2s:aa",
             "blake2s:bb",
             0,

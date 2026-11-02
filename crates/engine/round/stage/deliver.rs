@@ -3,10 +3,10 @@
 use std::collections::BTreeSet;
 
 use crate::canon::Canon;
-use crate::effect::{Effect, EffectKind};
-use crate::key::Change;
+use crate::model::key::Change;
 use crate::model::{Presence, State};
-use crate::visibility::{self, Recipient, RecipientLine, ViewerChanges};
+use crate::rules::effect::{Effect, EffectKind};
+use crate::rules::visibility::{self, Recipient, RecipientLine, ViewerChanges};
 
 /// What the GM and each viewer may see and hear.
 pub(crate) struct Deliveries {

@@ -15,9 +15,9 @@
 //! Deterministic in CI: 64 cases, seed `0x0018_0018`, no failure file.
 
 use crate::draft::Draft;
-use crate::effect::{Effect, EffectKind};
 use crate::intent::{Intent, IntentArgs, Source, Target, Viewer};
 use crate::model::State;
+use crate::rules::effect::{Effect, EffectKind};
 use crate::testing::copy_docks;
 use crate::world::World;
 

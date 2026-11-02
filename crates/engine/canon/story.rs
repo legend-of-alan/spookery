@@ -7,7 +7,7 @@ use serde::Deserialize;
 use crate::canon::rule_list::{self, RuleYaml};
 use crate::canon::source::{collect_files, load_tagged, unreadable_dir, Diags, STORY_SCHEMA};
 use crate::diagnostic::schema_error;
-use crate::rule::{Owner, Rule};
+use crate::rules::rule::{Owner, Rule};
 
 /// Every `story/*.yaml` file in directory order, compiled. A pack without `story/` has none.
 pub(super) fn load_stories(root: &Path, diags: &mut Diags) -> Vec<Rule> {

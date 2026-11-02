@@ -4,15 +4,15 @@ use std::collections::BTreeSet;
 
 use crate::canon::Canon;
 use crate::draft::Draft;
-use crate::effect::EffectKind;
 use crate::intent::{Intent, Target, Viewer};
 use crate::model::{Presence, State};
-use crate::rule::{TargetKind, When};
 use crate::rules::case::Case;
+use crate::rules::effect::EffectKind;
 use crate::rules::expand;
 use crate::rules::gate;
 use crate::rules::habits::{self, is_player_at};
-use crate::travel::find_exit;
+use crate::rules::rule::{TargetKind, When};
+use crate::rules::travel::find_exit;
 use crate::Reason;
 
 use crate::round::dice::shuffle_key;

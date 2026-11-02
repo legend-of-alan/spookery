@@ -1,16 +1,16 @@
 //! Turn a rule template into effects for one intent.
 
 use crate::canon::Canon;
-use crate::effect::{Effect, EffectKind};
 use crate::intent::Target;
-use crate::meter::MeterWrite;
+use crate::model::meter::MeterWrite;
 use crate::model::State;
 use crate::round::dice::Roller;
-use crate::rule::{EffectTemplate, LocationTo, NarrateTo, ResistSpec, Rule, Who};
 use crate::rules::case::Case;
+use crate::rules::effect::{Effect, EffectKind};
 use crate::rules::expr::{self, Dice, Expr};
 use crate::rules::roll::Outcome;
-use crate::rules::{MoveReport, Roll};
+use crate::rules::roll::{MoveReport, Roll};
+use crate::rules::rule::{EffectTemplate, LocationTo, NarrateTo, ResistSpec, Rule, Who};
 use crate::Reason;
 
 /// Why a rule's effects are expanded and landed, which decides what the landing journals.
@@ -140,7 +140,7 @@ fn expand_template(
             who, key, value, ..
         } => {
             let actor_id = if matches!(who, Who::World) {
-                crate::effect::WORLD.to_string()
+                crate::rules::effect::WORLD.to_string()
             } else {
                 expr::resolve_who_id(case, who)?
             };
@@ -157,7 +157,7 @@ fn expand_template(
         EffectTemplate::Location { to, teleport } => {
             let place = match to {
                 LocationTo::Via(via) => {
-                    let exit = crate::travel::exit_via(case, via)?;
+                    let exit = crate::rules::travel::exit_via(case, via)?;
                     exit.ok_or(Reason::Schema)?.to.clone()
                 }
                 LocationTo::Place(id) if *teleport => id.clone(),

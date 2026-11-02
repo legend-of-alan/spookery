@@ -3,7 +3,7 @@
 use crate::canon::lint::unknown_item;
 use crate::canon::{Canon, ItemDef};
 use crate::diagnostic::{schema_error, Diagnostic};
-use crate::meter::{self, MeterLive};
+use crate::model::meter::{self, MeterLive};
 use crate::model::State;
 use crate::store::codec::normalize;
 use crate::store::records::AddedMeter;

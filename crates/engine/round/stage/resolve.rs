@@ -8,10 +8,10 @@ use crate::rules::roll::classify;
 
 use crate::canon::Canon;
 use crate::intent::{Intent, Source, Target};
-use crate::journal::Step;
 use crate::model::{Presence, State};
-use crate::rule::{RollSpec, Rule};
-use crate::rules::Roll;
+use crate::rules::roll::Roll;
+use crate::rules::rule::{RollSpec, Rule};
+use crate::store::journal::Step;
 use crate::Reason;
 
 use crate::round::dice::RoundDice;
@@ -84,7 +84,7 @@ fn gate_and_roll<'a>(
         Err(refusal) => return Ok(Resolution::Refused(refusal)),
     };
     match &rule.roll {
-        Some(roll) if crate::travel::span(&case, rule) == 0 => {
+        Some(roll) if crate::rules::travel::span(&case, rule) == 0 => {
             rolls.log.extra_steps.push(Step::CheckRolled);
             roll_intent_check(rolls, intent, rule, roll)
         }

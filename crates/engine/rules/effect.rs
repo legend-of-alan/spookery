@@ -4,10 +4,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::draft::Draft;
 use crate::intent::{Intent, Viewer};
-use crate::key::StateKey;
-use crate::meter::{self, MeterWrite};
+use crate::model::key::StateKey;
+use crate::model::meter::{self, MeterWrite};
 use crate::model::{self, MemoryLine, Note};
-use crate::visibility::can_see_fact;
+use crate::rules::visibility::can_see_fact;
 use crate::Reason;
 
 /// One effect. JSON is `kind`, `as`, `intent_id`, then the fields of `kind`.

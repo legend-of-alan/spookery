@@ -1,12 +1,12 @@
 //! What a round writes down, and the round's half of a journal line.
 
-use crate::effect::Effect;
 use crate::intent::Intent;
-use crate::journal::{Arrival, Step};
 use crate::model::Presence;
 use crate::round::stage::advance::RoundTime;
+use crate::rules::effect::Effect;
 use crate::rules::gate;
-use crate::rules::{MoveReport, Roll};
+use crate::rules::roll::{MoveReport, Roll};
+use crate::store::journal::{Arrival, Step};
 
 /// Everything a round writes down, in the order it happened. `record` consumes it.
 #[derive(Default)]

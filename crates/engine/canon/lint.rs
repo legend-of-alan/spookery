@@ -5,13 +5,13 @@ use std::collections::{BTreeMap, BTreeSet};
 use crate::canon::source::{FileText, Locator, Problem};
 use crate::canon::{Canon, CastDef, FactDef, ItemDef, PlaceDef};
 use crate::diagnostic::{error, schema_error, warning, Diagnostic};
-use crate::meter::MeterDef;
-use crate::rule::{
+use crate::model::meter::MeterDef;
+use crate::rules::expr::Expr;
+use crate::rules::roll::Check;
+use crate::rules::rule::{
     ChangeWatch, Cond, Cost, EffectTemplate, LocationTo, NarrateTo, Owner, ResistSpec, Rule,
     RuleTable, When, Who,
 };
-use crate::rules::expr::Expr;
-use crate::rules::roll::Check;
 use crate::Reason;
 
 /// Exits whose `to` is not a place, and facts or items an exit names but the pack does not.

@@ -43,15 +43,15 @@ pub(crate) fn run(
         log,
         intents: world.queued_intents().to_vec(),
     };
-    output.commit = Some(crate::commit::commit(world, draft, line)?);
+    output.commit = Some(crate::store::commit::commit(world, draft, line)?);
     Ok(output)
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::effect::{Effect, EffectKind};
     use crate::intent::Viewer;
-    use crate::journal::{emit_record, Record, RoundRecord};
+    use crate::rules::effect::{Effect, EffectKind};
+    use crate::store::journal::{emit_record, Record, RoundRecord};
 
     #[test]
     fn round_record_embeds_the_flat_effect() {

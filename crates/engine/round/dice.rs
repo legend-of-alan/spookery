@@ -6,11 +6,11 @@ use crate::canon::Canon;
 use crate::hash::blake2s_256;
 use crate::model::State;
 use crate::round::log::RoundLog;
-use crate::rule::RollSpec;
 use crate::rules::case::Case;
 use crate::rules::expr::{eval_with_dice, Dice};
 use crate::rules::roll::Outcome;
-use crate::rules::{faces_from, roll_check, MoveReport, Roll, RollKey};
+use crate::rules::roll::{faces_from, roll_check, MoveReport, Roll, RollKey};
+use crate::rules::rule::RollSpec;
 use crate::Reason;
 
 /// The round line's `seed` field. A roll uses `RollKey`, not this string.

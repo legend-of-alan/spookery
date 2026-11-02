@@ -6,7 +6,7 @@ use serde::Deserialize;
 
 use crate::canon::source::{load_tagged, Diags, FileText, Locator, Problem, METERS_SCHEMA};
 use crate::diagnostic::Diagnostic;
-use crate::meter::MeterDef;
+use crate::model::meter::MeterDef;
 
 pub(super) fn load_meters(
     rel: &str,

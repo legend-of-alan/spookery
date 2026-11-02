@@ -3,10 +3,10 @@
 use std::collections::BTreeSet;
 
 use crate::canon::Canon;
-use crate::effect::{Effect, EffectKind};
 use crate::intent::Viewer;
-use crate::key::{Change, StateKey, StateValue};
+use crate::model::key::{Change, StateKey, StateValue};
 use crate::model::State;
+use crate::rules::effect::{Effect, EffectKind};
 
 pub(crate) fn can_see_fact(canon: &Canon, now: &State, viewer: &Viewer, fact_id: &str) -> bool {
     let Some(actor) = now.actors.get(viewer.actor_id()) else {

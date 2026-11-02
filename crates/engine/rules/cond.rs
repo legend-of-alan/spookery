@@ -3,9 +3,9 @@
 use crate::canon::Canon;
 use crate::intent::{Intent, Source, Target, Viewer};
 use crate::model::{Presence, State, MINUTES_PER_DAY, MINUTES_PER_HOUR};
-use crate::rule::{Cond, Who};
 use crate::rules::case::Case;
 use crate::rules::expr;
+use crate::rules::rule::{Cond, Who};
 use crate::Reason;
 
 /// Every condition holds. A failed `has_item` is [`Reason::MissingItem`].

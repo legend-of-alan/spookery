@@ -8,7 +8,7 @@ use crate::canon::rule_list::{self, RuleYaml};
 use crate::canon::source::{load_tagged, Diags, FileText, Locator, Page, Problem, CAST_SCHEMA};
 use crate::canon::{CastDef, CastKind, IdleProfile};
 use crate::diagnostic::Diagnostic;
-use crate::rule::{Owner, Rule};
+use crate::rules::rule::{Owner, Rule};
 
 /// One cast page into `cast`, and its rules.
 pub(super) fn add_cast(
@@ -61,7 +61,7 @@ fn load_cast(file: &str, yaml: &str, line_base: u32) -> Result<CastFile, Vec<Dia
     let mut diags = Diags::default();
     let empty = ("id is empty", "set id to a short cast id");
     diags.extend(source.refuse_empty(&parsed.id, "id", Locator::Key("id:"), empty));
-    if parsed.id == crate::effect::WORLD {
+    if parsed.id == crate::rules::effect::WORLD {
         diags.push(
             Problem {
                 source: &source,

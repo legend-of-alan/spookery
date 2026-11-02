@@ -2,13 +2,13 @@
 
 use crate::canon::Canon;
 use crate::draft::Draft;
-use crate::effect::{Effect, EffectKind};
 use crate::intent::{Intent, Target};
-use crate::journal::Arrival;
 use crate::model::{PendingAction, PendingKind};
 use crate::rules::case::Case;
+use crate::rules::effect::{Effect, EffectKind};
 use crate::rules::expand::{self, Cause};
 use crate::rules::gate;
+use crate::store::journal::Arrival;
 use crate::Reason;
 
 use crate::round::dice::RoundDice;
@@ -23,7 +23,7 @@ pub(crate) fn run(
     dice: &mut RoundDice,
     log: &mut RoundLog,
 ) -> Result<(), Reason> {
-    let due_actions = crate::travel::take_due_actions(draft, end)?;
+    let due_actions = crate::rules::travel::take_due_actions(draft, end)?;
     for due_action in due_actions {
         let PendingAction { verb, source, kind } = due_action.pending;
         let actor_id = &due_action.actor_id;

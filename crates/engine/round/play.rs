@@ -3,14 +3,14 @@
 use std::path::Path;
 
 use crate::canon::Budget;
-use crate::commit::CommitOutcome;
 use crate::draft::Draft;
-use crate::effect::Effect;
 use crate::intent::Intent;
-use crate::lock::lock_pack;
 use crate::model::Presence;
-use crate::rules::MoveReport;
-use crate::visibility::{RecipientLine, ViewerChanges};
+use crate::rules::effect::Effect;
+use crate::rules::roll::MoveReport;
+use crate::rules::visibility::{RecipientLine, ViewerChanges};
+use crate::store::commit::CommitOutcome;
+use crate::store::lock::lock_pack;
 use crate::world::World;
 use crate::Reason;
 
@@ -144,7 +144,7 @@ pub(crate) fn replay_round(
         ..
     } = run_stages(world, presence, wall, queue)?;
     let output = record::take_output(&mut log, delivered);
-    crate::commit::keep_in_memory(world, draft)?;
+    crate::store::commit::keep_in_memory(world, draft)?;
     Ok(output)
 }
 

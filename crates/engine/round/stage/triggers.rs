@@ -3,13 +3,13 @@
 use crate::canon::Canon;
 use crate::draft::Draft;
 use crate::intent::Intent;
-use crate::journal::Step;
-use crate::key::{Change, StateKey, StateValue};
-use crate::rule::{ChangeWatch, Op, Rule, WatchWho, When};
+use crate::model::key::{Change, StateKey, StateValue};
 use crate::rules::case::Case;
 use crate::rules::cond;
 use crate::rules::expand::{self, Cause};
 use crate::rules::gate;
+use crate::rules::rule::{ChangeWatch, Op, Rule, WatchWho, When};
+use crate::store::journal::Step;
 use crate::Reason;
 
 use crate::round::dice::RoundDice;

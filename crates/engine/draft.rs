@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use crate::canon::Canon;
 use crate::canon::{Budget, PausePolicy};
-use crate::key::{Change, StateKey, StateValue};
+use crate::model::key::{Change, StateKey, StateValue};
 use crate::model::{ActCounter, MemoryLine, Presence, RunState, State};
 use crate::world::World;
 use crate::Reason;
@@ -387,9 +387,9 @@ pub(crate) struct Savepoint {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::effect::{Effect, EffectKind};
     use crate::intent::{Intent, Source, Target, Viewer};
-    use crate::meter::MeterWrite;
+    use crate::model::meter::MeterWrite;
+    use crate::rules::effect::{Effect, EffectKind};
     use crate::World;
 
     #[test]

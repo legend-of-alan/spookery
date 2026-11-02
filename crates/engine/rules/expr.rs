@@ -2,9 +2,9 @@
 
 use crate::canon::Canon;
 use crate::model::State;
-use crate::rule::{LineColumn, Who};
 use crate::rules::case::Case;
 use crate::rules::roll::Outcome;
+use crate::rules::rule::{LineColumn, Who};
 use crate::Reason;
 
 /// Faces for one expression. `begin` starts a new roll seed. `note` records the shown line.
@@ -625,10 +625,10 @@ mod tests {
     use super::{eval_with_dice, BinOp, Dice, Expr, Func, Keep};
     use crate::canon::Canon;
     use crate::intent::{Intent, IntentArgs, Source, Target, Viewer};
-    use crate::meter::{MeterDef, MeterLive};
+    use crate::model::meter::{MeterDef, MeterLive};
     use crate::model::{Act, ActorLive, Presence, State};
-    use crate::rule::Who;
     use crate::rules::case::Case;
+    use crate::rules::rule::Who;
     use crate::Reason;
 
     static EMPTY: Presence = Presence {
@@ -694,7 +694,7 @@ mod tests {
             places: BTreeMap::new(),
             cast: BTreeMap::new(),
             facts: BTreeMap::new(),
-            rules: crate::rule::RuleTable::new(Vec::new()),
+            rules: crate::rules::rule::RuleTable::new(Vec::new()),
             checks: BTreeMap::new(),
             meters: BTreeMap::from([(
                 "str_mod".to_string(),

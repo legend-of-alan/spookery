@@ -5,13 +5,13 @@ use std::path::Path;
 use std::sync::Arc;
 
 use crate::canon::{check_save, load_canon, migrate_save};
-use crate::commit::write_atomic;
 use crate::diagnostic::first_reason;
-use crate::effect::Effect;
-use crate::journal::{self, blake2s_tagged, MigrateRecord, Record, RoundRecord};
-use crate::lock::{lock_pack, lock_write, PackGuard};
 use crate::model::{Presence, State};
+use crate::rules::effect::Effect;
 use crate::store::codec::{emit_effect, emit_save, parse_save};
+use crate::store::commit::write_atomic;
+use crate::store::journal::{self, blake2s_tagged, MigrateRecord, Record, RoundRecord};
+use crate::store::lock::{lock_pack, lock_write, PackGuard};
 use crate::store::require_rules_rev;
 use crate::world::World;
 use crate::Reason;
@@ -233,7 +233,7 @@ pub fn replay_journal(
 pub(crate) fn open_at_tip(path: &Path, lock: &PackGuard) -> Result<World<()>, Reason> {
     rebuild_save(path, lock).map_err(Error::into_reason)?;
     let world = peek_at_tip(path)?;
-    crate::commit::finish_live_checkpoint(&world, lock)?;
+    crate::store::commit::finish_live_checkpoint(&world, lock)?;
     Ok(world)
 }
 
@@ -251,7 +251,7 @@ pub(crate) fn peek_at_tip(path: &Path) -> Result<World<()>, Reason> {
 pub fn migrate_pack(path: &Path) -> Result<(), Reason> {
     let lock = lock_pack(path)?;
     let (now, edited) = load_migrate_tip(path, &lock)?;
-    crate::commit::commit_migrate(path, now, edited, &lock)
+    crate::store::commit::commit_migrate(path, now, edited, &lock)
 }
 
 /// The state to migrate, and whether it is a hand edit of the checkpoint head.
@@ -286,7 +286,7 @@ fn replay_tip_unchecked(path: &Path, lock: &PackGuard) -> Result<World<()>, Reas
     let save = fs::read(path.join("state/save.yaml")).map_err(|_| Reason::NotInSpec)?;
     let mut world = open_for_replay(path, &save).map_err(Error::into_reason)?;
     replay_tail(&mut world)?;
-    crate::commit::finish_live_checkpoint(&world, lock)?;
+    crate::store::commit::finish_live_checkpoint(&world, lock)?;
     Ok(world)
 }
 
@@ -358,8 +358,8 @@ fn rebuild_save(path: &Path, lock: &PackGuard) -> Result<(), Error> {
     Ok(())
 }
 
-impl From<crate::journal::Error> for Error {
-    fn from(fault: crate::journal::Error) -> Self {
+impl From<crate::store::journal::Error> for Error {
+    fn from(fault: crate::store::journal::Error) -> Self {
         if fault.reason == Reason::RulesRevMismatch {
             return Error::Reason(Reason::RulesRevMismatch);
         }
