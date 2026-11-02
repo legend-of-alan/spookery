@@ -73,15 +73,6 @@ pub enum Source {
     Player,
 }
 
-impl Source {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Source::Engine => "engine",
-            Source::Player => "player",
-        }
-    }
-}
-
 #[derive(Clone, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(try_from = "TargetWire", into = "TargetWire")]
 pub enum Target {

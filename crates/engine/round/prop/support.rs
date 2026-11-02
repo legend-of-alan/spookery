@@ -4,10 +4,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::canon::pack_rev;
-use crate::intent::{intent_id, Intent, IntentArgs, Source, Target, Viewer};
+use crate::intent::Target;
 use crate::model::Presence;
-use crate::rules::case::Case;
-use crate::rules::gate::gate;
 use crate::rules::travel::visible_exits;
 use crate::store::codec::{emit_save, parse_save};
 use crate::store::journal;
@@ -69,7 +67,7 @@ fn pick_move() -> impl Strategy<Value = MovePlan> {
     })
 }
 
-/// Queue the moves `gate` accepts, then play the round. Habits are gathered with them.
+/// Queue the moves the gate accepts, then play the round. Habits are gathered with them.
 pub(crate) fn play_rounds(pack: &Path, rounds: &[RoundPlan]) -> Result<(), String> {
     add_grit_success(pack)?;
     let lock = crate::lock_pack(pack).map_err(|err| err.to_string())?;
@@ -143,19 +141,8 @@ fn queue_move(world: &mut World, plan: &MovePlan) {
     let Some(target) = target_for(world, actor, verb, plan.token) else {
         return;
     };
-    let intent = player_intent(world.state(), actor, verb, target);
-    if world
-        .queued_intents()
-        .iter()
-        .any(|queued| queued.id == intent.id)
-    {
-        return;
-    }
-    let seated = Presence::default();
-    if gate(&Case::new(world.canon(), world.state(), &seated, &intent)).is_err() {
-        return;
-    }
-    world.queue_intent(intent);
+    // A line the gate refuses, or one already queued, is left out.
+    let _ = world.queue_player_move(&Presence::default(), actor, verb, target.token());
 }
 
 fn target_for(world: &World, actor: &str, verb: &str, token: usize) -> Option<Target> {
@@ -190,26 +177,6 @@ fn item_tokens(world: &World, actor: &str) -> Vec<String> {
     ids.sort();
     ids.dedup();
     ids
-}
-
-fn player_intent(now: &crate::model::State, actor: &str, verb: &str, target: Target) -> Intent {
-    let token = target.token().unwrap_or_default();
-    let line = if token.is_empty() {
-        verb.to_string()
-    } else {
-        format!("{verb} {token}")
-    };
-    let round_index = now.round_index.saturating_add(1);
-    Intent {
-        id: intent_id(&now.world_id, round_index, actor, &line),
-        round_index: now.round_index,
-        actor: Viewer::Player(actor.to_string()),
-        source: Source::Player,
-        move_name: verb.to_string(),
-        target,
-        args: IntentArgs::default(),
-        rationale_code: String::new(),
-    }
 }
 
 /// Replay the journal and compare it with the state hash on the last record.

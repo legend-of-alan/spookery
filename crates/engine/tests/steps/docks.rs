@@ -9,8 +9,9 @@ use spookery_engine::testing::{
     stamp_pack_rev, state_of, write_save, Act, ActorLive, Pause, PlaceLive,
 };
 use spookery_engine::{
-    emit_save, play_pack_once, MeterLive, MoveReport, Note, Outcome, Presence, RunState, State,
+    emit_save, play_pack_once, MeterLive, MoveReport, Note, Presence, RunState, State,
 };
+use spookery_protocol::Outcome;
 
 use crate::World;
 
@@ -860,7 +861,7 @@ fn effects_run_on_both_outcomes_and_lists_run_on_one() {
     }
 }
 
-fn roll_with_stat(reports: &[MoveReport], stat: i64) -> spookery_engine::Roll {
+fn roll_with_stat(reports: &[MoveReport], stat: i64) -> spookery_protocol::Roll {
     reports
         .iter()
         .find_map(|report| match report {

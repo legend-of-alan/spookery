@@ -126,7 +126,9 @@ fn play(world: &mut World, actor: &str, line: &str) {
         players: 1,
         actors_present: vec![actor.to_string()],
     };
-    let (verb, target) = support::split_move(line);
+    let (verb, target) = line
+        .split_once(' ')
+        .map_or((line, None), |(verb, target)| (verb, Some(target)));
     let wall = opened.state().last_round_at.clone();
     opened
         .queue_player_move(&seated, actor, verb, target)

@@ -141,9 +141,6 @@ pub(crate) fn admit(case: &Case, rule: &Rule) -> Result<(), Refusal> {
             return Err(Refusal::new(intent, Reason::Schema));
         }
     }
-    if intent.source == Source::Engine && matches!(intent.actor, Viewer::Player(_)) {
-        return Err(Refusal::new(intent, Reason::EngineOnPlayer));
-    }
     if intent.source == Source::Engine
         && matches!(intent.actor, Viewer::Npc(_))
         && !is_eligible(case.canon, now, case.presence, intent.actor.actor_id())

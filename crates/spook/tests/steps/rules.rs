@@ -406,6 +406,7 @@ fn lark_attacks(world: &mut World) {
             subject_id: "pc_lark".to_string(),
             index: 0,
         },
+        0,
         1,
         20,
     )
@@ -439,9 +440,9 @@ fn lark_attacks(world: &mut World) {
     assert_eq!(rolled.total, 21, "{rolled:?}");
     assert_eq!(rolled.target, 22, "{rolled:?}");
     world.scratch = match rolled.outcome {
-        spookery_engine::Outcome::Success => "success",
-        spookery_engine::Outcome::Partial => "partial",
-        spookery_engine::Outcome::Miss => "miss",
+        spookery::protocol::Outcome::Success => "success",
+        spookery::protocol::Outcome::Partial => "partial",
+        spookery::protocol::Outcome::Miss => "miss",
     }
     .to_string();
 }

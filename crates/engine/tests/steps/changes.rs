@@ -252,7 +252,9 @@ fn lark() -> Presence {
 }
 
 fn play(world: &mut EngineWorld, line: &str) -> spookery_engine::RoundOutput {
-    let (verb, target) = testing::split_move(line);
+    let (verb, target) = line
+        .split_once(' ')
+        .map_or((line, None), |(verb, target)| (verb, Some(target)));
     let wall = world.state().last_round_at.clone();
     world
         .queue_player_move(&lark(), "pc_lark", verb, target)

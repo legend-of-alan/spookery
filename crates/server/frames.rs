@@ -3,13 +3,12 @@
 
 use crate::protocol::{
     self, CommitBody, Detail, GmEvent, NoteView, Outcome, PackSummary, PlayerFrame, Queued,
-    QueuedMove, SayEvent, StatusPause, StatusPresence, TableStatus,
+    QueuedMove, Roll, SayEvent, StatusPause, StatusPresence, TableStatus,
 };
 use rmcp::ErrorData as McpError;
 use serde_json::Value;
 use spookery_engine::{
-    self as engine, Intent, MoveReport, Note, Presence, Reason, Roll, RoundOutput, State,
-    TapeRecord,
+    self as engine, Intent, MoveReport, Note, Presence, Reason, RoundOutput, State, TapeRecord,
 };
 
 /// The player `refused` line. `detail` is left out when there is none.

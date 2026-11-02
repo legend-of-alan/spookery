@@ -17,9 +17,8 @@ use crate::rules::rule::{Rule, TargetKind, When};
 use crate::store::codec::{emit_save, parse_save};
 use crate::store::journal::{self, Record};
 use crate::store::tape::{append_record, last_seq, read_after, read_tail, TapeRecord};
-use crate::QueuedMove;
 use crate::Reason;
-use spookery_protocol::{Speaker, PERCEIVE_BODY_CHARS};
+use spookery_protocol::{QueuedMove, Speaker, PERCEIVE_BODY_CHARS};
 
 /// One say, in characters. Four kibibytes still fits in an 8 KiB player line.
 const MAX_SAY_CHARS: usize = 4 * 1024;
@@ -310,7 +309,7 @@ impl<L> World<L> {
         &self.queue
     }
 
-    pub fn queue_intent(&mut self, intent: Intent) {
+    pub(crate) fn queue_intent(&mut self, intent: Intent) {
         self.queue.push(intent);
     }
 

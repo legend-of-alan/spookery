@@ -67,19 +67,9 @@ impl RollKey {
     }
 }
 
-/// The faces this key would roll, without a stat or a band.
-#[cfg(any(test, feature = "testing"))]
-pub fn faces(key: &RollKey, count: u32, sides: u32) -> Result<Vec<u32>, Reason> {
-    faces_from(key, 0, count, sides)
-}
-
-/// Faces starting at die `start` of this key's seed. A later group in the same expression continues.
-pub(crate) fn faces_from(
-    key: &RollKey,
-    start: usize,
-    count: u32,
-    sides: u32,
-) -> Result<Vec<u32>, Reason> {
+/// The faces this key rolls from die `start` of its seed, without a stat or a band. A later
+/// group in the same expression continues where the last one stopped.
+pub fn faces(key: &RollKey, start: usize, count: u32, sides: u32) -> Result<Vec<u32>, Reason> {
     let seed = blake2s_256(key.preimage().as_bytes());
     let mut faces = Vec::with_capacity(count as usize);
     for n in 0..count {
@@ -101,7 +91,7 @@ pub(crate) fn roll_check(
     let def = meters.get(&check.stat).ok_or(Reason::UnknownId)?;
     let live = actor.meters().get(&check.stat).ok_or(Reason::UnknownId)?;
     let stat = meter::current(def, live)?;
-    let faces = faces_from(key, 0, check.dice_count, check.dice_sides)?;
+    let faces = faces(key, 0, check.dice_count, check.dice_sides)?;
     let total = faces.iter().map(|face| i64::from(*face)).sum::<i64>() + stat;
     Ok(Roll {
         faces,
