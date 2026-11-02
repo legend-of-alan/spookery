@@ -1,6 +1,5 @@
 //! Publish one round: the journal record, then the save.
 
-use std::collections::{BTreeMap, BTreeSet};
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::Path;
@@ -9,11 +8,11 @@ use crate::canon::{check_save, pack_rev};
 use crate::diagnostic::first_reason;
 use crate::draft::Draft;
 use crate::hash::blake2s_tagged;
-use crate::model::{MemoryLine, State};
+use crate::model::State;
 use crate::store::durability::{fsync_dir, fsync_file, write_atomic};
 use crate::store::journal;
 use crate::store::lock::{lock_write, PackGuard, WriteGuard};
-use crate::store::records::{emit_memory_line, Record, RoundRecord};
+use crate::store::records::{Record, RoundRecord};
 use crate::store::recovery::close_finished;
 use crate::store::save::{emit_save, migrate_save, missing_meters, normalize};
 use crate::world::World;
@@ -212,7 +211,7 @@ fn store_checkpoint(
     state_rev: u64,
     round_index: u64,
     chain: &str,
-    write: &WriteGuard,
+    _write: &WriteGuard,
 ) -> Result<(), Reason> {
     let head = serde_json::to_string(&journal::CheckpointHead {
         rules_rev: crate::store::RULES_REV,
@@ -223,7 +222,6 @@ fn store_checkpoint(
     })
     .map_err(|_| Reason::Schema)?;
     write_atomic(&journal::head_path(root), head.as_bytes())?;
-    publish_memory_files(root, write)?;
     let state = root.join("state");
     let save = state.join("save.yaml");
     let base = journal::base_path(root);
@@ -284,55 +282,6 @@ fn finish_trailing_checkpoint<L>(world: &World<L>, write: &WriteGuard) -> Result
     Ok(())
 }
 
-fn publish_memory_files(root: &Path, _write: &WriteGuard) -> Result<(), Reason> {
-    let entries = journal::read_live_records(root).map_err(|fault| fault.reason)?;
-    let mut lines = Vec::new();
-    for entry in entries {
-        if let Record::Round(record) = entry {
-            lines.extend(record.memories);
-        }
-    }
-    for (actor, body) in memory_bodies(&root.join("state"), &lines)? {
-        let path = root.join("state/memories").join(format!("{actor}.jsonl"));
-        write_atomic(&path, body.as_bytes())?;
-    }
-    Ok(())
-}
-
-fn memory_bodies(state: &Path, lines: &[MemoryLine]) -> Result<BTreeMap<String, String>, Reason> {
-    let mut by_actor: BTreeMap<String, Vec<&MemoryLine>> = BTreeMap::new();
-    for line in lines {
-        by_actor
-            .entry(line.actor_id.clone())
-            .or_default()
-            .push(line);
-    }
-    let mut out = BTreeMap::new();
-    for (actor, fresh) in by_actor {
-        let path = state.join("memories").join(format!("{actor}.jsonl"));
-        let mut body = if path.is_file() {
-            fs::read_to_string(&path).map_err(|_| Reason::CommitConflict)?
-        } else {
-            String::new()
-        };
-        if !body.is_empty() && !body.ends_with('\n') {
-            body.push('\n');
-        }
-        let mut seen: BTreeSet<String> = body.lines().map(str::to_string).collect();
-        for line in fresh {
-            let text = emit_memory_line(line);
-            if seen.contains(&text) {
-                continue;
-            }
-            body.push_str(&text);
-            body.push('\n');
-            seen.insert(text);
-        }
-        out.insert(actor, body);
-    }
-    Ok(out)
-}
-
 #[cfg(test)]
 mod tests {
     use std::fs;
@@ -380,7 +329,6 @@ mod tests {
         );
         assert_no_tmp(&root);
         let bundle = root.join("state/journal/bundle-0000.jsonl");
-        let memory = root.join("state/memories/mira.jsonl");
         let bundle_bytes = fs::read(&bundle).unwrap();
         assert_eq!(fs::read(root.join("state/save.yaml")).unwrap(), pre);
         let bundle_text = String::from_utf8(bundle_bytes.clone()).unwrap();
@@ -393,7 +341,6 @@ mod tests {
             "{bundle_text}"
         );
         assert!(bundle_text.contains("kept"), "{bundle_text}");
-        assert!(!memory.exists());
         let next = Draft::begin(&world, &NOBODY);
         durability::start_trace();
         commit(&mut world, next, round_line(1)).unwrap();
@@ -405,7 +352,6 @@ mod tests {
         let opened = World::open(&root).unwrap();
         assert_eq!(opened.state().state_rev, 0);
         assert_eq!(fs::read(&bundle).unwrap(), bundle_bytes);
-        assert!(fs::read_to_string(&memory).unwrap().contains("kept"));
 
         let _ = fs::remove_dir_all(&root);
     }
@@ -535,14 +481,10 @@ mod tests {
             Event::Dir(_) if name == "journal" && has_parent_named(path, "state") => {
                 "dir journal".to_string()
             }
-            Event::Dir(_) if name == "memories" && has_parent_named(path, "state") => {
-                "dir memories".to_string()
-            }
             Event::Dir(_) if name == "state" => "dir state".to_string(),
             Event::Rename(_) if name == "base.yaml" && has_parent_named(path, "journal") => {
                 "rename base".to_string()
             }
-            Event::Rename(_) if has_parent_named(path, "memories") => "rename memory".to_string(),
             Event::Rename(_) if name == "save.yaml" && has_parent_named(path, "state") => {
                 "rename save".to_string()
             }
@@ -555,8 +497,6 @@ mod tests {
             "file save.tmp".to_string()
         } else if name.starts_with("base.yaml") {
             "file base.tmp".to_string()
-        } else if has_parent_named(path, "memories") {
-            "file memory.tmp".to_string()
         } else {
             format!("unexpected {}", path.display())
         }

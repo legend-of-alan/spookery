@@ -274,7 +274,7 @@ notes: []
     use crate::intent::Viewer;
     use crate::model::MemoryLine;
     use crate::rules::effect::{Effect, EffectKind};
-    use crate::store::records::{emit_effect, emit_memory_line};
+    use crate::store::records::emit_effect;
     use crate::Reason;
 
     fn effect(kind: EffectKind, viewer: Viewer, intent_id: &str) -> Effect {
@@ -497,14 +497,15 @@ notes: []
 
     #[test]
     fn memory_and_migrate_lines_keep_their_key_order() {
-        let memory = emit_memory_line(&MemoryLine {
+        let memory = serde_json::to_string(&MemoryLine {
             round_index: 3,
             actor_id: "mi\"ra".to_string(),
             intent_id: "abc".to_string(),
             fact_ids: vec!["f".to_string()],
             tags: Vec::new(),
             text: None,
-        });
+        })
+        .unwrap();
         assert_eq!(
             memory,
             r#"{"round_index":3,"actor_id":"mi\"ra","intent_id":"abc","fact_ids":["f"],"tags":[],"text":null}"#
