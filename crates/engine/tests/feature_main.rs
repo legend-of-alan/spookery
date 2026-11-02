@@ -34,6 +34,12 @@ impl World {
     }
 }
 
+/// The first word of `line`, and the rest of it when there is any.
+pub fn split_line(line: &str) -> (&str, Option<&str>) {
+    line.split_once(' ')
+        .map_or((line, None), |(head, rest)| (head, Some(rest)))
+}
+
 #[tokio::main]
 async fn main() {
     let mut failed = false;

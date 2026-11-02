@@ -6,6 +6,7 @@ use serde_json::Value;
 use spookery_engine::testing::{faces, RollKey};
 use spookery_engine::State;
 
+use super::common::split_line;
 use super::table;
 use crate::support;
 use crate::World;
@@ -44,7 +45,7 @@ fn handle_move(
     line: &str,
 ) -> Result<Vec<spookery_engine::RoundOutput>, spookery_engine::Refusal> {
     let mut world = super::rules::open(pack);
-    let (verb, target) = support::split_move(line);
+    let (verb, target) = split_line(line);
     let nobody = spookery_engine::Presence::default();
     world.queue_player_move(&nobody, actor, verb, target)?;
     let stamp = world.state().last_round_at.clone();
@@ -533,6 +534,7 @@ fn nell_resists_on_a_seeded_roll(world: &mut World) {
             subject_id: "pc_nell".to_string(),
             index: 0,
         },
+        0,
         1,
         20,
     )

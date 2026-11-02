@@ -9,7 +9,7 @@ use crate::round::log::RoundLog;
 use crate::rules::case::Case;
 use crate::rules::expr::{eval_with_dice, Dice};
 use crate::rules::roll::Outcome;
-use crate::rules::roll::{faces_from, roll_check, MoveReport, Roll, RollKey};
+use crate::rules::roll::{faces, roll_check, MoveReport, Roll, RollKey};
 use crate::rules::rule::RollSpec;
 use crate::Reason;
 
@@ -139,7 +139,7 @@ impl Dice for Roller<'_> {
         let key = self
             .key
             .get_or_insert_with(|| self.dice.next_key(self.rule, self.subject));
-        let faces = faces_from(key, self.drawn, count, sides)?;
+        let faces = faces(key, self.drawn, count, sides)?;
         self.drawn += count as usize;
         Ok(faces)
     }

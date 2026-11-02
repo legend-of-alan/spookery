@@ -235,7 +235,9 @@ fn queue_intent(
 #[cfg(test)]
 mod tests {
     use serde_json::json;
-    use spookery_engine::{testing::copy_pack, QueuedMove, World};
+    use spookery_engine::{testing::copy_pack, World};
+
+    use crate::protocol::QueuedMove;
 
     #[test]
     fn parsed_intent_reaches_the_world_with_move_and_to() {

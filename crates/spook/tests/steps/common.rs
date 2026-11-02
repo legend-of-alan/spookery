@@ -15,6 +15,12 @@ use crate::World;
 
 pub(crate) const EVENING: u64 = 21 * 60 + 30;
 
+/// The first word of `line`, and the rest of it when there is any.
+pub(crate) fn split_line(line: &str) -> (&str, Option<&str>) {
+    line.split_once(' ')
+        .map_or((line, None), |(head, rest)| (head, Some(rest)))
+}
+
 pub(crate) use crate::support::edit_save;
 
 pub(crate) fn give_key(now: &mut State) {

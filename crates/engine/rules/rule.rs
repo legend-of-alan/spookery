@@ -367,13 +367,6 @@ impl RuleTable {
         })
     }
 
-    pub fn named(&self, local: &str) -> Vec<&Rule> {
-        self.rules
-            .iter()
-            .filter(|rule| rule.local_id == local || rule.id == local)
-            .collect()
-    }
-
     pub(crate) fn habits_of(&self, actor: &str) -> Vec<&Rule> {
         self.rules
             .iter()

@@ -18,11 +18,10 @@ pub use model::meter::MeterLive;
 pub use model::{Note, Presence, RunState, State};
 pub use round::{migrate_pack, play_pack_once, verify_pack, verify_quick, RoundOutput};
 pub use rules::gate::Refusal;
-pub use rules::perceive::{ClockView, ItemStack, KnownFact, MeterView, View};
-pub use rules::roll::{MoveReport, Outcome, Roll};
-pub use rules::rule::When;
+pub use rules::perceive::View;
+pub use rules::roll::MoveReport;
 pub use rules::visibility::RecipientLine;
-pub use spookery_protocol::{ExitView, QueuedMove, Reason};
+pub use spookery_protocol::Reason;
 pub use store::{emit_save, emit_tape_record, lock_pack, parse_save, PackGuard, TapeRecord};
 pub use world::{check_pack, Address, World};
 
@@ -71,16 +70,6 @@ pub mod testing {
             genesis_hash, gunzip_bytes, gzip_bytes, latest_checkpoint, list_round_keys, locate,
             read_record_line, read_records, read_verified, seal, Record, RoundRecord,
         };
-    }
-
-    impl<L> crate::World<L> {
-        pub fn queue_wait(
-            &mut self,
-            presence: &crate::Presence,
-            actor_id: &str,
-        ) -> Result<crate::QueuedMove, crate::Refusal> {
-            self.queue_player_move(presence, actor_id, "wait", None)
-        }
     }
 
     pub fn copy_dir(from: &Path, to: &Path) {
@@ -184,11 +173,6 @@ pub mod testing {
 
     pub fn stamp_pack_rev(pack: &Path) {
         edit_save(pack, |_| {});
-    }
-
-    pub fn split_move(line: &str) -> (&str, Option<&str>) {
-        line.split_once(' ')
-            .map_or((line, None), |(v, t)| (v, Some(t)))
     }
 
     pub fn append(path: &Path, extra: &str) {

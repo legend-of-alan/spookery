@@ -3,10 +3,10 @@ use std::path::Path;
 
 use cucumber::{given, then, when};
 use serde_json::Value;
+use spookery::protocol;
 use spookery_engine::testing::{state_of, Clock};
 use spookery_engine::MeterLive;
 use spookery_engine::{emit_save, parse_save};
-use spookery_engine::{Intent, IntentArgs, Source, Target, Viewer};
 use spookery_engine::{Presence, State};
 
 use super::common::replace_in_file;
@@ -31,12 +31,7 @@ fn nell_travels_via_door(world: &mut World) {
     play(
         world,
         &pack,
-        vec![intent(
-            "nell-door",
-            "pc_nell",
-            "travel",
-            Target::Exit("door".to_string()),
-        )],
+        vec![intent("nell-door", "pc_nell", "travel", Some("door"))],
     );
     world.pack = Some(pack);
 }
@@ -58,7 +53,7 @@ fn teleport_also_fires_the_bell(world: &mut World) {
     play(
         world,
         &pack,
-        vec![intent("wren-blink", "pc_wren", "blink", Target::Empty)],
+        vec![intent("wren-blink", "pc_wren", "blink", None)],
     );
     let round = read_latest_round(&pack);
     assert!(
@@ -81,12 +76,7 @@ fn an_attack_removes_4_hp(world: &mut World) {
     play(
         world,
         &pack,
-        vec![intent(
-            "hit-briar",
-            "pc_rowan",
-            "hit",
-            Target::Actor("briar".to_string()),
-        )],
+        vec![intent("hit-briar", "pc_rowan", "hit", Some("briar"))],
     );
 }
 
@@ -124,12 +114,7 @@ fn another_round_passes(world: &mut World) {
     play(
         world,
         &pack,
-        vec![intent(
-            "nick-briar",
-            "pc_rowan",
-            "nick",
-            Target::Actor("briar".to_string()),
-        )],
+        vec![intent("nick-briar", "pc_rowan", "nick", Some("briar"))],
     );
 }
 
@@ -203,12 +188,7 @@ rules:
     play(
         world,
         &pack,
-        vec![intent(
-            "nell-rooms",
-            "pc_nell",
-            "travel",
-            Target::Exit("rooms".to_string()),
-        )],
+        vec![intent("nell-rooms", "pc_nell", "travel", Some("rooms"))],
     );
     world.pack = Some(pack);
 }
@@ -298,7 +278,7 @@ fn a_round_stops_at_depth_4(world: &mut World) {
     play(
         world,
         &pack,
-        vec![intent("raise-sun", "pc_nell", "raise", Target::Empty)],
+        vec![intent("raise-sun", "pc_nell", "raise", None)],
     );
     let round = read_latest_round(&pack);
     let names = read_extra_steps(&round);
@@ -369,12 +349,7 @@ fn verify_passes_after_triggers(world: &mut World) {
     play(
         world,
         &pack,
-        vec![intent(
-            "nell-door",
-            "pc_nell",
-            "travel",
-            Target::Exit("door".to_string()),
-        )],
+        vec![intent("nell-door", "pc_nell", "travel", Some("door"))],
     );
     let output = support::run_spook(&["verify", &pack.to_string_lossy()]);
     let stderr = String::from_utf8_lossy(&output.stderr);
@@ -436,12 +411,7 @@ The ground gives.
     let (_now, rolls, round) = play(
         world,
         &pack,
-        vec![intent(
-            "nell-bog",
-            "pc_nell",
-            "travel",
-            Target::Exit("bog".to_string()),
-        )],
+        vec![intent("nell-bog", "pc_nell", "travel", Some("bog"))],
     );
     let faces = rolls.iter().any(|report| match report {
         spookery_engine::MoveReport::Rolled { actor_id, .. }
@@ -484,12 +454,7 @@ fn nell_travels_and_the_bell_narrates(world: &mut World) {
     let played = play_round(
         world,
         &pack,
-        vec![intent(
-            "nell-door",
-            "pc_nell",
-            "travel",
-            Target::Exit("door".to_string()),
-        )],
+        vec![intent("nell-door", "pc_nell", "travel", Some("door"))],
     );
     world.scratch = played.record.to_string();
     world.summary = played.summary;
@@ -593,7 +558,7 @@ fn nell_reveals_the_trapdoor(world: &mut World) {
     let (now, _, _) = play(
         world,
         &pack,
-        vec![intent("nell-uncover", "pc_nell", "uncover", Target::Empty)],
+        vec![intent("nell-uncover", "pc_nell", "uncover", None)],
     );
     world.scratch = now.actors.get("pc_nell").unwrap().known_facts().join(",");
     world.pack = Some(pack);
@@ -662,7 +627,7 @@ fn nell_sets_the_tide(world: &mut World) {
     play(
         world,
         &pack,
-        vec![intent("nell-tide", "pc_nell", "turn_tide", Target::Empty)],
+        vec![intent("nell-tide", "pc_nell", "turn_tide", None)],
     );
 }
 
@@ -766,7 +731,7 @@ fn nell_learns_the_trapdoor_beside_wren(world: &mut World) {
     play_and_keep_summaries(
         world,
         pack,
-        vec![intent("nell-learn", "pc_nell", "learn", Target::Empty)],
+        vec![intent("nell-learn", "pc_nell", "learn", None)],
     );
 }
 
@@ -779,12 +744,7 @@ fn an_item_is_taken_from_the_shop(world: &mut World) {
     play_and_keep_summaries(
         world,
         pack,
-        vec![intent(
-            "rowan-take",
-            "pc_rowan",
-            "take",
-            Target::Item("lamp_oil".to_string()),
-        )],
+        vec![intent("rowan-take", "pc_rowan", "take", Some("lamp_oil"))],
     );
 }
 
@@ -799,12 +759,7 @@ fn rowan_takes_an_item_beside_nell(world: &mut World) {
     play_and_keep_summaries(
         world,
         pack,
-        vec![intent(
-            "rowan-take",
-            "pc_rowan",
-            "take",
-            Target::Item("lamp_oil".to_string()),
-        )],
+        vec![intent("rowan-take", "pc_rowan", "take", Some("lamp_oil"))],
     );
 }
 
@@ -833,7 +788,7 @@ fn a_clock_owned_by_nell_ticks(world: &mut World) {
     play_and_keep_summaries(
         world,
         pack,
-        vec![intent("nell-tide", "pc_nell", "mark_tide", Target::Empty)],
+        vec![intent("nell-tide", "pc_nell", "mark_tide", None)],
     );
 }
 
@@ -849,12 +804,7 @@ fn nell_travels_from_the_street_into_the_shop(world: &mut World) {
     play_and_keep_summaries(
         world,
         pack,
-        vec![intent(
-            "nell-shop",
-            "pc_nell",
-            "travel",
-            Target::Exit("docks_shop".to_string()),
-        )],
+        vec![intent("nell-shop", "pc_nell", "travel", Some("docks_shop"))],
     );
 }
 
@@ -874,7 +824,7 @@ fn a_rule_sets_the_tide(world: &mut World) {
     play_and_keep_summaries(
         world,
         pack,
-        vec![intent("nell-tide", "pc_nell", "turn_tide", Target::Empty)],
+        vec![intent("nell-tide", "pc_nell", "turn_tide", None)],
     );
 }
 
@@ -915,7 +865,7 @@ fn wrens_meter_changes_while_nell_is_elsewhere(world: &mut World) {
     play_and_keep_summaries(
         world,
         pack,
-        vec![intent("wren-spend", "pc_wren", "spend", Target::Empty)],
+        vec![intent("wren-spend", "pc_wren", "spend", None)],
     );
 }
 
@@ -934,7 +884,7 @@ fn a_message_hidden_from_wren_is_written(world: &mut World) {
     play_and_keep_summaries(
         world,
         pack,
-        vec![intent("nell-word", "pc_nell", "pass_word", Target::Empty)],
+        vec![intent("nell-word", "pc_nell", "pass_word", None)],
     );
 }
 
@@ -956,7 +906,7 @@ fn the_empty_table_narrates_and_then_rowan_narrates(world: &mut World) {
     );
     edit_table(world, &pack, |_, _| {});
     let mut kernel = spookery_engine::testing::resume(&pack);
-    kernel.queue_intent(intent("quiet", "pc_rowan", "quiet", Target::Empty));
+    queue(&mut kernel, intent("quiet", "pc_rowan", "quiet", None));
     let wall = kernel.state().last_round_at.clone();
     let quiet = kernel
         .play(&Presence::default(), &wall)
@@ -967,7 +917,7 @@ fn the_empty_table_narrates_and_then_rowan_narrates(world: &mut World) {
         players: 1,
         actors_present: vec!["pc_rowan".to_string()],
     };
-    kernel.queue_intent(intent("back", "pc_rowan", "back", Target::Empty));
+    queue(&mut kernel, intent("back", "pc_rowan", "back", None));
     let wall = kernel.state().last_round_at.clone();
     let back = kernel
         .play(&rowan, &wall)
@@ -1022,7 +972,11 @@ fn is_act_counter(key: &str) -> bool {
         || key.starts_with("live_acts_this_hour ")
 }
 
-fn play_and_keep_summaries(world: &mut World, pack: std::path::PathBuf, intents: Vec<Intent>) {
+fn play_and_keep_summaries(
+    world: &mut World,
+    pack: std::path::PathBuf,
+    intents: Vec<protocol::IntentArgs>,
+) {
     let played = play_round(world, &pack, intents);
     world.summary = played.summary;
     world.seen = played.seen;
@@ -1254,18 +1208,22 @@ struct PlayedRound {
 fn play(
     world: &mut World,
     pack: &Path,
-    intents: Vec<Intent>,
+    intents: Vec<protocol::IntentArgs>,
 ) -> (State, Vec<spookery_engine::MoveReport>, Value) {
     let played = play_round(world, pack, intents);
     (played.now, played.reports, played.record)
 }
 
-fn play_round(scenario: &mut World, pack: &Path, intents: Vec<Intent>) -> PlayedRound {
+fn play_round(
+    scenario: &mut World,
+    pack: &Path,
+    intents: Vec<protocol::IntentArgs>,
+) -> PlayedRound {
     let mut round = super::rules::open(pack);
     let presence = remembered_presence(scenario, pack).unwrap_or_default();
     let wall = round.state().last_round_at.clone();
     for intent in intents {
-        round.queue_intent(intent);
+        queue(&mut round, intent);
     }
     let output = round
         .play(&presence, &wall)
@@ -1291,17 +1249,24 @@ fn play_round(scenario: &mut World, pack: &Path, intents: Vec<Intent>) -> Played
     }
 }
 
-fn intent(id: &str, actor: &str, verb: &str, target: Target) -> Intent {
-    Intent {
-        id: id.to_string(),
-        round_index: 1,
-        actor: Viewer::Player(actor.to_string()),
-        source: Source::Player,
-        move_name: verb.to_string(),
-        target,
-        args: IntentArgs::default(),
+/// The GM's `queue_intent` call: `actor_id` plays `verb` at `target`, under the id `id`.
+fn intent(id: &str, actor_id: &str, verb: &str, target: Option<&str>) -> protocol::IntentArgs {
+    protocol::IntentArgs {
+        id: Some(id.to_string()),
+        round_index: None,
+        actor_id: Some(actor_id.to_string()),
+        move_name: Some(verb.to_string()),
+        target: target.map(str::to_string),
+        message_to: None,
         rationale_code: "test".to_string(),
     }
+}
+
+/// The GM queues `intent` under the id it names.
+fn queue(round: &mut spookery_engine::World, intent: protocol::IntentArgs) {
+    round
+        .queue_gm_intent(intent, || panic!("the GM chose the id"))
+        .unwrap_or_else(|code| panic!("queue: {code}"));
 }
 
 fn read_latest_round(pack: &Path) -> Value {

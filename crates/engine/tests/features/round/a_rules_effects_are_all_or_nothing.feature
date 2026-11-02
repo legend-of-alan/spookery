@@ -19,7 +19,7 @@ Feature: A rule's effects are all or nothing
     When Mira plays spilled
     Then lamp oil stays 4, the round names OUT_OF_RANGE, and no roll is reported
 
-  Scenario: A later engine intent sees what the earlier one already did
-    Given a docks pack for two engine waits
-    When those waits are played
-    Then only the first wait lands and the second is INELIGIBLE
+  Scenario: A later intent sees what the earlier one already did
+    Given the docks pack, where Mira's door-note habit is due
+    When the GM queues mira wait and an empty round plays
+    Then the wait lands, and Mira's habit is refused INELIGIBLE because she already acted this round

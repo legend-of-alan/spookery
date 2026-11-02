@@ -8,7 +8,9 @@ use cucumber::{given, then, when};
 use serde_json::Value;
 use spookery_engine::testing::journal::list_round_keys;
 
-use super::common::{capture_play_stdout, edit_save, wait_play, wait_play_until, write_play};
+use super::common::{
+    capture_play_stdout, edit_save, split_line, wait_play, wait_play_until, write_play,
+};
 use super::table;
 use crate::support::{self, text_of};
 use crate::World;
@@ -323,9 +325,7 @@ fn add_grit_meter(pack: &Path) {
 
 /// `word` is a code, optionally followed by the missing meter or item.
 fn assert_one_rejection(world: &World, word: &str) {
-    let (code, missing) = word
-        .split_once(' ')
-        .map_or((word, None), |(code, missing)| (code, Some(missing)));
+    let (code, missing) = split_line(word);
     let pack = table::pack(world);
     let keys = list_round_keys(pack);
     let mut hits = 0;
