@@ -11,7 +11,7 @@ use crate::Reason;
 use spookery_protocol::Speaker;
 
 /// Size bound for `state/tape.jsonl`. An append that would pass it first drops the oldest half.
-pub const MAX_BYTES: u64 = 1024 * 1024;
+const MAX_BYTES: u64 = 1024 * 1024;
 
 const WINDOW_LINES: usize = 64;
 const SCROLLBACK_LINES: usize = 256;

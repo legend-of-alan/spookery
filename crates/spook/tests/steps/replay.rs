@@ -321,7 +321,7 @@ fn the_opened_state_matches_the_last_complete_record(world: &mut World) {
 #[when(expr = "one record in a closed bundle is changed")]
 fn one_record_in_a_closed_bundle_is_changed(world: &mut World) {
     let pack = table::pack(world);
-    let bundles = spookery_engine::testing::journal::bundles(pack)
+    let bundles = spookery_engine::testing::journal::list_bundles(pack)
         .unwrap_or_else(|err| panic!("{}", err.detail));
     let (name, path) = bundles
         .into_iter()
@@ -366,7 +366,7 @@ fn change_payload(text: &str) -> Vec<u8> {
 
 #[when(expr = "every closed bundle is made unreadable")]
 fn every_closed_bundle_is_made_unreadable(world: &mut World) {
-    let bundles = spookery_engine::testing::journal::bundles(table::pack(world))
+    let bundles = spookery_engine::testing::journal::list_bundles(table::pack(world))
         .unwrap_or_else(|err| panic!("{}", err.detail));
     let closed: Vec<_> = bundles
         .into_iter()
@@ -511,7 +511,7 @@ fn the_plain_bundle_file_is_gone(world: &mut World) {
 }
 
 fn only_closed_bundle(world: &World) -> (String, std::path::PathBuf) {
-    let bundles = spookery_engine::testing::journal::bundles(table::pack(world))
+    let bundles = spookery_engine::testing::journal::list_bundles(table::pack(world))
         .unwrap_or_else(|err| panic!("{}", err.detail));
     let mut closed: Vec<_> = bundles
         .into_iter()

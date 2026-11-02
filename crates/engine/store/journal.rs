@@ -217,12 +217,8 @@ pub fn latest_checkpoint(entries: &[Record]) -> Option<&CheckpointRecord> {
 
 /// Records in each bundle, in file order. A torn tail is not included.
 pub(crate) fn read_bundle_records(pack: &Path) -> Result<Vec<(String, Vec<Record>)>, Error> {
-    let dir = pack.join("state/journal");
-    if !dir.is_dir() {
-        return Ok(Vec::new());
-    }
     let mut out = Vec::new();
-    for (name, path) in list_bundles(&dir)? {
+    for (name, path) in list_bundles(pack)? {
         let entries = parse_complete(&name, &read_bundle(&name, &path)?)?;
         out.push((name, entries));
     }
@@ -231,7 +227,7 @@ pub(crate) fn read_bundle_records(pack: &Path) -> Result<Vec<(String, Vec<Record
 
 /// Plain live bundle, if one is open.
 pub fn find_live_bundle(pack: &Path) -> Option<PathBuf> {
-    let files = list_bundles(&pack.join("state/journal")).ok()?;
+    let files = list_bundles(pack).ok()?;
     let (name, path) = files.last()?;
     if name.ends_with(".jsonl") {
         Some(path.clone())
@@ -267,7 +263,7 @@ pub(crate) fn hashes_to(path: &Path, hash: &str) -> bool {
 /// failed gzip cannot take the next round.
 pub(crate) fn next_bundle_path(pack: &Path) -> PathBuf {
     let dir = pack.join("state/journal");
-    let files = list_bundles(&dir).unwrap_or_default();
+    let files = list_bundles(pack).unwrap_or_default();
     match files.last() {
         Some((name, path)) if name.ends_with(".jsonl") && !is_published(pack, path) => path.clone(),
         Some((name, _)) => {
@@ -319,15 +315,17 @@ fn name_the_field(name: &str, line: &str, value: &serde_json::Value) -> Option<E
     }
 }
 
-pub(crate) fn list_bundles(dir: &Path) -> Result<Vec<(String, PathBuf)>, Error> {
+/// The bundles under `state/journal`, in index order, a closed `.gz` over a plain one.
+pub fn list_bundles(pack: &Path) -> Result<Vec<(String, PathBuf)>, Error> {
+    let dir = pack.join("state/journal");
     if !dir.is_dir() {
         return Ok(Vec::new());
     }
     let entries =
-        fs::read_dir(dir).map_err(|_| fault(dir, "the log directory could not be read"))?;
+        fs::read_dir(&dir).map_err(|_| fault(&dir, "the log directory could not be read"))?;
     let mut by_index: BTreeMap<u32, (String, PathBuf)> = BTreeMap::new();
     for entry in entries {
-        let entry = entry.map_err(|_| fault(dir, "the log directory could not be read"))?;
+        let entry = entry.map_err(|_| fault(&dir, "the log directory could not be read"))?;
         let name = entry.file_name();
         let name = name.to_string_lossy().into_owned();
         let Some(index) = bundle_index(&name) else {
