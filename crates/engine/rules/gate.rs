@@ -5,16 +5,17 @@ use serde::{Deserialize, Serialize};
 use crate::canon::Canon;
 use crate::intent::{Intent, Source, Target, Viewer};
 use crate::model::{ActorLive, State};
-use crate::rules::case::Case;
 use crate::rules::cond;
+use crate::rules::context::Context;
 use crate::rules::cost;
 use crate::rules::habits::is_eligible;
 use crate::rules::perceive::perceive_as;
 use crate::rules::rule::{Owner, Rule, TargetKind, When};
 use crate::Reason;
 
-/// Returned from the gate or a stage to the host table, which turns it into a
-/// `protocol::Refusal`, and stored as written on the round line's `refused`.
+/// One refused intent: its id, its code, and a detail when there is one. Returned from the
+/// gate or a stage to the host table, which turns it into a `protocol::Refusal`, and stored as
+/// written on the round line's `refused`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Refusal {
@@ -109,24 +110,24 @@ fn owner_verb<'a>(canon: &'a Canon, owner: &Owner, verb: &str) -> Option<&'a Rul
 }
 
 /// Pick the intent's rule, then `admit` it.
-pub(crate) fn gate<'a>(case: &Case<'a>) -> Result<&'a Rule, Refusal> {
-    let intent = case.intent;
+pub(crate) fn gate<'a>(context: &Context<'a>) -> Result<&'a Rule, Refusal> {
+    let intent = context.intent;
     let (actor, verb, hint) = (&intent.actor, &intent.move_name, hint_of(&intent.target));
-    let picked = pick(case.canon, case.now, actor, intent.source, verb, hint);
+    let picked = pick(context.canon, context.now, actor, intent.source, verb, hint);
     let rule = picked.map_err(|code| Refusal::new(intent, code))?;
-    admit(case, rule).map(|()| rule)
+    admit(context, rule).map(|()| rule)
 }
 
 /// Check a rule already picked. A player-sourced habit skips its `if`. Cost is checked for every rule.
-pub(crate) fn admit(case: &Case, rule: &Rule) -> Result<(), Refusal> {
-    let (now, intent) = (case.now, case.intent);
+pub(crate) fn admit(context: &Context, rule: &Rule) -> Result<(), Refusal> {
+    let (now, intent) = (context.now, context.intent);
     if let Some(actor) = now.actors.get(intent.actor.actor_id()) {
         if actor.is_busy(now.world_time) && matches!(rule.when, When::Verb { .. }) {
             return Err(Refusal::new(intent, Reason::Busy));
         }
     }
-    crate::rules::travel::admit(case, rule)?;
-    if intent.source == Source::Player && !can_name(case) {
+    crate::rules::travel::admit(context, rule)?;
+    if intent.source == Source::Player && !can_name(context) {
         return Err(Refusal::new(intent, Reason::NotInSpec));
     }
     if let When::Verb { target, .. } = &rule.when {
@@ -143,24 +144,29 @@ pub(crate) fn admit(case: &Case, rule: &Rule) -> Result<(), Refusal> {
     }
     if intent.source == Source::Engine
         && matches!(intent.actor, Viewer::Npc(_))
-        && !is_eligible(case.canon, now, case.presence, intent.actor.actor_id())
+        && !is_eligible(
+            context.canon,
+            now,
+            context.presence,
+            intent.actor.actor_id(),
+        )
     {
         return Err(Refusal::new(intent, Reason::Ineligible));
     }
     let skip_if = intent.source == Source::Player && matches!(rule.when, When::Habit);
     if !skip_if {
-        cond::holds(case, &rule.if_).map_err(|code| Refusal::new(intent, code))?;
+        cond::all_hold(context, &rule.if_).map_err(|code| Refusal::new(intent, code))?;
     }
     if let Some(cost) = &rule.cost {
-        cost::afford(case, cost)?;
+        cost::afford(context, cost)?;
     }
     Ok(())
 }
 
 /// A player names only what they hold or what `look` shows them. A clock target is the one
 /// `stamp_target` gives a GM-queued habit, and the NPC must see that clock too.
-fn can_name(case: &Case) -> bool {
-    let intent = case.intent;
+fn can_name(context: &Context) -> bool {
+    let intent = context.intent;
     let id = match &intent.target {
         Target::Empty => return true,
         Target::Actor(id)
@@ -169,7 +175,7 @@ fn can_name(case: &Case) -> bool {
         | Target::Exit(id)
         | Target::Clock(id) => id.as_str(),
     };
-    if case
+    if context
         .now
         .actors
         .get(intent.actor.actor_id())
@@ -177,7 +183,7 @@ fn can_name(case: &Case) -> bool {
     {
         return true;
     }
-    let Ok(view) = perceive_as(case.canon, case.now, case.presence, &intent.actor) else {
+    let Ok(view) = perceive_as(context.canon, context.now, context.presence, &intent.actor) else {
         return false;
     };
     view.place == id

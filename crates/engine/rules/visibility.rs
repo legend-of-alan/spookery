@@ -22,28 +22,29 @@ pub(crate) fn can_see_fact(canon: &Canon, now: &State, viewer: &Viewer, fact_id:
 }
 
 /// Who is asking.
-pub enum Recipient {
+pub(crate) enum Recipient {
     /// The referee sees every change.
     Gm,
     Actor(String),
 }
 
 /// The changes and narrate lines for one seat.
-pub struct Delivery {
+pub(crate) struct Delivery {
     pub changes: Vec<String>,
     /// One plain line of the meter and item changes this seat may know.
     pub line: String,
     pub narrations: Vec<String>,
 }
 
-/// Returned from the engine to the host table, which sends it to that one player.
-/// One narrate line addressed to one person.
+/// One narrate line addressed to one person. Returned from the engine's round to the host
+/// table, which sends it to that one player.
 pub struct RecipientLine {
     pub to: String,
     pub text: String,
 }
 
-/// The change keys one actor can see, and the line they are shown.
+/// The change keys one actor can see, and the line they are shown. Returned from the engine's
+/// round to the host table, which sends the line to that actor's player.
 pub struct ViewerChanges {
     pub viewer: String,
     pub changes: Vec<String>,
@@ -51,7 +52,7 @@ pub struct ViewerChanges {
 }
 
 /// Changes and narrate lines this seat can receive.
-pub fn observe(
+pub(crate) fn show_to(
     canon: &Canon,
     now: &State,
     seat: &Recipient,
@@ -111,7 +112,7 @@ fn meter_sentence(
     let StateValue::Number(value) = after else {
         return None;
     };
-    let who = whose(canon, viewer, actor);
+    let who = possessive_for(canon, viewer, actor);
     Some(format!("{who} {key} is now {value}."))
 }
 
@@ -126,8 +127,8 @@ fn actor_item_sentence(
 ) -> Option<String> {
     let (before, after) = counts(change)?;
     let name = item_name(canon, id);
-    let who = subject(canon, viewer, actor);
-    let owner = whose(canon, viewer, actor);
+    let who = subject_for(canon, viewer, actor);
+    let owner = possessive_for(canon, viewer, actor);
     let sentence = match (after < before, other_side(changes, change, id)) {
         (true, Some(Holder::Place)) => format!("{who} dropped the {name}."),
         (true, Some(Holder::Actor)) => format!("{who} handed over the {name}."),
@@ -190,7 +191,7 @@ fn other_side(changes: &[Change], change: &Change, id: &str) -> Option<Holder> {
 }
 
 /// "You" for the viewer, the display name for anyone else.
-fn subject(canon: &Canon, viewer: &str, actor: &str) -> String {
+fn subject_for(canon: &Canon, viewer: &str, actor: &str) -> String {
     if actor == viewer {
         "You".to_string()
     } else {
@@ -198,7 +199,7 @@ fn subject(canon: &Canon, viewer: &str, actor: &str) -> String {
     }
 }
 
-fn whose(canon: &Canon, viewer: &str, actor: &str) -> String {
+fn possessive_for(canon: &Canon, viewer: &str, actor: &str) -> String {
     if actor == viewer {
         "Your".to_string()
     } else {

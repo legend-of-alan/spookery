@@ -48,7 +48,7 @@ fn a_round_that_changes_a_hidden_fact(world: &mut World) {
     stamp_pack_rev(&pack);
     let mut opened = resume_with_lark(&pack);
     let output = play(&mut opened, "spill");
-    world.summary_lines = output.summary.clone();
+    world.summary_lines = output.changed_keys.clone();
     world.seen = change_line(&output);
 }
 
@@ -91,7 +91,7 @@ fn lark_uses_her_tonic_while_oden_gains_one(world: &mut World) {
     stamp_pack_rev(&pack);
     let mut opened = resume_with_lark(&pack);
     let output = play(&mut opened, "sip");
-    world.summary_lines = output.summary.clone();
+    world.summary_lines = output.changed_keys.clone();
     world.seen = change_line(&output);
 }
 

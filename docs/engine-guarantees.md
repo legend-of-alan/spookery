@@ -192,9 +192,9 @@ move the actor does not have. `TABLE_FULL` is a fourth player or a second GM.
 closes the connection. `NOT_IN_SPEC` is a full rule id used as a move, a GM
 hello on the game port, an address that is not loopback, or a verb no rule
 matches, which is refused before the round so the turn is kept. `UNKNOWN_EFFECT` is
-a journal effect the engine does not run. `INELIGIBLE` is a second wait that the
-first one makes ineligible. `NO_EXIT` is a missing exit. `BUSY` is a move while
-busy.
+a journal effect the engine does not run. `INELIGIBLE` is an NPC's habit in a round
+where a move the GM queued for that NPC already landed. `NO_EXIT` is a missing exit.
+`BUSY` is a move while busy.
 
 Check's codes for a broken pack are `SCHEMA`, `NOT_IN_SPEC`,
 `PACK_REV_MISMATCH`, `TRIGGER_LEAK`, and `WARNING`. A warning alone does not

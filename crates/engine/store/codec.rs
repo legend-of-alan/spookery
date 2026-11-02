@@ -265,7 +265,7 @@ notes: []
                     EffectKind::Clock {
                         clock_id: "shop_day".to_string(),
                         delta: 1,
-                        start: false,
+                        unpause: false,
                     },
                     npc("mira"),
                     "i1",

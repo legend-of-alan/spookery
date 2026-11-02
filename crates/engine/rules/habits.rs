@@ -3,8 +3,8 @@
 use crate::canon::Canon;
 use crate::intent::{Intent, Target, Viewer};
 use crate::model::{ActorLive, Presence, State};
-use crate::rules::case::Case;
 use crate::rules::cond;
+use crate::rules::context::Context;
 use crate::rules::expand;
 use crate::rules::gate;
 
@@ -20,8 +20,8 @@ fn intent_of(canon: &Canon, now: &State, presence: &Presence, actor_id: &str) ->
     let habits = canon.rules.habits_of(actor_id);
     habits.into_iter().find_map(|rule| {
         let intent = Intent::habit(now, actor_id, &rule.local_id);
-        let case = Case::new(canon, now, presence, &intent);
-        let runs = gate::admit(&case, rule).is_ok() && expand::preview(&case, rule).is_ok();
+        let context = Context::new(canon, now, presence, &intent);
+        let runs = gate::admit(&context, rule).is_ok() && expand::preview(&context, rule).is_ok();
         runs.then_some(intent)
     })
 }

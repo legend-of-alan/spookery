@@ -18,7 +18,7 @@ pub(crate) struct Draft<'p> {
     /// Who is seated for this round. The round reads it and never writes it.
     pub(crate) presence: &'p Presence,
     keys: BTreeSet<StateKey>,
-    priors: Vec<PriorValue>,
+    before: Vec<Prior>,
     pub(crate) memories: Vec<MemoryLine>,
     memory_writes: u32,
     _nosend: PhantomData<Rc<()>>,
@@ -32,7 +32,7 @@ impl<'p> Draft<'p> {
             state: world.state.clone(),
             presence,
             keys: BTreeSet::new(),
-            priors: Vec::new(),
+            before: Vec::new(),
             memories: Vec::new(),
             memory_writes: 0,
             _nosend: PhantomData,
@@ -170,9 +170,9 @@ impl<'p> Draft<'p> {
     /// Record `before` as this key's value from before the write that just landed.
     fn track_before(&mut self, key: StateKey, before: StateValue) -> Result<(), Reason> {
         let max = self.canon.budget.max_state_keys_mutated as usize;
-        self.admit(&key, &mut Vec::new(), max)?;
-        if !self.priors.iter().any(|prior| prior.key == key) {
-            self.priors.push(PriorValue { key, before });
+        self.reserve_key(&key, &mut Vec::new(), max)?;
+        if !self.before.iter().any(|prior| prior.key == key) {
+            self.before.push(Prior { key, before });
         }
         Ok(())
     }
@@ -181,10 +181,10 @@ impl<'p> Draft<'p> {
         let max = self.canon.budget.max_state_keys_mutated as usize;
         let mut added = Vec::new();
         for key in keys {
-            self.admit(key, &mut added, max)?;
-            if !self.priors.iter().any(|prior| &prior.key == key) {
+            self.reserve_key(key, &mut added, max)?;
+            if !self.before.iter().any(|prior| &prior.key == key) {
                 let before = self.read_value(key);
-                self.priors.push(PriorValue {
+                self.before.push(Prior {
                     key: key.clone(),
                     before,
                 });
@@ -193,7 +193,7 @@ impl<'p> Draft<'p> {
         Ok(())
     }
 
-    fn admit(
+    fn reserve_key(
         &mut self,
         key: &StateKey,
         added: &mut Vec<StateKey>,
@@ -205,7 +205,7 @@ impl<'p> Draft<'p> {
         if self.keys.len() >= max {
             for key in added {
                 self.keys.remove(key);
-                self.priors.retain(|prior| &prior.key != key);
+                self.before.retain(|prior| &prior.key != key);
             }
             return Err(Reason::Budget);
         }
@@ -216,7 +216,7 @@ impl<'p> Draft<'p> {
 
     /// Changes since the last take. The cumulative key set used by `changes` stays.
     pub(crate) fn take_changes(&mut self) -> Vec<Change> {
-        let pending = std::mem::take(&mut self.priors);
+        let pending = std::mem::take(&mut self.before);
         let mut records = Vec::new();
         for prior in pending {
             let after = self.read_value(&prior.key);
@@ -355,7 +355,7 @@ impl<'p> Draft<'p> {
         Savepoint {
             state: self.state.clone(),
             keys: self.keys.clone(),
-            pending: self.priors.clone(),
+            before: self.before.clone(),
             memories: self.memories.clone(),
             memory_writes: self.memory_writes,
         }
@@ -364,14 +364,15 @@ impl<'p> Draft<'p> {
     pub(crate) fn rollback(&mut self, point: Savepoint) {
         self.state = point.state;
         self.keys = point.keys;
-        self.priors = point.pending;
+        self.before = point.before;
         self.memories = point.memories;
         self.memory_writes = point.memory_writes;
     }
 }
 
+/// A tracked key and its value from before the round wrote it.
 #[derive(Clone)]
-struct PriorValue {
+struct Prior {
     key: StateKey,
     before: StateValue,
 }
@@ -379,7 +380,7 @@ struct PriorValue {
 pub(crate) struct Savepoint {
     state: State,
     keys: BTreeSet<StateKey>,
-    pending: Vec<PriorValue>,
+    before: Vec<Prior>,
     memories: Vec<MemoryLine>,
     memory_writes: u32,
 }
@@ -414,7 +415,7 @@ mod tests {
             kind: EffectKind::Clock {
                 clock_id: "shop_day".to_string(),
                 delta: -1,
-                start: false,
+                unpause: false,
             },
             viewer: Viewer::Npc("mira".to_string()),
             intent_id: "i1".to_string(),

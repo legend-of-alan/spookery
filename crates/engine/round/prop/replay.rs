@@ -11,7 +11,8 @@
 //! ```
 //!
 //! The docks check has an empty effect list, so the roll is not in the save.
-//! The oil is what makes skipping `resolve_check` on replay change `now.yaml`.
+//! The oil is what makes a replay that skipped the resolve stage's check roll end on a
+//! different save.
 //!
 //! Deterministic in CI: 64 cases, seed `0x0018_0018`, no failure file.
 

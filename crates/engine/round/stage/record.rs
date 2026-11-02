@@ -15,7 +15,7 @@ pub(crate) fn take_output(log: &mut RoundLog, delivered: Deliveries) -> RoundOut
     RoundOutput {
         reports: std::mem::take(&mut log.reports),
         dice: log.dice.clone(),
-        summary: delivered.summary,
+        changed_keys: delivered.changed_keys,
         lines: delivered.lines,
         seen: delivered.seen,
         effects: log.effects.clone(),

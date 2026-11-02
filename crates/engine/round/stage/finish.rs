@@ -4,7 +4,7 @@ use crate::canon::Canon;
 use crate::draft::Draft;
 use crate::intent::{Intent, Target};
 use crate::model::{PendingAction, PendingKind};
-use crate::rules::case::Case;
+use crate::rules::context::Context;
 use crate::rules::effect::{Effect, EffectKind};
 use crate::rules::expand::{self, Cause};
 use crate::rules::gate;
@@ -89,9 +89,9 @@ fn finish_action(
     log: &mut RoundLog,
 ) -> Result<(), Reason> {
     let rule = canon.rules.get(rule_id).ok_or(Reason::UnknownMove)?;
-    let case = Case::new(canon, draft.state(), draft.presence, intent);
+    let context = Context::new(canon, draft.state(), draft.presence, intent);
     let roller = dice.roller(log, &rule.id, intent.actor.actor_id());
-    match expand::expand(&case, rule, Cause::Finish, None, roller) {
+    match expand::expand(&context, rule, Cause::Finish, None, roller) {
         Ok(expansion) => {
             apply::land(draft, intent, rule, expansion, log);
         }

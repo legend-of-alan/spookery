@@ -278,7 +278,7 @@ pub enum EffectTemplate {
     Clock {
         id: String,
         add: Option<i64>,
-        start: bool,
+        unpause: bool,
     },
     Memory {
         who: Who,
@@ -377,8 +377,8 @@ impl RuleTable {
             .collect()
     }
 
-    /// Verbs the player can type, in file order.
-    pub(crate) fn player_verbs(&self) -> Vec<&Rule> {
+    /// Every `when: verb` rule, in file order.
+    pub(crate) fn verb_rules(&self) -> Vec<&Rule> {
         self.rules
             .iter()
             .filter(|rule| matches!(rule.when, When::Verb { .. }))

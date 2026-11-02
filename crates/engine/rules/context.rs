@@ -5,7 +5,7 @@ use crate::intent::Intent;
 use crate::model::{Presence, State};
 
 /// The canon, the save, who is seated, and the intent a rule's conditions, costs and effects read.
-pub(crate) struct Case<'a> {
+pub(crate) struct Context<'a> {
     pub canon: &'a Canon,
     pub now: &'a State,
     /// Who is seated, for the `players:` condition and NPC habits.
@@ -13,7 +13,7 @@ pub(crate) struct Case<'a> {
     pub intent: &'a Intent,
 }
 
-impl<'a> Case<'a> {
+impl<'a> Context<'a> {
     pub(crate) fn new(
         canon: &'a Canon,
         now: &'a State,

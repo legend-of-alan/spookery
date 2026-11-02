@@ -5,8 +5,8 @@ use crate::draft::Draft;
 use crate::intent::{Intent, Target};
 use crate::model::key::StateKey;
 use crate::model::{ActorLive, PendingAction, PendingKind, Presence, State};
-use crate::rules::case::Case;
 use crate::rules::cond;
+use crate::rules::context::Context;
 use crate::rules::cost;
 use crate::rules::expr::Dice;
 use crate::rules::gate;
@@ -25,7 +25,10 @@ pub(crate) fn find_exit<'a>(canon: &'a Canon, from: &str, name: &str) -> Option<
 
 /// The exit this rule travels by: the one its first `location via` that is not a teleport
 /// names. `None` when the rule does not travel.
-pub(crate) fn exit_of<'a>(case: &Case<'a>, rule: &Rule) -> Result<Option<&'a Exit>, gate::Refusal> {
+pub(crate) fn exit_of<'a>(
+    context: &Context<'a>,
+    rule: &Rule,
+) -> Result<Option<&'a Exit>, gate::Refusal> {
     let via = rule.top_templates().find_map(|effect| match effect {
         EffectTemplate::Location {
             to: LocationTo::Via(via),
@@ -34,36 +37,38 @@ pub(crate) fn exit_of<'a>(case: &Case<'a>, rule: &Rule) -> Result<Option<&'a Exi
         _ => None,
     });
     match via {
-        Some(via) => exit_via(case, via).map_err(|code| gate::Refusal::new(case.intent, code)),
+        Some(via) => {
+            exit_via(context, via).map_err(|code| gate::Refusal::new(context.intent, code))
+        }
         None => Ok(None),
     }
 }
 
 /// The exit `via` names from the actor's place, or `NO_EXIT`. `via: target` is the intent's
 /// exit target, and `None` when the target is not an exit; any other word is an exit name.
-pub(crate) fn exit_via<'a>(case: &Case<'a>, via: &str) -> Result<Option<&'a Exit>, Reason> {
-    let name = match (via, &case.intent.target) {
+pub(crate) fn exit_via<'a>(context: &Context<'a>, via: &str) -> Result<Option<&'a Exit>, Reason> {
+    let name = match (via, &context.intent.target) {
         ("target", Target::Exit(name)) => name.as_str(),
         ("target", _) => return Ok(None),
         (name, _) => name,
     };
-    let actor = case.now.actors.get(case.intent.actor.actor_id());
+    let actor = context.now.actors.get(context.intent.actor.actor_id());
     let from = actor.map(ActorLive::place).unwrap_or("");
-    find_exit(case.canon, from, name)
+    find_exit(context.canon, from, name)
         .map(Some)
         .ok_or(Reason::NoExit)
 }
 
 /// Refuse a missing, hidden, locked, or unpaid exit. A clear exit is `Ok`.
-pub(crate) fn admit(case: &Case, rule: &Rule) -> Result<(), gate::Refusal> {
-    let Some(exit) = exit_of(case, rule)? else {
+pub(crate) fn admit(context: &Context, rule: &Rule) -> Result<(), gate::Refusal> {
+    let Some(exit) = exit_of(context, rule)? else {
         return Ok(());
     };
-    let (canon, now, intent) = (case.canon, case.now, case.intent);
+    let (canon, now, intent) = (context.canon, context.now, context.intent);
     if !is_revealed(canon, now, intent.actor.actor_id(), exit) {
         return Err(gate::Refusal::new(intent, Reason::NoExit));
     }
-    if is_locked(canon, now, case.presence, intent.actor.actor_id(), exit) {
+    if is_locked(canon, now, context.presence, intent.actor.actor_id(), exit) {
         let text = if exit.locked_text.is_empty() {
             "The way is locked.".to_string()
         } else {
@@ -75,7 +80,7 @@ pub(crate) fn admit(case: &Case, rule: &Rule) -> Result<(), gate::Refusal> {
             detail: Some(text),
         });
     }
-    cost::afford(case, &exit.cost)
+    cost::afford(context, &exit.cost)
 }
 
 fn is_revealed(canon: &Canon, now: &State, actor_id: &str, exit: &Exit) -> bool {
@@ -139,9 +144,9 @@ pub(crate) fn visible_exits(
 }
 
 /// World minutes until the rule and its exit finish. Zero means it finishes now.
-pub(crate) fn span(case: &Case, rule: &Rule) -> u64 {
+pub(crate) fn span(context: &Context, rule: &Rule) -> u64 {
     let mut minutes = rule.cost.as_ref().map(|cost| cost.minutes).unwrap_or(0);
-    if let Ok(Some(exit)) = exit_of(case, rule) {
+    if let Ok(Some(exit)) = exit_of(context, rule) {
         minutes = minutes.saturating_add(exit.cost.minutes);
     }
     minutes
@@ -204,8 +209,8 @@ pub(crate) fn begin_action(
     minutes: u64,
     dice: &mut dyn Dice,
 ) -> Result<(), Reason> {
-    let case = Case::new(draft.canon(), draft.state(), draft.presence, intent);
-    let kind = match exit_of(&case, rule).ok().flatten().cloned() {
+    let context = Context::new(draft.canon(), draft.state(), draft.presence, intent);
+    let kind = match exit_of(&context, rule).ok().flatten().cloned() {
         Some(exit) => {
             cost::pay(draft, intent, &exit.cost, dice)?;
             PendingKind::Arrive {

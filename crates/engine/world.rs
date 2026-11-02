@@ -10,7 +10,7 @@ use crate::canon::{check_save, load_canon, pack_rev, Canon};
 use crate::diagnostic::{error, first_reason, locate_nth, schema_error, Code, Diagnostic};
 use crate::intent::{Intent, IntentArgs, Source, Target};
 use crate::model::{ActorLive, Presence, State};
-use crate::rules::case::Case;
+use crate::rules::context::Context;
 use crate::rules::effect::{payload_json, Effect};
 use crate::rules::gate;
 use crate::rules::rule::{Rule, TargetKind, When};
@@ -210,7 +210,7 @@ impl<L> World<L> {
         };
         let shaped = self.shape_line(&intent, token);
         intent.target = shaped.map_err(|code| gate::Refusal::new(&intent, code))?;
-        gate::gate(&Case::new(&self.canon, &self.state, presence, &intent))?;
+        gate::gate(&Context::new(&self.canon, &self.state, presence, &intent))?;
         let queued = QueuedMove {
             id: intent.id.clone(),
             actor_id: actor_id.to_string(),

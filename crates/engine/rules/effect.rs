@@ -25,7 +25,7 @@ pub enum EffectKind {
         clock_id: String,
         delta: i64,
         /// Clear `paused` before applying `delta`.
-        start: bool,
+        unpause: bool,
     },
     Meter {
         actor_id: String,
@@ -103,8 +103,8 @@ impl Effect {
             EffectKind::Clock {
                 clock_id,
                 delta,
-                start,
-            } => advance_clock(draft, intent.actor.actor_id(), &clock_id, delta, start),
+                unpause,
+            } => advance_clock(draft, intent.actor.actor_id(), &clock_id, delta, unpause),
             EffectKind::Meter {
                 actor_id,
                 key,
@@ -184,6 +184,7 @@ pub(crate) enum EffectRecord {
         intent_id: String,
         clock_id: String,
         delta: i64,
+        /// The effect's `unpause`, under the journal's key.
         #[serde(default, skip_serializing_if = "is_false")]
         start: bool,
     },
@@ -288,13 +289,13 @@ impl From<Effect> for EffectRecord {
             EffectKind::Clock {
                 clock_id,
                 delta,
-                start,
+                unpause,
             } => Self::Clock {
                 as_viewer,
                 intent_id,
                 clock_id,
                 delta,
-                start,
+                start: unpause,
             },
             EffectKind::Meter {
                 actor_id,
@@ -417,7 +418,7 @@ impl TryFrom<EffectRecord> for Effect {
                 EffectKind::Clock {
                     clock_id,
                     delta,
-                    start,
+                    unpause: start,
                 },
                 as_viewer,
                 intent_id,
@@ -589,14 +590,14 @@ pub(crate) enum Holder {
     Place(String),
 }
 
-/// Add `delta` to a clock `actor_id` owns. `start` clears `paused` first, and is all a
+/// Add `delta` to a clock `actor_id` owns. `unpause` clears `paused` first, and is all a
 /// zero `delta` does.
 fn advance_clock(
     draft: &mut Draft,
     actor_id: &str,
     clock_id: &str,
     delta: i64,
-    start: bool,
+    unpause: bool,
 ) -> Result<(), Reason> {
     let players = draft.presence.players;
     let clock = draft
@@ -607,7 +608,7 @@ fn advance_clock(
     if !clock.owners.iter().any(|owner| owner == actor_id) {
         return Err(Reason::UnknownId);
     }
-    if start {
+    if unpause {
         draft.mutate(StateKey::ClockPaused(clock_id.to_string()), |state| {
             let clock = state.clocks.get_mut(clock_id).ok_or(Reason::UnknownId)?;
             Ok(std::mem::take(&mut clock.paused))

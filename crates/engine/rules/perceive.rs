@@ -13,7 +13,8 @@ use crate::Reason;
 pub use spookery_protocol::{ClockView, ItemStack, KnownFact, MeterView};
 use spookery_protocol::{ExitView, PERCEIVE_BODY_CHARS};
 
-/// Returned from the engine to the host table, which renders it as a player or GM view.
+/// What one viewer is shown. Returned from the engine to the host table, which renders it as
+/// a player or GM view.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct View {
     pub viewer: Viewer,
@@ -34,7 +35,7 @@ pub struct View {
     pub status: String,
 }
 
-pub fn perceive_budget<L>(
+pub(crate) fn perceive_budget<L>(
     world: &World<L>,
     presence: &Presence,
     as_arg: &str,

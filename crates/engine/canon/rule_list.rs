@@ -951,12 +951,12 @@ fn effect_of(yaml: &EffectYaml) -> Result<EffectTemplate, Fault> {
     if let Some(clock) = &yaml.clock {
         found += 1;
         if clock.add.is_none() && !clock.unpause {
-            return Err("a clock effect needs add or start".into());
+            return Err("a clock effect needs add or unpause".into());
         }
         effect = Some(EffectTemplate::Clock {
             id: clock.id.clone(),
             add: clock.add,
-            start: clock.unpause,
+            unpause: clock.unpause,
         });
     }
     if let Some(memory) = &yaml.memory {

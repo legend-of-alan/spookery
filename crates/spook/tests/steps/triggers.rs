@@ -457,7 +457,7 @@ fn nell_travels_and_the_bell_narrates(world: &mut World) {
         vec![intent("nell-door", "pc_nell", "travel", Some("door"))],
     );
     world.scratch = played.record.to_string();
-    world.summary = played.summary;
+    world.summary = played.changed_keys;
     world.seen = played.seen;
     world.told = played.lines;
     world.pack = Some(pack);
@@ -978,7 +978,7 @@ fn play_and_keep_summaries(
     intents: Vec<protocol::IntentArgs>,
 ) {
     let played = play_round(world, &pack, intents);
-    world.summary = played.summary;
+    world.summary = played.changed_keys;
     world.seen = played.seen;
     world.pack = Some(pack);
 }
@@ -1200,7 +1200,7 @@ struct PlayedRound {
     now: State,
     reports: Vec<spookery_engine::MoveReport>,
     record: Value,
-    summary: Vec<String>,
+    changed_keys: Vec<String>,
     seen: Vec<(String, Vec<String>)>,
     lines: Vec<(String, String)>,
 }
@@ -1243,7 +1243,7 @@ fn play_round(
         now: round.state().clone(),
         reports: output.reports,
         record,
-        summary: output.summary,
+        changed_keys: output.changed_keys,
         seen,
         lines: told,
     }

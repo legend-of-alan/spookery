@@ -32,7 +32,7 @@ pub(crate) fn map(canon: &Canon, now: &State, presence: &Presence, actor_id: &st
 
 /// Verbs whose `if` holds for this actor, then the visible exits, then a busy line.
 pub(crate) fn help(canon: &Canon, now: &State, presence: &Presence, actor_id: &str) -> String {
-    let mut lines = allowed_verbs(canon, now, presence, actor_id);
+    let mut lines = help_verbs(canon, now, presence, actor_id);
     lines.extend(exit_phrases(canon, now, presence, actor_id));
     if let Some(status) = busy_line(now, actor_id) {
         lines.push(status);
@@ -114,21 +114,21 @@ fn exit_phrases(canon: &Canon, now: &State, presence: &Presence, actor_id: &str)
 
 /// A verb is listed when its `if` holds for one of the targets it could name. Busy, cost and
 /// locks are not read.
-fn allowed_verbs(canon: &Canon, now: &State, presence: &Presence, actor_id: &str) -> Vec<String> {
+fn help_verbs(canon: &Canon, now: &State, presence: &Presence, actor_id: &str) -> Vec<String> {
     let Some(actor) = now.actors.get(actor_id) else {
         return Vec::new();
     };
     let viewer = actor.viewer(actor_id);
     let mut seen = BTreeSet::new();
     let mut names = Vec::new();
-    for rule in canon.rules.player_verbs() {
+    for rule in canon.rules.verb_rules() {
         let When::Verb { verb, target } = &rule.when else {
             continue;
         };
         if !seen.insert(verb.clone()) {
             continue;
         }
-        let hints = target_candidates(canon, now, presence, actor_id, *target);
+        let hints = hints_for(canon, now, presence, actor_id, *target);
         let allowed = hints.into_iter().any(|hint| {
             let Some(rule) = gate::verb_for(canon, now, actor_id, verb, hint.as_deref()) else {
                 return false;
@@ -146,7 +146,7 @@ fn allowed_verbs(canon: &Canon, now: &State, presence: &Presence, actor_id: &str
     names
 }
 
-fn target_candidates(
+fn hints_for(
     canon: &Canon,
     now: &State,
     presence: &Presence,

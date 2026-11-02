@@ -6,7 +6,7 @@ use crate::canon::Canon;
 use crate::draft::Draft;
 use crate::intent::{Intent, Target, Viewer};
 use crate::model::{Presence, State};
-use crate::rules::case::Case;
+use crate::rules::context::Context;
 use crate::rules::effect::EffectKind;
 use crate::rules::expand;
 use crate::rules::gate;
@@ -42,8 +42,8 @@ fn stamp_target(canon: &Canon, now: &State, presence: &Presence, intent: &mut In
     let Ok(rule) = gate::pick(canon, now, actor, intent.source, verb, hint) else {
         return;
     };
-    let case = Case::new(canon, now, presence, intent);
-    let Ok(effects) = expand::preview(&case, rule) else {
+    let context = Context::new(canon, now, presence, intent);
+    let Ok(effects) = expand::preview(&context, rule) else {
         return;
     };
     let keeps_empty = matches!(
@@ -69,6 +69,7 @@ fn stamp_target(canon: &Canon, now: &State, presence: &Presence, intent: &mut In
     }
 }
 
+/// Refuse `SCHEMA` when a GM-chosen id equals a habit's: the one way two intents share an id.
 fn check_unique_ids(candidates: Vec<Intent>) -> Result<Vec<Intent>, Reason> {
     let mut seen = BTreeSet::new();
     for intent in &candidates {

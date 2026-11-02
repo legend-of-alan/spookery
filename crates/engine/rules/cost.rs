@@ -4,7 +4,7 @@ use crate::draft::Draft;
 use crate::intent::Intent;
 use crate::model::key::StateKey;
 use crate::model::meter::MeterWrite;
-use crate::rules::case::Case;
+use crate::rules::context::Context;
 use crate::rules::effect;
 use crate::rules::expr::{self, Dice};
 use crate::rules::gate;
@@ -12,8 +12,8 @@ use crate::rules::rule::Cost;
 use crate::Reason;
 
 /// Refuse a cost the actor cannot pay as `CANT_AFFORD`, with the meter or item id as `detail`.
-pub(crate) fn afford(case: &Case, cost: &Cost) -> Result<(), gate::Refusal> {
-    let (canon, now, intent) = (case.canon, case.now, case.intent);
+pub(crate) fn afford(context: &Context, cost: &Cost) -> Result<(), gate::Refusal> {
+    let (canon, now, intent) = (context.canon, context.now, context.intent);
     let who = intent.actor.actor_id();
     let cant_afford = |missing: &str| gate::Refusal {
         id: intent.id.clone(),
@@ -24,7 +24,7 @@ pub(crate) fn afford(case: &Case, cost: &Cost) -> Result<(), gate::Refusal> {
         if expr.needs_dice() {
             continue;
         }
-        let amount = expr::eval(case, expr).map_err(|_| cant_afford(key))?;
+        let amount = expr::eval(context, expr).map_err(|_| cant_afford(key))?;
         if amount < 0 {
             return Err(cant_afford(key));
         }
@@ -39,7 +39,7 @@ pub(crate) fn afford(case: &Case, cost: &Cost) -> Result<(), gate::Refusal> {
         if expr.needs_dice() {
             continue;
         }
-        let amount = expr::eval(case, expr).map_err(|_| cant_afford(id))?;
+        let amount = expr::eval(context, expr).map_err(|_| cant_afford(id))?;
         let count = item_count(amount).map_err(|_| cant_afford(id))?;
         let held = now
             .actors
@@ -66,8 +66,8 @@ pub(crate) fn pay(
 ) -> Result<(), Reason> {
     let who = intent.actor.actor_id();
     for (key, expr) in &cost.meters {
-        let case = Case::new(draft.canon(), draft.state(), draft.presence, intent);
-        let amount = expr::eval_with_dice(&case, expr, dice)?;
+        let context = Context::new(draft.canon(), draft.state(), draft.presence, intent);
+        let amount = expr::eval_with_dice(&context, expr, dice)?;
         if amount < 0 {
             return Err(Reason::CantAfford);
         }
@@ -79,8 +79,8 @@ pub(crate) fn pay(
     }
     let holder = effect::Holder::Actor(who.to_string());
     for (id, expr) in &cost.items {
-        let case = Case::new(draft.canon(), draft.state(), draft.presence, intent);
-        let count = item_count(expr::eval_with_dice(&case, expr, dice)?)?;
+        let context = Context::new(draft.canon(), draft.state(), draft.presence, intent);
+        let count = item_count(expr::eval_with_dice(&context, expr, dice)?)?;
         // The key budget keeps its own code; any other refusal of the take is a shortfall.
         match effect::shift_item(draft, &holder, id, -i64::from(count), None) {
             Err(Reason::Budget) => return Err(Reason::Budget),
