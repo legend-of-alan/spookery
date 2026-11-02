@@ -7,7 +7,7 @@
 //! checkpoint replaces `save.yaml`. Before that, `save.yaml` is still genesis.
 
 use std::collections::BTreeMap;
-use std::fs::{self, File};
+use std::fs;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
@@ -16,18 +16,12 @@ use flate2::write::GzEncoder;
 use flate2::Compression;
 use serde::de::DeserializeOwned;
 
-use crate::hash::blake2s_hex;
+use crate::hash::blake2s_tagged;
+use crate::store::records::{AddedMeter, CheckpointRecord, MigrateRecord, Record, RoundRecord};
 use crate::Reason;
 
-pub(crate) use super::records::{AddedMeter, Arrival, CheckpointRecord, MigrateRecord, Step};
-pub use super::records::{Record, RoundRecord};
-
-pub fn blake2s_tagged(bytes: &[u8]) -> String {
-    format!("blake2s:{}", blake2s_hex(bytes))
-}
-
-pub(crate) fn base_path() -> &'static str {
-    "journal/base.yaml"
+pub(crate) fn base_path(pack: &Path) -> PathBuf {
+    pack.join("state/journal/base.yaml")
 }
 
 /// The snapshot a checkpoint at `state_rev` publishes.
@@ -36,8 +30,8 @@ pub(crate) fn checkpoint_path(pack: &Path, state_rev: u64) -> PathBuf {
         .join(format!("{state_rev}.yaml"))
 }
 
-pub(crate) fn head_path() -> &'static str {
-    "journal/head.json"
+pub(crate) fn head_path(pack: &Path) -> PathBuf {
+    pack.join("state/journal/head.json")
 }
 
 /// The latest checkpoint, written beside the bundles so startup can skip them.
@@ -53,7 +47,7 @@ pub(crate) struct CheckpointHead {
 }
 
 pub(crate) fn read_head(pack: &Path) -> Result<Option<CheckpointHead>, Error> {
-    let path = pack.join("state").join(head_path());
+    let path = head_path(pack);
     if !path.is_file() {
         return Ok(None);
     }
@@ -63,11 +57,7 @@ pub(crate) fn read_head(pack: &Path) -> Result<Option<CheckpointHead>, Error> {
         serde_json::from_str(&text).map_err(|err| fault(&path, &err.to_string()))?;
     let rules_rev = value.get("rules_rev").and_then(|rev| rev.as_u64());
     if let Err(reason) = super::require_rules_rev(rules_rev.unwrap_or(0)) {
-        return Err(fault_coded(
-            &path,
-            reason,
-            "RULES_REV_MISMATCH: the checkpoint head was written by older rules; start a fresh save",
-        ));
+        return Err(fault_coded(&path, reason, "written by older rules"));
     }
     Ok(Some(parse_json("head.json", &text)?))
 }
@@ -103,44 +93,38 @@ pub struct Error {
 
 /// Parse every complete record. A torn last line is left unread. The chain is not checked.
 pub fn read_records(pack: &Path) -> Result<Vec<Record>, Error> {
-    let dir = pack.join("state/journal");
-    if !dir.is_dir() {
-        return Ok(Vec::new());
-    }
-    let mut entries = Vec::new();
-    for (name, path) in list_bundles(&dir)? {
-        entries.extend(parse_complete(&name, &read_bundle(&name, &path)?)?);
-    }
-    Ok(entries)
+    Ok(read_bundle_records(pack)?
+        .into_iter()
+        .flat_map(|(_, entries)| entries)
+        .collect())
 }
 
 /// Read the bundles and check that each record's chain matches the one before it.
 pub fn read_verified(pack: &Path) -> Result<Vec<Record>, Error> {
-    let entries = read_records(pack)?;
-    check_chain(pack, &entries)?;
-    Ok(entries)
+    let bundles = read_bundle_records(pack)?;
+    check_chain(pack, &bundles)?;
+    Ok(bundles
+        .into_iter()
+        .flat_map(|(_, entries)| entries)
+        .collect())
 }
 
-pub(crate) fn check_chain(pack: &Path, entries: &[Record]) -> Result<(), Error> {
-    if entries.is_empty() {
+pub(crate) fn check_chain(pack: &Path, bundles: &[(String, Vec<Record>)]) -> Result<(), Error> {
+    if bundles.iter().all(|(_, entries)| entries.is_empty()) {
         return Ok(());
     }
     let mut prev = genesis_hash(pack)?;
-    for entry in entries {
-        if entry.prev() != prev {
-            return Err(fault(
-                Path::new(&bundle_name_of(pack, entry)),
-                "the record does not follow the previous hash",
-            ));
+    for (name, entries) in bundles {
+        for entry in entries {
+            if entry.prev() != prev {
+                return Err(fault(
+                    Path::new(name),
+                    "the record does not follow the previous hash",
+                ));
+            }
+            chain_covers(name, entry)?;
+            prev = entry.chain().to_string();
         }
-        let expect = chain_of(entry);
-        if entry.chain() != expect {
-            return Err(fault(
-                Path::new(&bundle_name_of(pack, entry)),
-                "the chain hash does not cover this record",
-            ));
-        }
-        prev = expect;
     }
     Ok(())
 }
@@ -183,12 +167,7 @@ pub fn seal(entry: &Record, prev: &str) -> String {
 
 /// Chain of the last live record, or of the checkpoint head when the live bundle is empty.
 pub(crate) fn read_chain_tip(pack: &Path) -> Result<String, Error> {
-    if let Some(path) = find_live_bundle(pack) {
-        let name = path
-            .file_name()
-            .map(|file| file.to_string_lossy().into_owned())
-            .unwrap_or_default();
-        let text = read_bundle(&name, &path)?;
+    if let Some((name, text)) = read_live_bundle(pack)? {
         if let Some(line) = find_last_line(&text) {
             return check_line_chain(&name, line);
         }
@@ -201,18 +180,23 @@ pub(crate) fn read_chain_tip(pack: &Path) -> Result<String, Error> {
 
 /// Records in the plain live bundle. Closed bundles stay unread.
 pub(crate) fn read_live_records(pack: &Path) -> Result<Vec<Record>, Error> {
-    let Some(path) = find_live_bundle(pack) else {
+    let Some((name, text)) = read_live_bundle(pack)? else {
         return Ok(Vec::new());
     };
-    let name = path
-        .file_name()
-        .map(|file| file.to_string_lossy().into_owned())
-        .unwrap_or_default();
-    parse_complete(&name, &read_bundle(&name, &path)?)
+    parse_complete(&name, &text)
+}
+
+/// Name and text of the plain live bundle, if one is open.
+fn read_live_bundle(pack: &Path) -> Result<Option<(String, String)>, Error> {
+    let Some(path) = find_live_bundle(pack) else {
+        return Ok(None);
+    };
+    let name = path.file_name().unwrap_or_default().to_string_lossy();
+    Ok(Some((name.to_string(), read_bundle(&name, &path)?)))
 }
 
 pub fn genesis_hash(pack: &Path) -> Result<String, Error> {
-    let base = pack.join("state").join(base_path());
+    let base = base_path(pack);
     let path = if base.is_file() {
         base
     } else {
@@ -258,6 +242,7 @@ pub fn read_record_line(pack: &Path, key: &str) -> Result<String, Error> {
 }
 
 /// The bundle a logical record lives in, so a test can edit that line.
+#[cfg(any(test, feature = "testing"))]
 pub fn locate(pack: &Path, key: &str) -> Result<PathBuf, Error> {
     let dir = pack.join("state/journal");
     for (file_name, path) in list_bundles(&dir)? {
@@ -318,13 +303,13 @@ pub(crate) fn trailing_checkpoint(path: &Path) -> Option<CheckpointRecord> {
 /// The checkpoint hash is already in `save.yaml`, so the bundle is finished.
 /// Until then it stays the live file and startup can still replay it.
 pub(crate) fn is_published(pack: &Path, path: &Path) -> bool {
-    let Some(mark) = trailing_checkpoint(path) else {
-        return false;
-    };
-    let Ok(bytes) = fs::read(pack.join("state/save.yaml")) else {
-        return false;
-    };
-    blake2s_tagged(&bytes) == mark.state_hash
+    trailing_checkpoint(path)
+        .is_some_and(|mark| hashes_to(&pack.join("state/save.yaml"), &mark.state_hash))
+}
+
+/// The file at `path` can be read and its bytes hash to `hash`.
+pub(crate) fn hashes_to(path: &Path, hash: &str) -> bool {
+    fs::read(path).is_ok_and(|bytes| blake2s_tagged(&bytes) == hash)
 }
 
 /// Next append lands here. The file may not exist yet.
@@ -356,6 +341,7 @@ fn chain_of(entry: &Record) -> String {
 }
 
 /// Key naming one record inside the bundles: `round-0001`, `migrate-0002` or `checkpoint-0003`.
+#[cfg(any(test, feature = "testing"))]
 pub fn format_record_key(entry: &Record) -> String {
     match entry {
         Record::Round(record) => format!("round-{:04}", record.round_index),
@@ -364,27 +350,12 @@ pub fn format_record_key(entry: &Record) -> String {
     }
 }
 
-fn bundle_name_of(pack: &Path, entry: &Record) -> String {
-    locate(pack, &format_record_key(entry))
-        .map(|path| {
-            path.file_name()
-                .and_then(|name| name.to_str())
-                .unwrap_or("bundle")
-                .to_string()
-        })
-        .unwrap_or_else(|_| "bundle".to_string())
-}
-
 fn parse_line(name: &str, line: &str) -> Result<Record, Error> {
     parse_json(name, line).map_err(|fault| {
         let value: serde_json::Value = serde_json::from_str(line).unwrap_or_default();
         let rules_rev = value.get("rules_rev").and_then(|rev| rev.as_u64());
         if let Some(Err(reason)) = rules_rev.map(super::require_rules_rev) {
-            return fault_coded(
-                Path::new(name),
-                reason,
-                "RULES_REV_MISMATCH: this record was written by older rules; start a fresh save",
-            );
+            return fault_coded(Path::new(name), reason, "written by older rules");
         }
         name_the_field(name, line, &value).unwrap_or(fault)
     })
@@ -433,7 +404,7 @@ fn list_bundles(dir: &Path) -> Result<Vec<(String, PathBuf)>, Error> {
     Ok(by_index.into_values().collect())
 }
 
-fn bundle_index(name: &str) -> Option<u32> {
+pub(crate) fn bundle_index(name: &str) -> Option<u32> {
     let rest = name.strip_prefix("bundle-")?;
     let digits = rest
         .strip_suffix(".jsonl.gz")
@@ -451,14 +422,18 @@ fn find_last_line(text: &str) -> Option<&str> {
 
 fn check_line_chain(name: &str, line: &str) -> Result<String, Error> {
     let entry = parse_line(name, line)?;
-    let expect = chain_of(&entry);
-    if entry.chain() != expect {
+    chain_covers(name, &entry)?;
+    Ok(entry.chain().to_string())
+}
+
+fn chain_covers(name: &str, entry: &Record) -> Result<(), Error> {
+    if entry.chain() != chain_of(entry) {
         return Err(fault(
             Path::new(name),
             "the chain hash does not cover this record",
         ));
     }
-    Ok(expect)
+    Ok(())
 }
 
 fn trim_torn_tail(text: &str) -> &str {
@@ -484,16 +459,12 @@ fn parse_complete(name: &str, text: &str) -> Result<Vec<Record>, Error> {
 }
 
 fn read_bundle(name: &str, path: &Path) -> Result<String, Error> {
+    let unread = || fault(path, "the journal bundle could not be read");
+    let mut bytes = fs::read(path).map_err(|_| unread())?;
     if name.ends_with(".gz") {
-        let file =
-            File::open(path).map_err(|_| fault(path, "the journal bundle could not be read"))?;
-        let mut text = String::new();
-        GzDecoder::new(file)
-            .read_to_string(&mut text)
-            .map_err(|_| fault(path, "the journal bundle could not be read"))?;
-        return Ok(text);
+        bytes = gunzip_bytes(&bytes).map_err(|_| unread())?;
     }
-    fs::read_to_string(path).map_err(|_| fault(path, "the journal bundle could not be read"))
+    String::from_utf8(bytes).map_err(|_| unread())
 }
 
 /// Gzip `plain` into memory. The commit path writes and flushes the bytes.
@@ -601,7 +572,7 @@ mod tests {
             assert_eq!(refused.reason, Reason::Schema, "{torn}");
         }
         let pack = crate::testing::copy_docks("old-head");
-        let head = pack.join("state").join(head_path());
+        let head = head_path(&pack);
         fs::create_dir_all(head.parent().unwrap()).unwrap();
         fs::write(
             &head,

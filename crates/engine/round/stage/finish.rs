@@ -8,7 +8,7 @@ use crate::rules::context::Context;
 use crate::rules::effect::{Effect, EffectKind};
 use crate::rules::expand::{self, Cause};
 use crate::rules::gate;
-use crate::store::journal::Arrival;
+use crate::store::records::Arrival;
 use crate::Reason;
 
 use crate::round::dice::RoundDice;

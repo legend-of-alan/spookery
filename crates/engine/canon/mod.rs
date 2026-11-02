@@ -6,7 +6,7 @@ use std::path::Path;
 use serde::Deserialize;
 
 use crate::diagnostic::Diagnostic;
-use crate::hash::blake2s_hex;
+use crate::hash::blake2s_tagged;
 use crate::model::meter::MeterDef;
 use crate::rules::roll::Check;
 use crate::rules::rule::{Cond, Cost, Owner, RuleTable, TargetKind, When};
@@ -186,7 +186,7 @@ pub fn pack_rev(root: &Path) -> Result<String, Reason> {
         preimage.extend((bytes.len() as u64).to_be_bytes());
         preimage.extend(bytes);
     }
-    Ok(format!("blake2s:{}", blake2s_hex(&preimage)))
+    Ok(blake2s_tagged(&preimage))
 }
 
 /// Loads a pack in the numbered order below, which is also the order of its diagnostics.
