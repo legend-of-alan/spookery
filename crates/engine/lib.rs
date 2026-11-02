@@ -16,7 +16,6 @@ pub(crate) mod world;
 pub(crate) use model::key;
 pub(crate) use model::meter;
 pub(crate) use rules::effect;
-pub(crate) use rules::expand;
 pub(crate) use rules::perceive;
 pub(crate) use rules::rule;
 pub(crate) use store::commit;

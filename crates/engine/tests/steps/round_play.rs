@@ -399,6 +399,73 @@ fn aldrics_rest_is(world: &mut World, rest: usize) {
 }
 
 #[given(
+    expr = "a docks pack whose verbs hold a ten-minute verb \"haul\" that takes {int} lamp oil from the actor"
+)]
+fn a_docks_pack_with_a_timed_haul(world: &mut World, oil: i64) {
+    let pack = support::copy_pack("oneshot-docks", "timed-refused");
+    support::append(
+        &pack.join("rules/verbs.yaml"),
+        &format!(
+            "
+  - id: haul
+    when: {{ verb: haul }}
+    cost: {{ time: 10m }}
+    do: [item: {{ who: self, id: lamp_oil, add: -{oil} }}]
+"
+        ),
+    );
+    support::stamp_pack_rev(&pack);
+    make_mira_ineligible(&pack);
+    world.pack = Some(pack);
+}
+
+#[when(expr = "Rowan hauls with no lamp oil and the table plays until the action finishes")]
+fn rowan_hauls_until_it_finishes(world: &mut World) {
+    let pack = world.pack().to_path_buf();
+    let mut table = support::resume(&pack);
+    let rowan = spookery_engine::Presence {
+        players: 1,
+        actors_present: vec!["pc_rowan".to_string()],
+    };
+    table
+        .queue_player_move(&rowan, "pc_rowan", "haul", None)
+        .unwrap_or_else(|refusal| panic!("haul: {refusal:?}"));
+    let wall = table.state().last_round_at.clone();
+    world.scratch.clear();
+    for round in 1..=6 {
+        if let Err(err) = table.play(&rowan, &wall) {
+            world.scratch = format!("round {round} failed: {err}");
+            return;
+        }
+        let now = table.state();
+        if !now.actors["pc_rowan"].is_busy(now.world_time) {
+            break;
+        }
+    }
+    world.count = usize::try_from(table.state().round_index).unwrap();
+}
+
+#[then(
+    expr = "the finishing round commits with arrival:pc_rowan refused MISSING_ITEM, Rowan is no longer busy, and spook verify passes"
+)]
+fn the_refused_finish_commits(world: &mut World) {
+    assert!(world.scratch.is_empty(), "{}", world.scratch);
+    let pack = world.pack();
+    let round = read_round(pack, &format!("round-{:04}", world.count));
+    let refused = round["refused"].as_array().unwrap();
+    assert!(
+        refused
+            .iter()
+            .any(|item| item["id"] == "arrival:pc_rowan" && item["code"] == "MISSING_ITEM"),
+        "{round}"
+    );
+    let saved = spookery_engine::World::peek(pack).unwrap_or_else(|err| panic!("open: {err}"));
+    let now = saved.state();
+    assert!(!now.actors["pc_rowan"].is_busy(now.world_time), "{round}");
+    spookery_engine::verify_pack(pack, None).unwrap_or_else(|err| panic!("verify: {err}"));
+}
+
+#[given(
     expr = "a docks pack where the shop's \"rummage\" costs {int} rest and the shared \"rummage\" costs {int}"
 )]
 fn a_docks_pack_with_two_rummage_rules(world: &mut World, shop: i64, shared: i64) {

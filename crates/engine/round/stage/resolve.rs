@@ -10,6 +10,7 @@ use crate::canon::Canon;
 use crate::intent::{Intent, Source, Target};
 use crate::journal::Step;
 use crate::model::{Presence, State};
+use crate::rule::{RollSpec, Rule};
 use crate::rules::Roll;
 use crate::Reason;
 
@@ -17,16 +18,17 @@ use crate::round::dice::RoundDice;
 use crate::round::log::RoundLog;
 
 /// One candidate and how resolve left it for apply.
-pub(crate) struct Resolved {
-    pub intent: Intent,
-    pub resolution: Resolution,
+pub(crate) struct Candidate<'a> {
+    pub intent: &'a Intent,
+    pub resolution: Resolution<'a>,
 }
 
 /// How resolve left an intent for apply.
-pub(crate) enum Resolution {
-    /// Gated; apply pays for and expands `rule_id`, the rule the gate chose against the snapshot.
+pub(crate) enum Resolution<'a> {
+    /// Gated against the snapshot. Apply admits `rule` again against the draft, then pays for
+    /// and expands it, so a move pays the cost of the rule it rolled for.
     Ready {
-        rule_id: String,
+        rule: &'a Rule,
         rolled: Option<Roll>,
     },
     /// Refused by the gate: journaled, and told to a player.
@@ -35,26 +37,26 @@ pub(crate) enum Resolution {
     CannotRoll(Reason),
 }
 
-/// What every roll in the round shares.
-struct Resolver<'a> {
+/// What every roll in the round shares. The rules it gates borrow `canon`, past the resolver.
+struct Resolver<'a, 'r> {
     canon: &'a Canon,
     snapshot: &'a State,
     presence: &'a Presence,
     queue: &'a [Intent],
     rolled: BTreeMap<String, Roll>,
-    dice: &'a mut RoundDice,
-    log: &'a mut RoundLog,
+    dice: &'r mut RoundDice,
+    log: &'r mut RoundLog,
 }
 
-pub(crate) fn run(
-    canon: &Canon,
-    snapshot: &State,
-    presence: &Presence,
-    candidates: Vec<Intent>,
-    queue: &[Intent],
+pub(crate) fn run<'a>(
+    canon: &'a Canon,
+    snapshot: &'a State,
+    presence: &'a Presence,
+    picked: &'a [Intent],
+    queue: &'a [Intent],
     dice: &mut RoundDice,
     log: &mut RoundLog,
-) -> Result<Vec<Resolved>, Reason> {
+) -> Result<Vec<Candidate<'a>>, Reason> {
     let mut rolls = Resolver {
         canon,
         snapshot,
@@ -64,15 +66,18 @@ pub(crate) fn run(
         dice,
         log,
     };
-    let mut resolved = Vec::with_capacity(candidates.len());
-    for intent in candidates {
-        let resolution = gate_and_roll(&mut rolls, &intent)?;
-        resolved.push(Resolved { intent, resolution });
+    let mut candidates = Vec::with_capacity(picked.len());
+    for intent in picked {
+        let resolution = gate_and_roll(&mut rolls, intent)?;
+        candidates.push(Candidate { intent, resolution });
     }
-    Ok(resolved)
+    Ok(candidates)
 }
 
-fn gate_and_roll(rolls: &mut Resolver<'_>, intent: &Intent) -> Result<Resolution, Reason> {
+fn gate_and_roll<'a>(
+    rolls: &mut Resolver<'a, '_>,
+    intent: &'a Intent,
+) -> Result<Resolution<'a>, Reason> {
     let case = Case::new(rolls.canon, rolls.snapshot, rolls.presence, intent);
     let rule = match gate::gate(&case) {
         Ok(rule) => rule,
@@ -83,19 +88,18 @@ fn gate_and_roll(rolls: &mut Resolver<'_>, intent: &Intent) -> Result<Resolution
             rolls.log.extra_steps.push(Step::CheckRolled);
             roll_intent_check(rolls, intent, rule, roll)
         }
-        _ => Ok(Resolution::Ready {
-            rule_id: rule.id.clone(),
-            rolled: None,
-        }),
+        _ => Ok(Resolution::Ready { rule, rolled: None }),
     }
 }
 
-fn roll_intent_check(
-    rolls: &mut Resolver<'_>,
+/// Roll the intent's check, against the opposing total when another player's move opposes it.
+/// An intent already rolled as another's opposition keeps its faces and takes its own target.
+fn roll_intent_check<'a>(
+    rolls: &mut Resolver,
     intent: &Intent,
-    rule: &crate::rule::Rule,
-    roll: &crate::rule::RollSpec,
-) -> Result<Resolution, Reason> {
+    rule: &'a Rule,
+    roll: &RollSpec,
+) -> Result<Resolution<'a>, Reason> {
     let actor_id = intent.actor.actor_id();
     let opposed = match roll_opposing_total(rolls, intent) {
         Ok(total) => total,
@@ -109,11 +113,16 @@ fn roll_intent_check(
             .roller(rolls.log, &rule.id, actor_id)
             .eval_thresholds(&Case::new(canon, snapshot, rolls.presence, intent), roll)?,
     };
-    let rule_id = rule.id.clone();
     if let Some(out) = rolls.rolled.get(&intent.id) {
+        let outcome = classify(out.total, target, partial_at);
+        let rolled = Roll {
+            target,
+            outcome,
+            ..out.clone()
+        };
         return Ok(Resolution::Ready {
-            rule_id,
-            rolled: Some(rescore(out, target, partial_at)),
+            rule,
+            rolled: Some(rolled),
         });
     }
     let key = rolls.dice.next_key(&rule.id, actor_id);
@@ -124,7 +133,7 @@ fn roll_intent_check(
         Ok(out) => {
             rolls.rolled.insert(intent.id.clone(), out.clone());
             Ok(Resolution::Ready {
-                rule_id,
+                rule,
                 rolled: Some(out),
             })
         }
@@ -132,7 +141,7 @@ fn roll_intent_check(
     }
 }
 
-fn roll_opposing_total(rolls: &mut Resolver<'_>, intent: &Intent) -> Result<Option<i64>, Reason> {
+fn roll_opposing_total(rolls: &mut Resolver, intent: &Intent) -> Result<Option<i64>, Reason> {
     let Target::Actor(named) = &intent.target else {
         return Ok(None);
     };
@@ -160,14 +169,4 @@ fn roll_opposing_total(rolls: &mut Resolver<'_>, intent: &Intent) -> Result<Opti
     let total = out.total;
     rolls.rolled.insert(opposing.id.clone(), out);
     Ok(Some(total))
-}
-
-fn rescore(out: &Roll, target: i64, partial_at: Option<i64>) -> Roll {
-    Roll {
-        faces: out.faces.clone(),
-        stat: out.stat,
-        total: out.total,
-        target,
-        outcome: classify(out.total, target, partial_at),
-    }
 }

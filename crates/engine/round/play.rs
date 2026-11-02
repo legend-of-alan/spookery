@@ -121,7 +121,12 @@ pub(crate) fn play_round(
     wall: &str,
     fast_forward: bool,
 ) -> Result<RoundOutput, Reason> {
-    let (draft, clock, log, delivered) = run_stages(world, presence, wall, world.queued_intents())?;
+    let StagedRound {
+        draft,
+        clock,
+        log,
+        delivered,
+    } = run_stages(world, presence, wall, world.queued_intents())?;
     record::run(world, draft, wall, clock, log, delivered, fast_forward)
 }
 
@@ -132,42 +137,61 @@ pub(crate) fn replay_round(
     queue: &[Intent],
     presence: &Presence,
 ) -> Result<RoundOutput, Reason> {
-    let (draft, _clock, mut log, delivered) = run_stages(world, presence, wall, queue)?;
+    let StagedRound {
+        draft,
+        mut log,
+        delivered,
+        ..
+    } = run_stages(world, presence, wall, queue)?;
     let output = record::take_output(&mut log, delivered);
     crate::commit::keep_in_memory(world, draft)?;
     Ok(output)
 }
 
+/// What the stages leave for `record`: the staged save, the round's time, its log, and what
+/// each seat hears.
+struct StagedRound<'p> {
+    draft: Draft<'p>,
+    clock: RoundTime,
+    log: RoundLog,
+    delivered: deliver::Deliveries,
+}
+
+/// Every stage but `record`, in order. The canon is cloned once: the candidates' rules borrow
+/// it while the later stages write the draft.
 fn run_stages<'p, L>(
     world: &World<L>,
     presence: &'p Presence,
     wall: &str,
     queue: &[Intent],
-) -> Result<(Draft<'p>, RoundTime, RoundLog, deliver::Deliveries), Reason> {
+) -> Result<StagedRound<'p>, Reason> {
     let mut draft = Draft::begin(world, presence);
+    let canon = draft.shared_canon();
     let clock = advance::run(&mut draft, wall)?;
     let mut dice = RoundDice::new(draft.state().world_id.clone(), clock.round_index);
     let mut log = RoundLog::default();
-    let candidates = pick::run(&draft, queue)?;
+    let picked = pick::run(&draft, queue)?;
     let snapshot = draft.state().clone();
-    let resolved = resolve::run(
-        draft.canon(),
-        &snapshot,
-        presence,
-        candidates,
-        queue,
-        &mut dice,
-        &mut log,
+    let candidates = resolve::run(
+        &canon, &snapshot, presence, &picked, queue, &mut dice, &mut log,
     )?;
-    apply::run(&mut draft, &snapshot, resolved, &clock, &mut dice, &mut log)?;
-    finish::run(&mut draft, clock.world_time_after, &mut dice, &mut log)?;
-    let changes = triggers::run(&mut draft, &mut dice, &mut log)?;
+    apply::run(
+        &mut draft, &canon, &snapshot, candidates, &clock, &mut dice, &mut log,
+    );
+    let end = clock.world_time_after;
+    finish::run(&mut draft, &canon, end, &mut dice, &mut log)?;
+    let changes = triggers::run(&mut draft, &canon, &mut dice, &mut log)?;
     let delivered = deliver::run(
-        draft.canon(),
+        &canon,
         draft.state(),
         draft.presence,
         &changes,
         &log.effects,
     );
-    Ok((draft, clock, log, delivered))
+    Ok(StagedRound {
+        draft,
+        clock,
+        log,
+        delivered,
+    })
 }
