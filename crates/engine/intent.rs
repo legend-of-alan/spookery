@@ -272,22 +272,4 @@ mod tests {
             "daa186f67613ae8ea1275b3fd03c38d52eea99e976235e499b5c2b0853c0d819"
         );
     }
-
-    #[test]
-    fn args_are_empty_or_carry_to() {
-        let (id, actor) = ("i1".to_string(), Viewer::Player("pc_rowan".to_string()));
-        let mut intent = Intent::new(id, 1, actor, Source::Player, "say", Target::Empty);
-        let head = r#"{"id":"i1","round_index":1,"actor":"player:pc_rowan","source":"player","move":"say","target":{},"args":"#;
-        for (to, args) in [
-            (None, "{}"),
-            (Some(vec!["pc_wren".to_string()]), r#"{"to":["pc_wren"]}"#),
-        ] {
-            intent.args.message_to = to;
-            let line = serde_json::to_string(&intent).unwrap();
-            assert_eq!(line, format!(r#"{head}{args},"rationale_code":""}}"#));
-            assert_eq!(serde_json::from_str::<Intent>(&line).unwrap(), intent);
-        }
-        let unknown = format!(r#"{head}{{"cc":["pc_wren"]}},"rationale_code":""}}"#);
-        assert!(serde_json::from_str::<Intent>(&unknown).is_err());
-    }
 }

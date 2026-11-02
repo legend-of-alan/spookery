@@ -53,7 +53,7 @@ fn refusal_code(cond: &Cond) -> Reason {
 }
 
 fn holds(context: &Context, cond: &Cond) -> Result<bool, Reason> {
-    let now = context.now;
+    let now = context.state;
     match cond {
         Cond::HasItem { who, id, count } => {
             let actor = expr::resolve_who_id(context, who)?;

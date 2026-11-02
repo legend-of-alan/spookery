@@ -109,7 +109,7 @@ impl Roller<'_> {
             .next_key(self.rule, context.intent.actor.actor_id());
         self.dice.roll_check(
             context.canon,
-            context.now,
+            context.state,
             key,
             &spec.check,
             target,

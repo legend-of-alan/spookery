@@ -187,7 +187,7 @@ fn negate_body(body: &str) -> String {
 
 fn read_meter(context: &Context, who: &Who, key: &str) -> Result<i64, Reason> {
     let actor_id = resolve_who_id(context, who)?;
-    context.now.meter_value(context.canon, &actor_id, key)
+    context.state.meter_value(context.canon, &actor_id, key)
 }
 
 /// `id: target` is the intent's target token. Any other id is itself.
@@ -213,7 +213,7 @@ pub(crate) fn resolve_who_id(context: &Context, who: &Who) -> Result<String, Rea
             .map(str::to_string)
             .ok_or(Reason::Schema),
         Who::Here => context
-            .now
+            .state
             .actors
             .get(context.intent.actor.actor_id())
             .map(|actor| actor.place().to_string())

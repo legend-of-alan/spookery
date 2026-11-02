@@ -30,7 +30,7 @@ pub(crate) enum Landing {
 pub(crate) fn run(
     draft: &mut Draft,
     canon: &Canon,
-    snapshot: &State,
+    state: &State,
     candidates: Vec<Candidate>,
     clock: &RoundTime,
     dice: &mut RoundDice,
@@ -62,12 +62,12 @@ pub(crate) fn run(
             refuse(log, intent, refusal, false);
             continue;
         }
-        // A timed move expands when it finishes; an instant one against the snapshot it rolled on.
+        // A timed move expands when it finishes; an instant one against the state it rolled on.
         let minutes = travel::span(&context, rule);
         let expansion = if minutes > 0 {
             None
         } else {
-            let context = Context::new(canon, snapshot, draft.presence, intent);
+            let context = Context::new(canon, state, draft.presence, intent);
             let roller = dice.roller(log, &rule.id, actor_id);
             match expand::expand(&context, rule, Cause::Move, rolled, roller) {
                 Ok(expansion) => Some(expansion),

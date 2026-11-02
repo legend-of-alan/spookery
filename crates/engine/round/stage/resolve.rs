@@ -25,7 +25,7 @@ pub(crate) struct Candidate<'a> {
 
 /// How resolve left an intent for apply.
 pub(crate) enum Resolution<'a> {
-    /// Gated against the snapshot. Apply admits `rule` again against the draft, then pays for
+    /// Gated against the state. Apply admits `rule` again against the draft, then pays for
     /// and expands it, so a move pays the cost of the rule it rolled for.
     Ready {
         rule: &'a Rule,
@@ -40,7 +40,7 @@ pub(crate) enum Resolution<'a> {
 /// What every roll in the round shares. The rules it gates borrow `canon`, past the resolver.
 struct Resolver<'a, 'r> {
     canon: &'a Canon,
-    snapshot: &'a State,
+    state: &'a State,
     presence: &'a Presence,
     queue: &'a [Intent],
     rolled: BTreeMap<String, Roll>,
@@ -50,7 +50,7 @@ struct Resolver<'a, 'r> {
 
 pub(crate) fn run<'a>(
     canon: &'a Canon,
-    snapshot: &'a State,
+    state: &'a State,
     presence: &'a Presence,
     picked: &'a [Intent],
     queue: &'a [Intent],
@@ -59,7 +59,7 @@ pub(crate) fn run<'a>(
 ) -> Result<Vec<Candidate<'a>>, Reason> {
     let mut resolver = Resolver {
         canon,
-        snapshot,
+        state,
         presence,
         queue,
         rolled: BTreeMap::new(),
@@ -78,7 +78,7 @@ fn gate_intent<'a>(
     resolver: &mut Resolver<'a, '_>,
     intent: &'a Intent,
 ) -> Result<Resolution<'a>, Reason> {
-    let context = Context::new(resolver.canon, resolver.snapshot, resolver.presence, intent);
+    let context = Context::new(resolver.canon, resolver.state, resolver.presence, intent);
     let rule = match gate::gate(&context) {
         Ok(rule) => rule,
         Err(refusal) => return Ok(Resolution::Refused(refusal)),
@@ -105,16 +105,13 @@ fn roll_check<'a>(
         Ok(total) => total,
         Err(code) => return Ok(Resolution::CannotRoll(code)),
     };
-    let (canon, snapshot) = (resolver.canon, resolver.snapshot);
+    let (canon, state) = (resolver.canon, resolver.state);
     let (target, partial_at) = match opposed {
         Some(total) => (total, None),
         None => resolver
             .dice
             .roller(resolver.log, &rule.id, actor_id)
-            .eval_thresholds(
-                &Context::new(canon, snapshot, resolver.presence, intent),
-                roll,
-            )?,
+            .eval_thresholds(&Context::new(canon, state, resolver.presence, intent), roll)?,
     };
     if let Some(out) = resolver.rolled.get(&intent.id) {
         let outcome = classify(out.total, target, partial_at);
@@ -131,7 +128,7 @@ fn roll_check<'a>(
     let key = resolver.dice.next_key(&rule.id, actor_id);
     match resolver
         .dice
-        .roll_check(canon, snapshot, key, &roll.check, target, partial_at)
+        .roll_check(canon, state, key, &roll.check, target, partial_at)
     {
         Ok(out) => {
             resolver.rolled.insert(intent.id.clone(), out.clone());
@@ -148,9 +145,9 @@ fn opposing_total(resolver: &mut Resolver, intent: &Intent) -> Result<Option<i64
     let Target::Actor(named) = &intent.target else {
         return Ok(None);
     };
-    let (canon, snapshot, presence, queue) = (
+    let (canon, state, presence, queue) = (
         resolver.canon,
-        resolver.snapshot,
+        resolver.state,
         resolver.presence,
         resolver.queue,
     );
@@ -161,7 +158,7 @@ fn opposing_total(resolver: &mut Resolver, intent: &Intent) -> Result<Option<i64
         {
             return None;
         }
-        let rule = gate::gate(&Context::new(canon, snapshot, presence, other)).ok()?;
+        let rule = gate::gate(&Context::new(canon, state, presence, other)).ok()?;
         Some((other, &rule.id, &rule.roll.as_ref()?.check))
     }) else {
         return Ok(None);
@@ -172,7 +169,7 @@ fn opposing_total(resolver: &mut Resolver, intent: &Intent) -> Result<Option<i64
     let key = resolver.dice.next_key(rule_id, opposing.actor.actor_id());
     let out = resolver
         .dice
-        .roll_check(canon, snapshot, key, check_id, 0, None)?;
+        .roll_check(canon, state, key, check_id, 0, None)?;
     let total = out.total;
     resolver.rolled.insert(opposing.id.clone(), out);
     Ok(Some(total))

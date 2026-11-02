@@ -52,7 +52,7 @@ pub(crate) fn exit_via<'a>(context: &Context<'a>, via: &str) -> Result<Option<&'
         ("target", _) => return Ok(None),
         (name, _) => name,
     };
-    let actor = context.now.actors.get(context.intent.actor.actor_id());
+    let actor = context.state.actors.get(context.intent.actor.actor_id());
     let from = actor.map(ActorLive::place).unwrap_or("");
     find_exit(context.canon, from, name)
         .map(Some)
@@ -64,7 +64,7 @@ pub(crate) fn admit(context: &Context, rule: &Rule) -> Result<(), gate::Refusal>
     let Some(exit) = exit_of(context, rule)? else {
         return Ok(());
     };
-    let (canon, now, intent) = (context.canon, context.now, context.intent);
+    let (canon, now, intent) = (context.canon, context.state, context.intent);
     if !is_revealed(canon, now, intent.actor.actor_id(), exit) {
         return Err(gate::Refusal::new(intent, Reason::NoExit));
     }

@@ -113,14 +113,21 @@ fn owner_verb<'a>(canon: &'a Canon, owner: &Owner, verb: &str) -> Option<&'a Rul
 pub(crate) fn gate<'a>(context: &Context<'a>) -> Result<&'a Rule, Refusal> {
     let intent = context.intent;
     let (actor, verb, hint) = (&intent.actor, &intent.move_name, hint_of(&intent.target));
-    let picked = pick(context.canon, context.now, actor, intent.source, verb, hint);
+    let picked = pick(
+        context.canon,
+        context.state,
+        actor,
+        intent.source,
+        verb,
+        hint,
+    );
     let rule = picked.map_err(|code| Refusal::new(intent, code))?;
     admit(context, rule).map(|()| rule)
 }
 
 /// Check a rule already picked. A player-sourced habit skips its `if`. Cost is checked for every rule.
 pub(crate) fn admit(context: &Context, rule: &Rule) -> Result<(), Refusal> {
-    let (now, intent) = (context.now, context.intent);
+    let (now, intent) = (context.state, context.intent);
     if let Some(actor) = now.actors.get(intent.actor.actor_id()) {
         if actor.is_busy(now.world_time) && matches!(rule.when, When::Verb { .. }) {
             return Err(Refusal::new(intent, Reason::Busy));
@@ -176,14 +183,19 @@ fn can_name(context: &Context) -> bool {
         | Target::Clock(id) => id.as_str(),
     };
     if context
-        .now
+        .state
         .actors
         .get(intent.actor.actor_id())
         .is_some_and(|actor| actor.item_count(id) > 0)
     {
         return true;
     }
-    let Ok(view) = perceive_as(context.canon, context.now, context.presence, &intent.actor) else {
+    let Ok(view) = perceive_as(
+        context.canon,
+        context.state,
+        context.presence,
+        &intent.actor,
+    ) else {
         return false;
     };
     view.place == id

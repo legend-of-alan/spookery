@@ -103,7 +103,7 @@ fn expand_template(
     last_resist: &mut Option<Outcome>,
     dice: &mut dyn Dice,
 ) -> Result<(), Reason> {
-    let (canon, now, intent) = (context.canon, context.now, context.intent);
+    let (canon, now, intent) = (context.canon, context.state, context.intent);
     let viewer = &intent.actor;
     if let Some(spec) = template.resist() {
         let shrugged = match spec {
@@ -318,7 +318,7 @@ fn meter_offset(
         )?));
     }
     let desired = expr::eval_with_dice(context, set.ok_or(Reason::Schema)?, dice)?;
-    let current = context.now.meter_value(context.canon, actor_id, key)?;
+    let current = context.state.meter_value(context.canon, actor_id, key)?;
     Ok(MeterWrite::Offset(
         desired.checked_sub(current).ok_or(Reason::OutOfRange)?,
     ))
@@ -337,7 +337,7 @@ fn holder_of(context: &Context, who: &Who) -> Result<(Option<String>, Option<Str
 fn location_effect(context: &Context, to: &str) -> Result<Effect, Reason> {
     let intent = context.intent;
     let from = context
-        .now
+        .state
         .actors
         .get(intent.actor.actor_id())
         .map(|actor| actor.place().to_string())

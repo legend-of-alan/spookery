@@ -170,12 +170,12 @@ fn run_stages<'p, L>(
     let mut dice = RoundDice::new(draft.state().world_id.clone(), clock.round_index);
     let mut log = RoundLog::default();
     let picked = pick::run(&draft, queue)?;
-    let snapshot = draft.state().clone();
+    let state = draft.state().clone();
     let candidates = resolve::run(
-        &canon, &snapshot, presence, &picked, queue, &mut dice, &mut log,
+        &canon, &state, presence, &picked, queue, &mut dice, &mut log,
     )?;
     apply::run(
-        &mut draft, &canon, &snapshot, candidates, &clock, &mut dice, &mut log,
+        &mut draft, &canon, &state, candidates, &clock, &mut dice, &mut log,
     );
     let end = clock.world_time_after;
     finish::run(&mut draft, &canon, end, &mut dice, &mut log)?;
