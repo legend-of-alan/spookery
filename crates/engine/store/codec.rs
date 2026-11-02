@@ -277,12 +277,12 @@ notes: []
                     EffectKind::Meter {
                         actor_id: "mira".to_string(),
                         key: "rest".to_string(),
-                        write: crate::model::meter::MeterWrite::Base(1),
+                        write: crate::model::meter::MeterWrite::Offset(1),
                     },
                     npc("mira"),
                     "i2",
                 ),
-                r#"{"kind":"meter","as":"npc:mira","intent_id":"i2","actor_id":"mira","key":"rest","write":"base","delta":1}"#,
+                r#"{"kind":"meter","as":"npc:mira","intent_id":"i2","actor_id":"mira","key":"rest","write":"offset","delta":1}"#,
             ),
             (
                 effect(
@@ -342,12 +342,12 @@ notes: []
                     EffectKind::Meter {
                         actor_id: "pc_rowan".to_string(),
                         key: "grit".to_string(),
-                        write: crate::model::meter::MeterWrite::ClearOffset,
+                        write: crate::model::meter::MeterWrite::Offset(-3),
                     },
                     player("pc_rowan"),
                     "i9",
                 ),
-                r#"{"kind":"meter","as":"player:pc_rowan","intent_id":"i9","actor_id":"pc_rowan","key":"grit","write":"clear_offset"}"#,
+                r#"{"kind":"meter","as":"player:pc_rowan","intent_id":"i9","actor_id":"pc_rowan","key":"grit","write":"offset","delta":-3}"#,
             ),
             (
                 effect(
@@ -418,29 +418,23 @@ notes: []
                 Reason::UnknownEffect
             );
         }
-        let clear_offset_delta = serde_json::json!({
-            "kind": "meter",
-            "as": "npc:mira",
-            "intent_id": "i",
-            "actor_id": "mira",
-            "key": "rest",
-            "write": "clear_offset",
-            "delta": 1,
-        });
-        assert_eq!(
-            parse_effect(&clear_offset_delta.to_string()).unwrap_err(),
-            Reason::Schema
-        );
         let missing_delta = serde_json::json!({
             "kind": "meter",
             "as": "npc:mira",
             "intent_id": "i",
             "actor_id": "mira",
             "key": "rest",
-            "write": "base",
+            "write": "offset",
         });
         assert_eq!(
             parse_effect(&missing_delta.to_string()).unwrap_err(),
+            Reason::Schema
+        );
+        let mut unknown_key = missing_delta;
+        unknown_key["delta"] = 1.into();
+        unknown_key["max"] = 3.into();
+        assert_eq!(
+            parse_effect(&unknown_key.to_string()).unwrap_err(),
             Reason::Schema
         );
     }

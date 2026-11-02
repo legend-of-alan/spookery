@@ -21,7 +21,6 @@ use crate::round::stage::{advance, apply, deliver, finish, pick, record, resolve
 
 /// Returned from the engine's round to the host table, which sends it on to players, the GM and the digest.
 /// What one round showed. Lines and seen are empty when no human was seated.
-#[derive(Default)]
 pub struct RoundOutput {
     pub reports: Vec<MoveReport>,
     pub dice: Vec<String>,
