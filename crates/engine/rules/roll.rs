@@ -30,12 +30,13 @@ pub(crate) fn classify(total: i64, target: i64, partial_at: Option<i64>) -> Outc
     }
 }
 
-/// One roll's dice, total, and band. Not stored in `Now`.
+/// One roll's dice, total, and band. The save does not store it, and the journal keeps only
+/// the round's dice lines.
 pub use spookery_protocol::Roll;
 
-/// Returned from the engine's round to the host table, which turns it into check frames.
-/// What the round did with a player's move: the roll, or a refusal and its reason.
-/// Not stored in `Now` or the tick JSONL.
+/// What the round did with a move: the roll, or a refusal and its reason. Returned from the
+/// engine's round to the host table, which turns it into check frames. Neither the save nor
+/// the journal stores it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum MoveReport {
     Rolled {

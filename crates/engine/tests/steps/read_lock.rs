@@ -136,10 +136,10 @@ fn status_waited(world: &mut World) {
 #[then(expr = "status prints the round the writer committed")]
 fn status_prints_the_committed_round(world: &mut World) {
     let pack = world.pack();
-    let now = writer(world).state();
-    assert!(now.state_rev > 0, "the writer committed nothing");
+    let state = writer(world).state();
+    assert!(state.state_rev > 0, "the writer committed nothing");
     let tip = spookery_engine::World::peek(pack).unwrap_or_else(|err| panic!("peek: {err}"));
-    assert_eq!(emit_save(tip.state()).unwrap(), emit_save(now).unwrap());
+    assert_eq!(emit_save(tip.state()).unwrap(), emit_save(state).unwrap());
     let text = peek_digest(pack).unwrap_or_else(|err| panic!("status: {err}"));
     assert!(text.contains("clock "), "{text}");
     assert_eq!(world.scratch, text);

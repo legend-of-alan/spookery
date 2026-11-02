@@ -101,8 +101,8 @@ fn fail(message: impl Into<String>) -> Result<(), TestCaseError> {
     Err(TestCaseError::fail(message.into()))
 }
 
-fn assert_same_save(now: &State, before: &State) -> Result<(), TestCaseError> {
-    if now == before {
+fn assert_same_save(state: &State, before: &State) -> Result<(), TestCaseError> {
+    if state == before {
         Ok(())
     } else {
         fail("a refused item effect changed the save")
@@ -110,15 +110,15 @@ fn assert_same_save(now: &State, before: &State) -> Result<(), TestCaseError> {
 }
 
 /// A stored count is a `u32`, so it cannot be negative. A count of 0 is omitted.
-fn assert_no_stored_zero(now: &State) -> Result<(), TestCaseError> {
-    for (actor_id, actor) in &now.actors {
+fn assert_no_stored_zero(state: &State) -> Result<(), TestCaseError> {
+    for (actor_id, actor) in &state.actors {
         for (item_id, count) in actor.inventory() {
             if *count == 0 {
                 return fail(format!("{actor_id} stores a zero count of {item_id}"));
             }
         }
     }
-    for (place_id, place) in &now.places {
+    for (place_id, place) in &state.places {
         for (item_id, count) in &place.items {
             if *count == 0 {
                 return fail(format!("{place_id} stores a zero count of {item_id}"));
@@ -128,21 +128,21 @@ fn assert_no_stored_zero(now: &State) -> Result<(), TestCaseError> {
     Ok(())
 }
 
-fn is_known_holder(now: &State, holder: &Holder) -> bool {
+fn is_known_holder(state: &State, holder: &Holder) -> bool {
     match holder {
-        Holder::Actor(id) => now.actors.contains_key(id),
-        Holder::Place(id) => now.places.contains_key(id),
+        Holder::Actor(id) => state.actors.contains_key(id),
+        Holder::Place(id) => state.places.contains_key(id),
     }
 }
 
-fn count_of(now: &State, holder: &Holder, id: &str) -> u32 {
+fn count_of(state: &State, holder: &Holder, id: &str) -> u32 {
     match holder {
-        Holder::Actor(actor_id) => now
+        Holder::Actor(actor_id) => state
             .actors
             .get(actor_id)
             .map(|actor| actor.item_count(id))
             .unwrap_or(0),
-        Holder::Place(place_id) => now
+        Holder::Place(place_id) => state
             .places
             .get(place_id)
             .and_then(|place| place.items.get(id))

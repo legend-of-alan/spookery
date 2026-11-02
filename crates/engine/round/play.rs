@@ -19,12 +19,12 @@ use crate::round::log::RoundLog;
 use crate::round::stage::advance::RoundTime;
 use crate::round::stage::{advance, apply, deliver, finish, pick, record, resolve, triggers};
 
-/// Returned from the engine's round to the host table, which sends it on to players, the GM and the digest.
-/// What one round showed. Lines and seen are empty when no human was seated.
+/// What one round showed. Returned from the engine's round to the host table, which sends it on
+/// to players, the GM and the digest. `lines` and `seen` are empty when no human was seated.
 pub struct RoundOutput {
     pub reports: Vec<MoveReport>,
     pub dice: Vec<String>,
-    pub summary: Vec<String>,
+    pub changed_keys: Vec<String>,
     pub lines: Vec<RecipientLine>,
     pub seen: Vec<ViewerChanges>,
     pub(crate) effects: Vec<Effect>,
@@ -101,14 +101,15 @@ pub(crate) fn fast_forward(
 
 /// Whether each seated PC is busy at the current world time.
 fn seated_busy<L>(world: &World<L>, presence: &Presence) -> Vec<bool> {
-    let now = world.state();
+    let state = world.state();
     presence
         .actors_present
         .iter()
         .map(|id| {
-            now.actors
+            state
+                .actors
                 .get(id)
-                .is_some_and(|actor| actor.is_busy(now.world_time))
+                .is_some_and(|actor| actor.is_busy(state.world_time))
         })
         .collect()
 }
@@ -170,12 +171,12 @@ fn run_stages<'p, L>(
     let mut dice = RoundDice::new(draft.state().world_id.clone(), clock.round_index);
     let mut log = RoundLog::default();
     let picked = pick::run(&draft, queue)?;
-    let snapshot = draft.state().clone();
+    let state = draft.state().clone();
     let candidates = resolve::run(
-        &canon, &snapshot, presence, &picked, queue, &mut dice, &mut log,
+        &canon, &state, presence, &picked, queue, &mut dice, &mut log,
     )?;
     apply::run(
-        &mut draft, &canon, &snapshot, candidates, &clock, &mut dice, &mut log,
+        &mut draft, &canon, &state, candidates, &clock, &mut dice, &mut log,
     );
     let end = clock.world_time_after;
     finish::run(&mut draft, &canon, end, &mut dice, &mut log)?;

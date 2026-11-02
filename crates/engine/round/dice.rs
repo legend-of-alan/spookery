@@ -6,10 +6,10 @@ use crate::canon::Canon;
 use crate::hash::blake2s_256;
 use crate::model::State;
 use crate::round::log::RoundLog;
-use crate::rules::case::Case;
+use crate::rules::context::Context;
 use crate::rules::expr::{eval_with_dice, Dice};
 use crate::rules::roll::Outcome;
-use crate::rules::roll::{faces, roll_check, MoveReport, Roll, RollKey};
+use crate::rules::roll::{self, faces, MoveReport, Roll, RollKey};
 use crate::rules::rule::RollSpec;
 use crate::Reason;
 
@@ -59,15 +59,15 @@ impl RoundDice {
     pub(crate) fn roll_check(
         &mut self,
         canon: &Canon,
-        now: &State,
+        state: &State,
         key: RollKey,
         check_id: &str,
         target: i64,
         partial_at: Option<i64>,
     ) -> Result<Roll, Reason> {
-        let actor = now.actors.get(&key.subject_id).ok_or(Reason::UnknownId)?;
+        let actor = state.actors.get(&key.subject_id).ok_or(Reason::UnknownId)?;
         let check = canon.checks.get(check_id).ok_or(Reason::UnknownId)?;
-        roll_check(check, &canon.meters, actor, &key, target, partial_at)
+        roll::roll_check(check, &canon.meters, actor, &key, target, partial_at)
     }
 
     pub(crate) fn roller<'a>(
@@ -102,28 +102,36 @@ pub(crate) struct Roller<'a> {
 
 impl Roller<'_> {
     /// Evaluate a rule's `roll:` spec, then roll its check.
-    pub(crate) fn roll_spec(&mut self, case: &Case, spec: &RollSpec) -> Result<Roll, Reason> {
-        let (target, partial_at) = self.eval_thresholds(case, spec)?;
-        let key = self.dice.next_key(self.rule, case.intent.actor.actor_id());
-        self.dice
-            .roll_check(case.canon, case.now, key, &spec.check, target, partial_at)
+    pub(crate) fn roll_spec(&mut self, context: &Context, spec: &RollSpec) -> Result<Roll, Reason> {
+        let (target, partial_at) = self.eval_thresholds(context, spec)?;
+        let key = self
+            .dice
+            .next_key(self.rule, context.intent.actor.actor_id());
+        self.dice.roll_check(
+            context.canon,
+            context.state,
+            key,
+            &spec.check,
+            target,
+            partial_at,
+        )
     }
 
     /// The one order a `roll:` spec's thresholds draw dice in: target, then partial_at.
     pub(crate) fn eval_thresholds(
         &mut self,
-        case: &Case,
+        context: &Context,
         spec: &RollSpec,
     ) -> Result<(i64, Option<i64>), Reason> {
-        let target = eval_with_dice(case, &spec.target, self)?;
+        let target = eval_with_dice(context, &spec.target, self)?;
         let partial_at = match &spec.partial_at {
-            Some(expr) => Some(eval_with_dice(case, expr, self)?),
+            Some(expr) => Some(eval_with_dice(context, expr, self)?),
             None => None,
         };
         Ok((target, partial_at))
     }
 
-    /// The resist rolls this roller made, in order. Consumes the roller and ends its borrow.
+    /// The resist rolls this roller made, in order.
     pub(crate) fn into_reports(self) -> Vec<MoveReport> {
         self.reports
     }
@@ -151,7 +159,7 @@ impl Dice for Roller<'_> {
     fn resist(
         &mut self,
         canon: &Canon,
-        now: &State,
+        state: &State,
         actor_id: &str,
         check_id: &str,
         target: i64,
@@ -159,7 +167,7 @@ impl Dice for Roller<'_> {
         let key = self.dice.next_key(self.rule, actor_id);
         let out = self
             .dice
-            .roll_check(canon, now, key, check_id, target, None)?;
+            .roll_check(canon, state, key, check_id, target, None)?;
         self.reports.push(MoveReport::Rolled {
             actor_id: actor_id.to_string(),
             roll: out.clone(),

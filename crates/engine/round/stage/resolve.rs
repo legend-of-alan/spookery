@@ -2,7 +2,7 @@
 
 use std::collections::BTreeMap;
 
-use crate::rules::case::Case;
+use crate::rules::context::Context;
 use crate::rules::gate;
 use crate::rules::roll::classify;
 
@@ -25,7 +25,7 @@ pub(crate) struct Candidate<'a> {
 
 /// How resolve left an intent for apply.
 pub(crate) enum Resolution<'a> {
-    /// Gated against the snapshot. Apply admits `rule` again against the draft, then pays for
+    /// Gated against the state. Apply admits `rule` again against the draft, then pays for
     /// and expands it, so a move pays the cost of the rule it rolled for.
     Ready {
         rule: &'a Rule,
@@ -40,7 +40,7 @@ pub(crate) enum Resolution<'a> {
 /// What every roll in the round shares. The rules it gates borrow `canon`, past the resolver.
 struct Resolver<'a, 'r> {
     canon: &'a Canon,
-    snapshot: &'a State,
+    state: &'a State,
     presence: &'a Presence,
     queue: &'a [Intent],
     rolled: BTreeMap<String, Roll>,
@@ -50,16 +50,16 @@ struct Resolver<'a, 'r> {
 
 pub(crate) fn run<'a>(
     canon: &'a Canon,
-    snapshot: &'a State,
+    state: &'a State,
     presence: &'a Presence,
     picked: &'a [Intent],
     queue: &'a [Intent],
     dice: &mut RoundDice,
     log: &mut RoundLog,
 ) -> Result<Vec<Candidate<'a>>, Reason> {
-    let mut rolls = Resolver {
+    let mut resolver = Resolver {
         canon,
-        snapshot,
+        state,
         presence,
         queue,
         rolled: BTreeMap::new(),
@@ -68,25 +68,25 @@ pub(crate) fn run<'a>(
     };
     let mut candidates = Vec::with_capacity(picked.len());
     for intent in picked {
-        let resolution = gate_and_roll(&mut rolls, intent)?;
+        let resolution = gate_intent(&mut resolver, intent)?;
         candidates.push(Candidate { intent, resolution });
     }
     Ok(candidates)
 }
 
-fn gate_and_roll<'a>(
-    rolls: &mut Resolver<'a, '_>,
+fn gate_intent<'a>(
+    resolver: &mut Resolver<'a, '_>,
     intent: &'a Intent,
 ) -> Result<Resolution<'a>, Reason> {
-    let case = Case::new(rolls.canon, rolls.snapshot, rolls.presence, intent);
-    let rule = match gate::gate(&case) {
+    let context = Context::new(resolver.canon, resolver.state, resolver.presence, intent);
+    let rule = match gate::gate(&context) {
         Ok(rule) => rule,
         Err(refusal) => return Ok(Resolution::Refused(refusal)),
     };
     match &rule.roll {
-        Some(roll) if crate::rules::travel::span(&case, rule) == 0 => {
-            rolls.log.extra_steps.push(Step::CheckRolled);
-            roll_intent_check(rolls, intent, rule, roll)
+        Some(roll) if crate::rules::travel::span(&context, rule) == 0 => {
+            resolver.log.extra_steps.push(Step::CheckRolled);
+            roll_check(resolver, intent, rule, roll)
         }
         _ => Ok(Resolution::Ready { rule, rolled: None }),
     }
@@ -94,26 +94,26 @@ fn gate_and_roll<'a>(
 
 /// Roll the intent's check, against the opposing total when another player's move opposes it.
 /// An intent already rolled as another's opposition keeps its faces and takes its own target.
-fn roll_intent_check<'a>(
-    rolls: &mut Resolver,
+fn roll_check<'a>(
+    resolver: &mut Resolver,
     intent: &Intent,
     rule: &'a Rule,
     roll: &RollSpec,
 ) -> Result<Resolution<'a>, Reason> {
     let actor_id = intent.actor.actor_id();
-    let opposed = match roll_opposing_total(rolls, intent) {
+    let opposed = match opposing_total(resolver, intent) {
         Ok(total) => total,
         Err(code) => return Ok(Resolution::CannotRoll(code)),
     };
-    let (canon, snapshot) = (rolls.canon, rolls.snapshot);
+    let (canon, state) = (resolver.canon, resolver.state);
     let (target, partial_at) = match opposed {
         Some(total) => (total, None),
-        None => rolls
+        None => resolver
             .dice
-            .roller(rolls.log, &rule.id, actor_id)
-            .eval_thresholds(&Case::new(canon, snapshot, rolls.presence, intent), roll)?,
+            .roller(resolver.log, &rule.id, actor_id)
+            .eval_thresholds(&Context::new(canon, state, resolver.presence, intent), roll)?,
     };
-    if let Some(out) = rolls.rolled.get(&intent.id) {
+    if let Some(out) = resolver.rolled.get(&intent.id) {
         let outcome = classify(out.total, target, partial_at);
         let rolled = Roll {
             target,
@@ -125,13 +125,13 @@ fn roll_intent_check<'a>(
             rolled: Some(rolled),
         });
     }
-    let key = rolls.dice.next_key(&rule.id, actor_id);
-    match rolls
+    let key = resolver.dice.next_key(&rule.id, actor_id);
+    match resolver
         .dice
-        .roll_check(canon, snapshot, key, &roll.check, target, partial_at)
+        .roll_check(canon, state, key, &roll.check, target, partial_at)
     {
         Ok(out) => {
-            rolls.rolled.insert(intent.id.clone(), out.clone());
+            resolver.rolled.insert(intent.id.clone(), out.clone());
             Ok(Resolution::Ready {
                 rule,
                 rolled: Some(out),
@@ -141,12 +141,16 @@ fn roll_intent_check<'a>(
     }
 }
 
-fn roll_opposing_total(rolls: &mut Resolver, intent: &Intent) -> Result<Option<i64>, Reason> {
+fn opposing_total(resolver: &mut Resolver, intent: &Intent) -> Result<Option<i64>, Reason> {
     let Target::Actor(named) = &intent.target else {
         return Ok(None);
     };
-    let (canon, snapshot, presence, queue) =
-        (rolls.canon, rolls.snapshot, rolls.presence, rolls.queue);
+    let (canon, state, presence, queue) = (
+        resolver.canon,
+        resolver.state,
+        resolver.presence,
+        resolver.queue,
+    );
     let Some((opposing, rule_id, check_id)) = queue.iter().find_map(|other| {
         if other.id == intent.id
             || other.actor.actor_id() != named
@@ -154,19 +158,19 @@ fn roll_opposing_total(rolls: &mut Resolver, intent: &Intent) -> Result<Option<i
         {
             return None;
         }
-        let rule = gate::gate(&Case::new(canon, snapshot, presence, other)).ok()?;
+        let rule = gate::gate(&Context::new(canon, state, presence, other)).ok()?;
         Some((other, &rule.id, &rule.roll.as_ref()?.check))
     }) else {
         return Ok(None);
     };
-    if let Some(out) = rolls.rolled.get(&opposing.id) {
+    if let Some(out) = resolver.rolled.get(&opposing.id) {
         return Ok(Some(out.total));
     }
-    let key = rolls.dice.next_key(rule_id, opposing.actor.actor_id());
-    let out = rolls
+    let key = resolver.dice.next_key(rule_id, opposing.actor.actor_id());
+    let out = resolver
         .dice
-        .roll_check(canon, snapshot, key, check_id, 0, None)?;
+        .roll_check(canon, state, key, check_id, 0, None)?;
     let total = out.total;
-    rolls.rolled.insert(opposing.id.clone(), out);
+    resolver.rolled.insert(opposing.id.clone(), out);
     Ok(Some(total))
 }

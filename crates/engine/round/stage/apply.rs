@@ -4,7 +4,7 @@ use crate::canon::Canon;
 use crate::draft::Draft;
 use crate::intent::{Intent, Viewer};
 use crate::model::State;
-use crate::rules::case::Case;
+use crate::rules::context::Context;
 use crate::rules::cost;
 use crate::rules::expand::{self, Cause, Expansion};
 use crate::rules::gate;
@@ -30,7 +30,7 @@ pub(crate) enum Landing {
 pub(crate) fn run(
     draft: &mut Draft,
     canon: &Canon,
-    snapshot: &State,
+    state: &State,
     candidates: Vec<Candidate>,
     clock: &RoundTime,
     dice: &mut RoundDice,
@@ -57,19 +57,19 @@ pub(crate) fn run(
             }
         };
         let actor_id = intent.actor.actor_id();
-        let case = Case::new(canon, draft.state(), draft.presence, intent);
-        if let Err(refusal) = gate::admit(&case, rule) {
+        let context = Context::new(canon, draft.state(), draft.presence, intent);
+        if let Err(refusal) = gate::admit(&context, rule) {
             refuse(log, intent, refusal, false);
             continue;
         }
-        // A timed move expands when it finishes; an instant one against the snapshot it rolled on.
-        let minutes = travel::span(&case, rule);
+        // A timed move expands when it finishes; an instant one against the state it rolled on.
+        let minutes = travel::span(&context, rule);
         let expansion = if minutes > 0 {
             None
         } else {
-            let case = Case::new(canon, snapshot, draft.presence, intent);
+            let context = Context::new(canon, state, draft.presence, intent);
             let roller = dice.roller(log, &rule.id, actor_id);
-            match expand::expand(&case, rule, Cause::Move, rolled, roller) {
+            match expand::expand(&context, rule, Cause::Move, rolled, roller) {
                 Ok(expansion) => Some(expansion),
                 Err(code) => {
                     refuse(log, intent, gate::Refusal::new(intent, code), false);

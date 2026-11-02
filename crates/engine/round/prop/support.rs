@@ -119,10 +119,13 @@ fn add_grit_success(pack: &Path) -> Result<(), String> {
     let rev = pack_rev(pack).map_err(|err| err.to_string())?;
     let save_path = pack.join("state/save.yaml");
     let save_text = fs::read_to_string(&save_path).map_err(|err| err.to_string())?;
-    let mut now = parse_save(&save_text).map_err(|err| format!("{err:?}"))?;
-    now.pack_rev = rev;
-    fs::write(&save_path, emit_save(&now).map_err(|err| err.to_string())?)
-        .map_err(|err| err.to_string())
+    let mut state = parse_save(&save_text).map_err(|err| format!("{err:?}"))?;
+    state.pack_rev = rev;
+    fs::write(
+        &save_path,
+        emit_save(&state).map_err(|err| err.to_string())?,
+    )
+    .map_err(|err| err.to_string())
 }
 
 fn queue_move(world: &mut World, plan: &MovePlan) {

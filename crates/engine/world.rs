@@ -10,7 +10,7 @@ use crate::canon::{check_save, load_canon, pack_rev, Canon};
 use crate::diagnostic::{error, first_reason, locate_nth, schema_error, Code, Diagnostic};
 use crate::intent::{Intent, IntentArgs, Source, Target};
 use crate::model::{ActorLive, Presence, State};
-use crate::rules::case::Case;
+use crate::rules::context::Context;
 use crate::rules::effect::{payload_json, Effect};
 use crate::rules::gate;
 use crate::rules::rule::{Rule, TargetKind, When};
@@ -46,7 +46,7 @@ impl World {
         let World {
             root,
             canon,
-            state: now,
+            state,
             queue,
             warning,
             lock: (),
@@ -54,7 +54,7 @@ impl World {
         Ok(World {
             root,
             canon,
-            state: now,
+            state,
             queue,
             warning,
             lock,
@@ -186,8 +186,8 @@ impl<L> World<L> {
     }
 
     /// Replace the in-memory state after a replay. This does not write `save.yaml`.
-    pub(crate) fn set_state(&mut self, now: State) {
-        self.state = now;
+    pub(crate) fn set_state(&mut self, state: State) {
+        self.state = state;
     }
 
     /// Gate a player's line with `presence` seated, then queue it. The line is an intent
@@ -210,7 +210,7 @@ impl<L> World<L> {
         };
         let shaped = self.shape_line(&intent, token);
         intent.target = shaped.map_err(|code| gate::Refusal::new(&intent, code))?;
-        gate::gate(&Case::new(&self.canon, &self.state, presence, &intent))?;
+        gate::gate(&Context::new(&self.canon, &self.state, presence, &intent))?;
         let queued = QueuedMove {
             id: intent.id.clone(),
             actor_id: actor_id.to_string(),
@@ -250,8 +250,8 @@ impl<L> World<L> {
             .ok_or(Reason::Schema)?;
         let viewer = self.state.viewer_of(&actor_id).ok_or(Reason::UnknownId)?;
         let token = spec.target.as_deref().filter(|t| !t.is_empty());
-        let (canon, now) = (&self.canon, &self.state);
-        let rule = gate::pick(canon, now, &viewer, Source::Player, &move_name, token)?;
+        let (canon, state) = (&self.canon, &self.state);
+        let rule = gate::pick(canon, state, &viewer, Source::Player, &move_name, token)?;
         let target = target_for(rule, token)?;
         let id = match spec.id {
             Some(id) if !id.is_empty() => id,
@@ -432,12 +432,12 @@ impl World<()> {
         let canon = Arc::new(load_canon(root).map_err(|diags| first_reason(&diags))?);
         let now_bytes = fs::read(root.join("state/save.yaml")).map_err(|_| Reason::NotInSpec)?;
         let now_text = std::str::from_utf8(&now_bytes).map_err(|_| Reason::Schema)?;
-        let now = parse_save(now_text).map_err(|diags| first_reason(&diags))?;
-        let mut problems = save_problems(&now, &now_bytes);
-        if let Some(diag) = pack_rev_problem(root, &now, &now_bytes) {
+        let state = parse_save(now_text).map_err(|diags| first_reason(&diags))?;
+        let mut problems = save_problems(&state, &now_bytes);
+        if let Some(diag) = pack_rev_problem(root, &state, &now_bytes) {
             problems.insert(0, diag);
         }
-        let continues = journal_continues(root, &now);
+        let continues = journal_continues(root, &state);
         if continues {
             problems.retain(|diag| diag.code != Code::Error(Reason::HandEdit));
         }
@@ -445,12 +445,12 @@ impl World<()> {
             return Err(first_reason(&problems));
         }
         if !continues {
-            check_save(&canon, &now).map_err(|diags| first_reason(&diags))?;
+            check_save(&canon, &state).map_err(|diags| first_reason(&diags))?;
         }
         Ok(Self {
             root: root.to_path_buf(),
             canon,
-            state: now,
+            state,
             queue: Vec::new(),
             warning: None,
             lock: (),
@@ -473,7 +473,7 @@ impl World<()> {
 
 /// Seated players who hear this say. The speaker is included.
 fn speech_recipients(
-    now: &State,
+    state: &State,
     presence: &Presence,
     speaker: Option<&str>,
     heard: Address<'_>,
@@ -485,7 +485,7 @@ fn speech_recipients(
             ids.extend(seated.iter().cloned());
         }
         Address::Place(place) => {
-            let here = now.actors_at(place);
+            let here = state.actors_at(place);
             ids.extend(seated.iter().filter(|id| here.contains(id)).cloned());
         }
         Address::Actor(actor) => {
@@ -523,24 +523,24 @@ fn check_say_text(text: &str) -> Result<&str, Reason> {
 }
 
 /// Hash of the newest migrate past the checkpoint, or the save's own hash.
-fn tip_pack_rev(root: &Path, now: &State) -> String {
+fn tip_pack_rev(root: &Path, state: &State) -> String {
     let Ok(entries) = journal::read_live_records(root) else {
-        return now.pack_rev.clone();
+        return state.pack_rev.clone();
     };
     for entry in entries.iter().rev() {
-        if entry.state_rev_after() <= now.state_rev {
+        if entry.state_rev_after() <= state.state_rev {
             continue;
         }
         if let Record::Migrate(record) = entry {
             return record.pack_rev_after.clone();
         }
     }
-    now.pack_rev.clone()
+    state.pack_rev.clone()
 }
 
 /// `Some` when the canon files are not the journal tip's hash.
-fn pack_rev_problem(root: &Path, now: &State, bytes: &[u8]) -> Option<Diagnostic> {
-    let tip = tip_pack_rev(root, now);
+fn pack_rev_problem(root: &Path, state: &State, bytes: &[u8]) -> Option<Diagnostic> {
+    let tip = tip_pack_rev(root, state);
     match pack_rev(root) {
         Ok(rev) if tip != rev => {
             let mut diag = error(
@@ -571,24 +571,24 @@ fn pack_rev_problem(root: &Path, now: &State, bytes: &[u8]) -> Option<Diagnostic
 }
 
 /// The on-disk save is a checkpoint. Later journal records still have to be replayed.
-fn journal_continues(root: &Path, now: &State) -> bool {
+fn journal_continues(root: &Path, state: &State) -> bool {
     let Ok(entries) = journal::read_live_records(root) else {
         return false;
     };
     entries.iter().any(|entry| match entry {
         Record::Checkpoint(_) => false,
-        _ => entry.state_rev_after() > now.state_rev,
+        _ => entry.state_rev_after() > state.state_rev,
     })
 }
 
 /// A migrate record past the checkpoint has already accepted the save's edit.
-fn migrate_continues(root: &Path, now: &State) -> bool {
+fn migrate_continues(root: &Path, state: &State) -> bool {
     let Ok(entries) = journal::read_live_records(root) else {
         return false;
     };
-    entries
-        .iter()
-        .any(|entry| matches!(entry, Record::Migrate(_)) && entry.state_rev_after() > now.state_rev)
+    entries.iter().any(|entry| {
+        matches!(entry, Record::Migrate(_)) && entry.state_rev_after() > state.state_rev
+    })
 }
 
 /// Read the pack and report every loader and lint problem. Writes nothing.
@@ -606,7 +606,7 @@ pub fn check_pack(root: &Path) -> Vec<Diagnostic> {
         match fs::read(&now_path) {
             Ok(bytes) => match std::str::from_utf8(&bytes) {
                 Ok(text) => match parse_save(text) {
-                    Ok(now) => Some((bytes, now)),
+                    Ok(state) => Some((bytes, state)),
                     Err(more) => {
                         diags.extend(more);
                         None
@@ -640,19 +640,19 @@ pub fn check_pack(root: &Path) -> Vec<Diagnostic> {
     } else {
         None
     };
-    if let Some((bytes, now)) = &loaded {
-        let mut problems = save_problems(now, bytes);
-        let migrating = migrate_continues(root, now);
+    if let Some((bytes, state)) = &loaded {
+        let mut problems = save_problems(state, bytes);
+        let migrating = migrate_continues(root, state);
         if migrating {
             problems.retain(|diag| diag.code != Code::Error(Reason::HandEdit));
         }
-        if let Some(diag) = pack_rev_problem(root, now, bytes) {
+        if let Some(diag) = pack_rev_problem(root, state, bytes) {
             problems.insert(0, diag);
         }
         diags.extend(problems);
         // A checkpoint save is not the tip. Resume checks the tip when it opens.
-        if let Some(canon) = canon.as_ref().filter(|_| !journal_continues(root, now)) {
-            if let Err(more) = check_save(canon, now) {
+        if let Some(canon) = canon.as_ref().filter(|_| !journal_continues(root, state)) {
+            if let Err(more) = check_save(canon, state) {
                 diags.extend(more);
             }
         }
@@ -660,15 +660,15 @@ pub fn check_pack(root: &Path) -> Vec<Diagnostic> {
     if let Some(canon) = &canon {
         diags.extend(crate::canon::check_canon(
             canon,
-            loaded.as_ref().map(|(_, now)| now),
+            loaded.as_ref().map(|(_, state)| state),
         ));
     }
     diags
 }
 
-fn save_problems(now: &State, bytes: &[u8]) -> Vec<Diagnostic> {
+fn save_problems(state: &State, bytes: &[u8]) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
-    if now.actors.contains_key(crate::rules::effect::WORLD) {
+    if state.actors.contains_key(crate::rules::effect::WORLD) {
         diags.push(
             schema_error(
                 "state/save.yaml",
@@ -678,7 +678,7 @@ fn save_problems(now: &State, bytes: &[u8]) -> Vec<Diagnostic> {
             .at_path("actors.world"),
         );
     }
-    match emit_save(now) {
+    match emit_save(state) {
         Ok(emitted) if emitted.as_bytes() != bytes => {
             let line = std::str::from_utf8(bytes)
                 .ok()

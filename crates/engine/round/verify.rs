@@ -151,15 +151,15 @@ fn check_bundle_end(
 fn check_save_file(pack: &Path, records: &[Record], genesis: &[u8]) -> Result<(), Error> {
     let live =
         fs::read(pack.join("state/save.yaml")).map_err(|_| Error::Reason(Reason::NotInSpec))?;
-    let now = load_save_bytes(&live)?;
+    let state = load_save_bytes(&live)?;
     if records.is_empty() {
-        let canonical = emit_save(&now)
+        let canonical = emit_save(&state)
             .map(|text| text.into_bytes())
             .map_err(Error::Reason)?;
         if live != canonical {
             let diverged = Divergence::new(
                 DivergenceKind::Save,
-                now.state_rev,
+                state.state_rev,
                 None,
                 Reason::HandEdit.as_str(),
             );
@@ -183,7 +183,7 @@ fn check_save_file(pack: &Path, records: &[Record], genesis: &[u8]) -> Result<()
     } else if live != genesis {
         let diverged = Divergence::new(
             DivergenceKind::Save,
-            now.state_rev,
+            state.state_rev,
             None,
             "state hash differed",
         );

@@ -120,19 +120,19 @@ pub mod testing {
         pack
     }
 
-    pub fn set_actor_place(now: &mut crate::model::State, actor: &str, place: &str) {
-        let from = now.actors.get(actor).unwrap().place().to_string();
+    pub fn set_actor_place(state: &mut crate::model::State, actor: &str, place: &str) {
+        let from = state.actors.get(actor).unwrap().place().to_string();
         if from == place {
             return;
         }
-        if let Some(live) = now.places.get_mut(&from) {
+        if let Some(live) = state.places.get_mut(&from) {
             live.actors.retain(|id| id != actor);
         }
-        let actors = &mut now.places.get_mut(place).unwrap().actors;
+        let actors = &mut state.places.get_mut(place).unwrap().actors;
         actors.push(actor.to_string());
         actors.sort();
         actors.dedup();
-        *now.actors.get_mut(actor).unwrap().place_mut() = place.to_string();
+        *state.actors.get_mut(actor).unwrap().place_mut() = place.to_string();
     }
 
     /// Lock the pack and open its save, for a test that plays rounds on it.
@@ -152,9 +152,9 @@ pub mod testing {
             .unwrap_or_else(|err| panic!("load {}: {err:?}", pack.display()))
     }
 
-    pub fn write_save(pack: &Path, now: &crate::model::State) {
+    pub fn write_save(pack: &Path, state: &crate::model::State) {
         let path = pack.join("state/save.yaml");
-        let bytes = crate::store::emit_save(now)
+        let bytes = crate::store::emit_save(state)
             .unwrap_or_else(|err| panic!("emit {}: {err}", path.display()));
         fs::write(&path, bytes).unwrap_or_else(|err| panic!("write {}: {err}", path.display()));
     }
@@ -163,12 +163,12 @@ pub mod testing {
         let path = pack.join("state/save.yaml");
         let text = fs::read_to_string(&path)
             .unwrap_or_else(|err| panic!("read {}: {err}", path.display()));
-        let mut now = crate::store::parse_save(&text)
+        let mut state = crate::store::parse_save(&text)
             .unwrap_or_else(|err| panic!("load {}: {err:?}", path.display()));
-        edit(&mut now);
-        now.pack_rev = crate::canon::pack_rev(pack)
+        edit(&mut state);
+        state.pack_rev = crate::canon::pack_rev(pack)
             .unwrap_or_else(|err| panic!("rev {}: {err}", pack.display()));
-        write_save(pack, &now);
+        write_save(pack, &state);
     }
 
     pub fn stamp_pack_rev(pack: &Path) {
@@ -190,8 +190,8 @@ pub mod testing {
         let from = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("fixtures/cast/pc-nell.md");
         fs::copy(&from, pack.join("cast/pc-nell.md"))
             .unwrap_or_else(|err| panic!("copy {}: {err}", from.display()));
-        edit_save(pack, |now| {
-            now.actors.insert(
+        edit_save(pack, |state| {
+            state.actors.insert(
                 "pc_nell".to_string(),
                 crate::model::ActorLive::Pc {
                     place: "docks_shop".to_string(),

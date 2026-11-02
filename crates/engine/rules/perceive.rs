@@ -13,7 +13,8 @@ use crate::Reason;
 pub use spookery_protocol::{ClockView, ItemStack, KnownFact, MeterView};
 use spookery_protocol::{ExitView, PERCEIVE_BODY_CHARS};
 
-/// Returned from the engine to the host table, which renders it as a player or GM view.
+/// What one viewer is shown. Returned from the engine to the host table, which renders it as
+/// a player or GM view.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct View {
     pub viewer: Viewer,
@@ -34,7 +35,7 @@ pub struct View {
     pub status: String,
 }
 
-pub fn perceive_budget<L>(
+pub(crate) fn perceive_budget<L>(
     world: &World<L>,
     presence: &Presence,
     as_arg: &str,
@@ -47,30 +48,39 @@ pub fn perceive_budget<L>(
     {
         return Err(Reason::UnscopedPerceive);
     }
-    let (canon, now) = (world.canon(), world.state());
-    let actor = now.actors.get(as_arg).ok_or(Reason::UnknownId)?;
-    perceive_viewer_budget(canon, now, presence, &actor.viewer(as_arg), max_body_chars)
+    let (canon, state) = (world.canon(), world.state());
+    let actor = state.actors.get(as_arg).ok_or(Reason::UnknownId)?;
+    perceive_viewer_budget(
+        canon,
+        state,
+        presence,
+        &actor.viewer(as_arg),
+        max_body_chars,
+    )
 }
 
 pub(crate) fn perceive_as(
     canon: &Canon,
-    now: &State,
+    state: &State,
     presence: &Presence,
     viewer: &Viewer,
 ) -> Result<View, Reason> {
-    perceive_viewer_budget(canon, now, presence, viewer, PERCEIVE_BODY_CHARS)
+    perceive_viewer_budget(canon, state, presence, viewer, PERCEIVE_BODY_CHARS)
 }
 
 fn perceive_viewer_budget(
     canon: &Canon,
-    now: &State,
+    state: &State,
     presence: &Presence,
     viewer: &Viewer,
     max_body_chars: usize,
 ) -> Result<View, Reason> {
-    let actor = now.actors.get(viewer.actor_id()).ok_or(Reason::UnknownId)?;
+    let actor = state
+        .actors
+        .get(viewer.actor_id())
+        .ok_or(Reason::UnknownId)?;
     let place = actor.place().to_string();
-    let mut visible_actors: Vec<String> = now
+    let mut visible_actors: Vec<String> = state
         .actors
         .iter()
         .filter(|(_, other)| other.place() == place)
@@ -88,7 +98,7 @@ fn perceive_viewer_budget(
     let mut known_facts = Vec::new();
     let mut public_flags = Vec::new();
     for id in ids {
-        if !can_see_fact(canon, now, viewer, &id) {
+        if !can_see_fact(canon, state, viewer, &id) {
             continue;
         }
         let text = canon
@@ -116,7 +126,7 @@ fn perceive_viewer_budget(
     unknown_mentions.sort();
 
     let mut notes = Vec::new();
-    for note in &now.notes {
+    for note in &state.notes {
         let here = note.place.as_deref() == Some(place.as_str());
         let addressed = note.to.iter().any(|id| id == viewer.actor_id());
         if !here && !addressed {
@@ -125,7 +135,7 @@ fn perceive_viewer_budget(
         if note
             .fact_ids
             .iter()
-            .any(|fact| !can_see_fact(canon, now, viewer, fact))
+            .any(|fact| !can_see_fact(canon, state, viewer, fact))
         {
             continue;
         }
@@ -136,7 +146,7 @@ fn perceive_viewer_budget(
     }
     notes.sort_by(|a, b| a.id.cmp(&b.id));
 
-    let mut clocks: Vec<ClockView> = now
+    let mut clocks: Vec<ClockView> = state
         .clocks
         .iter()
         .filter(|(_, clock)| clock.owners.iter().any(|id| id == viewer.actor_id()))
@@ -149,7 +159,7 @@ fn perceive_viewer_budget(
         .collect();
     clocks.sort_by(|a, b| a.id.cmp(&b.id));
 
-    let items = now
+    let items = state
         .places
         .get(&place)
         .map(|place_live| {
@@ -180,16 +190,16 @@ fn perceive_viewer_budget(
 
     let habits = match viewer {
         Viewer::Player(_) => Vec::new(),
-        Viewer::Npc(id) => list_whose_if_holds(canon, now, presence, id),
+        Viewer::Npc(id) => list_whose_if_holds(canon, state, presence, id),
     };
-    let exits = crate::rules::travel::visible_exits(canon, now, presence, viewer.actor_id());
+    let exits = crate::rules::travel::visible_exits(canon, state, presence, viewer.actor_id());
     let actor_names = visible_actors
         .iter()
         .map(|id| canon.display_name(id))
         .collect();
     let place_name = crate::rules::lines::place_name(canon, &place);
-    let prose = crate::rules::lines::place_prose(canon, now, viewer.actor_id());
-    let status = crate::rules::lines::busy_line(now, viewer.actor_id()).unwrap_or_default();
+    let prose = crate::rules::lines::place_prose(canon, state, viewer.actor_id());
+    let status = crate::rules::lines::busy_line(state, viewer.actor_id()).unwrap_or_default();
 
     Ok(View {
         viewer: viewer.clone(),

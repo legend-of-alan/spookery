@@ -40,17 +40,17 @@ pub fn parse_save(text: &str) -> Result<State, Vec<Diagnostic>> {
             return Err(vec![rules_rev_diagnostic(text)]);
         }
     }
-    let now: State = parse_file(FILE, text, 0)?;
-    let diags = occupancy_problems(&now);
+    let state: State = parse_file(FILE, text, 0)?;
+    let diags = occupancy_problems(&state);
     if diags.is_empty() {
-        Ok(now)
+        Ok(state)
     } else {
         Err(diags)
     }
 }
 
-pub fn emit_save(now: &State) -> Result<String, Reason> {
-    let mut canonical = now.clone();
+pub fn emit_save(state: &State) -> Result<String, Reason> {
+    let mut canonical = state.clone();
     canonical.schema = crate::diagnostic::SAVE_SCHEMA.to_string();
     canonical.rules_rev = super::RULES_REV;
     normalize(&mut canonical);
@@ -81,34 +81,34 @@ fn one_trailing_lf(mut text: String) -> String {
     text
 }
 
-pub fn normalize(now: &mut State) {
-    now.notes.sort_by(|a, b| a.id.cmp(&b.id));
-    for note in &mut now.notes {
+pub fn normalize(state: &mut State) {
+    state.notes.sort_by(|a, b| a.id.cmp(&b.id));
+    for note in &mut state.notes {
         sort_unique(&mut note.to);
         sort_unique(&mut note.fact_ids);
     }
-    let occupancy = rebuilt_occupancy(now);
-    for (place_id, place) in &mut now.places {
+    let occupancy = rebuilt_occupancy(state);
+    for (place_id, place) in &mut state.places {
         sort_unique(&mut place.notes);
         place.actors = occupancy.get(place_id).cloned().unwrap_or_default();
     }
-    for actor in now.actors.values_mut() {
+    for actor in state.actors.values_mut() {
         sort_unique(actor.flags_mut());
         sort_unique(actor.known_facts_mut());
     }
-    sort_unique(&mut now.flags);
-    for clock in now.clocks.values_mut() {
+    sort_unique(&mut state.flags);
+    for clock in state.clocks.values_mut() {
         sort_unique(&mut clock.owners);
     }
 }
 
-fn rebuilt_occupancy(now: &State) -> std::collections::BTreeMap<String, Vec<String>> {
-    let mut out: std::collections::BTreeMap<String, Vec<String>> = now
+fn rebuilt_occupancy(state: &State) -> std::collections::BTreeMap<String, Vec<String>> {
+    let mut out: std::collections::BTreeMap<String, Vec<String>> = state
         .places
         .keys()
         .map(|id| (id.clone(), Vec::new()))
         .collect();
-    for (actor_id, actor) in &now.actors {
+    for (actor_id, actor) in &state.actors {
         if let Some(list) = out.get_mut(actor.place()) {
             list.push(actor_id.clone());
         }
@@ -119,11 +119,11 @@ fn rebuilt_occupancy(now: &State) -> std::collections::BTreeMap<String, Vec<Stri
     out
 }
 
-fn occupancy_problems(now: &State) -> Vec<Diagnostic> {
+fn occupancy_problems(state: &State) -> Vec<Diagnostic> {
     const FILE: &str = "state/save.yaml";
     let mut diags = Vec::new();
-    for (id, actor) in &now.actors {
-        if now.places.contains_key(actor.place()) {
+    for (id, actor) in &state.actors {
+        if state.places.contains_key(actor.place()) {
             continue;
         }
         diags.push(
@@ -138,8 +138,8 @@ fn occupancy_problems(now: &State) -> Vec<Diagnostic> {
             .at_path(format!("actors.{id}.place")),
         );
     }
-    let expected = rebuilt_occupancy(now);
-    for (place_id, place) in &now.places {
+    let expected = rebuilt_occupancy(state);
+    for (place_id, place) in &state.places {
         let mut listed = place.actors.clone();
         listed.sort();
         let got = expected.get(place_id).map(Vec::as_slice).unwrap_or(&[]);
@@ -184,10 +184,10 @@ mod tests {
         let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("../../packs/oneshot-docks/state/save.yaml");
         let original = fs::read_to_string(&path).unwrap();
-        let now = parse_save(&original).unwrap();
-        let emitted = emit_save(&now).unwrap();
+        let state = parse_save(&original).unwrap();
+        let emitted = emit_save(&state).unwrap();
         assert_eq!(emitted, original);
-        assert_eq!(parse_save(&emitted).unwrap(), now);
+        assert_eq!(parse_save(&emitted).unwrap(), state);
     }
 
     fn save_text(tag: &str) -> String {
@@ -229,9 +229,9 @@ notes: []
 
     #[test]
     fn emit_save_writes_the_save_tag() {
-        let mut now = parse_save(&save_text("save")).unwrap();
-        now.schema = concat!("save/", "v0").to_string();
-        let emitted = emit_save(&now).unwrap();
+        let mut state = parse_save(&save_text("save")).unwrap();
+        state.schema = concat!("save/", "v0").to_string();
+        let emitted = emit_save(&state).unwrap();
         assert!(emitted.starts_with("schema: save\n"), "{emitted}");
         assert_eq!(parse_save(&emitted).unwrap().schema, "save");
     }
@@ -265,7 +265,7 @@ notes: []
                     EffectKind::Clock {
                         clock_id: "shop_day".to_string(),
                         delta: 1,
-                        start: false,
+                        unpause: false,
                     },
                     npc("mira"),
                     "i1",

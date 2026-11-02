@@ -651,6 +651,7 @@ mod tests {
             ("base", offset, r#""write":"base","delta":-1"#),
             ("clear_offset", offset, r#""write":"clear_offset""#),
             ("system", r#""source":"player""#, r#""source":"system""#),
+            ("cc", r#""to":["pc_wren"]"#, r#""cc":["pc_wren"]"#),
         ] {
             let refused = parse_line("round.jsonl", &written.replacen(from, to, 1)).unwrap_err();
             assert_eq!(refused.reason, Reason::Schema);

@@ -2,7 +2,7 @@
 
 use crate::canon::Canon;
 use crate::model::State;
-use crate::rules::case::Case;
+use crate::rules::context::Context;
 use crate::rules::roll::Outcome;
 use crate::rules::rule::{LineColumn, Who};
 use crate::Reason;
@@ -16,7 +16,7 @@ pub(crate) trait Dice {
     fn resist(
         &mut self,
         canon: &Canon,
-        now: &State,
+        state: &State,
         actor_id: &str,
         check_id: &str,
         target: i64,
@@ -47,14 +47,18 @@ impl Dice for NoDice {
     }
 }
 
-pub(crate) fn eval(case: &Case, expr: &Expr) -> Result<i64, Reason> {
-    eval_with_dice(case, expr, &mut NoDice)
+pub(crate) fn eval(context: &Context, expr: &Expr) -> Result<i64, Reason> {
+    eval_with_dice(context, expr, &mut NoDice)
 }
 
 /// Evaluate `expr`, drawing dice from `dice` and noting a line when any fall.
-pub(crate) fn eval_with_dice(case: &Case, expr: &Expr, dice: &mut dyn Dice) -> Result<i64, Reason> {
+pub(crate) fn eval_with_dice(
+    context: &Context,
+    expr: &Expr,
+    dice: &mut dyn Dice,
+) -> Result<i64, Reason> {
     dice.begin();
-    let step = eval_node(case, expr, dice)?;
+    let step = eval_node(context, expr, dice)?;
     if !step.dice.is_empty() {
         dice.log(format!("{} = {}", step.dice.join("; "), step.text));
     }
@@ -67,7 +71,7 @@ struct EvalStep {
     dice: Vec<String>,
 }
 
-fn eval_node(case: &Case, expr: &Expr, dice: &mut dyn Dice) -> Result<EvalStep, Reason> {
+fn eval_node(context: &Context, expr: &Expr, dice: &mut dyn Dice) -> Result<EvalStep, Reason> {
     match expr {
         Expr::Num(n) => Ok(EvalStep {
             value: *n,
@@ -93,7 +97,7 @@ fn eval_node(case: &Case, expr: &Expr, dice: &mut dyn Dice) -> Result<EvalStep, 
             })
         }
         Expr::Meter { who, key, .. } => {
-            let value = read_meter(case, who, key)?;
+            let value = read_meter(context, who, key)?;
             Ok(EvalStep {
                 value,
                 text: value.to_string(),
@@ -101,7 +105,7 @@ fn eval_node(case: &Case, expr: &Expr, dice: &mut dyn Dice) -> Result<EvalStep, 
             })
         }
         Expr::Neg(inner) => {
-            let inner = eval_node(case, inner, dice)?;
+            let inner = eval_node(context, inner, dice)?;
             let value = inner.value.checked_neg().ok_or(Reason::OutOfRange)?;
             Ok(EvalStep {
                 value,
@@ -110,8 +114,8 @@ fn eval_node(case: &Case, expr: &Expr, dice: &mut dyn Dice) -> Result<EvalStep, 
             })
         }
         Expr::Binary { op, left, right } => {
-            let left = eval_node(case, left, dice)?;
-            let right = eval_node(case, right, dice)?;
+            let left = eval_node(context, left, dice)?;
+            let right = eval_node(context, right, dice)?;
             let value = op.eval(left.value, right.value)?;
             let mut rolled = left.dice;
             rolled.extend(right.dice);
@@ -122,8 +126,8 @@ fn eval_node(case: &Case, expr: &Expr, dice: &mut dyn Dice) -> Result<EvalStep, 
             })
         }
         Expr::Call { fun, left, right } => {
-            let left = eval_node(case, left, dice)?;
-            let right = eval_node(case, right, dice)?;
+            let left = eval_node(context, left, dice)?;
+            let right = eval_node(context, right, dice)?;
             let value = match fun {
                 Func::Min => left.value.min(right.value),
                 Func::Max => left.value.max(right.value),
@@ -181,15 +185,15 @@ fn negate_body(body: &str) -> String {
     }
 }
 
-fn read_meter(case: &Case, who: &Who, key: &str) -> Result<i64, Reason> {
-    let actor_id = resolve_who_id(case, who)?;
-    case.now.meter_value(case.canon, &actor_id, key)
+fn read_meter(context: &Context, who: &Who, key: &str) -> Result<i64, Reason> {
+    let actor_id = resolve_who_id(context, who)?;
+    context.state.meter_value(context.canon, &actor_id, key)
 }
 
 /// `id: target` is the intent's target token. Any other id is itself.
-pub(crate) fn resolve_item_id(case: &Case, id: &str) -> Result<String, Reason> {
+pub(crate) fn resolve_item_id(context: &Context, id: &str) -> Result<String, Reason> {
     if id == "target" {
-        return case
+        return context
             .intent
             .target
             .token()
@@ -199,19 +203,19 @@ pub(crate) fn resolve_item_id(case: &Case, id: &str) -> Result<String, Reason> {
     Ok(id.to_string())
 }
 
-pub(crate) fn resolve_who_id(case: &Case, who: &Who) -> Result<String, Reason> {
+pub(crate) fn resolve_who_id(context: &Context, who: &Who) -> Result<String, Reason> {
     match who {
-        Who::Self_ => Ok(case.intent.actor.actor_id().to_string()),
-        Who::Target => case
+        Who::Self_ => Ok(context.intent.actor.actor_id().to_string()),
+        Who::Target => context
             .intent
             .target
             .token()
             .map(str::to_string)
             .ok_or(Reason::Schema),
-        Who::Here => case
-            .now
+        Who::Here => context
+            .state
             .actors
-            .get(case.intent.actor.actor_id())
+            .get(context.intent.actor.actor_id())
             .map(|actor| actor.place().to_string())
             .ok_or(Reason::UnknownId),
         Who::Actor(id) => Ok(id.clone()),
@@ -627,7 +631,7 @@ mod tests {
     use crate::intent::{Intent, IntentArgs, Source, Target, Viewer};
     use crate::model::meter::{MeterDef, MeterLive};
     use crate::model::{Act, ActorLive, Presence, State};
-    use crate::rules::case::Case;
+    use crate::rules::context::Context;
     use crate::rules::rule::Who;
     use crate::Reason;
 
@@ -712,7 +716,7 @@ mod tests {
         }
     }
 
-    fn now() -> State {
+    fn state() -> State {
         let mut meters = BTreeMap::new();
         meters.insert("str_mod".to_string(), MeterLive { base: 3, offset: 0 });
         State {
@@ -750,28 +754,28 @@ mod tests {
     #[test]
     fn damage_dice_show_faces_and_the_modifier() {
         let expr = Expr::parse("2d6 + self.str_mod").unwrap();
-        let (canon, now, intent) = (canon(), now(), intent("ada", "ada"));
+        let (canon, state, intent) = (canon(), state(), intent("ada", "ada"));
         let mut dice = Script {
             faces: vec![4, 5],
             at: 0,
             notes: Vec::new(),
         };
-        let case = Case::new(&canon, &now, &EMPTY, &intent);
-        assert_eq!(eval_with_dice(&case, &expr, &mut dice), Ok(12));
+        let context = Context::new(&canon, &state, &EMPTY, &intent);
+        assert_eq!(eval_with_dice(&context, &expr, &mut dice), Ok(12));
         assert_eq!(dice.notes, vec!["2d6 → 4, 5 = 9 + 3".to_string()]);
     }
 
     #[test]
     fn the_higher_face_is_kept() {
         let expr = Expr::parse("2d20kh1").unwrap();
-        let (canon, now, intent) = (canon(), now(), intent("ada", "ada"));
+        let (canon, state, intent) = (canon(), state(), intent("ada", "ada"));
         let mut dice = Script {
             faces: vec![7, 18],
             at: 0,
             notes: Vec::new(),
         };
-        let case = Case::new(&canon, &now, &EMPTY, &intent);
-        assert_eq!(eval_with_dice(&case, &expr, &mut dice), Ok(18));
+        let context = Context::new(&canon, &state, &EMPTY, &intent);
+        assert_eq!(eval_with_dice(&context, &expr, &mut dice), Ok(18));
         assert!(matches!(
             expr,
             Expr::Dice {
@@ -784,9 +788,9 @@ mod tests {
     #[test]
     fn overflow_is_an_error() {
         let expr = Expr::parse("9223372036854775807 + 1").unwrap();
-        let (canon, now, intent) = (canon(), now(), intent("ada", "ada"));
-        let case = Case::new(&canon, &now, &EMPTY, &intent);
-        let err = eval_with_dice(&case, &expr, &mut super::NoDice);
+        let (canon, state, intent) = (canon(), state(), intent("ada", "ada"));
+        let context = Context::new(&canon, &state, &EMPTY, &intent);
+        let err = eval_with_dice(&context, &expr, &mut super::NoDice);
         assert_eq!(err, Err(Reason::OutOfRange));
     }
 

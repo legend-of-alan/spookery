@@ -38,16 +38,17 @@ fn write_text(path: &Path, text: &str) {
     fs::write(path, text).unwrap_or_else(|err| panic!("write {}: {err}", path.display()));
 }
 
-fn lamp_oil(now: &State) -> u32 {
-    now.places
+fn lamp_oil(state: &State) -> u32 {
+    state
+        .places
         .get("docks_shop")
         .and_then(|place| place.items.get("lamp_oil"))
         .copied()
         .unwrap_or_else(|| panic!("lamp_oil missing"))
 }
 
-fn flags_of(now: &State, id: &str) -> Vec<String> {
-    match now.actors.get(id) {
+fn flags_of(state: &State, id: &str) -> Vec<String> {
+    match state.actors.get(id) {
         Some(ActorLive::Npc { flags, .. } | ActorLive::Pc { flags, .. }) => flags.clone(),
         None => panic!("{id} missing"),
     }
@@ -80,9 +81,9 @@ fn the_debt_clock_does_not_run_itself() {
     for round in 1..=12 {
         play_pack_once(&pack).unwrap_or_else(|err| panic!("round {round}: {err}"));
     }
-    let now = state_of(&pack);
-    assert_eq!(now.round_index, 12, "twelve empty-table rounds commit");
-    let clock = now
+    let state = state_of(&pack);
+    assert_eq!(state.round_index, 12, "twelve empty-table rounds commit");
+    let clock = state
         .clocks
         .get("assassination_debt")
         .unwrap_or_else(|| panic!("assassination_debt missing"));
@@ -115,12 +116,12 @@ fn rowan() -> Presence {
 fn evening_note() {
     let pack = support::copy_docks("evening");
     play_pack_once(&pack).unwrap_or_else(|err| panic!("round: {err}"));
-    let now = state_of(&pack);
-    assert_eq!(lamp_oil(&now), 4);
-    assert_eq!(now.actors.get("mira").unwrap().place(), "mira_rooms");
-    assert_eq!(now.notes.len(), 1);
-    assert_eq!(now.notes[0].id, "note_mira_door");
-    assert_eq!(now.notes[0].place.as_deref(), Some("docks_shop"));
+    let state = state_of(&pack);
+    assert_eq!(lamp_oil(&state), 4);
+    assert_eq!(state.actors.get("mira").unwrap().place(), "mira_rooms");
+    assert_eq!(state.notes.len(), 1);
+    assert_eq!(state.notes[0].id, "note_mira_door");
+    assert_eq!(state.notes[0].place.as_deref(), Some("docks_shop"));
     let _ = fs::remove_dir_all(&pack);
 }
 
@@ -128,22 +129,22 @@ fn morning_restock() {
     let pack = support::copy_docks("morning");
     {
         let opened = resume(&pack);
-        let mut now = opened.state().clone();
+        let mut state = opened.state().clone();
         drop(opened);
-        now.world_time = 600;
-        now.notes.push(door_note());
-        *now.actors.get_mut("pc_rowan").unwrap().place_mut() = "docks_street".to_string();
-        write_save(&pack, &now);
+        state.world_time = 600;
+        state.notes.push(door_note());
+        *state.actors.get_mut("pc_rowan").unwrap().place_mut() = "docks_street".to_string();
+        write_save(&pack, &state);
     }
     assert_eq!(
         state_of(&pack).actors.get("mira").unwrap().place(),
         "mira_rooms"
     );
     play_pack_once(&pack).unwrap_or_else(|err| panic!("round: {err}"));
-    let now = state_of(&pack);
-    assert_eq!(lamp_oil(&now), 8);
-    assert_eq!(now.actors.get("mira").unwrap().place(), "mira_rooms");
-    assert_eq!(now.notes.len(), 1);
+    let state = state_of(&pack);
+    assert_eq!(lamp_oil(&state), 8);
+    assert_eq!(state.actors.get("mira").unwrap().place(), "mira_rooms");
+    assert_eq!(state.notes.len(), 1);
     let _ = fs::remove_dir_all(&pack);
 }
 
@@ -151,17 +152,18 @@ fn capped_restock() -> u32 {
     let pack = support::copy_docks("capped");
     {
         let opened = resume(&pack);
-        let mut now = opened.state().clone();
+        let mut state = opened.state().clone();
         drop(opened);
-        now.world_time = 600;
-        now.notes.push(door_note());
-        *now.actors.get_mut("pc_rowan").unwrap().place_mut() = "docks_street".to_string();
-        now.places
+        state.world_time = 600;
+        state.notes.push(door_note());
+        *state.actors.get_mut("pc_rowan").unwrap().place_mut() = "docks_street".to_string();
+        state
+            .places
             .get_mut("docks_shop")
             .unwrap()
             .items
             .insert("lamp_oil".to_string(), 6);
-        write_save(&pack, &now);
+        write_save(&pack, &state);
     }
     play_pack_once(&pack).unwrap_or_else(|err| panic!("round: {err}"));
     let oil = lamp_oil(&state_of(&pack));
@@ -173,15 +175,15 @@ fn off_hours_hold() {
     let pack = support::copy_docks("off-hours");
     {
         let opened = resume(&pack);
-        let mut now = opened.state().clone();
+        let mut state = opened.state().clone();
         drop(opened);
-        now.notes.push(door_note());
-        write_save(&pack, &now);
+        state.notes.push(door_note());
+        write_save(&pack, &state);
     }
     play_pack_once(&pack).unwrap_or_else(|err| panic!("round: {err}"));
-    let now = state_of(&pack);
-    assert_eq!(lamp_oil(&now), 4);
-    assert_eq!(now.notes.len(), 1);
+    let state = state_of(&pack);
+    assert_eq!(lamp_oil(&state), 4);
+    assert_eq!(state.notes.len(), 1);
     let _ = fs::remove_dir_all(&pack);
 }
 
@@ -189,22 +191,22 @@ fn player_in_the_shop() {
     let pack = support::copy_docks("present");
     {
         let opened = resume(&pack);
-        let mut now = opened.state().clone();
+        let mut state = opened.state().clone();
         drop(opened);
-        now.world_time = 600;
-        now.notes.push(door_note());
-        *now.actors.get_mut("mira").unwrap().place_mut() = "docks_shop".to_string();
-        write_save(&pack, &now);
+        state.world_time = 600;
+        state.notes.push(door_note());
+        *state.actors.get_mut("mira").unwrap().place_mut() = "docks_shop".to_string();
+        write_save(&pack, &state);
     }
     let mut opened = resume(&pack);
     let wall = opened.state().last_round_at.clone();
     opened
         .play(&rowan(), &wall)
         .unwrap_or_else(|err| panic!("round: {err}"));
-    let now = state_of(&pack);
-    assert_eq!(lamp_oil(&now), 4);
-    assert_eq!(now.notes.len(), 1);
-    assert_eq!(now.actors.get("mira").unwrap().act().last_act_round, 0);
+    let state = state_of(&pack);
+    assert_eq!(lamp_oil(&state), 4);
+    assert_eq!(state.notes.len(), 1);
+    assert_eq!(state.actors.get("mira").unwrap().act().last_act_round, 0);
     let _ = fs::remove_dir_all(&pack);
 }
 
@@ -229,12 +231,12 @@ fn gm_restocks() {
     let pack = support::copy_docks("gm-restock");
     {
         let opened = resume(&pack);
-        let mut now = opened.state().clone();
+        let mut state = opened.state().clone();
         drop(opened);
-        now.world_time = 600;
-        now.notes.push(door_note());
-        *now.actors.get_mut("mira").unwrap().place_mut() = "docks_shop".to_string();
-        write_save(&pack, &now);
+        state.world_time = 600;
+        state.notes.push(door_note());
+        *state.actors.get_mut("mira").unwrap().place_mut() = "docks_shop".to_string();
+        write_save(&pack, &state);
     }
     let mut opened = resume(&pack);
     let wall = opened.state().last_round_at.clone();
@@ -249,10 +251,10 @@ fn claimed_note_sorts_first() {
     let pack = support::copy_docks("claimed");
     {
         let opened = resume(&pack);
-        let mut now = opened.state().clone();
+        let mut state = opened.state().clone();
         drop(opened);
-        *now.actors.get_mut("mira").unwrap().place_mut() = "docks_shop".to_string();
-        write_save(&pack, &now);
+        *state.actors.get_mut("mira").unwrap().place_mut() = "docks_shop".to_string();
+        write_save(&pack, &state);
     }
     let mut opened = resume(&pack);
     let wall = opened.state().last_round_at.clone();
@@ -360,7 +362,7 @@ Rowan.
             act: Act::default(),
         },
     );
-    let now = State {
+    let state = State {
         schema: "save".to_string(),
         world_id: "ex".to_string(),
         pack_rev: rev,
@@ -378,7 +380,7 @@ Rowan.
         notes: Vec::new(),
         flags: Vec::new(),
     };
-    write_text(&pack.join("state/save.yaml"), &emit_save(&now).unwrap());
+    write_text(&pack.join("state/save.yaml"), &emit_save(&state).unwrap());
     let place_before = fs::read(pack.join("world/places/gate.md")).unwrap();
     let cast_before = fs::read(pack.join("cast/pc_rowan.md")).unwrap();
     let mut opened = resume(&pack);
@@ -387,11 +389,11 @@ Rowan.
         .catch_up(&wall, hours)
         .unwrap_or_else(|err| panic!("catch-up: {err}"));
     let saved = spookery_engine::World::peek(&pack).unwrap_or_else(|err| panic!("peek: {err}"));
-    let now = saved.state();
-    assert_eq!(now.state_rev, rounds, "{hours} hours");
-    assert_eq!(now.round_index, rounds);
-    assert_eq!(now.world_time, rounds * 60);
-    assert_eq!(now.last_round_at, "2026-01-01T00:00:00Z");
+    let state = saved.state();
+    assert_eq!(state.state_rev, rounds, "{hours} hours");
+    assert_eq!(state.round_index, rounds);
+    assert_eq!(state.world_time, rounds * 60);
+    assert_eq!(state.last_round_at, "2026-01-01T00:00:00Z");
     assert_eq!(list_round_keys(&pack).len() as u64, rounds);
     assert_eq!(
         fs::read(pack.join("world/places/gate.md")).unwrap(),
@@ -408,19 +410,19 @@ fn a_busy_npc_skips() {
     let pack = support::copy_docks("busy");
     {
         let opened = resume(&pack);
-        let mut now = opened.state().clone();
+        let mut state = opened.state().clone();
         drop(opened);
-        now.world_time = 600;
-        now.notes.push(door_note());
-        now.actors.get_mut("mira").unwrap().act_mut().busy_until = Some(u64::MAX);
-        *now.actors.get_mut("pc_rowan").unwrap().place_mut() = "docks_street".to_string();
-        write_save(&pack, &now);
+        state.world_time = 600;
+        state.notes.push(door_note());
+        state.actors.get_mut("mira").unwrap().act_mut().busy_until = Some(u64::MAX);
+        *state.actors.get_mut("pc_rowan").unwrap().place_mut() = "docks_street".to_string();
+        write_save(&pack, &state);
     }
     play_pack_once(&pack).unwrap_or_else(|err| panic!("round: {err}"));
-    let now = state_of(&pack);
-    assert_eq!(lamp_oil(&now), 4);
-    assert_eq!(now.actors.get("mira").unwrap().act().last_act_round, 0);
-    assert_eq!(now.actors.get("bram").unwrap().act().last_act_round, 0);
+    let state = state_of(&pack);
+    assert_eq!(lamp_oil(&state), 4);
+    assert_eq!(state.actors.get("mira").unwrap().act().last_act_round, 0);
+    assert_eq!(state.actors.get("bram").unwrap().act().last_act_round, 0);
     let _ = fs::remove_dir_all(&pack);
 }
 
@@ -651,7 +653,7 @@ rules:
             actors: Vec::new(),
         },
     );
-    let now = State {
+    let state = State {
         schema: "save".to_string(),
         world_id: "crowd".to_string(),
         pack_rev: rev,
@@ -669,15 +671,15 @@ rules:
         notes: Vec::new(),
         flags: Vec::new(),
     };
-    write_text(&pack.join("state/save.yaml"), &emit_save(&now).unwrap());
+    write_text(&pack.join("state/save.yaml"), &emit_save(&state).unwrap());
     play_pack_once(&pack).unwrap_or_else(|err| panic!("round: {err}"));
-    let now = state_of(&pack);
-    assert_eq!(now.round_index, 1);
+    let state = state_of(&pack);
+    assert_eq!(state.round_index, 1);
     assert_eq!(
-        now.actors.values().filter(|actor| actor.is_npc()).count(),
+        state.actors.values().filter(|actor| actor.is_npc()).count(),
         50
     );
-    let acted = now
+    let acted = state
         .actors
         .values()
         .filter(|actor| actor.act().last_act_round == 1)
@@ -798,9 +800,9 @@ fn patch_mira_flags_and_place(pack: &Path, flags: &str) {
     assert_ne!(next, text, "mira round block was not patched");
     fs::write(&path, next).unwrap();
     let now_path = pack.join("state/save.yaml");
-    let mut now = spookery_engine::parse_save(&fs::read_to_string(&now_path).unwrap()).unwrap();
-    support::set_actor_place(&mut now, "mira", "docks_shop");
-    write_save(pack, &now);
+    let mut state = spookery_engine::parse_save(&fs::read_to_string(&now_path).unwrap()).unwrap();
+    support::set_actor_place(&mut state, "mira", "docks_shop");
+    write_save(pack, &state);
 }
 
 fn play_mark(pack: &Path) -> State {
@@ -824,10 +826,10 @@ fn effects_run_on_both_outcomes_and_lists_run_on_one() {
         fs::write(pack.join("rules/verbs.yaml"), moves).unwrap();
         patch_mira_flags_and_place(&pack, "    - marked\n");
         stamp_pack_rev(&pack);
-        let now = play_mark(&pack);
-        assert_eq!(now.world_time, 1085);
+        let state = play_mark(&pack);
+        assert_eq!(state.world_time, 1085);
         assert_eq!(
-            flags_of(&now, "mira"),
+            flags_of(&state, "mira"),
             vec!["marked".to_string()],
             "{label} success {success}"
         );
@@ -854,9 +856,9 @@ fn effects_run_on_both_outcomes_and_lists_run_on_one() {
         fs::write(pack.join("rules/verbs.yaml"), moves).unwrap();
         patch_mira_flags_and_place(&pack, "    - marked\n    - missed\n");
         stamp_pack_rev(&pack);
-        let now = play_mark(&pack);
-        assert_eq!(flags_of(&now, "mira"), vec![flag.to_string()], "{label}");
-        assert_eq!(now.world_time, 1085);
+        let state = play_mark(&pack);
+        assert_eq!(flags_of(&state, "mira"), vec![flag.to_string()], "{label}");
+        assert_eq!(state.world_time, 1085);
         let _ = fs::remove_dir_all(&pack);
     }
 }

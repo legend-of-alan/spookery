@@ -1,7 +1,7 @@
 //! Conditions, costs, gates, travel, rolls, effects, visibility, the player's text and the expression language.
 
-pub(crate) mod case;
 pub(crate) mod cond;
+pub(crate) mod context;
 pub(crate) mod cost;
 pub(crate) mod effect;
 pub(crate) mod expand;

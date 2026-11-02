@@ -156,34 +156,34 @@ impl Intent {
     /// `actor_id`'s line `verb token` for the next round. The id is the line's, so the queue
     /// can refuse it by id before the rule it picks shapes the target, which starts empty.
     pub(crate) fn player(
-        now: &State,
+        state: &State,
         actor_id: &str,
         verb: &str,
         token: Option<&str>,
     ) -> Result<Self, Reason> {
-        let round = now.round_index.checked_add(1).ok_or(Reason::Schema)?;
+        let round = state.round_index.checked_add(1).ok_or(Reason::Schema)?;
         let line = match token {
             Some(token) => format!("{verb} {token}"),
             None => verb.to_string(),
         };
-        let id = intent_id(&now.world_id, round, actor_id, &line);
+        let id = intent_id(&state.world_id, round, actor_id, &line);
         let actor = Viewer::Player(actor_id.to_string());
         let intent = Self::new(id, round, actor, Source::Player, verb, Target::Empty);
         Ok(intent)
     }
 
     /// The engine running `actor_id`'s habit `local_id` this round.
-    pub(crate) fn habit(now: &State, actor_id: &str, local_id: &str) -> Self {
-        let (round, npc) = (now.round_index, Viewer::Npc(actor_id.to_string()));
-        let id = intent_id(&now.world_id, round, actor_id, local_id);
+    pub(crate) fn habit(state: &State, actor_id: &str, local_id: &str) -> Self {
+        let (round, npc) = (state.round_index, Viewer::Npc(actor_id.to_string()));
+        let id = intent_id(&state.world_id, round, actor_id, local_id);
         Self::new(id, round, npc, Source::Engine, local_id, Target::Empty)
     }
 
     /// The engine firing change rule `rule_id` for `actor_id` this round, as
     /// `trigger:<rule>:<actor>`.
-    pub(crate) fn trigger(now: &State, actor_id: &str, rule_id: &str) -> Result<Self, Reason> {
-        let actor = now.viewer_of(actor_id).ok_or(Reason::UnknownId)?;
-        let (round, id) = (now.round_index, format!("trigger:{rule_id}:{actor_id}"));
+    pub(crate) fn trigger(state: &State, actor_id: &str, rule_id: &str) -> Result<Self, Reason> {
+        let actor = state.viewer_of(actor_id).ok_or(Reason::UnknownId)?;
+        let (round, id) = (state.round_index, format!("trigger:{rule_id}:{actor_id}"));
         let intent = Self::new(id, round, actor, Source::Engine, rule_id, Target::Empty);
         Ok(intent)
     }
@@ -191,15 +191,22 @@ impl Intent {
     /// The finish of `actor_id`'s timed action, as `arrival:<actor>`, with the source, verb
     /// and target it began with.
     pub(crate) fn arrival(
-        now: &State,
+        state: &State,
         actor_id: &str,
         source: Source,
         verb: &str,
         target: Target,
     ) -> Result<Self, Reason> {
-        let actor = now.viewer_of(actor_id).ok_or(Reason::UnknownId)?;
+        let actor = state.viewer_of(actor_id).ok_or(Reason::UnknownId)?;
         let id = format!("arrival:{actor_id}");
-        Ok(Self::new(id, now.round_index, actor, source, verb, target))
+        Ok(Self::new(
+            id,
+            state.round_index,
+            actor,
+            source,
+            verb,
+            target,
+        ))
     }
 }
 
@@ -271,23 +278,5 @@ mod tests {
             intent_id("cap", 1, "n2", "work"),
             "daa186f67613ae8ea1275b3fd03c38d52eea99e976235e499b5c2b0853c0d819"
         );
-    }
-
-    #[test]
-    fn args_are_empty_or_carry_to() {
-        let (id, actor) = ("i1".to_string(), Viewer::Player("pc_rowan".to_string()));
-        let mut intent = Intent::new(id, 1, actor, Source::Player, "say", Target::Empty);
-        let head = r#"{"id":"i1","round_index":1,"actor":"player:pc_rowan","source":"player","move":"say","target":{},"args":"#;
-        for (to, args) in [
-            (None, "{}"),
-            (Some(vec!["pc_wren".to_string()]), r#"{"to":["pc_wren"]}"#),
-        ] {
-            intent.args.message_to = to;
-            let line = serde_json::to_string(&intent).unwrap();
-            assert_eq!(line, format!(r#"{head}{args},"rationale_code":""}}"#));
-            assert_eq!(serde_json::from_str::<Intent>(&line).unwrap(), intent);
-        }
-        let unknown = format!(r#"{head}{{"cc":["pc_wren"]}},"rationale_code":""}}"#);
-        assert!(serde_json::from_str::<Intent>(&unknown).is_err());
     }
 }

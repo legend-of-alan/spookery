@@ -4,8 +4,8 @@ use crate::canon::Canon;
 use crate::draft::Draft;
 use crate::intent::Intent;
 use crate::model::key::{Change, StateKey, StateValue};
-use crate::rules::case::Case;
 use crate::rules::cond;
+use crate::rules::context::Context;
 use crate::rules::expand::{self, Cause};
 use crate::rules::gate;
 use crate::rules::rule::{ChangeWatch, Op, Rule, WatchWho, When};
@@ -49,7 +49,8 @@ pub(crate) fn run(
     Ok(all_changes)
 }
 
-struct Match<'a> {
+/// One change rule to fire, and the actor it fires for.
+struct Trigger<'a> {
     rule: &'a Rule,
     subject: String,
 }
@@ -71,26 +72,26 @@ fn change_rules(canon: &Canon) -> Vec<&Rule> {
 }
 
 /// Which rules a batch of changes triggers, and for whom.
-fn match_rules<'a>(draft: &Draft, rules: &[&'a Rule], changes: &[Change]) -> Vec<Match<'a>> {
+fn match_rules<'a>(draft: &Draft, rules: &[&'a Rule], changes: &[Change]) -> Vec<Trigger<'a>> {
     let mut matched_triggers = Vec::new();
     for &rule in rules {
         let When::Change(watch) = &rule.when else {
             continue;
         };
-        let mut subjects = Vec::new();
+        let mut subject_ids = Vec::new();
         for change in changes {
             if !matches_watch(draft, rule, watch, change) {
                 continue;
             }
-            for subject in subjects_of(draft, &change.key) {
-                if !subjects.contains(&subject) {
-                    subjects.push(subject);
+            for subject in subjects(draft, &change.key) {
+                if !subject_ids.contains(&subject) {
+                    subject_ids.push(subject);
                 }
             }
         }
-        subjects.sort();
-        for subject in subjects {
-            matched_triggers.push(Match { rule, subject });
+        subject_ids.sort();
+        for subject in subject_ids {
+            matched_triggers.push(Trigger { rule, subject });
         }
     }
     matched_triggers
@@ -101,12 +102,12 @@ fn fire(draft: &mut Draft, dice: &mut RoundDice, log: &mut RoundLog, rule: &Rule
     let Ok(intent) = Intent::trigger(draft.state(), subject, &rule.id) else {
         return;
     };
-    let case = Case::new(draft.canon(), draft.state(), draft.presence, &intent);
-    if cond::holds(&case, &rule.if_).is_err() {
+    let context = Context::new(draft.canon(), draft.state(), draft.presence, &intent);
+    if cond::all_hold(&context, &rule.if_).is_err() {
         return;
     }
     let roller = dice.roller(log, &rule.id, subject);
-    match expand::expand(&case, rule, Cause::Trigger, None, roller) {
+    match expand::expand(&context, rule, Cause::Trigger, None, roller) {
         Ok(expansion) => {
             apply::land(draft, &intent, rule, expansion, log);
         }
@@ -114,7 +115,7 @@ fn fire(draft: &mut Draft, dice: &mut RoundDice, log: &mut RoundLog, rule: &Rule
     }
 }
 
-fn subjects_of(draft: &Draft, key: &StateKey) -> Vec<String> {
+fn subjects(draft: &Draft, key: &StateKey) -> Vec<String> {
     if let StateKey::WorldFlag(_) = key {
         return draft
             .presence
@@ -124,10 +125,10 @@ fn subjects_of(draft: &Draft, key: &StateKey) -> Vec<String> {
             .cloned()
             .collect();
     }
-    subject_of(draft, key).into_iter().collect()
+    subject(draft, key).into_iter().collect()
 }
 
-fn subject_of(draft: &Draft, key: &StateKey) -> Option<String> {
+fn subject(draft: &Draft, key: &StateKey) -> Option<String> {
     match key {
         StateKey::ClockValue(id) | StateKey::ClockPaused(id) => draft
             .state()

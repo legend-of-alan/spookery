@@ -3,16 +3,16 @@
 use crate::canon::Canon;
 use crate::intent::{Intent, Source, Target, Viewer};
 use crate::model::{Presence, State, MINUTES_PER_DAY, MINUTES_PER_HOUR};
-use crate::rules::case::Case;
+use crate::rules::context::Context;
 use crate::rules::expr;
 use crate::rules::rule::{Cond, Who};
 use crate::Reason;
 
 /// Every condition holds. A failed `has_item` is [`Reason::MissingItem`].
-pub(crate) fn holds(case: &Case, conds: &[Cond]) -> Result<(), Reason> {
+pub(crate) fn all_hold(context: &Context, conds: &[Cond]) -> Result<(), Reason> {
     for cond in conds {
-        if !holds_one(case, cond)? {
-            return Err(reason_of(cond));
+        if !holds(context, cond)? {
+            return Err(refusal_code(cond));
         }
     }
     Ok(())
@@ -23,7 +23,7 @@ pub(crate) fn holds(case: &Case, conds: &[Cond]) -> Result<(), Reason> {
 /// probe with no id.
 pub(crate) fn if_holds(
     canon: &Canon,
-    now: &State,
+    state: &State,
     presence: &Presence,
     viewer: &Viewer,
     verb: &str,
@@ -32,33 +32,33 @@ pub(crate) fn if_holds(
 ) -> bool {
     let probe = Intent::new(
         String::new(),
-        now.round_index,
+        state.round_index,
         viewer.clone(),
         Source::Player,
         verb,
         target,
     );
-    holds(&Case::new(canon, now, presence, &probe), conds).is_ok()
+    all_hold(&Context::new(canon, state, presence, &probe), conds).is_ok()
 }
 
-fn reason_of(cond: &Cond) -> Reason {
+fn refusal_code(cond: &Cond) -> Reason {
     match cond {
         Cond::HasItem { .. } => Reason::MissingItem,
         Cond::All(inner) | Cond::Any(inner) => {
-            inner.first().map(reason_of).unwrap_or(Reason::NotInSpec)
+            inner.first().map(refusal_code).unwrap_or(Reason::NotInSpec)
         }
-        Cond::Not(inner) => reason_of(inner),
+        Cond::Not(inner) => refusal_code(inner),
         _ => Reason::NotInSpec,
     }
 }
 
-fn holds_one(case: &Case, cond: &Cond) -> Result<bool, Reason> {
-    let now = case.now;
+fn holds(context: &Context, cond: &Cond) -> Result<bool, Reason> {
+    let state = context.state;
     match cond {
         Cond::HasItem { who, id, count } => {
-            let actor = expr::resolve_who_id(case, who)?;
-            let id = expr::resolve_item_id(case, id)?;
-            let held = now
+            let actor = expr::resolve_who_id(context, who)?;
+            let id = expr::resolve_item_id(context, id)?;
+            let held = state
                 .actors
                 .get(&actor)
                 .map(|actor| actor.item_count(&id))
@@ -66,9 +66,9 @@ fn holds_one(case: &Case, cond: &Cond) -> Result<bool, Reason> {
             Ok(held >= *count)
         }
         Cond::Wielding { who, id } => {
-            let actor = expr::resolve_who_id(case, who)?;
-            let id = expr::resolve_item_id(case, id)?;
-            Ok(now
+            let actor = expr::resolve_who_id(context, who)?;
+            let id = expr::resolve_item_id(context, id)?;
+            Ok(state
                 .actors
                 .get(&actor)
                 .is_some_and(|actor| actor.wielded() == Some(id.as_str())))
@@ -79,48 +79,48 @@ fn holds_one(case: &Case, cond: &Cond) -> Result<bool, Reason> {
             op,
             value,
         } => {
-            let actor = expr::resolve_who_id(case, who)?;
-            let current = now.meter_value(case.canon, &actor, key)?;
-            let right = expr::eval(case, value)?;
+            let actor = expr::resolve_who_id(context, who)?;
+            let current = state.meter_value(context.canon, &actor, key)?;
+            let right = expr::eval(context, value)?;
             Ok(op.holds(current, right))
         }
         Cond::Flag { who, key, is } => {
             if matches!(who, Who::World) {
-                let on = now.flags.iter().any(|flag| flag == key);
+                let on = state.flags.iter().any(|flag| flag == key);
                 return Ok(on == *is);
             }
-            let actor = expr::resolve_who_id(case, who)?;
-            let on = now
+            let actor = expr::resolve_who_id(context, who)?;
+            let on = state
                 .actors
                 .get(&actor)
                 .is_some_and(|actor| actor.flags().iter().any(|flag| flag == key));
             Ok(on == *is)
         }
         Cond::At { who, place } => {
-            let actor = expr::resolve_who_id(case, who)?;
-            Ok(now
+            let actor = expr::resolve_who_id(context, who)?;
+            Ok(state
                 .actors
                 .get(&actor)
                 .is_some_and(|actor| actor.place() == place))
         }
         Cond::Knows { who, fact } => {
-            let actor = expr::resolve_who_id(case, who)?;
-            Ok(now
+            let actor = expr::resolve_who_id(context, who)?;
+            Ok(state
                 .actors
                 .get(&actor)
                 .is_some_and(|actor| actor.known_facts().iter().any(|id| id == fact)))
         }
         Cond::Clock { id, op, value } => {
-            let clock = now.clocks.get(id).ok_or(Reason::UnknownId)?;
-            let right = expr::eval(case, value)?;
+            let clock = state.clocks.get(id).ok_or(Reason::UnknownId)?;
+            let right = expr::eval(context, value)?;
             Ok(!clock.paused && op.holds(clock.value, right))
         }
-        Cond::Hour { from, to } => Ok(is_hour_in(*from, *to, world_hour(now.world_time))),
-        Cond::Players { op, value } => Ok(op.holds(i64::from(case.presence.players), *value)),
-        Cond::NoteExists(id) => Ok(now.notes.iter().any(|note| &note.id == id)),
+        Cond::Hour { from, to } => Ok(is_hour_in(*from, *to, world_hour(state.world_time))),
+        Cond::Players { op, value } => Ok(op.holds(i64::from(context.presence.players), *value)),
+        Cond::NoteExists(id) => Ok(state.notes.iter().any(|note| &note.id == id)),
         Cond::All(inner) => {
             for cond in inner {
-                if !holds_one(case, cond)? {
+                if !holds(context, cond)? {
                     return Ok(false);
                 }
             }
@@ -128,13 +128,13 @@ fn holds_one(case: &Case, cond: &Cond) -> Result<bool, Reason> {
         }
         Cond::Any(inner) => {
             for cond in inner {
-                if holds_one(case, cond)? {
+                if holds(context, cond)? {
                     return Ok(true);
                 }
             }
             Ok(false)
         }
-        Cond::Not(inner) => Ok(!holds_one(case, inner)?),
+        Cond::Not(inner) => Ok(!holds(context, inner)?),
     }
 }
 
