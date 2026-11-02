@@ -433,19 +433,6 @@ fn sealed_round(pack: &Path, state_rev: u64) -> String {
         rules_rev: spookery_engine::testing::RULES_REV,
         state_rev_before: state_rev.saturating_sub(1),
         state_rev_after: state_rev,
-        world_time_before: 0,
-        world_time_after: 0,
-        presence_players: 0,
-        actors_present: Vec::new(),
-        seed: String::new(),
-        last_round_at: String::new(),
-        intents: Vec::new(),
-        refused: Vec::new(),
-        effects: Vec::new(),
-        arrivals: Vec::new(),
-        fast_forward: false,
-        dice: Vec::new(),
-        extra_steps: Vec::new(),
         memories: vec![spookery_engine::testing::MemoryLine {
             round_index: 1,
             actor_id: "mira".to_string(),
@@ -454,9 +441,7 @@ fn sealed_round(pack: &Path, state_rev: u64) -> String {
             tags: Vec::new(),
             text: Some("kept-line".to_string()),
         }],
-        state_hash: String::new(),
-        prev: String::new(),
-        chain: String::new(),
+        ..Default::default()
     });
     let prev = genesis_hash(pack).unwrap_or_else(|err| panic!("{}", err.detail));
     seal(&entry, &prev)

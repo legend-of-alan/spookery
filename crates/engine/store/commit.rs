@@ -5,17 +5,17 @@ use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::Path;
 
-use crate::canon::{check_save, migrate_save, missing_meters, pack_rev};
+use crate::canon::{check_save, pack_rev};
 use crate::diagnostic::first_reason;
 use crate::draft::Draft;
 use crate::model::{MemoryLine, State};
-use crate::round::log::PlayedRound;
-use crate::store::codec::{emit_memory_line, emit_save, normalize};
 pub use crate::store::durability::write_atomic;
 use crate::store::durability::{fsync_dir, fsync_file};
-use crate::store::journal::{self, blake2s_tagged};
+use crate::store::journal::{self, blake2s_tagged, RoundRecord};
 use crate::store::lock::{lock_write, PackGuard, WriteGuard};
+use crate::store::records::emit_memory_line;
 use crate::store::recovery::close_finished;
+use crate::store::save::{emit_save, migrate_save, missing_meters, normalize};
 use crate::world::World;
 use crate::Reason;
 
@@ -30,13 +30,19 @@ pub struct CommitOutcome {
 pub fn commit(
     world: &mut World,
     mut draft: Draft,
-    line: PlayedRound,
+    record: RoundRecord,
 ) -> Result<CommitOutcome, Reason> {
     let write = lock_write(&world.root, &world.lock)?;
     finish_trailing_checkpoint(world, &write)?;
     bump_state_rev(&mut draft)?;
     let now_bytes = emit_save(&draft.state)?.into_bytes();
-    let line = seal_round(line, world.state.state_rev, &draft, &now_bytes, &world.root)?;
+    let line = seal_round(
+        record,
+        world.state.state_rev,
+        &draft,
+        &now_bytes,
+        &world.root,
+    )?;
     let due = is_checkpoint_due(world.canon().checkpoint_every, draft.state.round_index);
     let (payload, chain) = if due {
         let (payload, chain) = seal_checkpoint(line, &draft.state, &now_bytes)?;
@@ -155,35 +161,16 @@ fn seal_checkpoint(
 }
 
 fn seal_round(
-    line: PlayedRound,
+    mut record: RoundRecord,
     state_rev_before: u64,
     draft: &Draft,
     now_bytes: &[u8],
     root: &Path,
 ) -> Result<String, Reason> {
-    let record = journal::RoundRecord {
-        round_index: line.clock.round_index,
-        rules_rev: crate::store::RULES_REV,
-        state_rev_before,
-        state_rev_after: draft.state.state_rev,
-        world_time_before: line.clock.world_time_before,
-        world_time_after: line.clock.world_time_after,
-        presence_players: line.presence.players,
-        actors_present: line.presence.actors_present,
-        seed: line.seed,
-        last_round_at: line.last_round_at,
-        intents: line.intents,
-        refused: line.log.refused,
-        effects: line.log.effects,
-        arrivals: line.log.arrivals,
-        fast_forward: line.fast_forward,
-        dice: line.log.dice,
-        extra_steps: line.log.extra_steps,
-        memories: draft.memories.clone(),
-        state_hash: blake2s_tagged(now_bytes),
-        prev: String::new(),
-        chain: String::new(),
-    };
+    record.state_rev_before = state_rev_before;
+    record.state_rev_after = draft.state.state_rev;
+    record.memories = draft.memories.clone();
+    record.state_hash = blake2s_tagged(now_bytes);
     let prev = journal::read_chain_tip(root).map_err(|_| Reason::Schema)?;
     Ok(journal::seal(&journal::Record::Round(record), &prev))
 }
@@ -363,9 +350,8 @@ mod tests {
 
     use crate::draft::Draft;
     use crate::model::{MemoryLine, Presence};
-    use crate::round::log::{PlayedRound, RoundLog};
-    use crate::round::stage::advance::RoundTime;
     use crate::store::durability::{self, Event};
+    use crate::store::journal::RoundRecord;
     use crate::store::lock::lock_pack;
     use crate::testing::copy_docks;
     use crate::world::World;
@@ -637,19 +623,11 @@ mod tests {
         }
     }
 
-    fn round_line(round_index: u64) -> PlayedRound {
-        PlayedRound {
-            clock: RoundTime {
-                round_index,
-                world_time_before: 0,
-                world_time_after: 0,
-            },
-            presence: Presence::default(),
-            seed: String::new(),
-            last_round_at: String::new(),
-            fast_forward: false,
-            log: RoundLog::default(),
-            intents: Vec::new(),
+    fn round_line(round_index: u64) -> RoundRecord {
+        RoundRecord {
+            round_index,
+            rules_rev: crate::store::RULES_REV,
+            ..Default::default()
         }
     }
 }

@@ -2,17 +2,17 @@
 
 use crate::Reason;
 
-pub(crate) mod codec;
 pub(crate) mod commit;
 pub(crate) mod durability;
 pub(crate) mod journal;
 pub(crate) mod lock;
 pub(crate) mod records;
 pub(crate) mod recovery;
+pub(crate) mod save;
 pub(crate) mod tape;
 
-pub use codec::{emit_save, parse_save};
 pub use lock::{lock_pack, PackGuard};
+pub use save::{emit_save, parse_save};
 pub use tape::{emit_tape_record, TapeRecord};
 
 /// Rules version stamped on every save and every round.

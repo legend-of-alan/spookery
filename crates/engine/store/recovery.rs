@@ -5,10 +5,10 @@ use std::fs::{self, OpenOptions};
 use std::path::{Path, PathBuf};
 
 use crate::model::MemoryLine;
-use crate::store::codec::emit_memory_line;
 use crate::store::durability::{fsync_dir, fsync_file, rename, tmp_path, write_atomic};
 use crate::store::journal::{self, Record};
 use crate::store::lock::WriteGuard;
+use crate::store::records::emit_memory_line;
 use crate::Reason;
 
 /// Run by `lock_pack` before the writer reads a pack that a crash may have left mid-commit.
@@ -266,10 +266,8 @@ mod tests {
     use std::fs;
 
     use crate::draft::Draft;
-    use crate::model::Presence;
-    use crate::round::log::{PlayedRound, RoundLog};
-    use crate::round::stage::advance::RoundTime;
     use crate::store::commit::commit;
+    use crate::store::journal::RoundRecord;
     use crate::store::lock::lock_pack;
     use crate::testing::copy_docks;
     use crate::world::World;
@@ -296,19 +294,10 @@ mod tests {
         let _ = fs::remove_dir_all(&root);
     }
 
-    fn round_line() -> PlayedRound {
-        PlayedRound {
-            clock: RoundTime {
-                round_index: 0,
-                world_time_before: 0,
-                world_time_after: 0,
-            },
-            presence: Presence::default(),
-            seed: String::new(),
-            last_round_at: String::new(),
-            fast_forward: false,
-            log: RoundLog::default(),
-            intents: Vec::new(),
+    fn round_line() -> RoundRecord {
+        RoundRecord {
+            rules_rev: crate::store::RULES_REV,
+            ..Default::default()
         }
     }
 }

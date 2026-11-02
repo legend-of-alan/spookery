@@ -12,5 +12,6 @@ mod feature_dirs;
 mod engine_guarantees;
 mod feature_census;
 mod live_round;
+mod module_layers;
 mod pack_reference;
 mod seat_protocol;

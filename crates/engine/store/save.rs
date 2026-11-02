@@ -1,11 +1,13 @@
-//! Read and write the save.
+//! Read, write and migrate the save.
 
 use serde::Deserialize;
 use serde_saphyr::SerializerOptions;
 
+use crate::canon::Canon;
 use crate::diagnostic::{check_tag, error, locate_nth, parse_file, schema_error, Diagnostic};
-use crate::model::{sort_unique, MemoryLine, State};
-use crate::rules::effect::Effect;
+use crate::model::meter::MeterLive;
+use crate::model::{sort_unique, State};
+use crate::store::records::AddedMeter;
 use crate::Reason;
 
 pub(crate) fn save_emit_options() -> SerializerOptions {
@@ -159,13 +161,46 @@ fn occupancy_problems(state: &State) -> Vec<Diagnostic> {
     diags
 }
 
-/// Flat effect object. Key order is `kind`, `as`, `intent_id`, then payload fields.
-pub fn emit_effect(effect: &Effect) -> String {
-    serde_json::to_string(effect).expect("effect json")
+/// Meters the pack defines that at least one actor lacks, each at its `start`.
+pub(crate) fn missing_meters(canon: &Canon, state: &State) -> Vec<AddedMeter> {
+    canon
+        .meters
+        .iter()
+        .filter(|(id, _)| {
+            state
+                .actors
+                .values()
+                .any(|actor| !actor.meters().contains_key(*id))
+        })
+        .map(|(id, def)| AddedMeter {
+            id: id.clone(),
+            start: def.start,
+        })
+        .collect()
 }
 
-pub(crate) fn emit_memory_line(line: &MemoryLine) -> String {
-    serde_json::to_string(line).expect("memory line")
+/// Migrate a save: give each actor the `meters` it lacks, at their `start`, then
+/// stamp `pack_rev` and `state_rev`. Live migrate and replay both call this.
+/// It does not touch the disk.
+pub fn migrate_save(
+    mut state: State,
+    pack_rev: &str,
+    state_rev: u64,
+    meters: &[AddedMeter],
+) -> State {
+    for actor in state.actors.values_mut() {
+        let live = actor.meters_mut();
+        for meter in meters {
+            live.entry(meter.id.clone()).or_insert(MeterLive {
+                base: meter.start,
+                offset: 0,
+            });
+        }
+    }
+    state.pack_rev = pack_rev.to_string();
+    state.state_rev = state_rev;
+    normalize(&mut state);
+    state
 }
 
 #[cfg(test)]
@@ -238,11 +273,12 @@ notes: []
 
     use crate::intent::Viewer;
     use crate::model::MemoryLine;
-    use crate::rules::effect::EffectKind;
+    use crate::rules::effect::{Effect, EffectKind};
+    use crate::store::records::{emit_effect, emit_memory_line};
     use crate::Reason;
 
-    fn effect(kind: EffectKind, viewer: Viewer, intent_id: &str) -> super::Effect {
-        super::Effect {
+    fn effect(kind: EffectKind, viewer: Viewer, intent_id: &str) -> Effect {
+        Effect {
             kind,
             viewer,
             intent_id: intent_id.to_string(),
@@ -402,7 +438,7 @@ notes: []
             ),
         ];
         for (effect, expected) in cases {
-            let encoded = super::emit_effect(&effect);
+            let encoded = emit_effect(&effect);
             assert_eq!(encoded, expected);
             assert!(!encoded.contains("\"payload\""), "{encoded}");
             assert_eq!(parse_effect(&encoded).unwrap(), effect);
@@ -461,7 +497,7 @@ notes: []
 
     #[test]
     fn memory_and_migrate_lines_keep_their_key_order() {
-        let memory = super::emit_memory_line(&MemoryLine {
+        let memory = emit_memory_line(&MemoryLine {
             round_index: 3,
             actor_id: "mi\"ra".to_string(),
             intent_id: "abc".to_string(),
