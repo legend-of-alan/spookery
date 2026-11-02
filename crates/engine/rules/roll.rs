@@ -3,7 +3,7 @@
 use std::collections::BTreeMap;
 
 use crate::hash::blake2s_256;
-use crate::meter::{self, MeterDef};
+use crate::model::meter::{self, MeterDef};
 use crate::model::ActorLive;
 use crate::rules::gate;
 use crate::Reason;
@@ -46,14 +46,6 @@ pub enum MoveReport {
         actor_id: String,
         refusal: gate::Refusal,
     },
-}
-
-impl MoveReport {
-    pub fn actor_id(&self) -> &str {
-        match self {
-            MoveReport::Rolled { actor_id, .. } | MoveReport::Refused { actor_id, .. } => actor_id,
-        }
-    }
 }
 
 /// Identifies one roll. A later `resist:` roll uses the same shape: subject plus index.
@@ -147,7 +139,7 @@ mod tests {
     use std::collections::BTreeMap;
 
     use super::{classify, face_at, roll_check, Check, Outcome, RollKey};
-    use crate::meter::{MeterDef, MeterLive};
+    use crate::model::meter::{MeterDef, MeterLive};
     use crate::model::{Act, ActorLive};
 
     fn grit_def() -> MeterDef {

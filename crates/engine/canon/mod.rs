@@ -7,9 +7,9 @@ use serde::Deserialize;
 
 use crate::diagnostic::Diagnostic;
 use crate::hash::blake2s_hex;
-use crate::meter::MeterDef;
-use crate::rule::{Cond, Cost, Owner, RuleTable, TargetKind, When};
+use crate::model::meter::MeterDef;
 use crate::rules::roll::Check;
+use crate::rules::rule::{Cond, Cost, Owner, RuleTable, TargetKind, When};
 use crate::Reason;
 pub use spookery_protocol::{CastKind, MenuRow, PackSummary};
 

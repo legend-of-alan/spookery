@@ -2,9 +2,9 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::effect::Effect;
 use crate::intent::Intent;
 use crate::model::MemoryLine;
+use crate::rules::effect::Effect;
 use crate::rules::gate;
 
 /// One meter a migrate added, stored at that meter's `start`.

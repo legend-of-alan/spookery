@@ -4,10 +4,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::draft::Draft;
 use crate::intent::{Intent, Viewer};
-use crate::key::StateKey;
-use crate::meter::{self, MeterWrite};
+use crate::model::key::StateKey;
+use crate::model::meter::{self, MeterWrite};
 use crate::model::{self, MemoryLine, Note};
-use crate::visibility::can_see_fact;
+use crate::rules::visibility::can_see_fact;
 use crate::Reason;
 
 /// One effect. JSON is `kind`, `as`, `intent_id`, then the fields of `kind`.
@@ -150,14 +150,6 @@ impl Effect {
             EffectKind::Narrate { .. } => Ok(()),
             EffectKind::Reveal { actor_id, fact } => reveal(draft, &actor_id, &fact),
         }
-    }
-
-    pub fn viewer(&self) -> &Viewer {
-        &self.viewer
-    }
-
-    pub(crate) fn kind_name(&self) -> &'static str {
-        self.kind.as_str()
     }
 }
 
@@ -617,7 +609,7 @@ pub(crate) fn payload_json(effect: &Effect) -> String {
 }
 
 fn viewer_matches(intent: &Intent, effect: &Effect) -> bool {
-    effect.viewer() == &intent.actor
+    effect.viewer == intent.actor
 }
 
 /// Who holds an item count: an actor's inventory or a place's items.

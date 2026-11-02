@@ -5,7 +5,7 @@ use std::fmt;
 use serde::{Deserialize, Serialize};
 
 use crate::model::State;
-use crate::rule::TargetKind;
+use crate::rules::rule::TargetKind;
 use crate::Reason;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

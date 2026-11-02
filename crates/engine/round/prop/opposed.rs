@@ -3,8 +3,8 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::journal::{self, Record, Step};
 use crate::model::Presence;
+use crate::store::journal::{self, Record, Step};
 use crate::world::World;
 use crate::Reason;
 

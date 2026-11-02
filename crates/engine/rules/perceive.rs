@@ -4,15 +4,14 @@ use std::collections::BTreeSet;
 
 use crate::canon::Canon;
 use crate::intent::Viewer;
-use crate::meter;
+use crate::model::meter;
 use crate::model::{Note, Presence, State};
 use crate::rules::habits::list_whose_if_holds;
-use crate::travel::ExitView;
-use crate::visibility::can_see_fact;
+use crate::rules::visibility::can_see_fact;
 use crate::world::World;
 use crate::Reason;
-use spookery_protocol::PERCEIVE_BODY_CHARS;
 pub use spookery_protocol::{ClockView, ItemStack, KnownFact, MeterView};
+use spookery_protocol::{ExitView, PERCEIVE_BODY_CHARS};
 
 /// Returned from the engine to the host table, which renders it as a player or GM view.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -33,10 +32,6 @@ pub struct View {
     pub habits: Vec<String>,
     pub exits: Vec<ExitView>,
     pub status: String,
-}
-
-pub fn perceive<L>(world: &World<L>, presence: &Presence, as_arg: &str) -> Result<View, Reason> {
-    perceive_budget(world, presence, as_arg, PERCEIVE_BODY_CHARS)
 }
 
 pub fn perceive_budget<L>(
@@ -187,14 +182,14 @@ fn perceive_viewer_budget(
         Viewer::Player(_) => Vec::new(),
         Viewer::Npc(id) => list_whose_if_holds(canon, now, presence, id),
     };
-    let exits = crate::travel::visible_exits(canon, now, presence, viewer.actor_id());
+    let exits = crate::rules::travel::visible_exits(canon, now, presence, viewer.actor_id());
     let actor_names = visible_actors
         .iter()
         .map(|id| canon.display_name(id))
         .collect();
-    let place_name = crate::travel::place_name(canon, &place);
-    let prose = crate::travel::place_prose(canon, now, viewer.actor_id());
-    let status = crate::travel::busy_line(now, viewer.actor_id()).unwrap_or_default();
+    let place_name = crate::rules::lines::place_name(canon, &place);
+    let prose = crate::rules::lines::place_prose(canon, now, viewer.actor_id());
+    let status = crate::rules::lines::busy_line(now, viewer.actor_id()).unwrap_or_default();
 
     Ok(View {
         viewer: viewer.clone(),

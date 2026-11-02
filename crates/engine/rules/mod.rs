@@ -1,4 +1,4 @@
-//! Conditions, costs, gates, rolls, and effects.
+//! Conditions, costs, gates, travel, rolls, effects, visibility, the player's text and the expression language.
 
 pub(crate) mod case;
 pub(crate) mod cond;
@@ -8,10 +8,9 @@ pub(crate) mod expand;
 pub(crate) mod expr;
 pub(crate) mod gate;
 pub(crate) mod habits;
+pub(crate) mod lines;
 pub(crate) mod perceive;
 pub(crate) mod roll;
 pub(crate) mod rule;
-
-pub use gate::Refusal;
-pub(crate) use roll::{faces_from, roll_check, RollKey};
-pub use roll::{MoveReport, Outcome, Roll};
+pub(crate) mod travel;
+pub(crate) mod visibility;

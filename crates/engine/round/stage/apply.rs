@@ -3,15 +3,15 @@
 use crate::canon::Canon;
 use crate::draft::Draft;
 use crate::intent::{Intent, Viewer};
-use crate::journal::Step;
 use crate::model::State;
-use crate::rule::Rule;
 use crate::rules::case::Case;
 use crate::rules::cost;
 use crate::rules::expand::{self, Cause, Expansion};
 use crate::rules::gate;
-use crate::rules::MoveReport;
-use crate::travel;
+use crate::rules::roll::MoveReport;
+use crate::rules::rule::Rule;
+use crate::rules::travel;
+use crate::store::journal::Step;
 use crate::Reason;
 
 use crate::round::dice::RoundDice;

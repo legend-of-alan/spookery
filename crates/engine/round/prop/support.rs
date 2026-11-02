@@ -5,12 +5,12 @@ use std::path::{Path, PathBuf};
 
 use crate::canon::pack_rev;
 use crate::intent::{intent_id, Intent, IntentArgs, Source, Target, Viewer};
-use crate::journal;
 use crate::model::Presence;
 use crate::rules::case::Case;
 use crate::rules::gate::gate;
+use crate::rules::travel::visible_exits;
 use crate::store::codec::{emit_save, parse_save};
-use crate::travel::visible_exits;
+use crate::store::journal;
 use crate::world::World;
 use proptest::prelude::*;
 use proptest::test_runner::{Config, RngSeed, TestCaseError};

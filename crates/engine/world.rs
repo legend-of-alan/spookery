@@ -8,18 +8,18 @@ use std::sync::Arc;
 use crate::canon::Budget;
 use crate::canon::{check_save, load_canon, pack_rev, Canon};
 use crate::diagnostic::{error, first_reason, locate_nth, schema_error, Code, Diagnostic};
-use crate::effect::{payload_json, Effect};
 use crate::intent::{Intent, IntentArgs, Source, Target};
-use crate::journal::{self, Record};
 use crate::model::{ActorLive, Presence, State};
-use crate::rule::{Rule, TargetKind, When};
 use crate::rules::case::Case;
+use crate::rules::effect::{payload_json, Effect};
 use crate::rules::gate;
+use crate::rules::rule::{Rule, TargetKind, When};
 use crate::store::codec::{emit_save, parse_save};
+use crate::store::journal::{self, Record};
 use crate::store::tape::{append_record, last_seq, read_after, read_tail, TapeRecord};
 use crate::QueuedMove;
 use crate::Reason;
-use spookery_protocol::Speaker;
+use spookery_protocol::{Speaker, PERCEIVE_BODY_CHARS};
 
 /// One say, in characters. Four kibibytes still fits in an 8 KiB player line.
 const MAX_SAY_CHARS: usize = 4 * 1024;
@@ -327,8 +327,8 @@ impl<L> World<L> {
         &self,
         presence: &Presence,
         as_arg: &str,
-    ) -> Result<crate::perceive::View, Reason> {
-        crate::perceive::perceive(self, presence, as_arg)
+    ) -> Result<crate::rules::perceive::View, Reason> {
+        crate::rules::perceive::perceive_budget(self, presence, as_arg, PERCEIVE_BODY_CHARS)
     }
 
     pub fn perceive_trimmed(
@@ -336,20 +336,20 @@ impl<L> World<L> {
         presence: &Presence,
         as_arg: &str,
         max_body_chars: usize,
-    ) -> Result<crate::perceive::View, Reason> {
-        crate::perceive::perceive_budget(self, presence, as_arg, max_body_chars)
+    ) -> Result<crate::rules::perceive::View, Reason> {
+        crate::rules::perceive::perceive_budget(self, presence, as_arg, max_body_chars)
     }
 
     pub fn help_lines(&self, presence: &Presence, actor_id: &str) -> String {
-        crate::travel::help_lines(&self.canon, &self.state, presence, actor_id)
+        crate::rules::lines::help(&self.canon, &self.state, presence, actor_id)
     }
 
     pub fn look_lines(&self, presence: &Presence, actor_id: &str) -> String {
-        crate::travel::look_lines(&self.canon, &self.state, presence, actor_id)
+        crate::rules::lines::look(&self.canon, &self.state, presence, actor_id)
     }
 
     pub fn map_lines(&self, presence: &Presence, actor_id: &str) -> String {
-        crate::travel::map_lines(&self.canon, &self.state, presence, actor_id)
+        crate::rules::lines::map(&self.canon, &self.state, presence, actor_id)
     }
 
     fn read_digest(&self) -> Result<String, Reason> {
@@ -384,7 +384,7 @@ impl<L> World<L> {
         for (round_index, effect) in effects {
             rows.push(format!(
                 "effect {} {round_index} {}",
-                effect.kind_name(),
+                effect.kind.as_str(),
                 payload_json(effect)
             ));
         }
@@ -669,7 +669,7 @@ pub fn check_pack(root: &Path) -> Vec<Diagnostic> {
 
 fn save_problems(now: &State, bytes: &[u8]) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
-    if now.actors.contains_key(crate::effect::WORLD) {
+    if now.actors.contains_key(crate::rules::effect::WORLD) {
         diags.push(
             schema_error(
                 "state/save.yaml",

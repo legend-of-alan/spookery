@@ -11,11 +11,11 @@ use crate::canon::source::{
     load_tagged, spot_of, Diags, Fault, FileText, Locator, Problem, VERBS_SCHEMA,
 };
 use crate::diagnostic::{schema_error, Diagnostic};
-use crate::rule::{
+use crate::rules::expr::{stamp_expr, BinOp, Expr};
+use crate::rules::rule::{
     ChangeWatch, Cond, Cost, EffectTemplate, LineColumn, LocationTo, NarrateTo, Op, Owner,
     ResistSpec, RollSpec, Rule, TargetKind, WatchWho, When, Who,
 };
-use crate::rules::expr::{stamp_expr, BinOp, Expr};
 
 const MOVES_REPLACED: &str = "rules/moves.yaml was replaced by rules/verbs.yaml";
 

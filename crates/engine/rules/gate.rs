@@ -5,12 +5,12 @@ use serde::{Deserialize, Serialize};
 use crate::canon::Canon;
 use crate::intent::{Intent, Source, Target, Viewer};
 use crate::model::{ActorLive, State};
-use crate::rule::{Owner, Rule, TargetKind, When};
 use crate::rules::case::Case;
 use crate::rules::cond;
 use crate::rules::cost;
 use crate::rules::habits::is_eligible;
 use crate::rules::perceive::perceive_as;
+use crate::rules::rule::{Owner, Rule, TargetKind, When};
 use crate::Reason;
 
 /// Returned from the gate or a stage to the host table, which turns it into a
@@ -125,7 +125,7 @@ pub(crate) fn admit(case: &Case, rule: &Rule) -> Result<(), Refusal> {
             return Err(Refusal::new(intent, Reason::Busy));
         }
     }
-    crate::travel::admit(case, rule)?;
+    crate::rules::travel::admit(case, rule)?;
     if intent.source == Source::Player && !can_name(case) {
         return Err(Refusal::new(intent, Reason::NotInSpec));
     }

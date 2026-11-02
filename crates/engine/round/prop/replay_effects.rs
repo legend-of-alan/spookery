@@ -15,7 +15,7 @@
 use std::fs;
 use std::path::Path;
 
-use crate::journal::{self, Record};
+use crate::store::journal::{self, Record};
 use crate::world::World;
 use proptest::test_runner::{TestCaseError, TestRunner};
 

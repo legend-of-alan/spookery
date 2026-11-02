@@ -9,32 +9,21 @@ pub(crate) mod model;
 pub(crate) mod round;
 pub(crate) mod rules;
 pub(crate) mod store;
-pub(crate) mod travel;
-pub(crate) mod visibility;
 pub(crate) mod world;
-
-pub(crate) use model::key;
-pub(crate) use model::meter;
-pub(crate) use rules::effect;
-pub(crate) use rules::perceive;
-pub(crate) use rules::rule;
-pub(crate) use store::commit;
-pub(crate) use store::journal;
-pub(crate) use store::lock;
 
 pub use canon::{load_canon, pack_rev};
 pub use diagnostic::{first_reason, Code, Diagnostic};
 pub use intent::{Intent, IntentArgs, Source, Target, Viewer};
-pub use meter::MeterLive;
+pub use model::meter::MeterLive;
 pub use model::{Note, Presence, RunState, State};
-pub use perceive::{ClockView, ItemStack, KnownFact, MeterView, View};
 pub use round::{migrate_pack, play_pack_once, verify_pack, verify_quick, RoundOutput};
-pub use rule::When;
-pub use rules::{MoveReport, Outcome, Refusal, Roll};
-pub use spookery_protocol::{QueuedMove, Reason};
+pub use rules::gate::Refusal;
+pub use rules::perceive::{ClockView, ItemStack, KnownFact, MeterView, View};
+pub use rules::roll::{MoveReport, Outcome, Roll};
+pub use rules::rule::When;
+pub use rules::visibility::RecipientLine;
+pub use spookery_protocol::{ExitView, QueuedMove, Reason};
 pub use store::{emit_save, emit_tape_record, lock_pack, parse_save, PackGuard, TapeRecord};
-pub use travel::ExitView;
-pub use visibility::RecipientLine;
 pub use world::{check_pack, Address, World};
 
 #[cfg(feature = "testing")]

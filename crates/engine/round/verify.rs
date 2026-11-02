@@ -3,8 +3,8 @@
 use std::fs;
 use std::path::Path;
 
-use crate::journal::{self, Record};
 use crate::store::codec::emit_save;
+use crate::store::journal::{self, Record};
 use crate::Reason;
 
 use crate::round::replay::{

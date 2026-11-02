@@ -8,12 +8,12 @@ use std::path::Path;
 use crate::canon::{check_save, migrate_save, missing_meters, pack_rev};
 use crate::diagnostic::first_reason;
 use crate::draft::Draft;
-use crate::journal::{self, blake2s_tagged};
 use crate::model::{MemoryLine, State};
 use crate::round::log::PlayedRound;
 use crate::store::codec::{emit_memory_line, emit_save, normalize};
 pub use crate::store::durability::write_atomic;
 use crate::store::durability::{fsync_dir, fsync_file};
+use crate::store::journal::{self, blake2s_tagged};
 use crate::store::lock::{lock_write, PackGuard, WriteGuard};
 use crate::store::recovery::close_finished;
 use crate::world::World;
@@ -442,12 +442,12 @@ mod tests {
         draft.state.round_index = 1;
         durability::fail_next(".jsonl.gz.tmp");
         commit(&mut world, draft, round_line(1)).unwrap();
-        let live = crate::journal::read_live_records(&root).unwrap();
+        let live = crate::store::journal::read_live_records(&root).unwrap();
         let round_rev = live.iter().rev().find_map(|entry| match entry {
-            crate::journal::Record::Round(record) => Some(record.state_rev_after),
+            crate::store::journal::Record::Round(record) => Some(record.state_rev_after),
             _ => None,
         });
-        let mark = crate::journal::latest_checkpoint(&live).unwrap();
+        let mark = crate::store::journal::latest_checkpoint(&live).unwrap();
         assert_eq!(world.state().state_rev, round_rev.unwrap());
         assert_eq!(world.state().state_rev, mark.state_rev);
         assert_eq!(world.take_warning(), Some(super::CHECKPOINT_WARNING));
@@ -458,12 +458,12 @@ mod tests {
         again.state.round_index = 2;
         commit(&mut world, again, round_line(2)).unwrap();
         assert!(world.take_warning().is_none());
-        let bundles = crate::journal::read_bundle_records(&root).unwrap();
+        let bundles = crate::store::journal::read_bundle_records(&root).unwrap();
         assert_eq!(bundles.len(), 2, "{bundles:?}");
         for (name, entries) in &bundles {
             let checkpoints = entries
                 .iter()
-                .filter(|entry| matches!(entry, crate::journal::Record::Checkpoint(_)))
+                .filter(|entry| matches!(entry, crate::store::journal::Record::Checkpoint(_)))
                 .count();
             assert_eq!(checkpoints, 1, "{name}");
         }
@@ -487,35 +487,38 @@ mod tests {
         second.state.round_index = 2;
         durability::fail_next("save.yaml.tmp");
         commit(&mut world, second, round_line(2)).unwrap();
-        let live = crate::journal::read_live_records(&root).unwrap();
-        let mark = crate::journal::latest_checkpoint(&live).unwrap();
+        let live = crate::store::journal::read_live_records(&root).unwrap();
+        let mark = crate::store::journal::latest_checkpoint(&live).unwrap();
         assert_eq!(world.state().state_rev, mark.state_rev);
         assert_eq!(world.take_warning(), Some(super::CHECKPOINT_WARNING));
 
         let mut third = Draft::begin(&world, &NOBODY);
         third.state.round_index = 3;
         commit(&mut world, third, round_line(3)).unwrap();
-        let bundles = crate::journal::read_bundle_records(&root).unwrap();
+        let bundles = crate::store::journal::read_bundle_records(&root).unwrap();
         assert_eq!(bundles.len(), 2, "{bundles:?}");
         let (first_name, first_entries) = &bundles[0];
         let (second_name, second_entries) = &bundles[1];
         assert_eq!(count_checkpoints(first_entries), 1, "{first_name}");
         assert_eq!(count_checkpoints(second_entries), 0, "{second_name}");
         assert!(second_entries.iter().any(|entry| {
-            matches!(entry, crate::journal::Record::Round(record) if record.round_index == 3)
+            matches!(entry, crate::store::journal::Record::Round(record) if record.round_index == 3)
         }));
         let saved = fs::read(root.join("state/save.yaml")).unwrap();
-        let kept = crate::journal::latest_checkpoint(first_entries).unwrap();
-        assert_eq!(crate::journal::blake2s_tagged(&saved), kept.state_hash);
-        let snap = crate::journal::checkpoint_path(&root, kept.state_rev);
+        let kept = crate::store::journal::latest_checkpoint(first_entries).unwrap();
+        assert_eq!(
+            crate::store::journal::blake2s_tagged(&saved),
+            kept.state_hash
+        );
+        let snap = crate::store::journal::checkpoint_path(&root, kept.state_rev);
         assert_eq!(fs::read(snap).unwrap(), saved);
         let _ = fs::remove_dir_all(&root);
     }
 
-    fn count_checkpoints(entries: &[crate::journal::Record]) -> usize {
+    fn count_checkpoints(entries: &[crate::store::journal::Record]) -> usize {
         entries
             .iter()
-            .filter(|entry| matches!(entry, crate::journal::Record::Checkpoint(_)))
+            .filter(|entry| matches!(entry, crate::store::journal::Record::Checkpoint(_)))
             .count()
     }
 
