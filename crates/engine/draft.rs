@@ -18,7 +18,7 @@ pub(crate) struct Draft<'p> {
     /// Who is seated for this round. The round reads it and never writes it.
     pub(crate) presence: &'p Presence,
     keys: BTreeSet<StateKey>,
-    before: Vec<Prior>,
+    priors: Vec<Prior>,
     pub(crate) memories: Vec<MemoryLine>,
     memory_writes: u32,
     _nosend: PhantomData<Rc<()>>,
@@ -32,7 +32,7 @@ impl<'p> Draft<'p> {
             state: world.state.clone(),
             presence,
             keys: BTreeSet::new(),
-            before: Vec::new(),
+            priors: Vec::new(),
             memories: Vec::new(),
             memory_writes: 0,
             _nosend: PhantomData,
@@ -171,8 +171,8 @@ impl<'p> Draft<'p> {
     fn track_before(&mut self, key: StateKey, before: StateValue) -> Result<(), Reason> {
         let max = self.canon.budget.max_state_keys_mutated as usize;
         self.reserve_key(&key, &mut Vec::new(), max)?;
-        if !self.before.iter().any(|prior| prior.key == key) {
-            self.before.push(Prior { key, before });
+        if !self.priors.iter().any(|prior| prior.key == key) {
+            self.priors.push(Prior { key, before });
         }
         Ok(())
     }
@@ -182,9 +182,9 @@ impl<'p> Draft<'p> {
         let mut added = Vec::new();
         for key in keys {
             self.reserve_key(key, &mut added, max)?;
-            if !self.before.iter().any(|prior| &prior.key == key) {
+            if !self.priors.iter().any(|prior| &prior.key == key) {
                 let before = self.read_value(key);
-                self.before.push(Prior {
+                self.priors.push(Prior {
                     key: key.clone(),
                     before,
                 });
@@ -205,7 +205,7 @@ impl<'p> Draft<'p> {
         if self.keys.len() >= max {
             for key in added {
                 self.keys.remove(key);
-                self.before.retain(|prior| &prior.key != key);
+                self.priors.retain(|prior| &prior.key != key);
             }
             return Err(Reason::Budget);
         }
@@ -216,7 +216,7 @@ impl<'p> Draft<'p> {
 
     /// Changes since the last take. The cumulative key set used by `changes` stays.
     pub(crate) fn take_changes(&mut self) -> Vec<Change> {
-        let pending = std::mem::take(&mut self.before);
+        let pending = std::mem::take(&mut self.priors);
         let mut records = Vec::new();
         for prior in pending {
             let after = self.read_value(&prior.key);
@@ -355,7 +355,7 @@ impl<'p> Draft<'p> {
         Savepoint {
             state: self.state.clone(),
             keys: self.keys.clone(),
-            before: self.before.clone(),
+            priors: self.priors.clone(),
             memories: self.memories.clone(),
             memory_writes: self.memory_writes,
         }
@@ -364,7 +364,7 @@ impl<'p> Draft<'p> {
     pub(crate) fn rollback(&mut self, point: Savepoint) {
         self.state = point.state;
         self.keys = point.keys;
-        self.before = point.before;
+        self.priors = point.priors;
         self.memories = point.memories;
         self.memory_writes = point.memory_writes;
     }
@@ -380,7 +380,7 @@ struct Prior {
 pub(crate) struct Savepoint {
     state: State,
     keys: BTreeSet<StateKey>,
-    before: Vec<Prior>,
+    priors: Vec<Prior>,
     memories: Vec<MemoryLine>,
     memory_writes: u32,
 }

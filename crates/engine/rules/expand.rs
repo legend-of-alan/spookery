@@ -174,7 +174,7 @@ fn expand_template(
             who, key, add, set, ..
         } => {
             let actor_id = expr::resolve_who_id(context, who)?;
-            let write = meter_write(context, &actor_id, key, add.as_ref(), set.as_ref(), dice)?;
+            let write = meter_offset(context, &actor_id, key, add.as_ref(), set.as_ref(), dice)?;
             effects.push(Effect::new(
                 viewer,
                 &intent.id,
@@ -304,7 +304,7 @@ fn expand_template(
     Ok(())
 }
 
-fn meter_write(
+fn meter_offset(
     context: &Context,
     actor_id: &str,
     key: &str,

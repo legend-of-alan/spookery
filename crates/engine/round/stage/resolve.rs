@@ -68,13 +68,13 @@ pub(crate) fn run<'a>(
     };
     let mut candidates = Vec::with_capacity(picked.len());
     for intent in picked {
-        let resolution = resolve_one(&mut resolver, intent)?;
+        let resolution = gate_intent(&mut resolver, intent)?;
         candidates.push(Candidate { intent, resolution });
     }
     Ok(candidates)
 }
 
-fn resolve_one<'a>(
+fn gate_intent<'a>(
     resolver: &mut Resolver<'a, '_>,
     intent: &'a Intent,
 ) -> Result<Resolution<'a>, Reason> {
