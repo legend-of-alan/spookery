@@ -281,7 +281,7 @@ fn the_live_bundle_gains_a_torn_tail(world: &mut World) {
         .find(|entry| entry.changes_state())
         .unwrap_or_else(|| panic!("no round"));
     world.mark = last.state_rev_after() as usize;
-    world.scratch = last.state_hash().to_string();
+    world.scratch = spookery_engine::testing::journal::state_hash(last).to_string();
     let mut bytes = fs::read(&path).unwrap();
     bytes.extend(br#"{"torn":"#);
     fs::write(&path, bytes).unwrap();

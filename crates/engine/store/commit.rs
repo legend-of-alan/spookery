@@ -175,7 +175,7 @@ fn is_checkpoint_due(every: u64, round_index: u64) -> bool {
     every > 0 && round_index > 0 && round_index.is_multiple_of(every)
 }
 
-pub fn append_to_bundle(root: &Path, payload: &str, write: &WriteGuard) -> Result<String, Reason> {
+fn append_to_bundle(root: &Path, payload: &str, write: &WriteGuard) -> Result<String, Reason> {
     // A failed close must not refuse this round or append into the closed bundle.
     let _ = close_finished(root, write);
     let path = journal::next_bundle_path(root);

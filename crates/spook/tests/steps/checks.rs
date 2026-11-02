@@ -295,15 +295,14 @@ fn replaying_the_round_reproduces_the_save(world: &mut World) {
         .unwrap_or_else(|err| panic!("replay: {err}"));
     let entries = spookery_engine::testing::journal::read_records(played)
         .unwrap_or_else(|err| panic!("{}", err.detail));
-    let expected = entries
+    let last = entries
         .iter()
         .rev()
         .find(|entry| entry.changes_state())
-        .unwrap_or_else(|| panic!("no round was written"))
-        .state_hash();
+        .unwrap_or_else(|| panic!("no round was written"));
     assert_eq!(
         spookery_engine::testing::journal::blake2s_tagged(&report.now_yaml),
-        expected
+        spookery_engine::testing::journal::state_hash(last)
     );
     assert_eq!(
         fs::read(played.join("state/save.yaml")).unwrap_or_else(|err| panic!("read played: {err}")),

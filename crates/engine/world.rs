@@ -17,7 +17,7 @@ use crate::rules::rule::{Rule, TargetKind, When};
 use crate::store::journal;
 use crate::store::records::Record;
 use crate::store::save::{emit_save, parse_save};
-use crate::store::tape::{append_record, last_seq, read_after, read_tail, TapeRecord};
+use crate::store::tape::{append_record, last_seq, read_after, read_scrollback, TapeRecord};
 use crate::Reason;
 use spookery_protocol::{QueuedMove, Speaker, PERCEIVE_BODY_CHARS};
 
@@ -142,19 +142,18 @@ impl World {
             Address::Actor(actor) => ("actor", None, Some(actor.to_string())),
         };
         let recipients = speech_recipients(&self.state, presence, speaker, heard);
-        let round_index = self.state.round_index;
-        let world_time = self.state.world_time;
-        append_record(&self.root, |seq| TapeRecord {
-            seq,
+        let record = TapeRecord {
+            seq: 0,
             from,
             address: address.to_string(),
             place,
             actor,
             recipients,
             text,
-            round_index,
-            world_time,
-        })
+            round_index: self.state.round_index,
+            world_time: self.state.world_time,
+        };
+        append_record(&self.root, record)
     }
 }
 
@@ -291,11 +290,11 @@ impl<L> World<L> {
     }
 
     pub fn player_scrollback(&self, actor_id: &str) -> Result<Vec<TapeRecord>, Reason> {
-        read_tail(&self.root, actor_id, 256)
+        read_scrollback(&self.root, actor_id)
     }
 
     pub fn tape_after(&self, since: u64) -> Result<Vec<TapeRecord>, Reason> {
-        read_after(&self.root, since, None)
+        read_after(&self.root, since)
     }
 
     pub fn last_tape_seq(&self) -> Result<u64, Reason> {

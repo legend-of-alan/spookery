@@ -215,58 +215,6 @@ pub fn latest_checkpoint(entries: &[Record]) -> Option<&CheckpointRecord> {
     })
 }
 
-/// Keys of every round record, such as `round-0001`, in order.
-#[cfg(any(test, feature = "testing"))]
-pub fn list_round_keys(pack: &Path) -> Vec<String> {
-    let Ok(entries) = read_records(pack) else {
-        return Vec::new();
-    };
-    let mut keys: Vec<String> = entries
-        .iter()
-        .filter(|entry| matches!(entry, Record::Round(_)))
-        .map(format_record_key)
-        .collect();
-    keys.sort();
-    keys
-}
-
-/// The stored line for a record key such as `round-0001` or `migrate-0002`, without a newline.
-#[cfg(any(test, feature = "testing"))]
-pub fn read_record_line(pack: &Path, key: &str) -> Result<String, Error> {
-    let entries = read_records(pack)?;
-    let found = entries
-        .into_iter()
-        .find(|entry| format_record_key(entry) == key);
-    match found {
-        Some(entry) => Ok(emit_record(&entry).trim_end().to_string()),
-        None => Err(fault(Path::new(key), "the journal record is missing")),
-    }
-}
-
-/// The bundle a logical record lives in, so a test can edit that line.
-#[cfg(any(test, feature = "testing"))]
-pub fn locate(pack: &Path, key: &str) -> Result<PathBuf, Error> {
-    let dir = pack.join("state/journal");
-    for (file_name, path) in list_bundles(&dir)? {
-        let text = read_bundle(&file_name, &path)?;
-        for raw in text.lines() {
-            if raw.is_empty() {
-                continue;
-            }
-            let entry = parse_line(&file_name, raw)?;
-            if format_record_key(&entry) == key {
-                return Ok(path);
-            }
-        }
-    }
-    Err(fault(Path::new(key), "the journal record is missing"))
-}
-
-#[cfg(any(test, feature = "testing"))]
-pub fn bundles(pack: &Path) -> Result<Vec<(String, PathBuf)>, Error> {
-    list_bundles(&pack.join("state/journal"))
-}
-
 /// Records in each bundle, in file order. A torn tail is not included.
 pub(crate) fn read_bundle_records(pack: &Path) -> Result<Vec<(String, Vec<Record>)>, Error> {
     let dir = pack.join("state/journal");
@@ -342,16 +290,6 @@ fn chain_of(entry: &Record) -> String {
     chain_hash(entry.prev(), body.trim_end())
 }
 
-/// Key naming one record inside the bundles: `round-0001`, `migrate-0002` or `checkpoint-0003`.
-#[cfg(any(test, feature = "testing"))]
-pub fn format_record_key(entry: &Record) -> String {
-    match entry {
-        Record::Round(record) => format!("round-{:04}", record.round_index),
-        Record::Migrate(record) => format!("migrate-{:04}", record.state_rev_after),
-        Record::Checkpoint(record) => format!("checkpoint-{:04}", record.round_index),
-    }
-}
-
 fn parse_line(name: &str, line: &str) -> Result<Record, Error> {
     parse_json(name, line).map_err(|fault| {
         let value: serde_json::Value = serde_json::from_str(line).unwrap_or_default();
@@ -381,7 +319,7 @@ fn name_the_field(name: &str, line: &str, value: &serde_json::Value) -> Option<E
     }
 }
 
-fn list_bundles(dir: &Path) -> Result<Vec<(String, PathBuf)>, Error> {
+pub(crate) fn list_bundles(dir: &Path) -> Result<Vec<(String, PathBuf)>, Error> {
     if !dir.is_dir() {
         return Ok(Vec::new());
     }
@@ -493,7 +431,7 @@ fn parse_json<T: DeserializeOwned>(name: &str, text: &str) -> Result<T, Error> {
     })
 }
 
-fn fault(path: &Path, detail: &str) -> Error {
+pub(crate) fn fault(path: &Path, detail: &str) -> Error {
     fault_coded(path, Reason::Schema, detail)
 }
 

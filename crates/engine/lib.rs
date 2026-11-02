@@ -34,7 +34,6 @@ pub mod testing {
     pub use crate::model::{Act, ActorLive, Clock, Pause, PendingAction, PendingKind, PlaceLive};
     pub use crate::round::replay::replay_journal;
     pub use crate::rules::roll::{faces, RollKey};
-    pub use crate::store::commit::append_to_bundle;
     pub use crate::store::lock::{watch_reader_wait, WriteGuard};
 
     /// The write guard of the pack `world` holds the lock on.
@@ -63,13 +62,73 @@ pub mod testing {
     ];
 
     pub mod journal {
+        use std::path::{Path, PathBuf};
+
+        use crate::store::journal::{fault, list_bundles, read_bundle_records, Error};
+
         pub use crate::hash::blake2s_tagged;
         pub use crate::store::journal::{
-            bundles, emit_record, find_live_bundle, format_record_key, gunzip_bytes, gzip_bytes,
-            latest_checkpoint, list_round_keys, locate, read_record_line, read_records,
-            read_verified,
+            emit_record, find_live_bundle, gunzip_bytes, gzip_bytes, latest_checkpoint,
+            read_records, read_verified,
         };
         pub use crate::store::records::Record;
+
+        /// Keys of every round record, such as `round-0001`, in order.
+        pub fn list_round_keys(pack: &Path) -> Vec<String> {
+            let Ok(entries) = read_records(pack) else {
+                return Vec::new();
+            };
+            let mut keys: Vec<String> = entries
+                .iter()
+                .filter(|entry| matches!(entry, Record::Round(_)))
+                .map(format_record_key)
+                .collect();
+            keys.sort();
+            keys
+        }
+
+        /// The stored line for a record key such as `round-0001` or `migrate-0002`, without a newline.
+        pub fn read_record_line(pack: &Path, key: &str) -> Result<String, Error> {
+            let entries = read_records(pack)?;
+            let found = entries
+                .into_iter()
+                .find(|entry| format_record_key(entry) == key);
+            match found {
+                Some(entry) => Ok(emit_record(&entry).trim_end().to_string()),
+                None => Err(fault(Path::new(key), "the journal record is missing")),
+            }
+        }
+
+        /// The bundle a logical record lives in, so a test can edit that line.
+        pub fn locate(pack: &Path, key: &str) -> Result<PathBuf, Error> {
+            for (name, entries) in read_bundle_records(pack)? {
+                if entries.iter().any(|entry| format_record_key(entry) == key) {
+                    return Ok(pack.join("state/journal").join(name));
+                }
+            }
+            Err(fault(Path::new(key), "the journal record is missing"))
+        }
+
+        pub fn bundles(pack: &Path) -> Result<Vec<(String, PathBuf)>, Error> {
+            list_bundles(&pack.join("state/journal"))
+        }
+
+        /// Key naming one record inside the bundles: `round-0001`, `migrate-0002` or `checkpoint-0003`.
+        pub fn format_record_key(entry: &Record) -> String {
+            match entry {
+                Record::Round(record) => format!("round-{:04}", record.round_index),
+                Record::Migrate(record) => format!("migrate-{:04}", record.state_rev_after),
+                Record::Checkpoint(record) => format!("checkpoint-{:04}", record.round_index),
+            }
+        }
+
+        pub fn state_hash(entry: &Record) -> &str {
+            match entry {
+                Record::Round(record) => &record.state_hash,
+                Record::Migrate(record) => &record.state_hash,
+                Record::Checkpoint(record) => &record.state_hash,
+            }
+        }
     }
 
     pub fn copy_dir(from: &Path, to: &Path) {

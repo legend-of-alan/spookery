@@ -194,11 +194,11 @@ pub(crate) fn assert_replay_matches(pack: &Path) -> Result<(), TestCaseError> {
         ));
     };
     let replayed = crate::hash::blake2s_tagged(&report.now_yaml);
-    if replayed == last.state_hash() {
+    let recorded = crate::testing::journal::state_hash(last);
+    if replayed == recorded {
         return Ok(());
     }
     Err(TestCaseError::fail(format!(
-        "state hash differed: record {} replayed {replayed}",
-        last.state_hash()
+        "state hash differed: record {recorded} replayed {replayed}"
     )))
 }
