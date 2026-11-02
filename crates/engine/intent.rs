@@ -1,22 +1,26 @@
 //! Who is asking, and the action they asked the round to take.
 
 use std::fmt;
+use std::str::FromStr;
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::model::State;
 use crate::rules::rule::TargetKind;
 use crate::Reason;
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(try_from = "String", into = "String")]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(into = "String")]
 pub enum Viewer {
     Player(String),
     Npc(String),
 }
 
-impl Viewer {
-    pub fn parse(raw: &str) -> Result<Self, Reason> {
+/// `player:<id>` or `npc:<id>`.
+impl FromStr for Viewer {
+    type Err = Reason;
+
+    fn from_str(raw: &str) -> Result<Self, Self::Err> {
         let Some((kind, id)) = raw.split_once(':') else {
             return Err(Reason::UnscopedPerceive);
         };
@@ -29,7 +33,9 @@ impl Viewer {
             _ => Err(Reason::UnscopedPerceive),
         }
     }
+}
 
+impl Viewer {
     pub fn actor_id(&self) -> &str {
         match self {
             Viewer::Player(id) | Viewer::Npc(id) => id,
@@ -52,11 +58,11 @@ impl From<Viewer> for String {
     }
 }
 
-impl TryFrom<String> for Viewer {
-    type Error = Reason;
-
-    fn try_from(raw: String) -> Result<Self, Self::Error> {
-        Viewer::parse(&raw)
+impl<'de> Deserialize<'de> for Viewer {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        String::deserialize(deserializer)?
+            .parse()
+            .map_err(serde::de::Error::custom)
     }
 }
 
@@ -65,7 +71,6 @@ impl TryFrom<String> for Viewer {
 pub enum Source {
     Engine,
     Player,
-    System,
 }
 
 impl Source {
@@ -73,7 +78,6 @@ impl Source {
         match self {
             Source::Engine => "engine",
             Source::Player => "player",
-            Source::System => "system",
         }
     }
 }
@@ -115,8 +119,10 @@ impl Target {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Default)]
+#[derive(Clone, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct IntentArgs {
+    #[serde(rename = "to", default, skip_serializing_if = "Option::is_none")]
     pub message_to: Option<Vec<String>>,
 }
 
@@ -130,7 +136,6 @@ pub struct Intent {
     #[serde(rename = "move")]
     pub move_name: String,
     pub target: Target,
-    #[serde(with = "args_wire")]
     pub args: IntentArgs,
     pub rationale_code: String,
 }
@@ -259,48 +264,6 @@ impl TryFrom<TargetWire> for Target {
     }
 }
 
-#[derive(Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub(crate) struct ArgsWire {
-    #[serde(rename = "to", default, skip_serializing_if = "Option::is_none")]
-    message_to: Option<Vec<String>>,
-}
-
-impl From<&IntentArgs> for ArgsWire {
-    fn from(args: &IntentArgs) -> Self {
-        Self {
-            message_to: args.message_to.clone(),
-        }
-    }
-}
-
-impl From<ArgsWire> for IntentArgs {
-    fn from(wire: ArgsWire) -> Self {
-        Self {
-            message_to: wire.message_to,
-        }
-    }
-}
-
-pub(crate) mod args_wire {
-    use super::ArgsWire;
-    use crate::intent::IntentArgs;
-    use serde::{Deserialize, Deserializer, Serialize, Serializer};
-
-    pub(crate) fn serialize<S: Serializer>(
-        args: &IntentArgs,
-        serializer: S,
-    ) -> Result<S::Ok, S::Error> {
-        ArgsWire::from(args).serialize(serializer)
-    }
-
-    pub(crate) fn deserialize<'de, D: Deserializer<'de>>(
-        deserializer: D,
-    ) -> Result<IntentArgs, D::Error> {
-        Ok(IntentArgs::from(ArgsWire::deserialize(deserializer)?))
-    }
-}
-
 /// Blake2s of `world|round|actor|line`: a player's line for the round after the save's,
 /// or a habit's local id for the save's round.
 pub(crate) fn intent_id(world_id: &str, round_index: u64, actor_id: &str, line: &str) -> String {
@@ -317,5 +280,23 @@ mod tests {
             intent_id("cap", 1, "n2", "work"),
             "daa186f67613ae8ea1275b3fd03c38d52eea99e976235e499b5c2b0853c0d819"
         );
+    }
+
+    #[test]
+    fn args_are_empty_or_carry_to() {
+        let (id, actor) = ("i1".to_string(), Viewer::Player("pc_rowan".to_string()));
+        let mut intent = Intent::new(id, 1, actor, Source::Player, "say", Target::Empty);
+        let head = r#"{"id":"i1","round_index":1,"actor":"player:pc_rowan","source":"player","move":"say","target":{},"args":"#;
+        for (to, args) in [
+            (None, "{}"),
+            (Some(vec!["pc_wren".to_string()]), r#"{"to":["pc_wren"]}"#),
+        ] {
+            intent.args.message_to = to;
+            let line = serde_json::to_string(&intent).unwrap();
+            assert_eq!(line, format!(r#"{head}{args},"rationale_code":""}}"#));
+            assert_eq!(serde_json::from_str::<Intent>(&line).unwrap(), intent);
+        }
+        let unknown = format!(r#"{head}{{"cc":["pc_wren"]}},"rationale_code":""}}"#);
+        assert!(serde_json::from_str::<Intent>(&unknown).is_err());
     }
 }

@@ -21,11 +21,11 @@ pub struct MeterLive {
     pub offset: i64,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// A change to a meter's offset. A journal line writes it as `"write":"offset","delta":<n>`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "write", content = "delta", rename_all = "snake_case")]
 pub enum MeterWrite {
-    Base(i64),
     Offset(i64),
-    ClearOffset,
 }
 
 /// `base` is inside `[min, base_cap]`, and `base + offset` fits in `i64`.
@@ -43,25 +43,15 @@ pub fn current(def: &MeterDef, live: &MeterLive) -> Result<i64, Reason> {
 }
 
 /// `Ok(true)` means the stored pair changed and the caller should track
-/// `StateKey::ActorMeter`. A clamp that leaves the pair alone is `Ok(false)`.
-/// The live record is assigned only after `stored` accepts the next pair.
+/// `StateKey::ActorMeter`. A zero delta leaves the pair alone and is `Ok(false)`.
+/// The live record is assigned only after `is_storable` accepts the next pair.
 pub fn write(def: &MeterDef, live: &mut MeterLive, write: MeterWrite) -> Result<bool, Reason> {
-    let (next_base, next_offset) = match write {
-        MeterWrite::Base(delta) => {
-            let sum = live.base.checked_add(delta).ok_or(Reason::OutOfRange)?;
-            (sum.clamp(def.min, def.base_cap), live.offset)
-        }
-        MeterWrite::Offset(delta) => {
-            let next = live.offset.checked_add(delta).ok_or(Reason::OutOfRange)?;
-            (live.base, next)
-        }
-        MeterWrite::ClearOffset => (live.base, 0),
-    };
-    if !is_storable(def, next_base, next_offset) {
+    let MeterWrite::Offset(delta) = write;
+    let next_offset = live.offset.checked_add(delta).ok_or(Reason::OutOfRange)?;
+    if !is_storable(def, live.base, next_offset) {
         return Err(Reason::OutOfRange);
     }
-    let changed = next_base != live.base || next_offset != live.offset;
-    live.base = next_base;
+    let changed = next_offset != live.offset;
     live.offset = next_offset;
     Ok(changed)
 }

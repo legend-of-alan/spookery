@@ -49,7 +49,7 @@ pub(crate) fn pick<'a>(
     hint: Option<&str>,
 ) -> Result<&'a Rule, Reason> {
     let found = verb_for(canon, now, actor.actor_id(), verb, hint);
-    if source != Source::Engine && matches!(actor, Viewer::Player(_)) {
+    if source == Source::Player && matches!(actor, Viewer::Player(_)) {
         return found.ok_or(Reason::NotInSpec);
     }
     let habits = canon.rules.habits_of(actor.actor_id());

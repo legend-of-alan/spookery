@@ -171,14 +171,6 @@ impl EffectKind {
     }
 }
 
-#[derive(Clone, Copy, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub(crate) enum WriteKind {
-    Base,
-    Offset,
-    ClearOffset,
-}
-
 fn is_false(value: &bool) -> bool {
     !*value
 }
@@ -201,9 +193,8 @@ pub(crate) enum EffectRecord {
         intent_id: String,
         actor_id: String,
         key: String,
-        write: WriteKind,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        delta: Option<i64>,
+        #[serde(flatten)]
+        write: MeterWrite,
     },
     Item {
         #[serde(rename = "as")]
@@ -309,21 +300,13 @@ impl From<Effect> for EffectRecord {
                 actor_id,
                 key,
                 write,
-            } => {
-                let (write, delta) = match write {
-                    MeterWrite::Base(delta) => (WriteKind::Base, Some(delta)),
-                    MeterWrite::Offset(delta) => (WriteKind::Offset, Some(delta)),
-                    MeterWrite::ClearOffset => (WriteKind::ClearOffset, None),
-                };
-                Self::Meter {
-                    as_viewer,
-                    intent_id,
-                    actor_id,
-                    key,
-                    write,
-                    delta,
-                }
-            }
+            } => Self::Meter {
+                as_viewer,
+                intent_id,
+                actor_id,
+                key,
+                write,
+            },
             EffectKind::Item {
                 actor_id,
                 place,
@@ -445,12 +428,11 @@ impl TryFrom<EffectRecord> for Effect {
                 actor_id,
                 key,
                 write,
-                delta,
             } => (
                 EffectKind::Meter {
                     actor_id,
                     key,
-                    write: meter_write(write, delta)?,
+                    write,
                 },
                 as_viewer,
                 intent_id,
@@ -582,17 +564,6 @@ impl TryFrom<EffectRecord> for Effect {
             viewer: as_viewer,
             intent_id,
         })
-    }
-}
-
-fn meter_write(write: WriteKind, delta: Option<i64>) -> Result<MeterWrite, Reason> {
-    match (write, delta) {
-        (WriteKind::ClearOffset, None) => Ok(MeterWrite::ClearOffset),
-        (WriteKind::Base, Some(delta)) => Ok(MeterWrite::Base(delta)),
-        (WriteKind::Offset, Some(delta)) => Ok(MeterWrite::Offset(delta)),
-        (WriteKind::ClearOffset, Some(_)) | (WriteKind::Base | WriteKind::Offset, None) => {
-            Err(Reason::Schema)
-        }
     }
 }
 
@@ -869,4 +840,30 @@ fn leave_note(
         });
         Ok(true)
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::store::journal::{emit_record, Record};
+
+    #[test]
+    fn a_write_or_source_the_engine_never_wrote_is_refused() {
+        let round = include_str!("../fixtures/round.jsonl").trim_end();
+        let meter = r#"{"kind":"meter","as":"player:pc_rowan","intent_id":"i1","actor_id":"pc_rowan","key":"grit","write":"offset","delta":-1},"#;
+        let written = round.replacen(r#""effects":["#, &format!(r#""effects":[{meter}"#), 1);
+        let record: Record = serde_json::from_str(&written).unwrap();
+        assert_eq!(emit_record(&record).trim_end(), written);
+        let offset = r#""write":"offset","delta":-1"#;
+        for (word, from, to) in [
+            ("base", offset, r#""write":"base","delta":-1"#),
+            ("clear_offset", offset, r#""write":"clear_offset""#),
+            ("system", r#""source":"player""#, r#""source":"system""#),
+        ] {
+            let line = written.replacen(from, to, 1);
+            let refused = serde_json::from_str::<Record>(&line)
+                .unwrap_err()
+                .to_string();
+            assert!(refused.contains(&format!("`{word}`")), "{refused}");
+        }
+    }
 }
