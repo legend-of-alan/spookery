@@ -320,7 +320,7 @@ impl Error {
     fn into_reason(self) -> Reason {
         match self {
             Error::Reason(reason) => reason,
-            Error::Diverged(_) => Reason::Schema,
+            Error::Diverged(_) => Reason::HandEdit,
         }
     }
 }

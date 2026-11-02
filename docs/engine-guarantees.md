@@ -75,7 +75,8 @@ Migrate may carry a hand edit of `save.yaml`. It writes a checkpoint of the
 migrated save, replay restarts from that checkpoint, and full verification
 trusts the edit and names it as `operator edit trusted at state_rev N`. A hand
 edit made while the journal has rounds past `save.yaml` is refused with
-`HAND_EDIT`, and migrate writes nothing.
+`HAND_EDIT`, and migrate writes nothing. A host that opens a pack whose journal
+does not replay to its recorded hash refuses with `HAND_EDIT`.
 
 Tested in `features/replay/the_journal_verifies.feature`,
 `features/commit/a_hand_edit_waits_for_migrate.feature`,
