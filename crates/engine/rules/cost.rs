@@ -2,11 +2,11 @@
 
 use crate::draft::Draft;
 use crate::intent::Intent;
-use crate::key::{StateKey, StateValue};
-use crate::meter::{self, MeterWrite};
-use crate::model;
+use crate::key::StateKey;
+use crate::meter::MeterWrite;
 use crate::rule::Cost;
 use crate::rules::case::Case;
+use crate::rules::effect;
 use crate::rules::expr::{self, Dice};
 use crate::rules::gate;
 use crate::Reason;
@@ -28,17 +28,9 @@ pub(crate) fn afford(case: &Case, cost: &Cost) -> Result<(), gate::Refusal> {
         if amount < 0 {
             return Err(cant_afford(key));
         }
-        let Some(def) = canon.meters.get(key) else {
-            return Err(cant_afford(key));
-        };
-        let Some(live) = now
-            .actors
-            .get(who)
-            .and_then(|actor| actor.meters().get(key))
-        else {
-            return Err(cant_afford(key));
-        };
-        let current = meter::current(def, live).map_err(|_| cant_afford(key))?;
+        let current = now
+            .meter_value(canon, who, key)
+            .map_err(|_| cant_afford(key))?;
         if current < amount {
             return Err(cant_afford(key));
         }
@@ -79,73 +71,22 @@ pub(crate) fn pay(
         if amount < 0 {
             return Err(Reason::CantAfford);
         }
-        let def = *draft.canon().meters.get(key).ok_or(Reason::UnknownId)?;
-        let mut live = draft
-            .state()
-            .actors
-            .get(who)
-            .ok_or(Reason::UnknownId)?
-            .meters()
-            .get(key)
-            .cloned()
-            .ok_or(Reason::UnknownId)?;
-        meter::write(&def, &mut live, MeterWrite::Offset(-amount))?;
-        draft.track(StateKey::ActorMeter(who.to_string(), key.clone()))?;
-        *draft
-            .state_mut()
-            .actors
-            .get_mut(who)
-            .ok_or(Reason::UnknownId)?
-            .meters_mut()
-            .get_mut(key)
-            .ok_or(Reason::UnknownId)? = live;
+        effect::write_meter(draft, who, key, MeterWrite::Offset(-amount))?;
+        if amount == 0 {
+            // A cost of 0 leaves the meter as it was and still takes a key of the budget.
+            draft.track(StateKey::ActorMeter(who.to_string(), key.clone()))?;
+        }
     }
+    let holder = effect::Holder::Actor(who.to_string());
     for (id, expr) in &cost.items {
         let case = Case::new(draft.canon(), draft.state(), draft.presence, intent);
         let count = item_count(expr::eval_with_dice(&case, expr, dice)?)?;
-        let before = i64::from(
-            draft
-                .state()
-                .actors
-                .get(who)
-                .ok_or(Reason::UnknownId)?
-                .item_count(id),
-        );
-        let changed = {
-            let inventory = draft
-                .state_mut()
-                .actors
-                .get_mut(who)
-                .ok_or(Reason::UnknownId)?
-                .inventory_mut();
-            model::shift_count(inventory, id, -i64::from(count), None)
-                .map_err(|_| Reason::CantAfford)?
-        };
-        if changed {
-            draft.track_before(
-                StateKey::ActorItem(who.to_string(), id.clone()),
-                StateValue::Number(before),
-            )?;
+        // The key budget keeps its own code; any other refusal of the take is a shortfall.
+        match effect::shift_item(draft, &holder, id, -i64::from(count), None) {
+            Err(Reason::Budget) => return Err(Reason::Budget),
+            Err(_) => return Err(Reason::CantAfford),
+            Ok(()) => {}
         }
-    }
-    let wielded = draft
-        .state()
-        .actors
-        .get(who)
-        .ok_or(Reason::UnknownId)?
-        .wielded()
-        .map(str::to_string);
-    let released = draft
-        .state_mut()
-        .actors
-        .get_mut(who)
-        .ok_or(Reason::UnknownId)?
-        .release_wielded();
-    if released {
-        draft.track_before(
-            StateKey::ActorWielded(who.to_string()),
-            wielded.map(StateValue::Text).unwrap_or(StateValue::Empty),
-        )?;
     }
     Ok(())
 }

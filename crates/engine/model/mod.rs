@@ -7,6 +7,7 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
+use key::StateKey;
 use meter::MeterLive;
 
 use crate::intent::{Target, Viewer};
@@ -56,6 +57,11 @@ impl State {
         meter::current(def, live)
     }
 
+    /// Actor `id`'s live record to write, or `UNKNOWN_ID`.
+    pub(crate) fn actor_mut(&mut self, id: &str) -> Result<&mut ActorLive, crate::Reason> {
+        self.actors.get_mut(id).ok_or(crate::Reason::UnknownId)
+    }
+
     /// The seat actor `id` acts from.
     pub(crate) fn viewer_of(&self, id: &str) -> Option<Viewer> {
         self.actors.get(id).map(|actor| actor.viewer(id))
@@ -93,7 +99,7 @@ pub struct Pause {
     pub presence_clocks: RunState,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PlaceLive {
     pub items: BTreeMap<String, u32>,
@@ -323,6 +329,31 @@ pub struct Act {
     pub busy_until: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pending: Option<PendingAction>,
+}
+
+/// One of the `Act` counts a new day or a new hour sets back to 0.
+#[derive(Clone, Copy)]
+pub(crate) enum ActCounter {
+    IdleActsToday,
+    LiveActsThisHour,
+}
+
+impl ActCounter {
+    /// The key this count is tracked under for actor `id`.
+    pub(crate) fn key(self, id: String) -> StateKey {
+        match self {
+            ActCounter::IdleActsToday => StateKey::IdleActsToday(id),
+            ActCounter::LiveActsThisHour => StateKey::LiveActsThisHour(id),
+        }
+    }
+
+    /// This count on `act`, to write.
+    pub(crate) fn count_mut(self, act: &mut Act) -> &mut u32 {
+        match self {
+            ActCounter::IdleActsToday => &mut act.idle_acts_today,
+            ActCounter::LiveActsThisHour => &mut act.live_acts_this_hour,
+        }
+    }
 }
 
 /// Work that finishes when `busy_until` is reached.

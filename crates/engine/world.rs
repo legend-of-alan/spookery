@@ -21,8 +21,6 @@ use crate::QueuedMove;
 use crate::Reason;
 use spookery_protocol::Speaker;
 
-use crate::draft::Draft;
-
 /// One say, in characters. Four kibibytes still fits in an 8 KiB player line.
 const MAX_SAY_CHARS: usize = 4 * 1024;
 
@@ -35,7 +33,7 @@ pub enum Address<'a> {
 
 pub struct World<L = crate::PackGuard> {
     pub(crate) root: PathBuf,
-    canon: Arc<Canon>,
+    pub(crate) canon: Arc<Canon>,
     pub(crate) state: State,
     pub(crate) queue: Vec<Intent>,
     warning: Option<&'static str>,
@@ -471,17 +469,6 @@ impl World<()> {
             warning: None,
             lock: (),
         }
-    }
-}
-
-impl<'p> Draft<'p> {
-    pub(crate) fn begin<L>(world: &World<L>, presence: &'p Presence) -> Self {
-        Self::from_parts(
-            Arc::clone(&world.canon),
-            world.canon.budget,
-            world.state.clone(),
-            presence,
-        )
     }
 }
 

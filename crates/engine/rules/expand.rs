@@ -281,16 +281,16 @@ fn location_effect(case: &Case, to: &str) -> Result<Effect, Reason> {
         .get(intent.actor.actor_id())
         .map(|actor| actor.place().to_string())
         .ok_or(Reason::UnknownId)?;
-    Ok(Effect {
-        kind: EffectKind::Location {
+    Ok(Effect::new(
+        &intent.actor,
+        &intent.id,
+        EffectKind::Location {
             actor_id: intent.actor.actor_id().to_string(),
             from,
             to: to.to_string(),
             arrived_at: None,
         },
-        viewer: intent.actor.clone(),
-        intent_id: intent.id.clone(),
-    })
+    ))
 }
 
 /// Faces of 1, and no journal line. Gather only needs the effect shape.
