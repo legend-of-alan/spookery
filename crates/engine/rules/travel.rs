@@ -64,11 +64,17 @@ pub(crate) fn admit(context: &Context, rule: &Rule) -> Result<(), gate::Refusal>
     let Some(exit) = exit_of(context, rule)? else {
         return Ok(());
     };
-    let (canon, now, intent) = (context.canon, context.state, context.intent);
-    if !is_revealed(canon, now, intent.actor.actor_id(), exit) {
+    let (canon, state, intent) = (context.canon, context.state, context.intent);
+    if !is_revealed(canon, state, intent.actor.actor_id(), exit) {
         return Err(gate::Refusal::new(intent, Reason::NoExit));
     }
-    if is_locked(canon, now, context.presence, intent.actor.actor_id(), exit) {
+    if is_locked(
+        canon,
+        state,
+        context.presence,
+        intent.actor.actor_id(),
+        exit,
+    ) {
         let text = if exit.locked_text.is_empty() {
             "The way is locked.".to_string()
         } else {
@@ -83,34 +89,40 @@ pub(crate) fn admit(context: &Context, rule: &Rule) -> Result<(), gate::Refusal>
     cost::afford(context, &exit.cost)
 }
 
-fn is_revealed(canon: &Canon, now: &State, actor_id: &str, exit: &Exit) -> bool {
+fn is_revealed(canon: &Canon, state: &State, actor_id: &str, exit: &Exit) -> bool {
     if !exit.hidden {
         return true;
     }
     let Some(fact) = &exit.revealed_by else {
         return false;
     };
-    let Some(viewer) = now.viewer_of(actor_id) else {
+    let Some(viewer) = state.viewer_of(actor_id) else {
         return false;
     };
-    can_see_fact(canon, now, &viewer, fact)
+    can_see_fact(canon, state, &viewer, fact)
 }
 
-fn is_locked(canon: &Canon, now: &State, presence: &Presence, actor_id: &str, exit: &Exit) -> bool {
+fn is_locked(
+    canon: &Canon,
+    state: &State,
+    presence: &Presence,
+    actor_id: &str,
+    exit: &Exit,
+) -> bool {
     if exit.if_.is_empty() {
         return false;
     }
-    let Some(viewer) = now.viewer_of(actor_id) else {
+    let Some(viewer) = state.viewer_of(actor_id) else {
         return true;
     };
     let target = Target::Exit(exit.name.clone());
-    !cond::if_holds(canon, now, presence, &viewer, "travel", target, &exit.if_)
+    !cond::if_holds(canon, state, presence, &viewer, "travel", target, &exit.if_)
 }
 
 /// The exits of `place` this actor is allowed to see. A hidden exit stays off the list.
 pub(crate) fn exits_at(
     canon: &Canon,
-    now: &State,
+    state: &State,
     presence: &Presence,
     actor_id: &str,
     place: &PlaceDef,
@@ -118,13 +130,13 @@ pub(crate) fn exits_at(
     place
         .exits
         .iter()
-        .filter(|exit| is_revealed(canon, now, actor_id, exit))
+        .filter(|exit| is_revealed(canon, state, actor_id, exit))
         .map(|exit| ExitView {
             name: exit.name.clone(),
             to: exit.to.clone(),
             place_name: place_name(canon, &exit.to),
             minutes: exit.cost.minutes,
-            locked: is_locked(canon, now, presence, actor_id, exit),
+            locked: is_locked(canon, state, presence, actor_id, exit),
         })
         .collect()
 }
@@ -132,13 +144,13 @@ pub(crate) fn exits_at(
 /// The exits of this actor's place that they are allowed to see.
 pub(crate) fn visible_exits(
     canon: &Canon,
-    now: &State,
+    state: &State,
     presence: &Presence,
     actor_id: &str,
 ) -> Vec<ExitView> {
-    let actor = now.actors.get(actor_id);
+    let actor = state.actors.get(actor_id);
     match actor.and_then(|actor| canon.places.get(actor.place())) {
-        Some(place) => exits_at(canon, now, presence, actor_id, place),
+        Some(place) => exits_at(canon, state, presence, actor_id, place),
         None => Vec::new(),
     }
 }

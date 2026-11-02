@@ -51,16 +51,16 @@ fn no_hidden_fact_reaches_a_player() {
         "the pack needs actors, places, and facts"
     );
     let canon = world.canon().clone();
-    let now = world.state().clone();
+    let state = world.state().clone();
     let mut runner = TestRunner::new(runner_config());
     runner
         .run(
             &pick_scene(actors.len(), places.len(), facts.len()),
             |scene| {
                 let mut canon = canon.clone();
-                let mut now = now.clone();
-                apply_scene(&mut canon, &mut now, &actors, &places, &facts, &scene);
-                assert_hidden_stays_hidden(&canon, &now)
+                let mut state = state.clone();
+                apply_scene(&mut canon, &mut state, &actors, &places, &facts, &scene);
+                assert_hidden_stays_hidden(&canon, &state)
             },
         )
         .unwrap_or_else(|err| panic!("visibility property failed: {err}"));
@@ -107,7 +107,7 @@ fn pick_note(
 
 fn apply_scene(
     canon: &mut Canon,
-    now: &mut State,
+    state: &mut State,
     actors: &[String],
     places: &[String],
     facts: &[String],
@@ -119,10 +119,10 @@ fn apply_scene(
         }
     }
     for (actor_id, place_index) in actors.iter().zip(&scene.place_of) {
-        move_actor(now, actor_id, &places[place_index % places.len()]);
+        move_actor(state, actor_id, &places[place_index % places.len()]);
     }
     for (actor_id, known) in actors.iter().zip(&scene.known) {
-        let Some(actor) = now.actors.get_mut(actor_id) else {
+        let Some(actor) = state.actors.get_mut(actor_id) else {
             continue;
         };
         *actor.known_facts_mut() = known
@@ -131,7 +131,7 @@ fn apply_scene(
             .collect();
         sort_unique(actor.known_facts_mut());
     }
-    now.notes.clear();
+    state.notes.clear();
     for (index, note) in scene.notes.iter().enumerate() {
         let mut fact_ids: Vec<String> = note
             .fact_ids
@@ -145,7 +145,7 @@ fn apply_scene(
             .map(|actor| actors[actor % actors.len()].clone())
             .collect();
         sort_unique(&mut to);
-        now.notes.push(Note {
+        state.notes.push(Note {
             id: format!("note-{index}"),
             to,
             place: note.place.map(|place| places[place % places.len()].clone()),
@@ -155,20 +155,20 @@ fn apply_scene(
     }
 }
 
-fn move_actor(now: &mut State, actor_id: &str, place: &str) {
-    let old = now
+fn move_actor(state: &mut State, actor_id: &str, place: &str) {
+    let old = state
         .actors
         .get(actor_id)
         .map(|actor| actor.place().to_string());
     if let Some(old) = old {
-        if let Some(live) = now.places.get_mut(&old) {
+        if let Some(live) = state.places.get_mut(&old) {
             live.actors.retain(|id| id != actor_id);
         }
     }
-    if let Some(actor) = now.actors.get_mut(actor_id) {
+    if let Some(actor) = state.actors.get_mut(actor_id) {
         *actor.place_mut() = place.to_string();
     }
-    if let Some(live) = now.places.get_mut(place) {
+    if let Some(live) = state.places.get_mut(place) {
         if !live.actors.iter().any(|id| id == actor_id) {
             live.actors.push(actor_id.to_string());
             live.actors.sort();
@@ -176,14 +176,14 @@ fn move_actor(now: &mut State, actor_id: &str, place: &str) {
     }
 }
 
-fn assert_hidden_stays_hidden(canon: &Canon, now: &State) -> Result<(), TestCaseError> {
-    for (pc, actor) in &now.actors {
+fn assert_hidden_stays_hidden(canon: &Canon, state: &State) -> Result<(), TestCaseError> {
+    for (pc, actor) in &state.actors {
         if !actor.is_pc() {
             continue;
         }
         let view = perceive_as(
             canon,
-            now,
+            state,
             &Presence::default(),
             &Viewer::Player(pc.clone()),
         )

@@ -9,18 +9,18 @@ use crate::rules::expand;
 use crate::rules::gate;
 
 /// One habit intent per NPC whose habit the gate admits, its target not yet stamped.
-pub(crate) fn intents(canon: &Canon, now: &State, presence: &Presence) -> Vec<Intent> {
-    let actors = now.actors.keys();
-    let intents = actors.filter_map(|actor_id| intent_of(canon, now, presence, actor_id));
+pub(crate) fn intents(canon: &Canon, state: &State, presence: &Presence) -> Vec<Intent> {
+    let actors = state.actors.keys();
+    let intents = actors.filter_map(|actor_id| intent_of(canon, state, presence, actor_id));
     intents.collect()
 }
 
 /// The first habit, in file order, that the gate admits and whose effects expand.
-fn intent_of(canon: &Canon, now: &State, presence: &Presence, actor_id: &str) -> Option<Intent> {
+fn intent_of(canon: &Canon, state: &State, presence: &Presence, actor_id: &str) -> Option<Intent> {
     let habits = canon.rules.habits_of(actor_id);
     habits.into_iter().find_map(|rule| {
-        let intent = Intent::habit(now, actor_id, &rule.local_id);
-        let context = Context::new(canon, now, presence, &intent);
+        let intent = Intent::habit(state, actor_id, &rule.local_id);
+        let context = Context::new(canon, state, presence, &intent);
         let runs = gate::admit(&context, rule).is_ok() && expand::preview(&context, rule).is_ok();
         runs.then_some(intent)
     })
@@ -29,7 +29,7 @@ fn intent_of(canon: &Canon, now: &State, presence: &Presence, actor_id: &str) ->
 /// This NPC's habits whose `if` holds, for its view.
 pub(crate) fn list_whose_if_holds(
     canon: &Canon,
-    now: &State,
+    state: &State,
     presence: &Presence,
     npc_id: &str,
 ) -> Vec<String> {
@@ -38,14 +38,14 @@ pub(crate) fn list_whose_if_holds(
     habits
         .filter(|rule| {
             let (verb, conds) = (&rule.local_id, &rule.if_);
-            cond::if_holds(canon, now, presence, &npc, verb, Target::Empty, conds)
+            cond::if_holds(canon, state, presence, &npc, verb, Target::Empty, conds)
         })
         .map(|rule| rule.local_id.clone())
         .collect()
 }
 
-pub(crate) fn is_eligible(canon: &Canon, now: &State, presence: &Presence, npc_id: &str) -> bool {
-    let Some(actor) = now.actors.get(npc_id) else {
+pub(crate) fn is_eligible(canon: &Canon, state: &State, presence: &Presence, npc_id: &str) -> bool {
+    let Some(actor) = state.actors.get(npc_id) else {
         return false;
     };
     if !actor.is_npc() {
@@ -57,11 +57,11 @@ pub(crate) fn is_eligible(canon: &Canon, now: &State, presence: &Presence, npc_i
     if !profile.eligible {
         return false;
     }
-    if actor.is_busy(now.world_time) || is_player_at(now, presence, actor.place()) {
+    if actor.is_busy(state.world_time) || is_player_at(state, presence, actor.place()) {
         return false;
     }
     let counters = actor.act();
-    if counters.last_act_round == now.round_index {
+    if counters.last_act_round == state.round_index {
         return false;
     }
     if presence.players == 0 {
@@ -72,8 +72,8 @@ pub(crate) fn is_eligible(canon: &Canon, now: &State, presence: &Presence, npc_i
 }
 
 /// A seated player's PC is in `place`.
-pub(crate) fn is_player_at(now: &State, presence: &Presence, place: &str) -> bool {
-    now.actors_at(place).iter().any(|id| {
-        presence.actors_present.contains(id) && now.actors.get(id).is_some_and(ActorLive::is_pc)
+pub(crate) fn is_player_at(state: &State, presence: &Presence, place: &str) -> bool {
+    state.actors_at(place).iter().any(|id| {
+        presence.actors_present.contains(id) && state.actors.get(id).is_some_and(ActorLive::is_pc)
     })
 }

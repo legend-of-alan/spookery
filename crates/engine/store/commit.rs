@@ -79,13 +79,13 @@ fn bump_state_rev(draft: &mut Draft) -> Result<(), Reason> {
     Ok(())
 }
 
-/// Seal a migrate record for `now`, which is already the journal tip or the on-disk save.
-/// `edited` means `now` is a hand edit of the checkpoint head. The journal does not hold
+/// Seal a migrate record for `state`, which is already the journal tip or the on-disk save.
+/// `edited` means `state` is a hand edit of the checkpoint head. The journal does not hold
 /// that edit, so a checkpoint of the migrated save follows the record and replay restarts
 /// from it. The caller holds the pack lock.
 pub fn commit_migrate(
     root: &Path,
-    now: State,
+    state: State,
     edited: bool,
     lock: &PackGuard,
 ) -> Result<(), Reason> {
@@ -94,20 +94,20 @@ pub fn commit_migrate(
     }
     let canon = crate::canon::load_canon(root).map_err(|diags| first_reason(&diags))?;
     let pack_rev_after = pack_rev(root)?;
-    let pack_rev_before = now.pack_rev.clone();
-    let state_rev_before = now.state_rev;
+    let pack_rev_before = state.pack_rev.clone();
+    let state_rev_before = state.state_rev;
     let state_rev_after = state_rev_before
         .checked_add(1)
         .ok_or(Reason::CommitConflict)?;
-    let added = missing_meters(&canon, &now);
-    let now = migrate_save(now, &pack_rev_after, state_rev_after, &added);
-    check_save(&canon, &now).map_err(|diags| first_reason(&diags))?;
-    let emitted = emit_save(&now)?.into_bytes();
+    let added = missing_meters(&canon, &state);
+    let state = migrate_save(state, &pack_rev_after, state_rev_after, &added);
+    check_save(&canon, &state).map_err(|diags| first_reason(&diags))?;
+    let emitted = emit_save(&state)?.into_bytes();
     let entry = journal::migrate_record(
         &pack_rev_before,
-        &now.pack_rev,
+        &state.pack_rev,
         state_rev_before,
-        now.state_rev,
+        state.state_rev,
         &blake2s_tagged(&emitted),
         &added,
         edited,
@@ -120,14 +120,14 @@ pub fn commit_migrate(
         return Ok(());
     }
     // The snapshot lands before the record, so a crash after the append still replays.
-    write_atomic(&journal::checkpoint_path(root, now.state_rev), &emitted)?;
-    let (payload, chain) = seal_checkpoint(line, &now, &emitted)?;
+    write_atomic(&journal::checkpoint_path(root, state.state_rev), &emitted)?;
+    let (payload, chain) = seal_checkpoint(line, &state, &emitted)?;
     append_to_bundle(root, &payload, &write)?;
     store_checkpoint(
         root,
         &emitted,
-        now.state_rev,
-        now.round_index,
+        state.state_rev,
+        state.round_index,
         &chain,
         &write,
     )?;
@@ -136,15 +136,19 @@ pub fn commit_migrate(
     Ok(())
 }
 
-/// Follow a sealed `line` with a checkpoint of `now`. Returns both lines and the checkpoint's chain.
+/// Follow a sealed `line` with a checkpoint of `state`. Returns both lines and the
+/// checkpoint's chain.
 fn seal_checkpoint(
     line: String,
-    now: &State,
+    state: &State,
     now_bytes: &[u8],
 ) -> Result<(String, String), Reason> {
     let prev = journal::sealed_chain(&line).map_err(|_| Reason::Schema)?;
-    let mark =
-        journal::checkpoint_record(now.round_index, now.state_rev, &blake2s_tagged(now_bytes));
+    let mark = journal::checkpoint_record(
+        state.round_index,
+        state.state_rev,
+        &blake2s_tagged(now_bytes),
+    );
     let sealed = journal::seal(&mark, &prev);
     let chain = journal::sealed_chain(&sealed).map_err(|_| Reason::Schema)?;
     Ok((format!("{line}{sealed}"), chain))

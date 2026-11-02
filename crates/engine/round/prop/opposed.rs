@@ -59,8 +59,8 @@ fn lunge_pack(limit: Option<&str>, rule: &str) -> PathBuf {
         fs::write(&path, text.replacen(old.expect("limit key"), limit, 1)).unwrap();
     }
     crate::testing::append(&pack.join("rules/verbs.yaml"), &format!("{LUNGE}{rule}"));
-    crate::testing::edit_save(&pack, |now| {
-        let briar = now.actors.get_mut("npc_briar").expect("Briar");
+    crate::testing::edit_save(&pack, |state| {
+        let briar = state.actors.get_mut("npc_briar").expect("Briar");
         briar.meters_mut().get_mut("might").expect("might").base = 30;
     });
     pack

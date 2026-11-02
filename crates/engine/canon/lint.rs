@@ -466,11 +466,11 @@ pub(super) fn unknown_meters(
 }
 
 /// Static warnings and trigger-reach errors on a loaded `Canon`.
-pub(crate) fn check_canon(canon: &Canon, now: Option<&crate::model::State>) -> Vec<Diagnostic> {
+pub(crate) fn check_canon(canon: &Canon, state: Option<&crate::model::State>) -> Vec<Diagnostic> {
     let mut diags = unreachable_places(canon);
     diags.extend(teleport_in_verbs(canon));
     diags.extend(trigger_cycles(canon));
-    diags.extend(trigger_leaks(canon, now));
+    diags.extend(trigger_leaks(canon, state));
     diags
 }
 
@@ -574,13 +574,13 @@ fn trigger_cycles(canon: &Canon) -> Vec<Diagnostic> {
 }
 
 /// Narrate and note on a change rule that can reach a viewer who cannot see the change.
-fn trigger_leaks(canon: &Canon, now: Option<&crate::model::State>) -> Vec<Diagnostic> {
+fn trigger_leaks(canon: &Canon, state: Option<&crate::model::State>) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
     for rule in canon.rules.iter() {
         let When::Change(watch) = &rule.when else {
             continue;
         };
-        let sight = sight_of(canon, now, watch);
+        let sight = sight_of(canon, state, watch);
         let mut leak = false;
         rule.visit_templates(|effect| {
             if reach_of(effect).is_some_and(|reach| is_too_wide(&sight, &reach)) {
@@ -695,11 +695,12 @@ fn sets_watch(watch: &ChangeWatch, rule: &Rule, mark: &Write) -> bool {
     }
 }
 
-fn sight_of(canon: &Canon, now: Option<&crate::model::State>, watch: &ChangeWatch) -> Sight {
+fn sight_of(canon: &Canon, state: Option<&crate::model::State>, watch: &ChangeWatch) -> Sight {
     match watch {
         ChangeWatch::Knows { .. } => Sight::Subject,
         ChangeWatch::Clock { id } => Sight::Owners(
-            now.and_then(|now| now.clocks.get(id))
+            state
+                .and_then(|state| state.clocks.get(id))
                 .map(|clock| clock.owners.clone())
                 .unwrap_or_default(),
         ),

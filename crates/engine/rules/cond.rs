@@ -23,7 +23,7 @@ pub(crate) fn all_hold(context: &Context, conds: &[Cond]) -> Result<(), Reason> 
 /// probe with no id.
 pub(crate) fn if_holds(
     canon: &Canon,
-    now: &State,
+    state: &State,
     presence: &Presence,
     viewer: &Viewer,
     verb: &str,
@@ -32,13 +32,13 @@ pub(crate) fn if_holds(
 ) -> bool {
     let probe = Intent::new(
         String::new(),
-        now.round_index,
+        state.round_index,
         viewer.clone(),
         Source::Player,
         verb,
         target,
     );
-    all_hold(&Context::new(canon, now, presence, &probe), conds).is_ok()
+    all_hold(&Context::new(canon, state, presence, &probe), conds).is_ok()
 }
 
 fn refusal_code(cond: &Cond) -> Reason {
@@ -53,12 +53,12 @@ fn refusal_code(cond: &Cond) -> Reason {
 }
 
 fn holds(context: &Context, cond: &Cond) -> Result<bool, Reason> {
-    let now = context.state;
+    let state = context.state;
     match cond {
         Cond::HasItem { who, id, count } => {
             let actor = expr::resolve_who_id(context, who)?;
             let id = expr::resolve_item_id(context, id)?;
-            let held = now
+            let held = state
                 .actors
                 .get(&actor)
                 .map(|actor| actor.item_count(&id))
@@ -68,7 +68,7 @@ fn holds(context: &Context, cond: &Cond) -> Result<bool, Reason> {
         Cond::Wielding { who, id } => {
             let actor = expr::resolve_who_id(context, who)?;
             let id = expr::resolve_item_id(context, id)?;
-            Ok(now
+            Ok(state
                 .actors
                 .get(&actor)
                 .is_some_and(|actor| actor.wielded() == Some(id.as_str())))
@@ -80,17 +80,17 @@ fn holds(context: &Context, cond: &Cond) -> Result<bool, Reason> {
             value,
         } => {
             let actor = expr::resolve_who_id(context, who)?;
-            let current = now.meter_value(context.canon, &actor, key)?;
+            let current = state.meter_value(context.canon, &actor, key)?;
             let right = expr::eval(context, value)?;
             Ok(op.holds(current, right))
         }
         Cond::Flag { who, key, is } => {
             if matches!(who, Who::World) {
-                let on = now.flags.iter().any(|flag| flag == key);
+                let on = state.flags.iter().any(|flag| flag == key);
                 return Ok(on == *is);
             }
             let actor = expr::resolve_who_id(context, who)?;
-            let on = now
+            let on = state
                 .actors
                 .get(&actor)
                 .is_some_and(|actor| actor.flags().iter().any(|flag| flag == key));
@@ -98,26 +98,26 @@ fn holds(context: &Context, cond: &Cond) -> Result<bool, Reason> {
         }
         Cond::At { who, place } => {
             let actor = expr::resolve_who_id(context, who)?;
-            Ok(now
+            Ok(state
                 .actors
                 .get(&actor)
                 .is_some_and(|actor| actor.place() == place))
         }
         Cond::Knows { who, fact } => {
             let actor = expr::resolve_who_id(context, who)?;
-            Ok(now
+            Ok(state
                 .actors
                 .get(&actor)
                 .is_some_and(|actor| actor.known_facts().iter().any(|id| id == fact)))
         }
         Cond::Clock { id, op, value } => {
-            let clock = now.clocks.get(id).ok_or(Reason::UnknownId)?;
+            let clock = state.clocks.get(id).ok_or(Reason::UnknownId)?;
             let right = expr::eval(context, value)?;
             Ok(!clock.paused && op.holds(clock.value, right))
         }
-        Cond::Hour { from, to } => Ok(is_hour_in(*from, *to, world_hour(now.world_time))),
+        Cond::Hour { from, to } => Ok(is_hour_in(*from, *to, world_hour(state.world_time))),
         Cond::Players { op, value } => Ok(op.holds(i64::from(context.presence.players), *value)),
-        Cond::NoteExists(id) => Ok(now.notes.iter().any(|note| &note.id == id)),
+        Cond::NoteExists(id) => Ok(state.notes.iter().any(|note| &note.id == id)),
         Cond::All(inner) => {
             for cond in inner {
                 if !holds(context, cond)? {

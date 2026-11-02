@@ -18,12 +18,12 @@ pub(crate) struct Deliveries {
 /// An empty table gets only the GM summary.
 pub(crate) fn run(
     canon: &Canon,
-    now: &State,
+    state: &State,
     presence: &Presence,
     changes: &[Change],
     effects: &[Effect],
 ) -> Deliveries {
-    let gm = visibility::show_to(canon, now, &Recipient::Gm, changes, effects);
+    let gm = visibility::show_to(canon, state, &Recipient::Gm, changes, effects);
     let mut delivered = Deliveries {
         changed_keys: gm.changes,
         lines: Vec::new(),
@@ -32,9 +32,14 @@ pub(crate) fn run(
     if presence.players == 0 {
         return delivered;
     }
-    for id in now.actors.keys().cloned() {
-        let delivery =
-            visibility::show_to(canon, now, &Recipient::Actor(id.clone()), changes, effects);
+    for id in state.actors.keys().cloned() {
+        let delivery = visibility::show_to(
+            canon,
+            state,
+            &Recipient::Actor(id.clone()),
+            changes,
+            effects,
+        );
         for text in delivery.narrations {
             delivered.lines.push(RecipientLine {
                 to: id.clone(),

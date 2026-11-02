@@ -43,13 +43,13 @@ impl Refusal {
 /// `NOT_IN_SPEC` for it and `UNKNOWN_MOVE` for anyone else.
 pub(crate) fn pick<'a>(
     canon: &'a Canon,
-    now: &State,
+    state: &State,
     actor: &Viewer,
     source: Source,
     verb: &str,
     hint: Option<&str>,
 ) -> Result<&'a Rule, Reason> {
-    let found = verb_for(canon, now, actor.actor_id(), verb, hint);
+    let found = verb_for(canon, state, actor.actor_id(), verb, hint);
     if source == Source::Player && matches!(actor, Viewer::Player(_)) {
         return found.ok_or(Reason::NotInSpec);
     }
@@ -73,12 +73,12 @@ pub(crate) fn hint_of(target: &Target) -> Option<&str> {
 /// is that place.
 pub(crate) fn verb_for<'a>(
     canon: &'a Canon,
-    now: &State,
+    state: &State,
     actor_id: &str,
     verb: &str,
     hint: Option<&str>,
 ) -> Option<&'a Rule> {
-    let actor = now.actors.get(actor_id);
+    let actor = state.actors.get(actor_id);
     if verb == "attack" {
         let wielded = actor.and_then(ActorLive::wielded);
         if let Some(item) = wielded.filter(|item| !item.is_empty()) {
@@ -127,9 +127,9 @@ pub(crate) fn gate<'a>(context: &Context<'a>) -> Result<&'a Rule, Refusal> {
 
 /// Check a rule already picked. A player-sourced habit skips its `if`. Cost is checked for every rule.
 pub(crate) fn admit(context: &Context, rule: &Rule) -> Result<(), Refusal> {
-    let (now, intent) = (context.state, context.intent);
-    if let Some(actor) = now.actors.get(intent.actor.actor_id()) {
-        if actor.is_busy(now.world_time) && matches!(rule.when, When::Verb { .. }) {
+    let (state, intent) = (context.state, context.intent);
+    if let Some(actor) = state.actors.get(intent.actor.actor_id()) {
+        if actor.is_busy(state.world_time) && matches!(rule.when, When::Verb { .. }) {
             return Err(Refusal::new(intent, Reason::Busy));
         }
     }
@@ -153,7 +153,7 @@ pub(crate) fn admit(context: &Context, rule: &Rule) -> Result<(), Refusal> {
         && matches!(intent.actor, Viewer::Npc(_))
         && !is_eligible(
             context.canon,
-            now,
+            state,
             context.presence,
             intent.actor.actor_id(),
         )

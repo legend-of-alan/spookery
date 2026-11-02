@@ -9,12 +9,13 @@ use crate::store::codec::normalize;
 use crate::store::records::AddedMeter;
 
 /// Meters the pack defines that at least one actor lacks, each at its `start`.
-pub(crate) fn missing_meters(canon: &Canon, now: &State) -> Vec<AddedMeter> {
+pub(crate) fn missing_meters(canon: &Canon, state: &State) -> Vec<AddedMeter> {
     canon
         .meters
         .iter()
         .filter(|(id, _)| {
-            now.actors
+            state
+                .actors
                 .values()
                 .any(|actor| !actor.meters().contains_key(*id))
         })
@@ -29,12 +30,12 @@ pub(crate) fn missing_meters(canon: &Canon, now: &State) -> Vec<AddedMeter> {
 /// stamp `pack_rev` and `state_rev`. Live migrate and replay both call this.
 /// It does not touch the disk.
 pub fn migrate_save(
-    mut now: State,
+    mut state: State,
     pack_rev: &str,
     state_rev: u64,
     meters: &[AddedMeter],
 ) -> State {
-    for actor in now.actors.values_mut() {
+    for actor in state.actors.values_mut() {
         let live = actor.meters_mut();
         for meter in meters {
             live.entry(meter.id.clone()).or_insert(MeterLive {
@@ -43,18 +44,18 @@ pub fn migrate_save(
             });
         }
     }
-    now.pack_rev = pack_rev.to_string();
-    now.state_rev = state_rev;
-    normalize(&mut now);
-    now
+    state.pack_rev = pack_rev.to_string();
+    state.state_rev = state_rev;
+    normalize(&mut state);
+    state
 }
 
 /// Check the save against the pack without changing it. Refuse every meter,
 /// item and wielded slot the pack does not define, every meter the pack defines
 /// that an actor lacks, every meter outside its rules and every empty id or zero count.
-pub fn check_save(canon: &Canon, now: &State) -> Result<(), Vec<Diagnostic>> {
+pub fn check_save(canon: &Canon, state: &State) -> Result<(), Vec<Diagnostic>> {
     let mut diags = Vec::new();
-    for (id, actor) in &now.actors {
+    for (id, actor) in &state.actors {
         for key in canon.meters.keys() {
             if actor.meters().contains_key(key) {
                 continue;
@@ -100,7 +101,7 @@ pub fn check_save(canon: &Canon, now: &State) -> Result<(), Vec<Diagnostic>> {
             );
         }
     }
-    for (id, actor) in &now.actors {
+    for (id, actor) in &state.actors {
         for (item, count) in actor.inventory() {
             if item.is_empty() {
                 diags.push(
@@ -124,7 +125,7 @@ pub fn check_save(canon: &Canon, now: &State) -> Result<(), Vec<Diagnostic>> {
             }
         }
     }
-    for (place, live) in &now.places {
+    for (place, live) in &state.places {
         for (item, count) in &live.items {
             if *count == 0 {
                 diags.push(
@@ -138,7 +139,7 @@ pub fn check_save(canon: &Canon, now: &State) -> Result<(), Vec<Diagnostic>> {
             }
         }
     }
-    for (actor_id, actor) in &now.actors {
+    for (actor_id, actor) in &state.actors {
         for item in actor.inventory().keys() {
             if !canon.items.contains_key(item) {
                 diags.push(unknown_item(
@@ -180,7 +181,7 @@ pub fn check_save(canon: &Canon, now: &State) -> Result<(), Vec<Diagnostic>> {
             }
         }
     }
-    for (place, live) in &now.places {
+    for (place, live) in &state.places {
         for item in live.items.keys() {
             if !canon.items.contains_key(item) {
                 diags.push(unknown_item(

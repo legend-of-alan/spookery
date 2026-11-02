@@ -59,13 +59,13 @@ impl RoundDice {
     pub(crate) fn roll_check(
         &mut self,
         canon: &Canon,
-        now: &State,
+        state: &State,
         key: RollKey,
         check_id: &str,
         target: i64,
         partial_at: Option<i64>,
     ) -> Result<Roll, Reason> {
-        let actor = now.actors.get(&key.subject_id).ok_or(Reason::UnknownId)?;
+        let actor = state.actors.get(&key.subject_id).ok_or(Reason::UnknownId)?;
         let check = canon.checks.get(check_id).ok_or(Reason::UnknownId)?;
         roll::roll_check(check, &canon.meters, actor, &key, target, partial_at)
     }
@@ -159,7 +159,7 @@ impl Dice for Roller<'_> {
     fn resist(
         &mut self,
         canon: &Canon,
-        now: &State,
+        state: &State,
         actor_id: &str,
         check_id: &str,
         target: i64,
@@ -167,7 +167,7 @@ impl Dice for Roller<'_> {
         let key = self.dice.next_key(self.rule, actor_id);
         let out = self
             .dice
-            .roll_check(canon, now, key, check_id, target, None)?;
+            .roll_check(canon, state, key, check_id, target, None)?;
         self.reports.push(MoveReport::Rolled {
             actor_id: actor_id.to_string(),
             roll: out.clone(),

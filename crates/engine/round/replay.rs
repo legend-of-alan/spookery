@@ -250,8 +250,8 @@ pub(crate) fn peek_at_tip(path: &Path) -> Result<World<()>, Reason> {
 /// Migrate the journal tip. A save that the journal has not passed is migrated as it stands.
 pub fn migrate_pack(path: &Path) -> Result<(), Reason> {
     let lock = lock_pack(path)?;
-    let (now, edited) = load_migrate_tip(path, &lock)?;
-    crate::store::commit::commit_migrate(path, now, edited, &lock)
+    let (state, edited) = load_migrate_tip(path, &lock)?;
+    crate::store::commit::commit_migrate(path, state, edited, &lock)
 }
 
 /// The state to migrate, and whether it is a hand edit of the checkpoint head.
@@ -259,23 +259,24 @@ pub fn migrate_pack(path: &Path) -> Result<(), Reason> {
 fn load_migrate_tip(path: &Path, lock: &PackGuard) -> Result<(State, bool), Reason> {
     let bytes = fs::read(path.join("state/save.yaml")).map_err(|_| Reason::NotInSpec)?;
     let text = std::str::from_utf8(&bytes).map_err(|_| Reason::Schema)?;
-    let file_now = parse_save(text).map_err(|diags| first_reason(&diags))?;
+    let file_state = parse_save(text).map_err(|diags| first_reason(&diags))?;
     // A save from before the head is a checkpoint that did not land, not an edit.
     let edited = journal::read_head(path)
         .map_err(|fault| fault.reason)?
         .is_some_and(|head| {
-            head.state_rev == file_now.state_rev && head.state_hash != blake2s_tagged(&bytes)
+            head.state_rev == file_state.state_rev && head.state_hash != blake2s_tagged(&bytes)
         });
     let ahead = journal::read_live_records(path)
         .map_err(|_| Reason::Schema)?
         .iter()
         .any(|entry| {
-            !matches!(entry, Record::Checkpoint(_)) && entry.state_rev_after() > file_now.state_rev
+            !matches!(entry, Record::Checkpoint(_))
+                && entry.state_rev_after() > file_state.state_rev
         });
     match (ahead, edited) {
         (true, true) => Err(Reason::HandEdit),
         (true, false) => Ok((replay_tip_unchecked(path, lock)?.state().clone(), false)),
-        (false, _) => Ok((file_now, edited)),
+        (false, _) => Ok((file_state, edited)),
     }
 }
 
@@ -292,9 +293,9 @@ fn replay_tip_unchecked(path: &Path, lock: &PackGuard) -> Result<World<()>, Reas
 
 /// A replay world at `base` with the pack's canon.
 pub(crate) fn open_for_replay(pack: &Path, base: &[u8]) -> Result<World<()>, Error> {
-    let now = load_save_bytes(base)?;
+    let state = load_save_bytes(base)?;
     let canon = load_canon(pack).map_err(|diags| Error::Reason(first_reason(&diags)))?;
-    Ok(World::from_parts(pack, Arc::new(canon), now))
+    Ok(World::from_parts(pack, Arc::new(canon), state))
 }
 
 /// Replay the live records past the save. `true` when any record was replayed.
@@ -333,8 +334,8 @@ fn rebuild_save(path: &Path, lock: &PackGuard) -> Result<(), Error> {
             return Ok(());
         }
         if let Ok(text) = std::str::from_utf8(&bytes) {
-            if let Ok(now) = parse_save(text) {
-                if emit_save(&now)
+            if let Ok(state) = parse_save(text) {
+                if emit_save(&state)
                     .map(|emitted| emitted.into_bytes())
                     .ok()
                     .as_deref()
@@ -446,8 +447,8 @@ fn check_base_migrate(entry: &Record, base_bytes: &[u8]) -> Result<(), Error> {
     if record.state_hash != blake2s_tagged(base_bytes) {
         return Err(migrate_diverged("state_hash differed").into());
     }
-    let base_now = load_save_bytes(base_bytes)?;
-    if record.pack_rev_after != base_now.pack_rev {
+    let base_state = load_save_bytes(base_bytes)?;
+    if record.pack_rev_after != base_state.pack_rev {
         return Err(migrate_diverged("pack_rev differed").into());
     }
     Ok(())

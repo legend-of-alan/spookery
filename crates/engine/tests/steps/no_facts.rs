@@ -67,8 +67,9 @@ fn the_wait_commits_with_nothing_rejected(world: &mut World) {
 fn mira_stands_in_a_place_with_no_facts(world: &mut World) {
     let pack = support::copy_docks("no-facts");
     strip_room_facts(&pack);
-    support::edit_save(&pack, |now| {
-        now.actors
+    support::edit_save(&pack, |state| {
+        state
+            .actors
             .get_mut("mira")
             .unwrap()
             .known_facts_mut()
@@ -108,9 +109,10 @@ fn miras_habit_fires(world: &mut World) {
             })
     });
     assert!(fired, "leave_door_note did not run");
-    let now = support::state_of(pack);
+    let state = support::state_of(pack);
     assert!(
-        now.notes
+        state
+            .notes
             .iter()
             .any(|message| message.id == "note_mira_door"),
         "the door note was not stored"

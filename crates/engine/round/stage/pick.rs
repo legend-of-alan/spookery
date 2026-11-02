@@ -19,13 +19,13 @@ use crate::round::dice::shuffle_key;
 
 /// The queue and the habits, stamped, in priority order, cut to the budget.
 pub(crate) fn run(draft: &Draft, queue: &[Intent]) -> Result<Vec<Intent>, Reason> {
-    let (canon, now, presence) = (draft.canon(), draft.state(), draft.presence);
+    let (canon, state, presence) = (draft.canon(), draft.state(), draft.presence);
     let mut candidates = queue.to_vec();
-    candidates.extend(habits::intents(canon, now, presence));
+    candidates.extend(habits::intents(canon, state, presence));
     for intent in &mut candidates {
-        stamp_target(canon, now, presence, intent);
+        stamp_target(canon, state, presence, intent);
     }
-    candidates.sort_by_cached_key(|intent| priority(canon, now, presence, intent));
+    candidates.sort_by_cached_key(|intent| priority(canon, state, presence, intent));
     candidates.truncate(draft.budget().max_intents_applied as usize);
     check_unique_ids(candidates)
 }
@@ -33,16 +33,16 @@ pub(crate) fn run(draft: &Draft, queue: &[Intent]) -> Result<Vec<Intent>, Reason
 /// Fill an empty target from a preview of the intent's effects, a place it moves to or a
 /// clock it advances, and its note recipients, so priority sees what it touches. A verb
 /// with no target keeps it empty: a filled one would make the gate refuse `SCHEMA`.
-fn stamp_target(canon: &Canon, now: &State, presence: &Presence, intent: &mut Intent) {
+fn stamp_target(canon: &Canon, state: &State, presence: &Presence, intent: &mut Intent) {
     let (actor, verb, hint) = (
         &intent.actor,
         &intent.move_name,
         gate::hint_of(&intent.target),
     );
-    let Ok(rule) = gate::pick(canon, now, actor, intent.source, verb, hint) else {
+    let Ok(rule) = gate::pick(canon, state, actor, intent.source, verb, hint) else {
         return;
     };
-    let context = Context::new(canon, now, presence, intent);
+    let context = Context::new(canon, state, presence, intent);
     let Ok(effects) = expand::preview(&context, rule) else {
         return;
     };
@@ -107,17 +107,17 @@ enum SeatedRank {
     Unclaimed,
 }
 
-fn priority(canon: &Canon, now: &State, presence: &Presence, intent: &Intent) -> Priority {
+fn priority(canon: &Canon, state: &State, presence: &Presence, intent: &Intent) -> Priority {
     let actor = match intent.actor {
         Viewer::Player(_) => ActorRank::Player,
         Viewer::Npc(_) => ActorRank::Npc,
     };
-    let clock = if targets_pc_clock(now, intent) {
+    let clock = if targets_pc_clock(state, intent) {
         ClockRank::Pc
     } else {
         ClockRank::Other
     };
-    let claim = if touches_seated_player(canon, now, presence, intent) {
+    let claim = if touches_seated_player(canon, state, presence, intent) {
         SeatedRank::Claimed
     } else {
         SeatedRank::Unclaimed
@@ -126,7 +126,7 @@ fn priority(canon: &Canon, now: &State, presence: &Presence, intent: &Intent) ->
     let shuffle = if actor == ActorRank::Player {
         [0u8; 32]
     } else {
-        shuffle_key(&now.world_id, now.round_index, intent.actor.actor_id())
+        shuffle_key(&state.world_id, state.round_index, intent.actor.actor_id())
     };
     Priority {
         actor,
@@ -136,28 +136,33 @@ fn priority(canon: &Canon, now: &State, presence: &Presence, intent: &Intent) ->
     }
 }
 
-fn targets_pc_clock(now: &State, intent: &Intent) -> bool {
+fn targets_pc_clock(state: &State, intent: &Intent) -> bool {
     let Target::Clock(id) = &intent.target else {
         return false;
     };
-    now.clocks.get(id).is_some_and(|clock| {
+    state.clocks.get(id).is_some_and(|clock| {
         clock
             .owners
             .iter()
-            .any(|owner| now.actors.get(owner).is_some_and(|actor| actor.is_pc()))
+            .any(|owner| state.actors.get(owner).is_some_and(|actor| actor.is_pc()))
     })
 }
 
-fn touches_seated_player(canon: &Canon, now: &State, presence: &Presence, intent: &Intent) -> bool {
+fn touches_seated_player(
+    canon: &Canon,
+    state: &State,
+    presence: &Presence,
+    intent: &Intent,
+) -> bool {
     let present = &presence.actors_present;
     let target_hit = match &intent.target {
         Target::Actor(id) | Target::Item(id) => present.iter().any(|actor| actor == id),
-        Target::Place(place) => is_player_at(now, presence, place),
-        Target::Exit(name) => now
+        Target::Place(place) => is_player_at(state, presence, place),
+        Target::Exit(name) => state
             .actors
             .get(intent.actor.actor_id())
             .and_then(|actor| find_exit(canon, actor.place(), name))
-            .is_some_and(|exit| is_player_at(now, presence, &exit.to)),
+            .is_some_and(|exit| is_player_at(state, presence, &exit.to)),
         _ => false,
     };
     let message_hit = intent

@@ -103,7 +103,7 @@ fn expand_template(
     last_resist: &mut Option<Outcome>,
     dice: &mut dyn Dice,
 ) -> Result<(), Reason> {
-    let (canon, now, intent) = (context.canon, context.state, context.intent);
+    let (canon, state, intent) = (context.canon, context.state, context.intent);
     let viewer = &intent.actor;
     if let Some(spec) = template.resist() {
         let shrugged = match spec {
@@ -121,7 +121,7 @@ fn expand_template(
             } => {
                 let actor = expr::resolve_who_id(context, who)?;
                 let number = expr::eval_with_dice(context, target, dice)?;
-                let band = dice.resist(canon, now, &actor, check, number)?;
+                let band = dice.resist(canon, state, &actor, check, number)?;
                 *last_resist = Some(band);
                 if band == Outcome::Success {
                     for alt in resisted {
@@ -255,7 +255,7 @@ fn expand_template(
             to, text, fact_ids, ..
         } => {
             let to = match to {
-                NarrateTo::Here => now.actors_at(&expr::resolve_who_id(context, &Who::Here)?),
+                NarrateTo::Here => state.actors_at(&expr::resolve_who_id(context, &Who::Here)?),
                 NarrateTo::Self_ => vec![intent.actor.actor_id().to_string()],
                 NarrateTo::Actors(ids) => ids.clone(),
             };

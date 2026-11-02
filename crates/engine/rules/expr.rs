@@ -16,7 +16,7 @@ pub(crate) trait Dice {
     fn resist(
         &mut self,
         canon: &Canon,
-        now: &State,
+        state: &State,
         actor_id: &str,
         check_id: &str,
         target: i64,
@@ -716,7 +716,7 @@ mod tests {
         }
     }
 
-    fn now() -> State {
+    fn state() -> State {
         let mut meters = BTreeMap::new();
         meters.insert("str_mod".to_string(), MeterLive { base: 3, offset: 0 });
         State {
@@ -754,13 +754,13 @@ mod tests {
     #[test]
     fn damage_dice_show_faces_and_the_modifier() {
         let expr = Expr::parse("2d6 + self.str_mod").unwrap();
-        let (canon, now, intent) = (canon(), now(), intent("ada", "ada"));
+        let (canon, state, intent) = (canon(), state(), intent("ada", "ada"));
         let mut dice = Script {
             faces: vec![4, 5],
             at: 0,
             notes: Vec::new(),
         };
-        let context = Context::new(&canon, &now, &EMPTY, &intent);
+        let context = Context::new(&canon, &state, &EMPTY, &intent);
         assert_eq!(eval_with_dice(&context, &expr, &mut dice), Ok(12));
         assert_eq!(dice.notes, vec!["2d6 → 4, 5 = 9 + 3".to_string()]);
     }
@@ -768,13 +768,13 @@ mod tests {
     #[test]
     fn the_higher_face_is_kept() {
         let expr = Expr::parse("2d20kh1").unwrap();
-        let (canon, now, intent) = (canon(), now(), intent("ada", "ada"));
+        let (canon, state, intent) = (canon(), state(), intent("ada", "ada"));
         let mut dice = Script {
             faces: vec![7, 18],
             at: 0,
             notes: Vec::new(),
         };
-        let context = Context::new(&canon, &now, &EMPTY, &intent);
+        let context = Context::new(&canon, &state, &EMPTY, &intent);
         assert_eq!(eval_with_dice(&context, &expr, &mut dice), Ok(18));
         assert!(matches!(
             expr,
@@ -788,8 +788,8 @@ mod tests {
     #[test]
     fn overflow_is_an_error() {
         let expr = Expr::parse("9223372036854775807 + 1").unwrap();
-        let (canon, now, intent) = (canon(), now(), intent("ada", "ada"));
-        let context = Context::new(&canon, &now, &EMPTY, &intent);
+        let (canon, state, intent) = (canon(), state(), intent("ada", "ada"));
+        let context = Context::new(&canon, &state, &EMPTY, &intent);
         let err = eval_with_dice(&context, &expr, &mut super::NoDice);
         assert_eq!(err, Err(Reason::OutOfRange));
     }
