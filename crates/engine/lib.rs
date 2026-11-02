@@ -31,9 +31,7 @@ pub mod testing {
     use std::path::{Path, PathBuf};
 
     pub use crate::canon::strip_body;
-    pub use crate::model::{
-        Act, ActorLive, Clock, MemoryLine, Pause, PendingAction, PendingKind, PlaceLive,
-    };
+    pub use crate::model::{Act, ActorLive, Clock, Pause, PendingAction, PendingKind, PlaceLive};
     pub use crate::round::replay::replay_journal;
     pub use crate::rules::roll::{faces, RollKey};
     pub use crate::store::commit::append_to_bundle;
@@ -71,7 +69,7 @@ pub mod testing {
             latest_checkpoint, list_round_keys, locate, read_record_line, read_records,
             read_verified,
         };
-        pub use crate::store::records::{Record, RoundRecord};
+        pub use crate::store::records::Record;
     }
 
     pub fn copy_dir(from: &Path, to: &Path) {
