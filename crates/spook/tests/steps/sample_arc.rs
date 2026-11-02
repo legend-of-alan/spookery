@@ -136,7 +136,7 @@ fn they_arrive_at_the_exits_cost(world: &mut World) {
     let cost = lane_cost(&pack);
     let now = table::now_of(&pack);
     let arrived = arrival_minute(&pack);
-    assert_eq!(now.actors.get("pc_lark").unwrap().place(), "mill_lane");
+    assert_eq!(now.actors.get("pc_lark").unwrap().place, "mill_lane");
     assert_eq!(arrived.saturating_sub(started), cost);
     assert!(cost > 0);
     assert!(is_finished(&pack));

@@ -89,14 +89,9 @@ pub fn normalize(state: &mut State) {
         sort_unique(&mut note.to);
         sort_unique(&mut note.fact_ids);
     }
-    let occupancy = rebuilt_occupancy(state);
-    for (place_id, place) in &mut state.places {
-        sort_unique(&mut place.notes);
-        place.actors = occupancy.get(place_id).cloned().unwrap_or_default();
-    }
     for actor in state.actors.values_mut() {
-        sort_unique(actor.flags_mut());
-        sort_unique(actor.known_facts_mut());
+        sort_unique(&mut actor.flags);
+        sort_unique(&mut actor.known_facts);
     }
     sort_unique(&mut state.flags);
     for clock in state.clocks.values_mut() {
@@ -104,28 +99,11 @@ pub fn normalize(state: &mut State) {
     }
 }
 
-fn rebuilt_occupancy(state: &State) -> std::collections::BTreeMap<String, Vec<String>> {
-    let mut out: std::collections::BTreeMap<String, Vec<String>> = state
-        .places
-        .keys()
-        .map(|id| (id.clone(), Vec::new()))
-        .collect();
-    for (actor_id, actor) in &state.actors {
-        if let Some(list) = out.get_mut(actor.place()) {
-            list.push(actor_id.clone());
-        }
-    }
-    for list in out.values_mut() {
-        list.sort();
-    }
-    out
-}
-
 fn occupancy_problems(state: &State) -> Vec<Diagnostic> {
     const FILE: &str = "state/save.yaml";
     let mut diags = Vec::new();
     for (id, actor) in &state.actors {
-        if state.places.contains_key(actor.place()) {
+        if state.places.contains_key(&actor.place) {
             continue;
         }
         diags.push(
@@ -133,30 +111,12 @@ fn occupancy_problems(state: &State) -> Vec<Diagnostic> {
                 FILE,
                 &format!(
                     "actor '{id}' is in place '{}', which is not in places",
-                    actor.place()
+                    actor.place
                 ),
                 "add the place or move the actor",
             )
             .at_path(format!("actors.{id}.place")),
         );
-    }
-    let expected = rebuilt_occupancy(state);
-    for (place_id, place) in &state.places {
-        let mut listed = place.actors.clone();
-        listed.sort();
-        let got = expected.get(place_id).map(Vec::as_slice).unwrap_or(&[]);
-        if listed != got {
-            diags.push(
-                schema_error(
-                    FILE,
-                    &format!(
-                        "place '{place_id}' lists actors that do not match where the actors stand"
-                    ),
-                    "list the actors whose place is this one, or run spook migrate",
-                )
-                .at_path(format!("places.{place_id}.actors")),
-            );
-        }
     }
     diags
 }
@@ -170,7 +130,7 @@ pub(crate) fn missing_meters(canon: &Canon, state: &State) -> Vec<AddedMeter> {
             state
                 .actors
                 .values()
-                .any(|actor| !actor.meters().contains_key(*id))
+                .any(|actor| !actor.meters.contains_key(*id))
         })
         .map(|(id, def)| AddedMeter {
             id: id.clone(),
@@ -189,7 +149,7 @@ pub fn migrate_save(
     meters: &[AddedMeter],
 ) -> State {
     for actor in state.actors.values_mut() {
-        let live = actor.meters_mut();
+        let live = &mut actor.meters;
         for meter in meters {
             live.entry(meter.id.clone()).or_insert(MeterLive {
                 base: meter.start,
@@ -225,6 +185,27 @@ mod tests {
         assert_eq!(parse_save(&emitted).unwrap(), state);
     }
 
+    #[test]
+    fn a_save_that_still_lists_place_occupants_is_refused() {
+        let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../packs/oneshot-docks/state/save.yaml");
+        let current = fs::read_to_string(&path).unwrap();
+        let place = "  mira_rooms:\n    items: {}\n";
+        let listed = current.replacen(
+            place,
+            &format!("{place}    notes: []\n    actors:\n      - mira\n"),
+            1,
+        );
+        assert_ne!(listed, current);
+        let refused = parse_save(&listed).unwrap_err();
+        assert!(
+            refused[0].message.starts_with("unknown field 'notes'"),
+            "{refused:?}"
+        );
+        assert_eq!(crate::diagnostic::first_reason(&refused), Reason::Schema);
+        assert_eq!(emit_save(&parse_save(&current).unwrap()).unwrap(), current);
+    }
+
     fn save_text(tag: &str) -> String {
         format!(
             "\
@@ -241,8 +222,6 @@ pause:
 places:
   gate:
     items: {{}}
-    notes: []
-    actors: []
 actors: {{}}
 clocks: {{}}
 notes: []

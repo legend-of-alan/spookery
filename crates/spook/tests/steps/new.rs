@@ -2,7 +2,6 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use cucumber::{given, then, when};
-use spookery_engine::testing::ActorLive;
 
 use crate::support;
 use crate::World;
@@ -142,7 +141,7 @@ fn the_travel_committed_a_round(world: &mut World) {
     let pack = table::pack(world);
     table::wait_world_time(pack, 5);
     let now = table::now_of(pack);
-    assert_eq!(now.actors.get("pc_ada").unwrap().place(), "lane");
+    assert_eq!(now.actors.get("pc_ada").unwrap().place, "lane");
     assert!(
         spookery_engine::testing::journal::list_round_keys(pack)
             .contains(&"round-0001".to_string()),
@@ -174,7 +173,7 @@ fn the_keeper_habit_has_set_tended(world: &mut World) {
     let now = table::now_of(&idle);
     assert_eq!(now.world_time, 60, "idle round did not advance an hour");
     let flags = match now.actors.get("keeper") {
-        Some(ActorLive::Npc { flags, .. }) => flags,
+        Some(actor) if actor.is_npc() => &actor.flags,
         other => panic!("keeper missing: {other:?}"),
     };
     assert!(flags.iter().any(|flag| flag == "tended"), "{flags:?}");

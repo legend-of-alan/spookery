@@ -220,7 +220,7 @@ fn play_and_ai_gm_and_a_stub(world: &mut World) {
     let place = table::now_of(&pack)
         .actors
         .get("pc_rowan")
-        .map(|actor| actor.place().to_string());
+        .map(|actor| actor.place.clone());
     assert_eq!(place.as_deref(), Some("docks_street"));
     let second = seen.lock().unwrap().posts[1].clone();
     assert!(second.contains("act"), "{second}");
@@ -298,7 +298,7 @@ fn travel_rounds_once(world: &mut World, transport_error: bool) {
             table::now_of(pack)
                 .actors
                 .get("pc_rowan")
-                .map(|actor| actor.place().to_string()),
+                .map(|actor| actor.place.clone()),
             Some("docks_street".to_string())
         );
     });

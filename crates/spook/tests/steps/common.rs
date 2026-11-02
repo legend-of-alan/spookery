@@ -27,7 +27,7 @@ pub(crate) fn give_key(now: &mut State) {
     now.actors
         .get_mut("pc_rowan")
         .unwrap()
-        .inventory_mut()
+        .inventory
         .insert("brass_key".to_string(), 1);
 }
 
@@ -225,11 +225,11 @@ pub(crate) fn capture_play_stdout(world: &mut World) -> String {
 }
 
 pub(crate) fn set_busy(now: &mut State, actor: &str, until: u64, arrive: &str, via: &str) {
-    let act = now
+    let act = &mut now
         .actors
         .get_mut(actor)
         .unwrap_or_else(|| panic!("no {actor}"))
-        .act_mut();
+        .act;
     act.busy_until = Some(until);
     act.pending = Some(spookery_engine::testing::PendingAction {
         verb: "travel".to_string(),

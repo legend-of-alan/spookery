@@ -11,17 +11,7 @@ fn rowan_starts_in_docks_street(world: &mut World) {
     let pack = crate::support::copy_docks("arrive");
     let path = pack.join("state/save.yaml");
     let mut now = parse_save(&fs::read_to_string(&path).unwrap()).unwrap();
-    *now.actors.get_mut("pc_rowan").unwrap().place_mut() = "docks_street".to_string();
-    now.places
-        .get_mut("docks_shop")
-        .unwrap()
-        .actors
-        .retain(|id| id != "pc_rowan");
-    let street = now.places.get_mut("docks_street").unwrap();
-    if street.actors.iter().all(|id| id != "pc_rowan") {
-        street.actors.push("pc_rowan".to_string());
-        street.actors.sort();
-    }
+    now.actors.get_mut("pc_rowan").unwrap().place = "docks_street".to_string();
     fs::write(&path, emit_save(&now).unwrap()).unwrap();
     world.pack = Some(pack);
 }

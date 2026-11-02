@@ -514,13 +514,13 @@ fn parse_command<'w, 'l: 'w>(
         if rest.is_empty() {
             return Err(Reason::Schema.into());
         }
-        let place = world
+        let place = &world
             .state()
             .actors
             .get(seated)
             .filter(|actor| actor.is_pc())
             .ok_or(Reason::Schema)?
-            .place();
+            .place;
         let (target, text) = split_token(rest);
         let (heard, text) = if !text.is_empty() && target == "place" {
             (Address::Place(place), text)

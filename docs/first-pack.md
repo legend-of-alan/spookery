@@ -77,8 +77,6 @@ The save lists the places people can stand in. Add `porch` under `places` in `st
 ```yaml path=state/save.yaml mode=insert-before anchor=actors:
   porch:
     items: {}
-    notes: []
-    actors: []
 ```
 
 `travel porch` follows the exit named `porch`. A place with no path from the start place is a warning from `spook check`.

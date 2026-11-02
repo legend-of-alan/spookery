@@ -1,7 +1,7 @@
 schema: save
 world_id: starter
 pack_rev: blake2s:b469079d06a5c02c9bfaf16ed1d1e0af56e71fd901cd50ca2389466017ed75ca
-rules_rev: 10
+rules_rev: 11
 state_rev: 0
 round_index: 0
 world_time: 0
@@ -11,14 +11,8 @@ pause:
 places:
   lane:
     items: {}
-    notes: []
-    actors:
-      - keeper
   yard:
     items: {}
-    notes: []
-    actors:
-      - pc_ada
 actors:
   keeper:
     kind: npc

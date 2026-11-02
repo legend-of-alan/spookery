@@ -102,7 +102,7 @@ impl<'p> Draft<'p> {
         let ids: Vec<String> = self.state.actors.keys().cloned().collect();
         for id in ids {
             self.mutate(counter.key(id.clone()), |state| {
-                Ok(std::mem::take(counter.count_mut(state.actor_mut(&id)?.act_mut())) != 0)
+                Ok(std::mem::take(counter.count_mut(&mut state.actor_mut(&id)?.act)) != 0)
             })?;
         }
         Ok(())
@@ -111,12 +111,12 @@ impl<'p> Draft<'p> {
     pub(crate) fn count_npc_act(&mut self, actor_id: &str, players: u32) -> Result<(), Reason> {
         let round_index = self.state.round_index;
         let (current_idle, current_live, current_last) = {
-            let counters = self
+            let counters = &self
                 .state
                 .actors
                 .get(actor_id)
                 .ok_or(Reason::UnknownId)?
-                .act();
+                .act;
             (
                 counters.idle_acts_today,
                 counters.live_acts_this_hour,
@@ -136,7 +136,7 @@ impl<'p> Draft<'p> {
             keys.push(StateKey::LiveActsThisHour(actor_id.to_string()));
         }
         self.track_many(&keys)?;
-        let counters = self.state.actor_mut(actor_id)?.act_mut();
+        let counters = &mut self.state.actor_mut(actor_id)?.act;
         counters.last_act_round = round_index;
         if players == 0 {
             counters.idle_acts_today = new_idle;
@@ -239,20 +239,20 @@ impl<'p> Draft<'p> {
                 .state
                 .actors
                 .get(id)
-                .map(|actor| StateValue::Text(actor.place().to_string()))
+                .map(|actor| StateValue::Text(actor.place.clone()))
                 .unwrap_or(StateValue::Empty),
             StateKey::ActorFlag(id, flag) => self
                 .state
                 .actors
                 .get(id)
-                .map(|actor| StateValue::Bool(actor.flags().iter().any(|item| item == flag)))
+                .map(|actor| StateValue::Bool(actor.flags.iter().any(|item| item == flag)))
                 .unwrap_or(StateValue::Empty),
             StateKey::ActorMeter(id, meter) => self.meter_value(id, meter),
             StateKey::ActorBusy(id) => self
                 .state
                 .actors
                 .get(id)
-                .map(|actor| match actor.act().busy_until {
+                .map(|actor| match actor.act.busy_until {
                     Some(until) => StateValue::Number(i64::try_from(until).unwrap_or(i64::MAX)),
                     None => StateValue::Empty,
                 })
@@ -261,7 +261,7 @@ impl<'p> Draft<'p> {
                 .state
                 .actors
                 .get(id)
-                .map(|actor| StateValue::List(actor.known_facts().to_vec()))
+                .map(|actor| StateValue::List(actor.known_facts.clone()))
                 .unwrap_or(StateValue::Empty),
             StateKey::LastActRound(id) => self.act_number(id, |act| {
                 i64::try_from(act.last_act_round).unwrap_or(i64::MAX)
@@ -290,7 +290,7 @@ impl<'p> Draft<'p> {
                 .state
                 .actors
                 .get(id)
-                .map(|actor| match actor.wielded() {
+                .map(|actor| match actor.wielded.as_deref() {
                     Some(item) => StateValue::Text(item.to_string()),
                     None => StateValue::Empty,
                 })
@@ -335,7 +335,7 @@ impl<'p> Draft<'p> {
         self.state
             .actors
             .get(actor_id)
-            .map(|actor| StateValue::Number(read(actor.act())))
+            .map(|actor| StateValue::Number(read(&actor.act)))
             .unwrap_or(StateValue::Empty)
     }
 
@@ -439,7 +439,7 @@ mod tests {
         let nobody = crate::model::Presence::default();
         let mut draft = Draft::begin(&world, &nobody);
         // Bram's grit sits clamped at its minimum: taking more moves the offset, not the value.
-        let meters = draft.state.actor_mut("bram").unwrap().meters_mut();
+        let meters = &mut draft.state.actor_mut("bram").unwrap().meters;
         meters.get_mut("grit").unwrap().offset = -5;
         let intent = Intent::habit(world.state(), "mira", "leave_door_note");
         let mut write = |actor: &str, key: &str, delta: i64| {

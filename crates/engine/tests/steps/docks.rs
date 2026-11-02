@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 
 use spookery_engine::testing::{
     self as support, insert_nell, journal::list_round_keys, read_round as round_value, resume,
-    stamp_pack_rev, state_of, write_save, Act, ActorLive, Pause, PlaceLive,
+    stamp_pack_rev, state_of, write_save, Act, ActorKind, ActorLive, Pause, PlaceLive,
 };
 use spookery_engine::{
     emit_save, play_pack_once, MeterLive, MoveReport, Note, Presence, RunState, State,
@@ -49,7 +49,7 @@ fn lamp_oil(state: &State) -> u32 {
 
 fn flags_of(state: &State, id: &str) -> Vec<String> {
     match state.actors.get(id) {
-        Some(ActorLive::Npc { flags, .. } | ActorLive::Pc { flags, .. }) => flags.clone(),
+        Some(actor) => actor.flags.clone(),
         None => panic!("{id} missing"),
     }
 }
@@ -118,7 +118,7 @@ fn evening_note() {
     play_pack_once(&pack).unwrap_or_else(|err| panic!("round: {err}"));
     let state = state_of(&pack);
     assert_eq!(lamp_oil(&state), 4);
-    assert_eq!(state.actors.get("mira").unwrap().place(), "mira_rooms");
+    assert_eq!(state.actors.get("mira").unwrap().place, "mira_rooms");
     assert_eq!(state.notes.len(), 1);
     assert_eq!(state.notes[0].id, "note_mira_door");
     assert_eq!(state.notes[0].place.as_deref(), Some("docks_shop"));
@@ -133,17 +133,17 @@ fn morning_restock() {
         drop(opened);
         state.world_time = 600;
         state.notes.push(door_note());
-        *state.actors.get_mut("pc_rowan").unwrap().place_mut() = "docks_street".to_string();
+        state.actors.get_mut("pc_rowan").unwrap().place = "docks_street".to_string();
         write_save(&pack, &state);
     }
     assert_eq!(
-        state_of(&pack).actors.get("mira").unwrap().place(),
+        state_of(&pack).actors.get("mira").unwrap().place,
         "mira_rooms"
     );
     play_pack_once(&pack).unwrap_or_else(|err| panic!("round: {err}"));
     let state = state_of(&pack);
     assert_eq!(lamp_oil(&state), 8);
-    assert_eq!(state.actors.get("mira").unwrap().place(), "mira_rooms");
+    assert_eq!(state.actors.get("mira").unwrap().place, "mira_rooms");
     assert_eq!(state.notes.len(), 1);
     let _ = fs::remove_dir_all(&pack);
 }
@@ -156,7 +156,7 @@ fn capped_restock() -> u32 {
         drop(opened);
         state.world_time = 600;
         state.notes.push(door_note());
-        *state.actors.get_mut("pc_rowan").unwrap().place_mut() = "docks_street".to_string();
+        state.actors.get_mut("pc_rowan").unwrap().place = "docks_street".to_string();
         state
             .places
             .get_mut("docks_shop")
@@ -195,7 +195,7 @@ fn player_in_the_shop() {
         drop(opened);
         state.world_time = 600;
         state.notes.push(door_note());
-        *state.actors.get_mut("mira").unwrap().place_mut() = "docks_shop".to_string();
+        state.actors.get_mut("mira").unwrap().place = "docks_shop".to_string();
         write_save(&pack, &state);
     }
     let mut opened = resume(&pack);
@@ -206,7 +206,7 @@ fn player_in_the_shop() {
     let state = state_of(&pack);
     assert_eq!(lamp_oil(&state), 4);
     assert_eq!(state.notes.len(), 1);
-    assert_eq!(state.actors.get("mira").unwrap().act().last_act_round, 0);
+    assert_eq!(state.actors.get("mira").unwrap().act.last_act_round, 0);
     let _ = fs::remove_dir_all(&pack);
 }
 
@@ -235,7 +235,7 @@ fn gm_restocks() {
         drop(opened);
         state.world_time = 600;
         state.notes.push(door_note());
-        *state.actors.get_mut("mira").unwrap().place_mut() = "docks_shop".to_string();
+        state.actors.get_mut("mira").unwrap().place = "docks_shop".to_string();
         write_save(&pack, &state);
     }
     let mut opened = resume(&pack);
@@ -253,7 +253,7 @@ fn claimed_note_sorts_first() {
         let opened = resume(&pack);
         let mut state = opened.state().clone();
         drop(opened);
-        *state.actors.get_mut("mira").unwrap().place_mut() = "docks_shop".to_string();
+        state.actors.get_mut("mira").unwrap().place = "docks_shop".to_string();
         write_save(&pack, &state);
     }
     let mut opened = resume(&pack);
@@ -344,14 +344,13 @@ Rowan.
         "gate".to_string(),
         PlaceLive {
             items: BTreeMap::new(),
-            notes: Vec::new(),
-            actors: vec!["pc_rowan".to_string()],
         },
     );
     let mut actors = BTreeMap::new();
     actors.insert(
         "pc_rowan".to_string(),
-        ActorLive::Pc {
+        ActorLive {
+            kind: ActorKind::Pc,
             place: "gate".to_string(),
             flags: Vec::new(),
             meters: meters(1),
@@ -414,15 +413,15 @@ fn a_busy_npc_skips() {
         drop(opened);
         state.world_time = 600;
         state.notes.push(door_note());
-        state.actors.get_mut("mira").unwrap().act_mut().busy_until = Some(u64::MAX);
-        *state.actors.get_mut("pc_rowan").unwrap().place_mut() = "docks_street".to_string();
+        state.actors.get_mut("mira").unwrap().act.busy_until = Some(u64::MAX);
+        state.actors.get_mut("pc_rowan").unwrap().place = "docks_street".to_string();
         write_save(&pack, &state);
     }
     play_pack_once(&pack).unwrap_or_else(|err| panic!("round: {err}"));
     let state = state_of(&pack);
     assert_eq!(lamp_oil(&state), 4);
-    assert_eq!(state.actors.get("mira").unwrap().act().last_act_round, 0);
-    assert_eq!(state.actors.get("bram").unwrap().act().last_act_round, 0);
+    assert_eq!(state.actors.get("mira").unwrap().act.last_act_round, 0);
+    assert_eq!(state.actors.get("bram").unwrap().act.last_act_round, 0);
     let _ = fs::remove_dir_all(&pack);
 }
 
@@ -482,13 +481,15 @@ rules:
         );
         actors.insert(
             id,
-            ActorLive::Npc {
+            ActorLive {
+                kind: ActorKind::Npc,
                 place: "yard".to_string(),
                 flags: Vec::new(),
                 meters: meters(1),
                 inventory: BTreeMap::new(),
                 wielded: None,
                 known_facts: Vec::new(),
+                visited: Vec::new(),
                 act: Act::default(),
             },
         );
@@ -504,8 +505,6 @@ rules:
         "yard".to_string(),
         PlaceLive {
             items: BTreeMap::new(),
-            notes: Vec::new(),
-            actors: Vec::new(),
         },
     );
     let state = State {
@@ -537,7 +536,7 @@ rules:
     let acted = state
         .actors
         .values()
-        .filter(|actor| actor.act().last_act_round == 1)
+        .filter(|actor| actor.act.last_act_round == 1)
         .count();
     let applied = round_value(&pack, "round-0001")["extra_steps"]
         .as_array()

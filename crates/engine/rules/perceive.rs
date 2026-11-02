@@ -79,11 +79,11 @@ fn perceive_viewer_budget(
         .actors
         .get(viewer.actor_id())
         .ok_or(Reason::UnknownId)?;
-    let place = actor.place().to_string();
+    let place = actor.place.clone();
     let mut visible_actors: Vec<String> = state
         .actors
         .iter()
-        .filter(|(_, other)| other.place() == place)
+        .filter(|(_, other)| other.place == place)
         .map(|(id, _)| id.clone())
         .collect();
     visible_actors.sort();
@@ -92,7 +92,7 @@ fn perceive_viewer_budget(
     for id in canon.facts.keys() {
         ids.insert(id.clone());
     }
-    for id in actor.known_facts() {
+    for id in &actor.known_facts {
         ids.insert(id.clone());
     }
     let mut known_facts = Vec::new();
@@ -175,7 +175,7 @@ fn perceive_viewer_budget(
         .unwrap_or_default();
 
     let meters = actor
-        .meters()
+        .meters
         .iter()
         .filter_map(|(id, live)| {
             let def = canon.meters.get(id).filter(|def| !def.hidden)?;

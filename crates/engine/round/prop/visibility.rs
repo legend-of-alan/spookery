@@ -125,11 +125,11 @@ fn apply_scene(
         let Some(actor) = state.actors.get_mut(actor_id) else {
             continue;
         };
-        *actor.known_facts_mut() = known
+        actor.known_facts = known
             .iter()
             .map(|index| facts[index % facts.len()].clone())
             .collect();
-        sort_unique(actor.known_facts_mut());
+        sort_unique(&mut actor.known_facts);
     }
     state.notes.clear();
     for (index, note) in scene.notes.iter().enumerate() {
@@ -156,23 +156,8 @@ fn apply_scene(
 }
 
 fn move_actor(state: &mut State, actor_id: &str, place: &str) {
-    let old = state
-        .actors
-        .get(actor_id)
-        .map(|actor| actor.place().to_string());
-    if let Some(old) = old {
-        if let Some(live) = state.places.get_mut(&old) {
-            live.actors.retain(|id| id != actor_id);
-        }
-    }
     if let Some(actor) = state.actors.get_mut(actor_id) {
-        *actor.place_mut() = place.to_string();
-    }
-    if let Some(live) = state.places.get_mut(place) {
-        if !live.actors.iter().any(|id| id == actor_id) {
-            live.actors.push(actor_id.to_string());
-            live.actors.sort();
-        }
+        actor.place = place.to_string();
     }
 }
 
@@ -189,7 +174,7 @@ fn assert_hidden_stays_hidden(canon: &Canon, state: &State) -> Result<(), TestCa
         )
         .map_err(|err| fail(err.to_string()))?;
         for (id, fact) in &canon.facts {
-            if !fact.hidden || actor.known_facts().iter().any(|known| known == id) {
+            if !fact.hidden || actor.known_facts.iter().any(|known| known == id) {
                 continue;
             }
             if let Some(found) = shown(&view, id) {

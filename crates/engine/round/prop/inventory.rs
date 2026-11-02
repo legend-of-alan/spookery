@@ -112,7 +112,7 @@ fn assert_same_save(state: &State, before: &State) -> Result<(), TestCaseError> 
 /// A stored count is a `u32`, so it cannot be negative. A count of 0 is omitted.
 fn assert_no_stored_zero(state: &State) -> Result<(), TestCaseError> {
     for (actor_id, actor) in &state.actors {
-        for (item_id, count) in actor.inventory() {
+        for (item_id, count) in &actor.inventory {
             if *count == 0 {
                 return fail(format!("{actor_id} stores a zero count of {item_id}"));
             }

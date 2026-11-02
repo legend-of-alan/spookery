@@ -1,7 +1,7 @@
 schema: save
 world_id: sample-d20
 pack_rev: blake2s:ddf5e408e6f4a3aa5f2b6b8872f07297a697828c9b86300a10fcfc07dddad0b0
-rules_rev: 10
+rules_rev: 11
 state_rev: 0
 round_index: 0
 world_time: 1080
@@ -11,26 +11,14 @@ pause:
 places:
   gate_yard:
     items: {}
-    notes: []
-    actors:
-      - npc_briar
-      - pc_lark
   loft:
     items:
       latch: 1
-    notes: []
-    actors: []
   mill_lane:
     items: {}
-    notes: []
-    actors:
-      - npc_oden
-      - pc_nell
   wheel_shed:
     items:
       chock: 1
-    notes: []
-    actors: []
 actors:
   npc_briar:
     kind: npc

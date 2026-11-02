@@ -472,7 +472,7 @@ pub fn check_save(canon: &Canon, state: &crate::model::State) -> Result<(), Vec<
     let mut diags = Vec::new();
     for (id, actor) in &state.actors {
         for key in canon.meters.keys() {
-            if actor.meters().contains_key(key) {
+            if actor.meters.contains_key(key) {
                 continue;
             }
             diags.push(
@@ -484,7 +484,7 @@ pub fn check_save(canon: &Canon, state: &crate::model::State) -> Result<(), Vec<
                 .at_path(format!("actors.{id}.meters.{key}")),
             );
         }
-        for key in actor.meters().keys() {
+        for key in actor.meters.keys() {
             if canon.meters.contains_key(key) {
                 continue;
             }
@@ -499,7 +499,7 @@ pub fn check_save(canon: &Canon, state: &crate::model::State) -> Result<(), Vec<
                 .at_path(format!("actors.{id}.meters.{key}")),
             );
         }
-        for (key, meter) in actor.meters() {
+        for (key, meter) in &actor.meters {
             let Some(def) = canon.meters.get(key) else {
                 continue;
             };
@@ -517,7 +517,7 @@ pub fn check_save(canon: &Canon, state: &crate::model::State) -> Result<(), Vec<
         }
     }
     for (id, actor) in &state.actors {
-        for (item, count) in actor.inventory() {
+        for (item, count) in &actor.inventory {
             if item.is_empty() {
                 diags.push(
                     schema_error(
@@ -555,7 +555,7 @@ pub fn check_save(canon: &Canon, state: &crate::model::State) -> Result<(), Vec<
         }
     }
     for (actor_id, actor) in &state.actors {
-        for item in actor.inventory().keys() {
+        for item in actor.inventory.keys() {
             if !canon.items.contains_key(item) {
                 diags.push(unknown_item(
                     "state/save.yaml",
@@ -564,7 +564,7 @@ pub fn check_save(canon: &Canon, state: &crate::model::State) -> Result<(), Vec<
                 ));
             }
         }
-        if let Some(wielded) = actor.wielded() {
+        if let Some(wielded) = actor.wielded.as_deref() {
             if !canon.items.contains_key(wielded) {
                 diags.push(unknown_item(
                     "state/save.yaml",

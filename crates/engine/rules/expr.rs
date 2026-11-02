@@ -216,7 +216,7 @@ pub(crate) fn resolve_who_id(context: &Context, who: &Who) -> Result<String, Rea
             .state
             .actors
             .get(context.intent.actor.actor_id())
-            .map(|actor| actor.place().to_string())
+            .map(|actor| actor.place.clone())
             .ok_or(Reason::UnknownId),
         Who::Actor(id) => Ok(id.clone()),
         Who::Place(id) => Ok(id.clone()),
@@ -630,7 +630,7 @@ mod tests {
     use crate::canon::Canon;
     use crate::intent::{Intent, IntentArgs, Source, Target, Viewer};
     use crate::model::meter::{MeterDef, MeterLive};
-    use crate::model::{Act, ActorLive, Presence, State};
+    use crate::model::{Act, ActorKind, ActorLive, Presence, State};
     use crate::rules::context::Context;
     use crate::rules::rule::Who;
     use crate::Reason;
@@ -734,7 +734,8 @@ mod tests {
             places: BTreeMap::new(),
             actors: BTreeMap::from([(
                 "ada".to_string(),
-                ActorLive::Pc {
+                ActorLive {
+                    kind: ActorKind::Pc,
                     place: "room".to_string(),
                     flags: Vec::new(),
                     meters,

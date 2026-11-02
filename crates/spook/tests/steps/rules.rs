@@ -228,11 +228,9 @@ The ferry waits at the dock.
             "ferry_dock".to_string(),
             PlaceLive {
                 items: Default::default(),
-                notes: Vec::new(),
-                actors: Vec::new(),
             },
         );
-        *now.actors.get_mut("pc_rowan").unwrap().place_mut() = "ferry_dock".to_string();
+        now.actors.get_mut("pc_rowan").unwrap().place = "ferry_dock".to_string();
     });
     world.pack = Some(pack);
 }
@@ -258,11 +256,11 @@ fn a_pc_at_ferry_dock_travels(world: &mut World) {
 fn the_ferry_rule_runs(world: &mut World) {
     let now = state_of(world.pack.as_ref().unwrap());
     let rowan = now.actors.get("pc_rowan").unwrap();
-    assert_eq!(rowan.place(), "ferry_dock", "verb:travel moved the PC");
+    assert_eq!(rowan.place, "ferry_dock", "verb:travel moved the PC");
     assert!(
-        rowan.flags().iter().any(|flag| flag == "took_the_ferry"),
+        rowan.flags.iter().any(|flag| flag == "took_the_ferry"),
         "ferry flag missing: {:?}",
-        rowan.flags()
+        rowan.flags
     );
 }
 
@@ -309,7 +307,7 @@ fn an_empty_round_at_hour_7(world: &mut World) {
         now.clocks.get_mut("shop_day").unwrap().value = 0;
         let briar = now.actors.get("mira").unwrap().clone();
         now.actors.insert("briar".to_string(), briar);
-        *now.actors.get_mut("briar").unwrap().place_mut() = "docks_shop".to_string();
+        now.actors.get_mut("briar").unwrap().place = "docks_shop".to_string();
     });
     let mut opened = open(&pack);
     let wall = opened.state().last_round_at.clone();
@@ -381,16 +379,12 @@ fn attack_targets_defense(world: &mut World) {
             .actors
             .get_mut("npc_briar")
             .unwrap()
-            .meters_mut()
+            .meters
             .get_mut("defense")
             .unwrap();
         defense.base = 12;
         defense.offset = 0;
-        now.actors
-            .get_mut("npc_briar")
-            .unwrap()
-            .act_mut()
-            .busy_until = Some(u64::MAX);
+        now.actors.get_mut("npc_briar").unwrap().act.busy_until = Some(u64::MAX);
     });
     world.pack = Some(pack);
 }
@@ -417,7 +411,7 @@ fn lark_attacks(world: &mut World) {
             .actors
             .get_mut("pc_lark")
             .unwrap()
-            .meters_mut()
+            .meters
             .get_mut("might")
             .unwrap();
         might.base = 21 - i64::from(face);
@@ -452,7 +446,7 @@ fn lark_attacks(world: &mut World) {
 fn the_outcome_is_a_miss(world: &mut World) {
     assert_eq!(world.scratch, "miss");
     let now = state_of(world.pack.as_ref().unwrap());
-    let flags = now.actors.get("npc_briar").unwrap().flags();
+    let flags = &now.actors.get("npc_briar").unwrap().flags;
     assert!(flags.iter().any(|flag| flag == "missed"), "{flags:?}");
     assert!(!flags.iter().any(|flag| flag == "hit"), "{flags:?}");
 }
@@ -585,7 +579,7 @@ fn steady_costs_five_grit(world: &mut World) {
             .actors
             .get_mut("pc_rowan")
             .unwrap()
-            .meters_mut()
+            .meters
             .get_mut("grit")
             .unwrap();
         grit.base = 1;
@@ -638,7 +632,7 @@ rules:
     );
     edit_save(&pack, |_| {});
     let now = state_of(&pack);
-    assert_eq!(now.actors.get("pc_rowan").unwrap().place(), "docks_shop");
+    assert_eq!(now.actors.get("pc_rowan").unwrap().place, "docks_shop");
     world.pack = Some(pack);
 }
 
@@ -670,7 +664,7 @@ fn both_full_ids_are_refused(world: &mut World) {
     );
     let now = state_of(world.pack.as_ref().unwrap());
     let rowan = now.actors.get("pc_rowan").unwrap();
-    assert_eq!(rowan.place(), "docks_shop");
+    assert_eq!(rowan.place, "docks_shop");
     assert_eq!(now.world_time, 1080);
     assert_eq!(now.round_index, 0);
     assert!(
@@ -680,7 +674,7 @@ fn both_full_ids_are_refused(world: &mut World) {
         "the habit note was stored"
     );
     assert!(
-        !rowan.flags().iter().any(|flag| flag == "took_the_street"),
+        !rowan.flags.iter().any(|flag| flag == "took_the_street"),
         "the far place rule ran"
     );
 }
@@ -717,7 +711,7 @@ A small bottle.
     );
     edit_save(&pack, |now| {
         let rowan = now.actors.get_mut("pc_rowan").unwrap();
-        rowan.inventory_mut().insert("tonic".to_string(), 1);
+        rowan.inventory.insert("tonic".to_string(), 1);
     });
     world.pack = Some(pack);
 }
@@ -744,7 +738,7 @@ fn the_seated_pc_queues_use_tonic(world: &mut World) {
 fn the_queued_target_is_that_item(world: &mut World) {
     assert_eq!(world.scratch, "Item(\"tonic\") use");
     let now = state_of(world.pack.as_ref().unwrap());
-    assert_eq!(now.actors.get("pc_rowan").unwrap().place(), "docks_shop");
+    assert_eq!(now.actors.get("pc_rowan").unwrap().place, "docks_shop");
     assert_eq!(now.world_time, 1080);
     assert_eq!(now.round_index, 0);
 }
@@ -877,7 +871,7 @@ fn briar_holds_ask_in_the_lane(world: &mut World) {
 fn lark_in_the_yard_plays(world: &mut World, line: String) {
     let now = state_of(world.pack.as_ref().unwrap());
     for actor in ["pc_lark", "npc_briar"] {
-        assert_eq!(now.actors.get(actor).unwrap().place(), "gate_yard");
+        assert_eq!(now.actors.get(actor).unwrap().place, "gate_yard");
     }
     play_larks_line(world, &line);
 }
@@ -888,7 +882,7 @@ fn lark_alone_plays(world: &mut World, line: String) {
     let yard = now
         .actors
         .iter()
-        .filter(|(_, actor)| actor.place() == "gate_yard");
+        .filter(|(_, actor)| actor.place == "gate_yard");
     assert_eq!(
         yard.map(|(id, _)| id.as_str()).collect::<Vec<_>>(),
         ["pc_lark"]

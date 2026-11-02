@@ -13,7 +13,7 @@ use crate::World;
 
 fn keep_briar_busy(now: &mut State) {
     if let Some(briar) = now.actors.get_mut("npc_briar") {
-        briar.act_mut().busy_until = Some(u64::MAX);
+        briar.act.busy_until = Some(u64::MAX);
     }
 }
 
@@ -35,7 +35,7 @@ fn wielded(pack: &Path, actor: &str) -> Option<String> {
     support::state_of(pack)
         .actors
         .get(actor)
-        .and_then(|actor| actor.wielded().map(str::to_string))
+        .and_then(|actor| actor.wielded.clone())
 }
 
 /// One line at a table with no GM: queue it, then commit its round.
@@ -124,10 +124,10 @@ fn hold_dagger(now: &mut State, wield: bool) {
     now.actors
         .get_mut("pc_lark")
         .unwrap()
-        .inventory_mut()
+        .inventory
         .insert("poisoned_dagger".to_string(), 1);
     if wield {
-        *now.actors.get_mut("pc_lark").unwrap().wielded_mut() = Some("poisoned_dagger".to_string());
+        now.actors.get_mut("pc_lark").unwrap().wielded = Some("poisoned_dagger".to_string());
     }
 }
 
@@ -145,12 +145,12 @@ fn nell_holds_a_tonic(world: &mut World) {
         now.actors
             .get_mut("pc_nell")
             .unwrap()
-            .inventory_mut()
+            .inventory
             .insert("tonic".to_string(), 1);
         now.actors
             .get_mut("pc_nell")
             .unwrap()
-            .meters_mut()
+            .meters
             .get_mut("hp")
             .unwrap()
             .base = 3;
@@ -267,7 +267,7 @@ fn lark_holds_a_latch_at_a_table(world: &mut World) {
     support::edit_save(&pack, |now| {
         keep_briar_busy(now);
         let lark = now.actors.get_mut("pc_lark").unwrap();
-        lark.inventory_mut().insert("latch".to_string(), 1);
+        lark.inventory.insert("latch".to_string(), 1);
     });
     table::listen(world, &pack);
     table::seat_actor(world, &pack, "pc_lark");
@@ -371,7 +371,7 @@ fn the_save_lists_an_unknown_item(world: &mut World) {
         now.actors
             .get_mut("pc_rowan")
             .unwrap()
-            .inventory_mut()
+            .inventory
             .insert("ghost".to_string(), 1);
     });
     world.pack = Some(pack);
@@ -399,7 +399,7 @@ fn lark_holds_a_dagger(world: &mut World) {
         now.actors
             .get_mut("pc_lark")
             .unwrap()
-            .inventory_mut()
+            .inventory
             .insert("poisoned_dagger".to_string(), 1);
     });
     world.pack = Some(pack);
@@ -504,7 +504,7 @@ fn the_slot_clears_in_the_round(world: &mut World) {
     let pack = world.pack.as_ref().unwrap();
     let now = support::state_of(pack);
     assert_eq!(now.round_index, 1);
-    assert_eq!(now.actors.get("pc_lark").unwrap().wielded(), None);
+    assert_eq!(now.actors.get("pc_lark").unwrap().wielded.as_deref(), None);
     assert_eq!(
         now.actors
             .get("pc_lark")
@@ -609,11 +609,11 @@ fn nell_resists_on_a_seeded_roll(world: &mut World) {
         now.actors
             .get_mut("pc_nell")
             .unwrap()
-            .meters_mut()
+            .meters
             .get_mut("hp")
             .unwrap()
             .base = 10;
-        now.actors.get_mut("pc_nell").unwrap().meters_mut().insert(
+        now.actors.get_mut("pc_nell").unwrap().meters.insert(
             "constitution".to_string(),
             spookery_engine::MeterLive {
                 base: stat,
@@ -658,7 +658,7 @@ fn the_poison_fades(world: &mut World, text: String) {
         .actors
         .get("pc_nell")
         .unwrap()
-        .flags()
+        .flags
         .iter()
         .any(|flag| flag == "poisoned"));
     let round: Value = serde_json::from_str(read_first_round_line(pack).trim()).unwrap();

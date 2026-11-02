@@ -212,7 +212,7 @@ fn the_wait_lands_and_miras_habit_is_ineligible(world: &mut World) {
     assert_eq!(refused[0]["code"], "INELIGIBLE", "{round}");
     assert_ne!(refused[0]["id"], "gm-wait", "{round}");
     let state = support::state_of(world.pack());
-    assert_eq!(state.actors["mira"].act().last_act_round, 1);
+    assert_eq!(state.actors["mira"].act.last_act_round, 1);
     assert!(state.notes.is_empty(), "{:?}", state.notes);
 }
 
@@ -475,7 +475,7 @@ fn a_docks_pack_with_two_rummage_rules(world: &mut World, shop: i64, shared: i64
 fn rowan_walks_and_rummages(world: &mut World) {
     let rummage = intent("rummage", "pc_rowan", "rummage", None);
     let (state, round) = rowan_walks(world.pack(), vec![rummage]);
-    let rest = &state.actors["pc_rowan"].meters()["rest"];
+    let rest = &state.actors["pc_rowan"].meters["rest"];
     world.count = usize::try_from(rest.base + rest.offset).unwrap();
     world.scratch = round.to_string();
 }
@@ -518,7 +518,7 @@ fn a_street_rule_over_the_cap(world: &mut World) {
 #[when(expr = "Rowan walks to the street")]
 fn rowan_walks_to_the_street(world: &mut World) {
     let (state, round) = rowan_walks(world.pack(), Vec::new());
-    world.count = state.actors["pc_rowan"].flags().len();
+    world.count = state.actors["pc_rowan"].flags.len();
     world.scratch = round.to_string();
 }
 
@@ -577,7 +577,7 @@ fn rowan_walks(
     let mut intents = vec![intent("walk", "pc_rowan", "travel", Some("docks_street"))];
     intents.extend(then);
     let (state, _rolls, round) = play_queued(pack, &["pc_rowan"], intents);
-    assert_eq!(state.actors["pc_rowan"].place(), "docks_street", "{round}");
+    assert_eq!(state.actors["pc_rowan"].place, "docks_street", "{round}");
     (state, round)
 }
 
@@ -634,7 +634,7 @@ fn indexed_roll(pack: &Path, actor_id: &str, roll_index: u32) -> (String, i64) {
         .unwrap_or_else(|| panic!("missing {actor_id}"));
     let check = world.canon().checks.get("strike").unwrap();
     let def = world.canon().meters.get(&check.stat).unwrap();
-    let live = actor.meters().get(&check.stat).unwrap();
+    let live = actor.meters.get(&check.stat).unwrap();
     let stat = (live.base + live.offset).clamp(def.min, def.max);
     let rolled = faces(
         &RollKey {

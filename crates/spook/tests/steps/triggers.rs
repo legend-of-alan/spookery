@@ -95,7 +95,7 @@ fn briar_has_flag_downed(world: &mut World) {
             .actors
             .get("briar")
             .unwrap()
-            .flags()
+            .flags
             .iter()
             .any(|flag| flag == "downed"),
         "briar is not downed"
@@ -172,7 +172,7 @@ rules:
         now.actors
             .get_mut("pc_nell")
             .unwrap()
-            .flags_mut()
+            .flags
             .push("found_key".to_string());
         now.clocks.insert(
             "tide".to_string(),
@@ -200,7 +200,7 @@ fn nell_knows_the_ledger(world: &mut World) {
         now.actors
             .get("pc_nell")
             .unwrap()
-            .known_facts()
+            .known_facts
             .iter()
             .any(|fact| fact == "fact_ledger"),
         "nell does not know fact_ledger"
@@ -431,7 +431,7 @@ fn the_bog_roll_reproduces(world: &mut World) {
         .actors
         .get("pc_nell")
         .unwrap()
-        .meters()
+        .meters
         .get("grit")
         .unwrap();
     assert_eq!(grit.offset, -1, "the miss band did not spend grit");
@@ -544,8 +544,6 @@ Under the street.
             "cellar".to_string(),
             spookery_engine::testing::PlaceLive {
                 items: Default::default(),
-                notes: Vec::new(),
-                actors: Vec::new(),
             },
         );
     });
@@ -560,7 +558,7 @@ fn nell_reveals_the_trapdoor(world: &mut World) {
         &pack,
         vec![intent("nell-uncover", "pc_nell", "uncover", None)],
     );
-    world.scratch = now.actors.get("pc_nell").unwrap().known_facts().join(",");
+    world.scratch = now.actors.get("pc_nell").unwrap().known_facts.join(",");
     world.pack = Some(pack);
 }
 
@@ -648,11 +646,11 @@ fn nell_has_saw_tide(world: &mut World) {
         now.actors
             .get("pc_nell")
             .unwrap()
-            .flags()
+            .flags
             .iter()
             .any(|flag| flag == "saw_tide"),
         "nell flags: {:?}",
-        now.actors.get("pc_nell").unwrap().flags()
+        now.actors.get("pc_nell").unwrap().flags
     );
 }
 
@@ -984,7 +982,7 @@ fn play_and_keep_summaries(
 }
 
 fn set_place(now: &mut State, id: &str, place: &str) {
-    *now.actors.get_mut(id).unwrap().place_mut() = place.to_string();
+    now.actors.get_mut(id).unwrap().place = place.to_string();
 }
 
 /// Seat these PCs, sorted the way the host's seats are.
@@ -1075,7 +1073,7 @@ rules:
     edit_table(world, &pack, |now, seated| {
         insert_actor_copy(now, seated, "aldric", "briar", "docks_shop");
         let briar = now.actors.get_mut("briar").unwrap();
-        briar.meters_mut().insert(
+        briar.meters.insert(
             "hp".to_string(),
             MeterLive {
                 base: hp,
@@ -1083,7 +1081,7 @@ rules:
             },
         );
         if downed {
-            briar.flags_mut().push("downed".to_string());
+            briar.flags.push("downed".to_string());
         }
         sit(seated, &["pc_rowan"]);
     });
@@ -1166,8 +1164,8 @@ Nell walks the docks.
 
 fn insert_actor_copy(now: &mut State, seated: &mut Presence, from: &str, id: &str, place: &str) {
     let mut actor = now.actors.get(from).unwrap().clone();
-    *actor.place_mut() = place.to_string();
-    actor.flags_mut().clear();
+    actor.place = place.to_string();
+    actor.flags.clear();
     now.actors.insert(id.to_string(), actor);
     sit(seated, &[id]);
 }

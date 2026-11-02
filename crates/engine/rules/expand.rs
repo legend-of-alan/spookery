@@ -340,7 +340,7 @@ fn location_effect(context: &Context, to: &str) -> Result<Effect, Reason> {
         .state
         .actors
         .get(intent.actor.actor_id())
-        .map(|actor| actor.place().to_string())
+        .map(|actor| actor.place.clone())
         .ok_or(Reason::UnknownId)?;
     Ok(Effect::new(
         &intent.actor,

@@ -640,7 +640,7 @@ pub(crate) fn write_meter(
     let def = *draft.canon().meters.get(key).ok_or(Reason::UnknownId)?;
     let state_key = StateKey::ActorMeter(actor_id.to_string(), key.to_string());
     draft.mutate(state_key, |state| {
-        let meters = state.actor_mut(actor_id)?.meters_mut();
+        let meters = &mut state.actor_mut(actor_id)?.meters;
         meter::write(&def, meters.get_mut(key).ok_or(Reason::UnknownId)?, write)
     })
 }
@@ -658,7 +658,7 @@ pub(crate) fn shift_item(
         Holder::Actor(actor_id) => {
             let state_key = StateKey::ActorItem(actor_id.clone(), id.to_string());
             draft.mutate(state_key, |state| {
-                model::shift_count(state.actor_mut(actor_id)?.inventory_mut(), id, delta, max)
+                model::shift_count(&mut state.actor_mut(actor_id)?.inventory, id, delta, max)
             })?;
             draft.mutate(StateKey::ActorWielded(actor_id.clone()), |state| {
                 Ok(state.actor_mut(actor_id)?.release_wielded())
@@ -684,14 +684,14 @@ fn wield(draft: &mut Draft, actor_id: &str, item_id: &str) -> Result<(), Reason>
         if actor.item_count(item_id) == 0 {
             return Err(Reason::MissingItem);
         }
-        let wielded = actor.wielded_mut().replace(item_id.to_string());
+        let wielded = actor.wielded.replace(item_id.to_string());
         Ok(wielded.as_deref() != Some(item_id))
     })
 }
 
 fn unwield(draft: &mut Draft, actor_id: &str) -> Result<(), Reason> {
     draft.mutate(StateKey::ActorWielded(actor_id.to_string()), |state| {
-        Ok(state.actor_mut(actor_id)?.wielded_mut().take().is_some())
+        Ok(state.actor_mut(actor_id)?.wielded.take().is_some())
     })
 }
 
@@ -712,14 +712,14 @@ fn move_actor(
         if table_empty && actor.is_pc() {
             return Err(Reason::TableEmpty);
         }
-        if actor.place() != from {
+        if actor.place != from {
             return Err(Reason::OutOfRange);
         }
         if !in_canon && !state.places.contains_key(to) {
             return Err(Reason::NoExit);
         }
-        let moved = actor.place() != to;
-        *actor.place_mut() = to.to_string();
+        let moved = actor.place != to;
+        actor.place = to.to_string();
         actor.visit(to);
         // A canon place with no live record yet gets an empty one on the first arrival.
         state.places.entry(to.to_string()).or_default();
@@ -749,7 +749,7 @@ fn remember(
     draft.count_memory_write()?;
     model::sort_unique(&mut fact_ids);
     draft.mutate(StateKey::ActorKnownFact(actor_id.to_string()), |state| {
-        let known = state.actor_mut(actor_id)?.known_facts_mut();
+        let known = &mut state.actor_mut(actor_id)?.known_facts;
         let learned = fact_ids.iter().any(|fact| !known.contains(fact));
         if learned {
             known.extend(fact_ids.iter().cloned());
@@ -786,7 +786,7 @@ fn set_flag(draft: &mut Draft, actor_id: &str, key: &str, value: bool) -> Result
     draft.mutate(flag_key, |state| {
         let flags = match actor_id {
             WORLD => &mut state.flags,
-            _ => state.actor_mut(actor_id)?.flags_mut(),
+            _ => &mut state.actor_mut(actor_id)?.flags,
         };
         let had = flags.iter().any(|flag| flag == key);
         if !value {
@@ -803,7 +803,7 @@ fn reveal(draft: &mut Draft, actor_id: &str, fact: &str) -> Result<(), Reason> {
         return Err(Reason::UnknownId);
     }
     draft.mutate(StateKey::ActorKnownFact(actor_id.to_string()), |state| {
-        let known = state.actor_mut(actor_id)?.known_facts_mut();
+        let known = &mut state.actor_mut(actor_id)?.known_facts;
         if known.iter().any(|id| id == fact) {
             return Ok(false);
         }
@@ -826,9 +826,7 @@ fn leave_note(
             return Err(Reason::UnknownId);
         }
         if let Some(place_id) = &place {
-            let place_live = state.places.get_mut(place_id).ok_or(Reason::UnknownId)?;
-            place_live.notes.push(note_id.clone());
-            model::sort_unique(&mut place_live.notes);
+            state.places.get(place_id).ok_or(Reason::UnknownId)?;
         }
         model::sort_unique(&mut to);
         model::sort_unique(&mut fact_ids);

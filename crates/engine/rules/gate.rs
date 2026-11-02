@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::canon::Canon;
 use crate::intent::{Intent, Source, Target, Viewer};
-use crate::model::{ActorLive, State};
+use crate::model::State;
 use crate::rules::cond;
 use crate::rules::context::Context;
 use crate::rules::cost;
@@ -80,7 +80,7 @@ pub(crate) fn verb_for<'a>(
 ) -> Option<&'a Rule> {
     let actor = state.actors.get(actor_id);
     if verb == "attack" {
-        let wielded = actor.and_then(ActorLive::wielded);
+        let wielded = actor.and_then(|actor| actor.wielded.as_deref());
         if let Some(item) = wielded.filter(|item| !item.is_empty()) {
             if let Some(rule) = owner_verb(canon, &Owner::Item(item.to_string()), verb) {
                 return Some(rule);
@@ -95,7 +95,7 @@ pub(crate) fn verb_for<'a>(
             return Some(rule);
         }
     }
-    if let Some(place) = actor.map(ActorLive::place) {
+    if let Some(place) = actor.map(|actor| &actor.place) {
         if let Some(rule) = owner_verb(canon, &Owner::Place(place.to_string()), verb) {
             return Some(rule);
         }
