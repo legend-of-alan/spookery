@@ -2,7 +2,8 @@ use std::fs;
 use std::path::Path;
 
 use cucumber::{given, then, when};
-use spookery_engine::{ItemStack, Presence};
+use spookery::protocol::ItemStack;
+use spookery_engine::Presence;
 
 use crate::support::run_spook;
 use crate::World;

@@ -6,7 +6,7 @@ use spookery_engine::testing::{self, stamp_pack_rev};
 use spookery_engine::Presence;
 use spookery_engine::World as EngineWorld;
 
-use crate::World;
+use crate::{split_line, World};
 
 const SECRET_ID: &str = "fact_sealed_name";
 const SECRET_TEXT: &str = "the sealed name";
@@ -252,9 +252,7 @@ fn lark() -> Presence {
 }
 
 fn play(world: &mut EngineWorld, line: &str) -> spookery_engine::RoundOutput {
-    let (verb, target) = line
-        .split_once(' ')
-        .map_or((line, None), |(verb, target)| (verb, Some(target)));
+    let (verb, target) = split_line(line);
     let wall = world.state().last_round_at.clone();
     world
         .queue_player_move(&lark(), "pc_lark", verb, target)

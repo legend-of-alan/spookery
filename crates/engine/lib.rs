@@ -18,7 +18,7 @@ pub use model::meter::MeterLive;
 pub use model::{Note, Presence, RunState, State};
 pub use round::{migrate_pack, play_pack_once, verify_pack, verify_quick, RoundOutput};
 pub use rules::gate::Refusal;
-pub use rules::perceive::{ItemStack, View};
+pub use rules::perceive::View;
 pub use rules::roll::MoveReport;
 pub use rules::visibility::RecipientLine;
 pub use spookery_protocol::Reason;

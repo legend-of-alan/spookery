@@ -7,6 +7,7 @@ use spookery_engine::testing::{faces, PlaceLive, RollKey};
 use spookery_engine::MoveReport;
 use spookery_engine::{Presence, Reason};
 
+use super::common::split_line;
 use super::table;
 use crate::support::{append, copy_docks, copy_pack, edit_save, read_round, run_spook};
 use crate::support::{set_actor_place, state_of};
@@ -922,9 +923,7 @@ fn ask_is_refused_before_the_round(world: &mut World) {
 fn play_larks_line(world: &mut World, line: &str) {
     let pack = world.pack.clone().unwrap();
     world.before = table::read_files(&pack);
-    let (verb, target) = line
-        .split_once(' ')
-        .map_or((line, None), |(v, t)| (v, Some(t)));
+    let (verb, target) = split_line(line);
     let (lark, mut opened) = (seated_lark(), open(&pack));
     if let Err(refusal) = opened.queue_player_move(&lark, "pc_lark", verb, target) {
         world.scratch = refusal.code.as_str().to_string();

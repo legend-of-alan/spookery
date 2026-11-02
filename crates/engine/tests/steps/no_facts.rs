@@ -7,7 +7,7 @@ use cucumber::{given, then, when};
 use spookery_engine::testing::{self as support, journal::list_round_keys};
 use spookery_engine::Presence;
 
-use crate::World;
+use crate::{split_line, World};
 
 #[given(expr = "a copy of the sample-d20 pack")]
 fn a_copy_of_the_sample_d20_pack(world: &mut World) {
@@ -126,9 +126,7 @@ fn play(world: &mut World, actor: &str, line: &str) {
         players: 1,
         actors_present: vec![actor.to_string()],
     };
-    let (verb, target) = line
-        .split_once(' ')
-        .map_or((line, None), |(verb, target)| (verb, Some(target)));
+    let (verb, target) = split_line(line);
     let wall = opened.state().last_round_at.clone();
     opened
         .queue_player_move(&seated, actor, verb, target)
