@@ -31,10 +31,7 @@ pub fn verify_pack(pack: &Path, from: Option<&Path>) -> Result<Report, Error> {
         return Err(Error::Reason(Reason::NotInSpec));
     }
     let bundles = journal::read_bundle_records(pack)?;
-    let records: Vec<Record> = bundles
-        .iter()
-        .flat_map(|(_, entries)| entries.clone())
-        .collect();
+    let records = journal::flatten_bundles(&bundles);
     if records.is_empty() && from.is_none() {
         let genesis = read_genesis(pack)?;
         check_save_file(pack, &records, &genesis)?;
@@ -72,10 +69,7 @@ pub fn verify_pack(pack: &Path, from: Option<&Path>) -> Result<Report, Error> {
 pub fn verify_quick(pack: &Path) -> Result<Report, Error> {
     let bundles = journal::read_bundle_records(pack)?;
     journal::check_chain(pack, &bundles)?;
-    let records: Vec<Record> = bundles
-        .iter()
-        .flat_map(|(_, entries)| entries.clone())
-        .collect();
+    let records = journal::flatten_bundles(&bundles);
     let genesis = read_genesis(pack)?;
     let Some((start, entries)) = check_bundle_starts(pack, &genesis, &bundles)?.pop() else {
         check_save_file(pack, &records, &genesis)?;

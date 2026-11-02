@@ -330,11 +330,11 @@ fn rebuild_save(path: &Path, lock: &PackGuard) -> Result<(), Error> {
         return Ok(());
     };
     let save = path.join("state/save.yaml");
-    if journal::hashes_to(&save, &mark.state_hash) {
-        return Ok(());
-    }
     if save.is_file() {
         let bytes = fs::read(&save).map_err(|_| Error::Reason(Reason::NotInSpec))?;
+        if blake2s_tagged(&bytes) == mark.state_hash {
+            return Ok(());
+        }
         if let Ok(text) = std::str::from_utf8(&bytes) {
             if let Ok(state) = parse_save(text) {
                 if emit_save(&state)
