@@ -89,7 +89,7 @@ impl RoundDice {
 }
 
 /// Expression dice and resist rolls for one rule and subject, all keyed by the rule id.
-/// `finish` returns the resist reports. Dropping the roller discards them.
+/// `into_reports` returns the resist reports. Dropping the roller discards them.
 pub(crate) struct Roller<'a> {
     dice: &'a mut RoundDice,
     log: &'a mut RoundLog,

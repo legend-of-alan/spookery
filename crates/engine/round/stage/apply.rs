@@ -5,10 +5,10 @@ use crate::draft::Draft;
 use crate::intent::{Intent, Viewer};
 use crate::journal::Step;
 use crate::model::State;
-use crate::rule::{Rule, When};
+use crate::rule::Rule;
 use crate::rules::case::Case;
 use crate::rules::cost;
-use crate::rules::expand::{self, Expansion};
+use crate::rules::expand::{self, Cause, Expansion};
 use crate::rules::gate;
 use crate::rules::MoveReport;
 use crate::travel;
@@ -69,7 +69,7 @@ pub(crate) fn run(
         } else {
             let case = Case::new(canon, snapshot, draft.presence, intent);
             let roller = dice.roller(log, &rule.id, actor_id);
-            match expand::expand(&case, rule, rolled, roller) {
+            match expand::expand(&case, rule, Cause::Move, rolled, roller) {
                 Ok(expansion) => Some(expansion),
                 Err(code) => {
                     refuse(log, intent, gate::Refusal::new(intent, code), false);
@@ -87,7 +87,7 @@ pub(crate) fn run(
             }
         }
         let landing = match expansion {
-            Some(expansion) => land(draft, intent, rule, expansion, true, log),
+            Some(expansion) => land(draft, intent, rule, expansion, log),
             None => {
                 let at = clock.world_time_before;
                 let mut roller = dice.roller(log, &rule.id, actor_id);
@@ -117,38 +117,36 @@ pub(crate) fn run(
 }
 
 /// The one landing for a rule's effects: a move, a timed finish or a change rule. Under one
-/// savepoint it writes each effect with an `EffectApplied` step, then counts an NPC's act when
-/// `counts_act` (a move; not a finish or a change rule). A failed write rolls back and refuses
-/// the intent; otherwise the effects and the rolls are kept and the rule takes its `Rule` step.
-/// A change rule is nobody's move: its effects take no step and its refusal is told to nobody.
+/// savepoint it writes each effect, then counts a moving NPC's act. A failed write rolls back
+/// and refuses the intent; otherwise the effects and the rolls are kept and the rule takes its
+/// `Rule` step. The expansion's `Cause` decides the steps, the act and who hears a refusal.
 pub(crate) fn land(
     draft: &mut Draft,
     intent: &Intent,
     rule: &Rule,
     expansion: Expansion,
-    counts_act: bool,
     log: &mut RoundLog,
 ) -> Landing {
-    let change_rule = matches!(rule.when, When::Change(_));
+    let cause = expansion.cause;
     let point = draft.savepoint();
     let written = expansion.effects.iter().try_for_each(|effect| {
         effect.clone().apply(draft, intent)?;
-        if !change_rule {
-            log.extra_steps.push(Step::EffectApplied);
+        match cause {
+            Cause::Move | Cause::Finish => log.extra_steps.push(Step::EffectApplied),
+            Cause::Trigger => {}
         }
         Ok(())
     });
-    let written = written.and_then(|()| match &intent.actor {
-        Viewer::Npc(id) if counts_act => draft.count_npc_act(id, draft.presence.players),
-        Viewer::Npc(_) | Viewer::Player(_) => Ok(()),
+    let written = written.and_then(|()| match (cause, &intent.actor) {
+        (Cause::Move, Viewer::Npc(id)) => draft.count_npc_act(id, draft.presence.players),
+        (Cause::Move | Cause::Finish | Cause::Trigger, _) => Ok(()),
     });
     if let Err(code) = written {
         draft.rollback(point);
         let refusal = gate::Refusal::new(intent, code);
-        if change_rule {
-            log.refused.push(refusal);
-        } else {
-            refuse(log, intent, refusal, false);
+        match cause {
+            Cause::Move | Cause::Finish => refuse(log, intent, refusal, false),
+            Cause::Trigger => log.refused.push(refusal),
         }
         return if code == Reason::Budget {
             Landing::OverBudget

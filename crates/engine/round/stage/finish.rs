@@ -7,7 +7,7 @@ use crate::intent::{Intent, Target};
 use crate::journal::Arrival;
 use crate::model::{PendingAction, PendingKind};
 use crate::rules::case::Case;
-use crate::rules::expand;
+use crate::rules::expand::{self, Cause};
 use crate::rules::gate;
 use crate::Reason;
 
@@ -91,12 +91,9 @@ fn finish_action(
     let rule = canon.rules.get(rule_id).ok_or(Reason::UnknownMove)?;
     let case = Case::new(canon, draft.state(), draft.presence, intent);
     let roller = dice.roller(log, &rule.id, intent.actor.actor_id());
-    match expand::expand(&case, rule, None, roller) {
-        Ok(mut expansion) => {
-            // A timed finish does not move the actor.
-            let effects = &mut expansion.effects;
-            effects.retain(|effect| !matches!(effect.kind, EffectKind::Location { .. }));
-            apply::land(draft, intent, rule, expansion, false, log);
+    match expand::expand(&case, rule, Cause::Finish, None, roller) {
+        Ok(expansion) => {
+            apply::land(draft, intent, rule, expansion, log);
         }
         Err(code) => apply::refuse(log, intent, gate::Refusal::new(intent, code), false),
     }

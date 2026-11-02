@@ -13,20 +13,36 @@ use crate::rules::roll::Outcome;
 use crate::rules::{MoveReport, Roll};
 use crate::Reason;
 
-/// What a rule's effects came to: the effects, the roll that picked them, and the resist rolls
-/// made on the way.
+/// Why a rule's effects are expanded and landed, which decides what the landing journals.
+#[derive(Clone, Copy)]
+pub(crate) enum Cause {
+    /// An intent's move this round: each effect takes an `EffectApplied` step, and an NPC's act
+    /// is counted.
+    Move,
+    /// A timed action finishing: the actor does not move, so its `location` effects are left
+    /// out; each other effect takes its step.
+    Finish,
+    /// A change rule firing, which is nobody's move: its effects take no step of their own and
+    /// its refusal is told to nobody.
+    Trigger,
+}
+
+/// What a rule's effects came to: the effects, the roll that picked them, the resist rolls
+/// made on the way, and why.
 pub(crate) struct Expansion {
     pub effects: Vec<Effect>,
     pub rolled: Option<Roll>,
     pub resisted: Vec<MoveReport>,
+    pub cause: Cause,
 }
 
 /// Roll the rule's `roll:` spec unless `rolled` already holds its roll, then expand the lists
 /// its band picks, with the resist rolls `roller` makes on the way. More effects than
-/// `max_effects_per_intent` is `BUDGET`.
+/// `max_effects_per_intent` is `BUDGET`, counting only those the `cause` keeps.
 pub(crate) fn expand(
     case: &Case,
     rule: &Rule,
+    cause: Cause,
     rolled: Option<Roll>,
     mut roller: Roller,
 ) -> Result<Expansion, Reason> {
@@ -35,7 +51,10 @@ pub(crate) fn expand(
         (rolled, _) => rolled,
     };
     let outcome = rolled.as_ref().map(|out| out.outcome);
-    let effects = expand_lists(case, rule, outcome, &mut roller)?;
+    let mut effects = expand_lists(case, rule, outcome, &mut roller)?;
+    if matches!(cause, Cause::Finish) {
+        effects.retain(|effect| !matches!(effect.kind, EffectKind::Location { .. }));
+    }
     if effects.len() > case.canon.budget.max_effects_per_intent as usize {
         return Err(Reason::Budget);
     }
@@ -43,6 +62,7 @@ pub(crate) fn expand(
         effects,
         rolled,
         resisted: roller.into_reports(),
+        cause,
     })
 }
 

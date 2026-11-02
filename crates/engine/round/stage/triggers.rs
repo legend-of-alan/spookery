@@ -8,7 +8,7 @@ use crate::key::{Change, StateKey, StateValue};
 use crate::rule::{ChangeWatch, Op, Rule, WatchWho, When};
 use crate::rules::case::Case;
 use crate::rules::cond;
-use crate::rules::expand;
+use crate::rules::expand::{self, Cause};
 use crate::rules::gate;
 use crate::Reason;
 
@@ -105,9 +105,10 @@ fn fire(draft: &mut Draft, dice: &mut RoundDice, log: &mut RoundLog, rule: &Rule
     if cond::holds(&case, &rule.if_).is_err() {
         return;
     }
-    match expand::expand(&case, rule, None, dice.roller(log, &rule.id, subject)) {
+    let roller = dice.roller(log, &rule.id, subject);
+    match expand::expand(&case, rule, Cause::Trigger, None, roller) {
         Ok(expansion) => {
-            apply::land(draft, &intent, rule, expansion, false, log);
+            apply::land(draft, &intent, rule, expansion, log);
         }
         Err(code) => log.refused.push(gate::Refusal::new(&intent, code)),
     }
