@@ -40,6 +40,8 @@ pub(crate) fn run(
     let record = RoundRecord {
         round_index: clock.round_index,
         rules_rev: RULES_REV,
+        state_rev_before: 0,
+        state_rev_after: 0,
         world_time_before: clock.world_time_before,
         world_time_after: clock.world_time_after,
         presence_players: draft.presence.players,
@@ -53,8 +55,10 @@ pub(crate) fn run(
         fast_forward,
         dice: log.dice,
         extra_steps: log.extra_steps,
-        // state_rev_before, state_rev_after, memories, state_hash, prev, chain: commit fills them.
-        ..Default::default()
+        memories: Vec::new(),
+        state_hash: String::new(),
+        prev: String::new(),
+        chain: String::new(),
     };
     output.commit = Some(commit::commit(world, draft, record)?);
     Ok(output)
