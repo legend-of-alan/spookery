@@ -19,7 +19,7 @@ use crate::store::journal::{self, Record};
 use crate::store::tape::{append_record, last_seq, read_after, read_tail, TapeRecord};
 use crate::QueuedMove;
 use crate::Reason;
-use spookery_protocol::Speaker;
+use spookery_protocol::{Speaker, PERCEIVE_BODY_CHARS};
 
 /// One say, in characters. Four kibibytes still fits in an 8 KiB player line.
 const MAX_SAY_CHARS: usize = 4 * 1024;
@@ -328,7 +328,7 @@ impl<L> World<L> {
         presence: &Presence,
         as_arg: &str,
     ) -> Result<crate::rules::perceive::View, Reason> {
-        crate::rules::perceive::perceive(self, presence, as_arg)
+        crate::rules::perceive::perceive_budget(self, presence, as_arg, PERCEIVE_BODY_CHARS)
     }
 
     pub fn perceive_trimmed(
@@ -341,15 +341,15 @@ impl<L> World<L> {
     }
 
     pub fn help_lines(&self, presence: &Presence, actor_id: &str) -> String {
-        crate::rules::lines::help_lines(&self.canon, &self.state, presence, actor_id)
+        crate::rules::lines::help(&self.canon, &self.state, presence, actor_id)
     }
 
     pub fn look_lines(&self, presence: &Presence, actor_id: &str) -> String {
-        crate::rules::lines::look_lines(&self.canon, &self.state, presence, actor_id)
+        crate::rules::lines::look(&self.canon, &self.state, presence, actor_id)
     }
 
     pub fn map_lines(&self, presence: &Presence, actor_id: &str) -> String {
-        crate::rules::lines::map_lines(&self.canon, &self.state, presence, actor_id)
+        crate::rules::lines::map(&self.canon, &self.state, presence, actor_id)
     }
 
     fn read_digest(&self) -> Result<String, Reason> {
@@ -384,7 +384,7 @@ impl<L> World<L> {
         for (round_index, effect) in effects {
             rows.push(format!(
                 "effect {} {round_index} {}",
-                effect.kind_name(),
+                effect.kind.as_str(),
                 payload_json(effect)
             ));
         }

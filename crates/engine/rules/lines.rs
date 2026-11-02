@@ -12,7 +12,7 @@ use crate::rules::rule::{TargetKind, When};
 use crate::rules::travel::{exits_at, visible_exits};
 use spookery_protocol::exit_phrase;
 
-pub(crate) fn map_lines(canon: &Canon, now: &State, presence: &Presence, actor_id: &str) -> String {
+pub(crate) fn map(canon: &Canon, now: &State, presence: &Presence, actor_id: &str) -> String {
     let Some(actor) = now.actors.get(actor_id) else {
         return String::new();
     };
@@ -31,12 +31,7 @@ pub(crate) fn map_lines(canon: &Canon, now: &State, presence: &Presence, actor_i
 }
 
 /// Verbs whose `if` holds for this actor, then the visible exits, then a busy line.
-pub(crate) fn help_lines(
-    canon: &Canon,
-    now: &State,
-    presence: &Presence,
-    actor_id: &str,
-) -> String {
+pub(crate) fn help(canon: &Canon, now: &State, presence: &Presence, actor_id: &str) -> String {
     let mut lines = allowed_verbs(canon, now, presence, actor_id);
     lines.extend(exit_phrases(canon, now, presence, actor_id));
     if let Some(status) = busy_line(now, actor_id) {
@@ -46,12 +41,7 @@ pub(crate) fn help_lines(
 }
 
 /// The place name, the prose this actor may read, and the visible exits.
-pub(crate) fn look_lines(
-    canon: &Canon,
-    now: &State,
-    presence: &Presence,
-    actor_id: &str,
-) -> String {
+pub(crate) fn look(canon: &Canon, now: &State, presence: &Presence, actor_id: &str) -> String {
     let mut head = Vec::new();
     if let Some(actor) = now.actors.get(actor_id) {
         let name = place_name(canon, actor.place());
@@ -209,14 +199,14 @@ mod tests {
             &fs::read_to_string(root.join("state/save.yaml")).unwrap(),
         )
         .unwrap();
-        let help = help_lines(&canon, &now, &Presence::default(), "pc_rowan");
+        let help = help(&canon, &now, &Presence::default(), "pc_rowan");
         assert!(help.lines().any(|line| line == "wait"), "{help}");
         assert!(help.lines().any(|line| line == "travel"), "{help}");
         assert!(!help.lines().any(|line| line == "use"), "{help}");
         assert!(help.contains("stairs (locked) — 2 min"), "{help}");
         assert!(help.contains("docks_street — 0 min"), "{help}");
         assert!(!help.contains("→"), "{help}");
-        let look = look_lines(&canon, &now, &Presence::default(), "pc_rowan");
+        let look = look(&canon, &now, &Presence::default(), "pc_rowan");
         assert!(look.contains("Docks Shop"), "{look}");
         assert!(
             look.contains("The shop faces the water. Tins sit in a row."),

@@ -7,12 +7,11 @@ use crate::intent::Viewer;
 use crate::model::meter;
 use crate::model::{Note, Presence, State};
 use crate::rules::habits::list_whose_if_holds;
-use crate::rules::travel::ExitView;
 use crate::rules::visibility::can_see_fact;
 use crate::world::World;
 use crate::Reason;
-use spookery_protocol::PERCEIVE_BODY_CHARS;
 pub use spookery_protocol::{ClockView, ItemStack, KnownFact, MeterView};
+use spookery_protocol::{ExitView, PERCEIVE_BODY_CHARS};
 
 /// Returned from the engine to the host table, which renders it as a player or GM view.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -33,10 +32,6 @@ pub struct View {
     pub habits: Vec<String>,
     pub exits: Vec<ExitView>,
     pub status: String,
-}
-
-pub fn perceive<L>(world: &World<L>, presence: &Presence, as_arg: &str) -> Result<View, Reason> {
-    perceive_budget(world, presence, as_arg, PERCEIVE_BODY_CHARS)
 }
 
 pub fn perceive_budget<L>(

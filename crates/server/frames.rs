@@ -87,12 +87,17 @@ pub(super) fn check_event(out: &Roll) -> Vec<u8> {
 pub(super) fn check_lines(reports: &[MoveReport], actor_id: &str) -> String {
     let mut out = String::new();
     for report in reports {
-        if report.actor_id() != actor_id {
-            continue;
-        }
         match report {
-            MoveReport::Rolled { roll: rolled, .. } => out.push_str(&check_line(rolled.outcome)),
-            MoveReport::Refused { refusal, .. } => out.push_str(&refused_move_line(refusal)),
+            MoveReport::Rolled { actor_id: id, roll } if id == actor_id => {
+                out.push_str(&check_line(roll.outcome));
+            }
+            MoveReport::Refused {
+                actor_id: id,
+                refusal,
+            } if id == actor_id => {
+                out.push_str(&refused_move_line(refusal));
+            }
+            _ => {}
         }
     }
     out

@@ -14,7 +14,7 @@ use crate::rules::lines::place_name;
 use crate::rules::rule::{EffectTemplate, LocationTo, Rule};
 use crate::rules::visibility::can_see_fact;
 use crate::Reason;
-pub use spookery_protocol::ExitView;
+use spookery_protocol::ExitView;
 
 pub(crate) fn find_exit<'a>(canon: &'a Canon, from: &str, name: &str) -> Option<&'a Exit> {
     canon

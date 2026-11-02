@@ -1,11 +1,9 @@
 //! Decide what the GM and each seated viewer may see and hear.
 
-use std::collections::BTreeSet;
-
 use crate::canon::Canon;
 use crate::model::key::Change;
 use crate::model::{Presence, State};
-use crate::rules::effect::{Effect, EffectKind};
+use crate::rules::effect::Effect;
 use crate::rules::visibility::{self, Recipient, RecipientLine, ViewerChanges};
 
 /// What the GM and each viewer may see and hear.
@@ -33,13 +31,7 @@ pub(crate) fn run(
     if presence.players == 0 {
         return delivered;
     }
-    let mut viewers: BTreeSet<String> = now.actors.keys().cloned().collect();
-    for effect in effects {
-        if let EffectKind::Narrate { to, .. } = &effect.kind {
-            viewers.extend(to.iter().cloned());
-        }
-    }
-    for id in viewers {
+    for id in now.actors.keys().cloned() {
         let delivery =
             visibility::observe(canon, now, &Recipient::Actor(id.clone()), changes, effects);
         for text in delivery.narrations {

@@ -443,7 +443,10 @@ The ground gives.
             Target::Exit("bog".to_string()),
         )],
     );
-    let faces = rolls.iter().any(|roll| roll.actor_id() == "pc_nell");
+    let faces = rolls.iter().any(|report| match report {
+        spookery_engine::MoveReport::Rolled { actor_id, .. }
+        | spookery_engine::MoveReport::Refused { actor_id, .. } => actor_id == "pc_nell",
+    });
     assert!(faces, "nell did not roll\n{round}");
     world.scratch = "rolled".to_string();
     world.pack = Some(pack);

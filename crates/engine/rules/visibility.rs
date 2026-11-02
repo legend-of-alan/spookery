@@ -77,14 +77,10 @@ pub fn observe(
             }
         }
     }
-    let lines = match actor {
-        None => narrations(canon, now, effects, None),
-        Some(id) => narrations(canon, now, effects, Some(id)),
-    };
     Delivery {
         changes: keys.into_iter().collect(),
         line: spoken.join(" "),
-        narrations: lines,
+        narrations: narrations(canon, now, effects, actor),
     }
 }
 

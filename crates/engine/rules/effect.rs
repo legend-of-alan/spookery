@@ -151,14 +151,6 @@ impl Effect {
             EffectKind::Reveal { actor_id, fact } => reveal(draft, &actor_id, &fact),
         }
     }
-
-    pub fn viewer(&self) -> &Viewer {
-        &self.viewer
-    }
-
-    pub(crate) fn kind_name(&self) -> &'static str {
-        self.kind.as_str()
-    }
 }
 
 impl EffectKind {
@@ -617,7 +609,7 @@ pub(crate) fn payload_json(effect: &Effect) -> String {
 }
 
 fn viewer_matches(intent: &Intent, effect: &Effect) -> bool {
-    effect.viewer() == &intent.actor
+    effect.viewer == intent.actor
 }
 
 /// Who holds an item count: an actor's inventory or a place's items.

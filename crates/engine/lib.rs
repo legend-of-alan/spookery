@@ -21,9 +21,8 @@ pub use rules::gate::Refusal;
 pub use rules::perceive::{ClockView, ItemStack, KnownFact, MeterView, View};
 pub use rules::roll::{MoveReport, Outcome, Roll};
 pub use rules::rule::When;
-pub use rules::travel::ExitView;
 pub use rules::visibility::RecipientLine;
-pub use spookery_protocol::{QueuedMove, Reason};
+pub use spookery_protocol::{ExitView, QueuedMove, Reason};
 pub use store::{emit_save, emit_tape_record, lock_pack, parse_save, PackGuard, TapeRecord};
 pub use world::{check_pack, Address, World};
 

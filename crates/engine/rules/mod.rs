@@ -1,4 +1,4 @@
-//! Conditions, costs, gates, rolls, and effects.
+//! Conditions, costs, gates, travel, rolls, effects, visibility, the player's text and the expression language.
 
 pub(crate) mod case;
 pub(crate) mod cond;

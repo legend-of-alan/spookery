@@ -48,14 +48,6 @@ pub enum MoveReport {
     },
 }
 
-impl MoveReport {
-    pub fn actor_id(&self) -> &str {
-        match self {
-            MoveReport::Rolled { actor_id, .. } | MoveReport::Refused { actor_id, .. } => actor_id,
-        }
-    }
-}
-
 /// Identifies one roll. A later `resist:` roll uses the same shape: subject plus index.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RollKey {
