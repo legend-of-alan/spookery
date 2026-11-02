@@ -2,9 +2,10 @@
 
 use crate::draft::Draft;
 use crate::effect::{Effect, EffectKind};
-use crate::intent::{due_intent_id, Intent, Source, Target};
+use crate::intent::{Intent, Target};
 use crate::journal::Arrival;
 use crate::model::{PendingAction, PendingKind};
+use crate::rules::case::Case;
 use crate::Reason;
 
 use crate::round::dice::RoundDice;
@@ -23,38 +24,17 @@ pub(crate) fn run(
         let actor_id = &due_action.actor_id;
         match kind {
             PendingKind::Arrive { place, via } => {
-                let intent = due_intent(draft, actor_id, source, &verb, Target::Empty)?;
+                let intent =
+                    Intent::arrival(draft.state(), actor_id, source, &verb, Target::Empty)?;
                 arrive(log, draft, &intent, due_action.until, place, via)?;
             }
             PendingKind::Finish { target, rule } => {
-                let intent = due_intent(draft, actor_id, source, &verb, target)?;
+                let intent = Intent::arrival(draft.state(), actor_id, source, &verb, target)?;
                 finish_timed_action(dice, log, draft, &intent, &rule)?;
             }
         }
     }
     Ok(())
-}
-
-fn due_intent(
-    draft: &Draft,
-    actor_id: &str,
-    source: Source,
-    verb: &str,
-    target: Target,
-) -> Result<Intent, Reason> {
-    let actor = draft
-        .state()
-        .actors
-        .get(actor_id)
-        .ok_or(Reason::UnknownId)?;
-    Ok(Intent::new(
-        due_intent_id(actor_id),
-        draft.state().round_index,
-        actor.viewer(actor_id),
-        source,
-        verb,
-        target,
-    ))
 }
 
 fn arrive(
@@ -101,15 +81,15 @@ fn finish_timed_action(
     rule_id: &str,
 ) -> Result<(), Reason> {
     let actor_id = intent.actor.actor_id();
-    let (canon, snapshot, presence) = (draft.canon(), draft.state(), draft.presence);
-    let rule = canon.rules.get(rule_id).ok_or(Reason::UnknownMove)?;
+    let case = Case::new(draft.canon(), draft.state(), draft.presence, intent);
+    let rule = case.canon.rules.get(rule_id).ok_or(Reason::UnknownMove)?;
     let mut roller = dice.roller(log, &rule.id, actor_id);
     let rolled = match &rule.roll {
-        Some(spec) => Some(roller.roll_spec(canon, snapshot, presence, intent, spec)?),
+        Some(spec) => Some(roller.roll_spec(&case, spec)?),
         None => None,
     };
     let outcome = rolled.as_ref().map(|out| out.outcome);
-    let effects = rule.expand(canon, snapshot, presence, intent, outcome, &mut roller)?;
+    let effects = rule.expand(&case, outcome, &mut roller)?;
     let resisted = roller.into_reports();
     log.report_roll(rolled, actor_id);
     log.reports.extend(resisted);

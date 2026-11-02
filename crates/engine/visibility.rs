@@ -237,7 +237,7 @@ fn narrations(canon: &Canon, now: &State, effects: &[Effect], viewer: Option<&st
 }
 
 fn can_see_facts(canon: &Canon, now: &State, viewer: &str, fact_ids: &[String]) -> bool {
-    let Some(seat) = now.actors.get(viewer).map(|actor| actor.viewer(viewer)) else {
+    let Some(seat) = now.viewer_of(viewer) else {
         return false;
     };
     fact_ids
@@ -305,7 +305,7 @@ fn can_see_note(canon: &Canon, now: &State, viewer: &str, id: &str) -> bool {
     if !in_room && !addressed {
         return false;
     }
-    let Some(seat) = now.actors.get(viewer).map(|actor| actor.viewer(viewer)) else {
+    let Some(seat) = now.viewer_of(viewer) else {
         return false;
     };
     note.fact_ids

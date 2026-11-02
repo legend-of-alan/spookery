@@ -97,22 +97,3 @@ rules:
       - narrate:
           to: self
           text: The wheel holds. The cart settles.
-
-  - id: ask_briar
-    when:
-      verb: ask_briar
-    if:
-      - at:
-          who: self
-          place: gate_yard
-      - at:
-          who: npc_briar
-          place: gate_yard
-    do:
-      - flag:
-          who: world
-          key: passage
-          value: true
-      - narrate:
-          to: self
-          text: Briar steps aside.

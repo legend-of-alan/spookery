@@ -4,9 +4,10 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::canon::pack_rev;
-use crate::intent::{player_intent_id, Intent, IntentArgs, Source, Target, Viewer};
+use crate::intent::{intent_id, Intent, IntentArgs, Source, Target, Viewer};
 use crate::journal;
 use crate::model::Presence;
+use crate::rules::case::Case;
 use crate::rules::gate::gate;
 use crate::store::codec::{emit_save, parse_save};
 use crate::travel::visible_exits;
@@ -150,7 +151,8 @@ fn queue_move(world: &mut World, plan: &MovePlan) {
     {
         return;
     }
-    if gate(world.canon(), world.state(), &Presence::default(), &intent).is_err() {
+    let seated = Presence::default();
+    if gate(&Case::new(world.canon(), world.state(), &seated, &intent)).is_err() {
         return;
     }
     world.queue_intent(intent);
@@ -191,11 +193,7 @@ fn item_tokens(world: &World, actor: &str) -> Vec<String> {
 }
 
 fn player_intent(now: &crate::model::State, actor: &str, verb: &str, target: Target) -> Intent {
-    let token = match &target {
-        Target::Empty => "",
-        Target::Actor(id) | Target::Item(id) | Target::Place(id) | Target::Exit(id) => id.as_str(),
-        Target::Clock(_) => "",
-    };
+    let token = target.token().unwrap_or_default();
     let line = if token.is_empty() {
         verb.to_string()
     } else {
@@ -203,7 +201,7 @@ fn player_intent(now: &crate::model::State, actor: &str, verb: &str, target: Tar
     };
     let round_index = now.round_index.saturating_add(1);
     Intent {
-        id: player_intent_id(&now.world_id, round_index, actor, &line),
+        id: intent_id(&now.world_id, round_index, actor, &line),
         round_index: now.round_index,
         actor: Viewer::Player(actor.to_string()),
         source: Source::Player,

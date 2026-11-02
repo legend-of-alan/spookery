@@ -18,7 +18,7 @@ const SCRIPT: &[&str] = &[
     "use tonic",
     "travel loft",
     "travel gate_yard",
-    "ask_briar",
+    "ask npc_briar",
     "travel wheel_shed",
     "take chock",
     "travel gate_yard",
@@ -27,7 +27,7 @@ const SCRIPT: &[&str] = &[
 ];
 const BRANCHES: &[&[&str]] = &[
     &[
-        "ask_briar",
+        "ask npc_briar",
         "travel wheel_shed",
         "take chock",
         "travel gate_yard",
@@ -118,7 +118,7 @@ fn each_branch_reaches_an_ending(world: &mut World) {
 #[when(expr = "the party travels through the locked exit after unlocking it")]
 fn the_party_travels_through_the_locked_exit(world: &mut World) {
     let pack = seat_gm_and_lark(world, "showcase-journey");
-    commit_line(world, "ask_briar");
+    commit_line(world, "ask npc_briar");
     commit_line(world, "travel wheel_shed");
     commit_line(world, "take chock");
     commit_line(world, "travel gate_yard");

@@ -1,19 +1,44 @@
 //! Whether the conditions on a rule hold.
 
 use crate::canon::Canon;
-use crate::model::State;
+use crate::intent::{Intent, Source, Target, Viewer};
+use crate::model::{Presence, State, MINUTES_PER_DAY, MINUTES_PER_HOUR};
 use crate::rule::{Cond, Who};
-use crate::rules::expr::{self, Ctx};
+use crate::rules::case::Case;
+use crate::rules::expr;
 use crate::Reason;
 
 /// Every condition holds. A failed `has_item` is [`Reason::MissingItem`].
-pub fn holds(canon: &Canon, now: &State, ctx: &Ctx<'_>, conds: &[Cond]) -> Result<(), Reason> {
+pub(crate) fn holds(case: &Case, conds: &[Cond]) -> Result<(), Reason> {
     for cond in conds {
-        if !holds_one(canon, now, ctx, cond)? {
+        if !holds_one(case, cond)? {
             return Err(reason_of(cond));
         }
     }
     Ok(())
+}
+
+/// Whether `conds` hold for `viewer` doing `verb` to `target`. `help`, exit locks and an
+/// NPC's habit list read an `if` this way: they have no intent, so they read it against a
+/// probe with no id.
+pub(crate) fn if_holds(
+    canon: &Canon,
+    now: &State,
+    presence: &Presence,
+    viewer: &Viewer,
+    verb: &str,
+    target: Target,
+    conds: &[Cond],
+) -> bool {
+    let probe = Intent::new(
+        String::new(),
+        now.round_index,
+        viewer.clone(),
+        Source::Player,
+        verb,
+        target,
+    );
+    holds(&Case::new(canon, now, presence, &probe), conds).is_ok()
 }
 
 fn reason_of(cond: &Cond) -> Reason {
@@ -27,11 +52,12 @@ fn reason_of(cond: &Cond) -> Reason {
     }
 }
 
-fn holds_one(canon: &Canon, now: &State, ctx: &Ctx<'_>, cond: &Cond) -> Result<bool, Reason> {
+fn holds_one(case: &Case, cond: &Cond) -> Result<bool, Reason> {
+    let now = case.now;
     match cond {
         Cond::HasItem { who, id, count } => {
-            let actor = expr::resolve_who_id(now, ctx, who)?;
-            let id = expr::resolve_item_id(ctx.intent, id)?;
+            let actor = expr::resolve_who_id(case, who)?;
+            let id = expr::resolve_item_id(case, id)?;
             let held = now
                 .actors
                 .get(&actor)
@@ -40,8 +66,8 @@ fn holds_one(canon: &Canon, now: &State, ctx: &Ctx<'_>, cond: &Cond) -> Result<b
             Ok(held >= *count)
         }
         Cond::Wielding { who, id } => {
-            let actor = expr::resolve_who_id(now, ctx, who)?;
-            let id = expr::resolve_item_id(ctx.intent, id)?;
+            let actor = expr::resolve_who_id(case, who)?;
+            let id = expr::resolve_item_id(case, id)?;
             Ok(now
                 .actors
                 .get(&actor)
@@ -53,9 +79,9 @@ fn holds_one(canon: &Canon, now: &State, ctx: &Ctx<'_>, cond: &Cond) -> Result<b
             op,
             value,
         } => {
-            let actor = expr::resolve_who_id(now, ctx, who)?;
-            let current = now.meter_value(canon, &actor, key)?;
-            let right = expr::eval(canon, now, ctx, value)?;
+            let actor = expr::resolve_who_id(case, who)?;
+            let current = now.meter_value(case.canon, &actor, key)?;
+            let right = expr::eval(case, value)?;
             Ok(op.holds(current, right))
         }
         Cond::Flag { who, key, is } => {
@@ -63,7 +89,7 @@ fn holds_one(canon: &Canon, now: &State, ctx: &Ctx<'_>, cond: &Cond) -> Result<b
                 let on = now.flags.iter().any(|flag| flag == key);
                 return Ok(on == *is);
             }
-            let actor = expr::resolve_who_id(now, ctx, who)?;
+            let actor = expr::resolve_who_id(case, who)?;
             let on = now
                 .actors
                 .get(&actor)
@@ -71,14 +97,14 @@ fn holds_one(canon: &Canon, now: &State, ctx: &Ctx<'_>, cond: &Cond) -> Result<b
             Ok(on == *is)
         }
         Cond::At { who, place } => {
-            let actor = expr::resolve_who_id(now, ctx, who)?;
+            let actor = expr::resolve_who_id(case, who)?;
             Ok(now
                 .actors
                 .get(&actor)
                 .is_some_and(|actor| actor.place() == place))
         }
         Cond::Knows { who, fact } => {
-            let actor = expr::resolve_who_id(now, ctx, who)?;
+            let actor = expr::resolve_who_id(case, who)?;
             Ok(now
                 .actors
                 .get(&actor)
@@ -86,15 +112,15 @@ fn holds_one(canon: &Canon, now: &State, ctx: &Ctx<'_>, cond: &Cond) -> Result<b
         }
         Cond::Clock { id, op, value } => {
             let clock = now.clocks.get(id).ok_or(Reason::UnknownId)?;
-            let right = expr::eval(canon, now, ctx, value)?;
+            let right = expr::eval(case, value)?;
             Ok(!clock.paused && op.holds(clock.value, right))
         }
         Cond::Hour { from, to } => Ok(is_hour_in(*from, *to, world_hour(now.world_time))),
-        Cond::Players { op, value } => Ok(op.holds(i64::from(ctx.presence.players), *value)),
+        Cond::Players { op, value } => Ok(op.holds(i64::from(case.presence.players), *value)),
         Cond::NoteExists(id) => Ok(now.notes.iter().any(|note| &note.id == id)),
         Cond::All(inner) => {
             for cond in inner {
-                if !holds_one(canon, now, ctx, cond)? {
+                if !holds_one(case, cond)? {
                     return Ok(false);
                 }
             }
@@ -102,21 +128,21 @@ fn holds_one(canon: &Canon, now: &State, ctx: &Ctx<'_>, cond: &Cond) -> Result<b
         }
         Cond::Any(inner) => {
             for cond in inner {
-                if holds_one(canon, now, ctx, cond)? {
+                if holds_one(case, cond)? {
                     return Ok(true);
                 }
             }
             Ok(false)
         }
-        Cond::Not(inner) => Ok(!holds_one(canon, now, ctx, inner)?),
+        Cond::Not(inner) => Ok(!holds_one(case, inner)?),
     }
 }
 
-pub(crate) fn world_hour(world_time: u64) -> i64 {
-    ((world_time / 60) % 24) as i64
+fn world_hour(world_time: u64) -> i64 {
+    ((world_time % MINUTES_PER_DAY) / MINUTES_PER_HOUR) as i64
 }
 
-pub(crate) fn is_hour_in(start: i64, end: i64, hour: i64) -> bool {
+fn is_hour_in(start: i64, end: i64, hour: i64) -> bool {
     if start < end {
         start <= hour && hour < end
     } else if start > end {

@@ -6,7 +6,7 @@ use crate::canon::Canon;
 use crate::intent::Viewer;
 use crate::meter;
 use crate::model::{Note, Presence, State};
-use crate::rules::habits::habits_that_hold;
+use crate::rules::habits::list_whose_if_holds;
 use crate::travel::ExitView;
 use crate::visibility::can_see_fact;
 use crate::world::World;
@@ -185,7 +185,7 @@ fn perceive_viewer_budget(
 
     let habits = match viewer {
         Viewer::Player(_) => Vec::new(),
-        Viewer::Npc(id) => habits_that_hold(canon, now, presence, id),
+        Viewer::Npc(id) => list_whose_if_holds(canon, now, presence, id),
     };
     let exits = crate::travel::visible_exits(canon, now, presence, viewer.actor_id());
     let actor_names = visible_actors

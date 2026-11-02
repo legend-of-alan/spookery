@@ -1,14 +1,14 @@
-//! Admit an intent, or refuse it with a reason.
+//! Pick the rule a move runs, then admit it or refuse it with a reason.
 
 use serde::{Deserialize, Serialize};
 
 use crate::canon::Canon;
 use crate::intent::{Intent, Source, Target, Viewer};
-use crate::model::{Presence, State};
+use crate::model::{ActorLive, State};
 use crate::rule::{Owner, Rule, TargetKind, When};
+use crate::rules::case::Case;
 use crate::rules::cond;
 use crate::rules::cost;
-use crate::rules::expr::Ctx;
 use crate::rules::habits::is_eligible;
 use crate::rules::perceive::perceive_as;
 use crate::Reason;
@@ -36,48 +36,50 @@ impl Refusal {
     }
 }
 
-/// A verb word, or this actor's habit local id. A full id does not select a rule.
-pub fn rule_for<'a>(canon: &'a Canon, now: &State, intent: &Intent) -> Result<&'a Rule, Reason> {
-    let habit = canon
-        .rules
-        .habits_of(intent.actor.actor_id())
-        .into_iter()
-        .find(|rule| rule.local_id == intent.move_name);
-    let verb = verb_rule(canon, now, intent);
-    match intent.source {
-        Source::Engine => habit.or(verb).ok_or(Reason::UnknownMove),
-        Source::Player | Source::System if matches!(intent.actor, Viewer::Npc(_)) => {
-            habit.or(verb).ok_or(Reason::UnknownMove)
-        }
-        Source::Player | Source::System => {
-            if verb.is_none() && habit.is_some() {
-                return Err(Reason::NotInSpec);
-            }
-            verb.ok_or(Reason::NotInSpec)
-        }
+/// The rule `actor`'s `verb` runs, the queue's and the round's alike. An NPC's habit is
+/// picked by its local id first; any other verb is `verb_for`'s, looking in `hint` first.
+/// A full rule id picks nothing. A player's move never runs a habit, and a missing rule is
+/// `NOT_IN_SPEC` for it and `UNKNOWN_MOVE` for anyone else.
+pub(crate) fn pick<'a>(
+    canon: &'a Canon,
+    now: &State,
+    actor: &Viewer,
+    source: Source,
+    verb: &str,
+    hint: Option<&str>,
+) -> Result<&'a Rule, Reason> {
+    let found = verb_for(canon, now, actor.actor_id(), verb, hint);
+    if source != Source::Engine && matches!(actor, Viewer::Player(_)) {
+        return found.ok_or(Reason::NotInSpec);
+    }
+    let habits = canon.rules.habits_of(actor.actor_id());
+    let habit = habits.into_iter().find(|rule| rule.local_id == verb);
+    habit.or(found).ok_or(Reason::UnknownMove)
+}
+
+/// The owner an intent's target names for `pick` to look in first: an actor or an item.
+pub(crate) fn hint_of(target: &Target) -> Option<&str> {
+    match target {
+        Target::Actor(token) | Target::Item(token) => Some(token),
+        _ => None,
     }
 }
 
-fn verb_rule<'a>(canon: &'a Canon, now: &State, intent: &Intent) -> Option<&'a Rule> {
-    let hint = match &intent.target {
-        Target::Actor(token) | Target::Item(token) => Some(token.as_str()),
-        _ => None,
-    };
-    let actor = now.actors.get(intent.actor.actor_id());
-    let place = actor.map(|actor| actor.place());
-    let wielded = actor.and_then(|actor| actor.wielded());
-    verb_for(canon, place, &intent.move_name, hint, wielded)
-}
-
-/// A wielded weapon's `attack` rule, then the owned rule for `hint`, then the place, then the shared verb.
-pub fn verb_for<'a>(
+/// A wielded weapon's `attack` rule, then the rule of the item or cast member `hint` names,
+/// then the place's own, then the shared verb. Only `when: verb` rules are read, never a
+/// habit. A cast member's rule is reached only by naming them, and the gate takes it only
+/// while they are in sight (`can_name`). A place's rule is picked only there, so its `here`
+/// is that place.
+pub(crate) fn verb_for<'a>(
     canon: &'a Canon,
-    place: Option<&str>,
+    now: &State,
+    actor_id: &str,
     verb: &str,
     hint: Option<&str>,
-    wielded: Option<&str>,
 ) -> Option<&'a Rule> {
+    let actor = now.actors.get(actor_id);
     if verb == "attack" {
+        let wielded = actor.and_then(ActorLive::wielded);
         if let Some(item) = wielded.filter(|item| !item.is_empty()) {
             if let Some(rule) = owner_verb(canon, &Owner::Item(item.to_string()), verb) {
                 return Some(rule);
@@ -92,7 +94,7 @@ pub fn verb_for<'a>(
             return Some(rule);
         }
     }
-    if let Some(place) = place {
+    if let Some(place) = actor.map(ActorLive::place) {
         if let Some(rule) = owner_verb(canon, &Owner::Place(place.to_string()), verb) {
             return Some(rule);
         }
@@ -106,32 +108,25 @@ fn owner_verb<'a>(canon: &'a Canon, owner: &Owner, verb: &str) -> Option<&'a Rul
     })
 }
 
-/// Pick the rule for an intent, then `admit` it.
-pub fn gate<'a>(
-    canon: &'a Canon,
-    now: &State,
-    presence: &Presence,
-    intent: &Intent,
-) -> Result<&'a Rule, Refusal> {
-    let rule = rule_for(canon, now, intent).map_err(|code| Refusal::new(intent, code))?;
-    admit(canon, now, presence, intent, rule).map(|()| rule)
+/// Pick the intent's rule, then `admit` it.
+pub(crate) fn gate<'a>(case: &Case<'a>) -> Result<&'a Rule, Refusal> {
+    let intent = case.intent;
+    let (actor, verb, hint) = (&intent.actor, &intent.move_name, hint_of(&intent.target));
+    let picked = pick(case.canon, case.now, actor, intent.source, verb, hint);
+    let rule = picked.map_err(|code| Refusal::new(intent, code))?;
+    admit(case, rule).map(|()| rule)
 }
 
 /// Check a rule already picked. A player-sourced habit skips its `if`. Cost is checked for every rule.
-pub fn admit(
-    canon: &Canon,
-    now: &State,
-    presence: &Presence,
-    intent: &Intent,
-    rule: &Rule,
-) -> Result<(), Refusal> {
+pub(crate) fn admit(case: &Case, rule: &Rule) -> Result<(), Refusal> {
+    let (now, intent) = (case.now, case.intent);
     if let Some(actor) = now.actors.get(intent.actor.actor_id()) {
         if actor.is_busy(now.world_time) && matches!(rule.when, When::Verb { .. }) {
             return Err(Refusal::new(intent, Reason::Busy));
         }
     }
-    crate::travel::admit(canon, now, presence, intent, rule)?;
-    if intent.source == Source::Player && !can_name(canon, now, presence, intent) {
+    crate::travel::admit(case, rule)?;
+    if intent.source == Source::Player && !can_name(case) {
         return Err(Refusal::new(intent, Reason::NotInSpec));
     }
     if let When::Verb { target, .. } = &rule.when {
@@ -151,23 +146,24 @@ pub fn admit(
     }
     if intent.source == Source::Engine
         && matches!(intent.actor, Viewer::Npc(_))
-        && !is_eligible(canon, now, presence, intent.actor.actor_id())
+        && !is_eligible(case.canon, now, case.presence, intent.actor.actor_id())
     {
         return Err(Refusal::new(intent, Reason::Ineligible));
     }
     let skip_if = intent.source == Source::Player && matches!(rule.when, When::Habit);
     if !skip_if {
-        cond::holds(canon, now, &Ctx { intent, presence }, &rule.if_)
-            .map_err(|code| Refusal::new(intent, code))?;
+        cond::holds(case, &rule.if_).map_err(|code| Refusal::new(intent, code))?;
     }
     if let Some(cost) = &rule.cost {
-        cost::afford(canon, now, presence, intent, cost)?;
+        cost::afford(case, cost)?;
     }
     Ok(())
 }
 
-/// A player names only what they hold or what `look` shows them.
-fn can_name(canon: &Canon, now: &State, presence: &Presence, intent: &Intent) -> bool {
+/// A player names only what they hold or what `look` shows them. A clock target is the one
+/// `stamp_target` gives a GM-queued habit, and the NPC must see that clock too.
+fn can_name(case: &Case) -> bool {
+    let intent = case.intent;
     let id = match &intent.target {
         Target::Empty => return true,
         Target::Actor(id)
@@ -176,14 +172,15 @@ fn can_name(canon: &Canon, now: &State, presence: &Presence, intent: &Intent) ->
         | Target::Exit(id)
         | Target::Clock(id) => id.as_str(),
     };
-    if now
+    if case
+        .now
         .actors
         .get(intent.actor.actor_id())
         .is_some_and(|actor| actor.item_count(id) > 0)
     {
         return true;
     }
-    let Ok(view) = perceive_as(canon, now, presence, &intent.actor) else {
+    let Ok(view) = perceive_as(case.canon, case.now, case.presence, &intent.actor) else {
         return false;
     };
     view.place == id

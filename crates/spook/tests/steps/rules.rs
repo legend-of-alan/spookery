@@ -8,7 +8,8 @@ use spookery_engine::MoveReport;
 use spookery_engine::{Presence, Reason};
 
 use super::table;
-use crate::support::{append, copy_docks, copy_pack, edit_save, run_spook, state_of};
+use crate::support::{append, copy_docks, copy_pack, edit_save, read_round, run_spook};
+use crate::support::{set_actor_place, state_of};
 use crate::World;
 #[given(expr = "a save from older rules")]
 fn a_save_from_older_rules(world: &mut World) {
@@ -852,6 +853,100 @@ fn check_accepts_resist_same_after_a_roll(world: &mut World) {
         "{}",
         world.stderr
     );
+}
+
+#[given(
+    expr = "briar's cast file holds a verb \"ask\" that targets an actor and sets the world flag passage"
+)]
+fn briar_holds_ask(world: &mut World) {
+    world.pack = Some(copy_pack("sample-d20", "rules-scoped-here"));
+}
+
+#[given(
+    expr = "briar's cast file holds a verb \"ask\" that targets an actor, and the save puts briar in the lane"
+)]
+fn briar_holds_ask_in_the_lane(world: &mut World) {
+    let pack = copy_pack("sample-d20", "rules-scoped-gone");
+    edit_save(&pack, |now| set_actor_place(now, "npc_briar", "mill_lane"));
+    world.pack = Some(pack);
+}
+
+#[when(regex = r"^lark, in the yard with briar, plays (.+)$")]
+fn lark_in_the_yard_plays(world: &mut World, line: String) {
+    let now = state_of(world.pack.as_ref().unwrap());
+    for actor in ["pc_lark", "npc_briar"] {
+        assert_eq!(now.actors.get(actor).unwrap().place(), "gate_yard");
+    }
+    play_larks_line(world, &line);
+}
+
+#[when(regex = r"^lark, alone in the yard, plays (.+)$")]
+fn lark_alone_plays(world: &mut World, line: String) {
+    let now = state_of(world.pack.as_ref().unwrap());
+    let yard = now
+        .actors
+        .iter()
+        .filter(|(_, actor)| actor.place() == "gate_yard");
+    assert_eq!(
+        yard.map(|(id, _)| id.as_str()).collect::<Vec<_>>(),
+        ["pc_lark"]
+    );
+    play_larks_line(world, &line);
+}
+
+#[then(expr = "cast:npc_briar\\/ask runs with briar as its target and passage is set")]
+fn briars_ask_runs_on_briar(world: &mut World) {
+    assert_eq!(world.scratch, r#"{"actor":"npc_briar"} cast:npc_briar/ask"#);
+    let now = state_of(world.pack.as_ref().unwrap());
+    assert!(
+        now.flags.iter().any(|flag| flag == "passage"),
+        "{:?}",
+        now.flags
+    );
+}
+
+#[then(expr = "the move is refused NOT_IN_SPEC before the round and the save is unchanged")]
+fn ask_is_refused_before_the_round(world: &mut World) {
+    assert_eq!(world.scratch, Reason::NotInSpec.as_str());
+    let pack = world.pack.as_ref().unwrap();
+    assert_eq!(
+        table::read_files(pack),
+        world.before,
+        "the ask wrote the pack"
+    );
+}
+
+/// Lark plays `line` seated, keeping the pack's bytes from before. A queued line plays its
+/// round, and the scratch holds that round's target and rule steps, else the refusal code.
+fn play_larks_line(world: &mut World, line: &str) {
+    let pack = world.pack.clone().unwrap();
+    world.before = table::read_files(&pack);
+    let (verb, target) = line
+        .split_once(' ')
+        .map_or((line, None), |(v, t)| (v, Some(t)));
+    let (lark, mut opened) = (seated_lark(), open(&pack));
+    if let Err(refusal) = opened.queue_player_move(&lark, "pc_lark", verb, target) {
+        world.scratch = refusal.code.as_str().to_string();
+        return;
+    }
+    let wall = opened.state().last_round_at.clone();
+    opened
+        .play(&lark, &wall)
+        .unwrap_or_else(|err| panic!("{line}: {err}"));
+    let round = read_round(&pack, "round-0001");
+    let steps = round["extra_steps"].as_array().unwrap();
+    let rules: Vec<&str> = steps
+        .iter()
+        .filter_map(|step| step["rule"].as_str())
+        .collect();
+    world.scratch = format!("{} {}", round["intents"][0]["target"], rules.join(" "));
+}
+
+fn seated_lark() -> Presence {
+    Presence {
+        players: 1,
+        actors_present: vec!["pc_lark".to_string()],
+    }
 }
 
 fn run(world: &mut World, args: &[&str]) {

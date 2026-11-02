@@ -5,11 +5,11 @@ use std::collections::BTreeMap;
 use crate::canon::Canon;
 use crate::effect::Effect;
 use crate::hash::blake2s_256;
-use crate::intent::Intent;
-use crate::model::{Presence, State};
+use crate::model::State;
 use crate::round::log::RoundLog;
 use crate::rule::RollSpec;
-use crate::rules::expr::{eval_with_dice, Ctx, Dice};
+use crate::rules::case::Case;
+use crate::rules::expr::{eval_with_dice, Dice};
 use crate::rules::roll::Outcome;
 use crate::rules::{faces_from, roll_check, MoveReport, Roll, RollInput, RollKey};
 use crate::Reason;
@@ -122,33 +122,22 @@ pub(crate) struct Roller<'a> {
 
 impl Roller<'_> {
     /// Evaluate a rule's `roll:` spec, then roll its check.
-    pub(crate) fn roll_spec(
-        &mut self,
-        canon: &Canon,
-        now: &State,
-        presence: &Presence,
-        intent: &Intent,
-        spec: &RollSpec,
-    ) -> Result<Roll, Reason> {
-        let (target, partial_at) = self.eval_thresholds(canon, now, presence, intent, spec)?;
-        let key = self.dice.next_key(self.rule, intent.actor.actor_id());
+    pub(crate) fn roll_spec(&mut self, case: &Case, spec: &RollSpec) -> Result<Roll, Reason> {
+        let (target, partial_at) = self.eval_thresholds(case, spec)?;
+        let key = self.dice.next_key(self.rule, case.intent.actor.actor_id());
         self.dice
-            .roll_check(canon, now, key, &spec.check, target, partial_at)
+            .roll_check(case.canon, case.now, key, &spec.check, target, partial_at)
     }
 
     /// The one order a `roll:` spec's thresholds draw dice in: target, then partial_at.
     pub(crate) fn eval_thresholds(
         &mut self,
-        canon: &Canon,
-        now: &State,
-        presence: &Presence,
-        intent: &Intent,
+        case: &Case,
         spec: &RollSpec,
     ) -> Result<(i64, Option<i64>), Reason> {
-        let ctx = Ctx { intent, presence };
-        let target = eval_with_dice(canon, now, &ctx, &spec.target, self)?.value;
+        let target = eval_with_dice(case, &spec.target, self)?;
         let partial_at = match &spec.partial_at {
-            Some(expr) => Some(eval_with_dice(canon, now, &ctx, expr, self)?.value),
+            Some(expr) => Some(eval_with_dice(case, expr, self)?),
             None => None,
         };
         Ok((target, partial_at))

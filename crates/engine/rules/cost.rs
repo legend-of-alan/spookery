@@ -1,26 +1,20 @@
 //! Whether an actor can pay a cost, and paying it.
 
-use crate::canon::Canon;
 use crate::draft::Draft;
 use crate::intent::Intent;
 use crate::key::{StateKey, StateValue};
 use crate::meter::{self, MeterWrite};
-use crate::model::{self, Presence, State};
+use crate::model;
 use crate::rule::Cost;
-use crate::rules::expr::{self, Ctx, Dice};
+use crate::rules::case::Case;
+use crate::rules::expr::{self, Dice};
 use crate::rules::gate;
 use crate::Reason;
 
 /// Refuse a cost the actor cannot pay as `CANT_AFFORD`, with the meter or item id as `detail`.
-pub(crate) fn afford(
-    canon: &Canon,
-    now: &State,
-    presence: &Presence,
-    intent: &Intent,
-    cost: &Cost,
-) -> Result<(), gate::Refusal> {
+pub(crate) fn afford(case: &Case, cost: &Cost) -> Result<(), gate::Refusal> {
+    let (canon, now, intent) = (case.canon, case.now, case.intent);
     let who = intent.actor.actor_id();
-    let ctx = Ctx { intent, presence };
     let cant_afford = |missing: &str| gate::Refusal {
         id: intent.id.clone(),
         code: Reason::CantAfford,
@@ -30,7 +24,7 @@ pub(crate) fn afford(
         if expr.needs_dice() {
             continue;
         }
-        let amount = expr::eval(canon, now, &ctx, expr).map_err(|_| cant_afford(key))?;
+        let amount = expr::eval(case, expr).map_err(|_| cant_afford(key))?;
         if amount < 0 {
             return Err(cant_afford(key));
         }
@@ -53,7 +47,7 @@ pub(crate) fn afford(
         if expr.needs_dice() {
             continue;
         }
-        let amount = expr::eval(canon, now, &ctx, expr).map_err(|_| cant_afford(id))?;
+        let amount = expr::eval(case, expr).map_err(|_| cant_afford(id))?;
         let count = item_count(amount).map_err(|_| cant_afford(id))?;
         let held = now
             .actors
@@ -72,19 +66,16 @@ fn item_count(amount: i64) -> Result<u32, Reason> {
 }
 
 /// Meters and items are paid at the start. Time is a duration for later completion.
-pub fn pay(
+pub(crate) fn pay(
     draft: &mut Draft,
     intent: &Intent,
     cost: &Cost,
     dice: &mut dyn Dice,
 ) -> Result<(), Reason> {
     let who = intent.actor.actor_id();
-    let ctx = Ctx {
-        intent,
-        presence: draft.presence,
-    };
     for (key, expr) in &cost.meters {
-        let amount = expr::eval_with_dice(draft.canon(), draft.state(), &ctx, expr, dice)?.value;
+        let case = Case::new(draft.canon(), draft.state(), draft.presence, intent);
+        let amount = expr::eval_with_dice(&case, expr, dice)?;
         if amount < 0 {
             return Err(Reason::CantAfford);
         }
@@ -110,9 +101,8 @@ pub fn pay(
             .ok_or(Reason::UnknownId)? = live;
     }
     for (id, expr) in &cost.items {
-        let count = item_count(
-            expr::eval_with_dice(draft.canon(), draft.state(), &ctx, expr, dice)?.value,
-        )?;
+        let case = Case::new(draft.canon(), draft.state(), draft.presence, intent);
+        let count = item_count(expr::eval_with_dice(&case, expr, dice)?)?;
         let before = i64::from(
             draft
                 .state()

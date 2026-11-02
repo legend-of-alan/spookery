@@ -2,12 +2,12 @@
 
 use crate::canon::Canon;
 use crate::draft::Draft;
-use crate::intent::{trigger_intent_id, Intent, Source, Target, Viewer};
+use crate::intent::Intent;
 use crate::journal::Step;
 use crate::key::{Change, StateKey, StateValue};
 use crate::rule::{ChangeWatch, Op, Rule, WatchWho, When};
+use crate::rules::case::Case;
 use crate::rules::cond;
-use crate::rules::expr::Ctx;
 use crate::rules::gate;
 use crate::Reason;
 
@@ -95,26 +95,11 @@ fn match_rules<'a>(draft: &Draft, rules: &[&'a Rule], changes: &[Change]) -> Vec
 }
 
 fn fire(draft: &mut Draft, dice: &mut RoundDice, log: &mut RoundLog, rule: &Rule, subject: &str) {
-    let Some(viewer) = draft
-        .state()
-        .actors
-        .get(subject)
-        .map(|actor| actor.viewer(subject))
-    else {
+    let Ok(intent) = Intent::trigger(draft.state(), subject, &rule.id) else {
         return;
     };
-    let intent = trigger_intent(draft.state().round_index, viewer, &rule.id);
-    if cond::holds(
-        draft.canon(),
-        draft.state(),
-        &Ctx {
-            intent: &intent,
-            presence: draft.presence,
-        },
-        &rule.if_,
-    )
-    .is_err()
-    {
+    let case = Case::new(draft.canon(), draft.state(), draft.presence, &intent);
+    if cond::holds(&case, &rule.if_).is_err() {
         return;
     }
     let point = draft.savepoint();
@@ -148,14 +133,14 @@ fn expand_trigger(
     intent: &Intent,
     subject: &str,
 ) -> Result<Expansion, Reason> {
-    let (now, canon, presence) = (draft.state(), draft.canon(), draft.presence);
+    let case = Case::new(draft.canon(), draft.state(), draft.presence, intent);
     let mut roller = dice.roller(log, &rule.id, subject);
     let rolled = match &rule.roll {
-        Some(spec) => Some(roller.roll_spec(canon, now, presence, intent, spec)?),
+        Some(spec) => Some(roller.roll_spec(&case, spec)?),
         None => None,
     };
     let outcome = rolled.as_ref().map(|out| out.outcome);
-    let effects = rule.expand(canon, now, presence, intent, outcome, &mut roller)?;
+    let effects = rule.expand(&case, outcome, &mut roller)?;
     if effects.len() > draft.budget().max_effects_per_intent as usize {
         return Err(Reason::Budget);
     }
@@ -164,17 +149,6 @@ fn expand_trigger(
         rolled,
         resisted: roller.into_reports(),
     })
-}
-
-fn trigger_intent(round_index: u64, actor: Viewer, rule_id: &str) -> Intent {
-    Intent::new(
-        trigger_intent_id(rule_id, actor.actor_id()),
-        round_index,
-        actor,
-        Source::Engine,
-        rule_id,
-        Target::Empty,
-    )
 }
 
 fn subjects_of(draft: &Draft, key: &StateKey) -> Vec<String> {

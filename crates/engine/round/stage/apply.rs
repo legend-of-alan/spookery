@@ -5,6 +5,7 @@ use crate::intent::{Intent, Viewer};
 use crate::journal::Step;
 use crate::model::State;
 use crate::rule::Rule;
+use crate::rules::case::Case;
 use crate::rules::cost;
 use crate::rules::gate;
 use crate::rules::MoveReport;
@@ -58,11 +59,12 @@ pub(crate) fn run(
         };
         let canon = draft.shared_canon();
         let rule = canon.rules.get(&rule_id).ok_or(Reason::UnknownMove)?;
-        if let Err(refusal) = gate::admit(&canon, draft.state(), draft.presence, &intent, rule) {
+        let case = Case::new(&canon, draft.state(), draft.presence, &intent);
+        if let Err(refusal) = gate::admit(&case, rule) {
             refuse(log, &intent, refusal, false);
             continue;
         }
-        let minutes = travel::span(&canon, draft.state(), &intent, rule);
+        let minutes = travel::span(&case, rule);
         if minutes > 0 {
             let at = clock.world_time_before;
             if start_timed_action(draft, &intent, rule, at, minutes, dice, log) && spends_slot {
@@ -72,8 +74,8 @@ pub(crate) fn run(
         }
         let outcome = rolled.as_ref().map(|out| out.outcome);
         let mut roller = dice.roller(log, &rule_id, intent.actor.actor_id());
-        let presence = draft.presence;
-        let expanded = rule.expand(&canon, snapshot, presence, &intent, outcome, &mut roller);
+        let case = Case::new(&canon, snapshot, draft.presence, &intent);
+        let expanded = rule.expand(&case, outcome, &mut roller);
         let resisted = roller.into_reports();
         let effects = match expanded {
             Ok(effects) => effects,
