@@ -93,20 +93,22 @@ pub struct Error {
 
 /// Parse every complete record. A torn last line is left unread. The chain is not checked.
 pub fn read_records(pack: &Path) -> Result<Vec<Record>, Error> {
-    Ok(read_bundle_records(pack)?
-        .into_iter()
-        .flat_map(|(_, entries)| entries)
-        .collect())
+    Ok(flatten_bundles(&read_bundle_records(pack)?))
 }
 
 /// Read the bundles and check that each record's chain matches the one before it.
 pub fn read_verified(pack: &Path) -> Result<Vec<Record>, Error> {
     let bundles = read_bundle_records(pack)?;
     check_chain(pack, &bundles)?;
-    Ok(bundles
-        .into_iter()
-        .flat_map(|(_, entries)| entries)
-        .collect())
+    Ok(flatten_bundles(&bundles))
+}
+
+/// Every record of `bundles`, in file order.
+pub(crate) fn flatten_bundles(bundles: &[(String, Vec<Record>)]) -> Vec<Record> {
+    bundles
+        .iter()
+        .flat_map(|(_, entries)| entries.clone())
+        .collect()
 }
 
 pub(crate) fn check_chain(pack: &Path, bundles: &[(String, Vec<Record>)]) -> Result<(), Error> {
@@ -122,7 +124,7 @@ pub(crate) fn check_chain(pack: &Path, bundles: &[(String, Vec<Record>)]) -> Res
                     "the record does not follow the previous hash",
                 ));
             }
-            chain_covers(name, entry)?;
+            check_record_chain(name, entry)?;
             prev = entry.chain().to_string();
         }
     }
@@ -422,11 +424,11 @@ fn find_last_line(text: &str) -> Option<&str> {
 
 fn check_line_chain(name: &str, line: &str) -> Result<String, Error> {
     let entry = parse_line(name, line)?;
-    chain_covers(name, &entry)?;
+    check_record_chain(name, &entry)?;
     Ok(entry.chain().to_string())
 }
 
-fn chain_covers(name: &str, entry: &Record) -> Result<(), Error> {
+fn check_record_chain(name: &str, entry: &Record) -> Result<(), Error> {
     if entry.chain() != chain_of(entry) {
         return Err(fault(
             Path::new(name),
