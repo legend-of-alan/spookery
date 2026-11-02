@@ -826,7 +826,9 @@ fn leave_note(
             return Err(Reason::UnknownId);
         }
         if let Some(place_id) = &place {
-            state.places.get(place_id).ok_or(Reason::UnknownId)?;
+            if !state.places.contains_key(place_id) {
+                return Err(Reason::UnknownId);
+            }
         }
         model::sort_unique(&mut to);
         model::sort_unique(&mut fact_ids);

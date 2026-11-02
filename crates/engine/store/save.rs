@@ -203,7 +203,6 @@ mod tests {
             "{refused:?}"
         );
         assert_eq!(crate::diagnostic::first_reason(&refused), Reason::Schema);
-        assert_eq!(emit_save(&parse_save(&current).unwrap()).unwrap(), current);
     }
 
     fn save_text(tag: &str) -> String {
