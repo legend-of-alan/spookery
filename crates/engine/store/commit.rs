@@ -378,7 +378,6 @@ mod tests {
             "{}",
             show(&marks)
         );
-        assert!(!root.join("state/.txn").exists());
         assert_no_tmp(&root);
         let bundle = root.join("state/journal/bundle-0000.jsonl");
         let memory = root.join("state/memories/mira.jsonl");
@@ -407,7 +406,6 @@ mod tests {
         assert_eq!(opened.state().state_rev, 0);
         assert_eq!(fs::read(&bundle).unwrap(), bundle_bytes);
         assert!(fs::read_to_string(&memory).unwrap().contains("kept"));
-        assert!(!root.join("state/.txn").exists());
 
         let _ = fs::remove_dir_all(&root);
     }
@@ -531,16 +529,6 @@ mod tests {
             .unwrap_or("");
         match mark {
             Event::File(_) if name.ends_with(".tmp") => tmp_label(name, path),
-            Event::File(_) if name == "COMPLETE" && has_parent_named(path, ".txn") => {
-                "file complete".to_string()
-            }
-            Event::File(_) if name == "save.yaml" && has_parent_named(path, "prev") => {
-                "file save".to_string()
-            }
-            Event::Dir(_) if name == "prev" && has_parent_named(path, ".txn") => {
-                "dir prev".to_string()
-            }
-            Event::Dir(_) if name == ".txn" => "dir txn".to_string(),
             Event::File(_) if name.starts_with("bundle-") && has_parent_named(path, "journal") => {
                 "file bundle".to_string()
             }

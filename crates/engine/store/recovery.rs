@@ -1,4 +1,4 @@
-//! Finish a commit a crash left half done, or roll it back.
+//! Finish a commit a crash left half done.
 
 use std::collections::BTreeSet;
 use std::fs::{self, OpenOptions};
@@ -14,10 +14,6 @@ use crate::Reason;
 /// Run by `lock_pack` before the writer reads a pack that a crash may have left mid-commit.
 pub fn recover(root: &Path, write: &WriteGuard) -> Result<(), Reason> {
     let state = root.join("state");
-    let txn = state.join(".txn");
-    if txn.is_dir() {
-        fs::remove_dir_all(&txn).map_err(|_| Reason::CommitConflict)?;
-    }
     cut_torn_tail(root)?;
     rebuild_memory_files(root)?;
     close_finished(root, write)?;
@@ -240,9 +236,6 @@ fn remove_tmp(dir: &Path) {
     for entry in entries.flatten() {
         let path = entry.path();
         if path.is_dir() {
-            if entry.file_name() == ".txn" {
-                continue;
-            }
             remove_tmp(&path);
         } else if path
             .file_name()

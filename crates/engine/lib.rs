@@ -67,9 +67,9 @@ pub mod testing {
     pub mod journal {
         pub use crate::hash::blake2s_tagged;
         pub use crate::store::journal::{
-            bundles, emit_record, find_live_bundle, format_record_key, genesis_hash, gunzip_bytes,
-            gzip_bytes, latest_checkpoint, list_round_keys, locate, read_record_line, read_records,
-            read_verified, seal,
+            bundles, emit_record, find_live_bundle, format_record_key, gunzip_bytes, gzip_bytes,
+            latest_checkpoint, list_round_keys, locate, read_record_line, read_records,
+            read_verified,
         };
         pub use crate::store::records::{Record, RoundRecord};
     }
