@@ -841,29 +841,3 @@ fn leave_note(
         Ok(true)
     })
 }
-
-#[cfg(test)]
-mod tests {
-    use crate::store::journal::{emit_record, Record};
-
-    #[test]
-    fn a_write_or_source_the_engine_never_wrote_is_refused() {
-        let round = include_str!("../fixtures/round.jsonl").trim_end();
-        let meter = r#"{"kind":"meter","as":"player:pc_rowan","intent_id":"i1","actor_id":"pc_rowan","key":"grit","write":"offset","delta":-1},"#;
-        let written = round.replacen(r#""effects":["#, &format!(r#""effects":[{meter}"#), 1);
-        let record: Record = serde_json::from_str(&written).unwrap();
-        assert_eq!(emit_record(&record).trim_end(), written);
-        let offset = r#""write":"offset","delta":-1"#;
-        for (word, from, to) in [
-            ("base", offset, r#""write":"base","delta":-1"#),
-            ("clear_offset", offset, r#""write":"clear_offset""#),
-            ("system", r#""source":"player""#, r#""source":"system""#),
-        ] {
-            let line = written.replacen(from, to, 1);
-            let refused = serde_json::from_str::<Record>(&line)
-                .unwrap_err()
-                .to_string();
-            assert!(refused.contains(&format!("`{word}`")), "{refused}");
-        }
-    }
-}

@@ -638,4 +638,27 @@ mod tests {
         let parsed = parse_line("migrate.json", migrate.trim_end()).unwrap();
         assert_eq!(emit_record(&parsed), migrate);
     }
+
+    #[test]
+    fn a_meter_write_or_source_the_engine_never_wrote_is_refused() {
+        let round = include_str!("../fixtures/round.jsonl").trim_end();
+        let meter = r#"{"kind":"meter","as":"player:pc_rowan","intent_id":"i1","actor_id":"pc_rowan","key":"grit","write":"offset","delta":-1},"#;
+        let written = round.replacen(r#""effects":["#, &format!(r#""effects":[{meter}"#), 1);
+        let record = parse_line("round.jsonl", &written).unwrap();
+        assert_eq!(emit_record(&record).trim_end(), written);
+        let offset = r#""write":"offset","delta":-1"#;
+        for (word, from, to) in [
+            ("base", offset, r#""write":"base","delta":-1"#),
+            ("clear_offset", offset, r#""write":"clear_offset""#),
+            ("system", r#""source":"player""#, r#""source":"system""#),
+        ] {
+            let refused = parse_line("round.jsonl", &written.replacen(from, to, 1)).unwrap_err();
+            assert_eq!(refused.reason, Reason::Schema);
+            assert!(
+                refused.detail.contains(&format!("`{word}`")),
+                "{}",
+                refused.detail
+            );
+        }
+    }
 }

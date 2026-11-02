@@ -109,6 +109,8 @@ impl std::fmt::Display for Divergence {
     }
 }
 
+impl std::error::Error for Divergence {}
+
 #[derive(Debug)]
 pub enum Error {
     Reason(Reason),
@@ -129,6 +131,8 @@ impl std::fmt::Display for Error {
         }
     }
 }
+
+impl std::error::Error for Error {}
 
 /// A round record that did not replay as written.
 fn round_diverged(record: &RoundRecord, detail: impl Into<String>) -> Divergence {
