@@ -5,8 +5,7 @@ use serde::{Deserialize, Serialize};
 use crate::effect::Effect;
 use crate::intent::Intent;
 use crate::model::MemoryLine;
-use crate::rules::GateRefusal;
-use crate::Reason;
+use crate::rules::gate;
 
 /// One meter a migrate added, stored at that meter's `start`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -52,28 +51,6 @@ pub struct CheckpointRecord {
     pub chain: String,
 }
 
-/// Written by the round onto its journal line and replayed by `spook verify`; `code` is
-/// the strict `Reason`.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Refusal {
-    pub id: String,
-    pub code: Reason,
-    /// The cost shortfall, or the sentence a locked exit shows.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub detail: Option<String>,
-}
-
-impl Refusal {
-    pub(crate) fn new(intent: &Intent, refusal: &GateRefusal) -> Self {
-        Self {
-            id: intent.id.clone(),
-            code: refusal.reason(),
-            detail: refusal.missing().map(str::to_string),
-        }
-    }
-}
-
 /// One step off the standard order of a round.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -113,7 +90,7 @@ pub struct RoundRecord {
     pub last_round_at: String,
     /// The intents queued for this round, before stamping and habits, which replay plays again.
     pub intents: Vec<Intent>,
-    pub refused: Vec<Refusal>,
+    pub refused: Vec<gate::Refusal>,
     pub effects: Vec<Effect>,
     pub arrivals: Vec<Arrival>,
     pub fast_forward: bool,

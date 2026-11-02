@@ -8,77 +8,60 @@ use crate::meter::{self, MeterWrite};
 use crate::model::{self, Presence, State};
 use crate::rule::Cost;
 use crate::rules::expr::{self, Ctx, Dice};
+use crate::rules::gate;
 use crate::Reason;
 
-/// What the actor cannot pay. The token is `CANT_AFFORD`; `missing` names the shortfall.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Shortfall {
-    pub missing: String,
-}
-
+/// Refuse a cost the actor cannot pay as `CANT_AFFORD`, with the meter or item id as `detail`.
 pub(crate) fn afford(
     canon: &Canon,
     now: &State,
     presence: &Presence,
     intent: &Intent,
     cost: &Cost,
-) -> Result<(), Shortfall> {
+) -> Result<(), gate::Refusal> {
     let who = intent.actor.actor_id();
     let ctx = Ctx { intent, presence };
+    let cant_afford = |missing: &str| gate::Refusal {
+        id: intent.id.clone(),
+        code: Reason::CantAfford,
+        detail: Some(missing.to_string()),
+    };
     for (key, expr) in &cost.meters {
         if expr.needs_dice() {
             continue;
         }
-        let amount = expr::eval(canon, now, &ctx, expr).map_err(|_| Shortfall {
-            missing: key.clone(),
-        })?;
+        let amount = expr::eval(canon, now, &ctx, expr).map_err(|_| cant_afford(key))?;
         if amount < 0 {
-            return Err(Shortfall {
-                missing: key.clone(),
-            });
+            return Err(cant_afford(key));
         }
         let Some(def) = canon.meters.get(key) else {
-            return Err(Shortfall {
-                missing: key.clone(),
-            });
+            return Err(cant_afford(key));
         };
         let Some(live) = now
             .actors
             .get(who)
             .and_then(|actor| actor.meters().get(key))
         else {
-            return Err(Shortfall {
-                missing: key.clone(),
-            });
+            return Err(cant_afford(key));
         };
-        let current = meter::current(def, live).map_err(|_| Shortfall {
-            missing: key.clone(),
-        })?;
+        let current = meter::current(def, live).map_err(|_| cant_afford(key))?;
         if current < amount {
-            return Err(Shortfall {
-                missing: key.clone(),
-            });
+            return Err(cant_afford(key));
         }
     }
     for (id, expr) in &cost.items {
         if expr.needs_dice() {
             continue;
         }
-        let count = item_count(expr::eval(canon, now, &ctx, expr).map_err(|_| Shortfall {
-            missing: id.clone(),
-        })?)
-        .map_err(|_| Shortfall {
-            missing: id.clone(),
-        })?;
+        let amount = expr::eval(canon, now, &ctx, expr).map_err(|_| cant_afford(id))?;
+        let count = item_count(amount).map_err(|_| cant_afford(id))?;
         let held = now
             .actors
             .get(who)
             .map(|actor| actor.item_count(id))
             .unwrap_or(0);
         if held < count {
-            return Err(Shortfall {
-                missing: id.clone(),
-            });
+            return Err(cant_afford(id));
         }
     }
     Ok(())

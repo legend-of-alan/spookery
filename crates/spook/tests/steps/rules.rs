@@ -245,7 +245,7 @@ fn a_pc_at_ferry_dock_travels(world: &mut World) {
     };
     opened
         .queue_player_move(&one_human, "pc_rowan", "travel", Some("ferry_dock"))
-        .unwrap_or_else(|err| panic!("travel {}", err.token()));
+        .unwrap_or_else(|err| panic!("travel {}", err.code.as_str()));
     let wall = opened.state().last_round_at.clone();
     opened
         .commit_then_fast_forward(&one_human, &wall)
@@ -424,7 +424,7 @@ fn lark_attacks(world: &mut World) {
     let nobody = Presence::default();
     opened
         .queue_player_move(&nobody, "pc_lark", "attack", Some("npc_briar"))
-        .unwrap_or_else(|err| panic!("attack {}", err.token()));
+        .unwrap_or_else(|err| panic!("attack {}", err.code.as_str()));
     let wall = opened.state().last_round_at.clone();
     let outputs = opened
         .commit_then_fast_forward(&nobody, &wall)
@@ -597,7 +597,7 @@ fn the_seated_pc_plays_steady(world: &mut World) {
     let mut opened = open(&pack);
     let played = opened.queue_player_move(&Presence::default(), "pc_rowan", "steady", None);
     world.scratch = match played {
-        Err(err) => format!("{} {}", err.token(), err.missing().unwrap_or("")),
+        Err(err) => format!("{} {}", err.code.as_str(), err.detail.unwrap_or_default()),
         Ok(_) => "queued".to_string(),
     };
 }
@@ -646,8 +646,8 @@ fn a_pc_is_gated_on_those_full_ids(world: &mut World) {
     let mut codes = Vec::new();
     for move_name in ["cast:mira/leave_door_note", "place:docks_street/travel"] {
         match opened.queue_player_move(&Presence::default(), "pc_rowan", move_name, None) {
-            Err(miss) if miss.reason() == Reason::NotInSpec => {
-                codes.push(miss.token());
+            Err(miss) if miss.code == Reason::NotInSpec => {
+                codes.push(miss.code.as_str());
             }
             other => panic!("{move_name}: {other:?}"),
         }
@@ -733,7 +733,7 @@ fn the_seated_pc_queues_use_tonic(world: &mut World) {
                 .unwrap();
             format!("{:?} {}", intent.target, intent.move_name)
         }
-        Err(err) => err.token().to_string(),
+        Err(err) => err.code.as_str().to_string(),
     };
 }
 

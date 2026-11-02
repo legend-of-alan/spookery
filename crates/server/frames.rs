@@ -3,7 +3,7 @@
 
 use crate::protocol::{
     self, CommitBody, Detail, GmEvent, NoteView, Outcome, PackSummary, PlayerFrame, Queued,
-    QueuedMove, Refusal, SayEvent, StatusPause, StatusPresence, TableStatus,
+    QueuedMove, SayEvent, StatusPause, StatusPresence, TableStatus,
 };
 use rmcp::ErrorData as McpError;
 use serde_json::Value;
@@ -13,26 +13,26 @@ use spookery_engine::{
 };
 
 /// The player `refused` line. `detail` is left out when there is none.
-pub(super) fn refused_line(refusal: Refusal) -> String {
+pub(super) fn refused_line(refusal: protocol::Refusal) -> String {
     PlayerFrame::Refused(refusal).to_line()
 }
 
-/// The `refused` line of a move the gate or a round refused. `missing` is the meter or
+/// The `refused` line of a move the gate or a round refused. Its `detail` is the meter or
 /// item id, or the sentence a locked exit shows.
-pub(super) fn refused_move_line(code: Reason, missing: Option<&str>) -> String {
-    refused_line(Refusal {
-        code: protocol::Code::Known(code),
-        detail: missing.map(|text| Detail::One(text.to_string())),
+pub(super) fn refused_move_line(refusal: &engine::Refusal) -> String {
+    refused_line(protocol::Refusal {
+        code: protocol::Code::Known(refusal.code),
+        detail: refusal.detail.clone().map(Detail::One),
     })
 }
 
 /// A refused GM tool's result names the code only.
 pub(super) fn refused_value(code: Reason) -> Value {
-    serde_json::to_value(Refusal::from(code)).expect("refusal")
+    serde_json::to_value(protocol::Refusal::from(code)).expect("refusal")
 }
 
 /// The MCP initialize error. Its message is the refusal's sentence and its data the refusal.
-pub(super) fn mcp_error(refusal: &Refusal) -> McpError {
+pub(super) fn mcp_error(refusal: &protocol::Refusal) -> McpError {
     let data = serde_json::to_value(refusal).expect("refusal");
     McpError::internal_error(refusal.to_string(), Some(data))
 }
@@ -92,9 +92,7 @@ pub(super) fn check_lines(reports: &[MoveReport], actor_id: &str) -> String {
         }
         match report {
             MoveReport::Rolled { roll: rolled, .. } => out.push_str(&check_line(rolled.outcome)),
-            MoveReport::Refused { code, missing, .. } => {
-                out.push_str(&refused_move_line(*code, missing.as_deref()))
-            }
+            MoveReport::Refused { refusal, .. } => out.push_str(&refused_move_line(refusal)),
         }
     }
     out

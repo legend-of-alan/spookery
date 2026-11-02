@@ -6,6 +6,7 @@ use crate::hash::blake2s_256;
 use crate::intent::Viewer;
 use crate::meter::{self, MeterDef};
 use crate::model::ActorLive;
+use crate::rules::gate;
 use crate::Reason;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -44,9 +45,7 @@ pub enum MoveReport {
     },
     Refused {
         actor_id: String,
-        code: Reason,
-        /// The meter or item id, or the sentence a locked exit shows.
-        missing: Option<String>,
+        refusal: gate::Refusal,
     },
 }
 

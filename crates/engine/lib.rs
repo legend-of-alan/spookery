@@ -31,7 +31,7 @@ pub use model::{Note, Presence, RunState, State};
 pub use perceive::{ClockView, ItemStack, KnownFact, MeterView, View};
 pub use round::{migrate_pack, play_pack_once, verify_pack, verify_quick, RoundOutput};
 pub use rule::When;
-pub use rules::{GateRefusal, MoveReport, Outcome, Roll};
+pub use rules::{MoveReport, Outcome, Refusal, Roll};
 pub use spookery_protocol::{QueuedMove, Reason};
 pub use store::{emit_save, emit_tape_record, lock_pack, parse_save, PackGuard, TapeRecord};
 pub use travel::ExitView;
@@ -90,7 +90,7 @@ pub mod testing {
             &mut self,
             presence: &crate::Presence,
             actor_id: &str,
-        ) -> Result<crate::QueuedMove, crate::GateRefusal> {
+        ) -> Result<crate::QueuedMove, crate::Refusal> {
             self.queue_player_move(presence, actor_id, "wait", None)
         }
     }

@@ -11,6 +11,6 @@ pub(crate) mod perceive;
 pub(crate) mod roll;
 pub(crate) mod rule;
 
-pub use gate::GateRefusal;
+pub use gate::Refusal;
 pub(crate) use roll::{faces_from, roll_check, RollInput, RollKey};
 pub use roll::{MoveReport, Outcome, Roll};

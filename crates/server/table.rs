@@ -14,7 +14,7 @@ use super::idle::{self, now_stamp};
 use super::seat::{Conn, FrameSender, GmSeat, PlayerSeat, Seats};
 use super::tools::call_gm_tool;
 use super::Error;
-use crate::protocol::{self, Detail, Refusal, Speaker};
+use crate::protocol::{self, Detail, Speaker};
 
 /// The host's cap. A pack may define more PCs than this.
 const MAX_PLAYER_SEATS: usize = 3;
@@ -56,7 +56,7 @@ pub(super) enum Request {
     SeatGm {
         conn: Conn,
         frames_tx: FrameSender,
-        reply: oneshot::Sender<Result<(), Refusal>>,
+        reply: oneshot::Sender<Result<(), protocol::Refusal>>,
     },
     Wake,
     Stop,
@@ -73,7 +73,7 @@ pub(super) async fn report_hangup(tx: &Sender<Request>, conn: Conn) {
 
 /// Sent from the table back to a player's socket task, answering its hello.
 pub(super) enum HelloReply {
-    Refused(Refusal),
+    Refused(protocol::Refusal),
     Seated,
 }
 
@@ -169,7 +169,7 @@ impl Table {
         }
         let Some(id) = named else {
             let free = self.world.free_pcs(&self.seats.presence());
-            return HelloReply::Refused(Refusal {
+            return HelloReply::Refused(protocol::Refusal {
                 code: protocol::Code::Known(Reason::ChoosePc),
                 detail: Some(Detail::Many(free)),
             });
@@ -216,7 +216,7 @@ impl Table {
         HelloReply::Seated
     }
 
-    fn seat_gm(&mut self, conn: Conn, frames_tx: FrameSender) -> Result<(), Refusal> {
+    fn seat_gm(&mut self, conn: Conn, frames_tx: FrameSender) -> Result<(), protocol::Refusal> {
         if self.seats.gm.is_some() {
             return Err(Reason::TableFull.into());
         }
@@ -275,9 +275,9 @@ impl Table {
                 return self.send_player(conn, frames::queued_line(&queued.id).into_bytes());
             }
             Ok(_) => None,
-            Err(refusal) if !gm_seated && refusal.reason() == Reason::Busy => Some(refusal),
+            Err(refusal) if !gm_seated && refusal.code == Reason::Busy => Some(refusal),
             Err(refusal) => {
-                let line = frames::refused_move_line(refusal.reason(), refusal.missing());
+                let line = frames::refused_move_line(&refusal);
                 return self.send_player(conn, line.into_bytes());
             }
         };
@@ -288,7 +288,7 @@ impl Table {
             }
         };
         if let Some(refusal) = &busy {
-            let line = frames::refused_move_line(refusal.reason(), refusal.missing());
+            let line = frames::refused_move_line(refusal);
             self.send_player(conn, line.into_bytes());
         }
         self.after_rounds(&outputs);
@@ -502,7 +502,7 @@ fn parse_command<'w, 'l: 'w>(
     world: &'w World,
     seated: &str,
     line: &'l str,
-) -> Result<PlayerCommand<'w, 'l>, Refusal> {
+) -> Result<PlayerCommand<'w, 'l>, protocol::Refusal> {
     let (verb, rest) = split_token(line);
     if (verb, rest) == ("close", "") {
         return Ok(PlayerCommand::Close);

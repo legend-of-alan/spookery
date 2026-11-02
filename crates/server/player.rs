@@ -11,7 +11,7 @@ use spookery_engine::Reason;
 use super::frames;
 use super::seat::{frame_queue, write_all_flush, write_frames, Conn, FrameReceiver, FrameSender};
 use super::table::{report_hangup, HelloReply, Request};
-use crate::protocol::Refusal;
+use crate::protocol;
 
 /// Accept players until the listener fails. Each socket gets its options set, then is served
 /// on a task of its own.
@@ -188,7 +188,7 @@ const REFUSE_DRAIN_BYTES: usize = 64 * 1024;
 /// Windows, and the client's stack then drops the refusal it already got. So
 /// the seat sends FIN after the refusal and reads until the client hangs up,
 /// for at most `REFUSE_DRAIN_TIMEOUT` and `REFUSE_DRAIN_BYTES`.
-async fn refuse(stream: &mut tokio::net::TcpStream, refusal: Refusal) {
+async fn refuse(stream: &mut tokio::net::TcpStream, refusal: protocol::Refusal) {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     let line = frames::refused_line(refusal);
     if stream.write_all(line.as_bytes()).await.is_err()

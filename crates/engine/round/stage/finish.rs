@@ -5,7 +5,6 @@ use crate::effect::{Effect, EffectKind};
 use crate::intent::{due_intent_id, Intent, Source, Target};
 use crate::journal::Arrival;
 use crate::model::{PendingAction, PendingKind};
-use crate::rules::MoveReport;
 use crate::Reason;
 
 use crate::round::dice::RoundDice;
@@ -112,11 +111,7 @@ fn finish_timed_action(
     let outcome = rolled.as_ref().map(|out| out.outcome);
     let effects = rule.expand(canon, snapshot, presence, intent, outcome, &mut roller)?;
     let resisted = roller.into_reports();
-    let actor_id = actor_id.to_string();
-    log.reports.extend(rolled.map(|out| MoveReport::Rolled {
-        actor_id,
-        roll: out,
-    }));
+    log.report_roll(rolled, actor_id);
     log.reports.extend(resisted);
     for effect in effects {
         if matches!(effect.kind, EffectKind::Location { .. }) {

@@ -2,12 +2,12 @@
 
 use crate::draft::Draft;
 use crate::intent::{Intent, Viewer};
-use crate::journal::{Refusal, Step};
+use crate::journal::Step;
 use crate::model::State;
 use crate::rule::Rule;
 use crate::rules::cost;
-use crate::rules::gate::{admit, GateRefusal};
-use crate::rules::{MoveReport, Roll};
+use crate::rules::gate;
+use crate::rules::MoveReport;
 use crate::travel;
 use crate::Reason;
 
@@ -37,26 +37,29 @@ pub(crate) fn run(
     for Resolved { intent, resolution } in resolved {
         let spends_slot = matches!(intent.actor, Viewer::Npc(_));
         if spends_slot && slots >= max_npcs {
-            reject(log, &intent, Reason::Budget);
+            refuse(
+                log,
+                &intent,
+                gate::Refusal::new(&intent, Reason::Budget),
+                false,
+            );
             continue;
         }
         let (rule_id, rolled) = match resolution {
             Resolution::Ready { rule_id, rolled } => (rule_id, rolled),
             Resolution::Refused(refusal) => {
-                reject(log, &intent, refusal);
+                refuse(log, &intent, refusal, false);
                 continue;
             }
             Resolution::CannotRoll(code) => {
-                let refusal = GateRefusal::from(code);
-                log.refused.push(Refusal::new(&intent, &refusal));
-                log.reports.push(refused_report(&intent, &refusal));
+                refuse(log, &intent, gate::Refusal::new(&intent, code), true);
                 continue;
             }
         };
         let canon = draft.shared_canon();
         let rule = canon.rules.get(&rule_id).ok_or(Reason::UnknownMove)?;
-        if let Err(refusal) = admit(&canon, draft.state(), draft.presence, &intent, rule) {
-            reject(log, &intent, refusal);
+        if let Err(refusal) = gate::admit(&canon, draft.state(), draft.presence, &intent, rule) {
+            refuse(log, &intent, refusal, false);
             continue;
         }
         let minutes = travel::span(&canon, draft.state(), &intent, rule);
@@ -75,12 +78,17 @@ pub(crate) fn run(
         let effects = match expanded {
             Ok(effects) => effects,
             Err(code) => {
-                reject(log, &intent, code);
+                refuse(log, &intent, gate::Refusal::new(&intent, code), false);
                 continue;
             }
         };
         if effects.len() > max_effects {
-            reject(log, &intent, Reason::Budget);
+            refuse(
+                log,
+                &intent,
+                gate::Refusal::new(&intent, Reason::Budget),
+                false,
+            );
             continue;
         }
         let expansion = Expansion {
@@ -116,7 +124,7 @@ fn start_timed_action(
     drop(roller);
     if let Err(code) = begun {
         draft.rollback(point);
-        reject(log, intent, code);
+        refuse(log, intent, gate::Refusal::new(intent, code), false);
         return false;
     }
     log.extra_steps.push(Step::Rule(rule.id.clone()));
@@ -138,7 +146,7 @@ fn apply_instant_intent(
         drop(roller);
         if let Err(code) = paid {
             draft.rollback(point);
-            reject(log, intent, code);
+            refuse(log, intent, gate::Refusal::new(intent, code), false);
             return Landing::Refused;
         }
     }
@@ -153,7 +161,7 @@ fn apply_instant_intent(
     });
     if let Err(code) = staged {
         draft.rollback(point);
-        reject(log, intent, code);
+        refuse(log, intent, gate::Refusal::new(intent, code), false);
         return if code == Reason::Budget {
             Landing::BudgetSpent
         } else {
@@ -161,34 +169,20 @@ fn apply_instant_intent(
         };
     }
     log.effects.extend_from_slice(&expansion.effects);
-    report_roll(log, &expansion.rolled, intent.actor.actor_id());
+    log.report_roll(expansion.rolled.clone(), intent.actor.actor_id());
     log.reports.extend_from_slice(&expansion.resisted);
     log.extra_steps.push(Step::Rule(rule.id.clone()));
     Landing::Applied
 }
 
-/// Journal the refusal and tell a player its code and what was missing.
-fn reject(log: &mut RoundLog, intent: &Intent, refusal: impl Into<GateRefusal>) {
-    let refusal = refusal.into();
-    log.refused.push(Refusal::new(intent, &refusal));
-    if matches!(intent.actor, Viewer::Player(_)) {
-        log.reports.push(refused_report(intent, &refusal));
-    }
-}
-
-fn refused_report(intent: &Intent, refusal: &GateRefusal) -> MoveReport {
-    MoveReport::Refused {
-        actor_id: intent.actor.actor_id().to_string(),
-        code: refusal.reason(),
-        missing: refusal.missing().map(str::to_string),
-    }
-}
-
-fn report_roll(log: &mut RoundLog, rolled: &Option<Roll>, actor_id: &str) {
-    if let Some(out) = rolled.clone() {
-        log.reports.push(MoveReport::Rolled {
-            actor_id: actor_id.to_string(),
-            roll: out,
+/// Journal the refusal, and tell the actor its code and detail: a player always, an NPC only
+/// when `tell_npcs`.
+fn refuse(log: &mut RoundLog, intent: &Intent, refusal: gate::Refusal, tell_npcs: bool) {
+    if tell_npcs || matches!(intent.actor, Viewer::Player(_)) {
+        log.reports.push(MoveReport::Refused {
+            actor_id: intent.actor.actor_id().to_string(),
+            refusal: refusal.clone(),
         });
     }
+    log.refused.push(refusal);
 }
