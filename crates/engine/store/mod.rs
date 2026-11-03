@@ -1,4 +1,4 @@
-//! Save, journal, and the rules version stamped on both.
+//! Save, journal, session tape, pack lock, and the rules version stamped on saves and rounds.
 
 use crate::Reason;
 
