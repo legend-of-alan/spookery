@@ -141,15 +141,6 @@ impl Record {
         }
     }
 
-    #[cfg(any(test, feature = "testing"))]
-    pub fn state_hash(&self) -> &str {
-        match self {
-            Self::Round(record) => &record.state_hash,
-            Self::Migrate(record) => &record.state_hash,
-            Self::Checkpoint(record) => &record.state_hash,
-        }
-    }
-
     pub fn prev(&self) -> &str {
         match self {
             Self::Round(record) => &record.prev,

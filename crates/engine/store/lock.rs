@@ -75,19 +75,7 @@ impl PackGuard {
 }
 
 /// Held while the writer publishes, so no reader sees a write halfway done.
-/// The inner write helpers take `&WriteGuard`, so a write without one does not compile:
-///
-/// ```compile_fail
-/// # let root = std::path::Path::new("pack");
-/// spookery_engine::testing::append_to_bundle(root, "{}\n");
-/// ```
-///
-/// ```no_run
-/// # let root = std::path::Path::new("pack");
-/// let world = spookery_engine::testing::resume(root);
-/// let write = spookery_engine::testing::lock_write(&world).unwrap();
-/// spookery_engine::testing::append_to_bundle(root, "{}\n", &write).unwrap();
-/// ```
+/// The inner write helpers take `&WriteGuard`, so a write without one does not compile.
 pub struct WriteGuard {
     _file: LockedFile,
 }

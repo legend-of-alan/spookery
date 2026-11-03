@@ -1,7 +1,7 @@
 //! The session tape at `state/tape.jsonl`.
 
-use std::fs::{self, File, OpenOptions};
-use std::io::{Read, Seek, SeekFrom, Write};
+use std::fs::{self, OpenOptions};
+use std::io::{Seek, SeekFrom, Write};
 use std::path::Path;
 
 use serde::{Deserialize, Serialize};
@@ -11,10 +11,10 @@ use crate::Reason;
 use spookery_protocol::Speaker;
 
 /// Size bound for `state/tape.jsonl`. An append that would pass it first drops the oldest half.
-pub const MAX_BYTES: u64 = 1024 * 1024;
+const MAX_BYTES: u64 = 1024 * 1024;
 
-const DEFAULT_LIMIT: usize = 64;
-const MAX_LIMIT: usize = 256;
+const WINDOW_LINES: usize = 64;
+const SCROLLBACK_LINES: usize = 256;
 
 /// Written by the engine to the tape and handed to the host table, which relays it to players and the GM.
 /// One tape line. Field order is the order of the bytes on disk.
@@ -41,12 +41,10 @@ pub fn emit_tape_record(record: &TapeRecord) -> String {
 }
 
 /// Append one tape record. The pack lock makes the host the only writer.
-/// `body` receives the assigned `seq`. Drops a trailing partial line and does not open a `Draft`.
-/// When the line would pass `MAX_BYTES`, the oldest whole lines go first, keeping the newest half.
-pub fn append_record(
-    root: &Path,
-    body: impl FnOnce(u64) -> TapeRecord,
-) -> Result<TapeRecord, Reason> {
+/// `seq` is set one past the last complete line. Drops a trailing partial line and does not open
+/// a `Draft`. When the line would pass `MAX_BYTES`, the oldest whole lines go first, keeping the
+/// newest half.
+pub fn append_record(root: &Path, mut record: TapeRecord) -> Result<TapeRecord, Reason> {
     let state = root.join("state");
     fs::create_dir_all(&state).map_err(|_| Reason::CommitConflict)?;
     let path = state.join("tape.jsonl");
@@ -61,16 +59,24 @@ pub fn append_record(
     if len > MAX_BYTES {
         return Err(Reason::OutOfRange);
     }
-    let (end, last_seq) = tail_seq(&mut file, len)?;
-    let seq = last_seq.checked_add(1).ok_or(Reason::CommitConflict)?;
-    let record = body(seq);
+    let bytes = fs::read(&path).map_err(|_| Reason::CommitConflict)?;
+    let mut lines = bytes.rsplit(|byte| *byte == b'\n');
+    let torn = lines.next().unwrap_or_default();
+    let end = (bytes.len() - torn.len()) as u64;
+    let last_seq = match lines.next() {
+        Some(last) => {
+            let last = last.strip_suffix(b"\r").unwrap_or(last);
+            parse_record(std::str::from_utf8(last).map_err(|_| Reason::Schema)?)?.seq
+        }
+        None => 0,
+    };
+    record.seq = last_seq.checked_add(1).ok_or(Reason::CommitConflict)?;
     let mut line = emit_tape_record(&record);
     if line.is_empty() || line.bytes().any(|byte| byte == b'\n' || byte == b'\r') {
         return Err(Reason::Schema);
     }
     line.push('\n');
     if end + line.len() as u64 > MAX_BYTES {
-        let bytes = fs::read(&path).map_err(|_| Reason::CommitConflict)?;
         let from = end.saturating_sub(MAX_BYTES / 2) as usize;
         let start = bytes[from..end as usize]
             .iter()
@@ -93,39 +99,29 @@ pub fn append_record(
     Ok(record)
 }
 
-/// Records with `seq` greater than `after_seq`, at most `limit` of them.
-/// `limit` defaults to 64 and is clamped to 256. A missing file is empty.
-/// A trailing partial line is not a record. A complete line that does not
-/// parse is `SCHEMA` for the whole read. A file past 1 MiB is `OUT_OF_RANGE`.
-pub fn read_after(
-    root: &Path,
-    after_seq: u64,
-    limit: Option<usize>,
-) -> Result<Vec<TapeRecord>, Reason> {
-    let limit = match limit {
-        Some(limit) => limit.min(MAX_LIMIT),
-        None => DEFAULT_LIMIT,
-    };
+/// Records with `seq` greater than `since`, at most `WINDOW_LINES` of them.
+/// A missing file is empty. A trailing partial line is not a record. A complete
+/// line that does not parse is `SCHEMA` for the whole read. A file past 1 MiB is `OUT_OF_RANGE`.
+pub fn read_after(root: &Path, since: u64) -> Result<Vec<TapeRecord>, Reason> {
     let mut out = Vec::new();
     for record in read_records(root)? {
-        if record.seq > after_seq && out.len() < limit {
+        if record.seq > since && out.len() < WINDOW_LINES {
             out.push(record);
         }
     }
     Ok(out)
 }
 
-/// The newest `n` records whose recipients include `player`, oldest first.
-/// `n` is clamped to 256. The filter runs before the limit.
-pub fn read_tail(root: &Path, player: &str, n: usize) -> Result<Vec<TapeRecord>, Reason> {
-    let n = n.min(MAX_LIMIT);
+/// The newest `SCROLLBACK_LINES` records whose recipients include `player`, oldest first.
+/// The filter runs before the limit.
+pub fn read_scrollback(root: &Path, player: &str) -> Result<Vec<TapeRecord>, Reason> {
     let mut matched = Vec::new();
     for record in read_records(root)? {
         if record.recipients.iter().any(|id| id == player) {
             matched.push(record);
         }
     }
-    let skip = matched.len().saturating_sub(n);
+    let skip = matched.len().saturating_sub(SCROLLBACK_LINES);
     Ok(matched.split_off(skip))
 }
 
@@ -168,55 +164,6 @@ fn parse_record(line: &str) -> Result<TapeRecord, Reason> {
     serde_json::from_str(line).map_err(|_| Reason::Schema)
 }
 
-/// `(kept_end, last_seq)` from the file tail. A torn suffix is not a record.
-/// A complete line that does not parse is `SCHEMA`.
-fn tail_seq(file: &mut File, len: u64) -> Result<(u64, u64), Reason> {
-    if len == 0 {
-        return Ok((0, 0));
-    }
-    let mut start = len;
-    let mut suffix = Vec::new();
-    loop {
-        let take = start.min(8192);
-        if take == 0 {
-            break;
-        }
-        start -= take;
-        file.seek(SeekFrom::Start(start))
-            .map_err(|_| Reason::CommitConflict)?;
-        let mut chunk = vec![0u8; take as usize];
-        file.read_exact(&mut chunk)
-            .map_err(|_| Reason::CommitConflict)?;
-        chunk.append(&mut suffix);
-        suffix = chunk;
-        if has_last_line(&suffix, start == 0) {
-            break;
-        }
-    }
-    let Some(last_nl) = suffix.iter().rposition(|byte| *byte == b'\n') else {
-        return Ok((0, 0));
-    };
-    let kept_end = start + last_nl as u64 + 1;
-    let line_start = suffix[..last_nl]
-        .iter()
-        .rposition(|byte| *byte == b'\n')
-        .map(|index| index + 1)
-        .unwrap_or(0);
-    let mut line = &suffix[line_start..last_nl];
-    if line.last() == Some(&b'\r') {
-        line = &line[..line.len() - 1];
-    }
-    let seq = parse_record(std::str::from_utf8(line).map_err(|_| Reason::Schema)?)?.seq;
-    Ok((kept_end, seq))
-}
-
-fn has_last_line(suffix: &[u8], at_start: bool) -> bool {
-    let Some(last_nl) = suffix.iter().rposition(|byte| *byte == b'\n') else {
-        return at_start;
-    };
-    at_start || suffix[..last_nl].contains(&b'\n')
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -225,18 +172,7 @@ mod tests {
     #[test]
     fn an_appended_say_keeps_the_tape_bytes() {
         let root = fresh_dir("tape-bytes");
-        let stored = append_record(&root, |seq| TapeRecord {
-            seq,
-            from: Speaker::Gm,
-            address: "actor".to_string(),
-            place: None,
-            actor: Some("pc_rowan".to_string()),
-            recipients: vec!["pc_rowan".to_string()],
-            text: "line0".to_string(),
-            round_index: 0,
-            world_time: 1080,
-        })
-        .unwrap();
+        let stored = append_record(&root, sample(0, "pc_rowan", "line0")).unwrap();
         let bytes = fs::read(root.join("state/tape.jsonl")).unwrap();
         let line = "{\"seq\":1,\"from\":\"gm\",\"address\":\"actor\",\"place\":null,\"actor\":\"pc_rowan\",\"recipients\":[\"pc_rowan\"],\"text\":\"line0\",\"round_index\":0,\"world_time\":1080}\n";
         assert_eq!(bytes, line.as_bytes());
@@ -245,7 +181,7 @@ mod tests {
     }
 
     #[test]
-    fn read_tail_keeps_the_newest_lines_for_that_player() {
+    fn read_scrollback_keeps_the_newest_lines_for_that_player() {
         let root = fresh_dir("tape-tail");
         let mut lines = String::new();
         for index in 0..300 {
@@ -265,14 +201,14 @@ mod tests {
             lines.push('\n');
         }
         write_tape(&root, &lines);
-        let tail = read_tail(&root, "pc_rowan", 1000).unwrap();
+        let tail = read_scrollback(&root, "pc_rowan").unwrap();
         let texts: Vec<_> = tail.iter().map(|record| record.text.as_str()).collect();
         assert_eq!(texts, ["line0", "line1", "line2"]);
         let _ = fs::remove_dir_all(&root);
     }
 
     #[test]
-    fn read_tail_and_read_session_keep_the_256_line_cap() {
+    fn read_scrollback_keeps_the_256_line_cap() {
         let root = fresh_dir("tape-cap");
         let mut lines = String::new();
         for index in 0..300 {
@@ -284,14 +220,10 @@ mod tests {
             lines.push('\n');
         }
         write_tape(&root, &lines);
-        let tail = read_tail(&root, "pc_rowan", 1000).unwrap();
+        let tail = read_scrollback(&root, "pc_rowan").unwrap();
         assert_eq!(tail.len(), 256);
         assert_eq!(tail[0].text, "line44");
         assert_eq!(tail[255].text, "line299");
-        let window = read_after(&root, 0, Some(1000)).unwrap();
-        assert_eq!(window.len(), 256);
-        assert_eq!(window[0].text, "line0");
-        assert_eq!(window[255].text, "line255");
         let _ = fs::remove_dir_all(&root);
     }
 
