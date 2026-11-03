@@ -27,6 +27,7 @@ pub fn verify_pack(pack: &Path, from: Option<&Path>) -> Result<Report, Error> {
     if !pack.join("pack.yaml").is_file() {
         return Err(Error::Reason(Reason::NotInSpec));
     }
+    // Stays although `read_base` makes the same check: with `from`, verify returns before it runs.
     if !pack.join("state/save.yaml").is_file() && !journal::base_path(pack).is_file() {
         return Err(Error::Reason(Reason::NotInSpec));
     }

@@ -38,7 +38,6 @@ pub(crate) fn head_path(pack: &Path) -> PathBuf {
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct CheckpointHead {
     /// A head without it is refused.
-    #[serde(default)]
     pub rules_rev: u64,
     pub state_rev: u64,
     pub round_index: u64,
@@ -279,16 +278,15 @@ pub(crate) fn hashes_to(path: &Path, hash: &str) -> bool {
 /// A plain bundle that already ends in a published checkpoint is skipped, so a
 /// failed gzip cannot take the next round.
 pub(crate) fn next_bundle_path(pack: &Path) -> PathBuf {
-    let dir = pack.join("state/journal");
-    let files = list_bundles(pack).unwrap_or_default();
-    match files.last() {
-        Some((name, path)) if name.ends_with(".jsonl") && !is_published(pack, path) => path.clone(),
-        Some((name, _)) => {
-            let index = bundle_index(name).unwrap_or(0).saturating_add(1);
-            dir.join(format!("bundle-{index:04}.jsonl"))
-        }
-        None => dir.join("bundle-0000.jsonl"),
+    if let Some(path) = find_live_bundle(pack).filter(|path| !is_published(pack, path)) {
+        return path;
     }
+    let files = list_bundles(pack).unwrap_or_default();
+    let index = files.last().map_or(0, |(name, _)| {
+        bundle_index(name).unwrap_or(0).saturating_add(1)
+    });
+    pack.join("state/journal")
+        .join(format!("bundle-{index:04}.jsonl"))
 }
 
 pub fn emit_record(entry: &Record) -> String {
