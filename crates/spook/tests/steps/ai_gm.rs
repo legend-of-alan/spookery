@@ -358,6 +358,41 @@ fn sit_commits_the_waiting_queue(world: &mut World) {
     let _ = fs::remove_dir_all(&pack);
 }
 
+#[when(expr = "a player queues travel while the model answers their say")]
+fn a_player_queues_travel_while_the_model_answers_their_say(world: &mut World) {
+    let pack = copy_docks("host-close-turns");
+    table::listen(world, &pack);
+    let model = ScriptedModel::default();
+    model.push(Ok(EMPTY_ACT));
+    model.push(Ok(EMPTY_ACT));
+    model.hold_next();
+    let gm = start_ai_gm(world, model.clone());
+    table::seat_rowan(world, &pack);
+    let sit = table::now_of(&pack).world_time;
+    table::player_send(world, "say hello", "\"kind\":\"say\"");
+    table::poll_until("the say's model call", || match model.calls().len() {
+        1 => Ok(()),
+        calls => Err(calls),
+    });
+    table::player_send(world, "travel docks_street", "\"kind\":\"queued\"");
+    gm.advance(HOLD);
+    table::wait_world_time(&pack, sit + 5);
+    // The world loop answers this look after any second round or GM event queued before it.
+    table::player_send(world, "look", table::LINES_KIND);
+    let world_time = table::now_of(&pack).world_time;
+    stop_ai_gm(world, gm);
+    let _ = fs::remove_dir_all(&pack);
+    world.mark = model.calls().len();
+    world.stdout = if world_time == sit + 5 {
+        "advanced".to_string()
+    } else {
+        world_time.to_string()
+    };
+}
+
+/// How long a held model call waits on the AI GM's paused clock.
+const HOLD: Duration = Duration::from_secs(1);
+
 /// A model that answers each call with the next scripted `act` arguments, read through
 /// `parse_completion` the way `HttpModel` reads a reply. With no script left it answers
 /// without an `act` call.
@@ -369,12 +404,18 @@ struct ScriptedModel {
 #[derive(Default)]
 struct Script {
     replies: VecDeque<Result<&'static str, CompletionError>>,
+    /// How many of the next calls wait `HOLD` before they answer.
+    held: usize,
     calls: Vec<CompletionRequest>,
 }
 
 impl ScriptedModel {
     fn push(&self, reply: Result<&'static str, CompletionError>) {
         self.script.lock().unwrap().replies.push_back(reply);
+    }
+
+    fn hold_next(&self) {
+        self.script.lock().unwrap().held += 1;
     }
 
     fn calls(&self) -> Vec<CompletionRequest> {
@@ -387,9 +428,17 @@ impl Model for ScriptedModel {
         &mut self,
         request: &CompletionRequest,
     ) -> Result<Option<ModelReply>, CompletionError> {
-        let mut script = self.script.lock().unwrap();
-        script.calls.push(request.clone());
-        match script.replies.pop_front() {
+        let (reply, held) = {
+            let mut script = self.script.lock().unwrap();
+            script.calls.push(request.clone());
+            let held = script.held > 0;
+            script.held = script.held.saturating_sub(1);
+            (script.replies.pop_front(), held)
+        };
+        if held {
+            tokio::time::sleep(HOLD).await;
+        }
+        match reply {
             Some(Ok(arguments)) => parse_completion(&act_reply(arguments), request.says_only),
             Some(Err(err)) => Err(err),
             None => Ok(None),

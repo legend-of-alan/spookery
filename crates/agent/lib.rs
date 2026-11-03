@@ -102,6 +102,7 @@ struct Turn {
     view: Option<(TurnView, PromptContext)>,
     says: VecDeque<SayArgs>,
     intent: Option<protocol::IntentArgs>,
+    queued_intent: bool,
     submitted: Vec<TapeLine>,
     checks: Vec<Roll>,
 }
@@ -116,7 +117,6 @@ enum Phase {
     Model(bool),
     Say(bool),
     Intent,
-    PreCommitStatus,
     Commit,
     PostCommitStatus,
 }
@@ -185,14 +185,9 @@ impl Agent {
                 }
                 Ok(self.advance_actions(epilogue))
             }
-            (Phase::Intent, Input::QueueIntentReply(_)) => Ok(self.advance_actions(false)),
-            (Phase::PreCommitStatus, Input::TableStatusReply(reply)) => {
-                if reply.map_err(Error::Refused)?.queued.is_empty() {
-                    Ok(self.finish_commit(false))
-                } else {
-                    self.phase = Phase::Commit;
-                    Ok(Step::CommitRound)
-                }
+            (Phase::Intent, Input::QueueIntentReply(reply)) => {
+                self.turn.queued_intent = reply.is_ok();
+                Ok(self.advance_actions(false))
             }
             (Phase::Commit, Input::CommitRoundReply(reply)) => match reply {
                 Ok(commit) => {
@@ -300,8 +295,13 @@ impl Agent {
             self.phase = Phase::Intent;
             return Step::QueueIntent(intent);
         }
-        self.phase = Phase::PreCommitStatus;
-        Step::TableStatus { since: None }
+        // Commit only the queue this turn saw: a move queued since then keeps its wake.
+        let status = self.turn.status.as_ref().expect("status");
+        if status.queued.is_empty() && !self.turn.queued_intent {
+            return self.finish_commit(false);
+        }
+        self.phase = Phase::Commit;
+        Step::CommitRound
     }
 
     fn finish_commit(&mut self, committed: bool) -> Step {
@@ -356,6 +356,7 @@ mod tests {
     const EMPTY_STATUS: &str = r#"{"presence":{"players":1,"actors_present":["pc"]},"pause":{"presence_clocks":"running"},"world_time":0,"round_index":0,"state_rev":1,"pack_rev":"p","last_round_at":"","queued":[],"last_seq":1}"#;
     const VIEW: &str = r#"{"viewer":"pc","place":"docks","visible_actors":["pc"],"known_facts":[],"notes":[],"unknown_mentions":[],"clocks":[],"items":[],"habits":[]}"#;
     const COMMIT: &str = r#"{"state_rev":2,"changed_keys":[],"journal_path":null,"rolls":[{"faces":[6,6],"stat":1,"total":13,"target":10,"outcome":"success"}]}"#;
+    const QUEUED: &str = r#"{"kind":"queued","id":"q2","actor_id":"pc","move":"wait"}"#;
     const SAY: &str = r#"{"kind":"say","seq":2,"from":"player:pc","address":"table","place":null,"actor":null,"recipients":[],"text":"ok"}"#;
 
     fn status(raw: &str) -> Input {
@@ -409,8 +410,7 @@ mod tests {
         let commit = Input::CommitRoundReply(Ok(serde_json::from_str(COMMIT).unwrap()));
 
         let mut a = sit_queued(&since);
-        assert_eq!(feed_reply(&mut a, "[]"), st);
-        assert_eq!(feed(&mut a, status(QUEUED_STATUS)), Step::CommitRound);
+        assert_eq!(feed_reply(&mut a, "[]"), Step::CommitRound);
         assert_eq!(feed(&mut a, commit), st);
         assert!(matches!(feed(&mut a, status(EMPTY_STATUS)), Step::CallModel(r) if r.says_only));
         assert_eq!(
@@ -422,19 +422,20 @@ mod tests {
         let event = Input::Event(serde_json::from_str(SAY).unwrap());
         assert_eq!(feed(&mut a, event), since);
         prepare(&mut a, EMPTY_STATUS);
+        // A move queued after the say turn's status waits for a turn of its own.
+        let queued = Input::Event(serde_json::from_str(QUEUED).unwrap());
+        assert_eq!(feed(&mut a, queued), Step::Idle);
         assert_eq!(
             feed_reply(&mut a, r#"[{"address":"table","text":"ok"}]"#),
             say
         );
-        assert_eq!(feed(&mut a, said()), st);
-        assert_eq!(feed(&mut a, status(EMPTY_STATUS)), Step::Idle);
+        assert_eq!(feed(&mut a, said()), since);
 
         let mut a = sit_queued(&since);
         let err = Input::ModelReply(Err(CompletionError::Transport("boom".into())));
-        assert_eq!(feed(&mut a, err), st);
+        assert_eq!(feed(&mut a, err), Step::CommitRound);
         assert_eq!(a.take_warning().as_deref(), Some("boom"));
         assert_eq!(a.take_warning(), None);
-        assert_eq!(feed(&mut a, status(QUEUED_STATUS)), Step::CommitRound);
     }
 
     #[test]
