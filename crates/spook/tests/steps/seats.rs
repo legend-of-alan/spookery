@@ -157,7 +157,7 @@ Lark watches the street from a dry doorway.
             .get("pc_rowan")
             .unwrap_or_else(|| panic!("pc_rowan"))
             .clone();
-        *actor.place_mut() = "docks_street".to_string();
+        actor.place = "docks_street".to_string();
         now.actors.insert("pc_lark".to_string(), actor);
     });
     spookery_engine::World::open(&pack).unwrap_or_else(|err| panic!("four-pc pack: {err}"));
@@ -250,7 +250,7 @@ fn a_docks_table_where_one_pc_knows_a_hidden_fact(world: &mut World) {
         now.actors
             .get_mut("pc_wren")
             .unwrap_or_else(|| panic!("pc_wren"))
-            .known_facts_mut()
+            .known_facts
             .push(HIDDEN_FACT.to_string());
     });
     spookery_engine::World::open(&pack).unwrap_or_else(|err| panic!("hidden fact pack: {err}"));
@@ -371,10 +371,10 @@ fn each_wait_committed_its_own_round(world: &mut World) {
 fn a_docks_table_with_two_pcs_in_the_shop(world: &mut World) {
     let pack = crate::support::copy_docks("two-shop");
     crate::support::edit_save(&pack, |now| {
-        *now.actors
+        now.actors
             .get_mut("pc_harbormouse")
             .unwrap_or_else(|| panic!("pc_harbormouse"))
-            .place_mut() = "docks_shop".to_string();
+            .place = "docks_shop".to_string();
     });
     table::listen(world, &pack);
     seat_three(world, &pack);

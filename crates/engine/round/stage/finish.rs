@@ -56,7 +56,7 @@ fn arrive(
         .actors
         .get(actor_id)
         .ok_or(Reason::UnknownId)?;
-    let from = actor.place().to_string();
+    let from = actor.place.clone();
     let effect = Effect::new(
         &intent.actor,
         &intent.id,

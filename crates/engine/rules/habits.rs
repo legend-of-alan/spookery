@@ -57,10 +57,10 @@ pub(crate) fn is_eligible(canon: &Canon, state: &State, presence: &Presence, npc
     if !profile.eligible {
         return false;
     }
-    if actor.is_busy(state.world_time) || is_player_at(state, presence, actor.place()) {
+    if actor.is_busy(state.world_time) || is_player_at(state, presence, &actor.place) {
         return false;
     }
-    let counters = actor.act();
+    let counters = &actor.act;
     if counters.last_act_round == state.round_index {
         return false;
     }

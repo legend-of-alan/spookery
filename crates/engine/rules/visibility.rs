@@ -12,13 +12,13 @@ pub(crate) fn can_see_fact(canon: &Canon, state: &State, viewer: &Viewer, fact_i
     let Some(actor) = state.actors.get(viewer.actor_id()) else {
         return false;
     };
-    if actor.known_facts().iter().any(|id| id == fact_id) {
+    if actor.known_facts.iter().any(|id| id == fact_id) {
         return true;
     }
     let Some(fact) = canon.facts.get(fact_id) else {
         return false;
     };
-    !fact.hidden && fact.place_id == actor.place()
+    !fact.hidden && fact.place_id == actor.place
 }
 
 /// Who is asking.
@@ -275,7 +275,7 @@ fn can_see(canon: &Canon, state: &State, viewer: &str, change: &Change) -> bool 
 }
 
 fn place_of<'a>(state: &'a State, viewer: &str) -> Option<&'a str> {
-    state.actors.get(viewer).map(|actor| actor.place())
+    state.actors.get(viewer).map(|actor| actor.place.as_str())
 }
 
 fn same_place(state: &State, viewer: &str, actor: &str) -> bool {

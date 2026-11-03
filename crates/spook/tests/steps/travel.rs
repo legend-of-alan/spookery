@@ -24,7 +24,7 @@ fn add_toll(pack: &Path) {
 fn docks_street_has_no_exit_to_mira_rooms(world: &mut World) {
     let pack = copy_docks("no-exit");
     edit_save(&pack, |now| {
-        *now.actors.get_mut("pc_rowan").unwrap().place_mut() = "docks_street".to_string();
+        now.actors.get_mut("pc_rowan").unwrap().place = "docks_street".to_string();
     });
     table::listen(world, &pack);
     table::seat_rowan(world, &pack);
@@ -46,7 +46,7 @@ fn refused_no_exit_and_stays(world: &mut World) {
         world.player_added
     );
     let now = table::now_of(table::pack(world));
-    assert_eq!(now.actors.get("pc_rowan").unwrap().place(), "docks_street");
+    assert_eq!(now.actors.get("pc_rowan").unwrap().place, "docks_street");
     assert_eq!(now.world_time, 1080);
     assert!(
         list_round_keys(table::pack(world)).is_empty(),
@@ -69,7 +69,7 @@ fn rowan_travels_via_stairs(world: &mut World) {
         "{} {} {}",
         before.world_time,
         before.round_index,
-        before.actors.get("pc_rowan").unwrap().place()
+        before.actors.get("pc_rowan").unwrap().place
     );
     let (_mark, added) = table::player_send(world, "travel stairs", "locked");
     world.player_added = added;
@@ -83,7 +83,7 @@ fn rowan_sees_locked_and_nothing_changes(world: &mut World, text: String) {
     assert_eq!(now.world_time.to_string(), parts.next().unwrap());
     assert_eq!(now.round_index.to_string(), parts.next().unwrap());
     assert_eq!(
-        now.actors.get("pc_rowan").unwrap().place(),
+        now.actors.get("pc_rowan").unwrap().place,
         parts.next().unwrap()
     );
     assert_eq!(
@@ -108,7 +108,7 @@ fn rowan_travels_holding_the_key(world: &mut World) {
 fn rowan_arrives_and_the_cost_is_stamped(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
     let now = table::now_of(&pack);
-    assert_eq!(now.actors.get("pc_rowan").unwrap().place(), "mira_rooms");
+    assert_eq!(now.actors.get("pc_rowan").unwrap().place, "mira_rooms");
     assert_eq!(now.world_time, 1085, "the round shortened or skipped");
     let round = crate::support::read_round(&pack, "round-0001");
     assert_eq!(round["arrivals"][0]["arrived_at"], 1082);
@@ -131,8 +131,6 @@ fn a_place_rule_teleports(world: &mut World) {
             "cellar".to_string(),
             spookery_engine::testing::PlaceLive {
                 items: Default::default(),
-                notes: Vec::new(),
-                actors: Vec::new(),
             },
         );
     });
@@ -149,7 +147,7 @@ fn the_pc_reaches_the_cellar(world: &mut World) {
             .actors
             .get("pc_rowan")
             .unwrap()
-            .place(),
+            .place,
         "cellar",
         "{added}"
     );
@@ -160,7 +158,7 @@ fn rowan_is_in_mira_rooms_at_21_40(world: &mut World) {
     let now = table::now_of(table::pack(world));
     let rowan = now.actors.get("pc_rowan").unwrap();
     assert_eq!(now.world_time, EVENING + 10);
-    assert_eq!(rowan.place(), "mira_rooms");
+    assert_eq!(rowan.place, "mira_rooms");
 }
 
 #[then(expr = "rowan's line shows {string}")]
@@ -181,10 +179,11 @@ fn two_arrivals(world: &mut World) {
     edit_save(&pack, |now| {
         now.world_time = EVENING;
         set_busy(now, "pc_rowan", EVENING + 10, "mira_rooms", "stairs");
-        let meters = now.actors.get("pc_rowan").unwrap().meters().clone();
+        let meters = now.actors.get("pc_rowan").unwrap().meters.clone();
         now.actors.insert(
             "pc_nell".to_string(),
-            spookery_engine::testing::ActorLive::Pc {
+            spookery_engine::testing::ActorLive {
+                kind: spookery_engine::testing::ActorKind::Pc,
                 place: "docks_shop".to_string(),
                 flags: Vec::new(),
                 meters,
@@ -318,10 +317,11 @@ fn both_busy_without_a_gm(world: &mut World) {
     )
     .unwrap();
     edit_save(&pack, |now| {
-        let meters = now.actors.get("pc_rowan").unwrap().meters().clone();
+        let meters = now.actors.get("pc_rowan").unwrap().meters.clone();
         now.actors.insert(
             "pc_nell".to_string(),
-            spookery_engine::testing::ActorLive::Pc {
+            spookery_engine::testing::ActorLive {
+                kind: spookery_engine::testing::ActorKind::Pc,
                 place: "docks_shop".to_string(),
                 flags: Vec::new(),
                 meters,

@@ -91,7 +91,7 @@ fn rowan_place(pack: &Path) -> String {
         .actors
         .get("pc_rowan")
         .unwrap()
-        .place()
+        .place
         .to_string()
 }
 

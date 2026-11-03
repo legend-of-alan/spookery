@@ -17,7 +17,7 @@ pub(crate) fn map(canon: &Canon, state: &State, presence: &Presence, actor_id: &
         return String::new();
     };
     let mut lines = Vec::new();
-    for place_id in actor.visited() {
+    for place_id in &actor.visited {
         let Some(place) = canon.places.get(place_id) else {
             continue;
         };
@@ -44,7 +44,7 @@ pub(crate) fn help(canon: &Canon, state: &State, presence: &Presence, actor_id: 
 pub(crate) fn look(canon: &Canon, state: &State, presence: &Presence, actor_id: &str) -> String {
     let mut head = Vec::new();
     if let Some(actor) = state.actors.get(actor_id) {
-        let name = place_name(canon, actor.place());
+        let name = place_name(canon, &actor.place);
         if !name.is_empty() {
             head.push(name);
         }
@@ -68,8 +68,8 @@ pub(crate) fn busy_line(state: &State, actor_id: &str) -> Option<String> {
     if !actor.is_busy(state.world_time) {
         return None;
     }
-    let until = actor.act().busy_until?;
-    let via = match actor.act().pending.as_ref().map(|pending| &pending.kind) {
+    let until = actor.act.busy_until?;
+    let via = match actor.act.pending.as_ref().map(|pending| &pending.kind) {
         Some(PendingKind::Arrive { via, .. }) if !via.is_empty() => via,
         _ => return None,
     };
@@ -81,7 +81,7 @@ pub(crate) fn place_prose(canon: &Canon, state: &State, actor_id: &str) -> Strin
     let Some(actor) = state.actors.get(actor_id) else {
         return String::new();
     };
-    let Some(place) = canon.places.get(actor.place()) else {
+    let Some(place) = canon.places.get(&actor.place) else {
         return String::new();
     };
     place
@@ -163,10 +163,10 @@ fn hints_for(
         TargetKind::Item => state
             .actors
             .get(actor_id)
-            .map(|actor| actor.inventory().keys().cloned().collect())
+            .map(|actor| actor.inventory.keys().cloned().collect())
             .unwrap_or_default(),
         TargetKind::Actor => match state.actors.get(actor_id) {
-            Some(actor) => state.actors_at(actor.place()),
+            Some(actor) => state.actors_at(&actor.place),
             None => Vec::new(),
         },
     };

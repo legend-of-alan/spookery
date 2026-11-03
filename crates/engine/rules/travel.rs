@@ -4,7 +4,7 @@ use crate::canon::{Canon, Exit, PlaceDef};
 use crate::draft::Draft;
 use crate::intent::{Intent, Target};
 use crate::model::key::StateKey;
-use crate::model::{ActorLive, PendingAction, PendingKind, Presence, State};
+use crate::model::{PendingAction, PendingKind, Presence, State};
 use crate::rules::cond;
 use crate::rules::context::Context;
 use crate::rules::cost;
@@ -53,7 +53,7 @@ pub(crate) fn exit_via<'a>(context: &Context<'a>, via: &str) -> Result<Option<&'
         (name, _) => name,
     };
     let actor = context.state.actors.get(context.intent.actor.actor_id());
-    let from = actor.map(ActorLive::place).unwrap_or("");
+    let from = actor.map_or("", |actor| actor.place.as_str());
     find_exit(context.canon, from, name)
         .map(Some)
         .ok_or(Reason::NoExit)
@@ -149,7 +149,7 @@ pub(crate) fn visible_exits(
     actor_id: &str,
 ) -> Vec<ExitView> {
     let actor = state.actors.get(actor_id);
-    match actor.and_then(|actor| canon.places.get(actor.place())) {
+    match actor.and_then(|actor| canon.places.get(&actor.place)) {
         Some(place) => exits_at(canon, state, presence, actor_id, place),
         None => Vec::new(),
     }
@@ -178,7 +178,7 @@ pub(crate) fn take_due_actions(draft: &mut Draft, end: u64) -> Result<Vec<DueAct
         .actors
         .iter()
         .filter_map(|(id, actor)| {
-            let act = actor.act();
+            let act = &actor.act;
             let until = act.busy_until?;
             if act.pending.is_none() || until > end {
                 return None;
@@ -196,7 +196,7 @@ pub(crate) fn take_due_actions(draft: &mut Draft, end: u64) -> Result<Vec<DueAct
                 .actors
                 .get_mut(&actor_id)
                 .ok_or(Reason::UnknownId)?;
-            let act = actor.act_mut();
+            let act = &mut actor.act;
             act.busy_until = None;
             act.pending.take()
         };
@@ -242,12 +242,12 @@ pub(crate) fn begin_action(
         kind,
     };
     draft.track(StateKey::ActorBusy(intent.actor.actor_id().to_string()))?;
-    let act = draft
+    let act = &mut draft
         .state_mut()
         .actors
         .get_mut(intent.actor.actor_id())
         .ok_or(Reason::UnknownId)?
-        .act_mut();
+        .act;
     act.busy_until = Some(until);
     act.pending = Some(pending);
     Ok(())

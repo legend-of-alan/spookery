@@ -172,8 +172,8 @@ fn target_for(world: &World, actor: &str, verb: &str, token: usize) -> Option<Ta
 fn item_tokens(world: &World, actor: &str) -> Vec<String> {
     let mut ids: Vec<String> = world.canon().items.keys().cloned().collect();
     if let Some(actor) = world.state().actors.get(actor) {
-        ids.extend(actor.inventory().keys().cloned());
-        if let Some(place) = world.state().places.get(actor.place()) {
+        ids.extend(actor.inventory.keys().cloned());
+        if let Some(place) = world.state().places.get(&actor.place) {
             ids.extend(place.items.keys().cloned());
         }
     }

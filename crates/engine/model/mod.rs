@@ -51,7 +51,7 @@ impl State {
             .actors
             .get(actor_id)
             .ok_or(crate::Reason::UnknownId)?
-            .meters()
+            .meters
             .get(key)
             .ok_or(crate::Reason::UnknownId)?;
         meter::current(def, live)
@@ -71,7 +71,7 @@ impl State {
     pub(crate) fn actors_at(&self, place: &str) -> Vec<String> {
         self.actors
             .iter()
-            .filter(|(_, actor)| actor.place() == place)
+            .filter(|(_, actor)| actor.place == place)
             .map(|(id, _)| id.clone())
             .collect()
     }
@@ -103,179 +103,74 @@ pub struct Pause {
 #[serde(deny_unknown_fields)]
 pub struct PlaceLive {
     pub items: BTreeMap<String, u32>,
-    pub notes: Vec<String>,
-    pub actors: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "kind", deny_unknown_fields)]
-pub enum ActorLive {
-    #[serde(rename = "npc")]
-    Npc {
-        place: String,
-        flags: Vec<String>,
-        meters: BTreeMap<String, MeterLive>,
-        inventory: BTreeMap<String, u32>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        wielded: Option<String>,
-        known_facts: Vec<String>,
-        act: Act,
-    },
-    #[serde(rename = "pc")]
-    Pc {
-        place: String,
-        flags: Vec<String>,
-        meters: BTreeMap<String, MeterLive>,
-        inventory: BTreeMap<String, u32>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        wielded: Option<String>,
-        known_facts: Vec<String>,
-        #[serde(default, skip_serializing_if = "Vec::is_empty")]
-        visited: Vec<String>,
-        act: Act,
-    },
+#[serde(deny_unknown_fields)]
+pub struct ActorLive {
+    pub kind: ActorKind,
+    pub place: String,
+    pub flags: Vec<String>,
+    pub meters: BTreeMap<String, MeterLive>,
+    pub inventory: BTreeMap<String, u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wielded: Option<String>,
+    pub known_facts: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub visited: Vec<String>,
+    pub act: Act,
+}
+
+/// Whether a live actor is a PC or an NPC.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ActorKind {
+    Npc,
+    Pc,
 }
 
 impl ActorLive {
-    pub fn place(&self) -> &str {
-        match self {
-            ActorLive::Npc { place, .. } | ActorLive::Pc { place, .. } => place,
-        }
-    }
-
-    pub fn place_mut(&mut self) -> &mut String {
-        match self {
-            ActorLive::Npc { place, .. } | ActorLive::Pc { place, .. } => place,
-        }
-    }
-
-    pub fn act(&self) -> &Act {
-        match self {
-            ActorLive::Npc { act, .. } | ActorLive::Pc { act, .. } => act,
-        }
-    }
-
-    pub fn act_mut(&mut self) -> &mut Act {
-        match self {
-            ActorLive::Npc { act, .. } | ActorLive::Pc { act, .. } => act,
-        }
-    }
-
     /// Busy means `busy_until` is still after this world minute.
     pub fn is_busy(&self, world_time: u64) -> bool {
-        self.act()
-            .busy_until
-            .is_some_and(|until| until > world_time)
+        self.act.busy_until.is_some_and(|until| until > world_time)
     }
 
-    pub fn visited(&self) -> &[String] {
-        match self {
-            ActorLive::Pc { visited, .. } => visited,
-            ActorLive::Npc { .. } => &[],
-        }
-    }
-
-    pub(crate) fn visit(&mut self, place: &str) -> bool {
-        let ActorLive::Pc { visited, .. } = self else {
-            return false;
-        };
-        if visited.iter().any(|id| id == place) {
-            return false;
-        }
-        visited.push(place.to_string());
-        visited.sort();
-        true
-    }
-
-    pub fn flags(&self) -> &[String] {
-        match self {
-            ActorLive::Npc { flags, .. } | ActorLive::Pc { flags, .. } => flags,
-        }
-    }
-
-    pub fn flags_mut(&mut self) -> &mut Vec<String> {
-        match self {
-            ActorLive::Npc { flags, .. } | ActorLive::Pc { flags, .. } => flags,
-        }
-    }
-
-    pub fn known_facts(&self) -> &[String] {
-        match self {
-            ActorLive::Npc { known_facts, .. } | ActorLive::Pc { known_facts, .. } => known_facts,
-        }
-    }
-
-    pub fn known_facts_mut(&mut self) -> &mut Vec<String> {
-        match self {
-            ActorLive::Npc { known_facts, .. } | ActorLive::Pc { known_facts, .. } => known_facts,
+    pub(crate) fn visit(&mut self, place: &str) {
+        if !self.visited.iter().any(|id| id == place) {
+            self.visited.push(place.to_string());
+            self.visited.sort();
         }
     }
 
     pub fn is_npc(&self) -> bool {
-        matches!(self, ActorLive::Npc { .. })
+        self.kind == ActorKind::Npc
     }
 
     pub fn is_pc(&self) -> bool {
-        matches!(self, ActorLive::Pc { .. })
+        self.kind == ActorKind::Pc
     }
 
     /// The seat this actor acts from, given its own id.
     pub fn viewer(&self, id: &str) -> Viewer {
-        match self {
-            ActorLive::Pc { .. } => Viewer::Player(id.to_string()),
-            ActorLive::Npc { .. } => Viewer::Npc(id.to_string()),
-        }
-    }
-
-    pub fn meters(&self) -> &BTreeMap<String, MeterLive> {
-        match self {
-            ActorLive::Npc { meters, .. } | ActorLive::Pc { meters, .. } => meters,
-        }
-    }
-
-    pub fn meters_mut(&mut self) -> &mut BTreeMap<String, MeterLive> {
-        match self {
-            ActorLive::Npc { meters, .. } | ActorLive::Pc { meters, .. } => meters,
-        }
-    }
-
-    pub fn inventory(&self) -> &BTreeMap<String, u32> {
-        match self {
-            ActorLive::Npc { inventory, .. } | ActorLive::Pc { inventory, .. } => inventory,
-        }
-    }
-
-    pub fn inventory_mut(&mut self) -> &mut BTreeMap<String, u32> {
-        match self {
-            ActorLive::Npc { inventory, .. } | ActorLive::Pc { inventory, .. } => inventory,
+        match self.kind {
+            ActorKind::Pc => Viewer::Player(id.to_string()),
+            ActorKind::Npc => Viewer::Npc(id.to_string()),
         }
     }
 
     pub fn item_count(&self, id: &str) -> u32 {
-        self.inventory().get(id).copied().unwrap_or(0)
-    }
-
-    pub fn wielded(&self) -> Option<&str> {
-        match self {
-            ActorLive::Npc { wielded, .. } | ActorLive::Pc { wielded, .. } => wielded.as_deref(),
-        }
-    }
-
-    pub fn wielded_mut(&mut self) -> &mut Option<String> {
-        match self {
-            ActorLive::Npc { wielded, .. } | ActorLive::Pc { wielded, .. } => wielded,
-        }
+        self.inventory.get(id).copied().unwrap_or(0)
     }
 
     /// Drop the wielded id once the actor no longer holds it.
     pub(crate) fn release_wielded(&mut self) -> bool {
-        let Some(id) = self.wielded().map(str::to_string) else {
+        let Some(id) = self.wielded.clone() else {
             return false;
         };
         if self.item_count(&id) > 0 {
             return false;
         }
-        *self.wielded_mut() = None;
+        self.wielded = None;
         true
     }
 }

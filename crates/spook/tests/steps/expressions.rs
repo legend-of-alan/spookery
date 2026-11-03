@@ -202,7 +202,7 @@ fn grit_of(world: &World, actor: &str) -> i64 {
         .actors
         .get(actor)
         .unwrap_or_else(|| panic!("{actor} missing"))
-        .meters()
+        .meters
         .get("grit")
         .unwrap_or_else(|| panic!("grit missing"));
     live.base + live.offset

@@ -71,7 +71,7 @@ fn holds(context: &Context, cond: &Cond) -> Result<bool, Reason> {
             Ok(state
                 .actors
                 .get(&actor)
-                .is_some_and(|actor| actor.wielded() == Some(id.as_str())))
+                .is_some_and(|actor| actor.wielded.as_deref() == Some(id.as_str())))
         }
         Cond::Meter {
             who,
@@ -93,7 +93,7 @@ fn holds(context: &Context, cond: &Cond) -> Result<bool, Reason> {
             let on = state
                 .actors
                 .get(&actor)
-                .is_some_and(|actor| actor.flags().iter().any(|flag| flag == key));
+                .is_some_and(|actor| actor.flags.iter().any(|flag| flag == key));
             Ok(on == *is)
         }
         Cond::At { who, place } => {
@@ -101,14 +101,14 @@ fn holds(context: &Context, cond: &Cond) -> Result<bool, Reason> {
             Ok(state
                 .actors
                 .get(&actor)
-                .is_some_and(|actor| actor.place() == place))
+                .is_some_and(|actor| actor.place == *place))
         }
         Cond::Knows { who, fact } => {
             let actor = expr::resolve_who_id(context, who)?;
             Ok(state
                 .actors
                 .get(&actor)
-                .is_some_and(|actor| actor.known_facts().iter().any(|id| id == fact)))
+                .is_some_and(|actor| actor.known_facts.iter().any(|id| id == fact)))
         }
         Cond::Clock { id, op, value } => {
             let clock = state.clocks.get(id).ok_or(Reason::UnknownId)?;

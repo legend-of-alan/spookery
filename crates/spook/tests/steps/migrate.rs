@@ -93,14 +93,6 @@ fn the_save_is_hand_edited(world: &mut World) {
         "kind: pc\n    place: docks_shop\n    flags: []\n    meters:\n      grit:\n        base: 1\n        offset: 0\n      rest:\n        base: 3\n        offset: 0\n    inventory: {}\n    known_facts: []",
         "kind: pc\n    place: mira_rooms\n    flags: []\n    meters:\n      grit:\n        base: 1\n        offset: 0\n      rest:\n        base: 3\n        offset: 0\n    inventory: {}\n    known_facts: []",
     );
-    text = text.replace(
-        "    actors:\n      - aldric\n      - pc_rowan\n",
-        "    actors:\n      - aldric\n",
-    );
-    text = text.replace(
-        "    actors:\n      - mira\n",
-        "    actors:\n      - mira\n      - pc_rowan\n",
-    );
     fs::write(&now_path, text).unwrap();
     a_canon_file_gains_a_byte(world);
 }
@@ -119,7 +111,7 @@ fn the_pack_adds_meter(world: &mut World, id: String, start: i64) {
 fn every_actor_has_meter_at(world: &mut World, id: String, base: i64) {
     let now = table::now_of(table::pack(world));
     for (actor, live) in &now.actors {
-        let got = live.meters().get(&id).map(|meter| meter.base);
+        let got = live.meters.get(&id).map(|meter| meter.base);
         assert_eq!(got, Some(base), "{actor} {id}");
     }
 }
@@ -216,7 +208,7 @@ fn state_rev_is_2(world: &mut World) {
     let now = table::now_of(table::pack(world));
     assert_eq!(now.state_rev, 2);
     assert_eq!(now.pack_rev, docks_pack_rev());
-    assert_eq!(now.actors.get("pc_rowan").unwrap().place(), "docks_shop");
+    assert_eq!(now.actors.get("pc_rowan").unwrap().place, "docks_shop");
     assert_eq!(
         now.places
             .get("docks_shop")
@@ -245,7 +237,7 @@ fn migrate_keeps_the_hand_edit(world: &mut World) {
     assert_eq!(now.world_time, 7);
     assert_eq!(now.round_index, 0);
     assert_eq!(now.last_round_at, "2026-01-01T00:00:00Z");
-    assert_eq!(now.actors.get("pc_rowan").unwrap().place(), "mira_rooms");
+    assert_eq!(now.actors.get("pc_rowan").unwrap().place, "mira_rooms");
     assert!(spookery_engine::testing::journal::list_round_keys(pack).is_empty());
     assert_eq!(read_migrate_revs(pack), [1]);
 }

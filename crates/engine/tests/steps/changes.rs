@@ -60,7 +60,7 @@ fn larks_might_is_raised(world: &mut World) {
             .actors
             .get_mut("pc_lark")
             .unwrap()
-            .meters_mut()
+            .meters
             .get_mut("might")
             .unwrap();
         might.base = 40;

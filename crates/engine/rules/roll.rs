@@ -90,7 +90,7 @@ pub(crate) fn roll_check(
     partial_at: Option<i64>,
 ) -> Result<Roll, Reason> {
     let def = meters.get(&check.stat).ok_or(Reason::UnknownId)?;
-    let live = actor.meters().get(&check.stat).ok_or(Reason::UnknownId)?;
+    let live = actor.meters.get(&check.stat).ok_or(Reason::UnknownId)?;
     let stat = meter::current(def, live)?;
     let faces = faces(key, 0, check.dice_count, check.dice_sides)?;
     let total = faces.iter().map(|face| i64::from(*face)).sum::<i64>() + stat;
@@ -131,7 +131,7 @@ mod tests {
 
     use super::{classify, face_at, roll_check, Check, Outcome, RollKey};
     use crate::model::meter::{MeterDef, MeterLive};
-    use crate::model::{Act, ActorLive};
+    use crate::model::{Act, ActorKind, ActorLive};
 
     fn grit_def() -> MeterDef {
         MeterDef {
@@ -144,7 +144,8 @@ mod tests {
     }
 
     fn npc() -> ActorLive {
-        ActorLive::Npc {
+        ActorLive {
+            kind: ActorKind::Npc,
             place: "mira_rooms".to_string(),
             flags: Vec::new(),
 
@@ -152,6 +153,7 @@ mod tests {
             inventory: BTreeMap::new(),
             wielded: None,
             known_facts: Vec::new(),
+            visited: Vec::new(),
             act: Act::default(),
         }
     }

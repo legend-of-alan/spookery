@@ -31,7 +31,9 @@ pub mod testing {
     use std::path::{Path, PathBuf};
 
     pub use crate::canon::strip_body;
-    pub use crate::model::{Act, ActorLive, Clock, Pause, PendingAction, PendingKind, PlaceLive};
+    pub use crate::model::{
+        Act, ActorKind, ActorLive, Clock, Pause, PendingAction, PendingKind, PlaceLive,
+    };
     pub use crate::round::replay::replay_journal;
     pub use crate::rules::roll::{faces, RollKey};
     pub use crate::store::lock::{watch_reader_wait, WriteGuard};
@@ -176,18 +178,7 @@ pub mod testing {
     }
 
     pub fn set_actor_place(state: &mut crate::model::State, actor: &str, place: &str) {
-        let from = state.actors.get(actor).unwrap().place().to_string();
-        if from == place {
-            return;
-        }
-        if let Some(live) = state.places.get_mut(&from) {
-            live.actors.retain(|id| id != actor);
-        }
-        let actors = &mut state.places.get_mut(place).unwrap().actors;
-        actors.push(actor.to_string());
-        actors.sort();
-        actors.dedup();
-        *state.actors.get_mut(actor).unwrap().place_mut() = place.to_string();
+        state.actors.get_mut(actor).unwrap().place = place.to_string();
     }
 
     /// Lock the pack and open its save, for a test that plays rounds on it.
@@ -248,7 +239,8 @@ pub mod testing {
         edit_save(pack, |state| {
             state.actors.insert(
                 "pc_nell".to_string(),
-                crate::model::ActorLive::Pc {
+                crate::model::ActorLive {
+                    kind: crate::model::ActorKind::Pc,
                     place: "docks_shop".to_string(),
                     flags: Vec::new(),
                     meters: std::collections::BTreeMap::from([
