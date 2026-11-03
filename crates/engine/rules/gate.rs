@@ -66,11 +66,11 @@ pub(crate) fn hint_of(target: &Target) -> Option<&str> {
     }
 }
 
-/// A wielded weapon's `attack` rule, then the rule of the item or cast member `hint` names,
-/// then the place's own, then the shared verb. Only `when: verb` rules are read, never a
-/// habit. A cast member's rule is reached only by naming them, and the gate takes it only
-/// while they are in sight (`can_name`). A place's rule is picked only there, so its `here`
-/// is that place.
+/// The wielded item's rule, then the rule of the item or cast member `hint` names, then the
+/// place's own, then the shared verb. Only `when: verb` rules are read, never a habit. A
+/// cast member's rule is reached only by naming them, and the gate takes it only while they
+/// are in sight (`can_name`). A place's rule is picked only there, so its `here` is that
+/// place.
 pub(crate) fn verb_for<'a>(
     canon: &'a Canon,
     state: &State,
@@ -79,12 +79,10 @@ pub(crate) fn verb_for<'a>(
     hint: Option<&str>,
 ) -> Option<&'a Rule> {
     let actor = state.actors.get(actor_id);
-    if verb == "attack" {
-        let wielded = actor.and_then(|actor| actor.wielded.as_deref());
-        if let Some(item) = wielded.filter(|item| !item.is_empty()) {
-            if let Some(rule) = owner_verb(canon, &Owner::Item(item.to_string()), verb) {
-                return Some(rule);
-            }
+    let wielded = actor.and_then(|actor| actor.wielded.as_deref());
+    if let Some(item) = wielded.filter(|item| !item.is_empty()) {
+        if let Some(rule) = owner_verb(canon, &Owner::Item(item.to_string()), verb) {
+            return Some(rule);
         }
     }
     if let Some(token) = hint.filter(|token| !token.is_empty()) {

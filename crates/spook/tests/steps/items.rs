@@ -59,18 +59,18 @@ fn read_first_round_line(pack: &Path) -> String {
         .unwrap_or_else(|err| panic!("{}", err.detail))
 }
 
-fn write_dagger(pack: &Path, attack: &str) {
+fn write_dagger(pack: &Path, rules: &str) {
     let path = pack.join("world/items/poisoned_dagger.md");
     fs::create_dir_all(path.parent().unwrap()).unwrap();
-    let rules = if attack.is_empty() {
+    let section = if rules.is_empty() {
         "rules: []\n".to_string()
     } else {
-        format!("rules:\n{attack}")
+        format!("rules:\n{rules}")
     };
     fs::write(
         path,
         format!(
-            "---\nschema: item\nid: poisoned_dagger\ndisplay_name: Poisoned dagger\ntags:\n  - weapon\n{rules}---\n\nA dark blade.\n"
+            "---\nschema: item\nid: poisoned_dagger\ndisplay_name: Poisoned dagger\ntags:\n  - weapon\n{section}---\n\nA dark blade.\n"
         ),
     )
     .unwrap();
@@ -89,6 +89,18 @@ const DAGGER_ATTACK: &str = "
       check: strike
       target: 0
     success:
+      - meter:
+          who: target
+          key: hp
+          add: -3
+";
+
+const DAGGER_STRIKE: &str = "
+  - id: strike
+    when:
+      verb: strike
+      target: actor
+    do:
       - meter:
           who: target
           key: hp
@@ -450,6 +462,14 @@ fn lark_wields_for_attack(world: &mut World) {
     world.pack = Some(pack);
 }
 
+#[given(expr = "lark wields a poisoned_dagger with a strike rule")]
+fn lark_wields_for_strike(world: &mut World) {
+    let pack = support::copy_pack("sample-d20", "armed-strike");
+    write_dagger(&pack, DAGGER_STRIKE);
+    support::edit_save(&pack, |now| hold_dagger(now, true));
+    world.pack = Some(pack);
+}
+
 #[given(expr = "lark wields nothing")]
 fn lark_wields_nothing(world: &mut World) {
     let pack = support::copy_pack("sample-d20", "bare");
@@ -472,13 +492,16 @@ fn lark_attacks(world: &mut World) {
         .unwrap_or_else(|err| panic!("{}", err.code.as_str()));
 }
 
-#[then(expr = "item:poisoned_dagger\\/attack ran, not verb:attack")]
-fn the_dagger_rule_ran(world: &mut World) {
+#[then(expr = "item:poisoned_dagger\\/{word} ran, not verb:{word}")]
+fn the_dagger_rule_ran(world: &mut World, verb: String, shared: String) {
     let pack = world.pack.as_ref().unwrap();
     let round: Value = serde_json::from_str(read_first_round_line(pack).trim()).unwrap();
     let steps = round["extra_steps"].to_string();
-    assert!(steps.contains("item:poisoned_dagger/attack"), "{steps}");
-    assert!(!steps.contains("verb:attack"), "{steps}");
+    assert!(
+        steps.contains(&format!("item:poisoned_dagger/{verb}")),
+        "{steps}"
+    );
+    assert!(!steps.contains(&format!("verb:{shared}")), "{steps}");
     assert_eq!(hp(pack, "pc_nell"), 5);
 }
 
