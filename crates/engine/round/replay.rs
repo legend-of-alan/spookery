@@ -175,7 +175,7 @@ pub fn replay_journal(
     let base_path = journal::base_path(pack);
     let base_bytes = if let Some(from) = from {
         journal::read_save(&journal::save_path(from)).map_err(Error::Reason)?
-    } else if base_path.is_file() {
+    } else if base_path.exists() {
         journal::read_save(&base_path).map_err(Error::Reason)?
     } else {
         let now_yaml = journal::read_save(&journal::save_path(pack)).map_err(Error::Reason)?;

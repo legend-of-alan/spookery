@@ -412,6 +412,11 @@ fn the_save_cannot_be_read(world: &mut World) {
     make_unreadable(&table::pack(world).join("state/save.yaml"));
 }
 
+#[when(expr = "the replay base cannot be read")]
+fn the_replay_base_cannot_be_read(world: &mut World) {
+    make_unreadable(&table::pack(world).join("state/journal/base.yaml"));
+}
+
 #[when(expr = "the copied save cannot be read")]
 fn the_copied_save_cannot_be_read(world: &mut World) {
     make_unreadable(&std::path::Path::new(&world.scratch).join("state/save.yaml"));

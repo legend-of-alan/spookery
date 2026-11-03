@@ -31,3 +31,40 @@ Feature: Save reads name their reason
     And the operator tries a round
     Then the command exits 1
     And stderr is STORE_IO
+
+  Scenario: A save the disk will not read is STORE_IO on verify
+    Given a docks table
+    When the save cannot be read
+    And the operator runs verify
+    Then the command exits 1
+    And stderr is STORE_IO
+
+  Scenario: A save the disk will not read is STORE_IO on open
+    Given a docks table
+    When the save cannot be read
+    And the operator tries a round
+    Then the command exits 1
+    And stderr is STORE_IO
+
+  Scenario: A replay base the disk will not read is STORE_IO on verify
+    Given a docks table
+    And checkpoints are taken every 2 rounds
+    When the operator plays 2 rounds
+    And the replay base cannot be read
+    And the operator runs verify
+    Then the command exits 1
+    And stderr is STORE_IO
+
+  Scenario: A replay base the disk will not read is STORE_IO on quick verify
+    Given a docks table
+    And checkpoints are taken every 2 rounds
+    When the operator plays 2 rounds
+    And the replay base cannot be read
+    And the operator runs quick verify
+    Then the command exits 1
+    And stderr is STORE_IO
+
+  Scenario: A save the disk will not read is STORE_IO on check
+    Given a docks table
+    When the save cannot be read
+    Then spook check reports STORE_IO
