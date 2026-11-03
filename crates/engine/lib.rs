@@ -199,11 +199,17 @@ pub mod testing {
             .unwrap_or_else(|err| panic!("World::resume {}: {err}", pack.display()))
     }
 
+    /// Read the pack's journal and replay all of it.
+    pub fn replay_pack(
+        pack: &Path,
+    ) -> Result<crate::round::replay::Report, crate::round::replay::Error> {
+        let records = crate::store::journal::read_records(pack)?;
+        replay_journal(pack, &records, None, None)
+    }
+
     pub fn state_of(pack: &Path) -> crate::model::State {
-        let records = crate::store::journal::read_records(pack)
-            .unwrap_or_else(|err| panic!("read_records {}: {}", pack.display(), err.detail));
-        let report = replay_journal(pack, &records, None, None)
-            .unwrap_or_else(|err| panic!("replay_journal {}: {err}", pack.display()));
+        let report =
+            replay_pack(pack).unwrap_or_else(|err| panic!("replay_pack {}: {err}", pack.display()));
         let yaml = std::str::from_utf8(&report.now_yaml)
             .unwrap_or_else(|err| panic!("utf-8 {}: {err}", pack.display()));
         crate::store::save::parse(yaml)
