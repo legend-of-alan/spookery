@@ -410,6 +410,13 @@ fn the_player_waits(world: &mut World) {
     world.player_added = added;
 }
 
+#[when(expr = "the player travels to {string}")]
+fn the_player_travels_to(world: &mut World, place: String) {
+    let (mark, added) = table::player_send(world, &format!("travel {place}"), "\"kind\":");
+    world.mark = mark;
+    world.player_added = added;
+}
+
 #[when(expr = "the GM commits the round")]
 fn the_gm_commits_the_round(world: &mut World) {
     world.stdout = table::gm_call(world, 2, "commit_round", r#"{"include_round":true}"#);

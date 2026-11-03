@@ -59,6 +59,9 @@ mod refusal;
 #[path = "steps/one_writer.rs"]
 mod one_writer;
 
+#[path = "steps/session.rs"]
+mod session;
+
 #[path = "feature_dirs.rs"]
 mod feature_dirs;
 

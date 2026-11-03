@@ -758,9 +758,14 @@ fn call_table_status(world: &mut World) -> Value {
         live.gm = Some(gm);
         live.gm_probe = true;
     }
-    let text = gm_call(world, 1, "table_status", "{}");
+    call_gm_tool(world, "table_status", "{}")
+}
+
+/// One GM tool call; the reply's `structuredContent`.
+pub fn call_gm_tool(world: &mut World, tool: &str, arguments: &str) -> Value {
+    let text = gm_call(world, 1, tool, arguments);
     let value: Value =
-        serde_json::from_str(&text).unwrap_or_else(|err| panic!("status json: {err}"));
+        serde_json::from_str(&text).unwrap_or_else(|err| panic!("{tool} json: {err}"));
     value["result"]["structuredContent"].clone()
 }
 
