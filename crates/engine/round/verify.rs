@@ -6,7 +6,7 @@ use std::path::Path;
 use crate::hash::blake2s_tagged;
 use crate::store::journal;
 use crate::store::records::Record;
-use crate::store::save::emit_save;
+use crate::store::save;
 use crate::Reason;
 
 use crate::round::replay::{
@@ -33,10 +33,10 @@ pub fn verify_pack(pack: &Path, from: Option<&Path>) -> Result<Report, Error> {
     let bundles = journal::read_bundle_records(pack)?;
     let records = journal::flatten_bundles(&bundles);
     if records.is_empty() && from.is_none() {
-        let genesis = read_genesis(pack)?;
-        check_save_file(pack, &records, &genesis)?;
+        let base = read_base(pack)?;
+        check_save_file(pack, &records, &base)?;
         return Ok(Report {
-            state_rev: state_rev_of(&genesis)?,
+            state_rev: state_rev_of(&base)?,
             applied: 0,
             trusted_edits: Vec::new(),
         });
@@ -59,9 +59,9 @@ pub fn verify_pack(pack: &Path, from: Option<&Path>) -> Result<Report, Error> {
         return Ok(verified);
     }
     journal::check_chain(pack, &bundles)?;
-    let genesis = read_genesis(pack)?;
-    check_bundle_starts(pack, &genesis, &bundles)?;
-    check_save_file(pack, &records, &genesis)?;
+    let base = read_base(pack)?;
+    check_bundle_starts(pack, &base, &bundles)?;
+    check_save_file(pack, &records, &base)?;
     Ok(verified)
 }
 
@@ -70,18 +70,18 @@ pub fn verify_quick(pack: &Path) -> Result<Report, Error> {
     let bundles = journal::read_bundle_records(pack)?;
     journal::check_chain(pack, &bundles)?;
     let records = journal::flatten_bundles(&bundles);
-    let genesis = read_genesis(pack)?;
-    let Some((start, entries)) = check_bundle_starts(pack, &genesis, &bundles)?.pop() else {
-        check_save_file(pack, &records, &genesis)?;
+    let base = read_base(pack)?;
+    let Some((start, entries)) = check_bundle_starts(pack, &base, &bundles)?.pop() else {
+        check_save_file(pack, &records, &base)?;
         return Ok(Report {
-            state_rev: state_rev_of(&genesis)?,
+            state_rev: state_rev_of(&base)?,
             applied: 0,
             trusted_edits: Vec::new(),
         });
     };
     let (name, _) = bundles.last().expect("bundle");
     let end = check_bundle_end(pack, name, entries, replay_bundle(pack, &start, entries))?;
-    check_save_file(pack, &records, &genesis)?;
+    check_save_file(pack, &records, &base)?;
     Ok(Report {
         state_rev: state_rev_of(&end)?,
         applied: entries.iter().filter(|entry| entry.changes_state()).count() as u64,
@@ -93,11 +93,11 @@ type BundleStart<'a> = (Vec<u8>, &'a [Record]);
 
 fn check_bundle_starts<'a>(
     pack: &Path,
-    genesis: &[u8],
+    base: &[u8],
     bundles: &'a [(String, Vec<Record>)],
 ) -> Result<Vec<BundleStart<'a>>, Error> {
     let mut starts = Vec::with_capacity(bundles.len());
-    let mut current = genesis.to_vec();
+    let mut current = base.to_vec();
     for (index, (name, entries)) in bundles.iter().enumerate() {
         starts.push((current, entries.as_slice()));
         if index + 1 == bundles.len() {
@@ -148,12 +148,12 @@ fn check_bundle_end(
     Ok(end)
 }
 
-fn check_save_file(pack: &Path, records: &[Record], genesis: &[u8]) -> Result<(), Error> {
+fn check_save_file(pack: &Path, records: &[Record], base: &[u8]) -> Result<(), Error> {
     let live =
         fs::read(pack.join("state/save.yaml")).map_err(|_| Error::Reason(Reason::NotInSpec))?;
     let state = load_save_bytes(&live)?;
     if records.is_empty() {
-        let canonical = emit_save(&state)
+        let canonical = save::emit(&state)
             .map(|text| text.into_bytes())
             .map_err(Error::Reason)?;
         if live != canonical {
@@ -180,14 +180,14 @@ fn check_save_file(pack: &Path, records: &[Record], genesis: &[u8]) -> Result<()
             };
             return Err(set_save_line(diverged, &live));
         }
-    } else if live != genesis {
+    } else if live != base {
         let diverged = Divergence::new(
             DivergenceKind::Save,
             state.state_rev,
             None,
             "state hash differed",
         );
-        return Err(set_save_line(diverged.replayed(genesis.to_vec()), &live));
+        return Err(set_save_line(diverged.replayed(base.to_vec()), &live));
     }
     Ok(())
 }
@@ -213,7 +213,7 @@ fn name_save_line(pack: &Path, err: Error) -> Error {
     set_save_line(diverged, &live)
 }
 
-fn read_genesis(pack: &Path) -> Result<Vec<u8>, Error> {
+fn read_base(pack: &Path) -> Result<Vec<u8>, Error> {
     let base = journal::base_path(pack);
     if base.is_file() {
         return fs::read(&base).map_err(|_| Error::Reason(Reason::Schema));

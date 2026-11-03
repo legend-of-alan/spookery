@@ -14,7 +14,7 @@ use crate::store::journal;
 use crate::store::lock::{lock_pack, lock_write, PackGuard};
 use crate::store::records::{emit_effect, MigrateRecord, Record, RoundRecord};
 use crate::store::require_rules_rev;
-use crate::store::save::{emit_save, migrate_save, parse_save};
+use crate::store::save;
 use crate::world::World;
 use crate::Reason;
 
@@ -235,7 +235,7 @@ pub fn replay_journal(
 pub(crate) fn open_at_tip(path: &Path, lock: &PackGuard) -> Result<World<()>, Reason> {
     rebuild_save(path, lock).map_err(Error::into_reason)?;
     let world = peek_at_tip(path)?;
-    crate::store::commit::finish_live_checkpoint(&world, lock)?;
+    crate::store::commit::settle_checkpoint(&world, &lock_write(&world.root, lock)?)?;
     Ok(world)
 }
 
@@ -261,7 +261,7 @@ pub fn migrate_pack(path: &Path) -> Result<(), Reason> {
 fn load_migrate_tip(path: &Path, lock: &PackGuard) -> Result<(State, bool), Reason> {
     let bytes = fs::read(path.join("state/save.yaml")).map_err(|_| Reason::NotInSpec)?;
     let text = std::str::from_utf8(&bytes).map_err(|_| Reason::Schema)?;
-    let file_state = parse_save(text).map_err(|diags| first_reason(&diags))?;
+    let file_state = save::parse(text).map_err(|diags| first_reason(&diags))?;
     // A save from before the head is a checkpoint that did not land, not an edit.
     let edited = journal::read_head(path)
         .map_err(|fault| fault.reason)?
@@ -289,7 +289,7 @@ fn replay_tip_unchecked(path: &Path, lock: &PackGuard) -> Result<World<()>, Reas
     let save = fs::read(path.join("state/save.yaml")).map_err(|_| Reason::NotInSpec)?;
     let mut world = open_for_replay(path, &save).map_err(Error::into_reason)?;
     replay_tail(&mut world)?;
-    crate::store::commit::finish_live_checkpoint(&world, lock)?;
+    crate::store::commit::settle_checkpoint(&world, &lock_write(&world.root, lock)?)?;
     Ok(world)
 }
 
@@ -329,15 +329,15 @@ fn rebuild_save(path: &Path, lock: &PackGuard) -> Result<(), Error> {
     let Some(mark) = journal::read_head(path)? else {
         return Ok(());
     };
-    let save = path.join("state/save.yaml");
-    if save.is_file() {
-        let bytes = fs::read(&save).map_err(|_| Error::Reason(Reason::NotInSpec))?;
+    let save_path = path.join("state/save.yaml");
+    if save_path.is_file() {
+        let bytes = fs::read(&save_path).map_err(|_| Error::Reason(Reason::NotInSpec))?;
         if blake2s_tagged(&bytes) == mark.state_hash {
             return Ok(());
         }
         if let Ok(text) = std::str::from_utf8(&bytes) {
-            if let Ok(state) = parse_save(text) {
-                if emit_save(&state)
+            if let Ok(state) = save::parse(text) {
+                if save::emit(&state)
                     .map(|emitted| emitted.into_bytes())
                     .ok()
                     .as_deref()
@@ -357,7 +357,7 @@ fn rebuild_save(path: &Path, lock: &PackGuard) -> Result<(), Error> {
         );
     }
     let _write = lock_write(path, lock).map_err(Error::Reason)?;
-    write_atomic(&save, &report.now_yaml).map_err(Error::Reason)?;
+    write_atomic(&save_path, &report.now_yaml).map_err(Error::Reason)?;
     Ok(())
 }
 
@@ -564,13 +564,13 @@ fn apply_migrate(world: &mut World<()>, record: &MigrateRecord) -> Result<(), Er
         world.set_state(load_save_bytes(&bytes)?);
         return Ok(());
     }
-    let next = migrate_save(
+    let next = save::migrate(
         world.state().clone(),
         &record.pack_rev_after,
         record.state_rev_after,
         &record.meters,
     );
-    let bytes = emit_save(&next).map_err(Error::Reason)?.into_bytes();
+    let bytes = save::emit(&next).map_err(Error::Reason)?.into_bytes();
     if blake2s_tagged(&bytes) != record.state_hash {
         return Err(diverged("state_hash differed").replayed(bytes).into());
     }
@@ -580,7 +580,7 @@ fn apply_migrate(world: &mut World<()>, record: &MigrateRecord) -> Result<(), Er
 
 pub(crate) fn load_save_bytes(bytes: &[u8]) -> Result<State, Error> {
     let text = std::str::from_utf8(bytes).map_err(|_| Error::Reason(Reason::Schema))?;
-    parse_save(text).map_err(|diag| Error::Reason(first_reason(&diag)))
+    save::parse(text).map_err(|diag| Error::Reason(first_reason(&diag)))
 }
 
 pub(crate) fn state_rev_of(bytes: &[u8]) -> Result<u64, Error> {
@@ -588,7 +588,7 @@ pub(crate) fn state_rev_of(bytes: &[u8]) -> Result<u64, Error> {
 }
 
 pub(crate) fn emit_save_bytes<L>(world: &World<L>) -> Result<Vec<u8>, Error> {
-    emit_save(world.state())
+    save::emit(world.state())
         .map(|text| text.into_bytes())
         .map_err(Error::Reason)
 }

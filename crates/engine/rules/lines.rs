@@ -195,10 +195,9 @@ mod tests {
     fn help_and_look_name_the_shop() {
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packs/oneshot-docks");
         let canon = crate::canon::load_canon(&root).unwrap();
-        let state = crate::store::save::parse_save(
-            &fs::read_to_string(root.join("state/save.yaml")).unwrap(),
-        )
-        .unwrap();
+        let state =
+            crate::store::save::parse(&fs::read_to_string(root.join("state/save.yaml")).unwrap())
+                .unwrap();
         let help = help(&canon, &state, &Presence::default(), "pc_rowan");
         assert!(help.lines().any(|line| line == "wait"), "{help}");
         assert!(help.lines().any(|line| line == "travel"), "{help}");

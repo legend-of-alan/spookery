@@ -12,7 +12,6 @@ pub(crate) mod save;
 pub(crate) mod tape;
 
 pub use lock::{lock_pack, PackGuard};
-pub use save::{emit_save, parse_save};
 pub use tape::{emit_tape_record, TapeRecord};
 
 /// Rules version stamped on every save and every round.

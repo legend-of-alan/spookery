@@ -16,7 +16,7 @@ use crate::rules::gate;
 use crate::rules::rule::{Rule, TargetKind, When};
 use crate::store::journal;
 use crate::store::records::Record;
-use crate::store::save::{emit_save, parse_save};
+use crate::store::save;
 use crate::store::tape::{append_record, last_seq, read_after, read_scrollback, TapeRecord};
 use crate::Reason;
 use spookery_protocol::{QueuedMove, Speaker, PERCEIVE_BODY_CHARS};
@@ -432,7 +432,7 @@ impl World<()> {
         let canon = Arc::new(load_canon(root).map_err(|diags| first_reason(&diags))?);
         let now_bytes = fs::read(root.join("state/save.yaml")).map_err(|_| Reason::NotInSpec)?;
         let now_text = std::str::from_utf8(&now_bytes).map_err(|_| Reason::Schema)?;
-        let state = parse_save(now_text).map_err(|diags| first_reason(&diags))?;
+        let state = save::parse(now_text).map_err(|diags| first_reason(&diags))?;
         let mut problems = save_problems(&state, &now_bytes);
         if let Some(diag) = pack_rev_problem(root, &state, &now_bytes) {
             problems.insert(0, diag);
@@ -605,7 +605,7 @@ pub fn check_pack(root: &Path) -> Vec<Diagnostic> {
     let loaded = if now_path.is_file() {
         match fs::read(&now_path) {
             Ok(bytes) => match std::str::from_utf8(&bytes) {
-                Ok(text) => match parse_save(text) {
+                Ok(text) => match save::parse(text) {
                     Ok(state) => Some((bytes, state)),
                     Err(more) => {
                         diags.extend(more);
@@ -678,7 +678,7 @@ fn save_problems(state: &State, bytes: &[u8]) -> Vec<Diagnostic> {
             .at_path("actors.world"),
         );
     }
-    match emit_save(state) {
+    match save::emit(state) {
         Ok(emitted) if emitted.as_bytes() != bytes => {
             let line = std::str::from_utf8(bytes)
                 .ok()

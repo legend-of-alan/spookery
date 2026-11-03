@@ -10,7 +10,7 @@ use crate::model::{sort_unique, State};
 use crate::store::records::AddedMeter;
 use crate::Reason;
 
-pub(crate) fn save_emit_options() -> SerializerOptions {
+pub(crate) fn emit_options() -> SerializerOptions {
     serde_saphyr::ser_options! {
         empty_as_braces: true,
         indent_step: 2,
@@ -25,7 +25,7 @@ pub(crate) fn save_emit_options() -> SerializerOptions {
     }
 }
 
-pub fn parse_save(text: &str) -> Result<State, Vec<Diagnostic>> {
+pub fn parse(text: &str) -> Result<State, Vec<Diagnostic>> {
     const FILE: &str = "state/save.yaml";
     if let Some(diag) = check_tag(text, crate::diagnostic::SAVE_SCHEMA, FILE, 0) {
         return Err(vec![diag]);
@@ -43,7 +43,7 @@ pub fn parse_save(text: &str) -> Result<State, Vec<Diagnostic>> {
         }
     }
     let state: State = parse_file(FILE, text, 0)?;
-    let diags = occupancy_problems(&state);
+    let diags = check_actor_places(&state);
     if diags.is_empty() {
         Ok(state)
     } else {
@@ -51,12 +51,12 @@ pub fn parse_save(text: &str) -> Result<State, Vec<Diagnostic>> {
     }
 }
 
-pub fn emit_save(state: &State) -> Result<String, Reason> {
+pub fn emit(state: &State) -> Result<String, Reason> {
     let mut canonical = state.clone();
     canonical.schema = crate::diagnostic::SAVE_SCHEMA.to_string();
     canonical.rules_rev = super::RULES_REV;
     normalize(&mut canonical);
-    let text = serde_saphyr::to_string_with_options(&canonical, save_emit_options())
+    let text = serde_saphyr::to_string_with_options(&canonical, emit_options())
         .map_err(|_| Reason::Schema)?;
     Ok(one_trailing_lf(text))
 }
@@ -99,7 +99,7 @@ pub fn normalize(state: &mut State) {
     }
 }
 
-fn occupancy_problems(state: &State) -> Vec<Diagnostic> {
+fn check_actor_places(state: &State) -> Vec<Diagnostic> {
     const FILE: &str = "state/save.yaml";
     let mut diags = Vec::new();
     for (id, actor) in &state.actors {
@@ -142,12 +142,7 @@ pub(crate) fn missing_meters(canon: &Canon, state: &State) -> Vec<AddedMeter> {
 /// Migrate a save: give each actor the `meters` it lacks, at their `start`, then
 /// stamp `pack_rev` and `state_rev`. Live migrate and replay both call this.
 /// It does not touch the disk.
-pub fn migrate_save(
-    mut state: State,
-    pack_rev: &str,
-    state_rev: u64,
-    meters: &[AddedMeter],
-) -> State {
+pub fn migrate(mut state: State, pack_rev: &str, state_rev: u64, meters: &[AddedMeter]) -> State {
     for actor in state.actors.values_mut() {
         let live = &mut actor.meters;
         for meter in meters {
@@ -179,10 +174,10 @@ mod tests {
         let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("../../packs/oneshot-docks/state/save.yaml");
         let original = fs::read_to_string(&path).unwrap();
-        let state = parse_save(&original).unwrap();
-        let emitted = emit_save(&state).unwrap();
+        let state = parse(&original).unwrap();
+        let emitted = emit(&state).unwrap();
         assert_eq!(emitted, original);
-        assert_eq!(parse_save(&emitted).unwrap(), state);
+        assert_eq!(parse(&emitted).unwrap(), state);
     }
 
     #[test]
@@ -197,13 +192,13 @@ mod tests {
             1,
         );
         assert_ne!(listed, current);
-        let refused = parse_save(&listed).unwrap_err();
+        let refused = parse(&listed).unwrap_err();
         assert!(
             refused[0].message.starts_with("unknown field 'notes'"),
             "{refused:?}"
         );
         assert_eq!(crate::diagnostic::first_reason(&refused), Reason::Schema);
-        assert_eq!(emit_save(&parse_save(&current).unwrap()).unwrap(), current);
+        assert_eq!(emit(&parse(&current).unwrap()).unwrap(), current);
     }
 
     fn save_text(tag: &str) -> String {
@@ -232,22 +227,22 @@ notes: []
 
     #[test]
     fn an_unknown_tag_and_the_old_versioned_tag_are_schema() {
-        assert!(parse_save(&save_text("save")).is_ok());
-        let old = parse_save(&save_text(concat!("save/", "v0"))).unwrap_err();
+        assert!(parse(&save_text("save")).is_ok());
+        let old = parse(&save_text(concat!("save/", "v0"))).unwrap_err();
         assert!(old[0].message.contains("no version"), "{old:?}");
         assert_eq!(crate::diagnostic::first_reason(&old), Reason::Schema);
-        let bogus = parse_save(&save_text("bogus")).unwrap_err();
+        let bogus = parse(&save_text("bogus")).unwrap_err();
         assert!(bogus[0].message.contains("does not use"), "{bogus:?}");
         assert_eq!(crate::diagnostic::first_reason(&bogus), Reason::Schema);
     }
 
     #[test]
-    fn emit_save_writes_the_save_tag() {
-        let mut state = parse_save(&save_text("save")).unwrap();
+    fn emit_writes_the_save_tag() {
+        let mut state = parse(&save_text("save")).unwrap();
         state.schema = concat!("save/", "v0").to_string();
-        let emitted = emit_save(&state).unwrap();
+        let emitted = emit(&state).unwrap();
         assert!(emitted.starts_with("schema: save\n"), "{emitted}");
-        assert_eq!(parse_save(&emitted).unwrap().schema, "save");
+        assert_eq!(parse(&emitted).unwrap().schema, "save");
     }
 
     use crate::intent::Viewer;

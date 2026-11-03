@@ -1,4 +1,4 @@
-//! Finish a commit a crash left half done.
+//! Cut a torn append, finish a checkpoint a crash left half done, and remove stray temp files.
 
 use std::fs::{self, OpenOptions};
 use std::path::{Path, PathBuf};
