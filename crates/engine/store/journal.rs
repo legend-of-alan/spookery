@@ -34,6 +34,10 @@ pub(crate) fn head_path(pack: &Path) -> PathBuf {
     pack.join("state/journal/head.json")
 }
 
+pub(crate) fn save_path(pack: &Path) -> PathBuf {
+    pack.join("state/save.yaml")
+}
+
 /// The latest checkpoint, written beside the bundles so startup can skip them.
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct CheckpointHead {
@@ -217,7 +221,7 @@ fn base_hash(pack: &Path) -> Result<String, Error> {
     let path = if base.is_file() {
         base
     } else {
-        pack.join("state/save.yaml")
+        save_path(pack)
     };
     let bytes = fs::read(&path)
         .map_err(|_| Error::new(&path, Reason::StoreIo, "the snapshot could not be read"))?;
@@ -265,8 +269,7 @@ pub(crate) fn trailing_checkpoint(path: &Path) -> Option<CheckpointRecord> {
 /// The checkpoint hash is already in `save.yaml`, so the bundle is finished.
 /// Until then it stays the live file and startup can still replay it.
 pub(crate) fn is_published(pack: &Path, path: &Path) -> bool {
-    trailing_checkpoint(path)
-        .is_some_and(|mark| hashes_to(&pack.join("state/save.yaml"), &mark.state_hash))
+    trailing_checkpoint(path).is_some_and(|mark| hashes_to(&save_path(pack), &mark.state_hash))
 }
 
 /// The file at `path` can be read and its bytes hash to `hash`.

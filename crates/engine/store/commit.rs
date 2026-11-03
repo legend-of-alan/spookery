@@ -220,8 +220,7 @@ fn store_checkpoint(
     })
     .map_err(|_| Reason::Schema)?;
     write_atomic(&journal::head_path(root), head.as_bytes())?;
-    let state = root.join("state");
-    let save = state.join("save.yaml");
+    let save = journal::save_path(root);
     let base = journal::base_path(root);
     if !base.is_file() {
         fs::copy(&save, &base).map_err(refuse_io)?;
@@ -230,10 +229,12 @@ fn store_checkpoint(
             fsync_dir(parent)?;
         }
     }
-    let snap_dir = state.join("checkpoints");
-    fs::create_dir_all(&snap_dir).map_err(refuse_io)?;
+    let snap = journal::checkpoint_path(root, state_rev);
+    if let Some(parent) = snap.parent() {
+        fs::create_dir_all(parent).map_err(refuse_io)?;
+    }
     write_atomic(&save, now_bytes)?;
-    write_atomic(&snap_dir.join(format!("{state_rev}.yaml")), now_bytes)?;
+    write_atomic(&snap, now_bytes)?;
     Ok(())
 }
 
@@ -258,7 +259,7 @@ pub(crate) fn settle_checkpoint<L>(world: &World<L>, write: &WriteGuard) -> Resu
     if blake2s_tagged(&now_bytes) != mark.state_hash {
         return Ok(());
     }
-    let save = world.root.join("state/save.yaml");
+    let save = journal::save_path(&world.root);
     let snap = journal::checkpoint_path(&world.root, mark.state_rev);
     let save_ok = journal::hashes_to(&save, &mark.state_hash);
     let snap_ok = journal::hashes_to(&snap, &mark.state_hash);

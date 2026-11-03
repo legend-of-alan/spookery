@@ -426,11 +426,11 @@ impl World<()> {
     /// Open the pack. A save that later journal records continue is a checkpoint,
     /// and resume checks the tip instead.
     pub fn open(root: &Path) -> Result<Self, Reason> {
-        if !root.join("pack.yaml").is_file() || !root.join("state/save.yaml").is_file() {
+        if !root.join("pack.yaml").is_file() || !journal::save_path(root).is_file() {
             return Err(Reason::NotInSpec);
         }
         let canon = Arc::new(load_canon(root).map_err(|diags| first_reason(&diags))?);
-        let now_bytes = fs::read(root.join("state/save.yaml")).map_err(|_| Reason::NotInSpec)?;
+        let now_bytes = fs::read(journal::save_path(root)).map_err(|_| Reason::NotInSpec)?;
         let now_text = std::str::from_utf8(&now_bytes).map_err(|_| Reason::Schema)?;
         let state = save::parse(now_text).map_err(|diags| first_reason(&diags))?;
         let live = journal::read_live_records(root).unwrap_or_default();
@@ -584,7 +584,7 @@ pub fn check_pack(root: &Path) -> Vec<Diagnostic> {
             None
         }
     };
-    let now_path = root.join("state/save.yaml");
+    let now_path = journal::save_path(root);
     let loaded = if now_path.is_file() {
         match fs::read(&now_path) {
             Ok(bytes) => match std::str::from_utf8(&bytes) {

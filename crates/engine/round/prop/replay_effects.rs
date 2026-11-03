@@ -57,13 +57,13 @@ fn replay_each_round(played: &Path) -> Result<(), TestCaseError> {
     let snapshot = if base.is_file() {
         fs::read(&base)
     } else {
-        fs::read(played.join("state/save.yaml"))
+        fs::read(journal::save_path(played))
     }
     .map_err(|err| TestCaseError::fail(err.to_string()))?;
     // Same rules as the played copy, including the grit success effect, at the snapshot.
     let pack = TempPack(fresh_dir("prop-rerun-again"));
     copy_dir(played, &pack.0);
-    fs::write(pack.0.join("state/save.yaml"), snapshot)
+    fs::write(journal::save_path(&pack.0), snapshot)
         .map_err(|err| TestCaseError::fail(err.to_string()))?;
     let mut world = World::open(&pack.0).map_err(|err| TestCaseError::fail(err.to_string()))?;
     for record in &round_records {

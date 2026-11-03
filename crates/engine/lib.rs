@@ -215,14 +215,14 @@ pub mod testing {
     }
 
     pub fn write_save(pack: &Path, state: &crate::model::State) {
-        let path = pack.join("state/save.yaml");
+        let path = crate::store::journal::save_path(pack);
         let bytes = crate::store::save::emit(state)
             .unwrap_or_else(|err| panic!("emit {}: {err}", path.display()));
         fs::write(&path, bytes).unwrap_or_else(|err| panic!("write {}: {err}", path.display()));
     }
 
     pub fn edit_save(pack: &Path, edit: impl FnOnce(&mut crate::model::State)) {
-        let path = pack.join("state/save.yaml");
+        let path = crate::store::journal::save_path(pack);
         let text = fs::read_to_string(&path)
             .unwrap_or_else(|err| panic!("read {}: {err}", path.display()));
         let mut state = crate::store::save::parse(&text)
