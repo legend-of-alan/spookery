@@ -50,14 +50,17 @@ fn build_say(tape: &TapeRecord, gm: bool) -> Say {
     }
 }
 
-/// The reply to a claim: the PC, and the says it heard before.
-pub(super) fn render_claimed(actor: &str, scrollback: &[TapeRecord]) -> ServerBody {
+/// The reply to a new claim: the PC, its token, and the says it heard before.
+pub(super) fn render_claimed(actor: &str, token: &str, scrollback: &[TapeRecord]) -> ServerBody {
     ServerBody::Claimed {
         actor: actor.to_string(),
+        token: token.to_string(),
         scrollback: scrollback
             .iter()
             .map(|tape| build_say(tape, false))
             .collect(),
+        missed: Vec::new(),
+        gap: false,
     }
 }
 
@@ -160,8 +163,7 @@ pub(super) fn render_status(
     presence: &Presence,
     queued: &[Intent],
     last_seq: u64,
-    events: Option<&[TapeRecord]>,
-    pack: Option<PackSummary>,
+    pack: PackSummary,
 ) -> ServerBody {
     let Ok(Value::String(presence_clocks)) = serde_json::to_value(now.pause.presence_clocks) else {
         unreachable!("a run state serializes as its snake_case name");
@@ -186,8 +188,7 @@ pub(super) fn render_status(
             })
             .collect(),
         last_seq,
-        events: events.map(|events| events.iter().map(build_say_event).collect()),
-        pack,
+        pack: Some(pack),
     }))
 }
 

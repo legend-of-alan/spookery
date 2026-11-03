@@ -126,7 +126,7 @@ impl Session {
     }
 
     async fn status(&mut self) -> Result<(), Error> {
-        let reply = self.client.table_status(None).await;
+        let reply = self.client.table_status().await;
         self.show_result(reply, |_session, status| {
             emit(&render_status(&status));
         })

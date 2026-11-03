@@ -13,7 +13,7 @@ use spookery_protocol::Speaker;
 /// Size bound for `state/tape.jsonl`. An append that would pass it first drops the oldest half.
 const MAX_BYTES: u64 = 1024 * 1024;
 
-const WINDOW_LINES: usize = 64;
+/// How many says a new claim's scrollback carries.
 const SCROLLBACK_LINES: usize = 256;
 
 /// One tape line, written by the engine and relayed by the host table to players and the GM.
@@ -95,19 +95,6 @@ pub fn append_record(root: &Path, mut record: TapeRecord) -> Result<TapeRecord, 
     file.sync_all().map_err(refuse_io)?;
     fsync_dir(&state)?;
     Ok(record)
-}
-
-/// Records with `seq` greater than `since`, at most `WINDOW_LINES` of them.
-/// A missing file is empty. A trailing partial line is not a record. A complete
-/// line that does not parse is `SCHEMA` for the whole read. A file past 1 MiB is `OUT_OF_RANGE`.
-pub fn read_after(root: &Path, since: u64) -> Result<Vec<TapeRecord>, Reason> {
-    let mut out = Vec::new();
-    for record in read_records(root)? {
-        if record.seq > since && out.len() < WINDOW_LINES {
-            out.push(record);
-        }
-    }
-    Ok(out)
 }
 
 /// The newest `SCROLLBACK_LINES` records whose recipients include `player`, oldest first.

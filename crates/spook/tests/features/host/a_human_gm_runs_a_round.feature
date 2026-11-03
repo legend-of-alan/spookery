@@ -23,8 +23,8 @@ Feature: A human GM runs a round
   Scenario: Each commit's roll shows once
     Given a docks table
     When play and a human GM share a free loopback port
-    And the GM queues Rowan's grit and commits
-    And the GM queues Rowan's grit and commits
+    And the GM queues Wren's grit and commits
+    And the GM queues Wren's grit and commits
     Then the GM shows 2 rolls
 
   Scenario: The GM's output is text

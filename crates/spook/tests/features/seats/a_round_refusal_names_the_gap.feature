@@ -32,7 +32,7 @@ Feature: A round refusal names the gap
     Then Lark's refused frame for "NOT_IN_SPEC" has no missing field
 
   Scenario: A strike the GM sends across rooms is refused in the round
-    Given a sample table with the GM seated
+    Given a sample table with only the GM seated
     When the GM sends Lark's strike on npc_oden
     And the GM commits the round
     Then the round rejects that habit with "NOT_IN_SPEC"

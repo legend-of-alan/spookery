@@ -200,7 +200,9 @@ there, or dropping one they do not hold. `OUT_OF_RANGE` is a removal that would
 pass below zero from a count above zero, and the rest of that rule is not kept.
 `NOT_A_WEAPON` is wielding an item that is not a weapon. `UNKNOWN_MOVE` is a
 move the actor does not have. `TABLE_FULL` is a fourth player or a second GM.
-`SEAT_TAKEN` is a claim for a character another seat holds. `LINE_TOO_LONG`
+`SEAT_TAKEN` is a claim for a character another seat holds, even one whose
+connection dropped. `ACTOR_MISMATCH` is a GM move for a PC a player holds.
+`UNKNOWN_ID` is a claim by a token no claim holds. `LINE_TOO_LONG`
 is a message over 8 KiB, and the connection stays up. `SCHEMA` is a word the
 hello did not list. `NOT_IN_SPEC` is a full rule id used as a move, an address
 that is not loopback, or a verb no rule matches, which is refused before the
@@ -218,6 +220,7 @@ Tested in `features/rules/rules_live_with_their_owner.feature`,
 `features/round/a_rules_effects_are_all_or_nothing.feature`,
 `features/host/a_human_gm_runs_a_round.feature`,
 `features/seats/one_gm_and_three_players.feature`,
+`features/seats/a_claim_comes_back_with_its_token.feature`,
 `features/limits/the_listener_bounds_input.feature`,
 `features/loopback/only_loopback_binds.feature`,
 `features/replay/typed_journal_records.feature`,
@@ -268,6 +271,7 @@ reading is dropped, and the other seats keep going.
 
 Tested in `features/speech/speech_appends_and_does_not_play_a_round.feature`,
 `features/seats/one_gm_and_three_players.feature`,
+`features/seats/a_claim_comes_back_with_its_token.feature`,
 `features/loopback/only_loopback_binds.feature`,
 `features/host/the_host_sits_the_gm_seat.feature`, and
 `features/limits/the_listener_bounds_input.feature`.

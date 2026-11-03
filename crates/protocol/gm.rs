@@ -14,14 +14,11 @@ pub fn parse_args<T: DeserializeOwned>(
 }
 
 /// `table_status` arguments, sent from the GM's MCP client to the table, and the GM's
-/// `status` word arguments.
+/// `status` word arguments. No key is accepted.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(deny_unknown_fields)]
-pub struct StatusArgs {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub since: Option<u64>,
-}
+pub struct StatusArgs {}
 
 /// `perceive` arguments, sent from the GM's MCP client to the table, and the GM's
 /// `perceive` word arguments.
@@ -173,14 +170,7 @@ pub struct TableStatus {
     pub last_round_at: String,
     pub queued: Vec<QueuedMove>,
     pub last_seq: u64,
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        serialize_with = "serialize_says",
-        deserialize_with = "deserialize_says"
-    )]
-    pub events: Option<Vec<SayEvent>>,
-    /// Sent when the call has no `since`. An older server never sends it.
+    /// An older server never sends it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pack: Option<PackSummary>,
 }
@@ -229,7 +219,7 @@ pub struct Roll {
     pub outcome: Outcome,
 }
 
-/// A `say` tool result or `table_status` event, sent from the table to the GM's MCP client.
+/// A `say` tool result, sent from the table to the GM's MCP client.
 /// `seq` is the tape's.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SayEvent {
@@ -265,33 +255,6 @@ pub struct PackSummary {
     pub kinds: std::collections::BTreeMap<String, CastKind>,
     pub places: std::collections::BTreeMap<String, String>,
     pub cast: std::collections::BTreeMap<String, String>,
-}
-
-/// One `table_status` event: a say, tagged as `say`.
-#[derive(Serialize, Deserialize)]
-#[serde(tag = "kind", rename_all = "lowercase")]
-enum TapeEvent {
-    Say(SayEvent),
-}
-
-fn serialize_says<S>(events: &Option<Vec<SayEvent>>, serializer: S) -> Result<S::Ok, S::Error>
-where
-    S: serde::Serializer,
-{
-    events
-        .as_ref()
-        .map(|says| says.iter().cloned().map(TapeEvent::Say).collect::<Vec<_>>())
-        .serialize(serializer)
-}
-
-fn deserialize_says<'de, D>(deserializer: D) -> Result<Option<Vec<SayEvent>>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    let events = Vec::<TapeEvent>::deserialize(deserializer)?;
-    Ok(Some(
-        events.into_iter().map(|TapeEvent::Say(say)| say).collect(),
-    ))
 }
 
 #[cfg(test)]

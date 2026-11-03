@@ -8,7 +8,6 @@ use std::net::TcpStream;
 use std::path::PathBuf;
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::mpsc::{self, Receiver};
-use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use rmcp::model::ProtocolVersion;
@@ -26,6 +25,7 @@ const READ_TIMEOUT: Duration = Duration::from_secs(5);
 
 const SCRUBBED_GAME_ADDR: &str = "127.0.0.1:<game>";
 const SCRUBBED_MCP_ADDR: &str = "127.0.0.1:<mcp>";
+const SCRUBBED_TOKEN: &str = "<token>";
 
 enum Example {
     Json(Value),
@@ -48,8 +48,6 @@ struct Table {
     mcp_port: u16,
     /// The `listening` line `spook run` printed.
     addrs_line: String,
-    host_text: Arc<Mutex<String>>,
-    host_grew: Receiver<()>,
 }
 
 impl Drop for Table {
@@ -109,8 +107,9 @@ fn capture() -> BTreeMap<String, Example> {
     insert_json(&mut out, "player-hello", next_json(&player));
     let claim = send(&mut player, "claim", json!({"actor": "pc_rowan"}));
     insert_json(&mut out, "player-claim", claim);
-    let claimed = next_json(&player);
+    let mut claimed = next_json(&player);
     assert_eq!(claimed["body"]["kind"], "claimed", "{claimed}");
+    let token = scrub_token(&mut claimed["body"]);
     insert_json(&mut out, "player-claimed", claimed);
     let resume = next_json(&player);
     assert_eq!(resume["body"]["kind"], "resume", "{resume}");
@@ -219,20 +218,20 @@ fn capture() -> BTreeMap<String, Example> {
     insert_json(&mut out, "player-hears-gm", heard);
     insert_json(&mut out, "gm-say-event", one_event(&mut gm));
 
-    let since_args = serde_json::json!({"since": 0});
+    let held_args = serde_json::json!({"actor_id": "pc_rowan", "move": "wait"});
     insert_json(
         &mut out,
-        "table-status-since-request",
-        tool_call(5, "table_status", &since_args),
+        "intent-held-request",
+        tool_call(5, "queue_intent", &held_args),
     );
     insert_json(
         &mut out,
-        "table-status-since",
-        call(&mut gm, "table_status", since_args),
+        "intent-held",
+        call(&mut gm, "queue_intent", held_args),
     );
 
     let intent_args = serde_json::json!({
-        "actor_id": "pc_rowan",
+        "actor_id": "aldric",
         "move": "wait",
         "id": "gm-wait"
     });
@@ -369,17 +368,36 @@ fn capture() -> BTreeMap<String, Example> {
         post_initialize_when_full(table.mcp_port, &initialize),
     );
 
-    let mark = table.host_text.lock().unwrap().len();
+    // Rowan's connection drops without a release. The claim holds, and keeps the say.
+    let after = out_json(&out, "player-no-exit")["seq"].clone();
     player
         .write
         .get_ref()
         .shutdown(std::net::Shutdown::Both)
         .unwrap_or_else(|err| panic!("shutdown: {err}"));
     drop(player);
-    wait_host_grew(&table, mark);
+    call(
+        &mut gm,
+        "say",
+        serde_json::json!({"address": "table", "text": "still there?"}),
+    );
+    let _ = gm.drain_events();
+    let mut back = connect_player_unclaimed(table.game);
+    let mut reclaim = send(&mut back, "claim", json!({"token": token, "after": after}));
+    scrub_token(&mut reclaim["body"]["args"]);
+    insert_json(&mut out, "player-claim-token", reclaim);
+    let mut reclaimed = next_json(&back);
+    assert_eq!(reclaimed["body"]["kind"], "claimed", "{reclaimed}");
+    scrub_token(&mut reclaimed["body"]);
+    insert_json(&mut out, "player-claimed-token", reclaimed);
+    let _ = next_json(&back);
+    let _ = next_json(&back);
+    send(&mut back, "release", json!({}));
+    assert_eq!(next_json(&back)["body"]["kind"], "released");
     let again = connect_player(table.game, "pc_rowan");
-    let replay = next_json(&again);
+    let mut replay = next_json(&again);
     assert_eq!(replay["body"]["kind"], "claimed", "{replay}");
+    scrub_token(&mut replay["body"]);
     insert_json(&mut out, "player-replay-say", replay);
 
     let close_args = serde_json::json!({});
@@ -414,23 +432,9 @@ fn listen() -> Table {
         while stderr.read(&mut buf).unwrap_or(0) > 0 {}
     });
     let (game, mcp_port, addrs_line) = read_addrs(&mut stdout);
-    let host_text = Arc::new(Mutex::new(String::new()));
-    let (host_tx, host_more) = mpsc::channel();
-    let slot = Arc::clone(&host_text);
     std::thread::spawn(move || {
-        let mut stdout = stdout;
         let mut buf = [0u8; 256];
-        loop {
-            match stdout.read(&mut buf) {
-                Ok(0) | Err(_) => break,
-                Ok(n) => {
-                    slot.lock()
-                        .unwrap()
-                        .push_str(&String::from_utf8_lossy(&buf[..n]));
-                    let _ = host_tx.send(());
-                }
-            }
-        }
+        while stdout.read(&mut buf).unwrap_or(0) > 0 {}
     });
     Table {
         child,
@@ -439,26 +443,6 @@ fn listen() -> Table {
         game,
         mcp_port,
         addrs_line,
-        host_text,
-        host_grew: host_more,
-    }
-}
-
-fn wait_host_grew(table: &Table, mark: usize) {
-    // Assumes the next host output after `mark` is the seat-release summary
-    // (not a late-buffered sit line). An empty summary would hang until HANG.
-    let start = std::time::Instant::now();
-    loop {
-        if table.host_text.lock().unwrap().len() > mark {
-            return;
-        }
-        let left = READ_TIMEOUT.saturating_sub(start.elapsed());
-        if left.is_zero() || table.host_grew.recv_timeout(left).is_err() {
-            panic!(
-                "host did not print after the seat closed\n{}",
-                table.host_text.lock().unwrap()
-            );
-        }
     }
 }
 
@@ -818,6 +802,16 @@ fn scrub(value: &mut Value) {
         "mcp".to_string(),
         Value::String(SCRUBBED_MCP_ADDR.to_string()),
     );
+}
+
+/// Swaps a claim's token for `<token>`, since each table mints its own, and returns it.
+fn scrub_token(body: &mut Value) -> String {
+    let token = body["token"]
+        .as_str()
+        .unwrap_or_else(|| panic!("no token\n{body}"))
+        .to_string();
+    body["token"] = Value::String(SCRUBBED_TOKEN.to_string());
+    token
 }
 
 fn loopback_port(text: &str) -> Option<u16> {

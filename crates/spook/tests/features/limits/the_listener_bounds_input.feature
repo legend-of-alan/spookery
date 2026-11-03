@@ -40,7 +40,7 @@ Feature: The listener bounds input
   Scenario: A player who stops reading is dropped
     Given a docks table
     When one player stops reading and the GM says many lines
-    Then that player is disconnected
+    Then that player is disconnected and still holds its PC
     And the other player keeps receiving frames
 
   Scenario: The GM seat confirms it is free

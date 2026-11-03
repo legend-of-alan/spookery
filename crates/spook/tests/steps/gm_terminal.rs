@@ -106,10 +106,11 @@ fn the_gm_terminal_shows_one_check_and_one_dice(world: &mut World, shown: String
     assert!(stdout.contains(&queued), "{stdout}");
 }
 
-#[when(expr = "the GM queues Rowan's grit and commits")]
+/// Play holds Rowan, so the GM drives Wren.
+#[when(expr = "the GM queues Wren's grit and commits")]
 fn the_gm_queues_grit_and_commits(world: &mut World) {
     let before = count_gm_matches(world, "Queue:");
-    write_gm(world, "queue pc_rowan grit");
+    write_gm(world, "queue pc_wren grit");
     write_gm(world, "commit");
     // The status result follows every check event of that commit on the
     // socket, so its Queue line means the client has read them all.

@@ -33,7 +33,7 @@ Feature: Coding agents reach the GM seat
     And the GM lists the tools
     Then each tool's input schema names the same fields as before
       | tool         | fields                                                | required           |
-      | table_status | since                                                 |                    |
+      | table_status |                                                       |                    |
       | perceive     | as max_body_chars                                     | as                 |
       | queue_intent | id round_index actor_id move target to rationale_code | actor_id move      |
       | say          | address text                                          | address text       |

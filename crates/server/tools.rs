@@ -50,7 +50,7 @@ pub(super) struct Tool {
     pub(super) schema: fn() -> Arc<Map<String, Value>>,
 }
 
-const SEAT_NOTES: &str = "Player mechanical lines stay queued until commit_round. say appends speech and does not tick. perceive requires as set to an actor id. When a notification does not arrive, table_status with since returns player speech and the queue.";
+const SEAT_NOTES: &str = "Player mechanical lines stay queued until commit_round. say appends speech and does not tick. perceive requires as set to an actor id.";
 
 impl Tool {
     pub(super) fn description(&self) -> String {
@@ -62,7 +62,7 @@ pub(super) const TOOLS: &[Tool] = &[
     Tool {
         name: "table_status",
         word: "status",
-        about: "table_status takes no required key. An empty object stays legal. since is the only other accepted key.",
+        about: "table_status takes no key. An empty object stays legal.",
         schema: schema_for_type::<StatusArgs>,
     },
     Tool {
@@ -74,7 +74,7 @@ pub(super) const TOOLS: &[Tool] = &[
     Tool {
         name: "queue_intent",
         word: "queue",
-        about: "queue_intent requires actor_id and move. A habit row is legal when actor_id is an npc.",
+        about: "queue_intent requires actor_id and move. A habit row is legal when actor_id is an npc. A PC a player holds is ACTOR_MISMATCH.",
         schema: schema_for_type::<protocol::IntentArgs>,
     },
     Tool {
@@ -109,7 +109,7 @@ pub(super) fn run_gm_word(
     match word {
         "status" => status(world, presence, args),
         "perceive" => perceive(world, presence, args),
-        "queue" => queue(world, args),
+        "queue" => queue(world, presence, args),
         "say" => say(world, presence, args),
         "commit" => commit(world, presence, args),
         "release" => release(args),
@@ -204,26 +204,29 @@ fn status(
     presence: &Presence,
     arguments: Option<&Map<String, Value>>,
 ) -> Result<Reply, Reason> {
-    let since = parse_args::<StatusArgs>(arguments)
-        .map_err(|_| Reason::Schema)?
-        .since;
-    let events = match since {
-        Some(since) => Some(world.tape_after(since)?),
-        None => None,
-    };
+    parse_args::<StatusArgs>(arguments).map_err(|_| Reason::Schema)?;
     let last_seq = world.last_tape_seq()?;
     Ok(Reply::new(frames::render_status(
         world.state(),
         presence,
         world.queued_intents(),
         last_seq,
-        events.as_deref(),
-        since.is_none().then(|| world.pack_summary()),
+        world.pack_summary(),
     )))
 }
 
-fn queue(world: &mut World, arguments: Option<&Map<String, Value>>) -> Result<Reply, Reason> {
+/// A PC a player holds takes only that player's moves, so the GM's is `ACTOR_MISMATCH`.
+fn queue(
+    world: &mut World,
+    presence: &Presence,
+    arguments: Option<&Map<String, Value>>,
+) -> Result<Reply, Reason> {
     let call: protocol::IntentArgs = parse_args(arguments).map_err(|_| Reason::Schema)?;
+    if let Some(actor_id) = &call.actor_id {
+        if presence.actors_present.contains(actor_id) {
+            return Err(Reason::ActorMismatch);
+        }
+    }
     let target = call.target.clone().filter(|target| !target.is_empty());
     let queued = world.queue_gm_intent(call, || Ok(uuid::Uuid::new_v4().to_string()))?;
     Ok(Reply::new(ServerBody::Queued {

@@ -127,13 +127,9 @@ impl GmClient {
         &self.protocol_version
     }
 
-    /// Who is seated, the queue, and (without `since`) the pack summary. With `since`, the
-    /// say events after that tape sequence too.
-    pub async fn table_status(
-        &mut self,
-        since: Option<u64>,
-    ) -> Result<Result<TableStatus, Refusal>, Error> {
-        self.call("table_status", &StatusArgs { since }).await
+    /// Who is seated, the queue, and the pack summary.
+    pub async fn table_status(&mut self) -> Result<Result<TableStatus, Refusal>, Error> {
+        self.call("table_status", &StatusArgs {}).await
     }
 
     /// The view of the actor `viewer`, a bare actor id.

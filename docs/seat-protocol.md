@@ -82,7 +82,7 @@ The table speaks first. The hello lists the version, the words this seat may sen
 }
 ```
 
-`claim` takes one PC. The reply is `claimed`, with `scrollback`, the earlier says this PC heard, oldest first. A `resume` and a `view` follow.
+`claim` takes one PC. The reply is `claimed`, with `token`, which takes this PC back after a dropped connection, and `scrollback`, the earlier says this PC heard, oldest first. A `resume` and a `view` follow. Treat the token as a secret: anyone who sends it holds the PC.
 
 <!-- example: player-claim -->
 ```json
@@ -104,7 +104,8 @@ The table speaks first. The hello lists the version, the words this seat may sen
   "reply_to": "c1",
   "body": {
     "kind": "claimed",
-    "actor": "pc_rowan"
+    "actor": "pc_rowan",
+    "token": "<token>"
   }
 }
 ```
@@ -203,7 +204,47 @@ The table speaks first. The hello lists the version, the words this seat may sen
 
 `resume` carries the notes addressed to that viewer (`notes`) and their own clocks (`clocks`). `view` is what that viewer can see. `viewer` is the bare actor id, the same form `as` takes. It is not `player:<id>` or `npc:<id>`. `place_name` and `actor_names` are the pack's display names. `body` is the place body. `meters` is that viewer's own meters. A hidden meter is left out. `value` is the current number and `max` is the cap. `exits` is omitted when the place has none. `status` is omitted unless the viewer is still travelling, and then it is `on the stairs until 21:40`. Fact bodies are the place prose the viewer is allowed to read.
 
-A claim keeps presence in memory and does not bump `state_rev`. The cap is three claims, in the host, not in the pack. `release` gives the PC back. The connection stays up and may claim again. A connection that closes gives its PC back too.
+A claim keeps presence in memory and does not bump `state_rev`. The cap is three claims, in the host, not in the pack. `release` gives the PC back. The connection stays up and may claim again. Only `release` ends a claim. A connection that closes or is dropped leaves its PC held and present, so no other player can claim it, the GM cannot queue for it, and rounds still count it. There is no timer: the claim lasts until a `release` or until `spook run` stops.
+
+The held claim keeps the newest 256 messages sent to it, whether or not a connection reads them. That is the one catch-up window. A new connection takes the PC back with `claim` and `token`, and `after`, the last `seq` it read. The `claimed` reply's `missed` lists the kept messages after `after`, oldest first, each as it was sent. `gap` is `true` when a message after `after` has fallen out of the window. The `resume` and `view` that follow are current either way. A connection that still held the claim lets go of it and stays up unclaimed. A token no claim holds, after a `release` for one, is `UNKNOWN_ID`.
+
+<!-- example: player-claim-token -->
+```json
+{
+  "id": "c1",
+  "body": {
+    "word": "claim",
+    "args": {
+      "token": "<token>",
+      "after": 23
+    }
+  }
+}
+```
+
+<!-- example: player-claimed-token -->
+```json
+{
+  "seq": 35,
+  "reply_to": "c1",
+  "body": {
+    "kind": "claimed",
+    "actor": "pc_rowan",
+    "token": "<token>",
+    "missed": [
+      {
+        "seq": 34,
+        "body": {
+          "kind": "say",
+          "from": "gm",
+          "address": "table",
+          "text": "still there?"
+        }
+      }
+    ]
+  }
+}
+```
 
 A refused claim leaves the connection up. The PC is already held:
 
@@ -341,11 +382,12 @@ A claim's `scrollback` holds the earlier says. The terminal prints them under on
 <!-- example: player-replay-say -->
 ```json
 {
-  "seq": 35,
+  "seq": 40,
   "reply_to": "c1",
   "body": {
     "kind": "claimed",
     "actor": "pc_rowan",
+    "token": "<token>",
     "scrollback": [
       {
         "from": "player:pc_rowan",
@@ -356,6 +398,11 @@ A claim's `scrollback` holds the earlier says. The terminal prints them under on
         "from": "gm",
         "address": "table",
         "text": "good evening"
+      },
+      {
+        "from": "gm",
+        "address": "table",
+        "text": "still there?"
       }
     ]
   }
@@ -595,7 +642,7 @@ A call is `tools/call`. The body below is the JSON-RPC request. The result examp
 
 #### table_status
 
-No key is required. `since` is the only other accepted key. It is a tape sequence number. The reply then includes `events`, the say objects after that sequence, inside the tape window. The window is the first 64 lines after that sequence. A generic client that ignores `spook/event` uses this as the pull path. Without `since`, the reply also carries `pack`, the pack summary.
+No key is accepted. The reply carries `pack`, the pack summary. It holds no says: a player catches up on missed messages with a `claim` by token.
 
 <!-- example: table-status-request -->
 ```json
@@ -702,72 +749,7 @@ No key is required. `since` is the only other accepted key. It is a tape sequenc
 }
 ```
 
-`players` is how many player seats are held. `actors_present` is those PCs. `world_time` is the game clock in minutes. `pack_rev` is the canon hash. A client that opened the pack on disk should compare it and leave on a mismatch. `last_round_at` is the save's stamp. `queued` is waiting moves, each `id`, `actor_id`, and `move`. `last_seq` is the last tape sequence. `events` is absent unless `since` was sent. `pack` is the move menu, cast kinds, place prose, and cast prose, and it is absent when `since` was sent. A server built before `pack` moved here leaves it out, and `spook ai-gm` stops with `this spook run is older than spook ai-gm, rebuild both`.
-
-After the two says above, `since` 0 returns them:
-
-<!-- example: table-status-since-request -->
-```json
-{
-  "jsonrpc": "2.0",
-  "id": 5,
-  "method": "tools/call",
-  "params": {
-    "name": "table_status",
-    "arguments": {
-      "since": 0
-    }
-  }
-}
-```
-
-<!-- example: table-status-since -->
-```json
-{
-  "presence": {
-    "players": 1,
-    "actors_present": [
-      "pc_rowan"
-    ]
-  },
-  "pause": {
-    "presence_clocks": "paused"
-  },
-  "world_time": 1080,
-  "round_index": 0,
-  "state_rev": 0,
-  "pack_rev": "blake2s:5e8aed8ebc0be8c009fdb25a79f4e45c008b4fd081252d985bd23353c8f17f04",
-  "last_round_at": "2026-01-01T00:00:00Z",
-  "queued": [],
-  "last_seq": 2,
-  "events": [
-    {
-      "kind": "say",
-      "seq": 1,
-      "from": "player:pc_rowan",
-      "address": "table",
-      "place": null,
-      "actor": null,
-      "recipients": [
-        "pc_rowan"
-      ],
-      "text": "evening"
-    },
-    {
-      "kind": "say",
-      "seq": 2,
-      "from": "gm",
-      "address": "table",
-      "place": null,
-      "actor": null,
-      "recipients": [
-        "pc_rowan"
-      ],
-      "text": "good evening"
-    }
-  ]
-}
-```
+`players` is how many player seats are held. `actors_present` is those PCs. `world_time` is the game clock in minutes. `pack_rev` is the canon hash. A client that opened the pack on disk should compare it and leave on a mismatch. `last_round_at` is the save's stamp. `queued` is waiting moves, each `id`, `actor_id`, and `move`. `last_seq` is the last tape sequence. `pack` is the move menu, cast kinds, place prose, and cast prose. A server built before `pack` moved here leaves it out, and `spook ai-gm` stops with `this spook run is older than spook ai-gm, rebuild both`.
 
 #### perceive
 
@@ -827,7 +809,7 @@ The call queues the move. It does not emit `spook/event` and it does not write a
   "params": {
     "name": "queue_intent",
     "arguments": {
-      "actor_id": "pc_rowan",
+      "actor_id": "aldric",
       "move": "wait",
       "id": "gm-wait"
     }
@@ -839,6 +821,31 @@ The call queues the move. It does not emit `spook/event` and it does not write a
 ```json
 {
   "id": "gm-wait"
+}
+```
+
+A PC a player holds takes only that player's moves. The GM's move for it is `ACTOR_MISMATCH`, and nothing is queued. The claim holds while that player's connection is down, too.
+
+<!-- example: intent-held-request -->
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 5,
+  "method": "tools/call",
+  "params": {
+    "name": "queue_intent",
+    "arguments": {
+      "actor_id": "pc_rowan",
+      "move": "wait"
+    }
+  }
+}
+```
+
+<!-- example: intent-held -->
+```json
+{
+  "code": "ACTOR_MISMATCH"
 }
 ```
 
@@ -933,7 +940,9 @@ The result is the tape object. The same object follows as a `spook/event`, and e
   "state_rev": 1,
   "changed_keys": [
     "clock_paused assassination_debt",
+    "last_act_round aldric",
     "last_act_round mira",
+    "live_acts_this_hour aldric",
     "live_acts_this_hour mira",
     "note note_mira_door"
   ],
@@ -1003,7 +1012,7 @@ An unknown tool:
 
 ### Events
 
-The seat pushes one `spook/event` notification for each message the table sends this seat, the hello first. Its params are the message's envelope, as on the game port. A generic client may ignore them and poll `table_status` with `since` instead. The GM seat is not rate-limited.
+The seat pushes one `spook/event` notification for each message the table sends this seat, the hello first. Its params are the message's envelope, as on the game port. A client that ignores them misses those messages. `table_status` returns only the current state. The GM seat is not rate-limited.
 
 A player say:
 
