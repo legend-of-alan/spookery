@@ -1,7 +1,6 @@
 //! An open pack, and the check that reads one without writing.
 
 use std::collections::BTreeSet;
-use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -590,43 +589,40 @@ pub fn check_pack(root: &Path) -> Vec<Diagnostic> {
         }
     };
     let now_path = journal::save_path(root);
-    let loaded = if now_path.is_file() {
-        match fs::read(&now_path) {
-            Ok(bytes) => match std::str::from_utf8(&bytes) {
-                Ok(text) => match save::parse(text) {
-                    Ok(state) => Some((bytes, state)),
-                    Err(more) => {
-                        diags.extend(more);
-                        None
-                    }
-                },
-                Err(_) => {
-                    diags.push(
-                        schema_error(
-                            "state/save.yaml",
-                            "this file is not UTF-8 text",
-                            "save it as UTF-8",
-                        )
-                        .at_path("schema"),
-                    );
+    let loaded = match journal::read_save(&now_path) {
+        Ok(bytes) => match std::str::from_utf8(&bytes) {
+            Ok(text) => match save::parse(text) {
+                Ok(state) => Some((bytes, state)),
+                Err(more) => {
+                    diags.extend(more);
                     None
                 }
             },
             Err(_) => {
                 diags.push(
-                    error(
+                    schema_error(
                         "state/save.yaml",
-                        Reason::Schema,
-                        "state/save.yaml could not be read",
-                        "check that the file is readable",
+                        "this file is not UTF-8 text",
+                        "save it as UTF-8",
                     )
                     .at_path("schema"),
                 );
                 None
             }
+        },
+        Err(Reason::NotInSpec) => None,
+        Err(reason) => {
+            diags.push(
+                error(
+                    "state/save.yaml",
+                    reason,
+                    "state/save.yaml could not be read",
+                    "check that the file is readable",
+                )
+                .at_path("schema"),
+            );
+            None
         }
-    } else {
-        None
     };
     if let Some((bytes, state)) = &loaded {
         let live = journal::read_live_records(root).unwrap_or_default();
