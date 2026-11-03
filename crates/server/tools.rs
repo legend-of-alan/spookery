@@ -239,10 +239,13 @@ mod tests {
     use serde_json::json;
     use spookery_engine::{testing::copy_pack, World};
 
-    use super::TOOLS;
+    use spookery_engine::{Presence, Reason};
+
+    use super::{run_gm_word, TOOLS};
     use crate::protocol::{QueuedMove, Seat, WORDS};
 
-    /// Each MCP tool runs a GM word the hello lists, and each GM word has one tool.
+    /// Each MCP tool runs a GM word the hello lists, each GM word has one tool, and
+    /// `run_gm_word` runs each one: well-formed arguments are not `SCHEMA`.
     #[test]
     fn the_tools_are_the_gm_words() {
         let mut tools: Vec<&str> = TOOLS.iter().map(|tool| tool.word).collect();
@@ -254,6 +257,24 @@ mod tests {
         tools.sort_unstable();
         words.sort_unstable();
         assert_eq!(tools, words);
+        let pack = copy_pack("oneshot-docks", "tools_words");
+        let mut world = spookery_engine::testing::resume(&pack);
+        for (word, args) in [
+            ("status", json!({})),
+            ("perceive", json!({"as": "pc_rowan"})),
+            ("queue", json!({"actor_id": "pc_rowan", "move": "wait"})),
+            ("say", json!({"address": "table", "text": "hi"})),
+            ("commit", json!({"include_round": false})),
+            ("release", json!({})),
+        ] {
+            let args = args.as_object().cloned().unwrap_or_default();
+            let ran = run_gm_word(&mut world, &Presence::default(), word, &args);
+            assert!(!matches!(ran, Err(Reason::Schema)), "{word}");
+        }
+        assert!(matches!(
+            run_gm_word(&mut world, &Presence::default(), "fly", &Default::default()),
+            Err(Reason::Schema)
+        ));
     }
 
     #[test]

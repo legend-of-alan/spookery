@@ -166,7 +166,7 @@ pub struct Host {
     /// A GM seated on `/gm` on the game port.
     pub ws_gm: Option<Seat>,
     /// A player connection a step opened and did not claim with.
-    pub door: Option<Seat>,
+    pub unclaimed: Option<Seat>,
     /// The GM client that called `close` and has not been dropped.
     pub closed_gm: Option<GmClient>,
     /// Set when `read_presence` opened a GM only to read seats.
@@ -497,7 +497,7 @@ fn attach_host<'w>(
         players: Vec::new(),
         gm: None,
         ws_gm: None,
-        door: None,
+        unclaimed: None,
         closed_gm: None,
         gm_probe: false,
         mcp_port: mcp_addr.port(),

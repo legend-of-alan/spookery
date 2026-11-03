@@ -16,7 +16,7 @@ fn a_player_connects_over_websocket(world: &mut World) {
     let seat = Seat::open(table::live_mut(world).game_port, "player");
     table::wait_suffix(&seat.text, 0, "\"kind\":\"hello\"");
     world.scratch = support::text_of(&seat.text);
-    table::live_mut(world).door = Some(seat);
+    table::live_mut(world).unclaimed = Some(seat);
 }
 
 #[then(regex = r"^the hello lists the version and the words (.+)$")]
@@ -39,15 +39,15 @@ fn the_hello_lists_the_version_and_the_words(world: &mut World, words: String) {
 
 #[when(regex = r"^it sends (\{.+\})$")]
 fn it_sends(world: &mut World, text: String) {
-    let mark = door(world).mark();
-    door(world).send_raw(Message::text(text));
+    let mark = unclaimed(world).mark();
+    unclaimed(world).send_raw(Message::text(text));
     world.mark = mark;
 }
 
 #[then(regex = r"^it gets (\{.+\})$")]
 fn it_gets(world: &mut World, text: String) {
     let want: Value = serde_json::from_str(&text).unwrap_or_else(|err| panic!("{err}: {text}"));
-    let seat = door(world);
+    let seat = unclaimed(world);
     let got = table::wait_suffix(&seat.text, world.mark, "\n");
     let got: Value = serde_json::from_str(got.lines().next().unwrap_or_default())
         .unwrap_or_else(|err| panic!("{err}: {got}"));
@@ -166,11 +166,11 @@ fn ws_gm(world: &World) -> &Seat {
         .unwrap_or_else(|| panic!("no GM on the game port"))
 }
 
-fn door(world: &World) -> &Seat {
+fn unclaimed(world: &World) -> &Seat {
     world
         .live
         .as_ref()
-        .and_then(|live| live.door.as_ref())
+        .and_then(|live| live.unclaimed.as_ref())
         .unwrap_or_else(|| panic!("no WebSocket connection"))
 }
 

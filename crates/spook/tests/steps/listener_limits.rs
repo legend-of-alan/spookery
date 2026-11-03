@@ -220,16 +220,16 @@ fn a_socket_connects_and_sends_nothing(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
     table::serve_in_process(world, &pack);
     let seat = table::Seat::open(table::live_mut(world).game_port, "player");
-    // The door sets its deadline before the table sends the hello.
+    // The game port sets the first-message deadline before the table sends the hello.
     table::wait_suffix(&seat.text, 0, "\"kind\":\"hello\"");
     table::advance(world, FIRST_MESSAGE_TIMEOUT);
     seat.wait_closed();
-    world.hello_closed = true;
+    world.silent_closed = true;
 }
 
 #[then(expr = "the socket is closed before the hello")]
 fn the_socket_is_closed_before_the_hello(world: &mut World) {
-    assert!(world.hello_closed);
+    assert!(world.silent_closed);
 }
 
 #[when(expr = "one player sends 200 lines as fast as it can")]
