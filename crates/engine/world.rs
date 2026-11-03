@@ -434,8 +434,8 @@ impl World<()> {
         let now_text = std::str::from_utf8(&now_bytes).map_err(|_| Reason::Schema)?;
         let state = save::parse(now_text).map_err(|diags| first_reason(&diags))?;
         let live = journal::read_live_records(root).unwrap_or_default();
-        let mut problems = save_problems(&state, &now_bytes);
-        if let Some(diag) = pack_rev_problem(root, tip_pack_rev(&live, &state), &now_bytes) {
+        let mut problems = check_save_text(&state, &now_bytes);
+        if let Some(diag) = check_pack_rev(root, tip_pack_rev(&live, &state), &now_bytes) {
             problems.insert(0, diag);
         }
         let continues = journal_continues(&live, &state);
@@ -536,7 +536,7 @@ fn tip_pack_rev<'a>(live: &'a [Record], state: &'a State) -> &'a str {
 }
 
 /// `Some` when the canon files are not the journal tip's hash.
-fn pack_rev_problem(root: &Path, tip: &str, bytes: &[u8]) -> Option<Diagnostic> {
+fn check_pack_rev(root: &Path, tip: &str, bytes: &[u8]) -> Option<Diagnostic> {
     match pack_rev(root) {
         Ok(rev) if tip != rev => {
             let mut diag = error(
@@ -625,7 +625,7 @@ pub fn check_pack(root: &Path) -> Vec<Diagnostic> {
     };
     if let Some((bytes, state)) = &loaded {
         let live = journal::read_live_records(root).unwrap_or_default();
-        let mut problems = save_problems(state, bytes);
+        let mut problems = check_save_text(state, bytes);
         // A migrate record past the checkpoint has already accepted the save's edit.
         let migrating = live.iter().any(|entry| {
             matches!(entry, Record::Migrate(_)) && entry.state_rev_after() > state.state_rev
@@ -633,7 +633,7 @@ pub fn check_pack(root: &Path) -> Vec<Diagnostic> {
         if migrating {
             problems.retain(|diag| diag.code != Code::Error(Reason::HandEdit));
         }
-        if let Some(diag) = pack_rev_problem(root, tip_pack_rev(&live, state), bytes) {
+        if let Some(diag) = check_pack_rev(root, tip_pack_rev(&live, state), bytes) {
             problems.insert(0, diag);
         }
         diags.extend(problems);
@@ -653,7 +653,7 @@ pub fn check_pack(root: &Path) -> Vec<Diagnostic> {
     diags
 }
 
-fn save_problems(state: &State, bytes: &[u8]) -> Vec<Diagnostic> {
+fn check_save_text(state: &State, bytes: &[u8]) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
     if state.actors.contains_key(crate::rules::effect::WORLD) {
         diags.push(
