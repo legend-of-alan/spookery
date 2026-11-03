@@ -102,7 +102,7 @@ struct Turn {
     view: Option<(TurnView, PromptContext)>,
     says: VecDeque<SayArgs>,
     intent: Option<protocol::IntentArgs>,
-    queued_intent: bool,
+    intent_queued: bool,
     submitted: Vec<TapeLine>,
     checks: Vec<Roll>,
 }
@@ -186,7 +186,7 @@ impl Agent {
                 Ok(self.advance_actions(epilogue))
             }
             (Phase::Intent, Input::QueueIntentReply(reply)) => {
-                self.turn.queued_intent = reply.is_ok();
+                self.turn.intent_queued = reply.is_ok();
                 Ok(self.advance_actions(false))
             }
             (Phase::Commit, Input::CommitRoundReply(reply)) => match reply {
@@ -295,9 +295,10 @@ impl Agent {
             self.phase = Phase::Intent;
             return Step::QueueIntent(intent);
         }
-        // Commit only the queue this turn saw: a move queued since then keeps its wake.
+        // Commit only when this turn saw a queue or queued its own intent, so a move queued
+        // during a say-only turn keeps its wake.
         let status = self.turn.status.as_ref().expect("status");
-        if status.queued.is_empty() && !self.turn.queued_intent {
+        if status.queued.is_empty() && !self.turn.intent_queued {
             return self.finish_commit(false);
         }
         self.phase = Phase::Commit;
