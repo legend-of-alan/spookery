@@ -3,7 +3,7 @@
 use std::fs::{self, OpenOptions};
 use std::path::{Path, PathBuf};
 
-use crate::store::durability::{add_suffix, fsync_dir, fsync_file, rename, store_io};
+use crate::store::durability::{add_suffix, fsync_dir, fsync_file, refuse_io, rename};
 use crate::store::journal;
 use crate::store::lock::WriteGuard;
 use crate::Reason;
@@ -33,7 +33,7 @@ pub(crate) fn close_finished(root: &Path, _write: &WriteGuard) -> Result<(), Rea
 }
 
 fn close_one(root: &Path, plain: &Path) -> Result<(), Reason> {
-    let bytes = fs::read(plain).map_err(store_io)?;
+    let bytes = fs::read(plain).map_err(refuse_io)?;
     let gz = add_suffix(plain, ".gz");
     if gz_matches(&gz, &bytes) {
         return remove_plain(plain);
@@ -44,8 +44,8 @@ fn close_one(root: &Path, plain: &Path) -> Result<(), Reason> {
         return Ok(());
     }
     let tmp = add_suffix(&gz, ".tmp");
-    let gz_bytes = journal::gzip_bytes(&bytes).map_err(store_io)?;
-    fs::write(&tmp, gz_bytes).map_err(store_io)?;
+    let gz_bytes = journal::gzip_bytes(&bytes).map_err(refuse_io)?;
+    fs::write(&tmp, gz_bytes).map_err(refuse_io)?;
     fsync_file(&tmp)?;
     rename(&tmp, &gz)?;
     remove_plain(plain)
@@ -70,7 +70,7 @@ fn gz_matches(gz: &Path, plain: &[u8]) -> bool {
 }
 
 fn remove_plain(plain: &Path) -> Result<(), Reason> {
-    fs::remove_file(plain).map_err(store_io)?;
+    fs::remove_file(plain).map_err(refuse_io)?;
     if let Some(parent) = plain.parent() {
         fsync_dir(parent)?;
     }
@@ -112,8 +112,8 @@ fn cut_torn_tail(root: &Path) -> Result<(), Reason> {
     let file = OpenOptions::new()
         .write(true)
         .open(&path)
-        .map_err(store_io)?;
-    file.set_len(end as u64).map_err(store_io)?;
+        .map_err(refuse_io)?;
+    file.set_len(end as u64).map_err(refuse_io)?;
     fsync_file(&path)?;
     Ok(())
 }

@@ -53,7 +53,7 @@ pub(crate) fn read_head(pack: &Path) -> Result<Option<CheckpointHead>, Error> {
     let text = fs::read_to_string(&path).map_err(|_| {
         Error::new(
             &path,
-            Reason::JournalDiverged,
+            Reason::StoreIo,
             "the checkpoint head could not be read",
         )
     })?;
@@ -219,13 +219,8 @@ fn base_hash(pack: &Path) -> Result<String, Error> {
     } else {
         pack.join("state/save.yaml")
     };
-    let bytes = fs::read(&path).map_err(|_| {
-        Error::new(
-            &path,
-            Reason::JournalDiverged,
-            "the snapshot could not be read",
-        )
-    })?;
+    let bytes = fs::read(&path)
+        .map_err(|_| Error::new(&path, Reason::StoreIo, "the snapshot could not be read"))?;
     Ok(blake2s_tagged(&bytes))
 }
 
@@ -341,21 +336,12 @@ pub fn list_bundles(pack: &Path) -> Result<Vec<(String, PathBuf)>, Error> {
     if !dir.is_dir() {
         return Ok(Vec::new());
     }
-    let entries = fs::read_dir(&dir).map_err(|_| {
-        Error::new(
-            &dir,
-            Reason::JournalDiverged,
-            "the log directory could not be read",
-        )
-    })?;
+    let entries = fs::read_dir(&dir)
+        .map_err(|_| Error::new(&dir, Reason::StoreIo, "the log directory could not be read"))?;
     let mut by_index: BTreeMap<u32, (String, PathBuf)> = BTreeMap::new();
     for entry in entries {
         let entry = entry.map_err(|_| {
-            Error::new(
-                &dir,
-                Reason::JournalDiverged,
-                "the log directory could not be read",
-            )
+            Error::new(&dir, Reason::StoreIo, "the log directory could not be read")
         })?;
         let name = entry.file_name();
         let name = name.to_string_lossy().into_owned();
@@ -429,18 +415,24 @@ fn parse_complete(name: &str, text: &str) -> Result<Vec<Record>, Error> {
 }
 
 fn read_bundle(name: &str, path: &Path) -> Result<String, Error> {
-    let unread = || {
+    let mut bytes = fs::read(path).map_err(|_| {
+        Error::new(
+            path,
+            Reason::StoreIo,
+            "the journal bundle could not be read",
+        )
+    })?;
+    let undecoded = || {
         Error::new(
             path,
             Reason::JournalDiverged,
-            "the journal bundle could not be read",
+            "the journal bundle could not be decoded",
         )
     };
-    let mut bytes = fs::read(path).map_err(|_| unread())?;
     if name.ends_with(".gz") {
-        bytes = gunzip_bytes(&bytes).map_err(|_| unread())?;
+        bytes = gunzip_bytes(&bytes).map_err(|_| undecoded())?;
     }
-    String::from_utf8(bytes).map_err(|_| unread())
+    String::from_utf8(bytes).map_err(|_| undecoded())
 }
 
 /// Gzip `plain` into memory. The commit path writes and flushes the bytes.

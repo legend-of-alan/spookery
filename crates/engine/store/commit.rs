@@ -9,7 +9,7 @@ use crate::diagnostic::first_reason;
 use crate::draft::Draft;
 use crate::hash::blake2s_tagged;
 use crate::model::State;
-use crate::store::durability::{fsync_dir, fsync_file, store_io, write_atomic};
+use crate::store::durability::{fsync_dir, fsync_file, refuse_io, write_atomic};
 use crate::store::journal;
 use crate::store::lock::{lock_write, PackGuard, WriteGuard};
 use crate::store::records::{Record, RoundRecord};
@@ -179,15 +179,15 @@ fn append_to_bundle(root: &Path, payload: &str, write: &WriteGuard) -> Result<St
     let path = journal::next_bundle_path(root);
     let created = !path.is_file();
     if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(store_io)?;
+        fs::create_dir_all(parent).map_err(refuse_io)?;
     }
     {
         let mut file = OpenOptions::new()
             .create(true)
             .append(true)
             .open(&path)
-            .map_err(store_io)?;
-        file.write_all(payload.as_bytes()).map_err(store_io)?;
+            .map_err(refuse_io)?;
+        file.write_all(payload.as_bytes()).map_err(refuse_io)?;
     }
     fsync_file(&path)?;
     if created {
@@ -224,14 +224,14 @@ fn store_checkpoint(
     let save = state.join("save.yaml");
     let base = journal::base_path(root);
     if !base.is_file() {
-        fs::copy(&save, &base).map_err(store_io)?;
+        fs::copy(&save, &base).map_err(refuse_io)?;
         fsync_file(&base)?;
         if let Some(parent) = base.parent() {
             fsync_dir(parent)?;
         }
     }
     let snap_dir = state.join("checkpoints");
-    fs::create_dir_all(&snap_dir).map_err(store_io)?;
+    fs::create_dir_all(&snap_dir).map_err(refuse_io)?;
     write_atomic(&save, now_bytes)?;
     write_atomic(&snap_dir.join(format!("{state_rev}.yaml")), now_bytes)?;
     Ok(())

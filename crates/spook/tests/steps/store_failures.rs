@@ -15,6 +15,15 @@ fn the_tape_cannot_be_written(world: &mut World) {
     fs::create_dir(&tape).unwrap_or_else(|err| panic!("tape dir: {err}"));
 }
 
+/// A directory where the live bundle was, so reading it fails on every platform.
+#[when(expr = "the live journal bundle cannot be read")]
+fn the_live_journal_bundle_cannot_be_read(world: &mut World) {
+    let path = spookery_engine::testing::journal::find_live_bundle(table::pack(world))
+        .unwrap_or_else(|| panic!("no live bundle"));
+    fs::remove_file(&path).unwrap_or_else(|err| panic!("remove bundle: {err}"));
+    fs::create_dir(&path).unwrap_or_else(|err| panic!("bundle dir: {err}"));
+}
+
 #[when(expr = "the player tries to say {string}")]
 fn the_player_tries_to_say(world: &mut World, text: String) {
     let (mark, added) = table::player_send(world, &format!("say {text}"), "\"kind\":");
