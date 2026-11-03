@@ -835,8 +835,8 @@ fn an_empty_round_passes(world: &mut World) {
     play_and_keep_summaries(world, pack, Vec::new());
 }
 
-#[then(expr = "the round refuses the habit with {string}")]
-fn the_round_refuses_the_habit(world: &mut World, code: String) {
+#[then(expr = "the round's only refusal is {string}")]
+fn the_rounds_only_refusal_is(world: &mut World, code: String) {
     let round = read_latest_round(world.pack.as_ref().unwrap());
     let codes: Vec<&str> = round["refused"]
         .as_array()
