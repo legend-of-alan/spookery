@@ -107,9 +107,10 @@ Tested in `features/seats/one_gm_and_three_players.feature`,
 A later move sees what an earlier move in that round already changed. One
 refused effect rolls the whole rule back. A rule over the effect cap is refused
 whole, not cut short, and the log records the refusal. That holds for a change
-rule too. A refused roll is not reported as a success. A move pays the cost of
-the rule it rolled for, even when an earlier move that round changed which rule
-its verb would pick. A place's verb rule beats the shared rule. A cast
+rule too. A refused roll is not reported as a success. A roll target that
+fails to evaluate refuses that move with its error, and the rest of the round
+lands and commits. A move pays the cost of the rule it rolled for, even when an
+earlier move that round changed which rule its verb would pick. A place's verb rule beats the shared rule. A cast
 member's verb rule is picked by naming them while they share the actor's place,
 and a bare verb never reaches it. A wielded weapon's attack beats the shared
 attack. With nothing wielded, the shared attack runs. Typing a full rule id is
@@ -119,6 +120,7 @@ exit into a seated player's room. An NPC habit stays quiet while a player shares
 the room. The GM can still queue it.
 
 Tested in `features/round/a_rules_effects_are_all_or_nothing.feature`,
+`features/round/a_broken_roll_target_refuses_one_move.feature`,
 `features/round/apply_pays_the_rule_that_rolled.feature`,
 `features/rules/rules_live_with_their_owner.feature`,
 `features/items/items_are_real.feature`, and
