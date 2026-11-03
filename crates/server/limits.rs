@@ -1,26 +1,23 @@
-//! Caps, the capped line and byte readers, and the per-player token bucket.
-//!
-//! A hello is read one byte at a time so a following line stays on the socket
-//! for the player reader. Player lines after the hello use a `BufReader`.
+//! Caps, socket options and the per-connection token bucket.
 
-use std::io;
-use std::pin::Pin;
-use std::task::{Context, Poll};
 use std::time::Duration;
 
-use tokio::io::{AsyncBufRead, AsyncRead, ReadBuf};
 use tokio::time::Instant;
 
-/// Hello and player lines, not counting the newline.
-pub(super) const PLAYER_LINE_CAP: usize = 8 * 1024;
+/// The longest client message the table reads. A longer one is `LINE_TOO_LONG`.
+pub(super) const CLIENT_MESSAGE_CAP: usize = 8 * 1024;
+
+/// The longest WebSocket message the game port takes in at all. A longer one drops the
+/// connection.
+pub(super) const MESSAGE_CAP: usize = 64 * 1024;
 
 /// HTTP POST body cap for the GM seat.
 pub(super) const GM_BODY_CAP: usize = 1024 * 1024;
 
-/// Player lines accepted per second after the burst is spent.
+/// Client messages accepted per second after the burst is spent.
 pub(super) const RATE_PER_SEC: u64 = 5;
 
-/// Player lines accepted immediately on a fresh connection.
+/// Client messages accepted immediately on a fresh connection.
 pub(super) const BURST: u64 = 10;
 
 /// Frames queued toward one socket before that socket is dropped.
@@ -31,183 +28,23 @@ pub(super) const OUTBOUND_FRAME_CAP: usize = 256;
 /// window fills, so the byte cap is what drops a stopped reader there.
 pub(super) const OUTBOUND_BYTE_CAP: usize = 64 * 1024;
 
-/// Send buffer the player socket asks for. The OS may grant more.
+/// Send buffer a game port socket asks for. The OS may grant more.
 pub(super) const REQUESTED_SEND_BUFFER: usize = 8 * 1024;
 
-/// Keepalive probes on a player socket: the first after 30 idle seconds, then
+/// Keepalive probes on a game port socket: the first after 30 idle seconds, then
 /// three more one second apart. A silent socket holds its seat for about 33 seconds.
 pub(super) const KEEPALIVE: socket2::TcpKeepalive = socket2::TcpKeepalive::new()
     .with_time(Duration::from_secs(30))
     .with_interval(Duration::from_secs(1))
     .with_retries(3);
 
-pub(super) const HELLO_TIMEOUT: Duration = Duration::from_secs(10);
+/// How long a new connection may wait before its first message.
+pub(super) const FIRST_MESSAGE_TIMEOUT: Duration = Duration::from_secs(10);
 
-/// Millitokens per line. Refill uses this scale so the bucket stays integer.
+/// Millitokens per message. Refill uses this scale so the bucket stays integer.
 const MILLITOKENS_PER_TOKEN: u128 = 1000;
 
-/// Sent from the capped line reader to a player's socket task.
-#[derive(Debug)]
-pub(super) enum ReadLineError {
-    Io,
-    TooLong,
-    BadUtf8,
-}
-
-/// One LF line. `cap` counts every byte before the LF, including a CR.
-/// The buffer never holds more than `cap` bytes.
-pub(super) async fn read_capped_line<R: AsyncBufRead + Unpin>(
-    reader: &mut R,
-    cap: usize,
-) -> Result<Option<String>, ReadLineError> {
-    use tokio::io::AsyncBufReadExt;
-    let mut buf = Vec::new();
-    loop {
-        if buf.len() > cap {
-            return Err(ReadLineError::TooLong);
-        }
-        let room = cap - buf.len();
-        let (take, finished, too_long, eof) = {
-            let filled = reader.fill_buf().await.map_err(|_| ReadLineError::Io)?;
-            if filled.is_empty() {
-                (0, true, false, true)
-            } else if let Some(pos) = filled.iter().position(|byte| *byte == b'\n') {
-                if pos > room {
-                    (room, true, true, false)
-                } else {
-                    (pos + 1, true, false, false)
-                }
-            } else if filled.len() > room {
-                (room, true, true, false)
-            } else {
-                (filled.len(), false, false, false)
-            }
-        };
-        if eof {
-            if buf.is_empty() {
-                return Ok(None);
-            }
-            return finish(buf);
-        }
-        if take > 0 {
-            let filled = reader.fill_buf().await.map_err(|_| ReadLineError::Io)?;
-            buf.extend_from_slice(&filled[..take]);
-            reader.consume(take);
-        }
-        if too_long {
-            return Err(ReadLineError::TooLong);
-        }
-        if finished {
-            if buf.last() == Some(&b'\n') {
-                buf.pop();
-            }
-            if buf.last() == Some(&b'\r') {
-                buf.pop();
-            }
-            return finish(buf);
-        }
-    }
-}
-
-fn finish(buf: Vec<u8>) -> Result<Option<String>, ReadLineError> {
-    match String::from_utf8(buf) {
-        Ok(text) => Ok(Some(text)),
-        Err(_) => Err(ReadLineError::BadUtf8),
-    }
-}
-
-/// Reads one byte at a time and only the bytes the line reader consumes.
-pub(super) struct ByteReader<R> {
-    inner: R,
-    buf: [u8; 1],
-    len: usize,
-}
-
-impl<R> ByteReader<R> {
-    pub(super) fn new(inner: R) -> Self {
-        Self {
-            inner,
-            buf: [0; 1],
-            len: 0,
-        }
-    }
-}
-
-impl<R: AsyncRead + Unpin> AsyncRead for ByteReader<R> {
-    fn poll_read(
-        self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-        buf: &mut ReadBuf<'_>,
-    ) -> Poll<io::Result<()>> {
-        let this = self.get_mut();
-        if buf.remaining() == 0 {
-            return Poll::Ready(Ok(()));
-        }
-        if this.len == 0 {
-            let mut tmp = [0u8; 1];
-            let mut read = ReadBuf::new(&mut tmp);
-            match Pin::new(&mut this.inner).poll_read(cx, &mut read) {
-                Poll::Pending => return Poll::Pending,
-                Poll::Ready(Err(err)) => return Poll::Ready(Err(err)),
-                Poll::Ready(Ok(())) => {
-                    if read.filled().is_empty() {
-                        return Poll::Ready(Ok(()));
-                    }
-                    this.buf[0] = read.filled()[0];
-                    this.len = 1;
-                }
-            }
-        }
-        let n = this.len.min(buf.remaining());
-        buf.initialize_unfilled_to(n)
-            .copy_from_slice(&this.buf[..n]);
-        buf.advance(n);
-        if n >= this.len {
-            this.len = 0;
-        } else {
-            this.buf.copy_within(n..this.len, 0);
-            this.len -= n;
-        }
-        Poll::Ready(Ok(()))
-    }
-}
-
-impl<R: AsyncRead + Unpin> AsyncBufRead for ByteReader<R> {
-    fn poll_fill_buf(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<&[u8]>> {
-        let this = self.get_mut();
-        if this.len > 0 {
-            let len = this.len;
-            return Poll::Ready(Ok(&this.buf[..len]));
-        }
-        let mut tmp = [0u8; 1];
-        let mut read = ReadBuf::new(&mut tmp);
-        match Pin::new(&mut this.inner).poll_read(cx, &mut read) {
-            Poll::Pending => Poll::Pending,
-            Poll::Ready(Err(err)) => Poll::Ready(Err(err)),
-            Poll::Ready(Ok(())) => {
-                if read.filled().is_empty() {
-                    Poll::Ready(Ok(&[]))
-                } else {
-                    this.buf[0] = read.filled()[0];
-                    this.len = 1;
-                    Poll::Ready(Ok(&this.buf[..1]))
-                }
-            }
-        }
-    }
-
-    fn consume(self: Pin<&mut Self>, amt: usize) {
-        let this = self.get_mut();
-        if amt >= this.len {
-            this.len = 0;
-        } else if amt > 0 {
-            this.buf.copy_within(amt..this.len, 0);
-            this.len -= amt;
-        }
-    }
-}
-
-/// One token per line that is read. An empty bucket spends nothing.
+/// One token per message that is read. An empty bucket spends nothing.
 pub(super) struct TokenBucket {
     rate_per_sec: u128,
     burst: u128,
@@ -300,10 +137,6 @@ pub(super) async fn wait_for_token(
 
 #[cfg(test)]
 mod tests {
-    use std::io::Cursor;
-
-    use tokio::io::BufReader;
-
     use super::*;
 
     #[test]
@@ -375,55 +208,5 @@ mod tests {
         let rest = bucket.until_token(later);
         assert!(rest < full, "{rest:?}");
         assert!(rest > Duration::from_millis(199), "{rest:?}");
-    }
-
-    #[tokio::test]
-    async fn a_line_at_the_cap_is_kept_and_one_more_byte_is_not() {
-        let mut exact = vec![b'a'; PLAYER_LINE_CAP];
-        exact.push(b'\n');
-        let mut reader = BufReader::new(Cursor::new(exact));
-        let line = read_capped_line(&mut reader, PLAYER_LINE_CAP)
-            .await
-            .expect("read")
-            .expect("line");
-        assert_eq!(line.len(), PLAYER_LINE_CAP);
-
-        let mut over = vec![b'a'; PLAYER_LINE_CAP + 1];
-        over.push(b'\n');
-        let mut reader = BufReader::new(Cursor::new(over));
-        let err = read_capped_line(&mut reader, PLAYER_LINE_CAP)
-            .await
-            .expect_err("cap");
-        assert!(matches!(err, ReadLineError::TooLong));
-    }
-
-    #[tokio::test]
-    async fn crlf_eof_and_invalid_utf8() {
-        let mut reader = BufReader::new(Cursor::new(&b"hi\r\n"[..]));
-        let line = read_capped_line(&mut reader, 8).await.unwrap().unwrap();
-        assert_eq!(line, "hi");
-
-        let mut reader = BufReader::new(Cursor::new(&b"partial"[..]));
-        let line = read_capped_line(&mut reader, 8).await.unwrap().unwrap();
-        assert_eq!(line, "partial");
-
-        let mut reader = BufReader::new(Cursor::new(&b""[..]));
-        assert!(read_capped_line(&mut reader, 8).await.unwrap().is_none());
-
-        let mut reader = BufReader::new(Cursor::new(&b"\xff\n"[..]));
-        let err = read_capped_line(&mut reader, 8).await.unwrap_err();
-        assert!(matches!(err, ReadLineError::BadUtf8));
-    }
-
-    #[tokio::test]
-    async fn a_hello_read_stops_at_the_newline() {
-        let data = b"player:ada\n{\"jsonrpc\":1}\n";
-        let mut reader = ByteReader::new(Cursor::new(&data[..]));
-        let line = read_capped_line(&mut reader, PLAYER_LINE_CAP)
-            .await
-            .unwrap()
-            .unwrap();
-        assert_eq!(line, "player:ada");
-        assert_eq!(reader.inner.position(), 11);
     }
 }

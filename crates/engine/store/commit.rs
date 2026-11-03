@@ -23,6 +23,9 @@ const CHECKPOINT_WARNING: &str = "the checkpoint bundle was not closed";
 pub struct CommitOutcome {
     pub state_rev: u64,
     pub log_path: String,
+    /// The committed round's index and the world time it ended at.
+    pub round_index: u64,
+    pub world_time: u64,
 }
 
 /// Seal one played round, append it, finish a due checkpoint, and clear the queue.
@@ -64,6 +67,8 @@ pub fn commit(
     Ok(CommitOutcome {
         state_rev: world.state.state_rev,
         log_path,
+        round_index: world.state.round_index,
+        world_time: world.state.world_time,
     })
 }
 

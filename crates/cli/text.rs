@@ -1,83 +1,101 @@
-//! Readable text for player frames, GM events, and the status and commit replies.
+//! Readable text for player and GM messages, and the status and commit replies.
 
 use crate::protocol::{
-    self, exit_phrase, ClockView, CommitBody, ExitView, GmEvent, MeterView, NoteView, Outcome,
-    PlayerFrame, Roll, Speaker, TableStatus,
+    self, exit_phrase, ClockView, CommitBody, ExitView, MeterView, NoteView, Outcome, Roll, Say,
+    ServerBody, Speaker, TableStatus,
 };
 
-/// Readable text for one player frame. A new [`PlayerFrame`] variant fails here until it is rendered.
-pub fn render(frame: &PlayerFrame) -> String {
-    match frame {
-        PlayerFrame::Say {
-            from,
-            address: _,
-            text,
-            replay: _,
-        } => match from {
-            // One player sits this socket, so a player id is the seated PC.
-            Speaker::Player(_) => format!("You: {text}"),
-            Speaker::Gm | Speaker::Npc(_) => format!("{}: {text}", speaker_name(from)),
-        },
-        PlayerFrame::Queued(_) => "Your action is queued.".to_string(),
-        PlayerFrame::Check { outcome } => match outcome {
+/// Readable text for one player body. Empty means print nothing.
+pub fn render(body: &ServerBody) -> String {
+    match body {
+        ServerBody::Say(say) => render_say(say),
+        ServerBody::Queued { .. } => "Your action is queued.".to_string(),
+        ServerBody::Check { outcome } => match outcome {
             Outcome::Success => "Your roll succeeded.".to_string(),
             Outcome::Partial => "Your roll partly succeeded.".to_string(),
             Outcome::Miss => "Your roll missed.".to_string(),
         },
-        PlayerFrame::Resume { notes, clocks } => render_resume(notes, clocks),
-        PlayerFrame::Lines { text } => text.clone(),
-        PlayerFrame::Refused(refusal) => refusal.to_string(),
-        PlayerFrame::View(view) => render_view(view),
+        ServerBody::Resume { notes, clocks } => render_resume(notes, clocks),
+        ServerBody::Lines { text } => text.clone(),
+        ServerBody::Refused(refusal) => refusal.to_string(),
+        ServerBody::View(view) => render_view(view),
+        ServerBody::Claimed { scrollback, .. } => render_scrollback(scrollback),
+        ServerBody::Hello { .. }
+        | ServerBody::Released
+        | ServerBody::Presence { .. }
+        | ServerBody::Round { .. }
+        | ServerBody::Committed(_)
+        | ServerBody::Status(_) => String::new(),
     }
 }
 
-/// Readable text for the frames of one sitting.
+fn render_say(say: &Say) -> String {
+    match &say.from {
+        // One player sits this socket, so a player id is the seated PC.
+        Speaker::Player(_) => format!("You: {}", say.text),
+        from @ (Speaker::Gm | Speaker::Npc(_)) => format!("{}: {}", speaker_name(from), say.text),
+    }
+}
+
+/// The says a claim replays, under an `Earlier:` heading.
+fn render_scrollback(says: &[Say]) -> String {
+    if says.is_empty() {
+        return String::new();
+    }
+    let lines: Vec<String> = says.iter().map(render_say).collect();
+    format!(
+        "Earlier:
+{}",
+        lines.join(
+            "
+"
+        )
+    )
+}
+
+/// Readable text for the messages of one sitting.
 pub struct PlayerText {
     seen_resume: bool,
-    replay_section_open: bool,
+    after_scrollback: bool,
 }
 
 impl PlayerText {
     pub fn new() -> Self {
         Self {
             seen_resume: false,
-            replay_section_open: false,
+            after_scrollback: false,
         }
     }
 
-    /// Text for this frame. Empty means print nothing.
-    /// A leading newline is the blank line before the first live frame.
-    pub fn render(&mut self, frame: &PlayerFrame) -> String {
-        match frame {
-            PlayerFrame::Say { replay: true, .. } => self.start_replay_section(render(frame)),
-            PlayerFrame::Resume { notes, clocks } => {
+    /// Text for this body. Empty means print nothing.
+    /// A leading newline is the blank line between the scrollback and the first live text.
+    pub fn render(&mut self, body: &ServerBody) -> String {
+        match body {
+            ServerBody::Claimed { scrollback, .. } => {
+                self.after_scrollback = !scrollback.is_empty();
+                render(body)
+            }
+            ServerBody::Resume { notes, clocks } => {
                 if self.seen_resume {
                     return String::new();
                 }
                 self.seen_resume = true;
-                self.end_replay_section(render_resume(notes, clocks))
+                self.after_scrollback(render_resume(notes, clocks))
             }
-            _ => self.end_replay_section(render(frame)),
+            _ => self.after_scrollback(render(body)),
         }
     }
 
-    /// A replayed line, under an `Earlier:` heading when it is the first of its section.
-    fn start_replay_section(&mut self, line: String) -> String {
-        if self.replay_section_open {
-            line
-        } else {
-            self.replay_section_open = true;
-            format!("Earlier:\n{line}")
-        }
-    }
-
-    /// A live frame's text, after a blank line when it is the first after a replay section.
-    fn end_replay_section(&mut self, text: String) -> String {
-        if text.is_empty() || !self.replay_section_open {
+    /// Live text, after a blank line when it is the first after the scrollback.
+    fn after_scrollback(&mut self, text: String) -> String {
+        if text.is_empty() || !self.after_scrollback {
             return text;
         }
-        self.replay_section_open = false;
-        format!("\n{text}")
+        self.after_scrollback = false;
+        format!(
+            "
+{text}"
+        )
     }
 }
 
@@ -99,7 +117,7 @@ fn render_resume(notes: &[NoteView], clocks: &[ClockView]) -> String {
     }
 }
 
-fn render_view(view: &protocol::View) -> String {
+pub fn render_view(view: &protocol::View) -> String {
     let protocol::View {
         viewer,
         place,
@@ -281,6 +299,15 @@ pub fn render_checks(body: &CommitBody) -> Vec<String> {
     body.rolls.iter().map(render_check).collect()
 }
 
+/// What a refusal prints on stderr: the code in raw mode, the sentence in text mode.
+pub(crate) fn render_refusal(refusal: &protocol::Refusal, raw: bool) -> String {
+    if raw {
+        refusal.code.as_str().to_string()
+    } else {
+        refusal.to_string()
+    }
+}
+
 /// The name a say shows for who spoke: `GM`, or the speaker's id as words.
 fn speaker_name(from: &Speaker) -> String {
     match from {
@@ -289,13 +316,14 @@ fn speaker_name(from: &Speaker) -> String {
     }
 }
 
-pub fn render_event(event: &GmEvent) -> String {
-    match event {
-        GmEvent::Say(say) => format!("{}: {}", speaker_name(&say.from), say.text),
-        GmEvent::Queued(row) => {
-            format!("{} queued: {}", humanize(&row.actor_id), row.move_name)
-        }
-        GmEvent::Check(roll) => render_check(roll),
+/// Readable text for one GM event. Empty means print nothing.
+pub fn render_event(body: &ServerBody) -> String {
+    match body {
+        ServerBody::Say(say) => format!("{}: {}", speaker_name(&say.from), say.text),
+        ServerBody::Queued {
+            actor, move_name, ..
+        } => format!("{} queued: {move_name}", humanize(actor)),
+        _ => String::new(),
     }
 }
 
@@ -329,8 +357,7 @@ pub fn render_check(roll: &Roll) -> String {
 mod tests {
     use super::*;
     use crate::protocol::{
-        ItemStack, KnownFact, NoteView, Queued, QueuedMove, Roll, SayEvent, StatusPause,
-        StatusPresence,
+        ItemStack, KnownFact, NoteView, QueuedMove, Roll, StatusPause, StatusPresence,
     };
 
     fn assert_readable(text: &str) {
@@ -347,39 +374,48 @@ mod tests {
 
     #[test]
     fn a_say_is_a_name_and_the_text() {
-        let mira = render(&PlayerFrame::Say {
+        let mira = render(&ServerBody::Say(Say {
             from: Speaker::Npc("mira".to_string()),
             address: "table".to_string(),
             text: "the lamp is lit".to_string(),
-            replay: false,
-        });
+            place: None,
+            actor: None,
+            recipients: Vec::new(),
+        }));
         assert_eq!(mira, "Mira: the lamp is lit");
         assert_readable(&mira);
 
-        let gm = render(&PlayerFrame::Say {
+        let gm = render(&ServerBody::Say(Say {
             from: Speaker::Gm,
             address: "table".to_string(),
             text: "evening".to_string(),
-            replay: false,
-        });
+            place: None,
+            actor: None,
+            recipients: Vec::new(),
+        }));
         assert_eq!(gm, "GM: evening");
         assert_readable(&gm);
 
-        let you = render(&PlayerFrame::Say {
+        let you = render(&ServerBody::Say(Say {
             from: Speaker::Player("pc_rowan".to_string()),
             address: "actor".to_string(),
             text: "hello".to_string(),
-            replay: false,
-        });
+            place: None,
+            actor: None,
+            recipients: Vec::new(),
+        }));
         assert_eq!(you, "You: hello");
         assert_readable(&you);
     }
 
     #[test]
     fn a_queued_action_is_a_sentence() {
-        let text = render(&PlayerFrame::Queued(Queued {
-            id: "queue-id-42".to_string(),
-        }));
+        let text = render(&ServerBody::Queued {
+            intent: "queue-id-42".to_string(),
+            actor: "pc_rowan".to_string(),
+            move_name: "wait".to_string(),
+            target: None,
+        });
         assert_eq!(text, "Your action is queued.");
         assert!(!text.contains("queue-id-42"), "{text}");
         assert_readable(&text);
@@ -387,13 +423,13 @@ mod tests {
 
     #[test]
     fn a_check_is_a_short_sentence() {
-        let yes = render(&PlayerFrame::Check {
+        let yes = render(&ServerBody::Check {
             outcome: crate::protocol::Outcome::Success,
         });
-        let partial = render(&PlayerFrame::Check {
+        let partial = render(&ServerBody::Check {
             outcome: crate::protocol::Outcome::Partial,
         });
-        let miss = render(&PlayerFrame::Check {
+        let miss = render(&ServerBody::Check {
             outcome: crate::protocol::Outcome::Miss,
         });
         assert_eq!(yes, "Your roll succeeded.");
@@ -416,14 +452,14 @@ mod tests {
 
     #[test]
     fn a_resume_is_an_away_block() {
-        let text = render(&PlayerFrame::Resume {
+        let text = render(&ServerBody::Resume {
             notes: vec![note("note_shop", "the shop restocked")],
             clocks: Vec::new(),
         });
         assert_eq!(text, "While you were away:\nthe shop restocked");
         assert_readable(&text);
         assert_eq!(
-            render(&PlayerFrame::Resume {
+            render(&ServerBody::Resume {
                 notes: Vec::new(),
                 clocks: Vec::new(),
             }),
@@ -434,58 +470,77 @@ mod tests {
     #[test]
     fn a_later_resume_has_no_away_heading() {
         let mut player_text = PlayerText::new();
-        let first = player_text.render(&PlayerFrame::Resume {
+        let first = player_text.render(&ServerBody::Resume {
             notes: vec![note("note_shop", "the shop restocked")],
             clocks: Vec::new(),
         });
         assert_eq!(first, "While you were away:\nthe shop restocked");
         assert_eq!(
-            player_text.render(&PlayerFrame::Resume {
+            player_text.render(&ServerBody::Resume {
                 notes: Vec::new(),
                 clocks: Vec::new(),
             }),
             ""
         );
-        let later = player_text.render(&PlayerFrame::Resume {
+        let later = player_text.render(&ServerBody::Resume {
             notes: vec![note("note_yard", "the yard stays watched")],
             clocks: Vec::new(),
         });
         assert_eq!(later, "");
     }
 
+    fn table_say(from: Speaker, text: &str) -> Say {
+        Say {
+            from,
+            address: "table".to_string(),
+            place: None,
+            actor: None,
+            recipients: Vec::new(),
+            text: text.to_string(),
+        }
+    }
+
     #[test]
     fn replayed_speech_sits_under_one_heading() {
         let mut player_text = PlayerText::new();
-        let first = player_text.render(&PlayerFrame::Say {
-            from: Speaker::Player("pc_lark".to_string()),
-            address: "table".to_string(),
-            text: "hello Briar".to_string(),
-            replay: true,
+        let claimed = player_text.render(&ServerBody::Claimed {
+            actor: "pc_lark".to_string(),
+            scrollback: vec![
+                table_say(Speaker::Player("pc_lark".to_string()), "hello Briar"),
+                table_say(Speaker::Gm, "evening"),
+            ],
         });
-        assert_eq!(first, "Earlier:\nYou: hello Briar");
-        let second = player_text.render(&PlayerFrame::Say {
-            from: Speaker::Gm,
-            address: "table".to_string(),
-            text: "evening".to_string(),
-            replay: true,
-        });
-        assert_eq!(second, "GM: evening");
         assert_eq!(
-            player_text.render(&PlayerFrame::Resume {
+            claimed,
+            "Earlier:
+You: hello Briar
+GM: evening"
+        );
+        assert_eq!(
+            player_text.render(&ServerBody::Resume {
                 notes: Vec::new(),
                 clocks: Vec::new(),
             }),
             ""
         );
-        let place = player_text.render(&PlayerFrame::Lines {
+        let place = player_text.render(&ServerBody::Lines {
             text: "You are in Gate Yard.".to_string(),
         });
-        assert_eq!(place, "\nYou are in Gate Yard.");
+        assert_eq!(
+            place,
+            "
+You are in Gate Yard."
+        );
+        let quiet = PlayerText::new().render(&ServerBody::Claimed {
+            actor: "pc_lark".to_string(),
+            scrollback: Vec::new(),
+        });
+        assert_eq!(quiet, "");
     }
 
     #[test]
     fn a_resume_turns_digest_rows_into_sentences() {
-        let text = render(&PlayerFrame::Resume {
+        let text = render(&ServerBody::Resume {
             notes: vec![note("note_mira_door", "Back at dusk. Oil on the shelf.")],
             clocks: vec![
                 ClockView {
@@ -518,7 +573,7 @@ Shop day: 1/1"
 
     #[test]
     fn a_perceive_names_the_place_and_skips_empty_sections() {
-        let text = render(&PlayerFrame::View(Box::new(protocol::View {
+        let text = render(&ServerBody::View(Box::new(protocol::View {
             viewer: "pc_rowan".to_string(),
             place: "docks_shop".to_string(),
             place_name: "Docks Shop".to_string(),
@@ -606,7 +661,7 @@ stairs (locked) — 2 min"
         assert!(!text.contains("docks_shop"), "{text}");
         assert_readable(&text);
 
-        let quiet = render(&PlayerFrame::View(Box::new(protocol::View {
+        let quiet = render(&ServerBody::View(Box::new(protocol::View {
             viewer: "pc_rowan".to_string(),
             place: "docks_street".to_string(),
             place_name: "Docks Street".to_string(),
@@ -643,26 +698,18 @@ none"
         assert_readable(&quiet);
     }
 
-    fn say(from: &str, seq: u64, text: &str) -> GmEvent {
-        GmEvent::Say(SayEvent {
-            seq,
-            from: from.parse().unwrap(),
-            address: "table".to_string(),
-            place: None,
-            actor: None,
-            recipients: Vec::new(),
-            text: text.to_string(),
-        })
+    fn say(from: &str, text: &str) -> ServerBody {
+        ServerBody::Say(table_say(from.parse().unwrap(), text))
     }
 
-    fn roll(faces: Vec<u32>, stat: i64, total: i64, target: i64, outcome: Outcome) -> GmEvent {
-        GmEvent::Check(Roll {
+    fn roll(faces: Vec<u32>, stat: i64, total: i64, target: i64, outcome: Outcome) -> Roll {
+        Roll {
             faces,
             stat,
             total,
             target,
             outcome,
-        })
+        }
     }
 
     fn status(present: Vec<&str>, queued: Vec<QueuedMove>) -> TableStatus {
@@ -688,30 +735,38 @@ none"
 
     #[test]
     fn each_event_renders_as_text() {
-        let player = render_event(&say("player:pc_rowan", 1, "hello"));
+        let player = render_event(&say("player:pc_rowan", "hello"));
         assert_eq!(player, "Pc rowan: hello");
         assert!(!player.contains('{'));
 
-        let gm = render_event(&say("gm", 2, "good evening"));
+        let gm = render_event(&say("gm", "good evening"));
         assert_eq!(gm, "GM: good evening");
 
-        let npc = render_event(&say("npc:mira", 3, "oil"));
+        let npc = render_event(&say("npc:mira", "oil"));
         assert_eq!(npc, "Mira: oil");
 
-        let queued = render_event(&GmEvent::Queued(QueuedMove {
-            id: "id-1".to_string(),
-            actor_id: "pc_wren".to_string(),
+        let queued = render_event(&ServerBody::Queued {
+            intent: "id-1".to_string(),
+            actor: "pc_wren".to_string(),
             move_name: "wait".to_string(),
-        }));
+            target: None,
+        });
         assert_eq!(queued, "Pc wren queued: wait");
+        assert_eq!(
+            render_event(&ServerBody::Round {
+                round_index: 1,
+                world_time: 10
+            }),
+            ""
+        );
 
-        let success = render_event(&roll(vec![4, 2], 1, 7, 0, Outcome::Success));
+        let success = render_check(&roll(vec![4, 2], 1, 7, 0, Outcome::Success));
         assert_eq!(success, "Roll: 4 + 2, +1 = 7 vs 0, success");
 
-        let partial = render_event(&roll(vec![3, 3], 1, 7, 10, Outcome::Partial));
+        let partial = render_check(&roll(vec![3, 3], 1, 7, 10, Outcome::Partial));
         assert_eq!(partial, "Roll: 3 + 3, +1 = 7 vs 10, partial");
 
-        let failure = render_event(&roll(vec![1], -2, -1, 3, Outcome::Miss));
+        let failure = render_check(&roll(vec![1], -2, -1, 3, Outcome::Miss));
         assert_eq!(failure, "Roll: 1, -2 = -1 vs 3, miss");
         assert!(!failure.contains('{'));
     }

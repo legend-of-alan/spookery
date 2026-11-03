@@ -1,3 +1,4 @@
+use spookery_engine::testing::state_of;
 use std::fs;
 use std::path::Path;
 
@@ -288,7 +289,7 @@ fn lark_holds_a_latch_at_a_table(world: &mut World) {
 
 #[when(expr = "lark plays {string}")]
 fn lark_plays(world: &mut World, line: String) {
-    let before = table::now_of(world.pack.as_ref().unwrap());
+    let before = state_of(world.pack.as_ref().unwrap());
     world.scratch = format!("{} {}", before.world_time, before.round_index);
     let (_mark, added) = table::player_send(world, &line, "\"kind\":\"refused\"");
     world.player_added = added;
@@ -301,7 +302,8 @@ fn lark_is_refused(world: &mut World, code: String) {
         .lines()
         .find(|row| row.contains("\"kind\":\"refused\""))
         .unwrap_or_else(|| panic!("no refused frame\n{}", world.player_added));
-    let frame: Value = serde_json::from_str(row).unwrap();
+    let message: Value = serde_json::from_str(row).unwrap();
+    let frame = &message["body"];
     assert_eq!(frame["code"], code.as_str(), "{frame}");
     assert!(frame.get("detail").is_none(), "{frame}");
 }
@@ -309,7 +311,7 @@ fn lark_is_refused(world: &mut World, code: String) {
 #[then(expr = "no round was spent and lark still holds 1 latch")]
 fn no_round_was_spent(world: &mut World) {
     let pack = world.pack.as_ref().unwrap();
-    let now = table::now_of(pack);
+    let now = state_of(pack);
     assert_eq!(
         format!("{} {}", now.world_time, now.round_index),
         world.scratch,

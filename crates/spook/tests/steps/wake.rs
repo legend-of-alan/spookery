@@ -1,4 +1,5 @@
 use cucumber::when;
+use spookery_engine::testing::state_of;
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -44,7 +45,7 @@ fn queue_rowan_wait(world: &mut World) -> String {
         .find(|line| line.contains("\"kind\":\"queued\""))
         .unwrap_or_else(|| panic!("no queued line\n{text}"));
     let queued: Value = serde_json::from_str(line).unwrap_or_else(|err| panic!("{err}\n{line}"));
-    queued["id"].as_str().unwrap().to_string()
+    queued["body"]["intent"].as_str().unwrap().to_string()
 }
 
 /// Rowan's `wait` with no GM seated commits its own round.
@@ -97,7 +98,7 @@ fn a_queued_wait_meets_wakes(world: &mut World) {
     assert_eq!(rows.len(), 1, "{status}");
     assert_eq!(rows[0]["id"], id.as_str(), "{status}");
     assert_eq!(rows[0]["actor_id"], "pc_rowan", "{status}");
-    assert_eq!(table::now_of(&pack).world_time, 1080);
+    assert_eq!(state_of(&pack).world_time, 1080);
     assert!(list_round_keys(&pack).is_empty());
 }
 
@@ -106,14 +107,14 @@ fn a_committed_wait_wakes_early(world: &mut World) {
     let pack = serve_docks(world, "early-wake", None);
     table::seat_rowan(world, &pack);
     commit_rowan_wait(world, &pack);
-    let committed = table::now_of(&pack);
+    let committed = state_of(&pack);
     assert_eq!(committed.world_time, 1085);
     table::close_actor(world, "pc_rowan");
     table::wait_players(world, 0);
     table::release_probe_gm(world);
     // The timer fires a full interval later, but the save's stamp is seconds old.
     advance_and_settle(world, INTERVAL);
-    let now = table::now_of(&pack);
+    let now = state_of(&pack);
     assert_eq!(now.world_time, committed.world_time);
     assert_eq!(now.round_index, committed.round_index);
     assert_eq!(list_round_keys(&pack), vec!["round-0001".to_string()]);
@@ -122,7 +123,7 @@ fn a_committed_wait_wakes_early(world: &mut World) {
 #[when(expr = "a queued wait is due")]
 fn a_queued_wait_is_due(world: &mut World) {
     let pack = serve_docks(world, "due-wake", None);
-    assert_eq!(table::now_of(&pack).last_round_at, "2026-01-01T00:00:00Z");
+    assert_eq!(state_of(&pack).last_round_at, "2026-01-01T00:00:00Z");
     table::seat_gm(world);
     table::seat_rowan(world, &pack);
     let id = queue_rowan_wait(world);
@@ -130,7 +131,7 @@ fn a_queued_wait_is_due(world: &mut World) {
     table::wait_players(world, 0);
     let _ = table::release_gm(world);
     advance_and_settle(world, INTERVAL);
-    let now = table::now_of(&pack);
+    let now = state_of(&pack);
     assert_eq!(now.round_index, 12);
     assert_eq!(now.world_time, 1800);
     assert_eq!(player_wait_ids(&read_round(&pack, "round-0001")), vec![id]);
@@ -138,7 +139,7 @@ fn a_queued_wait_is_due(world: &mut World) {
     // The catch-up stamped the save, so the next wake is not due.
     table::release_probe_gm(world);
     advance_and_settle(world, INTERVAL);
-    assert_eq!(table::now_of(&pack).round_index, 12);
+    assert_eq!(state_of(&pack).round_index, 12);
 }
 
 /// With idle off no timer is armed, so an empty table writes nothing however
@@ -159,14 +160,14 @@ fn idle_is_off_and_a_player_waits(world: &mut World) {
     table::seat_rowan(world, &pack);
     commit_rowan_wait(world, &pack);
     table::stop_host(world);
-    let now = table::now_of(&pack);
+    let now = state_of(&pack);
     assert_eq!(now.world_time, 1085);
     assert_eq!(now.round_index, 1);
     assert_eq!(list_round_keys(&pack), vec!["round-0001".to_string()]);
     table::run(world, &["round", pack.to_str().unwrap()]);
     assert_eq!(world.code, Some(0), "{}", world.stderr);
     // `spook round` plays at an empty table: one idle round of 60 minutes.
-    let now = table::now_of(&pack);
+    let now = state_of(&pack);
     assert_eq!(now.round_index, 2);
     assert_eq!(now.world_time, 1145);
     assert_eq!(
@@ -186,7 +187,7 @@ fn idle_is_off_and_the_gm_commits(world: &mut World) {
     let value: Value = serde_json::from_str(&done).unwrap();
     let body = &value["result"]["structuredContent"];
     assert!(body.get("code").is_none(), "{done}");
-    let now = table::now_of(&pack);
+    let now = state_of(&pack);
     assert_eq!(now.world_time, 1085);
     assert_eq!(now.round_index, 1);
     assert_eq!(list_round_keys(&pack), vec!["round-0001".to_string()]);

@@ -62,6 +62,9 @@ mod one_writer;
 #[path = "steps/session.rs"]
 mod session;
 
+#[path = "steps/websocket.rs"]
+mod websocket;
+
 #[path = "steps/store_failures.rs"]
 mod store_failures;
 

@@ -11,7 +11,7 @@ Feature: Speech appends to the tape and does not play a round
 
   Scenario: A seated player says a line to the room
     Given a docks table with a seated player
-    When the player says "place the lamp is lit"
+    When the player says "the lamp is lit" to the place
     Then the tape contains the text "the lamp is lit"
     And the tape address is "place"
     And the tape names the place "docks_shop"
@@ -21,7 +21,7 @@ Feature: Speech appends to the tape and does not play a round
 
   Scenario: A seated player says a line to mira
     Given a docks table with a seated player
-    When the player says "mira good evening"
+    When the player says "good evening" to mira
     Then the tape contains the text "good evening"
     And the tape address is "actor"
     And the tape names the actor "mira"
@@ -50,7 +50,7 @@ Feature: Speech appends to the tape and does not play a round
     And the GM has said 300 numbered lines to "pc_rowan"
     When "pc_rowan" leaves and sits again
     Then the replayed say lines are "line44" through "line299", in order
-    And each replayed line has "replay": true
+    And the replayed lines ride in the claim's reply
 
   Scenario: Speech for someone else doesn't use up the replay window
     Given a docks table with "pc_rowan" and "pc_wren" seated

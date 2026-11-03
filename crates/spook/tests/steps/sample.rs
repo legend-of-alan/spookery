@@ -1,3 +1,4 @@
+use spookery_engine::testing::state_of;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
@@ -136,7 +137,7 @@ fn remove_larks_tonic(pack: &Path) {
 }
 
 fn hp_of(pack: &Path, actor_id: &str) -> i64 {
-    let now = table::now_of(pack);
+    let now = state_of(pack);
     let canon = spookery_engine::load_canon(pack).unwrap_or_else(|err| {
         panic!(
             "load canon: {}",

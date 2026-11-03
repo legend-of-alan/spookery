@@ -1,6 +1,8 @@
-//! Player messages, GM messages, and the check band, refusal and speaker they share.
+//! The message envelope, player and GM bodies, and the check band, refusal and speaker
+//! they share.
 
 mod gm;
+mod message;
 mod player;
 
 use std::fmt;
@@ -28,13 +30,16 @@ impl Outcome {
 }
 
 pub use gm::{
-    parse_args, CastKind, CloseArgs, CloseBody, CommitArgs, CommitBody, GmEvent, IntentArgs,
-    MenuRow, PackSummary, PerceiveArgs, Queued, QueuedMove, Roll, SayArgs, SayEvent, StatusArgs,
+    parse_args, CastKind, CloseArgs, CloseBody, CommitArgs, CommitBody, IntentArgs, MenuRow,
+    PackSummary, PerceiveArgs, Queued, QueuedMove, Roll, SayArgs, SayEvent, StatusArgs,
     StatusPause, StatusPresence, TableStatus,
 };
+pub use message::{
+    ClaimArgs, ClientBody, ClientMessage, Message, MoveArgs, NoArgs, Say, Seat, ServerBody,
+    ServerMessage, Word, VERSION, WORDS,
+};
 pub use player::{
-    exit_phrase, hello_line, parse_hello, ClockView, ExitView, ItemStack, KnownFact, MeterView,
-    NoteView, PlayerFrame, View,
+    exit_phrase, ClockView, ExitView, ItemStack, KnownFact, MeterView, NoteView, View,
 };
 
 /// The listening line `spook run` prints on stdout once both ports are bound: the game port
@@ -56,7 +61,7 @@ pub fn default_mcp_addr(game: std::net::SocketAddr) -> Option<std::net::SocketAd
 /// and the prompt's cast cut.
 pub const PERCEIVE_BODY_CHARS: usize = 800;
 
-/// Every refusal code. The `code` of a player `refused` line, a GM tool refusal and the MCP
+/// Every refusal code. The `code` of a `refused` body, a GM tool refusal and the MCP
 /// error's `data`, and the token the journal stores on a round line (`engine::Refusal`).
 /// Strict and `Copy` on purpose: `spook verify` must fail on a code it does not know.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -173,7 +178,7 @@ impl From<String> for Code {
     }
 }
 
-/// Sent from the table to a player client as the `refused` line's body, and to a GM
+/// Sent from the table to a client as a `refused` body, and to an MCP GM
 /// client as a tool refusal (`{"code"}`) and as the MCP initialize error's `data`.
 /// Display is that error's message, the sentence with the code in brackets,
 /// `The table is full. [TABLE_FULL]`.
@@ -259,8 +264,7 @@ pub enum Detail {
     Many(Vec<String>),
 }
 
-/// Who spoke: the `from` of a say on the player wire, the GM wire and the tape, and the
-/// player hello line a player client sends the table. Written `gm`, `player:<id>` or
+/// Who spoke: the `from` of a say on the wire and the tape. Written `gm`, `player:<id>` or
 /// `npc:<id>`; `FromStr` refuses an empty or whitespace id and any other prefix.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(try_from = "String", into = "String")]
@@ -439,8 +443,8 @@ mod tests {
             r#"{"kind":"refused","code":"SCHEMA"}"#,
             r#"{"kind":"refused","code":"NEW_CODE"}"#,
         ] {
-            let msg = PlayerFrame::from_line(raw).unwrap();
-            assert!(matches!(msg, PlayerFrame::Refused(_)));
+            let msg: ServerBody = serde_json::from_str(raw).unwrap();
+            assert!(matches!(msg, ServerBody::Refused(_)));
             assert_eq!(serde_json::to_string(&msg).unwrap(), raw);
         }
     }

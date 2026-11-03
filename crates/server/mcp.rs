@@ -29,6 +29,7 @@ use super::limits::GM_BODY_CAP;
 use super::seat::{frame_queue, write_frames, Conn};
 use super::table::{report_hangup, Request};
 use super::tools;
+use crate::protocol::{Seat, ServerBody};
 
 pub(super) async fn serve(
     listener: tokio::net::TcpListener,
@@ -90,8 +91,8 @@ impl SeatSessions {
     }
 }
 
-/// Carries `spook/event` frames from the table to the GM's MCP client over SSE.
-/// The GM's event stream. The connection under it lives as long as the GM,
+/// Carries the table's messages to the GM's MCP client over SSE, one `spook/event`
+/// notification each. The GM's event stream. The connection under it lives as long as the GM,
 /// so when it is dropped the session is closed.
 struct EventStream<S> {
     inner: S,
@@ -280,8 +281,9 @@ impl Handler {
         let (frames_tx, frames_rx) = frame_queue();
         let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
         self.tx
-            .send(Request::SeatGm {
+            .send(Request::Open {
                 conn,
+                seat: Seat::Gm,
                 frames_tx,
                 reply: reply_tx,
             })
@@ -300,7 +302,12 @@ impl Handler {
                 ));
                 Ok(())
             }
-            Err(refusal) => Err(super::frames::mcp_error(&refusal)),
+            Err(refused) => {
+                let ServerBody::Refused(refusal) = refused.body else {
+                    return Err(McpError::internal_error("no seat", None));
+                };
+                Err(super::frames::mcp_error(&refusal))
+            }
         }
     }
 }
@@ -340,13 +347,22 @@ mod tests {
             let mut kept = Vec::new();
             for msg in rx {
                 match msg {
-                    Request::SeatGm {
+                    Request::Open {
                         conn,
                         frames_tx: out,
                         reply,
+                        ..
                     } => {
                         if seat.is_some() {
-                            let _ = reply.send(Err(spookery_engine::Reason::TableFull.into()));
+                            let refused = crate::protocol::ServerMessage {
+                                id: None,
+                                seq: Some(1),
+                                reply_to: None,
+                                body: crate::protocol::ServerBody::Refused(
+                                    spookery_engine::Reason::TableFull.into(),
+                                ),
+                            };
+                            let _ = reply.send(Err(Box::new(refused)));
                         } else {
                             seat = Some(conn);
                             kept.push(out);

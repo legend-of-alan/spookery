@@ -1,5 +1,6 @@
 //! Steps used by more than one cucumber program.
 
+use spookery_engine::testing::state_of;
 use std::fs;
 use std::io::Write;
 use std::path::Path;
@@ -395,12 +396,12 @@ fn stdout_is_empty(world: &mut World) {
 
 #[then(expr = "world_time is 1080")]
 fn world_time_is_1080(world: &mut World) {
-    assert_eq!(table::now_of(table::pack(world)).world_time, 1080);
+    assert_eq!(state_of(table::pack(world)).world_time, 1080);
 }
 
 #[then(expr = "world_time is 1085")]
 fn world_time_is_1085(world: &mut World) {
-    table::wait_world_time(table::pack(world), 1085);
+    table::wait_round(world, 1085);
 }
 
 #[when(expr = "the player waits")]

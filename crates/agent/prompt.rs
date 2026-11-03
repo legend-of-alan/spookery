@@ -5,15 +5,16 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
 use crate::protocol::{
-    self, CastKind, ClockView, ItemStack, MenuRow, NoteView, PackSummary, QueuedMove, Roll,
-    SayArgs, SayEvent, Speaker, PERCEIVE_BODY_CHARS,
+    self, CastKind, ClockView, ItemStack, MenuRow, NoteView, PackSummary, QueuedMove, Roll, Say,
+    SayArgs, Speaker, PERCEIVE_BODY_CHARS,
 };
 
 /// How many tape lines the prompt's `buffer` keeps.
 const RECENT_LINES: usize = 16;
 
-/// One tape line as the model reads it in the prompt's `buffer` and `lines`: a `SayEvent`
-/// without `recipients`. The GM's own lines carry the `seq` the table answered with.
+/// One say as the model reads it in the prompt's `buffer` and `lines`, with the `seq` of the
+/// message that carried it and without `recipients`. The GM's own lines carry the `seq` of
+/// the table's reply.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct TapeLine {
     pub seq: u64,
@@ -26,10 +27,11 @@ pub struct TapeLine {
     pub text: String,
 }
 
-impl From<SayEvent> for TapeLine {
-    fn from(say: SayEvent) -> Self {
+impl TapeLine {
+    /// The say a message with `seq` carried.
+    pub fn new(seq: u64, say: Say) -> Self {
         Self {
-            seq: say.seq,
+            seq,
             from: say.from,
             address: say.address,
             place: say.place,
@@ -58,7 +60,7 @@ pub enum SceneScope {
 /// What starts a turn: a player's say, or a move in the queue.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Wake {
-    Say(SayEvent),
+    Say(TapeLine),
     Queued,
 }
 
@@ -228,7 +230,7 @@ pub fn prepare_turn(
 ) -> PreparedTurn {
     let no_model = || PreparedTurn::NoModel { says: Vec::new() };
     let (speaker, place) = match wake {
-        Wake::Say(SayEvent {
+        Wake::Say(TapeLine {
             from: Speaker::Player(speaker),
             address,
             actor,
@@ -256,7 +258,7 @@ pub fn prepare_turn(
                 }
             }));
         }
-        Wake::Say(SayEvent {
+        Wake::Say(TapeLine {
             from: Speaker::Player(speaker),
             address,
             place,
@@ -467,13 +469,12 @@ mod tests {
     }
 
     fn wake(address: &str, actor: Option<&str>) -> Wake {
-        Wake::Say(SayEvent {
+        Wake::Say(TapeLine {
             seq: 1,
             from: Speaker::Player("pc_rowan".to_string()),
             address: address.to_string(),
             place: None,
             actor: actor.map(str::to_string),
-            recipients: Vec::new(),
             text: "hello".to_string(),
         })
     }

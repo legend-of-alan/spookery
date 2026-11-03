@@ -66,7 +66,7 @@ Feature: The host sits the GM seat
     Then the stub saw 2 model posts
     And the queued line committed one round
 
-  Scenario: The host dials an overridden MCP address
+  Scenario: The AI GM dials the game port
     Given a docks table
-    When the AI GM is pointed at an overridden MCP address
+    When the AI GM is pointed at a game port
     Then the AI GM dialed that address

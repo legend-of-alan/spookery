@@ -3,7 +3,7 @@
 //! extra, or different from the table.
 
 use std::collections::BTreeMap;
-use std::io::{BufRead, BufReader, Read, Write};
+use std::io::{Read, Write};
 use std::net::TcpStream;
 use std::path::PathBuf;
 use std::process::{Child, ChildStdin, Command, Stdio};
@@ -12,9 +12,11 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use rmcp::model::ProtocolVersion;
-use serde_json::Value;
+use serde_json::{json, Value};
 use spookery::mcp::{event_line, GmClient};
-use spookery::protocol::Addrs;
+use spookery::protocol::{Addrs, ClientMessage, ServerBody, ServerMessage};
+use tungstenite::protocol::Role;
+use tungstenite::{Message, WebSocket};
 
 use crate::support;
 
@@ -30,9 +32,12 @@ enum Example {
     Text(String),
 }
 
+/// One player connection on `/player` on the game port. A reader thread hands over
+/// each message.
 struct PlayerClient {
-    write: TcpStream,
+    write: WebSocket<TcpStream>,
     lines: Receiver<String>,
+    next_id: u64,
 }
 
 struct Table {
@@ -96,49 +101,52 @@ async fn the_seat_page_matches_a_live_table() {
 fn capture() -> BTreeMap<String, Example> {
     let mut out = BTreeMap::new();
     let table = listen();
-    let mut player = connect_player(table.game, "pc_rowan");
+    let mut player = open_player(table.game);
 
     let addrs = serde_json::from_str(&table.addrs_line)
         .unwrap_or_else(|err| panic!("addrs: {err}\n{}", table.addrs_line));
     insert_json(&mut out, "listening", addrs);
-    insert_text(&mut out, "player-hello", "player:pc_rowan");
+    insert_json(&mut out, "player-hello", next_json(&player));
+    let claim = send(&mut player, "claim", json!({"actor": "pc_rowan"}));
+    insert_json(&mut out, "player-claim", claim);
+    let claimed = next_json(&player);
+    assert_eq!(claimed["body"]["kind"], "claimed", "{claimed}");
+    insert_json(&mut out, "player-claimed", claimed);
     let resume = next_json(&player);
-    assert_eq!(resume["kind"], "resume", "{resume}");
+    assert_eq!(resume["body"]["kind"], "resume", "{resume}");
     insert_json(&mut out, "player-resume", resume);
     let perceive = next_json(&player);
-    assert_eq!(perceive["kind"], "view", "{perceive}");
+    assert_eq!(perceive["body"]["kind"], "view", "{perceive}");
     insert_json(&mut out, "player-perceive", perceive);
 
-    insert_text(&mut out, "player-look", "look");
-    send(&mut player, "look");
+    insert_json(
+        &mut out,
+        "player-look",
+        send(&mut player, "look", json!({})),
+    );
     let lines = next_json(&player);
-    assert_eq!(lines["kind"], "lines", "{lines}");
+    assert_eq!(lines["body"]["kind"], "lines", "{lines}");
     insert_json(&mut out, "player-lines", lines);
 
     insert_json(
         &mut out,
         "player-seat-taken",
-        send_refused_line(table.game, "player:pc_rowan"),
+        refused_reply(table.game, "claim", json!({"actor": "pc_rowan"})),
     );
     insert_json(
         &mut out,
         "player-unknown-pc",
-        send_refused_line(table.game, "player:no_such"),
+        refused_reply(table.game, "claim", json!({"actor": "no_such"})),
     );
     insert_json(
         &mut out,
         "player-choose-pc",
-        send_refused_line(table.game, ""),
-    );
-    insert_json(
-        &mut out,
-        "player-gm-on-game-port",
-        send_refused_line(table.game, "gm"),
+        refused_reply(table.game, "wait", json!({})),
     );
     insert_json(
         &mut out,
         "player-line-too-long",
-        send_too_long_line(table.game),
+        send_too_long_message(table.game),
     );
 
     let version = ProtocolVersion::LATEST.as_str();
@@ -188,14 +196,18 @@ fn capture() -> BTreeMap<String, Example> {
     let gm_perceive = call(&mut gm, "perceive", perceive_args);
     assert_eq!(
         &gm_perceive,
-        out_json(&out, "player-perceive"),
+        &out_json(&out, "player-perceive")["body"],
         "GM perceive diverged from the player welcome"
     );
 
-    insert_text(&mut out, "player-say", "say evening");
-    send(&mut player, "say evening");
+    let say = send(
+        &mut player,
+        "say",
+        json!({"address": "table", "text": "evening"}),
+    );
+    insert_json(&mut out, "player-say", say);
     let said = next_json(&player);
-    assert_eq!(said["kind"], "say", "{said}");
+    assert_eq!(said["body"]["kind"], "say", "{said}");
     insert_json(&mut out, "player-say-frame", said);
     insert_json(&mut out, "say-event", one_event(&mut gm));
 
@@ -203,7 +215,7 @@ fn capture() -> BTreeMap<String, Example> {
     insert_json(&mut out, "say-request", tool_call(4, "say", &say_args));
     insert_json(&mut out, "say-result", call(&mut gm, "say", say_args));
     let heard = next_json(&player);
-    assert_eq!(heard["kind"], "say", "{heard}");
+    assert_eq!(heard["body"]["kind"], "say", "{heard}");
     insert_json(&mut out, "player-hears-gm", heard);
     insert_json(&mut out, "gm-say-event", one_event(&mut gm));
 
@@ -235,10 +247,13 @@ fn capture() -> BTreeMap<String, Example> {
         call(&mut gm, "queue_intent", intent_args),
     );
 
-    insert_text(&mut out, "player-grit", "grit");
-    send(&mut player, "grit");
+    insert_json(
+        &mut out,
+        "player-grit",
+        send(&mut player, "grit", json!({})),
+    );
     let queued = next_json(&player);
-    assert_eq!(queued["kind"], "queued", "{queued}");
+    assert_eq!(queued["body"]["kind"], "queued", "{queued}");
     insert_json(&mut out, "player-queued", queued);
     insert_json(&mut out, "queued-event", one_event(&mut gm));
 
@@ -265,43 +280,52 @@ fn capture() -> BTreeMap<String, Example> {
         "commit-result",
         call(&mut gm, "commit_round", commit_args),
     );
-    insert_json(&mut out, "check-event", one_event(&mut gm));
+    insert_json(&mut out, "round-event", one_event(&mut gm));
+    let round = next_json(&player);
+    assert_eq!(round["body"]["kind"], "round", "{round}");
+    insert_json(&mut out, "player-round", round);
     let check = next_json(&player);
-    assert_eq!(check["kind"], "check", "{check}");
+    assert_eq!(check["body"]["kind"], "check", "{check}");
     insert_json(&mut out, "player-check", check);
     let again = next_json(&player);
-    assert_eq!(again["kind"], "resume", "{again}");
+    assert_eq!(again["body"]["kind"], "resume", "{again}");
     let refreshed = next_json(&player);
-    assert_eq!(refreshed["kind"], "view", "{refreshed}");
+    assert_eq!(refreshed["body"]["kind"], "view", "{refreshed}");
 
     // A second round moves an item the player can see, so the change line is not empty.
-    send(&mut player, "take lamp_oil");
+    send(&mut player, "take", json!({"target": "lamp_oil"}));
     let queued_take = next_json(&player);
-    assert_eq!(queued_take["kind"], "queued", "{queued_take}");
+    assert_eq!(queued_take["body"]["kind"], "queued", "{queued_take}");
     let _ = one_event(&mut gm);
     call(
         &mut gm,
         "commit_round",
         serde_json::json!({"include_round": true}),
     );
+    let _ = one_event(&mut gm);
+    let taken_round = next_json(&player);
+    assert_eq!(taken_round["body"]["kind"], "round", "{taken_round}");
     let taken = next_json(&player);
-    assert_eq!(taken["kind"], "resume", "{taken}");
+    assert_eq!(taken["body"]["kind"], "resume", "{taken}");
     let after_take = next_json(&player);
-    assert_eq!(after_take["kind"], "view", "{after_take}");
+    assert_eq!(after_take["body"]["kind"], "view", "{after_take}");
     let changes = next_json(&player);
-    assert_eq!(changes["kind"], "lines", "{changes}");
+    assert_eq!(changes["body"]["kind"], "lines", "{changes}");
     insert_json(&mut out, "player-changes", changes);
 
-    insert_text(&mut out, "player-unknown-line", "blah");
-    send(&mut player, "blah");
-    insert_json(&mut out, "player-not-in-spec", next_json(&player));
+    let unknown = send(&mut player, "blah", json!({}));
+    insert_json(&mut out, "player-unknown-word", unknown);
+    insert_json(&mut out, "player-word-schema", next_json(&player));
 
-    insert_text(&mut out, "player-empty-say", "say");
-    send(&mut player, "say");
+    insert_json(
+        &mut out,
+        "player-empty-say",
+        send(&mut player, "say", json!({})),
+    );
     insert_json(&mut out, "player-schema", next_json(&player));
 
-    insert_text(&mut out, "player-locked-exit", "travel stairs");
-    send(&mut player, "travel stairs");
+    let locked = send(&mut player, "travel", json!({"target": "stairs"}));
+    insert_json(&mut out, "player-locked-exit", locked);
     insert_json(&mut out, "player-no-exit", next_json(&player));
 
     let bad_tool = serde_json::json!({});
@@ -330,13 +354,13 @@ fn capture() -> BTreeMap<String, Example> {
 
     let mouse = connect_player(table.game, "pc_harbormouse");
     let wren = connect_player(table.game, "pc_wren");
-    // The welcome line means that hello has the seat. The fourth hello comes after both.
-    assert_eq!(next_json(&mouse)["kind"], "resume");
-    assert_eq!(next_json(&wren)["kind"], "resume");
+    // The claim's reply means that claim has the seat. The fourth claim comes after both.
+    assert_eq!(next_json(&mouse)["body"]["kind"], "claimed");
+    assert_eq!(next_json(&wren)["body"]["kind"], "claimed");
     insert_json(
         &mut out,
         "player-session-full",
-        send_refused_line(table.game, "player:pc_extra"),
+        refused_reply(table.game, "claim", json!({"actor": "pc_extra"})),
     );
 
     insert_json(
@@ -348,14 +372,14 @@ fn capture() -> BTreeMap<String, Example> {
     let mark = table.host_text.lock().unwrap().len();
     player
         .write
+        .get_ref()
         .shutdown(std::net::Shutdown::Both)
         .unwrap_or_else(|err| panic!("shutdown: {err}"));
     drop(player);
     wait_host_grew(&table, mark);
     let again = connect_player(table.game, "pc_rowan");
     let replay = next_json(&again);
-    assert_eq!(replay["kind"], "say", "{replay}");
-    assert_eq!(replay["replay"], true, "{replay}");
+    assert_eq!(replay["body"]["kind"], "claimed", "{replay}");
     insert_json(&mut out, "player-replay-say", replay);
 
     let close_args = serde_json::json!({});
@@ -464,51 +488,59 @@ fn read_addrs(stdout: &mut impl Read) -> (u16, u16, String) {
     }
 }
 
-fn connect_player(port: u16, actor: &str) -> PlayerClient {
-    let write = connect(port);
-    let read = write
+/// Opens a player connection. The hello is its first message.
+fn open_player(port: u16) -> PlayerClient {
+    let stream = connect(port);
+    let write = stream
         .try_clone()
         .unwrap_or_else(|err| panic!("clone: {err}"));
+    let url = format!("ws://127.0.0.1:{port}/player");
+    let (mut read, _) =
+        tungstenite::client(url, stream).unwrap_or_else(|err| panic!("player seat: {err}"));
     let (tx, lines) = mpsc::channel();
     std::thread::spawn(move || {
-        let mut reader = BufReader::new(read);
-        let mut line = String::new();
-        loop {
-            line.clear();
-            match reader.read_line(&mut line) {
-                Ok(0) | Err(_) => break,
-                Ok(_) => {
-                    if line.ends_with('\n') {
-                        line.pop();
-                    }
-                    if line.ends_with('\r') {
-                        line.pop();
-                    }
-                    if tx.send(std::mem::take(&mut line)).is_err() {
-                        break;
-                    }
+        while let Ok(message) = read.read() {
+            if let Message::Text(text) = message {
+                if tx.send(text.to_string()).is_err() {
+                    break;
                 }
             }
         }
     });
-    let mut player = PlayerClient { write, lines };
-    send(&mut player, &format!("player:{actor}"));
+    PlayerClient {
+        write: WebSocket::from_raw_socket(write, Role::Client, None),
+        lines,
+        next_id: 1,
+    }
+}
+
+/// Opens a player connection, reads its hello, and claims `actor`.
+fn connect_player(port: u16, actor: &str) -> PlayerClient {
+    let mut player = open_player(port);
+    let hello = next_json(&player);
+    assert_eq!(hello["body"]["kind"], "hello", "{hello}");
+    send(&mut player, "claim", json!({"actor": actor}));
     player
 }
 
-fn send(player: &mut PlayerClient, line: &str) {
-    writeln!(player.write, "{line}").unwrap_or_else(|err| panic!("write: {err}"));
+/// Sends `word` with `args` under the next id. Returns the message sent.
+fn send(player: &mut PlayerClient, word: &str, args: Value) -> Value {
+    let id = format!("c{}", player.next_id);
+    player.next_id += 1;
+    let message = serde_json::to_value(ClientMessage::new(&id, word, args))
+        .unwrap_or_else(|err| panic!("{word}: {err}"));
     player
         .write
-        .flush()
-        .unwrap_or_else(|err| panic!("flush: {err}"));
+        .send(Message::text(message.to_string()))
+        .unwrap_or_else(|err| panic!("send: {err}"));
+    message
 }
 
 fn next_line(player: &PlayerClient) -> String {
     player
         .lines
         .recv_timeout(READ_TIMEOUT)
-        .unwrap_or_else(|err| panic!("no player line: {err}"))
+        .unwrap_or_else(|err| panic!("no player message: {err}"))
 }
 
 fn next_json(player: &PlayerClient) -> Value {
@@ -525,48 +557,30 @@ fn connect(port: u16) -> TcpStream {
     stream
 }
 
-fn send_refused_line(port: u16, line: &str) -> Value {
-    let mut stream = connect(port);
-    stream
-        .set_read_timeout(Some(READ_TIMEOUT))
-        .unwrap_or_else(|err| panic!("timeout: {err}"));
-    writeln!(stream, "{line}").unwrap_or_else(|err| panic!("write: {err}"));
-    stream.flush().unwrap_or_else(|err| panic!("flush: {err}"));
-    let text = read_line(&mut stream);
-    serde_json::from_str(&text).unwrap_or_else(|err| panic!("{err} in {text}"))
+/// A new player connection sends one word. Returns its reply.
+fn refused_reply(port: u16, word: &str, args: Value) -> Value {
+    let mut player = connect_player_unclaimed(port);
+    send(&mut player, word, args);
+    next_json(&player)
 }
 
-fn send_too_long_line(port: u16) -> Value {
-    let mut stream = connect(port);
-    stream
-        .set_read_timeout(Some(READ_TIMEOUT))
-        .unwrap_or_else(|err| panic!("timeout: {err}"));
-    let mut bytes = vec![b'x'; 8 * 1024 + 1];
-    bytes.push(b'\n');
-    stream
-        .write_all(&bytes)
-        .unwrap_or_else(|err| panic!("write: {err}"));
-    stream.flush().unwrap_or_else(|err| panic!("flush: {err}"));
-    let text = read_line(&mut stream);
-    serde_json::from_str(&text).unwrap_or_else(|err| panic!("{err} in {text}"))
+/// A new player connection sends one message past the cap. Returns its reply.
+fn send_too_long_message(port: u16) -> Value {
+    let mut player = connect_player_unclaimed(port);
+    let long = json!({"id": "c1", "body": {"word": "wait"}, "pad": "x".repeat(8 * 1024)});
+    player
+        .write
+        .send(Message::text(long.to_string()))
+        .unwrap_or_else(|err| panic!("send: {err}"));
+    next_json(&player)
 }
 
-fn read_line(stream: &mut TcpStream) -> String {
-    let mut buf = Vec::new();
-    let mut byte = [0u8; 1];
-    loop {
-        match stream.read(&mut byte) {
-            Ok(0) => panic!("eof {}", String::from_utf8_lossy(&buf)),
-            Ok(_) => {
-                if byte[0] == b'\n' {
-                    break;
-                }
-                buf.push(byte[0]);
-            }
-            Err(err) => panic!("read {err}; {}", String::from_utf8_lossy(&buf)),
-        }
-    }
-    String::from_utf8(buf).unwrap_or_else(|err| panic!("utf-8: {err}"))
+/// A player connection past its hello, with no claim.
+fn connect_player_unclaimed(port: u16) -> PlayerClient {
+    let player = open_player(port);
+    let hello = next_json(&player);
+    assert_eq!(hello["body"]["kind"], "hello", "{hello}");
+    player
 }
 
 fn call(gm: &mut GmClient, name: &str, arguments: Value) -> Value {
@@ -575,10 +589,14 @@ fn call(gm: &mut GmClient, name: &str, arguments: Value) -> Value {
         .unwrap_or_else(|refusal| serde_json::json!(refusal))
 }
 
+/// The next GM event after the hello.
 fn one_event(gm: &mut GmClient) -> Value {
+    let is_hello = |event: &ServerMessage| matches!(event.body, ServerBody::Hello { .. });
     let mut ready = gm.drain_events();
-    if ready.is_empty() {
+    ready.retain(|event| !is_hello(event));
+    while ready.is_empty() {
         match support::block_on(gm.recv()) {
+            Some(Ok(event)) if is_hello(&event) => {}
             Some(Ok(event)) => ready.push(event),
             other => panic!("expected a GM event, got {other:?}"),
         }
@@ -752,10 +770,6 @@ fn decode_body(head: &str, body: &str) -> String {
 
 fn insert_json(out: &mut BTreeMap<String, Example>, name: &str, value: Value) {
     out.insert(name.to_string(), Example::Json(value));
-}
-
-fn insert_text(out: &mut BTreeMap<String, Example>, name: &str, line: &str) {
-    out.insert(name.to_string(), Example::Text(line.to_string()));
 }
 
 fn out_json<'a>(out: &'a BTreeMap<String, Example>, name: &str) -> &'a Value {

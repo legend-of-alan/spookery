@@ -21,7 +21,7 @@ use crate::store::tape::{append_record, last_seq, read_after, read_scrollback, T
 use crate::Reason;
 use spookery_protocol::{QueuedMove, Speaker, PERCEIVE_BODY_CHARS};
 
-/// One say, in characters. Four kibibytes still fits in an 8 KiB player line.
+/// One say, in characters. Four kibibytes still fits in an 8 KiB client message.
 const MAX_SAY_CHARS: usize = 4 * 1024;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -168,6 +168,11 @@ impl<L> World<L> {
 
     pub fn pack_summary(&self) -> spookery_protocol::PackSummary {
         self.canon.to_pack_summary()
+    }
+
+    /// Every verb the pack's rules name: the words a player seat may send as moves.
+    pub fn verbs(&self) -> Vec<String> {
+        self.canon.verbs()
     }
 
     /// PCs that nobody in `presence` holds.

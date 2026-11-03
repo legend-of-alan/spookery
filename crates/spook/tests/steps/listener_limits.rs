@@ -1,12 +1,13 @@
-use std::io::{ErrorKind, Read, Write};
+use std::io::{Read, Write};
 use std::net::TcpStream;
-use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use cucumber::{then, when};
+use serde_json::json;
 use spookery_engine::testing::journal::list_round_keys;
+use tungstenite::Message;
 
-use spookery::protocol::{PlayerFrame, Speaker};
+use spookery::protocol::{Say, ServerBody, ServerMessage, Speaker};
 
 use crate::support;
 use crate::World;
@@ -17,13 +18,15 @@ const MIB: usize = 1024 * 1024;
 const SAY_TEXT_BYTES: usize = 4 * 1024;
 
 // The limits `docs/seat-protocol.md` states.
-/// A hello that does not finish within 10 seconds closes.
-const HELLO_TIMEOUT: Duration = Duration::from_secs(10);
-/// A player connection may burst to 10 lines.
+/// A message past 8 KiB is `LINE_TOO_LONG`.
+const MESSAGE_CAP: usize = 8 * 1024;
+/// A connection that sends nothing for 10 seconds closes.
+const FIRST_MESSAGE_TIMEOUT: Duration = Duration::from_secs(10);
+/// A connection may burst to 10 messages. A seated player's claim spent one.
 const BURST: usize = 10;
-/// Then it may send 5 lines a second: one line per 200 ms.
+/// Then it may send 5 messages a second: one per 200 ms.
 const REFILL: Duration = Duration::from_millis(200);
-/// Each player socket's outbound queue holds at most 256 frames.
+/// Each connection's outbound queue holds at most 256 messages.
 const FRAME_CAP: usize = 256;
 /// And at most 64 KiB.
 const BYTE_CAP: usize = 64 * 1024;
@@ -31,36 +34,31 @@ const BYTE_CAP: usize = 64 * 1024;
 /// the send buffer it budgets for the host's side of that socket.
 const WINDOW: usize = 8 * 1024;
 
-#[when(expr = "a player sends a 1 MiB line with no newline")]
-fn a_player_sends_a_mebibyte_line(world: &mut World) {
-    let pack = table::pack(world).to_path_buf();
-    table::listen(world, &pack);
-    table::seat_rowan(world, &pack);
-    let text = Arc::clone(&table::live_mut(world).player_text);
-    let writer = table::live_mut(world)
-        .first_stream
-        .as_ref()
-        .unwrap_or_else(|| panic!("no player"))
-        .try_clone()
-        .unwrap_or_else(|err| panic!("clone: {err}"));
-    let join = std::thread::spawn(move || write_all_ignoring(writer, vec![b'a'; MIB]));
-    world.player_added = wait_text(&text, "\"code\":\"LINE_TOO_LONG\"", Duration::from_secs(8));
-    table::wait_players(world, 0);
-    join.join().unwrap_or_else(|_| panic!("writer thread"));
+#[when(expr = "the player sends a message over the cap")]
+fn the_player_sends_a_message_over_the_cap(world: &mut World) {
+    let player = table::player_client(world, "pc_rowan");
+    let mark = player.seat.mark();
+    let long = json!({ "id": "long", "body": { "word": "wait" }, "pad": "a".repeat(MESSAGE_CAP) });
+    player.seat.send_raw(Message::text(long.to_string()));
+    world.player_added = table::wait_player_from(world, mark, "\"code\":\"LINE_TOO_LONG\"");
 }
 
-#[then(expr = "that player is refused with {string} and disconnected")]
-fn refused_and_disconnected(world: &mut World, code: String) {
-    let needle = format!("\"code\":\"{code}\"");
+#[when(expr = "a socket sends a 1 MiB message")]
+fn a_socket_sends_a_mebibyte_message(world: &mut World) {
+    let pack = table::pack(world).to_path_buf();
+    table::listen(world, &pack);
+    let seat = table::Seat::open(table::live_mut(world).game_port, "player");
+    let _ = seat.try_send_raw(Message::text("a".repeat(MIB)));
+    seat.wait_closed();
+    world.player_added = support::text_of(&seat.text);
+}
+
+#[then(expr = "the socket was closed without a reply")]
+fn the_socket_was_closed_without_a_reply(world: &mut World) {
     assert!(
-        world.player_added.contains(&needle),
+        !world.player_added.contains("\"reply_to\""),
         "{}",
         world.player_added
-    );
-    assert_eq!(
-        table::read_presence(world).0,
-        0,
-        "the seat was not released"
     );
 }
 
@@ -119,17 +117,6 @@ fn that_call_is_refused_and_nothing_was_written(world: &mut World) {
     );
 }
 
-#[when(expr = "a socket sends an oversized hello")]
-fn a_socket_sends_an_oversized_hello(world: &mut World) {
-    let pack = table::pack(world).to_path_buf();
-    table::listen(world, &pack);
-    let stream = connect(table::live_mut(world).game_port);
-    let text = spawn_reader(&stream);
-    let join = std::thread::spawn(move || write_all_ignoring(stream, vec![b'a'; MIB]));
-    world.scratch = wait_text(&text, "\"code\":\"LINE_TOO_LONG\"", Duration::from_secs(8));
-    join.join().unwrap_or_else(|_| panic!("writer thread"));
-}
-
 #[when(expr = "an HTTP body over 1 MiB is posted")]
 fn an_http_body_over_a_mebibyte(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
@@ -172,18 +159,11 @@ fn a_new_gm_can_sit(world: &mut World) {
     }
 }
 
-#[when(expr = "the player sends invalid UTF-8")]
-fn the_player_sends_invalid_utf8(world: &mut World) {
-    let mark = table::player_mark(world);
-    let live = table::live_mut(world);
-    let write = live
-        .first_stream
-        .as_mut()
-        .unwrap_or_else(|| panic!("no player"));
-    write
-        .write_all(b"\xff\n")
-        .unwrap_or_else(|err| panic!("write: {err}"));
-    write.flush().unwrap_or_else(|err| panic!("flush: {err}"));
+#[when(expr = "the player sends a binary message")]
+fn the_player_sends_a_binary_message(world: &mut World) {
+    let player = table::player_client(world, "pc_rowan");
+    let mark = player.seat.mark();
+    player.seat.send_raw(Message::binary(vec![0xff]));
     world.player_added = table::wait_player_from(world, mark, "\"code\":\"SCHEMA\"");
 }
 
@@ -239,29 +219,17 @@ fn the_player_can_wait(world: &mut World) {
 fn a_socket_connects_and_sends_nothing(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
     table::serve_in_process(world, &pack);
-    let mut stream = connect(table::live_mut(world).game_port);
-    // The status round trip runs after the accept, so the deadline is set.
-    let _ = table::read_presence(world);
-    table::release_probe_gm(world);
-    table::advance(world, HELLO_TIMEOUT);
-    stream
-        .set_read_timeout(Some(Duration::from_secs(5)))
-        .unwrap_or_else(|err| panic!("timeout: {err}"));
-    let mut buf = [0u8; 8];
-    let closed = match stream.read(&mut buf) {
-        Ok(0) => true,
-        Ok(_) => false,
-        Err(err) if err.kind() == ErrorKind::TimedOut || err.kind() == ErrorKind::WouldBlock => {
-            false
-        }
-        Err(_) => true,
-    };
-    world.hello_closed = closed;
+    let seat = table::Seat::open(table::live_mut(world).game_port, "player");
+    // The game port sets the first-message deadline before the table sends the hello.
+    table::wait_suffix(&seat.text, 0, "\"kind\":\"hello\"");
+    table::advance(world, FIRST_MESSAGE_TIMEOUT);
+    seat.wait_closed();
+    world.silent_closed = true;
 }
 
 #[then(expr = "the socket is closed before the hello")]
 fn the_socket_is_closed_before_the_hello(world: &mut World) {
-    assert!(world.hello_closed);
+    assert!(world.silent_closed);
 }
 
 #[when(expr = "one player sends 200 lines as fast as it can")]
@@ -273,18 +241,10 @@ fn one_player_sends_200_lines(world: &mut World) {
     table::seat_actor(world, &pack, "pc_harbormouse");
     let before = list_round_keys(&pack).len();
     for (actor_id, count) in [("pc_rowan", 200), ("pc_harbormouse", 1)] {
-        let player = table::live_mut(world)
-            .players
-            .iter_mut()
-            .find(|player| player.actor_id == actor_id)
-            .unwrap_or_else(|| panic!("no {actor_id}"));
+        let player = table::player_client(world, actor_id);
         for _ in 0..count {
-            writeln!(player.write, "wait").unwrap_or_else(|err| panic!("write: {err}"));
+            player.seat.send("wait", json!({}));
         }
-        player
-            .write
-            .flush()
-            .unwrap_or_else(|err| panic!("flush: {err}"));
     }
     // The other player's wait is its own round. Its place among the new rounds
     // shows whether it waited behind the flood.
@@ -296,7 +256,7 @@ fn one_player_sends_200_lines(world: &mut World) {
     // Paused time refills nothing: the flood's burst and the other line commit.
     let keys = table::wait_rounds_until(&pack, "the burst and the other player's wait", |keys| {
         let added = keys.get(before..).unwrap_or_default();
-        added.len() > BURST && added.iter().any(other_waits)
+        added.len() >= BURST && added.iter().any(other_waits)
     });
     let other_at = keys
         .get(before..)
@@ -322,11 +282,11 @@ fn one_player_sends_200_lines(world: &mut World) {
 
 #[then(expr = "the committed rounds stay within the rate allowance")]
 fn rounds_stay_within_the_allowance(world: &mut World) {
-    // The burst and the other player's line, then one line per refill. The
-    // round after the refill is a line past the burst that was kept.
+    // What the claim left of the burst and the other player's line, then one line per
+    // refill. The round after the refill is a line past the burst that was kept.
     assert_eq!(
         [world.flood_paced, world.flood_refilled],
-        [BURST + 1, BURST + 2]
+        [BURST, BURST + 1]
     );
 }
 
@@ -334,11 +294,7 @@ fn rounds_stay_within_the_allowance(world: &mut World) {
 fn the_other_player_commits_inside_the_burst(world: &mut World) {
     // Each session sends one line at a time, so the other line waits behind at
     // most the flood's burst and commits before any refill.
-    assert!(
-        world.flood_other_at <= BURST + 1,
-        "{}",
-        world.flood_other_at
-    );
+    assert!(world.flood_other_at <= BURST, "{}", world.flood_other_at);
 }
 
 #[when(expr = "one player stops reading and the GM says many lines")]
@@ -347,24 +303,33 @@ fn one_player_stops_reading(world: &mut World) {
     table::listen(world, &pack);
     table::seat_gm(world);
     table::seat_actor(world, &pack, "pc_harbormouse");
-    let (mut quiet, recv) = connect_small_window(table::live_mut(world).game_port);
+    let port = table::live_mut(world).game_port;
+    let (stream, recv) = connect_small_window(port);
     let send = granted_send_buffer(WINDOW);
-    writeln!(quiet, "player:pc_rowan").unwrap_or_else(|err| panic!("hello: {err}"));
-    quiet.flush().unwrap_or_else(|err| panic!("flush: {err}"));
-    read_until(&mut quiet, "\"kind\":\"view\"", Duration::from_secs(2));
+    let quiet = table::Seat::from_stream(stream, port, "player", false);
+    quiet.send("claim", json!({ "actor": "pc_rowan" }));
+    table::wait_presence(world, "pc_rowan seated", |_, present| {
+        present.iter().any(|actor| actor == "pc_rowan")
+    });
     table::live_mut(world).players.push(table::PlayerClient {
         actor_id: "pc_rowan".to_string(),
-        write: quiet,
-        text: Arc::new(Mutex::new(String::new())),
+        seat: quiet,
     });
     let say = "n".repeat(SAY_TEXT_BYTES);
-    let frame = PlayerFrame::Say {
-        from: Speaker::Gm,
-        address: "table".to_string(),
-        text: say.clone(),
-        replay: false,
+    let frame = ServerMessage {
+        id: None,
+        seq: Some(u64::from(u32::MAX)),
+        reply_to: None,
+        body: ServerBody::Say(Say {
+            from: Speaker::Gm,
+            address: "table".to_string(),
+            place: None,
+            actor: None,
+            recipients: Vec::new(),
+            text: say.clone(),
+        }),
     }
-    .to_line()
+    .to_text()
     .len();
     // Granted kernel windows, then the userspace queue, then one extra
     // buffer so a getsockopt that under-reports still reaches the drop.
@@ -395,21 +360,7 @@ fn one_player_stops_reading(world: &mut World) {
         let _ = table::gm_call(world, 2, "say", &args);
         sent = sent.saturating_add(frame);
     }
-    let heard = Instant::now();
-    loop {
-        let text = table::actor_text(world, "pc_harbormouse");
-        if text.contains("\"kind\":\"say\"") {
-            world.player_added = text;
-            break;
-        }
-        if heard.elapsed() > Duration::from_secs(2) {
-            panic!(
-                "the other player saw no say\n{}",
-                table::actor_text(world, "pc_harbormouse")
-            );
-        }
-        std::thread::sleep(Duration::from_millis(20));
-    }
+    world.player_added = table::wait_actor_from(world, "pc_harbormouse", 0, "\"kind\":\"say\"");
 }
 
 #[then(expr = "that player is disconnected")]
@@ -435,11 +386,6 @@ fn the_other_player_keeps_receiving_frames(world: &mut World) {
     );
 }
 
-fn write_all_ignoring(mut stream: TcpStream, bytes: Vec<u8>) {
-    let _ = stream.write_all(&bytes);
-    let _ = stream.flush();
-}
-
 fn connect_small_window(port: u16) -> (TcpStream, usize) {
     let socket = socket2::Socket::new(
         socket2::Domain::IPV4,
@@ -450,31 +396,19 @@ fn connect_small_window(port: u16) -> (TcpStream, usize) {
     socket
         .set_recv_buffer_size(WINDOW)
         .unwrap_or_else(|err| panic!("recv buffer: {err}"));
-    socket
-        .set_tcp_nodelay(true)
-        .unwrap_or_else(|err| panic!("nodelay: {err}"));
     let addr: std::net::SocketAddr = format!("127.0.0.1:{port}")
         .parse()
         .unwrap_or_else(|err| panic!("addr: {err}"));
-    let start = Instant::now();
-    loop {
-        match socket.connect(&addr.into()) {
-            Ok(()) => break,
-            Err(err) => {
-                if start.elapsed() > Duration::from_secs(5) {
-                    panic!("connect 127.0.0.1:{port}: {err}");
-                }
-                std::thread::sleep(Duration::from_millis(20));
-            }
-        }
-    }
+    socket
+        .connect(&addr.into())
+        .unwrap_or_else(|err| panic!("connect 127.0.0.1:{port}: {err}"));
     let size = socket
         .recv_buffer_size()
         .unwrap_or_else(|err| panic!("recv buffer size: {err}"));
     (socket.into(), size)
 }
 
-/// What this OS grants for the send buffer the player socket requests.
+/// What this OS grants for the send buffer the game port requests.
 /// Set after accept, which is when the listener sets it.
 fn granted_send_buffer(requested: usize) -> usize {
     let listener =
@@ -504,69 +438,6 @@ fn connect(port: u16) -> TcpStream {
         .set_nodelay(true)
         .unwrap_or_else(|err| panic!("nodelay: {err}"));
     stream
-}
-
-fn spawn_reader(stream: &TcpStream) -> Arc<Mutex<String>> {
-    let read = stream
-        .try_clone()
-        .unwrap_or_else(|err| panic!("clone: {err}"));
-    let text = Arc::new(Mutex::new(String::new()));
-    let slot = Arc::clone(&text);
-    std::thread::spawn(move || {
-        let mut read = read;
-        let mut buf = [0u8; 256];
-        loop {
-            match read.read(&mut buf) {
-                Ok(0) | Err(_) => break,
-                Ok(n) => text
-                    .lock()
-                    .unwrap_or_else(|err| err.into_inner())
-                    .push_str(&String::from_utf8_lossy(&buf[..n])),
-            }
-        }
-    });
-    slot
-}
-
-fn wait_text(slot: &Arc<Mutex<String>>, needle: &str, limit: Duration) -> String {
-    let start = Instant::now();
-    loop {
-        let text = support::text_of(slot);
-        if text.contains(needle) {
-            return text;
-        }
-        if start.elapsed() > limit {
-            panic!("missing {needle}\n{text}");
-        }
-        std::thread::sleep(Duration::from_millis(20));
-    }
-}
-
-fn read_until(stream: &mut TcpStream, needle: &str, limit: Duration) {
-    stream
-        .set_read_timeout(Some(limit))
-        .unwrap_or_else(|err| panic!("timeout: {err}"));
-    let mut got = Vec::new();
-    let mut tmp = [0u8; 1024];
-    let start = Instant::now();
-    while !String::from_utf8_lossy(&got).contains(needle) {
-        if start.elapsed() > limit {
-            panic!("missing {needle}\n{}", String::from_utf8_lossy(&got));
-        }
-        match stream.read(&mut tmp) {
-            Ok(0) => panic!("eof before {needle}"),
-            Ok(n) => got.extend_from_slice(&tmp[..n]),
-            Err(err)
-                if err.kind() == ErrorKind::TimedOut || err.kind() == ErrorKind::WouldBlock =>
-            {
-                std::thread::sleep(Duration::from_millis(10));
-            }
-            Err(err) => panic!("read: {err}"),
-        }
-    }
-    stream
-        .set_read_timeout(None)
-        .unwrap_or_else(|err| panic!("clear timeout: {err}"));
 }
 
 fn try_sit_gm(port: u16) -> Result<(), String> {

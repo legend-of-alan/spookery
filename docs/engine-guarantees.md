@@ -200,10 +200,11 @@ there, or dropping one they do not hold. `OUT_OF_RANGE` is a removal that would
 pass below zero from a count above zero, and the rest of that rule is not kept.
 `NOT_A_WEAPON` is wielding an item that is not a weapon. `UNKNOWN_MOVE` is a
 move the actor does not have. `TABLE_FULL` is a fourth player or a second GM.
-`SEAT_TAKEN` is a hello for a character another seat holds. `LINE_TOO_LONG`
-closes the connection. `NOT_IN_SPEC` is a full rule id used as a move, a GM
-hello on the game port, an address that is not loopback, or a verb no rule
-matches, which is refused before the round so the turn is kept. `UNKNOWN_EFFECT` is
+`SEAT_TAKEN` is a claim for a character another seat holds. `LINE_TOO_LONG`
+is a message over 8 KiB, and the connection stays up. `SCHEMA` is a word the
+hello did not list. `NOT_IN_SPEC` is a full rule id used as a move, an address
+that is not loopback, or a verb no rule matches, which is refused before the
+round so the turn is kept. `UNKNOWN_EFFECT` is
 a journal effect the engine does not run. `INELIGIBLE` is an NPC's habit in a round
 where a move the GM queued for that NPC already landed. `NO_EXIT` is a missing exit.
 `BUSY` is a move while busy.

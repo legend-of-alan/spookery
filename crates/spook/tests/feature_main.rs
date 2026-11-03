@@ -17,7 +17,7 @@ pub struct World {
     pub host_mark: usize,
     pub wren_mark: usize,
     pub player_added: String,
-    pub hello_closed: bool,
+    pub silent_closed: bool,
     pub flood_paced: usize,
     pub flood_refilled: usize,
     pub flood_other_at: usize,

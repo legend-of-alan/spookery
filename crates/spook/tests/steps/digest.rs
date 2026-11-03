@@ -1,3 +1,4 @@
+use spookery_engine::testing::state_of;
 use std::fs;
 use std::path::Path;
 
@@ -47,7 +48,7 @@ fn the_host_text_lists_the_clocks(world: &mut World) {
 #[then(expr = "the host text lists the door note")]
 fn the_host_text_lists_the_door_note(world: &mut World) {
     assert_eq!(world.stdout, HOST);
-    let now = table::now_of(table::pack(world));
+    let now = state_of(table::pack(world));
     assert_eq!(now.round_index, 13);
     assert_eq!(now.world_time, 1860);
     assert_eq!(now.last_round_at, "2026-01-01T00:00:00Z");
@@ -194,7 +195,7 @@ fn the_player_resume_lists_the_door_message(world: &mut World) {
 #[then(expr = "the player resume for {string} does not list {string}")]
 fn the_player_resume_for_does_not_list(world: &mut World, actor: String, note: String) {
     let pack = table::pack(world);
-    let now = table::now_of(pack);
+    let now = state_of(pack);
     assert!(
         now.notes.iter().any(|message| message.id == note),
         "the save has no {note}"
@@ -228,7 +229,7 @@ fn the_docks_pack_where_a_fact_has_no_hidden(world: &mut World, fact_id: String)
 
 #[given(expr = "{string} is in {string}")]
 fn is_in(world: &mut World, actor: String, place: String) {
-    let now = table::now_of(table::pack(world));
+    let now = state_of(table::pack(world));
     assert_eq!(now.actors[&actor].place, place);
 }
 
@@ -262,7 +263,9 @@ fn read_player_resume(world: &mut World, actor: &str) -> String {
     let text = table::actor_text(world, actor);
     table::stop_host(world);
     text.lines()
-        .find(|line| line.contains("\"kind\":\"resume\""))
+        .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
+        .map(|message| message["body"].clone())
+        .find(|body| body["kind"] == "resume")
         .unwrap_or_else(|| panic!("no resume frame\n{text}"))
         .to_string()
 }

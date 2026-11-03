@@ -187,7 +187,8 @@ fn play_shows_the_raw_resume_digest(world: &mut World) {
     let resume = stdout
         .lines()
         .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
-        .find(|frame| frame["kind"] == "resume")
+        .map(|message| message["body"].clone())
+        .find(|body| body["kind"] == "resume")
         .unwrap_or_else(|| panic!("no resume frame\n{stdout}"));
     assert_eq!(resume["notes"][0]["id"], "note_mira_door", "{stdout}");
     assert_eq!(

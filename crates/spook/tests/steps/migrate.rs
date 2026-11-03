@@ -1,3 +1,4 @@
+use spookery_engine::testing::state_of;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
@@ -109,7 +110,7 @@ fn the_pack_adds_meter(world: &mut World, id: String, start: i64) {
 
 #[then(expr = "every actor has {string} at {int}")]
 fn every_actor_has_meter_at(world: &mut World, id: String, base: i64) {
-    let now = table::now_of(table::pack(world));
+    let now = state_of(table::pack(world));
     for (actor, live) in &now.actors {
         let got = live.meters.get(&id).map(|meter| meter.base);
         assert_eq!(got, Some(base), "{actor} {id}");
@@ -205,7 +206,7 @@ fn the_host_refuses_to_start(world: &mut World, code: String) {
 
 #[then(expr = "state_rev is 2")]
 fn state_rev_is_2(world: &mut World) {
-    let now = table::now_of(table::pack(world));
+    let now = state_of(table::pack(world));
     assert_eq!(now.state_rev, 2);
     assert_eq!(now.pack_rev, docks_pack_rev());
     assert_eq!(now.actors.get("pc_rowan").unwrap().place, "docks_shop");
@@ -231,7 +232,7 @@ fn migrate_keeps_the_hand_edit(world: &mut World) {
     let pack = table::pack(world);
     let rev = spookery_engine::pack_rev(pack).unwrap();
     assert_ne!(rev, docks_pack_rev());
-    let now = table::now_of(pack);
+    let now = state_of(pack);
     assert_eq!(now.pack_rev, rev);
     assert_eq!(now.state_rev, 1);
     assert_eq!(now.world_time, 7);
@@ -259,7 +260,7 @@ fn the_shops_lamp_oil_is_hand_edited(world: &mut World, count: u32) {
 
 #[then(expr = "the shop has {int} lamp oil")]
 fn the_shop_has_lamp_oil(world: &mut World, count: u32) {
-    let now = table::now_of(table::pack(world));
+    let now = state_of(table::pack(world));
     let shop = now.places.get("docks_shop").unwrap();
     assert_eq!(shop.items.get("lamp_oil").copied(), Some(count));
 }

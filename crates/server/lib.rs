@@ -1,13 +1,14 @@
-//! The Spookery table server: bind the game port and the MCP endpoint, then run the table.
+//! The Spookery table server: bind the game port's WebSocket endpoint and the MCP endpoint,
+//! then run the table.
 
 mod frames;
 mod idle;
 mod limits;
 mod mcp;
-mod player;
 mod seat;
 mod table;
 mod tools;
+mod ws;
 
 use std::future::Future;
 use std::io::{self, Write};
@@ -39,7 +40,7 @@ impl std::fmt::Display for Error {
 pub struct Config {
     pub addr: SocketAddr,
     pub mcp_addr: Option<SocketAddr>,
-    pub hello_timeout: Duration,
+    pub first_message_timeout: Duration,
     pub out: Box<dyn Write + Send>,
     pub err: Box<dyn Write + Send>,
 }
@@ -49,7 +50,7 @@ impl Config {
         Self {
             addr,
             mcp_addr: None,
-            hello_timeout: limits::HELLO_TIMEOUT,
+            first_message_timeout: limits::FIRST_MESSAGE_TIMEOUT,
             out: Box::new(io::sink()),
             err: Box::new(io::sink()),
         }
@@ -73,11 +74,11 @@ pub async fn serve(
     let (tx, rx) = std::sync::mpsc::channel();
     let mut tasks = tokio::task::JoinSet::new();
     let next_conn = Arc::new(AtomicU64::new(1));
-    tasks.spawn(player::serve(
+    tasks.spawn(ws::serve(
         listener,
         tx.clone(),
         Arc::clone(&next_conn),
-        config.hello_timeout,
+        config.first_message_timeout,
     ));
     tasks.spawn(mcp::serve(mcp_listener, tx.clone(), next_conn));
     let (restart_tx, restart_rx) = tokio::sync::watch::channel(0u64);

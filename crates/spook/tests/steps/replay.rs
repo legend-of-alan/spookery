@@ -1,3 +1,4 @@
+use spookery_engine::testing::state_of;
 use std::fs;
 
 use cucumber::{given, then, when};
@@ -117,7 +118,7 @@ fn the_pack_bytes_are_remembered(world: &mut World) {
 
 #[then(expr = "stdout says the save was verified")]
 fn stdout_says_the_save_was_verified(world: &mut World) {
-    let rev = table::now_of(table::pack(world)).state_rev;
+    let rev = state_of(table::pack(world)).state_rev;
     assert!(
         world.stdout.contains("verified ") && world.stdout.contains("records, state_rev "),
         "{}",
