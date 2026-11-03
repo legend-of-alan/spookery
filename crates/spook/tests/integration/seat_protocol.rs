@@ -32,7 +32,7 @@ enum Example {
     Text(String),
 }
 
-/// One player connection on the game port's WebSocket door. A reader thread hands over
+/// One player connection on `/player` on the game port. A reader thread hands over
 /// each message.
 struct PlayerClient {
     write: WebSocket<TcpStream>,

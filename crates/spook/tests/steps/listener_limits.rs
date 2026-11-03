@@ -21,7 +21,7 @@ const SAY_TEXT_BYTES: usize = 4 * 1024;
 /// A message past 8 KiB is `LINE_TOO_LONG`.
 const MESSAGE_CAP: usize = 8 * 1024;
 /// A connection that sends nothing for 10 seconds closes.
-const HELLO_TIMEOUT: Duration = Duration::from_secs(10);
+const FIRST_MESSAGE_TIMEOUT: Duration = Duration::from_secs(10);
 /// A connection may burst to 10 messages. A seated player's claim spent one.
 const BURST: usize = 10;
 /// Then it may send 5 messages a second: one per 200 ms.
@@ -222,7 +222,7 @@ fn a_socket_connects_and_sends_nothing(world: &mut World) {
     let seat = table::Seat::open(table::live_mut(world).game_port, "player");
     // The door sets its deadline before the table sends the hello.
     table::wait_suffix(&seat.text, 0, "\"kind\":\"hello\"");
-    table::advance(world, HELLO_TIMEOUT);
+    table::advance(world, FIRST_MESSAGE_TIMEOUT);
     seat.wait_closed();
     world.hello_closed = true;
 }

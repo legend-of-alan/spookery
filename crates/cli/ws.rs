@@ -1,11 +1,12 @@
-//! The client side of a seat over the game port's WebSocket door.
+//! The client side of a seat over `/player` or `/gm` on the game port.
 
 use std::net::SocketAddr;
 
 use futures_util::{SinkExt, StreamExt};
 use serde_json::Value;
 use tokio::net::TcpStream;
-use tokio_tungstenite::tungstenite::Message;
+use tokio_tungstenite::tungstenite::error::ProtocolError;
+use tokio_tungstenite::tungstenite::{Error as WsError, Message};
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
 
 use crate::protocol::{ClientMessage, ServerBody, ServerMessage};
@@ -56,12 +57,19 @@ impl Connection {
     }
 
     /// The next message, or the text of one that could not be read as `Error::Unreadable`.
-    /// `None` when the host closes the connection. Cancel safe.
+    /// `None` when the host closes the connection, with or without a close frame, and
+    /// `Error::Io` when the connection fails. Cancel safe.
     pub async fn recv(&mut self) -> Option<Result<ServerMessage, Error>> {
         loop {
             let text = match self.socket.next().await? {
                 Ok(Message::Text(text)) => text,
-                Ok(Message::Close(_)) | Err(_) => return None,
+                Ok(Message::Close(_))
+                | Err(
+                    WsError::ConnectionClosed
+                    | WsError::AlreadyClosed
+                    | WsError::Protocol(ProtocolError::ResetWithoutClosingHandshake),
+                ) => return None,
+                Err(err) => return Some(Err(Error::Io(std::io::Error::other(err)))),
                 Ok(_) => continue,
             };
             return Some(serde_json::from_str(&text).map_err(|_| {

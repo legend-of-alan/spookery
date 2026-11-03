@@ -56,7 +56,7 @@ crates/
   engine/              spookery-engine: world model, rules, rounds, and journal
   agent/               spookery-agent: the reusable GM brain: turn state machine, prompt, Model trait
   cli/                 spookery-cli: play, gm, ai_gm (the three clients), ws, mcp, http_model, text
-  server/              spookery-server: the table, the game port's WebSocket door, MCP endpoint, GM words, seats, idle timer
+  server/              spookery-server: the table, the game port's WebSocket endpoint, MCP endpoint, GM words, seats, idle timer
   spook/               package and binary spook, library spookery
     tests/features/    BDD scenarios
 ```
@@ -139,7 +139,7 @@ spook gm
 
 Type `help` to see the GM commands. `spook gm --raw` prints each protocol frame as one JSON line instead.
 
-`spook gm` connects to the MCP endpoint. Use `--mcp-addr 127.0.0.1:<port>` to point it somewhere else. `spook ai-gm` sits the GM seat on the game port's WebSocket door, so `--addr` points it. If you started the host with `--addr 127.0.0.1:0`, the OS picks the ports and the listening line tells you both: pass `game` to `--addr` and `mcp` to `--mcp-addr`.
+`spook gm` connects to the MCP endpoint. Use `--mcp-addr 127.0.0.1:<port>` to point it somewhere else. `spook ai-gm` sits the GM seat on `/gm` on the game port, so `--addr` points it. If you started the host with `--addr 127.0.0.1:0`, the OS picks the ports and the listening line tells you both: pass `game` to `--addr` and `mcp` to `--mcp-addr`.
 
 ## Privacy
 

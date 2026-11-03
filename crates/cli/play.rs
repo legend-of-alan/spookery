@@ -24,7 +24,7 @@ pub async fn run(pc: Option<&str>, addr: SocketAddr, raw: bool) -> Result<(), Er
             [] => return Err(Error::Message("No free characters".into())),
             [only] => only.clone(),
             many => {
-                // The choice may take longer than the hello timeout, so dial again after.
+                // The choice may take longer than the first-message timeout, so dial again after.
                 drop(seat);
                 println!("Choose a character:\n{}", many.join("\n"));
                 let _ = io::stdout().flush();

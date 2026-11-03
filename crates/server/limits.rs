@@ -5,9 +5,9 @@ use std::time::Duration;
 use tokio::time::Instant;
 
 /// The longest client message the table reads. A longer one is `LINE_TOO_LONG`.
-pub(super) const PLAYER_LINE_CAP: usize = 8 * 1024;
+pub(super) const CLIENT_MESSAGE_CAP: usize = 8 * 1024;
 
-/// The longest WebSocket message the door takes in at all. A longer one drops the
+/// The longest WebSocket message the game port takes in at all. A longer one drops the
 /// connection.
 pub(super) const MESSAGE_CAP: usize = 64 * 1024;
 
@@ -38,7 +38,8 @@ pub(super) const KEEPALIVE: socket2::TcpKeepalive = socket2::TcpKeepalive::new()
     .with_interval(Duration::from_secs(1))
     .with_retries(3);
 
-pub(super) const HELLO_TIMEOUT: Duration = Duration::from_secs(10);
+/// How long a new connection may wait before its first message.
+pub(super) const FIRST_MESSAGE_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Millitokens per message. Refill uses this scale so the bucket stays integer.
 const MILLITOKENS_PER_TOKEN: u128 = 1000;

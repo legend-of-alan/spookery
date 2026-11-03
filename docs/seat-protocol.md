@@ -8,7 +8,7 @@ A tick is game time. A round is one batch of queued moves.
 
 ## Connect
 
-The game port is the WebSocket door. A player opens `ws://127.0.0.1:<game>/player` and a GM opens `ws://127.0.0.1:<game>/gm`. The default is `127.0.0.1:9737`. The door takes the same `Host` and `Origin` rules as the MCP endpoint below.
+The game port is a WebSocket endpoint. A player opens `ws://127.0.0.1:<game>/player` and a GM opens `ws://127.0.0.1:<game>/gm`. The default is `127.0.0.1:9737`. It takes the same `Host` and `Origin` rules as the MCP endpoint below.
 
 The MCP endpoint is streamable HTTP at `http://127.0.0.1:<port>/mcp`. When the game port is fixed, the MCP endpoint's port is the game port plus one, so the default MCP endpoint is `http://127.0.0.1:9738/mcp`. `--addr 127.0.0.1:0` asks the operating system for the game port, and the MCP endpoint is its own bind. `--mcp-addr 127.0.0.1:<port>` overrides the MCP endpoint's address, including port 0. Do not add one to a port-0 game port. Read the listening line.
 
@@ -1003,7 +1003,7 @@ An unknown tool:
 
 ### Events
 
-The seat pushes one `spook/event` notification for each message the table sends this seat, the hello first. Its params are the message's envelope, as on the WebSocket door. A generic client may ignore them and poll `table_status` with `since` instead. The GM seat is not rate-limited.
+The seat pushes one `spook/event` notification for each message the table sends this seat, the hello first. Its params are the message's envelope, as on the game port. A generic client may ignore them and poll `table_status` with `since` instead. The GM seat is not rate-limited.
 
 A player say:
 
@@ -1088,11 +1088,11 @@ Each committed round. Its rolls, faces and all, are on the `commit_round` result
 
 The GM hears `presence` when a claim starts or ends.
 
-A GM may also sit on the WebSocket door's `/gm`. Its words are the tools' words: `status`, `perceive`, `queue`, `say`, `commit` and `release`, with the tools' arguments. Each reply comes on the same stream as the events, after the messages the word caused, so a `commit` reply follows its `round` messages and a `say` reply is the GM's own copy of the say. A second GM on `/gm` while the seat is held gets one `refused` with `TABLE_FULL`, and the connection closes.
+A GM may also sit on `/gm` on the game port. Its words are the tools' words: `status`, `perceive`, `queue`, `say`, `commit` and `release`, with the tools' arguments. Each reply comes on the same stream as the events, after the messages the word caused, so a `commit` reply follows its `round` messages and a `say` reply is the GM's own copy of the say. A second GM on `/gm` while the seat is held gets one `refused` with `TABLE_FULL`, and the connection closes.
 
 ## Errors
 
-A refusal on the WebSocket door is a `refused` body, `{"kind":"refused","code":"..."}`, and the connection stays up. `detail` is present only when the refusal names a thing, as in the locked-exit example. On `CHOOSE_PC`, `detail` is a JSON array of the open bare PC ids. A GM tool refusal is `{"code":"..."}` and the seat stays up. The GM object has no `detail`.
+A refusal on the game port is a `refused` body, `{"kind":"refused","code":"..."}`, and the connection stays up. `detail` is present only when the refusal names a thing, as in the locked-exit example. On `CHOOSE_PC`, `detail` is a JSON array of the open bare PC ids. A GM tool refusal is `{"code":"..."}` and the seat stays up. The GM object has no `detail`.
 
 Each connection has an outbound queue of at most 256 messages and 64 KiB. A client that stops reading is dropped, and that seat is released. Other seats keep their messages.
 

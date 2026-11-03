@@ -33,7 +33,7 @@ pub(crate) fn commit_then_fast_forward(
     world.commit_then_fast_forward(presence, &wall)
 }
 
-/// Sent from the doors and the idle timer to the table thread.
+/// Sent from the game port, the MCP endpoint and the idle timer to the table thread.
 pub(super) enum Request {
     /// A new connection on `seat`. A GM connection takes the one GM seat.
     Open {
@@ -42,7 +42,7 @@ pub(super) enum Request {
         frames_tx: FrameSender,
         reply: oneshot::Sender<Result<(), Box<ServerMessage>>>,
     },
-    /// One client message, or what the door could not read.
+    /// One client message, or why the game port could not read it.
     Message {
         conn: Conn,
         message: Result<ClientMessage, Rejection>,
@@ -63,7 +63,7 @@ pub(super) enum Request {
     Stop,
 }
 
-/// A client message the WebSocket door could not read, sent from the door to the table:
+/// A client message the game port could not read, sent from the game port to the table:
 /// the `id` it named, if any, and why.
 pub(super) struct Rejection {
     pub(super) id: Option<String>,
@@ -164,7 +164,7 @@ impl Table {
     }
 
     /// Opens the connection and sends its hello. A GM connection while the seat is held is
-    /// refused, and the refusal is the door's to send.
+    /// refused, and the connection sends that refusal itself.
     fn open(&mut self, conn: Conn, seat: Seat, out: FrameSender) -> Result<(), Box<ServerMessage>> {
         if seat == Seat::Gm && self.seats.gm.is_some() {
             let seq = self.stamp();
@@ -609,14 +609,12 @@ impl Table {
     /// Drops a connection. Dropping its link cancels its socket. A claim it held ends,
     /// and a GM seat it held is free.
     fn drop_link(&mut self, conn: Conn) {
-        let gm = self.seats.gm == Some(conn);
+        if self.seats.gm == Some(conn) {
+            self.release_gm();
+        }
         let Some(link) = self.seats.take(conn) else {
             return;
         };
-        if gm {
-            let _ = writeln!(self.out, "gm seat free");
-            let _ = self.out.flush();
-        }
         if link.actor.is_some() {
             self.announce_presence();
         }

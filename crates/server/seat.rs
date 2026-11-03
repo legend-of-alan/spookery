@@ -60,9 +60,6 @@ impl Seats {
 
     /// Drops the connection. Dropping its link cancels its writer.
     pub(super) fn take(&mut self, conn: Conn) -> Option<Link> {
-        if self.gm == Some(conn) {
-            self.gm = None;
-        }
         let index = self.links.iter().position(|link| link.conn == conn)?;
         Some(self.links.remove(index))
     }

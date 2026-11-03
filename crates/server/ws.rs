@@ -1,5 +1,5 @@
-//! The WebSocket door on the game port: `/player` and `/gm`. One text message is one
-//! `ClientMessage` in and one `ServerMessage` out. The door frames messages and knows no
+//! The game port's WebSocket endpoint: `/player` and `/gm`. One text message is one
+//! `ClientMessage` in and one `ServerMessage` out. It frames messages and knows no
 //! rules.
 
 use std::io;
@@ -18,7 +18,7 @@ use serde_json::Value;
 use spookery_engine::Reason;
 
 use super::limits::{
-    wait_for_token, TokenBucket, BURST, KEEPALIVE, MESSAGE_CAP, PLAYER_LINE_CAP, RATE_PER_SEC,
+    wait_for_token, TokenBucket, BURST, CLIENT_MESSAGE_CAP, KEEPALIVE, MESSAGE_CAP, RATE_PER_SEC,
     REQUESTED_SEND_BUFFER,
 };
 use super::seat::{frame_queue, write_frames, Conn};
@@ -29,20 +29,20 @@ use crate::protocol::{ClientMessage, Seat};
 struct Acceptor {
     tx: Sender<Request>,
     next_conn: Arc<AtomicU64>,
-    hello_timeout: Duration,
+    first_message_timeout: Duration,
 }
 
-/// Serve the door until the listener fails.
+/// Serve the endpoint until the listener fails.
 pub(super) async fn serve(
     listener: tokio::net::TcpListener,
     tx: Sender<Request>,
     next_conn: Arc<AtomicU64>,
-    hello_timeout: Duration,
+    first_message_timeout: Duration,
 ) {
     let acceptor = Acceptor {
         tx,
         next_conn,
-        hello_timeout,
+        first_message_timeout,
     };
     let app = axum::Router::new()
         .route("/{seat}", axum::routing::get(upgrade))
@@ -129,17 +129,17 @@ async fn run(socket: WebSocket, acceptor: Acceptor, seat: Seat) {
         frames_rx,
     ));
     let mut bucket = TokenBucket::new(RATE_PER_SEC, BURST);
-    let mut heard = false;
+    let mut spoke = false;
     loop {
         // Wait before reading so a full window slows the sender. The message is kept.
         if !wait_for_token(&mut bucket, &mut cancel_rx).await {
             break;
         }
-        let first_wait = async {
-            if heard {
+        let first_message_deadline = async {
+            if spoke {
                 std::future::pending::<()>().await;
             }
-            tokio::time::sleep(acceptor.hello_timeout).await;
+            tokio::time::sleep(acceptor.first_message_timeout).await;
         };
         let received = tokio::select! {
             biased;
@@ -150,7 +150,7 @@ async fn run(socket: WebSocket, acceptor: Acceptor, seat: Seat) {
                 continue;
             }
             received = stream.next() => received,
-            () = first_wait => {
+            () = first_message_deadline => {
                 report_hangup(&acceptor.tx, conn).await;
                 break;
             }
@@ -167,7 +167,7 @@ async fn run(socket: WebSocket, acceptor: Acceptor, seat: Seat) {
                 break;
             }
         };
-        heard = true;
+        spoke = true;
         let _ = bucket.try_take(tokio::time::Instant::now());
         let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
         let request = Request::Message {
@@ -183,14 +183,14 @@ async fn run(socket: WebSocket, acceptor: Acceptor, seat: Seat) {
     let _ = writer.await;
 }
 
-/// One client message, read by serde_json. One over `PLAYER_LINE_CAP` is `LINE_TOO_LONG`,
+/// One client message, read by serde_json. One over `CLIENT_MESSAGE_CAP` is `LINE_TOO_LONG`,
 /// and one that does not parse is `SCHEMA`, with the `id` it named when it named one.
 fn read_message(text: &str) -> Result<ClientMessage, Rejection> {
     let id = || {
         let value: Value = serde_json::from_str(text).ok()?;
         Some(value.get("id")?.as_str()?.to_string())
     };
-    if text.len() > PLAYER_LINE_CAP {
+    if text.len() > CLIENT_MESSAGE_CAP {
         return Err(Rejection {
             id: None,
             code: Reason::LineTooLong,

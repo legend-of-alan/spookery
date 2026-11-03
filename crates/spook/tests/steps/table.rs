@@ -163,7 +163,7 @@ pub struct Host {
     pub game_port: u16,
     pub players: Vec<PlayerClient>,
     pub gm: Option<GmClient>,
-    /// A GM seated on the game port's WebSocket door.
+    /// A GM seated on `/gm` on the game port.
     pub ws_gm: Option<Seat>,
     /// A player connection a step opened and did not claim with.
     pub door: Option<Seat>,

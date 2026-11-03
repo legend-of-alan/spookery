@@ -54,8 +54,8 @@ fn it_gets(world: &mut World, text: String) {
     assert_eq!(got, want);
 }
 
-#[when(expr = "a GM sits on the WebSocket door")]
-fn a_gm_sits_on_the_websocket_door(world: &mut World) {
+#[when(expr = "a GM sits on the game port")]
+fn a_gm_sits_on_the_game_port(world: &mut World) {
     let seat = Seat::open(table::live_mut(world).game_port, "gm");
     table::wait_suffix(&seat.text, 0, "\"kind\":\"hello\"");
     table::live_mut(world).ws_gm = Some(seat);
@@ -163,7 +163,7 @@ fn ws_gm(world: &World) -> &Seat {
         .live
         .as_ref()
         .and_then(|live| live.ws_gm.as_ref())
-        .unwrap_or_else(|| panic!("no GM on the WebSocket door"))
+        .unwrap_or_else(|| panic!("no GM on the game port"))
 }
 
 fn door(world: &World) -> &Seat {

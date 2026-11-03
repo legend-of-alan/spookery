@@ -239,7 +239,22 @@ mod tests {
     use serde_json::json;
     use spookery_engine::{testing::copy_pack, World};
 
-    use crate::protocol::QueuedMove;
+    use super::TOOLS;
+    use crate::protocol::{QueuedMove, Seat, WORDS};
+
+    /// Each MCP tool runs a GM word the hello lists, and each GM word has one tool.
+    #[test]
+    fn the_tools_are_the_gm_words() {
+        let mut tools: Vec<&str> = TOOLS.iter().map(|tool| tool.word).collect();
+        let mut words: Vec<&str> = WORDS
+            .iter()
+            .filter(|word| word.seat == Seat::Gm)
+            .map(|word| word.name)
+            .collect();
+        tools.sort_unstable();
+        words.sort_unstable();
+        assert_eq!(tools, words);
+    }
 
     #[test]
     fn parsed_intent_reaches_the_world_with_move_and_to() {

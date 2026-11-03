@@ -1,4 +1,4 @@
-//! Engine output as message bodies, and the tool results the MCP door turns those into.
+//! Engine output as message bodies, and the tool results the MCP endpoint turns those into.
 //! The one place a `protocol::Refusal` is rendered: into a body, a tool result or an MCP
 //! error.
 
