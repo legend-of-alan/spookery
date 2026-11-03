@@ -258,7 +258,7 @@ pub(crate) fn settle_checkpoint<L>(world: &World<L>, write: &WriteGuard) -> Resu
     if blake2s_tagged(&now_bytes) != mark.state_hash {
         return Ok(());
     }
-    let save = world.root.join("state/save.yaml");
+    let save = journal::save_path(&world.root);
     let snap = journal::checkpoint_path(&world.root, mark.state_rev);
     let save_ok = journal::hashes_to(&save, &mark.state_hash);
     let snap_ok = journal::hashes_to(&snap, &mark.state_hash);

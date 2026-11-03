@@ -173,9 +173,9 @@ pub fn replay_journal(
         return Err(Error::Reason(Reason::NotInSpec));
     }
     let base_path = journal::base_path(pack);
-    let save_path = pack.join("state/save.yaml");
+    let save_path = journal::save_path(pack);
     let base_bytes = if let Some(from) = from {
-        fs::read(from.join("state/save.yaml")).map_err(|_| Error::Reason(Reason::NotInSpec))?
+        fs::read(journal::save_path(from)).map_err(|_| Error::Reason(Reason::NotInSpec))?
     } else if base_path.is_file() {
         fs::read(&base_path).map_err(|_| Error::Reason(Reason::Schema))?
     } else if save_path.is_file() {
@@ -260,7 +260,7 @@ pub fn migrate_pack(path: &Path) -> Result<(), Reason> {
 /// The state to migrate, and whether it is a hand edit of the checkpoint head.
 /// A hand edit with live rounds past it is refused, because the tip does not hold it.
 fn load_migrate_tip(path: &Path, lock: &PackGuard) -> Result<(State, bool), Reason> {
-    let bytes = fs::read(path.join("state/save.yaml")).map_err(|_| Reason::NotInSpec)?;
+    let bytes = fs::read(journal::save_path(path)).map_err(|_| Reason::NotInSpec)?;
     let text = std::str::from_utf8(&bytes).map_err(|_| Reason::Schema)?;
     let file_state = save::parse(text).map_err(|diags| first_reason(&diags))?;
     // A save from before the head is a checkpoint that did not land, not an edit.
@@ -287,7 +287,7 @@ fn load_migrate_tip(path: &Path, lock: &PackGuard) -> Result<(State, bool), Reas
 /// The caller holds the pack lock.
 fn replay_tip_unchecked(path: &Path, lock: &PackGuard) -> Result<World<()>, Reason> {
     rebuild_save(path, lock).map_err(Error::into_reason)?;
-    let save = fs::read(path.join("state/save.yaml")).map_err(|_| Reason::NotInSpec)?;
+    let save = fs::read(journal::save_path(path)).map_err(|_| Reason::NotInSpec)?;
     let mut world = open_for_replay(path, &save).map_err(Error::into_reason)?;
     replay_tail(&mut world)?;
     crate::store::commit::settle_checkpoint(&world, &lock_write(&world.root, lock)?)?;
@@ -330,7 +330,7 @@ fn rebuild_save(path: &Path, lock: &PackGuard) -> Result<(), Error> {
     let Some(mark) = journal::read_head(path)? else {
         return Ok(());
     };
-    let save_path = path.join("state/save.yaml");
+    let save_path = journal::save_path(path);
     if save_path.is_file() {
         let bytes = fs::read(&save_path).map_err(|_| Error::Reason(Reason::NotInSpec))?;
         if blake2s_tagged(&bytes) == mark.state_hash {

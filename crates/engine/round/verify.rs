@@ -28,7 +28,7 @@ pub fn verify_pack(pack: &Path, from: Option<&Path>) -> Result<Report, Error> {
         return Err(Error::Reason(Reason::NotInSpec));
     }
     // Stays although `read_base` makes the same check: with `from`, verify returns before it runs.
-    if !pack.join("state/save.yaml").is_file() && !journal::base_path(pack).is_file() {
+    if !journal::save_path(pack).is_file() && !journal::base_path(pack).is_file() {
         return Err(Error::Reason(Reason::NotInSpec));
     }
     let bundles = journal::read_bundle_records(pack)?;
@@ -151,8 +151,7 @@ fn check_bundle_end(
 }
 
 fn check_save_file(pack: &Path, records: &[Record], base: &[u8]) -> Result<(), Error> {
-    let live =
-        fs::read(pack.join("state/save.yaml")).map_err(|_| Error::Reason(Reason::NotInSpec))?;
+    let live = fs::read(journal::save_path(pack)).map_err(|_| Error::Reason(Reason::NotInSpec))?;
     let state = load_save_bytes(&live)?;
     if records.is_empty() {
         let canonical = save::emit(&state)
@@ -209,7 +208,7 @@ fn name_save_line(pack: &Path, err: Error) -> Error {
     let Error::Diverged(diverged) = err else {
         return err;
     };
-    let live = fs::read(pack.join("state/save.yaml"))
+    let live = fs::read(journal::save_path(pack))
         .or_else(|_| fs::read(journal::base_path(pack)))
         .unwrap_or_default();
     set_save_line(diverged, &live)
@@ -220,7 +219,7 @@ fn read_base(pack: &Path) -> Result<Vec<u8>, Error> {
     if base.is_file() {
         return fs::read(&base).map_err(|_| Error::Reason(Reason::Schema));
     }
-    fs::read(pack.join("state/save.yaml")).map_err(|_| Error::Reason(Reason::NotInSpec))
+    fs::read(journal::save_path(pack)).map_err(|_| Error::Reason(Reason::NotInSpec))
 }
 
 fn replay_bundle(pack: &Path, start: &[u8], entries: &[Record]) -> Result<Vec<u8>, Error> {
@@ -241,7 +240,7 @@ fn replay_bundle(pack: &Path, start: &[u8], entries: &[Record]) -> Result<Vec<u8
 mod tests {
     use std::fs;
 
-    use super::{verify_pack, verify_quick};
+    use super::{journal, verify_pack, verify_quick};
     use crate::round::play_pack_once;
     use crate::testing::copy_docks;
 
@@ -275,7 +274,7 @@ mod tests {
         fs::write(&pack_yaml, cfg).unwrap();
         play_pack_once(&pack).unwrap();
         play_pack_once(&pack).unwrap();
-        let save = pack.join("state/save.yaml");
+        let save = journal::save_path(&pack);
         let text = fs::read_to_string(&save).unwrap();
         let tampered = text.replacen("state_rev: 2", "state_rev: 99", 1);
         assert_ne!(tampered, text);

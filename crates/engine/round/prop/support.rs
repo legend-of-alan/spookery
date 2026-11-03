@@ -117,7 +117,7 @@ fn add_grit_success(pack: &Path) -> Result<(), String> {
     }
     fs::write(&path, text.replacen(needle, replacement, 1)).map_err(|err| err.to_string())?;
     let rev = pack_rev(pack).map_err(|err| err.to_string())?;
-    let save_path = pack.join("state/save.yaml");
+    let save_path = journal::save_path(pack);
     let save_text = fs::read_to_string(&save_path).map_err(|err| err.to_string())?;
     let mut state = save::parse(&save_text).map_err(|err| format!("{err:?}"))?;
     state.pack_rev = rev;
