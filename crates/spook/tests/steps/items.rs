@@ -59,18 +59,18 @@ fn read_first_round_line(pack: &Path) -> String {
         .unwrap_or_else(|err| panic!("{}", err.detail))
 }
 
-fn write_dagger(pack: &Path, attack: &str) {
+fn write_dagger(pack: &Path, rules: &str) {
     let path = pack.join("world/items/poisoned_dagger.md");
     fs::create_dir_all(path.parent().unwrap()).unwrap();
-    let rules = if attack.is_empty() {
+    let section = if rules.is_empty() {
         "rules: []\n".to_string()
     } else {
-        format!("rules:\n{attack}")
+        format!("rules:\n{rules}")
     };
     fs::write(
         path,
         format!(
-            "---\nschema: item\nid: poisoned_dagger\ndisplay_name: Poisoned dagger\ntags:\n  - weapon\n{rules}---\n\nA dark blade.\n"
+            "---\nschema: item\nid: poisoned_dagger\ndisplay_name: Poisoned dagger\ntags:\n  - weapon\n{section}---\n\nA dark blade.\n"
         ),
     )
     .unwrap();
