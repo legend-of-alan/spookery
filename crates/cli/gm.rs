@@ -8,7 +8,9 @@ use serde::Serialize;
 use serde_json::{json, Value};
 
 use crate::mcp::{event_line, GmClient};
-use crate::protocol::{self, SayArgs, ServerBody, ServerMessage, ToolResult};
+use crate::protocol::{
+    self, CommitArgs, PerceiveArgs, SayArgs, ServerBody, ServerMessage, ToolResult,
+};
 use crate::text::{self, render_checks, render_dice, render_diff, render_event, render_status};
 use crate::Error;
 
@@ -107,7 +109,13 @@ impl Session {
             }
             Command::Quit => return Ok(false),
             Command::Status => ("status", json!({})),
-            Command::Look { actor } => ("perceive", json!({ "as": actor })),
+            Command::Look { actor } => {
+                let args = PerceiveArgs {
+                    as_viewer: Some(actor),
+                    max_body_chars: None,
+                };
+                ("perceive", json!(args))
+            }
             Command::Say(args) => ("say", json!(args)),
             Command::Queue {
                 actor,
@@ -125,7 +133,13 @@ impl Session {
                 };
                 ("queue", json!(args))
             }
-            Command::Commit => ("commit", json!({ "include_round": true })),
+            Command::Commit => {
+                let args = CommitArgs {
+                    include_round: true,
+                    session_id: None,
+                };
+                ("commit", json!(args))
+            }
         };
         self.send(word, &args).await?;
         Ok(true)

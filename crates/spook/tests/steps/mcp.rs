@@ -548,12 +548,12 @@ fn an_mcp_gm_and_a_websocket_gm(world: &mut World) {
     world.pack = Some(pack.clone());
     table::listen(world, &pack);
     table::seat_gm(world);
-    let twin = support::copy_docks("parity-ws");
-    let running = table::wait_addrs(table::spawn_table(&twin, &["--addr", "127.0.0.1:0"]));
+    let ws_pack = support::copy_docks("parity-ws");
+    let running = table::wait_addrs(table::spawn_table(&ws_pack, &["--addr", "127.0.0.1:0"]));
     let gm = table::Seat::open(running.game.port(), "gm");
     table::wait_suffix(&gm.text, 0, "\"kind\":\"hello\"");
     table::live_mut(world).ws_gm = Some(gm);
-    world.twin = Some((running, twin));
+    world.ws_table = Some((running, ws_pack));
 }
 
 /// Mira stands in her rooms. Travel needs a target, and the shop is down the stairs.

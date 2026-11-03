@@ -8,7 +8,6 @@ use std::sync::{Arc, Mutex, OnceLock};
 use std::task::{Context, Poll};
 
 use futures_core::Stream;
-use rmcp::handler::server::tool::schema_for_type;
 use rmcp::model::{
     CallToolRequestParams, CallToolResponse, CallToolResult, ClientJsonRpcMessage,
     CustomNotification, GetExtensions, InitializeRequestParams, InitializeResult, ListToolsResult,
@@ -24,16 +23,13 @@ use rmcp::transport::streamable_http_server::session::{
 };
 use rmcp::transport::streamable_http_server::{StreamableHttpServerConfig, StreamableHttpService};
 use rmcp::{ErrorData as McpError, ServerHandler};
-use serde_json::{Map, Value};
 use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
 
+use super::gm;
 use super::limits::GM_BODY_CAP;
 use super::seat::{frame_queue, write_frames, Conn};
 use super::table::{report_hangup, Request};
-use crate::protocol::{
-    ClientBody, ClientMessage, CommitArgs, IntentArgs, NoArgs, PerceiveArgs, SayArgs, Seat,
-    ServerBody, ToolResult, WORDS,
-};
+use crate::protocol::{ClientBody, ClientMessage, Seat, ServerBody, ToolResult, WORDS};
 
 pub(super) async fn serve(
     listener: tokio::net::TcpListener,
@@ -327,45 +323,18 @@ fn list_gm_tools() -> Vec<Tool> {
     WORDS
         .iter()
         .filter(|word| word.seat == Seat::Gm)
-        .map(|word| {
-            let (about, schema) = describe_gm_word(word.name);
-            Tool::new(word.name, format!("{about} {SEAT_NOTES}"), schema)
+        .filter_map(|word| {
+            let (about, schema) = gm::describe_gm_word(word.name)?;
+            Some(Tool::new(
+                word.name,
+                format!("{about} {SEAT_NOTES}"),
+                schema,
+            ))
         })
         .collect()
 }
 
 const SEAT_NOTES: &str = "The result lists every message the word sent this seat, its reply last. Player moves stay queued until commit. say does not tick. Other messages arrive as spook/event notifications.";
-
-/// What a GM word's tool says, and the schema of the word's `args`.
-fn describe_gm_word(word: &str) -> (&'static str, Arc<Map<String, Value>>) {
-    match word {
-        "status" => (
-            "status takes no keys. The reply is who is seated, the queue and the pack.",
-            schema_for_type::<NoArgs>(),
-        ),
-        "perceive" => (
-            "perceive requires as. max_body_chars may be sent. A missing as is UNSCOPED_PERCEIVE.",
-            schema_for_type::<PerceiveArgs>(),
-        ),
-        "queue" => (
-            "queue requires actor_id and move. A habit row is legal when actor_id is an npc.",
-            schema_for_type::<IntentArgs>(),
-        ),
-        "say" => (
-            "say requires address and text. place is required when address is place. actor is required when address is actor. table takes neither place nor actor. A supplied from is SCHEMA.",
-            schema_for_type::<SayArgs>(),
-        ),
-        "commit" => (
-            "commit requires include_round. session_id may be a string. The round messages come before the reply.",
-            schema_for_type::<CommitArgs>(),
-        ),
-        "release" => (
-            "release takes no keys. The reply is sent after this GM seat is free.",
-            schema_for_type::<NoArgs>(),
-        ),
-        other => unreachable!("{other} is not a GM word"),
-    }
-}
 
 async fn send_event(peer: &Peer<RoleServer>, frame: &[u8]) {
     let Ok(body) = serde_json::from_slice(frame) else {

@@ -1,12 +1,16 @@
-//! The GM words, and how each one runs.
+//! The GM words: how each one runs, and how its MCP tool describes it.
 
+use std::sync::Arc;
+
+use rmcp::handler::server::tool::schema_for_type;
 use serde_json::{Map, Value};
 use spookery_engine::{Address, Presence, Reason, RoundOutput, TapeRecord, World};
 
 use super::frames;
 use super::table::commit_then_fast_forward;
 use crate::protocol::{
-    self, parse_args, CommitArgs, NoArgs, PerceiveArgs, SayArgs, ServerBody, PERCEIVE_BODY_CHARS,
+    parse_args, CommitArgs, IntentArgs, NoArgs, PerceiveArgs, SayArgs, ServerBody,
+    PERCEIVE_BODY_CHARS,
 };
 
 /// Sent from a GM word's run back to the table, which answers the GM and updates seats.
@@ -55,6 +59,39 @@ pub(super) fn run_gm_word(
         "release" => release(args),
         _ => Err(Reason::Schema),
     }
+}
+
+/// What a GM word's MCP tool says about it, and the schema of the word's `args`. `None` for a
+/// word that is not a GM word.
+pub(super) fn describe_gm_word(word: &str) -> Option<(&'static str, Arc<Map<String, Value>>)> {
+    let described = match word {
+        "status" => (
+            "status takes no keys. The reply is who is seated, the queue and the pack.",
+            schema_for_type::<NoArgs>(),
+        ),
+        "perceive" => (
+            "perceive requires as. max_body_chars may be sent. A missing as is UNSCOPED_PERCEIVE.",
+            schema_for_type::<PerceiveArgs>(),
+        ),
+        "queue" => (
+            "queue requires actor_id and move. A habit row is legal when actor_id is an npc.",
+            schema_for_type::<IntentArgs>(),
+        ),
+        "say" => (
+            "say requires address and text. place is required when address is place. actor is required when address is actor. table takes neither place nor actor. A supplied from is SCHEMA.",
+            schema_for_type::<SayArgs>(),
+        ),
+        "commit" => (
+            "commit requires include_round. session_id may be a string. The round messages come before the reply.",
+            schema_for_type::<CommitArgs>(),
+        ),
+        "release" => (
+            "release takes no keys. The reply is sent after this GM seat is free.",
+            schema_for_type::<NoArgs>(),
+        ),
+        _ => return None,
+    };
+    Some(described)
 }
 
 /// GM `say`. `from` is the seat. A supplied `from` appends nothing.
@@ -154,7 +191,7 @@ fn status(
 }
 
 fn queue(world: &mut World, arguments: Option<&Map<String, Value>>) -> Result<Reply, Reason> {
-    let call: protocol::IntentArgs = parse_args(arguments).map_err(|_| Reason::Schema)?;
+    let call: IntentArgs = parse_args(arguments).map_err(|_| Reason::Schema)?;
     let target = call.target.clone().filter(|target| !target.is_empty());
     let queued = world.queue_gm_intent(call, || Ok(uuid::Uuid::new_v4().to_string()))?;
     Ok(Reply::new(ServerBody::Queued {
@@ -172,7 +209,7 @@ mod tests {
 
     use spookery_engine::{Presence, Reason};
 
-    use super::run_gm_word;
+    use super::{describe_gm_word, run_gm_word};
     use crate::protocol::{QueuedMove, Seat, WORDS};
 
     /// `run_gm_word` runs each GM word the hello lists: well-formed arguments are not
@@ -205,6 +242,16 @@ mod tests {
             run_gm_word(&mut world, &Presence::default(), "fly", &Default::default()),
             Err(Reason::Schema)
         ));
+    }
+
+    /// Every GM word the hello lists has a tool description and schema. A word that is not
+    /// a GM word has none.
+    #[test]
+    fn each_gm_word_is_described() {
+        for word in WORDS.iter().filter(|word| word.seat == Seat::Gm) {
+            assert!(describe_gm_word(word.name).is_some(), "{}", word.name);
+        }
+        assert!(describe_gm_word("fly").is_none());
     }
 
     #[test]
