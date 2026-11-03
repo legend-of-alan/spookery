@@ -1,3 +1,4 @@
+use spookery_engine::testing::state_of;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -113,14 +114,14 @@ fn the_round_log_resolves_the_check_without_faces(world: &mut World) {
 
 #[then(expr = "the GM sees the grit faces")]
 fn the_gm_sees_the_grit_faces(world: &mut World) {
-    let text = table::wait_gm(world, "\"kind\":\"check\"");
-    let event = text
-        .lines()
-        .find(|line| line.contains("\"kind\":\"check\"") && line.contains("\"faces\""))
+    let text = table::wait_gm(world, "\"rolls\"");
+    let roll = committed_checks(&text)
+        .into_iter()
+        .next()
         .unwrap_or_else(|| panic!("{text}"));
-    assert!(event.contains("\"faces\":["), "{event}");
-    assert!(event.contains("\"stat\":1"), "{event}");
-    assert!(event.contains("\"target\":0"), "{event}");
+    assert!(roll["faces"].is_array(), "{roll}");
+    assert_eq!(roll["stat"], 1, "{roll}");
+    assert_eq!(roll["target"], 0, "{roll}");
     let result = text
         .lines()
         .find(|line| line.contains("\"rolls\"") && line.contains("\"faces\""))
@@ -259,10 +260,7 @@ fn the_player_sees_only_their_own_check(world: &mut World) {
 
 #[then(expr = "the GM sees both rolls")]
 fn the_gm_sees_both_rolls(world: &mut World) {
-    let text = table::wait_gm(world, "\"kind\":\"check\"");
-    let events = parse_check_events(&text);
-    assert_eq!(events.len(), 2, "{text}");
-    assert_opposed(&events);
+    let text = table::wait_gm(world, "\"rolls\"");
     assert_opposed(&committed_checks(&text));
 }
 
@@ -372,7 +370,7 @@ fn snapshot_pack(pack: &Path) -> PathBuf {
 }
 
 fn flags_of(world: &World, id: &str) -> Vec<String> {
-    let mut flags = match table::now_of(table::pack(world)).actors.get(id) {
+    let mut flags = match state_of(table::pack(world)).actors.get(id) {
         Some(actor) => actor.flags.clone(),
         _ => panic!("{id} missing"),
     };
@@ -381,10 +379,7 @@ fn flags_of(world: &World, id: &str) -> Vec<String> {
 }
 
 fn assert_one_roll(world: &mut World, stat: i64, target: i64, outcome: &str) {
-    let text = table::wait_gm(world, "\"kind\":\"check\"");
-    let events = parse_check_events(&text);
-    assert_eq!(events.len(), 1, "{text}");
-    assert_roll(&events[0], stat, target, outcome);
+    let text = table::wait_gm(world, "\"rolls\"");
     let checks = committed_checks(&text);
     assert_eq!(checks.len(), 1, "{text}");
     assert_roll(&checks[0], stat, target, outcome);
@@ -418,22 +413,6 @@ fn assert_roll(roll: &Value, stat: i64, target: i64, outcome: &str) {
     assert_eq!(roll["target"].as_i64(), Some(target), "{roll}");
     assert_eq!(roll["outcome"].as_str(), Some(outcome), "{roll}");
     assert!(roll.get("success").is_none(), "{roll}");
-}
-
-fn parse_check_events(text: &str) -> Vec<Value> {
-    let mut events = Vec::new();
-    for line in text.lines() {
-        let Ok(value) = serde_json::from_str::<Value>(line) else {
-            continue;
-        };
-        let Some(params) = value.get("params") else {
-            continue;
-        };
-        if params.get("kind").and_then(Value::as_str) == Some("check") {
-            events.push(params.clone());
-        }
-    }
-    events
 }
 
 fn committed_checks(text: &str) -> Vec<Value> {
@@ -683,10 +662,7 @@ fn the_player_sees_outcome_and_no_faces(world: &mut World, outcome: String) {
 
 #[then(expr = "the GM sees outcome {string} and the faces")]
 fn the_gm_sees_outcome_and_the_faces(world: &mut World, outcome: String) {
-    let text = table::wait_gm(world, "\"kind\":\"check\"");
-    let events = parse_check_events(&text);
-    assert_eq!(events.len(), 1, "{text}");
-    assert_outcome_faces(&events[0], &outcome);
+    let text = table::wait_gm(world, "\"rolls\"");
     let checks = committed_checks(&text);
     assert_eq!(checks.len(), 1, "{text}");
     assert_outcome_faces(&checks[0], &outcome);
@@ -700,14 +676,13 @@ fn the_check_outcome_is_not(world: &mut World, outcome: String) {
         "{}",
         world.player_added
     );
-    let text = table::wait_gm(world, "\"kind\":\"check\"");
+    let text = table::wait_gm(world, "\"rolls\"");
     assert!(!text.contains(&word), "{text}");
 }
 
 #[then(expr = "the GM sees a binary opposed press")]
 fn the_gm_sees_a_binary_opposed_press(world: &mut World) {
-    let text = table::wait_gm(world, "\"kind\":\"check\"");
-    assert_binary_opposed(&parse_check_events(&text));
+    let text = table::wait_gm(world, "\"rolls\"");
     assert_binary_opposed(&committed_checks(&text));
 }
 

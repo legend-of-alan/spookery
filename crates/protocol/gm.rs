@@ -1,4 +1,4 @@
-//! JSON lines for the GM seat: tool calls, events, and status.
+//! The GM seat's word arguments, and the MCP tool results and status they answer with.
 
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -13,7 +13,8 @@ pub fn parse_args<T: DeserializeOwned>(
     serde_json::from_value(Value::Object(arguments.cloned().unwrap_or_default()))
 }
 
-/// `table_status` arguments, sent from the GM's MCP client to the table.
+/// `table_status` arguments, sent from the GM's MCP client to the table, and the GM's
+/// `status` word arguments.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(deny_unknown_fields)]
@@ -22,7 +23,8 @@ pub struct StatusArgs {
     pub since: Option<u64>,
 }
 
-/// `perceive` arguments, sent from the GM's MCP client to the table.
+/// `perceive` arguments, sent from the GM's MCP client to the table, and the GM's
+/// `perceive` word arguments.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(deny_unknown_fields)]
@@ -36,7 +38,8 @@ pub struct PerceiveArgs {
     pub max_body_chars: Option<u64>,
 }
 
-/// `commit_round` arguments, sent from the GM's MCP client to the table.
+/// `commit_round` arguments, sent from the GM's MCP client to the table, and the GM's
+/// `commit` word arguments.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(deny_unknown_fields)]
@@ -64,7 +67,8 @@ struct SayWire {
     actor: Option<String>,
 }
 
-/// `say` arguments, sent from the GM's MCP client to the table.
+/// `say` arguments, sent from the GM's MCP client to the table, and the `say` word
+/// arguments of either seat.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 // The schema shows the three tagged shapes, closed and with non-empty names as `SayWire`
@@ -116,7 +120,8 @@ impl TryFrom<SayWire> for SayArgs {
     }
 }
 
-/// `queue_intent` arguments, sent from the GM's MCP client to the table.
+/// `queue_intent` arguments, sent from the GM's MCP client to the table, and the GM's
+/// `queue` word arguments.
 /// Serialized, a call names only the fields that are set.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
@@ -142,8 +147,7 @@ pub struct IntentArgs {
     pub rationale_code: String,
 }
 
-/// Sent from the table to a player client as the `queued` line and to a GM client as the
-/// `queue_intent` result: the one intent id.
+/// Sent from the table to an MCP GM client as the `queue_intent` result: the one intent id.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Queued {
     pub id: String,
@@ -156,7 +160,8 @@ pub struct CloseBody {
     pub released: bool,
 }
 
-/// The `table_status` result, sent from the table to the GM's MCP client.
+/// The `table_status` result, sent from the table to the GM's MCP client, and the body of the
+/// GM's `status` reply.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TableStatus {
     pub presence: StatusPresence,
@@ -203,7 +208,7 @@ pub struct QueuedMove {
 }
 
 /// The `commit_round` result on the wire: the body the table returns to the GM's MCP client
-/// for that tool.
+/// for that tool, and the body of the GM's `committed` reply.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CommitBody {
     pub state_rev: u64,
@@ -224,7 +229,8 @@ pub struct Roll {
     pub outcome: Outcome,
 }
 
-/// A `say` event or result, sent from the table to the GM's MCP client.
+/// A `say` tool result or `table_status` event, sent from the table to the GM's MCP client.
+/// `seq` is the tape's.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SayEvent {
     pub seq: u64,
@@ -261,15 +267,11 @@ pub struct PackSummary {
     pub cast: std::collections::BTreeMap<String, String>,
 }
 
-/// Sent from the table to a GM client as a `spook/event` notification; the same objects
-/// come back from `table_status` with `since`, and a `say` result is a `Say`.
-/// `kind` is the serde tag, not a stored field.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+/// One `table_status` event: a say, tagged as `say`.
+#[derive(Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "lowercase")]
-pub enum GmEvent {
+enum TapeEvent {
     Say(SayEvent),
-    Queued(QueuedMove),
-    Check(Roll),
 }
 
 fn serialize_says<S>(events: &Option<Vec<SayEvent>>, serializer: S) -> Result<S::Ok, S::Error>
@@ -278,7 +280,7 @@ where
 {
     events
         .as_ref()
-        .map(|says| says.iter().cloned().map(GmEvent::Say).collect::<Vec<_>>())
+        .map(|says| says.iter().cloned().map(TapeEvent::Say).collect::<Vec<_>>())
         .serialize(serializer)
 }
 
@@ -286,15 +288,10 @@ fn deserialize_says<'de, D>(deserializer: D) -> Result<Option<Vec<SayEvent>>, D:
 where
     D: serde::Deserializer<'de>,
 {
-    let events = Vec::<GmEvent>::deserialize(deserializer)?;
-    events
-        .into_iter()
-        .map(|event| match event {
-            GmEvent::Say(say) => Ok(say),
-            GmEvent::Queued(_) | GmEvent::Check(_) => Err(serde::de::Error::custom("say")),
-        })
-        .collect::<Result<Vec<_>, _>>()
-        .map(Some)
+    let events = Vec::<TapeEvent>::deserialize(deserializer)?;
+    Ok(Some(
+        events.into_iter().map(|TapeEvent::Say(say)| say).collect(),
+    ))
 }
 
 #[cfg(test)]
@@ -318,13 +315,6 @@ mod tests {
         assert_reencodes::<CommitBody>(
             r#"{"state_rev":3,"changed_keys":["d"],"journal_path":null,"rolls":[{"faces":[3,4],"stat":1,"total":8,"target":7,"outcome":"partial","x":1}],"x":1}"#,
         );
-        for raw in [
-            r#"{"kind":"say","seq":1,"from":"gm","address":"table","place":null,"actor":null,"recipients":[],"text":"hi","x":1}"#,
-            r#"{"kind":"queued","id":"q1","actor_id":"pc_rowan","move":"wait","x":1}"#,
-            r#"{"kind":"check","faces":[6,6],"stat":0,"total":12,"target":10,"outcome":"success","x":1}"#,
-        ] {
-            assert_reencodes::<GmEvent>(raw);
-        }
         let m =
             serde_json::from_str(r#"{"actor_id":"a","move":"m","target":"t","to":["b"]}"#).unwrap();
         let c: IntentArgs = parse_args(Some(&m)).unwrap();

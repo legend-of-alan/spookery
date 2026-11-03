@@ -1,33 +1,172 @@
 use std::fs;
-use std::io::{Read, Write};
+use std::io::Read;
 use std::net::{SocketAddr, TcpStream};
 use std::path::Path;
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
-use serde_json::Value;
+use serde_json::{json, Value};
 use spookery::mcp::{event_line, GmClient};
-use spookery::protocol;
+use spookery::protocol::{self, ClientMessage};
 use spookery_engine::testing::journal::list_round_keys;
-use spookery_engine::State;
+use spookery_engine::testing::state_of;
+use tungstenite::protocol::Role;
+use tungstenite::{Message, WebSocket};
 
 use crate::support::{self, Process};
 use crate::World;
 
+/// One WebSocket connection to the game port's `/player` or `/gm`. A reader thread
+/// appends each message the table sends to `text`, one line each.
+pub struct Seat {
+    write: Mutex<WebSocket<TcpStream>>,
+    /// A seat that stops reading keeps its reading socket here, unread.
+    quiet: Option<WebSocket<TcpStream>>,
+    pub text: Arc<Mutex<String>>,
+    /// Set once the table closed the connection.
+    pub closed: Arc<AtomicBool>,
+    next_id: AtomicU64,
+}
+
+/// Hangs up, so the reader ends and the table sees the connection close.
+impl Drop for Seat {
+    fn drop(&mut self) {
+        let write = self.write.lock().unwrap_or_else(|err| err.into_inner());
+        let _ = write.get_ref().shutdown(std::net::Shutdown::Both);
+    }
+}
+
+impl Seat {
+    /// Dials `/seat` on the game port and starts the reader. The hello is the first line.
+    pub fn open(port: u16, seat: &str) -> Self {
+        let stream = TcpStream::connect(("127.0.0.1", port))
+            .unwrap_or_else(|err| panic!("connect {port}: {err}"));
+        Self::from_stream(stream, port, seat, true)
+    }
+
+    /// Opens `/seat` over a connected `stream`. Without `reading`, nothing reads what the
+    /// table sends.
+    pub fn from_stream(stream: TcpStream, port: u16, seat: &str, reading: bool) -> Self {
+        stream
+            .set_nodelay(true)
+            .unwrap_or_else(|err| panic!("nodelay: {err}"));
+        let write = stream
+            .try_clone()
+            .unwrap_or_else(|err| panic!("clone: {err}"));
+        let url = format!("ws://127.0.0.1:{port}/{seat}");
+        let (mut read, _) =
+            tungstenite::client(url, stream).unwrap_or_else(|err| panic!("{seat} seat: {err}"));
+        let text = Arc::new(Mutex::new(String::new()));
+        let closed = Arc::new(AtomicBool::new(false));
+        let (slot, ended) = (Arc::clone(&text), Arc::clone(&closed));
+        let write = Mutex::new(WebSocket::from_raw_socket(write, Role::Client, None));
+        if !reading {
+            return Self {
+                write,
+                quiet: Some(read),
+                text,
+                closed,
+                next_id: AtomicU64::new(1),
+            };
+        }
+        // The handshake's socket reads, so a message sent with the upgrade is kept. A second
+        // socket on the same stream only writes.
+        std::thread::spawn(move || {
+            loop {
+                match read.read() {
+                    Ok(Message::Text(line)) => push_line(&slot, &line),
+                    Ok(Message::Close(_)) | Err(_) => break,
+                    Ok(_) => {}
+                }
+            }
+            ended.store(true, Ordering::SeqCst);
+        });
+        Self {
+            write,
+            quiet: None,
+            text,
+            closed,
+            next_id: AtomicU64::new(1),
+        }
+    }
+
+    /// Sends `word` with `args` under the next id, and returns that id.
+    pub fn send(&self, word: &str, args: Value) -> String {
+        let id = format!("t{}", self.next_id.fetch_add(1, Ordering::Relaxed));
+        let message = ClientMessage::new(&id, word, args);
+        let text = serde_json::to_string(&message).unwrap_or_else(|err| panic!("{word}: {err}"));
+        self.send_raw(Message::text(text));
+        id
+    }
+
+    /// Sends one WebSocket message as it is.
+    pub fn send_raw(&self, message: Message) {
+        self.try_send_raw(message)
+            .unwrap_or_else(|err| panic!("send: {err}"));
+    }
+
+    /// Sends one WebSocket message as it is, or the error a closed connection gives.
+    pub fn try_send_raw(&self, message: Message) -> tungstenite::Result<()> {
+        let mut write = self.write.lock().unwrap_or_else(|err| err.into_inner());
+        write.send(message)
+    }
+
+    /// Waits until the table has closed this connection.
+    pub fn wait_closed(&self) {
+        poll_until("the table to close the connection", || {
+            self.closed.load(Ordering::SeqCst).then_some(()).ok_or(())
+        });
+    }
+
+    pub fn mark(&self) -> usize {
+        support::text_of(&self.text).len()
+    }
+
+    /// Waits for the reply to the message `id` named, and returns its line.
+    pub fn wait_reply(&self, id: &str) -> String {
+        let tag = format!("\"reply_to\":\"{id}\"");
+        poll_until(&format!("the reply to {id}"), || {
+            let text = support::text_of(&self.text);
+            text.lines()
+                .find(|line| line.contains(&tag))
+                .map(str::to_string)
+                .ok_or(text)
+        })
+    }
+}
+
+/// The word a typed line names and its arguments, as `spook play` sends it: `say <text>`
+/// speaks to the table, and any other first word is a move with the rest as its target.
+pub fn parse_typed(line: &str) -> (&str, Value) {
+    match line.split_once(' ') {
+        Some(("say", text)) => ("say", json!({ "address": "table", "text": text })),
+        Some((word, target)) => (word, json!({ "target": target })),
+        None => (line, json!({})),
+    }
+}
+
 pub struct PlayerClient {
     pub actor_id: String,
-    pub write: TcpStream,
-    pub text: Arc<Mutex<String>>,
+    pub seat: Seat,
+}
+
+impl PlayerClient {
+    pub fn text(&self) -> &Arc<Mutex<String>> {
+        &self.seat.text
+    }
 }
 
 pub struct Host {
     pub game_port: u16,
-    pub first_stream: Option<TcpStream>,
-    pub player_text: Arc<Mutex<String>>,
     pub players: Vec<PlayerClient>,
     pub gm: Option<GmClient>,
+    /// A GM seated on the game port's WebSocket door.
+    pub ws_gm: Option<Seat>,
+    /// A player connection a step opened and did not claim with.
+    pub door: Option<Seat>,
     /// The GM client that called `close` and has not been dropped.
     pub closed_gm: Option<GmClient>,
     /// Set when `read_presence` opened a GM only to read seats.
@@ -184,27 +323,6 @@ pub fn pack(world: &World) -> &Path {
         .pack
         .as_deref()
         .unwrap_or_else(|| panic!("no docks table"))
-}
-
-/// Replay the journal to the current state. `save.yaml` is the last checkpoint.
-/// A torn last line is ignored, so a read during an append still sees complete
-/// records. A failed read retries.
-pub fn now_of(pack: &Path) -> State {
-    let start = Instant::now();
-    loop {
-        match spookery_engine::testing::replay_pack(pack) {
-            Ok(report) => {
-                let text = std::str::from_utf8(&report.now_yaml)
-                    .unwrap_or_else(|err| panic!("save text: {err}"));
-                return spookery_engine::parse_save(text)
-                    .unwrap_or_else(|err| panic!("load now: {err:?}"));
-            }
-            Err(err) if start.elapsed() > Duration::from_secs(2) => {
-                panic!("replay now: {err}");
-            }
-            Err(_) => std::thread::sleep(Duration::from_millis(10)),
-        }
-    }
 }
 
 /// The actors whose player `wait` is in that round.
@@ -376,10 +494,10 @@ fn attach_host<'w>(
     drop(world.live.take());
     world.live.insert(Host {
         game_port: game.port(),
-        first_stream: None,
-        player_text: Arc::new(Mutex::new(String::new())),
         players: Vec::new(),
         gm: None,
+        ws_gm: None,
+        door: None,
         closed_gm: None,
         gm_probe: false,
         mcp_port: mcp_addr.port(),
@@ -444,23 +562,14 @@ pub fn seat_rowan(world: &mut World, pack: &Path) {
 
 pub fn seat_actor(world: &mut World, pack: &Path, actor_id: &str) {
     let port = live(world).game_port;
-    let (write, text) = connect_actor(port, actor_id);
+    let seat = connect_actor(port, actor_id);
     let seated_now = fs::read(pack.join("state/save.yaml"))
         .unwrap_or_else(|err| panic!("read save.yaml: {err}"));
-    let seated_rev = now_of(pack).state_rev;
+    let seated_rev = state_of(pack).state_rev;
     let live = live_mut(world);
-    if live.first_stream.is_none() {
-        live.first_stream = Some(
-            write
-                .try_clone()
-                .unwrap_or_else(|err| panic!("clone player: {err}")),
-        );
-        live.player_text = Arc::clone(&text);
-    }
     live.players.push(PlayerClient {
         actor_id: actor_id.to_string(),
-        write,
-        text,
+        seat,
     });
     live.seated_save = seated_now;
     live.seated_rev = seated_rev;
@@ -473,46 +582,70 @@ pub fn seat_gm(world: &mut World) {
     live_mut(world).gm = Some(gm);
 }
 
+/// The first seated player.
+fn first_player(world: &World) -> &PlayerClient {
+    live(world)
+        .players
+        .first()
+        .unwrap_or_else(|| panic!("no seated player"))
+}
+
 pub fn player_mark(world: &World) -> usize {
-    support::text_of(&live(world).player_text).len()
+    first_player(world).seat.mark()
 }
 
 pub fn player_text(world: &World) -> String {
-    support::text_of(&live(world).player_text)
+    support::text_of(first_player(world).text())
 }
 
-/// The reply to a player `look`, which takes no round.
-pub const LINES_KIND: &str = "\"kind\":\"lines\"";
-
+/// Sends one typed line from the first seated player and waits for its reply. Returns the
+/// text mark before the line and the text added through `needle`.
 pub fn player_send(world: &mut World, line: &str, needle: &str) -> (usize, String) {
-    let mark = player_write(world, line);
-    (mark, wait_player_from(world, mark, needle))
+    let actor_id = first_player(world).actor_id.clone();
+    let mark = player_mark(world);
+    (mark, actor_send(world, &actor_id, line, needle))
 }
 
-/// Sends one line from the first seated player and returns the text mark before it.
+/// Sends one typed line from the first seated player and returns the text mark before it.
 pub fn player_write(world: &mut World, line: &str) -> usize {
-    let live = live_mut(world);
-    let mark = support::text_of(&live.player_text).len();
-    let write = live
-        .first_stream
-        .as_mut()
-        .unwrap_or_else(|| panic!("no seated player"));
-    writeln!(write, "{line}").unwrap_or_else(|err| panic!("write: {err}"));
-    write.flush().unwrap_or_else(|err| panic!("flush: {err}"));
-    mark
+    let actor_id = first_player(world).actor_id.clone();
+    actor_write(world, &actor_id, line)
+}
+
+/// The world times of the rounds the first player hears after `mark`, read once a view
+/// follows them. One commit sends all its rounds before any player's view.
+pub fn wait_rounds_to_view(world: &World, mark: usize) -> Vec<u64> {
+    let text = first_player(world).text();
+    poll_until("a round and the view after it", || {
+        let added = support::text_of(text)
+            .get(mark..)
+            .unwrap_or_default()
+            .to_string();
+        let mut rounds = Vec::new();
+        for line in added.lines() {
+            let Ok(message) = serde_json::from_str::<Value>(line) else {
+                continue;
+            };
+            match message["body"]["kind"].as_str() {
+                Some("round") => rounds.extend(message["body"]["world_time"].as_u64()),
+                Some("view") if !rounds.is_empty() => return Ok(rounds),
+                _ => {}
+            }
+        }
+        Err(added)
+    })
 }
 
 pub fn wait_player_from(world: &World, mark: usize, needle: &str) -> String {
-    let slot = Arc::clone(&live(world).player_text);
-    wait_suffix(&slot, mark, needle)
+    wait_suffix(first_player(world).text(), mark, needle)
 }
 
 pub fn wait_actor_from(world: &World, actor_id: &str, mark: usize, needle: &str) -> String {
-    let slot = Arc::clone(&player_client(world, actor_id).text);
-    wait_suffix(&slot, mark, needle)
+    wait_suffix(player_client(world, actor_id).text(), mark, needle)
 }
+
 /// The seated player for `actor_id`.
-fn player_client<'w>(world: &'w World, actor_id: &str) -> &'w PlayerClient {
+pub fn player_client<'w>(world: &'w World, actor_id: &str) -> &'w PlayerClient {
     live(world)
         .players
         .iter()
@@ -578,15 +711,31 @@ pub fn wait_gm_until(world: &mut World, want: &str, done: impl Fn(&str) -> bool)
     })
 }
 
-pub fn wait_world_time(pack: &Path, expected: u64) {
-    poll_until(&format!("world_time {expected}"), || {
-        let now = now_of(pack).world_time;
-        if now == expected {
-            Ok(())
-        } else {
-            Err(now)
+/// Waits until a seated player or the WebSocket GM hears the round that ends at
+/// `world_time`, and returns that line.
+pub fn wait_round(world: &World, world_time: u64) -> String {
+    let tag = format!("\"world_time\":{world_time}}}");
+    let live = live(world);
+    let texts: Vec<&Arc<Mutex<String>>> = live
+        .players
+        .iter()
+        .map(PlayerClient::text)
+        .chain(live.ws_gm.as_ref().map(|gm| &gm.text))
+        .collect();
+    poll_until(&format!("the round at world_time {world_time}"), || {
+        let mut seen = String::new();
+        for text in &texts {
+            let text = support::text_of(text);
+            if let Some(line) = text
+                .lines()
+                .find(|line| line.contains("\"kind\":\"round\"") && line.contains(&tag))
+            {
+                return Ok(line.to_string());
+            }
+            seen.push_str(&text);
         }
-    });
+        Err(seen)
+    })
 }
 
 /// How long a wait gives the host to do what a step asked.
@@ -652,28 +801,33 @@ fn push_line(slot: &Arc<Mutex<String>>, line: &str) {
 }
 
 pub fn actor_text(world: &World, actor_id: &str) -> String {
-    support::text_of(&player_client(world, actor_id).text)
+    support::text_of(player_client(world, actor_id).text())
 }
 
+/// Sends one typed line from `actor_id`, waits for its reply, then for `needle` after the
+/// mark. Returns the text added since the mark.
 pub fn actor_send(world: &mut World, actor_id: &str, line: &str, needle: &str) -> String {
-    let mark = actor_write(world, actor_id, line);
+    let player = player_client(world, actor_id);
+    let mark = player.seat.mark();
+    let (word, args) = parse_typed(line);
+    let id = player.seat.send(word, args);
+    player.seat.wait_reply(&id);
     wait_actor_from(world, actor_id, mark, needle)
 }
 
+/// Sends one typed line from `actor_id` and returns the text mark before it.
 pub fn actor_write(world: &mut World, actor_id: &str, line: &str) -> usize {
     let player = player_client(world, actor_id);
-    let mark = support::text_of(&player.text).len();
-    // `&TcpStream` writes too, so a shared seat is enough.
-    let mut write = &player.write;
-    writeln!(write, "{line}").unwrap_or_else(|err| panic!("write: {err}"));
-    write.flush().unwrap_or_else(|err| panic!("flush: {err}"));
+    let mark = player.seat.mark();
+    let (word, args) = parse_typed(line);
+    player.seat.send(word, args);
     mark
 }
 
 pub fn stop_host(world: &mut World) {
     let live = live_mut(world);
     live.players.clear();
-    live.first_stream.take();
+    live.ws_gm.take();
     live.gm.take();
     live.closed_gm.take();
     // An in-process host stops when its shutdown future resolves.
@@ -696,8 +850,11 @@ pub fn stop_host(world: &mut World) {
     }
 }
 
+/// Releases the claim and waits until the table has let go of it.
 pub fn close_actor(world: &mut World, actor_id: &str) {
-    let _ = actor_write(world, actor_id, "close");
+    let player = player_client(world, actor_id);
+    let id = player.seat.send("release", json!({}));
+    player.seat.wait_reply(&id);
 }
 
 /// `close` answers after the seat is free. Dropping the socket does not.
@@ -787,56 +944,24 @@ pub fn wait_presence(world: &mut World, want: &str, done: impl Fn(u32, &[String]
     });
 }
 
-pub fn send_hello(world: &World, line: &str) -> String {
-    let port = live(world).game_port;
-    let mut stream = connect(port);
-    writeln!(stream, "{line}").unwrap_or_else(|err| panic!("write: {err}"));
-    stream.flush().unwrap_or_else(|err| panic!("flush: {err}"));
-    read_line(&mut stream)
+/// A new player connection claims `actor`. Returns the claim's reply line.
+pub fn claim(world: &World, actor: &str) -> String {
+    let seat = Seat::open(live(world).game_port, "player");
+    let id = seat.send("claim", json!({ "actor": actor }));
+    seat.wait_reply(&id)
 }
 
-fn connect(port: u16) -> TcpStream {
-    let addr = format!("127.0.0.1:{port}");
-    let stream = TcpStream::connect(&addr).unwrap_or_else(|err| panic!("connect {addr}: {err}"));
-    stream
-        .set_nodelay(true)
-        .unwrap_or_else(|err| panic!("nodelay: {err}"));
-    stream
-}
-
-fn connect_actor(port: u16, actor_id: &str) -> (TcpStream, Arc<Mutex<String>>) {
-    let mut stream = connect(port);
-    let text = spawn_reader(&stream);
-    writeln!(stream, "player:{actor_id}").unwrap_or_else(|err| panic!("hello: {err}"));
-    stream.flush().unwrap_or_else(|err| panic!("flush: {err}"));
-    wait_text(&text, "\"kind\":\"view\"");
-    (stream, text)
-}
-
-fn spawn_reader(stream: &TcpStream) -> Arc<Mutex<String>> {
-    let read = stream
-        .try_clone()
-        .unwrap_or_else(|err| panic!("clone: {err}"));
-    let text = Arc::new(Mutex::new(String::new()));
-    let slot = Arc::clone(&text);
-    std::thread::spawn(move || {
-        let mut read = read;
-        let mut buf = [0u8; 256];
-        loop {
-            match read.read(&mut buf) {
-                Ok(0) | Err(_) => break,
-                Ok(n) => slot
-                    .lock()
-                    .unwrap()
-                    .push_str(&String::from_utf8_lossy(&buf[..n])),
-            }
-        }
-    });
-    text
-}
-
-fn wait_text(slot: &Arc<Mutex<String>>, needle: &str) {
-    let _ = wait_suffix(slot, 0, needle);
+/// Opens a player connection, claims `actor_id`, and waits for the first view.
+fn connect_actor(port: u16, actor_id: &str) -> Seat {
+    let seat = Seat::open(port, "player");
+    let id = seat.send("claim", json!({ "actor": actor_id }));
+    let reply = seat.wait_reply(&id);
+    assert!(
+        reply.contains("\"kind\":\"claimed\""),
+        "{actor_id} was not seated\n{reply}"
+    );
+    wait_suffix(&seat.text, 0, "\"kind\":\"view\"");
+    seat
 }
 
 pub fn wait_suffix(slot: &Arc<Mutex<String>>, mark: usize, needle: &str) -> String {
@@ -849,27 +974,6 @@ pub fn wait_suffix(slot: &Arc<Mutex<String>>, mark: usize, needle: &str) -> Stri
             Err(added)
         }
     })
-}
-
-pub fn read_line(stream: &mut TcpStream) -> String {
-    stream
-        .set_read_timeout(Some(Duration::from_secs(5)))
-        .unwrap_or_else(|err| panic!("timeout: {err}"));
-    let mut buf = Vec::new();
-    let mut byte = [0u8; 1];
-    loop {
-        match stream.read(&mut byte) {
-            Ok(0) => panic!("eof {}", String::from_utf8_lossy(&buf)),
-            Ok(_) => {
-                if byte[0] == b'\n' {
-                    break;
-                }
-                buf.push(byte[0]);
-            }
-            Err(err) => panic!("read {err}; {}", String::from_utf8_lossy(&buf)),
-        }
-    }
-    String::from_utf8(buf).unwrap_or_else(|err| panic!("utf-8: {err}"))
 }
 
 pub fn run(world: &mut World, args: &[&str]) {

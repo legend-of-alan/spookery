@@ -115,6 +115,19 @@ pub struct IdleProfile {
 }
 
 impl Canon {
+    /// Every verb some rule names, sorted, once each.
+    pub fn verbs(&self) -> Vec<String> {
+        let verbs: std::collections::BTreeSet<&str> = self
+            .rules
+            .iter()
+            .filter_map(|rule| match &rule.when {
+                When::Verb { verb, .. } => Some(verb.as_str()),
+                _ => None,
+            })
+            .collect();
+        verbs.into_iter().map(str::to_string).collect()
+    }
+
     pub fn to_pack_summary(&self) -> PackSummary {
         let menu = self
             .rules

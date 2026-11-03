@@ -13,7 +13,7 @@ Feature: One GM seat and up to three player seats
     Then the hello is refused with "TABLE_FULL"
     And save.yaml is unchanged since the seat
 
-  Scenario: A hello for a held PC changes nothing
+  Scenario: A claim for a held PC changes nothing
     Given a docks table with a seated player
     When a second player connects
     Then the hello is refused with "SEAT_TAKEN"
@@ -33,17 +33,18 @@ Feature: One GM seat and up to three player seats
     And save.yaml is unchanged since the table opened
     And players is 0
 
-  Scenario: A hello for an NPC is refused
+  Scenario: A claim for an NPC is refused
     Given a docks table
-    When a socket sends player:mira
+    When a player claims mira
     Then the hello is refused with "SCHEMA"
     And save.yaml is unchanged since the table opened
 
-  Scenario: A GM hello on the game port is refused
-    Given a docks table
-    When a socket sends gm on the game port
-    Then the hello is refused with "NOT_IN_SPEC"
+  Scenario: A second GM on the game port is refused
+    Given a docks table with a seated GM
+    When a second GM connects on the game port
+    Then the hello is refused with "TABLE_FULL"
     And save.yaml is unchanged since the table opened
+    And players is 0
 
   Scenario: A one-player pack sits and plays
     Given a one-player docks table
@@ -94,17 +95,17 @@ Feature: One GM seat and up to three player seats
     When three play clients sit on a free port
     Then each play client shows its first perceive
 
-  Scenario: An empty hello is refused with the free PCs
+  Scenario: A word before a claim is refused with the free PCs
     Given a docks table
-    When a socket sends an empty hello
+    When an unclaimed player waits
     Then the hello is refused with "CHOOSE_PC" and the missing list is '["pc_harbormouse","pc_rowan","pc_wren"]'
-    When a socket sends player:
+    When a player claims an empty id
     Then the hello is refused with "SCHEMA"
     And the hello reply does not contain "CHOOSE_PC"
 
-  Scenario: An empty hello with no free PC lists none
+  Scenario: A word before a claim with no free PC lists none
     Given a one-player docks table
-    When a socket sends an empty hello
+    When an unclaimed player waits
     Then the hello is refused with "CHOOSE_PC" and the missing list is "[]"
     And the hello reply does not contain "SEAT_TAKEN"
 

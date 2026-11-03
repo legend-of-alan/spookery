@@ -1,13 +1,14 @@
-//! The Spookery table server: bind the game port and the MCP endpoint, then run the table.
+//! The Spookery table server: bind the game port's WebSocket door and the MCP endpoint,
+//! then run the table.
 
 mod frames;
 mod idle;
 mod limits;
 mod mcp;
-mod player;
 mod seat;
 mod table;
 mod tools;
+mod ws;
 
 use std::future::Future;
 use std::io::{self, Write};
@@ -73,7 +74,7 @@ pub async fn serve(
     let (tx, rx) = std::sync::mpsc::channel();
     let mut tasks = tokio::task::JoinSet::new();
     let next_conn = Arc::new(AtomicU64::new(1));
-    tasks.spawn(player::serve(
+    tasks.spawn(ws::serve(
         listener,
         tx.clone(),
         Arc::clone(&next_conn),

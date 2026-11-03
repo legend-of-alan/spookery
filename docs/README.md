@@ -52,11 +52,11 @@ docs/                  guarantees, first-pack guide, pack reference, expressions
 packs/                 sample-d20 is the starter. oneshot-docks is the multi-PC fixture
 .grok/skills/          the author-pack skill
 crates/
-  protocol/            spookery-protocol: player and GM message types
+  protocol/            spookery-protocol: the message envelope, its bodies, and the word table
   engine/              spookery-engine: world model, rules, rounds, and journal
   agent/               spookery-agent: the reusable GM brain: turn state machine, prompt, Model trait
-  cli/                 spookery-cli: play, gm, ai_gm (the three clients), mcp, http_model, text
-  server/              spookery-server: the table, game port, MCP endpoint, GM tools, seats, idle timer
+  cli/                 spookery-cli: play, gm, ai_gm (the three clients), ws, mcp, http_model, text
+  server/              spookery-server: the table, the game port's WebSocket door, MCP endpoint, GM words, seats, idle timer
   spook/               package and binary spook, library spookery
     tests/features/    BDD scenarios
 ```
@@ -139,7 +139,7 @@ spook gm
 
 Type `help` to see the GM commands. `spook gm --raw` prints each protocol frame as one JSON line instead.
 
-Both `spook gm` and `spook ai-gm` connect to the MCP endpoint. Use `--mcp-addr 127.0.0.1:<port>` to point them somewhere else. If you started the host with `--addr 127.0.0.1:0`, the OS picks the ports and the listening line's `mcp` tells you the address. Pass that to `--mcp-addr`.
+`spook gm` connects to the MCP endpoint. Use `--mcp-addr 127.0.0.1:<port>` to point it somewhere else. `spook ai-gm` sits the GM seat on the game port's WebSocket door, so `--addr` points it. If you started the host with `--addr 127.0.0.1:0`, the OS picks the ports and the listening line tells you both: pass `game` to `--addr` and `mcp` to `--mcp-addr`.
 
 ## Privacy
 

@@ -1,3 +1,4 @@
+use spookery_engine::testing::state_of;
 use std::fs;
 use std::io::Write;
 use std::time::{Duration, Instant};
@@ -253,7 +254,7 @@ fn world_time_advanced(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
     let start = Instant::now();
     loop {
-        let now = table::now_of(&pack);
+        let now = state_of(&pack);
         if now.world_time == 1085 {
             return;
         }

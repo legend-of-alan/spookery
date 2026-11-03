@@ -1,3 +1,4 @@
+use spookery_engine::testing::state_of;
 use std::fs;
 use std::path::Path;
 
@@ -80,7 +81,7 @@ fn assert_location(pack: &Path, name: &str) {
 }
 
 fn rowan_place(pack: &Path) -> String {
-    table::now_of(pack)
+    state_of(pack)
         .actors
         .get("pc_rowan")
         .unwrap()

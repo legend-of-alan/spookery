@@ -1,3 +1,4 @@
+use spookery_engine::testing::state_of;
 use std::fs;
 
 use cucumber::{given, then, when};
@@ -47,7 +48,7 @@ fn a_docks_table_with_two_players_and_no_gm(world: &mut World) {
 
 #[given(expr = "both players are travelling")]
 fn both_players_are_travelling(world: &mut World) {
-    let now = table::now_of(table::pack(world));
+    let now = state_of(table::pack(world));
     for actor in ["pc_rowan", "pc_wren"] {
         assert!(
             now.actors

@@ -40,7 +40,7 @@ Feature: A player and a GM share a table
   Scenario: An unknown word is refused
     Given rowan is in the shop and a GM is seated
     When the player sends "dance"
-    Then the table refuses the player with NOT_IN_SPEC
+    Then the table refuses the player with SCHEMA
     And the GM sees nothing queued
 
   Scenario: A player who closes leaves the table

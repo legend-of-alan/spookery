@@ -1,5 +1,6 @@
 //! Dice and arithmetic in rule numbers.
 
+use spookery_engine::testing::state_of;
 use std::fs;
 
 use cucumber::{then, when};
@@ -197,7 +198,7 @@ fn grit(world: &World) -> i64 {
 }
 
 fn grit_of(world: &World, actor: &str) -> i64 {
-    let now = table::now_of(table::pack(world));
+    let now = state_of(table::pack(world));
     let live = now
         .actors
         .get(actor)

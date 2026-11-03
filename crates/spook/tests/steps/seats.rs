@@ -1,3 +1,4 @@
+use spookery_engine::testing::state_of;
 use std::fs;
 
 use cucumber::{given, then, when};
@@ -9,7 +10,7 @@ use super::table;
 
 #[when(expr = "a second player connects")]
 fn a_second_player_connects(world: &mut World) {
-    world.scratch = table::send_hello(world, "player:pc_rowan");
+    world.scratch = table::claim(world, "pc_rowan");
 }
 
 #[when(expr = "a second GM connects over HTTP")]
@@ -18,25 +19,32 @@ fn a_second_gm_connects_over_http(world: &mut World) {
     world.scratch = super::mcp::post_initialize(http, "127.0.0.1", None);
 }
 
-#[when(expr = "a socket sends gm on the game port")]
-fn a_socket_sends_gm_on_the_game_port(world: &mut World) {
-    let pack = table::pack(world).to_path_buf();
-    table::listen(world, &pack);
-    world.scratch = table::send_hello(world, "gm");
+#[when(expr = "a second GM connects on the game port")]
+fn a_second_gm_connects_on_the_game_port(world: &mut World) {
+    let seat = table::Seat::open(table::live_mut(world).game_port, "gm");
+    world.scratch = table::wait_suffix(&seat.text, 0, "\"kind\":\"refused\"");
+    seat.wait_closed();
 }
 
-#[when(regex = r"^a socket sends (an empty hello|player:)$")]
-fn a_socket_sends_hello(world: &mut World, which: String) {
+#[when(expr = "an unclaimed player waits")]
+fn an_unclaimed_player_waits(world: &mut World) {
     if world.live.is_none() {
         listen_pack(world);
     }
-    world.scratch = table::send_hello(world, if which == "player:" { "player:" } else { "" });
+    let seat = table::Seat::open(table::live_mut(world).game_port, "player");
+    let id = seat.send("wait", serde_json::json!({}));
+    world.scratch = seat.wait_reply(&id);
 }
 
-#[when(expr = "a socket sends player:{word}")]
-fn a_socket_sends_player(world: &mut World, actor: String) {
+#[when(expr = "a player claims an empty id")]
+fn a_player_claims_an_empty_id(world: &mut World) {
+    world.scratch = table::claim(world, "");
+}
+
+#[when(expr = "a player claims {word}")]
+fn a_player_claims(world: &mut World, actor: String) {
     listen_pack(world);
-    world.scratch = table::send_hello(world, &format!("player:{actor}"));
+    world.scratch = table::claim(world, &actor);
 }
 
 #[then(expr = "the hello is refused with {string} and the missing list is {string}")]
@@ -44,7 +52,7 @@ fn the_hello_is_refused_with_missing(world: &mut World, code: String, missing: S
     the_hello_is_refused_with(world, code);
     let frame: serde_json::Value = serde_json::from_str(world.scratch.trim()).unwrap();
     let expected: Vec<String> = serde_json::from_str(&missing).unwrap();
-    let got: Vec<String> = serde_json::from_value(frame["detail"].clone()).unwrap();
+    let got: Vec<String> = serde_json::from_value(frame["body"]["detail"].clone()).unwrap();
     assert_eq!(got, expected);
 }
 
@@ -81,7 +89,7 @@ fn the_present_actor_is_pc_rowan(world: &mut World) {
 
 #[then(expr = "state_rev is 0")]
 fn state_rev_is_0(world: &mut World) {
-    assert_eq!(table::now_of(table::pack(world)).state_rev, 0);
+    assert_eq!(state_of(table::pack(world)).state_rev, 0);
 }
 
 #[when(expr = "the state directory is remembered")]
@@ -173,7 +181,7 @@ fn three_players_sit(world: &mut World) {
 
 #[when(expr = "a fourth player connects")]
 fn a_fourth_player_connects(world: &mut World) {
-    world.scratch = table::send_hello(world, "player:pc_lark");
+    world.scratch = table::claim(world, "pc_lark");
 }
 
 #[then(expr = "the hello is refused with {string}")]
@@ -316,7 +324,7 @@ fn both_lines_are_queued_for_the_gm(world: &mut World) {
     let queued = |text: &str, id: &str| {
         text.lines().any(|line| {
             line.contains("\"kind\":\"queued\"")
-                && line.contains(&format!("\"actor_id\":\"{id}\""))
+                && line.contains(&format!("\"actor\":\"{id}\""))
                 && line.contains("\"move\":\"wait\"")
         })
     };
@@ -350,9 +358,9 @@ fn the_round_log_records_both_waits(world: &mut World) {
 
 #[then(expr = "each wait committed its own round")]
 fn each_wait_committed_its_own_round(world: &mut World) {
+    table::wait_round(world, 1090);
     let pack = table::pack(world);
-    table::wait_world_time(pack, 1090);
-    assert_eq!(table::now_of(pack).round_index, 2);
+    assert_eq!(state_of(pack).round_index, 2);
     assert_eq!(
         list_round_keys(pack),
         vec!["round-0001".to_string(), "round-0002".to_string()]
@@ -383,12 +391,14 @@ fn a_docks_table_with_two_pcs_in_the_shop(world: &mut World) {
 
 #[when(expr = "the shop player speaks to the place")]
 fn the_shop_player_speaks_to_the_place(world: &mut World) {
-    let _ = table::actor_send(
-        world,
-        "pc_rowan",
-        "say place the blue rope is tied",
-        "the blue rope is tied",
-    );
+    let rowan = &table::player_client(world, "pc_rowan").seat;
+    let say = serde_json::json!({
+        "address": "place",
+        "place": "docks_shop",
+        "text": "the blue rope is tied",
+    });
+    let id = rowan.send("say", say);
+    rowan.wait_reply(&id);
     let start = std::time::Instant::now();
     loop {
         if table::actor_text(world, "pc_harbormouse").contains("the blue rope is tied") {
@@ -408,8 +418,10 @@ fn the_shop_player_speaks_to_the_place(world: &mut World) {
 fn only_the_shop_players_receive_the_say(world: &mut World) {
     assert!(table::actor_text(world, "pc_rowan").contains("the blue rope is tied"));
     assert!(table::actor_text(world, "pc_harbormouse").contains("the blue rope is tied"));
-    // The world loop handled the say before Wren's look, so Wren's seat gets any say first.
-    let _ = table::actor_send(world, "pc_wren", "look", table::LINES_KIND);
+    // The table answers in order, so Wren's seat would have the say before this reply.
+    let wren = &table::player_client(world, "pc_wren").seat;
+    let id = wren.send("look", serde_json::json!({}));
+    wren.wait_reply(&id);
     let wren = table::actor_text(world, "pc_wren");
     assert!(!wren.contains("the blue rope is tied"), "{wren}");
 }
@@ -564,7 +576,7 @@ fn a_round_commits(world: &mut World) {
 }
 
 fn street_oil(world: &World) -> u32 {
-    let now = table::now_of(table::pack(world));
+    let now = state_of(table::pack(world));
     now.places
         .get("docks_street")
         .and_then(|place| place.items.get(HUMMED_OIL))
@@ -584,7 +596,7 @@ fn the_habit_fires(world: &mut World) {
 
 #[then(expr = "the requires_presence clock is {word}")]
 fn the_requires_presence_clock_is(world: &mut World, state: String) {
-    let now = table::now_of(table::pack(world));
+    let now = state_of(table::pack(world));
     let clock = now
         .clocks
         .get("assassination_debt")

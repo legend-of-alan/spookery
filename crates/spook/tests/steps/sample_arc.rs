@@ -1,5 +1,6 @@
 //! The sample-d20 arc: three ways onto a timed lane, then an ending.
 
+use spookery_engine::testing::state_of;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -70,7 +71,7 @@ fn the_script_is_played_with_the_stub_gm(world: &mut World) {
     for (index, line) in lines.iter().enumerate() {
         commit_line(world, line);
         if index + 1 == OPENING.len() {
-            let now = table::now_of(&pack);
+            let now = state_of(&pack);
             assert!(
                 now.world_time <= START_TIME + 10,
                 "the opening ran past 10 minutes at {}",
@@ -123,7 +124,7 @@ fn the_party_travels_through_the_locked_exit(world: &mut World) {
     commit_line(world, "take chock");
     commit_line(world, "travel gate_yard");
     commit_line(world, "chock");
-    let started = table::now_of(&pack).world_time;
+    let started = state_of(&pack).world_time;
     commit_line(world, "travel mill_lane");
     world.scratch = started.to_string();
     world.pack = Some(pack);
@@ -134,7 +135,7 @@ fn they_arrive_at_the_exits_cost(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
     let started: u64 = world.scratch.parse().unwrap();
     let cost = lane_cost(&pack);
-    let now = table::now_of(&pack);
+    let now = state_of(&pack);
     let arrived = arrival_minute(&pack);
     assert_eq!(now.actors.get("pc_lark").unwrap().place, "mill_lane");
     assert_eq!(arrived.saturating_sub(started), cost);
@@ -163,7 +164,7 @@ fn a_player_uses_the_consumable(world: &mut World) {
 
 #[then(expr = "it leaves their inventory")]
 fn it_leaves_their_inventory(world: &mut World) {
-    let now = table::now_of(table::pack(world));
+    let now = state_of(table::pack(world));
     assert_eq!(larks_tonic(&now), 0, "{}", world.player_added);
 }
 
@@ -209,10 +210,7 @@ fn larks_tonic(now: &spookery_engine::State) -> u32 {
 }
 
 fn is_finished(pack: &Path) -> bool {
-    table::now_of(pack)
-        .flags
-        .iter()
-        .any(|flag| flag == "finished")
+    state_of(pack).flags.iter().any(|flag| flag == "finished")
 }
 
 fn lane_cost(pack: &Path) -> u64 {

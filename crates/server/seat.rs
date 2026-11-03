@@ -1,13 +1,13 @@
-//! Who is seated, and each seat's capped outbound queue and its writer.
+//! Who is connected and seated, and each connection's capped outbound queue and its writer.
 
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 
 use spookery_engine::Presence;
-use tokio::io::AsyncWrite;
-use tokio::sync::{mpsc, oneshot, watch};
+use tokio::sync::{mpsc, watch};
 
 use super::limits::{OUTBOUND_BYTE_CAP, OUTBOUND_FRAME_CAP};
+use crate::protocol::Seat;
 
 /// One connection's id, on the game port or the MCP endpoint.
 #[derive(Clone, Copy, PartialEq)]
@@ -20,20 +20,21 @@ impl Conn {
     }
 }
 
-/// The one owner of who is seated. Rounds and readers take `presence()`.
+/// The one owner of who is connected and who is seated. Rounds and readers take
+/// `presence()`.
 #[derive(Default)]
 pub(super) struct Seats {
-    pub(super) players: Vec<PlayerSeat>,
-    pub(super) gm: Option<GmSeat>,
+    pub(super) links: Vec<Link>,
+    /// The connection that holds the GM seat.
+    pub(super) gm: Option<Conn>,
 }
 
 impl Seats {
-    /// The seated PCs, sorted, so a round records the same `actors_present` bytes.
+    /// The claimed PCs, sorted, so a round records the same `actors_present` bytes.
     pub(super) fn presence(&self) -> Presence {
         let mut actors_present: Vec<String> = self
-            .players
-            .iter()
-            .map(|player| player.actor_id.clone())
+            .players()
+            .map(|(_, actor_id)| actor_id.to_string())
             .collect();
         actors_present.sort();
         Presence {
@@ -42,56 +43,50 @@ impl Seats {
         }
     }
 
-    pub(super) fn player(&self, conn: Conn) -> Option<&PlayerSeat> {
-        self.players.iter().find(|player| player.conn == conn)
+    /// Each player connection that holds a claim, with its PC.
+    pub(super) fn players(&self) -> impl Iterator<Item = (&Link, &str)> {
+        self.links
+            .iter()
+            .filter_map(|link| Some((link, link.actor.as_deref()?)))
     }
 
-    pub(super) fn take_player(&mut self, conn: Conn) -> Option<PlayerSeat> {
-        let index = self.players.iter().position(|player| player.conn == conn)?;
-        Some(self.players.remove(index))
+    pub(super) fn link(&self, conn: Conn) -> Option<&Link> {
+        self.links.iter().find(|link| link.conn == conn)
     }
 
-    /// Dropping the seat cancels its event writer.
-    pub(super) fn release_gm(&mut self) {
-        self.gm = None;
+    pub(super) fn link_mut(&mut self, conn: Conn) -> Option<&mut Link> {
+        self.links.iter_mut().find(|link| link.conn == conn)
+    }
+
+    /// Drops the connection. Dropping its link cancels its writer.
+    pub(super) fn take(&mut self, conn: Conn) -> Option<Link> {
+        if self.gm == Some(conn) {
+            self.gm = None;
+        }
+        let index = self.links.iter().position(|link| link.conn == conn)?;
+        Some(self.links.remove(index))
     }
 }
 
-pub(super) struct PlayerSeat {
+/// One open connection: which seat it opened, the PC it claims, and its outbound queue.
+pub(super) struct Link {
     pub(super) conn: Conn,
-    pub(super) actor_id: String,
+    pub(super) seat: Seat,
+    pub(super) actor: Option<String>,
     pub(super) out: FrameSender,
 }
 
-impl Drop for PlayerSeat {
+impl Drop for Link {
     fn drop(&mut self) {
         let _ = self.out.cancel.send(true);
     }
-}
-
-pub(super) struct GmSeat {
-    pub(super) conn: Conn,
-    pub(super) out: FrameSender,
-}
-
-impl Drop for GmSeat {
-    fn drop(&mut self) {
-        let _ = self.out.cancel.send(true);
-    }
-}
-
-/// One queued frame, passed from the table to a seat's socket or event writer.
-enum Message {
-    Frame(Vec<u8>),
-    /// Flushed, then acknowledged, then the writer shuts the socket down.
-    Last(Vec<u8>, oneshot::Sender<()>),
 }
 
 /// The table's end of one seat's frame queue. The table sends that seat frames with it.
 /// Also holds the seat's cancel.
 #[derive(Clone)]
 pub(super) struct FrameSender {
-    tx: mpsc::Sender<Message>,
+    tx: mpsc::Sender<Vec<u8>>,
     queued_bytes: Arc<AtomicUsize>,
     cancel: watch::Sender<bool>,
 }
@@ -99,39 +94,19 @@ pub(super) struct FrameSender {
 /// The writer's end of one seat's frame queue. That seat's socket or event writer reads from it.
 /// A frame's bytes stay counted until it is written.
 pub(super) struct FrameReceiver {
-    rx: mpsc::Receiver<Message>,
+    rx: mpsc::Receiver<Vec<u8>>,
     queued_bytes: Arc<AtomicUsize>,
     pub(super) cancel: watch::Receiver<bool>,
-}
-
-impl Message {
-    fn len(&self) -> usize {
-        match self {
-            Message::Frame(bytes) | Message::Last(bytes, _) => bytes.len(),
-        }
-    }
 }
 
 impl FrameSender {
     /// Queues one frame. False when the queue is full or closed.
     pub(super) fn send(&self, frame: Vec<u8>) -> bool {
-        self.try_send(Message::Frame(frame))
-    }
-
-    /// Queues the closing frame and waits until the writer has flushed it.
-    pub(super) async fn send_last(&self, frame: Vec<u8>) {
-        let (ack_tx, ack_rx) = oneshot::channel();
-        if self.try_send(Message::Last(frame, ack_tx)) {
-            let _ = ack_rx.await;
-        }
-    }
-
-    fn try_send(&self, item: Message) -> bool {
-        let len = item.len();
+        let len = frame.len();
         if !self.reserve(len) {
             return false;
         }
-        if self.tx.try_send(item).is_err() {
+        if self.tx.try_send(frame).is_err() {
             release(&self.queued_bytes, len);
             return false;
         }
@@ -165,7 +140,7 @@ fn release(queued: &AtomicUsize, len: usize) {
 /// One seat's frame queue. Like `mpsc::channel()`, it returns the sender and
 /// receiver halves. A frame is counted against `OUTBOUND_FRAME_CAP` and
 /// `OUTBOUND_BYTE_CAP` from the moment it is queued until the writer has sent
-/// it. The hello keeps a clone of `FrameSender` for `send_last`.
+/// it.
 pub(super) fn frame_queue() -> (FrameSender, FrameReceiver) {
     let (tx, rx) = mpsc::channel(OUTBOUND_FRAME_CAP);
     let (cancel_tx, cancel_rx) = watch::channel(false);
@@ -196,59 +171,25 @@ pub(super) async fn write_frames(
             frame = frames_rx.rx.recv() => frame,
             _ = frames_rx.cancel.changed() => break,
         };
-        let Some(frame) = frame else {
+        let Some(bytes) = frame else {
             break;
         };
-        match frame {
-            Message::Frame(bytes) => {
-                tokio::select! {
-                    biased;
-                    sent = sink(&bytes) => {
-                        if !sent {
-                            break;
-                        }
-                        release(&frames_rx.queued_bytes, bytes.len());
-                    }
-                    _ = frames_rx.cancel.changed() => break,
+        tokio::select! {
+            biased;
+            sent = sink(&bytes) => {
+                if !sent {
+                    break;
                 }
+                release(&frames_rx.queued_bytes, bytes.len());
             }
-            Message::Last(bytes, ack) => {
-                let _ = sink(&bytes).await;
-                let _ = ack.send(());
-                break;
-            }
+            _ = frames_rx.cancel.changed() => break,
         }
     }
-}
-
-pub(super) async fn write_all_flush(write: &mut (impl AsyncWrite + Unpin), frame: &[u8]) -> bool {
-    use tokio::io::AsyncWriteExt;
-    write.write_all(frame).await.is_ok() && write.flush().await.is_ok()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[tokio::test]
-    async fn the_last_frame_is_flushed_before_its_ack() {
-        use tokio::io::AsyncReadExt;
-        let (mut client, mut server) = tokio::io::duplex(256);
-        let (frames_tx, frames_rx) = frame_queue();
-        let writer = tokio::spawn(write_frames(
-            async move |frame: &[u8]| write_all_flush(&mut server, frame).await,
-            frames_rx,
-        ));
-        assert!(frames_tx.send(b"one\n".to_vec()));
-        let (ack_tx, ack_rx) = oneshot::channel();
-        assert!(frames_tx.try_send(Message::Last(b"bye\n".to_vec(), ack_tx)));
-        ack_rx.await.expect("ack");
-        drop(frames_tx);
-        writer.await.expect("writer");
-        let mut buf = Vec::new();
-        client.read_to_end(&mut buf).await.expect("read");
-        assert_eq!(buf, b"one\nbye\n");
-    }
 
     #[test]
     fn the_frame_cap_rejects_before_the_byte_cap() {
@@ -267,10 +208,7 @@ mod tests {
             !frames_tx.send(b"n".to_vec()),
             "a second frame was queued past the byte cap"
         );
-        let taken = frames_rx.rx.recv().await.expect("frame");
-        let Message::Frame(bytes) = taken else {
-            panic!("expected a frame");
-        };
+        let bytes = frames_rx.rx.recv().await.expect("frame");
         assert_eq!(bytes.len(), OUTBOUND_BYTE_CAP + 8);
         assert!(
             !frames_tx.send(b"n".to_vec()),

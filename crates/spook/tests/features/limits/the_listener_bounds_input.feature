@@ -1,16 +1,17 @@
 Feature: The listener bounds input
 
-  Scenario: A player sends a 1 MiB line with no newline
-    Given a docks table
-    When a player sends a 1 MiB line with no newline
-    Then that player is refused with "LINE_TOO_LONG" and disconnected
-    And a second player can sit and wait
+  Scenario: A message over the cap is refused and the seat stays usable
+    Given a docks table with a seated player
+    When the player sends a message over the cap
+    Then the player is refused with "LINE_TOO_LONG"
+    And the player can wait
 
-  Scenario: An oversized hello is refused and the save is unchanged
+  Scenario: A 1 MiB message closes the socket and the save is unchanged
     Given a docks table
-    When a socket sends an oversized hello
-    Then the hello is refused with "LINE_TOO_LONG"
+    When a socket sends a 1 MiB message
+    Then the socket was closed without a reply
     And save.yaml is unchanged since the table opened
+    And a second player can sit and wait
 
   Scenario: An HTTP body over 1 MiB is refused and the seat stays free
     Given a docks table
@@ -18,9 +19,9 @@ Feature: The listener bounds input
     Then the response status is 413
     And a new GM can sit
 
-  Scenario: Invalid UTF-8 in a player line is refused and the seat stays usable
+  Scenario: A binary message is refused and the seat stays usable
     Given a docks table with a seated player
-    When the player sends invalid UTF-8
+    When the player sends a binary message
     Then the player is refused with "SCHEMA"
     And the player can wait
 

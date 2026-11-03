@@ -15,3 +15,5 @@ serde_json = { version = "1", features = ["preserve_order"] }
 spookery-agent = { path = "../agent" }
 spookery-protocol = { path = "../protocol" }
 tokio = { version = "1", features = ["macros", "rt", "time", "net", "io-util", "sync"] }
+tokio-tungstenite = { version = "0.29", default-features = false, features = ["connect"] }
+futures-util = { version = "0.3", default-features = false, features = ["sink"] }

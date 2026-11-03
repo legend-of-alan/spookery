@@ -1,4 +1,5 @@
-//! The Spookery AI GM state machine.
+//! The Spookery AI GM state machine. It reads the GM seat's one ordered stream and decides
+//! from everything up to the last `seq` it read: it never pulls a snapshot during a turn.
 
 mod model;
 mod prompt;
@@ -6,6 +7,7 @@ mod prompt;
 use std::collections::{BTreeMap, VecDeque};
 use std::fmt;
 
+use serde::Serialize;
 use spookery_protocol as protocol;
 
 pub use crate::model::{
@@ -18,24 +20,15 @@ use crate::prompt::{
     TurnView, Wake,
 };
 use crate::protocol::{
-    CommitBody, GmEvent, PackSummary, Queued, Refusal, Roll, SayArgs, SayEvent, Speaker,
-    TableStatus,
+    ClientMessage, CommitArgs, NoArgs, PackSummary, PerceiveArgs, QueuedMove, Refusal, Roll,
+    SayArgs, ServerBody, ServerMessage, Speaker,
 };
 
-/// What a client feeds the state machine: an event, or a tool's reply.
+/// What a client feeds the state machine: a message from the seat, or the model's answer.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Input {
-    Event(GmEvent),
-    /// The agent's input carrying the `table_status` body back, or the table's refusal.
-    TableStatusReply(Result<TableStatus, Refusal>),
-    /// The agent's input carrying the `perceive` body back, or the table's refusal.
-    PerceiveReply(Result<protocol::View, Refusal>),
-    /// The agent's input carrying the `say` body back, or the table's refusal.
-    SayReply(Result<SayEvent, Refusal>),
-    /// The agent's input carrying the `queue_intent` body back, or the table's refusal.
-    QueueIntentReply(Result<Queued, Refusal>),
-    /// The agent's input carrying the `commit_round` body back, or the table's refusal.
-    CommitRoundReply(Result<CommitBody, Refusal>),
+    /// One message from the GM seat's stream, in order. A reply is one of them.
+    Message(ServerMessage),
     /// The agent's input carrying the `Model`'s answer back: the `act` arguments, `None`
     /// when the model made no `act` call, or the call's error.
     ModelReply(Result<Option<ModelReply>, CompletionError>),
@@ -44,12 +37,10 @@ pub enum Input {
 /// What the state machine asks the client to do next.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Step {
+    /// Feed the next message.
     Idle,
-    TableStatus { since: Option<u64> },
-    Perceive { viewer: String },
-    Say(SayArgs),
-    QueueIntent(protocol::IntentArgs),
-    CommitRound,
+    /// Send this message, then feed messages until its reply.
+    Send(ClientMessage),
     CallModel(CompletionRequest),
 }
 
@@ -57,12 +48,12 @@ pub enum Step {
 /// line the client prints.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Error {
-    /// The first `table_status` has no pack summary: a server built before the summary
-    /// moved onto `table_status`.
+    /// The `status` reply has no pack summary: a server built before the summary moved
+    /// onto `table_status`.
     OlderServer,
-    /// The table refused a `table_status` the turn needs. Display is the refusal's body.
+    /// The table refused the `status` the agent sits with. Display is the refusal's body.
     Refused(Refusal),
-    /// A reply to a step the agent did not ask for.
+    /// A reply or a model answer the agent did not ask for.
     Unexpected,
 }
 
@@ -85,10 +76,19 @@ impl std::error::Error for Error {}
 /// The AI GM's turns at one GM seat: fed `Input`s, it answers with the next `Step`.
 #[derive(Default)]
 pub struct Agent {
-    since_seq: u64,
+    /// The number in the next message id.
+    next_id: u64,
+    /// The id of the message whose reply the agent waits for.
+    pending: Option<String>,
     warning: Option<String>,
     phase: Phase,
     pack: PackSummary,
+    /// Who is seated, as of the last message read.
+    present: Vec<String>,
+    /// The queue, as of the last message read.
+    queue: Vec<QueuedMove>,
+    /// Player says read since a turn last took them.
+    heard: Vec<TapeLine>,
     wakes: VecDeque<Wake>,
     buffer: Vec<TapeLine>,
     turn: Turn,
@@ -97,7 +97,10 @@ pub struct Agent {
 #[derive(Default)]
 struct Turn {
     wake: Option<Wake>,
-    status: Option<TableStatus>,
+    /// The turn saw a queue when it started.
+    queue_seen: bool,
+    /// The player says this turn shows the model.
+    lines: Vec<TapeLine>,
     views: BTreeMap<String, Result<protocol::View, Refusal>>,
     view: Option<(TurnView, PromptContext)>,
     says: VecDeque<SayArgs>,
@@ -110,27 +113,24 @@ struct Turn {
 #[derive(Default, PartialEq)]
 enum Phase {
     #[default]
-    InitStatus,
+    Status,
     Idle,
-    TurnStatus,
     Perceive(String),
     Model(bool),
     Say(bool),
     Intent,
     Commit,
-    PostCommitStatus,
 }
 
 impl Agent {
     pub fn new() -> Self {
-        Self {
-            since_seq: u64::MAX,
-            ..Self::default()
-        }
+        Self::default()
     }
 
-    pub fn start(&self) -> Step {
-        Step::TableStatus { since: None }
+    /// The first step: ask for the status the agent sits with.
+    pub fn start(&mut self) -> Step {
+        self.phase = Phase::Status;
+        self.send("status", &NoArgs {})
     }
 
     /// The warning the client should print before its next step. `Option<String>`, not
@@ -141,89 +141,130 @@ impl Agent {
     }
 
     pub fn feed(&mut self, input: Input) -> Result<Step, Error> {
-        if let Input::Event(event) = input {
-            self.record_event(event);
-            return match self.phase {
-                Phase::Idle => Ok(self.next_turn()),
-                _ => Ok(Step::Idle),
-            };
+        let message = match input {
+            Input::Message(message) => message,
+            Input::ModelReply(reply) => return self.feed_model_reply(reply),
+        };
+        // Every message counts, a reply too, so the agent knows everything up to its seq.
+        self.record(&message);
+        let replied = message.reply_to.is_some() && message.reply_to == self.pending;
+        if !replied {
+            return Ok(match self.phase {
+                Phase::Idle => self.next_turn(),
+                _ => Step::Idle,
+            });
         }
-        match (std::mem::replace(&mut self.phase, Phase::Idle), input) {
-            (Phase::InitStatus, Input::TableStatusReply(reply)) => {
-                let mut status = reply.map_err(Error::Refused)?;
+        self.pending = None;
+        let seq = message.seq.unwrap_or_default();
+        match (
+            std::mem::replace(&mut self.phase, Phase::Idle),
+            message.body,
+        ) {
+            (Phase::Status, ServerBody::Status(mut status)) => {
                 self.pack = status.pack.take().ok_or(Error::OlderServer)?;
-                Ok(self.finish_init(status))
+                self.present = status.presence.actors_present;
+                self.queue = status.queued;
+                if !self.queue.is_empty() && !self.wakes.contains(&Wake::Queued) {
+                    self.wakes.push_front(Wake::Queued);
+                }
+                Ok(self.next_turn())
             }
-            (Phase::TurnStatus, Input::TableStatusReply(reply)) => {
-                self.turn.status = Some(reply.map_err(Error::Refused)?);
-                Ok(self.advance_prepare())
-            }
-            (Phase::Perceive(viewer), Input::PerceiveReply(reply)) => {
+            (Phase::Status, ServerBody::Refused(refusal)) => Err(Error::Refused(refusal)),
+            (Phase::Perceive(viewer), body) => {
+                let reply = match body {
+                    ServerBody::View(view) => Ok(*view),
+                    ServerBody::Refused(refusal) => Err(refusal),
+                    _ => return Err(Error::Unexpected),
+                };
                 self.turn.views.insert(viewer, reply);
                 Ok(self.advance_prepare())
             }
-            (Phase::Model(epilogue), Input::ModelReply(reply)) => {
-                match reply {
-                    Err(err) => self.warning = Some(err.to_string()),
-                    Ok(None) => {}
-                    Ok(Some(reply)) => {
-                        let scope = &self.turn.view.as_ref().expect("view").0.scope;
-                        let (says, intent) = keep_actions(reply, scope, &self.pack.menu);
-                        self.turn.says = says.into();
-                        self.turn.intent = intent;
-                    }
-                }
-                Ok(self.advance_actions(epilogue))
-            }
-            (Phase::Say(epilogue), Input::SayReply(reply)) => {
-                if let Ok(said) = reply {
+            (Phase::Say(epilogue), body) => {
+                if let ServerBody::Say(said) = body {
+                    let line = TapeLine::new(seq, said);
                     if epilogue {
-                        keep_recent(&mut self.buffer, said.into());
+                        keep_recent(&mut self.buffer, line);
                     } else {
-                        self.turn.submitted.push(said.into());
+                        self.turn.submitted.push(line);
                     }
                 }
                 Ok(self.advance_actions(epilogue))
             }
-            (Phase::Intent, Input::QueueIntentReply(reply)) => {
-                self.turn.intent_queued = reply.is_ok();
+            (Phase::Intent, body) => {
+                self.turn.intent_queued = matches!(body, ServerBody::Queued { .. });
                 Ok(self.advance_actions(false))
             }
-            (Phase::Commit, Input::CommitRoundReply(reply)) => match reply {
-                Ok(commit) => {
+            (Phase::Commit, body) => {
+                if let ServerBody::Committed(commit) = body {
                     self.turn.checks = commit.rolls;
-                    Ok(self.finish_commit(true))
                 }
-                Err(_) => Ok(self.finish_commit(false)),
-            },
-            (Phase::PostCommitStatus, Input::TableStatusReply(reply)) => {
-                if !reply.map_err(Error::Refused)?.queued.is_empty() {
-                    self.wakes.push_back(Wake::Queued);
-                }
-                Ok(self.narrate_checks())
+                Ok(self.finish_turn())
             }
             _ => Err(Error::Unexpected),
         }
     }
 
-    fn record_event(&mut self, event: GmEvent) {
-        match event {
-            GmEvent::Say(say)
-                if matches!(say.from, Speaker::Player(_)) && say.seq > self.since_seq =>
-            {
-                self.wakes.push_back(Wake::Say(say));
+    fn feed_model_reply(
+        &mut self,
+        reply: Result<Option<ModelReply>, CompletionError>,
+    ) -> Result<Step, Error> {
+        let Phase::Model(epilogue) = std::mem::replace(&mut self.phase, Phase::Idle) else {
+            return Err(Error::Unexpected);
+        };
+        match reply {
+            Err(err) => self.warning = Some(err.to_string()),
+            Ok(None) => {}
+            Ok(Some(reply)) => {
+                let scope = &self.turn.view.as_ref().expect("view").0.scope;
+                let (says, intent) = keep_actions(reply, scope, &self.pack.menu);
+                self.turn.says = says.into();
+                self.turn.intent = intent;
             }
-            GmEvent::Queued(_) => self.wakes.push_back(Wake::Queued),
-            GmEvent::Say(_) | GmEvent::Check(_) => {}
+        }
+        Ok(self.advance_actions(epilogue))
+    }
+
+    /// What one message says about the table: a player's say wakes a turn, a queued move
+    /// joins the queue and wakes one, a round empties the queue, and presence is who sits.
+    fn record(&mut self, message: &ServerMessage) {
+        match &message.body {
+            ServerBody::Say(say) if matches!(say.from, Speaker::Player(_)) => {
+                let line = TapeLine::new(message.seq.unwrap_or_default(), say.clone());
+                self.heard.push(line.clone());
+                self.wakes.push_back(Wake::Say(line));
+            }
+            ServerBody::Queued {
+                intent,
+                actor,
+                move_name,
+                ..
+            } => {
+                self.queue.push(QueuedMove {
+                    id: intent.clone(),
+                    actor_id: actor.clone(),
+                    move_name: move_name.clone(),
+                });
+                if !self.wakes.contains(&Wake::Queued) {
+                    self.wakes.push_back(Wake::Queued);
+                }
+            }
+            ServerBody::Round { .. } => {
+                self.queue.clear();
+                self.wakes.retain(|wake| *wake != Wake::Queued);
+            }
+            ServerBody::Presence { actors_present } => self.present = actors_present.clone(),
+            _ => {}
         }
     }
 
-    fn finish_init(&mut self, status: TableStatus) -> Step {
-        self.since_seq = status.last_seq;
-        if !status.queued.is_empty() && !self.wakes.contains(&Wake::Queued) {
-            self.wakes.push_front(Wake::Queued);
-        }
-        self.next_turn()
+    /// Asks the client to send `word`, and waits for its reply.
+    fn send(&mut self, word: &str, args: &impl Serialize) -> Step {
+        self.next_id += 1;
+        let id = format!("a{}", self.next_id);
+        let args = serde_json::to_value(args).expect("word arguments");
+        let message = ClientMessage::new(&id, word, args);
+        self.pending = Some(id);
+        Step::Send(message)
     }
 
     fn next_turn(&mut self) -> Step {
@@ -233,21 +274,19 @@ impl Agent {
         };
         self.turn = Turn {
             wake: Some(wake),
+            queue_seen: !self.queue.is_empty(),
+            lines: std::mem::take(&mut self.heard),
             ..Turn::default()
         };
-        self.phase = Phase::TurnStatus;
-        Step::TableStatus {
-            since: Some(self.since_seq),
-        }
+        self.advance_prepare()
     }
 
     fn advance_prepare(&mut self) -> Step {
         let pack = &self.pack;
         let wake = self.turn.wake.as_ref().expect("wake");
-        let status = self.turn.status.as_ref().expect("status");
         let views = &self.turn.views;
         let mut missing = None;
-        let prepared = prepare_turn(pack, wake, &status.presence.actors_present, &mut |viewer| {
+        let prepared = prepare_turn(pack, wake, &self.present, &mut |viewer| {
             if let Some(reply) = views.get(viewer) {
                 reply.as_ref().ok().cloned()
             } else {
@@ -257,7 +296,11 @@ impl Agent {
         });
         if let Some(viewer) = missing {
             self.phase = Phase::Perceive(viewer.clone());
-            return Step::Perceive { viewer };
+            let args = PerceiveArgs {
+                as_viewer: Some(viewer),
+                max_body_chars: None,
+            };
+            return self.send("perceive", &args);
         }
         match prepared {
             PreparedTurn::NoModel { says } => {
@@ -267,8 +310,8 @@ impl Agent {
             PreparedTurn::Model(turn_view) => {
                 let context = PromptContext {
                     buffer: self.buffer.clone(),
-                    new_lines: player_lines(status, self.since_seq),
-                    queue: status.queued.clone(),
+                    new_lines: self.turn.lines.clone(),
+                    queue: self.queue.clone(),
                     checks: Vec::new(),
                 };
                 let prompt = render_prompt(&pack.menu, &context, &turn_view, &[]);
@@ -286,41 +329,44 @@ impl Agent {
     fn advance_actions(&mut self, epilogue: bool) -> Step {
         if let Some(say) = self.turn.says.pop_front() {
             self.phase = Phase::Say(epilogue);
-            return Step::Say(say);
+            return self.send("say", &say);
         }
         if epilogue {
             return self.next_turn();
         }
         if let Some(intent) = self.turn.intent.take() {
             self.phase = Phase::Intent;
-            return Step::QueueIntent(intent);
+            return self.send("queue", &intent);
         }
         // Commit only when this turn saw a queue or queued its own intent, so a move queued
         // during a say-only turn keeps its wake.
-        let status = self.turn.status.as_ref().expect("status");
-        if status.queued.is_empty() && !self.turn.intent_queued {
-            return self.finish_commit(false);
+        if !self.turn.queue_seen && !self.turn.intent_queued {
+            return self.finish_turn();
         }
         self.phase = Phase::Commit;
-        Step::CommitRound
+        let args = CommitArgs {
+            include_round: true,
+            session_id: None,
+        };
+        self.send("commit", &args)
     }
 
-    fn finish_commit(&mut self, committed: bool) -> Step {
-        let status = self.turn.status.as_ref().expect("status");
-        let window = player_lines(status, self.since_seq);
-        if let Some(max) = window.iter().map(|line| line.seq).max() {
-            self.since_seq = max;
-        }
-        for line in window.into_iter().chain(self.turn.submitted.drain(..)) {
+    /// The turn's lines join the buffer, and a say the model has now read wakes no turn.
+    fn finish_turn(&mut self) -> Step {
+        let seen = self.turn.lines.iter().map(|line| line.seq).max();
+        for line in self
+            .turn
+            .lines
+            .drain(..)
+            .chain(self.turn.submitted.drain(..))
+        {
             keep_recent(&mut self.buffer, line);
         }
-        self.wakes.retain(|wake| match wake {
-            Wake::Say(say) => say.seq > self.since_seq,
-            Wake::Queued => !committed,
-        });
-        if committed {
-            self.phase = Phase::PostCommitStatus;
-            return Step::TableStatus { since: None };
+        if let Some(seen) = seen {
+            self.wakes.retain(|wake| match wake {
+                Wake::Say(line) => line.seq > seen,
+                Wake::Queued => true,
+            });
         }
         self.narrate_checks()
     }
@@ -338,34 +384,40 @@ impl Agent {
     }
 }
 
-fn player_lines(status: &TableStatus, since_seq: u64) -> Vec<TapeLine> {
-    status
-        .events
-        .iter()
-        .flatten()
-        .filter(|say| matches!(say.from, Speaker::Player(_)) && say.seq > since_seq)
-        .cloned()
-        .map(TapeLine::from)
-        .collect()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    const QUEUED_STATUS: &str = r#"{"presence":{"players":1,"actors_present":["pc"]},"pause":{"presence_clocks":"running"},"world_time":0,"round_index":0,"state_rev":1,"pack_rev":"p","last_round_at":"","queued":[{"id":"q1","actor_id":"pc","move":"wait"}],"last_seq":1}"#;
-    const EMPTY_STATUS: &str = r#"{"presence":{"players":1,"actors_present":["pc"]},"pause":{"presence_clocks":"running"},"world_time":0,"round_index":0,"state_rev":1,"pack_rev":"p","last_round_at":"","queued":[],"last_seq":1}"#;
-    const VIEW: &str = r#"{"viewer":"pc","place":"docks","visible_actors":["pc"],"known_facts":[],"notes":[],"unknown_mentions":[],"clocks":[],"items":[],"habits":[]}"#;
-    const COMMIT: &str = r#"{"state_rev":2,"changed_keys":[],"journal_path":null,"rolls":[{"faces":[6,6],"stat":1,"total":13,"target":10,"outcome":"success"}]}"#;
-    const QUEUED: &str = r#"{"kind":"queued","id":"q2","actor_id":"pc","move":"wait"}"#;
-    const SAY: &str = r#"{"kind":"say","seq":2,"from":"player:pc","address":"table","place":null,"actor":null,"recipients":[],"text":"ok"}"#;
+    const QUEUED_STATUS: &str = r#"{"kind":"status","presence":{"players":1,"actors_present":["pc"]},"pause":{"presence_clocks":"running"},"world_time":0,"round_index":0,"state_rev":1,"pack_rev":"p","last_round_at":"","queued":[{"id":"q1","actor_id":"pc","move":"wait"}],"last_seq":1,"pack":{"menu":[],"kinds":{"pc":"pc_template"},"places":{},"cast":{}}}"#;
+    const EMPTY_STATUS: &str = r#"{"kind":"status","presence":{"players":1,"actors_present":["pc"]},"pause":{"presence_clocks":"running"},"world_time":0,"round_index":0,"state_rev":1,"pack_rev":"p","last_round_at":"","queued":[],"last_seq":1,"pack":{"menu":[],"kinds":{"pc":"pc_template"},"places":{},"cast":{}}}"#;
+    const OLD_STATUS: &str = r#"{"kind":"status","presence":{"players":1,"actors_present":["pc"]},"pause":{"presence_clocks":"running"},"world_time":0,"round_index":0,"state_rev":1,"pack_rev":"p","last_round_at":"","queued":[],"last_seq":1}"#;
+    const VIEW: &str = r#"{"kind":"view","viewer":"pc","place":"docks","visible_actors":["pc"],"known_facts":[],"notes":[],"unknown_mentions":[],"clocks":[],"items":[],"habits":[]}"#;
+    const COMMITTED: &str = r#"{"kind":"committed","state_rev":2,"changed_keys":[],"journal_path":null,"rolls":[{"faces":[6,6],"stat":1,"total":13,"target":10,"outcome":"success"}]}"#;
+    const ROUND: &str = r#"{"kind":"round","round_index":1,"world_time":5}"#;
+    const QUEUED: &str = r#"{"kind":"queued","intent":"q2","actor":"pc","move":"wait"}"#;
+    const PLAYER_SAY: &str = r#"{"kind":"say","from":"player:pc","address":"table","text":"ok"}"#;
+    const GM_SAY: &str = r#"{"kind":"say","from":"gm","address":"table","text":"ok"}"#;
 
-    fn status(raw: &str) -> Input {
-        Input::TableStatusReply(Ok(serde_json::from_str(raw).unwrap()))
+    /// One message: `body` with `seq`, answering `reply_to` when it is set.
+    fn message(seq: u64, reply_to: Option<&str>, body: &str) -> Input {
+        Input::Message(ServerMessage {
+            id: None,
+            seq: Some(seq),
+            reply_to: reply_to.map(str::to_string),
+            body: serde_json::from_str(body).unwrap(),
+        })
     }
 
     fn feed(a: &mut Agent, input: Input) -> Step {
         a.feed(input).unwrap()
+    }
+
+    /// The word and id of a `Send` step.
+    fn sent(step: &Step) -> (String, String) {
+        let Step::Send(message) = step else {
+            panic!("not a send: {step:?}");
+        };
+        (message.body.word.clone(), message.id.clone().unwrap())
     }
 
     fn feed_reply(a: &mut Agent, says: &str) -> Step {
@@ -377,71 +429,87 @@ mod tests {
         feed(a, Input::ModelReply(Ok(Some(reply))))
     }
 
-    fn sit_queued(since: &Step) -> Agent {
+    /// Sits on `status`, then answers the turn's perceive. The model is asked next.
+    fn sit(status: &str) -> Agent {
         let mut a = Agent::new();
-        let mut first: TableStatus = serde_json::from_str(QUEUED_STATUS).unwrap();
-        first.pack = Some(
-            serde_json::from_str(
-                r#"{"menu": [], "kinds": {"pc": "pc_template"}, "places": {}, "cast": {}}"#,
-            )
-            .unwrap(),
-        );
-        assert_eq!(&feed(&mut a, Input::TableStatusReply(Ok(first))), since);
-        prepare(&mut a, QUEUED_STATUS);
+        let (word, id) = sent(&a.start());
+        assert_eq!(word, "status");
+        let step = feed(&mut a, message(1, Some(&id), status));
+        if status == EMPTY_STATUS {
+            assert_eq!(step, Step::Idle);
+        } else {
+            perceive(&mut a, &step, 2);
+        }
         a
     }
 
-    fn prepare(a: &mut Agent, raw: &str) {
-        let perceive = Step::Perceive {
-            viewer: "pc".to_string(),
-        };
-        assert_eq!(feed(a, status(raw)), perceive);
-        let view = Input::PerceiveReply(Ok(serde_json::from_str(VIEW).unwrap()));
-        assert!(matches!(feed(a, view), Step::CallModel(r) if !r.says_only));
+    fn perceive(a: &mut Agent, step: &Step, seq: u64) {
+        let (word, id) = sent(step);
+        assert_eq!(word, "perceive");
+        let step = feed(a, message(seq, Some(&id), VIEW));
+        assert!(matches!(step, Step::CallModel(r) if !r.says_only));
     }
 
     #[test]
-    fn gm_turns_handle_queue_says_epilogue_and_transport_warnings() {
-        let st = Step::TableStatus { since: None };
-        let since = Step::TableStatus { since: Some(1) };
-        let say = Step::Say(SayArgs::Table {
-            text: "ok".to_string(),
-        });
-        let said = || Input::SayReply(Ok(serde_json::from_str(SAY).unwrap()));
-        let commit = Input::CommitRoundReply(Ok(serde_json::from_str(COMMIT).unwrap()));
+    fn a_queued_turn_commits_then_narrates_its_checks() {
+        let mut a = sit(QUEUED_STATUS);
+        let (word, id) = sent(&feed_reply(&mut a, "[]"));
+        assert_eq!(word, "commit");
+        // The round comes before the reply, and empties the queue.
+        assert_eq!(feed(&mut a, message(3, None, ROUND)), Step::Idle);
+        let step = feed(&mut a, message(4, Some(&id), COMMITTED));
+        assert!(matches!(step, Step::CallModel(r) if r.says_only));
+        let (word, id) = sent(&feed_reply(&mut a, r#"[{"address":"table","text":"ok"}]"#));
+        assert_eq!(word, "say");
+        assert_eq!(feed(&mut a, message(5, Some(&id), GM_SAY)), Step::Idle);
+    }
 
-        let mut a = sit_queued(&since);
-        assert_eq!(feed_reply(&mut a, "[]"), Step::CommitRound);
-        assert_eq!(feed(&mut a, commit), st);
-        assert!(matches!(feed(&mut a, status(EMPTY_STATUS)), Step::CallModel(r) if r.says_only));
-        assert_eq!(
-            feed_reply(&mut a, r#"[{"address":"table","text":"ok"}]"#),
-            say
-        );
-        assert_eq!(feed(&mut a, said()), Step::Idle);
+    #[test]
+    fn a_move_queued_during_a_say_turn_waits_for_its_own_turn() {
+        let mut a = sit(EMPTY_STATUS);
+        let step = feed(&mut a, message(2, None, PLAYER_SAY));
+        perceive(&mut a, &step, 3);
+        // Read mid-turn, so this turn's model never saw it.
+        assert_eq!(feed(&mut a, message(4, None, QUEUED)), Step::Idle);
+        let (word, id) = sent(&feed_reply(&mut a, r#"[{"address":"table","text":"ok"}]"#));
+        assert_eq!(word, "say");
+        // The say turn does not commit. The queued move starts the next turn.
+        let step = feed(&mut a, message(5, Some(&id), GM_SAY));
+        perceive(&mut a, &step, 6);
+        let (word, _) = sent(&feed_reply(&mut a, "[]"));
+        assert_eq!(word, "commit");
+    }
 
-        let event = Input::Event(serde_json::from_str(SAY).unwrap());
-        assert_eq!(feed(&mut a, event), since);
-        prepare(&mut a, EMPTY_STATUS);
-        // A move queued after the say turn's status waits for a turn of its own.
-        let queued = Input::Event(serde_json::from_str(QUEUED).unwrap());
-        assert_eq!(feed(&mut a, queued), Step::Idle);
-        assert_eq!(
-            feed_reply(&mut a, r#"[{"address":"table","text":"ok"}]"#),
-            say
-        );
-        assert_eq!(feed(&mut a, said()), since);
+    #[test]
+    fn a_round_the_agent_did_not_play_drops_the_queued_wake() {
+        let mut a = sit(EMPTY_STATUS);
+        let step = feed(&mut a, message(2, None, PLAYER_SAY));
+        perceive(&mut a, &step, 3);
+        assert_eq!(feed(&mut a, message(4, None, QUEUED)), Step::Idle);
+        assert_eq!(feed(&mut a, message(5, None, ROUND)), Step::Idle);
+        let (word, id) = sent(&feed_reply(&mut a, r#"[{"address":"table","text":"ok"}]"#));
+        assert_eq!(word, "say");
+        // Someone else's round played that move, so no turn waits for it.
+        assert_eq!(feed(&mut a, message(6, Some(&id), GM_SAY)), Step::Idle);
+    }
 
-        let mut a = sit_queued(&since);
+    #[test]
+    fn a_model_error_is_a_warning_and_the_turn_goes_on() {
+        let mut a = sit(QUEUED_STATUS);
         let err = Input::ModelReply(Err(CompletionError::Transport("boom".into())));
-        assert_eq!(feed(&mut a, err), Step::CommitRound);
+        let (word, _) = sent(&feed(&mut a, err));
+        assert_eq!(word, "commit");
         assert_eq!(a.take_warning().as_deref(), Some("boom"));
         assert_eq!(a.take_warning(), None);
     }
 
     #[test]
-    fn a_first_status_without_a_pack_summary_is_an_older_server() {
+    fn a_status_without_a_pack_summary_is_an_older_server() {
         let mut a = Agent::new();
-        assert_eq!(a.feed(status(EMPTY_STATUS)), Err(Error::OlderServer));
+        let (_, id) = sent(&a.start());
+        assert_eq!(
+            a.feed(message(1, Some(&id), OLD_STATUS)),
+            Err(Error::OlderServer)
+        );
     }
 }

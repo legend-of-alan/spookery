@@ -20,14 +20,14 @@ use serde_json::Value;
 use tokio::sync::mpsc;
 
 use crate::protocol::{
-    self, CommitArgs, CommitBody, GmEvent, PerceiveArgs, Queued, Refusal, SayArgs, SayEvent,
+    self, CommitArgs, CommitBody, PerceiveArgs, Queued, Refusal, SayArgs, SayEvent, ServerMessage,
     StatusArgs, TableStatus,
 };
 use crate::Error;
 
 /// One item on the event channel from the MCP endpoint's handlers to the `GmClient`: an
 /// event, the error for one that could not be read, or `None` for the end of the seat.
-type EventItem = Option<Result<GmEvent, Error>>;
+type EventItem = Option<Result<ServerMessage, Error>>;
 
 /// Hands each `spook/event` notification to the `GmClient` as an `EventItem`.
 struct EventSender {
@@ -201,7 +201,7 @@ impl GmClient {
     }
 
     /// Events read while waiting for the latest tool result, in arrival order.
-    pub fn drain_events(&mut self) -> Vec<GmEvent> {
+    pub fn drain_events(&mut self) -> Vec<ServerMessage> {
         let mut out = Vec::new();
         while matches!(self.buffered.front(), Some(Some(Ok(_)))) {
             if let Some(Some(Ok(event))) = self.buffered.pop_front() {
@@ -222,8 +222,9 @@ impl GmClient {
 
     /// Buffered events, then any the reader has already queued. An end of the seat among
     /// them is dropped.
-    pub fn drain(&mut self) -> Vec<Result<GmEvent, Error>> {
-        let mut out: Vec<Result<GmEvent, Error>> = self.buffered.drain(..).flatten().collect();
+    pub fn drain(&mut self) -> Vec<Result<ServerMessage, Error>> {
+        let mut out: Vec<Result<ServerMessage, Error>> =
+            self.buffered.drain(..).flatten().collect();
         while let Ok(item) = self.rx.try_recv() {
             out.extend(item);
         }
@@ -342,11 +343,11 @@ fn refusal_from(err: &ClientInitializeError) -> Option<Refusal> {
     }
 }
 
-/// Read one `spook/event` notification's params. A body that is not a say, a queued move,
-/// or a check is `Error::Unreadable`, carrying the notification.
-fn parse_event(params: Option<Value>) -> Result<GmEvent, Error> {
+/// Read one `spook/event` notification's params, one `ServerMessage`. Params that are not one
+/// are `Error::Unreadable`, carrying the notification.
+fn parse_event(params: Option<Value>) -> Result<ServerMessage, Error> {
     let params = params.unwrap_or(Value::Null);
-    GmEvent::deserialize(&params).map_err(|_| Error::Unreadable(event_message(&params)))
+    ServerMessage::deserialize(&params).map_err(|_| Error::Unreadable(event_message(&params)))
 }
 
 /// One `spook/event` notification as its JSON-RPC message.
@@ -369,12 +370,11 @@ mod tests {
 
     #[test]
     fn a_body_that_matches_no_known_type_is_unreadable() {
-        let Err(Error::Unreadable(message)) =
-            parse_event(Some(serde_json::json!({"kind": "nope"})))
+        let Err(Error::Unreadable(message)) = parse_event(Some(serde_json::json!({"body": 1})))
         else {
             panic!("malformed event was dropped");
         };
         let line = message.to_string();
-        assert!(line.contains("\"kind\":\"nope\""), "{line}");
+        assert!(line.contains("\"body\":1"), "{line}");
     }
 }

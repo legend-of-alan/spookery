@@ -89,7 +89,7 @@ fn the_player_is_refused(world: &mut World, code: String) {
 #[then(expr = "the GM sees rowan's travel queued")]
 fn the_gm_sees_the_travel_queued(world: &mut World) {
     wait_gm_event(world, "rowan's travel queued", |event| {
-        event["kind"] == "queued" && event["actor_id"] == "pc_rowan" && event["move"] == "travel"
+        event["kind"] == "queued" && event["actor"] == "pc_rowan" && event["move"] == "travel"
     });
 }
 
@@ -118,12 +118,12 @@ fn the_gm_sees_no_player_seated(world: &mut World) {
     table::wait_players(world, 0);
 }
 
-/// Waits for a player frame after `world.mark` that passes `done`.
+/// Waits for a message body after `world.mark` that passes `done`.
 fn wait_player_frame(world: &World, want: &str, done: impl Fn(&Value) -> bool) {
     table::poll_until(want, || {
         let text = table::player_text(world);
         let frames = parse_lines(text.get(world.mark..).unwrap_or_default());
-        if frames.iter().any(&done) {
+        if frames.iter().any(|message| done(&message["body"])) {
             Ok(())
         } else {
             Err(frames)
@@ -131,10 +131,12 @@ fn wait_player_frame(world: &World, want: &str, done: impl Fn(&Value) -> bool) {
     });
 }
 
-/// Waits for a GM event that passes `done`.
+/// Waits for a GM event whose body passes `done`.
 fn wait_gm_event(world: &mut World, want: &str, done: impl Fn(&Value) -> bool) {
     table::wait_gm_until(world, want, |text| {
-        parse_lines(text).iter().any(|line| done(&line["params"]))
+        parse_lines(text)
+            .iter()
+            .any(|line| done(&line["params"]["body"]))
     });
 }
 

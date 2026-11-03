@@ -220,19 +220,23 @@ fn the_gm_sends_larks_strike(world: &mut World, target: String) {
 
 #[then(expr = "Lark's refused frame for {string} has no missing field")]
 fn larks_refused_frame_has_no_missing_field(world: &mut World, code: String) {
-    let line = format!("{{\"kind\":\"refused\",\"code\":\"{code}\"}}");
-    let added = table::wait_player_from(world, world.mark, &line);
-    let frames = added
+    let body = serde_json::json!({ "kind": "refused", "code": code });
+    let added = table::wait_player_from(world, world.mark, &format!("\"code\":\"{code}\""));
+    let refusals: Vec<serde_json::Value> = added
         .lines()
-        .filter(|row| row.contains("\"kind\":\"refused\""))
-        .collect::<Vec<_>>();
+        .filter_map(|row| serde_json::from_str::<serde_json::Value>(row).ok())
+        .map(|message| message["body"].clone())
+        .filter(|body| body["kind"] == "refused")
+        .collect();
     assert_eq!(
-        frames.iter().filter(|row| **row == line).count(),
+        refusals.iter().filter(|refused| **refused == body).count(),
         1,
         "{added}"
     );
     assert!(
-        frames.iter().all(|row| !row.contains("\"detail\"")),
+        refusals
+            .iter()
+            .all(|refused| refused.get("detail").is_none()),
         "{added}"
     );
 }

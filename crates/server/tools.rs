@@ -1,4 +1,4 @@
-//! The GM tool table: each tool's name, description, schema and run.
+//! The GM words: each word's run, and the MCP tool each one is listed as.
 
 use std::sync::Arc;
 
@@ -9,46 +9,46 @@ use spookery_engine::{Address, Presence, Reason, RoundOutput, TapeRecord, World}
 use super::frames;
 use super::table::commit_then_fast_forward;
 use crate::protocol::{
-    self, parse_args, CloseArgs, CloseBody, CommitArgs, PerceiveArgs, Queued, SayArgs, StatusArgs,
+    self, parse_args, CloseArgs, CommitArgs, PerceiveArgs, SayArgs, ServerBody, StatusArgs,
     PERCEIVE_BODY_CHARS,
 };
 
-/// Sent from a GM tool handler back to the table, which answers the GM and updates seats.
+/// Sent from a GM word's run back to the table, which answers the GM and updates seats.
 pub(super) struct Reply {
-    pub(super) value: Value,
-    /// The speech this call put on the tape. The host delivers it.
+    pub(super) body: ServerBody,
+    /// The speech this word put on the tape. The table delivers it, and the GM's copy is
+    /// the reply.
     pub(super) said: Option<TapeRecord>,
-    /// The GM seat is cleared before this reply is sent.
+    /// The GM seat is cleared once this reply is sent.
     pub(super) release_seat: bool,
-    /// Set when the call was refused. The host logs it.
-    pub(super) refused: Option<Reason>,
-    /// Rounds this call played, commit first.
+    /// Rounds this word played, commit first.
     pub(super) outputs: Vec<RoundOutput>,
 }
 
 impl Reply {
-    fn new(value: Value) -> Self {
+    fn new(body: ServerBody) -> Self {
         Self {
-            value,
+            body,
             said: None,
             release_seat: false,
-            refused: None,
             outputs: Vec::new(),
         }
     }
+
+    /// The reply to a refused word.
+    pub(super) fn refused(code: Reason) -> Self {
+        Self::new(ServerBody::Refused(code.into()))
+    }
 }
 
-/// Sitting `tools/list` order. Each name is one handler.
+/// One MCP tool, in `tools/list` order: the GM word it runs, its description and schema.
 /// Any other name is `NOT_IN_SPEC` and writes nothing.
 pub(super) struct Tool {
     pub(super) name: &'static str,
+    pub(super) word: &'static str,
     pub(super) about: &'static str,
     pub(super) schema: fn() -> Arc<Map<String, Value>>,
-    run: ToolFn,
 }
-
-/// A refused call returns its code, and `call_gm_tool` renders it.
-type ToolFn = fn(&mut World, &Presence, Option<Map<String, Value>>) -> Result<Reply, Reason>;
 
 const SEAT_NOTES: &str = "Player mechanical lines stay queued until commit_round. say appends speech and does not tick. perceive requires as set to an actor id. When a notification does not arrive, table_status with since returns player speech and the queue.";
 
@@ -61,97 +61,95 @@ impl Tool {
 pub(super) const TOOLS: &[Tool] = &[
     Tool {
         name: "table_status",
+        word: "status",
         about: "table_status takes no required key. An empty object stays legal. since is the only other accepted key.",
         schema: schema_for_type::<StatusArgs>,
-        run: table_status,
     },
     Tool {
         name: "perceive",
+        word: "perceive",
         about: "perceive requires as. max_body_chars may be sent. A missing as is UNSCOPED_PERCEIVE.",
         schema: schema_for_type::<PerceiveArgs>,
-        run: perceive,
     },
     Tool {
         name: "queue_intent",
+        word: "queue",
         about: "queue_intent requires actor_id and move. A habit row is legal when actor_id is an npc.",
         schema: schema_for_type::<protocol::IntentArgs>,
-        run: queue_intent,
     },
     Tool {
         name: "say",
+        word: "say",
         about: "say requires address and text. place is required when address is place. actor is required when address is actor. table takes neither place nor actor. A supplied from is SCHEMA.",
         schema: schema_for_type::<SayArgs>,
-        run: say,
     },
     Tool {
         name: "commit_round",
+        word: "commit",
         about: "commit_round requires include_round. session_id may be a string.",
         schema: schema_for_type::<CommitArgs>,
-        run: commit_round,
     },
     Tool {
         name: "close",
+        word: "release",
         about: "close takes no keys. The result is sent after this GM seat is free.",
         schema: schema_for_type::<CloseArgs>,
-        run: close,
     },
 ];
 
-/// Run one GM tool. `presence` is who the host's seats hold.
-pub(super) fn call_gm_tool(
+/// Run one GM word. `presence` is who the seats hold. A word that is not a GM word is
+/// `SCHEMA`.
+pub(super) fn run_gm_word(
     world: &mut World,
     presence: &Presence,
-    name: &str,
-    arguments: Option<Map<String, Value>>,
-) -> Reply {
-    let reply = match TOOLS.iter().find(|tool| tool.name == name) {
-        Some(tool) => (tool.run)(world, presence, arguments),
-        None => Err(Reason::NotInSpec),
-    };
-    reply.unwrap_or_else(|code| Reply {
-        refused: Some(code),
-        ..Reply::new(frames::refused_value(code))
-    })
+    word: &str,
+    args: &Map<String, Value>,
+) -> Result<Reply, Reason> {
+    let args = Some(args);
+    match word {
+        "status" => status(world, presence, args),
+        "perceive" => perceive(world, presence, args),
+        "queue" => queue(world, args),
+        "say" => say(world, presence, args),
+        "commit" => commit(world, presence, args),
+        "release" => release(args),
+        _ => Err(Reason::Schema),
+    }
 }
 
 /// GM `say`. `from` is the seat. A supplied `from` appends nothing.
-/// The GM also hears it as a `say` event, the same object as this result.
 fn say(
     world: &mut World,
     presence: &Presence,
-    arguments: Option<Map<String, Value>>,
+    arguments: Option<&Map<String, Value>>,
 ) -> Result<Reply, Reason> {
-    let args: SayArgs = parse_args(arguments.as_ref()).map_err(|_| Reason::Schema)?;
+    let args: SayArgs = parse_args(arguments).map_err(|_| Reason::Schema)?;
     let heard = match &args {
         SayArgs::Table { .. } => Address::Table,
         SayArgs::Place { place, .. } => Address::Place(place),
         SayArgs::Actor { actor, .. } => Address::Actor(actor),
     };
     let said = world.say_as_gm(presence, heard, args.text())?;
-    let mut reply = Reply::new(frames::say_value(&said));
+    let mut reply = Reply::new(frames::render_say(&said, true));
     reply.said = Some(said);
     Ok(reply)
 }
 
-fn close(
-    _world: &mut World,
-    _presence: &Presence,
-    arguments: Option<Map<String, Value>>,
-) -> Result<Reply, Reason> {
-    parse_args::<CloseArgs>(arguments.as_ref()).map_err(|_| Reason::Schema)?;
+fn release(arguments: Option<&Map<String, Value>>) -> Result<Reply, Reason> {
+    parse_args::<CloseArgs>(arguments).map_err(|_| Reason::Schema)?;
     Ok(Reply {
         release_seat: true,
-        ..Reply::new(serde_json::to_value(CloseBody { released: true }).expect("close"))
+        ..Reply::new(ServerBody::Released)
     })
 }
 
 /// Without `include_round` only an empty queue commits, and it plays nothing.
-fn commit_round(
+fn commit(
     world: &mut World,
     presence: &Presence,
-    arguments: Option<Map<String, Value>>,
+    arguments: Option<&Map<String, Value>>,
 ) -> Result<Reply, Reason> {
-    let include_round = parse_args::<CommitArgs>(arguments.as_ref())
+    let include_round = parse_args::<CommitArgs>(arguments)
         .map_err(|_| Reason::Schema)?
         .include_round;
     let committed = !world.queued_intents().is_empty();
@@ -179,34 +177,34 @@ fn commit_round(
         }
         None => (world.state().state_rev, &[][..], None),
     };
-    let value = frames::commit_value(state_rev, changed_keys, journal_path, &outputs);
+    let body = frames::render_committed(state_rev, changed_keys, journal_path, &outputs);
     Ok(Reply {
         outputs,
-        ..Reply::new(value)
+        ..Reply::new(body)
     })
 }
 
 fn perceive(
     world: &mut World,
     presence: &Presence,
-    arguments: Option<Map<String, Value>>,
+    arguments: Option<&Map<String, Value>>,
 ) -> Result<Reply, Reason> {
-    let args: PerceiveArgs = parse_args(arguments.as_ref()).map_err(|_| Reason::Schema)?;
+    let args: PerceiveArgs = parse_args(arguments).map_err(|_| Reason::Schema)?;
     let as_arg = args.as_viewer.ok_or(Reason::UnscopedPerceive)?;
     let budget = args
         .max_body_chars
         .map_or(Ok(PERCEIVE_BODY_CHARS), usize::try_from)
         .map_err(|_| Reason::Schema)?;
     let view = world.perceive_trimmed(presence, &as_arg, budget)?;
-    Ok(Reply::new(frames::perceive_value(&view)))
+    Ok(Reply::new(frames::render_view(&view)))
 }
 
-fn table_status(
+fn status(
     world: &mut World,
     presence: &Presence,
-    arguments: Option<Map<String, Value>>,
+    arguments: Option<&Map<String, Value>>,
 ) -> Result<Reply, Reason> {
-    let since = parse_args::<StatusArgs>(arguments.as_ref())
+    let since = parse_args::<StatusArgs>(arguments)
         .map_err(|_| Reason::Schema)?
         .since;
     let events = match since {
@@ -214,7 +212,7 @@ fn table_status(
         None => None,
     };
     let last_seq = world.last_tape_seq()?;
-    Ok(Reply::new(frames::status_value(
+    Ok(Reply::new(frames::render_status(
         world.state(),
         presence,
         world.queued_intents(),
@@ -224,16 +222,16 @@ fn table_status(
     )))
 }
 
-fn queue_intent(
-    world: &mut World,
-    _presence: &Presence,
-    arguments: Option<Map<String, Value>>,
-) -> Result<Reply, Reason> {
-    let call = parse_args(arguments.as_ref()).map_err(|_| Reason::Schema)?;
+fn queue(world: &mut World, arguments: Option<&Map<String, Value>>) -> Result<Reply, Reason> {
+    let call: protocol::IntentArgs = parse_args(arguments).map_err(|_| Reason::Schema)?;
+    let target = call.target.clone().filter(|target| !target.is_empty());
     let queued = world.queue_gm_intent(call, || Ok(uuid::Uuid::new_v4().to_string()))?;
-    Ok(Reply::new(
-        serde_json::to_value(Queued { id: queued.id }).expect("queued"),
-    ))
+    Ok(Reply::new(ServerBody::Queued {
+        intent: queued.id,
+        actor: queued.actor_id,
+        move_name: queued.move_name,
+        target,
+    }))
 }
 
 #[cfg(test)]

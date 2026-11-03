@@ -1,6 +1,5 @@
 //! The human GM: commands in, tool calls out.
 
-use std::collections::VecDeque;
 use std::io::{self, Write};
 use std::net::SocketAddr;
 
@@ -9,7 +8,7 @@ use serde::Serialize;
 use serde_json::json;
 
 use crate::mcp::{event_line, GmClient};
-use crate::protocol::{self, GmEvent, PlayerFrame, Refusal, SayArgs};
+use crate::protocol::{self, Refusal, SayArgs, SayEvent, ServerBody, ServerMessage};
 use crate::text::{
     self, humanize, render_checks, render_dice, render_diff, render_event, render_status,
 };
@@ -49,7 +48,7 @@ pub async fn run(mcp_addr: SocketAddr, raw: bool) -> Result<(), Error> {
                 });
                 emit(&json!({ "jsonrpc": "2.0", "id": 1, "error": error }).to_string());
             }
-            return Err(Error::Message(refusal_text(&refusal, raw)));
+            return Err(Error::Message(text::render_refusal(&refusal, raw)));
         }
         Err(err) => return Err(err),
     };
@@ -57,7 +56,6 @@ pub async fn run(mcp_addr: SocketAddr, raw: bool) -> Result<(), Error> {
         client,
         raw,
         next_id: 2,
-        printed_checks: PrintedChecks::default(),
     };
     if raw {
         let version = session.client.protocol_version();
@@ -90,35 +88,13 @@ struct Session {
     raw: bool,
     /// The id of the next result line raw mode prints. The initialize line is 1.
     next_id: u64,
-    printed_checks: PrintedChecks,
 }
 
-/// Check lines `commit` already printed. Each matching event is skipped once,
-/// so a later check still prints. Events that arrive after the result use
-/// this list. Events that arrive before it are matched in `show_arrived`.
-#[derive(Debug, Default)]
-struct PrintedChecks(VecDeque<String>);
-
-impl PrintedChecks {
-    /// The check lines one commit result printed. Replaces any older lines.
-    fn replace(&mut self, lines: Vec<String>) {
-        self.0 = lines.into();
-    }
-
-    /// True when `line` is the next check event of the last commit.
-    fn skip(&mut self, line: &str) -> bool {
-        if self.0.front().map(String::as_str) == Some(line) {
-            self.0.pop_front();
-            return true;
-        }
-        self.0.clear();
-        false
-    }
-
-    /// A later result came in, so the last commit's events were all read.
-    fn clear(&mut self) {
-        self.0.clear();
-    }
+/// A `say` result as raw mode prints it, `kind` included.
+#[derive(Serialize)]
+#[serde(tag = "kind", rename_all = "lowercase")]
+enum Said {
+    Say(SayEvent),
 }
 
 impl Session {
@@ -151,25 +127,25 @@ impl Session {
 
     async fn status(&mut self) -> Result<(), Error> {
         let reply = self.client.table_status(None).await;
-        self.show_result(reply, &[], |_session, status| {
+        self.show_result(reply, |_session, status| {
             emit(&render_status(&status));
         })
     }
 
     async fn look(&mut self, actor: &str) -> Result<(), Error> {
         let reply = self.client.perceive(actor).await;
-        // The table sends the view as the player `view` frame, `kind` included.
-        let reply = reply.map(|reply| reply.map(|view| PlayerFrame::View(Box::new(view))));
-        self.show_result(reply, &[], |_session, frame| {
-            emit(&text::render(&frame));
+        // The table sends the view as the `view` body, `kind` included.
+        let reply = reply.map(|reply| reply.map(|view| ServerBody::View(Box::new(view))));
+        self.show_result(reply, |_session, body| {
+            emit(&text::render(&body));
         })
     }
 
     async fn say(&mut self, args: SayArgs) -> Result<(), Error> {
         let reply = self.client.say(&args).await;
         // The table answers with the say event, `kind` included.
-        let reply = reply.map(|reply| reply.map(GmEvent::Say));
-        self.show_result(reply, &[], |_session, _said| {})
+        let reply = reply.map(|reply| reply.map(Said::Say));
+        self.show_result(reply, |_session, _said| {})
     }
 
     async fn queue(
@@ -189,42 +165,29 @@ impl Session {
             rationale_code: String::new(),
         };
         let reply = self.client.queue_intent(&call).await;
-        self.show_result(reply, &[], move |_session, _queued| {
+        self.show_result(reply, move |_session, _queued| {
             emit(&shown);
         })
     }
 
     async fn commit(&mut self) -> Result<(), Error> {
         let reply = self.client.commit_round().await;
-        // This commit's check events can arrive before or after the tool
-        // result. The result text prints each roll. A matching event on
-        // either side is shown once. Raw mode and a failed read show none.
-        let checks = match &reply {
-            Ok(Ok(body)) if !self.raw => render_checks(body),
-            _ => Vec::new(),
-        };
-        let printed = checks.clone();
-        self.show_result(reply, &checks, move |session, body| {
+        // The result is the one place a GM sees this commit's rolls.
+        self.show_result(reply, |_session, body| {
             emit(&render_diff(&body));
-            for line in &printed {
+            for line in render_checks(&body).iter().chain(&render_dice(&body)) {
                 emit(line);
             }
-            for line in &render_dice(&body) {
-                emit(line);
-            }
-            session.printed_checks.replace(printed);
         })
     }
 
     /// Show one tool reply after the events that came before it, then anything that
     /// arrived since. Raw mode prints the reply's result line, text mode `render`s it.
-    /// `checks` are rolls `render` prints, so a matching check event is not printed
-    /// again. A refusal or a reply that could not be read is shown instead; a call that
+    /// A refusal or a reply that could not be read is shown instead; a call that
     /// failed prints its message alone.
     fn show_result<T: Serialize>(
         &mut self,
         reply: Result<Result<T, Refusal>, Error>,
-        checks: &[String],
         render: impl FnOnce(&mut Self, T),
     ) -> Result<(), Error> {
         let id = self.next_id;
@@ -243,7 +206,9 @@ impl Session {
                 return Ok(());
             }
         };
-        self.show_arrived(checks);
+        for event in self.client.drain_events() {
+            self.show_event(&event);
+        }
         match reply {
             Ok(Err(refusal)) => self.show_refusal(&refusal, &result_line(id, &refusal)),
             Ok(Ok(body)) if self.raw => emit(&result_line(id, &body)),
@@ -255,25 +220,6 @@ impl Session {
         Ok(())
     }
 
-    /// Events buffered before this result. `checks` are rolls this result
-    /// will print; a matching check event is not printed again.
-    fn show_arrived(&mut self, checks: &[String]) {
-        let mut pending: VecDeque<&str> = checks.iter().map(String::as_str).collect();
-        let events = self.client.drain_events();
-        for event in &events {
-            if let GmEvent::Check(_) = event {
-                let line = render_event(event);
-                if pending.front().copied() == Some(line.as_str()) {
-                    pending.pop_front();
-                    continue;
-                }
-            }
-            self.show_event(event);
-        }
-        // Every check event of the previous commit came before this result.
-        self.printed_checks.clear();
-    }
-
     fn show_ready(&mut self) {
         for received in self.client.drain() {
             self.show_received(received);
@@ -282,7 +228,7 @@ impl Session {
 
     /// An event as `show_event` shows it, or an event that could not be read as its line
     /// on stderr.
-    fn show_received(&mut self, received: Result<GmEvent, Error>) {
+    fn show_received(&mut self, received: Result<ServerMessage, Error>) {
         match received {
             Ok(event) => self.show_event(&event),
             Err(err) => {
@@ -292,16 +238,16 @@ impl Session {
         }
     }
 
-    fn show_event(&mut self, event: &GmEvent) {
+    /// Raw mode prints every message. Text mode prints the ones `render_event` names.
+    fn show_event(&mut self, event: &ServerMessage) {
         if self.raw {
             emit(&event_line(event));
             return;
         }
-        let line = render_event(event);
-        if matches!(event, GmEvent::Check(_)) && self.printed_checks.skip(&line) {
-            return;
+        let line = render_event(&event.body);
+        if !line.is_empty() {
+            emit(&line);
         }
-        emit(&line);
     }
 
     /// Raw mode prints `line`, the refusal's result line, then the code on stderr.
@@ -309,17 +255,8 @@ impl Session {
         if self.raw {
             emit(line);
         }
-        eprintln!("{}", refusal_text(refusal, self.raw));
+        eprintln!("{}", text::render_refusal(refusal, self.raw));
         let _ = io::stderr().flush();
-    }
-}
-
-/// What a refusal prints on stderr: the code in raw mode, the sentence in text mode.
-fn refusal_text(refusal: &Refusal, raw: bool) -> String {
-    if raw {
-        refusal.code.as_str().to_string()
-    } else {
-        refusal.to_string()
     }
 }
 
@@ -433,59 +370,6 @@ fn split_word(text: &str) -> (&str, &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::protocol::{Outcome, Roll};
-    use crate::text::render_check;
-
-    fn check_line(faces: &[u32], stat: i64, total: i64, target: i64, outcome: Outcome) -> String {
-        render_check(&Roll {
-            faces: faces.to_vec(),
-            stat,
-            total,
-            target,
-            outcome,
-        })
-    }
-
-    #[test]
-    fn a_commit_skips_its_own_check_events_once() {
-        let roll = check_line(&[4, 2], 1, 7, 0, Outcome::Success);
-        let mut printed = PrintedChecks::default();
-        printed.replace(vec![roll.clone()]);
-        assert!(printed.skip(&roll));
-        // A later check with the same faces is a new roll and still prints.
-        assert!(!printed.skip(&roll));
-        assert!(!printed.skip(&roll));
-    }
-
-    #[test]
-    fn checks_after_a_new_result_are_not_skipped() {
-        let roll = check_line(&[3, 3], 0, 6, 0, Outcome::Success);
-        let mut printed = PrintedChecks::default();
-        printed.replace(vec![roll.clone()]);
-        printed.clear();
-        assert!(!printed.skip(&roll));
-    }
-
-    #[test]
-    fn a_check_that_is_not_next_ends_the_skip() {
-        let first = check_line(&[1, 1], 0, 2, 7, Outcome::Miss);
-        let second = check_line(&[6, 6], 0, 12, 7, Outcome::Success);
-        let mut printed = PrintedChecks::default();
-        printed.replace(vec![first.clone(), second.clone()]);
-        assert!(!printed.skip(&second));
-        assert!(!printed.skip(&first));
-    }
-
-    #[test]
-    fn a_commit_with_two_checks_skips_both_in_order() {
-        let first = check_line(&[1, 2], 0, 3, 7, Outcome::Miss);
-        let second = check_line(&[5, 6], 0, 11, 7, Outcome::Success);
-        let mut printed = PrintedChecks::default();
-        printed.replace(vec![first.clone(), second.clone()]);
-        assert!(printed.skip(&first));
-        assert!(printed.skip(&second));
-        assert!(!printed.skip(&first));
-    }
 
     fn command(line: &str) -> Command {
         parse_command(line).unwrap_or_else(|| panic!("not a command: {line}"))

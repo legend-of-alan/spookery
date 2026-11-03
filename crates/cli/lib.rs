@@ -1,4 +1,4 @@
-//! The human terminals, the GM client, and the AI GM runner.
+//! The human terminals, the seat connections, and the AI GM runner.
 
 use std::fmt;
 use std::io;
@@ -10,17 +10,18 @@ pub mod mcp;
 pub mod play;
 use spookery_protocol as protocol;
 mod text;
+pub mod ws;
 
 /// A client failure: what `play::run`, `gm::run` and `ai_gm::run` return to `spook`, and what
-/// the MCP client and `HttpModel` return to them. Display is the line `spook` prints for it.
+/// the seat connections and `HttpModel` return to them. Display is the line `spook` prints for it.
 #[derive(Debug)]
 pub enum Error {
     /// A socket could not be dialed, read or written.
     Io(io::Error),
     /// The table refused the GM seat. Display is the refusal's sentence.
     Refused(protocol::Refusal),
-    /// A tool reply that is neither its reply type nor a refusal, or an event that is no
-    /// `GmEvent`, with the JSON the MCP endpoint sent.
+    /// A tool reply that is neither its reply type nor a refusal, or a message that is no
+    /// `ServerMessage`, with the JSON the table sent.
     Unreadable(serde_json::Value),
     /// Any other failure, as the line to print.
     Message(String),

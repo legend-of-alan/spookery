@@ -1,3 +1,4 @@
+use spookery_engine::testing::state_of;
 use std::fs;
 
 use cucumber::{given, then, when};
@@ -11,6 +12,28 @@ use super::table;
 #[when(expr = "the player says {string}")]
 fn the_player_says(world: &mut World, text: String) {
     let _ = table::player_send(world, &format!("say {text}"), "\"kind\":\"say\"");
+}
+
+#[when(expr = "the player says {string} to the place")]
+fn the_player_says_to_the_place(world: &mut World, text: String) {
+    let place = state_of(table::pack(world)).actors["pc_rowan"]
+        .place
+        .clone();
+    let args = serde_json::json!({ "address": "place", "place": place, "text": text });
+    say_as_rowan(world, args);
+}
+
+#[when(expr = "the player says {string} to {word}")]
+fn the_player_says_to(world: &mut World, text: String, actor: String) {
+    let args = serde_json::json!({ "address": "actor", "actor": actor, "text": text });
+    say_as_rowan(world, args);
+}
+
+fn say_as_rowan(world: &World, args: Value) {
+    let seat = &table::player_client(world, "pc_rowan").seat;
+    let id = seat.send("say", args);
+    let reply = seat.wait_reply(&id);
+    assert!(reply.contains("\"kind\":\"say\""), "{reply}");
 }
 
 #[when(expr = "say to mira is submitted on an empty table saying {string}")]
@@ -98,7 +121,7 @@ fn tape_text(world: &World) -> String {
 #[then(expr = "state_rev is unchanged")]
 fn state_rev_is_unchanged(world: &mut World) {
     let rev = table::live_mut(world).seated_rev;
-    assert_eq!(table::now_of(table::pack(world)).state_rev, rev);
+    assert_eq!(state_of(table::pack(world)).state_rev, rev);
 }
 
 #[then(expr = "save.yaml matches the bytes from before the line")]
@@ -165,15 +188,17 @@ fn the_replayed_say_lines_are(world: &mut World, start: String, end: String) {
     assert_eq!(replay_texts(world, &actor), expected);
 }
 
-#[then(expr = "each replayed line has {string}: true")]
-fn each_replayed_line_has_flag(world: &mut World, field: String) {
-    assert_eq!(field, "replay");
+#[then(expr = "the replayed lines ride in the claim's reply")]
+fn the_replayed_lines_ride_in_the_claims_reply(world: &mut World) {
     let actor = latest_actor(world);
-    let says = replay_says(world, &actor);
-    assert!(!says.is_empty(), "no replayed say lines");
-    for say in &says {
-        assert_eq!(say.get("replay"), Some(&Value::Bool(true)), "{say}");
-    }
+    let claimed = last_claimed(world, &actor);
+    assert!(claimed.get("reply_to").is_some(), "{claimed}");
+    // Live says come after; none was said since the claim.
+    let live_says = table::actor_text(world, &actor)
+        .lines()
+        .filter(|line| line.contains("\"kind\":\"say\""))
+        .count();
+    assert_eq!(live_says, 0, "{}", table::actor_text(world, &actor));
 }
 
 #[then(expr = "the newest replayed say line is {string}")]
@@ -232,17 +257,22 @@ fn replay_texts(world: &World, actor: &str) -> Vec<String> {
         .collect()
 }
 
+/// The says the actor's last claim replayed.
 fn replay_says(world: &World, actor: &str) -> Vec<Value> {
-    let mut says = Vec::new();
-    for line in table::actor_text(world, actor).lines() {
-        let Ok(value) = serde_json::from_str::<Value>(line) else {
-            continue;
-        };
-        if value.get("kind").and_then(Value::as_str) == Some("say") {
-            says.push(value);
-        }
-    }
-    says
+    let claimed = last_claimed(world, actor);
+    claimed["body"]["scrollback"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default()
+}
+
+/// The actor's last `claimed` message.
+fn last_claimed(world: &World, actor: &str) -> Value {
+    table::actor_text(world, actor)
+        .lines()
+        .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+        .rfind(|message| message["body"]["kind"] == "claimed")
+        .unwrap_or_else(|| panic!("{actor} has no claimed message"))
 }
 
 fn line_index(text: &str) -> usize {
