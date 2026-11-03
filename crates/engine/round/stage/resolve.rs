@@ -108,11 +108,13 @@ fn roll_check(
     let intent = context.intent;
     let actor_id = intent.actor.actor_id();
     let opposed = opposing_total(resolver, intent)?;
-    let mut roller = resolver.dice.roller(resolver.log, rule_id, actor_id);
     if let Some(out) = resolver.rolled.get(&intent.id) {
         let (target, partial_at) = match opposed {
             Some(total) => (total, None),
-            None => roller.eval_thresholds(context, roll)?,
+            None => resolver
+                .dice
+                .roller(resolver.log, rule_id, actor_id)
+                .eval_thresholds(context, roll)?,
         };
         let outcome = classify(out.total, target, partial_at);
         return Ok(Roll {
@@ -129,7 +131,10 @@ fn roll_check(
                 .dice
                 .roll_check(canon, state, key, &roll.check, total, None)?
         }
-        None => roller.roll_spec(context, roll)?,
+        None => resolver
+            .dice
+            .roller(resolver.log, rule_id, actor_id)
+            .roll_spec(context, roll)?,
     };
     resolver.rolled.insert(intent.id.clone(), out.clone());
     Ok(out)
