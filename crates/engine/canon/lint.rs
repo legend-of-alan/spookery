@@ -616,15 +616,15 @@ pub fn check_save(canon: &Canon, state: &crate::model::State) -> Result<(), Vec<
 
 /// Static warnings and trigger-reach errors on a loaded `Canon`.
 pub(crate) fn check_canon(canon: &Canon, state: Option<&crate::model::State>) -> Vec<Diagnostic> {
-    let mut diags = unreachable_places(canon);
-    diags.extend(teleport_in_verbs(canon));
-    diags.extend(trigger_cycles(canon));
-    diags.extend(trigger_leaks(canon, state));
+    let mut diags = check_reachable_places(canon);
+    diags.extend(check_teleport_verbs(canon));
+    diags.extend(check_trigger_cycles(canon));
+    diags.extend(check_trigger_leaks(canon, state));
     diags
 }
 
 /// Places no exit path reaches from the start, including hidden and locked exits.
-fn unreachable_places(canon: &Canon) -> Vec<Diagnostic> {
+fn check_reachable_places(canon: &Canon) -> Vec<Diagnostic> {
     let mut seen = BTreeSet::new();
     let mut queue = vec![canon.start_place.clone()];
     while let Some(place) = queue.pop() {
@@ -655,7 +655,7 @@ fn unreachable_places(canon: &Canon) -> Vec<Diagnostic> {
 }
 
 /// `teleport: true` in the shared verbs file is a warning. Author rules may teleport.
-fn teleport_in_verbs(canon: &Canon) -> Vec<Diagnostic> {
+fn check_teleport_verbs(canon: &Canon) -> Vec<Diagnostic> {
     canon
         .rules
         .iter()
@@ -677,7 +677,7 @@ fn teleport_in_verbs(canon: &Canon) -> Vec<Diagnostic> {
 }
 
 /// Change rules that set each other's watched values.
-fn trigger_cycles(canon: &Canon) -> Vec<Diagnostic> {
+fn check_trigger_cycles(canon: &Canon) -> Vec<Diagnostic> {
     let rules: Vec<&Rule> = canon
         .rules
         .iter()
@@ -723,7 +723,7 @@ fn trigger_cycles(canon: &Canon) -> Vec<Diagnostic> {
 }
 
 /// Narrate and note on a change rule that can reach a viewer who cannot see the change.
-fn trigger_leaks(canon: &Canon, state: Option<&crate::model::State>) -> Vec<Diagnostic> {
+fn check_trigger_leaks(canon: &Canon, state: Option<&crate::model::State>) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
     for rule in canon.rules.iter() {
         let When::Change(watch) = &rule.when else {
