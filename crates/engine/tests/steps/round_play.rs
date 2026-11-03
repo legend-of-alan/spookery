@@ -569,6 +569,14 @@ fn miras_travel_is_picked_first(world: &mut World) {
     );
 }
 
+#[then(expr = "Mira's map lists the Docks Shop")]
+fn miras_map_lists_the_shop(world: &mut World) {
+    let saved = spookery_engine::World::peek(world.pack()).unwrap();
+    assert_eq!(saved.state().actors["mira"].place, "docks_shop");
+    let map = saved.map_lines(&spookery_engine::Presence::default(), "mira");
+    assert_eq!(map.lines().next(), Some("Docks Shop"), "{map:?}");
+}
+
 /// Rowan, seated, takes the street exit, then plays `then` in the same round.
 fn rowan_walks(
     pack: &Path,
