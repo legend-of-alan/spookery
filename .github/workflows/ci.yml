@@ -67,8 +67,20 @@ jobs:
         run: |
           cargo tree -e normal -p spookery-client --locked | (! grep -E 'spookery-engine|spookery-server|rmcp')
           cargo tree -e normal -p spookery-agent --locked | (! grep -E 'spookery-(engine|server|client)|tokio|reqwest|rmcp|socket2')
-          # spookery-protocol is MIT: every license in its tree must be permissive.
-          cargo tree -e normal -p spookery-protocol --locked --target all --prefix none --no-dedupe --format '{l}' | tr -d '()' | tr ' ' '\n' | (! grep -vxE 'OR|AND|MIT|Apache-2.0|Unlicense|Unicode-3.0|BSD-2-Clause|BSD-3-Clause|ISC|Zlib')
+          # protocol, agent and client are MIT: every AND term of every license in their
+          # trees must offer a permissive choice.
+          for crate in spookery-protocol spookery-agent spookery-client; do
+            cargo tree -e normal -p "$crate" --locked --target all --prefix none --no-dedupe --format '{l}' | sort -u | awk -v crate="$crate" '
+              { terms = $0; gsub(/[()]/, "", terms); gsub(/ *\/ */, " OR ", terms)
+                n = split(terms, ands, / AND /)
+                for (i = 1; i <= n; i++) {
+                  free = 0; m = split(ands[i], ors, / OR /)
+                  for (j = 1; j <= m; j++) if (ors[j] ~ /^ *(MIT|Apache-2\.0( WITH LLVM-exception)?|Unlicense|Unicode-3\.0|BSD-2-Clause|BSD-3-Clause|ISC|Zlib|BSL-1\.0) *$/) free = 1
+                  if (!free) { print crate ": " $0; bad = 1 }
+                }
+              }
+              END { exit bad }'
+          done
           cargo tree -e normal -p spookery-server --locked | (! grep -E 'spookery-client|spookery-agent|reqwest')
           cargo tree -e normal -p spook --no-default-features --features client --locked | (! grep -E 'spookery-engine|spookery-server')
           cargo tree -e normal -p spook --no-default-features --features server --locked | (! grep -E 'spookery-client|spookery-agent|reqwest')

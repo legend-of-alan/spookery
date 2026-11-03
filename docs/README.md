@@ -159,6 +159,6 @@ It never sends `save.yaml` or the tape file. Those stay on disk in the pack. A n
 
 The engine is open source under AGPL-3.0. Runtime code, its tests, and the repo's tooling and scripts are AGPL-3.0-or-later.
 
-The `spookery-protocol` and `spookery-client` crates are MIT, so a game client can reuse the wire codec and the connection freely. Docs, schemas and packs are CC BY 4.0.
+The `spookery-protocol`, `spookery-agent` and `spookery-client` crates are MIT, so a game client can reuse the wire codec, the GM brain and the connection freely. Docs, schemas and packs are CC BY 4.0.
 
 The full terms are in [LICENSE](../LICENSE), [LICENSE-MIT](../LICENSE-MIT) and [LICENSE-CC-BY-4.0](../LICENSE-CC-BY-4.0).

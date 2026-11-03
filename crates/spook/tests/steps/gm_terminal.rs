@@ -194,19 +194,6 @@ fn the_gm_exits(world: &mut World) {
     }
 }
 
-#[when(expr = "spook run listens with an overridden MCP address")]
-fn spook_run_listens_with_an_overridden_mcp_addr(world: &mut World) {
-    let pack = table::pack(world).to_path_buf();
-    let _ = table::listen_on_free_ports(world, &pack);
-}
-
-#[when(expr = "a human GM dials the game port")]
-fn a_human_gm_dials_the_game_port(world: &mut World) {
-    let game = format!("127.0.0.1:{}", table::live_mut(world).game_port);
-    world.gm = Some(support::spawn(&["gm", "--addr", &game]));
-    wait_gm(world, "Commands:");
-}
-
 #[when(expr = "the operator runs gm with nothing listening")]
 fn gm_with_nothing_listening(world: &mut World) {
     let output = support::run_spook(&["gm", "--addr", "127.0.0.1:1"]);

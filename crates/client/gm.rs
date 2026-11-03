@@ -29,7 +29,7 @@ Commands:
       Leave the seat.
   help
       Show these commands.
-A line the table does not understand is not sent.";
+A word the table does not list, or arguments it cannot read, is not sent.";
 
 /// Sit the GM seat on `/gm` at `addr` until the seat is released or the host closes it.
 pub async fn run(addr: SocketAddr, raw: bool) -> Result<(), Error> {
@@ -39,13 +39,13 @@ pub async fn run(addr: SocketAddr, raw: bool) -> Result<(), Error> {
         }
         opened => opened?,
     };
-    let words = match &hello.body {
-        ServerBody::Hello { words, .. } => words.clone(),
-        _ => Vec::new(),
-    };
     if raw {
         emit(&hello.to_text());
     }
+    let words = match hello.body {
+        ServerBody::Hello { words, .. } => words,
+        _ => Vec::new(),
+    };
     emit(HELP);
     let mut input = crate::stdin_lines();
     // Made once, so every Ctrl+C is seen, even one that lands mid-print.
@@ -71,10 +71,16 @@ pub async fn run(addr: SocketAddr, raw: bool) -> Result<(), Error> {
                 match read_typed(&typed) {
                     None => {}
                     Some(("help", _)) => emit(HELP),
-                    Some((word, Some(args))) if words.iter().any(|known| known == word) => {
+                    Some((word, _)) if !words.iter().any(|known| known == word) => {
+                        report(&text::render_refusal(&Refusal::from(Reason::NotInSpec), raw));
+                    }
+                    Some((word, Some(args))) => {
                         seat.send(word, args).await?;
                     }
-                    Some(_) => report(&text::render_refusal(&Refusal::from(Reason::NotInSpec), raw)),
+                    // A listed word that cannot read the line: its arguments are wrong.
+                    Some((_, None)) => {
+                        report(&text::render_refusal(&Refusal::from(Reason::Schema), raw));
+                    }
                 }
             }
         }

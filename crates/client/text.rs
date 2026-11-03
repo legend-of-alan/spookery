@@ -146,14 +146,14 @@ fn render_resume(notes: &[NoteView], clocks: &[ClockView]) -> String {
 }
 
 /// `help`: each word a player types, one per line, then the exits and busy line of `here`.
-/// Play sends `claim` and `release` itself, so `help`, `map` and `close` take their place.
+/// Play sends `claim` itself, and adds its own `help` and `map`.
 pub fn render_help(words: &[String], here: &protocol::View) -> String {
     let mut typed: Vec<&str> = words
         .iter()
         .map(String::as_str)
-        .filter(|word| !matches!(*word, "claim" | "release"))
+        .filter(|word| *word != "claim")
         .collect();
-    typed.extend(["help", "map", "close"]);
+    typed.extend(["help", "map"]);
     let mut lines = vec![typed.join("\n"), exit_section(&here.exits)];
     if !here.status.is_empty() {
         lines.push(here.status.clone());
@@ -871,7 +871,7 @@ none"
         here.status = "on the stairs until 21:40".to_string();
         assert_eq!(
             render_help(&words, &here),
-            "say\nlook\nwait\nhelp\nmap\nclose\nExits:\nstairs — 2 min\non the stairs until 21:40"
+            "release\nsay\nlook\nwait\nhelp\nmap\nExits:\nstairs — 2 min\non the stairs until 21:40"
         );
     }
 

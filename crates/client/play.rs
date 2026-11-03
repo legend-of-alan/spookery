@@ -76,7 +76,7 @@ pub async fn run(pc: Option<&str>, addr: SocketAddr, raw: bool) -> Result<(), Er
                     return seat.release().await;
                 };
                 match typed.trim() {
-                    "close" => return seat.release().await,
+                    "release" => return seat.release().await,
                     "help" => {
                         print_text(&text::render_help(&words, &here));
                         continue;
