@@ -119,7 +119,9 @@ fn apply_scene(
         }
     }
     for (actor_id, place_index) in actors.iter().zip(&scene.place_of) {
-        move_actor(state, actor_id, &places[place_index % places.len()]);
+        if let Some(actor) = state.actors.get_mut(actor_id) {
+            actor.place = places[place_index % places.len()].clone();
+        }
     }
     for (actor_id, known) in actors.iter().zip(&scene.known) {
         let Some(actor) = state.actors.get_mut(actor_id) else {
@@ -152,12 +154,6 @@ fn apply_scene(
             fact_ids,
             text: "The hour is late.".to_string(),
         });
-    }
-}
-
-fn move_actor(state: &mut State, actor_id: &str, place: &str) {
-    if let Some(actor) = state.actors.get_mut(actor_id) {
-        actor.place = place.to_string();
     }
 }
 

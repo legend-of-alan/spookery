@@ -31,13 +31,15 @@ pub mod testing {
     use std::fs;
     use std::path::{Path, PathBuf};
 
+    use crate::store::lock::WriteGuard;
+
     pub use crate::canon::strip_body;
     pub use crate::model::{
         Act, ActorKind, ActorLive, Clock, Pause, PendingAction, PendingKind, PlaceLive,
     };
     pub use crate::round::replay::replay_journal;
     pub use crate::rules::roll::{faces, RollKey};
-    pub use crate::store::lock::{watch_reader_wait, WriteGuard};
+    pub use crate::store::lock::watch_reader_wait;
 
     /// The write guard of the pack `world` holds the lock on.
     pub fn lock_write(world: &crate::World) -> Result<WriteGuard, crate::Reason> {
@@ -185,10 +187,6 @@ pub mod testing {
         let pack = fresh_dir(label);
         copy_dir(&manifest.join("../../packs").join(name), &pack);
         pack
-    }
-
-    pub fn set_actor_place(state: &mut crate::model::State, actor: &str, place: &str) {
-        state.actors.get_mut(actor).unwrap().place = place.to_string();
     }
 
     /// Lock the pack and open its save, for a test that plays rounds on it.

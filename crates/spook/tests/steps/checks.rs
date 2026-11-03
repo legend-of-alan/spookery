@@ -164,7 +164,7 @@ fn a_docks_table_where_mira_can_oppose_a_mark(world: &mut World) {
     insert_mira_flags(&pack, "    - marked\n    - missed\n    - guarded\n");
     set_mira_grit(&pack, 100);
     super::common::edit_save(&pack, |now| {
-        support::set_actor_place(now, "mira", "docks_shop")
+        now.actors.get_mut("mira").unwrap().place = "docks_shop".to_string();
     });
     listen_and_seat_both(world, &pack);
     world.scratch = snapshot_pack(&pack).display().to_string();
@@ -568,7 +568,7 @@ fn a_docks_table_where_mira_opposes_a_three_band_press(world: &mut World) {
     set_rowan_grit(&pack, 6);
     set_mira_grit(&pack, 100);
     super::common::edit_save(&pack, |now| {
-        support::set_actor_place(now, "mira", "docks_shop")
+        now.actors.get_mut("mira").unwrap().place = "docks_shop".to_string();
     });
     listen_and_seat_both(world, &pack);
     world.scratch = snapshot_pack(&pack).display().to_string();
@@ -719,7 +719,7 @@ fn prepare_press(world: &mut World, base: i64, sit: bool) {
     insert_mira_flags(&pack, PRESS_FLAGS);
     set_rowan_grit(&pack, base);
     super::common::edit_save(&pack, |now| {
-        support::set_actor_place(now, "mira", "docks_shop")
+        now.actors.get_mut("mira").unwrap().place = "docks_shop".to_string();
     });
     if sit {
         listen_and_seat_both(world, &pack);

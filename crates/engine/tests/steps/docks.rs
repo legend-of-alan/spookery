@@ -340,12 +340,7 @@ Rowan.
     }
     let rev = spookery_engine::pack_rev(&pack).unwrap();
     let mut places = BTreeMap::new();
-    places.insert(
-        "gate".to_string(),
-        PlaceLive {
-            items: BTreeMap::new(),
-        },
-    );
+    places.insert("gate".to_string(), PlaceLive::default());
     let mut actors = BTreeMap::new();
     actors.insert(
         "pc_rowan".to_string(),
@@ -501,12 +496,7 @@ rules:
     }
     let rev = spookery_engine::pack_rev(&pack).unwrap();
     let mut places = BTreeMap::new();
-    places.insert(
-        "yard".to_string(),
-        PlaceLive {
-            items: BTreeMap::new(),
-        },
-    );
+    places.insert("yard".to_string(), PlaceLive::default());
     let state = State {
         schema: "save".to_string(),
         world_id: "crowd".to_string(),
@@ -655,7 +645,7 @@ fn patch_mira_flags_and_place(pack: &Path, flags: &str) {
     fs::write(&path, next).unwrap();
     let now_path = pack.join("state/save.yaml");
     let mut state = spookery_engine::parse_save(&fs::read_to_string(&now_path).unwrap()).unwrap();
-    support::set_actor_place(&mut state, "mira", "docks_shop");
+    state.actors.get_mut("mira").unwrap().place = "docks_shop".to_string();
     write_save(pack, &state);
 }
 

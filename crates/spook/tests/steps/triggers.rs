@@ -542,9 +542,7 @@ Under the street.
         insert_actor_copy(now, seated, "pc_rowan", "pc_nell", "docks_street");
         now.places.insert(
             "cellar".to_string(),
-            spookery_engine::testing::PlaceLive {
-                items: Default::default(),
-            },
+            spookery_engine::testing::PlaceLive::default(),
         );
     });
     world.pack = Some(pack);

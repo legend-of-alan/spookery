@@ -129,9 +129,7 @@ fn a_place_rule_teleports(world: &mut World) {
     edit_save(&pack, |now| {
         now.places.insert(
             "cellar".to_string(),
-            spookery_engine::testing::PlaceLive {
-                items: Default::default(),
-            },
+            spookery_engine::testing::PlaceLive::default(),
         );
     });
     table::listen(world, &pack);

@@ -9,8 +9,7 @@ use spookery_engine::{Presence, Reason};
 
 use super::common::split_line;
 use super::table;
-use crate::support::{append, copy_docks, copy_pack, edit_save, read_round, run_spook};
-use crate::support::{set_actor_place, state_of};
+use crate::support::{append, copy_docks, copy_pack, edit_save, read_round, run_spook, state_of};
 use crate::World;
 #[given(expr = "a save from older rules")]
 fn a_save_from_older_rules(world: &mut World) {
@@ -224,12 +223,8 @@ The ferry waits at the dock.
     assert_ne!(text, next, "rowan profile was not found");
     fs::write(&rowan, next).unwrap();
     edit_save(&pack, |now| {
-        now.places.insert(
-            "ferry_dock".to_string(),
-            PlaceLive {
-                items: Default::default(),
-            },
-        );
+        now.places
+            .insert("ferry_dock".to_string(), PlaceLive::default());
         now.actors.get_mut("pc_rowan").unwrap().place = "ferry_dock".to_string();
     });
     world.pack = Some(pack);
@@ -863,7 +858,9 @@ fn briar_holds_ask(world: &mut World) {
 )]
 fn briar_holds_ask_in_the_lane(world: &mut World) {
     let pack = copy_pack("sample-d20", "rules-scoped-gone");
-    edit_save(&pack, |now| set_actor_place(now, "npc_briar", "mill_lane"));
+    edit_save(&pack, |now| {
+        now.actors.get_mut("npc_briar").unwrap().place = "mill_lane".to_string();
+    });
     world.pack = Some(pack);
 }
 

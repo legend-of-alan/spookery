@@ -118,8 +118,8 @@ fn add_attack_rules(pack: &Path, attack: &str) {
 }
 
 fn hold_dagger(now: &mut State, wield: bool) {
-    support::set_actor_place(now, "pc_lark", "gate_yard");
-    support::set_actor_place(now, "pc_nell", "gate_yard");
+    now.actors.get_mut("pc_lark").unwrap().place = "gate_yard".to_string();
+    now.actors.get_mut("pc_nell").unwrap().place = "gate_yard".to_string();
     keep_briar_busy(now);
     now.actors
         .get_mut("pc_lark")
@@ -140,7 +140,7 @@ fn nell_holds_a_tonic(world: &mut World) {
     assert_ne!(text, next, "hp meter was not narrowed");
     fs::write(&meters, next).unwrap();
     support::edit_save(&pack, |now| {
-        support::set_actor_place(now, "pc_nell", "gate_yard");
+        now.actors.get_mut("pc_nell").unwrap().place = "gate_yard".to_string();
         keep_briar_busy(now);
         now.actors
             .get_mut("pc_nell")
@@ -394,7 +394,7 @@ fn lark_holds_a_dagger(world: &mut World) {
     let pack = support::copy_pack("sample-d20", "wield");
     write_dagger(&pack, "");
     support::edit_save(&pack, |now| {
-        support::set_actor_place(now, "pc_lark", "gate_yard");
+        now.actors.get_mut("pc_lark").unwrap().place = "gate_yard".to_string();
         keep_briar_busy(now);
         now.actors
             .get_mut("pc_lark")
