@@ -20,14 +20,14 @@ Feature: A player and a GM share a table
     When the GM says "good evening" to the table
     Then the player hears the GM say "good evening"
 
-  Scenario: look, help and map take no round
+  Scenario: look is answered with a view and takes no round
     Given rowan is in the shop and a GM is seated
     When the player looks
-    Then the player is told "Docks Shop" and "docks_street"
-    When the player asks for help
-    Then the player is told "travel" and "stairs"
-    When the player asks for the map
-    Then the player is told "Docks Shop" and "stairs"
+    Then the player is shown "Docks Shop" with an exit to "docks_street"
+    When the player sends "help"
+    Then the table refuses the player with SCHEMA
+    When the player sends "map"
+    Then the table refuses the player with SCHEMA
     And the GM sees nothing queued
     And no round record was written
 

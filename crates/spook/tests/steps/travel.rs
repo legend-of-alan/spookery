@@ -5,7 +5,10 @@ use std::path::Path;
 use cucumber::{given, then, when};
 use spookery_engine::testing::journal::list_round_keys;
 
-use super::common::{add_trapdoor, edit_save, give_key, set_busy, EVENING};
+use super::common::{
+    add_trapdoor, capture_play_stdout, edit_save, give_key, join_play, set_busy, wait_play,
+    wait_play_until, write_play, EVENING,
+};
 use super::table;
 use crate::support::{self, copy_docks};
 use crate::World;
@@ -435,9 +438,29 @@ fn verify_passes(world: &mut World) {
     assert!(stdout.contains("verified"), "{stdout}");
 }
 
-#[then(expr = "rowan's map lists mira_rooms and not the trapdoor")]
-fn the_player_map_lists_the_room(world: &mut World) {
-    let (_mark, map) = table::player_send(world, "map", "Mira");
-    assert!(map.contains("mira_rooms") || map.contains("Mira"), "{map}");
+#[when(expr = "play travels via stairs holding brass_key")]
+fn play_travels_holding_the_key(world: &mut World) {
+    let pack = copy_docks("map");
+    add_trapdoor(&pack);
+    edit_save(&pack, give_key);
+    world.pack = Some(pack);
+    join_play(world, false);
+    write_play(world, "travel stairs");
+    wait_play(world, "You are in Mira's Rooms.");
+}
+
+/// The map is play's own: each place a view showed, with the exits that view listed.
+#[then(expr = "play's map lists the shop and mira_rooms and not the trapdoor")]
+fn plays_map_lists_both_rooms(world: &mut World) {
+    let mark = capture_play_stdout(world).len();
+    write_play(world, "map");
+    wait_play_until(
+        world,
+        |stdout| stdout[mark..].contains("Mira's Rooms"),
+        "the map",
+    );
+    let map = capture_play_stdout(world)[mark..].to_string();
+    assert!(map.starts_with("Docks Shop\n  "), "{map}");
+    assert!(map.contains("Mira's Rooms\n  "), "{map}");
     assert!(!map.contains("trapdoor"), "{map}");
 }

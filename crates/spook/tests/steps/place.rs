@@ -1,9 +1,9 @@
 use std::fs;
 
-use cucumber::{given, then};
+use cucumber::{given, then, when};
 use spookery_engine::{emit_save, parse_save};
 
-use super::table;
+use super::{common, table};
 use crate::World;
 
 #[given(expr = "rowan starts in docks_street")]
@@ -30,4 +30,48 @@ fn the_seated_player_sees(world: &mut World, text: String) {
         table::wait_player_from(world, world.mark, &text)
     };
     assert!(added.contains(&text), "{added}");
+}
+
+#[given(expr = "the CLI is connected as a player holding rowan")]
+fn the_cli_holds_rowan(world: &mut World) {
+    world.pack = Some(crate::support::copy_docks("cli"));
+    common::join_play(world, false);
+}
+
+#[when(expr = "I type {string}")]
+fn i_type(world: &mut World, line: String) {
+    world.mark = common::capture_play_stdout(world).len();
+    common::write_play(world, &line);
+}
+
+/// `You are in` and `Here:` are the client's words for a view, not engine prose.
+#[then(expr = "I see the place name, exits and who is here, built from server messages")]
+fn i_see_the_place(world: &mut World) {
+    let shown = [
+        "You are in Docks Shop.",
+        "The shop faces the water. Tins sit in a row.",
+        "Here: Aldric, You",
+        "Exits:\ndocks_street — 0 min\nstairs (locked) — 2 min",
+    ];
+    let mark = world.mark;
+    common::wait_play_until(
+        world,
+        |stdout| shown.iter().all(|text| stdout[mark..].contains(text)),
+        "the look",
+    );
+}
+
+#[then(expr = "I see the lines {string}, {string} and {string}")]
+fn i_see_the_lines(world: &mut World, first: String, second: String, third: String) {
+    let mark = world.mark;
+    common::wait_play_until(
+        world,
+        |stdout| {
+            let lines: Vec<&str> = stdout[mark..].lines().collect();
+            [&first, &second, &third]
+                .iter()
+                .all(|text| lines.contains(&text.as_str()))
+        },
+        "the lines",
+    );
 }

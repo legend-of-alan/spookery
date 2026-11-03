@@ -43,9 +43,6 @@ enum Command {
     /// Sit the GM seat.
     #[cfg(feature = "client")]
     Gm {
-        /// MCP endpoint address. Defaults to the game port plus one.
-        #[arg(long = "mcp-addr", value_name = "127.0.0.1:<port>")]
-        mcp_addr: Option<String>,
         /// Print each protocol frame as one JSON line.
         #[arg(long)]
         raw: bool,
@@ -148,7 +145,7 @@ async fn dispatch(cli: Cli) -> Result<(), String> {
             .await
             .map_err(|err| err.to_string()),
         #[cfg(feature = "client")]
-        Command::Gm { mcp_addr, raw } => spookery::gm::run(gm_mcp_addr(addr, mcp_addr)?, raw)
+        Command::Gm { raw } => spookery::gm::run(addr, raw)
             .await
             .map_err(|err| err.to_string()),
         #[cfg(feature = "client")]
@@ -256,16 +253,9 @@ fn parse_loopback(addr: &str) -> Result<SocketAddr, String> {
     Ok(SocketAddr::from(([127, 0, 0, 1], port)))
 }
 
+#[cfg(feature = "server")]
 fn parse_mcp_addr(mcp_addr: Option<String>) -> Result<Option<SocketAddr>, String> {
     mcp_addr.as_deref().map(parse_loopback).transpose()
-}
-
-/// The MCP address a GM dials: `--mcp-addr`, else the port after the game port `addr`.
-#[cfg(feature = "client")]
-fn gm_mcp_addr(addr: SocketAddr, mcp_addr: Option<String>) -> Result<SocketAddr, String> {
-    parse_mcp_addr(mcp_addr)?
-        .or_else(|| spookery::protocol::default_mcp_addr(addr))
-        .ok_or_else(|| addr.to_string())
 }
 
 #[cfg(all(test, feature = "server", feature = "client"))]
@@ -330,9 +320,9 @@ mod tests {
         assert!(Cli::try_parse_from(["spook", "rnu", "x"]).is_err());
         assert!(Cli::try_parse_from(["spook", "gm", "pack"]).is_err());
         let gm = Cli::try_parse_from(["spook", "gm"]).unwrap();
-        assert!(matches!(gm.command, Command::Gm { raw: false, .. }));
+        assert!(matches!(gm.command, Command::Gm { raw: false }));
         let gm_raw = Cli::try_parse_from(["spook", "gm", "--raw"]).unwrap();
-        assert!(matches!(gm_raw.command, Command::Gm { raw: true, .. }));
+        assert!(matches!(gm_raw.command, Command::Gm { raw: true }));
         assert!(Cli::try_parse_from(["spook", "run", "--as", "player:rowan"]).is_err());
         assert!(Cli::try_parse_from(["spook"]).is_err());
         assert!(Cli::try_parse_from(["spook", "mcp"]).is_err());
@@ -349,13 +339,7 @@ mod tests {
                 ..
             } if text == "127.0.0.1:9801"
         ));
-        let open = Cli::try_parse_from(["spook", "gm", "--mcp-addr", "0.0.0.0:9"]).unwrap();
-        assert_eq!(dispatch(open).await.unwrap_err(), "NOT_IN_SPEC");
-        let parsed = Cli::try_parse_from(["spook", "gm", "--mcp-addr", "127.0.0.1:9801"]).unwrap();
-        let Command::Gm { mcp_addr, .. } = parsed.command else {
-            panic!("gm");
-        };
-        assert_eq!(mcp_addr.as_deref(), Some("127.0.0.1:9801"));
+        assert!(Cli::try_parse_from(["spook", "gm", "--mcp-addr", "127.0.0.1:9801"]).is_err());
         let play = Cli::try_parse_from(["spook", "play", "--as", "pc_rowan"]).unwrap();
         match play.command {
             Command::Play { pc, raw } => {

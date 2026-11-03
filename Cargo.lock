@@ -2161,7 +2161,7 @@ dependencies = [
  "serde_json",
  "socket2",
  "spookery-agent",
- "spookery-cli",
+ "spookery-client",
  "spookery-engine",
  "spookery-protocol",
  "spookery-server",
@@ -2179,12 +2179,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "spookery-cli"
+name = "spookery-client"
 version = "0.0.0"
 dependencies = [
  "futures-util",
  "reqwest 0.12.28",
- "rmcp",
  "serde",
  "serde_json",
  "spookery-agent",

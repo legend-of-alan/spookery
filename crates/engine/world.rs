@@ -340,18 +340,6 @@ impl<L> World<L> {
         crate::rules::perceive::perceive_budget(self, presence, as_arg, max_body_chars)
     }
 
-    pub fn help_lines(&self, presence: &Presence, actor_id: &str) -> String {
-        crate::rules::lines::help(&self.canon, &self.state, presence, actor_id)
-    }
-
-    pub fn look_lines(&self, presence: &Presence, actor_id: &str) -> String {
-        crate::rules::lines::look(&self.canon, &self.state, presence, actor_id)
-    }
-
-    pub fn map_lines(&self, presence: &Presence, actor_id: &str) -> String {
-        crate::rules::lines::map(&self.canon, &self.state, presence, actor_id)
-    }
-
     fn read_digest(&self) -> Result<String, Reason> {
         let entries = journal::read_verified(&self.root).map_err(|fault| fault.reason)?;
         let mut effects = Vec::new();

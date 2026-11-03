@@ -10,9 +10,9 @@ use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::mpsc::{self, Receiver};
 use std::time::Duration;
 
+use crate::mcp_client::{event_line, GmClient};
 use rmcp::model::ProtocolVersion;
 use serde_json::{json, Value};
-use spookery::mcp::{event_line, GmClient};
 use spookery::protocol::{Addrs, ClientMessage, ServerBody, ServerMessage};
 use tungstenite::protocol::Role;
 use tungstenite::{Message, WebSocket};
@@ -123,9 +123,9 @@ fn capture() -> BTreeMap<String, Example> {
         "player-look",
         send(&mut player, "look", json!({})),
     );
-    let lines = next_json(&player);
-    assert_eq!(lines["body"]["kind"], "lines", "{lines}");
-    insert_json(&mut out, "player-lines", lines);
+    let looked = next_json(&player);
+    assert_eq!(looked["body"]["kind"], "view", "{looked}");
+    insert_json(&mut out, "player-look-view", looked);
 
     insert_json(
         &mut out,
@@ -568,7 +568,7 @@ fn connect_player_unclaimed(port: u16) -> PlayerClient {
 }
 
 fn call(gm: &mut GmClient, name: &str, arguments: Value) -> Value {
-    support::block_on(gm.call::<Value>(name, &arguments))
+    support::block_on(gm.call(name, &arguments))
         .unwrap_or_else(|err| panic!("{name}: {err}"))
         .unwrap_or_else(|refusal| serde_json::json!(refusal))
 }

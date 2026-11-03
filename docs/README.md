@@ -55,7 +55,7 @@ crates/
   protocol/            spookery-protocol: the message envelope, its bodies, and the word table
   engine/              spookery-engine: world model, rules, rounds, and journal
   agent/               spookery-agent: the reusable GM brain: turn state machine, prompt, Model trait
-  cli/                 spookery-cli: play, gm, ai_gm (the three clients), ws, mcp, http_model, text
+  client/              spookery-client: play, gm, ai_gm (the three clients), ws, http_model, text
   server/              spookery-server: the table, the game port's WebSocket endpoint, MCP endpoint, GM words, seats, idle timer
   spook/               package and binary spook, library spookery
     tests/features/    BDD scenarios
@@ -137,9 +137,9 @@ If the provider refuses a call, stderr shows `model call returned <status>: <tex
 spook gm
 ```
 
-Type `help` to see the GM commands. `spook gm --raw` prints each protocol frame as one JSON line instead.
+Type `help` to see the GM commands. A line is a word the hello listed, then its arguments: `queue mira restock_lamp_oil`, or a JSON object such as `say {"address": "place", "place": "docks_shop", "text": "..."}`. `spook gm --raw` prints each message as one JSON line instead.
 
-`spook gm` connects to the MCP endpoint. Use `--mcp-addr 127.0.0.1:<port>` to point it somewhere else. `spook ai-gm` sits the GM seat on `/gm` on the game port, so `--addr` points it. If you started the host with `--addr 127.0.0.1:0`, the OS picks the ports and the listening line tells you both: pass `game` to `--addr` and `mcp` to `--mcp-addr`.
+`spook gm` and `spook ai-gm` sit the GM seat on `/gm` on the game port, so `--addr` points them. If you started the host with `--addr 127.0.0.1:0`, the OS picks the port and the listening line tells you: pass `game` to `--addr`.
 
 ## Privacy
 
@@ -159,6 +159,6 @@ It never sends `save.yaml` or the tape file. Those stay on disk in the pack. A n
 
 The engine is open source under AGPL-3.0. Runtime code, its tests, and the repo's tooling and scripts are AGPL-3.0-or-later.
 
-The `spookery-protocol` crate is MIT, so a game client can reuse the wire codec freely. Docs, schemas and packs are CC BY 4.0.
+The `spookery-protocol` and `spookery-client` crates are MIT, so a game client can reuse the wire codec and the connection freely. Docs, schemas and packs are CC BY 4.0.
 
 The full terms are in [LICENSE](../LICENSE), [LICENSE-MIT](../LICENSE-MIT) and [LICENSE-CC-BY-4.0](../LICENSE-CC-BY-4.0).

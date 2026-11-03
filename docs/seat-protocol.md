@@ -63,8 +63,6 @@ The table speaks first. The hello lists the version, the words this seat may sen
       "release",
       "say",
       "look",
-      "help",
-      "map",
       "drop",
       "grit",
       "take",
@@ -321,7 +319,7 @@ A message over 8 KiB is `LINE_TOO_LONG`, and the connection stays up. One over 6
 
 ### Words the player sends
 
-`look`, `help`, and `map` do not take a round. The reply is `lines`. `text` is the words to print, with newlines already in the string. `look` reprints the place name, its prose, and the exits. `help` lists each verb whose `if` holds, then those exits. An exit is `stairs (locked) — 2 min`. A destination is not printed.
+`look` does not take a round. The reply is a fresh `view`, the same shape a claim and a round send. The table sends no text for it. `spook play` prints the view, and writes `help` and `map` itself without sending anything: `help` from the hello's words and the last view's exits, and `map` from the views it was shown since it started.
 
 <!-- example: player-look -->
 ```json
@@ -333,14 +331,77 @@ A message over 8 KiB is `LINE_TOO_LONG`, and the connection stays up. One over 6
 }
 ```
 
-<!-- example: player-lines -->
+<!-- example: player-look-view -->
 ```json
 {
   "seq": 4,
   "reply_to": "c2",
   "body": {
-    "kind": "lines",
-    "text": "Docks Shop\nThe shop faces the water. Tins sit in a row.\n\nExits:\ndocks_street — 0 min\nstairs (locked) — 2 min"
+    "kind": "view",
+    "viewer": "pc_rowan",
+    "place": "docks_shop",
+    "place_name": "Docks Shop",
+    "body": "The shop faces the water. Tins sit in a row.",
+    "actor_names": [
+      "Aldric",
+      "Rowan"
+    ],
+    "visible_actors": [
+      "aldric",
+      "pc_rowan"
+    ],
+    "known_facts": [
+      {
+        "id": "fact_oil_on_shelf",
+        "text": "Oil is on the shelf.",
+        "owner_body": "The shop faces the water. Tins sit in a row.\n"
+      }
+    ],
+    "notes": [],
+    "unknown_mentions": [],
+    "clocks": [
+      {
+        "id": "assassination_debt",
+        "value": 2,
+        "max": 6,
+        "paused": true
+      }
+    ],
+    "items": [
+      {
+        "id": "lamp_oil",
+        "count": 4
+      }
+    ],
+    "meters": [
+      {
+        "id": "grit",
+        "value": 1,
+        "max": 110
+      },
+      {
+        "id": "rest",
+        "value": 3,
+        "max": 5
+      }
+    ],
+    "habits": [],
+    "exits": [
+      {
+        "name": "docks_street",
+        "to": "docks_street",
+        "place_name": "Docks Street",
+        "minutes": 0,
+        "locked": false
+      },
+      {
+        "name": "stairs",
+        "to": "mira_rooms",
+        "place_name": "Mira's Rooms",
+        "minutes": 2,
+        "locked": true
+      }
+    ]
   }
 }
 ```
@@ -1097,7 +1158,7 @@ Each committed round. Its rolls, faces and all, are on the `commit_round` result
 
 The GM hears `presence` when a claim starts or ends.
 
-A GM may also sit on `/gm` on the game port. Its words are the tools' words: `status`, `perceive`, `queue`, `say`, `commit` and `release`, with the tools' arguments. Each reply comes on the same stream as the events, after the messages the word caused, so a `commit` reply follows its `round` messages and a `say` reply is the GM's own copy of the say. A second GM on `/gm` while the seat is held gets one `refused` with `TABLE_FULL`, and the connection closes.
+A GM may also sit on `/gm` on the game port, as `spook gm` and `spook ai-gm` do. Its words are the tools' words: `status`, `perceive`, `queue`, `say`, `commit` and `release`, with the tools' arguments. Each reply comes on the same stream as the events, after the messages the word caused, so a `commit` reply follows its `round` messages and a `say` reply is the GM's own copy of the say. A second GM on `/gm` while the seat is held gets one `refused` with `TABLE_FULL`, and the connection closes.
 
 ## Errors
 

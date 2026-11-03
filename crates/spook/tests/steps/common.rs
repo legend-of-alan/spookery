@@ -474,16 +474,12 @@ fn the_trapdoor_is_hidden(world: &mut World) {
     world.player_added = table::player_text(world);
 }
 
-#[then(expr = "rowan's perceive and help do not list the trapdoor")]
-fn perceive_and_help_hide_the_trapdoor(world: &mut World) {
-    let perceive = table::player_text(world);
-    assert!(
-        !perceive.contains("trapdoor"),
-        "perceive listed it\n{perceive}"
-    );
-    let (_mark, help) = table::player_send(world, "help", "Exits:");
-    assert!(!help.contains("trapdoor"), "help listed it\n{help}");
-    assert!(help.contains("stairs"), "help hid the stairs\n{help}");
+/// `help` lists the exits of this same view, so it hides what the view hides.
+#[then(expr = "rowan's view does not list the trapdoor")]
+fn the_view_hides_the_trapdoor(world: &mut World) {
+    let view = table::player_text(world);
+    assert!(!view.contains("trapdoor"), "the view listed it\n{view}");
+    assert!(view.contains("stairs"), "the view hid the stairs\n{view}");
 }
 
 #[given(expr = "the stairs exit costs 10 minutes")]

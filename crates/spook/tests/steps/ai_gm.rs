@@ -9,13 +9,12 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
+use crate::mcp_client::GmClient;
 use cucumber::{then, when};
 use serde_json::json;
 use spookery::agent::{parse_completion, CompletionError, CompletionRequest, Model, ModelReply};
 use spookery::ai_gm;
 use spookery::http_model::{HttpModel, Settings, MODEL_CALL_TIMEOUT, RETRY_BACKOFF};
-use spookery::mcp::GmClient;
-use spookery::protocol::SayArgs;
 
 use crate::support::{self, copy_docks};
 use crate::World;
@@ -116,16 +115,14 @@ fn the_gm_seat_says(world: &mut World) {
     let mcp_addr = table::mcp_addr(world).parse().unwrap();
     let mut gm =
         support::block_on(GmClient::connect(mcp_addr)).unwrap_or_else(|err| panic!("{err}"));
-    let evening = SayArgs::Table {
-        text: "good evening".to_string(),
-    };
-    let said = support::block_on(gm.say(&evening))
+    let evening = json!({ "address": "table", "text": "good evening" });
+    let said = support::block_on(gm.call("say", &evening))
         .unwrap_or_else(|err| panic!("{err}"))
         .unwrap_or_else(|refusal| panic!("{refusal}"));
     world.player_added = table::wait_player_from(world, mark, "{\"kind\":\"say\"");
     world.scratch = json!(said).to_string();
-    let reply = support::block_on(gm.call::<serde_json::Value>("not_in_spec", &json!({})))
-        .unwrap_or_else(|err| panic!("{err}"));
+    let reply =
+        support::block_on(gm.call("not_in_spec", &json!({}))).unwrap_or_else(|err| panic!("{err}"));
     support::block_on(gm.close());
     world.stdout = match reply {
         Err(_) => "refused".to_string(),
@@ -219,7 +216,7 @@ fn play_and_ai_gm_and_a_stub(world: &mut World) {
     assert!(second.contains("act"), "{second}");
     assert!(second.contains("CASTBODYONLY-FIXTURE"), "{second}");
     assert_chat_post(&second);
-    // The table answers in order, so this look's lines follow any round it played first.
+    // The table answers in order, so this look's view follows any round it played first.
     let mark = support::text_of(&play.stdout).len();
     writeln!(play_in, "look").unwrap();
     play_in.flush().unwrap();
@@ -441,7 +438,7 @@ struct AiGm {
     /// prints it.
     err: Arc<Mutex<String>>,
     advance: tokio::sync::mpsc::UnboundedSender<table::Advance>,
-    thread: thread::JoinHandle<Result<(), spookery_cli::Error>>,
+    thread: thread::JoinHandle<Result<(), spookery_client::Error>>,
 }
 
 impl AiGm {

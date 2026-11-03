@@ -8,8 +8,8 @@ use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
+use crate::mcp_client::{event_line, GmClient};
 use serde_json::{json, Value};
-use spookery::mcp::{event_line, GmClient};
 use spookery::protocol::{self, ClientMessage};
 use spookery_engine::testing::journal::list_round_keys;
 use spookery_engine::testing::state_of;
@@ -679,8 +679,8 @@ fn send_tool_call(
 ) -> String {
     let value: Value =
         serde_json::from_str(arguments).unwrap_or_else(|err| panic!("arguments: {err}"));
-    let reply = support::block_on(gm.call::<Value>(name, &value))
-        .unwrap_or_else(|err| panic!("gm call: {err}"));
+    let reply =
+        support::block_on(gm.call(name, &value)).unwrap_or_else(|err| panic!("gm call: {err}"));
     for event in gm.drain_events() {
         push_line(gm_text, &event_line(&event));
     }

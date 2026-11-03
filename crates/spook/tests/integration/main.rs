@@ -6,6 +6,10 @@
 #[allow(dead_code)]
 mod support;
 
+#[path = "../mcp_client.rs"]
+#[allow(dead_code)]
+mod mcp_client;
+
 #[path = "../feature_dirs.rs"]
 mod feature_dirs;
 

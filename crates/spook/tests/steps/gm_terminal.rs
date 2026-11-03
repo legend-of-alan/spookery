@@ -11,6 +11,9 @@ use crate::World;
 
 use super::{common, table};
 
+/// The start of the hello as raw mode prints it.
+const HELLO_JSON: &str = r#"{"body":{"kind":"hello""#;
+
 #[when(expr = "play and a human GM share a free loopback port")]
 fn play_and_a_human_gm_share_a_port(world: &mut World) {
     let addr = sit_gm(world, false);
@@ -71,14 +74,7 @@ fn a_docks_table_with_a_gm_terminal(world: &mut World, actor: String) {
     table::listen(world, &pack);
     table::seat_actor(world, &pack, &actor);
     let addr = table::game_addr(world);
-    let mcp_addr = table::mcp_addr(world);
-    world.gm = Some(support::spawn(&[
-        "gm",
-        "--addr",
-        &addr,
-        "--mcp-addr",
-        &mcp_addr,
-    ]));
+    world.gm = Some(support::spawn(&["gm", "--addr", &addr]));
     wait_gm(world, "Commands:");
 }
 
@@ -139,8 +135,7 @@ fn the_gm_commits(world: &mut World) {
 #[when(expr = "another GM joins that seat")]
 fn another_gm_joins(world: &mut World) {
     let addr = table::game_addr(world);
-    let mcp_addr = table::mcp_addr(world);
-    let output = support::run_spook(&["gm", "--addr", &addr, "--mcp-addr", &mcp_addr]);
+    let output = support::run_spook(&["gm", "--addr", &addr]);
     world.code = output.status.code();
     world.stdout = String::from_utf8_lossy(&output.stdout).into_owned();
     world.stderr = String::from_utf8_lossy(&output.stderr).into_owned();
@@ -160,14 +155,12 @@ fn the_gm_is_killed(world: &mut World) {
 #[when(expr = "another GM sits in that seat")]
 fn another_gm_sits_in_that_seat(world: &mut World) {
     let addr = table::game_addr(world);
-    let mcp_addr = table::mcp_addr(world);
-    world.gm = Some(support::spawn(&[
-        "gm",
-        "--addr",
-        &addr,
-        "--mcp-addr",
-        &mcp_addr,
-    ]));
+    world.gm = Some(support::spawn(&["gm", "--addr", &addr]));
+}
+
+#[when(expr = "the GM types {string}")]
+fn the_gm_types(world: &mut World, line: String) {
+    write_gm(world, &line);
 }
 
 #[when(expr = "the GM queues an unknown move")]
@@ -186,7 +179,12 @@ fn the_gm_exits(world: &mut World) {
     let start = Instant::now();
     loop {
         if let Some(status) = gm.child.try_wait().unwrap_or_else(|err| panic!("{err}")) {
-            assert!(status.success(), "gm exited {status:?}");
+            let stderr = support::text_of(&gm.stderr);
+            assert!(
+                status.success(),
+                "gm exited {status:?}
+{stderr}"
+            );
             return;
         }
         if start.elapsed() > Duration::from_secs(5) {
@@ -202,19 +200,10 @@ fn spook_run_listens_with_an_overridden_mcp_addr(world: &mut World) {
     let _ = table::listen_on_free_ports(world, &pack);
 }
 
-#[when(expr = "a human GM dials that MCP address")]
-fn a_human_gm_dials_that_mcp_addr(world: &mut World) {
-    let live = table::live_mut(world);
-    let (game, http) = (live.game_port, live.mcp_port);
-    let game = format!("127.0.0.1:{game}");
-    let http = format!("127.0.0.1:{http}");
-    world.gm = Some(support::spawn(&[
-        "gm",
-        "--addr",
-        &game,
-        "--mcp-addr",
-        &http,
-    ]));
+#[when(expr = "a human GM dials the game port")]
+fn a_human_gm_dials_the_game_port(world: &mut World) {
+    let game = format!("127.0.0.1:{}", table::live_mut(world).game_port);
+    world.gm = Some(support::spawn(&["gm", "--addr", &game]));
     wait_gm(world, "Commands:");
 }
 
@@ -241,13 +230,13 @@ fn the_gm_shows_rolls(world: &mut World, rolls: usize) {
 #[then(expr = "the GM shows protocol JSON")]
 fn the_gm_shows_protocol_json(world: &mut World) {
     let stdout = capture_gm_stdout(world);
-    assert!(stdout.contains("{\"jsonrpc\""), "{stdout}");
+    assert!(stdout.contains(HELLO_JSON), "{stdout}");
 }
 
 #[then(expr = "the GM shows no protocol JSON")]
 fn the_gm_shows_no_protocol_json(world: &mut World) {
     let stdout = capture_gm_stdout(world);
-    assert!(!stdout.contains("{\"jsonrpc\""), "{stdout}");
+    assert!(!stdout.contains("\"kind\":"), "{stdout}");
 }
 
 #[then(expr = "world time advanced one live tick")]
@@ -338,20 +327,13 @@ fn sit_gm(world: &mut World, raw: bool) -> String {
     let pack = table::pack(world).to_path_buf();
     table::listen(world, &pack);
     let addr = table::game_addr(world);
-    let mcp_addr = table::mcp_addr(world);
-    let mut args = vec![
-        "gm".to_string(),
-        "--addr".to_string(),
-        addr.clone(),
-        "--mcp-addr".to_string(),
-        mcp_addr,
-    ];
+    let mut args = vec!["gm".to_string(), "--addr".to_string(), addr.clone()];
     if raw {
         args.push("--raw".to_string());
     }
     let refs: Vec<&str> = args.iter().map(String::as_str).collect();
     world.gm = Some(support::spawn(&refs));
-    let needle = if raw { "{\"jsonrpc\"" } else { "Commands:" };
+    let needle = if raw { HELLO_JSON } else { "Commands:" };
     wait_gm(world, needle);
     addr
 }

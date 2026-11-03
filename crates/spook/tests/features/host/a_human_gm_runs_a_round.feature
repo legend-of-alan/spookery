@@ -71,8 +71,20 @@ Feature: A human GM runs a round
     And spook run stops
     Then the GM exits
 
-  Scenario: spook gm dials an overridden MCP address
+  Scenario: spook gm dials the game port, not the MCP endpoint
     Given a docks table
     When spook run listens with an overridden MCP address
-    And a human GM dials that MCP address
+    And a human GM dials the game port
     Then the GM shows "Commands:"
+
+  Scenario: The GM perceives an actor
+    Given a docks table
+    When a human GM sits on a free loopback port
+    And the GM types "perceive pc_rowan"
+    Then the GM shows "You are in Docks Shop."
+
+  Scenario: An unknown GM word points at help
+    Given a docks table
+    When a human GM sits on a free loopback port
+    And the GM types "dance"
+    Then the GM's stderr shows "The table does not understand that. Type help."

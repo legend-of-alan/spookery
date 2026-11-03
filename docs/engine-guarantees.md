@@ -168,7 +168,7 @@ Tested in `features/rules/triggers.feature` and
 ## Travel
 
 A missing exit and a locked exit change nothing. A locked exit shows its locked
-text. A hidden exit the traveller does not know stays off perceive and help.
+text. A hidden exit the traveller does not know stays off the view and `help`.
 The traveller stays put, and stays busy, until the arrival minute. A move before
 then is refused. The
 round does not shrink: a seated round still advances five minutes, a two-minute
@@ -250,9 +250,10 @@ time. The same view lists that player's own meters. A meter marked hidden stays
 off it, and so does anyone else's. After a round, the player sees one line of
 what changed, built from the change records they are allowed to know. That line
 names a meter change and an item gained or lost. A hidden fact stays off the
-line. A hidden exit stays off the exit list. `help` lists the verbs whose `if`
-holds and those exits, and it does not take a round. `look` reprints the prose
-and the exits, and it does not take a round. A traveller who has not arrived
+line. A hidden exit stays off the exit list. `look` answers with a fresh view and
+does not take a round. The table sends no text for `help` or `map`: `spook play`
+writes `help` from the hello's words and the view's exits, and `map` from the
+views it was shown. A traveller who has not arrived
 sees where the journey ends, as `on the stairs until 21:40`. A player names only
 what they hold or what that view shows. Anything else reads like an unknown
 word and takes no round. A pack that omits `display_name` fails check. An

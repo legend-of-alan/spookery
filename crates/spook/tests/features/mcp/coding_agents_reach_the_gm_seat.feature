@@ -45,7 +45,7 @@ Feature: Coding agents reach the GM seat
 
   Scenario: spook gm and a coding agent share one seat
     Given a docks table
-    When a human GM sits on the default MCP address
+    When a human GM sits on the game port
     And a coding agent tries to sit at that MCP endpoint
     Then the agent is told the table is full
     When the human GM leaves

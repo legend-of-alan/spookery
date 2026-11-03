@@ -27,16 +27,6 @@ fn the_player_looks(world: &mut World) {
     world.mark = table::player_write(world, "look");
 }
 
-#[when(expr = "the player asks for help")]
-fn the_player_asks_for_help(world: &mut World) {
-    world.mark = table::player_write(world, "help");
-}
-
-#[when(expr = "the player asks for the map")]
-fn the_player_asks_for_the_map(world: &mut World) {
-    world.mark = table::player_write(world, "map");
-}
-
 #[when(expr = "the player closes the seat")]
 fn the_player_closes_the_seat(world: &mut World) {
     table::close_actor(world, "pc_rowan");
@@ -67,16 +57,14 @@ fn the_player_hears_the_gm(world: &mut World, text: String) {
     });
 }
 
-#[then(expr = "the player is told {string} and {string}")]
-fn the_player_is_told(world: &mut World, first: String, second: String) {
-    wait_player_frame(
-        world,
-        &format!("lines naming {first} and {second}"),
-        |frame| {
-            let text = frame["text"].as_str().unwrap_or_default();
-            frame["kind"] == "lines" && text.contains(&first) && text.contains(&second)
-        },
-    );
+#[then(expr = "the player is shown {string} with an exit to {string}")]
+fn the_player_is_shown(world: &mut World, place_name: String, to: String) {
+    wait_player_frame(world, &format!("a view of {place_name}"), |frame| {
+        let exits = frame["exits"].as_array().cloned().unwrap_or_default();
+        frame["kind"] == "view"
+            && frame["place_name"] == place_name
+            && exits.iter().any(|exit| exit["to"] == to)
+    });
 }
 
 #[then(expr = "the table refuses the player with {word}")]

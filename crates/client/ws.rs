@@ -1,5 +1,6 @@
 //! The client side of a seat over `/player` or `/gm` on the game port.
 
+use std::io::ErrorKind;
 use std::net::SocketAddr;
 
 use futures_util::{SinkExt, StreamExt};
@@ -21,7 +22,7 @@ pub struct Connection {
 impl Connection {
     /// Dial `ws://<addr>/<seat>` and read the hello. A refused GM seat is
     /// `Error::Refused`.
-    pub async fn open(addr: SocketAddr, seat: &str) -> Result<(Self, ServerBody), Error> {
+    pub async fn open(addr: SocketAddr, seat: &str) -> Result<(Self, ServerMessage), Error> {
         let url = format!("ws://{addr}/{seat}");
         let (socket, _) = tokio_tungstenite::connect_async(url)
             .await
@@ -32,7 +33,7 @@ impl Connection {
                 body: ServerBody::Refused(refusal),
                 ..
             })) => Err(Error::Refused(refusal)),
-            Some(Ok(hello)) => Ok((connection, hello.body)),
+            Some(Ok(hello)) => Ok((connection, hello)),
             Some(Err(err)) => Err(err),
             None => Err(Error::Message("NOT_IN_SPEC".into())),
         }
@@ -56,8 +57,22 @@ impl Connection {
             .map_err(|err| Error::Io(std::io::Error::other(err)))
     }
 
+    /// Send `release` and wait for its reply, so the seat is free once this returns. A table
+    /// that is already gone holds nothing to give back.
+    pub async fn release(&mut self) -> Result<(), Error> {
+        let Ok(id) = self.send("release", serde_json::json!({})).await else {
+            return Ok(());
+        };
+        while let Some(Ok(message)) = self.recv().await {
+            if message.reply_to.as_deref() == Some(id.as_str()) {
+                break;
+            }
+        }
+        Ok(())
+    }
+
     /// The next message, or the text of one that could not be read as `Error::Unreadable`.
-    /// `None` when the host closes the connection, with or without a close frame, and
+    /// `None` when the host closes the connection, with or without a close frame or by a reset, and
     /// `Error::Io` when the connection fails. Cancel safe.
     pub async fn recv(&mut self) -> Option<Result<ServerMessage, Error>> {
         loop {
@@ -69,6 +84,15 @@ impl Connection {
                     | WsError::AlreadyClosed
                     | WsError::Protocol(ProtocolError::ResetWithoutClosingHandshake),
                 ) => return None,
+                // Windows reports a host that died as a reset, where Linux reads an end.
+                Err(WsError::Io(err))
+                    if matches!(
+                        err.kind(),
+                        ErrorKind::ConnectionReset | ErrorKind::ConnectionAborted
+                    ) =>
+                {
+                    return None
+                }
                 Err(err) => return Some(Err(Error::Io(std::io::Error::other(err)))),
                 Ok(_) => continue,
             };

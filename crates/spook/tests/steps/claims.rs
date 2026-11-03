@@ -83,7 +83,7 @@ fn it_holds_rowan_and_catches_up(world: &mut World) {
     let player = table::player_client(world, "pc_rowan");
     let id = player.seat.send("look", json!({}));
     let looked = parse(&player.seat.wait_reply(&id));
-    assert_eq!(looked["body"]["kind"], "lines", "{looked}");
+    assert_eq!(looked["body"]["kind"], "view", "{looked}");
 }
 
 #[then(expr = "it holds rowan again with a gap and the newest 256 messages")]

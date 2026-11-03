@@ -16,7 +16,7 @@ Feature: Travel follows the map
 
   Scenario: Hidden exit
     Given the trapdoor is hidden and rowan does not know fact_trapdoor
-    Then rowan's perceive and help do not list the trapdoor
+    Then rowan's view does not list the trapdoor
 
   Scenario: Explicit teleport
     Given a place rule with location to cellar, teleport true
@@ -58,6 +58,6 @@ Feature: Travel follows the map
   Scenario: Replay
     Then spook verify passes over a fast-forwarded journey
 
-  Scenario: A player map lists visited places
-    When rowan travels via stairs holding brass_key
-    Then rowan's map lists mira_rooms and not the trapdoor
+  Scenario: A player map lists the places play was shown
+    When play travels via stairs holding brass_key
+    Then play's map lists the shop and mira_rooms and not the trapdoor

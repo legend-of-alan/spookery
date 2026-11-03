@@ -53,10 +53,12 @@ fn render_scrollback(says: &[Say]) -> String {
     )
 }
 
-/// Readable text for the messages of one sitting.
+/// Readable text for the messages of one sitting, and its map.
 pub struct PlayerText {
     seen_resume: bool,
     after_scrollback: bool,
+    /// The last view of each place this sitting was shown, first shown first.
+    places: Vec<protocol::View>,
 }
 
 impl PlayerText {
@@ -64,6 +66,7 @@ impl PlayerText {
         Self {
             seen_resume: false,
             after_scrollback: false,
+            places: Vec::new(),
         }
     }
 
@@ -82,8 +85,33 @@ impl PlayerText {
                 self.seen_resume = true;
                 self.after_scrollback(render_resume(notes, clocks))
             }
+            ServerBody::View(view) => {
+                match self
+                    .places
+                    .iter_mut()
+                    .find(|known| known.place == view.place)
+                {
+                    Some(known) => known.clone_from(view),
+                    None => self.places.push((**view).clone()),
+                }
+                self.after_scrollback(render(body))
+            }
             _ => self.after_scrollback(render(body)),
         }
+    }
+
+    /// `map`: each place this sitting was shown, first shown first, with the exits its last
+    /// view listed.
+    pub fn render_map(&self) -> String {
+        let mut lines = Vec::new();
+        for view in &self.places {
+            lines.push(place_title(view).to_string());
+            for exit in &view.exits {
+                let phrase = exit_phrase(&exit.name, exit.minutes, exit.locked);
+                lines.push(format!("  {phrase}"));
+            }
+        }
+        lines.join("\n")
     }
 
     /// Live text, after a blank line when it is the first after the scrollback.
@@ -117,11 +145,36 @@ fn render_resume(notes: &[NoteView], clocks: &[ClockView]) -> String {
     }
 }
 
+/// `help`: each word a player types, one per line, then the exits and busy line of `here`.
+/// Play sends `claim` and `release` itself, so `help`, `map` and `close` take their place.
+pub fn render_help(words: &[String], here: &protocol::View) -> String {
+    let mut typed: Vec<&str> = words
+        .iter()
+        .map(String::as_str)
+        .filter(|word| !matches!(*word, "claim" | "release"))
+        .collect();
+    typed.extend(["help", "map", "close"]);
+    let mut lines = vec![typed.join("\n"), exit_section(&here.exits)];
+    if !here.status.is_empty() {
+        lines.push(here.status.clone());
+    }
+    lines.join("\n")
+}
+
+/// The place name a view shows, or its id when it has none.
+fn place_title(view: &protocol::View) -> &str {
+    if view.place_name.is_empty() {
+        &view.place
+    } else {
+        &view.place_name
+    }
+}
+
 pub fn render_view(view: &protocol::View) -> String {
     let protocol::View {
         viewer,
-        place,
-        place_name,
+        place: _,
+        place_name: _,
         body,
         actor_names,
         status,
@@ -136,11 +189,7 @@ pub fn render_view(view: &protocol::View) -> String {
         habits: _,
     } = view;
     let mut sections = Vec::new();
-    let titled = if !place_name.is_empty() {
-        place_name.as_str()
-    } else {
-        place.as_str()
-    };
+    let titled = place_title(view);
     if !titled.is_empty() {
         sections.push(format!("You are in {titled}."));
     }
@@ -280,23 +329,17 @@ pub fn render_status(status: &TableStatus) -> String {
     format!("{seated}\n{queued}")
 }
 
-pub fn render_diff(body: &CommitBody) -> String {
-    if body.changed_keys.is_empty() {
+/// What a commit changed, then each roll and dice line. The reply is the one place a GM sees
+/// this commit's rolls.
+fn render_commit(body: &CommitBody) -> String {
+    let mut lines = vec![if body.changed_keys.is_empty() {
         "Nothing changed.".to_string()
     } else {
         format!("Changed:\n{}", body.changed_keys.join("\n"))
-    }
-}
-
-pub fn render_dice(body: &CommitBody) -> Vec<String> {
-    body.dice
-        .iter()
-        .map(|line| format!("dice {line}"))
-        .collect()
-}
-
-pub fn render_checks(body: &CommitBody) -> Vec<String> {
-    body.rolls.iter().map(render_check).collect()
+    }];
+    lines.extend(body.rolls.iter().map(render_check));
+    lines.extend(body.dice.iter().map(|line| format!("dice {line}")));
+    lines.join("\n")
 }
 
 /// What a refusal prints on stderr: the code in raw mode, the sentence in text mode.
@@ -316,13 +359,16 @@ fn speaker_name(from: &Speaker) -> String {
     }
 }
 
-/// Readable text for one GM event. Empty means print nothing.
-pub fn render_event(body: &ServerBody) -> String {
+/// Readable text for one GM body. Empty means print nothing.
+pub fn render_gm(body: &ServerBody) -> String {
     match body {
         ServerBody::Say(say) => format!("{}: {}", speaker_name(&say.from), say.text),
         ServerBody::Queued {
             actor, move_name, ..
         } => format!("{} queued: {move_name}", humanize(actor)),
+        ServerBody::Status(status) => render_status(status),
+        ServerBody::View(view) => render_view(view),
+        ServerBody::Committed(body) => render_commit(body),
         _ => String::new(),
     }
 }
@@ -739,18 +785,18 @@ none"
     }
 
     #[test]
-    fn each_event_renders_as_text() {
-        let player = render_event(&say("player:pc_rowan", "hello"));
+    fn each_gm_body_renders_as_text() {
+        let player = render_gm(&say("player:pc_rowan", "hello"));
         assert_eq!(player, "Pc rowan: hello");
         assert!(!player.contains('{'));
 
-        let gm = render_event(&say("gm", "good evening"));
+        let gm = render_gm(&say("gm", "good evening"));
         assert_eq!(gm, "GM: good evening");
 
-        let npc = render_event(&say("npc:mira", "oil"));
+        let npc = render_gm(&say("npc:mira", "oil"));
         assert_eq!(npc, "Mira: oil");
 
-        let queued = render_event(&ServerBody::Queued {
+        let queued = render_gm(&ServerBody::Queued {
             intent: "id-1".to_string(),
             actor: "pc_wren".to_string(),
             move_name: "wait".to_string(),
@@ -758,7 +804,7 @@ none"
         });
         assert_eq!(queued, "Pc wren queued: wait");
         assert_eq!(
-            render_event(&ServerBody::Round {
+            render_gm(&ServerBody::Round {
                 round_index: 1,
                 world_time: 10
             }),
@@ -793,6 +839,68 @@ none"
         assert_eq!(
             render_status(&status(Vec::new(), Vec::new())),
             "Seated: nobody\nQueue: empty"
+        );
+    }
+
+    fn place_view(place: &str, place_name: &str, exits: &[(&str, u64)]) -> protocol::View {
+        let mut view: protocol::View = serde_json::from_value(serde_json::json!({
+            "viewer": "pc_rowan", "place": place, "place_name": place_name,
+            "visible_actors": [], "known_facts": [], "notes": [], "unknown_mentions": [],
+            "clocks": [], "items": [], "habits": []
+        }))
+        .unwrap();
+        view.exits = exits
+            .iter()
+            .map(|(name, minutes)| ExitView {
+                name: name.to_string(),
+                to: name.to_string(),
+                place_name: String::new(),
+                minutes: *minutes,
+                locked: false,
+            })
+            .collect();
+        view
+    }
+
+    #[test]
+    fn help_lists_the_words_to_type_then_the_exits() {
+        let words: Vec<String> = ["claim", "release", "say", "look", "wait"]
+            .map(String::from)
+            .to_vec();
+        let mut here = place_view("docks_shop", "Docks Shop", &[("stairs", 2)]);
+        here.status = "on the stairs until 21:40".to_string();
+        assert_eq!(
+            render_help(&words, &here),
+            "say\nlook\nwait\nhelp\nmap\nclose\nExits:\nstairs — 2 min\non the stairs until 21:40"
+        );
+    }
+
+    #[test]
+    fn the_map_keeps_each_place_a_view_showed() {
+        let mut player_text = PlayerText::new();
+        let shop = place_view("docks_shop", "Docks Shop", &[("stairs", 2)]);
+        let rooms = place_view("mira_rooms", "", &[("docks_shop", 2)]);
+        for view in [&shop, &rooms, &shop] {
+            player_text.render(&ServerBody::View(Box::new(view.clone())));
+        }
+        assert_eq!(
+            player_text.render_map(),
+            "Docks Shop\n  stairs — 2 min\nmira_rooms\n  docks_shop — 2 min"
+        );
+    }
+
+    #[test]
+    fn a_commit_shows_its_changes_rolls_and_dice() {
+        let body = CommitBody {
+            state_rev: 2,
+            changed_keys: vec!["actors.pc_rowan.meters.grit".to_string()],
+            journal_path: None,
+            rolls: vec![roll(vec![4, 2], 1, 7, 0, Outcome::Success)],
+            dice: vec!["2d6 = 3 + 4 = 7".to_string()],
+        };
+        assert_eq!(
+            render_gm(&ServerBody::Committed(body)),
+            "Changed:\nactors.pc_rowan.meters.grit\nRoll: 4 + 2, +1 = 7 vs 0, success\ndice 2d6 = 3 + 4 = 7"
         );
     }
 }

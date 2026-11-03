@@ -117,7 +117,7 @@ pub enum ServerBody {
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         clocks: Vec<ClockView>,
     },
-    /// Help, look, and map. The text is already the lines to print.
+    /// A round's narrate lines and the changes one player saw, already the text to print.
     Lines {
         text: String,
     },
@@ -162,8 +162,6 @@ pub const WORDS: &[Word] = &[
     Word::new("release", Seat::Player),
     Word::new("say", Seat::Player),
     Word::new("look", Seat::Player),
-    Word::new("help", Seat::Player),
-    Word::new("map", Seat::Player),
     Word::new("status", Seat::Gm),
     Word::new("perceive", Seat::Gm),
     Word::new("queue", Seat::Gm),

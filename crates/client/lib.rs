@@ -1,4 +1,5 @@
-//! The human terminals, the seat connections, and the AI GM runner.
+//! The client side of a table: the seat connection, messages as text, the `spook play` and
+//! `spook gm` terminals, and the AI GM runner.
 
 use std::fmt;
 use std::io;
@@ -6,7 +7,6 @@ use std::io;
 pub mod ai_gm;
 pub mod gm;
 pub mod http_model;
-pub mod mcp;
 pub mod play;
 use spookery_protocol as protocol;
 mod text;
@@ -18,10 +18,9 @@ pub mod ws;
 pub enum Error {
     /// A socket could not be dialed, read or written.
     Io(io::Error),
-    /// The table refused the GM seat. Display is the refusal's sentence.
+    /// The table refused the seat. Display is the refusal's sentence.
     Refused(protocol::Refusal),
-    /// A tool reply that is neither its reply type nor a refusal, or a message that is no
-    /// `ServerMessage`, with the JSON the table sent.
+    /// A message that is no `ServerMessage`, with the JSON the table sent.
     Unreadable(serde_json::Value),
     /// Any other failure, as the line to print.
     Message(String),

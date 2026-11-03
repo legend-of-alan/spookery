@@ -249,16 +249,14 @@ impl Table {
                 Some(args) => return self.say_as_player(conn, id, &actor_id, &args),
                 None => ServerBody::Refused(Reason::Schema.into()),
             },
-            "help" if read::<NoArgs>(&args).is_some() => ServerBody::Lines {
-                text: self.world.help_lines(&presence, &actor_id),
-            },
-            "look" if read::<NoArgs>(&args).is_some() => ServerBody::Lines {
-                text: self.world.look_lines(&presence, &actor_id),
-            },
-            "map" if read::<NoArgs>(&args).is_some() => ServerBody::Lines {
-                text: self.world.map_lines(&presence, &actor_id),
-            },
-            "release" | "help" | "look" | "map" => ServerBody::Refused(Reason::Schema.into()),
+            // The view, not text: the client writes the look from it.
+            "look" if read::<NoArgs>(&args).is_some() => {
+                match self.world.perceive(&presence, &actor_id) {
+                    Ok(view) => frames::render_view(&view),
+                    Err(code) => ServerBody::Refused(code.into()),
+                }
+            }
+            "release" | "look" => ServerBody::Refused(Reason::Schema.into()),
             _ => match read::<MoveArgs>(&args) {
                 Some(args) => return self.play_move(conn, id, &actor_id, &word, args.target),
                 None => ServerBody::Refused(Reason::Schema.into()),
