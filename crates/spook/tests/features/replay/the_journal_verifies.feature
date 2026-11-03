@@ -51,13 +51,13 @@ Feature: The journal verifies
     And stderr names that record
     And stderr names the first differing save line
 
-  Scenario: A changed round refuses to open with HAND_EDIT
+  Scenario: A changed round refuses to open with JOURNAL_DIVERGED
     Given a docks table
     When the operator tries a round
     And a queued intent the round never had is written into its record
     And the operator tries a round
     Then the command exits 1
-    And stderr is HAND_EDIT
+    And stderr is JOURNAL_DIVERGED
 
   Scenario: Verify leaves the pack unchanged
     Given a docks table

@@ -65,6 +65,9 @@ mod session;
 #[path = "steps/websocket.rs"]
 mod websocket;
 
+#[path = "steps/store_failures.rs"]
+mod store_failures;
+
 #[path = "feature_dirs.rs"]
 mod feature_dirs;
 
