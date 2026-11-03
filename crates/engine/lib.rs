@@ -22,7 +22,8 @@ pub use rules::perceive::View;
 pub use rules::roll::MoveReport;
 pub use rules::visibility::RecipientLine;
 pub use spookery_protocol::Reason;
-pub use store::{emit_save, emit_tape_record, lock_pack, parse_save, PackGuard, TapeRecord};
+pub use store::save::{emit as emit_save, parse as parse_save};
+pub use store::{emit_tape_record, lock_pack, PackGuard, TapeRecord};
 pub use world::{check_pack, Address, World};
 
 #[cfg(feature = "testing")]
@@ -66,7 +67,8 @@ pub mod testing {
     pub mod journal {
         use std::path::{Path, PathBuf};
 
-        use crate::store::journal::{fault, read_bundle_records, Error};
+        use crate::store::journal::{read_bundle_records, Error};
+        use crate::Reason;
 
         pub use crate::hash::blake2s_tagged;
         pub use crate::store::journal::{
@@ -97,7 +99,11 @@ pub mod testing {
                 .find(|entry| format_record_key(entry) == key);
             match found {
                 Some(entry) => Ok(emit_record(&entry).trim_end().to_string()),
-                None => Err(fault(Path::new(key), "the journal record is missing")),
+                None => Err(Error::new(
+                    Path::new(key),
+                    Reason::Schema,
+                    "the journal record is missing",
+                )),
             }
         }
 
@@ -108,7 +114,11 @@ pub mod testing {
                     return Ok(pack.join("state/journal").join(name));
                 }
             }
-            Err(fault(Path::new(key), "the journal record is missing"))
+            Err(Error::new(
+                Path::new(key),
+                Reason::Schema,
+                "the journal record is missing",
+            ))
         }
 
         /// Key naming one record inside the bundles: `round-0001`, `migrate-0002` or `checkpoint-0003`.
@@ -194,13 +204,13 @@ pub mod testing {
             .unwrap_or_else(|err| panic!("replay_journal {}: {err}", pack.display()));
         let yaml = std::str::from_utf8(&report.now_yaml)
             .unwrap_or_else(|err| panic!("utf-8 {}: {err}", pack.display()));
-        crate::store::parse_save(yaml)
+        crate::store::save::parse(yaml)
             .unwrap_or_else(|err| panic!("load {}: {err:?}", pack.display()))
     }
 
     pub fn write_save(pack: &Path, state: &crate::model::State) {
         let path = pack.join("state/save.yaml");
-        let bytes = crate::store::emit_save(state)
+        let bytes = crate::store::save::emit(state)
             .unwrap_or_else(|err| panic!("emit {}: {err}", path.display()));
         fs::write(&path, bytes).unwrap_or_else(|err| panic!("write {}: {err}", path.display()));
     }
@@ -209,7 +219,7 @@ pub mod testing {
         let path = pack.join("state/save.yaml");
         let text = fs::read_to_string(&path)
             .unwrap_or_else(|err| panic!("read {}: {err}", path.display()));
-        let mut state = crate::store::parse_save(&text)
+        let mut state = crate::store::save::parse(&text)
             .unwrap_or_else(|err| panic!("load {}: {err:?}", path.display()));
         edit(&mut state);
         state.pack_rev = crate::canon::pack_rev(pack)

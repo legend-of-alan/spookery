@@ -8,7 +8,7 @@ use crate::intent::Target;
 use crate::model::Presence;
 use crate::rules::travel::visible_exits;
 use crate::store::journal;
-use crate::store::save::{emit_save, parse_save};
+use crate::store::save;
 use crate::world::World;
 use proptest::prelude::*;
 use proptest::test_runner::{Config, RngSeed, TestCaseError};
@@ -119,11 +119,11 @@ fn add_grit_success(pack: &Path) -> Result<(), String> {
     let rev = pack_rev(pack).map_err(|err| err.to_string())?;
     let save_path = pack.join("state/save.yaml");
     let save_text = fs::read_to_string(&save_path).map_err(|err| err.to_string())?;
-    let mut state = parse_save(&save_text).map_err(|err| format!("{err:?}"))?;
+    let mut state = save::parse(&save_text).map_err(|err| format!("{err:?}"))?;
     state.pack_rev = rev;
     fs::write(
         &save_path,
-        emit_save(&state).map_err(|err| err.to_string())?,
+        save::emit(&state).map_err(|err| err.to_string())?,
     )
     .map_err(|err| err.to_string())
 }

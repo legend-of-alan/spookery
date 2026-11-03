@@ -1,4 +1,4 @@
-//! Publish one round: the journal record, then the save.
+//! Publish a round or a migrate: the journal record, then at a checkpoint the save.
 
 use std::fs::{self, OpenOptions};
 use std::io::Write;
@@ -14,7 +14,7 @@ use crate::store::journal;
 use crate::store::lock::{lock_write, PackGuard, WriteGuard};
 use crate::store::records::{Record, RoundRecord};
 use crate::store::recovery::close_finished;
-use crate::store::save::{emit_save, migrate_save, missing_meters, normalize};
+use crate::store::save::{self, missing_meters, normalize};
 use crate::world::World;
 use crate::Reason;
 
@@ -32,9 +32,9 @@ pub fn commit(
     record: RoundRecord,
 ) -> Result<CommitOutcome, Reason> {
     let write = lock_write(&world.root, &world.lock)?;
-    finish_trailing_checkpoint(world, &write)?;
+    settle_checkpoint(world, &write)?;
     bump_state_rev(&mut draft)?;
-    let now_bytes = emit_save(&draft.state)?.into_bytes();
+    let now_bytes = save::emit(&draft.state)?.into_bytes();
     let line = seal_round(
         record,
         world.state.state_rev,
@@ -102,9 +102,9 @@ pub fn commit_migrate(
         .checked_add(1)
         .ok_or(Reason::CommitConflict)?;
     let added = missing_meters(&canon, &state);
-    let state = migrate_save(state, &pack_rev_after, state_rev_after, &added);
+    let state = save::migrate(state, &pack_rev_after, state_rev_after, &added);
     check_save(&canon, &state).map_err(|diags| first_reason(&diags))?;
-    let emitted = emit_save(&state)?.into_bytes();
+    let emitted = save::emit(&state)?.into_bytes();
     let entry = journal::migrate_record(
         &pack_rev_before,
         &state.pack_rev,
@@ -249,18 +249,14 @@ fn finish_checkpoint(world: &mut World, now_bytes: &[u8], chain: &str, write: &W
 
 /// Publish `save.yaml` and the snapshot for a checkpoint that is already in the
 /// journal, then close that bundle. The next round can then start a new file.
-pub fn finish_live_checkpoint<L>(world: &World<L>, lock: &PackGuard) -> Result<(), Reason> {
-    finish_trailing_checkpoint(world, &lock_write(&world.root, lock)?)
-}
-
-fn finish_trailing_checkpoint<L>(world: &World<L>, write: &WriteGuard) -> Result<(), Reason> {
+pub(crate) fn settle_checkpoint<L>(world: &World<L>, write: &WriteGuard) -> Result<(), Reason> {
     let Some(path) = journal::find_live_bundle(&world.root) else {
         return Ok(());
     };
     let Some(mark) = journal::trailing_checkpoint(&path) else {
         return Ok(());
     };
-    let now_bytes = emit_save(world.state())?.into_bytes();
+    let now_bytes = save::emit(world.state())?.into_bytes();
     if blake2s_tagged(&now_bytes) != mark.state_hash {
         return Ok(());
     }

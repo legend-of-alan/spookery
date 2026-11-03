@@ -3,8 +3,8 @@
 //! A bundle is one file per checkpoint interval. The live bundle is plain
 //! JSONL. A closed bundle is gzip and is never appended to again.
 //!
-//! `journal/base.yaml` is the genesis snapshot, written the first time a
-//! checkpoint replaces `save.yaml`. Before that, `save.yaml` is still genesis.
+//! `journal/base.yaml` is the base snapshot, written the first time a
+//! checkpoint replaces `save.yaml`. Before that, `save.yaml` is still the base.
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -37,7 +37,7 @@ pub(crate) fn head_path(pack: &Path) -> PathBuf {
 /// The latest checkpoint, written beside the bundles so startup can skip them.
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct CheckpointHead {
-    /// Missing on heads written before rules rev 8, which are refused.
+    /// A head without it is refused.
     #[serde(default)]
     pub rules_rev: u64,
     pub state_rev: u64,
@@ -51,13 +51,18 @@ pub(crate) fn read_head(pack: &Path) -> Result<Option<CheckpointHead>, Error> {
     if !path.is_file() {
         return Ok(None);
     }
-    let text = fs::read_to_string(&path)
-        .map_err(|_| fault(&path, "the checkpoint head could not be read"))?;
-    let value: serde_json::Value =
-        serde_json::from_str(&text).map_err(|err| fault(&path, &err.to_string()))?;
+    let text = fs::read_to_string(&path).map_err(|_| {
+        Error::new(
+            &path,
+            Reason::Schema,
+            "the checkpoint head could not be read",
+        )
+    })?;
+    let value: serde_json::Value = serde_json::from_str(&text)
+        .map_err(|err| Error::new(&path, Reason::Schema, &err.to_string()))?;
     let rules_rev = value.get("rules_rev").and_then(|rev| rev.as_u64());
     if let Err(reason) = super::require_rules_rev(rules_rev.unwrap_or(0)) {
-        return Err(fault_coded(&path, reason, "written by older rules"));
+        return Err(Error::new(&path, reason, "written by older rules"));
     }
     Ok(Some(parse_json("head.json", &text)?))
 }
@@ -91,6 +96,16 @@ pub struct Error {
     pub reason: Reason,
 }
 
+impl Error {
+    pub(crate) fn new(file: &Path, reason: Reason, detail: &str) -> Self {
+        Self {
+            file: file.to_string_lossy().replace('\\', "/"),
+            detail: detail.to_string(),
+            reason,
+        }
+    }
+}
+
 /// Parse every complete record. A torn last line is left unread. The chain is not checked.
 pub fn read_records(pack: &Path) -> Result<Vec<Record>, Error> {
     Ok(flatten_bundles(&read_bundle_records(pack)?))
@@ -115,12 +130,13 @@ pub(crate) fn check_chain(pack: &Path, bundles: &[(String, Vec<Record>)]) -> Res
     if bundles.iter().all(|(_, entries)| entries.is_empty()) {
         return Ok(());
     }
-    let mut prev = genesis_hash(pack)?;
+    let mut prev = base_hash(pack)?;
     for (name, entries) in bundles {
         for entry in entries {
             if entry.prev() != prev {
-                return Err(fault(
+                return Err(Error::new(
                     Path::new(name),
+                    Reason::Schema,
                     "the record does not follow the previous hash",
                 ));
             }
@@ -177,7 +193,7 @@ pub(crate) fn read_chain_tip(pack: &Path) -> Result<String, Error> {
     if let Some(head) = read_head(pack)? {
         return Ok(head.chain);
     }
-    genesis_hash(pack)
+    base_hash(pack)
 }
 
 /// Records in the plain live bundle. Closed bundles stay unread.
@@ -197,14 +213,15 @@ fn read_live_bundle(pack: &Path) -> Result<Option<(String, String)>, Error> {
     Ok(Some((name.to_string(), read_bundle(&name, &path)?)))
 }
 
-pub fn genesis_hash(pack: &Path) -> Result<String, Error> {
+fn base_hash(pack: &Path) -> Result<String, Error> {
     let base = base_path(pack);
     let path = if base.is_file() {
         base
     } else {
         pack.join("state/save.yaml")
     };
-    let bytes = fs::read(&path).map_err(|_| fault(&path, "the snapshot could not be read"))?;
+    let bytes = fs::read(&path)
+        .map_err(|_| Error::new(&path, Reason::Schema, "the snapshot could not be read"))?;
     Ok(blake2s_tagged(&bytes))
 }
 
@@ -291,7 +308,7 @@ fn parse_line(name: &str, line: &str) -> Result<Record, Error> {
         let value: serde_json::Value = serde_json::from_str(line).unwrap_or_default();
         let rules_rev = value.get("rules_rev").and_then(|rev| rev.as_u64());
         if let Some(Err(reason)) = rules_rev.map(super::require_rules_rev) {
-            return fault_coded(Path::new(name), reason, "written by older rules");
+            return Error::new(Path::new(name), reason, "written by older rules");
         }
         name_the_field(name, line, &value).unwrap_or(fault)
     })
@@ -321,11 +338,12 @@ pub fn list_bundles(pack: &Path) -> Result<Vec<(String, PathBuf)>, Error> {
     if !dir.is_dir() {
         return Ok(Vec::new());
     }
-    let entries =
-        fs::read_dir(&dir).map_err(|_| fault(&dir, "the log directory could not be read"))?;
+    let entries = fs::read_dir(&dir)
+        .map_err(|_| Error::new(&dir, Reason::Schema, "the log directory could not be read"))?;
     let mut by_index: BTreeMap<u32, (String, PathBuf)> = BTreeMap::new();
     for entry in entries {
-        let entry = entry.map_err(|_| fault(&dir, "the log directory could not be read"))?;
+        let entry = entry
+            .map_err(|_| Error::new(&dir, Reason::Schema, "the log directory could not be read"))?;
         let name = entry.file_name();
         let name = name.to_string_lossy().into_owned();
         let Some(index) = bundle_index(&name) else {
@@ -366,8 +384,9 @@ fn check_line_chain(name: &str, line: &str) -> Result<String, Error> {
 
 fn check_record_chain(name: &str, entry: &Record) -> Result<(), Error> {
     if entry.chain() != chain_of(entry) {
-        return Err(fault(
+        return Err(Error::new(
             Path::new(name),
+            Reason::Schema,
             "the chain hash does not cover this record",
         ));
     }
@@ -397,7 +416,7 @@ fn parse_complete(name: &str, text: &str) -> Result<Vec<Record>, Error> {
 }
 
 fn read_bundle(name: &str, path: &Path) -> Result<String, Error> {
-    let unread = || fault(path, "the journal bundle could not be read");
+    let unread = || Error::new(path, Reason::Schema, "the journal bundle could not be read");
     let mut bytes = fs::read(path).map_err(|_| unread())?;
     if name.ends_with(".gz") {
         bytes = gunzip_bytes(&bytes).map_err(|_| unread())?;
@@ -422,23 +441,8 @@ pub fn gunzip_bytes(bytes: &[u8]) -> Result<Vec<u8>, Reason> {
 
 fn parse_json<T: DeserializeOwned>(name: &str, text: &str) -> Result<T, Error> {
     let mut de = serde_json::Deserializer::from_str(text.trim_end());
-    serde_path_to_error::deserialize(&mut de).map_err(|err| Error {
-        file: name.to_string(),
-        detail: err.to_string(),
-        reason: Reason::Schema,
-    })
-}
-
-pub(crate) fn fault(path: &Path, detail: &str) -> Error {
-    fault_coded(path, Reason::Schema, detail)
-}
-
-fn fault_coded(path: &Path, reason: Reason, detail: &str) -> Error {
-    Error {
-        file: path.to_string_lossy().replace('\\', "/"),
-        detail: detail.to_string(),
-        reason,
-    }
+    serde_path_to_error::deserialize(&mut de)
+        .map_err(|err| Error::new(Path::new(name), Reason::Schema, &err.to_string()))
 }
 
 #[cfg(test)]
@@ -472,7 +476,7 @@ mod tests {
     fn a_sealed_record_chains_to_the_one_before_it() {
         let round = include_str!("../fixtures/round.jsonl");
         let entry = parse_line("round.jsonl", round.trim_end()).unwrap();
-        let prev = blake2s_tagged(b"genesis");
+        let prev = blake2s_tagged(b"base");
         let line = seal(&entry, &prev);
         let again = parse_line("bundle-0000.jsonl", line.trim_end()).unwrap();
         assert_eq!(again.prev(), prev);

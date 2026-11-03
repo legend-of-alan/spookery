@@ -16,8 +16,8 @@ const MAX_BYTES: u64 = 1024 * 1024;
 const WINDOW_LINES: usize = 64;
 const SCROLLBACK_LINES: usize = 256;
 
-/// Written by the engine to the tape and handed to the host table, which relays it to players and the GM.
-/// One tape line. Field order is the order of the bytes on disk.
+/// One tape line, written by the engine and relayed by the host table to players and the GM.
+/// Field order is the order of the bytes on disk.
 /// `from` is stored as the `Speaker`'s text. `place` and `actor` may be null. A missing key
 /// is not a record.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
