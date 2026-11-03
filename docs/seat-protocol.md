@@ -439,7 +439,7 @@ A call is `tools/call`. The body below is the JSON-RPC request. The result examp
 
 #### table_status
 
-No key is required. `since` is the only other accepted key. It is a tape sequence number. The reply then includes `events`, the say objects after that sequence, inside the tape window. The window defaults to 64 lines and stops at 256. A generic client that ignores `spook/event` uses this as the pull path. Without `since`, the reply also carries `pack`, the pack summary.
+No key is required. `since` is the only other accepted key. It is a tape sequence number. The reply then includes `events`, the say objects after that sequence, inside the tape window. The window is the first 64 lines after that sequence. A generic client that ignores `spook/event` uses this as the pull path. Without `since`, the reply also carries `pack`, the pack summary.
 
 <!-- example: table-status-request -->
 ```json
