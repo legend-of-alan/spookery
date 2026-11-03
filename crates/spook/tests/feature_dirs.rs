@@ -11,6 +11,7 @@ pub const HOST: &[&str] = &[
     "tests/features/mcp",
     "tests/features/new",
     "tests/features/seats",
+    "tests/features/sessions",
     "tests/features/speech",
 ];
 
