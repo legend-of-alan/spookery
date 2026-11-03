@@ -173,13 +173,12 @@ pub fn replay_journal(
         return Err(Error::Reason(Reason::NotInSpec));
     }
     let base_path = journal::base_path(pack);
-    let save_path = journal::save_path(pack);
     let base_bytes = if let Some(from) = from {
-        fs::read(journal::save_path(from)).map_err(|_| Error::Reason(Reason::NotInSpec))?
+        journal::read_save(&journal::save_path(from)).map_err(Error::Reason)?
     } else if base_path.is_file() {
-        fs::read(&base_path).map_err(|_| Error::Reason(Reason::Schema))?
-    } else if save_path.is_file() {
-        let now_yaml = fs::read(&save_path).map_err(|_| Error::Reason(Reason::NotInSpec))?;
+        journal::read_save(&base_path).map_err(Error::Reason)?
+    } else {
+        let now_yaml = journal::read_save(&journal::save_path(pack)).map_err(Error::Reason)?;
         if records.is_empty() {
             return Ok(Report {
                 state_rev: state_rev_of(&now_yaml)?,
@@ -188,8 +187,6 @@ pub fn replay_journal(
             });
         }
         now_yaml
-    } else {
-        return Err(Error::Reason(Reason::NotInSpec));
     };
     let base_rev = state_rev_of(&base_bytes)?;
     let cap = until.unwrap_or_else(|| {
@@ -260,7 +257,7 @@ pub fn migrate_pack(path: &Path) -> Result<(), Reason> {
 /// The state to migrate, and whether it is a hand edit of the checkpoint head.
 /// A hand edit with live rounds past it is refused, because the tip does not hold it.
 fn load_migrate_tip(path: &Path, lock: &PackGuard) -> Result<(State, bool), Reason> {
-    let bytes = fs::read(journal::save_path(path)).map_err(|_| Reason::NotInSpec)?;
+    let bytes = journal::read_save(&journal::save_path(path))?;
     let text = std::str::from_utf8(&bytes).map_err(|_| Reason::Schema)?;
     let file_state = save::parse(text).map_err(|diags| first_reason(&diags))?;
     // A save from before the head is a checkpoint that did not land, not an edit.
@@ -287,7 +284,7 @@ fn load_migrate_tip(path: &Path, lock: &PackGuard) -> Result<(State, bool), Reas
 /// The caller holds the pack lock.
 fn replay_tip_unchecked(path: &Path, lock: &PackGuard) -> Result<World<()>, Reason> {
     rebuild_save(path, lock).map_err(Error::into_reason)?;
-    let save = fs::read(journal::save_path(path)).map_err(|_| Reason::NotInSpec)?;
+    let save = journal::read_save(&journal::save_path(path))?;
     let mut world = open_for_replay(path, &save).map_err(Error::into_reason)?;
     replay_tail(&mut world)?;
     crate::store::commit::settle_checkpoint(&world, &lock_write(&world.root, lock)?)?;
@@ -331,8 +328,13 @@ fn rebuild_save(path: &Path, lock: &PackGuard) -> Result<(), Error> {
         return Ok(());
     };
     let save_path = journal::save_path(path);
-    if save_path.is_file() {
-        let bytes = fs::read(&save_path).map_err(|_| Error::Reason(Reason::NotInSpec))?;
+    let saved = match journal::read_save(&save_path) {
+        Ok(bytes) => Some(bytes),
+        // A missing save is rebuilt below.
+        Err(Reason::NotInSpec) => None,
+        Err(reason) => return Err(Error::Reason(reason)),
+    };
+    if let Some(bytes) = saved {
         if blake2s_tagged(&bytes) == mark.state_hash {
             return Ok(());
         }

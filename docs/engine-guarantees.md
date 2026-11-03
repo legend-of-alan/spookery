@@ -44,8 +44,9 @@ Tested in `features/seats/one_gm_and_three_players.feature`,
 `features/commit/a_hand_edit_waits_for_migrate.feature`,
 `features/commit/a_crash_leaves_nothing_half_written.feature`,
 `features/commit/status_reads_between_writes.feature`,
-`features/host/one_writer_per_pack.feature`, and
-`features/host/store_failures_name_their_reason.feature`.
+`features/host/one_writer_per_pack.feature`,
+`features/host/store_failures_name_their_reason.feature`, and
+`features/replay/save_reads_name_their_reason.feature`.
 
 ## Replay
 
