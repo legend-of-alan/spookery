@@ -337,7 +337,7 @@ fn both_lines_are_queued_for_the_gm(world: &mut World) {
 
 #[then(expr = "table status lists both queued lines")]
 fn table_status_lists_both_queued_lines(world: &mut World) {
-    let text = table::gm_call(world, 4, "table_status", "{}");
+    let text = table::gm_call(world, 4, "status", "{}");
     for id in ["pc_rowan", "pc_harbormouse"] {
         assert!(text.contains(id), "{text}");
     }
@@ -564,14 +564,9 @@ fn a_round_commits(world: &mut World) {
     }
     let pack = table::pack(world).to_path_buf();
     let before = list_round_keys(&pack).len();
-    let queued = table::gm_call(
-        world,
-        5,
-        "queue_intent",
-        r#"{"actor_id":"aldric","move":"wait"}"#,
-    );
+    let queued = table::gm_call(world, 5, "queue", r#"{"actor_id":"aldric","move":"wait"}"#);
     assert!(queued.contains("\"id\""), "{queued}");
-    let committed = table::gm_call(world, 6, "commit_round", r#"{"include_round":true}"#);
+    let committed = table::gm_call(world, 6, "commit", r#"{"include_round":true}"#);
     assert_eq!(list_round_keys(&pack).len(), before + 1, "{committed}");
 }
 
@@ -627,13 +622,8 @@ fn the_gm_says_a_line_to_the_table(world: &mut World) {
 
 #[then(expr = "{string} hears it and {string} does not")]
 fn hears_it_and_does_not(world: &mut World, seated: String, free: String) {
-    let said: serde_json::Value = serde_json::from_str(&world.scratch)
-        .unwrap_or_else(|err| panic!("say json: {err}: {}", world.scratch));
-    assert_eq!(
-        said["result"]["structuredContent"]["recipients"],
-        serde_json::json!([seated]),
-        "{said}"
-    );
+    let said = table::read_reply(&world.scratch);
+    assert_eq!(said["recipients"], serde_json::json!([seated]), "{said}");
     let _ = table::wait_actor_from(world, &seated, 0, TABLE_LINE);
     let pack = table::pack(world).to_path_buf();
     table::seat_actor(world, &pack, &free);
@@ -641,8 +631,8 @@ fn hears_it_and_does_not(world: &mut World, seated: String, free: String) {
     assert!(!text.contains(TABLE_LINE), "{free} heard the line\n{text}");
 }
 
-#[then(expr = "table_status shows players {int} and actors_present {string}")]
-fn table_status_shows(world: &mut World, players: u32, actor: String) {
+#[then(expr = "status shows players {int} and actors_present {string}")]
+fn status_shows(world: &mut World, players: u32, actor: String) {
     assert_eq!(table::read_presence(world), (players, vec![actor]));
 }
 

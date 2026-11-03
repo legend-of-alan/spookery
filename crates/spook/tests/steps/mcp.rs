@@ -217,8 +217,8 @@ fn gm_holds_over_http(world: &mut World) {
         let running = connect_mcp(http)
             .await
             .unwrap_or_else(|err| panic!("HTTP GM: {err}"));
-        let status = call(&running, "table_status", None).await;
-        assert_not_refused(&status, "table_status");
+        let status = call(&running, "status", None).await;
+        assert_not_refused(&status, "status");
         running
     });
     world.http_gm = Some(holder);
@@ -277,8 +277,8 @@ fn a_gm_can_sit_over_http(world: &mut World) {
 fn try_sit_gm(port: u16) -> Result<(), String> {
     support::block_on(async move {
         let running = connect_mcp(port).await.map_err(|err| format!("{err:?}"))?;
-        let status = call(&running, "table_status", None).await;
-        assert_not_refused(&status, "table_status");
+        let status = call(&running, "status", None).await;
+        assert_not_refused(&status, "status");
         let _ = running.cancel().await;
         Ok(())
     })
@@ -295,10 +295,11 @@ fn the_gm_lists_the_tools(world: &mut World) {
     world.scratch = serde_json::to_string(&tools).unwrap_or_else(|err| panic!("tools: {err}"));
 }
 
-/// One row per shape a tool accepts: a `oneOf` schema has one shape per branch. Each
-/// shape must refuse keys it does not name, so its fields are all a GM may send.
-#[then(expr = "each tool's input schema names the same fields as before")]
-fn each_tool_names_the_same_fields(world: &mut World, step: &Step) {
+/// One row per shape a tool accepts, in the order `tools/list` gives: a `oneOf` schema has
+/// one shape per branch. Each shape must refuse keys it does not name, so its fields are all
+/// a GM may send.
+#[then(expr = "the tools are the GM words, and each input schema names these fields")]
+fn the_tools_are_the_gm_words(world: &mut World, step: &Step) {
     let tools: Vec<Value> =
         serde_json::from_str(&world.scratch).unwrap_or_else(|err| panic!("tools: {err}"));
     let mut shapes = Vec::new();
@@ -347,15 +348,15 @@ fn sort_words<'a>(words: impl Iterator<Item = &'a str>) -> String {
     words.join(" ")
 }
 
-#[then(regex = r#"^a queue_intent call with "actor_id", "move" and "to" is accepted$"#)]
-fn a_queue_intent_call_with_to_is_accepted(world: &mut World) {
+#[then(regex = r#"^a queue call with "actor_id", "move" and "to" is accepted$"#)]
+fn a_queue_call_with_to_is_accepted(world: &mut World) {
     let running = world
         .http_gm
         .as_ref()
         .unwrap_or_else(|| panic!("no GM holds the seat"));
     let arguments = json!({"actor_id": "pc_rowan", "move": "wait", "to": ["pc_wren"]});
-    let queued = support::block_on(call(running, "queue_intent", Some(arguments)));
-    assert_not_refused(&queued, "queue_intent");
+    let queued = support::block_on(call(running, "queue", Some(arguments)));
+    assert_not_refused(&queued, "queue");
 }
 
 #[then(expr = "world time moved forward")]
@@ -394,10 +395,10 @@ async fn exercise_http(port: u16) {
 
 async fn call_each_gm_tool(running: &impl ToolClient) {
     for (name, arguments) in [
-        ("table_status", None),
+        ("status", None),
         ("perceive", Some(json!({"as": "pc_rowan"}))),
         (
-            "queue_intent",
+            "queue",
             Some(json!({
                 "actor_id": "pc_rowan",
                 "move": "wait"
@@ -407,7 +408,7 @@ async fn call_each_gm_tool(running: &impl ToolClient) {
             "say",
             Some(json!({"address": "table", "text": "good evening"})),
         ),
-        ("commit_round", Some(json!({"include_round": true}))),
+        ("commit", Some(json!({"include_round": true}))),
     ] {
         let result = call(running, name, arguments).await;
         assert_not_refused(&result, name);
@@ -453,10 +454,18 @@ fn into_object(value: Value) -> Map<String, Value> {
         .clone()
 }
 
-fn assert_not_refused(result: &CallToolResult, name: &str) {
+/// The reply, the last message in the result, is not a refusal.
+fn assert_not_refused(result: &CallToolResult, word: &str) {
     let body = result.structured_content.clone().unwrap_or(Value::Null);
-    assert!(body.get("code").is_none(), "{name} was refused: {body}");
-    assert_ne!(result.is_error, Some(true), "{name}: {body}");
+    let reply = body["messages"]
+        .as_array()
+        .and_then(|messages| messages.last())
+        .unwrap_or_else(|| panic!("{word} has no reply: {body}"));
+    assert_ne!(
+        reply["body"]["kind"], "refused",
+        "{word} was refused: {body}"
+    );
+    assert_ne!(result.is_error, Some(true), "{word}: {body}");
 }
 
 fn client_config() -> rmcp::model::ClientConfig {
@@ -531,4 +540,101 @@ pub fn post_initialize(port: u16, host: &str, origin: Option<&str>) -> String {
     let mut buf = String::new();
     let _ = stream.read_to_string(&mut buf);
     buf
+}
+
+#[given(expr = "an AI GM on \\/mcp and a plain GM client on WebSocket")]
+fn an_mcp_gm_and_a_websocket_gm(world: &mut World) {
+    let pack = support::copy_docks("parity-mcp");
+    world.pack = Some(pack.clone());
+    table::listen(world, &pack);
+    table::seat_gm(world);
+    let twin = support::copy_docks("parity-ws");
+    let running = table::wait_addrs(table::spawn_table(&twin, &["--addr", "127.0.0.1:0"]));
+    let gm = table::Seat::open(running.game.port(), "gm");
+    table::wait_suffix(&gm.text, 0, "\"kind\":\"hello\"");
+    table::live_mut(world).ws_gm = Some(gm);
+    world.twin = Some((running, twin));
+}
+
+/// Mira stands in her rooms. Travel needs a target, and the shop is down the stairs.
+const TRAVEL_THEN_COMMIT: [(&str, &str); 3] = [
+    ("queue", r#"{"actor_id":"mira","move":"travel"}"#),
+    (
+        "queue",
+        r#"{"actor_id":"mira","move":"travel","target":"docks_shop"}"#,
+    ),
+    ("commit", r#"{"include_round":true}"#),
+];
+
+#[when(expr = "each sends travel for an unheld npc and commits")]
+fn each_sends_travel_and_commits(world: &mut World) {
+    let mut over_mcp = Vec::new();
+    let mut over_ws = Vec::new();
+    for (word, args) in TRAVEL_THEN_COMMIT {
+        let args: Value = serde_json::from_str(args).unwrap_or_else(|err| panic!("{err}"));
+        let live = table::live_mut(world);
+        let gm = live.gm.as_mut().unwrap_or_else(|| panic!("no GM on /mcp"));
+        let messages = support::block_on(gm.call(word, &args))
+            .unwrap_or_else(|err| panic!("{word} over /mcp: {err}"));
+        over_mcp.push(messages.iter().map(|message| json!(message)).collect());
+        let gm = live
+            .ws_gm
+            .as_ref()
+            .unwrap_or_else(|| panic!("no GM on WebSocket"));
+        let mark = gm.mark();
+        let id = gm.send(word, args);
+        gm.wait_reply(&id);
+        let text = support::text_of(&gm.text);
+        over_ws.push(
+            text[mark..]
+                .lines()
+                .map(|line| serde_json::from_str(line).unwrap_or_else(|err| panic!("{err}")))
+                .collect(),
+        );
+    }
+    world.seen = vec![
+        ("/mcp".to_string(), lines_of(over_mcp)),
+        ("WebSocket".to_string(), lines_of(over_ws)),
+    ];
+}
+
+/// Each call's messages as one line each, its reply last. The reply's `reply_to` and an
+/// intent's id are the client's and the table's own, so they are blanked.
+fn lines_of(calls: Vec<Vec<Value>>) -> Vec<String> {
+    calls
+        .into_iter()
+        .map(|mut messages| {
+            for message in &mut messages {
+                if let Some(intent) = message["body"].get_mut("intent") {
+                    *intent = json!("<intent>");
+                }
+            }
+            let reply = messages
+                .last_mut()
+                .and_then(|reply| reply.as_object_mut())
+                .unwrap_or_else(|| panic!("a call got no reply"));
+            assert!(reply.remove("reply_to").is_some(), "{reply:?}");
+            json!(messages).to_string()
+        })
+        .collect()
+}
+
+#[then(expr = "both see the same messages and the same refusals")]
+fn both_see_the_same_messages(world: &mut World) {
+    let [(_, mcp), (_, ws)] = world.seen.as_slice() else {
+        panic!("two GMs did not both send");
+    };
+    assert_eq!(mcp, ws);
+    let kinds: Vec<Value> = mcp
+        .iter()
+        .map(|call| {
+            let messages: Vec<Value> = serde_json::from_str(call).unwrap();
+            messages.last().unwrap()["body"]["kind"].clone()
+        })
+        .collect();
+    assert_eq!(
+        kinds,
+        [json!("refused"), json!("queued"), json!("committed")]
+    );
+    assert!(mcp[2].contains("\"kind\":\"round\""), "{}", mcp[2]);
 }

@@ -64,7 +64,7 @@ fn two_players_play_a_round(world: &mut World) {
     let _ = table::actor_send(world, "pc_harbormouse", "wait", "\"kind\":");
     table::seat_gm(world);
     let _ = table::actor_send(world, "pc_rowan", "wait", "\"kind\":");
-    let _ = table::gm_call(world, 7, "commit_round", r#"{"include_round":true}"#);
+    let _ = table::gm_call(world, 7, "commit", r#"{"include_round":true}"#);
     table::close_actor(world, "pc_harbormouse");
     table::wait_players(world, 1);
     table::close_actor(world, "pc_rowan");

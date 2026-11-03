@@ -109,7 +109,7 @@ fn the_gm_sees_rowan_in(world: &mut World, place: String) {
 
 #[then(expr = "the GM sees nothing queued")]
 fn the_gm_sees_nothing_queued(world: &mut World) {
-    let status = table::call_gm_tool(world, "table_status", "{}");
+    let status = table::call_gm_tool(world, "status", "{}");
     assert_eq!(status["queued"], serde_json::json!([]), "{status}");
 }
 

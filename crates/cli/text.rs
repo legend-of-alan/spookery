@@ -727,8 +727,6 @@ none"
             pack_rev: String::new(),
             last_round_at: String::new(),
             queued,
-            last_seq: 0,
-            events: None,
             pack: None,
         }
     }

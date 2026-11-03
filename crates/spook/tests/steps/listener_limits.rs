@@ -80,7 +80,7 @@ fn the_gm_releases_the_seat(world: &mut World) {
 #[then(expr = "the server confirms the seat is free")]
 fn the_server_confirms_the_seat_is_free(world: &mut World) {
     assert!(
-        world.scratch.contains("\"released\":true"),
+        world.scratch.contains("{\"kind\":\"released\"}"),
         "{}",
         world.scratch
     );
@@ -167,9 +167,9 @@ fn the_player_sends_a_binary_message(world: &mut World) {
     world.player_added = table::wait_player_from(world, mark, "\"code\":\"SCHEMA\"");
 }
 
-#[when(expr = "the GM calls close with a key")]
-fn the_gm_calls_close_with_a_key(world: &mut World) {
-    world.scratch = table::gm_call(world, 91, "close", r#"{"now":true}"#);
+#[when(expr = "the GM calls release with a key")]
+fn the_gm_calls_release_with_a_key(world: &mut World) {
+    world.scratch = table::gm_call(world, 91, "release", r#"{"now":true}"#);
 }
 
 #[then(expr = "that call is refused with {string}")]
@@ -180,7 +180,7 @@ fn that_call_is_refused_with(world: &mut World, code: String) {
         world.scratch
     );
     assert!(
-        !world.scratch.contains("\"released\":true"),
+        !world.scratch.contains("{\"kind\":\"released\"}"),
         "{}",
         world.scratch
     );

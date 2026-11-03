@@ -317,7 +317,7 @@ fn listen_and_seat_both(world: &mut World, pack: &Path) {
 
 fn queue_mira(world: &mut World, move_name: &str) {
     let args = format!(r#"{{"actor_id":"mira","move":"{move_name}"}}"#);
-    let text = table::gm_call(world, 4, "queue_intent", &args);
+    let text = table::gm_call(world, 4, "queue", &args);
     assert!(text.contains("\"id\""), "{text}");
     assert!(!text.contains("UNKNOWN_ID"), "{text}");
 }

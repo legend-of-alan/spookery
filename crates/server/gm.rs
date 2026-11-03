@@ -1,16 +1,12 @@
-//! The GM words: each word's run, and the MCP tool each one is listed as.
+//! The GM words, and how each one runs.
 
-use std::sync::Arc;
-
-use rmcp::handler::server::tool::schema_for_type;
 use serde_json::{Map, Value};
 use spookery_engine::{Address, Presence, Reason, RoundOutput, TapeRecord, World};
 
 use super::frames;
 use super::table::commit_then_fast_forward;
 use crate::protocol::{
-    self, parse_args, CloseArgs, CommitArgs, PerceiveArgs, SayArgs, ServerBody, StatusArgs,
-    PERCEIVE_BODY_CHARS,
+    self, parse_args, CommitArgs, NoArgs, PerceiveArgs, SayArgs, ServerBody, PERCEIVE_BODY_CHARS,
 };
 
 /// Sent from a GM word's run back to the table, which answers the GM and updates seats.
@@ -40,62 +36,6 @@ impl Reply {
         Self::new(ServerBody::Refused(code.into()))
     }
 }
-
-/// One MCP tool, in `tools/list` order: the GM word it runs, its description and schema.
-/// Any other name is `NOT_IN_SPEC` and writes nothing.
-pub(super) struct Tool {
-    pub(super) name: &'static str,
-    pub(super) word: &'static str,
-    pub(super) about: &'static str,
-    pub(super) schema: fn() -> Arc<Map<String, Value>>,
-}
-
-const SEAT_NOTES: &str = "Player mechanical lines stay queued until commit_round. say appends speech and does not tick. perceive requires as set to an actor id. When a notification does not arrive, table_status with since returns player speech and the queue.";
-
-impl Tool {
-    pub(super) fn description(&self) -> String {
-        format!("{} {}", self.about, SEAT_NOTES)
-    }
-}
-
-pub(super) const TOOLS: &[Tool] = &[
-    Tool {
-        name: "table_status",
-        word: "status",
-        about: "table_status takes no required key. An empty object stays legal. since is the only other accepted key.",
-        schema: schema_for_type::<StatusArgs>,
-    },
-    Tool {
-        name: "perceive",
-        word: "perceive",
-        about: "perceive requires as. max_body_chars may be sent. A missing as is UNSCOPED_PERCEIVE.",
-        schema: schema_for_type::<PerceiveArgs>,
-    },
-    Tool {
-        name: "queue_intent",
-        word: "queue",
-        about: "queue_intent requires actor_id and move. A habit row is legal when actor_id is an npc.",
-        schema: schema_for_type::<protocol::IntentArgs>,
-    },
-    Tool {
-        name: "say",
-        word: "say",
-        about: "say requires address and text. place is required when address is place. actor is required when address is actor. table takes neither place nor actor. A supplied from is SCHEMA.",
-        schema: schema_for_type::<SayArgs>,
-    },
-    Tool {
-        name: "commit_round",
-        word: "commit",
-        about: "commit_round requires include_round. session_id may be a string.",
-        schema: schema_for_type::<CommitArgs>,
-    },
-    Tool {
-        name: "close",
-        word: "release",
-        about: "close takes no keys. The result is sent after this GM seat is free.",
-        schema: schema_for_type::<CloseArgs>,
-    },
-];
 
 /// Run one GM word. `presence` is who the seats hold. A word that is not a GM word is
 /// `SCHEMA`.
@@ -136,7 +76,7 @@ fn say(
 }
 
 fn release(arguments: Option<&Map<String, Value>>) -> Result<Reply, Reason> {
-    parse_args::<CloseArgs>(arguments).map_err(|_| Reason::Schema)?;
+    parse_args::<NoArgs>(arguments).map_err(|_| Reason::Schema)?;
     Ok(Reply {
         release_seat: true,
         ..Reply::new(ServerBody::Released)
@@ -204,21 +144,12 @@ fn status(
     presence: &Presence,
     arguments: Option<&Map<String, Value>>,
 ) -> Result<Reply, Reason> {
-    let since = parse_args::<StatusArgs>(arguments)
-        .map_err(|_| Reason::Schema)?
-        .since;
-    let events = match since {
-        Some(since) => Some(world.tape_after(since)?),
-        None => None,
-    };
-    let last_seq = world.last_tape_seq()?;
+    parse_args::<NoArgs>(arguments).map_err(|_| Reason::Schema)?;
     Ok(Reply::new(frames::render_status(
         world.state(),
         presence,
         world.queued_intents(),
-        last_seq,
-        events.as_deref(),
-        since.is_none().then(|| world.pack_summary()),
+        world.pack_summary(),
     )))
 }
 
@@ -241,32 +172,31 @@ mod tests {
 
     use spookery_engine::{Presence, Reason};
 
-    use super::{run_gm_word, TOOLS};
+    use super::run_gm_word;
     use crate::protocol::{QueuedMove, Seat, WORDS};
 
-    /// Each MCP tool runs a GM word the hello lists, each GM word has one tool, and
-    /// `run_gm_word` runs each one: well-formed arguments are not `SCHEMA`.
+    /// `run_gm_word` runs each GM word the hello lists: well-formed arguments are not
+    /// `SCHEMA`, and a word that is not one is.
     #[test]
-    fn the_tools_are_the_gm_words() {
-        let mut tools: Vec<&str> = TOOLS.iter().map(|tool| tool.word).collect();
-        let mut words: Vec<&str> = WORDS
-            .iter()
-            .filter(|word| word.seat == Seat::Gm)
-            .map(|word| word.name)
-            .collect();
-        tools.sort_unstable();
-        words.sort_unstable();
-        assert_eq!(tools, words);
-        let pack = copy_pack("oneshot-docks", "tools_words");
+    fn each_gm_word_runs() {
+        let pack = copy_pack("oneshot-docks", "gm_words");
         let mut world = spookery_engine::testing::resume(&pack);
-        for (word, args) in [
+        let calls = [
             ("status", json!({})),
             ("perceive", json!({"as": "pc_rowan"})),
             ("queue", json!({"actor_id": "pc_rowan", "move": "wait"})),
             ("say", json!({"address": "table", "text": "hi"})),
             ("commit", json!({"include_round": false})),
             ("release", json!({})),
-        ] {
+        ];
+        let gm_words: Vec<&str> = WORDS
+            .iter()
+            .filter(|word| word.seat == Seat::Gm)
+            .map(|word| word.name)
+            .collect();
+        let called: Vec<&str> = calls.iter().map(|(word, _)| *word).collect();
+        assert_eq!(called, gm_words);
+        for (word, args) in calls {
             let args = args.as_object().cloned().unwrap_or_default();
             let ran = run_gm_word(&mut world, &Presence::default(), word, &args);
             assert!(!matches!(ran, Err(Reason::Schema)), "{word}");
@@ -279,7 +209,7 @@ mod tests {
 
     #[test]
     fn parsed_intent_reaches_the_world_with_move_and_to() {
-        let pack = copy_pack("oneshot-docks", "tools_intent");
+        let pack = copy_pack("oneshot-docks", "gm_intent");
         let mut world = World::open(&pack).unwrap();
         let args = json!({"actor_id": "pc_rowan", "move": "wait", "to": ["pc_wren"]});
         let call = crate::protocol::parse_args(args.as_object()).unwrap();

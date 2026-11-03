@@ -49,7 +49,7 @@ pub enum Step {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Error {
     /// The `status` reply has no pack summary: a server built before the summary moved
-    /// onto `table_status`.
+    /// onto `status`.
     OlderServer,
     /// The table refused the `status` the agent sits with. Display is the refusal's body.
     Refused(Refusal),
@@ -388,9 +388,9 @@ impl Agent {
 mod tests {
     use super::*;
 
-    const QUEUED_STATUS: &str = r#"{"kind":"status","presence":{"players":1,"actors_present":["pc"]},"pause":{"presence_clocks":"running"},"world_time":0,"round_index":0,"state_rev":1,"pack_rev":"p","last_round_at":"","queued":[{"id":"q1","actor_id":"pc","move":"wait"}],"last_seq":1,"pack":{"menu":[],"kinds":{"pc":"pc_template"},"places":{},"cast":{}}}"#;
-    const EMPTY_STATUS: &str = r#"{"kind":"status","presence":{"players":1,"actors_present":["pc"]},"pause":{"presence_clocks":"running"},"world_time":0,"round_index":0,"state_rev":1,"pack_rev":"p","last_round_at":"","queued":[],"last_seq":1,"pack":{"menu":[],"kinds":{"pc":"pc_template"},"places":{},"cast":{}}}"#;
-    const OLD_STATUS: &str = r#"{"kind":"status","presence":{"players":1,"actors_present":["pc"]},"pause":{"presence_clocks":"running"},"world_time":0,"round_index":0,"state_rev":1,"pack_rev":"p","last_round_at":"","queued":[],"last_seq":1}"#;
+    const QUEUED_STATUS: &str = r#"{"kind":"status","presence":{"players":1,"actors_present":["pc"]},"pause":{"presence_clocks":"running"},"world_time":0,"round_index":0,"state_rev":1,"pack_rev":"p","last_round_at":"","queued":[{"id":"q1","actor_id":"pc","move":"wait"}],"pack":{"menu":[],"kinds":{"pc":"pc_template"},"places":{},"cast":{}}}"#;
+    const EMPTY_STATUS: &str = r#"{"kind":"status","presence":{"players":1,"actors_present":["pc"]},"pause":{"presence_clocks":"running"},"world_time":0,"round_index":0,"state_rev":1,"pack_rev":"p","last_round_at":"","queued":[],"pack":{"menu":[],"kinds":{"pc":"pc_template"},"places":{},"cast":{}}}"#;
+    const OLD_STATUS: &str = r#"{"kind":"status","presence":{"players":1,"actors_present":["pc"]},"pause":{"presence_clocks":"running"},"world_time":0,"round_index":0,"state_rev":1,"pack_rev":"p","last_round_at":"","queued":[]}"#;
     const VIEW: &str = r#"{"kind":"view","viewer":"pc","place":"docks","visible_actors":["pc"],"known_facts":[],"notes":[],"unknown_mentions":[],"clocks":[],"items":[],"habits":[]}"#;
     const COMMITTED: &str = r#"{"kind":"committed","state_rev":2,"changed_keys":[],"journal_path":null,"rolls":[{"faces":[6,6],"stat":1,"total":13,"target":10,"outcome":"success"}]}"#;
     const ROUND: &str = r#"{"kind":"round","round_index":1,"world_time":5}"#;
