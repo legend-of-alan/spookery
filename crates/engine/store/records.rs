@@ -73,7 +73,7 @@ pub struct Arrival {
 
 /// One round line. `state_hash` is stamped after the save bytes exist, so a line
 /// that has not been stamped omits it.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RoundRecord {
     pub round_index: u64,
@@ -194,4 +194,13 @@ impl Record {
     pub fn changes_state(&self) -> bool {
         !matches!(self, Self::Checkpoint(_))
     }
+}
+
+/// Flat effect object. Key order is `kind`, `as`, `intent_id`, then payload fields.
+pub fn emit_effect(effect: &Effect) -> String {
+    serde_json::to_string(effect).expect("effect json")
+}
+
+pub(crate) fn emit_memory_line(line: &MemoryLine) -> String {
+    serde_json::to_string(line).expect("memory line")
 }

@@ -1,8 +1,5 @@
-//! What a round writes down, and the round's half of a journal line.
+//! What a round writes down.
 
-use crate::intent::Intent;
-use crate::model::Presence;
-use crate::round::stage::advance::RoundTime;
 use crate::rules::effect::Effect;
 use crate::rules::gate;
 use crate::rules::roll::{MoveReport, Roll};
@@ -27,16 +24,4 @@ impl RoundLog {
             roll,
         }));
     }
-}
-
-/// The round's half of a journal line. `store::commit` seals it into a `RoundRecord`.
-pub(crate) struct PlayedRound {
-    pub clock: RoundTime,
-    pub presence: Presence,
-    pub seed: String,
-    pub last_round_at: String,
-    pub fast_forward: bool,
-    pub log: RoundLog,
-    /// The journal's `intents`: the queue the round was given.
-    pub intents: Vec<Intent>,
 }

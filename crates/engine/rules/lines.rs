@@ -195,7 +195,7 @@ mod tests {
     fn help_and_look_name_the_shop() {
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packs/oneshot-docks");
         let canon = crate::canon::load_canon(&root).unwrap();
-        let state = crate::store::codec::parse_save(
+        let state = crate::store::save::parse_save(
             &fs::read_to_string(root.join("state/save.yaml")).unwrap(),
         )
         .unwrap();

@@ -23,7 +23,6 @@ mod meters;
 mod pack;
 mod place;
 mod rule_list;
-mod save;
 mod source;
 mod story;
 
@@ -33,16 +32,15 @@ use cast::add_cast;
 use checks::load_checks;
 use fact::Facts;
 use item::add_item;
-pub(crate) use lint::check_canon;
 use lint::{
     broken_exits, resist_same_without_roll, reveal_problems, unknown_checks, unknown_meters,
     unknown_reads, unknown_rule_items,
 };
+pub(crate) use lint::{check_canon, check_save};
 use meters::load_meters;
 use pack::load_pack_yaml;
 use place::add_place;
 use rule_list::load_verbs;
-pub(crate) use save::{check_save, migrate_save, missing_meters};
 use source::{collect_files, collect_markdown_files, read_text, Diags, FileText, Locator};
 use story::load_stories;
 

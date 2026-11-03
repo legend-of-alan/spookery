@@ -121,13 +121,8 @@ pub(crate) fn play_round(
     wall: &str,
     fast_forward: bool,
 ) -> Result<RoundOutput, Reason> {
-    let StagedRound {
-        draft,
-        clock,
-        log,
-        delivered,
-    } = run_stages(world, presence, wall, world.queued_intents())?;
-    record::run(world, draft, wall, clock, log, delivered, fast_forward)
+    let staged = run_stages(world, presence, wall, world.queued_intents())?;
+    record::run(world, staged, wall, fast_forward)
 }
 
 /// Play the queue a journal line kept, in memory, with the seats it recorded.
@@ -150,11 +145,11 @@ pub(crate) fn replay_round(
 
 /// What the stages leave for `record`: the staged save, the round's time, its log, and what
 /// each seat hears.
-struct StagedRound<'p> {
-    draft: Draft<'p>,
-    clock: RoundTime,
-    log: RoundLog,
-    delivered: deliver::Deliveries,
+pub(crate) struct StagedRound<'p> {
+    pub(crate) draft: Draft<'p>,
+    pub(crate) clock: RoundTime,
+    pub(crate) log: RoundLog,
+    pub(crate) delivered: deliver::Deliveries,
 }
 
 /// Every stage but `record`, in order. The canon is cloned once: the candidates' rules borrow

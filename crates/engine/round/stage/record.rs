@@ -1,13 +1,13 @@
 //! Write the round line and commit a live round.
 
-use crate::draft::Draft;
+use crate::store::journal::RoundRecord;
+use crate::store::{commit, RULES_REV};
 use crate::world::World;
 use crate::Reason;
 
 use crate::round::dice::round_seed;
-use crate::round::log::{PlayedRound, RoundLog};
-use crate::round::play::RoundOutput;
-use crate::round::stage::advance::RoundTime;
+use crate::round::log::RoundLog;
+use crate::round::play::{RoundOutput, StagedRound};
 use crate::round::stage::deliver::Deliveries;
 
 /// What the round showed. A live round adds its commit outcome.
@@ -26,24 +26,41 @@ pub(crate) fn take_output(log: &mut RoundLog, delivered: Deliveries) -> RoundOut
 /// Write the round line and commit it. The World owns the pack lock.
 pub(crate) fn run(
     world: &mut World,
-    draft: Draft,
+    staged: StagedRound,
     wall: &str,
-    clock: RoundTime,
-    mut log: RoundLog,
-    delivered: Deliveries,
     fast_forward: bool,
 ) -> Result<RoundOutput, Reason> {
-    let mut output = take_output(&mut log, delivered);
-    let line = PlayedRound {
-        presence: draft.presence.clone(),
-        seed: round_seed(&draft.state().world_id, clock.round_index),
+    let StagedRound {
+        draft,
         clock,
+        mut log,
+        delivered,
+    } = staged;
+    let mut output = take_output(&mut log, delivered);
+    let record = RoundRecord {
+        round_index: clock.round_index,
+        rules_rev: RULES_REV,
+        state_rev_before: 0,
+        state_rev_after: 0,
+        world_time_before: clock.world_time_before,
+        world_time_after: clock.world_time_after,
+        presence_players: draft.presence.players,
+        actors_present: draft.presence.actors_present.clone(),
+        seed: round_seed(&draft.state().world_id, clock.round_index),
         last_round_at: wall.to_string(),
-        fast_forward,
-        log,
         intents: world.queued_intents().to_vec(),
+        refused: log.refused,
+        effects: log.effects,
+        arrivals: log.arrivals,
+        fast_forward,
+        dice: log.dice,
+        extra_steps: log.extra_steps,
+        memories: Vec::new(),
+        state_hash: String::new(),
+        prev: String::new(),
+        chain: String::new(),
     };
-    output.commit = Some(crate::store::commit::commit(world, draft, line)?);
+    output.commit = Some(commit::commit(world, draft, record)?);
     Ok(output)
 }
 
@@ -67,29 +84,10 @@ mod tests {
             intent_id: "i".to_string(),
         };
         let line = emit_record(&Record::Round(RoundRecord {
-            round_index: 1,
-            rules_rev: crate::store::RULES_REV,
-            state_rev_before: 0,
-            state_rev_after: 1,
-            world_time_before: 0,
-            world_time_after: 60,
-            presence_players: 0,
-            actors_present: Vec::new(),
-            seed: "seed".to_string(),
-            last_round_at: "2026-01-01T00:00:00Z".to_string(),
-            intents: Vec::new(),
-            refused: Vec::new(),
             effects: vec![effect.clone()],
-            arrivals: Vec::new(),
-            fast_forward: false,
-            dice: Vec::new(),
-            extra_steps: Vec::new(),
-            memories: Vec::new(),
-            state_hash: String::new(),
-            prev: String::new(),
-            chain: String::new(),
+            ..Default::default()
         }));
-        let encoded = crate::store::codec::emit_effect(&effect);
+        let encoded = crate::store::records::emit_effect(&effect);
         assert!(line.contains(&encoded), "{line}");
         assert!(!line.contains("\"payload\""));
     }
