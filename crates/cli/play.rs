@@ -1,4 +1,5 @@
 //! The human player: claims a PC, turns typed lines into words, and prints each message.
+//! Quitting releases the PC. A dropped connection dials again and takes it back by token.
 
 use std::io::{self, Write};
 use std::net::SocketAddr;
@@ -11,7 +12,11 @@ use crate::ws::Connection;
 use crate::Error;
 
 pub async fn run(pc: Option<&str>, addr: SocketAddr, raw: bool) -> Result<(), Error> {
-    let mut player_text = text::PlayerText::new();
+    let mut screen = Screen {
+        text: text::PlayerText::new(),
+        raw,
+        last_seq: 0,
+    };
     let mut input = crate::stdin_lines();
     let (mut seat, hello) = Connection::open(addr, "player").await?;
     let (words, open) = match hello {
@@ -36,30 +41,27 @@ pub async fn run(pc: Option<&str>, addr: SocketAddr, raw: bool) -> Result<(), Er
             }
         },
     };
-    let claim = seat.send("claim", json!({ "actor": actor })).await?;
-    // The claim's reply, its scrollback and the first view. A refused claim ends play.
-    let mut here = loop {
-        let Some(message) = seat.recv().await.transpose()? else {
-            return Err(Error::Message("NOT_IN_SPEC".into()));
-        };
-        if let Some(shown) = show(&mut player_text, &message, raw) {
-            if message.reply_to.as_deref() == Some(claim.as_str()) {
-                return Err(Error::Message(shown));
-            }
-            eprintln!("{shown}");
-        }
-        if let ServerBody::View(view) = message.body {
-            break *view;
-        }
-    };
+    let (mut here, mut token) =
+        take_claim(&mut seat, json!({ "actor": actor }), &mut screen).await?;
     loop {
         tokio::select! {
             message = seat.recv() => {
-                let Some(message) = message.transpose()? else {
-                    eprintln!("host closed");
-                    return Ok(());
+                let message = match message {
+                    Some(Ok(message)) => message,
+                    Some(Err(Error::Io(_))) | None => {
+                        // The table dropped this connection, or `spook run` stopped.
+                        let Ok((next, _)) = Connection::open(addr, "player").await else {
+                            eprintln!("host closed");
+                            return Ok(());
+                        };
+                        seat = next;
+                        let args = json!({ "token": token, "after": screen.last_seq });
+                        (here, token) = take_claim(&mut seat, args, &mut screen).await?;
+                        continue;
+                    }
+                    Some(Err(err)) => return Err(err),
                 };
-                if let Some(shown) = show(&mut player_text, &message, raw) {
+                if let Some(shown) = screen.show(&message) {
                     eprintln!("{shown}");
                     let _ = io::stderr().flush();
                 }
@@ -67,13 +69,13 @@ pub async fn run(pc: Option<&str>, addr: SocketAddr, raw: bool) -> Result<(), Er
                     here = *view;
                 }
             }
+            _ = tokio::signal::ctrl_c() => return release(&mut seat).await,
             typed = input.recv() => {
                 let Some(typed) = typed else {
-                    return Ok(());
+                    return release(&mut seat).await;
                 };
                 if typed.trim() == "close" {
-                    seat.send("release", json!({})).await?;
-                    return Ok(());
+                    return release(&mut seat).await;
                 }
                 let Some((word, args)) = parse_typed(&typed, &here) else {
                     continue;
@@ -87,6 +89,86 @@ pub async fn run(pc: Option<&str>, addr: SocketAddr, raw: bool) -> Result<(), Er
                 seat.send(word, args).await?;
             }
         }
+    }
+}
+
+/// Sends `claim` with `args` and prints its reply, what it missed, and the first view.
+/// Returns that view and the claim's token. A refused claim ends play.
+async fn take_claim(
+    seat: &mut Connection,
+    args: Value,
+    screen: &mut Screen,
+) -> Result<(protocol::View, String), Error> {
+    let claim = seat.send("claim", args).await?;
+    let mut token = String::new();
+    loop {
+        let Some(message) = seat.recv().await.transpose()? else {
+            return Err(Error::Message("NOT_IN_SPEC".into()));
+        };
+        if let Some(shown) = screen.show(&message) {
+            if message.reply_to.as_deref() == Some(claim.as_str()) {
+                return Err(Error::Message(shown));
+            }
+            eprintln!("{shown}");
+        }
+        match message.body {
+            ServerBody::Claimed {
+                token: held,
+                missed,
+                ..
+            } => {
+                token = held;
+                for missed in &missed {
+                    if let Some(shown) = screen.show(missed) {
+                        eprintln!("{shown}");
+                    }
+                }
+            }
+            ServerBody::View(view) => return Ok((*view, token)),
+            _ => {}
+        }
+    }
+}
+
+/// Gives the PC back, and waits for the table to say so, so the PC is free once play ends.
+/// A table that is already gone holds nothing to give back.
+async fn release(seat: &mut Connection) -> Result<(), Error> {
+    let Ok(id) = seat.send("release", json!({})).await else {
+        return Ok(());
+    };
+    while let Some(Ok(message)) = seat.recv().await {
+        if message.reply_to.as_deref() == Some(id.as_str()) {
+            break;
+        }
+    }
+    Ok(())
+}
+
+/// What play prints, and the last `seq` it read, so a reconnect asks for what came after.
+struct Screen {
+    text: text::PlayerText,
+    raw: bool,
+    last_seq: u64,
+}
+
+impl Screen {
+    /// Print one message. A refusal is returned instead, as the line to show on stderr: its
+    /// code in raw mode, its sentence in text mode.
+    fn show(&mut self, message: &ServerMessage) -> Option<String> {
+        self.last_seq = self.last_seq.max(message.seq.unwrap_or(0));
+        if let ServerBody::Refused(refusal) = &message.body {
+            return Some(text::render_refusal(refusal, self.raw));
+        }
+        let shown = if self.raw {
+            message.to_text()
+        } else {
+            self.text.render(&message.body)
+        };
+        if !shown.is_empty() {
+            println!("{shown}");
+            let _ = io::stdout().flush();
+        }
+        None
     }
 }
 
@@ -122,24 +204,6 @@ fn parse_typed<'l>(line: &'l str, here: &protocol::View) -> Option<(&'l str, Val
         return Some((word, json!({})));
     }
     Some((word, json!({ "target": rest })))
-}
-
-/// Print one message. A refusal is returned instead, as the line to show on stderr: its
-/// code in raw mode, its sentence in text mode.
-fn show(player_text: &mut text::PlayerText, message: &ServerMessage, raw: bool) -> Option<String> {
-    if let ServerBody::Refused(refusal) = &message.body {
-        return Some(text::render_refusal(refusal, raw));
-    }
-    let shown = if raw {
-        message.to_text()
-    } else {
-        player_text.render(&message.body)
-    };
-    if !shown.is_empty() {
-        println!("{shown}");
-        let _ = io::stdout().flush();
-    }
-    None
 }
 
 #[cfg(test)]

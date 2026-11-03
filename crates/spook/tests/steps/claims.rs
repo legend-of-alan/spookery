@@ -1,10 +1,13 @@
 //! A claim's token: a dropped player takes its PC back and catches up on what it missed.
 
+use std::io::Write;
+
 use cucumber::{given, then, when};
 use serde_json::{json, Value};
 
 use crate::World;
 
+use super::common;
 use super::table::{self, PlayerClient, Seat};
 
 /// Opens a player connection and claims Rowan. `scratch` keeps the token and `mark` the
@@ -162,4 +165,44 @@ fn seq_of(message: &Value) -> u64 {
     message["seq"]
         .as_u64()
         .unwrap_or_else(|| panic!("no seq\n{message}"))
+}
+
+#[when(expr = "play's input ends")]
+fn plays_input_ends(world: &mut World) {
+    let play = world.play.as_mut().unwrap_or_else(|| panic!("no play"));
+    drop(play.stdin.take());
+}
+
+#[then(expr = "play exits 0")]
+fn play_exits_0(world: &mut World) {
+    let play = world.play.as_mut().unwrap_or_else(|| panic!("no play"));
+    let status = play
+        .child
+        .wait()
+        .unwrap_or_else(|err| panic!("wait play: {err}"));
+    assert!(status.success(), "{status:?}");
+}
+
+#[then(expr = "a new player can claim rowan")]
+fn a_new_player_can_claim_rowan(world: &mut World) {
+    let reply = parse(&table::claim(world, "pc_rowan"));
+    assert_eq!(reply["body"]["kind"], "claimed", "{reply}");
+}
+
+/// A say past the 64 KiB message cap, so the table drops play's connection.
+#[when(expr = "play says a line over the message cap")]
+fn play_says_a_line_over_the_cap(world: &mut World) {
+    let line = format!("say {}", "n".repeat(70 * 1024));
+    let play = world.play.as_mut().unwrap_or_else(|| panic!("no play"));
+    let stdin = play.stdin.as_mut().unwrap_or_else(|| panic!("play stdin"));
+    writeln!(stdin, "{line}").unwrap_or_else(|err| panic!("write play: {err}"));
+    stdin
+        .flush()
+        .unwrap_or_else(|err| panic!("flush play: {err}"));
+}
+
+#[then(expr = "play shows the shop again as rowan")]
+fn play_shows_the_shop_again(world: &mut World) {
+    let shown = |stdout: &str| stdout.matches("You are in").count() >= 2;
+    common::wait_play_until(world, shown, "a second view");
 }

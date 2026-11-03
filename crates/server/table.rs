@@ -294,7 +294,7 @@ impl Table {
         // The reply goes out before this connection drives the claim, so no catch-up
         // carries it.
         self.reply(conn, id, claimed);
-        if let Some(claim) = self.seats.claim_mut(&token) {
+        if let Some(claim) = self.seats.claim_by_token_mut(&token) {
             claim.conn = Some(conn);
         }
         self.notify(conn, resume);
@@ -333,7 +333,10 @@ impl Table {
         token: &str,
         after: u64,
     ) -> Result<(String, String, ServerBody), Reason> {
-        let claim = self.seats.claim_mut(token).ok_or(Reason::UnknownId)?;
+        let claim = self
+            .seats
+            .claim_by_token_mut(token)
+            .ok_or(Reason::UnknownId)?;
         claim.conn = None;
         let (missed, gap) = claim.list_after(after);
         let claimed = ServerBody::Claimed {
@@ -490,7 +493,7 @@ impl Table {
     }
 
     fn wake(&mut self) -> Result<(), Reason> {
-        // A seated table plays its own rounds.
+        // A seated table plays its own rounds. A claim whose connection dropped still seats it.
         if !self.seats.claims.is_empty() || self.seats.gm.is_some() {
             return Ok(());
         }
@@ -629,7 +632,7 @@ impl Table {
     /// Sends to the connection that drives the claim. With none, the claim keeps the
     /// message for a reconnect.
     fn send_to_claim(&mut self, token: &str, message: ServerMessage) {
-        let Some(claim) = self.seats.claim_mut(token) else {
+        let Some(claim) = self.seats.claim_by_token_mut(token) else {
             return;
         };
         match claim.conn {

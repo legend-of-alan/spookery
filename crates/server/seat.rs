@@ -61,7 +61,7 @@ impl Seats {
     }
 
     /// The claim `token` names.
-    pub(super) fn claim_mut(&mut self, token: &str) -> Option<&mut Claim> {
+    pub(super) fn claim_by_token_mut(&mut self, token: &str) -> Option<&mut Claim> {
         self.claims.iter_mut().find(|claim| claim.token == token)
     }
 

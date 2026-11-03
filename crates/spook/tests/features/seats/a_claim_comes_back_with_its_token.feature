@@ -29,3 +29,17 @@ Feature: A claim comes back with its token
     When the connection drops without release and 300 server messages pass
     And the player reconnects with token t1
     Then it holds rowan again with a gap and the newest 256 messages
+
+  Scenario: A player who quits play gives rowan back
+    Given a docks table
+    When play joins the table on a free loopback address
+    And play's input ends
+    Then play exits 0
+    And a new player can claim rowan
+
+  Scenario: Play takes rowan back after the table drops its connection
+    Given a docks table
+    When play joins the table on a free loopback address
+    And play says a line over the message cap
+    Then play shows the shop again as rowan
+    And table_status shows players 1 and actors_present "pc_rowan"
