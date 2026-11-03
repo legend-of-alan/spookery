@@ -788,6 +788,70 @@ fn a_clock_owned_by_nell_ticks(world: &mut World) {
     );
 }
 
+#[given(expr = "Mira has a habit that advances the {string} clock, which pc_rowan owns")]
+fn mira_has_a_clock_habit(world: &mut World, clock: String) {
+    let pack = copy_docks("habit-clock");
+    replace_in_file(
+        &pack.join("cast/mira.md"),
+        "rules:\n  - id: leave_door_note\n",
+        &format!("rules:\n  - id: mark_restock\n    when: habit\n    do:\n      - clock:\n          id: {clock}\n          add: 1\n  - id: leave_door_note\n"),
+    );
+    edit_table(world, &pack, |now, _| {
+        now.clocks.insert(
+            clock,
+            Clock {
+                value: 0,
+                max: 6,
+                requires_presence: false,
+                owners: vec!["pc_rowan".to_string()],
+                paused: false,
+            },
+        );
+    });
+    world.pack = Some(pack);
+}
+
+#[given(expr = "pc_rowan and pc_wren are seated in the shop with Mira")]
+fn rowan_and_wren_are_seated_with_mira(world: &mut World) {
+    let pack = world.pack.clone().unwrap();
+    edit_table(world, &pack, |now, seated| {
+        set_place(now, "mira", "docks_shop");
+        set_place(now, "pc_wren", "docks_shop");
+        sit(seated, &["pc_rowan", "pc_wren"]);
+    });
+}
+
+#[when(expr = "the GM queues Mira's {string} habit and commits")]
+fn the_gm_queues_miras_habit(world: &mut World, habit: String) {
+    let pack = world.pack.clone().unwrap();
+    play_and_keep_summaries(world, pack, vec![intent("gm-habit", "mira", &habit, None)]);
+}
+
+#[when(expr = "an empty round passes")]
+fn an_empty_round_passes(world: &mut World) {
+    let pack = world.pack.clone().unwrap();
+    play_and_keep_summaries(world, pack, Vec::new());
+}
+
+#[then(expr = "the round's only refusal is {string}")]
+fn the_rounds_only_refusal_is(world: &mut World, code: String) {
+    let round = read_latest_round(world.pack.as_ref().unwrap());
+    let codes: Vec<&str> = round["refused"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|refusal| refusal["code"].as_str())
+        .collect();
+    assert_eq!(codes, vec![code.as_str()], "{round}");
+}
+
+#[then(expr = "the {string} clock is at {int}")]
+fn the_clock_is_at(world: &mut World, clock: String, value: i64) {
+    let now = state_of(world.pack.as_ref().unwrap());
+    let found = now.clocks.get(&clock).map(|clock| clock.value);
+    assert_eq!(found, Some(value), "clocks: {:?}", now.clocks);
+}
+
 #[when(expr = "pc_nell travels from docks_street into docks_shop")]
 fn nell_travels_from_the_street_into_the_shop(world: &mut World) {
     let pack = copy_docks("trigger-both-rooms");

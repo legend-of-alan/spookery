@@ -117,12 +117,15 @@ attack. With nothing wielded, the shared attack runs. Typing a full rule id is
 refused and the save stays put. A note addressed to someone present runs before
 an unclaimed wait, even if the wait was queued first. So does a move through an
 exit into a seated player's room. An NPC habit stays quiet while a player shares
-the room. The GM can still queue it.
+the room. The GM can still queue it, and a GM-queued habit is checked the same
+as one the engine runs. Only a clock's owner advances it, so a habit that
+advances a clock its NPC does not own is refused `UNKNOWN_ID` either way.
 
 Tested in `features/round/a_rules_effects_are_all_or_nothing.feature`,
 `features/round/a_broken_roll_target_refuses_one_move.feature`,
 `features/round/apply_pays_the_rule_that_rolled.feature`,
 `features/rules/rules_live_with_their_owner.feature`,
+`features/rules/a_gm_queued_habit_is_judged_like_the_engines.feature`,
 `features/items/items_are_real.feature`, and
 `features/habits/the_shop_restocks_and_a_busy_npc_skips.feature`.
 
