@@ -121,7 +121,7 @@ pub struct ActorLive {
     pub act: Act,
 }
 
-/// Whether a live actor is a PC or an NPC. Only a PC records places in `visited`.
+/// Whether a live actor is a PC or an NPC.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ActorKind {
@@ -136,7 +136,7 @@ impl ActorLive {
     }
 
     pub(crate) fn visit(&mut self, place: &str) -> bool {
-        if self.kind == ActorKind::Npc || self.visited.iter().any(|id| id == place) {
+        if self.visited.iter().any(|id| id == place) {
             return false;
         }
         self.visited.push(place.to_string());
