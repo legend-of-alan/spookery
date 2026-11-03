@@ -401,6 +401,22 @@ fn the_save_snapshot_is_removed(world: &mut World) {
     fs::remove_file(&path).unwrap();
 }
 
+/// A directory where the save was, so reading it fails on every platform.
+fn make_unreadable(save: &std::path::Path) {
+    fs::remove_file(save).unwrap_or_else(|err| panic!("remove save: {err}"));
+    fs::create_dir(save).unwrap_or_else(|err| panic!("save dir: {err}"));
+}
+
+#[when(expr = "the save cannot be read")]
+fn the_save_cannot_be_read(world: &mut World) {
+    make_unreadable(&table::pack(world).join("state/save.yaml"));
+}
+
+#[when(expr = "the copied save cannot be read")]
+fn the_copied_save_cannot_be_read(world: &mut World) {
+    make_unreadable(&std::path::Path::new(&world.scratch).join("state/save.yaml"));
+}
+
 #[when(expr = "the operator rebuilds the save")]
 fn the_operator_rebuilds_the_save(world: &mut World) {
     resume_as_writer(table::pack(world));
