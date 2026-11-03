@@ -213,7 +213,7 @@ fn read_live_bundle(pack: &Path) -> Result<Option<(String, String)>, Error> {
     Ok(Some((name.to_string(), read_bundle(&name, &path)?)))
 }
 
-pub fn base_hash(pack: &Path) -> Result<String, Error> {
+fn base_hash(pack: &Path) -> Result<String, Error> {
     let base = base_path(pack);
     let path = if base.is_file() {
         base
@@ -441,11 +441,8 @@ pub fn gunzip_bytes(bytes: &[u8]) -> Result<Vec<u8>, Reason> {
 
 fn parse_json<T: DeserializeOwned>(name: &str, text: &str) -> Result<T, Error> {
     let mut de = serde_json::Deserializer::from_str(text.trim_end());
-    serde_path_to_error::deserialize(&mut de).map_err(|err| Error {
-        file: name.to_string(),
-        detail: err.to_string(),
-        reason: Reason::Schema,
-    })
+    serde_path_to_error::deserialize(&mut de)
+        .map_err(|err| Error::new(Path::new(name), Reason::Schema, &err.to_string()))
 }
 
 #[cfg(test)]
