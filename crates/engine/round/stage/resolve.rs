@@ -33,7 +33,8 @@ pub(crate) enum Resolution<'a> {
     },
     /// Refused by the gate: journaled, and told to a player.
     Refused(gate::Refusal),
-    /// The check could not be set up (no check or meter): journaled, and told to the actor whoever it is.
+    /// The check could not be set up (no check or meter, or a threshold that fails to evaluate):
+    /// journaled, and told to the actor whoever it is.
     CannotRoll(Reason),
 }
 
@@ -56,7 +57,7 @@ pub(crate) fn run<'a>(
     queue: &'a [Intent],
     dice: &mut RoundDice,
     log: &mut RoundLog,
-) -> Result<Vec<Candidate<'a>>, Reason> {
+) -> Vec<Candidate<'a>> {
     let mut resolver = Resolver {
         canon,
         state,
@@ -66,79 +67,77 @@ pub(crate) fn run<'a>(
         dice,
         log,
     };
-    let mut candidates = Vec::with_capacity(picked.len());
-    for intent in picked {
-        let resolution = gate_intent(&mut resolver, intent)?;
-        candidates.push(Candidate { intent, resolution });
-    }
-    Ok(candidates)
+    picked
+        .iter()
+        .map(|intent| Candidate {
+            intent,
+            resolution: gate_intent(&mut resolver, intent),
+        })
+        .collect()
 }
 
-fn gate_intent<'a>(
-    resolver: &mut Resolver<'a, '_>,
-    intent: &'a Intent,
-) -> Result<Resolution<'a>, Reason> {
+fn gate_intent<'a>(resolver: &mut Resolver<'a, '_>, intent: &'a Intent) -> Resolution<'a> {
     let context = Context::new(resolver.canon, resolver.state, resolver.presence, intent);
     let rule = match gate::gate(&context) {
         Ok(rule) => rule,
-        Err(refusal) => return Ok(Resolution::Refused(refusal)),
+        Err(refusal) => return Resolution::Refused(refusal),
     };
     match &rule.roll {
         Some(roll) if crate::rules::travel::span(&context, rule) == 0 => {
             resolver.log.extra_steps.push(Step::CheckRolled);
-            roll_check(resolver, intent, rule, roll)
+            match roll_check(resolver, &context, &rule.id, roll) {
+                Ok(rolled) => Resolution::Ready {
+                    rule,
+                    rolled: Some(rolled),
+                },
+                Err(code) => Resolution::CannotRoll(code),
+            }
         }
-        _ => Ok(Resolution::Ready { rule, rolled: None }),
+        _ => Resolution::Ready { rule, rolled: None },
     }
 }
 
 /// Roll the intent's check, against the opposing total when another player's move opposes it.
 /// An intent already rolled as another's opposition keeps its faces and takes its own target.
-fn roll_check<'a>(
+fn roll_check(
     resolver: &mut Resolver,
-    intent: &Intent,
-    rule: &'a Rule,
+    context: &Context,
+    rule_id: &str,
     roll: &RollSpec,
-) -> Result<Resolution<'a>, Reason> {
+) -> Result<Roll, Reason> {
+    let intent = context.intent;
     let actor_id = intent.actor.actor_id();
-    let opposed = match opposing_total(resolver, intent) {
-        Ok(total) => total,
-        Err(code) => return Ok(Resolution::CannotRoll(code)),
-    };
-    let (canon, state) = (resolver.canon, resolver.state);
-    let (target, partial_at) = match opposed {
-        Some(total) => (total, None),
-        None => resolver
-            .dice
-            .roller(resolver.log, &rule.id, actor_id)
-            .eval_thresholds(&Context::new(canon, state, resolver.presence, intent), roll)?,
-    };
+    let opposed = opposing_total(resolver, intent)?;
     if let Some(out) = resolver.rolled.get(&intent.id) {
+        let (target, partial_at) = match opposed {
+            Some(total) => (total, None),
+            None => resolver
+                .dice
+                .roller(resolver.log, rule_id, actor_id)
+                .eval_thresholds(context, roll)?,
+        };
         let outcome = classify(out.total, target, partial_at);
-        let rolled = Roll {
+        return Ok(Roll {
             target,
             outcome,
             ..out.clone()
-        };
-        return Ok(Resolution::Ready {
-            rule,
-            rolled: Some(rolled),
         });
     }
-    let key = resolver.dice.next_key(&rule.id, actor_id);
-    match resolver
-        .dice
-        .roll_check(canon, state, key, &roll.check, target, partial_at)
-    {
-        Ok(out) => {
-            resolver.rolled.insert(intent.id.clone(), out.clone());
-            Ok(Resolution::Ready {
-                rule,
-                rolled: Some(out),
-            })
+    let out = match opposed {
+        Some(total) => {
+            let key = resolver.dice.next_key(rule_id, actor_id);
+            let (canon, state) = (resolver.canon, resolver.state);
+            resolver
+                .dice
+                .roll_check(canon, state, key, &roll.check, total, None)?
         }
-        Err(code) => Ok(Resolution::CannotRoll(code)),
-    }
+        None => resolver
+            .dice
+            .roller(resolver.log, rule_id, actor_id)
+            .roll_spec(context, roll)?,
+    };
+    resolver.rolled.insert(intent.id.clone(), out.clone());
+    Ok(out)
 }
 
 fn opposing_total(resolver: &mut Resolver, intent: &Intent) -> Result<Option<i64>, Reason> {

@@ -169,7 +169,7 @@ fn run_stages<'p, L>(
     let state = draft.state().clone();
     let candidates = resolve::run(
         &canon, &state, presence, &picked, queue, &mut dice, &mut log,
-    )?;
+    );
     apply::run(
         &mut draft, &canon, &state, candidates, &clock, &mut dice, &mut log,
     );

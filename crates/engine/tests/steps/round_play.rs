@@ -444,6 +444,65 @@ fn the_refused_finish_commits(world: &mut World) {
     spookery_engine::verify_pack(pack, None).unwrap_or_else(|err| panic!("verify: {err}"));
 }
 
+#[given(expr = "a docks pack whose \"pick\" rule rolls grit against a target that divides by zero")]
+fn a_docks_pack_with_a_broken_pick(world: &mut World) {
+    let pack = support::copy_pack("oneshot-docks", "broken-target");
+    // Grit starts at 1, so the divisor is 0 only at play, past `spook check`.
+    support::append(
+        &pack.join("rules/verbs.yaml"),
+        "
+  - id: pick
+    when: { verb: pick }
+    roll: { check: grit, target: \"10 / (self.grit - 1)\" }
+    do: []
+",
+    );
+    support::stamp_pack_rev(&pack);
+    make_mira_ineligible(&pack);
+    world.pack = Some(pack);
+}
+
+#[when(expr = "Rowan walks to the street and Wren plays pick in the same round")]
+fn rowan_walks_and_wren_picks(world: &mut World) {
+    let pick = intent("pick-1", "pc_wren", "pick", None);
+    let (_state, round) = rowan_walks(world.pack(), vec![pick]);
+    world.scratch = round.to_string();
+}
+
+#[then(expr = "Wren's pick is refused {word} and Rowan is on the street")]
+fn wrens_pick_is_refused(world: &mut World, code: String) {
+    let round: Value = serde_json::from_str(&world.scratch).unwrap();
+    let refused = round["refused"].as_array().unwrap();
+    assert!(
+        refused
+            .iter()
+            .any(|item| item["id"] == "pick-1" && item["code"] == code.as_str()),
+        "{round}"
+    );
+    let saved = spookery_engine::World::peek(world.pack()).unwrap();
+    assert_eq!(saved.state().actors["pc_rowan"].place, "docks_street");
+}
+
+#[then(expr = "the next round plays and spook verify passes")]
+fn the_next_round_plays_and_verify_passes(world: &mut World) {
+    let pack = world.pack();
+    let lock = spookery_engine::lock_pack(pack).unwrap();
+    let mut table =
+        spookery_engine::World::resume(pack, lock).unwrap_or_else(|err| panic!("open: {err}"));
+    let wall = table.state().last_round_at.clone();
+    table
+        .queue_gm_intent(intent("wait-1", "pc_wren", "wait", None), || {
+            panic!("the GM chose the id")
+        })
+        .unwrap_or_else(|code| panic!("queue: {code}"));
+    table
+        .play(&spookery_engine::Presence::default(), &wall)
+        .unwrap_or_else(|err| panic!("play: {err}"));
+    assert_eq!(table.state().round_index, 2);
+    drop(table);
+    spookery_engine::verify_pack(pack, None).unwrap_or_else(|err| panic!("verify: {err}"));
+}
+
 #[given(
     expr = "a docks pack where the shop's \"rummage\" costs {int} rest and the shared \"rummage\" costs {int}"
 )]
