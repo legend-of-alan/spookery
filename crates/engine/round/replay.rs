@@ -328,28 +328,27 @@ fn rebuild_save(path: &Path, lock: &PackGuard) -> Result<(), Error> {
         return Ok(());
     };
     let save_path = journal::save_path(path);
-    let saved = match journal::read_save(&save_path) {
-        Ok(bytes) => Some(bytes),
-        // A missing save is rebuilt below.
-        Err(Reason::NotInSpec) => None,
-        Err(reason) => return Err(Error::Reason(reason)),
-    };
-    if let Some(bytes) = saved {
-        if blake2s_tagged(&bytes) == mark.state_hash {
-            return Ok(());
-        }
-        if let Ok(text) = std::str::from_utf8(&bytes) {
-            if let Ok(state) = save::parse(text) {
-                if save::emit(&state)
-                    .map(|emitted| emitted.into_bytes())
-                    .ok()
-                    .as_deref()
-                    != Some(bytes.as_slice())
-                {
-                    return Ok(());
+    match journal::read_save(&save_path) {
+        Ok(bytes) => {
+            if blake2s_tagged(&bytes) == mark.state_hash {
+                return Ok(());
+            }
+            if let Ok(text) = std::str::from_utf8(&bytes) {
+                if let Ok(state) = save::parse(text) {
+                    if save::emit(&state)
+                        .map(|emitted| emitted.into_bytes())
+                        .ok()
+                        .as_deref()
+                        != Some(bytes.as_slice())
+                    {
+                        return Ok(());
+                    }
                 }
             }
         }
+        // A missing save is rebuilt below.
+        Err(Reason::NotInSpec) => {}
+        Err(reason) => return Err(Error::Reason(reason)),
     }
     let records = journal::read_records(path)?;
     let report = replay_journal(path, &records, None, Some(mark.state_rev))?;
