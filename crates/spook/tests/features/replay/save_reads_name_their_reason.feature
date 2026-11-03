@@ -31,3 +31,17 @@ Feature: Save reads name their reason
     And the operator tries a round
     Then the command exits 1
     And stderr is STORE_IO
+
+  Scenario: A save the disk will not read is STORE_IO on verify
+    Given a docks table
+    When the save cannot be read
+    And the operator runs verify
+    Then the command exits 1
+    And stderr is STORE_IO
+
+  Scenario: A save the disk will not read is STORE_IO on open
+    Given a docks table
+    When the save cannot be read
+    And the operator tries a round
+    Then the command exits 1
+    And stderr is STORE_IO
