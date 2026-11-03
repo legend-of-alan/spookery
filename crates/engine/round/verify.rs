@@ -28,7 +28,7 @@ pub fn verify_pack(pack: &Path, from: Option<&Path>) -> Result<Report, Error> {
         return Err(Error::Reason(Reason::NotInSpec));
     }
     // Stays although `read_base` makes the same check: with `from`, verify returns before it runs.
-    if !journal::save_path(pack).exists() && !journal::base_path(pack).is_file() {
+    if !journal::save_path(pack).exists() && !journal::base_path(pack).exists() {
         return Err(Error::Reason(Reason::NotInSpec));
     }
     let bundles = journal::read_bundle_records(pack)?;
@@ -216,8 +216,8 @@ fn name_save_line(pack: &Path, err: Error) -> Error {
 
 fn read_base(pack: &Path) -> Result<Vec<u8>, Error> {
     let base = journal::base_path(pack);
-    if base.is_file() {
-        return fs::read(&base).map_err(|_| Error::Reason(Reason::Schema));
+    if base.exists() {
+        return journal::read_save(&base).map_err(Error::Reason);
     }
     journal::read_save(&journal::save_path(pack)).map_err(Error::Reason)
 }
