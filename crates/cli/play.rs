@@ -43,20 +43,20 @@ pub async fn run(pc: Option<&str>, addr: SocketAddr, raw: bool) -> Result<(), Er
     };
     let (mut here, mut token) =
         take_claim(&mut seat, json!({ "actor": actor }), &mut screen).await?;
+    // Made once, so every Ctrl+C is seen, even one that lands mid-print.
+    let ctrl_c = tokio::signal::ctrl_c();
+    tokio::pin!(ctrl_c);
     loop {
         tokio::select! {
             message = seat.recv() => {
                 let message = match message {
                     Some(Ok(message)) => message,
+                    // The table dropped this connection, or `spook run` stopped.
                     Some(Err(Error::Io(_))) | None => {
-                        // The table dropped this connection, or `spook run` stopped.
-                        let Ok((next, _)) = Connection::open(addr, "player").await else {
-                            eprintln!("host closed");
+                        let Some(back) = reconnect(addr, &token, &mut screen).await? else {
                             return Ok(());
                         };
-                        seat = next;
-                        let args = json!({ "token": token, "after": screen.last_seq });
-                        (here, token) = take_claim(&mut seat, args, &mut screen).await?;
+                        (seat, here, token) = back;
                         continue;
                     }
                     Some(Err(err)) => return Err(err),
@@ -69,7 +69,7 @@ pub async fn run(pc: Option<&str>, addr: SocketAddr, raw: bool) -> Result<(), Er
                     here = *view;
                 }
             }
-            _ = tokio::signal::ctrl_c() => return release(&mut seat).await,
+            _ = &mut ctrl_c => return release(&mut seat).await,
             typed = input.recv() => {
                 let Some(typed) = typed else {
                     return release(&mut seat).await;
@@ -86,10 +86,37 @@ pub async fn run(pc: Option<&str>, addr: SocketAddr, raw: bool) -> Result<(), Er
                     eprintln!("{}", text::render_refusal(&refusal, raw));
                     continue;
                 }
-                seat.send(word, args).await?;
+                match seat.send(word, args.clone()).await {
+                    Ok(_) => {}
+                    // The table dropped this connection: take the PC back, then send again.
+                    Err(Error::Io(_)) => {
+                        let Some(back) = reconnect(addr, &token, &mut screen).await? else {
+                            return Ok(());
+                        };
+                        (seat, here, token) = back;
+                        seat.send(word, args).await?;
+                    }
+                    Err(err) => return Err(err),
+                }
             }
         }
     }
+}
+
+/// Dials again and takes the PC back by its token, after the last `seq` read. `None` when
+/// `spook run` is gone.
+async fn reconnect(
+    addr: SocketAddr,
+    token: &str,
+    screen: &mut Screen,
+) -> Result<Option<(Connection, protocol::View, String)>, Error> {
+    let Ok((mut seat, _)) = Connection::open(addr, "player").await else {
+        eprintln!("host closed");
+        return Ok(None);
+    };
+    let args = json!({ "token": token, "after": screen.last_seq });
+    let (here, token) = take_claim(&mut seat, args, screen).await?;
+    Ok(Some((seat, here, token)))
 }
 
 /// Sends `claim` with `args` and prints its reply, what it missed, and the first view.
