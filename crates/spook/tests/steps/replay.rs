@@ -309,7 +309,7 @@ fn the_torn_tail_is_gone(world: &mut World) {
 
 #[then(expr = "the opened state matches the last complete record")]
 fn the_opened_state_matches_the_last_complete_record(world: &mut World) {
-    let report = spookery_engine::testing::replay_journal(table::pack(world), None, None)
+    let report = spookery_engine::testing::replay_pack(table::pack(world))
         .unwrap_or_else(|err| panic!("{err}"));
     assert_eq!(report.state_rev, world.mark as u64);
     assert_eq!(

@@ -479,8 +479,7 @@ fn the_round_state_hash_matches_the_save(world: &mut World) {
     let expected = value["state_hash"]
         .as_str()
         .unwrap_or_else(|| panic!("state_hash\n{round}"));
-    let report = spookery_engine::testing::replay_journal(pack, None, None)
-        .unwrap_or_else(|err| panic!("{err}"));
+    let report = spookery_engine::testing::replay_pack(pack).unwrap_or_else(|err| panic!("{err}"));
     assert_eq!(
         spookery_engine::testing::journal::blake2s_tagged(&report.now_yaml),
         expected

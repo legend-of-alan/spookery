@@ -291,10 +291,10 @@ fn replaying_the_round_reproduces_the_save(world: &mut World) {
     let start = PathBuf::from(&world.scratch);
     let before = fs::read(played.join("state/save.yaml"))
         .unwrap_or_else(|err| panic!("read save.yaml: {err}"));
-    let report = spookery_engine::testing::replay_journal(played, Some(&start), None)
-        .unwrap_or_else(|err| panic!("replay: {err}"));
     let entries = spookery_engine::testing::journal::read_records(played)
         .unwrap_or_else(|err| panic!("{}", err.detail));
+    let report = spookery_engine::testing::replay_journal(played, &entries, Some(&start), None)
+        .unwrap_or_else(|err| panic!("replay: {err}"));
     let last = entries
         .iter()
         .rev()
