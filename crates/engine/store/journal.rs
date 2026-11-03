@@ -227,11 +227,7 @@ fn read_live_bundle(pack: &Path) -> Result<Option<(String, String)>, Error> {
 
 fn base_hash(pack: &Path) -> Result<String, Error> {
     let base = base_path(pack);
-    let path = if base.is_file() {
-        base
-    } else {
-        save_path(pack)
-    };
+    let path = if base.exists() { base } else { save_path(pack) };
     let bytes = fs::read(&path)
         .map_err(|_| Error::new(&path, Reason::StoreIo, "the snapshot could not be read"))?;
     Ok(blake2s_tagged(&bytes))
