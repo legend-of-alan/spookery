@@ -193,7 +193,7 @@ pub(crate) fn assert_replay_matches(pack: &Path) -> Result<(), TestCaseError> {
             "the rounds wrote no record".to_string(),
         ));
     };
-    let replayed = journal::blake2s_tagged(&report.now_yaml);
+    let replayed = crate::hash::blake2s_tagged(&report.now_yaml);
     if replayed == last.state_hash() {
         return Ok(());
     }

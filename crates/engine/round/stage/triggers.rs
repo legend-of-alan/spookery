@@ -9,7 +9,7 @@ use crate::rules::context::Context;
 use crate::rules::expand::{self, Cause};
 use crate::rules::gate;
 use crate::rules::rule::{ChangeWatch, Op, Rule, WatchWho, When};
-use crate::store::journal::Step;
+use crate::store::records::Step;
 use crate::Reason;
 
 use crate::round::dice::RoundDice;

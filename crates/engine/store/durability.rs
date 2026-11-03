@@ -11,7 +11,7 @@ pub fn write_atomic(target: &Path, bytes: &[u8]) -> Result<(), Reason> {
     if let Some(parent) = target.parent() {
         fs::create_dir_all(parent).map_err(|_| Reason::CommitConflict)?;
     }
-    let tmp = tmp_path(target);
+    let tmp = add_suffix(target, ".tmp");
     {
         let mut file = File::create(&tmp).map_err(|_| Reason::CommitConflict)?;
         file.write_all(bytes).map_err(|_| Reason::CommitConflict)?;
@@ -24,10 +24,11 @@ pub fn write_atomic(target: &Path, bytes: &[u8]) -> Result<(), Reason> {
     Ok(())
 }
 
-pub(crate) fn tmp_path(target: &Path) -> PathBuf {
-    let mut name = target.file_name().unwrap_or_default().to_os_string();
-    name.push(".tmp");
-    target.with_file_name(name)
+/// `path` with `suffix` added to its file name, such as `save.yaml.tmp`.
+pub(crate) fn add_suffix(path: &Path, suffix: &str) -> PathBuf {
+    let mut name = path.file_name().unwrap_or_default().to_os_string();
+    name.push(suffix);
+    path.with_file_name(name)
 }
 
 pub(crate) fn fsync_file(path: &Path) -> Result<(), Reason> {

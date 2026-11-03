@@ -11,7 +11,7 @@ use crate::rules::gate;
 use crate::rules::roll::MoveReport;
 use crate::rules::rule::Rule;
 use crate::rules::travel;
-use crate::store::journal::Step;
+use crate::store::records::Step;
 use crate::Reason;
 
 use crate::round::dice::RoundDice;

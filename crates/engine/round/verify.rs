@@ -3,7 +3,9 @@
 use std::fs;
 use std::path::Path;
 
-use crate::store::journal::{self, Record};
+use crate::hash::blake2s_tagged;
+use crate::store::journal;
+use crate::store::records::Record;
 use crate::store::save::emit_save;
 use crate::Reason;
 
@@ -25,12 +27,11 @@ pub fn verify_pack(pack: &Path, from: Option<&Path>) -> Result<Report, Error> {
     if !pack.join("pack.yaml").is_file() {
         return Err(Error::Reason(Reason::NotInSpec));
     }
-    if !pack.join("state/save.yaml").is_file()
-        && !pack.join("state").join(journal::base_path()).is_file()
-    {
+    if !pack.join("state/save.yaml").is_file() && !journal::base_path(pack).is_file() {
         return Err(Error::Reason(Reason::NotInSpec));
     }
-    let records = journal::read_records(pack)?;
+    let bundles = journal::read_bundle_records(pack)?;
+    let records = journal::flatten_bundles(&bundles);
     if records.is_empty() && from.is_none() {
         let genesis = read_genesis(pack)?;
         check_save_file(pack, &records, &genesis)?;
@@ -57,9 +58,8 @@ pub fn verify_pack(pack: &Path, from: Option<&Path>) -> Result<Report, Error> {
     if from.is_some() {
         return Ok(verified);
     }
-    journal::check_chain(pack, &records)?;
+    journal::check_chain(pack, &bundles)?;
     let genesis = read_genesis(pack)?;
-    let bundles = journal::read_bundle_records(pack)?;
     check_bundle_starts(pack, &genesis, &bundles)?;
     check_save_file(pack, &records, &genesis)?;
     Ok(verified)
@@ -67,10 +67,10 @@ pub fn verify_pack(pack: &Path, from: Option<&Path>) -> Result<Report, Error> {
 
 /// Check every chain hash, then replay the latest bundle from the snapshot it starts at.
 pub fn verify_quick(pack: &Path) -> Result<Report, Error> {
-    let records = journal::read_records(pack)?;
-    journal::check_chain(pack, &records)?;
-    let genesis = read_genesis(pack)?;
     let bundles = journal::read_bundle_records(pack)?;
+    journal::check_chain(pack, &bundles)?;
+    let records = journal::flatten_bundles(&bundles);
+    let genesis = read_genesis(pack)?;
     let Some((start, entries)) = check_bundle_starts(pack, &genesis, &bundles)?.pop() else {
         check_save_file(pack, &records, &genesis)?;
         return Ok(Report {
@@ -121,7 +121,7 @@ fn check_bundle_starts<'a>(
         };
         current = fs::read(journal::checkpoint_path(pack, mark.state_rev))
             .map_err(|_| diverged("missing snapshot"))?;
-        if journal::blake2s_tagged(&current) != mark.state_hash {
+        if blake2s_tagged(&current) != mark.state_hash {
             return Err(diverged("state hash differed").replayed(current).into());
         }
     }
@@ -136,7 +136,7 @@ fn check_bundle_end(
 ) -> Result<Vec<u8>, Error> {
     let end = end.map_err(|err| name_save_line(pack, err))?;
     if let Some(mark) = journal::latest_checkpoint(entries) {
-        if journal::blake2s_tagged(&end) != mark.state_hash {
+        if blake2s_tagged(&end) != mark.state_hash {
             let detail = format!("{name}: state hash differed");
             return Err(
                 checkpoint_diverged(mark.state_rev, mark.round_index, detail)
@@ -167,7 +167,7 @@ fn check_save_file(pack: &Path, records: &[Record], genesis: &[u8]) -> Result<()
         }
     }
     if let Some(mark) = journal::latest_checkpoint(records) {
-        if journal::blake2s_tagged(&live) != mark.state_hash {
+        if blake2s_tagged(&live) != mark.state_hash {
             let snap = fs::read(journal::checkpoint_path(pack, mark.state_rev)).ok();
             let diverged = Divergence {
                 replayed: snap,
@@ -208,13 +208,13 @@ fn name_save_line(pack: &Path, err: Error) -> Error {
         return err;
     };
     let live = fs::read(pack.join("state/save.yaml"))
-        .or_else(|_| fs::read(pack.join("state").join(journal::base_path())))
+        .or_else(|_| fs::read(journal::base_path(pack)))
         .unwrap_or_default();
     set_save_line(diverged, &live)
 }
 
 fn read_genesis(pack: &Path) -> Result<Vec<u8>, Error> {
-    let base = pack.join("state").join(journal::base_path());
+    let base = journal::base_path(pack);
     if base.is_file() {
         return fs::read(&base).map_err(|_| Error::Reason(Reason::Schema));
     }

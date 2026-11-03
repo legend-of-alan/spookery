@@ -15,7 +15,8 @@
 use std::fs;
 use std::path::Path;
 
-use crate::store::journal::{self, Record};
+use crate::store::journal;
+use crate::store::records::Record;
 use crate::world::World;
 use proptest::test_runner::{TestCaseError, TestRunner};
 
@@ -52,7 +53,7 @@ fn replay_each_round(played: &Path) -> Result<(), TestCaseError> {
             "the rounds wrote no record".to_string(),
         ));
     }
-    let base = played.join("state").join(journal::base_path());
+    let base = journal::base_path(played);
     let snapshot = if base.is_file() {
         fs::read(&base)
     } else {

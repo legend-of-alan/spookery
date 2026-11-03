@@ -11,7 +11,7 @@ use crate::intent::{Intent, Source, Target};
 use crate::model::{Presence, State};
 use crate::rules::roll::Roll;
 use crate::rules::rule::{RollSpec, Rule};
-use crate::store::journal::Step;
+use crate::store::records::Step;
 use crate::Reason;
 
 use crate::round::dice::RoundDice;

@@ -3,7 +3,7 @@
 use crate::rules::effect::Effect;
 use crate::rules::gate;
 use crate::rules::roll::{MoveReport, Roll};
-use crate::store::journal::{Arrival, Step};
+use crate::store::records::{Arrival, Step};
 
 /// Everything a round writes down, in the order it happened. `record` consumes it.
 #[derive(Default)]

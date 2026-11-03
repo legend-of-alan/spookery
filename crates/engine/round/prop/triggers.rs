@@ -24,7 +24,8 @@ use std::fs;
 use std::path::Path;
 
 use crate::rules::effect::EffectKind;
-use crate::store::journal::{self, Record, RoundRecord, Step};
+use crate::store::journal;
+use crate::store::records::{Record, RoundRecord, Step};
 use crate::world::World;
 use proptest::prelude::*;
 use proptest::test_runner::{TestCaseError, TestRunner};

@@ -6,12 +6,13 @@ use std::sync::Arc;
 
 use crate::canon::{check_save, load_canon};
 use crate::diagnostic::first_reason;
+use crate::hash::blake2s_tagged;
 use crate::model::{Presence, State};
 use crate::rules::effect::Effect;
-use crate::store::commit::write_atomic;
-use crate::store::journal::{self, blake2s_tagged, MigrateRecord, Record, RoundRecord};
+use crate::store::durability::write_atomic;
+use crate::store::journal;
 use crate::store::lock::{lock_pack, lock_write, PackGuard};
-use crate::store::records::emit_effect;
+use crate::store::records::{emit_effect, MigrateRecord, Record, RoundRecord};
 use crate::store::require_rules_rev;
 use crate::store::save::{emit_save, migrate_save, parse_save};
 use crate::world::World;
@@ -170,7 +171,7 @@ pub fn replay_journal(
         return Err(Error::Reason(Reason::NotInSpec));
     }
     let records = journal::read_records(pack)?;
-    let base_path = pack.join("state").join(journal::base_path());
+    let base_path = journal::base_path(pack);
     let save_path = pack.join("state/save.yaml");
     let base_bytes = if let Some(from) = from {
         fs::read(from.join("state/save.yaml")).map_err(|_| Error::Reason(Reason::NotInSpec))?
@@ -268,7 +269,7 @@ fn load_migrate_tip(path: &Path, lock: &PackGuard) -> Result<(State, bool), Reas
             head.state_rev == file_state.state_rev && head.state_hash != blake2s_tagged(&bytes)
         });
     let ahead = journal::read_live_records(path)
-        .map_err(|_| Reason::Schema)?
+        .map_err(|fault| fault.reason)?
         .iter()
         .any(|entry| {
             !matches!(entry, Record::Checkpoint(_))

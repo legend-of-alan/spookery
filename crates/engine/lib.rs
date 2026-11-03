@@ -65,11 +65,13 @@ pub mod testing {
     ];
 
     pub mod journal {
+        pub use crate::hash::blake2s_tagged;
         pub use crate::store::journal::{
-            blake2s_tagged, bundles, emit_record, find_live_bundle, format_record_key,
-            genesis_hash, gunzip_bytes, gzip_bytes, latest_checkpoint, list_round_keys, locate,
-            read_record_line, read_records, read_verified, seal, Record, RoundRecord,
+            bundles, emit_record, find_live_bundle, format_record_key, genesis_hash, gunzip_bytes,
+            gzip_bytes, latest_checkpoint, list_round_keys, locate, read_record_line, read_records,
+            read_verified, seal,
         };
+        pub use crate::store::records::{Record, RoundRecord};
     }
 
     pub fn copy_dir(from: &Path, to: &Path) {

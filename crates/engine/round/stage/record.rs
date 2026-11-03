@@ -1,6 +1,6 @@
 //! Write the round line and commit a live round.
 
-use crate::store::journal::RoundRecord;
+use crate::store::records::RoundRecord;
 use crate::store::{commit, RULES_REV};
 use crate::world::World;
 use crate::Reason;
@@ -68,7 +68,8 @@ pub(crate) fn run(
 mod tests {
     use crate::intent::Viewer;
     use crate::rules::effect::{Effect, EffectKind};
-    use crate::store::journal::{emit_record, Record, RoundRecord};
+    use crate::store::journal::emit_record;
+    use crate::store::records::{Record, RoundRecord};
 
     #[test]
     fn round_record_embeds_the_flat_effect() {

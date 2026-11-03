@@ -1,4 +1,4 @@
-//! Blake2s, as raw bytes or as hex.
+//! Blake2s, as raw bytes, as hex, or as hex tagged `blake2s:`.
 
 use blake2::{Blake2s256, Digest};
 
@@ -10,15 +10,9 @@ pub(crate) fn blake2s_256(bytes: &[u8]) -> [u8; 32] {
 }
 
 pub(crate) fn blake2s_hex(bytes: &[u8]) -> String {
-    hex_encode(&blake2s_256(bytes))
+    format!("{:x}", Blake2s256::digest(bytes))
 }
 
-fn hex_encode(bytes: &[u8]) -> String {
-    const HEX: &[u8; 16] = b"0123456789abcdef";
-    let mut out = String::with_capacity(bytes.len() * 2);
-    for byte in bytes {
-        out.push(HEX[(byte >> 4) as usize] as char);
-        out.push(HEX[(byte & 0xf) as usize] as char);
-    }
-    out
+pub fn blake2s_tagged(bytes: &[u8]) -> String {
+    format!("blake2s:{}", blake2s_hex(bytes))
 }

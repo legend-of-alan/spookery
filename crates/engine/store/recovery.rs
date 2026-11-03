@@ -5,10 +5,10 @@ use std::fs::{self, OpenOptions};
 use std::path::{Path, PathBuf};
 
 use crate::model::MemoryLine;
-use crate::store::durability::{fsync_dir, fsync_file, rename, tmp_path, write_atomic};
-use crate::store::journal::{self, Record};
+use crate::store::durability::{add_suffix, fsync_dir, fsync_file, rename, write_atomic};
+use crate::store::journal;
 use crate::store::lock::WriteGuard;
-use crate::store::records::emit_memory_line;
+use crate::store::records::{emit_memory_line, Record};
 use crate::Reason;
 
 /// Run by `lock_pack` before the writer reads a pack that a crash may have left mid-commit.
@@ -42,7 +42,7 @@ pub(crate) fn close_finished(root: &Path, _write: &WriteGuard) -> Result<(), Rea
 
 fn close_one(root: &Path, plain: &Path) -> Result<(), Reason> {
     let bytes = fs::read(plain).map_err(|_| Reason::CommitConflict)?;
-    let gz = gzip_path(plain);
+    let gz = add_suffix(plain, ".gz");
     if gz_matches(&gz, &bytes) {
         return remove_plain(plain);
     }
@@ -51,7 +51,7 @@ fn close_one(root: &Path, plain: &Path) -> Result<(), Reason> {
     if !journal::is_published(root, plain) || !snapshot_matches(root, plain) {
         return Ok(());
     }
-    let tmp = tmp_path(&gz);
+    let tmp = add_suffix(&gz, ".tmp");
     let gz_bytes = journal::gzip_bytes(&bytes).map_err(|_| Reason::CommitConflict)?;
     fs::write(&tmp, gz_bytes).map_err(|_| Reason::CommitConflict)?;
     fsync_file(&tmp)?;
@@ -63,9 +63,8 @@ fn snapshot_matches(root: &Path, plain: &Path) -> bool {
     let Some(mark) = journal::trailing_checkpoint(plain) else {
         return false;
     };
-    fs::read(journal::checkpoint_path(root, mark.state_rev))
-        .ok()
-        .is_some_and(|bytes| journal::blake2s_tagged(&bytes) == mark.state_hash)
+    let snap = journal::checkpoint_path(root, mark.state_rev);
+    journal::hashes_to(&snap, &mark.state_hash)
 }
 
 fn gz_matches(gz: &Path, plain: &[u8]) -> bool {
@@ -97,18 +96,12 @@ fn plain_bundles(root: &Path) -> Vec<PathBuf> {
         let Some(name) = name.to_str() else {
             continue;
         };
-        if name.starts_with("bundle-") && name.ends_with(".jsonl") {
+        if name.ends_with(".jsonl") && journal::bundle_index(name).is_some() {
             plains.push(entry.path());
         }
     }
     plains.sort();
     plains
-}
-
-fn gzip_path(plain: &Path) -> PathBuf {
-    let mut name = plain.file_name().unwrap_or_default().to_os_string();
-    name.push(".gz");
-    plain.with_file_name(name)
 }
 
 /// Memory files are a cache of the journal. The live bundle supplies lines since
@@ -267,8 +260,8 @@ mod tests {
 
     use crate::draft::Draft;
     use crate::store::commit::commit;
-    use crate::store::journal::RoundRecord;
     use crate::store::lock::lock_pack;
+    use crate::store::records::RoundRecord;
     use crate::testing::copy_docks;
     use crate::world::World;
 

@@ -4,7 +4,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::model::Presence;
-use crate::store::journal::{self, Record, Step};
+use crate::store::journal;
+use crate::store::records::{Record, Step};
 use crate::world::World;
 use crate::Reason;
 
