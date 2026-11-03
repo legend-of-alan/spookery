@@ -41,13 +41,6 @@ fn the_player_marks_nell(world: &mut World) {
     world.player_added = added;
 }
 
-#[when(expr = "the player travels to {string}")]
-fn the_player_travels_to(world: &mut World, place: String) {
-    let (mark, added) = table::player_send(world, &format!("travel {place}"), "\"kind\":");
-    world.mark = mark;
-    world.player_added = added;
-}
-
 #[then(expr = "the load refusal is SCHEMA")]
 fn the_load_refusal_is_schema(world: &mut World) {
     assert_eq!(

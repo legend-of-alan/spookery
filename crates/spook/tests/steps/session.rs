@@ -17,19 +17,6 @@ fn rowan_with_a_gm(world: &mut World) {
     world.pack = Some(pack);
 }
 
-#[given(expr = "rowan is in the shop and no GM is seated")]
-fn rowan_alone(world: &mut World) {
-    let pack = copy_docks("session");
-    table::listen(world, &pack);
-    table::seat_rowan(world, &pack);
-    world.pack = Some(pack);
-}
-
-#[when(expr = "the player moves rowan to {word}")]
-fn the_player_moves_rowan(world: &mut World, exit: String) {
-    world.mark = table::player_write(world, &format!("travel {exit}"));
-}
-
 #[when(expr = "the player sends {string}")]
 fn the_player_sends(world: &mut World, line: String) {
     world.mark = table::player_write(world, &line);
@@ -58,7 +45,7 @@ fn the_player_closes_the_seat(world: &mut World) {
 #[when(expr = "the GM says {string} to the table")]
 fn the_gm_says(world: &mut World, text: String) {
     let args = serde_json::json!({ "address": "table", "text": text }).to_string();
-    table::gm_call(world, 3, "say", &args);
+    table::call_gm_tool(world, "say", &args);
 }
 
 #[when(expr = "the GM closes the seat")]
@@ -116,13 +103,13 @@ fn the_gm_hears(world: &mut World, actor_id: String, text: String) {
 
 #[then(expr = "the GM sees rowan in {word}")]
 fn the_gm_sees_rowan_in(world: &mut World, place: String) {
-    let view = gm_result(world, "perceive", r#"{"as":"pc_rowan"}"#);
+    let view = table::call_gm_tool(world, "perceive", r#"{"as":"pc_rowan"}"#);
     assert_eq!(view["place"], place, "{view}");
 }
 
 #[then(expr = "the GM sees nothing queued")]
 fn the_gm_sees_nothing_queued(world: &mut World) {
-    let status = gm_result(world, "table_status", "{}");
+    let status = table::call_gm_tool(world, "table_status", "{}");
     assert_eq!(status["queued"], serde_json::json!([]), "{status}");
 }
 
@@ -149,12 +136,6 @@ fn wait_gm_event(world: &mut World, want: &str, done: impl Fn(&Value) -> bool) {
     table::wait_gm_until(world, want, |text| {
         parse_lines(text).iter().any(|line| done(&line["params"]))
     });
-}
-
-fn gm_result(world: &mut World, tool: &str, args: &str) -> Value {
-    let reply: Value = serde_json::from_str(&table::gm_call(world, 4, tool, args))
-        .unwrap_or_else(|err| panic!("{tool} reply: {err}"));
-    reply["result"]["structuredContent"].clone()
 }
 
 /// Each complete JSON line; a line still arriving is skipped.
