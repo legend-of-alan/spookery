@@ -143,7 +143,6 @@ fn the_round_writes_nothing(world: &mut World) {
         fs::read(pack.join("state/save.yaml")).unwrap(),
         world.now_bytes
     );
-    assert!(!pack.join("state/.txn").exists());
     assert_eq!(
         read_state_files(pack),
         world.state_files,

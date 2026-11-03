@@ -1,25 +1,17 @@
-//! Finish a commit a crash left half done, or roll it back.
+//! Finish a commit a crash left half done.
 
-use std::collections::BTreeSet;
 use std::fs::{self, OpenOptions};
 use std::path::{Path, PathBuf};
 
-use crate::model::MemoryLine;
-use crate::store::durability::{add_suffix, fsync_dir, fsync_file, rename, write_atomic};
+use crate::store::durability::{add_suffix, fsync_dir, fsync_file, rename};
 use crate::store::journal;
 use crate::store::lock::WriteGuard;
-use crate::store::records::{emit_memory_line, Record};
 use crate::Reason;
 
 /// Run by `lock_pack` before the writer reads a pack that a crash may have left mid-commit.
 pub fn recover(root: &Path, write: &WriteGuard) -> Result<(), Reason> {
     let state = root.join("state");
-    let txn = state.join(".txn");
-    if txn.is_dir() {
-        fs::remove_dir_all(&txn).map_err(|_| Reason::CommitConflict)?;
-    }
     cut_torn_tail(root)?;
-    rebuild_memory_files(root)?;
     close_finished(root, write)?;
     remove_tmp(&state);
     Ok(())
@@ -104,102 +96,6 @@ fn plain_bundles(root: &Path) -> Vec<PathBuf> {
     plains
 }
 
-/// Memory files are a cache of the journal. The live bundle supplies lines since
-/// the last checkpoint. A line for a round the live bundle does not have, and
-/// that the checkpoint does not cover, is dropped.
-fn rebuild_memory_files(root: &Path) -> Result<(), Reason> {
-    let records = journal::read_live_records(root).map_err(|fault| fault.reason)?;
-    let head = journal::read_head(root).map_err(|fault| fault.reason)?;
-    let live_rounds: BTreeSet<u64> = records
-        .iter()
-        .filter_map(|entry| match entry {
-            Record::Round(record) => Some(record.round_index),
-            _ => None,
-        })
-        .collect();
-    let fresh: Vec<MemoryLine> = records
-        .iter()
-        .filter_map(|entry| match entry {
-            Record::Round(record) => Some(record.memories.clone()),
-            _ => None,
-        })
-        .flatten()
-        .collect();
-    let memories = root.join("state/memories");
-    let mut actors = BTreeSet::new();
-    if memories.is_dir() {
-        for entry in fs::read_dir(&memories)
-            .map_err(|_| Reason::Schema)?
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|_| Reason::Schema)?
-        {
-            let path = entry.path();
-            if path.extension().and_then(|ext| ext.to_str()) == Some("jsonl") {
-                if let Some(name) = path.file_stem().and_then(|stem| stem.to_str()) {
-                    actors.insert(name.to_string());
-                }
-            }
-        }
-    }
-    for line in &fresh {
-        actors.insert(line.actor_id.clone());
-    }
-    if actors.is_empty() {
-        return Ok(());
-    }
-    fs::create_dir_all(&memories).map_err(|_| Reason::Schema)?;
-    for actor in actors {
-        let path = memories.join(format!("{actor}.jsonl"));
-        let mut kept = Vec::new();
-        if path.is_file() {
-            let text = fs::read_to_string(&path).map_err(|_| Reason::Schema)?;
-            for line in text.lines() {
-                if line.is_empty() {
-                    continue;
-                }
-                if memory_round(line)
-                    .is_some_and(|round| is_round_kept(round, head.as_ref(), &live_rounds))
-                {
-                    kept.push(line.to_string());
-                }
-            }
-        }
-        for line in fresh.iter().filter(|line| line.actor_id == actor) {
-            let text = emit_memory_line(line);
-            if !kept.iter().any(|row| row == &text) {
-                kept.push(text);
-            }
-        }
-        let mut body = kept.join("\n");
-        if !body.is_empty() {
-            body.push('\n');
-        }
-        let current = fs::read_to_string(&path).unwrap_or_default();
-        if path.is_file() && current == body {
-            continue;
-        }
-        if body.is_empty() && !path.is_file() {
-            continue;
-        }
-        write_atomic(&path, body.as_bytes())?;
-    }
-    Ok(())
-}
-
-fn is_round_kept(
-    round: u64,
-    head: Option<&journal::CheckpointHead>,
-    live_rounds: &BTreeSet<u64>,
-) -> bool {
-    if live_rounds.contains(&round) {
-        return true;
-    }
-    match head {
-        Some(head) => round <= head.round_index,
-        None => false,
-    }
-}
-
 fn cut_torn_tail(root: &Path) -> Result<(), Reason> {
     let Some(path) = journal::find_live_bundle(root) else {
         return Ok(());
@@ -223,16 +119,6 @@ fn cut_torn_tail(root: &Path) -> Result<(), Reason> {
     Ok(())
 }
 
-fn memory_round(line: &str) -> Option<u64> {
-    #[derive(serde::Deserialize)]
-    struct MemoryRound {
-        round_index: u64,
-    }
-    serde_json::from_str::<MemoryRound>(line)
-        .ok()
-        .map(|row| row.round_index)
-}
-
 fn remove_tmp(dir: &Path) {
     let Ok(entries) = fs::read_dir(dir) else {
         return;
@@ -240,9 +126,6 @@ fn remove_tmp(dir: &Path) {
     for entry in entries.flatten() {
         let path = entry.path();
         if path.is_dir() {
-            if entry.file_name() == ".txn" {
-                continue;
-            }
             remove_tmp(&path);
         } else if path
             .file_name()

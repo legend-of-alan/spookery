@@ -24,7 +24,7 @@ every commit. One process writes a pack at a time. `spook run`, `spook round`
 and `spook migrate` each hold `state/.pack.lock` for as long as they have the
 pack open, and a second one is refused with `COMMIT_CONFLICT` and writes
 nothing. Crash recovery runs when a writer takes that lock: a torn last line in
-the live bundle is cut off, and a leftover transaction directory is removed.
+the live bundle is cut off, and a stray temp file is removed.
 The save on disk stays. A write also holds `state/.pack.rw.lock` while it
 publishes. `spook status` only reads. It holds a shared lock on that file
 while it builds the world and reads the journal, so it waits out a write in
@@ -38,7 +38,7 @@ Tested in `features/seats/one_gm_and_three_players.feature`,
 `features/host/the_host_sits_the_gm_seat.feature`,
 `features/speech/speech_appends_and_does_not_play_a_round.feature`,
 `features/commit/a_hand_edit_waits_for_migrate.feature`,
-`features/commit/a_transaction_does_not_leak_a_partial_round.feature`,
+`features/commit/a_crash_leaves_nothing_half_written.feature`,
 `features/commit/status_reads_between_writes.feature`, and
 `features/host/one_writer_per_pack.feature`.
 

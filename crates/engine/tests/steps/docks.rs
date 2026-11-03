@@ -1,4 +1,4 @@
-use cucumber::{then, when};
+use cucumber::{given, then, when};
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -424,136 +424,6 @@ fn a_busy_npc_skips() {
     assert_eq!(state.actors.get("mira").unwrap().act().last_act_round, 0);
     assert_eq!(state.actors.get("bram").unwrap().act().last_act_round, 0);
     let _ = fs::remove_dir_all(&pack);
-}
-
-fn sealed_round(pack: &Path, state_rev: u64) -> String {
-    use spookery_engine::testing::journal::{genesis_hash, seal, Record, RoundRecord};
-    let entry = Record::Round(RoundRecord {
-        round_index: 1,
-        rules_rev: spookery_engine::testing::RULES_REV,
-        state_rev_before: state_rev.saturating_sub(1),
-        state_rev_after: state_rev,
-        memories: vec![spookery_engine::testing::MemoryLine {
-            round_index: 1,
-            actor_id: "mira".to_string(),
-            intent_id: String::new(),
-            fact_ids: Vec::new(),
-            tags: Vec::new(),
-            text: Some("kept-line".to_string()),
-        }],
-        ..Default::default()
-    });
-    let prev = genesis_hash(pack).unwrap_or_else(|err| panic!("{}", err.detail));
-    seal(&entry, &prev)
-}
-
-fn an_open_transaction_writes_nothing() {
-    let dropped = support::copy_docks("drop");
-    let now_path = dropped.join("state/save.yaml");
-    let before = fs::read(&now_path).unwrap();
-    let mut opened = resume(&dropped);
-    let state_rev = opened.state().state_rev;
-    let oil = lamp_oil(opened.state());
-    opened
-        .queue_player_move(&rowan(), "pc_rowan", "take", Some("lamp_oil"))
-        .unwrap();
-    assert_eq!(opened.queued_intents().len(), 1);
-    drop(opened);
-    assert!(!dropped.join("state/.txn").exists());
-    assert_eq!(fs::read(&now_path).unwrap(), before);
-    let restarted = resume(&dropped);
-    assert_eq!(restarted.state().state_rev, state_rev);
-    assert_eq!(lamp_oil(restarted.state()), oil);
-    assert!(!dropped.join("state/memories").exists());
-    let _ = fs::remove_dir_all(&dropped);
-}
-
-fn an_incomplete_transaction_is_discarded() {
-    let incomplete = support::copy_docks("incomplete");
-    let now_path = incomplete.join("state/save.yaml");
-    let before = fs::read(&now_path).unwrap();
-    let txn = incomplete.join("state/.txn");
-    fs::create_dir_all(txn.join("prev")).unwrap();
-    fs::write(txn.join("prev/save.yaml"), b"not-yaml\n").unwrap();
-    let opened = resume(&incomplete);
-    assert_eq!(fs::read(&now_path).unwrap(), before);
-    assert_eq!(
-        lamp_oil(opened.state()),
-        lamp_oil(&spookery_engine::parse_save(std::str::from_utf8(&before).unwrap()).unwrap())
-    );
-    assert!(!txn.exists());
-    let _ = fs::remove_dir_all(&incomplete);
-}
-
-fn a_leftover_transaction_keeps_the_save() {
-    let same = support::copy_docks("same-rev");
-    let now_path = same.join("state/save.yaml");
-    let original = fs::read(&now_path).unwrap();
-    let opened = resume(&same);
-    let mut dirty = opened.state().clone();
-    drop(opened);
-    dirty
-        .places
-        .get_mut("docks_shop")
-        .unwrap()
-        .items
-        .insert("lamp_oil".to_string(), 999);
-    let dirty_bytes = emit_save(&dirty).unwrap();
-    fs::write(&now_path, &dirty_bytes).unwrap();
-    let txn = same.join("state/.txn");
-    fs::create_dir_all(txn.join("prev")).unwrap();
-    fs::write(txn.join("prev/save.yaml"), &original).unwrap();
-    fs::write(txn.join("COMPLETE"), b"").unwrap();
-    let opened = resume(&same);
-    assert_eq!(fs::read(&now_path).unwrap(), dirty_bytes.as_bytes());
-    assert_eq!(lamp_oil(opened.state()), 999);
-    assert!(!txn.exists());
-    let _ = fs::remove_dir_all(&same);
-}
-
-fn the_next_revision_keeps_the_new_save() {
-    let next = support::copy_docks("next-rev");
-    let opened = resume(&next);
-    let prev = opened.state().clone();
-    let mut live = prev.clone();
-    drop(opened);
-    live.state_rev = prev.state_rev.saturating_add(1);
-    let kept_oil = lamp_oil(&prev).saturating_add(1);
-    live.places
-        .get_mut("docks_shop")
-        .unwrap()
-        .items
-        .insert("lamp_oil".to_string(), kept_oil);
-    fs::write(next.join("state/save.yaml"), emit_save(&live).unwrap()).unwrap();
-    let txn = next.join("state/.txn");
-    fs::create_dir_all(txn.join("prev")).unwrap();
-    fs::write(txn.join("prev/save.yaml"), emit_save(&prev).unwrap()).unwrap();
-    fs::write(txn.join("COMPLETE"), b"").unwrap();
-    let log = next.join("state/journal");
-    fs::create_dir_all(&log).unwrap();
-    let kept = sealed_round(&next, live.state_rev);
-    let mut torn = kept.into_bytes();
-    torn.extend(br#"{"round_index":99,"#);
-    let bundle = log.join("bundle-0000.jsonl");
-    fs::write(&bundle, &torn).unwrap();
-    let memories = next.join("state/memories");
-    fs::create_dir_all(&memories).unwrap();
-    fs::write(
-        memories.join("mira.jsonl"),
-        "{\"round_index\":1,\"text\":\"kept-line\"}\n{\"round_index\":99,\"text\":\"orphan-line\"}\n",
-    )
-    .unwrap();
-    let opened = resume(&next);
-    assert_eq!(opened.state().state_rev, live.state_rev);
-    assert_eq!(lamp_oil(opened.state()), kept_oil);
-    assert!(!txn.exists());
-    let bundle_text = fs::read_to_string(&bundle).unwrap();
-    assert!(bundle_text.ends_with('\n'), "{bundle_text}");
-    assert!(!bundle_text.contains("round_index\":99"));
-    let memory = fs::read_to_string(memories.join("mira.jsonl")).unwrap();
-    assert!(memory.contains("kept-line"));
-    assert!(!memory.contains("orphan-line"));
-    let _ = fs::remove_dir_all(&next);
 }
 
 fn budget_caps() {
@@ -1011,24 +881,55 @@ fn mira_is_busy(_world: &mut World) {
     a_busy_npc_skips();
 }
 
-#[when(expr = "an open transaction is dropped")]
-fn an_open_transaction_is_dropped(_world: &mut World) {
-    an_open_transaction_writes_nothing();
+#[given(expr = "a docks table")]
+fn a_docks_table(world: &mut World) {
+    let pack = support::copy_docks("crash");
+    world.scratch = fs::read_to_string(pack.join("state/save.yaml")).unwrap();
+    world.pack = Some(pack);
 }
 
-#[when(expr = "an incomplete transaction is opened")]
-fn an_incomplete_transaction_is_opened(_world: &mut World) {
-    an_incomplete_transaction_is_discarded();
+#[when(expr = "a player queues take lamp_oil and the host stops before a round")]
+fn a_player_queues_take_and_the_host_stops(world: &mut World) {
+    let mut host = resume(world.pack());
+    host.queue_player_move(&rowan(), "pc_rowan", "take", Some("lamp_oil"))
+        .unwrap();
+    assert_eq!(host.queued_intents().len(), 1);
 }
 
-#[when(expr = "a finished transaction repeats the current revision")]
-fn a_finished_transaction_repeats(_world: &mut World) {
-    a_leftover_transaction_keeps_the_save();
+#[when(expr = "a save.yaml.tmp and a bundle-0000.jsonl.gz.tmp are left under state\\/")]
+fn stray_temp_files_are_left(world: &mut World) {
+    let state = world.pack().join("state");
+    write_text(&state.join("save.yaml.tmp"), "half");
+    write_text(&state.join("journal/bundle-0000.jsonl.gz.tmp"), "half");
 }
 
-#[when(expr = "a finished transaction advances the revision")]
-fn a_finished_transaction_advances(_world: &mut World) {
-    the_next_revision_keeps_the_new_save();
+#[when(expr = "the table is opened again")]
+fn the_table_is_opened_again(world: &mut World) {
+    drop(resume(world.pack()));
+}
+
+#[then(expr = "the save bytes are unchanged")]
+fn the_save_bytes_are_unchanged(world: &mut World) {
+    let save = fs::read(world.pack().join("state/save.yaml")).unwrap();
+    assert_eq!(save, world.scratch.as_bytes());
+}
+
+#[then(expr = "the next host opens at the same state_rev with the same lamp oil")]
+fn the_next_host_opens_at_the_same_state(world: &mut World) {
+    let before = spookery_engine::parse_save(&world.scratch).unwrap();
+    let host = resume(world.pack());
+    assert_eq!(host.state().state_rev, before.state_rev);
+    assert_eq!(lamp_oil(host.state()), lamp_oil(&before));
+}
+
+#[then(expr = "no .tmp file remains under state\\/")]
+fn no_tmp_file_remains_under_state(world: &mut World) {
+    let left: Vec<PathBuf> = snapshot(&world.pack().join("state"))
+        .into_iter()
+        .map(|(path, _)| path)
+        .filter(|path| path.extension().is_some_and(|ext| ext == "tmp"))
+        .collect();
+    assert!(left.is_empty(), "{left:?}");
 }
 
 #[when(expr = "fifty NPCs share one round")]

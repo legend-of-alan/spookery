@@ -200,7 +200,3 @@ impl Record {
 pub fn emit_effect(effect: &Effect) -> String {
     serde_json::to_string(effect).expect("effect json")
 }
-
-pub(crate) fn emit_memory_line(line: &MemoryLine) -> String {
-    serde_json::to_string(line).expect("memory line")
-}
