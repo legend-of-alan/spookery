@@ -321,7 +321,7 @@ impl Error {
     fn into_reason(self) -> Reason {
         match self {
             Error::Reason(reason) => reason,
-            Error::Diverged(_) => Reason::HandEdit,
+            Error::Diverged(_) => Reason::JournalDiverged,
         }
     }
 }
@@ -365,8 +365,9 @@ fn rebuild_save(path: &Path, lock: &PackGuard) -> Result<(), Error> {
 
 impl From<crate::store::journal::Error> for Error {
     fn from(fault: crate::store::journal::Error) -> Self {
-        if fault.reason == Reason::RulesRevMismatch {
-            return Error::Reason(Reason::RulesRevMismatch);
+        // A stale rules rev or an unreadable file is not a record that failed to replay.
+        if fault.reason != Reason::JournalDiverged {
+            return Error::Reason(fault.reason);
         }
         Divergence::new(
             DivergenceKind::Journal,

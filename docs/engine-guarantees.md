@@ -32,6 +32,10 @@ progress and never sees a round or checkpoint halfway published. It does not
 take `state/.pack.lock`.
 Apart from creating an empty `state/.pack.rw.lock` when it is missing, it
 writes nothing under `state/`, and it leaves a running host's commit alone.
+`COMMIT_CONFLICT` means only that the lock is held. A disk that refuses a write,
+a flush, a rename or a read is `STORE_IO`, and a journal record that no longer
+follows its chain is `JOURNAL_DIVERGED`. The seat that sent the line gets that
+code.
 
 Tested in `features/seats/one_gm_and_three_players.feature`,
 `features/rounds/a_line_waits_for_the_gm.feature`,
@@ -39,8 +43,9 @@ Tested in `features/seats/one_gm_and_three_players.feature`,
 `features/speech/speech_appends_and_does_not_play_a_round.feature`,
 `features/commit/a_hand_edit_waits_for_migrate.feature`,
 `features/commit/a_crash_leaves_nothing_half_written.feature`,
-`features/commit/status_reads_between_writes.feature`, and
-`features/host/one_writer_per_pack.feature`.
+`features/commit/status_reads_between_writes.feature`,
+`features/host/one_writer_per_pack.feature`, and
+`features/host/store_failures_name_their_reason.feature`.
 
 ## Replay
 
@@ -76,7 +81,7 @@ migrated save, replay restarts from that checkpoint, and full verification
 trusts the edit and names it as `operator edit trusted at state_rev N`. A hand
 edit made while the journal has rounds past `save.yaml` is refused with
 `HAND_EDIT`, and migrate writes nothing. Opening a pack whose journal does not
-replay to its recorded hash is refused with `HAND_EDIT`.
+replay to its recorded hash is refused with `JOURNAL_DIVERGED`.
 
 Tested in `features/replay/the_journal_verifies.feature`,
 `features/commit/a_hand_edit_waits_for_migrate.feature`,

@@ -964,8 +964,10 @@ Each player socket, and the HTTP GM session, has an outbound queue of at most 25
 | `ENGINE_ON_PLAYER` | The table does not take that action for a player. |
 | `ACTOR_MISMATCH` | The action is not this actor's. |
 | `TABLE_EMPTY` | Nobody is seated. |
-| `COMMIT_CONFLICT` | The table was already writing. Send `commit_round` again. |
-| `HAND_EDIT` | The save was edited by hand, or the journal no longer replays to its recorded hash; `spook verify` names the record. Stop sending moves until it is migrated. |
+| `COMMIT_CONFLICT` | Another process holds the pack lock. Stop. Nothing was written. |
+| `HAND_EDIT` | The save was edited by hand. Stop sending moves until it is migrated. |
+| `JOURNAL_DIVERGED` | The journal no longer replays to its recorded hash. `spook verify` names the record. Stop. Nothing was written. |
+| `STORE_IO` | The disk refused a write, a flush, a rename or a read, including a read of the journal. Stop, and do not resend until the operator fixes the disk. |
 | `PACK_REV_MISMATCH` | The save does not match the pack. Stop. |
 | `RULES_REV_MISMATCH` | The save was written by different rules. Start a fresh save. This fails at pack open, before a seat exists. |
 

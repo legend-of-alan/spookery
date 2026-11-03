@@ -6,7 +6,7 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
-use crate::store::durability::{fsync_dir, write_atomic};
+use crate::store::durability::{fsync_dir, refuse_io, write_atomic};
 use crate::Reason;
 use spookery_protocol::Speaker;
 
@@ -46,7 +46,7 @@ pub fn emit_tape_record(record: &TapeRecord) -> String {
 /// newest half.
 pub fn append_record(root: &Path, mut record: TapeRecord) -> Result<TapeRecord, Reason> {
     let state = root.join("state");
-    fs::create_dir_all(&state).map_err(|_| Reason::CommitConflict)?;
+    fs::create_dir_all(&state).map_err(refuse_io)?;
     let path = state.join("tape.jsonl");
     let mut file = OpenOptions::new()
         .read(true)
@@ -54,12 +54,12 @@ pub fn append_record(root: &Path, mut record: TapeRecord) -> Result<TapeRecord, 
         .create(true)
         .truncate(false)
         .open(&path)
-        .map_err(|_| Reason::CommitConflict)?;
-    let len = file.metadata().map_err(|_| Reason::CommitConflict)?.len();
+        .map_err(refuse_io)?;
+    let len = file.metadata().map_err(refuse_io)?.len();
     if len > MAX_BYTES {
         return Err(Reason::OutOfRange);
     }
-    let bytes = fs::read(&path).map_err(|_| Reason::CommitConflict)?;
+    let bytes = fs::read(&path).map_err(refuse_io)?;
     let mut lines = bytes.rsplit(|byte| *byte == b'\n');
     let torn = lines.next().unwrap_or_default();
     let end = (bytes.len() - torn.len()) as u64;
@@ -70,7 +70,7 @@ pub fn append_record(root: &Path, mut record: TapeRecord) -> Result<TapeRecord, 
         }
         None => 0,
     };
-    record.seq = last_seq.checked_add(1).ok_or(Reason::CommitConflict)?;
+    record.seq = last_seq.checked_add(1).ok_or(Reason::OutOfRange)?;
     let mut line = emit_tape_record(&record);
     if line.is_empty() || line.bytes().any(|byte| byte == b'\n' || byte == b'\r') {
         return Err(Reason::Schema);
@@ -88,13 +88,11 @@ pub fn append_record(root: &Path, mut record: TapeRecord) -> Result<TapeRecord, 
         return Ok(record);
     }
     if end != len {
-        file.set_len(end).map_err(|_| Reason::CommitConflict)?;
+        file.set_len(end).map_err(refuse_io)?;
     }
-    file.seek(SeekFrom::End(0))
-        .map_err(|_| Reason::CommitConflict)?;
-    file.write_all(line.as_bytes())
-        .map_err(|_| Reason::CommitConflict)?;
-    file.sync_all().map_err(|_| Reason::CommitConflict)?;
+    file.seek(SeekFrom::End(0)).map_err(refuse_io)?;
+    file.write_all(line.as_bytes()).map_err(refuse_io)?;
+    file.sync_all().map_err(refuse_io)?;
     fsync_dir(&state)?;
     Ok(record)
 }
@@ -132,13 +130,11 @@ pub fn read_records(root: &Path) -> Result<Vec<TapeRecord>, Reason> {
     if !path.is_file() {
         return Ok(Vec::new());
     }
-    let len = fs::metadata(&path)
-        .map_err(|_| Reason::CommitConflict)?
-        .len();
+    let len = fs::metadata(&path).map_err(refuse_io)?.len();
     if len > MAX_BYTES {
         return Err(Reason::OutOfRange);
     }
-    let bytes = fs::read(&path).map_err(|_| Reason::CommitConflict)?;
+    let bytes = fs::read(&path).map_err(refuse_io)?;
     let Some(last_nl) = bytes.iter().rposition(|byte| *byte == b'\n') else {
         return Ok(Vec::new());
     };

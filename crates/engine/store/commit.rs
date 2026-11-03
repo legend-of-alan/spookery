@@ -9,7 +9,7 @@ use crate::diagnostic::first_reason;
 use crate::draft::Draft;
 use crate::hash::blake2s_tagged;
 use crate::model::State;
-use crate::store::durability::{fsync_dir, fsync_file, write_atomic};
+use crate::store::durability::{fsync_dir, fsync_file, refuse_io, write_atomic};
 use crate::store::journal;
 use crate::store::lock::{lock_write, PackGuard, WriteGuard};
 use crate::store::records::{Record, RoundRecord};
@@ -79,7 +79,7 @@ fn bump_state_rev(draft: &mut Draft) -> Result<(), Reason> {
         .state
         .state_rev
         .checked_add(1)
-        .ok_or(Reason::CommitConflict)?;
+        .ok_or(Reason::OutOfRange)?;
     normalize(&mut draft.state);
     Ok(())
 }
@@ -98,9 +98,7 @@ pub fn commit_migrate(
     let pack_rev_after = pack_rev(root)?;
     let pack_rev_before = state.pack_rev.clone();
     let state_rev_before = state.state_rev;
-    let state_rev_after = state_rev_before
-        .checked_add(1)
-        .ok_or(Reason::CommitConflict)?;
+    let state_rev_after = state_rev_before.checked_add(1).ok_or(Reason::OutOfRange)?;
     let added = missing_meters(&canon, &state);
     let state = save::migrate(state, &pack_rev_after, state_rev_after, &added);
     check_save(&canon, &state).map_err(|diags| first_reason(&diags))?;
@@ -181,16 +179,15 @@ fn append_to_bundle(root: &Path, payload: &str, write: &WriteGuard) -> Result<St
     let path = journal::next_bundle_path(root);
     let created = !path.is_file();
     if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|_| Reason::CommitConflict)?;
+        fs::create_dir_all(parent).map_err(refuse_io)?;
     }
     {
         let mut file = OpenOptions::new()
             .create(true)
             .append(true)
             .open(&path)
-            .map_err(|_| Reason::CommitConflict)?;
-        file.write_all(payload.as_bytes())
-            .map_err(|_| Reason::CommitConflict)?;
+            .map_err(refuse_io)?;
+        file.write_all(payload.as_bytes()).map_err(refuse_io)?;
     }
     fsync_file(&path)?;
     if created {
@@ -198,9 +195,10 @@ fn append_to_bundle(root: &Path, payload: &str, write: &WriteGuard) -> Result<St
             fsync_dir(parent)?;
         }
     }
+    // The bundle path is built under `root`.
     Ok(path
         .strip_prefix(root)
-        .map_err(|_| Reason::CommitConflict)?
+        .unwrap_or(&path)
         .to_string_lossy()
         .replace('\\', "/"))
 }
@@ -226,14 +224,14 @@ fn store_checkpoint(
     let save = state.join("save.yaml");
     let base = journal::base_path(root);
     if !base.is_file() {
-        fs::copy(&save, &base).map_err(|_| Reason::CommitConflict)?;
+        fs::copy(&save, &base).map_err(refuse_io)?;
         fsync_file(&base)?;
         if let Some(parent) = base.parent() {
             fsync_dir(parent)?;
         }
     }
     let snap_dir = state.join("checkpoints");
-    fs::create_dir_all(&snap_dir).map_err(|_| Reason::CommitConflict)?;
+    fs::create_dir_all(&snap_dir).map_err(refuse_io)?;
     write_atomic(&save, now_bytes)?;
     write_atomic(&snap_dir.join(format!("{state_rev}.yaml")), now_bytes)?;
     Ok(())

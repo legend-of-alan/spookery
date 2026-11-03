@@ -24,8 +24,11 @@ mod locked {
     impl LockedFile {
         /// Lock without waiting. A lock held elsewhere is `COMMIT_CONFLICT`.
         pub(super) fn try_lock(file: File) -> Result<Self, Reason> {
-            file.try_lock().map_err(|_| Reason::CommitConflict)?;
-            Ok(Self(file))
+            match file.try_lock() {
+                Ok(()) => Ok(Self(file)),
+                Err(TryLockError::WouldBlock) => Err(Reason::CommitConflict),
+                Err(TryLockError::Error(_)) => Err(Reason::StoreIo),
+            }
         }
 
         /// Wait for the exclusive lock.
