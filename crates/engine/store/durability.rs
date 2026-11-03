@@ -6,15 +6,20 @@ use std::path::{Path, PathBuf};
 
 use crate::Reason;
 
+/// Any filesystem failure in the store. The disk refused, so a resend will not help.
+pub(crate) fn store_io(_: std::io::Error) -> Reason {
+    Reason::StoreIo
+}
+
 /// Write `bytes` to a temp file, flush it, and rename it over `target`.
 pub fn write_atomic(target: &Path, bytes: &[u8]) -> Result<(), Reason> {
     if let Some(parent) = target.parent() {
-        fs::create_dir_all(parent).map_err(|_| Reason::CommitConflict)?;
+        fs::create_dir_all(parent).map_err(store_io)?;
     }
     let tmp = add_suffix(target, ".tmp");
     {
-        let mut file = File::create(&tmp).map_err(|_| Reason::CommitConflict)?;
-        file.write_all(bytes).map_err(|_| Reason::CommitConflict)?;
+        let mut file = File::create(&tmp).map_err(store_io)?;
+        file.write_all(bytes).map_err(store_io)?;
     }
     fsync_file(&tmp)?;
     rename(&tmp, target)?;
@@ -33,14 +38,14 @@ pub(crate) fn add_suffix(path: &Path, suffix: &str) -> PathBuf {
 
 pub(crate) fn fsync_file(path: &Path) -> Result<(), Reason> {
     if take_fail(path) {
-        return Err(Reason::CommitConflict);
+        return Err(Reason::StoreIo);
     }
     let file = OpenOptions::new()
         .read(true)
         .write(true)
         .open(path)
-        .map_err(|_| Reason::CommitConflict)?;
-    file.sync_all().map_err(|_| Reason::CommitConflict)?;
+        .map_err(store_io)?;
+    file.sync_all().map_err(store_io)?;
     note_file(path);
     Ok(())
 }
@@ -65,22 +70,22 @@ pub(crate) fn fsync_dir(path: &Path) -> Result<(), Reason> {
             .write(true)
             .custom_flags(FILE_FLAG_BACKUP_SEMANTICS)
             .open(path)
-            .map_err(|_| Reason::CommitConflict)?;
-        file.sync_all().map_err(|_| Reason::CommitConflict)?;
+            .map_err(store_io)?;
+        file.sync_all().map_err(store_io)?;
         note_dir(path);
         Ok(())
     }
     #[cfg(not(windows))]
     {
-        let file = std::fs::File::open(path).map_err(|_| Reason::CommitConflict)?;
-        file.sync_all().map_err(|_| Reason::CommitConflict)?;
+        let file = std::fs::File::open(path).map_err(store_io)?;
+        file.sync_all().map_err(store_io)?;
         note_dir(path);
         Ok(())
     }
 }
 
 pub(crate) fn rename(from: &Path, to: &Path) -> Result<(), Reason> {
-    std::fs::rename(from, to).map_err(|_| Reason::CommitConflict)?;
+    std::fs::rename(from, to).map_err(store_io)?;
     note_rename(to);
     Ok(())
 }

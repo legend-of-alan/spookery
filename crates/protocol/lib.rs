@@ -79,6 +79,8 @@ pub enum Reason {
     UnscopedPerceive,
     CommitConflict,
     HandEdit,
+    JournalDiverged,
+    StoreIo,
     Schema,
     NotInSpec,
     TableFull,
@@ -113,6 +115,8 @@ impl Reason {
             Reason::UnscopedPerceive => "UNSCOPED_PERCEIVE",
             Reason::CommitConflict => "COMMIT_CONFLICT",
             Reason::HandEdit => "HAND_EDIT",
+            Reason::JournalDiverged => "JOURNAL_DIVERGED",
+            Reason::StoreIo => "STORE_IO",
             Reason::Schema => "SCHEMA",
             Reason::NotInSpec => "NOT_IN_SPEC",
             Reason::TableFull => "TABLE_FULL",
@@ -217,6 +221,8 @@ impl fmt::Display for Refusal {
             Reason::UnscopedPerceive => "You cannot see that.",
             Reason::CommitConflict => "The table was already writing. Try again.",
             Reason::HandEdit => "The save was edited by hand.",
+            Reason::JournalDiverged => "The journal does not replay.",
+            Reason::StoreIo => "The table could not write to disk.",
             Reason::Schema => "That line is not valid.",
             Reason::NotInSpec => "The table does not understand that. Type help.",
             Reason::TableFull => "The table is full.",
@@ -311,7 +317,7 @@ impl From<Speaker> for String {
 mod tests {
     use super::*;
 
-    const ALL: [Reason; 29] = [
+    const ALL: [Reason; 31] = [
         Reason::UnknownEffect,
         Reason::IllegalKnowledge,
         Reason::OutOfRange,
@@ -329,6 +335,8 @@ mod tests {
         Reason::UnscopedPerceive,
         Reason::CommitConflict,
         Reason::HandEdit,
+        Reason::JournalDiverged,
+        Reason::StoreIo,
         Reason::TriggerLeak,
         Reason::Schema,
         Reason::NotInSpec,
@@ -363,6 +371,8 @@ mod tests {
             | Reason::UnscopedPerceive
             | Reason::CommitConflict
             | Reason::HandEdit
+            | Reason::JournalDiverged
+            | Reason::StoreIo
             | Reason::TriggerLeak
             | Reason::Schema
             | Reason::NotInSpec

@@ -62,6 +62,9 @@ mod one_writer;
 #[path = "steps/session.rs"]
 mod session;
 
+#[path = "steps/store_failures.rs"]
+mod store_failures;
+
 #[path = "feature_dirs.rs"]
 mod feature_dirs;
 

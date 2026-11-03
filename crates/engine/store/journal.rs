@@ -53,12 +53,12 @@ pub(crate) fn read_head(pack: &Path) -> Result<Option<CheckpointHead>, Error> {
     let text = fs::read_to_string(&path).map_err(|_| {
         Error::new(
             &path,
-            Reason::Schema,
+            Reason::JournalDiverged,
             "the checkpoint head could not be read",
         )
     })?;
     let value: serde_json::Value = serde_json::from_str(&text)
-        .map_err(|err| Error::new(&path, Reason::Schema, &err.to_string()))?;
+        .map_err(|err| Error::new(&path, Reason::JournalDiverged, &err.to_string()))?;
     let rules_rev = value.get("rules_rev").and_then(|rev| rev.as_u64());
     if let Err(reason) = super::require_rules_rev(rules_rev.unwrap_or(0)) {
         return Err(Error::new(&path, reason, "written by older rules"));
@@ -135,7 +135,7 @@ pub(crate) fn check_chain(pack: &Path, bundles: &[(String, Vec<Record>)]) -> Res
             if entry.prev() != prev {
                 return Err(Error::new(
                     Path::new(name),
-                    Reason::Schema,
+                    Reason::JournalDiverged,
                     "the record does not follow the previous hash",
                 ));
             }
@@ -219,8 +219,13 @@ fn base_hash(pack: &Path) -> Result<String, Error> {
     } else {
         pack.join("state/save.yaml")
     };
-    let bytes = fs::read(&path)
-        .map_err(|_| Error::new(&path, Reason::Schema, "the snapshot could not be read"))?;
+    let bytes = fs::read(&path).map_err(|_| {
+        Error::new(
+            &path,
+            Reason::JournalDiverged,
+            "the snapshot could not be read",
+        )
+    })?;
     Ok(blake2s_tagged(&bytes))
 }
 
@@ -336,12 +341,22 @@ pub fn list_bundles(pack: &Path) -> Result<Vec<(String, PathBuf)>, Error> {
     if !dir.is_dir() {
         return Ok(Vec::new());
     }
-    let entries = fs::read_dir(&dir)
-        .map_err(|_| Error::new(&dir, Reason::Schema, "the log directory could not be read"))?;
+    let entries = fs::read_dir(&dir).map_err(|_| {
+        Error::new(
+            &dir,
+            Reason::JournalDiverged,
+            "the log directory could not be read",
+        )
+    })?;
     let mut by_index: BTreeMap<u32, (String, PathBuf)> = BTreeMap::new();
     for entry in entries {
-        let entry = entry
-            .map_err(|_| Error::new(&dir, Reason::Schema, "the log directory could not be read"))?;
+        let entry = entry.map_err(|_| {
+            Error::new(
+                &dir,
+                Reason::JournalDiverged,
+                "the log directory could not be read",
+            )
+        })?;
         let name = entry.file_name();
         let name = name.to_string_lossy().into_owned();
         let Some(index) = bundle_index(&name) else {
@@ -384,7 +399,7 @@ fn check_record_chain(name: &str, entry: &Record) -> Result<(), Error> {
     if entry.chain() != chain_of(entry) {
         return Err(Error::new(
             Path::new(name),
-            Reason::Schema,
+            Reason::JournalDiverged,
             "the chain hash does not cover this record",
         ));
     }
@@ -414,7 +429,13 @@ fn parse_complete(name: &str, text: &str) -> Result<Vec<Record>, Error> {
 }
 
 fn read_bundle(name: &str, path: &Path) -> Result<String, Error> {
-    let unread = || Error::new(path, Reason::Schema, "the journal bundle could not be read");
+    let unread = || {
+        Error::new(
+            path,
+            Reason::JournalDiverged,
+            "the journal bundle could not be read",
+        )
+    };
     let mut bytes = fs::read(path).map_err(|_| unread())?;
     if name.ends_with(".gz") {
         bytes = gunzip_bytes(&bytes).map_err(|_| unread())?;
@@ -440,7 +461,7 @@ pub fn gunzip_bytes(bytes: &[u8]) -> Result<Vec<u8>, Reason> {
 fn parse_json<T: DeserializeOwned>(name: &str, text: &str) -> Result<T, Error> {
     let mut de = serde_json::Deserializer::from_str(text.trim_end());
     serde_path_to_error::deserialize(&mut de)
-        .map_err(|err| Error::new(Path::new(name), Reason::Schema, &err.to_string()))
+        .map_err(|err| Error::new(Path::new(name), Reason::JournalDiverged, &err.to_string()))
 }
 
 #[cfg(test)]
@@ -501,15 +522,15 @@ mod tests {
             super::super::RULES_REV
         );
         let refused = parse_line("bundle-0000.jsonl", &unknown).unwrap_err();
-        assert_eq!(refused.reason, Reason::Schema);
+        assert_eq!(refused.reason, Reason::JournalDiverged);
         assert!(refused.detail.contains("tick"), "{}", refused.detail);
         let broken = r#"{"kind":"checkpoint","round_index":"x","state_rev":1,"state_hash":""}"#;
         let refused = parse_line("bundle-0000.jsonl", broken).unwrap_err();
-        assert_eq!(refused.reason, Reason::Schema);
+        assert_eq!(refused.reason, Reason::JournalDiverged);
         assert!(refused.detail.contains("round_index"), "{}", refused.detail);
         for torn in ["garbage", r#"{"kind":"round","round_ind"#] {
             let refused = parse_line("bundle-0000.jsonl", torn).unwrap_err();
-            assert_eq!(refused.reason, Reason::Schema, "{torn}");
+            assert_eq!(refused.reason, Reason::JournalDiverged, "{torn}");
         }
         let pack = crate::testing::copy_docks("old-head");
         let head = head_path(&pack);
@@ -565,7 +586,7 @@ mod tests {
             ("cc", r#""to":["pc_wren"]"#, r#""cc":["pc_wren"]"#),
         ] {
             let refused = parse_line("round.jsonl", &written.replacen(from, to, 1)).unwrap_err();
-            assert_eq!(refused.reason, Reason::Schema);
+            assert_eq!(refused.reason, Reason::JournalDiverged);
             assert!(
                 refused.detail.contains(&format!("`{word}`")),
                 "{}",
