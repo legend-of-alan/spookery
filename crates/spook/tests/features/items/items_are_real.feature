@@ -81,6 +81,11 @@ Feature: Items are real
     When lark attacks nell
     Then verb:attack ran
 
+  Scenario: A wielded item's rule wins for any verb
+    Given lark wields a poisoned_dagger with a strike rule
+    When lark types "strike pc_nell"
+    Then item:poisoned_dagger/strike ran, not verb:strike
+
   Scenario: Dropping the wielded item empties the slot
     Given lark wields poisoned_dagger
     When lark drops poisoned_dagger
