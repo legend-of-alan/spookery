@@ -170,17 +170,12 @@ pub(crate) fn admit(context: &Context, rule: &Rule) -> Result<(), Refusal> {
     Ok(())
 }
 
-/// A player names only what they hold or what `look` shows them. A clock target is the one
-/// `stamp_target` gives a GM-queued habit, and the NPC must see that clock too.
+/// A seat names only what its actor holds or what `look` shows them. No seat names a clock:
+/// `stamp_target` fills that target from the rule, so it is not judged here.
 fn can_name(context: &Context) -> bool {
     let intent = context.intent;
-    let id = match &intent.target {
-        Target::Empty => return true,
-        Target::Actor(id)
-        | Target::Item(id)
-        | Target::Place(id)
-        | Target::Exit(id)
-        | Target::Clock(id) => id.as_str(),
+    let Some(id) = intent.target.token() else {
+        return true;
     };
     if context
         .state
@@ -202,5 +197,4 @@ fn can_name(context: &Context) -> bool {
         || view.visible_actors.iter().any(|other| other == id)
         || view.items.iter().any(|item| item.id == id)
         || view.exits.iter().any(|exit| exit.name == id)
-        || view.clocks.iter().any(|clock| clock.id == id)
 }
