@@ -433,11 +433,12 @@ impl World<()> {
         let now_bytes = fs::read(root.join("state/save.yaml")).map_err(|_| Reason::NotInSpec)?;
         let now_text = std::str::from_utf8(&now_bytes).map_err(|_| Reason::Schema)?;
         let state = save::parse(now_text).map_err(|diags| first_reason(&diags))?;
+        let live = journal::read_live_records(root).unwrap_or_default();
         let mut problems = save_problems(&state, &now_bytes);
-        if let Some(diag) = pack_rev_problem(root, &state, &now_bytes) {
+        if let Some(diag) = pack_rev_problem(root, tip_pack_rev(&live, &state), &now_bytes) {
             problems.insert(0, diag);
         }
-        let continues = journal_continues(root, &state);
+        let continues = journal_continues(&live, &state);
         if continues {
             problems.retain(|diag| diag.code != Code::Error(Reason::HandEdit));
         }
@@ -522,25 +523,20 @@ fn check_say_text(text: &str) -> Result<&str, Reason> {
     Ok(text)
 }
 
-/// Hash of the newest migrate past the checkpoint, or the save's own hash.
-fn tip_pack_rev(root: &Path, state: &State) -> String {
-    let Ok(entries) = journal::read_live_records(root) else {
-        return state.pack_rev.clone();
-    };
-    for entry in entries.iter().rev() {
-        if entry.state_rev_after() <= state.state_rev {
-            continue;
-        }
-        if let Record::Migrate(record) = entry {
-            return record.pack_rev_after.clone();
-        }
-    }
-    state.pack_rev.clone()
+/// Hash of the newest migrate in `live` past the checkpoint, or the save's own hash.
+fn tip_pack_rev<'a>(live: &'a [Record], state: &'a State) -> &'a str {
+    live.iter()
+        .rev()
+        .filter(|entry| entry.state_rev_after() > state.state_rev)
+        .find_map(|entry| match entry {
+            Record::Migrate(record) => Some(record.pack_rev_after.as_str()),
+            _ => None,
+        })
+        .unwrap_or(&state.pack_rev)
 }
 
 /// `Some` when the canon files are not the journal tip's hash.
-fn pack_rev_problem(root: &Path, state: &State, bytes: &[u8]) -> Option<Diagnostic> {
-    let tip = tip_pack_rev(root, state);
+fn pack_rev_problem(root: &Path, tip: &str, bytes: &[u8]) -> Option<Diagnostic> {
     match pack_rev(root) {
         Ok(rev) if tip != rev => {
             let mut diag = error(
@@ -570,24 +566,11 @@ fn pack_rev_problem(root: &Path, state: &State, bytes: &[u8]) -> Option<Diagnost
     }
 }
 
-/// The on-disk save is a checkpoint. Later journal records still have to be replayed.
-fn journal_continues(root: &Path, state: &State) -> bool {
-    let Ok(entries) = journal::read_live_records(root) else {
-        return false;
-    };
-    entries.iter().any(|entry| match entry {
+/// The on-disk save is a checkpoint. Later live records still have to be replayed.
+fn journal_continues(live: &[Record], state: &State) -> bool {
+    live.iter().any(|entry| match entry {
         Record::Checkpoint(_) => false,
         _ => entry.state_rev_after() > state.state_rev,
-    })
-}
-
-/// A migrate record past the checkpoint has already accepted the save's edit.
-fn migrate_continues(root: &Path, state: &State) -> bool {
-    let Ok(entries) = journal::read_live_records(root) else {
-        return false;
-    };
-    entries.iter().any(|entry| {
-        matches!(entry, Record::Migrate(_)) && entry.state_rev_after() > state.state_rev
     })
 }
 
@@ -641,17 +624,21 @@ pub fn check_pack(root: &Path) -> Vec<Diagnostic> {
         None
     };
     if let Some((bytes, state)) = &loaded {
+        let live = journal::read_live_records(root).unwrap_or_default();
         let mut problems = save_problems(state, bytes);
-        let migrating = migrate_continues(root, state);
+        // A migrate record past the checkpoint has already accepted the save's edit.
+        let migrating = live.iter().any(|entry| {
+            matches!(entry, Record::Migrate(_)) && entry.state_rev_after() > state.state_rev
+        });
         if migrating {
             problems.retain(|diag| diag.code != Code::Error(Reason::HandEdit));
         }
-        if let Some(diag) = pack_rev_problem(root, state, bytes) {
+        if let Some(diag) = pack_rev_problem(root, tip_pack_rev(&live, state), bytes) {
             problems.insert(0, diag);
         }
         diags.extend(problems);
         // A checkpoint save is not the tip. Resume checks the tip when it opens.
-        if let Some(canon) = canon.as_ref().filter(|_| !journal_continues(root, state)) {
+        if let Some(canon) = canon.as_ref().filter(|_| !journal_continues(&live, state)) {
             if let Err(more) = check_save(canon, state) {
                 diags.extend(more);
             }

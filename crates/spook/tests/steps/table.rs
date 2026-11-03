@@ -192,7 +192,12 @@ pub fn pack(world: &World) -> &Path {
 pub fn now_of(pack: &Path) -> State {
     let start = Instant::now();
     loop {
-        match spookery_engine::testing::replay_journal(pack, None, None) {
+        let replayed = spookery_engine::testing::journal::read_records(pack)
+            .map_err(Into::into)
+            .and_then(|records| {
+                spookery_engine::testing::replay_journal(pack, &records, None, None)
+            });
+        match replayed {
             Ok(report) => {
                 let text = std::str::from_utf8(&report.now_yaml)
                     .unwrap_or_else(|err| panic!("save text: {err}"));

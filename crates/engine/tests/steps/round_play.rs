@@ -73,7 +73,9 @@ fn a_played_d20_fight(world: &mut World) {
 fn spook_verify_passes_and_re_derives_every_roll(world: &mut World) {
     let pack = world.pack.as_ref().unwrap();
     spookery_engine::verify_pack(pack, None).expect("verify");
-    let report = spookery_engine::testing::replay_journal(pack, None, None)
+    let records = spookery_engine::testing::journal::read_records(pack)
+        .unwrap_or_else(|err| panic!("{err:?}"));
+    let report = spookery_engine::testing::replay_journal(pack, &records, None, None)
         .unwrap_or_else(|err| panic!("{err:?}"));
     let line = spookery_engine::testing::journal::read_record_line(pack, "round-0001")
         .unwrap_or_else(|err| panic!("{}", err.detail));

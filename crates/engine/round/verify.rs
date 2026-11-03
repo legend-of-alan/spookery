@@ -42,7 +42,8 @@ pub fn verify_pack(pack: &Path, from: Option<&Path>) -> Result<Report, Error> {
         });
     }
     let cap = records.iter().map(Record::state_rev_after).max();
-    let report = replay_journal(pack, from, cap).map_err(|err| name_save_line(pack, err))?;
+    let report =
+        replay_journal(pack, &records, from, cap).map_err(|err| name_save_line(pack, err))?;
     let trusted_edits = records
         .iter()
         .filter_map(|entry| match entry {

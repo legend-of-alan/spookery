@@ -160,17 +160,18 @@ pub(crate) fn checkpoint_diverged(
     )
 }
 
-/// Replay the journal. `from` is a directory whose `state/save.yaml` replaces the base.
-/// `until` ignores records with a later `state_rev`, so a live server cannot race a verify.
+/// Replay the journal's `records`. `from` is a directory whose `state/save.yaml` replaces
+/// the base. `until` ignores records with a later `state_rev`, so a live server cannot race
+/// a verify.
 pub fn replay_journal(
     pack: &Path,
+    records: &[Record],
     from: Option<&Path>,
     until: Option<u64>,
 ) -> Result<Report, Error> {
     if !pack.join("pack.yaml").is_file() {
         return Err(Error::Reason(Reason::NotInSpec));
     }
-    let records = journal::read_records(pack)?;
     let base_path = journal::base_path(pack);
     let save_path = pack.join("state/save.yaml");
     let base_bytes = if let Some(from) = from {
@@ -198,7 +199,7 @@ pub fn replay_journal(
             .max()
             .unwrap_or(base_rev)
     });
-    check_sequence(&records, cap, base_rev, from.is_none(), &base_bytes)?;
+    check_sequence(records, cap, base_rev, from.is_none(), &base_bytes)?;
     let mut applied = 0u64;
     let needs_apply = records.iter().any(|entry| {
         let rev = entry.state_rev_after();
@@ -348,7 +349,8 @@ fn rebuild_save(path: &Path, lock: &PackGuard) -> Result<(), Error> {
             }
         }
     }
-    let report = replay_journal(path, None, Some(mark.state_rev))?;
+    let records = journal::read_records(path)?;
+    let report = replay_journal(path, &records, None, Some(mark.state_rev))?;
     if blake2s_tagged(&report.now_yaml) != mark.state_hash {
         return Err(
             checkpoint_diverged(mark.state_rev, mark.round_index, "state hash differed")
@@ -599,14 +601,16 @@ mod tests {
 
     use super::replay_journal;
     use crate::round::play_pack_once;
+    use crate::store::journal;
     use crate::testing::copy_docks;
 
     #[test]
     fn two_replays_in_one_process_do_not_collide() {
         let pack = copy_docks("replay-collide");
         play_pack_once(&pack).unwrap();
-        let left = replay_journal(&pack, None, None).unwrap();
-        let right = replay_journal(&pack, None, None).unwrap();
+        let records = journal::read_records(&pack).unwrap();
+        let left = replay_journal(&pack, &records, None, None).unwrap();
+        let right = replay_journal(&pack, &records, None, None).unwrap();
         assert_eq!(left.now_yaml, right.now_yaml);
         assert_eq!(left.applied, 1);
         assert_eq!(right.applied, 1);

@@ -200,7 +200,9 @@ pub mod testing {
     }
 
     pub fn state_of(pack: &Path) -> crate::model::State {
-        let report = replay_journal(pack, None, None)
+        let records = crate::store::journal::read_records(pack)
+            .unwrap_or_else(|err| panic!("read_records {}: {}", pack.display(), err.detail));
+        let report = replay_journal(pack, &records, None, None)
             .unwrap_or_else(|err| panic!("replay_journal {}: {err}", pack.display()));
         let yaml = std::str::from_utf8(&report.now_yaml)
             .unwrap_or_else(|err| panic!("utf-8 {}: {err}", pack.display()));

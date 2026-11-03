@@ -184,10 +184,10 @@ fn item_tokens(world: &World, actor: &str) -> Vec<String> {
 
 /// Replay the journal and compare it with the state hash on the last record.
 pub(crate) fn assert_replay_matches(pack: &Path) -> Result<(), TestCaseError> {
-    let report =
-        replay_journal(pack, None, None).map_err(|err| TestCaseError::fail(err.to_string()))?;
     let entries = journal::read_records(pack)
         .map_err(|fault| TestCaseError::fail(format!("{}: {}", fault.file, fault.detail)))?;
+    let report = replay_journal(pack, &entries, None, None)
+        .map_err(|err| TestCaseError::fail(err.to_string()))?;
     let Some(last) = entries.iter().rev().find(|entry| entry.changes_state()) else {
         return Err(TestCaseError::fail(
             "the rounds wrote no record".to_string(),
