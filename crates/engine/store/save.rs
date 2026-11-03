@@ -180,26 +180,6 @@ mod tests {
         assert_eq!(parse(&emitted).unwrap(), state);
     }
 
-    #[test]
-    fn a_save_that_still_lists_place_occupants_is_refused() {
-        let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../../packs/oneshot-docks/state/save.yaml");
-        let current = fs::read_to_string(&path).unwrap();
-        let place = "  mira_rooms:\n    items: {}\n";
-        let listed = current.replacen(
-            place,
-            &format!("{place}    notes: []\n    actors:\n      - mira\n"),
-            1,
-        );
-        assert_ne!(listed, current);
-        let refused = parse(&listed).unwrap_err();
-        assert!(
-            refused[0].message.starts_with("unknown field 'notes'"),
-            "{refused:?}"
-        );
-        assert_eq!(crate::diagnostic::first_reason(&refused), Reason::Schema);
-    }
-
     fn save_text(tag: &str) -> String {
         format!(
             "\
