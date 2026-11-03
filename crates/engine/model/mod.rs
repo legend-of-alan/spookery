@@ -135,13 +135,11 @@ impl ActorLive {
         self.act.busy_until.is_some_and(|until| until > world_time)
     }
 
-    pub(crate) fn visit(&mut self, place: &str) -> bool {
-        if self.visited.iter().any(|id| id == place) {
-            return false;
+    pub(crate) fn visit(&mut self, place: &str) {
+        if !self.visited.iter().any(|id| id == place) {
+            self.visited.push(place.to_string());
+            self.visited.sort();
         }
-        self.visited.push(place.to_string());
-        self.visited.sort();
-        true
     }
 
     pub fn is_npc(&self) -> bool {
