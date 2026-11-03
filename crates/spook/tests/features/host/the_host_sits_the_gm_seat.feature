@@ -61,6 +61,11 @@ Feature: The host sits the GM seat
   Scenario: Play, host, and a stub share one speech turn and one travel turn
     When play and the AI GM and a stub run a speech turn and a travel turn
 
+  Scenario: A move queued while the model answers a say gets its own turn
+    When a player queues travel while the model answers their say
+    Then the stub saw 2 model posts
+    And the queued line committed one round
+
   Scenario: The host dials an overridden MCP address
     Given a docks table
     When the AI GM is pointed at an overridden MCP address
