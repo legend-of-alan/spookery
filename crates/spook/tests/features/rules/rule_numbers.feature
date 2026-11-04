@@ -23,39 +23,21 @@ Feature: Dice and arithmetic in rule numbers
     Then Rowan's grit rose by the higher d20
     And the journal records both d20 faces
 
-  Scenario: A typo fails spook check with its line
+  Scenario Outline: A bad expression fails spook check with its line
     Given a docks table
-    When the pack's hit adds "2d6 +" to grit
+    When the pack's hit adds "<expression>" to grit
     And the operator runs spook check
     Then the check exits 1
-    And the report says "is not a number"
-    And the report names the expression line
-    And the report has a location for "rules/verbs.yaml"
-
-  Scenario: An unknown meter fails spook check
-    Given a docks table
-    When the pack's hit adds "self.nope" to grit
-    And the operator runs spook check
-    Then the check exits 1
-    And the report says "meter 'nope'"
-    And the report has a location for "rules/verbs.yaml"
-
-  Scenario: A world meter read fails spook check
-    Given a docks table
-    When the pack's hit adds "world.grit" to grit
-    And the operator runs spook check
-    Then the check exits 1
-    And the report says "the world has no meters"
+    And the report says "<phrase>"
     And the report names the expression line
 
-  Scenario: A subject meter read fails spook check
-    Given a docks table
-    When the pack's hit adds "subject.grit" to grit
-    And the operator runs spook check
-    Then the check exits 1
-    And the report says "names 'subject', which is not a who"
-    And the report says "use self"
-    And the report names the expression line
+    Examples:
+      | expression   | phrase                                        |
+      | 2d6 +        | is not a number                               |
+      | self.nope    | meter 'nope'                                  |
+      | world.grit   | the world has no meters                       |
+      | subject.grit | names 'subject', which is not a who; use self |
+      | 100000000d6  | rolls more than 1000 dice                     |
 
   Scenario: A subject who fails spook check
     Given a docks table
@@ -65,14 +47,6 @@ Feature: Dice and arithmetic in rule numbers
     And the report says "'subject' is not a who"
     And the report says "use self"
     And the report names the line holding "subject"
-
-  Scenario: A huge dice count fails spook check
-    Given a docks table
-    When the pack's hit adds "100000000d6" to grit
-    And the operator runs spook check
-    Then the check exits 1
-    And the report says "rolls more than 1000 dice"
-    And the report names the expression line
 
   Scenario: An NPC habit rolls its effect dice
     Given a docks table

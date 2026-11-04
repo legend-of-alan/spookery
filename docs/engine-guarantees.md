@@ -262,8 +262,9 @@ word and takes no round. A pack that omits `display_name` fails check. An
 unknown word tells the player to type help.
 
 Tested in `features/seats/a_player_knows_the_place.feature`,
-`features/changes/actions_visibly_matter.feature` and
-`features/items/items_are_real.feature`.
+`features/changes/actions_visibly_matter.feature`,
+`features/items/items_are_real.feature` and
+`features/check/spook_check_explains_a_broken_pack.feature`.
 
 ## What the engine does not do
 

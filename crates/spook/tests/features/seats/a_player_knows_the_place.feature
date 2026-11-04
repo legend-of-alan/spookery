@@ -53,10 +53,3 @@ Feature: A player knows where they are and what they can do
     And play types "dance"
     Then play's error shows "The table does not understand that. Type help."
     And world_time is 1080
-
-  Scenario: A pack without display names fails check
-    Given a docks table
-    When the copy is broken by "missing display_name"
-    And the operator runs spook check
-    Then the check exits 1
-    And the report says "display_name"

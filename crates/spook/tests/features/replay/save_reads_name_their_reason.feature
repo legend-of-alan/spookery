@@ -1,11 +1,22 @@
 Feature: Save reads name their reason
 
-  Scenario: A save the disk will not read is STORE_IO on migrate
+  Scenario Outline: A save the disk will not read is STORE_IO
     Given a docks table
     When the save cannot be read
-    And the operator runs migrate
+    And the operator <command>
     Then the command exits 1
     And stderr is STORE_IO
+
+    Examples:
+      | command       |
+      | runs migrate  |
+      | runs verify   |
+      | tries a round |
+
+  Scenario: A save the disk will not read is STORE_IO on check
+    Given a docks table
+    When the save cannot be read
+    Then spook check reports STORE_IO
 
   Scenario: A missing save is NOT_IN_SPEC on migrate
     Given a docks table
@@ -32,39 +43,16 @@ Feature: Save reads name their reason
     Then the command exits 1
     And stderr is STORE_IO
 
-  Scenario: A save the disk will not read is STORE_IO on verify
-    Given a docks table
-    When the save cannot be read
-    And the operator runs verify
-    Then the command exits 1
-    And stderr is STORE_IO
-
-  Scenario: A save the disk will not read is STORE_IO on open
-    Given a docks table
-    When the save cannot be read
-    And the operator tries a round
-    Then the command exits 1
-    And stderr is STORE_IO
-
-  Scenario: A replay base the disk will not read is STORE_IO on verify
+  Scenario Outline: A replay base the disk will not read is STORE_IO
     Given a docks table
     And checkpoints are taken every 2 rounds
     When the operator plays 2 rounds
     And the replay base cannot be read
-    And the operator runs verify
+    And the operator <command>
     Then the command exits 1
     And stderr is STORE_IO
 
-  Scenario: A replay base the disk will not read is STORE_IO on quick verify
-    Given a docks table
-    And checkpoints are taken every 2 rounds
-    When the operator plays 2 rounds
-    And the replay base cannot be read
-    And the operator runs quick verify
-    Then the command exits 1
-    And stderr is STORE_IO
-
-  Scenario: A save the disk will not read is STORE_IO on check
-    Given a docks table
-    When the save cannot be read
-    Then spook check reports STORE_IO
+    Examples:
+      | command           |
+      | runs verify       |
+      | runs quick verify |
