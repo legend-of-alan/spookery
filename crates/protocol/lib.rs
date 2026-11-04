@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 
 /// A check band on the player wire, the GM wire, and the rolls in `committed`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "lowercase")]
 pub enum Outcome {
     Success,
@@ -33,6 +34,8 @@ pub use gm::{
     parse_args, CastKind, CommitArgs, CommitBody, IntentArgs, MenuRow, PackSummary, PerceiveArgs,
     QueuedMove, Roll, SayArgs, StatusPause, StatusPresence, TableStatus, ToolResult,
 };
+#[cfg(feature = "schema")]
+pub use message::{generate_client_schema, generate_server_schema};
 pub use message::{
     ClaimArgs, ClientBody, ClientMessage, Message, MoveArgs, NoArgs, Say, Seat, ServerBody,
     ServerMessage, Word, VERSION, WORDS,
@@ -64,6 +67,7 @@ pub const PERCEIVE_BODY_CHARS: usize = 800;
 /// `data`, and the token the journal stores on a round line (`engine::Refusal`).
 /// Strict and `Copy` on purpose: `spook verify` must fail on a code it does not know.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum Reason {
     UnknownEffect,
@@ -151,6 +155,7 @@ impl std::error::Error for Reason {}
 /// The code as a client reads it off the wire: a `Reason` this build knows, or the
 /// text of one it does not. Serializes as the bare string either way.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(untagged)]
 pub enum Code {
     Known(Reason),
@@ -182,6 +187,7 @@ impl From<String> for Code {
 /// Display is that error's message, the sentence with the code in brackets,
 /// `The table is full. [TABLE_FULL]`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct Refusal {
     pub code: Code,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -257,6 +263,7 @@ impl fmt::Display for Refusal {
 
 /// A refusal's `detail`: one id or locked text, or the free PCs on `CHOOSE_PC`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(untagged)]
 pub enum Detail {
     One(String),
@@ -266,6 +273,7 @@ pub enum Detail {
 /// Who spoke: the `from` of a say on the wire and the tape. Written `gm`, `player:<id>` or
 /// `npc:<id>`; `FromStr` refuses an empty or whitespace id and any other prefix.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(try_from = "String", into = "String")]
 pub enum Speaker {
     Gm,

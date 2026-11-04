@@ -32,9 +32,9 @@ enum Example {
     Text(String),
 }
 
-/// One player connection on `/player` on the game port. A reader thread hands over
-/// each message.
-struct PlayerClient {
+/// One connection to `/player` or `/gm` on the game port. A reader thread hands over each
+/// message.
+struct SeatClient {
     write: WebSocket<TcpStream>,
     lines: Receiver<String>,
     next_id: u64,
@@ -99,104 +99,26 @@ async fn the_seat_page_matches_a_live_table() {
 fn capture() -> BTreeMap<String, Example> {
     let mut out = BTreeMap::new();
     let table = listen();
-    let mut player = open_player(table.game);
-
     let addrs = serde_json::from_str(&table.addrs_line)
         .unwrap_or_else(|err| panic!("addrs: {err}\n{}", table.addrs_line));
     insert_json(&mut out, "listening", addrs);
-    insert_json(&mut out, "player-hello", next_json(&player));
+
+    let mut gm = open_seat(table.game, "gm");
+    insert_json(&mut out, "gm-hello", next_kind(&gm, "hello"));
+    let mut player = open_seat(table.game, "player");
+    insert_json(&mut out, "player-hello", next_kind(&player, "hello"));
     let claim = send(&mut player, "claim", json!({"actor": "pc_rowan"}));
     insert_json(&mut out, "player-claim", claim);
-    let mut claimed = next_json(&player);
-    assert_eq!(claimed["body"]["kind"], "claimed", "{claimed}");
+    let mut claimed = next_kind(&player, "claimed");
     let token = scrub_token(&mut claimed["body"]);
     insert_json(&mut out, "player-claimed", claimed);
-    let resume = next_json(&player);
-    assert_eq!(resume["body"]["kind"], "resume", "{resume}");
-    insert_json(&mut out, "player-resume", resume);
-    let perceive = next_json(&player);
-    assert_eq!(perceive["body"]["kind"], "view", "{perceive}");
-    insert_json(&mut out, "player-perceive", perceive);
-
-    insert_json(
-        &mut out,
-        "player-look",
-        send(&mut player, "look", json!({})),
-    );
-    let looked = next_json(&player);
-    assert_eq!(looked["body"]["kind"], "view", "{looked}");
-    insert_json(&mut out, "player-look-view", looked);
-
-    insert_json(
-        &mut out,
-        "player-seat-taken",
-        refused_reply(table.game, "claim", json!({"actor": "pc_rowan"})),
-    );
-    insert_json(
-        &mut out,
-        "player-unknown-pc",
-        refused_reply(table.game, "claim", json!({"actor": "no_such"})),
-    );
+    insert_json(&mut out, "player-resume", next_kind(&player, "resume"));
+    insert_json(&mut out, "player-view", next_kind(&player, "view"));
+    insert_json(&mut out, "gm-presence", next_kind(&gm, "presence"));
     insert_json(
         &mut out,
         "player-choose-pc",
         refused_reply(table.game, "wait", json!({})),
-    );
-    insert_json(
-        &mut out,
-        "player-line-too-long",
-        send_too_long_message(table.game),
-    );
-
-    let version = ProtocolVersion::LATEST.as_str();
-    let initialize = serde_json::json!({
-        "jsonrpc": "2.0",
-        "id": 1,
-        "method": "initialize",
-        "params": {
-            "protocolVersion": version,
-            "capabilities": {},
-            "clientInfo": { "name": "seat-protocol", "version": "0" }
-        }
-    });
-    insert_json(&mut out, "initialize-request", initialize.clone());
-    let (opened, session) = post_initialize(table.mcp_port, &initialize);
-    insert_json(&mut out, "initialize-result", opened.clone());
-    let negotiated = opened["result"]["protocolVersion"]
-        .as_str()
-        .unwrap_or_else(|| panic!("no protocol version\n{opened}"))
-        .to_string();
-    // DELETE is a legacy-lifecycle call. The newest protocol version is refused
-    // with 405, so the header is the version the handshake returned.
-    delete_session(table.mcp_port, &session, &negotiated);
-
-    let mcp_addr = std::net::SocketAddr::from(([127, 0, 0, 1], table.mcp_port));
-    let mut gm = support::block_on(GmClient::connect(mcp_addr))
-        .unwrap_or_else(|err| panic!("seat GM: {err}"));
-
-    let status_args = serde_json::json!({});
-    insert_json(
-        &mut out,
-        "status-request",
-        tool_call(1, "status", &status_args),
-    );
-    insert_json(
-        &mut out,
-        "status-result",
-        call(&mut gm, "status", status_args),
-    );
-
-    let perceive_args = serde_json::json!({"as": "pc_rowan"});
-    insert_json(
-        &mut out,
-        "perceive-request",
-        tool_call(2, "perceive", &perceive_args),
-    );
-    let gm_perceive = call(&mut gm, "perceive", perceive_args);
-    assert_eq!(
-        &gm_perceive["messages"][0]["body"],
-        &out_json(&out, "player-perceive")["body"],
-        "GM perceive diverged from the player welcome"
     );
 
     let say = send(
@@ -205,160 +127,50 @@ fn capture() -> BTreeMap<String, Example> {
         json!({"address": "table", "text": "evening"}),
     );
     insert_json(&mut out, "player-say", say);
-    let said = next_json(&player);
-    assert_eq!(said["body"]["kind"], "say", "{said}");
-    insert_json(&mut out, "player-say-frame", said);
-    insert_json(&mut out, "say-event", one_event(&mut gm));
+    insert_json(&mut out, "player-said", next_kind(&player, "say"));
+    insert_json(&mut out, "gm-heard", next_kind(&gm, "say"));
 
-    let say_args = serde_json::json!({"address": "table", "text": "good evening"});
-    insert_json(&mut out, "say-request", tool_call(3, "say", &say_args));
-    insert_json(&mut out, "say-result", call(&mut gm, "say", say_args));
-    let heard = next_json(&player);
-    assert_eq!(heard["body"]["kind"], "say", "{heard}");
-    insert_json(&mut out, "player-hears-gm", heard);
-    let held_args = serde_json::json!({"actor_id": "pc_rowan", "move": "wait"});
-    insert_json(
-        &mut out,
-        "intent-held-request",
-        tool_call(4, "queue", &held_args),
+    // The save's stamp is the pack's own until a round commits, so status comes first.
+    send(&mut gm, "status", json!({}));
+    insert_json(&mut out, "gm-status", next_kind(&gm, "status"));
+    let queue = send(
+        &mut gm,
+        "queue",
+        json!({"actor_id": "aldric", "move": "wait", "id": "gm-wait"}),
     );
-    insert_json(&mut out, "intent-held", call(&mut gm, "queue", held_args));
-
-    let intent_args = serde_json::json!({
-        "actor_id": "aldric",
-        "move": "wait",
-        "id": "gm-wait"
-    });
-    insert_json(
-        &mut out,
-        "intent-request",
-        tool_call(5, "queue", &intent_args),
-    );
-    insert_json(
-        &mut out,
-        "intent-result",
-        call(&mut gm, "queue", intent_args),
-    );
-
+    insert_json(&mut out, "gm-queue", queue);
+    insert_json(&mut out, "gm-queued", next_kind(&gm, "queued"));
     insert_json(
         &mut out,
         "player-grit",
         send(&mut player, "grit", json!({})),
     );
-    let queued = next_json(&player);
-    assert_eq!(queued["body"]["kind"], "queued", "{queued}");
-    insert_json(&mut out, "player-queued", queued);
-    insert_json(&mut out, "queued-event", one_event(&mut gm));
+    insert_json(&mut out, "player-queued", next_kind(&player, "queued"));
+    next_kind(&gm, "queued");
 
-    let refuse_commit = serde_json::json!({"include_round": false});
-    insert_json(
-        &mut out,
-        "commit-without-round-request",
-        tool_call(6, "commit", &refuse_commit),
-    );
-    insert_json(
-        &mut out,
-        "commit-without-round",
-        call(&mut gm, "commit", refuse_commit),
-    );
-
-    let commit_args = serde_json::json!({"include_round": true});
-    insert_json(
-        &mut out,
-        "commit-request",
-        tool_call(7, "commit", &commit_args),
-    );
-    insert_json(
-        &mut out,
-        "commit-result",
-        call(&mut gm, "commit", commit_args),
-    );
-    let round = next_json(&player);
-    assert_eq!(round["body"]["kind"], "round", "{round}");
-    insert_json(&mut out, "player-round", round);
-    let check = next_json(&player);
-    assert_eq!(check["body"]["kind"], "check", "{check}");
-    insert_json(&mut out, "player-check", check);
-    let again = next_json(&player);
-    assert_eq!(again["body"]["kind"], "resume", "{again}");
-    let refreshed = next_json(&player);
-    assert_eq!(refreshed["body"]["kind"], "view", "{refreshed}");
+    let commit = send(&mut gm, "commit", json!({"include_round": true}));
+    insert_json(&mut out, "gm-commit", commit);
+    insert_json(&mut out, "gm-round", next_kind(&gm, "round"));
+    insert_json(&mut out, "gm-committed", next_kind(&gm, "committed"));
+    insert_json(&mut out, "player-round", next_kind(&player, "round"));
+    insert_json(&mut out, "player-check", next_kind(&player, "check"));
+    next_kind(&player, "resume");
+    next_kind(&player, "view");
 
     // A second round moves an item the player can see, so the change line is not empty.
     send(&mut player, "take", json!({"target": "lamp_oil"}));
-    let queued_take = next_json(&player);
-    assert_eq!(queued_take["body"]["kind"], "queued", "{queued_take}");
-    let _ = one_event(&mut gm);
-    call(
-        &mut gm,
-        "commit",
-        serde_json::json!({"include_round": true}),
-    );
-    let taken_round = next_json(&player);
-    assert_eq!(taken_round["body"]["kind"], "round", "{taken_round}");
-    let taken = next_json(&player);
-    assert_eq!(taken["body"]["kind"], "resume", "{taken}");
-    let after_take = next_json(&player);
-    assert_eq!(after_take["body"]["kind"], "view", "{after_take}");
-    let changes = next_json(&player);
-    assert_eq!(changes["body"]["kind"], "lines", "{changes}");
-    insert_json(&mut out, "player-changes", changes);
+    next_kind(&player, "queued");
+    next_kind(&gm, "queued");
+    send(&mut gm, "commit", json!({"include_round": true}));
+    next_kind(&gm, "round");
+    next_kind(&gm, "committed");
+    next_kind(&player, "round");
+    next_kind(&player, "resume");
+    next_kind(&player, "view");
+    insert_json(&mut out, "player-lines", next_kind(&player, "lines"));
 
-    let unknown = send(&mut player, "blah", json!({}));
-    insert_json(&mut out, "player-unknown-word", unknown);
-    insert_json(&mut out, "player-word-schema", next_json(&player));
-
-    insert_json(
-        &mut out,
-        "player-empty-say",
-        send(&mut player, "say", json!({})),
-    );
-    insert_json(&mut out, "player-schema", next_json(&player));
-
-    let locked = send(&mut player, "travel", json!({"target": "stairs"}));
-    insert_json(&mut out, "player-locked-exit", locked);
-    insert_json(&mut out, "player-no-exit", next_json(&player));
-
-    let bad_tool = serde_json::json!({});
-    insert_json(
-        &mut out,
-        "unknown-tool-request",
-        tool_call(9, "not_in_spec", &bad_tool),
-    );
-    insert_json(
-        &mut out,
-        "unknown-tool",
-        call(&mut gm, "not_in_spec", bad_tool),
-    );
-
-    let unscoped = serde_json::json!({});
-    insert_json(
-        &mut out,
-        "unscoped-perceive-request",
-        tool_call(10, "perceive", &unscoped),
-    );
-    insert_json(
-        &mut out,
-        "unscoped-perceive",
-        call(&mut gm, "perceive", unscoped),
-    );
-
-    let mouse = connect_player(table.game, "pc_harbormouse");
-    let wren = connect_player(table.game, "pc_wren");
-    // The claim's reply means that claim has the seat. The fourth claim comes after both.
-    assert_eq!(next_json(&mouse)["body"]["kind"], "claimed");
-    assert_eq!(next_json(&wren)["body"]["kind"], "claimed");
-    insert_json(
-        &mut out,
-        "player-session-full",
-        refused_reply(table.game, "claim", json!({"actor": "pc_extra"})),
-    );
-
-    insert_json(
-        &mut out,
-        "gm-session-full",
-        post_initialize_when_full(table.mcp_port, &initialize),
-    );
+    send(&mut player, "travel", json!({"target": "stairs"}));
+    insert_json(&mut out, "player-no-exit", next_kind(&player, "refused"));
 
     // Rowan's connection drops without a release. The claim holds, and keeps the say.
     let last_seq = out_json(&out, "player-no-exit")["seq"].clone();
@@ -368,13 +180,13 @@ fn capture() -> BTreeMap<String, Example> {
         .shutdown(std::net::Shutdown::Both)
         .unwrap_or_else(|err| panic!("shutdown: {err}"));
     drop(player);
-    call(
+    send(
         &mut gm,
         "say",
-        serde_json::json!({"address": "table", "text": "still there?"}),
+        json!({"address": "table", "text": "still there?"}),
     );
-    let _ = gm.drain_events();
-    let mut back = connect_player_unclaimed(table.game);
+    next_kind(&gm, "say");
+    let mut back = open_unclaimed(table.game);
     let mut reclaim = send(
         &mut back,
         "claim",
@@ -382,30 +194,27 @@ fn capture() -> BTreeMap<String, Example> {
     );
     scrub_token(&mut reclaim["body"]["args"]);
     insert_json(&mut out, "player-claim-token", reclaim);
-    let mut reclaimed = next_json(&back);
-    assert_eq!(reclaimed["body"]["kind"], "claimed", "{reclaimed}");
+    let mut reclaimed = next_kind(&back, "claimed");
     scrub_token(&mut reclaimed["body"]);
     insert_json(&mut out, "player-claimed-token", reclaimed);
-    let _ = next_json(&back);
-    let _ = next_json(&back);
-    send(&mut back, "release", json!({}));
-    assert_eq!(next_json(&back)["body"]["kind"], "released");
-    let again = connect_player(table.game, "pc_rowan");
-    let mut replay = next_json(&again);
-    assert_eq!(replay["body"]["kind"], "claimed", "{replay}");
-    scrub_token(&mut replay["body"]);
-    insert_json(&mut out, "player-replay-say", replay);
+    next_kind(&back, "resume");
+    next_kind(&back, "view");
+    send(&mut gm, "release", json!({}));
+    next_kind(&gm, "released");
 
-    let release_args = serde_json::json!({});
+    let mcp_addr = std::net::SocketAddr::from(([127, 0, 0, 1], table.mcp_port));
+    let mut mcp = support::block_on(GmClient::connect(mcp_addr))
+        .unwrap_or_else(|err| panic!("MCP GM: {err}"));
+    let queue_args = json!({"actor_id": "aldric", "move": "wait", "id": "mcp-wait"});
+    insert_json(&mut out, "mcp-call", tool_call(1, "queue", &queue_args));
+    insert_json(&mut out, "mcp-result", call(&mut mcp, "queue", queue_args));
+    send(&mut back, "grit", json!({}));
+    next_kind(&back, "queued");
+    insert_json(&mut out, "mcp-event", one_event(&mut mcp));
     insert_json(
         &mut out,
-        "release-request",
-        tool_call(12, "release", &release_args),
-    );
-    insert_json(
-        &mut out,
-        "release-result",
-        call(&mut gm, "release", release_args),
+        "mcp-table-full",
+        post_initialize_when_full(table.mcp_port),
     );
     out
 }
@@ -472,15 +281,15 @@ fn read_addrs(stdout: &mut impl Read) -> (u16, u16, String) {
     }
 }
 
-/// Opens a player connection. The hello is its first message.
-fn open_player(port: u16) -> PlayerClient {
+/// Opens a connection to `/player` or `/gm`. The hello is its first message.
+fn open_seat(port: u16, seat: &str) -> SeatClient {
     let stream = connect(port);
     let write = stream
         .try_clone()
         .unwrap_or_else(|err| panic!("clone: {err}"));
-    let url = format!("ws://127.0.0.1:{port}/player");
+    let url = format!("ws://127.0.0.1:{port}/{seat}");
     let (mut read, _) =
-        tungstenite::client(url, stream).unwrap_or_else(|err| panic!("player seat: {err}"));
+        tungstenite::client(url, stream).unwrap_or_else(|err| panic!("{seat} seat: {err}"));
     let (tx, lines) = mpsc::channel();
     std::thread::spawn(move || {
         while let Ok(message) = read.read() {
@@ -491,45 +300,38 @@ fn open_player(port: u16) -> PlayerClient {
             }
         }
     });
-    PlayerClient {
+    SeatClient {
         write: WebSocket::from_raw_socket(write, Role::Client, None),
         lines,
         next_id: 1,
     }
 }
 
-/// Opens a player connection, reads its hello, and claims `actor`.
-fn connect_player(port: u16, actor: &str) -> PlayerClient {
-    let mut player = open_player(port);
-    let hello = next_json(&player);
-    assert_eq!(hello["body"]["kind"], "hello", "{hello}");
-    send(&mut player, "claim", json!({"actor": actor}));
-    player
-}
-
 /// Sends `word` with `args` under the next id. Returns the message sent.
-fn send(player: &mut PlayerClient, word: &str, args: Value) -> Value {
-    let id = format!("c{}", player.next_id);
-    player.next_id += 1;
+fn send(seat: &mut SeatClient, word: &str, args: Value) -> Value {
+    let id = format!("c{}", seat.next_id);
+    seat.next_id += 1;
     let message = serde_json::to_value(ClientMessage::new(&id, word, args))
         .unwrap_or_else(|err| panic!("{word}: {err}"));
-    player
-        .write
+    seat.write
         .send(Message::text(message.to_string()))
         .unwrap_or_else(|err| panic!("send: {err}"));
     message
 }
 
-fn next_line(player: &PlayerClient) -> String {
-    player
+fn next_json(seat: &SeatClient) -> Value {
+    let line = seat
         .lines
         .recv_timeout(READ_TIMEOUT)
-        .unwrap_or_else(|err| panic!("no player message: {err}"))
+        .unwrap_or_else(|err| panic!("no message: {err}"));
+    serde_json::from_str(&line).unwrap_or_else(|err| panic!("{err} in {line}"))
 }
 
-fn next_json(player: &PlayerClient) -> Value {
-    let line = next_line(player);
-    serde_json::from_str(&line).unwrap_or_else(|err| panic!("{err} in {line}"))
+/// The next message, which must have a `kind` body.
+fn next_kind(seat: &SeatClient, kind: &str) -> Value {
+    let message = next_json(seat);
+    assert_eq!(message["body"]["kind"], kind, "{message}");
+    message
 }
 
 fn connect(port: u16) -> TcpStream {
@@ -543,27 +345,15 @@ fn connect(port: u16) -> TcpStream {
 
 /// A new player connection sends one word. Returns its reply.
 fn refused_reply(port: u16, word: &str, args: Value) -> Value {
-    let mut player = connect_player_unclaimed(port);
+    let mut player = open_unclaimed(port);
     send(&mut player, word, args);
     next_json(&player)
 }
 
-/// A new player connection sends one message past the cap. Returns its reply.
-fn send_too_long_message(port: u16) -> Value {
-    let mut player = connect_player_unclaimed(port);
-    let long = json!({"id": "c1", "body": {"word": "wait"}, "pad": "x".repeat(8 * 1024)});
-    player
-        .write
-        .send(Message::text(long.to_string()))
-        .unwrap_or_else(|err| panic!("send: {err}"));
-    next_json(&player)
-}
-
 /// A player connection past its hello, with no claim.
-fn connect_player_unclaimed(port: u16) -> PlayerClient {
-    let player = open_player(port);
-    let hello = next_json(&player);
-    assert_eq!(hello["body"]["kind"], "hello", "{hello}");
+fn open_unclaimed(port: u16) -> SeatClient {
+    let player = open_seat(port, "player");
+    next_kind(&player, "hello");
     player
 }
 
@@ -600,45 +390,30 @@ fn tool_call(id: u64, name: &str, arguments: &Value) -> Value {
     })
 }
 
-fn post_initialize(port: u16, body: &Value) -> (Value, String) {
-    let raw = send_http(
-        port,
-        "POST",
-        &serde_json::to_string(body).unwrap(),
-        None,
-        ProtocolVersion::LATEST.as_str(),
-    );
-    let session = header(&raw, "mcp-session-id").unwrap_or_else(|| panic!("no session\n{raw}"));
-    let value = json_rpc(&raw).unwrap_or_else(|| panic!("no initialize result\n{raw}"));
-    (value, session)
-}
-
-fn post_initialize_when_full(port: u16, body: &Value) -> Value {
-    let raw = send_http(
-        port,
-        "POST",
-        &serde_json::to_string(body).unwrap(),
-        None,
-        ProtocolVersion::LATEST.as_str(),
-    );
-    json_rpc(&raw).unwrap_or_else(|| panic!("no refusal\n{raw}"))
-}
-
-fn delete_session(port: u16, session: &str, version: &str) {
-    let raw = send_http(port, "DELETE", "", Some(session), version);
-    let status = raw.lines().next().unwrap_or("");
-    assert!(
-        status.contains(" 200 ") || status.contains(" 202 ") || status.contains(" 204 "),
-        "DELETE did not release the seat\n{raw}"
-    );
-}
-
-fn send_http(port: u16, method: &str, body: &str, session: Option<&str>, version: &str) -> String {
-    let session = session
-        .map(|id| format!("mcp-session-id: {id}\r\n"))
-        .unwrap_or_default();
+/// An MCP initialize while the GM seat is held. Returns the JSON-RPC error.
+fn post_initialize_when_full(port: u16) -> Value {
+    let version = ProtocolVersion::LATEST.as_str();
+    let body = json!({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {
+            "protocolVersion": version,
+            "capabilities": {},
+            "clientInfo": { "name": "seat-protocol", "version": "0" }
+        }
+    })
+    .to_string();
     let request = format!(
-        "{method} /mcp HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\n{session}MCP-Protocol-Version: {version}\r\nContent-Type: application/json\r\nAccept: application/json, text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+        "POST /mcp HTTP/1.1
+Host: 127.0.0.1:{port}
+MCP-Protocol-Version: {version}
+Content-Type: application/json
+Accept: application/json, text/event-stream
+Content-Length: {}
+Connection: close
+
+{body}",
         body.len()
     );
     let mut stream = connect(port);
@@ -661,7 +436,13 @@ fn send_http(port: u16, method: &str, body: &str, session: Option<&str>, version
             Err(err) => panic!("read HTTP: {err}"),
         }
     }
-    String::from_utf8_lossy(&buf).into_owned()
+    let raw = String::from_utf8_lossy(&buf).into_owned();
+    json_rpc(&raw).unwrap_or_else(|| {
+        panic!(
+            "no refusal
+{raw}"
+        )
+    })
 }
 
 fn is_http_complete(buf: &[u8]) -> bool {
@@ -684,18 +465,6 @@ fn content_length(head: &str) -> Option<usize> {
         let (name, value) = line.split_once(':')?;
         if name.eq_ignore_ascii_case("content-length") {
             value.trim().parse().ok()
-        } else {
-            None
-        }
-    })
-}
-
-fn header(raw: &str, name: &str) -> Option<String> {
-    let head = raw.split("\r\n\r\n").next().unwrap_or(raw);
-    head.lines().find_map(|line| {
-        let (key, value) = line.split_once(':')?;
-        if key.eq_ignore_ascii_case(name) {
-            Some(value.trim().to_string())
         } else {
             None
         }

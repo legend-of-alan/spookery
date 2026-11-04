@@ -13,6 +13,7 @@ pub const VERSION: u32 = 1;
 /// everything it sends but the hello. The body is nested, so its fields never clash with
 /// these.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct Message<Body> {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
@@ -31,6 +32,7 @@ pub type ServerMessage = Message<ServerBody>;
 
 /// One word and its arguments. Each word reads `args` as its own argument type.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct ClientBody {
     pub word: String,
@@ -58,6 +60,7 @@ impl ClientMessage {
 
 /// What the table sends. A client ignores a kind or a field it does not know.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(tag = "kind", rename_all = "lowercase")]
 pub enum ServerBody {
     /// The first message on a connection, and the only one with no `seq`. `open` lists the
@@ -125,6 +128,7 @@ pub enum ServerBody {
 
 /// One say. The GM's copy lists its `recipients`; a player's copy does not.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct Say {
     pub from: Speaker,
     pub address: String,
@@ -173,6 +177,7 @@ pub const WORDS: &[Word] = &[
 /// `claim` arguments: a free PC, or the token of a claim this player held before and the
 /// last `seq` it read.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(untagged, deny_unknown_fields)]
 pub enum ClaimArgs {
     Actor {
@@ -189,6 +194,7 @@ pub enum ClaimArgs {
 
 /// A pack verb's arguments, sent by a player seat.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct MoveArgs {
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -206,6 +212,27 @@ impl ServerMessage {
     pub fn to_text(&self) -> String {
         serde_json::to_string(self).expect("server message")
     }
+}
+
+/// The JSON Schema of a client message, published as `schema/client.json`. Its `$defs`
+/// also hold each word's `args`, named after the type that reads them.
+#[cfg(feature = "schema")]
+pub fn generate_client_schema() -> schemars::Schema {
+    let mut generator = schemars::SchemaGenerator::default();
+    generator.subschema_for::<ClaimArgs>();
+    generator.subschema_for::<MoveArgs>();
+    generator.subschema_for::<NoArgs>();
+    generator.subschema_for::<crate::SayArgs>();
+    generator.subschema_for::<crate::PerceiveArgs>();
+    generator.subschema_for::<crate::IntentArgs>();
+    generator.subschema_for::<crate::CommitArgs>();
+    generator.into_root_schema_for::<ClientMessage>()
+}
+
+/// The JSON Schema of a server message, published as `schema/server.json`.
+#[cfg(feature = "schema")]
+pub fn generate_server_schema() -> schemars::Schema {
+    schemars::SchemaGenerator::default().into_root_schema_for::<ServerMessage>()
 }
 
 #[cfg(test)]
@@ -268,6 +295,30 @@ mod tests {
         assert!(read(r#"{"actor":"pc_rowan","token":"t1"}"#).is_err());
         assert!(read(r#"{"actor":"pc_rowan","last_seq":4}"#).is_err());
         assert!(read("{}").is_err());
+    }
+
+    /// Writes this build's schema to the temp dir when the published one differs.
+    #[cfg(feature = "schema")]
+    #[test]
+    fn the_published_schema_matches_this_build() {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("schema");
+        for (file, schema) in [
+            ("client.json", generate_client_schema()),
+            ("server.json", generate_server_schema()),
+        ] {
+            let published = std::fs::read_to_string(dir.join(file)).unwrap_or_default();
+            let published: Option<Value> = serde_json::from_str(&published).ok();
+            if published.as_ref() == Some(schema.as_value()) {
+                continue;
+            }
+            let fresh = std::env::temp_dir().join(file);
+            let text = serde_json::to_string_pretty(&schema).unwrap() + "\n";
+            std::fs::write(&fresh, text).unwrap();
+            panic!(
+                "schema/{file} is not this build's; copy {} over it",
+                fresh.display()
+            );
+        }
     }
 
     #[test]

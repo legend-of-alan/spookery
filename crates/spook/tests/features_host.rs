@@ -75,6 +75,9 @@ mod claims;
 #[path = "steps/store_failures.rs"]
 mod store_failures;
 
+#[path = "steps/recorded_session.rs"]
+mod recorded_session;
+
 #[path = "feature_dirs.rs"]
 mod feature_dirs;
 

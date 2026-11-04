@@ -36,6 +36,10 @@ pub struct World {
     pub http_gm: Option<rmcp::service::RunningService<rmcp::RoleClient, rmcp::model::ClientConfig>>,
     /// The table the WebSocket GM sits at, beside `live`, and the pack copy it runs.
     pub ws_table: Option<(table::RunningTable, PathBuf)>,
+    /// A recorded session's lines, each one message a seat sent or got.
+    pub recorded: Vec<serde_json::Value>,
+    /// The seats a recorded session was replayed on, by the name the recording gives each.
+    pub replayed: Vec<(String, table::Seat)>,
 }
 
 impl std::fmt::Debug for World {

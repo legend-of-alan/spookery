@@ -130,6 +130,7 @@ pub struct IntentArgs {
 
 /// The body of the GM's `status` reply, sent from the table to a GM client.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct TableStatus {
     pub presence: StatusPresence,
     pub pause: StatusPause,
@@ -146,6 +147,7 @@ pub struct TableStatus {
 
 /// Part of `TableStatus`, sent from the table to a GM client.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct StatusPresence {
     pub players: u32,
     pub actors_present: Vec<String>,
@@ -153,12 +155,14 @@ pub struct StatusPresence {
 
 /// Part of `TableStatus`, sent from the table to a GM client.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct StatusPause {
     pub presence_clocks: String,
 }
 
 /// A queued move in `TableStatus`, sent from the table to a GM client.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct QueuedMove {
     pub id: String,
     pub actor_id: String,
@@ -168,6 +172,7 @@ pub struct QueuedMove {
 
 /// The body of the GM's `committed` reply, sent from the table to a GM client.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct CommitBody {
     pub state_rev: u64,
     pub changed_keys: Vec<String>,
@@ -179,6 +184,7 @@ pub struct CommitBody {
 
 /// One check roll in `CommitBody`, sent from the table to a GM client.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct Roll {
     pub faces: Vec<u32>,
     pub stat: i64,
@@ -189,6 +195,7 @@ pub struct Roll {
 
 /// Whether a `MenuRow` is a PC or an NPC, sent from the table to a GM client.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum CastKind {
     Npc,
@@ -197,6 +204,7 @@ pub enum CastKind {
 
 /// One cast row in a `PackSummary`, sent from the table to a GM client.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct MenuRow {
     pub name: String,
     pub kind: String,
@@ -205,6 +213,7 @@ pub struct MenuRow {
 
 /// Part of `TableStatus`, sent from the table to a GM client.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct PackSummary {
     pub menu: Vec<MenuRow>,
     pub kinds: std::collections::BTreeMap<String, CastKind>,

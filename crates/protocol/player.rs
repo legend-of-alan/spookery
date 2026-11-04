@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 /// `perceive` reply. Always written `protocol::View`: the engine's `View` is what the
 /// server renders this from.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct View {
     pub viewer: String,
     pub place: String,
@@ -32,6 +33,7 @@ pub struct View {
 
 /// Part of a `View`, sent from the table to a player client.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct ExitView {
     pub name: String,
     pub to: String,
@@ -42,6 +44,7 @@ pub struct ExitView {
 
 /// Part of a `View`, sent from the table to a player client.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct KnownFact {
     pub id: String,
     pub text: String,
@@ -50,6 +53,7 @@ pub struct KnownFact {
 
 /// Part of a `View`, sent from the table to a player client.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct NoteView {
     pub id: String,
     pub to: Vec<String>,
@@ -61,6 +65,7 @@ pub struct NoteView {
 
 /// Part of a `View`, sent from the table to a player client.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct ClockView {
     pub id: String,
     pub value: i64,
@@ -70,6 +75,7 @@ pub struct ClockView {
 
 /// Part of a `View`, sent from the table to a player client.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct ItemStack {
     pub id: String,
     pub count: u32,
@@ -77,6 +83,7 @@ pub struct ItemStack {
 
 /// Part of a `View`, sent from the table to a player client.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct MeterView {
     pub id: String,
     pub value: i64,

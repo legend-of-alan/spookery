@@ -1,132 +1,323 @@
 # Seat protocol
 
-This page is the seat protocol for a player client or a GM integration. `spook run` is the only server. It owns both seats. [Engine guarantees](engine-guarantees.md) is what the engine promises. This page is how to speak to it.
+This page is the wire a player client or a GM speaks to `spook run`. [Engine guarantees](engine-guarantees.md) says what the engine promises. Three things make up the wire, and CI checks each one against the build:
 
-The examples are one live sitting of `packs/oneshot-docks`. Rowan is the player, in the shop, at game time 1080. A test plays that sitting and fails when a fenced example and the table disagree. The `id` on a tool call or a client message is the caller's. The ports on the listening line are the ports that run chose.
+- this page, whose examples are one live sitting of `packs/oneshot-docks`. A test plays that sitting and fails when an example and the table disagree.
+- the JSON Schema, [`client.json`](../crates/protocol/schema/client.json) for what a client sends and [`server.json`](../crates/protocol/schema/server.json) for what the table sends. A test fails when the schema `spookery-protocol` derives with its `schema` feature is not the published one.
+- the recorded session, [`v1.jsonl`](../crates/protocol/sessions/v1.jsonl), a player and a GM recorded against the previous release. The `compatibility-replay` CI job replays it against each build.
 
-A tick is game time. A round is one batch of queued moves.
+In the examples, Rowan is the player, in the shop, at game time 1080. A tick is game time. A round is one batch of queued moves.
 
 ## Connect
 
-The game port is a WebSocket endpoint. A player opens `ws://127.0.0.1:<game>/player` and a GM opens `ws://127.0.0.1:<game>/gm`. The default is `127.0.0.1:9737`. It takes the same `Host` and `Origin` rules as the MCP endpoint below.
+The game port is a WebSocket endpoint. A player opens `ws://127.0.0.1:<game>/player` and a GM opens `ws://127.0.0.1:<game>/gm`. The default game port is `127.0.0.1:9737`. The MCP endpoint, for a GM that speaks MCP, is streamable HTTP at `http://127.0.0.1:<mcp>/mcp`, on the game port plus one, so `9738` by default.
 
-The MCP endpoint is streamable HTTP at `http://127.0.0.1:<port>/mcp`. When the game port is fixed, the MCP endpoint's port is the game port plus one, so the default MCP endpoint is `http://127.0.0.1:9738/mcp`. `--addr 127.0.0.1:0` asks the operating system for the game port, and the MCP endpoint is its own bind. `--mcp-addr 127.0.0.1:<port>` overrides the MCP endpoint's address, including port 0. Do not add one to a port-0 game port. Read the listening line.
-
-Both binds are loopback. Any other host is refused before the pack opens.
-
-After both sockets are bound, and before the table serves, `spook run` prints one line on stdout:
+`--addr 127.0.0.1:0` asks the operating system for the game port, and then the MCP endpoint is a bind of its own. `--mcp-addr` sets the MCP address, port 0 included. Both binds are loopback. Any other host is refused before the pack opens. Once both are bound, and before the table serves, `spook run` prints one line on stdout with the two addresses:
 
 <!-- example: listening -->
 ```json
-{
-  "kind": "listening",
-  "game": "127.0.0.1:43521",
-  "mcp": "127.0.0.1:36103"
-}
+{"kind":"listening","game":"127.0.0.1:58439","mcp":"127.0.0.1:58440"}
 ```
 
-`game` and `mcp` are `127.0.0.1` and a port. They are different ports. This run happened to draw two adjacent ports. The next run draws its own.
+Both endpoints take `Host: 127.0.0.1` only, so `localhost` is 403. An `Origin`, when sent, is `http://127.0.0.1` on any port. Anything else is 403. There is no account and no connection secret.
 
-The MCP endpoint requires:
+## The envelope
 
-- `Host: 127.0.0.1`. `localhost` is 403.
-- `Origin`, when the request sends one, is `http://127.0.0.1` on any port. Anything else is 403. A missing `Origin` is accepted.
-- `Accept` lists both `application/json` and `text/event-stream`.
-- `Content-Type: application/json` on a POST.
-- A body of at most 1 MiB. A longer body is 413 and does not take the seat.
-- `MCP-Protocol-Version`, when present, names a version the server knows. An unknown version is 400. A missing header is accepted.
+Every message, the client's and the table's alike, is one JSON object in one WebSocket text message: `id`, `seq`, `reply_to` and a nested `body`. A binary message is `SCHEMA`.
 
-There is no account and no connection secret.
-
-## Player seat
-
-Open a WebSocket to `ws://127.0.0.1:<game>/player`. Each text message is one JSON object. A binary message is `SCHEMA`.
-
-### The envelope
-
-Every message is one envelope, the client's and the table's alike: `id`, `seq`, `reply_to`, and a nested `body`. The client picks `id`. The table copies it into `reply_to` on the one reply to that message. `seq` is set by the table, from one counter for the whole table, on every message it sends but the hello. A message seen by several seats carries the same `seq` on each. The body never shares a field with the envelope.
-
-A client message's body is a `word` and its `args`. `args` is an object, and may be left out when the word takes none. A table message's body is tagged by `kind`. A client ignores a `kind` or a field it does not know.
-
-### Hello
-
-The table speaks first. The hello lists the version, the words this seat may send, and `open`, the PCs a claim may take now. The words are the table's own and then every verb the pack's rules name. `spook play` prompts for a PC when more than one is open.
-
-<!-- example: player-hello -->
-```json
-{
-  "body": {
-    "kind": "hello",
-    "version": 1,
-    "words": [
-      "claim",
-      "release",
-      "say",
-      "look",
-      "drop",
-      "grit",
-      "take",
-      "travel",
-      "unwield",
-      "wait",
-      "wield"
-    ],
-    "open": [
-      "pc_harbormouse",
-      "pc_rowan",
-      "pc_wren"
-    ]
-  }
-}
-```
-
-`claim` takes one PC. The reply is `claimed`, with `token`, which takes this PC back after a dropped connection, and `scrollback`, the earlier says this PC heard, oldest first. A `resume` and a `view` follow. Treat the token as a secret: anyone who sends it holds the PC.
+- `id` is the client's choice. The table copies it into `reply_to` on the one reply to that message.
+- `seq` is set by the table on everything it sends but the hello, from one counter for the whole table. A message several seats get has the same `seq` on each. A seat's `seq`s only grow, but they skip the messages other seats got.
+- A client's `body` is a `word` and its `args`, an object that may be left out when the word takes none.
+- A table's `body` is tagged by `kind`.
 
 <!-- example: player-claim -->
 ```json
+{"id":"c1","body":{"word":"claim","args":{"actor":"pc_rowan"}}}
+```
+
+<!-- example: player-claimed -->
+```json
+{"seq":1,"reply_to":"c1","body":{"kind":"claimed","actor":"pc_rowan","token":"<token>"}}
+```
+
+## Hello
+
+The table speaks first, with `version`, the `words` this seat may send, and, on `/player`, `open`, the PCs a claim may take now. A player's words are the table's own and then every verb the pack's rules name.
+
+<!-- example: player-hello -->
+```json
+{"body":{"kind":"hello","version":1,"words":["claim","release","say","look","drop","grit","take","travel","unwield","wait","wield"],"open":["pc_harbormouse","pc_rowan","pc_wren"]}}
+```
+
+<!-- example: gm-hello -->
+```json
+{"body":{"kind":"hello","version":1,"words":["status","perceive","queue","say","commit","release"]}}
+```
+
+One GM sits at a time, on `/gm` or on `/mcp`. A second GM on `/gm` gets one `refused` with `TABLE_FULL`, and the connection closes.
+
+## Words
+
+Each word reads `args` as one type, and the schema's `$defs` in `client.json` hold each type under the name below. A word a seat's hello did not list is `SCHEMA`, and so are arguments of the wrong shape or with a key the type does not name. Nothing is written for a refused word.
+
+| Word | Seat | `args` | Reply |
+|---|---|---|---|
+| `claim` | player | `ClaimArgs`: `actor`, or `token` and `last_seq` | `claimed`, then a `resume` and a `view` |
+| `release` | both | `NoArgs` | `released` |
+| `say` | both | `SayArgs`: `address`, `text`, and `place` or `actor` | the sender's own `say` |
+| `look` | player | `NoArgs` | `view` |
+| a pack verb | player | `MoveArgs`: `target`, when the verb takes one | `queued` |
+| `status` | GM | `NoArgs` | `status` |
+| `perceive` | GM | `PerceiveArgs`: `as`, `max_body_chars` | `view` |
+| `queue` | GM | `IntentArgs`: `actor_id`, `move`, `id`, `target`, `to`, `round_index`, `rationale_code` | `queued` |
+| `commit` | GM | `CommitArgs`: `include_round`, `session_id` | a `round` for each round played, then `committed` |
+
+### claim and release
+
+A player claims one PC, and the table holds three claims at most. A word other than `claim` before a claim is `CHOOSE_PC`, and `detail` lists the open PCs:
+
+<!-- example: player-choose-pc -->
+```json
+{"seq":5,"reply_to":"c1","body":{"kind":"refused","code":"CHOOSE_PC","detail":["pc_harbormouse","pc_wren"]}}
+```
+
+A PC another claim holds is `SEAT_TAKEN`, a fourth claim is `TABLE_FULL`, and an id that is not a live PC is `SCHEMA`. A refused claim leaves the connection up.
+
+Only `release` ends a claim. A connection that closes or is dropped leaves its PC held and present, so no other player can claim it, the GM cannot queue for it, and rounds still count it. The claim lasts until a `release` or until `spook run` stops. Presence is kept in memory and does not bump `state_rev`. The GM hears a `presence` whenever a claim starts or ends:
+
+<!-- example: gm-presence -->
+```json
+{"seq":4,"body":{"kind":"presence","actors_present":["pc_rowan"]}}
+```
+
+`token` in `claimed` takes the PC back from a new connection, so treat it as a secret. A held claim keeps the newest 256 messages sent to it. `claim` with `token` and `last_seq`, the last `seq` the old connection read, answers with `missed`, the kept messages after `last_seq`, oldest first. A missing `last_seq` means 0. `gap` is `true` when a message after `last_seq` was dropped. The `resume` and `view` after it are current either way. A connection that held the claim before lets go of it and stays up. A released claim's token is `UNKNOWN_ID`.
+
+<!-- example: player-claim-token -->
+```json
+{"id":"c1","body":{"word":"claim","args":{"token":"<token>","last_seq":21}}}
+```
+
+<!-- example: player-claimed-token -->
+```json
+{"seq":23,"reply_to":"c1","body":{"kind":"claimed","actor":"pc_rowan","token":"<token>","missed":[{"seq":22,"body":{"kind":"say","from":"gm","address":"table","text":"still there?"}}]}}
+```
+
+A new claim's `claimed` carries `scrollback` instead, the says this PC heard before, oldest first.
+
+A GM's `release` frees the seat before its reply. A later word on that connection is `NOT_IN_SPEC`. With the GM seat empty, each player move commits its own round.
+
+### say
+
+`address` is `table`, `place` with a `place` id, or `actor` with an `actor` id. `text` is at most 4096 characters. The table sets `from` from the connection: `player:<id>` or `gm`. A `from` in `args` is `SCHEMA`. A say goes on the session tape and takes no round. Every seat that hears it gets one `say` under one `seq`, and the sender's copy is the reply. The GM's copy lists `recipients`, the seated players who heard it.
+
+<!-- example: player-say -->
+```json
+{"id":"c2","body":{"word":"say","args":{"address":"table","text":"evening"}}}
+```
+
+<!-- example: player-said -->
+```json
+{"seq":6,"reply_to":"c2","body":{"kind":"say","from":"player:pc_rowan","address":"table","text":"evening"}}
+```
+
+<!-- example: gm-heard -->
+```json
+{"seq":6,"body":{"kind":"say","from":"player:pc_rowan","address":"table","recipients":["pc_rowan"],"text":"evening"}}
+```
+
+### Moves
+
+A move is a pack verb, its target in `target`. With a GM seated, the move waits for `commit`. The reply is `queued`, and the GM gets the same `queued` under the same `seq`. `intent` is the queue id. With no GM seated, the move commits its own round, and the reply comes after that round is written.
+
+<!-- example: player-grit -->
+```json
+{"id":"c3","body":{"word":"grit"}}
+```
+
+<!-- example: player-queued -->
+```json
+{"seq":9,"reply_to":"c3","body":{"kind":"queued","intent":"ed0db120f54c1447842c340c5d523932d1518c796c886f24b1030a9b4a12f73a","actor":"pc_rowan","move":"grit"}}
+```
+
+A move the table can judge at once is refused before it is queued. Here Rowan sent `travel` with `target` `stairs`, and `detail` is the pack's locked text:
+
+<!-- example: player-no-exit -->
+```json
+{"seq":21,"reply_to":"c5","body":{"kind":"refused","code":"NO_EXIT","detail":"The stair door is locked."}}
+```
+
+`look` takes no round and answers with a fresh `view`.
+
+### status
+
+The table's state for a GM. `world_time` is the game clock in minutes. `pack_rev` is the canon hash. A client that opened the pack on disk should compare it and leave on a mismatch. `last_round_at` is the save's stamp. `queued` lists the waiting moves. `pack` is the move menu, the cast kinds, and the place and cast prose.
+
+<!-- example: gm-status -->
+```json
 {
-  "id": "c1",
+  "seq": 7,
+  "reply_to": "c1",
   "body": {
-    "word": "claim",
-    "args": {
-      "actor": "pc_rowan"
+    "kind": "status",
+    "presence": {
+      "players": 1,
+      "actors_present": [
+        "pc_rowan"
+      ]
+    },
+    "pause": {
+      "presence_clocks": "paused"
+    },
+    "world_time": 1080,
+    "round_index": 0,
+    "state_rev": 0,
+    "pack_rev": "blake2s:5e8aed8ebc0be8c009fdb25a79f4e45c008b4fd081252d985bd23353c8f17f04",
+    "last_round_at": "2026-01-01T00:00:00Z",
+    "queued": [],
+    "pack": {
+      "menu": [
+        {
+          "name": "leave_door_note",
+          "kind": "habit",
+          "target": "none"
+        },
+        {
+          "name": "restock_lamp_oil",
+          "kind": "habit",
+          "target": "none"
+        },
+        {
+          "name": "wait",
+          "kind": "verb",
+          "target": "none"
+        },
+        {
+          "name": "travel",
+          "kind": "verb",
+          "target": "exit"
+        },
+        {
+          "name": "grit",
+          "kind": "verb",
+          "target": "none"
+        },
+        {
+          "name": "take",
+          "kind": "verb",
+          "target": "item"
+        },
+        {
+          "name": "drop",
+          "kind": "verb",
+          "target": "item"
+        },
+        {
+          "name": "wield",
+          "kind": "verb",
+          "target": "item"
+        },
+        {
+          "name": "unwield",
+          "kind": "verb",
+          "target": "none"
+        }
+      ],
+      "kinds": {
+        "aldric": "npc",
+        "bram": "npc",
+        "mira": "npc",
+        "pc_harbormouse": "pc_template",
+        "pc_rowan": "pc_template",
+        "pc_wren": "pc_template"
+      },
+      "places": {
+        "docks_shop": "The shop faces the water. Tins sit in a row.\n",
+        "docks_street": "The street runs between the shop and the rooms.\n",
+        "mira_rooms": "A lamp burns past the shop's back stair.\n"
+      },
+      "cast": {
+        "aldric": "Aldric sweeps the shop and does not keep the books.\n",
+        "bram": "Bram walks the night watch between the street and the shop.\n",
+        "mira": "Mira keeps the shop neat and the tin out of sight.\n",
+        "pc_harbormouse": "Harbormouse walks the night street and sleeps in a coil of rope.\n",
+        "pc_rowan": "Rowan keeps the shop and walks the street.\n",
+        "pc_wren": "Wren mends nets on the street and keeps the tide chart in their head.\n"
+      }
     }
   }
 }
 ```
 
-<!-- example: player-claimed -->
+### perceive
+
+`as` is a bare actor id, not `player:<id>` or `npc:<id>`. A missing `as`, or `gm`, is `UNSCOPED_PERCEIVE`. `max_body_chars` is the prose budget, 800 by default. The reply is the `view` that actor would get.
+
+### queue
+
+`actor_id` and `move` are required. `id` becomes the queue id, and the table mints one when it is left out. A PC a player holds takes only that player's moves, so the GM's move for it is `ACTOR_MISMATCH`.
+
+<!-- example: gm-queue -->
 ```json
-{
-  "seq": 1,
-  "reply_to": "c1",
-  "body": {
-    "kind": "claimed",
-    "actor": "pc_rowan",
-    "token": "<token>"
-  }
-}
+{"id":"c2","body":{"word":"queue","args":{"actor_id":"aldric","move":"wait","id":"gm-wait"}}}
 ```
+
+<!-- example: gm-queued -->
+```json
+{"seq":8,"reply_to":"c2","body":{"kind":"queued","intent":"gm-wait","actor":"aldric","move":"wait"}}
+```
+
+### commit
+
+`include_round: true` plays the queue in queue order as one round. `include_round: false` while a move is queued is `NOT_IN_SPEC`, and the queue stays. An empty queue writes no round, unless every seated PC is busy, and then the table fast-forwards. Every seat gets one `round` for each round played, and the GM's reply comes after them.
+
+<!-- example: gm-commit -->
+```json
+{"id":"c3","body":{"word":"commit","args":{"include_round":true}}}
+```
+
+<!-- example: gm-round -->
+```json
+{"seq":10,"body":{"kind":"round","round_index":1,"world_time":1085}}
+```
+
+<!-- example: gm-committed -->
+```json
+{"seq":14,"reply_to":"c3","body":{"kind":"committed","state_rev":1,"changed_keys":["clock_paused assassination_debt","last_act_round aldric","last_act_round mira","live_acts_this_hour aldric","live_acts_this_hour mira","note note_mira_door"],"journal_path":"state/journal/bundle-0000.jsonl","rolls":[{"faces":[5,2],"stat":1,"total":8,"target":0,"outcome":"success"}]}}
+```
+
+`changed_keys` are the state keys the round changed. `journal_path` is the round's journal file, or null when the round wrote none. `rolls` are the checks rolled, faces and all. Faces go to the GM only.
+
+## Bodies
+
+A client ignores a `kind` or a field it does not know. `server.json` gives every field.
+
+| Kind | Who gets it | What it says |
+|---|---|---|
+| `hello` | the new connection | `version`, `words`, `open` |
+| `claimed` | the claiming player | `actor`, `token`, and `scrollback` or `missed` and `gap` |
+| `released` | the releasing seat | the claim or the GM seat is free |
+| `presence` | the GM | `actors_present` after a claim starts or ends |
+| `refused` | the sender | `code` and, when the refusal names something, `detail` |
+| `queued` | the sender and the GM | `intent`, `actor`, `move`, `target` |
+| `say` | every seat that hears it | `from`, `address`, `place` or `actor`, `text`, and for the GM `recipients` |
+| `round` | every seat | `round_index` and `world_time` of one committed round |
+| `check` | the player who rolled | `outcome`: `success`, `partial` or `miss` |
+| `committed` | the GM | the reply to `commit` |
+| `status` | the GM | the reply to `status` |
+| `view` | a player, or the GM on `perceive` | what one actor can see |
+| `resume` | a player | the `notes` addressed to that PC and its own `clocks` |
+| `lines` | a player | text to print: one narrate line, or the changes that player saw |
+
+### view and resume
+
+`viewer` is the bare actor id. `place_name` and `actor_names` are the pack's display names, and `body` is the place prose. `known_facts` hold only the facts that actor knows, with the prose that actor may read. `meters` are the viewer's own, without hidden ones. `exits` is left out when the place has none. `status` is left out unless the viewer is still travelling, and then reads like `on the stairs until 21:40`.
 
 <!-- example: player-resume -->
 ```json
-{
-  "seq": 2,
-  "body": {
-    "kind": "resume",
-    "clocks": [
-      {
-        "id": "assassination_debt",
-        "value": 2,
-        "max": 6,
-        "paused": true
-      }
-    ]
-  }
-}
+{"seq":2,"body":{"kind":"resume","clocks":[{"id":"assassination_debt","value":2,"max":6,"paused":true}]}}
 ```
 
-<!-- example: player-perceive -->
+<!-- example: player-view -->
 ```json
 {
   "seq": 3,
@@ -200,1058 +391,92 @@ The table speaks first. The hello lists the version, the words this seat may sen
 }
 ```
 
-`resume` carries the notes addressed to that viewer (`notes`) and their own clocks (`clocks`). `view` is what that viewer can see. `viewer` is the bare actor id, the same form `as` takes. It is not `player:<id>` or `npc:<id>`. `place_name` and `actor_names` are the pack's display names. `body` is the place body. `meters` is that viewer's own meters. A hidden meter is left out. `value` is the current number and `max` is the cap. `exits` is omitted when the place has none. `status` is omitted unless the viewer is still travelling, and then it is `on the stairs until 21:40`. Fact bodies are the place prose the viewer is allowed to read.
+### After a round
 
-A claim keeps presence in memory and does not bump `state_rev`. The cap is three claims, in the host, not in the pack. `release` gives the PC back. The connection stays up and may claim again. Only `release` ends a claim. A connection that closes or is dropped leaves its PC held and present, so no other player can claim it, the GM cannot queue for it, and rounds still count it. The idle clock waits while any claim is held. There is no timer: the claim lasts until a `release` or until `spook run` stops.
-
-The held claim keeps the newest 256 messages sent to it, whether or not a connection reads them. Older ones are dropped. A new connection takes the PC back with `claim` and `token`, and `last_seq`, the last `seq` it read. A missing `last_seq` means 0. The `claimed` reply's `missed` lists the kept messages after `last_seq`, oldest first, each as it was sent. `gap` is `true` when a message after `last_seq` was dropped. The `resume` and `view` that follow are current either way. A connection that still held the claim lets go of it and stays up unclaimed. A token no claim holds, after a `release` for one, is `UNKNOWN_ID`.
-
-<!-- example: player-claim-token -->
-```json
-{
-  "id": "c1",
-  "body": {
-    "word": "claim",
-    "args": {
-      "token": "<token>",
-      "last_seq": 30
-    }
-  }
-}
-```
-
-<!-- example: player-claimed-token -->
-```json
-{
-  "seq": 44,
-  "reply_to": "c1",
-  "body": {
-    "kind": "claimed",
-    "actor": "pc_rowan",
-    "token": "<token>",
-    "missed": [
-      {
-        "seq": 43,
-        "body": {
-          "kind": "say",
-          "from": "gm",
-          "address": "table",
-          "text": "still there?"
-        }
-      }
-    ]
-  }
-}
-```
-
-A refused claim leaves the connection up. The PC is already held:
-
-<!-- example: player-seat-taken -->
-```json
-{
-  "seq": 5,
-  "reply_to": "c1",
-  "body": {
-    "kind": "refused",
-    "code": "SEAT_TAKEN"
-  }
-}
-```
-
-A fourth claim, after three are held:
-
-<!-- example: player-session-full -->
-```json
-{
-  "seq": 41,
-  "reply_to": "c1",
-  "body": {
-    "kind": "refused",
-    "code": "TABLE_FULL"
-  }
-}
-```
-
-An id that is not a live PC:
-
-<!-- example: player-unknown-pc -->
-```json
-{
-  "seq": 6,
-  "reply_to": "c1",
-  "body": {
-    "kind": "refused",
-    "code": "SCHEMA"
-  }
-}
-```
-
-Any other word before a claim, after Rowan is sat. `detail` is the open PCs:
-
-<!-- example: player-choose-pc -->
-```json
-{
-  "seq": 7,
-  "reply_to": "c1",
-  "body": {
-    "kind": "refused",
-    "code": "CHOOSE_PC",
-    "detail": [
-      "pc_harbormouse",
-      "pc_wren"
-    ]
-  }
-}
-```
-
-A message over 8 KiB is `LINE_TOO_LONG`, and the connection stays up. One over 64 KiB closes the connection with no reply. A connection that sends nothing for 10 seconds after the hello closes, and nothing is committed.
-
-<!-- example: player-line-too-long -->
-```json
-{
-  "seq": 8,
-  "body": {
-    "kind": "refused",
-    "code": "LINE_TOO_LONG"
-  }
-}
-```
-
-### Words the player sends
-
-`look` does not take a round. The reply is a fresh `view`, the same shape a claim and a round send. The table sends no text for it. `spook play` prints the view, and writes `help` and `map` itself without sending anything: `help` from the hello's words and the last view's exits, and `map` from the views it was shown since it started.
-
-<!-- example: player-look -->
-```json
-{
-  "id": "c2",
-  "body": {
-    "word": "look"
-  }
-}
-```
-
-<!-- example: player-look-view -->
-```json
-{
-  "seq": 4,
-  "reply_to": "c2",
-  "body": {
-    "kind": "view",
-    "viewer": "pc_rowan",
-    "place": "docks_shop",
-    "place_name": "Docks Shop",
-    "body": "The shop faces the water. Tins sit in a row.",
-    "actor_names": [
-      "Aldric",
-      "Rowan"
-    ],
-    "visible_actors": [
-      "aldric",
-      "pc_rowan"
-    ],
-    "known_facts": [
-      {
-        "id": "fact_oil_on_shelf",
-        "text": "Oil is on the shelf.",
-        "owner_body": "The shop faces the water. Tins sit in a row.\n"
-      }
-    ],
-    "notes": [],
-    "unknown_mentions": [],
-    "clocks": [
-      {
-        "id": "assassination_debt",
-        "value": 2,
-        "max": 6,
-        "paused": true
-      }
-    ],
-    "items": [
-      {
-        "id": "lamp_oil",
-        "count": 4
-      }
-    ],
-    "meters": [
-      {
-        "id": "grit",
-        "value": 1,
-        "max": 110
-      },
-      {
-        "id": "rest",
-        "value": 3,
-        "max": 5
-      }
-    ],
-    "habits": [],
-    "exits": [
-      {
-        "name": "docks_street",
-        "to": "docks_street",
-        "place_name": "Docks Street",
-        "minutes": 0,
-        "locked": false
-      },
-      {
-        "name": "stairs",
-        "to": "mira_rooms",
-        "place_name": "Mira's Rooms",
-        "minutes": 2,
-        "locked": true
-      }
-    ]
-  }
-}
-```
-
-`say` is speech. It appends the tape and does not take a round. Its args are the GM's `say` arguments: `address` is `table`, `place` with the speaker's own `place`, or `actor` with an `actor` id. The table sets `from` from the connection.
-
-<!-- example: player-say -->
-```json
-{
-  "id": "c3",
-  "body": {
-    "word": "say",
-    "args": {
-      "address": "table",
-      "text": "evening"
-    }
-  }
-}
-```
-
-Every seat that hears it gets one `say` with one `seq`. The speaker's copy is the reply:
-
-<!-- example: player-say-frame -->
-```json
-{
-  "seq": 11,
-  "reply_to": "c3",
-  "body": {
-    "kind": "say",
-    "from": "player:pc_rowan",
-    "address": "table",
-    "text": "evening"
-  }
-}
-```
-
-A claim's `scrollback` holds the earlier says. The terminal prints them under one `Earlier:` heading and leaves a blank line before the next live text.
-
-<!-- example: player-replay-say -->
-```json
-{
-  "seq": 49,
-  "reply_to": "c1",
-  "body": {
-    "kind": "claimed",
-    "actor": "pc_rowan",
-    "token": "<token>",
-    "scrollback": [
-      {
-        "from": "player:pc_rowan",
-        "address": "table",
-        "text": "evening"
-      },
-      {
-        "from": "gm",
-        "address": "table",
-        "text": "good evening"
-      },
-      {
-        "from": "gm",
-        "address": "table",
-        "text": "still there?"
-      }
-    ]
-  }
-}
-```
-
-A GM say arrives in the same shape. `from` is `gm`.
-
-<!-- example: player-hears-gm -->
-```json
-{
-  "seq": 12,
-  "body": {
-    "kind": "say",
-    "from": "gm",
-    "address": "table",
-    "text": "good evening"
-  }
-}
-```
-
-`say` with no arguments is `SCHEMA`. Say text is at most 4096 characters. Longer text is `SCHEMA`.
-
-<!-- example: player-empty-say -->
-```json
-{
-  "id": "c7",
-  "body": {
-    "word": "say"
-  }
-}
-```
-
-<!-- example: player-schema -->
-```json
-{
-  "seq": 29,
-  "reply_to": "c7",
-  "body": {
-    "kind": "refused",
-    "code": "SCHEMA"
-  }
-}
-```
-
-A word the hello did not list is `SCHEMA`. Nothing is queued. `spook play` does not send it, and prints the `NOT_IN_SPEC` sentence that points at `help`.
-
-<!-- example: player-unknown-word -->
-```json
-{
-  "id": "c6",
-  "body": {
-    "word": "blah"
-  }
-}
-```
-
-<!-- example: player-word-schema -->
-```json
-{
-  "seq": 28,
-  "reply_to": "c6",
-  "body": {
-    "kind": "refused",
-    "code": "SCHEMA"
-  }
-}
-```
-
-A move is a pack verb, with its target in `target`. With a GM seated, the move waits. The reply is `queued`, and the GM hears the same `queued` under the same `seq`. `intent` is the intent id. With no GM seated, the move commits its own round, and the reply comes after that round is written.
-
-<!-- example: player-grit -->
-```json
-{
-  "id": "c4",
-  "body": {
-    "word": "grit"
-  }
-}
-```
-
-<!-- example: player-queued -->
-```json
-{
-  "seq": 15,
-  "reply_to": "c4",
-  "body": {
-    "kind": "queued",
-    "intent": "ed0db120f54c1447842c340c5d523932d1518c796c886f24b1030a9b4a12f73a",
-    "actor": "pc_rowan",
-    "move": "grit"
-  }
-}
-```
-
-A locked exit is refused before it is queued. `detail` is the pack's locked text.
-
-<!-- example: player-locked-exit -->
-```json
-{
-  "id": "c8",
-  "body": {
-    "word": "travel",
-    "args": {
-      "target": "stairs"
-    }
-  }
-}
-```
-
-<!-- example: player-no-exit -->
-```json
-{
-  "seq": 30,
-  "reply_to": "c8",
-  "body": {
-    "kind": "refused",
-    "code": "NO_EXIT",
-    "detail": "The stair door is locked."
-  }
-}
-```
-
-`detail` is omitted when the refusal does not name one. A cost the actor cannot pay is `CANT_AFFORD`, and `detail` is the meter or item id.
-
-Each committed round is one `round` to every seat. Then each seated player receives a `check` for each of their own rolls and a `refused` for each of their own moves the round refused, then a fresh `resume`, then a fresh `view`, then one `lines` for each narrate line they may hear, then one `lines` whose text is a single plain line of the meter changes and items gained or lost that player may know. The change text is omitted when that line is empty. A narrate line is omitted when it would show a fact that player is not allowed to know. An NPC habit refused in a round sends no player message. Empty rounds, with nobody seated, do not leave lines for the next person who sits.
+Each seated player gets, in order: the `round`, a `check` for each of their own rolls, a `refused` for each of their own moves the round refused, a fresh `resume` and `view`, a `lines` for each narrate line they may hear, and a last `lines` with the meter changes and items gained or lost that player may know. A `lines` that would be empty is not sent, and a narrate line that would show a fact the player may not know is left out. An NPC's roll or refused habit sends no player message.
 
 <!-- example: player-round -->
 ```json
-{
-  "seq": 17,
-  "body": {
-    "kind": "round",
-    "round_index": 1,
-    "world_time": 1085
-  }
-}
+{"seq":10,"body":{"kind":"round","round_index":1,"world_time":1085}}
 ```
-
-The terminal shows the digest once per sitting. The per-round `resume` is for raw clients.
 
 <!-- example: player-check -->
 ```json
-{
-  "seq": 18,
-  "body": {
-    "kind": "check",
-    "outcome": "success"
-  }
-}
+{"seq":11,"body":{"kind":"check","outcome":"success"}}
 ```
 
-`outcome` is `success`, `partial`, or `miss`. An NPC's roll sends no player message.
-
-<!-- example: player-changes -->
+<!-- example: player-lines -->
 ```json
-{
-  "seq": 26,
-  "body": {
-    "kind": "lines",
-    "text": "You picked up the Lamp oil."
-  }
-}
+{"seq":19,"body":{"kind":"lines","text":"You picked up the Lamp oil."}}
 ```
 
-A player connection may send 5 messages a second, and it may burst to 10. The claim is one of them. A message past that waits on that connection until the next is allowed. The message is kept. The wait does not delay another seat.
+## MCP
 
-## GM seat
+`/mcp` is a translator onto the GM words. `tools/list` has one tool per GM word, named after it, in hello order, and each tool's input schema is its word's arguments. A `tools/call` is sent to the table as that word, the arguments as its `args` and the JSON-RPC id as its `id`. A tool that is not a GM word is `SCHEMA`.
 
-The GM seat is reached at the MCP endpoint. One GM. Initialize claims it. A second GM is `TABLE_FULL`.
-
-POST the initialize body. Send `Accept` and `Content-Type` as in Connect. The response is an SSE event. The JSON-RPC object is the `data` line. Keep the `mcp-session-id` response header on later requests.
-
-<!-- example: initialize-request -->
+<!-- example: mcp-call -->
 ```json
-{
-  "jsonrpc": "2.0",
-  "id": 1,
-  "method": "initialize",
-  "params": {
-    "protocolVersion": "2026-07-28",
-    "capabilities": {},
-    "clientInfo": {
-      "name": "seat-protocol",
-      "version": "0"
-    }
-  }
-}
+{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"queue","arguments":{"actor_id":"aldric","move":"wait","id":"mcp-wait"}}}
 ```
 
-<!-- example: initialize-result -->
+The result's `structuredContent` is `messages`: every message the word sent this seat, in order, the reply last.
+
+<!-- example: mcp-result -->
 ```json
-{
-  "jsonrpc": "2.0",
-  "id": 1,
-  "result": {
-    "protocolVersion": "2025-11-25",
-    "capabilities": {
-      "tools": {}
-    },
-    "serverInfo": {
-      "name": "rmcp",
-      "version": "3.5.1"
-    }
-  }
-}
+{"messages":[{"seq":27,"reply_to":"1","body":{"kind":"queued","intent":"mcp-wait","actor":"aldric","move":"wait"}}]}
 ```
 
-The result's `protocolVersion` is the negotiated version. Use that version on `MCP-Protocol-Version` for the rest of the session, including DELETE. A DELETE that names `2026-07-28` is HTTP 405 and does not release the seat. DELETE with the negotiated version, and the session id, releases it and answers after the seat is free. So does `release`.
+Every other message the table sends this seat, the hello first, comes as a `spook/event` notification whose params are the message:
 
-Then open one event stream: `GET /mcp` with the `mcp-session-id`, the negotiated `MCP-Protocol-Version` and `Accept: text/event-stream`. Keep it open for the whole session. When it closes, the host ends the session and frees the seat, so a GM process that dies without DELETE frees it once the host sees its connection close. The host prints `gm seat free` on its stdout when it frees the seat. Open only one: the seat ends when any event stream on the session closes. There is no idle timeout, so a GM with no open event stream keeps the seat until it sends DELETE or `release`.
-
-A second initialize, while a GM is sat, does not sit:
-
-<!-- example: gm-session-full -->
+<!-- example: mcp-event -->
 ```json
-{
-  "jsonrpc": "2.0",
-  "id": 1,
-  "error": {
-    "code": -32603,
-    "message": "The table is full. [TABLE_FULL]",
-    "data": {
-      "code": "TABLE_FULL"
-    }
-  }
-}
+{"jsonrpc":"2.0","method":"spook/event","params":{"seq":28,"body":{"kind":"queued","intent":"f756bf6b7077bf5c623ac2d933339f8357220b557f99dbf3492e145ff42e16a8","actor":"pc_rowan","move":"grit"}}}
 ```
 
-The JSON-RPC error code is the transport's. The seat token is the bracketed word in `message`. The seat token is also `error.data.code`.
+An `initialize` takes the GM seat. POST it with `Accept` listing both `application/json` and `text/event-stream` and with `Content-Type: application/json`. Keep the `mcp-session-id` response header, and send the negotiated `protocolVersion` as `MCP-Protocol-Version` on every later request. Then hold one `GET /mcp` event stream open for the session: the seat is freed when it closes, when a DELETE names the session, or on `release`. An `initialize` while the seat is held is refused, with the code in `error.data`:
 
-### Tools
-
-`tools/list` is the menu. There is one tool per GM word, named after the word, in the order the `/gm` hello lists them: `status`, `perceive`, `queue`, `say`, `commit`, and `release`. A tool's input schema is its word's arguments.
-
-A call is `tools/call`, and `/mcp` sends the table one client message for it: the tool name is the `word`, the arguments are its `args`, and the JSON-RPC id is its `id`. The body below each heading is the JSON-RPC request.
-
-The result examples are the tool's structured content, the object under `result.structuredContent` on the wire. It is `{"messages": [...]}`: every message the word sent this seat, in order and with its `seq`, as on the game port. The last one is the word's reply, and its `reply_to` is the call's JSON-RPC id. A refusal is a reply with a `refused` body, and the seat stays up. A name that is not a GM word is `SCHEMA` and writes nothing.
-
-#### status
-
-No key is accepted. An empty object is legal. The reply holds no says: a player catches up on missed messages with a `claim` by token.
-
-<!-- example: status-request -->
+<!-- example: mcp-table-full -->
 ```json
-{
-  "jsonrpc": "2.0",
-  "id": 1,
-  "method": "tools/call",
-  "params": {
-    "name": "status",
-    "arguments": {}
-  }
-}
+{"jsonrpc":"2.0","id":1,"error":{"code":-32603,"message":"The table is full. [TABLE_FULL]","data":{"code":"TABLE_FULL"}}}
 ```
 
-<!-- example: status-result -->
-```json
-{
-  "messages": [
-    {
-      "seq": 9,
-      "reply_to": "1",
-      "body": {
-        "kind": "status",
-        "presence": {
-          "players": 1,
-          "actors_present": [
-            "pc_rowan"
-          ]
-        },
-        "pause": {
-          "presence_clocks": "paused"
-        },
-        "world_time": 1080,
-        "round_index": 0,
-        "state_rev": 0,
-        "pack_rev": "blake2s:5e8aed8ebc0be8c009fdb25a79f4e45c008b4fd081252d985bd23353c8f17f04",
-        "last_round_at": "2026-01-01T00:00:00Z",
-        "queued": [],
-        "pack": {
-          "menu": [
-            {
-              "name": "leave_door_note",
-              "kind": "habit",
-              "target": "none"
-            },
-            {
-              "name": "restock_lamp_oil",
-              "kind": "habit",
-              "target": "none"
-            },
-            {
-              "name": "wait",
-              "kind": "verb",
-              "target": "none"
-            },
-            {
-              "name": "travel",
-              "kind": "verb",
-              "target": "exit"
-            },
-            {
-              "name": "grit",
-              "kind": "verb",
-              "target": "none"
-            },
-            {
-              "name": "take",
-              "kind": "verb",
-              "target": "item"
-            },
-            {
-              "name": "drop",
-              "kind": "verb",
-              "target": "item"
-            },
-            {
-              "name": "wield",
-              "kind": "verb",
-              "target": "item"
-            },
-            {
-              "name": "unwield",
-              "kind": "verb",
-              "target": "none"
-            }
-          ],
-          "kinds": {
-            "aldric": "npc",
-            "bram": "npc",
-            "mira": "npc",
-            "pc_harbormouse": "pc_template",
-            "pc_rowan": "pc_template",
-            "pc_wren": "pc_template"
-          },
-          "places": {
-            "docks_shop": "The shop faces the water. Tins sit in a row.\n",
-            "docks_street": "The street runs between the shop and the rooms.\n",
-            "mira_rooms": "A lamp burns past the shop's back stair.\n"
-          },
-          "cast": {
-            "aldric": "Aldric sweeps the shop and does not keep the books.\n",
-            "bram": "Bram walks the night watch between the street and the shop.\n",
-            "mira": "Mira keeps the shop neat and the tin out of sight.\n",
-            "pc_harbormouse": "Harbormouse walks the night street and sleeps in a coil of rope.\n",
-            "pc_rowan": "Rowan keeps the shop and walks the street.\n",
-            "pc_wren": "Wren mends nets on the street and keeps the tide chart in their head.\n"
-          }
-        }
-      }
-    }
-  ]
-}
-```
+## Limits
 
-`players` is how many player seats are held. `actors_present` is those PCs. `world_time` is the game clock in minutes. `pack_rev` is the canon hash. A client that opened the pack on disk should compare it and leave on a mismatch. `last_round_at` is the save's stamp. `queued` is waiting moves, each `id`, `actor_id`, and `move`. `pack` is the move menu, cast kinds, place prose, and cast prose. A server built before `pack` moved here leaves it out, and `spook ai-gm` stops with `this spook run is older than spook ai-gm, rebuild both`.
-
-#### perceive
-
-`as` is required. It is a bare actor id. It is not `player:<id>` or `npc:<id>`. A missing `as`, or `as` set to `gm`, is `UNSCOPED_PERCEIVE`. `max_body_chars` may be a non-negative integer. The default budget is 800.
-
-The reply is a `view`, the same body as the player `view` above.
-
-<!-- example: perceive-request -->
-```json
-{
-  "jsonrpc": "2.0",
-  "id": 2,
-  "method": "tools/call",
-  "params": {
-    "name": "perceive",
-    "arguments": {
-      "as": "pc_rowan"
-    }
-  }
-}
-```
-
-An empty argument object:
-
-<!-- example: unscoped-perceive-request -->
-```json
-{
-  "jsonrpc": "2.0",
-  "id": 10,
-  "method": "tools/call",
-  "params": {
-    "name": "perceive",
-    "arguments": {}
-  }
-}
-```
-
-<!-- example: unscoped-perceive -->
-```json
-{
-  "messages": [
-    {
-      "seq": 32,
-      "reply_to": "10",
-      "body": {
-        "kind": "refused",
-        "code": "UNSCOPED_PERCEIVE"
-      }
-    }
-  ]
-}
-```
-
-#### queue
-
-`actor_id` and `move` are required. `actor_id` is a bare actor id. `id`, when sent, becomes the queue id. Omit it and the seat mints one. `target` is a string. `to`, when sent, is a list of actor ids. `round_index` and `rationale_code` may be sent.
-
-The call queues the move. It sends no player message. The reply is `queued`, and its `intent` is the queue id.
-
-<!-- example: intent-request -->
-```json
-{
-  "jsonrpc": "2.0",
-  "id": 5,
-  "method": "tools/call",
-  "params": {
-    "name": "queue",
-    "arguments": {
-      "actor_id": "aldric",
-      "move": "wait",
-      "id": "gm-wait"
-    }
-  }
-}
-```
-
-<!-- example: intent-result -->
-```json
-{
-  "messages": [
-    {
-      "seq": 14,
-      "reply_to": "5",
-      "body": {
-        "kind": "queued",
-        "intent": "gm-wait",
-        "actor": "aldric",
-        "move": "wait"
-      }
-    }
-  ]
-}
-```
-
-A PC a player holds takes only that player's moves. The GM's move for it is `ACTOR_MISMATCH`, and nothing is queued. The claim holds while that player's connection is down, too.
-
-<!-- example: intent-held-request -->
-```json
-{
-  "jsonrpc": "2.0",
-  "id": 4,
-  "method": "tools/call",
-  "params": {
-    "name": "queue",
-    "arguments": {
-      "actor_id": "pc_rowan",
-      "move": "wait"
-    }
-  }
-}
-```
-
-<!-- example: intent-held -->
-```json
-{
-  "messages": [
-    {
-      "seq": 13,
-      "reply_to": "4",
-      "body": {
-        "kind": "refused",
-        "code": "ACTOR_MISMATCH"
-      }
-    }
-  ]
-}
-```
-
-#### say
-
-`address` and `text` are required. `address` is `table`, `place`, or `actor`. `place` is required when the address is `place`, and `actor` is required when the address is `actor`. `actor` must name an actor. `table` takes neither. A `from` field is `SCHEMA` and appends nothing. The GM speaks as `gm`.
-
-The reply is the GM's copy of the say. Each recipient gets a player `say` message with the same `seq`.
-
-<!-- example: say-request -->
-```json
-{
-  "jsonrpc": "2.0",
-  "id": 3,
-  "method": "tools/call",
-  "params": {
-    "name": "say",
-    "arguments": {
-      "address": "table",
-      "text": "good evening"
-    }
-  }
-}
-```
-
-<!-- example: say-result -->
-```json
-{
-  "messages": [
-    {
-      "seq": 12,
-      "reply_to": "3",
-      "body": {
-        "kind": "say",
-        "from": "gm",
-        "address": "table",
-        "recipients": [
-          "pc_rowan"
-        ],
-        "text": "good evening"
-      }
-    }
-  ]
-}
-```
-
-`recipients` are the seated players who hear the line. The speaker is included when the speaker is a seated player.
-
-#### commit
-
-`include_round` is required. `session_id` may be sent; the round does not branch on it.
-
-`include_round: false` while the queue is non-empty is `NOT_IN_SPEC`. The queue stays.
-
-<!-- example: commit-without-round-request -->
-```json
-{
-  "jsonrpc": "2.0",
-  "id": 6,
-  "method": "tools/call",
-  "params": {
-    "name": "commit",
-    "arguments": {
-      "include_round": false
-    }
-  }
-}
-```
-
-<!-- example: commit-without-round -->
-```json
-{
-  "messages": [
-    {
-      "seq": 16,
-      "reply_to": "6",
-      "body": {
-        "kind": "refused",
-        "code": "NOT_IN_SPEC"
-      }
-    }
-  ]
-}
-```
-
-`include_round: true` commits the queue in queue order, one round. An empty queue writes no round file, unless every seated PC is busy, in which case the table fast-forwards. The result lists a `round` message for each round played, then the `committed` reply.
-
-<!-- example: commit-request -->
-```json
-{
-  "jsonrpc": "2.0",
-  "id": 7,
-  "method": "tools/call",
-  "params": {
-    "name": "commit",
-    "arguments": {
-      "include_round": true
-    }
-  }
-}
-```
-
-<!-- example: commit-result -->
-```json
-{
-  "messages": [
-    {
-      "seq": 17,
-      "body": {
-        "kind": "round",
-        "round_index": 1,
-        "world_time": 1085
-      }
-    },
-    {
-      "seq": 21,
-      "reply_to": "7",
-      "body": {
-        "kind": "committed",
-        "state_rev": 1,
-        "changed_keys": [
-          "clock_paused assassination_debt",
-          "last_act_round aldric",
-          "last_act_round mira",
-          "live_acts_this_hour aldric",
-          "live_acts_this_hour mira",
-          "note note_mira_door"
-        ],
-        "journal_path": "state/journal/bundle-0000.jsonl",
-        "rolls": [
-          {
-            "faces": [
-              5,
-              2
-            ],
-            "stat": 1,
-            "total": 8,
-            "target": 0,
-            "outcome": "success"
-          }
-        ]
-      }
-    }
-  ]
-}
-```
-
-`changed_keys` is the state keys the round changed. The GM sees every changed key. A player is told only the changes they can see. `journal_path` is the journal file for that round, or null when the round wrote no round file. `rolls` are the checks rolled. Faces stay on this body. They do not go to the player.
-
-#### release
-
-No key is accepted. An empty object is legal. A key is `SCHEMA` and the seat stays up. The reply is sent after the seat is free. A player line after it commits its own round. A later tool call on that same session is `NOT_IN_SPEC` and writes nothing. Whoever holds the seat then is left as they are.
-
-<!-- example: release-request -->
-```json
-{
-  "jsonrpc": "2.0",
-  "id": 12,
-  "method": "tools/call",
-  "params": {
-    "name": "release",
-    "arguments": {}
-  }
-}
-```
-
-<!-- example: release-result -->
-```json
-{
-  "messages": [
-    {
-      "seq": 53,
-      "reply_to": "12",
-      "body": {
-        "kind": "released"
-      }
-    }
-  ]
-}
-```
-
-An unknown tool:
-
-<!-- example: unknown-tool-request -->
-```json
-{
-  "jsonrpc": "2.0",
-  "id": 9,
-  "method": "tools/call",
-  "params": {
-    "name": "not_in_spec",
-    "arguments": {}
-  }
-}
-```
-
-<!-- example: unknown-tool -->
-```json
-{
-  "messages": [
-    {
-      "seq": 31,
-      "reply_to": "9",
-      "body": {
-        "kind": "refused",
-        "code": "SCHEMA"
-      }
-    }
-  ]
-}
-```
-
-### Events
-
-The seat pushes one `spook/event` notification for each message the table sends this seat outside a tool result, the hello first. Its params are the message's envelope, as on the game port. A generic client may ignore them. The GM seat is not rate-limited.
-
-A player say:
-
-<!-- example: say-event -->
-```json
-{
-  "jsonrpc": "2.0",
-  "method": "spook/event",
-  "params": {
-    "seq": 11,
-    "body": {
-      "kind": "say",
-      "from": "player:pc_rowan",
-      "address": "table",
-      "recipients": [
-        "pc_rowan"
-      ],
-      "text": "evening"
-    }
-  }
-}
-```
-
-A move the player sent while a GM is sat. Its `seq` is the one on the player's reply:
-
-<!-- example: queued-event -->
-```json
-{
-  "jsonrpc": "2.0",
-  "method": "spook/event",
-  "params": {
-    "seq": 15,
-    "body": {
-      "kind": "queued",
-      "intent": "ed0db120f54c1447842c340c5d523932d1518c796c886f24b1030a9b4a12f73a",
-      "actor": "pc_rowan",
-      "move": "grit"
-    }
-  }
-}
-```
-
-The GM hears `presence` when a claim starts or ends.
-
-A GM may also sit on `/gm` on the game port, as `spook gm` and `spook ai-gm` do. It sends the same words with the same arguments and gets the same messages. There, a call's messages come on the one stream with the events, the reply last, so a `commit` reply follows its `round` messages and a `say` reply is the GM's own copy of the say. A second GM on `/gm` while the seat is held gets one `refused` with `TABLE_FULL`, and the connection closes.
+- A client message is at most 8 KiB. A longer one is `LINE_TOO_LONG` and the connection stays up. One over 64 KiB closes the connection with no reply. An MCP request body is at most 1 MiB, and a longer one is HTTP 413.
+- A connection that sends nothing for 10 seconds after the hello is closed.
+- A player connection may send 5 messages a second, bursting to 10. A message past that waits on its own connection, and other seats are not slowed.
+- Each connection queues at most 256 messages and 64 KiB for sending. A client that stops reading is dropped like any closed connection, and other seats keep their messages.
 
 ## Errors
 
-A refusal on the game port is a `refused` body, `{"kind":"refused","code":"..."}`, and the connection stays up. `detail` is present only when the refusal names a thing, as in the locked-exit example. On `CHOOSE_PC`, `detail` is a JSON array of the open bare PC ids. A GM tool refusal is the same `refused` body, as the reply in the tool result, and the seat stays up.
-
-Each connection has an outbound queue of at most 256 messages and 64 KiB. A client that stops reading is dropped, and that seat is released. Other seats keep their messages.
+A refusal is a `refused` body, and the connection stays up. `detail` is there only when the refusal names a thing: the locked text or the unaffordable id of a move, or on `CHOOSE_PC` the list of open PCs.
 
 | Code | What the client should do |
 |---|---|
-| `TABLE_FULL` | Stop. Three PCs are claimed, or the GM seat is held. Claim or connect again only after that seat is free. Do not retry in a loop. |
-| `SEAT_TAKEN` | That PC is held. Claim a different live PC. |
-| `CHOOSE_PC` | The connection has no claim. Claim one id from the JSON list in `detail`. An empty list means no PC is free. |
-| `SCHEMA` | The message, the word or the arguments are the wrong shape, or the word or tool is not one the hello or `tools/list` listed. Send a corrected message. |
-| `NOT_IN_SPEC` | The verb has no rule that applies, `commit` set `include_round` false while a move is queued, or the call is on a seat that was released. Nothing was written for that call. The queue is still there after the false commit. |
-| `LINE_TOO_LONG` | The message is over 8 KiB. The connection stays up. Send a shorter one. |
-| `UNSCOPED_PERCEIVE` | Call `perceive` again with `as` set to a bare actor id. |
-| `NO_EXIT` | The move was not queued. For a player, `detail` is the locked text when the pack set one. |
-| `CANT_AFFORD` | The move was not queued. For a player, `detail` is the meter or item id. |
-| `MISSING_ITEM` | The actor does not have the item. The move was not queued. |
-| `NOT_A_WEAPON` | That item is not a weapon. The move was not queued. |
-| `BUSY` | The character is busy. The move was not queued. Send it again when they are free. |
-| `UNKNOWN_MOVE` | That actor has no such move. |
-| `UNKNOWN_ID` | That id is not in the world. |
-| `OUT_OF_RANGE` | A number fell outside its range. The record was left as it was. |
-| `PAUSED_CLOCK` | That clock is paused. The change was not kept. |
-| `BUDGET` | The change does not fit the round. It was not kept. |
-| `INELIGIBLE` | That actor cannot take the action right now. |
-| `UNKNOWN_EFFECT` | The effect is not one the engine runs. |
-| `ILLEGAL_KNOWLEDGE` | That actor cannot know that. |
-| `VIEWER_MISMATCH` | The effect is not for this viewer. |
-| `ENGINE_ON_PLAYER` | The table does not take that action for a player. |
-| `ACTOR_MISMATCH` | The action is not this actor's. |
-| `TABLE_EMPTY` | Nobody is seated. |
-| `COMMIT_CONFLICT` | Another process holds the pack lock. Stop. Nothing was written. |
-| `HAND_EDIT` | The save was edited by hand. Stop sending moves until it is migrated. |
-| `JOURNAL_DIVERGED` | The journal no longer replays to its recorded hash. `spook verify` names the record. Stop. Nothing was written. |
-| `STORE_IO` | The disk refused a write, a flush, a rename or a read, including a read of the journal. Stop, and do not resend until the operator fixes the disk. |
+| `TABLE_FULL` | Stop. Three PCs are claimed, or the GM seat is held. Try again only after a seat is free. |
+| `SEAT_TAKEN` | That PC is held. Claim another. |
+| `CHOOSE_PC` | Claim one of the PCs in `detail`. An empty list means none is free. |
+| `SCHEMA` | Fix the message: its shape, its word, or its arguments. |
+| `NOT_IN_SPEC` | The verb has no rule that applies, `commit` set `include_round` false with a move queued, or the seat was released. |
+| `LINE_TOO_LONG` | Send a message under 8 KiB. |
+| `UNSCOPED_PERCEIVE` | Send `perceive` with `as` set to a bare actor id. |
+| `ACTOR_MISMATCH` | That actor is a player's, or the move is not this actor's. |
+| `NO_EXIT`, `CANT_AFFORD`, `MISSING_ITEM`, `NOT_A_WEAPON`, `BUSY` | The move was not queued. `BUSY` clears when the character is free. |
+| `UNKNOWN_MOVE`, `UNKNOWN_ID` | That move or id is not in the world, or the token is no claim's. |
+| `INELIGIBLE`, `OUT_OF_RANGE`, `PAUSED_CLOCK`, `BUDGET`, `UNKNOWN_EFFECT`, `ILLEGAL_KNOWLEDGE`, `VIEWER_MISMATCH`, `ENGINE_ON_PLAYER`, `TABLE_EMPTY` | The rules refused the change, and nothing of it was kept. |
+| `COMMIT_CONFLICT` | Another process holds the pack. Stop. |
+| `HAND_EDIT` | The save was edited by hand. Stop until it is migrated. |
+| `JOURNAL_DIVERGED` | The journal no longer replays. `spook verify` names the record. Stop. |
+| `STORE_IO` | The disk refused a read or a write. Stop until the operator fixes it. |
 | `PACK_REV_MISMATCH` | The save does not match the pack. Stop. |
-| `RULES_REV_MISMATCH` | The save was written by different rules. Start a fresh save. This fails at pack open, before a seat exists. |
+| `RULES_REV_MISMATCH` | The save was written by other rules. Start a fresh save. This fails at pack open, before any seat. |
 
-HTTP statuses, before a seat token:
+The MCP endpoint answers with an HTTP status before any seat: 400 for an `MCP-Protocol-Version` it does not know, 403 for a wrong `Host` or `Origin`, 405 for a DELETE that names a version with no session, 406 for an `Accept` without both types, and 413 for a body over 1 MiB.
 
-| Status | What the client should do |
-|---|---|
-| 400 | `MCP-Protocol-Version` names a version the server does not know. Omit the header, or send a version from a previous handshake. |
-| 403 | `Host` is not `127.0.0.1`, or `Origin` is present and is not `http://127.0.0.1` on any port. Dial `http://127.0.0.1:<port>/mcp`. |
-| 405 | DELETE named a protocol version that has no session to delete. Send the negotiated `protocolVersion` from the initialize result. |
-| 406 | `Accept` did not list both `application/json` and `text/event-stream`. |
-| 413 | The POST body is over 1 MiB. Shrink it. The seat was not taken. |
+## Compatibility
+
+- A client ignores a body `kind` and a field it does not know.
+- Changes only add. A field never changes meaning, and a new meaning gets a new name.
+- The hello announces `version` and the words. A word is removed only after one release of being marked as going away. Version 1 has no such word and no marker yet. The marker is added to the hello before the first word needs it.
+- The recorded session must still replay. Each message it got must still arrive at that seat, in order, with every field it had and the same value. New kinds and fields may come between. Only `seq`, which a new kind moves, and `token`, which each table mints, may differ.
+- The journal and refusal codes stay strict: `spook verify` fails on a code it does not know.
