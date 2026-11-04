@@ -2,9 +2,18 @@
 
 > Early work in progress. You can play the sample, but it isn't a release yet.
 
-Spookery runs living worlds for a small table. You write a world as a pack, which is a folder of YAML rules and Markdown pages for places and people. Then you host it and sit down with up to three players and a GM.
+Spookery is the game engine underneath your AI GM. Let a model run an RPG on its own and the world slips: an NPC forgets what it said, a roll gets fudged, a locked door opens anyway. Creativity isn't discord, it's controlled chaos.
 
-The GM can be a person or a model. Either way, the engine is the only thing that changes the world. The GM talks and asks the engine to commit. Dice are seeded and every commit goes in a journal, so you can replay a game and check every result.
+You write a world as a pack of plain YAML rules and Markdown pages for places and people. Coding agents like Claude Code and Cursor can build one with `spook new` and `spook check`. Then you host it as a living world and sit down with up to three players and a GM.
+
+Bring a friend to GM or bring your own model key. Either way, the engine is the only thing that changes the world. The GM tells the story and asks the engine to commit.
+
+- ⚙️ Play moves in rounds. Everyone queues a move, and the engine resolves them.
+- 🎲 Dice are seeded. A d20 check can partly succeed, and NPCs roll their own checks.
+- 📙 Every commit goes in a hash-chained journal, so you can replay a game and check every roll.
+- ⚡ Triggers fire for in-round changes.
+- 🕰️ A world clock keeps time, and NPCs keep habits, like restocking the shop.
+- 🙈 Players see whether they succeeded, and only the GM sees the dice.
 
 New words like seat and tick are explained in the [glossary](docs/README.md#glossary).
 
@@ -92,4 +101,7 @@ Run `spook --help` for the full list. GM setup is in [docs/README.md](docs/READM
 - [docs/engine-guarantees.md](docs/engine-guarantees.md) says what the engine promises.
 - [docs/seat-protocol.md](docs/seat-protocol.md) is the seat protocol for clients and GMs.
 - [CONTRIBUTING.md](CONTRIBUTING.md) covers issues, tests and hooking up coding agents.
-- The license split is in [docs/README.md](docs/README.md#license).
+
+## License
+
+The engine is AGPL-3.0-or-later, and the crates a game client needs are MIT. The full split is in [docs/README.md](docs/README.md#license). If AGPL doesn't fit your project, open an issue and we can talk.
