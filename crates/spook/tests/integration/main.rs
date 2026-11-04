@@ -10,11 +10,7 @@ mod support;
 #[allow(dead_code)]
 mod mcp_client;
 
-#[path = "../feature_dirs.rs"]
-mod feature_dirs;
-
 mod engine_guarantees;
-mod feature_census;
 mod live_round;
 mod pack_reference;
 mod seat_protocol;

@@ -31,11 +31,6 @@ spookery-engine = { path = ".", features = ["testing"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "time"] }
 
 [[test]]
-name = "features_host"
-path = "tests/features_host.rs"
-harness = false
-
-[[test]]
 name = "features_world"
 path = "tests/features_world.rs"
 harness = false

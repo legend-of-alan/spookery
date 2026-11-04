@@ -52,20 +52,6 @@ pub mod testing {
         world.lock.file().try_clone().unwrap()
     }
 
-    pub const HOST: &[&str] = &["tests/features/changes"];
-
-    pub const WORLD: &[&str] = &[
-        "tests/features/catch_up",
-        "tests/features/clocks",
-        "tests/features/commit",
-        "tests/features/habits",
-        "tests/features/outcomes",
-        "tests/features/perceive",
-        "tests/features/round",
-        "tests/features/sample",
-        "tests/features/visibility",
-    ];
-
     pub mod journal {
         use std::path::{Path, PathBuf};
 

@@ -8,7 +8,7 @@ Title letters, sizes, and labels are below, under Issues and PRs. Build and play
 
 A contributor license agreement (CLA) and a developer certificate of origin (DCO) are deferred.
 
-Feature scenarios live under `crates/engine/tests/features` and `crates/spook/tests/features`. Two programs per crate run them:
+Feature scenarios live under `crates/engine/tests/features` and `crates/spook/tests/features`. The engine runs them in one program and spook in two:
 
 ```sh
 cargo test --workspace --test features_host --test features_world

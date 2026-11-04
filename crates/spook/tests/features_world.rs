@@ -60,11 +60,8 @@ mod sample;
 #[path = "steps/sample_arc.rs"]
 mod sample_arc;
 
-#[path = "feature_dirs.rs"]
-mod feature_dirs;
-
-fn feature_dirs() -> &'static [&'static str] {
-    feature_dirs::WORLD
+fn runs(folder: &str) -> bool {
+    !HOST.contains(&folder)
 }
 
 include!("feature_main.rs");
