@@ -11,9 +11,9 @@ use spookery_engine::{
 use tokio::sync::{oneshot, watch};
 
 use super::frames;
+use super::gm::{run_gm_word, Reply};
 use super::idle::{self, now_stamp};
 use super::seat::{Conn, FrameSender, Link, Seats};
-use super::tools::{run_gm_word, Reply, TOOLS};
 use super::Error;
 use crate::protocol::{
     self, parse_args, ClaimArgs, ClientBody, ClientMessage, Detail, MoveArgs, NoArgs, SayArgs,
@@ -52,12 +52,12 @@ pub(super) enum Request {
         conn: Conn,
         ack: oneshot::Sender<()>,
     },
-    /// One MCP tool call. The reply is its result.
-    Tool {
+    /// One MCP tool call, as a client message. The reply is every message the table sent
+    /// this connection while it ran the word, the word's own reply last.
+    ToolCall {
         conn: Conn,
-        name: String,
-        arguments: Option<Map<String, Value>>,
-        reply: oneshot::Sender<Value>,
+        message: ClientMessage,
+        reply: oneshot::Sender<Vec<ServerMessage>>,
     },
     Wake,
     Stop,
@@ -88,6 +88,8 @@ pub(crate) struct Table {
     verbs: Vec<String>,
     /// Each send restarts the idle timer.
     idle: watch::Sender<u64>,
+    /// While an MCP tool call runs: its connection, and the messages sent to it so far.
+    tool_call: Option<(Conn, Vec<ServerMessage>)>,
     out: Box<dyn Write>,
     err: Box<dyn Write>,
 }
@@ -106,6 +108,7 @@ impl Table {
             seq: 0,
             verbs,
             idle,
+            tool_call: None,
             out,
             err,
         }
@@ -141,13 +144,15 @@ impl Table {
                     self.drop_link(conn);
                     let _ = ack.send(());
                 }
-                Request::Tool {
+                Request::ToolCall {
                     conn,
-                    name,
-                    arguments,
+                    message,
                     reply,
                 } => {
-                    let _ = reply.send(self.call_tool(conn, &name, arguments));
+                    self.tool_call = Some((conn, Vec::new()));
+                    self.handle_message(conn, Ok(message));
+                    let messages = self.tool_call.take().map(|(_, messages)| messages);
+                    let _ = reply.send(messages.unwrap_or_default());
                 }
                 Request::Wake => handled = self.wake(),
                 Request::Stop => {
@@ -423,38 +428,9 @@ impl Table {
         }
     }
 
-    /// One MCP tool call: its GM word, answered as the tool's result.
-    fn call_tool(
-        &mut self,
-        conn: Conn,
-        name: &str,
-        arguments: Option<Map<String, Value>>,
-    ) -> Value {
-        if self.seats.gm != Some(conn) {
-            return frames::refused_value(Reason::NotInSpec);
-        }
-        let presence = self.seats.presence();
-        let args = arguments.unwrap_or_default();
-        let reply = match TOOLS.iter().find(|tool| tool.name == name) {
-            Some(tool) => run_gm_word(&mut self.world, &presence, tool.word, &args),
-            None => Err(Reason::NotInSpec),
-        }
-        .unwrap_or_else(Reply::refused);
-        self.log_refused(name, &reply);
-        self.after_rounds(&reply.outputs);
-        if let Some(said) = &reply.said {
-            self.deliver_say(said, None);
-        }
-        // Free the seat before the client can read this result.
-        if reply.release_seat {
-            self.release_gm();
-        }
-        frames::render_tool_result(&reply)
-    }
-
-    fn log_refused(&mut self, name: &str, reply: &Reply) {
+    fn log_refused(&mut self, word: &str, reply: &Reply) {
         if let ServerBody::Refused(refused) = &reply.body {
-            let _ = writeln!(self.out, "refused {name} {}", refused.code.as_str());
+            let _ = writeln!(self.out, "refused {word} {}", refused.code.as_str());
             let _ = self.out.flush();
         }
     }
@@ -594,8 +570,12 @@ impl Table {
         self.reply(conn, None, body);
     }
 
-    /// A full or closed queue drops that connection. The table does not wait.
+    /// A message to an MCP tool call's connection goes in that call's result. A full or
+    /// closed queue drops that connection. The table does not wait.
     fn send(&mut self, conn: Conn, message: ServerMessage) {
+        if let Some((_, messages)) = self.tool_call.as_mut().filter(|(call, _)| *call == conn) {
+            return messages.push(message);
+        }
         let bytes = message.to_text().into_bytes();
         if self
             .seats

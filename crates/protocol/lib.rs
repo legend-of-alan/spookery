@@ -10,7 +10,7 @@ use std::str::FromStr;
 
 use serde::{Deserialize, Serialize};
 
-/// A check band on the player wire, the GM wire, and `commit_round` checks.
+/// A check band on the player wire, the GM wire, and the rolls in `committed`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Outcome {
@@ -30,9 +30,8 @@ impl Outcome {
 }
 
 pub use gm::{
-    parse_args, CastKind, CloseArgs, CloseBody, CommitArgs, CommitBody, IntentArgs, MenuRow,
-    PackSummary, PerceiveArgs, Queued, QueuedMove, Roll, SayArgs, SayEvent, StatusArgs,
-    StatusPause, StatusPresence, TableStatus,
+    parse_args, CastKind, CommitArgs, CommitBody, IntentArgs, MenuRow, PackSummary, PerceiveArgs,
+    QueuedMove, Roll, SayArgs, StatusPause, StatusPresence, TableStatus, ToolResult,
 };
 pub use message::{
     ClaimArgs, ClientBody, ClientMessage, Message, MoveArgs, NoArgs, Say, Seat, ServerBody,
@@ -61,8 +60,8 @@ pub fn default_mcp_addr(game: std::net::SocketAddr) -> Option<std::net::SocketAd
 /// and the prompt's cast cut.
 pub const PERCEIVE_BODY_CHARS: usize = 800;
 
-/// Every refusal code. The `code` of a `refused` body, a GM tool refusal and the MCP
-/// error's `data`, and the token the journal stores on a round line (`engine::Refusal`).
+/// Every refusal code. The `code` of a `refused` body and of the MCP initialize error's
+/// `data`, and the token the journal stores on a round line (`engine::Refusal`).
 /// Strict and `Copy` on purpose: `spook verify` must fail on a code it does not know.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
@@ -178,8 +177,8 @@ impl From<String> for Code {
     }
 }
 
-/// Sent from the table to a client as a `refused` body, and to an MCP GM
-/// client as a tool refusal (`{"code"}`) and as the MCP initialize error's `data`.
+/// Sent from the table to a client as a `refused` body, and to an MCP GM client as the MCP
+/// initialize error's `data`.
 /// Display is that error's message, the sentence with the code in brackets,
 /// `The table is full. [TABLE_FULL]`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

@@ -34,6 +34,8 @@ pub struct World {
     pub listeners: Vec<TcpListener>,
     pub seated: Vec<(PathBuf, spookery_engine::Presence)>,
     pub http_gm: Option<rmcp::service::RunningService<rmcp::RoleClient, rmcp::model::ClientConfig>>,
+    /// The table the WebSocket GM sits at, beside `live`, and the pack copy it runs.
+    pub ws_table: Option<(table::RunningTable, PathBuf)>,
 }
 
 impl std::fmt::Debug for World {
@@ -57,6 +59,10 @@ fn scenario_limit() -> usize {
 fn tear_down(world: &mut World) {
     world.http_gm.take();
     drop(world.live.take());
+    if let Some((table, pack)) = world.ws_table.take() {
+        drop(table);
+        let _ = std::fs::remove_dir_all(pack);
+    }
     world.listeners.clear();
     world.seated.clear();
     for mut child in world.children.drain(..) {

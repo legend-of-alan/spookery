@@ -1,17 +1,17 @@
-//! The human GM: commands in, tool calls out.
+//! The human GM: commands in, GM words out as tool calls.
 
 use std::io::{self, Write};
 use std::net::SocketAddr;
 
 use rmcp::model::ErrorCode;
 use serde::Serialize;
-use serde_json::json;
+use serde_json::{json, Value};
 
 use crate::mcp::{event_line, GmClient};
-use crate::protocol::{self, Refusal, SayArgs, SayEvent, ServerBody, ServerMessage};
-use crate::text::{
-    self, humanize, render_checks, render_dice, render_diff, render_event, render_status,
+use crate::protocol::{
+    self, CommitArgs, PerceiveArgs, SayArgs, ServerBody, ServerMessage, ToolResult,
 };
+use crate::text::{self, render_checks, render_dice, render_diff, render_event, render_status};
 use crate::Error;
 
 const HELP: &str = "\
@@ -90,13 +90,6 @@ struct Session {
     next_id: u64,
 }
 
-/// A `say` result as raw mode prints it, `kind` included.
-#[derive(Serialize)]
-#[serde(tag = "kind", rename_all = "lowercase")]
-enum Said {
-    Say(SayEvent),
-}
-
 impl Session {
     /// Run one typed line. An empty line does nothing; a line that is not a command prints
     /// `HELP`, as `help` does. False means leave the seat.
@@ -109,91 +102,58 @@ impl Session {
     }
 
     async fn dispatch(&mut self, command: Command) -> Result<bool, Error> {
-        match command {
-            Command::Help => emit(HELP),
+        let (word, args) = match command {
+            Command::Help => {
+                emit(HELP);
+                return Ok(true);
+            }
             Command::Quit => return Ok(false),
-            Command::Status => self.status().await?,
-            Command::Look { actor } => self.look(&actor).await?,
-            Command::Say(args) => self.say(args).await?,
+            Command::Status => ("status", json!({})),
+            Command::Look { actor } => {
+                let args = PerceiveArgs {
+                    as_viewer: Some(actor),
+                    max_body_chars: None,
+                };
+                ("perceive", json!(args))
+            }
+            Command::Say(args) => ("say", json!(args)),
             Command::Queue {
                 actor,
                 move_name,
                 target,
-            } => self.queue(&actor, &move_name, target.as_deref()).await?,
-            Command::Commit => self.commit().await?,
-        }
+            } => {
+                let args = protocol::IntentArgs {
+                    id: None,
+                    round_index: None,
+                    actor_id: Some(actor),
+                    move_name: Some(move_name),
+                    target,
+                    message_to: None,
+                    rationale_code: String::new(),
+                };
+                ("queue", json!(args))
+            }
+            Command::Commit => {
+                let args = CommitArgs {
+                    include_round: true,
+                    session_id: None,
+                };
+                ("commit", json!(args))
+            }
+        };
+        self.send(word, &args).await?;
         Ok(true)
     }
 
-    async fn status(&mut self) -> Result<(), Error> {
-        let reply = self.client.table_status(None).await;
-        self.show_result(reply, |_session, status| {
-            emit(&render_status(&status));
-        })
-    }
-
-    async fn look(&mut self, actor: &str) -> Result<(), Error> {
-        let reply = self.client.perceive(actor).await;
-        // The table sends the view as the `view` body, `kind` included.
-        let reply = reply.map(|reply| reply.map(|view| ServerBody::View(Box::new(view))));
-        self.show_result(reply, |_session, body| {
-            emit(&text::render(&body));
-        })
-    }
-
-    async fn say(&mut self, args: SayArgs) -> Result<(), Error> {
-        let reply = self.client.say(&args).await;
-        // The table answers with the say event, `kind` included.
-        let reply = reply.map(|reply| reply.map(Said::Say));
-        self.show_result(reply, |_session, _said| {})
-    }
-
-    async fn queue(
-        &mut self,
-        actor: &str,
-        move_name: &str,
-        target: Option<&str>,
-    ) -> Result<(), Error> {
-        let shown = format!("{} queued: {move_name}", humanize(actor));
-        let call = protocol::IntentArgs {
-            id: None,
-            round_index: None,
-            actor_id: Some(actor.to_string()),
-            move_name: Some(move_name.to_string()),
-            target: target.map(str::to_string),
-            message_to: None,
-            rationale_code: String::new(),
-        };
-        let reply = self.client.queue_intent(&call).await;
-        self.show_result(reply, move |_session, _queued| {
-            emit(&shown);
-        })
-    }
-
-    async fn commit(&mut self) -> Result<(), Error> {
-        let reply = self.client.commit_round().await;
-        // The result is the one place a GM sees this commit's rolls.
-        self.show_result(reply, |_session, body| {
-            emit(&render_diff(&body));
-            for line in render_checks(&body).iter().chain(&render_dice(&body)) {
-                emit(line);
-            }
-        })
-    }
-
-    /// Show one tool reply after the events that came before it, then anything that
-    /// arrived since. Raw mode prints the reply's result line, text mode `render`s it.
-    /// A refusal or a reply that could not be read is shown instead; a call that
-    /// failed prints its message alone.
-    fn show_result<T: Serialize>(
-        &mut self,
-        reply: Result<Result<T, Refusal>, Error>,
-        render: impl FnOnce(&mut Self, T),
-    ) -> Result<(), Error> {
+    /// Send one word. Show the events that came before its result, then the messages it
+    /// sent this seat, its reply last, then anything that arrived since. Raw mode prints the
+    /// result line. A refusal is also shown on stderr. A call that failed prints its message
+    /// alone.
+    async fn send(&mut self, word: &str, args: &Value) -> Result<(), Error> {
         let id = self.next_id;
         self.next_id = self.next_id.saturating_add(1);
-        let reply = match reply {
-            Ok(reply) => Ok(reply),
+        let result = match self.client.call(word, args).await {
+            Ok(messages) => Ok(messages),
             Err(Error::Unreadable(body)) => Err(body),
             Err(Error::Io(err)) => return Err(Error::Io(err)),
             Err(err) => {
@@ -209,15 +169,36 @@ impl Session {
         for event in self.client.drain_events() {
             self.show_event(&event);
         }
-        match reply {
-            Ok(Err(refusal)) => self.show_refusal(&refusal, &result_line(id, &refusal)),
-            Ok(Ok(body)) if self.raw => emit(&result_line(id, &body)),
-            Ok(Ok(body)) => render(self, body),
+        match result {
+            Ok(messages) => self.show_result(id, messages),
             Err(body) if self.raw => emit(&result_line(id, &body)),
             Err(_) => report_unreadable(),
         }
         self.show_ready();
         Ok(())
+    }
+
+    fn show_result(&mut self, id: u64, messages: Vec<ServerMessage>) {
+        let refusal = match messages.last().map(|reply| &reply.body) {
+            Some(ServerBody::Refused(refusal)) => Some(refusal.clone()),
+            _ => None,
+        };
+        if self.raw {
+            emit(&result_line(id, &ToolResult { messages }));
+        } else if let Some((reply, sent)) = messages.split_last() {
+            for message in sent {
+                self.show_event(message);
+            }
+            if refusal.is_none() {
+                for line in render_reply(&reply.body) {
+                    emit(&line);
+                }
+            }
+        }
+        if let Some(refusal) = refusal {
+            eprintln!("{}", text::render_refusal(&refusal, self.raw));
+            let _ = io::stderr().flush();
+        }
     }
 
     fn show_ready(&mut self) {
@@ -249,15 +230,6 @@ impl Session {
             emit(&line);
         }
     }
-
-    /// Raw mode prints `line`, the refusal's result line, then the code on stderr.
-    fn show_refusal(&self, refusal: &Refusal, line: &str) {
-        if self.raw {
-            emit(line);
-        }
-        eprintln!("{}", text::render_refusal(refusal, self.raw));
-        let _ = io::stderr().flush();
-    }
 }
 
 fn emit(line: &str) {
@@ -265,7 +237,22 @@ fn emit(line: &str) {
     let _ = io::stdout().flush();
 }
 
-/// A tool reply as the JSON-RPC result line raw mode prints.
+/// The lines text mode shows for a reply. Raw mode prints the result line instead.
+fn render_reply(body: &ServerBody) -> Vec<String> {
+    let lines = match body {
+        ServerBody::Status(status) => vec![render_status(status)],
+        ServerBody::View(_) => vec![text::render(body)],
+        // The commit reply is the one place a GM sees this commit's rolls.
+        ServerBody::Committed(commit) => std::iter::once(render_diff(commit))
+            .chain(render_checks(commit))
+            .chain(render_dice(commit))
+            .collect(),
+        _ => vec![render_event(body)],
+    };
+    lines.into_iter().filter(|line| !line.is_empty()).collect()
+}
+
+/// A tool result as the JSON-RPC result line raw mode prints.
 fn result_line(id: u64, body: &impl Serialize) -> String {
     json!({ "jsonrpc": "2.0", "id": id, "result": { "structuredContent": body } }).to_string()
 }

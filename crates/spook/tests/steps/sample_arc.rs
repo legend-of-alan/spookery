@@ -174,14 +174,19 @@ fn the_stub_gm_attempts_to_set_gold(world: &mut World) {
     table::listen(world, &pack);
     table::seat_gm(world);
     world.pack = Some(pack);
-    world.stdout = table::gm_call(world, 4, "set_gold", r#"{"gold":5}"#);
+    world.stdout = table::gm_tool_call(world, 4, "set_gold", r#"{"gold":5}"#);
 }
 
 #[then(expr = "the attempt is refused and the refusal is in the log")]
 fn the_attempt_is_refused_and_in_the_log(world: &mut World) {
-    assert!(world.stdout.contains("NOT_IN_SPEC"), "{}", world.stdout);
+    assert_eq!(
+        table::read_reply(&world.stdout)["code"],
+        "SCHEMA",
+        "{}",
+        world.stdout
+    );
     table::wait_host_until(world, "the refusal in the host log", |log| {
-        log.contains("refused set_gold NOT_IN_SPEC")
+        log.contains("refused set_gold SCHEMA")
     });
     let saved = fs::read(table::pack(world).join("state/save.yaml"))
         .unwrap_or_else(|err| panic!("read save: {err}"));
@@ -201,7 +206,7 @@ fn commit_line(world: &mut World, line: &str) {
     let mark = table::player_write(world, line);
     table::wait_player_from(world, mark, "\"kind\":\"queued\"");
     let before = list_round_keys(table::pack(world)).len();
-    table::gm_call(world, 2, "commit_round", r#"{"include_round":true}"#);
+    table::gm_tool_call(world, 2, "commit", r#"{"include_round":true}"#);
     table::wait_round_count(table::pack(world), before + 1);
 }
 

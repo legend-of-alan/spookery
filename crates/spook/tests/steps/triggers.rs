@@ -1309,7 +1309,7 @@ fn play_round(
     }
 }
 
-/// The GM's `queue_intent` call: `actor_id` plays `verb` at `target`, under the id `id`.
+/// The GM's `queue` word: `actor_id` plays `verb` at `target`, under the id `id`.
 fn intent(id: &str, actor_id: &str, verb: &str, target: Option<&str>) -> protocol::IntentArgs {
     protocol::IntentArgs {
         id: Some(id.to_string()),

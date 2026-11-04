@@ -14,7 +14,7 @@ use std::time::Duration;
 use rmcp::model::ProtocolVersion;
 use serde_json::{json, Value};
 use spookery::mcp::{event_line, GmClient};
-use spookery::protocol::{Addrs, ClientMessage, ServerBody, ServerMessage};
+use spookery::protocol::{Addrs, ClientMessage, ServerBody, ServerMessage, ToolResult};
 use tungstenite::protocol::Role;
 use tungstenite::{Message, WebSocket};
 
@@ -178,24 +178,24 @@ fn capture() -> BTreeMap<String, Example> {
     let status_args = serde_json::json!({});
     insert_json(
         &mut out,
-        "table-status-request",
-        tool_call(2, "table_status", &status_args),
+        "status-request",
+        tool_call(1, "status", &status_args),
     );
     insert_json(
         &mut out,
-        "table-status",
-        call(&mut gm, "table_status", status_args),
+        "status-result",
+        call(&mut gm, "status", status_args),
     );
 
     let perceive_args = serde_json::json!({"as": "pc_rowan"});
     insert_json(
         &mut out,
         "perceive-request",
-        tool_call(3, "perceive", &perceive_args),
+        tool_call(2, "perceive", &perceive_args),
     );
     let gm_perceive = call(&mut gm, "perceive", perceive_args);
     assert_eq!(
-        &gm_perceive,
+        &gm_perceive["messages"][0]["body"],
         &out_json(&out, "player-perceive")["body"],
         "GM perceive diverged from the player welcome"
     );
@@ -212,24 +212,11 @@ fn capture() -> BTreeMap<String, Example> {
     insert_json(&mut out, "say-event", one_event(&mut gm));
 
     let say_args = serde_json::json!({"address": "table", "text": "good evening"});
-    insert_json(&mut out, "say-request", tool_call(4, "say", &say_args));
+    insert_json(&mut out, "say-request", tool_call(3, "say", &say_args));
     insert_json(&mut out, "say-result", call(&mut gm, "say", say_args));
     let heard = next_json(&player);
     assert_eq!(heard["body"]["kind"], "say", "{heard}");
     insert_json(&mut out, "player-hears-gm", heard);
-    insert_json(&mut out, "gm-say-event", one_event(&mut gm));
-
-    let since_args = serde_json::json!({"since": 0});
-    insert_json(
-        &mut out,
-        "table-status-since-request",
-        tool_call(5, "table_status", &since_args),
-    );
-    insert_json(
-        &mut out,
-        "table-status-since",
-        call(&mut gm, "table_status", since_args),
-    );
 
     let intent_args = serde_json::json!({
         "actor_id": "pc_rowan",
@@ -239,12 +226,12 @@ fn capture() -> BTreeMap<String, Example> {
     insert_json(
         &mut out,
         "intent-request",
-        tool_call(6, "queue_intent", &intent_args),
+        tool_call(4, "queue", &intent_args),
     );
     insert_json(
         &mut out,
         "intent-result",
-        call(&mut gm, "queue_intent", intent_args),
+        call(&mut gm, "queue", intent_args),
     );
 
     insert_json(
@@ -261,26 +248,25 @@ fn capture() -> BTreeMap<String, Example> {
     insert_json(
         &mut out,
         "commit-without-round-request",
-        tool_call(7, "commit_round", &refuse_commit),
+        tool_call(5, "commit", &refuse_commit),
     );
     insert_json(
         &mut out,
         "commit-without-round",
-        call(&mut gm, "commit_round", refuse_commit),
+        call(&mut gm, "commit", refuse_commit),
     );
 
     let commit_args = serde_json::json!({"include_round": true});
     insert_json(
         &mut out,
         "commit-request",
-        tool_call(8, "commit_round", &commit_args),
+        tool_call(6, "commit", &commit_args),
     );
     insert_json(
         &mut out,
         "commit-result",
-        call(&mut gm, "commit_round", commit_args),
+        call(&mut gm, "commit", commit_args),
     );
-    insert_json(&mut out, "round-event", one_event(&mut gm));
     let round = next_json(&player);
     assert_eq!(round["body"]["kind"], "round", "{round}");
     insert_json(&mut out, "player-round", round);
@@ -299,10 +285,9 @@ fn capture() -> BTreeMap<String, Example> {
     let _ = one_event(&mut gm);
     call(
         &mut gm,
-        "commit_round",
+        "commit",
         serde_json::json!({"include_round": true}),
     );
-    let _ = one_event(&mut gm);
     let taken_round = next_json(&player);
     assert_eq!(taken_round["body"]["kind"], "round", "{taken_round}");
     let taken = next_json(&player);
@@ -332,7 +317,7 @@ fn capture() -> BTreeMap<String, Example> {
     insert_json(
         &mut out,
         "unknown-tool-request",
-        tool_call(9, "not_in_spec", &bad_tool),
+        tool_call(8, "not_in_spec", &bad_tool),
     );
     insert_json(
         &mut out,
@@ -344,7 +329,7 @@ fn capture() -> BTreeMap<String, Example> {
     insert_json(
         &mut out,
         "unscoped-perceive-request",
-        tool_call(10, "perceive", &unscoped),
+        tool_call(9, "perceive", &unscoped),
     );
     insert_json(
         &mut out,
@@ -382,13 +367,17 @@ fn capture() -> BTreeMap<String, Example> {
     assert_eq!(replay["body"]["kind"], "claimed", "{replay}");
     insert_json(&mut out, "player-replay-say", replay);
 
-    let close_args = serde_json::json!({});
+    let release_args = serde_json::json!({});
     insert_json(
         &mut out,
-        "close-request",
-        tool_call(11, "close", &close_args),
+        "release-request",
+        tool_call(10, "release", &release_args),
     );
-    insert_json(&mut out, "close-result", call(&mut gm, "close", close_args));
+    insert_json(
+        &mut out,
+        "release-result",
+        call(&mut gm, "release", release_args),
+    );
     out
 }
 
@@ -583,10 +572,11 @@ fn connect_player_unclaimed(port: u16) -> PlayerClient {
     player
 }
 
-fn call(gm: &mut GmClient, name: &str, arguments: Value) -> Value {
-    support::block_on(gm.call::<Value>(name, &arguments))
-        .unwrap_or_else(|err| panic!("{name}: {err}"))
-        .unwrap_or_else(|refusal| serde_json::json!(refusal))
+/// One tool call. Returns its structured content.
+fn call(gm: &mut GmClient, word: &str, arguments: Value) -> Value {
+    let messages =
+        support::block_on(gm.call(word, &arguments)).unwrap_or_else(|err| panic!("{word}: {err}"));
+    json!(ToolResult { messages })
 }
 
 /// The next GM event after the hello.

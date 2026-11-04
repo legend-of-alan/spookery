@@ -1,19 +1,15 @@
-//! Engine output as message bodies, and the tool results the MCP endpoint turns those into.
-//! The one place a `protocol::Refusal` is rendered: into a body, a tool result or an MCP
-//! error.
+//! Engine output as message bodies. The one place a `protocol::Refusal` is rendered: into a
+//! body or an MCP error.
 
 use crate::protocol::{
-    self, CloseBody, CommitBody, Detail, NoteView, PackSummary, Queued, QueuedMove, Roll, Say,
-    SayEvent, ServerBody, StatusPause, StatusPresence, TableStatus,
+    self, CommitBody, Detail, NoteView, PackSummary, QueuedMove, Roll, Say, ServerBody,
+    StatusPause, StatusPresence, TableStatus,
 };
 use rmcp::ErrorData as McpError;
-use serde::Serialize;
 use serde_json::Value;
 use spookery_engine::{
-    self as engine, Intent, MoveReport, Note, Presence, Reason, RoundOutput, State, TapeRecord,
+    self as engine, Intent, MoveReport, Note, Presence, RoundOutput, State, TapeRecord,
 };
-
-use super::tools::Reply;
 
 /// A move the gate or a round refused. Its `detail` is the meter or item id, or the
 /// sentence a locked exit shows.
@@ -58,18 +54,6 @@ pub(super) fn render_claimed(actor: &str, scrollback: &[TapeRecord]) -> ServerBo
             .iter()
             .map(|tape| build_say(tape, false))
             .collect(),
-    }
-}
-
-fn build_say_event(tape: &TapeRecord) -> SayEvent {
-    SayEvent {
-        seq: tape.seq,
-        from: tape.from.clone(),
-        address: tape.address.clone(),
-        place: tape.place.clone(),
-        actor: tape.actor.clone(),
-        recipients: tape.recipients.clone(),
-        text: tape.text.clone(),
     }
 }
 
@@ -159,9 +143,7 @@ pub(super) fn render_status(
     now: &State,
     presence: &Presence,
     queued: &[Intent],
-    last_seq: u64,
-    events: Option<&[TapeRecord]>,
-    pack: Option<PackSummary>,
+    pack: PackSummary,
 ) -> ServerBody {
     let Ok(Value::String(presence_clocks)) = serde_json::to_value(now.pause.presence_clocks) else {
         unreachable!("a run state serializes as its snake_case name");
@@ -185,37 +167,8 @@ pub(super) fn render_status(
                 move_name: intent.move_name.clone(),
             })
             .collect(),
-        last_seq,
-        events: events.map(|events| events.iter().map(build_say_event).collect()),
-        pack,
+        pack: Some(pack),
     }))
-}
-
-/// A refused GM tool's result names the code only.
-pub(super) fn refused_value(code: Reason) -> Value {
-    serde_json::to_value(protocol::Refusal::from(code)).expect("refusal")
-}
-
-/// The MCP tool result for a GM word's reply.
-pub(super) fn render_tool_result(reply: &Reply) -> Value {
-    /// A say result keeps its tape `seq` and its `kind`.
-    #[derive(Serialize)]
-    #[serde(tag = "kind", rename_all = "lowercase")]
-    enum Tagged {
-        Say(SayEvent),
-    }
-    let value = match (&reply.body, &reply.said) {
-        (_, Some(said)) => serde_json::to_value(Tagged::Say(build_say_event(said))),
-        (ServerBody::Queued { intent, .. }, None) => {
-            serde_json::to_value(Queued { id: intent.clone() })
-        }
-        (ServerBody::Released, None) => serde_json::to_value(CloseBody { released: true }),
-        (ServerBody::Status(status), None) => serde_json::to_value(status),
-        (ServerBody::Committed(body), None) => serde_json::to_value(body),
-        (ServerBody::Refused(refusal), None) => serde_json::to_value(refusal),
-        (body, None) => serde_json::to_value(body),
-    };
-    value.expect("tool result")
 }
 
 fn note_view(note: &Note) -> NoteView {
