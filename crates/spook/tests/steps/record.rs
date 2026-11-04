@@ -2,8 +2,6 @@
 
 use serde_json::Value;
 
-pub(crate) use crate::support::read_round;
-
 /// Steps stored on `round`, or none when the field is left out. A rule step is its id.
 pub(crate) fn read_extra_steps(round: &Value) -> Vec<String> {
     round

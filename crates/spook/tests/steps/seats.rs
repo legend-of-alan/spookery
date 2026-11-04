@@ -13,13 +13,6 @@ fn a_second_player_connects(world: &mut World) {
     world.scratch = table::claim(world, "pc_rowan");
 }
 
-#[when(expr = "a second GM connects over HTTP")]
-fn a_second_gm_connects_over_http(world: &mut World) {
-    let http = table::live_mut(world).mcp_port;
-    let mut session = crate::mcp_client::RawSession::open(http);
-    world.scratch = session.open_event_stream();
-}
-
 #[when(expr = "a second GM connects on the game port")]
 fn a_second_gm_connects_on_the_game_port(world: &mut World) {
     let seat = table::Seat::open(table::live_mut(world).game_port, "gm");

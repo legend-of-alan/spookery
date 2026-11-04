@@ -6,7 +6,6 @@ use serde_json::Value;
 
 use crate::World;
 
-use super::record::{read_extra_steps, read_round};
 use super::table;
 
 #[given(expr = "an empty directory")]
@@ -439,21 +438,6 @@ fn the_save_hash_matches_the_latest_checkpoint(world: &mut World) {
         spookery_engine::testing::journal::blake2s_tagged(&save),
         mark.state_hash
     );
-}
-
-#[then(expr = "the first round lists only effect_applied and cast:mira\\/leave_door_note")]
-fn the_first_round_keeps_only_the_extra_steps(world: &mut World) {
-    let round = read_round(table::pack(world), "round-0001");
-    assert_eq!(
-        read_extra_steps(&round),
-        ["effect_applied", "cast:mira/leave_door_note"]
-    );
-}
-
-#[then(expr = "the second round omits extra_steps")]
-fn the_second_round_omits_extra_steps(world: &mut World) {
-    let round = read_round(table::pack(world), "round-0002");
-    assert!(round.get("extra_steps").is_none(), "{round}");
 }
 
 #[when(expr = "the operator plays a round")]

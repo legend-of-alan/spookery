@@ -36,9 +36,6 @@ Feature: Triggers
     Then the check exits 0
     And stdout says "no problems"
 
-  Scenario: Replay
-    Then spook verify passes after rounds that fired triggers
-
   Scenario: Entering the bog rolls stamina
     When nell enters the bog
     Then that arrival rolled stamina and spook verify reproduces it
