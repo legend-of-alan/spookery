@@ -16,8 +16,8 @@ use super::idle::{self, now_stamp};
 use super::seat::{Claim, Conn, FrameSender, Link, Seats};
 use super::Error;
 use crate::protocol::{
-    self, parse_args, ClaimArgs, ClientBody, ClientMessage, Detail, MoveArgs, NoArgs, SayArgs,
-    Seat, ServerBody, ServerMessage, VERSION, WORDS,
+    self, is_built_in, parse_args, ClaimArgs, ClientBody, ClientMessage, Detail, MoveArgs, NoArgs,
+    SayArgs, Seat, ServerBody, ServerMessage, VERSION, WORDS,
 };
 
 /// The host's cap. A pack may define more PCs than this.
@@ -238,9 +238,7 @@ impl Table {
 
     fn handle_player_word(&mut self, conn: Conn, id: Option<String>, body: ClientBody) {
         let ClientBody { word, args } = body;
-        let built_in = WORDS
-            .iter()
-            .any(|known| known.seat == Seat::Player && known.name == word);
+        let built_in = is_built_in(Seat::Player, &word);
         if !built_in && !self.verbs.contains(&word) {
             return self.reply(conn, id, ServerBody::Refused(Reason::Schema.into()));
         }

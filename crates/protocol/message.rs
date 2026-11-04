@@ -176,6 +176,13 @@ pub const WORDS: &[Word] = &[
     Word::new("release", Seat::Gm),
 ];
 
+/// Whether `name` is a built-in word for `seat`.
+pub fn is_built_in(seat: Seat, name: &str) -> bool {
+    WORDS
+        .iter()
+        .any(|word| word.seat == seat && word.name == name)
+}
+
 /// `claim` arguments: a free PC, or the token of a claim this player held before and the
 /// last `seq` it read.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

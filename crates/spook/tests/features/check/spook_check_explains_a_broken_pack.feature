@@ -33,6 +33,8 @@ Feature: spook check explains a broken pack
       | exit to an unknown place | world/places/docks_shop.md | SCHEMA            | not a place              |
       | duplicate exit           | world/places/docks_shop.md | SCHEMA            | listed twice             |
       | a target alias           | rules/verbs.yaml           | SCHEMA            | not a target kind        |
+      | a verb named look        | rules/verbs.yaml           | SCHEMA            | 'look' is a built-in word |
+      | a verb named say         | rules/verbs.yaml           | SCHEMA            | 'say' is a built-in word |
       | flags under idle         | cast/pc-rowan.md           | SCHEMA            | unknown field            |
       | missing display_name     | cast/pc-rowan.md           | SCHEMA            | display_name             |
       | idle maybe               | rules/budget.yaml          | SCHEMA            | not on or off            |

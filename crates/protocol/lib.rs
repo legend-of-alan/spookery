@@ -37,8 +37,8 @@ pub use gm::{
 #[cfg(feature = "schema")]
 pub use message::{generate_client_schema, generate_server_schema};
 pub use message::{
-    ClaimArgs, ClientBody, ClientMessage, Message, MoveArgs, NoArgs, Say, Seat, ServerBody,
-    ServerMessage, Word, VERSION, WORDS,
+    is_built_in, ClaimArgs, ClientBody, ClientMessage, Message, MoveArgs, NoArgs, Say, Seat,
+    ServerBody, ServerMessage, Word, VERSION, WORDS,
 };
 pub use player::{
     exit_phrase, exit_section, ClockView, ExitView, ItemStack, KnownFact, MeterView, NoteView, View,
