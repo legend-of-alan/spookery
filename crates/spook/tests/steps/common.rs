@@ -4,7 +4,6 @@ use spookery_engine::testing::state_of;
 use std::fs;
 use std::io::Write;
 use std::path::Path;
-use std::time::{Duration, Instant};
 
 use cucumber::{given, then, when};
 use spookery_engine::testing::journal::list_round_keys;
@@ -189,33 +188,34 @@ pub(crate) fn wait_play(world: &mut World, needle: &str) {
     wait_play_until(world, |stdout| stdout.contains(needle), needle);
 }
 
-/// Poll play stdout until `ready` is true, or panic on exit / timeout.
+/// Waits until play's stdout satisfies `ready`, and keeps it in `world.stdout`.
 pub(crate) fn wait_play_until(world: &mut World, ready: impl Fn(&str) -> bool, label: &str) {
-    let start = Instant::now();
-    loop {
-        let stdout = capture_play_stdout(world);
+    let play = world.play.as_mut().unwrap_or_else(|| panic!("no play"));
+    world.stdout = wait_proc_until(play, ready, label);
+}
+
+/// Waits until `proc`'s stdout satisfies `ready`, and returns it. Panics if the
+/// process exits first.
+pub(crate) fn wait_proc_until(
+    proc: &mut support::Process,
+    ready: impl Fn(&str) -> bool,
+    label: &str,
+) -> String {
+    table::poll_until(label, || {
+        let stdout = support::text_of(&proc.stdout);
         if ready(&stdout) {
-            return;
+            return Ok(stdout);
         }
-        let play = world.play.as_mut().unwrap_or_else(|| panic!("no play"));
-        if let Some(status) = play
+        let stderr = support::text_of(&proc.stderr);
+        if let Some(status) = proc
             .child
             .try_wait()
             .unwrap_or_else(|err| panic!("try_wait: {err}"))
         {
-            let stderr = support::text_of(&play.stderr);
-            panic!("play exited {status:?}\nstdout:\n{stdout}\nstderr:\n{stderr}");
+            panic!("exited {status:?} before {label}\nstdout:\n{stdout}\nstderr:\n{stderr}");
         }
-        if start.elapsed() > Duration::from_secs(8) {
-            let stderr = world
-                .play
-                .as_ref()
-                .map(|play| support::text_of(&play.stderr))
-                .unwrap_or_default();
-            panic!("missing {label}\nstdout:\n{stdout}\nstderr:\n{stderr}");
-        }
-        std::thread::sleep(Duration::from_millis(20));
-    }
+        Err(format!("stdout:\n{stdout}\nstderr:\n{stderr}"))
+    })
 }
 
 pub(crate) fn capture_play_stdout(world: &mut World) -> String {

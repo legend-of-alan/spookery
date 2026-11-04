@@ -346,27 +346,24 @@ pub fn list_player_waits(pack: &Path, name: &str) -> Vec<String> {
         .collect()
 }
 
-/// How long the journal may sit still before a wait calls it a hang. It bounds
-/// one commit, not the whole wait, so a slow machine only makes the wait longer.
-const JOURNAL_STALL: Duration = Duration::from_secs(10);
-
-/// Waits until `done` holds for the committed round keys. Fails only when no
-/// round commits for `JOURNAL_STALL`; `want` names the condition in the panic.
+/// Waits until `done` holds for the committed round keys. Each `poll_until`
+/// waits for one more round, so a long run only fails when the journal sits
+/// still; `want` names the condition in the panic.
 pub fn wait_rounds_until(pack: &Path, want: &str, done: impl Fn(&[String]) -> bool) -> Vec<String> {
     let mut seen = 0;
-    let mut moved = Instant::now();
     loop {
-        let keys = list_round_keys(pack);
+        let keys = poll_until(&format!("{want} or a round past {seen}"), || {
+            let keys = list_round_keys(pack);
+            if done(&keys) || keys.len() != seen {
+                Ok(keys)
+            } else {
+                Err(seen)
+            }
+        });
         if done(&keys) {
             return keys;
         }
-        if keys.len() != seen {
-            seen = keys.len();
-            moved = Instant::now();
-        } else if moved.elapsed() > JOURNAL_STALL {
-            panic!("no round committed for {JOURNAL_STALL:?} at {seen} rounds; wanted {want}");
-        }
-        std::thread::sleep(Duration::from_millis(20));
+        seen = keys.len();
     }
 }
 

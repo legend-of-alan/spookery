@@ -1,14 +1,13 @@
 use spookery_engine::testing::state_of;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::time::{Duration, Instant};
 
 use cucumber::{given, then, when};
 
-use crate::support::{self, text_of};
+use crate::support;
 use crate::World;
 
-use super::common::capture_play_stdout;
+use super::common::wait_play_until;
 use super::table;
 
 #[given(expr = "a sample-d20 table")]
@@ -77,28 +76,8 @@ fn larks_hp_is(world: &mut World, hp: usize) {
 
 #[then(expr = "play shows {int} successful rolls")]
 fn play_shows_successful_rolls(world: &mut World, rolls: usize) {
-    let needle = "Your roll succeeded.";
-    let start = Instant::now();
-    loop {
-        let stdout = capture_play_stdout(world);
-        if stdout.matches(needle).count() >= rolls {
-            return;
-        }
-        let play = world.play.as_mut().unwrap_or_else(|| panic!("no play"));
-        if let Some(status) = play
-            .child
-            .try_wait()
-            .unwrap_or_else(|err| panic!("try_wait: {err}"))
-        {
-            let stderr = text_of(&play.stderr);
-            panic!("play exited {status:?}\nstdout:\n{stdout}\nstderr:\n{stderr}");
-        }
-        if start.elapsed() > Duration::from_secs(8) {
-            let stderr = text_of(&world.play.as_ref().unwrap().stderr);
-            panic!("play did not show {rolls} successes\nstdout:\n{stdout}\nstderr:\n{stderr}");
-        }
-        std::thread::sleep(Duration::from_millis(20));
-    }
+    let succeeded = |stdout: &str| stdout.matches("Your roll succeeded.").count() >= rolls;
+    wait_play_until(world, succeeded, &format!("{rolls} successful rolls"));
 }
 
 fn seat_lark(world: &mut World, might: Option<i64>, tonic: bool) {
@@ -150,20 +129,12 @@ fn hp_of(pack: &Path, actor_id: &str) -> i64 {
 
 fn wait_hp(world: &mut World, actor_id: &str, expected: i64) {
     let pack = table::pack(world).to_path_buf();
-    let start = Instant::now();
-    loop {
-        if hp_of(&pack, actor_id) == expected {
-            return;
+    table::poll_until(&format!("{actor_id} hp {expected}"), || {
+        match hp_of(&pack, actor_id) {
+            hp if hp == expected => Ok(()),
+            hp => Err(format!("hp {hp}\nadded:\n{}", world.player_added)),
         }
-        if start.elapsed() > Duration::from_secs(5) {
-            panic!(
-                "{actor_id} hp is {}, not {expected}\nadded:\n{}",
-                hp_of(&pack, actor_id),
-                world.player_added
-            );
-        }
-        std::thread::sleep(Duration::from_millis(20));
-    }
+    });
 }
 
 fn copy_to_fresh_dir(pack: &Path) -> PathBuf {
