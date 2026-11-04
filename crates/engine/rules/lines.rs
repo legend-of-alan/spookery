@@ -1,34 +1,37 @@
 //! The place name, place prose and busy line a view carries, and a player's help and map.
 
-use spookery_protocol::{exit_phrase, exit_section, Seat, WORDS};
+use spookery_protocol::{PlaceView, Seat, WordView, WORDS};
 
 use crate::canon::Canon;
 use crate::intent::{Target, Viewer};
-use crate::model::{PendingKind, Presence, State};
+use crate::model::{ActorLive, PendingKind, Presence, State};
 use crate::model::{MINUTES_PER_DAY, MINUTES_PER_HOUR};
 use crate::rules::cond;
 use crate::rules::gate::{nameable, verb_for};
-use crate::rules::perceive::perceive_as;
-use crate::rules::rule::Owner;
+use crate::rules::rule::{Owner, TargetKind, When};
 use crate::rules::travel::exits_at;
 use crate::Reason;
 
 /// `help`: the built-in player words but `claim`, then each pack verb `verb_for` reaches
-/// now and whose `if` holds, then the exits and the busy line. A cast member's or item's
-/// verb is reached by naming them (`nameable`), so it shows as `ask briar`. Cost is not
-/// checked.
+/// now and whose `if` holds. A cast member's or item's verb is reached by naming them
+/// (`nameable`), so it carries that owner as its one name. Cost is not checked.
 pub(crate) fn help(
     canon: &Canon,
     state: &State,
     presence: &Presence,
     actor_id: &str,
-) -> Result<String, Reason> {
+) -> Result<Vec<WordView>, Reason> {
+    let actor = state.actors.get(actor_id).ok_or(Reason::UnknownId)?;
     let viewer = Viewer::Player(actor_id.to_string());
-    let view = perceive_as(canon, state, presence, &viewer)?;
-    let mut lines: Vec<String> = WORDS
+    let mut words: Vec<WordView> = WORDS
         .iter()
         .filter(|word| word.seat == Seat::Player && word.name != "claim")
-        .map(|word| word.name.to_string())
+        .map(|word| WordView {
+            name: word.name.to_string(),
+            target: TargetKind::None.as_str().to_string(),
+            names: Vec::new(),
+            owner: None,
+        })
         .collect();
     let names = nameable(canon, state, presence, &viewer);
     let hints = std::iter::once(None).chain(names.iter().map(|name| Some(name.as_str())));
@@ -38,28 +41,79 @@ pub(crate) fn help(
             let Some(rule) = verb_for(canon, state, actor_id, &verb, hint) else {
                 continue;
             };
-            // A rule reached by naming its owner shows with that name. Any other shows bare.
-            let (line, target) = match (&rule.owner, hint) {
-                (_, None) => (verb.clone(), Target::Empty),
+            // A rule reached by naming its owner carries that owner. Any other is bare.
+            let (owner, target) = match (&rule.owner, hint) {
+                (_, None) => (None, Target::Empty),
                 (Owner::Cast(id), Some(hint)) if id == hint => {
-                    (format!("{verb} {hint}"), Target::Actor(id.clone()))
+                    (Some(id), Target::Actor(id.clone()))
                 }
-                (Owner::Item(id), Some(hint)) if id == hint => {
-                    (format!("{verb} {hint}"), Target::Item(id.clone()))
-                }
+                (Owner::Item(id), Some(hint)) if id == hint => (Some(id), Target::Item(id.clone())),
                 _ => continue,
             };
-            let holds = cond::if_holds(canon, state, presence, &viewer, &verb, target, &rule.if_);
-            if holds && !lines.contains(&line) {
-                lines.push(line);
+            if !cond::if_holds(canon, state, presence, &viewer, &verb, target, &rule.if_) {
+                continue;
+            }
+            let kind = match &rule.when {
+                When::Verb { target, .. } => *target,
+                _ => TargetKind::None,
+            };
+            let word = WordView {
+                name: verb.clone(),
+                target: kind.as_str().to_string(),
+                names: match owner {
+                    Some(owner) => vec![owner.clone()],
+                    None => names_for(canon, state, presence, actor_id, actor, kind, &names),
+                },
+                owner: owner.cloned(),
+            };
+            if !words.contains(&word) {
+                words.push(word);
             }
         }
     }
-    lines.push(exit_section(&view.exits));
-    if !view.status.is_empty() {
-        lines.push(view.status);
+    Ok(words)
+}
+
+/// What the actor can name now for a word that takes `kind`: the exits from here, the
+/// actors or items among `nameable`, or the places they visited.
+fn names_for(
+    canon: &Canon,
+    state: &State,
+    presence: &Presence,
+    actor_id: &str,
+    actor: &ActorLive,
+    kind: TargetKind,
+    nameable: &[String],
+) -> Vec<String> {
+    let picked: Vec<String> = match kind {
+        TargetKind::None => Vec::new(),
+        TargetKind::Exit => canon
+            .places
+            .get(&actor.place)
+            .map(|place| exits_at(canon, state, presence, actor_id, place))
+            .unwrap_or_default()
+            .into_iter()
+            .map(|exit| exit.name)
+            .collect(),
+        TargetKind::Actor => nameable
+            .iter()
+            .filter(|name| state.actors.contains_key(*name))
+            .cloned()
+            .collect(),
+        TargetKind::Item => nameable
+            .iter()
+            .filter(|name| canon.items.contains_key(*name))
+            .cloned()
+            .collect(),
+        TargetKind::Place => actor.visited.clone(),
+    };
+    let mut names = Vec::new();
+    for name in picked {
+        if !names.contains(&name) {
+            names.push(name);
+        }
     }
-    Ok(lines.join("\n"))
+    names
 }
 
 /// `map`: each place in the actor's `visited`, with the exits they may see from there.
@@ -68,19 +122,17 @@ pub(crate) fn map(
     state: &State,
     presence: &Presence,
     actor_id: &str,
-) -> Result<String, Reason> {
+) -> Result<Vec<PlaceView>, Reason> {
     let actor = state.actors.get(actor_id).ok_or(Reason::UnknownId)?;
-    let mut lines = Vec::new();
-    for id in &actor.visited {
-        lines.push(place_name(canon, id));
-        let Some(place) = canon.places.get(id) else {
-            continue;
-        };
-        for exit in exits_at(canon, state, presence, actor_id, place) {
-            lines.push(format!("  {}", exit_phrase(&exit)));
-        }
-    }
-    Ok(lines.join("\n"))
+    let places = actor.visited.iter().map(|id| PlaceView {
+        name: place_name(canon, id),
+        exits: canon
+            .places
+            .get(id)
+            .map(|place| exits_at(canon, state, presence, actor_id, place))
+            .unwrap_or_default(),
+    });
+    Ok(places.collect())
 }
 
 /// `on the stairs until 21:40` while a journey is still running.

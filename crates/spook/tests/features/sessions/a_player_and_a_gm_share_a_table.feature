@@ -25,9 +25,9 @@ Feature: A player and a GM share a table
     When the player looks
     Then the player is shown "Docks Shop" with an exit to "docks_street"
     When the player sends "help"
-    Then the player is told "look"
+    Then the player is offered "look"
     When the player sends "map"
-    Then the player is told "Docks Shop"
+    Then the player's map lists "Docks Shop"
     And the GM sees nothing queued
     And no round record was written
 

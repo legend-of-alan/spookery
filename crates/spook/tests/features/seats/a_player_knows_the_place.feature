@@ -12,15 +12,22 @@ Feature: A player knows where they are and what they can do
     And play does not show "Pc rowan"
     And play does not show "Npc aldric"
 
+  Scenario: help shows a verb that takes an actor with the actors in sight
+    Given the docks have a greet verb that takes an actor, and the CLI holds rowan
+    When I type "help"
+    Then help shows "greet <actor>: aldric, pc_rowan" and not "greet"
+
   Scenario: help shows a cast verb only while that cast member is here
     Given Aldric has an ask verb and the CLI holds rowan in the shop
     When I type "help"
-    Then I see the lines "look", "ask aldric" and "stairs (locked) — 2 min"
+    Then I see the lines "look", "ask aldric" and "travel <exit>: docks_street, stairs"
+    And help shows "ask aldric" and not "ask <actor>: aldric"
+    And help shows "travel <exit>: docks_street, stairs" and not "Exits:"
     And play does not show the line "claim"
     And no round record was written
     When I type "travel docks_street"
     And I type "help"
-    Then help shows "travel" and not "ask aldric"
+    Then help shows "travel <exit>: docks_shop" and not "ask aldric"
 
   Scenario: help hides a verb whose if fails
     Given the shop has a pray verb if rowan holds lamp_oil, and the CLI holds rowan

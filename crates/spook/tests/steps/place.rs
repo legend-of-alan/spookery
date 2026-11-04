@@ -97,6 +97,21 @@ fn aldric_has_an_ask_verb(world: &mut World) {
     add_rule_and_join(world, "help-cast", "cast/aldric.md", from, rules);
 }
 
+#[given(expr = "the docks have a greet verb that takes an actor, and the CLI holds rowan")]
+fn the_docks_have_a_greet_verb(world: &mut World) {
+    let from = "  - id: wait
+";
+    let rules = "  - id: greet
+    when:
+      verb: greet
+      target: actor
+    do: []
+
+  - id: wait
+";
+    add_rule_and_join(world, "help-actor", "rules/verbs.yaml", from, rules);
+}
+
 #[given(expr = "the shop has a pray verb if rowan holds lamp_oil, and the CLI holds rowan")]
 fn the_shop_has_a_pray_verb(world: &mut World) {
     let from = "    locked_text: The stair door is locked.\n";
