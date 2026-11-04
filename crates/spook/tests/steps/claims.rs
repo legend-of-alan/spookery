@@ -101,7 +101,7 @@ fn a_gm_intent_for_rowan_is_refused(world: &mut World) {
 #[then(expr = "a GM intent for rowan is accepted")]
 fn a_gm_intent_for_rowan_is_accepted(world: &mut World) {
     let queued = queue_rowan_wait(world);
-    assert!(queued.get("id").is_some(), "{queued}");
+    assert_eq!(queued["kind"], "queued", "{queued}");
 }
 
 #[then(expr = "another player's claim on rowan is refused with {string}")]
@@ -150,11 +150,7 @@ fn queue_rowan_wait(world: &mut World) -> Value {
     if table::live_mut(world).gm.is_none() {
         table::seat_gm(world);
     }
-    table::call_gm_tool(
-        world,
-        "queue_intent",
-        r#"{"actor_id":"pc_rowan","move":"wait"}"#,
-    )
+    table::call_gm_tool(world, "queue", r#"{"actor_id":"pc_rowan","move":"wait"}"#)
 }
 
 fn parse(line: &str) -> Value {

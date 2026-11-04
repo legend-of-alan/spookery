@@ -820,7 +820,7 @@ fn play_queued(
     (state, output.reports, round)
 }
 
-/// The GM's `queue_intent` call: `actor_id` plays `verb` at `target`, under the id `id`.
+/// The GM's `queue` word: `actor_id` plays `verb` at `target`, under the id `id`.
 fn intent(
     id: &str,
     actor_id: &str,

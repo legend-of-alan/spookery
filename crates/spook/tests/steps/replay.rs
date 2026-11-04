@@ -64,7 +64,7 @@ fn two_players_play_a_round(world: &mut World) {
     let _ = table::actor_send(world, "pc_harbormouse", "wait", "\"kind\":");
     table::seat_gm(world);
     let _ = table::actor_send(world, "pc_rowan", "wait", "\"kind\":");
-    let _ = table::gm_call(world, 7, "commit_round", r#"{"include_round":true}"#);
+    let _ = table::gm_tool_call(world, 7, "commit", r#"{"include_round":true}"#);
     table::close_actor(world, "pc_harbormouse");
     table::wait_players(world, 1);
     table::close_actor(world, "pc_rowan");
@@ -399,6 +399,27 @@ fn the_save_snapshot_is_removed(world: &mut World) {
     let path = table::pack(world).join("state/save.yaml");
     assert!(path.is_file(), "no save");
     fs::remove_file(&path).unwrap();
+}
+
+/// A directory where the save was, so reading it fails on every platform.
+fn make_unreadable(save: &std::path::Path) {
+    fs::remove_file(save).unwrap_or_else(|err| panic!("remove save: {err}"));
+    fs::create_dir(save).unwrap_or_else(|err| panic!("save dir: {err}"));
+}
+
+#[when(expr = "the save cannot be read")]
+fn the_save_cannot_be_read(world: &mut World) {
+    make_unreadable(&table::pack(world).join("state/save.yaml"));
+}
+
+#[when(expr = "the replay base cannot be read")]
+fn the_replay_base_cannot_be_read(world: &mut World) {
+    make_unreadable(&table::pack(world).join("state/journal/base.yaml"));
+}
+
+#[when(expr = "the copied save cannot be read")]
+fn the_copied_save_cannot_be_read(world: &mut World) {
+    make_unreadable(&std::path::Path::new(&world.scratch).join("state/save.yaml"));
 }
 
 #[when(expr = "the operator rebuilds the save")]

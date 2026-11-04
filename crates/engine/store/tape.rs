@@ -135,14 +135,6 @@ pub fn read_records(root: &Path) -> Result<Vec<TapeRecord>, Reason> {
     Ok(records)
 }
 
-/// Last complete `seq`, or 0 when the tape has no record.
-pub fn last_seq(root: &Path) -> Result<u64, Reason> {
-    Ok(read_records(root)?
-        .last()
-        .map(|record| record.seq)
-        .unwrap_or(0))
-}
-
 fn parse_record(line: &str) -> Result<TapeRecord, Reason> {
     serde_json::from_str(line).map_err(|_| Reason::Schema)
 }

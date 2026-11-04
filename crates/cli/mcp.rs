@@ -14,15 +14,11 @@ use rmcp::transport::common::client_side_sse::NeverRetry;
 use rmcp::transport::streamable_http_client::StreamableHttpClientTransportConfig;
 use rmcp::transport::{StreamableHttpClientTransport, Transport};
 use rmcp::{ClientHandler, ServiceExt};
-use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tokio::sync::mpsc;
 
-use crate::protocol::{
-    self, CommitArgs, CommitBody, PerceiveArgs, Queued, Refusal, SayArgs, SayEvent, ServerMessage,
-    StatusArgs, TableStatus,
-};
+use crate::protocol::{Refusal, ServerMessage, ToolResult};
 use crate::Error;
 
 /// One item on the event channel from the MCP endpoint's handlers to the `GmClient`: an
@@ -55,7 +51,8 @@ impl ClientHandler for EventSender {
     }
 }
 
-/// The client side of the GM seat: dials the MCP endpoint, calls the six tools, hears events.
+/// The client side of the GM seat: dials the MCP endpoint, sends GM words as tool calls, hears
+/// events.
 pub struct GmClient {
     service: RunningService<RoleClient, EventSender>,
     /// Finishes when the host closes the MCP endpoint.
@@ -127,58 +124,18 @@ impl GmClient {
         &self.protocol_version
     }
 
-    /// Who is seated, the queue, and the pack summary.
-    pub async fn table_status(&mut self) -> Result<Result<TableStatus, Refusal>, Error> {
-        self.call("table_status", &StatusArgs {}).await
-    }
-
-    /// The view of the actor `viewer`, a bare actor id.
-    pub async fn perceive(
+    /// Send the word `word` as a tool call. The result is every message it sent this seat,
+    /// its reply last. A result that is not one is `Error::Unreadable`.
+    pub async fn call(
         &mut self,
-        viewer: &str,
-    ) -> Result<Result<protocol::View, Refusal>, Error> {
-        let args = PerceiveArgs {
-            as_viewer: Some(viewer.to_string()),
-            max_body_chars: None,
-        };
-        self.call("perceive", &args).await
-    }
-
-    /// Queue one move. The table answers with the intent's id.
-    pub async fn queue_intent(
-        &mut self,
-        call: &protocol::IntentArgs,
-    ) -> Result<Result<Queued, Refusal>, Error> {
-        self.call("queue_intent", call).await
-    }
-
-    /// Speak as the GM. The table answers with the say it put on the tape.
-    pub async fn say(&mut self, args: &SayArgs) -> Result<Result<SayEvent, Refusal>, Error> {
-        self.call("say", args).await
-    }
-
-    /// Commit the queue as one round.
-    pub async fn commit_round(&mut self) -> Result<Result<CommitBody, Refusal>, Error> {
-        let args = CommitArgs {
-            include_round: true,
-            session_id: None,
-        };
-        self.call("commit_round", &args).await
-    }
-
-    /// Call the tool `name` and read its structured content as `T` or as a refusal. The
-    /// methods above are this call with each tool's own argument and reply types. A reply
-    /// that is neither is `Error::Unreadable`.
-    pub async fn call<T: DeserializeOwned>(
-        &mut self,
-        name: &str,
+        word: &str,
         args: &impl Serialize,
-    ) -> Result<Result<T, Refusal>, Error> {
+    ) -> Result<Vec<ServerMessage>, Error> {
         let arguments = match serde_json::to_value(args) {
             Ok(Value::Object(arguments)) => arguments,
-            other => return Err(Error::Message(format!("{name} arguments: {other:?}"))),
+            other => return Err(Error::Message(format!("{word} arguments: {other:?}"))),
         };
-        let params = CallToolRequestParams::new(name.to_string()).with_arguments(arguments);
+        let params = CallToolRequestParams::new(word.to_string()).with_arguments(arguments);
         let result = self
             .service
             .call_tool(params)
@@ -188,11 +145,8 @@ impl GmClient {
             self.buffered.push_back(item);
         }
         let body = result.structured_content.unwrap_or(Value::Null);
-        if let Ok(refusal) = Refusal::deserialize(&body) {
-            return Ok(Err(refusal));
-        }
-        T::deserialize(&body)
-            .map(Ok)
+        ToolResult::deserialize(&body)
+            .map(|result| result.messages)
             .map_err(|_| Error::Unreadable(body))
     }
 

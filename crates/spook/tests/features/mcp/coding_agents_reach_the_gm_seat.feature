@@ -27,21 +27,21 @@ Feature: Coding agents reach the GM seat
     When the GM over HTTP leaves
     Then a GM can sit over HTTP
 
-  Scenario: The tool menu still accepts the same arguments
+  Scenario: The tools are the GM words
     Given a docks table
     When a GM holds the seat over HTTP
     And the GM lists the tools
-    Then each tool's input schema names the same fields as before
-      | tool         | fields                                                | required           |
-      | table_status |                                                       |                    |
-      | perceive     | as max_body_chars                                     | as                 |
-      | queue_intent | id round_index actor_id move target to rationale_code | actor_id move      |
-      | say          | address text                                          | address text       |
-      | say          | address place text                                    | address place text |
-      | say          | address actor text                                    | address actor text |
-      | commit_round | include_round session_id                              | include_round      |
-      | close        |                                                       |                    |
-    And a queue_intent call with "actor_id", "move" and "to" is accepted
+    Then the tools are the GM words, and each input schema names these fields
+      | tool     | fields                                                | required           |
+      | status   |                                                       |                    |
+      | perceive | as max_body_chars                                     | as                 |
+      | queue    | id round_index actor_id move target to rationale_code | actor_id move      |
+      | say      | address text                                          | address text       |
+      | say      | address place text                                    | address place text |
+      | say      | address actor text                                    | address actor text |
+      | commit   | include_round session_id                              | include_round      |
+      | release  |                                                       |                    |
+    And a queue call with "actor_id", "move" and "to" is accepted
 
   Scenario: spook gm and a coding agent share one seat
     Given a docks table

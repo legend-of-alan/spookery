@@ -222,10 +222,7 @@ fn say_lines(world: &mut World, actor: &str, count: usize) -> Vec<String> {
     for index in 0..count {
         let text = format!("line{index}");
         let args = format!(r#"{{"address":"actor","actor":"{actor}","text":"{text}"}}"#);
-        let said = table::gm_call(world, (index as u64) + 1, "say", &args);
-        let value: Value =
-            serde_json::from_str(&said).unwrap_or_else(|err| panic!("say json: {err}: {said}"));
-        let body = &value["result"]["structuredContent"];
+        let body = table::call_gm_tool(world, "say", &args);
         let addressed = body
             .get("recipients")
             .and_then(Value::as_array)

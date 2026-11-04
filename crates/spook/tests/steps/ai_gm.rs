@@ -15,7 +15,7 @@ use spookery::agent::{parse_completion, CompletionError, CompletionRequest, Mode
 use spookery::ai_gm;
 use spookery::http_model::{HttpModel, Settings, MODEL_CALL_TIMEOUT, RETRY_BACKOFF};
 use spookery::mcp::GmClient;
-use spookery::protocol::SayArgs;
+use spookery::protocol::{SayArgs, ServerBody};
 
 use crate::support::{self, copy_docks};
 use crate::World;
@@ -119,17 +119,15 @@ fn the_gm_seat_says(world: &mut World) {
     let evening = SayArgs::Table {
         text: "good evening".to_string(),
     };
-    let said = support::block_on(gm.say(&evening))
-        .unwrap_or_else(|err| panic!("{err}"))
-        .unwrap_or_else(|refusal| panic!("{refusal}"));
+    let said = support::block_on(gm.call("say", &evening)).unwrap_or_else(|err| panic!("{err}"));
     world.player_added = table::wait_player_from(world, mark, "{\"kind\":\"say\"");
     world.scratch = json!(said).to_string();
-    let reply = support::block_on(gm.call::<serde_json::Value>("not_in_spec", &json!({})))
-        .unwrap_or_else(|err| panic!("{err}"));
+    let reply =
+        support::block_on(gm.call("not_in_spec", &json!({}))).unwrap_or_else(|err| panic!("{err}"));
     support::block_on(gm.close());
-    world.stdout = match reply {
-        Err(_) => "refused".to_string(),
-        Ok(body) => body.to_string(),
+    world.stdout = match reply.last().map(|reply| &reply.body) {
+        Some(ServerBody::Refused(_)) => "refused".to_string(),
+        other => format!("{other:?}"),
     };
 }
 
