@@ -16,6 +16,9 @@ clock assassination_debt 2 6 paused
 clock shop_day 1 1 running
 ";
 
+/// `shop_day` sorts last, so its clock line ends every host printout.
+const PRINTOUT_END: &str = "clock shop_day ";
+
 const DOOR_NOTE: &str = "effect note 1 {\"note_id\":\"note_mira_door\",\"to\":[\"pc_rowan\"],\"place\":\"docks_shop\",\"fact_ids\":[],\"text\":\"Back at dusk. Oil on the shelf.\"}";
 
 const HOST: &str = "\
@@ -68,17 +71,22 @@ fn the_host_text_lists_the_door_note(world: &mut World) {
 fn a_docks_table_with_one_pc_and_no_gm(world: &mut World, actor: String) {
     let pack = crate::support::copy_docks("host-round");
     table::listen(world, &pack);
+    let printed = table::host_stdout(world).matches(PRINTOUT_END).count();
     table::seat_actor(world, &pack, &actor);
+    // The host prints the seat change after the player's view.
+    table::wait_host_until(world, "the seat's printout", |text| {
+        text.matches(PRINTOUT_END).count() > printed
+    });
     world.pack = Some(pack);
 }
 
 #[given(expr = "{string} has waited once")]
 fn has_waited_once(world: &mut World, actor: String) {
-    // The host prints the round after the player's reply, and `shop_day` ends a printout.
-    let printed = table::host_stdout(world).matches("clock shop_day ").count();
+    let printed = table::host_stdout(world).matches(PRINTOUT_END).count();
     table::actor_send(world, &actor, "wait", "\"kind\":");
+    // The host prints the round after the player's reply.
     table::wait_host_until(world, "the wait's printout", |text| {
-        text.matches("clock shop_day ").count() > printed
+        text.matches(PRINTOUT_END).count() > printed
     });
 }
 
@@ -115,7 +123,7 @@ fn the_host_printed_the_door_note_exactly_once(world: &mut World) {
 fn every_host_printout_ends_with_the_clocks(world: &mut World) {
     let text = table::host_stdout(world);
     let body = text.split_once('\n').map(|(_, rest)| rest).unwrap_or("");
-    // `shop_day` sorts last, so it ends a printout. An effect after that starts the next one.
+    // An effect after a printout's end starts the next one.
     let mut in_clocks = false;
     let mut open = false;
     let mut saw = false;
@@ -129,7 +137,7 @@ fn every_host_printout_ends_with_the_clocks(world: &mut World) {
         } else if line.starts_with("clock ") {
             in_clocks = true;
             open = true;
-            if line.starts_with("clock shop_day ") {
+            if line.starts_with(PRINTOUT_END) {
                 saw = true;
                 in_clocks = false;
                 open = false;
