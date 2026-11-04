@@ -110,11 +110,14 @@ fn the_gm_sees_no_player_seated(world: &mut World) {
 fn wait_player_frame(world: &World, want: &str, done: impl Fn(&Value) -> bool) {
     table::poll_until(want, || {
         let text = table::player_text(world);
-        let frames = parse_lines(text.get(world.mark..).unwrap_or_default());
-        if frames.iter().any(|message| done(&message["body"])) {
+        let after = text.get(world.mark..).unwrap_or_default();
+        if parse_lines(after)
+            .iter()
+            .any(|message| done(&message["body"]))
+        {
             Ok(())
         } else {
-            Err(frames)
+            Err(after.to_string())
         }
     });
 }

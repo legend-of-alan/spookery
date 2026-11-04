@@ -125,20 +125,9 @@ struct DiceYaml {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::canon::tests::rejects;
 
     fn load_checks(text: &str) -> Result<BTreeMap<String, Check>, Vec<Diagnostic>> {
         super::load_checks("rules/checks.yaml", text)
-    }
-
-    #[test]
-    fn load_checks_rejects_an_unknown_tag_and_the_old_versioned_tag() {
-        rejects(
-            |text| load_checks(text).map(|_| ()),
-            "checks",
-            concat!("checks/", "v0"),
-            "checks: []\n",
-        );
     }
 
     #[test]

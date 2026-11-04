@@ -146,17 +146,7 @@ fn an_http_body_over_a_mebibyte(world: &mut World) {
 #[then(expr = "a new GM can sit")]
 fn a_new_gm_can_sit(world: &mut World) {
     let port = table::live_mut(world).mcp_port;
-    let start = Instant::now();
-    loop {
-        match try_sit_gm(port) {
-            Ok(()) => return,
-            Err(err) if start.elapsed() < Duration::from_secs(5) => {
-                let _ = err;
-                std::thread::sleep(Duration::from_millis(50));
-            }
-            Err(err) => panic!("new GM did not sit: {err}"),
-        }
-    }
+    table::poll_until("a new GM to sit", || try_sit_gm(port));
 }
 
 #[when(expr = "the player sends a binary message")]

@@ -1,7 +1,7 @@
 use spookery_engine::testing::state_of;
 use std::io::{Read, Write};
 use std::net::TcpStream;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use cucumber::gherkin::Step;
 use cucumber::{given, then, when};
@@ -68,21 +68,8 @@ fn a_human_gm_sits_on_the_game_port(world: &mut World) {
     let addr = table::game_addr(world);
     world.gm = Some(support::spawn(&["gm", "--addr", &addr]));
     world.mark = usize::from(table::live_mut(world).mcp_port);
-    let start = Instant::now();
-    loop {
-        let gm = world.gm.as_mut().unwrap_or_else(|| panic!("no gm"));
-        let stdout = support::text_of(&gm.stdout);
-        if stdout.contains("Commands:") {
-            break;
-        }
-        if let Some(status) = gm.child.try_wait().unwrap_or_else(|err| panic!("{err}")) {
-            panic!("gm exited {status:?}\n{}", support::text_of(&gm.stderr));
-        }
-        if start.elapsed() > Duration::from_secs(5) {
-            panic!("gm did not sit\n{stdout}");
-        }
-        std::thread::sleep(Duration::from_millis(20));
-    }
+    let gm = world.gm.as_mut().unwrap_or_else(|| panic!("no gm"));
+    super::common::wait_proc_until(gm, |stdout| stdout.contains("Commands:"), "the gm to sit");
 }
 
 #[when(expr = "a coding agent tries to sit at that MCP endpoint")]
@@ -117,16 +104,7 @@ fn the_human_gm_leaves(world: &mut World) {
 #[then(expr = "a coding agent can sit at that MCP endpoint")]
 fn a_coding_agent_can_sit_at_that_mcp_endpoint(world: &mut World) {
     let http = mcp_port(world);
-    let start = Instant::now();
-    let mut last = String::new();
-    while start.elapsed() < Duration::from_secs(5) {
-        match try_sit_gm(http) {
-            Ok(()) => return,
-            Err(err) => last = err,
-        }
-        std::thread::sleep(Duration::from_millis(50));
-    }
-    panic!("the agent did not sit\n{last}");
+    table::poll_until("the agent to sit", || try_sit_gm(http));
 }
 
 #[when(expr = "spook run listens with no MCP flag")]

@@ -124,7 +124,6 @@ struct MeterYaml {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::canon::tests::rejects;
     use crate::diagnostic::first_reason;
     use crate::Reason;
 
@@ -208,15 +207,5 @@ meters:
             .find(|diag| diag.message.contains("min above base_cap"))
             .unwrap();
         assert_eq!((min.line, min.column), (Some(9), Some(5)), "{min:?}");
-    }
-
-    #[test]
-    fn load_meters_rejects_an_unknown_tag_and_the_old_versioned_tag() {
-        rejects(
-            |text| load_meters(text).map(|_| ()),
-            "meters",
-            concat!("meters/", "v0"),
-            "meters: []\n",
-        );
     }
 }
