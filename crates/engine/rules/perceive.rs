@@ -208,7 +208,8 @@ fn shown_meters(canon: &Canon, state: &State, holder: &Holder) -> Vec<MeterView>
         .iter()
         .filter_map(|(id, live)| {
             let def = canon.meter_def(holder, id).filter(|def| !def.hidden)?;
-            let value = meter::current(def, live).ok()?;
+            let modifiers = state.modifier_sum(holder, id).ok()?;
+            let value = meter::current(def, live, modifiers).ok()?;
             Some(MeterView {
                 id: id.clone(),
                 value,

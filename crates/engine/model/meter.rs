@@ -48,10 +48,12 @@ pub fn is_storable(def: &MeterDef, base: i64, offset: i64) -> bool {
     (def.min..=def.base_cap).contains(&base) && base.checked_add(offset).is_some()
 }
 
-pub fn current(def: &MeterDef, live: &MeterLive) -> Result<i64, Reason> {
+/// `base + offset`, plus what the holder's modifiers add to this meter, clamped to the bounds.
+pub fn current(def: &MeterDef, live: &MeterLive, modifiers: i64) -> Result<i64, Reason> {
     let sum = live
         .base
         .checked_add(live.offset)
+        .and_then(|sum| sum.checked_add(modifiers))
         .ok_or(Reason::OutOfRange)?;
     Ok(sum.clamp(def.min, def.max))
 }
@@ -93,7 +95,8 @@ mod tests {
             base: 100,
             offset: 20,
         };
-        assert_eq!(current(&def, &live).unwrap(), 110);
+        assert_eq!(current(&def, &live, 0).unwrap(), 110);
+        assert_eq!(current(&def, &live, -15).unwrap(), 105);
     }
 
     #[test]

@@ -77,6 +77,29 @@ impl<'p> Draft<'p> {
         Ok(())
     }
 
+    /// Drop every modifier whose minute has come by `world_time`, all its stacks at once.
+    pub(crate) fn wear_off_modifiers(&mut self, world_time: u64) -> Result<(), Reason> {
+        let due: Vec<(String, String, String)> = self
+            .state
+            .actors
+            .iter()
+            .flat_map(|(actor, live)| {
+                live.modifiers
+                    .iter()
+                    .filter(|(_, held)| held.until <= world_time)
+                    .map(|(id, held)| (actor.clone(), id.clone(), held.meter.clone()))
+            })
+            .collect();
+        for (actor, id, meter) in due {
+            self.track(StateKey::ActorMeter(actor.clone(), meter))?;
+            self.mutate(
+                StateKey::ActorModifier(actor.clone(), id.clone()),
+                |state| Ok(state.actor_mut(&actor)?.modifiers.remove(&id).is_some()),
+            )?;
+        }
+        Ok(())
+    }
+
     pub(crate) fn count_npc_act(&mut self, actor_id: &str, players: u32) -> Result<(), Reason> {
         let round_index = self.state.round_index;
         let (current_idle, current_live, current_last) = {
@@ -217,6 +240,13 @@ impl<'p> Draft<'p> {
                 .map(|actor| StateValue::Bool(actor.flags.iter().any(|item| item == flag)))
                 .unwrap_or(StateValue::Empty),
             StateKey::ActorMeter(id, meter) => self.meter_value(&Holder::Actor(id.clone()), meter),
+            StateKey::ActorModifier(id, key) => self
+                .state
+                .actors
+                .get(id)
+                .and_then(|actor| actor.modifiers.get(key))
+                .map(|live| StateValue::Text(format!("{:?} until {}", live.stacks, live.until)))
+                .unwrap_or(StateValue::Empty),
             StateKey::ActorBusy(id) => self
                 .state
                 .actors

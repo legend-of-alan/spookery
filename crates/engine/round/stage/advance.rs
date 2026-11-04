@@ -20,6 +20,7 @@ pub(crate) fn run(draft: &mut Draft, wall: &str) -> Result<RoundTime, Reason> {
     let day_changed = world_before / MINUTES_PER_DAY != world_after / MINUTES_PER_DAY;
     let hour_changed = world_before / MINUTES_PER_HOUR != world_after / MINUTES_PER_HOUR;
     draft.stamp_round(round_index, world_after, wall);
+    draft.wear_off_modifiers(world_after)?;
     if day_changed {
         draft.reset_acts(ActCounter::IdleActsToday)?;
     }

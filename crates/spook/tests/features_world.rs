@@ -54,6 +54,9 @@ mod migrate;
 #[path = "steps/meters.rs"]
 mod meters;
 
+#[path = "steps/modifiers.rs"]
+mod modifiers;
+
 #[path = "steps/wake.rs"]
 mod wake;
 

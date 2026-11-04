@@ -18,7 +18,7 @@ use serde::de::DeserializeOwned;
 
 use crate::hash::blake2s_tagged;
 use crate::store::durability::refuse_io;
-use crate::store::records::{AddedMeter, CheckpointRecord, MigrateRecord, Record, RoundRecord};
+use crate::store::records::{CheckpointRecord, MigrateRecord, Record, RoundRecord};
 use crate::Reason;
 
 pub(crate) fn base_path(pack: &Path) -> PathBuf {
@@ -77,28 +77,6 @@ pub(crate) fn read_head(pack: &Path) -> Result<Option<CheckpointHead>, Error> {
         return Err(Error::new(&path, reason, "written by older rules"));
     }
     Ok(Some(parse_json("head.json", &text)?))
-}
-
-pub(crate) fn migrate_record(
-    pack_rev_before: &str,
-    pack_rev_after: &str,
-    state_rev_before: u64,
-    state_rev_after: u64,
-    state_hash: &str,
-    meters: &[AddedMeter],
-    edited: bool,
-) -> Record {
-    Record::Migrate(MigrateRecord {
-        pack_rev_before: pack_rev_before.to_string(),
-        pack_rev_after: pack_rev_after.to_string(),
-        state_rev_before,
-        state_rev_after,
-        state_hash: state_hash.to_string(),
-        meters: meters.to_vec(),
-        edited,
-        prev: String::new(),
-        chain: String::new(),
-    })
 }
 
 #[derive(Debug)]

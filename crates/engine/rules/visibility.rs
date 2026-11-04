@@ -264,6 +264,9 @@ fn can_see(canon: &Canon, state: &State, viewer: &str, change: &Change) -> bool 
             .meter_def(&Holder::World, key)
             .is_some_and(|def| !def.hidden),
         StateKey::ActorKnownFact(actor) | StateKey::ActorMeter(actor, _) => actor == viewer,
+        StateKey::ActorModifier(actor, id) => {
+            actor == viewer && canon.modifiers.get(id).is_some_and(|def| !def.hidden)
+        }
         StateKey::PlaceItem(place, _) => place_of(state, viewer) == Some(place.as_str()),
         StateKey::Note(id) => can_see_note(canon, state, viewer, id),
         StateKey::ActorPlace(actor) => {

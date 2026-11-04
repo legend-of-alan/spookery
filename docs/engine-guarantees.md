@@ -189,6 +189,23 @@ Tested in `features/meters/meters_belong_to_their_holder.feature`,
 `features/meters/migrate_moves_clocks_onto_meters.feature`, and
 `features/meters/the_debt_waits_while_no_player_is_seated.feature`.
 
+## Modifiers
+
+A modifier adds the sum of its stacks to one actor meter and writes nothing to
+the meter's offset. Each application is one stack with its own magnitude, up to
+the modifier's `max_stacks`, which is 1 when the pack leaves it out. At the cap,
+an application whose absolute value is larger than the weakest stack replaces
+it, and a weaker or equal one changes no stack. Every application sets the end
+to the round's world minute plus the duration. When the world reaches that
+minute, the round's advance drops every stack at once. Different modifiers on
+one meter add up. A player sees a modifier change on their own actor only, and
+not one the pack hides. Replay gives the same journal, and migrate drops a
+modifier the pack no longer defines or now defines on another meter. Check
+refuses a `max_stacks` below 1, a modifier of a meter no actor carries, and an
+effect that names a modifier the pack does not define.
+
+Tested in `features/meters/modifiers_stack_and_wear_off.feature`.
+
 ## Travel
 
 A missing exit and a locked exit change nothing. A locked exit shows its locked

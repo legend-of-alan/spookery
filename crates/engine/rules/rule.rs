@@ -252,6 +252,12 @@ pub enum EffectTemplate {
         value: bool,
         resist: Option<ResistSpec>,
     },
+    /// One application of modifier `id` to an actor, with magnitude `add`.
+    Modifier {
+        who: Who,
+        id: String,
+        add: Expr,
+    },
     Location {
         to: LocationTo,
         teleport: bool,

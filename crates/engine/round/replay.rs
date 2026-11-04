@@ -613,6 +613,7 @@ fn apply_migrate(world: &mut World<()>, record: &MigrateRecord) -> Result<(), Er
         &record.pack_rev_after,
         record.state_rev_after,
         &record.meters,
+        &record.dropped_modifiers,
     );
     let bytes = save::emit(&next).map_err(Error::Reason)?.into_bytes();
     if blake2s_tagged(&bytes) != record.state_hash {

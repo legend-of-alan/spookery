@@ -4,6 +4,7 @@ use std::collections::BTreeMap;
 
 use crate::hash::blake2s_256;
 use crate::model::meter::{self, MeterDef};
+use crate::model::modifier;
 use crate::model::ActorLive;
 use crate::rules::gate;
 use crate::Reason;
@@ -91,7 +92,7 @@ pub(crate) fn roll_check(
 ) -> Result<Roll, Reason> {
     let def = meters.get(&check.stat).ok_or(Reason::UnknownId)?;
     let live = actor.meters.get(&check.stat).ok_or(Reason::UnknownId)?;
-    let stat = meter::current(def, live)?;
+    let stat = meter::current(def, live, modifier::sum(&actor.modifiers, &check.stat)?)?;
     let faces = faces(key, 0, check.dice_count, check.dice_sides)?;
     let total = faces.iter().map(|face| i64::from(*face)).sum::<i64>() + stat;
     Ok(Roll {
@@ -151,6 +152,7 @@ mod tests {
             flags: Vec::new(),
 
             meters: BTreeMap::from([("grit".to_string(), MeterLive { base: 1, offset: 0 })]),
+            modifiers: Default::default(),
             inventory: BTreeMap::new(),
             wielded: None,
             known_facts: Vec::new(),

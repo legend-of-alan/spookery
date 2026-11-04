@@ -8,6 +8,7 @@ use serde::Deserialize;
 use crate::diagnostic::Diagnostic;
 use crate::hash::blake2s_tagged;
 use crate::model::meter::MeterDef;
+use crate::model::modifier::ModifierDef;
 use crate::rules::effect::Holder;
 use crate::rules::roll::Check;
 use crate::rules::rule::{Cond, Cost, Owner, RuleTable, TargetKind, When};
@@ -21,6 +22,7 @@ mod fact;
 mod item;
 mod lint;
 mod meters;
+mod modifiers;
 mod pack;
 mod place;
 mod rule_list;
@@ -35,10 +37,11 @@ use fact::Facts;
 use item::add_item;
 use lint::{
     broken_exits, resist_same_without_roll, reveal_problems, unknown_carriers, unknown_checks,
-    unknown_meters, unknown_reads, unknown_rule_items, MeterScope,
+    unknown_meters, unknown_modifiers, unknown_reads, unknown_rule_items, MeterScope,
 };
 pub(crate) use lint::{check_canon, check_save};
 use meters::load_meters;
+use modifiers::{load_modifiers, MODIFIERS_FILE};
 use pack::load_pack_yaml;
 use place::add_place;
 use rule_list::load_verbs;
@@ -62,6 +65,8 @@ pub struct Canon {
     pub meters: BTreeMap<String, MeterDef>,
     /// The meters `world/meters.yaml` gives the world. An id here may also be an actor meter.
     pub world_meters: BTreeMap<String, MeterDef>,
+    /// The modifiers `rules/modifiers.yaml` defines. Each one modifies an actor meter.
+    pub modifiers: BTreeMap<String, ModifierDef>,
     pub items: BTreeMap<String, ItemDef>,
     pub budget: Budget,
     /// Rounds between journal checkpoints. `save.yaml` is rewritten then.
@@ -260,6 +265,12 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
         let rules = add_cast(page, &mut cast, meters.as_mut(), &mut diags);
         loaded.extend(rules.unwrap_or_default());
     }
+    // rules/modifiers.yaml is optional. Its modifiers name the actor meters above.
+    let modifiers = match &meters {
+        Some(meters) if root.join(MODIFIERS_FILE).is_file() => diags
+            .keep(read_text(root, MODIFIERS_FILE).and_then(|text| load_modifiers(&text, meters))),
+        _ => Some(BTreeMap::new()),
+    };
     // 4. rules/moves.yaml is refused.
     if root.join("rules/moves.yaml").is_file() {
         diags.push(rule_list::replaced_moves_file());
@@ -302,6 +313,9 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
         diags.extend(unknown_reads(&scope, &rules));
         diags.extend(unknown_carriers(&scope, &rules));
     }
+    if let Some(modifiers) = &modifiers {
+        diags.extend(unknown_modifiers(&rules, modifiers));
+    }
     diags.extend(unknown_rule_items(&rules, &items));
     diags.extend(reveal_problems(&rules, &facts.0));
     diags.extend(resist_same_without_roll(&rules));
@@ -316,9 +330,18 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
         Some(checks),
         Some(meters),
         Some(world_meters),
+        Some(modifiers),
         Some(budget),
         Some(checkpoint_every),
-    ) = (pack, checks, meters, world_meters, budget, checkpoint_every)
+    ) = (
+        pack,
+        checks,
+        meters,
+        world_meters,
+        modifiers,
+        budget,
+        checkpoint_every,
+    )
     else {
         unreachable!("a part that did not load reported why");
     };
@@ -335,6 +358,7 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
         checks,
         meters,
         world_meters,
+        modifiers,
         items,
         budget,
         checkpoint_every,

@@ -9,6 +9,8 @@ pub enum StateKey {
     ActorPlace(String),
     ActorFlag(String, String),
     ActorMeter(String, String),
+    /// An actor's modifier: its stacks and the minute it wears off.
+    ActorModifier(String, String),
     ActorBusy(String),
     ActorKnownFact(String),
     LastActRound(String),
@@ -28,6 +30,7 @@ impl fmt::Display for StateKey {
             StateKey::ActorPlace(id) => write!(f, "actor_place {id}"),
             StateKey::ActorFlag(id, key) => write!(f, "actor_flag {id} {key}"),
             StateKey::ActorMeter(id, key) => write!(f, "actor_meter {id} {key}"),
+            StateKey::ActorModifier(id, key) => write!(f, "modifier {id} {key}"),
             StateKey::ActorBusy(id) => write!(f, "actor_busy {id}"),
             StateKey::ActorKnownFact(id) => write!(f, "actor_known_fact {id}"),
             StateKey::LastActRound(id) => write!(f, "last_act_round {id}"),
@@ -50,6 +53,7 @@ impl StateKey {
             StateKey::ActorPlace(id)
             | StateKey::ActorFlag(id, _)
             | StateKey::ActorMeter(id, _)
+            | StateKey::ActorModifier(id, _)
             | StateKey::ActorBusy(id)
             | StateKey::ActorKnownFact(id)
             | StateKey::LastActRound(id)

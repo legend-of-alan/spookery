@@ -40,6 +40,9 @@ pub struct MigrateRecord {
     /// Meters this migrate added. Omitted when it added none, so older lines stay the same.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub meters: Vec<AddedMeter>,
+    /// Modifiers this migrate dropped from every actor. Omitted when it dropped none.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub dropped_modifiers: Vec<String>,
     /// The migrate started from a hand-edited save, and a checkpoint of its result follows it.
     /// Omitted when false, so a plain migrate keeps its bytes.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
