@@ -71,7 +71,6 @@ These are the host options and the commands that touch a save.
 | --- | --- |
 | `--addr <addr>` | Sets the game address. The default is `127.0.0.1:9737`, and plain `127.0.0.1` means that same port. Only loopback is allowed. Anything else is refused before the pack opens. |
 | `--mcp-addr 127.0.0.1:<port>` | Sets the MCP endpoint's address. By default it's the game port plus one, so `127.0.0.1:9738`. |
-| `--as <id>` | Picks your character in `spook play`. `pc_rowan` and `player:pc_rowan` mean the same seat. |
 | `spook status <pack>` | Prints the host digest. It doesn't write the pack. |
 | `spook round <pack>` | Plays one round and writes `state/`. |
 | `spook migrate <pack>` | Stores the current canon hash in the save. |

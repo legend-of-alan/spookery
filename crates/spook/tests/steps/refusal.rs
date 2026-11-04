@@ -8,7 +8,7 @@ use serde_json::Value;
 use spookery_engine::testing::journal::list_round_keys;
 
 use super::common::{
-    capture_play_stdout, edit_save, split_line, wait_play, wait_play_until, write_play,
+    capture_play_stdout, edit_save, spawn_play, split_line, wait_play, wait_play_until, write_play,
 };
 use super::table;
 use crate::support::{self, text_of};
@@ -183,13 +183,7 @@ fn the_gm_is_seated_and_play_joins(world: &mut World) {
     table::listen(world, &pack);
     table::seat_gm(world);
     let addr = table::game_addr(world);
-    world.play = Some(support::spawn(&[
-        "play",
-        "--addr",
-        &addr,
-        "--as",
-        "player:pc_lark",
-    ]));
+    world.play = Some(spawn_play(&addr, "pc_lark", &[]));
     wait_play(world, "You are in");
 }
 

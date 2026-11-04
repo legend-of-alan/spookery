@@ -101,8 +101,3 @@ Feature: One GM seat and up to three player seats
     When an unclaimed player waits
     Then the hello is refused with "CHOOSE_PC" and the missing list is "[]"
     And the hello reply does not contain "SEAT_TAKEN"
-
-  Scenario: spook play with one free PC seats it without a prompt
-    Given a one-player docks table
-    When play joins that one-player table with no --as
-    Then play received the first perceive

@@ -176,15 +176,15 @@ impl<L> World<L> {
         self.canon.verbs()
     }
 
-    /// PCs that nobody in `presence` holds.
-    pub fn free_pcs(&self, presence: &Presence) -> Vec<String> {
+    /// The PCs nobody in `presence` holds, then the PCs someone holds.
+    pub fn split_pcs(&self, presence: &Presence) -> (Vec<String>, Vec<String>) {
         let present = &presence.actors_present;
         self.state
             .actors
             .iter()
-            .filter(|(id, a)| a.is_pc() && !present.contains(id))
+            .filter(|(_, a)| a.is_pc())
             .map(|(id, _)| id.clone())
-            .collect()
+            .partition(|id| !present.contains(id))
     }
 
     pub fn state(&self) -> &State {

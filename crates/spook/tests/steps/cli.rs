@@ -1,5 +1,8 @@
 use std::io::Write;
 
+use std::process::{Command, Stdio};
+
+use cucumber::gherkin::Step;
 use cucumber::{then, when};
 
 use crate::support;
@@ -59,7 +62,18 @@ fn play_says(world: &mut World, text: String) {
 fn another_play_joins_that_table(world: &mut World) {
     let port = table::live_mut(world).game_port;
     let addr = format!("127.0.0.1:{port}");
-    let output = support::run_spook(&["play", "--addr", &addr, "--as", "player:pc_rowan"]);
+    let mut play = Command::new(env!("CARGO_BIN_EXE_spook"))
+        .args(["play", "--addr", &addr])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap_or_else(|err| panic!("spawn play: {err}"));
+    let mut stdin = play.stdin.take().unwrap_or_else(|| panic!("play stdin"));
+    writeln!(stdin, "pc_rowan").unwrap_or_else(|err| panic!("pick: {err}"));
+    let output = play
+        .wait_with_output()
+        .unwrap_or_else(|err| panic!("play: {err}"));
     world.code = output.status.code();
     world.stdout = String::from_utf8_lossy(&output.stdout).into_owned();
     world.stderr = String::from_utf8_lossy(&output.stderr).into_owned();
@@ -159,7 +173,10 @@ fn the_rounds_update_shows_the_door_note_only_under_notes(world: &mut World) {
 
 #[then(expr = "play shows earlier speech under one heading")]
 fn play_shows_earlier_speech_under_one_heading(world: &mut World) {
-    let stdout = capture_play_stdout(world);
+    let shown = capture_play_stdout(world);
+    // The picker comes first, then what the claim shows.
+    let (picker, stdout) = shown.split_at(shown.find("Earlier:").unwrap_or(0));
+    assert!(picker.starts_with("Choose a character:\n"), "{shown}");
     let earlier = "\
 Earlier:
 You: hello Briar
@@ -200,6 +217,17 @@ fn stderr_shows(world: &mut World, text: String) {
         "{}",
         world.stderr
     );
+}
+
+#[then(expr = "play shows the picker:")]
+fn play_shows_the_picker(world: &mut World, step: &Step) {
+    wait_play(world, step.docstring.as_deref().unwrap_or_default().trim());
+}
+
+#[then(expr = "stdout shows the picker:")]
+fn stdout_shows_the_picker(world: &mut World, step: &Step) {
+    let picker = step.docstring.as_deref().unwrap_or_default().trim();
+    assert!(world.stdout.contains(picker), "{}", world.stdout);
 }
 
 #[then(expr = "stderr has no protocol JSON")]

@@ -706,7 +706,6 @@ mod tests {
             title: "t".to_string(),
             system: String::new(),
             start_place: "room".to_string(),
-            start_pc: "ada".to_string(),
             places: BTreeMap::new(),
             cast: BTreeMap::new(),
             facts: BTreeMap::new(),

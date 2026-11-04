@@ -42,7 +42,7 @@ Every message, the client's and the table's alike, is one JSON object in one Web
 
 ## Hello
 
-The table speaks first, with `version`, the `words` this seat may send, and, on `/player`, `open`, the PCs a claim may take now. A player's words are the table's own and then every verb the pack's rules name.
+The table speaks first, with `version`, the `words` this seat may send, and, on `/player`, `open`, the PCs a claim may take now, and `taken`, the PCs held now. Either is left out when empty. A player's words are the table's own and then every verb the pack's rules name.
 
 <!-- example: player-hello -->
 ```json
@@ -317,7 +317,7 @@ A client ignores a `kind` or a field it does not know. `server.json` gives every
 
 | Kind | Who gets it | What it says |
 |---|---|---|
-| `hello` | the new connection | `version`, `words`, `open` |
+| `hello` | the new connection | `version`, `words`, `open`, `taken` |
 | `claimed` | the claiming player | `actor`, `token`, and `scrollback` or `missed` and `gap` |
 | `released` | the releasing seat | the claim or the GM seat is free |
 | `presence` | the GM | `actors_present` after a claim starts or ends |

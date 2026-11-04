@@ -192,7 +192,7 @@ fn play_and_ai_gm_and_a_stub(world: &mut World) {
     support::drain(host_err, Arc::clone(&host_stderr));
     world.children.push(host);
     table::wait_suffix(&host_stderr, 0, "listening");
-    let mut play = support::spawn(&["play", "--addr", &addr, "--as", "player:pc_rowan"]);
+    let mut play = super::common::spawn_play(&addr, "pc_rowan", &[]);
     table::wait_suffix(&play.stdout, 0, "Docks Shop");
     let mut play_in = play.stdin.take().unwrap();
     writeln!(play_in, "say hello").unwrap();

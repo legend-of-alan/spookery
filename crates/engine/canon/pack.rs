@@ -45,5 +45,4 @@ pub(super) struct PackFile {
 #[serde(deny_unknown_fields)]
 pub(super) struct StartYaml {
     pub(super) place: String,
-    pub(super) pc: String,
 }

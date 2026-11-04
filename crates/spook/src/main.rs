@@ -33,9 +33,6 @@ enum Command {
     /// Sit the player seat.
     #[cfg(feature = "client")]
     Play {
-        /// Actor to sit. A pack id, or `player:<id>`.
-        #[arg(long = "as", value_name = "ID")]
-        pc: Option<String>,
         /// Print each protocol frame as one JSON line.
         #[arg(long)]
         raw: bool,
@@ -141,7 +138,7 @@ async fn dispatch(cli: Cli) -> Result<(), String> {
                 .map_err(|e| e.to_string())
         }
         #[cfg(feature = "client")]
-        Command::Play { pc, raw } => spookery::play::run(pc.as_deref(), addr, raw)
+        Command::Play { raw } => spookery::play::run(addr, raw)
             .await
             .map_err(|err| err.to_string()),
         #[cfg(feature = "client")]
@@ -340,16 +337,10 @@ mod tests {
             } if text == "127.0.0.1:9801"
         ));
         assert!(Cli::try_parse_from(["spook", "gm", "--mcp-addr", "127.0.0.1:9801"]).is_err());
-        let play = Cli::try_parse_from(["spook", "play", "--as", "pc_rowan"]).unwrap();
-        match play.command {
-            Command::Play { pc, raw } => {
-                assert_eq!(pc.as_deref(), Some("pc_rowan"));
-                assert!(!raw);
-            }
-            _ => panic!("play"),
-        }
+        let play = Cli::try_parse_from(["spook", "play"]).unwrap();
+        assert!(matches!(play.command, Command::Play { raw: false }));
         let raw = Cli::try_parse_from(["spook", "play", "--raw"]).unwrap();
-        assert!(matches!(raw.command, Command::Play { raw: true, .. }));
+        assert!(matches!(raw.command, Command::Play { raw: true }));
         let host = Cli::try_parse_from(["spook", "ai-gm"]).unwrap();
         assert!(matches!(host.command, Command::AiGm));
         let verify = Cli::try_parse_from(["spook", "verify", "--from", "snap", "pack"]).unwrap();
