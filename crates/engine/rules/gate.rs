@@ -184,8 +184,8 @@ fn can_name(context: &Context) -> bool {
     names.iter().any(|name| name == id)
 }
 
-/// Every id a seat may name: the items its actor holds, then the place, actors, items and
-/// exits `look` shows them.
+/// Every id a seat may name: the items its actor holds, then the place, other actors, items
+/// and exits `look` shows them. A seat never names its own actor.
 pub(crate) fn nameable(
     canon: &Canon,
     state: &State,
@@ -203,7 +203,8 @@ pub(crate) fn nameable(
     };
     if let Ok(view) = perceive_as(canon, state, presence, viewer) {
         names.push(view.place);
-        names.extend(view.visible_actors);
+        let others = view.visible_actors.into_iter();
+        names.extend(others.filter(|id| id != viewer.actor_id()));
         names.extend(view.items.into_iter().map(|item| item.id));
         names.extend(view.exits.into_iter().map(|exit| exit.name));
     }

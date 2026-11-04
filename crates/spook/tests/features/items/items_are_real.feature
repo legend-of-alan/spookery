@@ -53,6 +53,10 @@ Feature: Items are real
       | wield zzz         |
       | take latch        |
 
+  Scenario: A verb that takes an actor can't name the player's own actor
+    When lark types "strike pc_lark"
+    Then the line is rejected with NOT_IN_SPEC and no round was written
+
   Scenario: Dropping an item you do not hold is refused
     Given docks_shop has 3 lamp_oil
     When rowan drops lamp_oil
