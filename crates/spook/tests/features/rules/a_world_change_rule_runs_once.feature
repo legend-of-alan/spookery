@@ -23,3 +23,8 @@ Feature: A world change rule runs once per change
     Given a change rule watches world flag tide_turned and sets who "self" flag saw_tide
     When the author runs spook check
     Then it refuses the rule, saying a world change rule has no self
+
+  Scenario: The pack check refuses a narrate with no to outside a world change rule
+    Given a verb narrates "The bell rings." with no to
+    When the author runs spook check
+    Then it refuses the verb, saying its narrate has no to

@@ -906,7 +906,7 @@ fn sets_watch(watch: &ChangeWatch, rule: &Rule, mark: &Write) -> bool {
 }
 
 fn sight_of(canon: &Canon, watch: &ChangeWatch) -> Sight {
-    if watches_world(canon, watch) {
+    if watches_world(canon, watch) && !watches_actor_key(canon, watch) {
         return Sight::World;
     }
     match watch {
@@ -962,25 +962,59 @@ fn watches_world(canon: &Canon, watch: &ChangeWatch) -> bool {
     }
 }
 
+/// Whether an actor may also hold the meter or flag `watch` names, so the watch can match an
+/// actor's change as well as the world's.
+fn watches_actor_key(canon: &Canon, watch: &ChangeWatch) -> bool {
+    match watch {
+        ChangeWatch::Meter { key, .. } => canon.meters.contains_key(key),
+        ChangeWatch::Flag { key, .. } => canon.cast.values().any(|cast| cast.flags.contains(key)),
+        _ => false,
+    }
+}
+
 /// A change rule on a world change runs once, for no one, so it has no `self` and no `here`.
+/// Every other rule has a subject, so its `narrate` names who hears it.
 fn check_world_change_subjects(canon: &Canon) -> Vec<Diagnostic> {
-    canon
-        .rules
-        .iter()
-        .filter(|rule| matches!(&rule.when, When::Change(watch) if watches_world(canon, watch)))
-        .filter(|rule| names_subject(rule))
-        .map(|rule| {
-            schema_error(
-                &rule.file,
-                &format!(
-                    "rule '{}' watches a world change, which has no self and no here",
-                    rule.local_id
-                ),
+    let mut diags = Vec::new();
+    for rule in canon.rules.iter() {
+        let on_world = matches!(&rule.when, When::Change(watch) if watches_world(canon, watch));
+        let (message, hint) = if on_world && names_subject(rule) {
+            (
+                "watches a world change, which has no self and no here",
                 "name the actor, or world",
             )
-            .at_path(format!("rules[{}]", rule.index))
-        })
-        .collect()
+        } else if !on_world && narrates_to_present(rule) {
+            (
+                "has a narrate with no to",
+                "add to: self, here, or an actor id",
+            )
+        } else {
+            continue;
+        };
+        diags.push(
+            schema_error(
+                &rule.file,
+                &format!("rule '{}' {message}", rule.local_id),
+                hint,
+            )
+            .at_path(format!("rules[{}]", rule.index)),
+        );
+    }
+    diags
+}
+
+fn narrates_to_present(rule: &Rule) -> bool {
+    let mut present = false;
+    rule.visit_templates(|effect| {
+        present |= matches!(
+            effect,
+            EffectTemplate::Narrate {
+                to: NarrateTo::Present,
+                ..
+            }
+        );
+    });
+    present
 }
 
 /// Whether `rule` needs a subject: `self` or `here` as a who or a narrate's `to`, a location

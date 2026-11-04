@@ -765,3 +765,21 @@ fn rowans_debt_is(world: &mut World, value: i64) {
         Some(value)
     );
 }
+
+#[given(expr = "a verb narrates {string} with no to")]
+fn a_verb_narrates_with_no_to(world: &mut World, text: String) {
+    let pack = copy_docks("narrate-no-to");
+    add_verb(
+        &pack,
+        &format!("\n  - id: ring\n    when:\n      verb: ring\n    do:\n      - narrate:\n          text: {text}\n"),
+    );
+    world.pack = Some(pack);
+}
+
+#[then(expr = "it refuses the verb, saying its narrate has no to")]
+fn it_refuses_the_verb_narrate(world: &mut World) {
+    assert_refused(
+        world,
+        &["rules/verbs.yaml", "rule 'ring' has a narrate with no to"],
+    );
+}
