@@ -58,7 +58,9 @@ the gzip does not land, the round stays committed and the host prints a
 warning. The next commit publishes that checkpoint and then starts a new
 bundle. A plain copy beside a finished gzip is removed. `save.yaml` is the latest
 checkpoint, taken every `checkpoint_every`
-rounds (100 when the pack omits it). Between checkpoints the current state is the
+rounds (100 when the pack omits it; the scenario "A pack that does not set
+checkpoint_every checkpoints every 100 rounds" in
+`features/replay/journal_bundles.feature` pins it). Between checkpoints the current state is the
 journal replayed from that snapshot. A missing snapshot is rebuilt from the
 bundles. History is not deleted.
 
