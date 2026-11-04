@@ -11,7 +11,7 @@ Bring a friend to GM or bring your own model key. Either way, the engine is the 
 - ⚙️ Play moves in rounds. Everyone queues a move, and the engine resolves actions.
 - 🎲 Dice are seeded. A d20 check can partly succeed, and NPCs roll their own checks.
 - 📙 Every commit goes in a hash-chained journal, so you can replay a game and check every roll.
-- ⚡ Triggers fire the moment something changes.
+- ⚡ Triggers fire in the round their condition comes true.
 - 🕰️ A world clock keeps time, and NPCs keep habits, like restocking the shop.
 - 🙈 Players see whether they succeeded, and only the GM sees the dice.
 
@@ -104,4 +104,4 @@ Run `spook --help` for the full list. GM setup is in [docs/README.md](docs/READM
 
 ## License
 
-The `protocol`, `agent` and `client` crates are MIT. The engine, the server and the `spook` binary are AGPL-3.0-or-later. Docs and packs are CC BY 4.0. Details are in [docs/README.md](docs/README.md#license). If AGPL doesn't fit your project, open an issue and we can talk.
+The engine is AGPL-3.0-or-later, and the crates a game client needs are MIT. The full split is in [docs/README.md](docs/README.md#license). If AGPL doesn't fit your project, open an issue and we can talk.
