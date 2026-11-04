@@ -43,7 +43,7 @@ Feature: Save reads name their reason
     Then the command exits 1
     And stderr is STORE_IO
 
-  Scenario Outline: A replay base the disk will not read is STORE_IO on verify
+  Scenario Outline: A replay base the disk will not read is STORE_IO
     Given a docks table
     And checkpoints are taken every 2 rounds
     When the operator plays 2 rounds
