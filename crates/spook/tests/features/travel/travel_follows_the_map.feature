@@ -5,12 +5,12 @@ Feature: Travel follows the map
     When rowan travels to mira_rooms from docks_street
     Then the intent is refused with NO_EXIT and rowan stays put
 
-  Scenario: Locked exit
+  Scenario: A locked exit shows its text and changes nothing
     Given the stairs exit needs brass_key and rowan has none
     When rowan travels via stairs
     Then rowan sees "The stair door is locked." and no state changes
 
-  Scenario: Exit cost
+  Scenario: An exit's minutes are stamped on the arrival
     When rowan travels via stairs holding brass_key
     Then rowan is in mira_rooms and the 2 minute cost is stamped on the arrival
 
@@ -55,7 +55,7 @@ Feature: Travel follows the map
     Given busy_until is 200 rounds away and max_fastforward_rounds is 12
     Then 12 rounds run and the rest continues on the next action
 
-  Scenario: Replay
+  Scenario: Verify passes over a fast-forwarded journey
     Then spook verify passes over a fast-forwarded journey
 
   Scenario: A player map lists the places play was shown

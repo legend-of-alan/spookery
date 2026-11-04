@@ -1,6 +1,6 @@
-Feature: The host sits the GM seat
+Feature: The AI GM sits the GM seat
 
-  Scenario: Host with an extra argument is a usage error
+  Scenario: The AI GM with an extra argument is a usage error
     Given a docks table
     When the operator runs ai-gm with an extra argument
     Then the command exits 2
@@ -8,7 +8,7 @@ Feature: The host sits the GM seat
     And stdout is empty
     And nothing was dialed
 
-  Scenario: Host with nothing listening leaves the pack
+  Scenario: The AI GM with nothing listening leaves the pack
     Given a docks table
     When the operator runs ai-gm with nothing listening
     Then the command exits 1
@@ -48,17 +48,17 @@ Feature: The host sits the GM seat
     And the queued line committed one round
     And the error line shows the provider's text without the key
 
-  Scenario: The host seat submits a say and reports a refused call
+  Scenario: The AI GM seat submits a say and reports a refused call
     Given a docks table with a seated player
     When the GM seat says good evening and calls an unknown tool
     Then the player saw a say from the host
     And the tape from is gm
     And the GM call was refused
 
-  Scenario: A scripted host follows the turn rules
+  Scenario: A scripted AI GM follows the turn rules
     When the scripted AI GM plays the turn checks
 
-  Scenario: Play, host, and a stub share one speech turn and one travel turn
+  Scenario: Play, the AI GM, and a stub share one speech turn and one travel turn
     When play and the AI GM and a stub run a speech turn and a travel turn
 
   Scenario: A move queued while the model answers a say gets its own turn

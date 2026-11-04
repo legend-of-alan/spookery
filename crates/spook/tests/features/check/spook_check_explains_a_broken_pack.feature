@@ -134,7 +134,7 @@ Feature: spook check explains a broken pack
 
   Scenario: The authoring example move passes check
     Given a docks table
-    When the worked example row is appended to the moves file
+    When the worked example row is appended to the verbs file
     And the operator runs spook check --json
     Then the check exits 1
     And stdout is a JSON array of diagnostics

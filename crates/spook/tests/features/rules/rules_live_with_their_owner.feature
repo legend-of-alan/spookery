@@ -19,7 +19,7 @@ Feature: Rules live with their owner
     When lark attacks with a seeded total of 21
     Then the outcome is a miss
 
-  Scenario: Old files refused
+  Scenario: A pack with rules/moves.yaml fails check
     Given a pack with rules/moves.yaml
     Then spook check says moves.yaml was replaced by rules/verbs.yaml
 

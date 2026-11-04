@@ -39,7 +39,7 @@ code.
 
 Tested in `features/seats/one_gm_and_three_players.feature`,
 `features/rounds/a_line_waits_for_the_gm.feature`,
-`features/host/the_host_sits_the_gm_seat.feature`,
+`features/host/the_ai_gm_sits_the_gm_seat.feature`,
 `features/speech/speech_appends_and_does_not_play_a_round.feature`,
 `features/commit/a_hand_edit_waits_for_migrate.feature`,
 `features/commit/a_crash_leaves_nothing_half_written.feature`,
@@ -241,7 +241,7 @@ frames. The model client does not dial when a setting is missing.
 
 Tested in `features/loopback/only_loopback_binds.feature`,
 `features/limits/the_listener_bounds_input.feature`, and
-`features/host/the_host_sits_the_gm_seat.feature`.
+`features/host/the_ai_gm_sits_the_gm_seat.feature`.
 
 ## The place
 
@@ -276,5 +276,5 @@ Tested in `features/speech/speech_appends_and_does_not_play_a_round.feature`,
 `features/seats/one_gm_and_three_players.feature`,
 `features/seats/a_claim_comes_back_with_its_token.feature`,
 `features/loopback/only_loopback_binds.feature`,
-`features/host/the_host_sits_the_gm_seat.feature`, and
+`features/host/the_ai_gm_sits_the_gm_seat.feature`, and
 `features/limits/the_listener_bounds_input.feature`.

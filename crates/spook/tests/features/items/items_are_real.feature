@@ -58,8 +58,8 @@ Feature: Items are real
     When rowan drops lamp_oil
     Then the round names MISSING_ITEM and rowan still has no lamp_oil
 
-  Scenario: Unknown item
-    Given now.yaml lists an item with no definition
+  Scenario: A save item with no definition fails check
+    Given save.yaml lists an item with no definition
     Then spook check reports an unknown item diagnostic
 
   Scenario: Wield a weapon
