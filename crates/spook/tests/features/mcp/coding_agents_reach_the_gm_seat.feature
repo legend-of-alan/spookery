@@ -19,13 +19,31 @@ Feature: Coding agents reach the GM seat
     Then the response is forbidden
     And a GM hello still sits
 
-  Scenario: A second HTTP GM is told the table is full
+  Scenario: A second HTTP GM opens a session but is refused at its event stream
     Given a docks table
     When a GM holds the seat over HTTP
-    And another GM tries to sit over HTTP
-    Then the newcomer is told the table is full
+    And an agent opens an MCP session
+    Then the session opened
+    When that session opens its event stream
+    Then the event stream is refused with "TABLE_FULL"
+    And the GM over HTTP can still call status
     When the GM over HTTP leaves
     Then a GM can sit over HTTP
+
+  Scenario: A session with no event stream holds no seat
+    Given a docks table
+    When an agent opens an MCP session
+    Then that session's status call is refused with "NOT_IN_SPEC"
+    And a GM can sit over HTTP
+
+  Scenario: A second event stream on the seated session is refused
+    Given a docks table
+    When an agent opens an MCP session
+    And that session opens its event stream
+    Then the event stream opens with the hello
+    When that session opens its event stream
+    Then the event stream is refused with "TABLE_FULL"
+    And that session's status call is answered
 
   Scenario: The tools are the GM words
     Given a docks table

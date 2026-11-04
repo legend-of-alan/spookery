@@ -120,7 +120,7 @@ fn is_locked(
 }
 
 /// The exits of `place` this actor is allowed to see. A hidden exit stays off the list.
-fn exits_at(
+pub(crate) fn exits_at(
     canon: &Canon,
     state: &State,
     presence: &Presence,

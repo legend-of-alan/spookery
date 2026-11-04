@@ -1,7 +1,6 @@
 use spookery_engine::testing::state_of;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::time::{Duration, Instant};
 
 use cucumber::gherkin::Step;
 use cucumber::{given, then, when};
@@ -181,23 +180,17 @@ fn the_host_refuses_to_start(world: &mut World, code: String) {
     let pack = table::pack(world).to_path_buf();
     let arg = support::pack_arg(&pack);
     let mut proc = support::spawn(&["run", &arg, "--addr", "127.0.0.1:0"]);
-    let start = Instant::now();
-    let (status, stderr) = loop {
+    let (status, stderr) = table::poll_until("the host to exit with an error", || {
         let status = proc
             .child
             .try_wait()
             .unwrap_or_else(|err| panic!("wait: {err}"));
         let stderr = support::text_of(&proc.stderr);
-        if let Some(status) = status {
-            if !stderr.is_empty() {
-                break (status, stderr);
-            }
+        match status {
+            Some(status) if !stderr.is_empty() => Ok((status, stderr)),
+            _ => Err(stderr),
         }
-        if start.elapsed() > Duration::from_secs(8) {
-            panic!("host stayed up\n{stderr}");
-        }
-        std::thread::sleep(Duration::from_millis(20));
-    };
+    });
     world.code = status.code();
     world.stderr = stderr;
     assert_eq!(world.code, Some(1), "{}", world.stderr);

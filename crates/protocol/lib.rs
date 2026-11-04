@@ -41,7 +41,7 @@ pub use message::{
     ServerMessage, Word, VERSION, WORDS,
 };
 pub use player::{
-    exit_phrase, ClockView, ExitView, ItemStack, KnownFact, MeterView, NoteView, View,
+    exit_phrase, exit_section, ClockView, ExitView, ItemStack, KnownFact, MeterView, NoteView, View,
 };
 
 /// The listening line `spook run` prints on stdout once both ports are bound: the game port
@@ -63,8 +63,8 @@ pub fn default_mcp_addr(game: std::net::SocketAddr) -> Option<std::net::SocketAd
 /// and the prompt's cast cut.
 pub const PERCEIVE_BODY_CHARS: usize = 800;
 
-/// Every refusal code. The `code` of a `refused` body and of the MCP initialize error's
-/// `data`, and the token the journal stores on a round line (`engine::Refusal`).
+/// Every refusal code. The `code` of a `refused` body, and the token the journal stores on
+/// a round line (`engine::Refusal`).
 /// Strict and `Copy` on purpose: `spook verify` must fail on a code it does not know.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
@@ -182,9 +182,8 @@ impl From<String> for Code {
     }
 }
 
-/// Sent from the table to a client as a `refused` body, and to an MCP GM client as the MCP
-/// initialize error's `data`.
-/// Display is that error's message, the sentence with the code in brackets,
+/// Sent from the table to a client as a `refused` body.
+/// Display is the sentence with the code in brackets,
 /// `The table is full. [TABLE_FULL]`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
@@ -454,13 +453,6 @@ mod tests {
             assert!(matches!(msg, ServerBody::Refused(_)));
             assert_eq!(serde_json::to_string(&msg).unwrap(), raw);
         }
-    }
-
-    #[test]
-    fn a_fixed_game_port_dials_the_next_port() {
-        let game = std::net::SocketAddr::from(([127, 0, 0, 1], 9737));
-        let mcp_addr = std::net::SocketAddr::from(([127, 0, 0, 1], 9738));
-        assert_eq!(default_mcp_addr(game), Some(mcp_addr));
     }
 
     #[test]

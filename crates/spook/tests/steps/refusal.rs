@@ -2,7 +2,6 @@
 
 use std::fs;
 use std::path::Path;
-use std::time::{Duration, Instant};
 
 use cucumber::{given, then, when};
 use serde_json::Value;
@@ -17,22 +16,15 @@ use crate::World;
 
 #[then(expr = "play's error shows {string} once")]
 fn play_error_shows_once(world: &mut World, text: String) {
-    let start = Instant::now();
-    loop {
-        let play = world.play.as_ref().unwrap_or_else(|| panic!("no play"));
+    let play = world.play.as_ref().unwrap_or_else(|| panic!("no play"));
+    table::poll_until(&text, || {
         let stderr = text_of(&play.stderr);
-        let count = stderr.matches(&text).count();
-        if count > 1 {
-            panic!("saw {text} {count} times\n{stderr}");
+        match stderr.matches(&text).count() {
+            0 => Err(stderr),
+            1 => Ok(()),
+            count => panic!("saw {text} {count} times\n{stderr}"),
         }
-        if count == 1 {
-            break;
-        }
-        if start.elapsed() > Duration::from_secs(8) {
-            panic!("missing {text}\n{stderr}");
-        }
-        std::thread::sleep(Duration::from_millis(20));
-    }
+    });
     // The world loop answers this look after every frame it sent before, and play prints in order.
     let mark = capture_play_stdout(world).len();
     write_play(world, "look");

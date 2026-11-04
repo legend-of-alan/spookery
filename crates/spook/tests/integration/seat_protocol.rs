@@ -3,15 +3,14 @@
 //! extra, or different from the table.
 
 use std::collections::BTreeMap;
-use std::io::{Read, Write};
+use std::io::Read;
 use std::net::TcpStream;
 use std::path::PathBuf;
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::mpsc::{self, Receiver};
 use std::time::Duration;
 
-use crate::mcp_client::{event_line, GmClient};
-use rmcp::model::ProtocolVersion;
+use crate::mcp_client::{event_line, read_event, GmClient, RawSession};
 use serde_json::{json, Value};
 use spookery::protocol::{Addrs, ClientMessage, ServerBody, ServerMessage, ToolResult};
 use tungstenite::protocol::Role;
@@ -211,11 +210,9 @@ fn capture() -> BTreeMap<String, Example> {
     send(&mut back, "grit", json!({}));
     next_kind(&back, "queued");
     insert_json(&mut out, "mcp-event", one_event(&mut mcp));
-    insert_json(
-        &mut out,
-        "mcp-table-full",
-        post_initialize_when_full(table.mcp_port),
-    );
+    let mut newcomer = RawSession::open(table.mcp_port);
+    let refused = newcomer.open_event_stream();
+    insert_json(&mut out, "mcp-table-full", read_event(&refused));
     out
 }
 
@@ -388,138 +385,6 @@ fn tool_call(id: u64, name: &str, arguments: &Value) -> Value {
         "method": "tools/call",
         "params": { "name": name, "arguments": arguments }
     })
-}
-
-/// An MCP initialize while the GM seat is held. Returns the JSON-RPC error.
-fn post_initialize_when_full(port: u16) -> Value {
-    let version = ProtocolVersion::LATEST.as_str();
-    let body = json!({
-        "jsonrpc": "2.0",
-        "id": 1,
-        "method": "initialize",
-        "params": {
-            "protocolVersion": version,
-            "capabilities": {},
-            "clientInfo": { "name": "seat-protocol", "version": "0" }
-        }
-    })
-    .to_string();
-    let request = format!(
-        "POST /mcp HTTP/1.1
-Host: 127.0.0.1:{port}
-MCP-Protocol-Version: {version}
-Content-Type: application/json
-Accept: application/json, text/event-stream
-Content-Length: {}
-Connection: close
-
-{body}",
-        body.len()
-    );
-    let mut stream = connect(port);
-    stream
-        .set_read_timeout(Some(READ_TIMEOUT))
-        .unwrap_or_else(|err| panic!("timeout: {err}"));
-    stream
-        .write_all(request.as_bytes())
-        .unwrap_or_else(|err| panic!("write HTTP: {err}"));
-    let mut buf = Vec::new();
-    let mut tmp = [0u8; 1024];
-    loop {
-        if is_http_complete(&buf) {
-            break;
-        }
-        match stream.read(&mut tmp) {
-            Ok(0) => break,
-            Ok(n) => buf.extend_from_slice(&tmp[..n]),
-            Err(err) if err.kind() == std::io::ErrorKind::TimedOut => break,
-            Err(err) => panic!("read HTTP: {err}"),
-        }
-    }
-    let raw = String::from_utf8_lossy(&buf).into_owned();
-    json_rpc(&raw).unwrap_or_else(|| {
-        panic!(
-            "no refusal
-{raw}"
-        )
-    })
-}
-
-fn is_http_complete(buf: &[u8]) -> bool {
-    let text = String::from_utf8_lossy(buf);
-    let Some(split) = text.find("\r\n\r\n") else {
-        return false;
-    };
-    let head = &text[..split];
-    let body = &text[split + 4..];
-    if let Some(len) = content_length(head) {
-        return body.len() >= len;
-    }
-    let decoded = decode_body(head, body);
-    decoded.contains("\"jsonrpc\"")
-        && (decoded.ends_with("\n\n") || decoded.ends_with("\r\n\r\n") || decoded.ends_with('}'))
-}
-
-fn content_length(head: &str) -> Option<usize> {
-    head.lines().find_map(|line| {
-        let (name, value) = line.split_once(':')?;
-        if name.eq_ignore_ascii_case("content-length") {
-            value.trim().parse().ok()
-        } else {
-            None
-        }
-    })
-}
-
-fn json_rpc(raw: &str) -> Option<Value> {
-    let head_end = raw.find("\r\n\r\n").map(|at| at + 4).unwrap_or(0);
-    let head = &raw[..head_end.saturating_sub(4)];
-    let body = decode_body(head, &raw[head_end..]);
-    let bytes = body.as_bytes();
-    let mut start = 0;
-    while let Some(rel) = bytes[start..].iter().position(|byte| *byte == b'{') {
-        let at = start + rel;
-        let mut parsed = serde_json::Deserializer::from_slice(&bytes[at..]).into_iter::<Value>();
-        if let Some(Ok(value)) = parsed.next() {
-            if value.get("jsonrpc").is_some() {
-                return Some(value);
-            }
-        }
-        start = at + 1;
-    }
-    None
-}
-
-fn decode_body(head: &str, body: &str) -> String {
-    let chunked = head.lines().any(|line| {
-        let Some((name, value)) = line.split_once(':') else {
-            return false;
-        };
-        name.eq_ignore_ascii_case("transfer-encoding")
-            && value.to_ascii_lowercase().contains("chunked")
-    });
-    if !chunked {
-        return body.to_string();
-    }
-    let mut rest = body;
-    let mut out = String::new();
-    while let Some((size, after)) = rest.split_once("\r\n") {
-        let Ok(len) = usize::from_str_radix(size.trim(), 16) else {
-            break;
-        };
-        if len == 0 {
-            break;
-        }
-        if after.len() < len {
-            break;
-        }
-        out.push_str(&after[..len]);
-        rest = &after[len..];
-        if let Some(stripped) = rest.strip_prefix("\r\n") {
-            rest = stripped;
-        }
-    }
-    out
 }
 
 fn insert_json(out: &mut BTreeMap<String, Example>, name: &str, value: Value) {

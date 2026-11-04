@@ -110,11 +110,14 @@ fn the_gm_sees_no_player_seated(world: &mut World) {
 fn wait_player_frame(world: &World, want: &str, done: impl Fn(&Value) -> bool) {
     table::poll_until(want, || {
         let text = table::player_text(world);
-        let frames = parse_lines(text.get(world.mark..).unwrap_or_default());
-        if frames.iter().any(|message| done(&message["body"])) {
+        let after = text.get(world.mark..).unwrap_or_default();
+        if parse_lines(after)
+            .iter()
+            .any(|message| done(&message["body"]))
+        {
             Ok(())
         } else {
-            Err(frames)
+            Err(after.to_string())
         }
     });
 }
@@ -133,4 +136,14 @@ fn parse_lines(text: &str) -> Vec<Value> {
     text.lines()
         .filter_map(|line| serde_json::from_str(line).ok())
         .collect()
+}
+
+#[then(expr = "the player is told {string}")]
+fn the_player_is_told(world: &mut World, text: String) {
+    wait_player_frame(world, &format!("lines with {text}"), |frame| {
+        frame["kind"] == "lines"
+            && frame["text"]
+                .as_str()
+                .is_some_and(|lines| lines.contains(&text))
+    });
 }

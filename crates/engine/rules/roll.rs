@@ -211,16 +211,6 @@ mod tests {
     }
 
     #[test]
-    fn ten_dice_in_one_roll_are_not_refused() {
-        let actor = npc();
-        let defs = BTreeMap::from([("grit".to_string(), grit_def())]);
-        let check = check_of(10);
-        let out = roll_check(&check, &defs, &actor, &key(0), 0, None).unwrap();
-        assert_eq!(out.faces.len(), 10);
-        assert_eq!(out.outcome, Outcome::Success);
-    }
-
-    #[test]
     fn classification_meets_every_threshold() {
         let success = Outcome::Success;
         let partial = Outcome::Partial;

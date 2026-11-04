@@ -99,7 +99,7 @@ fn ai_gm_is_pointed_at_a_game_port(world: &mut World) {
     world.children.push(child);
     table::poll_until(&format!("a dial on {addr}"), || match listener.accept() {
         Ok(_) => Ok(()),
-        Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => Err(()),
+        Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => Err("no dial"),
         Err(err) => panic!("accept: {err}"),
     });
     world.scratch = "dialed".to_string();
@@ -755,7 +755,11 @@ fn wait_stub(seen: &Mutex<Seen>, posts: usize, closes: usize) {
         if seen.posts.len() >= posts && seen.closes >= closes {
             Ok(())
         } else {
-            Err((seen.posts.len(), seen.closes))
+            Err(format!(
+                "{} posts and {} closes",
+                seen.posts.len(),
+                seen.closes
+            ))
         }
     });
 }

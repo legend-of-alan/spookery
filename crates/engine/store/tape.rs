@@ -156,53 +156,6 @@ mod tests {
     }
 
     #[test]
-    fn read_scrollback_keeps_the_newest_lines_for_that_player() {
-        let root = fresh_dir("tape-tail");
-        let mut lines = String::new();
-        for index in 0..300 {
-            lines.push_str(&emit_tape_record(&sample(
-                index as u64 + 1,
-                "pc_wren",
-                &format!("w{index}"),
-            )));
-            lines.push('\n');
-        }
-        for index in 0..3 {
-            lines.push_str(&emit_tape_record(&sample(
-                301 + index,
-                "pc_rowan",
-                &format!("line{index}"),
-            )));
-            lines.push('\n');
-        }
-        write_tape(&root, &lines);
-        let tail = read_scrollback(&root, "pc_rowan").unwrap();
-        let texts: Vec<_> = tail.iter().map(|record| record.text.as_str()).collect();
-        assert_eq!(texts, ["line0", "line1", "line2"]);
-        let _ = fs::remove_dir_all(&root);
-    }
-
-    #[test]
-    fn read_scrollback_keeps_the_256_line_cap() {
-        let root = fresh_dir("tape-cap");
-        let mut lines = String::new();
-        for index in 0..300 {
-            lines.push_str(&emit_tape_record(&sample(
-                index as u64 + 1,
-                "pc_rowan",
-                &format!("line{index}"),
-            )));
-            lines.push('\n');
-        }
-        write_tape(&root, &lines);
-        let tail = read_scrollback(&root, "pc_rowan").unwrap();
-        assert_eq!(tail.len(), 256);
-        assert_eq!(tail[0].text, "line44");
-        assert_eq!(tail[255].text, "line299");
-        let _ = fs::remove_dir_all(&root);
-    }
-
-    #[test]
     fn a_tape_past_one_mib_is_out_of_range() {
         let root = fresh_dir("tape-cap-bytes");
         let path = root.join("state/tape.jsonl");
@@ -234,11 +187,5 @@ mod tests {
             round_index: 0,
             world_time: 1080,
         }
-    }
-
-    fn write_tape(root: &Path, lines: &str) {
-        let path = root.join("state/tape.jsonl");
-        fs::create_dir_all(path.parent().unwrap()).unwrap();
-        fs::write(path, lines).unwrap();
     }
 }

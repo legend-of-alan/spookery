@@ -1,10 +1,8 @@
 use spookery_engine::testing::state_of;
 use std::fs;
 use std::io::Write;
-use std::time::{Duration, Instant};
 
 use cucumber::{given, then, when};
-use spookery_engine::testing::journal::list_round_keys;
 
 use crate::support::{self, Process};
 use crate::World;
@@ -176,22 +174,12 @@ fn spook_run_stops(world: &mut World) {
 #[then(expr = "the GM exits")]
 fn the_gm_exits(world: &mut World) {
     let gm = world.gm.as_mut().unwrap_or_else(|| panic!("no gm"));
-    let start = Instant::now();
-    loop {
-        if let Some(status) = gm.child.try_wait().unwrap_or_else(|err| panic!("{err}")) {
-            let stderr = support::text_of(&gm.stderr);
-            assert!(
-                status.success(),
-                "gm exited {status:?}
-{stderr}"
-            );
-            return;
-        }
-        if start.elapsed() > Duration::from_secs(5) {
-            panic!("gm still running");
-        }
-        std::thread::sleep(Duration::from_millis(20));
-    }
+    let status = table::poll_until("the gm to exit", || {
+        let status = gm.child.try_wait().unwrap_or_else(|err| panic!("{err}"));
+        status.ok_or("still running")
+    });
+    let stderr = support::text_of(&gm.stderr);
+    assert!(status.success(), "gm exited {status:?}\n{stderr}");
 }
 
 #[when(expr = "the operator runs gm with nothing listening")]
@@ -229,17 +217,10 @@ fn the_gm_shows_no_protocol_json(world: &mut World) {
 #[then(expr = "world time advanced one live tick")]
 fn world_time_advanced(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
-    let start = Instant::now();
-    loop {
-        let now = state_of(&pack);
-        if now.world_time == 1085 {
-            return;
-        }
-        if start.elapsed() > Duration::from_secs(8) {
-            panic!("world_time {}", now.world_time);
-        }
-        std::thread::sleep(Duration::from_millis(20));
-    }
+    table::poll_until("world_time 1085", || match state_of(&pack).world_time {
+        1085 => Ok(()),
+        now => Err(now),
+    });
 }
 
 #[then(expr = "the round log records Mira's restock")]
@@ -261,17 +242,7 @@ fn the_round_log_records_the_restock(world: &mut World) {
 
 #[then(expr = "the round log records Rowan and Wren waiting")]
 fn the_round_log_records_rowan_and_wren(world: &mut World) {
-    let start = Instant::now();
-    loop {
-        if list_round_keys(table::pack(world)).is_empty() {
-            if start.elapsed() > Duration::from_secs(8) {
-                panic!("no round log");
-            }
-            std::thread::sleep(Duration::from_millis(20));
-            continue;
-        }
-        break;
-    }
+    table::wait_round_count(table::pack(world), 1);
     let round = common::read_first_round(world);
     let waits = round["intents"]
         .as_array()
@@ -293,21 +264,17 @@ fn the_round_log_records_rowan_and_wren(world: &mut World) {
 
 #[then(expr = "the GM's stderr shows {string}")]
 fn the_gm_stderr_shows(world: &mut World, text: String) {
-    let start = Instant::now();
-    loop {
-        let stderr = gm_stderr(world);
+    let gm = world.gm.as_mut().unwrap_or_else(|| panic!("no gm"));
+    table::poll_until(&text, || {
+        let stderr = support::text_of(&gm.stderr);
         if stderr.contains(&text) {
-            return;
+            return Ok(());
         }
-        let gm = world.gm.as_mut().unwrap_or_else(|| panic!("no gm"));
         if let Some(status) = gm.child.try_wait().unwrap_or_else(|err| panic!("{err}")) {
             panic!("gm exited {status:?}\nstderr:\n{stderr}");
         }
-        if start.elapsed() > Duration::from_secs(8) {
-            panic!("missing {text}\nstderr:\n{stderr}");
-        }
-        std::thread::sleep(Duration::from_millis(20));
-    }
+        Err(stderr)
+    });
 }
 
 fn sit_gm(world: &mut World, raw: bool) -> String {
@@ -328,7 +295,11 @@ fn sit_gm(world: &mut World, raw: bool) -> String {
 fn join_play_at(world: &mut World, addr: &str, as_player: Option<&str>) {
     let as_arg = format!("player:{}", as_player.unwrap_or("pc_rowan"));
     let mut play = support::spawn(&["play", "--addr", addr, "--as", &as_arg]);
-    wait_proc(&mut play, "You are in");
+    common::wait_proc_until(
+        &mut play,
+        |stdout| stdout.contains("You are in"),
+        "You are in",
+    );
     if world.play.is_none() {
         world.play = Some(play);
     } else {
@@ -355,7 +326,7 @@ fn write_gm(world: &mut World, line: &str) {
 
 fn wait_gm(world: &mut World, needle: &str) {
     let gm = world.gm.as_mut().unwrap_or_else(|| panic!("no gm"));
-    wait_proc(gm, needle);
+    common::wait_proc_until(gm, |stdout| stdout.contains(needle), needle);
 }
 
 fn count_gm_matches(world: &mut World, needle: &str) -> usize {
@@ -363,37 +334,9 @@ fn count_gm_matches(world: &mut World, needle: &str) -> usize {
 }
 
 fn wait_gm_count(world: &mut World, needle: &str, count: usize) {
-    let start = Instant::now();
-    loop {
-        let stdout = capture_gm_stdout(world);
-        if stdout.matches(needle).count() >= count {
-            return;
-        }
-        if start.elapsed() > Duration::from_secs(8) {
-            let stderr = gm_stderr(world);
-            panic!("missing {count} x {needle}\nstdout:\n{stdout}\nstderr:\n{stderr}");
-        }
-        std::thread::sleep(Duration::from_millis(20));
-    }
-}
-
-fn wait_proc(proc: &mut Process, needle: &str) {
-    let start = Instant::now();
-    loop {
-        let stdout = support::text_of(&proc.stdout);
-        if stdout.contains(needle) {
-            return;
-        }
-        if let Some(status) = proc.child.try_wait().unwrap_or_else(|err| panic!("{err}")) {
-            let stderr = support::text_of(&proc.stderr);
-            panic!("exited {status:?}\nstdout:\n{stdout}\nstderr:\n{stderr}");
-        }
-        if start.elapsed() > Duration::from_secs(8) {
-            let stderr = support::text_of(&proc.stderr);
-            panic!("missing {needle}\nstdout:\n{stdout}\nstderr:\n{stderr}");
-        }
-        std::thread::sleep(Duration::from_millis(20));
-    }
+    let gm = world.gm.as_mut().unwrap_or_else(|| panic!("no gm"));
+    let enough = |stdout: &str| stdout.matches(needle).count() >= count;
+    world.stdout = common::wait_proc_until(gm, enough, &format!("{count} x {needle}"));
 }
 
 fn capture_gm_stdout(world: &mut World) -> String {
@@ -401,9 +344,4 @@ fn capture_gm_stdout(world: &mut World) -> String {
     let text = support::text_of(&gm.stdout);
     world.stdout = text.clone();
     text
-}
-
-fn gm_stderr(world: &mut World) -> String {
-    let gm = world.gm.as_ref().unwrap_or_else(|| panic!("no gm"));
-    support::text_of(&gm.stderr)
 }
