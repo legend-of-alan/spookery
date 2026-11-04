@@ -51,7 +51,7 @@ Feature: The AI GM sits the GM seat
   Scenario: The AI GM seat submits a say and reports a refused call
     Given a docks table with a seated player
     When the GM seat says good evening and calls an unknown tool
-    Then the player saw a say from the host
+    Then the player saw a say from the GM
     And the tape from is gm
     And the GM call was refused
 

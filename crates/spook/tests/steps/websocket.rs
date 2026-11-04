@@ -9,8 +9,8 @@ use crate::World;
 
 use super::table::{self, Seat};
 
-#[when(expr = "a player connects over WebSocket")]
-fn a_player_connects_over_websocket(world: &mut World) {
+#[when(expr = "a player connects to the game port")]
+fn a_player_connects_to_the_game_port(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
     table::listen(world, &pack);
     let seat = Seat::open(table::live_mut(world).game_port, "player");
