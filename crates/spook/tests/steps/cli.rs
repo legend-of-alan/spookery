@@ -1,14 +1,12 @@
 use std::io::Write;
 
-use std::process::{Command, Stdio};
-
 use cucumber::gherkin::Step;
 use cucumber::{then, when};
 
 use crate::support;
 use crate::World;
 
-use super::common::{capture_play_stdout, join_play, wait_play, wait_play_until};
+use super::common::{capture_play_stdout, join_play, spawn_play, wait_play, wait_play_until};
 use super::table;
 
 #[when(expr = "the operator asks spook for help")]
@@ -62,21 +60,23 @@ fn play_says(world: &mut World, text: String) {
 fn another_play_joins_that_table(world: &mut World) {
     let port = table::live_mut(world).game_port;
     let addr = format!("127.0.0.1:{port}");
-    let mut play = Command::new(env!("CARGO_BIN_EXE_spook"))
-        .args(["play", "--addr", &addr])
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .unwrap_or_else(|err| panic!("spawn play: {err}"));
-    let mut stdin = play.stdin.take().unwrap_or_else(|| panic!("play stdin"));
-    writeln!(stdin, "pc_rowan").unwrap_or_else(|err| panic!("pick: {err}"));
-    let output = play
-        .wait_with_output()
+    let mut play = spawn_play(&addr, "pc_rowan", &[]);
+    let status = play
+        .child
+        .wait()
         .unwrap_or_else(|err| panic!("play: {err}"));
-    world.code = output.status.code();
-    world.stdout = String::from_utf8_lossy(&output.stdout).into_owned();
-    world.stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+    world.code = status.code();
+    // The pipes drain on their own threads, so read stderr once its refusal line is whole.
+    // The picker was printed before the claim went out, so stdout already holds it.
+    world.stderr = table::poll_until("[SEAT_TAKEN]", || {
+        let stderr = support::text_of(&play.stderr);
+        if stderr.contains("[SEAT_TAKEN]") && stderr.ends_with('\n') {
+            Ok(stderr)
+        } else {
+            Err(stderr)
+        }
+    });
+    world.stdout = support::text_of(&play.stdout);
 }
 
 #[then(expr = "play received the first perceive")]
