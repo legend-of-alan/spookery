@@ -12,7 +12,7 @@ Feature: Migrate moves clocks onto meters
     And a docks save from before meters, with an unowned "dawn" clock at 3
     When the author runs spook migrate
     Then migrate exits 0
-    And the world's dawn is still 3
+    And the world's dawn is 3
 
   Scenario: A clock with two owners is refused
     Given a docks save from before meters, with a "shop_day" clock owned by Mira and Bram

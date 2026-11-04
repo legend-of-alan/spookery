@@ -248,15 +248,38 @@ pub(crate) fn peek_at_tip(path: &Path) -> Result<World<()>, Reason> {
 }
 
 /// Migrate the journal tip. A save that the journal has not passed is migrated as it stands.
+/// Why `spook migrate` refused: a code, or a clock of an older save that no meter can take,
+/// with what to do about it.
+#[derive(Debug)]
+pub enum MigrateError {
+    Refused(Reason),
+    Clock(Diagnostic),
+}
+
+impl From<Reason> for MigrateError {
+    fn from(reason: Reason) -> Self {
+        MigrateError::Refused(reason)
+    }
+}
+
+impl std::fmt::Display for MigrateError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            MigrateError::Refused(reason) => reason.fmt(f),
+            MigrateError::Clock(diag) => diag.fmt(f),
+        }
+    }
+}
+
 /// A save from before meters replaced clocks is migrated too: each clock moves onto its meter,
 /// and the save is first rewritten in the current shape, so the migrate replays from it.
-pub fn migrate_pack(path: &Path) -> Result<(), Diagnostic> {
+pub fn migrate_pack(path: &Path) -> Result<(), MigrateError> {
     let lock = lock_pack(path)?;
     let (mut state, clocks, edited) = load_migrate_tip(path, &lock)?;
     let canon = load_canon(path).map_err(|diags| first_reason(&diags))?;
     if let Some(clocks) = clocks {
         for (id, clock) in clocks {
-            save::carry_clock(&canon, &mut state, &id, clock)?;
+            save::carry_clock(&canon, &mut state, &id, clock).map_err(MigrateError::Clock)?;
         }
         let _write = lock_write(path, &lock)?;
         write_atomic(&journal::save_path(path), save::emit(&state)?.as_bytes())?;

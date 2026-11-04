@@ -310,7 +310,7 @@ pub(super) fn unknown_carriers(scope: &MeterScope, rules: &RuleTable) -> Vec<Dia
             }
         });
         for (who, key) in named {
-            let Some(why) = scope.meter_miss(fixed_self(rule), who, key) else {
+            let Some(why) = scope.why_not_carried(fixed_self(rule), who, key) else {
                 continue;
             };
             diags.push(
@@ -358,7 +358,7 @@ pub(super) struct MeterScope<'a> {
 impl MeterScope<'_> {
     /// Why meter `key` on `who` can never be read or written, or `None` when it may be.
     /// A holder known only at play time is not guessed: only its key is checked.
-    fn meter_miss(&self, fixed_self: Option<&str>, who: &Who, key: &str) -> Option<String> {
+    fn why_not_carried(&self, fixed_self: Option<&str>, who: &Who, key: &str) -> Option<String> {
         let actor = match who {
             Who::World if self.world_meters.contains_key(key) => return None,
             Who::World => return Some(format!("the world carries no meter '{key}'")),
@@ -403,7 +403,7 @@ impl MeterScope<'_> {
                     }
                     .into_diagnostic()
                 };
-                if let Some(why) = self.meter_miss(fixed_self, who, key) {
+                if let Some(why) = self.why_not_carried(fixed_self, who, key) {
                     diags.push(refuse(
                         format!("expression reads meter '{key}', but {why}"),
                         "declare the meter on that holder, or read one that exists",
@@ -637,7 +637,11 @@ fn check_meters(
         _ => ("the world".to_string(), &canon.world_meters),
     };
     for (key, def) in defs {
-        if !live.contains_key(key) && canon.meter_def(holder, key) == Some(def) {
+        let carried = match holder {
+            Holder::Actor(id) => def.is_on_actor(id),
+            _ => true,
+        };
+        if carried && !live.contains_key(key) {
             diags.push(
                 schema_error(
                     "state/save.yaml",

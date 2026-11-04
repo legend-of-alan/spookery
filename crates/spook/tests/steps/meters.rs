@@ -447,6 +447,11 @@ fn miras_dawn_is(world: &mut World, value: i64) {
 
 #[then(expr = "the world's dawn is still {int}")]
 fn the_worlds_dawn_is_still(world: &mut World, value: i64) {
+    the_worlds_dawn_is(world, value);
+}
+
+#[then(expr = "the world's dawn is {int}")]
+fn the_worlds_dawn_is(world: &mut World, value: i64) {
     assert_eq!(value_on(pack(world), &Holder::World, "dawn"), Some(value));
 }
 

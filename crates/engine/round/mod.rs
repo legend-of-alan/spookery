@@ -9,7 +9,7 @@ pub(crate) mod verify;
 
 pub(crate) use play::{fast_forward, play_catch_up, play_round};
 pub use play::{play_pack_once, RoundOutput};
-pub use replay::migrate_pack;
+pub use replay::{migrate_pack, MigrateError};
 pub use verify::{verify_pack, verify_quick};
 
 #[cfg(test)]

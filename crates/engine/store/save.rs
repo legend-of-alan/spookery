@@ -106,6 +106,9 @@ pub(crate) struct OldClock {
     owners: Vec<String>,
 }
 
+/// The last rules version whose saves held clocks.
+const CLOCK_RULES_REV: u64 = 11;
+
 /// The clocks of a save from before meters, by id. `None` for a save in the current shape.
 pub(crate) type OldClocks = Option<BTreeMap<String, OldClock>>;
 
@@ -120,7 +123,7 @@ pub(crate) fn parse_for_migrate(text: &str) -> Result<(State, OldClocks), Vec<Di
     }
     let old = serde_saphyr::from_str::<OldSave>(text)
         .ok()
-        .filter(|old| old.rules_rev + 1 == super::RULES_REV);
+        .filter(|old| old.rules_rev == CLOCK_RULES_REV);
     let Some(old) = old else {
         return parse(text).map(|state| (state, None));
     };
@@ -177,7 +180,14 @@ pub(crate) fn carry_clock(
         base: def.start,
         offset: clock.value - def.start,
     };
-    let meters = state.meters_mut(&holder).map_err(Diagnostic::from)?;
+    let Ok(meters) = state.meters_mut(&holder) else {
+        let problem = format!(
+            "clock '{id}' is owned by '{}', which is not an actor",
+            clock.owners[0]
+        );
+        let hint = "give the clock an owner the save has, then migrate again";
+        return Err(schema_error("state/save.yaml", &problem, hint).at_path(path));
+    };
     meters.insert(id.to_string(), live);
     Ok(())
 }

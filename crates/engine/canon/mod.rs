@@ -29,7 +29,7 @@ mod story;
 
 use budget::load_budget;
 pub(crate) use budget::Budget;
-use cast::{add_cast, CastMeter};
+use cast::add_cast;
 use checks::load_checks;
 use fact::Facts;
 use item::add_item;
@@ -223,7 +223,6 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
     let mut cast = BTreeMap::new();
     let mut facts = Facts::default();
     let mut items = BTreeMap::new();
-    let mut cast_meters = BTreeMap::new();
     let mut loaded = Vec::new();
     // 1. pack.yaml: missing, unreadable, tag, shape, empty id.
     let pack = diags.keep(read_text(root, "pack.yaml").and_then(|text| load_pack_yaml(&text)));
@@ -250,26 +249,24 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
     } else {
         Some(BTreeMap::new())
     };
-    // 3. One walk of cast/.
+    // 3. rules/meters.yaml, then one walk of cast/, which adds each cast file's own meters.
+    let rel = "rules/meters.yaml";
+    let mut meters =
+        diags.keep(read_text(root, rel).and_then(|text| load_meters(rel, &text, None)));
     for page in collect_markdown_files(root, "cast") {
         let Some(page) = diags.keep(page) else {
             continue;
         };
-        let rules = add_cast(page, &mut cast, &mut cast_meters, &mut diags);
+        let rules = add_cast(page, &mut cast, meters.as_mut(), &mut diags);
         loaded.extend(rules.unwrap_or_default());
     }
     // 4. rules/moves.yaml is refused.
     if root.join("rules/moves.yaml").is_file() {
         diags.push(rule_list::replaced_moves_file());
     }
-    // 5. The four rule files are read in this order; a missing one is reported here.
-    let [verbs, checks, meters, budget] = [
-        "rules/verbs.yaml",
-        "rules/checks.yaml",
-        "rules/meters.yaml",
-        "rules/budget.yaml",
-    ]
-    .map(|rel| diags.keep(read_text(root, rel)).map(|text| (rel, text)));
+    // 5. The other three rule files are read in this order; a missing one is reported here.
+    let [verbs, checks, budget] = ["rules/verbs.yaml", "rules/checks.yaml", "rules/budget.yaml"]
+        .map(|rel| diags.keep(read_text(root, rel)).map(|text| (rel, text)));
     // 6. Verbs.
     if let Some((rel, text)) = &verbs {
         loaded.extend(diags.keep(load_verbs(rel, text)).unwrap_or_default());
@@ -287,9 +284,6 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
     let rules = RuleTable::new(loaded);
     // 9. Checks. 10. Meters. 11. Budget.
     let checks = checks.and_then(|(rel, text)| diags.keep(load_checks(rel, &text)));
-    let meters = meters
-        .and_then(|(rel, text)| diags.keep(load_meters(rel, &text, None)))
-        .map(|global| add_cast_meters(global, cast_meters, &mut diags));
     let budget = budget.and_then(|(rel, text)| diags.keep(load_budget(rel, &text)));
     // 12. Lints across files.
     if let Some(checks) = &checks {
@@ -345,27 +339,6 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
         budget,
         checkpoint_every,
     })
-}
-
-/// The every-actor meters with each cast file's own meters added. A cast meter whose id
-/// `rules/meters.yaml` already gives every actor is refused.
-fn add_cast_meters(
-    mut meters: BTreeMap<String, MeterDef>,
-    cast_meters: BTreeMap<String, CastMeter>,
-    diags: &mut Diags,
-) -> BTreeMap<String, MeterDef> {
-    for (key, CastMeter { file, def }) in cast_meters {
-        if meters.contains_key(&key) {
-            let hint = "rename it, or drop it and use the one every actor carries";
-            let twice = ("meter", "is already in rules/meters.yaml", hint);
-            let path = format!("meters.{key}");
-            let source = FileText::named(&file);
-            diags.push(source.refuse_duplicate(&key, &path, Locator::Nowhere, twice));
-            continue;
-        }
-        meters.insert(key, def);
-    }
-    meters
 }
 
 /// Markdown with the body removed. Frontmatter stays. The trailing delimiter is kept.

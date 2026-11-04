@@ -13,17 +13,11 @@ use crate::model::meter::MeterDef;
 use crate::rules::effect::Holder;
 use crate::rules::rule::{Owner, Rule};
 
-/// A meter one cast file declares, and that file.
-pub(super) struct CastMeter {
-    pub file: String,
-    pub def: MeterDef,
-}
-
-/// One cast page into `cast`, its meters into `meters`, and its rules.
+/// One cast page into `cast`, its own meters into `meters` when those loaded, and its rules.
 pub(super) fn add_cast(
     page: Page,
     cast: &mut BTreeMap<String, CastDef>,
-    meters: &mut BTreeMap<String, CastMeter>,
+    mut meters: Option<&mut BTreeMap<String, MeterDef>>,
     diags: &mut Diags,
 ) -> Option<Vec<Rule>> {
     let file = diags.keep(load_cast(&page.file, &page.yaml, 1))?;
@@ -49,22 +43,23 @@ pub(super) fn add_cast(
     }
     let id = file.id.clone();
     let carrier = Some(Holder::Actor(id.clone()));
-    for (key, def) in diags
-        .keep(meter_defs(&whole, file.meters, carrier))
-        .unwrap_or_default()
-    {
-        let hint = "keep one meter with this id, or move it to rules/meters.yaml";
-        let twice = ("meter", "is already declared in another cast file", hint);
-        let path = format!("meters.{key}");
-        let taken = meters.contains_key(&key);
-        if let Some(diag) =
-            taken.then(|| whole.refuse_duplicate(&key, &path, Locator::Nowhere, twice))
-        {
-            diags.push(diag);
+    let own = diags.keep(meter_defs(&whole, file.meters, carrier));
+    for (key, def) in own.unwrap_or_default() {
+        let Some(meters) = meters.as_deref_mut() else {
             continue;
-        }
-        let file = page.file.clone();
-        meters.insert(key, CastMeter { file, def });
+        };
+        let Some(taken) = meters.get(&key) else {
+            meters.insert(key, def);
+            continue;
+        };
+        let after = match taken.carrier {
+            None => "is already in rules/meters.yaml",
+            Some(_) => "is already declared in another cast file",
+        };
+        let hint = "keep one meter with this id, or move it to rules/meters.yaml";
+        let path = format!("meters.{key}");
+        let twice = ("meter", after, hint);
+        diags.push(whole.refuse_duplicate(&key, &path, Locator::Nowhere, twice));
     }
     cast.insert(
         id.clone(),
