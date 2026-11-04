@@ -2,12 +2,12 @@ Feature: The game port speaks one message envelope
 
   Scenario: A word the table does not know is refused in a numbered reply
     Given a docks table
-    When a player connects over WebSocket
+    When a player connects to the game port
     Then the hello lists the version and the words travel, say, look, claim, release
     When it sends {"id":"c1","body":{"word":"fly"}}
     Then it gets {"seq":1,"reply_to":"c1","body":{"kind":"refused","code":"SCHEMA"}}
 
-  Scenario: A GM drives a session over WebSocket
+  Scenario: A GM drives a session on the game port
     Given a docks table with a seated player
     When a GM sits on the game port
     And the player waits

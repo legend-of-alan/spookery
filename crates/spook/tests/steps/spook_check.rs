@@ -180,7 +180,7 @@ fn the_json_array_is_one_diagnostic(world: &mut World, code: String, file: Strin
     );
 }
 
-#[when(expr = "the worked example row is appended to the moves file")]
+#[when(expr = "the worked example row is appended to the verbs file")]
 fn the_worked_example_row_is_appended(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
     let path = pack.join("rules/verbs.yaml");

@@ -94,5 +94,5 @@ Feature: Trigger delivery
     And the report says "not a fact"
     And the report says "reveals to the world"
 
-  Scenario: Replay
+  Scenario: Verify passes after rounds that fired change rules
     Then spook verify passes after rounds that fired triggers

@@ -579,8 +579,8 @@ fn the_gm_queues_miras_partial_notice(world: &mut World) {
     queue_mira(world, "notice_partial");
 }
 
-#[when(expr = "the moves file gains {string}")]
-fn the_moves_file_gains(world: &mut World, fault: String) {
+#[when(expr = "the verbs file gains {string}")]
+fn the_verbs_file_gains(world: &mut World, fault: String) {
     let row = match fault.as_str() {
         "partial_at without partial" => {
             "\n  - id: press\n    when:\n      verb: press\n    roll:\n      check: grit\n      target: 10\n      partial_at: 7\n    do:\n      - flag:\n          who: self\n          key: touched\n          value: true\n"

@@ -10,16 +10,16 @@ Feature: Triggers
     When an attack removes 4 hp
     Then briar has flag downed in the same round
 
-  Scenario: Edge, not level
+  Scenario: A change rule does not fire again while its watch stays true
     Given briar is already downed
     When another round passes
     Then the rule does not fire again
 
-  Scenario: Plot beat
+  Scenario: An arrival with a flag grants a fact and starts a clock
     Given nell has flag found_key and arrives at mira_rooms
     Then nell knows fact_ledger and clock tide is running
 
-  Scenario: Loops stop
+  Scenario: Two rules that set each other's flags stop at depth 4
     Given two rules that set each other's watched flag
     Then spook check warns of a cycle, and a round stops at depth 4 and logs trigger_depth
 

@@ -39,8 +39,8 @@ mod expressions;
 #[path = "steps/spook_check.rs"]
 mod spook_check;
 
-#[path = "steps/missing_item.rs"]
-mod missing_item;
+#[path = "steps/rule_names.rs"]
+mod rule_names;
 
 #[path = "steps/travel.rs"]
 mod travel;

@@ -378,7 +378,7 @@ fn the_drop_was_missing(world: &mut World) {
     );
 }
 
-#[given(expr = "now.yaml lists an item with no definition")]
+#[given(expr = "save.yaml lists an item with no definition")]
 fn the_save_lists_an_unknown_item(world: &mut World) {
     let pack = support::copy_pack("oneshot-docks", "unknown-item");
     support::edit_save(&pack, |now| {

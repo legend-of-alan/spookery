@@ -132,7 +132,7 @@ fn the_gm_seat_says(world: &mut World) {
     };
 }
 
-#[then(expr = "the player saw a say from the host")]
+#[then(expr = "the player saw a say from the GM")]
 fn the_player_saw_a_say(world: &mut World) {
     assert!(
         world.player_added.contains("{\"kind\":\"say\""),

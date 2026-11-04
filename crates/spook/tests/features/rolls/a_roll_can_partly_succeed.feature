@@ -66,7 +66,7 @@ Feature: A roll can partly succeed
 
   Scenario Outline: A partial band that does not fit is refused
     Given a docks table
-    When the moves file gains "<fault>"
+    When the verbs file gains "<fault>"
     And the operator runs spook check
     Then the check exits 1
     And the report names "rules/verbs.yaml"

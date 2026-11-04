@@ -103,4 +103,4 @@ Feature: Coding agents reach the GM seat
   Scenario: An HTTP agent delivers a say to a seated player
     Given a docks table with a seated player and an open MCP endpoint
     When a coding agent says good evening over HTTP
-    Then the player saw a say from the host
+    Then the player saw a say from the GM
