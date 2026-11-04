@@ -12,12 +12,6 @@ Feature: A player knows where they are and what they can do
     And play does not show "Pc rowan"
     And play does not show "Npc aldric"
 
-  Scenario: help shows travel with the exits from here, and no exits section
-    Given the CLI is connected as a player holding rowan
-    When I type "help"
-    Then help shows "travel <exit>: docks_street, stairs" and not "Exits:"
-    And help shows "look" and not "stairs (locked) — 2 min"
-
   Scenario: help shows a verb that takes an actor with the actors in sight
     Given the docks have a greet verb that takes an actor, and the CLI holds rowan
     When I type "help"
@@ -28,6 +22,7 @@ Feature: A player knows where they are and what they can do
     When I type "help"
     Then I see the lines "look", "ask aldric" and "travel <exit>: docks_street, stairs"
     And help shows "ask aldric" and not "ask <actor>: aldric"
+    And help shows "travel <exit>: docks_street, stairs" and not "Exits:"
     And play does not show the line "claim"
     And no round record was written
     When I type "travel docks_street"

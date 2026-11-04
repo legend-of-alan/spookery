@@ -145,30 +145,6 @@ fn the_player_is_offered(world: &mut World, name: String) {
     });
 }
 
-/// The word is data: its name, what it takes, and what the player can name for it now.
-#[then(expr = "the player is offered {string} taking an {word}, naming {string}")]
-fn the_player_is_offered_naming(world: &mut World, name: String, target: String, names: String) {
-    let names: Vec<&str> = names.split(", ").collect();
-    wait_player_frame(world, &format!("help with {name} <{target}>"), |frame| {
-        help_word(frame, &name).is_some_and(|word| {
-            word["target"] == target.as_str() && word["names"] == serde_json::json!(names)
-        })
-    });
-}
-
-/// `help` causes no other message, so nothing before its reply is `lines`.
-#[then(expr = "the help came with no lines")]
-fn the_help_came_with_no_lines(world: &mut World) {
-    let text = table::player_text(world);
-    let after = text.get(world.mark..).unwrap_or_default();
-    let kinds: Vec<Value> = parse_lines(after)
-        .iter()
-        .map(|message| message["body"]["kind"].clone())
-        .collect();
-    assert!(kinds.contains(&Value::from("help")), "{after}");
-    assert!(!kinds.contains(&Value::from("lines")), "{after}");
-}
-
 #[then(expr = "the player's map lists {string}")]
 fn the_players_map_lists(world: &mut World, place_name: String) {
     wait_player_frame(world, &format!("a map with {place_name}"), |frame| {

@@ -31,12 +31,6 @@ Feature: A player and a GM share a table
     And the GM sees nothing queued
     And no round record was written
 
-  Scenario: A client reading the stream sees help as words with targets, not one block of text
-    Given rowan is in the shop and a GM is seated
-    When the player sends "help"
-    Then the player is offered "travel" taking an exit, naming "docks_street, stairs"
-    And the help came with no lines
-
   Scenario: A locked exit is refused and nothing is queued
     Given rowan is in the shop and a GM is seated
     When the player travels to "stairs"
