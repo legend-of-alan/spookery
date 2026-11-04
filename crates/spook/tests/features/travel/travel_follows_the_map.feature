@@ -58,6 +58,7 @@ Feature: Travel follows the map
   Scenario: Replay
     Then spook verify passes over a fast-forwarded journey
 
-  Scenario: A player map lists the places play was shown
-    When play travels via stairs holding brass_key
+  Scenario: A player map lists the places rowan visited, across sittings
+    Given rowan visited the shop and mira_rooms in an earlier sitting
+    When play joins the table again
     Then play's map lists the shop and mira_rooms and not the trapdoor

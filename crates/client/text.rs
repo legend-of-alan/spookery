@@ -1,8 +1,8 @@
 //! Readable text for player and GM messages, and the status and commit replies.
 
 use crate::protocol::{
-    self, exit_phrase, ClockView, CommitBody, ExitView, MeterView, NoteView, Outcome, Roll, Say,
-    ServerBody, Speaker, TableStatus,
+    self, exit_section, ClockView, CommitBody, MeterView, NoteView, Outcome, Roll, Say, ServerBody,
+    Speaker, TableStatus,
 };
 
 /// Readable text for one player body. Empty means print nothing.
@@ -53,12 +53,10 @@ fn render_scrollback(says: &[Say]) -> String {
     )
 }
 
-/// Readable text for the messages of one sitting, and its map.
+/// Readable text for the messages of one sitting.
 pub struct PlayerText {
     seen_resume: bool,
     after_scrollback: bool,
-    /// The last view of each place this sitting was shown, first shown first.
-    places: Vec<protocol::View>,
 }
 
 impl PlayerText {
@@ -66,7 +64,6 @@ impl PlayerText {
         Self {
             seen_resume: false,
             after_scrollback: false,
-            places: Vec::new(),
         }
     }
 
@@ -85,33 +82,8 @@ impl PlayerText {
                 self.seen_resume = true;
                 self.after_scrollback(render_resume(notes, clocks))
             }
-            ServerBody::View(view) => {
-                match self
-                    .places
-                    .iter_mut()
-                    .find(|known| known.place == view.place)
-                {
-                    Some(known) => known.clone_from(view),
-                    None => self.places.push((**view).clone()),
-                }
-                self.after_scrollback(render(body))
-            }
             _ => self.after_scrollback(render(body)),
         }
-    }
-
-    /// `map`: each place this sitting was shown, first shown first, with the exits its last
-    /// view listed.
-    pub fn render_map(&self) -> String {
-        let mut lines = Vec::new();
-        for view in &self.places {
-            lines.push(place_title(view).to_string());
-            for exit in &view.exits {
-                let phrase = exit_phrase(&exit.name, exit.minutes, exit.locked);
-                lines.push(format!("  {phrase}"));
-            }
-        }
-        lines.join("\n")
     }
 
     /// Live text, after a blank line when it is the first after the scrollback.
@@ -143,22 +115,6 @@ fn render_resume(notes: &[NoteView], clocks: &[ClockView]) -> String {
     } else {
         format!("While you were away:\n{}", lines.join("\n"))
     }
-}
-
-/// `help`: each word a player types, one per line, then the exits and busy line of `here`.
-/// Play sends `claim` itself, and adds its own `help` and `map`.
-pub fn render_help(words: &[String], here: &protocol::View) -> String {
-    let mut typed: Vec<&str> = words
-        .iter()
-        .map(String::as_str)
-        .filter(|word| *word != "claim")
-        .collect();
-    typed.extend(["help", "map"]);
-    let mut lines = vec![typed.join("\n"), exit_section(&here.exits)];
-    if !here.status.is_empty() {
-        lines.push(here.status.clone());
-    }
-    lines.join("\n")
 }
 
 /// The place name a view shows, or its id when it has none.
@@ -252,18 +208,6 @@ pub fn render_view(view: &protocol::View) -> String {
     }
     sections.push(exit_section(exits));
     sections.join("\n\n")
-}
-
-fn exit_section(exits: &[ExitView]) -> String {
-    if exits.is_empty() {
-        return "Exits:\nnone".to_string();
-    }
-    let lines = exits
-        .iter()
-        .map(|exit| exit_phrase(&exit.name, exit.minutes, exit.locked))
-        .collect::<Vec<_>>()
-        .join("\n");
-    format!("Exits:\n{lines}")
 }
 
 fn push_lines<'a>(sections: &mut Vec<String>, title: &str, lines: impl Iterator<Item = &'a str>) {
@@ -838,53 +782,6 @@ none"
         assert_eq!(
             render_status(&status(Vec::new(), Vec::new())),
             "Seated: nobody\nQueue: empty"
-        );
-    }
-
-    fn place_view(place: &str, place_name: &str, exits: &[(&str, u64)]) -> protocol::View {
-        let mut view: protocol::View = serde_json::from_value(serde_json::json!({
-            "viewer": "pc_rowan", "place": place, "place_name": place_name,
-            "visible_actors": [], "known_facts": [], "notes": [], "unknown_mentions": [],
-            "clocks": [], "items": [], "habits": []
-        }))
-        .unwrap();
-        view.exits = exits
-            .iter()
-            .map(|(name, minutes)| ExitView {
-                name: name.to_string(),
-                to: name.to_string(),
-                place_name: String::new(),
-                minutes: *minutes,
-                locked: false,
-            })
-            .collect();
-        view
-    }
-
-    #[test]
-    fn help_lists_the_words_to_type_then_the_exits() {
-        let words: Vec<String> = ["claim", "release", "say", "look", "wait"]
-            .map(String::from)
-            .to_vec();
-        let mut here = place_view("docks_shop", "Docks Shop", &[("stairs", 2)]);
-        here.status = "on the stairs until 21:40".to_string();
-        assert_eq!(
-            render_help(&words, &here),
-            "release\nsay\nlook\nwait\nhelp\nmap\nExits:\nstairs — 2 min\non the stairs until 21:40"
-        );
-    }
-
-    #[test]
-    fn the_map_keeps_each_place_a_view_showed() {
-        let mut player_text = PlayerText::new();
-        let shop = place_view("docks_shop", "Docks Shop", &[("stairs", 2)]);
-        let rooms = place_view("mira_rooms", "", &[("docks_shop", 2)]);
-        for view in [&shop, &rooms, &shop] {
-            player_text.render(&ServerBody::View(Box::new(view.clone())));
-        }
-        assert_eq!(
-            player_text.render_map(),
-            "Docks Shop\n  stairs — 2 min\nmira_rooms\n  docks_shop — 2 min"
         );
     }
 

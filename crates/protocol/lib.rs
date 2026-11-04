@@ -41,7 +41,7 @@ pub use message::{
     ServerMessage, Word, VERSION, WORDS,
 };
 pub use player::{
-    exit_phrase, ClockView, ExitView, ItemStack, KnownFact, MeterView, NoteView, View,
+    exit_phrase, exit_section, ClockView, ExitView, ItemStack, KnownFact, MeterView, NoteView, View,
 };
 
 /// The listening line `spook run` prints on stdout once both ports are bound: the game port

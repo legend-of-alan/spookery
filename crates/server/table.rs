@@ -261,7 +261,18 @@ impl Table {
                     Err(code) => ServerBody::Refused(code.into()),
                 }
             }
-            "release" | "look" => ServerBody::Refused(Reason::Schema.into()),
+            // Text ready to print, read from the world as it is now.
+            "help" | "map" if read::<NoArgs>(&args).is_some() => {
+                let text = match word.as_str() {
+                    "help" => self.world.help(&presence, &actor_id),
+                    _ => self.world.map(&presence, &actor_id),
+                };
+                match text {
+                    Ok(text) => ServerBody::Lines { text },
+                    Err(code) => ServerBody::Refused(code.into()),
+                }
+            }
+            "release" | "look" | "help" | "map" => ServerBody::Refused(Reason::Schema.into()),
             _ => match read::<MoveArgs>(&args) {
                 Some(args) => return self.play_move(conn, id, &actor_id, &word, args.target),
                 None => ServerBody::Refused(Reason::Schema.into()),

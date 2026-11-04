@@ -12,12 +12,23 @@ Feature: A player knows where they are and what they can do
     And play does not show "Pc rowan"
     And play does not show "Npc aldric"
 
-  Scenario: help lists the words from the hello and the exits from the view
-    Given the CLI is connected as a player holding rowan
+  Scenario: help shows a cast verb only while that cast member is here
+    Given Aldric has an ask verb and the CLI holds rowan in the shop
     When I type "help"
-    Then I see the lines "wait", "travel" and "stairs (locked) — 2 min"
+    Then I see the lines "look", "ask aldric" and "stairs (locked) — 2 min"
     And play does not show the line "claim"
-    And world_time is 1080
+    And no round record was written
+    When I type "travel docks_street"
+    And I type "help"
+    Then help shows "travel" and not "ask aldric"
+
+  Scenario: help hides a verb whose if fails
+    Given the shop has a pray verb if rowan holds lamp_oil, and the CLI holds rowan
+    When I type "help"
+    Then help shows "wait" and not "pray"
+    When I type "take lamp_oil"
+    And I type "help"
+    Then help shows "pray" and not "claim"
 
   Scenario: look reprints the place from the view
     Given the CLI is connected as a player holding rowan
