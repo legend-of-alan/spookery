@@ -15,7 +15,7 @@ Feature: A player knows where they are and what they can do
   Scenario: help shows a verb that takes an actor with the actors in sight
     Given the docks have a greet verb that takes an actor, and the CLI holds rowan
     When I type "help"
-    Then help shows "greet <actor>: aldric, pc_rowan" and not "greet"
+    Then help shows "greet <actor>: aldric" and not "greet"
 
   Scenario: help shows a cast verb only while that cast member is here
     Given Aldric has an ask verb and the CLI holds rowan in the shop
