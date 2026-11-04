@@ -203,8 +203,8 @@ pub(crate) fn nameable(
     };
     if let Ok(view) = perceive_as(canon, state, presence, viewer) {
         names.push(view.place);
-        let others = view.visible_actors.into_iter();
-        names.extend(others.filter(|id| id != viewer.actor_id()));
+        let me = viewer.actor_id();
+        names.extend(view.visible_actors.into_iter().filter(|id| id != me));
         names.extend(view.items.into_iter().map(|item| item.id));
         names.extend(view.exits.into_iter().map(|exit| exit.name));
     }
