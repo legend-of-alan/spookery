@@ -6,6 +6,7 @@ use std::fmt;
 use serde::de::{self, Deserializer, MapAccess, SeqAccess, Visitor};
 use serde::Deserialize;
 use serde_saphyr::Spanned;
+use spookery_protocol::{Seat, WORDS};
 
 use crate::canon::source::{
     load_tagged, spot_of, Diags, Fault, FileText, Locator, Problem, VERBS_SCHEMA,
@@ -581,8 +582,16 @@ fn when_of(yaml: &WhenYaml) -> Result<When, String> {
         WhenYaml::Word(word) => Err(format!("when '{word}' is not habit")),
         WhenYaml::Map(map) => match (&map.verb, &map.change) {
             (Some(verb), None) => {
-                if verb.is_empty() || verb == "say" {
-                    return Err("verb is empty or is say".to_string());
+                if verb.is_empty() {
+                    return Err("verb is empty".to_string());
+                }
+                if WORDS
+                    .iter()
+                    .any(|word| word.seat == Seat::Player && word.name == verb)
+                {
+                    return Err(format!(
+                        "verb '{verb}' is a built-in word; give the rule another verb name"
+                    ));
                 }
                 let target = match map.target.as_deref() {
                     None | Some("none") => TargetKind::None,

@@ -141,6 +141,20 @@ fn break_pack(pack: &Path, fault: &str) {
             "      target: item\n",
             "      target: item_here\n",
         ),
+        "a verb named look" => replace_in_file(
+            &pack.join("rules/verbs.yaml"),
+            "      verb: wait
+",
+            "      verb: look
+",
+        ),
+        "a verb named say" => replace_in_file(
+            &pack.join("rules/verbs.yaml"),
+            "      verb: wait
+",
+            "      verb: say
+",
+        ),
         "flags under idle" => replace_in_file(
             &pack.join("cast/pc-rowan.md"),
             "  eligible: false\n",
