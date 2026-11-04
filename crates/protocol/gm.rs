@@ -133,7 +133,6 @@ pub struct IntentArgs {
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct TableStatus {
     pub presence: StatusPresence,
-    pub pause: StatusPause,
     pub world_time: u64,
     pub round_index: u64,
     pub state_rev: u64,
@@ -151,13 +150,6 @@ pub struct TableStatus {
 pub struct StatusPresence {
     pub players: u32,
     pub actors_present: Vec<String>,
-}
-
-/// Part of `TableStatus`, sent from the table to a GM client.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
-pub struct StatusPause {
-    pub presence_clocks: String,
 }
 
 /// A queued move in `TableStatus`, sent from the table to a GM client.
@@ -244,7 +236,7 @@ mod tests {
             assert_eq!(back, v);
         }
         assert_reencodes::<TableStatus>(
-            r#"{"presence":{"players":1,"actors_present":["pc_rowan"],"x":1},"pause":{"presence_clocks":"running","x":1},"world_time":10,"round_index":1,"state_rev":2,"pack_rev":"p","last_round_at":"t","queued":[{"id":"q1","actor_id":"pc_rowan","move":"wait","x":1}],"pack":{"menu":[],"kinds":{},"places":{},"cast":{},"x":1},"x":1}"#,
+            r#"{"presence":{"players":1,"actors_present":["pc_rowan"],"x":1},"world_time":10,"round_index":1,"state_rev":2,"pack_rev":"p","last_round_at":"t","queued":[{"id":"q1","actor_id":"pc_rowan","move":"wait","x":1}],"pack":{"menu":[],"kinds":{},"places":{},"cast":{},"x":1},"x":1}"#,
         );
         assert_reencodes::<CommitBody>(
             r#"{"state_rev":3,"changed_keys":["d"],"journal_path":null,"rolls":[{"faces":[3,4],"stat":1,"total":8,"target":7,"outcome":"partial","x":1}],"x":1}"#,

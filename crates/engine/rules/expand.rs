@@ -6,7 +6,7 @@ use crate::model::meter::MeterWrite;
 use crate::model::State;
 use crate::round::dice::Roller;
 use crate::rules::context::Context;
-use crate::rules::effect::{Effect, EffectKind};
+use crate::rules::effect::{Effect, EffectKind, Holder};
 use crate::rules::expr::{self, Dice, Expr};
 use crate::rules::roll::Outcome;
 use crate::rules::roll::{MoveReport, Roll};
@@ -140,16 +140,11 @@ fn expand_template(
         EffectTemplate::Flag {
             who, key, value, ..
         } => {
-            let actor_id = if matches!(who, Who::World) {
-                crate::rules::effect::WORLD.to_string()
-            } else {
-                expr::resolve_who_id(context, who)?
-            };
             effects.push(Effect::new(
                 viewer,
                 &intent.id,
                 EffectKind::Flag {
-                    actor_id,
+                    holder: expr::resolve_holder(context, who)?,
                     key: key.clone(),
                     value: *value,
                 },
@@ -173,13 +168,13 @@ fn expand_template(
         EffectTemplate::Meter {
             who, key, add, set, ..
         } => {
-            let actor_id = expr::resolve_who_id(context, who)?;
-            let write = meter_offset(context, &actor_id, key, add.as_ref(), set.as_ref(), dice)?;
+            let holder = expr::resolve_holder(context, who)?;
+            let write = meter_offset(context, &holder, key, add.as_ref(), set.as_ref(), dice)?;
             effects.push(Effect::new(
                 viewer,
                 &intent.id,
                 EffectKind::Meter {
-                    actor_id,
+                    holder,
                     key: key.clone(),
                     write,
                 },
@@ -189,7 +184,11 @@ fn expand_template(
             who, id, add, max, ..
         } => {
             let item_id = expr::resolve_item_id(context, id)?;
-            let (actor_id, place) = holder_of(context, who)?;
+            let (actor_id, place) = match expr::resolve_holder(context, who)? {
+                Holder::Actor(id) => (Some(id), None),
+                Holder::Place(id) => (None, Some(id)),
+                Holder::World => return Err(Reason::Schema),
+            };
             effects.push(Effect::new(
                 viewer,
                 &intent.id,
@@ -219,17 +218,6 @@ fn expand_template(
                 viewer,
                 &intent.id,
                 EffectKind::Unwield { actor_id },
-            ));
-        }
-        EffectTemplate::Clock { id, add, unpause } => {
-            effects.push(Effect::new(
-                viewer,
-                &intent.id,
-                EffectKind::Clock {
-                    clock_id: id.clone(),
-                    delta: add.unwrap_or(0),
-                    unpause: *unpause,
-                },
             ));
         }
         EffectTemplate::Note {
@@ -287,9 +275,6 @@ fn expand_template(
             ));
         }
         EffectTemplate::Reveal { who, fact } => {
-            if matches!(who, Who::World) {
-                return Err(Reason::Schema);
-            }
             let actor_id = expr::resolve_who_id(context, who)?;
             effects.push(Effect::new(
                 viewer,
@@ -306,7 +291,7 @@ fn expand_template(
 
 fn meter_offset(
     context: &Context,
-    actor_id: &str,
+    holder: &Holder,
     key: &str,
     add: Option<&Expr>,
     set: Option<&Expr>,
@@ -318,20 +303,10 @@ fn meter_offset(
         )?));
     }
     let desired = expr::eval_with_dice(context, set.ok_or(Reason::Schema)?, dice)?;
-    let current = context.state.meter_value(context.canon, actor_id, key)?;
+    let current = context.state.meter_value(context.canon, holder, key)?;
     Ok(MeterWrite::Offset(
         desired.checked_sub(current).ok_or(Reason::OutOfRange)?,
     ))
-}
-
-/// An item holder. `place:` and `here` are the place. Anyone else is an actor.
-fn holder_of(context: &Context, who: &Who) -> Result<(Option<String>, Option<String>), Reason> {
-    match who {
-        Who::Place(id) => Ok((None, Some(id.clone()))),
-        Who::Here => Ok((None, Some(expr::resolve_who_id(context, &Who::Here)?))),
-        Who::World => Err(Reason::Schema),
-        other => Ok((Some(expr::resolve_who_id(context, other)?), None)),
-    }
 }
 
 fn location_effect(context: &Context, to: &str) -> Result<Effect, Reason> {

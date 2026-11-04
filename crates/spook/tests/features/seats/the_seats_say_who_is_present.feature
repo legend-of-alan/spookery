@@ -7,13 +7,6 @@ Feature: The host's seats say who is present
     When "pc_rowan" leaves and a round commits
     Then the habit fires
 
-  Scenario: A requires_presence clock pauses on an empty table
-    Given a docks table with "pc_rowan" seated
-    When a round commits
-    Then the requires_presence clock is running
-    When "pc_rowan" leaves and a round commits
-    Then the requires_presence clock is paused
-
   Scenario: Say routing reaches only seated players
     Given a docks table with "pc_rowan" seated and "pc_wren" not seated
     When the GM says a line to the table

@@ -5,7 +5,7 @@ use crate::draft::Draft;
 use crate::model::{ActCounter, MINUTES_PER_DAY, MINUTES_PER_HOUR};
 use crate::Reason;
 
-/// Where the round's clock stands: its index and the world minutes it spans.
+/// Where the round stands: its index and the world minutes it spans.
 pub(crate) struct RoundTime {
     pub round_index: u64,
     pub world_time_before: u64,
@@ -26,7 +26,6 @@ pub(crate) fn run(draft: &mut Draft, wall: &str) -> Result<RoundTime, Reason> {
     if hour_changed {
         draft.reset_acts(ActCounter::LiveActsThisHour)?;
     }
-    draft.apply_pause_policy()?;
     Ok(RoundTime {
         round_index,
         world_time_before: world_before,

@@ -6,12 +6,13 @@ use crate::canon::Canon;
 use crate::intent::Viewer;
 use crate::model::meter;
 use crate::model::{Note, Presence, State};
+use crate::rules::effect::Holder;
 use crate::rules::habits::list_whose_if_holds;
 use crate::rules::visibility::can_see_fact;
 use crate::world::World;
 use crate::Reason;
-pub use spookery_protocol::{ClockView, ItemStack, KnownFact, MeterView};
 use spookery_protocol::{ExitView, PERCEIVE_BODY_CHARS};
+pub use spookery_protocol::{ItemStack, KnownFact, MeterView};
 
 /// What one viewer is shown. Returned from the engine to the host table, which renders it as
 /// a player or GM view.
@@ -26,13 +27,15 @@ pub struct View {
     pub known_facts: Vec<KnownFact>,
     pub notes: Vec<Note>,
     pub unknown_mentions: Vec<String>,
-    pub clocks: Vec<ClockView>,
     pub items: Vec<ItemStack>,
     /// The viewer's own meters. A hidden meter is not here.
     pub meters: Vec<MeterView>,
+    /// The world's meters. A hidden one is not here.
+    pub world_meters: Vec<MeterView>,
     pub habits: Vec<String>,
     pub exits: Vec<ExitView>,
-    pub status: String,
+    /// Why the viewer can't act now, or empty when they can.
+    pub cant_act: String,
 }
 
 pub(crate) fn perceive_budget<L>(
@@ -146,19 +149,6 @@ fn perceive_viewer_budget(
     }
     notes.sort_by(|a, b| a.id.cmp(&b.id));
 
-    let mut clocks: Vec<ClockView> = state
-        .clocks
-        .iter()
-        .filter(|(_, clock)| clock.owners.iter().any(|id| id == viewer.actor_id()))
-        .map(|(id, clock)| ClockView {
-            id: id.clone(),
-            value: clock.value,
-            max: clock.max,
-            paused: clock.paused,
-        })
-        .collect();
-    clocks.sort_by(|a, b| a.id.cmp(&b.id));
-
     let items = state
         .places
         .get(&place)
@@ -174,19 +164,8 @@ fn perceive_viewer_budget(
         })
         .unwrap_or_default();
 
-    let meters = actor
-        .meters
-        .iter()
-        .filter_map(|(id, live)| {
-            let def = canon.meters.get(id).filter(|def| !def.hidden)?;
-            let value = meter::current(def, live).ok()?;
-            Some(MeterView {
-                id: id.clone(),
-                value,
-                max: def.max,
-            })
-        })
-        .collect();
+    let meters = shown_meters(canon, state, &Holder::Actor(viewer.actor_id().to_string()));
+    let world_meters = shown_meters(canon, state, &Holder::World);
 
     let habits = match viewer {
         Viewer::Player(_) => Vec::new(),
@@ -199,7 +178,7 @@ fn perceive_viewer_budget(
         .collect();
     let place_name = crate::rules::lines::place_name(canon, &place);
     let prose = crate::rules::lines::place_prose(canon, state, viewer.actor_id());
-    let status = crate::rules::lines::busy_line(state, viewer.actor_id()).unwrap_or_default();
+    let cant_act = crate::rules::lines::busy_line(state, viewer.actor_id()).unwrap_or_default();
 
     Ok(View {
         viewer: viewer.clone(),
@@ -211,13 +190,32 @@ fn perceive_viewer_budget(
         known_facts,
         notes,
         unknown_mentions,
-        clocks,
         items,
         meters,
+        world_meters,
         habits,
         exits,
-        status,
+        cant_act,
     })
+}
+
+/// The meters `holder` carries that are not hidden, in id order.
+fn shown_meters(canon: &Canon, state: &State, holder: &Holder) -> Vec<MeterView> {
+    let Some(meters) = state.meters_of(holder) else {
+        return Vec::new();
+    };
+    meters
+        .iter()
+        .filter_map(|(id, live)| {
+            let def = canon.meter_def(holder, id).filter(|def| !def.hidden)?;
+            let value = meter::current(def, live).ok()?;
+            Some(MeterView {
+                id: id.clone(),
+                value,
+                max: def.max,
+            })
+        })
+        .collect()
 }
 
 fn cap_bodies(

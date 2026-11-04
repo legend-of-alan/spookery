@@ -5,10 +5,11 @@ use std::marker::PhantomData;
 use std::rc::Rc;
 use std::sync::Arc;
 
+use crate::canon::Budget;
 use crate::canon::Canon;
-use crate::canon::{Budget, PausePolicy};
 use crate::model::key::{Change, StateKey, StateValue};
-use crate::model::{ActCounter, MemoryLine, Presence, RunState, State};
+use crate::model::{ActCounter, MemoryLine, Presence, State};
+use crate::rules::effect::Holder;
 use crate::world::World;
 use crate::Reason;
 
@@ -63,38 +64,6 @@ impl<'p> Draft<'p> {
         self.state.round_index = round_index;
         self.state.world_time = world_time;
         self.state.last_round_at = last_round_at.to_string();
-    }
-
-    pub(crate) fn apply_pause_policy(&mut self) -> Result<(), Reason> {
-        let players = self.presence.players;
-        let policies = self.canon.budget.pause;
-        let clock_ids: Vec<String> = self.state.clocks.keys().cloned().collect();
-        for clock_id in clock_ids {
-            let Some(clock) = self.state.clocks.get(&clock_id) else {
-                continue;
-            };
-            if !clock.requires_presence {
-                continue;
-            }
-            let paused = players == 0 && policies.presence_clocks == PausePolicy::WhenEmpty;
-            if players > 0 {
-                self.set_clock_paused(&clock_id, false)?;
-            } else if paused {
-                self.set_clock_paused(&clock_id, true)?;
-            }
-        }
-        self.state.pause.presence_clocks = match policies.presence_clocks {
-            PausePolicy::WhenEmpty if players == 0 => RunState::Paused,
-            PausePolicy::WhenEmpty | PausePolicy::AlwaysRun => RunState::Running,
-        };
-        Ok(())
-    }
-
-    fn set_clock_paused(&mut self, clock_id: &str, paused: bool) -> Result<(), Reason> {
-        self.mutate(StateKey::ClockPaused(clock_id.to_string()), |state| {
-            let clock = state.clocks.get_mut(clock_id).ok_or(Reason::UnknownId)?;
-            Ok(std::mem::replace(&mut clock.paused, paused) != paused)
-        })
     }
 
     /// Set `counter` back to 0 on every actor.
@@ -247,7 +216,7 @@ impl<'p> Draft<'p> {
                 .get(id)
                 .map(|actor| StateValue::Bool(actor.flags.iter().any(|item| item == flag)))
                 .unwrap_or(StateValue::Empty),
-            StateKey::ActorMeter(id, meter) => self.meter_value(id, meter),
+            StateKey::ActorMeter(id, meter) => self.meter_value(&Holder::Actor(id.clone()), meter),
             StateKey::ActorBusy(id) => self
                 .state
                 .actors
@@ -295,18 +264,6 @@ impl<'p> Draft<'p> {
                     None => StateValue::Empty,
                 })
                 .unwrap_or(StateValue::Empty),
-            StateKey::ClockValue(id) => self
-                .state
-                .clocks
-                .get(id)
-                .map(|clock| StateValue::Number(clock.value))
-                .unwrap_or(StateValue::Empty),
-            StateKey::ClockPaused(id) => self
-                .state
-                .clocks
-                .get(id)
-                .map(|clock| StateValue::Bool(clock.paused))
-                .unwrap_or(StateValue::Empty),
             StateKey::Note(id) => {
                 if self.state.notes.iter().any(|note| &note.id == id) {
                     StateValue::Bool(true)
@@ -317,11 +274,12 @@ impl<'p> Draft<'p> {
             StateKey::WorldFlag(key) => {
                 StateValue::Bool(self.state.flags.iter().any(|flag| flag == key))
             }
+            StateKey::WorldMeter(key) => self.meter_value(&Holder::World, key),
         }
     }
 
-    fn meter_value(&self, actor_id: &str, key: &str) -> StateValue {
-        match self.state.meter_value(&self.canon, actor_id, key) {
+    fn meter_value(&self, holder: &Holder, key: &str) -> StateValue {
+        match self.state.meter_value(&self.canon, holder, key) {
             Ok(current) => StateValue::Number(current),
             Err(_) => StateValue::Empty,
         }
@@ -409,7 +367,7 @@ mod tests {
         let intent = Intent::habit(world.state(), "mira", "leave_door_note");
         let mut write = |actor: &str, key: &str, delta: i64| {
             let kind = EffectKind::Meter {
-                actor_id: actor.to_string(),
+                holder: Holder::Actor(actor.to_string()),
                 key: key.to_string(),
                 write: MeterWrite::Offset(delta),
             };

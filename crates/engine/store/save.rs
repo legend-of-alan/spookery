@@ -1,5 +1,7 @@
 //! Read, write and migrate the save.
 
+use std::collections::BTreeMap;
+
 use serde::Deserialize;
 use serde_saphyr::SerializerOptions;
 
@@ -7,6 +9,7 @@ use crate::canon::Canon;
 use crate::diagnostic::{check_tag, error, locate_nth, parse_file, schema_error, Diagnostic};
 use crate::model::meter::MeterLive;
 use crate::model::{sort_unique, State};
+use crate::rules::effect::Holder;
 use crate::store::records::AddedMeter;
 use crate::Reason;
 
@@ -94,9 +97,100 @@ pub fn normalize(state: &mut State) {
         sort_unique(&mut actor.known_facts);
     }
     sort_unique(&mut state.flags);
-    for clock in state.clocks.values_mut() {
-        sort_unique(&mut clock.owners);
+}
+
+/// A clock as a save from before meters held it: its value and who owned it.
+#[derive(Deserialize)]
+pub(crate) struct OldClock {
+    value: i64,
+    owners: Vec<String>,
+}
+
+/// The last rules version whose saves held clocks.
+const CLOCK_RULES_REV: u64 = 11;
+
+/// The clocks of a save from before meters, by id. `None` for a save in the current shape.
+pub(crate) type OldClocks = Option<BTreeMap<String, OldClock>>;
+
+/// Parse a save to migrate. A save from the rules before meters replaced clocks is read too:
+/// its `pause` is dropped and its clocks come back beside the state, for `carry_clock`.
+pub(crate) fn parse_for_migrate(text: &str) -> Result<(State, OldClocks), Vec<Diagnostic>> {
+    const FILE: &str = "state/save.yaml";
+    #[derive(Deserialize)]
+    struct OldSave {
+        rules_rev: u64,
+        clocks: BTreeMap<String, OldClock>,
     }
+    let old = serde_saphyr::from_str::<OldSave>(text)
+        .ok()
+        .filter(|old| old.rules_rev == CLOCK_RULES_REV);
+    let Some(old) = old else {
+        return parse(text).map(|state| (state, None));
+    };
+    let unreadable = || {
+        vec![schema_error(
+            FILE,
+            "the save does not read",
+            "start a fresh save",
+        )]
+    };
+    let mut fields: serde_json::Map<String, serde_json::Value> =
+        serde_saphyr::from_str(text).map_err(|_| unreadable())?;
+    fields.remove("clocks");
+    fields.remove("pause");
+    fields.insert("rules_rev".into(), super::RULES_REV.into());
+    let state: State = serde_json::from_value(fields.into()).map_err(|_| unreadable())?;
+    let diags = check_actor_places(&state);
+    if !diags.is_empty() {
+        return Err(diags);
+    }
+    Ok((state, Some(old.clocks)))
+}
+
+/// Move clock `id`'s value onto the meter that replaced it: the world's when no one owned the
+/// clock, else its one owner's. A clock with more owners has no one meter to go to.
+pub(crate) fn carry_clock(
+    canon: &Canon,
+    state: &mut State,
+    id: &str,
+    clock: OldClock,
+) -> Result<(), Diagnostic> {
+    let path = format!("clocks.{id}");
+    let (holder, file) = match clock.owners.as_slice() {
+        [] => (Holder::World, "world/meters.yaml".to_string()),
+        [owner] => (
+            Holder::Actor(owner.clone()),
+            format!("the cast file of {owner}"),
+        ),
+        owners => {
+            let problem = format!(
+                "clock '{id}' has {} owners, and a meter has one holder",
+                owners.len()
+            );
+            let hint = "give the clock one owner, or none for a world meter, then migrate again";
+            return Err(schema_error("state/save.yaml", &problem, hint).at_path(path));
+        }
+    };
+    let Some(def) = canon.meter_def(&holder, id) else {
+        let problem = format!("clock '{id}' has no meter to move to");
+        let hint = format!("declare a meter {id} in {file}, then migrate again");
+        return Err(schema_error("state/save.yaml", &problem, &hint).at_path(path));
+    };
+    let live = MeterLive {
+        base: def.start,
+        offset: clock.value - def.start,
+    };
+    let Ok(meters) = state.meters_mut(&holder) else {
+        let owner = match &holder {
+            Holder::Actor(owner) => owner.as_str(),
+            _ => "world",
+        };
+        let problem = format!("clock '{id}' is owned by '{owner}', and the save has no such actor");
+        let hint = "give the clock an owner the save has, then migrate again";
+        return Err(schema_error("state/save.yaml", &problem, hint).at_path(path));
+    };
+    meters.insert(id.to_string(), live);
+    Ok(())
 }
 
 fn check_actor_places(state: &State) -> Vec<Diagnostic> {
@@ -121,35 +215,52 @@ fn check_actor_places(state: &State) -> Vec<Diagnostic> {
     diags
 }
 
-/// Meters the pack defines that at least one actor lacks, each at its `start`.
+/// Meters the pack gives a holder that the holder lacks, each at its `start`.
 pub(crate) fn missing_meters(canon: &Canon, state: &State) -> Vec<AddedMeter> {
-    canon
-        .meters
-        .iter()
-        .filter(|(id, _)| {
-            state
-                .actors
-                .values()
-                .any(|actor| !actor.meters.contains_key(*id))
-        })
-        .map(|(id, def)| AddedMeter {
-            id: id.clone(),
-            start: def.start,
-        })
-        .collect()
+    let mut added = Vec::new();
+    for (id, def) in &canon.meters {
+        let lacking = state
+            .actors
+            .iter()
+            .any(|(actor, live)| def.is_on_actor(actor) && !live.meters.contains_key(id));
+        if lacking {
+            added.push(AddedMeter::new(id, def));
+        }
+    }
+    for (id, def) in &canon.world_meters {
+        if !state.world_meters.contains_key(id) {
+            added.push(AddedMeter::new(id, def));
+        }
+    }
+    added
 }
 
-/// Migrate a save: give each actor the `meters` it lacks, at their `start`, then
+/// Migrate a save: give each holder the `meters` it lacks, at their `start`, then
 /// stamp `pack_rev` and `state_rev`. Live migrate and replay both call this.
 /// It does not touch the disk.
 pub fn migrate(mut state: State, pack_rev: &str, state_rev: u64, meters: &[AddedMeter]) -> State {
-    for actor in state.actors.values_mut() {
-        let live = &mut actor.meters;
-        for meter in meters {
-            live.entry(meter.id.clone()).or_insert(MeterLive {
-                base: meter.start,
-                offset: 0,
-            });
+    for meter in meters {
+        let start = MeterLive {
+            base: meter.start,
+            offset: 0,
+        };
+        match &meter.carrier {
+            Some(Holder::World) => {
+                let live = state.world_meters.entry(meter.id.clone());
+                live.or_insert(start);
+            }
+            Some(Holder::Place(_)) => {}
+            carrier => {
+                for (id, actor) in &mut state.actors {
+                    if carrier
+                        .as_ref()
+                        .is_none_or(|carrier| *carrier == Holder::Actor(id.clone()))
+                    {
+                        let live = actor.meters.entry(meter.id.clone());
+                        live.or_insert(start.clone());
+                    }
+                }
+            }
         }
     }
     state.pack_rev = pack_rev.to_string();
@@ -185,13 +296,10 @@ state_rev: 0
 round_index: 0
 world_time: 0
 last_round_at: \"2026-01-01T00:00:00Z\"
-pause:
-  presence_clocks: paused
 places:
   gate:
     items: {{}}
 actors: {{}}
-clocks: {{}}
 notes: []
 ",
             rules = crate::store::RULES_REV,

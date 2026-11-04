@@ -92,7 +92,7 @@ jobs:
         run: cargo test --workspace --locked
 
   compatibility-replay:
-    # Replays crates/protocol/sessions/v1.jsonl, a session recorded against the previous
+    # Replays crates/protocol/sessions/v2.jsonl, a session recorded against the previous
     # release, against this build. Compatibility in docs/seat-protocol.md says what may change.
     runs-on: ubuntu-latest
     steps:

@@ -15,8 +15,11 @@ pub use canon::{load_canon, pack_rev};
 pub use diagnostic::{first_reason, Code, Diagnostic};
 pub use intent::{Intent, IntentArgs, Source, Target, Viewer};
 pub use model::meter::MeterLive;
-pub use model::{Note, Presence, RunState, State};
-pub use round::{migrate_pack, play_pack_once, verify_pack, verify_quick, RoundOutput};
+pub use model::{Note, Presence, State};
+pub use round::{
+    migrate_pack, play_pack_once, verify_pack, verify_quick, MigrateError, RoundOutput,
+};
+pub use rules::effect::Holder;
 pub use rules::gate::Refusal;
 pub use rules::perceive::View;
 pub use rules::roll::MoveReport;
@@ -34,9 +37,7 @@ pub mod testing {
     use crate::store::lock::WriteGuard;
 
     pub use crate::canon::strip_body;
-    pub use crate::model::{
-        Act, ActorKind, ActorLive, Clock, Pause, PendingAction, PendingKind, PlaceLive,
-    };
+    pub use crate::model::{Act, ActorKind, ActorLive, PendingAction, PendingKind, PlaceLive};
     pub use crate::round::replay::replay_journal;
     pub use crate::rules::roll::{faces, RollKey};
 

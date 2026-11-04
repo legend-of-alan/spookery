@@ -176,7 +176,7 @@ fn the_host_prints_its_status_once(world: &mut World) {
     );
 }
 
-const STATUS_LINE: &str = "clock shop_day 1 1 running";
+const STATUS_LINE: &str = "meter mira shop_day 1 1";
 
 fn queue_move(world: &mut World, actor: &str, move_name: &str, place: Option<&str>) {
     let target = match place {

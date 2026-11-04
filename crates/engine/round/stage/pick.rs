@@ -30,8 +30,8 @@ pub(crate) fn run(draft: &Draft, queue: &[Intent]) -> Result<Vec<Intent>, Reason
     check_unique_ids(candidates)
 }
 
-/// Fill an empty target from a preview of the intent's effects, a place it moves to or a
-/// clock it advances, and its note recipients, so priority sees what it touches. A verb
+/// Fill an empty target from a preview of the intent's effects, a place it moves to, and
+/// its note recipients, so priority sees what it touches. A verb
 /// with no target keeps it empty: a filled one would make the gate refuse `SCHEMA`.
 fn stamp_target(canon: &Canon, state: &State, presence: &Presence, intent: &mut Intent) {
     let (actor, verb, hint) = (
@@ -55,12 +55,8 @@ fn stamp_target(canon: &Canon, state: &State, presence: &Presence, intent: &mut 
     );
     for effect in &effects {
         if !keeps_empty && intent.target == Target::Empty {
-            match &effect.kind {
-                EffectKind::Location { to, .. } => intent.target = Target::Place(to.clone()),
-                EffectKind::Clock { clock_id, .. } => {
-                    intent.target = Target::Clock(clock_id.clone());
-                }
-                _ => {}
+            if let EffectKind::Location { to, .. } = &effect.kind {
+                intent.target = Target::Place(to.clone());
             }
         }
         if let EffectKind::Note { to, .. } = &effect.kind {
@@ -80,11 +76,10 @@ fn check_unique_ids(candidates: Vec<Intent>) -> Result<Vec<Intent>, Reason> {
     Ok(candidates)
 }
 
-/// Who acts first: players, then a PC's clock, then a claimed target, then the shuffle.
+/// Who acts first: players, then a claimed target, then the shuffle.
 #[derive(PartialEq, Eq, PartialOrd, Ord)]
 struct Priority {
     actor: ActorRank,
-    clock: ClockRank,
     claim: SeatedRank,
     shuffle: [u8; 32],
 }
@@ -93,12 +88,6 @@ struct Priority {
 enum ActorRank {
     Player,
     Npc,
-}
-
-#[derive(PartialEq, Eq, PartialOrd, Ord)]
-enum ClockRank {
-    Pc,
-    Other,
 }
 
 #[derive(PartialEq, Eq, PartialOrd, Ord)]
@@ -111,11 +100,6 @@ fn priority(canon: &Canon, state: &State, presence: &Presence, intent: &Intent) 
     let actor = match intent.actor {
         Viewer::Player(_) => ActorRank::Player,
         Viewer::Npc(_) => ActorRank::Npc,
-    };
-    let clock = if targets_pc_clock(state, intent) {
-        ClockRank::Pc
-    } else {
-        ClockRank::Other
     };
     let claim = if touches_seated_player(canon, state, presence, intent) {
         SeatedRank::Claimed
@@ -130,22 +114,9 @@ fn priority(canon: &Canon, state: &State, presence: &Presence, intent: &Intent) 
     };
     Priority {
         actor,
-        clock,
         claim,
         shuffle,
     }
-}
-
-fn targets_pc_clock(state: &State, intent: &Intent) -> bool {
-    let Target::Clock(id) = &intent.target else {
-        return false;
-    };
-    state.clocks.get(id).is_some_and(|clock| {
-        clock
-            .owners
-            .iter()
-            .any(|owner| state.actors.get(owner).is_some_and(|actor| actor.is_pc()))
-    })
 }
 
 fn touches_seated_player(

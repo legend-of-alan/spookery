@@ -125,8 +125,8 @@ refused and the save stays put. A note addressed to someone present runs before
 an unclaimed wait, even if the wait was queued first. So does a move through an
 exit into a seated player's room. An NPC habit stays quiet while a player shares
 the room. The GM can still queue it, and a GM-queued habit is checked the same
-as one the engine runs. Only a clock's owner advances it, so a habit that
-advances a clock its NPC does not own is refused `UNKNOWN_ID` either way.
+as one the engine runs, so a habit that sets a flag its cast file does not
+list is refused `UNKNOWN_ID` either way.
 
 Tested in `features/round/a_rules_effects_are_all_or_nothing.feature`,
 `features/round/a_broken_roll_target_refuses_one_move.feature`,
@@ -141,8 +141,8 @@ Tested in `features/round/a_rules_effects_are_all_or_nothing.feature`,
 A change rule fires in the same round that makes its watch true, and not again
 while the watch stays true. Arrival fires a rule on that place, including an
 author teleport. A meter that crosses the watched line can set a flag in that
-round. An arrival that also meets a flag can grant a fact and start a clock in
-that round. Two rules that set each other's flags stop at depth 4, and the round
+round. An arrival that also meets a flag can grant a fact and move a world
+meter in that round. Two rules that set each other's flags stop at depth 4, and the round
 records the stop. Check warns when change rules set each other's watched
 values. A narrate or note on a change rule that can reach a viewer who cannot
 see that change is rejected. A change rule may roll. Verify reproduces that
@@ -155,16 +155,39 @@ that fact uncovers then shows up for them. A world flag can be set, and a later
 rule sees it for a person who is present. Each viewer gets their own change
 summary. The GM sees every change. Tick counters stay with the GM. A learned
 fact is told only to that person. An item change in a place is seen by the
-players there. A message is seen only by the people allowed to see it. A clock
-change is seen by that clock's owners. Entering and leaving are seen by the
-players in the room left, the players in the room entered, and the mover. A
-world flag is seen by every player. Another person's flag, meter, busy status,
-items, or wielded weapon is seen by the players in the same place. A player
-sees a change to their own flag. Verify passes after rounds that fired these
+players there. A message is seen only by the people allowed to see it.
+Entering and leaving are seen by the players in the room left, the players in
+the room entered, and the mover. Another person's busy status, items, or
+wielded weapon is seen by the players in the same place. No player sees a flag
+change, their own or the world's. Verify passes after rounds that fired these
 rules.
 
 Tested in `features/rules/triggers.feature` and
 `features/rules/trigger_delivery.feature`.
+
+## Meters
+
+A meter lives on the holder whose file declares it: every actor for
+`rules/meters.yaml`, one actor for a cast file's `meters`, and the world for
+`world/meters.yaml`. A world meter is held once, so every rule that names
+`who: world` reads and writes the same value, and its change rules fire for the
+players present. The world and an actor may each carry a meter of one name, and
+`who` picks which. Check refuses a cast meter whose id `rules/meters.yaml` or
+another cast file already has, and a rule whose fixed `who` names a meter that
+holder does not carry.
+
+An actor's meter change is told to that actor only, not to a player in the
+same room. A world meter is hidden from players unless the pack shows it. A
+shown one is told to every player, and its current value is in each view, so a
+player who comes back sees it. The GM sees every meter change. A meter never
+pauses: a rule that should wait for a seated player says so in its `if`.
+Migrate moves each clock of a save from before meters onto the meter that
+replaced it, the world's for a clock with no owner, and refuses a clock with
+more than one owner.
+
+Tested in `features/meters/meters_belong_to_their_holder.feature`,
+`features/meters/migrate_moves_clocks_onto_meters.feature`, and
+`features/meters/the_debt_waits_while_no_player_is_seated.feature`.
 
 ## Travel
 

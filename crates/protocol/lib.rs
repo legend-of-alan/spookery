@@ -32,7 +32,7 @@ impl Outcome {
 
 pub use gm::{
     parse_args, CastKind, CommitArgs, CommitBody, IntentArgs, MenuRow, PackSummary, PerceiveArgs,
-    QueuedMove, Roll, SayArgs, StatusPause, StatusPresence, TableStatus, ToolResult,
+    QueuedMove, Roll, SayArgs, StatusPresence, TableStatus, ToolResult,
 };
 #[cfg(feature = "schema")]
 pub use message::{generate_client_schema, generate_server_schema};
@@ -40,9 +40,7 @@ pub use message::{
     is_built_in, ClaimArgs, ClientBody, ClientMessage, Message, MoveArgs, NoArgs, Say, Seat,
     ServerBody, ServerMessage, Word, VERSION, WORDS,
 };
-pub use player::{
-    ClockView, ExitView, ItemStack, KnownFact, MeterView, NoteView, PlaceView, View, WordView,
-};
+pub use player::{ExitView, ItemStack, KnownFact, MeterView, NoteView, PlaceView, View, WordView};
 
 /// The listening line `spook run` prints on stdout once both ports are bound: the game port
 /// and the MCP address.
@@ -74,7 +72,6 @@ pub enum Reason {
     IllegalKnowledge,
     OutOfRange,
     Budget,
-    PausedClock,
     UnknownId,
     ViewerMismatch,
     EngineOnPlayer,
@@ -110,7 +107,6 @@ impl Reason {
             Reason::IllegalKnowledge => "ILLEGAL_KNOWLEDGE",
             Reason::OutOfRange => "OUT_OF_RANGE",
             Reason::Budget => "BUDGET",
-            Reason::PausedClock => "PAUSED_CLOCK",
             Reason::UnknownId => "UNKNOWN_ID",
             Reason::ViewerMismatch => "VIEWER_MISMATCH",
             Reason::EngineOnPlayer => "ENGINE_ON_PLAYER",
@@ -218,7 +214,6 @@ impl fmt::Display for Refusal {
             Reason::IllegalKnowledge => "You cannot know that.",
             Reason::OutOfRange => "That is out of range.",
             Reason::Budget => "That does not fit.",
-            Reason::PausedClock => "That clock is paused.",
             Reason::UnknownId => "That is not in the world.",
             Reason::ViewerMismatch => "That is not your view.",
             Reason::EngineOnPlayer => "The table cannot do that for you.",
@@ -327,12 +322,11 @@ impl From<Speaker> for String {
 mod tests {
     use super::*;
 
-    const ALL: [Reason; 31] = [
+    const ALL: [Reason; 30] = [
         Reason::UnknownEffect,
         Reason::IllegalKnowledge,
         Reason::OutOfRange,
         Reason::Budget,
-        Reason::PausedClock,
         Reason::UnknownId,
         Reason::ViewerMismatch,
         Reason::EngineOnPlayer,
@@ -368,7 +362,6 @@ mod tests {
             | Reason::IllegalKnowledge
             | Reason::OutOfRange
             | Reason::Budget
-            | Reason::PausedClock
             | Reason::UnknownId
             | Reason::ViewerMismatch
             | Reason::EngineOnPlayer

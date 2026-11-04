@@ -21,7 +21,8 @@ fn keep_briar_busy(now: &mut State) {
 fn hp(pack: &Path, actor: &str) -> i64 {
     let now = support::state_of(pack);
     let canon = spookery_engine::load_canon(pack).unwrap();
-    now.meter_value(&canon, actor, "hp").unwrap()
+    let holder = spookery_engine::Holder::Actor(actor.to_string());
+    now.meter_value(&canon, &holder, "hp").unwrap()
 }
 
 fn count(pack: &Path, actor: &str, item: &str) -> u32 {

@@ -15,9 +15,9 @@ Feature: Triggers
     When another round passes
     Then the rule does not fire again
 
-  Scenario: An arrival with a flag grants a fact and starts a clock
+  Scenario: An arrival with a flag grants a fact and turns the world's tide
     Given nell has flag found_key and arrives at mira_rooms
-    Then nell knows fact_ledger and clock tide is running
+    Then nell knows fact_ledger and the world's tide is 1
 
   Scenario: Two rules that set each other's flags stop at depth 4
     Given two rules that set each other's watched flag

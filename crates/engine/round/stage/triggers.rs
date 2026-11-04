@@ -115,8 +115,9 @@ fn fire(draft: &mut Draft, dice: &mut RoundDice, log: &mut RoundLog, rule: &Rule
     }
 }
 
+/// Who a change rule fires for: the key's actor, or every seated actor for a world change.
 fn subjects(draft: &Draft, key: &StateKey) -> Vec<String> {
-    if let StateKey::WorldFlag(_) = key {
+    if let StateKey::WorldFlag(_) | StateKey::WorldMeter(_) = key {
         return draft
             .presence
             .actors_present
@@ -125,24 +126,7 @@ fn subjects(draft: &Draft, key: &StateKey) -> Vec<String> {
             .cloned()
             .collect();
     }
-    subject(draft, key).into_iter().collect()
-}
-
-fn subject(draft: &Draft, key: &StateKey) -> Option<String> {
-    match key {
-        StateKey::ClockValue(id) | StateKey::ClockPaused(id) => draft
-            .state()
-            .clocks
-            .get(id)
-            .and_then(|clock| {
-                clock
-                    .owners
-                    .iter()
-                    .find(|owner| draft.state().actors.contains_key(owner.as_str()))
-            })
-            .cloned(),
-        other => other.actor().map(str::to_string),
-    }
+    key.actor().map(str::to_string).into_iter().collect()
 }
 
 fn matches_watch(draft: &Draft, rule: &Rule, watch: &ChangeWatch, change: &Change) -> bool {
@@ -166,7 +150,7 @@ fn matches_watch(draft: &Draft, rule: &Rule, watch: &ChangeWatch, change: &Chang
             _ => false,
         },
         ChangeWatch::Meter { key, op, bound } => match &change.key {
-            StateKey::ActorMeter(_, meter) if meter == key => {
+            StateKey::ActorMeter(_, meter) | StateKey::WorldMeter(meter) if meter == key => {
                 crosses(&change.before, &change.after, *op, *bound)
             }
             _ => false,
@@ -175,18 +159,6 @@ fn matches_watch(draft: &Draft, rule: &Rule, watch: &ChangeWatch, change: &Chang
             StateKey::ActorFlag(_, flag) | StateKey::WorldFlag(flag) if flag == key => {
                 change.before.as_bool() == Some(!becomes)
                     && change.after.as_bool() == Some(*becomes)
-            }
-            _ => false,
-        },
-        ChangeWatch::Clock { id } => match &change.key {
-            StateKey::ClockValue(clock) if clock == id => {
-                let Some(max) = draft.state().clocks.get(id).map(|clock| clock.max) else {
-                    return false;
-                };
-                matches!(
-                    (change.before.as_number(), change.after.as_number()),
-                    (Some(before), Some(after)) if before < max && after == max
-                )
             }
             _ => false,
         },

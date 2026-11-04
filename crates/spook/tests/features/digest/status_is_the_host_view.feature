@@ -1,10 +1,10 @@
 Feature: Status is the host view
 
-  Scenario: Status prints the host clocks and writes nothing
+  Scenario: Status prints the host meters and writes nothing
     Given a docks table
     When the operator runs status
     Then status exits 0
-    And the host text lists the clocks
+    And the host text lists the meters
     And the pack bytes are unchanged
 
   Scenario: After the door note the player resume omits the host trace
@@ -22,11 +22,11 @@ Feature: Status is the host view
     When "pc_rowan" waits three times
     And the operator runs status
     Then the host printed the door note exactly once
-    And every host printout ends with the clocks
+    And every host printout ends with the meters
     And the status lists the door note
 
-  Scenario: A seat change prints the clocks and no effects
+  Scenario: A seat change prints the meters and no effects
     Given a docks table with "pc_rowan" seated and no GM
     And "pc_rowan" has waited once
     When "pc_rowan" closes the seat
-    Then the host's last printout lists the clocks and no effect rows
+    Then the host's last printout lists the meters and no effect rows

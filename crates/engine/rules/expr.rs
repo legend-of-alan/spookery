@@ -3,6 +3,7 @@
 use crate::canon::Canon;
 use crate::model::State;
 use crate::rules::context::Context;
+use crate::rules::effect::Holder;
 use crate::rules::roll::Outcome;
 use crate::rules::rule::{LineColumn, Who};
 use crate::Reason;
@@ -186,8 +187,8 @@ fn negate_body(body: &str) -> String {
 }
 
 fn read_meter(context: &Context, who: &Who, key: &str) -> Result<i64, Reason> {
-    let actor_id = resolve_who_id(context, who)?;
-    context.state.meter_value(context.canon, &actor_id, key)
+    let holder = resolve_holder(context, who)?;
+    context.state.meter_value(context.canon, &holder, key)
 }
 
 /// `id: target` is the intent's target token. Any other id is itself.
@@ -203,6 +204,17 @@ pub(crate) fn resolve_item_id(context: &Context, id: &str) -> Result<String, Rea
     Ok(id.to_string())
 }
 
+/// Who holds the meter, flag or item a rule names: `here` and `place:` are a place, `world`
+/// is the world, and anyone else is an actor.
+pub(crate) fn resolve_holder(context: &Context, who: &Who) -> Result<Holder, Reason> {
+    match who {
+        Who::World => Ok(Holder::World),
+        Who::Here | Who::Place(_) => Ok(Holder::Place(resolve_who_id(context, who)?)),
+        _ => Ok(Holder::Actor(resolve_who_id(context, who)?)),
+    }
+}
+
+/// The actor or place id `who` names. The world is not one.
 pub(crate) fn resolve_who_id(context: &Context, who: &Who) -> Result<String, Reason> {
     match who {
         Who::Self_ => Ok(context.intent.actor.actor_id().to_string()),
@@ -708,8 +720,10 @@ mod tests {
                     max: 10,
                     start: 0,
                     hidden: false,
+                    carrier: None,
                 },
             )]),
+            world_meters: BTreeMap::new(),
             items: BTreeMap::new(),
             budget: crate::canon::Budget::default(),
             checkpoint_every: 100,
@@ -728,9 +742,6 @@ mod tests {
             round_index: 0,
             world_time: 0,
             last_round_at: String::new(),
-            pause: crate::model::Pause {
-                presence_clocks: crate::model::RunState::Running,
-            },
             places: BTreeMap::new(),
             actors: BTreeMap::from([(
                 "ada".to_string(),
@@ -746,7 +757,7 @@ mod tests {
                     act: Act::default(),
                 },
             )]),
-            clocks: BTreeMap::new(),
+            world_meters: BTreeMap::new(),
             notes: Vec::new(),
             flags: Vec::new(),
         }

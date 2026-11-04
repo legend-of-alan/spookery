@@ -2,9 +2,8 @@
 
 use crate::protocol::{
     self, CommitBody, Detail, NoteView, PackSummary, QueuedMove, Roll, Say, ServerBody,
-    StatusPause, StatusPresence, TableStatus,
+    StatusPresence, TableStatus,
 };
-use serde_json::Value;
 use spookery_engine::{
     self as engine, Intent, MoveReport, Note, Presence, RoundOutput, State, TapeRecord,
 };
@@ -86,10 +85,7 @@ pub(super) fn render_resume(view: &engine::View) -> ServerBody {
         .filter(|note| note.to.iter().any(|to| to == actor_id))
         .map(note_view)
         .collect();
-    ServerBody::Resume {
-        notes,
-        clocks: view.clocks.clone(),
-    }
+    ServerBody::Resume { notes }
 }
 
 pub(super) fn render_view(view: &engine::View) -> ServerBody {
@@ -99,14 +95,14 @@ pub(super) fn render_view(view: &engine::View) -> ServerBody {
         place_name: view.place_name.clone(),
         body: view.prose.clone(),
         actor_names: view.actor_names.clone(),
-        status: view.status.clone(),
+        cant_act: view.cant_act.clone(),
         visible_actors: view.visible_actors.clone(),
         known_facts: view.known_facts.clone(),
         notes: view.notes.iter().map(note_view).collect(),
         unknown_mentions: view.unknown_mentions.clone(),
-        clocks: view.clocks.clone(),
         items: view.items.clone(),
         meters: view.meters.clone(),
+        world_meters: view.world_meters.clone(),
         habits: view.habits.clone(),
         exits: view.exits.clone(),
     }))
@@ -140,15 +136,11 @@ pub(super) fn render_status(
     queued: &[Intent],
     pack: PackSummary,
 ) -> ServerBody {
-    let Ok(Value::String(presence_clocks)) = serde_json::to_value(now.pause.presence_clocks) else {
-        unreachable!("a run state serializes as its snake_case name");
-    };
     ServerBody::Status(Box::new(TableStatus {
         presence: StatusPresence {
             players: presence.players,
             actors_present: presence.actors_present.clone(),
         },
-        pause: StatusPause { presence_clocks },
         world_time: now.world_time,
         round_index: now.round_index,
         state_rev: now.state_rev,

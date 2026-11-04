@@ -181,7 +181,7 @@ fn two_arrivals(world: &mut World) {
     edit_save(&pack, |now| {
         now.world_time = EVENING;
         set_busy(now, "pc_rowan", EVENING + 10, "mira_rooms", "stairs");
-        let meters = now.actors.get("pc_rowan").unwrap().meters.clone();
+        let meters = now.actors.get("pc_wren").unwrap().meters.clone();
         now.actors.insert(
             "pc_nell".to_string(),
             spookery_engine::testing::ActorLive {
@@ -319,7 +319,7 @@ fn both_busy_without_a_gm(world: &mut World) {
     )
     .unwrap();
     edit_save(&pack, |now| {
-        let meters = now.actors.get("pc_rowan").unwrap().meters.clone();
+        let meters = now.actors.get("pc_wren").unwrap().meters.clone();
         now.actors.insert(
             "pc_nell".to_string(),
             spookery_engine::testing::ActorLive {

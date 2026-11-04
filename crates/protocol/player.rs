@@ -16,19 +16,29 @@ pub struct View {
     pub body: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub actor_names: Vec<String>,
+    /// Why the viewer can't act now, such as a journey under way. Empty when they can.
     #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub status: String,
+    pub cant_act: String,
     pub visible_actors: Vec<String>,
     pub known_facts: Vec<KnownFact>,
     pub notes: Vec<NoteView>,
     pub unknown_mentions: Vec<String>,
-    pub clocks: Vec<ClockView>,
     pub items: Vec<ItemStack>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub meters: Vec<MeterView>,
+    /// The world's meters this viewer may see, at their current values.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub world_meters: Vec<MeterView>,
     pub habits: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub exits: Vec<ExitView>,
+}
+
+impl View {
+    /// Whether the viewer can act now.
+    pub fn can_act(&self) -> bool {
+        self.cant_act.is_empty()
+    }
 }
 
 /// Part of a `View`, sent from the table to a player client.
@@ -61,16 +71,6 @@ pub struct NoteView {
     pub place: Option<String>,
     pub fact_ids: Vec<String>,
     pub text: String,
-}
-
-/// Part of a `View`, sent from the table to a player client.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
-pub struct ClockView {
-    pub id: String,
-    pub value: i64,
-    pub max: i64,
-    pub paused: bool,
 }
 
 /// Part of a `View`, sent from the table to a player client.
@@ -119,7 +119,7 @@ mod tests {
 
     #[test]
     fn a_view_body_ignores_unknown_fields() {
-        let body = r#"{"kind":"view","viewer":"rowan","place":"shop","visible_actors":[],"known_facts":[],"notes":[],"unknown_mentions":[],"clocks":[],"items":[{"id":"oil","count":1,"extra":true}],"habits":[],"future":1}"#;
+        let body = r#"{"kind":"view","viewer":"rowan","place":"shop","visible_actors":[],"known_facts":[],"notes":[],"unknown_mentions":[],"items":[{"id":"oil","count":1,"extra":true}],"habits":[],"future":1}"#;
         assert!(matches!(
             serde_json::from_str(body),
             Ok(ServerBody::View(_))
@@ -128,7 +128,7 @@ mod tests {
 
     #[test]
     fn a_view_body_keeps_the_scene_after_the_place() {
-        let body = r#"{"kind":"view","viewer":"rowan","place":"shop","place_name":"Shop","body":"b","actor_names":["Rowan"],"status":"s","visible_actors":["rowan"],"known_facts":[],"notes":[],"unknown_mentions":[],"clocks":[],"items":[],"habits":[]}"#;
+        let body = r#"{"kind":"view","viewer":"rowan","place":"shop","place_name":"Shop","body":"b","actor_names":["Rowan"],"cant_act":"s","visible_actors":["rowan"],"known_facts":[],"notes":[],"unknown_mentions":[],"items":[],"habits":[]}"#;
         let view: ServerBody = serde_json::from_str(body).unwrap();
         assert_eq!(serde_json::to_string(&view).unwrap(), body);
     }

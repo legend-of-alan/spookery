@@ -105,17 +105,15 @@ fn play_shows_protocol_frames(world: &mut World) {
     assert!(stdout.contains('{'), "{stdout}");
 }
 
-#[then(expr = "play shows the door note and the debt clock as sentences")]
+#[then(expr = "play shows the door note as a sentence")]
 fn play_shows_the_readable_resume(world: &mut World) {
     let away = "\
 While you were away:
 Back at dusk. Oil on the shelf.
-Assassination debt: 2/6, paused
 ";
     wait_play(world, away);
     let stdout = capture_play_stdout(world);
     assert!(!stdout.contains("note_mira_door"), "{stdout}");
-    assert!(!stdout.contains("clock assassination_debt"), "{stdout}");
     assert!(!stdout.contains("note "), "{stdout}");
 }
 
@@ -171,7 +169,7 @@ You: hello Briar
     assert_eq!(stdout.matches("Earlier:").count(), 1, "{stdout}");
     assert_eq!(stdout.matches("You: hello Briar").count(), 1, "{stdout}");
     let live = &stdout[earlier.len()..];
-    assert!(live.starts_with("While you were away:\n"), "{stdout}");
+    assert!(live.starts_with("You are in Docks Shop."), "{stdout}");
 }
 
 #[then(expr = "play shows the raw resume digest")]
@@ -189,10 +187,6 @@ fn play_shows_the_raw_resume_digest(world: &mut World) {
         resume["notes"][0]["text"], "Back at dusk. Oil on the shelf.",
         "{stdout}"
     );
-    assert_eq!(resume["clocks"][0]["id"], "assassination_debt", "{stdout}");
-    assert_eq!(resume["clocks"][0]["value"], 2, "{stdout}");
-    assert_eq!(resume["clocks"][0]["max"], 6, "{stdout}");
-    assert_eq!(resume["clocks"][0]["paused"], true, "{stdout}");
     assert!(!stdout.contains("While you were away"), "{stdout}");
 }
 

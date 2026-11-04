@@ -29,7 +29,7 @@ pub(crate) fn afford(context: &Context, cost: &Cost) -> Result<(), gate::Refusal
             return Err(cant_afford(key));
         }
         let current = state
-            .meter_value(canon, who, key)
+            .meter_value(canon, &effect::Holder::Actor(who.to_string()), key)
             .map_err(|_| cant_afford(key))?;
         if current < amount {
             return Err(cant_afford(key));
@@ -65,19 +65,19 @@ pub(crate) fn pay(
     dice: &mut dyn Dice,
 ) -> Result<(), Reason> {
     let who = intent.actor.actor_id();
+    let holder = effect::Holder::Actor(who.to_string());
     for (key, expr) in &cost.meters {
         let context = Context::new(draft.canon(), draft.state(), draft.presence, intent);
         let amount = expr::eval_with_dice(&context, expr, dice)?;
         if amount < 0 {
             return Err(Reason::CantAfford);
         }
-        effect::write_meter(draft, who, key, MeterWrite::Offset(-amount))?;
+        effect::write_meter(draft, &holder, key, MeterWrite::Offset(-amount))?;
         if amount == 0 {
             // A cost of 0 leaves the meter as it was and still takes a key of the budget.
             draft.track(StateKey::ActorMeter(who.to_string(), key.clone()))?;
         }
     }
-    let holder = effect::Holder::Actor(who.to_string());
     for (id, expr) in &cost.items {
         let context = Context::new(draft.canon(), draft.state(), draft.presence, intent);
         let count = item_count(expr::eval_with_dice(&context, expr, dice)?)?;

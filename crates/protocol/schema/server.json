@@ -283,12 +283,6 @@
                 "$ref": "#/$defs/NoteView"
               }
             },
-            "clocks": {
-              "type": "array",
-              "items": {
-                "$ref": "#/$defs/ClockView"
-              }
-            },
             "kind": {
               "type": "string",
               "const": "resume"
@@ -418,7 +412,6 @@
         "ILLEGAL_KNOWLEDGE",
         "OUT_OF_RANGE",
         "BUDGET",
-        "PAUSED_CLOCK",
         "UNKNOWN_ID",
         "VIEWER_MISMATCH",
         "ENGINE_ON_PLAYER",
@@ -589,18 +582,6 @@
         "actors_present"
       ]
     },
-    "StatusPause": {
-      "description": "Part of `TableStatus`, sent from the table to a GM client.",
-      "type": "object",
-      "properties": {
-        "presence_clocks": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "presence_clocks"
-      ]
-    },
     "QueuedMove": {
       "description": "A queued move in `TableStatus`, sent from the table to a GM client.",
       "type": "object",
@@ -692,9 +673,6 @@
         "presence": {
           "$ref": "#/$defs/StatusPresence"
         },
-        "pause": {
-          "$ref": "#/$defs/StatusPause"
-        },
         "world_time": {
           "type": "integer",
           "format": "uint64",
@@ -736,7 +714,6 @@
       },
       "required": [
         "presence",
-        "pause",
         "world_time",
         "round_index",
         "state_rev",
@@ -799,32 +776,6 @@
         "to",
         "fact_ids",
         "text"
-      ]
-    },
-    "ClockView": {
-      "description": "Part of a `View`, sent from the table to a player client.",
-      "type": "object",
-      "properties": {
-        "id": {
-          "type": "string"
-        },
-        "value": {
-          "type": "integer",
-          "format": "int64"
-        },
-        "max": {
-          "type": "integer",
-          "format": "int64"
-        },
-        "paused": {
-          "type": "boolean"
-        }
-      },
-      "required": [
-        "id",
-        "value",
-        "max",
-        "paused"
       ]
     },
     "ItemStack": {
@@ -919,7 +870,8 @@
             "type": "string"
           }
         },
-        "status": {
+        "cant_act": {
+          "description": "Why the viewer can't act now, such as a journey under way. Empty when they can.",
           "type": "string"
         },
         "visible_actors": {
@@ -946,12 +898,6 @@
             "type": "string"
           }
         },
-        "clocks": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/ClockView"
-          }
-        },
         "items": {
           "type": "array",
           "items": {
@@ -959,6 +905,13 @@
           }
         },
         "meters": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/MeterView"
+          }
+        },
+        "world_meters": {
+          "description": "The world's meters this viewer may see, at their current values.",
           "type": "array",
           "items": {
             "$ref": "#/$defs/MeterView"
@@ -984,7 +937,6 @@
         "known_facts",
         "notes",
         "unknown_mentions",
-        "clocks",
         "items",
         "habits"
       ]

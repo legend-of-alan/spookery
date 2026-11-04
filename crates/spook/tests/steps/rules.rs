@@ -299,8 +299,10 @@ fn an_empty_round_at_hour_7(world: &mut World) {
     let pack = world.pack.clone().unwrap();
     edit_save(&pack, |now| {
         now.world_time = 360;
-        now.clocks.get_mut("shop_day").unwrap().value = 0;
-        let briar = now.actors.get("mira").unwrap().clone();
+        let mira = now.actors.get_mut("mira").unwrap();
+        mira.meters.get_mut("shop_day").unwrap().base = 0;
+        let mut briar = mira.clone();
+        briar.meters.remove("shop_day");
         now.actors.insert("briar".to_string(), briar);
         now.actors.get_mut("briar").unwrap().place = "docks_shop".to_string();
     });

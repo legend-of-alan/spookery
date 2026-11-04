@@ -6,10 +6,10 @@ use std::path::{Path, PathBuf};
 
 use spookery_engine::testing::{
     self as support, insert_nell, journal::list_round_keys, read_round as round_value, resume,
-    stamp_pack_rev, state_of, write_save, Act, ActorKind, ActorLive, Pause, PlaceLive,
+    stamp_pack_rev, state_of, write_save, Act, ActorKind, ActorLive, PlaceLive,
 };
 use spookery_engine::{
-    emit_save, play_pack_once, MeterLive, MoveReport, Note, Presence, RunState, State,
+    emit_save, load_canon, play_pack_once, Holder, MeterLive, MoveReport, Note, Presence, State,
 };
 use spookery_protocol::Outcome;
 
@@ -74,25 +74,6 @@ fn snapshot(root: &Path) -> Vec<(PathBuf, Vec<u8>)> {
     let mut out = Vec::new();
     walk(root, root, &mut out);
     out
-}
-
-fn the_debt_clock_does_not_run_itself() {
-    let pack = support::copy_docks("self-win");
-    for round in 1..=12 {
-        play_pack_once(&pack).unwrap_or_else(|err| panic!("round {round}: {err}"));
-    }
-    let state = state_of(&pack);
-    assert_eq!(state.round_index, 12, "twelve empty-table rounds commit");
-    let clock = state
-        .clocks
-        .get("assassination_debt")
-        .unwrap_or_else(|| panic!("assassination_debt missing"));
-    assert_eq!(clock.value, 2);
-    assert_eq!(clock.max, 6);
-    assert!(clock.paused);
-    assert!(clock.requires_presence);
-    assert_eq!(clock.owners, vec!["pc_rowan".to_string()]);
-    let _ = fs::remove_dir_all(&pack);
 }
 
 fn door_note() -> Note {
@@ -365,12 +346,9 @@ Rowan.
         round_index: 0,
         world_time: 0,
         last_round_at: "2026-01-01T00:00:00Z".to_string(),
-        pause: Pause {
-            presence_clocks: RunState::Paused,
-        },
         places,
         actors,
-        clocks: BTreeMap::new(),
+        world_meters: BTreeMap::new(),
         notes: Vec::new(),
         flags: Vec::new(),
     };
@@ -506,12 +484,9 @@ rules:
         round_index: 0,
         world_time: 0,
         last_round_at: "2026-01-01T00:00:00Z".to_string(),
-        pause: Pause {
-            presence_clocks: RunState::Paused,
-        },
         places,
         actors,
-        clocks: BTreeMap::new(),
+        world_meters: BTreeMap::new(),
         notes: Vec::new(),
         flags: Vec::new(),
     };
@@ -784,8 +759,8 @@ fn a_held_knife_still_runs_the_opposed_row() {
     let now_path = held.join("state/save.yaml");
     let text = fs::read_to_string(&now_path).unwrap();
     let next = text.replacen(
-        "  pc_rowan:\n    kind: pc\n    place: docks_shop\n    flags: []\n    meters:\n      grit:\n        base: 1\n        offset: 0\n      rest:\n        base: 3\n        offset: 0\n    inventory: {}\n",
-        "  pc_rowan:\n    kind: pc\n    place: docks_shop\n    flags: []\n    meters:\n      grit:\n        base: 1\n        offset: 0\n      rest:\n        base: 3\n        offset: 0\n    inventory:\n      knife: 1\n",
+        "  pc_rowan:\n    kind: pc\n    place: docks_shop\n    flags: []\n    meters:\n      assassination_debt:\n        base: 2\n        offset: 0\n      grit:\n        base: 1\n        offset: 0\n      rest:\n        base: 3\n        offset: 0\n    inventory: {}\n",
+        "  pc_rowan:\n    kind: pc\n    place: docks_shop\n    flags: []\n    meters:\n      assassination_debt:\n        base: 2\n        offset: 0\n      grit:\n        base: 1\n        offset: 0\n      rest:\n        base: 3\n        offset: 0\n    inventory:\n      knife: 1\n",
         1,
     );
     assert_ne!(next, text);
@@ -810,9 +785,65 @@ fn a_held_knife_still_runs_the_opposed_row() {
     let _ = fs::remove_dir_all(&held);
 }
 
+fn rowans_debt(pack: &Path) -> i64 {
+    let canon = load_canon(pack).unwrap_or_else(|err| panic!("load: {err:?}"));
+    let rowan = Holder::Actor("pc_rowan".to_string());
+    state_of(pack)
+        .meter_value(&canon, &rowan, "assassination_debt")
+        .unwrap_or_else(|err| panic!("assassination_debt: {err}"))
+}
+
+#[given(expr = "pc_rowan's {string} meter is {int}")]
+fn rowans_meter_is(world: &mut World, key: String, value: i64) {
+    assert_eq!(key, "assassination_debt");
+    let pack = support::copy_docks("debt");
+    assert_eq!(rowans_debt(&pack), value);
+    world.pack = Some(pack);
+}
+
+#[given(expr = "the rule that advances it has {string}")]
+fn the_debt_rule_has(world: &mut World, guard: String) {
+    assert_eq!(guard, "if: players >= 1");
+    let pack = world.pack();
+    let rule = "\
+rules:
+  - id: debt_grows
+    when: habit
+    if:
+      - players:
+          op: \">=\"
+          value: 1
+    do:
+      - meter:
+          who: self
+          key: assassination_debt
+          add: 1
+---
+Rowan";
+    let path = pack.join("cast/pc-rowan.md");
+    let text = fs::read_to_string(&path).unwrap();
+    write_text(&path, &text.replacen("---\nRowan", rule, 1));
+    stamp_pack_rev(pack);
+    let canon = load_canon(pack).unwrap_or_else(|err| panic!("load: {err:?}"));
+    let rules = canon.rules.ids_in_order();
+    assert!(rules.contains(&"cast:pc_rowan/debt_grows"), "{rules:?}");
+}
+
 #[when(expr = "twelve empty rounds pass")]
-fn twelve_empty_rounds_pass(_world: &mut World) {
-    the_debt_clock_does_not_run_itself();
+fn twelve_empty_rounds_pass(world: &mut World) {
+    for round in 1..=12 {
+        play_pack_once(world.pack()).unwrap_or_else(|err| panic!("round {round}: {err}"));
+    }
+    assert_eq!(
+        state_of(world.pack()).round_index,
+        12,
+        "twelve empty-table rounds commit"
+    );
+}
+
+#[then(expr = "assassination_debt is still {int}")]
+fn the_debt_is_still(world: &mut World, value: i64) {
+    assert_eq!(rowans_debt(world.pack()), value);
 }
 
 #[when(expr = "the evening round runs with Rowan away")]

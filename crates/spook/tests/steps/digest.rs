@@ -11,20 +11,20 @@ use crate::World;
 
 use super::table;
 
-const CLOCKS: &str = "\
-clock assassination_debt 2 6 paused
-clock shop_day 1 1 running
+const METERS: &str = "\
+meter pc_rowan assassination_debt 2 6
+meter mira shop_day 1 1
 ";
 
-/// `shop_day` sorts last, so its clock line ends every host printout.
-const PRINTOUT_END: &str = "clock shop_day ";
+/// `shop_day` sorts last, so its meter line ends every host printout.
+const PRINTOUT_END: &str = "meter mira shop_day ";
 
 const DOOR_NOTE: &str = "effect note 1 {\"note_id\":\"note_mira_door\",\"to\":[\"pc_rowan\"],\"place\":\"docks_shop\",\"fact_ids\":[],\"text\":\"Back at dusk. Oil on the shelf.\"}";
 
 const HOST: &str = "\
 effect note 1 {\"note_id\":\"note_mira_door\",\"to\":[\"pc_rowan\"],\"place\":\"docks_shop\",\"fact_ids\":[],\"text\":\"Back at dusk. Oil on the shelf.\"}
-clock assassination_debt 2 6 paused
-clock shop_day 1 1 running
+meter pc_rowan assassination_debt 2 6
+meter mira shop_day 1 1
 ";
 
 #[when(expr = "thirteen rounds pass")]
@@ -43,9 +43,9 @@ fn thirteen_rounds_pass(world: &mut World) {
     world.before = table::read_files(&pack);
 }
 
-#[then(expr = "the host text lists the clocks")]
-fn the_host_text_lists_the_clocks(world: &mut World) {
-    assert_eq!(world.stdout, CLOCKS);
+#[then(expr = "the host text lists the meters")]
+fn the_host_text_lists_the_meters(world: &mut World) {
+    assert_eq!(world.stdout, METERS);
 }
 
 #[then(expr = "the host text lists the door note")]
@@ -62,9 +62,8 @@ fn the_host_text_lists_the_door_note(world: &mut World) {
             .copied(),
         Some(4u32)
     );
-    let debt = now.clocks.get("assassination_debt").unwrap();
-    assert_eq!(debt.value, 2);
-    assert!(debt.paused);
+    let debt = &now.actors["pc_rowan"].meters["assassination_debt"];
+    assert_eq!((debt.base, debt.offset), (2, 0));
 }
 
 #[given(expr = "a docks table with {string} seated and no GM")]
@@ -104,7 +103,7 @@ fn closes_the_seat(world: &mut World, actor: String) {
     table::close_actor(world, &actor);
     table::wait_host_until(world, "seat close", |text| {
         text.get(mark..)
-            .is_some_and(|added| added.contains("clock "))
+            .is_some_and(|added| added.contains("meter "))
     });
 }
 
@@ -119,46 +118,46 @@ fn the_host_printed_the_door_note_exactly_once(world: &mut World) {
     assert_eq!(text.matches(DOOR_NOTE).count(), 1, "{text}");
 }
 
-#[then(expr = "every host printout ends with the clocks")]
-fn every_host_printout_ends_with_the_clocks(world: &mut World) {
+#[then(expr = "every host printout ends with the meters")]
+fn every_host_printout_ends_with_the_meters(world: &mut World) {
     let text = table::host_stdout(world);
     let body = text.split_once('\n').map(|(_, rest)| rest).unwrap_or("");
     // An effect after a printout's end starts the next one.
-    let mut in_clocks = false;
+    let mut in_meters = false;
     let mut open = false;
     let mut saw = false;
     for line in body.lines().filter(|line| !line.is_empty()) {
         if line.starts_with("effect ") {
             assert!(
-                !in_clocks,
-                "an effect followed a clock in one printout:\n{line}\n{body}"
+                !in_meters,
+                "an effect followed a meter in one printout:\n{line}\n{body}"
             );
             open = true;
-        } else if line.starts_with("clock ") {
-            in_clocks = true;
+        } else if line.starts_with("meter ") {
+            in_meters = true;
             open = true;
             if line.starts_with(PRINTOUT_END) {
                 saw = true;
-                in_clocks = false;
+                in_meters = false;
                 open = false;
             }
         } else {
-            panic!("not an effect or a clock:\n{line}\n{body}");
+            panic!("not an effect or a meter:\n{line}\n{body}");
         }
     }
     assert!(
         saw && !open,
-        "a printout did not end with the clocks\n{body}"
+        "a printout did not end with the meters\n{body}"
     );
 }
 
-#[then(expr = "the host's last printout lists the clocks and no effect rows")]
-fn the_hosts_last_printout_lists_the_clocks(world: &mut World) {
+#[then(expr = "the host's last printout lists the meters and no effect rows")]
+fn the_hosts_last_printout_lists_the_meters(world: &mut World) {
     let text = table::host_stdout(world);
     let added = text.get(world.host_mark..).unwrap_or("");
     let lines: Vec<&str> = added.lines().filter(|line| !line.is_empty()).collect();
     assert!(
-        !lines.is_empty() && lines.iter().all(|line| line.starts_with("clock ")),
+        !lines.is_empty() && lines.iter().all(|line| line.starts_with("meter ")),
         "{added}"
     );
 }
@@ -188,14 +187,6 @@ fn the_player_resume_lists_the_door_message(world: &mut World) {
                     "place": "docks_shop",
                     "fact_ids": [],
                     "text": "Back at dusk. Oil on the shelf."
-                }
-            ],
-            "clocks": [
-                {
-                    "id": "assassination_debt",
-                    "value": 2,
-                    "max": 6,
-                    "paused": true
                 }
             ]
         })

@@ -83,7 +83,6 @@ pub struct ChangeYaml {
     pub crosses: Option<String>,
     pub flag: Option<String>,
     pub becomes: Option<bool>,
-    pub clock: Option<String>,
     pub item: Option<String>,
     pub gained: Option<bool>,
     pub lost: Option<bool>,
@@ -141,7 +140,6 @@ pub struct CondYaml {
     pub flag: Option<FlagCondYaml>,
     pub at: Option<AtYaml>,
     pub knows: Option<KnowsYaml>,
-    pub clock: Option<ClockCondYaml>,
     pub hour: Option<HourYaml>,
     pub players: Option<PlayersYaml>,
     pub note_exists: Option<String>,
@@ -201,14 +199,6 @@ pub struct AtYaml {
 pub struct KnowsYaml {
     pub who: Spanned<String>,
     pub fact: String,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct ClockCondYaml {
-    pub id: String,
-    pub op: String,
-    pub value: Spanned<ExprYaml>,
 }
 
 #[derive(Deserialize)]
@@ -283,7 +273,6 @@ pub struct EffectYaml {
     pub location: Option<LocationYaml>,
     pub note: Option<NoteYaml>,
     pub narrate: Option<NarrateYaml>,
-    pub clock: Option<ClockEffectYaml>,
     pub memory: Option<MemoryYaml>,
     pub item: Option<ItemEffectYaml>,
     pub reveal: Option<RevealYaml>,
@@ -339,15 +328,6 @@ pub struct NarrateYaml {
     #[serde(default)]
     pub fact_ids: Vec<String>,
     pub resist: Option<ResistYaml>,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct ClockEffectYaml {
-    pub id: String,
-    pub add: Option<i64>,
-    #[serde(default)]
-    pub unpause: bool,
 }
 
 #[derive(Deserialize)]
@@ -649,9 +629,6 @@ fn change_of(yaml: &ChangeYaml) -> Result<When, String> {
             becomes,
         }));
     }
-    if let Some(id) = &yaml.clock {
-        return Ok(When::Change(ChangeWatch::Clock { id: id.clone() }));
-    }
     if let Some(id) = &yaml.item {
         let gained = match (yaml.gained, yaml.lost) {
             (Some(true), _) => true,
@@ -666,7 +643,7 @@ fn change_of(yaml: &ChangeYaml) -> Result<When, String> {
     if let Some(fact) = &yaml.knows {
         return Ok(When::Change(ChangeWatch::Knows { fact: fact.clone() }));
     }
-    Err("a change needs arrive, leave, meter, flag, clock, item, or knows".to_string())
+    Err("a change needs arrive, leave, meter, flag, item, or knows".to_string())
 }
 
 fn if_of(yaml: &IfYaml) -> Result<Vec<Cond>, Fault> {
@@ -716,14 +693,6 @@ pub(super) fn cond_of(yaml: &CondYaml) -> Result<Cond, Fault> {
         cond = Some(Cond::Knows {
             who: who_of(&knows.who)?,
             fact: knows.fact.clone(),
-        });
-    }
-    if let Some(clock) = &yaml.clock {
-        found += 1;
-        cond = Some(Cond::Clock {
-            id: clock.id.clone(),
-            op: op_of(&clock.op)?,
-            value: cond_value_of(&clock.value)?,
         });
     }
     if let Some(hour) = &yaml.hour {
@@ -952,17 +921,6 @@ fn effect_of(yaml: &EffectYaml) -> Result<EffectTemplate, Fault> {
             text: narrate.text.clone(),
             fact_ids: narrate.fact_ids.clone(),
             resist: resist_of(narrate.resist.as_ref())?,
-        });
-    }
-    if let Some(clock) = &yaml.clock {
-        found += 1;
-        if clock.add.is_none() && !clock.unpause {
-            return Err("a clock effect needs add or unpause".into());
-        }
-        effect = Some(EffectTemplate::Clock {
-            id: clock.id.clone(),
-            add: clock.add,
-            unpause: clock.unpause,
         });
     }
     if let Some(memory) = &yaml.memory {

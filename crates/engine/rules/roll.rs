@@ -140,6 +140,7 @@ mod tests {
             max: 110,
             start: 1,
             hidden: false,
+            carrier: None,
         }
     }
 

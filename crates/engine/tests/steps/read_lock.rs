@@ -133,7 +133,7 @@ fn status_prints_the_committed_round(world: &mut World) {
     let tip = spookery_engine::World::peek(pack).unwrap_or_else(|err| panic!("peek: {err}"));
     assert_eq!(emit_save(tip.state()).unwrap(), emit_save(state).unwrap());
     let text = peek_digest(pack).unwrap_or_else(|err| panic!("status: {err}"));
-    assert!(text.contains("clock "), "{text}");
+    assert!(text.contains("meter "), "{text}");
     assert_eq!(world.scratch, text);
 }
 

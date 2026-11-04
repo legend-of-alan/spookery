@@ -1,8 +1,8 @@
 //! Readable text for player and GM messages, and the status and commit replies.
 
 use crate::protocol::{
-    self, ClockView, CommitBody, ExitView, MeterView, NoteView, Outcome, PlaceView, Roll, Say,
-    ServerBody, Speaker, TableStatus, WordView,
+    self, CommitBody, ExitView, MeterView, NoteView, Outcome, PlaceView, Roll, Say, ServerBody,
+    Speaker, TableStatus, WordView,
 };
 
 /// Readable text for one player body. Empty means print nothing.
@@ -15,7 +15,7 @@ pub fn render(body: &ServerBody) -> String {
             Outcome::Partial => "Your roll partly succeeded.".to_string(),
             Outcome::Miss => "Your roll missed.".to_string(),
         },
-        ServerBody::Resume { notes, clocks } => render_resume(notes, clocks),
+        ServerBody::Resume { notes } => render_resume(notes),
         ServerBody::Lines { text } => text.clone(),
         ServerBody::Refused(refusal) => refusal.to_string(),
         ServerBody::View(view) => render_view(view),
@@ -77,12 +77,12 @@ impl PlayerText {
                 self.after_scrollback = !scrollback.is_empty();
                 render(body)
             }
-            ServerBody::Resume { notes, clocks } => {
+            ServerBody::Resume { notes } => {
                 if self.seen_resume {
                     return String::new();
                 }
                 self.seen_resume = true;
-                self.after_scrollback(render_resume(notes, clocks))
+                self.after_scrollback(render_resume(notes))
             }
             _ => self.after_scrollback(render(body)),
         }
@@ -101,17 +101,12 @@ impl PlayerText {
     }
 }
 
-fn render_resume(notes: &[NoteView], clocks: &[ClockView]) -> String {
-    let mut lines = Vec::new();
-    for note in notes {
-        let text = note.text.trim();
-        if !text.is_empty() {
-            lines.push(text.to_string());
-        }
-    }
-    for clock in clocks {
-        lines.push(clock_line(clock));
-    }
+fn render_resume(notes: &[NoteView]) -> String {
+    let lines: Vec<&str> = notes
+        .iter()
+        .map(|note| note.text.trim())
+        .filter(|text| !text.is_empty())
+        .collect();
     if lines.is_empty() {
         String::new()
     } else {
@@ -135,13 +130,13 @@ pub fn render_view(view: &protocol::View) -> String {
         place_name: _,
         body,
         actor_names,
-        status,
+        cant_act,
         visible_actors,
         known_facts,
         notes,
-        clocks,
         items,
         meters,
+        world_meters,
         exits,
         unknown_mentions: _,
         habits: _,
@@ -151,8 +146,8 @@ pub fn render_view(view: &protocol::View) -> String {
     if !titled.is_empty() {
         sections.push(format!("You are in {titled}."));
     }
-    if !status.is_empty() {
-        sections.push(status.clone());
+    if !cant_act.is_empty() {
+        sections.push(cant_act.clone());
     }
     let prose = body.trim();
     if !prose.is_empty() {
@@ -187,13 +182,6 @@ pub fn render_view(view: &protocol::View) -> String {
         "Notes:",
         notes.iter().map(|note| note.text.as_str()),
     );
-    if !clocks.is_empty() {
-        let mut lines = Vec::new();
-        for clock in clocks {
-            lines.push(clock_line(clock));
-        }
-        sections.push(format!("Clocks:\n{}", lines.join("\n")));
-    }
     if !items.is_empty() {
         let mut lines = Vec::new();
         for item in items {
@@ -201,12 +189,11 @@ pub fn render_view(view: &protocol::View) -> String {
         }
         sections.push(format!("Items:\n{}", lines.join("\n")));
     }
-    if !meters.is_empty() {
-        let mut lines = Vec::new();
-        for meter in meters {
-            lines.push(meter_line(meter));
+    for (title, meters) in [("Meters:", meters), ("The world:", world_meters)] {
+        if !meters.is_empty() {
+            let lines: Vec<String> = meters.iter().map(meter_line).collect();
+            sections.push(format!("{title}\n{}", lines.join("\n")));
         }
-        sections.push(format!("Meters:\n{}", lines.join("\n")));
     }
     sections.push(exit_section(exits));
     sections.join("\n\n")
@@ -278,15 +265,6 @@ fn push_lines<'a>(sections: &mut Vec<String>, title: &str, lines: impl Iterator<
 
 fn meter_line(meter: &MeterView) -> String {
     format!("{}: {}/{}", humanize(&meter.id), meter.value, meter.max)
-}
-
-fn clock_line(clock: &ClockView) -> String {
-    let name = humanize(&clock.id);
-    if clock.paused {
-        format!("{name}: {}/{}, paused", clock.value, clock.max)
-    } else {
-        format!("{name}: {}/{}", clock.value, clock.max)
-    }
 }
 
 /// `docks_shop` becomes "Docks shop".
@@ -401,9 +379,7 @@ pub fn render_check(roll: &Roll) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::protocol::{
-        ItemStack, KnownFact, NoteView, QueuedMove, Roll, StatusPause, StatusPresence,
-    };
+    use crate::protocol::{ItemStack, KnownFact, NoteView, QueuedMove, Roll, StatusPresence};
 
     fn assert_readable(text: &str) {
         assert!(!text.contains('{'), "{text}");
@@ -499,17 +475,10 @@ mod tests {
     fn a_resume_is_an_away_block() {
         let text = render(&ServerBody::Resume {
             notes: vec![note("note_shop", "the shop restocked")],
-            clocks: Vec::new(),
         });
         assert_eq!(text, "While you were away:\nthe shop restocked");
         assert_readable(&text);
-        assert_eq!(
-            render(&ServerBody::Resume {
-                notes: Vec::new(),
-                clocks: Vec::new(),
-            }),
-            ""
-        );
+        assert_eq!(render(&ServerBody::Resume { notes: Vec::new() }), "");
     }
 
     #[test]
@@ -517,19 +486,14 @@ mod tests {
         let mut player_text = PlayerText::new();
         let first = player_text.render(&ServerBody::Resume {
             notes: vec![note("note_shop", "the shop restocked")],
-            clocks: Vec::new(),
         });
         assert_eq!(first, "While you were away:\nthe shop restocked");
         assert_eq!(
-            player_text.render(&ServerBody::Resume {
-                notes: Vec::new(),
-                clocks: Vec::new(),
-            }),
+            player_text.render(&ServerBody::Resume { notes: Vec::new() }),
             ""
         );
         let later = player_text.render(&ServerBody::Resume {
             notes: vec![note("note_yard", "the yard stays watched")],
-            clocks: Vec::new(),
         });
         assert_eq!(later, "");
     }
@@ -565,10 +529,7 @@ You: hello Briar
 GM: evening"
         );
         assert_eq!(
-            player_text.render(&ServerBody::Resume {
-                notes: Vec::new(),
-                clocks: Vec::new(),
-            }),
+            player_text.render(&ServerBody::Resume { notes: Vec::new() }),
             ""
         );
         let place = player_text.render(&ServerBody::Lines {
@@ -590,39 +551,6 @@ You are in Gate Yard."
     }
 
     #[test]
-    fn a_resume_turns_digest_rows_into_sentences() {
-        let text = render(&ServerBody::Resume {
-            notes: vec![note("note_mira_door", "Back at dusk. Oil on the shelf.")],
-            clocks: vec![
-                ClockView {
-                    id: "assassination_debt".to_string(),
-                    value: 2,
-                    max: 6,
-                    paused: true,
-                },
-                ClockView {
-                    id: "shop_day".to_string(),
-                    value: 1,
-                    max: 1,
-                    paused: false,
-                },
-            ],
-        });
-        assert_eq!(
-            text,
-            "\
-While you were away:
-Back at dusk. Oil on the shelf.
-Assassination debt: 2/6, paused
-Shop day: 1/1"
-        );
-        assert!(!text.contains("note_mira_door"), "{text}");
-        assert!(!text.contains("assassination_debt"), "{text}");
-        assert!(!text.contains("running"), "{text}");
-        assert_readable(&text);
-    }
-
-    #[test]
     fn a_perceive_names_the_place_and_skips_empty_sections() {
         let text = render(&ServerBody::View(Box::new(protocol::View {
             viewer: "pc_rowan".to_string(),
@@ -630,7 +558,7 @@ Shop day: 1/1"
             place_name: "Docks Shop".to_string(),
             body: "The shop faces the water. Tins sit in a row.".to_string(),
             actor_names: vec!["Aldric".to_string(), "Rowan".to_string()],
-            status: String::new(),
+            cant_act: String::new(),
             visible_actors: vec!["aldric".to_string(), "pc_rowan".to_string()],
             known_facts: vec![KnownFact {
                 id: "fact_oil_on_shelf".to_string(),
@@ -645,20 +573,6 @@ Shop day: 1/1"
                 text: "Back in an hour.".to_string(),
             }],
             unknown_mentions: vec!["secret_fact".to_string()],
-            clocks: vec![
-                ClockView {
-                    id: "assassination_debt".to_string(),
-                    value: 2,
-                    max: 6,
-                    paused: true,
-                },
-                ClockView {
-                    id: "shop_day".to_string(),
-                    value: 1,
-                    max: 1,
-                    paused: false,
-                },
-            ],
             items: vec![ItemStack {
                 id: "lamp_oil".to_string(),
                 count: 4,
@@ -667,6 +581,11 @@ Shop day: 1/1"
                 id: "grit".to_string(),
                 value: 1,
                 max: 110,
+            }],
+            world_meters: vec![MeterView {
+                id: "dawn".to_string(),
+                value: 3,
+                max: 6,
             }],
             habits: vec!["tend_shop".to_string()],
             exits: vec![crate::protocol::ExitView {
@@ -692,15 +611,14 @@ Oil is on the shelf.
 Notes:
 Back in an hour.
 
-Clocks:
-Assassination debt: 2/6, paused
-Shop day: 1/1
-
 Items:
 Lamp oil: 4
 
 Meters:
 Grit: 1/110
+
+The world:
+Dawn: 3/6
 
 Exits:
 stairs (locked) — 2 min"
@@ -718,14 +636,14 @@ stairs (locked) — 2 min"
             place_name: "Docks Street".to_string(),
             body: String::new(),
             actor_names: vec!["Bram".to_string()],
-            status: "on the stairs until 21:40".to_string(),
+            cant_act: "on the stairs until 21:40".to_string(),
             visible_actors: vec!["bram".to_string()],
             known_facts: Vec::new(),
             notes: Vec::new(),
             unknown_mentions: Vec::new(),
-            clocks: Vec::new(),
             items: Vec::new(),
             meters: Vec::new(),
+            world_meters: Vec::new(),
             habits: Vec::new(),
             exits: Vec::new(),
         })));
@@ -743,7 +661,7 @@ none"
         );
         assert!(!quiet.contains("You know:"), "{quiet}");
         assert!(!quiet.contains("Notes:"), "{quiet}");
-        assert!(!quiet.contains("Clocks:"), "{quiet}");
+        assert!(!quiet.contains("The world:"), "{quiet}");
         assert!(!quiet.contains("Items:"), "{quiet}");
         assert!(!quiet.contains("Meters:"), "{quiet}");
         assert_readable(&quiet);
@@ -768,9 +686,6 @@ none"
             presence: StatusPresence {
                 players: u32::try_from(present.len()).unwrap_or(0),
                 actors_present: present.into_iter().map(str::to_string).collect(),
-            },
-            pause: StatusPause {
-                presence_clocks: "running".to_string(),
             },
             world_time: 0,
             round_index: 0,

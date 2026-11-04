@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
 use crate::protocol::{
-    self, CastKind, ClockView, ItemStack, MenuRow, NoteView, PackSummary, QueuedMove, Roll, Say,
+    self, CastKind, ItemStack, MenuRow, MeterView, NoteView, PackSummary, QueuedMove, Roll, Say,
     SayArgs, Speaker, PERCEIVE_BODY_CHARS,
 };
 
@@ -79,7 +79,7 @@ pub struct PlayerView {
     pub viewer: String,
     pub place: String,
     pub visible_actors: Vec<String>,
-    pub clocks: Vec<ClockView>,
+    pub meters: Vec<MeterView>,
     pub items: Vec<ItemStack>,
     pub habits: Vec<String>,
 }
@@ -93,7 +93,7 @@ pub struct NpcView {
     pub visible_actors: Vec<String>,
     pub facts: Vec<FactLine>,
     pub messages: Vec<NoteView>,
-    pub clocks: Vec<ClockView>,
+    pub meters: Vec<MeterView>,
     pub items: Vec<ItemStack>,
     pub habits: Vec<String>,
 }
@@ -111,7 +111,7 @@ impl From<protocol::View> for PlayerView {
             viewer: view.viewer,
             place: view.place,
             visible_actors: view.visible_actors,
-            clocks: view.clocks,
+            meters: view.meters,
             items: view.items,
             habits: view.habits,
         }
@@ -133,7 +133,7 @@ impl From<protocol::View> for NpcView {
                 })
                 .collect(),
             messages: view.notes,
-            clocks: view.clocks,
+            meters: view.meters,
             items: view.items,
             habits: view.habits,
         }
@@ -493,7 +493,6 @@ mod tests {
             "known_facts": [],
             "notes": [],
             "unknown_mentions": [],
-            "clocks": [],
             "items": [],
             "habits": []
         });

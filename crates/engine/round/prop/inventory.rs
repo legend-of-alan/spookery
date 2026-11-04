@@ -17,7 +17,7 @@
 use crate::draft::Draft;
 use crate::intent::{Intent, IntentArgs, Source, Target, Viewer};
 use crate::model::State;
-use crate::rules::effect::{Effect, EffectKind};
+use crate::rules::effect::{Effect, EffectKind, Holder};
 use crate::testing::copy_docks;
 use crate::world::World;
 
@@ -25,12 +25,6 @@ use super::support::{runner_config, TempPack};
 use proptest::prelude::*;
 use proptest::sample::select;
 use proptest::test_runner::{TestCaseError, TestRunner};
-
-#[derive(Clone, Debug)]
-enum Holder {
-    Actor(String),
-    Place(String),
-}
 
 #[derive(Clone, Debug)]
 struct ItemChange {
@@ -132,6 +126,7 @@ fn is_known_holder(state: &State, holder: &Holder) -> bool {
     match holder {
         Holder::Actor(id) => state.actors.contains_key(id),
         Holder::Place(id) => state.places.contains_key(id),
+        Holder::World => false,
     }
 }
 
@@ -148,6 +143,7 @@ fn count_of(state: &State, holder: &Holder, id: &str) -> u32 {
             .and_then(|place| place.items.get(id))
             .copied()
             .unwrap_or(0),
+        Holder::World => 0,
     }
 }
 
@@ -175,6 +171,7 @@ fn item_effect(step: &ItemChange) -> Effect {
     let (actor_id, place) = match &step.holder {
         Holder::Actor(id) => (Some(id.clone()), None),
         Holder::Place(id) => (None, Some(id.clone())),
+        Holder::World => (None, None),
     };
     Effect {
         kind: EffectKind::Item {

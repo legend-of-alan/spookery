@@ -8,6 +8,7 @@ use serde::Deserialize;
 use crate::diagnostic::Diagnostic;
 use crate::hash::blake2s_tagged;
 use crate::model::meter::MeterDef;
+use crate::rules::effect::Holder;
 use crate::rules::roll::Check;
 use crate::rules::rule::{Cond, Cost, Owner, RuleTable, TargetKind, When};
 use crate::Reason;
@@ -27,14 +28,14 @@ mod source;
 mod story;
 
 use budget::load_budget;
-pub(crate) use budget::{Budget, PausePolicy};
+pub(crate) use budget::Budget;
 use cast::add_cast;
 use checks::load_checks;
 use fact::Facts;
 use item::add_item;
 use lint::{
-    broken_exits, resist_same_without_roll, reveal_problems, unknown_checks, unknown_meters,
-    unknown_reads, unknown_rule_items,
+    broken_exits, resist_same_without_roll, reveal_problems, unknown_carriers, unknown_checks,
+    unknown_meters, unknown_reads, unknown_rule_items, MeterScope,
 };
 pub(crate) use lint::{check_canon, check_save};
 use meters::load_meters;
@@ -56,7 +57,11 @@ pub struct Canon {
     pub facts: BTreeMap<String, FactDef>,
     pub rules: RuleTable,
     pub checks: BTreeMap<String, Check>,
+    /// Actor meters: those `rules/meters.yaml` gives every actor, and those one cast file
+    /// gives its actor. An id is listed once.
     pub meters: BTreeMap<String, MeterDef>,
+    /// The meters `world/meters.yaml` gives the world. An id here may also be an actor meter.
+    pub world_meters: BTreeMap<String, MeterDef>,
     pub items: BTreeMap<String, ItemDef>,
     pub budget: Budget,
     /// Rounds between journal checkpoints. `save.yaml` is rewritten then.
@@ -165,6 +170,15 @@ impl Canon {
         }
     }
 
+    /// The def of meter `key` on `holder`, when that holder carries it.
+    pub fn meter_def(&self, holder: &Holder, key: &str) -> Option<&MeterDef> {
+        match holder {
+            Holder::Actor(id) => self.meters.get(key).filter(|def| def.is_on_actor(id)),
+            Holder::World => self.world_meters.get(key),
+            Holder::Place(_) => None,
+        }
+    }
+
     pub fn idle_profile(&self, actor_id: &str) -> Option<&IdleProfile> {
         self.cast.get(actor_id).and_then(|cast| cast.idle.as_ref())
     }
@@ -226,25 +240,33 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
         };
         loaded.extend(rules.unwrap_or_default());
     }
-    // 3. One walk of cast/.
+    // world/meters.yaml is optional.
+    let world_meters = if root.join("world/meters.yaml").is_file() {
+        let rel = "world/meters.yaml";
+        diags.keep(
+            read_text(root, rel).and_then(|text| load_meters(rel, &text, Some(Holder::World))),
+        )
+    } else {
+        Some(BTreeMap::new())
+    };
+    // 3. rules/meters.yaml, then one walk of cast/, which adds each cast file's own meters.
+    let rel = "rules/meters.yaml";
+    let mut meters =
+        diags.keep(read_text(root, rel).and_then(|text| load_meters(rel, &text, None)));
     for page in collect_markdown_files(root, "cast") {
         let Some(page) = diags.keep(page) else {
             continue;
         };
-        loaded.extend(add_cast(page, &mut cast, &mut diags).unwrap_or_default());
+        let rules = add_cast(page, &mut cast, meters.as_mut(), &mut diags);
+        loaded.extend(rules.unwrap_or_default());
     }
     // 4. rules/moves.yaml is refused.
     if root.join("rules/moves.yaml").is_file() {
         diags.push(rule_list::replaced_moves_file());
     }
-    // 5. The four rule files are read in this order; a missing one is reported here.
-    let [verbs, checks, meters, budget] = [
-        "rules/verbs.yaml",
-        "rules/checks.yaml",
-        "rules/meters.yaml",
-        "rules/budget.yaml",
-    ]
-    .map(|rel| diags.keep(read_text(root, rel)).map(|text| (rel, text)));
+    // 5. The other three rule files are read in this order; a missing one is reported here.
+    let [verbs, checks, budget] = ["rules/verbs.yaml", "rules/checks.yaml", "rules/budget.yaml"]
+        .map(|rel| diags.keep(read_text(root, rel)).map(|text| (rel, text)));
     // 6. Verbs.
     if let Some((rel, text)) = &verbs {
         loaded.extend(diags.keep(load_verbs(rel, text)).unwrap_or_default());
@@ -262,17 +284,23 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
     let rules = RuleTable::new(loaded);
     // 9. Checks. 10. Meters. 11. Budget.
     let checks = checks.and_then(|(rel, text)| diags.keep(load_checks(rel, &text)));
-    let meters = meters.and_then(|(rel, text)| diags.keep(load_meters(rel, &text)));
     let budget = budget.and_then(|(rel, text)| diags.keep(load_budget(rel, &text)));
     // 12. Lints across files.
     if let Some(checks) = &checks {
         diags.extend(unknown_checks(&rules, checks));
     }
     if let (Some(meters), Some(checks)) = (&meters, &checks) {
-        diags.extend(unknown_meters(meters, checks, &rules));
+        diags.extend(unknown_meters(meters, checks));
     }
-    if let Some(meters) = &meters {
-        diags.extend(unknown_reads(meters, &cast, &places, &rules));
+    if let (Some(meters), Some(world_meters)) = (&meters, &world_meters) {
+        let scope = MeterScope {
+            meters,
+            world_meters,
+            cast: &cast,
+            places: &places,
+        };
+        diags.extend(unknown_reads(&scope, &rules));
+        diags.extend(unknown_carriers(&scope, &rules));
     }
     diags.extend(unknown_rule_items(&rules, &items));
     diags.extend(reveal_problems(&rules, &facts.0));
@@ -283,8 +311,14 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
         .as_ref()
         .and_then(|pack| diags.keep(pack.checkpoint_every()));
     diags.into_result(())?;
-    let (Some(pack), Some(checks), Some(meters), Some(budget), Some(checkpoint_every)) =
-        (pack, checks, meters, budget, checkpoint_every)
+    let (
+        Some(pack),
+        Some(checks),
+        Some(meters),
+        Some(world_meters),
+        Some(budget),
+        Some(checkpoint_every),
+    ) = (pack, checks, meters, world_meters, budget, checkpoint_every)
     else {
         unreachable!("a part that did not load reported why");
     };
@@ -300,6 +334,7 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
         rules,
         checks,
         meters,
+        world_meters,
         items,
         budget,
         checkpoint_every,
