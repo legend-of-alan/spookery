@@ -309,7 +309,7 @@ rules:
 
 A rule has `id`, `when`, and `do`. It may have `if`, `cost`, `roll`, `success`, `partial`, and `miss`.
 
-`when` is `habit`, a map with `verb` and `target`, or a map with `change`. `target` is `none`, `actor`, `place`, `exit`, or `item`. An omitted `target` means `none`. `say` is speech, so that id is not a rule and not a verb. `when` has one of `verb` or `change`, not both.
+`when` is `habit`, a map with `verb` and `target`, or a map with `change`. `target` is `none`, `actor`, `place`, `exit`, or `item`. An omitted `target` means `none`. `say` is speech, so that id is not a rule. A built-in player word, such as `say` or `look`, cannot be a verb. `when` has one of `verb` or `change`, not both.
 
 A change rule fires when its watch becomes true. It does not fire again while the watch stays true. What the engine does with that firing is in [Engine guarantees](engine-guarantees.md). `story/samples.yaml` has a meter watch. The other watches are:
 
