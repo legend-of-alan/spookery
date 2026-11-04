@@ -1,0 +1,953 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Message",
+  "description": "One message on a seat's stream. `id` is chosen by the client and comes back as\n`reply_to` on the reply. `seq` is set by the server, from one counter per table, on\neverything it sends but the hello. The body is nested, so its fields never clash with\nthese.",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "seq": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "format": "uint64",
+      "minimum": 0
+    },
+    "reply_to": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "body": {
+      "$ref": "#/$defs/ServerBody"
+    }
+  },
+  "required": [
+    "body"
+  ],
+  "$defs": {
+    "ServerBody": {
+      "description": "What the table sends. A client ignores a kind or a field it does not know.",
+      "oneOf": [
+        {
+          "description": "The first message on a connection, and the only one with no `seq`. `open` lists the\nPCs a player seat may claim.",
+          "type": "object",
+          "properties": {
+            "version": {
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0
+            },
+            "words": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "open": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "kind": {
+              "type": "string",
+              "const": "hello"
+            }
+          },
+          "required": [
+            "kind",
+            "version",
+            "words"
+          ]
+        },
+        {
+          "description": "The reply to `claim`. `token` takes this PC back after a dropped connection. A new\nclaim carries `scrollback`, the says this PC heard before, oldest first. A claim by\ntoken carries `missed`, the messages sent to this PC after the `last_seq` it named, and\n`gap` when more than `MISSED_MESSAGE_CAP` messages were missed.",
+          "type": "object",
+          "properties": {
+            "actor": {
+              "type": "string"
+            },
+            "token": {
+              "type": "string"
+            },
+            "scrollback": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Say"
+              }
+            },
+            "missed": {
+              "type": "array",
+              "items": {
+                "$ref": "#"
+              }
+            },
+            "gap": {
+              "type": "boolean"
+            },
+            "kind": {
+              "type": "string",
+              "const": "claimed"
+            }
+          },
+          "required": [
+            "kind",
+            "actor",
+            "token"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "released"
+            }
+          },
+          "required": [
+            "kind"
+          ]
+        },
+        {
+          "description": "Sent to the GM whenever a claim starts or ends.",
+          "type": "object",
+          "properties": {
+            "actors_present": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "kind": {
+              "type": "string",
+              "const": "presence"
+            }
+          },
+          "required": [
+            "kind",
+            "actors_present"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "refused"
+            }
+          },
+          "$ref": "#/$defs/Refusal",
+          "required": [
+            "kind"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "intent": {
+              "type": "string"
+            },
+            "actor": {
+              "type": "string"
+            },
+            "move": {
+              "type": "string"
+            },
+            "target": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "kind": {
+              "type": "string",
+              "const": "queued"
+            }
+          },
+          "required": [
+            "kind",
+            "intent",
+            "actor",
+            "move"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "say"
+            }
+          },
+          "$ref": "#/$defs/Say",
+          "required": [
+            "kind"
+          ]
+        },
+        {
+          "description": "One committed round. Every seat gets it.",
+          "type": "object",
+          "properties": {
+            "round_index": {
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 0
+            },
+            "world_time": {
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 0
+            },
+            "kind": {
+              "type": "string",
+              "const": "round"
+            }
+          },
+          "required": [
+            "kind",
+            "round_index",
+            "world_time"
+          ]
+        },
+        {
+          "description": "A player's own check. No faces: the GM reads those in `committed`.",
+          "type": "object",
+          "properties": {
+            "outcome": {
+              "$ref": "#/$defs/Outcome"
+            },
+            "kind": {
+              "type": "string",
+              "const": "check"
+            }
+          },
+          "required": [
+            "kind",
+            "outcome"
+          ]
+        },
+        {
+          "description": "The GM's reply to `commit`, after its rounds.",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "committed"
+            }
+          },
+          "$ref": "#/$defs/CommitBody",
+          "required": [
+            "kind"
+          ]
+        },
+        {
+          "description": "The GM's reply to `status`.",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "status"
+            }
+          },
+          "$ref": "#/$defs/TableStatus",
+          "required": [
+            "kind"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "view"
+            }
+          },
+          "$ref": "#/$defs/View",
+          "required": [
+            "kind"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "notes": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/NoteView"
+              }
+            },
+            "clocks": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/ClockView"
+              }
+            },
+            "kind": {
+              "type": "string",
+              "const": "resume"
+            }
+          },
+          "required": [
+            "kind"
+          ]
+        },
+        {
+          "description": "A round's narrate lines and the changes one player saw, already the text to print.",
+          "type": "object",
+          "properties": {
+            "text": {
+              "type": "string"
+            },
+            "kind": {
+              "type": "string",
+              "const": "lines"
+            }
+          },
+          "required": [
+            "kind",
+            "text"
+          ]
+        }
+      ]
+    },
+    "Say": {
+      "description": "One say. The GM's copy lists its `recipients`; a player's copy does not.",
+      "type": "object",
+      "properties": {
+        "from": {
+          "$ref": "#/$defs/Speaker"
+        },
+        "address": {
+          "type": "string"
+        },
+        "place": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "actor": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "recipients": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "from",
+        "address",
+        "text"
+      ]
+    },
+    "Speaker": {
+      "description": "Who spoke: the `from` of a say on the wire and the tape. Written `gm`, `player:<id>` or\n`npc:<id>`; `FromStr` refuses an empty or whitespace id and any other prefix.",
+      "type": "string"
+    },
+    "Code": {
+      "description": "The code as a client reads it off the wire: a `Reason` this build knows, or the\ntext of one it does not. Serializes as the bare string either way.",
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Reason"
+        },
+        {
+          "type": "string"
+        }
+      ]
+    },
+    "Reason": {
+      "description": "Every refusal code. The `code` of a `refused` body and of the MCP initialize error's\n`data`, and the token the journal stores on a round line (`engine::Refusal`).\nStrict and `Copy` on purpose: `spook verify` must fail on a code it does not know.",
+      "type": "string",
+      "enum": [
+        "UNKNOWN_EFFECT",
+        "ILLEGAL_KNOWLEDGE",
+        "OUT_OF_RANGE",
+        "BUDGET",
+        "PAUSED_CLOCK",
+        "UNKNOWN_ID",
+        "VIEWER_MISMATCH",
+        "ENGINE_ON_PLAYER",
+        "INELIGIBLE",
+        "ACTOR_MISMATCH",
+        "TABLE_EMPTY",
+        "PACK_REV_MISMATCH",
+        "RULES_REV_MISMATCH",
+        "UNKNOWN_MOVE",
+        "UNSCOPED_PERCEIVE",
+        "COMMIT_CONFLICT",
+        "HAND_EDIT",
+        "JOURNAL_DIVERGED",
+        "STORE_IO",
+        "SCHEMA",
+        "NOT_IN_SPEC",
+        "TABLE_FULL",
+        "SEAT_TAKEN",
+        "CHOOSE_PC",
+        "MISSING_ITEM",
+        "LINE_TOO_LONG",
+        "CANT_AFFORD",
+        "NOT_A_WEAPON",
+        "NO_EXIT",
+        "BUSY",
+        "TRIGGER_LEAK"
+      ]
+    },
+    "Detail": {
+      "description": "A refusal's `detail`: one id or locked text, or the free PCs on `CHOOSE_PC`.",
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "Refusal": {
+      "description": "Sent from the table to a client as a `refused` body, and to an MCP GM client as the MCP\ninitialize error's `data`.\nDisplay is that error's message, the sentence with the code in brackets,\n`The table is full. [TABLE_FULL]`.",
+      "type": "object",
+      "properties": {
+        "code": {
+          "$ref": "#/$defs/Code"
+        },
+        "detail": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Detail"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "code"
+      ]
+    },
+    "Outcome": {
+      "description": "A check band on the player wire, the GM wire, and the rolls in `committed`.",
+      "type": "string",
+      "enum": [
+        "success",
+        "partial",
+        "miss"
+      ]
+    },
+    "Roll": {
+      "description": "One check roll in `CommitBody`, sent from the table to a GM client.",
+      "type": "object",
+      "properties": {
+        "faces": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          }
+        },
+        "stat": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "total": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "target": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "outcome": {
+          "$ref": "#/$defs/Outcome"
+        }
+      },
+      "required": [
+        "faces",
+        "stat",
+        "total",
+        "target",
+        "outcome"
+      ]
+    },
+    "CommitBody": {
+      "description": "The body of the GM's `committed` reply, sent from the table to a GM client.",
+      "type": "object",
+      "properties": {
+        "state_rev": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "changed_keys": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "journal_path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "rolls": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Roll"
+          }
+        },
+        "dice": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "state_rev",
+        "changed_keys",
+        "rolls"
+      ]
+    },
+    "StatusPresence": {
+      "description": "Part of `TableStatus`, sent from the table to a GM client.",
+      "type": "object",
+      "properties": {
+        "players": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "actors_present": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "players",
+        "actors_present"
+      ]
+    },
+    "StatusPause": {
+      "description": "Part of `TableStatus`, sent from the table to a GM client.",
+      "type": "object",
+      "properties": {
+        "presence_clocks": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "presence_clocks"
+      ]
+    },
+    "QueuedMove": {
+      "description": "A queued move in `TableStatus`, sent from the table to a GM client.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "actor_id": {
+          "type": "string"
+        },
+        "move": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "actor_id",
+        "move"
+      ]
+    },
+    "PackSummary": {
+      "description": "Part of `TableStatus`, sent from the table to a GM client.",
+      "type": "object",
+      "properties": {
+        "menu": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/MenuRow"
+          }
+        },
+        "kinds": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/CastKind"
+          }
+        },
+        "places": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "cast": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "menu",
+        "kinds",
+        "places",
+        "cast"
+      ]
+    },
+    "MenuRow": {
+      "description": "One cast row in a `PackSummary`, sent from the table to a GM client.",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "target": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "kind",
+        "target"
+      ]
+    },
+    "CastKind": {
+      "description": "Whether a `MenuRow` is a PC or an NPC, sent from the table to a GM client.",
+      "type": "string",
+      "enum": [
+        "npc",
+        "pc_template"
+      ]
+    },
+    "TableStatus": {
+      "description": "The body of the GM's `status` reply, sent from the table to a GM client.",
+      "type": "object",
+      "properties": {
+        "presence": {
+          "$ref": "#/$defs/StatusPresence"
+        },
+        "pause": {
+          "$ref": "#/$defs/StatusPause"
+        },
+        "world_time": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "round_index": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "state_rev": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "pack_rev": {
+          "type": "string"
+        },
+        "last_round_at": {
+          "type": "string"
+        },
+        "queued": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/QueuedMove"
+          }
+        },
+        "pack": {
+          "description": "An older server never sends it.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PackSummary"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "presence",
+        "pause",
+        "world_time",
+        "round_index",
+        "state_rev",
+        "pack_rev",
+        "last_round_at",
+        "queued"
+      ]
+    },
+    "KnownFact": {
+      "description": "Part of a `View`, sent from the table to a player client.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        },
+        "owner_body": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "text",
+        "owner_body"
+      ]
+    },
+    "NoteView": {
+      "description": "Part of a `View`, sent from the table to a player client.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "to": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "place": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "fact_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "to",
+        "fact_ids",
+        "text"
+      ]
+    },
+    "ClockView": {
+      "description": "Part of a `View`, sent from the table to a player client.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "value": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "max": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "paused": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "value",
+        "max",
+        "paused"
+      ]
+    },
+    "ItemStack": {
+      "description": "Part of a `View`, sent from the table to a player client.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "count": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "id",
+        "count"
+      ]
+    },
+    "MeterView": {
+      "description": "Part of a `View`, sent from the table to a player client.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "value": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "max": {
+          "type": "integer",
+          "format": "int64"
+        }
+      },
+      "required": [
+        "id",
+        "value",
+        "max"
+      ]
+    },
+    "ExitView": {
+      "description": "Part of a `View`, sent from the table to a player client.",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "to": {
+          "type": "string"
+        },
+        "place_name": {
+          "type": "string"
+        },
+        "minutes": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "locked": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "name",
+        "to",
+        "place_name",
+        "minutes",
+        "locked"
+      ]
+    },
+    "View": {
+      "description": "Sent from the table to a player client as the `view` body and to a GM client as the\n`perceive` reply. Always written `protocol::View`: the engine's `View` is what the\nserver renders this from.",
+      "type": "object",
+      "properties": {
+        "viewer": {
+          "type": "string"
+        },
+        "place": {
+          "type": "string"
+        },
+        "place_name": {
+          "type": "string"
+        },
+        "body": {
+          "type": "string"
+        },
+        "actor_names": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "status": {
+          "type": "string"
+        },
+        "visible_actors": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "known_facts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/KnownFact"
+          }
+        },
+        "notes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/NoteView"
+          }
+        },
+        "unknown_mentions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "clocks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ClockView"
+          }
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ItemStack"
+          }
+        },
+        "meters": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/MeterView"
+          }
+        },
+        "habits": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "exits": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ExitView"
+          }
+        }
+      },
+      "required": [
+        "viewer",
+        "place",
+        "visible_actors",
+        "known_facts",
+        "notes",
+        "unknown_mentions",
+        "clocks",
+        "items",
+        "habits"
+      ]
+    }
+  }
+}

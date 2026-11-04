@@ -1,0 +1,263 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Message",
+  "description": "One message on a seat's stream. `id` is chosen by the client and comes back as\n`reply_to` on the reply. `seq` is set by the server, from one counter per table, on\neverything it sends but the hello. The body is nested, so its fields never clash with\nthese.",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "seq": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "format": "uint64",
+      "minimum": 0
+    },
+    "reply_to": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "body": {
+      "$ref": "#/$defs/ClientBody"
+    }
+  },
+  "required": [
+    "body"
+  ],
+  "$defs": {
+    "ClaimArgs": {
+      "description": "`claim` arguments: a free PC, or the token of a claim this player held before and the\nlast `seq` it read.",
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "actor": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "actor"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "token": {
+              "type": "string"
+            },
+            "last_seq": {
+              "description": "The last `seq` the player read. A missing `last_seq` means 0, so the reply\ncatches up on everything the claim still keeps.",
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 0,
+              "default": 0
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "token"
+          ]
+        }
+      ]
+    },
+    "MoveArgs": {
+      "description": "A pack verb's arguments, sent by a player seat.",
+      "type": "object",
+      "properties": {
+        "target": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "NoArgs": {
+      "description": "The arguments of a word that takes none.",
+      "type": "object",
+      "additionalProperties": false
+    },
+    "SayArgs": {
+      "description": "The `say` word arguments of either seat, sent from a client to the table.",
+      "type": "object",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "text": {
+              "type": "string"
+            },
+            "address": {
+              "type": "string",
+              "const": "table"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "address",
+            "text"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "place": {
+              "type": "string",
+              "minLength": 1
+            },
+            "text": {
+              "type": "string"
+            },
+            "address": {
+              "type": "string",
+              "const": "place"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "address",
+            "place",
+            "text"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "actor": {
+              "type": "string",
+              "minLength": 1
+            },
+            "text": {
+              "type": "string"
+            },
+            "address": {
+              "type": "string",
+              "const": "actor"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "address",
+            "actor",
+            "text"
+          ]
+        }
+      ]
+    },
+    "PerceiveArgs": {
+      "description": "The GM's `perceive` word arguments, sent from a GM client to the table.",
+      "type": "object",
+      "properties": {
+        "as": {
+          "type": "string"
+        },
+        "max_body_chars": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "as"
+      ]
+    },
+    "IntentArgs": {
+      "description": "The GM's `queue` word arguments, sent from a GM client to the table.\nSerialized, a call names only the fields that are set.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "round_index": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0
+        },
+        "actor_id": {
+          "type": "string"
+        },
+        "move": {
+          "type": "string"
+        },
+        "target": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "to": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "string"
+          }
+        },
+        "rationale_code": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "actor_id",
+        "move"
+      ]
+    },
+    "CommitArgs": {
+      "description": "The GM's `commit` word arguments, sent from a GM client to the table.",
+      "type": "object",
+      "properties": {
+        "include_round": {
+          "type": "boolean"
+        },
+        "session_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "include_round"
+      ]
+    },
+    "ClientBody": {
+      "description": "One word and its arguments. Each word reads `args` as its own argument type.",
+      "type": "object",
+      "properties": {
+        "word": {
+          "type": "string"
+        },
+        "args": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "word"
+      ]
+    }
+  }
+}
