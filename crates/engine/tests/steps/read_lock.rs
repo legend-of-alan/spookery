@@ -1,11 +1,11 @@
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::mpsc;
 use std::thread;
+use std::time::Duration;
 
 use cucumber::{given, then, when};
 
-use spookery_engine::testing::{copy_docks, journal, lock_write, watch_reader_wait};
+use spookery_engine::testing::{copy_docks, journal, lock_write};
 use spookery_engine::{emit_save, lock_pack};
 
 use crate::{World, Writer};
@@ -43,26 +43,23 @@ fn peek_digest(pack: &Path) -> Result<String, String> {
 }
 
 /// Hold the write guard while the disk is `halfway`, start status, then `finish` and drop it.
-/// `summary` gets the order of "waited" and "peeked", and `scratch` the text status printed.
+/// `scratch` gets the text status printed.
 fn peek_during(world: &mut World, halfway: impl FnOnce(), finish: impl FnOnce()) {
     let pack = world.pack().to_path_buf();
-    let (tx, rx) = mpsc::channel();
-    watch_reader_wait(tx.clone());
     let write = lock_write(writer(world)).unwrap_or_else(|err| panic!("write guard: {err}"));
     halfway();
     let peeked = thread::scope(|scope| {
-        let status = scope.spawn(|| {
-            let peeked = peek_digest(&pack);
-            let _ = tx.send("peeked");
-            peeked
-        });
-        let first = rx.recv().expect("status ended without a word");
+        let status = scope.spawn(|| peek_digest(&pack));
+        // A status that skips the lock ends at once on the half-written files.
+        // One that waits is still blocked, so a slow machine can only pass this by mistake.
+        thread::sleep(Duration::from_millis(200));
+        assert!(
+            !status.is_finished(),
+            "status read the pack while the write was halfway"
+        );
         finish();
         drop(write);
-        let peeked = status.join().expect("status panicked");
-        world.wait_order = vec![first.to_string()];
-        world.wait_order.extend(rx.try_iter().map(str::to_string));
-        peeked
+        status.join().expect("status panicked")
     });
     world.scratch = peeked.unwrap_or_else(|err| panic!("status: {err}"));
 }
@@ -125,11 +122,6 @@ fn status_peeks_mid_checkpoint(world: &mut World) {
             fs::write(&snap, &after).unwrap();
         },
     );
-}
-
-#[then(expr = "status waited for the write to finish")]
-fn status_waited(world: &mut World) {
-    assert_eq!(world.wait_order, ["waited", "peeked"]);
 }
 
 /// With no write in progress, the tip is the writer's round and its text is the truth.

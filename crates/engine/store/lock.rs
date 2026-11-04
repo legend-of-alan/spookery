@@ -37,17 +37,9 @@ mod locked {
             Ok(Self(file))
         }
 
-        /// Wait for a shared lock, noting the wait for tests.
+        /// Wait for a shared lock.
         pub(super) fn lock_shared(file: File) -> Result<Self, Reason> {
-            match file.try_lock_shared() {
-                Ok(()) => {}
-                Err(TryLockError::WouldBlock) => {
-                    #[cfg(feature = "testing")]
-                    super::note_reader_wait();
-                    file.lock_shared().map_err(|_| Reason::NotInSpec)?;
-                }
-                Err(TryLockError::Error(_)) => return Err(Reason::NotInSpec),
-            }
+            file.lock_shared().map_err(|_| Reason::NotInSpec)?;
             Ok(Self(file))
         }
 
@@ -128,27 +120,4 @@ fn open_lock(root: &Path, rel: &str) -> Result<File, Reason> {
         .truncate(false)
         .open(root.join(rel))
         .map_err(|_| Reason::NotInSpec)
-}
-
-#[cfg(feature = "testing")]
-static READER_WAIT: std::sync::Mutex<Option<std::sync::mpsc::Sender<&'static str>>> =
-    std::sync::Mutex::new(None);
-
-/// Send "waited" to `tx` the next time a reader waits out a write.
-#[cfg(feature = "testing")]
-pub fn watch_reader_wait(tx: std::sync::mpsc::Sender<&'static str>) {
-    *READER_WAIT
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(tx);
-}
-
-#[cfg(feature = "testing")]
-fn note_reader_wait() {
-    let tx = READER_WAIT
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-        .take();
-    if let Some(tx) = tx {
-        let _ = tx.send("waited");
-    }
 }
