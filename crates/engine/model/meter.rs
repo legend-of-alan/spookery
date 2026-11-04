@@ -1,17 +1,31 @@
-//! Meter bounds from the pack, and the live value on an actor.
+//! Meter bounds from the pack, and the live value on its holder.
 
 use serde::{Deserialize, Serialize};
 
+use crate::rules::effect::Holder;
 use crate::Reason;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MeterDef {
     pub min: i64,
     pub base_cap: i64,
     pub max: i64,
     pub start: i64,
-    /// Kept off the player's own view.
+    /// Kept off the players' views.
     pub hidden: bool,
+    /// Who carries it, from the file that declares it. `None` is every actor.
+    pub carrier: Option<Holder>,
+}
+
+impl MeterDef {
+    /// Whether actor `id` carries this meter.
+    pub fn is_on_actor(&self, id: &str) -> bool {
+        match &self.carrier {
+            None => true,
+            Some(Holder::Actor(carrier)) => carrier == id,
+            Some(_) => false,
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -43,7 +57,7 @@ pub fn current(def: &MeterDef, live: &MeterLive) -> Result<i64, Reason> {
 }
 
 /// `Ok(true)` means the stored pair changed and the caller should track
-/// `StateKey::ActorMeter`. A zero delta leaves the pair alone and is `Ok(false)`.
+/// the meter's key. A zero delta leaves the pair alone and is `Ok(false)`.
 /// The live record is assigned only after `is_storable` accepts the next pair.
 pub fn write(def: &MeterDef, live: &mut MeterLive, write: MeterWrite) -> Result<bool, Reason> {
     let MeterWrite::Offset(delta) = write;
@@ -67,6 +81,7 @@ mod tests {
             max: 110,
             start: 1,
             hidden: false,
+            carrier: None,
         }
     }
 

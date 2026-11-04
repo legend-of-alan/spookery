@@ -51,6 +51,9 @@ mod triggers;
 #[path = "steps/migrate.rs"]
 mod migrate;
 
+#[path = "steps/meters.rs"]
+mod meters;
+
 #[path = "steps/wake.rs"]
 mod wake;
 

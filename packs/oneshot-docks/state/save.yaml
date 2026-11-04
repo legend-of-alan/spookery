@@ -1,13 +1,11 @@
 schema: save
 world_id: docks-001
-pack_rev: blake2s:5e8aed8ebc0be8c009fdb25a79f4e45c008b4fd081252d985bd23353c8f17f04
-rules_rev: 11
+pack_rev: blake2s:33051155c1de5f6ceffa4ff1ab83088e60e5fea9961a5ef7a810c5e6db2f3a8f
+rules_rev: 12
 state_rev: 0
 round_index: 0
 world_time: 1080
 last_round_at: "2026-01-01T00:00:00Z"
-pause:
-  presence_clocks: paused
 places:
   docks_shop:
     items:
@@ -62,6 +60,9 @@ actors:
       rest:
         base: 3
         offset: 0
+      shop_day:
+        base: 1
+        offset: 0
     inventory: {}
     known_facts:
       - fact_ledger_short
@@ -93,6 +94,9 @@ actors:
     place: docks_shop
     flags: []
     meters:
+      assassination_debt:
+        base: 2
+        offset: 0
       grit:
         base: 1
         offset: 0
@@ -126,19 +130,4 @@ actors:
       last_act_round: 0
       idle_acts_today: 0
       live_acts_this_hour: 0
-clocks:
-  assassination_debt:
-    value: 2
-    max: 6
-    requires_presence: true
-    owners:
-      - pc_rowan
-    paused: true
-  shop_day:
-    value: 1
-    max: 1
-    requires_presence: false
-    owners:
-      - mira
-    paused: false
 notes: []

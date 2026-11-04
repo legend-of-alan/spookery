@@ -156,8 +156,8 @@ Lark watches the street from a dry doorway.
     crate::support::edit_save(&pack, |now| {
         let mut actor = now
             .actors
-            .get("pc_rowan")
-            .unwrap_or_else(|| panic!("pc_rowan"))
+            .get("pc_wren")
+            .unwrap_or_else(|| panic!("pc_wren"))
             .clone();
         actor.place = "docks_street".to_string();
         now.actors.insert("pc_lark".to_string(), actor);
@@ -554,17 +554,6 @@ fn the_habit_does_not_fire(world: &mut World) {
 #[then(expr = "the habit fires")]
 fn the_habit_fires(world: &mut World) {
     assert_eq!(street_oil(world), 1);
-}
-
-#[then(expr = "the requires_presence clock is {word}")]
-fn the_requires_presence_clock_is(world: &mut World, state: String) {
-    let now = state_of(table::pack(world));
-    let clock = now
-        .clocks
-        .get("assassination_debt")
-        .unwrap_or_else(|| panic!("assassination_debt"));
-    assert!(clock.requires_presence);
-    assert_eq!(clock.paused, state == "paused", "{state}: {clock:?}");
 }
 
 const TABLE_LINE: &str = "the tide turns at the quay";

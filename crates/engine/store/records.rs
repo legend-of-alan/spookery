@@ -3,6 +3,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::intent::Intent;
+use crate::model::meter::MeterDef;
 use crate::model::MemoryLine;
 use crate::rules::effect::Effect;
 use crate::rules::gate;
@@ -13,6 +14,22 @@ use crate::rules::gate;
 pub struct AddedMeter {
     pub id: String,
     pub start: i64,
+    /// The one actor that carries it, or `world`. Omitted for a meter every actor carries.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub carrier: Option<String>,
+}
+
+impl AddedMeter {
+    pub(crate) fn new(id: &str, def: &MeterDef) -> Self {
+        Self {
+            id: id.to_string(),
+            start: def.start,
+            carrier: def
+                .carrier
+                .as_ref()
+                .and_then(|holder| holder.actor_id().ok()),
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

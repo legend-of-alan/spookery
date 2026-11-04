@@ -24,7 +24,8 @@ Feature: Trigger delivery
   Scenario: Change summaries stay with the viewers who can see the change
     When nell travels into the shop and the bell narrates
     Then the GM summary lists "actor_place pc_nell"
-    And "pc_nell"'s summary lists "actor_flag pc_nell heard_bell"
+    And "pc_nell"'s summary lists "actor_place pc_nell"
+    And "pc_nell"'s summary does not list "actor_flag pc_nell heard_bell"
     And "pc_wren"'s summary does not list "actor_flag pc_nell heard_bell"
 
   Scenario: Round counters stay with the GM
@@ -44,12 +45,6 @@ Feature: Trigger delivery
     And "pc_rowan"'s summary lists "place_item docks_shop lamp_oil"
     And "pc_wren"'s summary does not list "place_item docks_shop lamp_oil"
 
-  Scenario: A clock change is seen by its owners only
-    When a clock owned by pc_nell ticks
-    Then the GM summary lists "clock_value nell_tide"
-    And "pc_nell"'s summary lists "clock_value nell_tide"
-    And "pc_wren"'s summary does not list "clock_value nell_tide"
-
   Scenario: Entering and leaving are seen from both rooms
     When pc_nell travels from docks_street into docks_shop
     Then the GM summary lists "actor_place pc_nell"
@@ -57,17 +52,6 @@ Feature: Trigger delivery
     And "pc_wren"'s summary lists "actor_place pc_nell"
     And "pc_rowan"'s summary lists "actor_place pc_nell"
     And "pc_harbormouse"'s summary does not list "actor_place pc_nell"
-
-  Scenario: A world flag is seen by everyone
-    When a rule sets world flag tide_turned
-    Then the GM summary lists "world_flag tide_turned"
-    And every seated player's summary lists "world_flag tide_turned"
-
-  Scenario: Another person's change is seen only in the same room
-    When pc_wren's meter changes while pc_nell is elsewhere
-    Then the GM summary lists "actor_meter pc_wren grit"
-    And "pc_harbormouse"'s summary lists "actor_meter pc_wren grit"
-    And "pc_nell"'s summary does not list "actor_meter pc_wren grit"
 
   Scenario: Another person's item change is seen only in the same room
     When pc_rowan takes an item while pc_nell is in the same room

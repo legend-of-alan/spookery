@@ -4,7 +4,7 @@ This page is the wire a player client or a GM speaks to `spook run`. [Engine gua
 
 - this page, whose examples are one live sitting of `packs/oneshot-docks`. A test plays that sitting and fails when an example and the table disagree.
 - the JSON Schema, [`client.json`](../crates/protocol/schema/client.json) for what a client sends and [`server.json`](../crates/protocol/schema/server.json) for what the table sends. A test fails when the schema `spookery-protocol` derives with its `schema` feature is not the published one.
-- the recorded session, [`v1.jsonl`](../crates/protocol/sessions/v1.jsonl), a player and a GM recorded against the previous release. The `compatibility-replay` CI job replays it against each build.
+- the recorded session, [`v2.jsonl`](../crates/protocol/sessions/v2.jsonl), a player and a GM recorded against version 2. The `compatibility-replay` CI job replays it against each build.
 
 In the examples, Rowan is the player, in the shop, at game time 1080. A tick is game time. A round is one batch of queued moves.
 
@@ -46,12 +46,12 @@ The table speaks first, with `version`, the `words` this seat may send, and, on 
 
 <!-- example: player-hello -->
 ```json
-{"body":{"kind":"hello","version":1,"words":["claim","release","say","look","help","map","drop","grit","take","travel","unwield","wait","wield"],"open":["pc_harbormouse","pc_rowan","pc_wren"]}}
+{"body":{"kind":"hello","version":2,"words":["claim","release","say","look","help","map","drop","grit","take","travel","unwield","wait","wield"],"open":["pc_harbormouse","pc_rowan","pc_wren"]}}
 ```
 
 <!-- example: gm-hello -->
 ```json
-{"body":{"kind":"hello","version":1,"words":["status","perceive","queue","say","commit","release"]}}
+{"body":{"kind":"hello","version":2,"words":["status","perceive","queue","say","commit","release"]}}
 ```
 
 One GM sits at a time, on `/gm` or on `/mcp`. A second GM on `/gm` gets one `refused` with `TABLE_FULL`, and the connection closes.
@@ -167,13 +167,10 @@ The table's state for a GM. `world_time` is the game clock in minutes. `pack_rev
         "pc_rowan"
       ]
     },
-    "pause": {
-      "presence_clocks": "paused"
-    },
     "world_time": 1080,
     "round_index": 0,
     "state_rev": 0,
-    "pack_rev": "blake2s:5e8aed8ebc0be8c009fdb25a79f4e45c008b4fd081252d985bd23353c8f17f04",
+    "pack_rev": "blake2s:33051155c1de5f6ceffa4ff1ab83088e60e5fea9961a5ef7a810c5e6db2f3a8f",
     "last_round_at": "2026-01-01T00:00:00Z",
     "queued": [],
     "pack": {
@@ -284,10 +281,10 @@ The table's state for a GM. `world_time` is the game clock in minutes. `pack_rev
 
 <!-- example: gm-committed -->
 ```json
-{"seq":14,"reply_to":"c3","body":{"kind":"committed","state_rev":1,"changed_keys":["clock_paused assassination_debt","last_act_round aldric","last_act_round mira","live_acts_this_hour aldric","live_acts_this_hour mira","note note_mira_door"],"journal_path":"state/journal/bundle-0000.jsonl","rolls":[{"faces":[5,2],"stat":1,"total":8,"target":0,"outcome":"success"}]}}
+{"seq":14,"reply_to":"c3","body":{"kind":"committed","state_rev":1,"changed_keys":["last_act_round aldric","last_act_round mira","live_acts_this_hour aldric","live_acts_this_hour mira","note note_mira_door"],"journal_path":"state/journal/bundle-0000.jsonl","rolls":[{"faces":[5,2],"stat":1,"total":8,"target":0,"outcome":"success"}]}}
 ```
 
-`changed_keys` are the state keys the round changed. `journal_path` is the round's journal file, or null when the round wrote none. `rolls` are the checks rolled, faces and all. Faces go to the GM only.
+`changed_keys` are the state keys the round changed, every one of them: a meter is `actor_meter <actor> <id>` or `world_meter <id>`, and a flag is `actor_flag <actor> <key>` or `world_flag <key>`. `journal_path` is the round's journal file, or null when the round wrote none. `rolls` are the checks rolled, faces and all. Faces go to the GM only.
 
 ## Bodies
 
@@ -307,16 +304,16 @@ A client ignores a `kind` or a field it does not know. `server.json` gives every
 | `committed` | the GM | the reply to `commit` |
 | `status` | the GM | the reply to `status` |
 | `view` | a player, or the GM on `perceive` | what one actor can see |
-| `resume` | a player | the `notes` addressed to that PC and its own `clocks` |
+| `resume` | a player | the `notes` addressed to that PC |
 | `lines` | a player | text to print: one narrate line, or the changes that player saw |
 
 ### view and resume
 
-`viewer` is the bare actor id. `place_name` and `actor_names` are the pack's display names, and `body` is the place prose. `known_facts` hold only the facts that actor knows, with the prose that actor may read. `meters` are the viewer's own, without hidden ones. `exits` is left out when the place has none. `status` is left out unless the viewer is still travelling, and then reads like `on the stairs until 21:40`.
+`viewer` is the bare actor id. `place_name` and `actor_names` are the pack's display names, and `body` is the place prose. `known_facts` hold only the facts that actor knows, with the prose that actor may read. `meters` are the viewer's own, without hidden ones. `world_meters` are the world's meters whose pack row says `hidden: false`, at their current values, so a player who comes back sees them. `exits` is left out when the place has none. `cant_act` says why the viewer can't act now, and is left out when they can, so `View::can_act()` is `cant_act` being empty. Today it is a journey, and reads like `on the stairs until 21:40`.
 
 <!-- example: player-resume -->
 ```json
-{"seq":2,"body":{"kind":"resume","clocks":[{"id":"assassination_debt","value":2,"max":6,"paused":true}]}}
+{"seq":2,"body":{"kind":"resume"}}
 ```
 
 <!-- example: player-view -->
@@ -346,14 +343,6 @@ A client ignores a `kind` or a field it does not know. `server.json` gives every
     ],
     "notes": [],
     "unknown_mentions": [],
-    "clocks": [
-      {
-        "id": "assassination_debt",
-        "value": 2,
-        "max": 6,
-        "paused": true
-      }
-    ],
     "items": [
       {
         "id": "lamp_oil",
@@ -361,6 +350,11 @@ A client ignores a `kind` or a field it does not know. `server.json` gives every
       }
     ],
     "meters": [
+      {
+        "id": "assassination_debt",
+        "value": 2,
+        "max": 6
+      },
       {
         "id": "grit",
         "value": 1,
@@ -395,7 +389,7 @@ A client ignores a `kind` or a field it does not know. `server.json` gives every
 
 ### After a round
 
-Each seated player gets, in order: the `round`, a `check` for each of their own rolls, a `refused` for each of their own moves the round refused, a fresh `resume` and `view`, a `lines` for each narrate line they may hear, and a last `lines` with the meter changes and items gained or lost that player may know. A `lines` that would be empty is not sent, and a narrate line that would show a fact the player may not know is left out. An NPC's roll or refused habit sends no player message.
+Each seated player gets, in order: the `round`, a `check` for each of their own rolls, a `refused` for each of their own moves the round refused, a fresh `resume` and `view`, a `lines` for each narrate line they may hear, and a last `lines` with the meter changes and items gained or lost that player may know. A player is told their own meter changes and the world's shown ones, not another actor's, even in the same place, and never a flag change. A `lines` that would be empty is not sent, and a narrate line that would show a fact the player may not know is left out. An NPC's roll or refused habit sends no player message.
 
 <!-- example: player-round -->
 ```json
@@ -467,7 +461,7 @@ A refusal is a `refused` body, and the connection stays up. `detail` is there on
 | `ACTOR_MISMATCH` | That actor is a player's, or the move is not this actor's. |
 | `NO_EXIT`, `CANT_AFFORD`, `MISSING_ITEM`, `NOT_A_WEAPON`, `BUSY` | The move was not queued. `BUSY` clears when the character is free. |
 | `UNKNOWN_MOVE`, `UNKNOWN_ID` | That move or id is not in the world, or the token is no claim's. |
-| `INELIGIBLE`, `OUT_OF_RANGE`, `PAUSED_CLOCK`, `BUDGET`, `UNKNOWN_EFFECT`, `ILLEGAL_KNOWLEDGE`, `VIEWER_MISMATCH`, `ENGINE_ON_PLAYER`, `TABLE_EMPTY` | The rules refused the change, and nothing of it was kept. |
+| `INELIGIBLE`, `OUT_OF_RANGE`, `BUDGET`, `UNKNOWN_EFFECT`, `ILLEGAL_KNOWLEDGE`, `VIEWER_MISMATCH`, `ENGINE_ON_PLAYER`, `TABLE_EMPTY` | The rules refused the change, and nothing of it was kept. |
 | `COMMIT_CONFLICT` | Another process holds the pack. Stop. |
 | `HAND_EDIT` | The save was edited by hand. Stop until it is migrated. |
 | `JOURNAL_DIVERGED` | The journal no longer replays. `spook verify` names the record. Stop. |
@@ -481,6 +475,7 @@ The MCP endpoint answers with an HTTP status before any seat: 400 for an `MCP-Pr
 
 - A client ignores a body `kind` and a field it does not know.
 - Changes only add. A field never changes meaning, and a new meaning gets a new name.
-- The hello announces `version` and the words. A word is removed only after one release of being marked as going away. Version 1 has no such word and no marker yet. The marker is added to the hello before the first word needs it.
+- The hello announces `version` and the words. A word is removed only after one release of being marked as going away. Version 2 has no such word and no marker yet. The marker is added to the hello before the first word needs it.
+- Version 2 broke version 1 once, on purpose: clocks left the wire with world clocks. `clocks` left `view` and `resume`, `pause` left `status`, `PAUSED_CLOCK` left the refusal codes, and `view.status` became `view.cant_act`. `view.world_meters` was added. The session recorded against version 1 was replaced by one recorded against version 2.
 - The recorded session must still replay. Each message it got must still arrive at that seat, in order, with every field it had and the same value. New kinds and fields may come between. Only `seq`, which a new kind moves, and `token`, which each table mints, may differ.
 - The journal and refusal codes stay strict: `spook verify` fails on a code it does not know.

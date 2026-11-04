@@ -6,6 +6,7 @@ use crate::canon::source::{FileText, Locator, Problem};
 use crate::canon::{Canon, CastDef, FactDef, ItemDef, PlaceDef};
 use crate::diagnostic::{error, schema_error, warning, Diagnostic};
 use crate::model::meter::{self, MeterDef};
+use crate::rules::effect::Holder;
 use crate::rules::expr::Expr;
 use crate::rules::roll::Check;
 use crate::rules::rule::{
@@ -271,25 +272,16 @@ pub(super) fn unknown_checks(
     diags
 }
 
-pub(super) fn unknown_reads(
-    meters: &BTreeMap<String, MeterDef>,
-    cast: &BTreeMap<String, CastDef>,
-    places: &BTreeMap<String, PlaceDef>,
-    rules: &RuleTable,
-) -> Vec<Diagnostic> {
-    let known = ExprScope {
-        meters,
-        cast,
-        places,
-    };
+pub(super) fn unknown_reads(scope: &MeterScope, rules: &RuleTable) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
     for rule in rules.iter() {
         let mut exprs = Vec::new();
         push_rule_exprs(rule, &mut exprs);
         let path = format!("rules[{}]", rule.index);
-        known.push_unknown_reads(&FileText::named(&rule.file), &path, &exprs, &mut diags);
+        let source = FileText::named(&rule.file);
+        scope.push_unknown_reads(&source, &path, fixed_self(rule), &exprs, &mut diags);
     }
-    for place in places.values() {
+    for place in scope.places.values() {
         for exit in &place.exits {
             let mut exprs = Vec::new();
             push_cost(&exit.cost, &mut exprs);
@@ -297,25 +289,104 @@ pub(super) fn unknown_reads(
                 push_cond(cond, &mut exprs);
             }
             let path = format!("exits[{}]", exit.index);
-            known.push_unknown_reads(&FileText::named(&exit.file), &path, &exprs, &mut diags);
+            let source = FileText::named(&exit.file);
+            scope.push_unknown_reads(&source, &path, None, &exprs, &mut diags);
         }
     }
     diags
 }
 
-/// What an expression may read: the pack's meters, and the cast and places it may name.
-struct ExprScope<'a> {
-    meters: &'a BTreeMap<String, MeterDef>,
-    cast: &'a BTreeMap<String, CastDef>,
-    places: &'a BTreeMap<String, PlaceDef>,
+/// Meter effects and conditions whose holder is fixed by the pack and does not carry the meter.
+pub(super) fn unknown_carriers(scope: &MeterScope, rules: &RuleTable) -> Vec<Diagnostic> {
+    let mut diags = Vec::new();
+    for rule in rules.iter() {
+        let mut named = Vec::new();
+        for cond in &rule.if_ {
+            push_cond_meters(cond, &mut named);
+        }
+        rule.visit_templates(|effect| {
+            if let EffectTemplate::Meter { who, key, .. } = effect {
+                named.push((who, key.as_str()));
+            }
+        });
+        for (who, key) in named {
+            let Some(why) = scope.meter_miss(fixed_self(rule), who, key) else {
+                continue;
+            };
+            diags.push(
+                schema_error(
+                    &rule.file,
+                    &format!("rule '{}' names meter '{key}', but {why}", rule.local_id),
+                    "declare the meter on that holder, or name a holder that carries it",
+                )
+                .at_path(format!("rules[{}]", rule.index)),
+            );
+        }
+    }
+    diags
 }
 
-impl ExprScope<'_> {
+fn push_cond_meters<'a>(cond: &'a Cond, out: &mut Vec<(&'a Who, &'a str)>) {
+    match cond {
+        Cond::Meter { who, key, .. } => out.push((who, key)),
+        Cond::All(inner) | Cond::Any(inner) => {
+            for cond in inner {
+                push_cond_meters(cond, out);
+            }
+        }
+        Cond::Not(inner) => push_cond_meters(inner, out),
+        _ => {}
+    }
+}
+
+/// The actor `self` always is on `rule`: the cast member, on its own habit.
+fn fixed_self(rule: &Rule) -> Option<&str> {
+    match (&rule.owner, &rule.when) {
+        (Owner::Cast(id), When::Habit) => Some(id),
+        _ => None,
+    }
+}
+
+/// The meters each holder carries, and the cast and places a `who` may name.
+pub(super) struct MeterScope<'a> {
+    pub meters: &'a BTreeMap<String, MeterDef>,
+    pub world_meters: &'a BTreeMap<String, MeterDef>,
+    pub cast: &'a BTreeMap<String, CastDef>,
+    pub places: &'a BTreeMap<String, PlaceDef>,
+}
+
+impl MeterScope<'_> {
+    /// Why meter `key` on `who` can never be read or written, or `None` when it may be.
+    /// A holder known only at play time is not guessed: only its key is checked.
+    fn meter_miss(&self, fixed_self: Option<&str>, who: &Who, key: &str) -> Option<String> {
+        let actor = match who {
+            Who::World if self.world_meters.contains_key(key) => return None,
+            Who::World => return Some(format!("the world carries no meter '{key}'")),
+            Who::Actor(id) if self.cast.contains_key(id) => Some(id.as_str()),
+            Who::Self_ => fixed_self,
+            _ => None,
+        };
+        let def = self.meters.get(key);
+        match (actor, def) {
+            (Some(id), def) if !def.is_some_and(|def| def.is_on_actor(id)) => {
+                Some(match def.and_then(|def| def.carrier.as_ref()) {
+                    Some(Holder::Actor(carrier)) => format!("only {carrier} carries meter '{key}'"),
+                    _ => format!("{id} carries no meter '{key}'"),
+                })
+            }
+            (None, None) => Some(format!(
+                "meter '{key}' is not in rules/meters.yaml or a cast file"
+            )),
+            _ => None,
+        }
+    }
+
     /// The unknown reads in `exprs`, at `path` in `source` and at each read's spot.
     fn push_unknown_reads(
         &self,
         source: &FileText,
         path: &str,
+        fixed_self: Option<&str>,
         exprs: &[&Expr],
         diags: &mut Vec<Diagnostic>,
     ) {
@@ -332,25 +403,16 @@ impl ExprScope<'_> {
                     }
                     .into_diagnostic()
                 };
-                if matches!(who, Who::World) {
+                if let Some(why) = self.meter_miss(fixed_self, who, key) {
                     diags.push(refuse(
-                        format!("expression reads 'world.{key}', but the world has no meters"),
-                        "read the meter from self, target, here, place:<id>, or a cast id",
-                    ));
-                    continue;
-                }
-                if !self.meters.contains_key(key) {
-                    diags.push(refuse(
-                        format!(
-                            "expression reads meter '{key}', which is not in rules/meters.yaml"
-                        ),
-                        "add the meter or name one that exists",
+                        format!("expression reads meter '{key}', but {why}"),
+                        "declare the meter on that holder, or read one that exists",
                     ));
                 }
                 if let Some(name) = unknown_who(who, self.cast, self.places) {
                     diags.push(refuse(
                         format!("expression names '{name}', which is not a who"),
-                        "use self, target, here, place:<id>, or a cast id",
+                        "use self, target, here, world, place:<id>, or a cast id",
                     ));
                 }
             }
@@ -408,7 +470,7 @@ fn push_cost<'a>(cost: &'a Cost, exprs: &mut Vec<&'a Expr>) {
 
 fn push_cond<'a>(cond: &'a Cond, exprs: &mut Vec<&'a Expr>) {
     match cond {
-        Cond::Meter { value, .. } | Cond::Clock { value, .. } => exprs.push(value),
+        Cond::Meter { value, .. } => exprs.push(value),
         Cond::All(inner) | Cond::Any(inner) => {
             for cond in inner {
                 push_cond(cond, exprs);
@@ -419,14 +481,17 @@ fn push_cond<'a>(cond: &'a Cond, exprs: &mut Vec<&'a Expr>) {
     }
 }
 
+/// Check stats that are not meters every actor carries.
 pub(super) fn unknown_meters(
     meters: &BTreeMap<String, MeterDef>,
     checks: &BTreeMap<String, Check>,
-    rules: &RuleTable,
 ) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
     for (id, check) in checks {
-        if meters.contains_key(&check.stat) {
+        if meters
+            .get(&check.stat)
+            .is_some_and(|def| def.carrier.is_none())
+        {
             continue;
         }
         diags.push(
@@ -441,81 +506,26 @@ pub(super) fn unknown_meters(
             .at_path(format!("checks.{id}.meter")),
         );
     }
-    for rule in rules.iter() {
-        for effect in rule.top_templates() {
-            let EffectTemplate::Meter { key, .. } = effect else {
-                continue;
-            };
-            if meters.contains_key(key.as_str()) {
-                continue;
-            }
-            diags.push(
-                schema_error(
-                    &rule.file,
-                    &format!(
-                        "rule '{}' writes meter '{key}', which is not in rules/meters.yaml",
-                        rule.local_id
-                    ),
-                    "add the meter or name one that exists",
-                )
-                .at_path(format!("rules[{}].do", rule.index)),
-            );
-        }
-    }
     diags
 }
 
 /// Check the save against the pack without changing it. Refuse every meter,
-/// item and wielded slot the pack does not define, every meter the pack defines
-/// that an actor lacks, every meter outside its rules and every empty id or zero count.
+/// item and wielded slot the pack does not define, every meter the pack gives a holder
+/// that the holder lacks, every meter outside its rules and every empty id or zero count.
 pub fn check_save(canon: &Canon, state: &crate::model::State) -> Result<(), Vec<Diagnostic>> {
     let mut diags = Vec::new();
     for (id, actor) in &state.actors {
-        for key in canon.meters.keys() {
-            if actor.meters.contains_key(key) {
-                continue;
-            }
-            diags.push(
-                schema_error(
-                    "state/save.yaml",
-                    &format!("actor '{id}' lacks meter '{key}', which rules/meters.yaml defines"),
-                    "run spook migrate to add the meter",
-                )
-                .at_path(format!("actors.{id}.meters.{key}")),
-            );
-        }
-        for key in actor.meters.keys() {
-            if canon.meters.contains_key(key) {
-                continue;
-            }
-            diags.push(
-                schema_error(
-                    "state/save.yaml",
-                    &format!(
-                        "actor '{id}' lists meter '{key}', which rules/meters.yaml does not define"
-                    ),
-                    "remove the meter or add it to the rules",
-                )
-                .at_path(format!("actors.{id}.meters.{key}")),
-            );
-        }
-        for (key, meter) in &actor.meters {
-            let Some(def) = canon.meters.get(key) else {
-                continue;
-            };
-            if meter::is_storable(def, meter.base, meter.offset) {
-                continue;
-            }
-            diags.push(
-                schema_error(
-                    "state/save.yaml",
-                    &format!("actor '{id}' meter '{key}' is outside the rules"),
-                    "set base and offset so the stored pair fits the meter",
-                )
-                .at_path(format!("actors.{id}.meters.{key}")),
-            );
-        }
+        let holder = Holder::Actor(id.clone());
+        let path = format!("actors.{id}.meters");
+        check_meters(canon, &holder, &actor.meters, &path, &mut diags);
     }
+    check_meters(
+        canon,
+        &Holder::World,
+        &state.world_meters,
+        "world_meters",
+        &mut diags,
+    );
     for (id, actor) in &state.actors {
         for (item, count) in &actor.inventory {
             if item.is_empty() {
@@ -614,12 +624,61 @@ pub fn check_save(canon: &Canon, state: &crate::model::State) -> Result<(), Vec<
     }
 }
 
+/// The live meters of `holder`, at `path` in the save, against the meters the pack gives it.
+fn check_meters(
+    canon: &Canon,
+    holder: &Holder,
+    live: &BTreeMap<String, meter::MeterLive>,
+    path: &str,
+    diags: &mut Vec<Diagnostic>,
+) {
+    let (name, defs) = match holder {
+        Holder::Actor(id) => (format!("actor '{id}'"), &canon.meters),
+        _ => ("the world".to_string(), &canon.world_meters),
+    };
+    for (key, def) in defs {
+        if !live.contains_key(key) && canon.meter_def(holder, key) == Some(def) {
+            diags.push(
+                schema_error(
+                    "state/save.yaml",
+                    &format!("{name} lacks meter '{key}', which the pack gives it"),
+                    "run spook migrate to add the meter",
+                )
+                .at_path(format!("{path}.{key}")),
+            );
+        }
+    }
+    for (key, meter) in live {
+        let Some(def) = canon.meter_def(holder, key) else {
+            diags.push(
+                schema_error(
+                    "state/save.yaml",
+                    &format!("{name} lists meter '{key}', which the pack does not give it"),
+                    "remove the meter or declare it for this holder",
+                )
+                .at_path(format!("{path}.{key}")),
+            );
+            continue;
+        };
+        if !meter::is_storable(def, meter.base, meter.offset) {
+            diags.push(
+                schema_error(
+                    "state/save.yaml",
+                    &format!("{name} meter '{key}' is outside the rules"),
+                    "set base and offset so the stored pair fits the meter",
+                )
+                .at_path(format!("{path}.{key}")),
+            );
+        }
+    }
+}
+
 /// Static warnings and trigger-reach errors on a loaded `Canon`.
-pub(crate) fn check_canon(canon: &Canon, state: Option<&crate::model::State>) -> Vec<Diagnostic> {
+pub(crate) fn check_canon(canon: &Canon) -> Vec<Diagnostic> {
     let mut diags = check_reachable_places(canon);
     diags.extend(check_teleport_verbs(canon));
     diags.extend(check_trigger_cycles(canon));
-    diags.extend(check_trigger_leaks(canon, state));
+    diags.extend(check_trigger_leaks(canon));
     diags
 }
 
@@ -723,13 +782,13 @@ fn check_trigger_cycles(canon: &Canon) -> Vec<Diagnostic> {
 }
 
 /// Narrate and note on a change rule that can reach a viewer who cannot see the change.
-fn check_trigger_leaks(canon: &Canon, state: Option<&crate::model::State>) -> Vec<Diagnostic> {
+fn check_trigger_leaks(canon: &Canon) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
     for rule in canon.rules.iter() {
         let When::Change(watch) = &rule.when else {
             continue;
         };
-        let sight = sight_of(canon, state, watch);
+        let sight = sight_of(watch);
         let mut leak = false;
         rule.visit_templates(|effect| {
             if reach_of(effect).is_some_and(|reach| is_too_wide(&sight, &reach)) {
@@ -760,23 +819,22 @@ enum Write {
     Flag { key: String, value: bool },
     Meter(String),
     Item { id: String, gained: bool },
-    Clock(String),
     Arrive(String),
     Knows(String),
 }
 
+/// Who a narrate or note reaches: the subject, the room, or anyone else it names.
 enum Reach {
     Subject,
     Room,
-    Named(Vec<String>),
-    Place,
+    Others,
 }
 
+/// Who may see a watched change. A meter or flag change on a watch counts as the room's,
+/// because a rule that narrates it is the pack choosing to tell the room.
 enum Sight {
     Subject,
     Room,
-    Owners(Vec<String>),
-    Everyone,
 }
 
 fn push_writes(effect: &EffectTemplate, out: &mut Vec<Write>) {
@@ -800,9 +858,6 @@ fn push_writes(effect: &EffectTemplate, out: &mut Vec<Write>) {
                     gained: false,
                 });
             }
-        }
-        EffectTemplate::Clock { id, add, .. } if add.is_some() => {
-            out.push(Write::Clock(id.clone()));
         }
         EffectTemplate::Location {
             to: LocationTo::Place(id),
@@ -835,7 +890,6 @@ fn sets_watch(watch: &ChangeWatch, rule: &Rule, mark: &Write) -> bool {
                 gained: up,
             },
         ) => id == written && gained == up,
-        (ChangeWatch::Clock { id }, Write::Clock(written)) => id == written,
         (ChangeWatch::Arrive { place, .. }, Write::Arrive(dest)) => {
             rule.watched_place(place) == dest
         }
@@ -844,16 +898,9 @@ fn sets_watch(watch: &ChangeWatch, rule: &Rule, mark: &Write) -> bool {
     }
 }
 
-fn sight_of(canon: &Canon, state: Option<&crate::model::State>, watch: &ChangeWatch) -> Sight {
+fn sight_of(watch: &ChangeWatch) -> Sight {
     match watch {
         ChangeWatch::Knows { .. } => Sight::Subject,
-        ChangeWatch::Clock { id } => Sight::Owners(
-            state
-                .and_then(|state| state.clocks.get(id))
-                .map(|clock| clock.owners.clone())
-                .unwrap_or_default(),
-        ),
-        ChangeWatch::Flag { key, .. } if flag_is_public(canon, key) => Sight::Everyone,
         ChangeWatch::Arrive { .. }
         | ChangeWatch::Leave { .. }
         | ChangeWatch::Meter { .. }
@@ -862,53 +909,22 @@ fn sight_of(canon: &Canon, state: Option<&crate::model::State>, watch: &ChangeWa
     }
 }
 
-fn flag_is_public(canon: &Canon, key: &str) -> bool {
-    let mut world = false;
-    let mut actor = false;
-    for rule in canon.rules.iter() {
-        rule.visit_templates(|effect| {
-            if let EffectTemplate::Flag { who, key: flag, .. } = effect {
-                if flag == key {
-                    if matches!(who, Who::World) {
-                        world = true;
-                    } else {
-                        actor = true;
-                    }
-                }
-            }
-        });
-    }
-    world && !actor
-}
-
 fn reach_of(effect: &EffectTemplate) -> Option<Reach> {
     match effect {
         EffectTemplate::Narrate { to, .. } => Some(match to {
             NarrateTo::Self_ => Reach::Subject,
             NarrateTo::Here => Reach::Room,
-            NarrateTo::Actors(ids) => Reach::Named(ids.clone()),
+            NarrateTo::Actors(_) => Reach::Others,
         }),
-        EffectTemplate::Note { to, place, .. } => {
-            if place.is_some() {
-                Some(Reach::Place)
-            } else {
-                Some(Reach::Named(to.clone()))
-            }
-        }
+        EffectTemplate::Note { .. } => Some(Reach::Others),
         _ => None,
     }
 }
 
 fn is_too_wide(sight: &Sight, reach: &Reach) -> bool {
     match sight {
-        Sight::Everyone => false,
         Sight::Subject => !matches!(reach, Reach::Subject),
         Sight::Room => !matches!(reach, Reach::Subject | Reach::Room),
-        Sight::Owners(owners) => match reach {
-            Reach::Subject => false,
-            Reach::Named(ids) => ids.iter().any(|id| !owners.iter().any(|owner| owner == id)),
-            Reach::Room | Reach::Place => true,
-        },
     }
 }
 

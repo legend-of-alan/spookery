@@ -365,8 +365,9 @@ fn rowan_asks_aldric_until_it_finishes(world: &mut World) {
         assert!(round < 6, "Rowan is still busy after {round} rounds");
     }
     let state = table.state();
+    let aldric = spookery_engine::Holder::Actor("aldric".to_string());
     world.count =
-        usize::try_from(state.meter_value(table.canon(), "aldric", "rest").unwrap()).unwrap();
+        usize::try_from(state.meter_value(table.canon(), &aldric, "rest").unwrap()).unwrap();
 }
 
 #[then(expr = "Aldric's rest is {int}")]

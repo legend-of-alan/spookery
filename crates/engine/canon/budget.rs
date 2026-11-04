@@ -1,4 +1,4 @@
-//! Round budgets and pause policy from `rules/budget.yaml`.
+//! Round budgets from `rules/budget.yaml`.
 
 use serde::Deserialize;
 
@@ -24,20 +24,6 @@ pub struct Budget {
     pub max_fastforward_rounds: u64,
     /// Trigger rounds in one tick. The next round logs `trigger_depth` and does not run.
     pub max_trigger_depth: u64,
-    pub pause: PausePolicies,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct PausePolicies {
-    pub presence_clocks: PausePolicy,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
-pub enum PausePolicy {
-    #[serde(rename = "pause_when_empty")]
-    WhenEmpty,
-    #[serde(rename = "always_run")]
-    AlwaysRun,
 }
 
 impl Default for Budget {
@@ -58,9 +44,6 @@ impl Default for Budget {
             idle_max_world_hours_per_real_hour: 8,
             max_fastforward_rounds: 12,
             max_trigger_depth: 4,
-            pause: PausePolicies {
-                presence_clocks: PausePolicy::WhenEmpty,
-            },
         }
     }
 }
@@ -99,7 +82,6 @@ pub(crate) fn load_budget(rel: &str, text: &str) -> Result<Budget, Vec<Diagnosti
         max_fastforward_rounds >= 0,
         max_trigger_depth >= 0,
     );
-    budget.pause.presence_clocks = file.pause.presence_clocks;
     if !diags.is_empty() {
         return Err(diags);
     }
@@ -182,13 +164,6 @@ struct BudgetFile {
     idle_max_world_hours_per_real_hour: Option<i64>,
     max_fastforward_rounds: Option<i64>,
     max_trigger_depth: Option<i64>,
-    pause: PauseYaml,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct PauseYaml {
-    presence_clocks: PausePolicy,
 }
 
 fn read_idle_word<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
@@ -210,12 +185,12 @@ mod tests {
     }
 
     fn text(tag: &str) -> String {
-        format!("schema: {tag}\npause:\n  presence_clocks: pause_when_empty\n")
+        format!("schema: {tag}\n")
     }
 
     #[test]
     fn a_negative_budget_names_the_field() {
-        let text = "schema: budget\npause:\n  presence_clocks: pause_when_empty\nmax_npcs_acting: -1\nidle_catchup_max_rounds: -3\n";
+        let text = "schema: budget\nmax_npcs_acting: -1\nidle_catchup_max_rounds: -3\n";
         let err = load_budget(text).unwrap_err();
         assert!(err
             .iter()

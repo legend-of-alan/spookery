@@ -3,10 +3,10 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
-use crate::{ClockView, CommitBody, NoteView, Outcome, Refusal, Speaker, TableStatus, View};
+use crate::{CommitBody, NoteView, Outcome, Refusal, Speaker, TableStatus, View};
 
 /// The wire version the hello announces.
-pub const VERSION: u32 = 1;
+pub const VERSION: u32 = 2;
 
 /// One message on a seat's stream. `id` is chosen by the client and comes back as
 /// `reply_to` on the reply. `seq` is set by the server, from one counter per table, on
@@ -117,8 +117,6 @@ pub enum ServerBody {
     Resume {
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         notes: Vec<NoteView>,
-        #[serde(default, skip_serializing_if = "Vec::is_empty")]
-        clocks: Vec<ClockView>,
     },
     /// A round's narrate lines and the changes one player saw, already the text to print.
     Lines {
@@ -344,7 +342,7 @@ mod tests {
         };
         assert_eq!(
             hello.to_text(),
-            r#"{"body":{"kind":"hello","version":1,"words":["claim"],"open":["pc_rowan"]}}"#
+            r#"{"body":{"kind":"hello","version":2,"words":["claim"],"open":["pc_rowan"]}}"#
         );
         let released = ServerMessage {
             body: ServerBody::Released,

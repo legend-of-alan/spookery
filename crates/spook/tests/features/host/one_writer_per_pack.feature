@@ -16,7 +16,7 @@ Feature: One writer per pack
     Given spook run is serving a docks table
     When the host runs spook status on that pack
     Then the command exits 0
-    And the host text lists the clocks
+    And the host text lists the meters
     And the state is unchanged
 
   Scenario: the table keeps a verifiable journal after a refused round

@@ -4,7 +4,7 @@ use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::Path;
 
-use crate::canon::{check_save, pack_rev};
+use crate::canon::{check_save, pack_rev, Canon};
 use crate::diagnostic::first_reason;
 use crate::draft::Draft;
 use crate::hash::blake2s_tagged;
@@ -95,18 +95,18 @@ fn bump_state_rev(draft: &mut Draft) -> Result<(), Reason> {
 /// from it. The caller holds the pack lock.
 pub fn commit_migrate(
     root: &Path,
+    canon: &Canon,
     state: State,
     edited: bool,
     lock: &PackGuard,
 ) -> Result<(), Reason> {
-    let canon = crate::canon::load_canon(root).map_err(|diags| first_reason(&diags))?;
     let pack_rev_after = pack_rev(root)?;
     let pack_rev_before = state.pack_rev.clone();
     let state_rev_before = state.state_rev;
     let state_rev_after = state_rev_before.checked_add(1).ok_or(Reason::OutOfRange)?;
-    let added = missing_meters(&canon, &state);
+    let added = missing_meters(canon, &state);
     let state = save::migrate(state, &pack_rev_after, state_rev_after, &added);
-    check_save(&canon, &state).map_err(|diags| first_reason(&diags))?;
+    check_save(canon, &state).map_err(|diags| first_reason(&diags))?;
     let emitted = save::emit(&state)?.into_bytes();
     let entry = journal::migrate_record(
         &pack_rev_before,

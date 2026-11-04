@@ -10,7 +10,7 @@ use crate::diagnostic::{error, first_reason, locate_nth, schema_error, Code, Dia
 use crate::intent::{Intent, IntentArgs, Source, Target};
 use crate::model::{ActorLive, Presence, State};
 use crate::rules::context::Context;
-use crate::rules::effect::{payload_json, Effect};
+use crate::rules::effect::{payload_json, Effect, Holder, WORLD};
 use crate::rules::gate;
 use crate::rules::rule::{Rule, TargetKind, When};
 use crate::store::journal;
@@ -359,7 +359,34 @@ impl<L> World<L> {
         Ok(self.format_digest(&effects))
     }
 
-    /// Effect rows for `outputs` (ending at this world's `round_index`), then the clocks.
+    /// One row per meter that one actor or the world carries: `meter <holder> <id> <value> <max>`.
+    fn carried_meter_rows(&self) -> Vec<String> {
+        let actor_meters = self
+            .canon
+            .meters
+            .iter()
+            .filter_map(|(id, def)| match &def.carrier {
+                Some(Holder::Actor(actor)) => {
+                    Some((Holder::Actor(actor.clone()), actor.as_str(), id))
+                }
+                _ => None,
+            });
+        let world_meters = self
+            .canon
+            .world_meters
+            .keys()
+            .map(|id| (Holder::World, WORLD, id));
+        actor_meters
+            .chain(world_meters)
+            .filter_map(|(holder, name, id)| {
+                let value = self.state.meter_value(&self.canon, &holder, id).ok()?;
+                let max = self.canon.meter_def(&holder, id)?.max;
+                Some(format!("meter {name} {id} {value} {max}"))
+            })
+            .collect()
+    }
+
+    /// Effect rows for `outputs`, which end at this world's `round_index`, then the meter rows.
     pub fn digest(&self, outputs: &[crate::RoundOutput]) -> String {
         let start = self.state.round_index + 1 - outputs.len() as u64;
         let mut effects = Vec::new();
@@ -381,10 +408,7 @@ impl<L> World<L> {
                 payload_json(effect)
             ));
         }
-        for (id, clock) in &self.state.clocks {
-            let state = if clock.paused { "paused" } else { "running" };
-            rows.push(format!("clock {id} {} {} {state}", clock.value, clock.max));
-        }
+        rows.extend(self.carried_meter_rows());
         if rows.is_empty() {
             String::new()
         } else {
@@ -410,7 +434,7 @@ impl World<()> {
         crate::round::replay::peek_at_tip(root)
     }
 
-    /// The host text at the journal tip: effect rows from the journal, then the clocks.
+    /// The host text at the journal tip: effect rows from the journal, then the meter rows.
     /// One read guard covers the World and the journal read, so both come from one state.
     pub fn peek_digest(root: &Path) -> Result<String, Reason> {
         let _read = crate::store::lock::lock_read(root)?;
@@ -636,10 +660,7 @@ pub fn check_pack(root: &Path) -> Vec<Diagnostic> {
         }
     }
     if let Some(canon) = &canon {
-        diags.extend(crate::canon::check_canon(
-            canon,
-            loaded.as_ref().map(|(_, state)| state),
-        ));
+        diags.extend(crate::canon::check_canon(canon));
     }
     diags
 }

@@ -1,4 +1,4 @@
-//! The live save: places, actors, clocks, and notes.
+//! The live save: places, actors, world meters, and notes.
 
 pub(crate) mod key;
 pub(crate) mod meter;
@@ -11,6 +11,7 @@ use key::StateKey;
 use meter::MeterLive;
 
 use crate::intent::{Target, Viewer};
+use crate::rules::effect::Holder;
 
 /// World minutes in an hour and in a day. World time is minutes from the start of day 0.
 pub(crate) const MINUTES_PER_HOUR: u64 = 60;
@@ -29,10 +30,11 @@ pub struct State {
     pub round_index: u64,
     pub world_time: u64,
     pub last_round_at: String,
-    pub pause: Pause,
     pub places: BTreeMap<String, PlaceLive>,
     pub actors: BTreeMap<String, ActorLive>,
-    pub clocks: BTreeMap<String, Clock>,
+    /// The meters `world/meters.yaml` declares, held once by the world. Omitted when empty.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub world_meters: BTreeMap<String, MeterLive>,
     pub notes: Vec<Note>,
     /// World flags. Omitted from the save when empty.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -40,21 +42,42 @@ pub struct State {
 }
 
 impl State {
+    /// The current value of meter `key` on `holder`, or `UNKNOWN_ID` when it does not carry it.
     pub fn meter_value(
         &self,
         canon: &crate::canon::Canon,
-        actor_id: &str,
+        holder: &Holder,
         key: &str,
     ) -> Result<i64, crate::Reason> {
-        let def = canon.meters.get(key).ok_or(crate::Reason::UnknownId)?;
+        let def = canon
+            .meter_def(holder, key)
+            .ok_or(crate::Reason::UnknownId)?;
         let live = self
-            .actors
-            .get(actor_id)
-            .ok_or(crate::Reason::UnknownId)?
-            .meters
-            .get(key)
+            .meters_of(holder)
+            .and_then(|meters| meters.get(key))
             .ok_or(crate::Reason::UnknownId)?;
         meter::current(def, live)
+    }
+
+    /// The live meters `holder` carries. A place carries none.
+    pub(crate) fn meters_of(&self, holder: &Holder) -> Option<&BTreeMap<String, MeterLive>> {
+        match holder {
+            Holder::Actor(id) => self.actors.get(id).map(|actor| &actor.meters),
+            Holder::World => Some(&self.world_meters),
+            Holder::Place(_) => None,
+        }
+    }
+
+    /// The live meters `holder` carries, to write.
+    pub(crate) fn meters_mut(
+        &mut self,
+        holder: &Holder,
+    ) -> Result<&mut BTreeMap<String, MeterLive>, crate::Reason> {
+        match holder {
+            Holder::Actor(id) => Ok(&mut self.actor_mut(id)?.meters),
+            Holder::World => Ok(&mut self.world_meters),
+            Holder::Place(_) => Err(crate::Reason::UnknownId),
+        }
     }
 
     /// Actor `id`'s live record to write, or `UNKNOWN_ID`.
@@ -83,20 +106,6 @@ impl State {
 pub struct Presence {
     pub players: u32,
     pub actors_present: Vec<String>,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum RunState {
-    Paused,
-    Running,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-// Emit order is the docks `save.yaml` pause mapping.
-pub struct Pause {
-    pub presence_clocks: RunState,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -272,16 +281,6 @@ pub enum PendingKind {
         target: Target,
         rule: String,
     },
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Clock {
-    pub value: i64,
-    pub max: i64,
-    pub requires_presence: bool,
-    pub owners: Vec<String>,
-    pub paused: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

@@ -35,7 +35,7 @@ Feature: Dice and arithmetic in rule numbers
       | expression   | phrase                                        |
       | 2d6 +        | is not a number                               |
       | self.nope    | meter 'nope'                                  |
-      | world.grit   | the world has no meters                       |
+      | world.grit   | the world carries no meter 'grit'             |
       | subject.grit | names 'subject', which is not a who; use self |
       | 100000000d6  | rolls more than 1000 dice                     |
 

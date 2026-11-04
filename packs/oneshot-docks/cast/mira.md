@@ -5,11 +5,18 @@ kind: npc
 display_name: Mira
 idle:
   eligible: true
+meters:
+  - id: shop_day
+    min: 0
+    base_cap: 1
+    max: 1
+    base: 1
 rules:
   - id: leave_door_note
     when: habit
     if:
-      - clock:
+      - meter:
+          who: self
           id: shop_day
           op: ">="
           value: 1

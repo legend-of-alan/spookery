@@ -1,13 +1,11 @@
 schema: save
 world_id: sample-d20
-pack_rev: blake2s:ddf5e408e6f4a3aa5f2b6b8872f07297a697828c9b86300a10fcfc07dddad0b0
-rules_rev: 11
+pack_rev: blake2s:ddd3e138f14204f0d1d717a281caa0994153d07f7a5f99af608801543781f39b
+rules_rev: 12
 state_rev: 0
 round_index: 0
 world_time: 1080
 last_round_at: "2026-01-01T00:00:00Z"
-pause:
-  presence_clocks: paused
 places:
   gate_yard:
     items: {}
@@ -118,5 +116,4 @@ actors:
       last_act_round: 0
       idle_acts_today: 0
       live_acts_this_hour: 0
-clocks: {}
 notes: []

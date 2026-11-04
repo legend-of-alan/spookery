@@ -149,13 +149,10 @@ fn lark_looks_at_their_view(world: &mut World) {
     world.seen = meter_lines(&opened);
 }
 
-#[then(expr = "lark sees one line naming the change to briar's hp")]
-fn lark_sees_briars_hp_change(world: &mut World) {
-    let line = one_line(&world.seen);
-    let lower = line.to_lowercase();
-    assert!(lower.contains("briar") && lower.contains("hp"), "{line}");
-    assert!(!line.contains("actor_meter"), "{line}");
-    assert!(line.contains('4'), "{line}");
+#[then(expr = "lark's change line does not name briar's hp")]
+fn lark_does_not_see_briars_hp(world: &mut World) {
+    let lower = world.seen.to_lowercase();
+    assert!(!lower.contains("hp"), "{}", world.seen);
 }
 
 #[then(expr = "lark sees one line saying the tonic was used up")]
@@ -214,10 +211,8 @@ fn the_change_line_hides_the_fact(world: &mut World) {
         "{:?}",
         world.summary_lines
     );
-    let line = one_line(&world.seen);
-    let lower = line.to_lowercase();
-    assert!(lower.contains("briar") && lower.contains("hp"), "{line}");
-    assert!(line.contains('7'), "{line}");
+    let line = &world.seen;
+    assert!(!line.to_lowercase().contains("hp"), "{line}");
     assert!(!line.contains(SECRET_ID), "{line}");
     assert!(!line.contains(SECRET_TEXT), "{line}");
     assert!(!line.contains("world_flag"), "{line}");

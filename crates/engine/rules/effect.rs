@@ -21,12 +21,7 @@ pub struct Effect {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum EffectKind {
-    Clock {
-        clock_id: String,
-        delta: i64,
-        /// Clear `paused` before applying `delta`.
-        unpause: bool,
-    },
+    /// A meter on an actor, or on the world when `actor_id` is [`WORLD`].
     Meter {
         actor_id: String,
         key: String,
@@ -82,7 +77,7 @@ pub enum EffectKind {
     },
 }
 
-/// Actor id on a flag effect that names the world, not a person.
+/// Actor id on a meter or flag effect that names the world, not a person.
 pub const WORLD: &str = "world";
 
 impl Effect {
@@ -100,16 +95,11 @@ impl Effect {
             return Err(Reason::ViewerMismatch);
         }
         match self.kind {
-            EffectKind::Clock {
-                clock_id,
-                delta,
-                unpause,
-            } => advance_clock(draft, intent.actor.actor_id(), &clock_id, delta, unpause),
             EffectKind::Meter {
                 actor_id,
                 key,
                 write,
-            } => write_meter(draft, &actor_id, &key, write),
+            } => write_meter(draft, &Holder::of_actor_id(&actor_id), &key, write),
             EffectKind::Item {
                 actor_id,
                 place,
@@ -139,7 +129,7 @@ impl Effect {
                 actor_id,
                 key,
                 value,
-            } => set_flag(draft, &actor_id, &key, value),
+            } => set_flag(draft, &Holder::of_actor_id(&actor_id), &key, value),
             EffectKind::Note {
                 note_id,
                 to,
@@ -156,7 +146,6 @@ impl Effect {
 impl EffectKind {
     pub fn as_str(&self) -> &'static str {
         match self {
-            EffectKind::Clock { .. } => "clock",
             EffectKind::Meter { .. } => "meter",
             EffectKind::Item { .. } => "item",
             EffectKind::Wield { .. } => "wield",
@@ -171,23 +160,9 @@ impl EffectKind {
     }
 }
 
-fn is_false(value: &bool) -> bool {
-    !*value
-}
-
 #[derive(Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub(crate) enum EffectRecord {
-    Clock {
-        #[serde(rename = "as")]
-        as_viewer: Viewer,
-        intent_id: String,
-        clock_id: String,
-        delta: i64,
-        /// The effect's `unpause`, under the journal's key.
-        #[serde(default, skip_serializing_if = "is_false")]
-        start: bool,
-    },
     Meter {
         #[serde(rename = "as")]
         as_viewer: Viewer,
@@ -286,17 +261,6 @@ impl From<Effect> for EffectRecord {
         let as_viewer = effect.viewer;
         let intent_id = effect.intent_id;
         match effect.kind {
-            EffectKind::Clock {
-                clock_id,
-                delta,
-                unpause,
-            } => Self::Clock {
-                as_viewer,
-                intent_id,
-                clock_id,
-                delta,
-                start: unpause,
-            },
             EffectKind::Meter {
                 actor_id,
                 key,
@@ -408,21 +372,6 @@ impl TryFrom<EffectRecord> for Effect {
 
     fn try_from(record: EffectRecord) -> Result<Self, Self::Error> {
         let (kind, as_viewer, intent_id) = match record {
-            EffectRecord::Clock {
-                as_viewer,
-                intent_id,
-                clock_id,
-                delta,
-                start,
-            } => (
-                EffectKind::Clock {
-                    clock_id,
-                    delta,
-                    unpause: start,
-                },
-                as_viewer,
-                intent_id,
-            ),
             EffectRecord::Meter {
                 as_viewer,
                 intent_id,
@@ -584,63 +533,53 @@ fn viewer_matches(intent: &Intent, effect: &Effect) -> bool {
     effect.viewer == intent.actor
 }
 
-/// Who holds an item count: an actor's inventory or a place's items.
-pub(crate) enum Holder {
+/// Who holds a meter, a flag or an item count: an actor, a place, or the world.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Holder {
     Actor(String),
     Place(String),
+    World,
 }
 
-/// Add `delta` to a clock `actor_id` owns. `unpause` clears `paused` first, and is all a
-/// zero `delta` does.
-fn advance_clock(
-    draft: &mut Draft,
-    actor_id: &str,
-    clock_id: &str,
-    delta: i64,
-    unpause: bool,
-) -> Result<(), Reason> {
-    let players = draft.presence.players;
-    let clock = draft
-        .state()
-        .clocks
-        .get(clock_id)
-        .ok_or(Reason::UnknownId)?;
-    if !clock.owners.iter().any(|owner| owner == actor_id) {
-        return Err(Reason::UnknownId);
-    }
-    if unpause {
-        draft.mutate(StateKey::ClockPaused(clock_id.to_string()), |state| {
-            let clock = state.clocks.get_mut(clock_id).ok_or(Reason::UnknownId)?;
-            Ok(std::mem::take(&mut clock.paused))
-        })?;
-        if delta == 0 {
-            return Ok(());
+impl Holder {
+    /// The holder an effect's `actor_id` names: the world for [`WORLD`], else that actor.
+    pub(crate) fn of_actor_id(actor_id: &str) -> Self {
+        if actor_id == WORLD {
+            Holder::World
+        } else {
+            Holder::Actor(actor_id.to_string())
         }
     }
-    draft.mutate(StateKey::ClockValue(clock_id.to_string()), |state| {
-        let clock = state.clocks.get_mut(clock_id).ok_or(Reason::UnknownId)?;
-        if clock.paused || (clock.requires_presence && players == 0) {
-            return Err(Reason::PausedClock);
+
+    /// The `actor_id` an effect stores for this holder. A place has none.
+    pub(crate) fn actor_id(&self) -> Result<String, Reason> {
+        match self {
+            Holder::Actor(id) => Ok(id.clone()),
+            Holder::World => Ok(WORLD.to_string()),
+            Holder::Place(_) => Err(Reason::UnknownId),
         }
-        let next = clock.value.checked_add(delta).ok_or(Reason::OutOfRange)?;
-        if next < 0 || next > clock.max {
-            return Err(Reason::OutOfRange);
-        }
-        Ok(std::mem::replace(&mut clock.value, next) != next)
-    })
+    }
 }
 
-/// Write an actor's meter inside the bounds the pack gives it.
+/// Write a meter `holder` carries, inside the bounds the pack gives it.
 pub(crate) fn write_meter(
     draft: &mut Draft,
-    actor_id: &str,
+    holder: &Holder,
     key: &str,
     write: MeterWrite,
 ) -> Result<(), Reason> {
-    let def = *draft.canon().meters.get(key).ok_or(Reason::UnknownId)?;
-    let state_key = StateKey::ActorMeter(actor_id.to_string(), key.to_string());
+    let def = draft
+        .canon()
+        .meter_def(holder, key)
+        .cloned()
+        .ok_or(Reason::UnknownId)?;
+    let state_key = match holder {
+        Holder::Actor(id) => StateKey::ActorMeter(id.clone(), key.to_string()),
+        Holder::World => StateKey::WorldMeter(key.to_string()),
+        Holder::Place(_) => return Err(Reason::UnknownId),
+    };
     draft.mutate(state_key, |state| {
-        let meters = &mut state.actor_mut(actor_id)?.meters;
+        let meters = state.meters_mut(holder)?;
         meter::write(&def, meters.get_mut(key).ok_or(Reason::UnknownId)?, write)
     })
 }
@@ -671,6 +610,7 @@ pub(crate) fn shift_item(
                 model::shift_count(&mut place_live.items, id, delta, max)
             })
         }
+        Holder::World => Err(Reason::Schema),
     }
 }
 
@@ -769,24 +709,23 @@ fn remember(
     Ok(())
 }
 
-/// Set or clear a flag the actor's cast file lists, or a world flag when `actor_id` is `WORLD`.
-fn set_flag(draft: &mut Draft, actor_id: &str, key: &str, value: bool) -> Result<(), Reason> {
-    let flag_key = if actor_id == WORLD {
-        if key.is_empty() || key == "busy" {
-            return Err(Reason::UnknownId);
+/// Set or clear a flag the actor's cast file lists, or any world flag but `busy`.
+fn set_flag(draft: &mut Draft, holder: &Holder, key: &str, value: bool) -> Result<(), Reason> {
+    let flag_key = match holder {
+        Holder::World if !key.is_empty() && key != "busy" => StateKey::WorldFlag(key.to_string()),
+        Holder::Actor(id) => {
+            let cast = draft.canon().cast.get(id);
+            if !cast.is_some_and(|cast| cast.flags.iter().any(|flag| flag == key)) {
+                return Err(Reason::UnknownId);
+            }
+            StateKey::ActorFlag(id.clone(), key.to_string())
         }
-        StateKey::WorldFlag(key.to_string())
-    } else {
-        let cast = draft.canon().cast.get(actor_id);
-        if !cast.is_some_and(|cast| cast.flags.iter().any(|flag| flag == key)) {
-            return Err(Reason::UnknownId);
-        }
-        StateKey::ActorFlag(actor_id.to_string(), key.to_string())
+        _ => return Err(Reason::UnknownId),
     };
     draft.mutate(flag_key, |state| {
-        let flags = match actor_id {
-            WORLD => &mut state.flags,
-            _ => &mut state.actor_mut(actor_id)?.flags,
+        let flags = match holder {
+            Holder::Actor(id) => &mut state.actor_mut(id)?.flags,
+            _ => &mut state.flags,
         };
         let had = flags.iter().any(|flag| flag == key);
         if !value {

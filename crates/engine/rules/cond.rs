@@ -4,8 +4,9 @@ use crate::canon::Canon;
 use crate::intent::{Intent, Source, Target, Viewer};
 use crate::model::{Presence, State, MINUTES_PER_DAY, MINUTES_PER_HOUR};
 use crate::rules::context::Context;
+use crate::rules::effect::Holder;
 use crate::rules::expr;
-use crate::rules::rule::{Cond, Who};
+use crate::rules::rule::Cond;
 use crate::Reason;
 
 /// Every condition holds. A failed `has_item` is [`Reason::MissingItem`].
@@ -79,21 +80,18 @@ fn holds(context: &Context, cond: &Cond) -> Result<bool, Reason> {
             op,
             value,
         } => {
-            let actor = expr::resolve_who_id(context, who)?;
-            let current = state.meter_value(context.canon, &actor, key)?;
+            let holder = expr::resolve_holder(context, who)?;
+            let current = state.meter_value(context.canon, &holder, key)?;
             let right = expr::eval(context, value)?;
             Ok(op.holds(current, right))
         }
         Cond::Flag { who, key, is } => {
-            if matches!(who, Who::World) {
-                let on = state.flags.iter().any(|flag| flag == key);
-                return Ok(on == *is);
-            }
-            let actor = expr::resolve_who_id(context, who)?;
-            let on = state
-                .actors
-                .get(&actor)
-                .is_some_and(|actor| actor.flags.iter().any(|flag| flag == key));
+            let flags = match expr::resolve_holder(context, who)? {
+                Holder::World => Some(&state.flags),
+                Holder::Actor(id) => state.actors.get(&id).map(|actor| &actor.flags),
+                Holder::Place(_) => None,
+            };
+            let on = flags.is_some_and(|flags| flags.iter().any(|flag| flag == key));
             Ok(on == *is)
         }
         Cond::At { who, place } => {
@@ -109,11 +107,6 @@ fn holds(context: &Context, cond: &Cond) -> Result<bool, Reason> {
                 .actors
                 .get(&actor)
                 .is_some_and(|actor| actor.known_facts.iter().any(|id| id == fact)))
-        }
-        Cond::Clock { id, op, value } => {
-            let clock = state.clocks.get(id).ok_or(Reason::UnknownId)?;
-            let right = expr::eval(context, value)?;
-            Ok(!clock.paused && op.holds(clock.value, right))
         }
         Cond::Hour { from, to } => Ok(is_hour_in(*from, *to, world_hour(state.world_time))),
         Cond::Players { op, value } => Ok(op.holds(i64::from(context.presence.players), *value)),

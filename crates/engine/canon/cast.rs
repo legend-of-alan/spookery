@@ -4,16 +4,26 @@ use std::collections::BTreeMap;
 
 use serde::Deserialize;
 
+use crate::canon::meters::{meter_defs, MeterYaml};
 use crate::canon::rule_list::{self, RuleYaml};
 use crate::canon::source::{load_tagged, Diags, FileText, Locator, Page, Problem, CAST_SCHEMA};
 use crate::canon::{CastDef, CastKind, IdleProfile};
 use crate::diagnostic::Diagnostic;
+use crate::model::meter::MeterDef;
+use crate::rules::effect::Holder;
 use crate::rules::rule::{Owner, Rule};
 
-/// One cast page into `cast`, and its rules.
+/// A meter one cast file declares, and that file.
+pub(super) struct CastMeter {
+    pub file: String,
+    pub def: MeterDef,
+}
+
+/// One cast page into `cast`, its meters into `meters`, and its rules.
 pub(super) fn add_cast(
     page: Page,
     cast: &mut BTreeMap<String, CastDef>,
+    meters: &mut BTreeMap<String, CastMeter>,
     diags: &mut Diags,
 ) -> Option<Vec<Rule>> {
     let file = diags.keep(load_cast(&page.file, &page.yaml, 1))?;
@@ -38,6 +48,24 @@ pub(super) fn add_cast(
         return None;
     }
     let id = file.id.clone();
+    let carrier = Some(Holder::Actor(id.clone()));
+    for (key, def) in diags
+        .keep(meter_defs(&whole, file.meters, carrier))
+        .unwrap_or_default()
+    {
+        let hint = "keep one meter with this id, or move it to rules/meters.yaml";
+        let twice = ("meter", "is already declared in another cast file", hint);
+        let path = format!("meters.{key}");
+        let taken = meters.contains_key(&key);
+        if let Some(diag) =
+            taken.then(|| whole.refuse_duplicate(&key, &path, Locator::Nowhere, twice))
+        {
+            diags.push(diag);
+            continue;
+        }
+        let file = page.file.clone();
+        meters.insert(key, CastMeter { file, def });
+    }
     cast.insert(
         id.clone(),
         CastDef {
@@ -99,6 +127,9 @@ struct CastFile {
     display_name: String,
     #[serde(default)]
     flags: Vec<String>,
+    /// The meters only this actor carries.
+    #[serde(default)]
+    meters: Vec<MeterYaml>,
     idle: Option<IdleProfile>,
     #[serde(default)]
     rules: Vec<RuleYaml>,

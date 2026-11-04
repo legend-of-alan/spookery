@@ -56,8 +56,8 @@ pub(crate) fn help(
         }
     }
     lines.push(exit_section(&view.exits));
-    if !view.status.is_empty() {
-        lines.push(view.status);
+    if !view.cant_act.is_empty() {
+        lines.push(view.cant_act);
     }
     Ok(lines.join("\n"))
 }

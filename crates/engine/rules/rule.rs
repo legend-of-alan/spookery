@@ -126,7 +126,6 @@ pub enum ChangeWatch {
     Leave { place: String, who: WatchWho },
     Meter { key: String, op: Op, bound: i64 },
     Flag { key: String, becomes: bool },
-    Clock { id: String },
     Item { id: String, gained: bool },
     Knows { fact: String },
 }
@@ -177,11 +176,6 @@ pub enum Cond {
     Knows {
         who: Who,
         fact: String,
-    },
-    Clock {
-        id: String,
-        op: Op,
-        value: Expr,
     },
     Hour {
         from: i64,
@@ -274,11 +268,6 @@ pub enum EffectTemplate {
         text: String,
         fact_ids: Vec<String>,
         resist: Option<ResistSpec>,
-    },
-    Clock {
-        id: String,
-        add: Option<i64>,
-        unpause: bool,
     },
     Memory {
         who: Who,

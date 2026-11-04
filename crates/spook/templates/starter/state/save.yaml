@@ -1,13 +1,11 @@
 schema: save
 world_id: starter
-pack_rev: blake2s:b469079d06a5c02c9bfaf16ed1d1e0af56e71fd901cd50ca2389466017ed75ca
-rules_rev: 11
+pack_rev: blake2s:7237a350ecc34b31d16a7ee510de9186de0caee5da68d5e14428853a1fd8af81
+rules_rev: 12
 state_rev: 0
 round_index: 0
 world_time: 0
 last_round_at: "2026-01-01T00:00:00Z"
-pause:
-  presence_clocks: paused
 places:
   lane:
     items: {}
@@ -44,5 +42,4 @@ actors:
       last_act_round: 0
       idle_acts_today: 0
       live_acts_this_hour: 0
-clocks: {}
 notes: []

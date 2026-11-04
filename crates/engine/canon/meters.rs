@@ -1,4 +1,5 @@
-//! `rules/meters.yaml`: the meters every actor carries.
+//! Meter lists: `rules/meters.yaml` for every actor, `world/meters.yaml` for the world, and
+//! a cast file's `meters:` for that one actor.
 
 use std::collections::BTreeMap;
 
@@ -7,10 +8,13 @@ use serde::Deserialize;
 use crate::canon::source::{load_tagged, Diags, FileText, Locator, Problem, METERS_SCHEMA};
 use crate::diagnostic::Diagnostic;
 use crate::model::meter::MeterDef;
+use crate::rules::effect::Holder;
 
+/// A meters file, whose meters `carrier` carries.
 pub(super) fn load_meters(
     rel: &str,
     text: &str,
+    carrier: Option<Holder>,
 ) -> Result<BTreeMap<String, MeterDef>, Vec<Diagnostic>> {
     let file: MetersFile = load_tagged(rel, text, METERS_SCHEMA, 0)?;
     let source = FileText {
@@ -18,9 +22,19 @@ pub(super) fn load_meters(
         text,
         line_base: 0,
     };
+    meter_defs(&source, file.meters, carrier)
+}
+
+/// The meter rows of one file. A world meter is hidden unless its row says `hidden: false`.
+pub(super) fn meter_defs(
+    source: &FileText,
+    rows: Vec<MeterYaml>,
+    carrier: Option<Holder>,
+) -> Result<BTreeMap<String, MeterDef>, Vec<Diagnostic>> {
+    let hidden_by_default = carrier == Some(Holder::World);
     let mut diags = Diags::default();
     let mut meters = BTreeMap::new();
-    for (row, entry) in file.meters.into_iter().enumerate() {
+    for (row, entry) in rows.into_iter().enumerate() {
         let path = format!("meters[{row}]");
         let mut found = Vec::new();
         let id_path = format!("{path}.id");
@@ -34,7 +48,7 @@ pub(super) fn load_meters(
         if entry.min > entry.base_cap {
             found.push(
                 Problem {
-                    source: &source,
+                    source,
                     path: &format!("{path}.min"),
                     at: Locator::Row {
                         list: "meters:",
@@ -50,7 +64,7 @@ pub(super) fn load_meters(
         if entry.base_cap > entry.max {
             found.push(
                 Problem {
-                    source: &source,
+                    source,
                     path: &format!("{path}.base_cap"),
                     at: Locator::Row {
                         list: "meters:",
@@ -66,7 +80,7 @@ pub(super) fn load_meters(
         if !(entry.min..=entry.base_cap).contains(&entry.base) {
             found.push(
                 Problem {
-                    source: &source,
+                    source,
                     path: &format!("{path}.base"),
                     at: Locator::Row {
                         list: "meters:",
@@ -94,7 +108,8 @@ pub(super) fn load_meters(
                 base_cap: entry.base_cap,
                 max: entry.max,
                 start: entry.base,
-                hidden: entry.hidden,
+                hidden: entry.hidden.unwrap_or(hidden_by_default),
+                carrier: carrier.clone(),
             },
         );
     }
@@ -111,14 +126,13 @@ struct MetersFile {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct MeterYaml {
+pub(super) struct MeterYaml {
     id: String,
     min: i64,
     base_cap: i64,
     max: i64,
     base: i64,
-    #[serde(default)]
-    hidden: bool,
+    hidden: Option<bool>,
 }
 
 #[cfg(test)]
@@ -128,7 +142,7 @@ mod tests {
     use crate::Reason;
 
     fn load_meters(text: &str) -> Result<BTreeMap<String, MeterDef>, Vec<Diagnostic>> {
-        super::load_meters("rules/meters.yaml", text)
+        super::load_meters("rules/meters.yaml", text, None)
     }
 
     #[test]

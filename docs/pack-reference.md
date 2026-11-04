@@ -12,12 +12,13 @@ The first key in each file is `schema`, with no version suffix. In a Markdown fi
 |---|---|
 | `pack.yaml` | Id, title, system, and the start place and PC. Tag `pack`. |
 | `rules/verbs.yaml` | Shared verb rules. Tag `verbs`. |
-| `rules/meters.yaml` | Meter definitions. Tag `meters`. |
+| `rules/meters.yaml` | The meters every actor carries. Tag `meters`. |
 | `rules/checks.yaml` | Check definitions. Tag `checks`. |
 | `rules/budget.yaml` | Round budgets and the idle policy. Tag `budget`. |
 | `world/places/<id>.md` | One place: facts, exits, and that place's rules. |
 | `world/items/<id>.md` | One item: name, tags, prose, and that item's rules. |
-| `cast/<name>.md` | One NPC or PC template, and that cast member's rules. |
+| `world/meters.yaml` | Optional. The meters the world holds once. Tag `meters`. |
+| `cast/<name>.md` | One NPC or PC template, the meters only it carries, and its rules. |
 | `story/<id>.yaml` | Rules owned by a story. Tag `story`. |
 | `state/save.yaml` | The live world. It is the save, not canon. |
 
@@ -189,7 +190,9 @@ A short knife.
 
 `kind` is `npc` or `pc_template`. A template does not sit a player. The save does. The file name is not the id: `cast/pc-ada.md` has id `pc_ada`. `display_name` is required, and it is the name a player sees. A cast page has no `facts`: what an actor knows is `known_facts` on the save.
 
-`flags` lists the flags an effect may set on this actor. `idle.eligible` says whether the idle runner may pick this NPC. `when: habit` is a habit of that NPC. The runner takes the first habit whose `if` holds and whose `do` list expands.
+`flags` lists the flags an effect may set on this actor. `meters` lists the meters only this actor carries, in the shape of `rules/meters.yaml`; see [Meters](#meters). `idle.eligible` says whether the idle runner may pick this NPC. `when: habit` is a habit of that NPC. The runner takes the first habit whose `if` holds and whose `do` list expands.
+
+A meter never pauses. To stop a rule from advancing a meter while no player is seated, give the rule `if: players >= 1`.
 
 ```yaml file=cast/pc-ada.md
 ---
@@ -200,6 +203,24 @@ display_name: Ada
 flags: []
 idle:
   eligible: false
+meters:
+  - id: debt
+    min: 0
+    base_cap: 6
+    max: 6
+    base: 0
+rules:
+  - id: debt_grows
+    when: habit
+    if:
+      - players:
+          op: ">="
+          value: 1
+    do:
+      - meter:
+          who: self
+          key: debt
+          add: 1
 ---
 Ada keeps the yard.
 ```
@@ -213,6 +234,12 @@ display_name: Keeper
 flags: []
 idle:
   eligible: true
+meters:
+  - id: shop_day
+    min: 0
+    base_cap: 6
+    max: 6
+    base: 0
 rules:
   - id: tend
     when: habit
@@ -249,7 +276,8 @@ rules:
       - at:
           who: here
           place: yard
-      - clock:
+      - meter:
+          who: self
           id: shop_day
           op: "<"
           value: 3
@@ -317,9 +345,8 @@ A change rule fires when its watch becomes true. It does not fire again while th
 |---|---|
 | Arrive | `arrive` is a place id, or `here` on a place rule. `who` is `any` (the default), `pc`, `npc`, or an actor id. |
 | Leave | `leave` and `who`, same as arrive. |
-| Meter | `meter` is a meter id. `crosses` is an operator and a number, such as `<=0`. |
+| Meter | `meter` is a meter id, on any holder that carries it. `crosses` is an operator and a number, such as `<=0`. |
 | Flag | `flag` is the flag. `becomes` is `true` or `false`. |
-| Clock | `clock` is a clock id. The watch is that clock reaching its max. |
 | Item | `item` is an item id, with `gained: true` or `lost: true`. |
 | Knows | `knows` is a fact id. The watch is that fact becoming known. |
 
@@ -482,10 +509,19 @@ rules:
     when:
       verb: advance_day
     do:
-      - clock:
-          id: shop_day
+      - meter:
+          who: keeper
+          key: shop_day
           add: 1
-          unpause: true
+
+  - id: dawn_nears
+    when:
+      verb: dawn_nears
+    do:
+      - meter:
+          who: world
+          key: dawn
+          add: -1
 
   - id: remember
     when:
@@ -544,7 +580,17 @@ rules:
 
 ## Meters
 
-`min` is the floor, `base_cap` is the trained cap, and `max` is as high as current can go. `base` is the base a new meter takes on every existing actor when `spook migrate` runs. A save that lacks a meter the rules define, with no migrate to add it, is refused. Current is base plus offset, and it is not stored. `hidden: true` keeps that meter off the player's view. Leave it out and the player sees the meter.
+`min` is the floor, `base_cap` is the trained cap, and `max` is as high as current can go. Current is base plus offset, and it is not stored. A meter's holder is the file that declares it:
+
+- `rules/meters.yaml` gives the meter to every actor.
+- `meters:` in `cast/<name>.md` gives it to that one actor. The id is refused when `rules/meters.yaml` or another cast file has it too. `cast/keeper.md` declares `shop_day`.
+- `world/meters.yaml` gives it to the world, held once in the save as `world_meters` and shared by every rule that names `who: world`. The world and an actor may each declare a meter with the same id, and `who` picks which one.
+
+`base` is the base a new meter takes on its holder when `spook migrate` runs. A save that lacks a meter the pack gives a holder, with no migrate to add it, is refused. So is a save that lists a meter on a holder the pack does not give it.
+
+A meter effect, condition or read whose `who` is fixed by the pack names one holder: `world`, an actor id, or `self` on a cast member's own habit. Check refuses one that names a meter that holder does not carry. `target` and other holders known only at play time are not guessed. A check's `meter` is one every actor carries.
+
+Visibility: the GM sees every meter change. An actor's meter change is shown to that actor only, not to others in the same place. A world meter is hidden from players unless its row says `hidden: false`; then every player sees its changes and its current value in their view. `hidden: true` keeps an actor's meter off that actor's own view. A flag change, on an actor or the world, is never shown to a player: use a meter with `hidden: false` or a fact for state players should see.
 
 ```yaml file=rules/meters.yaml
 schema: meters
@@ -554,6 +600,17 @@ meters:
     base_cap: 100
     max: 110
     base: 1
+```
+
+```yaml file=world/meters.yaml
+schema: meters
+meters:
+  - id: dawn
+    min: 0
+    base_cap: 6
+    max: 6
+    base: 6
+    hidden: false
 ```
 
 ## Checks
@@ -572,7 +629,7 @@ checks:
 
 ## Budget
 
-`idle` is `on` or `off`. Omitted means `on`. `pause.presence_clocks` is `pause_when_empty` or `always_run`. Omitted counters use the engine defaults. `round_every_real_seconds` is real seconds between wakes, `idle_minutes_per_round` and `live_minutes_per_round` are world minutes one round writes, `idle_catchup_max_rounds` is the most rounds one catch-up runs, and `idle_max_world_hours_per_real_hour` is the world hours one real hour of absence may write. The file below sets them.
+`idle` is `on` or `off`. Omitted means `on`. Omitted counters use the engine defaults. `round_every_real_seconds` is real seconds between wakes, `idle_minutes_per_round` and `live_minutes_per_round` are world minutes one round writes, `idle_catchup_max_rounds` is the most rounds one catch-up runs, and `idle_max_world_hours_per_real_hour` is the world hours one real hour of absence may write. The file below sets them.
 
 ```yaml file=rules/budget.yaml
 schema: budget
@@ -591,8 +648,6 @@ idle_catchup_max_rounds: 12
 idle_max_world_hours_per_real_hour: 8
 max_fastforward_rounds: 12
 max_trigger_depth: 4
-pause:
-  presence_clocks: pause_when_empty
 ```
 
 ## Effects
@@ -603,7 +658,7 @@ One effect under each dash. The rules in `rules/verbs.yaml` are the examples. `s
 
 `location.via` names an exit from the actor's current place. `travel` uses `via: target`. `location.to` names a place, or `target`. Playing `to` without `teleport: true` is refused. `teleport: true` in `rules/verbs.yaml` is a warning.
 
-`note` is stored on the save as `notes`. A note is shown to everyone named in `to`, wherever they are, and to anyone standing in `place`. It is hidden from a viewer when one of its `fact_ids` is one that viewer may not know. Place bodies and note text are shown as written. A hidden fact's sentence pasted into either one reaches every reader, and `spook check` does not warn. `narrate` is one-off text for the people it names, written on the round and left out of the save. `reveal` adds its fact to that actor's known facts and writes no memory line. A flag with `who: world` is stored on the save as `flags`.
+`note` is stored on the save as `notes`. A note is shown to everyone named in `to`, wherever they are, and to anyone standing in `place`. It is hidden from a viewer when one of its `fact_ids` is one that viewer may not know. Place bodies and note text are shown as written. A hidden fact's sentence pasted into either one reaches every reader, and `spook check` does not warn. `narrate` is one-off text for the people it names, written on the round and left out of the save. `reveal` adds its fact to that actor's known facts and writes no memory line. A flag with `who: world` is stored on the save as `flags`, and a meter with `who: world` as `world_meters`.
 
 `wield` fills the actor's one wielded slot. `unwield` empties it. `who` on an effect is the same set as on a condition.
 

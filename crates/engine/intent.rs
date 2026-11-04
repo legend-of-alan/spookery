@@ -82,7 +82,6 @@ pub enum Target {
     Exit(String),
     Actor(String),
     Item(String),
-    Clock(String),
 }
 
 impl Target {
@@ -101,11 +100,11 @@ impl Target {
         matches!(self, Target::Empty)
     }
 
-    /// The id a move names. The engine stamps a clock target, and no player types one.
+    /// The id a move names.
     pub(crate) fn token(&self) -> Option<&str> {
         match self {
             Target::Place(id) | Target::Exit(id) | Target::Actor(id) | Target::Item(id) => Some(id),
-            Target::Empty | Target::Clock(_) => None,
+            Target::Empty => None,
         }
     }
 }
@@ -221,8 +220,6 @@ struct TargetWire {
     actor: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     item: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    clock: Option<String>,
 }
 
 impl From<Target> for TargetWire {
@@ -234,7 +231,6 @@ impl From<Target> for TargetWire {
             Target::Exit(id) => wire.exit = Some(id),
             Target::Actor(id) => wire.actor = Some(id),
             Target::Item(id) => wire.item = Some(id),
-            Target::Clock(id) => wire.clock = Some(id),
         }
         wire
     }
@@ -250,7 +246,6 @@ impl TryFrom<TargetWire> for Target {
             wire.exit.map(Target::Exit),
             wire.actor.map(Target::Actor),
             wire.item.map(Target::Item),
-            wire.clock.map(Target::Clock),
         ]
         .into_iter()
         .flatten();

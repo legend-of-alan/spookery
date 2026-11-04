@@ -168,8 +168,7 @@ pub(crate) fn admit(context: &Context, rule: &Rule) -> Result<(), Refusal> {
     Ok(())
 }
 
-/// A seat names only what its actor holds or what `look` shows them. No seat names a clock:
-/// `stamp_target` fills that target from the rule, so it is not judged here.
+/// A seat names only what its actor holds or what `look` shows them.
 fn can_name(context: &Context) -> bool {
     let intent = context.intent;
     let Some(id) = intent.target.token() else {

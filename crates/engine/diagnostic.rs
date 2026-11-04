@@ -119,14 +119,33 @@ impl Diagnostic {
 }
 
 /// `file:line: message (CODE)`, or `file: path: message (CODE)` when there is no line.
+/// A bare refusal, with no file, is its code alone.
 impl fmt::Display for Diagnostic {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.file.is_empty() {
+            return f.write_str(&self.message);
+        }
         match (self.line, self.path.as_deref()) {
             (Some(line), _) => write!(f, "{}:{line}", self.file)?,
             (None, Some(path)) => write!(f, "{}: {path}", self.file)?,
             (None, None) => f.write_str(&self.file)?,
         }
         write!(f, ": {} ({})", self.message, self.code.as_str())
+    }
+}
+
+impl From<Reason> for Diagnostic {
+    /// A refusal that has no more to say than its code.
+    fn from(reason: Reason) -> Self {
+        Self {
+            file: String::new(),
+            line: None,
+            column: None,
+            path: None,
+            code: Code::Error(reason),
+            message: reason.to_string(),
+            hint: None,
+        }
     }
 }
 
