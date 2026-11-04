@@ -29,7 +29,6 @@ Every message, the client's and the table's alike, is one JSON object in one Web
 - `seq` is set by the table on everything it sends but the hello, from one counter for the whole table. A message several seats get has the same `seq` on each. A seat's `seq`s only grow, but they skip the messages other seats got.
 - A client's `body` is a `word` and its `args`, an object that may be left out when the word takes none.
 - A table's `body` is tagged by `kind`.
-- A reply comes after the messages its word caused.
 
 <!-- example: player-claim -->
 ```json
@@ -478,6 +477,6 @@ The MCP endpoint answers with an HTTP status before any seat: 400 for an `MCP-Pr
 
 - A client ignores a body `kind` and a field it does not know.
 - Changes only add. A field never changes meaning, and a new meaning gets a new name.
-- The hello announces `version` and the words. A word that is experimental, or going away, is marked so in the hello for one release before it changes or is removed. No word in version 1 is either.
+- The hello announces `version` and the words. A word is removed only after one release of being marked as going away. Version 1 has no such word and no marker yet. The marker is added to the hello before the first word needs it.
 - The recorded session must still replay. Each message it got must still arrive at that seat, in order, with every field it had and the same value. New kinds and fields may come between. Only `seq`, which a new kind moves, and `token`, which each table mints, may differ.
 - The journal and refusal codes stay strict: `spook verify` fails on a code it does not know.

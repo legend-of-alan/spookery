@@ -103,4 +103,9 @@ jobs:
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
 
       - name: replay
-        run: cargo test -p spook --locked --test features_host -- --name "recorded session"
+        # A filter that matches no scenario exits 0, so the job also needs the one it names,
+        # "A recorded session replays against this build", to have run and passed.
+        shell: bash
+        run: |
+          cargo test -p spook --locked --test features_host -- --name "recorded session" | tee replay.log
+          grep -q "^1 scenario (1 passed)" replay.log

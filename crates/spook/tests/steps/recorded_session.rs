@@ -1,5 +1,6 @@
 //! `crates/protocol/sessions/v1.jsonl`, a session recorded against the previous release,
-//! replayed against this build. Each line is one message a seat sent or got. The seats send
+//! replayed against this build. Each line is one message a seat sent or got. A seat is named
+//! after its endpoint, `gm` or `player:<name>`, and connects at its first line. The seats send
 //! theirs in order, each after the reply to the one before, and every message a seat got
 //! must still reach it.
 
@@ -17,8 +18,9 @@ use super::table::{self, Seat};
 #[given(expr = "a session recorded against the previous release")]
 fn a_recorded_session(world: &mut World) {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../protocol/sessions/v1.jsonl");
-    world.scratch =
+    let text =
         std::fs::read_to_string(&path).unwrap_or_else(|err| panic!("{}: {err}", path.display()));
+    world.recorded = parse_lines(&text);
 }
 
 /// Replays the sends and writes this build's own recording of the session to the temp dir.
@@ -31,13 +33,13 @@ fn ci_replays_it(world: &mut World) {
     let mut seats: Vec<(String, Seat)> = Vec::new();
     let mut read = Vec::new();
     let mut recording = String::new();
-    for line in parse_lines(&world.scratch) {
+    for line in &world.recorded {
         let name = line["seat"]
             .as_str()
             .unwrap_or_else(|| panic!("no seat\n{line}"));
         if !seats.iter().any(|(seat, _)| seat == name) {
-            let path = if name == "gm" { "gm" } else { "player" };
-            let seat = Seat::open(port, path);
+            let endpoint = name.split(':').next().unwrap_or(name);
+            let seat = Seat::open(port, endpoint);
             table::wait_suffix(&seat.text, 0, "\n");
             seats.push((name.to_string(), seat));
             read.push(0);
@@ -67,9 +69,9 @@ fn ci_replays_it(world: &mut World) {
 
 #[then(expr = "every server message the old client knows is unchanged")]
 fn every_known_message_is_unchanged(world: &mut World) {
-    let recorded = parse_lines(&world.scratch);
     for (name, seat) in &world.replayed {
-        let want: Vec<Value> = recorded
+        let want: Vec<Value> = world
+            .recorded
             .iter()
             .filter(|line| line["seat"] == name.as_str())
             .filter_map(|line| line.get("get").cloned())
