@@ -505,10 +505,13 @@ mod tests {
         let mut player_text = PlayerText::new();
         let claimed = player_text.render(&ServerBody::Claimed {
             actor: "pc_lark".to_string(),
+            token: "t1".to_string(),
             scrollback: vec![
                 table_say(Speaker::Player("pc_lark".to_string()), "hello Briar"),
                 table_say(Speaker::Gm, "evening"),
             ],
+            missed: Vec::new(),
+            gap: false,
         });
         assert_eq!(
             claimed,
@@ -533,7 +536,10 @@ You are in Gate Yard."
         );
         let quiet = PlayerText::new().render(&ServerBody::Claimed {
             actor: "pc_lark".to_string(),
+            token: "t1".to_string(),
             scrollback: Vec::new(),
+            missed: Vec::new(),
+            gap: false,
         });
         assert_eq!(quiet, "");
     }

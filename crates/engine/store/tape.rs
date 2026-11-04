@@ -13,6 +13,7 @@ use spookery_protocol::Speaker;
 /// Size bound for `state/tape.jsonl`. An append that would pass it first drops the oldest half.
 const MAX_BYTES: u64 = 1024 * 1024;
 
+/// How many says a new claim's scrollback carries.
 const SCROLLBACK_LINES: usize = 256;
 
 /// One tape line, written by the engine and relayed by the host table to players and the GM.

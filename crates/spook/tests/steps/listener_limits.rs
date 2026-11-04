@@ -342,11 +342,8 @@ fn one_player_stops_reading(world: &mut World) {
     let start = Instant::now();
     let mut sent = 0usize;
     let args = format!(r#"{{"address":"table","text":"{say}"}}"#);
-    loop {
-        let (_, present) = table::read_presence(world);
-        if !present.iter().any(|actor| actor == "pc_rowan") {
-            break;
-        }
+    // A write fails once the table has closed the connection. The claim stays held.
+    while is_open(table::player_client(world, "pc_rowan")) {
         if start.elapsed() > Duration::from_secs(60) || sent > budget {
             let stderr = table::live_mut(world)
                 .host
@@ -354,7 +351,7 @@ fn one_player_stops_reading(world: &mut World) {
                 .map(|server| support::text_of(&server.stderr))
                 .unwrap_or_default();
             panic!(
-                "rowan still seated after {sent} bytes (recv {recv}, send {send}, frame {frame}, queue {queue}, budget {budget}): {present:?}\n{stderr}"
+                "rowan still connected after {sent} bytes (recv {recv}, send {send}, frame {frame}, queue {queue}, budget {budget})\n{stderr}"
             );
         }
         let _ = table::gm_tool_call(world, 2, "say", &args);
@@ -363,11 +360,20 @@ fn one_player_stops_reading(world: &mut World) {
     world.player_added = table::wait_actor_from(world, "pc_harbormouse", 0, "\"kind\":\"say\"");
 }
 
-#[then(expr = "that player is disconnected")]
+/// A pong the table ignores, so writing it only tests the connection.
+fn is_open(player: &table::PlayerClient) -> bool {
+    player
+        .seat
+        .try_send_raw(Message::Pong(Default::default()))
+        .is_ok()
+}
+
+#[then(expr = "that player is disconnected and still holds its PC")]
 fn that_player_is_disconnected(world: &mut World) {
+    assert!(!is_open(table::player_client(world, "pc_rowan")));
     let (_, present) = table::read_presence(world);
     assert!(
-        !present.iter().any(|actor| actor == "pc_rowan"),
+        present.iter().any(|actor| actor == "pc_rowan"),
         "{present:?}"
     );
     assert!(

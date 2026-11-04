@@ -10,8 +10,20 @@ use super::table;
 use crate::support::{self, copy_docks};
 use crate::World;
 
-#[given(expr = "a docks table with a GM and pc_rowan seated")]
+#[given(expr = "a docks table with a GM and pc_wren seated")]
 fn a_docks_table_with_a_gm_and_one_pc(world: &mut World) {
+    listen_with_wren(world, false);
+}
+
+/// Wren is busy in Mira's rooms, so a commit fast-forwards, and Rowan's travel to the street
+/// touches no seated player, so his moves keep queue order. Rowan has no player, so the GM
+/// drives him.
+#[given(expr = "a docks table with a GM and a travelling pc_wren seated")]
+fn a_docks_table_with_a_gm_and_a_busy_pc(world: &mut World) {
+    listen_with_wren(world, true);
+}
+
+fn listen_with_wren(world: &mut World, travelling: bool) {
     let pack = copy_docks("round-output");
     let path = pack.join("world/places/docks_shop.md");
     let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read shop: {err}"));
@@ -26,9 +38,17 @@ fn a_docks_table_with_a_gm_and_one_pc(world: &mut World) {
     );
     fs::write(&verbs, rules).unwrap_or_else(|err| panic!("write verbs: {err}"));
     support::stamp_pack_rev(&pack);
+    if travelling {
+        edit_save(&pack, |now| {
+            let until = now.world_time + 30;
+            let wren = now.actors.get_mut("pc_wren").expect("pc_wren");
+            wren.place = "mira_rooms".to_string();
+            set_busy(now, "pc_wren", until, "mira_rooms", "mira_rooms");
+        });
+    }
     table::listen(world, &pack);
     table::seat_gm(world);
-    table::seat_actor(world, &pack, "pc_rowan");
+    table::seat_actor(world, &pack, "pc_wren");
     world.pack = Some(pack);
 }
 

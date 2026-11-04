@@ -1,13 +1,15 @@
-//! Who is connected and seated, and each connection's capped outbound queue and its writer.
+//! Who is connected and seated, each claim and the messages it keeps for a reconnect, and
+//! each connection's capped outbound queue and its writer.
 
+use std::collections::VecDeque;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 
 use spookery_engine::Presence;
 use tokio::sync::{mpsc, watch};
 
-use super::limits::{OUTBOUND_BYTE_CAP, OUTBOUND_FRAME_CAP};
-use crate::protocol::Seat;
+use super::limits::{MISSED_MESSAGE_CAP, OUTBOUND_BYTE_CAP, OUTBOUND_FRAME_CAP};
+use crate::protocol::{Seat, ServerMessage};
 
 /// One connection's id, on the game port or the MCP endpoint.
 #[derive(Clone, Copy, PartialEq)]
@@ -27,14 +29,18 @@ pub(super) struct Seats {
     pub(super) links: Vec<Link>,
     /// The connection that holds the GM seat.
     pub(super) gm: Option<Conn>,
+    /// Each held claim, oldest first. At most three, so a scan finds one.
+    pub(super) claims: Vec<Claim>,
 }
 
 impl Seats {
-    /// The claimed PCs, sorted, so a round records the same `actors_present` bytes.
+    /// The claimed PCs, sorted, so a round records the same `actors_present` bytes. A claim
+    /// whose connection dropped is still present.
     pub(super) fn presence(&self) -> Presence {
         let mut actors_present: Vec<String> = self
-            .players()
-            .map(|(_, actor_id)| actor_id.to_string())
+            .claims
+            .iter()
+            .map(|claim| claim.actor.clone())
             .collect();
         actors_present.sort();
         Presence {
@@ -43,19 +49,24 @@ impl Seats {
         }
     }
 
-    /// Each player connection that holds a claim, with its PC.
-    pub(super) fn players(&self) -> impl Iterator<Item = (&Link, &str)> {
-        self.links
-            .iter()
-            .filter_map(|link| Some((link, link.actor.as_deref()?)))
+    /// The claim `conn` drives.
+    pub(super) fn claim_of(&self, conn: Conn) -> Option<&Claim> {
+        self.claims.iter().find(|claim| claim.conn == Some(conn))
+    }
+
+    pub(super) fn claim_of_mut(&mut self, conn: Conn) -> Option<&mut Claim> {
+        self.claims
+            .iter_mut()
+            .find(|claim| claim.conn == Some(conn))
+    }
+
+    /// The claim on the PC `actor`.
+    pub(super) fn claim_of_actor_mut(&mut self, actor: &str) -> Option<&mut Claim> {
+        self.claims.iter_mut().find(|claim| claim.actor == actor)
     }
 
     pub(super) fn link(&self, conn: Conn) -> Option<&Link> {
         self.links.iter().find(|link| link.conn == conn)
-    }
-
-    pub(super) fn link_mut(&mut self, conn: Conn) -> Option<&mut Link> {
-        self.links.iter_mut().find(|link| link.conn == conn)
     }
 
     /// Drops the connection. Dropping its link cancels its writer.
@@ -65,17 +76,62 @@ impl Seats {
     }
 }
 
-/// One open connection: which seat it opened, the PC it claims, and its outbound queue.
+/// One open connection: which seat it opened and its outbound queue.
 pub(super) struct Link {
     pub(super) conn: Conn,
     pub(super) seat: Seat,
-    pub(super) actor: Option<String>,
     pub(super) out: FrameSender,
 }
 
 impl Drop for Link {
     fn drop(&mut self) {
         let _ = self.out.cancel.send(true);
+    }
+}
+
+/// One player's hold on a PC. It outlives its connection and ends only on `release`. A
+/// claim by its `token` takes it back, with the messages it kept.
+pub(super) struct Claim {
+    pub(super) token: String,
+    pub(super) actor: String,
+    /// The connection that drives it, while one does.
+    pub(super) conn: Option<Conn>,
+    /// The newest `MISSED_MESSAGE_CAP` messages sent to this claim, oldest first.
+    kept: VecDeque<ServerMessage>,
+    /// The `seq` of the newest message dropped past `MISSED_MESSAGE_CAP`, or 0.
+    last_lost_seq: u64,
+}
+
+impl Claim {
+    pub(super) fn new(token: String, actor: String) -> Self {
+        Self {
+            token,
+            actor,
+            conn: None,
+            kept: VecDeque::new(),
+            last_lost_seq: 0,
+        }
+    }
+
+    /// Keeps `message` for a reconnect. The oldest is dropped past `MISSED_MESSAGE_CAP`.
+    pub(super) fn keep(&mut self, message: &ServerMessage) {
+        if self.kept.len() == MISSED_MESSAGE_CAP {
+            if let Some(lost) = self.kept.pop_front() {
+                self.last_lost_seq = lost.seq.unwrap_or(self.last_lost_seq);
+            }
+        }
+        self.kept.push_back(message.clone());
+    }
+
+    /// The kept messages after `last_seq`, and whether any were dropped past `MISSED_MESSAGE_CAP`.
+    pub(super) fn messages_after(&self, last_seq: u64) -> (Vec<ServerMessage>, bool) {
+        let missed = self
+            .kept
+            .iter()
+            .filter(|message| message.seq.is_some_and(|seq| seq > last_seq))
+            .cloned()
+            .collect();
+        (missed, last_seq < self.last_lost_seq)
     }
 }
 

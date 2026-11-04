@@ -46,14 +46,17 @@ fn build_say(tape: &TapeRecord, gm: bool) -> Say {
     }
 }
 
-/// The reply to a claim: the PC, and the says it heard before.
-pub(super) fn render_claimed(actor: &str, scrollback: &[TapeRecord]) -> ServerBody {
+/// The reply to a new claim: the PC, its token, and the says it heard before.
+pub(super) fn render_claimed(actor: &str, token: &str, scrollback: &[TapeRecord]) -> ServerBody {
     ServerBody::Claimed {
         actor: actor.to_string(),
+        token: token.to_string(),
         scrollback: scrollback
             .iter()
             .map(|tape| build_say(tape, false))
             .collect(),
+        missed: Vec::new(),
+        gap: false,
     }
 }
 

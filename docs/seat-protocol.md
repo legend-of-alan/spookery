@@ -20,8 +20,8 @@ After both sockets are bound, and before the table serves, `spook run` prints on
 ```json
 {
   "kind": "listening",
-  "game": "127.0.0.1:62279",
-  "mcp": "127.0.0.1:62280"
+  "game": "127.0.0.1:43521",
+  "mcp": "127.0.0.1:36103"
 }
 ```
 
@@ -82,7 +82,7 @@ The table speaks first. The hello lists the version, the words this seat may sen
 }
 ```
 
-`claim` takes one PC. The reply is `claimed`, with `scrollback`, the earlier says this PC heard, oldest first. A `resume` and a `view` follow.
+`claim` takes one PC. The reply is `claimed`, with `token`, which takes this PC back after a dropped connection, and `scrollback`, the earlier says this PC heard, oldest first. A `resume` and a `view` follow. Treat the token as a secret: anyone who sends it holds the PC.
 
 <!-- example: player-claim -->
 ```json
@@ -104,7 +104,8 @@ The table speaks first. The hello lists the version, the words this seat may sen
   "reply_to": "c1",
   "body": {
     "kind": "claimed",
-    "actor": "pc_rowan"
+    "actor": "pc_rowan",
+    "token": "<token>"
   }
 }
 ```
@@ -203,7 +204,47 @@ The table speaks first. The hello lists the version, the words this seat may sen
 
 `resume` carries the notes addressed to that viewer (`notes`) and their own clocks (`clocks`). `view` is what that viewer can see. `viewer` is the bare actor id, the same form `as` takes. It is not `player:<id>` or `npc:<id>`. `place_name` and `actor_names` are the pack's display names. `body` is the place body. `meters` is that viewer's own meters. A hidden meter is left out. `value` is the current number and `max` is the cap. `exits` is omitted when the place has none. `status` is omitted unless the viewer is still travelling, and then it is `on the stairs until 21:40`. Fact bodies are the place prose the viewer is allowed to read.
 
-A claim keeps presence in memory and does not bump `state_rev`. The cap is three claims, in the host, not in the pack. `release` gives the PC back. The connection stays up and may claim again. A connection that closes gives its PC back too.
+A claim keeps presence in memory and does not bump `state_rev`. The cap is three claims, in the host, not in the pack. `release` gives the PC back. The connection stays up and may claim again. Only `release` ends a claim. A connection that closes or is dropped leaves its PC held and present, so no other player can claim it, the GM cannot queue for it, and rounds still count it. The idle clock waits while any claim is held. There is no timer: the claim lasts until a `release` or until `spook run` stops.
+
+The held claim keeps the newest 256 messages sent to it, whether or not a connection reads them. Older ones are dropped. A new connection takes the PC back with `claim` and `token`, and `last_seq`, the last `seq` it read. A missing `last_seq` means 0. The `claimed` reply's `missed` lists the kept messages after `last_seq`, oldest first, each as it was sent. `gap` is `true` when a message after `last_seq` was dropped. The `resume` and `view` that follow are current either way. A connection that still held the claim lets go of it and stays up unclaimed. A token no claim holds, after a `release` for one, is `UNKNOWN_ID`.
+
+<!-- example: player-claim-token -->
+```json
+{
+  "id": "c1",
+  "body": {
+    "word": "claim",
+    "args": {
+      "token": "<token>",
+      "last_seq": 30
+    }
+  }
+}
+```
+
+<!-- example: player-claimed-token -->
+```json
+{
+  "seq": 44,
+  "reply_to": "c1",
+  "body": {
+    "kind": "claimed",
+    "actor": "pc_rowan",
+    "token": "<token>",
+    "missed": [
+      {
+        "seq": 43,
+        "body": {
+          "kind": "say",
+          "from": "gm",
+          "address": "table",
+          "text": "still there?"
+        }
+      }
+    ]
+  }
+}
+```
 
 A refused claim leaves the connection up. The PC is already held:
 
@@ -224,7 +265,7 @@ A fourth claim, after three are held:
 <!-- example: player-session-full -->
 ```json
 {
-  "seq": 40,
+  "seq": 41,
   "reply_to": "c1",
   "body": {
     "kind": "refused",
@@ -341,11 +382,12 @@ A claim's `scrollback` holds the earlier says. The terminal prints them under on
 <!-- example: player-replay-say -->
 ```json
 {
-  "seq": 43,
+  "seq": 49,
   "reply_to": "c1",
   "body": {
     "kind": "claimed",
     "actor": "pc_rowan",
+    "token": "<token>",
     "scrollback": [
       {
         "from": "player:pc_rowan",
@@ -356,6 +398,11 @@ A claim's `scrollback` holds the earlier says. The terminal prints them under on
         "from": "gm",
         "address": "table",
         "text": "good evening"
+      },
+      {
+        "from": "gm",
+        "address": "table",
+        "text": "still there?"
       }
     ]
   }
@@ -392,7 +439,7 @@ A GM say arrives in the same shape. `from` is `gm`.
 <!-- example: player-schema -->
 ```json
 {
-  "seq": 28,
+  "seq": 29,
   "reply_to": "c7",
   "body": {
     "kind": "refused",
@@ -416,7 +463,7 @@ A word the hello did not list is `SCHEMA`. Nothing is queued. `spook play` does 
 <!-- example: player-word-schema -->
 ```json
 {
-  "seq": 27,
+  "seq": 28,
   "reply_to": "c6",
   "body": {
     "kind": "refused",
@@ -440,7 +487,7 @@ A move is a pack verb, with its target in `target`. With a GM seated, the move w
 <!-- example: player-queued -->
 ```json
 {
-  "seq": 14,
+  "seq": 15,
   "reply_to": "c4",
   "body": {
     "kind": "queued",
@@ -469,7 +516,7 @@ A locked exit is refused before it is queued. `detail` is the pack's locked text
 <!-- example: player-no-exit -->
 ```json
 {
-  "seq": 29,
+  "seq": 30,
   "reply_to": "c8",
   "body": {
     "kind": "refused",
@@ -486,7 +533,7 @@ Each committed round is one `round` to every seat. Then each seated player recei
 <!-- example: player-round -->
 ```json
 {
-  "seq": 16,
+  "seq": 17,
   "body": {
     "kind": "round",
     "round_index": 1,
@@ -500,7 +547,7 @@ The terminal shows the digest once per sitting. The per-round `resume` is for ra
 <!-- example: player-check -->
 ```json
 {
-  "seq": 17,
+  "seq": 18,
   "body": {
     "kind": "check",
     "outcome": "success"
@@ -513,7 +560,7 @@ The terminal shows the digest once per sitting. The per-round `resume` is for ra
 <!-- example: player-changes -->
 ```json
 {
-  "seq": 25,
+  "seq": 26,
   "body": {
     "kind": "lines",
     "text": "You picked up the Lamp oil."
@@ -597,7 +644,7 @@ The result examples are the tool's structured content, the object under `result.
 
 #### status
 
-No key is accepted. An empty object is legal.
+No key is accepted. An empty object is legal. The reply holds no says: a player catches up on missed messages with a `claim` by token.
 
 <!-- example: status-request -->
 ```json
@@ -741,7 +788,7 @@ An empty argument object:
 ```json
 {
   "jsonrpc": "2.0",
-  "id": 9,
+  "id": 10,
   "method": "tools/call",
   "params": {
     "name": "perceive",
@@ -755,8 +802,8 @@ An empty argument object:
 {
   "messages": [
     {
-      "seq": 31,
-      "reply_to": "9",
+      "seq": 32,
+      "reply_to": "10",
       "body": {
         "kind": "refused",
         "code": "UNSCOPED_PERCEIVE"
@@ -776,12 +823,12 @@ The call queues the move. It sends no player message. The reply is `queued`, and
 ```json
 {
   "jsonrpc": "2.0",
-  "id": 4,
+  "id": 5,
   "method": "tools/call",
   "params": {
     "name": "queue",
     "arguments": {
-      "actor_id": "pc_rowan",
+      "actor_id": "aldric",
       "move": "wait",
       "id": "gm-wait"
     }
@@ -794,13 +841,47 @@ The call queues the move. It sends no player message. The reply is `queued`, and
 {
   "messages": [
     {
-      "seq": 13,
-      "reply_to": "4",
+      "seq": 14,
+      "reply_to": "5",
       "body": {
         "kind": "queued",
         "intent": "gm-wait",
-        "actor": "pc_rowan",
+        "actor": "aldric",
         "move": "wait"
+      }
+    }
+  ]
+}
+```
+
+A PC a player holds takes only that player's moves. The GM's move for it is `ACTOR_MISMATCH`, and nothing is queued. The claim holds while that player's connection is down, too.
+
+<!-- example: intent-held-request -->
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 4,
+  "method": "tools/call",
+  "params": {
+    "name": "queue",
+    "arguments": {
+      "actor_id": "pc_rowan",
+      "move": "wait"
+    }
+  }
+}
+```
+
+<!-- example: intent-held -->
+```json
+{
+  "messages": [
+    {
+      "seq": 13,
+      "reply_to": "4",
+      "body": {
+        "kind": "refused",
+        "code": "ACTOR_MISMATCH"
       }
     }
   ]
@@ -862,7 +943,7 @@ The reply is the GM's copy of the say. Each recipient gets a player `say` messag
 ```json
 {
   "jsonrpc": "2.0",
-  "id": 5,
+  "id": 6,
   "method": "tools/call",
   "params": {
     "name": "commit",
@@ -878,8 +959,8 @@ The reply is the GM's copy of the say. Each recipient gets a player `say` messag
 {
   "messages": [
     {
-      "seq": 15,
-      "reply_to": "5",
+      "seq": 16,
+      "reply_to": "6",
       "body": {
         "kind": "refused",
         "code": "NOT_IN_SPEC"
@@ -895,7 +976,7 @@ The reply is the GM's copy of the say. Each recipient gets a player `say` messag
 ```json
 {
   "jsonrpc": "2.0",
-  "id": 6,
+  "id": 7,
   "method": "tools/call",
   "params": {
     "name": "commit",
@@ -911,7 +992,7 @@ The reply is the GM's copy of the say. Each recipient gets a player `say` messag
 {
   "messages": [
     {
-      "seq": 16,
+      "seq": 17,
       "body": {
         "kind": "round",
         "round_index": 1,
@@ -919,14 +1000,16 @@ The reply is the GM's copy of the say. Each recipient gets a player `say` messag
       }
     },
     {
-      "seq": 20,
-      "reply_to": "6",
+      "seq": 21,
+      "reply_to": "7",
       "body": {
         "kind": "committed",
         "state_rev": 1,
         "changed_keys": [
           "clock_paused assassination_debt",
+          "last_act_round aldric",
           "last_act_round mira",
+          "live_acts_this_hour aldric",
           "live_acts_this_hour mira",
           "note note_mira_door"
         ],
@@ -959,7 +1042,7 @@ No key is accepted. An empty object is legal. A key is `SCHEMA` and the seat sta
 ```json
 {
   "jsonrpc": "2.0",
-  "id": 10,
+  "id": 12,
   "method": "tools/call",
   "params": {
     "name": "release",
@@ -973,8 +1056,8 @@ No key is accepted. An empty object is legal. A key is `SCHEMA` and the seat sta
 {
   "messages": [
     {
-      "seq": 47,
-      "reply_to": "10",
+      "seq": 53,
+      "reply_to": "12",
       "body": {
         "kind": "released"
       }
@@ -989,7 +1072,7 @@ An unknown tool:
 ```json
 {
   "jsonrpc": "2.0",
-  "id": 8,
+  "id": 9,
   "method": "tools/call",
   "params": {
     "name": "not_in_spec",
@@ -1003,8 +1086,8 @@ An unknown tool:
 {
   "messages": [
     {
-      "seq": 30,
-      "reply_to": "8",
+      "seq": 31,
+      "reply_to": "9",
       "body": {
         "kind": "refused",
         "code": "SCHEMA"
@@ -1048,7 +1131,7 @@ A move the player sent while a GM is sat. Its `seq` is the one on the player's r
   "jsonrpc": "2.0",
   "method": "spook/event",
   "params": {
-    "seq": 14,
+    "seq": 15,
     "body": {
       "kind": "queued",
       "intent": "ed0db120f54c1447842c340c5d523932d1518c796c886f24b1030a9b4a12f73a",

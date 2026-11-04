@@ -1,7 +1,7 @@
 Feature: A round returns its output
 
   Scenario: A GM commit that fast-forwards still reports the committed round's rolls
-    Given a docks table with a GM and pc_rowan seated
+    Given a docks table with a GM and a travelling pc_wren seated
     When the GM queues "grit" for "pc_rowan"
     And the GM queues "hit" for "pc_rowan"
     And the GM queues a 10-minute travel for "pc_rowan"
@@ -18,7 +18,7 @@ Feature: A round returns its output
     And the host prints its status once
 
   Scenario: A commit with no fast-forward reports the same as before
-    Given a docks table with a GM and pc_rowan seated
+    Given a docks table with a GM and pc_wren seated
     When the GM queues "grit" for "pc_rowan"
     And the GM commits the round
     Then the commit reply lists one check for "pc_rowan"

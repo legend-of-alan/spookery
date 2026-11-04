@@ -68,11 +68,19 @@ pub enum ServerBody {
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         open: Vec<String>,
     },
-    /// The reply to `claim`, with the says this PC heard before, oldest first.
+    /// The reply to `claim`. `token` takes this PC back after a dropped connection. A new
+    /// claim carries `scrollback`, the says this PC heard before, oldest first. A claim by
+    /// token carries `missed`, the messages sent to this PC after the `last_seq` it named, and
+    /// `gap` when more than `MISSED_MESSAGE_CAP` messages were missed.
     Claimed {
         actor: String,
+        token: String,
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         scrollback: Vec<Say>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        missed: Vec<ServerMessage>,
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        gap: bool,
     },
     Released,
     /// Sent to the GM whenever a claim starts or ends.
@@ -164,11 +172,21 @@ pub const WORDS: &[Word] = &[
     Word::new("release", Seat::Gm),
 ];
 
-/// `claim` arguments: the PC a player seat takes.
+/// `claim` arguments: a free PC, or the token of a claim this player held before and the
+/// last `seq` it read.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct ClaimArgs {
-    pub actor: String,
+#[serde(untagged, deny_unknown_fields)]
+pub enum ClaimArgs {
+    Actor {
+        actor: String,
+    },
+    Token {
+        token: String,
+        /// The last `seq` the player read. A missing `last_seq` means 0, so the reply
+        /// catches up on everything the claim still keeps.
+        #[serde(default)]
+        last_seq: u64,
+    },
 }
 
 /// A pack verb's arguments, sent by a player seat.
@@ -235,6 +253,23 @@ mod tests {
         let bare: ClientMessage = serde_json::from_str(r#"{"body":{"word":"wait"}}"#).unwrap();
         assert!(bare.body.args.is_empty());
         assert!(serde_json::from_str::<ClientMessage>(r#"{"body":{"word":"w","x":1}}"#).is_err());
+    }
+
+    #[test]
+    fn a_claim_names_an_actor_or_a_token() {
+        let read = |text: &str| serde_json::from_str::<ClaimArgs>(text);
+        let actor = ClaimArgs::Actor {
+            actor: "pc_rowan".into(),
+        };
+        assert_eq!(read(r#"{"actor":"pc_rowan"}"#).unwrap(), actor);
+        let token = ClaimArgs::Token {
+            token: "t1".into(),
+            last_seq: 4,
+        };
+        assert_eq!(read(r#"{"token":"t1","last_seq":4}"#).unwrap(), token);
+        assert!(read(r#"{"actor":"pc_rowan","token":"t1"}"#).is_err());
+        assert!(read(r#"{"actor":"pc_rowan","last_seq":4}"#).is_err());
+        assert!(read("{}").is_err());
     }
 
     #[test]

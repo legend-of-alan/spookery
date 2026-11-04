@@ -53,7 +53,7 @@ pub(super) fn run_gm_word(
     match word {
         "status" => status(world, presence, args),
         "perceive" => perceive(world, presence, args),
-        "queue" => queue(world, args),
+        "queue" => queue(world, presence, args),
         "say" => say(world, presence, args),
         "commit" => commit(world, presence, args),
         "release" => release(args),
@@ -74,7 +74,7 @@ pub(super) fn describe_gm_word(word: &str) -> Option<(&'static str, Arc<Map<Stri
             schema_for_type::<PerceiveArgs>(),
         ),
         "queue" => (
-            "queue requires actor_id and move. A habit row is legal when actor_id is an npc.",
+            "queue requires actor_id and move. A habit row is legal when actor_id is an npc. A PC a player holds is ACTOR_MISMATCH.",
             schema_for_type::<IntentArgs>(),
         ),
         "say" => (
@@ -190,8 +190,18 @@ fn status(
     )))
 }
 
-fn queue(world: &mut World, arguments: Option<&Map<String, Value>>) -> Result<Reply, Reason> {
+/// A PC a player holds takes only that player's moves, so the GM's is `ACTOR_MISMATCH`.
+fn queue(
+    world: &mut World,
+    presence: &Presence,
+    arguments: Option<&Map<String, Value>>,
+) -> Result<Reply, Reason> {
     let call: IntentArgs = parse_args(arguments).map_err(|_| Reason::Schema)?;
+    if let Some(actor_id) = &call.actor_id {
+        if presence.actors_present.contains(actor_id) {
+            return Err(Reason::ActorMismatch);
+        }
+    }
     let target = call.target.clone().filter(|target| !target.is_empty());
     let queued = world.queue_gm_intent(call, || Ok(uuid::Uuid::new_v4().to_string()))?;
     Ok(Reply::new(ServerBody::Queued {

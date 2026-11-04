@@ -13,7 +13,7 @@ use tokio::sync::{oneshot, watch};
 use super::frames;
 use super::gm::{run_gm_word, Reply};
 use super::idle::{self, now_stamp};
-use super::seat::{Conn, FrameSender, Link, Seats};
+use super::seat::{Claim, Conn, FrameSender, Link, Seats};
 use super::Error;
 use crate::protocol::{
     self, parse_args, ClaimArgs, ClientBody, ClientMessage, Detail, MoveArgs, NoArgs, SayArgs,
@@ -179,12 +179,7 @@ impl Table {
         if seat == Seat::Gm {
             self.seats.gm = Some(conn);
         }
-        self.seats.links.push(Link {
-            conn,
-            seat,
-            actor: None,
-            out,
-        });
+        self.seats.links.push(Link { conn, seat, out });
         let mut words: Vec<String> = WORDS
             .iter()
             .filter(|word| word.seat == seat)
@@ -245,7 +240,7 @@ impl Table {
         if word == "claim" {
             return self.claim(conn, id, &args);
         }
-        let Some(actor_id) = self.seats.link(conn).and_then(|link| link.actor.clone()) else {
+        let Some(actor_id) = self.seats.claim_of(conn).map(|claim| claim.actor.clone()) else {
             let free = protocol::Refusal {
                 code: protocol::Code::Known(Reason::ChoosePc),
                 detail: Some(Detail::Many(self.list_open_pcs())),
@@ -277,59 +272,92 @@ impl Table {
         self.reply(conn, id, body);
     }
 
+    /// A claim takes a free PC, or by its token takes back one this player held. The reply
+    /// is `claimed`, then a refresh.
     fn claim(&mut self, conn: Conn, id: Option<String>, args: &Map<String, Value>) {
-        let Some(ClaimArgs { actor }) = read(args) else {
-            return self.reply(conn, id, ServerBody::Refused(Reason::Schema.into()));
+        let args = read::<ClaimArgs>(args).filter(|_| self.seats.claim_of(conn).is_none());
+        let fresh = matches!(args, Some(ClaimArgs::Actor { .. }));
+        let taken = match args {
+            Some(ClaimArgs::Actor { actor }) => self.claim_free_pc(actor),
+            Some(ClaimArgs::Token { token, last_seq }) => self.claim_by_token(&token, last_seq),
+            None => Err(Reason::Schema),
         };
-        let presence = self.seats.presence();
-        let refused = if self
-            .seats
-            .link(conn)
-            .is_some_and(|link| link.actor.is_some())
-        {
-            Some(Reason::Schema)
-        } else if presence.actors_present.len() >= MAX_PLAYER_SEATS {
-            Some(Reason::TableFull)
-        } else if presence.actors_present.contains(&actor) {
-            Some(Reason::SeatTaken)
-        } else if !self
-            .world
-            .state()
-            .actors
-            .get(&actor)
-            .is_some_and(|live| live.is_pc())
-        {
-            Some(Reason::Schema)
-        } else {
-            None
+        let (token, actor, claimed) = match taken {
+            Ok(taken) => taken,
+            Err(code) => return self.reply(conn, id, ServerBody::Refused(code.into())),
         };
-        if let Some(code) = refused {
-            return self.reply(conn, id, ServerBody::Refused(code.into()));
-        }
-        // Claim first, so the welcome view counts this player as present.
-        if let Some(link) = self.seats.link_mut(conn) {
-            link.actor = Some(actor.clone());
-        }
-        let welcome = render_welcome(&self.world, &self.seats.presence(), &actor);
-        let [claimed, resume, view] = match welcome {
+        // After the claim, so the view counts this player as present.
+        let [resume, view] = match refresh(&self.world, &self.seats.presence(), &actor) {
             Ok(bodies) => bodies,
             Err(code) => {
-                if let Some(link) = self.seats.link_mut(conn) {
-                    link.actor = None;
+                if fresh {
+                    self.seats.claims.retain(|claim| claim.token != token);
                 }
                 return self.reply(conn, id, ServerBody::Refused(code.into()));
             }
         };
+        // The reply goes out before this connection drives the claim, so no catch-up
+        // carries it.
         self.reply(conn, id, claimed);
+        if let Some(claim) = self.seats.claim_of_actor_mut(&actor) {
+            claim.conn = Some(conn);
+        }
         self.notify(conn, resume);
         self.notify(conn, view);
-        self.announce_presence();
+        if fresh {
+            self.announce_presence();
+        }
+    }
+
+    /// A new claim on a free PC, under a new token, with the says this PC heard before.
+    fn claim_free_pc(&mut self, actor: String) -> Result<(String, String, ServerBody), Reason> {
+        let presence = self.seats.presence();
+        if presence.actors_present.len() >= MAX_PLAYER_SEATS {
+            return Err(Reason::TableFull);
+        }
+        if presence.actors_present.contains(&actor) {
+            return Err(Reason::SeatTaken);
+        }
+        let live = self.world.state().actors.get(&actor);
+        if !live.is_some_and(|live| live.is_pc()) {
+            return Err(Reason::Schema);
+        }
+        let scrollback = self.world.player_scrollback(&actor)?;
+        let token = uuid::Uuid::new_v4().simple().to_string();
+        let claimed = frames::render_claimed(&actor, &token, &scrollback);
+        self.seats
+            .claims
+            .push(Claim::new(token.clone(), actor.clone()));
+        Ok((token, actor, claimed))
+    }
+
+    /// The held claim `token` names, with what was sent to it after `last_seq`. A connection
+    /// that still drives it lets go.
+    fn claim_by_token(
+        &mut self,
+        token: &str,
+        last_seq: u64,
+    ) -> Result<(String, String, ServerBody), Reason> {
+        let claim = self
+            .seats
+            .claims
+            .iter_mut()
+            .find(|claim| claim.token == token)
+            .ok_or(Reason::UnknownId)?;
+        claim.conn = None;
+        let (missed, gap) = claim.messages_after(last_seq);
+        let claimed = ServerBody::Claimed {
+            actor: claim.actor.clone(),
+            token: token.to_string(),
+            scrollback: Vec::new(),
+            missed,
+            gap,
+        };
+        Ok((token.to_string(), claim.actor.clone(), claimed))
     }
 
     fn release_claim(&mut self, conn: Conn, id: Option<String>) {
-        if let Some(link) = self.seats.link_mut(conn) {
-            link.actor = None;
-        }
+        self.seats.claims.retain(|claim| claim.conn != Some(conn));
         self.reply(conn, id, ServerBody::Released);
         self.announce_presence();
     }
@@ -397,7 +425,7 @@ impl Table {
         };
         if let Some(gm) = gm {
             let seq = self.stamp();
-            self.send(conn, stamp_message(seq, id, reply.clone()));
+            self.send_to_pc(actor_id, stamp_message(seq, id, reply.clone()));
             return self.send(gm, stamp_message(seq, None, reply));
         }
         match commit_then_fast_forward(&mut self.world, &presence) {
@@ -443,8 +471,8 @@ impl Table {
     }
 
     fn wake(&mut self) -> Result<(), Reason> {
-        // A seated table plays its own rounds.
-        if self.seats.players().next().is_some() || self.seats.gm.is_some() {
+        // A seated table plays its own rounds. A claim whose connection dropped still seats it.
+        if !self.seats.claims.is_empty() || self.seats.gm.is_some() {
             return Ok(());
         }
         if idle::catch_up_if_due(&mut self.world)? {
@@ -459,28 +487,28 @@ impl Table {
         if outputs.is_empty() {
             return;
         }
-        let players: Vec<(Conn, String)> = self
+        let players: Vec<String> = self
             .seats
-            .players()
-            .map(|(link, actor_id)| (link.conn, actor_id.to_string()))
-            .collect();
-        let seated: Vec<Conn> = players
+            .claims
             .iter()
-            .map(|(conn, _)| *conn)
-            .chain(self.seats.gm)
+            .map(|claim| claim.actor.clone())
             .collect();
         for commit in outputs.iter().filter_map(|output| output.commit.as_ref()) {
             let seq = self.stamp();
-            for &conn in &seated {
-                let body = ServerBody::Round {
-                    round_index: commit.round_index,
-                    world_time: commit.world_time,
-                };
-                self.send(conn, stamp_message(seq, None, body));
+            let body = ServerBody::Round {
+                round_index: commit.round_index,
+                world_time: commit.world_time,
+            };
+            let round = stamp_message(seq, None, body);
+            for actor_id in &players {
+                self.send_to_pc(actor_id, round.clone());
+            }
+            if let Some(gm) = self.seats.gm {
+                self.send(gm, round);
             }
         }
         let presence = self.seats.presence();
-        for (conn, actor_id) in players {
+        for actor_id in players {
             let mut bodies: Vec<ServerBody> = outputs
                 .iter()
                 .flat_map(|output| frames::render_checks(&output.reports, &actor_id))
@@ -502,7 +530,7 @@ impl Table {
                 }
             }
             for body in bodies {
-                self.notify(conn, body);
+                self.notify_pc(&actor_id, body);
             }
         }
         self.write_digest(outputs);
@@ -523,21 +551,24 @@ impl Table {
         let (sender, id) = sender.unzip();
         let id = id.flatten();
         let reply_to = |conn: Conn| (sender == Some(conn)).then(|| id.clone()).flatten();
-        let hears: Vec<Conn> = self
+        let hears: Vec<(String, Option<Conn>)> = self
             .seats
-            .players()
-            .filter(|(link, actor_id)| {
-                said.recipients.iter().any(|id| id == actor_id) || sender == Some(link.conn)
+            .claims
+            .iter()
+            .filter(|claim| {
+                said.recipients.contains(&claim.actor)
+                    || claim.conn.is_some_and(|conn| sender == Some(conn))
             })
-            .map(|(link, _)| link.conn)
+            .map(|claim| (claim.actor.clone(), claim.conn))
             .collect();
         if let Some(gm) = self.seats.gm {
             let body = frames::render_say(said, true);
             self.send(gm, stamp_message(seq, reply_to(gm), body));
         }
-        for conn in hears {
+        for (actor_id, conn) in hears {
             let body = frames::render_say(said, false);
-            self.send(conn, stamp_message(seq, reply_to(conn), body));
+            let message = stamp_message(seq, conn.and_then(reply_to), body);
+            self.send_to_pc(&actor_id, message);
         }
     }
 
@@ -559,15 +590,38 @@ impl Table {
         self.seq
     }
 
-    /// The reply to the message `id` named.
+    /// The reply to the message `id` named. One to a connection that drives a claim goes
+    /// to that PC.
     fn reply(&mut self, conn: Conn, id: Option<String>, body: ServerBody) {
         let seq = self.stamp();
-        self.send(conn, stamp_message(seq, id, body));
+        let message = stamp_message(seq, id, body);
+        match self.seats.claim_of(conn).map(|claim| claim.actor.clone()) {
+            Some(actor_id) => self.send_to_pc(&actor_id, message),
+            None => self.send(conn, message),
+        }
     }
 
     /// A message that answers nothing.
     fn notify(&mut self, conn: Conn, body: ServerBody) {
         self.reply(conn, None, body);
+    }
+
+    /// A message that answers nothing, to a PC.
+    fn notify_pc(&mut self, actor_id: &str, body: ServerBody) {
+        let seq = self.stamp();
+        self.send_to_pc(actor_id, stamp_message(seq, None, body));
+    }
+
+    /// Keeps the message on the PC's claim for a reconnect, and sends it if a connection
+    /// drives that claim.
+    fn send_to_pc(&mut self, actor_id: &str, message: ServerMessage) {
+        let Some(claim) = self.seats.claim_of_actor_mut(actor_id) else {
+            return;
+        };
+        claim.keep(&message);
+        if let Some(conn) = claim.conn {
+            self.send(conn, message);
+        }
     }
 
     /// A message to an MCP tool call's connection goes in that call's result. A full or
@@ -586,18 +640,16 @@ impl Table {
         }
     }
 
-    /// Drops a connection. Dropping its link cancels its socket. A claim it held ends,
-    /// and a GM seat it held is free.
+    /// Drops a connection. Dropping its link cancels its socket. A claim it drove is held
+    /// for its token, and a GM seat it held is free.
     fn drop_link(&mut self, conn: Conn) {
         if self.seats.gm == Some(conn) {
             self.release_gm();
         }
-        let Some(link) = self.seats.take(conn) else {
-            return;
-        };
-        if link.actor.is_some() {
-            self.announce_presence();
+        if let Some(claim) = self.seats.claim_of_mut(conn) {
+            claim.conn = None;
         }
+        self.seats.take(conn);
     }
 
     fn write_digest(&mut self, outputs: &[RoundOutput]) {
@@ -631,17 +683,6 @@ fn narrate_lines_for(lines: &[RecipientLine], viewer: &str) -> Vec<String> {
         }
     }
     out
-}
-
-/// What a claim sends: `claimed` with the player's scrollback, then a refresh.
-fn render_welcome(
-    world: &World,
-    presence: &Presence,
-    actor_id: &str,
-) -> Result<[ServerBody; 3], Reason> {
-    let claimed = frames::render_claimed(actor_id, &world.player_scrollback(actor_id)?);
-    let [resume, view] = refresh(world, presence, actor_id)?;
-    Ok([claimed, resume, view])
 }
 
 fn refresh(world: &World, presence: &Presence, actor_id: &str) -> Result<[ServerBody; 2], Reason> {

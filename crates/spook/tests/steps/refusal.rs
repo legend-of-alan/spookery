@@ -146,6 +146,16 @@ fn a_sample_table_with_the_gm_seated(world: &mut World) {
     seat_gm_and_lark(world, pack);
 }
 
+/// No player holds Lark, so the GM may drive him.
+#[given(expr = "a sample table with only the GM seated")]
+fn a_sample_table_with_only_the_gm_seated(world: &mut World) {
+    let pack = support::copy_pack("sample-d20", "named-gap-gm");
+    edit_save(&pack, |_| {});
+    table::listen(world, &pack);
+    table::seat_gm(world);
+    world.pack = Some(pack);
+}
+
 #[given(expr = "a sample table where one effect is over budget and the GM is seated")]
 fn one_effect_is_over_budget(world: &mut World) {
     let pack = support::copy_pack("sample-d20", "over-budget");
