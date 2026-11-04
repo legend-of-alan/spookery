@@ -5,17 +5,16 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use rmcp::model::{
-    CallToolRequestParams, ClientCapabilities, ClientConfig, ClientJsonRpcMessage, ClientRequest,
-    CustomNotification, Implementation, InitializeRequest, JsonRpcError, ProtocolVersion,
-    RequestId,
+    CallToolRequestParams, ClientCapabilities, ClientConfig, CustomNotification, Implementation,
+    ProtocolVersion, Tool,
 };
-use rmcp::service::{ClientInitializeError, NotificationContext, RoleClient, RunningService};
+use rmcp::service::{NotificationContext, RoleClient, RunningService};
 use rmcp::transport::common::client_side_sse::NeverRetry;
 use rmcp::transport::streamable_http_client::StreamableHttpClientTransportConfig;
 use rmcp::transport::{StreamableHttpClientTransport, Transport};
 use rmcp::{ClientHandler, ServiceExt};
 use serde_json::Value;
-use spookery::protocol::{Refusal, ServerMessage, ToolResult};
+use spookery::protocol::{ServerBody, ServerMessage, ToolResult};
 use tokio::sync::mpsc;
 
 /// One item on the event channel: an event, the line for one that could not be read, or
@@ -57,14 +56,14 @@ pub struct GmClient {
 }
 
 impl GmClient {
-    /// Dial `http://<mcp_addr>/mcp` and finish the handshake. A refused seat is the
-    /// refusal's sentence.
+    /// Dial `http://<mcp_addr>/mcp`, finish the handshake, and wait for the event stream to
+    /// take the seat: its hello. A refused seat is the refusal's sentence.
     pub async fn connect(mcp_addr: SocketAddr) -> Result<Self, String> {
         let url = format!("http://{mcp_addr}/mcp");
         let (tx, rx) = mpsc::unbounded_channel();
         // A closed loopback seat ends the stream. The default client retries
         // that stream forever, so a dropped `spook run` never looks closed.
-        let mut config = StreamableHttpClientTransportConfig::with_uri(url.clone());
+        let mut config = StreamableHttpClientTransportConfig::with_uri(url);
         config.retry_config = Arc::new(NeverRetry::default());
         config.reinit_on_expired_session = false;
         let transport = ClientTransport {
@@ -73,20 +72,10 @@ impl GmClient {
             closed: false,
         };
         let sender = EventSender { tx: tx.clone() };
-        let info = sender.get_info();
-        let service = match sender.serve(transport).await {
-            Ok(service) => service,
-            // The streamable client skips a JSON-RPC error on the initialize
-            // event stream and reports the stream as closed. Read that refusal
-            // from a fresh response body.
-            Err(err @ ClientInitializeError::ConnectionClosed(_)) => {
-                return Err(match probe_seat_refusal(&url, info).await {
-                    Some(refusal) => refusal.to_string(),
-                    None => describe(&err),
-                });
-            }
-            Err(err) => return Err(describe(&err)),
-        };
+        let service = sender
+            .serve(transport)
+            .await
+            .map_err(|err| err.to_string())?;
         // rmcp keeps no read on the MCP port once a tool call's stream
         // ends, so a killed `spook run` never looks closed. A plain connection
         // with a pending read sees that close.
@@ -100,12 +89,37 @@ impl GmClient {
             }
             let _ = tx.send(None);
         });
-        Ok(GmClient {
+        let mut gm = GmClient {
             service,
             watch,
             rx,
             buffered: VecDeque::new(),
-        })
+        };
+        match gm.recv().await {
+            Some(Ok(hello)) if matches!(hello.body, ServerBody::Hello { .. }) => {
+                gm.buffered.push_front(Some(Ok(hello)));
+                Ok(gm)
+            }
+            Some(Ok(ServerMessage {
+                body: ServerBody::Refused(refusal),
+                ..
+            })) => {
+                gm.close().await;
+                Err(refusal.to_string())
+            }
+            other => {
+                gm.close().await;
+                Err(format!("no hello on the event stream: {other:?}"))
+            }
+        }
+    }
+
+    /// The tools the seat lists.
+    pub async fn list_tools(&self) -> Result<Vec<Tool>, String> {
+        self.service
+            .list_all_tools()
+            .await
+            .map_err(|err| err.to_string())
     }
 
     /// Send the word `word` as a tool call. The result is every message it sent this seat,
@@ -204,66 +218,6 @@ where
     }
 }
 
-/// Send the session's own initialize, `info`, again on a plain request and read the
-/// refusal from the `data` of the JSON-RPC error in its event stream.
-async fn probe_seat_refusal(url: &str, info: ClientConfig) -> Option<Refusal> {
-    let client = reqwest::Client::builder()
-        .redirect(reqwest::redirect::Policy::none())
-        .build()
-        .ok()?;
-    // This initialize can sit a seat that freed after the first attempt.
-    // The DELETE below gives that seat back.
-    let version = info.protocol_version.as_str().to_string();
-    let initialize = ClientJsonRpcMessage::request(
-        ClientRequest::InitializeRequest(InitializeRequest::new(info)),
-        RequestId::Number(1),
-    );
-    let response = client
-        .post(url)
-        .header("accept", "application/json, text/event-stream")
-        .header("content-type", "application/json")
-        .header("mcp-protocol-version", version)
-        .body(serde_json::to_string(&initialize).ok()?)
-        .send()
-        .await
-        .ok()?;
-    let session = response
-        .headers()
-        .get("mcp-session-id")
-        .and_then(|value| value.to_str().ok())
-        .map(str::to_string);
-    let text = response.text().await.ok()?;
-    if let Some(session) = session {
-        let _ = client
-            .delete(url)
-            .header("mcp-session-id", session)
-            .send()
-            .await;
-    }
-    text.lines()
-        .filter_map(|line| line.strip_prefix("data:"))
-        .find_map(|data| serde_json::from_str::<JsonRpcError>(data.trim()).ok())
-        .and_then(|reply| refusal_from(&ClientInitializeError::JsonRpcError(reply.error)))
-}
-
-/// A failed initialize as its refusal's sentence, or as the error.
-fn describe(err: &ClientInitializeError) -> String {
-    refusal_from(err).map_or_else(|| err.to_string(), |refusal| refusal.to_string())
-}
-
-/// The refusal the table puts in the `data` of the MCP error that ends an initialize.
-fn refusal_from(err: &ClientInitializeError) -> Option<Refusal> {
-    match err {
-        ClientInitializeError::JsonRpcError(error) => {
-            serde_json::from_value(error.data.clone()?).ok()
-        }
-        ClientInitializeError::LegacyFallbackFailed { discover, fallback } => {
-            refusal_from(discover).or_else(|| refusal_from(fallback))
-        }
-        _ => None,
-    }
-}
-
 /// One `spook/event` notification's params, one `ServerMessage`, or the notification's line.
 fn parse_event(params: Option<Value>) -> Result<ServerMessage, String> {
     let params = params.unwrap_or(Value::Null);
@@ -277,4 +231,157 @@ pub fn event_line(event: &ServerMessage) -> String {
 
 fn notification_line(params: &Value) -> String {
     serde_json::json!({ "jsonrpc": "2.0", "method": "spook/event", "params": params }).to_string()
+}
+
+/// One MCP session over plain HTTP, for what the rmcp client hides: the raw replies, and
+/// event streams opened by hand.
+pub struct RawSession {
+    port: u16,
+    id: String,
+    version: String,
+    /// The `initialize` reply.
+    pub opened: String,
+    /// The event streams this session opened, kept open.
+    streams: Vec<std::net::TcpStream>,
+}
+
+impl RawSession {
+    /// `initialize`, then `notifications/initialized`. That opens a session and takes no seat.
+    pub fn open(port: u16) -> Self {
+        let initialize = serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {
+                "protocolVersion": ProtocolVersion::LATEST.as_str(),
+                "capabilities": {},
+                "clientInfo": { "name": "raw", "version": "0" }
+            }
+        });
+        let opened = send_http(
+            port,
+            "POST",
+            None,
+            ProtocolVersion::LATEST.as_str(),
+            &initialize,
+        );
+        let id = opened
+            .lines()
+            .take_while(|line| !line.is_empty())
+            .find_map(|line| {
+                let (name, value) = line.split_once(':')?;
+                name.eq_ignore_ascii_case("mcp-session-id")
+                    .then(|| value.trim().to_string())
+            })
+            .unwrap_or_else(|| panic!("no session\n{opened}"));
+        let version = opened
+            .split_once("\"protocolVersion\":\"")
+            .and_then(|(_, rest)| rest.split_once('"'))
+            .map(|(version, _)| version.to_string())
+            .unwrap_or_else(|| panic!("no protocol version\n{opened}"));
+        let session = RawSession {
+            port,
+            id,
+            version,
+            opened,
+            streams: Vec::new(),
+        };
+        let initialized = serde_json::json!({
+            "jsonrpc": "2.0",
+            "method": "notifications/initialized"
+        });
+        let reply = session.post(&initialized);
+        assert!(reply.contains(" 202 "), "initialized was refused\n{reply}");
+        session
+    }
+
+    /// Opens an event stream, which takes the GM seat, and keeps it open. Returns what the
+    /// stream sent through its first event.
+    pub fn open_event_stream(&mut self) -> String {
+        use std::io::{Read, Write};
+
+        let (port, id, version) = (self.port, &self.id, &self.version);
+        let request = format!(
+            "GET /mcp HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nmcp-session-id: {id}\r\nMCP-Protocol-Version: {version}\r\nAccept: text/event-stream\r\n\r\n"
+        );
+        let mut stream = connect_http(port);
+        stream
+            .write_all(request.as_bytes())
+            .unwrap_or_else(|err| panic!("write GET: {err}"));
+        let mut raw = Vec::new();
+        let mut buf = [0u8; 1024];
+        loop {
+            let read = stream.read(&mut buf).unwrap_or(0);
+            raw.extend_from_slice(&buf[..read]);
+            let text = String::from_utf8_lossy(&raw);
+            let has_event = text
+                .split_once("spook/event")
+                .is_some_and(|(_, rest)| rest.contains("\n\n"));
+            if read == 0 || has_event {
+                break;
+            }
+        }
+        self.streams.push(stream);
+        String::from_utf8_lossy(&raw).into_owned()
+    }
+
+    /// Calls the tool `word` with no arguments. Returns the raw reply.
+    pub fn call(&self, word: &str) -> String {
+        let call = serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "tools/call",
+            "params": { "name": word, "arguments": {} }
+        });
+        self.post(&call)
+    }
+
+    fn post(&self, body: &Value) -> String {
+        send_http(self.port, "POST", Some(&self.id), &self.version, body)
+    }
+}
+
+/// The first `spook/event` notification in a raw event stream.
+pub fn read_event(raw: &str) -> Value {
+    raw.lines()
+        .filter_map(|line| line.strip_prefix("data:"))
+        .filter_map(|data| serde_json::from_str::<Value>(data.trim()).ok())
+        .find(|message| message["method"] == "spook/event")
+        .unwrap_or_else(|| panic!("no spook/event\n{raw}"))
+}
+
+/// One HTTP/1.1 request on its own connection. Returns the raw reply.
+fn send_http(
+    port: u16,
+    method: &str,
+    session: Option<&str>,
+    version: &str,
+    body: &Value,
+) -> String {
+    use std::io::{Read, Write};
+
+    let body = body.to_string();
+    let session = session
+        .map(|id| format!("mcp-session-id: {id}\r\n"))
+        .unwrap_or_default();
+    let request = format!(
+        "{method} /mcp HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\n{session}MCP-Protocol-Version: {version}\r\nContent-Type: application/json\r\nAccept: application/json, text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+        body.len()
+    );
+    let mut stream = connect_http(port);
+    stream
+        .write_all(request.as_bytes())
+        .unwrap_or_else(|err| panic!("write HTTP: {err}"));
+    let mut raw = String::new();
+    let _ = stream.read_to_string(&mut raw);
+    raw
+}
+
+fn connect_http(port: u16) -> std::net::TcpStream {
+    let stream = std::net::TcpStream::connect(("127.0.0.1", port))
+        .unwrap_or_else(|err| panic!("connect HTTP: {err}"));
+    stream
+        .set_read_timeout(Some(std::time::Duration::from_secs(5)))
+        .unwrap_or_else(|err| panic!("timeout: {err}"));
+    stream
 }

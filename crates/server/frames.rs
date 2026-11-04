@@ -20,7 +20,7 @@ pub(super) fn render_refused_move(refusal: &engine::Refusal) -> protocol::Refusa
     }
 }
 
-/// The MCP initialize error. Its message is the refusal's sentence and its data the refusal.
+/// An MCP tool error. Its message is the refusal's sentence and its data the refusal.
 pub(super) fn mcp_error(refusal: &protocol::Refusal) -> McpError {
     let data = serde_json::to_value(refusal).expect("refusal");
     McpError::internal_error(refusal.to_string(), Some(data))

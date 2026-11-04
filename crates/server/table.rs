@@ -168,10 +168,11 @@ impl Table {
         }
     }
 
-    /// Opens the connection and sends its hello. A GM connection while the seat is held is
-    /// refused, and the connection sends that refusal itself.
+    /// Opens the connection and sends its hello. A GM connection while the seat is held, or a
+    /// second one for an MCP session that already has its stream, is refused, and the
+    /// connection sends that refusal itself.
     fn open(&mut self, conn: Conn, seat: Seat, out: FrameSender) -> Result<(), Box<ServerMessage>> {
-        if seat == Seat::Gm && self.seats.gm.is_some() {
+        if seat == Seat::Gm && (self.seats.gm.is_some() || self.seats.link(conn).is_some()) {
             let seq = self.stamp();
             let refused = stamp_message(seq, None, ServerBody::Refused(Reason::TableFull.into()));
             return Err(Box::new(refused));

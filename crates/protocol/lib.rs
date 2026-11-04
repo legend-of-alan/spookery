@@ -63,8 +63,8 @@ pub fn default_mcp_addr(game: std::net::SocketAddr) -> Option<std::net::SocketAd
 /// and the prompt's cast cut.
 pub const PERCEIVE_BODY_CHARS: usize = 800;
 
-/// Every refusal code. The `code` of a `refused` body and of the MCP initialize error's
-/// `data`, and the token the journal stores on a round line (`engine::Refusal`).
+/// Every refusal code. The `code` of a `refused` body and of an MCP tool error's `data`,
+/// and the token the journal stores on a round line (`engine::Refusal`).
 /// Strict and `Copy` on purpose: `spook verify` must fail on a code it does not know.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
@@ -182,8 +182,8 @@ impl From<String> for Code {
     }
 }
 
-/// Sent from the table to a client as a `refused` body, and to an MCP GM client as the MCP
-/// initialize error's `data`.
+/// Sent from the table to a client as a `refused` body, and to an MCP GM client as an MCP
+/// tool error's `data`.
 /// Display is that error's message, the sentence with the code in brackets,
 /// `The table is full. [TABLE_FULL]`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
