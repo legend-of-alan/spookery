@@ -311,7 +311,9 @@ impl RawSession {
         let mut raw = Vec::new();
         let mut buf = [0u8; 1024];
         loop {
-            let read = stream.read(&mut buf).unwrap_or(0);
+            let read = stream
+                .read(&mut buf)
+                .unwrap_or_else(|err| panic!("read GET: {err}\n{}", String::from_utf8_lossy(&raw)));
             raw.extend_from_slice(&buf[..read]);
             let text = String::from_utf8_lossy(&raw);
             let has_event = text

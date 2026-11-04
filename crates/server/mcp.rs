@@ -29,7 +29,7 @@ use super::gm;
 use super::limits::GM_BODY_CAP;
 use super::seat::{frame_queue, Conn, FrameReceiver};
 use super::table::{report_hangup, Request};
-use crate::protocol::{ClientBody, ClientMessage, Reason, Seat, ToolResult, WORDS};
+use crate::protocol::{ClientBody, ClientMessage, Seat, ToolResult, WORDS};
 
 pub(super) async fn serve(
     listener: tokio::net::TcpListener,
@@ -38,7 +38,7 @@ pub(super) async fn serve(
 ) {
     let (hangup_tx, mut hangups) = unbounded_channel();
     let sessions = Arc::new(SeatSessions::new(tx.clone(), next_conn, hangup_tx));
-    let closer = EndSessions(Arc::clone(&sessions));
+    let closer = SessionGuard(Arc::clone(&sessions));
     let service = StreamableHttpService::new(
         move || Ok(Handler::new(tx.clone())),
         sessions,
@@ -57,10 +57,12 @@ pub(super) async fn serve(
 }
 
 /// Ends rmcp's sessions when `serve` stops. Each session's task holds the session manager,
-/// so a session left open would keep its task, and the table's sender, alive.
-struct EndSessions(Arc<SeatSessions>);
+/// so a session left open would keep its task, and the table's sender, alive. If a session
+/// is opening or closing at that moment the lock is held and nothing is cleared, so the
+/// session tasks, and the sender, outlive `serve`.
+struct SessionGuard(Arc<SeatSessions>);
 
-impl Drop for EndSessions {
+impl Drop for SessionGuard {
     fn drop(&mut self) {
         if let Ok(mut sessions) = self.0.inner.sessions.try_write() {
             sessions.clear();
@@ -122,8 +124,8 @@ impl Stream for EventStream {
         let Some(frame) = ready!(self.frames_rx.poll_frame(cx)) else {
             return Poll::Ready(None);
         };
-        let body = serde_json::from_slice(&frame).ok();
-        let note = CustomNotification::new("spook/event", body);
+        let body = serde_json::from_slice(&frame).expect("the table queues JSON");
+        let note = CustomNotification::new("spook/event", Some(body));
         let message =
             ServerJsonRpcMessage::notification(ServerNotification::CustomNotification(note));
         Poll::Ready(Some(ServerSseMessage::from_message(message)))
@@ -325,11 +327,6 @@ impl ServerHandler for Handler {
             })
             .map_err(|_| table_closed())?;
         let messages = reply_rx.await.map_err(|_| table_closed())?;
-        // The table answers every word from a seat, so no messages means no seat: the
-        // session has not opened its event stream.
-        if messages.is_empty() {
-            return Err(super::frames::mcp_error(&Reason::NotInSpec.into()));
-        }
         let result = serde_json::to_value(ToolResult { messages }).expect("tool result");
         Ok(CallToolResult::structured(result).into())
     }

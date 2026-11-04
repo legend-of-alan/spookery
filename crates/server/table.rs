@@ -150,7 +150,13 @@ impl Table {
                     reply,
                 } => {
                     self.tool_call = Some((conn, Vec::new()));
-                    self.handle_message(conn, Ok(message));
+                    // An MCP session holds no seat until its event stream opens.
+                    if self.seats.link(conn).is_some() {
+                        self.handle_message(conn, Ok(message));
+                    } else {
+                        let refused = ServerBody::Refused(Reason::NotInSpec.into());
+                        self.reply(conn, message.id, refused);
+                    }
                     let messages = self.tool_call.take().map(|(_, messages)| messages);
                     let _ = reply.send(messages.unwrap_or_default());
                 }

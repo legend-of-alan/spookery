@@ -1,11 +1,9 @@
-//! Engine output as message bodies. The one place a `protocol::Refusal` is rendered: into a
-//! body or an MCP error.
+//! Engine output as message bodies. The one place a `protocol::Refusal` is rendered.
 
 use crate::protocol::{
     self, CommitBody, Detail, NoteView, PackSummary, QueuedMove, Roll, Say, ServerBody,
     StatusPause, StatusPresence, TableStatus,
 };
-use rmcp::ErrorData as McpError;
 use serde_json::Value;
 use spookery_engine::{
     self as engine, Intent, MoveReport, Note, Presence, RoundOutput, State, TapeRecord,
@@ -18,12 +16,6 @@ pub(super) fn render_refused_move(refusal: &engine::Refusal) -> protocol::Refusa
         code: protocol::Code::Known(refusal.code),
         detail: refusal.detail.clone().map(Detail::One),
     }
-}
-
-/// An MCP tool error. Its message is the refusal's sentence and its data the refusal.
-pub(super) fn mcp_error(refusal: &protocol::Refusal) -> McpError {
-    let data = serde_json::to_value(refusal).expect("refusal");
-    McpError::internal_error(refusal.to_string(), Some(data))
 }
 
 /// One say as a seat hears it. Only the GM's copy lists the recipients.

@@ -371,7 +371,7 @@
       ]
     },
     "Reason": {
-      "description": "Every refusal code. The `code` of a `refused` body and of an MCP tool error's `data`,\nand the token the journal stores on a round line (`engine::Refusal`).\nStrict and `Copy` on purpose: `spook verify` must fail on a code it does not know.",
+      "description": "Every refusal code. The `code` of a `refused` body, and the token the journal stores on\na round line (`engine::Refusal`).\nStrict and `Copy` on purpose: `spook verify` must fail on a code it does not know.",
       "type": "string",
       "enum": [
         "UNKNOWN_EFFECT",
@@ -422,7 +422,7 @@
       ]
     },
     "Refusal": {
-      "description": "Sent from the table to a client as a `refused` body, and to an MCP GM client as an MCP\ntool error's `data`.\nDisplay is that error's message, the sentence with the code in brackets,\n`The table is full. [TABLE_FULL]`.",
+      "description": "Sent from the table to a client as a `refused` body.\nDisplay is the sentence with the code in brackets,\n`The table is full. [TABLE_FULL]`.",
       "type": "object",
       "properties": {
         "code": {

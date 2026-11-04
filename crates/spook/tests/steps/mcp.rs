@@ -274,9 +274,9 @@ fn the_event_stream_is_refused_with(world: &mut World, code: String) {
 #[then(expr = "that session's status call is refused with {string}")]
 fn that_sessions_status_call_is_refused_with(world: &mut World, code: String) {
     let reply = raw_session(world).call("status");
-    let needle = format!("\"code\":\"{code}\"");
+    let needle = format!("\"kind\":\"refused\",\"code\":\"{code}\"");
+    assert!(reply.contains("structuredContent"), "{reply}");
     assert!(reply.contains(&needle), "{reply}");
-    assert!(!reply.contains("structuredContent"), "{reply}");
 }
 
 #[then(expr = "that session's status call is answered")]
