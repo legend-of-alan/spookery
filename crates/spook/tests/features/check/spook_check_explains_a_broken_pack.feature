@@ -21,18 +21,22 @@ Feature: spook check explains a broken pack
     And the pack bytes are unchanged
 
     Examples:
-      | fault                         | file                         | code                | phrase              |
-      | missing when                  | rules/verbs.yaml             | SCHEMA              | missing field 'when' |
-      | unknown field                 | rules/verbs.yaml             | SCHEMA              | unknown field       |
-      | unknown check                 | rules/verbs.yaml             | SCHEMA              | not a check         |
-      | duplicate move                | rules/verbs.yaml             | SCHEMA              | listed twice        |
-      | old format tag                | rules/verbs.yaml             | SCHEMA              | no version          |
-      | missing meters                | rules/meters.yaml            | NOT_IN_SPEC         | missing             |
-      | pack_rev mismatch             | state/save.yaml              | PACK_REV_MISMATCH   | pack_rev            |
-      | exit to an unknown place      | world/places/docks_shop.md   | SCHEMA              | not a place         |
-      | duplicate exit                | world/places/docks_shop.md   | SCHEMA              | listed twice        |
-      | a target alias                | rules/verbs.yaml             | SCHEMA              | not a target kind   |
-      | flags under idle              | cast/pc-rowan.md             | SCHEMA              | unknown field       |
+      | fault                    | file                       | code              | phrase                   |
+      | missing when             | rules/verbs.yaml           | SCHEMA            | missing field 'when'     |
+      | unknown field            | rules/verbs.yaml           | SCHEMA            | unknown field            |
+      | unknown check            | rules/verbs.yaml           | SCHEMA            | not a check              |
+      | duplicate move           | rules/verbs.yaml           | SCHEMA            | listed twice             |
+      | old format tag           | rules/verbs.yaml           | SCHEMA            | no version               |
+      | missing meters           | rules/meters.yaml          | NOT_IN_SPEC       | missing                  |
+      | pack_rev mismatch        | state/save.yaml            | PACK_REV_MISMATCH | pack_rev                 |
+      | exit to an unknown place | world/places/docks_shop.md | SCHEMA            | not a place              |
+      | duplicate exit           | world/places/docks_shop.md | SCHEMA            | listed twice             |
+      | a target alias           | rules/verbs.yaml           | SCHEMA            | not a target kind        |
+      | flags under idle         | cast/pc-rowan.md           | SCHEMA            | unknown field            |
+      | missing display_name     | cast/pc-rowan.md           | SCHEMA            | display_name             |
+      | idle maybe               | rules/budget.yaml          | SCHEMA            | not on or off            |
+      | zero round interval      | rules/budget.yaml          | SCHEMA            | round_every_real_seconds |
+      | zero idle minutes        | rules/budget.yaml          | SCHEMA            | idle_minutes_per_round   |
 
   Scenario: Two problems in two files are both reported
     Given a docks table
