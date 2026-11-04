@@ -213,6 +213,11 @@ fn capture() -> BTreeMap<String, Example> {
     let mut newcomer = RawSession::open(table.mcp_port);
     let refused = newcomer.open_event_stream();
     insert_json(&mut out, "mcp-table-full", read_event(&refused));
+
+    send(&mut back, "help", json!({}));
+    insert_json(&mut out, "player-help", next_kind(&back, "help"));
+    send(&mut back, "map", json!({}));
+    insert_json(&mut out, "player-map", next_kind(&back, "map"));
     out
 }
 

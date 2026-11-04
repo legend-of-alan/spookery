@@ -275,10 +275,11 @@ off it, and so does anyone else's. After a round, the player sees one line of
 what changed, built from the change records they are allowed to know. That line
 names a meter change and an item gained or lost. A hidden fact stays off the
 line. A hidden exit stays off the exit list. `look` answers with a fresh view and
-does not take a round, and nor do `help` and `map`. The table writes both as
-text: `help` lists the verbs this player can use here and now and the exits,
-and `map` lists each place their save says they visited, with the exits they
-may see from there. A traveller who has not arrived
+does not take a round, and nor do `help` and `map`. The table sends both as
+data and the client prints them: `help` lists the words this player can use
+here and now, each with what it takes and what they can name for it, and `map`
+lists each place their save says they visited, with the exits they may see from
+there. A traveller who has not arrived
 sees where the journey ends, as `on the stairs until 21:40`. A player names only
 what they hold or what that view shows. Anything else reads like an unknown
 word and takes no round. A pack that omits `display_name` fails check. An

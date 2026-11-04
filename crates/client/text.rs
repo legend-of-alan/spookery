@@ -1,8 +1,8 @@
 //! Readable text for player and GM messages, and the status and commit replies.
 
 use crate::protocol::{
-    self, exit_section, CommitBody, MeterView, NoteView, Outcome, Roll, Say, ServerBody, Speaker,
-    TableStatus,
+    self, CommitBody, ExitView, MeterView, NoteView, Outcome, PlaceView, Roll, Say, ServerBody,
+    Speaker, TableStatus, WordView,
 };
 
 /// Readable text for one player body. Empty means print nothing.
@@ -19,6 +19,8 @@ pub fn render(body: &ServerBody) -> String {
         ServerBody::Lines { text } => text.clone(),
         ServerBody::Refused(refusal) => refusal.to_string(),
         ServerBody::View(view) => render_view(view),
+        ServerBody::Help { words } => render_help(words),
+        ServerBody::Map { places } => render_map(places),
         ServerBody::Claimed { scrollback, .. } => render_scrollback(scrollback),
         ServerBody::Hello { .. }
         | ServerBody::Released
@@ -195,6 +197,59 @@ pub fn render_view(view: &protocol::View) -> String {
     }
     sections.push(exit_section(exits));
     sections.join("\n\n")
+}
+
+/// One word per line: `look`, `ask briar`, or `strike <actor>: briar, aldric`.
+pub fn render_help(words: &[WordView]) -> String {
+    let lines: Vec<String> = words.iter().map(word_line).collect();
+    lines.join("\n")
+}
+
+fn word_line(word: &WordView) -> String {
+    let name = &word.name;
+    if let Some(owner) = &word.owner {
+        return format!("{name} {owner}");
+    }
+    if word.target == "none" {
+        return name.clone();
+    }
+    let line = format!("{name} <{}>", word.target);
+    if word.names.is_empty() {
+        line
+    } else {
+        format!("{line}: {}", word.names.join(", "))
+    }
+}
+
+/// Each place, then its exits indented under it.
+pub fn render_map(places: &[PlaceView]) -> String {
+    let mut lines = Vec::new();
+    for place in places {
+        lines.push(place.name.clone());
+        for exit in &place.exits {
+            lines.push(format!("  {}", exit_phrase(exit)));
+        }
+    }
+    lines.join("\n")
+}
+
+/// `stairs (locked) — 2 min`.
+fn exit_phrase(exit: &ExitView) -> String {
+    let (name, minutes) = (&exit.name, exit.minutes);
+    if exit.locked {
+        format!("{name} (locked) — {minutes} min")
+    } else {
+        format!("{name} — {minutes} min")
+    }
+}
+
+/// `Exits:` and one exit per line, or `none`.
+fn exit_section(exits: &[ExitView]) -> String {
+    if exits.is_empty() {
+        return "Exits:\nnone".to_string();
+    }
+    let lines: Vec<String> = exits.iter().map(exit_phrase).collect();
+    format!("Exits:\n{}", lines.join("\n"))
 }
 
 fn push_lines<'a>(sections: &mut Vec<String>, title: &str, lines: impl Iterator<Item = &'a str>) {

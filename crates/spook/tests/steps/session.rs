@@ -138,12 +138,26 @@ fn parse_lines(text: &str) -> Vec<Value> {
         .collect()
 }
 
-#[then(expr = "the player is told {string}")]
-fn the_player_is_told(world: &mut World, text: String) {
-    wait_player_frame(world, &format!("lines with {text}"), |frame| {
-        frame["kind"] == "lines"
-            && frame["text"]
-                .as_str()
-                .is_some_and(|lines| lines.contains(&text))
+#[then(expr = "the player is offered {string}")]
+fn the_player_is_offered(world: &mut World, name: String) {
+    wait_player_frame(world, &format!("help with {name}"), |frame| {
+        help_word(frame, &name).is_some()
     });
+}
+
+#[then(expr = "the player's map lists {string}")]
+fn the_players_map_lists(world: &mut World, place_name: String) {
+    wait_player_frame(world, &format!("a map with {place_name}"), |frame| {
+        let places = frame["places"].as_array().cloned().unwrap_or_default();
+        frame["kind"] == "map" && places.iter().any(|place| place["name"] == place_name)
+    });
+}
+
+/// The word `name` of a `help` body.
+fn help_word<'a>(frame: &'a Value, name: &str) -> Option<&'a Value> {
+    if frame["kind"] != "help" {
+        return None;
+    }
+    let words = frame["words"].as_array()?;
+    words.iter().find(|word| word["name"] == name)
 }

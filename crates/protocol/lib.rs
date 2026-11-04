@@ -40,9 +40,7 @@ pub use message::{
     is_built_in, ClaimArgs, ClientBody, ClientMessage, Message, MoveArgs, NoArgs, Say, Seat,
     ServerBody, ServerMessage, Word, VERSION, WORDS,
 };
-pub use player::{
-    exit_phrase, exit_section, ExitView, ItemStack, KnownFact, MeterView, NoteView, View,
-};
+pub use player::{ExitView, ItemStack, KnownFact, MeterView, NoteView, PlaceView, View, WordView};
 
 /// The listening line `spook run` prints on stdout once both ports are bound: the game port
 /// and the MCP address.
