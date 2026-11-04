@@ -164,7 +164,7 @@ fn queue_move(world: &mut World, actor: &str, move_name: &str, place: Option<&st
         None => String::new(),
     };
     let args = format!(r#"{{"actor_id":"{actor}","move":"{move_name}"{target}}}"#);
-    let text = table::gm_call(world, 4, "queue", &args);
+    let text = table::gm_tool_call(world, 4, "queue", &args);
     assert_eq!(
         table::read_reply(&text)["kind"],
         "queued",

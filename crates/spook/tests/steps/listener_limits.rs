@@ -100,7 +100,7 @@ fn another_gm_sits(world: &mut World) {
 fn the_closed_session_calls_say(world: &mut World) {
     world.before = table::read_files(table::pack(world));
     world.scratch =
-        table::closed_gm_call(world, "say", r#"{"address":"table","text":"good evening"}"#);
+        table::closed_gm_tool_call(world, "say", r#"{"address":"table","text":"good evening"}"#);
 }
 
 #[then(expr = "that call is refused and nothing was written")]
@@ -169,7 +169,7 @@ fn the_player_sends_a_binary_message(world: &mut World) {
 
 #[when(expr = "the GM calls release with a key")]
 fn the_gm_calls_release_with_a_key(world: &mut World) {
-    world.scratch = table::gm_call(world, 91, "release", r#"{"now":true}"#);
+    world.scratch = table::gm_tool_call(world, 91, "release", r#"{"now":true}"#);
 }
 
 #[then(expr = "that call is refused with {string}")]
@@ -188,7 +188,7 @@ fn that_call_is_refused_with(world: &mut World, code: String) {
 
 #[then(expr = "the GM can still say")]
 fn the_gm_can_still_say(world: &mut World) {
-    let text = table::gm_call(
+    let text = table::gm_tool_call(
         world,
         93,
         "say",
@@ -357,7 +357,7 @@ fn one_player_stops_reading(world: &mut World) {
                 "rowan still seated after {sent} bytes (recv {recv}, send {send}, frame {frame}, queue {queue}, budget {budget}): {present:?}\n{stderr}"
             );
         }
-        let _ = table::gm_call(world, 2, "say", &args);
+        let _ = table::gm_tool_call(world, 2, "say", &args);
         sent = sent.saturating_add(frame);
     }
     world.player_added = table::wait_actor_from(world, "pc_harbormouse", 0, "\"kind\":\"say\"");

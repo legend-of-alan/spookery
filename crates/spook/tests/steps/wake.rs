@@ -90,7 +90,7 @@ fn a_queued_wait_meets_wakes(world: &mut World) {
     advance_and_settle(world, INTERVAL);
     table::live_mut(world).players.clear();
     table::seat_rowan(world, &pack);
-    let status = table::gm_call(world, 4, "status", "{}");
+    let status = table::gm_tool_call(world, 4, "status", "{}");
     let reply = table::read_reply(&status);
     let rows = reply["queued"]
         .as_array()
@@ -183,7 +183,7 @@ fn idle_is_off_and_the_gm_commits(world: &mut World) {
     table::seat_rowan(world, &pack);
     let _ = queue_rowan_wait(world);
     assert!(list_round_keys(&pack).is_empty());
-    let done = table::gm_call(world, 5, "commit", r#"{"include_round":true}"#);
+    let done = table::gm_tool_call(world, 5, "commit", r#"{"include_round":true}"#);
     assert_eq!(table::read_reply(&done)["kind"], "committed", "{done}");
     let now = state_of(&pack);
     assert_eq!(now.world_time, 1085);

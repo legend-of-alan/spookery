@@ -653,14 +653,14 @@ pub fn player_client<'w>(world: &'w World, actor_id: &str) -> &'w PlayerClient {
         .unwrap_or_else(|| panic!("no seat for {actor_id}"))
 }
 
-pub fn gm_call(world: &mut World, id: u64, name: &str, arguments: &str) -> String {
+pub fn gm_tool_call(world: &mut World, id: u64, name: &str, arguments: &str) -> String {
     let live = live_mut(world);
     let gm = live.gm.as_mut().unwrap_or_else(|| panic!("no seated GM"));
     send_tool_call(gm, &live.gm_text, id, name, arguments)
 }
 
-/// A call from the GM that called `release` and kept its session.
-pub fn closed_gm_call(world: &mut World, name: &str, arguments: &str) -> String {
+/// A tool call from the GM that called `release` and kept its session.
+pub fn closed_gm_tool_call(world: &mut World, name: &str, arguments: &str) -> String {
     let live = live_mut(world);
     let gm = live
         .closed_gm
@@ -868,7 +868,7 @@ pub fn release_gm_keep_session(world: &mut World) -> String {
 }
 
 fn close_gm(world: &mut World, keep_session: bool) -> String {
-    let text = gm_call(world, 91, "release", "{}");
+    let text = gm_tool_call(world, 91, "release", "{}");
     assert!(
         text.contains("{\"kind\":\"released\"}"),
         "the server did not confirm the seat was free\n{text}"
@@ -920,7 +920,7 @@ fn call_table_status(world: &mut World) -> Value {
 
 /// One GM tool call; the body of its reply.
 pub fn call_gm_tool(world: &mut World, word: &str, arguments: &str) -> Value {
-    read_reply(&gm_call(world, 1, word, arguments))
+    read_reply(&gm_tool_call(world, 1, word, arguments))
 }
 
 /// The body of the reply in a tool call's result line: the last message.

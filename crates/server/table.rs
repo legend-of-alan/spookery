@@ -54,7 +54,7 @@ pub(super) enum Request {
     },
     /// One MCP tool call, as a client message. The reply is every message the table sent
     /// this connection while it ran the word, the word's own reply last.
-    Call {
+    ToolCall {
         conn: Conn,
         message: ClientMessage,
         reply: oneshot::Sender<Vec<ServerMessage>>,
@@ -89,7 +89,7 @@ pub(crate) struct Table {
     /// Each send restarts the idle timer.
     idle: watch::Sender<u64>,
     /// While an MCP tool call runs: its connection, and the messages sent to it so far.
-    call: Option<(Conn, Vec<ServerMessage>)>,
+    tool_call: Option<(Conn, Vec<ServerMessage>)>,
     out: Box<dyn Write>,
     err: Box<dyn Write>,
 }
@@ -108,7 +108,7 @@ impl Table {
             seq: 0,
             verbs,
             idle,
-            call: None,
+            tool_call: None,
             out,
             err,
         }
@@ -144,14 +144,14 @@ impl Table {
                     self.drop_link(conn);
                     let _ = ack.send(());
                 }
-                Request::Call {
+                Request::ToolCall {
                     conn,
                     message,
                     reply,
                 } => {
-                    self.call = Some((conn, Vec::new()));
+                    self.tool_call = Some((conn, Vec::new()));
                     self.handle_message(conn, Ok(message));
-                    let messages = self.call.take().map(|(_, messages)| messages);
+                    let messages = self.tool_call.take().map(|(_, messages)| messages);
                     let _ = reply.send(messages.unwrap_or_default());
                 }
                 Request::Wake => handled = self.wake(),
@@ -573,7 +573,7 @@ impl Table {
     /// A message to an MCP tool call's connection goes in that call's result. A full or
     /// closed queue drops that connection. The table does not wait.
     fn send(&mut self, conn: Conn, message: ServerMessage) {
-        if let Some((_, messages)) = self.call.as_mut().filter(|(call, _)| *call == conn) {
+        if let Some((_, messages)) = self.tool_call.as_mut().filter(|(call, _)| *call == conn) {
             return messages.push(message);
         }
         let bytes = message.to_text().into_bytes();

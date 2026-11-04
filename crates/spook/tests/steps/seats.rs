@@ -337,7 +337,7 @@ fn both_lines_are_queued_for_the_gm(world: &mut World) {
 
 #[then(expr = "table status lists both queued lines")]
 fn table_status_lists_both_queued_lines(world: &mut World) {
-    let text = table::gm_call(world, 4, "status", "{}");
+    let text = table::gm_tool_call(world, 4, "status", "{}");
     for id in ["pc_rowan", "pc_harbormouse"] {
         assert!(text.contains(id), "{text}");
     }
@@ -564,9 +564,9 @@ fn a_round_commits(world: &mut World) {
     }
     let pack = table::pack(world).to_path_buf();
     let before = list_round_keys(&pack).len();
-    let queued = table::gm_call(world, 5, "queue", r#"{"actor_id":"aldric","move":"wait"}"#);
+    let queued = table::gm_tool_call(world, 5, "queue", r#"{"actor_id":"aldric","move":"wait"}"#);
     assert!(queued.contains("\"id\""), "{queued}");
-    let committed = table::gm_call(world, 6, "commit", r#"{"include_round":true}"#);
+    let committed = table::gm_tool_call(world, 6, "commit", r#"{"include_round":true}"#);
     assert_eq!(list_round_keys(&pack).len(), before + 1, "{committed}");
 }
 
@@ -617,7 +617,7 @@ fn the_gm_says_a_line_to_the_table(world: &mut World) {
         table::seat_gm(world);
     }
     let args = format!(r#"{{"address":"table","text":"{TABLE_LINE}"}}"#);
-    world.scratch = table::gm_call(world, 3, "say", &args);
+    world.scratch = table::gm_tool_call(world, 3, "say", &args);
 }
 
 #[then(expr = "{string} hears it and {string} does not")]

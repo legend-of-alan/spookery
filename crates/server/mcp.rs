@@ -265,7 +265,7 @@ impl ServerHandler for Handler {
         };
         let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
         self.tx
-            .send(Request::Call {
+            .send(Request::ToolCall {
                 conn,
                 message,
                 reply: reply_tx,
