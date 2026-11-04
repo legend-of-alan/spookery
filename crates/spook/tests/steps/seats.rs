@@ -393,19 +393,14 @@ fn the_shop_player_speaks_to_the_place(world: &mut World) {
     });
     let id = rowan.send("say", say);
     rowan.wait_reply(&id);
-    let start = std::time::Instant::now();
-    loop {
-        if table::actor_text(world, "pc_harbormouse").contains("the blue rope is tied") {
-            return;
+    table::poll_until("harbormouse to hear the place say", || {
+        let heard = table::actor_text(world, "pc_harbormouse");
+        if heard.contains("the blue rope is tied") {
+            Ok(())
+        } else {
+            Err(heard)
         }
-        if start.elapsed() > std::time::Duration::from_secs(5) {
-            panic!(
-                "harbormouse missed the place say\n{}",
-                table::actor_text(world, "pc_harbormouse")
-            );
-        }
-        std::thread::sleep(std::time::Duration::from_millis(20));
-    }
+    });
 }
 
 #[then(expr = "only the shop players receive the say")]
@@ -437,7 +432,8 @@ fn three_play_clients_sit_on_a_free_port(world: &mut World) {
 fn each_play_client_shows_its_first_perceive(world: &mut World) {
     assert_eq!(world.plays.len(), 3);
     for play in &mut world.plays {
-        wait_play_proc(play, "You are in");
+        let you_are_in = |stdout: &str| stdout.contains("You are in");
+        super::common::wait_proc_until(play, you_are_in, "You are in");
     }
 }
 
@@ -449,29 +445,6 @@ fn listen_pack(world: &mut World) {
 fn seat_three(world: &mut World, pack: &std::path::Path) {
     for id in ["pc_rowan", "pc_harbormouse", "pc_wren"] {
         table::seat_actor(world, pack, id);
-    }
-}
-
-fn wait_play_proc(play: &mut crate::support::Process, needle: &str) {
-    let start = std::time::Instant::now();
-    loop {
-        let stdout = crate::support::text_of(&play.stdout);
-        if stdout.contains(needle) {
-            return;
-        }
-        if let Some(status) = play
-            .child
-            .try_wait()
-            .unwrap_or_else(|err| panic!("try_wait: {err}"))
-        {
-            let stderr = crate::support::text_of(&play.stderr);
-            panic!("play exited {status:?}\nstdout:\n{stdout}\nstderr:\n{stderr}");
-        }
-        if start.elapsed() > std::time::Duration::from_secs(8) {
-            let stderr = crate::support::text_of(&play.stderr);
-            panic!("missing {needle}\nstdout:\n{stdout}\nstderr:\n{stderr}");
-        }
-        std::thread::sleep(std::time::Duration::from_millis(20));
     }
 }
 

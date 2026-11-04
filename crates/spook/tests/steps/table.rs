@@ -117,7 +117,10 @@ impl Seat {
     /// Waits until the table has closed this connection.
     pub fn wait_closed(&self) {
         poll_until("the table to close the connection", || {
-            self.closed.load(Ordering::SeqCst).then_some(()).ok_or(())
+            self.closed
+                .load(Ordering::SeqCst)
+                .then_some(())
+                .ok_or("still open")
         });
     }
 
@@ -346,27 +349,24 @@ pub fn list_player_waits(pack: &Path, name: &str) -> Vec<String> {
         .collect()
 }
 
-/// How long the journal may sit still before a wait calls it a hang. It bounds
-/// one commit, not the whole wait, so a slow machine only makes the wait longer.
-const JOURNAL_STALL: Duration = Duration::from_secs(10);
-
-/// Waits until `done` holds for the committed round keys. Fails only when no
-/// round commits for `JOURNAL_STALL`; `want` names the condition in the panic.
+/// Waits until `done` holds for the committed round keys. Each `poll_until`
+/// waits for one more round, so a long run only fails when the journal sits
+/// still; `want` names the condition in the panic.
 pub fn wait_rounds_until(pack: &Path, want: &str, done: impl Fn(&[String]) -> bool) -> Vec<String> {
     let mut seen = 0;
-    let mut moved = Instant::now();
     loop {
-        let keys = list_round_keys(pack);
+        let keys = poll_until(&format!("{want} or a round past {seen}"), || {
+            let keys = list_round_keys(pack);
+            if done(&keys) || keys.len() != seen {
+                Ok(keys)
+            } else {
+                Err(seen)
+            }
+        });
         if done(&keys) {
             return keys;
         }
-        if keys.len() != seen {
-            seen = keys.len();
-            moved = Instant::now();
-        } else if moved.elapsed() > JOURNAL_STALL {
-            panic!("no round committed for {JOURNAL_STALL:?} at {seen} rounds; wanted {want}");
-        }
-        std::thread::sleep(Duration::from_millis(20));
+        seen = keys.len();
     }
 }
 
@@ -732,8 +732,8 @@ pub fn wait_round(world: &World, world_time: u64) -> String {
 const WAIT: Duration = Duration::from_secs(5);
 
 /// Calls `check` until it returns `Ok`. After `WAIT` it panics with `want` and
-/// the last `Err`, which says what was seen instead.
-pub fn poll_until<T, Seen: std::fmt::Debug>(
+/// the last `Err`, which says what was seen instead, printed as is.
+pub fn poll_until<T, Seen: std::fmt::Display>(
     want: &str,
     mut check: impl FnMut() -> Result<T, Seen>,
 ) -> T {
@@ -741,7 +741,7 @@ pub fn poll_until<T, Seen: std::fmt::Debug>(
     loop {
         match check() {
             Ok(done) => return done,
-            Err(seen) if start.elapsed() > WAIT => panic!("missing {want}\n{seen:?}"),
+            Err(seen) if start.elapsed() > WAIT => panic!("missing {want}\n{seen}"),
             Err(_) => std::thread::sleep(Duration::from_millis(20)),
         }
     }
@@ -937,7 +937,7 @@ pub fn wait_presence(world: &mut World, want: &str, done: impl Fn(u32, &[String]
         if done(players, &actors) {
             Ok(())
         } else {
-            Err((players, actors))
+            Err(format!("{players} players, actors {actors:?}"))
         }
     });
 }

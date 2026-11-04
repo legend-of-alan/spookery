@@ -90,12 +90,23 @@ pub struct MeterView {
     pub max: i64,
 }
 
-pub fn exit_phrase(name: &str, minutes: u64, locked: bool) -> String {
-    if locked {
+/// `stairs (locked) — 2 min`.
+pub fn exit_phrase(exit: &ExitView) -> String {
+    let (name, minutes) = (&exit.name, exit.minutes);
+    if exit.locked {
         format!("{name} (locked) — {minutes} min")
     } else {
         format!("{name} — {minutes} min")
     }
+}
+
+/// `Exits:` and one exit per line, or `none`.
+pub fn exit_section(exits: &[ExitView]) -> String {
+    if exits.is_empty() {
+        return "Exits:\nnone".to_string();
+    }
+    let lines: Vec<String> = exits.iter().map(exit_phrase).collect();
+    format!("Exits:\n{}", lines.join("\n"))
 }
 
 #[cfg(test)]

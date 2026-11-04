@@ -27,6 +27,7 @@ Feature: spook check explains a broken pack
       | unknown check            | rules/verbs.yaml           | SCHEMA            | not a check              |
       | duplicate move           | rules/verbs.yaml           | SCHEMA            | listed twice             |
       | old format tag           | rules/verbs.yaml           | SCHEMA            | no version               |
+      | unknown format tag       | rules/verbs.yaml           | SCHEMA            | does not use             |
       | missing meters           | rules/meters.yaml          | NOT_IN_SPEC       | missing                  |
       | pack_rev mismatch        | state/save.yaml            | PACK_REV_MISMATCH | pack_rev                 |
       | exit to an unknown place | world/places/docks_shop.md | SCHEMA            | not a place              |

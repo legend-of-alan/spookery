@@ -33,7 +33,9 @@ pub struct World {
     pub children: Vec<Child>,
     pub listeners: Vec<TcpListener>,
     pub seated: Vec<(PathBuf, spookery_engine::Presence)>,
-    pub http_gm: Option<rmcp::service::RunningService<rmcp::RoleClient, rmcp::model::ClientConfig>>,
+    pub http_gm: Option<mcp_client::GmClient>,
+    /// An MCP session opened over plain HTTP, and its event streams.
+    pub mcp_session: Option<mcp_client::RawSession>,
     /// The table the WebSocket GM sits at, beside `live`, and the pack copy it runs.
     pub ws_table: Option<(table::RunningTable, PathBuf)>,
     /// A recorded session's lines, each one message a seat sent or got.
@@ -79,6 +81,7 @@ fn scenario_limit() -> usize {
 
 fn tear_down(world: &mut World) {
     world.http_gm.take();
+    world.mcp_session.take();
     drop(world.live.take());
     if let Some((table, pack)) = world.ws_table.take() {
         drop(table);

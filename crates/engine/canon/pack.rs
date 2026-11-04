@@ -47,19 +47,3 @@ pub(super) struct StartYaml {
     pub(super) place: String,
     pub(super) pc: String,
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::canon::tests::rejects;
-
-    #[test]
-    fn load_pack_rejects_an_unknown_tag_and_the_old_versioned_tag() {
-        rejects(
-            |text| load_pack_yaml(text).map(|_| ()),
-            "pack",
-            concat!("pack/", "v0"),
-            "id: ex\ntitle: Ex\nsystem: ex\nstart:\n  place: gate\n  pc: pc_rowan\n",
-        );
-    }
-}

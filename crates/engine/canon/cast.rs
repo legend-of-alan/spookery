@@ -103,19 +103,3 @@ struct CastFile {
     #[serde(default)]
     rules: Vec<RuleYaml>,
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::canon::tests::rejects;
-
-    #[test]
-    fn load_cast_rejects_an_unknown_tag_and_the_old_versioned_tag() {
-        rejects(
-            |text| load_cast("cast/mira.md", text, 0).map(|_| ()),
-            "cast",
-            concat!("cast/", "v0"),
-            "id: mira\nkind: npc\ndisplay_name: Mira\n",
-        );
-    }
-}
