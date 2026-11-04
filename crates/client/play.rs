@@ -1,4 +1,5 @@
 //! The human player: claims a PC, turns typed lines into words, and prints each message.
+//! `help` and `map` are play's own, written from the hello and the views it was shown.
 //! Quitting releases the PC. A dropped connection dials again and takes it back by token.
 
 use std::io::{self, Write};
@@ -19,7 +20,7 @@ pub async fn run(pc: Option<&str>, addr: SocketAddr, raw: bool) -> Result<(), Er
     };
     let mut input = crate::stdin_lines();
     let (mut seat, hello) = Connection::open(addr, "player").await?;
-    let (words, open) = match hello {
+    let (words, open) = match hello.body {
         ServerBody::Hello { words, open, .. } => (words, open),
         _ => (Vec::new(), Vec::new()),
     };
@@ -69,13 +70,22 @@ pub async fn run(pc: Option<&str>, addr: SocketAddr, raw: bool) -> Result<(), Er
                     here = *view;
                 }
             }
-            _ = &mut ctrl_c => return release(&mut seat).await,
+            _ = &mut ctrl_c => return seat.release().await,
             typed = input.recv() => {
                 let Some(typed) = typed else {
-                    return release(&mut seat).await;
+                    return seat.release().await;
                 };
-                if typed.trim() == "close" {
-                    return release(&mut seat).await;
+                match typed.trim() {
+                    "release" => return seat.release().await,
+                    "help" => {
+                        print_text(&text::render_help(&words, &here));
+                        continue;
+                    }
+                    "map" => {
+                        print_text(&printer.text.render_map());
+                        continue;
+                    }
+                    _ => {}
                 }
                 let Some((word, args)) = parse_typed(&typed, &here) else {
                     continue;
@@ -157,20 +167,6 @@ async fn take_claim(
     }
 }
 
-/// Gives the PC back, and waits for the table to say so, so the PC is free once play ends.
-/// A table that is already gone holds nothing to give back.
-async fn release(seat: &mut Connection) -> Result<(), Error> {
-    let Ok(id) = seat.send("release", json!({})).await else {
-        return Ok(());
-    };
-    while let Some(Ok(message)) = seat.recv().await {
-        if message.reply_to.as_deref() == Some(id.as_str()) {
-            break;
-        }
-    }
-    Ok(())
-}
-
 /// What play prints, and the last `seq` it read, so a reconnect asks for what came after.
 struct Printer {
     text: text::PlayerText,
@@ -192,11 +188,15 @@ impl Printer {
             self.text.render(&message.body)
         };
         if !shown.is_empty() {
-            println!("{shown}");
-            let _ = io::stdout().flush();
+            print_text(&shown);
         }
         None
     }
+}
+
+fn print_text(text: &str) {
+    println!("{text}");
+    let _ = io::stdout().flush();
 }
 
 fn parse_pc_id(token: &str) -> Result<String, Error> {

@@ -12,22 +12,17 @@ Feature: A player knows where they are and what they can do
     And play does not show "Pc rowan"
     And play does not show "Npc aldric"
 
-  Scenario: help lists usable verbs and exits
-    Given a docks table
-    When play joins the table on a free loopback address
-    And play types "help"
-    Then play shows "wait"
-    And play shows "travel"
-    And play shows "stairs (locked) — 2 min"
-    And play does not show the line "use"
+  Scenario: help lists the words from the hello and the exits from the view
+    Given the CLI is connected as a player holding rowan
+    When I type "help"
+    Then I see the lines "wait", "travel" and "stairs (locked) — 2 min"
+    And play does not show the line "claim"
     And world_time is 1080
 
-  Scenario: look reprints the place
-    Given a docks table
-    When play joins the table on a free loopback address
-    And play types "look"
-    Then play shows "The shop faces the water. Tins sit in a row."
-    And play shows "stairs (locked) — 2 min"
+  Scenario: look reprints the place from the view
+    Given the CLI is connected as a player holding rowan
+    When I type "look"
+    Then I see the place name, exits and who is here, built from server messages
     And world_time is 1080
 
   Scenario: A busy traveller sees where they are
@@ -38,7 +33,7 @@ Feature: A player knows where they are and what they can do
 
   Scenario: Hidden exits stay hidden
     Given the trapdoor is hidden and rowan does not know fact_trapdoor
-    Then rowan's perceive and help do not list the trapdoor
+    Then rowan's view does not list the trapdoor
 
   Scenario: Unknown input points at help
     Given a docks table

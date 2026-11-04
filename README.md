@@ -56,7 +56,7 @@ You should see `verified <n> records, state_rev <r>`.
 
 ## At the table
 
-Type `help` any time. It lists the verbs you can use and the exits from where you're standing.
+Type `help` any time. It lists the words you can type and the exits from where you're standing. `map` lists the places you have seen since `spook play` started, with their exits.
 
 | Type | What it does |
 | --- | --- |
@@ -65,7 +65,7 @@ Type `help` any time. It lists the verbs you can use and the exits from where yo
 | `travel <exit>` | Walks to another place |
 | `take <item>` | Picks something up |
 
-`help`, `look` and `say` work in every pack. The other verbs come from the pack, so `travel` and `take` are the sample's.
+`help`, `map`, `look` and `say` work in every pack. The other verbs come from the pack, so `travel` and `take` are the sample's.
 
 ## The two packs
 

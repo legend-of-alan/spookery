@@ -8,8 +8,8 @@ use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
+use crate::mcp_client::{event_line, GmClient};
 use serde_json::{json, Value};
-use spookery::mcp::{event_line, GmClient};
 use spookery::protocol::{self, ClientMessage};
 use spookery_engine::testing::journal::list_round_keys;
 use spookery_engine::testing::state_of;
@@ -401,16 +401,6 @@ pub struct RunningTable {
 
 pub fn listen(world: &mut World, pack: &Path) {
     let _ = run_with_flags(world, pack, &["--addr", "127.0.0.1:0"]);
-}
-
-/// `spook run` with an MCP address the operating system chooses on its own.
-pub fn listen_on_free_ports(world: &mut World, pack: &Path) -> u16 {
-    run_with_flags(
-        world,
-        pack,
-        &["--addr", "127.0.0.1:0", "--mcp-addr", "127.0.0.1:0"],
-    )
-    .1
 }
 
 pub fn run_with_flags(world: &mut World, pack: &Path, flags: &[&str]) -> (u16, u16) {

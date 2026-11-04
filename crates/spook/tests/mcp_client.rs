@@ -1,4 +1,4 @@
-//! The client side of the GM seat over the MCP endpoint.
+//! A GM client of `/mcp` for tests: dials the MCP endpoint, calls tools, hears events.
 
 use std::collections::VecDeque;
 use std::net::SocketAddr;
@@ -14,16 +14,13 @@ use rmcp::transport::common::client_side_sse::NeverRetry;
 use rmcp::transport::streamable_http_client::StreamableHttpClientTransportConfig;
 use rmcp::transport::{StreamableHttpClientTransport, Transport};
 use rmcp::{ClientHandler, ServiceExt};
-use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use spookery::protocol::{Refusal, ServerMessage, ToolResult};
 use tokio::sync::mpsc;
 
-use crate::protocol::{Refusal, ServerMessage, ToolResult};
-use crate::Error;
-
-/// One item on the event channel from the MCP endpoint's handlers to the `GmClient`: an
-/// event, the error for one that could not be read, or `None` for the end of the seat.
-type EventItem = Option<Result<ServerMessage, Error>>;
+/// One item on the event channel: an event, the line for one that could not be read, or
+/// `None` for the end of the seat.
+type EventItem = Option<Result<ServerMessage, String>>;
 
 /// Hands each `spook/event` notification to the `GmClient` as an `EventItem`.
 struct EventSender {
@@ -45,27 +42,24 @@ impl ClientHandler for EventSender {
     fn get_info(&self) -> ClientConfig {
         ClientConfig::new(
             ClientCapabilities::default(),
-            Implementation::new("spook-gm", "0"),
+            Implementation::new("spook-test-gm", "0"),
         )
         .with_protocol_version(ProtocolVersion::LATEST)
     }
 }
 
-/// The client side of the GM seat: dials the MCP endpoint, sends GM words as tool calls, hears
-/// events.
 pub struct GmClient {
     service: RunningService<RoleClient, EventSender>,
     /// Finishes when the host closes the MCP endpoint.
     watch: tokio::task::JoinHandle<()>,
     rx: mpsc::UnboundedReceiver<EventItem>,
     buffered: VecDeque<EventItem>,
-    protocol_version: String,
 }
 
 impl GmClient {
-    /// Dial `http://<mcp_addr>/mcp` and finish the handshake. `mcp_addr` is the MCP address,
-    /// not the game port.
-    pub async fn connect(mcp_addr: SocketAddr) -> Result<Self, Error> {
+    /// Dial `http://<mcp_addr>/mcp` and finish the handshake. A refused seat is the
+    /// refusal's sentence.
+    pub async fn connect(mcp_addr: SocketAddr) -> Result<Self, String> {
         let url = format!("http://{mcp_addr}/mcp");
         let (tx, rx) = mpsc::unbounded_channel();
         // A closed loopback seat ends the stream. The default client retries
@@ -87,15 +81,15 @@ impl GmClient {
             // from a fresh response body.
             Err(err @ ClientInitializeError::ConnectionClosed(_)) => {
                 return Err(match probe_seat_refusal(&url, info).await {
-                    Some(refusal) => Error::Refused(refusal),
-                    None => err.into(),
+                    Some(refusal) => refusal.to_string(),
+                    None => describe(&err),
                 });
             }
-            Err(err) => return Err(err.into()),
+            Err(err) => return Err(describe(&err)),
         };
         // rmcp keeps no read on the MCP port once a tool call's stream
         // ends, so a killed `spook run` never looks closed. A plain connection
-        // with a pending read sees that close the way the TCP client did.
+        // with a pending read sees that close.
         let watch = tokio::spawn(async move {
             if let Ok(mut socket) = tokio::net::TcpStream::connect(mcp_addr).await {
                 let mut buf = [0u8; 1];
@@ -106,48 +100,33 @@ impl GmClient {
             }
             let _ = tx.send(None);
         });
-        let protocol_version = service
-            .peer_info()
-            .map(|info| info.protocol_version.as_str().to_string())
-            .unwrap_or_default();
         Ok(GmClient {
             service,
             watch,
             rx,
             buffered: VecDeque::new(),
-            protocol_version,
         })
     }
 
-    /// The protocol version the MCP endpoint answered the initialize with.
-    pub fn protocol_version(&self) -> &str {
-        &self.protocol_version
-    }
-
     /// Send the word `word` as a tool call. The result is every message it sent this seat,
-    /// its reply last. A result that is not one is `Error::Unreadable`.
-    pub async fn call(
-        &mut self,
-        word: &str,
-        args: &impl Serialize,
-    ) -> Result<Vec<ServerMessage>, Error> {
-        let arguments = match serde_json::to_value(args) {
-            Ok(Value::Object(arguments)) => arguments,
-            other => return Err(Error::Message(format!("{word} arguments: {other:?}"))),
+    /// its reply last.
+    pub async fn call(&mut self, word: &str, args: &Value) -> Result<Vec<ServerMessage>, String> {
+        let Value::Object(arguments) = args.clone() else {
+            return Err(format!("{word} arguments: {args}"));
         };
         let params = CallToolRequestParams::new(word.to_string()).with_arguments(arguments);
         let result = self
             .service
             .call_tool(params)
             .await
-            .map_err(|err| Error::Message(err.to_string()))?;
+            .map_err(|err| err.to_string())?;
         while let Ok(item) = self.rx.try_recv() {
             self.buffered.push_back(item);
         }
         let body = result.structured_content.unwrap_or(Value::Null);
-        ToolResult::deserialize(&body)
+        serde_json::from_value::<ToolResult>(body.clone())
             .map(|result| result.messages)
-            .map_err(|_| Error::Unreadable(body))
+            .map_err(|_| format!("{word} result: {body}"))
     }
 
     /// Events read while waiting for the latest tool result, in arrival order.
@@ -161,8 +140,7 @@ impl GmClient {
         out
     }
 
-    /// The next event, or the error for one that could not be read. `None` when the seat
-    /// ends.
+    /// The next event, or the line for one that could not be read. `None` when the seat ends.
     pub async fn recv(&mut self) -> EventItem {
         if let Some(item) = self.buffered.pop_front() {
             return item;
@@ -172,8 +150,8 @@ impl GmClient {
 
     /// Buffered events, then any the reader has already queued. An end of the seat among
     /// them is dropped.
-    pub fn drain(&mut self) -> Vec<Result<ServerMessage, Error>> {
-        let mut out: Vec<Result<ServerMessage, Error>> =
+    pub fn drain(&mut self) -> Vec<Result<ServerMessage, String>> {
+        let mut out: Vec<Result<ServerMessage, String>> =
             self.buffered.drain(..).flatten().collect();
         while let Ok(item) = self.rx.try_recv() {
             out.extend(item);
@@ -191,11 +169,8 @@ impl GmClient {
     }
 }
 
-/// The client side of the streamable HTTP transport, plus one end-of-seat notice.
-///
-/// `receive` returning nothing is the seat going away. The transport sends `None` on the
-/// event channel then, so `GmClient::recv` returns `None` and callers waiting on the next
-/// event leave.
+/// The streamable HTTP transport, plus one end-of-seat notice: `receive` returning nothing
+/// sends `None` on the event channel, so `GmClient::recv` returns `None`.
 struct ClientTransport<T> {
     inner: T,
     tx: mpsc::UnboundedSender<EventItem>,
@@ -271,20 +246,16 @@ async fn probe_seat_refusal(url: &str, info: ClientConfig) -> Option<Refusal> {
         .and_then(|reply| refusal_from(&ClientInitializeError::JsonRpcError(reply.error)))
 }
 
-impl From<ClientInitializeError> for Error {
-    fn from(err: ClientInitializeError) -> Self {
-        match refusal_from(&err) {
-            Some(refusal) => Error::Refused(refusal),
-            None => Error::Io(std::io::Error::other(err.to_string())),
-        }
-    }
+/// A failed initialize as its refusal's sentence, or as the error.
+fn describe(err: &ClientInitializeError) -> String {
+    refusal_from(err).map_or_else(|| err.to_string(), |refusal| refusal.to_string())
 }
 
 /// The refusal the table puts in the `data` of the MCP error that ends an initialize.
 fn refusal_from(err: &ClientInitializeError) -> Option<Refusal> {
     match err {
         ClientInitializeError::JsonRpcError(error) => {
-            Refusal::deserialize(error.data.as_ref()?).ok()
+            serde_json::from_value(error.data.clone()?).ok()
         }
         ClientInitializeError::LegacyFallbackFailed { discover, fallback } => {
             refusal_from(discover).or_else(|| refusal_from(fallback))
@@ -293,38 +264,17 @@ fn refusal_from(err: &ClientInitializeError) -> Option<Refusal> {
     }
 }
 
-/// Read one `spook/event` notification's params, one `ServerMessage`. Params that are not one
-/// are `Error::Unreadable`, carrying the notification.
-fn parse_event(params: Option<Value>) -> Result<ServerMessage, Error> {
+/// One `spook/event` notification's params, one `ServerMessage`, or the notification's line.
+fn parse_event(params: Option<Value>) -> Result<ServerMessage, String> {
     let params = params.unwrap_or(Value::Null);
-    ServerMessage::deserialize(&params).map_err(|_| Error::Unreadable(event_message(&params)))
-}
-
-/// One `spook/event` notification as its JSON-RPC message.
-fn event_message(params: &impl Serialize) -> Value {
-    serde_json::json!({
-        "jsonrpc": "2.0",
-        "method": "spook/event",
-        "params": params,
-    })
+    serde_json::from_value(params.clone()).map_err(|_| notification_line(&params))
 }
 
 /// One `spook/event` notification as its JSON-RPC line.
-pub fn event_line(params: &impl Serialize) -> String {
-    event_message(params).to_string()
+pub fn event_line(event: &ServerMessage) -> String {
+    notification_line(&serde_json::json!(event))
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn a_body_that_matches_no_known_type_is_unreadable() {
-        let Err(Error::Unreadable(message)) = parse_event(Some(serde_json::json!({"body": 1})))
-        else {
-            panic!("malformed event was dropped");
-        };
-        let line = message.to_string();
-        assert!(line.contains("\"body\":1"), "{line}");
-    }
+fn notification_line(params: &Value) -> String {
+    serde_json::json!({ "jsonrpc": "2.0", "method": "spook/event", "params": params }).to_string()
 }

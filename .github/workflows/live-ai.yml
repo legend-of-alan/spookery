@@ -16,7 +16,7 @@ on:
     branches: [main]
     paths:
       - crates/agent/**
-      - crates/cli/**
+      - crates/client/**
       - crates/protocol/gm.rs
       - crates/spook/tests/integration/live_round.rs
       - .github/workflows/live-ai.yml
@@ -24,7 +24,7 @@ on:
     branches: [main]
     paths:
       - crates/agent/**
-      - crates/cli/**
+      - crates/client/**
       - crates/protocol/gm.rs
       - crates/spook/tests/integration/live_round.rs
       - .github/workflows/live-ai.yml

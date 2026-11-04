@@ -9,7 +9,8 @@ Foundation, either version 3 of the License, or (at your option) any
 later version (AGPL-3.0-or-later), except as noted below. The terms of
 that license follow.
 
-The spookery-protocol crate (crates/protocol, with its tests) is
+The spookery-protocol, spookery-agent and spookery-client crates
+(crates/protocol, crates/agent and crates/client, with their tests) are
 licensed under the MIT License. The terms are in LICENSE-MIT.
 
 Documentation, schemas, and packs are licensed under Creative Commons

@@ -377,14 +377,6 @@ impl RuleTable {
             .collect()
     }
 
-    /// Every `when: verb` rule, in file order.
-    pub(crate) fn verb_rules(&self) -> Vec<&Rule> {
-        self.rules
-            .iter()
-            .filter(|rule| matches!(rule.when, When::Verb { .. }))
-            .collect()
-    }
-
     pub fn ids_in_order(&self) -> Vec<&str> {
         let mut rules: Vec<&Rule> = self.rules.iter().collect();
         rules.sort_by(|left, right| {

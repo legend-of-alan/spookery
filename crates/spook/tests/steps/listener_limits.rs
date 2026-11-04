@@ -448,7 +448,7 @@ fn connect(port: u16) -> TcpStream {
 
 fn try_sit_gm(port: u16) -> Result<(), String> {
     let mcp_addr = std::net::SocketAddr::from(([127, 0, 0, 1], port));
-    match support::block_on(spookery::mcp::GmClient::connect(mcp_addr)) {
+    match support::block_on(crate::mcp_client::GmClient::connect(mcp_addr)) {
         Ok(gm) => {
             support::block_on(gm.close());
             Ok(())

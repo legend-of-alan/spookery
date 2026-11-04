@@ -60,19 +60,12 @@ fn an_http_request_arrives_with_host(world: &mut World, host: String) {
     world.scratch = post_initialize(http, &host, None);
 }
 
-#[when(expr = "a human GM sits on the default MCP address")]
-fn a_human_gm_sits_on_the_default_mcp_addr(world: &mut World) {
+#[when(expr = "a human GM sits on the game port")]
+fn a_human_gm_sits_on_the_game_port(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
     table::listen(world, &pack);
     let addr = table::game_addr(world);
-    let mcp_addr = table::mcp_addr(world);
-    world.gm = Some(support::spawn(&[
-        "gm",
-        "--addr",
-        &addr,
-        "--mcp-addr",
-        &mcp_addr,
-    ]));
+    world.gm = Some(support::spawn(&["gm", "--addr", &addr]));
     world.mark = usize::from(table::live_mut(world).mcp_port);
     let start = Instant::now();
     loop {
@@ -110,14 +103,14 @@ fn the_agent_is_told_the_table_is_full(world: &mut World) {
 fn the_human_gm_leaves(world: &mut World) {
     let gm = world.gm.as_mut().unwrap_or_else(|| panic!("no gm"));
     let mut stdin = gm.stdin.take().unwrap_or_else(|| panic!("no gm stdin"));
-    writeln!(stdin, "quit").unwrap_or_else(|err| panic!("quit: {err}"));
+    writeln!(stdin, "release").unwrap_or_else(|err| panic!("release: {err}"));
     drop(stdin);
     let gm = world.gm.as_mut().unwrap();
     let status = gm
         .child
         .wait()
         .unwrap_or_else(|err| panic!("wait gm: {err}"));
-    assert!(status.success(), "gm quit exited {status:?}");
+    assert!(status.success(), "gm release exited {status:?}");
 }
 
 #[then(expr = "a coding agent can sit at that MCP endpoint")]
