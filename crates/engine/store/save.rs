@@ -9,7 +9,7 @@ use crate::canon::Canon;
 use crate::diagnostic::{check_tag, error, locate_nth, parse_file, schema_error, Diagnostic};
 use crate::model::meter::MeterLive;
 use crate::model::{sort_unique, State};
-use crate::rules::effect::{Holder, WORLD};
+use crate::rules::effect::Holder;
 use crate::store::records::AddedMeter;
 use crate::Reason;
 
@@ -183,7 +183,7 @@ pub(crate) fn carry_clock(
     let Ok(meters) = state.meters_mut(&holder) else {
         let owner = match &holder {
             Holder::Actor(owner) => owner.as_str(),
-            _ => WORLD,
+            _ => "world",
         };
         let problem = format!("clock '{id}' is owned by '{owner}', and the save has no such actor");
         let hint = "give the clock an owner the save has, then migrate again";
@@ -244,14 +244,18 @@ pub fn migrate(mut state: State, pack_rev: &str, state_rev: u64, meters: &[Added
             base: meter.start,
             offset: 0,
         };
-        match meter.carrier.as_deref() {
-            Some(WORLD) => {
+        match &meter.carrier {
+            Some(Holder::World) => {
                 let live = state.world_meters.entry(meter.id.clone());
                 live.or_insert(start);
             }
+            Some(Holder::Place(_)) => {}
             carrier => {
                 for (id, actor) in &mut state.actors {
-                    if carrier.is_none_or(|carrier| carrier == id) {
+                    if carrier
+                        .as_ref()
+                        .is_none_or(|carrier| *carrier == Holder::Actor(id.clone()))
+                    {
                         let live = actor.meters.entry(meter.id.clone());
                         live.or_insert(start.clone());
                     }

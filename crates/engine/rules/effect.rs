@@ -21,9 +21,8 @@ pub struct Effect {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum EffectKind {
-    /// A meter on an actor, or on the world when `actor_id` is [`WORLD`].
     Meter {
-        actor_id: String,
+        holder: Holder,
         key: String,
         write: MeterWrite,
     },
@@ -55,7 +54,7 @@ pub enum EffectKind {
         text: Option<String>,
     },
     Flag {
-        actor_id: String,
+        holder: Holder,
         key: String,
         value: bool,
     },
@@ -77,9 +76,6 @@ pub enum EffectKind {
     },
 }
 
-/// Actor id on a meter or flag effect that names the world, not a person.
-pub const WORLD: &str = "world";
-
 impl Effect {
     pub(crate) fn new(viewer: &Viewer, intent_id: &str, kind: EffectKind) -> Self {
         Effect {
@@ -95,11 +91,7 @@ impl Effect {
             return Err(Reason::ViewerMismatch);
         }
         match self.kind {
-            EffectKind::Meter {
-                actor_id,
-                key,
-                write,
-            } => write_meter(draft, &Holder::of_actor_id(&actor_id), &key, write),
+            EffectKind::Meter { holder, key, write } => write_meter(draft, &holder, &key, write),
             EffectKind::Item {
                 actor_id,
                 place,
@@ -125,11 +117,7 @@ impl Effect {
                 tags,
                 text,
             } => remember(draft, intent, &actor_id, fact_ids, tags, text),
-            EffectKind::Flag {
-                actor_id,
-                key,
-                value,
-            } => set_flag(draft, &Holder::of_actor_id(&actor_id), &key, value),
+            EffectKind::Flag { holder, key, value } => set_flag(draft, &holder, &key, value),
             EffectKind::Note {
                 note_id,
                 to,
@@ -167,7 +155,7 @@ pub(crate) enum EffectRecord {
         #[serde(rename = "as")]
         as_viewer: Viewer,
         intent_id: String,
-        actor_id: String,
+        holder: Holder,
         key: String,
         #[serde(flatten)]
         write: MeterWrite,
@@ -222,7 +210,7 @@ pub(crate) enum EffectRecord {
         #[serde(rename = "as")]
         as_viewer: Viewer,
         intent_id: String,
-        actor_id: String,
+        holder: Holder,
         key: String,
         value: bool,
     },
@@ -261,14 +249,10 @@ impl From<Effect> for EffectRecord {
         let as_viewer = effect.viewer;
         let intent_id = effect.intent_id;
         match effect.kind {
-            EffectKind::Meter {
-                actor_id,
-                key,
-                write,
-            } => Self::Meter {
+            EffectKind::Meter { holder, key, write } => Self::Meter {
                 as_viewer,
                 intent_id,
-                actor_id,
+                holder,
                 key,
                 write,
             },
@@ -324,14 +308,10 @@ impl From<Effect> for EffectRecord {
                 tags,
                 text,
             },
-            EffectKind::Flag {
-                actor_id,
-                key,
-                value,
-            } => Self::Flag {
+            EffectKind::Flag { holder, key, value } => Self::Flag {
                 as_viewer,
                 intent_id,
-                actor_id,
+                holder,
                 key,
                 value,
             },
@@ -375,15 +355,11 @@ impl TryFrom<EffectRecord> for Effect {
             EffectRecord::Meter {
                 as_viewer,
                 intent_id,
-                actor_id,
+                holder,
                 key,
                 write,
             } => (
-                EffectKind::Meter {
-                    actor_id,
-                    key,
-                    write,
-                },
+                EffectKind::Meter { holder, key, write },
                 as_viewer,
                 intent_id,
             ),
@@ -459,15 +435,11 @@ impl TryFrom<EffectRecord> for Effect {
             EffectRecord::Flag {
                 as_viewer,
                 intent_id,
-                actor_id,
+                holder,
                 key,
                 value,
             } => (
-                EffectKind::Flag {
-                    actor_id,
-                    key,
-                    value,
-                },
+                EffectKind::Flag { holder, key, value },
                 as_viewer,
                 intent_id,
             ),
@@ -534,31 +506,13 @@ fn viewer_matches(intent: &Intent, effect: &Effect) -> bool {
 }
 
 /// Who holds a meter, a flag or an item count: an actor, a place, or the world.
-#[derive(Clone, Debug, PartialEq, Eq)]
+/// Saved as `world`, `{actor: id}` or `{place: id}`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Holder {
     Actor(String),
     Place(String),
     World,
-}
-
-impl Holder {
-    /// The holder an effect's `actor_id` names: the world for [`WORLD`], else that actor.
-    pub(crate) fn of_actor_id(actor_id: &str) -> Self {
-        if actor_id == WORLD {
-            Holder::World
-        } else {
-            Holder::Actor(actor_id.to_string())
-        }
-    }
-
-    /// The `actor_id` an effect stores for this holder. A place has none.
-    pub(crate) fn actor_id(&self) -> Result<String, Reason> {
-        match self {
-            Holder::Actor(id) => Ok(id.clone()),
-            Holder::World => Ok(WORLD.to_string()),
-            Holder::Place(_) => Err(Reason::UnknownId),
-        }
-    }
 }
 
 /// Write a meter `holder` carries, inside the bounds the pack gives it.

@@ -367,7 +367,7 @@ mod tests {
         let intent = Intent::habit(world.state(), "mira", "leave_door_note");
         let mut write = |actor: &str, key: &str, delta: i64| {
             let kind = EffectKind::Meter {
-                actor_id: actor.to_string(),
+                holder: Holder::Actor(actor.to_string()),
                 key: key.to_string(),
                 write: MeterWrite::Offset(delta),
             };

@@ -89,7 +89,8 @@ fn load_cast(file: &str, yaml: &str, line_base: u32) -> Result<CastFile, Vec<Dia
     let mut diags = Diags::default();
     let empty = ("id is empty", "set id to a short cast id");
     diags.extend(source.refuse_empty(&parsed.id, "id", Locator::Key("id:"), empty));
-    if parsed.id == crate::rules::effect::WORLD {
+    // `who: world` names the world, so no cast member can take that id.
+    if parsed.id == "world" {
         diags.push(
             Problem {
                 source: &source,

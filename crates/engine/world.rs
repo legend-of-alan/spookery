@@ -12,7 +12,7 @@ use crate::diagnostic::{error, first_reason, locate_nth, schema_error, Code, Dia
 use crate::intent::{Intent, IntentArgs, Source, Target};
 use crate::model::{ActorLive, Presence, State};
 use crate::rules::context::Context;
-use crate::rules::effect::{payload_json, Effect, Holder, WORLD};
+use crate::rules::effect::{payload_json, Effect, Holder};
 use crate::rules::gate;
 use crate::rules::rule::{Rule, TargetKind, When};
 use crate::store::journal;
@@ -377,7 +377,7 @@ impl<L> World<L> {
             .canon
             .world_meters
             .keys()
-            .map(|id| (Holder::World, WORLD, id));
+            .map(|id| (Holder::World, "world", id));
         actor_meters
             .chain(world_meters)
             .filter_map(|(holder, name, id)| {
@@ -669,7 +669,7 @@ pub fn check_pack(root: &Path) -> Vec<Diagnostic> {
 
 fn check_save_text(state: &State, bytes: &[u8]) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
-    if state.actors.contains_key(crate::rules::effect::WORLD) {
+    if state.actors.contains_key("world") {
         diags.push(
             schema_error(
                 "state/save.yaml",

@@ -144,7 +144,7 @@ fn expand_template(
                 viewer,
                 &intent.id,
                 EffectKind::Flag {
-                    actor_id: expr::resolve_holder(context, who)?.actor_id()?,
+                    holder: expr::resolve_holder(context, who)?,
                     key: key.clone(),
                     value: *value,
                 },
@@ -174,7 +174,7 @@ fn expand_template(
                 viewer,
                 &intent.id,
                 EffectKind::Meter {
-                    actor_id: holder.actor_id()?,
+                    holder,
                     key: key.clone(),
                     write,
                 },
