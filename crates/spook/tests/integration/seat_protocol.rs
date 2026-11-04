@@ -361,7 +361,7 @@ fn capture() -> BTreeMap<String, Example> {
     );
 
     // Rowan's connection drops without a release. The claim holds, and keeps the say.
-    let after = out_json(&out, "player-no-exit")["seq"].clone();
+    let last_seq = out_json(&out, "player-no-exit")["seq"].clone();
     player
         .write
         .get_ref()
@@ -375,7 +375,11 @@ fn capture() -> BTreeMap<String, Example> {
     );
     let _ = gm.drain_events();
     let mut back = connect_player_unclaimed(table.game);
-    let mut reclaim = send(&mut back, "claim", json!({"token": token, "after": after}));
+    let mut reclaim = send(
+        &mut back,
+        "claim",
+        json!({"token": token, "last_seq": last_seq}),
+    );
     scrub_token(&mut reclaim["body"]["args"]);
     insert_json(&mut out, "player-claim-token", reclaim);
     let mut reclaimed = next_json(&back);

@@ -66,7 +66,7 @@ fn the_player_releases_rowan(world: &mut World) {
 #[when(expr = "the player reconnects with token t1")]
 fn the_player_reconnects(world: &mut World) {
     let seat = Seat::open(table::live_mut(world).game_port, "player");
-    let args = json!({ "token": world.scratch, "after": world.mark });
+    let args = json!({ "token": world.scratch, "last_seq": world.mark });
     let id = seat.send("claim", args);
     world.player_added = seat.wait_reply(&id);
     table::live_mut(world).players.push(PlayerClient {

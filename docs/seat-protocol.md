@@ -206,7 +206,7 @@ The table speaks first. The hello lists the version, the words this seat may sen
 
 A claim keeps presence in memory and does not bump `state_rev`. The cap is three claims, in the host, not in the pack. `release` gives the PC back. The connection stays up and may claim again. Only `release` ends a claim. A connection that closes or is dropped leaves its PC held and present, so no other player can claim it, the GM cannot queue for it, and rounds still count it. The idle clock waits while any claim is held. There is no timer: the claim lasts until a `release` or until `spook run` stops.
 
-The held claim keeps the newest 256 messages sent to it, whether or not a connection reads them. That is the one catch-up window. A new connection takes the PC back with `claim` and `token`, and `after`, the last `seq` it read. The `claimed` reply's `missed` lists the kept messages after `after`, oldest first, each as it was sent. `gap` is `true` when a message after `after` has fallen out of the window. The `resume` and `view` that follow are current either way. A connection that still held the claim lets go of it and stays up unclaimed. A token no claim holds, after a `release` for one, is `UNKNOWN_ID`.
+The held claim keeps the newest 256 messages sent to it, whether or not a connection reads them. Older ones are dropped. A new connection takes the PC back with `claim` and `token`, and `last_seq`, the last `seq` it read. A missing `last_seq` means 0. The `claimed` reply's `missed` lists the kept messages after `last_seq`, oldest first, each as it was sent. `gap` is `true` when a message after `last_seq` was dropped. The `resume` and `view` that follow are current either way. A connection that still held the claim lets go of it and stays up unclaimed. A token no claim holds, after a `release` for one, is `UNKNOWN_ID`.
 
 <!-- example: player-claim-token -->
 ```json
@@ -216,7 +216,7 @@ The held claim keeps the newest 256 messages sent to it, whether or not a connec
     "word": "claim",
     "args": {
       "token": "<token>",
-      "after": 30
+      "last_seq": 30
     }
   }
 }

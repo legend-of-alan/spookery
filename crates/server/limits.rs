@@ -23,9 +23,9 @@ pub(super) const BURST: u64 = 10;
 /// Frames queued toward one socket before that socket is dropped.
 pub(super) const OUTBOUND_FRAME_CAP: usize = 256;
 
-/// Messages a claim keeps for a reconnect to catch up on. Older ones fall out, and the
+/// How many messages a claim keeps for a reconnect. Older ones are dropped, and the
 /// `claimed` reply says `gap`.
-pub(super) const CATCH_UP_WINDOW: usize = 256;
+pub(super) const MISSED_MESSAGE_CAP: usize = 256;
 
 /// Bytes queued toward one socket before that socket is dropped.
 /// A 256-frame queue of large says fills the tape before a large TCP
