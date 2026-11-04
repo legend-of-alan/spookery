@@ -74,7 +74,12 @@ fn a_docks_table_with_one_pc_and_no_gm(world: &mut World, actor: String) {
 
 #[given(expr = "{string} has waited once")]
 fn has_waited_once(world: &mut World, actor: String) {
+    // The host prints the round after the player's reply, and `shop_day` ends a printout.
+    let printed = table::host_stdout(world).matches("clock shop_day ").count();
     table::actor_send(world, &actor, "wait", "\"kind\":");
+    table::wait_host_until(world, "the wait's printout", |text| {
+        text.matches("clock shop_day ").count() > printed
+    });
 }
 
 #[when(expr = "{string} waits three times")]
