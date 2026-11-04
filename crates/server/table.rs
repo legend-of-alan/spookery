@@ -13,7 +13,7 @@ use tokio::sync::{oneshot, watch};
 use super::frames;
 use super::gm::{run_gm_word, Reply};
 use super::idle::{self, now_stamp};
-use super::seat::{Claim, Conn, FrameSender, Link, Seats};
+use super::seat::{Claim, ConnId, Connection, FrameSender, Seats};
 use super::Error;
 use crate::protocol::{
     self, is_built_in, parse_args, ClaimArgs, ClientBody, ClientMessage, Detail, MoveArgs, NoArgs,
@@ -37,25 +37,26 @@ pub(crate) fn commit_then_fast_forward(
 pub(super) enum Request {
     /// A new connection on `seat`. A GM connection takes the one GM seat.
     Open {
-        conn: Conn,
+        conn: ConnId,
         seat: Seat,
         frames_tx: FrameSender,
         reply: oneshot::Sender<Result<(), Box<ServerMessage>>>,
     },
     /// One client message, or why the game port could not read it.
     Message {
-        conn: Conn,
+        conn: ConnId,
         message: Result<ClientMessage, Rejection>,
         reply: oneshot::Sender<()>,
     },
-    Hangup {
-        conn: Conn,
+    /// A connection closed. The table lets go of it, then acks.
+    Close {
+        conn: ConnId,
         ack: oneshot::Sender<()>,
     },
     /// One MCP tool call, as a client message. The reply is every message the table sent
     /// this connection while it ran the word, the word's own reply last.
     ToolCall {
-        conn: Conn,
+        conn: ConnId,
         message: ClientMessage,
         reply: oneshot::Sender<Vec<ServerMessage>>,
     },
@@ -70,10 +71,10 @@ pub(super) struct Rejection {
     pub(super) code: Reason,
 }
 
-/// Tells the table a connection hung up, and waits until the table has let go of it.
-pub(super) async fn report_hangup(tx: &Sender<Request>, conn: Conn) {
+/// Tells the table a connection closed, and waits until the table has let go of it.
+pub(super) async fn report_close(tx: &Sender<Request>, conn: ConnId) {
     let (ack_tx, ack_rx) = oneshot::channel();
-    if tx.send(Request::Hangup { conn, ack: ack_tx }).is_err() {
+    if tx.send(Request::Close { conn, ack: ack_tx }).is_err() {
         return;
     }
     let _ = ack_rx.await;
@@ -89,7 +90,7 @@ pub(crate) struct Table {
     /// Each send restarts the idle timer.
     idle: watch::Sender<u64>,
     /// While an MCP tool call runs: its connection, and the messages sent to it so far.
-    tool_call: Option<(Conn, Vec<ServerMessage>)>,
+    tool_call: Option<(ConnId, Vec<ServerMessage>)>,
     out: Box<dyn Write>,
     err: Box<dyn Write>,
 }
@@ -129,7 +130,7 @@ impl Table {
                     let opened = self.open(conn, seat, frames_tx);
                     let took = opened.is_ok();
                     if reply.send(opened).is_err() && took {
-                        self.drop_link(conn);
+                        self.drop_connection(conn);
                     }
                 }
                 Request::Message {
@@ -140,8 +141,8 @@ impl Table {
                     self.handle_message(conn, received);
                     let _ = reply.send(());
                 }
-                Request::Hangup { conn, ack } => {
-                    self.drop_link(conn);
+                Request::Close { conn, ack } => {
+                    self.drop_connection(conn);
                     let _ = ack.send(());
                 }
                 Request::ToolCall {
@@ -151,7 +152,7 @@ impl Table {
                 } => {
                     self.tool_call = Some((conn, Vec::new()));
                     // An MCP session holds no seat until its event stream opens.
-                    if self.seats.link(conn).is_some() {
+                    if self.seats.connection(conn).is_some() {
                         self.handle_message(conn, Ok(message));
                     } else {
                         let refused = ServerBody::Refused(Reason::NotInSpec.into());
@@ -177,8 +178,13 @@ impl Table {
     /// Opens the connection and sends its hello. A GM connection while the seat is held, or a
     /// second one for an MCP session that already has its stream, is refused, and the
     /// connection sends that refusal itself.
-    fn open(&mut self, conn: Conn, seat: Seat, out: FrameSender) -> Result<(), Box<ServerMessage>> {
-        if seat == Seat::Gm && (self.seats.gm.is_some() || self.seats.link(conn).is_some()) {
+    fn open(
+        &mut self,
+        conn: ConnId,
+        seat: Seat,
+        out: FrameSender,
+    ) -> Result<(), Box<ServerMessage>> {
+        if seat == Seat::Gm && (self.seats.gm.is_some() || self.seats.connection(conn).is_some()) {
             let seq = self.stamp();
             let refused = stamp_message(seq, None, ServerBody::Refused(Reason::TableFull.into()));
             return Err(Box::new(refused));
@@ -186,7 +192,11 @@ impl Table {
         if seat == Seat::Gm {
             self.seats.gm = Some(conn);
         }
-        self.seats.links.push(Link { conn, seat, out });
+        self.seats.connections.push(Connection {
+            id: conn,
+            seat,
+            out,
+        });
         let mut words: Vec<String> = WORDS
             .iter()
             .filter(|word| word.seat == seat)
@@ -220,8 +230,12 @@ impl Table {
         self.world.free_pcs(&presence)
     }
 
-    fn handle_message(&mut self, conn: Conn, received: Result<ClientMessage, Rejection>) {
-        let Some(seat) = self.seats.link(conn).map(|link| link.seat) else {
+    fn handle_message(&mut self, conn: ConnId, received: Result<ClientMessage, Rejection>) {
+        let Some(seat) = self
+            .seats
+            .connection(conn)
+            .map(|connection| connection.seat)
+        else {
             return;
         };
         let ClientMessage { id, body, .. } = match received {
@@ -236,7 +250,7 @@ impl Table {
         }
     }
 
-    fn handle_player_word(&mut self, conn: Conn, id: Option<String>, body: ClientBody) {
+    fn handle_player_word(&mut self, conn: ConnId, id: Option<String>, body: ClientBody) {
         let ClientBody { word, args } = body;
         let built_in = is_built_in(Seat::Player, &word);
         if !built_in && !self.verbs.contains(&word) {
@@ -284,7 +298,7 @@ impl Table {
 
     /// A claim takes a free PC, or by its token takes back one this player held. The reply
     /// is `claimed`, then a refresh.
-    fn claim(&mut self, conn: Conn, id: Option<String>, args: &Map<String, Value>) {
+    fn claim(&mut self, conn: ConnId, id: Option<String>, args: &Map<String, Value>) {
         let args = read::<ClaimArgs>(args).filter(|_| self.seats.claim_of(conn).is_none());
         let fresh = matches!(args, Some(ClaimArgs::Actor { .. }));
         let taken = match args {
@@ -366,14 +380,14 @@ impl Table {
         Ok((token.to_string(), claim.actor.clone(), claimed))
     }
 
-    fn release_claim(&mut self, conn: Conn, id: Option<String>) {
+    fn release_claim(&mut self, conn: ConnId, id: Option<String>) {
         self.seats.claims.retain(|claim| claim.conn != Some(conn));
         self.reply(conn, id, ServerBody::Released);
         self.announce_presence();
     }
 
     /// A player's `place` say is heard where that player stands, and nowhere else.
-    fn say_as_player(&mut self, conn: Conn, id: Option<String>, actor_id: &str, args: &SayArgs) {
+    fn say_as_player(&mut self, conn: ConnId, id: Option<String>, actor_id: &str, args: &SayArgs) {
         let here = self
             .world
             .state()
@@ -403,7 +417,7 @@ impl Table {
     /// needs. Either way the reply follows what the move wrote.
     fn play_move(
         &mut self,
-        conn: Conn,
+        conn: ConnId,
         id: Option<String>,
         actor_id: &str,
         verb: &str,
@@ -447,7 +461,7 @@ impl Table {
         }
     }
 
-    fn handle_gm_word(&mut self, conn: Conn, id: Option<String>, body: ClientBody) {
+    fn handle_gm_word(&mut self, conn: ConnId, id: Option<String>, body: ClientBody) {
         if self.seats.gm != Some(conn) {
             return self.reply(conn, id, ServerBody::Refused(Reason::NotInSpec.into()));
         }
@@ -554,14 +568,14 @@ impl Table {
 
     /// The one say path: the host's tape line, then one `say` with one `seq` to the GM and
     /// to each player who hears it. The sender's copy is its reply.
-    fn deliver_say(&mut self, said: &TapeRecord, sender: Option<(Conn, Option<String>)>) {
+    fn deliver_say(&mut self, said: &TapeRecord, sender: Option<(ConnId, Option<String>)>) {
         let _ = writeln!(self.out, "{}", emit_tape_record(said));
         let _ = self.out.flush();
         let seq = self.stamp();
         let (sender, id) = sender.unzip();
         let id = id.flatten();
-        let reply_to = |conn: Conn| (sender == Some(conn)).then(|| id.clone()).flatten();
-        let hears: Vec<(String, Option<Conn>)> = self
+        let reply_to = |conn: ConnId| (sender == Some(conn)).then(|| id.clone()).flatten();
+        let hears: Vec<(String, Option<ConnId>)> = self
             .seats
             .claims
             .iter()
@@ -602,7 +616,7 @@ impl Table {
 
     /// The reply to the message `id` named. One to a connection that drives a claim goes
     /// to that PC.
-    fn reply(&mut self, conn: Conn, id: Option<String>, body: ServerBody) {
+    fn reply(&mut self, conn: ConnId, id: Option<String>, body: ServerBody) {
         let seq = self.stamp();
         let message = stamp_message(seq, id, body);
         match self.seats.claim_of(conn).map(|claim| claim.actor.clone()) {
@@ -612,7 +626,7 @@ impl Table {
     }
 
     /// A message that answers nothing.
-    fn notify(&mut self, conn: Conn, body: ServerBody) {
+    fn notify(&mut self, conn: ConnId, body: ServerBody) {
         self.reply(conn, None, body);
     }
 
@@ -636,23 +650,23 @@ impl Table {
 
     /// A message to an MCP tool call's connection goes in that call's result. A full or
     /// closed queue drops that connection. The table does not wait.
-    fn send(&mut self, conn: Conn, message: ServerMessage) {
+    fn send(&mut self, conn: ConnId, message: ServerMessage) {
         if let Some((_, messages)) = self.tool_call.as_mut().filter(|(call, _)| *call == conn) {
             return messages.push(message);
         }
         let bytes = message.to_text().into_bytes();
         if self
             .seats
-            .link(conn)
-            .is_some_and(|link| !link.out.send(bytes))
+            .connection(conn)
+            .is_some_and(|connection| !connection.out.send(bytes))
         {
-            self.drop_link(conn);
+            self.drop_connection(conn);
         }
     }
 
-    /// Drops a connection. Dropping its link cancels its socket. A claim it drove is held
+    /// Drops a connection. Dropping it cancels its socket. A claim it drove is held
     /// for its token, and a GM seat it held is free.
-    fn drop_link(&mut self, conn: Conn) {
+    fn drop_connection(&mut self, conn: ConnId) {
         if self.seats.gm == Some(conn) {
             self.release_gm();
         }

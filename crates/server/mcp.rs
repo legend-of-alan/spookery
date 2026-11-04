@@ -27,8 +27,8 @@ use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
 
 use super::gm;
 use super::limits::GM_BODY_CAP;
-use super::seat::{frame_queue, Conn, FrameReceiver};
-use super::table::{report_hangup, Request};
+use super::seat::{frame_queue, ConnId, FrameReceiver};
+use super::table::{report_close, Request};
 use crate::protocol::{ClientBody, ClientMessage, Seat, ToolResult, WORDS};
 
 pub(super) async fn serve(
@@ -36,8 +36,8 @@ pub(super) async fn serve(
     tx: Sender<Request>,
     next_conn: Arc<AtomicU64>,
 ) {
-    let (hangup_tx, mut hangups) = unbounded_channel();
-    let sessions = Arc::new(SeatSessions::new(tx.clone(), next_conn, hangup_tx));
+    let (close_tx, mut closes) = unbounded_channel();
+    let sessions = Arc::new(SeatSessions::new(tx.clone(), next_conn, close_tx));
     let closer = SessionGuard(Arc::clone(&sessions));
     let service = StreamableHttpService::new(
         move || Ok(Handler::new(tx.clone())),
@@ -45,11 +45,11 @@ pub(super) async fn serve(
         http_config(),
     );
     let app = axum::Router::new().route_service("/mcp", service);
-    // Hangups are closed here, so the loop ends with `serve`.
+    // Close senders are dropped here, so the loop ends with `serve`.
     tokio::select! {
         _ = axum::serve(listener, app) => {}
         () = async {
-            while let Some(id) = hangups.recv().await {
+            while let Some(id) = closes.recv().await {
                 let _ = closer.0.close_session(&id).await;
             }
         } => {}
@@ -86,15 +86,15 @@ struct SeatSessions {
     inner: LocalSessionManager,
     tx: Sender<Request>,
     next_conn: Arc<AtomicU64>,
-    conns: Mutex<HashMap<SessionId, Conn>>,
-    hangup_tx: UnboundedSender<SessionId>,
+    conns: Mutex<HashMap<SessionId, ConnId>>,
+    close_tx: UnboundedSender<SessionId>,
 }
 
 impl SeatSessions {
     fn new(
         tx: Sender<Request>,
         next_conn: Arc<AtomicU64>,
-        hangup_tx: UnboundedSender<SessionId>,
+        close_tx: UnboundedSender<SessionId>,
     ) -> Self {
         let mut inner = LocalSessionManager::default();
         inner.session_config.keep_alive = None;
@@ -103,7 +103,7 @@ impl SeatSessions {
             tx,
             next_conn,
             conns: Mutex::new(HashMap::new()),
-            hangup_tx,
+            close_tx,
         }
     }
 }
@@ -134,8 +134,8 @@ impl Stream for EventStream {
 
 impl Drop for EventStream {
     fn drop(&mut self) {
-        if let Some((id, hangup_tx)) = self.seated.take() {
-            let _ = hangup_tx.send(id);
+        if let Some((id, close_tx)) = self.seated.take() {
+            let _ = close_tx.send(id);
         }
     }
 }
@@ -154,7 +154,7 @@ impl SessionManager for SeatSessions {
         mut message: ClientJsonRpcMessage,
     ) -> Result<ServerJsonRpcMessage, Self::Error> {
         if let ClientJsonRpcMessage::Request(request) = &mut message {
-            let conn = Conn::new(&self.next_conn);
+            let conn = ConnId::new(&self.next_conn);
             self.conns
                 .lock()
                 .unwrap_or_else(|err| err.into_inner())
@@ -178,7 +178,7 @@ impl SessionManager for SeatSessions {
             .remove(id);
         let closed = self.inner.close_session(id).await;
         if let Some(conn) = conn {
-            report_hangup(&self.tx, conn).await;
+            report_close(&self.tx, conn).await;
         }
         closed
     }
@@ -228,7 +228,7 @@ impl SessionManager for SeatSessions {
         {
             Ok(()) => Ok(EventStream {
                 frames_rx,
-                seated: Some((id.clone(), self.hangup_tx.clone())),
+                seated: Some((id.clone(), self.close_tx.clone())),
             }),
             Err(refused) => {
                 let (refusal_tx, frames_rx) = frame_queue();
@@ -257,7 +257,7 @@ fn table_closed() -> McpError {
 
 struct Handler {
     tx: Sender<Request>,
-    conn: OnceLock<Conn>,
+    conn: OnceLock<ConnId>,
 }
 
 impl Handler {
@@ -291,7 +291,7 @@ impl ServerHandler for Handler {
     ) -> Result<InitializeResult, McpError> {
         let conn = context
             .extensions
-            .get::<Conn>()
+            .get::<ConnId>()
             .copied()
             .ok_or_else(|| McpError::internal_error("no seat", None))?;
         let _ = self.conn.set(conn);
@@ -360,7 +360,7 @@ mod tests {
     use serde_json::Value;
 
     use super::serve;
-    use crate::seat::Conn;
+    use crate::seat::ConnId;
     use crate::table::Request;
 
     /// A stand-in for the table thread with one GM seat. It refuses a second
@@ -374,7 +374,7 @@ mod tests {
         let_go: mpsc::Receiver<()>,
     ) -> std::thread::JoinHandle<()> {
         std::thread::spawn(move || {
-            let mut seat: Option<Conn> = None;
+            let mut seat: Option<ConnId> = None;
             let mut kept = Vec::new();
             for msg in rx {
                 match msg {
@@ -401,7 +401,7 @@ mod tests {
                             let _ = reply.send(Ok(()));
                         }
                     }
-                    Request::Hangup { conn, ack, .. } => {
+                    Request::Close { conn, ack, .. } => {
                         let _ = fault_seen.send(());
                         if let_go.recv().is_err() {
                             return;
@@ -707,7 +707,7 @@ mod tests {
         let (tx, rx) = mpsc::channel();
         let (fault_tx, _fault_seen) = tokio::sync::mpsc::unbounded_channel();
         let (let_go, held) = mpsc::channel();
-        // The session's close reports a hangup. Let it through.
+        // The session's close reports itself to the table. Let it through.
         let_go
             .send(())
             .unwrap_or_else(|err| panic!("let go: {err}"));

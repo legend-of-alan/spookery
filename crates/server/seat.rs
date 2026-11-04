@@ -14,9 +14,9 @@ use crate::protocol::{Seat, ServerMessage};
 
 /// One connection's id, on the game port or the MCP endpoint.
 #[derive(Clone, Copy, PartialEq)]
-pub(crate) struct Conn(u64);
+pub(crate) struct ConnId(u64);
 
-impl Conn {
+impl ConnId {
     /// The next id from the one counter both ports share.
     pub(crate) fn new(next: &AtomicU64) -> Self {
         Self(next.fetch_add(1, Ordering::Relaxed))
@@ -27,9 +27,9 @@ impl Conn {
 /// `presence()`.
 #[derive(Default)]
 pub(super) struct Seats {
-    pub(super) links: Vec<Link>,
+    pub(super) connections: Vec<Connection>,
     /// The connection that holds the GM seat.
-    pub(super) gm: Option<Conn>,
+    pub(super) gm: Option<ConnId>,
     /// Each held claim, oldest first. At most three, so a scan finds one.
     pub(super) claims: Vec<Claim>,
 }
@@ -51,11 +51,11 @@ impl Seats {
     }
 
     /// The claim `conn` drives.
-    pub(super) fn claim_of(&self, conn: Conn) -> Option<&Claim> {
+    pub(super) fn claim_of(&self, conn: ConnId) -> Option<&Claim> {
         self.claims.iter().find(|claim| claim.conn == Some(conn))
     }
 
-    pub(super) fn claim_of_mut(&mut self, conn: Conn) -> Option<&mut Claim> {
+    pub(super) fn claim_of_mut(&mut self, conn: ConnId) -> Option<&mut Claim> {
         self.claims
             .iter_mut()
             .find(|claim| claim.conn == Some(conn))
@@ -66,20 +66,25 @@ impl Seats {
         self.claims.iter_mut().find(|claim| claim.actor == actor)
     }
 
-    pub(super) fn link(&self, conn: Conn) -> Option<&Link> {
-        self.links.iter().find(|link| link.conn == conn)
+    pub(super) fn connection(&self, conn: ConnId) -> Option<&Connection> {
+        self.connections
+            .iter()
+            .find(|connection| connection.id == conn)
     }
 
-    /// Drops the connection. Dropping its link is its cancel.
-    pub(super) fn take(&mut self, conn: Conn) -> Option<Link> {
-        let index = self.links.iter().position(|link| link.conn == conn)?;
-        Some(self.links.remove(index))
+    /// Drops the connection. Dropping it is its cancel.
+    pub(super) fn take(&mut self, conn: ConnId) -> Option<Connection> {
+        let index = self
+            .connections
+            .iter()
+            .position(|connection| connection.id == conn)?;
+        Some(self.connections.remove(index))
     }
 }
 
-/// One open connection: which seat it opened and its outbound queue.
-pub(super) struct Link {
-    pub(super) conn: Conn,
+/// The table's entry for one open `ConnId`: which seat it opened and its outbound queue.
+pub(super) struct Connection {
+    pub(super) id: ConnId,
     pub(super) seat: Seat,
     pub(super) out: FrameSender,
 }
@@ -90,7 +95,7 @@ pub(super) struct Claim {
     pub(super) token: String,
     pub(super) actor: String,
     /// The connection that drives it, while one does.
-    pub(super) conn: Option<Conn>,
+    pub(super) conn: Option<ConnId>,
     /// The newest `MISSED_MESSAGE_CAP` messages sent to this claim, oldest first.
     kept: VecDeque<ServerMessage>,
     /// The `seq` of the newest message dropped past `MISSED_MESSAGE_CAP`, or 0.
