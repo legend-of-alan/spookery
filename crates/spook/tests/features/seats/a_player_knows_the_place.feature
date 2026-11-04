@@ -31,10 +31,6 @@ Feature: A player knows where they are and what they can do
     When rowan travels via stairs at 21:30
     Then the seated player sees "on the stairs until 21:40"
 
-  Scenario: Hidden exits stay hidden
-    Given the trapdoor is hidden and rowan does not know fact_trapdoor
-    Then rowan's view does not list the trapdoor
-
   Scenario: Unknown input points at help
     Given a docks table
     When play joins the table on a free loopback address

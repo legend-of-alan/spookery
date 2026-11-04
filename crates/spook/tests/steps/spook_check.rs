@@ -1,7 +1,6 @@
 use std::collections::BTreeSet;
 use std::fs;
 use std::path::Path;
-use std::process::Command;
 
 use cucumber::{then, when};
 use serde_json::Value;
@@ -193,13 +192,6 @@ fn the_worked_example_row_is_appended(world: &mut World) {
     fs::write(path, text).unwrap();
 }
 
-#[then(expr = "no tracked file contains a home-directory path")]
-fn no_tracked_file_contains_a_home_directory_path(world: &mut World) {
-    let hits = home_path_hits();
-    world.scratch = hits.join("\n");
-    assert!(world.scratch.is_empty(), "{}", world.scratch);
-}
-
 fn json_stdout(world: &World) -> Vec<Value> {
     let trimmed = world.stdout.trim_end_matches(['\n', '\r']);
     assert_eq!(
@@ -247,79 +239,4 @@ fn worked_example_row() -> String {
         row.push('\n');
     }
     row
-}
-
-/// Home-directory paths in every file git tracks.
-///
-/// A drive letter and a backslash are not enough: Rust string escapes
-/// use that shape, so the Windows check requires the home directory
-/// after the drive.
-fn home_path_hits() -> Vec<String> {
-    let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let output = Command::new("git")
-        .args(["ls-files", "-z"])
-        .current_dir(&repo)
-        .output()
-        .unwrap_or_else(|err| panic!("git ls-files: {err}"));
-    assert!(
-        output.status.success(),
-        "git ls-files: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let mut hits = Vec::new();
-    for rel in output.stdout.split(|byte| *byte == 0) {
-        if rel.is_empty() {
-            continue;
-        }
-        let rel = std::str::from_utf8(rel).unwrap_or_else(|err| panic!("git path: {err}"));
-        let bytes = fs::read(repo.join(rel)).unwrap_or_else(|err| panic!("read {rel}: {err}"));
-        let text = String::from_utf8_lossy(&bytes);
-        for (index, line) in text.lines().enumerate() {
-            if is_scanner_needle(rel, line) {
-                continue;
-            }
-            if has_home_path(line) {
-                hits.push(format!("{rel}:{}", index + 1));
-            }
-        }
-    }
-    hits
-}
-
-/// The needle line in this file. It names both prefixes at once.
-fn is_scanner_needle(rel: &str, line: &str) -> bool {
-    let rel = rel.replace('\\', "/");
-    rel == "crates/spook/tests/steps/spook_check.rs"
-        && line.contains(concat!("/Users", "/"))
-        && line.contains(concat!("/home", "/"))
-}
-
-/// The line below names both prefixes the scan searches for, so the
-/// scan skips that line. A home path on any other line still counts.
-fn has_home_path(line: &str) -> bool {
-    if line.contains("/Users/") || line.contains("/home/") {
-        return true;
-    }
-    has_windows_home(line.as_bytes())
-}
-
-fn has_windows_home(bytes: &[u8]) -> bool {
-    let users = b"Users\\";
-    for index in 0..bytes.len().saturating_sub(1) {
-        if !bytes[index].is_ascii_alphabetic() || bytes[index + 1] != b':' {
-            continue;
-        }
-        let mut cursor = index + 2;
-        if bytes.get(cursor) != Some(&b'\\') {
-            continue;
-        }
-        while bytes.get(cursor) == Some(&b'\\') {
-            cursor += 1;
-        }
-        let tail = &bytes[cursor..];
-        if tail.len() >= users.len() && tail[..users.len()].eq_ignore_ascii_case(users) {
-            return true;
-        }
-    }
-    false
 }

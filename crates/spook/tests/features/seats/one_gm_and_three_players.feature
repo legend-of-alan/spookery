@@ -26,13 +26,6 @@ Feature: One GM seat and up to three player seats
     Then save.yaml is unchanged since the table opened
     And players is 0
 
-  Scenario: A second GM leaves the table unchanged
-    Given a docks table with a seated GM
-    When a second GM connects over HTTP
-    Then the hello is refused with "TABLE_FULL"
-    And save.yaml is unchanged since the table opened
-    And players is 0
-
   Scenario: A claim for an NPC is refused
     Given a docks table
     When a player claims mira

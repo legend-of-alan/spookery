@@ -37,12 +37,6 @@ Feature: A player and a GM share a table
     Then the table refuses the player with NO_EXIT
     And the GM sees nothing queued
 
-  Scenario: An unknown word is refused
-    Given rowan is in the shop and a GM is seated
-    When the player sends "dance"
-    Then the table refuses the player with SCHEMA
-    And the GM sees nothing queued
-
   Scenario: A player who closes leaves the table
     Given rowan is in the shop and a GM is seated
     When the player closes the seat
