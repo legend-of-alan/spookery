@@ -53,17 +53,18 @@ fn a_copy_of_the_sample_d20_pack(world: &mut World) {
     world.pack = Some(support::copy_pack("sample-d20", "sample"));
 }
 
-/// The folders under `tests/features` the host program runs. The world program runs every other folder.
+/// The folders under `tests/features` the host program runs. The world program runs everything else there.
 const HOST: &[&str] = &[
     "cli", "digest", "host", "limits", "loopback", "mcp", "new", "seats", "sessions", "speech",
 ];
 
-/// The folders under `tests/features` this program runs.
+/// The folders and loose feature files under `tests/features` this program runs.
 fn feature_dirs() -> Vec<PathBuf> {
     let mut dirs: Vec<PathBuf> = std::fs::read_dir("tests/features")
         .unwrap_or_else(|err| panic!("read tests/features: {err}"))
         .map(|entry| entry.unwrap_or_else(|err| panic!("read tests/features: {err}")).path())
-        .filter(|path| path.is_dir() && runs(&path.file_name().unwrap().to_string_lossy()))
+        .filter(|path| path.is_dir() || path.extension().is_some_and(|ext| ext == "feature"))
+        .filter(|path| runs(&path.file_name().unwrap().to_string_lossy()))
         .collect();
     dirs.sort();
     dirs
