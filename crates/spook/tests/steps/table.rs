@@ -117,7 +117,10 @@ impl Seat {
     /// Waits until the table has closed this connection.
     pub fn wait_closed(&self) {
         poll_until("the table to close the connection", || {
-            self.closed.load(Ordering::SeqCst).then_some(()).ok_or(())
+            self.closed
+                .load(Ordering::SeqCst)
+                .then_some(())
+                .ok_or("still open")
         });
     }
 
@@ -729,8 +732,8 @@ pub fn wait_round(world: &World, world_time: u64) -> String {
 const WAIT: Duration = Duration::from_secs(5);
 
 /// Calls `check` until it returns `Ok`. After `WAIT` it panics with `want` and
-/// the last `Err`, which says what was seen instead.
-pub fn poll_until<T, Seen: std::fmt::Debug>(
+/// the last `Err`, which says what was seen instead, printed as is.
+pub fn poll_until<T, Seen: std::fmt::Display>(
     want: &str,
     mut check: impl FnMut() -> Result<T, Seen>,
 ) -> T {
@@ -738,7 +741,7 @@ pub fn poll_until<T, Seen: std::fmt::Debug>(
     loop {
         match check() {
             Ok(done) => return done,
-            Err(seen) if start.elapsed() > WAIT => panic!("missing {want}\n{seen:?}"),
+            Err(seen) if start.elapsed() > WAIT => panic!("missing {want}\n{seen}"),
             Err(_) => std::thread::sleep(Duration::from_millis(20)),
         }
     }
@@ -934,7 +937,7 @@ pub fn wait_presence(world: &mut World, want: &str, done: impl Fn(u32, &[String]
         if done(players, &actors) {
             Ok(())
         } else {
-            Err((players, actors))
+            Err(format!("{players} players, actors {actors:?}"))
         }
     });
 }
