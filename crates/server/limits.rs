@@ -117,10 +117,10 @@ impl TokenBucket {
 /// Waits until a line token is ready. False means the seat was dropped.
 pub(super) async fn wait_for_token(
     bucket: &mut TokenBucket,
-    cancel: &mut tokio::sync::watch::Receiver<bool>,
+    cancel: &mut tokio::sync::watch::Receiver<()>,
 ) -> bool {
     loop {
-        if *cancel.borrow() {
+        if cancel.has_changed().is_err() {
             return false;
         }
         let delay = bucket.until_token(Instant::now());
@@ -129,11 +129,7 @@ pub(super) async fn wait_for_token(
         }
         tokio::select! {
             biased;
-            changed = cancel.changed() => {
-                if changed.is_err() || *cancel.borrow() {
-                    return false;
-                }
-            }
+            _ = cancel.changed() => return false,
             _ = tokio::time::sleep(delay) => {}
         }
     }
@@ -212,5 +208,20 @@ mod tests {
         let rest = bucket.until_token(later);
         assert!(rest < full, "{rest:?}");
         assert!(rest > Duration::from_millis(199), "{rest:?}");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_dropped_seat_ends_the_wait_for_a_token_at_once() {
+        let start = Instant::now();
+        let mut bucket = TokenBucket::new(5, 1);
+        assert!(bucket.try_take(start));
+        let (cancel_tx, mut cancel_rx) = tokio::sync::watch::channel(());
+        let (waited, ()) = tokio::join!(wait_for_token(&mut bucket, &mut cancel_rx), async {
+            drop(cancel_tx);
+        });
+        assert!(!waited);
+        let mut ready = TokenBucket::new(5, 1);
+        assert!(!wait_for_token(&mut ready, &mut cancel_rx).await);
+        assert_eq!(Instant::now(), start);
     }
 }

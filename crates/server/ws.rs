@@ -143,12 +143,7 @@ async fn run(socket: WebSocket, acceptor: Acceptor, seat: Seat) {
         };
         let received = tokio::select! {
             biased;
-            changed = cancel_rx.changed() => {
-                if changed.is_err() || *cancel_rx.borrow() {
-                    break;
-                }
-                continue;
-            }
+            _ = cancel_rx.changed() => break,
             received = stream.next() => received,
             () = first_message_deadline => {
                 report_hangup(&acceptor.tx, conn).await;

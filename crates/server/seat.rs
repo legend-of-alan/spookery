@@ -70,7 +70,7 @@ impl Seats {
         self.links.iter().find(|link| link.conn == conn)
     }
 
-    /// Drops the connection. Dropping its link cancels its writer.
+    /// Drops the connection. Dropping its link is its cancel.
     pub(super) fn take(&mut self, conn: Conn) -> Option<Link> {
         let index = self.links.iter().position(|link| link.conn == conn)?;
         Some(self.links.remove(index))
@@ -82,12 +82,6 @@ pub(super) struct Link {
     pub(super) conn: Conn,
     pub(super) seat: Seat,
     pub(super) out: FrameSender,
-}
-
-impl Drop for Link {
-    fn drop(&mut self) {
-        let _ = self.out.cancel.send(true);
-    }
 }
 
 /// One player's hold on a PC. It outlives its connection and ends only on `release`. A
@@ -137,12 +131,11 @@ impl Claim {
 }
 
 /// The table's end of one seat's frame queue. The table sends that seat frames with it.
-/// Also holds the seat's cancel.
-#[derive(Clone)]
+/// Also holds the seat's cancel: dropping it cancels the seat.
 pub(super) struct FrameSender {
     tx: mpsc::Sender<Vec<u8>>,
     queued_bytes: Arc<AtomicUsize>,
-    cancel: watch::Sender<bool>,
+    _cancel: watch::Sender<()>,
 }
 
 /// The writer's end of one seat's frame queue. That seat's socket or event writer reads from it.
@@ -150,7 +143,7 @@ pub(super) struct FrameSender {
 pub(super) struct FrameReceiver {
     rx: mpsc::Receiver<Vec<u8>>,
     queued_bytes: Arc<AtomicUsize>,
-    pub(super) cancel: watch::Receiver<bool>,
+    pub(super) cancel: watch::Receiver<()>,
 }
 
 impl FrameSender {
@@ -209,13 +202,13 @@ fn release(queued: &AtomicUsize, len: usize) {
 /// it.
 pub(super) fn frame_queue() -> (FrameSender, FrameReceiver) {
     let (tx, rx) = mpsc::channel(OUTBOUND_FRAME_CAP);
-    let (cancel_tx, cancel_rx) = watch::channel(false);
+    let (cancel_tx, cancel_rx) = watch::channel(());
     let queued_bytes = Arc::new(AtomicUsize::new(0));
     (
         FrameSender {
             tx,
             queued_bytes: Arc::clone(&queued_bytes),
-            cancel: cancel_tx,
+            _cancel: cancel_tx,
         },
         FrameReceiver {
             rx,
