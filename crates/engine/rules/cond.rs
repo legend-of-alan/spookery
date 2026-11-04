@@ -34,7 +34,7 @@ pub(crate) fn if_holds(
     let probe = Intent::new(
         String::new(),
         state.round_index,
-        viewer.clone(),
+        Some(viewer.clone()),
         Source::Player,
         verb,
         target,

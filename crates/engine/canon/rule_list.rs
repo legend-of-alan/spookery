@@ -323,7 +323,7 @@ pub struct NoteYaml {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct NarrateYaml {
-    pub to: String,
+    pub to: Option<String>,
     pub text: String,
     #[serde(default)]
     pub fact_ids: Vec<String>,
@@ -911,10 +911,11 @@ fn effect_of(yaml: &EffectYaml) -> Result<EffectTemplate, Fault> {
     }
     if let Some(narrate) = &yaml.narrate {
         found += 1;
-        let to = match narrate.to.as_str() {
-            "here" => NarrateTo::Here,
-            "self" => NarrateTo::Self_,
-            other => NarrateTo::Actors(vec![other.to_string()]),
+        let to = match narrate.to.as_deref() {
+            Some("here") => NarrateTo::Here,
+            Some("self") => NarrateTo::Self_,
+            Some(other) => NarrateTo::Actors(vec![other.to_string()]),
+            None => NarrateTo::Present,
         };
         effect = Some(EffectTemplate::Narrate {
             to,

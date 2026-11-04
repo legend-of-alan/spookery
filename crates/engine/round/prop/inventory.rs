@@ -158,7 +158,7 @@ fn npc_intent() -> Intent {
     Intent {
         id: "shift-item".to_string(),
         round_index: 0,
-        actor: Viewer::Npc("mira".to_string()),
+        actor: Some(Viewer::Npc("mira".to_string())),
         source: Source::Engine,
         move_name: "shift_item".to_string(),
         target: Target::Empty,
@@ -181,7 +181,7 @@ fn item_effect(step: &ItemChange) -> Effect {
             delta: step.delta,
             max: step.max,
         },
-        viewer: Viewer::Npc("mira".to_string()),
+        viewer: Some(Viewer::Npc("mira".to_string())),
         intent_id: "shift-item".to_string(),
     }
 }

@@ -683,6 +683,7 @@ pub(crate) fn check_canon(canon: &Canon) -> Vec<Diagnostic> {
     diags.extend(check_teleport_verbs(canon));
     diags.extend(check_trigger_cycles(canon));
     diags.extend(check_trigger_leaks(canon));
+    diags.extend(check_world_change_subjects(canon));
     diags
 }
 
@@ -792,7 +793,7 @@ fn check_trigger_leaks(canon: &Canon) -> Vec<Diagnostic> {
         let When::Change(watch) = &rule.when else {
             continue;
         };
-        let sight = sight_of(watch);
+        let sight = sight_of(canon, watch);
         let mut leak = false;
         rule.visit_templates(|effect| {
             if reach_of(effect).is_some_and(|reach| is_too_wide(&sight, &reach)) {
@@ -835,10 +836,12 @@ enum Reach {
 }
 
 /// Who may see a watched change. A meter or flag change on a watch counts as the room's,
-/// because a rule that narrates it is the pack choosing to tell the room.
+/// because a rule that narrates it is the pack choosing to tell the room. A world change has
+/// no room, so the pack tells whoever it names.
 enum Sight {
     Subject,
     Room,
+    World,
 }
 
 fn push_writes(effect: &EffectTemplate, out: &mut Vec<Write>) {
@@ -902,7 +905,10 @@ fn sets_watch(watch: &ChangeWatch, rule: &Rule, mark: &Write) -> bool {
     }
 }
 
-fn sight_of(watch: &ChangeWatch) -> Sight {
+fn sight_of(canon: &Canon, watch: &ChangeWatch) -> Sight {
+    if watches_world(canon, watch) {
+        return Sight::World;
+    }
     match watch {
         ChangeWatch::Knows { .. } => Sight::Subject,
         ChangeWatch::Arrive { .. }
@@ -918,7 +924,7 @@ fn reach_of(effect: &EffectTemplate) -> Option<Reach> {
         EffectTemplate::Narrate { to, .. } => Some(match to {
             NarrateTo::Self_ => Reach::Subject,
             NarrateTo::Here => Reach::Room,
-            NarrateTo::Actors(_) => Reach::Others,
+            NarrateTo::Actors(_) | NarrateTo::Present => Reach::Others,
         }),
         EffectTemplate::Note { .. } => Some(Reach::Others),
         _ => None,
@@ -929,6 +935,104 @@ fn is_too_wide(sight: &Sight, reach: &Reach) -> bool {
     match sight {
         Sight::Subject => !matches!(reach, Reach::Subject),
         Sight::Room => !matches!(reach, Reach::Subject | Reach::Room),
+        Sight::World => false,
+    }
+}
+
+/// Whether `watch` can match a change the world holds: a meter in `world/meters.yaml`, or a
+/// flag some rule sets with `who: world`.
+fn watches_world(canon: &Canon, watch: &ChangeWatch) -> bool {
+    match watch {
+        ChangeWatch::Meter { key, .. } => canon.world_meters.contains_key(key),
+        ChangeWatch::Flag { key, .. } => canon.rules.iter().any(|rule| {
+            let mut sets = false;
+            rule.visit_templates(|effect| {
+                if let EffectTemplate::Flag {
+                    who: Who::World,
+                    key: written,
+                    ..
+                } = effect
+                {
+                    sets |= written == key;
+                }
+            });
+            sets
+        }),
+        _ => false,
+    }
+}
+
+/// A change rule on a world change runs once, for no one, so it has no `self` and no `here`.
+fn check_world_change_subjects(canon: &Canon) -> Vec<Diagnostic> {
+    canon
+        .rules
+        .iter()
+        .filter(|rule| matches!(&rule.when, When::Change(watch) if watches_world(canon, watch)))
+        .filter(|rule| names_subject(rule))
+        .map(|rule| {
+            schema_error(
+                &rule.file,
+                &format!(
+                    "rule '{}' watches a world change, which has no self and no here",
+                    rule.local_id
+                ),
+                "name the actor, or world",
+            )
+            .at_path(format!("rules[{}]", rule.index))
+        })
+        .collect()
+}
+
+/// Whether `rule` needs a subject: `self` or `here` as a who or a narrate's `to`, a location
+/// effect, which moves the subject, or a roll, which is the subject's.
+fn names_subject(rule: &Rule) -> bool {
+    let mut whos = Vec::new();
+    for cond in &rule.if_ {
+        push_cond_whos(cond, &mut whos);
+    }
+    let mut exprs = Vec::new();
+    push_rule_exprs(rule, &mut exprs);
+    for expr in exprs {
+        whos.extend(expr.meter_reads().into_iter().map(|(who, _, _)| who));
+    }
+    let mut needs = rule.roll.is_some();
+    rule.visit_templates(|effect| {
+        match effect {
+            EffectTemplate::Meter { who, .. }
+            | EffectTemplate::Flag { who, .. }
+            | EffectTemplate::Memory { who, .. }
+            | EffectTemplate::Item { who, .. }
+            | EffectTemplate::Reveal { who, .. }
+            | EffectTemplate::Wield { who, .. }
+            | EffectTemplate::Unwield { who } => whos.push(who),
+            EffectTemplate::Narrate { to, .. } => {
+                needs |= matches!(to, NarrateTo::Self_ | NarrateTo::Here);
+            }
+            EffectTemplate::Location { .. } => needs = true,
+            EffectTemplate::Note { .. } => {}
+        }
+        if let Some(ResistSpec::Roll { who, .. }) = effect.resist() {
+            whos.push(who);
+        }
+    });
+    needs || whos.iter().any(|who| matches!(who, Who::Self_ | Who::Here))
+}
+
+fn push_cond_whos<'a>(cond: &'a Cond, out: &mut Vec<&'a Who>) {
+    match cond {
+        Cond::HasItem { who, .. }
+        | Cond::Meter { who, .. }
+        | Cond::Flag { who, .. }
+        | Cond::At { who, .. }
+        | Cond::Knows { who, .. }
+        | Cond::Wielding { who, .. } => out.push(who),
+        Cond::All(inner) | Cond::Any(inner) => {
+            for cond in inner {
+                push_cond_whos(cond, out);
+            }
+        }
+        Cond::Not(inner) => push_cond_whos(inner, out),
+        Cond::Hour { .. } | Cond::Players { .. } | Cond::NoteExists(_) => {}
     }
 }
 

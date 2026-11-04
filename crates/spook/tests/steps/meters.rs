@@ -84,10 +84,11 @@ fn migrate_and_play(world: &mut World, intents: Vec<spookery::protocol::IntentAr
     keep(world, played);
 }
 
-/// Add a round's change keys to what the GM and each viewer have seen so far.
+/// Add a round's change keys and lines to what the GM and each viewer have seen so far.
 fn keep(world: &mut World, played: PlayedRound) {
     world.summary.extend(played.changed_keys);
     world.seen.extend(played.seen);
+    world.told.extend(played.lines);
 }
 
 fn run_check(world: &mut World) {
@@ -366,7 +367,6 @@ fn vigil_watches_dawn(world: &mut World, crosses: String) {
 #[when(expr = "both rules run in one round, three rounds in a row")]
 fn both_rules_run_three_rounds(world: &mut World) {
     let pack = world.pack.clone().unwrap();
-    edit_table(world, &pack, |_, seated| sit(seated, &["pc_rowan"]));
     spookery_engine::migrate_pack(&pack).unwrap_or_else(|err| panic!("migrate: {err}"));
     for round in 1..=3 {
         let take = intent(
@@ -395,6 +395,14 @@ fn no_actor_carries_dawn(world: &mut World) {
 
 #[then(expr = "the vigil's change rule fires once")]
 fn the_vigil_fires_once(world: &mut World) {
+    the_vigil_rule_fires_once(world);
+    assert!(state_of(pack(world))
+        .flags
+        .contains(&"dawn_broke".to_string()));
+}
+
+#[then(expr = "the vigil rule fires once")]
+fn the_vigil_rule_fires_once(world: &mut World) {
     let pack = pack(world);
     let fired = spookery_engine::testing::journal::list_round_keys(pack)
         .iter()
@@ -403,7 +411,99 @@ fn the_vigil_fires_once(world: &mut World) {
         .filter(|name| name == "story:vigil/dawn_breaks")
         .count();
     assert_eq!(fired, 1);
-    assert!(state_of(pack).flags.contains(&"dawn_broke".to_string()));
+}
+
+/// Give the world a `morning` meter from 0, and append effects to the vigil's dawn rule, the
+/// last rule in its file.
+fn add_to_dawn_rule(pack: &Path, effects: &str) {
+    let meters = pack.join("world/meters.yaml");
+    let mut text = fs::read_to_string(&meters).unwrap();
+    text.push_str(&meter_rows(&[("morning", 0, None)]));
+    fs::write(meters, text).unwrap();
+    let story = pack.join("story/vigil.yaml");
+    let mut text = fs::read_to_string(&story).unwrap();
+    text.push_str(effects);
+    fs::write(story, text).unwrap();
+}
+
+fn add_morning(who: &str) -> String {
+    format!(
+        "      - meter:
+          who: {who}
+          key: morning
+          add: 1
+"
+    )
+}
+
+#[given(expr = "that rule narrates {string} and adds 1 to who {string} meter morning")]
+fn the_dawn_rule_narrates(world: &mut World, text: String, who: String) {
+    let narrate = format!(
+        "      - narrate:
+          text: {text}
+"
+    );
+    add_to_dawn_rule(pack(world), &(narrate + &add_morning(&who)));
+}
+
+#[given(
+    expr = "story\\/vigil.yaml has a change rule that watches dawn cross {string} and adds 1 to who {string} meter morning"
+)]
+fn vigil_watches_dawn_and_adds_morning(world: &mut World, crosses: String, who: String) {
+    vigil_watches_dawn(world, crosses);
+    add_to_dawn_rule(pack(world), &add_morning(&who));
+}
+
+#[given(expr = "nobody is seated")]
+fn nobody_is_seated(world: &mut World) {
+    let pack = world.pack.clone().unwrap();
+    edit_table(world, &pack, |_, _| {});
+}
+
+#[when(expr = "a rule adds -1 to who {string} meter dawn")]
+fn a_rule_adds_to_dawn(world: &mut World, who: String) {
+    let pack = world.pack.clone().unwrap();
+    add_verb(
+        &pack,
+        &format!(
+            "
+  - id: dawn_falls
+    when:
+      verb: dawn_falls
+    do:
+      - meter:
+          who: {who}
+          key: dawn
+          add: -1
+"
+        ),
+    );
+    migrate_and_play(world, vec![intent("dawn", "pc_rowan", "dawn_falls", None)]);
+}
+
+#[when(expr = "a habit adds -1 to who {string} meter dawn")]
+fn a_habit_adds_to_dawn(world: &mut World, who: String) {
+    let effect = format!(
+        "      - meter:
+          who: {who}
+          key: dawn
+          add: -1
+"
+    );
+    add_mira_habit(pack(world), "dawn_falls", &effect);
+    migrate_and_play(world, Vec::new());
+}
+
+#[then(expr = "pc_rowan and pc_nell each see {string} once")]
+fn rowan_and_nell_each_see_once(world: &mut World, text: String) {
+    for viewer in ["pc_rowan", "pc_nell"] {
+        let seen = world
+            .told
+            .iter()
+            .filter(|(to, line)| to == viewer && line == &text)
+            .count();
+        assert_eq!(seen, 1, "{viewer}: {:?}", world.told);
+    }
 }
 
 #[given(expr = "Mira carries no dawn meter")]
@@ -447,12 +547,23 @@ fn miras_dawn_is(world: &mut World, value: i64) {
 
 #[then(expr = "the world's dawn is still {int}")]
 fn the_worlds_dawn_is_still(world: &mut World, value: i64) {
-    the_worlds_dawn_is(world, value);
+    the_worlds_meter_is(world, "dawn".to_string(), value);
 }
 
-#[then(expr = "the world's dawn is {int}")]
-fn the_worlds_dawn_is(world: &mut World, value: i64) {
-    assert_eq!(value_on(pack(world), &Holder::World, "dawn"), Some(value));
+#[then(expr = "the world's {word} is {int}")]
+fn the_worlds_meter_is(world: &mut World, key: String, value: i64) {
+    assert_eq!(value_on(pack(world), &Holder::World, &key), Some(value));
+}
+
+#[then(expr = "it refuses the rule, saying a world change rule has no self")]
+fn it_refuses_the_world_rule(world: &mut World) {
+    assert_refused(
+        world,
+        &[
+            "story/tide.yaml",
+            "rule 'mark' watches a world change, which has no self",
+        ],
+    );
 }
 
 #[given(
@@ -552,8 +663,8 @@ fn it_does_not_list_doom(world: &mut World) {
 /// One clock as the rules before meters saved it: its id, its owners and its value.
 type OldClock<'a> = (&'a str, &'a [&'a str], i64);
 
-/// Rewrite the pack's save as the rules before meters wrote it: the older `rules_rev`, a
-/// pause, and these clocks in place of the meters that replaced them.
+/// Rewrite the pack's save as the rules before meters wrote it: `rules_rev` 11, the last with
+/// clocks, a pause, and these clocks in place of the meters that replaced them.
 fn write_old_save(world: &mut World, clocks: &[OldClock]) {
     let pack = world
         .pack
@@ -582,11 +693,7 @@ fn write_old_save(world: &mut World, clocks: &[OldClock]) {
     let rev = spookery_engine::testing::RULES_REV;
     let text = emit_save(&now)
         .unwrap()
-        .replacen(
-            &format!("rules_rev: {rev}\n"),
-            &format!("rules_rev: {}\n", rev - 1),
-            1,
-        )
+        .replacen(&format!("rules_rev: {rev}\n"), "rules_rev: 11\n", 1)
         .replacen(
             "places:\n",
             "pause:\n  presence_clocks: paused\nplaces:\n",

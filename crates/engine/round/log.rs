@@ -18,10 +18,14 @@ pub(crate) struct RoundLog {
 
 impl RoundLog {
     /// Tell the actor the roll their rule made, if it made one.
-    pub(crate) fn report_roll(&mut self, rolled: Option<Roll>, actor_id: &str) {
-        self.reports.extend(rolled.map(|roll| MoveReport::Rolled {
-            actor_id: actor_id.to_string(),
-            roll,
-        }));
+    pub(crate) fn report_roll(&mut self, rolled: Option<Roll>, actor_id: Option<&str>) {
+        self.reports.extend(
+            rolled
+                .zip(actor_id)
+                .map(|(roll, actor_id)| MoveReport::Rolled {
+                    actor_id: actor_id.to_string(),
+                    roll,
+                }),
+        );
     }
 }

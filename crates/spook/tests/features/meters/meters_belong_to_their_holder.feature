@@ -40,6 +40,7 @@ Feature: Meters belong to their holder
     And story/siege.yaml has a rule that adds -1 to who "world" meter dawn
     And story/vigil.yaml has a rule that adds -1 to who "world" meter dawn
     And story/vigil.yaml has a change rule that watches dawn cross "<=0"
+    And pc_rowan and pc_nell are seated
     When both rules run in one round, three rounds in a row
     Then dawn is 0, held once by the world
     And no actor carries a dawn meter

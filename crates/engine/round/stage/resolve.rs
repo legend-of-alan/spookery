@@ -106,7 +106,7 @@ fn roll_check(
     roll: &RollSpec,
 ) -> Result<Roll, Reason> {
     let intent = context.intent;
-    let actor_id = intent.actor.actor_id();
+    let actor_id = intent.actor_id();
     let opposed = opposing_total(resolver, intent)?;
     if let Some(out) = resolver.rolled.get(&intent.id) {
         let (target, partial_at) = match opposed {
@@ -152,7 +152,7 @@ fn opposing_total(resolver: &mut Resolver, intent: &Intent) -> Result<Option<i64
     );
     let Some((opposing, rule_id, check_id)) = queue.iter().find_map(|other| {
         if other.id == intent.id
-            || other.actor.actor_id() != named
+            || other.actor_id() != Some(named)
             || other.source != Source::Player
         {
             return None;
@@ -165,7 +165,7 @@ fn opposing_total(resolver: &mut Resolver, intent: &Intent) -> Result<Option<i64
     if let Some(out) = resolver.rolled.get(&opposing.id) {
         return Ok(Some(out.total));
     }
-    let key = resolver.dice.next_key(rule_id, opposing.actor.actor_id());
+    let key = resolver.dice.next_key(rule_id, opposing.actor_id());
     let out = resolver
         .dice
         .roll_check(canon, state, key, check_id, 0, None)?;

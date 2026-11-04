@@ -34,11 +34,10 @@ pub(crate) fn run(draft: &Draft, queue: &[Intent]) -> Result<Vec<Intent>, Reason
 /// its note recipients, so priority sees what it touches. A verb
 /// with no target keeps it empty: a filled one would make the gate refuse `SCHEMA`.
 fn stamp_target(canon: &Canon, state: &State, presence: &Presence, intent: &mut Intent) {
-    let (actor, verb, hint) = (
-        &intent.actor,
-        &intent.move_name,
-        gate::hint_of(&intent.target),
-    );
+    let (verb, hint) = (&intent.move_name, gate::hint_of(&intent.target));
+    let Some(actor) = &intent.actor else {
+        return;
+    };
     let Ok(rule) = gate::pick(canon, state, actor, intent.source, verb, hint) else {
         return;
     };
@@ -97,20 +96,19 @@ enum SeatedRank {
 }
 
 fn priority(canon: &Canon, state: &State, presence: &Presence, intent: &Intent) -> Priority {
-    let actor = match intent.actor {
-        Viewer::Player(_) => ActorRank::Player,
-        Viewer::Npc(_) => ActorRank::Npc,
+    // Player lines that share a priority keep the queue order. NPC ties still shuffle.
+    let (actor, shuffle) = match &intent.actor {
+        Some(Viewer::Player(_)) => (ActorRank::Player, [0u8; 32]),
+        Some(Viewer::Npc(id)) => (
+            ActorRank::Npc,
+            shuffle_key(&state.world_id, state.round_index, id),
+        ),
+        None => (ActorRank::Npc, [0u8; 32]),
     };
     let claim = if touches_seated_player(canon, state, presence, intent) {
         SeatedRank::Claimed
     } else {
         SeatedRank::Unclaimed
-    };
-    // Player lines that share a priority keep the queue order. NPC ties still shuffle.
-    let shuffle = if actor == ActorRank::Player {
-        [0u8; 32]
-    } else {
-        shuffle_key(&state.world_id, state.round_index, intent.actor.actor_id())
     };
     Priority {
         actor,
@@ -129,9 +127,9 @@ fn touches_seated_player(
     let target_hit = match &intent.target {
         Target::Actor(id) | Target::Item(id) => present.iter().any(|actor| actor == id),
         Target::Place(place) => is_player_at(state, presence, place),
-        Target::Exit(name) => state
-            .actors
-            .get(intent.actor.actor_id())
+        Target::Exit(name) => intent
+            .actor_id()
+            .and_then(|id| state.actors.get(id))
             .and_then(|actor| find_exit(canon, &actor.place, name))
             .is_some_and(|exit| is_player_at(state, presence, &exit.to)),
         _ => false,

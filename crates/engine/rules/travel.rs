@@ -52,7 +52,10 @@ pub(crate) fn exit_via<'a>(context: &Context<'a>, via: &str) -> Result<Option<&'
         ("target", _) => return Ok(None),
         (name, _) => name,
     };
-    let actor = context.state.actors.get(context.intent.actor.actor_id());
+    let actor = context
+        .intent
+        .actor_id()
+        .and_then(|id| context.state.actors.get(id));
     let from = actor.map_or("", |actor| actor.place.as_str());
     find_exit(context.canon, from, name)
         .map(Some)
@@ -65,16 +68,13 @@ pub(crate) fn admit(context: &Context, rule: &Rule) -> Result<(), gate::Refusal>
         return Ok(());
     };
     let (canon, state, intent) = (context.canon, context.state, context.intent);
-    if !is_revealed(canon, state, intent.actor.actor_id(), exit) {
+    let actor_id = intent
+        .actor_id()
+        .ok_or_else(|| gate::Refusal::new(intent, Reason::UnknownId))?;
+    if !is_revealed(canon, state, actor_id, exit) {
         return Err(gate::Refusal::new(intent, Reason::NoExit));
     }
-    if is_locked(
-        canon,
-        state,
-        context.presence,
-        intent.actor.actor_id(),
-        exit,
-    ) {
+    if is_locked(canon, state, context.presence, actor_id, exit) {
         let text = if exit.locked_text.is_empty() {
             "The way is locked.".to_string()
         } else {
@@ -241,11 +241,12 @@ pub(crate) fn begin_action(
         source: intent.source,
         kind,
     };
-    draft.track(StateKey::ActorBusy(intent.actor.actor_id().to_string()))?;
+    let actor_id = intent.actor_id().ok_or(Reason::UnknownId)?;
+    draft.track(StateKey::ActorBusy(actor_id.to_string()))?;
     let act = &mut draft
         .state_mut()
         .actors
-        .get_mut(intent.actor.actor_id())
+        .get_mut(actor_id)
         .ok_or(Reason::UnknownId)?
         .act;
     act.busy_until = Some(until);
