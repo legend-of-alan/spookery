@@ -554,6 +554,7 @@ mod tests {
         let offset = r#""write":"offset","delta":-3"#;
         for (word, from, to) in [
             ("base", offset, r#""write":"base","delta":-3"#),
+            ("max", offset, r#""write":"offset","delta":-3,"max":3"#),
             ("clear_offset", offset, r#""write":"clear_offset""#),
             ("system", r#""source":"player""#, r#""source":"system""#),
             ("cc", r#""to":["pc_wren"]"#, r#""cc":["pc_wren"]"#),
