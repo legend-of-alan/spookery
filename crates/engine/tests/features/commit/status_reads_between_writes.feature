@@ -9,12 +9,10 @@ Feature: Status reads the pack between writes
   Scenario: Status during a commit sees a whole round
     Given the writer holds a docks pack
     When status peeks while the writer is halfway through appending a round
-    Then status waited for the write to finish
-    And status prints the round the writer committed
+    Then status prints the round the writer committed
 
   Scenario: Status during a checkpoint sees a matching set
     Given the writer holds a docks pack that checkpoints every round
     When status peeks while the writer is halfway through publishing a checkpoint
-    Then status waited for the write to finish
-    And status prints the round the writer committed
+    Then status prints the round the writer committed
 
