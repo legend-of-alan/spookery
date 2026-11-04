@@ -78,11 +78,8 @@ mod store_failures;
 #[path = "steps/recorded_session.rs"]
 mod recorded_session;
 
-#[path = "feature_dirs.rs"]
-mod feature_dirs;
-
-fn feature_dirs() -> &'static [&'static str] {
-    feature_dirs::HOST
+fn runs(folder: &str) -> bool {
+    HOST.contains(&folder)
 }
 
 include!("feature_main.rs");

@@ -19,7 +19,7 @@ Narrower test runs:
 
 ```sh
 cargo test -p spookery-engine --lib                                    # engine unit + property tests (round/prop)
-cargo test -p spook --test integration feature_census                  # plain integration tests, filtered by name
+cargo test -p spook --test integration engine_guarantees               # plain integration tests, filtered by name
 cargo test --workspace --test features_host --test features_world      # all BDD scenarios
 cargo test -p spook --test features_world -- --name "Locked exit"      # BDD scenarios whose `Scenario:` line matches a regex
 ```
@@ -58,7 +58,7 @@ Crates other than `spook` keep sources at the crate root (`lib.rs`, not `src/lib
 
 ## Tests and docs that are wired together
 
-- BDD scenarios live in `crates/engine/tests/features/<folder>` and `crates/spook/tests/features/<folder>`, run by cucumber in two programs per crate (`features_host`, `features_world`). A new feature folder must be added to exactly one list: `crates/spook/tests/feature_dirs.rs` or `testing::HOST`/`WORLD` in `crates/engine/lib.rs`. New step modules are registered with `#[path]` in `features_host.rs` / `features_world.rs`. The `feature_census` test fails on unlisted, doubly listed, or loose `.feature` files.
+- BDD scenarios live in `crates/engine/tests/features/<folder>` and `crates/spook/tests/features/<folder>`, run by cucumber. The engine runs all of its folders in one program, `features_world`. Spook runs the folders named in `HOST` (`crates/spook/tests/feature_main.rs`) in `features_host` and everything else under `tests/features` in `features_world`, so a new folder runs without being listed. New step modules are registered with `#[path]` in `features_host.rs` / `features_world.rs`.
 - `docs/engine-guarantees.md` states what the engine promises; every `##` section must cite feature files that exist (`engine_guarantees` test). The feature files win if the two disagree.
 - Every YAML fence in `docs/pack-reference.md` must form a pack that `spook check` accepts (`pack_reference` test), so pack schema changes need doc updates in the same PR.
 - `packs/sample-d20` is played to its ending by tests; `packs/oneshot-docks` is the multi-PC fixture the engine and seat tests rely on, so leave it unchanged. `spook new` writes the template in `crates/spook/templates/starter/`.

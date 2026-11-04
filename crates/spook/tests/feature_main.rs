@@ -1,5 +1,5 @@
 use std::net::TcpListener;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Child;
 
 use cucumber::writer::Stats;
@@ -55,6 +55,23 @@ fn a_copy_of_the_sample_d20_pack(world: &mut World) {
     world.pack = Some(support::copy_pack("sample-d20", "sample"));
 }
 
+/// The folders under `tests/features` the host program runs. The world program runs everything else there.
+const HOST: &[&str] = &[
+    "cli", "digest", "host", "limits", "loopback", "mcp", "new", "seats", "sessions", "speech",
+];
+
+/// The folders and loose feature files under `tests/features` this program runs.
+fn feature_dirs() -> Vec<PathBuf> {
+    let mut dirs: Vec<PathBuf> = std::fs::read_dir("tests/features")
+        .unwrap_or_else(|err| panic!("read tests/features: {err}"))
+        .map(|entry| entry.unwrap_or_else(|err| panic!("read tests/features: {err}")).path())
+        .filter(|path| path.is_dir() || path.extension().is_some_and(|ext| ext == "feature"))
+        .filter(|path| runs(&path.file_name().unwrap().to_string_lossy()))
+        .collect();
+    dirs.sort();
+    dirs
+}
+
 fn scenario_limit() -> usize {
     std::thread::available_parallelism()
         .map(|n| n.get())
@@ -81,7 +98,7 @@ fn tear_down(world: &mut World) {
     }
 }
 
-async fn run_dir(dir: &'static str) -> bool {
+async fn run_dir(dir: &Path) -> bool {
     // Folders run together, one scenario at a time inside each folder. A step
     // blocks its runtime, so extra scenarios in a folder only pile up servers.
     let writer = World::cucumber()
@@ -100,7 +117,7 @@ async fn run_dir(dir: &'static str) -> bool {
 
 fn main() {
     let limit = scenario_limit();
-    let dirs: Vec<&'static str> = feature_dirs().to_vec();
+    let dirs = feature_dirs();
     let failed = std::sync::atomic::AtomicBool::new(false);
     let next = std::sync::atomic::AtomicUsize::new(0);
     std::thread::scope(|scope| {
