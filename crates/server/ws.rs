@@ -22,7 +22,7 @@ use super::limits::{
     REQUESTED_SEND_BUFFER,
 };
 use super::seat::{frame_queue, write_frames, Conn};
-use super::table::{report_hangup, Rejection, Request};
+use super::table::{report_close, Rejection, Request};
 use crate::protocol::{ClientMessage, Seat};
 
 #[derive(Clone)]
@@ -151,7 +151,7 @@ async fn run(socket: WebSocket, acceptor: Acceptor, seat: Seat) {
             }
             received = stream.next() => received,
             () = first_message_deadline => {
-                report_hangup(&acceptor.tx, conn).await;
+                report_close(&acceptor.tx, conn).await;
                 break;
             }
         };
@@ -163,7 +163,7 @@ async fn run(socket: WebSocket, acceptor: Acceptor, seat: Seat) {
             }),
             Some(Ok(Message::Ping(_) | Message::Pong(_))) => continue,
             Some(Ok(Message::Close(_)) | Err(_)) | None => {
-                report_hangup(&acceptor.tx, conn).await;
+                report_close(&acceptor.tx, conn).await;
                 break;
             }
         };

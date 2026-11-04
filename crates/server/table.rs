@@ -13,7 +13,7 @@ use tokio::sync::{oneshot, watch};
 use super::frames;
 use super::gm::{run_gm_word, Reply};
 use super::idle::{self, now_stamp};
-use super::seat::{Claim, Conn, FrameSender, Link, Seats};
+use super::seat::{Claim, Conn, Connection, FrameSender, Seats};
 use super::Error;
 use crate::protocol::{
     self, parse_args, ClaimArgs, ClientBody, ClientMessage, Detail, MoveArgs, NoArgs, SayArgs,
@@ -48,7 +48,8 @@ pub(super) enum Request {
         message: Result<ClientMessage, Rejection>,
         reply: oneshot::Sender<()>,
     },
-    Hangup {
+    /// A connection closed. The table lets go of it, then acks.
+    Close {
         conn: Conn,
         ack: oneshot::Sender<()>,
     },
@@ -70,10 +71,10 @@ pub(super) struct Rejection {
     pub(super) code: Reason,
 }
 
-/// Tells the table a connection hung up, and waits until the table has let go of it.
-pub(super) async fn report_hangup(tx: &Sender<Request>, conn: Conn) {
+/// Tells the table a connection closed, and waits until the table has let go of it.
+pub(super) async fn report_close(tx: &Sender<Request>, conn: Conn) {
     let (ack_tx, ack_rx) = oneshot::channel();
-    if tx.send(Request::Hangup { conn, ack: ack_tx }).is_err() {
+    if tx.send(Request::Close { conn, ack: ack_tx }).is_err() {
         return;
     }
     let _ = ack_rx.await;
@@ -140,7 +141,7 @@ impl Table {
                     self.handle_message(conn, received);
                     let _ = reply.send(());
                 }
-                Request::Hangup { conn, ack } => {
+                Request::Close { conn, ack } => {
                     self.drop_link(conn);
                     let _ = ack.send(());
                 }
@@ -151,7 +152,7 @@ impl Table {
                 } => {
                     self.tool_call = Some((conn, Vec::new()));
                     // An MCP session holds no seat until its event stream opens.
-                    if self.seats.link(conn).is_some() {
+                    if self.seats.connection(conn).is_some() {
                         self.handle_message(conn, Ok(message));
                     } else {
                         let refused = ServerBody::Refused(Reason::NotInSpec.into());
@@ -178,7 +179,7 @@ impl Table {
     /// second one for an MCP session that already has its stream, is refused, and the
     /// connection sends that refusal itself.
     fn open(&mut self, conn: Conn, seat: Seat, out: FrameSender) -> Result<(), Box<ServerMessage>> {
-        if seat == Seat::Gm && (self.seats.gm.is_some() || self.seats.link(conn).is_some()) {
+        if seat == Seat::Gm && (self.seats.gm.is_some() || self.seats.connection(conn).is_some()) {
             let seq = self.stamp();
             let refused = stamp_message(seq, None, ServerBody::Refused(Reason::TableFull.into()));
             return Err(Box::new(refused));
@@ -186,7 +187,7 @@ impl Table {
         if seat == Seat::Gm {
             self.seats.gm = Some(conn);
         }
-        self.seats.links.push(Link { conn, seat, out });
+        self.seats.connections.push(Connection { conn, seat, out });
         let mut words: Vec<String> = WORDS
             .iter()
             .filter(|word| word.seat == seat)
@@ -221,7 +222,11 @@ impl Table {
     }
 
     fn handle_message(&mut self, conn: Conn, received: Result<ClientMessage, Rejection>) {
-        let Some(seat) = self.seats.link(conn).map(|link| link.seat) else {
+        let Some(seat) = self
+            .seats
+            .connection(conn)
+            .map(|connection| connection.seat)
+        else {
             return;
         };
         let ClientMessage { id, body, .. } = match received {
@@ -645,14 +650,14 @@ impl Table {
         let bytes = message.to_text().into_bytes();
         if self
             .seats
-            .link(conn)
-            .is_some_and(|link| !link.out.send(bytes))
+            .connection(conn)
+            .is_some_and(|connection| !connection.out.send(bytes))
         {
             self.drop_link(conn);
         }
     }
 
-    /// Drops a connection. Dropping its link cancels its socket. A claim it drove is held
+    /// Drops a connection. Dropping it cancels its socket. A claim it drove is held
     /// for its token, and a GM seat it held is free.
     fn drop_link(&mut self, conn: Conn) {
         if self.seats.gm == Some(conn) {

@@ -27,7 +27,7 @@ impl Conn {
 /// `presence()`.
 #[derive(Default)]
 pub(super) struct Seats {
-    pub(super) links: Vec<Link>,
+    pub(super) connections: Vec<Connection>,
     /// The connection that holds the GM seat.
     pub(super) gm: Option<Conn>,
     /// Each held claim, oldest first. At most three, so a scan finds one.
@@ -66,25 +66,30 @@ impl Seats {
         self.claims.iter_mut().find(|claim| claim.actor == actor)
     }
 
-    pub(super) fn link(&self, conn: Conn) -> Option<&Link> {
-        self.links.iter().find(|link| link.conn == conn)
+    pub(super) fn connection(&self, conn: Conn) -> Option<&Connection> {
+        self.connections
+            .iter()
+            .find(|connection| connection.conn == conn)
     }
 
-    /// Drops the connection. Dropping its link cancels its writer.
-    pub(super) fn take(&mut self, conn: Conn) -> Option<Link> {
-        let index = self.links.iter().position(|link| link.conn == conn)?;
-        Some(self.links.remove(index))
+    /// Drops the connection. Dropping it cancels its writer.
+    pub(super) fn take(&mut self, conn: Conn) -> Option<Connection> {
+        let index = self
+            .connections
+            .iter()
+            .position(|connection| connection.conn == conn)?;
+        Some(self.connections.remove(index))
     }
 }
 
 /// One open connection: which seat it opened and its outbound queue.
-pub(super) struct Link {
+pub(super) struct Connection {
     pub(super) conn: Conn,
     pub(super) seat: Seat,
     pub(super) out: FrameSender,
 }
 
-impl Drop for Link {
+impl Drop for Connection {
     fn drop(&mut self) {
         let _ = self.out.cancel.send(true);
     }
