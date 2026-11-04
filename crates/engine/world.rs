@@ -1,7 +1,6 @@
 //! An open pack, and the check that reads one without writing.
 
 use std::collections::BTreeSet;
-use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -17,7 +16,7 @@ use crate::rules::rule::{Rule, TargetKind, When};
 use crate::store::journal;
 use crate::store::records::Record;
 use crate::store::save;
-use crate::store::tape::{append_record, last_seq, read_scrollback, TapeRecord};
+use crate::store::tape::{append_record, read_scrollback, TapeRecord};
 use crate::Reason;
 use spookery_protocol::{QueuedMove, Speaker, PERCEIVE_BODY_CHARS};
 
@@ -298,10 +297,6 @@ impl<L> World<L> {
         read_scrollback(&self.root, actor_id)
     }
 
-    pub fn last_tape_seq(&self) -> Result<u64, Reason> {
-        last_seq(&self.root)
-    }
-
     pub fn budget(&self) -> &Budget {
         &self.canon.budget
     }
@@ -415,11 +410,11 @@ impl World<()> {
     /// Open the pack. A save that later journal records continue is a checkpoint,
     /// and resume checks the tip instead.
     pub fn open(root: &Path) -> Result<Self, Reason> {
-        if !root.join("pack.yaml").is_file() || !journal::save_path(root).is_file() {
+        if !root.join("pack.yaml").is_file() {
             return Err(Reason::NotInSpec);
         }
+        let now_bytes = journal::read_save(&journal::save_path(root))?;
         let canon = Arc::new(load_canon(root).map_err(|diags| first_reason(&diags))?);
-        let now_bytes = fs::read(journal::save_path(root)).map_err(|_| Reason::NotInSpec)?;
         let now_text = std::str::from_utf8(&now_bytes).map_err(|_| Reason::Schema)?;
         let state = save::parse(now_text).map_err(|diags| first_reason(&diags))?;
         let live = journal::read_live_records(root).unwrap_or_default();
@@ -574,43 +569,40 @@ pub fn check_pack(root: &Path) -> Vec<Diagnostic> {
         }
     };
     let now_path = journal::save_path(root);
-    let loaded = if now_path.is_file() {
-        match fs::read(&now_path) {
-            Ok(bytes) => match std::str::from_utf8(&bytes) {
-                Ok(text) => match save::parse(text) {
-                    Ok(state) => Some((bytes, state)),
-                    Err(more) => {
-                        diags.extend(more);
-                        None
-                    }
-                },
-                Err(_) => {
-                    diags.push(
-                        schema_error(
-                            "state/save.yaml",
-                            "this file is not UTF-8 text",
-                            "save it as UTF-8",
-                        )
-                        .at_path("schema"),
-                    );
+    let loaded = match journal::read_save(&now_path) {
+        Ok(bytes) => match std::str::from_utf8(&bytes) {
+            Ok(text) => match save::parse(text) {
+                Ok(state) => Some((bytes, state)),
+                Err(more) => {
+                    diags.extend(more);
                     None
                 }
             },
             Err(_) => {
                 diags.push(
-                    error(
+                    schema_error(
                         "state/save.yaml",
-                        Reason::Schema,
-                        "state/save.yaml could not be read",
-                        "check that the file is readable",
+                        "this file is not UTF-8 text",
+                        "save it as UTF-8",
                     )
                     .at_path("schema"),
                 );
                 None
             }
+        },
+        Err(Reason::NotInSpec) => None,
+        Err(reason) => {
+            diags.push(
+                error(
+                    "state/save.yaml",
+                    reason,
+                    "state/save.yaml could not be read",
+                    "check that the file is readable",
+                )
+                .at_path("schema"),
+            );
+            None
         }
-    } else {
-        None
     };
     if let Some((bytes, state)) = &loaded {
         let live = journal::read_live_records(root).unwrap_or_default();

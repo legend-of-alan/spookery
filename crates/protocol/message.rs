@@ -70,8 +70,8 @@ pub enum ServerBody {
     },
     /// The reply to `claim`. `token` takes this PC back after a dropped connection. A new
     /// claim carries `scrollback`, the says this PC heard before, oldest first. A claim by
-    /// token carries `missed`, the messages sent to this PC after the `after` it named, and
-    /// `gap` when some of those fell out of the catch-up window.
+    /// token carries `missed`, the messages sent to this PC after the `last_seq` it named, and
+    /// `gap` when more than `MISSED_MESSAGE_CAP` messages were missed.
     Claimed {
         actor: String,
         token: String,
@@ -180,8 +180,10 @@ pub enum ClaimArgs {
     },
     Token {
         token: String,
+        /// The last `seq` the player read. A missing `last_seq` means 0, so the reply
+        /// catches up on everything the claim still keeps.
         #[serde(default)]
-        after: u64,
+        last_seq: u64,
     },
 }
 
@@ -195,6 +197,7 @@ pub struct MoveArgs {
 
 /// The arguments of a word that takes none.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct NoArgs {}
 
@@ -259,11 +262,11 @@ mod tests {
         assert_eq!(read(r#"{"actor":"pc_rowan"}"#).unwrap(), actor);
         let token = ClaimArgs::Token {
             token: "t1".into(),
-            after: 4,
+            last_seq: 4,
         };
-        assert_eq!(read(r#"{"token":"t1","after":4}"#).unwrap(), token);
+        assert_eq!(read(r#"{"token":"t1","last_seq":4}"#).unwrap(), token);
         assert!(read(r#"{"actor":"pc_rowan","token":"t1"}"#).is_err());
-        assert!(read(r#"{"actor":"pc_rowan","after":4}"#).is_err());
+        assert!(read(r#"{"actor":"pc_rowan","last_seq":4}"#).is_err());
         assert!(read("{}").is_err());
     }
 

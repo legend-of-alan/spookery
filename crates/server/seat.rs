@@ -8,7 +8,7 @@ use std::sync::Arc;
 use spookery_engine::Presence;
 use tokio::sync::{mpsc, watch};
 
-use super::limits::{CATCH_UP_WINDOW, OUTBOUND_BYTE_CAP, OUTBOUND_FRAME_CAP};
+use super::limits::{MISSED_MESSAGE_CAP, OUTBOUND_BYTE_CAP, OUTBOUND_FRAME_CAP};
 use crate::protocol::{Seat, ServerMessage};
 
 /// One connection's id, on the game port or the MCP endpoint.
@@ -60,9 +60,9 @@ impl Seats {
             .find(|claim| claim.conn == Some(conn))
     }
 
-    /// The claim `token` names.
-    pub(super) fn claim_by_token_mut(&mut self, token: &str) -> Option<&mut Claim> {
-        self.claims.iter_mut().find(|claim| claim.token == token)
+    /// The claim on the PC `actor`.
+    pub(super) fn claim_of_actor_mut(&mut self, actor: &str) -> Option<&mut Claim> {
+        self.claims.iter_mut().find(|claim| claim.actor == actor)
     }
 
     pub(super) fn link(&self, conn: Conn) -> Option<&Link> {
@@ -96,10 +96,10 @@ pub(super) struct Claim {
     pub(super) actor: String,
     /// The connection that drives it, while one does.
     pub(super) conn: Option<Conn>,
-    /// The newest `CATCH_UP_WINDOW` messages sent to this claim, oldest first.
+    /// The newest `MISSED_MESSAGE_CAP` messages sent to this claim, oldest first.
     kept: VecDeque<ServerMessage>,
-    /// The `seq` of the newest message that fell out of `kept`, or 0.
-    lost_through: u64,
+    /// The `seq` of the newest message dropped past `MISSED_MESSAGE_CAP`, or 0.
+    last_lost_seq: u64,
 }
 
 impl Claim {
@@ -109,29 +109,29 @@ impl Claim {
             actor,
             conn: None,
             kept: VecDeque::new(),
-            lost_through: 0,
+            last_lost_seq: 0,
         }
     }
 
-    /// Keeps `message` for a reconnect. The oldest falls out past the window.
+    /// Keeps `message` for a reconnect. The oldest is dropped past `MISSED_MESSAGE_CAP`.
     pub(super) fn keep(&mut self, message: &ServerMessage) {
-        if self.kept.len() == CATCH_UP_WINDOW {
+        if self.kept.len() == MISSED_MESSAGE_CAP {
             if let Some(lost) = self.kept.pop_front() {
-                self.lost_through = lost.seq.unwrap_or(self.lost_through);
+                self.last_lost_seq = lost.seq.unwrap_or(self.last_lost_seq);
             }
         }
         self.kept.push_back(message.clone());
     }
 
-    /// The kept messages after `after`, and whether one after it fell out of the window.
-    pub(super) fn list_after(&self, after: u64) -> (Vec<ServerMessage>, bool) {
+    /// The kept messages after `last_seq`, and whether any were dropped past `MISSED_MESSAGE_CAP`.
+    pub(super) fn messages_after(&self, last_seq: u64) -> (Vec<ServerMessage>, bool) {
         let missed = self
             .kept
             .iter()
-            .filter(|message| message.seq.is_some_and(|seq| seq > after))
+            .filter(|message| message.seq.is_some_and(|seq| seq > last_seq))
             .cloned()
             .collect();
-        (missed, after < self.lost_through)
+        (missed, last_seq < self.last_lost_seq)
     }
 }
 

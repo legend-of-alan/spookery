@@ -13,7 +13,7 @@ Feature: A claim comes back with its token
     And a player claimed rowan and got token t1
     When the connection drops without release
     Then another player's claim on rowan is refused with "SEAT_TAKEN"
-    And table_status shows players 1 and actors_present "pc_rowan"
+    And status shows players 1 and actors_present "pc_rowan"
 
   Scenario: A released claim's token takes nothing back
     Given a docks table
@@ -42,4 +42,4 @@ Feature: A claim comes back with its token
     When play joins the table on a free loopback address
     And play says a line over the message cap
     Then play shows the shop again as rowan
-    And table_status shows players 1 and actors_present "pc_rowan"
+    And status shows players 1 and actors_present "pc_rowan"

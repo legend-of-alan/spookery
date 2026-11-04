@@ -13,7 +13,7 @@ use crate::ws::Connection;
 use crate::Error;
 
 pub async fn run(pc: Option<&str>, addr: SocketAddr, raw: bool) -> Result<(), Error> {
-    let mut screen = Screen {
+    let mut printer = Printer {
         text: text::PlayerText::new(),
         raw,
         last_seq: 0,
@@ -43,7 +43,7 @@ pub async fn run(pc: Option<&str>, addr: SocketAddr, raw: bool) -> Result<(), Er
         },
     };
     let (mut here, mut token) =
-        take_claim(&mut seat, json!({ "actor": actor }), &mut screen).await?;
+        take_claim(&mut seat, json!({ "actor": actor }), &mut printer).await?;
     // Made once, so every Ctrl+C is seen, even one that lands mid-print.
     let ctrl_c = tokio::signal::ctrl_c();
     tokio::pin!(ctrl_c);
@@ -54,7 +54,7 @@ pub async fn run(pc: Option<&str>, addr: SocketAddr, raw: bool) -> Result<(), Er
                     Some(Ok(message)) => message,
                     // The table dropped this connection, or `spook run` stopped.
                     Some(Err(Error::Io(_))) | None => {
-                        let Some(back) = reconnect(addr, &token, &mut screen).await? else {
+                        let Some(back) = reconnect(addr, &token, &mut printer).await? else {
                             return Ok(());
                         };
                         (seat, here, token) = back;
@@ -62,7 +62,7 @@ pub async fn run(pc: Option<&str>, addr: SocketAddr, raw: bool) -> Result<(), Er
                     }
                     Some(Err(err)) => return Err(err),
                 };
-                if let Some(shown) = screen.show(&message) {
+                if let Some(shown) = printer.show(&message) {
                     eprintln!("{shown}");
                     let _ = io::stderr().flush();
                 }
@@ -82,7 +82,7 @@ pub async fn run(pc: Option<&str>, addr: SocketAddr, raw: bool) -> Result<(), Er
                         continue;
                     }
                     "map" => {
-                        print_text(&screen.text.render_map());
+                        print_text(&printer.text.render_map());
                         continue;
                     }
                     _ => {}
@@ -100,7 +100,7 @@ pub async fn run(pc: Option<&str>, addr: SocketAddr, raw: bool) -> Result<(), Er
                     Ok(_) => {}
                     // The table dropped this connection: take the PC back, then send again.
                     Err(Error::Io(_)) => {
-                        let Some(back) = reconnect(addr, &token, &mut screen).await? else {
+                        let Some(back) = reconnect(addr, &token, &mut printer).await? else {
                             return Ok(());
                         };
                         (seat, here, token) = back;
@@ -118,14 +118,14 @@ pub async fn run(pc: Option<&str>, addr: SocketAddr, raw: bool) -> Result<(), Er
 async fn reconnect(
     addr: SocketAddr,
     token: &str,
-    screen: &mut Screen,
+    printer: &mut Printer,
 ) -> Result<Option<(Connection, protocol::View, String)>, Error> {
     let Ok((mut seat, _)) = Connection::open(addr, "player").await else {
         eprintln!("host closed");
         return Ok(None);
     };
-    let args = json!({ "token": token, "after": screen.last_seq });
-    let (here, token) = take_claim(&mut seat, args, screen).await?;
+    let args = json!({ "token": token, "last_seq": printer.last_seq });
+    let (here, token) = take_claim(&mut seat, args, printer).await?;
     Ok(Some((seat, here, token)))
 }
 
@@ -134,7 +134,7 @@ async fn reconnect(
 async fn take_claim(
     seat: &mut Connection,
     args: Value,
-    screen: &mut Screen,
+    printer: &mut Printer,
 ) -> Result<(protocol::View, String), Error> {
     let claim = seat.send("claim", args).await?;
     let mut token = String::new();
@@ -142,7 +142,7 @@ async fn take_claim(
         let Some(message) = seat.recv().await.transpose()? else {
             return Err(Error::Message("NOT_IN_SPEC".into()));
         };
-        if let Some(shown) = screen.show(&message) {
+        if let Some(shown) = printer.show(&message) {
             if message.reply_to.as_deref() == Some(claim.as_str()) {
                 return Err(Error::Message(shown));
             }
@@ -156,7 +156,7 @@ async fn take_claim(
             } => {
                 token = held;
                 for missed in &missed {
-                    if let Some(shown) = screen.show(missed) {
+                    if let Some(shown) = printer.show(missed) {
                         eprintln!("{shown}");
                     }
                 }
@@ -168,13 +168,13 @@ async fn take_claim(
 }
 
 /// What play prints, and the last `seq` it read, so a reconnect asks for what came after.
-struct Screen {
+struct Printer {
     text: text::PlayerText,
     raw: bool,
     last_seq: u64,
 }
 
-impl Screen {
+impl Printer {
     /// Print one message. A refusal is returned instead, as the line to show on stderr: its
     /// code in raw mode, its sentence in text mode.
     fn show(&mut self, message: &ServerMessage) -> Option<String> {

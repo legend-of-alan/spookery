@@ -15,7 +15,7 @@ use rmcp::transport::streamable_http_client::StreamableHttpClientTransportConfig
 use rmcp::transport::{StreamableHttpClientTransport, Transport};
 use rmcp::{ClientHandler, ServiceExt};
 use serde_json::Value;
-use spookery::protocol::{Refusal, ServerMessage};
+use spookery::protocol::{Refusal, ServerMessage, ToolResult};
 use tokio::sync::mpsc;
 
 /// One item on the event channel: an event, the line for one that could not be read, or
@@ -108,16 +108,13 @@ impl GmClient {
         })
     }
 
-    /// Call the tool `name` and read its structured content, or the refusal it holds.
-    pub async fn call(
-        &mut self,
-        name: &str,
-        args: &Value,
-    ) -> Result<Result<Value, Refusal>, String> {
+    /// Send the word `word` as a tool call. The result is every message it sent this seat,
+    /// its reply last.
+    pub async fn call(&mut self, word: &str, args: &Value) -> Result<Vec<ServerMessage>, String> {
         let Value::Object(arguments) = args.clone() else {
-            return Err(format!("{name} arguments: {args}"));
+            return Err(format!("{word} arguments: {args}"));
         };
-        let params = CallToolRequestParams::new(name.to_string()).with_arguments(arguments);
+        let params = CallToolRequestParams::new(word.to_string()).with_arguments(arguments);
         let result = self
             .service
             .call_tool(params)
@@ -127,10 +124,9 @@ impl GmClient {
             self.buffered.push_back(item);
         }
         let body = result.structured_content.unwrap_or(Value::Null);
-        Ok(match serde_json::from_value::<Refusal>(body.clone()) {
-            Ok(refusal) => Err(refusal),
-            Err(_) => Ok(body),
-        })
+        serde_json::from_value::<ToolResult>(body.clone())
+            .map(|result| result.messages)
+            .map_err(|_| format!("{word} result: {body}"))
     }
 
     /// Events read while waiting for the latest tool result, in arrival order.

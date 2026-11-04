@@ -25,11 +25,11 @@ use rmcp::transport::streamable_http_server::{StreamableHttpServerConfig, Stream
 use rmcp::{ErrorData as McpError, ServerHandler};
 use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
 
+use super::gm;
 use super::limits::GM_BODY_CAP;
 use super::seat::{frame_queue, write_frames, Conn};
 use super::table::{report_hangup, Request};
-use super::tools;
-use crate::protocol::{Seat, ServerBody};
+use crate::protocol::{ClientBody, ClientMessage, Seat, ServerBody, ToolResult, WORDS};
 
 pub(super) async fn serve(
     listener: tokio::net::TcpListener,
@@ -225,11 +225,7 @@ impl ServerHandler for Handler {
         _request: Option<PaginatedRequestParams>,
         _context: RequestContext<RoleServer>,
     ) -> impl std::future::Future<Output = Result<ListToolsResult, McpError>> + Send + '_ {
-        let tools = tools::TOOLS
-            .iter()
-            .map(|tool| Tool::new(tool.name, tool.description(), (tool.schema)()))
-            .collect();
-        std::future::ready(Ok(ListToolsResult::with_all_items(tools)))
+        std::future::ready(Ok(ListToolsResult::with_all_items(list_gm_tools())))
     }
 
     async fn initialize(
@@ -248,27 +244,36 @@ impl ServerHandler for Handler {
         self.negotiate_initialize(&request)
     }
 
+    /// The tool is the word and its arguments are the word's `args`. The JSON-RPC id is the
+    /// message `id`, so the reply's `reply_to` names this call.
     async fn call_tool(
         &self,
         request: CallToolRequestParams,
-        _context: RequestContext<RoleServer>,
+        context: RequestContext<RoleServer>,
     ) -> Result<CallToolResponse, McpError> {
         let Some(&conn) = self.conn.get() else {
             return Err(McpError::internal_error("no seat", None));
         };
-        let tx = self.tx.clone();
-        let name = request.name.into_owned();
-        let arguments = request.arguments;
+        let message = ClientMessage {
+            id: Some(context.id.to_string()),
+            seq: None,
+            reply_to: None,
+            body: ClientBody {
+                word: request.name.into_owned(),
+                args: request.arguments.unwrap_or_default(),
+            },
+        };
         let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
-        tx.send(Request::Tool {
-            conn,
-            name,
-            arguments,
-            reply: reply_tx,
-        })
-        .map_err(|_| table_closed())?;
-        let value = reply_rx.await.map_err(|_| table_closed())?;
-        Ok(CallToolResult::structured(value).into())
+        self.tx
+            .send(Request::ToolCall {
+                conn,
+                message,
+                reply: reply_tx,
+            })
+            .map_err(|_| table_closed())?;
+        let messages = reply_rx.await.map_err(|_| table_closed())?;
+        let result = serde_json::to_value(ToolResult { messages }).expect("tool result");
+        Ok(CallToolResult::structured(result).into())
     }
 }
 
@@ -311,6 +316,25 @@ impl Handler {
         }
     }
 }
+
+/// One tool per GM word, in the word table's order and named after the word. Its input schema
+/// is the word's `args`.
+fn list_gm_tools() -> Vec<Tool> {
+    WORDS
+        .iter()
+        .filter(|word| word.seat == Seat::Gm)
+        .filter_map(|word| {
+            let (about, schema) = gm::describe_gm_word(word.name)?;
+            Some(Tool::new(
+                word.name,
+                format!("{about} {SEAT_NOTES}"),
+                schema,
+            ))
+        })
+        .collect()
+}
+
+const SEAT_NOTES: &str = "The result lists every message the word sent this seat, its reply last. Player moves stay queued until commit. say does not tick. Other messages arrive as spook/event notifications.";
 
 async fn send_event(peer: &Peer<RoleServer>, frame: &[u8]) {
     let Ok(body) = serde_json::from_slice(frame) else {

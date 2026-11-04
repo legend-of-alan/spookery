@@ -167,7 +167,7 @@ pub struct Host {
     pub ws_gm: Option<Seat>,
     /// A player connection a step opened and did not claim with.
     pub unclaimed: Option<Seat>,
-    /// The GM client that called `close` and has not been dropped.
+    /// The GM client that called `release` and has not been dropped.
     pub closed_gm: Option<GmClient>,
     /// Set when `read_presence` opened a GM only to read seats.
     pub gm_probe: bool,
@@ -643,14 +643,14 @@ pub fn player_client<'w>(world: &'w World, actor_id: &str) -> &'w PlayerClient {
         .unwrap_or_else(|| panic!("no seat for {actor_id}"))
 }
 
-pub fn gm_call(world: &mut World, id: u64, name: &str, arguments: &str) -> String {
+pub fn gm_tool_call(world: &mut World, id: u64, name: &str, arguments: &str) -> String {
     let live = live_mut(world);
     let gm = live.gm.as_mut().unwrap_or_else(|| panic!("no seated GM"));
     send_tool_call(gm, &live.gm_text, id, name, arguments)
 }
 
-/// A call from the GM that called `close` and kept its session.
-pub fn closed_gm_call(world: &mut World, name: &str, arguments: &str) -> String {
+/// A tool call from the GM that called `release` and kept its session.
+pub fn closed_gm_tool_call(world: &mut World, name: &str, arguments: &str) -> String {
     let live = live_mut(world);
     let gm = live
         .closed_gm
@@ -664,17 +664,17 @@ fn send_tool_call(
     gm: &mut GmClient,
     gm_text: &Arc<Mutex<String>>,
     id: u64,
-    name: &str,
+    word: &str,
     arguments: &str,
 ) -> String {
     let value: Value =
         serde_json::from_str(arguments).unwrap_or_else(|err| panic!("arguments: {err}"));
-    let reply =
-        support::block_on(gm.call(name, &value)).unwrap_or_else(|err| panic!("gm call: {err}"));
+    let messages =
+        support::block_on(gm.call(word, &value)).unwrap_or_else(|err| panic!("gm call: {err}"));
     for event in gm.drain_events() {
         push_line(gm_text, &event_line(&event));
     }
-    let body = reply.unwrap_or_else(|refusal| serde_json::json!(refusal));
+    let body = json!(protocol::ToolResult { messages });
     let raw = serde_json::json!({
         "jsonrpc": "2.0",
         "id": id,
@@ -858,9 +858,9 @@ pub fn release_gm_keep_session(world: &mut World) -> String {
 }
 
 fn close_gm(world: &mut World, keep_session: bool) -> String {
-    let text = gm_call(world, 91, "close", "{}");
+    let text = gm_tool_call(world, 91, "release", "{}");
     assert!(
-        text.contains("\"released\":true"),
+        text.contains("{\"kind\":\"released\"}"),
         "the server did not confirm the seat was free\n{text}"
     );
     let live = live_mut(world);
@@ -905,15 +905,23 @@ fn call_table_status(world: &mut World) -> Value {
         live.gm = Some(gm);
         live.gm_probe = true;
     }
-    call_gm_tool(world, "table_status", "{}")
+    call_gm_tool(world, "status", "{}")
 }
 
-/// One GM tool call; the reply's `structuredContent`.
-pub fn call_gm_tool(world: &mut World, tool: &str, arguments: &str) -> Value {
-    let text = gm_call(world, 1, tool, arguments);
+/// One GM tool call; the body of its reply.
+pub fn call_gm_tool(world: &mut World, word: &str, arguments: &str) -> Value {
+    read_reply(&gm_tool_call(world, 1, word, arguments))
+}
+
+/// The body of the reply in a tool call's result line: the last message.
+pub fn read_reply(line: &str) -> Value {
     let value: Value =
-        serde_json::from_str(&text).unwrap_or_else(|err| panic!("{tool} json: {err}"));
-    value["result"]["structuredContent"].clone()
+        serde_json::from_str(line).unwrap_or_else(|err| panic!("result json: {err}\n{line}"));
+    let messages = value["result"]["structuredContent"]["messages"].as_array();
+    messages
+        .and_then(|messages| messages.last())
+        .map(|reply| reply["body"].clone())
+        .unwrap_or_else(|| panic!("no reply\n{line}"))
 }
 
 pub fn wait_players(world: &mut World, expected: u32) {

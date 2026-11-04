@@ -184,15 +184,14 @@ fn queue_move(world: &mut World, actor: &str, move_name: &str, place: Option<&st
         None => String::new(),
     };
     let args = format!(r#"{{"actor_id":"{actor}","move":"{move_name}"{target}}}"#);
-    let text = table::gm_call(world, 4, "queue_intent", &args);
-    assert!(
-        text.contains("\"id\""),
+    let text = table::gm_tool_call(world, 4, "queue", &args);
+    assert_eq!(
+        table::read_reply(&text)["kind"],
+        "queued",
         "queue {move_name} for {actor}\n{text}"
     );
 }
 
 fn commit_body(world: &World) -> Value {
-    let value: Value = serde_json::from_str(&world.stdout)
-        .unwrap_or_else(|err| panic!("commit reply: {err}\n{}", world.stdout));
-    value["result"]["structuredContent"].clone()
+    table::read_reply(&world.stdout)
 }

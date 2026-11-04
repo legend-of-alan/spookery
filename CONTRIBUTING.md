@@ -62,7 +62,7 @@ Default to the [Rust API Guidelines](https://rust-lang.github.io/api-guidelines/
 12. Prefer a typed unit such as `Duration`, which carries its own unit. A bare number carries the unit as a suffix, such as `_secs` or `_bytes`.
 13. Name a module after the protocol or job it handles, never a metaphor. Say `mcp`, not `door`.
 14. End a stream with `None` and report a failure with `Err`. Don't add `Eof` or `Unreadable` variants for them.
-15. A name that mirrors a tool or wire name uses that exact name, such as `Step::TableStatus` for `table_status`.
+15. A name that mirrors a tool or wire name uses that exact name, such as `ServerBody::Queued` for `queued`.
 16. Use one word per wire concept across docs, code and flags. The player side is the game port everywhere.
 
 Items in the guidelines that only matter for a published library, such as stability and future-proofing, don't apply yet.
@@ -169,4 +169,4 @@ Claude Desktop's config file only takes stdio. `mcp-remote` reaches the MCP endp
 }
 ```
 
-The tools are `table_status`, `perceive`, `queue_intent`, `say`, `commit_round`, and `close`. A client may ignore `spook/event` notifications. `table_status` with `since` returns the speech it missed. `close` answers after the GM seat is free.
+The tools are the GM words `status`, `perceive`, `queue`, `say`, `commit`, and `release`. A tool result lists every message the word sent the GM, its reply last. A client may ignore `spook/event` notifications. `release` answers after the GM seat is free.

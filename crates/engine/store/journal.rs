@@ -8,7 +8,7 @@
 
 use std::collections::BTreeMap;
 use std::fs;
-use std::io::{Read, Write};
+use std::io::{ErrorKind, Read, Write};
 use std::path::{Path, PathBuf};
 
 use flate2::read::GzDecoder;
@@ -17,6 +17,7 @@ use flate2::Compression;
 use serde::de::DeserializeOwned;
 
 use crate::hash::blake2s_tagged;
+use crate::store::durability::refuse_io;
 use crate::store::records::{AddedMeter, CheckpointRecord, MigrateRecord, Record, RoundRecord};
 use crate::Reason;
 
@@ -36,6 +37,14 @@ pub(crate) fn head_path(pack: &Path) -> PathBuf {
 
 pub(crate) fn save_path(pack: &Path) -> PathBuf {
     pack.join("state/save.yaml")
+}
+
+/// Read a save or base snapshot. A missing one is `NOT_IN_SPEC`; any other failure is the disk's.
+pub(crate) fn read_save(path: &Path) -> Result<Vec<u8>, Reason> {
+    fs::read(path).map_err(|err| match err.kind() {
+        ErrorKind::NotFound => Reason::NotInSpec,
+        _ => refuse_io(err),
+    })
 }
 
 /// The latest checkpoint, written beside the bundles so startup can skip them.
@@ -218,11 +227,7 @@ fn read_live_bundle(pack: &Path) -> Result<Option<(String, String)>, Error> {
 
 fn base_hash(pack: &Path) -> Result<String, Error> {
     let base = base_path(pack);
-    let path = if base.is_file() {
-        base
-    } else {
-        save_path(pack)
-    };
+    let path = if base.exists() { base } else { save_path(pack) };
     let bytes = fs::read(&path)
         .map_err(|_| Error::new(&path, Reason::StoreIo, "the snapshot could not be read"))?;
     Ok(blake2s_tagged(&bytes))
