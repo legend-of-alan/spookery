@@ -130,7 +130,7 @@ impl Table {
                     let opened = self.open(conn, seat, frames_tx);
                     let took = opened.is_ok();
                     if reply.send(opened).is_err() && took {
-                        self.drop_link(conn);
+                        self.drop_connection(conn);
                     }
                 }
                 Request::Message {
@@ -142,7 +142,7 @@ impl Table {
                     let _ = reply.send(());
                 }
                 Request::Close { conn, ack } => {
-                    self.drop_link(conn);
+                    self.drop_connection(conn);
                     let _ = ack.send(());
                 }
                 Request::ToolCall {
@@ -653,13 +653,13 @@ impl Table {
             .connection(conn)
             .is_some_and(|connection| !connection.out.send(bytes))
         {
-            self.drop_link(conn);
+            self.drop_connection(conn);
         }
     }
 
     /// Drops a connection. Dropping it cancels its socket. A claim it drove is held
     /// for its token, and a GM seat it held is free.
-    fn drop_link(&mut self, conn: Conn) {
+    fn drop_connection(&mut self, conn: Conn) {
         if self.seats.gm == Some(conn) {
             self.release_gm();
         }

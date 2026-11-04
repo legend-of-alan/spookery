@@ -82,7 +82,7 @@ impl Seats {
     }
 }
 
-/// One open connection: which seat it opened and its outbound queue.
+/// The table's entry for one open `Conn`: which seat it opened and its outbound queue.
 pub(super) struct Connection {
     pub(super) conn: Conn,
     pub(super) seat: Seat,
