@@ -1,5 +1,4 @@
 use std::io::Write;
-use std::time::{Duration, Instant};
 
 use cucumber::{then, when};
 
@@ -87,20 +86,15 @@ fn play_does_not_show_the_line(world: &mut World, text: String) {
 
 #[then(expr = "play's error shows {string}")]
 fn play_error_shows(world: &mut World, text: String) {
-    let start = Instant::now();
-    loop {
-        let play = world.play.as_ref().unwrap_or_else(|| panic!("no play"));
+    let play = world.play.as_ref().unwrap_or_else(|| panic!("no play"));
+    world.stderr = table::poll_until(&text, || {
         let stderr = support::text_of(&play.stderr);
         if stderr.contains(&text) {
-            world.stderr = stderr;
-            return;
+            Ok(stderr)
+        } else {
+            Err(stderr)
         }
-        if start.elapsed() > Duration::from_secs(8) {
-            let stdout = capture_play_stdout(world);
-            panic!("missing {text}\nstdout:\n{stdout}\nstderr:\n{stderr}");
-        }
-        std::thread::sleep(Duration::from_millis(20));
-    }
+    });
 }
 
 #[then(expr = "play shows protocol frames")]
