@@ -262,15 +262,11 @@ impl Table {
                 }
             }
             // Text ready to print, read from the world as it is now.
-            "help" | "map" if read::<NoArgs>(&args).is_some() => {
-                let text = match word.as_str() {
-                    "help" => self.world.help(&presence, &actor_id),
-                    _ => self.world.map(&presence, &actor_id),
-                };
-                match text {
-                    Ok(text) => ServerBody::Lines { text },
-                    Err(code) => ServerBody::Refused(code.into()),
-                }
+            "help" if read::<NoArgs>(&args).is_some() => {
+                lines_or_refused(self.world.help(&presence, &actor_id))
+            }
+            "map" if read::<NoArgs>(&args).is_some() => {
+                lines_or_refused(self.world.map(&presence, &actor_id))
             }
             "release" | "look" | "help" | "map" => ServerBody::Refused(Reason::Schema.into()),
             _ => match read::<MoveArgs>(&args) {
@@ -680,6 +676,13 @@ fn stamp_message(seq: u64, reply_to: Option<String>, body: ServerBody) -> Server
 }
 
 /// A word's arguments, or `None` when they do not fit its type.
+fn lines_or_refused(text: Result<String, Reason>) -> ServerBody {
+    match text {
+        Ok(text) => ServerBody::Lines { text },
+        Err(code) => ServerBody::Refused(code.into()),
+    }
+}
+
 fn read<T: serde::de::DeserializeOwned>(args: &Map<String, Value>) -> Option<T> {
     parse_args(Some(args)).ok()
 }

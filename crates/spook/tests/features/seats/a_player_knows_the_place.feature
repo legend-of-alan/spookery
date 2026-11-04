@@ -30,6 +30,11 @@ Feature: A player knows where they are and what they can do
     And I type "help"
     Then help shows "pray" and not "claim"
 
+  Scenario: help shows the verb of an item lying in sight
+    Given lamp_oil has a sniff verb, and the CLI holds rowan
+    When I type "help"
+    Then help shows "sniff lamp_oil" and not "claim"
+
   Scenario: look reprints the place from the view
     Given the CLI is connected as a player holding rowan
     When I type "look"
