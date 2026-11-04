@@ -150,7 +150,13 @@ impl Table {
                     reply,
                 } => {
                     self.tool_call = Some((conn, Vec::new()));
-                    self.handle_message(conn, Ok(message));
+                    // An MCP session holds no seat until its event stream opens.
+                    if self.seats.link(conn).is_some() {
+                        self.handle_message(conn, Ok(message));
+                    } else {
+                        let refused = ServerBody::Refused(Reason::NotInSpec.into());
+                        self.reply(conn, message.id, refused);
+                    }
                     let messages = self.tool_call.take().map(|(_, messages)| messages);
                     let _ = reply.send(messages.unwrap_or_default());
                 }
@@ -168,10 +174,11 @@ impl Table {
         }
     }
 
-    /// Opens the connection and sends its hello. A GM connection while the seat is held is
-    /// refused, and the connection sends that refusal itself.
+    /// Opens the connection and sends its hello. A GM connection while the seat is held, or a
+    /// second one for an MCP session that already has its stream, is refused, and the
+    /// connection sends that refusal itself.
     fn open(&mut self, conn: Conn, seat: Seat, out: FrameSender) -> Result<(), Box<ServerMessage>> {
-        if seat == Seat::Gm && self.seats.gm.is_some() {
+        if seat == Seat::Gm && (self.seats.gm.is_some() || self.seats.link(conn).is_some()) {
             let seq = self.stamp();
             let refused = stamp_message(seq, None, ServerBody::Refused(Reason::TableFull.into()));
             return Err(Box::new(refused));

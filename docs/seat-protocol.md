@@ -433,11 +433,13 @@ Every other message the table sends this seat, the hello first, comes as a `spoo
 {"jsonrpc":"2.0","method":"spook/event","params":{"seq":28,"body":{"kind":"queued","intent":"f756bf6b7077bf5c623ac2d933339f8357220b557f99dbf3492e145ff42e16a8","actor":"pc_rowan","move":"grit"}}}
 ```
 
-An `initialize` takes the GM seat. POST it with `Accept` listing both `application/json` and `text/event-stream` and with `Content-Type: application/json`. Keep the `mcp-session-id` response header, and send the negotiated `protocolVersion` as `MCP-Protocol-Version` on every later request. Then hold one `GET /mcp` event stream open for the session: the seat is freed when it closes, when a DELETE names the session, or on `release`. An `initialize` while the seat is held is refused, with the code in `error.data`:
+An `initialize` opens a session and is never refused for a full table. POST it with `Accept` listing both `application/json` and `text/event-stream` and with `Content-Type: application/json`. Keep the `mcp-session-id` response header, and send the negotiated `protocolVersion` as `MCP-Protocol-Version` on every later request.
+
+The session's `GET /mcp` event stream takes the GM seat, and its first event is the hello. Call a word only after the hello: a session with no event stream holds no seat, so its tool calls are `NOT_IN_SPEC`. Hold that one stream open: the seat is freed when it closes, when a DELETE names the session, or on `release`. A GET while the seat is held, or a second GET for a session that already has its stream, is refused on that stream as its only event, and nothing else closes:
 
 <!-- example: mcp-table-full -->
 ```json
-{"jsonrpc":"2.0","id":1,"error":{"code":-32603,"message":"The table is full. [TABLE_FULL]","data":{"code":"TABLE_FULL"}}}
+{"jsonrpc":"2.0","method":"spook/event","params":{"seq":29,"body":{"kind":"refused","code":"TABLE_FULL"}}}
 ```
 
 ## Limits
@@ -457,7 +459,7 @@ A refusal is a `refused` body, and the connection stays up. `detail` is there on
 | `SEAT_TAKEN` | That PC is held. Claim another. |
 | `CHOOSE_PC` | Claim one of the PCs in `detail`. An empty list means none is free. |
 | `SCHEMA` | Fix the message: its shape, its word, or its arguments. |
-| `NOT_IN_SPEC` | The verb has no rule that applies, `commit` set `include_round` false with a move queued, or the seat was released. |
+| `NOT_IN_SPEC` | The verb has no rule that applies, `commit` set `include_round` false with a move queued, or the seat was released or, over MCP, never taken. |
 | `LINE_TOO_LONG` | Send a message under 8 KiB. |
 | `UNSCOPED_PERCEIVE` | Send `perceive` with `as` set to a bare actor id. |
 | `ACTOR_MISMATCH` | That actor is a player's, or the move is not this actor's. |

@@ -4,6 +4,7 @@
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::task::{ready, Context, Poll};
 
 use spookery_engine::Presence;
 use tokio::sync::{mpsc, watch};
@@ -181,6 +182,18 @@ impl FrameSender {
                 }
             })
             .is_ok()
+    }
+}
+
+impl FrameReceiver {
+    /// The next frame, or `None` once the queue is closed and empty. Its bytes are released
+    /// as it is handed on, for a writer that cannot see the send.
+    pub(super) fn poll_frame(&mut self, cx: &mut Context<'_>) -> Poll<Option<Vec<u8>>> {
+        let frame = ready!(self.rx.poll_recv(cx));
+        if let Some(bytes) = &frame {
+            release(&self.queued_bytes, bytes.len());
+        }
+        Poll::Ready(frame)
     }
 }
 
