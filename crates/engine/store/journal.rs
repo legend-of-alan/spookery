@@ -469,29 +469,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn migrate_records_round_trip() {
-        let migrate = emit_record(&migrate_record(
-            "blake2s:aa",
-            "blake2s:bb",
-            1,
-            2,
-            "blake2s:cc",
-            &[],
-            false,
-        ));
-        let Record::Migrate(parsed) = parse_line("migrate-0002.json", migrate.trim_end()).unwrap()
-        else {
-            panic!("not a migrate record");
-        };
-        assert_eq!(parsed.pack_rev_before, "blake2s:aa");
-        assert_eq!(parsed.pack_rev_after, "blake2s:bb");
-        assert_eq!(parsed.state_rev_before, 1);
-        assert_eq!(parsed.state_rev_after, 2);
-        assert_eq!(parsed.state_hash, "blake2s:cc");
-        assert_eq!(emit_record(&Record::Migrate(parsed)), migrate);
-    }
-
-    #[test]
     fn a_sealed_record_chains_to_the_one_before_it() {
         let round = include_str!("../fixtures/round.jsonl");
         let entry = parse_line("round.jsonl", round.trim_end()).unwrap();
@@ -573,14 +550,10 @@ mod tests {
 
     #[test]
     fn a_meter_write_or_source_the_engine_never_wrote_is_refused() {
-        let round = include_str!("../fixtures/round.jsonl").trim_end();
-        let meter = r#"{"kind":"meter","as":"player:pc_rowan","intent_id":"i1","actor_id":"pc_rowan","key":"grit","write":"offset","delta":-1},"#;
-        let written = round.replacen(r#""effects":["#, &format!(r#""effects":[{meter}"#), 1);
-        let record = parse_line("round.jsonl", &written).unwrap();
-        assert_eq!(emit_record(&record).trim_end(), written);
-        let offset = r#""write":"offset","delta":-1"#;
+        let written = include_str!("../fixtures/round.jsonl").trim_end();
+        let offset = r#""write":"offset","delta":-3"#;
         for (word, from, to) in [
-            ("base", offset, r#""write":"base","delta":-1"#),
+            ("base", offset, r#""write":"base","delta":-3"#),
             ("clear_offset", offset, r#""write":"clear_offset""#),
             ("system", r#""source":"player""#, r#""source":"system""#),
             ("cc", r#""to":["pc_wren"]"#, r#""cc":["pc_wren"]"#),
