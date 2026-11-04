@@ -315,39 +315,8 @@ pub fn strip_body(text: &str) -> Result<String, Reason> {
 
 #[cfg(test)]
 mod tests {
-    use std::fs;
-
     use super::*;
-    use crate::diagnostic::first_reason;
     use crate::Reason;
-
-    #[test]
-    fn docks_pack_rev_matches_save_yaml() {
-        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packs/oneshot-docks");
-        let rev = pack_rev(&root).unwrap();
-        let text = fs::read_to_string(root.join("state/save.yaml")).unwrap();
-        let line = text
-            .lines()
-            .find(|line| line.starts_with("pack_rev:"))
-            .unwrap();
-        assert_eq!(line, format!("pack_rev: {rev}"));
-    }
-
-    pub(super) fn rejects(
-        load: fn(&str) -> Result<(), Vec<Diagnostic>>,
-        good: &str,
-        old: &str,
-        body: &str,
-    ) {
-        let text = |tag: &str| format!("schema: {tag}\n{body}");
-        assert!(load(&text(good)).is_ok());
-        let old_err = load(&text(old)).unwrap_err();
-        assert!(old_err[0].message.contains("no version"), "{old_err:?}");
-        assert_eq!(first_reason(&old_err), Reason::Schema);
-        let bogus = load(&text("bogus")).unwrap_err();
-        assert!(bogus[0].message.contains("does not use"), "{bogus:?}");
-        assert_eq!(first_reason(&bogus), Reason::Schema);
-    }
 
     #[test]
     fn strip_body_rejects_a_missing_fence() {

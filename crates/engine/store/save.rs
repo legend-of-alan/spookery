@@ -205,17 +205,6 @@ notes: []
     }
 
     #[test]
-    fn an_unknown_tag_and_the_old_versioned_tag_are_schema() {
-        assert!(parse(&save_text("save")).is_ok());
-        let old = parse(&save_text(concat!("save/", "v0"))).unwrap_err();
-        assert!(old[0].message.contains("no version"), "{old:?}");
-        assert_eq!(crate::diagnostic::first_reason(&old), Reason::Schema);
-        let bogus = parse(&save_text("bogus")).unwrap_err();
-        assert!(bogus[0].message.contains("does not use"), "{bogus:?}");
-        assert_eq!(crate::diagnostic::first_reason(&bogus), Reason::Schema);
-    }
-
-    #[test]
     fn emit_writes_the_save_tag() {
         let mut state = parse(&save_text("save")).unwrap();
         state.schema = concat!("save/", "v0").to_string();

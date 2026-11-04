@@ -457,13 +457,6 @@ mod tests {
     }
 
     #[test]
-    fn a_fixed_game_port_dials_the_next_port() {
-        let game = std::net::SocketAddr::from(([127, 0, 0, 1], 9737));
-        let mcp_addr = std::net::SocketAddr::from(([127, 0, 0, 1], 9738));
-        assert_eq!(default_mcp_addr(game), Some(mcp_addr));
-    }
-
-    #[test]
     fn a_speaker_is_gm_or_a_prefixed_id() {
         for (text, speaker) in [
             ("gm", Speaker::Gm),

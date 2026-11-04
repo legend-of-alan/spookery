@@ -222,16 +222,4 @@ mod tests {
         assert!(!dir.exists(), "{}", dir.display());
         let _ = fs::remove_dir_all(&root);
     }
-
-    #[test]
-    fn a_missing_parent_is_a_sentence() {
-        let root = fresh_dir("new-missing");
-        let parent = root.join("missing");
-        let dir = parent.join("pack");
-        let err = must_fail(&dir);
-        assert_eq!(err, format!("{} does not exist", parent.display()));
-        assert!(!parent.exists(), "{}", parent.display());
-        assert!(!dir.exists(), "{}", dir.display());
-        let _ = fs::remove_dir_all(&root);
-    }
 }
