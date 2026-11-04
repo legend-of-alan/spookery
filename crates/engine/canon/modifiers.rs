@@ -139,7 +139,7 @@ mod tests {
     }
 
     #[test]
-    fn max_stacks_defaults_to_one_and_a_repeat_is_refused() {
+    fn a_repeated_id_is_refused() {
         let text = "schema: modifiers
 modifiers:
   - id: soaked
@@ -152,8 +152,6 @@ modifiers:
         let err = load_modifiers(text, &grit()).unwrap_err();
         assert_eq!(err.len(), 1, "{err:?}");
         assert!(err[0].message.contains("listed twice"), "{err:?}");
-        let one = load_modifiers(&text[..text.rfind("  - id").unwrap()], &grit()).unwrap();
-        assert_eq!((one["soaked"].max_stacks, one["soaked"].minutes), (1, 10));
     }
 
     #[test]

@@ -30,20 +30,33 @@ pub struct ModifierLive {
 }
 
 /// Apply `add` and set the end to `until`. Below `max_stacks` it is one more stack. At the
-/// cap it replaces the first weakest stack when its absolute value is larger.
+/// cap it replaces the first weakest stack when its absolute value is larger. Stacks past a
+/// `max_stacks` the pack lowered go first, weakest first.
 pub fn stack(def: &ModifierDef, live: &mut ModifierLive, add: i64, until: u64) {
     live.until = until;
+    while live.stacks.len() > def.max_stacks {
+        if let Some(index) = weakest(&live.stacks) {
+            live.stacks.remove(index);
+        }
+    }
     if live.stacks.len() < def.max_stacks {
         live.stacks.push(add);
         return;
     }
-    let weakest = live
-        .stacks
-        .iter_mut()
-        .min_by_key(|held| held.unsigned_abs());
-    if let Some(weakest) = weakest.filter(|held| add.unsigned_abs() > held.unsigned_abs()) {
-        *weakest = add;
+    let stronger = weakest(&live.stacks)
+        .filter(|&index| add.unsigned_abs() > live.stacks[index].unsigned_abs());
+    if let Some(index) = stronger {
+        live.stacks[index] = add;
     }
+}
+
+/// The index of the first stack with the smallest absolute value, in one pass.
+fn weakest(stacks: &[i64]) -> Option<usize> {
+    stacks
+        .iter()
+        .enumerate()
+        .min_by_key(|(_, held)| held.unsigned_abs())
+        .map(|(index, _)| index)
 }
 
 /// Whether `defs` still define modifier `id` on the meter `live` was applied to.
@@ -88,6 +101,13 @@ mod tests {
         assert_eq!((live.stacks.as_slice(), live.until), (&[-2, 1, -1][..], 12));
         stack(&burn(3), &mut live, 3, 14);
         assert_eq!((live.stacks.as_slice(), live.until), (&[-2, 3, -1][..], 14));
+    }
+
+    #[test]
+    fn a_lowered_cap_drops_the_weakest_extra_stacks_on_the_next_application() {
+        let mut live = held(&[-1, -3, -2, -1]);
+        stack(&burn(2), &mut live, -1, 12);
+        assert_eq!(live.stacks, vec![-3, -2]);
     }
 
     #[test]

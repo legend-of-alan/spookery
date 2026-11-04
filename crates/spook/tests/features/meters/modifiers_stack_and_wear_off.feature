@@ -9,6 +9,7 @@ Feature: Modifiers stack per application, refresh on reapply, and wear off at on
     When pc_rowan is hit by the torch and then the brand in one round
     Then pc_rowan has 2 stacks of burn and grit is 3 lower
     And the GM sees "modifier pc_rowan burn" as a changed key
+    And the GM sees "actor_meter pc_rowan grit" as a changed key
     And spook verify reproduces the journal
 
   Scenario: At the cap a stronger burn replaces the weakest stack
@@ -31,6 +32,8 @@ Feature: Modifiers stack per application, refresh on reapply, and wear off at on
     And pc_rowan has 3 stacks of burn
     When the burn's 10 minutes pass with no reapply
     Then pc_rowan has no burn and grit is back
+    And the GM sees "modifier pc_rowan burn" as a changed key
+    And the GM sees "actor_meter pc_rowan grit" as a changed key
     And spook verify reproduces the journal
 
   Scenario: A modifier with no max_stacks never goes past one stack
@@ -57,7 +60,7 @@ Feature: Modifiers stack per application, refresh on reapply, and wear off at on
     When the author runs spook check
     Then it refuses max_stacks 0 and the warmth meter
 
-  Scenario: The pack check refuses a verb that applies no modifier
+  Scenario: The pack check refuses a verb that applies an undefined modifier
     Given a verb applies "scorch", which is not a modifier
     When the author runs spook check
     Then it refuses the scorch verb, saying scorch is not a modifier

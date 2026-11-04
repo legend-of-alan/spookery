@@ -206,7 +206,7 @@ fn modifier_of_no_meter(world: &mut World, id: String) {
 }
 
 #[given(expr = "a verb applies {string}, which is not a modifier")]
-fn verb_applies_no_modifier(world: &mut World, id: String) {
+fn verb_applies_an_undefined_modifier(world: &mut World, id: String) {
     add_modifier_verb(pack(world), "scorch", "self", &[(&id, -1)]);
 }
 
@@ -228,7 +228,7 @@ fn minutes_pass(world: &mut World, id: String, minutes: u64) {
         play_round(world, &pack, Vec::new());
     }
     assert_eq!(stacks_of(&pack, &id).len(), 3, "it wore off a round early");
-    play_round(world, &pack, Vec::new());
+    world.summary = play_round(world, &pack, Vec::new()).changed_keys;
 }
 
 #[when(expr = "pc_rowan is soaked by -1 and then soaked again by -1")]

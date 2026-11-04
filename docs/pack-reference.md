@@ -634,7 +634,7 @@ A `modifier` effect names `who`, `id`, and `add`, such as `scorch` in `rules/ver
 
 Below `max_stacks`, an application adds a stack. Every application sets the end to the round's world minute plus `duration`. When the world reaches that minute, the modifier wears off and all its stacks drop in that round. A modifier that should come from a place, such as fog, is applied to the actor by a change rule on that place.
 
-The save keeps each actor's modifiers under `modifiers`, with the meter, the minute it ends, and the list of stacks. `spook migrate` drops a modifier the pack no longer defines, or one whose row now names another meter. The GM sees each change as `modifier <actor> <id>`, and the meter's own change with it. A player sees that key for their own actor only, and not when the row says `hidden: true`.
+The save keeps each actor's modifiers under `modifiers`, with the meter, the minute it ends, and the list of stacks. `spook migrate` drops a modifier the pack no longer defines, or one whose row now names another meter. When a row lowers `max_stacks`, an actor holding more keeps them until the next application, which drops the weakest extras first. The GM sees each change as `modifier <actor> <id>`, and the meter's own change with it. A player sees that key for their own actor only, and not when the row says `hidden: true`.
 
 ```yaml file=rules/modifiers.yaml
 schema: modifiers
