@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::canon::Canon;
 use crate::intent::{Intent, Source, Target, Viewer};
-use crate::model::State;
+use crate::model::{Presence, State};
 use crate::rules::cond;
 use crate::rules::context::Context;
 use crate::rules::cost;
@@ -175,24 +175,37 @@ fn can_name(context: &Context) -> bool {
     let Some(id) = intent.target.token() else {
         return true;
     };
-    if context
-        .state
-        .actors
-        .get(intent.actor.actor_id())
-        .is_some_and(|actor| actor.item_count(id) > 0)
-    {
-        return true;
-    }
-    let Ok(view) = perceive_as(
+    let names = nameable(
         context.canon,
         context.state,
         context.presence,
         &intent.actor,
-    ) else {
-        return false;
+    );
+    names.iter().any(|name| name == id)
+}
+
+/// Every id a seat may name: the items its actor holds, then the place, actors, items and
+/// exits `look` shows them.
+pub(crate) fn nameable(
+    canon: &Canon,
+    state: &State,
+    presence: &Presence,
+    viewer: &Viewer,
+) -> Vec<String> {
+    let mut names: Vec<String> = match state.actors.get(viewer.actor_id()) {
+        Some(actor) => actor
+            .inventory
+            .keys()
+            .filter(|id| actor.item_count(id) > 0)
+            .cloned()
+            .collect(),
+        None => Vec::new(),
     };
-    view.place == id
-        || view.visible_actors.iter().any(|other| other == id)
-        || view.items.iter().any(|item| item.id == id)
-        || view.exits.iter().any(|exit| exit.name == id)
+    if let Ok(view) = perceive_as(canon, state, presence, viewer) {
+        names.push(view.place);
+        names.extend(view.visible_actors);
+        names.extend(view.items.into_iter().map(|item| item.id));
+        names.extend(view.exits.into_iter().map(|exit| exit.name));
+    }
+    names
 }

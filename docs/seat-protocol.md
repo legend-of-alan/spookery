@@ -46,7 +46,7 @@ The table speaks first, with `version`, the `words` this seat may send, and, on 
 
 <!-- example: player-hello -->
 ```json
-{"body":{"kind":"hello","version":1,"words":["claim","release","say","look","drop","grit","take","travel","unwield","wait","wield"],"open":["pc_harbormouse","pc_rowan","pc_wren"]}}
+{"body":{"kind":"hello","version":1,"words":["claim","release","say","look","help","map","drop","grit","take","travel","unwield","wait","wield"],"open":["pc_harbormouse","pc_rowan","pc_wren"]}}
 ```
 
 <!-- example: gm-hello -->
@@ -66,6 +66,8 @@ Each word reads `args` as one type, and the schema's `$defs` in `client.json` ho
 | `release` | both | `NoArgs` | `released` |
 | `say` | both | `SayArgs`: `address`, `text`, and `place` or `actor` | the sender's own `say` |
 | `look` | player | `NoArgs` | `view` |
+| `help` | player | `NoArgs` | `lines` |
+| `map` | player | `NoArgs` | `lines` |
 | a pack verb | player | `MoveArgs`: `target`, when the verb takes one | `queued` |
 | `status` | GM | `NoArgs` | `status` |
 | `perceive` | GM | `PerceiveArgs`: `as`, `max_body_chars` | `view` |
@@ -146,7 +148,7 @@ A move the table can judge at once is refused before it is queued. Here Rowan se
 {"seq":21,"reply_to":"c5","body":{"kind":"refused","code":"NO_EXIT","detail":"The stair door is locked."}}
 ```
 
-`look` takes no round and answers with a fresh `view`.
+`look` takes no round and answers with a fresh `view`. `help` and `map` take none either, and answer with `lines`. `help` lists the player words but `claim`, then each pack verb this PC can use here and now, then the exits and the busy line. A cast member's verb shows with their id, as `ask briar`, and only while they are in sight. A verb whose `if` fails now is left out, but cost is not checked. `map` lists each place the PC's save says they visited, with the exits they may see from there.
 
 ### status
 

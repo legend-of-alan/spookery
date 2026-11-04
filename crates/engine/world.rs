@@ -326,6 +326,16 @@ impl<L> World<L> {
         crate::rules::perceive::perceive_budget(self, presence, as_arg, PERCEIVE_BODY_CHARS)
     }
 
+    /// The `help` text for `actor_id`: what they can do now, with the exits.
+    pub fn help(&self, presence: &Presence, actor_id: &str) -> Result<String, Reason> {
+        crate::rules::lines::help(&self.canon, &self.state, presence, actor_id)
+    }
+
+    /// The `map` text for `actor_id`: each place they visited, with its exits.
+    pub fn map(&self, presence: &Presence, actor_id: &str) -> Result<String, Reason> {
+        crate::rules::lines::map(&self.canon, &self.state, presence, actor_id)
+    }
+
     pub fn perceive_trimmed(
         &self,
         presence: &Presence,

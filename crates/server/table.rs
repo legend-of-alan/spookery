@@ -268,7 +268,14 @@ impl Table {
                     Err(code) => ServerBody::Refused(code.into()),
                 }
             }
-            "release" | "look" => ServerBody::Refused(Reason::Schema.into()),
+            // Text ready to print, read from the world as it is now.
+            "help" if read::<NoArgs>(&args).is_some() => {
+                lines_or_refused(self.world.help(&presence, &actor_id))
+            }
+            "map" if read::<NoArgs>(&args).is_some() => {
+                lines_or_refused(self.world.map(&presence, &actor_id))
+            }
+            "release" | "look" | "help" | "map" => ServerBody::Refused(Reason::Schema.into()),
             _ => match read::<MoveArgs>(&args) {
                 Some(args) => return self.play_move(conn, id, &actor_id, &word, args.target),
                 None => ServerBody::Refused(Reason::Schema.into()),
@@ -672,6 +679,14 @@ fn stamp_message(seq: u64, reply_to: Option<String>, body: ServerBody) -> Server
         seq: Some(seq),
         reply_to,
         body,
+    }
+}
+
+/// A help or map reply, or the refusal when the world can't answer.
+fn lines_or_refused(text: Result<String, Reason>) -> ServerBody {
+    match text {
+        Ok(text) => ServerBody::Lines { text },
+        Err(code) => ServerBody::Refused(code.into()),
     }
 }
 

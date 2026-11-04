@@ -137,3 +137,13 @@ fn parse_lines(text: &str) -> Vec<Value> {
         .filter_map(|line| serde_json::from_str(line).ok())
         .collect()
 }
+
+#[then(expr = "the player is told {string}")]
+fn the_player_is_told(world: &mut World, text: String) {
+    wait_player_frame(world, &format!("lines with {text}"), |frame| {
+        frame["kind"] == "lines"
+            && frame["text"]
+                .as_str()
+                .is_some_and(|lines| lines.contains(&text))
+    });
+}

@@ -1,5 +1,4 @@
 //! The human player: claims a PC, turns typed lines into words, and prints each message.
-//! `help` and `map` are play's own, written from the hello and the views it was shown.
 //! Quitting releases the PC. A dropped connection dials again and takes it back by token.
 
 use std::io::{self, Write};
@@ -75,17 +74,8 @@ pub async fn run(pc: Option<&str>, addr: SocketAddr, raw: bool) -> Result<(), Er
                 let Some(typed) = typed else {
                     return seat.release().await;
                 };
-                match typed.trim() {
-                    "release" => return seat.release().await,
-                    "help" => {
-                        print_text(&text::render_help(&words, &here));
-                        continue;
-                    }
-                    "map" => {
-                        print_text(&printer.text.render_map());
-                        continue;
-                    }
-                    _ => {}
+                if typed.trim() == "release" {
+                    return seat.release().await;
                 }
                 let Some((word, args)) = parse_typed(&typed, &here) else {
                     continue;
