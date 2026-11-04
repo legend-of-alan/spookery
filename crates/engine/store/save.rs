@@ -181,10 +181,11 @@ pub(crate) fn carry_clock(
         offset: clock.value - def.start,
     };
     let Ok(meters) = state.meters_mut(&holder) else {
-        let problem = format!(
-            "clock '{id}' is owned by '{}', which is not an actor",
-            clock.owners[0]
-        );
+        let owner = match &holder {
+            Holder::Actor(owner) => owner.as_str(),
+            _ => WORLD,
+        };
+        let problem = format!("clock '{id}' is owned by '{owner}', and the save has no such actor");
         let hint = "give the clock an owner the save has, then migrate again";
         return Err(schema_error("state/save.yaml", &problem, hint).at_path(path));
     };

@@ -247,7 +247,6 @@ pub(crate) fn peek_at_tip(path: &Path) -> Result<World<()>, Reason> {
     Ok(world)
 }
 
-/// Migrate the journal tip. A save that the journal has not passed is migrated as it stands.
 /// Why `spook migrate` refused: a code, or a clock of an older save that no meter can take,
 /// with what to do about it.
 #[derive(Debug)]
@@ -271,6 +270,7 @@ impl std::fmt::Display for MigrateError {
     }
 }
 
+/// Migrate the journal tip. A save that the journal has not passed is migrated as it stands.
 /// A save from before meters replaced clocks is migrated too: each clock moves onto its meter,
 /// and the save is first rewritten in the current shape, so the migrate replays from it.
 pub fn migrate_pack(path: &Path) -> Result<(), MigrateError> {

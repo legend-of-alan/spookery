@@ -52,11 +52,16 @@ pub(super) fn add_cast(
             meters.insert(key, def);
             continue;
         };
-        let after = match taken.carrier {
-            None => "is already in rules/meters.yaml",
-            Some(_) => "is already declared in another cast file",
+        let (after, hint) = match taken.carrier {
+            None => (
+                "is already in rules/meters.yaml",
+                "rename it, or drop it and use the one every actor carries",
+            ),
+            Some(_) => (
+                "is already declared in another cast file",
+                "keep one meter with this id, or move it to rules/meters.yaml",
+            ),
         };
-        let hint = "keep one meter with this id, or move it to rules/meters.yaml";
         let path = format!("meters.{key}");
         let twice = ("meter", after, hint);
         diags.push(whole.refuse_duplicate(&key, &path, Locator::Nowhere, twice));
