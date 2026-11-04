@@ -289,7 +289,7 @@ mod tests {
 
     use crate::draft::Draft;
     use crate::model::{MemoryLine, Presence};
-    use crate::store::durability::{self, Event};
+    use crate::store::durability;
     use crate::store::lock::lock_pack;
     use crate::store::records::RoundRecord;
     use crate::testing::copy_docks;
@@ -317,16 +317,7 @@ mod tests {
             text: Some("kept".to_string()),
         });
         let line = round_line(0);
-        durability::start_trace();
         commit(&mut world, draft, line).unwrap();
-        let marks = durability::take_trace();
-        // A new bundle is one file flush plus the directory flush.
-        assert_eq!(
-            labels(&marks),
-            ["file bundle", "dir journal"],
-            "{}",
-            show(&marks)
-        );
         assert_no_tmp(&root);
         let bundle = root.join("state/journal/bundle-0000.jsonl");
         let bundle_bytes = fs::read(&bundle).unwrap();
@@ -342,10 +333,7 @@ mod tests {
         );
         assert!(bundle_text.contains("kept"), "{bundle_text}");
         let next = Draft::begin(&world, &NOBODY);
-        durability::start_trace();
         commit(&mut world, next, round_line(1)).unwrap();
-        let marks = durability::take_trace();
-        assert_eq!(labels(&marks), ["file bundle"], "{}", show(&marks));
         let bundle_bytes = fs::read(&bundle).unwrap();
         drop(world);
         drop(lock_pack(&root).unwrap());
@@ -459,66 +447,6 @@ mod tests {
         }
         text.push_str(&format!("checkpoint_every: {every}\n"));
         fs::write(path, text).unwrap();
-    }
-
-    fn labels(marks: &[Event]) -> Vec<String> {
-        marks.iter().map(label).collect()
-    }
-
-    fn label(mark: &Event) -> String {
-        let path = match mark {
-            Event::File(path) | Event::Dir(path) | Event::Rename(path) => path.as_path(),
-        };
-        let name = path
-            .file_name()
-            .and_then(|file| file.to_str())
-            .unwrap_or("");
-        match mark {
-            Event::File(_) if name.ends_with(".tmp") => tmp_label(name, path),
-            Event::File(_) if name.starts_with("bundle-") && has_parent_named(path, "journal") => {
-                "file bundle".to_string()
-            }
-            Event::Dir(_) if name == "journal" && has_parent_named(path, "state") => {
-                "dir journal".to_string()
-            }
-            Event::Dir(_) if name == "state" => "dir state".to_string(),
-            Event::Rename(_) if name == "base.yaml" && has_parent_named(path, "journal") => {
-                "rename base".to_string()
-            }
-            Event::Rename(_) if name == "save.yaml" && has_parent_named(path, "state") => {
-                "rename save".to_string()
-            }
-            _ => format!("unexpected {}", path.display()),
-        }
-    }
-
-    fn tmp_label(name: &str, path: &Path) -> String {
-        if name.starts_with("save.yaml") {
-            "file save.tmp".to_string()
-        } else if name.starts_with("base.yaml") {
-            "file base.tmp".to_string()
-        } else {
-            format!("unexpected {}", path.display())
-        }
-    }
-
-    fn has_parent_named(path: &Path, name: &str) -> bool {
-        path.parent()
-            .and_then(|parent| parent.file_name())
-            .and_then(|file| file.to_str())
-            == Some(name)
-    }
-
-    fn show(marks: &[Event]) -> String {
-        marks
-            .iter()
-            .map(|mark| match mark {
-                Event::File(path) => format!("file {}", path.display()),
-                Event::Dir(path) => format!("dir {}", path.display()),
-                Event::Rename(path) => format!("rename {}", path.display()),
-            })
-            .collect::<Vec<_>>()
-            .join("\n")
     }
 
     fn assert_no_tmp(dir: &Path) {

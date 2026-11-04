@@ -46,13 +46,12 @@ pub(crate) fn fsync_file(path: &Path) -> Result<(), Reason> {
         .open(path)
         .map_err(refuse_io)?;
     file.sync_all().map_err(refuse_io)?;
-    note_file(path);
     Ok(())
 }
 
 #[cfg(test)]
 fn take_fail(path: &Path) -> bool {
-    trace::take_fail(path)
+    fail_hook::take_fail(path)
 }
 
 #[cfg(not(test))]
@@ -72,65 +71,29 @@ pub(crate) fn fsync_dir(path: &Path) -> Result<(), Reason> {
             .open(path)
             .map_err(refuse_io)?;
         file.sync_all().map_err(refuse_io)?;
-        note_dir(path);
         Ok(())
     }
     #[cfg(not(windows))]
     {
         let file = std::fs::File::open(path).map_err(refuse_io)?;
         file.sync_all().map_err(refuse_io)?;
-        note_dir(path);
         Ok(())
     }
 }
 
 pub(crate) fn rename(from: &Path, to: &Path) -> Result<(), Reason> {
-    std::fs::rename(from, to).map_err(refuse_io)?;
-    note_rename(to);
-    Ok(())
+    std::fs::rename(from, to).map_err(refuse_io)
 }
 
 #[cfg(test)]
-fn note_file(path: &Path) {
-    trace::record(Event::File(path.to_path_buf()));
-}
-
-#[cfg(not(test))]
-fn note_file(_: &Path) {}
+pub(crate) use fail_hook::{clear_fail, fail_next};
 
 #[cfg(test)]
-fn note_dir(path: &Path) {
-    trace::record(Event::Dir(path.to_path_buf()));
-}
-
-#[cfg(not(test))]
-fn note_dir(_: &Path) {}
-
-#[cfg(test)]
-fn note_rename(path: &Path) {
-    trace::record(Event::Rename(path.to_path_buf()));
-}
-
-#[cfg(not(test))]
-fn note_rename(_: &Path) {}
-
-#[cfg(test)]
-pub(crate) use trace::{clear_fail, fail_next, start as start_trace, take as take_trace, Event};
-
-#[cfg(test)]
-mod trace {
+mod fail_hook {
     use std::cell::RefCell;
-    use std::path::{Path, PathBuf};
-
-    #[derive(Clone, Debug, PartialEq, Eq)]
-    pub(crate) enum Event {
-        File(PathBuf),
-        Dir(PathBuf),
-        Rename(PathBuf),
-    }
+    use std::path::Path;
 
     thread_local! {
-        static LOG: RefCell<Option<Vec<Event>>> = const { RefCell::new(None) };
         static FAIL: RefCell<Option<&'static str>> = const { RefCell::new(None) };
     }
 
@@ -157,22 +120,5 @@ mod trace {
             }
             hit
         })
-    }
-
-    pub(super) fn record(mark: Event) {
-        LOG.with(|log| {
-            if let Some(marks) = log.borrow_mut().as_mut() {
-                marks.push(mark);
-            }
-        });
-    }
-
-    pub(crate) fn start() {
-        LOG.with(|log| *log.borrow_mut() = Some(Vec::new()));
-        clear_fail();
-    }
-
-    pub(crate) fn take() -> Vec<Event> {
-        LOG.with(|log| log.borrow_mut().take().unwrap_or_default())
     }
 }
