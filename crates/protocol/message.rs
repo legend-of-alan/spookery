@@ -3,7 +3,10 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
-use crate::{ClockView, CommitBody, NoteView, Outcome, Refusal, Speaker, TableStatus, View};
+use crate::{
+    ClockView, CommitBody, NoteView, Outcome, PlaceView, Refusal, Speaker, TableStatus, View,
+    WordView,
+};
 
 /// The wire version the hello announces.
 pub const VERSION: u32 = 1;
@@ -123,6 +126,14 @@ pub enum ServerBody {
     /// A round's narrate lines and the changes one player saw, already the text to print.
     Lines {
         text: String,
+    },
+    /// The reply to `help`: the words this player can use now.
+    Help {
+        words: Vec<WordView>,
+    },
+    /// The reply to `map`: each place this player visited.
+    Map {
+        places: Vec<PlaceView>,
     },
 }
 

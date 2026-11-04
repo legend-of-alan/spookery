@@ -4,6 +4,8 @@ use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use spookery_protocol::{PlaceView, WordView};
+
 use crate::canon::Budget;
 use crate::canon::{check_save, load_canon, pack_rev, Canon};
 use crate::diagnostic::{error, first_reason, locate_nth, schema_error, Code, Diagnostic};
@@ -326,13 +328,13 @@ impl<L> World<L> {
         crate::rules::perceive::perceive_budget(self, presence, as_arg, PERCEIVE_BODY_CHARS)
     }
 
-    /// The `help` text for `actor_id`: what they can do now, with the exits.
-    pub fn help(&self, presence: &Presence, actor_id: &str) -> Result<String, Reason> {
+    /// The `help` words for `actor_id`: what they can do now, and what they can name.
+    pub fn help(&self, presence: &Presence, actor_id: &str) -> Result<Vec<WordView>, Reason> {
         crate::rules::lines::help(&self.canon, &self.state, presence, actor_id)
     }
 
-    /// The `map` text for `actor_id`: each place they visited, with its exits.
-    pub fn map(&self, presence: &Presence, actor_id: &str) -> Result<String, Reason> {
+    /// The `map` for `actor_id`: each place they visited, with its exits.
+    pub fn map(&self, presence: &Presence, actor_id: &str) -> Result<Vec<PlaceView>, Reason> {
         crate::rules::lines::map(&self.canon, &self.state, presence, actor_id)
     }
 

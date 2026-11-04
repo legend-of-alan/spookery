@@ -65,7 +65,7 @@ You should see `verified <n> records, state_rev <r>`.
 
 ## At the table
 
-Type `help` any time. It lists the words you can type here and now and the exits from where you're standing. `map` lists the places you have visited, with their exits.
+Type `help` any time. It lists the words you can type here and now, and what each one can name, as `travel <exit>: docks_street, stairs`. `map` lists the places you have visited, with their exits.
 
 | Type | What it does |
 | --- | --- |

@@ -90,23 +90,27 @@ pub struct MeterView {
     pub max: i64,
 }
 
-/// `stairs (locked) — 2 min`.
-pub fn exit_phrase(exit: &ExitView) -> String {
-    let (name, minutes) = (&exit.name, exit.minutes);
-    if exit.locked {
-        format!("{name} (locked) — {minutes} min")
-    } else {
-        format!("{name} — {minutes} min")
-    }
+/// One word of a `help` reply. `target` is what the word takes: `none`, `actor`, `place`,
+/// `exit` or `item`. `names` lists what the player can name for it now. `owner` is the
+/// cast member or item whose verb this is, reached by naming them.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+pub struct WordView {
+    pub name: String,
+    pub target: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub names: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub owner: Option<String>,
 }
 
-/// `Exits:` and one exit per line, or `none`.
-pub fn exit_section(exits: &[ExitView]) -> String {
-    if exits.is_empty() {
-        return "Exits:\nnone".to_string();
-    }
-    let lines: Vec<String> = exits.iter().map(exit_phrase).collect();
-    format!("Exits:\n{}", lines.join("\n"))
+/// One place of a `map` reply: its display name and the exits the player may see there.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+pub struct PlaceView {
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub exits: Vec<ExitView>,
 }
 
 #[cfg(test)]

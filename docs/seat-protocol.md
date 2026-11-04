@@ -66,8 +66,8 @@ Each word reads `args` as one type, and the schema's `$defs` in `client.json` ho
 | `release` | both | `NoArgs` | `released` |
 | `say` | both | `SayArgs`: `address`, `text`, and `place` or `actor` | the sender's own `say` |
 | `look` | player | `NoArgs` | `view` |
-| `help` | player | `NoArgs` | `lines` |
-| `map` | player | `NoArgs` | `lines` |
+| `help` | player | `NoArgs` | `help` |
+| `map` | player | `NoArgs` | `map` |
 | a pack verb | player | `MoveArgs`: `target`, when the verb takes one | `queued` |
 | `status` | GM | `NoArgs` | `status` |
 | `perceive` | GM | `PerceiveArgs`: `as`, `max_body_chars` | `view` |
@@ -148,7 +148,32 @@ A move the table can judge at once is refused before it is queued. Here Rowan se
 {"seq":21,"reply_to":"c5","body":{"kind":"refused","code":"NO_EXIT","detail":"The stair door is locked."}}
 ```
 
-`look` takes no round and answers with a fresh `view`. `help` and `map` take none either, and answer with `lines`. `help` lists the player words but `claim`, then each pack verb this PC can use here and now, then the exits and the busy line. A cast member's verb shows with their id, as `ask briar`, and only while they are in sight. A verb whose `if` fails now is left out, but cost is not checked. `map` lists each place the PC's save says they visited, with the exits they may see from there.
+`look` takes no round and answers with a fresh `view`. `help` and `map` take none either, and answer with data the client prints. `help` lists the player words but `claim`, then each pack verb this PC can use here and now. Each word has a `target`: `none`, `actor`, `place`, `exit` or `item`. `names` lists what the PC can name for it now: the exits from here, the actors or items it may name, or the places it visited. A cast member's or item's verb carries that `owner` as its one name, so it reads as `ask briar`, and it shows only while they are in sight. A verb whose `if` fails now is left out, but cost is not checked. The exits and the busy line are in the `view`, not in `help`.
+
+<!-- example: player-help -->
+```json
+{"seq":30,"reply_to":"c3","body":{"kind":"help","words":[
+  {"name":"release","target":"none"},
+  {"name":"say","target":"none"},
+  {"name":"look","target":"none"},
+  {"name":"help","target":"none"},
+  {"name":"map","target":"none"},
+  {"name":"drop","target":"item","names":["lamp_oil"]},
+  {"name":"grit","target":"none"},
+  {"name":"take","target":"item","names":["lamp_oil"]},
+  {"name":"travel","target":"exit","names":["docks_street","stairs"]},
+  {"name":"unwield","target":"none"},
+  {"name":"wait","target":"none"},
+  {"name":"wield","target":"item","names":["lamp_oil"]}
+]}}
+```
+
+`map` lists each place the PC's save says they visited, by display name, with the exits they may see from there.
+
+<!-- example: player-map -->
+```json
+{"seq":31,"reply_to":"c4","body":{"kind":"map","places":[{"name":"Docks Shop","exits":[{"name":"docks_street","to":"docks_street","place_name":"Docks Street","minutes":0,"locked":false},{"name":"stairs","to":"mira_rooms","place_name":"Mira's Rooms","minutes":2,"locked":true}]}]}}
+```
 
 ### status
 
@@ -309,6 +334,8 @@ A client ignores a `kind` or a field it does not know. `server.json` gives every
 | `view` | a player, or the GM on `perceive` | what one actor can see |
 | `resume` | a player | the `notes` addressed to that PC and its own `clocks` |
 | `lines` | a player | text to print: one narrate line, or the changes that player saw |
+| `help` | the asking player | `words`, each with `name`, `target`, `names` and `owner` |
+| `map` | the asking player | `places`, each with `name` and `exits` |
 
 ### view and resume
 

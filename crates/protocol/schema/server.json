@@ -314,6 +314,46 @@
             "kind",
             "text"
           ]
+        },
+        {
+          "description": "The reply to `help`: the words this player can use now.",
+          "type": "object",
+          "properties": {
+            "words": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/WordView"
+              }
+            },
+            "kind": {
+              "type": "string",
+              "const": "help"
+            }
+          },
+          "required": [
+            "kind",
+            "words"
+          ]
+        },
+        {
+          "description": "The reply to `map`: each place this player visited.",
+          "type": "object",
+          "properties": {
+            "places": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/PlaceView"
+              }
+            },
+            "kind": {
+              "type": "string",
+              "const": "map"
+            }
+          },
+          "required": [
+            "kind",
+            "places"
+          ]
         }
       ]
     },
@@ -947,6 +987,52 @@
         "clocks",
         "items",
         "habits"
+      ]
+    },
+    "WordView": {
+      "description": "One word of a `help` reply. `target` is what the word takes: `none`, `actor`, `place`,\n`exit` or `item`. `names` lists what the player can name for it now. `owner` is the\ncast member or item whose verb this is, reached by naming them.",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "target": {
+          "type": "string"
+        },
+        "names": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "owner": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "name",
+        "target"
+      ]
+    },
+    "PlaceView": {
+      "description": "One place of a `map` reply: its display name and the exits the player may see there.",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "exits": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ExitView"
+          }
+        }
+      },
+      "required": [
+        "name"
       ]
     }
   }

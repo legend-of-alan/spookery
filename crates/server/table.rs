@@ -280,12 +280,18 @@ impl Table {
                     Err(code) => ServerBody::Refused(code.into()),
                 }
             }
-            // Text ready to print, read from the world as it is now.
+            // Data, read from the world as it is now. The client writes the text.
             "help" if read::<NoArgs>(&args).is_some() => {
-                lines_or_refused(self.world.help(&presence, &actor_id))
+                match self.world.help(&presence, &actor_id) {
+                    Ok(words) => ServerBody::Help { words },
+                    Err(code) => ServerBody::Refused(code.into()),
+                }
             }
             "map" if read::<NoArgs>(&args).is_some() => {
-                lines_or_refused(self.world.map(&presence, &actor_id))
+                match self.world.map(&presence, &actor_id) {
+                    Ok(places) => ServerBody::Map { places },
+                    Err(code) => ServerBody::Refused(code.into()),
+                }
             }
             "release" | "look" | "help" | "map" => ServerBody::Refused(Reason::Schema.into()),
             _ => match read::<MoveArgs>(&args) {
@@ -691,14 +697,6 @@ fn stamp_message(seq: u64, reply_to: Option<String>, body: ServerBody) -> Server
         seq: Some(seq),
         reply_to,
         body,
-    }
-}
-
-/// A help or map reply, or the refusal when the world can't answer.
-fn lines_or_refused(text: Result<String, Reason>) -> ServerBody {
-    match text {
-        Ok(text) => ServerBody::Lines { text },
-        Err(code) => ServerBody::Refused(code.into()),
     }
 }
 

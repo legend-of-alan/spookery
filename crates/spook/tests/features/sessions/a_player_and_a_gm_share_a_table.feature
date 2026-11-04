@@ -25,11 +25,17 @@ Feature: A player and a GM share a table
     When the player looks
     Then the player is shown "Docks Shop" with an exit to "docks_street"
     When the player sends "help"
-    Then the player is told "look"
+    Then the player is offered "look"
     When the player sends "map"
-    Then the player is told "Docks Shop"
+    Then the player's map lists "Docks Shop"
     And the GM sees nothing queued
     And no round record was written
+
+  Scenario: A client reading the stream sees help as words with targets, not one block of text
+    Given rowan is in the shop and a GM is seated
+    When the player sends "help"
+    Then the player is offered "travel" taking an exit, naming "docks_street, stairs"
+    And the help came with no lines
 
   Scenario: A locked exit is refused and nothing is queued
     Given rowan is in the shop and a GM is seated
