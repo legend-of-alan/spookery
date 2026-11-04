@@ -217,11 +217,11 @@ mod tests {
         assert!(bucket.try_take(start));
         let (cancel_tx, mut cancel_rx) = tokio::sync::watch::channel(());
         let (waited, ()) = tokio::join!(wait_for_token(&mut bucket, &mut cancel_rx), async {
-            tokio::task::yield_now().await;
             drop(cancel_tx);
         });
         assert!(!waited);
-        assert!(!wait_for_token(&mut bucket, &mut cancel_rx).await);
+        let mut ready = TokenBucket::new(5, 1);
+        assert!(!wait_for_token(&mut ready, &mut cancel_rx).await);
         assert_eq!(Instant::now(), start);
     }
 }
