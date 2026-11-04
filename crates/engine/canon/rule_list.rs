@@ -6,7 +6,7 @@ use std::fmt;
 use serde::de::{self, Deserializer, MapAccess, SeqAccess, Visitor};
 use serde::Deserialize;
 use serde_saphyr::Spanned;
-use spookery_protocol::{Seat, WORDS};
+use spookery_protocol::{is_built_in, Seat};
 
 use crate::canon::source::{
     load_tagged, spot_of, Diags, Fault, FileText, Locator, Problem, VERBS_SCHEMA,
@@ -585,10 +585,7 @@ fn when_of(yaml: &WhenYaml) -> Result<When, String> {
                 if verb.is_empty() {
                     return Err("verb is empty".to_string());
                 }
-                if WORDS
-                    .iter()
-                    .any(|word| word.seat == Seat::Player && word.name == verb)
-                {
+                if is_built_in(Seat::Player, verb) {
                     return Err(format!(
                         "verb '{verb}' is a built-in word; give the rule another verb name"
                     ));

@@ -143,17 +143,13 @@ fn break_pack(pack: &Path, fault: &str) {
         ),
         "a verb named look" => replace_in_file(
             &pack.join("rules/verbs.yaml"),
-            "      verb: wait
-",
-            "      verb: look
-",
+            "      verb: wait\n",
+            "      verb: look\n",
         ),
         "a verb named say" => replace_in_file(
             &pack.join("rules/verbs.yaml"),
-            "      verb: wait
-",
-            "      verb: say
-",
+            "      verb: wait\n",
+            "      verb: say\n",
         ),
         "flags under idle" => replace_in_file(
             &pack.join("cast/pc-rowan.md"),
