@@ -4,7 +4,7 @@ use spookery_protocol::{PlaceView, Seat, WordView, WORDS};
 
 use crate::canon::Canon;
 use crate::intent::{Target, Viewer};
-use crate::model::{PendingKind, Presence, State};
+use crate::model::{ActorLive, PendingKind, Presence, State};
 use crate::model::{MINUTES_PER_DAY, MINUTES_PER_HOUR};
 use crate::rules::cond;
 use crate::rules::gate::{nameable, verb_for};
@@ -21,9 +21,7 @@ pub(crate) fn help(
     presence: &Presence,
     actor_id: &str,
 ) -> Result<Vec<WordView>, Reason> {
-    if !state.actors.contains_key(actor_id) {
-        return Err(Reason::UnknownId);
-    }
+    let actor = state.actors.get(actor_id).ok_or(Reason::UnknownId)?;
     let viewer = Viewer::Player(actor_id.to_string());
     let mut words: Vec<WordView> = WORDS
         .iter()
@@ -64,7 +62,7 @@ pub(crate) fn help(
                 target: kind.as_str().to_string(),
                 names: match owner {
                     Some(owner) => vec![owner.clone()],
-                    None => names_for(canon, state, presence, actor_id, kind, &names),
+                    None => names_for(canon, state, presence, actor_id, actor, kind, &names),
                 },
                 owner: owner.cloned(),
             };
@@ -83,21 +81,20 @@ fn names_for(
     state: &State,
     presence: &Presence,
     actor_id: &str,
+    actor: &ActorLive,
     kind: TargetKind,
     nameable: &[String],
 ) -> Vec<String> {
-    let Some(actor) = state.actors.get(actor_id) else {
-        return Vec::new();
-    };
     let picked: Vec<String> = match kind {
         TargetKind::None => Vec::new(),
-        TargetKind::Exit => match canon.places.get(&actor.place) {
-            Some(place) => exits_at(canon, state, presence, actor_id, place)
-                .into_iter()
-                .map(|exit| exit.name)
-                .collect(),
-            None => Vec::new(),
-        },
+        TargetKind::Exit => canon
+            .places
+            .get(&actor.place)
+            .map(|place| exits_at(canon, state, presence, actor_id, place))
+            .unwrap_or_default()
+            .into_iter()
+            .map(|exit| exit.name)
+            .collect(),
         TargetKind::Actor => nameable
             .iter()
             .filter(|name| state.actors.contains_key(*name))

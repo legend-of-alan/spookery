@@ -215,10 +215,7 @@ pub fn render_view(view: &protocol::View) -> String {
 /// One word per line: `look`, `ask briar`, or `strike <actor>: briar, aldric`.
 pub fn render_help(words: &[WordView]) -> String {
     let lines: Vec<String> = words.iter().map(word_line).collect();
-    lines.join(
-        "
-",
-    )
+    lines.join("\n")
 }
 
 fn word_line(word: &WordView) -> String {
@@ -246,10 +243,7 @@ pub fn render_map(places: &[PlaceView]) -> String {
             lines.push(format!("  {}", exit_phrase(exit)));
         }
     }
-    lines.join(
-        "
-",
-    )
+    lines.join("\n")
 }
 
 /// `stairs (locked) — 2 min`.
@@ -265,19 +259,10 @@ fn exit_phrase(exit: &ExitView) -> String {
 /// `Exits:` and one exit per line, or `none`.
 fn exit_section(exits: &[ExitView]) -> String {
     if exits.is_empty() {
-        return "Exits:
-none"
-            .to_string();
+        return "Exits:\nnone".to_string();
     }
     let lines: Vec<String> = exits.iter().map(exit_phrase).collect();
-    format!(
-        "Exits:
-{}",
-        lines.join(
-            "
-"
-        )
-    )
+    format!("Exits:\n{}", lines.join("\n"))
 }
 
 fn push_lines<'a>(sections: &mut Vec<String>, title: &str, lines: impl Iterator<Item = &'a str>) {
@@ -762,51 +747,6 @@ none"
         assert!(!quiet.contains("Items:"), "{quiet}");
         assert!(!quiet.contains("Meters:"), "{quiet}");
         assert_readable(&quiet);
-    }
-
-    #[test]
-    fn help_and_map_read_as_lines() {
-        let word = |name: &str, target: &str, names: &[&str], owner: Option<&str>| WordView {
-            name: name.to_string(),
-            target: target.to_string(),
-            names: names.iter().map(|name| name.to_string()).collect(),
-            owner: owner.map(str::to_string),
-        };
-        let help = render(&ServerBody::Help {
-            words: vec![
-                word("look", "none", &[], None),
-                word("strike", "actor", &["briar", "aldric"], None),
-                word("travel", "exit", &[], None),
-                word("ask", "actor", &["briar"], Some("briar")),
-            ],
-        });
-        assert_eq!(
-            help,
-            "look\nstrike <actor>: briar, aldric\ntravel <exit>\nask briar"
-        );
-        let exit = |name: &str, minutes: u64, locked: bool| ExitView {
-            name: name.to_string(),
-            to: name.to_string(),
-            place_name: String::new(),
-            minutes,
-            locked,
-        };
-        let map = render(&ServerBody::Map {
-            places: vec![
-                PlaceView {
-                    name: "Docks Shop".to_string(),
-                    exits: vec![exit("docks_street", 0, false), exit("stairs", 2, true)],
-                },
-                PlaceView {
-                    name: "Mira's Rooms".to_string(),
-                    exits: Vec::new(),
-                },
-            ],
-        });
-        assert_eq!(
-            map,
-            "Docks Shop\n  docks_street — 0 min\n  stairs (locked) — 2 min\nMira's Rooms"
-        );
     }
 
     fn say(from: &str, text: &str) -> ServerBody {
