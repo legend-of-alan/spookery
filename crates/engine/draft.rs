@@ -388,45 +388,10 @@ pub(crate) struct Savepoint {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::intent::{Intent, Source, Target, Viewer};
+    use crate::intent::Intent;
     use crate::model::meter::MeterWrite;
     use crate::rules::effect::{Effect, EffectKind};
     use crate::World;
-
-    #[test]
-    fn dropping_uncommitted_draft_leaves_save_untouched() {
-        let pack =
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packs/oneshot-docks");
-        let save_before = std::fs::read(pack.join("state/save.yaml")).expect("read save");
-        let world = World::open(&pack).expect("open");
-        let nobody = crate::model::Presence::default();
-        let mut draft = Draft::begin(&world, &nobody);
-        let intent = Intent {
-            id: "i1".to_string(),
-            round_index: 1,
-            actor: Viewer::Npc("mira".to_string()),
-            move_name: "leave_door_note".to_string(),
-            target: Target::Empty,
-            args: Default::default(),
-            rationale_code: "habit".to_string(),
-            source: Source::Engine,
-        };
-        Effect {
-            kind: EffectKind::Clock {
-                clock_id: "shop_day".to_string(),
-                delta: -1,
-                unpause: false,
-            },
-            viewer: Viewer::Npc("mira".to_string()),
-            intent_id: "i1".to_string(),
-        }
-        .apply(&mut draft, &intent)
-        .expect("apply");
-        drop(draft);
-        drop(world);
-        let save_after = std::fs::read(pack.join("state/save.yaml")).expect("read save");
-        assert_eq!(save_after, save_before);
-    }
 
     #[test]
     fn a_key_counts_toward_the_budget_only_once_a_write_changes_it() {

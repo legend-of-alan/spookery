@@ -1,17 +1,15 @@
 use spookery_engine::testing::state_of;
 use std::io::{Read, Write};
 use std::net::TcpStream;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use cucumber::gherkin::Step;
 use cucumber::{given, then, when};
-use rmcp::model::{
-    CallToolRequestParams, CallToolResult, ClientCapabilities, Implementation, ProtocolVersion,
-};
-use rmcp::transport::StreamableHttpClientTransport;
-use rmcp::ServiceExt;
+use rmcp::model::ProtocolVersion;
 use serde_json::{json, Map, Value};
+use spookery::protocol::{ServerBody, ServerMessage};
 
+use crate::mcp_client::{GmClient, RawSession};
 use crate::support;
 use crate::World;
 
@@ -20,7 +18,10 @@ use super::table;
 #[when(expr = "a coding agent calls the GM tools over loopback HTTP")]
 fn agent_calls_over_http(world: &mut World) {
     let (_tcp, http) = listen_on_free_ports(world);
-    support::block_on(exercise_http(http));
+    let mut gm = support::block_on(GmClient::connect(mcp_addr(http)))
+        .unwrap_or_else(|err| panic!("HTTP: {err}"));
+    call_each_gm_tool(&mut gm);
+    support::block_on(gm.close());
 }
 
 #[when(expr = "the operator runs with an open MCP HTTP address")]
@@ -67,27 +68,14 @@ fn a_human_gm_sits_on_the_game_port(world: &mut World) {
     let addr = table::game_addr(world);
     world.gm = Some(support::spawn(&["gm", "--addr", &addr]));
     world.mark = usize::from(table::live_mut(world).mcp_port);
-    let start = Instant::now();
-    loop {
-        let gm = world.gm.as_mut().unwrap_or_else(|| panic!("no gm"));
-        let stdout = support::text_of(&gm.stdout);
-        if stdout.contains("Commands:") {
-            break;
-        }
-        if let Some(status) = gm.child.try_wait().unwrap_or_else(|err| panic!("{err}")) {
-            panic!("gm exited {status:?}\n{}", support::text_of(&gm.stderr));
-        }
-        if start.elapsed() > Duration::from_secs(5) {
-            panic!("gm did not sit\n{stdout}");
-        }
-        std::thread::sleep(Duration::from_millis(20));
-    }
+    let gm = world.gm.as_mut().unwrap_or_else(|| panic!("no gm"));
+    super::common::wait_proc_until(gm, |stdout| stdout.contains("Commands:"), "the gm to sit");
 }
 
 #[when(expr = "a coding agent tries to sit at that MCP endpoint")]
 fn a_coding_agent_tries_to_sit_at_that_mcp_endpoint(world: &mut World) {
-    let http = u16::try_from(world.mark).unwrap_or_else(|_| panic!("no MCP port"));
-    world.scratch = post_initialize(http, "127.0.0.1", None);
+    let mut session = RawSession::open(mcp_port(world));
+    world.scratch = session.open_event_stream();
 }
 
 #[then(expr = "the agent is told the table is full")]
@@ -115,18 +103,8 @@ fn the_human_gm_leaves(world: &mut World) {
 
 #[then(expr = "a coding agent can sit at that MCP endpoint")]
 fn a_coding_agent_can_sit_at_that_mcp_endpoint(world: &mut World) {
-    let http = u16::try_from(world.mark).unwrap_or_else(|_| panic!("no MCP port"));
-    let start = Instant::now();
-    let mut last = String::new();
-    while start.elapsed() < Duration::from_secs(5) {
-        let raw = post_initialize(http, "127.0.0.1", None);
-        if raw.contains("\"protocolVersion\"") {
-            return;
-        }
-        last = raw;
-        std::thread::sleep(Duration::from_millis(50));
-    }
-    panic!("the agent did not sit\n{last}");
+    let http = mcp_port(world);
+    table::poll_until("the agent to sit", || try_sit_gm(http));
 }
 
 #[when(expr = "spook run listens with no MCP flag")]
@@ -206,57 +184,93 @@ fn a_docks_table_with_a_seated_player_and_an_open_mcp_endpoint(world: &mut World
 fn gm_holds_over_http(world: &mut World) {
     let (_tcp, http) = listen_on_free_ports(world);
     world.mark = usize::from(http);
-    let holder = support::block_on(async move {
-        let running = connect_mcp(http)
-            .await
-            .unwrap_or_else(|err| panic!("HTTP GM: {err}"));
-        let status = call(&running, "status", None).await;
-        assert_not_refused(&status, "status");
-        running
-    });
+    let mut holder = support::block_on(GmClient::connect(mcp_addr(http)))
+        .unwrap_or_else(|err| panic!("HTTP GM: {err}"));
+    let status = call(&mut holder, "status", json!({}));
+    assert_not_refused(&status, "status");
     world.http_gm = Some(holder);
 }
 
-#[when(expr = "another GM tries to sit over HTTP")]
-fn another_gm_tries_http(world: &mut World) {
-    // rmcp's client error drops the JSON-RPC message, so read the
-    // refusal from a raw initialize, then check a real client fails too.
-    let http = mcp_port(world);
-    let raw = post_initialize(http, "127.0.0.1", None);
-    let sat = support::block_on(async move {
-        match connect_mcp(http).await {
-            Ok(running) => {
-                let _ = running.cancel().await;
-                true
-            }
-            Err(_) => false,
-        }
-    });
-    assert!(!sat, "a second GM sat over HTTP\n{raw}");
-    world.scratch = raw;
+#[then(expr = "the GM over HTTP can still call status")]
+fn the_http_gm_can_still_call_status(world: &mut World) {
+    let holder = world
+        .http_gm
+        .as_mut()
+        .unwrap_or_else(|| panic!("no GM holds the seat"));
+    let status = call(holder, "status", json!({}));
+    assert_not_refused(&status, "status");
 }
 
-#[then(expr = "the newcomer is told the table is full")]
-fn newcomer_is_told_full(world: &mut World) {
-    assert!(
-        world.scratch.contains("TABLE_FULL"),
-        "refusal:\n{}",
+#[when(expr = "an agent opens an MCP session")]
+fn an_agent_opens_an_mcp_session(world: &mut World) {
+    if world.live.is_none() {
+        let (_tcp, http) = listen_on_free_ports(world);
+        world.mark = usize::from(http);
+    }
+    world.mcp_session = Some(RawSession::open(mcp_port(world)));
+}
+
+fn raw_session(world: &mut World) -> &mut RawSession {
+    world
+        .mcp_session
+        .as_mut()
+        .unwrap_or_else(|| panic!("no MCP session"))
+}
+
+#[then(expr = "the session opened")]
+fn the_session_opened(world: &mut World) {
+    let opened = &raw_session(world).opened;
+    let status = opened.lines().next().unwrap_or_default();
+    assert!(status.contains(" 200 "), "status: {status}\n{opened}");
+    assert!(opened.contains("\"protocolVersion\""), "{opened}");
+    assert!(!opened.contains("TABLE_FULL"), "{opened}");
+}
+
+#[when(expr = "that session opens its event stream")]
+fn that_session_opens_its_event_stream(world: &mut World) {
+    world.scratch = raw_session(world).open_event_stream();
+}
+
+#[then(expr = "the event stream opens with the hello")]
+fn the_event_stream_opens_with_the_hello(world: &mut World) {
+    let event = crate::mcp_client::read_event(&world.scratch);
+    assert_eq!(
+        event["params"]["body"]["kind"], "hello",
+        "{}",
         world.scratch
     );
 }
 
+#[then(expr = "the event stream is refused with {string}")]
+fn the_event_stream_is_refused_with(world: &mut World, code: String) {
+    let event = crate::mcp_client::read_event(&world.scratch);
+    let body = &event["params"]["body"];
+    assert_eq!(body["kind"], "refused", "{}", world.scratch);
+    assert_eq!(body["code"], code.as_str(), "{}", world.scratch);
+}
+
+#[then(expr = "that session's status call is refused with {string}")]
+fn that_sessions_status_call_is_refused_with(world: &mut World, code: String) {
+    let reply = raw_session(world).call("status");
+    let needle = format!("\"kind\":\"refused\",\"code\":\"{code}\"");
+    assert!(reply.contains("structuredContent"), "{reply}");
+    assert!(reply.contains(&needle), "{reply}");
+}
+
+#[then(expr = "that session's status call is answered")]
+fn that_sessions_status_call_is_answered(world: &mut World) {
+    let reply = raw_session(world).call("status");
+    assert!(reply.contains("structuredContent"), "{reply}");
+    assert!(!reply.contains("\"kind\":\"refused\""), "{reply}");
+}
+
 #[when(expr = "the GM over HTTP leaves")]
 fn the_http_gm_leaves(world: &mut World) {
-    let running = world
+    let holder = world
         .http_gm
         .take()
         .unwrap_or_else(|| panic!("no GM holds the seat"));
-    support::block_on(async move {
-        running
-            .cancel()
-            .await
-            .unwrap_or_else(|err| panic!("close GM session: {err}"));
-    });
+    support::block_on(holder.close());
 }
 
 #[then(expr = "a GM can sit over HTTP")]
@@ -268,23 +282,21 @@ fn a_gm_can_sit_over_http(world: &mut World) {
 }
 
 fn try_sit_gm(port: u16) -> Result<(), String> {
-    support::block_on(async move {
-        let running = connect_mcp(port).await.map_err(|err| format!("{err:?}"))?;
-        let status = call(&running, "status", None).await;
-        assert_not_refused(&status, "status");
-        let _ = running.cancel().await;
-        Ok(())
-    })
+    let mut gm = support::block_on(GmClient::connect(mcp_addr(port)))?;
+    let status = call(&mut gm, "status", json!({}));
+    assert_not_refused(&status, "status");
+    support::block_on(gm.close());
+    Ok(())
 }
 
 #[when(expr = "the GM lists the tools")]
 fn the_gm_lists_the_tools(world: &mut World) {
-    let running = world
+    let holder = world
         .http_gm
         .as_ref()
         .unwrap_or_else(|| panic!("no GM holds the seat"));
-    let tools = support::block_on(running.list_all_tools())
-        .unwrap_or_else(|err| panic!("tools/list: {err}"));
+    let tools =
+        support::block_on(holder.list_tools()).unwrap_or_else(|err| panic!("tools/list: {err}"));
     world.scratch = serde_json::to_string(&tools).unwrap_or_else(|err| panic!("tools: {err}"));
 }
 
@@ -343,12 +355,12 @@ fn sort_words<'a>(words: impl Iterator<Item = &'a str>) -> String {
 
 #[then(regex = r#"^a queue call with "actor_id", "move" and "to" is accepted$"#)]
 fn a_queue_call_with_to_is_accepted(world: &mut World) {
-    let running = world
+    let holder = world
         .http_gm
-        .as_ref()
+        .as_mut()
         .unwrap_or_else(|| panic!("no GM holds the seat"));
     let arguments = json!({"actor_id": "pc_rowan", "move": "wait", "to": ["pc_wren"]});
-    let queued = support::block_on(call(running, "queue", Some(arguments)));
+    let queued = call(holder, "queue", arguments);
     assert_not_refused(&queued, "queue");
 }
 
@@ -362,121 +374,49 @@ fn world_time_moved_forward(world: &mut World) {
 fn agent_says_over_http(world: &mut World) {
     let http = mcp_port(world);
     let mark = table::player_mark(world);
-    support::block_on(async move {
-        let running = connect_mcp(http)
-            .await
-            .unwrap_or_else(|err| panic!("HTTP: {err}"));
-        let said = call(
-            &running,
-            "say",
-            Some(json!({"address": "table", "text": "good evening"})),
-        )
-        .await;
-        assert_not_refused(&said, "say");
-        let _ = running.cancel().await;
-    });
+    let mut gm = support::block_on(GmClient::connect(mcp_addr(http)))
+        .unwrap_or_else(|err| panic!("HTTP: {err}"));
+    let said = call(
+        &mut gm,
+        "say",
+        json!({"address": "table", "text": "good evening"}),
+    );
+    assert_not_refused(&said, "say");
+    support::block_on(gm.close());
     world.player_added = table::wait_player_from(world, mark, "{\"kind\":\"say\"");
 }
 
-async fn exercise_http(port: u16) {
-    let running = connect_mcp(port)
-        .await
-        .unwrap_or_else(|err| panic!("HTTP: {err}"));
-    call_each_gm_tool(&running).await;
-    let _ = running.cancel().await;
-}
-
-async fn call_each_gm_tool(running: &impl ToolClient) {
+fn call_each_gm_tool(gm: &mut GmClient) {
     for (name, arguments) in [
-        ("status", None),
-        ("perceive", Some(json!({"as": "pc_rowan"}))),
-        (
-            "queue",
-            Some(json!({
-                "actor_id": "pc_rowan",
-                "move": "wait"
-            })),
-        ),
-        (
-            "say",
-            Some(json!({"address": "table", "text": "good evening"})),
-        ),
-        ("commit", Some(json!({"include_round": true}))),
+        ("status", json!({})),
+        ("perceive", json!({"as": "pc_rowan"})),
+        ("queue", json!({"actor_id": "pc_rowan", "move": "wait"})),
+        ("say", json!({"address": "table", "text": "good evening"})),
+        ("commit", json!({"include_round": true})),
     ] {
-        let result = call(running, name, arguments).await;
+        let result = call(gm, name, arguments);
         assert_not_refused(&result, name);
     }
 }
 
-trait ToolClient {
-    fn call_tool(
-        &self,
-        params: CallToolRequestParams,
-    ) -> impl std::future::Future<Output = Result<CallToolResult, rmcp::ServiceError>> + Send;
-}
-
-impl<S> ToolClient for rmcp::service::RunningService<rmcp::RoleClient, S>
-where
-    S: rmcp::Service<rmcp::RoleClient> + Send + Sync,
-{
-    fn call_tool(
-        &self,
-        params: CallToolRequestParams,
-    ) -> impl std::future::Future<Output = Result<CallToolResult, rmcp::ServiceError>> + Send {
-        rmcp::service::RunningService::call_tool(self, params)
-    }
-}
-
-async fn call(running: &impl ToolClient, name: &str, arguments: Option<Value>) -> CallToolResult {
-    let params = match arguments {
-        Some(value) => {
-            CallToolRequestParams::new(name.to_string()).with_arguments(into_object(value))
-        }
-        None => CallToolRequestParams::new(name.to_string()),
-    };
-    running
-        .call_tool(params)
-        .await
-        .unwrap_or_else(|err| panic!("{name}: {err}"))
-}
-
-fn into_object(value: Value) -> Map<String, Value> {
-    value
-        .as_object()
-        .unwrap_or_else(|| panic!("arguments are not an object: {value}"))
-        .clone()
+/// One tool call; every message it sent the seat, the reply last.
+fn call(gm: &mut GmClient, word: &str, arguments: Value) -> Vec<ServerMessage> {
+    support::block_on(gm.call(word, &arguments)).unwrap_or_else(|err| panic!("{word}: {err}"))
 }
 
 /// The reply, the last message in the result, is not a refusal.
-fn assert_not_refused(result: &CallToolResult, word: &str) {
-    let body = result.structured_content.clone().unwrap_or(Value::Null);
-    let reply = body["messages"]
-        .as_array()
-        .and_then(|messages| messages.last())
-        .unwrap_or_else(|| panic!("{word} has no reply: {body}"));
-    assert_ne!(
-        reply["body"]["kind"], "refused",
-        "{word} was refused: {body}"
+fn assert_not_refused(messages: &[ServerMessage], word: &str) {
+    let reply = messages
+        .last()
+        .unwrap_or_else(|| panic!("{word} has no reply"));
+    assert!(
+        !matches!(reply.body, ServerBody::Refused(_)),
+        "{word} was refused: {messages:?}"
     );
-    assert_ne!(result.is_error, Some(true), "{word}: {body}");
 }
 
-fn client_config() -> rmcp::model::ClientConfig {
-    rmcp::model::ClientConfig::new(
-        ClientCapabilities::default(),
-        Implementation::new("spook-promises", "0"),
-    )
-    .with_protocol_version(ProtocolVersion::LATEST)
-}
-
-async fn connect_mcp(
-    port: u16,
-) -> Result<
-    rmcp::service::RunningService<rmcp::RoleClient, rmcp::model::ClientConfig>,
-    Box<rmcp::service::ClientInitializeError>,
-> {
-    let transport = StreamableHttpClientTransport::from_uri(format!("http://127.0.0.1:{port}/mcp"));
-    client_config().serve(transport).await.map_err(Box::new)
+fn mcp_addr(port: u16) -> std::net::SocketAddr {
+    std::net::SocketAddr::from(([127, 0, 0, 1], port))
 }
 
 fn listen_on_free_ports(world: &mut World) -> (u16, u16) {

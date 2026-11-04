@@ -46,7 +46,7 @@ The table speaks first, with `version`, the `words` this seat may send, and, on 
 
 <!-- example: player-hello -->
 ```json
-{"body":{"kind":"hello","version":1,"words":["claim","release","say","look","drop","grit","take","travel","unwield","wait","wield"],"open":["pc_harbormouse","pc_rowan","pc_wren"]}}
+{"body":{"kind":"hello","version":1,"words":["claim","release","say","look","help","map","drop","grit","take","travel","unwield","wait","wield"],"open":["pc_harbormouse","pc_rowan","pc_wren"]}}
 ```
 
 <!-- example: gm-hello -->
@@ -66,6 +66,8 @@ Each word reads `args` as one type, and the schema's `$defs` in `client.json` ho
 | `release` | both | `NoArgs` | `released` |
 | `say` | both | `SayArgs`: `address`, `text`, and `place` or `actor` | the sender's own `say` |
 | `look` | player | `NoArgs` | `view` |
+| `help` | player | `NoArgs` | `lines` |
+| `map` | player | `NoArgs` | `lines` |
 | a pack verb | player | `MoveArgs`: `target`, when the verb takes one | `queued` |
 | `status` | GM | `NoArgs` | `status` |
 | `perceive` | GM | `PerceiveArgs`: `as`, `max_body_chars` | `view` |
@@ -146,7 +148,7 @@ A move the table can judge at once is refused before it is queued. Here Rowan se
 {"seq":21,"reply_to":"c5","body":{"kind":"refused","code":"NO_EXIT","detail":"The stair door is locked."}}
 ```
 
-`look` takes no round and answers with a fresh `view`.
+`look` takes no round and answers with a fresh `view`. `help` and `map` take none either, and answer with `lines`. `help` lists the player words but `claim`, then each pack verb this PC can use here and now, then the exits and the busy line. A cast member's verb shows with their id, as `ask briar`, and only while they are in sight. A verb whose `if` fails now is left out, but cost is not checked. `map` lists each place the PC's save says they visited, with the exits they may see from there.
 
 ### status
 
@@ -433,11 +435,13 @@ Every other message the table sends this seat, the hello first, comes as a `spoo
 {"jsonrpc":"2.0","method":"spook/event","params":{"seq":28,"body":{"kind":"queued","intent":"f756bf6b7077bf5c623ac2d933339f8357220b557f99dbf3492e145ff42e16a8","actor":"pc_rowan","move":"grit"}}}
 ```
 
-An `initialize` takes the GM seat. POST it with `Accept` listing both `application/json` and `text/event-stream` and with `Content-Type: application/json`. Keep the `mcp-session-id` response header, and send the negotiated `protocolVersion` as `MCP-Protocol-Version` on every later request. Then hold one `GET /mcp` event stream open for the session: the seat is freed when it closes, when a DELETE names the session, or on `release`. An `initialize` while the seat is held is refused, with the code in `error.data`:
+An `initialize` opens a session and is never refused for a full table. POST it with `Accept` listing both `application/json` and `text/event-stream` and with `Content-Type: application/json`. Keep the `mcp-session-id` response header, and send the negotiated `protocolVersion` as `MCP-Protocol-Version` on every later request.
+
+The session's `GET /mcp` event stream takes the GM seat, and its first event is the hello. Call a word only after the hello: a session with no event stream holds no seat, so its tool calls are `NOT_IN_SPEC`. Hold that one stream open: the seat is freed when it closes, when a DELETE names the session, or on `release`. A GET while the seat is held, or a second GET for a session that already has its stream, is refused on that stream as its only event, and nothing else closes:
 
 <!-- example: mcp-table-full -->
 ```json
-{"jsonrpc":"2.0","id":1,"error":{"code":-32603,"message":"The table is full. [TABLE_FULL]","data":{"code":"TABLE_FULL"}}}
+{"jsonrpc":"2.0","method":"spook/event","params":{"seq":29,"body":{"kind":"refused","code":"TABLE_FULL"}}}
 ```
 
 ## Limits
@@ -457,7 +461,7 @@ A refusal is a `refused` body, and the connection stays up. `detail` is there on
 | `SEAT_TAKEN` | That PC is held. Claim another. |
 | `CHOOSE_PC` | Claim one of the PCs in `detail`. An empty list means none is free. |
 | `SCHEMA` | Fix the message: its shape, its word, or its arguments. |
-| `NOT_IN_SPEC` | The verb has no rule that applies, `commit` set `include_round` false with a move queued, or the seat was released. |
+| `NOT_IN_SPEC` | The verb has no rule that applies, `commit` set `include_round` false with a move queued, or the seat was released or, over MCP, never taken. |
 | `LINE_TOO_LONG` | Send a message under 8 KiB. |
 | `UNSCOPED_PERCEIVE` | Send `perceive` with `as` set to a bare actor id. |
 | `ACTOR_MISMATCH` | That actor is a player's, or the move is not this actor's. |

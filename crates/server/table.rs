@@ -150,7 +150,13 @@ impl Table {
                     reply,
                 } => {
                     self.tool_call = Some((conn, Vec::new()));
-                    self.handle_message(conn, Ok(message));
+                    // An MCP session holds no seat until its event stream opens.
+                    if self.seats.link(conn).is_some() {
+                        self.handle_message(conn, Ok(message));
+                    } else {
+                        let refused = ServerBody::Refused(Reason::NotInSpec.into());
+                        self.reply(conn, message.id, refused);
+                    }
                     let messages = self.tool_call.take().map(|(_, messages)| messages);
                     let _ = reply.send(messages.unwrap_or_default());
                 }
@@ -168,10 +174,11 @@ impl Table {
         }
     }
 
-    /// Opens the connection and sends its hello. A GM connection while the seat is held is
-    /// refused, and the connection sends that refusal itself.
+    /// Opens the connection and sends its hello. A GM connection while the seat is held, or a
+    /// second one for an MCP session that already has its stream, is refused, and the
+    /// connection sends that refusal itself.
     fn open(&mut self, conn: Conn, seat: Seat, out: FrameSender) -> Result<(), Box<ServerMessage>> {
-        if seat == Seat::Gm && self.seats.gm.is_some() {
+        if seat == Seat::Gm && (self.seats.gm.is_some() || self.seats.link(conn).is_some()) {
             let seq = self.stamp();
             let refused = stamp_message(seq, None, ServerBody::Refused(Reason::TableFull.into()));
             return Err(Box::new(refused));
@@ -261,7 +268,14 @@ impl Table {
                     Err(code) => ServerBody::Refused(code.into()),
                 }
             }
-            "release" | "look" => ServerBody::Refused(Reason::Schema.into()),
+            // Text ready to print, read from the world as it is now.
+            "help" if read::<NoArgs>(&args).is_some() => {
+                lines_or_refused(self.world.help(&presence, &actor_id))
+            }
+            "map" if read::<NoArgs>(&args).is_some() => {
+                lines_or_refused(self.world.map(&presence, &actor_id))
+            }
+            "release" | "look" | "help" | "map" => ServerBody::Refused(Reason::Schema.into()),
             _ => match read::<MoveArgs>(&args) {
                 Some(args) => return self.play_move(conn, id, &actor_id, &word, args.target),
                 None => ServerBody::Refused(Reason::Schema.into()),
@@ -665,6 +679,14 @@ fn stamp_message(seq: u64, reply_to: Option<String>, body: ServerBody) -> Server
         seq: Some(seq),
         reply_to,
         body,
+    }
+}
+
+/// A help or map reply, or the refusal when the world can't answer.
+fn lines_or_refused(text: Result<String, Reason>) -> ServerBody {
+    match text {
+        Ok(text) => ServerBody::Lines { text },
+        Err(code) => ServerBody::Refused(code.into()),
     }
 }
 

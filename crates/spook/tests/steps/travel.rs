@@ -6,8 +6,8 @@ use cucumber::{given, then, when};
 use spookery_engine::testing::journal::list_round_keys;
 
 use super::common::{
-    add_trapdoor, capture_play_stdout, edit_save, give_key, join_play, set_busy, wait_play,
-    wait_play_until, write_play, EVENING,
+    add_trapdoor, capture_play_stdout, edit_save, give_key, join_play, set_busy, wait_play_until,
+    write_play, EVENING,
 };
 use super::table;
 use crate::support::{self, copy_docks};
@@ -438,18 +438,24 @@ fn verify_passes(world: &mut World) {
     assert!(stdout.contains("verified"), "{stdout}");
 }
 
-#[when(expr = "play travels via stairs holding brass_key")]
-fn play_travels_holding_the_key(world: &mut World) {
+#[given(expr = "rowan visited the shop and mira_rooms in an earlier sitting")]
+fn rowan_visited_both_rooms(world: &mut World) {
     let pack = copy_docks("map");
     add_trapdoor(&pack);
-    edit_save(&pack, give_key);
+    edit_save(&pack, |now| {
+        let rowan = now.actors.get_mut("pc_rowan").unwrap();
+        rowan.visited = vec!["docks_shop".to_string(), "mira_rooms".to_string()];
+    });
     world.pack = Some(pack);
-    join_play(world, false);
-    write_play(world, "travel stairs");
-    wait_play(world, "You are in Mira's Rooms.");
 }
 
-/// The map is play's own: each place a view showed, with the exits that view listed.
+#[when(expr = "play joins the table again")]
+fn play_joins_again(world: &mut World) {
+    join_play(world, false);
+}
+
+/// The map is the table's: each place rowan's save says they visited, with the exits
+/// rowan may see from there.
 #[then(expr = "play's map lists the shop and mira_rooms and not the trapdoor")]
 fn plays_map_lists_both_rooms(world: &mut World) {
     let mark = capture_play_stdout(world).len();

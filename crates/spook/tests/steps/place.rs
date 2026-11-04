@@ -75,3 +75,57 @@ fn i_see_the_lines(world: &mut World, first: String, second: String, third: Stri
         "the lines",
     );
 }
+
+/// Writes `rules` into the frontmatter of the docks page at `page`, in place of `from`, then
+/// seats play as rowan.
+fn add_rule_and_join(world: &mut World, label: &str, page: &str, from: &str, rules: &str) {
+    let pack = crate::support::copy_docks(label);
+    let path = pack.join(page);
+    let text = fs::read_to_string(&path).unwrap();
+    let next = text.replacen(from, rules, 1);
+    assert_ne!(text, next);
+    fs::write(&path, next).unwrap();
+    crate::support::stamp_pack_rev(&pack);
+    world.pack = Some(pack);
+    common::join_play(world, false);
+}
+
+#[given(expr = "Aldric has an ask verb and the CLI holds rowan in the shop")]
+fn aldric_has_an_ask_verb(world: &mut World) {
+    let from = "  eligible: false\n";
+    let rules = "  eligible: false\nrules:\n  - id: ask\n    when:\n      verb: ask\n      target: actor\n    do: []\n";
+    add_rule_and_join(world, "help-cast", "cast/aldric.md", from, rules);
+}
+
+#[given(expr = "the shop has a pray verb if rowan holds lamp_oil, and the CLI holds rowan")]
+fn the_shop_has_a_pray_verb(world: &mut World) {
+    let from = "    locked_text: The stair door is locked.\n";
+    let rules = "    locked_text: The stair door is locked.\nrules:\n  - id: pray\n    when:\n      verb: pray\n    if:\n      - has_item:\n          who: self\n          id: lamp_oil\n    do: []\n";
+    add_rule_and_join(world, "help-if", "world/places/docks_shop.md", from, rules);
+}
+
+#[given(expr = "lamp_oil has a sniff verb, and the CLI holds rowan")]
+fn lamp_oil_has_a_sniff_verb(world: &mut World) {
+    let rules =
+        "rules:\n  - id: sniff\n    when:\n      verb: sniff\n      target: item\n    do: []\n";
+    add_rule_and_join(
+        world,
+        "help-item",
+        "world/items/lamp_oil.md",
+        "rules: []\n",
+        rules,
+    );
+}
+
+/// Waits for the help reply after the mark, then checks a line it must not hold.
+#[then(expr = "help shows {string} and not {string}")]
+fn help_shows_and_not(world: &mut World, shown: String, hidden: String) {
+    let mark = world.mark;
+    common::wait_play_until(
+        world,
+        |stdout| stdout[mark..].lines().any(|line| line == shown),
+        "the help",
+    );
+    let help = &world.stdout[mark..];
+    assert!(help.lines().all(|line| line != hidden), "{help}");
+}
