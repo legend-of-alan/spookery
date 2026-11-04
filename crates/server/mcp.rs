@@ -27,7 +27,7 @@ use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
 
 use super::gm;
 use super::limits::GM_BODY_CAP;
-use super::seat::{frame_queue, Conn, FrameReceiver};
+use super::seat::{frame_queue, ConnId, FrameReceiver};
 use super::table::{report_close, Request};
 use crate::protocol::{ClientBody, ClientMessage, Seat, ToolResult, WORDS};
 
@@ -86,7 +86,7 @@ struct SeatSessions {
     inner: LocalSessionManager,
     tx: Sender<Request>,
     next_conn: Arc<AtomicU64>,
-    conns: Mutex<HashMap<SessionId, Conn>>,
+    conns: Mutex<HashMap<SessionId, ConnId>>,
     close_tx: UnboundedSender<SessionId>,
 }
 
@@ -154,7 +154,7 @@ impl SessionManager for SeatSessions {
         mut message: ClientJsonRpcMessage,
     ) -> Result<ServerJsonRpcMessage, Self::Error> {
         if let ClientJsonRpcMessage::Request(request) = &mut message {
-            let conn = Conn::new(&self.next_conn);
+            let conn = ConnId::new(&self.next_conn);
             self.conns
                 .lock()
                 .unwrap_or_else(|err| err.into_inner())
@@ -257,7 +257,7 @@ fn table_closed() -> McpError {
 
 struct Handler {
     tx: Sender<Request>,
-    conn: OnceLock<Conn>,
+    conn: OnceLock<ConnId>,
 }
 
 impl Handler {
@@ -291,7 +291,7 @@ impl ServerHandler for Handler {
     ) -> Result<InitializeResult, McpError> {
         let conn = context
             .extensions
-            .get::<Conn>()
+            .get::<ConnId>()
             .copied()
             .ok_or_else(|| McpError::internal_error("no seat", None))?;
         let _ = self.conn.set(conn);
@@ -360,7 +360,7 @@ mod tests {
     use serde_json::Value;
 
     use super::serve;
-    use crate::seat::Conn;
+    use crate::seat::ConnId;
     use crate::table::Request;
 
     /// A stand-in for the table thread with one GM seat. It refuses a second
@@ -374,7 +374,7 @@ mod tests {
         let_go: mpsc::Receiver<()>,
     ) -> std::thread::JoinHandle<()> {
         std::thread::spawn(move || {
-            let mut seat: Option<Conn> = None;
+            let mut seat: Option<ConnId> = None;
             let mut kept = Vec::new();
             for msg in rx {
                 match msg {

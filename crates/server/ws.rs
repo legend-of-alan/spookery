@@ -21,7 +21,7 @@ use super::limits::{
     wait_for_token, TokenBucket, BURST, CLIENT_MESSAGE_CAP, KEEPALIVE, MESSAGE_CAP, RATE_PER_SEC,
     REQUESTED_SEND_BUFFER,
 };
-use super::seat::{frame_queue, write_frames, Conn};
+use super::seat::{frame_queue, write_frames, ConnId};
 use super::table::{report_close, Rejection, Request};
 use crate::protocol::{ClientMessage, Seat};
 
@@ -99,7 +99,7 @@ fn is_loopback(headers: &HeaderMap) -> bool {
 }
 
 async fn run(socket: WebSocket, acceptor: Acceptor, seat: Seat) {
-    let conn = Conn::new(&acceptor.next_conn);
+    let conn = ConnId::new(&acceptor.next_conn);
     let (frames_tx, frames_rx) = frame_queue();
     let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
     let open = Request::Open {
