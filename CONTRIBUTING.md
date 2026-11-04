@@ -4,7 +4,7 @@ Contributions are issues only for now. Open an issue, and pick the form that fit
 
 A pull request from outside this repository is closed with thanks.
 
-Title letters, sizes, and labels are below, under Issues and PRs. Build and play steps are in [README.md](README.md).
+Labels and PR titles are below, under Issues and PRs. Build and play steps are in [README.md](README.md).
 
 A contributor license agreement (CLA) and a developer certificate of origin (DCO) are deferred.
 
@@ -18,17 +18,19 @@ cargo test --workspace --test features_host --test features_world
 
 ## Issues and PRs
 
-Issue and PR titles start with a letter for the area and end with a size.
+Issue titles are plain sentences. Every issue gets an area label and a size label.
 
-- `R:` rules and rounds: round stages and triggers
-- `W:` world model: places, exits, travel, items, pack rule schema
-- `E:` engine plumbing: journal, save, replay, verify
-- `H:` host and seats: server, seat protocol, CLI and agent clients
-- `N:` naming
-- `D:` docs
-- `T:` tests, flaky-test fixes and CI
+- `area: rules` (`R:`): round stages and triggers
+- `area: world` (`W:`): places, exits, travel, items, pack rule schema
+- `area: engine` (`E:`): journal, save, replay, verify
+- `area: host` (`H:`): server, seat protocol, CLI and agent clients
+- `area: naming` (`N:`)
+- `area: docs` (`D:`)
+- `area: tests` (`T:`): tests, flaky-test fixes and CI
 
-Sizes: `[S]` about one sitting, `[M]` a focused PR, `[L]` likely split into sub-issues.
+Sizes: `size: S` about one sitting, `size: M` a focused PR, `size: L` likely split into sub-issues.
+
+A PR squashes into one commit titled after the PR, so a PR title starts with its issue's area letter and ends with its size, like `N: Rename Hangup to Close [S]`.
 
 Every issue gets a priority label from `P0` (most urgent) to `P4` (a parked idea). It also gets a type label, which is `enhancement`, `bug` or `documentation`. Phases are milestones.
 
