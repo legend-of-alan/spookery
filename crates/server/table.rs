@@ -675,7 +675,7 @@ fn stamp_message(seq: u64, reply_to: Option<String>, body: ServerBody) -> Server
     }
 }
 
-/// A word's arguments, or `None` when they do not fit its type.
+/// A help or map reply, or the refusal when the world can't answer.
 fn lines_or_refused(text: Result<String, Reason>) -> ServerBody {
     match text {
         Ok(text) => ServerBody::Lines { text },
@@ -683,6 +683,7 @@ fn lines_or_refused(text: Result<String, Reason>) -> ServerBody {
     }
 }
 
+/// A word's arguments, or `None` when they do not fit its type.
 fn read<T: serde::de::DeserializeOwned>(args: &Map<String, Value>) -> Option<T> {
     parse_args(Some(args)).ok()
 }
