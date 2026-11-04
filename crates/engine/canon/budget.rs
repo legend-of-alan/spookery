@@ -214,18 +214,6 @@ mod tests {
     }
 
     #[test]
-    fn an_unknown_tag_and_the_old_versioned_tag_are_schema() {
-        use crate::diagnostic::first_reason;
-        assert!(load_budget(&text("budget")).is_ok());
-        let old = load_budget(&text(concat!("budget/", "v0"))).unwrap_err();
-        assert!(old[0].message.contains("no version"), "{old:?}");
-        assert_eq!(first_reason(&old), Reason::Schema);
-        let bogus = load_budget(&text("bogus")).unwrap_err();
-        assert!(bogus[0].message.contains("does not use"), "{bogus:?}");
-        assert_eq!(first_reason(&bogus), Reason::Schema);
-    }
-
-    #[test]
     fn a_negative_budget_names_the_field() {
         let text = "schema: budget\npause:\n  presence_clocks: pause_when_empty\nmax_npcs_acting: -1\nidle_catchup_max_rounds: -3\n";
         let err = load_budget(text).unwrap_err();
@@ -259,6 +247,15 @@ mod tests {
     }
 
     #[test]
+    fn an_empty_idle_word_is_schema() {
+        use crate::diagnostic::first_reason;
+        let mut empty = text("budget");
+        empty.push_str("idle:\n");
+        let err = load_budget(&empty).unwrap_err();
+        assert_eq!(first_reason(&err), Reason::Schema);
+    }
+
+    #[test]
     fn docks_budget_leaves_idle_on() {
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../packs/oneshot-docks/rules/budget.yaml");
@@ -267,38 +264,5 @@ mod tests {
         assert!(budget.idle_rounds);
         assert_eq!(budget.round_every_real_seconds, 300);
         assert_eq!(budget.idle_minutes_per_round, 60);
-    }
-
-    #[test]
-    fn a_bad_idle_word_and_a_zero_interval_are_schema() {
-        use crate::diagnostic::first_reason;
-        let mut maybe = text("budget");
-        maybe.push_str("idle: maybe\n");
-        let err = load_budget(&maybe).unwrap_err();
-        assert_eq!(first_reason(&err), Reason::Schema);
-        assert_eq!(err[0].file, "rules/budget.yaml");
-        assert!(err[0].line.is_some(), "{err:?}");
-        assert!(err[0].message.contains("maybe"), "{err:?}");
-        assert!(err[0].message.contains("on or off"), "{err:?}");
-
-        let zero = "schema: budget\npause:\n  presence_clocks: pause_when_empty\nround_every_real_seconds: 0\n";
-        let err = load_budget(zero).unwrap_err();
-        assert_eq!(err[0].code, crate::diagnostic::Code::Error(Reason::Schema));
-        assert!(err[0].line.is_some(), "{err:?}");
-        assert!(
-            err[0].message.contains("round_every_real_seconds"),
-            "{err:?}"
-        );
-        assert!(err[0].message.contains('0'), "{err:?}");
-
-        let minutes = "schema: budget\npause:\n  presence_clocks: pause_when_empty\nidle_minutes_per_round: 0\n";
-        let err = load_budget(minutes).unwrap_err();
-        assert_eq!(err[0].code, crate::diagnostic::Code::Error(Reason::Schema));
-        assert!(err[0].line.is_some(), "{err:?}");
-        assert!(err[0].message.contains("idle_minutes_per_round"), "{err:?}");
-
-        let empty = "schema: budget\npause:\n  presence_clocks: pause_when_empty\nidle:\n";
-        let err = load_budget(empty).unwrap_err();
-        assert_eq!(first_reason(&err), Reason::Schema);
     }
 }

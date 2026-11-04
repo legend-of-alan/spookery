@@ -167,19 +167,3 @@ struct ExitYaml {
     hidden: bool,
     revealed_by: Option<String>,
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::canon::tests::rejects;
-
-    #[test]
-    fn load_place_rejects_an_unknown_tag_and_the_old_versioned_tag() {
-        rejects(
-            |text| load_place("world/places/gate.md", text, 0).map(|_| ()),
-            "place",
-            concat!("place/", "v0"),
-            "id: gate\ndisplay_name: Gate\nfacts: []\n",
-        );
-    }
-}

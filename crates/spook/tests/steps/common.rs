@@ -98,6 +98,11 @@ fn break_pack(pack: &Path, fault: &str) {
             "schema: verbs\n",
             &format!("schema: verbs/{}\n", "v0"),
         ),
+        "unknown format tag" => replace_in_file(
+            &pack.join("rules/verbs.yaml"),
+            "schema: verbs\n",
+            "schema: bogus\n",
+        ),
         "missing meters" => {
             fs::remove_file(pack.join("rules/meters.yaml")).unwrap();
         }
