@@ -97,6 +97,12 @@ pub fn normalize(state: &mut State) {
         sort_unique(&mut actor.flags);
         sort_unique(&mut actor.known_facts);
     }
+    for place in state.places.values_mut() {
+        sort_unique(&mut place.flags);
+    }
+    for story in state.stories.values_mut() {
+        sort_unique(&mut story.flags);
+    }
     sort_unique(&mut state.flags);
 }
 
@@ -126,10 +132,14 @@ fn check_actor_places(state: &State) -> Vec<Diagnostic> {
 pub(crate) fn missing_meters(canon: &Canon, state: &State) -> Vec<AddedMeter> {
     let mut added = Vec::new();
     for (id, def) in &canon.meters {
-        let lacking = state
-            .actors
-            .iter()
-            .any(|(actor, live)| def.is_on_actor(actor) && !live.meters.contains_key(id));
+        let lacking = match &def.carrier {
+            Some(holder) if !def.is_actor_meter() => state
+                .meters_of(holder)
+                .is_none_or(|live| !live.contains_key(id)),
+            _ => state.actors.iter().any(|(actor, live)| {
+                def.is_on(&Holder::Actor(actor.clone())) && !live.meters.contains_key(id)
+            }),
+        };
         if lacking {
             added.push(AddedMeter::new(id, def));
         }
@@ -142,7 +152,7 @@ pub(crate) fn missing_meters(canon: &Canon, state: &State) -> Vec<AddedMeter> {
     added
 }
 
-/// Meters an actor or the world lists that the pack no longer gives it. A place holds no meters.
+/// Meters an actor, place, story or the world lists that the pack no longer gives it.
 pub(crate) fn stale_meters(canon: &Canon, state: &State) -> Vec<DroppedMeter> {
     let mut dropped = Vec::new();
     let mut drop_stale = |carrier: Holder, live: &BTreeMap<String, MeterLive>| {
@@ -157,6 +167,12 @@ pub(crate) fn stale_meters(canon: &Canon, state: &State) -> Vec<DroppedMeter> {
     };
     for (id, actor) in &state.actors {
         drop_stale(Holder::Actor(id.clone()), &actor.meters);
+    }
+    for (id, place) in &state.places {
+        drop_stale(Holder::Place(id.clone()), &place.meters);
+    }
+    for (id, story) in &state.stories {
+        drop_stale(Holder::Story(id.clone()), &story.meters);
     }
     drop_stale(Holder::World, &state.world_meters);
     dropped
@@ -196,7 +212,14 @@ pub fn migrate(
                 let live = state.world_meters.entry(meter.id.clone());
                 live.or_insert(start);
             }
-            Some(Holder::Place(_)) => {}
+            Some(Holder::Place(id)) => {
+                let place = state.places.entry(id.clone()).or_default();
+                place.meters.entry(meter.id.clone()).or_insert(start);
+            }
+            Some(Holder::Story(id)) => {
+                let story = state.stories.entry(id.clone()).or_default();
+                story.meters.entry(meter.id.clone()).or_insert(start);
+            }
             carrier => {
                 for (id, actor) in &mut state.actors {
                     if carrier

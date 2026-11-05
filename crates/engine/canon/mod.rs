@@ -37,10 +37,10 @@ use fact::Facts;
 use item::add_item;
 use lint::{
     broken_exits, resist_same_without_roll, reveal_problems, unknown_carriers, unknown_checks,
-    unknown_meters, unknown_modifiers, unknown_reads, unknown_rule_items, MeterScope,
+    unknown_meters, unknown_modifiers, unknown_reads, unknown_rule_items, HolderScope,
 };
 pub(crate) use lint::{check_canon, check_save};
-use meters::load_meters;
+use meters::{add_own_meters, load_meters};
 use modifiers::{load_modifiers, MODIFIERS_FILE};
 use pack::load_pack_yaml;
 use place::add_place;
@@ -57,10 +57,11 @@ pub struct Canon {
     pub places: BTreeMap<String, PlaceDef>,
     pub cast: BTreeMap<String, CastDef>,
     pub facts: BTreeMap<String, FactDef>,
+    pub stories: BTreeMap<String, StoryDef>,
     pub rules: RuleTable,
     pub checks: BTreeMap<String, Check>,
-    /// Actor meters: those `rules/meters.yaml` gives every actor, and those one cast file
-    /// gives its actor. An id is listed once.
+    /// The meters `rules/meters.yaml` gives every actor, and those one cast, place or story
+    /// file gives its holder. An id is listed once.
     pub meters: BTreeMap<String, MeterDef>,
     /// The meters `world/meters.yaml` gives the world. An id here may also be an actor meter.
     pub world_meters: BTreeMap<String, MeterDef>,
@@ -105,6 +106,14 @@ pub struct PlaceDef {
     pub display_name: String,
     pub body: String,
     pub exits: Vec<Exit>,
+    /// The flags an effect may set on this place.
+    pub flags: Vec<String>,
+}
+
+#[derive(Clone, Debug)]
+pub struct StoryDef {
+    /// The flags an effect may set on this story.
+    pub flags: Vec<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -177,9 +186,18 @@ impl Canon {
     /// The def of meter `key` on `holder`, when that holder carries it.
     pub fn meter_def(&self, holder: &Holder, key: &str) -> Option<&MeterDef> {
         match holder {
-            Holder::Actor(id) => self.meters.get(key).filter(|def| def.is_on_actor(id)),
             Holder::World => self.world_meters.get(key),
-            Holder::Place(_) => None,
+            _ => self.meters.get(key).filter(|def| def.is_on(holder)),
+        }
+    }
+
+    /// The flags `holder`'s file declares. The world's flags are not declared.
+    pub(crate) fn flags_of(&self, holder: &Holder) -> Option<&[String]> {
+        match holder {
+            Holder::Actor(id) => self.cast.get(id).map(|cast| cast.flags.as_slice()),
+            Holder::Place(id) => self.places.get(id).map(|place| place.flags.as_slice()),
+            Holder::Story(id) => self.stories.get(id).map(|story| story.flags.as_slice()),
+            Holder::World => None,
         }
     }
 
@@ -227,6 +245,7 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
     let mut cast = BTreeMap::new();
     let mut facts = Facts::default();
     let mut items = BTreeMap::new();
+    let mut place_meters = Vec::new();
     let mut loaded = Vec::new();
     // 1. pack.yaml: missing, unreadable, tag, shape, empty id.
     let pack = diags.keep(read_text(root, "pack.yaml").and_then(|text| load_pack_yaml(&text)));
@@ -238,7 +257,7 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
         let rules = if page.file.starts_with("world/items/") {
             add_item(page, &mut items, &mut diags)
         } else if page.file.starts_with("world/places/") {
-            add_place(page, &mut facts, &mut places, &mut diags)
+            add_place(page, &mut facts, &mut places, &mut place_meters, &mut diags)
         } else {
             None
         };
@@ -253,7 +272,8 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
     } else {
         Some(BTreeMap::new())
     };
-    // 3. rules/meters.yaml, then one walk of cast/, which adds each cast file's own meters.
+    // 3. rules/meters.yaml, then one walk of cast/, which adds each cast file's own meters,
+    // then each place file's own meters.
     let rel = "rules/meters.yaml";
     let mut meters =
         diags.keep(read_text(root, rel).and_then(|text| load_meters(rel, &text, None)));
@@ -263,6 +283,11 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
         };
         let rules = add_cast(page, &mut cast, meters.as_mut(), &mut diags);
         loaded.extend(rules.unwrap_or_default());
+    }
+    for (file, own) in place_meters {
+        if let Some(meters) = meters.as_mut() {
+            add_own_meters(meters, own, None, &FileText::named(&file), &mut diags);
+        }
     }
     // rules/modifiers.yaml is optional. Its modifiers name the actor meters above.
     let modifiers = match &meters {
@@ -281,8 +306,10 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
     if let Some((rel, text)) = &verbs {
         loaded.extend(diags.keep(load_verbs(rel, text)).unwrap_or_default());
     }
-    // 7. story/.
-    loaded.extend(load_stories(root, &mut diags));
+    // 7. story/, which adds each story file's own meters.
+    let (story_rules, stories) =
+        load_stories(root, meters.as_mut(), world_meters.as_ref(), &mut diags);
+    loaded.extend(story_rules);
     // 8. Rule ids across files.
     let mut seen_ids = BTreeSet::new();
     for rule in &loaded {
@@ -303,11 +330,12 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
         diags.extend(unknown_meters(meters, checks));
     }
     if let (Some(meters), Some(world_meters)) = (&meters, &world_meters) {
-        let scope = MeterScope {
+        let scope = HolderScope {
             meters,
             world_meters,
             cast: &cast,
             places: &places,
+            stories: &stories,
         };
         diags.extend(unknown_reads(&scope, &rules));
         diags.extend(unknown_carriers(&scope, &rules));
@@ -352,6 +380,7 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
         places,
         cast,
         facts: facts.0,
+        stories,
         rules,
         checks,
         meters,

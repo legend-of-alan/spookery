@@ -77,7 +77,7 @@ fn mira() -> Holder {
 }
 
 /// Give the save the meters the pack now declares, then play one round.
-fn migrate_and_play(world: &mut World, intents: Vec<spookery::protocol::IntentArgs>) {
+pub(crate) fn migrate_and_play(world: &mut World, intents: Vec<spookery::protocol::IntentArgs>) {
     let pack = world.pack.clone().unwrap();
     spookery_engine::migrate_pack(&pack).unwrap_or_else(|err| panic!("migrate: {err}"));
     let played = play_round(world, &pack, intents);
@@ -98,7 +98,7 @@ fn run_check(world: &mut World) {
     world.stderr = String::from_utf8_lossy(&output.stderr).into_owned();
 }
 
-fn assert_refused(world: &World, needles: &[&str]) {
+pub(crate) fn assert_refused(world: &World, needles: &[&str]) {
     assert_eq!(world.code, Some(1), "{}\n{}", world.stdout, world.stderr);
     for needle in needles {
         assert!(

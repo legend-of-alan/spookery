@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 
 use serde::Deserialize;
 
-use crate::canon::meters::{meter_defs, MeterYaml};
+use crate::canon::meters::{add_own_meters, meter_defs, MeterYaml};
 use crate::canon::rule_list::{self, RuleYaml};
 use crate::canon::source::{load_tagged, Diags, FileText, Locator, Page, Problem, CAST_SCHEMA};
 use crate::canon::{CastDef, CastKind, IdleProfile};
@@ -17,7 +17,7 @@ use crate::rules::rule::{Owner, Rule};
 pub(super) fn add_cast(
     page: Page,
     cast: &mut BTreeMap<String, CastDef>,
-    mut meters: Option<&mut BTreeMap<String, MeterDef>>,
+    meters: Option<&mut BTreeMap<String, MeterDef>>,
     diags: &mut Diags,
 ) -> Option<Vec<Rule>> {
     let file = diags.keep(load_cast(&page.file, &page.yaml, 1))?;
@@ -44,27 +44,8 @@ pub(super) fn add_cast(
     let id = file.id.clone();
     let carrier = Some(Holder::Actor(id.clone()));
     let own = diags.keep(meter_defs(&whole, file.meters, carrier));
-    for (key, def) in own.unwrap_or_default() {
-        let Some(meters) = meters.as_deref_mut() else {
-            continue;
-        };
-        let Some(taken) = meters.get(&key) else {
-            meters.insert(key, def);
-            continue;
-        };
-        let (after, hint) = match taken.carrier {
-            None => (
-                "is already in rules/meters.yaml",
-                "rename it, or drop it and use the one every actor carries",
-            ),
-            Some(_) => (
-                "is already declared in another cast file",
-                "keep one meter with this id, or move it to rules/meters.yaml",
-            ),
-        };
-        let path = format!("meters.{key}");
-        let twice = ("meter", after, hint);
-        diags.push(whole.refuse_duplicate(&key, &path, Locator::Nowhere, twice));
+    if let (Some(meters), Some(own)) = (meters, own) {
+        add_own_meters(meters, own, None, &whole, diags);
     }
     cast.insert(
         id.clone(),

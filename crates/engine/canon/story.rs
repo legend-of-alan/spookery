@@ -1,22 +1,37 @@
-//! `story/*.yaml`: rules that belong to no place, cast member or item.
+//! `story/*.yaml`: rules that belong to no place, cast member or item, and the meters and flags
+//! the story carries.
 
+use std::collections::BTreeMap;
 use std::path::Path;
 
 use serde::Deserialize;
 
+use crate::canon::meters::{add_own_meters, meter_defs, MeterYaml};
 use crate::canon::rule_list::{self, RuleYaml};
-use crate::canon::source::{collect_files, load_tagged, unreadable_dir, Diags, STORY_SCHEMA};
+use crate::canon::source::{
+    collect_files, load_tagged, unreadable_dir, Diags, FileText, STORY_SCHEMA,
+};
+use crate::canon::StoryDef;
 use crate::diagnostic::schema_error;
+use crate::model::meter::MeterDef;
+use crate::rules::effect::Holder;
 use crate::rules::rule::{Owner, Rule};
 
-/// Every `story/*.yaml` file in directory order, compiled. A pack without `story/` has none.
-pub(super) fn load_stories(root: &Path, diags: &mut Diags) -> Vec<Rule> {
+/// Every `story/*.yaml` file in directory order: its rules compiled, and its meters added to
+/// `meters` when those loaded. A pack without `story/` has none.
+pub(super) fn load_stories(
+    root: &Path,
+    mut meters: Option<&mut BTreeMap<String, MeterDef>>,
+    world_meters: Option<&BTreeMap<String, MeterDef>>,
+    diags: &mut Diags,
+) -> (Vec<Rule>, BTreeMap<String, StoryDef>) {
     let dir = root.join("story");
     let mut files = Vec::new();
     if dir.is_dir() && collect_files(&dir, root, &mut files).is_err() {
         diags.push(unreadable_dir("story"));
     }
     let mut rules = Vec::new();
+    let mut stories = BTreeMap::new();
     for (file, bytes) in files {
         if !file.ends_with(".yaml") {
             continue;
@@ -32,10 +47,21 @@ pub(super) fn load_stories(root: &Path, diags: &mut Diags) -> Vec<Rule> {
         let Some(story) = diags.keep(load_tagged::<StoryDoc>(&file, text, STORY_SCHEMA, 0)) else {
             continue;
         };
+        let source = FileText {
+            file: &file,
+            text,
+            line_base: 0,
+        };
+        let carrier = Some(Holder::Story(story.id.clone()));
+        let own = diags.keep(meter_defs(&source, story.meters, carrier));
+        if let (Some(meters), Some(own)) = (meters.as_deref_mut(), own) {
+            add_own_meters(meters, own, world_meters, &source, diags);
+        }
+        stories.insert(story.id.clone(), StoryDef { flags: story.flags });
         let compiled = rule_list::compile(&file, story.rules, &Owner::Story(story.id));
         rules.extend(diags.keep(compiled).unwrap_or_default());
     }
-    rules
+    (rules, stories)
 }
 
 #[derive(Deserialize)]
@@ -44,6 +70,11 @@ struct StoryDoc {
     #[serde(rename = "schema")]
     _schema: String,
     id: String,
+    #[serde(default)]
+    flags: Vec<String>,
+    /// The meters only this story carries.
+    #[serde(default)]
+    meters: Vec<MeterYaml>,
     #[serde(default)]
     rules: Vec<RuleYaml>,
 }

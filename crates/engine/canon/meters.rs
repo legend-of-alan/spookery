@@ -1,11 +1,13 @@
 //! Meter lists: `rules/meters.yaml` for every actor, `world/meters.yaml` for the world, and
-//! a cast file's `meters:` for that one actor.
+//! the `meters:` of a cast, place or story file for that one holder.
 
 use std::collections::BTreeMap;
 
 use serde::Deserialize;
 
-use crate::canon::source::{load_tagged, Diags, FileText, Locator, Problem, METERS_SCHEMA};
+use crate::canon::source::{
+    load_tagged, Diags, DuplicateWords, FileText, Locator, Problem, METERS_SCHEMA,
+};
 use crate::diagnostic::Diagnostic;
 use crate::model::meter::MeterDef;
 use crate::rules::effect::Holder;
@@ -25,13 +27,14 @@ pub(super) fn load_meters(
     meter_defs(&source, doc.meters, carrier)
 }
 
-/// The meter rows of one file. A world meter is hidden unless its row says `hidden: false`.
+/// The meter rows of one file. A meter no actor carries is hidden unless its row says
+/// `hidden: false`.
 pub(super) fn meter_defs(
     source: &FileText,
     rows: Vec<MeterYaml>,
     carrier: Option<Holder>,
 ) -> Result<BTreeMap<String, MeterDef>, Vec<Diagnostic>> {
-    let hidden_by_default = carrier == Some(Holder::World);
+    let hidden_by_default = !matches!(carrier, None | Some(Holder::Actor(_)));
     let mut diags = Diags::default();
     let mut meters = BTreeMap::new();
     for (row, entry) in rows.into_iter().enumerate() {
@@ -114,6 +117,43 @@ pub(super) fn meter_defs(
         );
     }
     diags.into_result(meters)
+}
+
+/// Add the meters one cast, place or story file declares to `meters`. An id that
+/// `rules/meters.yaml`, another file or, when given, `world` has already is refused.
+pub(super) fn add_own_meters(
+    meters: &mut BTreeMap<String, MeterDef>,
+    own: BTreeMap<String, MeterDef>,
+    world: Option<&BTreeMap<String, MeterDef>>,
+    source: &FileText,
+    diags: &mut Diags,
+) {
+    const KEEP_ONE: &str = "keep one meter with this id";
+    for (key, def) in own {
+        let taken = if world.is_some_and(|world| world.contains_key(&key)) {
+            Some(Some(Holder::World))
+        } else {
+            meters.get(&key).map(|taken| taken.carrier.clone())
+        };
+        let (after, hint) = match taken {
+            None => {
+                meters.insert(key, def);
+                continue;
+            }
+            Some(None) => (
+                "is already in rules/meters.yaml",
+                "rename it, or drop it and use the one every actor carries",
+            ),
+            Some(Some(Holder::World)) => ("is already in world/meters.yaml", KEEP_ONE),
+            Some(Some(_)) => (
+                "is already declared in another cast, place or story file",
+                KEEP_ONE,
+            ),
+        };
+        let twice: DuplicateWords = ("meter", after, hint);
+        let path = format!("meters.{key}");
+        diags.push(source.refuse_duplicate(&key, &path, Locator::Nowhere, twice));
+    }
 }
 
 #[derive(Deserialize)]

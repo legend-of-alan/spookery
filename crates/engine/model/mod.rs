@@ -1,4 +1,4 @@
-//! The live save: places, actors, world meters, and notes.
+//! The live save: places, actors, stories, world meters, and notes.
 
 pub(crate) mod key;
 pub(crate) mod meter;
@@ -31,6 +31,9 @@ pub struct State {
     pub last_round_at: String,
     pub places: BTreeMap<String, PlaceLive>,
     pub actors: BTreeMap<String, ActorLive>,
+    /// The meters and flags each story holds. Omitted when empty.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub stories: BTreeMap<String, StoryLive>,
     /// The meters `world/meters.yaml` declares, held once by the world. Omitted when empty.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub world_meters: BTreeMap<String, MeterLive>,
@@ -65,16 +68,17 @@ impl State {
                 .actors
                 .get(id)
                 .map_or(Ok(0), |actor| modifier::sum(&actor.modifiers, key)),
-            Holder::World | Holder::Place(_) => Ok(0),
+            Holder::World | Holder::Place(_) | Holder::Story(_) => Ok(0),
         }
     }
 
-    /// The live meters `holder` carries. A place carries none.
+    /// The live meters `holder` carries.
     pub(crate) fn meters_of(&self, holder: &Holder) -> Option<&BTreeMap<String, MeterLive>> {
         match holder {
             Holder::Actor(id) => self.actors.get(id).map(|actor| &actor.meters),
+            Holder::Place(id) => self.places.get(id).map(|place| &place.meters),
+            Holder::Story(id) => self.stories.get(id).map(|story| &story.meters),
             Holder::World => Some(&self.world_meters),
-            Holder::Place(_) => None,
         }
     }
 
@@ -85,8 +89,38 @@ impl State {
     ) -> Result<&mut BTreeMap<String, MeterLive>, crate::Reason> {
         match holder {
             Holder::Actor(id) => Ok(&mut self.actor_mut(id)?.meters),
+            Holder::Place(id) => Ok(&mut self
+                .places
+                .get_mut(id)
+                .ok_or(crate::Reason::UnknownId)?
+                .meters),
+            Holder::Story(id) => Ok(&mut self
+                .stories
+                .get_mut(id)
+                .ok_or(crate::Reason::UnknownId)?
+                .meters),
             Holder::World => Ok(&mut self.world_meters),
-            Holder::Place(_) => Err(crate::Reason::UnknownId),
+        }
+    }
+
+    /// Whether `holder` has flag `key` set.
+    pub(crate) fn has_flag(&self, holder: &Holder, key: &str) -> bool {
+        let flags = match holder {
+            Holder::Actor(id) => self.actors.get(id).map(|actor| &actor.flags),
+            Holder::Place(id) => self.places.get(id).map(|place| &place.flags),
+            Holder::Story(id) => self.stories.get(id).map(|story| &story.flags),
+            Holder::World => Some(&self.flags),
+        };
+        flags.is_some_and(|flags| flags.iter().any(|flag| flag == key))
+    }
+
+    /// The flags `holder` has set, to write. A place or story gets a live record on its first.
+    pub(crate) fn flags_mut(&mut self, holder: &Holder) -> Result<&mut Vec<String>, crate::Reason> {
+        match holder {
+            Holder::Actor(id) => Ok(&mut self.actor_mut(id)?.flags),
+            Holder::Place(id) => Ok(&mut self.places.entry(id.clone()).or_default().flags),
+            Holder::Story(id) => Ok(&mut self.stories.entry(id.clone()).or_default().flags),
+            Holder::World => Ok(&mut self.flags),
         }
     }
 
@@ -122,6 +156,22 @@ pub struct Presence {
 #[serde(deny_unknown_fields)]
 pub struct PlaceLive {
     pub items: BTreeMap<String, u32>,
+    /// The meters the place file declares. Omitted when empty.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub meters: BTreeMap<String, MeterLive>,
+    /// The flags set on this place. Omitted when empty.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub flags: Vec<String>,
+}
+
+/// The meters a story file declares and the flags set on that story.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct StoryLive {
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub meters: BTreeMap<String, MeterLive>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub flags: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

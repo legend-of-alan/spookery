@@ -1,22 +1,30 @@
-//! `world/places/*.md`: a place and its exits.
+//! `world/places/*.md`: a place, its exits, and the meters and flags it carries.
 
 use std::collections::{BTreeMap, BTreeSet};
 
 use serde::Deserialize;
 
 use crate::canon::fact::{FactYaml, Facts};
+use crate::canon::meters::{meter_defs, MeterYaml};
 use crate::canon::rule_list::{self, RuleYaml};
 use crate::canon::source::{load_tagged, Diags, FileText, Locator, Page, PLACE_SCHEMA};
 use crate::canon::{Exit, PlaceDef};
 use crate::diagnostic::{schema_error, Diagnostic};
+use crate::model::meter::MeterDef;
+use crate::rules::effect::Holder;
 use crate::rules::rule::{Cost, Owner, Rule};
 
-/// One place page into `places` and its facts into `facts`, and its rules. A bad fact
-/// stops the file; the exits compile before the duplicate id check.
+/// The meters one place file declares, by that file, for `load_canon` to add once the meters
+/// every actor carries have loaded.
+pub(super) type PlaceMeters = Vec<(String, BTreeMap<String, MeterDef>)>;
+
+/// One place page into `places`, its facts into `facts` and its meters into `meters`, and its
+/// rules. A bad fact stops the file; the exits compile before the duplicate id check.
 pub(super) fn add_place(
     page: Page,
     facts: &mut Facts,
     places: &mut BTreeMap<String, PlaceDef>,
+    meters: &mut PlaceMeters,
     diags: &mut Diags,
 ) -> Option<Vec<Rule>> {
     let file = diags.keep(load_place(&page.file, &page.yaml, 1))?;
@@ -37,12 +45,17 @@ pub(super) fn add_place(
         diags.push(diag);
         return None;
     }
+    let carrier = Some(Holder::Place(file.id.clone()));
+    if let Some(own) = diags.keep(meter_defs(&whole, file.meters, carrier)) {
+        meters.push((page.file.clone(), own));
+    }
     places.insert(
         file.id.clone(),
         PlaceDef {
             display_name: file.display_name,
             body: page.body,
             exits,
+            flags: file.flags,
         },
     );
     diags.keep(rule_list::compile(
@@ -149,6 +162,10 @@ struct PlaceDoc {
     facts: Vec<FactYaml>,
     #[serde(default)]
     exits: Vec<ExitYaml>,
+    #[serde(default)]
+    flags: Vec<String>,
+    #[serde(default)]
+    meters: Vec<MeterYaml>,
     #[serde(default)]
     rules: Vec<RuleYaml>,
 }

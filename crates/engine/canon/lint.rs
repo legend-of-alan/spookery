@@ -3,7 +3,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::canon::source::{FileText, Locator, Problem};
-use crate::canon::{Canon, CastDef, FactDef, ItemDef, PlaceDef};
+use crate::canon::{Canon, CastDef, FactDef, ItemDef, PlaceDef, StoryDef};
 use crate::diagnostic::{error, schema_error, warning, Diagnostic};
 use crate::model::meter::{self, MeterDef};
 use crate::model::modifier::{self, ModifierDef};
@@ -300,7 +300,7 @@ pub(super) fn unknown_checks(
     diags
 }
 
-pub(super) fn unknown_reads(scope: &MeterScope, rules: &RuleTable) -> Vec<Diagnostic> {
+pub(super) fn unknown_reads(scope: &HolderScope, rules: &RuleTable) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
     for rule in rules.iter() {
         let mut exprs = Vec::new();
@@ -324,28 +324,34 @@ pub(super) fn unknown_reads(scope: &MeterScope, rules: &RuleTable) -> Vec<Diagno
     diags
 }
 
-/// Meter effects and conditions whose holder is fixed by the pack and does not carry the meter.
-pub(super) fn unknown_carriers(scope: &MeterScope, rules: &RuleTable) -> Vec<Diagnostic> {
+/// Meter and flag effects and conditions whose holder is fixed by the pack and does not carry
+/// the meter or declare the flag. The world's flags are free names, so they are not checked.
+pub(super) fn unknown_carriers(scope: &HolderScope, rules: &RuleTable) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
     for rule in rules.iter() {
         let mut named = Vec::new();
         for cond in &rule.if_ {
-            push_cond_meters(cond, &mut named);
+            push_cond_keys(cond, &mut named);
         }
-        rule.visit_templates(|effect| {
-            if let EffectTemplate::Meter { who, key, .. } = effect {
-                named.push((who, key.as_str()));
-            }
+        rule.visit_templates(|effect| match effect {
+            EffectTemplate::Meter { who, key, .. } => named.push(("meter", who, key.as_str())),
+            EffectTemplate::Flag { who, key, .. } => named.push(("flag", who, key.as_str())),
+            _ => {}
         });
-        for (who, key) in named {
-            let Some(why) = scope.why_not_carried(fixed_self(rule), who, key) else {
+        let fixed = fixed_self(rule);
+        for (kind, who, key) in named {
+            let why = match kind {
+                "meter" => scope.why_not_carried(fixed, who, key),
+                _ => scope.why_undeclared(fixed, who, key),
+            };
+            let Some(why) = why else {
                 continue;
             };
             diags.push(
                 schema_error(
                     &rule.file,
-                    &format!("rule '{}' names meter '{key}', but {why}", rule.local_id),
-                    "declare the meter on that holder, or name a holder that carries it",
+                    &format!("rule '{}' names {kind} '{key}', but {why}", rule.local_id),
+                    "declare it on that holder, or name a holder that has it",
                 )
                 .at_path(format!("rules[{}]", rule.index)),
             );
@@ -354,15 +360,17 @@ pub(super) fn unknown_carriers(scope: &MeterScope, rules: &RuleTable) -> Vec<Dia
     diags
 }
 
-fn push_cond_meters<'a>(cond: &'a Cond, out: &mut Vec<(&'a Who, &'a str)>) {
+/// The meters and flags `cond` names, each with its kind and `who`.
+fn push_cond_keys<'a>(cond: &'a Cond, out: &mut Vec<(&'static str, &'a Who, &'a str)>) {
     match cond {
-        Cond::Meter { who, key, .. } => out.push((who, key)),
+        Cond::Meter { who, key, .. } => out.push(("meter", who, key)),
+        Cond::Flag { who, key, .. } => out.push(("flag", who, key)),
         Cond::All(inner) | Cond::Any(inner) => {
             for cond in inner {
-                push_cond_meters(cond, out);
+                push_cond_keys(cond, out);
             }
         }
-        Cond::Not(inner) => push_cond_meters(inner, out),
+        Cond::Not(inner) => push_cond_keys(inner, out),
         _ => {}
     }
 }
@@ -375,37 +383,70 @@ fn fixed_self(rule: &Rule) -> Option<&str> {
     }
 }
 
-/// The meters each holder carries, and the cast and places a `who` may name.
-pub(super) struct MeterScope<'a> {
+/// The meters each holder carries, and the cast, places and stories a `who` may name.
+pub(super) struct HolderScope<'a> {
     pub meters: &'a BTreeMap<String, MeterDef>,
     pub world_meters: &'a BTreeMap<String, MeterDef>,
     pub cast: &'a BTreeMap<String, CastDef>,
     pub places: &'a BTreeMap<String, PlaceDef>,
+    pub stories: &'a BTreeMap<String, StoryDef>,
 }
 
-impl MeterScope<'_> {
+impl HolderScope<'_> {
+    /// The one holder `who` names whatever the round: `world`, a place, a story, a cast id, or
+    /// `self` on a cast member's own habit. `None` when only play time knows it.
+    fn fixed_holder(&self, fixed_self: Option<&str>, who: &Who) -> Option<Holder> {
+        match who {
+            Who::World => Some(Holder::World),
+            Who::Place(id) => Some(Holder::Place(id.clone())),
+            Who::Story(id) => Some(Holder::Story(id.clone())),
+            Who::Actor(id) if self.cast.contains_key(id) => Some(Holder::Actor(id.clone())),
+            Who::Self_ => fixed_self.map(|id| Holder::Actor(id.to_string())),
+            _ => None,
+        }
+    }
+
+    /// Why flag `key` on `who` can never be set or tested, or `None` when it may be.
+    fn why_undeclared(&self, fixed_self: Option<&str>, who: &Who, key: &str) -> Option<String> {
+        let holder = self.fixed_holder(fixed_self, who)?;
+        let flags = match &holder {
+            Holder::World => return None,
+            Holder::Actor(id) => self.cast.get(id).map(|cast| &cast.flags),
+            Holder::Place(id) => self.places.get(id).map(|place| &place.flags),
+            Holder::Story(id) => self.stories.get(id).map(|story| &story.flags),
+        };
+        let declared = flags.is_some_and(|flags| flags.contains(&key.to_string()));
+        (!declared).then(|| format!("{holder} does not declare it"))
+    }
+
     /// Why meter `key` on `who` can never be read or written, or `None` when it may be.
     /// A holder known only at play time is not guessed: only its key is checked.
     fn why_not_carried(&self, fixed_self: Option<&str>, who: &Who, key: &str) -> Option<String> {
-        let actor = match who {
-            Who::World if self.world_meters.contains_key(key) => return None,
-            Who::World => return Some(format!("the world carries no meter '{key}'")),
-            Who::Actor(id) if self.cast.contains_key(id) => Some(id.as_str()),
-            Who::Self_ => fixed_self,
-            _ => None,
-        };
         let def = self.meters.get(key);
-        match (actor, def) {
-            (Some(id), def) if !def.is_some_and(|def| def.is_on_actor(id)) => {
+        match self.fixed_holder(fixed_self, who) {
+            Some(Holder::World) if self.world_meters.contains_key(key) => None,
+            Some(Holder::World) => Some(format!("the world carries no meter '{key}'")),
+            Some(holder) if !def.is_some_and(|def| def.is_on(&holder)) => {
                 Some(match def.and_then(|def| def.carrier.as_ref()) {
-                    Some(Holder::Actor(carrier)) => format!("only {carrier} carries meter '{key}'"),
-                    _ => format!("{id} carries no meter '{key}'"),
+                    Some(carrier) => format!("only {carrier} carries meter '{key}'"),
+                    None => format!("{holder} carries no meter '{key}'"),
                 })
             }
-            (None, None) => Some(format!(
-                "meter '{key}' is not in rules/meters.yaml or a cast file"
-            )),
+            None if def.is_none() => Some(format!("no file declares meter '{key}'")),
             _ => None,
+        }
+    }
+
+    /// The name `who` gives when no place, story or cast member has it.
+    fn unknown_who(&self, who: &Who) -> Option<String> {
+        match who {
+            Who::Self_ | Who::Target | Who::Here | Who::World => None,
+            Who::Place(id) if self.places.contains_key(id) => None,
+            Who::Place(id) => Some(format!("place:{id}")),
+            Who::Story(id) if self.stories.contains_key(id) => None,
+            Who::Story(id) => Some(format!("story:{id}")),
+            Who::Actor(id) if self.cast.contains_key(id) => None,
+            Who::Actor(id) => Some(id.clone()),
         }
     }
 
@@ -437,28 +478,14 @@ impl MeterScope<'_> {
                         "declare the meter on that holder, or read one that exists",
                     ));
                 }
-                if let Some(name) = unknown_who(who, self.cast, self.places) {
+                if let Some(name) = self.unknown_who(who) {
                     diags.push(refuse(
                         format!("expression names '{name}', which is not a who"),
-                        "use self, target, here, world, place:<id>, or a cast id",
+                        "use self, target, here, world, place:<id>, story:<id>, or a cast id",
                     ));
                 }
             }
         }
-    }
-}
-
-fn unknown_who(
-    who: &Who,
-    cast: &BTreeMap<String, CastDef>,
-    places: &BTreeMap<String, PlaceDef>,
-) -> Option<String> {
-    match who {
-        Who::Self_ | Who::Target | Who::Here | Who::World => None,
-        Who::Place(id) if places.contains_key(id) => None,
-        Who::Place(id) => Some(format!("place:{id}")),
-        Who::Actor(id) if cast.contains_key(id) => None,
-        Who::Actor(id) => Some(id.clone()),
     }
 }
 
@@ -569,6 +596,20 @@ pub fn check_save(canon: &Canon, state: &crate::model::State) -> Result<(), Vec<
         "world_meters",
         &mut diags,
     );
+    let places = canon
+        .places
+        .keys()
+        .map(|id| (Holder::Place(id.clone()), "places", id));
+    let stories = canon
+        .stories
+        .keys()
+        .map(|id| (Holder::Story(id.clone()), "stories", id));
+    for (holder, list, id) in places.chain(stories) {
+        let none = BTreeMap::new();
+        let live = state.meters_of(&holder).unwrap_or(&none);
+        let path = format!("{list}.{id}.meters");
+        check_meters(canon, &holder, live, &path, &mut diags);
+    }
     for (id, actor) in &state.actors {
         for (item, count) in &actor.inventory {
             if item.is_empty() {
@@ -677,13 +718,11 @@ fn check_meters(
 ) {
     let (name, defs) = match holder {
         Holder::Actor(id) => (format!("actor '{id}'"), &canon.meters),
-        _ => ("the world".to_string(), &canon.world_meters),
+        Holder::World => ("the world".to_string(), &canon.world_meters),
+        _ => (holder.to_string(), &canon.meters),
     };
     for (key, def) in defs {
-        let carried = match holder {
-            Holder::Actor(id) => def.is_on_actor(id),
-            _ => true,
-        };
+        let carried = *holder == Holder::World || def.is_on(holder);
         if carried && !live.contains_key(key) {
             diags.push(
                 schema_error(
@@ -1049,25 +1088,37 @@ fn is_too_wide(sight: &Sight, reach: &Reach) -> bool {
     }
 }
 
-/// Whether `watch` can match a change the world holds: a meter in `world/meters.yaml`, or a
-/// flag some rule sets with `who: world`.
+/// Whether `watch` can match a change no actor holds, which has no subject: a meter the world,
+/// a place or a story carries, a flag a place or story declares, or a flag some rule sets with
+/// `who: world`.
 fn watches_world(canon: &Canon, watch: &ChangeWatch) -> bool {
     match watch {
-        ChangeWatch::Meter { key, .. } => canon.world_meters.contains_key(key),
-        ChangeWatch::Flag { key, .. } => canon.rules.iter().any(|rule| {
-            let mut sets = false;
-            rule.visit_templates(|effect| {
-                if let EffectTemplate::Flag {
-                    who: Who::World,
-                    key: written,
-                    ..
-                } = effect
-                {
-                    sets |= written == key;
-                }
-            });
-            sets
-        }),
+        ChangeWatch::Meter { key, .. } => {
+            canon.world_meters.contains_key(key)
+                || canon
+                    .meters
+                    .get(key)
+                    .is_some_and(|def| !def.is_actor_meter())
+        }
+        ChangeWatch::Flag { key, .. } => {
+            let declared = |flags: &[String]| flags.contains(key);
+            canon.places.values().any(|place| declared(&place.flags))
+                || canon.stories.values().any(|story| declared(&story.flags))
+                || canon.rules.iter().any(|rule| {
+                    let mut sets = false;
+                    rule.visit_templates(|effect| {
+                        if let EffectTemplate::Flag {
+                            who: Who::World,
+                            key: written,
+                            ..
+                        } = effect
+                        {
+                            sets |= written == key;
+                        }
+                    });
+                    sets
+                })
+        }
         _ => false,
     }
 }
@@ -1076,7 +1127,9 @@ fn watches_world(canon: &Canon, watch: &ChangeWatch) -> bool {
 /// actor's change as well as the world's.
 fn watches_actor_key(canon: &Canon, watch: &ChangeWatch) -> bool {
     match watch {
-        ChangeWatch::Meter { key, .. } => canon.meters.contains_key(key),
+        ChangeWatch::Meter { key, .. } => {
+            canon.meters.get(key).is_some_and(MeterDef::is_actor_meter)
+        }
         ChangeWatch::Flag { key, .. } => canon.cast.values().any(|cast| cast.flags.contains(key)),
         _ => false,
     }

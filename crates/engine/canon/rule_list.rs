@@ -1006,6 +1006,12 @@ fn who_of(yaml: &Spanned<String>) -> Result<Who, Fault> {
         }
         return Ok(Who::Place(place.to_string()));
     }
+    if let Some(story) = word.strip_prefix("story:") {
+        if story.is_empty() {
+            return Err(fault("story: needs an id".to_string()));
+        }
+        return Ok(Who::Story(story.to_string()));
+    }
     match word {
         "self" => Ok(Who::Self_),
         "target" => Ok(Who::Target),

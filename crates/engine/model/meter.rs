@@ -18,13 +18,17 @@ pub struct MeterDef {
 }
 
 impl MeterDef {
-    /// Whether actor `id` carries this meter.
-    pub fn is_on_actor(&self, id: &str) -> bool {
+    /// Whether `holder` carries this meter.
+    pub fn is_on(&self, holder: &Holder) -> bool {
         match &self.carrier {
-            None => true,
-            Some(Holder::Actor(carrier)) => carrier == id,
-            Some(_) => false,
+            None => matches!(holder, Holder::Actor(_)),
+            Some(carrier) => carrier == holder,
         }
+    }
+
+    /// Whether every actor, or one actor, carries this meter.
+    pub fn is_actor_meter(&self) -> bool {
+        matches!(self.carrier, None | Some(Holder::Actor(_)))
     }
 }
 

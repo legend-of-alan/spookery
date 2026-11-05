@@ -142,13 +142,23 @@ fn matches_watch(draft: &Draft, rule: &Rule, watch: &ChangeWatch, change: &Chang
             _ => false,
         },
         ChangeWatch::Meter { key, op, bound } => match &change.key {
-            StateKey::ActorMeter(_, meter) | StateKey::WorldMeter(meter) if meter == key => {
+            StateKey::ActorMeter(_, meter)
+            | StateKey::PlaceMeter(_, meter)
+            | StateKey::StoryMeter(_, meter)
+            | StateKey::WorldMeter(meter)
+                if meter == key =>
+            {
                 crosses(&change.before, &change.after, *op, *bound)
             }
             _ => false,
         },
         ChangeWatch::Flag { key, becomes } => match &change.key {
-            StateKey::ActorFlag(_, flag) | StateKey::WorldFlag(flag) if flag == key => {
+            StateKey::ActorFlag(_, flag)
+            | StateKey::PlaceFlag(_, flag)
+            | StateKey::StoryFlag(_, flag)
+            | StateKey::WorldFlag(flag)
+                if flag == key =>
+            {
                 change.before.as_bool() == Some(!becomes)
                     && change.after.as_bool() == Some(*becomes)
             }

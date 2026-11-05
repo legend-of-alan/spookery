@@ -1,5 +1,7 @@
 //! One effect: its kind, and the fields that kind carries.
 
+use std::fmt;
+
 use serde::{Deserialize, Serialize};
 
 use crate::draft::Draft;
@@ -560,14 +562,27 @@ fn viewer_matches(intent: &Intent, effect: &Effect) -> bool {
     effect.viewer == intent.actor
 }
 
-/// Who holds a meter, a flag or an item count: an actor, a place, or the world.
-/// Saved as `world`, `{actor: id}` or `{place: id}`.
+/// Who holds a meter, a flag or an item count: an actor, a place, a story, or the world.
+/// Saved as `world`, `{actor: id}`, `{place: id}` or `{story: id}`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Holder {
     Actor(String),
     Place(String),
+    Story(String),
     World,
+}
+
+/// The holder as a rule's `who` names it: an actor id, `place:<id>`, `story:<id>` or `world`.
+impl fmt::Display for Holder {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Holder::Actor(id) => write!(f, "{id}"),
+            Holder::Place(id) => write!(f, "place:{id}"),
+            Holder::Story(id) => write!(f, "story:{id}"),
+            Holder::World => write!(f, "world"),
+        }
+    }
 }
 
 /// Write a meter `holder` carries, inside the bounds the pack gives it.
@@ -582,11 +597,7 @@ pub(crate) fn write_meter(
         .meter_def(holder, key)
         .cloned()
         .ok_or(Reason::UnknownId)?;
-    let state_key = match holder {
-        Holder::Actor(id) => StateKey::ActorMeter(id.clone(), key.to_string()),
-        Holder::World => StateKey::WorldMeter(key.to_string()),
-        Holder::Place(_) => return Err(Reason::UnknownId),
-    };
+    let state_key = StateKey::meter(holder, key);
     draft.mutate(state_key, |state| {
         let meters = state.meters_mut(holder)?;
         meter::write(&def, meters.get_mut(key).ok_or(Reason::UnknownId)?, write)
@@ -619,7 +630,7 @@ pub(crate) fn shift_item(
                 model::shift_count(&mut place_live.items, id, delta, max)
             })
         }
-        Holder::World => Err(Reason::Schema),
+        Holder::Story(_) | Holder::World => Err(Reason::Schema),
     }
 }
 
@@ -771,29 +782,27 @@ fn remember(
     Ok(())
 }
 
-/// Set or clear a flag the actor's cast file lists, or any world flag but `busy`.
+/// Set or clear a flag the holder's file declares, or any world flag but `busy`.
 fn set_flag(draft: &mut Draft, holder: &Holder, key: &str, value: bool) -> Result<(), Reason> {
-    let flag_key = match holder {
-        Holder::World if !key.is_empty() && key != "busy" => StateKey::WorldFlag(key.to_string()),
-        Holder::Actor(id) => {
-            let cast = draft.canon().cast.get(id);
-            if !cast.is_some_and(|cast| cast.flags.iter().any(|flag| flag == key)) {
-                return Err(Reason::UnknownId);
-            }
-            StateKey::ActorFlag(id.clone(), key.to_string())
-        }
-        _ => return Err(Reason::UnknownId),
+    let declared = match holder {
+        Holder::World => !key.is_empty() && key != "busy",
+        _ => draft
+            .canon()
+            .flags_of(holder)
+            .is_some_and(|flags| flags.iter().any(|flag| flag == key)),
     };
-    draft.mutate(flag_key, |state| {
-        let flags = match holder {
-            Holder::Actor(id) => &mut state.actor_mut(id)?.flags,
-            _ => &mut state.flags,
-        };
-        let had = flags.iter().any(|flag| flag == key);
-        if !value {
-            flags.retain(|flag| flag != key);
-        } else if !had {
-            flags.push(key.to_string());
+    if !declared {
+        return Err(Reason::UnknownId);
+    }
+    draft.mutate(StateKey::flag(holder, key), |state| {
+        let had = state.has_flag(holder, key);
+        if had != value {
+            let flags = state.flags_mut(holder)?;
+            if value {
+                flags.push(key.to_string());
+            } else {
+                flags.retain(|flag| flag != key);
+            }
         }
         Ok(had != value)
     })

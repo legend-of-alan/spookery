@@ -239,6 +239,14 @@ impl<'p> Draft<'p> {
                 .get(id)
                 .map(|actor| StateValue::Bool(actor.flags.iter().any(|item| item == flag)))
                 .unwrap_or(StateValue::Empty),
+            StateKey::PlaceFlag(id, flag) => {
+                StateValue::Bool(self.state.has_flag(&Holder::Place(id.clone()), flag))
+            }
+            StateKey::StoryFlag(id, flag) => {
+                StateValue::Bool(self.state.has_flag(&Holder::Story(id.clone()), flag))
+            }
+            StateKey::PlaceMeter(id, meter) => self.meter_value(&Holder::Place(id.clone()), meter),
+            StateKey::StoryMeter(id, meter) => self.meter_value(&Holder::Story(id.clone()), meter),
             StateKey::ActorMeter(id, meter) => self.meter_value(&Holder::Actor(id.clone()), meter),
             StateKey::ActorModifier(id, key) => self
                 .state
