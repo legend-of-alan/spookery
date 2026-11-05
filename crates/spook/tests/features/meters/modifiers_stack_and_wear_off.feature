@@ -60,6 +60,12 @@ Feature: Modifiers stack per application, refresh on reapply, and wear off at on
     When the author runs spook check
     Then it refuses max_stacks 0 and the warmth meter
 
+  Scenario: The pack check refuses a modifier listed twice at its second row
+    Given "burn" modifies grit, lasts 10 minutes, and has max_stacks 4
+    And "burn" modifies grit, lasts 10 minutes, and has no max_stacks
+    When the author runs spook check
+    Then it refuses burn as listed twice at line 7
+
   Scenario: The pack check refuses a verb that applies an undefined modifier
     Given a verb applies "scorch", which is not a modifier
     When the author runs spook check

@@ -186,8 +186,8 @@ pub(crate) enum EffectRecord {
         max: Option<i64>,
     },
     Modifier {
-        #[serde(rename = "as")]
-        as_viewer: Viewer,
+        #[serde(rename = "as", default, skip_serializing_if = "Option::is_none")]
+        as_viewer: Option<Viewer>,
         intent_id: String,
         actor_id: String,
         id: String,

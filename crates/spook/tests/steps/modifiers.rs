@@ -368,6 +368,13 @@ fn it_refuses_the_bad_rows(world: &mut World) {
     }
 }
 
+#[then(expr = "it refuses burn as listed twice at line {int}")]
+fn it_refuses_the_second_burn(world: &mut World, line: u32) {
+    assert_eq!(world.code, Some(1), "{}", world.stderr);
+    let needle = format!("rules/modifiers.yaml:{line}: modifier 'burn' is listed twice");
+    assert!(world.stderr.contains(&needle), "{}", world.stderr);
+}
+
 #[then(expr = "it refuses the scorch verb, saying scorch is not a modifier")]
 fn it_refuses_the_scorch_verb(world: &mut World) {
     assert_eq!(world.code, Some(1), "{}", world.stderr);

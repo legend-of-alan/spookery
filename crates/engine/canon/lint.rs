@@ -1082,6 +1082,7 @@ fn names_subject(rule: &Rule) -> bool {
         match effect {
             EffectTemplate::Meter { who, .. }
             | EffectTemplate::Flag { who, .. }
+            | EffectTemplate::Modifier { who, .. }
             | EffectTemplate::Memory { who, .. }
             | EffectTemplate::Item { who, .. }
             | EffectTemplate::Reveal { who, .. }
