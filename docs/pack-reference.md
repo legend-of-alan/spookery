@@ -663,7 +663,7 @@ checks:
 
 ## Budget
 
-`idle` is `on` or `off`. Omitted means `on`. Omitted counters use the engine defaults. `round_every_real_seconds` is real seconds between wakes, `idle_minutes_per_round` and `live_minutes_per_round` are world minutes one round writes, `idle_catchup_max_rounds` is the most rounds one catch-up runs, and `idle_max_world_hours_per_real_hour` is the world hours one real hour of absence may write. The file below sets them.
+`idle` is `on` or `off`. Omitted means `on`. Omitted counters use the engine defaults. `round_every_real_seconds` is real seconds between wakes, `idle_minutes_per_round` and `live_minutes_per_round` are world minutes one round writes, `idle_catchup_max_rounds` is the most rounds one catch-up runs, and `idle_max_world_hours_per_real_hour` is the world hours one real hour of absence may write. A move past `max_intents_applied` or `max_npcs_acting` is refused `BUDGET`, and so is a rule that goes over `max_state_keys_mutated` and every move after it that round. The file below sets them.
 
 ```yaml file=rules/budget.yaml
 schema: budget

@@ -641,6 +641,91 @@ fn mira_has_visited_the_shop(world: &mut World) {
     );
 }
 
+#[given(expr = "the d20 pack allows {int} intent per round")]
+fn the_d20_pack_allows_intents(world: &mut World, limit: u64) {
+    let pack = support::copy_pack("sample-d20", "intent-limit");
+    set_budget(&pack, "max_intents_applied", limit);
+    support::stamp_pack_rev(&pack);
+    world.pack = Some(pack);
+}
+
+#[when(expr = "Lark waits and Briar waits in the same round")]
+fn lark_and_briar_wait(world: &mut World) {
+    let intents = vec![
+        intent("lark-wait", "pc_lark", "wait", None),
+        intent("briar-wait", "npc_briar", "wait", None),
+    ];
+    let (_state, _rolls, round) = play_queued(world.pack(), &[], intents);
+    world.scratch = round.to_string();
+}
+
+#[then(expr = "Briar's wait is refused BUDGET and nothing is left queued")]
+fn briars_wait_is_refused_budget(world: &mut World) {
+    assert_budget_refusals(world, &["briar-wait"]);
+}
+
+#[given(
+    expr = "the docks pack allows {int} state key per round and a row \"overset\" that sets 2 flags"
+)]
+fn the_docks_pack_allows_keys(world: &mut World, limit: u64) {
+    let pack = support::copy_pack("oneshot-docks", "key-limit");
+    set_budget(&pack, "max_state_keys_mutated", limit);
+    support::append(
+        &pack.join("rules/verbs.yaml"),
+        "
+  - id: overset
+    when: { verb: overset }
+    do:
+      - flag: { who: world, key: greeted, value: true }
+      - flag: { who: world, key: welcomed, value: true }
+",
+    );
+    make_mira_ineligible(&pack);
+    world.pack = Some(pack);
+}
+
+#[when(expr = "Rowan plays overset and then Wren waits in the same round")]
+fn rowan_oversets_and_wren_waits(world: &mut World) {
+    let intents = vec![
+        intent("rowan-overset", "pc_rowan", "overset", None),
+        intent("wren-wait", "pc_wren", "wait", None),
+    ];
+    let (_state, _rolls, round) = play_queued(world.pack(), &[], intents);
+    world.scratch = round.to_string();
+}
+
+#[then(expr = "Rowan's overset and Wren's wait are both refused BUDGET and nothing is left queued")]
+fn rowans_overset_and_wrens_wait_are_refused_budget(world: &mut World) {
+    assert_budget_refusals(world, &["rowan-overset", "wren-wait"]);
+}
+
+/// Each of `ids` is refused `BUDGET` in the round, and the save keeps no queue.
+fn assert_budget_refusals(world: &World, ids: &[&str]) {
+    let round: Value = serde_json::from_str(&world.scratch).unwrap();
+    let refused = round["refused"].as_array().unwrap();
+    for id in ids {
+        assert!(
+            refused
+                .iter()
+                .any(|item| item["id"] == *id && item["code"] == "BUDGET"),
+            "{id}: {round}"
+        );
+    }
+    let saved = spookery_engine::World::peek(world.pack()).unwrap();
+    assert!(saved.queued_intents().is_empty());
+}
+
+/// Set the budget's `key` line to `value`.
+fn set_budget(pack: &Path, key: &str, value: u64) {
+    let path = pack.join("rules/budget.yaml");
+    let text = fs::read_to_string(&path).unwrap();
+    let old = text
+        .lines()
+        .find(|line| line.starts_with(&format!("{key}:")))
+        .unwrap_or_else(|| panic!("no {key} line"));
+    fs::write(&path, text.replacen(old, &format!("{key}: {value}"), 1)).unwrap();
+}
+
 /// Rowan, seated, takes the street exit, then plays `then` in the same round.
 fn rowan_walks(
     pack: &Path,

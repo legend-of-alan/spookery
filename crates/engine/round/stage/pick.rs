@@ -10,15 +10,23 @@ use crate::rules::context::Context;
 use crate::rules::effect::EffectKind;
 use crate::rules::expand;
 use crate::rules::gate;
+use crate::rules::gate::Refusal;
 use crate::rules::habits::{self, is_player_at};
 use crate::rules::rule::{TargetKind, When};
 use crate::rules::travel::find_exit;
 use crate::Reason;
 
 use crate::round::dice::shuffle_key;
+use crate::round::log::RoundLog;
+use crate::round::stage::apply::refuse;
 
-/// The queue and the habits, stamped, in priority order, cut to the budget.
-pub(crate) fn run(draft: &Draft, queue: &[Intent]) -> Result<Vec<Intent>, Reason> {
+/// The queue and the habits, stamped, in priority order, cut to the budget. Each intent past
+/// the cut is refused `BUDGET`.
+pub(crate) fn run(
+    draft: &Draft,
+    queue: &[Intent],
+    log: &mut RoundLog,
+) -> Result<Vec<Intent>, Reason> {
     let (canon, state, presence) = (draft.canon(), draft.state(), draft.presence);
     let mut candidates = queue.to_vec();
     candidates.extend(habits::intents(canon, state, presence));
@@ -26,8 +34,12 @@ pub(crate) fn run(draft: &Draft, queue: &[Intent]) -> Result<Vec<Intent>, Reason
         stamp_target(canon, state, presence, intent);
     }
     candidates.sort_by_cached_key(|intent| priority(canon, state, presence, intent));
-    candidates.truncate(draft.budget().max_intents_applied as usize);
-    check_unique_ids(candidates)
+    check_unique_ids(&candidates)?;
+    let limit = (draft.budget().max_intents_applied as usize).min(candidates.len());
+    for intent in candidates.split_off(limit) {
+        refuse(log, &intent, Refusal::new(&intent, Reason::Budget), false);
+    }
+    Ok(candidates)
 }
 
 /// Fill an empty target from a preview of the intent's effects, a place it moves to, and
@@ -65,14 +77,14 @@ fn stamp_target(canon: &Canon, state: &State, presence: &Presence, intent: &mut 
 }
 
 /// Refuse `SCHEMA` when a GM-chosen id equals a habit's: the one way two intents share an id.
-fn check_unique_ids(candidates: Vec<Intent>) -> Result<Vec<Intent>, Reason> {
+fn check_unique_ids(candidates: &[Intent]) -> Result<(), Reason> {
     let mut seen = BTreeSet::new();
-    for intent in &candidates {
-        if !seen.insert(intent.id.clone()) {
+    for intent in candidates {
+        if !seen.insert(&intent.id) {
             return Err(Reason::Schema);
         }
     }
-    Ok(candidates)
+    Ok(())
 }
 
 /// Who acts first: players, then a claimed target, then the shuffle.

@@ -4,6 +4,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::model::Presence;
+use crate::rules::gate;
 use crate::store::journal;
 use crate::store::records::{Record, Step};
 use crate::world::World;
@@ -38,7 +39,8 @@ fn a_refused_or_dropped_opposing_roll_replays_the_same_way() {
             "    cost: { items: { chock: 1d4 } }\n",
             Some(Reason::CantAfford),
         ),
-        // Players go first, so the strike is cut and the lunge reads it from the raw queue.
+        // Players go first, so the strike is cut, refused `BUDGET`, and the lunge reads it from
+        // the raw queue.
         (Some("max_intents_applied: 1"), "", None),
     ];
     let mut failures = Vec::new();
@@ -68,7 +70,8 @@ fn lunge_pack(limit: Option<&str>, rule: &str) -> PathBuf {
 }
 
 /// After `warmup` empty rounds, Briar strikes Lark and Lark lunges at Briar.
-/// `refused` is the lunge's refusal, or `None` when the strike is cut from the round.
+/// `refused` is the lunge's refusal, or `None` when the strike is cut from the round and
+/// refused `BUDGET`.
 fn fight(base: &Path, warmup: u32, refused: Option<Reason>) -> Result<(), String> {
     let pack = TempPack(fresh_dir("opposed"));
     copy_dir(base, &pack.0);
@@ -115,7 +118,14 @@ fn fight(base: &Path, warmup: u32, refused: Option<Reason>) -> Result<(), String
             .refused
             .iter()
             .any(|rejected| rejected.id == "lark-lunge" && rejected.code == code),
-        None => last.refused.is_empty() && ran("verb:lunge") && !ran("verb:strike"),
+        None => {
+            let cut = gate::Refusal {
+                id: "briar-strike".to_string(),
+                code: Reason::Budget,
+                detail: None,
+            };
+            last.refused == [cut] && ran("verb:lunge") && !ran("verb:strike")
+        }
     };
     assert!(
         as_expected,
