@@ -395,14 +395,6 @@ fn no_actor_carries_dawn(world: &mut World) {
 
 #[then(expr = "the vigil's change rule fires once")]
 fn the_vigil_fires_once(world: &mut World) {
-    the_vigil_rule_fires_once(world);
-    assert!(state_of(pack(world))
-        .flags
-        .contains(&"dawn_broke".to_string()));
-}
-
-#[then(expr = "the vigil rule fires once")]
-fn the_vigil_rule_fires_once(world: &mut World) {
     let pack = pack(world);
     let fired = spookery_engine::testing::journal::list_round_keys(pack)
         .iter()
@@ -411,6 +403,7 @@ fn the_vigil_rule_fires_once(world: &mut World) {
         .filter(|name| name == "story:vigil/dawn_breaks")
         .count();
     assert_eq!(fired, 1);
+    assert!(state_of(pack).flags.contains(&"dawn_broke".to_string()));
 }
 
 /// Give the world a `morning` meter from 0, and append effects to the vigil's dawn rule, the

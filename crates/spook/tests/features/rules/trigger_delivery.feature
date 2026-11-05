@@ -14,7 +14,7 @@ Feature: Trigger delivery
     And pc_nell can see the trapdoor
     And spook verify passes on this pack
 
-  Scenario: A world flag change rule fires once
+  Scenario: A rule watching a world flag runs when it turns
     Given a verb sets world flag tide_turned
     And a change rule watches tide_turned become true and adds 1 to who "world" meter tides
     And pc_rowan and pc_nell are seated
