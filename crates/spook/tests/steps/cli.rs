@@ -219,11 +219,6 @@ fn stderr_shows(world: &mut World, text: String) {
     );
 }
 
-#[then(expr = "play shows the picker:")]
-fn play_shows_the_picker(world: &mut World, step: &Step) {
-    wait_play(world, step.docstring.as_deref().unwrap_or_default().trim());
-}
-
 #[then(expr = "stdout shows the picker:")]
 fn stdout_shows_the_picker(world: &mut World, step: &Step) {
     let picker = step.docstring.as_deref().unwrap_or_default().trim();

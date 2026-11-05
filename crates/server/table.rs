@@ -16,8 +16,8 @@ use super::idle::{self, now_stamp};
 use super::seat::{Claim, ConnId, Connection, FrameSender, Seats};
 use super::Error;
 use crate::protocol::{
-    self, is_built_in, parse_args, ClaimArgs, ClientBody, ClientMessage, Detail, MoveArgs, NoArgs,
-    SayArgs, Seat, ServerBody, ServerMessage, VERSION, WORDS,
+    is_built_in, parse_args, ClaimArgs, ClientBody, ClientMessage, MoveArgs, NoArgs, SayArgs, Seat,
+    ServerBody, ServerMessage, VERSION, WORDS,
 };
 
 /// The host's cap. A pack may define more PCs than this.
@@ -267,11 +267,7 @@ impl Table {
             return self.claim(conn, id, &args);
         }
         let Some(actor_id) = self.seats.claim_of(conn).map(|claim| claim.actor.clone()) else {
-            let free = protocol::Refusal {
-                code: protocol::Code::Known(Reason::ChoosePc),
-                detail: Some(Detail::Many(self.open_and_taken().0)),
-            };
-            return self.reply(conn, id, ServerBody::Refused(free));
+            return self.reply(conn, id, ServerBody::Refused(Reason::ChoosePc.into()));
         };
         let presence = self.seats.presence();
         let body = match word.as_str() {

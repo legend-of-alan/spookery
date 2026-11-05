@@ -446,20 +446,6 @@
         "TRIGGER_LEAK"
       ]
     },
-    "Detail": {
-      "description": "A refusal's `detail`: one id or locked text, or the free PCs on `CHOOSE_PC`.",
-      "anyOf": [
-        {
-          "type": "string"
-        },
-        {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        }
-      ]
-    },
     "Refusal": {
       "description": "Sent from the table to a client as a `refused` body.\nDisplay is the sentence with the code in brackets,\n`The table is full. [TABLE_FULL]`.",
       "type": "object",
@@ -468,13 +454,9 @@
           "$ref": "#/$defs/Code"
         },
         "detail": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/Detail"
-            },
-            {
-              "type": "null"
-            }
+          "type": [
+            "string",
+            "null"
           ]
         }
       },

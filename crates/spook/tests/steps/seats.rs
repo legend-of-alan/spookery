@@ -41,46 +41,9 @@ fn a_player_claims(world: &mut World, actor: String) {
     world.scratch = table::claim(world, &actor);
 }
 
-#[then(expr = "the hello is refused with {string} and the missing list is {string}")]
-fn the_hello_is_refused_with_missing(world: &mut World, code: String, missing: String) {
-    the_hello_is_refused_with(world, code);
-    let frame: serde_json::Value = serde_json::from_str(world.scratch.trim()).unwrap();
-    let expected: Vec<String> = serde_json::from_str(&missing).unwrap();
-    let got: Vec<String> = serde_json::from_value(frame["body"]["detail"].clone()).unwrap();
-    assert_eq!(got, expected);
-}
-
 #[then(expr = "the hello reply does not contain {string}")]
 fn the_hello_reply_does_not_contain(world: &mut World, needle: String) {
     assert!(!world.scratch.contains(&needle), "{}", world.scratch);
-}
-
-#[when(expr = "an unclaimed player connects")]
-fn an_unclaimed_player_connects(world: &mut World) {
-    let seat = table::Seat::open(table::live_mut(world).game_port, "player");
-    world.scratch = table::wait_suffix(&seat.text, 0, "\"kind\":\"hello\"");
-}
-
-#[then(expr = "the hello lists {string} as open and {string} as taken")]
-fn the_hello_lists_open_and_taken(world: &mut World, open: String, taken: String) {
-    let hello: serde_json::Value = serde_json::from_str(world.scratch.trim()).unwrap();
-    let ids = |list: &str| -> Vec<String> { list.split(',').map(str::to_string).collect() };
-    assert_eq!(
-        hello["body"]["open"],
-        serde_json::json!(ids(&open)),
-        "{hello}"
-    );
-    assert_eq!(
-        hello["body"]["taken"],
-        serde_json::json!(ids(&taken)),
-        "{hello}"
-    );
-}
-
-#[when(expr = "play joins that table as {word}")]
-fn play_joins_that_table_as(world: &mut World, pc: String) {
-    let addr = table::game_addr(world);
-    world.play = Some(super::common::spawn_play(&addr, &pc, &[]));
 }
 
 #[when(expr = "the operator runs play on that table")]

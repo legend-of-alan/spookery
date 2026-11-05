@@ -76,11 +76,11 @@ Each word reads `args` as one type, and the schema's `$defs` in `client.json` ho
 
 ### claim and release
 
-A player claims one PC, and the table holds three claims at most. A word other than `claim` before a claim is `CHOOSE_PC`, and `detail` lists the open PCs:
+A player claims one PC, and the table holds three claims at most. A word other than `claim` before a claim is `CHOOSE_PC`. The hello already listed the open PCs:
 
 <!-- example: player-choose-pc -->
 ```json
-{"seq":5,"reply_to":"c1","body":{"kind":"refused","code":"CHOOSE_PC","detail":["pc_harbormouse","pc_wren"]}}
+{"seq":5,"reply_to":"c1","body":{"kind":"refused","code":"CHOOSE_PC"}}
 ```
 
 A PC another claim holds is `SEAT_TAKEN`, a fourth claim is `TABLE_FULL`, and an id that is not a live PC is `SCHEMA`. A refused claim leaves the connection up.
@@ -474,13 +474,13 @@ The session's `GET /mcp` event stream takes the GM seat, and its first event is 
 
 ## Errors
 
-A refusal is a `refused` body, and the connection stays up. `detail` is there only when the refusal names a thing: the locked text or the unaffordable id of a move, or on `CHOOSE_PC` the list of open PCs.
+A refusal is a `refused` body, and the connection stays up. `detail` is there only when the refusal names a thing: the locked text or the unaffordable id of a move.
 
 | Code | What the client should do |
 |---|---|
 | `TABLE_FULL` | Stop. Three PCs are claimed, or the GM seat is held. Try again only after a seat is free. |
 | `SEAT_TAKEN` | That PC is held. Claim another. |
-| `CHOOSE_PC` | Claim one of the PCs in `detail`. An empty list means none is free. |
+| `CHOOSE_PC` | Claim one of the PCs in the hello's `open`. An empty `open` means none is free. |
 | `SCHEMA` | Fix the message: its shape, its word, or its arguments. |
 | `NOT_IN_SPEC` | The verb has no rule that applies, `commit` set `include_round` false with a move queued, or the seat was released or, over MCP, never taken. |
 | `LINE_TOO_LONG` | Send a message under 8 KiB. |

@@ -88,16 +88,10 @@ Feature: One GM seat and up to three player seats
     When three play clients sit on a free port
     Then each play client shows its first perceive
 
-  Scenario: A word before a claim is refused with the free PCs
+  Scenario: A word before a claim is refused
     Given a docks table
     When an unclaimed player waits
-    Then the hello is refused with "CHOOSE_PC" and the missing list is '["pc_harbormouse","pc_rowan","pc_wren"]'
+    Then the hello is refused with "CHOOSE_PC"
     When a player claims an empty id
     Then the hello is refused with "SCHEMA"
     And the hello reply does not contain "CHOOSE_PC"
-
-  Scenario: A word before a claim with no free PC lists none
-    Given a one-player docks table
-    When an unclaimed player waits
-    Then the hello is refused with "CHOOSE_PC" and the missing list is "[]"
-    And the hello reply does not contain "SEAT_TAKEN"
