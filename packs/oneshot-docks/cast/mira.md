@@ -34,9 +34,9 @@ rules:
   - id: restock_lamp_oil
     when: habit
     if:
-      - hour:
-          from: 8
-          to: 16
+      - day_tick:
+          from: 480
+          to: 960
     do:
       - item:
           who: place:docks_shop

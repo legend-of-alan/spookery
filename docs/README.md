@@ -37,8 +37,8 @@ The model does not keep the world. It can talk, and it can ask the engine to com
 | **Canon** | Files under `world/`, `cast/` and `rules/` in a pack. They don't change while the world runs. |
 | **`spook`** | The program that loads a pack. It is the only thing that writes the pack's state. |
 | **Engine** | The code that decides what is legal, rolls checks and tracks who knows what. |
-| **Tick** | A unit of game time on the world clock. Talking takes no ticks. Moving and acting do. |
-| **Round** | One batch in which queued intents are settled together and the results are logged. |
+| **Tick** | The only unit of game time. The engine counts world time in ticks. A day is `ticks_per_day` ticks, set in `rules/budget.yaml`. Talking takes no ticks. Moving and acting do. Players and the GM see a tick as a clock time, but no rule reads that clock. |
+| **Round** | One batch of work, in which queued intents are settled together and the results are logged. A round writes some ticks, but it is not a unit of time. |
 | **Intent** | A proposed move from a player, an NPC or the engine's scheduler. |
 | **Effect** | A checked change to the world, produced from an intent. |
 | **Expression** | A number in a rule. An integer, dice such as `2d6` or `2d20kh1`, a meter read such as `self.might`, and `+`, `-`, `*`, `/`, `min`, and `max`. A condition's value does not roll dice. |

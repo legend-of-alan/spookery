@@ -74,7 +74,7 @@ fn the_script_is_played_with_the_stub_gm(world: &mut World) {
             let now = state_of(&pack);
             assert!(
                 now.world_time <= START_TIME + 10,
-                "the opening ran past 10 minutes at {}",
+                "the opening ran past 10 ticks at {}",
                 now.world_time
             );
             assert_eq!(larks_tonic(&now), 0, "the tonic is still in inventory");
@@ -130,13 +130,13 @@ fn the_party_travels_through_the_locked_exit(world: &mut World) {
     world.pack = Some(pack);
 }
 
-#[then(expr = "they arrive at the exit's cost in minutes and the arrival beat fires")]
+#[then(expr = "they arrive at the exit's cost in ticks and the arrival beat fires")]
 fn they_arrive_at_the_exits_cost(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
     let started: u64 = world.scratch.parse().unwrap();
     let cost = lane_cost(&pack);
     let now = state_of(&pack);
-    let arrived = arrival_minute(&pack);
+    let arrived = arrival_tick(&pack);
     assert_eq!(now.actors.get("pc_lark").unwrap().place, "mill_lane");
     assert_eq!(arrived.saturating_sub(started), cost);
     assert!(cost > 0);
@@ -230,10 +230,10 @@ fn lane_cost(pack: &Path) -> u64 {
         .find(|exit| exit.name == "mill_lane")
         .unwrap()
         .cost
-        .minutes
+        .ticks
 }
 
-fn arrival_minute(pack: &Path) -> u64 {
+fn arrival_tick(pack: &Path) -> u64 {
     read_rounds(pack)
         .into_iter()
         .flat_map(|round| round["arrivals"].as_array().cloned().unwrap_or_default())

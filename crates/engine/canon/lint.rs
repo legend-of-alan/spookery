@@ -727,7 +727,56 @@ pub(crate) fn check_canon(canon: &Canon) -> Vec<Diagnostic> {
     diags.extend(check_trigger_cycles(canon));
     diags.extend(check_trigger_leaks(canon));
     diags.extend(check_world_change_subjects(canon));
+    diags.extend(check_day_ticks(canon));
     diags
+}
+
+/// `day_tick` bounds at or past `ticks_per_day`, on a rule or an exit.
+fn check_day_ticks(canon: &Canon) -> Vec<Diagnostic> {
+    let day = canon.budget.ticks_per_day;
+    let rules = canon
+        .rules
+        .iter()
+        .map(|rule| (&rule.file, format!("rules[{}].if", rule.index), &rule.if_));
+    let exits = canon
+        .places
+        .values()
+        .flat_map(|place| &place.exits)
+        .map(|exit| {
+            let path = format!("exits[{}].if", exit.index);
+            (&exit.file, path, &exit.if_)
+        });
+    let mut diags = Vec::new();
+    for (file, path, conds) in rules.chain(exits) {
+        let mut bounds = Vec::new();
+        for cond in conds {
+            push_day_ticks(cond, &mut bounds);
+        }
+        for bound in bounds.into_iter().filter(|bound| *bound >= day) {
+            diags.push(
+                schema_error(
+                    file,
+                    &format!("day_tick {bound} is not below ticks_per_day {day}"),
+                    "set day_tick from and to to ticks of the day, below ticks_per_day",
+                )
+                .at_path(path.clone()),
+            );
+        }
+    }
+    diags
+}
+
+fn push_day_ticks(cond: &Cond, out: &mut Vec<u64>) {
+    match cond {
+        Cond::DayTick { from, to } => out.extend([*from, *to]),
+        Cond::All(inner) | Cond::Any(inner) => {
+            for cond in inner {
+                push_day_ticks(cond, out);
+            }
+        }
+        Cond::Not(inner) => push_day_ticks(inner, out),
+        _ => {}
+    }
 }
 
 /// Places no exit path reaches from the start, including hidden and locked exits.
@@ -1115,7 +1164,7 @@ fn push_cond_whos<'a>(cond: &'a Cond, out: &mut Vec<&'a Who>) {
             }
         }
         Cond::Not(inner) => push_cond_whos(inner, out),
-        Cond::Hour { .. } | Cond::Players { .. } | Cond::NoteExists(_) => {}
+        Cond::DayTick { .. } | Cond::Players { .. } | Cond::NoteExists(_) => {}
     }
 }
 

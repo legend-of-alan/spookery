@@ -32,16 +32,14 @@ const VERB_KEYS: &[&str] = &[
     "target: item",
     "via:",
     "partial_at:",
-    "30s",
-    "2h",
+    "ticks:",
 ];
 
 const EXIT_KEYS: &[&str] = &[
     "revealed_by:",
     "hidden: true",
     "locked_text:",
-    "10m",
-    "1d",
+    "ticks:",
     "teleport: true",
 ];
 
@@ -53,7 +51,7 @@ const CONDITION_KEYS: &[&str] = &[
     "has_item:",
     "wielding:",
     "note_exists:",
-    "hour:",
+    "day_tick:",
     "players:",
     "- knows:",
     "- at:",

@@ -65,9 +65,9 @@ pub(crate) fn is_eligible(canon: &Canon, state: &State, presence: &Presence, npc
         return false;
     }
     if presence.players == 0 {
-        u64::from(counters.idle_acts_today) < canon.budget.idle_acts_per_world_day
+        u64::from(counters.idle_acts_today) < canon.budget.idle_acts_per_day
     } else {
-        u64::from(counters.live_acts_this_hour) < canon.budget.live_acts_per_world_hour
+        u64::from(counters.live_acts_this_window) < canon.budget.live_acts_per_window
     }
 }
 

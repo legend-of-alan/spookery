@@ -53,7 +53,7 @@ pub enum EffectKind {
         actor_id: String,
         from: String,
         to: String,
-        /// Exact world minute of a timed arrival. Instant moves leave this empty.
+        /// Exact tick of a timed arrival. Instant moves leave this empty.
         arrived_at: Option<u64>,
     },
     Memory {

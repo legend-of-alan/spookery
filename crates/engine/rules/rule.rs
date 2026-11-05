@@ -146,7 +146,7 @@ pub struct LineColumn {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Cost {
-    pub minutes: u64,
+    pub ticks: u64,
     pub meters: Vec<(String, Expr)>,
     pub items: Vec<(String, Expr)>,
 }
@@ -177,9 +177,10 @@ pub enum Cond {
         who: Who,
         fact: String,
     },
-    Hour {
-        from: i64,
-        to: i64,
+    /// A tick of the day in `from..to`, wrapping past the day's end when `from > to`.
+    DayTick {
+        from: u64,
+        to: u64,
     },
     Players {
         op: Op,

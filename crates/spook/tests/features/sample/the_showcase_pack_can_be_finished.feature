@@ -11,7 +11,7 @@ Feature: The showcase pack can be finished
 
   Scenario: A journey takes time and ends in a beat
     When the party travels through the locked exit after unlocking it
-    Then they arrive at the exit's cost in minutes and the arrival beat fires
+    Then they arrive at the exit's cost in ticks and the arrival beat fires
 
   Scenario: The consumable is used up
     When a player uses the consumable

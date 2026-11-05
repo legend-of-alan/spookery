@@ -65,8 +65,8 @@ pub(crate) fn run(
             continue;
         }
         // A timed move expands when it finishes; an instant one against the state it rolled on.
-        let minutes = travel::span(&context, rule);
-        let expansion = if minutes > 0 {
+        let ticks = travel::span(&context, rule);
+        let expansion = if ticks > 0 {
             None
         } else {
             let context = Context::new(canon, state, draft.presence, intent);
@@ -93,7 +93,7 @@ pub(crate) fn run(
             None => {
                 let at = clock.world_time_before;
                 let mut roller = dice.roller(log, &rule.id, actor_id);
-                match travel::begin_action(draft, intent, rule, at, minutes, &mut roller) {
+                match travel::begin_action(draft, intent, rule, at, ticks, &mut roller) {
                     Ok(()) => {
                         log.extra_steps.push(Step::Rule(rule.id.clone()));
                         Landing::Landed

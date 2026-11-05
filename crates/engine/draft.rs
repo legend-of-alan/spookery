@@ -111,7 +111,7 @@ impl<'p> Draft<'p> {
                 .act;
             (
                 counters.idle_acts_today,
-                counters.live_acts_this_hour,
+                counters.live_acts_this_window,
                 counters.last_act_round,
             )
         };
@@ -125,7 +125,7 @@ impl<'p> Draft<'p> {
             keys.push(StateKey::IdleActsToday(actor_id.to_string()));
         }
         if players > 0 && new_live != current_live {
-            keys.push(StateKey::LiveActsThisHour(actor_id.to_string()));
+            keys.push(StateKey::LiveActsThisWindow(actor_id.to_string()));
         }
         self.track_many(&keys)?;
         let counters = &mut self.state.actor_mut(actor_id)?.act;
@@ -133,7 +133,7 @@ impl<'p> Draft<'p> {
         if players == 0 {
             counters.idle_acts_today = new_idle;
         } else {
-            counters.live_acts_this_hour = new_live;
+            counters.live_acts_this_window = new_live;
         }
         Ok(())
     }
@@ -273,8 +273,8 @@ impl<'p> Draft<'p> {
             StateKey::IdleActsToday(id) => {
                 self.act_number(id, |act| i64::from(act.idle_acts_today))
             }
-            StateKey::LiveActsThisHour(id) => {
-                self.act_number(id, |act| i64::from(act.live_acts_this_hour))
+            StateKey::LiveActsThisWindow(id) => {
+                self.act_number(id, |act| i64::from(act.live_acts_this_window))
             }
             StateKey::ActorItem(id, item) => self
                 .state

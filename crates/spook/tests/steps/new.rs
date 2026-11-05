@@ -173,7 +173,7 @@ fn the_keeper_habit_has_set_tended(world: &mut World) {
     let idle = PathBuf::from(&world.scratch);
     assert_eq!(world.code, Some(0), "{}", world.stderr);
     let now = state_of(&idle);
-    assert_eq!(now.world_time, 60, "idle round did not advance an hour");
+    assert_eq!(now.world_time, 60, "idle round did not advance 60 ticks");
     let flags = match now.actors.get("keeper") {
         Some(actor) if actor.is_npc() => &actor.flags,
         other => panic!("keeper missing: {other:?}"),

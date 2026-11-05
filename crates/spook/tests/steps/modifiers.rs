@@ -116,14 +116,14 @@ fn numbers(list: &str) -> Vec<i64> {
 }
 
 #[given(
-    expr = "the docks pack with one-minute rounds and pc_rowan's grit at 20, with three PCs in the shop"
+    expr = "the docks pack with one-tick rounds and pc_rowan's grit at 20, with three PCs in the shop"
 )]
-fn docks_with_one_minute_rounds(world: &mut World) {
+fn docks_with_one_tick_rounds(world: &mut World) {
     let pack = copy_docks("modifiers");
     replace_in_file(
         &pack.join("rules/budget.yaml"),
-        "live_minutes_per_round: 5\n",
-        "live_minutes_per_round: 1\n",
+        "live_ticks_per_round: 5\n",
+        "live_ticks_per_round: 1\n",
     );
     edit_table(world, &pack, |now, seated| {
         set_place(now, "pc_wren", "docks_shop");

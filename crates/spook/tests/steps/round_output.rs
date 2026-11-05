@@ -28,7 +28,7 @@ fn listen_with_wren(world: &mut World, travelling: bool) {
     let path = pack.join("world/places/docks_shop.md");
     let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read shop: {err}"));
     let from = "  - to: docks_street\n    name: docks_street\n";
-    let to = "  - to: docks_street\n    name: docks_street\n    cost:\n      time: 10m\n";
+    let to = "  - to: docks_street\n    name: docks_street\n    cost:\n      ticks: 10\n";
     assert!(text.contains(from), "{text}");
     fs::write(&path, text.replacen(from, to, 1)).unwrap_or_else(|err| panic!("write shop: {err}"));
     let verbs = pack.join("rules/verbs.yaml");
@@ -85,8 +85,8 @@ fn the_gm_queues_a_move(world: &mut World, move_name: String, actor: String) {
     queue_move(world, &actor, &move_name, None);
 }
 
-#[when(expr = "the GM queues a 10-minute travel for {string}")]
-fn the_gm_queues_a_ten_minute_travel(world: &mut World, actor: String) {
+#[when(expr = "the GM queues a 10-tick travel for {string}")]
+fn the_gm_queues_a_ten_tick_travel(world: &mut World, actor: String) {
     queue_move(world, &actor, "travel", Some("docks_street"));
 }
 

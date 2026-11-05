@@ -140,7 +140,7 @@ pub struct CondYaml {
     pub flag: Option<FlagCondYaml>,
     pub at: Option<AtYaml>,
     pub knows: Option<KnowsYaml>,
-    pub hour: Option<HourYaml>,
+    pub day_tick: Option<DayTickYaml>,
     pub players: Option<PlayersYaml>,
     pub note_exists: Option<String>,
     pub wielding: Option<WieldingYaml>,
@@ -203,9 +203,9 @@ pub struct KnowsYaml {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct HourYaml {
-    pub from: i64,
-    pub to: i64,
+pub struct DayTickYaml {
+    pub from: u64,
+    pub to: u64,
 }
 
 #[derive(Deserialize)]
@@ -218,7 +218,8 @@ pub struct PlayersYaml {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CostYaml {
-    pub time: Option<String>,
+    #[serde(default)]
+    pub ticks: u64,
     #[serde(default)]
     pub meters: Counts,
     #[serde(default)]
@@ -706,14 +707,14 @@ pub(super) fn cond_of(yaml: &CondYaml) -> Result<Cond, Fault> {
             fact: knows.fact.clone(),
         });
     }
-    if let Some(hour) = &yaml.hour {
+    if let Some(day_tick) = &yaml.day_tick {
         found += 1;
-        if !(0..24).contains(&hour.from) || !(0..24).contains(&hour.to) || hour.from == hour.to {
-            return Err("hour needs from and to in 0..24, and they must differ".into());
+        if day_tick.from == day_tick.to {
+            return Err("day_tick needs from and to that differ".into());
         }
-        cond = Some(Cond::Hour {
-            from: hour.from,
-            to: hour.to,
+        cond = Some(Cond::DayTick {
+            from: day_tick.from,
+            to: day_tick.to,
         });
     }
     if let Some(players) = &yaml.players {
@@ -757,12 +758,8 @@ pub(super) fn cond_of(yaml: &CondYaml) -> Result<Cond, Fault> {
 }
 
 pub(super) fn cost_of(yaml: &CostYaml) -> Result<Cost, Fault> {
-    let minutes = match &yaml.time {
-        Some(text) => minutes_of(text)?,
-        None => 0,
-    };
     Ok(Cost {
-        minutes,
+        ticks: yaml.ticks,
         meters: counts_of(&yaml.meters)?,
         items: counts_of(&yaml.items)?,
     })
@@ -776,25 +773,6 @@ fn counts_of(yaml: &Counts) -> Result<Vec<(String, Expr)>, Fault> {
             .collect(),
         Counts::None => Ok(Vec::new()),
     }
-}
-
-fn minutes_of(text: &str) -> Result<u64, String> {
-    let (count, unit) = text
-        .char_indices()
-        .find(|(_, ch)| !ch.is_ascii_digit())
-        .map(|(index, _)| text.split_at(index))
-        .ok_or_else(|| format!("time '{text}' is not a duration"))?;
-    let count: u64 = count
-        .parse()
-        .map_err(|_| format!("time '{text}' is not a duration"))?;
-    let minutes = match unit {
-        "s" => count.div_ceil(60),
-        "m" => count,
-        "h" => count.saturating_mul(60),
-        "d" => count.saturating_mul(24 * 60),
-        _ => return Err(format!("time '{text}' is not 30s, 10m, 2h, or 1d")),
-    };
-    Ok(minutes)
 }
 
 fn roll_of(yaml: &RollYaml) -> Result<RollSpec, Fault> {

@@ -39,7 +39,11 @@ Feature: spook check explains a broken pack
       | missing display_name     | cast/pc-rowan.md           | SCHEMA            | display_name             |
       | idle maybe               | rules/budget.yaml          | SCHEMA            | not on or off            |
       | zero round interval      | rules/budget.yaml          | SCHEMA            | round_every_real_seconds |
-      | zero idle minutes        | rules/budget.yaml          | SCHEMA            | idle_minutes_per_round   |
+      | zero idle ticks          | rules/budget.yaml          | SCHEMA            | idle_ticks_per_round     |
+      | zero ticks per day       | rules/budget.yaml          | SCHEMA            | ticks_per_day            |
+      | day_tick past the day    | cast/mira.md               | SCHEMA            | below ticks_per_day      |
+      | a leftover hour          | cast/mira.md               | SCHEMA            | write day_tick           |
+      | an exit cost in minutes  | world/places/docks_shop.md | SCHEMA            | write ticks              |
 
   Scenario: Two problems in two files are both reported
     Given a docks table

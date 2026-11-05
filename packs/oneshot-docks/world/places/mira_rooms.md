@@ -6,7 +6,7 @@ exits:
   - to: docks_shop
     name: stairs
     cost:
-      time: 2m
+      ticks: 2
 facts:
   - id: fact_room_lamp
     text: A lamp burns in the room.

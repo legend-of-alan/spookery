@@ -12,15 +12,19 @@ pub struct Budget {
     pub max_effects_per_intent: u64,
     pub max_state_keys_mutated: u64,
     pub max_memory_writes: u64,
-    pub idle_acts_per_world_day: u64,
-    pub live_acts_per_world_hour: u64,
+    pub idle_acts_per_day: u64,
+    pub live_acts_per_window: u64,
+    /// Ticks in one live act window. `live_acts_per_window` resets when a window ends.
+    pub live_act_window_ticks: u64,
+    /// Ticks in one day. The day rollover and `day_tick` conditions read it.
+    pub ticks_per_day: u64,
     pub round_every_real_seconds: u64,
     /// Empty-table wakes. `false` leaves an empty table still.
     pub idle_rounds: bool,
-    pub idle_minutes_per_round: u64,
-    pub live_minutes_per_round: u64,
+    pub idle_ticks_per_round: u64,
+    pub live_ticks_per_round: u64,
     pub idle_catchup_max_rounds: u64,
-    pub idle_max_world_hours_per_real_hour: u64,
+    pub idle_max_ticks_per_real_hour: u64,
     pub max_fastforward_rounds: u64,
     /// Trigger rounds in one tick. The next round logs `trigger_depth` and does not run.
     pub max_trigger_depth: u64,
@@ -34,14 +38,16 @@ impl Default for Budget {
             max_effects_per_intent: 4,
             max_state_keys_mutated: 24,
             max_memory_writes: 8,
-            idle_acts_per_world_day: 3,
-            live_acts_per_world_hour: 6,
+            idle_acts_per_day: 3,
+            live_acts_per_window: 6,
+            live_act_window_ticks: 60,
+            ticks_per_day: 1440,
             round_every_real_seconds: 300,
             idle_rounds: true,
-            idle_minutes_per_round: 60,
-            live_minutes_per_round: 5,
+            idle_ticks_per_round: 60,
+            live_ticks_per_round: 5,
             idle_catchup_max_rounds: 12,
-            idle_max_world_hours_per_real_hour: 8,
+            idle_max_ticks_per_real_hour: 480,
             max_fastforward_rounds: 12,
             max_trigger_depth: 4,
         }
@@ -69,16 +75,18 @@ pub(crate) fn load_budget(rel: &str, text: &str) -> Result<Budget, Vec<Diagnosti
         max_effects_per_intent >= 0,
         max_state_keys_mutated >= 0,
         max_memory_writes >= 0,
-        idle_acts_per_world_day >= 0,
-        live_acts_per_world_hour >= 0,
+        idle_acts_per_day >= 0,
+        live_acts_per_window >= 0,
+        live_act_window_ticks >= 1,
+        ticks_per_day >= 1,
         round_every_real_seconds >= 1,
     );
     budget.idle_rounds = parse_idle(&source, doc.idle, &mut diags);
     set_numbers!(
-        idle_minutes_per_round >= 1,
-        live_minutes_per_round >= 0,
+        idle_ticks_per_round >= 1,
+        live_ticks_per_round >= 0,
         idle_catchup_max_rounds >= 0,
-        idle_max_world_hours_per_real_hour >= 0,
+        idle_max_ticks_per_real_hour >= 0,
         max_fastforward_rounds >= 0,
         max_trigger_depth >= 0,
     );
@@ -153,15 +161,17 @@ struct BudgetDoc {
     max_effects_per_intent: Option<i64>,
     max_state_keys_mutated: Option<i64>,
     max_memory_writes: Option<i64>,
-    idle_acts_per_world_day: Option<i64>,
-    live_acts_per_world_hour: Option<i64>,
+    idle_acts_per_day: Option<i64>,
+    live_acts_per_window: Option<i64>,
+    live_act_window_ticks: Option<i64>,
+    ticks_per_day: Option<i64>,
     round_every_real_seconds: Option<i64>,
     #[serde(default, deserialize_with = "read_idle_word")]
     idle: Option<String>,
-    idle_minutes_per_round: Option<i64>,
-    live_minutes_per_round: Option<i64>,
+    idle_ticks_per_round: Option<i64>,
+    live_ticks_per_round: Option<i64>,
     idle_catchup_max_rounds: Option<i64>,
-    idle_max_world_hours_per_real_hour: Option<i64>,
+    idle_max_ticks_per_real_hour: Option<i64>,
     max_fastforward_rounds: Option<i64>,
     max_trigger_depth: Option<i64>,
 }
@@ -238,6 +248,6 @@ mod tests {
         let budget = load_budget(&text).unwrap();
         assert!(budget.idle_rounds);
         assert_eq!(budget.round_every_real_seconds, 300);
-        assert_eq!(budget.idle_minutes_per_round, 60);
+        assert_eq!(budget.idle_ticks_per_round, 60);
     }
 }

@@ -166,7 +166,7 @@ fn idle_is_off_and_a_player_waits(world: &mut World) {
     assert_eq!(list_round_keys(&pack), vec!["round-0001".to_string()]);
     table::run(world, &["round", pack.to_str().unwrap()]);
     assert_eq!(world.code, Some(0), "{}", world.stderr);
-    // `spook round` plays at an empty table: one idle round of 60 minutes.
+    // `spook round` plays at an empty table: one idle round of 60 ticks.
     let now = state_of(&pack);
     assert_eq!(now.round_index, 2);
     assert_eq!(now.world_time, 1145);

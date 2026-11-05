@@ -321,7 +321,7 @@ fn no_effect_from_that_row_applies(world: &mut World) {
 }
 
 #[given(
-    expr = "a docks pack where Aldric's cast file holds a ten-minute verb \"ask\" that lowers the target's rest"
+    expr = "a docks pack where Aldric's cast file holds a ten-tick verb \"ask\" that lowers the target's rest"
 )]
 fn a_docks_pack_where_aldric_holds_a_timed_verb(world: &mut World) {
     let pack = support::copy_pack("oneshot-docks", "timed-target");
@@ -331,7 +331,7 @@ fn a_docks_pack_where_aldric_holds_a_timed_verb(world: &mut World) {
 rules:
   - id: ask
     when: { verb: ask, target: actor }
-    cost: { time: 10m }
+    cost: { ticks: 10 }
     do: [meter: { who: target, key: rest, add: -1 }]
 ---";
     let next = text.replacen("  eligible: false\n---", rule, 1);
@@ -376,7 +376,7 @@ fn aldrics_rest_is(world: &mut World, rest: usize) {
 }
 
 #[given(
-    expr = "a docks pack whose verbs hold a ten-minute verb \"haul\" that takes {int} lamp oil from the actor"
+    expr = "a docks pack whose verbs hold a ten-tick verb \"haul\" that takes {int} lamp oil from the actor"
 )]
 fn a_docks_pack_with_a_timed_haul(world: &mut World, oil: i64) {
     let pack = support::copy_pack("oneshot-docks", "timed-refused");
@@ -386,7 +386,7 @@ fn a_docks_pack_with_a_timed_haul(world: &mut World, oil: i64) {
             "
   - id: haul
     when: {{ verb: haul }}
-    cost: {{ time: 10m }}
+    cost: {{ ticks: 10 }}
     do: [item: {{ who: self, id: lamp_oil, add: -{oil} }}]
 "
         ),

@@ -178,7 +178,8 @@ fn perceive_viewer_budget(
         .collect();
     let place_name = crate::rules::lines::place_name(canon, &place);
     let prose = crate::rules::lines::place_prose(canon, state, viewer.actor_id());
-    let cant_act = crate::rules::lines::busy_line(state, viewer.actor_id()).unwrap_or_default();
+    let cant_act =
+        crate::rules::lines::busy_line(canon, state, viewer.actor_id()).unwrap_or_default();
 
     Ok(View {
         viewer: viewer.clone(),

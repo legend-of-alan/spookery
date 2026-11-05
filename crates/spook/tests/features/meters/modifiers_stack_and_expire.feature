@@ -1,7 +1,7 @@
 Feature: Modifiers stack per application, add ticks on reapply, and expire at once
 
   Background:
-    Given the docks pack with one-minute rounds and pc_rowan's grit at 20, with three PCs in the shop
+    Given the docks pack with one-tick rounds and pc_rowan's grit at 20, with three PCs in the shop
 
   Scenario: Two moves apply burn with different strength, and both count
     Given "burn" modifies grit and has max_stacks 4

@@ -233,13 +233,13 @@ pub fn render_map(places: &[PlaceView]) -> String {
     lines.join("\n")
 }
 
-/// `stairs (locked) — 2 min`.
+/// `stairs (locked) — 2 ticks`.
 fn exit_phrase(exit: &ExitView) -> String {
-    let (name, minutes) = (&exit.name, exit.minutes);
+    let (name, ticks) = (&exit.name, exit.ticks);
     if exit.locked {
-        format!("{name} (locked) — {minutes} min")
+        format!("{name} (locked) — {ticks} ticks")
     } else {
-        format!("{name} — {minutes} min")
+        format!("{name} — {ticks} ticks")
     }
 }
 
@@ -592,7 +592,7 @@ You are in Gate Yard."
                 name: "stairs".to_string(),
                 to: "mira_rooms".to_string(),
                 place_name: "Mira's Rooms".to_string(),
-                minutes: 2,
+                ticks: 2,
                 locked: true,
             }],
         })));
@@ -621,7 +621,7 @@ The world:
 Dawn: 3/6
 
 Exits:
-stairs (locked) — 2 min"
+stairs (locked) — 2 ticks"
         );
         assert!(!text.contains("CANON-BODY"), "{text}");
         assert!(!text.contains("secret_fact"), "{text}");

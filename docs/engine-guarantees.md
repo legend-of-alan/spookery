@@ -219,11 +219,11 @@ Tested in `features/meters/modifiers_stack_and_expire.feature`.
 
 A missing exit and a locked exit change nothing. A locked exit shows its locked
 text. A hidden exit the traveller does not know stays off the view and `help`.
-The traveller stays put, and stays busy, until the arrival minute. A move before
+The traveller stays put, and stays busy, until the arrival tick. A move before
 then is refused. The
-round does not shrink: a seated round still advances five minutes, a two-minute
-exit is recorded at its minute inside that round, and the next move is the
-following round. An empty table advances sixty minutes a round. An earlier
+round does not shrink: a seated round still advances five ticks, a two-tick
+exit is recorded at its tick inside that round, and the next move is the
+following round. An empty table advances sixty ticks a round. An earlier
 arrival is applied first. When every seated player is busy and no GM is seated,
 rounds run ahead without waiting on the wall clock, up to the pack's cap, and
 the rest waits for the next action. With a GM seated, nothing advances until the
@@ -231,6 +231,20 @@ GM commits.
 
 Tested in `features/travel/travel_follows_the_map.feature` and
 `features/travel/travel_follows_an_exit.feature`.
+
+## Game time
+
+World time is a count of ticks. A day is the pack's `ticks_per_day`, 1440 when
+the pack leaves it out. A round that crosses the end of a day resets each
+actor's acts for the day. A `day_tick` condition reads the tick within the day
+and may wrap past the day's end. Players see a tick as a clock time, a day of 24
+shown hours, and no rule reads that clock. Check refuses a `ticks_per_day` of 0,
+a `day_tick` bound at or past `ticks_per_day`, and an `hour` or `minutes` key,
+with a hint that names the tick form.
+
+Tested in `features/rules/game_time_counts_in_ticks.feature`,
+`features/seats/a_player_knows_the_place.feature`, and
+`features/check/spook_check_explains_a_broken_pack.feature`.
 
 ## Rules version
 

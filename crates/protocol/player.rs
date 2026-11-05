@@ -48,7 +48,7 @@ pub struct ExitView {
     pub name: String,
     pub to: String,
     pub place_name: String,
-    pub minutes: u64,
+    pub ticks: u64,
     pub locked: bool,
 }
 

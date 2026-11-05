@@ -52,9 +52,9 @@ Only places own facts. A fact has `id`, `text`, and optional `hidden`, which def
 
 An exit has `to` and `name`. It may have `cost`, `if`, `locked_text`, and `hidden` together with `revealed_by`. `to` is a place id. Two exits on one place with the same name are rejected. A hidden exit needs `revealed_by`, and that value is a fact id from this pack. A place no path reaches from the start, counting hidden and locked exits, is a warning.
 
-`cost.time` is `30s`, `10m`, `2h`, or `1d`, stored as minutes. Seconds round up to the next minute. `if` uses the same conditions as a rule. When that `if` fails, the exit is locked: the engine shows `locked_text` and changes nothing.
+`cost.ticks` is the game time the cost takes, a whole number of ticks. Omitted means 0. `if` uses the same conditions as a rule. When that `if` fails, the exit is locked: the engine shows `locked_text` and changes nothing.
 
-The traveller stays at the origin until the journey finishes. The busy time is the rule's minutes plus the exit's minutes.
+The traveller stays at the origin until the journey finishes. The busy time is the rule's ticks plus the exit's ticks.
 
 ```yaml file=world/places/yard.md
 ---
@@ -71,7 +71,7 @@ exits:
   - to: lane
     name: lane
     cost:
-      time: 10m
+      ticks: 10
   - to: loft
     name: loft
     hidden: true
@@ -89,7 +89,7 @@ rules:
     when:
       verb: bell
     cost:
-      time: 1d
+      ticks: 1440
     do: []
   - id: step_through
     when:
@@ -245,9 +245,9 @@ rules:
     when: habit
     if:
       - all:
-          - hour:
-              from: 8
-              to: 16
+          - day_tick:
+              from: 480
+              to: 960
           - players:
               op: "=="
               value: 0
@@ -354,7 +354,7 @@ A change rule has no `cost`. Check rejects one. It may have `if`, `roll`, and th
 
 Matching change rules run in owner order (shared verbs, then place, item, cast, story), then by file path, then by position in the file. They run again on the changes they just wrote, until a pass matches nothing. In one pass a rule runs at most once for each subject. The subject is the actor whose value changed. A world flag or world meter has no subject, so a rule watching one runs once per change, whoever is seated, and check refuses `self`, `here`, `location`, and `roll` in it: name the actor, or `world`. A flag counts as the world's when a rule sets it with `who: world`; a world flag only the save sets is not checked, and a `self` there is refused when the rule runs. A key the world and an actor both carry fires the rule for each, and `TRIGGER_LEAK` reads it as an actor's change. `max_trigger_depth` in `rules/budget.yaml` caps the passes. Omitted, it is 4. The next pass is recorded and does not run. Check warns when change rules set each other's watched values. A `narrate` or `note` on a change rule that can reach a viewer who cannot see that change is `TRIGGER_LEAK`.
 
-`if` is a list. Each dash is one condition. `all` is and, `any` is or, and `not` negates one condition. Two conditions under one dash are rejected. `who` is `self`, `target`, `here`, `world`, `place:<id>`, or an actor id. On `has_item`, `wielding`, and an item effect, `id: target` is the intent's target. The habit on `cast/keeper.md` uses each condition. `op` is `<`, `<=`, `==`, `>=`, or `>`. `hour.from` and `hour.to` are integers in `0..24` and they differ.
+`if` is a list. Each dash is one condition. `all` is and, `any` is or, and `not` negates one condition. Two conditions under one dash are rejected. `who` is `self`, `target`, `here`, `world`, `place:<id>`, or an actor id. On `has_item`, `wielding`, and an item effect, `id: target` is the intent's target. The habit on `cast/keeper.md` uses each condition. `op` is `<`, `<=`, `==`, `>=`, or `>`. `day_tick` holds while the tick of the day, world time modulo `ticks_per_day`, is in `from..to`. When `from` is above `to` the window wraps past the day's end. `from` and `to` are integers below `ticks_per_day` and they differ.
 
 `cost` may name `time`, `meters`, and `items`. `time` uses the duration words from exits. A cost the actor cannot pay is refused when the move is played, and the world stays as it was.
 
@@ -362,7 +362,7 @@ Matching change rules run in owner order (shared verbs, then place, item, cast, 
 
 A number is an integer or an [expression](spec.md). A meter plus an integer still loads.
 
-The flag key `busy` is rejected. An actor is busy while a journey's finish minute is still ahead of world time.
+The flag key `busy` is rejected. An actor is busy while a journey's finish tick is still ahead of world time.
 
 ```yaml file=rules/verbs.yaml
 schema: verbs
@@ -378,7 +378,7 @@ rules:
       verb: travel
       target: exit
     cost:
-      time: 2h
+      ticks: 120
     do:
       - location:
           via: target
@@ -413,7 +413,7 @@ rules:
     when:
       verb: press
     cost:
-      time: 30s
+      ticks: 1
       meters:
         nerve: 1
       items:
@@ -628,7 +628,7 @@ meters:
 
 A modifier changes one actor meter for a while, then expires. Each row has `id` and `meter`, and may have `max_stacks` and `hidden`. `meter` is a meter in `rules/meters.yaml` or a cast file, and check refuses any other.
 
-A `modifier` effect names `who`, `id`, `add`, and `ticks`, such as `scorch` in `rules/verbs.yaml`. `ticks` is how long this application lasts, a whole number of 1 or more, and check refuses an effect without it. A tick is one world minute for now. `add` is this application's magnitude, an integer or an expression, as on a meter. Any rule may apply any modifier, and each application keeps its own `add` as one stack. The meter's current value adds every stack of every modifier on it, so two modifiers on one meter both count. Nothing is written to the meter's offset.
+A `modifier` effect names `who`, `id`, `add`, and `ticks`, such as `scorch` in `rules/verbs.yaml`. `ticks` is how long this application lasts, a whole number of 1 or more, and check refuses an effect without it. `add` is this application's magnitude, an integer or an expression, as on a meter. Any rule may apply any modifier, and each application keeps its own `add` as one stack. The meter's current value adds every stack of every modifier on it, so two modifiers on one meter both count. Nothing is written to the meter's offset.
 
 `max_stacks` is optional. It is the most stacks one actor can hold of that modifier, from any source. The default is 1, so a modifier left without it does not stack. At `max_stacks`, an application stronger than the weakest stack, by absolute value, replaces it. A weaker or equal one changes no stack. Strength ignores sign, so use two modifiers for a buff and a debuff.
 
@@ -663,7 +663,7 @@ checks:
 
 ## Budget
 
-`idle` is `on` or `off`. Omitted means `on`. Omitted counters use the engine defaults. `round_every_real_seconds` is real seconds between wakes, `idle_minutes_per_round` and `live_minutes_per_round` are world minutes one round writes, `idle_catchup_max_rounds` is the most rounds one catch-up runs, and `idle_max_world_hours_per_real_hour` is the world hours one real hour of absence may write. A move past `max_intents_applied` or `max_npcs_acting` is refused `BUDGET`, and so is a rule that goes over `max_state_keys_mutated` and every move after it that round. The file below sets them.
+`idle` is `on` or `off`. Omitted means `on`. Omitted counters use the engine defaults. Game time is counted in ticks. `ticks_per_day` is how many ticks make a day, 1440 when omitted. The day rollover, which resets `idle_acts_per_day`, and `day_tick` conditions read it. Players and the GM see a tick as a clock time, a day of 24 shown hours. `live_acts_per_window` caps an actor's live acts in each window of `live_act_window_ticks` ticks. `round_every_real_seconds` is real seconds between wakes, `idle_ticks_per_round` and `live_ticks_per_round` are the ticks one round writes, `idle_catchup_max_rounds` is the most rounds one catch-up runs, and `idle_max_ticks_per_real_hour` is the ticks one real hour of absence may write. A move past `max_intents_applied` or `max_npcs_acting` is refused `BUDGET`, and so is a rule that goes over `max_state_keys_mutated` and every move after it that round. The file below sets them.
 
 ```yaml file=rules/budget.yaml
 schema: budget
@@ -673,13 +673,15 @@ max_npcs_acting: 8
 max_effects_per_intent: 4
 max_state_keys_mutated: 24
 max_memory_writes: 8
-idle_acts_per_world_day: 3
-live_acts_per_world_hour: 6
+idle_acts_per_day: 3
+live_acts_per_window: 6
+live_act_window_ticks: 60
+ticks_per_day: 1440
 round_every_real_seconds: 300
-idle_minutes_per_round: 60
-live_minutes_per_round: 5
+idle_ticks_per_round: 60
+live_ticks_per_round: 5
 idle_catchup_max_rounds: 12
-idle_max_world_hours_per_real_hour: 8
+idle_max_ticks_per_real_hour: 480
 max_fastforward_rounds: 12
 max_trigger_depth: 4
 ```
