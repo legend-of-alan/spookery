@@ -2,7 +2,7 @@
 
 use crate::canon::Canon;
 use crate::intent::{Intent, Source, Target, Viewer};
-use crate::model::{Presence, State, MINUTES_PER_DAY, MINUTES_PER_HOUR};
+use crate::model::{Presence, State};
 use crate::rules::context::Context;
 use crate::rules::effect::Holder;
 use crate::rules::expr;
@@ -108,7 +108,10 @@ fn holds(context: &Context, cond: &Cond) -> Result<bool, Reason> {
                 .get(&actor)
                 .is_some_and(|actor| actor.known_facts.iter().any(|id| id == fact)))
         }
-        Cond::Hour { from, to } => Ok(is_hour_in(*from, *to, world_hour(state.world_time))),
+        Cond::DayTick { from, to } => {
+            let tick = state.world_time % context.canon.budget.ticks_per_day;
+            Ok(is_in_window(*from, *to, tick))
+        }
         Cond::Players { op, value } => Ok(op.holds(i64::from(context.presence.players), *value)),
         Cond::NoteExists(id) => Ok(state.notes.iter().any(|note| &note.id == id)),
         Cond::All(inner) => {
@@ -131,37 +134,12 @@ fn holds(context: &Context, cond: &Cond) -> Result<bool, Reason> {
     }
 }
 
-fn world_hour(world_time: u64) -> i64 {
-    ((world_time % MINUTES_PER_DAY) / MINUTES_PER_HOUR) as i64
-}
-
-fn is_hour_in(start: i64, end: i64, hour: i64) -> bool {
+fn is_in_window(start: u64, end: u64, tick: u64) -> bool {
     if start < end {
-        start <= hour && hour < end
+        start <= tick && tick < end
     } else if start > end {
-        hour >= start || hour < end
+        tick >= start || tick < end
     } else {
         false
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn hour_window_wraps_and_a_point_is_off() {
-        assert_eq!(world_hour(1080), 18);
-        assert_eq!(world_hour(0), 0);
-        assert_eq!(world_hour(1440), 0);
-        assert!(is_hour_in(8, 16, 8));
-        assert!(is_hour_in(8, 16, 15));
-        assert!(!is_hour_in(8, 16, 16));
-        assert!(!is_hour_in(8, 16, 7));
-        assert!(is_hour_in(18, 6, 18));
-        assert!(is_hour_in(18, 6, 5));
-        assert!(!is_hour_in(18, 6, 6));
-        assert!(!is_hour_in(18, 6, 12));
-        assert!(!is_hour_in(8, 8, 8));
     }
 }

@@ -15,10 +15,6 @@ use modifier::ModifierLive;
 use crate::intent::{Target, Viewer};
 use crate::rules::effect::Holder;
 
-/// World minutes in an hour and in a day. World time is minutes from the start of day 0.
-pub(crate) const MINUTES_PER_HOUR: u64 = 60;
-pub(crate) const MINUTES_PER_DAY: u64 = 24 * MINUTES_PER_HOUR;
-
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct State {
@@ -30,6 +26,7 @@ pub struct State {
     pub rules_rev: u64,
     pub state_rev: u64,
     pub round_index: u64,
+    /// Ticks since the start of day 0.
     pub world_time: u64,
     pub last_round_at: String,
     pub places: BTreeMap<String, PlaceLive>,
@@ -155,7 +152,7 @@ pub enum ActorKind {
 }
 
 impl ActorLive {
-    /// Busy means `busy_until` is still after this world minute.
+    /// Busy means `busy_until` is still after this tick.
     pub fn is_busy(&self, world_time: u64) -> bool {
         self.act.busy_until.is_some_and(|until| until > world_time)
     }
@@ -244,18 +241,18 @@ pub(crate) fn shift_count(
 pub struct Act {
     pub last_act_round: u64,
     pub idle_acts_today: u32,
-    pub live_acts_this_hour: u32,
+    pub live_acts_this_window: u32,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub busy_until: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pending: Option<PendingAction>,
 }
 
-/// One of the `Act` counts a new day or a new hour sets back to 0.
+/// One of the `Act` counts a new day or a new act window sets back to 0.
 #[derive(Clone, Copy)]
 pub(crate) enum ActCounter {
     IdleActsToday,
-    LiveActsThisHour,
+    LiveActsThisWindow,
 }
 
 impl ActCounter {
@@ -263,7 +260,7 @@ impl ActCounter {
     pub(crate) fn key(self, id: String) -> StateKey {
         match self {
             ActCounter::IdleActsToday => StateKey::IdleActsToday(id),
-            ActCounter::LiveActsThisHour => StateKey::LiveActsThisHour(id),
+            ActCounter::LiveActsThisWindow => StateKey::LiveActsThisWindow(id),
         }
     }
 
@@ -271,7 +268,7 @@ impl ActCounter {
     pub(crate) fn count_mut(self, act: &mut Act) -> &mut u32 {
         match self {
             ActCounter::IdleActsToday => &mut act.idle_acts_today,
-            ActCounter::LiveActsThisHour => &mut act.live_acts_this_hour,
+            ActCounter::LiveActsThisWindow => &mut act.live_acts_this_window,
         }
     }
 }

@@ -6,7 +6,7 @@ exits:
   - to: mill_lane
     name: mill_lane
     cost:
-      time: 15m
+      ticks: 15
     if:
       - all:
           - any:

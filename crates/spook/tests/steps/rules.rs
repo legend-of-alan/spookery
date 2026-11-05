@@ -259,12 +259,36 @@ fn the_ferry_rule_runs(world: &mut World) {
     );
 }
 
-#[given(expr = "cast:briar\\/restock with hour 6..9 and players == 0")]
+#[given(expr = "cast:briar\\/restock with day_tick 360..540 and players == 0")]
 fn briar_restocks_before_the_shop_opens(world: &mut World) {
     let pack = copy_docks("rules-briar");
+    write_briar(&pack, 360, 540);
+    world.pack = Some(pack);
+}
+
+#[given(expr = "briar restocks on day_tick {int} to {int} and ticks_per_day is {word}")]
+fn briar_restocks_on_day_ticks(world: &mut World, from: u64, to: u64, day: String) {
+    let pack = copy_docks("rules-day-tick");
+    write_briar(&pack, from, to);
+    set_ticks_per_day(&pack, &day);
+    world.pack = Some(pack);
+}
+
+/// `day` is a number of ticks, or `unset` to leave the key out.
+fn set_ticks_per_day(pack: &Path, day: &str) {
+    let line = match day {
+        "unset" => String::new(),
+        ticks => format!("ticks_per_day: {ticks}\n"),
+    };
+    let budget = pack.join("rules/budget.yaml");
+    super::common::replace_in_file(&budget, "ticks_per_day: 1440\n", &line);
+}
+
+fn write_briar(pack: &Path, from: u64, to: u64) {
     write(
         &pack.join("cast/briar.md"),
-        "\
+        &format!(
+            "\
 ---
 schema: cast
 id: briar
@@ -276,9 +300,9 @@ rules:
   - id: restock
     when: habit
     if:
-      - hour:
-          from: 6
-          to: 9
+      - day_tick:
+          from: {from}
+          to: {to}
       - players:
           op: \"==\"
           value: 0
@@ -289,22 +313,25 @@ rules:
           add: 4
 ---
 Briar tops up the oil before the shop opens.
-",
+"
+        ),
     );
-    world.pack = Some(pack);
 }
 
-#[when(expr = "an empty round lands at hour 7 with briar in the shop")]
-fn an_empty_round_at_hour_7(world: &mut World) {
+/// The round starts one idle round's ticks before `tick`. Mira has used her acts for the
+/// day, so only briar can restock.
+#[when(expr = "an empty round lands at tick {int} with briar in the shop")]
+fn an_empty_round_lands_at(world: &mut World, tick: u64) {
     let pack = world.pack.clone().unwrap();
     edit_save(&pack, |now| {
-        now.world_time = 360;
+        now.world_time = tick - 60;
         let mira = now.actors.get_mut("mira").unwrap();
         mira.meters.get_mut("shop_day").unwrap().base = 0;
         let mut briar = mira.clone();
         briar.meters.remove("shop_day");
         now.actors.insert("briar".to_string(), briar);
         now.actors.get_mut("briar").unwrap().place = "docks_shop".to_string();
+        now.actors.get_mut("mira").unwrap().act.idle_acts_today = 3;
     });
     let mut opened = open(&pack);
     let wall = opened.state().last_round_at.clone();
@@ -332,6 +359,51 @@ fn lamp_oil_increases_by_4(world: &mut World) {
         .and_then(|place| place.items.get("lamp_oil"))
         .copied();
     assert_eq!(oil, Some(8u32), "world_time {}", now.world_time);
+}
+
+#[given(
+    expr = "every actor has used its acts for the day at tick {int} and ticks_per_day is {word}"
+)]
+fn every_actor_used_its_day(world: &mut World, tick: u64, day: String) {
+    let pack = copy_docks("rules-day-end");
+    set_ticks_per_day(&pack, &day);
+    edit_save(&pack, |now| {
+        now.world_time = tick;
+        for actor in now.actors.values_mut() {
+            actor.act.idle_acts_today = 3;
+        }
+    });
+    world.pack = Some(pack);
+}
+
+#[when(expr = "a seated round runs")]
+fn a_seated_round_runs(world: &mut World) {
+    let pack = world.pack.clone().unwrap();
+    let rowan = Presence {
+        players: 1,
+        actors_present: vec!["pc_rowan".to_string()],
+    };
+    let mut opened = open(&pack);
+    let wall = opened.state().last_round_at.clone();
+    opened
+        .play(&rowan, &wall)
+        .unwrap_or_else(|err| panic!("seated round: {}", err.as_str()));
+}
+
+#[then(expr = "the round ends at tick {int} and every actor's acts for the day are {int}")]
+fn every_actor_acts_for_the_day(world: &mut World, tick: u64, acts: u32) {
+    let now = state_of(world.pack.as_ref().unwrap());
+    assert_eq!(now.world_time, tick);
+    for (id, actor) in &now.actors {
+        assert_eq!(actor.act.idle_acts_today, acts, "{id}");
+    }
+}
+
+#[then(expr = "docks_shop holds {int} lamp_oil")]
+fn docks_shop_holds_lamp_oil(world: &mut World, count: u32) {
+    let now = state_of(world.pack.as_ref().unwrap());
+    let oil = now.places["docks_shop"].items.get("lamp_oil").copied();
+    assert_eq!(oil, Some(count), "world_time {}", now.world_time);
 }
 
 #[given(expr = "attack targets defense + 10 and briar's defense is 12")]
@@ -750,7 +822,7 @@ fn a_verb_with_time_and_resist(world: &mut World) {
     when:
       verb: linger
     cost:
-      time: 10m
+      ticks: 10
     do:
       - meter:
           who: self

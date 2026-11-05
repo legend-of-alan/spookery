@@ -172,12 +172,12 @@ A move the table can judge at once is refused before it is queued. Here Rowan se
 
 <!-- example: player-map -->
 ```json
-{"seq":31,"reply_to":"c4","body":{"kind":"map","places":[{"name":"Docks Shop","exits":[{"name":"docks_street","to":"docks_street","place_name":"Docks Street","minutes":0,"locked":false},{"name":"stairs","to":"mira_rooms","place_name":"Mira's Rooms","minutes":2,"locked":true}]}]}}
+{"seq":31,"reply_to":"c4","body":{"kind":"map","places":[{"name":"Docks Shop","exits":[{"name":"docks_street","to":"docks_street","place_name":"Docks Street","ticks":0,"locked":false},{"name":"stairs","to":"mira_rooms","place_name":"Mira's Rooms","ticks":2,"locked":true}]}]}}
 ```
 
 ### status
 
-The table's state for a GM. `world_time` is the game clock in minutes. `pack_rev` is the canon hash. A client that opened the pack on disk should compare it and leave on a mismatch. `last_round_at` is the save's stamp. `queued` lists the waiting moves. `pack` is the move menu, the cast kinds, and the place and cast prose.
+The table's state for a GM. `world_time` is the game clock in ticks. `pack_rev` is the canon hash. A client that opened the pack on disk should compare it and leave on a mismatch. `last_round_at` is the save's stamp. `queued` lists the waiting moves. `pack` is the move menu, the cast kinds, and the place and cast prose.
 
 <!-- example: gm-status -->
 ```json
@@ -195,7 +195,7 @@ The table's state for a GM. `world_time` is the game clock in minutes. `pack_rev
     "world_time": 1080,
     "round_index": 0,
     "state_rev": 0,
-    "pack_rev": "blake2s:33051155c1de5f6ceffa4ff1ab83088e60e5fea9961a5ef7a810c5e6db2f3a8f",
+    "pack_rev": "blake2s:fcbee20cca05a83956bfccfc5d0cd39b6738f16ef519033cb8d015d5f2b82fd0",
     "last_round_at": "2026-01-01T00:00:00Z",
     "queued": [],
     "pack": {
@@ -306,7 +306,7 @@ The table's state for a GM. `world_time` is the game clock in minutes. `pack_rev
 
 <!-- example: gm-committed -->
 ```json
-{"seq":14,"reply_to":"c3","body":{"kind":"committed","state_rev":1,"changed_keys":["last_act_round aldric","last_act_round mira","live_acts_this_hour aldric","live_acts_this_hour mira","note note_mira_door"],"journal_path":"state/journal/bundle-0000.jsonl","rolls":[{"faces":[5,2],"stat":1,"total":8,"target":0,"outcome":"success"}]}}
+{"seq":14,"reply_to":"c3","body":{"kind":"committed","state_rev":1,"changed_keys":["last_act_round aldric","last_act_round mira","live_acts_this_window aldric","live_acts_this_window mira","note note_mira_door"],"journal_path":"state/journal/bundle-0000.jsonl","rolls":[{"faces":[5,2],"stat":1,"total":8,"target":0,"outcome":"success"}]}}
 ```
 
 `changed_keys` are the state keys the round changed, every one of them: a meter is `actor_meter <actor> <id>` or `world_meter <id>`, a modifier is `modifier <actor> <id>`, and a flag is `actor_flag <actor> <key>` or `world_flag <key>`. `journal_path` is the round's journal file, or null when the round wrote none. `rolls` are the checks rolled, faces and all. Faces go to the GM only.
@@ -399,14 +399,14 @@ A client ignores a `kind` or a field it does not know. `server.json` gives every
         "name": "docks_street",
         "to": "docks_street",
         "place_name": "Docks Street",
-        "minutes": 0,
+        "ticks": 0,
         "locked": false
       },
       {
         "name": "stairs",
         "to": "mira_rooms",
         "place_name": "Mira's Rooms",
-        "minutes": 2,
+        "ticks": 2,
         "locked": true
       }
     ]
@@ -505,5 +505,6 @@ The MCP endpoint answers with an HTTP status before any seat: 400 for an `MCP-Pr
 - The hello announces `version` and the words. A word is removed only after one release of being marked as going away. Version 2 has no such word and no marker yet. The marker is added to the hello before the first word needs it.
 - Version 2 broke version 1 once, on purpose: clocks left the wire with world clocks. `clocks` left `view` and `resume`, `pause` left `status`, `PAUSED_CLOCK` left the refusal codes, and `view.status` became `view.cant_act`. `view.world_meters` was added. The session recorded against version 1 was replaced by one recorded against version 2.
 - Version 2 dropped one field before any release, on purpose: `CHOOSE_PC` no longer lists the open PCs in `detail`, since the hello's `open` already does, so `detail` is always a string. The version stayed 2 because no build had shipped.
+- Version 2 renamed two things before any release, on purpose, when game time became ticks: an exit's `minutes` became `ticks`, and the changed key `live_acts_this_hour` became `live_acts_this_window`. The recording took the docks pack's new `pack_rev` with them. The version stayed 2 because no build had shipped.
 - The recorded session must still replay. Each message it got must still arrive at that seat, in order, with every field it had and the same value. New kinds and fields may come between. Only `seq`, which a new kind moves, and `token`, which each table mints, may differ.
 - The journal and refusal codes stay strict: `spook verify` fails on a code it does not know.

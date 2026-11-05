@@ -14,7 +14,7 @@ exits:
   - to: mira_rooms
     name: stairs
     cost:
-      time: 2m
+      ticks: 2
     if:
       - has_item:
           who: self

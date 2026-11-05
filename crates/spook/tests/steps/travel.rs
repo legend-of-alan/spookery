@@ -18,7 +18,7 @@ fn add_toll(pack: &Path) {
     let text = fs::read_to_string(&path).unwrap();
     let next = text.replace(
         "  eligible: true\n",
-        "  eligible: true\nflags:\n    - tolled\nrules:\n  - id: toll\n    when: habit\n    if:\n      - hour:\n          from: 21\n          to: 22\n    do:\n      - flag:\n          who: self\n          key: tolled\n          value: true\n",
+        "  eligible: true\nflags:\n    - tolled\nrules:\n  - id: toll\n    when: habit\n    if:\n      - day_tick:\n          from: 1260\n          to: 1320\n    do:\n      - flag:\n          who: self\n          key: tolled\n          value: true\n",
     );
     assert_ne!(text, next);
     fs::write(path, next).unwrap();
@@ -108,7 +108,7 @@ fn rowan_travels_holding_the_key(world: &mut World) {
     world.pack = Some(pack);
 }
 
-#[then(expr = "rowan is in mira_rooms and the 2 minute cost is stamped on the arrival")]
+#[then(expr = "rowan is in mira_rooms and the 2 tick cost is stamped on the arrival")]
 fn rowan_arrives_and_the_cost_is_stamped(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
     let now = state_of(&pack);
@@ -230,9 +230,9 @@ fn arrivals_are_in_time_order(world: &mut World) {
     assert!(first["round_index"].as_u64() < second["round_index"].as_u64());
 }
 
-#[given(expr = "rounds are 5 minutes while seated and the stairs exit costs 2 minutes")]
-fn seated_rounds_are_five_minutes(world: &mut World) {
-    let pack = copy_docks("exact-minute");
+#[given(expr = "rounds are 5 ticks while seated and the stairs exit costs 2 ticks")]
+fn seated_rounds_are_five_ticks(world: &mut World) {
+    let pack = copy_docks("exact-tick");
     edit_save(&pack, |now| {
         give_key(now);
         now.world_time = EVENING;

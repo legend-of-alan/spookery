@@ -216,7 +216,7 @@ pub(crate) fn yaml_diagnostic(file: &str, err: &YamlError, line_base: u32) -> Di
         YamlError::SerdeUnknownField { field, .. } => (
             Some(field.clone()),
             format!("unknown field '{field}'"),
-            "remove it or spell a field this file allows".to_string(),
+            unknown_field_hint(field),
         ),
         YamlError::SerdeMissingField { field, .. } => (
             Some((*field).to_string()),
@@ -265,6 +265,15 @@ pub(crate) fn yaml_diagnostic(file: &str, err: &YamlError, line_base: u32) -> Di
         diag = diag.at_line(line, column);
     }
     diag
+}
+
+/// Game time is counted in ticks, so a key that counted it in hours or minutes names its tick form.
+fn unknown_field_hint(field: &str) -> String {
+    match field {
+        "hour" => "write day_tick with from and to in ticks of the day".to_string(),
+        "time" | "minutes" => "write ticks, the game time as a whole number of ticks".to_string(),
+        _ => "remove it or spell a field this file allows".to_string(),
+    }
 }
 
 pub(crate) fn parse_file<T: serde::de::DeserializeOwned>(

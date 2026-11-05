@@ -10,9 +10,9 @@ Feature: Travel follows the map
     When rowan travels via stairs
     Then rowan sees "The stair door is locked." and no state changes
 
-  Scenario: An exit's minutes are stamped on the arrival
+  Scenario: An exit's ticks are stamped on the arrival
     When rowan travels via stairs holding brass_key
-    Then rowan is in mira_rooms and the 2 minute cost is stamped on the arrival
+    Then rowan is in mira_rooms and the 2 tick cost is stamped on the arrival
 
   Scenario: Hidden exit
     Given the trapdoor is hidden and rowan does not know fact_trapdoor
@@ -23,7 +23,7 @@ Feature: Travel follows the map
     Then the PC reaches cellar with no exit
 
   Scenario: With no GM, a lone traveller arrives on the travel line
-    Given the stairs exit costs 10 minutes
+    Given the stairs exit costs 10 ticks
     When rowan travels via stairs at 21:30
     Then the world is at 21:40 and rowan is in mira_rooms
     And rowan's line shows "mira_rooms"
@@ -32,8 +32,8 @@ Feature: Travel follows the map
     Given rowan arrives at 21:40 and nell at 21:35
     Then nell's arrival is applied before rowan's, in separate rounds
 
-  Scenario: Arrival is stamped at its exact minute and the actor acts next round
-    Given rounds are 5 minutes while seated and the stairs exit costs 2 minutes
+  Scenario: Arrival is stamped at its exact tick and the actor acts next round
+    Given rounds are 5 ticks while seated and the stairs exit costs 2 ticks
     When rowan travels via stairs in the round starting 21:30
     Then the round still ends at 21:35
     And rowan's arrival is recorded with arrived_at 21:32 in that round's line

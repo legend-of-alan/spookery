@@ -166,10 +166,30 @@ fn break_pack(pack: &Path, fault: &str) {
             "round_every_real_seconds: 300\n",
             "round_every_real_seconds: 0\n",
         ),
-        "zero idle minutes" => replace_in_file(
+        "zero idle ticks" => replace_in_file(
             &pack.join("rules/budget.yaml"),
-            "idle_minutes_per_round: 60\n",
-            "idle_minutes_per_round: 0\n",
+            "idle_ticks_per_round: 60\n",
+            "idle_ticks_per_round: 0\n",
+        ),
+        "zero ticks per day" => replace_in_file(
+            &pack.join("rules/budget.yaml"),
+            "ticks_per_day: 1440\n",
+            "ticks_per_day: 0\n",
+        ),
+        "day_tick past the day" => replace_in_file(
+            &pack.join("cast/mira.md"),
+            "          to: 960\n",
+            "          to: 1440\n",
+        ),
+        "a leftover hour" => replace_in_file(
+            &pack.join("cast/mira.md"),
+            "      - day_tick:\n          from: 480\n          to: 960\n",
+            "      - hour:\n          from: 8\n          to: 16\n",
+        ),
+        "an exit cost in minutes" => replace_in_file(
+            &pack.join("world/places/docks_shop.md"),
+            "      ticks: 2\n",
+            "      minutes: 2\n",
         ),
         other => panic!("unknown fault {other}"),
     }
@@ -496,25 +516,40 @@ fn the_view_hides_the_trapdoor(world: &mut World) {
     assert!(view.contains("stairs"), "the view hid the stairs\n{view}");
 }
 
-#[given(expr = "the stairs exit costs 10 minutes")]
-fn the_stairs_cost_ten_minutes(world: &mut World) {
-    let pack = copy_docks("ten-minutes");
-    let path = pack.join("world/places/docks_shop.md");
-    let text = fs::read_to_string(&path)
-        .unwrap()
-        .replace("time: 2m", "time: 10m");
-    fs::write(&path, text).unwrap();
+#[given(expr = "the stairs exit costs 10 ticks")]
+fn the_stairs_cost_ten_ticks(world: &mut World) {
+    seat_rowan_by_ten_tick_stairs(world, 1440, EVENING);
+}
+
+/// At tick 50 of a 144-tick day the shown clock reads 08:20.
+#[given(expr = "a 144-tick day where the stairs exit costs 10 ticks and it is tick 50")]
+fn a_short_day_with_ten_tick_stairs(world: &mut World) {
+    seat_rowan_by_ten_tick_stairs(world, 144, 50);
+}
+
+fn seat_rowan_by_ten_tick_stairs(world: &mut World, ticks_per_day: u64, tick: u64) {
+    let pack = copy_docks("ten-ticks");
+    replace_in_file(
+        &pack.join("world/places/docks_shop.md"),
+        "ticks: 2\n",
+        "ticks: 10\n",
+    );
+    replace_in_file(
+        &pack.join("rules/budget.yaml"),
+        "ticks_per_day: 1440\n",
+        &format!("ticks_per_day: {ticks_per_day}\n"),
+    );
     edit_save(&pack, |now| {
         give_key(now);
-        now.world_time = EVENING;
+        now.world_time = tick;
     });
     table::listen(world, &pack);
     table::seat_rowan(world, &pack);
     world.pack = Some(pack);
 }
 
-#[when(expr = "rowan travels via stairs at 21:30")]
-fn rowan_travels_at_half_past(world: &mut World) {
+#[when(expr = "rowan travels via stairs at {word}")]
+fn rowan_travels_via_stairs(world: &mut World, _clock: String) {
     let (mark, added) = table::player_send(world, "travel stairs", "\"kind\":");
     world.mark = mark;
     world.player_added = added;

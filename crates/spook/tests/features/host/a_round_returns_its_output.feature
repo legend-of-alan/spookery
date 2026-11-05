@@ -4,7 +4,7 @@ Feature: A round returns its output
     Given a docks table with a GM and a travelling pc_wren seated
     When the GM queues "grit" for "pc_rowan"
     And the GM queues "hit" for "pc_rowan"
-    And the GM queues a 10-minute travel for "pc_rowan"
+    And the GM queues a 10-tick travel for "pc_rowan"
     And the GM commits the round
     Then the commit reply lists one check for "pc_rowan"
     And the commit reply lists the committed round's dice line

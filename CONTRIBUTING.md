@@ -67,7 +67,7 @@ Default to the [Rust API Guidelines](https://rust-lang.github.io/api-guidelines/
 3. Borrow words from Rust, std, the crates we use and this codebase before inventing new ones. If std says `try_lock`, say that.
 4. No vague words. A name says what the thing shows, sends, reads or refuses.
 5. Two names that look alike must do alike jobs.
-6. Use game terms like tick and round only in the sense the [glossary](docs/README.md#glossary) gives them. A tick is game time, and a batch of work is a round.
+6. Use game terms like tick and round only in the sense the [glossary](docs/README.md#glossary) gives them. Game time is ticks, and a batch of work is a round. A bare game-time number carries the suffix `_ticks`. Minutes and hours are real time, or the shown clock.
 7. A type that carries messages between layers, such as a request, reply, frame, event or queue half, says in its doc comment which two layers it connects. Similar names get that comment, not a rename.
 8. Don't repeat the module name inside a name. This is checked in review, not by a lint.
 9. A comment shouldn't have to explain a name. If it does, fix the name.

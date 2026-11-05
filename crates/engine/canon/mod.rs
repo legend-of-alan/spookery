@@ -86,7 +86,7 @@ pub struct FactDef {
     pub place_id: String,
 }
 
-/// One way out of a place. `cost.minutes` is the world time the walk takes.
+/// One way out of a place. `cost.ticks` is the game time the walk takes.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Exit {
     pub name: String,

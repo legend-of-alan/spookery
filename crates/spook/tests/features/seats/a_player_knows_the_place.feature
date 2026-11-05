@@ -7,8 +7,8 @@ Feature: A player knows where they are and what they can do
     Then play shows "The shop faces the water. Tins sit in a row."
     And play shows "Docks Shop"
     And play shows "Aldric"
-    And play shows "stairs (locked) — 2 min"
-    And play shows "docks_street — 0 min"
+    And play shows "stairs (locked) — 2 ticks"
+    And play shows "docks_street — 0 ticks"
     And play does not show "Pc rowan"
     And play does not show "Npc aldric"
 
@@ -49,10 +49,16 @@ Feature: A player knows where they are and what they can do
     And world_time is 1080
 
   Scenario: A busy traveller sees where they are
-    Given the stairs exit costs 10 minutes
+    Given the stairs exit costs 10 ticks
     And pc_wren is seated and not travelling
     When rowan travels via stairs at 21:30
     Then the seated player sees "on the stairs until 21:40"
+
+  Scenario: The shown clock spreads 24 hours over the pack's day
+    Given a 144-tick day where the stairs exit costs 10 ticks and it is tick 50
+    And pc_wren is seated and not travelling
+    When rowan travels via stairs at 08:20
+    Then the seated player sees "on the stairs until 10:00"
 
   Scenario: Unknown input points at help
     Given a docks table

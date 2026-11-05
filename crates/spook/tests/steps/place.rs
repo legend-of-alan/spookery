@@ -51,7 +51,7 @@ fn i_see_the_place(world: &mut World) {
         "You are in Docks Shop.",
         "The shop faces the water. Tins sit in a row.",
         "Here: Aldric, You",
-        "Exits:\ndocks_street — 0 min\nstairs (locked) — 2 min",
+        "Exits:\ndocks_street — 0 ticks\nstairs (locked) — 2 ticks",
     ];
     let mark = world.mark;
     common::wait_play_until(

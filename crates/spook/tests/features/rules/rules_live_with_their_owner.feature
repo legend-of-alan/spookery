@@ -10,8 +10,8 @@ Feature: Rules live with their owner
     Then place:ferry_dock/travel runs and verb:travel does not
 
   Scenario: Habit is a cast rule
-    Given cast:briar/restock with hour 6..9 and players == 0
-    When an empty round lands at hour 7 with briar in the shop
+    Given cast:briar/restock with day_tick 360..540 and players == 0
+    When an empty round lands at tick 420 with briar in the shop
     Then docks_shop lamp_oil increases by 4
 
   Scenario: Difficulty from defense

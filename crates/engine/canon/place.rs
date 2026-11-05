@@ -101,7 +101,7 @@ fn compile_exits(file: &str, exits: &[ExitYaml]) -> Result<Vec<Exit>, Vec<Diagno
                 }
             },
             None => Cost {
-                minutes: 0,
+                ticks: 0,
                 meters: Vec::new(),
                 items: Vec::new(),
             },

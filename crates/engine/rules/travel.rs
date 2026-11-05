@@ -135,7 +135,7 @@ pub(crate) fn exits_at(
             name: exit.name.clone(),
             to: exit.to.clone(),
             place_name: place_name(canon, &exit.to),
-            minutes: exit.cost.minutes,
+            ticks: exit.cost.ticks,
             locked: is_locked(canon, state, presence, actor_id, exit),
         })
         .collect()
@@ -155,16 +155,16 @@ pub(crate) fn visible_exits(
     }
 }
 
-/// World minutes until the rule and its exit finish. Zero means it finishes now.
+/// Ticks until the rule and its exit finish. Zero means it finishes now.
 pub(crate) fn span(context: &Context, rule: &Rule) -> u64 {
-    let mut minutes = rule.cost.as_ref().map(|cost| cost.minutes).unwrap_or(0);
+    let mut ticks = rule.cost.as_ref().map(|cost| cost.ticks).unwrap_or(0);
     if let Ok(Some(exit)) = exit_of(context, rule) {
-        minutes = minutes.saturating_add(exit.cost.minutes);
+        ticks = ticks.saturating_add(exit.cost.ticks);
     }
-    minutes
+    ticks
 }
 
-/// One journey whose minute has been reached. The actor is no longer busy.
+/// One journey whose finish tick has been reached. The actor is no longer busy.
 pub(crate) struct DueAction {
     pub actor_id: String,
     pub until: u64,
@@ -212,13 +212,13 @@ pub(crate) fn take_due_actions(draft: &mut Draft, end: u64) -> Result<Vec<DueAct
     Ok(due_actions)
 }
 
-/// Pay the exit, then remember the finish minute. The move itself waits.
+/// Pay the exit, then remember the finish tick. The move itself waits.
 pub(crate) fn begin_action(
     draft: &mut Draft,
     intent: &Intent,
     rule: &Rule,
     world_time_before: u64,
-    minutes: u64,
+    ticks: u64,
     dice: &mut dyn Dice,
 ) -> Result<(), Reason> {
     let context = Context::new(draft.canon(), draft.state(), draft.presence, intent);
@@ -235,7 +235,7 @@ pub(crate) fn begin_action(
             rule: rule.id.clone(),
         },
     };
-    let until = world_time_before.saturating_add(minutes);
+    let until = world_time_before.saturating_add(ticks);
     let pending = PendingAction {
         verb: intent.move_name.clone(),
         source: intent.source,

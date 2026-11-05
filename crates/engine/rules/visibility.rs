@@ -259,7 +259,7 @@ fn can_see(canon: &Canon, state: &State, viewer: &str, change: &Change) -> bool 
         | StateKey::ActorFlag(_, _)
         | StateKey::LastActRound(_)
         | StateKey::IdleActsToday(_)
-        | StateKey::LiveActsThisHour(_) => false,
+        | StateKey::LiveActsThisWindow(_) => false,
         StateKey::WorldMeter(key) => canon
             .meter_def(&Holder::World, key)
             .is_some_and(|def| !def.hidden),

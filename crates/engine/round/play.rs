@@ -41,12 +41,12 @@ pub fn play_pack_once(path: &Path) -> Result<Option<&'static str>, Reason> {
     Ok(world.take_warning())
 }
 
-/// Play the rounds `hours` of absence earn, at an empty table. A short absence plays one.
-pub(crate) fn play_catch_up(world: &mut World, wall: &str, hours: u64) -> Result<(), Reason> {
-    let rounds = if hours == 0 {
+/// Play the rounds `real_hours` of absence earn, at an empty table. A short absence plays one.
+pub(crate) fn play_catch_up(world: &mut World, wall: &str, real_hours: u64) -> Result<(), Reason> {
+    let rounds = if real_hours == 0 {
         1
     } else {
-        planned_rounds(world.budget(), hours)?.max(1)
+        planned_rounds(world.budget(), real_hours)?.max(1)
     };
     let empty = Presence::default();
     for _ in 0..rounds {
@@ -55,22 +55,21 @@ pub(crate) fn play_catch_up(world: &mut World, wall: &str, hours: u64) -> Result
     Ok(())
 }
 
-/// How many rounds `hours` of empty-table absence earn, within the budget's caps.
-fn planned_rounds(budget: &Budget, hours: u64) -> Result<u64, Reason> {
+/// How many rounds `real_hours` of empty-table absence earn, within the budget's caps.
+fn planned_rounds(budget: &Budget, real_hours: u64) -> Result<u64, Reason> {
     let every = budget.round_every_real_seconds;
-    let idle_minutes = budget.idle_minutes_per_round;
-    if every == 0 || idle_minutes == 0 {
+    let idle_ticks = budget.idle_ticks_per_round;
+    if every == 0 || idle_ticks == 0 {
         return Err(Reason::Schema);
     }
-    let absence_minutes = hours.checked_mul(60).ok_or(Reason::OutOfRange)?;
-    let absence_seconds = hours.checked_mul(3600).ok_or(Reason::OutOfRange)?;
+    let absence_seconds = real_hours.checked_mul(3600).ok_or(Reason::OutOfRange)?;
     let printed = absence_seconds.div_ceil(every);
-    let minute_cap = budget
-        .idle_max_world_hours_per_real_hour
-        .checked_mul(absence_minutes)
+    let tick_cap = budget
+        .idle_max_ticks_per_real_hour
+        .checked_mul(real_hours)
         .ok_or(Reason::OutOfRange)?;
-    let by_minutes = minute_cap / idle_minutes;
-    Ok(printed.min(budget.idle_catchup_max_rounds).min(by_minutes))
+    let by_ticks = tick_cap / idle_ticks;
+    Ok(printed.min(budget.idle_catchup_max_rounds).min(by_ticks))
 }
 
 /// Keep playing while a seated PC is still busy. The burst starts only when every
