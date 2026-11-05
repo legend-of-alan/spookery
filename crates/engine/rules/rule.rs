@@ -197,6 +197,24 @@ pub enum Cond {
     Not(Box<Cond>),
 }
 
+impl Cond {
+    /// Calls `visit` on every leaf condition, walking into `all`, `any` and `not`.
+    pub(crate) fn visit<'a>(&'a self, mut visit: impl FnMut(&'a Cond)) {
+        fn walk<'a>(cond: &'a Cond, visit: &mut impl FnMut(&'a Cond)) {
+            match cond {
+                Cond::All(inner) | Cond::Any(inner) => {
+                    for cond in inner {
+                        walk(cond, visit);
+                    }
+                }
+                Cond::Not(inner) => walk(inner, visit),
+                leaf => visit(leaf),
+            }
+        }
+        walk(self, &mut visit);
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Op {
     Lt,
