@@ -66,7 +66,7 @@ impl ClientMessage {
 #[serde(tag = "kind", rename_all = "lowercase")]
 pub enum ServerBody {
     /// The first message on a connection, and the only one with no `seq`. On a player seat,
-    /// `open` lists the PCs a claim may take and `taken` the PCs held right now.
+    /// `open` lists the PCs nobody holds and `taken` the PCs held right now.
     Hello {
         version: u32,
         words: Vec<String>,

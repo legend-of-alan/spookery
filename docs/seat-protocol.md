@@ -42,7 +42,7 @@ Every message, the client's and the table's alike, is one JSON object in one Web
 
 ## Hello
 
-The table speaks first, with `version`, the `words` this seat may send, and, on `/player`, `open`, the PCs a claim may take now, and `taken`, the PCs held now. Either is left out when empty. A player's words are the table's own and then every verb the pack's rules name.
+The table speaks first, with `version`, the `words` this seat may send, and, on `/player`, `open`, the PCs nobody holds now, and `taken`, the PCs held now. A claim on an open PC is still refused with `TABLE_FULL` while every player seat is held. Either is left out when empty. A player's words are the table's own and then every verb the pack's rules name.
 
 <!-- example: player-hello -->
 ```json

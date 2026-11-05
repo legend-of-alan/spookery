@@ -222,19 +222,13 @@ impl Table {
         Ok(())
     }
 
-    /// The hello's `open` and `taken`: the PCs a claim may take now, and the PCs held now.
-    /// None is open once every player seat is held.
+    /// The hello's `open` and `taken`: the PCs nobody holds now, and the PCs held now.
     fn open_and_taken(&self) -> (Vec<String>, Vec<String>) {
         let presence = self.seats.presence();
-        let (mut open, taken): (Vec<String>, Vec<String>) = self
-            .world
+        self.world
             .pcs()
             .cloned()
-            .partition(|id| !presence.actors_present.contains(id));
-        if presence.actors_present.len() >= MAX_PLAYER_SEATS {
-            open.clear();
-        }
-        (open, taken)
+            .partition(|id| !presence.actors_present.contains(id))
     }
 
     fn handle_message(&mut self, conn: ConnId, received: Result<ClientMessage, Rejection>) {

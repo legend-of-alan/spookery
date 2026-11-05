@@ -162,6 +162,15 @@ fn three_players_sit(world: &mut World) {
     seat_three(world, &pack);
 }
 
+#[then(expr = "a player's hello has only {word} open")]
+fn a_players_hello_has_only_open(world: &mut World, pc: String) {
+    let seat = table::Seat::open(table::live_mut(world).game_port, "player");
+    let hello = table::wait_suffix(&seat.text, 0, "\"kind\":\"hello\"");
+    let hello: serde_json::Value = serde_json::from_str(hello.lines().next().unwrap_or(""))
+        .unwrap_or_else(|err| panic!("hello: {err}\n{hello}"));
+    assert_eq!(hello["body"]["open"], serde_json::json!([pc]), "{hello}");
+}
+
 #[when(expr = "a fourth player connects")]
 fn a_fourth_player_connects(world: &mut World) {
     world.scratch = table::claim(world, "pc_lark");
