@@ -2,6 +2,8 @@
 
 use std::fmt;
 
+use crate::rules::effect::Holder;
+
 /// One budget identity. The commit diff summary is this type's `Display`,
 /// sorted as text. It is not a path inside `save.yaml`.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -18,6 +20,10 @@ pub enum StateKey {
     LiveActsThisWindow(String),
     ActorItem(String, String),
     PlaceItem(String, String),
+    PlaceMeter(String, String),
+    PlaceFlag(String, String),
+    StoryMeter(String, String),
+    StoryFlag(String, String),
     ActorWielded(String),
     Note(String),
     WorldFlag(String),
@@ -38,6 +44,10 @@ impl fmt::Display for StateKey {
             StateKey::LiveActsThisWindow(id) => write!(f, "live_acts_this_window {id}"),
             StateKey::ActorItem(actor, id) => write!(f, "actor_item {actor} {id}"),
             StateKey::PlaceItem(place, id) => write!(f, "place_item {place} {id}"),
+            StateKey::PlaceMeter(place, key) => write!(f, "place_meter {place} {key}"),
+            StateKey::PlaceFlag(place, key) => write!(f, "place_flag {place} {key}"),
+            StateKey::StoryMeter(story, key) => write!(f, "story_meter {story} {key}"),
+            StateKey::StoryFlag(story, key) => write!(f, "story_flag {story} {key}"),
             StateKey::ActorWielded(actor) => write!(f, "actor_wielded {actor}"),
             StateKey::Note(id) => write!(f, "note {id}"),
             StateKey::WorldFlag(key) => write!(f, "world_flag {key}"),
@@ -47,6 +57,28 @@ impl fmt::Display for StateKey {
 }
 
 impl StateKey {
+    /// The key of meter `key` on `holder`.
+    pub(crate) fn meter(holder: &Holder, key: &str) -> StateKey {
+        let key = key.to_string();
+        match holder {
+            Holder::Actor(id) => StateKey::ActorMeter(id.clone(), key),
+            Holder::Place(id) => StateKey::PlaceMeter(id.clone(), key),
+            Holder::Story(id) => StateKey::StoryMeter(id.clone(), key),
+            Holder::World => StateKey::WorldMeter(key),
+        }
+    }
+
+    /// The key of flag `key` on `holder`.
+    pub(crate) fn flag(holder: &Holder, key: &str) -> StateKey {
+        let key = key.to_string();
+        match holder {
+            Holder::Actor(id) => StateKey::ActorFlag(id.clone(), key),
+            Holder::Place(id) => StateKey::PlaceFlag(id.clone(), key),
+            Holder::Story(id) => StateKey::StoryFlag(id.clone(), key),
+            Holder::World => StateKey::WorldFlag(key),
+        }
+    }
+
     /// The actor this key belongs to, when it has one.
     pub fn actor(&self) -> Option<&str> {
         match self {
@@ -62,6 +94,10 @@ impl StateKey {
             | StateKey::ActorItem(id, _)
             | StateKey::ActorWielded(id) => Some(id),
             StateKey::PlaceItem(_, _)
+            | StateKey::PlaceMeter(_, _)
+            | StateKey::PlaceFlag(_, _)
+            | StateKey::StoryMeter(_, _)
+            | StateKey::StoryFlag(_, _)
             | StateKey::Note(_)
             | StateKey::WorldFlag(_)
             | StateKey::WorldMeter(_) => None,

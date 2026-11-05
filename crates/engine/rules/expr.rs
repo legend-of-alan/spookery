@@ -204,17 +204,18 @@ pub(crate) fn resolve_item_id(context: &Context, id: &str) -> Result<String, Rea
     Ok(id.to_string())
 }
 
-/// Who holds the meter, flag or item a rule names: `here` and `place:` are a place, `world`
-/// is the world, and anyone else is an actor.
+/// Who holds the meter, flag or item a rule names: `here` and `place:` are a place, `story:`
+/// is a story, `world` is the world, and anyone else is an actor.
 pub(crate) fn resolve_holder(context: &Context, who: &Who) -> Result<Holder, Reason> {
     match who {
         Who::World => Ok(Holder::World),
+        Who::Story(id) => Ok(Holder::Story(id.clone())),
         Who::Here | Who::Place(_) => Ok(Holder::Place(resolve_who_id(context, who)?)),
         _ => Ok(Holder::Actor(resolve_who_id(context, who)?)),
     }
 }
 
-/// The actor or place id `who` names. The world is not one.
+/// The actor or place id `who` names. The world and a story are not one.
 pub(crate) fn resolve_who_id(context: &Context, who: &Who) -> Result<String, Reason> {
     match who {
         Who::Self_ => context
@@ -239,7 +240,7 @@ pub(crate) fn resolve_who_id(context: &Context, who: &Who) -> Result<String, Rea
         }
         Who::Actor(id) => Ok(id.clone()),
         Who::Place(id) => Ok(id.clone()),
-        Who::World => Err(Reason::Schema),
+        Who::World | Who::Story(_) => Err(Reason::Schema),
     }
 }
 
@@ -561,6 +562,8 @@ impl<'a> Parser<'a> {
         }
         let who = if word == "place" && self.eat(':') {
             Who::Place(self.ident()?)
+        } else if word == "story" && self.eat(':') {
+            Who::Story(self.ident()?)
         } else {
             match word.as_str() {
                 "self" => Who::Self_,
@@ -716,6 +719,7 @@ mod tests {
             places: BTreeMap::new(),
             cast: BTreeMap::new(),
             facts: BTreeMap::new(),
+            stories: BTreeMap::new(),
             rules: crate::rules::rule::RuleTable::new(Vec::new()),
             checks: BTreeMap::new(),
             meters: BTreeMap::from([(
@@ -765,6 +769,7 @@ mod tests {
                     act: Act::default(),
                 },
             )]),
+            stories: BTreeMap::new(),
             world_meters: BTreeMap::new(),
             notes: Vec::new(),
             flags: Vec::new(),

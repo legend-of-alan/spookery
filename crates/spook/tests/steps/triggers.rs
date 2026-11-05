@@ -788,13 +788,16 @@ fn rowan_takes_an_item_beside_nell(world: &mut World) {
     );
 }
 
-#[given(expr = "Mira has a habit that sets the {string} flag, which her cast file does not list")]
-fn mira_has_an_unlisted_flag_habit(world: &mut World, flag: String) {
+/// `who: here` is known only at play time, so the pack check lets the habit through.
+#[given(
+    expr = "Mira has a habit that sets the {string} flag on her place, which its file does not list"
+)]
+fn mira_has_an_unlisted_place_flag_habit(world: &mut World, flag: String) {
     let pack = copy_docks("habit-flag");
     replace_in_file(
         &pack.join("cast/mira.md"),
         "rules:\n  - id: leave_door_note\n",
-        &format!("rules:\n  - id: mark_restock\n    when: habit\n    do:\n      - flag:\n          who: self\n          key: {flag}\n          value: true\n  - id: leave_door_note\n"),
+        &format!("rules:\n  - id: mark_restock\n    when: habit\n    do:\n      - flag:\n          who: here\n          key: {flag}\n          value: true\n  - id: leave_door_note\n"),
     );
     edit_table(world, &pack, |_, _| {});
     world.pack = Some(pack);
@@ -834,11 +837,13 @@ fn the_rounds_only_refusal_is(world: &mut World, code: String) {
     assert_eq!(codes, vec![code.as_str()], "{round}");
 }
 
-#[then(expr = "Mira does not have the {string} flag")]
-fn mira_does_not_have_the_flag(world: &mut World, flag: String) {
+#[then(expr = "no place has the {string} flag")]
+fn no_place_has_the_flag(world: &mut World, flag: String) {
     let now = state_of(world.pack.as_ref().unwrap());
-    let flags = &now.actors["mira"].flags;
-    assert!(!flags.contains(&flag), "mira flags: {flags:?}");
+    assert!(now
+        .places
+        .values()
+        .all(|place| !place.flags.contains(&flag)));
 }
 
 #[when(expr = "pc_nell travels from docks_street into docks_shop")]

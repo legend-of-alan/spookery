@@ -4,7 +4,6 @@ use crate::canon::Canon;
 use crate::intent::{Intent, Source, Target, Viewer};
 use crate::model::{Presence, State};
 use crate::rules::context::Context;
-use crate::rules::effect::Holder;
 use crate::rules::expr;
 use crate::rules::rule::Cond;
 use crate::Reason;
@@ -86,13 +85,8 @@ fn holds(context: &Context, cond: &Cond) -> Result<bool, Reason> {
             Ok(op.holds(current, right))
         }
         Cond::Flag { who, key, is } => {
-            let flags = match expr::resolve_holder(context, who)? {
-                Holder::World => Some(&state.flags),
-                Holder::Actor(id) => state.actors.get(&id).map(|actor| &actor.flags),
-                Holder::Place(_) => None,
-            };
-            let on = flags.is_some_and(|flags| flags.iter().any(|flag| flag == key));
-            Ok(on == *is)
+            let holder = expr::resolve_holder(context, who)?;
+            Ok(state.has_flag(&holder, key) == *is)
         }
         Cond::At { who, place } => {
             let actor = expr::resolve_who_id(context, who)?;

@@ -362,29 +362,21 @@ impl<L> World<L> {
         Ok(self.format_digest(&effects))
     }
 
-    /// One row per meter that one actor or the world carries: `meter <holder> <id> <value> <max>`.
+    /// One row per meter that one actor, place or story, or the world, carries:
+    /// `meter <holder> <id> <value> <max>`, the holder spelled as a rule's `who` names it.
     fn carried_meter_rows(&self) -> Vec<String> {
-        let actor_meters = self
+        let carried = self
             .canon
             .meters
             .iter()
-            .filter_map(|(id, def)| match &def.carrier {
-                Some(Holder::Actor(actor)) => {
-                    Some((Holder::Actor(actor.clone()), actor.as_str(), id))
-                }
-                _ => None,
-            });
-        let world_meters = self
-            .canon
-            .world_meters
-            .keys()
-            .map(|id| (Holder::World, "world", id));
-        actor_meters
+            .filter_map(|(id, def)| Some((def.carrier.clone()?, id)));
+        let world_meters = self.canon.world_meters.keys().map(|id| (Holder::World, id));
+        carried
             .chain(world_meters)
-            .filter_map(|(holder, name, id)| {
+            .filter_map(|(holder, id)| {
                 let value = self.state.meter_value(&self.canon, &holder, id).ok()?;
                 let max = self.canon.meter_def(&holder, id)?.max;
-                Some(format!("meter {name} {id} {value} {max}"))
+                Some(format!("meter {holder} {id} {value} {max}"))
             })
             .collect()
     }

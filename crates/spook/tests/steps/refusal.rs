@@ -248,6 +248,8 @@ fn oden_can_pay_until_lark_spends_his_grit(world: &mut World) {
         "\
 idle:
   eligible: true
+flags:
+  - heaved
 rules:
   - id: heave
     when: habit

@@ -101,6 +101,15 @@ fn sentence(canon: &Canon, viewer: &str, change: &Change, changes: &[Change]) ->
         StateKey::WorldMeter(key) => {
             meter_sentence(canon, &Holder::World, key, "The world's", &change.after)
         }
+        StateKey::StoryMeter(story, key) => {
+            let holder = Holder::Story(story.clone());
+            meter_sentence(canon, &holder, key, "The", &change.after)
+        }
+        StateKey::PlaceMeter(place, key) => {
+            let holder = Holder::Place(place.clone());
+            let whose = format!("{}'s", crate::rules::lines::place_name(canon, place));
+            meter_sentence(canon, &holder, key, &whose, &change.after)
+        }
         StateKey::ActorItem(actor, id) => {
             actor_item_sentence(canon, viewer, actor, id, change, changes)
         }
@@ -257,12 +266,17 @@ fn can_see(canon: &Canon, state: &State, viewer: &str, change: &Change) -> bool 
         // Flags are rules bookkeeping: the GM narrates what one means.
         StateKey::WorldFlag(_)
         | StateKey::ActorFlag(_, _)
+        | StateKey::PlaceFlag(_, _)
+        | StateKey::StoryFlag(_, _)
         | StateKey::LastActRound(_)
         | StateKey::IdleActsThisWindow(_)
         | StateKey::LiveActsThisWindow(_) => false,
-        StateKey::WorldMeter(key) => canon
-            .meter_def(&Holder::World, key)
-            .is_some_and(|def| !def.hidden),
+        StateKey::WorldMeter(key) => is_shown(canon, &Holder::World, key),
+        StateKey::StoryMeter(story, key) => is_shown(canon, &Holder::Story(story.clone()), key),
+        StateKey::PlaceMeter(place, key) => {
+            place_of(state, viewer) == Some(place.as_str())
+                && is_shown(canon, &Holder::Place(place.clone()), key)
+        }
         StateKey::ActorKnownFact(actor) | StateKey::ActorMeter(actor, _) => actor == viewer,
         StateKey::ActorModifier(actor, id) => {
             actor == viewer && canon.modifiers.get(id).is_some_and(|def| !def.hidden)
@@ -279,6 +293,11 @@ fn can_see(canon: &Canon, state: &State, viewer: &str, change: &Change) -> bool 
         | StateKey::ActorItem(actor, _)
         | StateKey::ActorWielded(actor) => actor == viewer || same_place(state, viewer, actor),
     }
+}
+
+/// Whether the pack shows meter `key` on `holder` to players.
+fn is_shown(canon: &Canon, holder: &Holder, key: &str) -> bool {
+    canon.meter_def(holder, key).is_some_and(|def| !def.hidden)
 }
 
 fn place_of<'a>(state: &'a State, viewer: &str) -> Option<&'a str> {

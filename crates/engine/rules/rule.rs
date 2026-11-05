@@ -236,6 +236,7 @@ pub enum Who {
     Here,
     World,
     Place(String),
+    Story(String),
     Actor(String),
 }
 
