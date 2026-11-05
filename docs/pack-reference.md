@@ -54,7 +54,7 @@ An exit has `to` and `name`. It may have `cost`, `if`, `locked_text`, and `hidde
 
 `flags` lists the flags an effect may set on this place, and `meters` lists the meters only this place carries, in the shape of `rules/meters.yaml`. A rule names them with `who: place:<id>`, or `who: here` for the actor's own place. `world/places/loft.md` declares both.
 
-`cost.ticks` is the game time the cost takes, a whole number of ticks. Omitted means 0. `if` uses the same conditions as a rule. When that `if` fails, the exit is locked: the engine shows `locked_text` and changes nothing.
+`cost.ticks` is the game time the cost takes, a whole number of ticks. Omitted means 0. An exit with an `if` is a door, and the `if`, in the same conditions as a rule, is what it takes to open it. A door starts locked: travel through it shows `locked_text` and changes nothing. At the end of each round, after change rules, a locked door opens when any actor in its place meets its `if`, and it stays open for everyone, whoever holds the key after. The engine opens it with a `flag` effect it records in the journal. A door carries one flag, `open`, which the engine owns: a rule names it with `who: exit:<place>.<exit>` and `key: open`, sets it to `false` to lock the door again, and may watch it like any flag. An exit with no `if` has no flag and is always open. The `bar` rule below locks the cellar door again.
 
 The traveller stays at the origin until the journey finishes. The busy time is the rule's ticks plus the exit's ticks.
 
@@ -100,6 +100,14 @@ rules:
       - location:
           to: lane
           teleport: true
+  - id: bar
+    when:
+      verb: bar
+    do:
+      - flag:
+          who: exit:yard.cellar
+          key: open
+          value: false
 ---
 Gravel underfoot.
 ```
@@ -381,9 +389,9 @@ A change rule fires when its watch becomes true. It does not fire again while th
 
 A change rule has no `cost`. Check rejects one. It may have `if`, `roll`, and the outcome lists. `if` is read after the change.
 
-Matching change rules run in owner order (shared verbs, then place, item, cast, story), then by file path, then by position in the file. They run again on the changes they just wrote, until a pass matches nothing. In one pass a rule runs at most once for each subject. The subject is the actor whose value changed. A flag or meter of the world, a place or a story has no subject, so a rule watching one runs once per change, whoever is seated, and check refuses `self`, `here`, `location`, and `roll` in it: name the actor, or `world`. A flag counts as the world's when a rule sets it with `who: world`; a world flag only the save sets is not checked, and a `self` there is refused when the rule runs. A key the world and an actor both carry fires the rule for each, and `TRIGGER_LEAK` reads it as an actor's change. `max_trigger_depth` in `rules/budget.yaml` caps the passes. Omitted, it is 4. The next pass is recorded and does not run. Check warns when change rules set each other's watched values. A `narrate` or `note` on a change rule that can reach a viewer who cannot see that change is `TRIGGER_LEAK`.
+Matching change rules run in owner order (shared verbs, then place, item, cast, story), then by file path, then by position in the file. They run again on the changes they just wrote, until a pass matches nothing. In one pass a rule runs at most once for each subject. The subject is the actor whose value changed. A flag or meter of the world, a place, a story or an exit has no subject, so a rule watching one runs once per change, whoever is seated, and check refuses `self`, `here`, `location`, and `roll` in it: name the actor, or `world`. A flag counts as the world's when a rule sets it with `who: world`; a world flag only the save sets is not checked, and a `self` there is refused when the rule runs. A key the world and an actor both carry fires the rule for each, and `TRIGGER_LEAK` reads it as an actor's change. `max_trigger_depth` in `rules/budget.yaml` caps the passes. Omitted, it is 4. The next pass is recorded and does not run. Check warns when change rules set each other's watched values. A `narrate` or `note` on a change rule that can reach a viewer who cannot see that change is `TRIGGER_LEAK`.
 
-`if` is a list. Each dash is one condition. `all` is and, `any` is or, and `not` negates one condition. Two conditions under one dash are rejected. `who` is `self`, `target`, `here`, `world`, `place:<id>`, `story:<id>`, or an actor id. On `has_item`, `wielding`, and an item effect, `id: target` is the intent's target. The habit on `cast/keeper.md` uses each condition. `op` is `<`, `<=`, `==`, `>=`, or `>`. `cycle` holds while the tick of the cycle `name`, world time modulo that cycle's length in `cycles`, is in `from..to`. When `from` is above `to` the window wraps past the cycle's end. `from` and `to` are integers below the cycle's length and they differ.
+`if` is a list. Each dash is one condition. `all` is and, `any` is or, and `not` negates one condition. Two conditions under one dash are rejected. `who` is `self`, `target`, `here`, `world`, `place:<id>`, `story:<id>`, `exit:<place>.<exit>`, or an actor id. An exit holds only its flag `open`. On `has_item`, `wielding`, and an item effect, `id: target` is the intent's target. The habit on `cast/keeper.md` uses each condition. `op` is `<`, `<=`, `==`, `>=`, or `>`. `cycle` holds while the tick of the cycle `name`, world time modulo that cycle's length in `cycles`, is in `from..to`. When `from` is above `to` the window wraps past the cycle's end. `from` and `to` are integers below the cycle's length and they differ.
 
 `cost` may name `time`, `meters`, and `items`. `time` uses the duration words from exits. A cost the actor cannot pay is refused when the move is played, and the world stays as it was.
 

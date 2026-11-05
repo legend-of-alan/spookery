@@ -24,6 +24,8 @@ pub enum StateKey {
     PlaceFlag(String, String),
     StoryMeter(String, String),
     StoryFlag(String, String),
+    /// Whether a door is open: the exit's place and its name.
+    ExitOpen(String, String),
     ActorWielded(String),
     Note(String),
     WorldFlag(String),
@@ -48,6 +50,7 @@ impl fmt::Display for StateKey {
             StateKey::PlaceFlag(place, key) => write!(f, "place_flag {place} {key}"),
             StateKey::StoryMeter(story, key) => write!(f, "story_meter {story} {key}"),
             StateKey::StoryFlag(story, key) => write!(f, "story_flag {story} {key}"),
+            StateKey::ExitOpen(place, exit) => write!(f, "exit_open {place} {exit}"),
             StateKey::ActorWielded(actor) => write!(f, "actor_wielded {actor}"),
             StateKey::Note(id) => write!(f, "note {id}"),
             StateKey::WorldFlag(key) => write!(f, "world_flag {key}"),
@@ -57,21 +60,23 @@ impl fmt::Display for StateKey {
 }
 
 impl StateKey {
-    /// The key of meter `key` on `holder`.
-    pub(crate) fn meter(holder: &Holder, key: &str) -> StateKey {
+    /// The key of meter `key` on `holder`. An exit carries no meters.
+    pub(crate) fn meter(holder: &Holder, key: &str) -> Option<StateKey> {
         let key = key.to_string();
         match holder {
-            Holder::Actor(id) => StateKey::ActorMeter(id.clone(), key),
-            Holder::Place(id) => StateKey::PlaceMeter(id.clone(), key),
-            Holder::Story(id) => StateKey::StoryMeter(id.clone(), key),
-            Holder::World => StateKey::WorldMeter(key),
+            Holder::Actor(id) => Some(StateKey::ActorMeter(id.clone(), key)),
+            Holder::Place(id) => Some(StateKey::PlaceMeter(id.clone(), key)),
+            Holder::Story(id) => Some(StateKey::StoryMeter(id.clone(), key)),
+            Holder::Exit(..) => None,
+            Holder::World => Some(StateKey::WorldMeter(key)),
         }
     }
 
-    /// The key of flag `key` on `holder`.
+    /// The key of flag `key` on `holder`. An exit's one flag is `open`.
     pub(crate) fn flag(holder: &Holder, key: &str) -> StateKey {
         let key = key.to_string();
         match holder {
+            Holder::Exit(place, exit) => StateKey::ExitOpen(place.clone(), exit.clone()),
             Holder::Actor(id) => StateKey::ActorFlag(id.clone(), key),
             Holder::Place(id) => StateKey::PlaceFlag(id.clone(), key),
             Holder::Story(id) => StateKey::StoryFlag(id.clone(), key),
@@ -98,6 +103,7 @@ impl StateKey {
             | StateKey::PlaceFlag(_, _)
             | StateKey::StoryMeter(_, _)
             | StateKey::StoryFlag(_, _)
+            | StateKey::ExitOpen(_, _)
             | StateKey::Note(_)
             | StateKey::WorldFlag(_)
             | StateKey::WorldMeter(_) => None,

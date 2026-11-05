@@ -61,7 +61,7 @@ pub(crate) fn help(
                 target: kind.as_str().to_string(),
                 names: match owner {
                     Some(owner) => vec![owner.clone()],
-                    None => names_for(canon, state, presence, actor_id, actor, kind, &names),
+                    None => names_for(canon, state, actor_id, actor, kind, &names),
                 },
                 owner: owner.cloned(),
             };
@@ -78,7 +78,6 @@ pub(crate) fn help(
 fn names_for(
     canon: &Canon,
     state: &State,
-    presence: &Presence,
     actor_id: &str,
     actor: &ActorLive,
     kind: TargetKind,
@@ -89,7 +88,7 @@ fn names_for(
         TargetKind::Exit => canon
             .places
             .get(&actor.place)
-            .map(|place| exits_at(canon, state, presence, actor_id, place))
+            .map(|place| exits_at(canon, state, actor_id, place))
             .unwrap_or_default()
             .into_iter()
             .map(|exit| exit.name)
@@ -117,12 +116,7 @@ fn names_for(
 
 /// `map`: each place in the actor's `visited`, with the exits they saw there last. Where an
 /// exit goes, its ticks and whether it is locked are read now.
-pub(crate) fn map(
-    canon: &Canon,
-    state: &State,
-    presence: &Presence,
-    actor_id: &str,
-) -> Result<Vec<PlaceView>, Reason> {
+pub(crate) fn map(canon: &Canon, state: &State, actor_id: &str) -> Result<Vec<PlaceView>, Reason> {
     let actor = state.actors.get(actor_id).ok_or(Reason::UnknownId)?;
     let places = actor.visited.iter().map(|(id, seen)| PlaceView {
         name: place_name(canon, id),
@@ -134,7 +128,7 @@ pub(crate) fn map(
                     .exits
                     .iter()
                     .filter(|exit| seen.contains(&exit.name))
-                    .map(|exit| exit_view(canon, state, presence, actor_id, exit))
+                    .map(|exit| exit_view(canon, state, exit))
                     .collect()
             })
             .unwrap_or_default(),

@@ -12,6 +12,7 @@ use key::StateKey;
 use meter::MeterLive;
 use modifier::ModifierLive;
 
+use crate::canon::OPEN;
 use crate::intent::{Target, Viewer};
 use crate::rules::effect::Holder;
 
@@ -68,7 +69,7 @@ impl State {
                 .actors
                 .get(id)
                 .map_or(Ok(0), |actor| modifier::sum(&actor.modifiers, key)),
-            Holder::World | Holder::Place(_) | Holder::Story(_) => Ok(0),
+            Holder::World | Holder::Place(_) | Holder::Story(_) | Holder::Exit(..) => Ok(0),
         }
     }
 
@@ -78,6 +79,7 @@ impl State {
             Holder::Actor(id) => self.actors.get(id).map(|actor| &actor.meters),
             Holder::Place(id) => self.places.get(id).map(|place| &place.meters),
             Holder::Story(id) => self.stories.get(id).map(|story| &story.meters),
+            Holder::Exit(..) => None,
             Holder::World => Some(&self.world_meters),
         }
     }
@@ -99,29 +101,54 @@ impl State {
                 .get_mut(id)
                 .ok_or(crate::Reason::UnknownId)?
                 .meters),
+            Holder::Exit(..) => Err(crate::Reason::UnknownId),
             Holder::World => Ok(&mut self.world_meters),
         }
     }
 
-    /// Whether `holder` has flag `key` set.
+    /// Whether `holder` has flag `key` set. An exit's `open` is its name in its place's list.
     pub(crate) fn has_flag(&self, holder: &Holder, key: &str) -> bool {
-        let flags = match holder {
-            Holder::Actor(id) => self.actors.get(id).map(|actor| &actor.flags),
-            Holder::Place(id) => self.places.get(id).map(|place| &place.flags),
-            Holder::Story(id) => self.stories.get(id).map(|story| &story.flags),
-            Holder::World => Some(&self.flags),
+        let (flags, entry) = match holder {
+            Holder::Actor(id) => (self.actors.get(id).map(|actor| &actor.flags), key),
+            Holder::Place(id) => (self.places.get(id).map(|place| &place.flags), key),
+            Holder::Story(id) => (self.stories.get(id).map(|story| &story.flags), key),
+            Holder::Exit(place, exit) if key == OPEN => (
+                self.places.get(place).map(|place| &place.open),
+                exit.as_str(),
+            ),
+            Holder::Exit(..) => (None, key),
+            Holder::World => (Some(&self.flags), key),
         };
-        flags.is_some_and(|flags| flags.iter().any(|flag| flag == key))
+        flags.is_some_and(|flags| flags.iter().any(|flag| flag == entry))
     }
 
-    /// The flags `holder` has set, to write. A place or story gets a live record on its first.
-    pub(crate) fn flags_mut(&mut self, holder: &Holder) -> Result<&mut Vec<String>, crate::Reason> {
-        match holder {
-            Holder::Actor(id) => Ok(&mut self.actor_mut(id)?.flags),
-            Holder::Place(id) => Ok(&mut self.places.entry(id.clone()).or_default().flags),
-            Holder::Story(id) => Ok(&mut self.stories.entry(id.clone()).or_default().flags),
-            Holder::World => Ok(&mut self.flags),
+    /// Set or clear `holder`'s flag `key`, and say whether it changed. A place or story gets a
+    /// live record on its first flag, and a place on its first open exit.
+    pub(crate) fn set_flag(
+        &mut self,
+        holder: &Holder,
+        key: &str,
+        value: bool,
+    ) -> Result<bool, crate::Reason> {
+        if self.has_flag(holder, key) == value {
+            return Ok(false);
         }
+        let (flags, entry) = match holder {
+            Holder::Actor(id) => (&mut self.actor_mut(id)?.flags, key),
+            Holder::Place(id) => (&mut self.places.entry(id.clone()).or_default().flags, key),
+            Holder::Story(id) => (&mut self.stories.entry(id.clone()).or_default().flags, key),
+            Holder::Exit(place, exit) => {
+                let place = self.places.entry(place.clone()).or_default();
+                (&mut place.open, exit.as_str())
+            }
+            Holder::World => (&mut self.flags, key),
+        };
+        if value {
+            flags.push(entry.to_string());
+        } else {
+            flags.retain(|flag| flag != entry);
+        }
+        Ok(true)
     }
 
     /// Actor `id`'s live record to write, or `UNKNOWN_ID`.
@@ -162,6 +189,9 @@ pub struct PlaceLive {
     /// The flags set on this place. Omitted when empty.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub flags: Vec<String>,
+    /// The names of this place's exits whose door is open. Omitted when empty.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub open: Vec<String>,
 }
 
 /// The meters a story file declares and the flags set on that story.

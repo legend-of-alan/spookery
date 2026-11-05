@@ -87,10 +87,15 @@ pub struct FactDef {
     pub place_id: String,
 }
 
+/// The one flag an exit with an `if` carries, set once someone there meets the `if`.
+pub(crate) const OPEN: &str = "open";
+
 /// One way out of a place. `cost.ticks` is the game time the walk takes.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Exit {
     pub name: String,
+    /// The place this exit leaves.
+    pub from: String,
     pub to: String,
     pub cost: Cost,
     pub if_: Vec<Cond>,
@@ -108,6 +113,15 @@ pub struct PlaceDef {
     pub exits: Vec<Exit>,
     /// The flags an effect may set on this place.
     pub flags: Vec<String>,
+}
+
+impl PlaceDef {
+    /// Whether exit `name` here is a door: it has an `if`, so it carries the flag `open`.
+    pub(crate) fn has_door(&self, name: &str) -> bool {
+        self.exits
+            .iter()
+            .any(|exit| exit.name == name && !exit.if_.is_empty())
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -191,14 +205,19 @@ impl Canon {
         }
     }
 
-    /// The flags `holder`'s file declares. The world's flags are not declared.
-    pub(crate) fn flags_of(&self, holder: &Holder) -> Option<&[String]> {
-        match holder {
-            Holder::Actor(id) => self.cast.get(id).map(|cast| cast.flags.as_slice()),
-            Holder::Place(id) => self.places.get(id).map(|place| place.flags.as_slice()),
-            Holder::Story(id) => self.stories.get(id).map(|story| story.flags.as_slice()),
-            Holder::World => None,
-        }
+    /// Whether `holder` carries flag `key`: one its file declares, `open` on an exit with an
+    /// `if`, or any world flag but `busy`.
+    pub(crate) fn carries_flag(&self, holder: &Holder, key: &str) -> bool {
+        let flags = match holder {
+            Holder::Actor(id) => self.cast.get(id).map(|cast| &cast.flags),
+            Holder::Place(id) => self.places.get(id).map(|place| &place.flags),
+            Holder::Story(id) => self.stories.get(id).map(|story| &story.flags),
+            Holder::Exit(place, exit) => {
+                return key == OPEN && self.places.get(place).is_some_and(|at| at.has_door(exit))
+            }
+            Holder::World => return !key.is_empty() && key != "busy",
+        };
+        flags.is_some_and(|flags| flags.iter().any(|flag| flag == key))
     }
 
     pub fn idle_profile(&self, actor_id: &str) -> Option<&IdleProfile> {

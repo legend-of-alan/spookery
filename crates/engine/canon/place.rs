@@ -35,7 +35,7 @@ pub(super) fn add_place(
     };
     diags.keep(facts.add(&whole, file.facts, &file.id))?;
     let exits = diags
-        .keep(compile_exits(&page.file, &file.exits))
+        .keep(compile_exits(&page.file, &file.id, &file.exits))
         .unwrap_or_default();
     let twice = ("place", "is already defined", "keep one place with this id");
     let taken = places.contains_key(&file.id);
@@ -79,7 +79,7 @@ fn load_place(file: &str, yaml: &str, line_base: u32) -> Result<PlaceDoc, Vec<Di
     diags.into_result(parsed)
 }
 
-fn compile_exits(file: &str, exits: &[ExitYaml]) -> Result<Vec<Exit>, Vec<Diagnostic>> {
+fn compile_exits(file: &str, from: &str, exits: &[ExitYaml]) -> Result<Vec<Exit>, Vec<Diagnostic>> {
     let source = FileText::named(file);
     let mut diags = Diags::default();
     let mut compiled = Vec::new();
@@ -139,6 +139,7 @@ fn compile_exits(file: &str, exits: &[ExitYaml]) -> Result<Vec<Exit>, Vec<Diagno
         }
         compiled.push(Exit {
             name: exit.name.clone(),
+            from: from.to_string(),
             to: exit.to.clone(),
             cost,
             if_,

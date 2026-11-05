@@ -171,7 +171,7 @@ fn perceive_viewer_budget(
         Viewer::Player(_) => Vec::new(),
         Viewer::Npc(id) => list_whose_if_holds(canon, state, presence, id),
     };
-    let exits = crate::rules::travel::visible_exits(canon, state, presence, viewer.actor_id());
+    let exits = crate::rules::travel::visible_exits(canon, state, viewer.actor_id());
     let actor_names = visible_actors
         .iter()
         .map(|id| canon.display_name(id))

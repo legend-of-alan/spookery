@@ -6,7 +6,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use crate::canon::Budget;
-use crate::canon::Canon;
+use crate::canon::{Canon, OPEN};
 use crate::model::key::{Change, StateKey, StateValue};
 use crate::model::{ActCounter, MemoryLine, Presence, State};
 use crate::rules::effect::Holder;
@@ -244,6 +244,10 @@ impl<'p> Draft<'p> {
             }
             StateKey::StoryFlag(id, flag) => {
                 StateValue::Bool(self.state.has_flag(&Holder::Story(id.clone()), flag))
+            }
+            StateKey::ExitOpen(place, exit) => {
+                let holder = Holder::Exit(place.clone(), exit.clone());
+                StateValue::Bool(self.state.has_flag(&holder, OPEN))
             }
             StateKey::PlaceMeter(id, meter) => self.meter_value(&Holder::Place(id.clone()), meter),
             StateKey::StoryMeter(id, meter) => self.meter_value(&Holder::Story(id.clone()), meter),

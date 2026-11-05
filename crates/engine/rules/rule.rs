@@ -255,6 +255,8 @@ pub enum Who {
     World,
     Place(String),
     Story(String),
+    /// An exit, by its place and its name: `exit:<place>.<exit>`.
+    Exit(String, String),
     Actor(String),
 }
 

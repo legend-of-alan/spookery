@@ -1,13 +1,15 @@
 //! Exits, admission, and the journeys that follow them.
 
-use crate::canon::{Canon, Exit, PlaceDef};
+use crate::canon::{Canon, Exit, PlaceDef, OPEN};
 use crate::draft::Draft;
-use crate::intent::{Intent, Target};
+use crate::intent::{Intent, Source, Target, Viewer};
 use crate::model::key::StateKey;
-use crate::model::{PendingAction, PendingKind, Presence, State};
+use crate::model::{PendingAction, PendingKind, State};
+use crate::round::log::RoundLog;
 use crate::rules::cond;
 use crate::rules::context::Context;
 use crate::rules::cost;
+use crate::rules::effect::{Effect, EffectKind, Holder};
 use crate::rules::expr::Dice;
 use crate::rules::gate;
 use crate::rules::lines::place_name;
@@ -74,7 +76,7 @@ pub(crate) fn admit(context: &Context, rule: &Rule) -> Result<(), gate::Refusal>
     if !is_revealed(canon, state, actor_id, exit) {
         return Err(gate::Refusal::new(intent, Reason::NoExit));
     }
-    if is_locked(canon, state, context.presence, actor_id, exit) {
+    if is_locked(state, exit) {
         let text = if exit.locked_text.is_empty() {
             "The way is locked.".to_string()
         } else {
@@ -102,28 +104,71 @@ fn is_revealed(canon: &Canon, state: &State, actor_id: &str, exit: &Exit) -> boo
     can_see_fact(canon, state, &viewer, fact)
 }
 
-fn is_locked(
-    canon: &Canon,
-    state: &State,
-    presence: &Presence,
-    actor_id: &str,
-    exit: &Exit,
-) -> bool {
-    if exit.if_.is_empty() {
-        return false;
+/// A door is locked until it opens. An exit with no `if` is no door, so it is always open.
+fn is_locked(state: &State, exit: &Exit) -> bool {
+    !exit.if_.is_empty() && !state.has_flag(&door(exit), OPEN)
+}
+
+/// The exit as the holder of its flag `open`.
+fn door(exit: &Exit) -> Holder {
+    Holder::Exit(exit.from.clone(), exit.name.clone())
+}
+
+/// Open each locked door whose `if` some actor in its place meets, with a `flag` effect
+/// written as no one, under the intent `door:<place>.<exit>`. Runs at the end of each round,
+/// after triggers.
+pub(crate) fn open_doors(draft: &mut Draft, log: &mut RoundLog) {
+    let (canon, state) = (draft.canon(), draft.state());
+    let mut opens = Vec::new();
+    for (place, def) in &canon.places {
+        let here: Vec<Viewer> = state
+            .actors_at(place)
+            .iter()
+            .filter_map(|id| state.viewer_of(id))
+            .collect();
+        for exit in def.exits.iter().filter(|exit| is_locked(state, exit)) {
+            let target = Target::Exit(exit.name.clone());
+            let met = here.iter().any(|viewer| {
+                let target = target.clone();
+                cond::if_holds(
+                    canon,
+                    state,
+                    draft.presence,
+                    viewer,
+                    "travel",
+                    target,
+                    &exit.if_,
+                )
+            });
+            if !met {
+                continue;
+            }
+            let id = format!("door:{place}.{}", exit.name);
+            let intent = Intent::new(id, state.round_index, None, Source::Engine, OPEN, target);
+            let kind = EffectKind::Flag {
+                holder: door(exit),
+                key: OPEN.to_string(),
+                value: true,
+            };
+            opens.push((Effect::new(None, &intent.id, kind), intent));
+        }
     }
-    let Some(viewer) = state.viewer_of(actor_id) else {
-        return true;
-    };
-    let target = Target::Exit(exit.name.clone());
-    !cond::if_holds(canon, state, presence, &viewer, "travel", target, &exit.if_)
+    for (effect, intent) in opens {
+        let point = draft.savepoint();
+        match effect.clone().apply(draft, &intent) {
+            Ok(()) => log.effects.push(effect),
+            Err(code) => {
+                draft.rollback(point);
+                log.refused.push(gate::Refusal::new(&intent, code));
+            }
+        }
+    }
 }
 
 /// The exits of `place` this actor is allowed to see. A hidden exit stays off the list.
 pub(crate) fn exits_at(
     canon: &Canon,
     state: &State,
-    presence: &Presence,
     actor_id: &str,
     place: &PlaceDef,
 ) -> Vec<ExitView> {
@@ -131,24 +176,18 @@ pub(crate) fn exits_at(
         .exits
         .iter()
         .filter(|exit| is_revealed(canon, state, actor_id, exit))
-        .map(|exit| exit_view(canon, state, presence, actor_id, exit))
+        .map(|exit| exit_view(canon, state, exit))
         .collect()
 }
 
-/// `exit` as this actor sees it now: where it goes, its ticks, and whether it is locked.
-pub(crate) fn exit_view(
-    canon: &Canon,
-    state: &State,
-    presence: &Presence,
-    actor_id: &str,
-    exit: &Exit,
-) -> ExitView {
+/// `exit` as it is now: where it goes, its ticks, and whether it is locked.
+pub(crate) fn exit_view(canon: &Canon, state: &State, exit: &Exit) -> ExitView {
     ExitView {
         name: exit.name.clone(),
         to: exit.to.clone(),
         place_name: place_name(canon, &exit.to),
         ticks: exit.cost.ticks,
-        locked: is_locked(canon, state, presence, actor_id, exit),
+        locked: is_locked(state, exit),
     }
 }
 
@@ -161,7 +200,7 @@ pub(crate) fn note_exits(draft: &mut Draft) {
         .actors
         .keys()
         .map(|id| {
-            let exits = visible_exits(canon, state, draft.presence, id);
+            let exits = visible_exits(canon, state, id);
             (
                 id.clone(),
                 exits.into_iter().map(|exit| exit.name).collect(),
@@ -176,15 +215,10 @@ pub(crate) fn note_exits(draft: &mut Draft) {
 }
 
 /// The exits of this actor's place that they are allowed to see.
-pub(crate) fn visible_exits(
-    canon: &Canon,
-    state: &State,
-    presence: &Presence,
-    actor_id: &str,
-) -> Vec<ExitView> {
+pub(crate) fn visible_exits(canon: &Canon, state: &State, actor_id: &str) -> Vec<ExitView> {
     let actor = state.actors.get(actor_id);
     match actor.and_then(|actor| canon.places.get(&actor.place)) {
-        Some(place) => exits_at(canon, state, presence, actor_id, place),
+        Some(place) => exits_at(canon, state, actor_id, place),
         None => Vec::new(),
     }
 }

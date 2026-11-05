@@ -284,12 +284,10 @@ impl Table {
                     Err(code) => ServerBody::Refused(code.into()),
                 }
             }
-            "map" if read::<NoArgs>(&args).is_some() => {
-                match self.world.map(&presence, &actor_id) {
-                    Ok(places) => ServerBody::Map { places },
-                    Err(code) => ServerBody::Refused(code.into()),
-                }
-            }
+            "map" if read::<NoArgs>(&args).is_some() => match self.world.map(&actor_id) {
+                Ok(places) => ServerBody::Map { places },
+                Err(code) => ServerBody::Refused(code.into()),
+            },
             "release" | "look" | "help" | "map" => ServerBody::Refused(Reason::Schema.into()),
             _ => match read::<MoveArgs>(&args) {
                 Some(args) => return self.play_move(conn, id, &actor_id, &word, args.target),

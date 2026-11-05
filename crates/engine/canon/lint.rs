@@ -3,7 +3,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::canon::source::{FileText, Locator, Problem};
-use crate::canon::{Canon, CastDef, FactDef, ItemDef, PlaceDef, StoryDef};
+use crate::canon::{Canon, CastDef, FactDef, ItemDef, PlaceDef, StoryDef, OPEN};
 use crate::diagnostic::{error, schema_error, warning, Diagnostic};
 use crate::model::meter::{self, MeterDef};
 use crate::model::modifier::{self, ModifierDef};
@@ -371,6 +371,7 @@ impl HolderScope<'_> {
             Who::World => Some(Holder::World),
             Who::Place(id) => Some(Holder::Place(id.clone())),
             Who::Story(id) => Some(Holder::Story(id.clone())),
+            Who::Exit(place, exit) => Some(Holder::Exit(place.clone(), exit.clone())),
             Who::Actor(id) if self.cast.contains_key(id) => Some(Holder::Actor(id.clone())),
             Who::Self_ => fixed_self.map(|id| Holder::Actor(id.to_string())),
             _ => None,
@@ -385,6 +386,11 @@ impl HolderScope<'_> {
             Holder::Actor(id) => self.cast.get(id).map(|cast| &cast.flags),
             Holder::Place(id) => self.places.get(id).map(|place| &place.flags),
             Holder::Story(id) => self.stories.get(id).map(|story| &story.flags),
+            Holder::Exit(place, exit) if key == OPEN => {
+                let door = self.places.get(place).is_some_and(|at| at.has_door(exit));
+                return (!door).then(|| format!("{holder} has no if, so it is always open"));
+            }
+            Holder::Exit(..) => return Some(format!("an exit carries only the flag '{OPEN}'")),
         };
         let declared = flags.is_some_and(|flags| flags.contains(&key.to_string()));
         (!declared).then(|| format!("{holder} does not declare it"))
@@ -416,6 +422,11 @@ impl HolderScope<'_> {
             Who::Place(id) => Some(format!("place:{id}")),
             Who::Story(id) if self.stories.contains_key(id) => None,
             Who::Story(id) => Some(format!("story:{id}")),
+            Who::Exit(place, exit) => {
+                let exits = self.places.get(place).map(|at| at.exits.as_slice());
+                let known = exits.is_some_and(|exits| exits.iter().any(|at| &at.name == exit));
+                (!known).then(|| format!("exit:{place}.{exit}"))
+            }
             Who::Actor(id) if self.cast.contains_key(id) => None,
             Who::Actor(id) => Some(id.clone()),
         }
@@ -1055,7 +1066,9 @@ fn watches_world(canon: &Canon, watch: &ChangeWatch) -> bool {
         }
         ChangeWatch::Flag { key, .. } => {
             let declared = |flags: &[String]| flags.contains(key);
-            canon.places.values().any(|place| declared(&place.flags))
+            let doors = |place: &PlaceDef| place.exits.iter().any(|exit| !exit.if_.is_empty());
+            (key == OPEN && canon.places.values().any(doors))
+                || canon.places.values().any(|place| declared(&place.flags))
                 || canon.stories.values().any(|story| declared(&story.flags))
                 || canon.rules.iter().any(|rule| {
                     let mut sets = false;
