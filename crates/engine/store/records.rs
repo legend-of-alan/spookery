@@ -29,6 +29,14 @@ impl AddedMeter {
     }
 }
 
+/// One meter a migrate dropped from one holder, because the pack no longer gives it.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DroppedMeter {
+    pub id: String,
+    pub holder: Holder,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MigrateRecord {
@@ -43,6 +51,9 @@ pub struct MigrateRecord {
     /// Modifiers this migrate dropped from every actor. Omitted when it dropped none.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub dropped_modifiers: Vec<String>,
+    /// Meters this migrate dropped, each from its holder. Omitted when it dropped none.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub dropped_meters: Vec<DroppedMeter>,
     /// The migrate started from a hand-edited save, and a checkpoint of its result follows it.
     /// Omitted when false, so a plain migrate keeps its bytes.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]

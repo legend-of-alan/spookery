@@ -100,3 +100,10 @@ Feature: Modifiers stack per application, add ticks on reapply, and expire at on
     And the operator migrates the pack
     Then pc_rowan has neither burn nor soaked
     And spook verify reproduces the journal
+
+  Scenario: Migrate drops a meter the pack no longer gives
+    Given pc_rowan carries meter "luck" and the world carries meter "tide"
+    When the pack drops luck and tide
+    And the operator migrates the pack
+    Then pc_rowan has no luck and the world has no tide
+    And spook verify reproduces the journal

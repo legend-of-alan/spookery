@@ -597,7 +597,7 @@ rules:
 - `meters:` in `cast/<name>.md` gives it to that one actor. The id is refused when `rules/meters.yaml` or another cast file has it too. `cast/keeper.md` declares `shop_day`.
 - `world/meters.yaml` gives it to the world, held once in the save as `world_meters` and shared by every rule that names `who: world`. The world and an actor may each declare a meter with the same id, and `who` picks which one.
 
-`base` is the base a new meter takes on its holder when `spook migrate` runs. A save that lacks a meter the pack gives a holder, with no migrate to add it, is refused. So is a save that lists a meter on a holder the pack does not give it.
+`base` is the base a new meter takes on its holder when `spook migrate` runs, and migrate drops a meter from a holder the pack no longer gives it. A save that lacks a meter the pack gives a holder, with no migrate to add it, is refused. So is a save that lists a meter on a holder the pack does not give it, with no migrate to drop it.
 
 A meter effect, condition or read whose `who` is fixed by the pack names one holder: `world`, an actor id, or `self` on a cast member's own habit. Check refuses one that names a meter that holder does not carry. `target` and other holders known only at play time are not guessed. A check's `meter` is one every actor carries.
 

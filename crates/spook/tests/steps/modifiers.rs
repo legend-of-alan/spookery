@@ -293,6 +293,57 @@ fn the_pack_moves_soaked(world: &mut World) {
     fs::write(pack(world).join("rules/modifiers.yaml"), text).unwrap();
 }
 
+const LUCK_ROW: &str = "  - id: luck
+    min: 0
+    base_cap: 5
+    max: 5
+    base: 1
+";
+
+#[given(expr = "pc_rowan carries meter \"luck\" and the world carries meter \"tide\"")]
+fn rowan_and_the_world_carry(world: &mut World) {
+    let pack = world.pack.clone().unwrap();
+    let rowan = pack.join("cast/pc-rowan.md");
+    replace_in_file(
+        &rowan,
+        "meters:
+",
+        &format!(
+            "meters:
+{LUCK_ROW}"
+        ),
+    );
+    let tide = "  - id: tide
+    min: 0
+    base_cap: 9
+    max: 9
+    base: 4
+";
+    let text = format!(
+        "schema: meters
+meters:
+{tide}"
+    );
+    fs::write(pack.join("world/meters.yaml"), text).unwrap();
+    edit_save(&pack, |now| {
+        let luck = MeterLive { base: 1, offset: 0 };
+        let tide = MeterLive { base: 4, offset: 0 };
+        now.actors
+            .get_mut("pc_rowan")
+            .unwrap()
+            .meters
+            .insert("luck".into(), luck);
+        now.world_meters.insert("tide".into(), tide);
+    });
+}
+
+#[when(expr = "the pack drops luck and tide")]
+fn the_pack_drops_luck_and_tide(world: &mut World) {
+    let pack = world.pack.clone().unwrap();
+    replace_in_file(&pack.join("cast/pc-rowan.md"), LUCK_ROW, "");
+    fs::remove_file(pack.join("world/meters.yaml")).unwrap();
+}
+
 #[when(expr = "the operator migrates the pack")]
 fn the_operator_migrates(world: &mut World) {
     spookery_engine::migrate_pack(pack(world)).unwrap_or_else(|err| panic!("migrate: {err}"));
@@ -347,6 +398,14 @@ fn rowan_has_neither(world: &mut World) {
     assert!(state_of(pack(world)).actors["pc_rowan"]
         .modifiers
         .is_empty());
+}
+
+#[then(expr = "pc_rowan has no luck and the world has no tide")]
+fn rowan_has_no_luck(world: &mut World) {
+    let now = state_of(pack(world));
+    assert!(!now.actors["pc_rowan"].meters.contains_key("luck"));
+    assert!(now.actors["pc_rowan"].meters.contains_key("grit"));
+    assert!(!now.world_meters.contains_key("tide"));
 }
 
 #[then(expr = "the GM sees {string} as a changed key")]
