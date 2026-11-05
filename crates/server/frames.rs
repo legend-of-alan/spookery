@@ -148,10 +148,12 @@ pub(super) fn render_status(
         last_round_at: now.last_round_at.clone(),
         queued: queued
             .iter()
-            .map(|intent| QueuedMove {
-                id: intent.id.clone(),
-                actor_id: intent.actor.actor_id().to_string(),
-                move_name: intent.move_name.clone(),
+            .filter_map(|intent| {
+                Some(QueuedMove {
+                    id: intent.id.clone(),
+                    actor_id: intent.actor_id()?.to_string(),
+                    move_name: intent.move_name.clone(),
+                })
             })
             .collect(),
         pack: Some(pack),

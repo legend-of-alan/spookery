@@ -43,16 +43,16 @@ pub(crate) fn run(
         }
         depth += 1;
         for matched in matched_triggers {
-            fire(draft, dice, log, matched.rule, &matched.subject);
+            fire(draft, dice, log, matched.rule, matched.subject.as_deref());
         }
     }
     Ok(all_changes)
 }
 
-/// One change rule to fire, and the actor it fires for.
+/// One change rule to fire, and the actor it fires for. A world change has none.
 struct Trigger<'a> {
     rule: &'a Rule,
-    subject: String,
+    subject: Option<String>,
 }
 
 fn change_rules(canon: &Canon) -> Vec<&Rule> {
@@ -83,10 +83,9 @@ fn match_rules<'a>(draft: &Draft, rules: &[&'a Rule], changes: &[Change]) -> Vec
             if !matches_watch(draft, rule, watch, change) {
                 continue;
             }
-            for subject in subjects(draft, &change.key) {
-                if !subject_ids.contains(&subject) {
-                    subject_ids.push(subject);
-                }
+            let subject = change.key.actor().map(str::to_string);
+            if !subject_ids.contains(&subject) {
+                subject_ids.push(subject);
             }
         }
         subject_ids.sort();
@@ -97,8 +96,15 @@ fn match_rules<'a>(draft: &Draft, rules: &[&'a Rule], changes: &[Change]) -> Vec
     matched_triggers
 }
 
-/// Run a change rule for `subject` when its `if` holds. A refusal is journaled and told to nobody.
-fn fire(draft: &mut Draft, dice: &mut RoundDice, log: &mut RoundLog, rule: &Rule, subject: &str) {
+/// Run a change rule for `subject`, or for no one on a world change, when its `if` holds. A
+/// refusal is journaled and told to nobody.
+fn fire(
+    draft: &mut Draft,
+    dice: &mut RoundDice,
+    log: &mut RoundLog,
+    rule: &Rule,
+    subject: Option<&str>,
+) {
     let Ok(intent) = Intent::trigger(draft.state(), subject, &rule.id) else {
         return;
     };
@@ -113,20 +119,6 @@ fn fire(draft: &mut Draft, dice: &mut RoundDice, log: &mut RoundLog, rule: &Rule
         }
         Err(code) => log.refused.push(gate::Refusal::new(&intent, code)),
     }
-}
-
-/// Who a change rule fires for: the key's actor, or every seated actor for a world change.
-fn subjects(draft: &Draft, key: &StateKey) -> Vec<String> {
-    if let StateKey::WorldFlag(_) | StateKey::WorldMeter(_) = key {
-        return draft
-            .presence
-            .actors_present
-            .iter()
-            .filter(|id| draft.state().actors.contains_key(id.as_str()))
-            .cloned()
-            .collect();
-    }
-    key.actor().map(str::to_string).into_iter().collect()
 }
 
 fn matches_watch(draft: &Draft, rule: &Rule, watch: &ChangeWatch, change: &Change) -> bool {

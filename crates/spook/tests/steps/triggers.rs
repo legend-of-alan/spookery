@@ -578,18 +578,63 @@ fn nell_can_see_the_trapdoor(world: &mut World) {
     );
 }
 
-#[given(expr = "a verb sets world flag tide_turned and a rule marks whoever is present")]
+#[given(expr = "a verb sets world flag tide_turned")]
 fn a_verb_sets_the_tide(world: &mut World) {
     let pack = copy_docks("trigger-tide");
     add_verb(
         &pack,
-        "\n  - id: turn_tide\n    when:\n      verb: turn_tide\n    do:\n      - flag:\n          who: world\n          key: tide_turned\n          value: true\n",
+        "
+  - id: turn_tide
+    when:
+      verb: turn_tide
+    do:
+      - flag:
+          who: world
+          key: tide_turned
+          value: true
+",
     );
+    world.pack = Some(pack);
+}
+
+#[given(
+    expr = "a change rule watches tide_turned become true and adds 1 to who {string} meter tides"
+)]
+fn a_rule_counts_tides(world: &mut World, who: String) {
+    let pack = world.pack.as_ref().unwrap();
+    write_world_meters(pack, &[("tides", 0, None)]);
+    write_tide_story(
+        pack,
+        &format!(
+            "      - meter:
+          who: {who}
+          key: tides
+          add: 1
+"
+        ),
+    );
+}
+
+#[given(expr = "a change rule watches world flag tide_turned and sets who {string} flag saw_tide")]
+fn a_world_rule_marks_self(world: &mut World, who: String) {
+    a_verb_sets_the_tide(world);
+    let effect = format!(
+        "      - flag:
+          who: {who}
+          key: saw_tide
+          value: true
+"
+    );
+    write_tide_story(world.pack.as_ref().unwrap(), &effect);
+}
+
+/// `story/tide.yaml`: one rule, `mark`, that runs `effects` when the world's tide turns.
+fn write_tide_story(pack: &Path, effects: &str) {
     fs::create_dir_all(pack.join("story")).unwrap();
     fs::write(
         pack.join("story/tide.yaml"),
-        "\
-schema: story
+        format!(
+            "schema: story
 id: tide
 rules:
   - id: mark
@@ -598,18 +643,22 @@ rules:
         flag: tide_turned
         becomes: true
     do:
-      - flag:
-          who: self
-          key: saw_tide
-          value: true
-",
+{effects}"
+        ),
     )
     .unwrap();
-    write_nell(&pack, &["saw_tide"]);
+}
+
+/// Add pc_nell on the street beside pc_rowan in the shop, seat both, and migrate the save.
+#[given(expr = "pc_rowan and pc_nell are seated")]
+fn rowan_and_nell_are_seated(world: &mut World) {
+    let pack = world.pack.clone().unwrap();
+    write_nell(&pack, &[]);
     edit_table(world, &pack, |now, seated| {
         insert_actor_copy(now, seated, "pc_rowan", "pc_nell", "docks_street");
+        sit(seated, &["pc_rowan", "pc_nell"]);
     });
-    world.pack = Some(pack);
+    spookery_engine::migrate_pack(&pack).unwrap_or_else(|err| panic!("migrate: {err}"));
 }
 
 #[when(expr = "pc_nell sets the tide")]
@@ -629,21 +678,6 @@ fn the_world_has_the_tide(world: &mut World) {
         now.flags.iter().any(|flag| flag == "tide_turned"),
         "flags: {:?}",
         now.flags
-    );
-}
-
-#[then(expr = "pc_nell has flag saw_tide")]
-fn nell_has_saw_tide(world: &mut World) {
-    let now = state_of(world.pack.as_ref().unwrap());
-    assert!(
-        now.actors
-            .get("pc_nell")
-            .unwrap()
-            .flags
-            .iter()
-            .any(|flag| flag == "saw_tide"),
-        "nell flags: {:?}",
-        now.actors.get("pc_nell").unwrap().flags
     );
 }
 
@@ -1162,7 +1196,7 @@ pub(crate) struct PlayedRound {
     record: Value,
     pub(crate) changed_keys: Vec<String>,
     pub(crate) seen: Vec<(String, Vec<String>)>,
-    lines: Vec<(String, String)>,
+    pub(crate) lines: Vec<(String, String)>,
 }
 
 fn play(

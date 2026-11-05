@@ -371,7 +371,7 @@ mod tests {
                 key: key.to_string(),
                 write: MeterWrite::Offset(delta),
             };
-            Effect::new(&intent.actor, &intent.id, kind).apply(&mut draft, &intent)
+            Effect::new(intent.actor.as_ref(), &intent.id, kind).apply(&mut draft, &intent)
         };
         assert_eq!(write("mira", "rest", 0), Ok(()), "unchanged: no key");
         assert_eq!(write("mira", "rest", 1), Ok(()), "the first key");

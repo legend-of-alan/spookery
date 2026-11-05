@@ -15,7 +15,8 @@ use crate::Reason;
 #[serde(into = "EffectRecord", try_from = "EffectRecord")]
 pub struct Effect {
     pub kind: EffectKind,
-    pub viewer: Viewer,
+    /// Who the effect was written as, or `None` for a change rule on a world change.
+    pub viewer: Option<Viewer>,
     pub intent_id: String,
 }
 
@@ -77,10 +78,10 @@ pub enum EffectKind {
 }
 
 impl Effect {
-    pub(crate) fn new(viewer: &Viewer, intent_id: &str, kind: EffectKind) -> Self {
+    pub(crate) fn new(viewer: Option<&Viewer>, intent_id: &str, kind: EffectKind) -> Self {
         Effect {
             kind,
-            viewer: viewer.clone(),
+            viewer: viewer.cloned(),
             intent_id: intent_id.to_string(),
         }
     }
@@ -152,8 +153,8 @@ impl EffectKind {
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub(crate) enum EffectRecord {
     Meter {
-        #[serde(rename = "as")]
-        as_viewer: Viewer,
+        #[serde(rename = "as", default, skip_serializing_if = "Option::is_none")]
+        as_viewer: Option<Viewer>,
         intent_id: String,
         holder: Holder,
         key: String,
@@ -161,8 +162,8 @@ pub(crate) enum EffectRecord {
         write: MeterWrite,
     },
     Item {
-        #[serde(rename = "as")]
-        as_viewer: Viewer,
+        #[serde(rename = "as", default, skip_serializing_if = "Option::is_none")]
+        as_viewer: Option<Viewer>,
         intent_id: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         actor_id: Option<String>,
@@ -174,21 +175,21 @@ pub(crate) enum EffectRecord {
         max: Option<i64>,
     },
     Wield {
-        #[serde(rename = "as")]
-        as_viewer: Viewer,
+        #[serde(rename = "as", default, skip_serializing_if = "Option::is_none")]
+        as_viewer: Option<Viewer>,
         intent_id: String,
         actor_id: String,
         id: String,
     },
     Unwield {
-        #[serde(rename = "as")]
-        as_viewer: Viewer,
+        #[serde(rename = "as", default, skip_serializing_if = "Option::is_none")]
+        as_viewer: Option<Viewer>,
         intent_id: String,
         actor_id: String,
     },
     Location {
-        #[serde(rename = "as")]
-        as_viewer: Viewer,
+        #[serde(rename = "as", default, skip_serializing_if = "Option::is_none")]
+        as_viewer: Option<Viewer>,
         intent_id: String,
         actor_id: String,
         from: String,
@@ -197,8 +198,8 @@ pub(crate) enum EffectRecord {
         arrived_at: Option<u64>,
     },
     Memory {
-        #[serde(rename = "as")]
-        as_viewer: Viewer,
+        #[serde(rename = "as", default, skip_serializing_if = "Option::is_none")]
+        as_viewer: Option<Viewer>,
         intent_id: String,
         actor_id: String,
         fact_ids: Vec<String>,
@@ -207,16 +208,16 @@ pub(crate) enum EffectRecord {
         text: Option<String>,
     },
     Flag {
-        #[serde(rename = "as")]
-        as_viewer: Viewer,
+        #[serde(rename = "as", default, skip_serializing_if = "Option::is_none")]
+        as_viewer: Option<Viewer>,
         intent_id: String,
         holder: Holder,
         key: String,
         value: bool,
     },
     Note {
-        #[serde(rename = "as")]
-        as_viewer: Viewer,
+        #[serde(rename = "as", default, skip_serializing_if = "Option::is_none")]
+        as_viewer: Option<Viewer>,
         intent_id: String,
         note_id: String,
         to: Vec<String>,
@@ -226,16 +227,16 @@ pub(crate) enum EffectRecord {
         text: String,
     },
     Narrate {
-        #[serde(rename = "as")]
-        as_viewer: Viewer,
+        #[serde(rename = "as", default, skip_serializing_if = "Option::is_none")]
+        as_viewer: Option<Viewer>,
         intent_id: String,
         to: Vec<String>,
         fact_ids: Vec<String>,
         text: String,
     },
     Reveal {
-        #[serde(rename = "as")]
-        as_viewer: Viewer,
+        #[serde(rename = "as", default, skip_serializing_if = "Option::is_none")]
+        as_viewer: Option<Viewer>,
         intent_id: String,
         actor_id: String,
         fact: String,
@@ -596,7 +597,7 @@ fn move_actor(
     from: &str,
     to: &str,
 ) -> Result<(), Reason> {
-    if actor_id != intent.actor.actor_id() {
+    if intent.actor_id() != Some(actor_id) {
         return Err(Reason::ActorMismatch);
     }
     let table_empty = draft.presence.players == 0;
@@ -629,14 +630,18 @@ fn remember(
     mut tags: Vec<String>,
     text: Option<String>,
 ) -> Result<(), Reason> {
-    if actor_id != intent.actor.actor_id() {
+    let Some(viewer) = intent
+        .actor
+        .as_ref()
+        .filter(|viewer| viewer.actor_id() == actor_id)
+    else {
         return Err(Reason::ActorMismatch);
-    }
+    };
     if text.as_ref().is_some_and(|text| text.chars().count() > 240) {
         return Err(Reason::Schema);
     }
     for fact in &fact_ids {
-        if !can_see_fact(draft.canon(), draft.state(), &intent.actor, fact) {
+        if !can_see_fact(draft.canon(), draft.state(), viewer, fact) {
             return Err(Reason::IllegalKnowledge);
         }
     }

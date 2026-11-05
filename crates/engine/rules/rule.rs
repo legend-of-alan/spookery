@@ -318,6 +318,8 @@ pub enum NarrateTo {
     Here,
     Self_,
     Actors(Vec<String>),
+    /// No `to`: every seated player.
+    Present,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

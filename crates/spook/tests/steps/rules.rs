@@ -395,7 +395,7 @@ fn lark_attacks(world: &mut World) {
             world_id: loaded.world_id.clone(),
             round_index: loaded.round_index + 1,
             rule_id: "verb:attack".to_string(),
-            subject_id: "pc_lark".to_string(),
+            subject_id: Some("pc_lark".to_string()),
             index: 0,
         },
         0,
