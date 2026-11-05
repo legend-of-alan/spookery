@@ -49,7 +49,7 @@ impl Default for Budget {
 }
 
 pub(crate) fn load_budget(rel: &str, text: &str) -> Result<Budget, Vec<Diagnostic>> {
-    let file: BudgetFile = load_tagged(rel, text, BUDGET_SCHEMA, 0)?;
+    let file: BudgetDoc = load_tagged(rel, text, BUDGET_SCHEMA, 0)?;
     let source = FileText {
         file: rel,
         text,
@@ -145,7 +145,7 @@ fn parse_idle(source: &FileText, value: Option<String>, diags: &mut Vec<Diagnost
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct BudgetFile {
+struct BudgetDoc {
     #[serde(rename = "schema")]
     _schema: String,
     max_intents_applied: Option<i64>,

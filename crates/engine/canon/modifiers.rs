@@ -17,7 +17,7 @@ pub(super) fn load_modifiers(
     text: &str,
     meters: &BTreeMap<String, MeterDef>,
 ) -> Result<BTreeMap<String, ModifierDef>, Vec<Diagnostic>> {
-    let file: ModifiersFile = load_tagged(MODIFIERS_FILE, text, MODIFIERS_SCHEMA, 0)?;
+    let file: ModifiersDoc = load_tagged(MODIFIERS_FILE, text, MODIFIERS_SCHEMA, 0)?;
     let source = FileText {
         file: MODIFIERS_FILE,
         text,
@@ -93,7 +93,7 @@ pub(super) fn load_modifiers(
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct ModifiersFile {
+struct ModifiersDoc {
     #[serde(rename = "schema")]
     _schema: String,
     modifiers: Vec<ModifierYaml>,

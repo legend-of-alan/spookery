@@ -12,7 +12,7 @@ pub(super) fn load_checks(
     rel: &str,
     text: &str,
 ) -> Result<BTreeMap<String, Check>, Vec<Diagnostic>> {
-    let file: ChecksFile = load_tagged(rel, text, CHECKS_SCHEMA, 0)?;
+    let file: ChecksDoc = load_tagged(rel, text, CHECKS_SCHEMA, 0)?;
     let source = FileText {
         file: rel,
         text,
@@ -101,7 +101,7 @@ pub(super) fn load_checks(
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct ChecksFile {
+struct ChecksDoc {
     #[serde(rename = "schema")]
     _schema: String,
     checks: Vec<CheckYaml>,

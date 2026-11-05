@@ -16,7 +16,7 @@ pub(super) fn load_meters(
     text: &str,
     carrier: Option<Holder>,
 ) -> Result<BTreeMap<String, MeterDef>, Vec<Diagnostic>> {
-    let file: MetersFile = load_tagged(rel, text, METERS_SCHEMA, 0)?;
+    let file: MetersDoc = load_tagged(rel, text, METERS_SCHEMA, 0)?;
     let source = FileText {
         file: rel,
         text,
@@ -118,7 +118,7 @@ pub(super) fn meter_defs(
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct MetersFile {
+struct MetersDoc {
     #[serde(rename = "schema")]
     _schema: String,
     meters: Vec<MeterYaml>,

@@ -29,7 +29,7 @@ pub(super) fn load_stories(root: &Path, diags: &mut Diags) -> Vec<Rule> {
             ));
             continue;
         };
-        let Some(story) = diags.keep(load_tagged::<StoryFile>(&file, text, STORY_SCHEMA, 0)) else {
+        let Some(story) = diags.keep(load_tagged::<StoryDoc>(&file, text, STORY_SCHEMA, 0)) else {
             continue;
         };
         let compiled = rule_list::compile(&file, story.rules, &Owner::Story(story.id));
@@ -40,7 +40,7 @@ pub(super) fn load_stories(root: &Path, diags: &mut Diags) -> Vec<Rule> {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct StoryFile {
+struct StoryDoc {
     #[serde(rename = "schema")]
     _schema: String,
     id: String,
