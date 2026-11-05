@@ -663,7 +663,7 @@ checks:
 
 ## Budget
 
-`idle` is `on` or `off`. Omitted means `on`. Omitted counters use the engine defaults. Game time is counted in ticks. `ticks_per_day` is how many ticks make a day, 1440 when omitted. The day rollover, which resets `idle_acts_per_day`, and `day_tick` conditions read it. Players and the GM see a tick as a clock time, a day of 24 shown hours. `live_acts_per_window` caps an actor's live acts in each window of `live_act_window_ticks` ticks. `round_every_real_seconds` is real seconds between wakes, `idle_ticks_per_round` and `live_ticks_per_round` are the ticks one round writes, `idle_catchup_max_rounds` is the most rounds one catch-up runs, and `idle_max_ticks_per_real_hour` is the ticks one real hour of absence may write. The file below sets them.
+`idle` is `on` or `off`. Omitted means `on`. Omitted counters use the engine defaults. Game time is counted in ticks. `ticks_per_day` is how many ticks make a day, 1440 when omitted. The day rollover, which resets `idle_acts_per_day`, and `day_tick` conditions read it. Players and the GM see a tick as a clock time, a day of 24 shown hours. `live_acts_per_window` caps an actor's live acts in each window of `live_act_window_ticks` ticks. `round_every_real_seconds` is real seconds between wakes, `idle_ticks_per_round` and `live_ticks_per_round` are the ticks one round writes, `idle_catchup_max_rounds` is the most rounds one catch-up runs, and `idle_max_ticks_per_real_hour` is the ticks one real hour of absence may write. A move past `max_intents_applied` or `max_npcs_acting` is refused `BUDGET`, and so is a rule that goes over `max_state_keys_mutated` and every move after it that round. The file below sets them.
 
 ```yaml file=rules/budget.yaml
 schema: budget

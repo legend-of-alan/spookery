@@ -16,7 +16,7 @@ pub(super) fn add_item(
     items: &mut BTreeMap<String, ItemDef>,
     diags: &mut Diags,
 ) -> Option<Vec<Rule>> {
-    let item: ItemFile = diags.keep(load_tagged(&page.file, &page.yaml, ITEM_SCHEMA, 1))?;
+    let item: ItemDoc = diags.keep(load_tagged(&page.file, &page.yaml, ITEM_SCHEMA, 1))?;
     let source = FileText::named(&page.file);
     let empty = ("an item id is empty", "set id to a short name");
     let twice = ("item", "is already defined", "keep one item with this id");
@@ -42,7 +42,7 @@ pub(super) fn add_item(
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct ItemFile {
+struct ItemDoc {
     #[serde(rename = "schema")]
     _schema: String,
     id: String,

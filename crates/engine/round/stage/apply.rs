@@ -38,9 +38,11 @@ pub(crate) fn run(
 ) {
     let max_npcs = canon.budget.max_npcs_acting;
     let mut slots = 0u64;
+    // Set once a landing goes over the key budget: every later intent is refused `BUDGET`.
+    let mut keys_spent = false;
     for Candidate { intent, resolution } in candidates {
         let spends_slot = matches!(intent.actor, Some(Viewer::Npc(_)));
-        if spends_slot && slots >= max_npcs {
+        if keys_spent || (spends_slot && slots >= max_npcs) {
             let refusal = gate::Refusal::new(intent, Reason::Budget);
             refuse(log, intent, refusal, false);
             continue;
@@ -110,7 +112,7 @@ pub(crate) fn run(
             Landing::Refused => draft.rollback(point),
             Landing::OverBudget => {
                 draft.rollback(point);
-                break;
+                keys_spent = true;
             }
         }
     }

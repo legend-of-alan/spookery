@@ -52,8 +52,8 @@ pub(super) fn add_place(
     ))
 }
 
-fn load_place(file: &str, yaml: &str, line_base: u32) -> Result<PlaceFile, Vec<Diagnostic>> {
-    let parsed: PlaceFile = load_tagged(file, yaml, PLACE_SCHEMA, line_base)?;
+fn load_place(file: &str, yaml: &str, line_base: u32) -> Result<PlaceDoc, Vec<Diagnostic>> {
+    let parsed: PlaceDoc = load_tagged(file, yaml, PLACE_SCHEMA, line_base)?;
     let source = FileText {
         file,
         text: yaml,
@@ -141,7 +141,7 @@ fn compile_exits(file: &str, exits: &[ExitYaml]) -> Result<Vec<Exit>, Vec<Diagno
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct PlaceFile {
+struct PlaceDoc {
     #[serde(rename = "schema")]
     _schema: String,
     id: String,

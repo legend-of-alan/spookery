@@ -32,7 +32,7 @@ pub(super) fn replaced_moves_file() -> Diagnostic {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct VerbsFile {
+pub struct VerbsDoc {
     #[serde(rename = "schema")]
     pub _schema: String,
     #[serde(default)]
@@ -1049,6 +1049,6 @@ fn cross_of(text: &str) -> Result<(Op, i64), String> {
 }
 
 pub(super) fn load_verbs(rel: &str, text: &str) -> Result<Vec<Rule>, Vec<Diagnostic>> {
-    let file: VerbsFile = load_tagged(rel, text, VERBS_SCHEMA, 0)?;
-    compile(rel, file.rules, &Owner::Verb)
+    let doc: VerbsDoc = load_tagged(rel, text, VERBS_SCHEMA, 0)?;
+    compile(rel, doc.rules, &Owner::Verb)
 }

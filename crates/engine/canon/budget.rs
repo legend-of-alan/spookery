@@ -55,7 +55,7 @@ impl Default for Budget {
 }
 
 pub(crate) fn load_budget(rel: &str, text: &str) -> Result<Budget, Vec<Diagnostic>> {
-    let file: BudgetFile = load_tagged(rel, text, BUDGET_SCHEMA, 0)?;
+    let doc: BudgetDoc = load_tagged(rel, text, BUDGET_SCHEMA, 0)?;
     let source = FileText {
         file: rel,
         text,
@@ -66,7 +66,7 @@ pub(crate) fn load_budget(rel: &str, text: &str) -> Result<Budget, Vec<Diagnosti
     // Each row is a counter key and the least value it allows, in report order.
     macro_rules! set_numbers {
         ($($key:ident >= $least:literal),* $(,)?) => {$(
-            set_number(&source, stringify!($key), file.$key, &mut budget.$key, $least, &mut diags);
+            set_number(&source, stringify!($key), doc.$key, &mut budget.$key, $least, &mut diags);
         )*};
     }
     set_numbers!(
@@ -81,7 +81,7 @@ pub(crate) fn load_budget(rel: &str, text: &str) -> Result<Budget, Vec<Diagnosti
         ticks_per_day >= 1,
         round_every_real_seconds >= 1,
     );
-    budget.idle_rounds = parse_idle(&source, file.idle, &mut diags);
+    budget.idle_rounds = parse_idle(&source, doc.idle, &mut diags);
     set_numbers!(
         idle_ticks_per_round >= 1,
         live_ticks_per_round >= 0,
@@ -153,7 +153,7 @@ fn parse_idle(source: &FileText, value: Option<String>, diags: &mut Vec<Diagnost
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct BudgetFile {
+struct BudgetDoc {
     #[serde(rename = "schema")]
     _schema: String,
     max_intents_applied: Option<i64>,
