@@ -623,7 +623,8 @@ pub(crate) fn shift_item(
     }
 }
 
-/// Apply one stack of modifier `id` to an actor that carries its meter, lasting `ticks`, as `modifier::stack` says. The meter's key is tracked when the stacks move.
+/// Apply one stack of modifier `id` to an actor that carries its meter, lasting `ticks`, as
+/// `modifier::stack` says. The meter's key is tracked when the stacks move.
 fn apply_modifier(
     draft: &mut Draft,
     actor_id: &str,
