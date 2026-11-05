@@ -67,7 +67,10 @@ pub(super) fn broken_exits(
                 }
             }
             for cond in &exit.if_ {
-                push_exit_cond_items(cond, &mut named);
+                cond.visit(|cond| match cond {
+                    Cond::HasItem { id, .. } if id != "target" => named.push(id.clone()),
+                    _ => {}
+                });
             }
             named.sort();
             named.dedup();
@@ -88,19 +91,6 @@ pub(super) fn broken_exits(
     diags
 }
 
-fn push_exit_cond_items(cond: &Cond, ids: &mut Vec<String>) {
-    match cond {
-        Cond::HasItem { id, .. } if id != "target" => ids.push(id.clone()),
-        Cond::All(inner) | Cond::Any(inner) => {
-            for cond in inner {
-                push_exit_cond_items(cond, ids);
-            }
-        }
-        Cond::Not(inner) => push_exit_cond_items(inner, ids),
-        _ => {}
-    }
-}
-
 pub(super) fn unknown_rule_items(
     rules: &RuleTable,
     items: &BTreeMap<String, ItemDef>,
@@ -109,7 +99,12 @@ pub(super) fn unknown_rule_items(
     for rule in rules.iter() {
         let mut ids = Vec::new();
         for cond in &rule.if_ {
-            push_cond_items(cond, &mut ids);
+            cond.visit(|cond| match cond {
+                Cond::HasItem { id, .. } | Cond::Wielding { id, .. } if id != "target" => {
+                    ids.push(id.clone());
+                }
+                _ => {}
+            });
         }
         if let Some(cost) = &rule.cost {
             for (id, _) in &cost.items {
@@ -176,23 +171,6 @@ pub(super) fn unknown_item(file: &str, id: &str, path: &str) -> Diagnostic {
         &format!("add world/items/{id}.md"),
     )
     .at_path(path)
-}
-
-fn push_cond_items(cond: &Cond, ids: &mut Vec<String>) {
-    match cond {
-        Cond::HasItem { id, .. } | Cond::Wielding { id, .. } => {
-            if id != "target" {
-                ids.push(id.clone());
-            }
-        }
-        Cond::All(inner) | Cond::Any(inner) => {
-            for cond in inner {
-                push_cond_items(cond, ids);
-            }
-        }
-        Cond::Not(inner) => push_cond_items(inner, ids),
-        _ => {}
-    }
 }
 
 pub(super) fn resist_same_without_roll(rules: &RuleTable) -> Vec<Diagnostic> {
@@ -314,7 +292,11 @@ pub(super) fn unknown_reads(scope: &HolderScope, rules: &RuleTable) -> Vec<Diagn
             let mut exprs = Vec::new();
             push_cost(&exit.cost, &mut exprs);
             for cond in &exit.if_ {
-                push_cond(cond, &mut exprs);
+                cond.visit(|cond| {
+                    if let Cond::Meter { value, .. } = cond {
+                        exprs.push(value);
+                    }
+                });
             }
             let path = format!("exits[{}]", exit.index);
             let source = FileText::named(&exit.file);
@@ -331,7 +313,11 @@ pub(super) fn unknown_carriers(scope: &HolderScope, rules: &RuleTable) -> Vec<Di
     for rule in rules.iter() {
         let mut named = Vec::new();
         for cond in &rule.if_ {
-            push_cond_keys(cond, &mut named);
+            cond.visit(|cond| match cond {
+                Cond::Meter { who, key, .. } => named.push(("meter", who, key.as_str())),
+                Cond::Flag { who, key, .. } => named.push(("flag", who, key.as_str())),
+                _ => {}
+            });
         }
         rule.visit_templates(|effect| match effect {
             EffectTemplate::Meter { who, key, .. } => named.push(("meter", who, key.as_str())),
@@ -358,21 +344,6 @@ pub(super) fn unknown_carriers(scope: &HolderScope, rules: &RuleTable) -> Vec<Di
         }
     }
     diags
-}
-
-/// The meters and flags `cond` names, each with its kind and `who`.
-fn push_cond_keys<'a>(cond: &'a Cond, out: &mut Vec<(&'static str, &'a Who, &'a str)>) {
-    match cond {
-        Cond::Meter { who, key, .. } => out.push(("meter", who, key)),
-        Cond::Flag { who, key, .. } => out.push(("flag", who, key)),
-        Cond::All(inner) | Cond::Any(inner) => {
-            for cond in inner {
-                push_cond_keys(cond, out);
-            }
-        }
-        Cond::Not(inner) => push_cond_keys(inner, out),
-        _ => {}
-    }
 }
 
 /// The actor `self` always is on `rule`: the cast member, on its own habit.
@@ -500,7 +471,11 @@ fn push_rule_exprs<'a>(rule: &'a Rule, exprs: &mut Vec<&'a Expr>) {
         push_cost(cost, exprs);
     }
     for cond in &rule.if_ {
-        push_cond(cond, exprs);
+        cond.visit(|cond| {
+            if let Cond::Meter { value, .. } = cond {
+                exprs.push(value);
+            }
+        });
     }
     rule.visit_templates(|effect| {
         if let EffectTemplate::Modifier { add, .. } = effect {
@@ -523,19 +498,6 @@ fn push_rule_exprs<'a>(rule: &'a Rule, exprs: &mut Vec<&'a Expr>) {
 fn push_cost<'a>(cost: &'a Cost, exprs: &mut Vec<&'a Expr>) {
     for (_, expr) in cost.meters.iter().chain(cost.items.iter()) {
         exprs.push(expr);
-    }
-}
-
-fn push_cond<'a>(cond: &'a Cond, exprs: &mut Vec<&'a Expr>) {
-    match cond {
-        Cond::Meter { value, .. } => exprs.push(value),
-        Cond::All(inner) | Cond::Any(inner) => {
-            for cond in inner {
-                push_cond(cond, exprs);
-            }
-        }
-        Cond::Not(inner) => push_cond(inner, exprs),
-        _ => {}
     }
 }
 
@@ -789,7 +751,11 @@ fn check_cycles(canon: &Canon) -> Vec<Diagnostic> {
     for (file, path, conds) in rules.chain(exits) {
         let mut cycles = Vec::new();
         for cond in conds {
-            push_cycles(cond, &mut cycles);
+            cond.visit(|cond| {
+                if let Cond::Cycle { name, from, to } = cond {
+                    cycles.push((name.as_str(), *from, *to));
+                }
+            });
         }
         for (name, from, to) in cycles {
             let Some(&length) = canon.budget.cycles.get(name) else {
@@ -816,19 +782,6 @@ fn check_cycles(canon: &Canon) -> Vec<Diagnostic> {
         }
     }
     diags
-}
-
-fn push_cycles<'a>(cond: &'a Cond, out: &mut Vec<(&'a str, u64, u64)>) {
-    match cond {
-        Cond::Cycle { name, from, to } => out.push((name, *from, *to)),
-        Cond::All(inner) | Cond::Any(inner) => {
-            for cond in inner {
-                push_cycles(cond, out);
-            }
-        }
-        Cond::Not(inner) => push_cycles(inner, out),
-        _ => {}
-    }
 }
 
 /// Places no exit path reaches from the start, including hidden and locked exits.
@@ -1185,7 +1138,15 @@ fn narrates_to_present(rule: &Rule) -> bool {
 fn names_subject(rule: &Rule) -> bool {
     let mut whos = Vec::new();
     for cond in &rule.if_ {
-        push_cond_whos(cond, &mut whos);
+        cond.visit(|cond| match cond {
+            Cond::HasItem { who, .. }
+            | Cond::Meter { who, .. }
+            | Cond::Flag { who, .. }
+            | Cond::At { who, .. }
+            | Cond::Knows { who, .. }
+            | Cond::Wielding { who, .. } => whos.push(who),
+            _ => {}
+        });
     }
     let mut exprs = Vec::new();
     push_rule_exprs(rule, &mut exprs);
@@ -1214,24 +1175,6 @@ fn names_subject(rule: &Rule) -> bool {
         }
     });
     needs || whos.iter().any(|who| matches!(who, Who::Self_ | Who::Here))
-}
-
-fn push_cond_whos<'a>(cond: &'a Cond, out: &mut Vec<&'a Who>) {
-    match cond {
-        Cond::HasItem { who, .. }
-        | Cond::Meter { who, .. }
-        | Cond::Flag { who, .. }
-        | Cond::At { who, .. }
-        | Cond::Knows { who, .. }
-        | Cond::Wielding { who, .. } => out.push(who),
-        Cond::All(inner) | Cond::Any(inner) => {
-            for cond in inner {
-                push_cond_whos(cond, out);
-            }
-        }
-        Cond::Not(inner) => push_cond_whos(inner, out),
-        Cond::Cycle { .. } | Cond::Players { .. } | Cond::NoteExists(_) => {}
-    }
 }
 
 fn mark_cycles(next: &[Vec<usize>], hit: &mut [bool]) {
