@@ -205,7 +205,7 @@ impl Table {
         let (mut open, mut taken) = (Vec::new(), Vec::new());
         if seat == Seat::Player {
             words.extend(self.verbs.iter().cloned());
-            (open, taken) = self.split_pcs();
+            (open, taken) = self.open_and_taken();
         }
         let hello = ServerMessage {
             id: None,
@@ -222,11 +222,15 @@ impl Table {
         Ok(())
     }
 
-    /// The PCs a claim may take now, and the PCs held now. None is open once every player
-    /// seat is held.
-    fn split_pcs(&self) -> (Vec<String>, Vec<String>) {
+    /// The hello's `open` and `taken`: the PCs a claim may take now, and the PCs held now.
+    /// None is open once every player seat is held.
+    fn open_and_taken(&self) -> (Vec<String>, Vec<String>) {
         let presence = self.seats.presence();
-        let (mut open, taken) = self.world.split_pcs(&presence);
+        let (mut open, taken): (Vec<String>, Vec<String>) = self
+            .world
+            .pcs()
+            .cloned()
+            .partition(|id| !presence.actors_present.contains(id));
         if presence.actors_present.len() >= MAX_PLAYER_SEATS {
             open.clear();
         }
@@ -265,7 +269,7 @@ impl Table {
         let Some(actor_id) = self.seats.claim_of(conn).map(|claim| claim.actor.clone()) else {
             let free = protocol::Refusal {
                 code: protocol::Code::Known(Reason::ChoosePc),
-                detail: Some(Detail::Many(self.split_pcs().0)),
+                detail: Some(Detail::Many(self.open_and_taken().0)),
             };
             return self.reply(conn, id, ServerBody::Refused(free));
         };
