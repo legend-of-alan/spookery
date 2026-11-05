@@ -6,6 +6,7 @@ use crate::canon::source::{FileText, Locator, Problem};
 use crate::canon::{Canon, CastDef, FactDef, ItemDef, PlaceDef};
 use crate::diagnostic::{error, schema_error, warning, Diagnostic};
 use crate::model::meter::{self, MeterDef};
+use crate::model::modifier::{self, ModifierDef};
 use crate::rules::effect::Holder;
 use crate::rules::expr::Expr;
 use crate::rules::roll::Check;
@@ -137,6 +138,33 @@ pub(super) fn unknown_rule_items(
                 &format!("rules[{}]", rule.index),
             ));
         }
+    }
+    diags
+}
+
+/// Modifier effects naming a modifier `rules/modifiers.yaml` does not define.
+pub(super) fn unknown_modifiers(
+    rules: &RuleTable,
+    modifiers: &BTreeMap<String, ModifierDef>,
+) -> Vec<Diagnostic> {
+    let mut diags = Vec::new();
+    for rule in rules.iter() {
+        rule.visit_templates(|effect| match effect {
+            EffectTemplate::Modifier { id, .. } if !modifiers.contains_key(id) => {
+                diags.push(
+                    schema_error(
+                        &rule.file,
+                        &format!(
+                            "rule '{}' applies modifier '{id}', which is not in rules/modifiers.yaml",
+                            rule.local_id
+                        ),
+                        "add the modifier or name one that exists",
+                    )
+                    .at_path(format!("rules[{}]", rule.index)),
+                );
+            }
+            _ => {}
+        });
     }
     diags
 }
@@ -448,6 +476,9 @@ fn push_rule_exprs<'a>(rule: &'a Rule, exprs: &mut Vec<&'a Expr>) {
         push_cond(cond, exprs);
     }
     rule.visit_templates(|effect| {
+        if let EffectTemplate::Modifier { add, .. } = effect {
+            exprs.push(add);
+        }
         if let EffectTemplate::Meter { add, set, .. } = effect {
             if let Some(expr) = add {
                 exprs.push(expr);
@@ -511,13 +542,25 @@ pub(super) fn unknown_meters(
 
 /// Check the save against the pack without changing it. Refuse every meter,
 /// item and wielded slot the pack does not define, every meter the pack gives a holder
-/// that the holder lacks, every meter outside its rules and every empty id or zero count.
+/// that the holder lacks, every meter outside its rules, every modifier the pack no longer
+/// gives that meter, and every empty id or zero count.
 pub fn check_save(canon: &Canon, state: &crate::model::State) -> Result<(), Vec<Diagnostic>> {
     let mut diags = Vec::new();
     for (id, actor) in &state.actors {
         let holder = Holder::Actor(id.clone());
         let path = format!("actors.{id}.meters");
         check_meters(canon, &holder, &actor.meters, &path, &mut diags);
+        for (key, live) in &actor.modifiers {
+            if !modifier::is_defined(&canon.modifiers, key, live) {
+                let problem = format!(
+                    "actor '{id}' holds modifier '{key}' on meter '{}', which the pack does not define",
+                    live.meter
+                );
+                let hint = "run spook migrate to drop the modifier";
+                let diag = schema_error("state/save.yaml", &problem, hint);
+                diags.push(diag.at_path(format!("actors.{id}.modifiers.{key}")));
+            }
+        }
     }
     check_meters(
         canon,
@@ -751,7 +794,7 @@ fn check_trigger_cycles(canon: &Canon) -> Vec<Diagnostic> {
         .iter()
         .map(|rule| {
             let mut marks = Vec::new();
-            rule.visit_templates(|effect| push_writes(effect, &mut marks));
+            rule.visit_templates(|effect| push_writes(canon, effect, &mut marks));
             marks
         })
         .collect();
@@ -844,8 +887,13 @@ enum Sight {
     World,
 }
 
-fn push_writes(effect: &EffectTemplate, out: &mut Vec<Write>) {
+fn push_writes(canon: &Canon, effect: &EffectTemplate, out: &mut Vec<Write>) {
     match effect {
+        EffectTemplate::Modifier { id, .. } => {
+            if let Some(def) = canon.modifiers.get(id) {
+                out.push(Write::Meter(def.meter.clone()));
+            }
+        }
         EffectTemplate::Flag { key, value, .. } => {
             out.push(Write::Flag {
                 key: key.clone(),
@@ -1034,6 +1082,7 @@ fn names_subject(rule: &Rule) -> bool {
         match effect {
             EffectTemplate::Meter { who, .. }
             | EffectTemplate::Flag { who, .. }
+            | EffectTemplate::Modifier { who, .. }
             | EffectTemplate::Memory { who, .. }
             | EffectTemplate::Item { who, .. }
             | EffectTemplate::Reveal { who, .. }

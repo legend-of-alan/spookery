@@ -12,7 +12,7 @@ use crate::model::State;
 use crate::store::durability::{fsync_dir, fsync_file, refuse_io, write_atomic};
 use crate::store::journal;
 use crate::store::lock::{lock_write, PackGuard, WriteGuard};
-use crate::store::records::{Record, RoundRecord};
+use crate::store::records::{MigrateRecord, Record, RoundRecord};
 use crate::store::recovery::close_finished;
 use crate::store::save::{self, missing_meters, normalize};
 use crate::world::World;
@@ -105,18 +105,22 @@ pub fn commit_migrate(
     let state_rev_before = state.state_rev;
     let state_rev_after = state_rev_before.checked_add(1).ok_or(Reason::OutOfRange)?;
     let added = missing_meters(canon, &state);
-    let state = save::migrate(state, &pack_rev_after, state_rev_after, &added);
+    let dropped = save::stale_modifiers(canon, &state);
+    let state = save::migrate(state, &pack_rev_after, state_rev_after, &added, &dropped);
     check_save(canon, &state).map_err(|diags| first_reason(&diags))?;
     let emitted = save::emit(&state)?.into_bytes();
-    let entry = journal::migrate_record(
-        &pack_rev_before,
-        &state.pack_rev,
+    let entry = Record::Migrate(MigrateRecord {
+        pack_rev_before,
+        pack_rev_after: state.pack_rev.clone(),
         state_rev_before,
-        state.state_rev,
-        &blake2s_tagged(&emitted),
-        &added,
+        state_rev_after: state.state_rev,
+        state_hash: blake2s_tagged(&emitted),
+        meters: added,
+        dropped_modifiers: dropped,
         edited,
-    );
+        prev: String::new(),
+        chain: String::new(),
+    });
     let write = lock_write(root, lock)?;
     let prev = journal::read_chain_tip(root).map_err(|fault| fault.reason)?;
     let line = journal::seal(&entry, &prev);

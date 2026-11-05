@@ -150,6 +150,23 @@ fn expand_template(
                 },
             ));
         }
+        EffectTemplate::Modifier {
+            who,
+            id,
+            add,
+            ticks,
+        } => {
+            effects.push(Effect::new(
+                viewer,
+                &intent.id,
+                EffectKind::Modifier {
+                    actor_id: expr::resolve_who_id(context, who)?,
+                    id: id.clone(),
+                    add: expr::eval_with_dice(context, add, dice)?,
+                    ticks: *ticks,
+                },
+            ));
+        }
         EffectTemplate::Location { to, teleport } => {
             let place = match to {
                 LocationTo::Via(via) => {

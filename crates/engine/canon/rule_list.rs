@@ -270,6 +270,7 @@ pub struct MeterWhoYaml {
 pub struct EffectYaml {
     pub meter: Option<MeterEffectYaml>,
     pub flag: Option<FlagEffectYaml>,
+    pub modifier: Option<ModifierEffectYaml>,
     pub location: Option<LocationYaml>,
     pub note: Option<NoteYaml>,
     pub narrate: Option<NarrateYaml>,
@@ -297,6 +298,16 @@ pub struct FlagEffectYaml {
     pub key: String,
     pub value: bool,
     pub resist: Option<ResistYaml>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ModifierEffectYaml {
+    pub who: Spanned<String>,
+    pub id: String,
+    pub add: Spanned<ExprYaml>,
+    /// How long this application lasts, 1 or more.
+    pub ticks: u64,
 }
 
 #[derive(Deserialize)]
@@ -881,6 +892,18 @@ fn effect_of(yaml: &EffectYaml) -> Result<EffectTemplate, Fault> {
             key: flag.key.clone(),
             value: flag.value,
             resist: resist_of(flag.resist.as_ref())?,
+        });
+    }
+    if let Some(modifier) = &yaml.modifier {
+        found += 1;
+        if modifier.ticks == 0 {
+            return Err("a modifier effect has ticks below 1, so set ticks to 1 or more".into());
+        }
+        effect = Some(EffectTemplate::Modifier {
+            who: who_of(&modifier.who)?,
+            id: modifier.id.clone(),
+            add: expr_of(&modifier.add)?,
+            ticks: modifier.ticks,
         });
     }
     if let Some(location) = &yaml.location {

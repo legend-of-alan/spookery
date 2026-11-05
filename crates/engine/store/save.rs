@@ -8,6 +8,7 @@ use serde_saphyr::SerializerOptions;
 use crate::canon::Canon;
 use crate::diagnostic::{check_tag, error, locate_nth, parse_file, schema_error, Diagnostic};
 use crate::model::meter::MeterLive;
+use crate::model::modifier;
 use crate::model::{sort_unique, State};
 use crate::rules::effect::Holder;
 use crate::store::records::AddedMeter;
@@ -235,10 +236,29 @@ pub(crate) fn missing_meters(canon: &Canon, state: &State) -> Vec<AddedMeter> {
     added
 }
 
-/// Migrate a save: give each holder the `meters` it lacks, at their `start`, then
-/// stamp `pack_rev` and `state_rev`. Live migrate and replay both call this.
-/// It does not touch the disk.
-pub fn migrate(mut state: State, pack_rev: &str, state_rev: u64, meters: &[AddedMeter]) -> State {
+/// Modifiers some actor holds that the pack no longer defines, or now defines on another meter.
+pub(crate) fn stale_modifiers(canon: &Canon, state: &State) -> Vec<String> {
+    let mut stale: Vec<String> = state
+        .actors
+        .values()
+        .flat_map(|actor| &actor.modifiers)
+        .filter(|(id, live)| !modifier::is_defined(&canon.modifiers, id, live))
+        .map(|(id, _)| id.clone())
+        .collect();
+    sort_unique(&mut stale);
+    stale
+}
+
+/// Migrate a save: give each holder the `meters` it lacks, at their `start`, and drop the
+/// `dropped` modifiers from every actor, then stamp `pack_rev` and `state_rev`. Live migrate
+/// and replay both call this. It does not touch the disk.
+pub fn migrate(
+    mut state: State,
+    pack_rev: &str,
+    state_rev: u64,
+    meters: &[AddedMeter],
+    dropped: &[String],
+) -> State {
     for meter in meters {
         let start = MeterLive {
             base: meter.start,
@@ -262,6 +282,9 @@ pub fn migrate(mut state: State, pack_rev: &str, state_rev: u64, meters: &[Added
                 }
             }
         }
+    }
+    for actor in state.actors.values_mut() {
+        actor.modifiers.retain(|id, _| !dropped.contains(id));
     }
     state.pack_rev = pack_rev.to_string();
     state.state_rev = state_rev;

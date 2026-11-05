@@ -15,6 +15,7 @@ pub use canon::{load_canon, pack_rev};
 pub use diagnostic::{first_reason, Code, Diagnostic};
 pub use intent::{Intent, IntentArgs, Source, Target, Viewer};
 pub use model::meter::MeterLive;
+pub use model::modifier::ModifierLive;
 pub use model::{Note, Presence, State};
 pub use round::{
     migrate_pack, play_pack_once, verify_pack, verify_quick, MigrateError, RoundOutput,
@@ -255,6 +256,7 @@ pub mod testing {
                         ),
                         ("rest".to_string(), crate::MeterLive { base: 3, offset: 0 }),
                     ]),
+                    modifiers: Default::default(),
                     inventory: std::collections::BTreeMap::new(),
                     wielded: None,
                     known_facts: Vec::new(),

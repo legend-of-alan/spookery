@@ -6,6 +6,7 @@ use crate::draft::Draft;
 use crate::intent::{Intent, Viewer};
 use crate::model::key::StateKey;
 use crate::model::meter::{self, MeterWrite};
+use crate::model::modifier::{self, ModifierLive};
 use crate::model::{self, MemoryLine, Note};
 use crate::rules::visibility::can_see_fact;
 use crate::Reason;
@@ -33,6 +34,13 @@ pub enum EffectKind {
         id: String,
         delta: i64,
         max: Option<i64>,
+    },
+    /// One application of modifier `id`, of magnitude `add`, to an actor, lasting `ticks`.
+    Modifier {
+        actor_id: String,
+        id: String,
+        add: i64,
+        ticks: u64,
     },
     Wield {
         actor_id: String,
@@ -107,6 +115,12 @@ impl Effect {
                 };
                 shift_item(draft, &holder, &id, delta, max)
             }
+            EffectKind::Modifier {
+                actor_id,
+                id,
+                add,
+                ticks,
+            } => apply_modifier(draft, &actor_id, &id, add, ticks),
             EffectKind::Wield { actor_id, id } => wield(draft, &actor_id, &id),
             EffectKind::Unwield { actor_id } => unwield(draft, &actor_id),
             EffectKind::Location {
@@ -137,6 +151,7 @@ impl EffectKind {
         match self {
             EffectKind::Meter { .. } => "meter",
             EffectKind::Item { .. } => "item",
+            EffectKind::Modifier { .. } => "modifier",
             EffectKind::Wield { .. } => "wield",
             EffectKind::Unwield { .. } => "unwield",
             EffectKind::Location { .. } => "location",
@@ -173,6 +188,15 @@ pub(crate) enum EffectRecord {
         delta: i64,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         max: Option<i64>,
+    },
+    Modifier {
+        #[serde(rename = "as", default, skip_serializing_if = "Option::is_none")]
+        as_viewer: Option<Viewer>,
+        intent_id: String,
+        actor_id: String,
+        id: String,
+        add: i64,
+        ticks: u64,
     },
     Wield {
         #[serde(rename = "as", default, skip_serializing_if = "Option::is_none")]
@@ -271,6 +295,19 @@ impl From<Effect> for EffectRecord {
                 id,
                 delta,
                 max,
+            },
+            EffectKind::Modifier {
+                actor_id,
+                id,
+                add,
+                ticks,
+            } => Self::Modifier {
+                as_viewer,
+                intent_id,
+                actor_id,
+                id,
+                add,
+                ticks,
             },
             EffectKind::Wield { actor_id, id } => Self::Wield {
                 as_viewer,
@@ -388,6 +425,23 @@ impl TryFrom<EffectRecord> for Effect {
                     intent_id,
                 )
             }
+            EffectRecord::Modifier {
+                as_viewer,
+                intent_id,
+                actor_id,
+                id,
+                add,
+                ticks,
+            } => (
+                EffectKind::Modifier {
+                    actor_id,
+                    id,
+                    add,
+                    ticks,
+                },
+                as_viewer,
+                intent_id,
+            ),
             EffectRecord::Wield {
                 as_viewer,
                 intent_id,
@@ -567,6 +621,55 @@ pub(crate) fn shift_item(
         }
         Holder::World => Err(Reason::Schema),
     }
+}
+
+/// Apply one stack of modifier `id` to an actor that carries its meter, lasting `ticks`, as
+/// `modifier::stack` says. The meter's key is tracked when the stacks move.
+fn apply_modifier(
+    draft: &mut Draft,
+    actor_id: &str,
+    id: &str,
+    add: i64,
+    ticks: u64,
+) -> Result<(), Reason> {
+    let canon = draft.shared_canon();
+    let def = canon.modifiers.get(id).ok_or(Reason::UnknownId)?;
+    let holder = Holder::Actor(actor_id.to_string());
+    canon
+        .meter_def(&holder, &def.meter)
+        .ok_or(Reason::UnknownId)?;
+    let now = draft.state().world_time;
+    let actor = draft
+        .state()
+        .actors
+        .get(actor_id)
+        .ok_or(Reason::UnknownId)?;
+    let held = actor.modifiers.get(id);
+    let mut next = held.cloned().unwrap_or_else(|| ModifierLive {
+        meter: def.meter.clone(),
+        until: now,
+        max_ticks: 0,
+        stacks: Vec::new(),
+    });
+    modifier::stack(def, &mut next, add, ticks, now);
+    let changed = held != Some(&next);
+    if held.map(|live| &live.stacks) != Some(&next.stacks) {
+        draft.track(StateKey::ActorMeter(
+            actor_id.to_string(),
+            def.meter.clone(),
+        ))?;
+    }
+    draft.mutate(
+        StateKey::ActorModifier(actor_id.to_string(), id.to_string()),
+        |state| {
+            state
+                .actor_mut(actor_id)?
+                .modifiers
+                .insert(id.to_string(), next);
+            state.meter_value(&canon, &holder, &def.meter)?;
+            Ok(changed)
+        },
+    )
 }
 
 fn wield(draft: &mut Draft, actor_id: &str, item_id: &str) -> Result<(), Reason> {

@@ -2,6 +2,7 @@
 
 pub(crate) mod key;
 pub(crate) mod meter;
+pub(crate) mod modifier;
 
 use std::collections::BTreeMap;
 
@@ -9,6 +10,7 @@ use serde::{Deserialize, Serialize};
 
 use key::StateKey;
 use meter::MeterLive;
+use modifier::ModifierLive;
 
 use crate::intent::{Target, Viewer};
 use crate::rules::effect::Holder;
@@ -56,7 +58,18 @@ impl State {
             .meters_of(holder)
             .and_then(|meters| meters.get(key))
             .ok_or(crate::Reason::UnknownId)?;
-        meter::current(def, live)
+        meter::current(def, live, self.modifier_sum(holder, key)?)
+    }
+
+    /// What `holder`'s modifiers add to its meter `key`. Only an actor holds modifiers.
+    pub(crate) fn modifier_sum(&self, holder: &Holder, key: &str) -> Result<i64, crate::Reason> {
+        match holder {
+            Holder::Actor(id) => self
+                .actors
+                .get(id)
+                .map_or(Ok(0), |actor| modifier::sum(&actor.modifiers, key)),
+            Holder::World | Holder::Place(_) => Ok(0),
+        }
     }
 
     /// The live meters `holder` carries. A place carries none.
@@ -121,6 +134,9 @@ pub struct ActorLive {
     pub place: String,
     pub flags: Vec<String>,
     pub meters: BTreeMap<String, MeterLive>,
+    /// The modifiers this actor holds, by id. Omitted when empty.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub modifiers: BTreeMap<String, ModifierLive>,
     pub inventory: BTreeMap<String, u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub wielded: Option<String>,

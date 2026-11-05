@@ -13,6 +13,7 @@ The first key in each file is `schema`, with no version suffix. In a Markdown fi
 | `pack.yaml` | Id, title, system, and the start place and PC. Tag `pack`. |
 | `rules/verbs.yaml` | Shared verb rules. Tag `verbs`. |
 | `rules/meters.yaml` | The meters every actor carries. Tag `meters`. |
+| `rules/modifiers.yaml` | Optional. Modifiers that move an actor's meter for a while. Tag `modifiers`. |
 | `rules/checks.yaml` | Check definitions. Tag `checks`. |
 | `rules/budget.yaml` | Round budgets and the idle policy. Tag `budget`. |
 | `world/places/<id>.md` | One place: facts, exits, and that place's rules. |
@@ -559,6 +560,17 @@ rules:
           who: place:yard
           fact: fact_hidden_stair
 
+  - id: scorch
+    when:
+      verb: scorch
+      target: actor
+    do:
+      - modifier:
+          who: target
+          id: burn
+          add: -2
+          ticks: 10
+
   - id: arm
     when:
       verb: arm
@@ -610,6 +622,29 @@ meters:
     max: 6
     base: 6
     hidden: false
+```
+
+## Modifiers
+
+A modifier changes one actor meter for a while, then expires. Each row has `id` and `meter`, and may have `max_stacks` and `hidden`. `meter` is a meter in `rules/meters.yaml` or a cast file, and check refuses any other.
+
+A `modifier` effect names `who`, `id`, `add`, and `ticks`, such as `scorch` in `rules/verbs.yaml`. `ticks` is how long this application lasts, a whole number of 1 or more, and check refuses an effect without it. A tick is one world minute for now. `add` is this application's magnitude, an integer or an expression, as on a meter. Any rule may apply any modifier, and each application keeps its own `add` as one stack. The meter's current value adds every stack of every modifier on it, so two modifiers on one meter both count. Nothing is written to the meter's offset.
+
+`max_stacks` is optional. It is the most stacks one actor can hold of that modifier, from any source. The default is 1, so a modifier left without it does not stack. At `max_stacks`, an application stronger than the weakest stack, by absolute value, replaces it. A weaker or equal one changes no stack. Strength ignores sign, so use two modifiers for a buff and a debuff.
+
+Below `max_stacks`, an application adds a stack. The modifier has one clock for all its stacks. It keeps the tick it expires at and `max_ticks`, the longest `ticks` applied so far. Every application, stronger, weaker or equal, adds its `ticks` to the ticks left, up to the longest burn so far, this one included. So the end becomes now plus the smaller of ticks left plus `ticks` and the larger of `max_ticks` and `ticks`, and `max_ticks` becomes that larger one. A 3 tick burn with 2 ticks left, hit by a 2 tick burn, has 3 ticks left. Hit by a 4 tick burn instead, it has 4. When the world reaches the end, the modifier expires and all its stacks go in that round. A modifier that should come from a place, such as fog, is applied to the actor by a change rule on that place.
+
+The save keeps each actor's modifiers under `modifiers`, with the meter, the tick it ends at as `until`, `max_ticks`, and the list of stacks. `spook migrate` drops a modifier the pack no longer defines, or one whose row now names another meter. When a row lowers `max_stacks`, an actor holding more keeps them until the next application, which drops the weakest extras first. The GM sees each change as `modifier <actor> <id>`, and the meter's own change with it. A player sees that key for their own actor only, and not when the row says `hidden: true`.
+
+```yaml file=rules/modifiers.yaml
+schema: modifiers
+modifiers:
+  - id: burn
+    meter: nerve
+    max_stacks: 3
+  - id: fog
+    meter: nerve
+    hidden: true
 ```
 
 ## Checks

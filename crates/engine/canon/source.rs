@@ -13,6 +13,7 @@ pub(super) const PACK_SCHEMA: &str = "pack";
 pub(super) const PLACE_SCHEMA: &str = "place";
 pub(super) const CAST_SCHEMA: &str = "cast";
 pub(super) const METERS_SCHEMA: &str = "meters";
+pub(super) const MODIFIERS_SCHEMA: &str = "modifiers";
 pub(super) const VERBS_SCHEMA: &str = "verbs";
 pub(super) const ITEM_SCHEMA: &str = "item";
 pub(super) const STORY_SCHEMA: &str = "story";
