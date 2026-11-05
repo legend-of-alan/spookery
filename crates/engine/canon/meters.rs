@@ -16,13 +16,13 @@ pub(super) fn load_meters(
     text: &str,
     carrier: Option<Holder>,
 ) -> Result<BTreeMap<String, MeterDef>, Vec<Diagnostic>> {
-    let file: MetersDoc = load_tagged(rel, text, METERS_SCHEMA, 0)?;
+    let doc: MetersDoc = load_tagged(rel, text, METERS_SCHEMA, 0)?;
     let source = FileText {
         file: rel,
         text,
         line_base: 0,
     };
-    meter_defs(&source, file.meters, carrier)
+    meter_defs(&source, doc.meters, carrier)
 }
 
 /// The meter rows of one file. A world meter is hidden unless its row says `hidden: false`.

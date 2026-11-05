@@ -1071,6 +1071,6 @@ fn cross_of(text: &str) -> Result<(Op, i64), String> {
 }
 
 pub(super) fn load_verbs(rel: &str, text: &str) -> Result<Vec<Rule>, Vec<Diagnostic>> {
-    let file: VerbsDoc = load_tagged(rel, text, VERBS_SCHEMA, 0)?;
-    compile(rel, file.rules, &Owner::Verb)
+    let doc: VerbsDoc = load_tagged(rel, text, VERBS_SCHEMA, 0)?;
+    compile(rel, doc.rules, &Owner::Verb)
 }

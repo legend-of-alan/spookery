@@ -6,11 +6,10 @@ use crate::canon::source::{load_tagged, FileText, Locator, PACK_SCHEMA};
 use crate::diagnostic::{schema_error, Diagnostic};
 
 pub(super) fn load_pack_yaml(text: &str) -> Result<PackDoc, Vec<Diagnostic>> {
-    let file: PackDoc = load_tagged("pack.yaml", text, PACK_SCHEMA, 0)?;
+    let doc: PackDoc = load_tagged("pack.yaml", text, PACK_SCHEMA, 0)?;
     let empty = ("id is empty", "set id to a short pack id");
-    let refused =
-        FileText::named("pack.yaml").refuse_empty(&file.id, "id", Locator::Nowhere, empty);
-    refused.map_or(Ok(file), |diag| Err(vec![diag]))
+    let refused = FileText::named("pack.yaml").refuse_empty(&doc.id, "id", Locator::Nowhere, empty);
+    refused.map_or(Ok(doc), |diag| Err(vec![diag]))
 }
 
 impl PackDoc {

@@ -12,7 +12,7 @@ pub(super) fn load_checks(
     rel: &str,
     text: &str,
 ) -> Result<BTreeMap<String, Check>, Vec<Diagnostic>> {
-    let file: ChecksDoc = load_tagged(rel, text, CHECKS_SCHEMA, 0)?;
+    let doc: ChecksDoc = load_tagged(rel, text, CHECKS_SCHEMA, 0)?;
     let source = FileText {
         file: rel,
         text,
@@ -20,7 +20,7 @@ pub(super) fn load_checks(
     };
     let mut diags = Diags::default();
     let mut checks = BTreeMap::new();
-    for (row, entry) in file.checks.into_iter().enumerate() {
+    for (row, entry) in doc.checks.into_iter().enumerate() {
         let path = format!("checks[{row}]");
         let mut found = Vec::new();
         let id_path = format!("{path}.id");

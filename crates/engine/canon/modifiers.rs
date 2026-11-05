@@ -17,7 +17,7 @@ pub(super) fn load_modifiers(
     text: &str,
     meters: &BTreeMap<String, MeterDef>,
 ) -> Result<BTreeMap<String, ModifierDef>, Vec<Diagnostic>> {
-    let file: ModifiersDoc = load_tagged(MODIFIERS_FILE, text, MODIFIERS_SCHEMA, 0)?;
+    let doc: ModifiersDoc = load_tagged(MODIFIERS_FILE, text, MODIFIERS_SCHEMA, 0)?;
     let source = FileText {
         file: MODIFIERS_FILE,
         text,
@@ -25,7 +25,7 @@ pub(super) fn load_modifiers(
     };
     let mut diags = Diags::default();
     let mut modifiers = BTreeMap::new();
-    for (row, entry) in file.modifiers.into_iter().enumerate() {
+    for (row, entry) in doc.modifiers.into_iter().enumerate() {
         let path = format!("modifiers[{row}]");
         let refuse = |key: &'static str, message: String, hint: &'static str| {
             Problem {
