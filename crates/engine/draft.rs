@@ -110,7 +110,7 @@ impl<'p> Draft<'p> {
                 .ok_or(Reason::UnknownId)?
                 .act;
             (
-                counters.idle_acts_today,
+                counters.idle_acts_this_window,
                 counters.live_acts_this_window,
                 counters.last_act_round,
             )
@@ -122,7 +122,7 @@ impl<'p> Draft<'p> {
             keys.push(StateKey::LastActRound(actor_id.to_string()));
         }
         if players == 0 && new_idle != current_idle {
-            keys.push(StateKey::IdleActsToday(actor_id.to_string()));
+            keys.push(StateKey::IdleActsThisWindow(actor_id.to_string()));
         }
         if players > 0 && new_live != current_live {
             keys.push(StateKey::LiveActsThisWindow(actor_id.to_string()));
@@ -131,7 +131,7 @@ impl<'p> Draft<'p> {
         let counters = &mut self.state.actor_mut(actor_id)?.act;
         counters.last_act_round = round_index;
         if players == 0 {
-            counters.idle_acts_today = new_idle;
+            counters.idle_acts_this_window = new_idle;
         } else {
             counters.live_acts_this_window = new_live;
         }
@@ -270,8 +270,8 @@ impl<'p> Draft<'p> {
             StateKey::LastActRound(id) => self.act_number(id, |act| {
                 i64::try_from(act.last_act_round).unwrap_or(i64::MAX)
             }),
-            StateKey::IdleActsToday(id) => {
-                self.act_number(id, |act| i64::from(act.idle_acts_today))
+            StateKey::IdleActsThisWindow(id) => {
+                self.act_number(id, |act| i64::from(act.idle_acts_this_window))
             }
             StateKey::LiveActsThisWindow(id) => {
                 self.act_number(id, |act| i64::from(act.live_acts_this_window))

@@ -271,8 +271,9 @@ impl std::fmt::Display for MigrateError {
 }
 
 /// Migrate the journal tip. A save that the journal has not passed is migrated as it stands.
-/// A save from before meters replaced clocks is migrated too: each clock moves onto its meter,
-/// and the save is first rewritten in the current shape, so the migrate replays from it.
+/// A save from older rules is migrated too: each clock of a save from before meters moves onto
+/// its meter, and the save is first rewritten in the current shape, so the migrate replays
+/// from it.
 pub fn migrate_pack(path: &Path) -> Result<(), MigrateError> {
     let lock = lock_pack(path)?;
     let (mut state, clocks, edited) = load_migrate_tip(path, &lock)?;
@@ -288,7 +289,7 @@ pub fn migrate_pack(path: &Path) -> Result<(), MigrateError> {
     Ok(())
 }
 
-/// The state to migrate, the clocks of a save from before meters, and whether it is a hand
+/// The state to migrate, the clocks of a save from older rules, and whether it is a hand
 /// edit of the checkpoint head. A hand edit with live rounds past it is refused, because the
 /// tip does not hold it.
 fn load_migrate_tip(path: &Path, lock: &PackGuard) -> Result<(State, OldClocks, bool), Reason> {

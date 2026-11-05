@@ -234,13 +234,15 @@ Tested in `features/travel/travel_follows_the_map.feature` and
 
 ## Game time
 
-World time is a count of ticks. A day is the pack's `ticks_per_day`, 1440 when
-the pack leaves it out. A round that crosses the end of a day resets each
-actor's acts for the day. A `day_tick` condition reads the tick within the day
-and may wrap past the day's end. Players see a tick as a clock time, a day of 24
-shown hours, and no rule reads that clock. Check refuses a `ticks_per_day` of 0,
-a `day_tick` bound at or past `ticks_per_day`, and an `hour` or `minutes` key,
-with a hint that names the tick form.
+World time is a count of ticks, and the engine knows no day or hour. A pack may
+name cycles in its budget, each with a length in ticks. A `cycle` condition
+reads the tick within its named cycle, world time modulo the length, and may
+wrap past the cycle's end. Idle and live acts each have a cap per window of
+ticks, and a round that crosses the end of a window gives that count back.
+Players and the GM see plain ticks, as `until tick 1300`. Check refuses a cycle
+length or an act window of 0, a `cycle` that names no cycle in the budget, a
+bound at or past the cycle's length. A leftover `minutes` key gets a hint that
+names `ticks`.
 
 Tested in `features/rules/game_time_counts_in_ticks.feature`,
 `features/seats/a_player_knows_the_place.feature`, and
@@ -320,7 +322,7 @@ data and the client prints them: `help` lists the words this player can use
 here and now, each with what it takes and what they can name for it, and `map`
 lists each place their save says they visited, with the exits they may see from
 there. A traveller who has not arrived
-sees where the journey ends, as `on the stairs until 21:40`. A player names only
+sees where the journey ends, as `on the stairs until tick 1300`. A player names only
 what they hold or what that view shows. Anything else reads like an unknown
 word and takes no round. A pack that omits `display_name` fails check. An
 unknown word tells the player to type help.

@@ -1,6 +1,6 @@
 schema: save
 world_id: docks-001
-pack_rev: blake2s:fcbee20cca05a83956bfccfc5d0cd39b6738f16ef519033cb8d015d5f2b82fd0
+pack_rev: blake2s:d9007ad32e134c6bf6292316c00fe04a015504c3ea6d99455fd791986b995d82
 rules_rev: 16
 state_rev: 0
 round_index: 0
@@ -30,7 +30,7 @@ actors:
     known_facts: []
     act:
       last_act_round: 0
-      idle_acts_today: 0
+      idle_acts_this_window: 0
       live_acts_this_window: 0
   bram:
     kind: npc
@@ -47,7 +47,7 @@ actors:
     known_facts: []
     act:
       last_act_round: 0
-      idle_acts_today: 0
+      idle_acts_this_window: 0
       live_acts_this_window: 0
   mira:
     kind: npc
@@ -68,7 +68,7 @@ actors:
       - fact_ledger_short
     act:
       last_act_round: 0
-      idle_acts_today: 0
+      idle_acts_this_window: 0
       live_acts_this_window: 0
   pc_harbormouse:
     kind: pc
@@ -87,7 +87,7 @@ actors:
       - docks_street
     act:
       last_act_round: 0
-      idle_acts_today: 0
+      idle_acts_this_window: 0
       live_acts_this_window: 0
   pc_rowan:
     kind: pc
@@ -109,7 +109,7 @@ actors:
       - docks_shop
     act:
       last_act_round: 0
-      idle_acts_today: 0
+      idle_acts_this_window: 0
       live_acts_this_window: 0
   pc_wren:
     kind: pc
@@ -128,6 +128,6 @@ actors:
       - docks_street
     act:
       last_act_round: 0
-      idle_acts_today: 0
+      idle_acts_this_window: 0
       live_acts_this_window: 0
 notes: []

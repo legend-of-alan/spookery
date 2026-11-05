@@ -18,7 +18,7 @@ fn add_toll(pack: &Path) {
     let text = fs::read_to_string(&path).unwrap();
     let next = text.replace(
         "  eligible: true\n",
-        "  eligible: true\nflags:\n    - tolled\nrules:\n  - id: toll\n    when: habit\n    if:\n      - day_tick:\n          from: 1260\n          to: 1320\n    do:\n      - flag:\n          who: self\n          key: tolled\n          value: true\n",
+        "  eligible: true\nflags:\n    - tolled\nrules:\n  - id: toll\n    when: habit\n    if:\n      - cycle:\n          name: day\n          from: 1260\n          to: 1320\n    do:\n      - flag:\n          who: self\n          key: tolled\n          value: true\n",
     );
     assert_ne!(text, next);
     fs::write(path, next).unwrap();
@@ -155,8 +155,8 @@ fn the_pc_reaches_the_cellar(world: &mut World) {
     );
 }
 
-#[then(expr = "the world is at 21:40 and rowan is in mira_rooms")]
-fn rowan_is_in_mira_rooms_at_21_40(world: &mut World) {
+#[then(expr = "the world is at tick 1300 and rowan is in mira_rooms")]
+fn rowan_is_in_mira_rooms_at_tick_1300(world: &mut World) {
     let now = state_of(table::pack(world));
     let rowan = now.actors.get("pc_rowan").unwrap();
     assert_eq!(now.world_time, EVENING + 10);
@@ -170,7 +170,7 @@ fn rowans_line_shows(world: &mut World, text: String) {
     assert!(added.contains(&needle), "{added}");
 }
 
-#[given(expr = "rowan arrives at 21:40 and nell at 21:35")]
+#[given(expr = "rowan arrives at tick 1300 and nell at tick 1295")]
 fn two_arrivals(world: &mut World) {
     let pack = copy_docks("two-arrivals");
     fs::write(
@@ -242,20 +242,20 @@ fn seated_rounds_are_five_ticks(world: &mut World) {
     world.pack = Some(pack);
 }
 
-#[when(expr = "rowan travels via stairs in the round starting 21:30")]
+#[when(expr = "rowan travels via stairs in the round starting at tick 1290")]
 fn rowan_travels_in_the_evening_round(world: &mut World) {
     let (_mark, added) = table::player_send(world, "travel stairs", "mira_rooms");
     world.player_added = added;
 }
 
-#[then(expr = "the round still ends at 21:35")]
-fn the_round_still_ends_at_21_35(world: &mut World) {
+#[then(expr = "the round still ends at tick 1295")]
+fn the_round_still_ends_at_tick_1295(world: &mut World) {
     let round = crate::support::read_round(table::pack(world), "round-0001");
     assert_eq!(round["world_time_before"], EVENING);
     assert_eq!(round["world_time_after"], EVENING + 5);
 }
 
-#[then(expr = "rowan's arrival is recorded with arrived_at 21:32 in that round's line")]
+#[then(expr = "rowan's arrival is recorded with arrived_at 1292 in that round's line")]
 fn arrival_is_stamped(world: &mut World) {
     let round = crate::support::read_round(table::pack(world), "round-0001");
     assert_eq!(round["arrivals"][0]["actor_id"], "pc_rowan");
@@ -268,7 +268,7 @@ fn arrival_is_stamped(world: &mut World) {
     assert!(stamped, "{round}");
 }
 
-#[then(expr = "a move from rowan is accepted from the round starting 21:35")]
+#[then(expr = "a move from rowan is accepted from the round starting at tick 1295")]
 fn the_next_round_accepts_a_move(world: &mut World) {
     let (_mark, added) = table::player_send(world, "wait", "\"kind\":");
     assert!(!added.contains("BUSY"), "{added}");
@@ -344,7 +344,9 @@ fn both_busy_without_a_gm(world: &mut World) {
     world.pack = Some(pack);
 }
 
-#[then(expr = "the table plays rounds to 21:35 then 21:40 without waiting on the wall clock")]
+#[then(
+    expr = "the table plays rounds to tick 1295 then tick 1300 without waiting on the wall clock"
+)]
 fn the_table_plays_rounds_through_both_arrivals(world: &mut World) {
     let (_mark, _added) = table::player_send(world, "wait", "BUSY");
     let pack = table::pack(world).to_path_buf();
@@ -361,13 +363,13 @@ fn the_table_plays_rounds_through_both_arrivals(world: &mut World) {
     assert!(ends.contains(&(EVENING + 10)), "{ends:?}");
 }
 
-#[then(expr = "an NPC habit due at 21:35 runs in that round")]
-fn the_habit_due_at_21_35_runs(world: &mut World) {
+#[then(expr = "an NPC habit due at tick 1295 runs in that round")]
+fn the_habit_due_at_tick_1295_runs(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
     let round = list_round_keys(&pack)
         .into_iter()
         .find(|name| crate::support::read_round(&pack, name)["world_time_after"] == EVENING + 5)
-        .unwrap_or_else(|| panic!("no 21:35 round"));
+        .unwrap_or_else(|| panic!("no round ending at tick 1295"));
     let steps = crate::support::read_round(&pack, &round)["extra_steps"].to_string();
     assert!(steps.contains("cast:bram/toll"), "{steps}");
 }

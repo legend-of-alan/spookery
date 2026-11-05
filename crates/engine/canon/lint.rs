@@ -727,13 +727,13 @@ pub(crate) fn check_canon(canon: &Canon) -> Vec<Diagnostic> {
     diags.extend(check_trigger_cycles(canon));
     diags.extend(check_trigger_leaks(canon));
     diags.extend(check_world_change_subjects(canon));
-    diags.extend(check_day_ticks(canon));
+    diags.extend(check_cycles(canon));
     diags
 }
 
-/// `day_tick` bounds at or past `ticks_per_day`, on a rule or an exit.
-fn check_day_ticks(canon: &Canon) -> Vec<Diagnostic> {
-    let day = canon.budget.ticks_per_day;
+/// `cycle` conditions, on a rule or an exit, that name no cycle in the budget or have a bound
+/// at or past the cycle's length.
+fn check_cycles(canon: &Canon) -> Vec<Diagnostic> {
     let rules = canon
         .rules
         .iter()
@@ -748,33 +748,46 @@ fn check_day_ticks(canon: &Canon) -> Vec<Diagnostic> {
         });
     let mut diags = Vec::new();
     for (file, path, conds) in rules.chain(exits) {
-        let mut bounds = Vec::new();
+        let mut cycles = Vec::new();
         for cond in conds {
-            push_day_ticks(cond, &mut bounds);
+            push_cycles(cond, &mut cycles);
         }
-        for bound in bounds.into_iter().filter(|bound| *bound >= day) {
-            diags.push(
-                schema_error(
-                    file,
-                    &format!("day_tick {bound} is not below ticks_per_day {day}"),
-                    "set day_tick from and to to ticks of the day, below ticks_per_day",
-                )
-                .at_path(path.clone()),
-            );
+        for (name, from, to) in cycles {
+            let Some(&length) = canon.budget.cycles.get(name) else {
+                diags.push(
+                    schema_error(
+                        file,
+                        &format!("there is no cycle {name}"),
+                        "name a cycle from cycles in rules/budget.yaml, or add it there",
+                    )
+                    .at_path(path.clone()),
+                );
+                continue;
+            };
+            if from.max(to) >= length {
+                diags.push(
+                    schema_error(
+                        file,
+                        &format!("cycle bound is not below cycle {name}, which is {length} ticks"),
+                        "set from and to to ticks of the cycle, below its length",
+                    )
+                    .at_path(path.clone()),
+                );
+            }
         }
     }
     diags
 }
 
-fn push_day_ticks(cond: &Cond, out: &mut Vec<u64>) {
+fn push_cycles<'a>(cond: &'a Cond, out: &mut Vec<(&'a str, u64, u64)>) {
     match cond {
-        Cond::DayTick { from, to } => out.extend([*from, *to]),
+        Cond::Cycle { name, from, to } => out.push((name, *from, *to)),
         Cond::All(inner) | Cond::Any(inner) => {
             for cond in inner {
-                push_day_ticks(cond, out);
+                push_cycles(cond, out);
             }
         }
-        Cond::Not(inner) => push_day_ticks(inner, out),
+        Cond::Not(inner) => push_cycles(inner, out),
         _ => {}
     }
 }
@@ -1164,7 +1177,7 @@ fn push_cond_whos<'a>(cond: &'a Cond, out: &mut Vec<&'a Who>) {
             }
         }
         Cond::Not(inner) => push_cond_whos(inner, out),
-        Cond::DayTick { .. } | Cond::Players { .. } | Cond::NoteExists(_) => {}
+        Cond::Cycle { .. } | Cond::Players { .. } | Cond::NoteExists(_) => {}
     }
 }
 

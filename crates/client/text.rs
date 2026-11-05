@@ -636,7 +636,7 @@ stairs (locked) — 2 ticks"
             place_name: "Docks Street".to_string(),
             body: String::new(),
             actor_names: vec!["Bram".to_string()],
-            cant_act: "on the stairs until 21:40".to_string(),
+            cant_act: "on the stairs until tick 1300".to_string(),
             visible_actors: vec!["bram".to_string()],
             known_facts: Vec::new(),
             notes: Vec::new(),
@@ -652,7 +652,7 @@ stairs (locked) — 2 ticks"
             "\
 You are in Docks Street.
 
-on the stairs until 21:40
+on the stairs until tick 1300
 
 Here: Bram
 

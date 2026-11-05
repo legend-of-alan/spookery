@@ -956,7 +956,7 @@ pub(crate) fn seen_of(world: &World, viewer: &str) -> Vec<String> {
 
 fn is_act_counter(key: &str) -> bool {
     key.starts_with("last_act_round ")
-        || key.starts_with("idle_acts_today ")
+        || key.starts_with("idle_acts_this_window ")
         || key.starts_with("live_acts_this_window ")
 }
 
