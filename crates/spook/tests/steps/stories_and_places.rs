@@ -96,6 +96,48 @@ fn story_declares_a_meter(world: &mut World, story: String, key: String) {
     );
 }
 
+#[given(expr = "story\\/{word}.yaml declares {string} with hidden false")]
+fn story_declares_a_shown_meter(world: &mut World, story: String, key: String) {
+    let keys = format!("meters:\n{}", meter_row(&key, Some(false)));
+    write_story(world, &story, &keys);
+}
+
+#[given(expr = "pc_rowan in the shop and pc_wren in the street are seated")]
+fn rowan_and_wren_are_seated_apart(world: &mut World) {
+    let pack = world.pack.clone().unwrap();
+    edit_table(world, &pack, |now, seated| {
+        assert_eq!(now.actors["pc_rowan"].place, "docks_shop");
+        assert_eq!(now.actors["pc_wren"].place, "docks_street");
+        sit(seated, &["pc_rowan", "pc_wren"]);
+    });
+}
+
+#[then(expr = "pc_rowan's and pc_wren's change lines show dread")]
+fn rowan_and_wren_see_dread(world: &mut World) {
+    for id in ["pc_rowan", "pc_wren"] {
+        let seen = seen_of(world, id);
+        assert!(
+            seen.contains(&"story_meter ending dread".to_string()),
+            "{id}: {seen:?}"
+        );
+    }
+}
+
+#[then(expr = "it refuses the story's {word} meter as {string}")]
+fn it_refuses_the_story_meter(world: &mut World, key: String, why: String) {
+    assert_refused(
+        world,
+        &["story/ending.yaml", &format!("meter '{key}' {why}")],
+    );
+}
+
+#[then(expr = "the GM sees both light and draft")]
+fn the_gm_sees_light_and_draft(world: &mut World) {
+    for key in ["place_meter loft light", "place_meter loft draft"] {
+        assert_gm_saw(world, key);
+    }
+}
+
 #[given(expr = "story\\/{word}.yaml declares the flag {string}")]
 fn story_declares_a_flag(world: &mut World, story: String, flag: String) {
     write_story(world, &story, &format!("flags:\n  - {flag}\n"));

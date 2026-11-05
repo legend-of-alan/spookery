@@ -20,6 +20,24 @@ Feature: Stories and places carry meters and flags
     When the author runs spook check
     Then it refuses the rule, saying the siege story does not declare walls_breached
 
+  Scenario: A story meter shown by the pack reaches every player
+    Given story/ending.yaml declares "dread" with hidden false
+    And a rule in story/ending.yaml adds 1 to who "story:ending" meter dread
+    And pc_rowan in the shop and pc_wren in the street are seated
+    When the rule runs
+    Then pc_rowan's and pc_wren's change lines show dread
+
+  Scenario Outline: A story meter id another file declares is refused
+    Given <file> declares a "<meter>" meter
+    And story/ending.yaml declares a "<meter>" meter
+    When the author runs spook check
+    Then it refuses the story's <meter> meter as "<why>"
+
+    Examples:
+      | file              | meter    | why                                                      |
+      | world/meters.yaml | dawn     | is already in world/meters.yaml                          |
+      | cast/mira.md      | shop_day | is already declared in another cast, place or story file |
+
   Scenario: The pack check refuses a story meter on the wrong story
     Given story/ending.yaml declares a "dread" meter
     And a rule adds 1 to who "story:prologue" meter dread
@@ -45,7 +63,7 @@ Feature: Stories and places carry meters and flags
     When a rule adds 1 to who "place:loft" meter light and meter draft
     Then pc_rowan's change line shows light and not draft
     And Mira's change line shows neither
-    And the GM sees both
+    And the GM sees both light and draft
 
   Scenario: A place flag is never shown to players
     Given world/places/loft.md declares the flag "lamp_lit"

@@ -103,7 +103,8 @@ fn sentence(canon: &Canon, viewer: &str, change: &Change, changes: &[Change]) ->
         }
         StateKey::StoryMeter(story, key) => {
             let holder = Holder::Story(story.clone());
-            meter_sentence(canon, &holder, key, "The", &change.after)
+            let whose = format!("The {story} story's");
+            meter_sentence(canon, &holder, key, &whose, &change.after)
         }
         StateKey::PlaceMeter(place, key) => {
             let holder = Holder::Place(place.clone());
