@@ -236,7 +236,7 @@ pub(crate) fn missing_meters(canon: &Canon, state: &State) -> Vec<AddedMeter> {
     added
 }
 
-/// Meters a holder lists that the pack no longer gives it.
+/// Meters an actor or the world lists that the pack no longer gives it. A place holds no meters.
 pub(crate) fn stale_meters(canon: &Canon, state: &State) -> Vec<DroppedMeter> {
     let mut dropped = Vec::new();
     let mut drop_stale = |carrier: Holder, live: &BTreeMap<String, MeterLive>| {
@@ -270,17 +270,17 @@ pub(crate) fn stale_modifiers(canon: &Canon, state: &State) -> Vec<String> {
 }
 
 /// Migrate a save: give each holder the `meters` it lacks, at their `start`, drop the
-/// `dropped` modifiers from every actor and each `dropped_meters` from its holder, then stamp
+/// `dropped_modifiers` from every actor and each `dropped_meters` from its holder, then stamp
 /// `pack_rev` and `state_rev`. Live migrate and replay both call this. It does not touch the disk.
 pub fn migrate(
     mut state: State,
     pack_rev: &str,
     state_rev: u64,
     meters: &[AddedMeter],
-    dropped: &[String],
+    dropped_modifiers: &[String],
     dropped_meters: &[DroppedMeter],
 ) -> State {
-    let is_dropped = |carrier: &Holder, key: &String| {
+    let is_dropped_meter = |carrier: &Holder, key: &String| {
         dropped_meters
             .iter()
             .any(|meter| meter.id == *key && meter.carrier == *carrier)
@@ -310,12 +310,18 @@ pub fn migrate(
         }
     }
     for (actor_id, actor) in &mut state.actors {
-        actor.modifiers.retain(|id, _| !dropped.contains(id));
+        actor
+            .modifiers
+            .retain(|id, _| !dropped_modifiers.contains(id));
         let holder = Holder::Actor(actor_id.clone());
-        actor.meters.retain(|key, _| !is_dropped(&holder, key));
+        actor
+            .meters
+            .retain(|key, _| !is_dropped_meter(&holder, key));
     }
     let world = Holder::World;
-    state.world_meters.retain(|key, _| !is_dropped(&world, key));
+    state
+        .world_meters
+        .retain(|key, _| !is_dropped_meter(&world, key));
     state.pack_rev = pack_rev.to_string();
     state.state_rev = state_rev;
     normalize(&mut state);
