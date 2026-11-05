@@ -7,7 +7,7 @@ use cucumber::{given, then, when};
 use crate::support;
 use crate::World;
 
-use super::common::wait_play;
+use super::common::{spawn_play, wait_play};
 use super::table;
 
 #[when(expr = "the operator runs spook new in a fresh directory")]
@@ -133,7 +133,7 @@ fn play_joins_that_pack_on_a_free_loopback_address(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
     table::listen(world, &pack);
     let addr = table::game_addr(world);
-    world.play = Some(support::spawn(&["play", "--addr", &addr]));
+    world.play = Some(spawn_play(&addr, "pc_ada", &[]));
     wait_play(world, "You are in Yard.");
 }
 

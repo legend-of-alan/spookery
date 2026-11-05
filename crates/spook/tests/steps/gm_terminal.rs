@@ -293,8 +293,7 @@ fn sit_gm(world: &mut World, raw: bool) -> String {
 }
 
 fn join_play_at(world: &mut World, addr: &str, as_player: Option<&str>) {
-    let as_arg = format!("player:{}", as_player.unwrap_or("pc_rowan"));
-    let mut play = support::spawn(&["play", "--addr", addr, "--as", &as_arg]);
+    let mut play = common::spawn_play(addr, as_player.unwrap_or("pc_rowan"), &[]);
     common::wait_proc_until(
         &mut play,
         |stdout| stdout.contains("You are in"),

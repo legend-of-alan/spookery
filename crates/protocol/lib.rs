@@ -186,7 +186,7 @@ impl From<String> for Code {
 pub struct Refusal {
     pub code: Code,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub detail: Option<Detail>,
+    pub detail: Option<String>,
 }
 
 impl From<Reason> for Refusal {
@@ -206,7 +206,7 @@ impl fmt::Display for Refusal {
         };
         let code = reason.as_str();
         let named = match &self.detail {
-            Some(Detail::One(text)) if !text.is_empty() => Some(text),
+            Some(text) if !text.is_empty() => Some(text),
             _ => None,
         };
         let sentence = match reason {
@@ -234,12 +234,7 @@ impl fmt::Display for Refusal {
             Reason::MissingItem => "You do not have that.",
             Reason::NotAWeapon => "That is not a weapon.",
             Reason::LineTooLong => "That line is too long.",
-            Reason::ChoosePc => match &self.detail {
-                Some(Detail::Many(pcs)) if !pcs.is_empty() => {
-                    return write!(f, "Choose a character: {}. [{code}]", pcs.join(", "));
-                }
-                _ => "Choose a character.",
-            },
+            Reason::ChoosePc => "Choose a character.",
             Reason::NoExit => match named {
                 Some(text) => return write!(f, "{text} [{code}]"),
                 None => "There is no exit that way.",
@@ -253,15 +248,6 @@ impl fmt::Display for Refusal {
         };
         write!(f, "{sentence} [{code}]")
     }
-}
-
-/// A refusal's `detail`: one id or locked text, or the free PCs on `CHOOSE_PC`.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
-#[serde(untagged)]
-pub enum Detail {
-    One(String),
-    Many(Vec<String>),
 }
 
 /// Who spoke: the `from` of a say on the wire and the tape. Written `gm`, `player:<id>` or
@@ -421,24 +407,19 @@ mod tests {
         };
         assert_eq!(unknown.to_string(), "The table refused that. [NEW_CODE]");
         assert_eq!(line(Reason::ChoosePc), "Choose a character. [CHOOSE_PC]");
-        let detailed = |code: Reason, detail: Detail| {
+        let detailed = |code: Reason, detail: &str| {
             Refusal {
                 code: Code::Known(code),
-                detail: Some(detail),
+                detail: Some(detail.into()),
             }
             .to_string()
         };
         assert_eq!(
-            detailed(Reason::ChoosePc, Detail::Many(vec!["pc_rowan".into()])),
-            "Choose a character: pc_rowan. [CHOOSE_PC]"
-        );
-        assert_eq!(
-            detailed(Reason::CantAfford, Detail::One("g".into())),
+            detailed(Reason::CantAfford, "g"),
             "You cannot afford g. [CANT_AFFORD]"
         );
         for raw in [
             r#"{"kind":"refused","code":"CANT_AFFORD","detail":"grit"}"#,
-            r#"{"kind":"refused","code":"CHOOSE_PC","detail":["pc_rowan"]}"#,
             r#"{"kind":"refused","code":"SCHEMA"}"#,
             r#"{"kind":"refused","code":"NEW_CODE"}"#,
         ] {

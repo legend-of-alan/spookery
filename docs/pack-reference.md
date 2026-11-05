@@ -32,7 +32,7 @@ A verb uses the wielded item's rule for it, then the target item's rule, then th
 
 ## Pack
 
-`start.place` is the root of the exit graph. `start.pc` is the PC sat when `spook play` is given no `--as`. `checkpoint_every` is optional. It is the number of rounds between journal checkpoints. The default is 100. Zero is rejected. The field is not part of the canon hash.
+`start.place` is the root of the exit graph. `checkpoint_every` is optional. It is the number of rounds between journal checkpoints. The default is 100. Zero is rejected. The field is not part of the canon hash.
 
 ```yaml file=pack.yaml
 schema: pack
@@ -41,7 +41,6 @@ title: Reference
 system: reference
 start:
   place: yard
-  pc: pc_ada
 ```
 
 ## Places and exits

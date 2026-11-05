@@ -42,7 +42,7 @@ Every message, the client's and the table's alike, is one JSON object in one Web
 
 ## Hello
 
-The table speaks first, with `version`, the `words` this seat may send, and, on `/player`, `open`, the PCs a claim may take now. A player's words are the table's own and then every verb the pack's rules name.
+The table speaks first, with `version`, the `words` this seat may send, and, on `/player`, `open`, the PCs a claim may take now, and `taken`, the PCs held now. Either is left out when empty. A player's words are the table's own and then every verb the pack's rules name.
 
 <!-- example: player-hello -->
 ```json
@@ -76,11 +76,11 @@ Each word reads `args` as one type, and the schema's `$defs` in `client.json` ho
 
 ### claim and release
 
-A player claims one PC, and the table holds three claims at most. A word other than `claim` before a claim is `CHOOSE_PC`, and `detail` lists the open PCs:
+A player claims one PC, and the table holds three claims at most. A word other than `claim` before a claim is `CHOOSE_PC`. The hello already listed the open PCs:
 
 <!-- example: player-choose-pc -->
 ```json
-{"seq":5,"reply_to":"c1","body":{"kind":"refused","code":"CHOOSE_PC","detail":["pc_harbormouse","pc_wren"]}}
+{"seq":5,"reply_to":"c1","body":{"kind":"refused","code":"CHOOSE_PC"}}
 ```
 
 A PC another claim holds is `SEAT_TAKEN`, a fourth claim is `TABLE_FULL`, and an id that is not a live PC is `SCHEMA`. A refused claim leaves the connection up.
@@ -317,7 +317,7 @@ A client ignores a `kind` or a field it does not know. `server.json` gives every
 
 | Kind | Who gets it | What it says |
 |---|---|---|
-| `hello` | the new connection | `version`, `words`, `open` |
+| `hello` | the new connection | `version`, `words`, `open`, `taken` |
 | `claimed` | the claiming player | `actor`, `token`, and `scrollback` or `missed` and `gap` |
 | `released` | the releasing seat | the claim or the GM seat is free |
 | `presence` | the GM | `actors_present` after a claim starts or ends |
@@ -474,13 +474,13 @@ The session's `GET /mcp` event stream takes the GM seat, and its first event is 
 
 ## Errors
 
-A refusal is a `refused` body, and the connection stays up. `detail` is there only when the refusal names a thing: the locked text or the unaffordable id of a move, or on `CHOOSE_PC` the list of open PCs.
+A refusal is a `refused` body, and the connection stays up. `detail` is there only when the refusal names a thing: the locked text or the unaffordable id of a move.
 
 | Code | What the client should do |
 |---|---|
 | `TABLE_FULL` | Stop. Three PCs are claimed, or the GM seat is held. Try again only after a seat is free. |
 | `SEAT_TAKEN` | That PC is held. Claim another. |
-| `CHOOSE_PC` | Claim one of the PCs in `detail`. An empty list means none is free. |
+| `CHOOSE_PC` | Claim one of the PCs in the hello's `open`. An empty `open` means none is free. |
 | `SCHEMA` | Fix the message: its shape, its word, or its arguments. |
 | `NOT_IN_SPEC` | The verb has no rule that applies, `commit` set `include_round` false with a move queued, or the seat was released or, over MCP, never taken. |
 | `LINE_TOO_LONG` | Send a message under 8 KiB. |
@@ -504,5 +504,6 @@ The MCP endpoint answers with an HTTP status before any seat: 400 for an `MCP-Pr
 - Changes only add. A field never changes meaning, and a new meaning gets a new name.
 - The hello announces `version` and the words. A word is removed only after one release of being marked as going away. Version 2 has no such word and no marker yet. The marker is added to the hello before the first word needs it.
 - Version 2 broke version 1 once, on purpose: clocks left the wire with world clocks. `clocks` left `view` and `resume`, `pause` left `status`, `PAUSED_CLOCK` left the refusal codes, and `view.status` became `view.cant_act`. `view.world_meters` was added. The session recorded against version 1 was replaced by one recorded against version 2.
+- Version 2 dropped one field before any release, on purpose: `CHOOSE_PC` no longer lists the open PCs in `detail`, since the hello's `open` already does, so `detail` is always a string. The version stayed 2 because no build had shipped.
 - The recorded session must still replay. Each message it got must still arrive at that seat, in order, with every field it had and the same value. New kinds and fields may come between. Only `seq`, which a new kind moves, and `token`, which each table mints, may differ.
 - The journal and refusal codes stay strict: `spook verify` fails on a code it does not know.

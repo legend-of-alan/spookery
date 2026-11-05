@@ -11,36 +11,28 @@ use crate::text;
 use crate::ws::Connection;
 use crate::Error;
 
-pub async fn run(pc: Option<&str>, addr: SocketAddr, raw: bool) -> Result<(), Error> {
+pub async fn run(addr: SocketAddr, raw: bool) -> Result<(), Error> {
     let mut printer = Printer {
         text: text::PlayerText::new(),
         raw,
         last_seq: 0,
     };
     let mut input = crate::stdin_lines();
-    let (mut seat, hello) = Connection::open(addr, "player").await?;
-    let (words, open) = match hello.body {
-        ServerBody::Hello { words, open, .. } => (words, open),
-        _ => (Vec::new(), Vec::new()),
+    let (seat, hello) = Connection::open(addr, "player").await?;
+    let (words, open, taken) = match hello.body {
+        ServerBody::Hello {
+            words, open, taken, ..
+        } => (words, open, taken),
+        _ => Default::default(),
     };
-    let actor = match pc {
-        Some(token) => parse_pc_id(token)?,
-        None => match open.as_slice() {
-            [] => return Err(Error::Message("No free characters".into())),
-            [only] => only.clone(),
-            many => {
-                // The choice may take longer than the first-message timeout, so dial again after.
-                drop(seat);
-                println!("Choose a character:\n{}", many.join("\n"));
-                let _ = io::stdout().flush();
-                let Some(chosen) = input.recv().await else {
-                    return Ok(());
-                };
-                seat = Connection::open(addr, "player").await?.0;
-                parse_pc_id(&chosen)?
-            }
-        },
+    // The choice may take longer than the first-message timeout, so dial again after.
+    drop(seat);
+    print_text(&list_pcs(&open, &taken));
+    let Some(chosen) = input.recv().await else {
+        return Ok(());
     };
+    let actor = parse_pc_id(&chosen)?;
+    let mut seat = Connection::open(addr, "player").await?.0;
     let (mut here, mut token) =
         take_claim(&mut seat, json!({ "actor": actor }), &mut printer).await?;
     // Made once, so every Ctrl+C is seen, even one that lands mid-print.
@@ -187,6 +179,18 @@ impl Printer {
 fn print_text(text: &str) {
     println!("{text}");
     let _ = io::stdout().flush();
+}
+
+/// The picker: every PC, the taken ones marked in use.
+fn list_pcs(open: &[String], taken: &[String]) -> String {
+    let mut pcs = open.to_vec();
+    pcs.extend(taken.iter().map(|id| format!("{id} (in use)")));
+    pcs.sort();
+    let mut text = format!("Choose a character:\n{}", pcs.join("\n"));
+    if open.is_empty() {
+        text.push_str("\nNone is free.");
+    }
+    text
 }
 
 fn parse_pc_id(token: &str) -> Result<String, Error> {

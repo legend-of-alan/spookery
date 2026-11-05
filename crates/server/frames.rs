@@ -1,8 +1,8 @@
 //! Engine output as message bodies. The one place a `protocol::Refusal` is rendered.
 
 use crate::protocol::{
-    self, CommitBody, Detail, NoteView, PackSummary, QueuedMove, Roll, Say, ServerBody,
-    StatusPresence, TableStatus,
+    self, CommitBody, NoteView, PackSummary, QueuedMove, Roll, Say, ServerBody, StatusPresence,
+    TableStatus,
 };
 use spookery_engine::{
     self as engine, Intent, MoveReport, Note, Presence, RoundOutput, State, TapeRecord,
@@ -13,7 +13,7 @@ use spookery_engine::{
 pub(super) fn render_refused_move(refusal: &engine::Refusal) -> protocol::Refusal {
     protocol::Refusal {
         code: protocol::Code::Known(refusal.code),
-        detail: refusal.detail.clone().map(Detail::One),
+        detail: refusal.detail.clone(),
     }
 }
 

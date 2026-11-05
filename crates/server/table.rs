@@ -16,8 +16,8 @@ use super::idle::{self, now_stamp};
 use super::seat::{Claim, ConnId, Connection, FrameSender, Seats};
 use super::Error;
 use crate::protocol::{
-    self, is_built_in, parse_args, ClaimArgs, ClientBody, ClientMessage, Detail, MoveArgs, NoArgs,
-    SayArgs, Seat, ServerBody, ServerMessage, VERSION, WORDS,
+    is_built_in, parse_args, ClaimArgs, ClientBody, ClientMessage, MoveArgs, NoArgs, SayArgs, Seat,
+    ServerBody, ServerMessage, VERSION, WORDS,
 };
 
 /// The host's cap. A pack may define more PCs than this.
@@ -202,10 +202,10 @@ impl Table {
             .filter(|word| word.seat == seat)
             .map(|word| word.name.to_string())
             .collect();
-        let mut open = Vec::new();
+        let (mut open, mut taken) = (Vec::new(), Vec::new());
         if seat == Seat::Player {
             words.extend(self.verbs.iter().cloned());
-            open = self.list_open_pcs();
+            (open, taken) = self.open_and_taken();
         }
         let hello = ServerMessage {
             id: None,
@@ -215,19 +215,26 @@ impl Table {
                 version: VERSION,
                 words,
                 open,
+                taken,
             },
         };
         self.send(conn, hello);
         Ok(())
     }
 
-    /// The PCs a claim may take now. None once every player seat is held.
-    fn list_open_pcs(&self) -> Vec<String> {
+    /// The hello's `open` and `taken`: the PCs a claim may take now, and the PCs held now.
+    /// None is open once every player seat is held.
+    fn open_and_taken(&self) -> (Vec<String>, Vec<String>) {
         let presence = self.seats.presence();
+        let (mut open, taken): (Vec<String>, Vec<String>) = self
+            .world
+            .pcs()
+            .cloned()
+            .partition(|id| !presence.actors_present.contains(id));
         if presence.actors_present.len() >= MAX_PLAYER_SEATS {
-            return Vec::new();
+            open.clear();
         }
-        self.world.free_pcs(&presence)
+        (open, taken)
     }
 
     fn handle_message(&mut self, conn: ConnId, received: Result<ClientMessage, Rejection>) {
@@ -260,11 +267,7 @@ impl Table {
             return self.claim(conn, id, &args);
         }
         let Some(actor_id) = self.seats.claim_of(conn).map(|claim| claim.actor.clone()) else {
-            let free = protocol::Refusal {
-                code: protocol::Code::Known(Reason::ChoosePc),
-                detail: Some(Detail::Many(self.list_open_pcs())),
-            };
-            return self.reply(conn, id, ServerBody::Refused(free));
+            return self.reply(conn, id, ServerBody::Refused(Reason::ChoosePc.into()));
         };
         let presence = self.seats.presence();
         let body = match word.as_str() {
