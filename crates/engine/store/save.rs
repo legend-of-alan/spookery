@@ -11,7 +11,7 @@ use crate::model::meter::MeterLive;
 use crate::model::modifier;
 use crate::model::{sort_unique, State};
 use crate::rules::effect::Holder;
-use crate::store::records::AddedMeter;
+use crate::store::records::{AddedMeter, DroppedMeter};
 use crate::Reason;
 
 pub(crate) fn emit_options() -> SerializerOptions {
@@ -236,6 +236,26 @@ pub(crate) fn missing_meters(canon: &Canon, state: &State) -> Vec<AddedMeter> {
     added
 }
 
+/// Meters an actor or the world lists that the pack no longer gives it. A place holds no meters.
+pub(crate) fn stale_meters(canon: &Canon, state: &State) -> Vec<DroppedMeter> {
+    let mut dropped = Vec::new();
+    let mut drop_stale = |carrier: Holder, live: &BTreeMap<String, MeterLive>| {
+        for id in live.keys() {
+            if canon.meter_def(&carrier, id).is_none() {
+                dropped.push(DroppedMeter {
+                    id: id.clone(),
+                    carrier: carrier.clone(),
+                });
+            }
+        }
+    };
+    for (id, actor) in &state.actors {
+        drop_stale(Holder::Actor(id.clone()), &actor.meters);
+    }
+    drop_stale(Holder::World, &state.world_meters);
+    dropped
+}
+
 /// Modifiers some actor holds that the pack no longer defines, or now defines on another meter.
 pub(crate) fn stale_modifiers(canon: &Canon, state: &State) -> Vec<String> {
     let mut stale: Vec<String> = state
@@ -249,15 +269,16 @@ pub(crate) fn stale_modifiers(canon: &Canon, state: &State) -> Vec<String> {
     stale
 }
 
-/// Migrate a save: give each holder the `meters` it lacks, at their `start`, and drop the
-/// `dropped` modifiers from every actor, then stamp `pack_rev` and `state_rev`. Live migrate
-/// and replay both call this. It does not touch the disk.
+/// Migrate a save: give each holder the `meters` it lacks, at their `start`, drop the
+/// `dropped_modifiers` from every actor and each `dropped_meters` from its holder, then stamp
+/// `pack_rev` and `state_rev`. Live migrate and replay both call this. It does not touch the disk.
 pub fn migrate(
     mut state: State,
     pack_rev: &str,
     state_rev: u64,
     meters: &[AddedMeter],
-    dropped: &[String],
+    dropped_modifiers: &[String],
+    dropped_meters: &[DroppedMeter],
 ) -> State {
     for meter in meters {
         let start = MeterLive {
@@ -284,7 +305,14 @@ pub fn migrate(
         }
     }
     for actor in state.actors.values_mut() {
-        actor.modifiers.retain(|id, _| !dropped.contains(id));
+        actor
+            .modifiers
+            .retain(|id, _| !dropped_modifiers.contains(id));
+    }
+    for meter in dropped_meters {
+        if let Ok(live) = state.meters_mut(&meter.carrier) {
+            live.remove(&meter.id);
+        }
     }
     state.pack_rev = pack_rev.to_string();
     state.state_rev = state_rev;

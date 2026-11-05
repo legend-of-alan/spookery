@@ -105,8 +105,16 @@ pub fn commit_migrate(
     let state_rev_before = state.state_rev;
     let state_rev_after = state_rev_before.checked_add(1).ok_or(Reason::OutOfRange)?;
     let added = missing_meters(canon, &state);
-    let dropped = save::stale_modifiers(canon, &state);
-    let state = save::migrate(state, &pack_rev_after, state_rev_after, &added, &dropped);
+    let dropped_modifiers = save::stale_modifiers(canon, &state);
+    let dropped_meters = save::stale_meters(canon, &state);
+    let state = save::migrate(
+        state,
+        &pack_rev_after,
+        state_rev_after,
+        &added,
+        &dropped_modifiers,
+        &dropped_meters,
+    );
     check_save(canon, &state).map_err(|diags| first_reason(&diags))?;
     let emitted = save::emit(&state)?.into_bytes();
     let entry = Record::Migrate(MigrateRecord {
@@ -116,7 +124,8 @@ pub fn commit_migrate(
         state_rev_after: state.state_rev,
         state_hash: blake2s_tagged(&emitted),
         meters: added,
-        dropped_modifiers: dropped,
+        dropped_modifiers,
+        dropped_meters,
         edited,
         prev: String::new(),
         chain: String::new(),
