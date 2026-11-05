@@ -245,7 +245,12 @@ impl<'p> Draft<'p> {
                 .actors
                 .get(id)
                 .and_then(|actor| actor.modifiers.get(key))
-                .map(|live| StateValue::Text(format!("{:?} until {}", live.stacks, live.until)))
+                .map(|live| {
+                    StateValue::Text(format!(
+                        "{:?} until {} max_ticks {}",
+                        live.stacks, live.until, live.max_ticks
+                    ))
+                })
                 .unwrap_or(StateValue::Empty),
             StateKey::ActorBusy(id) => self
                 .state

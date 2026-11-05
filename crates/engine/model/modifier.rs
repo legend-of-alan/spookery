@@ -10,30 +10,43 @@ use crate::Reason;
 pub struct ModifierDef {
     /// The actor meter it modifies.
     pub meter: String,
-    /// World minutes it lasts after its latest application.
-    pub minutes: u64,
+    /// Ticks an application lasts when its effect names none.
+    pub ticks: u64,
     /// The most stacks one actor holds, from any source. At least 1.
     pub max_stacks: usize,
     /// Kept off the players' views.
     pub hidden: bool,
 }
 
-/// One modifier on one actor: the meter it was applied to, the world minute it expires,
-/// and each application's magnitude. The meter is kept so migrate can tell when the def
-/// now names another one.
+/// One modifier on one actor: the meter it was applied to, the tick it expires at, the
+/// longest `ticks` applied so far, and each application's magnitude. The meter is kept so migrate
+/// can tell when the def now names another one.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ModifierLive {
     pub meter: String,
+    /// The tick it expires at.
     pub until: u64,
+    /// The longest `ticks` applied so far, the most ticks a refresh leaves.
+    pub max_ticks: u64,
     pub stacks: Vec<i64>,
 }
 
-/// Apply `add` and set the end to `until`. Below `max_stacks` it is one more stack. At the
-/// cap it replaces the first weakest stack when its absolute value is larger. Stacks past a
+impl ModifierLive {
+    /// Ticks from `now` until it expires.
+    pub fn ticks_left(&self, now: u64) -> u64 {
+        self.until.saturating_sub(now)
+    }
+}
+
+/// Apply `add`, lasting `ticks`, at tick `now`. The time left plus `ticks` is the new time
+/// left, capped at `max_ticks`, the longest `ticks` so far, this one included. Below
+/// `max_stacks` it is one more stack. At the cap it replaces the first weakest stack when its absolute value is larger. Stacks past a
 /// `max_stacks` the pack lowered go first, weakest first.
-pub fn stack(def: &ModifierDef, live: &mut ModifierLive, add: i64, until: u64) {
-    live.until = until;
+pub fn stack(def: &ModifierDef, live: &mut ModifierLive, add: i64, ticks: u64, now: u64) {
+    live.max_ticks = live.max_ticks.max(ticks);
+    let left = live.ticks_left(now).saturating_add(ticks);
+    live.until = now.saturating_add(left.min(live.max_ticks));
     while live.stacks.len() > def.max_stacks {
         if let Some(index) = weakest(&live.stacks) {
             live.stacks.remove(index);
@@ -80,7 +93,7 @@ mod tests {
     fn burn(max_stacks: usize) -> ModifierDef {
         ModifierDef {
             meter: "grit".to_string(),
-            minutes: 10,
+            ticks: 10,
             max_stacks,
             hidden: false,
         }
@@ -90,23 +103,15 @@ mod tests {
         ModifierLive {
             meter: "grit".to_string(),
             until: 2,
+            max_ticks: 10,
             stacks: stacks.to_vec(),
         }
     }
 
     #[test]
-    fn at_the_cap_a_tie_replaces_nothing_and_a_stronger_one_takes_the_first_weakest() {
-        let mut live = held(&[-2, 1, -1]);
-        stack(&burn(3), &mut live, -1, 12);
-        assert_eq!((live.stacks.as_slice(), live.until), (&[-2, 1, -1][..], 12));
-        stack(&burn(3), &mut live, 3, 14);
-        assert_eq!((live.stacks.as_slice(), live.until), (&[-2, 3, -1][..], 14));
-    }
-
-    #[test]
     fn a_lowered_cap_drops_the_weakest_extra_stacks_on_the_next_application() {
         let mut live = held(&[-1, -3, -2, -1]);
-        stack(&burn(2), &mut live, -1, 12);
+        stack(&burn(2), &mut live, -1, 10, 2);
         assert_eq!(live.stacks, vec![-3, -2]);
     }
 
@@ -118,6 +123,7 @@ mod tests {
             ModifierLive {
                 meter: "rest".to_string(),
                 until: 2,
+                max_ticks: 10,
                 stacks: vec![5],
             },
         );

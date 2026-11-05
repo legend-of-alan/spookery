@@ -1,4 +1,4 @@
-//! Modifiers: stacks per application, a refresh on reapply, and one expiry.
+//! Modifiers: stacks per application, ticks added on reapply, and one expiry.
 
 use std::fs;
 use std::path::Path;
@@ -22,7 +22,7 @@ fn add_modifier(pack: &Path, id: &str, meter: &str, extra: &str) {
     let mut text =
         fs::read_to_string(&path).unwrap_or_else(|_| "schema: modifiers\nmodifiers:\n".into());
     text.push_str(&format!(
-        "  - id: {id}\n    meter: {meter}\n    duration: 10m\n{extra}"
+        "  - id: {id}\n    meter: {meter}\n    ticks: 10\n{extra}"
     ));
     fs::write(path, text).unwrap();
     stamp_pack_rev(pack);
@@ -30,6 +30,11 @@ fn add_modifier(pack: &Path, id: &str, meter: &str, extra: &str) {
 
 /// A verb that applies each `(modifier, add)` to `who`: its target, or the actor using it.
 fn add_modifier_verb(pack: &Path, verb: &str, who: &str, applies: &[(&str, i64)]) {
+    add_timed_verb(pack, verb, who, applies, "");
+}
+
+/// As `add_modifier_verb`, with `extra` lines after each effect's `add`.
+fn add_timed_verb(pack: &Path, verb: &str, who: &str, applies: &[(&str, i64)], extra: &str) {
     let target = if who == "target" {
         "\n      target: actor"
     } else {
@@ -38,7 +43,7 @@ fn add_modifier_verb(pack: &Path, verb: &str, who: &str, applies: &[(&str, i64)]
     let effects: String = applies
         .iter()
         .map(|(id, add)| {
-            format!("      - modifier:\n          who: {who}\n          id: {id}\n          add: {add}\n")
+            format!("      - modifier:\n          who: {who}\n          id: {id}\n          add: {add}\n{extra}")
         })
         .collect();
     add_verb(
@@ -80,13 +85,13 @@ fn lowered(pack: &Path, meter: &str) -> i64 {
     base + offset - now.meter_value(&canon, &rowan, meter).unwrap()
 }
 
-/// Minutes from the latest round's world minute until modifier `id` expires.
-fn minutes_left(pack: &Path, id: &str) -> u64 {
+/// Ticks from the latest round until modifier `id` expires.
+fn ticks_left(pack: &Path, id: &str) -> u64 {
     let now = state_of(pack);
-    now.actors["pc_rowan"].modifiers[id].until - now.world_time
+    now.actors["pc_rowan"].modifiers[id].ticks_left(now.world_time)
 }
 
-/// Give pc_rowan these stacks of modifier `id`, expiring `left` minutes from now.
+/// Give pc_rowan these stacks of modifier `id`, expiring `left` ticks from now, after the row's ticks.
 fn hold(pack: &Path, id: &str, stacks: Vec<i64>, left: u64) {
     let def = load_canon(pack).unwrap().modifiers[id].clone();
     edit_save(pack, |now| {
@@ -94,6 +99,7 @@ fn hold(pack: &Path, id: &str, stacks: Vec<i64>, left: u64) {
         let live = ModifierLive {
             meter: def.meter,
             until,
+            max_ticks: def.ticks,
             stacks,
         };
         now.actors
@@ -132,7 +138,7 @@ fn docks_with_one_minute_rounds(world: &mut World) {
     world.pack = Some(pack);
 }
 
-#[given(expr = "{string} modifies {word}, lasts 10 minutes, and has max_stacks {int}")]
+#[given(expr = "{string} modifies {word}, lasts 10 ticks, and has max_stacks {int}")]
 fn modifier_with_a_cap(world: &mut World, id: String, meter: String, cap: i64) {
     add_modifier(
         pack(world),
@@ -142,7 +148,7 @@ fn modifier_with_a_cap(world: &mut World, id: String, meter: String, cap: i64) {
     );
 }
 
-#[given(expr = "{string} modifies {word}, lasts 10 minutes, and has no max_stacks")]
+#[given(expr = "{string} modifies {word}, lasts 10 ticks, and has no max_stacks")]
 fn modifier_without_a_cap(world: &mut World, id: String, meter: String) {
     add_modifier(pack(world), &id, &meter, "");
 }
@@ -159,13 +165,13 @@ fn torch_and_brand(world: &mut World) {
 }
 
 #[given(
-    regex = r"^pc_rowan has \d+ stacks of (\w+) of (-?\d+(?:, -?\d+)* and -?\d+), with (\d+) minutes left$"
+    regex = r"^pc_rowan has \d+ stacks of (\w+) of (-?\d+(?:, -?\d+)* and -?\d+), with (\d+) ticks left$"
 )]
 fn rowan_holds_these_stacks(world: &mut World, id: String, list: String, left: u64) {
     hold(pack(world), &id, numbers(&list), left);
 }
 
-#[given(regex = r"^pc_rowan has (\d+) stacks of (\w+) of (-?\d+) each, with (\d+) minutes left$")]
+#[given(regex = r"^pc_rowan has (\d+) stacks of (\w+) of (-?\d+) each, with (\d+) ticks left$")]
 fn rowan_holds_even_stacks(world: &mut World, count: usize, id: String, add: i64, left: u64) {
     hold(pack(world), &id, vec![add; count], left);
 }
@@ -221,14 +227,31 @@ fn a_verb_applies(world: &mut World, verb: String, id: String, add: i64) {
     hit_rowan(world, &[("pc_wren", &verb)]);
 }
 
-#[when(regex = r"^the (\w+)'s (\d+) minutes pass with no reapply$")]
-fn minutes_pass(world: &mut World, id: String, minutes: u64) {
+#[when(regex = r"^the (\w+)'s (\d+) ticks pass with no reapply$")]
+fn ticks_pass(world: &mut World, id: String, ticks: u64) {
     let pack = world.pack.clone().unwrap();
-    for _ in 1..minutes {
+    for _ in 1..ticks {
         play_round(world, &pack, Vec::new());
     }
     assert_eq!(stacks_of(&pack, &id).len(), 3, "it expired a round early");
     world.summary = play_round(world, &pack, Vec::new()).changed_keys;
+}
+
+#[given(regex = r"^the (\w+) verb applies (\w+) (-?\d+) for (\d+) ticks$")]
+fn verb_applies_for_ticks(world: &mut World, verb: String, id: String, add: i64, ticks: u64) {
+    let extra = format!("          ticks: {ticks}\n");
+    add_timed_verb(pack(world), &verb, "target", &[(&id, add)], &extra);
+}
+
+/// One round with the first verb, `later - 1` empty rounds, then a round with the second.
+#[when(regex = r"^pc_rowan is hit by the (\w+) and, (\d+) ticks? later, by the (\w+)$")]
+fn rowan_is_hit_later(world: &mut World, first: String, later: u64, second: String) {
+    let pack = world.pack.clone().unwrap();
+    hit_rowan(world, &[("pc_wren", &first)]);
+    for _ in 1..later {
+        play_round(world, &pack, Vec::new());
+    }
+    hit_rowan(world, &[("pc_wren", &second)]);
 }
 
 #[when(expr = "pc_rowan is soaked by -1 and then soaked again by -1")]
@@ -261,8 +284,7 @@ fn wren_torments_rowan(world: &mut World) {
 
 #[when(expr = "the pack drops burn and soaked now modifies rest")]
 fn the_pack_moves_soaked(world: &mut World) {
-    let text =
-        "schema: modifiers\nmodifiers:\n  - id: soaked\n    meter: rest\n    duration: 10m\n";
+    let text = "schema: modifiers\nmodifiers:\n  - id: soaked\n    meter: rest\n    ticks: 10\n";
     fs::write(pack(world).join("rules/modifiers.yaml"), text).unwrap();
 }
 
@@ -293,14 +315,14 @@ fn meter_is_lower(world: &mut World, meter: String, by: i64) {
     assert_eq!(lowered(pack(world), &meter), by);
 }
 
-#[then(regex = r"^the (\w+) ends (\d+) minutes from now, not \d+$")]
-fn modifier_ends_from_now(world: &mut World, id: String, minutes: u64) {
-    assert_eq!(minutes_left(pack(world), &id), minutes);
+#[then(regex = r"^the (\w+) has (\d+) ticks left(?:, .*)?$")]
+fn modifier_has_ticks_left(world: &mut World, id: String, ticks: u64) {
+    assert_eq!(ticks_left(pack(world), &id), ticks);
 }
 
-#[then(regex = r"^(\w+) ends (\d+) minutes after the second soaking$")]
-fn modifier_ends_after_the_second(world: &mut World, id: String, minutes: u64) {
-    assert_eq!(minutes_left(pack(world), &id), minutes);
+#[then(regex = r"^(\w+) has (\d+) ticks left after the second soaking$")]
+fn modifier_left_after_the_second(world: &mut World, id: String, ticks: u64) {
+    assert_eq!(ticks_left(pack(world), &id), ticks);
 }
 
 #[then(expr = "pc_rowan has no burn and grit is back")]

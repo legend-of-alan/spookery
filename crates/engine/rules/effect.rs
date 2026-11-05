@@ -35,11 +35,13 @@ pub enum EffectKind {
         delta: i64,
         max: Option<i64>,
     },
-    /// One application of modifier `id`, of magnitude `add`, to an actor.
+    /// One application of modifier `id`, of magnitude `add`, to an actor, lasting `ticks`
+    /// or the row's ticks.
     Modifier {
         actor_id: String,
         id: String,
         add: i64,
+        ticks: Option<u64>,
     },
     Wield {
         actor_id: String,
@@ -114,9 +116,12 @@ impl Effect {
                 };
                 shift_item(draft, &holder, &id, delta, max)
             }
-            EffectKind::Modifier { actor_id, id, add } => {
-                apply_modifier(draft, &actor_id, &id, add)
-            }
+            EffectKind::Modifier {
+                actor_id,
+                id,
+                add,
+                ticks,
+            } => apply_modifier(draft, &actor_id, &id, add, ticks),
             EffectKind::Wield { actor_id, id } => wield(draft, &actor_id, &id),
             EffectKind::Unwield { actor_id } => unwield(draft, &actor_id),
             EffectKind::Location {
@@ -192,6 +197,8 @@ pub(crate) enum EffectRecord {
         actor_id: String,
         id: String,
         add: i64,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        ticks: Option<u64>,
     },
     Wield {
         #[serde(rename = "as", default, skip_serializing_if = "Option::is_none")]
@@ -291,12 +298,18 @@ impl From<Effect> for EffectRecord {
                 delta,
                 max,
             },
-            EffectKind::Modifier { actor_id, id, add } => Self::Modifier {
+            EffectKind::Modifier {
+                actor_id,
+                id,
+                add,
+                ticks,
+            } => Self::Modifier {
                 as_viewer,
                 intent_id,
                 actor_id,
                 id,
                 add,
+                ticks,
             },
             EffectKind::Wield { actor_id, id } => Self::Wield {
                 as_viewer,
@@ -420,8 +433,14 @@ impl TryFrom<EffectRecord> for Effect {
                 actor_id,
                 id,
                 add,
+                ticks,
             } => (
-                EffectKind::Modifier { actor_id, id, add },
+                EffectKind::Modifier {
+                    actor_id,
+                    id,
+                    add,
+                    ticks,
+                },
                 as_viewer,
                 intent_id,
             ),
@@ -606,16 +625,22 @@ pub(crate) fn shift_item(
     }
 }
 
-/// Apply one stack of modifier `id` to an actor that carries its meter. It expires
-/// `minutes` after this round's world minute. The meter's key is tracked when the stacks move.
-fn apply_modifier(draft: &mut Draft, actor_id: &str, id: &str, add: i64) -> Result<(), Reason> {
+/// Apply one stack of modifier `id` to an actor that carries its meter, lasting `ticks` or
+/// the row's ticks, as `modifier::stack` says. The meter's key is tracked when the stacks move.
+fn apply_modifier(
+    draft: &mut Draft,
+    actor_id: &str,
+    id: &str,
+    add: i64,
+    ticks: Option<u64>,
+) -> Result<(), Reason> {
     let canon = draft.shared_canon();
     let def = canon.modifiers.get(id).ok_or(Reason::UnknownId)?;
     let holder = Holder::Actor(actor_id.to_string());
     canon
         .meter_def(&holder, &def.meter)
         .ok_or(Reason::UnknownId)?;
-    let until = draft.state().world_time.saturating_add(def.minutes);
+    let now = draft.state().world_time;
     let actor = draft
         .state()
         .actors
@@ -624,10 +649,11 @@ fn apply_modifier(draft: &mut Draft, actor_id: &str, id: &str, add: i64) -> Resu
     let held = actor.modifiers.get(id);
     let mut next = held.cloned().unwrap_or_else(|| ModifierLive {
         meter: def.meter.clone(),
-        until,
+        until: now,
+        max_ticks: 0,
         stacks: Vec::new(),
     });
-    modifier::stack(def, &mut next, add, until);
+    modifier::stack(def, &mut next, add, ticks.unwrap_or(def.ticks), now);
     let changed = held != Some(&next);
     if held.map(|live| &live.stacks) != Some(&next.stacks) {
         draft.track(StateKey::ActorMeter(

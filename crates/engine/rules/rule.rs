@@ -252,11 +252,13 @@ pub enum EffectTemplate {
         value: bool,
         resist: Option<ResistSpec>,
     },
-    /// One application of modifier `id` to an actor, with magnitude `add`.
+    /// One application of modifier `id` to an actor, with magnitude `add`, lasting `ticks`
+    /// or the row's ticks.
     Modifier {
         who: Who,
         id: String,
         add: Expr,
+        ticks: Option<u64>,
     },
     Location {
         to: LocationTo,

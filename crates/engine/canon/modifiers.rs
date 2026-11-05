@@ -1,10 +1,10 @@
-//! The modifier list in `rules/modifiers.yaml`: each modifier's meter, duration and cap.
+//! The modifier list in `rules/modifiers.yaml`: each modifier's meter, ticks and cap.
 
 use std::collections::BTreeMap;
+use std::num::NonZeroU64;
 
 use serde::Deserialize;
 
-use crate::canon::rule_list::minutes_of;
 use crate::canon::source::{load_tagged, Diags, FileText, Locator, Problem, MODIFIERS_SCHEMA};
 use crate::diagnostic::Diagnostic;
 use crate::model::meter::MeterDef;
@@ -42,7 +42,6 @@ pub(super) fn load_modifiers(
             .into_diagnostic()
         };
         let id = &entry.id;
-        let minutes = minutes_of(&entry.duration);
         let max_stacks = usize::try_from(entry.max_stacks.unwrap_or(1)).unwrap_or(0);
         let checks = [
             (
@@ -59,15 +58,6 @@ pub(super) fn load_modifiers(
                     entry.meter
                 ),
                 "name a meter in rules/meters.yaml or a cast file",
-            ),
-            (
-                minutes.is_err(),
-                "duration:",
-                format!(
-                    "modifier '{id}' lasts '{}', which is not a duration",
-                    entry.duration
-                ),
-                "write 30s, 10m, 2h, or 1d",
             ),
             (
                 max_stacks == 0,
@@ -87,17 +77,16 @@ pub(super) fn load_modifiers(
             .filter(|(failed, ..)| *failed)
             .map(|(_, key, message, hint)| refuse(key, message, hint))
             .collect();
-        match minutes {
-            Ok(minutes) if found.is_empty() => {
-                let def = ModifierDef {
-                    meter: entry.meter,
-                    minutes,
-                    max_stacks,
-                    hidden: entry.hidden,
-                };
-                modifiers.insert(entry.id, def);
-            }
-            _ => diags.extend(found),
+        if found.is_empty() {
+            let def = ModifierDef {
+                meter: entry.meter,
+                ticks: entry.ticks.get(),
+                max_stacks,
+                hidden: entry.hidden,
+            };
+            modifiers.insert(entry.id, def);
+        } else {
+            diags.extend(found);
         }
     }
     diags.into_result(modifiers)
@@ -116,7 +105,8 @@ struct ModifiersFile {
 struct ModifierYaml {
     id: String,
     meter: String,
-    duration: String,
+    /// The shape refuses 0, as it refuses any non-number.
+    ticks: NonZeroU64,
     max_stacks: Option<i64>,
     #[serde(default)]
     hidden: bool,

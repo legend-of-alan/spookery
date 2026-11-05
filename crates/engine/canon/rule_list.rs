@@ -306,6 +306,8 @@ pub struct ModifierEffectYaml {
     pub who: Spanned<String>,
     pub id: String,
     pub add: Spanned<ExprYaml>,
+    /// Overrides the row's `ticks`. The shape refuses 0, as on the row.
+    pub ticks: Option<std::num::NonZeroU64>,
 }
 
 #[derive(Deserialize)]
@@ -776,7 +778,7 @@ fn counts_of(yaml: &Counts) -> Result<Vec<(String, Expr)>, Fault> {
     }
 }
 
-pub(super) fn minutes_of(text: &str) -> Result<u64, String> {
+fn minutes_of(text: &str) -> Result<u64, String> {
     let (count, unit) = text
         .char_indices()
         .find(|(_, ch)| !ch.is_ascii_digit())
@@ -898,6 +900,7 @@ fn effect_of(yaml: &EffectYaml) -> Result<EffectTemplate, Fault> {
             who: who_of(&modifier.who)?,
             id: modifier.id.clone(),
             add: expr_of(&modifier.add)?,
+            ticks: modifier.ticks.map(std::num::NonZeroU64::get),
         });
     }
     if let Some(location) = &yaml.location {
