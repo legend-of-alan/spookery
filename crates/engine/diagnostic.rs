@@ -267,20 +267,10 @@ pub(crate) fn yaml_diagnostic(file: &str, err: &YamlError, line_base: u32) -> Di
     diag
 }
 
-/// Game time is counted in ticks, so a key that counted it in hours, minutes or days names its
-/// tick form.
+/// Game time is counted in ticks, so a key that counted it in minutes names its tick form.
 fn unknown_field_hint(field: &str) -> String {
     match field {
-        "hour" | "day_tick" => {
-            "write cycle with name, from and to, naming a cycle from rules/budget.yaml".to_string()
-        }
         "time" | "minutes" => "write ticks, the game time as a whole number of ticks".to_string(),
-        "ticks_per_day" => {
-            "name the cycle's length in ticks under cycles, as day: 1440".to_string()
-        }
-        "idle_acts_per_day" => {
-            "write idle_acts_per_window, with idle_act_window_ticks for the window".to_string()
-        }
         _ => "remove it or spell a field this file allows".to_string(),
     }
 }

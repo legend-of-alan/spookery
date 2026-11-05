@@ -15,10 +15,6 @@ use crate::World;
 
 pub(crate) const EVENING: u64 = 1290;
 
-/// Mira's restock window in the docks pack, as `cast/mira.md` writes it.
-pub(crate) const MIRA_RESTOCK_CYCLE: &str =
-    "      - cycle:\n          name: day\n          from: 480\n          to: 960\n";
-
 /// The first word of `line`, and the rest of it when there is any.
 pub(crate) fn split_line(line: &str) -> (&str, Option<&str>) {
     line.split_once(' ')
@@ -180,16 +176,6 @@ fn break_pack(pack: &Path, fault: &str) {
             "idle_act_window_ticks: 1440\n",
             "idle_act_window_ticks: 0\n",
         ),
-        "a leftover ticks_per_day" => replace_in_file(
-            &pack.join("rules/budget.yaml"),
-            "cycles:\n",
-            "ticks_per_day: 1440\ncycles:\n",
-        ),
-        "a leftover idle_acts_per_day" => replace_in_file(
-            &pack.join("rules/budget.yaml"),
-            "idle_acts_per_window: 3\n",
-            "idle_acts_per_day: 3\n",
-        ),
         "a zero-tick cycle" => replace_in_file(
             &pack.join("rules/budget.yaml"),
             "  day: 1440\n",
@@ -204,16 +190,6 @@ fn break_pack(pack: &Path, fault: &str) {
             &pack.join("cast/mira.md"),
             "          name: day\n",
             "          name: tide\n",
-        ),
-        "a leftover day_tick" => replace_in_file(
-            &pack.join("cast/mira.md"),
-            MIRA_RESTOCK_CYCLE,
-            "      - day_tick:\n          from: 480\n          to: 960\n",
-        ),
-        "a leftover hour" => replace_in_file(
-            &pack.join("cast/mira.md"),
-            MIRA_RESTOCK_CYCLE,
-            "      - hour:\n          from: 8\n          to: 16\n",
         ),
         "an exit cost in minutes" => replace_in_file(
             &pack.join("world/places/docks_shop.md"),

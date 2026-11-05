@@ -41,13 +41,9 @@ Feature: spook check explains a broken pack
       | zero round interval          | rules/budget.yaml          | SCHEMA            | round_every_real_seconds           |
       | zero idle ticks              | rules/budget.yaml          | SCHEMA            | idle_ticks_per_round               |
       | zero idle window             | rules/budget.yaml          | SCHEMA            | idle_act_window_ticks              |
-      | a leftover ticks_per_day     | rules/budget.yaml          | SCHEMA            | under cycles                       |
-      | a leftover idle_acts_per_day | rules/budget.yaml          | SCHEMA            | write idle_acts_per_window         |
       | a zero-tick cycle            | rules/budget.yaml          | SCHEMA            | cycle day is 0                     |
       | a cycle past its length      | cast/mira.md               | SCHEMA            | cycle bound is not below cycle day |
       | an unknown cycle             | cast/mira.md               | SCHEMA            | no cycle tide                      |
-      | a leftover day_tick          | cast/mira.md               | SCHEMA            | write cycle                        |
-      | a leftover hour              | cast/mira.md               | SCHEMA            | write cycle                        |
       | an exit cost in minutes      | world/places/docks_shop.md | SCHEMA            | write ticks                        |
 
   Scenario: Two problems in two files are both reported

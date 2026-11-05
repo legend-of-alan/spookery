@@ -241,8 +241,8 @@ wrap past the cycle's end. Idle and live acts each have a cap per window of
 ticks, and a round that crosses the end of a window gives that count back.
 Players and the GM see plain ticks, as `until tick 1300`. Check refuses a cycle
 length or an act window of 0, a `cycle` that names no cycle in the budget, a
-bound at or past the cycle's length, and a `day_tick`, `hour` or `minutes` key,
-with a hint that names the tick form.
+bound at or past the cycle's length. A leftover `minutes` key gets a hint that
+names `ticks`.
 
 Tested in `features/rules/game_time_counts_in_ticks.feature`,
 `features/seats/a_player_knows_the_place.feature`, and
