@@ -79,8 +79,8 @@ pub(super) fn add_cast(
     diags.keep(rule_list::compile(&page.file, file.rules, &Owner::Cast(id)))
 }
 
-fn load_cast(file: &str, yaml: &str, line_base: u32) -> Result<CastFile, Vec<Diagnostic>> {
-    let parsed: CastFile = load_tagged(file, yaml, CAST_SCHEMA, line_base)?;
+fn load_cast(file: &str, yaml: &str, line_base: u32) -> Result<CastDoc, Vec<Diagnostic>> {
+    let parsed: CastDoc = load_tagged(file, yaml, CAST_SCHEMA, line_base)?;
     let source = FileText {
         file,
         text: yaml,
@@ -120,7 +120,7 @@ fn load_cast(file: &str, yaml: &str, line_base: u32) -> Result<CastFile, Vec<Dia
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct CastFile {
+struct CastDoc {
     #[serde(rename = "schema")]
     _schema: String,
     id: String,
