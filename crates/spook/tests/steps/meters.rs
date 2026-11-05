@@ -6,7 +6,7 @@ use std::path::Path;
 use cucumber::{given, then, when};
 use serde_json::Value;
 use spookery_engine::testing::state_of;
-use spookery_engine::{emit_save, load_canon, parse_save, Holder, MeterLive, Presence};
+use spookery_engine::{load_canon, Holder, MeterLive, Presence};
 
 use super::common::replace_in_file;
 use super::record::read_extra_steps;
@@ -651,112 +651,6 @@ fn the_catch_up_view_lists_dawn(world: &mut World, value: i64) {
 fn it_does_not_list_doom(world: &mut World) {
     let meters = catch_up_meters(world);
     assert!(meters.iter().all(|(id, _)| id != "doom"), "{meters:?}");
-}
-
-/// One clock as the rules before meters saved it: its id, its owners and its value.
-type OldClock<'a> = (&'a str, &'a [&'a str], i64);
-
-/// Rewrite the pack's save as the rules before meters wrote it: `rules_rev` 11, the last with
-/// clocks, a pause, and these clocks in place of the meters that replaced them.
-fn write_old_save(world: &mut World, clocks: &[OldClock]) {
-    let pack = world
-        .pack
-        .get_or_insert_with(|| copy_docks("old-save"))
-        .clone();
-    let path = pack.join("state/save.yaml");
-    let mut now = parse_save(&fs::read_to_string(&path).unwrap()).unwrap();
-    for actor in now.actors.values_mut() {
-        actor.meters.remove("assassination_debt");
-        actor.meters.remove("shop_day");
-    }
-    now.world_meters.clear();
-    let rows: String = clocks
-        .iter()
-        .map(|(id, owners, value)| {
-            let owners = match owners {
-                [] => "    owners: []\n".to_string(),
-                _ => {
-                    let listed: String = owners.iter().map(|id| format!("      - {id}\n")).collect();
-                    format!("    owners:\n{listed}")
-                }
-            };
-            format!("  {id}:\n    value: {value}\n    max: 6\n    requires_presence: false\n{owners}    paused: false\n")
-        })
-        .collect();
-    let rev = spookery_engine::testing::RULES_REV;
-    let text = emit_save(&now)
-        .unwrap()
-        .replacen(&format!("rules_rev: {rev}\n"), "rules_rev: 11\n", 1)
-        .replacen(
-            "places:\n",
-            "pause:\n  presence_clocks: paused\nplaces:\n",
-            1,
-        )
-        .replacen("notes: []\n", &format!("clocks:\n{rows}notes: []\n"), 1);
-    fs::write(path, text).unwrap();
-}
-
-#[given(
-    expr = "a docks save from before meters, with Mira's {string} clock at {int} and pc_rowan's {string} clock at {int}"
-)]
-fn an_old_save_with_owned_clocks(
-    world: &mut World,
-    mira: String,
-    at: i64,
-    rowan: String,
-    debt: i64,
-) {
-    write_old_save(
-        world,
-        &[(&mira, &["mira"], at), (&rowan, &["pc_rowan"], debt)],
-    );
-}
-
-#[given(expr = "a docks save from before meters, with an unowned {string} clock at {int}")]
-fn an_old_save_with_an_unowned_clock(world: &mut World, id: String, at: i64) {
-    write_old_save(world, &[(&id, &[], at)]);
-}
-
-#[given(expr = "a docks save from before meters, with a {string} clock owned by Mira and Bram")]
-fn an_old_save_with_a_shared_clock(world: &mut World, id: String) {
-    write_old_save(world, &[(&id, &["bram", "mira"], 1)]);
-}
-
-#[when(expr = "the author runs spook migrate")]
-fn the_author_runs_spook_migrate(world: &mut World) {
-    let output = support::run_spook(&["migrate", &support::pack_arg(pack(world))]);
-    world.code = output.status.code();
-    world.stdout = String::from_utf8_lossy(&output.stdout).into_owned();
-    world.stderr = String::from_utf8_lossy(&output.stderr).into_owned();
-}
-
-#[then(expr = "migrate exits {int}")]
-fn migrate_exits(world: &mut World, code: i32) {
-    assert_eq!(world.code, Some(code), "{}\n{}", world.stdout, world.stderr);
-}
-
-#[then(expr = "migrate exits {int} saying {string}")]
-fn migrate_exits_saying(world: &mut World, code: i32, text: String) {
-    migrate_exits(world, code);
-    assert!(
-        world.stderr.contains(&text),
-        "missing {text}\n{}",
-        world.stderr
-    );
-}
-
-#[then(expr = "Mira's shop_day meter is {int}")]
-fn miras_shop_day_is(world: &mut World, value: i64) {
-    assert_eq!(value_on(pack(world), &mira(), "shop_day"), Some(value));
-}
-
-#[then(expr = "pc_rowan's assassination_debt meter is {int}")]
-fn rowans_debt_is(world: &mut World, value: i64) {
-    let rowan = Holder::Actor("pc_rowan".to_string());
-    assert_eq!(
-        value_on(pack(world), &rowan, "assassination_debt"),
-        Some(value)
-    );
 }
 
 #[given(expr = "a verb narrates {string} with no to")]

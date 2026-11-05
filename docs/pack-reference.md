@@ -29,7 +29,7 @@ A rule's owner is the file it lives in. The full id is `verb:<id>`, `place:<plac
 
 A verb uses the wielded item's rule for it, then the target item's rule, then the target actor's, then the rule on the current place, then `rules/verbs.yaml`. A cast member's verb rule is picked by naming them while they share the actor's place, and a bare verb never reaches it. A player's `help` lists a verb only where this order reaches a rule for it and that rule's `if` holds now. When no rule matches, the move is refused before the round with `NOT_IN_SPEC`, and the turn is not spent. A word is a verb only when some rule in the pack names it, so `use` is a verb only in a pack where some rule says `verb: use`. A habit runs only for the NPC whose cast file holds it.
 
-`pack_rev` in the save is the hash of `world/`, `cast/`, and `rules/`. After those files change, `spook migrate <pack>` stores the new hash. Migrate does not fix a shape error.
+`pack_rev` in the save is the hash of `world/`, `cast/`, and `rules/`. After those files change, `spook migrate <pack>` stores the new hash. What migrate promises is in `docs/engine-guarantees.md`. Migrate does not fix a shape error.
 
 ## Pack
 

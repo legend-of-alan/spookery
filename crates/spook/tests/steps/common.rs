@@ -92,11 +92,6 @@ fn break_pack(pack: &Path, fault: &str) {
             "  - id: wait\n",
             "  - id: grit\n",
         ),
-        "old format tag" => replace_in_file(
-            &pack.join("rules/verbs.yaml"),
-            "schema: verbs\n",
-            &format!("schema: verbs/{}\n", "v0"),
-        ),
         "unknown format tag" => replace_in_file(
             &pack.join("rules/verbs.yaml"),
             "schema: verbs\n",
@@ -190,11 +185,6 @@ fn break_pack(pack: &Path, fault: &str) {
             &pack.join("cast/mira.md"),
             "          name: day\n",
             "          name: tide\n",
-        ),
-        "an exit cost in minutes" => replace_in_file(
-            &pack.join("world/places/docks_shop.md"),
-            "      ticks: 2\n",
-            "      minutes: 2\n",
         ),
         other => panic!("unknown fault {other}"),
     }

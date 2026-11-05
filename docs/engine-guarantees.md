@@ -77,6 +77,8 @@ unrelated roll in the same round does not move them, and verify reproduces
 them. A number in a rule can roll dice, including an NPC habit's effect. Those faces are seeded with the
 round, written on the journal line, and shown to the GM. `spook verify` replays
 the journal, rolls them again from that seed, and checks the save. A condition's value does not roll; dice there fail the pack check. A change of who is present, and a migrate between rounds, verify too.
+A pack author can edit the pack's world, cast, or rules while a save exists,
+and migrate fits that save to the new canon.
 Migrate may carry a hand edit of `save.yaml`. It writes a checkpoint of the
 migrated save, replay restarts from that checkpoint, and full verification
 trusts the edit and names it as `operator edit trusted at state_rev N`. A hand
@@ -86,6 +88,7 @@ replay to its recorded hash is refused with `JOURNAL_DIVERGED`.
 
 Tested in `features/replay/the_journal_verifies.feature`,
 `features/commit/a_hand_edit_waits_for_migrate.feature`,
+`features/meters/modifiers_stack_and_expire.feature`,
 `features/replay/typed_journal_records.feature`,
 `features/replay/journal_bundles.feature`,
 `features/round/each_roll_has_its_own_seed.feature`,
@@ -188,12 +191,8 @@ same room. A world meter is hidden from players unless the pack shows it. A
 shown one is told to every player, and its current value is in each view, so a
 player who comes back sees it. The GM sees every meter change. A meter never
 pauses: a rule that should wait for a seated player says so in its `if`.
-Migrate moves each clock of a save from before meters onto the meter that
-replaced it, the world's for a clock with no owner, and refuses a clock with
-more than one owner.
 
-Tested in `features/meters/meters_belong_to_their_holder.feature`,
-`features/meters/migrate_moves_clocks_onto_meters.feature`, and
+Tested in `features/meters/meters_belong_to_their_holder.feature` and
 `features/meters/the_debt_waits_while_no_player_is_seated.feature`.
 
 ## Modifiers
@@ -240,9 +239,8 @@ reads the tick within its named cycle, world time modulo the length, and may
 wrap past the cycle's end. Idle and live acts each have a cap per window of
 ticks, and a round that crosses the end of a window gives that count back.
 Players and the GM see plain ticks, as `until tick 1300`. Check refuses a cycle
-length or an act window of 0, a `cycle` that names no cycle in the budget, a
-bound at or past the cycle's length. A leftover `minutes` key gets a hint that
-names `ticks`.
+length or an act window of 0, a `cycle` that names no cycle in the budget, or a
+bound at or past the cycle's length.
 
 Tested in `features/rules/game_time_counts_in_ticks.feature`,
 `features/seats/a_player_knows_the_place.feature`, and
