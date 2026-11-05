@@ -18,7 +18,7 @@ pub struct ModifierDef {
     pub hidden: bool,
 }
 
-/// One modifier on one actor: the meter it was applied to, the world minute it wears off,
+/// One modifier on one actor: the meter it was applied to, the world minute it expires,
 /// and each application's magnitude. The meter is kept so migrate can tell when the def
 /// now names another one.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

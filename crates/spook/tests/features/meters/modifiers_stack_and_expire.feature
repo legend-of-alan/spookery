@@ -1,4 +1,4 @@
-Feature: Modifiers stack per application, refresh on reapply, and wear off at once
+Feature: Modifiers stack per application, refresh on reapply, and expire at once
 
   Background:
     Given the docks pack with one-minute rounds and pc_rowan's grit at 20, with three PCs in the shop
@@ -27,7 +27,7 @@ Feature: Modifiers stack per application, refresh on reapply, and wear off at on
     Then pc_rowan still has 4 stacks of -2 and grit is 8 lower
     And the burn ends 10 minutes from now, not 2
 
-  Scenario: Burn wears off and all stacks drop at once
+  Scenario: Burn expires and all its stacks go at once
     Given "burn" modifies grit, lasts 10 minutes, and has max_stacks 4
     And pc_rowan has 3 stacks of burn
     When the burn's 10 minutes pass with no reapply

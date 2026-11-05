@@ -77,8 +77,8 @@ impl<'p> Draft<'p> {
         Ok(())
     }
 
-    /// Drop every modifier whose minute has come by `world_time`, all its stacks at once.
-    pub(crate) fn wear_off_modifiers(&mut self, world_time: u64) -> Result<(), Reason> {
+    /// Expire every modifier whose minute has come by `world_time`, all its stacks at once.
+    pub(crate) fn expire_modifiers(&mut self, world_time: u64) -> Result<(), Reason> {
         let due: Vec<(String, String, String)> = self
             .state
             .actors

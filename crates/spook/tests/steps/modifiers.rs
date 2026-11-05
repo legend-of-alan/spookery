@@ -1,4 +1,4 @@
-//! Modifiers: stacks per application, a refresh on reapply, and one wear-off.
+//! Modifiers: stacks per application, a refresh on reapply, and one expiry.
 
 use std::fs;
 use std::path::Path;
@@ -80,13 +80,13 @@ fn lowered(pack: &Path, meter: &str) -> i64 {
     base + offset - now.meter_value(&canon, &rowan, meter).unwrap()
 }
 
-/// Minutes from the latest round's world minute until modifier `id` wears off.
+/// Minutes from the latest round's world minute until modifier `id` expires.
 fn minutes_left(pack: &Path, id: &str) -> u64 {
     let now = state_of(pack);
     now.actors["pc_rowan"].modifiers[id].until - now.world_time
 }
 
-/// Give pc_rowan these stacks of modifier `id`, wearing off `left` minutes from now.
+/// Give pc_rowan these stacks of modifier `id`, expiring `left` minutes from now.
 fn hold(pack: &Path, id: &str, stacks: Vec<i64>, left: u64) {
     let def = load_canon(pack).unwrap().modifiers[id].clone();
     edit_save(pack, |now| {
@@ -227,7 +227,7 @@ fn minutes_pass(world: &mut World, id: String, minutes: u64) {
     for _ in 1..minutes {
         play_round(world, &pack, Vec::new());
     }
-    assert_eq!(stacks_of(&pack, &id).len(), 3, "it wore off a round early");
+    assert_eq!(stacks_of(&pack, &id).len(), 3, "it expired a round early");
     world.summary = play_round(world, &pack, Vec::new()).changed_keys;
 }
 

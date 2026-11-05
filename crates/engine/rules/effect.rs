@@ -606,7 +606,7 @@ pub(crate) fn shift_item(
     }
 }
 
-/// Apply one stack of modifier `id` to an actor that carries its meter. It wears off
+/// Apply one stack of modifier `id` to an actor that carries its meter. It expires
 /// `minutes` after this round's world minute. The meter's key is tracked when the stacks move.
 fn apply_modifier(draft: &mut Draft, actor_id: &str, id: &str, add: i64) -> Result<(), Reason> {
     let canon = draft.shared_canon();
