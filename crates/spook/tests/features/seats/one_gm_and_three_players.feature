@@ -6,13 +6,6 @@ Feature: One GM seat and up to three player seats
     Then players is 3
     And the present actors are the three docks PCs
 
-  Scenario: A fourth player is refused when the pack defines four PCs
-    Given a docks table whose pack defines four PCs
-    When three players sit
-    And a fourth player connects
-    Then the hello is refused with "TABLE_FULL"
-    And save.yaml is unchanged since the seat
-
   Scenario: A claim for a held PC changes nothing
     Given a docks table with a seated player
     When a second player connects

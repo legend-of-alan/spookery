@@ -13,7 +13,7 @@ Feature: The character picker shows every PC
       None is free.
       """
 
-  Scenario: With every seat held play lists an unheld PC as free
+  Scenario: With every seat held play lists a free PC and picking it is refused as full
     Given a docks table whose pack defines four PCs
     When three players sit
     And another play picks pc_lark on that table
