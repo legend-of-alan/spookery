@@ -146,13 +146,16 @@ meter in that round. Two rules that set each other's flags stop at depth 4, and 
 records the stop. Check warns when change rules set each other's watched
 values. A narrate or note on a change rule that can reach a viewer who cannot
 see that change is rejected. A change rule may roll. Verify reproduces that
-roll, and it passes after a round that fired a change rule.
+roll, and it passes after a round that fired a change rule. A world flag or world
+meter change fires each watching rule once, whoever is seated, with no one as
+its subject, so check refuses `self` and `here` in that rule. Its narrate with
+no `to` reaches every player present.
 
 A narrate line reaches each person it names, unless the line would show a fact
 that person is not allowed to know. Someone in another room does not hear a line
 addressed to the room. Reveal gives the person it names a fact, and a hidden exit
-that fact uncovers then shows up for them. A world flag can be set, and a later
-rule sees it for a person who is present. Each viewer gets their own change
+that fact uncovers then shows up for them. A world flag can be set, and a rule
+that watches it fires once. Each viewer gets their own change
 summary. The GM sees every change. Tick counters stay with the GM. A learned
 fact is told only to that person. An item change in a place is seen by the
 players there. A message is seen only by the people allowed to see it.
@@ -162,16 +165,17 @@ wielded weapon is seen by the players in the same place. No player sees a flag
 change, their own or the world's. Verify passes after rounds that fired these
 rules.
 
-Tested in `features/rules/triggers.feature` and
-`features/rules/trigger_delivery.feature`.
+Tested in `features/rules/triggers.feature`,
+`features/rules/trigger_delivery.feature`, and
+`features/rules/a_world_change_rule_runs_once.feature`.
 
 ## Meters
 
 A meter lives on the holder whose file declares it: every actor for
 `rules/meters.yaml`, one actor for a cast file's `meters`, and the world for
 `world/meters.yaml`. A world meter is held once, so every rule that names
-`who: world` reads and writes the same value, and its change rules fire for the
-players present. The world and an actor may each carry a meter of one name, and
+`who: world` reads and writes the same value, and its change rules fire once per
+change, whoever is seated. The world and an actor may each carry a meter of one name, and
 `who` picks which. Check refuses a cast meter whose id `rules/meters.yaml` or
 another cast file already has, and a rule whose fixed `who` names a meter that
 holder does not carry.

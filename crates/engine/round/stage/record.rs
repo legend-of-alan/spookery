@@ -81,7 +81,7 @@ mod tests {
                 delta: -1,
                 max: None,
             },
-            viewer: Viewer::Npc("mira".to_string()),
+            viewer: Some(Viewer::Npc("mira".to_string())),
             intent_id: "i".to_string(),
         };
         let line = emit_record(&Record::Round(RoundRecord {

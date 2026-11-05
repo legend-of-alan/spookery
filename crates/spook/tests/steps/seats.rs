@@ -41,26 +41,15 @@ fn a_player_claims(world: &mut World, actor: String) {
     world.scratch = table::claim(world, &actor);
 }
 
-#[then(expr = "the hello is refused with {string} and the missing list is {string}")]
-fn the_hello_is_refused_with_missing(world: &mut World, code: String, missing: String) {
-    the_hello_is_refused_with(world, code);
-    let frame: serde_json::Value = serde_json::from_str(world.scratch.trim()).unwrap();
-    let expected: Vec<String> = serde_json::from_str(&missing).unwrap();
-    let got: Vec<String> = serde_json::from_value(frame["body"]["detail"].clone()).unwrap();
-    assert_eq!(got, expected);
-}
-
 #[then(expr = "the hello reply does not contain {string}")]
 fn the_hello_reply_does_not_contain(world: &mut World, needle: String) {
     assert!(!world.scratch.contains(&needle), "{}", world.scratch);
 }
 
-#[when(expr = "play joins that one-player table with no --as")]
-fn play_joins_that_one_player_table_with_no_as(world: &mut World) {
-    the_player_leaves(world);
+#[when(expr = "the operator runs play on that table")]
+fn the_operator_runs_play_on_that_table(world: &mut World) {
     let addr = table::game_addr(world);
-    world.play = Some(crate::support::spawn(&["play", "--addr", &addr]));
-    super::common::wait_play(world, "You are in");
+    table::run(world, &["play", "--addr", &addr]);
 }
 
 #[then(expr = "save.yaml is unchanged since the table opened")]
@@ -171,11 +160,6 @@ fn three_players_sit(world: &mut World) {
     listen_pack(world);
     let pack = table::pack(world).to_path_buf();
     seat_three(world, &pack);
-}
-
-#[when(expr = "a fourth player connects")]
-fn a_fourth_player_connects(world: &mut World) {
-    world.scratch = table::claim(world, "pc_lark");
 }
 
 #[then(expr = "the hello is refused with {string}")]
@@ -421,10 +405,7 @@ fn three_play_clients_sit_on_a_free_port(world: &mut World) {
     table::listen(world, &pack);
     let addr = table::game_addr(world);
     for id in DOCKS_PCS {
-        let as_arg = format!("player:{id}");
-        world.plays.push(crate::support::spawn(&[
-            "play", "--addr", &addr, "--as", &as_arg,
-        ]));
+        world.plays.push(super::common::spawn_play(&addr, id, &[]));
     }
 }
 

@@ -110,7 +110,11 @@ fn owner_verb<'a>(canon: &'a Canon, owner: &Owner, verb: &str) -> Option<&'a Rul
 /// Pick the intent's rule, then `admit` it.
 pub(crate) fn gate<'a>(context: &Context<'a>) -> Result<&'a Rule, Refusal> {
     let intent = context.intent;
-    let (actor, verb, hint) = (&intent.actor, &intent.move_name, hint_of(&intent.target));
+    let (verb, hint) = (&intent.move_name, hint_of(&intent.target));
+    let actor = intent
+        .actor
+        .as_ref()
+        .ok_or_else(|| Refusal::new(intent, Reason::UnknownId))?;
     let picked = pick(
         context.canon,
         context.state,
@@ -126,7 +130,7 @@ pub(crate) fn gate<'a>(context: &Context<'a>) -> Result<&'a Rule, Refusal> {
 /// Check a rule already picked. A player-sourced habit skips its `if`. Cost is checked for every rule.
 pub(crate) fn admit(context: &Context, rule: &Rule) -> Result<(), Refusal> {
     let (state, intent) = (context.state, context.intent);
-    if let Some(actor) = state.actors.get(intent.actor.actor_id()) {
+    if let Some(actor) = intent.actor_id().and_then(|id| state.actors.get(id)) {
         if actor.is_busy(state.world_time) && matches!(rule.when, When::Verb { .. }) {
             return Err(Refusal::new(intent, Reason::Busy));
         }
@@ -147,16 +151,10 @@ pub(crate) fn admit(context: &Context, rule: &Rule) -> Result<(), Refusal> {
             return Err(Refusal::new(intent, Reason::Schema));
         }
     }
-    if intent.source == Source::Engine
-        && matches!(intent.actor, Viewer::Npc(_))
-        && !is_eligible(
-            context.canon,
-            state,
-            context.presence,
-            intent.actor.actor_id(),
-        )
-    {
-        return Err(Refusal::new(intent, Reason::Ineligible));
+    if let (Source::Engine, Some(Viewer::Npc(id))) = (intent.source, &intent.actor) {
+        if !is_eligible(context.canon, state, context.presence, id) {
+            return Err(Refusal::new(intent, Reason::Ineligible));
+        }
     }
     let skip_if = intent.source == Source::Player && matches!(rule.when, When::Habit);
     if !skip_if {
@@ -174,12 +172,10 @@ fn can_name(context: &Context) -> bool {
     let Some(id) = intent.target.token() else {
         return true;
     };
-    let names = nameable(
-        context.canon,
-        context.state,
-        context.presence,
-        &intent.actor,
-    );
+    let Some(actor) = &intent.actor else {
+        return false;
+    };
+    let names = nameable(context.canon, context.state, context.presence, actor);
     names.iter().any(|name| name == id)
 }
 

@@ -104,7 +104,7 @@ fn expand_template(
     dice: &mut dyn Dice,
 ) -> Result<(), Reason> {
     let (canon, state, intent) = (context.canon, context.state, context.intent);
-    let viewer = &intent.actor;
+    let viewer = intent.actor.as_ref();
     if let Some(spec) = template.resist() {
         let shrugged = match spec {
             ResistSpec::Same => match last_resist {
@@ -255,8 +255,9 @@ fn expand_template(
         } => {
             let to = match to {
                 NarrateTo::Here => state.actors_at(&expr::resolve_who_id(context, &Who::Here)?),
-                NarrateTo::Self_ => vec![intent.actor.actor_id().to_string()],
+                NarrateTo::Self_ => vec![expr::resolve_who_id(context, &Who::Self_)?],
                 NarrateTo::Actors(ids) => ids.clone(),
+                NarrateTo::Present => context.presence.actors_present.clone(),
             };
             effects.push(Effect::new(
                 viewer,
@@ -322,17 +323,18 @@ fn meter_offset(
 
 fn location_effect(context: &Context, to: &str) -> Result<Effect, Reason> {
     let intent = context.intent;
+    let actor_id = expr::resolve_who_id(context, &Who::Self_)?;
     let from = context
         .state
         .actors
-        .get(intent.actor.actor_id())
+        .get(&actor_id)
         .map(|actor| actor.place.clone())
         .ok_or(Reason::UnknownId)?;
     Ok(Effect::new(
-        &intent.actor,
+        intent.actor.as_ref(),
         &intent.id,
         EffectKind::Location {
-            actor_id: intent.actor.actor_id().to_string(),
+            actor_id,
             from,
             to: to.to_string(),
             arrived_at: None,

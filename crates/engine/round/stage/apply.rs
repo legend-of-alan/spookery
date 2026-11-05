@@ -39,7 +39,7 @@ pub(crate) fn run(
     let max_npcs = canon.budget.max_npcs_acting;
     let mut slots = 0u64;
     for Candidate { intent, resolution } in candidates {
-        let spends_slot = matches!(intent.actor, Viewer::Npc(_));
+        let spends_slot = matches!(intent.actor, Some(Viewer::Npc(_)));
         if spends_slot && slots >= max_npcs {
             let refusal = gate::Refusal::new(intent, Reason::Budget);
             refuse(log, intent, refusal, false);
@@ -56,7 +56,7 @@ pub(crate) fn run(
                 continue;
             }
         };
-        let actor_id = intent.actor.actor_id();
+        let actor_id = intent.actor_id();
         let context = Context::new(canon, draft.state(), draft.presence, intent);
         if let Err(refusal) = gate::admit(&context, rule) {
             refuse(log, intent, refusal, false);
@@ -138,7 +138,7 @@ pub(crate) fn land(
         Ok(())
     });
     let written = written.and_then(|()| match (cause, &intent.actor) {
-        (Cause::Move, Viewer::Npc(id)) => draft.count_npc_act(id, draft.presence.players),
+        (Cause::Move, Some(Viewer::Npc(id))) => draft.count_npc_act(id, draft.presence.players),
         (Cause::Move | Cause::Finish | Cause::Trigger, _) => Ok(()),
     });
     if let Err(code) = written {
@@ -155,7 +155,7 @@ pub(crate) fn land(
         };
     }
     log.effects.extend(expansion.effects);
-    log.report_roll(expansion.rolled, intent.actor.actor_id());
+    log.report_roll(expansion.rolled, intent.actor_id());
     log.reports.extend(expansion.resisted);
     log.extra_steps.push(Step::Rule(rule.id.clone()));
     Landing::Landed
@@ -164,9 +164,14 @@ pub(crate) fn land(
 /// Journal the refusal, and tell the actor its code and detail: a player always, an NPC only
 /// when `tell_npcs`.
 pub(crate) fn refuse(log: &mut RoundLog, intent: &Intent, refusal: gate::Refusal, tell_npcs: bool) {
-    if tell_npcs || matches!(intent.actor, Viewer::Player(_)) {
+    let told = match &intent.actor {
+        Some(Viewer::Player(id)) => Some(id),
+        Some(Viewer::Npc(id)) if tell_npcs => Some(id),
+        _ => None,
+    };
+    if let Some(actor_id) = told {
         log.reports.push(MoveReport::Refused {
-            actor_id: intent.actor.actor_id().to_string(),
+            actor_id: actor_id.clone(),
             refusal: refusal.clone(),
         });
     }

@@ -121,7 +121,9 @@ pub struct IntentArgs {
 pub struct Intent {
     pub id: String,
     pub round_index: u64,
-    pub actor: Viewer,
+    /// Who acts. A change rule that watches a world change runs with no one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub actor: Option<Viewer>,
     pub source: Source,
     #[serde(rename = "move")]
     pub move_name: String,
@@ -135,7 +137,7 @@ impl Intent {
     pub(crate) fn new(
         id: String,
         round_index: u64,
-        actor: Viewer,
+        actor: Option<Viewer>,
         source: Source,
         move_name: &str,
         target: Target,
@@ -152,6 +154,11 @@ impl Intent {
         }
     }
 
+    /// The acting actor's id, or `None` for a change rule on a world change.
+    pub fn actor_id(&self) -> Option<&str> {
+        self.actor.as_ref().map(Viewer::actor_id)
+    }
+
     /// `actor_id`'s line `verb token` for the next round. The id is the line's, so the queue
     /// can refuse it by id before the rule it picks shapes the target, which starts empty.
     pub(crate) fn player(
@@ -166,24 +173,40 @@ impl Intent {
             None => verb.to_string(),
         };
         let id = intent_id(&state.world_id, round, actor_id, &line);
-        let actor = Viewer::Player(actor_id.to_string());
+        let actor = Some(Viewer::Player(actor_id.to_string()));
         let intent = Self::new(id, round, actor, Source::Player, verb, Target::Empty);
         Ok(intent)
     }
 
     /// The engine running `actor_id`'s habit `local_id` this round.
     pub(crate) fn habit(state: &State, actor_id: &str, local_id: &str) -> Self {
-        let (round, npc) = (state.round_index, Viewer::Npc(actor_id.to_string()));
+        let (round, npc) = (state.round_index, Some(Viewer::Npc(actor_id.to_string())));
         let id = intent_id(&state.world_id, round, actor_id, local_id);
         Self::new(id, round, npc, Source::Engine, local_id, Target::Empty)
     }
 
-    /// The engine firing change rule `rule_id` for `actor_id` this round, as
-    /// `trigger:<rule>:<actor>`.
-    pub(crate) fn trigger(state: &State, actor_id: &str, rule_id: &str) -> Result<Self, Reason> {
-        let actor = state.viewer_of(actor_id).ok_or(Reason::UnknownId)?;
-        let (round, id) = (state.round_index, format!("trigger:{rule_id}:{actor_id}"));
-        let intent = Self::new(id, round, actor, Source::Engine, rule_id, Target::Empty);
+    /// The engine firing change rule `rule_id` this round: for `subject` as
+    /// `trigger:<rule>:<actor>`, or for a world change, with no subject, as `trigger:<rule>`.
+    pub(crate) fn trigger(
+        state: &State,
+        subject: Option<&str>,
+        rule_id: &str,
+    ) -> Result<Self, Reason> {
+        let (actor, id) = match subject {
+            Some(actor_id) => (
+                Some(state.viewer_of(actor_id).ok_or(Reason::UnknownId)?),
+                format!("trigger:{rule_id}:{actor_id}"),
+            ),
+            None => (None, format!("trigger:{rule_id}")),
+        };
+        let intent = Self::new(
+            id,
+            state.round_index,
+            actor,
+            Source::Engine,
+            rule_id,
+            Target::Empty,
+        );
         Ok(intent)
     }
 
@@ -196,7 +219,7 @@ impl Intent {
         verb: &str,
         target: Target,
     ) -> Result<Self, Reason> {
-        let actor = state.viewer_of(actor_id).ok_or(Reason::UnknownId)?;
+        let actor = Some(state.viewer_of(actor_id).ok_or(Reason::UnknownId)?);
         let id = format!("arrival:{actor_id}");
         Ok(Self::new(
             id,

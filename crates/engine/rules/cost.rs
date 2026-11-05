@@ -14,7 +14,9 @@ use crate::Reason;
 /// Refuse a cost the actor cannot pay as `CANT_AFFORD`, with the meter or item id as `detail`.
 pub(crate) fn afford(context: &Context, cost: &Cost) -> Result<(), gate::Refusal> {
     let (canon, state, intent) = (context.canon, context.state, context.intent);
-    let who = intent.actor.actor_id();
+    let who = intent
+        .actor_id()
+        .ok_or_else(|| gate::Refusal::new(intent, Reason::UnknownId))?;
     let cant_afford = |missing: &str| gate::Refusal {
         id: intent.id.clone(),
         code: Reason::CantAfford,
@@ -64,7 +66,7 @@ pub(crate) fn pay(
     cost: &Cost,
     dice: &mut dyn Dice,
 ) -> Result<(), Reason> {
-    let who = intent.actor.actor_id();
+    let who = intent.actor_id().ok_or(Reason::UnknownId)?;
     let holder = effect::Holder::Actor(who.to_string());
     for (key, expr) in &cost.meters {
         let context = Context::new(draft.canon(), draft.state(), draft.presence, intent);

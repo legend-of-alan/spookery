@@ -6,13 +6,6 @@ Feature: One GM seat and up to three player seats
     Then players is 3
     And the present actors are the three docks PCs
 
-  Scenario: A fourth player is refused when the pack defines four PCs
-    Given a docks table whose pack defines four PCs
-    When three players sit
-    And a fourth player connects
-    Then the hello is refused with "TABLE_FULL"
-    And save.yaml is unchanged since the seat
-
   Scenario: A claim for a held PC changes nothing
     Given a docks table with a seated player
     When a second player connects
@@ -88,21 +81,10 @@ Feature: One GM seat and up to three player seats
     When three play clients sit on a free port
     Then each play client shows its first perceive
 
-  Scenario: A word before a claim is refused with the free PCs
+  Scenario: A word before a claim is refused
     Given a docks table
     When an unclaimed player waits
-    Then the hello is refused with "CHOOSE_PC" and the missing list is '["pc_harbormouse","pc_rowan","pc_wren"]'
+    Then the hello is refused with "CHOOSE_PC"
     When a player claims an empty id
     Then the hello is refused with "SCHEMA"
     And the hello reply does not contain "CHOOSE_PC"
-
-  Scenario: A word before a claim with no free PC lists none
-    Given a one-player docks table
-    When an unclaimed player waits
-    Then the hello is refused with "CHOOSE_PC" and the missing list is "[]"
-    And the hello reply does not contain "SEAT_TAKEN"
-
-  Scenario: spook play with one free PC seats it without a prompt
-    Given a one-player docks table
-    When play joins that one-player table with no --as
-    Then play received the first perceive

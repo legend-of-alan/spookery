@@ -56,16 +56,19 @@ pub struct RollKey {
     pub world_id: String,
     pub round_index: u64,
     pub rule_id: String,
-    pub subject_id: String,
+    /// The actor the rule runs for, or `None` for a change rule on a world change.
+    pub subject_id: Option<String>,
     pub index: u32,
 }
 
 impl RollKey {
     pub(crate) fn preimage(&self) -> String {
-        format!(
-            "{}|{}|{}|{}|{}",
-            self.world_id, self.round_index, self.rule_id, self.subject_id, self.index
-        )
+        let (world, round, rule, index) =
+            (&self.world_id, self.round_index, &self.rule_id, self.index);
+        match &self.subject_id {
+            Some(subject) => format!("{world}|{round}|{rule}|{subject}|{index}"),
+            None => format!("{world}|{round}|{rule}|{index}"),
+        }
     }
 }
 
@@ -174,7 +177,7 @@ mod tests {
             world_id: "docks".to_string(),
             round_index: 1,
             rule_id: "grit".to_string(),
-            subject_id: "mira".to_string(),
+            subject_id: Some("mira".to_string()),
             index,
         }
     }

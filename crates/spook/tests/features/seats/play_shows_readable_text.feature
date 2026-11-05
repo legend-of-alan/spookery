@@ -16,11 +16,17 @@ Feature: Play shows readable text
 
   Scenario: A second player is refused in a sentence
     Given a docks table with a seated player
-    When another play joins that table
+    When another play picks pc_rowan on that table
     Then the command exits 1
     And stderr shows "That character is already taken. [SEAT_TAKEN]"
     And stderr has no protocol JSON
-    And stdout is empty
+    And stdout shows the picker:
+      """
+      Choose a character:
+      pc_harbormouse
+      pc_rowan (in use)
+      pc_wren
+      """
 
   Scenario: Raw play shows protocol frames
     Given a docks table

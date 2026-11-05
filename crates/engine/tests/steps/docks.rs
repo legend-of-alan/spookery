@@ -282,7 +282,6 @@ title: Ex
 system: ex
 start:
   place: gate
-  pc: pc_rowan
 ",
     );
     write_text(
@@ -413,7 +412,6 @@ title: Crowd
 system: crowd
 start:
   place: yard
-  pc: n1
 ",
     );
     write_text(

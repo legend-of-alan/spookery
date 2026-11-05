@@ -176,15 +176,13 @@ impl<L> World<L> {
         self.canon.verbs()
     }
 
-    /// PCs that nobody in `presence` holds.
-    pub fn free_pcs(&self, presence: &Presence) -> Vec<String> {
-        let present = &presence.actors_present;
+    /// Every PC in the cast.
+    pub fn pcs(&self) -> impl Iterator<Item = &String> {
         self.state
             .actors
             .iter()
-            .filter(|(id, a)| a.is_pc() && !present.contains(id))
-            .map(|(id, _)| id.clone())
-            .collect()
+            .filter(|(_, a)| a.is_pc())
+            .map(|(id, _)| id)
     }
 
     pub fn state(&self) -> &State {
@@ -228,11 +226,14 @@ impl<L> World<L> {
 
     /// The target a PC's line names for the rule it picks. A line already queued is `SCHEMA`.
     fn shape_line(&self, line: &Intent, token: Option<&str>) -> Result<Target, Reason> {
-        let actor = self.state.actors.get(line.actor.actor_id());
+        let Some(viewer) = &line.actor else {
+            return Err(Reason::Schema);
+        };
+        let actor = self.state.actors.get(viewer.actor_id());
         if !actor.is_some_and(ActorLive::is_pc) {
             return Err(Reason::Schema);
         }
-        let (actor, verb) = (&line.actor, &line.move_name);
+        let (actor, verb) = (viewer, &line.move_name);
         let rule = gate::pick(&self.canon, &self.state, actor, line.source, verb, token)?;
         let target = target_for(rule, token)?;
         if self.queue.iter().any(|queued| queued.id == line.id) {
@@ -281,7 +282,7 @@ impl<L> World<L> {
         self.queue_intent(Intent {
             id: id.clone(),
             round_index,
-            actor: viewer,
+            actor: Some(viewer),
             source: Source::Player,
             move_name: move_name.clone(),
             target,

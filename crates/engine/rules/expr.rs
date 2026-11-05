@@ -217,19 +217,26 @@ pub(crate) fn resolve_holder(context: &Context, who: &Who) -> Result<Holder, Rea
 /// The actor or place id `who` names. The world is not one.
 pub(crate) fn resolve_who_id(context: &Context, who: &Who) -> Result<String, Reason> {
     match who {
-        Who::Self_ => Ok(context.intent.actor.actor_id().to_string()),
+        Who::Self_ => context
+            .intent
+            .actor_id()
+            .map(str::to_string)
+            .ok_or(Reason::Schema),
         Who::Target => context
             .intent
             .target
             .token()
             .map(str::to_string)
             .ok_or(Reason::Schema),
-        Who::Here => context
-            .state
-            .actors
-            .get(context.intent.actor.actor_id())
-            .map(|actor| actor.place.clone())
-            .ok_or(Reason::UnknownId),
+        Who::Here => {
+            let actor_id = context.intent.actor_id().ok_or(Reason::Schema)?;
+            context
+                .state
+                .actors
+                .get(actor_id)
+                .map(|actor| actor.place.clone())
+                .ok_or(Reason::UnknownId)
+        }
         Who::Actor(id) => Ok(id.clone()),
         Who::Place(id) => Ok(id.clone()),
         Who::World => Err(Reason::Schema),
@@ -691,7 +698,7 @@ mod tests {
         Intent {
             id: "t".to_string(),
             round_index: 0,
-            actor: Viewer::Player(actor.to_string()),
+            actor: Some(Viewer::Player(actor.to_string())),
             source: Source::Player,
             move_name: "hit".to_string(),
             target: Target::Actor(target.to_string()),
@@ -706,7 +713,6 @@ mod tests {
             title: "t".to_string(),
             system: String::new(),
             start_place: "room".to_string(),
-            start_pc: "ada".to_string(),
             places: BTreeMap::new(),
             cast: BTreeMap::new(),
             facts: BTreeMap::new(),

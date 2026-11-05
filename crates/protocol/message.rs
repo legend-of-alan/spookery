@@ -65,13 +65,15 @@ impl ClientMessage {
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(tag = "kind", rename_all = "lowercase")]
 pub enum ServerBody {
-    /// The first message on a connection, and the only one with no `seq`. `open` lists the
-    /// PCs a player seat may claim.
+    /// The first message on a connection, and the only one with no `seq`. On a player seat,
+    /// `open` lists the PCs nobody holds and `taken` the PCs held right now.
     Hello {
         version: u32,
         words: Vec<String>,
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         open: Vec<String>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        taken: Vec<String>,
     },
     /// The reply to `claim`. `token` takes this PC back after a dropped connection. A new
     /// claim carries `scrollback`, the says this PC heard before, oldest first. A claim by
@@ -348,11 +350,12 @@ mod tests {
                 version: VERSION,
                 words: vec!["claim".into()],
                 open: vec!["pc_rowan".into()],
+                taken: vec!["pc_wren".into()],
             },
         };
         assert_eq!(
             hello.to_text(),
-            r#"{"body":{"kind":"hello","version":2,"words":["claim"],"open":["pc_rowan"]}}"#
+            r#"{"body":{"kind":"hello","version":2,"words":["claim"],"open":["pc_rowan"],"taken":["pc_wren"]}}"#
         );
         let released = ServerMessage {
             body: ServerBody::Released,

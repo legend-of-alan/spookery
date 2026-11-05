@@ -50,7 +50,7 @@ fn arrive(
     to: String,
     via: String,
 ) -> Result<(), Reason> {
-    let actor_id = intent.actor.actor_id();
+    let actor_id = intent.actor_id().ok_or(Reason::UnknownId)?;
     let actor = draft
         .state()
         .actors
@@ -58,7 +58,7 @@ fn arrive(
         .ok_or(Reason::UnknownId)?;
     let from = actor.place.clone();
     let effect = Effect::new(
-        &intent.actor,
+        intent.actor.as_ref(),
         &intent.id,
         EffectKind::Location {
             actor_id: actor_id.to_string(),
@@ -90,7 +90,7 @@ fn finish_action(
 ) -> Result<(), Reason> {
     let rule = canon.rules.get(rule_id).ok_or(Reason::UnknownMove)?;
     let context = Context::new(canon, draft.state(), draft.presence, intent);
-    let roller = dice.roller(log, &rule.id, intent.actor.actor_id());
+    let roller = dice.roller(log, &rule.id, intent.actor_id());
     match expand::expand(&context, rule, Cause::Finish, None, roller) {
         Ok(expansion) => {
             apply::land(draft, intent, rule, expansion, log);

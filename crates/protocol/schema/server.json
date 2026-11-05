@@ -36,7 +36,7 @@
       "description": "What the table sends. A client ignores a kind or a field it does not know.",
       "oneOf": [
         {
-          "description": "The first message on a connection, and the only one with no `seq`. `open` lists the\nPCs a player seat may claim.",
+          "description": "The first message on a connection, and the only one with no `seq`. On a player seat,\n`open` lists the PCs nobody holds and `taken` the PCs held right now.",
           "type": "object",
           "properties": {
             "version": {
@@ -51,6 +51,12 @@
               }
             },
             "open": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "taken": {
               "type": "array",
               "items": {
                 "type": "string"
@@ -440,20 +446,6 @@
         "TRIGGER_LEAK"
       ]
     },
-    "Detail": {
-      "description": "A refusal's `detail`: one id or locked text, or the free PCs on `CHOOSE_PC`.",
-      "anyOf": [
-        {
-          "type": "string"
-        },
-        {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        }
-      ]
-    },
     "Refusal": {
       "description": "Sent from the table to a client as a `refused` body.\nDisplay is the sentence with the code in brackets,\n`The table is full. [TABLE_FULL]`.",
       "type": "object",
@@ -462,13 +454,9 @@
           "$ref": "#/$defs/Code"
         },
         "detail": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/Detail"
-            },
-            {
-              "type": "null"
-            }
+          "type": [
+            "string",
+            "null"
           ]
         }
       },

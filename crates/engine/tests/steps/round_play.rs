@@ -713,7 +713,7 @@ fn indexed_roll(pack: &Path, actor_id: &str, roll_index: u32) -> (String, i64) {
             world_id: world.state().world_id.clone(),
             round_index: world.state().round_index,
             rule_id: "verb:strike".to_string(),
-            subject_id: actor_id.to_string(),
+            subject_id: Some(actor_id.to_string()),
             index: roll_index,
         },
         0,

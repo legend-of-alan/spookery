@@ -1,11 +1,12 @@
 use std::io::Write;
 
+use cucumber::gherkin::Step;
 use cucumber::{then, when};
 
 use crate::support;
 use crate::World;
 
-use super::common::{capture_play_stdout, join_play, wait_play, wait_play_until};
+use super::common::{capture_play_stdout, join_play, spawn_play, wait_play, wait_play_until};
 use super::table;
 
 #[when(expr = "the operator asks spook for help")]
@@ -55,14 +56,27 @@ fn play_says(world: &mut World, text: String) {
     stdin.flush().unwrap_or_else(|err| panic!("flush: {err}"));
 }
 
-#[when(expr = "another play joins that table")]
-fn another_play_joins_that_table(world: &mut World) {
+#[when(expr = "another play picks {word} on that table")]
+fn another_play_picks_on_that_table(world: &mut World, pc: String) {
     let port = table::live_mut(world).game_port;
     let addr = format!("127.0.0.1:{port}");
-    let output = support::run_spook(&["play", "--addr", &addr, "--as", "player:pc_rowan"]);
-    world.code = output.status.code();
-    world.stdout = String::from_utf8_lossy(&output.stdout).into_owned();
-    world.stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+    let mut play = spawn_play(&addr, &pc, &[]);
+    let status = play
+        .child
+        .wait()
+        .unwrap_or_else(|err| panic!("play: {err}"));
+    world.code = status.code();
+    // The pipes drain on their own threads, so read stderr once its refusal line is whole.
+    // The picker was printed before the claim went out, so stdout already holds it.
+    world.stderr = table::poll_until("a refusal line", || {
+        let stderr = support::text_of(&play.stderr);
+        if stderr.ends_with("]\n") {
+            Ok(stderr)
+        } else {
+            Err(stderr)
+        }
+    });
+    world.stdout = support::text_of(&play.stdout);
 }
 
 #[then(expr = "play received the first perceive")]
@@ -159,7 +173,10 @@ fn the_rounds_update_shows_the_door_note_only_under_notes(world: &mut World) {
 
 #[then(expr = "play shows earlier speech under one heading")]
 fn play_shows_earlier_speech_under_one_heading(world: &mut World) {
-    let stdout = capture_play_stdout(world);
+    let shown = capture_play_stdout(world);
+    // The picker comes first, then what the claim shows.
+    let (picker, stdout) = shown.split_at(shown.find("Earlier:").unwrap_or(0));
+    assert!(picker.starts_with("Choose a character:\n"), "{shown}");
     let earlier = "\
 Earlier:
 You: hello Briar
@@ -200,6 +217,12 @@ fn stderr_shows(world: &mut World, text: String) {
         "{}",
         world.stderr
     );
+}
+
+#[then(expr = "stdout shows the picker:")]
+fn stdout_shows_the_picker(world: &mut World, step: &Step) {
+    let picker = step.docstring.as_deref().unwrap_or_default().trim();
+    assert!(world.stdout.contains(picker), "{}", world.stdout);
 }
 
 #[then(expr = "stderr has no protocol JSON")]

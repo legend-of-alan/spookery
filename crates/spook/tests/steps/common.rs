@@ -179,24 +179,29 @@ pub(crate) fn join_play(world: &mut World, raw: bool) {
     let pack = table::pack(world).to_path_buf();
     table::listen(world, &pack);
     let addr = table::game_addr(world);
-    let mut args = vec![
-        "play".into(),
-        "--addr".into(),
-        addr,
-        "--as".into(),
-        "player:pc_rowan".into(),
-    ];
-    if raw {
-        args.push("--raw".to_string());
-    }
-    let refs: Vec<&str> = args.iter().map(String::as_str).collect();
-    world.play = Some(support::spawn(&refs));
+    let flags: &[&str] = if raw { &["--raw"] } else { &[] };
+    world.play = Some(spawn_play(&addr, "pc_rowan", flags));
     let needle = if raw {
         "\"kind\":\"view\""
     } else {
         "You are in"
     };
     wait_play(world, needle);
+}
+
+/// Starts `spook play` on `addr` with `flags`, and types `pc` at its picker the way a player
+/// does.
+pub(crate) fn spawn_play(addr: &str, pc: &str, flags: &[&str]) -> support::Process {
+    let mut args = vec!["play", "--addr", addr];
+    args.extend_from_slice(flags);
+    let mut play = support::spawn(&args);
+    let stdin = play
+        .stdin
+        .as_mut()
+        .unwrap_or_else(|| panic!("play stdin is closed"));
+    writeln!(stdin, "{pc}").unwrap_or_else(|err| panic!("pick {pc}: {err}"));
+    stdin.flush().unwrap_or_else(|err| panic!("flush: {err}"));
+    play
 }
 
 pub(crate) fn wait_play(world: &mut World, needle: &str) {
@@ -346,13 +351,7 @@ fn play_joins_the_sample_table(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
     table::listen(world, &pack);
     let addr = table::game_addr(world);
-    world.play = Some(support::spawn(&[
-        "play",
-        "--addr",
-        &addr,
-        "--as",
-        "player:pc_lark",
-    ]));
+    world.play = Some(spawn_play(&addr, "pc_lark", &[]));
     wait_play(world, "Gate Yard");
 }
 

@@ -157,4 +157,4 @@ spook run /tmp/mypack
 spook play
 ```
 
-You sit `pc_ada`. The first picture is the yard. `travel lane` leaves for the lane and commits a round, because no GM is seated. `listen`, `wait`, `steady`, and `press` are the other player verbs.
+It lists every PC and marks the ones in use. Type `pc_ada` to sit. The first picture is the yard. `travel lane` leaves for the lane and commits a round, because no GM is seated. `listen`, `wait`, `steady`, and `press` are the other player verbs.

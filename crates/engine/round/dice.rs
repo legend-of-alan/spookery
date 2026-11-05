@@ -26,7 +26,7 @@ pub(crate) fn shuffle_key(world_id: &str, round_index: u64, actor_id: &str) -> [
 pub(crate) struct RoundDice {
     world_id: String,
     round_index: u64,
-    counts: BTreeMap<(String, String), u32>,
+    counts: BTreeMap<(String, Option<String>), u32>,
 }
 
 impl RoundDice {
@@ -39,10 +39,10 @@ impl RoundDice {
     }
 
     /// The one allocator: the next key for this rule and subject.
-    pub(crate) fn next_key(&mut self, rule: &str, subject: &str) -> RollKey {
+    pub(crate) fn next_key(&mut self, rule: &str, subject: Option<&str>) -> RollKey {
         let index = self
             .counts
-            .entry((rule.to_string(), subject.to_string()))
+            .entry((rule.to_string(), subject.map(str::to_string)))
             .or_insert(0);
         let roll_index = *index;
         *index += 1;
@@ -50,7 +50,7 @@ impl RoundDice {
             world_id: self.world_id.clone(),
             round_index: self.round_index,
             rule_id: rule.to_string(),
-            subject_id: subject.to_string(),
+            subject_id: subject.map(str::to_string),
             index: roll_index,
         }
     }
@@ -65,7 +65,11 @@ impl RoundDice {
         target: i64,
         partial_at: Option<i64>,
     ) -> Result<Roll, Reason> {
-        let actor = state.actors.get(&key.subject_id).ok_or(Reason::UnknownId)?;
+        let actor = key
+            .subject_id
+            .as_ref()
+            .and_then(|id| state.actors.get(id))
+            .ok_or(Reason::UnknownId)?;
         let check = canon.checks.get(check_id).ok_or(Reason::UnknownId)?;
         roll::roll_check(check, &canon.meters, actor, &key, target, partial_at)
     }
@@ -74,7 +78,7 @@ impl RoundDice {
         &'a mut self,
         log: &'a mut RoundLog,
         rule: &'a str,
-        subject: &'a str,
+        subject: Option<&'a str>,
     ) -> Roller<'a> {
         Roller {
             dice: self,
@@ -94,7 +98,7 @@ pub(crate) struct Roller<'a> {
     dice: &'a mut RoundDice,
     log: &'a mut RoundLog,
     rule: &'a str,
-    subject: &'a str,
+    subject: Option<&'a str>,
     key: Option<RollKey>,
     drawn: usize,
     reports: Vec<MoveReport>,
@@ -104,9 +108,7 @@ impl Roller<'_> {
     /// Evaluate a rule's `roll:` spec, then roll its check.
     pub(crate) fn roll_spec(&mut self, context: &Context, spec: &RollSpec) -> Result<Roll, Reason> {
         let (target, partial_at) = self.eval_thresholds(context, spec)?;
-        let key = self
-            .dice
-            .next_key(self.rule, context.intent.actor.actor_id());
+        let key = self.dice.next_key(self.rule, self.subject);
         self.dice.roll_check(
             context.canon,
             context.state,
@@ -164,7 +166,7 @@ impl Dice for Roller<'_> {
         check_id: &str,
         target: i64,
     ) -> Result<Outcome, Reason> {
-        let key = self.dice.next_key(self.rule, actor_id);
+        let key = self.dice.next_key(self.rule, Some(actor_id));
         let out = self
             .dice
             .roll_check(canon, state, key, check_id, target, None)?;
