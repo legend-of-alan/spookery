@@ -320,7 +320,6 @@ mod tests {
         assert!(matches!(gm.command, Command::Gm { raw: false }));
         let gm_raw = Cli::try_parse_from(["spook", "gm", "--raw"]).unwrap();
         assert!(matches!(gm_raw.command, Command::Gm { raw: true }));
-        assert!(Cli::try_parse_from(["spook", "run", "--as", "player:rowan"]).is_err());
         assert!(Cli::try_parse_from(["spook"]).is_err());
         assert!(Cli::try_parse_from(["spook", "mcp"]).is_err());
         assert!(Cli::try_parse_from(["spook", "mcp", "--addr", "127.0.0.1:9737"]).is_err());

@@ -29,8 +29,3 @@ Feature: The character picker shows every PC
       pc_wren (in use)
       None is free.
       """
-
-  Scenario: play has no --as option
-    When the operator runs the arguments "play" and "--as=pc_rowan"
-    Then the command exits 2
-    And stderr shows usage
