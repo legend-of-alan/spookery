@@ -180,6 +180,16 @@ fn break_pack(pack: &Path, fault: &str) {
             "idle_act_window_ticks: 1440\n",
             "idle_act_window_ticks: 0\n",
         ),
+        "a leftover ticks_per_day" => replace_in_file(
+            &pack.join("rules/budget.yaml"),
+            "cycles:\n",
+            "ticks_per_day: 1440\ncycles:\n",
+        ),
+        "a leftover idle_acts_per_day" => replace_in_file(
+            &pack.join("rules/budget.yaml"),
+            "idle_acts_per_window: 3\n",
+            "idle_acts_per_day: 3\n",
+        ),
         "a zero-tick cycle" => replace_in_file(
             &pack.join("rules/budget.yaml"),
             "  day: 1440\n",

@@ -336,7 +336,7 @@ A client ignores a `kind` or a field it does not know. `server.json` gives every
 
 ### view and resume
 
-`viewer` is the bare actor id. `place_name` and `actor_names` are the pack's display names, and `body` is the place prose. `known_facts` hold only the facts that actor knows, with the prose that actor may read. `meters` are the viewer's own, without hidden ones. `world_meters` are the world's meters whose pack row says `hidden: false`, at their current values, so a player who comes back sees them. `exits` is left out when the place has none. `cant_act` says why the viewer can't act now, and is left out when they can, so `View::can_act()` is `cant_act` being empty. Today it is a journey, and reads like `on the stairs until 21:40`.
+`viewer` is the bare actor id. `place_name` and `actor_names` are the pack's display names, and `body` is the place prose. `known_facts` hold only the facts that actor knows, with the prose that actor may read. `meters` are the viewer's own, without hidden ones. `world_meters` are the world's meters whose pack row says `hidden: false`, at their current values, so a player who comes back sees them. `exits` is left out when the place has none. `cant_act` says why the viewer can't act now, and is left out when they can, so `View::can_act()` is `cant_act` being empty. Today it is a journey, and reads like `on the stairs until tick 1300`.
 
 <!-- example: player-resume -->
 ```json

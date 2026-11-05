@@ -275,6 +275,12 @@ fn unknown_field_hint(field: &str) -> String {
             "write cycle with name, from and to, naming a cycle from rules/budget.yaml".to_string()
         }
         "time" | "minutes" => "write ticks, the game time as a whole number of ticks".to_string(),
+        "ticks_per_day" => {
+            "name the cycle's length in ticks under cycles, as day: 1440".to_string()
+        }
+        "idle_acts_per_day" => {
+            "write idle_acts_per_window, with idle_act_window_ticks for the window".to_string()
+        }
         _ => "remove it or spell a field this file allows".to_string(),
     }
 }

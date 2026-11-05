@@ -21,32 +21,34 @@ Feature: spook check explains a broken pack
     And the pack bytes are unchanged
 
     Examples:
-      | fault                    | file                       | code              | phrase                             |
-      | missing when             | rules/verbs.yaml           | SCHEMA            | missing field 'when'               |
-      | unknown field            | rules/verbs.yaml           | SCHEMA            | unknown field                      |
-      | unknown check            | rules/verbs.yaml           | SCHEMA            | not a check                        |
-      | duplicate move           | rules/verbs.yaml           | SCHEMA            | listed twice                       |
-      | old format tag           | rules/verbs.yaml           | SCHEMA            | no version                         |
-      | unknown format tag       | rules/verbs.yaml           | SCHEMA            | does not use                       |
-      | missing meters           | rules/meters.yaml          | NOT_IN_SPEC       | missing                            |
-      | pack_rev mismatch        | state/save.yaml            | PACK_REV_MISMATCH | pack_rev                           |
-      | exit to an unknown place | world/places/docks_shop.md | SCHEMA            | not a place                        |
-      | duplicate exit           | world/places/docks_shop.md | SCHEMA            | listed twice                       |
-      | a target alias           | rules/verbs.yaml           | SCHEMA            | not a target kind                  |
-      | a verb named look        | rules/verbs.yaml           | SCHEMA            | 'look' is a built-in word          |
-      | a verb named say         | rules/verbs.yaml           | SCHEMA            | 'say' is a built-in word           |
-      | flags under idle         | cast/pc-rowan.md           | SCHEMA            | unknown field                      |
-      | missing display_name     | cast/pc-rowan.md           | SCHEMA            | display_name                       |
-      | idle maybe               | rules/budget.yaml          | SCHEMA            | not on or off                      |
-      | zero round interval      | rules/budget.yaml          | SCHEMA            | round_every_real_seconds           |
-      | zero idle ticks          | rules/budget.yaml          | SCHEMA            | idle_ticks_per_round               |
-      | zero idle window         | rules/budget.yaml          | SCHEMA            | idle_act_window_ticks              |
-      | a zero-tick cycle        | rules/budget.yaml          | SCHEMA            | cycle day is 0                     |
-      | a cycle past its length  | cast/mira.md               | SCHEMA            | cycle bound is not below cycle day |
-      | an unknown cycle         | cast/mira.md               | SCHEMA            | no cycle tide                      |
-      | a leftover day_tick      | cast/mira.md               | SCHEMA            | write cycle                        |
-      | a leftover hour          | cast/mira.md               | SCHEMA            | write cycle                        |
-      | an exit cost in minutes  | world/places/docks_shop.md | SCHEMA            | write ticks                        |
+      | fault                        | file                       | code              | phrase                             |
+      | missing when                 | rules/verbs.yaml           | SCHEMA            | missing field 'when'               |
+      | unknown field                | rules/verbs.yaml           | SCHEMA            | unknown field                      |
+      | unknown check                | rules/verbs.yaml           | SCHEMA            | not a check                        |
+      | duplicate move               | rules/verbs.yaml           | SCHEMA            | listed twice                       |
+      | old format tag               | rules/verbs.yaml           | SCHEMA            | no version                         |
+      | unknown format tag           | rules/verbs.yaml           | SCHEMA            | does not use                       |
+      | missing meters               | rules/meters.yaml          | NOT_IN_SPEC       | missing                            |
+      | pack_rev mismatch            | state/save.yaml            | PACK_REV_MISMATCH | pack_rev                           |
+      | exit to an unknown place     | world/places/docks_shop.md | SCHEMA            | not a place                        |
+      | duplicate exit               | world/places/docks_shop.md | SCHEMA            | listed twice                       |
+      | a target alias               | rules/verbs.yaml           | SCHEMA            | not a target kind                  |
+      | a verb named look            | rules/verbs.yaml           | SCHEMA            | 'look' is a built-in word          |
+      | a verb named say             | rules/verbs.yaml           | SCHEMA            | 'say' is a built-in word           |
+      | flags under idle             | cast/pc-rowan.md           | SCHEMA            | unknown field                      |
+      | missing display_name         | cast/pc-rowan.md           | SCHEMA            | display_name                       |
+      | idle maybe                   | rules/budget.yaml          | SCHEMA            | not on or off                      |
+      | zero round interval          | rules/budget.yaml          | SCHEMA            | round_every_real_seconds           |
+      | zero idle ticks              | rules/budget.yaml          | SCHEMA            | idle_ticks_per_round               |
+      | zero idle window             | rules/budget.yaml          | SCHEMA            | idle_act_window_ticks              |
+      | a leftover ticks_per_day     | rules/budget.yaml          | SCHEMA            | under cycles                       |
+      | a leftover idle_acts_per_day | rules/budget.yaml          | SCHEMA            | write idle_acts_per_window         |
+      | a zero-tick cycle            | rules/budget.yaml          | SCHEMA            | cycle day is 0                     |
+      | a cycle past its length      | cast/mira.md               | SCHEMA            | cycle bound is not below cycle day |
+      | an unknown cycle             | cast/mira.md               | SCHEMA            | no cycle tide                      |
+      | a leftover day_tick          | cast/mira.md               | SCHEMA            | write cycle                        |
+      | a leftover hour              | cast/mira.md               | SCHEMA            | write cycle                        |
+      | an exit cost in minutes      | world/places/docks_shop.md | SCHEMA            | write ticks                        |
 
   Scenario: Two problems in two files are both reported
     Given a docks table
