@@ -159,13 +159,9 @@ pub(crate) fn note_exits(draft: &mut Draft) {
     let state = draft.state();
     let seen: Vec<(String, Vec<String>)> = state
         .actors
-        .iter()
-        .map(|(id, actor)| {
-            let exits = canon
-                .places
-                .get(&actor.place)
-                .map(|place| exits_at(canon, state, draft.presence, id, place))
-                .unwrap_or_default();
+        .keys()
+        .map(|id| {
+            let exits = visible_exits(canon, state, draft.presence, id);
             (
                 id.clone(),
                 exits.into_iter().map(|exit| exit.name).collect(),
@@ -174,7 +170,7 @@ pub(crate) fn note_exits(draft: &mut Draft) {
         .collect();
     for (id, exits) in seen {
         if let Some(actor) = draft.state_mut().actors.get_mut(&id) {
-            actor.visit(exits);
+            actor.visited.insert(actor.place.clone(), exits);
         }
     }
 }

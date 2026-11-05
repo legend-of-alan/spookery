@@ -209,11 +209,6 @@ impl ActorLive {
         self.act.busy_until.is_some_and(|until| until > world_time)
     }
 
-    /// Note `exits` as what this actor sees where they stand now.
-    pub(crate) fn visit(&mut self, exits: Vec<String>) {
-        self.visited.insert(self.place.clone(), exits);
-    }
-
     pub fn is_npc(&self) -> bool {
         self.kind == ActorKind::Npc
     }
