@@ -35,13 +35,12 @@ pub enum EffectKind {
         delta: i64,
         max: Option<i64>,
     },
-    /// One application of modifier `id`, of magnitude `add`, to an actor, lasting `ticks`
-    /// or the row's ticks.
+    /// One application of modifier `id`, of magnitude `add`, to an actor, lasting `ticks`.
     Modifier {
         actor_id: String,
         id: String,
         add: i64,
-        ticks: Option<u64>,
+        ticks: u64,
     },
     Wield {
         actor_id: String,
@@ -197,8 +196,7 @@ pub(crate) enum EffectRecord {
         actor_id: String,
         id: String,
         add: i64,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        ticks: Option<u64>,
+        ticks: u64,
     },
     Wield {
         #[serde(rename = "as", default, skip_serializing_if = "Option::is_none")]
@@ -625,14 +623,13 @@ pub(crate) fn shift_item(
     }
 }
 
-/// Apply one stack of modifier `id` to an actor that carries its meter, lasting `ticks` or
-/// the row's ticks, as `modifier::stack` says. The meter's key is tracked when the stacks move.
+/// Apply one stack of modifier `id` to an actor that carries its meter, lasting `ticks`, as `modifier::stack` says. The meter's key is tracked when the stacks move.
 fn apply_modifier(
     draft: &mut Draft,
     actor_id: &str,
     id: &str,
     add: i64,
-    ticks: Option<u64>,
+    ticks: u64,
 ) -> Result<(), Reason> {
     let canon = draft.shared_canon();
     let def = canon.modifiers.get(id).ok_or(Reason::UnknownId)?;
@@ -653,7 +650,7 @@ fn apply_modifier(
         max_ticks: 0,
         stacks: Vec::new(),
     });
-    modifier::stack(def, &mut next, add, ticks.unwrap_or(def.ticks), now);
+    modifier::stack(def, &mut next, add, ticks, now);
     let changed = held != Some(&next);
     if held.map(|live| &live.stacks) != Some(&next.stacks) {
         draft.track(StateKey::ActorMeter(

@@ -10,8 +10,6 @@ use crate::Reason;
 pub struct ModifierDef {
     /// The actor meter it modifies.
     pub meter: String,
-    /// Ticks an application lasts when its effect names none.
-    pub ticks: u64,
     /// The most stacks one actor holds, from any source. At least 1.
     pub max_stacks: usize,
     /// Kept off the players' views.
@@ -94,7 +92,6 @@ mod tests {
     fn burn(max_stacks: usize) -> ModifierDef {
         ModifierDef {
             meter: "grit".to_string(),
-            ticks: 10,
             max_stacks,
             hidden: false,
         }

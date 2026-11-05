@@ -569,6 +569,7 @@ rules:
           who: target
           id: burn
           add: -2
+          ticks: 10
 
   - id: arm
     when:
@@ -625,9 +626,9 @@ meters:
 
 ## Modifiers
 
-A modifier changes one actor meter for a while, then expires. Each row has `id`, `meter`, and `ticks`, and may have `max_stacks` and `hidden`. `meter` is a meter in `rules/meters.yaml` or a cast file, and check refuses any other. `ticks` is how long one application lasts, a whole number of 1 or more. A tick is one world minute for now.
+A modifier changes one actor meter for a while, then expires. Each row has `id` and `meter`, and may have `max_stacks` and `hidden`. `meter` is a meter in `rules/meters.yaml` or a cast file, and check refuses any other.
 
-A `modifier` effect names `who`, `id`, and `add`, and may name `ticks` to last other than the row's `ticks`, such as `scorch` in `rules/verbs.yaml`. `add` is this application's magnitude, an integer or an expression, as on a meter. Any rule may apply any modifier, and each application keeps its own `add` as one stack. The meter's current value adds every stack of every modifier on it, so two modifiers on one meter both count. Nothing is written to the meter's offset.
+A `modifier` effect names `who`, `id`, `add`, and `ticks`, such as `scorch` in `rules/verbs.yaml`. `ticks` is how long this application lasts, a whole number of 1 or more, and check refuses an effect without it. A tick is one world minute for now. `add` is this application's magnitude, an integer or an expression, as on a meter. Any rule may apply any modifier, and each application keeps its own `add` as one stack. The meter's current value adds every stack of every modifier on it, so two modifiers on one meter both count. Nothing is written to the meter's offset.
 
 `max_stacks` is optional. It is the most stacks one actor can hold of that modifier, from any source. The default is 1, so a modifier left without it does not stack. At `max_stacks`, an application stronger than the weakest stack, by absolute value, replaces it. A weaker or equal one changes no stack. Strength ignores sign, so use two modifiers for a buff and a debuff.
 
@@ -640,11 +641,9 @@ schema: modifiers
 modifiers:
   - id: burn
     meter: nerve
-    ticks: 10
     max_stacks: 3
   - id: fog
     meter: nerve
-    ticks: 60
     hidden: true
 ```
 

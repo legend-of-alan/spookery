@@ -1,4 +1,5 @@
-//! The modifier list in `rules/modifiers.yaml`: each modifier's meter, ticks and cap.
+//! The modifier list in `rules/modifiers.yaml`: each modifier's meter and cap.
+//! How long an application lasts is stated on the `modifier` effect that applies it.
 
 use std::collections::BTreeMap;
 
@@ -59,12 +60,6 @@ pub(super) fn load_modifiers(
                 "name a meter in rules/meters.yaml or a cast file",
             ),
             (
-                entry.ticks == 0,
-                "ticks:",
-                format!("modifier '{id}' has ticks below 1"),
-                "set ticks to 1 or more",
-            ),
-            (
                 max_stacks == 0,
                 "max_stacks:",
                 format!("modifier '{id}' has max_stacks below 1"),
@@ -85,7 +80,6 @@ pub(super) fn load_modifiers(
         if found.is_empty() {
             let def = ModifierDef {
                 meter: entry.meter,
-                ticks: entry.ticks,
                 max_stacks,
                 hidden: entry.hidden,
             };
@@ -110,7 +104,6 @@ struct ModifiersFile {
 struct ModifierYaml {
     id: String,
     meter: String,
-    ticks: u64,
     max_stacks: Option<i64>,
     #[serde(default)]
     hidden: bool,

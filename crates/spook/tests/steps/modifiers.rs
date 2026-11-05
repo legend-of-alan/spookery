@@ -21,20 +21,18 @@ fn add_modifier(pack: &Path, id: &str, meter: &str, extra: &str) {
     let path = pack.join("rules/modifiers.yaml");
     let mut text =
         fs::read_to_string(&path).unwrap_or_else(|_| "schema: modifiers\nmodifiers:\n".into());
-    text.push_str(&format!(
-        "  - id: {id}\n    meter: {meter}\n    ticks: 10\n{extra}"
-    ));
+    text.push_str(&format!("  - id: {id}\n    meter: {meter}\n{extra}"));
     fs::write(path, text).unwrap();
     stamp_pack_rev(pack);
 }
 
-/// A verb that applies each `(modifier, add)` to `who`: its target, or the actor using it.
+/// A verb that applies each `(modifier, add)` to `who` for 10 ticks: its target, or the actor using it.
 fn add_modifier_verb(pack: &Path, verb: &str, who: &str, applies: &[(&str, i64)]) {
-    add_timed_verb(pack, verb, who, applies, "");
+    add_timed_verb(pack, verb, who, applies, 10);
 }
 
-/// As `add_modifier_verb`, with `extra` lines after each effect's `add`.
-fn add_timed_verb(pack: &Path, verb: &str, who: &str, applies: &[(&str, i64)], extra: &str) {
+/// As `add_modifier_verb`, with each effect lasting `ticks`.
+fn add_timed_verb(pack: &Path, verb: &str, who: &str, applies: &[(&str, i64)], ticks: u64) {
     let target = if who == "target" {
         "\n      target: actor"
     } else {
@@ -43,7 +41,7 @@ fn add_timed_verb(pack: &Path, verb: &str, who: &str, applies: &[(&str, i64)], e
     let effects: String = applies
         .iter()
         .map(|(id, add)| {
-            format!("      - modifier:\n          who: {who}\n          id: {id}\n          add: {add}\n{extra}")
+            format!("      - modifier:\n          who: {who}\n          id: {id}\n          add: {add}\n          ticks: {ticks}\n")
         })
         .collect();
     add_verb(
@@ -91,7 +89,7 @@ fn ticks_left(pack: &Path, id: &str) -> u64 {
     now.actors["pc_rowan"].modifiers[id].ticks_left(now.world_time)
 }
 
-/// Give pc_rowan these stacks of modifier `id`, expiring `left` ticks from now, after the row's ticks.
+/// Give pc_rowan these stacks of modifier `id`, expiring `left` ticks from now, `left` being the longest so far.
 fn hold(pack: &Path, id: &str, stacks: Vec<i64>, left: u64) {
     let def = load_canon(pack).unwrap().modifiers[id].clone();
     edit_save(pack, |now| {
@@ -99,7 +97,7 @@ fn hold(pack: &Path, id: &str, stacks: Vec<i64>, left: u64) {
         let live = ModifierLive {
             meter: def.meter,
             until,
-            max_ticks: def.ticks,
+            max_ticks: left,
             stacks,
         };
         now.actors
@@ -138,7 +136,7 @@ fn docks_with_one_minute_rounds(world: &mut World) {
     world.pack = Some(pack);
 }
 
-#[given(expr = "{string} modifies {word}, lasts 10 ticks, and has max_stacks {int}")]
+#[given(expr = "{string} modifies {word} and has max_stacks {int}")]
 fn modifier_with_a_cap(world: &mut World, id: String, meter: String, cap: i64) {
     add_modifier(
         pack(world),
@@ -148,7 +146,7 @@ fn modifier_with_a_cap(world: &mut World, id: String, meter: String, cap: i64) {
     );
 }
 
-#[given(expr = "{string} modifies {word}, lasts 10 ticks, and has no max_stacks")]
+#[given(expr = "{string} modifies {word} and has no max_stacks")]
 fn modifier_without_a_cap(world: &mut World, id: String, meter: String) {
     add_modifier(pack(world), &id, &meter, "");
 }
@@ -158,7 +156,9 @@ fn hidden_modifier(world: &mut World, id: String) {
     add_modifier(pack(world), &id, "grit", "    hidden: true\n");
 }
 
-#[given(expr = "the torch verb applies burn -1 and the brand verb applies burn -2")]
+#[given(
+    expr = "the torch verb applies burn -1 and the brand verb applies burn -2, each for 10 ticks"
+)]
 fn torch_and_brand(world: &mut World) {
     add_modifier_verb(pack(world), "torch", "target", &[("burn", -1)]);
     add_modifier_verb(pack(world), "brand", "target", &[("burn", -2)]);
@@ -211,12 +211,10 @@ fn modifier_of_no_meter(world: &mut World, id: String) {
     add_modifier(pack(world), &id, "warmth", "");
 }
 
-#[given(expr = "{string} modifies grit and lasts 0 ticks")]
+#[given(expr = "{string} modifies grit and a verb applies it for 0 ticks")]
 fn modifier_of_no_ticks(world: &mut World, id: String) {
-    let path = pack(world).join("rules/modifiers.yaml");
-    let text = fs::read_to_string(&path).unwrap();
-    let row = format!("  - id: {id}\n    meter: grit\n    ticks: 0\n");
-    fs::write(path, text + &row).unwrap();
+    add_modifier(pack(world), &id, "grit", "");
+    add_timed_verb(pack(world), "numbing", "self", &[(&id, -1)], 0);
 }
 
 #[given(expr = "a verb applies {string}, which is not a modifier")]
@@ -229,9 +227,9 @@ fn rowan_is_torched_and_branded(world: &mut World) {
     hit_rowan(world, &[("pc_wren", "torch"), ("pc_harbormouse", "brand")]);
 }
 
-#[when(regex = r"^the (\w+) applies (\w+) (-?\d+)$")]
-fn a_verb_applies(world: &mut World, verb: String, id: String, add: i64) {
-    add_modifier_verb(pack(world), &verb, "target", &[(&id, add)]);
+#[when(regex = r"^the (\w+) applies (\w+) (-?\d+) for (\d+) ticks$")]
+fn a_verb_applies(world: &mut World, verb: String, id: String, add: i64, ticks: u64) {
+    add_timed_verb(pack(world), &verb, "target", &[(&id, add)], ticks);
     hit_rowan(world, &[("pc_wren", &verb)]);
 }
 
@@ -247,8 +245,7 @@ fn ticks_pass(world: &mut World, id: String, ticks: u64) {
 
 #[given(regex = r"^the (\w+) verb applies (\w+) (-?\d+) for (\d+) ticks$")]
 fn verb_applies_for_ticks(world: &mut World, verb: String, id: String, add: i64, ticks: u64) {
-    let extra = format!("          ticks: {ticks}\n");
-    add_timed_verb(pack(world), &verb, "target", &[(&id, add)], &extra);
+    add_timed_verb(pack(world), &verb, "target", &[(&id, add)], ticks);
 }
 
 /// One round with the first verb, `later - 1` empty rounds, then a round with the second.
@@ -292,7 +289,7 @@ fn wren_torments_rowan(world: &mut World) {
 
 #[when(expr = "the pack drops burn and soaked now modifies rest")]
 fn the_pack_moves_soaked(world: &mut World) {
-    let text = "schema: modifiers\nmodifiers:\n  - id: soaked\n    meter: rest\n    ticks: 10\n";
+    let text = "schema: modifiers\nmodifiers:\n  - id: soaked\n    meter: rest\n";
     fs::write(pack(world).join("rules/modifiers.yaml"), text).unwrap();
 }
 
@@ -388,7 +385,7 @@ fn it_refuses_the_bad_rows(world: &mut World) {
     for needle in [
         "rules/modifiers.yaml",
         "max_stacks below 1",
-        "modifier 'numb' has ticks below 1",
+        "a modifier effect has ticks below 1",
         "meter 'warmth'",
     ] {
         assert!(

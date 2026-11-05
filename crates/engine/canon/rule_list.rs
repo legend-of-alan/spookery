@@ -306,8 +306,8 @@ pub struct ModifierEffectYaml {
     pub who: Spanned<String>,
     pub id: String,
     pub add: Spanned<ExprYaml>,
-    /// Overrides the row's `ticks`.
-    pub ticks: Option<u64>,
+    /// How long this application lasts, 1 or more.
+    pub ticks: u64,
 }
 
 #[derive(Deserialize)]
@@ -896,7 +896,7 @@ fn effect_of(yaml: &EffectYaml) -> Result<EffectTemplate, Fault> {
     }
     if let Some(modifier) = &yaml.modifier {
         found += 1;
-        if modifier.ticks == Some(0) {
+        if modifier.ticks == 0 {
             return Err("a modifier effect has ticks below 1, so set ticks to 1 or more".into());
         }
         effect = Some(EffectTemplate::Modifier {
