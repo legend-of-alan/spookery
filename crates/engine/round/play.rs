@@ -175,6 +175,7 @@ fn run_stages<'p, L>(
     let end = clock.world_time_after;
     finish::run(&mut draft, &canon, end, &mut dice, &mut log)?;
     let changes = triggers::run(&mut draft, &canon, &mut dice, &mut log)?;
+    crate::rules::travel::note_exits(&mut draft);
     let delivered = deliver::run(
         &canon,
         draft.state(),

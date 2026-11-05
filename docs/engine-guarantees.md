@@ -318,8 +318,9 @@ line. A hidden exit stays off the exit list. `look` answers with a fresh view an
 does not take a round, and nor do `help` and `map`. The table sends both as
 data and the client prints them: `help` lists the words this player can use
 here and now, each with what it takes and what they can name for it, and `map`
-lists each place their save says they visited, with the exits they may see from
-there. A traveller who has not arrived
+lists each place their save says they visited, with the exits they saw there
+when they last stood there at the end of a round. Where those exits go and
+whether they are locked is read now. A traveller who has not arrived
 sees where the journey ends, as `on the stairs until tick 1300`. A player names only
 what they hold or what that view shows. Anything else reads like an unknown
 word and takes no round. A pack that omits `display_name` fails check. An
@@ -327,7 +328,8 @@ unknown word tells the player to type help.
 
 Tested in `features/seats/a_player_knows_the_place.feature`,
 `features/changes/actions_visibly_matter.feature`,
-`features/items/items_are_real.feature` and
+`features/items/items_are_real.feature`,
+`features/perceive/the_map_shows_exits_as_the_actor_last_saw_them.feature` and
 `features/check/spook_check_explains_a_broken_pack.feature`.
 
 ## What the engine does not do

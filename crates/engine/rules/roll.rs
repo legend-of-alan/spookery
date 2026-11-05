@@ -159,7 +159,7 @@ mod tests {
             inventory: BTreeMap::new(),
             wielded: None,
             known_facts: Vec::new(),
-            visited: Vec::new(),
+            visited: Default::default(),
             act: Act::default(),
         }
     }

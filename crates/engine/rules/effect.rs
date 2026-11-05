@@ -729,7 +729,6 @@ fn move_actor(
         }
         let moved = actor.place != to;
         actor.place = to.to_string();
-        actor.visit(to);
         // A canon place with no live record yet gets an empty one on the first arrival.
         state.places.entry(to.to_string()).or_default();
         Ok(moved)

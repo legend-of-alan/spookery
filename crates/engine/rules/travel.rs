@@ -131,14 +131,52 @@ pub(crate) fn exits_at(
         .exits
         .iter()
         .filter(|exit| is_revealed(canon, state, actor_id, exit))
-        .map(|exit| ExitView {
-            name: exit.name.clone(),
-            to: exit.to.clone(),
-            place_name: place_name(canon, &exit.to),
-            ticks: exit.cost.ticks,
-            locked: is_locked(canon, state, presence, actor_id, exit),
-        })
+        .map(|exit| exit_view(canon, state, presence, actor_id, exit))
         .collect()
+}
+
+/// `exit` as this actor sees it now: where it goes, its ticks, and whether it is locked.
+pub(crate) fn exit_view(
+    canon: &Canon,
+    state: &State,
+    presence: &Presence,
+    actor_id: &str,
+    exit: &Exit,
+) -> ExitView {
+    ExitView {
+        name: exit.name.clone(),
+        to: exit.to.clone(),
+        place_name: place_name(canon, &exit.to),
+        ticks: exit.cost.ticks,
+        locked: is_locked(canon, state, presence, actor_id, exit),
+    }
+}
+
+/// Every actor notes the exits they see where they stand, for `map`. Runs once at the end
+/// of each round, after triggers, so a reveal is seen in the round it lands.
+pub(crate) fn note_exits(draft: &mut Draft) {
+    let canon = draft.canon();
+    let state = draft.state();
+    let seen: Vec<(String, Vec<String>)> = state
+        .actors
+        .iter()
+        .map(|(id, actor)| {
+            let exits = canon
+                .places
+                .get(&actor.place)
+                .map(|place| exits_at(canon, state, draft.presence, id, place))
+                .unwrap_or_default();
+            (
+                id.clone(),
+                exits.into_iter().map(|exit| exit.name).collect(),
+            )
+        })
+        .collect();
+    for (id, exits) in seen {
+        if let Some(actor) = draft.state_mut().actors.get_mut(&id) {
+            actor.visit(exits);
+        }
+    }
 }
 
 /// The exits of this actor's place that they are allowed to see.

@@ -193,7 +193,7 @@ fn two_arrivals(world: &mut World) {
                 inventory: Default::default(),
                 wielded: None,
                 known_facts: Vec::new(),
-                visited: vec!["docks_shop".to_string()],
+                visited: Default::default(),
                 act: spookery_engine::testing::Act {
                     busy_until: Some(EVENING + 5),
                     pending: Some(spookery_engine::testing::PendingAction {
@@ -332,7 +332,7 @@ fn both_busy_without_a_gm(world: &mut World) {
                 inventory: Default::default(),
                 wielded: None,
                 known_facts: Vec::new(),
-                visited: vec!["docks_shop".to_string()],
+                visited: Default::default(),
                 act: spookery_engine::testing::Act::default(),
             },
         );
@@ -448,7 +448,12 @@ fn rowan_visited_both_rooms(world: &mut World) {
     add_trapdoor(&pack);
     edit_save(&pack, |now| {
         let rowan = now.actors.get_mut("pc_rowan").unwrap();
-        rowan.visited = vec!["docks_shop".to_string(), "mira_rooms".to_string()];
+        let names = |exits: &[&str]| exits.iter().map(|name| name.to_string()).collect();
+        rowan.visited = [
+            ("docks_shop".to_string(), names(&["docks_street", "stairs"])),
+            ("mira_rooms".to_string(), names(&["stairs"])),
+        ]
+        .into();
     });
     world.pack = Some(pack);
 }
@@ -459,7 +464,7 @@ fn play_joins_again(world: &mut World) {
 }
 
 /// The map is the table's: each place rowan's save says they visited, with the exits
-/// rowan may see from there.
+/// rowan saw there last.
 #[then(expr = "play's map lists the shop and mira_rooms and not the trapdoor")]
 fn plays_map_lists_both_rooms(world: &mut World) {
     let mark = capture_play_stdout(world).len();

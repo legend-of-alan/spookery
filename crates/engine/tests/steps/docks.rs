@@ -333,7 +333,7 @@ Rowan.
             inventory: BTreeMap::new(),
             wielded: None,
             known_facts: Vec::new(),
-            visited: vec!["gate".to_string()],
+            visited: Default::default(),
             act: Act::default(),
         },
     );
@@ -463,7 +463,7 @@ rules:
                 inventory: BTreeMap::new(),
                 wielded: None,
                 known_facts: Vec::new(),
-                visited: Vec::new(),
+                visited: Default::default(),
                 act: Act::default(),
             },
         );
