@@ -188,8 +188,10 @@ pub struct ActorLive {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub wielded: Option<String>,
     pub known_facts: Vec<String>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub visited: Vec<String>,
+    /// Each place this actor has stood at the end of a round, with the names of the exits
+    /// they saw there then. Omitted when empty.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub visited: BTreeMap<String, Vec<String>>,
     pub act: Act,
 }
 
@@ -205,13 +207,6 @@ impl ActorLive {
     /// Busy means `busy_until` is still after this tick.
     pub fn is_busy(&self, world_time: u64) -> bool {
         self.act.busy_until.is_some_and(|until| until > world_time)
-    }
-
-    pub(crate) fn visit(&mut self, place: &str) {
-        if !self.visited.iter().any(|id| id == place) {
-            self.visited.push(place.to_string());
-            self.visited.sort();
-        }
     }
 
     pub fn is_npc(&self) -> bool {

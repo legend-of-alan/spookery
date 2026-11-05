@@ -635,7 +635,7 @@ fn mira_has_visited_the_shop(world: &mut World) {
     let mira = &saved.state().actors["mira"];
     assert_eq!(mira.place, "docks_shop");
     assert!(
-        mira.visited.iter().any(|id| id == "docks_shop"),
+        mira.visited.contains_key("docks_shop"),
         "{:?}",
         mira.visited
     );

@@ -258,7 +258,7 @@ pub mod testing {
                     inventory: std::collections::BTreeMap::new(),
                     wielded: None,
                     known_facts: Vec::new(),
-                    visited: vec!["docks_shop".to_string()],
+                    visited: Default::default(),
                     act: crate::model::Act::default(),
                 },
             );

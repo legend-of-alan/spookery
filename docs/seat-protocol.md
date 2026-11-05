@@ -168,7 +168,7 @@ A move the table can judge at once is refused before it is queued. Here Rowan se
 ]}}
 ```
 
-`map` lists each place the PC's save says they visited, by display name, with the exits they may see from there.
+`map` lists each place the PC's save says they visited, by display name, with the exits they saw there when they last stood there at the end of a round. A hidden exit revealed since then shows only after they go back. Where each exit goes, its ticks and `locked` are read now.
 
 <!-- example: player-map -->
 ```json

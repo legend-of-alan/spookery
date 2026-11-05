@@ -8,7 +8,7 @@ use crate::model::{ActorLive, PendingKind, Presence, State};
 use crate::rules::cond;
 use crate::rules::gate::{nameable, verb_for};
 use crate::rules::rule::{Owner, TargetKind, When};
-use crate::rules::travel::exits_at;
+use crate::rules::travel::{exit_view, exits_at};
 use crate::Reason;
 
 /// `help`: the built-in player words but `claim`, then each pack verb `verb_for` reaches
@@ -104,7 +104,7 @@ fn names_for(
             .filter(|name| canon.items.contains_key(*name))
             .cloned()
             .collect(),
-        TargetKind::Place => actor.visited.clone(),
+        TargetKind::Place => actor.visited.keys().cloned().collect(),
     };
     let mut names = Vec::new();
     for name in picked {
@@ -115,7 +115,8 @@ fn names_for(
     names
 }
 
-/// `map`: each place in the actor's `visited`, with the exits they may see from there.
+/// `map`: each place in the actor's `visited`, with the exits they saw there last. Where an
+/// exit goes, its ticks and whether it is locked are read now.
 pub(crate) fn map(
     canon: &Canon,
     state: &State,
@@ -123,12 +124,19 @@ pub(crate) fn map(
     actor_id: &str,
 ) -> Result<Vec<PlaceView>, Reason> {
     let actor = state.actors.get(actor_id).ok_or(Reason::UnknownId)?;
-    let places = actor.visited.iter().map(|id| PlaceView {
+    let places = actor.visited.iter().map(|(id, seen)| PlaceView {
         name: place_name(canon, id),
         exits: canon
             .places
             .get(id)
-            .map(|place| exits_at(canon, state, presence, actor_id, place))
+            .map(|place| {
+                place
+                    .exits
+                    .iter()
+                    .filter(|exit| seen.contains(&exit.name))
+                    .map(|exit| exit_view(canon, state, presence, actor_id, exit))
+                    .collect()
+            })
             .unwrap_or_default(),
     });
     Ok(places.collect())

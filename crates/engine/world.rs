@@ -334,7 +334,7 @@ impl<L> World<L> {
         crate::rules::lines::help(&self.canon, &self.state, presence, actor_id)
     }
 
-    /// The `map` for `actor_id`: each place they visited, with its exits.
+    /// The `map` for `actor_id`: each place they visited, with the exits they saw there last.
     pub fn map(&self, presence: &Presence, actor_id: &str) -> Result<Vec<PlaceView>, Reason> {
         crate::rules::lines::map(&self.canon, &self.state, presence, actor_id)
     }
