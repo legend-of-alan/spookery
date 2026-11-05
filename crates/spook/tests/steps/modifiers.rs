@@ -401,7 +401,7 @@ fn rowan_has_neither(world: &mut World) {
 }
 
 #[then(expr = "pc_rowan has no luck and the world has no tide")]
-fn rowan_has_no_luck(world: &mut World) {
+fn neither_keeps_the_dropped_meter(world: &mut World) {
     let now = state_of(pack(world));
     assert!(!now.actors["pc_rowan"].meters.contains_key("luck"));
     assert!(now.actors["pc_rowan"].meters.contains_key("grit"));

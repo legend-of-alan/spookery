@@ -34,7 +34,7 @@ impl AddedMeter {
 #[serde(deny_unknown_fields)]
 pub struct DroppedMeter {
     pub id: String,
-    pub holder: Holder,
+    pub carrier: Holder,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

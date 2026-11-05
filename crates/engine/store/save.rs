@@ -238,23 +238,22 @@ pub(crate) fn missing_meters(canon: &Canon, state: &State) -> Vec<AddedMeter> {
 
 /// Meters a holder lists that the pack no longer gives it.
 pub(crate) fn stale_meters(canon: &Canon, state: &State) -> Vec<DroppedMeter> {
-    let actors = state
-        .actors
-        .iter()
-        .map(|(id, actor)| (Holder::Actor(id.clone()), &actor.meters));
-    let world = std::iter::once((Holder::World, &state.world_meters));
-    actors
-        .chain(world)
-        .flat_map(|(holder, live)| {
-            live.keys()
-                .filter(|key| canon.meter_def(&holder, key).is_none())
-                .map(|key| DroppedMeter {
-                    id: key.clone(),
-                    holder: holder.clone(),
-                })
-                .collect::<Vec<_>>()
-        })
-        .collect()
+    let mut dropped = Vec::new();
+    let mut drop_stale = |carrier: Holder, live: &BTreeMap<String, MeterLive>| {
+        for id in live.keys() {
+            if canon.meter_def(&carrier, id).is_none() {
+                dropped.push(DroppedMeter {
+                    id: id.clone(),
+                    carrier: carrier.clone(),
+                });
+            }
+        }
+    };
+    for (id, actor) in &state.actors {
+        drop_stale(Holder::Actor(id.clone()), &actor.meters);
+    }
+    drop_stale(Holder::World, &state.world_meters);
+    dropped
 }
 
 /// Modifiers some actor holds that the pack no longer defines, or now defines on another meter.
@@ -281,10 +280,10 @@ pub fn migrate(
     dropped: &[String],
     dropped_meters: &[DroppedMeter],
 ) -> State {
-    let is_dropped = |holder: &Holder, key: &String| {
+    let is_dropped = |carrier: &Holder, key: &String| {
         dropped_meters
             .iter()
-            .any(|meter| meter.id == *key && meter.holder == *holder)
+            .any(|meter| meter.id == *key && meter.carrier == *carrier)
     };
     for meter in meters {
         let start = MeterLive {
