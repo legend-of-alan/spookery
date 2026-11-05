@@ -701,7 +701,7 @@ fn check_meters(
                 schema_error(
                     "state/save.yaml",
                     &format!("{name} lists meter '{key}', which the pack does not give it"),
-                    "remove the meter or declare it for this holder",
+                    "run spook migrate to drop the meter",
                 )
                 .at_path(format!("{path}.{key}")),
             );
