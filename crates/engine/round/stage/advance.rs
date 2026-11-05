@@ -18,16 +18,17 @@ pub(crate) fn run(draft: &mut Draft, wall: &str) -> Result<RoundTime, Reason> {
     let budget = draft.budget();
     let ticks = round_ticks(draft.presence.players, budget);
     let world_after = world_before.saturating_add(ticks);
-    let day_changed = world_before / budget.ticks_per_day != world_after / budget.ticks_per_day;
-    let window = budget.live_act_window_ticks;
-    let window_changed = world_before / window != world_after / window;
+    let windows = [
+        (ActCounter::IdleActsThisWindow, budget.idle_act_window_ticks),
+        (ActCounter::LiveActsThisWindow, budget.live_act_window_ticks),
+    ];
     draft.stamp_round(round_index, world_after, wall);
     draft.expire_modifiers(world_after)?;
-    if day_changed {
-        draft.reset_acts(ActCounter::IdleActsToday)?;
-    }
-    if window_changed {
-        draft.reset_acts(ActCounter::LiveActsThisWindow)?;
+    // Each act count resets when the round crosses the end of its window.
+    for (counter, ticks) in windows {
+        if world_before / ticks != world_after / ticks {
+            draft.reset_acts(counter)?;
+        }
     }
     Ok(RoundTime {
         round_index,

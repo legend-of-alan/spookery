@@ -110,21 +110,27 @@ pub(crate) struct OldClock {
 /// The last rules version whose saves held clocks.
 const CLOCK_RULES_REV: u64 = 11;
 
-/// The clocks of a save from before meters, by id. `None` for a save in the current shape.
+/// The last rules version whose saves named the idle act count `idle_acts_today`.
+const IDLE_TODAY_RULES_REV: u64 = 15;
+
+/// The clocks of a save from older rules, by id, empty when it held none. `None` for a save in
+/// the current shape.
 pub(crate) type OldClocks = Option<BTreeMap<String, OldClock>>;
 
-/// Parse a save to migrate. A save from the rules before meters replaced clocks is read too:
-/// its `pause` is dropped and its clocks come back beside the state, for `carry_clock`.
+/// Parse a save to migrate. A save from older rules is read too: its `idle_acts_today` counts
+/// become `idle_acts_this_window`, its `pause` is dropped, and the clocks of a save from before
+/// meters come back beside the state, for `carry_clock`.
 pub(crate) fn parse_for_migrate(text: &str) -> Result<(State, OldClocks), Vec<Diagnostic>> {
     const FILE: &str = "state/save.yaml";
     #[derive(Deserialize)]
     struct OldSave {
         rules_rev: u64,
+        #[serde(default)]
         clocks: BTreeMap<String, OldClock>,
     }
     let old = serde_saphyr::from_str::<OldSave>(text)
         .ok()
-        .filter(|old| old.rules_rev == CLOCK_RULES_REV);
+        .filter(|old| [CLOCK_RULES_REV, IDLE_TODAY_RULES_REV].contains(&old.rules_rev));
     let Some(old) = old else {
         return parse(text).map(|state| (state, None));
     };
@@ -139,6 +145,17 @@ pub(crate) fn parse_for_migrate(text: &str) -> Result<(State, OldClocks), Vec<Di
         serde_saphyr::from_str(text).map_err(|_| unreadable())?;
     fields.remove("clocks");
     fields.remove("pause");
+    let acts = fields
+        .get_mut("actors")
+        .and_then(serde_json::Value::as_object_mut)
+        .into_iter()
+        .flat_map(|actors| actors.values_mut())
+        .filter_map(|actor| actor.get_mut("act")?.as_object_mut());
+    for act in acts {
+        if let Some(count) = act.remove("idle_acts_today") {
+            act.insert("idle_acts_this_window".into(), count);
+        }
+    }
     fields.insert("rules_rev".into(), super::RULES_REV.into());
     let state: State = serde_json::from_value(fields.into()).map_err(|_| unreadable())?;
     let diags = check_actor_places(&state);

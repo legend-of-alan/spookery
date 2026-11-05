@@ -134,8 +134,8 @@ pub(crate) fn map(
     Ok(places.collect())
 }
 
-/// `on the stairs until 21:40` while a journey is still running.
-pub(crate) fn busy_line(canon: &Canon, state: &State, actor_id: &str) -> Option<String> {
+/// `on the stairs until tick 1300` while a journey is still running.
+pub(crate) fn busy_line(state: &State, actor_id: &str) -> Option<String> {
     let actor = state.actors.get(actor_id)?;
     if !actor.is_busy(state.world_time) {
         return None;
@@ -145,8 +145,7 @@ pub(crate) fn busy_line(canon: &Canon, state: &State, actor_id: &str) -> Option<
         Some(PendingKind::Arrive { via, .. }) if !via.is_empty() => via,
         _ => return None,
     };
-    let clock = clock_label(until, canon.budget.ticks_per_day);
-    Some(format!("on the {via} until {clock}"))
+    Some(format!("on the {via} until tick {until}"))
 }
 
 /// Place prose for this actor's current place.
@@ -164,13 +163,6 @@ pub(crate) fn place_prose(canon: &Canon, state: &State, actor_id: &str) -> Strin
         .filter(|line| !line.is_empty())
         .collect::<Vec<_>>()
         .join("\n")
-}
-
-/// The shown clock at `tick`, such as `21:40`, for a day of 24 shown hours. Display only:
-/// no rule reads it.
-fn clock_label(tick: u64, ticks_per_day: u64) -> String {
-    let shown_minutes = u128::from(tick % ticks_per_day) * 24 * 60 / u128::from(ticks_per_day);
-    format!("{:02}:{:02}", shown_minutes / 60, shown_minutes % 60)
 }
 
 pub(crate) fn place_name(canon: &Canon, id: &str) -> String {

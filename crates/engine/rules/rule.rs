@@ -177,8 +177,9 @@ pub enum Cond {
         who: Who,
         fact: String,
     },
-    /// A tick of the day in `from..to`, wrapping past the day's end when `from > to`.
-    DayTick {
+    /// A tick of the named cycle in `from..to`, wrapping past the cycle's end when `from > to`.
+    Cycle {
+        name: String,
         from: u64,
         to: u64,
     },

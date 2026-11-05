@@ -259,32 +259,43 @@ fn the_ferry_rule_runs(world: &mut World) {
     );
 }
 
-#[given(expr = "cast:briar\\/restock with day_tick 360..540 and players == 0")]
+#[given(expr = "cast:briar\\/restock with cycle day 360..540 and players == 0")]
 fn briar_restocks_before_the_shop_opens(world: &mut World) {
     let pack = copy_docks("rules-briar");
-    write_briar(&pack, 360, 540);
+    write_briar(&pack, "day", 360, 540);
     world.pack = Some(pack);
 }
 
-#[given(expr = "briar restocks on day_tick {int} to {int} and ticks_per_day is {word}")]
-fn briar_restocks_on_day_ticks(world: &mut World, from: u64, to: u64, day: String) {
-    let pack = copy_docks("rules-day-tick");
-    write_briar(&pack, from, to);
-    set_ticks_per_day(&pack, &day);
-    world.pack = Some(pack);
-}
-
-/// `day` is a number of ticks, or `unset` to leave the key out.
-fn set_ticks_per_day(pack: &Path, day: &str) {
-    let line = match day {
-        "unset" => String::new(),
-        ticks => format!("ticks_per_day: {ticks}\n"),
-    };
+/// Set cycle `name` to `length` ticks, adding it beside the docks `day` when it is new.
+#[given(expr = "rules\\/budget.yaml sets cycle {word} to {int}")]
+fn budget_sets_cycle(world: &mut World, name: String, length: u64) {
+    let pack = copy_docks("rules-cycle");
     let budget = pack.join("rules/budget.yaml");
-    super::common::replace_in_file(&budget, "ticks_per_day: 1440\n", &line);
+    let (old, new) = match name.as_str() {
+        "day" => ("  day: 1440\n".to_string(), format!("  day: {length}\n")),
+        _ => (
+            "cycles:\n".to_string(),
+            format!("cycles:\n  {name}: {length}\n"),
+        ),
+    };
+    super::common::replace_in_file(&budget, &old, &new);
+    world.pack = Some(pack);
 }
 
-fn write_briar(pack: &Path, from: u64, to: u64) {
+#[given(expr = "briar restocks on cycle {word} from {int} to {int}")]
+fn briar_restocks_on_cycle(world: &mut World, name: String, from: u64, to: u64) {
+    write_briar(table::pack(world), &name, from, to);
+}
+
+#[given(expr = "the docks pack, whose budget sets cycle day to 1440")]
+fn the_docks_day(world: &mut World) {
+    let pack = copy_docks("rules-docks-day");
+    let budget = fs::read_to_string(pack.join("rules/budget.yaml")).unwrap();
+    assert!(budget.contains("cycles:\n  day: 1440\n"), "{budget}");
+    world.pack = Some(pack);
+}
+
+fn write_briar(pack: &Path, cycle: &str, from: u64, to: u64) {
     write(
         &pack.join("cast/briar.md"),
         &format!(
@@ -300,7 +311,8 @@ rules:
   - id: restock
     when: habit
     if:
-      - day_tick:
+      - cycle:
+          name: {cycle}
           from: {from}
           to: {to}
       - players:
@@ -318,8 +330,8 @@ Briar tops up the oil before the shop opens.
     );
 }
 
-/// The round starts one idle round's ticks before `tick`. Mira has used her acts for the
-/// day, so only briar can restock.
+/// The round starts one idle round's ticks before `tick`. Mira has used her idle acts, so
+/// only briar can restock.
 #[when(expr = "an empty round lands at tick {int} with briar in the shop")]
 fn an_empty_round_lands_at(world: &mut World, tick: u64) {
     let pack = world.pack.clone().unwrap();
@@ -331,9 +343,31 @@ fn an_empty_round_lands_at(world: &mut World, tick: u64) {
         briar.meters.remove("shop_day");
         now.actors.insert("briar".to_string(), briar);
         now.actors.get_mut("briar").unwrap().place = "docks_shop".to_string();
-        now.actors.get_mut("mira").unwrap().act.idle_acts_today = 3;
+        now.actors
+            .get_mut("mira")
+            .unwrap()
+            .act
+            .idle_acts_this_window = 3;
     });
-    let mut opened = open(&pack);
+    play_an_empty_round(&pack);
+}
+
+/// The round starts one idle round's ticks before `tick`. Mira's shop day is spent, so her
+/// door note waits and her restock is the habit that can run.
+#[when(expr = "an empty round lands at tick {int} with Mira in the shop")]
+fn an_empty_round_lands_with_mira(world: &mut World, tick: u64) {
+    let pack = world.pack.clone().unwrap();
+    edit_save(&pack, |now| {
+        now.world_time = tick - 60;
+        let mira = now.actors.get_mut("mira").unwrap();
+        mira.meters.get_mut("shop_day").unwrap().base = 0;
+        mira.place = "docks_shop".to_string();
+    });
+    play_an_empty_round(&pack);
+}
+
+fn play_an_empty_round(pack: &Path) {
+    let mut opened = open(pack);
     let wall = opened.state().last_round_at.clone();
     opened
         .play(&Presence::default(), &wall)
@@ -341,7 +375,7 @@ fn an_empty_round_lands_at(world: &mut World, tick: u64) {
             panic!(
                 "empty round {}: {}",
                 err.as_str(),
-                spookery_engine::check_pack(&pack)
+                spookery_engine::check_pack(pack)
                     .iter()
                     .map(|diag| diag.to_string())
                     .collect::<Vec<_>>()
@@ -362,15 +396,19 @@ fn lamp_oil_increases_by_4(world: &mut World) {
 }
 
 #[given(
-    expr = "every actor has used its acts for the day at tick {int} and ticks_per_day is {word}"
+    expr = "idle_act_window_ticks is {int} and every actor has used its idle acts at tick {int}"
 )]
-fn every_actor_used_its_day(world: &mut World, tick: u64, day: String) {
-    let pack = copy_docks("rules-day-end");
-    set_ticks_per_day(&pack, &day);
+fn every_actor_used_its_idle_acts(world: &mut World, window: u64, tick: u64) {
+    let pack = copy_docks("rules-idle-window");
+    super::common::replace_in_file(
+        &pack.join("rules/budget.yaml"),
+        "idle_act_window_ticks: 1440\n",
+        &format!("idle_act_window_ticks: {window}\n"),
+    );
     edit_save(&pack, |now| {
         now.world_time = tick;
         for actor in now.actors.values_mut() {
-            actor.act.idle_acts_today = 3;
+            actor.act.idle_acts_this_window = 3;
         }
     });
     world.pack = Some(pack);
@@ -390,13 +428,42 @@ fn a_seated_round_runs(world: &mut World) {
         .unwrap_or_else(|err| panic!("seated round: {}", err.as_str()));
 }
 
-#[then(expr = "the round ends at tick {int} and every actor's acts for the day are {int}")]
-fn every_actor_acts_for_the_day(world: &mut World, tick: u64, acts: u32) {
+#[then(expr = "the round ends at tick {int} and every actor's idle acts this window are {int}")]
+fn every_actor_idle_acts(world: &mut World, tick: u64, acts: u32) {
     let now = state_of(world.pack.as_ref().unwrap());
     assert_eq!(now.world_time, tick);
     for (id, actor) in &now.actors {
-        assert_eq!(actor.act.idle_acts_today, acts, "{id}");
+        assert_eq!(actor.act.idle_acts_this_window, acts, "{id}");
     }
+}
+
+/// The docks save as rules_rev 15 wrote it, which named the idle count `idle_acts_today`.
+#[given(expr = "a docks save from rules_rev 15 where Mira has used {int} idle acts today")]
+fn a_save_from_rules_rev_15(world: &mut World, acts: u32) {
+    let pack = copy_docks("rules-idle-day");
+    edit_save(&pack, |now| {
+        now.actors
+            .get_mut("mira")
+            .unwrap()
+            .act
+            .idle_acts_this_window = acts;
+    });
+    let path = pack.join("state/save.yaml");
+    let rev = spookery_engine::testing::RULES_REV;
+    let text = fs::read_to_string(&path).unwrap();
+    let old = text
+        .replacen(&format!("rules_rev: {rev}\n"), "rules_rev: 15\n", 1)
+        .replace("idle_acts_this_window:", "idle_acts_today:");
+    assert_ne!(old, text);
+    fs::write(&path, old).unwrap();
+    world.pack = Some(pack);
+}
+
+#[then(expr = "Mira has used {int} idle acts this window")]
+fn mira_idle_acts_this_window(world: &mut World, acts: u32) {
+    let now = state_of(table::pack(world));
+    assert_eq!(now.rules_rev, spookery_engine::testing::RULES_REV);
+    assert_eq!(now.actors["mira"].act.idle_acts_this_window, acts);
 }
 
 #[then(expr = "docks_shop holds {int} lamp_oil")]

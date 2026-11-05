@@ -26,7 +26,7 @@ pub struct State {
     pub rules_rev: u64,
     pub state_rev: u64,
     pub round_index: u64,
-    /// Ticks since the start of day 0.
+    /// Ticks since the world began.
     pub world_time: u64,
     pub last_round_at: String,
     pub places: BTreeMap<String, PlaceLive>,
@@ -240,7 +240,7 @@ pub(crate) fn shift_count(
 /// How many times an actor has acted, and the journey they are still on.
 pub struct Act {
     pub last_act_round: u64,
-    pub idle_acts_today: u32,
+    pub idle_acts_this_window: u32,
     pub live_acts_this_window: u32,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub busy_until: Option<u64>,
@@ -248,10 +248,10 @@ pub struct Act {
     pub pending: Option<PendingAction>,
 }
 
-/// One of the `Act` counts a new day or a new act window sets back to 0.
+/// One of the `Act` counts the end of its act window sets back to 0.
 #[derive(Clone, Copy)]
 pub(crate) enum ActCounter {
-    IdleActsToday,
+    IdleActsThisWindow,
     LiveActsThisWindow,
 }
 
@@ -259,7 +259,7 @@ impl ActCounter {
     /// The key this count is tracked under for actor `id`.
     pub(crate) fn key(self, id: String) -> StateKey {
         match self {
-            ActCounter::IdleActsToday => StateKey::IdleActsToday(id),
+            ActCounter::IdleActsThisWindow => StateKey::IdleActsThisWindow(id),
             ActCounter::LiveActsThisWindow => StateKey::LiveActsThisWindow(id),
         }
     }
@@ -267,7 +267,7 @@ impl ActCounter {
     /// This count on `act`, to write.
     pub(crate) fn count_mut(self, act: &mut Act) -> &mut u32 {
         match self {
-            ActCounter::IdleActsToday => &mut act.idle_acts_today,
+            ActCounter::IdleActsThisWindow => &mut act.idle_acts_this_window,
             ActCounter::LiveActsThisWindow => &mut act.live_acts_this_window,
         }
     }

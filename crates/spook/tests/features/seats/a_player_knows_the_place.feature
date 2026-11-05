@@ -51,14 +51,8 @@ Feature: A player knows where they are and what they can do
   Scenario: A busy traveller sees where they are
     Given the stairs exit costs 10 ticks
     And pc_wren is seated and not travelling
-    When rowan travels via stairs at 21:30
-    Then the seated player sees "on the stairs until 21:40"
-
-  Scenario: The shown clock spreads 24 hours over the pack's day
-    Given a 144-tick day where the stairs exit costs 10 ticks and it is tick 50
-    And pc_wren is seated and not travelling
-    When rowan travels via stairs at 08:20
-    Then the seated player sees "on the stairs until 10:00"
+    When rowan travels via stairs at tick 1290
+    Then the seated player sees "on the stairs until tick 1300"
 
   Scenario: Unknown input points at help
     Given a docks table

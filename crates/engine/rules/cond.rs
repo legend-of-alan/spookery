@@ -108,8 +108,9 @@ fn holds(context: &Context, cond: &Cond) -> Result<bool, Reason> {
                 .get(&actor)
                 .is_some_and(|actor| actor.known_facts.iter().any(|id| id == fact)))
         }
-        Cond::DayTick { from, to } => {
-            let tick = state.world_time % context.canon.budget.ticks_per_day;
+        Cond::Cycle { name, from, to } => {
+            let length = context.canon.budget.cycles.get(name);
+            let tick = state.world_time % length.ok_or(Reason::UnknownId)?;
             Ok(is_in_window(*from, *to, tick))
         }
         Cond::Players { op, value } => Ok(op.holds(i64::from(context.presence.players), *value)),

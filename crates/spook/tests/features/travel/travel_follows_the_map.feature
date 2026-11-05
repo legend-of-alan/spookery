@@ -24,28 +24,28 @@ Feature: Travel follows the map
 
   Scenario: With no GM, a lone traveller arrives on the travel line
     Given the stairs exit costs 10 ticks
-    When rowan travels via stairs at 21:30
-    Then the world is at 21:40 and rowan is in mira_rooms
+    When rowan travels via stairs at tick 1290
+    Then the world is at tick 1300 and rowan is in mira_rooms
     And rowan's line shows "mira_rooms"
 
   Scenario: Arrivals complete in time order
-    Given rowan arrives at 21:40 and nell at 21:35
+    Given rowan arrives at tick 1300 and nell at tick 1295
     Then nell's arrival is applied before rowan's, in separate rounds
 
   Scenario: Arrival is stamped at its exact tick and the actor acts next round
     Given rounds are 5 ticks while seated and the stairs exit costs 2 ticks
-    When rowan travels via stairs in the round starting 21:30
-    Then the round still ends at 21:35
-    And rowan's arrival is recorded with arrived_at 21:32 in that round's line
-    And a move from rowan is accepted from the round starting 21:35
+    When rowan travels via stairs in the round starting at tick 1290
+    Then the round still ends at tick 1295
+    And rowan's arrival is recorded with arrived_at 1292 in that round's line
+    And a move from rowan is accepted from the round starting at tick 1295
 
   Scenario: Rounds never shorten
     Then every round line shows world_time_after minus world_time_before equal to 5 seated or 60 unseated
 
   Scenario: Fast-forward when all seated PCs are busy
     Given rowan and nell are seated and both busy, with no GM
-    Then the table plays rounds to 21:35 then 21:40 without waiting on the wall clock
-    And an NPC habit due at 21:35 runs in that round
+    Then the table plays rounds to tick 1295 then tick 1300 without waiting on the wall clock
+    And an NPC habit due at tick 1295 runs in that round
 
   Scenario: GM mode waits for commit
     Given a GM is seated and both PCs are busy

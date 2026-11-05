@@ -1,26 +1,39 @@
-Feature: Game time counts in ticks
+Feature: The engine counts only ticks
 
-  Scenario Outline: A day_tick window reads the tick within the pack's day
-    Given briar restocks on day_tick <from> to <to> and ticks_per_day is <day>
+  Scenario Outline: A cycle window reads the tick within the named cycle
+    Given rules/budget.yaml sets cycle <cycle> to <length>
+    And briar restocks on cycle <cycle> from <from> to <to>
     When an empty round lands at tick <tick> with briar in the shop
     Then docks_shop holds <oil> lamp_oil
 
     Examples:
-      | day   | from | to  | tick | oil |
-      | 144   | 0    | 36  | 160  | 8   |
-      | 144   | 0    | 36  | 180  | 4   |
-      | 144   | 120  | 24  | 130  | 8   |
-      | 144   | 120  | 24  | 154  | 8   |
-      | unset | 480  | 960 | 1920 | 8   |
-      | unset | 480  | 960 | 2400 | 4   |
+      | cycle | length | from | to  | tick | oil |
+      | day   | 1440   | 480  | 960 | 500  | 8   |
+      | day   | 1440   | 480  | 960 | 1920 | 8   |
+      | day   | 1440   | 480  | 960 | 2400 | 4   |
+      | tide  | 144    | 0    | 36  | 160  | 8   |
+      | tide  | 144    | 0    | 36  | 180  | 4   |
+      | tide  | 144    | 120  | 24  | 130  | 8   |
+      | tide  | 144    | 120  | 24  | 154  | 8   |
 
-  Scenario Outline: Only a round that crosses the end of the day resets each actor's acts for the day
-    Given every actor has used its acts for the day at tick <start> and ticks_per_day is <day>
+  Scenario: Mira restocks inside the docks day
+    Given the docks pack, whose budget sets cycle day to 1440
+    When an empty round lands at tick 500 with Mira in the shop
+    Then docks_shop holds 8 lamp_oil
+
+  Scenario Outline: Only a round that crosses the end of an idle window gives idle acts back
+    Given idle_act_window_ticks is <window> and every actor has used its idle acts at tick <start>
     When a seated round runs
-    Then the round ends at tick <end> and every actor's acts for the day are <acts>
+    Then the round ends at tick <end> and every actor's idle acts this window are <acts>
 
     Examples:
-      | day   | start | end  | acts |
-      | 144   | 140   | 145  | 0    |
-      | unset | 140   | 145  | 3    |
-      | unset | 1436  | 1441 | 0    |
+      | window | start | end  | acts |
+      | 144    | 140   | 145  | 0    |
+      | 1440   | 140   | 145  | 3    |
+      | 1440   | 1436  | 1441 | 0    |
+
+  Scenario: A save from the rules that counted idle acts per day keeps its count through migrate
+    Given a docks save from rules_rev 15 where Mira has used 2 idle acts today
+    When the author runs spook migrate
+    Then migrate exits 0
+    And Mira has used 2 idle acts this window

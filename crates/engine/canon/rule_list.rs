@@ -140,7 +140,7 @@ pub struct CondYaml {
     pub flag: Option<FlagCondYaml>,
     pub at: Option<AtYaml>,
     pub knows: Option<KnowsYaml>,
-    pub day_tick: Option<DayTickYaml>,
+    pub cycle: Option<CycleYaml>,
     pub players: Option<PlayersYaml>,
     pub note_exists: Option<String>,
     pub wielding: Option<WieldingYaml>,
@@ -203,7 +203,8 @@ pub struct KnowsYaml {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct DayTickYaml {
+pub struct CycleYaml {
+    pub name: String,
     pub from: u64,
     pub to: u64,
 }
@@ -707,14 +708,15 @@ pub(super) fn cond_of(yaml: &CondYaml) -> Result<Cond, Fault> {
             fact: knows.fact.clone(),
         });
     }
-    if let Some(day_tick) = &yaml.day_tick {
+    if let Some(cycle) = &yaml.cycle {
         found += 1;
-        if day_tick.from == day_tick.to {
-            return Err("day_tick needs from and to that differ".into());
+        if cycle.from == cycle.to {
+            return Err("cycle needs from and to that differ".into());
         }
-        cond = Some(Cond::DayTick {
-            from: day_tick.from,
-            to: day_tick.to,
+        cond = Some(Cond::Cycle {
+            name: cycle.name.clone(),
+            from: cycle.from,
+            to: cycle.to,
         });
     }
     if let Some(players) = &yaml.players {

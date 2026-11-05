@@ -13,7 +13,11 @@ use super::table;
 use crate::support::{self, copy_docks};
 use crate::World;
 
-pub(crate) const EVENING: u64 = 21 * 60 + 30;
+pub(crate) const EVENING: u64 = 1290;
+
+/// Mira's restock window in the docks pack, as `cast/mira.md` writes it.
+pub(crate) const MIRA_RESTOCK_CYCLE: &str =
+    "      - cycle:\n          name: day\n          from: 480\n          to: 960\n";
 
 /// The first word of `line`, and the rest of it when there is any.
 pub(crate) fn split_line(line: &str) -> (&str, Option<&str>) {
@@ -171,19 +175,34 @@ fn break_pack(pack: &Path, fault: &str) {
             "idle_ticks_per_round: 60\n",
             "idle_ticks_per_round: 0\n",
         ),
-        "zero ticks per day" => replace_in_file(
+        "zero idle window" => replace_in_file(
             &pack.join("rules/budget.yaml"),
-            "ticks_per_day: 1440\n",
-            "ticks_per_day: 0\n",
+            "idle_act_window_ticks: 1440\n",
+            "idle_act_window_ticks: 0\n",
         ),
-        "day_tick past the day" => replace_in_file(
+        "a zero-tick cycle" => replace_in_file(
+            &pack.join("rules/budget.yaml"),
+            "  day: 1440\n",
+            "  day: 0\n",
+        ),
+        "a cycle past its length" => replace_in_file(
             &pack.join("cast/mira.md"),
             "          to: 960\n",
             "          to: 1440\n",
         ),
+        "an unknown cycle" => replace_in_file(
+            &pack.join("cast/mira.md"),
+            "          name: day\n",
+            "          name: tide\n",
+        ),
+        "a leftover day_tick" => replace_in_file(
+            &pack.join("cast/mira.md"),
+            MIRA_RESTOCK_CYCLE,
+            "      - day_tick:\n          from: 480\n          to: 960\n",
+        ),
         "a leftover hour" => replace_in_file(
             &pack.join("cast/mira.md"),
-            "      - day_tick:\n          from: 480\n          to: 960\n",
+            MIRA_RESTOCK_CYCLE,
             "      - hour:\n          from: 8\n          to: 16\n",
         ),
         "an exit cost in minutes" => replace_in_file(
@@ -518,38 +537,24 @@ fn the_view_hides_the_trapdoor(world: &mut World) {
 
 #[given(expr = "the stairs exit costs 10 ticks")]
 fn the_stairs_cost_ten_ticks(world: &mut World) {
-    seat_rowan_by_ten_tick_stairs(world, 1440, EVENING);
-}
-
-/// At tick 50 of a 144-tick day the shown clock reads 08:20.
-#[given(expr = "a 144-tick day where the stairs exit costs 10 ticks and it is tick 50")]
-fn a_short_day_with_ten_tick_stairs(world: &mut World) {
-    seat_rowan_by_ten_tick_stairs(world, 144, 50);
-}
-
-fn seat_rowan_by_ten_tick_stairs(world: &mut World, ticks_per_day: u64, tick: u64) {
     let pack = copy_docks("ten-ticks");
     replace_in_file(
         &pack.join("world/places/docks_shop.md"),
         "ticks: 2\n",
         "ticks: 10\n",
     );
-    replace_in_file(
-        &pack.join("rules/budget.yaml"),
-        "ticks_per_day: 1440\n",
-        &format!("ticks_per_day: {ticks_per_day}\n"),
-    );
     edit_save(&pack, |now| {
         give_key(now);
-        now.world_time = tick;
+        now.world_time = EVENING;
     });
     table::listen(world, &pack);
     table::seat_rowan(world, &pack);
     world.pack = Some(pack);
 }
 
-#[when(expr = "rowan travels via stairs at {word}")]
-fn rowan_travels_via_stairs(world: &mut World, _clock: String) {
+#[when(expr = "rowan travels via stairs at tick {int}")]
+fn rowan_travels_via_stairs(world: &mut World, tick: u64) {
+    assert_eq!(state_of(table::pack(world)).world_time, tick);
     let (mark, added) = table::player_send(world, "travel stairs", "\"kind\":");
     world.mark = mark;
     world.player_added = added;

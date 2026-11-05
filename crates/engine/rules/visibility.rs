@@ -258,7 +258,7 @@ fn can_see(canon: &Canon, state: &State, viewer: &str, change: &Change) -> bool 
         StateKey::WorldFlag(_)
         | StateKey::ActorFlag(_, _)
         | StateKey::LastActRound(_)
-        | StateKey::IdleActsToday(_)
+        | StateKey::IdleActsThisWindow(_)
         | StateKey::LiveActsThisWindow(_) => false,
         StateKey::WorldMeter(key) => canon
             .meter_def(&Holder::World, key)

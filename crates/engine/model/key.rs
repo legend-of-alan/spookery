@@ -14,7 +14,7 @@ pub enum StateKey {
     ActorBusy(String),
     ActorKnownFact(String),
     LastActRound(String),
-    IdleActsToday(String),
+    IdleActsThisWindow(String),
     LiveActsThisWindow(String),
     ActorItem(String, String),
     PlaceItem(String, String),
@@ -34,7 +34,7 @@ impl fmt::Display for StateKey {
             StateKey::ActorBusy(id) => write!(f, "actor_busy {id}"),
             StateKey::ActorKnownFact(id) => write!(f, "actor_known_fact {id}"),
             StateKey::LastActRound(id) => write!(f, "last_act_round {id}"),
-            StateKey::IdleActsToday(id) => write!(f, "idle_acts_today {id}"),
+            StateKey::IdleActsThisWindow(id) => write!(f, "idle_acts_this_window {id}"),
             StateKey::LiveActsThisWindow(id) => write!(f, "live_acts_this_window {id}"),
             StateKey::ActorItem(actor, id) => write!(f, "actor_item {actor} {id}"),
             StateKey::PlaceItem(place, id) => write!(f, "place_item {place} {id}"),
@@ -57,7 +57,7 @@ impl StateKey {
             | StateKey::ActorBusy(id)
             | StateKey::ActorKnownFact(id)
             | StateKey::LastActRound(id)
-            | StateKey::IdleActsToday(id)
+            | StateKey::IdleActsThisWindow(id)
             | StateKey::LiveActsThisWindow(id)
             | StateKey::ActorItem(id, _)
             | StateKey::ActorWielded(id) => Some(id),
