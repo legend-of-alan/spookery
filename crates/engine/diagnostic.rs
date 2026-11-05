@@ -177,7 +177,7 @@ pub(crate) fn check_tag(
     file: &str,
     line_base: u32,
 ) -> Option<Diagnostic> {
-    let hint = format!("write 'schema: {expected}' with no version suffix");
+    let hint = format!("write 'schema: {expected}'");
     let Some(found) = find_schema(text) else {
         return Some(
             schema_error(file, "the schema tag is missing", &hint)
@@ -188,11 +188,7 @@ pub(crate) fn check_tag(
     if found.value == expected {
         return None;
     }
-    let problem = if found.value.contains('/') {
-        format!("schema is '{}', an old versioned tag", found.value)
-    } else {
-        format!("schema is '{}', which this file does not use", found.value)
-    };
+    let problem = format!("schema is '{}', which this file does not use", found.value);
     Some(
         schema_error(file, &problem, &hint)
             .at_path("schema")
@@ -216,7 +212,7 @@ pub(crate) fn yaml_diagnostic(file: &str, err: &YamlError, line_base: u32) -> Di
         YamlError::SerdeUnknownField { field, .. } => (
             Some(field.clone()),
             format!("unknown field '{field}'"),
-            unknown_field_hint(field),
+            "remove it or spell a field this file allows".to_string(),
         ),
         YamlError::SerdeMissingField { field, .. } => (
             Some((*field).to_string()),
@@ -267,15 +263,6 @@ pub(crate) fn yaml_diagnostic(file: &str, err: &YamlError, line_base: u32) -> Di
     diag
 }
 
-/// Game time is counted in ticks, so a key that counted it in hours or minutes names its tick form.
-fn unknown_field_hint(field: &str) -> String {
-    match field {
-        "hour" => "write day_tick with from and to in ticks of the day".to_string(),
-        "time" | "minutes" => "write ticks, the game time as a whole number of ticks".to_string(),
-        _ => "remove it or spell a field this file allows".to_string(),
-    }
-}
-
 pub(crate) fn parse_file<T: serde::de::DeserializeOwned>(
     file: &str,
     text: &str,
@@ -324,15 +311,5 @@ mod tests {
             diag.to_string(),
             "state/save.yaml: pack_rev: pack_rev does not match the canon hash; run spook migrate to store the current hash (PACK_REV_MISMATCH)"
         );
-    }
-
-    #[test]
-    fn an_old_tag_names_the_schema_line() {
-        let text = "\n# note\nschema: moves/v0\nmoves: []\n";
-        let diag = check_tag(text, "moves", "rules/moves.yaml", 0).unwrap();
-        assert_eq!(diag.line, Some(3));
-        assert!(diag.message.contains("old versioned tag"));
-        assert!(diag.message.contains("no version"));
-        assert_eq!(diag.code, Code::Error(Reason::Schema));
     }
 }

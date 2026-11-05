@@ -1,5 +1,7 @@
 //! Read, write and migrate the save.
 
+use std::collections::BTreeMap;
+
 use serde::Deserialize;
 use serde_saphyr::SerializerOptions;
 

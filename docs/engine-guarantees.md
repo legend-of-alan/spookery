@@ -78,8 +78,7 @@ them. A number in a rule can roll dice, including an NPC habit's effect. Those f
 round, written on the journal line, and shown to the GM. `spook verify` replays
 the journal, rolls them again from that seed, and checks the save. A condition's value does not roll; dice there fail the pack check. A change of who is present, and a migrate between rounds, verify too.
 A pack author can edit the pack's world, cast, or rules while a save exists,
-and migrate fits that save to the new canon. Migrate does not carry a save
-across engine rules versions. Those saves are refused.
+and migrate fits that save to the new canon.
 Migrate may carry a hand edit of `save.yaml`. It writes a checkpoint of the
 migrated save, replay restarts from that checkpoint, and full verification
 trusts the edit and names it as `operator edit trusted at state_rev N`. A hand
@@ -238,9 +237,8 @@ World time is a count of ticks. A day is the pack's `ticks_per_day`, 1440 when
 the pack leaves it out. A round that crosses the end of a day resets each
 actor's acts for the day. A `day_tick` condition reads the tick within the day
 and may wrap past the day's end. Players see a tick as a clock time, a day of 24
-shown hours, and no rule reads that clock. Check refuses a `ticks_per_day` of 0,
-a `day_tick` bound at or past `ticks_per_day`, and an `hour` or `minutes` key,
-with a hint that names the tick form.
+shown hours, and no rule reads that clock. Check refuses a `ticks_per_day` of 0
+and a `day_tick` bound at or past `ticks_per_day`.
 
 Tested in `features/rules/game_time_counts_in_ticks.feature`,
 `features/seats/a_player_knows_the_place.feature`, and

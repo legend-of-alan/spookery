@@ -26,7 +26,6 @@ Feature: spook check explains a broken pack
       | unknown field            | rules/verbs.yaml           | SCHEMA            | unknown field            |
       | unknown check            | rules/verbs.yaml           | SCHEMA            | not a check              |
       | duplicate move           | rules/verbs.yaml           | SCHEMA            | listed twice             |
-      | old format tag           | rules/verbs.yaml           | SCHEMA            | no version               |
       | unknown format tag       | rules/verbs.yaml           | SCHEMA            | does not use             |
       | missing meters           | rules/meters.yaml          | NOT_IN_SPEC       | missing                  |
       | pack_rev mismatch        | state/save.yaml            | PACK_REV_MISMATCH | pack_rev                 |
@@ -42,8 +41,6 @@ Feature: spook check explains a broken pack
       | zero idle ticks          | rules/budget.yaml          | SCHEMA            | idle_ticks_per_round     |
       | zero ticks per day       | rules/budget.yaml          | SCHEMA            | ticks_per_day            |
       | day_tick past the day    | cast/mira.md               | SCHEMA            | below ticks_per_day      |
-      | a leftover hour          | cast/mira.md               | SCHEMA            | write day_tick           |
-      | an exit cost in minutes  | world/places/docks_shop.md | SCHEMA            | write ticks              |
 
   Scenario: Two problems in two files are both reported
     Given a docks table
