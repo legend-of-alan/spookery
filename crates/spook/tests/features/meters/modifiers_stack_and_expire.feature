@@ -74,11 +74,12 @@ Feature: Modifiers stack per application, add ticks on reapply, and expire at on
     Then pc_rowan's change line shows burn and not dread
     And pc_wren's change line shows neither
 
-  Scenario: The pack check refuses max_stacks 0 and a modifier of no meter
+  Scenario: The pack check refuses max_stacks 0, ticks 0 and a modifier of no meter
     Given "burn" modifies grit, lasts 10 ticks, and has max_stacks 0
     And "chill" modifies warmth, which is not a meter
+    And "numb" modifies grit and lasts 0 ticks
     When the author runs spook check
-    Then it refuses max_stacks 0 and the warmth meter
+    Then it refuses max_stacks 0, ticks 0 and the warmth meter
 
   Scenario: The pack check refuses a modifier listed twice at its second row
     Given "burn" modifies grit, lasts 10 ticks, and has max_stacks 4

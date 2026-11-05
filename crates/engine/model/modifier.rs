@@ -39,10 +39,11 @@ impl ModifierLive {
     }
 }
 
-/// Apply `add`, lasting `ticks`, at tick `now`. The time left plus `ticks` is the new time
-/// left, capped at `max_ticks`, the longest `ticks` so far, this one included. Below
-/// `max_stacks` it is one more stack. At the cap it replaces the first weakest stack when its absolute value is larger. Stacks past a
-/// `max_stacks` the pack lowered go first, weakest first.
+/// Apply `add`, lasting `ticks`, at tick `now`. The ticks left plus `ticks` are the new
+/// ticks left, capped at `max_ticks`, the longest `ticks` so far, this one included.
+/// Below `max_stacks` it is one more stack. At the cap it replaces the first weakest
+/// stack when its absolute value is larger. Stacks past a `max_stacks` the pack lowered
+/// go first, weakest first.
 pub fn stack(def: &ModifierDef, live: &mut ModifierLive, add: i64, ticks: u64, now: u64) {
     live.max_ticks = live.max_ticks.max(ticks);
     let left = live.ticks_left(now).saturating_add(ticks);

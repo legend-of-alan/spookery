@@ -203,12 +203,12 @@ it, and a weaker or equal one changes no stack. The modifier has one clock.
 Every application, a tie included, sets the end to now plus the smaller of the
 ticks left plus its `ticks` and the longest `ticks` applied so far, this one
 included. When the world reaches the end, the modifier expires and every stack
-goes at once. Different modifiers on
-one meter add up. A player sees a modifier change on their own actor only, and
-not one the pack hides. Replay gives the same journal, and migrate drops a
-modifier the pack no longer defines or now defines on another meter. Check
-refuses a `ticks` or `max_stacks` below 1, a modifier of a meter no actor carries, and an
-effect that names a modifier the pack does not define.
+goes at once. Different modifiers on one meter add up. A player sees a modifier
+change on their own actor only, and not one the pack hides. Replay gives the
+same journal, and migrate drops a modifier the pack no longer defines or now
+defines on another meter. Check refuses a `ticks` or `max_stacks` below 1, a
+modifier of a meter no actor carries, and an effect that names a modifier the
+pack does not define.
 
 Tested in `features/meters/modifiers_stack_and_expire.feature`.
 

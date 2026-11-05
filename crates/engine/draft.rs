@@ -77,7 +77,7 @@ impl<'p> Draft<'p> {
         Ok(())
     }
 
-    /// Expire every modifier whose minute has come by `world_time`, all its stacks at once.
+    /// Expire every modifier whose tick has come by `world_time`, all its stacks at once.
     pub(crate) fn expire_modifiers(&mut self, world_time: u64) -> Result<(), Reason> {
         let due: Vec<(String, String, String)> = self
             .state

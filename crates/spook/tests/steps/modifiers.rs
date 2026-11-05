@@ -211,6 +211,14 @@ fn modifier_of_no_meter(world: &mut World, id: String) {
     add_modifier(pack(world), &id, "warmth", "");
 }
 
+#[given(expr = "{string} modifies grit and lasts 0 ticks")]
+fn modifier_of_no_ticks(world: &mut World, id: String) {
+    let path = pack(world).join("rules/modifiers.yaml");
+    let text = fs::read_to_string(&path).unwrap();
+    let row = format!("  - id: {id}\n    meter: grit\n    ticks: 0\n");
+    fs::write(path, text + &row).unwrap();
+}
+
 #[given(expr = "a verb applies {string}, which is not a modifier")]
 fn verb_applies_an_undefined_modifier(world: &mut World, id: String) {
     add_modifier_verb(pack(world), "scorch", "self", &[(&id, -1)]);
@@ -374,12 +382,13 @@ fn wren_sees_neither(world: &mut World) {
     );
 }
 
-#[then(expr = "it refuses max_stacks 0 and the warmth meter")]
+#[then(expr = "it refuses max_stacks 0, ticks 0 and the warmth meter")]
 fn it_refuses_the_bad_rows(world: &mut World) {
     assert_eq!(world.code, Some(1), "{}", world.stderr);
     for needle in [
         "rules/modifiers.yaml",
         "max_stacks below 1",
+        "modifier 'numb' has ticks below 1",
         "meter 'warmth'",
     ] {
         assert!(

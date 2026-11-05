@@ -9,7 +9,7 @@ pub enum StateKey {
     ActorPlace(String),
     ActorFlag(String, String),
     ActorMeter(String, String),
-    /// An actor's modifier: its stacks and the minute it expires.
+    /// An actor's modifier: its stacks and the tick it expires at.
     ActorModifier(String, String),
     ActorBusy(String),
     ActorKnownFact(String),

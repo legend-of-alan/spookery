@@ -306,8 +306,8 @@ pub struct ModifierEffectYaml {
     pub who: Spanned<String>,
     pub id: String,
     pub add: Spanned<ExprYaml>,
-    /// Overrides the row's `ticks`. The shape refuses 0, as on the row.
-    pub ticks: Option<std::num::NonZeroU64>,
+    /// Overrides the row's `ticks`.
+    pub ticks: Option<u64>,
 }
 
 #[derive(Deserialize)]
@@ -896,11 +896,14 @@ fn effect_of(yaml: &EffectYaml) -> Result<EffectTemplate, Fault> {
     }
     if let Some(modifier) = &yaml.modifier {
         found += 1;
+        if modifier.ticks == Some(0) {
+            return Err("a modifier effect has ticks below 1, so set ticks to 1 or more".into());
+        }
         effect = Some(EffectTemplate::Modifier {
             who: who_of(&modifier.who)?,
             id: modifier.id.clone(),
             add: expr_of(&modifier.add)?,
-            ticks: modifier.ticks.map(std::num::NonZeroU64::get),
+            ticks: modifier.ticks,
         });
     }
     if let Some(location) = &yaml.location {
