@@ -10,7 +10,6 @@ use crate::rules::context::Context;
 use crate::rules::effect::EffectKind;
 use crate::rules::expand;
 use crate::rules::gate;
-use crate::rules::gate::Refusal;
 use crate::rules::habits::{self, is_player_at};
 use crate::rules::rule::{TargetKind, When};
 use crate::rules::travel::find_exit;
@@ -37,7 +36,8 @@ pub(crate) fn run(
     check_unique_ids(&candidates)?;
     let limit = (draft.budget().max_intents_applied as usize).min(candidates.len());
     for intent in candidates.split_off(limit) {
-        refuse(log, &intent, Refusal::new(&intent, Reason::Budget), false);
+        let refusal = gate::Refusal::new(&intent, Reason::Budget);
+        refuse(log, &intent, refusal, false);
     }
     Ok(candidates)
 }

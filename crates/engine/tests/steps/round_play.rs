@@ -269,7 +269,7 @@ fn each_strike_is_scored_on_the_others_own_roll(world: &mut World) {
 #[given(expr = "max_effects_per_intent is 1 and a row with 2 effects")]
 fn max_effects_per_intent_is_1_and_a_row_with_2_effects(world: &mut World) {
     let pack = support::copy_pack("oneshot-docks", "effect-cap");
-    lower_effect_cap(&pack);
+    set_budget(&pack, "max_effects_per_intent", 1);
     support::append(
         &pack.join("rules/verbs.yaml"),
         "
@@ -563,7 +563,7 @@ fn the_journal_records_and_not(world: &mut World, ran: String, skipped: String) 
 )]
 fn a_street_rule_over_the_cap(world: &mut World) {
     let pack = support::copy_pack("oneshot-docks", "trigger-cap");
-    lower_effect_cap(&pack);
+    set_budget(&pack, "max_effects_per_intent", 1);
     let rule = "  - id: greeted
     when: { change: { arrive: here, who: pc_rowan } }
     do:
@@ -745,14 +745,6 @@ fn add_place_rules(pack: &Path, place: &str, rules: &str) {
     let next = text.replacen("exits:", &format!("rules:\n{rules}\nexits:"), 1);
     assert_ne!(next, text, "{place} has no exits");
     fs::write(&path, next).unwrap();
-}
-
-fn lower_effect_cap(pack: &Path) {
-    let budget_path = pack.join("rules/budget.yaml");
-    let text = fs::read_to_string(&budget_path).unwrap();
-    let next = text.replacen("max_effects_per_intent: 4", "max_effects_per_intent: 1", 1);
-    assert_ne!(next, text, "cap was not lowered");
-    fs::write(&budget_path, next).unwrap();
 }
 
 fn assert_refusal(world: &World, oil: i64, reason: &str) {
