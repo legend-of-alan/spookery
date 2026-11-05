@@ -5,7 +5,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use crate::canon::{check_save, load_canon};
-use crate::diagnostic::{first_reason, Diagnostic};
+use crate::diagnostic::first_reason;
 use crate::hash::blake2s_tagged;
 use crate::model::{Presence, State};
 use crate::rules::effect::Effect;
@@ -14,7 +14,7 @@ use crate::store::journal;
 use crate::store::lock::{lock_pack, lock_write, PackGuard};
 use crate::store::records::{emit_effect, MigrateRecord, Record, RoundRecord};
 use crate::store::require_rules_rev;
-use crate::store::save::{self, OldClocks};
+use crate::store::save;
 use crate::world::World;
 use crate::Reason;
 
@@ -247,55 +247,21 @@ pub(crate) fn peek_at_tip(path: &Path) -> Result<World<()>, Reason> {
     Ok(world)
 }
 
-/// Why `spook migrate` refused: a code, or a clock of an older save that no meter can take,
-/// with what to do about it.
-#[derive(Debug)]
-pub enum MigrateError {
-    Refused(Reason),
-    Clock(Diagnostic),
-}
-
-impl From<Reason> for MigrateError {
-    fn from(reason: Reason) -> Self {
-        MigrateError::Refused(reason)
-    }
-}
-
-impl std::fmt::Display for MigrateError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            MigrateError::Refused(reason) => reason.fmt(f),
-            MigrateError::Clock(diag) => diag.fmt(f),
-        }
-    }
-}
-
 /// Migrate the journal tip. A save that the journal has not passed is migrated as it stands.
-/// A save from before meters replaced clocks is migrated too: each clock moves onto its meter,
-/// and the save is first rewritten in the current shape, so the migrate replays from it.
-pub fn migrate_pack(path: &Path) -> Result<(), MigrateError> {
+pub fn migrate_pack(path: &Path) -> Result<(), Reason> {
     let lock = lock_pack(path)?;
-    let (mut state, clocks, edited) = load_migrate_tip(path, &lock)?;
+    let (state, edited) = load_migrate_tip(path, &lock)?;
     let canon = load_canon(path).map_err(|diags| first_reason(&diags))?;
-    if let Some(clocks) = clocks {
-        for (id, clock) in clocks {
-            save::carry_clock(&canon, &mut state, &id, clock).map_err(MigrateError::Clock)?;
-        }
-        let _write = lock_write(path, &lock)?;
-        write_atomic(&journal::save_path(path), save::emit(&state)?.as_bytes())?;
-    }
     crate::store::commit::commit_migrate(path, &canon, state, edited, &lock)?;
     Ok(())
 }
 
-/// The state to migrate, the clocks of a save from before meters, and whether it is a hand
-/// edit of the checkpoint head. A hand edit with live rounds past it is refused, because the
-/// tip does not hold it.
-fn load_migrate_tip(path: &Path, lock: &PackGuard) -> Result<(State, OldClocks, bool), Reason> {
+/// The state to migrate, and whether it is a hand edit of the checkpoint head. A hand edit
+/// with live rounds past it is refused, because the tip does not hold it.
+fn load_migrate_tip(path: &Path, lock: &PackGuard) -> Result<(State, bool), Reason> {
     let bytes = journal::read_save(&journal::save_path(path))?;
     let text = std::str::from_utf8(&bytes).map_err(|_| Reason::Schema)?;
-    let (file_state, clocks) =
-        save::parse_for_migrate(text).map_err(|diags| first_reason(&diags))?;
+    let file_state = save::parse(text).map_err(|diags| first_reason(&diags))?;
     // A save from before the head is a checkpoint that did not land, not an edit.
     let edited = journal::read_head(path)
         .map_err(|fault| fault.reason)?
@@ -311,12 +277,8 @@ fn load_migrate_tip(path: &Path, lock: &PackGuard) -> Result<(State, OldClocks, 
         });
     match (ahead, edited) {
         (true, true) => Err(Reason::HandEdit),
-        (true, false) => Ok((
-            replay_tip_unchecked(path, lock)?.state().clone(),
-            None,
-            false,
-        )),
-        (false, _) => Ok((file_state, clocks, edited)),
+        (true, false) => Ok((replay_tip_unchecked(path, lock)?.state().clone(), false)),
+        (false, _) => Ok((file_state, edited)),
     }
 }
 

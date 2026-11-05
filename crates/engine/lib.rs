@@ -17,9 +17,7 @@ pub use intent::{Intent, IntentArgs, Source, Target, Viewer};
 pub use model::meter::MeterLive;
 pub use model::modifier::ModifierLive;
 pub use model::{Note, Presence, State};
-pub use round::{
-    migrate_pack, play_pack_once, verify_pack, verify_quick, MigrateError, RoundOutput,
-};
+pub use round::{migrate_pack, play_pack_once, verify_pack, verify_quick, RoundOutput};
 pub use rules::effect::Holder;
 pub use rules::gate::Refusal;
 pub use rules::perceive::View;
