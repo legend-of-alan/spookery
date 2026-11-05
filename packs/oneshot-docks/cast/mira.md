@@ -34,7 +34,8 @@ rules:
   - id: restock_lamp_oil
     when: habit
     if:
-      - day_tick:
+      - cycle:
+          name: day
           from: 480
           to: 960
     do:

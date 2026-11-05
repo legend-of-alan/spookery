@@ -1,6 +1,6 @@
 schema: save
 world_id: sample-d20
-pack_rev: blake2s:c8e3a296fb22b9fd93cbae039dab279efbfe0794a6339a4eaf7425af912c499d
+pack_rev: blake2s:f912d54f4bef6761e315a3378111e3fdff63b6ff779889d48f8d96a5911b3971
 rules_rev: 16
 state_rev: 0
 round_index: 0
@@ -40,7 +40,7 @@ actors:
     known_facts: []
     act:
       last_act_round: 0
-      idle_acts_today: 0
+      idle_acts_this_window: 0
       live_acts_this_window: 0
   npc_oden:
     kind: npc
@@ -63,7 +63,7 @@ actors:
     known_facts: []
     act:
       last_act_round: 0
-      idle_acts_today: 0
+      idle_acts_this_window: 0
       live_acts_this_window: 0
   pc_lark:
     kind: pc
@@ -89,7 +89,7 @@ actors:
       - gate_yard
     act:
       last_act_round: 0
-      idle_acts_today: 0
+      idle_acts_this_window: 0
       live_acts_this_window: 0
   pc_nell:
     kind: pc
@@ -114,6 +114,6 @@ actors:
       - mill_lane
     act:
       last_act_round: 0
-      idle_acts_today: 0
+      idle_acts_this_window: 0
       live_acts_this_window: 0
 notes: []

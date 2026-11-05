@@ -195,7 +195,7 @@ The table's state for a GM. `world_time` is the game clock in ticks. `pack_rev` 
     "world_time": 1080,
     "round_index": 0,
     "state_rev": 0,
-    "pack_rev": "blake2s:fcbee20cca05a83956bfccfc5d0cd39b6738f16ef519033cb8d015d5f2b82fd0",
+    "pack_rev": "blake2s:d9007ad32e134c6bf6292316c00fe04a015504c3ea6d99455fd791986b995d82",
     "last_round_at": "2026-01-01T00:00:00Z",
     "queued": [],
     "pack": {
@@ -336,7 +336,7 @@ A client ignores a `kind` or a field it does not know. `server.json` gives every
 
 ### view and resume
 
-`viewer` is the bare actor id. `place_name` and `actor_names` are the pack's display names, and `body` is the place prose. `known_facts` hold only the facts that actor knows, with the prose that actor may read. `meters` are the viewer's own, without hidden ones. `world_meters` are the world's meters whose pack row says `hidden: false`, at their current values, so a player who comes back sees them. `exits` is left out when the place has none. `cant_act` says why the viewer can't act now, and is left out when they can, so `View::can_act()` is `cant_act` being empty. Today it is a journey, and reads like `on the stairs until 21:40`.
+`viewer` is the bare actor id. `place_name` and `actor_names` are the pack's display names, and `body` is the place prose. `known_facts` hold only the facts that actor knows, with the prose that actor may read. `meters` are the viewer's own, without hidden ones. `world_meters` are the world's meters whose pack row says `hidden: false`, at their current values, so a player who comes back sees them. `exits` is left out when the place has none. `cant_act` says why the viewer can't act now, and is left out when they can, so `View::can_act()` is `cant_act` being empty. Today it is a journey, and reads like `on the stairs until tick 1300`.
 
 <!-- example: player-resume -->
 ```json
@@ -506,5 +506,6 @@ The MCP endpoint answers with an HTTP status before any seat: 400 for an `MCP-Pr
 - Version 2 broke version 1 once, on purpose: clocks left the wire with world clocks. `clocks` left `view` and `resume`, `pause` left `status`, `PAUSED_CLOCK` left the refusal codes, and `view.status` became `view.cant_act`. `view.world_meters` was added. The session recorded against version 1 was replaced by one recorded against version 2.
 - Version 2 dropped one field before any release, on purpose: `CHOOSE_PC` no longer lists the open PCs in `detail`, since the hello's `open` already does, so `detail` is always a string. The version stayed 2 because no build had shipped.
 - Version 2 renamed two things before any release, on purpose, when game time became ticks: an exit's `minutes` became `ticks`, and the changed key `live_acts_this_hour` became `live_acts_this_window`. The recording took the docks pack's new `pack_rev` with them. The version stayed 2 because no build had shipped.
+- Version 2 renamed one more thing before any release, on purpose, when the engine stopped counting days: the changed key `idle_acts_today` became `idle_acts_this_window`, and `cant_act` names where a journey ends as `until tick N`, not a clock time. The recording took the docks pack's new `pack_rev` with it. The version stayed 2 because no build had shipped.
 - The recorded session must still replay. Each message it got must still arrive at that seat, in order, with every field it had and the same value. New kinds and fields may come between. Only `seq`, which a new kind moves, and `token`, which each table mints, may differ.
 - The journal and refusal codes stay strict: `spook verify` fails on a code it does not know.

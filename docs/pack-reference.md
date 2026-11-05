@@ -245,7 +245,8 @@ rules:
     when: habit
     if:
       - all:
-          - day_tick:
+          - cycle:
+              name: day
               from: 480
               to: 960
           - players:
@@ -354,7 +355,7 @@ A change rule has no `cost`. Check rejects one. It may have `if`, `roll`, and th
 
 Matching change rules run in owner order (shared verbs, then place, item, cast, story), then by file path, then by position in the file. They run again on the changes they just wrote, until a pass matches nothing. In one pass a rule runs at most once for each subject. The subject is the actor whose value changed. A world flag or world meter has no subject, so a rule watching one runs once per change, whoever is seated, and check refuses `self`, `here`, `location`, and `roll` in it: name the actor, or `world`. A flag counts as the world's when a rule sets it with `who: world`; a world flag only the save sets is not checked, and a `self` there is refused when the rule runs. A key the world and an actor both carry fires the rule for each, and `TRIGGER_LEAK` reads it as an actor's change. `max_trigger_depth` in `rules/budget.yaml` caps the passes. Omitted, it is 4. The next pass is recorded and does not run. Check warns when change rules set each other's watched values. A `narrate` or `note` on a change rule that can reach a viewer who cannot see that change is `TRIGGER_LEAK`.
 
-`if` is a list. Each dash is one condition. `all` is and, `any` is or, and `not` negates one condition. Two conditions under one dash are rejected. `who` is `self`, `target`, `here`, `world`, `place:<id>`, or an actor id. On `has_item`, `wielding`, and an item effect, `id: target` is the intent's target. The habit on `cast/keeper.md` uses each condition. `op` is `<`, `<=`, `==`, `>=`, or `>`. `day_tick` holds while the tick of the day, world time modulo `ticks_per_day`, is in `from..to`. When `from` is above `to` the window wraps past the day's end. `from` and `to` are integers below `ticks_per_day` and they differ.
+`if` is a list. Each dash is one condition. `all` is and, `any` is or, and `not` negates one condition. Two conditions under one dash are rejected. `who` is `self`, `target`, `here`, `world`, `place:<id>`, or an actor id. On `has_item`, `wielding`, and an item effect, `id: target` is the intent's target. The habit on `cast/keeper.md` uses each condition. `op` is `<`, `<=`, `==`, `>=`, or `>`. `cycle` holds while the tick of the cycle `name`, world time modulo that cycle's length in `cycles`, is in `from..to`. When `from` is above `to` the window wraps past the cycle's end. `from` and `to` are integers below the cycle's length and they differ.
 
 `cost` may name `time`, `meters`, and `items`. `time` uses the duration words from exits. A cost the actor cannot pay is refused when the move is played, and the world stays as it was.
 
@@ -663,7 +664,7 @@ checks:
 
 ## Budget
 
-`idle` is `on` or `off`. Omitted means `on`. Omitted counters use the engine defaults. Game time is counted in ticks. `ticks_per_day` is how many ticks make a day, 1440 when omitted. The day rollover, which resets `idle_acts_per_day`, and `day_tick` conditions read it. Players and the GM see a tick as a clock time, a day of 24 shown hours. `live_acts_per_window` caps an actor's live acts in each window of `live_act_window_ticks` ticks. `round_every_real_seconds` is real seconds between wakes, `idle_ticks_per_round` and `live_ticks_per_round` are the ticks one round writes, `idle_catchup_max_rounds` is the most rounds one catch-up runs, and `idle_max_ticks_per_real_hour` is the ticks one real hour of absence may write. A move past `max_intents_applied` or `max_npcs_acting` is refused `BUDGET`, and so is a rule that goes over `max_state_keys_mutated` and every move after it that round. The file below sets them.
+`idle` is `on` or `off`. Omitted means `on`. Omitted counters use the engine defaults. Game time is counted in ticks, and players and the GM see plain ticks. `cycles` names each cycle a `cycle` condition reads, with its length in ticks; it may be left out. `idle_acts_per_window` caps an actor's idle acts in each window of `idle_act_window_ticks` ticks, and `live_acts_per_window` caps its live acts in each window of `live_act_window_ticks` ticks. `round_every_real_seconds` is real seconds between wakes, `idle_ticks_per_round` and `live_ticks_per_round` are the ticks one round writes, `idle_catchup_max_rounds` is the most rounds one catch-up runs, and `idle_max_ticks_per_real_hour` is the ticks one real hour of absence may write. A move past `max_intents_applied` or `max_npcs_acting` is refused `BUDGET`, and so is a rule that goes over `max_state_keys_mutated` and every move after it that round. The file below sets them.
 
 ```yaml file=rules/budget.yaml
 schema: budget
@@ -673,10 +674,12 @@ max_npcs_acting: 8
 max_effects_per_intent: 4
 max_state_keys_mutated: 24
 max_memory_writes: 8
-idle_acts_per_day: 3
+idle_acts_per_window: 3
+idle_act_window_ticks: 1440
 live_acts_per_window: 6
 live_act_window_ticks: 60
-ticks_per_day: 1440
+cycles:
+  day: 1440
 round_every_real_seconds: 300
 idle_ticks_per_round: 60
 live_ticks_per_round: 5
