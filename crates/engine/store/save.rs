@@ -280,11 +280,6 @@ pub fn migrate(
     dropped_modifiers: &[String],
     dropped_meters: &[DroppedMeter],
 ) -> State {
-    let is_dropped_meter = |carrier: &Holder, key: &String| {
-        dropped_meters
-            .iter()
-            .any(|meter| meter.id == *key && meter.carrier == *carrier)
-    };
     for meter in meters {
         let start = MeterLive {
             base: meter.start,
@@ -309,19 +304,16 @@ pub fn migrate(
             }
         }
     }
-    for (actor_id, actor) in &mut state.actors {
+    for actor in state.actors.values_mut() {
         actor
             .modifiers
             .retain(|id, _| !dropped_modifiers.contains(id));
-        let holder = Holder::Actor(actor_id.clone());
-        actor
-            .meters
-            .retain(|key, _| !is_dropped_meter(&holder, key));
     }
-    let world = Holder::World;
-    state
-        .world_meters
-        .retain(|key, _| !is_dropped_meter(&world, key));
+    for meter in dropped_meters {
+        if let Ok(live) = state.meters_mut(&meter.carrier) {
+            live.remove(&meter.id);
+        }
+    }
     state.pack_rev = pack_rev.to_string();
     state.state_rev = state_rev;
     normalize(&mut state);
