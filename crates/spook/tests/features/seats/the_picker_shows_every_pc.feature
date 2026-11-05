@@ -19,6 +19,7 @@ Feature: The character picker shows every PC
     And another play picks pc_lark on that table
     Then the command exits 1
     And stderr shows "The table is full. [TABLE_FULL]"
+    And save.yaml is unchanged since the seat
     And stdout shows the picker:
       """
       Choose a character:
