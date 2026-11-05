@@ -162,11 +162,6 @@ fn three_players_sit(world: &mut World) {
     seat_three(world, &pack);
 }
 
-#[when(expr = "a fourth player connects")]
-fn a_fourth_player_connects(world: &mut World) {
-    world.scratch = table::claim(world, "pc_lark");
-}
-
 #[then(expr = "the hello is refused with {string}")]
 fn the_hello_is_refused_with(world: &mut World, code: String) {
     let tcp = format!("\"code\":\"{code}\"");

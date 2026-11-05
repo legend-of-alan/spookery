@@ -36,7 +36,7 @@
       "description": "What the table sends. A client ignores a kind or a field it does not know.",
       "oneOf": [
         {
-          "description": "The first message on a connection, and the only one with no `seq`. On a player seat,\n`open` lists the PCs a claim may take and `taken` the PCs held right now.",
+          "description": "The first message on a connection, and the only one with no `seq`. On a player seat,\n`open` lists the PCs nobody holds and `taken` the PCs held right now.",
           "type": "object",
           "properties": {
             "version": {

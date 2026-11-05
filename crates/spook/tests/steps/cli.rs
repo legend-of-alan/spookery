@@ -56,11 +56,11 @@ fn play_says(world: &mut World, text: String) {
     stdin.flush().unwrap_or_else(|err| panic!("flush: {err}"));
 }
 
-#[when(expr = "another play joins that table")]
-fn another_play_joins_that_table(world: &mut World) {
+#[when(expr = "another play picks {word} on that table")]
+fn another_play_picks_on_that_table(world: &mut World, pc: String) {
     let port = table::live_mut(world).game_port;
     let addr = format!("127.0.0.1:{port}");
-    let mut play = spawn_play(&addr, "pc_rowan", &[]);
+    let mut play = spawn_play(&addr, &pc, &[]);
     let status = play
         .child
         .wait()
@@ -68,9 +68,9 @@ fn another_play_joins_that_table(world: &mut World) {
     world.code = status.code();
     // The pipes drain on their own threads, so read stderr once its refusal line is whole.
     // The picker was printed before the claim went out, so stdout already holds it.
-    world.stderr = table::poll_until("[SEAT_TAKEN]", || {
+    world.stderr = table::poll_until("a refusal line", || {
         let stderr = support::text_of(&play.stderr);
-        if stderr.contains("[SEAT_TAKEN]") && stderr.ends_with('\n') {
+        if stderr.ends_with("]\n") {
             Ok(stderr)
         } else {
             Err(stderr)
