@@ -242,8 +242,7 @@ ticks, and a round that crosses the end of a window gives that count back.
 Players and the GM see plain ticks, as `until tick 1300`. Check refuses a cycle
 length or an act window of 0, a `cycle` that names no cycle in the budget, a
 bound at or past the cycle's length, and a `day_tick`, `hour` or `minutes` key,
-with a hint that names the tick form. Migrate carries a save's
-`idle_acts_today` from rules version 15 over to `idle_acts_this_window`.
+with a hint that names the tick form.
 
 Tested in `features/rules/game_time_counts_in_ticks.feature`,
 `features/seats/a_player_knows_the_place.feature`, and

@@ -437,35 +437,6 @@ fn every_actor_idle_acts(world: &mut World, tick: u64, acts: u32) {
     }
 }
 
-/// The docks save as rules_rev 15 wrote it, which named the idle count `idle_acts_today`.
-#[given(expr = "a docks save from rules_rev 15 where Mira has used {int} idle acts today")]
-fn a_save_from_rules_rev_15(world: &mut World, acts: u32) {
-    let pack = copy_docks("rules-idle-day");
-    edit_save(&pack, |now| {
-        now.actors
-            .get_mut("mira")
-            .unwrap()
-            .act
-            .idle_acts_this_window = acts;
-    });
-    let path = pack.join("state/save.yaml");
-    let rev = spookery_engine::testing::RULES_REV;
-    let text = fs::read_to_string(&path).unwrap();
-    let old = text
-        .replacen(&format!("rules_rev: {rev}\n"), "rules_rev: 15\n", 1)
-        .replace("idle_acts_this_window:", "idle_acts_today:");
-    assert_ne!(old, text);
-    fs::write(&path, old).unwrap();
-    world.pack = Some(pack);
-}
-
-#[then(expr = "Mira has used {int} idle acts this window")]
-fn mira_idle_acts_this_window(world: &mut World, acts: u32) {
-    let now = state_of(table::pack(world));
-    assert_eq!(now.rules_rev, spookery_engine::testing::RULES_REV);
-    assert_eq!(now.actors["mira"].act.idle_acts_this_window, acts);
-}
-
 #[then(expr = "docks_shop holds {int} lamp_oil")]
 fn docks_shop_holds_lamp_oil(world: &mut World, count: u32) {
     let now = state_of(world.pack.as_ref().unwrap());

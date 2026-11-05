@@ -32,8 +32,3 @@ Feature: The engine counts only ticks
       | 1440   | 140   | 145  | 3    |
       | 1440   | 1436  | 1441 | 0    |
 
-  Scenario: A save from the rules that counted idle acts per day keeps its count through migrate
-    Given a docks save from rules_rev 15 where Mira has used 2 idle acts today
-    When the author runs spook migrate
-    Then migrate exits 0
-    And Mira has used 2 idle acts this window
