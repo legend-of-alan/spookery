@@ -79,7 +79,7 @@ fn three_in_the_shop(world: &mut World) {
     let pack = copy_docks("action-triggers");
     edit_save(&pack, |now| {
         for id in PCS {
-            now.actors.get_mut(id).unwrap().place = "docks_shop".to_string();
+            now.actors.get_mut(id).unwrap().frontier_mut().place = "docks_shop".to_string();
         }
     });
     world.pack = Some(pack);

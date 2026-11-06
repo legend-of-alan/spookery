@@ -83,7 +83,7 @@ exits:";
     )
     .unwrap();
     support::edit_save(&pack, |state| {
-        let mira = state.actors.get_mut("mira").unwrap();
+        let mira = state.actors.get_mut("mira").unwrap().frontier_mut();
         mira.place = "docks_street".to_string();
         mira.inventory.insert("brass_key".to_string(), 1);
     });

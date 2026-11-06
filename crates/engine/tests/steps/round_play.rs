@@ -145,7 +145,8 @@ idle:
     assert_ne!(text, next);
     fs::write(&path, next).unwrap();
     support::edit_save(&pack, |state| {
-        state.actors.get_mut("mira").unwrap().flags = vec!["calm".into(), "wary".into()];
+        state.actors.get_mut("mira").unwrap().frontier_mut().flags =
+            vec!["calm".into(), "wary".into()];
     });
     make_mira_ineligible(&pack);
     world.pack = Some(pack);

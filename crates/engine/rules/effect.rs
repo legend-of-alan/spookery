@@ -8,8 +8,8 @@ use crate::draft::Draft;
 use crate::intent::{Intent, Viewer};
 use crate::model::meter::{self, MeterWrite};
 use crate::model::modifier::{self, ModifierLive};
-use crate::model::patch::Patch;
-use crate::model::{self, MemoryLine, Note};
+use crate::model::tracked::{Count, Entry};
+use crate::model::{self, ActorEdit, MemoryLine, Note};
 use crate::rules::visibility::can_see_fact;
 use crate::Reason;
 
@@ -604,10 +604,8 @@ pub(crate) fn write_meter(
         .state()
         .meters_of(holder)
         .and_then(|meters| meters.get(key));
-    let mut live = held.cloned().ok_or(Reason::UnknownId)?;
-    meter::write(def, &mut live, write)?;
-    let (holder, key) = (holder.clone(), key.to_string());
-    draft.apply(Patch::Meter { holder, key, live })
+    let edit = meter::write(def, key, held.ok_or(Reason::UnknownId)?, write)?;
+    draft.edit_meters(holder, edit)
 }
 
 /// Add `delta` to the count `holder` has of item `id`. An actor who no longer holds the item
@@ -627,12 +625,16 @@ pub(crate) fn shift_item(
         }
         Holder::Story(_) | Holder::Exit(..) | Holder::World => return Err(Reason::Schema),
     };
-    let count = model::shift_count(held.ok_or(Reason::UnknownId)?, delta, max)?;
-    draft.apply(Patch::Item {
-        holder: holder.clone(),
-        id: id.to_string(),
-        count,
-    })?;
+    let held = held.ok_or(Reason::UnknownId)?;
+    let count = model::shift_count(held, delta, max)?;
+    let by = i64::from(count) - i64::from(held);
+    draft.edit_items(
+        holder,
+        Count {
+            id: id.to_string(),
+            by,
+        },
+    )?;
     let Holder::Actor(actor) = holder else {
         return Ok(());
     };
@@ -642,8 +644,7 @@ pub(crate) fn shift_item(
         .as_ref()
         .is_some_and(|item| live.item_count(item) == 0);
     if lets_go {
-        let actor = actor.clone();
-        draft.apply(Patch::Wielded { actor, item: None })?;
+        draft.edit_actor(actor, ActorEdit::Wielded(None))?;
     }
     Ok(())
 }
@@ -680,11 +681,14 @@ fn apply_modifier(
             stacks: Vec::new(),
         });
     modifier::stack(def, &mut next, add, ticks, now);
-    draft.apply(Patch::Modifier {
-        actor: actor_id.to_string(),
-        id: id.to_string(),
-        held: Some(next),
-    })
+    let id = id.to_string();
+    draft.edit_actor(
+        actor_id,
+        ActorEdit::Modifier(Entry {
+            id,
+            value: Some(next),
+        }),
+    )
 }
 
 fn wield(draft: &mut Draft, actor_id: &str, item_id: &str) -> Result<(), Reason> {
@@ -696,17 +700,11 @@ fn wield(draft: &mut Draft, actor_id: &str, item_id: &str) -> Result<(), Reason>
     if actor.ok_or(Reason::UnknownId)?.item_count(item_id) == 0 {
         return Err(Reason::MissingItem);
     }
-    draft.apply(Patch::Wielded {
-        actor: actor_id.to_string(),
-        item: Some(item_id.to_string()),
-    })
+    draft.edit_actor(actor_id, ActorEdit::Wielded(Some(item_id.to_string())))
 }
 
 fn unwield(draft: &mut Draft, actor_id: &str) -> Result<(), Reason> {
-    draft.apply(Patch::Wielded {
-        actor: actor_id.to_string(),
-        item: None,
-    })
+    draft.edit_actor(actor_id, ActorEdit::Wielded(None))
 }
 
 fn move_actor(
@@ -735,13 +733,9 @@ fn move_actor(
     }
     // A canon place with no live record yet gets an empty one on the first arrival.
     if !on_exit {
-        let holder = Holder::Place(to.to_string());
-        draft.apply(Patch::Record { holder, here: true })?;
+        draft.make_record(&Holder::Place(to.to_string()))?;
     }
-    draft.apply(Patch::ActorPlace {
-        actor: actor_id.to_string(),
-        place: to.to_string(),
-    })
+    draft.edit_actor(actor_id, ActorEdit::Place(to.to_string()))
 }
 
 fn remember(
@@ -782,20 +776,9 @@ fn remember(
     Ok(())
 }
 
-/// Add `facts` to what actor `actor_id` knows, when one of them is new.
+/// Add `facts` to what actor `actor_id` knows.
 fn learn(draft: &mut Draft, actor_id: &str, facts: &[String]) -> Result<(), Reason> {
-    let actor = draft.state().actors.get(actor_id);
-    let known = &actor.ok_or(Reason::UnknownId)?.known_facts;
-    if facts.iter().all(|fact| known.contains(fact)) {
-        return Ok(());
-    }
-    let mut next = known.clone();
-    next.extend(facts.iter().cloned());
-    model::sort_unique(&mut next);
-    draft.apply(Patch::KnownFacts {
-        actor: actor_id.to_string(),
-        facts: next,
-    })
+    draft.edit_actor(actor_id, ActorEdit::Learn(facts.to_vec()))
 }
 
 /// Set or clear a flag `holder` carries. A place or story gets a live record on its first
@@ -810,16 +793,9 @@ fn set_flag(draft: &mut Draft, holder: &Holder, key: &str, value: bool) -> Resul
         Holder::Actor(_) | Holder::World => None,
     };
     if let Some(record) = record.filter(|_| value) {
-        draft.apply(Patch::Record {
-            holder: record,
-            here: true,
-        })?;
+        draft.make_record(&record)?;
     }
-    draft.apply(Patch::Flag {
-        holder: holder.clone(),
-        key: key.to_string(),
-        on: value,
-    })
+    draft.set_flag(holder, key, value)
 }
 
 fn reveal(draft: &mut Draft, actor_id: &str, fact: &str) -> Result<(), Reason> {
@@ -848,15 +824,11 @@ fn leave_note(
     }
     model::sort_unique(&mut to);
     model::sort_unique(&mut fact_ids);
-    let note = Note {
-        id: note_id.clone(),
+    draft.leave_note(Note {
+        id: note_id,
         to,
         place,
         fact_ids,
         text,
-    };
-    draft.apply(Patch::Note {
-        id: note_id,
-        note: Some(note),
     })
 }

@@ -44,7 +44,7 @@ fn add_verb(world: &World, rule: &str) {
 fn rowan_and_wren_in_the_shop(world: &mut World) {
     let pack = copy_docks("lifecycle");
     edit_save(&pack, |now| {
-        now.actors.get_mut("pc_wren").unwrap().place = "docks_shop".to_string();
+        now.actors.get_mut("pc_wren").unwrap().frontier_mut().place = "docks_shop".to_string();
     });
     world.pack = Some(pack);
 }
@@ -188,7 +188,7 @@ fn spook_check_refuses_the_verb(world: &mut World, verb: String) {
 #[given(expr = "Rowan stands on {word} in the save")]
 fn rowan_stands_on(world: &mut World, place: String) {
     edit_save(world.pack.as_ref().unwrap(), |now| {
-        now.actors.get_mut("pc_rowan").unwrap().place = place;
+        now.actors.get_mut("pc_rowan").unwrap().frontier_mut().place = place;
     });
 }
 

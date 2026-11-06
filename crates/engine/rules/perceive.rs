@@ -129,7 +129,7 @@ fn perceive_viewer_budget(
     unknown_mentions.sort();
 
     let mut notes = Vec::new();
-    for note in &state.notes {
+    for note in state.notes.iter() {
         let here = note.place.as_deref() == Some(place.as_str());
         let addressed = note.to.iter().any(|id| id == viewer.actor_id());
         if !here && !addressed {

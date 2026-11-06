@@ -175,10 +175,13 @@ rules:
         now.actors
             .get_mut("pc_nell")
             .unwrap()
+            .frontier_mut()
             .flags
             .push("found_key".to_string());
         let start = MeterLive { base: 0, offset: 0 };
-        now.world_meters.insert("tide".to_string(), start);
+        now.world_meters
+            .frontier_mut()
+            .insert("tide".to_string(), start);
     });
     play(
         world,
@@ -537,7 +540,7 @@ Under the street.
         insert_actor_copy(now, seated, "pc_rowan", "pc_nell", "docks_street");
         now.places.insert(
             "cellar".to_string(),
-            spookery_engine::testing::PlaceLive::default(),
+            spookery_engine::testing::PlaceLive::default().into(),
         );
     });
     world.pack = Some(pack);
@@ -977,7 +980,7 @@ fn play_and_keep_summaries(
 }
 
 pub(crate) fn set_place(now: &mut State, id: &str, place: &str) {
-    now.actors.get_mut(id).unwrap().place = place.to_string();
+    now.actors.get_mut(id).unwrap().frontier_mut().place = place.to_string();
 }
 
 /// Seat these PCs, sorted the way the host's seats are.
@@ -1067,7 +1070,7 @@ rules:
     .unwrap();
     edit_table(world, &pack, |now, seated| {
         insert_actor_copy(now, seated, "aldric", "briar", "docks_shop");
-        let briar = now.actors.get_mut("briar").unwrap();
+        let briar = now.actors.get_mut("briar").unwrap().frontier_mut();
         briar.meters.insert(
             "hp".to_string(),
             MeterLive {
@@ -1159,10 +1162,11 @@ Nell walks the docks.
 
 fn insert_actor_copy(now: &mut State, seated: &mut Presence, from: &str, id: &str, place: &str) {
     let mut actor = now.actors.get(from).unwrap().clone();
-    actor.place = place.to_string();
-    actor.flags.clear();
+    let live = actor.frontier_mut();
+    live.place = place.to_string();
+    live.flags.clear();
     // Only pc_rowan carries the debt, so a copy of them does not.
-    actor.meters.remove("assassination_debt");
+    live.meters.remove("assassination_debt");
     now.actors.insert(id.to_string(), actor);
     sit(seated, &[id]);
 }

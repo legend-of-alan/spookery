@@ -103,6 +103,7 @@ fn hold(pack: &Path, id: &str, stacks: Vec<i64>, left: u64) {
         now.actors
             .get_mut("pc_rowan")
             .unwrap()
+            .frontier_mut()
             .modifiers
             .insert(id.to_string(), live);
     });
@@ -128,7 +129,7 @@ fn docks_with_one_tick_rounds(world: &mut World) {
     edit_table(world, &pack, |now, seated| {
         set_place(now, "pc_wren", "docks_shop");
         set_place(now, "pc_harbormouse", "docks_shop");
-        let rowan = now.actors.get_mut("pc_rowan").unwrap();
+        let rowan = now.actors.get_mut("pc_rowan").unwrap().frontier_mut();
         rowan.place = "docks_shop".to_string();
         rowan.meters.get_mut("grit").unwrap().base = 20;
         sit(seated, &["pc_harbormouse", "pc_rowan", "pc_wren"]);
@@ -197,6 +198,7 @@ fn two_modifiers_on_sight(world: &mut World, rain: String, fog: String) {
     edit_save(&pack, |now| {
         for actor in now.actors.values_mut() {
             actor
+                .frontier_mut()
                 .meters
                 .insert("sight".into(), MeterLive { base: 5, offset: 0 });
         }
@@ -334,9 +336,10 @@ meters:
         now.actors
             .get_mut("pc_rowan")
             .unwrap()
+            .frontier_mut()
             .meters
             .insert("luck".into(), luck);
-        now.world_meters.insert("tide".into(), tide);
+        now.world_meters.frontier_mut().insert("tide".into(), tide);
     });
 }
 

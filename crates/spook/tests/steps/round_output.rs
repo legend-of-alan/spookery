@@ -41,7 +41,11 @@ fn listen_with_wren(world: &mut World, travelling: bool) {
     if travelling {
         edit_save(&pack, |now| {
             let until = now.world_time + 30;
-            let wren = now.actors.get_mut("pc_wren").expect("pc_wren");
+            let wren = now
+                .actors
+                .get_mut("pc_wren")
+                .expect("pc_wren")
+                .frontier_mut();
             wren.place = "mira_rooms".to_string();
             set_busy(now, "pc_wren", until, "docks_shop.stairs");
         });

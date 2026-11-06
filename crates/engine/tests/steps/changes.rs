@@ -60,6 +60,7 @@ fn larks_might_is_raised(world: &mut World) {
             .actors
             .get_mut("pc_lark")
             .unwrap()
+            .frontier_mut()
             .meters
             .get_mut("might")
             .unwrap();
@@ -160,6 +161,7 @@ fn a_tonic_is_on_the_ground(world: &mut World) {
             .places
             .get_mut("gate_yard")
             .unwrap()
+            .frontier_mut()
             .items
             .insert("tonic".to_string(), 1);
     });

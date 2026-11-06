@@ -28,7 +28,7 @@ fn add_toll(pack: &Path) {
 fn docks_street_has_no_exit_to_mira_rooms(world: &mut World) {
     let pack = copy_docks("no-exit");
     edit_save(&pack, |now| {
-        now.actors.get_mut("pc_rowan").unwrap().place = "docks_street".to_string();
+        now.actors.get_mut("pc_rowan").unwrap().frontier_mut().place = "docks_street".to_string();
     });
     table::listen(world, &pack);
     table::seat_rowan(world, &pack);
@@ -133,7 +133,7 @@ fn a_place_rule_teleports(world: &mut World) {
     edit_save(&pack, |now| {
         now.places.insert(
             "cellar".to_string(),
-            spookery_engine::testing::PlaceLive::default(),
+            spookery_engine::testing::PlaceLive::default().into(),
         );
     });
     table::listen(world, &pack);
@@ -199,7 +199,8 @@ fn two_arrivals(world: &mut World) {
                     pending: Some(walk("docks_shop.docks_street")),
                     ..Default::default()
                 },
-            },
+            }
+            .into(),
         );
     });
     table::listen(world, &pack);
@@ -326,7 +327,8 @@ fn both_busy_without_a_gm(world: &mut World) {
                 known_facts: Vec::new(),
                 visited: Default::default(),
                 act: spookery_engine::testing::Act::default(),
-            },
+            }
+            .into(),
         );
         set_busy(now, "pc_nell", EVENING + 5, "docks_shop.docks_street");
     });
@@ -439,7 +441,7 @@ fn rowan_visited_both_rooms(world: &mut World) {
     let pack = copy_docks("map");
     add_trapdoor(&pack);
     edit_save(&pack, |now| {
-        let rowan = now.actors.get_mut("pc_rowan").unwrap();
+        let rowan = now.actors.get_mut("pc_rowan").unwrap().frontier_mut();
         let names = |exits: &[&str]| exits.iter().map(|name| name.to_string()).collect();
         rowan.visited = [
             ("docks_shop".to_string(), names(&["docks_street", "stairs"])),

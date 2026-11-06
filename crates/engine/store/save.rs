@@ -88,23 +88,26 @@ fn one_trailing_lf(mut text: String) -> String {
 }
 
 pub fn normalize(state: &mut State) {
-    state.notes.sort_by(|a, b| a.id.cmp(&b.id));
-    for note in &mut state.notes {
+    let notes = state.notes.frontier_mut();
+    notes.sort_by(|a, b| a.id.cmp(&b.id));
+    for note in notes {
         sort_unique(&mut note.to);
         sort_unique(&mut note.fact_ids);
     }
     for actor in state.actors.values_mut() {
+        let actor = actor.frontier_mut();
         sort_unique(&mut actor.flags);
         sort_unique(&mut actor.known_facts);
     }
     for place in state.places.values_mut() {
+        let place = place.frontier_mut();
         sort_unique(&mut place.flags);
         sort_unique(&mut place.open);
     }
     for story in state.stories.values_mut() {
-        sort_unique(&mut story.flags);
+        sort_unique(&mut story.frontier_mut().flags);
     }
-    sort_unique(&mut state.flags);
+    sort_unique(state.flags.frontier_mut());
 }
 
 fn check_actor_places(state: &State) -> Vec<Diagnostic> {
@@ -212,16 +215,18 @@ pub fn migrate(
         };
         match &meter.carrier {
             Some(Holder::World) => {
-                let live = state.world_meters.entry(meter.id.clone());
+                let live = state.world_meters.frontier_mut().entry(meter.id.clone());
                 live.or_insert(start);
             }
             Some(Holder::Place(id)) => {
                 let place = state.places.entry(id.clone()).or_default();
-                place.meters.entry(meter.id.clone()).or_insert(start);
+                let meters = &mut place.frontier_mut().meters;
+                meters.entry(meter.id.clone()).or_insert(start);
             }
             Some(Holder::Story(id)) => {
                 let story = state.stories.entry(id.clone()).or_default();
-                story.meters.entry(meter.id.clone()).or_insert(start);
+                let meters = &mut story.frontier_mut().meters;
+                meters.entry(meter.id.clone()).or_insert(start);
             }
             carrier => {
                 for (id, actor) in &mut state.actors {
@@ -229,7 +234,7 @@ pub fn migrate(
                         .as_ref()
                         .is_none_or(|carrier| *carrier == Holder::Actor(id.clone()))
                     {
-                        let live = actor.meters.entry(meter.id.clone());
+                        let live = actor.frontier_mut().meters.entry(meter.id.clone());
                         live.or_insert(start.clone());
                     }
                 }
@@ -237,13 +242,28 @@ pub fn migrate(
         }
     }
     for actor in state.actors.values_mut() {
-        actor
-            .modifiers
-            .retain(|id, _| !dropped_modifiers.contains(id));
+        let modifiers = &mut actor.frontier_mut().modifiers;
+        modifiers.retain(|id, _| !dropped_modifiers.contains(id));
     }
     for meter in dropped_meters {
-        if let Ok(live) = state.meters_mut(&meter.carrier) {
-            live.remove(&meter.id);
+        let meters = match &meter.carrier {
+            Holder::Actor(id) => state
+                .actors
+                .get_mut(id)
+                .map(|actor| &mut actor.frontier_mut().meters),
+            Holder::Place(id) => state
+                .places
+                .get_mut(id)
+                .map(|place| &mut place.frontier_mut().meters),
+            Holder::Story(id) => state
+                .stories
+                .get_mut(id)
+                .map(|story| &mut story.frontier_mut().meters),
+            Holder::Exit(..) => None,
+            Holder::World => Some(state.world_meters.frontier_mut()),
+        };
+        if let Some(meters) = meters {
+            meters.remove(&meter.id);
         }
     }
     state.pack_rev = pack_rev.to_string();

@@ -139,7 +139,7 @@ exits:";
     assert_ne!(text, next, "the loft exit was not locked");
     fs::write(&path, next).unwrap_or_else(|err| panic!("write yard: {err}"));
     edit_save(&pack, |now| {
-        let yard = now.places.get_mut("gate_yard").unwrap();
+        let yard = now.places.get_mut("gate_yard").unwrap().frontier_mut();
         yard.open.push("loft".to_string());
     });
     world.pack = Some(pack);
