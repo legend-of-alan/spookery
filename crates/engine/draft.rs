@@ -251,6 +251,12 @@ impl<'p> Draft<'p> {
         Ok(())
     }
 
+    /// How many keys the round has counted so far.
+    #[cfg(test)]
+    pub(crate) fn keys_spent(&self) -> usize {
+        self.key_order.len()
+    }
+
     /// Give back every key counted after the first `from`, and return them.
     fn drop_keys(&mut self, from: usize) -> Vec<StateKey> {
         let dropped: Vec<StateKey> = self.key_order.drain(from..).collect();
