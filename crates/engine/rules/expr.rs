@@ -743,8 +743,9 @@ mod tests {
     }
 
     fn state() -> State {
-        let mut meters = BTreeMap::new();
-        meters.insert("str_mod".to_string(), MeterLive { base: 3, offset: 0 });
+        let mut meters = crate::model::meter::Meters::default();
+        let ada = crate::rules::effect::Holder::Actor("ada".to_string());
+        meters.insert(ada, "str_mod".to_string(), MeterLive { base: 3, offset: 0 });
         State {
             schema: "save".to_string(),
             world_id: "t".to_string(),
@@ -760,20 +761,20 @@ mod tests {
                 ActorLive {
                     kind: ActorKind::Pc,
                     place: "room".to_string(),
-                    flags: Vec::new(),
-                    meters,
-                    modifiers: Default::default(),
                     inventory: BTreeMap::new(),
                     wielded: None,
                     known_facts: Vec::new(),
                     visited: Default::default(),
                     act: Act::default(),
-                },
+                }
+                .into(),
             )]),
-            stories: BTreeMap::new(),
-            world_meters: BTreeMap::new(),
-            notes: Vec::new(),
-            flags: Vec::new(),
+            stories: Default::default(),
+            meters,
+            modifiers: Default::default(),
+            notes: Default::default(),
+            flags: Default::default(),
+            ledger: Default::default(),
         }
     }
 

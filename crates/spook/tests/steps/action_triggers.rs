@@ -79,7 +79,7 @@ fn three_in_the_shop(world: &mut World) {
     let pack = copy_docks("action-triggers");
     edit_save(&pack, |now| {
         for id in PCS {
-            now.actors.get_mut(id).unwrap().place = "docks_shop".to_string();
+            now.actors.get_mut(id).unwrap().frontier_mut().place = "docks_shop".to_string();
         }
     });
     world.pack = Some(pack);
@@ -136,8 +136,8 @@ fn wren_is_refused(world: &mut World) {
     assert_eq!(refused[0]["code"], "NOT_IN_SPEC", "{round}");
     let now = state_of(world.pack.as_ref().unwrap());
     assert_eq!(now.actors["pc_rowan"].place, "docks_street");
-    assert!(now.flags.iter().any(|flag| flag == "gate_locked"));
-    assert!(!now.flags.iter().any(|flag| flag == "gate_passed"));
+    assert!(now.has_flag(&spookery_engine::Holder::World, "gate_locked"));
+    assert!(!now.has_flag(&spookery_engine::Holder::World, "gate_passed"));
 }
 
 #[given(
@@ -163,6 +163,10 @@ fn both_chains_ran(world: &mut World) {
     assert!(!steps.iter().any(|name| name == "trigger_depth"), "{round}");
     let now = state_of(world.pack.as_ref().unwrap());
     for flag in ["rang", "echoed"] {
-        assert!(now.flags.iter().any(|held| held == flag), "{:?}", now.flags);
+        assert!(
+            now.has_flag(&spookery_engine::Holder::World, flag),
+            "{:?}",
+            now.flags
+        );
     }
 }

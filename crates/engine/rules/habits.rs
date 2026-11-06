@@ -2,7 +2,7 @@
 
 use crate::canon::Canon;
 use crate::intent::{Intent, Target, Viewer};
-use crate::model::{ActorLive, Presence, State};
+use crate::model::{Presence, State};
 use crate::rules::cond;
 use crate::rules::context::Context;
 use crate::rules::expand;
@@ -80,6 +80,7 @@ fn is_eligible(canon: &Canon, state: &State, presence: &Presence, npc_id: &str) 
 /// A seated player's PC is in `place`.
 pub(crate) fn is_player_at(state: &State, presence: &Presence, place: &str) -> bool {
     state.actors_at(place).iter().any(|id| {
-        presence.actors_present.contains(id) && state.actors.get(id).is_some_and(ActorLive::is_pc)
+        presence.actors_present.contains(id)
+            && state.actors.get(id).is_some_and(|actor| actor.is_pc())
     })
 }

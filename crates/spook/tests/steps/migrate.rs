@@ -110,8 +110,9 @@ fn the_pack_adds_meter(world: &mut World, id: String, start: i64) {
 #[then(expr = "every actor has {string} at {int}")]
 fn every_actor_has_meter_at(world: &mut World, id: String, base: i64) {
     let now = state_of(table::pack(world));
-    for (actor, live) in &now.actors {
-        let got = live.meters.get(&id).map(|meter| meter.base);
+    for actor in now.actors.keys() {
+        let holder = spookery_engine::Holder::Actor(actor.clone());
+        let got = now.meters.get(&holder, &id).map(|meter| meter.base);
         assert_eq!(got, Some(base), "{actor} {id}");
     }
 }

@@ -13,7 +13,11 @@ use crate::support;
 use crate::World;
 
 fn keep_briar_busy(now: &mut State) {
-    if let Some(briar) = now.actors.get_mut("npc_briar") {
+    if let Some(briar) = now
+        .actors
+        .get_mut("npc_briar")
+        .map(|briar| briar.frontier_mut())
+    {
         briar.act.busy_until = Some(u64::MAX);
     }
 }
@@ -132,16 +136,21 @@ fn add_attack_rules(pack: &Path, attack: &str) {
 }
 
 fn hold_dagger(now: &mut State, wield: bool) {
-    now.actors.get_mut("pc_lark").unwrap().place = "gate_yard".to_string();
-    now.actors.get_mut("pc_nell").unwrap().place = "gate_yard".to_string();
+    now.actors.get_mut("pc_lark").unwrap().frontier_mut().place = "gate_yard".to_string();
+    now.actors.get_mut("pc_nell").unwrap().frontier_mut().place = "gate_yard".to_string();
     keep_briar_busy(now);
     now.actors
         .get_mut("pc_lark")
         .unwrap()
+        .frontier_mut()
         .inventory
         .insert("poisoned_dagger".to_string(), 1);
     if wield {
-        now.actors.get_mut("pc_lark").unwrap().wielded = Some("poisoned_dagger".to_string());
+        now.actors
+            .get_mut("pc_lark")
+            .unwrap()
+            .frontier_mut()
+            .wielded = Some("poisoned_dagger".to_string());
     }
 }
 
@@ -154,18 +163,16 @@ fn nell_holds_a_tonic(world: &mut World) {
     assert_ne!(text, next, "hp meter was not narrowed");
     fs::write(&meters, next).unwrap();
     support::edit_save(&pack, |now| {
-        now.actors.get_mut("pc_nell").unwrap().place = "gate_yard".to_string();
+        now.actors.get_mut("pc_nell").unwrap().frontier_mut().place = "gate_yard".to_string();
         keep_briar_busy(now);
         now.actors
             .get_mut("pc_nell")
             .unwrap()
+            .frontier_mut()
             .inventory
             .insert("tonic".to_string(), 1);
-        now.actors
-            .get_mut("pc_nell")
-            .unwrap()
-            .meters
-            .get_mut("hp")
+        now.meters
+            .frontier_mut(&spookery_engine::Holder::Actor("pc_nell".to_string()), "hp")
             .unwrap()
             .base = 3;
     });
@@ -212,6 +219,7 @@ fn docks_shop_has_3_lamp_oil(world: &mut World) {
         now.places
             .get_mut("docks_shop")
             .unwrap()
+            .frontier_mut()
             .items
             .insert("lamp_oil".to_string(), 3);
     });
@@ -280,7 +288,7 @@ fn lark_holds_a_latch_at_a_table(world: &mut World) {
     let pack = support::copy_pack("sample-d20", "use-latch");
     support::edit_save(&pack, |now| {
         keep_briar_busy(now);
-        let lark = now.actors.get_mut("pc_lark").unwrap();
+        let lark = now.actors.get_mut("pc_lark").unwrap().frontier_mut();
         lark.inventory.insert("latch".to_string(), 1);
     });
     table::listen(world, &pack);
@@ -337,6 +345,7 @@ fn the_shop_has_no_oil(world: &mut World) {
         now.places
             .get_mut("docks_shop")
             .unwrap()
+            .frontier_mut()
             .items
             .remove("lamp_oil");
     });
@@ -386,6 +395,7 @@ fn the_save_lists_an_unknown_item(world: &mut World) {
         now.actors
             .get_mut("pc_rowan")
             .unwrap()
+            .frontier_mut()
             .inventory
             .insert("ghost".to_string(), 1);
     });
@@ -409,11 +419,12 @@ fn lark_holds_a_dagger(world: &mut World) {
     let pack = support::copy_pack("sample-d20", "wield");
     write_dagger(&pack, "");
     support::edit_save(&pack, |now| {
-        now.actors.get_mut("pc_lark").unwrap().place = "gate_yard".to_string();
+        now.actors.get_mut("pc_lark").unwrap().frontier_mut().place = "gate_yard".to_string();
         keep_briar_busy(now);
         now.actors
             .get_mut("pc_lark")
             .unwrap()
+            .frontier_mut()
             .inventory
             .insert("poisoned_dagger".to_string(), 1);
     });
@@ -632,20 +643,17 @@ fn nell_resists_on_a_seeded_roll(world: &mut World) {
     fs::write(pack.join("rules/verbs.yaml"), verbs).unwrap();
     support::edit_save(&pack, |now| {
         hold_dagger(now, true);
-        now.actors
-            .get_mut("pc_nell")
-            .unwrap()
-            .meters
-            .get_mut("hp")
+        now.meters
+            .frontier_mut(&spookery_engine::Holder::Actor("pc_nell".to_string()), "hp")
             .unwrap()
             .base = 10;
-        now.actors.get_mut("pc_nell").unwrap().meters.insert(
-            "constitution".to_string(),
-            spookery_engine::MeterLive {
-                base: stat,
-                offset: 0,
-            },
-        );
+        let nell = spookery_engine::Holder::Actor("pc_nell".to_string());
+        let constitution = spookery_engine::MeterLive {
+            base: stat,
+            offset: 0,
+        };
+        now.meters
+            .insert(nell, "constitution".to_string(), constitution);
     });
     spookery_engine::migrate_pack(&pack).unwrap_or_else(|err| panic!("migrate: {err}"));
     world.pack = Some(pack);
@@ -680,13 +688,8 @@ fn lark_hits_with_the_dagger(world: &mut World) {
 fn the_poison_fades(world: &mut World, text: String) {
     let pack = world.pack.as_ref().unwrap();
     assert_eq!(hp(pack, "pc_nell"), 7);
-    assert!(!support::state_of(pack)
-        .actors
-        .get("pc_nell")
-        .unwrap()
-        .flags
-        .iter()
-        .any(|flag| flag == "poisoned"));
+    let nell = spookery_engine::Holder::Actor("pc_nell".to_string());
+    assert!(!support::state_of(pack).has_flag(&nell, "poisoned"));
     let round: Value = serde_json::from_str(read_first_round_line(pack).trim()).unwrap();
     assert!(round["refused"].as_array().unwrap().is_empty(), "{round}");
     let effects = round["effects"].to_string();

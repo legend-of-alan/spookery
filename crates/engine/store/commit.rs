@@ -8,7 +8,7 @@ use crate::canon::{check_save, pack_rev, Canon};
 use crate::diagnostic::first_reason;
 use crate::draft::Draft;
 use crate::hash::blake2s_tagged;
-use crate::model::State;
+use crate::model::{MemoryLine, State};
 use crate::store::durability::{fsync_dir, fsync_file, refuse_io, write_atomic};
 use crate::store::journal;
 use crate::store::lock::{lock_write, PackGuard, WriteGuard};
@@ -31,29 +31,30 @@ pub struct CommitOutcome {
 /// Seal one played round, append it, finish a due checkpoint, and clear the queue.
 pub fn commit(
     world: &mut World,
-    mut draft: Draft,
+    draft: Draft,
     record: RoundRecord,
 ) -> Result<CommitOutcome, Reason> {
     let write = lock_write(&world.root, &world.lock)?;
     settle_checkpoint(world, &write)?;
-    bump_state_rev(&mut draft)?;
-    let now_bytes = save::emit(&draft.state)?.into_bytes();
+    let (mut state, memories) = draft.finish();
+    state.state_rev = state.state_rev.checked_add(1).ok_or(Reason::OutOfRange)?;
+    let now_bytes = save::emit(&state)?.into_bytes();
     let line = seal_round(
         record,
         world.state.state_rev,
-        &draft,
+        (&state, memories),
         &now_bytes,
         &world.root,
     )?;
-    let due = is_checkpoint_due(world.canon().checkpoint_every, draft.state.round_index);
+    let due = is_checkpoint_due(world.canon().checkpoint_every, state.round_index);
     let (payload, chain) = if due {
-        let (payload, chain) = seal_checkpoint(line, &draft.state, &now_bytes)?;
+        let (payload, chain) = seal_checkpoint(line, &state, &now_bytes)?;
         (payload, Some(chain))
     } else {
         (line, None)
     };
     let mut log_path = append_to_bundle(&world.root, &payload, &write)?;
-    world.state = draft.state;
+    world.state = accept(state);
     world.queue.clear();
     if let Some(chain) = chain {
         if finish_checkpoint(world, &now_bytes, &chain, &write) {
@@ -73,20 +74,19 @@ pub fn commit(
 }
 
 /// The journal already has this round. Keep the new state in memory.
-pub fn keep_in_memory(world: &mut World<()>, mut draft: Draft) -> Result<(), Reason> {
-    bump_state_rev(&mut draft)?;
-    world.state = draft.state;
+pub fn keep_in_memory(world: &mut World<()>, draft: Draft) -> Result<(), Reason> {
+    let (mut state, _) = draft.finish();
+    state.state_rev = state.state_rev.checked_add(1).ok_or(Reason::OutOfRange)?;
+    world.state = accept(state);
     Ok(())
 }
 
-fn bump_state_rev(draft: &mut Draft) -> Result<(), Reason> {
-    draft.state.state_rev = draft
-        .state
-        .state_rev
-        .checked_add(1)
-        .ok_or(Reason::OutOfRange)?;
-    normalize(&mut draft.state);
-    Ok(())
+/// The round's save once it is persisted: nothing it wrote can be rolled back now, so each
+/// component it touched keeps no undo, and it is in the order the save file holds.
+fn accept(mut state: State) -> State {
+    state.rebase();
+    normalize(&mut state);
+    state
 }
 
 /// Seal a migrate record for `state`, which is already the journal tip or the on-disk save.
@@ -175,13 +175,13 @@ fn seal_checkpoint(
 fn seal_round(
     mut record: RoundRecord,
     state_rev_before: u64,
-    draft: &Draft,
+    (state, memories): (&State, Vec<MemoryLine>),
     now_bytes: &[u8],
     root: &Path,
 ) -> Result<String, Reason> {
     record.state_rev_before = state_rev_before;
-    record.state_rev_after = draft.state.state_rev;
-    record.memories = draft.memories.clone();
+    record.state_rev_after = state.state_rev;
+    record.memories = memories;
     record.state_hash = blake2s_tagged(now_bytes);
     let prev = journal::read_chain_tip(root).map_err(|fault| fault.reason)?;
     Ok(journal::seal(&Record::Round(record), &prev))
@@ -321,7 +321,7 @@ mod tests {
         let mut world = crate::testing::resume(&root);
         let pre = fs::read(root.join("state/save.yaml")).unwrap();
         let mut draft = Draft::begin(&world, &NOBODY);
-        draft.memories.push(MemoryLine {
+        draft.push_memory(MemoryLine {
             round_index: 0,
             actor_id: "mira".to_string(),
             intent_id: "rest".to_string(),
@@ -364,7 +364,8 @@ mod tests {
         set_checkpoint_every(&root, 1);
         let mut world = crate::testing::resume(&root);
         let mut draft = Draft::begin(&world, &NOBODY);
-        draft.state.round_index = 1;
+        let last = world.state().last_round_at.clone();
+        draft.stamp_round(1, world.state().world_time, &last);
         durability::fail_next(".jsonl.gz.tmp");
         commit(&mut world, draft, round_line(1)).unwrap();
         let live = crate::store::journal::read_live_records(&root).unwrap();
@@ -380,7 +381,8 @@ mod tests {
         assert!(!root.join("state/journal/bundle-0000.jsonl.gz").is_file());
 
         let mut again = Draft::begin(&world, &NOBODY);
-        again.state.round_index = 2;
+        let last = world.state().last_round_at.clone();
+        again.stamp_round(2, world.state().world_time, &last);
         commit(&mut world, again, round_line(2)).unwrap();
         assert!(world.take_warning().is_none());
         let bundles = crate::store::journal::read_bundle_records(&root).unwrap();
@@ -405,11 +407,13 @@ mod tests {
         set_checkpoint_every(&root, 2);
         let mut world = crate::testing::resume(&root);
         let mut first = Draft::begin(&world, &NOBODY);
-        first.state.round_index = 1;
+        let last = world.state().last_round_at.clone();
+        first.stamp_round(1, world.state().world_time, &last);
         commit(&mut world, first, round_line(1)).unwrap();
 
         let mut second = Draft::begin(&world, &NOBODY);
-        second.state.round_index = 2;
+        let last = world.state().last_round_at.clone();
+        second.stamp_round(2, world.state().world_time, &last);
         durability::fail_next("save.yaml.tmp");
         commit(&mut world, second, round_line(2)).unwrap();
         let live = crate::store::journal::read_live_records(&root).unwrap();
@@ -418,7 +422,8 @@ mod tests {
         assert_eq!(world.take_warning(), Some(super::CHECKPOINT_WARNING));
 
         let mut third = Draft::begin(&world, &NOBODY);
-        third.state.round_index = 3;
+        let last = world.state().last_round_at.clone();
+        third.stamp_round(3, world.state().world_time, &last);
         commit(&mut world, third, round_line(3)).unwrap();
         let bundles = crate::store::journal::read_bundle_records(&root).unwrap();
         assert_eq!(bundles.len(), 2, "{bundles:?}");

@@ -174,11 +174,12 @@ fn the_keeper_habit_has_set_tended(world: &mut World) {
     assert_eq!(world.code, Some(0), "{}", world.stderr);
     let now = state_of(&idle);
     assert_eq!(now.world_time, 60, "idle round did not advance 60 ticks");
-    let flags = match now.actors.get("keeper") {
-        Some(actor) if actor.is_npc() => &actor.flags,
+    match now.actors.get("keeper") {
+        Some(actor) if actor.is_npc() => {}
         other => panic!("keeper missing: {other:?}"),
     };
-    assert!(flags.iter().any(|flag| flag == "tended"), "{flags:?}");
+    let keeper = spookery_engine::Holder::Actor("keeper".to_string());
+    assert!(now.has_flag(&keeper, "tended"), "{:?}", now.flags);
     let _ = fs::remove_dir_all(idle);
 }
 

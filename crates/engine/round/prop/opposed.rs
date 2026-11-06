@@ -64,8 +64,12 @@ fn lunge_pack(limit: Option<&str>, rule: &str) -> PathBuf {
     }
     crate::testing::append(&pack.join("rules/verbs.yaml"), &format!("{LUNGE}{rule}"));
     crate::testing::edit_save(&pack, |state| {
-        let briar = state.actors.get_mut("npc_briar").expect("Briar");
-        briar.meters.get_mut("might").expect("might").base = 30;
+        let briar = crate::rules::effect::Holder::Actor("npc_briar".to_string());
+        state
+            .meters
+            .frontier_mut(&briar, "might")
+            .expect("might")
+            .base = 30;
     });
     pack
 }

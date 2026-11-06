@@ -218,6 +218,42 @@ pub mod testing {
         write_save(pack, &state);
     }
 
+    /// Give the save an actor `to` that is a copy of actor `from`: their record, meters,
+    /// modifiers and flags.
+    pub fn copy_actor(state: &mut crate::State, from: &str, to: &str) {
+        let record = state.actors[from].clone();
+        state.actors.insert(to.to_string(), record);
+        let (from, to) = (
+            crate::Holder::Actor(from.to_string()),
+            crate::Holder::Actor(to.to_string()),
+        );
+        let meters: Vec<_> = (state.meters.on(&from))
+            .map(|(key, live)| (key.clone(), live.clone()))
+            .collect();
+        for (key, live) in meters {
+            state.meters.insert(to.clone(), key, live);
+        }
+        let held: Vec<_> = (state.modifiers.on(&from))
+            .map(|(key, live)| (key.clone(), live.clone()))
+            .collect();
+        for (key, live) in held {
+            state.modifiers.insert(to.clone(), key, live);
+        }
+        let flags: Vec<String> = state.flags.on(&from).map(|(key, ())| key.clone()).collect();
+        for key in flags {
+            state.flags.insert(to.clone(), key, ());
+        }
+    }
+
+    /// Take actor `id` out of the save: their record, meters, modifiers and flags.
+    pub fn remove_actor(state: &mut crate::State, id: &str) {
+        state.actors.remove(id);
+        let actor = crate::Holder::Actor(id.to_string());
+        state.meters.retain(|holder, _, _| *holder != actor);
+        state.modifiers.retain(|holder, _, _| *holder != actor);
+        state.flags.retain(|holder, _, _| *holder != actor);
+    }
+
     pub fn stamp_pack_rev(pack: &Path) {
         edit_save(pack, |_| {});
     }
@@ -238,29 +274,23 @@ pub mod testing {
         fs::copy(&from, pack.join("cast/pc-nell.md"))
             .unwrap_or_else(|err| panic!("copy {}: {err}", from.display()));
         edit_save(pack, |state| {
+            let nell = crate::Holder::Actor("pc_nell".to_string());
+            for (key, base) in [("grit", 100), ("rest", 3)] {
+                let live = crate::MeterLive { base, offset: 0 };
+                state.meters.insert(nell.clone(), key.to_string(), live);
+            }
             state.actors.insert(
                 "pc_nell".to_string(),
                 crate::model::ActorLive {
                     kind: crate::model::ActorKind::Pc,
                     place: "docks_shop".to_string(),
-                    flags: Vec::new(),
-                    meters: std::collections::BTreeMap::from([
-                        (
-                            "grit".to_string(),
-                            crate::MeterLive {
-                                base: 100,
-                                offset: 0,
-                            },
-                        ),
-                        ("rest".to_string(), crate::MeterLive { base: 3, offset: 0 }),
-                    ]),
-                    modifiers: Default::default(),
                     inventory: std::collections::BTreeMap::new(),
                     wielded: None,
                     known_facts: Vec::new(),
                     visited: Default::default(),
                     act: crate::model::Act::default(),
-                },
+                }
+                .into(),
             );
         });
     }

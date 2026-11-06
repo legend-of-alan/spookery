@@ -4,6 +4,9 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
+use crate::model::key::StateValue;
+use crate::model::tracked::{swap, Edit, Store};
+use crate::rules::effect::Holder;
 use crate::Reason;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -30,7 +33,25 @@ pub struct ModifierLive {
     pub stacks: Vec<i64>,
 }
 
+/// Every modifier each actor holds, by the modifier's id. An edit is the whole next value.
+pub type Modifiers = Store<ModifierLive, ModifierLive>;
+
+/// A modifier's next value, whose undo is the value it replaced.
+impl Edit<ModifierLive> for ModifierLive {
+    fn apply(self, live: &mut ModifierLive) -> Option<Self> {
+        swap(live, self)
+    }
+}
+
 impl ModifierLive {
+    /// What its key reads: its stacks and the tick it expires at.
+    pub(crate) fn to_value(&self) -> StateValue {
+        StateValue::Text(format!(
+            "{:?} until {} max_ticks {}",
+            self.stacks, self.until, self.max_ticks
+        ))
+    }
+
     /// Ticks from `now` until it expires.
     pub fn ticks_left(&self, now: u64) -> u64 {
         self.until.saturating_sub(now)
@@ -76,9 +97,11 @@ pub fn is_defined(defs: &BTreeMap<String, ModifierDef>, id: &str, live: &Modifie
     defs.get(id).is_some_and(|def| def.meter == live.meter)
 }
 
-/// What the modifiers in `held` add to meter `key`: the sum of their stacks.
-pub fn sum(held: &BTreeMap<String, ModifierLive>, key: &str) -> Result<i64, Reason> {
-    held.values()
+/// What the modifiers `holder` holds add to its meter `key`: the sum of their stacks.
+pub fn sum(modifiers: &Modifiers, holder: &Holder, key: &str) -> Result<i64, Reason> {
+    modifiers
+        .on(holder)
+        .map(|(_, live)| live)
         .filter(|live| live.meter == key)
         .flat_map(|live| &live.stacks)
         .try_fold(0i64, |total, add| total.checked_add(*add))
@@ -115,8 +138,11 @@ mod tests {
 
     #[test]
     fn sum_counts_only_the_named_meter_and_refuses_an_overflow() {
-        let mut map = BTreeMap::from([("burn".to_string(), held(&[-1, -2]))]);
+        let rowan = Holder::Actor("rowan".to_string());
+        let mut map = Modifiers::default();
+        map.insert(rowan.clone(), "burn".to_string(), held(&[-1, -2]));
         map.insert(
+            rowan.clone(),
             "calm".to_string(),
             ModifierLive {
                 meter: "rest".to_string(),
@@ -125,9 +151,9 @@ mod tests {
                 stacks: vec![5],
             },
         );
-        assert_eq!(sum(&map, "grit"), Ok(-3));
-        assert_eq!(sum(&map, "nerve"), Ok(0));
-        map.insert("vast".to_string(), held(&[i64::MIN]));
-        assert_eq!(sum(&map, "grit"), Err(Reason::OutOfRange));
+        assert_eq!(sum(&map, &rowan, "grit"), Ok(-3));
+        assert_eq!(sum(&map, &rowan, "nerve"), Ok(0));
+        map.insert(rowan.clone(), "vast".to_string(), held(&[i64::MIN]));
+        assert_eq!(sum(&map, &rowan, "grit"), Err(Reason::OutOfRange));
     }
 }

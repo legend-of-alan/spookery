@@ -63,24 +63,23 @@ impl StateKey {
     /// The key of meter `key` on `holder`. An exit carries no meters.
     pub(crate) fn meter(holder: &Holder, key: &str) -> Option<StateKey> {
         let key = key.to_string();
-        match holder {
-            Holder::Actor(id) => Some(StateKey::ActorMeter(id.clone(), key)),
-            Holder::Place(id) => Some(StateKey::PlaceMeter(id.clone(), key)),
-            Holder::Story(id) => Some(StateKey::StoryMeter(id.clone(), key)),
-            Holder::Exit(..) => None,
-            Holder::World => Some(StateKey::WorldMeter(key)),
-        }
+        Some(match holder {
+            Holder::Actor(id) => StateKey::ActorMeter(id.clone(), key),
+            Holder::Place(id) => StateKey::PlaceMeter(id.clone(), key),
+            Holder::Story(id) => StateKey::StoryMeter(id.clone(), key),
+            Holder::World => StateKey::WorldMeter(key),
+            Holder::Exit(..) => return None,
+        })
     }
 
-    /// The key of flag `key` on `holder`. An exit's one flag is `open`.
+    /// The key of flag `key` on `holder`. An exit's one flag, `open`, is its door.
     pub(crate) fn flag(holder: &Holder, key: &str) -> StateKey {
-        let key = key.to_string();
         match holder {
+            Holder::Actor(id) => StateKey::ActorFlag(id.clone(), key.to_string()),
+            Holder::Place(id) => StateKey::PlaceFlag(id.clone(), key.to_string()),
+            Holder::Story(id) => StateKey::StoryFlag(id.clone(), key.to_string()),
             Holder::Exit(place, exit) => StateKey::ExitOpen(place.clone(), exit.clone()),
-            Holder::Actor(id) => StateKey::ActorFlag(id.clone(), key),
-            Holder::Place(id) => StateKey::PlaceFlag(id.clone(), key),
-            Holder::Story(id) => StateKey::StoryFlag(id.clone(), key),
-            Holder::World => StateKey::WorldFlag(key),
+            Holder::World => StateKey::WorldFlag(key.to_string()),
         }
     }
 

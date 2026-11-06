@@ -17,17 +17,28 @@ use crate::World;
 
 const LEDGER: &str = "The lamp-oil ledger is short.";
 
-fn meters(grit: i64) -> BTreeMap<String, MeterLive> {
-    BTreeMap::from([
-        (
-            "grit".to_string(),
-            MeterLive {
-                base: grit,
-                offset: 0,
-            },
-        ),
-        ("rest".to_string(), MeterLive { base: 3, offset: 0 }),
-    ])
+/// A save of world `world_id` at round 0 with the places and actors `fill` gives it, each
+/// actor at grit 1 and rest 3.
+fn bare_save(world_id: &str, pack_rev: String, fill: impl FnOnce(&mut State)) -> State {
+    let mut state = State::default();
+    state.schema = "save".to_string();
+    state.world_id = world_id.to_string();
+    state.pack_rev = pack_rev;
+    state.rules_rev = spookery_engine::testing::RULES_REV;
+    state.last_round_at = "2026-01-01T00:00:00Z".to_string();
+    fill(&mut state);
+    let actors: Vec<Holder> = state
+        .actors
+        .keys()
+        .map(|id| Holder::Actor(id.clone()))
+        .collect();
+    for actor in actors {
+        for (key, base) in [("grit", 1), ("rest", 3)] {
+            let live = MeterLive { base, offset: 0 };
+            state.meters.insert(actor.clone(), key.to_string(), live);
+        }
+    }
+    state
 }
 
 fn write_text(path: &Path, text: &str) {
@@ -48,10 +59,13 @@ fn lamp_oil(state: &State) -> u32 {
 }
 
 fn flags_of(state: &State, id: &str) -> Vec<String> {
-    match state.actors.get(id) {
-        Some(actor) => actor.flags.clone(),
-        None => panic!("{id} missing"),
-    }
+    assert!(state.actors.contains_key(id), "{id} missing");
+    let actor = Holder::Actor(id.to_string());
+    state
+        .flags
+        .on(&actor)
+        .map(|(flag, ())| flag.clone())
+        .collect()
 }
 
 fn snapshot(root: &Path) -> Vec<(PathBuf, Vec<u8>)> {
@@ -113,8 +127,13 @@ fn morning_restock() {
         let mut state = opened.state().clone();
         drop(opened);
         state.world_time = 600;
-        state.notes.push(door_note());
-        state.actors.get_mut("pc_rowan").unwrap().place = "docks_street".to_string();
+        state.notes.frontier_mut().push(door_note());
+        state
+            .actors
+            .get_mut("pc_rowan")
+            .unwrap()
+            .frontier_mut()
+            .place = "docks_street".to_string();
         write_save(&pack, &state);
     }
     assert_eq!(
@@ -136,12 +155,18 @@ fn capped_restock() -> u32 {
         let mut state = opened.state().clone();
         drop(opened);
         state.world_time = 600;
-        state.notes.push(door_note());
-        state.actors.get_mut("pc_rowan").unwrap().place = "docks_street".to_string();
+        state.notes.frontier_mut().push(door_note());
+        state
+            .actors
+            .get_mut("pc_rowan")
+            .unwrap()
+            .frontier_mut()
+            .place = "docks_street".to_string();
         state
             .places
             .get_mut("docks_shop")
             .unwrap()
+            .frontier_mut()
             .items
             .insert("lamp_oil".to_string(), 6);
         write_save(&pack, &state);
@@ -158,7 +183,7 @@ fn off_hours_hold() {
         let opened = resume(&pack);
         let mut state = opened.state().clone();
         drop(opened);
-        state.notes.push(door_note());
+        state.notes.frontier_mut().push(door_note());
         write_save(&pack, &state);
     }
     play_pack_once(&pack).unwrap_or_else(|err| panic!("round: {err}"));
@@ -175,8 +200,8 @@ fn player_in_the_shop() {
         let mut state = opened.state().clone();
         drop(opened);
         state.world_time = 600;
-        state.notes.push(door_note());
-        state.actors.get_mut("mira").unwrap().place = "docks_shop".to_string();
+        state.notes.frontier_mut().push(door_note());
+        state.actors.get_mut("mira").unwrap().frontier_mut().place = "docks_shop".to_string();
         write_save(&pack, &state);
     }
     let mut opened = resume(&pack);
@@ -216,8 +241,8 @@ fn gm_restocks() {
         let mut state = opened.state().clone();
         drop(opened);
         state.world_time = 600;
-        state.notes.push(door_note());
-        state.actors.get_mut("mira").unwrap().place = "docks_shop".to_string();
+        state.notes.frontier_mut().push(door_note());
+        state.actors.get_mut("mira").unwrap().frontier_mut().place = "docks_shop".to_string();
         write_save(&pack, &state);
     }
     let mut opened = resume(&pack);
@@ -235,7 +260,7 @@ fn claimed_note_sorts_first() {
         let opened = resume(&pack);
         let mut state = opened.state().clone();
         drop(opened);
-        state.actors.get_mut("mira").unwrap().place = "docks_shop".to_string();
+        state.actors.get_mut("mira").unwrap().frontier_mut().place = "docks_shop".to_string();
         write_save(&pack, &state);
     }
     let mut opened = resume(&pack);
@@ -321,39 +346,25 @@ Rowan.
     }
     let rev = spookery_engine::pack_rev(&pack).unwrap();
     let mut places = BTreeMap::new();
-    places.insert("gate".to_string(), PlaceLive::default());
+    places.insert("gate".to_string(), PlaceLive::default().into());
     let mut actors = BTreeMap::new();
     actors.insert(
         "pc_rowan".to_string(),
         ActorLive {
             kind: ActorKind::Pc,
             place: "gate".to_string(),
-            flags: Vec::new(),
-            meters: meters(1),
-            modifiers: Default::default(),
             inventory: BTreeMap::new(),
             wielded: None,
             known_facts: Vec::new(),
             visited: Default::default(),
             act: Act::default(),
-        },
+        }
+        .into(),
     );
-    let state = State {
-        schema: "save".to_string(),
-        world_id: "ex".to_string(),
-        pack_rev: rev,
-        rules_rev: spookery_engine::testing::RULES_REV,
-        state_rev: 0,
-        round_index: 0,
-        world_time: 0,
-        last_round_at: "2026-01-01T00:00:00Z".to_string(),
-        places,
-        actors,
-        stories: BTreeMap::new(),
-        world_meters: BTreeMap::new(),
-        notes: Vec::new(),
-        flags: Vec::new(),
-    };
+    let state = bare_save("ex", rev, |state| {
+        state.places = places;
+        state.actors = actors;
+    });
     write_text(&pack.join("state/save.yaml"), &emit_save(&state).unwrap());
     let place_before = fs::read(pack.join("world/places/gate.md")).unwrap();
     let cast_before = fs::read(pack.join("cast/pc_rowan.md")).unwrap();
@@ -387,9 +398,20 @@ fn a_busy_npc_skips() {
         let mut state = opened.state().clone();
         drop(opened);
         state.world_time = 600;
-        state.notes.push(door_note());
-        state.actors.get_mut("mira").unwrap().act.busy_until = Some(u64::MAX);
-        state.actors.get_mut("pc_rowan").unwrap().place = "docks_street".to_string();
+        state.notes.frontier_mut().push(door_note());
+        state
+            .actors
+            .get_mut("mira")
+            .unwrap()
+            .frontier_mut()
+            .act
+            .busy_until = Some(u64::MAX);
+        state
+            .actors
+            .get_mut("pc_rowan")
+            .unwrap()
+            .frontier_mut()
+            .place = "docks_street".to_string();
         write_save(&pack, &state);
     }
     play_pack_once(&pack).unwrap_or_else(|err| panic!("round: {err}"));
@@ -458,15 +480,13 @@ rules:
             ActorLive {
                 kind: ActorKind::Npc,
                 place: "yard".to_string(),
-                flags: Vec::new(),
-                meters: meters(1),
-                modifiers: Default::default(),
                 inventory: BTreeMap::new(),
                 wielded: None,
                 known_facts: Vec::new(),
                 visited: Default::default(),
                 act: Act::default(),
-            },
+            }
+            .into(),
         );
     }
     for name in ["verbs.yaml", "checks.yaml", "meters.yaml", "budget.yaml"] {
@@ -476,23 +496,11 @@ rules:
     }
     let rev = spookery_engine::pack_rev(&pack).unwrap();
     let mut places = BTreeMap::new();
-    places.insert("yard".to_string(), PlaceLive::default());
-    let state = State {
-        schema: "save".to_string(),
-        world_id: "crowd".to_string(),
-        pack_rev: rev,
-        rules_rev: spookery_engine::testing::RULES_REV,
-        state_rev: 0,
-        round_index: 0,
-        world_time: 0,
-        last_round_at: "2026-01-01T00:00:00Z".to_string(),
-        places,
-        actors,
-        stories: BTreeMap::new(),
-        world_meters: BTreeMap::new(),
-        notes: Vec::new(),
-        flags: Vec::new(),
-    };
+    places.insert("yard".to_string(), PlaceLive::default().into());
+    let state = bare_save("crowd", rev, |state| {
+        state.places = places;
+        state.actors = actors;
+    });
     write_text(&pack.join("state/save.yaml"), &emit_save(&state).unwrap());
     play_pack_once(&pack).unwrap_or_else(|err| panic!("round: {err}"));
     let state = state_of(&pack);
@@ -623,7 +631,7 @@ fn patch_mira_flags_and_place(pack: &Path, flags: &str) {
     fs::write(&path, next).unwrap();
     let now_path = pack.join("state/save.yaml");
     let mut state = spookery_engine::parse_save(&fs::read_to_string(&now_path).unwrap()).unwrap();
-    state.actors.get_mut("mira").unwrap().place = "docks_shop".to_string();
+    state.actors.get_mut("mira").unwrap().frontier_mut().place = "docks_shop".to_string();
     write_save(pack, &state);
 }
 

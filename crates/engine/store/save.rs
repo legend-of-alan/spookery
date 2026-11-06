@@ -1,18 +1,244 @@
 //! Read, write and migrate the save.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_saphyr::SerializerOptions;
 
-use crate::canon::Canon;
+use crate::canon::{Canon, OPEN};
 use crate::diagnostic::{check_tag, error, locate_nth, parse_file, schema_error, Diagnostic};
 use crate::model::meter::MeterLive;
-use crate::model::modifier;
-use crate::model::{exit_parts, sort_unique, State};
+use crate::model::modifier::{self, ModifierLive};
+use crate::model::{exit_parts, sort_unique, Act, ActorKind, ActorLive, Note, PlaceLive, State};
 use crate::rules::effect::Holder;
 use crate::store::records::{AddedMeter, DroppedMeter};
 use crate::Reason;
+
+/// `save.yaml` as it stands on disk, where each record holds its own meters and modifiers. A
+/// `State` keeps those in stores instead, so `parse` and `emit` move them between the two.
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SaveFile {
+    schema: String,
+    world_id: String,
+    pack_rev: String,
+    /// Engine rules version. Missing means 0, which is not the current version.
+    #[serde(default)]
+    rules_rev: u64,
+    state_rev: u64,
+    round_index: u64,
+    world_time: u64,
+    last_round_at: String,
+    places: BTreeMap<String, PlaceSave>,
+    actors: BTreeMap<String, ActorSave>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    stories: BTreeMap<String, StorySave>,
+    /// The meters `world/meters.yaml` declares, held once by the world.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    world_meters: BTreeMap<String, MeterLive>,
+    notes: Vec<Note>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    flags: Vec<String>,
+}
+
+#[derive(Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PlaceSave {
+    items: BTreeMap<String, u32>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    meters: BTreeMap<String, MeterLive>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    flags: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    open: Vec<String>,
+}
+
+#[derive(Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct StorySave {
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    meters: BTreeMap<String, MeterLive>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    flags: Vec<String>,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ActorSave {
+    kind: ActorKind,
+    place: String,
+    flags: Vec<String>,
+    meters: BTreeMap<String, MeterLive>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    modifiers: BTreeMap<String, ModifierLive>,
+    inventory: BTreeMap<String, u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    wielded: Option<String>,
+    known_facts: Vec<String>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    visited: BTreeMap<String, Vec<String>>,
+    act: Act,
+}
+
+impl From<SaveFile> for State {
+    /// Each record's meters, modifiers and flags go to the stores, under it. A place's open
+    /// doors are its exits' `open` flags.
+    fn from(file: SaveFile) -> Self {
+        let mut state = State {
+            schema: file.schema,
+            world_id: file.world_id,
+            pack_rev: file.pack_rev,
+            rules_rev: file.rules_rev,
+            state_rev: file.state_rev,
+            round_index: file.round_index,
+            world_time: file.world_time,
+            last_round_at: file.last_round_at,
+            notes: file.notes.into(),
+            ..State::default()
+        };
+        let mut give = |holder: Holder, meters: BTreeMap<String, MeterLive>, flags: Vec<String>| {
+            for (key, live) in meters {
+                state.meters.insert(holder.clone(), key, live);
+            }
+            for key in flags {
+                state.flags.insert(holder.clone(), key, ());
+            }
+        };
+        give(Holder::World, file.world_meters, file.flags);
+        let mut places = BTreeMap::new();
+        for (id, place) in file.places {
+            for exit in place.open {
+                give(
+                    Holder::Exit(id.clone(), exit),
+                    BTreeMap::new(),
+                    vec![OPEN.to_string()],
+                );
+            }
+            give(Holder::Place(id.clone()), place.meters, place.flags);
+            places.insert(id, PlaceLive { items: place.items }.into());
+        }
+        let mut stories = BTreeSet::new();
+        for (id, story) in file.stories {
+            give(Holder::Story(id.clone()), story.meters, story.flags);
+            stories.insert(id);
+        }
+        let mut actors = BTreeMap::new();
+        let mut modifiers = Vec::new();
+        for (id, actor) in file.actors {
+            let holder = Holder::Actor(id.clone());
+            give(holder.clone(), actor.meters, actor.flags);
+            let held = actor.modifiers.into_iter();
+            modifiers.extend(held.map(|(key, live)| (holder.clone(), key, live)));
+            let record = ActorLive {
+                kind: actor.kind,
+                place: actor.place,
+                inventory: actor.inventory,
+                wielded: actor.wielded,
+                known_facts: actor.known_facts,
+                visited: actor.visited,
+                act: actor.act,
+            };
+            actors.insert(id, record.into());
+        }
+        for (holder, key, live) in modifiers {
+            state.modifiers.insert(holder, key, live);
+        }
+        state.places = places;
+        state.stories = stories;
+        state.actors = actors;
+        state
+    }
+}
+
+impl From<&State> for SaveFile {
+    /// Each meter, modifier and flag goes back into its holder's record, in key order.
+    fn from(state: &State) -> Self {
+        let mut file = SaveFile {
+            schema: state.schema.clone(),
+            world_id: state.world_id.clone(),
+            pack_rev: state.pack_rev.clone(),
+            rules_rev: state.rules_rev,
+            state_rev: state.state_rev,
+            round_index: state.round_index,
+            world_time: state.world_time,
+            last_round_at: state.last_round_at.clone(),
+            places: BTreeMap::new(),
+            actors: BTreeMap::new(),
+            stories: BTreeMap::new(),
+            world_meters: BTreeMap::new(),
+            notes: state.notes.to_vec(),
+            flags: Vec::new(),
+        };
+        for (id, place) in &state.places {
+            let items = place.items.clone();
+            (file.places).insert(
+                id.clone(),
+                PlaceSave {
+                    items,
+                    ..PlaceSave::default()
+                },
+            );
+        }
+        for id in &state.stories {
+            file.stories.insert(id.clone(), StorySave::default());
+        }
+        for (id, actor) in &state.actors {
+            let actor = ActorSave {
+                kind: actor.kind,
+                place: actor.place.clone(),
+                flags: Vec::new(),
+                meters: BTreeMap::new(),
+                modifiers: BTreeMap::new(),
+                inventory: actor.inventory.clone(),
+                wielded: actor.wielded.clone(),
+                known_facts: actor.known_facts.clone(),
+                visited: actor.visited.clone(),
+                act: actor.act.clone(),
+            };
+            file.actors.insert(id.clone(), actor);
+        }
+        for (holder, key, live) in state.meters.iter() {
+            let meters = match holder {
+                Holder::Actor(id) => file.actors.get_mut(id).map(|actor| &mut actor.meters),
+                Holder::Place(id) => Some(&mut file.places.entry(id.clone()).or_default().meters),
+                Holder::Story(id) => Some(&mut file.stories.entry(id.clone()).or_default().meters),
+                Holder::World => Some(&mut file.world_meters),
+                Holder::Exit(..) => None,
+            };
+            let meters = meters.expect("a meter's holder has a record that can hold it");
+            meters.insert(key.clone(), live.clone());
+        }
+        for (holder, key, live) in state.modifiers.iter() {
+            let actor = match holder {
+                Holder::Actor(id) => file.actors.get_mut(id),
+                _ => None,
+            };
+            let actor = actor.expect("a modifier's actor has a record");
+            actor.modifiers.insert(key.clone(), live.clone());
+        }
+        for (holder, key, ()) in state.flags.iter() {
+            let (flags, name) = match holder {
+                Holder::Actor(id) => (file.actors.get_mut(id).map(|actor| &mut actor.flags), key),
+                Holder::Place(id) => (
+                    Some(&mut file.places.entry(id.clone()).or_default().flags),
+                    key,
+                ),
+                Holder::Story(id) => (
+                    Some(&mut file.stories.entry(id.clone()).or_default().flags),
+                    key,
+                ),
+                Holder::Exit(place, exit) => (
+                    Some(&mut file.places.entry(place.clone()).or_default().open),
+                    exit,
+                ),
+                Holder::World => (Some(&mut file.flags), key),
+            };
+            let flags = flags.expect("a flag's holder has a record that can hold it");
+            flags.push(name.clone());
+        }
+        file
+    }
+}
 
 pub(crate) fn emit_options() -> SerializerOptions {
     serde_saphyr::ser_options! {
@@ -46,7 +272,7 @@ pub fn parse(text: &str) -> Result<State, Vec<Diagnostic>> {
             return Err(vec![rules_rev_diagnostic(text)]);
         }
     }
-    let state: State = parse_file(FILE, text, 0)?;
+    let state: State = parse_file::<SaveFile>(FILE, text, 0)?.into();
     let diags = check_actor_places(&state);
     if diags.is_empty() {
         Ok(state)
@@ -60,8 +286,9 @@ pub fn emit(state: &State) -> Result<String, Reason> {
     canonical.schema = crate::diagnostic::SAVE_SCHEMA.to_string();
     canonical.rules_rev = super::RULES_REV;
     normalize(&mut canonical);
-    let text = serde_saphyr::to_string_with_options(&canonical, emit_options())
-        .map_err(|_| Reason::Schema)?;
+    let file = SaveFile::from(&canonical);
+    let text =
+        serde_saphyr::to_string_with_options(&file, emit_options()).map_err(|_| Reason::Schema)?;
     Ok(one_trailing_lf(text))
 }
 
@@ -88,23 +315,15 @@ fn one_trailing_lf(mut text: String) -> String {
 }
 
 pub fn normalize(state: &mut State) {
-    state.notes.sort_by(|a, b| a.id.cmp(&b.id));
-    for note in &mut state.notes {
+    let notes = state.notes.frontier_mut();
+    notes.sort_by(|a, b| a.id.cmp(&b.id));
+    for note in notes {
         sort_unique(&mut note.to);
         sort_unique(&mut note.fact_ids);
     }
     for actor in state.actors.values_mut() {
-        sort_unique(&mut actor.flags);
-        sort_unique(&mut actor.known_facts);
+        sort_unique(&mut actor.frontier_mut().known_facts);
     }
-    for place in state.places.values_mut() {
-        sort_unique(&mut place.flags);
-        sort_unique(&mut place.open);
-    }
-    for story in state.stories.values_mut() {
-        sort_unique(&mut story.flags);
-    }
-    sort_unique(&mut state.flags);
 }
 
 fn check_actor_places(state: &State) -> Vec<Diagnostic> {
@@ -134,13 +353,13 @@ fn check_actor_places(state: &State) -> Vec<Diagnostic> {
 /// Meters the pack gives a holder that the holder lacks, each at its `start`.
 pub(crate) fn missing_meters(canon: &Canon, state: &State) -> Vec<AddedMeter> {
     let mut added = Vec::new();
+    let lacks = |holder: &Holder, id: &str| state.meters.get(holder, id).is_none();
     for (id, def) in &canon.meters {
         let lacking = match &def.carrier {
-            Some(holder) if !def.is_actor_meter() => state
-                .meters_of(holder)
-                .is_none_or(|live| !live.contains_key(id)),
-            _ => state.actors.iter().any(|(actor, live)| {
-                def.is_on(&Holder::Actor(actor.clone())) && !live.meters.contains_key(id)
+            Some(holder) if !def.is_actor_meter() => lacks(holder, id),
+            _ => state.actors.keys().any(|actor| {
+                let actor = Holder::Actor(actor.clone());
+                def.is_on(&actor) && lacks(&actor, id)
             }),
         };
         if lacking {
@@ -148,7 +367,7 @@ pub(crate) fn missing_meters(canon: &Canon, state: &State) -> Vec<AddedMeter> {
         }
     }
     for (id, def) in &canon.world_meters {
-        if !state.world_meters.contains_key(id) {
+        if lacks(&Holder::World, id) {
             added.push(AddedMeter::new(id, def));
         }
     }
@@ -157,38 +376,22 @@ pub(crate) fn missing_meters(canon: &Canon, state: &State) -> Vec<AddedMeter> {
 
 /// Meters an actor, place, story or the world lists that the pack no longer gives it.
 pub(crate) fn stale_meters(canon: &Canon, state: &State) -> Vec<DroppedMeter> {
-    let mut dropped = Vec::new();
-    let mut drop_stale = |carrier: Holder, live: &BTreeMap<String, MeterLive>| {
-        for id in live.keys() {
-            if canon.meter_def(&carrier, id).is_none() {
-                dropped.push(DroppedMeter {
-                    id: id.clone(),
-                    carrier: carrier.clone(),
-                });
-            }
-        }
-    };
-    for (id, actor) in &state.actors {
-        drop_stale(Holder::Actor(id.clone()), &actor.meters);
-    }
-    for (id, place) in &state.places {
-        drop_stale(Holder::Place(id.clone()), &place.meters);
-    }
-    for (id, story) in &state.stories {
-        drop_stale(Holder::Story(id.clone()), &story.meters);
-    }
-    drop_stale(Holder::World, &state.world_meters);
-    dropped
+    let stale = state.meters.iter();
+    let stale = stale.filter(|(carrier, id, _)| canon.meter_def(carrier, id).is_none());
+    let dropped = stale.map(|(carrier, id, _)| DroppedMeter {
+        id: id.clone(),
+        carrier: carrier.clone(),
+    });
+    dropped.collect()
 }
 
 /// Modifiers some actor holds that the pack no longer defines, or now defines on another meter.
 pub(crate) fn stale_modifiers(canon: &Canon, state: &State) -> Vec<String> {
     let mut stale: Vec<String> = state
-        .actors
-        .values()
-        .flat_map(|actor| &actor.modifiers)
-        .filter(|(id, live)| !modifier::is_defined(&canon.modifiers, id, live))
-        .map(|(id, _)| id.clone())
+        .modifiers
+        .iter()
+        .filter(|(_, id, live)| !modifier::is_defined(&canon.modifiers, id, live))
+        .map(|(_, id, _)| id.clone())
         .collect();
     sort_unique(&mut stale);
     stale
@@ -210,41 +413,30 @@ pub fn migrate(
             base: meter.start,
             offset: 0,
         };
-        match &meter.carrier {
-            Some(Holder::World) => {
-                let live = state.world_meters.entry(meter.id.clone());
-                live.or_insert(start);
-            }
+        let holders: Vec<Holder> = match &meter.carrier {
             Some(Holder::Place(id)) => {
-                let place = state.places.entry(id.clone()).or_default();
-                place.meters.entry(meter.id.clone()).or_insert(start);
+                state.places.entry(id.clone()).or_default();
+                vec![Holder::Place(id.clone())]
             }
             Some(Holder::Story(id)) => {
-                let story = state.stories.entry(id.clone()).or_default();
-                story.meters.entry(meter.id.clone()).or_insert(start);
+                state.stories.insert(id.clone());
+                vec![Holder::Story(id.clone())]
             }
-            carrier => {
-                for (id, actor) in &mut state.actors {
-                    if carrier
-                        .as_ref()
-                        .is_none_or(|carrier| *carrier == Holder::Actor(id.clone()))
-                    {
-                        let live = actor.meters.entry(meter.id.clone());
-                        live.or_insert(start.clone());
-                    }
-                }
+            Some(holder @ Holder::World) => vec![holder.clone()],
+            carrier => (state.actors.keys())
+                .map(|id| Holder::Actor(id.clone()))
+                .filter(|actor| carrier.as_ref().is_none_or(|carrier| carrier == actor))
+                .collect(),
+        };
+        for holder in holders {
+            if state.meters.get(&holder, &meter.id).is_none() {
+                state.meters.insert(holder, meter.id.clone(), start.clone());
             }
         }
     }
-    for actor in state.actors.values_mut() {
-        actor
-            .modifiers
-            .retain(|id, _| !dropped_modifiers.contains(id));
-    }
+    (state.modifiers).retain(|_, id, _| !dropped_modifiers.iter().any(|dropped| dropped == id));
     for meter in dropped_meters {
-        if let Ok(live) = state.meters_mut(&meter.carrier) {
-            live.remove(&meter.id);
-        }
+        state.meters.remove(&meter.carrier, &meter.id);
     }
     state.pack_rev = pack_rev.to_string();
     state.state_rev = state_rev;

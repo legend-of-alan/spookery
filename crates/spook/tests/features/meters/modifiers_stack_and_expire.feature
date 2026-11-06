@@ -56,6 +56,15 @@ Feature: Modifiers stack per application, add ticks on reapply, and expire at on
     And the GM sees "actor_meter pc_rowan grit" as a changed key
     And spook verify reproduces the journal
 
+  Scenario: A rule watching grit runs when a burn lowers it and again when the burn expires
+    Given "burn" modifies grit and has max_stacks 4
+    And one rule sets the world flag "scorched" when grit crosses <=19 and another sets "healed" when it crosses >=20
+    When the torch applies burn -1 for 3 ticks
+    Then the world flag "scorched" is set and "healed" is not
+    When the burn's 3 ticks pass with no reapply
+    Then the world flag "healed" is set
+    And spook verify reproduces the journal
+
   Scenario: A modifier with no max_stacks never goes past one stack
     Given "soaked" modifies grit and has no max_stacks
     When pc_rowan is soaked by -1 and then soaked again by -1

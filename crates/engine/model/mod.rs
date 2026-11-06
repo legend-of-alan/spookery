@@ -1,159 +1,114 @@
-//! The live save: places, actors, stories, world meters, and notes.
+//! The live save: places, actors, stories, the component stores, and notes.
 
 pub(crate) mod key;
+pub(crate) mod ledger;
 pub(crate) mod meter;
 pub(crate) mod modifier;
+pub(crate) mod tracked;
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
-use key::StateKey;
-use meter::MeterLive;
-use modifier::ModifierLive;
+use key::{StateKey, StateValue};
+use ledger::Ledger;
+use meter::Meters;
+use modifier::Modifiers;
+use tracked::{swap, Count, Edit, Entry, Rewind, Store, Tracked};
 
-use crate::canon::OPEN;
+use crate::canon::Canon;
 use crate::intent::{Target, Viewer};
 use crate::rules::effect::Holder;
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+/// The live save: each record, each component store, and the ledger of the round writing it.
+/// `store::save` reads and writes it in the shape of `save.yaml`.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct State {
     pub schema: String,
     pub world_id: String,
     pub pack_rev: String,
     /// Engine rules version. Missing means 0, which is not the current version.
-    #[serde(default)]
     pub rules_rev: u64,
     pub state_rev: u64,
     pub round_index: u64,
     /// Ticks since the world began.
     pub world_time: u64,
     pub last_round_at: String,
-    pub places: BTreeMap<String, PlaceLive>,
-    pub actors: BTreeMap<String, ActorLive>,
-    /// The meters and flags each story holds. Omitted when empty.
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub stories: BTreeMap<String, StoryLive>,
-    /// The meters `world/meters.yaml` declares, held once by the world. Omitted when empty.
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub world_meters: BTreeMap<String, MeterLive>,
-    pub notes: Vec<Note>,
-    /// World flags. Omitted from the save when empty.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub flags: Vec<String>,
+    pub places: BTreeMap<String, Tracked<PlaceLive, PlaceEdit>>,
+    pub actors: BTreeMap<String, Tracked<ActorLive, ActorEdit>>,
+    /// The stories the save lists. A story's meters and flags are in the stores.
+    pub stories: BTreeSet<String>,
+    /// Every live meter: each actor's, place's and story's, and the world's.
+    pub meters: Meters,
+    /// The modifiers each actor holds.
+    pub modifiers: Modifiers,
+    /// Every flag set, on any holder. An exit's door is open when the exit has its flag `open`.
+    pub flags: Flags,
+    pub notes: Tracked<Vec<Note>, NoteEdit>,
+    pub(crate) ledger: Ledger,
+}
+
+/// Each flag set on each holder. A flag is only on or off, so it has no edits: setting one puts
+/// it on, and clearing it takes it off.
+pub type Flags = Store<(), ()>;
+
+/// One tracked component of the save: a live record, the story a write listed, a meter, a
+/// modifier or a flag on its holder, or the notes.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum ComponentId {
+    Actor(String),
+    Place(String),
+    Story(String),
+    Meter(Holder, String),
+    Modifier(Holder, String),
+    Flag(Holder, String),
+    Notes,
 }
 
 impl State {
-    /// The current value of meter `key` on `holder`, or `UNKNOWN_ID` when it does not carry it.
+    /// The value of meter `key` on `holder`: its base and offset, plus what the holder's
+    /// modifiers add to it, inside the pack's bounds. `UNKNOWN_ID` when the pack or the holder
+    /// has no such meter. Every read of a meter's value, and every change reported for one,
+    /// goes through here.
     pub fn meter_value(
         &self,
-        canon: &crate::canon::Canon,
+        canon: &Canon,
         holder: &Holder,
         key: &str,
     ) -> Result<i64, crate::Reason> {
-        let def = canon
-            .meter_def(holder, key)
-            .ok_or(crate::Reason::UnknownId)?;
-        let live = self
-            .meters_of(holder)
-            .and_then(|meters| meters.get(key))
-            .ok_or(crate::Reason::UnknownId)?;
-        meter::current(def, live, self.modifier_sum(holder, key)?)
+        let def = (canon.meter_def(holder, key)).ok_or(crate::Reason::UnknownId)?;
+        let live = (self.meters.get(holder, key)).ok_or(crate::Reason::UnknownId)?;
+        meter::current(def, live, modifier::sum(&self.modifiers, holder, key)?)
     }
 
-    /// What `holder`'s modifiers add to its meter `key`. Only an actor holds modifiers.
-    pub(crate) fn modifier_sum(&self, holder: &Holder, key: &str) -> Result<i64, crate::Reason> {
-        match holder {
-            Holder::Actor(id) => self
-                .actors
-                .get(id)
-                .map_or(Ok(0), |actor| modifier::sum(&actor.modifiers, key)),
-            Holder::World | Holder::Place(_) | Holder::Story(_) | Holder::Exit(..) => Ok(0),
-        }
+    /// Whether `holder` has flag `key` set.
+    pub fn has_flag(&self, holder: &Holder, key: &str) -> bool {
+        self.flags.get(holder, key).is_some()
     }
 
-    /// The live meters `holder` carries.
-    pub(crate) fn meters_of(&self, holder: &Holder) -> Option<&BTreeMap<String, MeterLive>> {
-        match holder {
-            Holder::Actor(id) => self.actors.get(id).map(|actor| &actor.meters),
-            Holder::Place(id) => self.places.get(id).map(|place| &place.meters),
-            Holder::Story(id) => self.stories.get(id).map(|story| &story.meters),
-            Holder::Exit(..) => None,
-            Holder::World => Some(&self.world_meters),
-        }
+    /// The component `at` names, to roll back or rebase, when it has edits to.
+    pub(crate) fn component_mut(&mut self, at: &ComponentId) -> Option<&mut dyn Rewind> {
+        Some(match at {
+            ComponentId::Actor(id) => self.actors.get_mut(id)?,
+            ComponentId::Place(id) => self.places.get_mut(id)?,
+            ComponentId::Meter(holder, key) => self.meters.tracked_mut(holder, key)?,
+            ComponentId::Modifier(holder, id) => self.modifiers.tracked_mut(holder, id)?,
+            ComponentId::Notes => &mut self.notes,
+            ComponentId::Story(_) | ComponentId::Flag(..) => return None,
+        })
     }
 
-    /// The live meters `holder` carries, to write.
-    pub(crate) fn meters_mut(
-        &mut self,
-        holder: &Holder,
-    ) -> Result<&mut BTreeMap<String, MeterLive>, crate::Reason> {
-        match holder {
-            Holder::Actor(id) => Ok(&mut self.actor_mut(id)?.meters),
-            Holder::Place(id) => Ok(&mut self
-                .places
-                .get_mut(id)
-                .ok_or(crate::Reason::UnknownId)?
-                .meters),
-            Holder::Story(id) => Ok(&mut self
-                .stories
-                .get_mut(id)
-                .ok_or(crate::Reason::UnknownId)?
-                .meters),
-            Holder::Exit(..) => Err(crate::Reason::UnknownId),
-            Holder::World => Ok(&mut self.world_meters),
-        }
-    }
-
-    /// Whether `holder` has flag `key` set. An exit's `open` is its name in its place's list.
-    pub(crate) fn has_flag(&self, holder: &Holder, key: &str) -> bool {
-        let (flags, entry) = match holder {
-            Holder::Actor(id) => (self.actors.get(id).map(|actor| &actor.flags), key),
-            Holder::Place(id) => (self.places.get(id).map(|place| &place.flags), key),
-            Holder::Story(id) => (self.stories.get(id).map(|story| &story.flags), key),
-            Holder::Exit(place, exit) if key == OPEN => (
-                self.places.get(place).map(|place| &place.open),
-                exit.as_str(),
-            ),
-            Holder::Exit(..) => (None, key),
-            Holder::World => (Some(&self.flags), key),
-        };
-        flags.is_some_and(|flags| flags.iter().any(|flag| flag == entry))
-    }
-
-    /// Set or clear `holder`'s flag `key`, and say whether it changed. A place or story gets a
-    /// live record on its first flag, and a place on its first open exit.
-    pub(crate) fn set_flag(
-        &mut self,
-        holder: &Holder,
-        key: &str,
-        value: bool,
-    ) -> Result<bool, crate::Reason> {
-        if self.has_flag(holder, key) == value {
-            return Ok(false);
-        }
-        let (flags, entry) = match holder {
-            Holder::Actor(id) => (&mut self.actor_mut(id)?.flags, key),
-            Holder::Place(id) => (&mut self.places.entry(id.clone()).or_default().flags, key),
-            Holder::Story(id) => (&mut self.stories.entry(id.clone()).or_default().flags, key),
-            Holder::Exit(place, exit) => {
-                let place = self.places.entry(place.clone()).or_default();
-                (&mut place.open, exit.as_str())
+    /// Take off the component `at` names, which a write put on.
+    fn take_off(&mut self, at: &ComponentId) {
+        match at {
+            ComponentId::Place(id) => drop(self.places.remove(id)),
+            ComponentId::Story(id) => drop(self.stories.remove(id)),
+            ComponentId::Modifier(holder, id) => drop(self.modifiers.take(holder, id)),
+            ComponentId::Flag(holder, key) => drop(self.flags.take(holder, key)),
+            ComponentId::Actor(_) | ComponentId::Meter(..) | ComponentId::Notes => {
+                unreachable!("no write puts on {at:?}")
             }
-            Holder::World => (&mut self.flags, key),
-        };
-        if value {
-            flags.push(entry.to_string());
-        } else {
-            flags.retain(|flag| flag != entry);
         }
-        Ok(true)
-    }
-
-    /// Actor `id`'s live record to write, or `UNKNOWN_ID`.
-    pub(crate) fn actor_mut(&mut self, id: &str) -> Result<&mut ActorLive, crate::Reason> {
-        self.actors.get_mut(id).ok_or(crate::Reason::UnknownId)
     }
 
     /// The seat actor `id` acts from.
@@ -179,48 +134,56 @@ pub struct Presence {
     pub actors_present: Vec<String>,
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+/// One place's record. Its meters and flags are in the save's stores, under it.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct PlaceLive {
     pub items: BTreeMap<String, u32>,
-    /// The meters the place file declares. Omitted when empty.
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub meters: BTreeMap<String, MeterLive>,
-    /// The flags set on this place. Omitted when empty.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub flags: Vec<String>,
-    /// The names of this place's exits whose door is open. Omitted when empty.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub open: Vec<String>,
 }
 
-/// The meters a story file declares and the flags set on that story.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct StoryLive {
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub meters: BTreeMap<String, MeterLive>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub flags: Vec<String>,
+impl PlaceLive {
+    /// What key `key` reads on this place: an item count. `Empty` for any other key.
+    pub(crate) fn value(&self, key: &StateKey) -> StateValue {
+        match key {
+            StateKey::PlaceItem(_, item) => count(self.items.get(item).copied().unwrap_or(0)),
+            _ => StateValue::Empty,
+        }
+    }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+/// One change to a place's live record. Making it gives back its undo.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum PlaceEdit {
+    Item(Count),
+}
+
+impl PlaceEdit {
+    /// The key this edit moves on place `id`.
+    pub(crate) fn key(&self, id: &str) -> StateKey {
+        let id = id.to_string();
+        match self {
+            PlaceEdit::Item(edit) => StateKey::PlaceItem(id, edit.id.clone()),
+        }
+    }
+}
+
+impl Edit<PlaceLive> for PlaceEdit {
+    fn apply(self, place: &mut PlaceLive) -> Option<Self> {
+        Some(match self {
+            PlaceEdit::Item(edit) => PlaceEdit::Item(edit.apply(&mut place.items)?),
+        })
+    }
+}
+
+/// One actor's record. Their meters, modifiers and flags are in the save's stores, under them.
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ActorLive {
     pub kind: ActorKind,
     pub place: String,
-    pub flags: Vec<String>,
-    pub meters: BTreeMap<String, MeterLive>,
-    /// The modifiers this actor holds, by id. Omitted when empty.
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub modifiers: BTreeMap<String, ModifierLive>,
     pub inventory: BTreeMap<String, u32>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub wielded: Option<String>,
     pub known_facts: Vec<String>,
     /// Each place this actor has stood at the end of a round, with the names of the exits
-    /// they saw there then. Omitted when empty.
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    /// they saw there then.
     pub visited: BTreeMap<String, Vec<String>>,
     pub act: Act,
 }
@@ -260,28 +223,120 @@ impl ActorLive {
         self.inventory.get(id).copied().unwrap_or(0)
     }
 
-    /// Drop the wielded id once the actor no longer holds it.
-    pub(crate) fn release_wielded(&mut self) -> bool {
-        let Some(id) = self.wielded.clone() else {
-            return false;
-        };
-        if self.item_count(&id) > 0 {
-            return false;
+    /// What key `key` reads on this actor. `Empty` for a key on anything else.
+    pub(crate) fn value(&self, key: &StateKey) -> StateValue {
+        match key {
+            StateKey::ActorPlace(_) => StateValue::Text(self.place.clone()),
+            StateKey::ActorItem(_, item) => count(self.item_count(item)),
+            StateKey::ActorWielded(_) => {
+                (self.wielded.clone()).map_or(StateValue::Empty, StateValue::Text)
+            }
+            StateKey::ActorKnownFact(_) => StateValue::List(self.known_facts.clone()),
+            StateKey::ActorBusy(_) => self.act.busy_until.map_or(StateValue::Empty, number),
+            StateKey::LastActRound(_) => number(self.act.last_act_round),
+            StateKey::IdleActsThisWindow(_) => count(self.act.idle_acts_this_window),
+            StateKey::LiveActsThisWindow(_) => count(self.act.live_acts_this_window),
+            _ => StateValue::Empty,
         }
-        self.wielded = None;
-        true
     }
 }
 
-/// Add `delta` to a count. Removing from a count of 0 is `MISSING_ITEM`.
-/// A shortfall from a positive count is `OUT_OF_RANGE`. A positive `max` caps the result.
+/// One change to an actor's live record. Making it gives back its undo.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ActorEdit {
+    /// The place they stand in, or the exit they walk.
+    Place(String),
+    Item(Count),
+    Wielded(Option<String>),
+    /// Facts they come to know, each put in sorted order. Its undo is `Forget`.
+    Learn(Vec<String>),
+    Forget(Vec<String>),
+    /// The tick they are busy until, and the action under way.
+    Busy(Option<u64>, Option<PendingAction>),
+    LastActRound(u64),
+    Acts(ActCounter, u32),
+    /// The exits they saw at a place.
+    Visited(Entry<Vec<String>>),
+}
+
+impl ActorEdit {
+    /// The key this edit moves on actor `id`, or `None` for a change no key answers for.
+    pub(crate) fn key(&self, id: &str) -> Option<StateKey> {
+        let id = id.to_string();
+        Some(match self {
+            ActorEdit::Place(_) => StateKey::ActorPlace(id),
+            ActorEdit::Item(edit) => StateKey::ActorItem(id, edit.id.clone()),
+            ActorEdit::Wielded(_) => StateKey::ActorWielded(id),
+            ActorEdit::Learn(_) | ActorEdit::Forget(_) => StateKey::ActorKnownFact(id),
+            ActorEdit::Busy(..) => StateKey::ActorBusy(id),
+            ActorEdit::LastActRound(_) => StateKey::LastActRound(id),
+            ActorEdit::Acts(counter, _) => counter.key(id),
+            ActorEdit::Visited(_) => return None,
+        })
+    }
+}
+
+impl Edit<ActorLive> for ActorEdit {
+    fn apply(self, actor: &mut ActorLive) -> Option<Self> {
+        Some(match self {
+            ActorEdit::Place(place) => ActorEdit::Place(swap(&mut actor.place, place)?),
+            ActorEdit::Item(edit) => ActorEdit::Item(edit.apply(&mut actor.inventory)?),
+            ActorEdit::Wielded(item) => ActorEdit::Wielded(swap(&mut actor.wielded, item)?),
+            ActorEdit::Learn(facts) => {
+                let known = &mut actor.known_facts;
+                let mut learned = Vec::new();
+                for fact in facts {
+                    if let Err(at) = known.binary_search(&fact) {
+                        known.insert(at, fact.clone());
+                        learned.push(fact);
+                    }
+                }
+                (!learned.is_empty()).then_some(ActorEdit::Forget(learned))?
+            }
+            ActorEdit::Forget(facts) => {
+                actor.known_facts.retain(|fact| !facts.contains(fact));
+                ActorEdit::Learn(facts)
+            }
+            ActorEdit::Busy(until, pending) => {
+                let act = &mut actor.act;
+                if act.busy_until == until && act.pending == pending {
+                    return None;
+                }
+                let until = std::mem::replace(&mut act.busy_until, until);
+                ActorEdit::Busy(until, std::mem::replace(&mut act.pending, pending))
+            }
+            ActorEdit::LastActRound(round) => {
+                ActorEdit::LastActRound(swap(&mut actor.act.last_act_round, round)?)
+            }
+            ActorEdit::Acts(counter, count) => {
+                ActorEdit::Acts(counter, swap(counter.count_mut(&mut actor.act), count)?)
+            }
+            ActorEdit::Visited(edit) => ActorEdit::Visited(edit.apply(&mut actor.visited)?),
+        })
+    }
+}
+
+/// A meter's value as a watched value, `Empty` when it does not read.
+pub(crate) fn reading(value: Result<i64, crate::Reason>) -> StateValue {
+    value.map_or(StateValue::Empty, StateValue::Number)
+}
+
+fn count(value: u32) -> StateValue {
+    StateValue::Number(i64::from(value))
+}
+
+pub(crate) fn number(value: u64) -> StateValue {
+    StateValue::Number(i64::try_from(value).unwrap_or(i64::MAX))
+}
+
+/// `current` plus `delta`. Removing from a count of 0 is `MISSING_ITEM`. A shortfall from a
+/// positive count is `OUT_OF_RANGE`. A positive `max` caps the result.
 pub(crate) fn shift_count(
-    counts: &mut BTreeMap<String, u32>,
-    id: &str,
+    current: u32,
     delta: i64,
     max: Option<i64>,
-) -> Result<bool, crate::Reason> {
-    let current = i64::from(counts.get(id).copied().unwrap_or(0));
+) -> Result<u32, crate::Reason> {
+    let current = i64::from(current);
     let mut next = current
         .checked_add(delta)
         .ok_or(crate::Reason::OutOfRange)?;
@@ -301,14 +356,7 @@ pub(crate) fn shift_count(
             }
         }
     }
-    let stored = u32::try_from(next).map_err(|_| crate::Reason::OutOfRange)?;
-    let changed = stored != u32::try_from(current).unwrap_or(0);
-    if stored == 0 {
-        counts.remove(id);
-    } else {
-        counts.insert(id.to_string(), stored);
-    }
-    Ok(changed)
+    u32::try_from(next).map_err(|_| crate::Reason::OutOfRange)
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -325,8 +373,8 @@ pub struct Act {
 }
 
 /// One of the `Act` counts the end of its act window sets back to 0.
-#[derive(Clone, Copy)]
-pub(crate) enum ActCounter {
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ActCounter {
     IdleActsThisWindow,
     LiveActsThisWindow,
 }
@@ -370,6 +418,25 @@ pub struct Note {
     pub place: Option<String>,
     pub fact_ids: Vec<String>,
     pub text: String,
+}
+
+/// A note left, or the newest note taken back, which is how leaving one is undone.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum NoteEdit {
+    Leave(Note),
+    TakeBack,
+}
+
+impl Edit<Vec<Note>> for NoteEdit {
+    fn apply(self, notes: &mut Vec<Note>) -> Option<Self> {
+        match self {
+            NoteEdit::Leave(note) => {
+                notes.push(note);
+                Some(NoteEdit::TakeBack)
+            }
+            NoteEdit::TakeBack => notes.pop().map(NoteEdit::Leave),
+        }
+    }
 }
 
 /// The place and exit names in an exit's id, `exit:<place>.<exit>`: where a walker stands
