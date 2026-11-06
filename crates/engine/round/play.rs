@@ -177,7 +177,7 @@ fn run_stages<'p, L>(
     // pass also takes the clock's changes in a round where no action ran.
     travel::open_doors(&mut draft, &mut log);
     triggers::run(&mut draft, &canon, &mut dice, &mut log);
-    travel::note_exits(&mut draft);
+    travel::note_exits(&mut draft)?;
     let delivered = deliver::run(
         &canon,
         draft.state(),

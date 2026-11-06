@@ -224,8 +224,8 @@ The ferry waits at the dock.
     fs::write(&rowan, next).unwrap();
     edit_save(&pack, |now| {
         now.places
-            .insert("ferry_dock".to_string(), PlaceLive::default());
-        now.actors.get_mut("pc_rowan").unwrap().place = "ferry_dock".to_string();
+            .insert("ferry_dock".to_string(), PlaceLive::default().into());
+        now.actors.get_mut("pc_rowan").unwrap().frontier_mut().place = "ferry_dock".to_string();
     });
     world.pack = Some(pack);
 }
@@ -337,15 +337,16 @@ fn an_empty_round_lands_at(world: &mut World, tick: u64) {
     let pack = world.pack.clone().unwrap();
     edit_save(&pack, |now| {
         now.world_time = tick - 60;
-        let mira = now.actors.get_mut("mira").unwrap();
+        let mira = now.actors.get_mut("mira").unwrap().frontier_mut();
         mira.meters.get_mut("shop_day").unwrap().base = 0;
         let mut briar = mira.clone();
         briar.meters.remove("shop_day");
-        now.actors.insert("briar".to_string(), briar);
-        now.actors.get_mut("briar").unwrap().place = "docks_shop".to_string();
+        now.actors.insert("briar".to_string(), briar.into());
+        now.actors.get_mut("briar").unwrap().frontier_mut().place = "docks_shop".to_string();
         now.actors
             .get_mut("mira")
             .unwrap()
+            .frontier_mut()
             .act
             .idle_acts_this_window = 3;
     });
@@ -359,7 +360,7 @@ fn an_empty_round_lands_with_mira(world: &mut World, tick: u64) {
     let pack = world.pack.clone().unwrap();
     edit_save(&pack, |now| {
         now.world_time = tick - 60;
-        let mira = now.actors.get_mut("mira").unwrap();
+        let mira = now.actors.get_mut("mira").unwrap().frontier_mut();
         mira.meters.get_mut("shop_day").unwrap().base = 0;
         mira.place = "docks_shop".to_string();
     });
@@ -408,7 +409,7 @@ fn every_actor_used_its_idle_acts(world: &mut World, window: u64, tick: u64) {
     edit_save(&pack, |now| {
         now.world_time = tick;
         for actor in now.actors.values_mut() {
-            actor.act.idle_acts_this_window = 3;
+            actor.frontier_mut().act.idle_acts_this_window = 3;
         }
     });
     world.pack = Some(pack);
@@ -486,12 +487,18 @@ fn attack_targets_defense(world: &mut World) {
             .actors
             .get_mut("npc_briar")
             .unwrap()
+            .frontier_mut()
             .meters
             .get_mut("defense")
             .unwrap();
         defense.base = 12;
         defense.offset = 0;
-        now.actors.get_mut("npc_briar").unwrap().act.busy_until = Some(u64::MAX);
+        now.actors
+            .get_mut("npc_briar")
+            .unwrap()
+            .frontier_mut()
+            .act
+            .busy_until = Some(u64::MAX);
     });
     world.pack = Some(pack);
 }
@@ -518,6 +525,7 @@ fn lark_attacks(world: &mut World) {
             .actors
             .get_mut("pc_lark")
             .unwrap()
+            .frontier_mut()
             .meters
             .get_mut("might")
             .unwrap();
@@ -686,6 +694,7 @@ fn steady_costs_five_grit(world: &mut World) {
             .actors
             .get_mut("pc_rowan")
             .unwrap()
+            .frontier_mut()
             .meters
             .get_mut("grit")
             .unwrap();
@@ -817,7 +826,7 @@ A small bottle.
 ",
     );
     edit_save(&pack, |now| {
-        let rowan = now.actors.get_mut("pc_rowan").unwrap();
+        let rowan = now.actors.get_mut("pc_rowan").unwrap().frontier_mut();
         rowan.inventory.insert("tonic".to_string(), 1);
     });
     world.pack = Some(pack);
@@ -971,7 +980,11 @@ fn briar_holds_ask(world: &mut World) {
 fn briar_holds_ask_in_the_lane(world: &mut World) {
     let pack = copy_pack("sample-d20", "rules-scoped-gone");
     edit_save(&pack, |now| {
-        now.actors.get_mut("npc_briar").unwrap().place = "mill_lane".to_string();
+        now.actors
+            .get_mut("npc_briar")
+            .unwrap()
+            .frontier_mut()
+            .place = "mill_lane".to_string();
     });
     world.pack = Some(pack);
 }

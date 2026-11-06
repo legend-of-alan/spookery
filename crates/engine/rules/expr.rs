@@ -768,12 +768,13 @@ mod tests {
                     known_facts: Vec::new(),
                     visited: Default::default(),
                     act: Act::default(),
-                },
+                }
+                .into(),
             )]),
             stories: BTreeMap::new(),
-            world_meters: BTreeMap::new(),
-            notes: Vec::new(),
-            flags: Vec::new(),
+            world_meters: Default::default(),
+            notes: Default::default(),
+            flags: Default::default(),
         }
     }
 

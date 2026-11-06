@@ -119,12 +119,20 @@ fn apply_scene(
         }
     }
     for (actor_id, place_index) in actors.iter().zip(&scene.place_of) {
-        if let Some(actor) = state.actors.get_mut(actor_id) {
+        if let Some(actor) = state
+            .actors
+            .get_mut(actor_id)
+            .map(|actor| actor.frontier_mut())
+        {
             actor.place = places[place_index % places.len()].clone();
         }
     }
     for (actor_id, known) in actors.iter().zip(&scene.known) {
-        let Some(actor) = state.actors.get_mut(actor_id) else {
+        let Some(actor) = state
+            .actors
+            .get_mut(actor_id)
+            .map(|actor| actor.frontier_mut())
+        else {
             continue;
         };
         actor.known_facts = known
@@ -133,7 +141,7 @@ fn apply_scene(
             .collect();
         sort_unique(&mut actor.known_facts);
     }
-    state.notes.clear();
+    state.notes.frontier_mut().clear();
     for (index, note) in scene.notes.iter().enumerate() {
         let mut fact_ids: Vec<String> = note
             .fact_ids
@@ -147,7 +155,7 @@ fn apply_scene(
             .map(|actor| actors[actor % actors.len()].clone())
             .collect();
         sort_unique(&mut to);
-        state.notes.push(Note {
+        state.notes.frontier_mut().push(Note {
             id: format!("note-{index}"),
             to,
             place: note.place.map(|place| places[place % places.len()].clone()),

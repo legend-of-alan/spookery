@@ -60,6 +60,7 @@ fn larks_might_is_raised(world: &mut World) {
             .actors
             .get_mut("pc_lark")
             .unwrap()
+            .frontier_mut()
             .meters
             .get_mut("might")
             .unwrap();
@@ -113,6 +114,37 @@ fn the_line_skips_the_unseen_gain(world: &mut World) {
     assert!(!lower.contains("oden"), "{line}");
 }
 
+#[when(expr = "lark plays a juggle that gains a tonic and gives it back")]
+fn lark_juggles_a_tonic(world: &mut World) {
+    let pack = world.pack().to_path_buf();
+    let mut verbs = fs::read_to_string(pack.join("rules/verbs.yaml")).unwrap();
+    verbs.push('\n');
+    verbs.push_str(
+        "  - id: juggle\n    when:\n      verb: juggle\n    do:\n      - item:\n          who: pc_lark\n          id: tonic\n          add: 1\n      - item:\n          who: pc_lark\n          id: tonic\n          add: -1\n",
+    );
+    fs::write(pack.join("rules/verbs.yaml"), verbs).unwrap();
+    stamp_pack_rev(&pack);
+    let mut opened = resume_with_lark(&pack);
+    let output = play(&mut opened, "juggle");
+    world.summary_lines = output.changed_keys.clone();
+    world.seen = change_line(&output);
+}
+
+#[then(expr = "the round names no change to lark's tonic")]
+fn no_change_to_the_tonic(world: &mut World) {
+    let named = |item: &String| item.contains("actor_item pc_lark tonic");
+    assert!(
+        !world.summary_lines.iter().any(named),
+        "{:?}",
+        world.summary_lines
+    );
+    assert!(
+        !world.seen.to_lowercase().contains("tonic"),
+        "{}",
+        world.seen
+    );
+}
+
 #[when(expr = "lark drops the tonic")]
 fn lark_drops_the_tonic(world: &mut World) {
     let pack = world.pack().to_path_buf();
@@ -129,6 +161,7 @@ fn a_tonic_is_on_the_ground(world: &mut World) {
             .places
             .get_mut("gate_yard")
             .unwrap()
+            .frontier_mut()
             .items
             .insert("tonic".to_string(), 1);
     });

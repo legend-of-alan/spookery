@@ -148,7 +148,7 @@ Lark watches the street from a dry doorway.
             .get("pc_wren")
             .unwrap_or_else(|| panic!("pc_wren"))
             .clone();
-        actor.place = "docks_street".to_string();
+        actor.frontier_mut().place = "docks_street".to_string();
         now.actors.insert("pc_lark".to_string(), actor);
     });
     spookery_engine::World::open(&pack).unwrap_or_else(|err| panic!("four-pc pack: {err}"));
@@ -236,6 +236,7 @@ fn a_docks_table_where_one_pc_knows_a_hidden_fact(world: &mut World) {
         now.actors
             .get_mut("pc_wren")
             .unwrap_or_else(|| panic!("pc_wren"))
+            .frontier_mut()
             .known_facts
             .push(HIDDEN_FACT.to_string());
     });
@@ -360,6 +361,7 @@ fn a_docks_table_with_two_pcs_in_the_shop(world: &mut World) {
         now.actors
             .get_mut("pc_harbormouse")
             .unwrap_or_else(|| panic!("pc_harbormouse"))
+            .frontier_mut()
             .place = "docks_shop".to_string();
     });
     table::listen(world, &pack);

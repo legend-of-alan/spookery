@@ -244,6 +244,7 @@ fn rowan_and_mira_stand_in_the_shop(world: &mut World) {
         now.actors
             .get_mut("mira")
             .unwrap()
+            .frontier_mut()
             .meters
             .get_mut("shop_day")
             .unwrap()
@@ -606,9 +607,13 @@ fn dawn_has_fallen(world: &mut World, value: i64) {
             base: 6,
             offset: value - 6,
         };
-        now.world_meters.insert("dawn".to_string(), fallen);
+        now.world_meters
+            .frontier_mut()
+            .insert("dawn".to_string(), fallen);
         let doom = MeterLive { base: 6, offset: 0 };
-        now.world_meters.insert("doom".to_string(), doom);
+        now.world_meters
+            .frontier_mut()
+            .insert("doom".to_string(), doom);
     });
     assert_eq!(value_on(&pack, &Holder::World, "dawn"), Some(value));
 }

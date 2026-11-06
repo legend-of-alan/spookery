@@ -1,7 +1,10 @@
 //! Meter bounds from the pack, and the live value on its holder.
 
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 
+use crate::model::tracked::Edit;
 use crate::rules::effect::Holder;
 use crate::Reason;
 
@@ -62,18 +65,44 @@ pub fn current(def: &MeterDef, live: &MeterLive, modifiers: i64) -> Result<i64, 
     Ok(sum.clamp(def.min, def.max))
 }
 
-/// `Ok(true)` means the stored pair changed and the caller should track
-/// the meter's key. A zero delta leaves the pair alone and is `Ok(false)`.
-/// The live record is assigned only after `is_storable` accepts the next pair.
-pub fn write(def: &MeterDef, live: &mut MeterLive, write: MeterWrite) -> Result<bool, Reason> {
-    let MeterWrite::Offset(delta) = write;
-    let next_offset = live.offset.checked_add(delta).ok_or(Reason::OutOfRange)?;
+/// The edit that moves meter `key`'s offset by the write's delta, once `is_storable` accepts
+/// the next pair.
+pub(crate) fn write(
+    def: &MeterDef,
+    key: &str,
+    live: &MeterLive,
+    write: MeterWrite,
+) -> Result<Offset, Reason> {
+    let MeterWrite::Offset(by) = write;
+    let next_offset = live.offset.checked_add(by).ok_or(Reason::OutOfRange)?;
     if !is_storable(def, live.base, next_offset) {
         return Err(Reason::OutOfRange);
     }
-    let changed = next_offset != live.offset;
-    live.offset = next_offset;
-    Ok(changed)
+    Ok(Offset {
+        key: key.to_string(),
+        by,
+    })
+}
+
+/// Meter `key`'s offset moves by `by`, a move `write` has checked. Its undo moves it back.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Offset {
+    pub(crate) key: String,
+    pub(crate) by: i64,
+}
+
+impl Edit<BTreeMap<String, MeterLive>> for Offset {
+    fn apply(self, meters: &mut BTreeMap<String, MeterLive>) -> Option<Self> {
+        if self.by == 0 {
+            return None;
+        }
+        let live = meters.get_mut(&self.key)?;
+        live.offset = live.offset.checked_add(self.by)?;
+        Some(Offset {
+            key: self.key,
+            by: -self.by,
+        })
+    }
 }
 
 #[cfg(test)]

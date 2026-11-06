@@ -98,7 +98,7 @@ fn the_shop_has_a_trapdoor(world: &mut World) {
     )
     .unwrap();
     support::edit_save(&pack, |state| {
-        state.actors.get_mut("mira").unwrap().place = "docks_shop".to_string();
+        state.actors.get_mut("mira").unwrap().frontier_mut().place = "docks_shop".to_string();
     });
     world.pack = Some(pack);
 }

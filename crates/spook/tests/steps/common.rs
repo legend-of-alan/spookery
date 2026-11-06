@@ -29,9 +29,10 @@ pub(crate) fn give_key(now: &mut State) {
     now.actors
         .get_mut("pc_rowan")
         .unwrap()
+        .frontier_mut()
         .inventory
         .insert("brass_key".to_string(), 1);
-    let shop = now.places.get_mut("docks_shop").unwrap();
+    let shop = now.places.get_mut("docks_shop").unwrap().frontier_mut();
     shop.open.push("stairs".to_string());
 }
 
@@ -269,7 +270,8 @@ pub(crate) fn set_busy(now: &mut State, actor: &str, until: u64, exit: &str) {
     let actor = now
         .actors
         .get_mut(actor)
-        .unwrap_or_else(|| panic!("no {actor}"));
+        .unwrap_or_else(|| panic!("no {actor}"))
+        .frontier_mut();
     actor.place = format!("exit:{exit}");
     actor.act.busy_until = Some(until);
     actor.act.pending = Some(walk(exit));

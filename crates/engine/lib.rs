@@ -260,7 +260,8 @@ pub mod testing {
                     known_facts: Vec::new(),
                     visited: Default::default(),
                     act: crate::model::Act::default(),
-                },
+                }
+                .into(),
             );
         });
     }

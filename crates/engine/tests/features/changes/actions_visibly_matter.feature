@@ -16,6 +16,11 @@ Feature: Actions visibly matter
     Then lark sees one line saying the tonic was used up
     And that line does not mention the unseen gain
 
+  Scenario: An item gained and given back in one action is no change
+    Given sample-d20 with player "lark" seated facing "briar"
+    When lark plays a juggle that gains a tonic and gives it back
+    Then the round names no change to lark's tonic
+
   Scenario: Dropping an item is a move
     Given sample-d20 with player "lark" seated facing "briar"
     When lark drops the tonic
