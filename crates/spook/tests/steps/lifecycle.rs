@@ -93,6 +93,98 @@ fn a_free_start(world: &mut World, verb: String) {
     );
 }
 
+/// A timed rule whose finish sets the world flag `<verb>_done`.
+fn timed_verb(verb: &str, ticks: u64, extra: &str) -> String {
+    format!(
+        "
+  - id: {verb}
+    when:
+      verb: {verb}
+    cost:
+      ticks: {ticks}
+{extra}    do:
+      - flag:
+          who: world
+          key: {verb}_done
+          value: true
+"
+    )
+}
+
+#[given(expr = "the rule {string} takes {int} ticks")]
+fn a_timed_rule(world: &mut World, verb: String, ticks: u64) {
+    add_verb(world, &timed_verb(&verb, ticks, ""));
+}
+
+#[given(expr = "the rule {string} takes {int} ticks, is cancellable and costs {int} rest")]
+fn a_cancellable_rule(world: &mut World, verb: String, ticks: u64, rest: u64) {
+    let extra = format!(
+        "      meters:
+        rest: {rest}
+    cancellable: true
+"
+    );
+    add_verb(world, &timed_verb(&verb, ticks, &extra));
+}
+
+#[given(expr = "the rule \"travel\" is cancellable")]
+fn travel_is_cancellable(world: &mut World) {
+    let pack = world.pack.as_ref().unwrap();
+    let path = pack.join("rules/verbs.yaml");
+    let text = fs::read_to_string(&path).unwrap();
+    let next = text.replace(
+        "      target: exit
+    do:
+      - location:
+          via: target
+",
+        "      target: exit
+    cancellable: true
+    do:
+      - location:
+          via: target
+",
+    );
+    assert_ne!(next, text, "the travel rule moved");
+    fs::write(&path, next).unwrap();
+    stamp_pack_rev(pack);
+}
+
+#[then(expr = "{string} never finished and Rowan paid {int} rest")]
+fn never_finished(world: &mut World, verb: String, rest: i64) {
+    let now = state_of(world.pack.as_ref().unwrap());
+    assert!(
+        !now.flags.contains(&format!("{verb}_done")),
+        "{:?}",
+        now.flags
+    );
+    let rowan = &now.actors["pc_rowan"];
+    assert_eq!(rowan.act.pending, None);
+    assert_eq!(rowan.act.busy_until, None);
+    let meter = &rowan.meters["rest"];
+    assert_eq!(meter.base + meter.offset, 3 - rest);
+}
+
+#[then(expr = "{string} finished")]
+fn finished(world: &mut World, verb: String) {
+    let now = state_of(world.pack.as_ref().unwrap());
+    assert!(
+        now.flags.contains(&format!("{verb}_done")),
+        "{:?}",
+        now.flags
+    );
+}
+
+#[then(expr = "spook check refuses the verb {string}")]
+fn spook_check_refuses_the_verb(world: &mut World, verb: String) {
+    let diags = spookery_engine::check_pack(world.pack.as_ref().unwrap());
+    let refused = diags.iter().any(|diag| {
+        diag.message
+            .contains(&format!("verb '{verb}' is a built-in word"))
+    });
+    assert!(refused, "{diags:?}");
+}
+
 #[given(expr = "Rowan stands on {word} in the save")]
 fn rowan_stands_on(world: &mut World, place: String) {
     edit_save(world.pack.as_ref().unwrap(), |now| {
@@ -193,13 +285,13 @@ fn rowans_look_shows(world: &mut World, line: String) {
     assert_eq!(view.busy, line);
 }
 
-#[then(expr = "Rowan's {string} is refused BUSY at once")]
-fn refused_busy_at_once(world: &mut World, line: String) {
+#[then(expr = "Rowan's {string} is refused {word} at once")]
+fn refused_at_once(world: &mut World, line: String, code: String) {
     let mut opened = open(world.pack.as_ref().unwrap());
     let refusal = opened
         .queue_player_move(&seated(), "pc_rowan", &line, None)
-        .expect_err("a busy actor's line is refused");
-    assert_eq!(refusal.code.as_str(), "BUSY");
+        .expect_err("the line is refused");
+    assert_eq!(refusal.code.as_str(), code);
     assert!(opened.queued_intents().is_empty());
 }
 

@@ -3,7 +3,6 @@
 use crate::canon::{Canon, Exit, PlaceDef, OPEN};
 use crate::draft::Draft;
 use crate::intent::{Intent, Source, Target, Viewer};
-use crate::model::key::StateKey;
 use crate::model::{PendingAction, State};
 use crate::round::log::RoundLog;
 use crate::rules::cond;
@@ -274,18 +273,7 @@ pub(crate) fn take_due_actions(draft: &mut Draft, end: u64) -> Result<Vec<DueAct
     due_keys.sort();
     let mut due_actions = Vec::new();
     for (until, actor_id) in due_keys {
-        draft.track(StateKey::ActorBusy(actor_id.clone()))?;
-        let pending = {
-            let actor = draft
-                .state_mut()
-                .actors
-                .get_mut(&actor_id)
-                .ok_or(Reason::UnknownId)?;
-            let act = &mut actor.act;
-            act.busy_until = None;
-            act.pending.take()
-        };
-        let Some(pending) = pending else {
+        let Some(pending) = draft.take_pending(&actor_id)? else {
             continue;
         };
         due_actions.push(DueAction {

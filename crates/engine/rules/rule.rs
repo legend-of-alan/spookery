@@ -17,6 +17,8 @@ pub struct Rule {
     pub finish: Phase,
     /// Ticks the actor stays busy after the finish.
     pub cooldown: u64,
+    /// Whether the actor may cancel the action while it is under way.
+    pub cancellable: bool,
     pub do_: Vec<EffectTemplate>,
     pub success: Vec<EffectTemplate>,
     pub partial: Vec<EffectTemplate>,

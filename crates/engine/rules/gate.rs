@@ -163,6 +163,30 @@ pub(crate) fn admit(context: &Context, rule: &Rule) -> Result<(), Refusal> {
     Ok(())
 }
 
+/// The player word that drops the actor's own action under way.
+pub(crate) const CANCEL: &str = "cancel";
+
+/// Whether this intent is a player's `cancel`.
+pub(crate) fn is_cancel(intent: &Intent) -> bool {
+    intent.source == Source::Player && intent.move_name == CANCEL
+}
+
+/// A player may cancel only their own action under way, off any exit, whose rule is
+/// `cancellable`. Anything else is `INELIGIBLE`.
+pub(crate) fn admit_cancel(context: &Context) -> Result<(), Refusal> {
+    let intent = context.intent;
+    let actor = intent
+        .actor_id()
+        .and_then(|id| context.state.actors.get(id));
+    let pending = actor.and_then(|actor| actor.act.pending.as_ref());
+    let walking = actor.is_some_and(|actor| crate::model::exit_parts(&actor.place).is_some());
+    let rule = pending.and_then(|pending| context.canon.rules.get(&pending.rule));
+    if walking || !rule.is_some_and(|rule| rule.cancellable) {
+        return Err(Refusal::new(intent, Reason::Ineligible));
+    }
+    Ok(())
+}
+
 /// A seat names only what its actor holds or what `look` shows them.
 fn can_name(context: &Context) -> bool {
     let intent = context.intent;

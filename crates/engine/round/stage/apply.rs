@@ -47,8 +47,19 @@ pub(crate) fn run(
             refuse(log, intent, refusal, false);
             continue;
         }
-        let (rule, rolled) = match resolution {
-            Resolution::Ready { rule, rolled } => (rule, rolled),
+        let point = draft.savepoint();
+        let landing = match resolution {
+            Resolution::Ready { rule, rolled } => {
+                // The world may have changed since the queue, so the gate checks the rule again.
+                let context = Context::new(canon, draft.state(), draft.presence, intent);
+                if let Err(refusal) = gate::admit(&context, rule) {
+                    refuse(log, intent, refusal, false);
+                    continue;
+                }
+                let at = clock.world_time_before;
+                start(draft, canon, intent, rule, rolled, at, dice, log)
+            }
+            Resolution::Cancel => cancel(draft, canon, intent, log),
             Resolution::Refused(refusal) => {
                 refuse(log, intent, refusal, false);
                 continue;
@@ -58,15 +69,7 @@ pub(crate) fn run(
                 continue;
             }
         };
-        // The world may have changed since the queue, so the gate checks the rule again.
-        let context = Context::new(canon, draft.state(), draft.presence, intent);
-        if let Err(refusal) = gate::admit(&context, rule) {
-            refuse(log, intent, refusal, false);
-            continue;
-        }
-        let point = draft.savepoint();
-        let at = clock.world_time_before;
-        match start(draft, canon, intent, rule, rolled, at, dice, log) {
+        match landing {
             Landing::Landed if spends_slot => slots += 1,
             Landing::Landed => {}
             // The costs go back with the effects.
@@ -119,6 +122,24 @@ fn start(
         return Landing::Landed;
     }
     finish(draft, canon, intent, rule, rolled, at, dice, log)
+}
+
+/// Drop the actor's action under way, with no refund, if the gate still allows it now. Its
+/// finish never runs.
+fn cancel(draft: &mut Draft, canon: &Canon, intent: &Intent, log: &mut RoundLog) -> Landing {
+    let context = Context::new(canon, draft.state(), draft.presence, intent);
+    if let Err(refusal) = gate::admit_cancel(&context) {
+        refuse(log, intent, refusal, false);
+        return Landing::Refused;
+    }
+    let actor_id = intent.actor_id().ok_or(Reason::UnknownId);
+    match actor_id.and_then(|id| draft.take_pending(id)) {
+        Ok(_) => Landing::Landed,
+        Err(code) => {
+            refuse(log, intent, gate::Refusal::new(intent, code), false);
+            landing_of(code)
+        }
+    }
 }
 
 /// Leave `rule` pending until tick `until`. A walk first puts the actor on its exit.

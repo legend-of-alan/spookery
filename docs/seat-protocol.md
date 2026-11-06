@@ -46,7 +46,7 @@ The table speaks first, with `version`, the `words` this seat may send, and, on 
 
 <!-- example: player-hello -->
 ```json
-{"body":{"kind":"hello","version":2,"words":["claim","release","say","look","help","map","drop","grit","take","travel","unwield","wait","wield"],"open":["pc_harbormouse","pc_rowan","pc_wren"]}}
+{"body":{"kind":"hello","version":2,"words":["claim","release","say","look","help","map","cancel","drop","grit","take","travel","unwield","wait","wield"],"open":["pc_harbormouse","pc_rowan","pc_wren"]}}
 ```
 
 <!-- example: gm-hello -->
@@ -68,6 +68,7 @@ Each word reads `args` as one type, and the schema's `$defs` in `client.json` ho
 | `look` | player | `NoArgs` | `view` |
 | `help` | player | `NoArgs` | `help` |
 | `map` | player | `NoArgs` | `map` |
+| `cancel` | player | `NoArgs` | `queued` |
 | a pack verb | player | `MoveArgs`: `target`, when the verb takes one | `queued` |
 | `status` | GM | `NoArgs` | `status` |
 | `perceive` | GM | `PerceiveArgs`: `as`, `max_body_chars` | `view` |
@@ -141,6 +142,8 @@ A move is a pack verb, its target in `target`. With a GM seated, the move waits 
 {"seq":9,"reply_to":"c3","body":{"kind":"queued","intent":"ed0db120f54c1447842c340c5d523932d1518c796c886f24b1030a9b4a12f73a","actor":"pc_rowan","move":"grit"}}
 ```
 
+`cancel` is a move too, and a busy player may send it. It drops the PC's own action under way when its rule says `cancellable`, with no refund, and the action never finishes. A walk is never cancelled. With nothing to cancel, or an action whose rule does not allow it, `cancel` is refused `INELIGIBLE` and the action still lands.
+
 A move the table can judge at once is refused before it is queued. Here Rowan sent `travel` with `target` `stairs`, and `detail` is the pack's locked text:
 
 <!-- example: player-no-exit -->
@@ -158,6 +161,7 @@ A move the table can judge at once is refused before it is queued. Here Rowan se
   {"name":"look","target":"none"},
   {"name":"help","target":"none"},
   {"name":"map","target":"none"},
+  {"name":"cancel","target":"none"},
   {"name":"drop","target":"item","names":["lamp_oil"]},
   {"name":"grit","target":"none"},
   {"name":"take","target":"item","names":["lamp_oil"]},
@@ -336,7 +340,7 @@ A client ignores a `kind` or a field it does not know. `server.json` gives every
 
 ### view and resume
 
-`viewer` is the bare actor id. `place_name` and `actor_names` are the pack's display names, and `body` is the place prose. `known_facts` hold only the facts that actor knows, with the prose that actor may read. `meters` are the viewer's own, without hidden ones. `world_meters` are the world's meters whose pack row says `hidden: false`, at their current values, so a player who comes back sees them. `exits` is left out when the place has none. `busy` says what keeps the viewer busy and until when, and is left out when they are free: `on the stairs until tick 1300` on a walk, `chanting until tick 1300` on any other timed move, read from its verb, and `recovering until tick 1300` in a cooldown. A busy player may still send a move, and it is refused `BUSY`. `cant_act` says why the viewer can't send a move at all, and is left out when they can, so `View::can_act()` is `cant_act` being empty. Nothing sets it yet.
+`viewer` is the bare actor id. `place_name` and `actor_names` are the pack's display names, and `body` is the place prose. `known_facts` hold only the facts that actor knows, with the prose that actor may read. `meters` are the viewer's own, without hidden ones. `world_meters` are the world's meters whose pack row says `hidden: false`, at their current values, so a player who comes back sees them. `exits` is left out when the place has none. `busy` says what keeps the viewer busy and until when, and is left out when they are free: `on the stairs until tick 1300` on a walk, `chanting until tick 1300` on any other timed move, read from its verb, and `recovering until tick 1300` in a cooldown. A busy player may still send a move, and it is refused `BUSY`, except `cancel` (see [Moves](#moves)). `cant_act` says why the viewer can't send a move at all, and is left out when they can, so `View::can_act()` is `cant_act` being empty. Nothing sets it yet.
 
 <!-- example: player-resume -->
 ```json

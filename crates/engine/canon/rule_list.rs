@@ -52,6 +52,9 @@ pub struct RuleYaml {
     /// Ticks the actor stays busy after the finish.
     #[serde(default)]
     pub cooldown: u64,
+    /// Whether the actor may cancel the action while it is under way.
+    #[serde(default)]
+    pub cancellable: bool,
     pub roll: Option<RollYaml>,
     #[serde(rename = "do", default)]
     pub do_: Vec<EffectYaml>,
@@ -536,12 +539,15 @@ fn compile_one(
     let partial = effects_of(file, &entry.partial)?;
     let failure = effects_of(file, &entry.miss)?;
     if let Some(when) = &when {
-        let timed =
-            cost.is_some() || entry.start.is_some() || entry.finish.is_some() || entry.cooldown > 0;
+        let timed = cost.is_some()
+            || entry.start.is_some()
+            || entry.finish.is_some()
+            || entry.cooldown > 0
+            || entry.cancellable;
         if matches!(when, When::Change(_)) && timed {
             diags.push(schema_error(
                 file,
-                "a change rule has a cost, start, finish, or cooldown",
+                "a change rule has a cost, start, finish, cooldown, or cancellable",
                 "remove them; a change is a consequence, not an action",
             ));
         }
@@ -617,6 +623,7 @@ fn compile_one(
                 .is_some_and(|finish| finish.counts_as_act),
         },
         cooldown: entry.cooldown,
+        cancellable: entry.cancellable,
         do_,
         success,
         partial,

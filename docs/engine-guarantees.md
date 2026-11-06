@@ -252,6 +252,17 @@ A player's view says what keeps them busy and until when.
 
 Tested in `features/rules/one_action_lifecycle.feature`.
 
+## Cancelling an action
+
+A player may cancel their own timed action while it is under way, when its rule
+says `cancellable`. The cancel is a move like any other, played in a round, so
+replay sees it. The action is dropped and its actor is free at once. Nothing it
+cost comes back, and its finish never runs. A cancel with no action under way,
+on a rule that is not cancellable, or on a walk is refused `INELIGIBLE`, and
+the action still lands. No one cancels another's action.
+
+Tested in `features/rules/cancel_own_action.feature`.
+
 ## Game time
 
 World time is a count of ticks, and the engine knows no day or hour. A pack may

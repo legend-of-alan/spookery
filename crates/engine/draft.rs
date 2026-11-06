@@ -156,6 +156,17 @@ impl<'p> Draft<'p> {
         })
     }
 
+    /// End actor `id`'s action under way, if any, and free them: it never finishes here.
+    pub(crate) fn take_pending(&mut self, id: &str) -> Result<Option<PendingAction>, Reason> {
+        let mut taken = None;
+        self.mutate(StateKey::ActorBusy(id.to_string()), |state| {
+            let act = &mut state.actor_mut(id)?.act;
+            taken = act.pending.take();
+            Ok(act.busy_until.take().is_some() || taken.is_some())
+        })?;
+        Ok(taken)
+    }
+
     /// Runs `write` on the state, tracks `key` only if its value changed, and keeps the
     /// key budget's order: a key that does not change is never counted. `write` returns
     /// whether it changed the stored value; a meter's is its base and offset, which can move
