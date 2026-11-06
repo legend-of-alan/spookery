@@ -469,7 +469,7 @@ impl FlagEdits {
     /// may already have undone this mark's edits, so the carry covers them too.
     fn rollback(&mut self, live: &mut State, into: &mut State, mark: FlagMark) {
         for edit in self.edits.drain(mark.edits..).rev() {
-            edit.flag.unset(live, edit.at, edit.was);
+            edit.flag.undo(live, edit.at, edit.was);
         }
         for flag in &self.touched {
             flag.carry(live, into);

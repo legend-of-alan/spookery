@@ -234,7 +234,7 @@ impl Flag {
     }
 
     /// Undo a `set` that changed this flag from `was`, at position `at`.
-    pub(crate) fn unset(&self, state: &mut State, at: usize, was: bool) {
+    pub(crate) fn undo(&self, state: &mut State, at: usize, was: bool) {
         let Ok(list) = (self.list_mut)(state, &self.owner) else {
             return;
         };
