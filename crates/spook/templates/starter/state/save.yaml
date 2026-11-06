@@ -1,7 +1,7 @@
 schema: save
 world_id: starter
 pack_rev: blake2s:44bb2e0e66408d4b2ede71de4589bdf54968bfdde381651c901c8ab13a8bd942
-rules_rev: 21
+rules_rev: 22
 state_rev: 0
 round_index: 0
 world_time: 0
@@ -15,11 +15,6 @@ actors:
   keeper:
     kind: npc
     place: lane
-    flags: []
-    meters:
-      nerve:
-        base: 1
-        offset: 0
     inventory: {}
     known_facts: []
     act:
@@ -29,11 +24,6 @@ actors:
   pc_ada:
     kind: pc
     place: yard
-    flags: []
-    meters:
-      nerve:
-        base: 1
-        offset: 0
     inventory: {}
     known_facts: []
     visited:
@@ -43,4 +33,13 @@ actors:
       last_act_round: 0
       idle_acts_this_window: 0
       live_acts_this_window: 0
+meters:
+  keeper:
+    nerve:
+      base: 1
+      offset: 0
+  pc_ada:
+    nerve:
+      base: 1
+      offset: 0
 notes: []

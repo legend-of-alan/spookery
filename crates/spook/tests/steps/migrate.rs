@@ -90,8 +90,8 @@ fn the_save_is_hand_edited(world: &mut World) {
     let mut text = fs::read_to_string(&now_path).unwrap();
     text = text.replace("world_time: 1080", "world_time: 7");
     text = text.replace(
-        "kind: pc\n    place: docks_shop\n    flags: []\n    meters:\n      assassination_debt:\n        base: 2\n        offset: 0\n      grit:\n        base: 1\n        offset: 0\n      rest:\n        base: 3\n        offset: 0\n    inventory: {}\n    known_facts: []",
-        "kind: pc\n    place: mira_rooms\n    flags: []\n    meters:\n      assassination_debt:\n        base: 2\n        offset: 0\n      grit:\n        base: 1\n        offset: 0\n      rest:\n        base: 3\n        offset: 0\n    inventory: {}\n    known_facts: []",
+        "  pc_rowan:\n    kind: pc\n    place: docks_shop\n",
+        "  pc_rowan:\n    kind: pc\n    place: mira_rooms\n",
     );
     fs::write(&now_path, text).unwrap();
     a_canon_file_gains_a_byte(world);
@@ -147,7 +147,7 @@ fn the_round_writes_nothing(world: &mut World) {
 fn the_save_drops_meter(world: &mut World, id: String) {
     let path = table::pack(world).join("state/save.yaml");
     let text = fs::read_to_string(&path).unwrap();
-    let needle = format!("      {id}:");
+    let needle = format!("    {id}:");
     let mut out = String::new();
     let mut skip = 0;
     let mut found = false;

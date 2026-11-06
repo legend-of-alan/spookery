@@ -589,6 +589,29 @@ impl fmt::Display for Holder {
     }
 }
 
+/// Read a holder back from the words `Display` writes, as the save's stores key them.
+impl std::str::FromStr for Holder {
+    type Err = String;
+
+    fn from_str(word: &str) -> Result<Self, String> {
+        let named = |id: &str| (!id.is_empty()).then(|| id.to_string());
+        let holder = if let Some(id) = word.strip_prefix("place:") {
+            named(id).map(Holder::Place)
+        } else if let Some(id) = word.strip_prefix("story:") {
+            named(id).map(Holder::Story)
+        } else if let Some((place, exit)) = model::exit_parts(word) {
+            Some(Holder::Exit(place.to_string(), exit.to_string()))
+        } else if word == "world" {
+            Some(Holder::World)
+        } else {
+            (!word.contains(':'))
+                .then(|| named(word).map(Holder::Actor))
+                .flatten()
+        };
+        holder.ok_or_else(|| format!("'{word}' names no holder"))
+    }
+}
+
 /// Write a meter `holder` carries, inside the bounds the pack gives it.
 pub(crate) fn write_meter(
     draft: &mut Draft,

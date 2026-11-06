@@ -21,13 +21,15 @@ use crate::intent::{Target, Viewer};
 use crate::rules::effect::Holder;
 
 /// The live save: each record, each component store, and the ledger of the round writing it.
-/// `store::save` reads and writes it in the shape of `save.yaml`.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+/// `save.yaml` is this, field for field: the records by id, then each store by holder.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct State {
     pub schema: String,
     pub world_id: String,
     pub pack_rev: String,
     /// Engine rules version. Missing means 0, which is not the current version.
+    #[serde(default)]
     pub rules_rev: u64,
     pub state_rev: u64,
     pub round_index: u64,
@@ -37,14 +39,23 @@ pub struct State {
     pub places: BTreeMap<String, Tracked<PlaceLive, PlaceEdit>>,
     pub actors: BTreeMap<String, Tracked<ActorLive, ActorEdit>>,
     /// The stories the save lists. A story's meters and flags are in the stores.
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
     pub stories: BTreeSet<String>,
     /// Every live meter: each actor's, place's and story's, and the world's.
+    #[serde(default, skip_serializing_if = "Store::is_empty")]
     pub meters: Meters,
     /// The modifiers each actor holds.
+    #[serde(default, skip_serializing_if = "Store::is_empty")]
     pub modifiers: Modifiers,
     /// Every flag set, on any holder. An exit's door is open when the exit has its flag `open`.
+    #[serde(
+        default,
+        skip_serializing_if = "Store::is_empty",
+        with = "tracked::marks"
+    )]
     pub flags: Flags,
     pub notes: Tracked<Vec<Note>, NoteEdit>,
+    #[serde(skip)]
     pub(crate) ledger: Ledger,
 }
 
@@ -135,7 +146,8 @@ pub struct Presence {
 }
 
 /// One place's record. Its meters and flags are in the save's stores, under it.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct PlaceLive {
     pub items: BTreeMap<String, u32>,
 }
@@ -175,15 +187,18 @@ impl Edit<PlaceLive> for PlaceEdit {
 }
 
 /// One actor's record. Their meters, modifiers and flags are in the save's stores, under them.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ActorLive {
     pub kind: ActorKind,
     pub place: String,
     pub inventory: BTreeMap<String, u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub wielded: Option<String>,
     pub known_facts: Vec<String>,
     /// Each place this actor has stood at the end of a round, with the names of the exits
-    /// they saw there then.
+    /// they saw there then. Omitted when empty.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub visited: BTreeMap<String, Vec<String>>,
     pub act: Act,
 }

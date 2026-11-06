@@ -116,6 +116,11 @@ fn break_pack(pack: &Path, fault: &str) {
             // inserting one 0 changes the stored hash.
             fs::write(path, text).unwrap();
         }
+        "a meter on an unlisted actor" => replace_in_file(
+            &pack.join("state/save.yaml"),
+            "meters:\n",
+            "meters:\n  ghost:\n    grit:\n      base: 1\n      offset: 0\n",
+        ),
         "exit to an unknown place" => replace_in_file(
             &pack.join("world/places/docks_shop.md"),
             "  - to: docks_street\n",

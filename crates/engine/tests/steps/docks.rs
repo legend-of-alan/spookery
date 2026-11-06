@@ -770,8 +770,8 @@ fn a_held_knife_still_runs_the_opposed_row() {
     let now_path = held.join("state/save.yaml");
     let text = fs::read_to_string(&now_path).unwrap();
     let next = text.replacen(
-        "  pc_rowan:\n    kind: pc\n    place: docks_shop\n    flags: []\n    meters:\n      assassination_debt:\n        base: 2\n        offset: 0\n      grit:\n        base: 1\n        offset: 0\n      rest:\n        base: 3\n        offset: 0\n    inventory: {}\n",
-        "  pc_rowan:\n    kind: pc\n    place: docks_shop\n    flags: []\n    meters:\n      assassination_debt:\n        base: 2\n        offset: 0\n      grit:\n        base: 1\n        offset: 0\n      rest:\n        base: 3\n        offset: 0\n    inventory:\n      knife: 1\n",
+        "  pc_rowan:\n    kind: pc\n    place: docks_shop\n    inventory: {}\n",
+        "  pc_rowan:\n    kind: pc\n    place: docks_shop\n    inventory:\n      knife: 1\n",
         1,
     );
     assert_ne!(next, text);

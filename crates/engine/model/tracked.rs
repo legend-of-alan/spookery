@@ -6,6 +6,9 @@ use std::collections::BTreeMap;
 use std::fmt;
 use std::ops::Deref;
 
+use serde::de::Error as _;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
 use crate::rules::effect::Holder;
 
 /// A typed change to a `T`.
@@ -17,8 +20,14 @@ pub trait Edit<T>: Sized {
 
 /// A value, and the undo of each edit made to it since its frontier, oldest first. In a round
 /// only an edit changes it. The save on disk holds the value alone.
+#[derive(Serialize, Deserialize)]
+#[serde(
+    transparent,
+    bound(serialize = "T: Serialize", deserialize = "T: Deserialize<'de>")
+)]
 pub struct Tracked<T, E> {
     value: T,
+    #[serde(skip)]
     undo: Vec<E>,
 }
 
@@ -170,7 +179,68 @@ impl<V: fmt::Debug, E> fmt::Debug for Store<V, E> {
     }
 }
 
+/// The save writes a store as each holder, as a rule's `who` names it, with its components by
+/// key: `pc_rowan: {grit: {base: 1, offset: 0}}`.
+impl<V: Serialize, E> Serialize for Store<V, E> {
+    fn serialize<S: Serializer>(&self, out: S) -> Result<S::Ok, S::Error> {
+        out.collect_map(self.on.iter().map(|(holder, parts)| {
+            let values: BTreeMap<&String, &V> =
+                parts.iter().map(|(key, part)| (key, &**part)).collect();
+            (holder.to_string(), values)
+        }))
+    }
+}
+
+impl<'de, V: Deserialize<'de>, E> Deserialize<'de> for Store<V, E> {
+    fn deserialize<D: Deserializer<'de>>(from: D) -> Result<Self, D::Error> {
+        let mut store = Store::default();
+        for (holder, parts) in BTreeMap::<String, BTreeMap<String, V>>::deserialize(from)? {
+            let holder: Holder = holder.parse().map_err(D::Error::custom)?;
+            for (key, value) in parts {
+                store.put(holder.clone(), key, Tracked::new(value));
+            }
+        }
+        Ok(store)
+    }
+}
+
+/// A store of marks with no value, such as flags, written as each holder with the list of its
+/// keys: `mira: [calm, wary]`.
+pub(crate) mod marks {
+    use super::*;
+
+    pub(crate) fn serialize<S: Serializer>(
+        store: &Store<(), ()>,
+        out: S,
+    ) -> Result<S::Ok, S::Error> {
+        out.collect_map(
+            store
+                .on
+                .iter()
+                .map(|(holder, parts)| (holder.to_string(), parts.keys().collect::<Vec<_>>())),
+        )
+    }
+
+    pub(crate) fn deserialize<'de, D: Deserializer<'de>>(
+        from: D,
+    ) -> Result<Store<(), ()>, D::Error> {
+        let mut store = Store::default();
+        for (holder, keys) in BTreeMap::<String, Vec<String>>::deserialize(from)? {
+            let holder: Holder = holder.parse().map_err(D::Error::custom)?;
+            for key in keys {
+                store.put(holder.clone(), key, Tracked::new(()));
+            }
+        }
+        Ok(store)
+    }
+}
+
 impl<V, E> Store<V, E> {
+    /// Whether the store holds no component, for `skip_serializing_if`.
+    pub fn is_empty(&self) -> bool {
+        self.on.is_empty()
+    }
+
     /// The component on `holder` under `key`.
     pub fn get(&self, holder: &Holder, key: &str) -> Option<&V> {
         self.on.get(holder)?.get(key).map(|part| &**part)

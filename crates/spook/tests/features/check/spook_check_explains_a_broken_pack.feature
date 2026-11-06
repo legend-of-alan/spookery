@@ -29,6 +29,7 @@ Feature: spook check explains a broken pack
       | unknown format tag           | rules/verbs.yaml           | SCHEMA            | does not use                       |
       | missing meters               | rules/meters.yaml          | NOT_IN_SPEC       | missing                            |
       | pack_rev mismatch            | state/save.yaml            | PACK_REV_MISMATCH | pack_rev                           |
+      | a meter on an unlisted actor | state/save.yaml            | SCHEMA            | which the save does not list       |
       | exit to an unknown place     | world/places/docks_shop.md | SCHEMA            | not a place                        |
       | duplicate exit               | world/places/docks_shop.md | SCHEMA            | listed twice                       |
       | a target alias               | rules/verbs.yaml           | SCHEMA            | not a target kind                  |
