@@ -145,7 +145,10 @@ Tested in `features/round/a_rules_effects_are_all_or_nothing.feature`,
 ## Triggers
 
 A change rule fires in the same round that makes its watch true, and not again
-while the watch stays true. Arrival fires a rule on that place, including an
+while the watch stays true. Change rules run right after each action starts and
+after each one finishes, so a door opened twice in one round fires its watcher
+twice, and a rule can refuse a later action in that round. The depth limit
+counts the passes after each action, not the round. Arrival fires a rule on that place, including an
 author teleport. A meter that crosses the watched line can set a flag in that
 round. An arrival that also meets a flag can grant a fact and move a world
 meter in that round. Two rules that set each other's flags stop at depth 4, and the round
@@ -172,6 +175,7 @@ change, their own or the world's. Verify passes after rounds that fired these
 rules.
 
 Tested in `features/rules/triggers.feature`,
+`features/rules/change_rules_fire_after_each_action.feature`,
 `features/rules/trigger_delivery.feature`, and
 `features/rules/a_world_change_rule_runs_once.feature`.
 

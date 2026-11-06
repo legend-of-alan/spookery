@@ -1,4 +1,5 @@
-//! Finish each timed action whose ticks have passed, a walk's arrival among them.
+//! Finish each timed action whose ticks have passed, a walk's arrival among them, and run the
+//! trigger pass after each.
 
 use crate::canon::Canon;
 use crate::draft::Draft;
@@ -8,7 +9,7 @@ use crate::Reason;
 
 use crate::round::dice::RoundDice;
 use crate::round::log::RoundLog;
-use crate::round::stage::apply;
+use crate::round::stage::{apply, triggers};
 
 /// Finish every due action, earliest first.
 pub(crate) fn run(
@@ -31,6 +32,7 @@ pub(crate) fn run(
         let rule = canon.rules.get(&rule).ok_or(Reason::UnknownMove)?;
         let until = due_action.until;
         apply::finish(draft, canon, &intent, rule, None, until, dice, log);
+        triggers::run(draft, canon, dice, log);
     }
     Ok(())
 }

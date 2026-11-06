@@ -7,15 +7,15 @@
 //!     Given the docks pack
 //!     And random change rules, including rules that set each other's watched values
 //!     When random legal player moves and habit rounds are played
-//!     Then every round commits and runs at most max_trigger_depth trigger passes
+//!     Then every action is followed by at most max_trigger_depth trigger passes
 //!     And a round that hit the cap logs trigger_depth
 //!     And replaying the journal yields the state hash stored on the last record
 //! ```
 //!
-//! The chain lives on pc_rowan. It starts when that PC's lamp oil count is
-//! higher at the end of the round than at the start. A drop that puts the tin
-//! back cancels the grit gain, and the chain does not start. Other PCs are not
-//! given the flags, so a fire for them rolls back and the log has one subject.
+//! The chain lives on pc_rowan. It starts after each of that PC's actions that
+//! leaves its lamp oil count higher than before the action, and runs to the cap
+//! before the next action. Other PCs are not given the flags, so a fire for
+//! them rolls back and the log has one subject.
 //!
 //! Deterministic in CI: 64 cases, seed `0x0018_0018`, no failure file.
 
@@ -94,31 +94,38 @@ fn assert_triggers_stop(
     }
     let mut held = BTreeSet::new();
     for record in records {
-        held = check_round(record, rules, max, held, rowan_gained_oil(record))?;
+        held = check_round(record, rules, max, held, rowan_oil_gains(record))?;
     }
     assert_replay_matches(pack)
 }
 
-/// Trigger watches see the net write. Dropping the oil and gaining it back
-/// leaves no change, so the chain does not start.
-fn rowan_gained_oil(record: &RoundRecord) -> bool {
-    let net: i64 = record
-        .effects
-        .iter()
-        .filter_map(|effect| match &effect.kind {
-            EffectKind::Item {
-                actor_id,
-                place,
-                id,
-                delta,
-                ..
-            } if place.is_none() && actor_id.as_deref() == Some("pc_rowan") && id == "lamp_oil" => {
-                Some(*delta)
-            }
-            _ => None,
-        })
-        .sum();
-    net > 0
+/// How many of the round's actions left pc_rowan with more lamp oil, in order. A trigger pass
+/// runs after each action and sees that action's net write.
+fn rowan_oil_gains(record: &RoundRecord) -> usize {
+    let mut nets: Vec<(&str, i64)> = Vec::new();
+    for effect in &record.effects {
+        let EffectKind::Item {
+            actor_id,
+            place,
+            id,
+            delta,
+            ..
+        } = &effect.kind
+        else {
+            continue;
+        };
+        if place.is_some() || actor_id.as_deref() != Some("pc_rowan") || id != "lamp_oil" {
+            continue;
+        }
+        match nets
+            .iter_mut()
+            .find(|(intent, _)| *intent == effect.intent_id)
+        {
+            Some((_, net)) => *net += delta,
+            None => nets.push((&effect.intent_id, *delta)),
+        }
+    }
+    nets.iter().filter(|(_, net)| *net > 0).count()
 }
 
 fn check_round(
@@ -126,7 +133,7 @@ fn check_round(
     rules: &[RuleSpec],
     max: u64,
     mut held: BTreeSet<String>,
-    mut oil: bool,
+    starts: usize,
 ) -> Result<BTreeSet<String>, TestCaseError> {
     let logged: Vec<&str> = record
         .extra_steps
@@ -136,49 +143,57 @@ fn check_round(
             _ => None,
         })
         .collect();
-    let hit_cap = record.extra_steps.contains(&Step::TriggerDepth);
-    let mut armed = BTreeSet::new();
     let mut index = 0usize;
+    let mut capped = false;
+    for _ in 0..starts {
+        let (next_held, hit) = check_chain(record, rules, max, held, &logged, &mut index)?;
+        held = next_held;
+        capped |= hit;
+    }
+    if index != logged.len() {
+        return Err(TestCaseError::fail(format!(
+            "round {} logged trigger rules after the chains stopped: {}",
+            record.round_index,
+            logged.join(",")
+        )));
+    }
+    let hit_cap = record.extra_steps.contains(&Step::TriggerDepth);
+    if hit_cap != capped {
+        return Err(TestCaseError::fail(format!(
+            "round {} logged trigger_depth: {hit_cap}, a chain hit the cap {max}: {capped}
+{:?}",
+            record.round_index, record.extra_steps
+        )));
+    }
+    Ok(held)
+}
+
+/// One chain, from the oil gain that lights it, read off `logged` from `index`. Returns the
+/// flags held after it and whether it hit the cap.
+fn check_chain(
+    record: &RoundRecord,
+    rules: &[RuleSpec],
+    max: u64,
+    mut held: BTreeSet<String>,
+    logged: &[&str],
+    index: &mut usize,
+) -> Result<(BTreeSet<String>, bool), TestCaseError> {
+    let mut oil = true;
+    let mut armed = BTreeSet::new();
     let mut passes = 0u64;
     loop {
         let ready = ready_rules(rules, oil, &armed);
         if ready.is_empty() {
-            if index != logged.len() {
-                return Err(TestCaseError::fail(format!(
-                    "round {} logged trigger rules after the chain stopped: {}",
-                    record.round_index,
-                    logged.join(",")
-                )));
-            }
-            if hit_cap {
-                return Err(TestCaseError::fail(format!(
-                    "round {} logged trigger_depth after {passes} passes, under the cap {max}",
-                    record.round_index
-                )));
-            }
-            return Ok(held);
+            return Ok((held, false));
         }
         if passes >= max {
-            if index != logged.len() {
-                return Err(TestCaseError::fail(format!(
-                    "round {} ran more than {max} trigger passes: {}",
-                    record.round_index,
-                    logged.join(",")
-                )));
-            }
-            if !hit_cap {
-                return Err(TestCaseError::fail(format!(
-                    "round {} hit the cap after {max} trigger passes without trigger_depth: {:?}",
-                    record.round_index, record.extra_steps
-                )));
-            }
-            return Ok(held);
+            return Ok((held, true));
         }
         oil = false;
         let mut next_held = held.clone();
         let mut next_armed = BTreeSet::new();
         for rule in ready {
-            let Some(got) = logged.get(index) else {
+            let Some(got) = logged.get(*index) else {
                 return Err(TestCaseError::fail(format!(
                     "round {} stopped during pass {} before {}",
                     record.round_index,
@@ -194,7 +209,7 @@ fn check_round(
                     rule.id
                 )));
             }
-            index += 1;
+            *index += 1;
             apply_effects(&mut next_held, &mut next_armed, &rule.effects);
         }
         held = next_held;

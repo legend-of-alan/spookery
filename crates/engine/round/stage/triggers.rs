@@ -1,4 +1,4 @@
-//! Change rules, edge-triggered, to a fixpoint.
+//! Change rules, edge-triggered, to a fixpoint, after each start and each finish lands.
 
 use crate::canon::{Canon, OPEN};
 use crate::draft::Draft;
@@ -10,29 +10,23 @@ use crate::rules::expand::{self, Cause};
 use crate::rules::gate;
 use crate::rules::rule::{ChangeWatch, Op, Rule, WatchWho, When};
 use crate::store::records::Step;
-use crate::Reason;
 
 use crate::round::dice::RoundDice;
 use crate::round::log::RoundLog;
 use crate::round::stage::apply;
 
-/// Every change record of the round, pass by pass.
-pub(crate) fn run(
-    draft: &mut Draft,
-    canon: &Canon,
-    dice: &mut RoundDice,
-    log: &mut RoundLog,
-) -> Result<Vec<Change>, Reason> {
+/// One trigger pass: fire the change rules the changes since the last pass match, and again on
+/// what they write, at most `max_trigger_depth` times. Every change record goes on the log.
+pub(crate) fn run(draft: &mut Draft, canon: &Canon, dice: &mut RoundDice, log: &mut RoundLog) {
     let max = draft.budget().max_trigger_depth;
     let rules = change_rules(canon);
     let mut depth = 0u64;
-    let mut all_changes = Vec::new();
     loop {
         let changes = draft.take_changes();
         if changes.is_empty() {
             break;
         }
-        all_changes.extend(changes.iter().cloned());
+        log.changes.extend(changes.iter().cloned());
         let matched_triggers = match_rules(draft, &rules, &changes);
         if matched_triggers.is_empty() {
             break;
@@ -46,7 +40,6 @@ pub(crate) fn run(
             fire(draft, dice, log, matched.rule, matched.subject.as_deref());
         }
     }
-    Ok(all_changes)
 }
 
 /// One change rule to fire, and the actor it fires for. A world change has none.
