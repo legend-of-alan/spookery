@@ -1,11 +1,12 @@
 //! A value that keeps the undo of each edit made to it since its frontier, so a round can roll
-//! it back, and the edits the save's lists and maps share.
+//! it back; the store that keeps one such value per holder and key; and the edits the save's
+//! lists and maps share.
 
 use std::collections::BTreeMap;
 use std::fmt;
 use std::ops::Deref;
 
-use serde::{Deserialize, Serialize};
+use crate::rules::effect::Holder;
 
 /// A typed change to a `T`.
 pub trait Edit<T>: Sized {
@@ -16,14 +17,8 @@ pub trait Edit<T>: Sized {
 
 /// A value, and the undo of each edit made to it since its frontier, oldest first. In a round
 /// only an edit changes it. The save on disk holds the value alone.
-#[derive(Serialize, Deserialize)]
-#[serde(
-    transparent,
-    bound(serialize = "T: Serialize", deserialize = "T: Deserialize<'de>")
-)]
 pub struct Tracked<T, E> {
     value: T,
-    #[serde(skip)]
     undo: Vec<E>,
 }
 
@@ -137,14 +132,113 @@ impl<T: fmt::Debug, E> fmt::Debug for Tracked<T, E> {
     }
 }
 
-/// Whether a tracked list is empty, for `skip_serializing_if`.
-pub(crate) fn is_empty<V, E>(list: &Tracked<Vec<V>, E>) -> bool {
-    list.is_empty()
+/// One kind of component, such as every live meter: at most one on each holder under each key.
+/// A component's identity is that holder and key, the same in the save as in a round. Reading
+/// gives values; only `State`'s ledger moves one in a round.
+pub struct Store<V, E> {
+    on: BTreeMap<Holder, BTreeMap<String, Tracked<V, E>>>,
 }
 
-/// Whether a tracked map is empty, for `skip_serializing_if`.
-pub(crate) fn is_empty_map<V, E>(map: &Tracked<BTreeMap<String, V>, E>) -> bool {
-    map.is_empty()
+impl<V, E> Default for Store<V, E> {
+    fn default() -> Self {
+        Self {
+            on: BTreeMap::new(),
+        }
+    }
+}
+
+/// A copy holds the values alone, at their frontier, as `Tracked` copies do.
+impl<V: Clone, E> Clone for Store<V, E> {
+    fn clone(&self) -> Self {
+        Self {
+            on: self.on.clone(),
+        }
+    }
+}
+
+impl<V: PartialEq, E> PartialEq for Store<V, E> {
+    fn eq(&self, other: &Self) -> bool {
+        self.on == other.on
+    }
+}
+
+impl<V: Eq, E> Eq for Store<V, E> {}
+
+impl<V: fmt::Debug, E> fmt::Debug for Store<V, E> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.on.fmt(f)
+    }
+}
+
+impl<V, E> Store<V, E> {
+    /// The component on `holder` under `key`.
+    pub fn get(&self, holder: &Holder, key: &str) -> Option<&V> {
+        self.on.get(holder)?.get(key).map(|part| &**part)
+    }
+
+    /// The components on `holder`, in key order.
+    pub fn on(&self, holder: &Holder) -> impl Iterator<Item = (&String, &V)> {
+        let parts = self.on.get(holder).into_iter().flatten();
+        parts.map(|(key, part)| (key, &**part))
+    }
+
+    /// Every component, in holder and then key order.
+    pub fn iter(&self) -> impl Iterator<Item = (&Holder, &String, &V)> {
+        let holders = self.on.iter();
+        holders
+            .flat_map(|(holder, parts)| parts.iter().map(move |(key, part)| (holder, key, &**part)))
+    }
+
+    /// Put `value` on `holder` under `key` at its frontier, outside a round, in place of any
+    /// value there.
+    pub fn insert(&mut self, holder: Holder, key: String, value: V) {
+        self.put(holder, key, Tracked::new(value));
+    }
+
+    /// Take the component on `holder` under `key` off at its frontier, outside a round. Taking
+    /// off one that can still be undone panics, as `Tracked::frontier_mut` does.
+    pub fn remove(&mut self, holder: &Holder, key: &str) -> Option<V> {
+        let mut part = self.take(holder, key)?;
+        part.frontier_mut();
+        Some(part.value)
+    }
+
+    /// The component on `holder` under `key`, to change at its frontier, as
+    /// `Tracked::frontier_mut` says.
+    pub fn frontier_mut(&mut self, holder: &Holder, key: &str) -> Option<&mut V> {
+        Some(self.on.get_mut(holder)?.get_mut(key)?.frontier_mut())
+    }
+
+    /// Keep only the components `keep` accepts, outside a round.
+    pub fn retain(&mut self, mut keep: impl FnMut(&Holder, &str, &V) -> bool) {
+        for (holder, parts) in &mut self.on {
+            parts.retain(|key, part| {
+                part.frontier_mut();
+                keep(holder, key, part)
+            });
+        }
+        self.on.retain(|_, parts| !parts.is_empty());
+    }
+
+    pub(crate) fn tracked_mut(&mut self, holder: &Holder, key: &str) -> Option<&mut Tracked<V, E>> {
+        self.on.get_mut(holder)?.get_mut(key)
+    }
+
+    /// Put `part` on `holder` under `key`, with the undo it holds.
+    pub(crate) fn put(&mut self, holder: Holder, key: String, part: Tracked<V, E>) {
+        self.on.entry(holder).or_default().insert(key, part);
+    }
+
+    /// Take the component on `holder` under `key` off, with the undo it holds. A holder left
+    /// with none has no entry, so a store reads the same after an add is rolled back.
+    pub(crate) fn take(&mut self, holder: &Holder, key: &str) -> Option<Tracked<V, E>> {
+        let parts = self.on.get_mut(holder)?;
+        let part = parts.remove(key);
+        if parts.is_empty() {
+            self.on.remove(holder);
+        }
+        part
+    }
 }
 
 /// Map entry `id` takes `value`, `None` being no entry. Its undo holds the entry it replaced.

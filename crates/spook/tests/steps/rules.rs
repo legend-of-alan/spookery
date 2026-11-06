@@ -337,11 +337,11 @@ fn an_empty_round_lands_at(world: &mut World, tick: u64) {
     let pack = world.pack.clone().unwrap();
     edit_save(&pack, |now| {
         now.world_time = tick - 60;
-        let mira = now.actors.get_mut("mira").unwrap().frontier_mut();
-        mira.meters.get_mut("shop_day").unwrap().base = 0;
-        let mut briar = mira.clone();
-        briar.meters.remove("shop_day");
-        now.actors.insert("briar".to_string(), briar.into());
+        let mira = spookery_engine::Holder::Actor("mira".to_string());
+        now.meters.frontier_mut(&mira, "shop_day").unwrap().base = 0;
+        spookery_engine::testing::copy_actor(now, "mira", "briar");
+        let briar = spookery_engine::Holder::Actor("briar".to_string());
+        now.meters.remove(&briar, "shop_day");
         now.actors.get_mut("briar").unwrap().frontier_mut().place = "docks_shop".to_string();
         now.actors
             .get_mut("mira")
@@ -360,9 +360,9 @@ fn an_empty_round_lands_with_mira(world: &mut World, tick: u64) {
     let pack = world.pack.clone().unwrap();
     edit_save(&pack, |now| {
         now.world_time = tick - 60;
-        let mira = now.actors.get_mut("mira").unwrap().frontier_mut();
-        mira.meters.get_mut("shop_day").unwrap().base = 0;
-        mira.place = "docks_shop".to_string();
+        let mira = spookery_engine::Holder::Actor("mira".to_string());
+        now.meters.frontier_mut(&mira, "shop_day").unwrap().base = 0;
+        now.actors.get_mut("mira").unwrap().frontier_mut().place = "docks_shop".to_string();
     });
     play_an_empty_round(&pack);
 }
@@ -484,12 +484,11 @@ fn attack_targets_defense(world: &mut World) {
     fs::write(&briar, next).unwrap();
     edit_save(&pack, |now| {
         let defense = now
-            .actors
-            .get_mut("npc_briar")
-            .unwrap()
-            .frontier_mut()
             .meters
-            .get_mut("defense")
+            .frontier_mut(
+                &spookery_engine::Holder::Actor("npc_briar".to_string()),
+                "defense",
+            )
             .unwrap();
         defense.base = 12;
         defense.offset = 0;
@@ -522,12 +521,11 @@ fn lark_attacks(world: &mut World) {
     .unwrap_or_else(|err| panic!("faces {}", err.as_str()))[0];
     edit_save(&pack, |now| {
         let might = now
-            .actors
-            .get_mut("pc_lark")
-            .unwrap()
-            .frontier_mut()
             .meters
-            .get_mut("might")
+            .frontier_mut(
+                &spookery_engine::Holder::Actor("pc_lark".to_string()),
+                "might",
+            )
             .unwrap();
         might.base = 21 - i64::from(face);
         might.offset = 0;
@@ -691,12 +689,11 @@ fn steady_costs_five_grit(world: &mut World) {
     );
     edit_save(&pack, |now| {
         let grit = now
-            .actors
-            .get_mut("pc_rowan")
-            .unwrap()
-            .frontier_mut()
             .meters
-            .get_mut("grit")
+            .frontier_mut(
+                &spookery_engine::Holder::Actor("pc_rowan".to_string()),
+                "grit",
+            )
             .unwrap();
         grit.base = 1;
         grit.offset = 0;

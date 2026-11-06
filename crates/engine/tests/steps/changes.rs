@@ -56,14 +56,8 @@ fn a_round_that_changes_a_hidden_fact(world: &mut World) {
 fn larks_might_is_raised(world: &mut World) {
     let pack = world.pack().to_path_buf();
     testing::edit_save(&pack, |state| {
-        let might = state
-            .actors
-            .get_mut("pc_lark")
-            .unwrap()
-            .frontier_mut()
-            .meters
-            .get_mut("might")
-            .unwrap();
+        let lark = spookery_engine::Holder::Actor("pc_lark".to_string());
+        let might = state.meters.frontier_mut(&lark, "might").unwrap();
         might.base = 40;
         might.offset = 0;
     });

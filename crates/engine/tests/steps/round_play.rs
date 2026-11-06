@@ -173,11 +173,11 @@ fn the_door_stays_locked_and_mira_keeps_her_flags(world: &mut World, oil: i64, r
     let shop = saved.state().places.get("docks_shop");
     assert!(shop.is_none_or(|shop| shop.open.is_empty()), "{shop:?}");
     assert_eq!(saved.state().actors["mira"].flags, ["calm", "wary"]);
-    let mira = &saved.state().actors["mira"];
-    assert!(mira.modifiers.is_empty(), "{:?}", mira.modifiers);
-    let stored = &mira.meters["grit"];
-    let grit = spookery_engine::Holder::Actor("mira".to_string());
-    let read = saved.state().meter_value(saved.canon(), &grit, "grit");
+    let mira = spookery_engine::Holder::Actor("mira".to_string());
+    let held: Vec<_> = saved.state().modifiers.on(&mira).collect();
+    assert!(held.is_empty(), "{held:?}");
+    let stored = saved.state().meters.get(&mira, "grit").unwrap();
+    let read = saved.state().meter_value(saved.canon(), &mira, "grit");
     assert_eq!(read, Ok(stored.base + stored.offset));
 }
 
@@ -607,7 +607,8 @@ fn a_docks_pack_with_two_rummage_rules(world: &mut World, shop: i64, shared: i64
 fn rowan_walks_and_rummages(world: &mut World) {
     let rummage = intent("rummage", "pc_rowan", "rummage", None);
     let (state, round) = rowan_walks(world.pack(), vec![rummage]);
-    let rest = &state.actors["pc_rowan"].meters["rest"];
+    let rowan = spookery_engine::Holder::Actor("pc_rowan".to_string());
+    let rest = state.meters.get(&rowan, "rest").unwrap();
     world.count = usize::try_from(rest.base + rest.offset).unwrap();
     world.scratch = round.to_string();
 }
@@ -849,15 +850,12 @@ fn strike_line(scratch: &str, actor: &str) -> (String, i64, i64) {
 
 fn indexed_roll(pack: &Path, actor_id: &str, roll_index: u32) -> (String, i64) {
     let world = spookery_engine::World::peek(pack).unwrap_or_else(|err| panic!("open: {err}"));
-    let actor = world
-        .state()
-        .actors
-        .get(actor_id)
-        .unwrap_or_else(|| panic!("missing {actor_id}"));
     let check = world.canon().checks.get("strike").unwrap();
-    let def = world.canon().meters.get(&check.stat).unwrap();
-    let live = actor.meters.get(&check.stat).unwrap();
-    let stat = (live.base + live.offset).clamp(def.min, def.max);
+    let holder = spookery_engine::Holder::Actor(actor_id.to_string());
+    let stat = world
+        .state()
+        .meter_value(world.canon(), &holder, &check.stat);
+    let stat = stat.unwrap_or_else(|err| panic!("{actor_id} {}: {err}", check.stat));
     let rolled = faces(
         &RollKey {
             world_id: world.state().world_id.clone(),

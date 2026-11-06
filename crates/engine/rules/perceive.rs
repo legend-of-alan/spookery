@@ -4,7 +4,6 @@ use std::collections::BTreeSet;
 
 use crate::canon::Canon;
 use crate::intent::Viewer;
-use crate::model::meter;
 use crate::model::{Note, Presence, State};
 use crate::rules::effect::Holder;
 use crate::rules::habits::list_whose_if_holds;
@@ -201,15 +200,10 @@ fn perceive_viewer_budget(
 
 /// The meters `holder` carries that are not hidden, in id order.
 fn shown_meters(canon: &Canon, state: &State, holder: &Holder) -> Vec<MeterView> {
-    let Some(meters) = state.meters_of(holder) else {
-        return Vec::new();
-    };
-    meters
-        .iter()
-        .filter_map(|(id, live)| {
+    (state.meters.on(holder))
+        .filter_map(|(id, _)| {
             let def = canon.meter_def(holder, id).filter(|def| !def.hidden)?;
-            let modifiers = state.modifier_sum(holder, id).ok()?;
-            let value = meter::current(def, live, modifiers).ok()?;
+            let value = state.meter_value(canon, holder, id).ok()?;
             Some(MeterView {
                 id: id.clone(),
                 value,

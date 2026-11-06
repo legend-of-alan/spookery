@@ -1,10 +1,8 @@
 //! Meter bounds from the pack, and the live value on its holder.
 
-use std::collections::BTreeMap;
-
 use serde::{Deserialize, Serialize};
 
-use crate::model::tracked::Edit;
+use crate::model::tracked::{Edit, Store};
 use crate::rules::effect::Holder;
 use crate::Reason;
 
@@ -65,43 +63,31 @@ pub fn current(def: &MeterDef, live: &MeterLive, modifiers: i64) -> Result<i64, 
     Ok(sum.clamp(def.min, def.max))
 }
 
-/// The edit that moves meter `key`'s offset by the write's delta, once `is_storable` accepts
-/// the next pair.
-pub(crate) fn write(
-    def: &MeterDef,
-    key: &str,
-    live: &MeterLive,
-    write: MeterWrite,
-) -> Result<Offset, Reason> {
+/// Every live meter, on every holder, by the meter's id.
+pub type Meters = Store<MeterLive, Offset>;
+
+/// The edit that moves a meter's offset by the write's delta, once `is_storable` accepts the
+/// next pair.
+pub(crate) fn write(def: &MeterDef, live: &MeterLive, write: MeterWrite) -> Result<Offset, Reason> {
     let MeterWrite::Offset(by) = write;
     let next_offset = live.offset.checked_add(by).ok_or(Reason::OutOfRange)?;
     if !is_storable(def, live.base, next_offset) {
         return Err(Reason::OutOfRange);
     }
-    Ok(Offset {
-        key: key.to_string(),
-        by,
-    })
+    Ok(Offset(by))
 }
 
-/// Meter `key`'s offset moves by `by`, a move `write` has checked. Its undo moves it back.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Offset {
-    pub(crate) key: String,
-    pub(crate) by: i64,
-}
+/// A meter's offset moves by this much, a move `write` has checked. Its undo moves it back.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Offset(pub(crate) i64);
 
-impl Edit<BTreeMap<String, MeterLive>> for Offset {
-    fn apply(self, meters: &mut BTreeMap<String, MeterLive>) -> Option<Self> {
-        if self.by == 0 {
+impl Edit<MeterLive> for Offset {
+    fn apply(self, live: &mut MeterLive) -> Option<Self> {
+        if self.0 == 0 {
             return None;
         }
-        let live = meters.get_mut(&self.key)?;
-        live.offset = live.offset.checked_add(self.by)?;
-        Some(Offset {
-            key: self.key,
-            by: -self.by,
-        })
+        live.offset = live.offset.checked_add(self.0)?;
+        Some(Offset(-self.0))
     }
 }
 

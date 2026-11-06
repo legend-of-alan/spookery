@@ -171,12 +171,8 @@ fn nell_holds_a_tonic(world: &mut World) {
             .frontier_mut()
             .inventory
             .insert("tonic".to_string(), 1);
-        now.actors
-            .get_mut("pc_nell")
-            .unwrap()
-            .frontier_mut()
-            .meters
-            .get_mut("hp")
+        now.meters
+            .frontier_mut(&spookery_engine::Holder::Actor("pc_nell".to_string()), "hp")
             .unwrap()
             .base = 3;
     });
@@ -647,26 +643,17 @@ fn nell_resists_on_a_seeded_roll(world: &mut World) {
     fs::write(pack.join("rules/verbs.yaml"), verbs).unwrap();
     support::edit_save(&pack, |now| {
         hold_dagger(now, true);
-        now.actors
-            .get_mut("pc_nell")
-            .unwrap()
-            .frontier_mut()
-            .meters
-            .get_mut("hp")
+        now.meters
+            .frontier_mut(&spookery_engine::Holder::Actor("pc_nell".to_string()), "hp")
             .unwrap()
             .base = 10;
-        now.actors
-            .get_mut("pc_nell")
-            .unwrap()
-            .frontier_mut()
-            .meters
-            .insert(
-                "constitution".to_string(),
-                spookery_engine::MeterLive {
-                    base: stat,
-                    offset: 0,
-                },
-            );
+        let nell = spookery_engine::Holder::Actor("pc_nell".to_string());
+        let constitution = spookery_engine::MeterLive {
+            base: stat,
+            offset: 0,
+        };
+        now.meters
+            .insert(nell, "constitution".to_string(), constitution);
     });
     spookery_engine::migrate_pack(&pack).unwrap_or_else(|err| panic!("migrate: {err}"));
     world.pack = Some(pack);

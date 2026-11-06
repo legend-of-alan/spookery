@@ -191,7 +191,8 @@ fn the_rule_runs(world: &mut World) {
 fn the_gm_sees_dread(world: &mut World) {
     assert_gm_saw(world, "story_meter ending dread");
     let now = state_of(world.pack.as_deref().unwrap());
-    assert_eq!(now.stories["ending"].meters["dread"].offset, 1);
+    let ending = spookery_engine::Holder::Story("ending".to_string());
+    assert_eq!(now.meters.get(&ending, "dread").unwrap().offset, 1);
 }
 
 #[then(expr = "no player's view lists dread")]

@@ -8,7 +8,7 @@ use crate::draft::Draft;
 use crate::intent::{Intent, Viewer};
 use crate::model::meter::{self, MeterWrite};
 use crate::model::modifier::{self, ModifierLive};
-use crate::model::tracked::{Count, Entry};
+use crate::model::tracked::Count;
 use crate::model::{self, ActorEdit, MemoryLine, Note};
 use crate::rules::visibility::can_see_fact;
 use crate::Reason;
@@ -600,12 +600,9 @@ pub(crate) fn write_meter(
         .canon()
         .meter_def(holder, key)
         .ok_or(Reason::UnknownId)?;
-    let held = draft
-        .state()
-        .meters_of(holder)
-        .and_then(|meters| meters.get(key));
-    let edit = meter::write(def, key, held.ok_or(Reason::UnknownId)?, write)?;
-    draft.edit_meters(holder, edit)
+    let held = draft.state().meters.get(holder, key);
+    let edit = meter::write(def, held.ok_or(Reason::UnknownId)?, write)?;
+    draft.edit_meter(holder, key, edit)
 }
 
 /// Add `delta` to the count `holder` has of item `id`. An actor who no longer holds the item
@@ -664,15 +661,10 @@ fn apply_modifier(
     canon
         .meter_def(&holder, &def.meter)
         .ok_or(Reason::UnknownId)?;
-    let now = draft.state().world_time;
-    let actor = draft
-        .state()
-        .actors
-        .get(actor_id)
-        .ok_or(Reason::UnknownId)?;
-    let mut next = actor
-        .modifiers
-        .get(id)
+    let state = draft.state();
+    let now = state.world_time;
+    state.actors.get(actor_id).ok_or(Reason::UnknownId)?;
+    let mut next = (state.modifiers.get(&holder, id))
         .cloned()
         .unwrap_or_else(|| ModifierLive {
             meter: def.meter.clone(),
@@ -681,14 +673,7 @@ fn apply_modifier(
             stacks: Vec::new(),
         });
     modifier::stack(def, &mut next, add, ticks, now);
-    let id = id.to_string();
-    draft.edit_actor(
-        actor_id,
-        ActorEdit::Modifier(Entry {
-            id,
-            value: Some(next),
-        }),
-    )
+    draft.put_modifier(actor_id, id, Some(next))
 }
 
 fn wield(draft: &mut Draft, actor_id: &str, item_id: &str) -> Result<(), Reason> {

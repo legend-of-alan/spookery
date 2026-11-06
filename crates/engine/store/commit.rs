@@ -37,7 +37,7 @@ pub fn commit(
     let write = lock_write(&world.root, &world.lock)?;
     settle_checkpoint(world, &write)?;
     let (mut state, memories) = draft.finish();
-    bump_state_rev(&mut state)?;
+    state.state_rev = state.state_rev.checked_add(1).ok_or(Reason::OutOfRange)?;
     let now_bytes = save::emit(&state)?.into_bytes();
     let line = seal_round(
         record,
@@ -54,7 +54,7 @@ pub fn commit(
         (line, None)
     };
     let mut log_path = append_to_bundle(&world.root, &payload, &write)?;
-    world.state = state;
+    world.state = accept(state);
     world.queue.clear();
     if let Some(chain) = chain {
         if finish_checkpoint(world, &now_bytes, &chain, &write) {
@@ -76,15 +76,17 @@ pub fn commit(
 /// The journal already has this round. Keep the new state in memory.
 pub fn keep_in_memory(world: &mut World<()>, draft: Draft) -> Result<(), Reason> {
     let (mut state, _) = draft.finish();
-    bump_state_rev(&mut state)?;
-    world.state = state;
+    state.state_rev = state.state_rev.checked_add(1).ok_or(Reason::OutOfRange)?;
+    world.state = accept(state);
     Ok(())
 }
 
-fn bump_state_rev(state: &mut State) -> Result<(), Reason> {
-    state.state_rev = state.state_rev.checked_add(1).ok_or(Reason::OutOfRange)?;
-    normalize(state);
-    Ok(())
+/// The round's save once it is persisted: nothing it wrote can be rolled back now, so each
+/// component it touched keeps no undo, and it is in the order the save file holds.
+fn accept(mut state: State) -> State {
+    state.rebase();
+    normalize(&mut state);
+    state
 }
 
 /// Seal a migrate record for `state`, which is already the journal tip or the on-disk save.

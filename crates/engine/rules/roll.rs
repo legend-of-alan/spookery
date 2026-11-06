@@ -1,11 +1,6 @@
 //! Check definitions, one roll of a check, and the band its total lands in.
 
-use std::collections::BTreeMap;
-
 use crate::hash::blake2s_256;
-use crate::model::meter::{self, MeterDef};
-use crate::model::modifier;
-use crate::model::ActorLive;
 use crate::rules::gate;
 use crate::Reason;
 
@@ -83,19 +78,16 @@ pub fn faces(key: &RollKey, start: usize, count: u32, sides: u32) -> Result<Vec<
     Ok(faces)
 }
 
-/// The only roll: `check`'s dice from this key's own seed, plus the actor's stat, against
-/// `target`. `partial_at` `None` keeps the roll binary; an opposing total passes `None`.
+/// The only roll: `check`'s dice from this key's own seed, plus `stat`, the value of the
+/// actor's meter the check names, against `target`. `partial_at` `None` keeps the roll binary;
+/// an opposing total passes `None`.
 pub(crate) fn roll_check(
     check: &Check,
-    meters: &BTreeMap<String, MeterDef>,
-    actor: &ActorLive,
+    stat: i64,
     key: &RollKey,
     target: i64,
     partial_at: Option<i64>,
 ) -> Result<Roll, Reason> {
-    let def = meters.get(&check.stat).ok_or(Reason::UnknownId)?;
-    let live = actor.meters.get(&check.stat).ok_or(Reason::UnknownId)?;
-    let stat = meter::current(def, live, modifier::sum(&actor.modifiers, &check.stat)?)?;
     let faces = faces(key, 0, check.dice_count, check.dice_sides)?;
     let total = faces.iter().map(|face| i64::from(*face)).sum::<i64>() + stat;
     Ok(Roll {
@@ -131,38 +123,7 @@ fn block_bytes(seed: &[u8; 32], block: usize) -> [u8; 32] {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeMap;
-
     use super::{classify, face_at, roll_check, Check, Outcome, RollKey};
-    use crate::model::meter::{MeterDef, MeterLive};
-    use crate::model::{Act, ActorKind, ActorLive};
-
-    fn grit_def() -> MeterDef {
-        MeterDef {
-            min: 0,
-            base_cap: 100,
-            max: 110,
-            start: 1,
-            hidden: false,
-            carrier: None,
-        }
-    }
-
-    fn npc() -> ActorLive {
-        ActorLive {
-            kind: ActorKind::Npc,
-            place: "mira_rooms".to_string(),
-            flags: Vec::new(),
-
-            meters: BTreeMap::from([("grit".to_string(), MeterLive { base: 1, offset: 0 })]),
-            modifiers: Default::default(),
-            inventory: BTreeMap::new(),
-            wielded: None,
-            known_facts: Vec::new(),
-            visited: Default::default(),
-            act: Act::default(),
-        }
-    }
 
     fn check_of(count: u32) -> Check {
         Check {
@@ -207,11 +168,9 @@ mod tests {
 
     #[test]
     fn the_same_key_rolls_the_same_faces() {
-        let actor = npc();
-        let defs = BTreeMap::from([("grit".to_string(), grit_def())]);
         let check = check_of(2);
-        let once = roll_check(&check, &defs, &actor, &key(0), 9, None).unwrap();
-        let twice = roll_check(&check, &defs, &actor, &key(0), 9, None).unwrap();
+        let once = roll_check(&check, 1, &key(0), 9, None).unwrap();
+        let twice = roll_check(&check, 1, &key(0), 9, None).unwrap();
         assert_eq!(once, twice);
         assert_eq!(once.faces.len(), 2);
     }

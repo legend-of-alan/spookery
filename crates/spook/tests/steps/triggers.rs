@@ -7,7 +7,7 @@ use spookery::protocol;
 use spookery_engine::testing::state_of;
 use spookery_engine::MeterLive;
 use spookery_engine::{emit_save, parse_save};
-use spookery_engine::{Presence, State};
+use spookery_engine::{Holder, Presence, State};
 
 use super::common::replace_in_file;
 use super::meters::write_world_meters;
@@ -179,9 +179,7 @@ rules:
             .flags
             .push("found_key".to_string());
         let start = MeterLive { base: 0, offset: 0 };
-        now.world_meters
-            .frontier_mut()
-            .insert("tide".to_string(), start);
+        now.meters.insert(Holder::World, "tide".to_string(), start);
     });
     play(
         world,
@@ -203,7 +201,7 @@ fn nell_knows_the_ledger(world: &mut World, tide: i64) {
             .any(|fact| fact == "fact_ledger"),
         "nell does not know fact_ledger"
     );
-    let live = &now.world_meters["tide"];
+    let live = now.meters.get(&Holder::World, "tide").unwrap();
     assert_eq!(live.base + live.offset, tide, "{live:?}");
 }
 
@@ -425,13 +423,8 @@ fn the_bog_roll_reproduces(world: &mut World) {
     assert_eq!(world.scratch, "rolled");
     let pack = world.pack.as_ref().unwrap();
     let now = state_of(pack);
-    let grit = now
-        .actors
-        .get("pc_nell")
-        .unwrap()
-        .meters
-        .get("grit")
-        .unwrap();
+    let nell = Holder::Actor("pc_nell".to_string());
+    let grit = now.meters.get(&nell, "grit").unwrap();
     assert_eq!(grit.offset, -1, "the miss band did not spend grit");
     let output = support::run_spook(&["verify", &pack.to_string_lossy()]);
     let stderr = String::from_utf8_lossy(&output.stderr);
@@ -1070,8 +1063,8 @@ rules:
     .unwrap();
     edit_table(world, &pack, |now, seated| {
         insert_actor_copy(now, seated, "aldric", "briar", "docks_shop");
-        let briar = now.actors.get_mut("briar").unwrap().frontier_mut();
-        briar.meters.insert(
+        now.meters.insert(
+            Holder::Actor("briar".to_string()),
             "hp".to_string(),
             MeterLive {
                 base: hp,
@@ -1079,6 +1072,7 @@ rules:
             },
         );
         if downed {
+            let briar = now.actors.get_mut("briar").unwrap().frontier_mut();
             briar.flags.push("downed".to_string());
         }
         sit(seated, &["pc_rowan"]);
@@ -1161,13 +1155,13 @@ Nell walks the docks.
 }
 
 fn insert_actor_copy(now: &mut State, seated: &mut Presence, from: &str, id: &str, place: &str) {
-    let mut actor = now.actors.get(from).unwrap().clone();
-    let live = actor.frontier_mut();
+    spookery_engine::testing::copy_actor(now, from, id);
+    let live = now.actors.get_mut(id).unwrap().frontier_mut();
     live.place = place.to_string();
     live.flags.clear();
     // Only pc_rowan carries the debt, so a copy of them does not.
-    live.meters.remove("assassination_debt");
-    now.actors.insert(id.to_string(), actor);
+    now.meters
+        .remove(&Holder::Actor(id.to_string()), "assassination_debt");
     sit(seated, &[id]);
 }
 

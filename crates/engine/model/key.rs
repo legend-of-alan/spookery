@@ -2,6 +2,8 @@
 
 use std::fmt;
 
+use crate::rules::effect::Holder;
+
 /// One budget identity. The commit diff summary is this type's `Display`,
 /// sorted as text. It is not a path inside `save.yaml`.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -58,6 +60,18 @@ impl fmt::Display for StateKey {
 }
 
 impl StateKey {
+    /// The key of meter `key` on `holder`. An exit carries no meters.
+    pub(crate) fn meter(holder: &Holder, key: &str) -> Option<StateKey> {
+        let key = key.to_string();
+        Some(match holder {
+            Holder::Actor(id) => StateKey::ActorMeter(id.clone(), key),
+            Holder::Place(id) => StateKey::PlaceMeter(id.clone(), key),
+            Holder::Story(id) => StateKey::StoryMeter(id.clone(), key),
+            Holder::World => StateKey::WorldMeter(key),
+            Holder::Exit(..) => return None,
+        })
+    }
+
     /// The actor this key belongs to, when it has one.
     pub fn actor(&self) -> Option<&str> {
         match self {

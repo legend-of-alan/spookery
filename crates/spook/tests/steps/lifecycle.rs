@@ -161,7 +161,8 @@ fn never_finished(world: &mut World, verb: String, rest: i64) {
     let rowan = &now.actors["pc_rowan"];
     assert_eq!(rowan.act.pending, None);
     assert_eq!(rowan.act.busy_until, None);
-    let meter = &rowan.meters["rest"];
+    let holder = spookery_engine::Holder::Actor("pc_rowan".to_string());
+    let meter = now.meters.get(&holder, "rest").unwrap();
     assert_eq!(meter.base + meter.offset, 3 - rest);
 }
 

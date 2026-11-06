@@ -564,8 +564,8 @@ pub fn check_save(canon: &Canon, state: &crate::model::State) -> Result<(), Vec<
         }
         let holder = Holder::Actor(id.clone());
         let path = format!("actors.{id}.meters");
-        check_meters(canon, &holder, &actor.meters, &path, &mut diags);
-        for (key, live) in &actor.modifiers {
+        check_meters(canon, &holder, &state.meters, &path, &mut diags);
+        for (key, live) in state.modifiers.on(&holder) {
             if !modifier::is_defined(&canon.modifiers, key, live) {
                 let problem = format!(
                     "actor '{id}' holds modifier '{key}' on meter '{}', which the pack does not define",
@@ -580,7 +580,7 @@ pub fn check_save(canon: &Canon, state: &crate::model::State) -> Result<(), Vec<
     check_meters(
         canon,
         &Holder::World,
-        &state.world_meters,
+        &state.meters,
         "world_meters",
         &mut diags,
     );
@@ -593,10 +593,8 @@ pub fn check_save(canon: &Canon, state: &crate::model::State) -> Result<(), Vec<
         .keys()
         .map(|id| (Holder::Story(id.clone()), "stories", id));
     for (holder, list, id) in places.chain(stories) {
-        let none = BTreeMap::new();
-        let live = state.meters_of(&holder).unwrap_or(&none);
         let path = format!("{list}.{id}.meters");
-        check_meters(canon, &holder, live, &path, &mut diags);
+        check_meters(canon, &holder, &state.meters, &path, &mut diags);
     }
     for (id, actor) in &state.actors {
         for (item, count) in &actor.inventory {
@@ -700,7 +698,7 @@ pub fn check_save(canon: &Canon, state: &crate::model::State) -> Result<(), Vec<
 fn check_meters(
     canon: &Canon,
     holder: &Holder,
-    live: &BTreeMap<String, meter::MeterLive>,
+    meters: &meter::Meters,
     path: &str,
     diags: &mut Vec<Diagnostic>,
 ) {
@@ -711,7 +709,7 @@ fn check_meters(
     };
     for (key, def) in defs {
         let carried = *holder == Holder::World || def.is_on(holder);
-        if carried && !live.contains_key(key) {
+        if carried && meters.get(holder, key).is_none() {
             diags.push(
                 schema_error(
                     "state/save.yaml",
@@ -722,7 +720,7 @@ fn check_meters(
             );
         }
     }
-    for (key, meter) in live {
+    for (key, meter) in meters.on(holder) {
         let Some(def) = canon.meter_def(holder, key) else {
             diags.push(
                 schema_error(

@@ -77,7 +77,7 @@ fn nested_rollbacks_put_the_save_back_exactly() {
 
 /// A savepoint, with the save and the spent keys as they were when it was taken.
 struct Open {
-    point: crate::draft::Savepoint,
+    point: crate::model::ledger::Savepoint,
     saved: State,
     keys: usize,
 }
@@ -170,9 +170,9 @@ fn every_moved_meter_is_reported(
             .meter_value(world.canon(), holder, key)
             .map_or(StateValue::Empty, StateValue::Number)
     };
-    for (id, actor) in &now.actors {
+    for id in now.actors.keys() {
         let holder = Holder::Actor(id.clone());
-        for key in actor.meters.keys() {
+        for (key, _) in now.meters.on(&holder) {
             let (before, after) = (read(taken, &holder, key), read(now, &holder, key));
             if before == after {
                 continue;

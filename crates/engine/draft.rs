@@ -1,6 +1,5 @@
 //! The staged save a round writes before commit.
 
-use std::collections::{BTreeMap, BTreeSet};
 use std::marker::PhantomData;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -8,67 +7,36 @@ use std::sync::Arc;
 use crate::canon::Budget;
 use crate::canon::Canon;
 use crate::model::key::{Change, StateKey, StateValue};
+use crate::model::ledger::{Ledger, Removed, Savepoint};
 use crate::model::meter::Offset;
-use crate::model::tracked::{Count, Edit, Entry, Member, Tracked};
-use crate::model::{self, reading, ActCounter, ActorEdit, MemoryLine, Note, NoteEdit};
-use crate::model::{ComponentId, PendingAction, PlaceEdit, Presence, State, StoryEdit};
+use crate::model::modifier::ModifierLive;
+use crate::model::tracked::{Count, Member, Tracked};
+use crate::model::{reading, ActCounter, ActorEdit, ComponentId, MemoryLine, Note, NoteEdit};
+use crate::model::{PendingAction, PlaceEdit, Presence, State, StoryEdit};
 use crate::rules::effect::Holder;
 use crate::world::World;
 use crate::Reason;
 
+/// A round's staged save, with the canon it reads and who is seated. The writers below are the
+/// only way a round changes the save: each lands at once, so a later read sees it, and goes on
+/// the save's ledger, so it can be rolled back, counts toward the budget and is reported.
 pub(crate) struct Draft<'p> {
     canon: Arc<Canon>,
-    /// Only the edits below change it, so every change can be rolled back.
     state: State,
     /// Who is seated for this round. The round reads it and never writes it.
     pub(crate) presence: &'p Presence,
-    ledger: Ledger,
-    memories: Vec<MemoryLine>,
-    memory_writes: u32,
     _nosend: PhantomData<Rc<()>>,
-}
-
-/// What the round's writes owe: the keys counted toward the budget, each change for the next
-/// take, and each record they touched, for a rollback.
-struct Ledger {
-    max_keys: usize,
-    /// The keys counted toward the budget this round.
-    keys: BTreeSet<StateKey>,
-    /// The same keys in the order they were counted, so a savepoint can give them back.
-    key_order: Vec<StateKey>,
-    /// Each record a write changed or brought into being, oldest first.
-    touched: Vec<Touch>,
-    /// Each key a write moved, with its value before and after that write, oldest first.
-    changes: Vec<Change>,
-    /// How many changes the last take had reported.
-    taken: usize,
-}
-
-/// A record a write changed, with how many edits it held before, or one a write brought into
-/// being. A rollback undoes each touch since its savepoint, newest first.
-enum Touch {
-    Edited(ComponentId, usize),
-    NewPlace(String),
-    NewStory(String),
 }
 
 impl<'p> Draft<'p> {
     /// Stage a round on a copy of the world's save, with `presence` seated.
     pub(crate) fn begin<L>(world: &World<L>, presence: &'p Presence) -> Self {
+        let mut state = world.state.clone();
+        state.ledger = Ledger::new(world.canon.budget.max_state_keys_mutated as usize);
         Self {
             canon: Arc::clone(&world.canon),
-            state: world.state.clone(),
+            state,
             presence,
-            ledger: Ledger {
-                max_keys: world.canon.budget.max_state_keys_mutated as usize,
-                keys: BTreeSet::new(),
-                key_order: Vec::new(),
-                touched: Vec::new(),
-                changes: Vec::new(),
-                taken: 0,
-            },
-            memories: Vec::new(),
-            memory_writes: 0,
             _nosend: PhantomData,
         }
     }
@@ -95,17 +63,11 @@ impl<'p> Draft<'p> {
         self.state.last_round_at = last_round_at.to_string();
     }
 
-    /// The round's save, as the frontier the next round starts from: nothing it wrote can be
-    /// rolled back now.
+    /// The round's save and the memory lines it wrote. Its ledger still holds the round:
+    /// commit persists the save, then rebases it.
     pub(crate) fn finish(mut self) -> (State, Vec<MemoryLine>) {
-        for touch in self.ledger.touched.drain(..) {
-            if let Touch::Edited(at, _) = touch {
-                if let Some(record) = self.state.record_mut(&at) {
-                    record.rebase(0);
-                }
-            }
-        }
-        (self.state, self.memories)
+        let memories = self.state.ledger.take_memories();
+        (self.state, memories)
     }
 
     /// Set `counter` back to 0 on every actor.
@@ -119,19 +81,15 @@ impl<'p> Draft<'p> {
 
     /// Expire every modifier whose tick has come by `world_time`, all its stacks at once.
     pub(crate) fn expire_modifiers(&mut self, world_time: u64) -> Result<(), Reason> {
-        let due: Vec<(String, String)> = self
-            .state
-            .actors
-            .iter()
-            .flat_map(|(actor, live)| {
-                live.modifiers
-                    .iter()
-                    .filter(|(_, held)| held.until <= world_time)
-                    .map(|(id, _)| (actor.clone(), id.clone()))
-            })
+        let due: Vec<(Holder, String)> = (self.state.modifiers.iter())
+            .filter(|(_, _, held)| held.until <= world_time)
+            .map(|(holder, id, _)| (holder.clone(), id.clone()))
             .collect();
-        for (actor, id) in due {
-            self.edit_actor(&actor, ActorEdit::Modifier(Entry { id, value: None }))?;
+        for (holder, id) in due {
+            let Holder::Actor(actor) = holder else {
+                continue;
+            };
+            self.put_modifier(&actor, &id, None)?;
         }
         Ok(())
     }
@@ -173,136 +131,149 @@ impl<'p> Draft<'p> {
         Ok(taken)
     }
 
-    /// Make `edit` on actor `id`: the one way a round changes an actor, so a later read, in the
-    /// same effect or the next, sees it. When the stored value moved, its key is counted toward
-    /// the budget and its values before and after are kept for the next take; a value already
-    /// in place counts nothing. A modifier's stacks add to the meter its def names: when they
-    /// move, that meter's key is counted first and its values kept too, and a modifier put in
-    /// place must leave the meter readable before its own key is counted. A write the budget
-    /// refuses stays in place for the caller's savepoint to undo.
+    /// Make `edit` on actor `id`'s record. When the stored value moved, its key is counted
+    /// toward the budget and its values before and after are kept for the next take; a value
+    /// already in place counts nothing. A write the budget refuses stays in place for the
+    /// caller's savepoint to undo.
     pub(crate) fn edit_actor(&mut self, id: &str, edit: ActorEdit) -> Result<(), Reason> {
-        let Draft {
-            canon,
-            state,
-            ledger,
-            ..
-        } = self;
-        let canon: &Canon = canon;
-        let actor = state.actors.get_mut(id).ok_or(Reason::UnknownId)?;
-        let added_to = match &edit {
-            ActorEdit::Modifier(entry) => canon.modifiers.get(&entry.id).map(|def| {
-                let stacks = actor
-                    .modifiers
-                    .get(&entry.id)
-                    .map(|held| held.stacks.clone());
-                let before = reading(actor.meter_value(canon, id, &def.meter));
-                let puts = entry.value.is_some();
-                (entry.id.clone(), puts, def.meter.as_str(), stacks, before)
-            }),
-            _ => None,
-        };
-        let key = edit.key(id);
-        let before = key.as_ref().map(|key| actor.value(canon, id, key));
-        let moved = ledger.track(|| ComponentId::Actor(id.to_string()), actor, edit);
-        if let Some((modifier, puts, meter, stacks, before)) = added_to {
-            let stacks_moved =
-                actor.modifiers.get(&modifier).map(|held| &held.stacks) != stacks.as_ref();
-            let key = StateKey::ActorMeter(id.to_string(), meter.to_string());
-            if stacks_moved {
-                ledger.count_key(&key)?;
-            }
-            let after = actor.meter_value(canon, id, meter);
-            if puts {
-                after?;
-            }
-            if stacks_moved {
-                let after = reading(after);
-                ledger.changes.push(Change { key, before, after });
+        let State { actors, ledger, .. } = &mut self.state;
+        let actor = actors.get_mut(id).ok_or(Reason::UnknownId)?;
+        let at = || ComponentId::Actor(id.to_string());
+        match edit.key(id) {
+            Some(key) => ledger.land(at, actor, edit, key, |actor, key| actor.value(key)),
+            None => {
+                ledger.track(at, actor, edit);
+                Ok(())
             }
         }
-        if let (true, Some(key), Some(before)) = (moved, key, before) {
-            let after = actor.value(canon, id, &key);
-            ledger.note(key, before, after)?;
-        }
-        Ok(())
     }
 
     /// Make `edit` on place `id`'s live record, which it must have, counted and kept as
     /// `edit_actor` says.
     pub(crate) fn edit_place(&mut self, id: &str, edit: PlaceEdit) -> Result<(), Reason> {
-        let Draft {
-            canon,
-            state,
-            ledger,
-            ..
-        } = self;
-        let place = state.places.get_mut(id).ok_or(Reason::UnknownId)?;
+        let State { places, ledger, .. } = &mut self.state;
+        let place = places.get_mut(id).ok_or(Reason::UnknownId)?;
         let key = edit.key(id);
         let at = || ComponentId::Place(id.to_string());
-        ledger.land(at, place, edit, key, |place, key| {
-            place.value(canon, id, key)
-        })
+        ledger.land(at, place, edit, key, |place, key| place.value(key))
     }
 
     /// Make `edit` on story `id`'s live record, which it must have, counted and kept as
     /// `edit_actor` says.
     pub(crate) fn edit_story(&mut self, id: &str, edit: StoryEdit) -> Result<(), Reason> {
-        let Draft {
-            canon,
-            state,
-            ledger,
-            ..
-        } = self;
-        let story = state.stories.get_mut(id).ok_or(Reason::UnknownId)?;
+        let State {
+            stories, ledger, ..
+        } = &mut self.state;
+        let story = stories.get_mut(id).ok_or(Reason::UnknownId)?;
         let key = edit.key(id);
         let at = || ComponentId::Story(id.to_string());
-        ledger.land(at, story, edit, key, |story, key| {
-            story.value(canon, id, key)
-        })
+        ledger.land(at, story, edit, key, |story, key| story.value(key))
     }
 
     /// Give place or story `holder` an empty live record when it has none. No key answers for
     /// it.
     pub(crate) fn make_record(&mut self, holder: &Holder) -> Result<(), Reason> {
-        let touch = match holder {
-            Holder::Place(id) if !self.state.places.contains_key(id) => {
-                self.state.places.insert(id.clone(), Tracked::default());
-                Touch::NewPlace(id.clone())
+        let state = &mut self.state;
+        let at = match holder {
+            Holder::Place(id) if !state.places.contains_key(id) => {
+                state.places.insert(id.clone(), Tracked::default());
+                ComponentId::Place(id.clone())
             }
-            Holder::Story(id) if !self.state.stories.contains_key(id) => {
-                self.state.stories.insert(id.clone(), Tracked::default());
-                Touch::NewStory(id.clone())
+            Holder::Story(id) if !state.stories.contains_key(id) => {
+                state.stories.insert(id.clone(), Tracked::default());
+                ComponentId::Story(id.clone())
             }
             Holder::Place(_) | Holder::Story(_) => return Ok(()),
             Holder::Actor(_) | Holder::Exit(..) | Holder::World => return Err(Reason::Schema),
         };
-        self.ledger.touched.push(touch);
+        state.ledger.added(at);
         Ok(())
     }
 
-    /// Make `edit` on the meters `holder` carries. An exit carries none.
-    pub(crate) fn edit_meters(&mut self, holder: &Holder, edit: Offset) -> Result<(), Reason> {
-        match holder {
-            Holder::Actor(id) => self.edit_actor(id, ActorEdit::Meter(edit)),
-            Holder::Place(id) => self.edit_place(id, PlaceEdit::Meter(edit)),
-            Holder::Story(id) => self.edit_story(id, StoryEdit::Meter(edit)),
-            Holder::Exit(..) => Err(Reason::UnknownId),
-            Holder::World => {
-                let Draft {
-                    canon,
-                    state,
-                    ledger,
-                    ..
-                } = self;
-                let name = edit.key.clone();
-                let key = StateKey::WorldMeter(edit.key.clone());
-                let read = |meters: &BTreeMap<_, _>, _: &StateKey| {
-                    reading(model::meter_value(canon, &Holder::World, meters, &name, 0))
-                };
-                let meters = &mut state.world_meters;
-                ledger.land(|| ComponentId::WorldMeters, meters, edit, key, read)
+    /// Move meter `key` on `holder` by `edit`, counted and kept as `edit_actor` says, with the
+    /// meter's value as `State::meter_value` reads it.
+    pub(crate) fn edit_meter(
+        &mut self,
+        holder: &Holder,
+        key: &str,
+        edit: Offset,
+    ) -> Result<(), Reason> {
+        let Draft { canon, state, .. } = self;
+        let watched = StateKey::meter(holder, key).ok_or(Reason::UnknownId)?;
+        let before = reading(state.meter_value(canon, holder, key));
+        let State { meters, ledger, .. } = &mut *state;
+        let meter = meters.tracked_mut(holder, key).ok_or(Reason::UnknownId)?;
+        let at = || ComponentId::Meter(holder.clone(), key.to_string());
+        if !ledger.track(at, meter, edit) {
+            return Ok(());
+        }
+        let after = reading(state.meter_value(canon, holder, key));
+        state.ledger.note(watched, before, after)
+    }
+
+    /// Put modifier `id` on actor `actor_id` as `next`, `None` taking it off. Its stacks add to
+    /// the meter its def names: when they move, that meter's key is counted first and its
+    /// values kept too, and a modifier put on must leave the meter readable before its own
+    /// key is counted. Otherwise as `edit_actor` says.
+    pub(crate) fn put_modifier(
+        &mut self,
+        actor_id: &str,
+        id: &str,
+        next: Option<ModifierLive>,
+    ) -> Result<(), Reason> {
+        let Draft { canon, state, .. } = self;
+        let canon: &Canon = canon;
+        if !state.actors.contains_key(actor_id) {
+            return Err(Reason::UnknownId);
+        }
+        let holder = Holder::Actor(actor_id.to_string());
+        let meter = canon.modifiers.get(id).map(|def| def.meter.as_str());
+        let meter_before = meter.map(|key| reading(state.meter_value(canon, &holder, key)));
+        let held = state.modifiers.get(&holder, id);
+        let stacks = held.map(|held| held.stacks.clone());
+        let before = held.map_or(StateValue::Empty, ModifierLive::to_value);
+        let puts = next.is_some();
+        let at = || ComponentId::Modifier(holder.clone(), id.to_string());
+        let State {
+            modifiers, ledger, ..
+        } = &mut *state;
+        let moved = match (modifiers.tracked_mut(&holder, id), next) {
+            (Some(held), Some(next)) => ledger.track(at, held, next),
+            (Some(_), None) => {
+                let held = modifiers.take(&holder, id).expect("a modifier held");
+                ledger.removed(Removed::Modifier(holder.clone(), id.to_string(), held));
+                true
+            }
+            (None, Some(next)) => {
+                modifiers.put(holder.clone(), id.to_string(), Tracked::new(next));
+                ledger.added(at());
+                true
+            }
+            (None, None) => false,
+        };
+        if let (Some(meter), Some(before)) = (meter, meter_before) {
+            let now = state.modifiers.get(&holder, id).map(|held| &held.stacks);
+            let stacks_moved = now != stacks.as_ref();
+            let key = StateKey::ActorMeter(actor_id.to_string(), meter.to_string());
+            if stacks_moved {
+                state.ledger.count_key(&key)?;
+            }
+            let after = state.meter_value(canon, &holder, meter);
+            if puts {
+                after?;
+            }
+            if stacks_moved {
+                let after = reading(after);
+                state.ledger.keep(Change { key, before, after });
             }
         }
+        if moved {
+            let after = (state.modifiers.get(&holder, id))
+                .map_or(StateValue::Empty, ModifierLive::to_value);
+            let key = StateKey::ActorModifier(actor_id.to_string(), id.to_string());
+            state.ledger.note(key, before, after)?;
+        }
+        Ok(())
     }
 
     /// Make `edit` on the item counts `holder` holds. Only an actor or a place holds items.
@@ -329,181 +300,66 @@ impl<'p> Draft<'p> {
                 self.edit_place(place, PlaceEdit::Open(Member::set(exit, on)))
             }
             Holder::World => {
-                let Draft { state, ledger, .. } = self;
+                let State { flags, ledger, .. } = &mut self.state;
                 let key = StateKey::WorldFlag(key.to_string());
                 let read = |flags: &Vec<String>, key: &StateKey| {
                     StateValue::Bool(
                         matches!(key, StateKey::WorldFlag(name) if flags.contains(name)),
                     )
                 };
-                ledger.land(
-                    || ComponentId::WorldFlags,
-                    &mut state.flags,
-                    edit,
-                    key,
-                    read,
-                )
+                ledger.land(|| ComponentId::WorldFlags, flags, edit, key, read)
             }
         }
     }
 
     /// Leave `note`, whose id no note has yet.
     pub(crate) fn leave_note(&mut self, note: Note) -> Result<(), Reason> {
-        let Draft { state, ledger, .. } = self;
+        let State { notes, ledger, .. } = &mut self.state;
         let key = StateKey::Note(note.id.clone());
         let read = |notes: &Vec<Note>, key: &StateKey| match key {
             StateKey::Note(id) if notes.iter().any(|note| note.id == *id) => StateValue::Bool(true),
             _ => StateValue::Empty,
         };
         let edit = NoteEdit::Leave(note);
-        ledger.land(|| ComponentId::Notes, &mut state.notes, edit, key, read)
+        ledger.land(|| ComponentId::Notes, notes, edit, key, read)
     }
 
     /// Count `key` toward the budget the first time this round, whether or not a write
     /// changed it: a cost of 0 still takes a key.
     pub(crate) fn count_key(&mut self, key: &StateKey) -> Result<(), Reason> {
-        self.ledger.count_key(key)
+        self.state.ledger.count_key(key)
     }
 
     /// How many keys the round has counted so far.
     #[cfg(test)]
     pub(crate) fn keys_spent(&self) -> usize {
-        self.ledger.key_order.len()
+        self.state.keys_spent()
     }
 
-    /// Every key whose value differs from what it was at the last take, sorted: its value
-    /// before its first change since then, and after its last.
+    /// Every key whose value differs from what it was at the last take, as
+    /// `State::take_changes` says.
     pub(crate) fn take_changes(&mut self) -> Vec<Change> {
-        let ledger = &mut self.ledger;
-        let since = std::mem::replace(&mut ledger.taken, ledger.changes.len());
-        let mut net: BTreeMap<&StateKey, Change> = BTreeMap::new();
-        for change in &ledger.changes[since..] {
-            net.entry(&change.key)
-                .and_modify(|first| first.after = change.after.clone())
-                .or_insert_with(|| change.clone());
-        }
-        net.into_values()
-            .filter(|change| change.before != change.after)
-            .collect()
+        self.state.take_changes()
     }
 
     pub(crate) fn count_memory_write(&mut self) -> Result<(), Reason> {
-        if u64::from(self.memory_writes) >= self.canon.budget.max_memory_writes {
-            return Err(Reason::Budget);
-        }
-        self.memory_writes += 1;
-        Ok(())
+        let max = self.canon.budget.max_memory_writes;
+        self.state.ledger.count_memory_write(max)
     }
 
     pub(crate) fn push_memory(&mut self, line: MemoryLine) {
-        self.memories.push(line);
+        self.state.ledger.push_memory(line);
     }
 
-    /// Where the round has come to, to roll back to. It copies nothing.
+    /// Where the round has come to, to roll back to.
     pub(crate) fn savepoint(&self) -> Savepoint {
-        Savepoint {
-            touched: self.ledger.touched.len(),
-            keys: self.ledger.key_order.len(),
-            changes: self.ledger.changes.len(),
-            taken: self.ledger.taken,
-            memories: self.memories.len(),
-            memory_writes: self.memory_writes,
-        }
+        self.state.savepoint()
     }
 
-    /// Undo everything since `point`: roll back each record touched since, newest first, and
-    /// give back the keys, changes and memories added since.
+    /// Undo everything since `point`, as `State::rollback` says.
     pub(crate) fn rollback(&mut self, point: Savepoint) {
-        let ledger = &mut self.ledger;
-        for touch in ledger.touched.drain(point.touched..).rev() {
-            match touch {
-                Touch::Edited(at, edits) => {
-                    if let Some(record) = self.state.record_mut(&at) {
-                        record.rollback(edits);
-                    }
-                }
-                Touch::NewPlace(id) => {
-                    self.state.places.remove(&id);
-                }
-                Touch::NewStory(id) => {
-                    self.state.stories.remove(&id);
-                }
-            }
-        }
-        for key in ledger.key_order.drain(point.keys..) {
-            ledger.keys.remove(&key);
-        }
-        ledger.changes.truncate(point.changes);
-        ledger.taken = point.taken;
-        self.memories.truncate(point.memories);
-        self.memory_writes = point.memory_writes;
+        self.state.rollback(point);
     }
-}
-
-impl Ledger {
-    /// Make `edit` on `record`, which `at` names, and keep how many edits it held before, for a
-    /// rollback. Whether it moved.
-    fn track<T, E: Edit<T>>(
-        &mut self,
-        at: impl FnOnce() -> ComponentId,
-        record: &mut Tracked<T, E>,
-        edit: E,
-    ) -> bool {
-        let edits = record.edits();
-        let moved = record.apply(edit);
-        if moved {
-            self.touched.push(Touch::Edited(at(), edits));
-        }
-        moved
-    }
-
-    /// Make `edit` on `record`, and when it moved, count `key` and keep its values before and
-    /// after, as `read` reads them.
-    fn land<T, E: Edit<T>>(
-        &mut self,
-        at: impl FnOnce() -> ComponentId,
-        record: &mut Tracked<T, E>,
-        edit: E,
-        key: StateKey,
-        read: impl Fn(&T, &StateKey) -> StateValue,
-    ) -> Result<(), Reason> {
-        let before = read(record, &key);
-        if !self.track(at, record, edit) {
-            return Ok(());
-        }
-        let after = read(record, &key);
-        self.note(key, before, after)
-    }
-
-    /// Count `key` and keep its change for the next take.
-    fn note(&mut self, key: StateKey, before: StateValue, after: StateValue) -> Result<(), Reason> {
-        self.count_key(&key)?;
-        self.changes.push(Change { key, before, after });
-        Ok(())
-    }
-
-    fn count_key(&mut self, key: &StateKey) -> Result<(), Reason> {
-        if self.keys.contains(key) {
-            return Ok(());
-        }
-        if self.keys.len() >= self.max_keys {
-            return Err(Reason::Budget);
-        }
-        self.keys.insert(key.clone());
-        self.key_order.push(key.clone());
-        Ok(())
-    }
-}
-
-/// How far the round had come: the length of each log a rollback cuts back.
-#[derive(Clone, Copy)]
-pub(crate) struct Savepoint {
-    touched: usize,
-    keys: usize,
-    changes: usize,
-    taken: usize,
-    memories: usize,
-    memory_writes: u32,
 }
 
 #[cfg(test)]
@@ -523,8 +379,8 @@ mod tests {
         canon.budget.max_state_keys_mutated = 2;
         // Bram's grit sits clamped at its minimum: taking more moves the offset, not the value.
         let mut state = opened.state().clone();
-        let bram = state.actors.get_mut("bram").unwrap().frontier_mut();
-        bram.meters.get_mut("grit").unwrap().offset = -5;
+        let bram = Holder::Actor("bram".to_string());
+        state.meters.frontier_mut(&bram, "grit").unwrap().offset = -5;
         let world = World::from_parts(&pack, Arc::new(canon), state);
         let nobody = crate::model::Presence::default();
         let mut draft = Draft::begin(&world, &nobody);
