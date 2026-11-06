@@ -92,13 +92,7 @@ fn briar_has_flag_downed(world: &mut World) {
         "the downed rule did not fire\n{round}"
     );
     assert!(
-        state_of(pack)
-            .actors
-            .get("briar")
-            .unwrap()
-            .flags
-            .iter()
-            .any(|flag| flag == "downed"),
+        state_of(pack).has_flag(&Holder::Actor("briar".to_string()), "downed"),
         "briar is not downed"
     );
 }
@@ -172,12 +166,8 @@ rules:
     write_nell(&pack, &["found_key"]);
     edit_table(world, &pack, |now, seated| {
         insert_actor_copy(now, seated, "pc_rowan", "pc_nell", "docks_street");
-        now.actors
-            .get_mut("pc_nell")
-            .unwrap()
-            .frontier_mut()
-            .flags
-            .push("found_key".to_string());
+        let nell = Holder::Actor("pc_nell".to_string());
+        now.flags.insert(nell, "found_key".to_string(), ());
         let start = MeterLive { base: 0, offset: 0 };
         now.meters.insert(Holder::World, "tide".to_string(), start);
     });
@@ -671,7 +661,7 @@ fn nell_sets_the_tide(world: &mut World) {
 fn the_world_has_the_tide(world: &mut World) {
     let now = state_of(world.pack.as_ref().unwrap());
     assert!(
-        now.flags.iter().any(|flag| flag == "tide_turned"),
+        now.has_flag(&Holder::World, "tide_turned"),
         "flags: {:?}",
         now.flags
     );
@@ -836,10 +826,12 @@ fn the_rounds_only_refusal_is(world: &mut World, code: String) {
 #[then(expr = "no place has the {string} flag")]
 fn no_place_has_the_flag(world: &mut World, flag: String) {
     let now = state_of(world.pack.as_ref().unwrap());
-    assert!(now
+    let places: Vec<Holder> = now
         .places
-        .values()
-        .all(|place| !place.flags.contains(&flag)));
+        .keys()
+        .map(|id| Holder::Place(id.clone()))
+        .collect();
+    assert!(places.iter().all(|place| !now.has_flag(place, &flag)));
 }
 
 #[when(expr = "pc_nell travels from docks_street into docks_shop")]
@@ -1072,8 +1064,8 @@ rules:
             },
         );
         if downed {
-            let briar = now.actors.get_mut("briar").unwrap().frontier_mut();
-            briar.flags.push("downed".to_string());
+            let briar = Holder::Actor("briar".to_string());
+            now.flags.insert(briar, "downed".to_string(), ());
         }
         sit(seated, &["pc_rowan"]);
     });
@@ -1158,7 +1150,8 @@ fn insert_actor_copy(now: &mut State, seated: &mut Presence, from: &str, id: &st
     spookery_engine::testing::copy_actor(now, from, id);
     let live = now.actors.get_mut(id).unwrap().frontier_mut();
     live.place = place.to_string();
-    live.flags.clear();
+    let copy = Holder::Actor(id.to_string());
+    now.flags.retain(|holder, _, ()| *holder != copy);
     // Only pc_rowan carries the debt, so a copy of them does not.
     now.meters
         .remove(&Holder::Actor(id.to_string()), "assassination_debt");

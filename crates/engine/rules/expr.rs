@@ -761,7 +761,6 @@ mod tests {
                 ActorLive {
                     kind: ActorKind::Pc,
                     place: "room".to_string(),
-                    flags: Vec::new(),
                     inventory: BTreeMap::new(),
                     wielded: None,
                     known_facts: Vec::new(),
@@ -770,7 +769,7 @@ mod tests {
                 }
                 .into(),
             )]),
-            stories: BTreeMap::new(),
+            stories: Default::default(),
             meters,
             modifiers: Default::default(),
             notes: Default::default(),

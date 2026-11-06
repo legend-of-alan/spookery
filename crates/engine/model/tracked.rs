@@ -291,55 +291,6 @@ impl Edit<BTreeMap<String, u32>> for Count {
     }
 }
 
-/// A name joins a list of names, such as a holder's flags, at the end; leaves it; or comes
-/// back where it was, which is how a leave is undone.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Member {
-    Join(String),
-    Leave(String),
-    Back(usize, String),
-}
-
-impl Member {
-    /// The edit that sets `id` in or out of the list.
-    pub(crate) fn set(id: &str, on: bool) -> Member {
-        let id = id.to_string();
-        if on {
-            Member::Join(id)
-        } else {
-            Member::Leave(id)
-        }
-    }
-
-    /// The name this edit moves.
-    pub(crate) fn id(&self) -> &str {
-        match self {
-            Member::Join(id) | Member::Leave(id) | Member::Back(_, id) => id,
-        }
-    }
-}
-
-impl Edit<Vec<String>> for Member {
-    fn apply(self, list: &mut Vec<String>) -> Option<Self> {
-        let at = list.iter().position(|name| name == self.id());
-        match (self, at) {
-            (Member::Join(id), None) => {
-                list.push(id.clone());
-                Some(Member::Leave(id))
-            }
-            (Member::Back(at, id), None) => {
-                list.insert(at, id.clone());
-                Some(Member::Leave(id))
-            }
-            (Member::Leave(id), Some(at)) => {
-                list.remove(at);
-                Some(Member::Back(at, id))
-            }
-            _ => None,
-        }
-    }
-}
-
 /// Swap `value` into `field` when it differs, and give back the value it replaced.
 pub(crate) fn swap<T: PartialEq>(field: &mut T, value: T) -> Option<T> {
     (*field != value).then(|| std::mem::replace(field, value))
@@ -351,15 +302,20 @@ mod tests {
 
     #[test]
     fn a_rebase_keeps_the_value_and_only_the_newest_undo() {
-        let mut flags: Tracked<Vec<String>, Member> = Tracked::new(vec!["a".into(), "b".into()]);
-        assert!(flags.apply(Member::set("a", false)));
-        assert!(flags.apply(Member::set("c", true)));
-        assert!(!flags.apply(Member::set("c", true)), "already in");
-        flags.rebase(1);
-        assert_eq!(*flags, ["b", "c"]);
-        flags.rollback(0);
-        assert_eq!(*flags, ["b"], "the older edit can no longer be undone");
-        flags.rebase(0);
-        assert_eq!(flags.edits(), 0);
+        let count = |id: &str, by| Count { id: id.into(), by };
+        let mut items: Tracked<BTreeMap<String, u32>, Count> = Tracked::default();
+        assert!(items.apply(count("oil", 2)));
+        assert!(items.apply(count("rope", 1)));
+        assert!(!items.apply(count("rope", 0)), "no move");
+        items.rebase(1);
+        assert_eq!(
+            *items,
+            BTreeMap::from([("oil".into(), 2), ("rope".into(), 1)])
+        );
+        items.rollback(0);
+        let left = BTreeMap::from([("oil".into(), 2)]);
+        assert_eq!(*items, left, "the older edit can no longer be undone");
+        items.rebase(0);
+        assert_eq!(items.edits(), 0);
     }
 }

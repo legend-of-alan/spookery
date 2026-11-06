@@ -72,6 +72,17 @@ impl StateKey {
         })
     }
 
+    /// The key of flag `key` on `holder`. An exit's one flag, `open`, is its door.
+    pub(crate) fn flag(holder: &Holder, key: &str) -> StateKey {
+        match holder {
+            Holder::Actor(id) => StateKey::ActorFlag(id.clone(), key.to_string()),
+            Holder::Place(id) => StateKey::PlaceFlag(id.clone(), key.to_string()),
+            Holder::Story(id) => StateKey::StoryFlag(id.clone(), key.to_string()),
+            Holder::Exit(place, exit) => StateKey::ExitOpen(place.clone(), exit.clone()),
+            Holder::World => StateKey::WorldFlag(key.to_string()),
+        }
+    }
+
     /// The actor this key belongs to, when it has one.
     pub fn actor(&self) -> Option<&str> {
         match self {

@@ -405,7 +405,7 @@ fn the_vigil_fires_once(world: &mut World) {
         .filter(|name| name == "story:vigil/dawn_breaks")
         .count();
     assert_eq!(fired, 1);
-    assert!(state_of(pack).flags.contains(&"dawn_broke".to_string()));
+    assert!(state_of(pack).has_flag(&Holder::World, "dawn_broke"));
 }
 
 /// Give the world a `morning` meter from 0, and append effects to the vigil's dawn rule, the

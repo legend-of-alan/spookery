@@ -154,7 +154,7 @@ fn travel_is_cancellable(world: &mut World) {
 fn never_finished(world: &mut World, verb: String, rest: i64) {
     let now = state_of(world.pack.as_ref().unwrap());
     assert!(
-        !now.flags.contains(&format!("{verb}_done")),
+        !now.has_flag(&spookery_engine::Holder::World, &format!("{verb}_done")),
         "{:?}",
         now.flags
     );
@@ -170,7 +170,7 @@ fn never_finished(world: &mut World, verb: String, rest: i64) {
 fn finished(world: &mut World, verb: String) {
     let now = state_of(world.pack.as_ref().unwrap());
     assert!(
-        now.flags.contains(&format!("{verb}_done")),
+        now.has_flag(&spookery_engine::Holder::World, &format!("{verb}_done")),
         "{:?}",
         now.flags
     );

@@ -32,8 +32,8 @@ pub(crate) fn give_key(now: &mut State) {
         .frontier_mut()
         .inventory
         .insert("brass_key".to_string(), 1);
-    let shop = now.places.get_mut("docks_shop").unwrap().frontier_mut();
-    shop.open.push("stairs".to_string());
+    let stairs = spookery_engine::Holder::Exit("docks_shop".into(), "stairs".into());
+    now.flags.insert(stairs, "open".to_string(), ());
 }
 
 pub(crate) fn add_trapdoor(pack: &Path) {

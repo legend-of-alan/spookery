@@ -688,13 +688,8 @@ fn lark_hits_with_the_dagger(world: &mut World) {
 fn the_poison_fades(world: &mut World, text: String) {
     let pack = world.pack.as_ref().unwrap();
     assert_eq!(hp(pack, "pc_nell"), 7);
-    assert!(!support::state_of(pack)
-        .actors
-        .get("pc_nell")
-        .unwrap()
-        .flags
-        .iter()
-        .any(|flag| flag == "poisoned"));
+    let nell = spookery_engine::Holder::Actor("pc_nell".to_string());
+    assert!(!support::state_of(pack).has_flag(&nell, "poisoned"));
     let round: Value = serde_json::from_str(read_first_round_line(pack).trim()).unwrap();
     assert!(round["refused"].as_array().unwrap().is_empty(), "{round}");
     let effects = round["effects"].to_string();

@@ -252,10 +252,11 @@ fn the_ferry_rule_runs(world: &mut World) {
     let now = state_of(world.pack.as_ref().unwrap());
     let rowan = now.actors.get("pc_rowan").unwrap();
     assert_eq!(rowan.place, "ferry_dock", "verb:travel moved the PC");
+    let holder = spookery_engine::Holder::Actor("pc_rowan".to_string());
     assert!(
-        rowan.flags.iter().any(|flag| flag == "took_the_ferry"),
+        now.has_flag(&holder, "took_the_ferry"),
         "ferry flag missing: {:?}",
-        rowan.flags
+        now.flags
     );
 }
 
@@ -559,9 +560,10 @@ fn lark_attacks(world: &mut World) {
 fn the_outcome_is_a_miss(world: &mut World) {
     assert_eq!(world.scratch, "miss");
     let now = state_of(world.pack.as_ref().unwrap());
-    let flags = &now.actors.get("npc_briar").unwrap().flags;
-    assert!(flags.iter().any(|flag| flag == "missed"), "{flags:?}");
-    assert!(!flags.iter().any(|flag| flag == "hit"), "{flags:?}");
+    let briar = spookery_engine::Holder::Actor("npc_briar".to_string());
+    let flags = &now.flags;
+    assert!(now.has_flag(&briar, "missed"), "{flags:?}");
+    assert!(!now.has_flag(&briar, "hit"), "{flags:?}");
 }
 
 #[given(expr = "a pack with rules\\/moves.yaml")]
@@ -787,7 +789,10 @@ fn both_full_ids_are_refused(world: &mut World) {
         "the habit note was stored"
     );
     assert!(
-        !rowan.flags.iter().any(|flag| flag == "took_the_street"),
+        !now.has_flag(
+            &spookery_engine::Holder::Actor("pc_rowan".to_string()),
+            "took_the_street"
+        ),
         "the far place rule ran"
     );
 }
@@ -1014,7 +1019,7 @@ fn briars_ask_runs_on_briar(world: &mut World) {
     assert_eq!(world.scratch, r#"{"actor":"npc_briar"} cast:npc_briar/ask"#);
     let now = state_of(world.pack.as_ref().unwrap());
     assert!(
-        now.flags.iter().any(|flag| flag == "passage"),
+        now.has_flag(&spookery_engine::Holder::World, "passage"),
         "{:?}",
         now.flags
     );

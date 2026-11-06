@@ -61,6 +61,8 @@ enum Touch {
 /// A component a write took off, whole, with the undo it held, to put back.
 pub(crate) enum Removed {
     Modifier(Holder, String, Tracked<ModifierLive, ModifierLive>),
+    /// A flag holds no value, so its holder and key are all there is.
+    Flag(Holder, String),
 }
 
 /// How far the round had come: the length of each log a rollback cuts back.
@@ -205,6 +207,9 @@ impl State {
                 Touch::Added(at) => self.take_off(&at),
                 Touch::Removed(Removed::Modifier(holder, id, part)) => {
                     self.modifiers.put(holder, id, part);
+                }
+                Touch::Removed(Removed::Flag(holder, key)) => {
+                    self.flags.put(holder, key, Tracked::default());
                 }
             }
         }

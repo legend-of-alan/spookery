@@ -157,8 +157,10 @@ idle:
     assert_ne!(text, next);
     fs::write(&path, next).unwrap();
     support::edit_save(&pack, |state| {
-        state.actors.get_mut("mira").unwrap().frontier_mut().flags =
-            vec!["calm".into(), "wary".into()];
+        let mira = spookery_engine::Holder::Actor("mira".to_string());
+        for flag in ["calm", "wary"] {
+            state.flags.insert(mira.clone(), flag.to_string(), ());
+        }
     });
     make_mira_ineligible(&pack);
     world.pack = Some(pack);
@@ -170,10 +172,16 @@ idle:
 fn the_door_stays_locked_and_mira_keeps_her_flags(world: &mut World, oil: i64, reason: String) {
     assert_refusal(world, oil, &reason);
     let saved = spookery_engine::World::peek(world.pack()).unwrap();
-    let shop = saved.state().places.get("docks_shop");
-    assert!(shop.is_none_or(|shop| shop.open.is_empty()), "{shop:?}");
-    assert_eq!(saved.state().actors["mira"].flags, ["calm", "wary"]);
+    let stairs = spookery_engine::Holder::Exit("docks_shop".into(), "stairs".into());
+    assert!(!saved.state().has_flag(&stairs, "open"));
     let mira = spookery_engine::Holder::Actor("mira".to_string());
+    let flags: Vec<_> = saved
+        .state()
+        .flags
+        .on(&mira)
+        .map(|(flag, ())| flag)
+        .collect();
+    assert_eq!(flags, ["calm", "wary"]);
     let held: Vec<_> = saved.state().modifiers.on(&mira).collect();
     assert!(held.is_empty(), "{held:?}");
     let stored = saved.state().meters.get(&mira, "grit").unwrap();
@@ -651,7 +659,10 @@ fn a_street_rule_over_the_cap(world: &mut World) {
 #[when(expr = "Rowan walks to the street")]
 fn rowan_walks_to_the_street(world: &mut World) {
     let (state, round) = rowan_walks(world.pack(), Vec::new());
-    world.count = state.actors["pc_rowan"].flags.len();
+    world.count = state
+        .flags
+        .on(&spookery_engine::Holder::Actor("pc_rowan".to_string()))
+        .count();
     world.scratch = round.to_string();
 }
 

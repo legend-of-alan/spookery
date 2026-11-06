@@ -218,8 +218,8 @@ pub mod testing {
         write_save(pack, &state);
     }
 
-    /// Give the save an actor `to` that is a copy of actor `from`: their record, meters and
-    /// modifiers.
+    /// Give the save an actor `to` that is a copy of actor `from`: their record, meters,
+    /// modifiers and flags.
     pub fn copy_actor(state: &mut crate::State, from: &str, to: &str) {
         let record = state.actors[from].clone();
         state.actors.insert(to.to_string(), record);
@@ -239,14 +239,19 @@ pub mod testing {
         for (key, live) in held {
             state.modifiers.insert(to.clone(), key, live);
         }
+        let flags: Vec<String> = state.flags.on(&from).map(|(key, ())| key.clone()).collect();
+        for key in flags {
+            state.flags.insert(to.clone(), key, ());
+        }
     }
 
-    /// Take actor `id` out of the save: their record, meters and modifiers.
+    /// Take actor `id` out of the save: their record, meters, modifiers and flags.
     pub fn remove_actor(state: &mut crate::State, id: &str) {
         state.actors.remove(id);
         let actor = crate::Holder::Actor(id.to_string());
         state.meters.retain(|holder, _, _| *holder != actor);
         state.modifiers.retain(|holder, _, _| *holder != actor);
+        state.flags.retain(|holder, _, _| *holder != actor);
     }
 
     pub fn stamp_pack_rev(pack: &Path) {
@@ -279,7 +284,6 @@ pub mod testing {
                 crate::model::ActorLive {
                     kind: crate::model::ActorKind::Pc,
                     place: "docks_shop".to_string(),
-                    flags: Vec::new(),
                     inventory: std::collections::BTreeMap::new(),
                     wielded: None,
                     known_facts: Vec::new(),

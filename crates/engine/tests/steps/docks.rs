@@ -59,10 +59,13 @@ fn lamp_oil(state: &State) -> u32 {
 }
 
 fn flags_of(state: &State, id: &str) -> Vec<String> {
-    match state.actors.get(id) {
-        Some(actor) => actor.flags.clone(),
-        None => panic!("{id} missing"),
-    }
+    assert!(state.actors.contains_key(id), "{id} missing");
+    let actor = Holder::Actor(id.to_string());
+    state
+        .flags
+        .on(&actor)
+        .map(|(flag, ())| flag.clone())
+        .collect()
 }
 
 fn snapshot(root: &Path) -> Vec<(PathBuf, Vec<u8>)> {
@@ -350,7 +353,6 @@ Rowan.
         ActorLive {
             kind: ActorKind::Pc,
             place: "gate".to_string(),
-            flags: Vec::new(),
             inventory: BTreeMap::new(),
             wielded: None,
             known_facts: Vec::new(),
@@ -478,7 +480,6 @@ rules:
             ActorLive {
                 kind: ActorKind::Npc,
                 place: "yard".to_string(),
-                flags: Vec::new(),
                 inventory: BTreeMap::new(),
                 wielded: None,
                 known_facts: Vec::new(),

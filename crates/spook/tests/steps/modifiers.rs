@@ -431,15 +431,15 @@ fn grit_watches(world: &mut World, low: String, below: String, high: String, abo
 
 #[then(expr = "the world flag {string} is set and {string} is not")]
 fn one_world_flag_is_set(world: &mut World, set: String, clear: String) {
-    let flags = state_of(pack(world)).flags;
-    assert!(flags.contains(&set), "{flags:?}");
-    assert!(!flags.contains(&clear), "{flags:?}");
+    let now = state_of(pack(world));
+    assert!(now.has_flag(&Holder::World, &set), "{:?}", now.flags);
+    assert!(!now.has_flag(&Holder::World, &clear), "{:?}", now.flags);
 }
 
 #[then(expr = "the world flag {string} is set")]
 fn the_world_flag_is_set(world: &mut World, set: String) {
-    let flags = state_of(pack(world)).flags;
-    assert!(flags.contains(&set), "{flags:?}");
+    let now = state_of(pack(world));
+    assert!(now.has_flag(&Holder::World, &set), "{:?}", now.flags);
 }
 
 #[then(expr = "the GM sees {string} as a changed key")]

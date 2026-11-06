@@ -47,11 +47,8 @@ fn place_of(pack: &Path, actor: &str) -> String {
 
 fn stairs_open(pack: &Path) -> bool {
     let saved = spookery_engine::World::peek(pack).unwrap();
-    saved
-        .state()
-        .places
-        .get("docks_shop")
-        .is_some_and(|shop| shop.open.contains(&"stairs".to_string()))
+    let stairs = spookery_engine::Holder::Exit("docks_shop".into(), "stairs".into());
+    saved.state().has_flag(&stairs, "open")
 }
 
 /// The docks pack with Mira on the street holding brass_key and keeping no habits, a `bolt`
@@ -194,7 +191,9 @@ fn the_journal_has_the_open(world: &mut World) {
 #[then(expr = "a change rule watching open has run in that round")]
 fn the_watch_ran(world: &mut World) {
     let saved = spookery_engine::World::peek(world.pack()).unwrap();
-    assert!(saved.state().flags.contains(&"creaked".to_string()));
+    assert!(saved
+        .state()
+        .has_flag(&spookery_engine::Holder::World, "creaked"));
     drop(saved);
     let round = support::read_round(world.pack(), "round-0001");
     let creaked = round["effects"].as_array().unwrap().iter().any(|effect| {

@@ -1,16 +1,15 @@
 //! Read, write and migrate the save.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 use serde_saphyr::SerializerOptions;
 
-use crate::canon::Canon;
+use crate::canon::{Canon, OPEN};
 use crate::diagnostic::{check_tag, error, locate_nth, parse_file, schema_error, Diagnostic};
 use crate::model::meter::MeterLive;
 use crate::model::modifier::{self, ModifierLive};
-use crate::model::{exit_parts, sort_unique, Act, ActorKind, ActorLive, Note, PlaceLive};
-use crate::model::{State, StoryLive};
+use crate::model::{exit_parts, sort_unique, Act, ActorKind, ActorLive, Note, PlaceLive, State};
 use crate::rules::effect::Holder;
 use crate::store::records::{AddedMeter, DroppedMeter};
 use crate::Reason;
@@ -82,7 +81,8 @@ struct ActorSave {
 }
 
 impl From<SaveFile> for State {
-    /// Each record's meters and modifiers go to the stores, under it.
+    /// Each record's meters, modifiers and flags go to the stores, under it. A place's open
+    /// doors are its exits' `open` flags.
     fn from(file: SaveFile) -> Self {
         let mut state = State {
             schema: file.schema,
@@ -93,49 +93,45 @@ impl From<SaveFile> for State {
             round_index: file.round_index,
             world_time: file.world_time,
             last_round_at: file.last_round_at,
-            places: BTreeMap::new(),
-            actors: BTreeMap::new(),
-            stories: BTreeMap::new(),
-            meters: Default::default(),
-            modifiers: Default::default(),
             notes: file.notes.into(),
-            flags: file.flags.into(),
-            ledger: Default::default(),
+            ..State::default()
         };
-        let mut meters = |holder: Holder, held: BTreeMap<String, MeterLive>| {
-            for (key, live) in held {
+        let mut give = |holder: Holder, meters: BTreeMap<String, MeterLive>, flags: Vec<String>| {
+            for (key, live) in meters {
                 state.meters.insert(holder.clone(), key, live);
             }
+            for key in flags {
+                state.flags.insert(holder.clone(), key, ());
+            }
         };
-        meters(Holder::World, file.world_meters);
+        give(Holder::World, file.world_meters, file.flags);
         let mut places = BTreeMap::new();
         for (id, place) in file.places {
-            meters(Holder::Place(id.clone()), place.meters);
-            let PlaceSave {
-                items, flags, open, ..
-            } = place;
-            places.insert(id, PlaceLive { items, flags, open }.into());
+            for exit in place.open {
+                give(
+                    Holder::Exit(id.clone(), exit),
+                    BTreeMap::new(),
+                    vec![OPEN.to_string()],
+                );
+            }
+            give(Holder::Place(id.clone()), place.meters, place.flags);
+            places.insert(id, PlaceLive { items: place.items }.into());
         }
-        let mut stories = BTreeMap::new();
+        let mut stories = BTreeSet::new();
         for (id, story) in file.stories {
-            meters(Holder::Story(id.clone()), story.meters);
-            stories.insert(id, StoryLive { flags: story.flags }.into());
+            give(Holder::Story(id.clone()), story.meters, story.flags);
+            stories.insert(id);
         }
         let mut actors = BTreeMap::new();
         let mut modifiers = Vec::new();
         for (id, actor) in file.actors {
             let holder = Holder::Actor(id.clone());
-            meters(holder.clone(), actor.meters);
-            modifiers.extend(
-                actor
-                    .modifiers
-                    .into_iter()
-                    .map(|(key, live)| (holder.clone(), key, live)),
-            );
+            give(holder.clone(), actor.meters, actor.flags);
+            let held = actor.modifiers.into_iter();
+            modifiers.extend(held.map(|(key, live)| (holder.clone(), key, live)));
             let record = ActorLive {
                 kind: actor.kind,
                 place: actor.place,
-                flags: actor.flags,
                 inventory: actor.inventory,
                 wielded: actor.wielded,
                 known_facts: actor.known_facts,
@@ -155,7 +151,7 @@ impl From<SaveFile> for State {
 }
 
 impl From<&State> for SaveFile {
-    /// Each meter and modifier goes back into its holder's record.
+    /// Each meter, modifier and flag goes back into its holder's record, in key order.
     fn from(state: &State) -> Self {
         let mut file = SaveFile {
             schema: state.schema.clone(),
@@ -171,34 +167,26 @@ impl From<&State> for SaveFile {
             stories: BTreeMap::new(),
             world_meters: BTreeMap::new(),
             notes: state.notes.to_vec(),
-            flags: state.flags.to_vec(),
+            flags: Vec::new(),
         };
         for (id, place) in &state.places {
-            let PlaceLive { items, flags, open } = &**place;
-            let (items, flags, open) = (items.clone(), flags.clone(), open.clone());
-            let place = PlaceSave {
-                items,
-                flags,
-                open,
-                ..PlaceSave::default()
-            };
-            file.places.insert(id.clone(), place);
-        }
-        for (id, story) in &state.stories {
-            let flags = story.flags.clone();
-            file.stories.insert(
+            let items = place.items.clone();
+            (file.places).insert(
                 id.clone(),
-                StorySave {
-                    flags,
-                    ..StorySave::default()
+                PlaceSave {
+                    items,
+                    ..PlaceSave::default()
                 },
             );
+        }
+        for id in &state.stories {
+            file.stories.insert(id.clone(), StorySave::default());
         }
         for (id, actor) in &state.actors {
             let actor = ActorSave {
                 kind: actor.kind,
                 place: actor.place.clone(),
-                flags: actor.flags.clone(),
+                flags: Vec::new(),
                 meters: BTreeMap::new(),
                 modifiers: BTreeMap::new(),
                 inventory: actor.inventory.clone(),
@@ -221,14 +209,32 @@ impl From<&State> for SaveFile {
             meters.insert(key.clone(), live.clone());
         }
         for (holder, key, live) in state.modifiers.iter() {
-            let Holder::Actor(id) = holder else {
-                unreachable!("only an actor holds modifiers");
+            let actor = match holder {
+                Holder::Actor(id) => file.actors.get_mut(id),
+                _ => None,
             };
-            let actor = file
-                .actors
-                .get_mut(id)
-                .expect("a modifier's actor has a record");
+            let actor = actor.expect("a modifier's actor has a record");
             actor.modifiers.insert(key.clone(), live.clone());
+        }
+        for (holder, key, ()) in state.flags.iter() {
+            let (flags, name) = match holder {
+                Holder::Actor(id) => (file.actors.get_mut(id).map(|actor| &mut actor.flags), key),
+                Holder::Place(id) => (
+                    Some(&mut file.places.entry(id.clone()).or_default().flags),
+                    key,
+                ),
+                Holder::Story(id) => (
+                    Some(&mut file.stories.entry(id.clone()).or_default().flags),
+                    key,
+                ),
+                Holder::Exit(place, exit) => (
+                    Some(&mut file.places.entry(place.clone()).or_default().open),
+                    exit,
+                ),
+                Holder::World => (Some(&mut file.flags), key),
+            };
+            let flags = flags.expect("a flag's holder has a record that can hold it");
+            flags.push(name.clone());
         }
         file
     }
@@ -316,19 +322,8 @@ pub fn normalize(state: &mut State) {
         sort_unique(&mut note.fact_ids);
     }
     for actor in state.actors.values_mut() {
-        let actor = actor.frontier_mut();
-        sort_unique(&mut actor.flags);
-        sort_unique(&mut actor.known_facts);
+        sort_unique(&mut actor.frontier_mut().known_facts);
     }
-    for place in state.places.values_mut() {
-        let place = place.frontier_mut();
-        sort_unique(&mut place.flags);
-        sort_unique(&mut place.open);
-    }
-    for story in state.stories.values_mut() {
-        sort_unique(&mut story.frontier_mut().flags);
-    }
-    sort_unique(state.flags.frontier_mut());
 }
 
 fn check_actor_places(state: &State) -> Vec<Diagnostic> {
@@ -424,7 +419,7 @@ pub fn migrate(
                 vec![Holder::Place(id.clone())]
             }
             Some(Holder::Story(id)) => {
-                state.stories.entry(id.clone()).or_default();
+                state.stories.insert(id.clone());
                 vec![Holder::Story(id.clone())]
             }
             Some(holder @ Holder::World) => vec![holder.clone()],

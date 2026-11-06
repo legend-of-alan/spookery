@@ -1,4 +1,4 @@
-//! The live save: places, actors, stories, world meters, and notes.
+//! The live save: places, actors, stories, the component stores, and notes.
 
 pub(crate) mod key;
 pub(crate) mod ledger;
@@ -6,7 +6,7 @@ pub(crate) mod meter;
 pub(crate) mod modifier;
 pub(crate) mod tracked;
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
@@ -14,9 +14,9 @@ use key::{StateKey, StateValue};
 use ledger::Ledger;
 use meter::Meters;
 use modifier::Modifiers;
-use tracked::{swap, Count, Edit, Entry, Member, Rewind, Tracked};
+use tracked::{swap, Count, Edit, Entry, Rewind, Store, Tracked};
 
-use crate::canon::{Canon, OPEN};
+use crate::canon::Canon;
 use crate::intent::{Target, Viewer};
 use crate::rules::effect::Holder;
 
@@ -36,19 +36,24 @@ pub struct State {
     pub last_round_at: String,
     pub places: BTreeMap<String, Tracked<PlaceLive, PlaceEdit>>,
     pub actors: BTreeMap<String, Tracked<ActorLive, ActorEdit>>,
-    /// The flags each story holds, by story. A story that holds only meters may have none.
-    pub stories: BTreeMap<String, Tracked<StoryLive, StoryEdit>>,
+    /// The stories the save lists. A story's meters and flags are in the stores.
+    pub stories: BTreeSet<String>,
     /// Every live meter: each actor's, place's and story's, and the world's.
     pub meters: Meters,
     /// The modifiers each actor holds.
     pub modifiers: Modifiers,
+    /// Every flag set, on any holder. An exit's door is open when the exit has its flag `open`.
+    pub flags: Flags,
     pub notes: Tracked<Vec<Note>, NoteEdit>,
-    pub flags: Tracked<Vec<String>, Member>,
     pub(crate) ledger: Ledger,
 }
 
-/// One tracked component of the save: a live record, a meter or a modifier on its holder, or
-/// one of the world's lists.
+/// Each flag set on each holder. A flag is only on or off, so it has no edits: setting one puts
+/// it on, and clearing it takes it off.
+pub type Flags = Store<(), ()>;
+
+/// One tracked component of the save: a live record, the story a write listed, a meter, a
+/// modifier or a flag on its holder, or the notes.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum ComponentId {
     Actor(String),
@@ -56,7 +61,7 @@ pub(crate) enum ComponentId {
     Story(String),
     Meter(Holder, String),
     Modifier(Holder, String),
-    WorldFlags,
+    Flag(Holder, String),
     Notes,
 }
 
@@ -76,32 +81,20 @@ impl State {
         meter::current(def, live, modifier::sum(&self.modifiers, holder, key)?)
     }
 
-    /// Whether `holder` has flag `key` set. An exit's `open` is its name in its place's list.
-    pub(crate) fn has_flag(&self, holder: &Holder, key: &str) -> bool {
-        let (flags, entry) = match holder {
-            Holder::Actor(id) => (self.actors.get(id).map(|actor| &actor.flags), key),
-            Holder::Place(id) => (self.places.get(id).map(|place| &place.flags), key),
-            Holder::Story(id) => (self.stories.get(id).map(|story| &story.flags), key),
-            Holder::Exit(place, exit) if key == OPEN => (
-                self.places.get(place).map(|place| &place.open),
-                exit.as_str(),
-            ),
-            Holder::Exit(..) => (None, key),
-            Holder::World => (Some(&*self.flags), key),
-        };
-        flags.is_some_and(|flags| flags.iter().any(|flag| flag == entry))
+    /// Whether `holder` has flag `key` set.
+    pub fn has_flag(&self, holder: &Holder, key: &str) -> bool {
+        self.flags.get(holder, key).is_some()
     }
 
-    /// The component `at` names, to roll back or rebase, when it is there.
+    /// The component `at` names, to roll back or rebase, when it has edits to.
     pub(crate) fn component_mut(&mut self, at: &ComponentId) -> Option<&mut dyn Rewind> {
         Some(match at {
             ComponentId::Actor(id) => self.actors.get_mut(id)?,
             ComponentId::Place(id) => self.places.get_mut(id)?,
-            ComponentId::Story(id) => self.stories.get_mut(id)?,
             ComponentId::Meter(holder, key) => self.meters.tracked_mut(holder, key)?,
             ComponentId::Modifier(holder, id) => self.modifiers.tracked_mut(holder, id)?,
-            ComponentId::WorldFlags => &mut self.flags,
             ComponentId::Notes => &mut self.notes,
+            ComponentId::Story(_) | ComponentId::Flag(..) => return None,
         })
     }
 
@@ -111,10 +104,10 @@ impl State {
             ComponentId::Place(id) => drop(self.places.remove(id)),
             ComponentId::Story(id) => drop(self.stories.remove(id)),
             ComponentId::Modifier(holder, id) => drop(self.modifiers.take(holder, id)),
-            ComponentId::Actor(_)
-            | ComponentId::Meter(..)
-            | ComponentId::WorldFlags
-            | ComponentId::Notes => unreachable!("no write puts on {at:?}"),
+            ComponentId::Flag(holder, key) => drop(self.flags.take(holder, key)),
+            ComponentId::Actor(_) | ComponentId::Meter(..) | ComponentId::Notes => {
+                unreachable!("no write puts on {at:?}")
+            }
         }
     }
 
@@ -141,24 +134,17 @@ pub struct Presence {
     pub actors_present: Vec<String>,
 }
 
-/// One place's record. Its meters are in the save's meter store, under it.
+/// One place's record. Its meters and flags are in the save's stores, under it.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct PlaceLive {
     pub items: BTreeMap<String, u32>,
-    /// The flags set on this place.
-    pub flags: Vec<String>,
-    /// The names of this place's exits whose door is open.
-    pub open: Vec<String>,
 }
 
 impl PlaceLive {
-    /// What key `key` reads on this place: an item count, a flag, or whether a door is open.
-    /// `Empty` for any other key.
+    /// What key `key` reads on this place: an item count. `Empty` for any other key.
     pub(crate) fn value(&self, key: &StateKey) -> StateValue {
         match key {
             StateKey::PlaceItem(_, item) => count(self.items.get(item).copied().unwrap_or(0)),
-            StateKey::PlaceFlag(_, key) => StateValue::Bool(self.flags.contains(key)),
-            StateKey::ExitOpen(_, exit) => StateValue::Bool(self.open.contains(exit)),
             _ => StateValue::Empty,
         }
     }
@@ -168,9 +154,6 @@ impl PlaceLive {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum PlaceEdit {
     Item(Count),
-    Flag(Member),
-    /// An exit's door, by the exit's name.
-    Open(Member),
 }
 
 impl PlaceEdit {
@@ -179,8 +162,6 @@ impl PlaceEdit {
         let id = id.to_string();
         match self {
             PlaceEdit::Item(edit) => StateKey::PlaceItem(id, edit.id.clone()),
-            PlaceEdit::Flag(edit) => StateKey::PlaceFlag(id, edit.id().to_string()),
-            PlaceEdit::Open(edit) => StateKey::ExitOpen(id, edit.id().to_string()),
         }
     }
 }
@@ -189,58 +170,15 @@ impl Edit<PlaceLive> for PlaceEdit {
     fn apply(self, place: &mut PlaceLive) -> Option<Self> {
         Some(match self {
             PlaceEdit::Item(edit) => PlaceEdit::Item(edit.apply(&mut place.items)?),
-            PlaceEdit::Flag(edit) => PlaceEdit::Flag(edit.apply(&mut place.flags)?),
-            PlaceEdit::Open(edit) => PlaceEdit::Open(edit.apply(&mut place.open)?),
         })
     }
 }
 
-/// The flags set on a story. Its meters are in the save's meter store, under it.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct StoryLive {
-    pub flags: Vec<String>,
-}
-
-impl StoryLive {
-    /// What key `key` reads on this story: a flag. `Empty` for any other key.
-    pub(crate) fn value(&self, key: &StateKey) -> StateValue {
-        match key {
-            StateKey::StoryFlag(_, key) => StateValue::Bool(self.flags.contains(key)),
-            _ => StateValue::Empty,
-        }
-    }
-}
-
-/// One change to a story's live record. Making it gives back its undo.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum StoryEdit {
-    Flag(Member),
-}
-
-impl StoryEdit {
-    /// The key this edit moves on story `id`.
-    pub(crate) fn key(&self, id: &str) -> StateKey {
-        let id = id.to_string();
-        match self {
-            StoryEdit::Flag(edit) => StateKey::StoryFlag(id, edit.id().to_string()),
-        }
-    }
-}
-
-impl Edit<StoryLive> for StoryEdit {
-    fn apply(self, story: &mut StoryLive) -> Option<Self> {
-        Some(match self {
-            StoryEdit::Flag(edit) => StoryEdit::Flag(edit.apply(&mut story.flags)?),
-        })
-    }
-}
-
-/// One actor's record. Their meters and modifiers are in the save's stores, under them.
+/// One actor's record. Their meters, modifiers and flags are in the save's stores, under them.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ActorLive {
     pub kind: ActorKind,
     pub place: String,
-    pub flags: Vec<String>,
     pub inventory: BTreeMap<String, u32>,
     pub wielded: Option<String>,
     pub known_facts: Vec<String>,
@@ -289,7 +227,6 @@ impl ActorLive {
     pub(crate) fn value(&self, key: &StateKey) -> StateValue {
         match key {
             StateKey::ActorPlace(_) => StateValue::Text(self.place.clone()),
-            StateKey::ActorFlag(_, key) => StateValue::Bool(self.flags.contains(key)),
             StateKey::ActorItem(_, item) => count(self.item_count(item)),
             StateKey::ActorWielded(_) => {
                 (self.wielded.clone()).map_or(StateValue::Empty, StateValue::Text)
@@ -309,7 +246,6 @@ impl ActorLive {
 pub enum ActorEdit {
     /// The place they stand in, or the exit they walk.
     Place(String),
-    Flag(Member),
     Item(Count),
     Wielded(Option<String>),
     /// Facts they come to know, each put in sorted order. Its undo is `Forget`.
@@ -329,7 +265,6 @@ impl ActorEdit {
         let id = id.to_string();
         Some(match self {
             ActorEdit::Place(_) => StateKey::ActorPlace(id),
-            ActorEdit::Flag(edit) => StateKey::ActorFlag(id, edit.id().to_string()),
             ActorEdit::Item(edit) => StateKey::ActorItem(id, edit.id.clone()),
             ActorEdit::Wielded(_) => StateKey::ActorWielded(id),
             ActorEdit::Learn(_) | ActorEdit::Forget(_) => StateKey::ActorKnownFact(id),
@@ -345,7 +280,6 @@ impl Edit<ActorLive> for ActorEdit {
     fn apply(self, actor: &mut ActorLive) -> Option<Self> {
         Some(match self {
             ActorEdit::Place(place) => ActorEdit::Place(swap(&mut actor.place, place)?),
-            ActorEdit::Flag(edit) => ActorEdit::Flag(edit.apply(&mut actor.flags)?),
             ActorEdit::Item(edit) => ActorEdit::Item(edit.apply(&mut actor.inventory)?),
             ActorEdit::Wielded(item) => ActorEdit::Wielded(swap(&mut actor.wielded, item)?),
             ActorEdit::Learn(facts) => {

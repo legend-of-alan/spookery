@@ -188,7 +188,6 @@ fn two_arrivals(world: &mut World) {
             spookery_engine::testing::ActorLive {
                 kind: spookery_engine::testing::ActorKind::Pc,
                 place: "exit:docks_shop.docks_street".to_string(),
-                flags: Vec::new(),
                 inventory: Default::default(),
                 wielded: None,
                 known_facts: Vec::new(),
@@ -319,7 +318,6 @@ fn both_busy_without_a_gm(world: &mut World) {
             spookery_engine::testing::ActorLive {
                 kind: spookery_engine::testing::ActorKind::Pc,
                 place: "docks_shop".to_string(),
-                flags: Vec::new(),
                 inventory: Default::default(),
                 wielded: None,
                 known_facts: Vec::new(),

@@ -10,9 +10,9 @@ use crate::model::key::{Change, StateKey, StateValue};
 use crate::model::ledger::{Ledger, Removed, Savepoint};
 use crate::model::meter::Offset;
 use crate::model::modifier::ModifierLive;
-use crate::model::tracked::{Count, Member, Tracked};
+use crate::model::tracked::{Count, Tracked};
 use crate::model::{reading, ActCounter, ActorEdit, ComponentId, MemoryLine, Note, NoteEdit};
-use crate::model::{PendingAction, PlaceEdit, Presence, State, StoryEdit};
+use crate::model::{PendingAction, PlaceEdit, Presence, State};
 use crate::rules::effect::Holder;
 use crate::world::World;
 use crate::Reason;
@@ -158,18 +158,6 @@ impl<'p> Draft<'p> {
         ledger.land(at, place, edit, key, |place, key| place.value(key))
     }
 
-    /// Make `edit` on story `id`'s live record, which it must have, counted and kept as
-    /// `edit_actor` says.
-    pub(crate) fn edit_story(&mut self, id: &str, edit: StoryEdit) -> Result<(), Reason> {
-        let State {
-            stories, ledger, ..
-        } = &mut self.state;
-        let story = stories.get_mut(id).ok_or(Reason::UnknownId)?;
-        let key = edit.key(id);
-        let at = || ComponentId::Story(id.to_string());
-        ledger.land(at, story, edit, key, |story, key| story.value(key))
-    }
-
     /// Give place or story `holder` an empty live record when it has none. No key answers for
     /// it.
     pub(crate) fn make_record(&mut self, holder: &Holder) -> Result<(), Reason> {
@@ -179,8 +167,8 @@ impl<'p> Draft<'p> {
                 state.places.insert(id.clone(), Tracked::default());
                 ComponentId::Place(id.clone())
             }
-            Holder::Story(id) if !state.stories.contains_key(id) => {
-                state.stories.insert(id.clone(), Tracked::default());
+            Holder::Story(id) if !state.stories.contains(id) => {
+                state.stories.insert(id.clone());
                 ComponentId::Story(id.clone())
             }
             Holder::Place(_) | Holder::Story(_) => return Ok(()),
@@ -285,31 +273,23 @@ impl<'p> Draft<'p> {
         }
     }
 
-    /// Set `holder`'s flag `key` on or off. An exit's one flag is `open`, its name in its
-    /// place's list. A flag already so changes nothing, so it needs no live record.
+    /// Set `holder`'s flag `key` on or off, counted and kept as `edit_actor` says. An exit's
+    /// one flag is `open`. A flag already so changes nothing.
     pub(crate) fn set_flag(&mut self, holder: &Holder, key: &str, on: bool) -> Result<(), Reason> {
-        if self.state.has_flag(holder, key) == on {
+        let State { flags, ledger, .. } = &mut self.state;
+        if flags.get(holder, key).is_some() == on {
             return Ok(());
         }
-        let edit = Member::set(key, on);
-        match holder {
-            Holder::Actor(id) => self.edit_actor(id, ActorEdit::Flag(edit)),
-            Holder::Place(id) => self.edit_place(id, PlaceEdit::Flag(edit)),
-            Holder::Story(id) => self.edit_story(id, StoryEdit::Flag(edit)),
-            Holder::Exit(place, exit) => {
-                self.edit_place(place, PlaceEdit::Open(Member::set(exit, on)))
-            }
-            Holder::World => {
-                let State { flags, ledger, .. } = &mut self.state;
-                let key = StateKey::WorldFlag(key.to_string());
-                let read = |flags: &Vec<String>, key: &StateKey| {
-                    StateValue::Bool(
-                        matches!(key, StateKey::WorldFlag(name) if flags.contains(name)),
-                    )
-                };
-                ledger.land(|| ComponentId::WorldFlags, flags, edit, key, read)
-            }
+        let (holder, key) = (holder.clone(), key.to_string());
+        let watched = StateKey::flag(&holder, &key);
+        if on {
+            flags.put(holder.clone(), key.clone(), Tracked::default());
+            ledger.added(ComponentId::Flag(holder, key));
+        } else {
+            flags.take(&holder, &key);
+            ledger.removed(Removed::Flag(holder, key));
         }
+        ledger.note(watched, StateValue::Bool(!on), StateValue::Bool(on))
     }
 
     /// Leave `note`, whose id no note has yet.
