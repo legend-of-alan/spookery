@@ -173,16 +173,16 @@ fn run_stages<'p, L>(
     apply::run(&mut draft, &canon, candidates, &clock, &mut dice, &mut log);
     let end = clock.world_time_after;
     finish::run(&mut draft, &canon, end, &mut dice, &mut log)?;
-    let mut changes = triggers::run(&mut draft, &canon, &mut dice, &mut log)?;
-    // A door that opens is a flag change, so change rules see it before the map refresh.
+    // A door that opens is a flag change, so change rules see it before the map refresh. This
+    // pass also takes the clock's changes in a round where no action ran.
     travel::open_doors(&mut draft, &mut log);
-    changes.extend(triggers::run(&mut draft, &canon, &mut dice, &mut log)?);
+    triggers::run(&mut draft, &canon, &mut dice, &mut log);
     travel::note_exits(&mut draft);
     let delivered = deliver::run(
         &canon,
         draft.state(),
         draft.presence,
-        &changes,
+        &log.changes,
         &log.effects,
     );
     Ok(StagedRound {

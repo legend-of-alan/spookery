@@ -19,6 +19,7 @@ use crate::round::dice::RoundDice;
 use crate::round::log::RoundLog;
 use crate::round::stage::advance::RoundTime;
 use crate::round::stage::resolve::{Candidate, Resolution};
+use crate::round::stage::triggers;
 
 /// What became of one rule's effects in `land`.
 pub(crate) enum Landing {
@@ -76,6 +77,7 @@ pub(crate) fn run(
                 keys_spent = true;
             }
         }
+        triggers::run(draft, canon, dice, log);
     }
 }
 

@@ -1,5 +1,6 @@
 //! What a round writes down.
 
+use crate::model::key::Change;
 use crate::rules::effect::Effect;
 use crate::rules::gate;
 use crate::rules::roll::{MoveReport, Roll};
@@ -13,6 +14,8 @@ pub(crate) struct RoundLog {
     pub dice: Vec<String>,
     pub extra_steps: Vec<Step>,
     pub reports: Vec<MoveReport>,
+    /// Every change record of the round, trigger pass by trigger pass.
+    pub changes: Vec<Change>,
 }
 
 impl RoundLog {

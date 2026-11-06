@@ -30,7 +30,8 @@ pub struct Budget {
     pub idle_catchup_max_rounds: u64,
     pub idle_max_ticks_per_real_hour: u64,
     pub max_fastforward_rounds: u64,
-    /// Trigger rounds in one tick. The next round logs `trigger_depth` and does not run.
+    /// Passes of change rules after one action lands. The next pass logs `trigger_depth` and
+    /// does not run.
     pub max_trigger_depth: u64,
 }
 

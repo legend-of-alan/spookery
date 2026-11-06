@@ -48,6 +48,9 @@ mod travel;
 #[path = "steps/lifecycle.rs"]
 mod lifecycle;
 
+#[path = "steps/action_triggers.rs"]
+mod action_triggers;
+
 #[path = "steps/triggers.rs"]
 mod triggers;
 
