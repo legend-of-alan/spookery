@@ -93,6 +93,22 @@ fn a_free_start(world: &mut World, verb: String) {
     );
 }
 
+#[given(expr = "Rowan stands on {word} in the save")]
+fn rowan_stands_on(world: &mut World, place: String) {
+    edit_save(world.pack.as_ref().unwrap(), |now| {
+        now.actors.get_mut("pc_rowan").unwrap().place = place;
+    });
+}
+
+#[then(expr = "spook check refuses Rowan's place")]
+fn spook_check_refuses_rowans_place(world: &mut World) {
+    let diags = spookery_engine::check_pack(world.pack.as_ref().unwrap());
+    let refused = diags
+        .iter()
+        .any(|diag| diag.path.as_deref() == Some("actors.pc_rowan.place"));
+    assert!(refused, "{diags:?}");
+}
+
 #[when(expr = "Rowan plays {string}")]
 fn rowan_plays(world: &mut World, line: String) {
     let mut opened = open(world.pack.as_ref().unwrap());

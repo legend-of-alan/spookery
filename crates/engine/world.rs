@@ -242,7 +242,8 @@ impl<L> World<L> {
         Ok(target)
     }
 
-    /// Gate the GM's intent with `presence` seated, then queue it. A refusal is its code.
+    /// Pick the GM's intent's rule, admit it with `presence` seated, then queue it. A refusal
+    /// is its code.
     pub fn queue_gm_intent(
         &mut self,
         presence: &Presence,
@@ -291,8 +292,8 @@ impl<L> World<L> {
             args,
             rationale_code: spec.rationale_code,
         };
-        let context = Context::new(&self.canon, &self.state, presence, &intent);
-        gate::gate(&context).map_err(|refusal| refusal.code)?;
+        let context = Context::new(canon, state, presence, &intent);
+        gate::admit(&context, rule).map_err(|refusal| refusal.code)?;
         self.queue_intent(intent);
         Ok(QueuedMove {
             id,

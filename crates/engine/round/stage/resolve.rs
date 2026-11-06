@@ -71,12 +71,12 @@ pub(crate) fn run<'a>(
         .iter()
         .map(|intent| Candidate {
             intent,
-            resolution: gate_intent(&mut resolver, intent),
+            resolution: resolve_intent(&mut resolver, intent),
         })
         .collect()
 }
 
-fn gate_intent<'a>(resolver: &mut Resolver<'a, '_>, intent: &'a Intent) -> Resolution<'a> {
+fn resolve_intent<'a>(resolver: &mut Resolver<'a, '_>, intent: &'a Intent) -> Resolution<'a> {
     let context = Context::new(resolver.canon, resolver.state, resolver.presence, intent);
     let rule = match gate::rule_of(&context) {
         Ok(rule) => rule,

@@ -548,10 +548,20 @@ pub(super) fn unknown_meters(
 /// Check the save against the pack without changing it. Refuse every meter,
 /// item and wielded slot the pack does not define, every meter the pack gives a holder
 /// that the holder lacks, every meter outside its rules, every modifier the pack no longer
-/// gives that meter, and every empty id or zero count.
+/// gives that meter, every walker on an exit the pack lacks, and every empty id or zero count.
 pub fn check_save(canon: &Canon, state: &crate::model::State) -> Result<(), Vec<Diagnostic>> {
     let mut diags = Vec::new();
     for (id, actor) in &state.actors {
+        // A walker stands on an exit, which must be one of the pack's.
+        let on_exit = crate::model::exit_parts(&actor.place).is_some();
+        if on_exit && crate::rules::travel::exit_stood_on(canon, &actor.place).is_none() {
+            let problem = format!(
+                "actor '{id}' stands on exit '{}', which the pack does not define",
+                actor.place
+            );
+            let diag = schema_error("state/save.yaml", &problem, "move the actor to a place");
+            diags.push(diag.at_path(format!("actors.{id}.place")));
+        }
         let holder = Holder::Actor(id.clone());
         let path = format!("actors.{id}.meters");
         check_meters(canon, &holder, &actor.meters, &path, &mut diags);

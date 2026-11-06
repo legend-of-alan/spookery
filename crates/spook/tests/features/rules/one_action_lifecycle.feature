@@ -17,8 +17,13 @@ Feature: One action lifecycle
     Then Rowan is at exit:docks_shop.stairs
     And Wren's look does not show Rowan
     And Rowan's look shows "on the stairs until tick 1090"
+    And spook verify passes on this pack
     When rounds pass until tick 1090
     Then Rowan is at mira_rooms
+
+  Scenario: A save with a walker on an exit the pack lacks is refused
+    Given Rowan stands on exit:docks_shop.ladder in the save
+    Then spook check refuses Rowan's place
 
   Scenario: A timed teleport lands like travel
     Given the rule "blink" teleports Rowan to mira_rooms and takes 10 ticks
