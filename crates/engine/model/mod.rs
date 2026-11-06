@@ -3,12 +3,12 @@
 pub(crate) mod key;
 pub(crate) mod meter;
 pub(crate) mod modifier;
+pub(crate) mod record;
 
 use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-use key::StateKey;
 use meter::MeterLive;
 use modifier::ModifierLive;
 
@@ -122,35 +122,6 @@ impl State {
         flags.is_some_and(|flags| flags.iter().any(|flag| flag == entry))
     }
 
-    /// Set or clear `holder`'s flag `key`, and say whether it changed. A place or story gets a
-    /// live record on its first flag, and a place on its first open exit.
-    pub(crate) fn set_flag(
-        &mut self,
-        holder: &Holder,
-        key: &str,
-        value: bool,
-    ) -> Result<bool, crate::Reason> {
-        if self.has_flag(holder, key) == value {
-            return Ok(false);
-        }
-        let (flags, entry) = match holder {
-            Holder::Actor(id) => (&mut self.actor_mut(id)?.flags, key),
-            Holder::Place(id) => (&mut self.places.entry(id.clone()).or_default().flags, key),
-            Holder::Story(id) => (&mut self.stories.entry(id.clone()).or_default().flags, key),
-            Holder::Exit(place, exit) => {
-                let place = self.places.entry(place.clone()).or_default();
-                (&mut place.open, exit.as_str())
-            }
-            Holder::World => (&mut self.flags, key),
-        };
-        if value {
-            flags.push(entry.to_string());
-        } else {
-            flags.retain(|flag| flag != entry);
-        }
-        Ok(true)
-    }
-
     /// Actor `id`'s live record to write, or `UNKNOWN_ID`.
     pub(crate) fn actor_mut(&mut self, id: &str) -> Result<&mut ActorLive, crate::Reason> {
         self.actors.get_mut(id).ok_or(crate::Reason::UnknownId)
@@ -168,56 +139,6 @@ impl State {
             .filter(|(_, actor)| actor.place == place)
             .map(|(id, _)| id.clone())
             .collect()
-    }
-}
-
-/// One live part of the save a write keeps whole: an actor, a place, a story, the world's
-/// meters and flags, or the notes.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum Live {
-    Actor(String),
-    Place(String),
-    Story(String),
-    World,
-    Notes,
-}
-
-/// A live part as it was, `None` for a record that did not exist yet.
-pub(crate) enum Kept {
-    Actor(String, Option<Box<ActorLive>>),
-    Place(String, Option<PlaceLive>),
-    Story(String, Option<StoryLive>),
-    World(BTreeMap<String, MeterLive>, Vec<String>),
-    Notes(Vec<Note>),
-}
-
-impl State {
-    /// A copy of `live` as it is now.
-    pub(crate) fn keep(&self, live: &Live) -> Kept {
-        match live {
-            Live::Actor(id) => Kept::Actor(id.clone(), self.actors.get(id).cloned().map(Box::new)),
-            Live::Place(id) => Kept::Place(id.clone(), self.places.get(id).cloned()),
-            Live::Story(id) => Kept::Story(id.clone(), self.stories.get(id).cloned()),
-            Live::World => Kept::World(self.world_meters.clone(), self.flags.clone()),
-            Live::Notes => Kept::Notes(self.notes.clone()),
-        }
-    }
-
-    /// Put a kept part back as it was.
-    pub(crate) fn restore(&mut self, kept: Kept) {
-        fn put<T>(map: &mut BTreeMap<String, T>, id: String, live: Option<T>) {
-            match live {
-                Some(live) => map.insert(id, live),
-                None => map.remove(&id),
-            };
-        }
-        match kept {
-            Kept::Actor(id, live) => put(&mut self.actors, id, live.map(|live| *live)),
-            Kept::Place(id, live) => put(&mut self.places, id, live),
-            Kept::Story(id, live) => put(&mut self.stories, id, live),
-            Kept::World(meters, flags) => (self.world_meters, self.flags) = (meters, flags),
-            Kept::Notes(notes) => self.notes = notes,
-        }
     }
 }
 
@@ -382,14 +303,6 @@ pub(crate) enum ActCounter {
 }
 
 impl ActCounter {
-    /// The key this count is tracked under for actor `id`.
-    pub(crate) fn key(self, id: String) -> StateKey {
-        match self {
-            ActCounter::IdleActsThisWindow => StateKey::IdleActsThisWindow(id),
-            ActCounter::LiveActsThisWindow => StateKey::LiveActsThisWindow(id),
-        }
-    }
-
     /// This count on `act`, to write.
     pub(crate) fn count_mut(self, act: &mut Act) -> &mut u32 {
         match self {

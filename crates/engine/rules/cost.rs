@@ -77,7 +77,7 @@ pub(crate) fn pay(
         effect::write_meter(draft, &holder, key, MeterWrite::Offset(-amount))?;
         if amount == 0 {
             // A cost of 0 leaves the meter as it was and still takes a key of the budget.
-            draft.track(StateKey::ActorMeter(who.to_string(), key.clone()))?;
+            draft.count_key(StateKey::ActorMeter(who.to_string(), key.clone()))?;
         }
     }
     for (id, expr) in &cost.items {

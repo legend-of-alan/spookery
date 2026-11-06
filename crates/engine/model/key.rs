@@ -2,9 +2,6 @@
 
 use std::fmt;
 
-use crate::model::Live;
-use crate::rules::effect::Holder;
-
 /// One budget identity. The commit diff summary is this type's `Display`,
 /// sorted as text. It is not a path inside `save.yaml`.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -61,54 +58,6 @@ impl fmt::Display for StateKey {
 }
 
 impl StateKey {
-    /// The key of meter `key` on `holder`. An exit carries no meters.
-    pub(crate) fn meter(holder: &Holder, key: &str) -> Option<StateKey> {
-        let key = key.to_string();
-        match holder {
-            Holder::Actor(id) => Some(StateKey::ActorMeter(id.clone(), key)),
-            Holder::Place(id) => Some(StateKey::PlaceMeter(id.clone(), key)),
-            Holder::Story(id) => Some(StateKey::StoryMeter(id.clone(), key)),
-            Holder::Exit(..) => None,
-            Holder::World => Some(StateKey::WorldMeter(key)),
-        }
-    }
-
-    /// The key of flag `key` on `holder`. An exit's one flag is `open`.
-    pub(crate) fn flag(holder: &Holder, key: &str) -> StateKey {
-        let key = key.to_string();
-        match holder {
-            Holder::Exit(place, exit) => StateKey::ExitOpen(place.clone(), exit.clone()),
-            Holder::Actor(id) => StateKey::ActorFlag(id.clone(), key),
-            Holder::Place(id) => StateKey::PlaceFlag(id.clone(), key),
-            Holder::Story(id) => StateKey::StoryFlag(id.clone(), key),
-            Holder::World => StateKey::WorldFlag(key),
-        }
-    }
-
-    /// The live part of the save this key's value sits in.
-    pub(crate) fn live(&self) -> Live {
-        match self {
-            StateKey::ActorPlace(id)
-            | StateKey::ActorFlag(id, _)
-            | StateKey::ActorMeter(id, _)
-            | StateKey::ActorModifier(id, _)
-            | StateKey::ActorBusy(id)
-            | StateKey::ActorKnownFact(id)
-            | StateKey::LastActRound(id)
-            | StateKey::IdleActsThisWindow(id)
-            | StateKey::LiveActsThisWindow(id)
-            | StateKey::ActorItem(id, _)
-            | StateKey::ActorWielded(id) => Live::Actor(id.clone()),
-            StateKey::PlaceItem(id, _)
-            | StateKey::PlaceMeter(id, _)
-            | StateKey::PlaceFlag(id, _)
-            | StateKey::ExitOpen(id, _) => Live::Place(id.clone()),
-            StateKey::StoryMeter(id, _) | StateKey::StoryFlag(id, _) => Live::Story(id.clone()),
-            StateKey::Note(_) => Live::Notes,
-            StateKey::WorldFlag(_) | StateKey::WorldMeter(_) => Live::World,
-        }
-    }
-
     /// The actor this key belongs to, when it has one.
     pub fn actor(&self) -> Option<&str> {
         match self {

@@ -7,6 +7,7 @@
 //!     Given the docks pack, with no live record yet for the street
 //!     When random effects land under savepoints opened and rolled back at random
 //!     Then each rollback leaves the save as it was when its savepoint was taken
+//!     And the keys spent since are given back
 //!     And rolling back to the first savepoint leaves no change to report
 //! ```
 //!
@@ -60,14 +61,17 @@ fn play_steps(world: &World<()>, steps: &[Step]) -> Result<(), TestCaseError> {
     let nobody = crate::model::Presence::default();
     let mut draft = Draft::begin(world, &nobody);
     let intent = mira_intent();
-    let mut open = vec![(draft.savepoint(), draft.state().clone())];
+    let mut open = vec![(draft.savepoint(), draft.state().clone(), draft.keys_spent())];
     for (index, step) in steps.iter().enumerate() {
         match step {
-            Step::Savepoint => open.push((draft.savepoint(), draft.state().clone())),
+            Step::Savepoint => {
+                open.push((draft.savepoint(), draft.state().clone(), draft.keys_spent()))
+            }
             Step::Rollback if open.len() > 1 => {
-                let (point, saved) = open.pop().expect("an open savepoint");
+                let (point, saved, spent) = open.pop().expect("an open savepoint");
                 draft.rollback(point);
                 same_save(draft.state(), &saved)?;
+                same_spend(draft.keys_spent(), spent)?;
             }
             Step::Rollback => {}
             _ => {
@@ -76,14 +80,26 @@ fn play_steps(world: &World<()>, steps: &[Step]) -> Result<(), TestCaseError> {
             }
         }
     }
-    while let Some((point, saved)) = open.pop() {
+    while let Some((point, saved, spent)) = open.pop() {
         draft.rollback(point);
         same_save(draft.state(), &saved)?;
+        same_spend(draft.keys_spent(), spent)?;
     }
     if !draft.take_changes().is_empty() {
         return Err(TestCaseError::fail("a rolled-back write is still reported"));
     }
     Ok(())
+}
+
+/// The keys the budget counts are given back with the writes that spent them.
+fn same_spend(spent: usize, saved: usize) -> Result<(), TestCaseError> {
+    if spent == saved {
+        Ok(())
+    } else {
+        Err(TestCaseError::fail(format!(
+            "the rollback left {spent} keys spent instead of {saved}"
+        )))
+    }
 }
 
 fn same_save(state: &State, saved: &State) -> Result<(), TestCaseError> {
