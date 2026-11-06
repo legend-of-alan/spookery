@@ -132,22 +132,17 @@ impl State {
         key: &str,
     ) -> Result<(&mut Vec<String>, String), crate::Reason> {
         let unknown = crate::Reason::UnknownId;
-        Ok(match holder {
-            Holder::Actor(id) => (&mut self.actor_mut(id)?.flags, key.to_string()),
-            Holder::Place(id) => (
-                &mut self.places.get_mut(id).ok_or(unknown)?.flags,
-                key.to_string(),
-            ),
-            Holder::Story(id) => (
-                &mut self.stories.get_mut(id).ok_or(unknown)?.flags,
-                key.to_string(),
-            ),
-            Holder::Exit(place, exit) => (
-                &mut self.places.get_mut(place).ok_or(unknown)?.open,
-                exit.clone(),
-            ),
-            Holder::World => (&mut self.flags, key.to_string()),
-        })
+        let flags = match holder {
+            Holder::Actor(id) => &mut self.actor_mut(id)?.flags,
+            Holder::Place(id) => &mut self.places.get_mut(id).ok_or(unknown)?.flags,
+            Holder::Story(id) => &mut self.stories.get_mut(id).ok_or(unknown)?.flags,
+            Holder::Exit(place, exit) => {
+                let open = &mut self.places.get_mut(place).ok_or(unknown)?.open;
+                return Ok((open, exit.clone()));
+            }
+            Holder::World => &mut self.flags,
+        };
+        Ok((flags, key.to_string()))
     }
 
     /// Actor `id`'s live record to write, or `UNKNOWN_ID`.

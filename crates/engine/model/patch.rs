@@ -74,51 +74,35 @@ pub(crate) enum Patch {
 }
 
 impl Patch {
-    /// Put this patch's value into `state` and give back the patch that holds the value it
-    /// replaced: swapping that one in puts the save back. A record the field sits in that is
-    /// not there is `UNKNOWN_ID`, and nothing is written.
-    pub(crate) fn swap(self, state: &mut State) -> Result<Patch, Reason> {
-        Ok(match self {
+    /// Swap this patch's value with the one `state` holds: afterwards the patch holds the old
+    /// value, so swapping it again puts the save back. A record the field sits in that is not
+    /// there is `UNKNOWN_ID`, and then neither side changes.
+    pub(crate) fn swap(&mut self, state: &mut State) -> Result<(), Reason> {
+        match self {
             Patch::ActorPlace { actor, place } => {
-                let old = mem::replace(&mut state.actor_mut(&actor)?.place, place);
-                Patch::ActorPlace { actor, place: old }
+                mem::swap(&mut state.actor_mut(actor)?.place, place);
             }
             Patch::Flag { holder, key, on } => {
-                let old = state.has_flag(&holder, &key);
-                if old != on {
-                    let (flags, entry) = state.flags_mut(&holder, &key)?;
-                    if on {
+                let was = state.has_flag(holder, key);
+                if was != *on {
+                    let (flags, entry) = state.flags_mut(holder, key)?;
+                    if *on {
                         flags.push(entry);
                     } else {
                         flags.retain(|flag| *flag != entry);
                     }
                 }
-                Patch::Flag {
-                    holder,
-                    key,
-                    on: old,
-                }
+                *on = was;
             }
             Patch::Meter { holder, key, live } => {
-                let meters = state.meters_mut(&holder)?;
-                let old = mem::replace(meters.get_mut(&key).ok_or(Reason::UnknownId)?, live);
-                Patch::Meter {
-                    holder,
-                    key,
-                    live: old,
-                }
+                let meters = state.meters_mut(holder)?;
+                mem::swap(meters.get_mut(key).ok_or(Reason::UnknownId)?, live);
             }
             Patch::Modifier { actor, id, held } => {
-                let modifiers = &mut state.actor_mut(&actor)?.modifiers;
-                let old = put(modifiers, &id, held);
-                Patch::Modifier {
-                    actor,
-                    id,
-                    held: old,
-                }
+                swap_entry(&mut state.actor_mut(actor)?.modifiers, id, held);
             }
             Patch::Item { holder, id, count } => {
-                let counts = match &holder {
+                let counts = match holder {
                     Holder::Actor(actor) => &mut state.actor_mut(actor)?.inventory,
                     Holder::Place(place) => {
                         &mut state.places.get_mut(place).ok_or(Reason::UnknownId)?.items
@@ -127,82 +111,58 @@ impl Patch {
                         return Err(Reason::Schema)
                     }
                 };
-                let old = put(counts, &id, (count > 0).then_some(count));
-                Patch::Item {
-                    holder,
-                    id,
-                    count: old.unwrap_or(0),
-                }
+                let mut held = (*count > 0).then_some(*count);
+                swap_entry(counts, id, &mut held);
+                *count = held.unwrap_or(0);
             }
             Patch::Wielded { actor, item } => {
-                let old = mem::replace(&mut state.actor_mut(&actor)?.wielded, item);
-                Patch::Wielded { actor, item: old }
+                mem::swap(&mut state.actor_mut(actor)?.wielded, item);
             }
             Patch::KnownFacts { actor, facts } => {
-                let old = mem::replace(&mut state.actor_mut(&actor)?.known_facts, facts);
-                Patch::KnownFacts { actor, facts: old }
+                mem::swap(&mut state.actor_mut(actor)?.known_facts, facts);
             }
             Patch::Busy {
                 actor,
                 until,
                 pending,
             } => {
-                let act = &mut state.actor_mut(&actor)?.act;
-                let old_until = mem::replace(&mut act.busy_until, until);
-                let old_pending = mem::replace(&mut act.pending, pending);
-                Patch::Busy {
-                    actor,
-                    until: old_until,
-                    pending: old_pending,
-                }
+                let act = &mut state.actor_mut(actor)?.act;
+                mem::swap(&mut act.busy_until, until);
+                mem::swap(&mut act.pending, pending);
             }
             Patch::LastActRound { actor, round } => {
-                let act = &mut state.actor_mut(&actor)?.act;
-                let old = mem::replace(&mut act.last_act_round, round);
-                Patch::LastActRound { actor, round: old }
+                mem::swap(&mut state.actor_mut(actor)?.act.last_act_round, round);
             }
             Patch::Acts {
                 actor,
                 counter,
                 count,
             } => {
-                let act = &mut state.actor_mut(&actor)?.act;
-                let old = mem::replace(counter.count_mut(act), count);
-                Patch::Acts {
-                    actor,
-                    counter,
-                    count: old,
-                }
+                mem::swap(counter.count_mut(&mut state.actor_mut(actor)?.act), count);
             }
             Patch::Visited {
                 actor,
                 place,
                 exits,
             } => {
-                let old = put(&mut state.actor_mut(&actor)?.visited, &place, exits);
-                Patch::Visited {
-                    actor,
-                    place,
-                    exits: old,
-                }
+                swap_entry(&mut state.actor_mut(actor)?.visited, place, exits);
             }
             Patch::Note { id, note } => {
-                let at = state.notes.iter().position(|left| left.id == id);
+                let at = state.notes.iter().position(|left| left.id == *id);
                 let old = at.map(|at| state.notes.remove(at));
-                state.notes.extend(note);
-                Patch::Note { id, note: old }
+                state.notes.extend(mem::replace(note, old));
             }
             Patch::Record { holder, here } => {
-                let old = match &holder {
-                    Holder::Place(id) => set_present(&mut state.places, id, here),
-                    Holder::Story(id) => set_present(&mut state.stories, id, here),
+                *here = match holder {
+                    Holder::Place(id) => set_present(&mut state.places, id, *here),
+                    Holder::Story(id) => set_present(&mut state.stories, id, *here),
                     Holder::Actor(_) | Holder::Exit(..) | Holder::World => {
                         return Err(Reason::Schema)
                     }
                 };
-                Patch::Record { holder, here: old }
             }
-        })
+        }
+        Ok(())
     }
 
     /// The key this patch writes and the value that key reads with this patch's value in
@@ -283,12 +243,13 @@ impl Patch {
     }
 }
 
-/// Insert `value` under `id`, or remove the entry for `None`, and give back what was there.
-fn put<T>(map: &mut BTreeMap<String, T>, id: &str, value: Option<T>) -> Option<T> {
-    match value {
-        Some(value) => map.insert(id.to_string(), value),
+/// Swap `value` with `map`'s entry for `id`, `None` being no entry.
+fn swap_entry<T>(map: &mut BTreeMap<String, T>, id: &str, value: &mut Option<T>) {
+    let old = match value.take() {
+        Some(new) => map.insert(id.to_string(), new),
         None => map.remove(id),
-    }
+    };
+    *value = old;
 }
 
 /// Give `id` an empty live record, or take its record away, and say whether it had one.

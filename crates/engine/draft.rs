@@ -174,7 +174,8 @@ impl<'p> Draft<'p> {
     /// refuses stays in place for the caller's savepoint to undo.
     pub(crate) fn apply(&mut self, patch: Patch) -> Result<(), Reason> {
         let meter = self.modified_meter(&patch);
-        let undo = patch.clone().swap(&mut self.state)?;
+        let mut undo = patch.clone();
+        undo.swap(&mut self.state)?;
         let stacks_moved = undo.stacks() != patch.stacks();
         let own = if undo == patch {
             None
@@ -214,7 +215,10 @@ impl<'p> Draft<'p> {
             return None;
         };
         let meter = self.canon.modifiers.get(id)?.meter.clone();
-        let before = self.meter_value(&Holder::Actor(actor.clone()), &meter);
+        let before = (self
+            .state
+            .meter_value(&self.canon, &Holder::Actor(actor.clone()), &meter))
+        .map_or(StateValue::Empty, StateValue::Number);
         Some((actor.clone(), meter, before))
     }
 
@@ -253,13 +257,6 @@ impl<'p> Draft<'p> {
             .collect()
     }
 
-    fn meter_value(&self, holder: &Holder, key: &str) -> StateValue {
-        match self.state.meter_value(&self.canon, holder, key) {
-            Ok(current) => StateValue::Number(current),
-            Err(_) => StateValue::Empty,
-        }
-    }
-
     pub(crate) fn count_memory_write(&mut self) -> Result<(), Reason> {
         if u64::from(self.memory_writes) >= self.canon.budget.max_memory_writes {
             return Err(Reason::Budget);
@@ -287,7 +284,7 @@ impl<'p> Draft<'p> {
     /// Undo everything since `point`: swap back each write since, newest first, and give back
     /// the keys, changes and memories added since.
     pub(crate) fn rollback(&mut self, point: Savepoint) {
-        for undo in self.undo.drain(point.undo..).rev() {
+        for mut undo in self.undo.drain(point.undo..).rev() {
             // Its field was there when the write landed, and every later write is undone
             // first, so putting it back is never refused.
             let restored = undo.swap(&mut self.state);

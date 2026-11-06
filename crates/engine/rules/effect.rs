@@ -637,11 +637,11 @@ pub(crate) fn shift_item(
         return Ok(());
     };
     let live = &draft.state().actors[actor];
-    if live
+    let lets_go = live
         .wielded
-        .as_deref()
-        .is_some_and(|item| live.item_count(item) == 0)
-    {
+        .as_ref()
+        .is_some_and(|item| live.item_count(item) == 0);
+    if lets_go {
         let actor = actor.clone();
         draft.apply(Patch::Wielded { actor, item: None })?;
     }
