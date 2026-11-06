@@ -236,8 +236,8 @@ pub struct CostYaml {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct StartYaml {
-    #[serde(default = "yes")]
-    pub counts_as_act: bool,
+    #[serde(default)]
+    pub counts_as_act: Option<bool>,
 }
 
 #[derive(Deserialize)]
@@ -246,10 +246,6 @@ pub struct FinishYaml {
     pub cost: Option<CostYaml>,
     #[serde(default)]
     pub counts_as_act: bool,
-}
-
-fn yes() -> bool {
-    true
 }
 
 /// Counts by key under a cost. The unit variant keeps a scalar's refusal generic.
@@ -607,7 +603,11 @@ fn compile_one(
         roll,
         start: Phase {
             cost,
-            counts_as_act: entry.start.as_ref().is_none_or(|start| start.counts_as_act),
+            counts_as_act: entry
+                .start
+                .as_ref()
+                .and_then(|start| start.counts_as_act)
+                .unwrap_or(true),
         },
         finish: Phase {
             cost: finish_cost,

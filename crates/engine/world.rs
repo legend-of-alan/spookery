@@ -214,7 +214,9 @@ impl<L> World<L> {
         };
         let shaped = self.shape_line(&intent, token);
         intent.target = shaped.map_err(|code| gate::Refusal::new(&intent, code))?;
-        gate::gate(&Context::new(&self.canon, &self.state, presence, &intent))?;
+        let context = Context::new(&self.canon, &self.state, presence, &intent);
+        let rule = gate::rule_of(&context)?;
+        gate::admit(&context, rule)?;
         let queued = QueuedMove {
             id: intent.id.clone(),
             actor_id: actor_id.to_string(),

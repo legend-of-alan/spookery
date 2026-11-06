@@ -106,14 +106,6 @@ fn owner_verb<'a>(canon: &'a Canon, owner: &Owner, verb: &str) -> Option<&'a Rul
     })
 }
 
-/// The one gate: pick the intent's rule, then `admit` it. It runs when a player line or a GM
-/// intent is queued. When the action starts, `admit` runs again on the rule resolve picked,
-/// so a move pays for the rule it rolled for.
-pub(crate) fn gate<'a>(context: &Context<'a>) -> Result<&'a Rule, Refusal> {
-    let rule = rule_of(context)?;
-    admit(context, rule).map(|()| rule)
-}
-
 /// The rule the intent's verb picks, for its actor and target.
 pub(crate) fn rule_of<'a>(context: &Context<'a>) -> Result<&'a Rule, Refusal> {
     let intent = context.intent;
