@@ -85,11 +85,6 @@ impl Diff {
             self.changes.push(Change { key, before, after });
         }
     }
-
-    /// A key the budget counts for this write although none of its own fields moved.
-    fn spend(&mut self, key: StateKey) {
-        self.spent.push(key);
-    }
 }
 
 pub(crate) struct ActorId<'a>(pub &'a str);
@@ -225,13 +220,6 @@ impl RecordId for ActorId<'_> {
                 held,
                 now,
             );
-            // A stack applied or gone spends the meter's key too, as a write to it would,
-            // though it moves the meter's value and not its fields.
-            if held.map(|live| &live.stacks) != now.map(|live| &live.stacks) {
-                if let Some(live) = held.or(now) {
-                    out.spend(StateKey::ActorMeter(id.to_string(), live.meter.clone()));
-                }
-            }
         }
         // Busy stores the tick and the action under way; its value is the tick.
         out.note(

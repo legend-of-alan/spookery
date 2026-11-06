@@ -320,9 +320,9 @@ mod tests {
     }
 
     #[test]
-    fn a_modifier_spends_its_key_and_its_meters_key_and_the_meter_is_reported() {
+    fn a_modifier_spends_its_own_key_and_the_meter_it_moves_is_still_reported() {
         let world = docks_world(|canon| {
-            canon.budget.max_state_keys_mutated = 2;
+            canon.budget.max_state_keys_mutated = 1;
             canon.modifiers.insert(
                 "burn".to_string(),
                 ModifierDef {
@@ -343,11 +343,7 @@ mod tests {
         };
         let grit_before = world.state().actors["mira"].meters["grit"].clone();
         assert_eq!(apply(&mut draft, &intent, burn(2)), Ok(()));
-        assert_eq!(
-            draft.keys_spent(),
-            2,
-            "the modifier's key and the meter's, as on main"
-        );
+        assert_eq!(draft.keys_spent(), 1, "the modifier is the one key spent");
         assert_eq!(draft.state.actors["mira"].meters["grit"], grit_before);
         let changes = draft.take_changes();
         assert_eq!(
@@ -360,9 +356,9 @@ mod tests {
             panic!("{changes:?}");
         };
         assert_eq!(*after, before + 2);
-        // A second stack moves the sum again, on the keys already spent.
+        // A second stack moves the sum again, on the one key already spent.
         assert_eq!(apply(&mut draft, &intent, burn(2)), Ok(()));
-        assert_eq!(draft.keys_spent(), 2);
+        assert_eq!(draft.keys_spent(), 1);
         assert_eq!(draft.take_changes().len(), 2);
     }
 

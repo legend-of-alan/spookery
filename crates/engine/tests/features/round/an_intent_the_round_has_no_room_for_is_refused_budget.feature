@@ -9,3 +9,8 @@ Feature: An intent the round has no room for is refused BUDGET
     Given the docks pack allows 1 state key per round and a row "overset" that sets 2 flags
     When Rowan plays overset and then Wren waits in the same round
     Then Rowan's overset and Wren's wait are both refused BUDGET and nothing is left queued
+
+  Scenario: A modifier spends one key, the one its stacks are stored under
+    Given the docks pack allows 3 state keys per round and a row "brace" that applies one modifier to grit
+    When Rowan plays brace
+    Then Rowan's brace lands, and the GM sees both "modifier pc_rowan brace" and "actor_meter pc_rowan grit" change

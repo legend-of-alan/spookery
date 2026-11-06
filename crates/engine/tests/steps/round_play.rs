@@ -753,6 +753,62 @@ fn rowans_overset_and_wrens_wait_are_refused_budget(world: &mut World) {
     assert_budget_refusals(world, &["rowan-overset", "wren-wait"]);
 }
 
+#[given(
+    expr = "the docks pack allows {int} state keys per round and a row \"brace\" that applies one modifier to grit"
+)]
+fn the_docks_pack_allows_keys_and_braces(world: &mut World, limit: u64) {
+    let pack = support::copy_pack("oneshot-docks", "key-limit-brace");
+    set_budget(&pack, "max_state_keys_mutated", limit);
+    fs::write(
+        pack.join("rules/modifiers.yaml"),
+        "schema: modifiers\nmodifiers:\n  - id: brace\n    meter: grit\n",
+    )
+    .unwrap();
+    support::append(
+        &pack.join("rules/verbs.yaml"),
+        "
+  - id: brace
+    when: { verb: brace }
+    do:
+      - modifier: { who: self, id: brace, add: 2, ticks: 10 }
+",
+    );
+    make_mira_ineligible(&pack);
+    world.pack = Some(pack);
+}
+
+#[when(expr = "Rowan plays brace")]
+fn rowan_braces(world: &mut World) {
+    let pack = world.pack().to_path_buf();
+    let lock = spookery_engine::lock_pack(&pack).unwrap();
+    let mut opened = spookery_engine::World::resume(&pack, lock).unwrap();
+    let wall = opened.state().last_round_at.clone();
+    let nobody = spookery_engine::Presence::default();
+    opened
+        .queue_gm_intent(
+            &nobody,
+            intent("rowan-brace", "pc_rowan", "brace", None),
+            || panic!("the GM chose the id"),
+        )
+        .unwrap();
+    let output = opened.play(&nobody, &wall).unwrap();
+    world.summary_lines = output.changed_keys.clone();
+    world.scratch = read_round(&pack, "round-0001").to_string();
+}
+
+#[then(expr = "Rowan's brace lands, and the GM sees both {string} and {string} change")]
+fn rowans_brace_lands(world: &mut World, modifier: String, meter: String) {
+    let round: Value = serde_json::from_str(&world.scratch).unwrap();
+    assert_eq!(round["refused"].as_array().unwrap().len(), 0, "{round}");
+    for key in [modifier, meter] {
+        assert!(
+            world.summary_lines.contains(&key),
+            "{key}: {:?}",
+            world.summary_lines
+        );
+    }
+}
+
 /// Each of `ids` is refused `BUDGET` in the round, and the save keeps no queue.
 fn assert_budget_refusals(world: &World, ids: &[&str]) {
     let round: Value = serde_json::from_str(&world.scratch).unwrap();
