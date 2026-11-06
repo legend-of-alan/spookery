@@ -8,7 +8,7 @@ use std::sync::Arc;
 use crate::canon::Budget;
 use crate::canon::Canon;
 use crate::model::key::{Change, StateKey, StateValue};
-use crate::model::{ActCounter, Flag, Kept, MemoryLine, PendingAction, Presence, Record, State};
+use crate::model::{ActCounter, Flag, Kept, Live, MemoryLine, PendingAction, Presence, State};
 use crate::rules::effect::Holder;
 use crate::world::World;
 use crate::Reason;
@@ -25,8 +25,8 @@ pub(crate) struct Draft<'p> {
     /// How many priors the last take reported.
     priors_taken: usize,
     flags: FlagEdits,
-    /// Each live record as it was just before a write to it, oldest first. Rolling back to
-    /// a savepoint puts back every record kept since, newest first.
+    /// Each live part of the save as it was just before a write to it, oldest first. Rolling
+    /// back to a savepoint puts back every part kept since, newest first.
     kept: Vec<Kept>,
     pub(crate) memories: Vec<MemoryLine>,
     memory_writes: u32,
@@ -68,15 +68,15 @@ impl<'p> Draft<'p> {
         &self.canon.budget
     }
 
-    /// The state to write `record` in, kept first so a savepoint can put it back.
-    pub(crate) fn record_mut(&mut self, record: &Record) -> &mut State {
-        self.keep(record);
+    /// The state to write `live` in, kept first so a savepoint can put it back.
+    pub(crate) fn live_mut(&mut self, live: &Live) -> &mut State {
+        self.keep(live);
         &mut self.state
     }
 
-    /// Keep `record` as it is now, before a write to it.
-    pub(crate) fn keep(&mut self, record: &Record) {
-        self.kept.push(self.state.keep(record));
+    /// Keep `live` as it is now, before a write to it.
+    pub(crate) fn keep(&mut self, live: &Live) {
+        self.kept.push(self.state.keep(live));
     }
 
     pub(crate) fn stamp_round(&mut self, round_index: u64, world_time: u64, last_round_at: &str) {
@@ -148,7 +148,7 @@ impl<'p> Draft<'p> {
             keys.push(StateKey::LiveActsThisWindow(actor_id.to_string()));
         }
         self.track_many(&keys)?;
-        let state = self.record_mut(&Record::Actor(actor_id.to_string()));
+        let state = self.live_mut(&Live::Actor(actor_id.to_string()));
         let counters = &mut state.actor_mut(actor_id)?.act;
         counters.last_act_round = round_index;
         if players == 0 {
@@ -192,15 +192,15 @@ impl<'p> Draft<'p> {
     /// whether it changed the stored value; a meter's is its base and offset, which can move
     /// while the clamped value the key reads stays. The key is counted after the write, so an
     /// `Err` from the budget can leave the write in place: the caller's savepoint undoes it.
-    /// `write` may change only the record `key` belongs to; a write that reaches another
-    /// record keeps it first.
+    /// `write` may change only the live part `key` sits in; a write that reaches another part
+    /// keeps it first.
     pub(crate) fn mutate(
         &mut self,
         key: StateKey,
         write: impl FnOnce(&mut State) -> Result<bool, Reason>,
     ) -> Result<(), Reason> {
         let before = self.read_value(&key);
-        if write(self.record_mut(&key.record()))? {
+        if write(self.live_mut(&key.live()))? {
             self.track_before(key, before)?;
         }
         Ok(())
@@ -213,7 +213,7 @@ impl<'p> Draft<'p> {
         if flag.get(&self.state) == value {
             return Ok(());
         }
-        flag.set(self.record_mut(&flag.key.record()), value)?;
+        flag.set(self.live_mut(&flag.key.live()), value)?;
         let counted = self.count_key(&flag.key);
         self.flags.edits.push(FlagEdit { flag, was: !value });
         counted
@@ -436,7 +436,7 @@ impl<'p> Draft<'p> {
         }
     }
 
-    /// Undo everything since `point`: put back each record kept since, newest first, and give
+    /// Undo everything since `point`: put back each part kept since, newest first, and give
     /// back the keys, priors, flag edits and memories added since.
     pub(crate) fn rollback(&mut self, point: Savepoint) {
         for kept in self.kept.drain(point.kept..).rev() {

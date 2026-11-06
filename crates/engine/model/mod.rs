@@ -233,10 +233,10 @@ impl Flag {
 type ListFn = for<'s> fn(&'s State, &str) -> Option<&'s Vec<String>>;
 type ListMutFn = for<'s> fn(&'s mut State, &str) -> Result<&'s mut Vec<String>, crate::Reason>;
 
-/// One live record a round writes as a whole: an actor, a place, a story, the world's
+/// One live part of the save a write keeps whole: an actor, a place, a story, the world's
 /// meters and flags, or the notes.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum Record {
+pub(crate) enum Live {
     Actor(String),
     Place(String),
     Story(String),
@@ -244,7 +244,7 @@ pub(crate) enum Record {
     Notes,
 }
 
-/// A live record as it was, `None` when it did not exist yet.
+/// A live part as it was, `None` for a record that did not exist yet.
 pub(crate) enum Kept {
     Actor(String, Option<Box<ActorLive>>),
     Place(String, Option<PlaceLive>),
@@ -254,20 +254,18 @@ pub(crate) enum Kept {
 }
 
 impl State {
-    /// A copy of `record` as it is now.
-    pub(crate) fn keep(&self, record: &Record) -> Kept {
-        match record {
-            Record::Actor(id) => {
-                Kept::Actor(id.clone(), self.actors.get(id).cloned().map(Box::new))
-            }
-            Record::Place(id) => Kept::Place(id.clone(), self.places.get(id).cloned()),
-            Record::Story(id) => Kept::Story(id.clone(), self.stories.get(id).cloned()),
-            Record::World => Kept::World(self.world_meters.clone(), self.flags.clone()),
-            Record::Notes => Kept::Notes(self.notes.clone()),
+    /// A copy of `live` as it is now.
+    pub(crate) fn keep(&self, live: &Live) -> Kept {
+        match live {
+            Live::Actor(id) => Kept::Actor(id.clone(), self.actors.get(id).cloned().map(Box::new)),
+            Live::Place(id) => Kept::Place(id.clone(), self.places.get(id).cloned()),
+            Live::Story(id) => Kept::Story(id.clone(), self.stories.get(id).cloned()),
+            Live::World => Kept::World(self.world_meters.clone(), self.flags.clone()),
+            Live::Notes => Kept::Notes(self.notes.clone()),
         }
     }
 
-    /// Put a kept record back as it was.
+    /// Put a kept part back as it was.
     pub(crate) fn restore(&mut self, kept: Kept) {
         fn put<T>(map: &mut BTreeMap<String, T>, id: String, live: Option<T>) {
             match live {

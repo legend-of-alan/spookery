@@ -2,7 +2,7 @@
 
 use std::fmt;
 
-use crate::model::Record;
+use crate::model::Live;
 use crate::rules::effect::Holder;
 
 /// One budget identity. The commit diff summary is this type's `Display`,
@@ -85,8 +85,8 @@ impl StateKey {
         }
     }
 
-    /// The live record this key's value sits in.
-    pub(crate) fn record(&self) -> Record {
+    /// The live part of the save this key's value sits in.
+    pub(crate) fn live(&self) -> Live {
         match self {
             StateKey::ActorPlace(id)
             | StateKey::Flag(Holder::Actor(id), _)
@@ -98,16 +98,16 @@ impl StateKey {
             | StateKey::IdleActsThisWindow(id)
             | StateKey::LiveActsThisWindow(id)
             | StateKey::ActorItem(id, _)
-            | StateKey::ActorWielded(id) => Record::Actor(id.clone()),
+            | StateKey::ActorWielded(id) => Live::Actor(id.clone()),
             StateKey::Flag(Holder::Place(id) | Holder::Exit(id, _), _)
             | StateKey::PlaceItem(id, _)
-            | StateKey::PlaceMeter(id, _) => Record::Place(id.clone()),
+            | StateKey::PlaceMeter(id, _) => Live::Place(id.clone()),
             StateKey::Flag(Holder::Story(id), _)
             | StateKey::StoryMeter(id, _)
-            | StateKey::StoryFlag(id, _) => Record::Story(id.clone()),
-            StateKey::Note(_) => Record::Notes,
+            | StateKey::StoryFlag(id, _) => Live::Story(id.clone()),
+            StateKey::Note(_) => Live::Notes,
             StateKey::Flag(Holder::World, _) | StateKey::WorldFlag(_) | StateKey::WorldMeter(_) => {
-                Record::World
+                Live::World
             }
         }
     }
