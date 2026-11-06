@@ -9,7 +9,7 @@ use crate::intent::{Intent, Viewer};
 use crate::model::key::StateKey;
 use crate::model::meter::{self, MeterWrite};
 use crate::model::modifier::{self, ModifierLive};
-use crate::model::{self, MemoryLine, Note};
+use crate::model::{self, Flag, MemoryLine, Note};
 use crate::rules::visibility::can_see_fact;
 use crate::Reason;
 
@@ -565,7 +565,7 @@ fn viewer_matches(intent: &Intent, effect: &Effect) -> bool {
 /// Who holds a meter, a flag or an item count: an actor, a place, a story, an exit, or the
 /// world. Saved as `world`, `{actor: id}`, `{place: id}`, `{story: id}` or
 /// `{exit: [place, exit]}`. An exit holds only its flag `open`.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Holder {
     Actor(String),
@@ -794,9 +794,11 @@ fn set_flag(draft: &mut Draft, holder: &Holder, key: &str, value: bool) -> Resul
     if !draft.canon().carries_flag(holder, key) {
         return Err(Reason::UnknownId);
     }
-    draft.mutate(StateKey::flag(holder, key), |state| {
-        state.set_flag(holder, key, value)
-    })
+    if let Some(flag) = Flag::resolve(holder, key) {
+        return draft.set_flag(flag, value);
+    }
+    let key_of = StateKey::flag(holder, key).ok_or(Reason::UnknownId)?;
+    draft.mutate(key_of, |state| state.set_flag(holder, key, value))
 }
 
 fn reveal(draft: &mut Draft, actor_id: &str, fact: &str) -> Result<(), Reason> {

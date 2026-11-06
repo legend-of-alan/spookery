@@ -106,24 +106,22 @@ impl State {
         }
     }
 
-    /// Whether `holder` has flag `key` set. An exit's `open` is its name in its place's list.
+    /// Whether `holder` has flag `key` set.
     pub(crate) fn has_flag(&self, holder: &Holder, key: &str) -> bool {
-        let (flags, entry) = match holder {
-            Holder::Actor(id) => (self.actors.get(id).map(|actor| &actor.flags), key),
-            Holder::Place(id) => (self.places.get(id).map(|place| &place.flags), key),
-            Holder::Story(id) => (self.stories.get(id).map(|story| &story.flags), key),
-            Holder::Exit(place, exit) if key == OPEN => (
-                self.places.get(place).map(|place| &place.open),
-                exit.as_str(),
-            ),
-            Holder::Exit(..) => (None, key),
-            Holder::World => (Some(&self.flags), key),
+        if let Some(flag) = Flag::resolve(holder, key) {
+            return flag.get(self);
+        }
+        let flags = match holder {
+            Holder::Place(id) => self.places.get(id).map(|place| &place.flags),
+            Holder::Story(id) => self.stories.get(id).map(|story| &story.flags),
+            Holder::World => Some(&self.flags),
+            Holder::Actor(_) | Holder::Exit(..) => None,
         };
-        flags.is_some_and(|flags| flags.iter().any(|flag| flag == entry))
+        flags.is_some_and(|flags| flags.iter().any(|flag| flag == key))
     }
 
-    /// Set or clear `holder`'s flag `key`, and say whether it changed. A place or story gets a
-    /// live record on its first flag, and a place on its first open exit.
+    /// Set or clear a place, story or world flag `key`, and say whether it changed. A place
+    /// or story gets a live record on its first flag. The other holders' flags go through `Flag`.
     pub(crate) fn set_flag(
         &mut self,
         holder: &Holder,
@@ -133,20 +131,16 @@ impl State {
         if self.has_flag(holder, key) == value {
             return Ok(false);
         }
-        let (flags, entry) = match holder {
-            Holder::Actor(id) => (&mut self.actor_mut(id)?.flags, key),
-            Holder::Place(id) => (&mut self.places.entry(id.clone()).or_default().flags, key),
-            Holder::Story(id) => (&mut self.stories.entry(id.clone()).or_default().flags, key),
-            Holder::Exit(place, exit) => {
-                let place = self.places.entry(place.clone()).or_default();
-                (&mut place.open, exit.as_str())
-            }
-            Holder::World => (&mut self.flags, key),
+        let flags = match holder {
+            Holder::Place(id) => &mut self.places.entry(id.clone()).or_default().flags,
+            Holder::Story(id) => &mut self.stories.entry(id.clone()).or_default().flags,
+            Holder::World => &mut self.flags,
+            Holder::Actor(_) | Holder::Exit(..) => return Err(crate::Reason::UnknownId),
         };
         if value {
-            flags.push(entry.to_string());
+            flags.push(key.to_string());
         } else {
-            flags.retain(|flag| flag != entry);
+            flags.retain(|flag| flag != key);
         }
         Ok(true)
     }
@@ -170,6 +164,96 @@ impl State {
             .collect()
     }
 }
+
+/// One flag resolved to where the save keeps it: the list it sits in, under its owner, and
+/// the entry that marks it set. An actor's flag is its key in the actor's `flags`; an exit's
+/// `open` is the exit's name in its place's `open`. The handle holds no borrow into `State`.
+#[derive(Clone, Debug)]
+pub(crate) struct Flag {
+    /// The flag as the budget, change rules and the GM name it.
+    pub(crate) key: StateKey,
+    owner: String,
+    entry: String,
+    list: ListFn,
+    list_mut: ListMutFn,
+}
+
+impl Flag {
+    /// Where flag `key` on `holder` lives, or `None` when the holder's flags are not kept
+    /// this way. The one place that knows the layout.
+    pub(crate) fn resolve(holder: &Holder, key: &str) -> Option<Flag> {
+        let (owner, entry, list, list_mut): (&str, &str, ListFn, ListMutFn) = match holder {
+            Holder::Actor(id) => (
+                id,
+                key,
+                |state, id| state.actors.get(id).map(|actor| &actor.flags),
+                |state, id| Ok(&mut state.actor_mut(id)?.flags),
+            ),
+            Holder::Exit(place, exit) if key == OPEN => (
+                place,
+                exit,
+                |state, id| state.places.get(id).map(|place| &place.open),
+                |state, id| Ok(&mut state.places.entry(id.to_string()).or_default().open),
+            ),
+            Holder::Exit(..) | Holder::Place(_) | Holder::Story(_) | Holder::World => return None,
+        };
+        Some(Flag {
+            key: StateKey::Flag(holder.clone(), key.to_string()),
+            owner: owner.to_string(),
+            entry: entry.to_string(),
+            list,
+            list_mut,
+        })
+    }
+
+    /// Whether this flag is set.
+    pub(crate) fn get(&self, state: &State) -> bool {
+        (self.list)(state, &self.owner).is_some_and(|list| list.contains(&self.entry))
+    }
+
+    /// Set or clear this flag, which must not already hold `value`, and return the position in
+    /// its list it was added at or removed from. A place gets a live record on its first entry.
+    pub(crate) fn set(&self, state: &mut State, value: bool) -> Result<usize, crate::Reason> {
+        let list = (self.list_mut)(state, &self.owner)?;
+        if value {
+            list.push(self.entry.clone());
+            return Ok(list.len() - 1);
+        }
+        let at = list
+            .iter()
+            .position(|entry| entry == &self.entry)
+            .ok_or(crate::Reason::UnknownId)?;
+        list.remove(at);
+        Ok(at)
+    }
+
+    /// Undo a `set` that changed this flag from `was`, at position `at`.
+    pub(crate) fn unset(&self, state: &mut State, at: usize, was: bool) {
+        let Ok(list) = (self.list_mut)(state, &self.owner) else {
+            return;
+        };
+        if was {
+            list.insert(at, self.entry.clone());
+        } else {
+            list.remove(at);
+        }
+    }
+
+    /// Copy this flag's list from `from` into `into`, when `into` holds its owner.
+    pub(crate) fn carry(&self, from: &State, into: &mut State) {
+        if (self.list)(into, &self.owner).is_none() {
+            return;
+        }
+        let list = (self.list)(from, &self.owner).cloned().unwrap_or_default();
+        if let Ok(target) = (self.list_mut)(into, &self.owner) {
+            *target = list;
+        }
+    }
+}
+
+/// Reads and writes one kind of flag list, given its owner's id.
+type ListFn = for<'s> fn(&'s State, &str) -> Option<&'s Vec<String>>;
+type ListMutFn = for<'s> fn(&'s mut State, &str) -> Result<&'s mut Vec<String>, crate::Reason>;
 
 /// Who is seated. The host's seats own it and hand it to each round; the save never holds it.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]

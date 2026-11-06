@@ -111,6 +111,57 @@ fn a_docks_row_overreach(world: &mut World, add: i64, remove: i64) {
     world.pack = Some(pack);
 }
 
+/// Mira carries the flags `calm` and `wary`, both set. The row clears `calm`, opens the stair
+/// door, sets `calm` again, and then takes more oil than the shop has.
+#[given(
+    expr = "a docks row unbar that clears Mira's calm, opens the stair door, sets calm again and then removes {int} lamp oil"
+)]
+fn a_docks_row_unbar(world: &mut World, remove: i64) {
+    let pack = support::copy_pack("oneshot-docks", "unbar");
+    support::append(
+        &pack.join("rules/verbs.yaml"),
+        &format!(
+            "
+  - id: unbar
+    when: {{ verb: unbar }}
+    do:
+      - flag: {{ who: self, key: calm, value: false }}
+      - flag: {{ who: \"exit:docks_shop.stairs\", key: open, value: true }}
+      - flag: {{ who: self, key: calm, value: true }}
+      - item: {{ who: place:docks_shop, id: lamp_oil, add: -{remove} }}
+"
+        ),
+    );
+    let path = pack.join("cast/mira.md");
+    let text = fs::read_to_string(&path).unwrap();
+    let next = text.replacen(
+        "idle:
+",
+        "flags: [calm, wary]
+idle:
+",
+        1,
+    );
+    assert_ne!(text, next);
+    fs::write(&path, next).unwrap();
+    support::edit_save(&pack, |state| {
+        state.actors.get_mut("mira").unwrap().flags = vec!["calm".into(), "wary".into()];
+    });
+    make_mira_ineligible(&pack);
+    world.pack = Some(pack);
+}
+
+#[then(
+    expr = "lamp oil stays {int}, the round names {word}, the stair door stays locked, and Mira keeps calm and wary"
+)]
+fn the_door_stays_locked_and_mira_keeps_her_flags(world: &mut World, oil: i64, reason: String) {
+    assert_refusal(world, oil, &reason);
+    let saved = spookery_engine::World::peek(world.pack()).unwrap();
+    let shop = saved.state().places.get("docks_shop");
+    assert!(shop.is_none_or(|shop| shop.open.is_empty()), "{shop:?}");
+    assert_eq!(saved.state().actors["mira"].flags, ["calm", "wary"]);
+}
+
 #[given(expr = "a docks row spilled that rolls grit and then removes {int} lamp oil")]
 fn a_docks_row_spilled(world: &mut World, remove: i64) {
     let pack = support::copy_pack("oneshot-docks", "spilled");

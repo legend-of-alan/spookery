@@ -6,9 +6,9 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use crate::canon::Budget;
-use crate::canon::{Canon, OPEN};
+use crate::canon::Canon;
 use crate::model::key::{Change, StateKey, StateValue};
-use crate::model::{ActCounter, MemoryLine, PendingAction, Presence, State};
+use crate::model::{ActCounter, Flag, MemoryLine, PendingAction, Presence, State};
 use crate::rules::effect::Holder;
 use crate::world::World;
 use crate::Reason;
@@ -20,6 +20,7 @@ pub(crate) struct Draft<'p> {
     pub(crate) presence: &'p Presence,
     keys: BTreeSet<StateKey>,
     priors: Vec<Prior>,
+    flags: FlagEdits,
     pub(crate) memories: Vec<MemoryLine>,
     memory_writes: u32,
     _nosend: PhantomData<Rc<()>>,
@@ -34,6 +35,7 @@ impl<'p> Draft<'p> {
             presence,
             keys: BTreeSet::new(),
             priors: Vec::new(),
+            flags: FlagEdits::default(),
             memories: Vec::new(),
             memory_writes: 0,
             _nosend: PhantomData,
@@ -184,6 +186,24 @@ impl<'p> Draft<'p> {
         Ok(())
     }
 
+    /// Set or clear `flag`. A write that changes it goes on the flag edits, which roll it
+    /// back to a savepoint and report it as a change, and counts its key toward the budget.
+    /// As with `mutate`, a budget `Err` leaves the write for the caller's savepoint to undo.
+    pub(crate) fn set_flag(&mut self, flag: Flag, value: bool) -> Result<(), Reason> {
+        if flag.get(&self.state) == value {
+            return Ok(());
+        }
+        let at = flag.set(&mut self.state, value)?;
+        let max = self.canon.budget.max_state_keys_mutated as usize;
+        let reserved = self.reserve_key(&flag.key, &mut Vec::new(), max);
+        self.flags.push(FlagEdit {
+            flag,
+            at,
+            was: !value,
+        });
+        reserved
+    }
+
     pub(crate) fn track(&mut self, key: StateKey) -> Result<(), Reason> {
         self.track_many(std::slice::from_ref(&key))
     }
@@ -250,6 +270,7 @@ impl<'p> Draft<'p> {
                 after,
             });
         }
+        records.extend(self.flags.take(&self.state));
         records.sort_by(|left, right| left.key.cmp(&right.key));
         records
     }
@@ -262,21 +283,13 @@ impl<'p> Draft<'p> {
                 .get(id)
                 .map(|actor| StateValue::Text(actor.place.clone()))
                 .unwrap_or(StateValue::Empty),
-            StateKey::ActorFlag(id, flag) => self
-                .state
-                .actors
-                .get(id)
-                .map(|actor| StateValue::Bool(actor.flags.iter().any(|item| item == flag)))
-                .unwrap_or(StateValue::Empty),
+            // Only `set_flag` writes these, and the flag edits report them.
+            StateKey::Flag(..) => StateValue::Empty,
             StateKey::PlaceFlag(id, flag) => {
                 StateValue::Bool(self.state.has_flag(&Holder::Place(id.clone()), flag))
             }
             StateKey::StoryFlag(id, flag) => {
                 StateValue::Bool(self.state.has_flag(&Holder::Story(id.clone()), flag))
-            }
-            StateKey::ExitOpen(place, exit) => {
-                let holder = Holder::Exit(place.clone(), exit.clone());
-                StateValue::Bool(self.state.has_flag(&holder, OPEN))
             }
             StateKey::PlaceMeter(id, meter) => self.meter_value(&Holder::Place(id.clone()), meter),
             StateKey::StoryMeter(id, meter) => self.meter_value(&Holder::Story(id.clone()), meter),
@@ -390,13 +403,19 @@ impl<'p> Draft<'p> {
             state: self.state.clone(),
             keys: self.keys.clone(),
             priors: self.priors.clone(),
+            flags: self.flags.mark(),
             memories: self.memories.clone(),
             memory_writes: self.memory_writes,
         }
     }
 
+    /// Go back to `point`. The flag edits undo their own writes and carry those lists over
+    /// the savepoint's copy of the save, so the copy never restores a flag `Flag` keeps.
     pub(crate) fn rollback(&mut self, point: Savepoint) {
-        self.state = point.state;
+        let mut state = point.state;
+        self.flags
+            .rollback(&mut self.state, &mut state, point.flags);
+        self.state = state;
         self.keys = point.keys;
         self.priors = point.priors;
         self.memories = point.memories;
@@ -411,10 +430,85 @@ struct Prior {
     before: StateValue,
 }
 
+/// Every write that changed a flag `Flag` keeps, in order: what the flag was, and where in
+/// its list the entry went or came from. `taken` counts the edits already reported, and
+/// `touched` holds each flag the round has written, rolled back or not.
+#[derive(Default)]
+struct FlagEdits {
+    edits: Vec<FlagEdit>,
+    taken: usize,
+    touched: Vec<Flag>,
+}
+
+struct FlagEdit {
+    flag: Flag,
+    at: usize,
+    was: bool,
+}
+
+/// How far the flag edits had come at a savepoint.
+struct FlagMark {
+    edits: usize,
+    taken: usize,
+}
+
+impl FlagEdits {
+    fn mark(&self) -> FlagMark {
+        FlagMark {
+            edits: self.edits.len(),
+            taken: self.taken,
+        }
+    }
+
+    fn push(&mut self, edit: FlagEdit) {
+        if !self.touched.iter().any(|flag| flag.key == edit.flag.key) {
+            self.touched.push(edit.flag.clone());
+        }
+        self.edits.push(edit);
+    }
+
+    /// Undo on `live` every edit since `mark`, newest first, then carry the list of every flag
+    /// the round has touched into `into`, the save as it was at the mark. A nested savepoint
+    /// may already have undone this mark's edits, so the carry covers them too.
+    fn rollback(&mut self, live: &mut State, into: &mut State, mark: FlagMark) {
+        for edit in self.edits.drain(mark.edits..).rev() {
+            edit.flag.unset(live, edit.at, edit.was);
+        }
+        for flag in &self.touched {
+            flag.carry(live, into);
+        }
+        self.taken = mark.taken;
+    }
+
+    /// Each flag edited since the last take whose value now differs from before its first
+    /// edit since then.
+    fn take(&mut self, state: &State) -> Vec<Change> {
+        let mut seen: Vec<&StateKey> = Vec::new();
+        let mut changes = Vec::new();
+        for edit in &self.edits[self.taken..] {
+            if seen.contains(&&edit.flag.key) {
+                continue;
+            }
+            seen.push(&edit.flag.key);
+            let after = edit.flag.get(state);
+            if after != edit.was {
+                changes.push(Change {
+                    key: edit.flag.key.clone(),
+                    before: StateValue::Bool(edit.was),
+                    after: StateValue::Bool(after),
+                });
+            }
+        }
+        self.taken = self.edits.len();
+        changes
+    }
+}
+
 pub(crate) struct Savepoint {
     state: State,
     keys: BTreeSet<StateKey>,
     priors: Vec<Prior>,
+    flags: FlagMark,
     memories: Vec<MemoryLine>,
     memory_writes: u32,
 }

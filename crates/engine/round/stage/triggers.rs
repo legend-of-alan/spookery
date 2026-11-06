@@ -1,6 +1,6 @@
 //! Change rules, edge-triggered, to a fixpoint, after each start and each finish lands.
 
-use crate::canon::{Canon, OPEN};
+use crate::canon::Canon;
 use crate::draft::Draft;
 use crate::intent::Intent;
 use crate::model::key::{Change, StateKey, StateValue};
@@ -146,7 +146,7 @@ fn matches_watch(draft: &Draft, rule: &Rule, watch: &ChangeWatch, change: &Chang
             _ => false,
         },
         ChangeWatch::Flag { key, becomes } => match &change.key {
-            StateKey::ActorFlag(_, flag)
+            StateKey::Flag(_, flag)
             | StateKey::PlaceFlag(_, flag)
             | StateKey::StoryFlag(_, flag)
             | StateKey::WorldFlag(flag)
@@ -154,7 +154,6 @@ fn matches_watch(draft: &Draft, rule: &Rule, watch: &ChangeWatch, change: &Chang
             {
                 flips(change, *becomes)
             }
-            StateKey::ExitOpen(_, _) if key == OPEN => flips(change, *becomes),
             _ => false,
         },
         ChangeWatch::Item { id, gained } => match &change.key {
