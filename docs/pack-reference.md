@@ -60,7 +60,7 @@ To start a door already open, list its exit name under `places.<id>.open` in the
 
 A door carries one flag, `open`, which the engine owns: a rule names it with `who: exit:<place>.<exit>` and `key: open`, sets it to `false` to lock the door again, and may watch it like any flag. An exit with no `if` has no flag and is always open. The `bar` rule below locks the cellar door again.
 
-The traveller stays at the origin until the journey finishes. The busy time is the rule's ticks plus the exit's ticks.
+A walk that takes ticks puts the traveller on the exit as soon as it starts. Their place is then `exit:<place>.<exit>`, in neither room, so nobody in either room sees them, and they arrive when the walk finishes. The busy time is the rule's ticks plus the exit's ticks. A walk of no ticks goes straight to the other side.
 
 ```yaml file=world/places/yard.md
 ---
@@ -376,7 +376,7 @@ rules:
 
 ## Rules
 
-A rule has `id`, `when`, and `do`. It may have `if`, `cost`, `roll`, `success`, `partial`, and `miss`.
+A rule has `id`, `when`, and `do`. It may have `if`, `cost`, `start`, `finish`, `cooldown`, `roll`, `success`, `partial`, and `miss`.
 
 `when` is `habit`, a map with `verb` and `target`, or a map with `change`. `target` is `none`, `actor`, `place`, `exit`, or `item`. An omitted `target` means `none`. `say` is speech, so that id is not a rule. A built-in player word, such as `say` or `look`, cannot be a verb. `when` has one of `verb` or `change`, not both.
 
@@ -391,19 +391,21 @@ A change rule fires when its watch becomes true. It does not fire again while th
 | Item | `item` is an item id, with `gained: true` or `lost: true`. |
 | Knows | `knows` is a fact id. The watch is that fact becoming known. |
 
-A change rule has no `cost`. Check rejects one. It may have `if`, `roll`, and the outcome lists. `if` is read after the change.
+A change rule has no `cost`, `start`, `finish`, or `cooldown`. Check rejects them. It may have `if`, `roll`, and the outcome lists. `if` is read after the change.
 
 Matching change rules run in owner order (shared verbs, then place, item, cast, story), then by file path, then by position in the file. They run again on the changes they just wrote, until a pass matches nothing. In one pass a rule runs at most once for each subject. The subject is the actor whose value changed. A flag or meter of the world, a place, a story or an exit has no subject, so a rule watching one runs once per change, whoever is seated, and check refuses `self`, `here`, `location`, and `roll` in it: name the actor, or `world`. A flag counts as the world's when a rule sets it with `who: world`; a world flag only the save sets is not checked, and a `self` there is refused when the rule runs. A key the world and an actor both carry fires the rule for each, and `TRIGGER_LEAK` reads it as an actor's change. `max_trigger_depth` in `rules/budget.yaml` caps the passes. Omitted, it is 4. The next pass is recorded and does not run. Check warns when change rules set each other's watched values. A `narrate` or `note` on a change rule that can reach a viewer who cannot see that change is `TRIGGER_LEAK`.
 
 `if` is a list. Each dash is one condition. `all` is and, `any` is or, and `not` negates one condition. Two conditions under one dash are rejected. `who` is `self`, `target`, `here`, `world`, `place:<id>`, `story:<id>`, `exit:<place>.<exit>`, or an actor id. An exit holds only its flag `open`. On `has_item`, `wielding`, and an item effect, `id: target` is the intent's target. The habit on `cast/keeper.md` uses each condition. `op` is `<`, `<=`, `==`, `>=`, or `>`. `cycle` holds while the tick of the cycle `name`, world time modulo that cycle's length in `cycles`, is in `from..to`. When `from` is above `to` the window wraps past the cycle's end. `from` and `to` are integers below the cycle's length and they differ.
 
-`cost` may name `time`, `meters`, and `items`. `time` uses the duration words from exits. A cost the actor cannot pay is refused when the move is played, and the world stays as it was.
+Every move but `say` is an action that starts and finishes. `cost` is what the start costs, and it may name `ticks`, `meters`, and `items`. `cost.ticks` is how long the action takes; omitted, it finishes in the round it starts. A cost the actor cannot pay is refused when the move is played, and the world stays as it was. The start is checked again when the round runs it, since an earlier move may have changed the world.
+
+`start.counts_as_act` says whether the start uses the actor's act this round. Omitted, it is `true`. An NPC that has used its act sits out its habits that round, so a drink with `counts_as_act: false` leaves the act for one. `finish` may have `cost`, in `meters` and `items`, paid when the action finishes, and `counts_as_act`, which is `false` when omitted. A finish cost with `ticks` is rejected. Every effect lands at the finish, a timed walk's arrival and a timed teleport among them. `cooldown` is the ticks the actor stays busy after the finish. Omitted, it is 0. The `chant` rule below takes five ticks, then three more to recover.
 
 `roll` names a `check` and a `target`. `partial_at` is an absolute total, strictly below a literal target, and it needs a `partial` list. `do` runs on every band. `success`, `partial`, and `miss` run on that band. A yield is `do: []` with no outcome lists.
 
 A number is an integer or an [expression](spec.md). A meter plus an integer still loads.
 
-The flag key `busy` is rejected. An actor is busy while a journey's finish tick is still ahead of world time.
+The flag key `busy` is rejected. An actor is busy from the start of a timed action until it finishes, and then through its cooldown. A move from a busy actor is refused `BUSY`.
 
 ```yaml file=rules/verbs.yaml
 schema: verbs
@@ -501,6 +503,21 @@ rules:
           who: target
           key: nerve
           set: 3
+
+  - id: chant
+    when:
+      verb: chant
+    cost:
+      ticks: 5
+    start:
+      counts_as_act: true
+    finish:
+      cost:
+        meters:
+          nerve: 1
+      counts_as_act: false
+    cooldown: 3
+    do: []
 
   - id: shrug
     when:

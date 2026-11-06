@@ -4,11 +4,11 @@ use spookery_protocol::{PlaceView, Seat, WordView, WORDS};
 
 use crate::canon::Canon;
 use crate::intent::{Target, Viewer};
-use crate::model::{ActorLive, PendingKind, Presence, State};
+use crate::model::{ActorLive, Presence, State};
 use crate::rules::cond;
 use crate::rules::gate::{nameable, verb_for};
 use crate::rules::rule::{Owner, TargetKind, When};
-use crate::rules::travel::{exit_view, exits_at};
+use crate::rules::travel::{exit_stood_on, exit_view, exits_at};
 use crate::Reason;
 
 /// `help`: the built-in player words but `claim`, then each pack verb `verb_for` reaches
@@ -136,18 +136,32 @@ pub(crate) fn map(canon: &Canon, state: &State, actor_id: &str) -> Result<Vec<Pl
     Ok(places.collect())
 }
 
-/// `on the stairs until tick 1300` while a journey is still running.
-pub(crate) fn busy_line(state: &State, actor_id: &str) -> Option<String> {
+/// What keeps this actor busy, and until when: `on the stairs until tick 1300` on a walk,
+/// `chanting until tick 1300` on any other timed action, read from its verb, and
+/// `recovering until tick 1300` in a cooldown.
+pub(crate) fn busy_line(canon: &Canon, state: &State, actor_id: &str) -> Option<String> {
     let actor = state.actors.get(actor_id)?;
     if !actor.is_busy(state.world_time) {
         return None;
     }
     let until = actor.act.busy_until?;
-    let via = match actor.act.pending.as_ref().map(|pending| &pending.kind) {
-        Some(PendingKind::Arrive { via, .. }) if !via.is_empty() => via,
-        _ => return None,
+    let doing = match (&actor.act.pending, exit_stood_on(canon, &actor.place)) {
+        (Some(_), Some(exit)) => format!("on the {}", exit.name),
+        (Some(pending), None) => gerund(&pending.verb),
+        (None, _) => "recovering".to_string(),
     };
-    Some(format!("on the {via} until tick {until}"))
+    Some(format!("{doing} until tick {until}"))
+}
+
+/// `chant` as `chanting`, `strike` as `striking`, and `tie` as `tying`.
+fn gerund(verb: &str) -> String {
+    if let Some(stem) = verb.strip_suffix("ie") {
+        return format!("{stem}ying");
+    }
+    match verb.strip_suffix('e') {
+        Some(stem) if !stem.is_empty() && !stem.ends_with('e') => format!("{stem}ing"),
+        _ => format!("{verb}ing"),
+    }
 }
 
 /// Place prose for this actor's current place.
@@ -167,7 +181,11 @@ pub(crate) fn place_prose(canon: &Canon, state: &State, actor_id: &str) -> Strin
         .join("\n")
 }
 
+/// The place's display name, the exit's name for a walker on one, or else the id.
 pub(crate) fn place_name(canon: &Canon, id: &str) -> String {
+    if let Some(exit) = exit_stood_on(canon, id) {
+        return exit.name.clone();
+    }
     canon
         .places
         .get(id)

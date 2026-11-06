@@ -194,6 +194,7 @@ fn player_in_the_shop() {
 fn queue_gm_intent(opened: &mut spookery_engine::World, id: &str, actor: &str, move_name: &str) {
     opened
         .queue_gm_intent(
+            &spookery_engine::Presence::default(),
             spookery_protocol::IntentArgs {
                 id: None,
                 round_index: None,

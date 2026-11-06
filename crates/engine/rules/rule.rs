@@ -10,7 +10,13 @@ pub struct Rule {
     pub when: When,
     pub if_: Vec<Cond>,
     pub roll: Option<RollSpec>,
-    pub cost: Option<Cost>,
+    /// Paid when the action starts. Its `cost` is the rule's `cost`, whose ticks are how long
+    /// the action takes.
+    pub start: Phase,
+    /// Paid when the action finishes.
+    pub finish: Phase,
+    /// Ticks the actor stays busy after the finish.
+    pub cooldown: u64,
     pub do_: Vec<EffectTemplate>,
     pub success: Vec<EffectTemplate>,
     pub partial: Vec<EffectTemplate>,
@@ -27,6 +33,11 @@ impl Rule {
             }
         }
         place
+    }
+
+    /// The start cost, then the finish cost.
+    pub(crate) fn costs(&self) -> impl Iterator<Item = &Cost> {
+        self.start.cost.iter().chain(&self.finish.cost)
     }
 
     pub(crate) fn top_templates(&self) -> impl Iterator<Item = &EffectTemplate> {
@@ -51,6 +62,13 @@ impl Rule {
         walk(&self.partial, &mut visit);
         walk(&self.failure, &mut visit);
     }
+}
+
+/// What the start or the finish of an action costs, and whether it uses the actor's act.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Phase {
+    pub cost: Option<Cost>,
+    pub counts_as_act: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

@@ -24,7 +24,9 @@ fn plays(pack: &Path, actor: &str, verb: &str, target: Option<&str>) -> serde_js
         rationale_code: "test".to_string(),
     };
     world
-        .queue_gm_intent(intent, || panic!("the GM chose the id"))
+        .queue_gm_intent(&spookery_engine::Presence::default(), intent, || {
+            panic!("the GM chose the id")
+        })
         .unwrap_or_else(|code| panic!("queue: {code}"));
     let wall = world.state().last_round_at.clone();
     let seated = Presence {
@@ -147,10 +149,25 @@ fn a_rule_locks_the_door(world: &mut World) {
     assert!(!stairs_open(world.pack()));
 }
 
-#[then(expr = "the stair door refuses Aldric with {string}")]
-fn the_door_refuses_aldric(world: &mut World, text: String) {
-    let round = plays(world.pack(), "aldric", "travel", Some("stairs"));
-    assert!(round["refused"].to_string().contains(&text), "{round}");
+#[then(expr = "the GM's travel for Aldric up the stairs is refused NO_EXIT at once")]
+fn the_door_refuses_aldric(world: &mut World) {
+    let lock = spookery_engine::lock_pack(world.pack()).unwrap();
+    let mut opened = spookery_engine::World::resume(world.pack(), lock).unwrap();
+    let intent = spookery_protocol::IntentArgs {
+        id: Some("aldric-stairs".to_string()),
+        round_index: None,
+        actor_id: Some("aldric".to_string()),
+        move_name: Some("travel".to_string()),
+        target: Some("stairs".to_string()),
+        message_to: None,
+        rationale_code: "test".to_string(),
+    };
+    let queued = opened.queue_gm_intent(&Presence::default(), intent, || {
+        panic!("the GM chose the id")
+    });
+    assert_eq!(queued.unwrap_err(), spookery_engine::Reason::NoExit);
+    assert!(opened.queued_intents().is_empty());
+    drop(opened);
     assert_eq!(place_of(world.pack(), "aldric"), "docks_shop");
 }
 

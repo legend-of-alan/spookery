@@ -203,7 +203,8 @@ fn queue(
         }
     }
     let target = call.target.clone().filter(|target| !target.is_empty());
-    let queued = world.queue_gm_intent(call, || Ok(uuid::Uuid::new_v4().to_string()))?;
+    let mint = || Ok(uuid::Uuid::new_v4().to_string());
+    let queued = world.queue_gm_intent(presence, call, mint)?;
     Ok(Reply::new(ServerBody::Queued {
         intent: queued.id,
         actor: queued.actor_id,
@@ -270,7 +271,9 @@ mod tests {
         let mut world = World::open(&pack).unwrap();
         let args = json!({"actor_id": "pc_rowan", "move": "wait", "to": ["pc_wren"]});
         let call = crate::protocol::parse_args(args.as_object()).unwrap();
-        let queued = world.queue_gm_intent(call, || Ok("i1".into())).unwrap();
+        let queued = world
+            .queue_gm_intent(&Presence::default(), call, || Ok("i1".into()))
+            .unwrap();
         let want = QueuedMove {
             id: "i1".into(),
             actor_id: "pc_rowan".into(),

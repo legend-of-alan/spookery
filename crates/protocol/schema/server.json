@@ -859,7 +859,11 @@
           }
         },
         "cant_act": {
-          "description": "Why the viewer can't act now, such as a journey under way. Empty when they can.",
+          "description": "Why the viewer can't send a move at all. Empty when they can, and empty today: being\nbusy is `busy`, not this.",
+          "type": "string"
+        },
+        "busy": {
+          "description": "What keeps the viewer busy and until when, such as `on the stairs until tick 1300`.\nEmpty when they are free.",
           "type": "string"
         },
         "visible_actors": {

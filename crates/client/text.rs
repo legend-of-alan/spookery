@@ -131,6 +131,7 @@ pub fn render_view(view: &protocol::View) -> String {
         body,
         actor_names,
         cant_act,
+        busy,
         visible_actors,
         known_facts,
         notes,
@@ -146,8 +147,10 @@ pub fn render_view(view: &protocol::View) -> String {
     if !titled.is_empty() {
         sections.push(format!("You are in {titled}."));
     }
-    if !cant_act.is_empty() {
-        sections.push(cant_act.clone());
+    for line in [cant_act, busy] {
+        if !line.is_empty() {
+            sections.push(line.clone());
+        }
     }
     let prose = body.trim();
     if !prose.is_empty() {
@@ -559,6 +562,7 @@ You are in Gate Yard."
             body: "The shop faces the water. Tins sit in a row.".to_string(),
             actor_names: vec!["Aldric".to_string(), "Rowan".to_string()],
             cant_act: String::new(),
+            busy: String::new(),
             visible_actors: vec!["aldric".to_string(), "pc_rowan".to_string()],
             known_facts: vec![KnownFact {
                 id: "fact_oil_on_shelf".to_string(),
@@ -636,7 +640,8 @@ stairs (locked) — 2 ticks"
             place_name: "Docks Street".to_string(),
             body: String::new(),
             actor_names: vec!["Bram".to_string()],
-            cant_act: "on the stairs until tick 1300".to_string(),
+            cant_act: String::new(),
+            busy: "on the stairs until tick 1300".to_string(),
             visible_actors: vec!["bram".to_string()],
             known_facts: Vec::new(),
             notes: Vec::new(),

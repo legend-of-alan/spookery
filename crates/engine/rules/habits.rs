@@ -15,8 +15,12 @@ pub(crate) fn intents(canon: &Canon, state: &State, presence: &Presence) -> Vec<
     intents.collect()
 }
 
-/// The first habit, in file order, that the gate admits and whose effects expand.
+/// For an NPC the engine may move now, the first habit, in file order, that the gate admits
+/// and whose effects expand.
 fn intent_of(canon: &Canon, state: &State, presence: &Presence, actor_id: &str) -> Option<Intent> {
+    if !is_eligible(canon, state, presence, actor_id) {
+        return None;
+    }
     let habits = canon.rules.habits_of(actor_id);
     habits.into_iter().find_map(|rule| {
         let intent = Intent::habit(state, actor_id, &rule.local_id);
@@ -44,7 +48,9 @@ pub(crate) fn list_whose_if_holds(
         .collect()
 }
 
-pub(crate) fn is_eligible(canon: &Canon, state: &State, presence: &Presence, npc_id: &str) -> bool {
+/// Whether the engine may run one of this NPC's habits on its own this round: its idle
+/// profile allows it, it is free, no seated player is with it, and its act window has room.
+fn is_eligible(canon: &Canon, state: &State, presence: &Presence, npc_id: &str) -> bool {
     let Some(actor) = state.actors.get(npc_id) else {
         return false;
     };

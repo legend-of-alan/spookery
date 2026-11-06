@@ -16,9 +16,14 @@ pub struct View {
     pub body: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub actor_names: Vec<String>,
-    /// Why the viewer can't act now, such as a journey under way. Empty when they can.
+    /// Why the viewer can't send a move at all. Empty when they can, and empty today: being
+    /// busy is `busy`, not this.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub cant_act: String,
+    /// What keeps the viewer busy and until when, such as `on the stairs until tick 1300`.
+    /// Empty when they are free.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub busy: String,
     pub visible_actors: Vec<String>,
     pub known_facts: Vec<KnownFact>,
     pub notes: Vec<NoteView>,
@@ -35,7 +40,7 @@ pub struct View {
 }
 
 impl View {
-    /// Whether the viewer can act now.
+    /// Whether the viewer can send a move at all. A busy viewer can, and is refused `BUSY`.
     pub fn can_act(&self) -> bool {
         self.cant_act.is_empty()
     }

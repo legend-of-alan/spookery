@@ -8,7 +8,6 @@ use crate::model::{Presence, State};
 use crate::rules::cond;
 use crate::rules::context::Context;
 use crate::rules::cost;
-use crate::rules::habits::is_eligible;
 use crate::rules::perceive::perceive_as;
 use crate::rules::rule::{Owner, Rule, TargetKind, When};
 use crate::Reason;
@@ -107,8 +106,16 @@ fn owner_verb<'a>(canon: &'a Canon, owner: &Owner, verb: &str) -> Option<&'a Rul
     })
 }
 
-/// Pick the intent's rule, then `admit` it.
+/// The one gate: pick the intent's rule, then `admit` it. It runs when a player line or a GM
+/// intent is queued. When the action starts, `admit` runs again on the rule resolve picked,
+/// so a move pays for the rule it rolled for.
 pub(crate) fn gate<'a>(context: &Context<'a>) -> Result<&'a Rule, Refusal> {
+    let rule = rule_of(context)?;
+    admit(context, rule).map(|()| rule)
+}
+
+/// The rule the intent's verb picks, for its actor and target.
+pub(crate) fn rule_of<'a>(context: &Context<'a>) -> Result<&'a Rule, Refusal> {
     let intent = context.intent;
     let (verb, hint) = (&intent.move_name, hint_of(&intent.target));
     let actor = intent
@@ -123,23 +130,29 @@ pub(crate) fn gate<'a>(context: &Context<'a>) -> Result<&'a Rule, Refusal> {
         verb,
         hint,
     );
-    let rule = picked.map_err(|code| Refusal::new(intent, code))?;
-    admit(context, rule).map(|()| rule)
+    picked.map_err(|code| Refusal::new(intent, code))
 }
 
-/// Check a rule already picked. A player-sourced habit skips its `if`. Cost is checked for every rule.
+/// Check a rule already picked, whoever queued it. A habit whose start counts as an act is
+/// `INELIGIBLE` once its NPC has acted this round, and any rule is `BUSY` while its actor is.
+/// A verb's target is one the actor may name. The `if` and the start cost are checked for
+/// every rule.
 pub(crate) fn admit(context: &Context, rule: &Rule) -> Result<(), Refusal> {
     let (state, intent) = (context.state, context.intent);
     if let Some(actor) = intent.actor_id().and_then(|id| state.actors.get(id)) {
-        if actor.is_busy(state.world_time) && matches!(rule.when, When::Verb { .. }) {
+        let acted = actor.act.last_act_round == intent.round_index;
+        if acted && rule.start.counts_as_act && matches!(rule.when, When::Habit) {
+            return Err(Refusal::new(intent, Reason::Ineligible));
+        }
+        if actor.is_busy(state.world_time) {
             return Err(Refusal::new(intent, Reason::Busy));
         }
     }
     crate::rules::travel::admit(context, rule)?;
-    if intent.source == Source::Player && !can_name(context) {
-        return Err(Refusal::new(intent, Reason::NotInSpec));
-    }
     if let When::Verb { target, .. } = &rule.when {
+        if !can_name(context) {
+            return Err(Refusal::new(intent, Reason::NotInSpec));
+        }
         let shaped = match target {
             TargetKind::None => matches!(intent.target, Target::Empty),
             TargetKind::Place => matches!(intent.target, Target::Place(_)),
@@ -151,16 +164,8 @@ pub(crate) fn admit(context: &Context, rule: &Rule) -> Result<(), Refusal> {
             return Err(Refusal::new(intent, Reason::Schema));
         }
     }
-    if let (Source::Engine, Some(Viewer::Npc(id))) = (intent.source, &intent.actor) {
-        if !is_eligible(context.canon, state, context.presence, id) {
-            return Err(Refusal::new(intent, Reason::Ineligible));
-        }
-    }
-    let skip_if = intent.source == Source::Player && matches!(rule.when, When::Habit);
-    if !skip_if {
-        cond::all_hold(context, &rule.if_).map_err(|code| Refusal::new(intent, code))?;
-    }
-    if let Some(cost) = &rule.cost {
+    cond::all_hold(context, &rule.if_).map_err(|code| Refusal::new(intent, code))?;
+    if let Some(cost) = &rule.start.cost {
         cost::afford(context, cost)?;
     }
     Ok(())

@@ -423,7 +423,7 @@ fn rowan_hauls_until_it_finishes(world: &mut World) {
 }
 
 #[then(
-    expr = "the finishing round commits with arrival:pc_rowan refused MISSING_ITEM, Rowan is no longer busy, and spook verify passes"
+    expr = "the finishing round commits with finish:pc_rowan refused MISSING_ITEM, Rowan is no longer busy, and spook verify passes"
 )]
 fn the_refused_finish_commits(world: &mut World) {
     assert!(world.scratch.is_empty(), "{}", world.scratch);
@@ -433,7 +433,7 @@ fn the_refused_finish_commits(world: &mut World) {
     assert!(
         refused
             .iter()
-            .any(|item| item["id"] == "arrival:pc_rowan" && item["code"] == "MISSING_ITEM"),
+            .any(|item| item["id"] == "finish:pc_rowan" && item["code"] == "MISSING_ITEM"),
         "{round}"
     );
     let saved = spookery_engine::World::peek(pack).unwrap_or_else(|err| panic!("open: {err}"));
@@ -492,9 +492,11 @@ fn the_next_round_plays_and_verify_passes(world: &mut World) {
         spookery_engine::World::resume(pack, lock).unwrap_or_else(|err| panic!("open: {err}"));
     let wall = table.state().last_round_at.clone();
     table
-        .queue_gm_intent(intent("wait-1", "pc_wren", "wait", None), || {
-            panic!("the GM chose the id")
-        })
+        .queue_gm_intent(
+            &spookery_engine::Presence::default(),
+            intent("wait-1", "pc_wren", "wait", None),
+            || panic!("the GM chose the id"),
+        )
         .unwrap_or_else(|code| panic!("queue: {code}"));
     table
         .play(&spookery_engine::Presence::default(), &wall)
@@ -622,9 +624,10 @@ fn miras_travel_is_picked_first(world: &mut World) {
         .filter_map(|step| step["rule"].as_str())
         .filter(|rule| ["verb:travel", "verb:wait"].contains(rule))
         .collect();
+    // Mira's walk starts first and finishes after the waits, when its ticks pass.
     assert_eq!(
         rules,
-        vec!["verb:travel", "verb:wait", "verb:wait"],
+        vec!["verb:travel", "verb:wait", "verb:wait", "verb:travel"],
         "{round}"
     );
 }
@@ -853,7 +856,7 @@ fn lark_roll(pack: &Path, extra_first: bool) -> (String, i64) {
             "briar-strike",
             "npc_briar",
             "strike",
-            Some("npc_oden"),
+            Some("pc_lark"),
         ));
     }
     intents.push(intent("lark-grit", "pc_lark", "grit", None));
@@ -891,7 +894,9 @@ fn play_queued(
     let wall = world.state().last_round_at.clone();
     for intent in intents {
         world
-            .queue_gm_intent(intent, || panic!("the GM chose the id"))
+            .queue_gm_intent(&spookery_engine::Presence::default(), intent, || {
+                panic!("the GM chose the id")
+            })
             .unwrap_or_else(|code| panic!("queue: {code}"));
     }
     let output = world

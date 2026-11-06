@@ -8,7 +8,7 @@ use std::sync::Arc;
 use crate::canon::Budget;
 use crate::canon::{Canon, OPEN};
 use crate::model::key::{Change, StateKey, StateValue};
-use crate::model::{ActCounter, MemoryLine, Presence, State};
+use crate::model::{ActCounter, MemoryLine, PendingAction, Presence, State};
 use crate::rules::effect::Holder;
 use crate::world::World;
 use crate::Reason;
@@ -100,8 +100,9 @@ impl<'p> Draft<'p> {
         Ok(())
     }
 
-    pub(crate) fn count_npc_act(&mut self, actor_id: &str, players: u32) -> Result<(), Reason> {
-        let round_index = self.state.round_index;
+    /// Count one act for `actor_id` this round, in the act window the table is in.
+    pub(crate) fn count_act(&mut self, actor_id: &str) -> Result<(), Reason> {
+        let (round_index, players) = (self.state.round_index, self.presence.players);
         let (current_idle, current_live, current_last) = {
             let counters = &self
                 .state
@@ -136,6 +137,23 @@ impl<'p> Draft<'p> {
             counters.live_acts_this_window = new_live;
         }
         Ok(())
+    }
+
+    /// Keep actor `id` busy until `until`, on `pending` when it is an action under way and
+    /// `None` when it is a cooldown.
+    pub(crate) fn set_busy(
+        &mut self,
+        id: &str,
+        until: u64,
+        pending: Option<PendingAction>,
+    ) -> Result<(), Reason> {
+        self.mutate(StateKey::ActorBusy(id.to_string()), |state| {
+            let act = &mut state.actor_mut(id)?.act;
+            let changed = act.busy_until != Some(until) || act.pending != pending;
+            act.busy_until = Some(until);
+            act.pending = pending;
+            Ok(changed)
+        })
     }
 
     /// Runs `write` on the state, tracks `key` only if its value changed, and keeps the

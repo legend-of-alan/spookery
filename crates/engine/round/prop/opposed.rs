@@ -3,6 +3,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use crate::intent::{Intent, Source, Target};
 use crate::model::Presence;
 use crate::rules::gate;
 use crate::store::journal;
@@ -27,7 +28,7 @@ fn a_refused_or_dropped_opposing_roll_replays_the_same_way() {
     let cases = [
         // Two effects over a cap of one.
         (Some("max_effects_per_intent: 1"), "", Some(Reason::Budget)),
-        // A failed gate: Lark holds no chock.
+        // A failed gate at the start: Lark holds no chock.
         (
             None,
             "    if: [has_item: { who: self, id: chock }]\n",
@@ -88,22 +89,24 @@ fn fight(base: &Path, warmup: u32, refused: Option<Reason>) -> Result<(), String
             .play(&lark, &wall)
             .map_err(|err| fail("warm-up", err.to_string()))?;
     }
+    // Queued past the queue's gate, as if the world changed before the start, so the start's
+    // gate is what refuses the lunge.
+    let round_index = world.state().round_index + 1;
     for (id, actor, verb, target) in [
         ("briar-strike", "npc_briar", "strike", "pc_lark"),
         ("lark-lunge", "pc_lark", "lunge", "npc_briar"),
     ] {
-        let spec = spookery_protocol::IntentArgs {
-            id: Some(id.to_string()),
-            round_index: None,
-            actor_id: Some(actor.to_string()),
-            move_name: Some(verb.to_string()),
-            target: Some(target.to_string()),
-            message_to: None,
-            rationale_code: String::new(),
-        };
-        world
-            .queue_gm_intent(spec, || Err(Reason::Schema))
-            .map_err(|err| fail(id, err.to_string()))?;
+        let viewer = world.state().viewer_of(actor);
+        let target = Target::Actor(target.to_string());
+        let intent = Intent::new(
+            id.to_string(),
+            round_index,
+            viewer,
+            Source::Gm,
+            verb,
+            target,
+        );
+        world.queue_intent(intent);
     }
     world
         .play(&lark, &wall)

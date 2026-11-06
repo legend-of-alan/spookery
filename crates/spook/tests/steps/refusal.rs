@@ -224,8 +224,14 @@ fn lark_queues(world: &mut World, line: String) {
 #[when(expr = "the GM sends Lark's strike on {word}")]
 fn the_gm_sends_larks_strike(world: &mut World, target: String) {
     let args = format!(r#"{{"actor_id":"pc_lark","move":"strike","target":"{target}"}}"#);
-    let text = table::gm_tool_call(world, 4, "queue", &args);
-    assert!(text.contains("\"id\""), "{text}");
+    world.scratch = table::gm_tool_call(world, 4, "queue", &args);
+}
+
+#[then(expr = "the GM's queue is refused {string}")]
+fn the_gms_queue_is_refused(world: &mut World, code: String) {
+    let text = &world.scratch;
+    assert!(text.contains(&format!("\"code\":\"{code}\"")), "{text}");
+    assert!(!text.contains("\"kind\":\"queued\""), "{text}");
 }
 
 #[then(expr = "Lark's refused frame for {string} has no missing field")]

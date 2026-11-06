@@ -720,6 +720,8 @@ fn move_actor(
     }
     let table_empty = draft.presence.players == 0;
     let in_canon = draft.canon().places.contains_key(to);
+    // A walker stands on the exit until they arrive. The exit is no place of its own.
+    let on_exit = crate::rules::travel::exit_stood_on(draft.canon(), to).is_some();
     draft.mutate(StateKey::ActorPlace(actor_id.to_string()), |state| {
         let actor = state.actors.get_mut(actor_id).ok_or(Reason::UnknownId)?;
         if table_empty && actor.is_pc() {
@@ -728,13 +730,15 @@ fn move_actor(
         if actor.place != from {
             return Err(Reason::OutOfRange);
         }
-        if !in_canon && !state.places.contains_key(to) {
+        if !in_canon && !on_exit && !state.places.contains_key(to) {
             return Err(Reason::NoExit);
         }
         let moved = actor.place != to;
         actor.place = to.to_string();
         // A canon place with no live record yet gets an empty one on the first arrival.
-        state.places.entry(to.to_string()).or_default();
+        if !on_exit {
+            state.places.entry(to.to_string()).or_default();
+        }
         Ok(moved)
     })
 }

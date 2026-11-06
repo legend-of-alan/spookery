@@ -234,9 +234,10 @@ pub enum ActorKind {
 }
 
 impl ActorLive {
-    /// Busy means `busy_until` is still after this tick.
+    /// Busy means an action under way, or a cooldown whose `busy_until` is still after this
+    /// tick. An action stays under way until the round that reaches its finish ends.
     pub fn is_busy(&self, world_time: u64) -> bool {
-        self.act.busy_until.is_some_and(|until| until > world_time)
+        self.act.pending.is_some() || self.act.busy_until.is_some_and(|until| until > world_time)
     }
 
     pub fn is_npc(&self) -> bool {
@@ -312,7 +313,7 @@ pub(crate) fn shift_count(
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-/// How many times an actor has acted, and the journey they are still on.
+/// How many times an actor has acted, and the action they are still on.
 pub struct Act {
     pub last_act_round: u64,
     pub idle_acts_this_window: u32,
@@ -348,27 +349,16 @@ impl ActCounter {
     }
 }
 
-/// Work that finishes when `busy_until` is reached.
+/// A timed action that finishes when `busy_until` is reached: its verb, who queued it, the
+/// target it was queued against, and the rule it started with.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PendingAction {
     pub verb: String,
     pub source: crate::intent::Source,
-    pub kind: PendingKind,
-}
-
-/// How a timed action finishes.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case", deny_unknown_fields)]
-pub enum PendingKind {
-    /// A journey: the place it ends in, through the exit it took.
-    Arrive { place: String, via: String },
-    /// Any other timed verb, with the target it was queued against and the rule it started with.
-    Finish {
-        #[serde(default, skip_serializing_if = "Target::is_empty")]
-        target: Target,
-        rule: String,
-    },
+    #[serde(default, skip_serializing_if = "Target::is_empty")]
+    pub target: Target,
+    pub rule: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -380,6 +370,13 @@ pub struct Note {
     pub place: Option<String>,
     pub fact_ids: Vec<String>,
     pub text: String,
+}
+
+/// The place and exit names in an exit's id, `exit:<place>.<exit>`: where a walker stands
+/// until they arrive. `None` for any other id.
+pub(crate) fn exit_parts(id: &str) -> Option<(&str, &str)> {
+    let (place, exit) = id.strip_prefix("exit:")?.split_once('.')?;
+    (!place.is_empty() && !exit.is_empty()).then_some((place, exit))
 }
 
 pub(crate) fn sort_unique(items: &mut Vec<String>) {

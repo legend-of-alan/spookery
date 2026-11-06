@@ -242,8 +242,10 @@ impl<L> World<L> {
         Ok(target)
     }
 
+    /// Gate the GM's intent with `presence` seated, then queue it. A refusal is its code.
     pub fn queue_gm_intent(
         &mut self,
+        presence: &Presence,
         spec: spookery_protocol::IntentArgs,
         mint_id: impl FnOnce() -> Result<String, Reason>,
     ) -> Result<QueuedMove, Reason> {
@@ -258,7 +260,7 @@ impl<L> World<L> {
         let viewer = self.state.viewer_of(&actor_id).ok_or(Reason::UnknownId)?;
         let token = spec.target.as_deref().filter(|t| !t.is_empty());
         let (canon, state) = (&self.canon, &self.state);
-        let rule = gate::pick(canon, state, &viewer, Source::Player, &move_name, token)?;
+        let rule = gate::pick(canon, state, &viewer, Source::Gm, &move_name, token)?;
         let target = target_for(rule, token)?;
         let id = match spec.id {
             Some(id) if !id.is_empty() => id,
@@ -279,16 +281,19 @@ impl<L> World<L> {
         let args = IntentArgs {
             message_to: spec.message_to,
         };
-        self.queue_intent(Intent {
+        let intent = Intent {
             id: id.clone(),
             round_index,
             actor: Some(viewer),
-            source: Source::Player,
+            source: Source::Gm,
             move_name: move_name.clone(),
             target,
             args,
             rationale_code: spec.rationale_code,
-        });
+        };
+        let context = Context::new(&self.canon, &self.state, presence, &intent);
+        gate::gate(&context).map_err(|refusal| refusal.code)?;
+        self.queue_intent(intent);
         Ok(QueuedMove {
             id,
             actor_id,

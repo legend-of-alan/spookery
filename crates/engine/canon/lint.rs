@@ -106,7 +106,7 @@ pub(super) fn unknown_rule_items(
                 _ => {}
             });
         }
-        if let Some(cost) = &rule.cost {
+        for cost in rule.costs() {
             for (id, _) in &cost.items {
                 if id != "target" {
                     ids.push(id.clone());
@@ -483,7 +483,7 @@ fn push_rule_exprs<'a>(rule: &'a Rule, exprs: &mut Vec<&'a Expr>) {
             exprs.push(band);
         }
     }
-    if let Some(cost) = &rule.cost {
+    for cost in rule.costs() {
         push_cost(cost, exprs);
     }
     for cond in &rule.if_ {

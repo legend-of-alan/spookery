@@ -43,7 +43,7 @@ fn listen_with_wren(world: &mut World, travelling: bool) {
             let until = now.world_time + 30;
             let wren = now.actors.get_mut("pc_wren").expect("pc_wren");
             wren.place = "mira_rooms".to_string();
-            set_busy(now, "pc_wren", until, "mira_rooms", "mira_rooms");
+            set_busy(now, "pc_wren", until, "docks_shop.stairs");
         });
     }
     table::listen(world, &pack);
@@ -57,8 +57,8 @@ fn a_docks_table_with_two_players_and_no_gm(world: &mut World) {
     let pack = copy_docks("round-output-busy");
     edit_save(&pack, |now| {
         let until = now.world_time + 10;
-        set_busy(now, "pc_rowan", until, "docks_street", "docks_street");
-        set_busy(now, "pc_wren", until, "docks_shop", "docks_shop");
+        set_busy(now, "pc_rowan", until, "docks_shop.docks_street");
+        set_busy(now, "pc_wren", until, "docks_street.docks_shop");
     });
     table::listen(world, &pack);
     table::seat_actor(world, &pack, "pc_rowan");

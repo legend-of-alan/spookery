@@ -48,9 +48,9 @@ fn the_gm_says(world: &mut World, text: String) {
     write_gm(world, &format!("say {text}"));
 }
 
-#[when(expr = "the GM queues Mira's restock and commits")]
-fn the_gm_queues_restock_and_commits(world: &mut World) {
-    write_gm(world, "queue mira restock_lamp_oil");
+#[when(expr = "the GM queues Mira's door note and commits")]
+fn the_gm_queues_the_door_note_and_commits(world: &mut World) {
+    write_gm(world, "queue mira leave_door_note");
     write_gm(world, "commit");
 }
 
@@ -223,21 +223,22 @@ fn world_time_advanced(world: &mut World) {
     });
 }
 
-#[then(expr = "the round log records Mira's restock")]
-fn the_round_log_records_the_restock(world: &mut World) {
+#[then(expr = "the round log records Mira's door note")]
+fn the_round_log_records_the_door_note(world: &mut World) {
     let round = common::read_first_round(world);
-    let ran = round["extra_steps"].as_array().is_some_and(|steps| {
-        steps
+    let queued = round["intents"].as_array().and_then(|intents| {
+        intents
             .iter()
-            .any(|step| step["rule"] == "cast:mira/restock_lamp_oil")
+            .find(|intent| intent["move"] == "leave_door_note")
+            .map(|intent| intent["id"].clone())
     });
-    assert!(ran, "{round}");
-    let stocked = round["effects"].as_array().is_some_and(|effects| {
-        effects.iter().any(|effect| {
-            effect["kind"] == "item" && effect["as"] == "npc:mira" && effect["id"] == "lamp_oil"
-        })
+    let queued = queued.unwrap_or_else(|| panic!("{round}"));
+    let noted = round["effects"].as_array().is_some_and(|effects| {
+        effects
+            .iter()
+            .any(|effect| effect["kind"] == "note" && effect["intent_id"] == queued)
     });
-    assert!(stocked, "{round}");
+    assert!(noted, "{round}");
 }
 
 #[then(expr = "the round log records Rowan and Wren waiting")]

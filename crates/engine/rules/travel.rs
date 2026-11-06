@@ -4,13 +4,12 @@ use crate::canon::{Canon, Exit, PlaceDef, OPEN};
 use crate::draft::Draft;
 use crate::intent::{Intent, Source, Target, Viewer};
 use crate::model::key::StateKey;
-use crate::model::{PendingAction, PendingKind, State};
+use crate::model::{PendingAction, State};
 use crate::round::log::RoundLog;
 use crate::rules::cond;
 use crate::rules::context::Context;
 use crate::rules::cost;
 use crate::rules::effect::{Effect, EffectKind, Holder};
-use crate::rules::expr::Dice;
 use crate::rules::gate;
 use crate::rules::lines::place_name;
 use crate::rules::rule::{EffectTemplate, LocationTo, Rule};
@@ -48,6 +47,7 @@ pub(crate) fn exit_of<'a>(
 
 /// The exit `via` names from the actor's place, or `NO_EXIT`. `via: target` is the intent's
 /// exit target, and `None` when the target is not an exit; any other word is an exit name.
+/// A walker on an exit is still on it when the walk finishes, so it is that exit.
 pub(crate) fn exit_via<'a>(context: &Context<'a>, via: &str) -> Result<Option<&'a Exit>, Reason> {
     let name = match (via, &context.intent.target) {
         ("target", Target::Exit(name)) => name.as_str(),
@@ -59,9 +59,24 @@ pub(crate) fn exit_via<'a>(context: &Context<'a>, via: &str) -> Result<Option<&'
         .actor_id()
         .and_then(|id| context.state.actors.get(id));
     let from = actor.map_or("", |actor| actor.place.as_str());
+    if let Some(exit) = exit_stood_on(context.canon, from) {
+        return Ok(Some(exit));
+    }
     find_exit(context.canon, from, name)
         .map(Some)
         .ok_or(Reason::NoExit)
+}
+
+/// The exit a walker stands on, from the place id `exit:<place>.<exit>` they hold while
+/// walking. `None` for a place.
+pub(crate) fn exit_stood_on<'a>(canon: &'a Canon, place: &str) -> Option<&'a Exit> {
+    let (from, name) = crate::model::exit_parts(place)?;
+    find_exit(canon, from, name)
+}
+
+/// Where a walker stands while they walk through `exit`: `exit:<place>.<exit>`.
+pub(crate) fn on_exit(exit: &Exit) -> String {
+    door(exit).to_string()
 }
 
 /// Refuse a missing, hidden, locked, or unpaid exit. A clear exit is `Ok`.
@@ -196,10 +211,12 @@ pub(crate) fn exit_view(canon: &Canon, state: &State, exit: &Exit) -> ExitView {
 pub(crate) fn note_exits(draft: &mut Draft) {
     let canon = draft.canon();
     let state = draft.state();
+    // A walker on an exit is in no place, so there is nothing to note.
     let seen: Vec<(String, Vec<String>)> = state
         .actors
-        .keys()
-        .map(|id| {
+        .iter()
+        .filter(|(_, actor)| canon.places.contains_key(&actor.place))
+        .map(|(id, _)| {
             let exits = visible_exits(canon, state, id);
             (
                 id.clone(),
@@ -225,21 +242,21 @@ pub(crate) fn visible_exits(canon: &Canon, state: &State, actor_id: &str) -> Vec
 
 /// Ticks until the rule and its exit finish. Zero means it finishes now.
 pub(crate) fn span(context: &Context, rule: &Rule) -> u64 {
-    let mut ticks = rule.cost.as_ref().map(|cost| cost.ticks).unwrap_or(0);
+    let mut ticks = rule.start.cost.as_ref().map_or(0, |cost| cost.ticks);
     if let Ok(Some(exit)) = exit_of(context, rule) {
         ticks = ticks.saturating_add(exit.cost.ticks);
     }
     ticks
 }
 
-/// One journey whose finish tick has been reached. The actor is no longer busy.
+/// One action whose finish tick has been reached. The actor is no longer busy.
 pub(crate) struct DueAction {
     pub actor_id: String,
     pub until: u64,
     pub pending: PendingAction,
 }
 
-/// Clear every journey that finishes at or before `end`, earliest first.
+/// Clear every action that finishes at or before `end`, earliest first.
 pub(crate) fn take_due_actions(draft: &mut Draft, end: u64) -> Result<Vec<DueAction>, Reason> {
     let mut due_keys: Vec<(u64, String)> = draft
         .state()
@@ -278,46 +295,4 @@ pub(crate) fn take_due_actions(draft: &mut Draft, end: u64) -> Result<Vec<DueAct
         });
     }
     Ok(due_actions)
-}
-
-/// Pay the exit, then remember the finish tick. The move itself waits.
-pub(crate) fn begin_action(
-    draft: &mut Draft,
-    intent: &Intent,
-    rule: &Rule,
-    world_time_before: u64,
-    ticks: u64,
-    dice: &mut dyn Dice,
-) -> Result<(), Reason> {
-    let context = Context::new(draft.canon(), draft.state(), draft.presence, intent);
-    let kind = match exit_of(&context, rule).ok().flatten().cloned() {
-        Some(exit) => {
-            cost::pay(draft, intent, &exit.cost, dice)?;
-            PendingKind::Arrive {
-                place: exit.to,
-                via: exit.name,
-            }
-        }
-        None => PendingKind::Finish {
-            target: intent.target.clone(),
-            rule: rule.id.clone(),
-        },
-    };
-    let until = world_time_before.saturating_add(ticks);
-    let pending = PendingAction {
-        verb: intent.move_name.clone(),
-        source: intent.source,
-        kind,
-    };
-    let actor_id = intent.actor_id().ok_or(Reason::UnknownId)?;
-    draft.track(StateKey::ActorBusy(actor_id.to_string()))?;
-    let act = &mut draft
-        .state_mut()
-        .actors
-        .get_mut(actor_id)
-        .ok_or(Reason::UnknownId)?
-        .act;
-    act.busy_until = Some(until);
-    act.pending = Some(pending);
-    Ok(())
 }

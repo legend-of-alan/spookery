@@ -36,7 +36,7 @@ pub mod testing {
     use crate::store::lock::WriteGuard;
 
     pub use crate::canon::strip_body;
-    pub use crate::model::{Act, ActorKind, ActorLive, PendingAction, PendingKind, PlaceLive};
+    pub use crate::model::{Act, ActorKind, ActorLive, PendingAction, PlaceLive};
     pub use crate::round::replay::replay_journal;
     pub use crate::rules::roll::{faces, RollKey};
 

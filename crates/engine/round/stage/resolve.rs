@@ -1,4 +1,4 @@
-//! Gate each intent and roll the checks it asks for.
+//! Pick each intent's rule and roll the check it asks for. The gate runs at queue and start.
 
 use std::collections::BTreeMap;
 
@@ -7,10 +7,10 @@ use crate::rules::gate;
 use crate::rules::roll::classify;
 
 use crate::canon::Canon;
-use crate::intent::{Intent, Source, Target};
+use crate::intent::{Intent, Target};
 use crate::model::{Presence, State};
 use crate::rules::roll::Roll;
-use crate::rules::rule::{RollSpec, Rule};
+use crate::rules::rule::{RollSpec, Rule, When};
 use crate::store::records::Step;
 use crate::Reason;
 
@@ -25,13 +25,13 @@ pub(crate) struct Candidate<'a> {
 
 /// How resolve left an intent for apply.
 pub(crate) enum Resolution<'a> {
-    /// Gated against the state. Apply admits `rule` again against the draft, then pays for
-    /// and expands it, so a move pays the cost of the rule it rolled for.
+    /// Picked against the state. Apply admits `rule` again against the draft when it starts,
+    /// then pays for and expands it, so a move pays the cost of the rule it rolled for.
     Ready {
         rule: &'a Rule,
         rolled: Option<Roll>,
     },
-    /// Refused by the gate: journaled, and told to a player.
+    /// No rule picked: journaled, and told to a player.
     Refused(gate::Refusal),
     /// The check could not be set up (no check or meter, or a threshold that fails to evaluate):
     /// journaled, and told to the actor whoever it is.
@@ -78,7 +78,7 @@ pub(crate) fn run<'a>(
 
 fn gate_intent<'a>(resolver: &mut Resolver<'a, '_>, intent: &'a Intent) -> Resolution<'a> {
     let context = Context::new(resolver.canon, resolver.state, resolver.presence, intent);
-    let rule = match gate::gate(&context) {
+    let rule = match gate::rule_of(&context) {
         Ok(rule) => rule,
         Err(refusal) => return Resolution::Refused(refusal),
     };
@@ -151,13 +151,14 @@ fn opposing_total(resolver: &mut Resolver, intent: &Intent) -> Result<Option<i64
         resolver.queue,
     );
     let Some((opposing, rule_id, check_id)) = queue.iter().find_map(|other| {
-        if other.id == intent.id
-            || other.actor_id() != Some(named)
-            || other.source != Source::Player
-        {
+        if other.id == intent.id || other.actor_id() != Some(named) {
             return None;
         }
-        let rule = gate::gate(&Context::new(canon, state, presence, other)).ok()?;
+        let rule = gate::rule_of(&Context::new(canon, state, presence, other)).ok()?;
+        // Only a verb opposes: a habit is never the actor's answer to a move.
+        if !matches!(rule.when, When::Verb { .. }) {
+            return None;
+        }
         Some((other, &rule.id, &rule.roll.as_ref()?.check))
     }) else {
         return Ok(None);
