@@ -152,7 +152,7 @@ fn target_for(world: &World, actor: &str, verb: &str, token: usize) -> Option<Ta
     match verb {
         "wait" | "grit" | "unwield" => Some(Target::Empty),
         "travel" => {
-            let exits = visible_exits(world.canon(), world.state(), &Presence::default(), actor);
+            let exits = visible_exits(world.canon(), world.state(), actor);
             if exits.is_empty() {
                 return None;
             }

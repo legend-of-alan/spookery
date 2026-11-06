@@ -23,12 +23,16 @@ pub(crate) fn split_line(line: &str) -> (&str, Option<&str>) {
 
 pub(crate) use crate::support::edit_save;
 
+/// Rowan holds brass_key, and the stair door is open, as a round that ended with him in the
+/// shop would have left it.
 pub(crate) fn give_key(now: &mut State) {
     now.actors
         .get_mut("pc_rowan")
         .unwrap()
         .inventory
         .insert("brass_key".to_string(), 1);
+    let shop = now.places.get_mut("docks_shop").unwrap();
+    shop.open.push("stairs".to_string());
 }
 
 pub(crate) fn add_trapdoor(pack: &Path) {

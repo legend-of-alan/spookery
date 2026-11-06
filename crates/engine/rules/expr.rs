@@ -205,17 +205,18 @@ pub(crate) fn resolve_item_id(context: &Context, id: &str) -> Result<String, Rea
 }
 
 /// Who holds the meter, flag or item a rule names: `here` and `place:` are a place, `story:`
-/// is a story, `world` is the world, and anyone else is an actor.
+/// is a story, `exit:` is an exit, `world` is the world, and anyone else is an actor.
 pub(crate) fn resolve_holder(context: &Context, who: &Who) -> Result<Holder, Reason> {
     match who {
         Who::World => Ok(Holder::World),
         Who::Story(id) => Ok(Holder::Story(id.clone())),
+        Who::Exit(place, exit) => Ok(Holder::Exit(place.clone(), exit.clone())),
         Who::Here | Who::Place(_) => Ok(Holder::Place(resolve_who_id(context, who)?)),
         _ => Ok(Holder::Actor(resolve_who_id(context, who)?)),
     }
 }
 
-/// The actor or place id `who` names. The world and a story are not one.
+/// The actor or place id `who` names. The world, a story and an exit are not one.
 pub(crate) fn resolve_who_id(context: &Context, who: &Who) -> Result<String, Reason> {
     match who {
         Who::Self_ => context
@@ -240,7 +241,7 @@ pub(crate) fn resolve_who_id(context: &Context, who: &Who) -> Result<String, Rea
         }
         Who::Actor(id) => Ok(id.clone()),
         Who::Place(id) => Ok(id.clone()),
-        Who::World | Who::Story(_) => Err(Reason::Schema),
+        Who::World | Who::Story(_) | Who::Exit(..) => Err(Reason::Schema),
     }
 }
 

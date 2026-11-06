@@ -1,6 +1,6 @@
 //! Change rules, edge-triggered, to a fixpoint.
 
-use crate::canon::Canon;
+use crate::canon::{Canon, OPEN};
 use crate::draft::Draft;
 use crate::intent::Intent;
 use crate::model::key::{Change, StateKey, StateValue};
@@ -159,9 +159,9 @@ fn matches_watch(draft: &Draft, rule: &Rule, watch: &ChangeWatch, change: &Chang
             | StateKey::WorldFlag(flag)
                 if flag == key =>
             {
-                change.before.as_bool() == Some(!becomes)
-                    && change.after.as_bool() == Some(*becomes)
+                flips(change, *becomes)
             }
+            StateKey::ExitOpen(_, _) if key == OPEN => flips(change, *becomes),
             _ => false,
         },
         ChangeWatch::Item { id, gained } => match &change.key {
@@ -181,6 +181,11 @@ fn matches_watch(draft: &Draft, rule: &Rule, watch: &ChangeWatch, change: &Chang
             _ => false,
         },
     }
+}
+
+/// Whether a flag change went from `!becomes` to `becomes`.
+fn flips(change: &Change, becomes: bool) -> bool {
+    change.before.as_bool() == Some(!becomes) && change.after.as_bool() == Some(becomes)
 }
 
 fn matches_who(draft: &Draft, who: &WatchWho, actor_id: &str) -> bool {

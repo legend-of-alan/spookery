@@ -99,6 +99,7 @@ pub fn normalize(state: &mut State) {
     }
     for place in state.places.values_mut() {
         sort_unique(&mut place.flags);
+        sort_unique(&mut place.open);
     }
     for story in state.stories.values_mut() {
         sort_unique(&mut story.flags);

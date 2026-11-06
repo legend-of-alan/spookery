@@ -1012,6 +1012,14 @@ fn who_of(yaml: &Spanned<String>) -> Result<Who, Fault> {
         }
         return Ok(Who::Story(story.to_string()));
     }
+    if let Some(exit) = word.strip_prefix("exit:") {
+        return match exit.split_once('.') {
+            Some((place, name)) if !place.is_empty() && !name.is_empty() => {
+                Ok(Who::Exit(place.to_string(), name.to_string()))
+            }
+            _ => Err(fault("exit: needs <place>.<exit>".to_string())),
+        };
+    }
     match word {
         "self" => Ok(Who::Self_),
         "target" => Ok(Who::Target),

@@ -46,7 +46,7 @@ fn miras_place(pack: &Path) -> String {
 /// The exit names Mira's map lists for the Docks Shop.
 fn shop_exits_on_miras_map(pack: &Path) -> Vec<String> {
     let saved = spookery_engine::World::peek(pack).unwrap();
-    let places = saved.map(&rowan_seated(), "mira").unwrap();
+    let places = saved.map("mira").unwrap();
     let shop = places
         .iter()
         .find(|place| place.name == "Docks Shop")

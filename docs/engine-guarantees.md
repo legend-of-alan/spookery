@@ -217,7 +217,10 @@ Tested in `features/meters/modifiers_stack_and_expire.feature`.
 ## Travel
 
 A missing exit and a locked exit change nothing. A locked exit shows its locked
-text. A hidden exit the traveller does not know stays off the view and `help`.
+text. An exit with an `if` is locked until, at the end of a round, some actor in
+its place meets that `if`. Then the engine records a `flag` effect that sets the
+exit's `open`, and the exit stays open for every actor until a rule sets `open`
+to false. A hidden exit the traveller does not know stays off the view and `help`.
 The traveller stays put, and stays busy, until the arrival tick. A move before
 then is refused. The
 round does not shrink: a seated round still advances five ticks, a two-tick
@@ -228,8 +231,9 @@ rounds run ahead without waiting on the wall clock, up to the pack's cap, and
 the rest waits for the next action. With a GM seated, nothing advances until the
 GM commits.
 
-Tested in `features/travel/travel_follows_the_map.feature` and
-`features/travel/travel_follows_an_exit.feature`.
+Tested in `features/travel/travel_follows_the_map.feature`,
+`features/travel/travel_follows_an_exit.feature` and
+`features/travel/exit_locks_open_once_and_stay_open.feature`.
 
 ## Game time
 

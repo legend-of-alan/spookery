@@ -107,6 +107,8 @@ fn push_and_shove_cost_grit(world: &mut World) {
     world.pack = Some(pack);
 }
 
+/// The loft is a door the tonic opens, and it stands open. Dropping an item in the yard bars
+/// it again.
 #[given(expr = "a sample table where dropping the tonic locks the loft")]
 fn dropping_the_tonic_locks_the_loft(world: &mut World) {
     let pack = support::copy_pack("sample-d20", "locked-loft");
@@ -125,9 +127,21 @@ fn dropping_the_tonic_locks_the_loft(world: &mut World) {
 ",
         1,
     );
+    let drop = "rules:
+  - id: drop
+    when: { verb: drop, target: item }
+    do:
+      - item: { who: self, id: target, add: -1 }
+      - item: { who: here, id: target, add: 1 }
+      - flag: { who: \"exit:gate_yard.loft\", key: open, value: false }
+exits:";
+    let next = next.replacen("exits:", drop, 1);
     assert_ne!(text, next, "the loft exit was not locked");
     fs::write(&path, next).unwrap_or_else(|err| panic!("write yard: {err}"));
-    edit_save(&pack, |_| {});
+    edit_save(&pack, |now| {
+        let yard = now.places.get_mut("gate_yard").unwrap();
+        yard.open.push("loft".to_string());
+    });
     world.pack = Some(pack);
 }
 

@@ -8,6 +8,7 @@ use crate::intent::Intent;
 use crate::model::Presence;
 use crate::rules::effect::Effect;
 use crate::rules::roll::MoveReport;
+use crate::rules::travel;
 use crate::rules::visibility::{RecipientLine, ViewerChanges};
 use crate::store::commit::CommitOutcome;
 use crate::store::lock::lock_pack;
@@ -174,8 +175,11 @@ fn run_stages<'p, L>(
     );
     let end = clock.world_time_after;
     finish::run(&mut draft, &canon, end, &mut dice, &mut log)?;
-    let changes = triggers::run(&mut draft, &canon, &mut dice, &mut log)?;
-    crate::rules::travel::note_exits(&mut draft);
+    let mut changes = triggers::run(&mut draft, &canon, &mut dice, &mut log)?;
+    // A door that opens is a flag change, so change rules see it before the map refresh.
+    travel::open_doors(&mut draft, &mut log);
+    changes.extend(triggers::run(&mut draft, &canon, &mut dice, &mut log)?);
+    travel::note_exits(&mut draft);
     let delivered = deliver::run(
         &canon,
         draft.state(),

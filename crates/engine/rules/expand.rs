@@ -204,7 +204,7 @@ fn expand_template(
             let (actor_id, place) = match expr::resolve_holder(context, who)? {
                 Holder::Actor(id) => (Some(id), None),
                 Holder::Place(id) => (None, Some(id)),
-                Holder::Story(_) | Holder::World => return Err(Reason::Schema),
+                Holder::Story(_) | Holder::Exit(..) | Holder::World => return Err(Reason::Schema),
             };
             effects.push(Effect::new(
                 viewer,

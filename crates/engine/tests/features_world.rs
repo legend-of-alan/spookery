@@ -2,6 +2,8 @@
 mod changes;
 #[path = "steps/docks.rs"]
 mod docks;
+#[path = "steps/doors.rs"]
+mod doors;
 #[path = "steps/map.rs"]
 mod map;
 #[path = "steps/no_facts.rs"]
