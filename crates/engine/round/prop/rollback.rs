@@ -4,8 +4,8 @@
 //! Feature: A rollback puts the save back exactly
 //!
 //!   Scenario: Random writes under nested savepoints roll back to each savepoint's save
-//!     Given the docks pack, with no live record yet for the street, and a burn on grit
-//!     When random effects and round writes land under savepoints opened and rolled back at random
+//!     Given the docks pack, with no live record yet for the street, two flags it can carry, and a burn on grit
+//!     When random effects, round writes and the end-of-round note of exits land under savepoints opened and rolled back at random
 //!     Then each rollback leaves the save and the spent keys as they were when its savepoint was taken
 //!     And each take reports every meter whose value moved since the last take
 //!     And rolling back to the first savepoint leaves no change to report
@@ -40,13 +40,14 @@ enum Step {
     Burn(i64),
     Expire,
     Door(bool),
-    StreetFlag(bool),
+    StreetFlag(&'static str, bool),
     WorldFlag(bool),
     Walk(&'static str),
     Note,
     Reveal(&'static str),
     Act,
     Busy(bool),
+    NoteExits,
 }
 
 #[test]
@@ -58,7 +59,7 @@ fn nested_rollbacks_put_the_save_back_exactly() {
     state.places.remove("docks_street");
     let mut canon = opened.canon().clone();
     let street = canon.places.get_mut("docks_street").expect("the street");
-    street.flags.push("lit".to_string());
+    street.flags.extend(["lit".to_string(), "busy".to_string()]);
     let burn = ModifierDef {
         meter: "grit".to_string(),
         max_stacks: 2,
@@ -119,6 +120,9 @@ fn play_steps(world: &World<()>, steps: &[Step]) -> Result<(), TestCaseError> {
             }
             Step::Busy(false) => {
                 let _ = draft.take_pending("mira");
+            }
+            Step::NoteExits => {
+                let _ = crate::rules::travel::note_exits(&mut draft);
             }
             _ => {
                 let _ = effect(&draft, step, index).apply(&mut draft, &intent);
@@ -219,9 +223,9 @@ fn effect(draft: &Draft, step: &Step, index: usize) -> Effect {
             key: "open".to_string(),
             value: *open,
         },
-        Step::StreetFlag(value) => EffectKind::Flag {
+        Step::StreetFlag(key, value) => EffectKind::Flag {
             holder: Holder::Place("docks_street".to_string()),
-            key: "lit".to_string(),
+            key: key.to_string(),
             value: *value,
         },
         Step::WorldFlag(value) => EffectKind::Flag {
@@ -251,7 +255,8 @@ fn effect(draft: &Draft, step: &Step, index: usize) -> Effect {
         | Step::Take
         | Step::Expire
         | Step::Act
-        | Step::Busy(_) => {
+        | Step::Busy(_)
+        | Step::NoteExits => {
             unreachable!("not an effect")
         }
     };
@@ -287,12 +292,14 @@ fn pick_step() -> impl Strategy<Value = Step> {
         1 => (-2i64..=2).prop_map(Step::Burn),
         1 => Just(Step::Expire),
         1 => any::<bool>().prop_map(Step::Door),
-        1 => any::<bool>().prop_map(Step::StreetFlag),
+        1 => (select(vec!["lit", "busy"]), any::<bool>())
+            .prop_map(|(key, value)| Step::StreetFlag(key, value)),
         1 => any::<bool>().prop_map(Step::WorldFlag),
         1 => select(vec!["docks_shop", "docks_street", "mira_rooms"]).prop_map(Step::Walk),
         1 => Just(Step::Note),
         1 => select(vec!["fact_oil_on_shelf", "fact_room_lamp"]).prop_map(Step::Reveal),
         1 => Just(Step::Act),
         1 => any::<bool>().prop_map(Step::Busy),
+        1 => Just(Step::NoteExits),
     ]
 }
