@@ -192,13 +192,13 @@ impl Flag {
             Holder::Place(id) => (
                 id,
                 key,
-                |state, id| state.places.get(id).map(|place| &place.flags),
+                |state, id| Some(state.places.get(id).map_or(&NO_FLAGS, |place| &place.flags)),
                 |state, id| Ok(&mut state.places.entry(id.to_string()).or_default().flags),
             ),
             Holder::Exit(place, exit) if key == OPEN => (
                 place,
                 exit,
-                |state, id| state.places.get(id).map(|place| &place.open),
+                |state, id| Some(state.places.get(id).map_or(&NO_FLAGS, |place| &place.open)),
                 |state, id| Ok(&mut state.places.entry(id.to_string()).or_default().open),
             ),
             Holder::Exit(..) | Holder::Story(_) | Holder::World => return None,
@@ -214,7 +214,13 @@ impl Flag {
 
     /// Whether this flag is set.
     pub(crate) fn get(&self, state: &State) -> bool {
-        (self.list)(state, &self.owner).is_some_and(|list| list.contains(&self.entry))
+        self.value(state) == Some(true)
+    }
+
+    /// Whether this flag is set, or `None` when its actor is absent. A place with no live
+    /// record yet still carries its flags, all clear.
+    pub(crate) fn value(&self, state: &State) -> Option<bool> {
+        (self.list)(state, &self.owner).map(|list| list.contains(&self.entry))
     }
 
     /// Set or clear this flag, and say whether it changed. A place gets a live record on its
@@ -232,6 +238,9 @@ impl Flag {
         Ok(true)
     }
 }
+
+/// The flags of a place that has no live record yet.
+static NO_FLAGS: Vec<String> = Vec::new();
 
 /// Reads and writes one kind of flag list, given its owner's id.
 type ListFn = for<'s> fn(&'s State, &str) -> Option<&'s Vec<String>>;

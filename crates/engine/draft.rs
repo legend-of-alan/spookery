@@ -295,8 +295,8 @@ impl<'p> Draft<'p> {
                 .map(|actor| StateValue::Text(actor.place.clone()))
                 .unwrap_or(StateValue::Empty),
             StateKey::Flag(holder, key) => Flag::resolve(holder, key)
-                .map(|flag| StateValue::Bool(flag.get(&self.state)))
-                .unwrap_or(StateValue::Empty),
+                .and_then(|flag| flag.value(&self.state))
+                .map_or(StateValue::Empty, StateValue::Bool),
             StateKey::StoryFlag(id, flag) => {
                 StateValue::Bool(self.state.has_flag(&Holder::Story(id.clone()), flag))
             }
