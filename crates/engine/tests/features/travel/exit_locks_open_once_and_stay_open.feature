@@ -18,6 +18,11 @@ Feature: Exit locks open once and stay open
     Then the stair door refuses Aldric with "The stair door is locked."
     And it opens again only when someone holding brass_key is in the shop
 
+  Scenario: A change rule watching open runs in the round the door opens
+    Given the stair door in the shop needs brass_key
+    When Mira arrives at the shop holding brass_key
+    Then a change rule watching open has run in that round
+
   Scenario: The journal shows the door opening and verify passes
     Given the stair door in the shop needs brass_key
     When Mira arrives at the shop holding brass_key

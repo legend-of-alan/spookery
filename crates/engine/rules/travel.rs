@@ -144,7 +144,7 @@ pub(crate) fn open_doors(draft: &mut Draft, log: &mut RoundLog) {
                 continue;
             }
             let id = format!("door:{place}.{}", exit.name);
-            let intent = Intent::new(id, state.round_index, None, Source::Engine, OPEN, target);
+            let intent = Intent::new(id, state.round_index, None, Source::Engine, "door", target);
             let kind = EffectKind::Flag {
                 holder: door(exit),
                 key: OPEN.to_string(),

@@ -52,8 +52,9 @@ fn stairs_open(pack: &Path) -> bool {
         .is_some_and(|shop| shop.open.contains(&"stairs".to_string()))
 }
 
-/// The docks pack with Mira on the street holding brass_key and keeping no habits, and a
-/// `bolt` verb in the shop that locks the stair door again.
+/// The docks pack with Mira on the street holding brass_key and keeping no habits, a `bolt`
+/// verb in the shop that locks the stair door again, and a change rule that marks the world
+/// `creaked` when a door opens.
 #[given(expr = "the stair door in the shop needs brass_key")]
 fn the_stair_door_needs_the_key(world: &mut World) {
     let pack = support::copy_pack("oneshot-docks", "door");
@@ -64,6 +65,10 @@ fn the_stair_door_needs_the_key(world: &mut World) {
     when: { verb: bolt }
     do:
       - flag: { who: \"exit:docks_shop.stairs\", key: open, value: false }
+  - id: creak
+    when: { change: { flag: open, becomes: true } }
+    do:
+      - flag: { who: world, key: creaked, value: true }
 exits:";
     let next = text.replacen("exits:", bolt, 1);
     assert_ne!(next, text);
@@ -167,6 +172,18 @@ fn the_journal_has_the_open(world: &mut World) {
             && effect["value"] == true
     });
     assert!(opened, "{round}");
+}
+
+#[then(expr = "a change rule watching open has run in that round")]
+fn the_watch_ran(world: &mut World) {
+    let saved = spookery_engine::World::peek(world.pack()).unwrap();
+    assert!(saved.state().flags.contains(&"creaked".to_string()));
+    drop(saved);
+    let round = support::read_round(world.pack(), "round-0001");
+    let creaked = round["effects"].as_array().unwrap().iter().any(|effect| {
+        effect["kind"] == "flag" && effect["holder"] == "world" && effect["key"] == "creaked"
+    });
+    assert!(creaked, "{round}");
 }
 
 #[then(expr = "spook verify replays the journal and passes")]

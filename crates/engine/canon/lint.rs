@@ -386,11 +386,16 @@ impl HolderScope<'_> {
             Holder::Actor(id) => self.cast.get(id).map(|cast| &cast.flags),
             Holder::Place(id) => self.places.get(id).map(|place| &place.flags),
             Holder::Story(id) => self.stories.get(id).map(|story| &story.flags),
-            Holder::Exit(place, exit) if key == OPEN => {
-                let door = self.places.get(place).is_some_and(|at| at.has_door(exit));
-                return (!door).then(|| format!("{holder} has no if, so it is always open"));
+            Holder::Exit(place, exit) => {
+                return if self.unknown_who(who).is_some() {
+                    Some(format!("{holder} is not an exit"))
+                } else if key != OPEN {
+                    Some(format!("an exit carries only the flag '{OPEN}'"))
+                } else {
+                    let door = self.places.get(place).is_some_and(|at| at.has_door(exit));
+                    (!door).then(|| format!("{holder} has no if, so it is always open"))
+                };
             }
-            Holder::Exit(..) => return Some(format!("an exit carries only the flag '{OPEN}'")),
         };
         let declared = flags.is_some_and(|flags| flags.contains(&key.to_string()));
         (!declared).then(|| format!("{holder} does not declare it"))
