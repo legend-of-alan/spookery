@@ -31,6 +31,8 @@ pub(crate) enum Resolution<'a> {
         rule: &'a Rule,
         rolled: Option<Roll>,
     },
+    /// A player's `cancel`, which runs no rule.
+    Cancel,
     /// No rule picked: journaled, and told to a player.
     Refused(gate::Refusal),
     /// The check could not be set up (no check or meter, or a threshold that fails to evaluate):
@@ -77,6 +79,9 @@ pub(crate) fn run<'a>(
 }
 
 fn resolve_intent<'a>(resolver: &mut Resolver<'a, '_>, intent: &'a Intent) -> Resolution<'a> {
+    if gate::is_cancel(intent) {
+        return Resolution::Cancel;
+    }
     let context = Context::new(resolver.canon, resolver.state, resolver.presence, intent);
     let rule = match gate::rule_of(&context) {
         Ok(rule) => rule,

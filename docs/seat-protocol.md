@@ -46,7 +46,7 @@ The table speaks first, with `version`, the `words` this seat may send, and, on 
 
 <!-- example: player-hello -->
 ```json
-{"body":{"kind":"hello","version":2,"words":["claim","release","say","look","help","map","drop","grit","take","travel","unwield","wait","wield"],"open":["pc_harbormouse","pc_rowan","pc_wren"]}}
+{"body":{"kind":"hello","version":2,"words":["claim","release","say","look","help","map","cancel","drop","grit","take","travel","unwield","wait","wield"],"open":["pc_harbormouse","pc_rowan","pc_wren"]}}
 ```
 
 <!-- example: gm-hello -->
@@ -68,6 +68,7 @@ Each word reads `args` as one type, and the schema's `$defs` in `client.json` ho
 | `look` | player | `NoArgs` | `view` |
 | `help` | player | `NoArgs` | `help` |
 | `map` | player | `NoArgs` | `map` |
+| `cancel` | player | `NoArgs` | `queued` |
 | a pack verb | player | `MoveArgs`: `target`, when the verb takes one | `queued` |
 | `status` | GM | `NoArgs` | `status` |
 | `perceive` | GM | `PerceiveArgs`: `as`, `max_body_chars` | `view` |
@@ -141,6 +142,8 @@ A move is a pack verb, its target in `target`. With a GM seated, the move waits 
 {"seq":9,"reply_to":"c3","body":{"kind":"queued","intent":"ed0db120f54c1447842c340c5d523932d1518c796c886f24b1030a9b4a12f73a","actor":"pc_rowan","move":"grit"}}
 ```
 
+`cancel` is a move too, and a busy player may send it. It drops the PC's own action under way when its rule says `cancellable`, with no refund, and the action never finishes. A walk is never cancelled. With nothing to cancel, or an action whose rule does not allow it, `cancel` is refused `INELIGIBLE` and the action still lands.
+
 A move the table can judge at once is refused before it is queued. Here Rowan sent `travel` with `target` `stairs`, and `detail` is the pack's locked text:
 
 <!-- example: player-no-exit -->
@@ -158,6 +161,7 @@ A move the table can judge at once is refused before it is queued. Here Rowan se
   {"name":"look","target":"none"},
   {"name":"help","target":"none"},
   {"name":"map","target":"none"},
+  {"name":"cancel","target":"none"},
   {"name":"drop","target":"item","names":["lamp_oil"]},
   {"name":"grit","target":"none"},
   {"name":"take","target":"item","names":["lamp_oil"]},
