@@ -112,12 +112,23 @@ fn a_docks_row_overreach(world: &mut World, add: i64, remove: i64) {
 }
 
 /// Mira carries the flags `calm` and `wary`, both set. The row clears `calm`, opens the stair
-/// door, sets `calm` again, and then takes more oil than the shop has.
+/// door, sets `calm` again, braces her grit by `add`, and then takes more oil than the shop has.
+/// Those are five effects, so the pack allows five.
 #[given(
-    expr = "a docks row unbar that clears Mira's calm, opens the stair door, sets calm again and then removes {int} lamp oil"
+    expr = "a docks row unbar that clears Mira's calm, opens the stair door, sets calm again, braces her grit by {int} and then removes {int} lamp oil"
 )]
-fn a_docks_row_unbar(world: &mut World, remove: i64) {
+fn a_docks_row_unbar(world: &mut World, add: i64, remove: i64) {
     let pack = support::copy_pack("oneshot-docks", "unbar");
+    set_budget(&pack, "max_effects_per_intent", 5);
+    fs::write(
+        pack.join("rules/modifiers.yaml"),
+        "schema: modifiers
+modifiers:
+  - id: brace
+    meter: grit
+",
+    )
+    .unwrap();
     support::append(
         &pack.join("rules/verbs.yaml"),
         &format!(
@@ -128,6 +139,7 @@ fn a_docks_row_unbar(world: &mut World, remove: i64) {
       - flag: {{ who: self, key: calm, value: false }}
       - flag: {{ who: \"exit:docks_shop.stairs\", key: open, value: true }}
       - flag: {{ who: self, key: calm, value: true }}
+      - modifier: {{ who: self, id: brace, add: {add}, ticks: 10 }}
       - item: {{ who: place:docks_shop, id: lamp_oil, add: -{remove} }}
 "
         ),
@@ -153,7 +165,7 @@ idle:
 }
 
 #[then(
-    expr = "lamp oil stays {int}, the round names {word}, the stair door stays locked, and Mira keeps calm and wary"
+    expr = "lamp oil stays {int}, the round names {word}, the stair door stays locked, and Mira keeps calm and wary, no brace and her grit"
 )]
 fn the_door_stays_locked_and_mira_keeps_her_flags(world: &mut World, oil: i64, reason: String) {
     assert_refusal(world, oil, &reason);
@@ -161,6 +173,12 @@ fn the_door_stays_locked_and_mira_keeps_her_flags(world: &mut World, oil: i64, r
     let shop = saved.state().places.get("docks_shop");
     assert!(shop.is_none_or(|shop| shop.open.is_empty()), "{shop:?}");
     assert_eq!(saved.state().actors["mira"].flags, ["calm", "wary"]);
+    let mira = &saved.state().actors["mira"];
+    assert!(mira.modifiers.is_empty(), "{:?}", mira.modifiers);
+    let stored = &mira.meters["grit"];
+    let grit = spookery_engine::Holder::Actor("mira".to_string());
+    let read = saved.state().meter_value(saved.canon(), &grit, "grit");
+    assert_eq!(read, Ok(stored.base + stored.offset));
 }
 
 #[given(expr = "a docks row spilled that rolls grit and then removes {int} lamp oil")]
