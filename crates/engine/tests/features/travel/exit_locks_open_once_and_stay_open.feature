@@ -15,7 +15,7 @@ Feature: Exit locks open once and stay open
   Scenario: A pack effect locks it again
     Given Mira opened the stair door
     When a rule runs a flag effect on exit:docks_shop.stairs setting open to false
-    Then the stair door refuses Aldric with "The stair door is locked."
+    Then the GM's travel for Aldric up the stairs is refused NO_EXIT at once
     And it opens again only when someone holding brass_key is in the shop
 
   Scenario: A change rule watching open runs in the round the door opens

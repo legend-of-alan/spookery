@@ -89,16 +89,6 @@ pub enum Step {
     TriggerDepth,
 }
 
-/// One timed arrival stored on a round line.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Arrival {
-    pub actor_id: String,
-    pub arrived_at: u64,
-    pub to: String,
-    pub via: String,
-}
-
 /// One round line. `state_hash` is stamped after the save bytes exist, so a line
 /// that has not been stamped omits it.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -120,7 +110,6 @@ pub struct RoundRecord {
     pub intents: Vec<Intent>,
     pub refused: Vec<gate::Refusal>,
     pub effects: Vec<Effect>,
-    pub arrivals: Vec<Arrival>,
     pub fast_forward: bool,
     /// Dice lines from this round. Empty when the round rolled none.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]

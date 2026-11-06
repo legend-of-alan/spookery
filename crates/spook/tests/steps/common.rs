@@ -264,21 +264,28 @@ pub(crate) fn capture_play_stdout(world: &mut World) -> String {
     text
 }
 
-pub(crate) fn set_busy(now: &mut State, actor: &str, until: u64, arrive: &str, via: &str) {
-    let act = &mut now
+/// Put `actor` on the exit `<place>.<exit>`, walking it until tick `until`.
+pub(crate) fn set_busy(now: &mut State, actor: &str, until: u64, exit: &str) {
+    let actor = now
         .actors
         .get_mut(actor)
-        .unwrap_or_else(|| panic!("no {actor}"))
-        .act;
-    act.busy_until = Some(until);
-    act.pending = Some(spookery_engine::testing::PendingAction {
+        .unwrap_or_else(|| panic!("no {actor}"));
+    actor.place = format!("exit:{exit}");
+    actor.act.busy_until = Some(until);
+    actor.act.pending = Some(walk(exit));
+}
+
+/// A walk through the exit `<place>.<exit>` by the travel verb.
+pub(crate) fn walk(exit: &str) -> spookery_engine::testing::PendingAction {
+    let (_, name) = exit
+        .split_once('.')
+        .unwrap_or_else(|| panic!("no exit in {exit}"));
+    spookery_engine::testing::PendingAction {
         verb: "travel".to_string(),
         source: spookery_engine::Source::Player,
-        kind: spookery_engine::testing::PendingKind::Arrive {
-            place: arrive.to_string(),
-            via: via.to_string(),
-        },
-    });
+        target: spookery_engine::Target::Exit(name.to_string()),
+        rule: "verb:travel".to_string(),
+    }
 }
 
 #[given(expr = "a docks table")]

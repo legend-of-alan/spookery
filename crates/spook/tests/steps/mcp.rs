@@ -494,7 +494,7 @@ const TRAVEL_THEN_COMMIT: [(&str, &str); 3] = [
     ("queue", r#"{"actor_id":"mira","move":"travel"}"#),
     (
         "queue",
-        r#"{"actor_id":"mira","move":"travel","target":"docks_shop"}"#,
+        r#"{"actor_id":"mira","move":"travel","target":"stairs"}"#,
     ),
     ("commit", r#"{"include_round":true}"#),
 ];

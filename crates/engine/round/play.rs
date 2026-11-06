@@ -170,9 +170,7 @@ fn run_stages<'p, L>(
     let candidates = resolve::run(
         &canon, &state, presence, &picked, queue, &mut dice, &mut log,
     );
-    apply::run(
-        &mut draft, &canon, &state, candidates, &clock, &mut dice, &mut log,
-    );
+    apply::run(&mut draft, &canon, candidates, &clock, &mut dice, &mut log);
     let end = clock.world_time_after;
     finish::run(&mut draft, &canon, end, &mut dice, &mut log)?;
     let mut changes = triggers::run(&mut draft, &canon, &mut dice, &mut log)?;

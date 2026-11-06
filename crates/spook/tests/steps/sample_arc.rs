@@ -236,8 +236,8 @@ fn lane_cost(pack: &Path) -> u64 {
 fn arrival_tick(pack: &Path) -> u64 {
     read_rounds(pack)
         .into_iter()
-        .flat_map(|round| round["arrivals"].as_array().cloned().unwrap_or_default())
-        .find(|arrival| arrival["to"] == "mill_lane")
+        .flat_map(|round| round["effects"].as_array().cloned().unwrap_or_default())
+        .find(|effect| effect["kind"] == "location" && effect["to"] == "mill_lane")
         .unwrap_or_else(|| panic!("no arrival on mill lane"))["arrived_at"]
         .as_u64()
         .unwrap()

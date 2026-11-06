@@ -14,7 +14,7 @@ use crate::canon::source::{
 use crate::diagnostic::{schema_error, Diagnostic};
 use crate::rules::expr::{stamp_expr, BinOp, Expr};
 use crate::rules::rule::{
-    ChangeWatch, Cond, Cost, EffectTemplate, LineColumn, LocationTo, NarrateTo, Op, Owner,
+    ChangeWatch, Cond, Cost, EffectTemplate, LineColumn, LocationTo, NarrateTo, Op, Owner, Phase,
     ResistSpec, RollSpec, Rule, TargetKind, WatchWho, When, Who,
 };
 
@@ -47,6 +47,11 @@ pub struct RuleYaml {
     #[serde(rename = "if")]
     pub if_: Option<IfYaml>,
     pub cost: Option<CostYaml>,
+    pub start: Option<StartYaml>,
+    pub finish: Option<FinishYaml>,
+    /// Ticks the actor stays busy after the finish.
+    #[serde(default)]
+    pub cooldown: u64,
     pub roll: Option<RollYaml>,
     #[serde(rename = "do", default)]
     pub do_: Vec<EffectYaml>,
@@ -225,6 +230,22 @@ pub struct CostYaml {
     pub meters: Counts,
     #[serde(default)]
     pub items: Counts,
+}
+
+/// The start of an action. Its cost is the rule's `cost`.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct StartYaml {
+    #[serde(default)]
+    pub counts_as_act: Option<bool>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FinishYaml {
+    pub cost: Option<CostYaml>,
+    #[serde(default)]
+    pub counts_as_act: bool,
 }
 
 /// Counts by key under a cost. The unit variant keeps a scalar's refusal generic.
@@ -484,6 +505,25 @@ fn compile_one(
             None
         }
     };
+    let finish_cost = entry
+        .finish
+        .as_ref()
+        .and_then(|finish| finish.cost.as_ref());
+    let finish_cost = match finish_cost.map(cost_of).transpose() {
+        Ok(Some(cost)) if cost.ticks > 0 => {
+            diags.push(schema_error(
+                file,
+                &format!("rule '{local}' has ticks in its finish cost"),
+                "put the action's ticks in cost; the finish takes no time",
+            ));
+            None
+        }
+        Ok(cost) => cost,
+        Err(fault) => {
+            diags.push(source.fault("", fault, "name meters and items"));
+            None
+        }
+    };
     let roll = match entry.roll.as_ref().map(roll_of).transpose() {
         Ok(roll) => roll,
         Err(fault) => {
@@ -496,11 +536,13 @@ fn compile_one(
     let partial = effects_of(file, &entry.partial)?;
     let failure = effects_of(file, &entry.miss)?;
     if let Some(when) = &when {
-        if matches!(when, When::Change(_)) && cost.is_some() {
+        let timed =
+            cost.is_some() || entry.start.is_some() || entry.finish.is_some() || entry.cooldown > 0;
+        if matches!(when, When::Change(_)) && timed {
             diags.push(schema_error(
                 file,
-                "a change rule has a cost",
-                "remove cost; a change is a consequence",
+                "a change rule has a cost, start, finish, or cooldown",
+                "remove them; a change is a consequence, not an action",
             ));
         }
         if roll.is_none() && (!success.is_empty() || !partial.is_empty() || !failure.is_empty()) {
@@ -559,7 +601,22 @@ fn compile_one(
         when,
         if_,
         roll,
-        cost,
+        start: Phase {
+            cost,
+            counts_as_act: entry
+                .start
+                .as_ref()
+                .and_then(|start| start.counts_as_act)
+                .unwrap_or(true),
+        },
+        finish: Phase {
+            cost: finish_cost,
+            counts_as_act: entry
+                .finish
+                .as_ref()
+                .is_some_and(|finish| finish.counts_as_act),
+        },
+        cooldown: entry.cooldown,
         do_,
         success,
         partial,

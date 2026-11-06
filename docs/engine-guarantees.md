@@ -221,8 +221,9 @@ text. An exit with an `if` is locked until, at the end of a round, some actor in
 its place meets that `if`. Then the engine records a `flag` effect that sets the
 exit's `open`, and the exit stays open for every actor until a rule sets `open`
 to false. A hidden exit the traveller does not know stays off the view and `help`.
-The traveller stays put, and stays busy, until the arrival tick. A move before
-then is refused. The
+A walk that takes ticks puts the traveller on the exit at once, in neither
+room, and keeps them busy until the arrival tick. A move before then is
+refused. The
 round does not shrink: a seated round still advances five ticks, a two-tick
 exit is recorded at its tick inside that round, and the next move is the
 following round. An empty table advances sixty ticks a round. An earlier
@@ -234,6 +235,22 @@ GM commits.
 Tested in `features/travel/travel_follows_the_map.feature`,
 `features/travel/travel_follows_an_exit.feature` and
 `features/travel/exit_locks_open_once_and_stay_open.feature`.
+
+## Actions
+
+Every move but `say` starts and finishes through one path, whether it travels,
+teleports or does anything else. A move is checked when it is queued, by a
+player or by the GM, so a busy actor is refused `BUSY` at once and keeps the
+turn. It is checked again when it starts, since an earlier move that round may
+have changed the world, and a habit is checked only then. A GM-queued habit is
+checked the same as one the engine picks, its `if` included. The start pays
+its cost and, unless the rule says otherwise, uses the actor's act. A move
+that takes no ticks finishes in the round it starts. A timed one finishes in
+the round that reaches its tick, and every effect lands then, a teleport
+included. After the finish the actor stays busy through the rule's cooldown.
+A player's view says what keeps them busy and until when.
+
+Tested in `features/rules/one_action_lifecycle.feature`.
 
 ## Game time
 
@@ -324,8 +341,9 @@ data and the client prints them: `help` lists the words this player can use
 here and now, each with what it takes and what they can name for it, and `map`
 lists each place their save says they visited, with the exits they saw there
 when they last stood there at the end of a round. Where those exits go and
-whether they are locked is read now. A traveller who has not arrived
-sees where the journey ends, as `on the stairs until tick 1300`. A player names only
+whether they are locked is read now. A busy player sees what keeps them busy:
+`on the stairs until tick 1300` on a walk, `chanting until tick 1300` on any
+other timed move, and `recovering until tick 1300` in a cooldown. A player names only
 what they hold or what that view shows. Anything else reads like an unknown
 word and takes no round. A pack that omits `display_name` fails check. An
 unknown word tells the player to type help.

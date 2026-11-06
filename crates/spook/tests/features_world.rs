@@ -45,6 +45,9 @@ mod rule_names;
 #[path = "steps/travel.rs"]
 mod travel;
 
+#[path = "steps/lifecycle.rs"]
+mod lifecycle;
+
 #[path = "steps/triggers.rs"]
 mod triggers;
 

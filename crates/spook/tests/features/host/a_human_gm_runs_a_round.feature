@@ -7,9 +7,9 @@ Feature: A human GM runs a round
     Then the GM shows "Pc rowan: hello"
     When the GM says "good evening"
     Then play shows "GM: good evening"
-    When the GM queues Mira's restock and commits
+    When the GM queues Mira's door note and commits
     Then world time advanced one live tick
-    And the round log records Mira's restock
+    And the round log records Mira's door note
 
   Scenario: Two players queue and one commit runs both
     Given a docks table

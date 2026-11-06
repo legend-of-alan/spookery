@@ -71,6 +71,7 @@ impl<'de> Deserialize<'de> for Viewer {
 pub enum Source {
     Engine,
     Player,
+    Gm,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -210,9 +211,9 @@ impl Intent {
         Ok(intent)
     }
 
-    /// The finish of `actor_id`'s timed action, as `arrival:<actor>`, with the source, verb
+    /// The finish of `actor_id`'s timed action, as `finish:<actor>`, with the source, verb
     /// and target it began with.
-    pub(crate) fn arrival(
+    pub(crate) fn finish(
         state: &State,
         actor_id: &str,
         source: Source,
@@ -220,7 +221,7 @@ impl Intent {
         target: Target,
     ) -> Result<Self, Reason> {
         let actor = Some(state.viewer_of(actor_id).ok_or(Reason::UnknownId)?);
-        let id = format!("arrival:{actor_id}");
+        let id = format!("finish:{actor_id}");
         Ok(Self::new(
             id,
             state.round_index,

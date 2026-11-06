@@ -9,7 +9,7 @@ use crate::canon::Canon;
 use crate::diagnostic::{check_tag, error, locate_nth, parse_file, schema_error, Diagnostic};
 use crate::model::meter::MeterLive;
 use crate::model::modifier;
-use crate::model::{sort_unique, State};
+use crate::model::{exit_parts, sort_unique, State};
 use crate::rules::effect::Holder;
 use crate::store::records::{AddedMeter, DroppedMeter};
 use crate::Reason;
@@ -111,7 +111,9 @@ fn check_actor_places(state: &State) -> Vec<Diagnostic> {
     const FILE: &str = "state/save.yaml";
     let mut diags = Vec::new();
     for (id, actor) in &state.actors {
-        if state.places.contains_key(&actor.place) {
+        // A walker stands on an exit of a place until they arrive.
+        let place = exit_parts(&actor.place).map_or(actor.place.as_str(), |(place, _)| place);
+        if state.places.contains_key(place) {
             continue;
         }
         diags.push(

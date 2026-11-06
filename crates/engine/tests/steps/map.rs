@@ -30,7 +30,9 @@ fn mira_plays(pack: &Path, verb: &str, target: Option<&str>) {
         rationale_code: "test".to_string(),
     };
     world
-        .queue_gm_intent(intent, || panic!("the GM chose the id"))
+        .queue_gm_intent(&spookery_engine::Presence::default(), intent, || {
+            panic!("the GM chose the id")
+        })
         .unwrap_or_else(|code| panic!("queue: {code}"));
     let wall = world.state().last_round_at.clone();
     world

@@ -7,7 +7,7 @@ use spookery_engine::testing::journal::list_round_keys;
 
 use super::common::{
     add_trapdoor, capture_play_stdout, edit_save, give_key, join_play, set_busy, wait_play_until,
-    write_play, EVENING,
+    walk, write_play, EVENING,
 };
 use super::table;
 use crate::support::{self, copy_docks};
@@ -115,7 +115,7 @@ fn rowan_arrives_and_the_cost_is_stamped(world: &mut World) {
     assert_eq!(now.actors.get("pc_rowan").unwrap().place, "mira_rooms");
     assert_eq!(now.world_time, 1085, "the round shortened or skipped");
     let round = crate::support::read_round(&pack, "round-0001");
-    assert_eq!(round["arrivals"][0]["arrived_at"], 1082);
+    assert_eq!(arrival(&round, "pc_rowan")["arrived_at"], 1082);
     assert_eq!(round["world_time_after"], 1085);
     assert_eq!(round["world_time_before"], 1080);
 }
@@ -180,13 +180,13 @@ fn two_arrivals(world: &mut World) {
     .unwrap();
     edit_save(&pack, |now| {
         now.world_time = EVENING;
-        set_busy(now, "pc_rowan", EVENING + 10, "mira_rooms", "stairs");
+        set_busy(now, "pc_rowan", EVENING + 10, "docks_shop.stairs");
         let meters = now.actors.get("pc_wren").unwrap().meters.clone();
         now.actors.insert(
             "pc_nell".to_string(),
             spookery_engine::testing::ActorLive {
                 kind: spookery_engine::testing::ActorKind::Pc,
-                place: "docks_shop".to_string(),
+                place: "exit:docks_shop.docks_street".to_string(),
                 flags: Vec::new(),
                 meters,
                 modifiers: Default::default(),
@@ -196,14 +196,7 @@ fn two_arrivals(world: &mut World) {
                 visited: Default::default(),
                 act: spookery_engine::testing::Act {
                     busy_until: Some(EVENING + 5),
-                    pending: Some(spookery_engine::testing::PendingAction {
-                        verb: "travel".to_string(),
-                        source: spookery_engine::Source::Player,
-                        kind: spookery_engine::testing::PendingKind::Arrive {
-                            place: "docks_street".to_string(),
-                            via: "docks_street".to_string(),
-                        },
-                    }),
+                    pending: Some(walk("docks_shop.docks_street")),
                     ..Default::default()
                 },
             },
@@ -224,9 +217,9 @@ fn arrivals_are_in_time_order(world: &mut World) {
     let first = crate::support::read_round(&pack, &names[0]);
     let second = crate::support::read_round(&pack, &names[1]);
     assert_eq!(first["world_time_after"], EVENING + 5);
-    assert_eq!(first["arrivals"][0]["actor_id"], "pc_nell");
+    assert_eq!(arrival(&first, "pc_nell")["to"], "docks_street");
     assert_eq!(second["world_time_after"], EVENING + 10);
-    assert_eq!(second["arrivals"][0]["actor_id"], "pc_rowan");
+    assert_eq!(arrival(&second, "pc_rowan")["to"], "mira_rooms");
     assert!(first["round_index"].as_u64() < second["round_index"].as_u64());
 }
 
@@ -258,8 +251,7 @@ fn the_round_still_ends_at_tick_1295(world: &mut World) {
 #[then(expr = "rowan's arrival is recorded with arrived_at 1292 in that round's line")]
 fn arrival_is_stamped(world: &mut World) {
     let round = crate::support::read_round(table::pack(world), "round-0001");
-    assert_eq!(round["arrivals"][0]["actor_id"], "pc_rowan");
-    assert_eq!(round["arrivals"][0]["arrived_at"], EVENING + 2);
+    assert_eq!(arrival(&round, "pc_rowan")["arrived_at"], EVENING + 2);
     let stamped = round["effects"]
         .as_array()
         .unwrap()
@@ -312,7 +304,7 @@ fn both_busy_without_a_gm(world: &mut World) {
     add_toll(&pack);
     edit_save(&pack, |now| {
         now.world_time = EVENING;
-        set_busy(now, "pc_rowan", EVENING + 10, "mira_rooms", "stairs");
+        set_busy(now, "pc_rowan", EVENING + 10, "docks_shop.stairs");
     });
     fs::write(
         pack.join("cast/pc-nell.md"),
@@ -336,7 +328,7 @@ fn both_busy_without_a_gm(world: &mut World) {
                 act: spookery_engine::testing::Act::default(),
             },
         );
-        set_busy(now, "pc_nell", EVENING + 5, "docks_street", "docks_street");
+        set_busy(now, "pc_nell", EVENING + 5, "docks_shop.docks_street");
     });
     table::listen(world, &pack);
     table::seat_rowan(world, &pack);
@@ -396,7 +388,7 @@ fn a_long_journey_and_the_cap(world: &mut World) {
     let pack = copy_docks("cap");
     edit_save(&pack, |now| {
         now.world_time = EVENING;
-        set_busy(now, "pc_rowan", EVENING + 200 * 5, "mira_rooms", "stairs");
+        set_busy(now, "pc_rowan", EVENING + 200 * 5, "docks_shop.stairs");
     });
     table::listen(world, &pack);
     table::seat_rowan(world, &pack);
@@ -428,7 +420,7 @@ fn verify_passes(world: &mut World) {
     let pack = copy_docks("verify-journey");
     edit_save(&pack, |now| {
         now.world_time = EVENING;
-        set_busy(now, "pc_rowan", EVENING + 10, "mira_rooms", "stairs");
+        set_busy(now, "pc_rowan", EVENING + 10, "docks_shop.stairs");
     });
     table::listen(world, &pack);
     table::seat_rowan(world, &pack);
@@ -478,4 +470,17 @@ fn plays_map_lists_both_rooms(world: &mut World) {
     assert!(map.starts_with("Docks Shop\n  "), "{map}");
     assert!(map.contains("Mira's Rooms\n  "), "{map}");
     assert!(!map.contains("trapdoor"), "{map}");
+}
+
+/// The location effect that lands `actor` at the end of a walk, stamped with its tick.
+fn arrival(round: &serde_json::Value, actor: &str) -> serde_json::Value {
+    let effects = round["effects"]
+        .as_array()
+        .unwrap_or_else(|| panic!("{round}"));
+    let found = effects.iter().find(|effect| {
+        effect["kind"] == "location" && effect["actor_id"] == actor && effect["arrived_at"].is_u64()
+    });
+    found
+        .unwrap_or_else(|| panic!("no arrival for {actor}: {round}"))
+        .clone()
 }

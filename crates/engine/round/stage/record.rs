@@ -51,7 +51,6 @@ pub(crate) fn run(
         intents: world.queued_intents().to_vec(),
         refused: log.refused,
         effects: log.effects,
-        arrivals: log.arrivals,
         fast_forward,
         dice: log.dice,
         extra_steps: log.extra_steps,

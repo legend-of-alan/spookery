@@ -34,8 +34,8 @@ pub struct View {
     pub world_meters: Vec<MeterView>,
     pub habits: Vec<String>,
     pub exits: Vec<ExitView>,
-    /// Why the viewer can't act now, or empty when they can.
-    pub cant_act: String,
+    /// What keeps the viewer busy and until when, or empty when they are free.
+    pub busy: String,
 }
 
 pub(crate) fn perceive_budget<L>(
@@ -178,7 +178,7 @@ fn perceive_viewer_budget(
         .collect();
     let place_name = crate::rules::lines::place_name(canon, &place);
     let prose = crate::rules::lines::place_prose(canon, state, viewer.actor_id());
-    let cant_act = crate::rules::lines::busy_line(state, viewer.actor_id()).unwrap_or_default();
+    let busy = crate::rules::lines::busy_line(canon, state, viewer.actor_id()).unwrap_or_default();
 
     Ok(View {
         viewer: viewer.clone(),
@@ -195,7 +195,7 @@ fn perceive_viewer_budget(
         world_meters,
         habits,
         exits,
-        cant_act,
+        busy,
     })
 }
 

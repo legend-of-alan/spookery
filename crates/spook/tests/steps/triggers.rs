@@ -1269,7 +1269,9 @@ pub(crate) fn intent(
 /// The GM queues `intent` under the id it names.
 fn queue(round: &mut spookery_engine::World, intent: protocol::IntentArgs) {
     round
-        .queue_gm_intent(intent, || panic!("the GM chose the id"))
+        .queue_gm_intent(&spookery_engine::Presence::default(), intent, || {
+            panic!("the GM chose the id")
+        })
         .unwrap_or_else(|code| panic!("queue: {code}"));
 }
 

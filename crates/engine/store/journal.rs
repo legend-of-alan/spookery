@@ -509,8 +509,6 @@ mod tests {
             panic!("not a round record");
         };
         assert_eq!(emit_record(&Record::Round(parsed.clone())), round);
-        assert_eq!(parsed.arrivals[0].via, "stairs");
-        assert_eq!(parsed.arrivals[0].arrived_at, 1082);
         assert!(parsed.effects.iter().any(|effect| {
             matches!(
                 effect.kind,

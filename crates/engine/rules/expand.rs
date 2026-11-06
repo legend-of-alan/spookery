@@ -16,11 +16,8 @@ use crate::Reason;
 /// Why a rule's effects are expanded and landed, which decides what the landing journals.
 #[derive(Clone, Copy)]
 pub(crate) enum Cause {
-    /// An intent's move this round: each effect takes an `EffectApplied` step, and an NPC's act
-    /// is counted.
-    Move,
-    /// A timed action finishing: the actor does not move, so its `location` effects are left
-    /// out; each other effect takes its step.
+    /// An action finishing, now or when its ticks pass: each effect takes an `EffectApplied`
+    /// step, and a refusal is told to a player.
     Finish,
     /// A change rule firing, which is nobody's move: its effects take no step of their own and
     /// its refusal is told to nobody.
@@ -38,7 +35,7 @@ pub(crate) struct Expansion {
 
 /// Roll the rule's `roll:` spec unless `rolled` already holds its roll, then expand the lists
 /// its band picks, with the resist rolls `roller` makes on the way. More effects than
-/// `max_effects_per_intent` is `BUDGET`, counting only those the `cause` keeps.
+/// `max_effects_per_intent` is `BUDGET`.
 pub(crate) fn expand(
     context: &Context,
     rule: &Rule,
@@ -51,10 +48,7 @@ pub(crate) fn expand(
         (rolled, _) => rolled,
     };
     let outcome = rolled.as_ref().map(|out| out.outcome);
-    let mut effects = expand_lists(context, rule, outcome, &mut roller)?;
-    if matches!(cause, Cause::Finish) {
-        effects.retain(|effect| !matches!(effect.kind, EffectKind::Location { .. }));
-    }
+    let effects = expand_lists(context, rule, outcome, &mut roller)?;
     if effects.len() > context.canon.budget.max_effects_per_intent as usize {
         return Err(Reason::Budget);
     }

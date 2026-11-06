@@ -3,14 +3,13 @@
 use crate::rules::effect::Effect;
 use crate::rules::gate;
 use crate::rules::roll::{MoveReport, Roll};
-use crate::store::records::{Arrival, Step};
+use crate::store::records::Step;
 
 /// Everything a round writes down, in the order it happened. `record` consumes it.
 #[derive(Default)]
 pub(crate) struct RoundLog {
     pub refused: Vec<gate::Refusal>,
     pub effects: Vec<Effect>,
-    pub arrivals: Vec<Arrival>,
     pub dice: Vec<String>,
     pub extra_steps: Vec<Step>,
     pub reports: Vec<MoveReport>,
