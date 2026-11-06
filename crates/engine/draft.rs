@@ -24,7 +24,6 @@ pub(crate) struct Draft<'p> {
     priors: Vec<Prior>,
     /// How many priors the last take reported.
     priors_taken: usize,
-    flags: FlagEdits,
     /// Each live part of the save as it was just before a write to it, oldest first. Rolling
     /// back to a savepoint puts back every part kept since, newest first.
     kept: Vec<Kept>,
@@ -44,7 +43,6 @@ impl<'p> Draft<'p> {
             key_order: Vec::new(),
             priors: Vec::new(),
             priors_taken: 0,
-            flags: FlagEdits::default(),
             kept: Vec::new(),
             memories: Vec::new(),
             memory_writes: 0,
@@ -206,19 +204,6 @@ impl<'p> Draft<'p> {
         Ok(())
     }
 
-    /// Set or clear `flag`. A write that changes it goes on the flag edits, which report it
-    /// as a change, and counts its key toward the budget. As with `mutate`, a budget `Err`
-    /// leaves the write for the caller's savepoint to undo.
-    pub(crate) fn set_flag(&mut self, flag: Flag, value: bool) -> Result<(), Reason> {
-        if flag.get(&self.state) == value {
-            return Ok(());
-        }
-        flag.set(self.live_mut(&flag.key.live()), value)?;
-        let counted = self.count_key(&flag.key);
-        self.flags.edits.push(FlagEdit { flag, was: !value });
-        counted
-    }
-
     pub(crate) fn track(&mut self, key: StateKey) -> Result<(), Reason> {
         self.track_many(std::slice::from_ref(&key))
     }
@@ -297,7 +282,6 @@ impl<'p> Draft<'p> {
                 after,
             });
         }
-        records.extend(self.flags.take(&self.state));
         records.sort_by(|left, right| left.key.cmp(&right.key));
         records
     }
@@ -310,8 +294,9 @@ impl<'p> Draft<'p> {
                 .get(id)
                 .map(|actor| StateValue::Text(actor.place.clone()))
                 .unwrap_or(StateValue::Empty),
-            // Only `set_flag` writes these, and the flag edits report them.
-            StateKey::Flag(..) => StateValue::Empty,
+            StateKey::Flag(holder, key) => Flag::resolve(holder, key)
+                .map(|flag| StateValue::Bool(flag.get(&self.state)))
+                .unwrap_or(StateValue::Empty),
             StateKey::StoryFlag(id, flag) => {
                 StateValue::Bool(self.state.has_flag(&Holder::Story(id.clone()), flag))
             }
@@ -429,15 +414,13 @@ impl<'p> Draft<'p> {
             keys: self.key_order.len(),
             priors: self.priors.len(),
             priors_taken: self.priors_taken,
-            flags: self.flags.edits.len(),
-            flags_taken: self.flags.taken,
             memories: self.memories.len(),
             memory_writes: self.memory_writes,
         }
     }
 
     /// Undo everything since `point`: put back each part kept since, newest first, and give
-    /// back the keys, priors, flag edits and memories added since.
+    /// back the keys, priors and memories added since.
     pub(crate) fn rollback(&mut self, point: Savepoint) {
         for kept in self.kept.drain(point.kept..).rev() {
             self.state.restore(kept);
@@ -445,8 +428,6 @@ impl<'p> Draft<'p> {
         self.drop_keys(point.keys);
         self.priors.truncate(point.priors);
         self.priors_taken = point.priors_taken;
-        self.flags.edits.truncate(point.flags);
-        self.flags.taken = point.flags_taken;
         self.memories.truncate(point.memories);
         self.memory_writes = point.memory_writes;
     }
@@ -458,44 +439,6 @@ struct Prior {
     before: StateValue,
 }
 
-/// Every write that changed a flag `Flag` keeps, in order, with what the flag was before it.
-/// `taken` counts the edits already reported.
-#[derive(Default)]
-struct FlagEdits {
-    edits: Vec<FlagEdit>,
-    taken: usize,
-}
-
-struct FlagEdit {
-    flag: Flag,
-    was: bool,
-}
-
-impl FlagEdits {
-    /// Each flag edited since the last take whose value now differs from before its first
-    /// edit since then.
-    fn take(&mut self, state: &State) -> Vec<Change> {
-        let mut seen: Vec<&StateKey> = Vec::new();
-        let mut changes = Vec::new();
-        for edit in &self.edits[self.taken..] {
-            if seen.contains(&&edit.flag.key) {
-                continue;
-            }
-            seen.push(&edit.flag.key);
-            let after = edit.flag.get(state);
-            if after != edit.was {
-                changes.push(Change {
-                    key: edit.flag.key.clone(),
-                    before: StateValue::Bool(edit.was),
-                    after: StateValue::Bool(after),
-                });
-            }
-        }
-        self.taken = self.edits.len();
-        changes
-    }
-}
-
 /// How far the round had come: the length of each log a rollback cuts back.
 #[derive(Clone, Copy)]
 pub(crate) struct Savepoint {
@@ -503,8 +446,6 @@ pub(crate) struct Savepoint {
     keys: usize,
     priors: usize,
     priors_taken: usize,
-    flags: usize,
-    flags_taken: usize,
     memories: usize,
     memory_writes: u32,
 }

@@ -797,7 +797,7 @@ fn set_flag(draft: &mut Draft, holder: &Holder, key: &str, value: bool) -> Resul
         return Err(Reason::UnknownId);
     }
     if let Some(flag) = Flag::resolve(holder, key) {
-        return draft.set_flag(flag, value);
+        return draft.mutate(flag.key.clone(), |state| flag.set(state, value));
     }
     let key_of = StateKey::flag(holder, key).ok_or(Reason::UnknownId)?;
     draft.mutate(key_of, |state| state.set_flag(holder, key, value))

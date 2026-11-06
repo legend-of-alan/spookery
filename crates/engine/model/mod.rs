@@ -217,15 +217,19 @@ impl Flag {
         (self.list)(state, &self.owner).is_some_and(|list| list.contains(&self.entry))
     }
 
-    /// Set or clear this flag. A place gets a live record on its first entry.
-    pub(crate) fn set(&self, state: &mut State, value: bool) -> Result<(), crate::Reason> {
+    /// Set or clear this flag, and say whether it changed. A place gets a live record on its
+    /// first entry.
+    pub(crate) fn set(&self, state: &mut State, value: bool) -> Result<bool, crate::Reason> {
+        if self.get(state) == value {
+            return Ok(false);
+        }
         let list = (self.list_mut)(state, &self.owner)?;
         if value {
             list.push(self.entry.clone());
         } else {
             list.retain(|entry| entry != &self.entry);
         }
-        Ok(())
+        Ok(true)
     }
 }
 
