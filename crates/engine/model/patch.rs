@@ -165,72 +165,53 @@ impl Patch {
         Ok(())
     }
 
-    /// The key this patch writes and the value that key reads with this patch's value in
-    /// place, or `None` for a write no key answers for. A meter reads through the pack, with
-    /// the holder's modifiers as `state` has them.
-    pub(crate) fn read(&self, canon: &Canon, state: &State) -> Option<(StateKey, StateValue)> {
+    /// The key this patch writes, or `None` for a write no key answers for.
+    pub(crate) fn key(&self) -> Option<StateKey> {
         Some(match self {
-            Patch::ActorPlace { actor, place } => (
-                StateKey::ActorPlace(actor.clone()),
-                StateValue::Text(place.clone()),
-            ),
-            Patch::Flag { holder, key, on } => (StateKey::flag(holder, key), StateValue::Bool(*on)),
-            Patch::Meter { holder, key, live } => {
-                let value = canon
-                    .meter_def(holder, key)
-                    .zip(state.modifier_sum(holder, key).ok())
-                    .and_then(|(def, added)| meter::current(def, live, added).ok());
-                (
-                    StateKey::meter(holder, key)?,
-                    value.map_or(StateValue::Empty, StateValue::Number),
-                )
-            }
-            Patch::Modifier { actor, id, held } => (
-                StateKey::ActorModifier(actor.clone(), id.clone()),
-                held.as_ref().map_or(StateValue::Empty, |live| {
-                    StateValue::Text(format!(
-                        "{:?} until {} max_ticks {}",
-                        live.stacks, live.until, live.max_ticks
-                    ))
-                }),
-            ),
-            Patch::Item { holder, id, count } => (
-                StateKey::item(holder, id)?,
-                StateValue::Number(i64::from(*count)),
-            ),
-            Patch::Wielded { actor, item } => (
-                StateKey::ActorWielded(actor.clone()),
-                item.clone().map_or(StateValue::Empty, StateValue::Text),
-            ),
-            Patch::KnownFacts { actor, facts } => (
-                StateKey::ActorKnownFact(actor.clone()),
-                StateValue::List(facts.clone()),
-            ),
-            Patch::Busy { actor, until, .. } => (
-                StateKey::ActorBusy(actor.clone()),
-                until.map_or(StateValue::Empty, number),
-            ),
-            Patch::LastActRound { actor, round } => {
-                (StateKey::LastActRound(actor.clone()), number(*round))
-            }
-            Patch::Acts {
-                actor,
-                counter,
-                count,
-            } => (
-                counter.key(actor.clone()),
-                StateValue::Number(i64::from(*count)),
-            ),
-            Patch::Note { id, note } => (
-                StateKey::Note(id.clone()),
-                if note.is_some() {
-                    StateValue::Bool(true)
-                } else {
-                    StateValue::Empty
-                },
-            ),
+            Patch::ActorPlace { actor, .. } => StateKey::ActorPlace(actor.clone()),
+            Patch::Flag { holder, key, .. } => StateKey::flag(holder, key),
+            Patch::Meter { holder, key, .. } => StateKey::meter(holder, key)?,
+            Patch::Modifier { actor, id, .. } => StateKey::ActorModifier(actor.clone(), id.clone()),
+            Patch::Item { holder, id, .. } => StateKey::item(holder, id)?,
+            Patch::Wielded { actor, .. } => StateKey::ActorWielded(actor.clone()),
+            Patch::KnownFacts { actor, .. } => StateKey::ActorKnownFact(actor.clone()),
+            Patch::Busy { actor, .. } => StateKey::ActorBusy(actor.clone()),
+            Patch::LastActRound { actor, .. } => StateKey::LastActRound(actor.clone()),
+            Patch::Acts { actor, counter, .. } => counter.key(actor.clone()),
+            Patch::Note { id, .. } => StateKey::Note(id.clone()),
             Patch::Visited { .. } | Patch::Record { .. } => return None,
         })
+    }
+
+    /// How this patch's value reads as its key's value. A meter reads through the pack, with
+    /// the holder's modifiers as `state` has them.
+    pub(crate) fn value(&self, canon: &Canon, state: &State) -> StateValue {
+        match self {
+            Patch::ActorPlace { place, .. } => StateValue::Text(place.clone()),
+            Patch::Flag { on, .. } => StateValue::Bool(*on),
+            Patch::Meter { holder, key, live } => canon
+                .meter_def(holder, key)
+                .zip(state.modifier_sum(holder, key).ok())
+                .and_then(|(def, added)| meter::current(def, live, added).ok())
+                .map_or(StateValue::Empty, StateValue::Number),
+            Patch::Modifier { held, .. } => held.as_ref().map_or(StateValue::Empty, |live| {
+                StateValue::Text(format!(
+                    "{:?} until {} max_ticks {}",
+                    live.stacks, live.until, live.max_ticks
+                ))
+            }),
+            Patch::Item { count, .. } | Patch::Acts { count, .. } => {
+                StateValue::Number(i64::from(*count))
+            }
+            Patch::Wielded { item, .. } => item.clone().map_or(StateValue::Empty, StateValue::Text),
+            Patch::KnownFacts { facts, .. } => StateValue::List(facts.clone()),
+            Patch::Busy { until, .. } => until.map_or(StateValue::Empty, number),
+            Patch::LastActRound { round, .. } => number(*round),
+            Patch::Note { note: Some(_), .. } => StateValue::Bool(true),
+            Patch::Note { note: None, .. } | Patch::Visited { .. } | Patch::Record { .. } => {
+                StateValue::Empty
+            }
+        }
     }
 
     /// What a modifier patch adds to its meter, `None` for any other patch or for a modifier

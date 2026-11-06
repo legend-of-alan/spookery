@@ -180,8 +180,9 @@ impl<'p> Draft<'p> {
         let own = if undo == patch {
             None
         } else {
-            let read = |side: &Patch| side.read(&self.canon, &self.state);
-            let values = read(&undo).zip(read(&patch));
+            let (canon, state) = (&self.canon, &self.state);
+            let values =
+                (patch.key()).map(|key| (key, undo.value(canon, state), patch.value(canon, state)));
             self.undo.push(undo);
             values
         };
@@ -201,7 +202,7 @@ impl<'p> Draft<'p> {
                 self.changes.push(Change { key, before, after });
             }
         }
-        if let Some(((key, before), (_, after))) = own {
+        if let Some((key, before, after)) = own {
             self.count_key(&key)?;
             self.changes.push(Change { key, before, after });
         }
