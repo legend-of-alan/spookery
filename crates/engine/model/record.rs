@@ -52,7 +52,7 @@ impl Diff {
     /// A key whose value is its stored field: it changes only when the field does.
     fn stored<T: PartialEq>(
         &mut self,
-        key: StateKey,
+        key: impl FnOnce() -> StateKey,
         before: &T,
         after: &T,
         value: impl Fn(&T) -> StateValue,
@@ -63,8 +63,18 @@ impl Diff {
     }
 
     /// A key read through the pack, whose value can move while its fields hold, or hold while
-    /// they move.
-    fn note(&mut self, key: StateKey, stored_changed: bool, before: StateValue, after: StateValue) {
+    /// they move. The key is built only when one of the two did.
+    fn note(
+        &mut self,
+        key: impl FnOnce() -> StateKey,
+        stored_changed: bool,
+        before: StateValue,
+        after: StateValue,
+    ) {
+        if !stored_changed && before == after {
+            return;
+        }
+        let key = key();
         if stored_changed {
             self.spent.push(key.clone());
         }
@@ -185,7 +195,7 @@ impl RecordId for ActorId<'_> {
         };
         let id = self.0;
         out.stored(
-            StateKey::ActorPlace(id.to_string()),
+            || StateKey::ActorPlace(id.to_string()),
             &before.place,
             &after.place,
             |place| StateValue::Text(place.clone()),
@@ -206,7 +216,7 @@ impl RecordId for ActorId<'_> {
         );
         for key in union(before.modifiers.keys(), after.modifiers.keys()) {
             out.stored(
-                StateKey::ActorModifier(id.to_string(), key.to_string()),
+                || StateKey::ActorModifier(id.to_string(), key.to_string()),
                 &before.modifiers.get(key),
                 &after.modifiers.get(key),
                 |held| {
@@ -220,31 +230,31 @@ impl RecordId for ActorId<'_> {
             );
         }
         out.stored(
-            StateKey::ActorBusy(id.to_string()),
+            || StateKey::ActorBusy(id.to_string()),
             &(before.act.busy_until, &before.act.pending),
             &(after.act.busy_until, &after.act.pending),
             |(until, _)| until.map_or(StateValue::Empty, number_of),
         );
         out.stored(
-            StateKey::ActorKnownFact(id.to_string()),
+            || StateKey::ActorKnownFact(id.to_string()),
             &before.known_facts,
             &after.known_facts,
             |known| StateValue::List(known.clone()),
         );
         out.stored(
-            StateKey::LastActRound(id.to_string()),
+            || StateKey::LastActRound(id.to_string()),
             &before.act.last_act_round,
             &after.act.last_act_round,
             |round| number_of(*round),
         );
         out.stored(
-            StateKey::IdleActsThisWindow(id.to_string()),
+            || StateKey::IdleActsThisWindow(id.to_string()),
             &before.act.idle_acts_this_window,
             &after.act.idle_acts_this_window,
             |count| StateValue::Number(i64::from(*count)),
         );
         out.stored(
-            StateKey::LiveActsThisWindow(id.to_string()),
+            || StateKey::LiveActsThisWindow(id.to_string()),
             &before.act.live_acts_this_window,
             &after.act.live_acts_this_window,
             |count| StateValue::Number(i64::from(*count)),
@@ -256,7 +266,7 @@ impl RecordId for ActorId<'_> {
             out,
         );
         out.stored(
-            StateKey::ActorWielded(id.to_string()),
+            || StateKey::ActorWielded(id.to_string()),
             &before.wielded,
             &after.wielded,
             |wielded| {
@@ -437,7 +447,7 @@ impl RecordId for NotesId {
         for id in union(ids(before), ids(after)) {
             let has = |notes: &[Note]| notes.iter().any(|note| note.id == id);
             out.stored(
-                StateKey::Note(id.to_string()),
+                || StateKey::Note(id.to_string()),
                 &has(before),
                 &has(after),
                 |present| {
@@ -469,9 +479,12 @@ fn diff_flags(
 ) {
     for flag in union(before, after) {
         let on = |flags: &[String]| flags.iter().any(|held| held == flag);
-        out.stored(key_of(flag.to_string()), &on(before), &on(after), |on| {
-            StateValue::Bool(*on)
-        });
+        out.stored(
+            || key_of(flag.to_string()),
+            &on(before),
+            &on(after),
+            |on| StateValue::Bool(*on),
+        );
     }
 }
 
@@ -485,7 +498,7 @@ fn diff_counts(
     for item in union(before.keys(), after.keys()) {
         let count = |counts: &BTreeMap<String, u32>| counts.get(item).copied().unwrap_or(0);
         out.stored(
-            key_of(item.to_string()),
+            || key_of(item.to_string()),
             &count(before),
             &count(after),
             |count| StateValue::Number(i64::from(*count)),
@@ -508,7 +521,7 @@ fn diff_meters(
 ) {
     for key in union(before.0.keys(), after.0.keys()) {
         out.note(
-            key_of(key.to_string()),
+            || key_of(key.to_string()),
             before.0.get(key) != after.0.get(key),
             meter_value(canon, holder, before, key),
             meter_value(canon, holder, after, key),
