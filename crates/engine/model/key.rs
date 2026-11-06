@@ -2,7 +2,6 @@
 
 use std::fmt;
 
-use crate::model::Live;
 use crate::rules::effect::Holder;
 
 /// One budget identity. The commit diff summary is this type's `Display`,
@@ -73,6 +72,16 @@ impl StateKey {
         }
     }
 
+    /// The key of item `id`'s count on `holder`. Only an actor or a place holds items.
+    pub(crate) fn item(holder: &Holder, id: &str) -> Option<StateKey> {
+        let id = id.to_string();
+        match holder {
+            Holder::Actor(actor) => Some(StateKey::ActorItem(actor.clone(), id)),
+            Holder::Place(place) => Some(StateKey::PlaceItem(place.clone(), id)),
+            Holder::Story(_) | Holder::Exit(..) | Holder::World => None,
+        }
+    }
+
     /// The key of flag `key` on `holder`. An exit's one flag is `open`.
     pub(crate) fn flag(holder: &Holder, key: &str) -> StateKey {
         let key = key.to_string();
@@ -82,30 +91,6 @@ impl StateKey {
             Holder::Place(id) => StateKey::PlaceFlag(id.clone(), key),
             Holder::Story(id) => StateKey::StoryFlag(id.clone(), key),
             Holder::World => StateKey::WorldFlag(key),
-        }
-    }
-
-    /// The live part of the save this key's value sits in.
-    pub(crate) fn live(&self) -> Live {
-        match self {
-            StateKey::ActorPlace(id)
-            | StateKey::ActorFlag(id, _)
-            | StateKey::ActorMeter(id, _)
-            | StateKey::ActorModifier(id, _)
-            | StateKey::ActorBusy(id)
-            | StateKey::ActorKnownFact(id)
-            | StateKey::LastActRound(id)
-            | StateKey::IdleActsThisWindow(id)
-            | StateKey::LiveActsThisWindow(id)
-            | StateKey::ActorItem(id, _)
-            | StateKey::ActorWielded(id) => Live::Actor(id.clone()),
-            StateKey::PlaceItem(id, _)
-            | StateKey::PlaceMeter(id, _)
-            | StateKey::PlaceFlag(id, _)
-            | StateKey::ExitOpen(id, _) => Live::Place(id.clone()),
-            StateKey::StoryMeter(id, _) | StateKey::StoryFlag(id, _) => Live::Story(id.clone()),
-            StateKey::Note(_) => Live::Notes,
-            StateKey::WorldFlag(_) | StateKey::WorldMeter(_) => Live::World,
         }
     }
 
