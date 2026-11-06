@@ -148,7 +148,7 @@ pub(crate) fn open_doors(draft: &mut Draft, log: &mut RoundLog) {
                 cond::if_holds(
                     canon,
                     state,
-                    draft.presence,
+                    draft.state().presence(),
                     viewer,
                     "travel",
                     target,

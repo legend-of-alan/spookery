@@ -26,7 +26,7 @@ pub(crate) fn run(
     queue: &[Intent],
     log: &mut RoundLog,
 ) -> Result<Vec<Intent>, Reason> {
-    let (canon, state, presence) = (draft.canon(), draft.state(), draft.presence);
+    let (canon, state, presence) = (draft.canon(), draft.state(), draft.state().presence());
     let mut candidates = queue.to_vec();
     candidates.extend(habits::intents(canon, state, presence));
     for intent in &mut candidates {

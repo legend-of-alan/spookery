@@ -101,7 +101,12 @@ fn fire(
     let Ok(intent) = Intent::trigger(draft.state(), subject, &rule.id) else {
         return;
     };
-    let context = Context::new(draft.canon(), draft.state(), draft.presence, &intent);
+    let context = Context::new(
+        draft.canon(),
+        draft.state(),
+        draft.state().presence(),
+        &intent,
+    );
     if cond::all_hold(&context, &rule.if_).is_err() {
         return;
     }

@@ -20,23 +20,20 @@ use crate::Reason;
 /// A round's staged save, with the canon it reads and who is seated. The writers below are the
 /// only way a round changes the save: each lands at once, so a later read sees it, and goes on
 /// the save's ledger, so it can be rolled back, counts toward the budget and is reported.
-pub(crate) struct Draft<'p> {
+pub(crate) struct Draft {
     canon: Arc<Canon>,
     state: State,
-    /// Who is seated for this round. The round reads it and never writes it.
-    pub(crate) presence: &'p Presence,
     _nosend: PhantomData<Rc<()>>,
 }
 
-impl<'p> Draft<'p> {
+impl Draft {
     /// Stage a round on a copy of the world's save, with `presence` seated.
-    pub(crate) fn begin<L>(world: &World<L>, presence: &'p Presence) -> Self {
+    pub(crate) fn begin<L>(world: &World<L>, presence: &Presence) -> Self {
         let mut state = world.state.clone();
-        state.ledger = Ledger::new(world.canon.budget.max_state_keys_mutated as usize);
+        state.ledger = Ledger::new(&world.canon.budget, presence);
         Self {
             canon: Arc::clone(&world.canon),
             state,
-            presence,
             _nosend: PhantomData,
         }
     }
@@ -103,7 +100,7 @@ impl<'p> Draft<'p> {
             .get(actor_id)
             .ok_or(Reason::UnknownId)?
             .act;
-        let (counter, count) = if self.presence.players == 0 {
+        let (counter, count) = if self.state.presence().players == 0 {
             (ActCounter::IdleActsThisWindow, act.idle_acts_this_window)
         } else {
             (ActCounter::LiveActsThisWindow, act.live_acts_this_window)
@@ -323,8 +320,7 @@ impl<'p> Draft<'p> {
     }
 
     pub(crate) fn count_memory_write(&mut self) -> Result<(), Reason> {
-        let max = self.canon.budget.max_memory_writes;
-        self.state.ledger.count_memory_write(max)
+        self.state.ledger.count_memory_write()
     }
 
     pub(crate) fn push_memory(&mut self, line: MemoryLine) {

@@ -1,21 +1,26 @@
-//! What a round's writes owe the save: the keys counted toward the budget, each change for the
-//! next take, each component they touched, for a rollback, and the memory lines they wrote.
+//! The round a save is being written in: its limits, who is seated for it, and what its
+//! writes owe the save: the keys counted toward the budget, each change for the next take, each
+//! component they touched, for a rollback, and the memory lines they wrote.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
+use crate::canon::Budget;
 use crate::model::key::{Change, StateKey, StateValue};
 use crate::model::modifier::ModifierLive;
 use crate::model::tracked::{Edit, Tracked};
-use crate::model::{ComponentId, MemoryLine, State};
+use crate::model::{ComponentId, MemoryLine, Presence, State};
 use crate::rules::effect::Holder;
 use crate::Reason;
 
-/// The one ledger of a round, kept on its save. A copy of the save holds no round, so a copy
-/// of a ledger is empty, and two saves are equal whatever their ledgers hold.
-#[derive(Default)]
+/// The one ledger of a round, kept on its save. Out of a round it has no limits and nobody is
+/// seated. A copy of the save holds no round, so a copy of a ledger is one at rest, and two
+/// saves are equal whatever their ledgers hold.
 pub(crate) struct Ledger {
     max_keys: usize,
+    max_memory_writes: u64,
+    /// Who is seated for the round. The host's seats own it; the save never holds it.
+    presence: Presence,
     /// The keys counted toward the budget this round.
     keys: BTreeSet<StateKey>,
     /// The same keys in the order they were counted, so a savepoint can give them back.
@@ -28,6 +33,23 @@ pub(crate) struct Ledger {
     taken: usize,
     memories: Vec<MemoryLine>,
     memory_writes: u32,
+}
+
+impl Default for Ledger {
+    fn default() -> Self {
+        Self {
+            max_keys: usize::MAX,
+            max_memory_writes: u64::MAX,
+            presence: Presence::default(),
+            keys: BTreeSet::new(),
+            key_order: Vec::new(),
+            touched: Vec::new(),
+            changes: Vec::new(),
+            taken: 0,
+            memories: Vec::new(),
+            memory_writes: 0,
+        }
+    }
 }
 
 impl Clone for Ledger {
@@ -77,10 +99,12 @@ pub(crate) struct Savepoint {
 }
 
 impl Ledger {
-    /// A ledger for a round that may count `max_keys` keys.
-    pub(crate) fn new(max_keys: usize) -> Self {
+    /// A ledger for a round under `budget`, with `presence` seated.
+    pub(crate) fn new(budget: &Budget, presence: &Presence) -> Self {
         Self {
-            max_keys,
+            max_keys: budget.max_state_keys_mutated as usize,
+            max_memory_writes: budget.max_memory_writes,
+            presence: presence.clone(),
             ..Self::default()
         }
     }
@@ -160,9 +184,9 @@ impl Ledger {
         Ok(())
     }
 
-    /// Count one memory write, up to `max`.
-    pub(crate) fn count_memory_write(&mut self, max: u64) -> Result<(), Reason> {
-        if u64::from(self.memory_writes) >= max {
+    /// Count one memory write, up to the round's limit.
+    pub(crate) fn count_memory_write(&mut self) -> Result<(), Reason> {
+        if u64::from(self.memory_writes) >= self.max_memory_writes {
             return Err(Reason::Budget);
         }
         self.memory_writes += 1;
@@ -180,6 +204,11 @@ impl Ledger {
 }
 
 impl State {
+    /// Who is seated for the round this save is being written in.
+    pub(crate) fn presence(&self) -> &Presence {
+        &self.ledger.presence
+    }
+
     /// Where the round has come to, to roll back to. It copies nothing.
     pub(crate) fn savepoint(&self) -> Savepoint {
         let ledger = &self.ledger;

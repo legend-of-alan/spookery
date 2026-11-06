@@ -145,8 +145,8 @@ pub(crate) fn replay_round(
 
 /// What the stages leave for `record`: the staged save, the round's time, its log, and what
 /// each seat hears.
-pub(crate) struct StagedRound<'p> {
-    pub(crate) draft: Draft<'p>,
+pub(crate) struct StagedRound {
+    pub(crate) draft: Draft,
     pub(crate) clock: RoundTime,
     pub(crate) log: RoundLog,
     pub(crate) delivered: deliver::Deliveries,
@@ -154,12 +154,12 @@ pub(crate) struct StagedRound<'p> {
 
 /// Every stage but `record`, in order. The canon is cloned once: the candidates' rules borrow
 /// it while the later stages write the draft.
-fn run_stages<'p, L>(
+fn run_stages<L>(
     world: &World<L>,
-    presence: &'p Presence,
+    presence: &Presence,
     wall: &str,
     queue: &[Intent],
-) -> Result<StagedRound<'p>, Reason> {
+) -> Result<StagedRound, Reason> {
     let mut draft = Draft::begin(world, presence);
     let canon = draft.shared_canon();
     let clock = advance::run(&mut draft, wall)?;
@@ -181,7 +181,7 @@ fn run_stages<'p, L>(
     let delivered = deliver::run(
         &canon,
         draft.state(),
-        draft.presence,
+        draft.state().presence(),
         &log.changes,
         &log.effects,
     );

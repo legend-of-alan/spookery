@@ -52,7 +52,7 @@ pub(crate) fn run(
         let landing = match resolution {
             Resolution::Ready { rule, rolled } => {
                 // The world may have changed since the queue, so the gate checks the rule again.
-                let context = Context::new(canon, draft.state(), draft.presence, intent);
+                let context = Context::new(canon, draft.state(), draft.state().presence(), intent);
                 if let Err(refusal) = gate::admit(&context, rule) {
                     refuse(log, intent, refusal, false);
                     continue;
@@ -98,7 +98,7 @@ fn start(
     dice: &mut RoundDice,
     log: &mut RoundLog,
 ) -> Landing {
-    let context = Context::new(canon, draft.state(), draft.presence, intent);
+    let context = Context::new(canon, draft.state(), draft.state().presence(), intent);
     let exit = travel::exit_of(&context, rule).ok().flatten().cloned();
     let ticks = travel::span(&context, rule);
     let mut roller = dice.roller(log, &rule.id, intent.actor_id());
@@ -129,7 +129,7 @@ fn start(
 /// Drop the actor's action under way, with no refund, if the gate still allows it now. Its
 /// finish never runs.
 fn cancel(draft: &mut Draft, canon: &Canon, intent: &Intent, log: &mut RoundLog) -> Landing {
-    let context = Context::new(canon, draft.state(), draft.presence, intent);
+    let context = Context::new(canon, draft.state(), draft.state().presence(), intent);
     if let Err(refusal) = gate::admit_cancel(&context) {
         refuse(log, intent, refusal, false);
         return Landing::Refused;
@@ -193,7 +193,7 @@ pub(crate) fn finish(
     dice: &mut RoundDice,
     log: &mut RoundLog,
 ) -> Landing {
-    let context = Context::new(canon, draft.state(), draft.presence, intent);
+    let context = Context::new(canon, draft.state(), draft.state().presence(), intent);
     let roller = dice.roller(log, &rule.id, intent.actor_id());
     let mut expansion = match expand::expand(&context, rule, Cause::Finish, rolled, roller) {
         Ok(expansion) => expansion,

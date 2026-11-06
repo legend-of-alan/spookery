@@ -16,7 +16,7 @@ pub(crate) fn run(draft: &mut Draft, wall: &str) -> Result<RoundTime, Reason> {
     let round_index = draft.state().round_index + 1;
     let world_before = draft.state().world_time;
     let budget = draft.budget();
-    let ticks = round_ticks(draft.presence.players, budget);
+    let ticks = round_ticks(draft.state().presence().players, budget);
     let world_after = world_before.saturating_add(ticks);
     let windows = [
         (ActCounter::IdleActsThisWindow, budget.idle_act_window_ticks),

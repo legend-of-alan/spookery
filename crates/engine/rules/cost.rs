@@ -69,7 +69,12 @@ pub(crate) fn pay(
     let who = intent.actor_id().ok_or(Reason::UnknownId)?;
     let holder = effect::Holder::Actor(who.to_string());
     for (key, expr) in &cost.meters {
-        let context = Context::new(draft.canon(), draft.state(), draft.presence, intent);
+        let context = Context::new(
+            draft.canon(),
+            draft.state(),
+            draft.state().presence(),
+            intent,
+        );
         let amount = expr::eval_with_dice(&context, expr, dice)?;
         if amount < 0 {
             return Err(Reason::CantAfford);
@@ -81,7 +86,12 @@ pub(crate) fn pay(
         }
     }
     for (id, expr) in &cost.items {
-        let context = Context::new(draft.canon(), draft.state(), draft.presence, intent);
+        let context = Context::new(
+            draft.canon(),
+            draft.state(),
+            draft.state().presence(),
+            intent,
+        );
         let count = item_count(expr::eval_with_dice(&context, expr, dice)?)?;
         // The key budget keeps its own code; any other refusal of the take is a shortfall.
         match effect::shift_item(draft, &holder, id, -i64::from(count), None) {

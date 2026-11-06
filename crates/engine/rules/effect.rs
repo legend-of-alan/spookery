@@ -707,7 +707,7 @@ fn move_actor(
     // A walker stands on the exit until they arrive. The exit is no place of its own.
     let on_exit = crate::rules::travel::exit_stood_on(canon, to).is_some();
     let actor = state.actors.get(actor_id).ok_or(Reason::UnknownId)?;
-    if draft.presence.players == 0 && actor.is_pc() {
+    if draft.state().presence().players == 0 && actor.is_pc() {
         return Err(Reason::TableEmpty);
     }
     if actor.place != from {
