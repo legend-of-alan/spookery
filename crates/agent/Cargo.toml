@@ -8,6 +8,10 @@ license = "MIT"
 [lib]
 path = "lib.rs"
 [dependencies]
+async-trait = "0.1"
+graph-flow = { version = "0.8.1", default-features = false }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 spookery-protocol = { path = "../protocol" }
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt", "test-util"] }

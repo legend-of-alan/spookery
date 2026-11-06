@@ -3,8 +3,8 @@
 use std::time::Duration;
 
 use spookery_agent::{
-    chat_body, parse_completion, provider_detail, CompletionError, CompletionRequest, FailureKind,
-    Model, ModelReply,
+    chat_body, parse_completion, provider_detail, ChatMessage, CompletionError, FailureKind, Model,
+    ToolCall,
 };
 
 use crate::Error;
@@ -63,7 +63,7 @@ fn kind_of(err: &reqwest::Error) -> FailureKind {
 
 struct Attempt {
     retry: bool,
-    result: Result<Option<ModelReply>, CompletionError>,
+    result: Result<Vec<ToolCall>, CompletionError>,
 }
 
 impl Attempt {
@@ -102,8 +102,8 @@ impl HttpModel {
         Ok(Self { settings, client })
     }
 
-    async fn post_completion(&self, request: &CompletionRequest) -> Attempt {
-        let body = chat_body(&self.settings.model, &request.prompt, request.says_only);
+    async fn post_completion(&self, messages: &[ChatMessage]) -> Attempt {
+        let body = chat_body(&self.settings.model, messages);
         let url = format!("{}/chat/completions", self.settings.url);
         let response = match self
             .client
@@ -136,13 +136,13 @@ impl HttpModel {
         };
         Attempt {
             retry: false,
-            result: parse_completion(&text, request.says_only),
+            result: parse_completion(&text),
         }
     }
 
-    async fn attempt(&self, request: &CompletionRequest) -> Attempt {
+    async fn attempt(&self, messages: &[ChatMessage]) -> Attempt {
         // A timed-out attempt is dropped before this returns, which closes its socket.
-        match tokio::time::timeout(MODEL_CALL_TIMEOUT, self.post_completion(request)).await {
+        match tokio::time::timeout(MODEL_CALL_TIMEOUT, self.post_completion(messages)).await {
             Ok(attempt) => attempt,
             Err(_) => Attempt::timed_out(),
         }
@@ -150,16 +150,13 @@ impl HttpModel {
 }
 
 impl Model for HttpModel {
-    async fn complete(
-        &mut self,
-        request: &CompletionRequest,
-    ) -> Result<Option<ModelReply>, CompletionError> {
-        let first = self.attempt(request).await;
+    async fn complete(&self, messages: &[ChatMessage]) -> Result<Vec<ToolCall>, CompletionError> {
+        let first = self.attempt(messages).await;
         if !first.retry {
             return first.result;
         }
         tokio::time::sleep(RETRY_BACKOFF).await;
-        self.attempt(request).await.result
+        self.attempt(messages).await.result
     }
 }
 

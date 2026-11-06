@@ -1,8 +1,7 @@
 use spookery_engine::testing::state_of;
-use std::collections::VecDeque;
 use std::fs;
 use std::io::{Read, Write};
-use std::net::{Shutdown, SocketAddr, TcpListener, TcpStream};
+use std::net::{Shutdown, TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex};
@@ -12,14 +11,16 @@ use std::time::Duration;
 use crate::mcp_client::GmClient;
 use cucumber::{then, when};
 use serde_json::json;
-use spookery::agent::{parse_completion, CompletionError, CompletionRequest, Model, ModelReply};
-use spookery::ai_gm;
+use spookery::agent::CompletionError;
 use spookery::http_model::{HttpModel, Settings, MODEL_CALL_TIMEOUT, RETRY_BACKOFF};
 use spookery::protocol::{SayArgs, ServerBody};
 
 use crate::support::{self, copy_docks};
 use crate::World;
 
+use super::scripted_gm::{
+    read_tool_results, render_completion, start_ai_gm, stop_ai_gm, AiGm, ScriptedModel, HOLD,
+};
 use super::table;
 
 #[when(expr = "the operator runs ai-gm with an extra argument")]
@@ -158,19 +159,14 @@ fn the_scripted_ai_gm_plays_the_turn_checks(world: &mut World) {
     speech_leaves_world_time_and_a_gm_say_does_not_call(world);
     travel_rounds_once(world, false);
     travel_rounds_once(world, true);
-    epilogue_does_not_play_another_round(world);
+    the_rolls_are_narrated_without_another_round(world);
     sit_commits_the_waiting_queue(world);
 }
 
 #[when(expr = "play and the AI GM and a stub run a speech turn and a travel turn")]
 fn play_and_ai_gm_and_a_stub(world: &mut World) {
     let pack = copy_docks("host-stub");
-    let aldric = pack.join("cast/aldric.md");
-    let mut body = fs::read_to_string(&aldric).unwrap();
-    body.push_str("\nCASTBODYONLY-FIXTURE\n");
-    fs::write(&aldric, body).unwrap();
-    spookery_engine::migrate_pack(&pack).unwrap_or_else(|err| panic!("migrate: {err}"));
-    let (stub_port, seen) = start_model_stub(std::iter::repeat(Reply::Act(EMPTY_ACT)));
+    let (stub_port, seen) = start_model_stub(std::iter::repeat(Reply::Tools(&[])));
     table::listen(world, &pack);
     let addr = table::game_addr(world);
     let mut host_cmd = Command::new(env!("CARGO_BIN_EXE_spook"));
@@ -200,8 +196,7 @@ fn play_and_ai_gm_and_a_stub(world: &mut World) {
     wait_stub(&seen, 1, 0);
     assert_eq!(state_of(&pack).world_time, 1080, "speech played a round");
     let first = seen.lock().unwrap().posts[0].clone();
-    assert!(first.contains("act"), "{first}");
-    assert!(first.contains("CASTBODYONLY-FIXTURE"), "{first}");
+    assert!(first.contains("end_turn"), "{first}");
     assert_chat_post(&first);
     let mark = support::text_of(&play.stdout).len();
     writeln!(play_in, "travel docks_street").unwrap();
@@ -215,8 +210,7 @@ fn play_and_ai_gm_and_a_stub(world: &mut World) {
         .map(|actor| actor.place.clone());
     assert_eq!(place.as_deref(), Some("docks_street"));
     let second = seen.lock().unwrap().posts[1].clone();
-    assert!(second.contains("act"), "{second}");
-    assert!(second.contains("CASTBODYONLY-FIXTURE"), "{second}");
+    assert!(second.contains("end_turn"), "{second}");
     assert_chat_post(&second);
     // The table answers in order, so this look's view follows any round it played first.
     let mark = support::text_of(&play.stdout).len();
@@ -240,16 +234,19 @@ fn speech_leaves_world_time_and_a_gm_say_does_not_call(world: &mut World) {
     run_ai_gm(world, "host-speech", |world, pack, model| {
         table::seat_rowan(world, pack);
         let sit = state_of(pack).world_time;
-        model.push(Ok(
-            r#"{"says":[{"address":"table","text":"evening"}],"intents":[]}"#,
-        ));
+        model.push(&[("say", r#"{"address":"table","text":"evening"}"#)]);
         let (mark, _) = table::player_send(world, "say hello", "\"kind\":\"say\"");
         table::wait_player_from(world, mark, "evening");
         assert_eq!(state_of(pack).world_time, sit, "speech changed world_time");
         let tape = tape_text(pack);
         assert!(tape.contains("\"from\":\"gm\""), "{tape}");
         assert!(tape.contains("evening"), "{tape}");
-        assert_eq!(model.calls().len(), 1, "a gm say called the model");
+        // The say's turn asks once more and ends. The GM's own say wakes no turn.
+        assert_eq!(
+            model.wait_past_script().len(),
+            2,
+            "a gm say called the model"
+        );
         assert_eq!(state_of(pack).world_time, sit);
     });
 }
@@ -262,11 +259,11 @@ fn travel_rounds_once(world: &mut World, transport_error: bool) {
     };
     run_ai_gm(world, label, |world, pack, model| {
         if transport_error {
-            model.push(Err(CompletionError::Transport(
+            model.push_error(CompletionError::Transport(
                 "model transport error".to_string(),
-            )));
+            ));
         } else {
-            model.push(Ok(EMPTY_ACT));
+            model.push(&[]);
         }
         table::seat_rowan(world, pack);
         let sit = state_of(pack).world_time;
@@ -284,12 +281,10 @@ fn travel_rounds_once(world: &mut World, transport_error: bool) {
     });
 }
 
-fn epilogue_does_not_play_another_round(world: &mut World) {
-    run_ai_gm(world, "host-epilogue", |world, pack, model| {
-        model.push(Ok(EMPTY_ACT));
-        model.push(Ok(
-            r#"{"says":[{"address":"table","text":"the roll lands"}]}"#,
-        ));
+fn the_rolls_are_narrated_without_another_round(world: &mut World) {
+    run_ai_gm(world, "host-narrate", |world, pack, model| {
+        model.push(&[("end_turn", "{}")]);
+        model.push(&[("say", r#"{"address":"table","text":"the roll lands"}"#)]);
         table::seat_rowan(world, pack);
         let sit = state_of(pack).world_time;
         let (mark, _) = table::player_send(world, "grit", "\"kind\":\"queued\"");
@@ -297,21 +292,15 @@ fn epilogue_does_not_play_another_round(world: &mut World) {
         table::wait_player_from(world, mark, "the roll lands");
         let tape = tape_text(pack);
         assert!(tape.contains("the roll lands"), "{tape}");
-        let calls = model.calls();
-        assert_eq!(calls.len(), 2, "epilogue did not run");
-        assert!(!calls[0].says_only);
-        assert!(calls[1].says_only);
-        assert!(
-            calls[1].prompt.contains("\"checks\""),
-            "{}",
-            calls[1].prompt
-        );
+        let calls = model.wait_past_script();
+        assert_eq!(calls.len(), 3, "the rolls were not narrated in the turn");
+        let rolls = read_tool_results(&calls[1]);
+        assert!(rolls[0].contains("\"rolls\""), "{rolls:?}");
         assert_eq!(
             state_of(pack).world_time,
             sit + 5,
-            "epilogue played a round"
+            "the narration played a round"
         );
-        assert_eq!(model.calls().len(), 2);
     });
 }
 
@@ -325,7 +314,7 @@ fn sit_commits_the_waiting_queue(world: &mut World) {
     assert_eq!(state_of(&pack).world_time, 1080);
     table::release_gm(world);
     let model = ScriptedModel::default();
-    model.push(Ok(EMPTY_ACT));
+    model.push(&[]);
     let mark = table::player_mark(world);
     let gm = start_ai_gm(world, model.clone());
     assert_eq!(table::wait_rounds_to_view(world, mark), [1085]);
@@ -340,8 +329,8 @@ fn a_player_queues_travel_while_the_model_answers_their_say(world: &mut World) {
     let pack = copy_docks("host-close-turns");
     table::listen(world, &pack);
     let model = ScriptedModel::default();
-    model.push(Ok(EMPTY_ACT));
-    model.push(Ok(EMPTY_ACT));
+    model.push(&[]);
+    model.push(&[]);
     model.hold_next();
     let gm = start_ai_gm(world, model.clone());
     table::seat_rowan(world, &pack);
@@ -366,62 +355,6 @@ fn a_player_queues_travel_while_the_model_answers_their_say(world: &mut World) {
     };
 }
 
-/// How long a held model call waits on the AI GM's paused clock.
-const HOLD: Duration = Duration::from_secs(1);
-
-/// A model that answers each call with the next scripted `act` arguments, read through
-/// `parse_completion` the way `HttpModel` reads a reply. With no script left it answers
-/// without an `act` call.
-#[derive(Clone, Default)]
-struct ScriptedModel {
-    script: Arc<Mutex<Script>>,
-}
-
-#[derive(Default)]
-struct Script {
-    replies: VecDeque<Result<&'static str, CompletionError>>,
-    /// How many of the next calls wait `HOLD` before they answer.
-    held: usize,
-    calls: Vec<CompletionRequest>,
-}
-
-impl ScriptedModel {
-    fn push(&self, reply: Result<&'static str, CompletionError>) {
-        self.script.lock().unwrap().replies.push_back(reply);
-    }
-
-    fn hold_next(&self) {
-        self.script.lock().unwrap().held += 1;
-    }
-
-    fn calls(&self) -> Vec<CompletionRequest> {
-        self.script.lock().unwrap().calls.clone()
-    }
-}
-
-impl Model for ScriptedModel {
-    async fn complete(
-        &mut self,
-        request: &CompletionRequest,
-    ) -> Result<Option<ModelReply>, CompletionError> {
-        let (reply, held) = {
-            let mut script = self.script.lock().unwrap();
-            script.calls.push(request.clone());
-            let held = script.held > 0;
-            script.held = script.held.saturating_sub(1);
-            (script.replies.pop_front(), held)
-        };
-        if held {
-            tokio::time::sleep(HOLD).await;
-        }
-        match reply {
-            Some(Ok(arguments)) => parse_completion(&act_reply(arguments), request.says_only),
-            Some(Err(err)) => Err(err),
-            None => Ok(None),
-        }
-    }
-}
-
 fn run_ai_gm(world: &mut World, label: &str, body: impl FnOnce(&mut World, &Path, &ScriptedModel)) {
     let pack = copy_docks(label);
     table::listen(world, &pack);
@@ -430,77 +363,6 @@ fn run_ai_gm(world: &mut World, label: &str, body: impl FnOnce(&mut World, &Path
     body(world, &pack, &model);
     stop_ai_gm(world, gm);
     let _ = fs::remove_dir_all(&pack);
-}
-
-/// `ai_gm::run` on its own thread, on a current-thread runtime whose clock starts paused.
-/// A blocking task held for the run keeps tokio from auto-advancing, so paused time moves
-/// only on `advance`.
-struct AiGm {
-    /// What the run wrote to `err`, and then its error if it returned one, as `spook ai-gm`
-    /// prints it.
-    err: Arc<Mutex<String>>,
-    advance: tokio::sync::mpsc::UnboundedSender<table::Advance>,
-    thread: thread::JoinHandle<Result<(), spookery_client::Error>>,
-}
-
-impl AiGm {
-    /// Moves the AI GM's paused clock forward, after the AI GM has read what was ready for
-    /// it. Timers due by then have fired when this returns.
-    fn advance(&self, by: Duration) {
-        let ended = || panic!("the AI GM ended\n{}", support::text_of(&self.err));
-        let (ack, acked) = tokio::sync::oneshot::channel();
-        self.advance.send((by, ack)).unwrap_or_else(|_| ended());
-        support::block_on(acked).unwrap_or_else(|_| ended());
-    }
-}
-
-/// Sits `model` as the AI GM and returns once it has written `listening`.
-fn start_ai_gm(world: &World, mut model: impl Model + Send + 'static) -> AiGm {
-    let addr: SocketAddr = table::game_addr(world).parse().unwrap();
-    let (read, mut write) = std::io::pipe().unwrap_or_else(|err| panic!("pipe: {err}"));
-    let err = Arc::new(Mutex::new(String::new()));
-    support::drain(read, Arc::clone(&err));
-    let (advance, mut advances) = tokio::sync::mpsc::unbounded_channel::<table::Advance>();
-    let thread = thread::spawn(move || {
-        let runtime = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .start_paused(true)
-            .build()
-            .unwrap_or_else(|err| panic!("runtime: {err}"));
-        let result = runtime.block_on(async {
-            let (_hold, held) = std::sync::mpsc::channel::<()>();
-            tokio::task::spawn_blocking(move || held.recv());
-            let run = ai_gm::run(addr, &mut model, &mut write);
-            tokio::pin!(run);
-            loop {
-                tokio::select! {
-                    // `run` first, so an advance lands after it has read what is ready.
-                    biased;
-                    result = &mut run => break result,
-                    Some((by, ack)) = advances.recv() => {
-                        tokio::time::advance(by).await;
-                        let _ = ack.send(());
-                    }
-                }
-            }
-        });
-        if let Err(err) = &result {
-            let _ = writeln!(write, "{err}");
-        }
-        result
-    });
-    let gm = AiGm {
-        err,
-        advance,
-        thread,
-    };
-    table::wait_suffix(&gm.err, 0, "listening");
-    gm
-}
-
-fn stop_ai_gm(world: &mut World, gm: AiGm) {
-    table::live_mut(world).host.take();
-    let _ = gm.thread.join();
 }
 
 fn tape_text(pack: &Path) -> String {
@@ -530,10 +392,7 @@ fn accepted_any(listeners: &[TcpListener]) -> bool {
     false
 }
 
-const SAY_ARGUMENTS: &str =
-    r#"{"says":[{"address":"table","text":"STUB-SAY-FIXTURE"}],"intents":[]}"#;
-
-const EMPTY_ACT: &str = r#"{"says":[],"intents":[]}"#;
+const STUB_SAY: &[(&str, &str)] = &[("say", r#"{"address":"table","text":"STUB-SAY-FIXTURE"}"#)];
 
 #[when(expr = "a hung model call meets a queued player line")]
 fn a_hung_model_call_meets_a_queued_player_line(world: &mut World) {
@@ -569,7 +428,8 @@ fn a_model_answers_500_once_and_then_a_say(world: &mut World) {
     let (pack, sit) = queued_travel(world, "host-retry");
     let replies = [
         Reply::Status(500, "{\"error\":\"busy\"}"),
-        Reply::Act(SAY_ARGUMENTS),
+        Reply::Tools(STUB_SAY),
+        Reply::Tools(&[]),
     ];
     let (stub, seen) = start_model_stub(replies);
     let gm = start_ai_gm(world, http_model(stub));
@@ -661,7 +521,8 @@ fn finish_http_turn(world: &mut World, gm: AiGm, pack: &Path, sit: u64, seen: &M
     };
 }
 
-fn queued_travel(world: &mut World, label: &str) -> (PathBuf, u64) {
+/// A pack copy with Rowan seated and travel queued while a GM held the seat, then let go.
+pub fn queued_travel(world: &mut World, label: &str) -> (PathBuf, u64) {
     let pack = copy_docks(label);
     table::listen(world, &pack);
     table::seat_gm(world);
@@ -693,8 +554,8 @@ enum Reply {
     Hang,
     /// Answer with this HTTP status and body.
     Status(u16, &'static str),
-    /// Answer 200 with one `act` call that carries these arguments.
-    Act(&'static str),
+    /// Answer 200 with these tool calls, each a name and its arguments.
+    Tools(&'static [(&'static str, &'static str)]),
 }
 
 /// What the model stub has seen: each request in order, and how many of their connections
@@ -727,7 +588,7 @@ fn start_model_stub(
             let answer = match reply {
                 Reply::Hang => None,
                 Reply::Status(status, body) => Some((status, body.to_string())),
-                Reply::Act(arguments) => Some((200, act_reply(arguments))),
+                Reply::Tools(calls) => Some((200, render_completion(calls))),
             };
             if let Some((status, body)) = answer {
                 let reason = if status == 200 { "OK" } else { "Error" };
@@ -762,14 +623,6 @@ fn wait_stub(seen: &Mutex<Seen>, posts: usize, closes: usize) {
             ))
         }
     });
-}
-
-fn act_reply(arguments: &str) -> String {
-    let arguments =
-        serde_json::to_string(arguments).unwrap_or_else(|err| panic!("arguments: {err}"));
-    format!(
-        "{{\"id\":\"stub\",\"object\":\"chat.completion\",\"choices\":[{{\"index\":0,\"message\":{{\"role\":\"assistant\",\"content\":\"prose\",\"tool_calls\":[{{\"id\":\"call_1\",\"type\":\"function\",\"function\":{{\"name\":\"act\",\"arguments\":{arguments}}}}}]}}}}]}}"
-    )
 }
 
 fn apply_model_env(command: &mut Command, missing: Option<&str>) {

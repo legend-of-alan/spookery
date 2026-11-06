@@ -57,6 +57,9 @@ pub fn default_mcp_addr(game: std::net::SocketAddr) -> Option<std::net::SocketAd
     Some(std::net::SocketAddr::new(game.ip(), port))
 }
 
+/// The published client schema, `schema/client.json`. Its `$defs` hold each word's `args`.
+pub const CLIENT_SCHEMA: &str = include_str!("schema/client.json");
+
 /// The perceive body budget in characters: the `perceive` default, the engine's trim
 /// and the prompt's cast cut.
 pub const PERCEIVE_BODY_CHARS: usize = 800;

@@ -42,6 +42,10 @@ pub struct World {
     pub recorded: Vec<serde_json::Value>,
     /// The seats a recorded session was replayed on, by the name the recording gives each.
     pub replayed: Vec<(String, table::Seat)>,
+    /// The scripted model a scenario's AI GM plays with.
+    pub model: scripted_gm::ScriptedModel,
+    /// The AI GM once it sits, run in this process.
+    pub ai_gm: Option<scripted_gm::AiGm>,
 }
 
 impl std::fmt::Debug for World {
@@ -83,6 +87,8 @@ fn tear_down(world: &mut World) {
     world.http_gm.take();
     world.mcp_session.take();
     drop(world.live.take());
+    // The host is gone, so the AI GM's seat has closed and its run ends.
+    world.ai_gm.take();
     if let Some((table, pack)) = world.ws_table.take() {
         drop(table);
         let _ = std::fs::remove_dir_all(pack);

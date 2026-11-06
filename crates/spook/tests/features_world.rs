@@ -8,6 +8,10 @@ mod support;
 #[allow(dead_code)]
 mod mcp_client;
 
+#[path = "steps/scripted_gm.rs"]
+#[allow(dead_code)]
+mod scripted_gm;
+
 #[path = "steps/table.rs"]
 #[allow(dead_code)]
 mod table;

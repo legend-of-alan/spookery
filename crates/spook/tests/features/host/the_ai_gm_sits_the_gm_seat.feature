@@ -37,7 +37,7 @@ Feature: The AI GM sits the GM seat
 
   Scenario: A model that answers 500 once is retried and the say lands
     When a model answers 500 once and then a say
-    Then the stub saw 2 model posts
+    Then the stub saw 3 model posts
     And the model's say landed
     And the queued line committed one round
 
