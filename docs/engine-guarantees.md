@@ -131,7 +131,10 @@ the room. The GM can still queue it, and a GM-queued habit is checked the same
 as one the engine runs, so a habit that sets a flag its cast file does not
 list is refused `UNKNOWN_ID` either way. A move the round has no room for is
 refused `BUDGET`, never dropped: one past the intent limit, and every one after
-a rule that goes over the state-key limit.
+a rule that goes over the state-key limit. The limit counts the keys whose
+stored fields a rule changes, so a modifier spends the key its stacks are
+stored under and not the meter whose value it moves, though that meter's change
+is still reported and still fires its watches.
 
 Tested in `features/round/a_rules_effects_are_all_or_nothing.feature`,
 `features/round/an_intent_the_round_has_no_room_for_is_refused_budget.feature`,

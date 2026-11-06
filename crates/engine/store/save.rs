@@ -138,7 +138,7 @@ pub(crate) fn missing_meters(canon: &Canon, state: &State) -> Vec<AddedMeter> {
         let lacking = match &def.carrier {
             Some(holder) if !def.is_actor_meter() => state
                 .meters_of(holder)
-                .is_none_or(|live| !live.contains_key(id)),
+                .is_none_or(|meters| !meters.live.contains_key(id)),
             _ => state.actors.iter().any(|(actor, live)| {
                 def.is_on(&Holder::Actor(actor.clone())) && !live.meters.contains_key(id)
             }),

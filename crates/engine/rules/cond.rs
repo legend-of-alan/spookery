@@ -2,7 +2,7 @@
 
 use crate::canon::Canon;
 use crate::intent::{Intent, Source, Target, Viewer};
-use crate::model::{Presence, State};
+use crate::model::{self, Presence, State};
 use crate::rules::context::Context;
 use crate::rules::expr;
 use crate::rules::rule::Cond;
@@ -108,7 +108,7 @@ fn holds(context: &Context, cond: &Cond) -> Result<bool, Reason> {
             Ok(is_in_window(*from, *to, tick))
         }
         Cond::Players { op, value } => Ok(op.holds(i64::from(context.presence.players), *value)),
-        Cond::NoteExists(id) => Ok(state.notes.iter().any(|note| &note.id == id)),
+        Cond::NoteExists(id) => Ok(model::find_note(&state.notes, id).is_some()),
         Cond::All(inner) => {
             for cond in inner {
                 if !holds(context, cond)? {

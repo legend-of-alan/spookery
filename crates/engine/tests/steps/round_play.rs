@@ -111,6 +111,57 @@ fn a_docks_row_overreach(world: &mut World, add: i64, remove: i64) {
     world.pack = Some(pack);
 }
 
+/// Mira carries the flags `calm` and `wary`, both set. The row clears `calm`, opens the stair
+/// door, sets `calm` again, and then takes more oil than the shop has.
+#[given(
+    expr = "a docks row unbar that clears Mira's calm, opens the stair door, sets calm again and then removes {int} lamp oil"
+)]
+fn a_docks_row_unbar(world: &mut World, remove: i64) {
+    let pack = support::copy_pack("oneshot-docks", "unbar");
+    support::append(
+        &pack.join("rules/verbs.yaml"),
+        &format!(
+            "
+  - id: unbar
+    when: {{ verb: unbar }}
+    do:
+      - flag: {{ who: self, key: calm, value: false }}
+      - flag: {{ who: \"exit:docks_shop.stairs\", key: open, value: true }}
+      - flag: {{ who: self, key: calm, value: true }}
+      - item: {{ who: place:docks_shop, id: lamp_oil, add: -{remove} }}
+"
+        ),
+    );
+    let path = pack.join("cast/mira.md");
+    let text = fs::read_to_string(&path).unwrap();
+    let next = text.replacen(
+        "idle:
+",
+        "flags: [calm, wary]
+idle:
+",
+        1,
+    );
+    assert_ne!(text, next);
+    fs::write(&path, next).unwrap();
+    support::edit_save(&pack, |state| {
+        state.actors.get_mut("mira").unwrap().flags = vec!["calm".into(), "wary".into()];
+    });
+    make_mira_ineligible(&pack);
+    world.pack = Some(pack);
+}
+
+#[then(
+    expr = "lamp oil stays {int}, the round names {word}, the stair door stays locked, and Mira keeps calm and wary"
+)]
+fn the_door_stays_locked_and_mira_keeps_her_flags(world: &mut World, oil: i64, reason: String) {
+    assert_refusal(world, oil, &reason);
+    let saved = spookery_engine::World::peek(world.pack()).unwrap();
+    let shop = saved.state().places.get("docks_shop");
+    assert!(shop.is_none_or(|shop| shop.open.is_empty()), "{shop:?}");
+    assert_eq!(saved.state().actors["mira"].flags, ["calm", "wary"]);
+}
+
 #[given(expr = "a docks row spilled that rolls grit and then removes {int} lamp oil")]
 fn a_docks_row_spilled(world: &mut World, remove: i64) {
     let pack = support::copy_pack("oneshot-docks", "spilled");
@@ -700,6 +751,62 @@ fn rowan_oversets_and_wren_waits(world: &mut World) {
 #[then(expr = "Rowan's overset and Wren's wait are both refused BUDGET and nothing is left queued")]
 fn rowans_overset_and_wrens_wait_are_refused_budget(world: &mut World) {
     assert_budget_refusals(world, &["rowan-overset", "wren-wait"]);
+}
+
+#[given(
+    expr = "the docks pack allows {int} state keys per round and a row \"brace\" that applies one modifier to grit"
+)]
+fn the_docks_pack_allows_keys_and_braces(world: &mut World, limit: u64) {
+    let pack = support::copy_pack("oneshot-docks", "key-limit-brace");
+    set_budget(&pack, "max_state_keys_mutated", limit);
+    fs::write(
+        pack.join("rules/modifiers.yaml"),
+        "schema: modifiers\nmodifiers:\n  - id: brace\n    meter: grit\n",
+    )
+    .unwrap();
+    support::append(
+        &pack.join("rules/verbs.yaml"),
+        "
+  - id: brace
+    when: { verb: brace }
+    do:
+      - modifier: { who: self, id: brace, add: 2, ticks: 10 }
+",
+    );
+    make_mira_ineligible(&pack);
+    world.pack = Some(pack);
+}
+
+#[when(expr = "Rowan plays brace")]
+fn rowan_braces(world: &mut World) {
+    let pack = world.pack().to_path_buf();
+    let lock = spookery_engine::lock_pack(&pack).unwrap();
+    let mut opened = spookery_engine::World::resume(&pack, lock).unwrap();
+    let wall = opened.state().last_round_at.clone();
+    let nobody = spookery_engine::Presence::default();
+    opened
+        .queue_gm_intent(
+            &nobody,
+            intent("rowan-brace", "pc_rowan", "brace", None),
+            || panic!("the GM chose the id"),
+        )
+        .unwrap();
+    let output = opened.play(&nobody, &wall).unwrap();
+    world.summary_lines = output.changed_keys.clone();
+    world.scratch = read_round(&pack, "round-0001").to_string();
+}
+
+#[then(expr = "Rowan's brace lands, and the GM sees both {string} and {string} change")]
+fn rowans_brace_lands(world: &mut World, modifier: String, meter: String) {
+    let round: Value = serde_json::from_str(&world.scratch).unwrap();
+    assert_eq!(round["refused"].as_array().unwrap().len(), 0, "{round}");
+    for key in [modifier, meter] {
+        assert!(
+            world.summary_lines.contains(&key),
+            "{key}: {:?}",
+            world.summary_lines
+        );
+    }
 }
 
 /// Each of `ids` is refused `BUDGET` in the round, and the save keeps no queue.

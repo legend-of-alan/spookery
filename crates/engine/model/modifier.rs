@@ -4,6 +4,7 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
+use crate::model::key::StateValue;
 use crate::Reason;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -34,6 +35,16 @@ impl ModifierLive {
     /// Ticks from `now` until it expires.
     pub fn ticks_left(&self, now: u64) -> u64 {
         self.until.saturating_sub(now)
+    }
+}
+
+/// A modifier's key reads its stacks and clock as one text, so any change to them is a change.
+impl From<&ModifierLive> for StateValue {
+    fn from(live: &ModifierLive) -> Self {
+        StateValue::Text(format!(
+            "{:?} until {} max_ticks {}",
+            live.stacks, live.until, live.max_ticks
+        ))
     }
 }
 

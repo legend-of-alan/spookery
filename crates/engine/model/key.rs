@@ -2,8 +2,6 @@
 
 use std::fmt;
 
-use crate::rules::effect::Holder;
-
 /// One budget identity. The commit diff summary is this type's `Display`,
 /// sorted as text. It is not a path inside `save.yaml`.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -60,30 +58,6 @@ impl fmt::Display for StateKey {
 }
 
 impl StateKey {
-    /// The key of meter `key` on `holder`. An exit carries no meters.
-    pub(crate) fn meter(holder: &Holder, key: &str) -> Option<StateKey> {
-        let key = key.to_string();
-        match holder {
-            Holder::Actor(id) => Some(StateKey::ActorMeter(id.clone(), key)),
-            Holder::Place(id) => Some(StateKey::PlaceMeter(id.clone(), key)),
-            Holder::Story(id) => Some(StateKey::StoryMeter(id.clone(), key)),
-            Holder::Exit(..) => None,
-            Holder::World => Some(StateKey::WorldMeter(key)),
-        }
-    }
-
-    /// The key of flag `key` on `holder`. An exit's one flag is `open`.
-    pub(crate) fn flag(holder: &Holder, key: &str) -> StateKey {
-        let key = key.to_string();
-        match holder {
-            Holder::Exit(place, exit) => StateKey::ExitOpen(place.clone(), exit.clone()),
-            Holder::Actor(id) => StateKey::ActorFlag(id.clone(), key),
-            Holder::Place(id) => StateKey::PlaceFlag(id.clone(), key),
-            Holder::Story(id) => StateKey::StoryFlag(id.clone(), key),
-            Holder::World => StateKey::WorldFlag(key),
-        }
-    }
-
     /// The actor this key belongs to, when it has one.
     pub fn actor(&self) -> Option<&str> {
         match self {
@@ -119,6 +93,52 @@ pub enum StateValue {
     Number(i64),
     Bool(bool),
     List(Vec<String>),
+}
+
+/// How each kind of stored field reads as a value: the one place that says so, for a read
+/// of the record now and for a pre-image alike.
+impl From<&String> for StateValue {
+    fn from(text: &String) -> Self {
+        StateValue::Text(text.clone())
+    }
+}
+
+impl From<bool> for StateValue {
+    fn from(mark: bool) -> Self {
+        StateValue::Bool(mark)
+    }
+}
+
+impl From<i64> for StateValue {
+    fn from(number: i64) -> Self {
+        StateValue::Number(number)
+    }
+}
+
+impl From<u32> for StateValue {
+    fn from(count: u32) -> Self {
+        StateValue::Number(i64::from(count))
+    }
+}
+
+/// A tick or round count past `i64::MAX` reads as `i64::MAX`.
+impl From<u64> for StateValue {
+    fn from(count: u64) -> Self {
+        StateValue::Number(i64::try_from(count).unwrap_or(i64::MAX))
+    }
+}
+
+impl From<&Vec<String>> for StateValue {
+    fn from(ids: &Vec<String>) -> Self {
+        StateValue::List(ids.clone())
+    }
+}
+
+/// An absent field or record reads `Empty`.
+impl<T: Into<StateValue>> From<Option<T>> for StateValue {
+    fn from(held: Option<T>) -> Self {
+        held.map_or(StateValue::Empty, Into::into)
+    }
 }
 
 impl StateValue {

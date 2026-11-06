@@ -3,13 +3,14 @@
 pub(crate) mod key;
 pub(crate) mod meter;
 pub(crate) mod modifier;
+pub(crate) mod record;
 
 use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-use key::StateKey;
-use meter::MeterLive;
+use key::StateValue;
+use meter::{MeterLive, Meters};
 use modifier::ModifierLive;
 
 use crate::canon::OPEN;
@@ -55,32 +56,19 @@ impl State {
         let def = canon
             .meter_def(holder, key)
             .ok_or(crate::Reason::UnknownId)?;
-        let live = self
-            .meters_of(holder)
-            .and_then(|meters| meters.get(key))
-            .ok_or(crate::Reason::UnknownId)?;
-        meter::current(def, live, self.modifier_sum(holder, key)?)
+        self.meters_of(holder)
+            .ok_or(crate::Reason::UnknownId)?
+            .value(def, key)
     }
 
-    /// What `holder`'s modifiers add to its meter `key`. Only an actor holds modifiers.
-    pub(crate) fn modifier_sum(&self, holder: &Holder, key: &str) -> Result<i64, crate::Reason> {
+    /// The meters `holder` carries, with what moves them.
+    pub(crate) fn meters_of(&self, holder: &Holder) -> Option<Meters<'_>> {
         match holder {
-            Holder::Actor(id) => self
-                .actors
-                .get(id)
-                .map_or(Ok(0), |actor| modifier::sum(&actor.modifiers, key)),
-            Holder::World | Holder::Place(_) | Holder::Story(_) | Holder::Exit(..) => Ok(0),
-        }
-    }
-
-    /// The live meters `holder` carries.
-    pub(crate) fn meters_of(&self, holder: &Holder) -> Option<&BTreeMap<String, MeterLive>> {
-        match holder {
-            Holder::Actor(id) => self.actors.get(id).map(|actor| &actor.meters),
-            Holder::Place(id) => self.places.get(id).map(|place| &place.meters),
-            Holder::Story(id) => self.stories.get(id).map(|story| &story.meters),
+            Holder::Actor(id) => self.actors.get(id).map(Meters::from),
+            Holder::Place(id) => self.places.get(id).map(Meters::from),
+            Holder::Story(id) => self.stories.get(id).map(Meters::from),
             Holder::Exit(..) => None,
-            Holder::World => Some(&self.world_meters),
+            Holder::World => Some(Meters::new(&self.world_meters, None)),
         }
     }
 
@@ -119,36 +107,7 @@ impl State {
             Holder::Exit(..) => (None, key),
             Holder::World => (Some(&self.flags), key),
         };
-        flags.is_some_and(|flags| flags.iter().any(|flag| flag == entry))
-    }
-
-    /// Set or clear `holder`'s flag `key`, and say whether it changed. A place or story gets a
-    /// live record on its first flag, and a place on its first open exit.
-    pub(crate) fn set_flag(
-        &mut self,
-        holder: &Holder,
-        key: &str,
-        value: bool,
-    ) -> Result<bool, crate::Reason> {
-        if self.has_flag(holder, key) == value {
-            return Ok(false);
-        }
-        let (flags, entry) = match holder {
-            Holder::Actor(id) => (&mut self.actor_mut(id)?.flags, key),
-            Holder::Place(id) => (&mut self.places.entry(id.clone()).or_default().flags, key),
-            Holder::Story(id) => (&mut self.stories.entry(id.clone()).or_default().flags, key),
-            Holder::Exit(place, exit) => {
-                let place = self.places.entry(place.clone()).or_default();
-                (&mut place.open, exit.as_str())
-            }
-            Holder::World => (&mut self.flags, key),
-        };
-        if value {
-            flags.push(entry.to_string());
-        } else {
-            flags.retain(|flag| flag != entry);
-        }
-        Ok(true)
+        flags.is_some_and(|flags| is_set(flags, entry))
     }
 
     /// Actor `id`'s live record to write, or `UNKNOWN_ID`.
@@ -194,6 +153,12 @@ pub struct PlaceLive {
     pub open: Vec<String>,
 }
 
+impl<'a> From<&'a PlaceLive> for Meters<'a> {
+    fn from(place: &'a PlaceLive) -> Self {
+        Meters::new(&place.meters, None)
+    }
+}
+
 /// The meters a story file declares and the flags set on that story.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -202,6 +167,12 @@ pub struct StoryLive {
     pub meters: BTreeMap<String, MeterLive>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub flags: Vec<String>,
+}
+
+impl<'a> From<&'a StoryLive> for Meters<'a> {
+    fn from(story: &'a StoryLive) -> Self {
+        Meters::new(&story.meters, None)
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -257,7 +228,7 @@ impl ActorLive {
     }
 
     pub fn item_count(&self, id: &str) -> u32 {
-        self.inventory.get(id).copied().unwrap_or(0)
+        count_of(&self.inventory, id)
     }
 
     /// Drop the wielded id once the actor no longer holds it.
@@ -273,6 +244,28 @@ impl ActorLive {
     }
 }
 
+/// An actor's meters move with the modifiers they hold.
+impl<'a> From<&'a ActorLive> for Meters<'a> {
+    fn from(actor: &'a ActorLive) -> Self {
+        Meters::new(&actor.meters, Some(&actor.modifiers))
+    }
+}
+
+/// How many of `id` a count list holds: 0 when it is not listed.
+pub(crate) fn count_of(counts: &BTreeMap<String, u32>, id: &str) -> u32 {
+    counts.get(id).copied().unwrap_or(0)
+}
+
+/// Whether a flag list holds `key`.
+pub(crate) fn is_set(flags: &[String], key: &str) -> bool {
+    flags.iter().any(|flag| flag == key)
+}
+
+/// The note with id `id`, if one was left.
+pub(crate) fn find_note<'n>(notes: &'n [Note], id: &str) -> Option<&'n Note> {
+    notes.iter().find(|note| note.id == id)
+}
+
 /// Add `delta` to a count. Removing from a count of 0 is `MISSING_ITEM`.
 /// A shortfall from a positive count is `OUT_OF_RANGE`. A positive `max` caps the result.
 pub(crate) fn shift_count(
@@ -281,7 +274,7 @@ pub(crate) fn shift_count(
     delta: i64,
     max: Option<i64>,
 ) -> Result<bool, crate::Reason> {
-    let current = i64::from(counts.get(id).copied().unwrap_or(0));
+    let current = i64::from(count_of(counts, id));
     let mut next = current
         .checked_add(delta)
         .ok_or(crate::Reason::OutOfRange)?;
@@ -332,14 +325,6 @@ pub(crate) enum ActCounter {
 }
 
 impl ActCounter {
-    /// The key this count is tracked under for actor `id`.
-    pub(crate) fn key(self, id: String) -> StateKey {
-        match self {
-            ActCounter::IdleActsThisWindow => StateKey::IdleActsThisWindow(id),
-            ActCounter::LiveActsThisWindow => StateKey::LiveActsThisWindow(id),
-        }
-    }
-
     /// This count on `act`, to write.
     pub(crate) fn count_mut(self, act: &mut Act) -> &mut u32 {
         match self {
@@ -370,6 +355,14 @@ pub struct Note {
     pub place: Option<String>,
     pub fact_ids: Vec<String>,
     pub text: String,
+}
+
+/// A note's key says the note is there. A note, once left, never changes, and a missing one
+/// reads `Empty` through `Option`.
+impl From<&Note> for StateValue {
+    fn from(_: &Note) -> Self {
+        StateValue::Bool(true)
+    }
 }
 
 /// The place and exit names in an exit's id, `exit:<place>.<exit>`: where a walker stands

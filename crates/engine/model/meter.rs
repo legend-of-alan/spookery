@@ -1,7 +1,10 @@
 //! Meter bounds from the pack, and the live value on its holder.
 
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 
+use crate::model::modifier::{self, ModifierLive};
 use crate::rules::effect::Holder;
 use crate::Reason;
 
@@ -44,6 +47,34 @@ pub struct MeterLive {
 #[serde(tag = "write", content = "delta", rename_all = "snake_case")]
 pub enum MeterWrite {
     Offset(i64),
+}
+
+/// The meters one holder carries and, on an actor, the modifiers that move them. Every reader
+/// of a meter's value reads it here: a condition, a cost, a roll, a view, and a pre-image
+/// compared with the record now.
+#[derive(Clone, Copy)]
+pub struct Meters<'a> {
+    pub live: &'a BTreeMap<String, MeterLive>,
+    modifiers: Option<&'a BTreeMap<String, ModifierLive>>,
+}
+
+impl<'a> Meters<'a> {
+    pub fn new(
+        live: &'a BTreeMap<String, MeterLive>,
+        modifiers: Option<&'a BTreeMap<String, ModifierLive>>,
+    ) -> Self {
+        Self { live, modifiers }
+    }
+
+    /// The value of meter `key` under `def`: `base + offset`, plus what the modifiers add,
+    /// clamped to the bounds. `UNKNOWN_ID` when the holder does not carry it.
+    pub fn value(&self, def: &MeterDef, key: &str) -> Result<i64, Reason> {
+        let live = self.live.get(key).ok_or(Reason::UnknownId)?;
+        let added = self
+            .modifiers
+            .map_or(Ok(0), |held| modifier::sum(held, key))?;
+        current(def, live, added)
+    }
 }
 
 /// `base` is inside `[min, base_cap]`, and `base + offset` fits in `i64`.
