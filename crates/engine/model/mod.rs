@@ -217,49 +217,73 @@ impl Flag {
         (self.list)(state, &self.owner).is_some_and(|list| list.contains(&self.entry))
     }
 
-    /// Set or clear this flag, which must not already hold `value`, and return the position in
-    /// its list it was added at or removed from. A place gets a live record on its first entry.
-    pub(crate) fn set(&self, state: &mut State, value: bool) -> Result<usize, crate::Reason> {
+    /// Set or clear this flag. A place gets a live record on its first entry.
+    pub(crate) fn set(&self, state: &mut State, value: bool) -> Result<(), crate::Reason> {
         let list = (self.list_mut)(state, &self.owner)?;
         if value {
             list.push(self.entry.clone());
-            return Ok(list.len() - 1);
-        }
-        let at = list
-            .iter()
-            .position(|entry| entry == &self.entry)
-            .ok_or(crate::Reason::UnknownId)?;
-        list.remove(at);
-        Ok(at)
-    }
-
-    /// Undo a `set` that changed this flag from `was`, at position `at`.
-    pub(crate) fn undo(&self, state: &mut State, at: usize, was: bool) {
-        let Ok(list) = (self.list_mut)(state, &self.owner) else {
-            return;
-        };
-        if was {
-            list.insert(at, self.entry.clone());
         } else {
-            list.remove(at);
+            list.retain(|entry| entry != &self.entry);
         }
-    }
-
-    /// Copy this flag's list from `from` into `into`, when `into` holds its owner.
-    pub(crate) fn carry(&self, from: &State, into: &mut State) {
-        if (self.list)(into, &self.owner).is_none() {
-            return;
-        }
-        let list = (self.list)(from, &self.owner).cloned().unwrap_or_default();
-        if let Ok(target) = (self.list_mut)(into, &self.owner) {
-            *target = list;
-        }
+        Ok(())
     }
 }
 
 /// Reads and writes one kind of flag list, given its owner's id.
 type ListFn = for<'s> fn(&'s State, &str) -> Option<&'s Vec<String>>;
 type ListMutFn = for<'s> fn(&'s mut State, &str) -> Result<&'s mut Vec<String>, crate::Reason>;
+
+/// One live record a round writes as a whole: an actor, a place, a story, the world's
+/// meters and flags, or the notes.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum Record {
+    Actor(String),
+    Place(String),
+    Story(String),
+    World,
+    Notes,
+}
+
+/// A live record as it was, `None` when it did not exist yet.
+pub(crate) enum Kept {
+    Actor(String, Option<Box<ActorLive>>),
+    Place(String, Option<PlaceLive>),
+    Story(String, Option<StoryLive>),
+    World(BTreeMap<String, MeterLive>, Vec<String>),
+    Notes(Vec<Note>),
+}
+
+impl State {
+    /// A copy of `record` as it is now.
+    pub(crate) fn keep(&self, record: &Record) -> Kept {
+        match record {
+            Record::Actor(id) => {
+                Kept::Actor(id.clone(), self.actors.get(id).cloned().map(Box::new))
+            }
+            Record::Place(id) => Kept::Place(id.clone(), self.places.get(id).cloned()),
+            Record::Story(id) => Kept::Story(id.clone(), self.stories.get(id).cloned()),
+            Record::World => Kept::World(self.world_meters.clone(), self.flags.clone()),
+            Record::Notes => Kept::Notes(self.notes.clone()),
+        }
+    }
+
+    /// Put a kept record back as it was.
+    pub(crate) fn restore(&mut self, kept: Kept) {
+        fn put<T>(map: &mut BTreeMap<String, T>, id: String, live: Option<T>) {
+            match live {
+                Some(live) => map.insert(id, live),
+                None => map.remove(&id),
+            };
+        }
+        match kept {
+            Kept::Actor(id, live) => put(&mut self.actors, id, live.map(|live| *live)),
+            Kept::Place(id, live) => put(&mut self.places, id, live),
+            Kept::Story(id, live) => put(&mut self.stories, id, live),
+            Kept::World(meters, flags) => (self.world_meters, self.flags) = (meters, flags),
+            Kept::Notes(notes) => self.notes = notes,
+        }
+    }
+}
 
 /// Who is seated. The host's seats own it and hand it to each round; the save never holds it.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]

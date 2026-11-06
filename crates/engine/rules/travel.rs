@@ -3,7 +3,7 @@
 use crate::canon::{Canon, Exit, PlaceDef, OPEN};
 use crate::draft::Draft;
 use crate::intent::{Intent, Source, Target, Viewer};
-use crate::model::{PendingAction, State};
+use crate::model::{PendingAction, Record, State};
 use crate::round::log::RoundLog;
 use crate::rules::cond;
 use crate::rules::context::Context;
@@ -224,7 +224,8 @@ pub(crate) fn note_exits(draft: &mut Draft) {
         })
         .collect();
     for (id, exits) in seen {
-        if let Some(actor) = draft.state_mut().actors.get_mut(&id) {
+        let state = draft.record_mut(&Record::Actor(id.clone()));
+        if let Some(actor) = state.actors.get_mut(&id) {
             actor.visited.insert(actor.place.clone(), exits);
         }
     }

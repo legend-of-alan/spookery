@@ -9,7 +9,7 @@ use crate::intent::{Intent, Viewer};
 use crate::model::key::StateKey;
 use crate::model::meter::{self, MeterWrite};
 use crate::model::modifier::{self, ModifierLive};
-use crate::model::{self, Flag, MemoryLine, Note};
+use crate::model::{self, Flag, MemoryLine, Note, Record};
 use crate::rules::visibility::can_see_fact;
 use crate::Reason;
 
@@ -722,6 +722,8 @@ fn move_actor(
     let in_canon = draft.canon().places.contains_key(to);
     // A walker stands on the exit until they arrive. The exit is no place of its own.
     let on_exit = crate::rules::travel::exit_stood_on(draft.canon(), to).is_some();
+    // Arriving can give the place its first live record.
+    draft.keep(&Record::Place(to.to_string()));
     draft.mutate(StateKey::ActorPlace(actor_id.to_string()), |state| {
         let actor = state.actors.get_mut(actor_id).ok_or(Reason::UnknownId)?;
         if table_empty && actor.is_pc() {
