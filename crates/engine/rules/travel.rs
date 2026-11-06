@@ -3,6 +3,7 @@
 use crate::canon::{Canon, Exit, PlaceDef, OPEN};
 use crate::draft::Draft;
 use crate::intent::{Intent, Source, Target, Viewer};
+use crate::model::patch::Patch;
 use crate::model::{PendingAction, State};
 use crate::round::log::RoundLog;
 use crate::rules::cond;
@@ -207,27 +208,24 @@ pub(crate) fn exit_view(canon: &Canon, state: &State, exit: &Exit) -> ExitView {
 
 /// Every actor notes the exits they see where they stand, for `map`. Runs once at the end
 /// of each round, after triggers, so a reveal is seen in the round it lands.
-pub(crate) fn note_exits(draft: &mut Draft) {
+pub(crate) fn note_exits(draft: &mut Draft) -> Result<(), Reason> {
     let canon = draft.canon();
     let state = draft.state();
     // A walker on an exit is in no place, so there is nothing to note.
-    let seen: Vec<(String, Vec<String>)> = state
+    let seen: Vec<Patch> = state
         .actors
         .iter()
         .filter(|(_, actor)| canon.places.contains_key(&actor.place))
-        .map(|(id, _)| {
+        .map(|(id, actor)| {
             let exits = visible_exits(canon, state, id);
-            (
-                id.clone(),
-                exits.into_iter().map(|exit| exit.name).collect(),
-            )
+            Patch::Visited {
+                actor: id.clone(),
+                place: actor.place.clone(),
+                exits: Some(exits.into_iter().map(|exit| exit.name).collect()),
+            }
         })
         .collect();
-    for (id, exits) in seen {
-        if let Some(actor) = draft.state_mut().actors.get_mut(&id) {
-            actor.visited.insert(actor.place.clone(), exits);
-        }
-    }
+    seen.into_iter().try_for_each(|patch| draft.apply(patch))
 }
 
 /// The exits of this actor's place that they are allowed to see.

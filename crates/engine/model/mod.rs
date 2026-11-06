@@ -3,6 +3,7 @@
 pub(crate) mod key;
 pub(crate) mod meter;
 pub(crate) mod modifier;
+pub(crate) mod patch;
 
 use std::collections::BTreeMap;
 
@@ -122,33 +123,26 @@ impl State {
         flags.is_some_and(|flags| flags.iter().any(|flag| flag == entry))
     }
 
-    /// Set or clear `holder`'s flag `key`, and say whether it changed. A place or story gets a
-    /// live record on its first flag, and a place on its first open exit.
-    pub(crate) fn set_flag(
+    /// The flag list `holder`'s flag `key` sits in, to write, and its entry there: the key, or
+    /// for an exit's `open` the exit's name in its place's list. A holder with no live record
+    /// yet is `UNKNOWN_ID`.
+    pub(crate) fn flags_mut(
         &mut self,
         holder: &Holder,
         key: &str,
-        value: bool,
-    ) -> Result<bool, crate::Reason> {
-        if self.has_flag(holder, key) == value {
-            return Ok(false);
-        }
-        let (flags, entry) = match holder {
-            Holder::Actor(id) => (&mut self.actor_mut(id)?.flags, key),
-            Holder::Place(id) => (&mut self.places.entry(id.clone()).or_default().flags, key),
-            Holder::Story(id) => (&mut self.stories.entry(id.clone()).or_default().flags, key),
+    ) -> Result<(&mut Vec<String>, String), crate::Reason> {
+        let unknown = crate::Reason::UnknownId;
+        let flags = match holder {
+            Holder::Actor(id) => &mut self.actor_mut(id)?.flags,
+            Holder::Place(id) => &mut self.places.get_mut(id).ok_or(unknown)?.flags,
+            Holder::Story(id) => &mut self.stories.get_mut(id).ok_or(unknown)?.flags,
             Holder::Exit(place, exit) => {
-                let place = self.places.entry(place.clone()).or_default();
-                (&mut place.open, exit.as_str())
+                let open = &mut self.places.get_mut(place).ok_or(unknown)?.open;
+                return Ok((open, exit.clone()));
             }
-            Holder::World => (&mut self.flags, key),
+            Holder::World => &mut self.flags,
         };
-        if value {
-            flags.push(entry.to_string());
-        } else {
-            flags.retain(|flag| flag != entry);
-        }
-        Ok(true)
+        Ok((flags, key.to_string()))
     }
 
     /// Actor `id`'s live record to write, or `UNKNOWN_ID`.
@@ -259,29 +253,16 @@ impl ActorLive {
     pub fn item_count(&self, id: &str) -> u32 {
         self.inventory.get(id).copied().unwrap_or(0)
     }
-
-    /// Drop the wielded id once the actor no longer holds it.
-    pub(crate) fn release_wielded(&mut self) -> bool {
-        let Some(id) = self.wielded.clone() else {
-            return false;
-        };
-        if self.item_count(&id) > 0 {
-            return false;
-        }
-        self.wielded = None;
-        true
-    }
 }
 
-/// Add `delta` to a count. Removing from a count of 0 is `MISSING_ITEM`.
-/// A shortfall from a positive count is `OUT_OF_RANGE`. A positive `max` caps the result.
+/// `current` plus `delta`. Removing from a count of 0 is `MISSING_ITEM`. A shortfall from a
+/// positive count is `OUT_OF_RANGE`. A positive `max` caps the result.
 pub(crate) fn shift_count(
-    counts: &mut BTreeMap<String, u32>,
-    id: &str,
+    current: u32,
     delta: i64,
     max: Option<i64>,
-) -> Result<bool, crate::Reason> {
-    let current = i64::from(counts.get(id).copied().unwrap_or(0));
+) -> Result<u32, crate::Reason> {
+    let current = i64::from(current);
     let mut next = current
         .checked_add(delta)
         .ok_or(crate::Reason::OutOfRange)?;
@@ -301,14 +282,7 @@ pub(crate) fn shift_count(
             }
         }
     }
-    let stored = u32::try_from(next).map_err(|_| crate::Reason::OutOfRange)?;
-    let changed = stored != u32::try_from(current).unwrap_or(0);
-    if stored == 0 {
-        counts.remove(id);
-    } else {
-        counts.insert(id.to_string(), stored);
-    }
-    Ok(changed)
+    u32::try_from(next).map_err(|_| crate::Reason::OutOfRange)
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -325,7 +299,7 @@ pub struct Act {
 }
 
 /// One of the `Act` counts the end of its act window sets back to 0.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum ActCounter {
     IdleActsThisWindow,
     LiveActsThisWindow,

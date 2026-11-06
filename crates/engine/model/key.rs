@@ -72,6 +72,16 @@ impl StateKey {
         }
     }
 
+    /// The key of item `id`'s count on `holder`. Only an actor or a place holds items.
+    pub(crate) fn item(holder: &Holder, id: &str) -> Option<StateKey> {
+        let id = id.to_string();
+        match holder {
+            Holder::Actor(actor) => Some(StateKey::ActorItem(actor.clone(), id)),
+            Holder::Place(place) => Some(StateKey::PlaceItem(place.clone(), id)),
+            Holder::Story(_) | Holder::Exit(..) | Holder::World => None,
+        }
+    }
+
     /// The key of flag `key` on `holder`. An exit's one flag is `open`.
     pub(crate) fn flag(holder: &Holder, key: &str) -> StateKey {
         let key = key.to_string();

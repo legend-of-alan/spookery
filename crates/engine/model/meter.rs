@@ -62,18 +62,16 @@ pub fn current(def: &MeterDef, live: &MeterLive, modifiers: i64) -> Result<i64, 
     Ok(sum.clamp(def.min, def.max))
 }
 
-/// `Ok(true)` means the stored pair changed and the caller should track
-/// the meter's key. A zero delta leaves the pair alone and is `Ok(false)`.
-/// The live record is assigned only after `is_storable` accepts the next pair.
-pub fn write(def: &MeterDef, live: &mut MeterLive, write: MeterWrite) -> Result<bool, Reason> {
+/// Move the offset by the write's delta. The live record is assigned only after
+/// `is_storable` accepts the next pair.
+pub fn write(def: &MeterDef, live: &mut MeterLive, write: MeterWrite) -> Result<(), Reason> {
     let MeterWrite::Offset(delta) = write;
     let next_offset = live.offset.checked_add(delta).ok_or(Reason::OutOfRange)?;
     if !is_storable(def, live.base, next_offset) {
         return Err(Reason::OutOfRange);
     }
-    let changed = next_offset != live.offset;
     live.offset = next_offset;
-    Ok(changed)
+    Ok(())
 }
 
 #[cfg(test)]
