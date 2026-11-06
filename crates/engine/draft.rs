@@ -285,9 +285,6 @@ impl<'p> Draft<'p> {
                 .unwrap_or(StateValue::Empty),
             // Only `set_flag` writes these, and the flag edits report them.
             StateKey::Flag(..) => StateValue::Empty,
-            StateKey::PlaceFlag(id, flag) => {
-                StateValue::Bool(self.state.has_flag(&Holder::Place(id.clone()), flag))
-            }
             StateKey::StoryFlag(id, flag) => {
                 StateValue::Bool(self.state.has_flag(&Holder::Story(id.clone()), flag))
             }

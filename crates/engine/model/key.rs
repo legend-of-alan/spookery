@@ -22,7 +22,6 @@ pub enum StateKey {
     ActorItem(String, String),
     PlaceItem(String, String),
     PlaceMeter(String, String),
-    PlaceFlag(String, String),
     StoryMeter(String, String),
     StoryFlag(String, String),
     ActorWielded(String),
@@ -52,7 +51,6 @@ impl fmt::Display for StateKey {
             StateKey::ActorItem(actor, id) => write!(f, "actor_item {actor} {id}"),
             StateKey::PlaceItem(place, id) => write!(f, "place_item {place} {id}"),
             StateKey::PlaceMeter(place, key) => write!(f, "place_meter {place} {key}"),
-            StateKey::PlaceFlag(place, key) => write!(f, "place_flag {place} {key}"),
             StateKey::StoryMeter(story, key) => write!(f, "story_meter {story} {key}"),
             StateKey::StoryFlag(story, key) => write!(f, "story_flag {story} {key}"),
             StateKey::ActorWielded(actor) => write!(f, "actor_wielded {actor}"),
@@ -76,14 +74,13 @@ impl StateKey {
         }
     }
 
-    /// The key of a flag `Flag` does not keep: a place's, a story's or the world's.
+    /// The key of a flag `Flag` does not keep: a story's or the world's.
     pub(crate) fn flag(holder: &Holder, key: &str) -> Option<StateKey> {
         let key = key.to_string();
         match holder {
-            Holder::Place(id) => Some(StateKey::PlaceFlag(id.clone(), key)),
             Holder::Story(id) => Some(StateKey::StoryFlag(id.clone(), key)),
             Holder::World => Some(StateKey::WorldFlag(key)),
-            Holder::Actor(_) | Holder::Exit(..) => None,
+            Holder::Actor(_) | Holder::Place(_) | Holder::Exit(..) => None,
         }
     }
 
@@ -103,7 +100,6 @@ impl StateKey {
             | StateKey::ActorWielded(id) => Some(id),
             StateKey::PlaceItem(_, _)
             | StateKey::PlaceMeter(_, _)
-            | StateKey::PlaceFlag(_, _)
             | StateKey::StoryMeter(_, _)
             | StateKey::StoryFlag(_, _)
             | StateKey::Flag(..)

@@ -267,7 +267,6 @@ fn can_see(canon: &Canon, state: &State, viewer: &str, change: &Change) -> bool 
         // Flags are rules bookkeeping: the GM narrates what one means.
         StateKey::WorldFlag(_)
         | StateKey::Flag(..)
-        | StateKey::PlaceFlag(_, _)
         | StateKey::StoryFlag(_, _)
         | StateKey::LastActRound(_)
         | StateKey::IdleActsThisWindow(_)

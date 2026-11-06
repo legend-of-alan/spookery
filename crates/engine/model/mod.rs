@@ -112,16 +112,15 @@ impl State {
             return flag.get(self);
         }
         let flags = match holder {
-            Holder::Place(id) => self.places.get(id).map(|place| &place.flags),
             Holder::Story(id) => self.stories.get(id).map(|story| &story.flags),
             Holder::World => Some(&self.flags),
-            Holder::Actor(_) | Holder::Exit(..) => None,
+            Holder::Actor(_) | Holder::Place(_) | Holder::Exit(..) => None,
         };
         flags.is_some_and(|flags| flags.iter().any(|flag| flag == key))
     }
 
-    /// Set or clear a place, story or world flag `key`, and say whether it changed. A place
-    /// or story gets a live record on its first flag. The other holders' flags go through `Flag`.
+    /// Set or clear a story or world flag `key`, and say whether it changed. A story gets a
+    /// live record on its first flag. The other holders' flags go through `Flag`.
     pub(crate) fn set_flag(
         &mut self,
         holder: &Holder,
@@ -132,10 +131,11 @@ impl State {
             return Ok(false);
         }
         let flags = match holder {
-            Holder::Place(id) => &mut self.places.entry(id.clone()).or_default().flags,
             Holder::Story(id) => &mut self.stories.entry(id.clone()).or_default().flags,
             Holder::World => &mut self.flags,
-            Holder::Actor(_) | Holder::Exit(..) => return Err(crate::Reason::UnknownId),
+            Holder::Actor(_) | Holder::Place(_) | Holder::Exit(..) => {
+                return Err(crate::Reason::UnknownId)
+            }
         };
         if value {
             flags.push(key.to_string());
@@ -189,13 +189,19 @@ impl Flag {
                 |state, id| state.actors.get(id).map(|actor| &actor.flags),
                 |state, id| Ok(&mut state.actor_mut(id)?.flags),
             ),
+            Holder::Place(id) => (
+                id,
+                key,
+                |state, id| state.places.get(id).map(|place| &place.flags),
+                |state, id| Ok(&mut state.places.entry(id.to_string()).or_default().flags),
+            ),
             Holder::Exit(place, exit) if key == OPEN => (
                 place,
                 exit,
                 |state, id| state.places.get(id).map(|place| &place.open),
                 |state, id| Ok(&mut state.places.entry(id.to_string()).or_default().open),
             ),
-            Holder::Exit(..) | Holder::Place(_) | Holder::Story(_) | Holder::World => return None,
+            Holder::Exit(..) | Holder::Story(_) | Holder::World => return None,
         };
         Some(Flag {
             key: StateKey::Flag(holder.clone(), key.to_string()),

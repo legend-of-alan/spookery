@@ -146,10 +146,7 @@ fn matches_watch(draft: &Draft, rule: &Rule, watch: &ChangeWatch, change: &Chang
             _ => false,
         },
         ChangeWatch::Flag { key, becomes } => match &change.key {
-            StateKey::Flag(_, flag)
-            | StateKey::PlaceFlag(_, flag)
-            | StateKey::StoryFlag(_, flag)
-            | StateKey::WorldFlag(flag)
+            StateKey::Flag(_, flag) | StateKey::StoryFlag(_, flag) | StateKey::WorldFlag(flag)
                 if flag == key =>
             {
                 flips(change, *becomes)
