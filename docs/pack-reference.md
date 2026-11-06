@@ -405,7 +405,7 @@ Every move but `say` is an action that starts and finishes. `cost` is what the s
 
 A number is an integer or an [expression](spec.md). A meter plus an integer still loads.
 
-The flag key `busy` is rejected. An actor is busy from the start of a timed action until it finishes, and then through its cooldown. A move from a busy actor is refused `BUSY`.
+The flag key `busy` is rejected. An actor is busy from the start of a timed action until it finishes, and then through its cooldown. A move from a busy actor is refused `BUSY`, except `cancel`.
 
 ```yaml file=rules/verbs.yaml
 schema: verbs
