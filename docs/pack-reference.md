@@ -54,7 +54,11 @@ An exit has `to` and `name`. It may have `cost`, `if`, `locked_text`, and `hidde
 
 `flags` lists the flags an effect may set on this place, and `meters` lists the meters only this place carries, in the shape of `rules/meters.yaml`. A rule names them with `who: place:<id>`, or `who: here` for the actor's own place. `world/places/loft.md` declares both.
 
-`cost.ticks` is the game time the cost takes, a whole number of ticks. Omitted means 0. An exit with an `if` is a door, and the `if`, in the same conditions as a rule, is what it takes to open it. A door starts locked: travel through it shows `locked_text` and changes nothing. At the end of each round, after change rules, a locked door opens when any actor in its place meets its `if`, and it stays open for everyone, whoever holds the key after. The engine opens it with a `flag` effect it records in the journal. A door carries one flag, `open`, which the engine owns: a rule names it with `who: exit:<place>.<exit>` and `key: open`, sets it to `false` to lock the door again, and may watch it like any flag. An exit with no `if` has no flag and is always open. The `bar` rule below locks the cellar door again.
+`cost.ticks` is the game time the cost takes, a whole number of ticks. Omitted means 0. An exit with an `if` is a door, and the `if`, in the same conditions as a rule, is what it takes to open it. A door starts locked: travel through it shows `locked_text` and changes nothing.
+
+To start a door already open, list its exit name under `places.<id>.open` in the starting save. Meeting its `if` alone opens it only at the end of each round, after change rules, when any actor in its place meets that `if`, and it stays open for everyone, whoever holds the key after. The engine opens it with a `flag` effect it records in the journal.
+
+A door carries one flag, `open`, which the engine owns: a rule names it with `who: exit:<place>.<exit>` and `key: open`, sets it to `false` to lock the door again, and may watch it like any flag. An exit with no `if` has no flag and is always open. The `bar` rule below locks the cellar door again.
 
 The traveller stays at the origin until the journey finishes. The busy time is the rule's ticks plus the exit's ticks.
 
