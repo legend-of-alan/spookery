@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::draft::Draft;
 use crate::intent::{Intent, Viewer};
-use crate::model::meter::{self, MeterLive, MeterWrite};
+use crate::model::meter::{self, MeterLive, MeterWrite, Meters};
 use crate::model::modifier::{self, ModifierLive};
 use crate::model::record::{ActorId, NotesId, PlaceId, StoryId, WorldFlagsId, WorldMetersId};
 use crate::model::{self, MemoryLine, Note};
@@ -668,12 +668,7 @@ fn apply_modifier(
         modifier::stack(def, &mut next, add, ticks, now);
         actor.modifiers.insert(id.to_string(), next);
         // The actor must carry the meter, and the stacks must still sum to a value.
-        let live = actor.meters.get(&def.meter).ok_or(Reason::UnknownId)?;
-        meter::current(
-            meter_def,
-            live,
-            modifier::sum(&actor.modifiers, &def.meter)?,
-        )?;
+        Meters::from(&*actor).value(meter_def, &def.meter)?;
         Ok(())
     })
 }
@@ -782,7 +777,7 @@ fn set_flag(draft: &mut Draft, holder: &Holder, key: &str, value: bool) -> Resul
         return Err(Reason::UnknownId);
     }
     let set = |flags: &mut Vec<String>, entry: &str| {
-        if value && !flags.iter().any(|flag| flag == entry) {
+        if value && !model::is_set(flags, entry) {
             flags.push(entry.to_string());
         } else if !value {
             flags.retain(|flag| flag != entry);
@@ -819,7 +814,7 @@ fn leave_note(
     mut fact_ids: Vec<String>,
     text: String,
 ) -> Result<(), Reason> {
-    if draft.state().notes.iter().any(|note| note.id == note_id) {
+    if model::find_note(&draft.state().notes, &note_id).is_some() {
         return Err(Reason::UnknownId);
     }
     if let Some(place_id) = &place {

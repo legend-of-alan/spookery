@@ -594,7 +594,7 @@ pub fn check_save(canon: &Canon, state: &crate::model::State) -> Result<(), Vec<
         .map(|id| (Holder::Story(id.clone()), "stories", id));
     for (holder, list, id) in places.chain(stories) {
         let none = BTreeMap::new();
-        let live = state.meters_of(&holder).unwrap_or(&none);
+        let live = state.meters_of(&holder).map_or(&none, |meters| meters.live);
         let path = format!("{list}.{id}.meters");
         check_meters(canon, &holder, live, &path, &mut diags);
     }

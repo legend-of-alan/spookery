@@ -4,7 +4,6 @@ use std::collections::BTreeSet;
 
 use crate::canon::Canon;
 use crate::intent::Viewer;
-use crate::model::meter;
 use crate::model::{Note, Presence, State};
 use crate::rules::effect::Holder;
 use crate::rules::habits::list_whose_if_holds;
@@ -205,11 +204,11 @@ fn shown_meters(canon: &Canon, state: &State, holder: &Holder) -> Vec<MeterView>
         return Vec::new();
     };
     meters
-        .iter()
-        .filter_map(|(id, live)| {
+        .live
+        .keys()
+        .filter_map(|id| {
             let def = canon.meter_def(holder, id).filter(|def| !def.hidden)?;
-            let modifiers = state.modifier_sum(holder, id).ok()?;
-            let value = meter::current(def, live, modifiers).ok()?;
+            let value = meters.value(def, id).ok()?;
             Some(MeterView {
                 id: id.clone(),
                 value,

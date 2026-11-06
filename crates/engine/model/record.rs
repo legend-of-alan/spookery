@@ -7,9 +7,8 @@ use std::mem::discriminant;
 
 use crate::canon::Canon;
 use crate::model::key::{Change, StateKey, StateValue};
-use crate::model::meter::{self, MeterLive};
-use crate::model::modifier::{self, ModifierLive};
-use crate::model::{ActorLive, Note, PlaceLive, State, StoryLive};
+use crate::model::meter::{MeterLive, Meters};
+use crate::model::{count_of, find_note, is_set, ActorLive, Note, PlaceLive, State, StoryLive};
 use crate::rules::effect::Holder;
 use crate::Reason;
 
@@ -29,8 +28,9 @@ pub(crate) trait RecordId {
     /// `before` as the undo log keeps it, under this id.
     fn pre_image(&self, before: Option<Self::Record>) -> PreImage;
 
-    /// Note every key of this record whose stored fields or effective value differ between
-    /// `before` and `after`. `None` is a record that was not there yet.
+    /// Note every key of this record whose stored fields or value differ between `before` and
+    /// `after`. `None` is a record that was not there yet. Each key names the field it reads
+    /// once, here; how that field reads as a value is the field type's `Into<StateValue>`.
     fn diff(
         &self,
         canon: &Canon,
@@ -41,7 +41,7 @@ pub(crate) trait RecordId {
 }
 
 /// What one comparison of a record found: the keys whose stored fields changed, which the
-/// budget counts, and the keys whose effective value changed, which the watches and seats hear.
+/// budget counts, and the keys whose value changed, which the watches and seats hear.
 #[derive(Default)]
 pub(crate) struct Diff {
     pub(crate) spent: Vec<StateKey>,
@@ -49,24 +49,27 @@ pub(crate) struct Diff {
 }
 
 impl Diff {
-    /// A key whose value is its stored field: it changes only when the field does.
-    fn stored<T: PartialEq>(
+    /// A key whose value is its stored field: it changes only when the field does. `key_of`
+    /// names the key from `name`, the id or name its last part is.
+    fn stored<T: PartialEq + Into<StateValue>>(
         &mut self,
-        key: impl FnOnce() -> StateKey,
-        before: &T,
-        after: &T,
-        value: impl Fn(&T) -> StateValue,
+        key_of: impl FnOnce(String) -> StateKey,
+        name: &str,
+        before: T,
+        after: T,
     ) {
         if before != after {
-            self.note(key, true, value(before), value(after));
+            self.note(key_of, name, true, before.into(), after.into());
         }
     }
 
-    /// A key read through the pack, whose value can move while its fields hold, or hold while
-    /// they move. The key is built only when one of the two did.
+    /// A key whose stored fields and value can move apart: a meter's value is read through the
+    /// pack and moves with the holder's modifiers; a busy actor's stores the action under way
+    /// too. The key is built only when one of the two differs.
     fn note(
         &mut self,
-        key: impl FnOnce() -> StateKey,
+        key_of: impl FnOnce(String) -> StateKey,
+        name: &str,
         stored_changed: bool,
         before: StateValue,
         after: StateValue,
@@ -74,13 +77,18 @@ impl Diff {
         if !stored_changed && before == after {
             return;
         }
-        let key = key();
+        let key = key_of(name.to_string());
         if stored_changed {
             self.spent.push(key.clone());
         }
         if before != after {
             self.changes.push(Change { key, before, after });
         }
+    }
+
+    /// A key the budget counts for this write although none of its own fields moved.
+    fn spend(&mut self, key: StateKey) {
+        self.spent.push(key);
     }
 }
 
@@ -194,12 +202,7 @@ impl RecordId for ActorId<'_> {
             return;
         };
         let id = self.0;
-        out.stored(
-            || StateKey::ActorPlace(id.to_string()),
-            &before.place,
-            &after.place,
-            |place| StateValue::Text(place.clone()),
-        );
+        out.stored(StateKey::ActorPlace, id, &before.place, &after.place);
         diff_flags(
             &before.flags,
             &after.flags,
@@ -209,55 +212,59 @@ impl RecordId for ActorId<'_> {
         diff_meters(
             canon,
             &Holder::Actor(id.to_string()),
-            (&before.meters, Some(&before.modifiers)),
-            (&after.meters, Some(&after.modifiers)),
+            before.into(),
+            after.into(),
             |key| StateKey::ActorMeter(id.to_string(), key),
             out,
         );
         for key in union(before.modifiers.keys(), after.modifiers.keys()) {
+            let (held, now) = (before.modifiers.get(key), after.modifiers.get(key));
             out.stored(
-                || StateKey::ActorModifier(id.to_string(), key.to_string()),
-                &before.modifiers.get(key),
-                &after.modifiers.get(key),
-                |held| {
-                    held.map_or(StateValue::Empty, |live| {
-                        StateValue::Text(format!(
-                            "{:?} until {} max_ticks {}",
-                            live.stacks, live.until, live.max_ticks
-                        ))
-                    })
-                },
+                |key| StateKey::ActorModifier(id.to_string(), key),
+                key,
+                held,
+                now,
             );
+            // A stack applied or gone spends the meter's key too, as a write to it would,
+            // though it moves the meter's value and not its fields.
+            if held.map(|live| &live.stacks) != now.map(|live| &live.stacks) {
+                if let Some(live) = held.or(now) {
+                    out.spend(StateKey::ActorMeter(id.to_string(), live.meter.clone()));
+                }
+            }
         }
-        out.stored(
-            || StateKey::ActorBusy(id.to_string()),
-            &(before.act.busy_until, &before.act.pending),
-            &(after.act.busy_until, &after.act.pending),
-            |(until, _)| until.map_or(StateValue::Empty, number_of),
+        // Busy stores the tick and the action under way; its value is the tick.
+        out.note(
+            StateKey::ActorBusy,
+            id,
+            (before.act.busy_until, &before.act.pending)
+                != (after.act.busy_until, &after.act.pending),
+            before.act.busy_until.into(),
+            after.act.busy_until.into(),
         );
         out.stored(
-            || StateKey::ActorKnownFact(id.to_string()),
+            StateKey::ActorKnownFact,
+            id,
             &before.known_facts,
             &after.known_facts,
-            |known| StateValue::List(known.clone()),
         );
         out.stored(
-            || StateKey::LastActRound(id.to_string()),
-            &before.act.last_act_round,
-            &after.act.last_act_round,
-            |round| number_of(*round),
+            StateKey::LastActRound,
+            id,
+            before.act.last_act_round,
+            after.act.last_act_round,
         );
         out.stored(
-            || StateKey::IdleActsThisWindow(id.to_string()),
-            &before.act.idle_acts_this_window,
-            &after.act.idle_acts_this_window,
-            |count| StateValue::Number(i64::from(*count)),
+            StateKey::IdleActsThisWindow,
+            id,
+            before.act.idle_acts_this_window,
+            after.act.idle_acts_this_window,
         );
         out.stored(
-            || StateKey::LiveActsThisWindow(id.to_string()),
-            &before.act.live_acts_this_window,
-            &after.act.live_acts_this_window,
-            |count| StateValue::Number(i64::from(*count)),
+            StateKey::LiveActsThisWindow,
+            id,
+            before.act.live_acts_this_window,
+            after.act.live_acts_this_window,
         );
         diff_counts(
             &before.inventory,
@@ -266,14 +273,10 @@ impl RecordId for ActorId<'_> {
             out,
         );
         out.stored(
-            || StateKey::ActorWielded(id.to_string()),
-            &before.wielded,
-            &after.wielded,
-            |wielded| {
-                wielded
-                    .as_deref()
-                    .map_or(StateValue::Empty, |item| StateValue::Text(item.to_string()))
-            },
+            StateKey::ActorWielded,
+            id,
+            before.wielded.as_ref(),
+            after.wielded.as_ref(),
         );
     }
 }
@@ -307,8 +310,8 @@ impl RecordId for PlaceId<'_> {
         diff_meters(
             canon,
             &Holder::Place(id.to_string()),
-            (&before.meters, None),
-            (&after.meters, None),
+            before.into(),
+            after.into(),
             |key| StateKey::PlaceMeter(id.to_string(), key),
             out,
         );
@@ -350,8 +353,8 @@ impl RecordId for StoryId<'_> {
         diff_meters(
             canon,
             &Holder::Story(id.to_string()),
-            (&before.meters, None),
-            (&after.meters, None),
+            before.into(),
+            after.into(),
             |key| StateKey::StoryMeter(id.to_string(), key),
             out,
         );
@@ -390,8 +393,8 @@ impl RecordId for WorldMetersId {
         diff_meters(
             canon,
             &Holder::World,
-            (before.unwrap_or(&empty), None),
-            (after, None),
+            Meters::new(before.unwrap_or(&empty), None),
+            Meters::new(after, None),
             StateKey::WorldMeter,
             out,
         );
@@ -438,25 +441,17 @@ impl RecordId for NotesId {
         PreImage::Notes(before.unwrap_or_default())
     }
 
-    /// A note's key says whether the note is there. A note, once left, is never changed.
     fn diff(&self, _: &Canon, before: Option<&Vec<Note>>, after: &Vec<Note>, out: &mut Diff) {
         fn ids(notes: &[Note]) -> impl Iterator<Item = &String> {
             notes.iter().map(|note| &note.id)
         }
         let before = before.map_or(&[][..], Vec::as_slice);
         for id in union(ids(before), ids(after)) {
-            let has = |notes: &[Note]| notes.iter().any(|note| note.id == id);
             out.stored(
-                || StateKey::Note(id.to_string()),
-                &has(before),
-                &has(after),
-                |present| {
-                    if *present {
-                        StateValue::Bool(true)
-                    } else {
-                        StateValue::Empty
-                    }
-                },
+                StateKey::Note,
+                id,
+                find_note(before, id),
+                find_note(after, id),
             );
         }
     }
@@ -478,13 +473,7 @@ fn diff_flags(
     out: &mut Diff,
 ) {
     for flag in union(before, after) {
-        let on = |flags: &[String]| flags.iter().any(|held| held == flag);
-        out.stored(
-            || key_of(flag.to_string()),
-            &on(before),
-            &on(after),
-            |on| StateValue::Bool(*on),
-        );
+        out.stored(&key_of, flag, is_set(before, flag), is_set(after, flag));
     }
 }
 
@@ -496,58 +485,35 @@ fn diff_counts(
     out: &mut Diff,
 ) {
     for item in union(before.keys(), after.keys()) {
-        let count = |counts: &BTreeMap<String, u32>| counts.get(item).copied().unwrap_or(0);
-        out.stored(
-            || key_of(item.to_string()),
-            &count(before),
-            &count(after),
-            |count| StateValue::Number(i64::from(*count)),
-        );
+        out.stored(&key_of, item, count_of(before, item), count_of(after, item));
     }
 }
 
-type Meters = BTreeMap<String, MeterLive>;
-type Modifiers = BTreeMap<String, ModifierLive>;
-
-/// The meters a holder carries. A meter's fields are its base and offset; its value is read
-/// through the pack, and an actor's modifiers can move the value while the fields hold.
+/// The meters a holder carries. A meter's stored fields are its base and offset; its value is
+/// `Meters::value`, which an actor's modifiers can move while the fields hold.
 fn diff_meters(
     canon: &Canon,
     holder: &Holder,
-    before: (&Meters, Option<&Modifiers>),
-    after: (&Meters, Option<&Modifiers>),
+    before: Meters,
+    after: Meters,
     key_of: impl Fn(String) -> StateKey,
     out: &mut Diff,
 ) {
-    for key in union(before.0.keys(), after.0.keys()) {
+    for key in union(before.live.keys(), after.live.keys()) {
         out.note(
-            || key_of(key.to_string()),
-            before.0.get(key) != after.0.get(key),
+            &key_of,
+            key,
+            before.live.get(key) != after.live.get(key),
             meter_value(canon, holder, before, key),
             meter_value(canon, holder, after, key),
         );
     }
 }
 
-/// The value of meter `key` as the pack reads it, or `Empty` when the holder does not carry it.
-fn meter_value(
-    canon: &Canon,
-    holder: &Holder,
-    (meters, modifiers): (&Meters, Option<&Modifiers>),
-    key: &str,
-) -> StateValue {
-    let Some(def) = canon.meter_def(holder, key) else {
-        return StateValue::Empty;
-    };
-    let Some(live) = meters.get(key) else {
-        return StateValue::Empty;
-    };
-    let added = modifiers.map_or(Ok(0), |held| modifier::sum(held, key));
-    added
-        .and_then(|added| meter::current(def, live, added))
-        .map_or(StateValue::Empty, StateValue::Number)
-}
-
-fn number_of(count: u64) -> StateValue {
-    StateValue::Number(i64::try_from(count).unwrap_or(i64::MAX))
+/// Meter `key`'s value as a watched value: `Empty` when the pack or the holder lacks it.
+fn meter_value(canon: &Canon, holder: &Holder, meters: Meters, key: &str) -> StateValue {
+    canon
+        .meter_def(holder, key)
+        .and_then(|def| meters.value(def, key).ok())
+        .into()
 }
