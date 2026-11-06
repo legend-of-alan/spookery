@@ -6,9 +6,9 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use crate::canon::Budget;
-use crate::canon::Canon;
+use crate::canon::{Canon, OPEN};
 use crate::model::key::{Change, StateKey, StateValue};
-use crate::model::{ActCounter, Flag, Kept, Live, MemoryLine, PendingAction, Presence, State};
+use crate::model::{ActCounter, Kept, Live, MemoryLine, PendingAction, Presence, State};
 use crate::rules::effect::Holder;
 use crate::world::World;
 use crate::Reason;
@@ -294,11 +294,21 @@ impl<'p> Draft<'p> {
                 .get(id)
                 .map(|actor| StateValue::Text(actor.place.clone()))
                 .unwrap_or(StateValue::Empty),
-            StateKey::Flag(holder, key) => Flag::resolve(holder, key)
-                .and_then(|flag| flag.value(&self.state))
-                .map_or(StateValue::Empty, StateValue::Bool),
+            StateKey::ActorFlag(id, flag) => self
+                .state
+                .actors
+                .get(id)
+                .map(|actor| StateValue::Bool(actor.flags.iter().any(|item| item == flag)))
+                .unwrap_or(StateValue::Empty),
+            StateKey::PlaceFlag(id, flag) => {
+                StateValue::Bool(self.state.has_flag(&Holder::Place(id.clone()), flag))
+            }
             StateKey::StoryFlag(id, flag) => {
                 StateValue::Bool(self.state.has_flag(&Holder::Story(id.clone()), flag))
+            }
+            StateKey::ExitOpen(place, exit) => {
+                let holder = Holder::Exit(place.clone(), exit.clone());
+                StateValue::Bool(self.state.has_flag(&holder, OPEN))
             }
             StateKey::PlaceMeter(id, meter) => self.meter_value(&Holder::Place(id.clone()), meter),
             StateKey::StoryMeter(id, meter) => self.meter_value(&Holder::Story(id.clone()), meter),

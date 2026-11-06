@@ -10,8 +10,7 @@ use crate::rules::effect::Holder;
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum StateKey {
     ActorPlace(String),
-    /// A flag kept through `Flag`: its holder and its key. An exit's one flag is `open`.
-    Flag(Holder, String),
+    ActorFlag(String, String),
     ActorMeter(String, String),
     /// An actor's modifier: its stacks and the tick it expires at.
     ActorModifier(String, String),
@@ -23,8 +22,11 @@ pub enum StateKey {
     ActorItem(String, String),
     PlaceItem(String, String),
     PlaceMeter(String, String),
+    PlaceFlag(String, String),
     StoryMeter(String, String),
     StoryFlag(String, String),
+    /// Whether a door is open: the exit's place and its name.
+    ExitOpen(String, String),
     ActorWielded(String),
     Note(String),
     WorldFlag(String),
@@ -35,13 +37,7 @@ impl fmt::Display for StateKey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             StateKey::ActorPlace(id) => write!(f, "actor_place {id}"),
-            StateKey::Flag(holder, key) => match holder {
-                Holder::Actor(id) => write!(f, "actor_flag {id} {key}"),
-                Holder::Place(id) => write!(f, "place_flag {id} {key}"),
-                Holder::Story(id) => write!(f, "story_flag {id} {key}"),
-                Holder::Exit(place, exit) => write!(f, "exit_open {place} {exit}"),
-                Holder::World => write!(f, "world_flag {key}"),
-            },
+            StateKey::ActorFlag(id, key) => write!(f, "actor_flag {id} {key}"),
             StateKey::ActorMeter(id, key) => write!(f, "actor_meter {id} {key}"),
             StateKey::ActorModifier(id, key) => write!(f, "modifier {id} {key}"),
             StateKey::ActorBusy(id) => write!(f, "actor_busy {id}"),
@@ -52,8 +48,10 @@ impl fmt::Display for StateKey {
             StateKey::ActorItem(actor, id) => write!(f, "actor_item {actor} {id}"),
             StateKey::PlaceItem(place, id) => write!(f, "place_item {place} {id}"),
             StateKey::PlaceMeter(place, key) => write!(f, "place_meter {place} {key}"),
+            StateKey::PlaceFlag(place, key) => write!(f, "place_flag {place} {key}"),
             StateKey::StoryMeter(story, key) => write!(f, "story_meter {story} {key}"),
             StateKey::StoryFlag(story, key) => write!(f, "story_flag {story} {key}"),
+            StateKey::ExitOpen(place, exit) => write!(f, "exit_open {place} {exit}"),
             StateKey::ActorWielded(actor) => write!(f, "actor_wielded {actor}"),
             StateKey::Note(id) => write!(f, "note {id}"),
             StateKey::WorldFlag(key) => write!(f, "world_flag {key}"),
@@ -75,13 +73,15 @@ impl StateKey {
         }
     }
 
-    /// The key of a flag `Flag` does not keep: a story's or the world's.
-    pub(crate) fn flag(holder: &Holder, key: &str) -> Option<StateKey> {
+    /// The key of flag `key` on `holder`. An exit's one flag is `open`.
+    pub(crate) fn flag(holder: &Holder, key: &str) -> StateKey {
         let key = key.to_string();
         match holder {
-            Holder::Story(id) => Some(StateKey::StoryFlag(id.clone(), key)),
-            Holder::World => Some(StateKey::WorldFlag(key)),
-            Holder::Actor(_) | Holder::Place(_) | Holder::Exit(..) => None,
+            Holder::Exit(place, exit) => StateKey::ExitOpen(place.clone(), exit.clone()),
+            Holder::Actor(id) => StateKey::ActorFlag(id.clone(), key),
+            Holder::Place(id) => StateKey::PlaceFlag(id.clone(), key),
+            Holder::Story(id) => StateKey::StoryFlag(id.clone(), key),
+            Holder::World => StateKey::WorldFlag(key),
         }
     }
 
@@ -89,7 +89,7 @@ impl StateKey {
     pub(crate) fn live(&self) -> Live {
         match self {
             StateKey::ActorPlace(id)
-            | StateKey::Flag(Holder::Actor(id), _)
+            | StateKey::ActorFlag(id, _)
             | StateKey::ActorMeter(id, _)
             | StateKey::ActorModifier(id, _)
             | StateKey::ActorBusy(id)
@@ -99,24 +99,21 @@ impl StateKey {
             | StateKey::LiveActsThisWindow(id)
             | StateKey::ActorItem(id, _)
             | StateKey::ActorWielded(id) => Live::Actor(id.clone()),
-            StateKey::Flag(Holder::Place(id) | Holder::Exit(id, _), _)
-            | StateKey::PlaceItem(id, _)
-            | StateKey::PlaceMeter(id, _) => Live::Place(id.clone()),
-            StateKey::Flag(Holder::Story(id), _)
-            | StateKey::StoryMeter(id, _)
-            | StateKey::StoryFlag(id, _) => Live::Story(id.clone()),
+            StateKey::PlaceItem(id, _)
+            | StateKey::PlaceMeter(id, _)
+            | StateKey::PlaceFlag(id, _)
+            | StateKey::ExitOpen(id, _) => Live::Place(id.clone()),
+            StateKey::StoryMeter(id, _) | StateKey::StoryFlag(id, _) => Live::Story(id.clone()),
             StateKey::Note(_) => Live::Notes,
-            StateKey::Flag(Holder::World, _) | StateKey::WorldFlag(_) | StateKey::WorldMeter(_) => {
-                Live::World
-            }
+            StateKey::WorldFlag(_) | StateKey::WorldMeter(_) => Live::World,
         }
     }
 
     /// The actor this key belongs to, when it has one.
     pub fn actor(&self) -> Option<&str> {
         match self {
-            StateKey::Flag(Holder::Actor(id), _) => Some(id),
             StateKey::ActorPlace(id)
+            | StateKey::ActorFlag(id, _)
             | StateKey::ActorMeter(id, _)
             | StateKey::ActorModifier(id, _)
             | StateKey::ActorBusy(id)
@@ -128,9 +125,10 @@ impl StateKey {
             | StateKey::ActorWielded(id) => Some(id),
             StateKey::PlaceItem(_, _)
             | StateKey::PlaceMeter(_, _)
+            | StateKey::PlaceFlag(_, _)
             | StateKey::StoryMeter(_, _)
             | StateKey::StoryFlag(_, _)
-            | StateKey::Flag(..)
+            | StateKey::ExitOpen(_, _)
             | StateKey::Note(_)
             | StateKey::WorldFlag(_)
             | StateKey::WorldMeter(_) => None,

@@ -9,7 +9,7 @@ use crate::intent::{Intent, Viewer};
 use crate::model::key::StateKey;
 use crate::model::meter::{self, MeterWrite};
 use crate::model::modifier::{self, ModifierLive};
-use crate::model::{self, Flag, Live, MemoryLine, Note};
+use crate::model::{self, Live, MemoryLine, Note};
 use crate::rules::visibility::can_see_fact;
 use crate::Reason;
 
@@ -796,11 +796,9 @@ fn set_flag(draft: &mut Draft, holder: &Holder, key: &str, value: bool) -> Resul
     if !draft.canon().carries_flag(holder, key) {
         return Err(Reason::UnknownId);
     }
-    if let Some(flag) = Flag::resolve(holder, key) {
-        return draft.mutate(flag.key.clone(), |state| flag.set(state, value));
-    }
-    let key_of = StateKey::flag(holder, key).ok_or(Reason::UnknownId)?;
-    draft.mutate(key_of, |state| state.set_flag(holder, key, value))
+    draft.mutate(StateKey::flag(holder, key), |state| {
+        state.set_flag(holder, key, value)
+    })
 }
 
 fn reveal(draft: &mut Draft, actor_id: &str, fact: &str) -> Result<(), Reason> {
