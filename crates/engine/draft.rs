@@ -11,7 +11,7 @@ use crate::model::key::{Change, StateKey, StateValue};
 use crate::model::meter::Offset;
 use crate::model::tracked::{Count, Edit, Entry, Member, Tracked};
 use crate::model::{self, reading, ActCounter, ActorEdit, MemoryLine, Note, NoteEdit};
-use crate::model::{PendingAction, PlaceEdit, Presence, RecordId, State, StoryEdit};
+use crate::model::{ComponentId, PendingAction, PlaceEdit, Presence, State, StoryEdit};
 use crate::rules::effect::Holder;
 use crate::world::World;
 use crate::Reason;
@@ -47,7 +47,7 @@ struct Ledger {
 /// A record a write changed, with how many edits it held before, or one a write brought into
 /// being. A rollback undoes each touch since its savepoint, newest first.
 enum Touch {
-    Edited(RecordId, usize),
+    Edited(ComponentId, usize),
     NewPlace(String),
     NewStory(String),
 }
@@ -203,7 +203,7 @@ impl<'p> Draft<'p> {
         };
         let key = edit.key(id);
         let before = key.as_ref().map(|key| actor.value(canon, id, key));
-        let moved = ledger.track(|| RecordId::Actor(id.to_string()), actor, edit);
+        let moved = ledger.track(|| ComponentId::Actor(id.to_string()), actor, edit);
         if let Some((modifier, puts, meter, stacks, before)) = added_to {
             let stacks_moved =
                 actor.modifiers.get(&modifier).map(|held| &held.stacks) != stacks.as_ref();
@@ -238,7 +238,7 @@ impl<'p> Draft<'p> {
         } = self;
         let place = state.places.get_mut(id).ok_or(Reason::UnknownId)?;
         let key = edit.key(id);
-        let at = || RecordId::Place(id.to_string());
+        let at = || ComponentId::Place(id.to_string());
         ledger.land(at, place, edit, key, |place, key| {
             place.value(canon, id, key)
         })
@@ -255,7 +255,7 @@ impl<'p> Draft<'p> {
         } = self;
         let story = state.stories.get_mut(id).ok_or(Reason::UnknownId)?;
         let key = edit.key(id);
-        let at = || RecordId::Story(id.to_string());
+        let at = || ComponentId::Story(id.to_string());
         ledger.land(at, story, edit, key, |story, key| {
             story.value(canon, id, key)
         })
@@ -300,7 +300,7 @@ impl<'p> Draft<'p> {
                     reading(model::meter_value(canon, &Holder::World, meters, &name, 0))
                 };
                 let meters = &mut state.world_meters;
-                ledger.land(|| RecordId::WorldMeters, meters, edit, key, read)
+                ledger.land(|| ComponentId::WorldMeters, meters, edit, key, read)
             }
         }
     }
@@ -336,7 +336,13 @@ impl<'p> Draft<'p> {
                         matches!(key, StateKey::WorldFlag(name) if flags.contains(name)),
                     )
                 };
-                ledger.land(|| RecordId::WorldFlags, &mut state.flags, edit, key, read)
+                ledger.land(
+                    || ComponentId::WorldFlags,
+                    &mut state.flags,
+                    edit,
+                    key,
+                    read,
+                )
             }
         }
     }
@@ -350,7 +356,7 @@ impl<'p> Draft<'p> {
             _ => StateValue::Empty,
         };
         let edit = NoteEdit::Leave(note);
-        ledger.land(|| RecordId::Notes, &mut state.notes, edit, key, read)
+        ledger.land(|| ComponentId::Notes, &mut state.notes, edit, key, read)
     }
 
     /// Count `key` toward the budget the first time this round, whether or not a write
@@ -439,7 +445,7 @@ impl Ledger {
     /// rollback. Whether it moved.
     fn track<T, E: Edit<T>>(
         &mut self,
-        at: impl FnOnce() -> RecordId,
+        at: impl FnOnce() -> ComponentId,
         record: &mut Tracked<T, E>,
         edit: E,
     ) -> bool {
@@ -455,7 +461,7 @@ impl Ledger {
     /// after, as `read` reads them.
     fn land<T, E: Edit<T>>(
         &mut self,
-        at: impl FnOnce() -> RecordId,
+        at: impl FnOnce() -> ComponentId,
         record: &mut Tracked<T, E>,
         edit: E,
         key: StateKey,

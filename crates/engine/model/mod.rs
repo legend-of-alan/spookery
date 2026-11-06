@@ -46,9 +46,9 @@ pub struct State {
     pub flags: Tracked<Vec<String>, Member>,
 }
 
-/// One tracked part of the save: a live record, or one of the world's lists.
+/// One tracked component of the save: a live record, or one of the world's lists.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum RecordId {
+pub(crate) enum ComponentId {
     Actor(String),
     Place(String),
     Story(String),
@@ -109,14 +109,14 @@ impl State {
     }
 
     /// The tracked part `at` names, to roll back or rebase, when it is there.
-    pub(crate) fn record_mut(&mut self, at: &RecordId) -> Option<&mut dyn Rewind> {
+    pub(crate) fn record_mut(&mut self, at: &ComponentId) -> Option<&mut dyn Rewind> {
         Some(match at {
-            RecordId::Actor(id) => self.actors.get_mut(id)?,
-            RecordId::Place(id) => self.places.get_mut(id)?,
-            RecordId::Story(id) => self.stories.get_mut(id)?,
-            RecordId::WorldMeters => &mut self.world_meters,
-            RecordId::WorldFlags => &mut self.flags,
-            RecordId::Notes => &mut self.notes,
+            ComponentId::Actor(id) => self.actors.get_mut(id)?,
+            ComponentId::Place(id) => self.places.get_mut(id)?,
+            ComponentId::Story(id) => self.stories.get_mut(id)?,
+            ComponentId::WorldMeters => &mut self.world_meters,
+            ComponentId::WorldFlags => &mut self.flags,
+            ComponentId::Notes => &mut self.notes,
         })
     }
 
