@@ -131,7 +131,10 @@ the room. The GM can still queue it, and a GM-queued habit is checked the same
 as one the engine runs, so a habit that sets a flag its cast file does not
 list is refused `UNKNOWN_ID` either way. A move the round has no room for is
 refused `BUDGET`, never dropped: one past the intent limit, and every one after
-a rule that goes over the state-key limit.
+a rule that goes over the state-key limit. The limit counts each key whose
+stored value a rule changes, and a modifier whose stacks move also counts the
+meter it adds to, ahead of its own key. A modifier that would overflow its
+meter is refused `OUT_OF_RANGE` once that meter's key fits.
 
 Tested in `features/round/a_rules_effects_are_all_or_nothing.feature`,
 `features/round/an_intent_the_round_has_no_room_for_is_refused_budget.feature`,
@@ -209,7 +212,9 @@ it, and a weaker or equal one changes no stack. The modifier has one clock.
 Every application, a tie included, sets the end to now plus the smaller of the
 ticks left plus its `ticks` and the longest `ticks` applied so far, this one
 included. When the world reaches the end, the modifier expires and every stack
-goes at once. Different modifiers on one meter add up. A player sees a modifier
+goes at once. Different modifiers on one meter add up. The meter's change is
+reported, and fires the rules watching it, both when a modifier moves it and
+when one expires. A player sees a modifier
 change on their own actor only, and not one the pack hides. Replay gives the
 same journal, and migrate drops a modifier the pack no longer defines or now
 defines on another meter. Check refuses a `ticks` or `max_stacks` below 1, a
