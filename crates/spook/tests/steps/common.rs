@@ -32,8 +32,11 @@ pub(crate) fn give_key(now: &mut State) {
         1,
     )
     .unwrap();
-    let stairs = spookery_engine::Holder::Exit("docks_shop".into(), "stairs".into());
-    now.set_flag(&stairs, "open", true).unwrap();
+    let stairs = spookery_engine::ExitId {
+        place: "docks_shop".into(),
+        exit: "stairs".into(),
+    };
+    now.set_exit_open(&stairs, true).unwrap();
 }
 
 pub(crate) fn add_trapdoor(pack: &Path) {

@@ -72,12 +72,6 @@ The yard needs an exit to the porch, or `spook check` warns that the porch canno
     name: porch
 ```
 
-The save lists the places people can stand in. Add `porch` under `places` in `state/save.yaml`.
-
-```yaml path=state/save.yaml mode=insert-before anchor=actors:
-  - porch
-```
-
 `travel porch` follows the exit named `porch`. A place with no path from the start place is a warning from `spook check`.
 
 ## Add a player move

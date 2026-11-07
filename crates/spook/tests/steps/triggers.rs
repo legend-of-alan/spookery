@@ -523,8 +523,6 @@ Under the street.
     write_nell(&pack, &[]);
     edit_table_with(world, &pack, |now, canon, seated| {
         insert_actor_copy(now, canon, seated, "pc_rowan", "pc_nell", "docks_street");
-        now.list(&spookery_engine::Holder::Place("cellar".to_string()))
-            .unwrap();
     });
     world.pack = Some(pack);
 }
@@ -826,12 +824,8 @@ fn the_rounds_only_refusal_is(world: &mut World, code: String) {
 #[then(expr = "no place has the {string} flag")]
 fn no_place_has_the_flag(world: &mut World, flag: String) {
     let now = state_of(world.pack.as_ref().unwrap());
-    let places: Vec<Holder> = now
-        .places
-        .iter()
-        .map(|id| Holder::Place(id.clone()))
-        .collect();
-    assert!(places.iter().all(|place| !now.has_flag(place, &flag)));
+    let mut set = now.flags.iter();
+    assert!(set.all(|(holder, key, ())| !matches!(holder, Holder::Place(_)) || *key != flag));
 }
 
 #[when(expr = "pc_nell travels from docks_street into docks_shop")]

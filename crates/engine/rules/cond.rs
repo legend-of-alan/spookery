@@ -1,12 +1,12 @@
 //! Whether the conditions on a rule hold.
 
-use crate::canon::Canon;
+use crate::canon::{Canon, OPEN};
 use crate::intent::{Intent, Source, Target, Viewer};
-use crate::model::{Presence, State};
+use crate::model::{ExitId, Presence, State};
 use crate::rules::context::Context;
 use crate::rules::effect::Holder;
 use crate::rules::expr;
-use crate::rules::rule::Cond;
+use crate::rules::rule::{Cond, Who};
 use crate::Reason;
 
 /// Every condition holds. A failed `has_item` is [`Reason::MissingItem`].
@@ -80,6 +80,17 @@ fn holds(context: &Context, cond: &Cond) -> Result<bool, Reason> {
             let current = state.meter_value(context.canon, &holder, key)?;
             let right = expr::eval(context, value)?;
             Ok(op.holds(current, right))
+        }
+        Cond::Flag {
+            who: Who::Exit(place, exit),
+            key,
+            is,
+        } => {
+            let exit = ExitId {
+                place: place.clone(),
+                exit: exit.clone(),
+            };
+            Ok((key == OPEN && state.is_exit_open(&exit)) == *is)
         }
         Cond::Flag { who, key, is } => {
             let holder = expr::resolve_holder(context, who)?;

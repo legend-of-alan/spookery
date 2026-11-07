@@ -16,14 +16,9 @@ use crate::World;
 
 const LEDGER: &str = "The lamp-oil ledger is short.";
 
-/// A save of `pack`'s world `world_id` at round 0 with these places and actors, each actor at
-/// grit 1 and rest 3, made through the writers migrate uses.
-fn bare_save(
-    pack: &Path,
-    world_id: &str,
-    places: &[&str],
-    actors: Vec<(String, ActorLive)>,
-) -> State {
+/// A save of `pack`'s world `world_id` at round 0 with these actors, each at grit 1 and rest
+/// 3, made through the writers migrate uses.
+fn bare_save(pack: &Path, world_id: &str, actors: Vec<(String, ActorLive)>) -> State {
     let canon = load_canon(pack).unwrap_or_else(|err| panic!("canon: {err:?}"));
     let mut state = State::default();
     state.schema = "save".to_string();
@@ -31,9 +26,6 @@ fn bare_save(
     state.pack_rev = spookery_engine::pack_rev(pack).unwrap();
     state.rules_rev = spookery_engine::testing::RULES_REV;
     state.last_round_at = "2026-01-01T00:00:00Z".to_string();
-    for place in places {
-        state.list(&Holder::Place(place.to_string())).unwrap();
-    }
     for (id, record) in actors {
         state.add_actor(&id, record).unwrap();
         for (key, base) in [("grit", 1), ("rest", 3)] {
@@ -376,7 +368,7 @@ Rowan.
             act: Act::default(),
         },
     )];
-    let state = bare_save(&pack, "ex", &["gate"], actors);
+    let state = bare_save(&pack, "ex", actors);
     write_text(&pack.join("state/save.yaml"), &emit_save(&state).unwrap());
     let place_before = fs::read(pack.join("world/places/gate.md")).unwrap();
     let cast_before = fs::read(pack.join("cast/pc_rowan.md")).unwrap();
@@ -503,7 +495,7 @@ rules:
         fs::create_dir_all(dest.parent().unwrap()).unwrap();
         fs::copy(rules.join(name), &dest).unwrap();
     }
-    let state = bare_save(&pack, "crowd", &["yard"], actors);
+    let state = bare_save(&pack, "crowd", actors);
     write_text(&pack.join("state/save.yaml"), &emit_save(&state).unwrap());
     play_pack_once(&pack).unwrap_or_else(|err| panic!("round: {err}"));
     let state = state_of(&pack);

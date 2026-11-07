@@ -1,4 +1,4 @@
-//! The live save: places, actors, stories, the component stores, and notes.
+//! The live save: actors, the component stores, the open doors, and notes.
 
 pub(crate) mod item;
 pub(crate) mod key;
@@ -9,6 +9,7 @@ pub(crate) mod tracked;
 pub(crate) mod write;
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
@@ -24,7 +25,8 @@ use crate::intent::{Target, Viewer};
 use crate::rules::effect::Holder;
 
 /// The live save: each record, each component store, and the ledger of the round writing it.
-/// `save.yaml` is this, field for field: the records by id, then each store by holder.
+/// `save.yaml` is this, field for field: the records by id, then each store by holder. A place
+/// or a story is the pack's, so the save lists none: what it holds is in the stores.
 ///
 /// Anyone may read any of it. Only the writers in `write` change a record or a component, and
 /// each goes on the ledger: no record table, store or record hands out a way to change it, so
@@ -44,13 +46,7 @@ pub struct State {
     /// Ticks since the world began.
     pub world_time: u64,
     pub last_round_at: String,
-    /// The places the save lists: each place someone can stand in. Its items, meters and
-    /// flags are in the stores.
-    pub places: ReadOnly<BTreeSet<String>>,
     pub actors: ReadOnly<BTreeMap<String, Tracked<ActorLive, ActorEdit>>>,
-    /// The stories the save lists. A story's meters and flags are in the stores.
-    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
-    pub stories: ReadOnly<BTreeSet<String>>,
     /// Every item count each actor and place holds.
     #[serde(default, skip_serializing_if = "Store::is_empty")]
     pub items: Items,
@@ -60,13 +56,16 @@ pub struct State {
     /// The modifiers each actor holds.
     #[serde(default, skip_serializing_if = "Store::is_empty")]
     pub modifiers: Modifiers,
-    /// Every flag set, on any holder. An exit's door is open when the exit has its flag `open`.
+    /// Every flag set, on any holder.
     #[serde(
         default,
         skip_serializing_if = "Store::is_empty",
         with = "tracked::marks"
     )]
     pub flags: Flags,
+    /// The name of each exit whose door is open, by its place.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub open_exits: ReadOnly<BTreeMap<String, BTreeSet<String>>>,
     pub notes: Tracked<Vec<Note>, NoteEdit>,
     #[serde(skip)]
     ledger: Ledger,
@@ -76,33 +75,43 @@ pub struct State {
 /// it on, and clearing it takes it off.
 pub type Flags = Store<(), ()>;
 
-/// One tracked component of the save: a live record, the story a write listed, a meter, a
-/// modifier or a flag on its holder, or the notes.
+/// One tracked component of the save: a live record, a meter, a modifier or a flag on its
+/// holder, an open door, or the notes.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum ComponentId {
     Actor(String),
-    Place(String),
-    Story(String),
     Meter(Holder, String),
     Modifier(Holder, String),
     Flag(Holder, String),
     Item(Holder, String),
+    ExitOpen(ExitId),
     Notes,
 }
 
+/// One exit, by its place and its name: the address of its door. An exit holds nothing else.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct ExitId {
+    pub place: String,
+    pub exit: String,
+}
+
+/// The exit as a walker on it has it for their place: `exit:<place>.<exit>`.
+impl fmt::Display for ExitId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "exit:{}.{}", self.place, self.exit)
+    }
+}
+
 impl ComponentId {
-    /// The store this component is in, as the file names it, and the holder it is on. A record
-    /// and the notes are in no store.
+    /// The store this component is in, as the file names it, and the holder it is on. A record,
+    /// an open door and the notes are in no store.
     pub(crate) fn stored(&self) -> Option<(&'static str, &Holder)> {
         match self {
             ComponentId::Item(holder, _) => Some(("items", holder)),
             ComponentId::Meter(holder, _) => Some(("meters", holder)),
             ComponentId::Modifier(holder, _) => Some(("modifiers", holder)),
             ComponentId::Flag(holder, _) => Some(("flags", holder)),
-            ComponentId::Actor(_)
-            | ComponentId::Place(_)
-            | ComponentId::Story(_)
-            | ComponentId::Notes => None,
+            ComponentId::Actor(_) | ComponentId::ExitOpen(_) | ComponentId::Notes => None,
         }
     }
 }
@@ -123,14 +132,12 @@ impl State {
         items.chain(meters).chain(modifiers).chain(flags)
     }
 
-    /// Whether the save lists `holder`: an actor, place or story with a record, an exit of a
-    /// listed place, or the world.
-    pub(crate) fn lists(&self, holder: &Holder) -> bool {
+    /// Refuse a component on an actor the save holds no record of, as `UNKNOWN_ID`. A place
+    /// and a story are the pack's, as the world is, so the save takes one on any of them.
+    pub(crate) fn require_entity(&self, holder: &Holder) -> Result<(), crate::Reason> {
         match holder {
-            Holder::Actor(id) => self.actors.contains_key(id),
-            Holder::Place(id) | Holder::Exit(id, _) => self.places.contains(id),
-            Holder::Story(id) => self.stories.contains(id),
-            Holder::World => true,
+            Holder::Actor(id) if !self.actors.contains_key(id) => Err(crate::Reason::UnknownId),
+            _ => Ok(()),
         }
     }
 
@@ -149,16 +156,37 @@ impl State {
         meter::current(def, live, modifier::sum(&self.modifiers, holder, key)?)
     }
 
-    /// How many of item `id` `holder` holds: an actor or place the save lists. `None` for
+    /// How many of item `id` `holder` holds: an actor the save holds, or a place. `None` for
     /// any other holder.
     pub fn item_count(&self, holder: &Holder, id: &str) -> Option<u32> {
-        (item::holds_items(holder) && self.lists(holder))
+        (item::holds_items(holder) && self.require_entity(holder).is_ok())
             .then(|| self.items.get(holder, id).copied().unwrap_or(0))
     }
 
     /// Whether `holder` has flag `key` set.
     pub fn has_flag(&self, holder: &Holder, key: &str) -> bool {
         self.flags.get(holder, key).is_some()
+    }
+
+    /// Whether the door of `exit` is open.
+    pub fn is_exit_open(&self, exit: &ExitId) -> bool {
+        (self.open_exits.get(&exit.place)).is_some_and(|open| open.contains(&exit.exit))
+    }
+
+    /// Open or shut the door of `exit` past the ledger, for its writer and a rollback. A place
+    /// left with no door open has no entry, so the save reads the same after an open is rolled
+    /// back.
+    fn put_exit_open(&mut self, exit: &ExitId, open: bool) {
+        let open_exits = self.open_exits.get_mut();
+        if open {
+            let names = open_exits.entry(exit.place.clone()).or_default();
+            names.insert(exit.exit.clone());
+        } else if let Some(names) = open_exits.get_mut(&exit.place) {
+            names.remove(&exit.exit);
+            if names.is_empty() {
+                open_exits.remove(&exit.place);
+            }
+        }
     }
 
     /// The component `at` names, to roll back or rebase, when it has edits to.
@@ -169,7 +197,7 @@ impl State {
             ComponentId::Modifier(holder, id) => self.modifiers.tracked_mut(holder, id)?,
             ComponentId::Item(holder, id) => self.items.tracked_mut(holder, id)?,
             ComponentId::Notes => &mut self.notes,
-            ComponentId::Place(_) | ComponentId::Story(_) | ComponentId::Flag(..) => return None,
+            ComponentId::Flag(..) | ComponentId::ExitOpen(_) => return None,
         })
     }
 
@@ -177,12 +205,11 @@ impl State {
     fn take_off(&mut self, at: &ComponentId) {
         match at {
             ComponentId::Actor(id) => drop(self.actors.get_mut().remove(id)),
-            ComponentId::Place(id) => drop(self.places.get_mut().remove(id)),
-            ComponentId::Story(id) => drop(self.stories.get_mut().remove(id)),
             ComponentId::Meter(holder, key) => drop(self.meters.take(holder, key)),
             ComponentId::Modifier(holder, id) => drop(self.modifiers.take(holder, id)),
             ComponentId::Flag(holder, key) => drop(self.flags.take(holder, key)),
             ComponentId::Item(holder, id) => drop(self.items.take(holder, id)),
+            ComponentId::ExitOpen(exit) => self.put_exit_open(exit, false),
             ComponentId::Notes => unreachable!("no write puts the notes on"),
         }
     }
@@ -196,6 +223,7 @@ impl State {
             Removed::Modifier(holder, id, part) => self.modifiers.put(holder, id, part),
             Removed::Flag(holder, key) => self.flags.put(holder, key, Tracked::default()),
             Removed::Item(holder, id, part) => self.items.put(holder, id, part),
+            Removed::ExitOpen(exit) => self.put_exit_open(&exit, true),
         }
     }
 

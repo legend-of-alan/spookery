@@ -7,6 +7,7 @@ use crate::canon::{Canon, CastDef, FactDef, ItemDef, PlaceDef, StoryDef, OPEN};
 use crate::diagnostic::{error, schema_error, warning, Diagnostic};
 use crate::model::meter::{self, MeterDef};
 use crate::model::modifier::{self, ModifierDef};
+use crate::model::ExitId;
 use crate::rules::effect::Holder;
 use crate::rules::expr::Expr;
 use crate::rules::roll::Check;
@@ -371,7 +372,6 @@ impl HolderScope<'_> {
             Who::World => Some(Holder::World),
             Who::Place(id) => Some(Holder::Place(id.clone())),
             Who::Story(id) => Some(Holder::Story(id.clone())),
-            Who::Exit(place, exit) => Some(Holder::Exit(place.clone(), exit.clone())),
             Who::Actor(id) if self.cast.contains_key(id) => Some(Holder::Actor(id.clone())),
             Who::Self_ => fixed_self.map(|id| Holder::Actor(id.to_string())),
             _ => None,
@@ -380,22 +380,26 @@ impl HolderScope<'_> {
 
     /// Why flag `key` on `who` can never be set or tested, or `None` when it may be.
     fn why_undeclared(&self, fixed_self: Option<&str>, who: &Who, key: &str) -> Option<String> {
+        if let Who::Exit(place, exit) = who {
+            let door = ExitId {
+                place: place.clone(),
+                exit: exit.clone(),
+            };
+            return if self.unknown_who(who).is_some() {
+                Some(format!("{door} is not an exit"))
+            } else if key != OPEN {
+                Some(format!("an exit carries only the flag '{OPEN}'"))
+            } else {
+                let locks = self.places.get(place).is_some_and(|at| at.has_door(exit));
+                (!locks).then(|| format!("{door} has no if, so it is always open"))
+            };
+        }
         let holder = self.fixed_holder(fixed_self, who)?;
         let flags = match &holder {
             Holder::World => return None,
             Holder::Actor(id) => self.cast.get(id).map(|cast| &cast.flags),
             Holder::Place(id) => self.places.get(id).map(|place| &place.flags),
             Holder::Story(id) => self.stories.get(id).map(|story| &story.flags),
-            Holder::Exit(place, exit) => {
-                return if self.unknown_who(who).is_some() {
-                    Some(format!("{holder} is not an exit"))
-                } else if key != OPEN {
-                    Some(format!("an exit carries only the flag '{OPEN}'"))
-                } else {
-                    let door = self.places.get(place).is_some_and(|at| at.has_door(exit));
-                    (!door).then(|| format!("{holder} has no if, so it is always open"))
-                };
-            }
         };
         let declared = flags.is_some_and(|flags| flags.contains(&key.to_string()));
         (!declared).then(|| format!("{holder} does not declare it"))
@@ -404,6 +408,13 @@ impl HolderScope<'_> {
     /// Why meter `key` on `who` can never be read or written, or `None` when it may be.
     /// A holder known only at play time is not guessed: only its key is checked.
     fn why_not_carried(&self, fixed_self: Option<&str>, who: &Who, key: &str) -> Option<String> {
+        if let Who::Exit(place, exit) = who {
+            let door = ExitId {
+                place: place.clone(),
+                exit: exit.clone(),
+            };
+            return Some(format!("{door} carries no meter '{key}'"));
+        }
         let def = self.meters.get(key);
         match self.fixed_holder(fixed_self, who) {
             Some(Holder::World) if self.world_meters.contains_key(key) => None,
@@ -548,15 +559,20 @@ pub(super) fn unknown_meters(
 /// Check the save against the pack without changing it. Refuse every meter,
 /// item and wielded slot the pack does not define, every meter the pack gives a holder
 /// that the holder lacks, every meter outside its rules, every modifier the pack no longer
-/// gives that meter, every walker on an exit the pack lacks, and every empty id or zero count.
+/// gives that meter, every actor in a place or on an exit the pack lacks, every component on
+/// a place or story the pack lacks, every open door the pack lacks, and every empty id or
+/// zero count.
 pub fn check_save(canon: &Canon, state: &crate::model::State) -> Result<(), Vec<Diagnostic>> {
     let mut diags = Vec::new();
     for (id, actor) in &state.actors {
-        // A walker stands on an exit, which must be one of the pack's.
-        let on_exit = crate::model::exit_parts(&actor.place).is_some();
-        if on_exit && crate::rules::travel::exit_stood_on(canon, &actor.place).is_none() {
+        // An actor stands in one of the pack's places, or walks one of its exits.
+        let stands = match crate::model::exit_parts(&actor.place) {
+            Some(_) => crate::rules::travel::exit_stood_on(canon, &actor.place).is_some(),
+            None => canon.places.contains_key(&actor.place),
+        };
+        if !stands {
             let problem = format!(
-                "actor '{id}' stands on exit '{}', which the pack does not define",
+                "actor '{id}' stands on '{}', which the pack does not define",
                 actor.place
             );
             let diag = schema_error("state/save.yaml", &problem, "move the actor to a place");
@@ -595,6 +611,41 @@ pub fn check_save(canon: &Canon, state: &crate::model::State) -> Result<(), Vec<
     for (holder, list, id) in places.chain(stories) {
         let path = format!("{list}.{id}.meters");
         check_meters(canon, &holder, &state.meters, &path, &mut diags);
+    }
+    let mut unknown: Vec<(&str, Holder)> = Vec::new();
+    for at in state.components() {
+        let (store, holder) = at.stored().expect("the walk yields stored components");
+        let known = match holder {
+            Holder::Place(id) => canon.places.contains_key(id),
+            Holder::Story(id) => canon.stories.contains_key(id),
+            Holder::Actor(_) | Holder::World => true,
+        };
+        if !known {
+            unknown.push((store, holder.clone()));
+        }
+    }
+    unknown.dedup();
+    for (store, holder) in unknown {
+        let problem = format!("{store} lists '{holder}', which the pack does not define");
+        let diag = schema_error(
+            "state/save.yaml",
+            &problem,
+            "take its line out of the store",
+        );
+        diags.push(diag.at_path(format!("{store}.{holder}")));
+    }
+    for (place, exits) in state.open_exits.iter() {
+        for exit in exits {
+            if !canon.places.get(place).is_some_and(|at| at.has_door(exit)) {
+                let door = ExitId {
+                    place: place.clone(),
+                    exit: exit.clone(),
+                };
+                let problem = format!("open_exits lists '{door}', which is no door of the pack");
+                let diag = schema_error("state/save.yaml", &problem, "take it out of open_exits");
+                diags.push(diag.at_path(format!("open_exits.{place}")));
+            }
+        }
     }
     for (holder, item, count) in state.items.iter() {
         let path = format!("items.{holder}.{item}");

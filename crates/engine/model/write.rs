@@ -11,7 +11,7 @@ use crate::model::modifier::ModifierLive;
 use crate::model::tracked::Tracked;
 use crate::model::MemoryLine;
 use crate::model::Note;
-use crate::model::{number, reading, ActCounter, ActorEdit, ComponentId};
+use crate::model::{number, reading, ActCounter, ActorEdit, ComponentId, ExitId};
 use crate::model::{NoteEdit, PendingAction, State};
 use crate::rules::effect::Holder;
 use crate::Reason;
@@ -41,30 +41,6 @@ impl State {
         }
     }
 
-    /// List `holder` in the save, so a component can go on it. Every writer that puts a
-    /// component on calls this first. A place or story the save does not list yet is listed, and
-    /// an exit's place is; an actor is listed only with their record, so one the save does not
-    /// hold is `UNKNOWN_ID`; the world always is. Listing counts no key.
-    pub fn list(&mut self, holder: &Holder) -> Result<(), Reason> {
-        if self.lists(holder) {
-            return Ok(());
-        }
-        let at = match holder {
-            Holder::Place(id) | Holder::Exit(id, _) => {
-                self.places.get_mut().insert(id.clone());
-                ComponentId::Place(id.clone())
-            }
-            Holder::Story(id) => {
-                self.stories.get_mut().insert(id.clone());
-                ComponentId::Story(id.clone())
-            }
-            Holder::Actor(_) => return Err(Reason::UnknownId),
-            Holder::World => return Ok(()),
-        };
-        self.ledger.added(at);
-        Ok(())
-    }
-
     /// Put meter `key` on `holder` as `next`, `None` taking it off, outside the writes a
     /// round's rules make: migrate gives a holder the meters the pack adds and drops the ones
     /// it no longer gives. Counted and kept as `edit_meter` says.
@@ -75,12 +51,12 @@ impl State {
         key: &str,
         next: Option<MeterLive>,
     ) -> Result<(), Reason> {
-        let watched = StateKey::meter(holder, key).ok_or(Reason::Schema)?;
+        let watched = StateKey::meter(holder, key);
         if self.meters.get(holder, key) == next.as_ref() {
             return Ok(());
         }
         if next.is_some() {
-            self.list(holder)?;
+            self.require_entity(holder)?;
         }
         let before = reading(self.meter_value(canon, holder, key));
         let State { meters, ledger, .. } = &mut *self;
@@ -104,7 +80,7 @@ impl State {
         key: &str,
         edit: Offset,
     ) -> Result<(), Reason> {
-        let watched = StateKey::meter(holder, key).ok_or(Reason::UnknownId)?;
+        let watched = StateKey::meter(holder, key);
         let before = reading(self.meter_value(canon, holder, key));
         let State { meters, ledger, .. } = &mut *self;
         let meter = meters.tracked_mut(holder, key).ok_or(Reason::UnknownId)?;
@@ -128,7 +104,7 @@ impl State {
         next: Option<ModifierLive>,
     ) -> Result<(), Reason> {
         let holder = Holder::Actor(actor_id.to_string());
-        self.list(&holder)?;
+        self.require_entity(&holder)?;
         let meter = canon.modifiers.get(id).map(|def| def.meter.as_str());
         let meter_before = meter.map(|key| reading(self.meter_value(canon, &holder, key)));
         let held = self.modifiers.get(&holder, id);
@@ -220,14 +196,14 @@ impl State {
         ledger.note(watched, number(u64::from(held)), number(u64::from(count)))
     }
 
-    /// Set `holder`'s flag `key` on or off, counted and kept as `edit_actor` says. An exit's
-    /// one flag is `open`. A flag already so changes nothing.
+    /// Set `holder`'s flag `key` on or off, counted and kept as `edit_actor` says. A flag
+    /// already so changes nothing.
     pub fn set_flag(&mut self, holder: &Holder, key: &str, on: bool) -> Result<(), Reason> {
         if self.flags.get(holder, key).is_some() == on {
             return Ok(());
         }
         if on {
-            self.list(holder)?;
+            self.require_entity(holder)?;
         }
         let State { flags, ledger, .. } = self;
         let (holder, key) = (holder.clone(), key.to_string());
@@ -240,6 +216,23 @@ impl State {
             ledger.removed(Removed::Flag(holder, key));
         }
         ledger.note(watched, StateValue::Bool(!on), StateValue::Bool(on))
+    }
+
+    /// Open or shut the door of `exit`, counted and kept as `edit_actor` says. A door already
+    /// so changes nothing.
+    pub fn set_exit_open(&mut self, exit: &ExitId, open: bool) -> Result<(), Reason> {
+        if self.is_exit_open(exit) == open {
+            return Ok(());
+        }
+        self.put_exit_open(exit, open);
+        if open {
+            self.ledger.added(ComponentId::ExitOpen(exit.clone()));
+        } else {
+            self.ledger.removed(Removed::ExitOpen(exit.clone()));
+        }
+        let watched = StateKey::ExitOpen(exit.place.clone(), exit.exit.clone());
+        self.ledger
+            .note(watched, StateValue::Bool(!open), StateValue::Bool(open))
     }
 
     /// Leave `note`, whose id no note has yet.
@@ -389,10 +382,9 @@ impl State {
                 self.put_modifier(canon, actor_id, id, live)
             }
             ComponentId::Flag(_, key) => self.set_flag(onto, key, on),
-            ComponentId::Actor(_)
-            | ComponentId::Place(_)
-            | ComponentId::Story(_)
-            | ComponentId::Notes => Err(Reason::Schema),
+            ComponentId::Actor(_) | ComponentId::ExitOpen(_) | ComponentId::Notes => {
+                Err(Reason::Schema)
+            }
         }
     }
 }

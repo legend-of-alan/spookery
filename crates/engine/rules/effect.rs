@@ -9,7 +9,7 @@ use crate::intent::{Intent, Viewer};
 use crate::model::item;
 use crate::model::meter::{self, MeterWrite};
 use crate::model::modifier::{self, ModifierLive};
-use crate::model::{self, ActorEdit, MemoryLine, Note, State};
+use crate::model::{self, ActorEdit, ExitId, MemoryLine, Note, State};
 use crate::rules::visibility::can_see_fact;
 use crate::Reason;
 
@@ -69,6 +69,11 @@ pub enum EffectKind {
         key: String,
         value: bool,
     },
+    /// The door of `exit` opens, or shuts when `open` is false.
+    ExitOpen {
+        exit: ExitId,
+        open: bool,
+    },
     Note {
         note_id: String,
         to: Vec<String>,
@@ -122,7 +127,7 @@ impl Effect {
                     (None, Some(place)) => Holder::Place(place),
                     _ => return Err(Reason::Schema),
                 };
-                shift_item(state, &holder, &id, delta, max)
+                shift_item(canon, state, &holder, &id, delta, max)
             }
             EffectKind::Modifier {
                 actor_id,
@@ -142,13 +147,14 @@ impl Effect {
                 text,
             } => remember(canon, state, intent, &actor_id, fact_ids, tags, text),
             EffectKind::Flag { holder, key, value } => set_flag(canon, state, &holder, &key, value),
+            EffectKind::ExitOpen { exit, open } => set_exit_open(canon, state, &exit, open),
             EffectKind::Note {
                 note_id,
                 to,
                 place,
                 fact_ids,
                 text,
-            } => leave_note(state, note_id, to, place, fact_ids, text),
+            } => leave_note(canon, state, note_id, to, place, fact_ids, text),
             EffectKind::Narrate { .. } => Ok(()),
             EffectKind::Reveal { actor_id, fact } => reveal(canon, state, &actor_id, &fact),
         }
@@ -166,6 +172,7 @@ impl EffectKind {
             EffectKind::Location { .. } => "location",
             EffectKind::Memory { .. } => "memory",
             EffectKind::Flag { .. } => "flag",
+            EffectKind::ExitOpen { .. } => "exit_open",
             EffectKind::Note { .. } => "note",
             EffectKind::Narrate { .. } => "narrate",
             EffectKind::Reveal { .. } => "reveal",
@@ -247,6 +254,14 @@ pub(crate) enum EffectRecord {
         holder: Holder,
         key: String,
         value: bool,
+    },
+    ExitOpen {
+        #[serde(rename = "as", default, skip_serializing_if = "Option::is_none")]
+        as_viewer: Option<Viewer>,
+        intent_id: String,
+        place: String,
+        exit: String,
+        open: bool,
     },
     Note {
         #[serde(rename = "as", default, skip_serializing_if = "Option::is_none")]
@@ -361,6 +376,13 @@ impl From<Effect> for EffectRecord {
                 holder,
                 key,
                 value,
+            },
+            EffectKind::ExitOpen { exit, open } => Self::ExitOpen {
+                as_viewer,
+                intent_id,
+                place: exit.place,
+                exit: exit.exit,
+                open,
             },
             EffectKind::Note {
                 note_id,
@@ -507,6 +529,16 @@ impl TryFrom<EffectRecord> for Effect {
                 as_viewer,
                 intent_id,
             ),
+            EffectRecord::ExitOpen {
+                as_viewer,
+                intent_id,
+                place,
+                exit,
+                open,
+            } => {
+                let exit = ExitId { place, exit };
+                (EffectKind::ExitOpen { exit, open }, as_viewer, intent_id)
+            }
             EffectRecord::Note {
                 as_viewer,
                 intent_id,
@@ -569,28 +601,24 @@ fn viewer_matches(intent: &Intent, effect: &Effect) -> bool {
     effect.viewer == intent.actor
 }
 
-/// Who holds a meter, a flag or an item count: an actor, a place, a story, an exit, or the
-/// world. Saved as `world`, `{actor: id}`, `{place: id}`, `{story: id}` or
-/// `{exit: [place, exit]}`. An exit holds only its flag `open`.
+/// Who holds a meter, a flag or an item count: an actor, a place, a story, or the world. Saved
+/// as `world`, `{actor: id}`, `{place: id}` or `{story: id}`.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Holder {
     Actor(String),
     Place(String),
     Story(String),
-    Exit(String, String),
     World,
 }
 
-/// The holder as a rule's `who` names it: an actor id, `place:<id>`, `story:<id>`,
-/// `exit:<place>.<exit>` or `world`.
+/// The holder as a rule's `who` names it: an actor id, `place:<id>`, `story:<id>` or `world`.
 impl fmt::Display for Holder {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Holder::Actor(id) => write!(f, "{id}"),
             Holder::Place(id) => write!(f, "place:{id}"),
             Holder::Story(id) => write!(f, "story:{id}"),
-            Holder::Exit(place, exit) => write!(f, "exit:{place}.{exit}"),
             Holder::World => write!(f, "world"),
         }
     }
@@ -606,8 +634,6 @@ impl std::str::FromStr for Holder {
             named(id).map(Holder::Place)
         } else if let Some(id) = word.strip_prefix("story:") {
             named(id).map(Holder::Story)
-        } else if let Some((place, exit)) = model::exit_parts(word) {
-            Some(Holder::Exit(place.to_string(), exit.to_string()))
         } else if word == "world" {
             Some(Holder::World)
         } else {
@@ -633,9 +659,10 @@ pub(crate) fn write_meter(
     state.edit_meter(canon, holder, key, edit)
 }
 
-/// Add `delta` to the count `holder` has of item `id`. An actor who no longer holds the item
-/// they wield lets go of it.
+/// Add `delta` to the count `holder` has of item `id`: an actor's, or a place's the pack
+/// defines. An actor who no longer holds the item they wield lets go of it.
 pub(crate) fn shift_item(
+    canon: &Canon,
     state: &mut State,
     holder: &Holder,
     id: &str,
@@ -644,6 +671,9 @@ pub(crate) fn shift_item(
 ) -> Result<(), Reason> {
     if !item::holds_items(holder) {
         return Err(Reason::Schema);
+    }
+    if matches!(holder, Holder::Place(place) if !canon.places.contains_key(place)) {
+        return Err(Reason::UnknownId);
     }
     let held = state.item_count(holder, id).ok_or(Reason::UnknownId)?;
     let count = item::shift_count(held, delta, max)?;
@@ -725,12 +755,8 @@ fn move_actor(
     if actor.place != from {
         return Err(Reason::OutOfRange);
     }
-    if !in_canon && !on_exit && !state.places.contains(to) {
+    if !in_canon && !on_exit {
         return Err(Reason::NoExit);
-    }
-    // A canon place the save does not list yet is listed on the first arrival.
-    if !on_exit {
-        state.list(&Holder::Place(to.to_string()))?;
     }
     state.edit_actor(actor_id, ActorEdit::Place(to.to_string()))
 }
@@ -779,8 +805,7 @@ fn learn(state: &mut State, actor_id: &str, facts: &[String]) -> Result<(), Reas
     state.edit_actor(actor_id, ActorEdit::Learn(facts.to_vec()))
 }
 
-/// Set or clear a flag `holder` carries. Setting one lists its holder, as every component's
-/// writer does.
+/// Set or clear a flag `holder` carries.
 fn set_flag(
     canon: &Canon,
     state: &mut State,
@@ -794,6 +819,20 @@ fn set_flag(
     state.set_flag(holder, key, value)
 }
 
+/// Open or shut the door of `exit`, an exit of the pack's with an `if`.
+fn set_exit_open(
+    canon: &Canon,
+    state: &mut State,
+    exit: &ExitId,
+    open: bool,
+) -> Result<(), Reason> {
+    let place = canon.places.get(&exit.place);
+    if !place.is_some_and(|place| place.has_door(&exit.exit)) {
+        return Err(Reason::UnknownId);
+    }
+    state.set_exit_open(exit, open)
+}
+
 fn reveal(canon: &Canon, state: &mut State, actor_id: &str, fact: &str) -> Result<(), Reason> {
     if !canon.facts.contains_key(fact) {
         return Err(Reason::UnknownId);
@@ -802,6 +841,7 @@ fn reveal(canon: &Canon, state: &mut State, actor_id: &str, fact: &str) -> Resul
 }
 
 fn leave_note(
+    canon: &Canon,
     state: &mut State,
     note_id: String,
     mut to: Vec<String>,
@@ -813,7 +853,7 @@ fn leave_note(
         return Err(Reason::UnknownId);
     }
     if let Some(place_id) = &place {
-        if !state.places.contains(place_id) {
+        if !canon.places.contains_key(place_id) {
             return Err(Reason::UnknownId);
         }
     }

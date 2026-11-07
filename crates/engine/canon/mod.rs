@@ -205,16 +205,12 @@ impl Canon {
         }
     }
 
-    /// Whether `holder` carries flag `key`: one its file declares, `open` on an exit with an
-    /// `if`, or any world flag but `busy`.
+    /// Whether `holder` carries flag `key`: one its file declares, or any world flag but `busy`.
     pub(crate) fn carries_flag(&self, holder: &Holder, key: &str) -> bool {
         let flags = match holder {
             Holder::Actor(id) => self.cast.get(id).map(|cast| &cast.flags),
             Holder::Place(id) => self.places.get(id).map(|place| &place.flags),
             Holder::Story(id) => self.stories.get(id).map(|story| &story.flags),
-            Holder::Exit(place, exit) => {
-                return key == OPEN && self.places.get(place).is_some_and(|at| at.has_door(exit))
-            }
             Holder::World => return !key.is_empty() && key != "busy",
         };
         flags.is_some_and(|flags| flags.iter().any(|flag| flag == key))

@@ -1,14 +1,14 @@
 //! Exits, admission, and the journeys that follow them.
 
-use crate::canon::{Canon, Exit, PlaceDef, OPEN};
+use crate::canon::{Canon, Exit, PlaceDef};
 use crate::intent::{Intent, Source, Target, Viewer};
 use crate::model::tracked::Entry;
-use crate::model::{ActorEdit, PendingAction, State};
+use crate::model::{ActorEdit, ExitId, PendingAction, State};
 use crate::round::log::RoundLog;
 use crate::rules::cond;
 use crate::rules::context::Context;
 use crate::rules::cost;
-use crate::rules::effect::{Effect, EffectKind, Holder};
+use crate::rules::effect::{Effect, EffectKind};
 use crate::rules::gate;
 use crate::rules::lines::place_name;
 use crate::rules::rule::{EffectTemplate, LocationTo, Rule};
@@ -123,15 +123,18 @@ fn is_revealed(canon: &Canon, state: &State, actor_id: &str, exit: &Exit) -> boo
 
 /// A door is locked until it opens. An exit with no `if` is no door, so it is always open.
 fn is_locked(state: &State, exit: &Exit) -> bool {
-    !exit.if_.is_empty() && !state.has_flag(&door(exit), OPEN)
+    !exit.if_.is_empty() && !state.is_exit_open(&door(exit))
 }
 
-/// The exit as the holder of its flag `open`.
-fn door(exit: &Exit) -> Holder {
-    Holder::Exit(exit.from.clone(), exit.name.clone())
+/// The address of the exit's door.
+fn door(exit: &Exit) -> ExitId {
+    ExitId {
+        place: exit.from.clone(),
+        exit: exit.name.clone(),
+    }
 }
 
-/// Open each locked door whose `if` some actor in its place meets, with a `flag` effect
+/// Open each locked door whose `if` some actor in its place meets, with an `exit_open` effect
 /// written as no one, under the intent `door:<place>.<exit>`. Runs at the end of each round,
 /// after triggers.
 pub(crate) fn open_doors(canon: &Canon, state: &mut State, log: &mut RoundLog) {
@@ -162,10 +165,9 @@ pub(crate) fn open_doors(canon: &Canon, state: &mut State, log: &mut RoundLog) {
             }
             let id = format!("door:{place}.{}", exit.name);
             let intent = Intent::new(id, seen.round_index, None, Source::Engine, "door", target);
-            let kind = EffectKind::Flag {
-                holder: door(exit),
-                key: OPEN.to_string(),
-                value: true,
+            let kind = EffectKind::ExitOpen {
+                exit: door(exit),
+                open: true,
             };
             opens.push((Effect::new(None, &intent.id, kind), intent));
         }

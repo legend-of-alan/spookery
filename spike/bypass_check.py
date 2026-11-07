@@ -16,7 +16,7 @@ import sys
 GROUPS = {
     'private mutators': '''
 #[allow(dead_code, unused, unreachable_code)]
-fn bypass(state: &mut State, holder: Holder) {
+fn bypass(state: &mut State, holder: crate::rules::effect::Holder) {
     state.meters.take(&holder, "grit");
     state.flags.put(holder.clone(), String::new(), unreachable!());
     state.items.tracked_mut(&holder, "lamp_oil");
@@ -31,7 +31,7 @@ fn bypass(state: &mut State, holder: Holder) {
 #[allow(dead_code, unused)]
 fn bypass(state: &mut State, actor: crate::model::ActorLive) {
     state.actors.insert(String::new(), actor.into());
-    state.places.remove("docks_shop");
+    state.open_exits.remove("docks_shop");
     state.actors.get_mut("mira");
     state.world_time = 0;
 }

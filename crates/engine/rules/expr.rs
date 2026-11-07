@@ -205,12 +205,11 @@ pub(crate) fn resolve_item_id(context: &Context, id: &str) -> Result<String, Rea
 }
 
 /// Who holds the meter, flag or item a rule names: `here` and `place:` are a place, `story:`
-/// is a story, `exit:` is an exit, `world` is the world, and anyone else is an actor.
+/// is a story, `world` is the world, and anyone else is an actor. An exit holds none.
 pub(crate) fn resolve_holder(context: &Context, who: &Who) -> Result<Holder, Reason> {
     match who {
         Who::World => Ok(Holder::World),
         Who::Story(id) => Ok(Holder::Story(id.clone())),
-        Who::Exit(place, exit) => Ok(Holder::Exit(place.clone(), exit.clone())),
         Who::Here | Who::Place(_) => Ok(Holder::Place(resolve_who_id(context, who)?)),
         _ => Ok(Holder::Actor(resolve_who_id(context, who)?)),
     }

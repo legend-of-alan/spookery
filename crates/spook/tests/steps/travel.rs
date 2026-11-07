@@ -156,10 +156,7 @@ fn a_place_rule_teleports(world: &mut World) {
     let text = text.replacen("\n---\n", &format!("{rules}---\n"), 1);
     assert!(text.contains("id: slip"), "{text}");
     fs::write(&path, text).unwrap();
-    edit_save(&pack, |now| {
-        now.list(&spookery_engine::Holder::Place("cellar".to_string()))
-            .unwrap();
-    });
+    spookery_engine::testing::stamp_pack_rev(&pack);
     table::listen(world, &pack);
     table::seat_rowan(world, &pack);
     world.pack = Some(pack);

@@ -11,7 +11,7 @@ use crate::model::key::{Change, StateKey, StateValue};
 use crate::model::meter::{MeterLive, Offset};
 use crate::model::modifier::ModifierLive;
 use crate::model::tracked::{Edit, Tracked};
-use crate::model::{ComponentId, MemoryLine, Presence, State};
+use crate::model::{ComponentId, ExitId, MemoryLine, Presence, State};
 use crate::rules::effect::Holder;
 use crate::Reason;
 
@@ -95,6 +95,8 @@ pub(super) enum Removed {
     /// A flag holds no value, so its holder and key are all there is.
     Flag(Holder, String),
     Item(Holder, String, Tracked<u32, Shift>),
+    /// A door holds no value either: its exit is all there is.
+    ExitOpen(ExitId),
 }
 
 /// How far the round had come: the length of each log a rollback cuts back.

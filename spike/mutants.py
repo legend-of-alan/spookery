@@ -33,7 +33,6 @@ MUTANTS = {
     'removed_modifier_lost': [(M, "            Removed::Modifier(holder, id, part) => self.modifiers.put(holder, id, part),", "            Removed::Modifier(..) => {}")],
     'removed_flag_lost': [(M, "            Removed::Flag(holder, key) => self.flags.put(holder, key, Tracked::default()),", "            Removed::Flag(..) => {}")],
     'removed_item_lost': [(M, "            Removed::Item(holder, id, part) => self.items.put(holder, id, part),", "            Removed::Item(..) => {}")],
-    'place_record_stays': [(M, "            ComponentId::Place(id) => drop(self.places.get_mut().remove(id)),", "            ComponentId::Place(_) => {}")],
     # A field no key answers for still rolls back.
     'visited_undo_wrong': [(M, "            ActorEdit::Visited(edit) => ActorEdit::Visited(edit.apply(&mut actor.visited)?),", """            ActorEdit::Visited(edit) => {
                 let id = edit.id.clone();

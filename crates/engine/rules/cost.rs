@@ -83,7 +83,7 @@ pub(crate) fn pay(
         let context = Context::new(canon, state, state.presence(), intent);
         let count = item_count(expr::eval_with_dice(&context, expr, dice)?)?;
         // The key budget keeps its own code; any other refusal of the take is a shortfall.
-        match effect::shift_item(state, &holder, id, -i64::from(count), None) {
+        match effect::shift_item(canon, state, &holder, id, -i64::from(count), None) {
             Err(Reason::Budget) => return Err(Reason::Budget),
             Err(_) => return Err(Reason::CantAfford),
             Ok(()) => {}

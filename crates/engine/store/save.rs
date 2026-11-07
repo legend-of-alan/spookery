@@ -8,7 +8,7 @@ use crate::diagnostic::{check_tag, error, locate_nth, parse_file, schema_error, 
 use crate::model::item::holds_items;
 use crate::model::meter::MeterLive;
 use crate::model::modifier;
-use crate::model::{exit_parts, sort_unique, ComponentId, State};
+use crate::model::{sort_unique, ComponentId, State};
 use crate::rules::effect::Holder;
 use crate::store::records::{AddedMeter, DroppedMeter};
 use crate::Reason;
@@ -46,8 +46,7 @@ pub fn parse(text: &str) -> Result<State, Vec<Diagnostic>> {
         }
     }
     let state: State = parse_file(FILE, text, 0)?;
-    let mut diags = check_actor_places(&state);
-    diags.extend(check_holders(&state));
+    let diags = check_holders(&state);
     if diags.is_empty() {
         Ok(state)
     } else {
@@ -64,21 +63,20 @@ pub fn emit(state: &State) -> Result<String, Reason> {
     Ok(one_trailing_lf(text))
 }
 
-/// Each component's holder must be one the save lists: an actor in `actors`, a place in
-/// `places`, a story in `stories`, an exit of a place in `places`, or the world. Only an actor
-/// or a place holds items.
+/// Each component's holder must be one the save can hold it on: an actor in `actors`, a place,
+/// a story, or the world, as `State::require_entity` says. Only an actor or a place holds items.
 fn check_holders(state: &State) -> Vec<Diagnostic> {
     let mut wrong: Vec<(&str, Holder)> = Vec::new();
     for at in state.components() {
         let (store, holder) = at.stored().expect("the walk yields stored components");
         let itemless = matches!(at, ComponentId::Item(..)) && !holds_items(holder);
-        if !state.lists(holder) || itemless {
+        if state.require_entity(holder).is_err() || itemless {
             wrong.push((store, holder.clone()));
         }
     }
     wrong.dedup();
     let diag = |(store, holder): (&str, Holder)| {
-        let (problem, hint) = if state.lists(&holder) {
+        let (problem, hint) = if state.require_entity(&holder).is_ok() {
             let problem = format!("{store} lists '{holder}', which cannot hold items");
             (problem, "give the items to an actor or a place")
         } else {
@@ -110,30 +108,6 @@ fn one_trailing_lf(mut text: String) -> String {
     }
     text.push('\n');
     text
-}
-
-fn check_actor_places(state: &State) -> Vec<Diagnostic> {
-    const FILE: &str = "state/save.yaml";
-    let mut diags = Vec::new();
-    for (id, actor) in &state.actors {
-        // A walker stands on an exit of a place until they arrive.
-        let place = exit_parts(&actor.place).map_or(actor.place.as_str(), |(place, _)| place);
-        if state.places.contains(place) {
-            continue;
-        }
-        diags.push(
-            schema_error(
-                FILE,
-                &format!(
-                    "actor '{id}' is in place '{}', which is not in places",
-                    actor.place
-                ),
-                "add the place or move the actor",
-            )
-            .at_path(format!("actors.{id}.place")),
-        );
-    }
-    diags
 }
 
 /// Meters the pack gives a holder that the holder lacks, each at its `start`.
@@ -261,8 +235,6 @@ state_rev: 0
 round_index: 0
 world_time: 0
 last_round_at: \"2026-01-01T00:00:00Z\"
-places:
-  - gate
 actors: {{}}
 notes: []
 ",

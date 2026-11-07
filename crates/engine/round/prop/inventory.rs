@@ -14,6 +14,7 @@
 //!
 //! Deterministic in CI: 64 cases, seed `0x0018_0018`, no failure file.
 
+use crate::canon::Canon;
 use crate::intent::{Intent, IntentArgs, Source, Target, Viewer};
 use crate::model::State;
 use crate::rules::effect::{Effect, EffectKind, Holder};
@@ -38,7 +39,7 @@ fn random_item_changes_never_leave_a_negative_count() {
     let pack = TempPack(copy_docks("inventory"));
     let world = World::open(&pack.0).expect("docks pack opens");
     let actors: Vec<String> = world.state().actors.keys().cloned().collect();
-    let places: Vec<String> = world.state().places.iter().cloned().collect();
+    let places: Vec<String> = world.canon().places.keys().cloned().collect();
     assert!(
         actors.len() >= 2 && !places.is_empty(),
         "the pack needs actors and places to shift"
@@ -57,7 +58,7 @@ fn apply_changes(world: &World<()>, steps: &[ItemChange]) -> Result<(), TestCase
     let intent = npc_intent();
     for step in steps {
         let before = state.clone();
-        let known = is_known_holder(&state, &step.holder);
+        let known = is_known_holder(canon, &state, &step.holder);
         let held = count_of(&state, &step.holder, &step.id);
         let outcome = item_effect(step).apply(canon, &mut state, &intent);
         assert_no_stored_zero(&state)?;
@@ -113,11 +114,11 @@ fn assert_no_stored_zero(state: &State) -> Result<(), TestCaseError> {
     Ok(())
 }
 
-fn is_known_holder(state: &State, holder: &Holder) -> bool {
+fn is_known_holder(canon: &Canon, state: &State, holder: &Holder) -> bool {
     match holder {
         Holder::Actor(id) => state.actors.contains_key(id),
-        Holder::Place(id) => state.places.contains(id),
-        Holder::Story(_) | Holder::Exit(..) | Holder::World => false,
+        Holder::Place(id) => canon.places.contains_key(id),
+        Holder::Story(_) | Holder::World => false,
     }
 }
 
@@ -149,7 +150,7 @@ fn item_effect(step: &ItemChange) -> Effect {
     let (actor_id, place) = match &step.holder {
         Holder::Actor(id) => (Some(id.clone()), None),
         Holder::Place(id) => (None, Some(id.clone())),
-        Holder::Story(_) | Holder::Exit(..) | Holder::World => (None, None),
+        Holder::Story(_) | Holder::World => (None, None),
     };
     Effect {
         kind: EffectKind::Item {

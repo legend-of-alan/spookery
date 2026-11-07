@@ -4,7 +4,7 @@
 //! Feature: A rollback puts the save back exactly
 //!
 //!   Scenario: Random writes under nested savepoints roll back to each savepoint's save
-//!     Given the docks pack, with no live record yet for the street, Mira holding one brass key, two flags the street can carry, and a burn on grit
+//!     Given the docks pack, with Mira holding one brass key, two flags the street can carry, and a burn on grit
 //!     When random effects, round writes and the end-of-round note of exits land under savepoints opened and rolled back at random
 //!     Then each rollback leaves the save and the spent keys as they were when its savepoint was taken
 //!     And each take reports every meter whose value moved since the last take
@@ -19,7 +19,7 @@ use crate::intent::{Intent, IntentArgs, Source, Target, Viewer};
 use crate::model::key::{Change, StateKey, StateValue};
 use crate::model::meter::MeterWrite;
 use crate::model::modifier::ModifierDef;
-use crate::model::State;
+use crate::model::{ExitId, State};
 use crate::rules::effect::{Effect, EffectKind, Holder};
 use crate::testing::copy_docks;
 use crate::world::World;
@@ -52,17 +52,16 @@ enum Step {
 #[test]
 fn nested_rollbacks_put_the_save_back_exactly() {
     let pack = TempPack(copy_docks("rollback"));
-    // The street has no live record yet, so walking there or lighting it gives it its first one.
-    // A hand edit of the save takes it out, and moves the two who stood there into the shop.
-    // Mira holds one brass key, so a take under a savepoint can take her last one out.
+    // The street holds nothing yet, so lighting it puts its first component on it, which a
+    // rollback takes off whole. Mira holds one brass key, so a take under a savepoint can take
+    // her last one out.
     let path = pack.0.join("state/save.yaml");
     let text = std::fs::read_to_string(&path).expect("the docks save");
-    let edited = (text.replace("  - docks_street\n", ""))
-        .replace("    place: docks_street\n", "    place: docks_shop\n")
-        .replace("\nitems:\n", "\nitems:\n  mira:\n    brass_key: 1\n");
-    for gone in ["  - docks_street\n", "    place: docks_street\n"] {
-        assert!(!edited.contains(gone) && text.contains(gone), "{gone:?}");
-    }
+    assert!(
+        !text.contains("place:docks_street"),
+        "the street holds something"
+    );
+    let edited = text.replace("\nitems:\n", "\nitems:\n  mira:\n    brass_key: 1\n");
     assert!(
         edited.contains("  mira:\n    brass_key: 1\n"),
         "Mira holds no key"
@@ -233,10 +232,12 @@ fn effect(state: &State, step: &Step, index: usize) -> Effect {
             add: *add,
             ticks: 3,
         },
-        Step::Door(open) => EffectKind::Flag {
-            holder: Holder::Exit("docks_shop".to_string(), "stairs".to_string()),
-            key: "open".to_string(),
-            value: *open,
+        Step::Door(open) => EffectKind::ExitOpen {
+            exit: ExitId {
+                place: "docks_shop".to_string(),
+                exit: "stairs".to_string(),
+            },
+            open: *open,
         },
         Step::StreetFlag(key, value) => EffectKind::Flag {
             holder: Holder::Place("docks_street".to_string()),
