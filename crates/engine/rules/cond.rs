@@ -4,7 +4,7 @@ use crate::canon::{Canon, OPEN};
 use crate::intent::{Intent, Source, Target, Viewer};
 use crate::model::{ExitId, Presence, State};
 use crate::rules::context::Context;
-use crate::rules::effect::Holder;
+use crate::rules::effect::EntityId;
 use crate::rules::expr;
 use crate::rules::rule::{Cond, Who};
 use crate::Reason;
@@ -59,7 +59,7 @@ fn holds(context: &Context, cond: &Cond) -> Result<bool, Reason> {
         Cond::HasItem { who, id, count } => {
             let actor = expr::resolve_who_id(context, who)?;
             let id = expr::resolve_item_id(context, id)?;
-            let held = (state.item_count(&Holder::Actor(actor), &id)).unwrap_or(0);
+            let held = (state.item_count(&EntityId::Actor(actor), &id)).unwrap_or(0);
             Ok(held >= *count)
         }
         Cond::Wielding { who, id } => {
@@ -76,8 +76,8 @@ fn holds(context: &Context, cond: &Cond) -> Result<bool, Reason> {
             op,
             value,
         } => {
-            let holder = expr::resolve_holder(context, who)?;
-            let current = state.meter_value(context.canon, &holder, key)?;
+            let entity = expr::resolve_entity(context, who)?;
+            let current = state.meter_value(context.canon, &entity, key)?;
             let right = expr::eval(context, value)?;
             Ok(op.holds(current, right))
         }
@@ -87,8 +87,8 @@ fn holds(context: &Context, cond: &Cond) -> Result<bool, Reason> {
             is,
         } => Ok((key == OPEN && state.is_exit_open(&ExitId::new(place, exit))) == *is),
         Cond::Flag { who, key, is } => {
-            let holder = expr::resolve_holder(context, who)?;
-            Ok(state.has_flag(&holder, key) == *is)
+            let entity = expr::resolve_entity(context, who)?;
+            Ok(state.has_flag(&entity, key) == *is)
         }
         Cond::At { who, place } => {
             let actor = expr::resolve_who_id(context, who)?;

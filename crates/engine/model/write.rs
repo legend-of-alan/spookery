@@ -13,7 +13,7 @@ use crate::model::MemoryLine;
 use crate::model::Note;
 use crate::model::{number, reading, ActCounter, ActorEdit, ComponentId, ExitId};
 use crate::model::{NoteEdit, PendingAction, State};
-use crate::rules::effect::Holder;
+use crate::rules::effect::EntityId;
 use crate::Reason;
 
 impl State {
@@ -41,54 +41,54 @@ impl State {
         }
     }
 
-    /// Put meter `key` on `holder` as `next`, `None` taking it off, outside the writes a
-    /// round's rules make: migrate gives a holder the meters the pack adds and drops the ones
+    /// Put meter `key` on `entity` as `next`, `None` taking it off, outside the writes a
+    /// round's rules make: migrate gives an entity the meters the pack adds and drops the ones
     /// it no longer gives. Counted and kept as `edit_meter` says.
     pub fn put_meter(
         &mut self,
         canon: &Canon,
-        holder: &Holder,
+        entity: &EntityId,
         key: &str,
         next: Option<MeterLive>,
     ) -> Result<(), Reason> {
-        let watched = StateKey::meter(holder, key);
-        if self.meters.get(holder, key) == next.as_ref() {
+        let watched = StateKey::meter(entity, key);
+        if self.meters.get(entity, key) == next.as_ref() {
             return Ok(());
         }
         if next.is_some() {
-            self.require_entity(holder)?;
+            self.require_entity(entity)?;
         }
-        let before = reading(self.meter_value(canon, holder, key));
+        let before = reading(self.meter_value(canon, entity, key));
         let State { meters, ledger, .. } = &mut *self;
-        if let Some(part) = meters.take(holder, key) {
-            ledger.removed(Removed::Meter(holder.clone(), key.to_string(), part));
+        if let Some(part) = meters.take(entity, key) {
+            ledger.removed(Removed::Meter(entity.clone(), key.to_string(), part));
         }
         if let Some(live) = next {
-            meters.put(holder.clone(), key.to_string(), Tracked::new(live));
-            ledger.added(ComponentId::Meter(holder.clone(), key.to_string()));
+            meters.put(entity.clone(), key.to_string(), Tracked::new(live));
+            ledger.added(ComponentId::Meter(entity.clone(), key.to_string()));
         }
-        let after = reading(self.meter_value(canon, holder, key));
+        let after = reading(self.meter_value(canon, entity, key));
         self.ledger.note(watched, before, after)
     }
 
-    /// Move meter `key` on `holder` by `edit`, counted and kept as `edit_actor` says, with the
+    /// Move meter `key` on `entity` by `edit`, counted and kept as `edit_actor` says, with the
     /// meter's value as `State::meter_value` reads it.
     pub fn edit_meter(
         &mut self,
         canon: &Canon,
-        holder: &Holder,
+        entity: &EntityId,
         key: &str,
         edit: Offset,
     ) -> Result<(), Reason> {
-        let watched = StateKey::meter(holder, key);
-        let before = reading(self.meter_value(canon, holder, key));
+        let watched = StateKey::meter(entity, key);
+        let before = reading(self.meter_value(canon, entity, key));
         let State { meters, ledger, .. } = &mut *self;
-        let meter = meters.tracked_mut(holder, key).ok_or(Reason::UnknownId)?;
-        let at = || ComponentId::Meter(holder.clone(), key.to_string());
+        let meter = meters.tracked_mut(entity, key).ok_or(Reason::UnknownId)?;
+        let at = || ComponentId::Meter(entity.clone(), key.to_string());
         if !ledger.track(at, meter, edit) {
             return Ok(());
         }
-        let after = reading(self.meter_value(canon, holder, key));
+        let after = reading(self.meter_value(canon, entity, key));
         self.ledger.note(watched, before, after)
     }
 
@@ -103,40 +103,40 @@ impl State {
         id: &str,
         next: Option<ModifierLive>,
     ) -> Result<(), Reason> {
-        let holder = Holder::Actor(actor_id.to_string());
-        self.require_entity(&holder)?;
+        let entity = EntityId::Actor(actor_id.to_string());
+        self.require_entity(&entity)?;
         let meter = canon.modifiers.get(id).map(|def| def.meter.as_str());
-        let meter_before = meter.map(|key| reading(self.meter_value(canon, &holder, key)));
-        let held = self.modifiers.get(&holder, id);
+        let meter_before = meter.map(|key| reading(self.meter_value(canon, &entity, key)));
+        let held = self.modifiers.get(&entity, id);
         let stacks = held.map(|held| held.stacks.clone());
         let before = held.map_or(StateValue::Empty, ModifierLive::to_value);
         let puts = next.is_some();
-        let at = || ComponentId::Modifier(holder.clone(), id.to_string());
+        let at = || ComponentId::Modifier(entity.clone(), id.to_string());
         let State {
             modifiers, ledger, ..
         } = &mut *self;
-        let moved = match (modifiers.tracked_mut(&holder, id), next) {
+        let moved = match (modifiers.tracked_mut(&entity, id), next) {
             (Some(held), Some(next)) => ledger.track(at, held, next),
             (Some(_), None) => {
-                let held = modifiers.take(&holder, id).expect("a modifier held");
-                ledger.removed(Removed::Modifier(holder.clone(), id.to_string(), held));
+                let held = modifiers.take(&entity, id).expect("a modifier held");
+                ledger.removed(Removed::Modifier(entity.clone(), id.to_string(), held));
                 true
             }
             (None, Some(next)) => {
-                modifiers.put(holder.clone(), id.to_string(), Tracked::new(next));
+                modifiers.put(entity.clone(), id.to_string(), Tracked::new(next));
                 ledger.added(at());
                 true
             }
             (None, None) => false,
         };
         if let (Some(meter), Some(before)) = (meter, meter_before) {
-            let now = self.modifiers.get(&holder, id).map(|held| &held.stacks);
+            let now = self.modifiers.get(&entity, id).map(|held| &held.stacks);
             let stacks_moved = now != stacks.as_ref();
             let key = StateKey::ActorMeter(actor_id.to_string(), meter.to_string());
             if stacks_moved {
                 self.ledger.count_key(&key)?;
             }
-            let after = self.meter_value(canon, &holder, meter);
+            let after = self.meter_value(canon, &entity, meter);
             if puts {
                 after?;
             }
@@ -147,7 +147,7 @@ impl State {
         }
         if moved {
             let after =
-                (self.modifiers.get(&holder, id)).map_or(StateValue::Empty, ModifierLive::to_value);
+                (self.modifiers.get(&entity, id)).map_or(StateValue::Empty, ModifierLive::to_value);
             let key = StateKey::ActorModifier(actor_id.to_string(), id.to_string());
             self.ledger.note(key, before, after)?;
         }
@@ -160,12 +160,12 @@ impl State {
         canon: &Canon,
         world_time: u64,
     ) -> Result<(), Reason> {
-        let due: Vec<(Holder, String)> = (self.modifiers.iter())
+        let due: Vec<(EntityId, String)> = (self.modifiers.iter())
             .filter(|(_, _, held)| held.until <= world_time)
-            .map(|(holder, id, _)| (holder.clone(), id.clone()))
+            .map(|(entity, id, _)| (entity.clone(), id.clone()))
             .collect();
-        for (holder, id) in due {
-            let Holder::Actor(actor) = holder else {
+        for (entity, id) in due {
+            let EntityId::Actor(actor) = entity else {
                 continue;
             };
             self.put_modifier(canon, &actor, &id, None)?;
@@ -173,47 +173,47 @@ impl State {
         Ok(())
     }
 
-    /// Set how many of item `id` `holder` holds to `count`, counted and kept as `edit_actor`
+    /// Set how many of item `id` `entity` holds to `count`, counted and kept as `edit_actor`
     /// says. Only an actor or a place holds items, and it must be in the save.
-    pub fn set_items(&mut self, holder: &Holder, id: &str, count: u32) -> Result<(), Reason> {
-        let watched = StateKey::item(holder, id).ok_or(Reason::Schema)?;
-        let held = self.item_count(holder, id).ok_or(Reason::UnknownId)?;
+    pub fn set_items(&mut self, entity: &EntityId, id: &str, count: u32) -> Result<(), Reason> {
+        let watched = StateKey::item(entity, id).ok_or(Reason::Schema)?;
+        let held = self.item_count(entity, id).ok_or(Reason::UnknownId)?;
         if held == count {
             return Ok(());
         }
         let State { items, ledger, .. } = self;
-        let at = || ComponentId::Item(holder.clone(), id.to_string());
+        let at = || ComponentId::Item(entity.clone(), id.to_string());
         if held == 0 {
-            items.put(holder.clone(), id.to_string(), Tracked::new(count));
+            items.put(entity.clone(), id.to_string(), Tracked::new(count));
             ledger.added(at());
         } else if count == 0 {
-            let part = items.take(holder, id).expect("a count above 0");
-            ledger.removed(Removed::Item(holder.clone(), id.to_string(), part));
+            let part = items.take(entity, id).expect("a count above 0");
+            ledger.removed(Removed::Item(entity.clone(), id.to_string(), part));
         } else {
-            let part = items.tracked_mut(holder, id).expect("a count above 0");
+            let part = items.tracked_mut(entity, id).expect("a count above 0");
             ledger.track(at, part, Shift(i64::from(count) - i64::from(held)));
         }
         ledger.note(watched, number(u64::from(held)), number(u64::from(count)))
     }
 
-    /// Set `holder`'s flag `key` on or off, counted and kept as `edit_actor` says. A flag
+    /// Set `entity`'s flag `key` on or off, counted and kept as `edit_actor` says. A flag
     /// already so changes nothing.
-    pub fn set_flag(&mut self, holder: &Holder, key: &str, on: bool) -> Result<(), Reason> {
-        if self.flags.get(holder, key).is_some() == on {
+    pub fn set_flag(&mut self, entity: &EntityId, key: &str, on: bool) -> Result<(), Reason> {
+        if self.flags.get(entity, key).is_some() == on {
             return Ok(());
         }
         if on {
-            self.require_entity(holder)?;
+            self.require_entity(entity)?;
         }
         let State { flags, ledger, .. } = self;
-        let (holder, key) = (holder.clone(), key.to_string());
-        let watched = StateKey::flag(&holder, &key);
+        let (entity, key) = (entity.clone(), key.to_string());
+        let watched = StateKey::flag(&entity, &key);
         if on {
-            flags.put(holder.clone(), key.clone(), Tracked::default());
-            ledger.added(ComponentId::Flag(holder, key));
+            flags.put(entity.clone(), key.clone(), Tracked::default());
+            ledger.added(ComponentId::Flag(entity, key));
         } else {
-            flags.take(&holder, &key);
-            ledger.removed(Removed::Flag(holder, key));
+            flags.take(&entity, &key);
+            ledger.removed(Removed::Flag(entity, key));
         }
         ledger.note(watched, StateValue::Bool(!on), StateValue::Bool(on))
     }
@@ -326,9 +326,9 @@ impl State {
         if !self.actors.contains_key(id) {
             return Err(Reason::UnknownId);
         }
-        let holder = Holder::Actor(id.to_string());
-        for at in self.components_on(&holder).into_iter().rev() {
-            self.put_component(canon, &at, &holder, false)?;
+        let entity = EntityId::Actor(id.to_string());
+        for at in self.components_on(&entity).into_iter().rev() {
+            self.put_component(canon, &at, &entity, false)?;
         }
         let record = self.actors.get_mut().remove(id).expect("an actor");
         self.ledger
@@ -340,19 +340,19 @@ impl State {
     /// components through its writer.
     pub fn copy_actor(&mut self, canon: &Canon, from: &str, to: &str) -> Result<(), Reason> {
         let record = (**self.actors.get(from).ok_or(Reason::UnknownId)?).clone();
-        let components = self.components_on(&Holder::Actor(from.to_string()));
+        let components = self.components_on(&EntityId::Actor(from.to_string()));
         self.add_actor(to, record)?;
-        let copy = Holder::Actor(to.to_string());
+        let copy = EntityId::Actor(to.to_string());
         for at in components {
             self.put_component(canon, &at, &copy, true)?;
         }
         Ok(())
     }
 
-    /// Every component on `holder`, by id, in the order `components` walks them, which is the
+    /// Every component on `entity`, by id, in the order `components` walks them, which is the
     /// order a copy puts them on.
-    fn components_on(&self, holder: &Holder) -> Vec<ComponentId> {
-        let on = |at: &ComponentId| at.stored().is_some_and(|(_, on)| on == holder);
+    fn components_on(&self, entity: &EntityId) -> Vec<ComponentId> {
+        let on = |at: &ComponentId| at.stored().is_some_and(|(_, on)| on == entity);
         self.components().filter(on).collect()
     }
 
@@ -362,7 +362,7 @@ impl State {
         &mut self,
         canon: &Canon,
         at: &ComponentId,
-        onto: &Holder,
+        onto: &EntityId,
         on: bool,
     ) -> Result<(), Reason> {
         match at {
@@ -375,7 +375,7 @@ impl State {
                 self.put_meter(canon, onto, key, live)
             }
             ComponentId::Modifier(from, id) => {
-                let Holder::Actor(actor_id) = onto else {
+                let EntityId::Actor(actor_id) = onto else {
                     return Err(Reason::Schema);
                 };
                 let live = self.modifiers.get(from, id).cloned().filter(|_| on);
@@ -408,7 +408,7 @@ mod tests {
         canon.budget.max_state_keys_mutated = 2;
         // Bram's grit sits clamped at its minimum: taking more moves the offset, not the value.
         let mut state = opened.state().clone();
-        let bram = Holder::Actor("bram".to_string());
+        let bram = EntityId::Actor("bram".to_string());
         let clamped = MeterLive {
             base: 1,
             offset: -5,
@@ -423,7 +423,7 @@ mod tests {
         let intent = Intent::habit(world.state(), "mira", "leave_door_note");
         let mut write = |actor: &str, key: &str, delta: i64| {
             let kind = EffectKind::Meter {
-                holder: Holder::Actor(actor.to_string()),
+                entity: EntityId::Actor(actor.to_string()),
                 key: key.to_string(),
                 write: MeterWrite::Offset(delta),
             };
@@ -444,8 +444,11 @@ mod tests {
             std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packs/oneshot-docks");
         let opened = World::open(&pack).expect("open");
         let canon = opened.canon();
-        let (mira, briar) = (Holder::Actor("mira".into()), Holder::Actor("briar".into()));
-        let oil = |state: &State, holder: &Holder| state.item_count(holder, "lamp_oil");
+        let (mira, briar) = (
+            EntityId::Actor("mira".into()),
+            EntityId::Actor("briar".into()),
+        );
+        let oil = |state: &State, entity: &EntityId| state.item_count(entity, "lamp_oil");
         let mut state = opened.state().clone();
         state.set_items(&mira, "lamp_oil", 2).unwrap();
         state.accept();

@@ -20,7 +20,7 @@ use crate::model::key::{Change, StateKey, StateValue};
 use crate::model::meter::MeterWrite;
 use crate::model::modifier::ModifierDef;
 use crate::model::{ExitId, State};
-use crate::rules::effect::{Effect, EffectKind, Holder};
+use crate::rules::effect::{Effect, EffectKind, EntityId};
 use crate::testing::copy_docks;
 use crate::world::World;
 
@@ -34,7 +34,7 @@ enum Step {
     Savepoint,
     Rollback,
     Take,
-    Item(Holder, &'static str, i64),
+    Item(EntityId, &'static str, i64),
     Meter(&'static str, i64),
     Burn(i64),
     Expire,
@@ -179,15 +179,15 @@ fn every_moved_meter_is_reported(
     now: &State,
     changes: &[Change],
 ) -> Result<(), TestCaseError> {
-    let read = |state: &State, holder: &Holder, key: &str| {
+    let read = |state: &State, entity: &EntityId, key: &str| {
         state
-            .meter_value(world.canon(), holder, key)
+            .meter_value(world.canon(), entity, key)
             .map_or(StateValue::Empty, StateValue::Number)
     };
     for id in now.actors.keys() {
-        let holder = Holder::Actor(id.clone());
-        for (key, _) in now.meters.on(&holder) {
-            let (before, after) = (read(taken, &holder, key), read(now, &holder, key));
+        let entity = EntityId::Actor(id.clone());
+        for (key, _) in now.meters.on(&entity) {
+            let (before, after) = (read(taken, &entity, key), read(now, &entity, key));
             if before == after {
                 continue;
             }
@@ -208,9 +208,9 @@ fn every_moved_meter_is_reported(
 
 fn effect(state: &State, step: &Step, index: usize) -> Effect {
     let kind = match step {
-        Step::Item(holder, id, delta) => {
-            let (actor_id, place) = match holder {
-                Holder::Actor(id) => (Some(id.clone()), None),
+        Step::Item(entity, id, delta) => {
+            let (actor_id, place) = match entity {
+                EntityId::Actor(id) => (Some(id.clone()), None),
                 _ => (None, Some("docks_shop".to_string())),
             };
             EffectKind::Item {
@@ -222,7 +222,7 @@ fn effect(state: &State, step: &Step, index: usize) -> Effect {
             }
         }
         Step::Meter(actor, delta) => EffectKind::Meter {
-            holder: Holder::Actor(actor.to_string()),
+            entity: EntityId::Actor(actor.to_string()),
             key: "grit".to_string(),
             write: MeterWrite::Offset(*delta),
         },
@@ -237,12 +237,12 @@ fn effect(state: &State, step: &Step, index: usize) -> Effect {
             open: *open,
         },
         Step::StreetFlag(key, value) => EffectKind::Flag {
-            holder: Holder::Place("docks_street".to_string()),
+            entity: EntityId::Place("docks_street".to_string()),
             key: key.to_string(),
             value: *value,
         },
         Step::WorldFlag(value) => EffectKind::Flag {
-            holder: Holder::World,
+            entity: EntityId::World,
             key: "rung".to_string(),
             value: *value,
         },
@@ -290,17 +290,17 @@ fn mira_intent() -> Intent {
 }
 
 fn pick_step() -> impl Strategy<Value = Step> {
-    let holder = select(vec![
-        Holder::Actor("mira".to_string()),
-        Holder::Actor("bram".to_string()),
-        Holder::Place("docks_shop".to_string()),
+    let entity = select(vec![
+        EntityId::Actor("mira".to_string()),
+        EntityId::Actor("bram".to_string()),
+        EntityId::Place("docks_shop".to_string()),
     ]);
     prop_oneof![
         3 => Just(Step::Savepoint),
         3 => Just(Step::Rollback),
         2 => Just(Step::Take),
-        1 => (holder, select(vec!["lamp_oil", "brass_key"]), -3i64..=3)
-            .prop_map(|(holder, id, delta)| Step::Item(holder, id, delta)),
+        1 => (entity, select(vec!["lamp_oil", "brass_key"]), -3i64..=3)
+            .prop_map(|(entity, id, delta)| Step::Item(entity, id, delta)),
         1 => (select(vec!["mira", "bram"]), -2i64..=2).prop_map(|(who, delta)| Step::Meter(who, delta)),
         1 => (-2i64..=2).prop_map(Step::Burn),
         1 => Just(Step::Expire),

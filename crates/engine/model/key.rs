@@ -2,7 +2,7 @@
 
 use std::fmt;
 
-use crate::rules::effect::Holder;
+use crate::rules::effect::EntityId;
 
 /// One budget identity. The commit diff summary is this type's `Display`,
 /// sorted as text. It is not a path inside `save.yaml`.
@@ -60,33 +60,33 @@ impl fmt::Display for StateKey {
 }
 
 impl StateKey {
-    /// The key of meter `key` on `holder`.
-    pub(crate) fn meter(holder: &Holder, key: &str) -> StateKey {
+    /// The key of meter `key` on `entity`.
+    pub(crate) fn meter(entity: &EntityId, key: &str) -> StateKey {
         let key = key.to_string();
-        match holder {
-            Holder::Actor(id) => StateKey::ActorMeter(id.clone(), key),
-            Holder::Place(id) => StateKey::PlaceMeter(id.clone(), key),
-            Holder::Story(id) => StateKey::StoryMeter(id.clone(), key),
-            Holder::World => StateKey::WorldMeter(key),
+        match entity {
+            EntityId::Actor(id) => StateKey::ActorMeter(id.clone(), key),
+            EntityId::Place(id) => StateKey::PlaceMeter(id.clone(), key),
+            EntityId::Story(id) => StateKey::StoryMeter(id.clone(), key),
+            EntityId::World => StateKey::WorldMeter(key),
         }
     }
 
-    /// The key of item `id` on `holder`. Only an actor or a place holds items.
-    pub(crate) fn item(holder: &Holder, id: &str) -> Option<StateKey> {
-        Some(match holder {
-            Holder::Actor(actor) => StateKey::ActorItem(actor.clone(), id.to_string()),
-            Holder::Place(place) => StateKey::PlaceItem(place.clone(), id.to_string()),
-            Holder::Story(_) | Holder::World => return None,
+    /// The key of item `id` on `entity`. Only an actor or a place holds items.
+    pub(crate) fn item(entity: &EntityId, id: &str) -> Option<StateKey> {
+        Some(match entity {
+            EntityId::Actor(actor) => StateKey::ActorItem(actor.clone(), id.to_string()),
+            EntityId::Place(place) => StateKey::PlaceItem(place.clone(), id.to_string()),
+            EntityId::Story(_) | EntityId::World => return None,
         })
     }
 
-    /// The key of flag `key` on `holder`.
-    pub(crate) fn flag(holder: &Holder, key: &str) -> StateKey {
-        match holder {
-            Holder::Actor(id) => StateKey::ActorFlag(id.clone(), key.to_string()),
-            Holder::Place(id) => StateKey::PlaceFlag(id.clone(), key.to_string()),
-            Holder::Story(id) => StateKey::StoryFlag(id.clone(), key.to_string()),
-            Holder::World => StateKey::WorldFlag(key.to_string()),
+    /// The key of flag `key` on `entity`.
+    pub(crate) fn flag(entity: &EntityId, key: &str) -> StateKey {
+        match entity {
+            EntityId::Actor(id) => StateKey::ActorFlag(id.clone(), key.to_string()),
+            EntityId::Place(id) => StateKey::PlaceFlag(id.clone(), key.to_string()),
+            EntityId::Story(id) => StateKey::StoryFlag(id.clone(), key.to_string()),
+            EntityId::World => StateKey::WorldFlag(key.to_string()),
         }
     }
 

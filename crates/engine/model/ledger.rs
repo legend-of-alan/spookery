@@ -12,7 +12,7 @@ use crate::model::meter::{MeterLive, Offset};
 use crate::model::modifier::ModifierLive;
 use crate::model::tracked::{Edit, Tracked};
 use crate::model::{ComponentId, ExitId, MemoryLine, Presence, State};
-use crate::rules::effect::Holder;
+use crate::rules::effect::EntityId;
 use crate::Reason;
 
 /// The one ledger of a round, kept on its save. Out of a round it has no limits and nobody is
@@ -90,11 +90,11 @@ pub(super) enum Removed {
         String,
         Box<Tracked<crate::model::ActorLive, crate::model::ActorEdit>>,
     ),
-    Meter(Holder, String, Tracked<MeterLive, Offset>),
-    Modifier(Holder, String, Tracked<ModifierLive, ModifierLive>),
-    /// A flag holds no value, so its holder and key are all there is.
-    Flag(Holder, String),
-    Item(Holder, String, Tracked<u32, Shift>),
+    Meter(EntityId, String, Tracked<MeterLive, Offset>),
+    Modifier(EntityId, String, Tracked<ModifierLive, ModifierLive>),
+    /// A flag holds no value, so its entity and key are all there is.
+    Flag(EntityId, String),
+    Item(EntityId, String, Tracked<u32, Shift>),
     /// A door holds no value either: its exit is all there is.
     ExitOpen(ExitId),
 }

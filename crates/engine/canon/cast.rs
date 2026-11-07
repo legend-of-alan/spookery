@@ -10,7 +10,7 @@ use crate::canon::source::{load_tagged, Diags, FileText, Locator, Page, Problem,
 use crate::canon::{CastDef, CastKind, IdleProfile};
 use crate::diagnostic::Diagnostic;
 use crate::model::meter::MeterDef;
-use crate::rules::effect::Holder;
+use crate::rules::effect::EntityId;
 use crate::rules::rule::{Owner, Rule};
 
 /// One cast page into `cast`, its own meters into `meters` when those loaded, and its rules.
@@ -42,7 +42,7 @@ pub(super) fn add_cast(
         return None;
     }
     let id = file.id.clone();
-    let carrier = Some(Holder::Actor(id.clone()));
+    let carrier = Some(EntityId::Actor(id.clone()));
     let own = diags.keep(meter_defs(&whole, file.meters, carrier));
     if let (Some(meters), Some(own)) = (meters, own) {
         add_own_meters(meters, own, None, &whole, diags);

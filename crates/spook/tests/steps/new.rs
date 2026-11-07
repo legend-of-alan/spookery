@@ -178,7 +178,7 @@ fn the_keeper_habit_has_set_tended(world: &mut World) {
         Some(actor) if actor.is_npc() => {}
         other => panic!("keeper missing: {other:?}"),
     };
-    let keeper = spookery_engine::Holder::Actor("keeper".to_string());
+    let keeper = spookery_engine::EntityId::Actor("keeper".to_string());
     assert!(now.has_flag(&keeper, "tended"), "{:?}", now.flags);
     let _ = fs::remove_dir_all(idle);
 }

@@ -518,7 +518,7 @@ fn a_round_commits(world: &mut World) {
 
 fn street_oil(world: &World) -> u32 {
     let now = state_of(table::pack(world));
-    let street = spookery_engine::Holder::Place("docks_street".to_string());
+    let street = spookery_engine::EntityId::Place("docks_street".to_string());
     now.item_count(&street, HUMMED_OIL).unwrap_or(0)
 }
 

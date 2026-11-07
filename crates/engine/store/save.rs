@@ -9,7 +9,7 @@ use crate::model::item::holds_items;
 use crate::model::meter::MeterLive;
 use crate::model::modifier;
 use crate::model::{sort_unique, ComponentId, State};
-use crate::rules::effect::Holder;
+use crate::rules::effect::EntityId;
 use crate::store::records::{AddedMeter, DroppedMeter};
 use crate::Reason;
 
@@ -46,7 +46,7 @@ pub fn parse(text: &str) -> Result<State, Vec<Diagnostic>> {
         }
     }
     let state: State = parse_file(FILE, text, 0)?;
-    let diags = check_holders(&state);
+    let diags = check_entities(&state);
     if diags.is_empty() {
         Ok(state)
     } else {
@@ -63,27 +63,27 @@ pub fn emit(state: &State) -> Result<String, Reason> {
     Ok(one_trailing_lf(text))
 }
 
-/// Each component's holder must be one the save can hold it on: an actor in `actors`, a place,
+/// Each component's entity must be one the save can hold it on: an actor in `actors`, a place,
 /// a story, or the world, as `State::require_entity` says. Only an actor or a place holds items.
-fn check_holders(state: &State) -> Vec<Diagnostic> {
-    let mut wrong: Vec<(&str, Holder)> = Vec::new();
+fn check_entities(state: &State) -> Vec<Diagnostic> {
+    let mut wrong: Vec<(&str, EntityId)> = Vec::new();
     for at in state.components() {
-        let (store, holder) = at.stored().expect("the walk yields stored components");
-        let itemless = matches!(at, ComponentId::Item(..)) && !holds_items(holder);
-        if state.require_entity(holder).is_err() || itemless {
-            wrong.push((store, holder.clone()));
+        let (store, entity) = at.stored().expect("the walk yields stored components");
+        let itemless = matches!(at, ComponentId::Item(..)) && !holds_items(entity);
+        if state.require_entity(entity).is_err() || itemless {
+            wrong.push((store, entity.clone()));
         }
     }
     wrong.dedup();
-    let diag = |(store, holder): (&str, Holder)| {
-        let (problem, hint) = if state.require_entity(&holder).is_ok() {
-            let problem = format!("{store} lists '{holder}', which cannot hold items");
+    let diag = |(store, entity): (&str, EntityId)| {
+        let (problem, hint) = if state.require_entity(&entity).is_ok() {
+            let problem = format!("{store} lists '{entity}', which cannot hold items");
             (problem, "give the items to an actor or a place")
         } else {
-            let problem = format!("{store} lists '{holder}', which the save does not list");
+            let problem = format!("{store} lists '{entity}', which the save does not list");
             (problem, "add its record, or take its line out of the store")
         };
-        schema_error("state/save.yaml", &problem, hint).at_path(format!("{store}.{holder}"))
+        schema_error("state/save.yaml", &problem, hint).at_path(format!("{store}.{entity}"))
     };
     wrong.into_iter().map(diag).collect()
 }
@@ -110,15 +110,15 @@ fn one_trailing_lf(mut text: String) -> String {
     text
 }
 
-/// Meters the pack gives a holder that the holder lacks, each at its `start`.
+/// Meters the pack gives an entity that the entity lacks, each at its `start`.
 pub(crate) fn missing_meters(canon: &Canon, state: &State) -> Vec<AddedMeter> {
     let mut added = Vec::new();
-    let lacks = |holder: &Holder, id: &str| state.meters.get(holder, id).is_none();
+    let lacks = |entity: &EntityId, id: &str| state.meters.get(entity, id).is_none();
     for (id, def) in &canon.meters {
         let lacking = match &def.carrier {
-            Some(holder) if !def.is_actor_meter() => lacks(holder, id),
+            Some(entity) if !def.is_actor_meter() => lacks(entity, id),
             _ => state.actors.keys().any(|actor| {
-                let actor = Holder::Actor(actor.clone());
+                let actor = EntityId::Actor(actor.clone());
                 def.is_on(&actor) && lacks(&actor, id)
             }),
         };
@@ -127,7 +127,7 @@ pub(crate) fn missing_meters(canon: &Canon, state: &State) -> Vec<AddedMeter> {
         }
     }
     for (id, def) in &canon.world_meters {
-        if lacks(&Holder::World, id) {
+        if lacks(&EntityId::World, id) {
             added.push(AddedMeter::new(id, def));
         }
     }
@@ -157,8 +157,8 @@ pub(crate) fn stale_modifiers(canon: &Canon, state: &State) -> Vec<String> {
     stale
 }
 
-/// Migrate a save: give each holder the `meters` it lacks, at their `start`, drop the
-/// `dropped_modifiers` from every actor and each `dropped_meters` from its holder, then stamp
+/// Migrate a save: give each entity the `meters` it lacks, at their `start`, drop the
+/// `dropped_modifiers` from every actor and each `dropped_meters` from its entity, then stamp
 /// `pack_rev` and `state_rev`. Live migrate and replay both call this. It does not touch the disk.
 pub fn migrate(
     canon: &Canon,
@@ -174,25 +174,25 @@ pub fn migrate(
             base: meter.start,
             offset: 0,
         };
-        let holders: Vec<Holder> = match &meter.carrier {
-            Some(holder @ (Holder::Place(_) | Holder::Story(_) | Holder::World)) => {
-                vec![holder.clone()]
+        let entities: Vec<EntityId> = match &meter.carrier {
+            Some(entity @ (EntityId::Place(_) | EntityId::Story(_) | EntityId::World)) => {
+                vec![entity.clone()]
             }
             carrier => (state.actors.keys())
-                .map(|id| Holder::Actor(id.clone()))
+                .map(|id| EntityId::Actor(id.clone()))
                 .filter(|actor| carrier.as_ref().is_none_or(|carrier| carrier == actor))
                 .collect(),
         };
-        for holder in holders {
-            if state.meters.get(&holder, &meter.id).is_none() {
-                state.put_meter(canon, &holder, &meter.id, Some(start.clone()))?;
+        for entity in entities {
+            if state.meters.get(&entity, &meter.id).is_none() {
+                state.put_meter(canon, &entity, &meter.id, Some(start.clone()))?;
             }
         }
     }
     let dropped: Vec<(String, String)> = (state.modifiers.iter())
         .filter(|(_, id, _)| dropped_modifiers.contains(id))
-        .filter_map(|(holder, id, _)| match holder {
-            Holder::Actor(actor) => Some((actor.clone(), id.clone())),
+        .filter_map(|(entity, id, _)| match entity {
+            EntityId::Actor(actor) => Some((actor.clone(), id.clone())),
             _ => None,
         })
         .collect();

@@ -16,10 +16,10 @@ import sys
 GROUPS = {
     'private mutators': '''
 #[allow(dead_code, unused, unreachable_code)]
-fn bypass(state: &mut State, holder: crate::rules::effect::Holder) {
-    state.meters.take(&holder, "grit");
-    state.flags.put(holder.clone(), String::new(), unreachable!());
-    state.items.tracked_mut(&holder, "lamp_oil");
+fn bypass(state: &mut State, entity: crate::rules::effect::EntityId) {
+    state.meters.take(&entity, "grit");
+    state.flags.put(entity.clone(), String::new(), unreachable!());
+    state.items.tracked_mut(&entity, "lamp_oil");
     state.notes.frontier_mut();
     state.notes.apply(unreachable!());
     let ledger = &mut state.ledger;

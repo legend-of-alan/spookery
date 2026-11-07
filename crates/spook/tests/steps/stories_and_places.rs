@@ -21,7 +21,7 @@ fn meter_row(id: &str, hidden: Option<bool>) -> String {
 
 /// The pack this scenario already set up, or a fresh docks copy.
 fn pack(world: &mut World) -> &Path {
-    world.pack.get_or_insert_with(|| copy_docks("holders"))
+    world.pack.get_or_insert_with(|| copy_docks("entities"))
 }
 
 /// Write `story/<id>.yaml` with these extra keys and an empty rule list to append to.
@@ -190,7 +190,7 @@ fn the_rule_runs(world: &mut World) {
 fn the_gm_sees_dread(world: &mut World) {
     assert_gm_saw(world, "story_meter ending dread");
     let now = state_of(world.pack.as_deref().unwrap());
-    let ending = spookery_engine::Holder::Story("ending".to_string());
+    let ending = spookery_engine::EntityId::Story("ending".to_string());
     assert_eq!(now.meters.get(&ending, "dread").unwrap().offset, 1);
 }
 
@@ -218,7 +218,7 @@ fn a_rule_tests_the_flag(world: &mut World, who: String, key: String) {
         ),
     );
     migrate_and_play(world, vec![intent("test", "pc_rowan", "test_mark", None)]);
-    assert!(state_of(&pack).has_flag(&spookery_engine::Holder::World, "mark_seen"));
+    assert!(state_of(&pack).has_flag(&spookery_engine::EntityId::World, "mark_seen"));
 }
 
 #[then(expr = "the GM sees the flag change on the siege story")]
@@ -345,7 +345,7 @@ fn a_rule_gives_lamp_oil(world: &mut World, who: String) {
 #[then(expr = "the loft holds 1 lamp_oil")]
 fn the_loft_holds_lamp_oil(world: &mut World) {
     let now = state_of(world.pack.as_deref().unwrap());
-    let loft = spookery_engine::Holder::Place("loft".to_string());
+    let loft = spookery_engine::EntityId::Place("loft".to_string());
     assert_eq!(now.item_count(&loft, "lamp_oil"), Some(1));
 }
 

@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use crate::canon::pack_rev;
 use crate::intent::Target;
 use crate::model::Presence;
-use crate::rules::effect::Holder;
+use crate::rules::effect::EntityId;
 use crate::rules::travel::visible_exits;
 use crate::store::journal;
 use crate::store::save;
@@ -174,12 +174,12 @@ fn item_tokens(world: &World, actor: &str) -> Vec<String> {
     let mut ids: Vec<String> = world.canon().items.keys().cloned().collect();
     let state = world.state();
     if let Some(live) = state.actors.get(actor) {
-        let holders = [
-            Holder::Actor(actor.to_string()),
-            Holder::Place(live.place.clone()),
+        let entities = [
+            EntityId::Actor(actor.to_string()),
+            EntityId::Place(live.place.clone()),
         ];
-        for holder in holders {
-            ids.extend(state.items.on(&holder).map(|(id, _)| id.clone()));
+        for entity in entities {
+            ids.extend(state.items.on(&entity).map(|(id, _)| id.clone()));
         }
     }
     ids.sort();

@@ -5,7 +5,7 @@ use std::path::Path;
 
 use cucumber::{given, then, when};
 use spookery_engine::testing::{edit_save, stamp_pack_rev, state_of};
-use spookery_engine::{load_canon, Holder, MeterLive, ModifierLive};
+use spookery_engine::{load_canon, EntityId, MeterLive, ModifierLive};
 
 use super::common::replace_in_file;
 use super::triggers::{add_verb, edit_table_with, intent, play_round, seen_of, set_place, sit};
@@ -65,7 +65,7 @@ fn hit_rowan(world: &mut World, moves: &[(&str, &str)]) {
 }
 
 fn modifier_of(pack: &Path, id: &str) -> Option<ModifierLive> {
-    let rowan = Holder::Actor("pc_rowan".to_string());
+    let rowan = EntityId::Actor("pc_rowan".to_string());
     state_of(pack).modifiers.get(&rowan, id).cloned()
 }
 
@@ -79,7 +79,7 @@ fn stacks_of(pack: &Path, id: &str) -> Vec<i64> {
 fn lowered(pack: &Path, meter: &str) -> i64 {
     let now = state_of(pack);
     let canon = load_canon(pack).unwrap_or_else(|err| panic!("load: {err:?}"));
-    let rowan = Holder::Actor("pc_rowan".to_string());
+    let rowan = EntityId::Actor("pc_rowan".to_string());
     let MeterLive { base, offset } = now.meters.get(&rowan, meter).unwrap().clone();
     base + offset - now.meter_value(&canon, &rowan, meter).unwrap()
 }
@@ -87,7 +87,7 @@ fn lowered(pack: &Path, meter: &str) -> i64 {
 /// Ticks from the latest round until modifier `id` expires.
 fn ticks_left(pack: &Path, id: &str) -> u64 {
     let now = state_of(pack);
-    let rowan = Holder::Actor("pc_rowan".to_string());
+    let rowan = EntityId::Actor("pc_rowan".to_string());
     now.modifiers
         .get(&rowan, id)
         .unwrap()
@@ -132,7 +132,7 @@ fn docks_with_one_tick_rounds(world: &mut World) {
         set_place(now, "pc_wren", "docks_shop");
         set_place(now, "pc_harbormouse", "docks_shop");
         set_place(now, "pc_rowan", "docks_shop");
-        let rowan = Holder::Actor("pc_rowan".to_string());
+        let rowan = EntityId::Actor("pc_rowan".to_string());
         now.put_meter(
             canon,
             &rowan,
@@ -208,10 +208,10 @@ fn two_modifiers_on_sight(world: &mut World, rain: String, fog: String) {
     fs::write(path, meters).unwrap();
     let canon = spookery_engine::load_canon(&pack).unwrap();
     edit_save(&pack, |now| {
-        let actors: Vec<Holder> = now
+        let actors: Vec<EntityId> = now
             .actors
             .keys()
-            .map(|id| Holder::Actor(id.clone()))
+            .map(|id| EntityId::Actor(id.clone()))
             .collect();
         for actor in actors {
             now.put_meter(
@@ -356,12 +356,12 @@ meters:
         let tide = MeterLive { base: 4, offset: 0 };
         now.put_meter(
             &canon,
-            &Holder::Actor("pc_rowan".to_string()),
+            &EntityId::Actor("pc_rowan".to_string()),
             "luck",
             Some(luck),
         )
         .unwrap();
-        now.put_meter(&canon, &Holder::World, "tide", Some(tide))
+        now.put_meter(&canon, &EntityId::World, "tide", Some(tide))
             .unwrap();
     });
 }
@@ -415,7 +415,7 @@ fn rowan_has_no_burn(world: &mut World) {
     assert_eq!(modifier_of(pack(world), "burn"), None);
     assert_eq!(lowered(pack(world), "grit"), 0);
     let canon = load_canon(pack(world)).unwrap();
-    let rowan = Holder::Actor("pc_rowan".to_string());
+    let rowan = EntityId::Actor("pc_rowan".to_string());
     assert_eq!(
         state_of(pack(world)).meter_value(&canon, &rowan, "grit"),
         Ok(20)
@@ -424,17 +424,17 @@ fn rowan_has_no_burn(world: &mut World) {
 
 #[then(expr = "pc_rowan has neither burn nor soaked")]
 fn rowan_has_neither(world: &mut World) {
-    let rowan = Holder::Actor("pc_rowan".to_string());
+    let rowan = EntityId::Actor("pc_rowan".to_string());
     assert_eq!(state_of(pack(world)).modifiers.on(&rowan).count(), 0);
 }
 
 #[then(expr = "pc_rowan has no luck and the world has no tide")]
 fn neither_keeps_the_dropped_meter(world: &mut World) {
     let now = state_of(pack(world));
-    let rowan = Holder::Actor("pc_rowan".to_string());
+    let rowan = EntityId::Actor("pc_rowan".to_string());
     assert!(now.meters.get(&rowan, "luck").is_none());
     assert!(now.meters.get(&rowan, "grit").is_some());
-    assert!(now.meters.get(&Holder::World, "tide").is_none());
+    assert!(now.meters.get(&EntityId::World, "tide").is_none());
 }
 
 #[given(
@@ -454,14 +454,14 @@ fn grit_watches(world: &mut World, low: String, below: String, high: String, abo
 #[then(expr = "the world flag {string} is set and {string} is not")]
 fn one_world_flag_is_set(world: &mut World, set: String, clear: String) {
     let now = state_of(pack(world));
-    assert!(now.has_flag(&Holder::World, &set), "{:?}", now.flags);
-    assert!(!now.has_flag(&Holder::World, &clear), "{:?}", now.flags);
+    assert!(now.has_flag(&EntityId::World, &set), "{:?}", now.flags);
+    assert!(!now.has_flag(&EntityId::World, &clear), "{:?}", now.flags);
 }
 
 #[then(expr = "the world flag {string} is set")]
 fn the_world_flag_is_set(world: &mut World, set: String) {
     let now = state_of(pack(world));
-    assert!(now.has_flag(&Holder::World, &set), "{:?}", now.flags);
+    assert!(now.has_flag(&EntityId::World, &set), "{:?}", now.flags);
 }
 
 #[then(expr = "the GM sees {string} as a changed key")]

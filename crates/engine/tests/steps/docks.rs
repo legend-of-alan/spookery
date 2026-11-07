@@ -8,7 +8,7 @@ use spookery_engine::testing::{
     stamp_pack_rev, state_of, write_save, Act, ActorKind, ActorLive,
 };
 use spookery_engine::{
-    emit_save, load_canon, play_pack_once, Holder, MeterLive, MoveReport, Note, Presence, State,
+    emit_save, load_canon, play_pack_once, EntityId, MeterLive, MoveReport, Note, Presence, State,
 };
 use spookery_protocol::Outcome;
 
@@ -30,7 +30,7 @@ fn bare_save(pack: &Path, world_id: &str, actors: Vec<(String, ActorLive)>) -> S
         state.add_actor(&id, record).unwrap();
         for (key, base) in [("grit", 1), ("rest", 3)] {
             let live = MeterLive { base, offset: 0 };
-            let actor = Holder::Actor(id.clone());
+            let actor = EntityId::Actor(id.clone());
             state.put_meter(&canon, &actor, key, Some(live)).unwrap();
         }
     }
@@ -49,7 +49,7 @@ fn write_text(path: &Path, text: &str) {
 fn lamp_oil(state: &State) -> u32 {
     state
         .item_count(
-            &spookery_engine::Holder::Place("docks_shop".to_string()),
+            &spookery_engine::EntityId::Place("docks_shop".to_string()),
             "lamp_oil",
         )
         .filter(|count| *count > 0)
@@ -58,7 +58,7 @@ fn lamp_oil(state: &State) -> u32 {
 
 fn flags_of(state: &State, id: &str) -> Vec<String> {
     assert!(state.actors.contains_key(id), "{id} missing");
-    let actor = Holder::Actor(id.to_string());
+    let actor = EntityId::Actor(id.to_string());
     state
         .flags
         .on(&actor)
@@ -162,7 +162,7 @@ fn capped_restock() -> u32 {
             .unwrap();
         state
             .set_items(
-                &spookery_engine::Holder::Place("docks_shop".to_string()),
+                &spookery_engine::EntityId::Place("docks_shop".to_string()),
                 "lamp_oil",
                 6,
             )
@@ -794,7 +794,7 @@ fn a_held_knife_still_runs_the_opposed_row() {
 
 fn rowans_debt(pack: &Path) -> i64 {
     let canon = load_canon(pack).unwrap_or_else(|err| panic!("load: {err:?}"));
-    let rowan = Holder::Actor("pc_rowan".to_string());
+    let rowan = EntityId::Actor("pc_rowan".to_string());
     state_of(pack)
         .meter_value(&canon, &rowan, "assassination_debt")
         .unwrap_or_else(|err| panic!("assassination_debt: {err}"))

@@ -157,7 +157,7 @@ idle:
     assert_ne!(text, next);
     fs::write(&path, next).unwrap();
     support::edit_save(&pack, |state| {
-        let mira = spookery_engine::Holder::Actor("mira".to_string());
+        let mira = spookery_engine::EntityId::Actor("mira".to_string());
         for flag in ["calm", "wary"] {
             state.set_flag(&mira.clone(), flag, true).unwrap();
         }
@@ -174,7 +174,7 @@ fn the_door_stays_locked_and_mira_keeps_her_flags(world: &mut World, oil: i64, r
     let saved = spookery_engine::World::peek(world.pack()).unwrap();
     let stairs = spookery_engine::ExitId::new("docks_shop", "stairs");
     assert!(!saved.state().is_exit_open(&stairs));
-    let mira = spookery_engine::Holder::Actor("mira".to_string());
+    let mira = spookery_engine::EntityId::Actor("mira".to_string());
     let flags: Vec<_> = saved
         .state()
         .flags
@@ -223,7 +223,7 @@ fn mira_plays(world: &mut World, move_name: String) {
         play_queued(&pack, &[], vec![intent(&id, "mira", &move_name, None)]);
     let oil = state
         .item_count(
-            &spookery_engine::Holder::Place("docks_shop".to_string()),
+            &spookery_engine::EntityId::Place("docks_shop".to_string()),
             "lamp_oil",
         )
         .filter(|count| *count > 0)
@@ -374,7 +374,7 @@ fn max_effects_per_intent_is_1_and_a_row_with_2_effects(world: &mut World) {
         "{}",
         state
             .item_count(
-                &spookery_engine::Holder::Place("docks_shop".to_string()),
+                &spookery_engine::EntityId::Place("docks_shop".to_string()),
                 "lamp_oil"
             )
             .filter(|count| *count > 0)
@@ -445,7 +445,7 @@ fn rowan_asks_aldric_until_it_finishes(world: &mut World) {
         assert!(round < 6, "Rowan is still busy after {round} rounds");
     }
     let state = table.state();
-    let aldric = spookery_engine::Holder::Actor("aldric".to_string());
+    let aldric = spookery_engine::EntityId::Actor("aldric".to_string());
     world.count =
         usize::try_from(state.meter_value(table.canon(), &aldric, "rest").unwrap()).unwrap();
 }
@@ -617,7 +617,7 @@ fn a_docks_pack_with_two_rummage_rules(world: &mut World, shop: i64, shared: i64
 fn rowan_walks_and_rummages(world: &mut World) {
     let rummage = intent("rummage", "pc_rowan", "rummage", None);
     let (state, round) = rowan_walks(world.pack(), vec![rummage]);
-    let rowan = spookery_engine::Holder::Actor("pc_rowan".to_string());
+    let rowan = spookery_engine::EntityId::Actor("pc_rowan".to_string());
     let rest = state.meters.get(&rowan, "rest").unwrap();
     world.count = usize::try_from(rest.base + rest.offset).unwrap();
     world.scratch = round.to_string();
@@ -663,7 +663,7 @@ fn rowan_walks_to_the_street(world: &mut World) {
     let (state, round) = rowan_walks(world.pack(), Vec::new());
     world.count = state
         .flags
-        .on(&spookery_engine::Holder::Actor("pc_rowan".to_string()))
+        .on(&spookery_engine::EntityId::Actor("pc_rowan".to_string()))
         .count();
     world.scratch = round.to_string();
 }
@@ -864,10 +864,10 @@ fn strike_line(scratch: &str, actor: &str) -> (String, i64, i64) {
 fn indexed_roll(pack: &Path, actor_id: &str, roll_index: u32) -> (String, i64) {
     let world = spookery_engine::World::peek(pack).unwrap_or_else(|err| panic!("open: {err}"));
     let check = world.canon().checks.get("strike").unwrap();
-    let holder = spookery_engine::Holder::Actor(actor_id.to_string());
+    let entity = spookery_engine::EntityId::Actor(actor_id.to_string());
     let stat = world
         .state()
-        .meter_value(world.canon(), &holder, &check.stat);
+        .meter_value(world.canon(), &entity, &check.stat);
     let stat = stat.unwrap_or_else(|err| panic!("{actor_id} {}: {err}", check.stat));
     let rolled = faces(
         &RollKey {

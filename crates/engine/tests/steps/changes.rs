@@ -57,7 +57,7 @@ fn larks_might_is_raised(world: &mut World) {
     let pack = world.pack().to_path_buf();
     let canon = spookery_engine::load_canon(&pack).unwrap();
     testing::edit_save(&pack, |state| {
-        let lark = spookery_engine::Holder::Actor("pc_lark".to_string());
+        let lark = spookery_engine::EntityId::Actor("pc_lark".to_string());
         let might = spookery_engine::MeterLive {
             base: 40,
             offset: 0,
@@ -158,7 +158,7 @@ fn a_tonic_is_on_the_ground(world: &mut World) {
     testing::edit_save(&pack, |state| {
         state
             .set_items(
-                &spookery_engine::Holder::Place("gate_yard".to_string()),
+                &spookery_engine::EntityId::Place("gate_yard".to_string()),
                 "tonic",
                 1,
             )

@@ -8,7 +8,7 @@ use crate::model::{Presence, State};
 use crate::rules::cond;
 use crate::rules::context::Context;
 use crate::rules::cost;
-use crate::rules::effect::Holder;
+use crate::rules::effect::EntityId;
 use crate::rules::perceive::perceive_as;
 use crate::rules::rule::{Owner, Rule, TargetKind, When};
 use crate::Reason;
@@ -209,7 +209,7 @@ pub(crate) fn nameable(
     presence: &Presence,
     viewer: &Viewer,
 ) -> Vec<String> {
-    let me = Holder::Actor(viewer.actor_id().to_string());
+    let me = EntityId::Actor(viewer.actor_id().to_string());
     let mut names: Vec<String> = state.items.on(&me).map(|(id, _)| id.clone()).collect();
     if let Ok(view) = perceive_as(canon, state, presence, viewer) {
         names.push(view.place);

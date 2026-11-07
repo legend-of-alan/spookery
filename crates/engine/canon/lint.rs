@@ -8,7 +8,7 @@ use crate::diagnostic::{error, schema_error, warning, Diagnostic};
 use crate::model::meter::{self, MeterDef};
 use crate::model::modifier::{self, ModifierDef};
 use crate::model::ExitId;
-use crate::rules::effect::Holder;
+use crate::rules::effect::EntityId;
 use crate::rules::expr::Expr;
 use crate::rules::roll::Check;
 use crate::rules::rule::{
@@ -279,7 +279,7 @@ pub(super) fn unknown_checks(
     diags
 }
 
-pub(super) fn unknown_reads(scope: &HolderScope, rules: &RuleTable) -> Vec<Diagnostic> {
+pub(super) fn unknown_reads(scope: &EntityScope, rules: &RuleTable) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
     for rule in rules.iter() {
         let mut exprs = Vec::new();
@@ -307,9 +307,9 @@ pub(super) fn unknown_reads(scope: &HolderScope, rules: &RuleTable) -> Vec<Diagn
     diags
 }
 
-/// Meter and flag effects and conditions whose holder is fixed by the pack and does not carry
+/// Meter and flag effects and conditions whose entity is fixed by the pack and does not carry
 /// the meter or declare the flag. The world's flags are free names, so they are not checked.
-pub(super) fn unknown_carriers(scope: &HolderScope, rules: &RuleTable) -> Vec<Diagnostic> {
+pub(super) fn unknown_carriers(scope: &EntityScope, rules: &RuleTable) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
     for rule in rules.iter() {
         let mut named = Vec::new();
@@ -338,7 +338,7 @@ pub(super) fn unknown_carriers(scope: &HolderScope, rules: &RuleTable) -> Vec<Di
                 schema_error(
                     &rule.file,
                     &format!("rule '{}' names {kind} '{key}', but {why}", rule.local_id),
-                    "declare it on that holder, or name a holder that has it",
+                    "declare it on that entity, or name an entity that has it",
                 )
                 .at_path(format!("rules[{}]", rule.index)),
             );
@@ -355,8 +355,8 @@ fn fixed_self(rule: &Rule) -> Option<&str> {
     }
 }
 
-/// The meters each holder carries, and the cast, places and stories a `who` may name.
-pub(super) struct HolderScope<'a> {
+/// The meters each entity carries, and the cast, places and stories a `who` may name.
+pub(super) struct EntityScope<'a> {
     pub meters: &'a BTreeMap<String, MeterDef>,
     pub world_meters: &'a BTreeMap<String, MeterDef>,
     pub cast: &'a BTreeMap<String, CastDef>,
@@ -364,16 +364,16 @@ pub(super) struct HolderScope<'a> {
     pub stories: &'a BTreeMap<String, StoryDef>,
 }
 
-impl HolderScope<'_> {
-    /// The one holder `who` names whatever the round: `world`, a place, a story, a cast id, or
+impl EntityScope<'_> {
+    /// The one entity `who` names whatever the round: `world`, a place, a story, a cast id, or
     /// `self` on a cast member's own habit. `None` when only play time knows it.
-    fn fixed_holder(&self, fixed_self: Option<&str>, who: &Who) -> Option<Holder> {
+    fn fixed_entity(&self, fixed_self: Option<&str>, who: &Who) -> Option<EntityId> {
         match who {
-            Who::World => Some(Holder::World),
-            Who::Place(id) => Some(Holder::Place(id.clone())),
-            Who::Story(id) => Some(Holder::Story(id.clone())),
-            Who::Actor(id) if self.cast.contains_key(id) => Some(Holder::Actor(id.clone())),
-            Who::Self_ => fixed_self.map(|id| Holder::Actor(id.to_string())),
+            Who::World => Some(EntityId::World),
+            Who::Place(id) => Some(EntityId::Place(id.clone())),
+            Who::Story(id) => Some(EntityId::Story(id.clone())),
+            Who::Actor(id) if self.cast.contains_key(id) => Some(EntityId::Actor(id.clone())),
+            Who::Self_ => fixed_self.map(|id| EntityId::Actor(id.to_string())),
             _ => None,
         }
     }
@@ -391,32 +391,32 @@ impl HolderScope<'_> {
                 (!locks).then(|| format!("{door} has no if, so it is always open"))
             };
         }
-        let holder = self.fixed_holder(fixed_self, who)?;
-        let flags = match &holder {
-            Holder::World => return None,
-            Holder::Actor(id) => self.cast.get(id).map(|cast| &cast.flags),
-            Holder::Place(id) => self.places.get(id).map(|place| &place.flags),
-            Holder::Story(id) => self.stories.get(id).map(|story| &story.flags),
+        let entity = self.fixed_entity(fixed_self, who)?;
+        let flags = match &entity {
+            EntityId::World => return None,
+            EntityId::Actor(id) => self.cast.get(id).map(|cast| &cast.flags),
+            EntityId::Place(id) => self.places.get(id).map(|place| &place.flags),
+            EntityId::Story(id) => self.stories.get(id).map(|story| &story.flags),
         };
         let declared = flags.is_some_and(|flags| flags.contains(&key.to_string()));
-        (!declared).then(|| format!("{holder} does not declare it"))
+        (!declared).then(|| format!("{entity} does not declare it"))
     }
 
     /// Why meter `key` on `who` can never be read or written, or `None` when it may be.
-    /// A holder known only at play time is not guessed: only its key is checked.
+    /// An entity known only at play time is not guessed: only its key is checked.
     fn why_not_carried(&self, fixed_self: Option<&str>, who: &Who, key: &str) -> Option<String> {
         if let Who::Exit(place, exit) = who {
             let door = ExitId::new(place, exit);
             return Some(format!("{door} carries no meter '{key}'"));
         }
         let def = self.meters.get(key);
-        match self.fixed_holder(fixed_self, who) {
-            Some(Holder::World) if self.world_meters.contains_key(key) => None,
-            Some(Holder::World) => Some(format!("the world carries no meter '{key}'")),
-            Some(holder) if !def.is_some_and(|def| def.is_on(&holder)) => {
+        match self.fixed_entity(fixed_self, who) {
+            Some(EntityId::World) if self.world_meters.contains_key(key) => None,
+            Some(EntityId::World) => Some(format!("the world carries no meter '{key}'")),
+            Some(entity) if !def.is_some_and(|def| def.is_on(&entity)) => {
                 Some(match def.and_then(|def| def.carrier.as_ref()) {
                     Some(carrier) => format!("only {carrier} carries meter '{key}'"),
-                    None => format!("{holder} carries no meter '{key}'"),
+                    None => format!("{entity} carries no meter '{key}'"),
                 })
             }
             None if def.is_none() => Some(format!("no file declares meter '{key}'")),
@@ -467,7 +467,7 @@ impl HolderScope<'_> {
                 if let Some(why) = self.why_not_carried(fixed_self, who, key) {
                     diags.push(refuse(
                         format!("expression reads meter '{key}', but {why}"),
-                        "declare the meter on that holder, or read one that exists",
+                        "declare the meter on that entity, or read one that exists",
                     ));
                 }
                 if let Some(name) = self.unknown_who(who) {
@@ -551,8 +551,8 @@ pub(super) fn unknown_meters(
 }
 
 /// Check the save against the pack without changing it. Refuse every meter,
-/// item and wielded slot the pack does not define, every meter the pack gives a holder
-/// that the holder lacks, every meter outside its rules, every modifier the pack no longer
+/// item and wielded slot the pack does not define, every meter the pack gives an entity
+/// that the entity lacks, every meter outside its rules, every modifier the pack no longer
 /// gives that meter, every actor in a place or on an exit the pack lacks, every component on
 /// a place or story the pack lacks, every open door the pack lacks, and every empty id or
 /// zero count.
@@ -572,10 +572,10 @@ pub fn check_save(canon: &Canon, state: &crate::model::State) -> Result<(), Vec<
             let diag = schema_error("state/save.yaml", &problem, "move the actor to a place");
             diags.push(diag.at_path(format!("actors.{id}.place")));
         }
-        let holder = Holder::Actor(id.clone());
+        let entity = EntityId::Actor(id.clone());
         let path = format!("actors.{id}.meters");
-        check_meters(canon, &holder, &state.meters, &path, &mut diags);
-        for (key, live) in state.modifiers.on(&holder) {
+        check_meters(canon, &entity, &state.meters, &path, &mut diags);
+        for (key, live) in state.modifiers.on(&entity) {
             if !modifier::is_defined(&canon.modifiers, key, live) {
                 let problem = format!(
                     "actor '{id}' holds modifier '{key}' on meter '{}', which the pack does not define",
@@ -589,7 +589,7 @@ pub fn check_save(canon: &Canon, state: &crate::model::State) -> Result<(), Vec<
     }
     check_meters(
         canon,
-        &Holder::World,
+        &EntityId::World,
         &state.meters,
         "world_meters",
         &mut diags,
@@ -597,36 +597,36 @@ pub fn check_save(canon: &Canon, state: &crate::model::State) -> Result<(), Vec<
     let places = canon
         .places
         .keys()
-        .map(|id| (Holder::Place(id.clone()), "places", id));
+        .map(|id| (EntityId::Place(id.clone()), "places", id));
     let stories = canon
         .stories
         .keys()
-        .map(|id| (Holder::Story(id.clone()), "stories", id));
-    for (holder, list, id) in places.chain(stories) {
+        .map(|id| (EntityId::Story(id.clone()), "stories", id));
+    for (entity, list, id) in places.chain(stories) {
         let path = format!("{list}.{id}.meters");
-        check_meters(canon, &holder, &state.meters, &path, &mut diags);
+        check_meters(canon, &entity, &state.meters, &path, &mut diags);
     }
-    let mut unknown: Vec<(&str, Holder)> = Vec::new();
+    let mut unknown: Vec<(&str, EntityId)> = Vec::new();
     for at in state.components() {
-        let (store, holder) = at.stored().expect("the walk yields stored components");
-        let known = match holder {
-            Holder::Place(id) => canon.places.contains_key(id),
-            Holder::Story(id) => canon.stories.contains_key(id),
-            Holder::Actor(_) | Holder::World => true,
+        let (store, entity) = at.stored().expect("the walk yields stored components");
+        let known = match entity {
+            EntityId::Place(id) => canon.places.contains_key(id),
+            EntityId::Story(id) => canon.stories.contains_key(id),
+            EntityId::Actor(_) | EntityId::World => true,
         };
         if !known {
-            unknown.push((store, holder.clone()));
+            unknown.push((store, entity.clone()));
         }
     }
     unknown.dedup();
-    for (store, holder) in unknown {
-        let problem = format!("{store} lists '{holder}', which the pack does not define");
+    for (store, entity) in unknown {
+        let problem = format!("{store} lists '{entity}', which the pack does not define");
         let diag = schema_error(
             "state/save.yaml",
             &problem,
             "take its line out of the store",
         );
-        diags.push(diag.at_path(format!("{store}.{holder}")));
+        diags.push(diag.at_path(format!("{store}.{entity}")));
     }
     for (place, exits) in state.open_exits.iter() {
         for exit in exits {
@@ -638,17 +638,17 @@ pub fn check_save(canon: &Canon, state: &crate::model::State) -> Result<(), Vec<
             }
         }
     }
-    for (holder, item, count) in state.items.iter() {
-        let path = format!("items.{holder}.{item}");
-        let who = match holder {
-            Holder::Actor(id) => format!("actor '{id}'"),
-            Holder::Place(id) => format!("place '{id}'"),
+    for (entity, item, count) in state.items.iter() {
+        let path = format!("items.{entity}.{item}");
+        let who = match entity {
+            EntityId::Actor(id) => format!("actor '{id}'"),
+            EntityId::Place(id) => format!("place '{id}'"),
             other => other.to_string(),
         };
         if item.is_empty() {
             let problem = format!("{who} lists an empty item id");
             let diag = schema_error("state/save.yaml", &problem, "give the item a non-empty id");
-            diags.push(diag.at_path(format!("items.{holder}")));
+            diags.push(diag.at_path(format!("items.{entity}")));
         } else if !canon.items.contains_key(item) {
             diags.push(unknown_item("state/save.yaml", item, &path));
         }
@@ -679,7 +679,7 @@ pub fn check_save(canon: &Canon, state: &crate::model::State) -> Result<(), Vec<
                     )
                     .at_path(format!("actors.{actor_id}.wielded")),
                 );
-            } else if state.item_count(&Holder::Actor(actor_id.clone()), wielded) == Some(0) {
+            } else if state.item_count(&EntityId::Actor(actor_id.clone()), wielded) == Some(0) {
                 diags.push(
                     schema_error(
                         "state/save.yaml",
@@ -698,22 +698,22 @@ pub fn check_save(canon: &Canon, state: &crate::model::State) -> Result<(), Vec<
     }
 }
 
-/// The live meters of `holder`, at `path` in the save, against the meters the pack gives it.
+/// The live meters of `entity`, at `path` in the save, against the meters the pack gives it.
 fn check_meters(
     canon: &Canon,
-    holder: &Holder,
+    entity: &EntityId,
     meters: &meter::Meters,
     path: &str,
     diags: &mut Vec<Diagnostic>,
 ) {
-    let (name, defs) = match holder {
-        Holder::Actor(id) => (format!("actor '{id}'"), &canon.meters),
-        Holder::World => ("the world".to_string(), &canon.world_meters),
-        _ => (holder.to_string(), &canon.meters),
+    let (name, defs) = match entity {
+        EntityId::Actor(id) => (format!("actor '{id}'"), &canon.meters),
+        EntityId::World => ("the world".to_string(), &canon.world_meters),
+        _ => (entity.to_string(), &canon.meters),
     };
     for (key, def) in defs {
-        let carried = *holder == Holder::World || def.is_on(holder);
-        if carried && meters.get(holder, key).is_none() {
+        let carried = *entity == EntityId::World || def.is_on(entity);
+        if carried && meters.get(entity, key).is_none() {
             diags.push(
                 schema_error(
                     "state/save.yaml",
@@ -724,8 +724,8 @@ fn check_meters(
             );
         }
     }
-    for (key, meter) in meters.on(holder) {
-        let Some(def) = canon.meter_def(holder, key) else {
+    for (key, meter) in meters.on(entity) {
+        let Some(def) = canon.meter_def(entity, key) else {
             diags.push(
                 schema_error(
                     "state/save.yaml",

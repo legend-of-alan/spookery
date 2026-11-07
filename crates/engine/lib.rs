@@ -17,7 +17,7 @@ pub use model::meter::MeterLive;
 pub use model::modifier::ModifierLive;
 pub use model::{ExitId, Note, Presence, State};
 pub use round::{migrate_pack, play_pack_once, verify_pack, verify_quick, RoundOutput};
-pub use rules::effect::Holder;
+pub use rules::effect::EntityId;
 pub use rules::gate::Refusal;
 pub use rules::perceive::View;
 pub use rules::roll::MoveReport;
@@ -252,7 +252,7 @@ pub mod testing {
                 act: crate::model::Act::default(),
             };
             state.add_actor("pc_nell", nell).expect("no pc_nell yet");
-            let nell = crate::Holder::Actor("pc_nell".to_string());
+            let nell = crate::EntityId::Actor("pc_nell".to_string());
             for (key, base) in [("grit", 100), ("rest", 3)] {
                 let live = crate::MeterLive { base, offset: 0 };
                 state

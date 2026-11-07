@@ -27,7 +27,7 @@ pub(crate) use crate::support::edit_save;
 /// shop would have left it.
 pub(crate) fn give_key(now: &mut State) {
     now.set_items(
-        &spookery_engine::Holder::Actor("pc_rowan".to_string()),
+        &spookery_engine::EntityId::Actor("pc_rowan".to_string()),
         "brass_key",
         1,
     )

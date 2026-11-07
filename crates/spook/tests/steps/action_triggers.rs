@@ -140,8 +140,8 @@ fn wren_is_refused(world: &mut World) {
     assert_eq!(refused[0]["code"], "NOT_IN_SPEC", "{round}");
     let now = state_of(world.pack.as_ref().unwrap());
     assert_eq!(now.actors["pc_rowan"].place, "docks_street");
-    assert!(now.has_flag(&spookery_engine::Holder::World, "gate_locked"));
-    assert!(!now.has_flag(&spookery_engine::Holder::World, "gate_passed"));
+    assert!(now.has_flag(&spookery_engine::EntityId::World, "gate_locked"));
+    assert!(!now.has_flag(&spookery_engine::EntityId::World, "gate_passed"));
 }
 
 #[given(
@@ -168,7 +168,7 @@ fn both_chains_ran(world: &mut World) {
     let now = state_of(world.pack.as_ref().unwrap());
     for flag in ["rang", "echoed"] {
         assert!(
-            now.has_flag(&spookery_engine::Holder::World, flag),
+            now.has_flag(&spookery_engine::EntityId::World, flag),
             "{:?}",
             now.flags
         );

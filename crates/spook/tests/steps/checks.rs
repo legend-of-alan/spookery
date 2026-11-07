@@ -376,7 +376,7 @@ fn snapshot_pack(pack: &Path) -> PathBuf {
 fn flags_of(world: &World, id: &str) -> Vec<String> {
     let now = state_of(table::pack(world));
     assert!(now.actors.contains_key(id), "{id} missing");
-    let actor = spookery_engine::Holder::Actor(id.to_string());
+    let actor = spookery_engine::EntityId::Actor(id.to_string());
     let mut flags: Vec<String> = now
         .flags
         .on(&actor)

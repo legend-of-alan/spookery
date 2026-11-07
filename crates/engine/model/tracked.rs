@@ -1,5 +1,5 @@
 //! A value that keeps the undo of each edit made to it since its frontier, so a round can roll
-//! it back; the store that keeps one such value per holder and key; and the edits the save's
+//! it back; the store that keeps one such value per entity and key; and the edits the save's
 //! lists and maps share.
 
 use std::collections::BTreeMap;
@@ -9,7 +9,7 @@ use std::ops::Deref;
 use serde::de::Error as _;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-use crate::rules::effect::Holder;
+use crate::rules::effect::EntityId;
 
 /// A typed change to a `T`.
 pub trait Edit<T>: Sized {
@@ -141,11 +141,11 @@ impl<T: fmt::Debug, E> fmt::Debug for Tracked<T, E> {
     }
 }
 
-/// One kind of component, such as every live meter: at most one on each holder under each key.
-/// A component's identity is that holder and key, the same in the save as in a round. Reading
+/// One kind of component, such as every live meter: at most one on each entity under each key.
+/// A component's identity is that entity and key, the same in the save as in a round. Reading
 /// gives values; only `State`'s ledger moves one in a round.
 pub struct Store<V, E> {
-    on: BTreeMap<Holder, BTreeMap<String, Tracked<V, E>>>,
+    on: BTreeMap<EntityId, BTreeMap<String, Tracked<V, E>>>,
 }
 
 impl<V, E> Default for Store<V, E> {
@@ -179,14 +179,14 @@ impl<V: fmt::Debug, E> fmt::Debug for Store<V, E> {
     }
 }
 
-/// The save writes a store as each holder, as a rule's `who` names it, with its components by
+/// The save writes a store as each entity, as a rule's `who` names it, with its components by
 /// key: `pc_rowan: {grit: {base: 1, offset: 0}}`.
 impl<V: Serialize, E> Serialize for Store<V, E> {
     fn serialize<S: Serializer>(&self, out: S) -> Result<S::Ok, S::Error> {
-        out.collect_map(self.on.iter().map(|(holder, parts)| {
+        out.collect_map(self.on.iter().map(|(entity, parts)| {
             let values: BTreeMap<&String, &V> =
                 parts.iter().map(|(key, part)| (key, &**part)).collect();
-            (holder.to_string(), values)
+            (entity.to_string(), values)
         }))
     }
 }
@@ -194,17 +194,17 @@ impl<V: Serialize, E> Serialize for Store<V, E> {
 impl<'de, V: Deserialize<'de>, E> Deserialize<'de> for Store<V, E> {
     fn deserialize<D: Deserializer<'de>>(from: D) -> Result<Self, D::Error> {
         let mut store = Store::default();
-        for (holder, parts) in BTreeMap::<String, BTreeMap<String, V>>::deserialize(from)? {
-            let holder: Holder = holder.parse().map_err(D::Error::custom)?;
+        for (entity, parts) in BTreeMap::<String, BTreeMap<String, V>>::deserialize(from)? {
+            let entity: EntityId = entity.parse().map_err(D::Error::custom)?;
             for (key, value) in parts {
-                store.put(holder.clone(), key, Tracked::new(value));
+                store.put(entity.clone(), key, Tracked::new(value));
             }
         }
         Ok(store)
     }
 }
 
-/// A store of marks with no value, such as flags, written as each holder with the list of its
+/// A store of marks with no value, such as flags, written as each entity with the list of its
 /// keys: `mira: [calm, wary]`.
 pub(crate) mod marks {
     use super::*;
@@ -217,7 +217,7 @@ pub(crate) mod marks {
             store
                 .on
                 .iter()
-                .map(|(holder, parts)| (holder.to_string(), parts.keys().collect::<Vec<_>>())),
+                .map(|(entity, parts)| (entity.to_string(), parts.keys().collect::<Vec<_>>())),
         )
     }
 
@@ -225,10 +225,10 @@ pub(crate) mod marks {
         from: D,
     ) -> Result<Store<(), ()>, D::Error> {
         let mut store = Store::default();
-        for (holder, keys) in BTreeMap::<String, Vec<String>>::deserialize(from)? {
-            let holder: Holder = holder.parse().map_err(D::Error::custom)?;
+        for (entity, keys) in BTreeMap::<String, Vec<String>>::deserialize(from)? {
+            let entity: EntityId = entity.parse().map_err(D::Error::custom)?;
             for key in keys {
-                store.put(holder.clone(), key, Tracked::new(()));
+                store.put(entity.clone(), key, Tracked::new(()));
             }
         }
         Ok(store)
@@ -241,40 +241,44 @@ impl<V, E> Store<V, E> {
         self.on.is_empty()
     }
 
-    /// The component on `holder` under `key`.
-    pub fn get(&self, holder: &Holder, key: &str) -> Option<&V> {
-        self.on.get(holder)?.get(key).map(|part| &**part)
+    /// The component on `entity` under `key`.
+    pub fn get(&self, entity: &EntityId, key: &str) -> Option<&V> {
+        self.on.get(entity)?.get(key).map(|part| &**part)
     }
 
-    /// The components on `holder`, in key order.
-    pub fn on(&self, holder: &Holder) -> impl Iterator<Item = (&String, &V)> {
-        let parts = self.on.get(holder).into_iter().flatten();
+    /// The components on `entity`, in key order.
+    pub fn on(&self, entity: &EntityId) -> impl Iterator<Item = (&String, &V)> {
+        let parts = self.on.get(entity).into_iter().flatten();
         parts.map(|(key, part)| (key, &**part))
     }
 
-    /// Every component, in holder and then key order.
-    pub fn iter(&self) -> impl Iterator<Item = (&Holder, &String, &V)> {
-        let holders = self.on.iter();
-        holders
-            .flat_map(|(holder, parts)| parts.iter().map(move |(key, part)| (holder, key, &**part)))
+    /// Every component, in entity and then key order.
+    pub fn iter(&self) -> impl Iterator<Item = (&EntityId, &String, &V)> {
+        let entities = self.on.iter();
+        entities
+            .flat_map(|(entity, parts)| parts.iter().map(move |(key, part)| (entity, key, &**part)))
     }
 
-    pub(super) fn tracked_mut(&mut self, holder: &Holder, key: &str) -> Option<&mut Tracked<V, E>> {
-        self.on.get_mut(holder)?.get_mut(key)
+    pub(super) fn tracked_mut(
+        &mut self,
+        entity: &EntityId,
+        key: &str,
+    ) -> Option<&mut Tracked<V, E>> {
+        self.on.get_mut(entity)?.get_mut(key)
     }
 
-    /// Put `part` on `holder` under `key`, with the undo it holds.
-    pub(super) fn put(&mut self, holder: Holder, key: String, part: Tracked<V, E>) {
-        self.on.entry(holder).or_default().insert(key, part);
+    /// Put `part` on `entity` under `key`, with the undo it holds.
+    pub(super) fn put(&mut self, entity: EntityId, key: String, part: Tracked<V, E>) {
+        self.on.entry(entity).or_default().insert(key, part);
     }
 
-    /// Take the component on `holder` under `key` off, with the undo it holds. A holder left
+    /// Take the component on `entity` under `key` off, with the undo it holds. An entity left
     /// with none has no entry, so a store reads the same after an add is rolled back.
-    pub(super) fn take(&mut self, holder: &Holder, key: &str) -> Option<Tracked<V, E>> {
-        let parts = self.on.get_mut(holder)?;
+    pub(super) fn take(&mut self, entity: &EntityId, key: &str) -> Option<Tracked<V, E>> {
+        let parts = self.on.get_mut(entity)?;
         let part = parts.remove(key);
         if parts.is_empty() {
-            self.on.remove(holder);
+            self.on.remove(entity);
         }
         part
     }

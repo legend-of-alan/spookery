@@ -16,7 +16,7 @@ mod spike_bench {
     use crate::intent::Intent;
     use crate::model::meter::MeterWrite;
     use crate::model::Presence;
-    use crate::rules::effect::{Effect, EffectKind, Holder};
+    use crate::rules::effect::{Effect, EffectKind, EntityId};
 
     struct Counting;
     static ALLOCS: AtomicUsize = AtomicUsize::new(0);
@@ -65,7 +65,7 @@ mod spike_bench {
             max: None,
         };
         let meter = |actor: &str, key: &str, delta: i64| EffectKind::Meter {
-            holder: Holder::Actor(actor.to_string()),
+            entity: EntityId::Actor(actor.to_string()),
             key: key.to_string(),
             write: MeterWrite::Offset(delta),
         };
@@ -127,7 +127,7 @@ mod spike_bench {
         // 5. 100 mixed writes across three records (Mira's rest, the shop's oil and flag, Bram's
         // grit), then one rollback over all of them.
         let lit = |on: bool| EffectKind::Flag {
-            holder: Holder::Place("docks_shop".to_string()),
+            entity: EntityId::Place("docks_shop".to_string()),
             key: "lit".to_string(),
             value: on,
         };

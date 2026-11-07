@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::model::key::StateValue;
 use crate::model::tracked::{swap, Edit, Store};
-use crate::rules::effect::Holder;
+use crate::rules::effect::EntityId;
 use crate::Reason;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -97,10 +97,10 @@ pub fn is_defined(defs: &BTreeMap<String, ModifierDef>, id: &str, live: &Modifie
     defs.get(id).is_some_and(|def| def.meter == live.meter)
 }
 
-/// What the modifiers `holder` holds add to its meter `key`: the sum of their stacks.
-pub fn sum(modifiers: &Modifiers, holder: &Holder, key: &str) -> Result<i64, Reason> {
+/// What the modifiers `entity` holds add to its meter `key`: the sum of their stacks.
+pub fn sum(modifiers: &Modifiers, entity: &EntityId, key: &str) -> Result<i64, Reason> {
     modifiers
-        .on(holder)
+        .on(entity)
         .map(|(_, live)| live)
         .filter(|live| live.meter == key)
         .flat_map(|live| &live.stacks)
@@ -138,7 +138,7 @@ mod tests {
 
     #[test]
     fn sum_counts_only_the_named_meter_and_refuses_an_overflow() {
-        let rowan = Holder::Actor("rowan".to_string());
+        let rowan = EntityId::Actor("rowan".to_string());
         let mut map = Modifiers::default();
         map.put(rowan.clone(), "burn".to_string(), held(&[-1, -2]).into());
         map.put(

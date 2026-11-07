@@ -212,14 +212,14 @@ fn commit_line(world: &mut World, line: &str) {
 
 fn larks_tonic(now: &spookery_engine::State) -> u32 {
     now.item_count(
-        &spookery_engine::Holder::Actor("pc_lark".to_string()),
+        &spookery_engine::EntityId::Actor("pc_lark".to_string()),
         "tonic",
     )
     .unwrap()
 }
 
 fn is_finished(pack: &Path) -> bool {
-    state_of(pack).has_flag(&spookery_engine::Holder::World, "finished")
+    state_of(pack).has_flag(&spookery_engine::EntityId::World, "finished")
 }
 
 fn lane_cost(pack: &Path) -> u64 {

@@ -27,12 +27,12 @@ MUTANTS = {
     'no_derived_note': [(W, "                self.ledger.keep(Change { key, before, after });", "                let _ = (key, before, after);")],
     # Insertion rolls back.
     'added_stays': [(L, "                Touch::Added(at) => self.take_off(&at),", "                Touch::Added(_) => {}")],
-    'item_added_untracked': [(W, """            items.put(holder.clone(), id.to_string(), Tracked::new(count));
-            ledger.added(at());""", """            items.put(holder.clone(), id.to_string(), Tracked::new(count));""")],
+    'item_added_untracked': [(W, """            items.put(entity.clone(), id.to_string(), Tracked::new(count));
+            ledger.added(at());""", """            items.put(entity.clone(), id.to_string(), Tracked::new(count));""")],
     # Removal rolls back, the removed component whole.
-    'removed_modifier_lost': [(M, "            Removed::Modifier(holder, id, part) => self.modifiers.put(holder, id, part),", "            Removed::Modifier(..) => {}")],
-    'removed_flag_lost': [(M, "            Removed::Flag(holder, key) => self.flags.put(holder, key, Tracked::default()),", "            Removed::Flag(..) => {}")],
-    'removed_item_lost': [(M, "            Removed::Item(holder, id, part) => self.items.put(holder, id, part),", "            Removed::Item(..) => {}")],
+    'removed_modifier_lost': [(M, "            Removed::Modifier(entity, id, part) => self.modifiers.put(entity, id, part),", "            Removed::Modifier(..) => {}")],
+    'removed_flag_lost': [(M, "            Removed::Flag(entity, key) => self.flags.put(entity, key, Tracked::default()),", "            Removed::Flag(..) => {}")],
+    'removed_item_lost': [(M, "            Removed::Item(entity, id, part) => self.items.put(entity, id, part),", "            Removed::Item(..) => {}")],
     # A field no key answers for still rolls back.
     'visited_undo_wrong': [(M, "            ActorEdit::Visited(edit) => ActorEdit::Visited(edit.apply(&mut actor.visited)?),", """            ActorEdit::Visited(edit) => {
                 let id = edit.id.clone();
@@ -60,6 +60,6 @@ MUTANTS = {
     state.accept();""", """    let mut log_path = append_to_bundle(&world.root, &payload, &write)?;""")],
     # Seats are the round's: count_act reads who is seated.
     'seats_ignored': [(W, "        let (counter, count) = if self.presence().players == 0 {", "        let (counter, count) = if true {")],
-    # A component's holder must be one the save lists.
-    'holders_unchecked': [(S, "    diags.extend(check_holders(&state));", "")],
+    # A component's entity must be one the save lists.
+    'entities_unchecked': [(S, "    diags.extend(check_entities(&state));", "")],
 }

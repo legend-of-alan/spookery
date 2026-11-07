@@ -158,15 +158,15 @@ fn travel_is_cancellable(world: &mut World) {
 fn never_finished(world: &mut World, verb: String, rest: i64) {
     let now = state_of(world.pack.as_ref().unwrap());
     assert!(
-        !now.has_flag(&spookery_engine::Holder::World, &format!("{verb}_done")),
+        !now.has_flag(&spookery_engine::EntityId::World, &format!("{verb}_done")),
         "{:?}",
         now.flags
     );
     let rowan = &now.actors["pc_rowan"];
     assert_eq!(rowan.act.pending, None);
     assert_eq!(rowan.act.busy_until, None);
-    let holder = spookery_engine::Holder::Actor("pc_rowan".to_string());
-    let meter = now.meters.get(&holder, "rest").unwrap();
+    let entity = spookery_engine::EntityId::Actor("pc_rowan".to_string());
+    let meter = now.meters.get(&entity, "rest").unwrap();
     assert_eq!(meter.base + meter.offset, 3 - rest);
 }
 
@@ -174,7 +174,7 @@ fn never_finished(world: &mut World, verb: String, rest: i64) {
 fn finished(world: &mut World, verb: String) {
     let now = state_of(world.pack.as_ref().unwrap());
     assert!(
-        now.has_flag(&spookery_engine::Holder::World, &format!("{verb}_done")),
+        now.has_flag(&spookery_engine::EntityId::World, &format!("{verb}_done")),
         "{:?}",
         now.flags
     );
@@ -261,7 +261,7 @@ fn rowan_is_at(world: &mut World, place: String) {
 #[then(expr = "Rowan holds lamp_oil")]
 fn rowan_holds_lamp_oil(world: &mut World) {
     let now = state_of(world.pack.as_ref().unwrap());
-    let rowan = spookery_engine::Holder::Actor("pc_rowan".to_string());
+    let rowan = spookery_engine::EntityId::Actor("pc_rowan".to_string());
     assert_eq!(now.item_count(&rowan, "lamp_oil"), Some(1));
 }
 
@@ -330,6 +330,6 @@ fn the_gm_is_refused_at_once(world: &mut World) {
 fn a_round_later_the_shop_holds(world: &mut World, count: u32) {
     let mut opened = open(world.pack.as_ref().unwrap());
     play(&mut opened);
-    let shop = spookery_engine::Holder::Place("docks_shop".to_string());
+    let shop = spookery_engine::EntityId::Place("docks_shop".to_string());
     assert_eq!(opened.state().item_count(&shop, "lamp_oil"), Some(count));
 }

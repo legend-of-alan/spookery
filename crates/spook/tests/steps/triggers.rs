@@ -8,7 +8,7 @@ use spookery_engine::testing::state_of;
 use spookery_engine::testing::Canon;
 use spookery_engine::MeterLive;
 use spookery_engine::{emit_save, parse_save};
-use spookery_engine::{Holder, Presence, State};
+use spookery_engine::{EntityId, Presence, State};
 
 use super::common::replace_in_file;
 use super::meters::write_world_meters;
@@ -93,7 +93,7 @@ fn briar_has_flag_downed(world: &mut World) {
         "the downed rule did not fire\n{round}"
     );
     assert!(
-        state_of(pack).has_flag(&Holder::Actor("briar".to_string()), "downed"),
+        state_of(pack).has_flag(&EntityId::Actor("briar".to_string()), "downed"),
         "briar is not downed"
     );
 }
@@ -167,10 +167,10 @@ rules:
     write_nell(&pack, &["found_key"]);
     edit_table_with(world, &pack, |now, canon, seated| {
         insert_actor_copy(now, canon, seated, "pc_rowan", "pc_nell", "docks_street");
-        let nell = Holder::Actor("pc_nell".to_string());
+        let nell = EntityId::Actor("pc_nell".to_string());
         now.set_flag(&nell, "found_key", true).unwrap();
         let start = MeterLive { base: 0, offset: 0 };
-        now.put_meter(canon, &Holder::World, "tide", Some(start))
+        now.put_meter(canon, &EntityId::World, "tide", Some(start))
             .unwrap();
     });
     play(
@@ -193,7 +193,7 @@ fn nell_knows_the_ledger(world: &mut World, tide: i64) {
             .any(|fact| fact == "fact_ledger"),
         "nell does not know fact_ledger"
     );
-    let live = now.meters.get(&Holder::World, "tide").unwrap();
+    let live = now.meters.get(&EntityId::World, "tide").unwrap();
     assert_eq!(live.base + live.offset, tide, "{live:?}");
 }
 
@@ -415,7 +415,7 @@ fn the_bog_roll_reproduces(world: &mut World) {
     assert_eq!(world.scratch, "rolled");
     let pack = world.pack.as_ref().unwrap();
     let now = state_of(pack);
-    let nell = Holder::Actor("pc_nell".to_string());
+    let nell = EntityId::Actor("pc_nell".to_string());
     let grit = now.meters.get(&nell, "grit").unwrap();
     assert_eq!(grit.offset, -1, "the miss band did not spend grit");
     let output = support::run_spook(&["verify", &pack.to_string_lossy()]);
@@ -659,7 +659,7 @@ fn nell_sets_the_tide(world: &mut World) {
 fn the_world_has_the_tide(world: &mut World) {
     let now = state_of(world.pack.as_ref().unwrap());
     assert!(
-        now.has_flag(&Holder::World, "tide_turned"),
+        now.has_flag(&EntityId::World, "tide_turned"),
         "flags: {:?}",
         now.flags
     );
@@ -825,7 +825,7 @@ fn the_rounds_only_refusal_is(world: &mut World, code: String) {
 fn no_place_has_the_flag(world: &mut World, flag: String) {
     let now = state_of(world.pack.as_ref().unwrap());
     let mut set = now.flags.iter();
-    assert!(set.all(|(holder, key, ())| !matches!(holder, Holder::Place(_)) || *key != flag));
+    assert!(set.all(|(entity, key, ())| !matches!(entity, EntityId::Place(_)) || *key != flag));
 }
 
 #[when(expr = "pc_nell travels from docks_street into docks_shop")]
@@ -1055,7 +1055,7 @@ rules:
         insert_actor_copy(now, canon, seated, "aldric", "briar", "docks_shop");
         now.put_meter(
             canon,
-            &Holder::Actor("briar".to_string()),
+            &EntityId::Actor("briar".to_string()),
             "hp",
             Some(MeterLive {
                 base: hp,
@@ -1064,7 +1064,7 @@ rules:
         )
         .unwrap();
         if downed {
-            let briar = Holder::Actor("briar".to_string());
+            let briar = EntityId::Actor("briar".to_string());
             now.set_flag(&briar, "downed", true).unwrap();
         }
         sit(seated, &["pc_rowan"]);
@@ -1156,7 +1156,7 @@ fn insert_actor_copy(
 ) {
     now.copy_actor(canon, from, id).unwrap();
     set_place(now, id, place);
-    let copy = Holder::Actor(id.to_string());
+    let copy = EntityId::Actor(id.to_string());
     let flags: Vec<String> = now.flags.on(&copy).map(|(key, ())| key.clone()).collect();
     for flag in flags {
         now.set_flag(&copy, &flag, false).unwrap();

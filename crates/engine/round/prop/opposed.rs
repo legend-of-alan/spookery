@@ -65,7 +65,7 @@ fn lunge_pack(limit: Option<&str>, rule: &str) -> PathBuf {
     crate::testing::append(&pack.join("rules/verbs.yaml"), &format!("{LUNGE}{rule}"));
     let canon = crate::canon::load_canon(&pack).expect("the pack loads");
     crate::testing::edit_save(&pack, |state| {
-        let briar = crate::rules::effect::Holder::Actor("npc_briar".to_string());
+        let briar = crate::rules::effect::EntityId::Actor("npc_briar".to_string());
         let might = crate::model::meter::MeterLive {
             base: 30,
             offset: 0,

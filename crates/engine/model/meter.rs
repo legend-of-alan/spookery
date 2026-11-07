@@ -1,9 +1,9 @@
-//! Meter bounds from the pack, and the live value on its holder.
+//! Meter bounds from the pack, and the live value on its entity.
 
 use serde::{Deserialize, Serialize};
 
 use crate::model::tracked::{Edit, Store};
-use crate::rules::effect::Holder;
+use crate::rules::effect::EntityId;
 use crate::Reason;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -15,21 +15,21 @@ pub struct MeterDef {
     /// Kept off the players' views.
     pub hidden: bool,
     /// Who carries it, from the file that declares it. `None` is every actor.
-    pub carrier: Option<Holder>,
+    pub carrier: Option<EntityId>,
 }
 
 impl MeterDef {
-    /// Whether `holder` carries this meter.
-    pub fn is_on(&self, holder: &Holder) -> bool {
+    /// Whether `entity` carries this meter.
+    pub fn is_on(&self, entity: &EntityId) -> bool {
         match &self.carrier {
-            None => matches!(holder, Holder::Actor(_)),
-            Some(carrier) => carrier == holder,
+            None => matches!(entity, EntityId::Actor(_)),
+            Some(carrier) => carrier == entity,
         }
     }
 
     /// Whether every actor, or one actor, carries this meter.
     pub fn is_actor_meter(&self) -> bool {
-        matches!(self.carrier, None | Some(Holder::Actor(_)))
+        matches!(self.carrier, None | Some(EntityId::Actor(_)))
     }
 }
 
@@ -53,7 +53,7 @@ pub fn is_storable(def: &MeterDef, base: i64, offset: i64) -> bool {
     (def.min..=def.base_cap).contains(&base) && base.checked_add(offset).is_some()
 }
 
-/// `base + offset`, plus what the holder's modifiers add to this meter, clamped to the bounds.
+/// `base + offset`, plus what the entity's modifiers add to this meter, clamped to the bounds.
 pub fn current(def: &MeterDef, live: &MeterLive, modifiers: i64) -> Result<i64, Reason> {
     let sum = live
         .base
@@ -63,7 +63,7 @@ pub fn current(def: &MeterDef, live: &MeterLive, modifiers: i64) -> Result<i64, 
     Ok(sum.clamp(def.min, def.max))
 }
 
-/// Every live meter, on every holder, by the meter's id.
+/// Every live meter, on every entity, by the meter's id.
 pub type Meters = Store<MeterLive, Offset>;
 
 /// The edit that moves a meter's offset by the write's delta, once `is_storable` accepts the

@@ -21,11 +21,11 @@ fn add_with_wrens_meters(
     record: spookery_engine::testing::ActorLive,
 ) {
     now.add_actor(id, record).unwrap();
-    let wren = spookery_engine::Holder::Actor("pc_wren".to_string());
+    let wren = spookery_engine::EntityId::Actor("pc_wren".to_string());
     let meters: Vec<_> = (now.meters.on(&wren))
         .map(|(key, live)| (key.clone(), live.clone()))
         .collect();
-    let actor = spookery_engine::Holder::Actor(id.to_string());
+    let actor = spookery_engine::EntityId::Actor(id.to_string());
     for (key, live) in meters {
         now.put_meter(canon, &actor, &key, Some(live)).unwrap();
     }
@@ -114,7 +114,7 @@ fn rowan_sees_locked_and_nothing_changes(world: &mut World, text: String) {
     );
     assert_eq!(
         now.item_count(
-            &spookery_engine::Holder::Actor("pc_rowan".to_string()),
+            &spookery_engine::EntityId::Actor("pc_rowan".to_string()),
             "brass_key"
         )
         .unwrap(),

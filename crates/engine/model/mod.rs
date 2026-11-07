@@ -22,10 +22,10 @@ use tracked::{swap, Edit, Entry, ReadOnly, Rewind, Store, Tracked};
 
 use crate::canon::Canon;
 use crate::intent::{Target, Viewer};
-use crate::rules::effect::Holder;
+use crate::rules::effect::EntityId;
 
 /// The live save: each record, each component store, and the ledger of the round writing it.
-/// `save.yaml` is this, field for field: the records by id, then each store by holder. A place
+/// `save.yaml` is this, field for field: the records by id, then each store by entity. A place
 /// or a story is the pack's, so the save lists none: what it holds is in the stores.
 ///
 /// Anyone may read any of it. Only the writers in `write` change a record or a component, and
@@ -56,7 +56,7 @@ pub struct State {
     /// The modifiers each actor holds.
     #[serde(default, skip_serializing_if = "Store::is_empty")]
     pub modifiers: Modifiers,
-    /// Every flag set, on any holder.
+    /// Every flag set, on any entity.
     #[serde(
         default,
         skip_serializing_if = "Store::is_empty",
@@ -71,19 +71,19 @@ pub struct State {
     ledger: Ledger,
 }
 
-/// Each flag set on each holder. A flag is only on or off, so it has no edits: setting one puts
+/// Each flag set on each entity. A flag is only on or off, so it has no edits: setting one puts
 /// it on, and clearing it takes it off.
 pub type Flags = Store<(), ()>;
 
 /// One tracked component of the save: a live record, a meter, a modifier or a flag on its
-/// holder, an open door, or the notes.
+/// entity, an open door, or the notes.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum ComponentId {
     Actor(String),
-    Meter(Holder, String),
-    Modifier(Holder, String),
-    Flag(Holder, String),
-    Item(Holder, String),
+    Meter(EntityId, String),
+    Modifier(EntityId, String),
+    Flag(EntityId, String),
+    Item(EntityId, String),
     ExitOpen(ExitId),
     Notes,
 }
@@ -113,14 +113,14 @@ impl fmt::Display for ExitId {
 }
 
 impl ComponentId {
-    /// The store this component is in, as the file names it, and the holder it is on. A record,
+    /// The store this component is in, as the file names it, and the entity it is on. A record,
     /// an open door and the notes are in no store.
-    pub(crate) fn stored(&self) -> Option<(&'static str, &Holder)> {
+    pub(crate) fn stored(&self) -> Option<(&'static str, &EntityId)> {
         match self {
-            ComponentId::Item(holder, _) => Some(("items", holder)),
-            ComponentId::Meter(holder, _) => Some(("meters", holder)),
-            ComponentId::Modifier(holder, _) => Some(("modifiers", holder)),
-            ComponentId::Flag(holder, _) => Some(("flags", holder)),
+            ComponentId::Item(entity, _) => Some(("items", entity)),
+            ComponentId::Meter(entity, _) => Some(("meters", entity)),
+            ComponentId::Modifier(entity, _) => Some(("modifiers", entity)),
+            ComponentId::Flag(entity, _) => Some(("flags", entity)),
             ComponentId::Actor(_) | ComponentId::ExitOpen(_) | ComponentId::Notes => None,
         }
     }
@@ -128,7 +128,7 @@ impl ComponentId {
 
 impl State {
     /// Every component in the stores, by id: items, meters, the modifiers that read those meters,
-    /// then flags, each by holder. The one walk over every store: the load check reads it, and
+    /// then flags, each by entity. The one walk over every store: the load check reads it, and
     /// so do copying and removing an actor.
     pub(crate) fn components(&self) -> impl Iterator<Item = ComponentId> + '_ {
         let items =
@@ -144,38 +144,38 @@ impl State {
 
     /// Refuse a component on an actor the save holds no record of, as `UNKNOWN_ID`. A place
     /// and a story are the pack's, as the world is, so the save takes one on any of them.
-    pub(crate) fn require_entity(&self, holder: &Holder) -> Result<(), crate::Reason> {
-        match holder {
-            Holder::Actor(id) if !self.actors.contains_key(id) => Err(crate::Reason::UnknownId),
+    pub(crate) fn require_entity(&self, entity: &EntityId) -> Result<(), crate::Reason> {
+        match entity {
+            EntityId::Actor(id) if !self.actors.contains_key(id) => Err(crate::Reason::UnknownId),
             _ => Ok(()),
         }
     }
 
-    /// The value of meter `key` on `holder`: its base and offset, plus what the holder's
-    /// modifiers add to it, inside the pack's bounds. `UNKNOWN_ID` when the pack or the holder
+    /// The value of meter `key` on `entity`: its base and offset, plus what the entity's
+    /// modifiers add to it, inside the pack's bounds. `UNKNOWN_ID` when the pack or the entity
     /// has no such meter. Every read of a meter's value, and every change reported for one,
     /// goes through here.
     pub fn meter_value(
         &self,
         canon: &Canon,
-        holder: &Holder,
+        entity: &EntityId,
         key: &str,
     ) -> Result<i64, crate::Reason> {
-        let def = (canon.meter_def(holder, key)).ok_or(crate::Reason::UnknownId)?;
-        let live = (self.meters.get(holder, key)).ok_or(crate::Reason::UnknownId)?;
-        meter::current(def, live, modifier::sum(&self.modifiers, holder, key)?)
+        let def = (canon.meter_def(entity, key)).ok_or(crate::Reason::UnknownId)?;
+        let live = (self.meters.get(entity, key)).ok_or(crate::Reason::UnknownId)?;
+        meter::current(def, live, modifier::sum(&self.modifiers, entity, key)?)
     }
 
-    /// How many of item `id` `holder` holds: an actor the save holds, or a place. `None` for
-    /// any other holder.
-    pub fn item_count(&self, holder: &Holder, id: &str) -> Option<u32> {
-        (item::holds_items(holder) && self.require_entity(holder).is_ok())
-            .then(|| self.items.get(holder, id).copied().unwrap_or(0))
+    /// How many of item `id` `entity` holds: an actor the save holds, or a place. `None` for
+    /// any other entity.
+    pub fn item_count(&self, entity: &EntityId, id: &str) -> Option<u32> {
+        (item::holds_items(entity) && self.require_entity(entity).is_ok())
+            .then(|| self.items.get(entity, id).copied().unwrap_or(0))
     }
 
-    /// Whether `holder` has flag `key` set.
-    pub fn has_flag(&self, holder: &Holder, key: &str) -> bool {
-        self.flags.get(holder, key).is_some()
+    /// Whether `entity` has flag `key` set.
+    pub fn has_flag(&self, entity: &EntityId, key: &str) -> bool {
+        self.flags.get(entity, key).is_some()
     }
 
     /// Whether the door of `exit` is open.
@@ -203,9 +203,9 @@ impl State {
     fn component_mut(&mut self, at: &ComponentId) -> Option<&mut dyn Rewind> {
         Some(match at {
             ComponentId::Actor(id) => self.actors.get_mut().get_mut(id)?,
-            ComponentId::Meter(holder, key) => self.meters.tracked_mut(holder, key)?,
-            ComponentId::Modifier(holder, id) => self.modifiers.tracked_mut(holder, id)?,
-            ComponentId::Item(holder, id) => self.items.tracked_mut(holder, id)?,
+            ComponentId::Meter(entity, key) => self.meters.tracked_mut(entity, key)?,
+            ComponentId::Modifier(entity, id) => self.modifiers.tracked_mut(entity, id)?,
+            ComponentId::Item(entity, id) => self.items.tracked_mut(entity, id)?,
             ComponentId::Notes => &mut self.notes,
             ComponentId::Flag(..) | ComponentId::ExitOpen(_) => return None,
         })
@@ -215,10 +215,10 @@ impl State {
     fn take_off(&mut self, at: &ComponentId) {
         match at {
             ComponentId::Actor(id) => drop(self.actors.get_mut().remove(id)),
-            ComponentId::Meter(holder, key) => drop(self.meters.take(holder, key)),
-            ComponentId::Modifier(holder, id) => drop(self.modifiers.take(holder, id)),
-            ComponentId::Flag(holder, key) => drop(self.flags.take(holder, key)),
-            ComponentId::Item(holder, id) => drop(self.items.take(holder, id)),
+            ComponentId::Meter(entity, key) => drop(self.meters.take(entity, key)),
+            ComponentId::Modifier(entity, id) => drop(self.modifiers.take(entity, id)),
+            ComponentId::Flag(entity, key) => drop(self.flags.take(entity, key)),
+            ComponentId::Item(entity, id) => drop(self.items.take(entity, id)),
             ComponentId::ExitOpen(exit) => self.put_exit_open(exit, false),
             ComponentId::Notes => unreachable!("no write puts the notes on"),
         }
@@ -229,10 +229,10 @@ impl State {
         match removed {
             #[cfg(any(test, feature = "testing"))]
             Removed::Actor(id, record) => drop(self.actors.get_mut().insert(id, *record)),
-            Removed::Meter(holder, key, part) => self.meters.put(holder, key, part),
-            Removed::Modifier(holder, id, part) => self.modifiers.put(holder, id, part),
-            Removed::Flag(holder, key) => self.flags.put(holder, key, Tracked::default()),
-            Removed::Item(holder, id, part) => self.items.put(holder, id, part),
+            Removed::Meter(entity, key, part) => self.meters.put(entity, key, part),
+            Removed::Modifier(entity, id, part) => self.modifiers.put(entity, id, part),
+            Removed::Flag(entity, key) => self.flags.put(entity, key, Tracked::default()),
+            Removed::Item(entity, id, part) => self.items.put(entity, id, part),
             Removed::ExitOpen(exit) => self.put_exit_open(&exit, true),
         }
     }

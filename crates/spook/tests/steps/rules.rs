@@ -254,9 +254,9 @@ fn the_ferry_rule_runs(world: &mut World) {
     let now = state_of(world.pack.as_ref().unwrap());
     let rowan = now.actors.get("pc_rowan").unwrap();
     assert_eq!(rowan.place, "ferry_dock", "verb:travel moved the PC");
-    let holder = spookery_engine::Holder::Actor("pc_rowan".to_string());
+    let entity = spookery_engine::EntityId::Actor("pc_rowan".to_string());
     assert!(
-        now.has_flag(&holder, "took_the_ferry"),
+        now.has_flag(&entity, "took_the_ferry"),
         "ferry flag missing: {:?}",
         now.flags
     );
@@ -341,7 +341,7 @@ fn an_empty_round_lands_at(world: &mut World, tick: u64) {
     let canon = spookery_engine::load_canon(&pack).unwrap();
     edit_save(&pack, |now| {
         now.world_time = tick - 60;
-        let mira = spookery_engine::Holder::Actor("mira".to_string());
+        let mira = spookery_engine::EntityId::Actor("mira".to_string());
         now.put_meter(
             &canon,
             &mira,
@@ -350,7 +350,7 @@ fn an_empty_round_lands_at(world: &mut World, tick: u64) {
         )
         .unwrap();
         now.copy_actor(&canon, "mira", "briar").unwrap();
-        let briar = spookery_engine::Holder::Actor("briar".to_string());
+        let briar = spookery_engine::EntityId::Actor("briar".to_string());
         now.put_meter(&canon, &briar, "shop_day", None).unwrap();
         now.edit_actor(
             "briar",
@@ -377,7 +377,7 @@ fn an_empty_round_lands_with_mira(world: &mut World, tick: u64) {
     let canon = spookery_engine::load_canon(&pack).unwrap();
     edit_save(&pack, |now| {
         now.world_time = tick - 60;
-        let mira = spookery_engine::Holder::Actor("mira".to_string());
+        let mira = spookery_engine::EntityId::Actor("mira".to_string());
         now.put_meter(
             &canon,
             &mira,
@@ -417,7 +417,7 @@ fn lamp_oil_increases_by_4(world: &mut World) {
     let now = state_of(world.pack.as_ref().unwrap());
     let oil = now
         .item_count(
-            &spookery_engine::Holder::Place("docks_shop".to_string()),
+            &spookery_engine::EntityId::Place("docks_shop".to_string()),
             "lamp_oil",
         )
         .filter(|count| *count > 0);
@@ -473,7 +473,7 @@ fn every_actor_idle_acts(world: &mut World, tick: u64, acts: u32) {
 fn docks_shop_holds_lamp_oil(world: &mut World, count: u32) {
     let now = state_of(world.pack.as_ref().unwrap());
     let oil = now.item_count(
-        &spookery_engine::Holder::Place("docks_shop".to_string()),
+        &spookery_engine::EntityId::Place("docks_shop".to_string()),
         "lamp_oil",
     );
     assert_eq!(oil, Some(count), "world_time {}", now.world_time);
@@ -518,7 +518,7 @@ fn attack_targets_defense(world: &mut World) {
     fs::write(&briar, next).unwrap();
     let canon = spookery_engine::load_canon(&pack).unwrap();
     edit_save(&pack, |now| {
-        let briar = spookery_engine::Holder::Actor("npc_briar".to_string());
+        let briar = spookery_engine::EntityId::Actor("npc_briar".to_string());
         let live = spookery_engine::MeterLive {
             base: 12,
             offset: 0,
@@ -553,7 +553,7 @@ fn lark_attacks(world: &mut World) {
     .unwrap_or_else(|err| panic!("faces {}", err.as_str()))[0];
     let canon = spookery_engine::load_canon(&pack).unwrap();
     edit_save(&pack, |now| {
-        let lark = spookery_engine::Holder::Actor("pc_lark".to_string());
+        let lark = spookery_engine::EntityId::Actor("pc_lark".to_string());
         let live = spookery_engine::MeterLive {
             base: 21 - i64::from(face),
             offset: 0,
@@ -589,7 +589,7 @@ fn lark_attacks(world: &mut World) {
 fn the_outcome_is_a_miss(world: &mut World) {
     assert_eq!(world.scratch, "miss");
     let now = state_of(world.pack.as_ref().unwrap());
-    let briar = spookery_engine::Holder::Actor("npc_briar".to_string());
+    let briar = spookery_engine::EntityId::Actor("npc_briar".to_string());
     let flags = &now.flags;
     assert!(now.has_flag(&briar, "missed"), "{flags:?}");
     assert!(!now.has_flag(&briar, "hit"), "{flags:?}");
@@ -720,7 +720,7 @@ fn steady_costs_five_grit(world: &mut World) {
     );
     let canon = spookery_engine::load_canon(&pack).unwrap();
     edit_save(&pack, |now| {
-        let rowan = spookery_engine::Holder::Actor("pc_rowan".to_string());
+        let rowan = spookery_engine::EntityId::Actor("pc_rowan".to_string());
         let live = spookery_engine::MeterLive { base: 1, offset: 0 };
         now.put_meter(&canon, &rowan, "grit", Some(live)).unwrap();
     });
@@ -814,7 +814,7 @@ fn both_full_ids_are_refused(world: &mut World) {
     );
     assert!(
         !now.has_flag(
-            &spookery_engine::Holder::Actor("pc_rowan".to_string()),
+            &spookery_engine::EntityId::Actor("pc_rowan".to_string()),
             "took_the_street"
         ),
         "the far place rule ran"
@@ -852,7 +852,7 @@ A small bottle.
 ",
     );
     edit_save(&pack, |now| {
-        let rowan = spookery_engine::Holder::Actor("pc_rowan".to_string());
+        let rowan = spookery_engine::EntityId::Actor("pc_rowan".to_string());
         now.set_items(&rowan, "tonic", 1).unwrap();
     });
     world.pack = Some(pack);
@@ -1043,7 +1043,7 @@ fn briars_ask_runs_on_briar(world: &mut World) {
     assert_eq!(world.scratch, r#"{"actor":"npc_briar"} cast:npc_briar/ask"#);
     let now = state_of(world.pack.as_ref().unwrap());
     assert!(
-        now.has_flag(&spookery_engine::Holder::World, "passage"),
+        now.has_flag(&spookery_engine::EntityId::World, "passage"),
         "{:?}",
         now.flags
     );

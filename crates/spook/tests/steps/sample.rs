@@ -125,7 +125,7 @@ fn hp_of(pack: &Path, actor_id: &str) -> i64 {
     });
     now.meter_value(
         &canon,
-        &spookery_engine::Holder::Actor(actor_id.to_string()),
+        &spookery_engine::EntityId::Actor(actor_id.to_string()),
         "hp",
     )
     .unwrap_or_else(|err| panic!("hp: {}", err.as_str()))

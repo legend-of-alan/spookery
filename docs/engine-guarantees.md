@@ -184,14 +184,14 @@ Tested in `features/rules/triggers.feature`,
 
 ## Meters
 
-A meter lives on the holder whose file declares it: every actor for
+A meter lives on the entity whose file declares it: every actor for
 `rules/meters.yaml`, one actor for a cast file's `meters`, and the world for
 `world/meters.yaml`. A world meter is held once, so every rule that names
 `who: world` reads and writes the same value, and its change rules fire once per
 change, whoever is seated. The world and an actor may each carry a meter of one name, and
 `who` picks which. Check refuses a cast meter whose id `rules/meters.yaml` or
 another cast file already has, and a rule whose fixed `who` names a meter that
-holder does not carry.
+entity does not carry.
 
 An actor's meter change is told to that actor only, not to a player in the
 same room. A world meter is hidden from players unless the pack shows it. A
