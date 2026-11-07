@@ -45,7 +45,7 @@ pub(super) fn add_place(
         diags.push(diag);
         return None;
     }
-    let carrier = Some(EntityId::Place(file.id.clone()));
+    let carrier = Some(EntityId::Place(file.id.as_str().into()));
     if let Some(own) = diags.keep(meter_defs(&whole, file.meters, carrier)) {
         meters.push((page.file.clone(), own));
     }

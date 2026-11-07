@@ -190,7 +190,7 @@ fn the_rule_runs(world: &mut World) {
 fn the_gm_sees_dread(world: &mut World) {
     assert_gm_saw(world, "story_meter ending dread");
     let now = state_of(world.pack.as_deref().unwrap());
-    let ending = spookery_engine::EntityId::Story("ending".to_string());
+    let ending = spookery_engine::EntityId::Story("ending".into());
     assert_eq!(now.meters_of(&ending).get("dread").unwrap().offset, 1);
 }
 
@@ -345,7 +345,7 @@ fn a_rule_gives_lamp_oil(world: &mut World, who: String) {
 #[then(expr = "the loft holds 1 lamp_oil")]
 fn the_loft_holds_lamp_oil(world: &mut World) {
     let now = state_of(world.pack.as_deref().unwrap());
-    let loft = spookery_engine::EntityId::Place("loft".to_string());
+    let loft = spookery_engine::EntityId::Place("loft".into());
     assert_eq!(now.item_count(&loft, "lamp_oil"), Some(1));
 }
 

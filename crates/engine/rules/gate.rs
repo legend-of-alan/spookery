@@ -212,7 +212,7 @@ pub(crate) fn nameable(
     presence: &Presence,
     viewer: &Viewer,
 ) -> Vec<String> {
-    let me = EntityId::Actor(viewer.actor_id().to_string());
+    let me = EntityId::Actor(viewer.actor_id().into());
     let held = state
         .items_of(&me)
         .into_iter()

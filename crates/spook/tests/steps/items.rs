@@ -15,19 +15,19 @@ use crate::World;
 fn keep_briar_busy(now: &mut State) {
     if now.actors().records().contains_key("npc_briar") {
         let busy = spookery_engine::testing::ActorEdit::Busy(Some(u64::MAX), None);
-        now.edit_actor("npc_briar", busy).unwrap();
+        now.edit_actor(&"npc_briar".into(), busy).unwrap();
     }
 }
 
 fn hp(pack: &Path, actor: &str) -> i64 {
     let now = support::state_of(pack);
     let canon = spookery_engine::load_canon(pack).unwrap();
-    let entity = spookery_engine::EntityId::Actor(actor.to_string());
+    let entity = spookery_engine::EntityId::Actor(actor.into());
     now.meter_value(&canon, &entity, "hp").unwrap()
 }
 
 fn count(pack: &Path, actor: &str, item: &str) -> u32 {
-    let actor = spookery_engine::EntityId::Actor(actor.to_string());
+    let actor = spookery_engine::EntityId::Actor(actor.into());
     support::state_of(pack).item_count(&actor, item).unwrap()
 }
 
@@ -132,25 +132,25 @@ fn add_attack_rules(pack: &Path, attack: &str) {
 
 fn hold_dagger(now: &mut State, wield: bool) {
     now.edit_actor(
-        "pc_lark",
+        &"pc_lark".into(),
         spookery_engine::testing::ActorEdit::Place("gate_yard".to_string()),
     )
     .unwrap();
     now.edit_actor(
-        "pc_nell",
+        &"pc_nell".into(),
         spookery_engine::testing::ActorEdit::Place("gate_yard".to_string()),
     )
     .unwrap();
     keep_briar_busy(now);
     now.set_items(
-        &spookery_engine::EntityId::Actor("pc_lark".to_string()),
+        &spookery_engine::EntityId::Actor("pc_lark".into()),
         "poisoned_dagger",
         1,
     )
     .unwrap();
     if wield {
         now.edit_actor(
-            "pc_lark",
+            &"pc_lark".into(),
             spookery_engine::testing::ActorEdit::Wielded(Some("poisoned_dagger".to_string())),
         )
         .unwrap();
@@ -168,20 +168,20 @@ fn nell_holds_a_tonic(world: &mut World) {
     let canon = spookery_engine::load_canon(&pack).unwrap();
     support::edit_save(&pack, |now| {
         now.edit_actor(
-            "pc_nell",
+            &"pc_nell".into(),
             spookery_engine::testing::ActorEdit::Place("gate_yard".to_string()),
         )
         .unwrap();
         keep_briar_busy(now);
         now.set_items(
-            &spookery_engine::EntityId::Actor("pc_nell".to_string()),
+            &spookery_engine::EntityId::Actor("pc_nell".into()),
             "tonic",
             1,
         )
         .unwrap();
         now.put_meter(
             &canon,
-            &spookery_engine::EntityId::Actor("pc_nell".to_string()),
+            &spookery_engine::EntityId::Actor("pc_nell".into()),
             "hp",
             Some(spookery_engine::MeterLive { base: 3, offset: 0 }),
         )
@@ -228,7 +228,7 @@ fn docks_shop_has_3_lamp_oil(world: &mut World) {
     let pack = support::copy_pack("oneshot-docks", "take");
     support::edit_save(&pack, |now| {
         now.set_items(
-            &spookery_engine::EntityId::Place("docks_shop".to_string()),
+            &spookery_engine::EntityId::Place("docks_shop".into()),
             "lamp_oil",
             3,
         )
@@ -250,7 +250,7 @@ fn the_oil_moved(world: &mut World) {
     let now = support::state_of(pack);
     assert_eq!(
         now.item_count(
-            &spookery_engine::EntityId::Place("docks_shop".to_string()),
+            &spookery_engine::EntityId::Place("docks_shop".into()),
             "lamp_oil"
         )
         .filter(|count| *count > 0),
@@ -258,7 +258,7 @@ fn the_oil_moved(world: &mut World) {
     );
     assert_eq!(
         now.item_count(
-            &spookery_engine::EntityId::Actor("pc_rowan".to_string()),
+            &spookery_engine::EntityId::Actor("pc_rowan".into()),
             "lamp_oil"
         )
         .unwrap(),
@@ -302,7 +302,7 @@ fn lark_holds_a_latch_at_a_table(world: &mut World) {
     let pack = support::copy_pack("sample-d20", "use-latch");
     support::edit_save(&pack, |now| {
         keep_briar_busy(now);
-        let lark = spookery_engine::EntityId::Actor("pc_lark".to_string());
+        let lark = spookery_engine::EntityId::Actor("pc_lark".into());
         now.set_items(&lark, "latch", 1).unwrap();
     });
     table::listen(world, &pack);
@@ -342,11 +342,8 @@ fn no_round_was_spent(world: &mut World) {
     );
     assert!(spookery_engine::testing::journal::list_round_keys(pack).is_empty());
     assert_eq!(
-        now.item_count(
-            &spookery_engine::EntityId::Actor("pc_lark".to_string()),
-            "latch"
-        )
-        .unwrap(),
+        now.item_count(&spookery_engine::EntityId::Actor("pc_lark".into()), "latch")
+            .unwrap(),
         1
     );
 }
@@ -363,7 +360,7 @@ fn the_line_is_refused_and_quiet(world: &mut World, code: String) {
 fn the_shop_has_no_oil(world: &mut World) {
     let pack = support::copy_pack("oneshot-docks", "take-none");
     support::edit_save(&pack, |now| {
-        let shop = spookery_engine::EntityId::Place("docks_shop".to_string());
+        let shop = spookery_engine::EntityId::Place("docks_shop".into());
         now.set_items(&shop, "lamp_oil", 0).unwrap();
     });
     world.pack = Some(pack);
@@ -392,7 +389,7 @@ fn the_drop_was_missing(world: &mut World) {
     let now = support::state_of(pack);
     assert_eq!(
         now.item_count(
-            &spookery_engine::EntityId::Actor("pc_rowan".to_string()),
+            &spookery_engine::EntityId::Actor("pc_rowan".into()),
             "lamp_oil"
         )
         .unwrap(),
@@ -400,7 +397,7 @@ fn the_drop_was_missing(world: &mut World) {
     );
     assert_eq!(
         now.item_count(
-            &spookery_engine::EntityId::Place("docks_shop".to_string()),
+            &spookery_engine::EntityId::Place("docks_shop".into()),
             "lamp_oil"
         )
         .filter(|count| *count > 0),
@@ -413,7 +410,7 @@ fn the_save_lists_an_unknown_item(world: &mut World) {
     let pack = support::copy_pack("oneshot-docks", "unknown-item");
     support::edit_save(&pack, |now| {
         now.set_items(
-            &spookery_engine::EntityId::Actor("pc_rowan".to_string()),
+            &spookery_engine::EntityId::Actor("pc_rowan".into()),
             "ghost",
             1,
         )
@@ -440,13 +437,13 @@ fn lark_holds_a_dagger(world: &mut World) {
     write_dagger(&pack, "");
     support::edit_save(&pack, |now| {
         now.edit_actor(
-            "pc_lark",
+            &"pc_lark".into(),
             spookery_engine::testing::ActorEdit::Place("gate_yard".to_string()),
         )
         .unwrap();
         keep_briar_busy(now);
         now.set_items(
-            &spookery_engine::EntityId::Actor("pc_lark".to_string()),
+            &spookery_engine::EntityId::Actor("pc_lark".into()),
             "poisoned_dagger",
             1,
         )
@@ -568,7 +565,7 @@ fn the_slot_clears_in_the_round(world: &mut World) {
     assert_eq!(now.actors().records()["pc_lark"].wielded.as_deref(), None);
     assert_eq!(
         now.item_count(
-            &spookery_engine::EntityId::Actor("pc_lark".to_string()),
+            &spookery_engine::EntityId::Actor("pc_lark".into()),
             "poisoned_dagger"
         )
         .unwrap(),
@@ -576,7 +573,7 @@ fn the_slot_clears_in_the_round(world: &mut World) {
     );
     assert_eq!(
         now.item_count(
-            &spookery_engine::EntityId::Place("gate_yard".to_string()),
+            &spookery_engine::EntityId::Place("gate_yard".into()),
             "poisoned_dagger"
         )
         .filter(|count| *count > 0),
@@ -670,7 +667,7 @@ fn nell_resists_on_a_seeded_roll(world: &mut World) {
         hold_dagger(now, true);
         now.put_meter(
             &canon,
-            &spookery_engine::EntityId::Actor("pc_nell".to_string()),
+            &spookery_engine::EntityId::Actor("pc_nell".into()),
             "hp",
             Some(spookery_engine::MeterLive {
                 base: 10,
@@ -678,7 +675,7 @@ fn nell_resists_on_a_seeded_roll(world: &mut World) {
             }),
         )
         .unwrap();
-        let nell = spookery_engine::EntityId::Actor("pc_nell".to_string());
+        let nell = spookery_engine::EntityId::Actor("pc_nell".into());
         let constitution = spookery_engine::MeterLive {
             base: stat,
             offset: 0,
@@ -719,7 +716,7 @@ fn lark_hits_with_the_dagger(world: &mut World) {
 fn the_poison_fades(world: &mut World, text: String) {
     let pack = world.pack.as_ref().unwrap();
     assert_eq!(hp(pack, "pc_nell"), 7);
-    let nell = spookery_engine::EntityId::Actor("pc_nell".to_string());
+    let nell = spookery_engine::EntityId::Actor("pc_nell".into());
     assert!(!support::state_of(pack).has_flag(&nell, "poisoned"));
     let round: Value = serde_json::from_str(read_first_round_line(pack).trim()).unwrap();
     assert!(round["refused"].as_array().unwrap().is_empty(), "{round}");

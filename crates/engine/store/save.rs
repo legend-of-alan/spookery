@@ -7,7 +7,7 @@ use crate::canon::Canon;
 use crate::diagnostic::{check_tag, error, locate_nth, parse_file, Diagnostic};
 use crate::model::meter::MeterLive;
 use crate::model::modifier;
-use crate::model::{sort_unique, State};
+use crate::model::{sort_unique, ActorId, State};
 use crate::rules::effect::EntityId;
 use crate::store::records::{AddedMeter, DroppedMeter};
 use crate::Reason;
@@ -85,9 +85,11 @@ pub(crate) fn missing_meters(canon: &Canon, state: &State) -> Vec<AddedMeter> {
     let lacks = |entity: &EntityId, id: &str| state.meters_of(entity).get(id).is_none();
     for (id, def) in &canon.meters {
         let lacking = match &def.carrier {
-            None => (records.keys()).any(|actor| lacks(&EntityId::Actor(actor.clone()), id)),
+            None => {
+                (records.keys()).any(|actor| lacks(&EntityId::Actor(actor.as_str().into()), id))
+            }
             Some(actor @ EntityId::Actor(actor_id)) => {
-                records.contains_key(actor_id) && lacks(actor, id)
+                records.contains_key(actor_id.as_str()) && lacks(actor, id)
             }
             Some(entity @ (EntityId::Place(_) | EntityId::Story(_) | EntityId::World)) => {
                 lacks(entity, id)
@@ -108,11 +110,11 @@ pub(crate) fn missing_meters(canon: &Canon, state: &State) -> Vec<AddedMeter> {
 /// Meters an actor, place, story or the world lists that the pack no longer gives it.
 pub(crate) fn stale_meters(canon: &Canon, state: &State) -> Vec<DroppedMeter> {
     let actors = state.actors().meters().iter();
-    let actors = actors.map(|(id, key, _)| (EntityId::Actor(id.clone()), key));
+    let actors = actors.map(|(id, key, _)| (EntityId::Actor(id.as_str().into()), key));
     let places = state.places().meters().iter();
-    let places = places.map(|(id, key, _)| (EntityId::Place(id.clone()), key));
+    let places = places.map(|(id, key, _)| (EntityId::Place(id.as_str().into()), key));
     let stories = state.stories().meters().iter();
-    let stories = stories.map(|(id, key, _)| (EntityId::Story(id.clone()), key));
+    let stories = stories.map(|(id, key, _)| (EntityId::Story(id.as_str().into()), key));
     let world = (state.world().meters().keys()).map(|key| (EntityId::World, key));
     let held = actors.chain(places).chain(stories).chain(world);
     let stale = held.filter(|(carrier, id)| canon.meter_def(carrier, id).is_none());
@@ -153,10 +155,11 @@ pub fn migrate(
         let records = state.actors().records();
         let entities: Vec<EntityId> = match &meter.carrier {
             None => (records.keys())
-                .map(|id| EntityId::Actor(id.clone()))
+                .map(|id| EntityId::Actor(id.as_str().into()))
                 .collect(),
             Some(actor @ EntityId::Actor(id)) => {
-                (records.contains_key(id).then(|| actor.clone()).into_iter()).collect()
+                let held = records.contains_key(id.as_str());
+                (held.then(|| actor.clone()).into_iter()).collect()
             }
             Some(entity @ (EntityId::Place(_) | EntityId::Story(_) | EntityId::World)) => {
                 vec![entity.clone()]
@@ -168,9 +171,9 @@ pub fn migrate(
             }
         }
     }
-    let dropped: Vec<(String, String)> = (state.actors().modifiers().iter())
+    let dropped: Vec<(ActorId, String)> = (state.actors().modifiers().iter())
         .filter(|(_, id, _)| dropped_modifiers.contains(id))
-        .map(|(actor, id, _)| (actor.clone(), id.clone()))
+        .map(|(actor, id, _)| (actor.as_str().into(), id.clone()))
         .collect();
     for (actor, id) in dropped {
         state.put_modifier(canon, &actor, &id, None)?;

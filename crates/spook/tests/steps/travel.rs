@@ -20,12 +20,12 @@ fn add_with_wrens_meters(
     id: &str,
     record: spookery_engine::testing::ActorLive,
 ) {
-    now.add_actor(id, record).unwrap();
-    let wren = spookery_engine::EntityId::Actor("pc_wren".to_string());
+    now.add_actor(&id.into(), record).unwrap();
+    let wren = spookery_engine::EntityId::Actor("pc_wren".into());
     let meters: Vec<_> = (now.meters_of(&wren).iter())
         .map(|(key, live)| (key.clone(), live.clone()))
         .collect();
-    let actor = spookery_engine::EntityId::Actor(id.to_string());
+    let actor = spookery_engine::EntityId::Actor(id.into());
     for (key, live) in meters {
         now.put_meter(canon, &actor, &key, Some(live)).unwrap();
     }
@@ -47,7 +47,7 @@ fn docks_street_has_no_exit_to_mira_rooms(world: &mut World) {
     let pack = copy_docks("no-exit");
     edit_save(&pack, |now| {
         now.edit_actor(
-            "pc_rowan",
+            &"pc_rowan".into(),
             spookery_engine::testing::ActorEdit::Place("docks_street".to_string()),
         )
         .unwrap();
@@ -114,7 +114,7 @@ fn rowan_sees_locked_and_nothing_changes(world: &mut World, text: String) {
     );
     assert_eq!(
         now.item_count(
-            &spookery_engine::EntityId::Actor("pc_rowan".to_string()),
+            &spookery_engine::EntityId::Actor("pc_rowan".into()),
             "brass_key"
         )
         .unwrap(),
@@ -456,7 +456,7 @@ fn rowan_visited_both_rooms(world: &mut World) {
                 value: Some(exits),
             };
             now.edit_actor(
-                "pc_rowan",
+                &"pc_rowan".into(),
                 spookery_engine::testing::ActorEdit::Visited(visit),
             )
             .unwrap();

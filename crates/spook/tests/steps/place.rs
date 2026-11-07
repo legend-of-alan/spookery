@@ -12,7 +12,7 @@ fn rowan_starts_in_docks_street(world: &mut World) {
     let path = pack.join("state/save.yaml");
     let mut now = parse_save(&fs::read_to_string(&path).unwrap()).unwrap();
     now.edit_actor(
-        "pc_rowan",
+        &"pc_rowan".into(),
         spookery_engine::testing::ActorEdit::Place("docks_street".to_string()),
     )
     .unwrap();

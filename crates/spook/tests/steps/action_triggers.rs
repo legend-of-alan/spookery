@@ -80,7 +80,7 @@ fn three_in_the_shop(world: &mut World) {
     edit_save(&pack, |now| {
         for id in PCS {
             now.edit_actor(
-                id,
+                &id.into(),
                 spookery_engine::testing::ActorEdit::Place("docks_shop".to_string()),
             )
             .unwrap();

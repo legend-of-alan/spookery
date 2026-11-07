@@ -9,7 +9,7 @@ use crate::intent::{Intent, Viewer};
 use crate::model::item;
 use crate::model::meter::{self, MeterWrite};
 use crate::model::modifier::{self, ModifierLive};
-use crate::model::{self, ActorEdit, ExitId, MemoryLine, Note, State};
+use crate::model::{self, ActorEdit, ActorId, ExitId, MemoryLine, Note, PlaceId, State, StoryId};
 use crate::rules::visibility::can_see_fact;
 use crate::Reason;
 
@@ -123,8 +123,8 @@ impl Effect {
                 max,
             } => {
                 let entity = match (actor_id, place) {
-                    (Some(actor_id), None) => EntityId::Actor(actor_id),
-                    (None, Some(place)) => EntityId::Place(place),
+                    (Some(actor_id), None) => EntityId::Actor(actor_id.into()),
+                    (None, Some(place)) => EntityId::Place(place.into()),
                     _ => return Err(Reason::Schema),
                 };
                 shift_item(canon, state, &entity, &id, delta, max)
@@ -134,18 +134,18 @@ impl Effect {
                 id,
                 add,
                 ticks,
-            } => apply_modifier(canon, state, &actor_id, &id, add, ticks),
-            EffectKind::Wield { actor_id, id } => wield(canon, state, &actor_id, &id),
-            EffectKind::Unwield { actor_id } => unwield(state, &actor_id),
+            } => apply_modifier(canon, state, &actor_id.into(), &id, add, ticks),
+            EffectKind::Wield { actor_id, id } => wield(canon, state, &actor_id.into(), &id),
+            EffectKind::Unwield { actor_id } => unwield(state, &actor_id.into()),
             EffectKind::Location {
                 actor_id, from, to, ..
-            } => move_actor(canon, state, intent, &actor_id, &from, &to),
+            } => move_actor(canon, state, intent, &actor_id.into(), &from, &to),
             EffectKind::Memory {
                 actor_id,
                 fact_ids,
                 tags,
                 text,
-            } => remember(canon, state, intent, &actor_id, fact_ids, tags, text),
+            } => remember(canon, state, intent, &actor_id.into(), fact_ids, tags, text),
             EffectKind::Flag { entity, key, value } => set_flag(canon, state, &entity, &key, value),
             EffectKind::ExitOpen { exit, open } => set_exit_open(canon, state, &exit, open),
             EffectKind::Note {
@@ -156,7 +156,7 @@ impl Effect {
                 text,
             } => leave_note(canon, state, note_id, to, place, fact_ids, text),
             EffectKind::Narrate { .. } => Ok(()),
-            EffectKind::Reveal { actor_id, fact } => reveal(canon, state, &actor_id, &fact),
+            EffectKind::Reveal { actor_id, fact } => reveal(canon, state, &actor_id.into(), &fact),
         }
     }
 }
@@ -380,7 +380,7 @@ impl From<Effect> for EffectRecord {
             EffectKind::ExitOpen { exit, open } => Self::ExitOpen {
                 as_viewer,
                 intent_id,
-                place: exit.place,
+                place: exit.place.into(),
                 exit: exit.exit,
                 open,
             },
@@ -536,7 +536,10 @@ impl TryFrom<EffectRecord> for Effect {
                 exit,
                 open,
             } => {
-                let exit = ExitId { place, exit };
+                let exit = ExitId {
+                    place: place.into(),
+                    exit,
+                };
                 (EffectKind::ExitOpen { exit, open }, as_viewer, intent_id)
             }
             EffectRecord::Note {
@@ -606,9 +609,9 @@ fn viewer_matches(intent: &Intent, effect: &Effect) -> bool {
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum EntityId {
-    Actor(String),
-    Place(String),
-    Story(String),
+    Actor(ActorId),
+    Place(PlaceId),
+    Story(StoryId),
     World,
 }
 
@@ -631,14 +634,14 @@ impl std::str::FromStr for EntityId {
     fn from_str(word: &str) -> Result<Self, String> {
         let named = |id: &str| (!id.is_empty()).then(|| id.to_string());
         let entity = if let Some(id) = word.strip_prefix("place:") {
-            named(id).map(EntityId::Place)
+            named(id).map(|id| EntityId::Place(id.into()))
         } else if let Some(id) = word.strip_prefix("story:") {
-            named(id).map(EntityId::Story)
+            named(id).map(|id| EntityId::Story(id.into()))
         } else if word == "world" {
             Some(EntityId::World)
         } else {
             (!word.contains(':'))
-                .then(|| named(word).map(EntityId::Actor))
+                .then(|| named(word).map(|id| EntityId::Actor(id.into())))
                 .flatten()
         };
         entity.ok_or_else(|| format!("'{word}' names no entity"))
@@ -669,7 +672,7 @@ pub(crate) fn shift_item(
     delta: i64,
     max: Option<i64>,
 ) -> Result<(), Reason> {
-    if matches!(entity, EntityId::Place(place) if !canon.places.contains_key(place)) {
+    if matches!(entity, EntityId::Place(place) if !canon.places.contains_key(place.as_str())) {
         return Err(Reason::UnknownId);
     }
     let held = state.item_count(entity, id).ok_or(Reason::UnknownId)?;
@@ -678,7 +681,7 @@ pub(crate) fn shift_item(
     let EntityId::Actor(actor) = entity else {
         return Ok(());
     };
-    let wielded = state.actors().records()[actor].wielded.as_ref();
+    let wielded = state.actors().records()[actor.as_str()].wielded.as_ref();
     let lets_go = wielded.is_some_and(|item| state.item_count(entity, item) == Some(0));
     if lets_go {
         state.edit_actor(actor, ActorEdit::Wielded(None))?;
@@ -691,13 +694,13 @@ pub(crate) fn shift_item(
 fn apply_modifier(
     canon: &Canon,
     state: &mut State,
-    actor_id: &str,
+    actor_id: &ActorId,
     id: &str,
     add: i64,
     ticks: u64,
 ) -> Result<(), Reason> {
     let def = canon.modifiers.get(id).ok_or(Reason::UnknownId)?;
-    let entity = EntityId::Actor(actor_id.to_string());
+    let entity = EntityId::Actor(actor_id.clone());
     canon
         .meter_def(&entity, &def.meter)
         .ok_or(Reason::UnknownId)?;
@@ -705,9 +708,9 @@ fn apply_modifier(
     state
         .actors()
         .records()
-        .get(actor_id)
+        .get(actor_id.as_str())
         .ok_or(Reason::UnknownId)?;
-    let mut next = (state.actors().modifiers().get(actor_id, id))
+    let mut next = (state.actors().modifiers().get(actor_id.as_str(), id))
         .cloned()
         .unwrap_or_else(|| ModifierLive {
             meter: def.meter.clone(),
@@ -719,19 +722,24 @@ fn apply_modifier(
     state.put_modifier(canon, actor_id, id, Some(next))
 }
 
-fn wield(canon: &Canon, state: &mut State, actor_id: &str, item_id: &str) -> Result<(), Reason> {
+fn wield(
+    canon: &Canon,
+    state: &mut State,
+    actor_id: &ActorId,
+    item_id: &str,
+) -> Result<(), Reason> {
     let item = canon.items.get(item_id).ok_or(Reason::UnknownId)?;
     if !item.tags.iter().any(|tag| tag == "weapon") {
         return Err(Reason::NotAWeapon);
     }
-    let held = state.item_count(&EntityId::Actor(actor_id.to_string()), item_id);
+    let held = state.item_count(&EntityId::Actor(actor_id.clone()), item_id);
     if held.ok_or(Reason::UnknownId)? == 0 {
         return Err(Reason::MissingItem);
     }
     state.edit_actor(actor_id, ActorEdit::Wielded(Some(item_id.to_string())))
 }
 
-fn unwield(state: &mut State, actor_id: &str) -> Result<(), Reason> {
+fn unwield(state: &mut State, actor_id: &ActorId) -> Result<(), Reason> {
     state.edit_actor(actor_id, ActorEdit::Wielded(None))
 }
 
@@ -739,11 +747,11 @@ fn move_actor(
     canon: &Canon,
     state: &mut State,
     intent: &Intent,
-    actor_id: &str,
+    actor_id: &ActorId,
     from: &str,
     to: &str,
 ) -> Result<(), Reason> {
-    if intent.actor_id() != Some(actor_id) {
+    if intent.actor_id() != Some(actor_id.as_str()) {
         return Err(Reason::ActorMismatch);
     }
     let in_canon = canon.places.contains_key(to);
@@ -752,7 +760,7 @@ fn move_actor(
     let actor = state
         .actors()
         .records()
-        .get(actor_id)
+        .get(actor_id.as_str())
         .ok_or(Reason::UnknownId)?;
     if state.presence().players == 0 && actor.is_pc() {
         return Err(Reason::TableEmpty);
@@ -770,7 +778,7 @@ fn remember(
     canon: &Canon,
     state: &mut State,
     intent: &Intent,
-    actor_id: &str,
+    actor_id: &ActorId,
     mut fact_ids: Vec<String>,
     mut tags: Vec<String>,
     text: Option<String>,
@@ -778,7 +786,7 @@ fn remember(
     let Some(viewer) = intent
         .actor
         .as_ref()
-        .filter(|viewer| viewer.actor_id() == actor_id)
+        .filter(|viewer| viewer.actor_id() == actor_id.as_str())
     else {
         return Err(Reason::ActorMismatch);
     };
@@ -806,7 +814,7 @@ fn remember(
 }
 
 /// Add `facts` to what actor `actor_id` knows.
-fn learn(state: &mut State, actor_id: &str, facts: &[String]) -> Result<(), Reason> {
+fn learn(state: &mut State, actor_id: &ActorId, facts: &[String]) -> Result<(), Reason> {
     state.edit_actor(actor_id, ActorEdit::Learn(facts.to_vec()))
 }
 
@@ -837,7 +845,7 @@ fn set_exit_open(
     state.set_exit_open(exit, open)
 }
 
-fn reveal(canon: &Canon, state: &mut State, actor_id: &str, fact: &str) -> Result<(), Reason> {
+fn reveal(canon: &Canon, state: &mut State, actor_id: &ActorId, fact: &str) -> Result<(), Reason> {
     if !canon.facts.contains_key(fact) {
         return Err(Reason::UnknownId);
     }

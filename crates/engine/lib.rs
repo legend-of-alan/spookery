@@ -15,7 +15,7 @@ pub use diagnostic::{first_reason, Code, Diagnostic};
 pub use intent::{Intent, IntentArgs, Source, Target, Viewer};
 pub use model::meter::MeterLive;
 pub use model::modifier::ModifierLive;
-pub use model::{ExitId, Note, Presence, State};
+pub use model::{ActorId, ExitId, Note, PlaceId, Presence, State, StoryId};
 pub use round::{migrate_pack, play_pack_once, verify_pack, verify_quick, RoundOutput};
 pub use rules::effect::EntityId;
 pub use rules::gate::Refusal;
@@ -251,8 +251,10 @@ pub mod testing {
                 visited: Default::default(),
                 act: crate::model::Act::default(),
             };
-            state.add_actor("pc_nell", nell).expect("no pc_nell yet");
-            let nell = crate::EntityId::Actor("pc_nell".to_string());
+            state
+                .add_actor(&"pc_nell".into(), nell)
+                .expect("no pc_nell yet");
+            let nell = crate::EntityId::Actor("pc_nell".into());
             for (key, base) in [("grit", 100), ("rest", 3)] {
                 let live = crate::MeterLive { base, offset: 0 };
                 state

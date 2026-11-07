@@ -52,7 +52,7 @@ pub(super) fn load_stories(
             text,
             line_base: 0,
         };
-        let carrier = Some(EntityId::Story(story.id.clone()));
+        let carrier = Some(EntityId::Story(story.id.as_str().into()));
         let own = diags.keep(meter_defs(&source, story.meters, carrier));
         if let (Some(meters), Some(own)) = (meters.as_deref_mut(), own) {
             add_own_meters(meters, own, world_meters, &source, diags);

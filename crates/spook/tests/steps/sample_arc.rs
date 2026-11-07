@@ -211,11 +211,8 @@ fn commit_line(world: &mut World, line: &str) {
 }
 
 fn larks_tonic(now: &spookery_engine::State) -> u32 {
-    now.item_count(
-        &spookery_engine::EntityId::Actor("pc_lark".to_string()),
-        "tonic",
-    )
-    .unwrap()
+    now.item_count(&spookery_engine::EntityId::Actor("pc_lark".into()), "tonic")
+        .unwrap()
 }
 
 fn is_finished(pack: &Path) -> bool {

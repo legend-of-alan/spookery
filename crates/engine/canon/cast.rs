@@ -42,7 +42,7 @@ pub(super) fn add_cast(
         return None;
     }
     let id = file.id.clone();
-    let carrier = Some(EntityId::Actor(id.clone()));
+    let carrier = Some(EntityId::Actor(id.as_str().into()));
     let own = diags.keep(meter_defs(&whole, file.meters, carrier));
     if let (Some(meters), Some(own)) = (meters, own) {
         add_own_meters(meters, own, None, &whole, diags);

@@ -3,7 +3,7 @@
 use crate::canon::{Canon, Exit, PlaceDef};
 use crate::intent::{Intent, Source, Target, Viewer};
 use crate::model::tracked::Entry;
-use crate::model::{ActorEdit, ExitId, PendingAction, State};
+use crate::model::{ActorEdit, ActorId, ExitId, PendingAction, State};
 use crate::round::log::RoundLog;
 use crate::rules::cond;
 use crate::rules::context::Context;
@@ -211,7 +211,7 @@ pub(crate) fn exit_view(canon: &Canon, state: &State, exit: &Exit) -> ExitView {
 /// of each round, after triggers, so a reveal is seen in the round it lands.
 pub(crate) fn note_exits(canon: &Canon, state: &mut State) -> Result<(), Reason> {
     // A walker on an exit is in no place, so there is nothing to note.
-    let seen: Vec<(String, ActorEdit)> = state
+    let seen: Vec<(ActorId, ActorEdit)> = state
         .actors()
         .records()
         .iter()
@@ -224,7 +224,7 @@ pub(crate) fn note_exits(canon: &Canon, state: &mut State) -> Result<(), Reason>
                 id: place,
                 value: exits,
             });
-            (id.clone(), edit)
+            (id.as_str().into(), edit)
         })
         .collect();
     seen.into_iter()
@@ -274,7 +274,7 @@ pub(crate) fn take_due_actions(state: &mut State, end: u64) -> Result<Vec<DueAct
     due_keys.sort();
     let mut due_actions = Vec::new();
     for (until, actor_id) in due_keys {
-        let Some(pending) = state.take_pending(&actor_id)? else {
+        let Some(pending) = state.take_pending(&actor_id.as_str().into())? else {
             continue;
         };
         due_actions.push(DueAction {

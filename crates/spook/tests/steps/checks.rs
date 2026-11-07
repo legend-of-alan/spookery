@@ -166,7 +166,7 @@ fn a_docks_table_where_mira_can_oppose_a_mark(world: &mut World) {
     set_mira_grit(&pack, 100);
     super::common::edit_save(&pack, |now| {
         now.edit_actor(
-            "mira",
+            &"mira".into(),
             spookery_engine::testing::ActorEdit::Place("docks_shop".to_string()),
         )
         .unwrap();
@@ -376,7 +376,7 @@ fn snapshot_pack(pack: &Path) -> PathBuf {
 fn flags_of(world: &World, id: &str) -> Vec<String> {
     let now = state_of(table::pack(world));
     assert!(now.actors().records().contains_key(id), "{id} missing");
-    let actor = spookery_engine::EntityId::Actor(id.to_string());
+    let actor = spookery_engine::EntityId::Actor(id.into());
     let mut flags: Vec<String> = now
         .flags_of(&actor)
         .iter()
@@ -556,7 +556,7 @@ fn a_docks_table_where_mira_opposes_a_three_band_press(world: &mut World) {
     set_mira_grit(&pack, 100);
     super::common::edit_save(&pack, |now| {
         now.edit_actor(
-            "mira",
+            &"mira".into(),
             spookery_engine::testing::ActorEdit::Place("docks_shop".to_string()),
         )
         .unwrap();
@@ -707,7 +707,7 @@ fn prepare_press(world: &mut World, base: i64, sit: bool) {
     set_rowan_grit(&pack, base);
     super::common::edit_save(&pack, |now| {
         now.edit_actor(
-            "mira",
+            &"mira".into(),
             spookery_engine::testing::ActorEdit::Place("docks_shop".to_string()),
         )
         .unwrap();

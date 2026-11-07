@@ -73,7 +73,7 @@ fn value_on(pack: &Path, entity: &EntityId, key: &str) -> Option<i64> {
 }
 
 fn mira() -> EntityId {
-    EntityId::Actor("mira".to_string())
+    EntityId::Actor("mira".into())
 }
 
 /// Give the save the meters the pack now declares, then play one round.
@@ -137,7 +137,7 @@ fn mira_has_shop_day(world: &mut World) {
 fn bram_and_rowan_do_not(world: &mut World) {
     let now = state_of(pack(world));
     for id in ["bram", "pc_rowan"] {
-        let entity = EntityId::Actor(id.to_string());
+        let entity = EntityId::Actor(id.into());
         assert!(now.meters_of(&entity).get("shop_day").is_none(), "{id}");
     }
 }
@@ -244,7 +244,7 @@ fn rowan_and_mira_stand_in_the_shop(world: &mut World) {
         set_place(now, "mira", "docks_shop");
         now.put_meter(
             canon,
-            &spookery_engine::EntityId::Actor("mira".to_string()),
+            &spookery_engine::EntityId::Actor("mira".into()),
             "shop_day",
             Some(spookery_engine::MeterLive { base: 0, offset: 0 }),
         )
@@ -390,7 +390,7 @@ fn dawn_is_zero(world: &mut World) {
 fn no_actor_carries_dawn(world: &mut World) {
     let now = state_of(pack(world));
     for id in now.actors().records().keys() {
-        let entity = EntityId::Actor(id.clone());
+        let entity = EntityId::Actor(id.clone().into());
         assert!(now.meters_of(&entity).get("dawn").is_none(), "{id}");
     }
 }

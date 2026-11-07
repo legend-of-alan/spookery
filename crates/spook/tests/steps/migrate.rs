@@ -111,7 +111,7 @@ fn the_pack_adds_meter(world: &mut World, id: String, start: i64) {
 fn every_actor_has_meter_at(world: &mut World, id: String, base: i64) {
     let now = state_of(table::pack(world));
     for actor in now.actors().records().keys() {
-        let entity = spookery_engine::EntityId::Actor(actor.clone());
+        let entity = spookery_engine::EntityId::Actor(actor.clone().into());
         let got = now.meters_of(&entity).get(&id).map(|meter| meter.base);
         assert_eq!(got, Some(base), "{actor} {id}");
     }
@@ -206,7 +206,7 @@ fn state_rev_is_2(world: &mut World) {
     assert_eq!(now.actors().records()["pc_rowan"].place, "docks_shop");
     assert_eq!(
         now.item_count(
-            &spookery_engine::EntityId::Place("docks_shop".to_string()),
+            &spookery_engine::EntityId::Place("docks_shop".into()),
             "lamp_oil"
         )
         .filter(|count| *count > 0),
@@ -250,7 +250,7 @@ fn the_shops_lamp_oil_is_hand_edited(world: &mut World, count: u32) {
 #[then(expr = "the shop has {int} lamp oil")]
 fn the_shop_has_lamp_oil(world: &mut World, count: u32) {
     let now = state_of(table::pack(world));
-    let shop = spookery_engine::EntityId::Place("docks_shop".to_string());
+    let shop = spookery_engine::EntityId::Place("docks_shop".into());
     assert_eq!(now.item_count(&shop, "lamp_oil"), Some(count));
 }
 

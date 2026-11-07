@@ -70,7 +70,7 @@ fn mira_stands_in_a_place_with_no_facts(world: &mut World) {
     support::edit_save(&pack, |state| {
         state
             .edit_actor(
-                "mira",
+                &"mira".into(),
                 spookery_engine::testing::ActorEdit::Forget(
                     state.actors().records()["mira"].known_facts.clone(),
                 ),

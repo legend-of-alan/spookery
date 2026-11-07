@@ -93,7 +93,7 @@ fn briar_has_flag_downed(world: &mut World) {
         "the downed rule did not fire\n{round}"
     );
     assert!(
-        state_of(pack).has_flag(&EntityId::Actor("briar".to_string()), "downed"),
+        state_of(pack).has_flag(&EntityId::Actor("briar".into()), "downed"),
         "briar is not downed"
     );
 }
@@ -167,7 +167,7 @@ rules:
     write_nell(&pack, &["found_key"]);
     edit_table_with(world, &pack, |now, canon, seated| {
         insert_actor_copy(now, canon, seated, "pc_rowan", "pc_nell", "docks_street");
-        let nell = EntityId::Actor("pc_nell".to_string());
+        let nell = EntityId::Actor("pc_nell".into());
         now.set_flag(&nell, "found_key", true).unwrap();
         let start = MeterLive { base: 0, offset: 0 };
         now.put_meter(canon, &EntityId::World, "tide", Some(start))
@@ -413,7 +413,7 @@ fn the_bog_roll_reproduces(world: &mut World) {
     assert_eq!(world.scratch, "rolled");
     let pack = world.pack.as_ref().unwrap();
     let now = state_of(pack);
-    let nell = EntityId::Actor("pc_nell".to_string());
+    let nell = EntityId::Actor("pc_nell".into());
     let grit = now.meters_of(&nell).get("grit").unwrap();
     assert_eq!(grit.offset, -1, "the miss band did not spend grit");
     let output = support::run_spook(&["verify", &pack.to_string_lossy()]);
@@ -958,7 +958,7 @@ fn play_and_keep_summaries(
 
 pub(crate) fn set_place(now: &mut State, id: &str, place: &str) {
     now.edit_actor(
-        id,
+        &id.into(),
         spookery_engine::testing::ActorEdit::Place(place.to_string()),
     )
     .unwrap();
@@ -1053,7 +1053,7 @@ rules:
         insert_actor_copy(now, canon, seated, "aldric", "briar", "docks_shop");
         now.put_meter(
             canon,
-            &EntityId::Actor("briar".to_string()),
+            &EntityId::Actor("briar".into()),
             "hp",
             Some(MeterLive {
                 base: hp,
@@ -1062,7 +1062,7 @@ rules:
         )
         .unwrap();
         if downed {
-            let briar = EntityId::Actor("briar".to_string());
+            let briar = EntityId::Actor("briar".into());
             now.set_flag(&briar, "downed", true).unwrap();
         }
         sit(seated, &["pc_rowan"]);
@@ -1152,9 +1152,9 @@ fn insert_actor_copy(
     id: &str,
     place: &str,
 ) {
-    now.copy_actor(canon, from, id).unwrap();
+    now.copy_actor(canon, &from.into(), &id.into()).unwrap();
     set_place(now, id, place);
-    let copy = EntityId::Actor(id.to_string());
+    let copy = EntityId::Actor(id.into());
     let flags: Vec<String> = now
         .flags_of(&copy)
         .iter()

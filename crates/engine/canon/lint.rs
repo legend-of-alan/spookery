@@ -371,10 +371,12 @@ impl EntityScope<'_> {
     fn fixed_entity(&self, fixed_self: Option<&str>, who: &Who) -> Option<EntityId> {
         match who {
             Who::World => Some(EntityId::World),
-            Who::Place(id) => Some(EntityId::Place(id.clone())),
-            Who::Story(id) => Some(EntityId::Story(id.clone())),
-            Who::Actor(id) if self.cast.contains_key(id) => Some(EntityId::Actor(id.clone())),
-            Who::Self_ => fixed_self.map(|id| EntityId::Actor(id.to_string())),
+            Who::Place(id) => Some(EntityId::Place(id.as_str().into())),
+            Who::Story(id) => Some(EntityId::Story(id.as_str().into())),
+            Who::Actor(id) if self.cast.contains_key(id) => {
+                Some(EntityId::Actor(id.as_str().into()))
+            }
+            Who::Self_ => fixed_self.map(|id| EntityId::Actor(id.into())),
             _ => None,
         }
     }
@@ -395,9 +397,9 @@ impl EntityScope<'_> {
         let entity = self.fixed_entity(fixed_self, who)?;
         let flags = match &entity {
             EntityId::World => return None,
-            EntityId::Actor(id) => self.cast.get(id).map(|cast| &cast.flags),
-            EntityId::Place(id) => self.places.get(id).map(|place| &place.flags),
-            EntityId::Story(id) => self.stories.get(id).map(|story| &story.flags),
+            EntityId::Actor(id) => self.cast.get(id.as_str()).map(|cast| &cast.flags),
+            EntityId::Place(id) => self.places.get(id.as_str()).map(|place| &place.flags),
+            EntityId::Story(id) => self.stories.get(id.as_str()).map(|story| &story.flags),
         };
         let declared = flags.is_some_and(|flags| flags.contains(&key.to_string()));
         (!declared).then(|| format!("{entity} does not declare it"))
@@ -574,7 +576,7 @@ pub fn check_save(canon: &Canon, state: &State) -> Result<(), Vec<Diagnostic>> {
             let diag = schema_error(SAVE, &problem, "move the actor to a place");
             diags.push(diag.at_path(format!("actors.records.{id}.place")));
         }
-        let entity = EntityId::Actor(id.clone());
+        let entity = EntityId::Actor(id.as_str().into());
         let path = format!("actors.meters.{id}");
         check_lacking_meters(canon, state, &entity, &path, &mut diags);
     }
@@ -592,7 +594,7 @@ pub fn check_save(canon: &Canon, state: &State) -> Result<(), Vec<Diagnostic>> {
             diags.push(schema_error(SAVE, &problem, hint).at_path(path));
             continue;
         }
-        let entity = EntityId::Actor(id.clone());
+        let entity = EntityId::Actor(id.as_str().into());
         match part {
             ActorPart::Item(item, count) => {
                 check_item(
@@ -633,7 +635,7 @@ pub fn check_save(canon: &Canon, state: &State) -> Result<(), Vec<Diagnostic>> {
         "places",
         &canon.places,
         places.meters(),
-        EntityId::Place,
+        |id| EntityId::Place(id.into()),
         &mut diags,
     );
     check_kind_meters(
@@ -642,7 +644,7 @@ pub fn check_save(canon: &Canon, state: &State) -> Result<(), Vec<Diagnostic>> {
         "stories",
         &canon.stories,
         stories.meters(),
-        EntityId::Story,
+        |id| EntityId::Story(id.into()),
         &mut diags,
     );
     check_defined("places.items", places.items(), &canon.places, &mut diags);
@@ -696,7 +698,9 @@ pub fn check_save(canon: &Canon, state: &State) -> Result<(), Vec<Diagnostic>> {
                     )
                     .at_path(path),
                 );
-            } else if state.item_count(&EntityId::Actor(actor_id.clone()), wielded) == Some(0) {
+            } else if state.item_count(&EntityId::Actor(actor_id.as_str().into()), wielded)
+                == Some(0)
+            {
                 diags.push(
                     schema_error(
                         SAVE,

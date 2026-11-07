@@ -68,7 +68,7 @@ impl RoundDice {
     ) -> Result<Roll, Reason> {
         let actor = key.subject_id.as_ref().ok_or(Reason::UnknownId)?;
         let check = canon.checks.get(check_id).ok_or(Reason::UnknownId)?;
-        let entity = EntityId::Actor(actor.clone());
+        let entity = EntityId::Actor(actor.as_str().into());
         let stat = state.meter_value(canon, &entity, &check.stat)?;
         roll::roll_check(check, stat, &key, target, partial_at)
     }

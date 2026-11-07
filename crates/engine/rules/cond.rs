@@ -59,7 +59,7 @@ fn holds(context: &Context, cond: &Cond) -> Result<bool, Reason> {
         Cond::HasItem { who, id, count } => {
             let actor = expr::resolve_who_id(context, who)?;
             let id = expr::resolve_item_id(context, id)?;
-            let held = (state.item_count(&EntityId::Actor(actor), &id)).unwrap_or(0);
+            let held = (state.item_count(&EntityId::Actor(actor.into()), &id)).unwrap_or(0);
             Ok(held >= *count)
         }
         Cond::Wielding { who, id } => {

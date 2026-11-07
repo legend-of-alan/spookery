@@ -82,7 +82,7 @@ fn stacks_of(pack: &Path, id: &str) -> Vec<i64> {
 fn lowered(pack: &Path, meter: &str) -> i64 {
     let now = state_of(pack);
     let canon = load_canon(pack).unwrap_or_else(|err| panic!("load: {err:?}"));
-    let rowan = EntityId::Actor("pc_rowan".to_string());
+    let rowan = EntityId::Actor("pc_rowan".into());
     let MeterLive { base, offset } = now.meters_of(&rowan).get(meter).unwrap().clone();
     base + offset - now.meter_value(&canon, &rowan, meter).unwrap()
 }
@@ -109,7 +109,7 @@ fn hold(pack: &Path, id: &str, stacks: Vec<i64>, left: u64) {
             max_ticks: left,
             stacks,
         };
-        now.put_modifier(&canon, "pc_rowan", id, Some(live))
+        now.put_modifier(&canon, &"pc_rowan".into(), id, Some(live))
             .unwrap();
     });
 }
@@ -135,7 +135,7 @@ fn docks_with_one_tick_rounds(world: &mut World) {
         set_place(now, "pc_wren", "docks_shop");
         set_place(now, "pc_harbormouse", "docks_shop");
         set_place(now, "pc_rowan", "docks_shop");
-        let rowan = EntityId::Actor("pc_rowan".to_string());
+        let rowan = EntityId::Actor("pc_rowan".into());
         now.put_meter(
             canon,
             &rowan,
@@ -215,7 +215,7 @@ fn two_modifiers_on_sight(world: &mut World, rain: String, fog: String) {
             .actors()
             .records()
             .keys()
-            .map(|id| EntityId::Actor(id.clone()))
+            .map(|id| EntityId::Actor(id.clone().into()))
             .collect();
         for actor in actors {
             now.put_meter(
@@ -360,7 +360,7 @@ meters:
         let tide = MeterLive { base: 4, offset: 0 };
         now.put_meter(
             &canon,
-            &EntityId::Actor("pc_rowan".to_string()),
+            &EntityId::Actor("pc_rowan".into()),
             "luck",
             Some(luck),
         )
@@ -419,7 +419,7 @@ fn rowan_has_no_burn(world: &mut World) {
     assert_eq!(modifier_of(pack(world), "burn"), None);
     assert_eq!(lowered(pack(world), "grit"), 0);
     let canon = load_canon(pack(world)).unwrap();
-    let rowan = EntityId::Actor("pc_rowan".to_string());
+    let rowan = EntityId::Actor("pc_rowan".into());
     assert_eq!(
         state_of(pack(world)).meter_value(&canon, &rowan, "grit"),
         Ok(20)
@@ -435,7 +435,7 @@ fn rowan_has_neither(world: &mut World) {
 #[then(expr = "pc_rowan has no luck and the world has no tide")]
 fn neither_keeps_the_dropped_meter(world: &mut World) {
     let now = state_of(pack(world));
-    let rowan = EntityId::Actor("pc_rowan".to_string());
+    let rowan = EntityId::Actor("pc_rowan".into());
     assert!(now.meters_of(&rowan).get("luck").is_none());
     assert!(now.meters_of(&rowan).get("grit").is_some());
     assert!(now.meters_of(&EntityId::World).get("tide").is_none());

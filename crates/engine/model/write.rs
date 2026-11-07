@@ -11,7 +11,7 @@ use crate::model::modifier::ModifierLive;
 use crate::model::tracked::Tracked;
 use crate::model::MemoryLine;
 use crate::model::Note;
-use crate::model::{number, reading, ActCounter, ActorEdit, ComponentId, ExitId};
+use crate::model::{number, reading, ActCounter, ActorEdit, ActorId, ComponentId, ExitId};
 use crate::model::{NoteEdit, PendingAction, State};
 use crate::rules::effect::EntityId;
 use crate::Reason;
@@ -28,11 +28,14 @@ impl State {
     /// toward the budget and its values before and after are kept for the next take; a value
     /// already in place counts nothing. A write the budget refuses stays in place for the
     /// caller's savepoint to undo.
-    pub fn edit_actor(&mut self, id: &str, edit: ActorEdit) -> Result<(), Reason> {
+    pub fn edit_actor(&mut self, id: &ActorId, edit: ActorEdit) -> Result<(), Reason> {
         let State { actors, ledger, .. } = self;
-        let actor = actors.records.tracked_mut(id).ok_or(Reason::UnknownId)?;
+        let actor = actors
+            .records
+            .tracked_mut(id.as_str())
+            .ok_or(Reason::UnknownId)?;
         let at = || ComponentId::Actor(id.to_string());
-        match edit.key(id) {
+        match edit.key(id.as_str()) {
             Some(key) => ledger.land(at, actor, edit, key, |actor, key| actor.value(key)),
             None => {
                 ledger.track(at, actor, edit);
@@ -90,18 +93,19 @@ impl State {
         self.ledger.note(watched, before, after)
     }
 
-    /// Put modifier `id` on actor `actor_id` as `next`, `None` taking it off. Its stacks add to
+    /// Put modifier `id` on `actor` as `next`, `None` taking it off. Its stacks add to
     /// the meter its def names: when they move, that meter's key is counted first and its
     /// values kept too, and a modifier put on must leave the meter readable before its own
     /// key is counted. Otherwise as `edit_actor` says.
     pub fn put_modifier(
         &mut self,
         canon: &Canon,
-        actor_id: &str,
+        actor: &ActorId,
         id: &str,
         next: Option<ModifierLive>,
     ) -> Result<(), Reason> {
-        let entity = EntityId::Actor(actor_id.to_string());
+        let entity = EntityId::Actor(actor.clone());
+        let actor_id = actor.as_str();
         self.require_entity(&entity)?;
         let meter = canon.modifiers.get(id).map(|def| def.meter.as_str());
         let meter_before = meter.map(|key| reading(self.meter_value(canon, &entity, key)));
@@ -165,9 +169,9 @@ impl State {
         canon: &Canon,
         world_time: u64,
     ) -> Result<(), Reason> {
-        let due: Vec<(String, String)> = (self.actors.modifiers.iter())
+        let due: Vec<(ActorId, String)> = (self.actors.modifiers.iter())
             .filter(|(_, _, held)| held.until <= world_time)
-            .map(|(actor, id, _)| (actor.clone(), id.clone()))
+            .map(|(actor, id, _)| (actor.as_str().into(), id.clone()))
             .collect();
         for (actor, id) in due {
             self.put_modifier(canon, &actor, &id, None)?;
@@ -230,7 +234,7 @@ impl State {
         } else {
             self.ledger.removed(Removed::ExitOpen(exit.clone()));
         }
-        let watched = StateKey::ExitOpen(exit.place.clone(), exit.exit.clone());
+        let watched = StateKey::ExitOpen(exit.place.to_string(), exit.exit.clone());
         self.ledger
             .note(watched, StateValue::Bool(!open), StateValue::Bool(open))
     }
@@ -249,7 +253,12 @@ impl State {
 
     /// Set `counter` back to 0 on every actor.
     pub(crate) fn reset_acts(&mut self, counter: ActCounter) -> Result<(), Reason> {
-        let ids: Vec<String> = self.actors.records.keys().cloned().collect();
+        let ids: Vec<ActorId> = self
+            .actors
+            .records
+            .keys()
+            .map(|id| id.as_str().into())
+            .collect();
         for id in ids {
             self.edit_actor(&id, ActorEdit::Acts(counter, 0))?;
         }
@@ -257,12 +266,12 @@ impl State {
     }
 
     /// Count one act for `actor_id` this round, in the act window the table is in.
-    pub(crate) fn count_act(&mut self, actor_id: &str) -> Result<(), Reason> {
+    pub(crate) fn count_act(&mut self, actor_id: &ActorId) -> Result<(), Reason> {
         let round = self.round_index;
         let act = &self
             .actors
             .records
-            .get(actor_id)
+            .get(actor_id.as_str())
             .ok_or(Reason::UnknownId)?
             .act;
         let (counter, count) = if self.presence().players == 0 {
@@ -278,7 +287,7 @@ impl State {
     /// `None` when it is a cooldown.
     pub(crate) fn set_busy(
         &mut self,
-        id: &str,
+        id: &ActorId,
         until: u64,
         pending: Option<PendingAction>,
     ) -> Result<(), Reason> {
@@ -286,8 +295,12 @@ impl State {
     }
 
     /// End actor `id`'s action under way, if any, and free them: it never finishes here.
-    pub(crate) fn take_pending(&mut self, id: &str) -> Result<Option<PendingAction>, Reason> {
-        let actor = self.actors.records.get(id).ok_or(Reason::UnknownId)?;
+    pub(crate) fn take_pending(&mut self, id: &ActorId) -> Result<Option<PendingAction>, Reason> {
+        let actor = self
+            .actors
+            .records
+            .get(id.as_str())
+            .ok_or(Reason::UnknownId)?;
         let taken = actor.act.pending.clone();
         self.edit_actor(id, ActorEdit::Busy(None, None))?;
         Ok(taken)
@@ -315,8 +328,12 @@ impl State {
 #[cfg(any(test, feature = "testing"))]
 impl State {
     /// Give the save actor `id`, with `record` and no components yet.
-    pub fn add_actor(&mut self, id: &str, record: crate::model::ActorLive) -> Result<(), Reason> {
-        if self.actors.records.contains_key(id) {
+    pub fn add_actor(
+        &mut self,
+        id: &ActorId,
+        record: crate::model::ActorLive,
+    ) -> Result<(), Reason> {
+        if self.actors.records.contains_key(id.as_str()) {
             return Err(Reason::Schema);
         }
         self.actors.records.put(id.to_string(), record.into());
@@ -327,14 +344,14 @@ impl State {
     /// Take actor `id` out of the save: each of their components through its writer, in the
     /// reverse of the order a copy puts them on, then their record, so a rollback puts them all
     /// back.
-    pub fn remove_actor(&mut self, canon: &Canon, id: &str) -> Result<(), Reason> {
-        if !self.actors.records.contains_key(id) {
+    pub fn remove_actor(&mut self, canon: &Canon, id: &ActorId) -> Result<(), Reason> {
+        if !self.actors.records.contains_key(id.as_str()) {
             return Err(Reason::UnknownId);
         }
         for part in self.parts_of(id).into_iter().rev() {
             self.put_part(canon, id, part, false)?;
         }
-        let record = self.actors.records.take(id).expect("an actor");
+        let record = self.actors.records.take(id.as_str()).expect("an actor");
         self.ledger
             .removed(Removed::Actor(id.to_string(), Box::new(record)));
         Ok(())
@@ -342,11 +359,16 @@ impl State {
 
     /// Give the save actor `to`, a copy of actor `from`: their record, then each of their
     /// components through its writer.
-    pub fn copy_actor(&mut self, canon: &Canon, from: &str, to: &str) -> Result<(), Reason> {
+    pub fn copy_actor(
+        &mut self,
+        canon: &Canon,
+        from: &ActorId,
+        to: &ActorId,
+    ) -> Result<(), Reason> {
         let record = self
             .actors
             .records
-            .get(from)
+            .get(from.as_str())
             .ok_or(Reason::UnknownId)?
             .clone();
         let parts = self.parts_of(from);
@@ -359,10 +381,10 @@ impl State {
 
     /// Every component actor `id` holds, in the order `ActorComponents::parts` walks them,
     /// which is the order a copy puts them on.
-    fn parts_of(&self, id: &str) -> Vec<crate::model::ActorPart> {
+    fn parts_of(&self, id: &ActorId) -> Vec<crate::model::ActorPart> {
         let parts = self.actors.parts().into_iter();
         parts
-            .filter(|(on, _)| on == id)
+            .filter(|(on, _)| on == id.as_str())
             .map(|(_, part)| part)
             .collect()
     }
@@ -372,12 +394,12 @@ impl State {
     fn put_part(
         &mut self,
         canon: &Canon,
-        onto: &str,
+        onto: &ActorId,
         part: crate::model::ActorPart,
         on: bool,
     ) -> Result<(), Reason> {
         use crate::model::ActorPart;
-        let entity = EntityId::Actor(onto.to_string());
+        let entity = EntityId::Actor(onto.clone());
         match part {
             ActorPart::Item(id, count) => self.set_items(&entity, &id, if on { count } else { 0 }),
             ActorPart::Meter(key, live) => self.put_meter(canon, &entity, &key, on.then_some(live)),
@@ -408,7 +430,7 @@ mod tests {
         canon.budget.max_state_keys_mutated = 2;
         // Bram's grit sits clamped at its minimum: taking more moves the offset, not the value.
         let mut state = opened.state().clone();
-        let bram = EntityId::Actor("bram".to_string());
+        let bram = EntityId::Actor("bram".into());
         let clamped = MeterLive {
             base: 1,
             offset: -5,
@@ -423,7 +445,7 @@ mod tests {
         let intent = Intent::habit(world.state(), "mira", "leave_door_note");
         let mut write = |actor: &str, key: &str, delta: i64| {
             let kind = EffectKind::Meter {
-                entity: EntityId::Actor(actor.to_string()),
+                entity: EntityId::Actor(actor.into()),
                 key: key.to_string(),
                 write: MeterWrite::Offset(delta),
             };
@@ -453,10 +475,12 @@ mod tests {
         state.set_items(&mira, "lamp_oil", 2).unwrap();
         state.accept();
         let before = state.clone();
-        state.copy_actor(canon, "mira", "briar").unwrap();
+        state
+            .copy_actor(canon, &"mira".into(), &"briar".into())
+            .unwrap();
         assert_eq!(oil(&state, &briar), Some(2), "the copy's oil");
         assert_eq!(oil(&state, &mira), Some(2), "the source's oil");
-        state.remove_actor(canon, "briar").unwrap();
+        state.remove_actor(canon, &"briar".into()).unwrap();
         state.accept();
         assert_eq!(state, before);
     }

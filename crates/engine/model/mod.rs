@@ -8,6 +8,7 @@ pub(crate) mod modifier;
 pub(crate) mod tracked;
 pub(crate) mod write;
 
+use std::borrow::Borrow;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
@@ -216,10 +217,72 @@ pub(crate) enum ComponentId {
     Notes,
 }
 
+/// Declares `$name`, the id of one kind of entity: a string saved as itself, which an id of
+/// another kind cannot stand in for.
+macro_rules! string_id {
+    ($(#[$doc:meta])* $name:ident) => {
+        $(#[$doc])*
+        #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+        #[serde(transparent)]
+        pub struct $name(String);
+
+        impl $name {
+            pub fn as_str(&self) -> &str {
+                &self.0
+            }
+        }
+
+        impl fmt::Display for $name {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                f.write_str(&self.0)
+            }
+        }
+
+        impl Borrow<str> for $name {
+            fn borrow(&self) -> &str {
+                &self.0
+            }
+        }
+
+        impl From<&str> for $name {
+            fn from(id: &str) -> Self {
+                $name(id.to_string())
+            }
+        }
+
+        impl From<String> for $name {
+            fn from(id: String) -> Self {
+                $name(id)
+            }
+        }
+
+        impl From<$name> for String {
+            fn from(id: $name) -> Self {
+                id.0
+            }
+        }
+    };
+}
+
+string_id! {
+    /// An actor's id, as the cast and the save's records key them.
+    ActorId
+}
+
+string_id! {
+    /// A place's id, as the pack's places key them.
+    PlaceId
+}
+
+string_id! {
+    /// A story's id, as the pack's stories key them.
+    StoryId
+}
+
 /// One exit, by its place and its name: the address of its door. An exit holds nothing else.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ExitId {
-    pub place: String,
+    pub place: PlaceId,
     pub exit: String,
 }
 
@@ -227,7 +290,7 @@ impl ExitId {
     /// The exit named `exit` out of `place`.
     pub fn new(place: &str, exit: &str) -> ExitId {
         ExitId {
-            place: place.to_string(),
+            place: place.into(),
             exit: exit.to_string(),
         }
     }
@@ -264,9 +327,9 @@ impl State {
     /// The meters `entity` holds.
     pub fn meters_of(&self, entity: &EntityId) -> Parts<'_, MeterLive, Offset> {
         Parts(match entity {
-            EntityId::Actor(id) => self.actors.meters.of(id),
-            EntityId::Place(id) => self.places.meters.of(id),
-            EntityId::Story(id) => self.stories.meters.of(id),
+            EntityId::Actor(id) => self.actors.meters.of(id.as_str()),
+            EntityId::Place(id) => self.places.meters.of(id.as_str()),
+            EntityId::Story(id) => self.stories.meters.of(id.as_str()),
             EntityId::World => Some(&self.world.meters),
         })
     }
@@ -274,9 +337,9 @@ impl State {
     /// The flags set on `entity`.
     pub fn flags_of(&self, entity: &EntityId) -> Parts<'_, (), ()> {
         Parts(match entity {
-            EntityId::Actor(id) => self.actors.flags.of(id),
-            EntityId::Place(id) => self.places.flags.of(id),
-            EntityId::Story(id) => self.stories.flags.of(id),
+            EntityId::Actor(id) => self.actors.flags.of(id.as_str()),
+            EntityId::Place(id) => self.places.flags.of(id.as_str()),
+            EntityId::Story(id) => self.stories.flags.of(id.as_str()),
             EntityId::World => Some(&self.world.flags),
         })
     }
@@ -285,8 +348,8 @@ impl State {
     /// holds items.
     pub fn items_of(&self, entity: &EntityId) -> Option<Parts<'_, u32, Shift>> {
         Some(Parts(match entity {
-            EntityId::Actor(id) => self.actors.items.of(id),
-            EntityId::Place(id) => self.places.items.of(id),
+            EntityId::Actor(id) => self.actors.items.of(id.as_str()),
+            EntityId::Place(id) => self.places.items.of(id.as_str()),
             EntityId::Story(_) | EntityId::World => return None,
         }))
     }
@@ -309,16 +372,16 @@ impl State {
         let key = key.to_string();
         let (meters, watched) = match entity {
             EntityId::Actor(id) => (
-                PartsMut::Stored(&mut actors.meters, id),
-                StateKey::ActorMeter(id.clone(), key),
+                PartsMut::Stored(&mut actors.meters, id.as_str()),
+                StateKey::ActorMeter(id.to_string(), key),
             ),
             EntityId::Place(id) => (
-                PartsMut::Stored(&mut places.meters, id),
-                StateKey::PlaceMeter(id.clone(), key),
+                PartsMut::Stored(&mut places.meters, id.as_str()),
+                StateKey::PlaceMeter(id.to_string(), key),
             ),
             EntityId::Story(id) => (
-                PartsMut::Stored(&mut stories.meters, id),
-                StateKey::StoryMeter(id.clone(), key),
+                PartsMut::Stored(&mut stories.meters, id.as_str()),
+                StateKey::StoryMeter(id.to_string(), key),
             ),
             EntityId::World => (
                 PartsMut::World(&mut world.meters),
@@ -345,16 +408,16 @@ impl State {
         let key = key.to_string();
         let (flags, watched) = match entity {
             EntityId::Actor(id) => (
-                PartsMut::Stored(&mut actors.flags, id),
-                StateKey::ActorFlag(id.clone(), key),
+                PartsMut::Stored(&mut actors.flags, id.as_str()),
+                StateKey::ActorFlag(id.to_string(), key),
             ),
             EntityId::Place(id) => (
-                PartsMut::Stored(&mut places.flags, id),
-                StateKey::PlaceFlag(id.clone(), key),
+                PartsMut::Stored(&mut places.flags, id.as_str()),
+                StateKey::PlaceFlag(id.to_string(), key),
             ),
             EntityId::Story(id) => (
-                PartsMut::Stored(&mut stories.flags, id),
-                StateKey::StoryFlag(id.clone(), key),
+                PartsMut::Stored(&mut stories.flags, id.as_str()),
+                StateKey::StoryFlag(id.to_string(), key),
             ),
             EntityId::World => (PartsMut::World(&mut world.flags), StateKey::WorldFlag(key)),
         };
@@ -377,12 +440,12 @@ impl State {
         let id = id.to_string();
         let (items, watched) = match entity {
             EntityId::Actor(actor) => (
-                PartsMut::Stored(&mut actors.items, actor),
-                StateKey::ActorItem(actor.clone(), id),
+                PartsMut::Stored(&mut actors.items, actor.as_str()),
+                StateKey::ActorItem(actor.to_string(), id),
             ),
             EntityId::Place(place) => (
-                PartsMut::Stored(&mut places.items, place),
-                StateKey::PlaceItem(place.clone(), id),
+                PartsMut::Stored(&mut places.items, place.as_str()),
+                StateKey::PlaceItem(place.to_string(), id),
             ),
             EntityId::Story(_) | EntityId::World => return None,
         };
@@ -393,7 +456,7 @@ impl State {
     /// and a story are the pack's, as the world is, so the save takes one on any of them.
     pub(crate) fn require_entity(&self, entity: &EntityId) -> Result<(), crate::Reason> {
         match entity {
-            EntityId::Actor(id) if !self.actors.records.contains_key(id) => {
+            EntityId::Actor(id) if !self.actors.records.contains_key(id.as_str()) => {
                 Err(crate::Reason::UnknownId)
             }
             _ => Ok(()),
@@ -413,7 +476,7 @@ impl State {
         let def = (canon.meter_def(entity, key)).ok_or(crate::Reason::UnknownId)?;
         let live = (self.meters_of(entity).get(key)).ok_or(crate::Reason::UnknownId)?;
         let modifiers = match entity {
-            EntityId::Actor(id) => modifier::sum(self.actors.modifiers.of(id), key)?,
+            EntityId::Actor(id) => modifier::sum(self.actors.modifiers.of(id.as_str()), key)?,
             EntityId::Place(_) | EntityId::Story(_) | EntityId::World => 0,
         };
         meter::current(def, live, modifiers)
@@ -434,7 +497,8 @@ impl State {
 
     /// Whether the door of `exit` is open.
     pub fn is_exit_open(&self, exit: &ExitId) -> bool {
-        (self.places.open_exits.get(&exit.place)).is_some_and(|open| open.contains(&exit.exit))
+        (self.places.open_exits.get(exit.place.as_str()))
+            .is_some_and(|open| open.contains(&exit.exit))
     }
 
     /// Open or shut the door of `exit` past the ledger, for its writer and a rollback. A place
@@ -443,12 +507,12 @@ impl State {
     fn put_exit_open(&mut self, exit: &ExitId, open: bool) {
         let open_exits = &mut self.places.open_exits;
         if open {
-            let names = open_exits.entry(exit.place.clone()).or_default();
+            let names = open_exits.entry(exit.place.to_string()).or_default();
             names.insert(exit.exit.clone());
-        } else if let Some(names) = open_exits.get_mut(&exit.place) {
+        } else if let Some(names) = open_exits.get_mut(exit.place.as_str()) {
             names.remove(&exit.exit);
             if names.is_empty() {
-                open_exits.remove(&exit.place);
+                open_exits.remove(exit.place.as_str());
             }
         }
     }

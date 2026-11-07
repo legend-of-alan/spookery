@@ -209,8 +209,8 @@ fn expand_template(
         } => {
             let item_id = expr::resolve_item_id(context, id)?;
             let (actor_id, place) = match expr::resolve_entity(context, who)? {
-                EntityId::Actor(id) => (Some(id), None),
-                EntityId::Place(id) => (None, Some(id)),
+                EntityId::Actor(id) => (Some(id.into()), None),
+                EntityId::Place(id) => (None, Some(id.into())),
                 EntityId::Story(_) | EntityId::World => return Err(Reason::Schema),
             };
             effects.push(Effect::new(

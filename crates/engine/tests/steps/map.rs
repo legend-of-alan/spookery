@@ -100,7 +100,7 @@ fn the_shop_has_a_trapdoor(world: &mut World) {
     support::edit_save(&pack, |state| {
         state
             .edit_actor(
-                "mira",
+                &"mira".into(),
                 spookery_engine::testing::ActorEdit::Place("docks_shop".to_string()),
             )
             .unwrap();

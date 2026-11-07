@@ -224,7 +224,7 @@ The ferry waits at the dock.
     fs::write(&rowan, next).unwrap();
     edit_save(&pack, |now| {
         now.edit_actor(
-            "pc_rowan",
+            &"pc_rowan".into(),
             spookery_engine::testing::ActorEdit::Place("ferry_dock".to_string()),
         )
         .unwrap();
@@ -254,7 +254,7 @@ fn the_ferry_rule_runs(world: &mut World) {
     let now = state_of(world.pack.as_ref().unwrap());
     let rowan = &now.actors().records()["pc_rowan"];
     assert_eq!(rowan.place, "ferry_dock", "verb:travel moved the PC");
-    let entity = spookery_engine::EntityId::Actor("pc_rowan".to_string());
+    let entity = spookery_engine::EntityId::Actor("pc_rowan".into());
     assert!(
         now.has_flag(&entity, "took_the_ferry"),
         "ferry flag missing: {:?}",
@@ -341,7 +341,7 @@ fn an_empty_round_lands_at(world: &mut World, tick: u64) {
     let canon = spookery_engine::load_canon(&pack).unwrap();
     edit_save(&pack, |now| {
         now.world_time = tick - 60;
-        let mira = spookery_engine::EntityId::Actor("mira".to_string());
+        let mira = spookery_engine::EntityId::Actor("mira".into());
         now.put_meter(
             &canon,
             &mira,
@@ -349,16 +349,17 @@ fn an_empty_round_lands_at(world: &mut World, tick: u64) {
             Some(spookery_engine::MeterLive { base: 0, offset: 0 }),
         )
         .unwrap();
-        now.copy_actor(&canon, "mira", "briar").unwrap();
-        let briar = spookery_engine::EntityId::Actor("briar".to_string());
+        now.copy_actor(&canon, &"mira".into(), &"briar".into())
+            .unwrap();
+        let briar = spookery_engine::EntityId::Actor("briar".into());
         now.put_meter(&canon, &briar, "shop_day", None).unwrap();
         now.edit_actor(
-            "briar",
+            &"briar".into(),
             spookery_engine::testing::ActorEdit::Place("docks_shop".to_string()),
         )
         .unwrap();
         now.edit_actor(
-            "mira",
+            &"mira".into(),
             spookery_engine::testing::ActorEdit::Acts(
                 spookery_engine::testing::ActCounter::IdleActsThisWindow,
                 3,
@@ -377,7 +378,7 @@ fn an_empty_round_lands_with_mira(world: &mut World, tick: u64) {
     let canon = spookery_engine::load_canon(&pack).unwrap();
     edit_save(&pack, |now| {
         now.world_time = tick - 60;
-        let mira = spookery_engine::EntityId::Actor("mira".to_string());
+        let mira = spookery_engine::EntityId::Actor("mira".into());
         now.put_meter(
             &canon,
             &mira,
@@ -386,7 +387,7 @@ fn an_empty_round_lands_with_mira(world: &mut World, tick: u64) {
         )
         .unwrap();
         now.edit_actor(
-            "mira",
+            &"mira".into(),
             spookery_engine::testing::ActorEdit::Place("docks_shop".to_string()),
         )
         .unwrap();
@@ -417,7 +418,7 @@ fn lamp_oil_increases_by_4(world: &mut World) {
     let now = state_of(world.pack.as_ref().unwrap());
     let oil = now
         .item_count(
-            &spookery_engine::EntityId::Place("docks_shop".to_string()),
+            &spookery_engine::EntityId::Place("docks_shop".into()),
             "lamp_oil",
         )
         .filter(|count| *count > 0);
@@ -439,8 +440,11 @@ fn every_actor_used_its_idle_acts(world: &mut World, window: u64, tick: u64) {
         let ids: Vec<String> = now.actors().records().keys().cloned().collect();
         for id in ids {
             let counter = spookery_engine::testing::ActCounter::IdleActsThisWindow;
-            now.edit_actor(&id, spookery_engine::testing::ActorEdit::Acts(counter, 3))
-                .unwrap();
+            now.edit_actor(
+                &id.into(),
+                spookery_engine::testing::ActorEdit::Acts(counter, 3),
+            )
+            .unwrap();
         }
     });
     world.pack = Some(pack);
@@ -473,7 +477,7 @@ fn every_actor_idle_acts(world: &mut World, tick: u64, acts: u32) {
 fn docks_shop_holds_lamp_oil(world: &mut World, count: u32) {
     let now = state_of(world.pack.as_ref().unwrap());
     let oil = now.item_count(
-        &spookery_engine::EntityId::Place("docks_shop".to_string()),
+        &spookery_engine::EntityId::Place("docks_shop".into()),
         "lamp_oil",
     );
     assert_eq!(oil, Some(count), "world_time {}", now.world_time);
@@ -518,7 +522,7 @@ fn attack_targets_defense(world: &mut World) {
     fs::write(&briar, next).unwrap();
     let canon = spookery_engine::load_canon(&pack).unwrap();
     edit_save(&pack, |now| {
-        let briar = spookery_engine::EntityId::Actor("npc_briar".to_string());
+        let briar = spookery_engine::EntityId::Actor("npc_briar".into());
         let live = spookery_engine::MeterLive {
             base: 12,
             offset: 0,
@@ -526,7 +530,7 @@ fn attack_targets_defense(world: &mut World) {
         now.put_meter(&canon, &briar, "defense", Some(live))
             .unwrap();
         now.edit_actor(
-            "npc_briar",
+            &"npc_briar".into(),
             spookery_engine::testing::ActorEdit::Busy(Some(u64::MAX), None),
         )
         .unwrap();
@@ -553,7 +557,7 @@ fn lark_attacks(world: &mut World) {
     .unwrap_or_else(|err| panic!("faces {}", err.as_str()))[0];
     let canon = spookery_engine::load_canon(&pack).unwrap();
     edit_save(&pack, |now| {
-        let lark = spookery_engine::EntityId::Actor("pc_lark".to_string());
+        let lark = spookery_engine::EntityId::Actor("pc_lark".into());
         let live = spookery_engine::MeterLive {
             base: 21 - i64::from(face),
             offset: 0,
@@ -589,7 +593,7 @@ fn lark_attacks(world: &mut World) {
 fn the_outcome_is_a_miss(world: &mut World) {
     assert_eq!(world.scratch, "miss");
     let now = state_of(world.pack.as_ref().unwrap());
-    let briar = spookery_engine::EntityId::Actor("npc_briar".to_string());
+    let briar = spookery_engine::EntityId::Actor("npc_briar".into());
     let flags = now.actors().flags();
     assert!(now.has_flag(&briar, "missed"), "{flags:?}");
     assert!(!now.has_flag(&briar, "hit"), "{flags:?}");
@@ -720,7 +724,7 @@ fn steady_costs_five_grit(world: &mut World) {
     );
     let canon = spookery_engine::load_canon(&pack).unwrap();
     edit_save(&pack, |now| {
-        let rowan = spookery_engine::EntityId::Actor("pc_rowan".to_string());
+        let rowan = spookery_engine::EntityId::Actor("pc_rowan".into());
         let live = spookery_engine::MeterLive { base: 1, offset: 0 };
         now.put_meter(&canon, &rowan, "grit", Some(live)).unwrap();
     });
@@ -814,7 +818,7 @@ fn both_full_ids_are_refused(world: &mut World) {
     );
     assert!(
         !now.has_flag(
-            &spookery_engine::EntityId::Actor("pc_rowan".to_string()),
+            &spookery_engine::EntityId::Actor("pc_rowan".into()),
             "took_the_street"
         ),
         "the far place rule ran"
@@ -852,7 +856,7 @@ A small bottle.
 ",
     );
     edit_save(&pack, |now| {
-        let rowan = spookery_engine::EntityId::Actor("pc_rowan".to_string());
+        let rowan = spookery_engine::EntityId::Actor("pc_rowan".into());
         now.set_items(&rowan, "tonic", 1).unwrap();
     });
     world.pack = Some(pack);
@@ -1007,7 +1011,7 @@ fn briar_holds_ask_in_the_lane(world: &mut World) {
     let pack = copy_pack("sample-d20", "rules-scoped-gone");
     edit_save(&pack, |now| {
         now.edit_actor(
-            "npc_briar",
+            &"npc_briar".into(),
             spookery_engine::testing::ActorEdit::Place("mill_lane".to_string()),
         )
         .unwrap();

@@ -126,13 +126,13 @@ fn play_steps(world: &World<()>, steps: &[Step]) -> Result<(), TestCaseError> {
                 let _ = state.expire_modifiers(canon, u64::MAX);
             }
             Step::Act => {
-                let _ = state.count_act("mira");
+                let _ = state.count_act(&"mira".into());
             }
             Step::Busy(true) => {
-                let _ = state.set_busy("mira", 9, None);
+                let _ = state.set_busy(&"mira".into(), 9, None);
             }
             Step::Busy(false) => {
-                let _ = state.take_pending("mira");
+                let _ = state.take_pending(&"mira".into());
             }
             Step::NoteExits => {
                 let _ = crate::rules::travel::note_exits(canon, &mut state);
@@ -183,7 +183,7 @@ fn every_moved_meter_is_reported(
             .map_or(StateValue::Empty, StateValue::Number)
     };
     for id in now.actors().records().keys() {
-        let entity = EntityId::Actor(id.clone());
+        let entity = EntityId::Actor(id.clone().into());
         for (key, _) in now.meters_of(&entity).iter() {
             let (before, after) = (read(taken, &entity, key), read(now, &entity, key));
             if before == after {
@@ -208,7 +208,7 @@ fn effect(state: &State, step: &Step, index: usize) -> Effect {
     let kind = match step {
         Step::Item(entity, id, delta) => {
             let (actor_id, place) = match entity {
-                EntityId::Actor(id) => (Some(id.clone()), None),
+                EntityId::Actor(id) => (Some(id.clone().into()), None),
                 _ => (None, Some("docks_shop".to_string())),
             };
             EffectKind::Item {
@@ -220,7 +220,7 @@ fn effect(state: &State, step: &Step, index: usize) -> Effect {
             }
         }
         Step::Meter(actor, delta) => EffectKind::Meter {
-            entity: EntityId::Actor(actor.to_string()),
+            entity: EntityId::Actor((*actor).into()),
             key: "grit".to_string(),
             write: MeterWrite::Offset(*delta),
         },
@@ -235,7 +235,7 @@ fn effect(state: &State, step: &Step, index: usize) -> Effect {
             open: *open,
         },
         Step::StreetFlag(key, value) => EffectKind::Flag {
-            entity: EntityId::Place("docks_street".to_string()),
+            entity: EntityId::Place("docks_street".into()),
             key: key.to_string(),
             value: *value,
         },
@@ -289,9 +289,9 @@ fn mira_intent() -> Intent {
 
 fn pick_step() -> impl Strategy<Value = Step> {
     let entity = select(vec![
-        EntityId::Actor("mira".to_string()),
-        EntityId::Actor("bram".to_string()),
-        EntityId::Place("docks_shop".to_string()),
+        EntityId::Actor("mira".into()),
+        EntityId::Actor("bram".into()),
+        EntityId::Place("docks_shop".into()),
     ]);
     prop_oneof![
         3 => Just(Step::Savepoint),

@@ -177,8 +177,8 @@ fn item_tokens(world: &World, actor: &str) -> Vec<String> {
     let state = world.state();
     if let Some(live) = state.actors().records().get(actor) {
         let entities = [
-            EntityId::Actor(actor.to_string()),
-            EntityId::Place(live.place.clone()),
+            EntityId::Actor(actor.into()),
+            EntityId::Place(live.place.clone().into()),
         ];
         for entity in entities {
             let items = state.items_of(&entity).into_iter();

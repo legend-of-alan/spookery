@@ -118,8 +118,8 @@ fn assert_no_stored_zero(state: &State) -> Result<(), TestCaseError> {
 
 fn is_known_entity(canon: &Canon, state: &State, entity: &EntityId) -> bool {
     match entity {
-        EntityId::Actor(id) => state.actors().records().contains_key(id),
-        EntityId::Place(id) => canon.places.contains_key(id),
+        EntityId::Actor(id) => state.actors().records().contains_key(id.as_str()),
+        EntityId::Place(id) => canon.places.contains_key(id.as_str()),
         EntityId::Story(_) | EntityId::World => false,
     }
 }
@@ -150,8 +150,8 @@ fn npc_intent() -> Intent {
 
 fn item_effect(step: &ItemChange) -> Effect {
     let (actor_id, place) = match &step.entity {
-        EntityId::Actor(id) => (Some(id.clone()), None),
-        EntityId::Place(id) => (None, Some(id.clone())),
+        EntityId::Actor(id) => (Some(id.clone().into()), None),
+        EntityId::Place(id) => (None, Some(id.clone().into())),
         EntityId::Story(_) | EntityId::World => (None, None),
     };
     Effect {
@@ -190,15 +190,15 @@ fn pick_changes(actors: &[String], places: &[String]) -> impl Strategy<Value = V
 fn pick_entity(actors: &[String], places: &[String]) -> impl Strategy<Value = EntityId> {
     let mut known = Vec::new();
     for id in actors.iter().take(2) {
-        known.push(EntityId::Actor(id.clone()));
+        known.push(EntityId::Actor(id.clone().into()));
     }
     for id in places {
-        known.push(EntityId::Place(id.clone()));
+        known.push(EntityId::Place(id.clone().into()));
     }
     prop_oneof![
         8 => select(known),
-        1 => Just(EntityId::Actor("nobody".to_string())),
-        1 => Just(EntityId::Place("nowhere".to_string())),
+        1 => Just(EntityId::Actor("nobody".into())),
+        1 => Just(EntityId::Place("nowhere".into())),
     ]
 }
 

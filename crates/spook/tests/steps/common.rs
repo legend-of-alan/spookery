@@ -27,7 +27,7 @@ pub(crate) use crate::support::edit_save;
 /// shop would have left it.
 pub(crate) fn give_key(now: &mut State) {
     now.set_items(
-        &spookery_engine::EntityId::Actor("pc_rowan".to_string()),
+        &spookery_engine::EntityId::Actor("pc_rowan".into()),
         "brass_key",
         1,
     )
@@ -278,10 +278,13 @@ pub(crate) fn capture_play_stdout(world: &mut World) -> String {
 /// Put `actor` on the exit `<place>.<exit>`, walking it until tick `until`.
 pub(crate) fn set_busy(now: &mut State, actor: &str, until: u64, exit: &str) {
     let place = format!("exit:{exit}");
-    now.edit_actor(actor, spookery_engine::testing::ActorEdit::Place(place))
-        .unwrap();
+    now.edit_actor(
+        &actor.into(),
+        spookery_engine::testing::ActorEdit::Place(place),
+    )
+    .unwrap();
     let busy = spookery_engine::testing::ActorEdit::Busy(Some(until), Some(walk(exit)));
-    now.edit_actor(actor, busy).unwrap();
+    now.edit_actor(&actor.into(), busy).unwrap();
 }
 
 /// A walk through the exit `<place>.<exit>` by the travel verb.

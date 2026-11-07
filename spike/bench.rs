@@ -65,7 +65,7 @@ mod spike_bench {
             max: None,
         };
         let meter = |actor: &str, key: &str, delta: i64| EffectKind::Meter {
-            entity: EntityId::Actor(actor.to_string()),
+            entity: EntityId::Actor(actor.into()),
             key: key.to_string(),
             write: MeterWrite::Offset(delta),
         };
@@ -127,7 +127,7 @@ mod spike_bench {
         // 5. 100 mixed writes across three records (Mira's rest, the shop's oil and flag, Bram's
         // grit), then one rollback over all of them.
         let lit = |on: bool| EffectKind::Flag {
-            entity: EntityId::Place("docks_shop".to_string()),
+            entity: EntityId::Place("docks_shop".into()),
             key: "lit".to_string(),
             value: on,
         };

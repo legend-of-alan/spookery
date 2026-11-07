@@ -121,7 +121,7 @@ fn apply_scene(
     for (actor_id, place_index) in actors.iter().zip(&scene.place_of) {
         let place = places[place_index % places.len()].clone();
         state
-            .edit_actor(actor_id, ActorEdit::Place(place))
+            .edit_actor(&actor_id.as_str().into(), ActorEdit::Place(place))
             .expect("an actor");
     }
     for (actor_id, known) in actors.iter().zip(&scene.known) {
@@ -131,10 +131,10 @@ fn apply_scene(
             .map(|index| facts[index % facts.len()].clone())
             .collect();
         state
-            .edit_actor(actor_id, ActorEdit::Forget(held))
+            .edit_actor(&actor_id.as_str().into(), ActorEdit::Forget(held))
             .expect("an actor");
         state
-            .edit_actor(actor_id, ActorEdit::Learn(known))
+            .edit_actor(&actor_id.as_str().into(), ActorEdit::Learn(known))
             .expect("an actor");
     }
     assert!(state.notes().is_empty(), "the docks save leaves no notes");

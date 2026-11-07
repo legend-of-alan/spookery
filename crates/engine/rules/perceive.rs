@@ -154,7 +154,7 @@ fn perceive_viewer_budget(
     }
     notes.sort_by(|a, b| a.id.cmp(&b.id));
 
-    let here = EntityId::Place(place.clone());
+    let here = EntityId::Place(place.as_str().into());
     let items = (state.items_of(&here).into_iter())
         .flat_map(|items| items.iter())
         .map(|(id, count)| ItemStack {
@@ -163,11 +163,7 @@ fn perceive_viewer_budget(
         })
         .collect();
 
-    let meters = shown_meters(
-        canon,
-        state,
-        &EntityId::Actor(viewer.actor_id().to_string()),
-    );
+    let meters = shown_meters(canon, state, &EntityId::Actor(viewer.actor_id().into()));
     let world_meters = shown_meters(canon, state, &EntityId::World);
 
     let habits = match viewer {

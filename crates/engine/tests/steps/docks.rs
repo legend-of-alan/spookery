@@ -27,10 +27,10 @@ fn bare_save(pack: &Path, world_id: &str, actors: Vec<(String, ActorLive)>) -> S
     state.rules_rev = spookery_engine::testing::RULES_REV;
     state.last_round_at = "2026-01-01T00:00:00Z".to_string();
     for (id, record) in actors {
-        state.add_actor(&id, record).unwrap();
+        state.add_actor(&id.as_str().into(), record).unwrap();
         for (key, base) in [("grit", 1), ("rest", 3)] {
             let live = MeterLive { base, offset: 0 };
-            let actor = EntityId::Actor(id.clone());
+            let actor = EntityId::Actor(id.clone().into());
             state.put_meter(&canon, &actor, key, Some(live)).unwrap();
         }
     }
@@ -49,7 +49,7 @@ fn write_text(path: &Path, text: &str) {
 fn lamp_oil(state: &State) -> u32 {
     state
         .item_count(
-            &spookery_engine::EntityId::Place("docks_shop".to_string()),
+            &spookery_engine::EntityId::Place("docks_shop".into()),
             "lamp_oil",
         )
         .filter(|count| *count > 0)
@@ -58,7 +58,7 @@ fn lamp_oil(state: &State) -> u32 {
 
 fn flags_of(state: &State, id: &str) -> Vec<String> {
     assert!(state.actors().records().contains_key(id), "{id} missing");
-    let actor = EntityId::Actor(id.to_string());
+    let actor = EntityId::Actor(id.into());
     state
         .flags_of(&actor)
         .iter()
@@ -128,7 +128,7 @@ fn morning_restock() {
         state.leave_note(door_note()).unwrap();
         state
             .edit_actor(
-                "pc_rowan",
+                &"pc_rowan".into(),
                 spookery_engine::testing::ActorEdit::Place("docks_street".to_string()),
             )
             .unwrap();
@@ -156,13 +156,13 @@ fn capped_restock() -> u32 {
         state.leave_note(door_note()).unwrap();
         state
             .edit_actor(
-                "pc_rowan",
+                &"pc_rowan".into(),
                 spookery_engine::testing::ActorEdit::Place("docks_street".to_string()),
             )
             .unwrap();
         state
             .set_items(
-                &spookery_engine::EntityId::Place("docks_shop".to_string()),
+                &spookery_engine::EntityId::Place("docks_shop".into()),
                 "lamp_oil",
                 6,
             )
@@ -201,7 +201,7 @@ fn player_in_the_shop() {
         state.leave_note(door_note()).unwrap();
         state
             .edit_actor(
-                "mira",
+                &"mira".into(),
                 spookery_engine::testing::ActorEdit::Place("docks_shop".to_string()),
             )
             .unwrap();
@@ -247,7 +247,7 @@ fn gm_restocks() {
         state.leave_note(door_note()).unwrap();
         state
             .edit_actor(
-                "mira",
+                &"mira".into(),
                 spookery_engine::testing::ActorEdit::Place("docks_shop".to_string()),
             )
             .unwrap();
@@ -270,7 +270,7 @@ fn claimed_note_sorts_first() {
         drop(opened);
         state
             .edit_actor(
-                "mira",
+                &"mira".into(),
                 spookery_engine::testing::ActorEdit::Place("docks_shop".to_string()),
             )
             .unwrap();
@@ -405,13 +405,13 @@ fn a_busy_npc_skips() {
         state.leave_note(door_note()).unwrap();
         state
             .edit_actor(
-                "mira",
+                &"mira".into(),
                 spookery_engine::testing::ActorEdit::Busy(Some(u64::MAX), None),
             )
             .unwrap();
         state
             .edit_actor(
-                "pc_rowan",
+                &"pc_rowan".into(),
                 spookery_engine::testing::ActorEdit::Place("docks_street".to_string()),
             )
             .unwrap();
@@ -634,7 +634,7 @@ fn patch_mira_flags_and_place(pack: &Path, flags: &str) {
     let mut state = spookery_engine::parse_save(&fs::read_to_string(&now_path).unwrap()).unwrap();
     state
         .edit_actor(
-            "mira",
+            &"mira".into(),
             spookery_engine::testing::ActorEdit::Place("docks_shop".to_string()),
         )
         .unwrap();
@@ -804,7 +804,7 @@ fn a_held_knife_still_runs_the_opposed_row() {
 
 fn rowans_debt(pack: &Path) -> i64 {
     let canon = load_canon(pack).unwrap_or_else(|err| panic!("load: {err:?}"));
-    let rowan = EntityId::Actor("pc_rowan".to_string());
+    let rowan = EntityId::Actor("pc_rowan".into());
     state_of(pack)
         .meter_value(&canon, &rowan, "assassination_debt")
         .unwrap_or_else(|err| panic!("assassination_debt: {err}"))

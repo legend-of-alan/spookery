@@ -209,9 +209,9 @@ pub(crate) fn resolve_item_id(context: &Context, id: &str) -> Result<String, Rea
 pub(crate) fn resolve_entity(context: &Context, who: &Who) -> Result<EntityId, Reason> {
     match who {
         Who::World => Ok(EntityId::World),
-        Who::Story(id) => Ok(EntityId::Story(id.clone())),
-        Who::Here | Who::Place(_) => Ok(EntityId::Place(resolve_who_id(context, who)?)),
-        _ => Ok(EntityId::Actor(resolve_who_id(context, who)?)),
+        Who::Story(id) => Ok(EntityId::Story(id.as_str().into())),
+        Who::Here | Who::Place(_) => Ok(EntityId::Place(resolve_who_id(context, who)?.into())),
+        _ => Ok(EntityId::Actor(resolve_who_id(context, who)?.into())),
     }
 }
 
@@ -754,8 +754,8 @@ mod tests {
             visited: Default::default(),
             act: Act::default(),
         };
-        state.add_actor("ada", ada).unwrap();
-        let entity = crate::rules::effect::EntityId::Actor("ada".to_string());
+        state.add_actor(&"ada".into(), ada).unwrap();
+        let entity = crate::rules::effect::EntityId::Actor("ada".into());
         let str_mod = MeterLive { base: 3, offset: 0 };
         state
             .put_meter(&canon(), &entity, "str_mod", Some(str_mod))

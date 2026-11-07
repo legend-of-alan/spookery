@@ -92,7 +92,7 @@ fn sentence(canon: &Canon, viewer: &str, change: &Change, changes: &[Change]) ->
             let whose = possessive_for(canon, viewer, actor);
             meter_sentence(
                 canon,
-                &EntityId::Actor(actor.clone()),
+                &EntityId::Actor(actor.as_str().into()),
                 key,
                 &whose,
                 &change.after,
@@ -102,12 +102,12 @@ fn sentence(canon: &Canon, viewer: &str, change: &Change, changes: &[Change]) ->
             meter_sentence(canon, &EntityId::World, key, "The world's", &change.after)
         }
         StateKey::StoryMeter(story, key) => {
-            let entity = EntityId::Story(story.clone());
+            let entity = EntityId::Story(story.as_str().into());
             let whose = format!("The {story} story's");
             meter_sentence(canon, &entity, key, &whose, &change.after)
         }
         StateKey::PlaceMeter(place, key) => {
-            let entity = EntityId::Place(place.clone());
+            let entity = EntityId::Place(place.as_str().into());
             let whose = format!("{}'s", crate::rules::lines::place_name(canon, place));
             meter_sentence(canon, &entity, key, &whose, &change.after)
         }
@@ -195,8 +195,12 @@ fn other_side(changes: &[Change], change: &Change, id: &str) -> Option<EntityId>
             return None;
         }
         match &other.key {
-            StateKey::ActorItem(actor, item) if item == id => Some(EntityId::Actor(actor.clone())),
-            StateKey::PlaceItem(place, item) if item == id => Some(EntityId::Place(place.clone())),
+            StateKey::ActorItem(actor, item) if item == id => {
+                Some(EntityId::Actor(actor.as_str().into()))
+            }
+            StateKey::PlaceItem(place, item) if item == id => {
+                Some(EntityId::Place(place.as_str().into()))
+            }
             _ => None,
         }
     })
@@ -274,10 +278,12 @@ fn can_see(canon: &Canon, state: &State, viewer: &str, change: &Change) -> bool 
         | StateKey::IdleActsThisWindow(_)
         | StateKey::LiveActsThisWindow(_) => false,
         StateKey::WorldMeter(key) => is_shown(canon, &EntityId::World, key),
-        StateKey::StoryMeter(story, key) => is_shown(canon, &EntityId::Story(story.clone()), key),
+        StateKey::StoryMeter(story, key) => {
+            is_shown(canon, &EntityId::Story(story.as_str().into()), key)
+        }
         StateKey::PlaceMeter(place, key) => {
             place_of(state, viewer) == Some(place.as_str())
-                && is_shown(canon, &EntityId::Place(place.clone()), key)
+                && is_shown(canon, &EntityId::Place(place.as_str().into()), key)
         }
         StateKey::ActorKnownFact(actor) | StateKey::ActorMeter(actor, _) => actor == viewer,
         StateKey::ActorModifier(actor, id) => {

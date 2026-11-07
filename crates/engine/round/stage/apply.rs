@@ -136,7 +136,7 @@ fn cancel(canon: &Canon, state: &mut State, intent: &Intent, log: &mut RoundLog)
         return Landing::Refused;
     }
     let actor_id = intent.actor_id().ok_or(Reason::UnknownId);
-    match actor_id.and_then(|id| state.take_pending(id)) {
+    match actor_id.and_then(|id| state.take_pending(&id.into())) {
         Ok(_) => Landing::Landed,
         Err(code) => {
             refuse(log, intent, gate::Refusal::new(intent, code), false);
@@ -178,7 +178,7 @@ fn pend(
         target: intent.target.clone(),
         rule: rule.id.clone(),
     };
-    state.set_busy(actor_id, until, Some(pending))
+    state.set_busy(&actor_id.into(), until, Some(pending))
 }
 
 /// Finish an action at tick `at`: pay the finish cost, count the act when the rule asks, keep
@@ -222,7 +222,7 @@ pub(crate) fn finish(
     if rule.cooldown > 0 {
         finished = finished.and_then(|()| {
             let actor_id = intent.actor_id().ok_or(Reason::UnknownId)?;
-            state.set_busy(actor_id, at + rule.cooldown, None)
+            state.set_busy(&actor_id.into(), at + rule.cooldown, None)
         });
     }
     if let Err(code) = finished {
@@ -238,7 +238,8 @@ pub(crate) fn finish(
 }
 
 fn count_act(state: &mut State, intent: &Intent) -> Result<(), Reason> {
-    state.count_act(intent.actor_id().ok_or(Reason::UnknownId)?)
+    let actor_id = intent.actor_id().ok_or(Reason::UnknownId)?;
+    state.count_act(&actor_id.into())
 }
 
 /// A refusal over the key budget spends the round's keys; any other refuses only this intent.

@@ -119,7 +119,7 @@ pub struct PlaceDef {
 /// Whether `exit` is a door of one of `places`: an exit there with an `if`. The load's lint
 /// asks before the canon is whole; `Canon::has_door` asks it of the canon's places.
 pub(crate) fn has_door(places: &BTreeMap<String, PlaceDef>, exit: &ExitId) -> bool {
-    (places.get(&exit.place)).is_some_and(|place| place.has_door(&exit.exit))
+    (places.get(exit.place.as_str())).is_some_and(|place| place.has_door(&exit.exit))
 }
 
 impl PlaceDef {
@@ -217,9 +217,9 @@ impl Canon {
     /// Whether `entity` carries flag `key`: one its file declares, or any world flag but `busy`.
     pub(crate) fn carries_flag(&self, entity: &EntityId, key: &str) -> bool {
         let flags = match entity {
-            EntityId::Actor(id) => self.cast.get(id).map(|cast| &cast.flags),
-            EntityId::Place(id) => self.places.get(id).map(|place| &place.flags),
-            EntityId::Story(id) => self.stories.get(id).map(|story| &story.flags),
+            EntityId::Actor(id) => self.cast.get(id.as_str()).map(|cast| &cast.flags),
+            EntityId::Place(id) => self.places.get(id.as_str()).map(|place| &place.flags),
+            EntityId::Story(id) => self.stories.get(id.as_str()).map(|story| &story.flags),
             EntityId::World => return !key.is_empty() && key != "busy",
         };
         flags.is_some_and(|flags| flags.iter().any(|flag| flag == key))

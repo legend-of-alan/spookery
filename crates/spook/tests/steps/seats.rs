@@ -144,10 +144,14 @@ Lark watches the street from a dry doorway.
     fs::write(pack.join("cast/pc-lark.md"), cast).unwrap_or_else(|err| panic!("cast: {err}"));
     let canon = spookery_engine::load_canon(&pack).unwrap();
     crate::support::edit_save(&pack, |now| {
-        now.copy_actor(&canon, "pc_wren", "pc_lark").unwrap();
-        let place = "docks_street".to_string();
-        now.edit_actor("pc_lark", spookery_engine::testing::ActorEdit::Place(place))
+        now.copy_actor(&canon, &"pc_wren".into(), &"pc_lark".into())
             .unwrap();
+        let place = "docks_street".to_string();
+        now.edit_actor(
+            &"pc_lark".into(),
+            spookery_engine::testing::ActorEdit::Place(place),
+        )
+        .unwrap();
     });
     spookery_engine::World::open(&pack).unwrap_or_else(|err| panic!("four-pc pack: {err}"));
     world.pack = Some(pack);
@@ -188,8 +192,8 @@ fn a_one_player_docks_table(world: &mut World) {
         .unwrap_or_else(|err| panic!("remove wren: {err}"));
     let canon = spookery_engine::load_canon(&pack).unwrap();
     crate::support::edit_save(&pack, |now| {
-        now.remove_actor(&canon, "pc_harbormouse").unwrap();
-        now.remove_actor(&canon, "pc_wren").unwrap();
+        now.remove_actor(&canon, &"pc_harbormouse".into()).unwrap();
+        now.remove_actor(&canon, &"pc_wren".into()).unwrap();
     });
     spookery_engine::World::open(&pack).unwrap_or_else(|err| panic!("one-pc pack: {err}"));
     table::listen(world, &pack);
@@ -233,7 +237,7 @@ fn a_docks_table_where_one_pc_knows_a_hidden_fact(world: &mut World) {
     fs::write(&path, text).unwrap_or_else(|err| panic!("write shop: {err}"));
     crate::support::edit_save(&pack, |now| {
         let learn = spookery_engine::testing::ActorEdit::Learn(vec![HIDDEN_FACT.to_string()]);
-        now.edit_actor("pc_wren", learn).unwrap();
+        now.edit_actor(&"pc_wren".into(), learn).unwrap();
     });
     spookery_engine::World::open(&pack).unwrap_or_else(|err| panic!("hidden fact pack: {err}"));
     world.pack = Some(pack);
@@ -355,7 +359,7 @@ fn a_docks_table_with_two_pcs_in_the_shop(world: &mut World) {
     crate::support::edit_save(&pack, |now| {
         let place = "docks_shop".to_string();
         now.edit_actor(
-            "pc_harbormouse",
+            &"pc_harbormouse".into(),
             spookery_engine::testing::ActorEdit::Place(place),
         )
         .unwrap();
@@ -518,7 +522,7 @@ fn a_round_commits(world: &mut World) {
 
 fn street_oil(world: &World) -> u32 {
     let now = state_of(table::pack(world));
-    let street = spookery_engine::EntityId::Place("docks_street".to_string());
+    let street = spookery_engine::EntityId::Place("docks_street".into());
     now.item_count(&street, HUMMED_OIL).unwrap_or(0)
 }
 
