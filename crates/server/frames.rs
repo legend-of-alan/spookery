@@ -157,7 +157,7 @@ pub(super) fn render_status(
                 })
             })
             .collect(),
-        pack: Some(pack),
+        pack,
     }))
 }
 

@@ -139,9 +139,7 @@ pub struct TableStatus {
     pub pack_rev: String,
     pub last_round_at: String,
     pub queued: Vec<QueuedMove>,
-    /// An older server never sends it.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub pack: Option<PackSummary>,
+    pub pack: PackSummary,
 }
 
 /// Part of `TableStatus`, sent from the table to a GM client.

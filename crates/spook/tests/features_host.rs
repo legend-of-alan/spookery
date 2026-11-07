@@ -45,6 +45,12 @@ mod digest;
 #[path = "steps/ai_gm.rs"]
 mod ai_gm;
 
+#[path = "steps/ai_gm_loop.rs"]
+mod ai_gm_loop;
+
+#[path = "steps/scripted_gm.rs"]
+mod scripted_gm;
+
 #[path = "steps/round_output.rs"]
 mod round_output;
 

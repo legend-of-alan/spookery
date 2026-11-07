@@ -54,7 +54,7 @@ packs/                 sample-d20 is the starter. oneshot-docks is the multi-PC 
 crates/
   protocol/            spookery-protocol: the message envelope, its bodies, and the word table
   engine/              spookery-engine: world model, rules, rounds, and journal
-  agent/               spookery-agent: the reusable GM brain: turn state machine, prompt, Model trait
+  agent/               spookery-agent: the reusable GM brain: turn graph, prompt, tools, Model and Connection
   client/              spookery-client: play, gm, ai_gm (the three clients), ws, http_model, text
   server/              spookery-server: the table, the game port's WebSocket endpoint, MCP endpoint, GM words, seats, idle timer
   spook/               package and binary spook, library spookery
@@ -93,7 +93,11 @@ If a move leaves every seated player busy, the clock runs on until they arrive.
 
 `spook ai-gm` puts a model in the GM seat. It doesn't start the host, so run `spook run` first.
 
-It posts to `{SPOOK_GM_URL}/chat/completions` with one tool, `act`. The model answers by calling that tool, and then the engine commits the queued lines.
+It posts to `{SPOOK_GM_URL}/chat/completions` with four tools. Three are the GM seat's words: `perceive`, `say` and `queue`, with the parameters `crates/protocol/schema/client.json` gives them. The fourth, `end_turn`, plays the round: the AI GM sends `commit` for it.
+
+Each turn is a loop. A player's say or a queued move wakes it. The model calls tools, and each call goes to the table as it is. The table's reply comes back as that call's result, refusals included, so the model can look around first, try again after a refusal, and queue moves for several NPCs before it ends the turn. After `end_turn` it gets the rolls and can say what happened. The turn ends when the model answers with no tool calls.
+
+The engine still decides every effect. A turn commits only when it saw a queued move when it started or queued one itself, and it commits a waiting move itself when the model stops without `end_turn`. A turn stops after 20 tool calls and prints a `step limit` warning. If a word goes out and its reply can't be read, `spook ai-gm` stops and names the word, because the table may have applied it. Start it again and it reads the table afresh.
 
 You need all three of these. There's no default URL.
 
@@ -138,19 +142,19 @@ spook gm
 
 Type `help` to see the GM commands. A line is a word the hello listed, then its arguments: `queue mira restock_lamp_oil`, or a JSON object such as `say {"address": "place", "place": "docks_shop", "text": "..."}`. `spook gm --raw` prints each message as one JSON line instead.
 
-`spook gm` and `spook ai-gm` sit the GM seat on `/gm` on the game port, so `--addr` points them. If you started the host with `--addr 127.0.0.1:0`, the OS picks the port and the listening line tells you: pass `game` to `--addr`.
+`spook gm` and `spook ai-gm` connect to the GM seat on `/gm` on the game port, so `--addr` points them. If you started the host with `--addr 127.0.0.1:0`, the OS picks the port and the listening line tells you: pass `game` to `--addr`.
 
 ## Privacy
 
 `spook ai-gm` sends table text to whatever host `SPOOK_GM_URL` names. There's no default host. The key comes from `SPOOK_GM_KEY` in your environment and never lives in the pack.
 
-Each call is one chat-completions POST. The body has the model name, `"stream": false`, the `act` tool and one user message.
+Each call is one chat-completions POST. The body has the model name, `"stream": false`, the four tools and the turn's conversation so far.
 
-That message is a bounded JSON prompt. It holds the last 16 says this process has handled, the new player lines, the move menu, the queued intents and trimmed player and NPC views. After a roll, a follow-up call adds the dice faces.
+The conversation starts with one user message, a bounded JSON prompt. It holds the last 16 says this process has handled, the new player lines, the move menu, the queued intents, what woke the turn and who is seated. Then come the model's tool calls and the table's reply to each: the views it perceived, the says, the queue replies and refusals, and after `end_turn` the rolls with their dice faces. The conversation lasts one turn. The next turn starts again from a new prompt.
 
-The views are trimmed on purpose. A player view that's only a room census drops known facts, notes and unknown mentions. An NPC view keeps each fact's id and text. Fact bodies are always dropped.
+The views are trimmed on purpose. A player's view is only a room census: it drops known facts, notes and unknown mentions. An NPC's view keeps each fact's id and text and its notes. Fact bodies are always dropped.
 
-The prompt does include the Markdown body of the current place and of each cast member in those views. Each body is cut at 800 characters.
+A view does include the Markdown body of its place and of the viewer and each cast member it sees. Each body is cut at 800 characters.
 
 It never sends `save.yaml` or the tape file. Those stay on disk in the pack. A new `spook ai-gm` process starts fresh and remembers nothing from the last one.
 

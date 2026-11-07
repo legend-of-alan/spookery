@@ -148,10 +148,10 @@ async fn dispatch(cli: Cli) -> Result<(), String> {
         #[cfg(feature = "client")]
         Command::AiGm => {
             // A missing model setting is reported before the dial.
-            let mut model = spookery::http_model::Settings::from_env()
+            let model = spookery::http_model::Settings::from_env()
                 .and_then(spookery::http_model::HttpModel::new)
                 .map_err(|err| err.to_string())?;
-            spookery::ai_gm::run(addr, &mut model, &mut std::io::stderr())
+            spookery::ai_gm::run(addr, model, std::io::stderr())
                 .await
                 .map_err(|err| err.to_string())
         }
