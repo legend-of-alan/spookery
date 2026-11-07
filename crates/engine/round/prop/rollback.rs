@@ -4,7 +4,7 @@
 //! Feature: A rollback puts the save back exactly
 //!
 //!   Scenario: Random writes under nested savepoints roll back to each savepoint's save
-//!     Given the docks pack, with no live record yet for the street, two flags it can carry, and a burn on grit
+//!     Given the docks pack, with no live record yet for the street, Mira holding one brass key, two flags the street can carry, and a burn on grit
 //!     When random effects, round writes and the end-of-round note of exits land under savepoints opened and rolled back at random
 //!     Then each rollback leaves the save and the spent keys as they were when its savepoint was taken
 //!     And each take reports every meter whose value moved since the last take
@@ -54,11 +54,21 @@ fn nested_rollbacks_put_the_save_back_exactly() {
     let pack = TempPack(copy_docks("rollback"));
     // The street has no live record yet, so walking there or lighting it gives it its first one.
     // A hand edit of the save takes it out, and moves the two who stood there into the shop.
+    // Mira holds one brass key, so a take under a savepoint can take her last one out.
     let path = pack.0.join("state/save.yaml");
     let text = std::fs::read_to_string(&path).expect("the docks save");
-    let edited = (text.replace("  docks_street:\n    items: {}\n", ""))
-        .replace("    place: docks_street\n", "    place: docks_shop\n");
-    assert_ne!(edited, text, "the street had a record");
+    let edited = (text.replace("  - docks_street\n", ""))
+        .replace("    place: docks_street\n", "    place: docks_shop\n")
+        .replace("\nitems:\n", "\nitems:\n  mira:\n    brass_key: 1\n");
+    for gone in ["  - docks_street\n", "    place: docks_street\n"] {
+        assert!(!edited.contains(gone) && text.contains(gone), "{gone:?}");
+    }
+    assert!(
+        edited.contains("  mira:\n    brass_key: 1\n"),
+        "Mira holds no key"
+    );
+    let edited = crate::store::save::parse(&edited).expect("the edited save reads");
+    let edited = crate::store::save::emit(&edited).expect("the edited save writes");
     std::fs::write(&path, edited).expect("write the save");
     let opened = World::open(&pack.0).expect("docks pack opens");
     let state = opened.state().clone();
