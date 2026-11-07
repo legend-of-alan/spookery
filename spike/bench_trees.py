@@ -5,8 +5,12 @@
 Each tree is a `git archive` export of <rev> with spike/bench.rs appended to the file that
 holds its round writer: crates/engine/draft.rs where Draft exists, else crates/engine/model/
 write.rs, with the bench's Draft calls rewritten to the State API by the fixed substitutions
-below. All trees share one target dir. Prints one line per MEASURE line, prefixed with the
-tree and run, and writes the same to <scratch>/results.txt.
+below. Each tree builds in its own target dir. In a shared one, the trees have the same
+relative paths and lockfile, so cargo gives them one metadata hash and one test binary, and
+`git archive` gives their files commit-time mtimes, so cargo can call a tree fresh and run the
+binary another tree built. A run that compiles anything, or runs a binary outside its tree's
+dir, stops the script. Prints one line per MEASURE line, prefixed with the tree and run, and
+writes the same to <scratch>/results.txt.
 """
 import os
 import shutil
@@ -28,7 +32,8 @@ scratch, trees = os.path.abspath(args[0]), [a.split('=', 1) for a in args[1:]]
 repo = subprocess.run(['git', 'rev-parse', '--show-toplevel'], capture_output=True, text=True,
                       check=True).stdout.strip()
 bench = open(os.path.join(repo, 'spike', 'bench.rs'), encoding='utf-8').read()
-env = dict(os.environ, CARGO_TARGET_DIR=os.path.join(scratch, 'target'))
+target = {name: os.path.join(scratch, 'target-' + name) for name, _ in trees}
+env = {name: dict(os.environ, CARGO_TARGET_DIR=target[name]) for name, _ in trees}
 for name, rev in trees:
     tree = os.path.join(scratch, name)
     shutil.rmtree(tree, ignore_errors=True)
@@ -46,7 +51,7 @@ for name, rev in trees:
     with open(host, 'a', encoding='utf-8', newline='\n') as out:
         out.write(text)
     build = subprocess.run(['cargo', 'test', '--release', '-p', 'spookery-engine', '--lib', '--no-run'],
-                           cwd=tree, env=env, capture_output=True, text=True)
+                           cwd=tree, env=env[name], capture_output=True, text=True)
     if build.returncode:
         sys.exit(f'{name} does not build:\n{build.stderr[-4000:]}')
 with open(os.path.join(scratch, 'results.txt'), 'w', encoding='utf-8') as results:
@@ -54,8 +59,11 @@ with open(os.path.join(scratch, 'results.txt'), 'w', encoding='utf-8') as result
         for name, _ in trees:
             out = subprocess.run(['cargo', 'test', '--release', '-p', 'spookery-engine', '--lib',
                                   'spike_bench', '--', '--nocapture', '--test-threads=1'],
-                                 cwd=os.path.join(scratch, name), env=env, capture_output=True,
-                                 text=True, encoding='utf-8', errors='replace')
+                                 cwd=os.path.join(scratch, name), env=env[name],
+                                 capture_output=True, text=True, encoding='utf-8', errors='replace')
+            ran = [l for l in out.stderr.splitlines() if l.strip().startswith(('Compiling', 'Running'))]
+            if any('Compiling' in l for l in ran) or not all(target[name] in l for l in ran):
+                sys.exit(f'{name} run{run} did not run its own build:\n' + '\n'.join(ran))
             for line in (out.stdout + out.stderr).splitlines():
                 if 'MEASURE' in line:
                     row = f'{name} run{run} {line.strip()}'

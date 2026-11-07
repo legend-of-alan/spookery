@@ -4,6 +4,7 @@ mod spike_bench {
     //! Write, rollback and round costs, measured the same way on each tree. Workloads 1-4 and the
     //! rounds are PR #540's benches as PR #541 ran them; workload 5 follows PR #542's
     //! description: 100 mixed writes across three records, then one rollback over all of them.
+    //! Workload 6 splits workload 5 by kind of write.
     //! Every write workload plays on one world, the docks with a `burn` modifier and a `lit`
     //! shop flag added to its canon. spike/bench_trees.py appends this to a tree and rewrites
     //! its Draft calls for trees where State is the writer.
@@ -152,6 +153,26 @@ mod spike_bench {
         }
         let (a1, b1) = counts();
         eprintln!("MEASURE w5 100 mixed writes: {:?} per batch; their rollback: {:?}; {:.0} allocs, {:.0} bytes per batch", writes / batches, rollbacks / batches, (a1 - a0) as f64 / batches as f64, (b1 - b0) as f64 / batches as f64);
+        // 6. workload 5 split by kind: 25 writes of one kind, alternating, then one rollback.
+        // Its allocation counts show which kind of write a gap in workload 5 comes from.
+        let kinds: [(&str, &dyn Fn(bool) -> EffectKind); 3] = [
+            ("actor meter", &|up| meter("mira", "rest", if up { 1 } else { -1 })),
+            ("place item", &|up| item(if up { 1 } else { -1 })),
+            ("place flag", &lit),
+        ];
+        for (name, kind) in kinds {
+            let mut draft = Draft::begin(world, &nobody);
+            let (a0, b0) = counts();
+            for _ in 0..batches {
+                let point = draft.savepoint();
+                for i in 0..25 {
+                    apply(&mut draft, kind(i % 2 == 0));
+                }
+                draft.rollback(point);
+            }
+            let (a1, b1) = counts();
+            eprintln!("MEASURE w6 25 {name} writes and their rollback: {:.0} allocs, {:.0} bytes per batch", (a1 - a0) as f64 / batches as f64, (b1 - b0) as f64 / batches as f64);
+        }
     }
 
     const WALL: &str = "2026-01-01T00:00:00Z";
