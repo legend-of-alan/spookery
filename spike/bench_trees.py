@@ -5,12 +5,13 @@
 Each tree is a `git archive` export of <rev> with spike/bench.rs appended to the file that
 holds its round writer: crates/engine/draft.rs where Draft exists, else crates/engine/model/
 write.rs, with the bench's Draft calls rewritten to the State API by the fixed substitutions
-below. Each tree builds in its own target dir. In a shared one, the trees have the same
-relative paths and lockfile, so cargo gives them one metadata hash and one test binary, and
-`git archive` gives their files commit-time mtimes, so cargo can call a tree fresh and run the
-binary another tree built. A run that compiles anything, or runs a binary outside its tree's
-dir, stops the script. Prints one line per MEASURE line, prefixed with the tree and run, and
-writes the same to <scratch>/results.txt.
+below, and, in a tree from before the rename to EntityId, its entity ids rewritten to Holder by
+the HOLDER substitutions, so every tree runs the same bench. Each tree builds in its own target
+dir. In a shared one, the trees have the same relative paths and lockfile, so cargo gives them
+one metadata hash and one test binary, and `git archive` gives their files commit-time mtimes,
+so cargo can call a tree fresh and run the binary another tree built. A run that compiles
+anything, or runs a binary outside its tree's dir, stops the script. Prints one line per MEASURE
+line, prefixed with the tree and run, and writes the same to <scratch>/results.txt.
 """
 import os
 import shutil
@@ -23,6 +24,12 @@ STATE_API = [
     (".apply(draft, &intent)", ".apply(world.canon(), draft, &intent)"),
     ("Draft::begin(world, &nobody)", "world.begin_round(&nobody)"),
     ("draft.expire_modifiers(u64::MAX)", "draft.expire_modifiers(world.canon(), u64::MAX)"),
+]
+
+HOLDER = [
+    ("use crate::rules::effect::{Effect, EffectKind, EntityId};", "use crate::rules::effect::{Effect, EffectKind, Holder};"),
+    ("entity: EntityId::Actor(actor.into()),", "holder: Holder::Actor(actor.to_string()),"),
+    ('entity: EntityId::Place("docks_shop".into()),', 'holder: Holder::Place("docks_shop".to_string()),'),
 ]
 
 args = [a for a in sys.argv[1:] if not a.startswith('--')]
@@ -47,6 +54,11 @@ for name, rev in trees:
         host, text = os.path.join(tree, 'crates', 'engine', 'model', 'write.rs'), bench
         for old, new in STATE_API:
             assert old in text, old
+            text = text.replace(old, new)
+    effect = open(os.path.join(tree, 'crates', 'engine', 'rules', 'effect.rs'), encoding='utf-8').read()
+    if 'pub enum Holder' in effect:
+        for old, new in HOLDER:
+            assert text.count(old) == 1, old
             text = text.replace(old, new)
     with open(host, 'a', encoding='utf-8', newline='\n') as out:
         out.write(text)
