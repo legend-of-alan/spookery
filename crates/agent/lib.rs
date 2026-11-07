@@ -103,7 +103,7 @@ pub async fn run<M: Model, C: Connection>(
         closed: AtomicBool::new(false),
     });
     let graph = turn::build_graph(&agent);
-    match agent.call_word("status", json!({})).await {
+    match agent.send_command("status", json!({})).await {
         Ok(ServerBody::Status(status)) => agent.state().sit(*status),
         Ok(ServerBody::Refused(refusal)) => return Err(Error::Refused(refusal)),
         Ok(_) => return Err(Error::Unexpected),
@@ -152,14 +152,14 @@ impl<M: Model, C: Connection> Agent<M, C> {
         self.turn.lock().expect("turn")
     }
 
-    /// Sends `word` with `args`, a JSON object, and reads until its reply. Every message on
+    /// Sends `command` with `args`, a JSON object, and reads until its reply. Every message on
     /// the way goes to the client state, and the reply's bookkeeping to the turn. A reply
     /// that can't be read is an error, and `end_run` says why.
-    async fn call_word(&self, word: &str, args: Value) -> graph_flow::Result<ServerBody> {
+    async fn send_command(&self, command: &str, args: Value) -> graph_flow::Result<ServerBody> {
         let id = format!("a{}", self.last_id.fetch_add(1, Ordering::Relaxed) + 1);
-        let lost = || GraphError::TaskExecutionFailed(format!("no reply to {word}"));
-        *self.in_flight.lock().expect("in flight") = Some(word.to_string());
-        let message = ClientMessage::new(&id, word, args);
+        let lost = || GraphError::TaskExecutionFailed(format!("no reply to {command}"));
+        *self.in_flight.lock().expect("in flight") = Some(command.to_string());
+        let message = ClientMessage::new(&id, command, args);
         self.connection.send(message).await.map_err(|_| lost())?;
         loop {
             let message = match self.connection.recv().await {

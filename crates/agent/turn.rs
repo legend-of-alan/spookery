@@ -128,13 +128,13 @@ impl<M: Model, C: Connection> Call<M, C> {
             },
         };
         let move_waiting = self.0.turn().move_waiting;
-        let (word, args) = match call.name.as_str() {
+        let (command, args) = match call.name.as_str() {
             "perceive" | "say" | "queue" => (call.name.as_str(), Value::Object(args)),
             "end_turn" if move_waiting => ("commit", json!(COMMIT_ROUND)),
             "end_turn" => return Ok("nothing is queued, so there is no round to play".into()),
             name => return Ok(format!("refused: there is no tool named {name}")),
         };
-        let body = self.0.call_word(word, args).await?;
+        let body = self.0.send_command(command, args).await?;
         Ok(render_reply(&self.0.state().pack, body))
     }
 }
@@ -156,7 +156,7 @@ impl<M: Model, C: Connection> Task for Close<M, C> {
         }
         let move_waiting = self.0.turn().move_waiting;
         if move_waiting {
-            self.0.call_word("commit", json!(COMMIT_ROUND)).await?;
+            self.0.send_command("commit", json!(COMMIT_ROUND)).await?;
         }
         Ok(TaskResult::new(None, NextAction::End))
     }
