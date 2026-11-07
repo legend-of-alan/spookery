@@ -9,7 +9,7 @@ use crate::model::State;
 use crate::rules::effect::{Effect, EffectKind, EntityId};
 
 pub(crate) fn can_see_fact(canon: &Canon, state: &State, viewer: &Viewer, fact_id: &str) -> bool {
-    let Some(actor) = state.actors.get(viewer.actor_id()) else {
+    let Some(actor) = state.actors().records().get(viewer.actor_id()) else {
         return false;
     };
     if actor.known_facts.iter().any(|id| id == fact_id) {
@@ -260,7 +260,7 @@ fn can_see_facts(canon: &Canon, state: &State, viewer: &str, fact_ids: &[String]
 }
 
 fn can_see(canon: &Canon, state: &State, viewer: &str, change: &Change) -> bool {
-    if !state.actors.contains_key(viewer) {
+    if !state.actors().records().contains_key(viewer) {
         return false;
     }
     match &change.key {
@@ -303,7 +303,11 @@ fn is_shown(canon: &Canon, entity: &EntityId, key: &str) -> bool {
 }
 
 fn place_of<'a>(state: &'a State, viewer: &str) -> Option<&'a str> {
-    state.actors.get(viewer).map(|actor| actor.place.as_str())
+    state
+        .actors()
+        .records()
+        .get(viewer)
+        .map(|actor| actor.place.as_str())
 }
 
 fn same_place(state: &State, viewer: &str, actor: &str) -> bool {
@@ -321,7 +325,7 @@ fn is_at(state: &State, viewer: &str, value: &StateValue) -> bool {
 }
 
 fn can_see_note(canon: &Canon, state: &State, viewer: &str, id: &str) -> bool {
-    let Some(note) = state.notes.iter().find(|note| note.id == id) else {
+    let Some(note) = state.notes().iter().find(|note| note.id == id) else {
         return false;
     };
     let in_room = note.place.as_deref() == place_of(state, viewer);

@@ -72,7 +72,8 @@ fn both_players_are_travelling(world: &mut World) {
     let now = state_of(table::pack(world));
     for actor in ["pc_rowan", "pc_wren"] {
         assert!(
-            now.actors
+            now.actors()
+                .records()
                 .get(actor)
                 .unwrap_or_else(|| panic!("no {actor}"))
                 .is_busy(now.world_time),

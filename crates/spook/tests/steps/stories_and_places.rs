@@ -106,8 +106,8 @@ fn story_declares_a_shown_meter(world: &mut World, story: String, key: String) {
 fn rowan_and_wren_are_seated_apart(world: &mut World) {
     let pack = world.pack.clone().unwrap();
     edit_table(world, &pack, |now, seated| {
-        assert_eq!(now.actors["pc_rowan"].place, "docks_shop");
-        assert_eq!(now.actors["pc_wren"].place, "docks_street");
+        assert_eq!(now.actors().records()["pc_rowan"].place, "docks_shop");
+        assert_eq!(now.actors().records()["pc_wren"].place, "docks_street");
         sit(seated, &["pc_rowan", "pc_wren"]);
     });
 }
@@ -191,7 +191,7 @@ fn the_gm_sees_dread(world: &mut World) {
     assert_gm_saw(world, "story_meter ending dread");
     let now = state_of(world.pack.as_deref().unwrap());
     let ending = spookery_engine::EntityId::Story("ending".to_string());
-    assert_eq!(now.meters.get(&ending, "dread").unwrap().offset, 1);
+    assert_eq!(now.meters_of(&ending).get("dread").unwrap().offset, 1);
 }
 
 #[then(expr = "no player's view lists dread")]

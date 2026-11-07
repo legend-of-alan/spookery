@@ -91,7 +91,8 @@ pub(super) enum Removed {
         Box<Tracked<crate::model::ActorLive, crate::model::ActorEdit>>,
     ),
     Meter(EntityId, String, Tracked<MeterLive, Offset>),
-    Modifier(EntityId, String, Tracked<ModifierLive, ModifierLive>),
+    /// A modifier, on the actor it names.
+    Modifier(String, String, Tracked<ModifierLive, ModifierLive>),
     /// A flag holds no value, so its entity and key are all there is.
     Flag(EntityId, String),
     Item(EntityId, String, Tracked<u32, Shift>),

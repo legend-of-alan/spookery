@@ -78,7 +78,7 @@ pub(crate) fn verb_for<'a>(
     verb: &str,
     hint: Option<&str>,
 ) -> Option<&'a Rule> {
-    let actor = state.actors.get(actor_id);
+    let actor = state.actors().records().get(actor_id);
     let wielded = actor.and_then(|actor| actor.wielded.as_deref());
     if let Some(item) = wielded.filter(|item| !item.is_empty()) {
         if let Some(rule) = owner_verb(canon, &Owner::Item(item.to_string()), verb) {
@@ -132,7 +132,10 @@ pub(crate) fn rule_of<'c>(context: &Context<'c, '_>) -> Result<&'c Rule, Refusal
 /// every rule.
 pub(crate) fn admit(context: &Context, rule: &Rule) -> Result<(), Refusal> {
     let (state, intent) = (context.state, context.intent);
-    if let Some(actor) = intent.actor_id().and_then(|id| state.actors.get(id)) {
+    if let Some(actor) = intent
+        .actor_id()
+        .and_then(|id| state.actors().records().get(id))
+    {
         let acted = actor.act.last_act_round == intent.round_index;
         if acted && rule.start.counts_as_act && matches!(rule.when, When::Habit) {
             return Err(Refusal::new(intent, Reason::Ineligible));
@@ -178,7 +181,7 @@ pub(crate) fn admit_cancel(context: &Context) -> Result<(), Refusal> {
     let intent = context.intent;
     let actor = intent
         .actor_id()
-        .and_then(|id| context.state.actors.get(id));
+        .and_then(|id| context.state.actors().records().get(id));
     let pending = actor.and_then(|actor| actor.act.pending.as_ref());
     let walking = actor.is_some_and(|actor| crate::model::exit_parts(&actor.place).is_some());
     let rule = pending.and_then(|pending| context.canon.rules.get(&pending.rule));
@@ -210,7 +213,11 @@ pub(crate) fn nameable(
     viewer: &Viewer,
 ) -> Vec<String> {
     let me = EntityId::Actor(viewer.actor_id().to_string());
-    let mut names: Vec<String> = state.items.on(&me).map(|(id, _)| id.clone()).collect();
+    let held = state
+        .items_of(&me)
+        .into_iter()
+        .flat_map(|items| items.iter());
+    let mut names: Vec<String> = held.map(|(id, _)| id.clone()).collect();
     if let Ok(view) = perceive_as(canon, state, presence, viewer) {
         names.push(view.place);
         let me = viewer.actor_id();

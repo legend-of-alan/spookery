@@ -4,7 +4,8 @@
 
 Exports <rev> (default HEAD), appends each group of attempts below to crates/engine/rules/
 travel.rs (a round module outside `model`), runs `cargo check`, and prints the errors those
-lines get. Privacy errors stop rustc before borrowck, so the groups are checked one at a time.
+lines get. Privacy errors stop rustc before borrowck, so the groups are checked one at a time,
+and the writes through a getter, which only borrowck refuses, are a group of their own.
 Every line but the last in each group must be refused; the clock field is the documented
 exception.
 """
@@ -17,9 +18,11 @@ GROUPS = {
     'private mutators': '''
 #[allow(dead_code, unused, unreachable_code)]
 fn bypass(state: &mut State, entity: crate::rules::effect::EntityId) {
-    state.meters.take(&entity, "grit");
-    state.flags.put(entity.clone(), String::new(), unreachable!());
-    state.items.tracked_mut(&entity, "lamp_oil");
+    state.actors().meters().take("mira", "grit");
+    state.places().flags().put("docks_shop", String::new(), unreachable!());
+    state.actors().items().tracked_mut("mira", "lamp_oil");
+    state.world().meters().take("tide");
+    state.meters_of_mut(&entity, "grit");
     state.notes.frontier_mut();
     state.notes.apply(unreachable!());
     let ledger = &mut state.ledger;
@@ -27,12 +30,36 @@ fn bypass(state: &mut State, entity: crate::rules::effect::EntityId) {
     state.world_time = 0;
 }
 ''',
-    'read-only tables': '''
+    'record tables': '''
 #[allow(dead_code, unused)]
 fn bypass(state: &mut State, actor: crate::model::ActorLive) {
-    state.actors.insert(String::new(), actor.into());
-    state.open_exits.remove("docks_shop");
-    state.actors.get_mut("mira");
+    state.actors().records().put(String::new(), actor.into());
+    state.actors().records().tracked_mut("mira");
+    state.actors().records().take("mira");
+    state.places().open_exits.remove("docks_shop");
+    state.world_time = 0;
+}
+''',
+    'whole-struct and whole-store replacement': '''
+#[allow(dead_code, unused)]
+fn bypass(state: &mut State) {
+    state.actors = Default::default();
+    std::mem::take(&mut state.places);
+    std::mem::swap(&mut state.world, &mut Default::default());
+    std::mem::replace(&mut state.stories, Default::default());
+    state.notes = Default::default();
+    std::mem::take(&mut state.actors().meters);
+    std::mem::take(state.actors_mut());
+    std::mem::swap(state.places().open_exits(), &mut Default::default());
+    state.world_time = 0;
+}
+''',
+    'writes through a getter': '''
+#[allow(dead_code, unused)]
+fn bypass(state: &mut State) {
+    *state.actors().meters() = Default::default();
+    *state.world() = Default::default();
+    state.places().open_exits().clear();
     state.world_time = 0;
 }
 ''',

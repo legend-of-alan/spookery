@@ -81,10 +81,7 @@ fn assert_location(pack: &Path, name: &str) {
 }
 
 fn rowan_place(pack: &Path) -> String {
-    state_of(pack)
-        .actors
-        .get("pc_rowan")
-        .unwrap()
+    state_of(pack).actors().records()["pc_rowan"]
         .place
         .to_string()
 }

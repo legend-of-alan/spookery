@@ -38,7 +38,7 @@ struct ItemChange {
 fn random_item_changes_never_leave_a_negative_count() {
     let pack = TempPack(copy_docks("inventory"));
     let world = World::open(&pack.0).expect("docks pack opens");
-    let actors: Vec<String> = world.state().actors.keys().cloned().collect();
+    let actors: Vec<String> = world.state().actors().records().keys().cloned().collect();
     let places: Vec<String> = world.canon().places.keys().cloned().collect();
     assert!(
         actors.len() >= 2 && !places.is_empty(),
@@ -106,7 +106,9 @@ fn assert_same_save(state: &State, before: &State) -> Result<(), TestCaseError> 
 
 /// A stored count is a `u32`, so it cannot be negative. A count of 0 is omitted.
 fn assert_no_stored_zero(state: &State) -> Result<(), TestCaseError> {
-    for (entity, item_id, count) in state.items.iter() {
+    let actors = state.actors().items().iter();
+    let places = state.places().items().iter();
+    for (entity, item_id, count) in actors.chain(places) {
         if *count == 0 {
             return fail(format!("{entity} stores a zero count of {item_id}"));
         }
@@ -116,7 +118,7 @@ fn assert_no_stored_zero(state: &State) -> Result<(), TestCaseError> {
 
 fn is_known_entity(canon: &Canon, state: &State, entity: &EntityId) -> bool {
     match entity {
-        EntityId::Actor(id) => state.actors.contains_key(id),
+        EntityId::Actor(id) => state.actors().records().contains_key(id),
         EntityId::Place(id) => canon.places.contains_key(id),
         EntityId::Story(_) | EntityId::World => false,
     }

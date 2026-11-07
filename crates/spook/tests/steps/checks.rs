@@ -360,8 +360,8 @@ fn insert_brace_habit(pack: &Path) {
 fn set_mira_grit(pack: &Path, base: i64) {
     let path = pack.join("state/save.yaml");
     let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read now: {err}"));
-    let from = "  mira:\n    grit:\n      base: 1\n";
-    let to = format!("  mira:\n    grit:\n      base: {base}\n");
+    let from = "    mira:\n      grit:\n        base: 1\n";
+    let to = format!("    mira:\n      grit:\n        base: {base}\n");
     let next = text.replacen(from, &to, 1);
     assert_ne!(next, text, "mira grit was not changed");
     fs::write(&path, next).unwrap_or_else(|err| panic!("write now: {err}"));
@@ -375,11 +375,11 @@ fn snapshot_pack(pack: &Path) -> PathBuf {
 
 fn flags_of(world: &World, id: &str) -> Vec<String> {
     let now = state_of(table::pack(world));
-    assert!(now.actors.contains_key(id), "{id} missing");
+    assert!(now.actors().records().contains_key(id), "{id} missing");
     let actor = spookery_engine::EntityId::Actor(id.to_string());
     let mut flags: Vec<String> = now
-        .flags
-        .on(&actor)
+        .flags_of(&actor)
+        .iter()
         .map(|(flag, ())| flag.clone())
         .collect();
     flags.sort();
@@ -728,8 +728,8 @@ fn append_check(pack: &Path, extra: &str) {
 fn set_rowan_grit(pack: &Path, base: i64) {
     let path = pack.join("state/save.yaml");
     let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read now: {err}"));
-    let from = "  pc_rowan:\n    assassination_debt:\n      base: 2\n      offset: 0\n    grit:\n      base: 1\n";
-    let to = format!("  pc_rowan:\n    assassination_debt:\n      base: 2\n      offset: 0\n    grit:\n      base: {base}\n");
+    let from = "    pc_rowan:\n      assassination_debt:\n        base: 2\n        offset: 0\n      grit:\n        base: 1\n";
+    let to = format!("    pc_rowan:\n      assassination_debt:\n        base: 2\n        offset: 0\n      grit:\n        base: {base}\n");
     let next = text.replacen(from, &to, 1);
     assert_ne!(next, text, "rowan grit was not changed");
     fs::write(&path, next).unwrap_or_else(|err| panic!("write now: {err}"));

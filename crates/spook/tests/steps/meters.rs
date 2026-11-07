@@ -138,7 +138,7 @@ fn bram_and_rowan_do_not(world: &mut World) {
     let now = state_of(pack(world));
     for id in ["bram", "pc_rowan"] {
         let entity = EntityId::Actor(id.to_string());
-        assert!(now.meters.get(&entity, "shop_day").is_none(), "{id}");
+        assert!(now.meters_of(&entity).get("shop_day").is_none(), "{id}");
     }
 }
 
@@ -157,7 +157,7 @@ fn miras_habit_reads_and_resets(world: &mut World) {
 #[then(expr = "the habit runs as it did when shop_day was a clock")]
 fn the_habit_runs_as_before(world: &mut World) {
     let now = state_of(pack(world));
-    let note = now.notes.iter().find(|note| note.id == "note_mira_door");
+    let note = now.notes().iter().find(|note| note.id == "note_mira_door");
     assert_eq!(
         note.map(|note| note.to.clone()),
         Some(vec!["pc_rowan".to_string()])
@@ -389,9 +389,9 @@ fn dawn_is_zero(world: &mut World) {
 #[then(expr = "no actor carries a dawn meter")]
 fn no_actor_carries_dawn(world: &mut World) {
     let now = state_of(pack(world));
-    for id in now.actors.keys() {
+    for id in now.actors().records().keys() {
         let entity = EntityId::Actor(id.clone());
-        assert!(now.meters.get(&entity, "dawn").is_none(), "{id}");
+        assert!(now.meters_of(&entity).get("dawn").is_none(), "{id}");
     }
 }
 
@@ -528,7 +528,7 @@ fn mira_flags_an_absent_briar(world: &mut World, flag: String) {
         &format!("rules:\n  - id: hide_briar\n    when: habit\n    do:\n      - flag:\n          who: briar\n          key: {flag}\n          value: true\n  - id: leave_door_note\n"),
     );
     edit_table(world, &pack, |_, _| {});
-    assert!(!state_of(&pack).actors.contains_key("briar"));
+    assert!(!state_of(&pack).actors().records().contains_key("briar"));
     world.pack = Some(pack);
 }
 

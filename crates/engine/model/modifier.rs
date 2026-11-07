@@ -5,8 +5,7 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
 use crate::model::key::StateValue;
-use crate::model::tracked::{swap, Edit, Store};
-use crate::rules::effect::EntityId;
+use crate::model::tracked::{swap, Edit, Store, TrackedMap};
 use crate::Reason;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -97,11 +96,12 @@ pub fn is_defined(defs: &BTreeMap<String, ModifierDef>, id: &str, live: &Modifie
     defs.get(id).is_some_and(|def| def.meter == live.meter)
 }
 
-/// What the modifiers `entity` holds add to its meter `key`: the sum of their stacks.
-pub fn sum(modifiers: &Modifiers, entity: &EntityId, key: &str) -> Result<i64, Reason> {
-    modifiers
-        .on(entity)
-        .map(|(_, live)| live)
+/// What the modifiers an actor holds add to their meter `key`: the sum of their stacks.
+pub fn sum(
+    held: Option<&TrackedMap<ModifierLive, ModifierLive>>,
+    key: &str,
+) -> Result<i64, Reason> {
+    (held.into_iter().flat_map(TrackedMap::values))
         .filter(|live| live.meter == key)
         .flat_map(|live| &live.stacks)
         .try_fold(0i64, |total, add| total.checked_add(*add))
@@ -138,11 +138,9 @@ mod tests {
 
     #[test]
     fn sum_counts_only_the_named_meter_and_refuses_an_overflow() {
-        let rowan = EntityId::Actor("rowan".to_string());
-        let mut map = Modifiers::default();
-        map.put(rowan.clone(), "burn".to_string(), held(&[-1, -2]).into());
+        let mut map = TrackedMap::default();
+        map.put("burn".to_string(), held(&[-1, -2]).into());
         map.put(
-            rowan.clone(),
             "calm".to_string(),
             ModifierLive {
                 meter: "rest".to_string(),
@@ -152,9 +150,9 @@ mod tests {
             }
             .into(),
         );
-        assert_eq!(sum(&map, &rowan, "grit"), Ok(-3));
-        assert_eq!(sum(&map, &rowan, "nerve"), Ok(0));
-        map.put(rowan.clone(), "vast".to_string(), held(&[i64::MIN]).into());
-        assert_eq!(sum(&map, &rowan, "grit"), Err(Reason::OutOfRange));
+        assert_eq!(sum(Some(&map), "grit"), Ok(-3));
+        assert_eq!(sum(Some(&map), "nerve"), Ok(0));
+        map.put("vast".to_string(), held(&[i64::MIN]).into());
+        assert_eq!(sum(Some(&map), "grit"), Err(Reason::OutOfRange));
     }
 }

@@ -13,7 +13,7 @@ use crate::support;
 use crate::World;
 
 fn keep_briar_busy(now: &mut State) {
-    if now.actors.contains_key("npc_briar") {
+    if now.actors().records().contains_key("npc_briar") {
         let busy = spookery_engine::testing::ActorEdit::Busy(Some(u64::MAX), None);
         now.edit_actor("npc_briar", busy).unwrap();
     }
@@ -33,7 +33,8 @@ fn count(pack: &Path, actor: &str, item: &str) -> u32 {
 
 fn wielded(pack: &Path, actor: &str) -> Option<String> {
     support::state_of(pack)
-        .actors
+        .actors()
+        .records()
         .get(actor)
         .and_then(|actor| actor.wielded.clone())
 }
@@ -564,7 +565,7 @@ fn the_slot_clears_in_the_round(world: &mut World) {
     let pack = world.pack.as_ref().unwrap();
     let now = support::state_of(pack);
     assert_eq!(now.round_index, 1);
-    assert_eq!(now.actors.get("pc_lark").unwrap().wielded.as_deref(), None);
+    assert_eq!(now.actors().records()["pc_lark"].wielded.as_deref(), None);
     assert_eq!(
         now.item_count(
             &spookery_engine::EntityId::Actor("pc_lark".to_string()),

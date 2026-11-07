@@ -104,7 +104,8 @@ impl World {
     ) -> Result<TapeRecord, Reason> {
         if !self
             .state
-            .actors
+            .actors()
+            .records()
             .get(actor_id)
             .is_some_and(|actor| actor.is_pc())
         {
@@ -133,7 +134,7 @@ impl World {
     ) -> Result<TapeRecord, Reason> {
         let text = check_say_text(text)?.to_string();
         if let Address::Actor(actor) = heard {
-            if !self.state.actors.contains_key(actor) {
+            if !self.state.actors().records().contains_key(actor) {
                 return Err(Reason::Schema);
             }
         }
@@ -179,7 +180,8 @@ impl<L> World<L> {
     /// Every PC in the cast.
     pub fn pcs(&self) -> impl Iterator<Item = &String> {
         self.state
-            .actors
+            .actors()
+            .records()
             .iter()
             .filter(|(_, a)| a.is_pc())
             .map(|(id, _)| id)
@@ -246,7 +248,7 @@ impl<L> World<L> {
         let Some(viewer) = &line.actor else {
             return Err(Reason::Schema);
         };
-        let actor = self.state.actors.get(viewer.actor_id());
+        let actor = self.state.actors().records().get(viewer.actor_id());
         if !actor.is_some_and(|actor| actor.is_pc()) {
             return Err(Reason::Schema);
         }
@@ -689,14 +691,14 @@ pub fn check_pack(root: &Path) -> Vec<Diagnostic> {
 
 fn check_save_text(state: &State, bytes: &[u8]) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
-    if state.actors.contains_key("world") {
+    if state.actors().records().contains_key("world") {
         diags.push(
             schema_error(
                 "state/save.yaml",
                 "actor id world is reserved",
                 "rename that actor",
             )
-            .at_path("actors.world"),
+            .at_path("actors.records.world"),
         );
     }
     match save::emit(state) {

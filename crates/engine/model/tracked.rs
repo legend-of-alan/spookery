@@ -1,15 +1,13 @@
 //! A value that keeps the undo of each edit made to it since its frontier, so a round can roll
-//! it back; the store that keeps one such value per entity and key; and the edits the save's
-//! lists and maps share.
+//! it back; the map that keeps such values by key; the store that keeps one such map per entity
+//! of a kind; and the edits the save's lists and maps share.
 
+use std::borrow::Borrow;
 use std::collections::BTreeMap;
 use std::fmt;
 use std::ops::Deref;
 
-use serde::de::Error as _;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-
-use crate::rules::effect::EntityId;
 
 /// A typed change to a `T`.
 pub trait Edit<T>: Sized {
@@ -141,11 +139,112 @@ impl<T: fmt::Debug, E> fmt::Debug for Tracked<T, E> {
     }
 }
 
-/// One kind of component, such as every live meter: at most one on each entity under each key.
-/// A component's identity is that entity and key, the same in the save as in a round. Reading
-/// gives values; only `State`'s ledger moves one in a round.
+/// Tracked values by key, such as one entity's meters, the world's flags or every actor's
+/// record. Reading gives values; only `State`'s writers put one on, take one off or edit one.
+#[derive(Serialize, Deserialize)]
+#[serde(
+    transparent,
+    bound(serialize = "V: Serialize", deserialize = "V: Deserialize<'de>")
+)]
+pub struct TrackedMap<V, E> {
+    map: BTreeMap<String, Tracked<V, E>>,
+}
+
+impl<V, E> Default for TrackedMap<V, E> {
+    fn default() -> Self {
+        Self {
+            map: BTreeMap::new(),
+        }
+    }
+}
+
+/// A copy holds the values alone, at their frontier, as `Tracked` copies do.
+impl<V: Clone, E> Clone for TrackedMap<V, E> {
+    fn clone(&self) -> Self {
+        Self {
+            map: self.map.clone(),
+        }
+    }
+}
+
+impl<V: PartialEq, E> PartialEq for TrackedMap<V, E> {
+    fn eq(&self, other: &Self) -> bool {
+        self.map == other.map
+    }
+}
+
+impl<V: Eq, E> Eq for TrackedMap<V, E> {}
+
+impl<V: fmt::Debug, E> fmt::Debug for TrackedMap<V, E> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.map.fmt(f)
+    }
+}
+
+impl<V, E, Q: Ord + fmt::Debug + ?Sized> std::ops::Index<&Q> for TrackedMap<V, E>
+where
+    String: Borrow<Q>,
+{
+    type Output = V;
+
+    fn index(&self, key: &Q) -> &V {
+        let part = self.map.get(key);
+        part.unwrap_or_else(|| panic!("no entry {key:?}"))
+    }
+}
+
+impl<V, E> TrackedMap<V, E> {
+    pub fn is_empty(&self) -> bool {
+        self.map.is_empty()
+    }
+
+    pub fn get(&self, key: &str) -> Option<&V> {
+        self.map.get(key).map(|part| &**part)
+    }
+
+    pub fn contains_key(&self, key: &str) -> bool {
+        self.map.contains_key(key)
+    }
+
+    pub fn keys(&self) -> impl Iterator<Item = &String> {
+        self.map.keys()
+    }
+
+    pub fn values(&self) -> impl Iterator<Item = &V> {
+        self.map.values().map(|part| &**part)
+    }
+
+    /// Every entry, in key order.
+    pub fn iter(&self) -> impl Iterator<Item = (&String, &V)> {
+        self.map.iter().map(|(key, part)| (key, &**part))
+    }
+
+    pub(super) fn tracked_mut(&mut self, key: &str) -> Option<&mut Tracked<V, E>> {
+        self.map.get_mut(key)
+    }
+
+    pub(super) fn values_mut(&mut self) -> impl Iterator<Item = &mut Tracked<V, E>> {
+        self.map.values_mut()
+    }
+
+    /// Put `part` under `key`, with the undo it holds.
+    pub(super) fn put(&mut self, key: String, part: Tracked<V, E>) {
+        self.map.insert(key, part);
+    }
+
+    /// Take the entry under `key` off, with the undo it holds.
+    pub(super) fn take(&mut self, key: &str) -> Option<Tracked<V, E>> {
+        self.map.remove(key)
+    }
+}
+
+/// One kind of component on every entity of one kind, such as every actor's meters: each
+/// entity's own map, by its id. An entity with none has no entry, so a store reads the same
+/// after an add is rolled back.
+#[derive(Serialize)]
+#[serde(transparent, bound(serialize = "V: Serialize"))]
 pub struct Store<V, E> {
-    on: BTreeMap<EntityId, BTreeMap<String, Tracked<V, E>>>,
+    on: BTreeMap<String, TrackedMap<V, E>>,
 }
 
 impl<V, E> Default for Store<V, E> {
@@ -179,141 +278,143 @@ impl<V: fmt::Debug, E> fmt::Debug for Store<V, E> {
     }
 }
 
-/// The save writes a store as each entity, as a rule's `who` names it, with its components by
-/// key: `pc_rowan: {grit: {base: 1, offset: 0}}`.
-impl<V: Serialize, E> Serialize for Store<V, E> {
-    fn serialize<S: Serializer>(&self, out: S) -> Result<S::Ok, S::Error> {
-        out.collect_map(self.on.iter().map(|(entity, parts)| {
-            let values: BTreeMap<&String, &V> =
-                parts.iter().map(|(key, part)| (key, &**part)).collect();
-            (entity.to_string(), values)
-        }))
-    }
-}
-
+/// The save writes a store as each entity's id with its components by key:
+/// `pc_rowan: {grit: {base: 1, offset: 0}}`. An entity listed with none has no entry.
 impl<'de, V: Deserialize<'de>, E> Deserialize<'de> for Store<V, E> {
     fn deserialize<D: Deserializer<'de>>(from: D) -> Result<Self, D::Error> {
-        let mut store = Store::default();
-        for (entity, parts) in BTreeMap::<String, BTreeMap<String, V>>::deserialize(from)? {
-            let entity: EntityId = entity.parse().map_err(D::Error::custom)?;
-            for (key, value) in parts {
-                store.put(entity.clone(), key, Tracked::new(value));
-            }
-        }
-        Ok(store)
-    }
-}
-
-/// A store of marks with no value, such as flags, written as each entity with the list of its
-/// keys: `mira: [calm, wary]`.
-pub(crate) mod marks {
-    use super::*;
-
-    pub(crate) fn serialize<S: Serializer>(
-        store: &Store<(), ()>,
-        out: S,
-    ) -> Result<S::Ok, S::Error> {
-        out.collect_map(
-            store
-                .on
-                .iter()
-                .map(|(entity, parts)| (entity.to_string(), parts.keys().collect::<Vec<_>>())),
-        )
-    }
-
-    pub(crate) fn deserialize<'de, D: Deserializer<'de>>(
-        from: D,
-    ) -> Result<Store<(), ()>, D::Error> {
-        let mut store = Store::default();
-        for (entity, keys) in BTreeMap::<String, Vec<String>>::deserialize(from)? {
-            let entity: EntityId = entity.parse().map_err(D::Error::custom)?;
-            for key in keys {
-                store.put(entity.clone(), key, Tracked::new(()));
-            }
-        }
-        Ok(store)
+        let mut on = BTreeMap::<String, TrackedMap<V, E>>::deserialize(from)?;
+        on.retain(|_, parts| !parts.is_empty());
+        Ok(Store { on })
     }
 }
 
 impl<V, E> Store<V, E> {
-    /// Whether the store holds no component, for `skip_serializing_if`.
-    pub fn is_empty(&self) -> bool {
-        self.on.is_empty()
+    /// The components on entity `id`, by key, when it holds any.
+    pub fn of(&self, id: &str) -> Option<&TrackedMap<V, E>> {
+        self.on.get(id)
     }
 
-    /// The component on `entity` under `key`.
-    pub fn get(&self, entity: &EntityId, key: &str) -> Option<&V> {
-        self.on.get(entity)?.get(key).map(|part| &**part)
-    }
-
-    /// The components on `entity`, in key order.
-    pub fn on(&self, entity: &EntityId) -> impl Iterator<Item = (&String, &V)> {
-        let parts = self.on.get(entity).into_iter().flatten();
-        parts.map(|(key, part)| (key, &**part))
+    /// The component on entity `id` under `key`.
+    pub fn get(&self, id: &str, key: &str) -> Option<&V> {
+        self.on.get(id)?.get(key)
     }
 
     /// Every component, in entity and then key order.
-    pub fn iter(&self) -> impl Iterator<Item = (&EntityId, &String, &V)> {
+    pub fn iter(&self) -> impl Iterator<Item = (&String, &String, &V)> {
         let entities = self.on.iter();
-        entities
-            .flat_map(|(entity, parts)| parts.iter().map(move |(key, part)| (entity, key, &**part)))
+        entities.flat_map(|(id, parts)| parts.iter().map(move |(key, part)| (id, key, part)))
     }
 
-    pub(super) fn tracked_mut(
-        &mut self,
-        entity: &EntityId,
-        key: &str,
-    ) -> Option<&mut Tracked<V, E>> {
-        self.on.get_mut(entity)?.get_mut(key)
+    pub(super) fn tracked_mut(&mut self, id: &str, key: &str) -> Option<&mut Tracked<V, E>> {
+        self.on.get_mut(id)?.tracked_mut(key)
     }
 
-    /// Put `part` on `entity` under `key`, with the undo it holds.
-    pub(super) fn put(&mut self, entity: EntityId, key: String, part: Tracked<V, E>) {
-        self.on.entry(entity).or_default().insert(key, part);
+    /// Put `part` on entity `id` under `key`, with the undo it holds.
+    pub(super) fn put(&mut self, id: &str, key: String, part: Tracked<V, E>) {
+        self.on.entry(id.to_string()).or_default().put(key, part);
     }
 
-    /// Take the component on `entity` under `key` off, with the undo it holds. An entity left
-    /// with none has no entry, so a store reads the same after an add is rolled back.
-    pub(super) fn take(&mut self, entity: &EntityId, key: &str) -> Option<Tracked<V, E>> {
-        let parts = self.on.get_mut(entity)?;
-        let part = parts.remove(key);
+    /// Take the component on entity `id` under `key` off, with the undo it holds.
+    pub(super) fn take(&mut self, id: &str, key: &str) -> Option<Tracked<V, E>> {
+        let parts = self.on.get_mut(id)?;
+        let part = parts.take(key);
         if parts.is_empty() {
-            self.on.remove(entity);
+            self.on.remove(id);
         }
         part
     }
 }
 
-/// A collection round code reads but cannot change: only `State`'s writers put an entry in or
-/// take one out, through the ledger. It reads as the collection it holds.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ReadOnly<C>(C);
+/// One entity's components of one kind, to read: its own map, or none when it holds none.
+pub struct Parts<'a, V, E>(pub(super) Option<&'a TrackedMap<V, E>>);
 
-impl<C> Deref for ReadOnly<C> {
-    type Target = C;
+impl<'a, V, E> Parts<'a, V, E> {
+    /// The component under `key`.
+    pub fn get(&self, key: &str) -> Option<&'a V> {
+        self.0?.get(key)
+    }
 
-    fn deref(&self) -> &C {
-        &self.0
+    /// Every component, in key order.
+    pub fn iter(&self) -> impl Iterator<Item = (&'a String, &'a V)> {
+        self.0.into_iter().flat_map(TrackedMap::iter)
     }
 }
 
-impl<'a, C> IntoIterator for &'a ReadOnly<C>
-where
-    &'a C: IntoIterator,
-{
-    type Item = <&'a C as IntoIterator>::Item;
-    type IntoIter = <&'a C as IntoIterator>::IntoIter;
+/// One entity's components of one kind, to write: its entry in its kind's store, by its id,
+/// or the world's own map.
+pub(super) enum PartsMut<'a, V, E> {
+    Stored(&'a mut Store<V, E>, &'a str),
+    World(&'a mut TrackedMap<V, E>),
+}
 
-    fn into_iter(self) -> Self::IntoIter {
-        self.0.into_iter()
+impl<'a, V, E> PartsMut<'a, V, E> {
+    pub(super) fn tracked_mut(self, key: &str) -> Option<&'a mut Tracked<V, E>> {
+        match self {
+            PartsMut::Stored(store, id) => store.tracked_mut(id, key),
+            PartsMut::World(map) => map.tracked_mut(key),
+        }
+    }
+
+    pub(super) fn put(&mut self, key: String, part: Tracked<V, E>) {
+        match self {
+            PartsMut::Stored(store, id) => store.put(id, key, part),
+            PartsMut::World(map) => map.put(key, part),
+        }
+    }
+
+    pub(super) fn take(&mut self, key: &str) -> Option<Tracked<V, E>> {
+        match self {
+            PartsMut::Stored(store, id) => store.take(id, key),
+            PartsMut::World(map) => map.take(key),
+        }
     }
 }
 
-impl<C> ReadOnly<C> {
-    /// The collection, to change: for `State`'s writers alone.
-    pub(super) fn get_mut(&mut self) -> &mut C {
-        &mut self.0
+/// Marks with no value, such as flags, written as the list of their keys: `[calm, wary]`.
+pub(crate) mod marks {
+    use super::*;
+
+    pub(crate) fn serialize<S: Serializer>(
+        marks: &TrackedMap<(), ()>,
+        out: S,
+    ) -> Result<S::Ok, S::Error> {
+        out.collect_seq(marks.keys())
+    }
+
+    pub(crate) fn deserialize<'de, D: Deserializer<'de>>(
+        from: D,
+    ) -> Result<TrackedMap<(), ()>, D::Error> {
+        let mut marks = TrackedMap::default();
+        for key in Vec::<String>::deserialize(from)? {
+            marks.put(key, Tracked::new(()));
+        }
+        Ok(marks)
+    }
+
+    /// A store of marks, written as each entity's id with the list of its keys:
+    /// `mira: [calm, wary]`.
+    pub(crate) mod by_entity {
+        use super::super::*;
+
+        pub(crate) fn serialize<S: Serializer>(
+            store: &Store<(), ()>,
+            out: S,
+        ) -> Result<S::Ok, S::Error> {
+            let entities = store.on.iter();
+            out.collect_map(entities.map(|(id, marks)| (id, marks.keys().collect::<Vec<_>>())))
+        }
+
+        pub(crate) fn deserialize<'de, D: Deserializer<'de>>(
+            from: D,
+        ) -> Result<Store<(), ()>, D::Error> {
+            let mut store = Store::default();
+            for (id, keys) in BTreeMap::<String, Vec<String>>::deserialize(from)? {
+                for key in keys {
+                    store.put(&id, key, Tracked::new(()));
+                }
+            }
+            Ok(store)
+        }
     }
 }
 

@@ -65,8 +65,11 @@ fn hit_rowan(world: &mut World, moves: &[(&str, &str)]) {
 }
 
 fn modifier_of(pack: &Path, id: &str) -> Option<ModifierLive> {
-    let rowan = EntityId::Actor("pc_rowan".to_string());
-    state_of(pack).modifiers.get(&rowan, id).cloned()
+    state_of(pack)
+        .actors()
+        .modifiers()
+        .get("pc_rowan", id)
+        .cloned()
 }
 
 fn stacks_of(pack: &Path, id: &str) -> Vec<i64> {
@@ -80,16 +83,16 @@ fn lowered(pack: &Path, meter: &str) -> i64 {
     let now = state_of(pack);
     let canon = load_canon(pack).unwrap_or_else(|err| panic!("load: {err:?}"));
     let rowan = EntityId::Actor("pc_rowan".to_string());
-    let MeterLive { base, offset } = now.meters.get(&rowan, meter).unwrap().clone();
+    let MeterLive { base, offset } = now.meters_of(&rowan).get(meter).unwrap().clone();
     base + offset - now.meter_value(&canon, &rowan, meter).unwrap()
 }
 
 /// Ticks from the latest round until modifier `id` expires.
 fn ticks_left(pack: &Path, id: &str) -> u64 {
     let now = state_of(pack);
-    let rowan = EntityId::Actor("pc_rowan".to_string());
-    now.modifiers
-        .get(&rowan, id)
+    now.actors()
+        .modifiers()
+        .get("pc_rowan", id)
         .unwrap()
         .ticks_left(now.world_time)
 }
@@ -209,7 +212,8 @@ fn two_modifiers_on_sight(world: &mut World, rain: String, fog: String) {
     let canon = spookery_engine::load_canon(&pack).unwrap();
     edit_save(&pack, |now| {
         let actors: Vec<EntityId> = now
-            .actors
+            .actors()
+            .records()
             .keys()
             .map(|id| EntityId::Actor(id.clone()))
             .collect();
@@ -424,17 +428,17 @@ fn rowan_has_no_burn(world: &mut World) {
 
 #[then(expr = "pc_rowan has neither burn nor soaked")]
 fn rowan_has_neither(world: &mut World) {
-    let rowan = EntityId::Actor("pc_rowan".to_string());
-    assert_eq!(state_of(pack(world)).modifiers.on(&rowan).count(), 0);
+    let now = state_of(pack(world));
+    assert!(now.actors().modifiers().of("pc_rowan").is_none());
 }
 
 #[then(expr = "pc_rowan has no luck and the world has no tide")]
 fn neither_keeps_the_dropped_meter(world: &mut World) {
     let now = state_of(pack(world));
     let rowan = EntityId::Actor("pc_rowan".to_string());
-    assert!(now.meters.get(&rowan, "luck").is_none());
-    assert!(now.meters.get(&rowan, "grit").is_some());
-    assert!(now.meters.get(&EntityId::World, "tide").is_none());
+    assert!(now.meters_of(&rowan).get("luck").is_none());
+    assert!(now.meters_of(&rowan).get("grit").is_some());
+    assert!(now.meters_of(&EntityId::World).get("tide").is_none());
 }
 
 #[given(
@@ -454,14 +458,26 @@ fn grit_watches(world: &mut World, low: String, below: String, high: String, abo
 #[then(expr = "the world flag {string} is set and {string} is not")]
 fn one_world_flag_is_set(world: &mut World, set: String, clear: String) {
     let now = state_of(pack(world));
-    assert!(now.has_flag(&EntityId::World, &set), "{:?}", now.flags);
-    assert!(!now.has_flag(&EntityId::World, &clear), "{:?}", now.flags);
+    assert!(
+        now.has_flag(&EntityId::World, &set),
+        "{:?}",
+        now.world().flags()
+    );
+    assert!(
+        !now.has_flag(&EntityId::World, &clear),
+        "{:?}",
+        now.world().flags()
+    );
 }
 
 #[then(expr = "the world flag {string} is set")]
 fn the_world_flag_is_set(world: &mut World, set: String) {
     let now = state_of(pack(world));
-    assert!(now.has_flag(&EntityId::World, &set), "{:?}", now.flags);
+    assert!(
+        now.has_flag(&EntityId::World, &set),
+        "{:?}",
+        now.world().flags()
+    );
 }
 
 #[then(expr = "the GM sees {string} as a changed key")]

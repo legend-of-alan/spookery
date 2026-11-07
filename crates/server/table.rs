@@ -343,7 +343,7 @@ impl Table {
         if presence.actors_present.contains(&actor) {
             return Err(Reason::SeatTaken);
         }
-        let live = self.world.state().actors.get(&actor);
+        let live = self.world.state().actors().records().get(&actor);
         if !live.is_some_and(|live| live.is_pc()) {
             return Err(Reason::Schema);
         }
@@ -392,7 +392,8 @@ impl Table {
         let here = self
             .world
             .state()
-            .actors
+            .actors()
+            .records()
             .get(actor_id)
             .map(|actor| actor.place.clone());
         let heard = match args {

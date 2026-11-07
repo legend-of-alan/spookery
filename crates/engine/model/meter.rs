@@ -63,7 +63,7 @@ pub fn current(def: &MeterDef, live: &MeterLive, modifiers: i64) -> Result<i64, 
     Ok(sum.clamp(def.min, def.max))
 }
 
-/// Every live meter, on every entity, by the meter's id.
+/// Every live meter on each entity of a kind, by the meter's id.
 pub type Meters = Store<MeterLive, Offset>;
 
 /// The edit that moves a meter's offset by the write's delta, once `is_storable` accepts the

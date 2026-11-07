@@ -30,7 +30,7 @@ impl State {
     /// caller's savepoint to undo.
     pub fn edit_actor(&mut self, id: &str, edit: ActorEdit) -> Result<(), Reason> {
         let State { actors, ledger, .. } = self;
-        let actor = actors.get_mut().get_mut(id).ok_or(Reason::UnknownId)?;
+        let actor = actors.records.tracked_mut(id).ok_or(Reason::UnknownId)?;
         let at = || ComponentId::Actor(id.to_string());
         match edit.key(id) {
             Some(key) => ledger.land(at, actor, edit, key, |actor, key| actor.value(key)),
@@ -51,20 +51,19 @@ impl State {
         key: &str,
         next: Option<MeterLive>,
     ) -> Result<(), Reason> {
-        let watched = StateKey::meter(entity, key);
-        if self.meters.get(entity, key) == next.as_ref() {
+        if self.meters_of(entity).get(key) == next.as_ref() {
             return Ok(());
         }
         if next.is_some() {
             self.require_entity(entity)?;
         }
         let before = reading(self.meter_value(canon, entity, key));
-        let State { meters, ledger, .. } = &mut *self;
-        if let Some(part) = meters.take(entity, key) {
+        let (mut meters, watched, ledger) = self.meters_of_mut(entity, key);
+        if let Some(part) = meters.take(key) {
             ledger.removed(Removed::Meter(entity.clone(), key.to_string(), part));
         }
         if let Some(live) = next {
-            meters.put(entity.clone(), key.to_string(), Tracked::new(live));
+            meters.put(key.to_string(), Tracked::new(live));
             ledger.added(ComponentId::Meter(entity.clone(), key.to_string()));
         }
         let after = reading(self.meter_value(canon, entity, key));
@@ -80,10 +79,9 @@ impl State {
         key: &str,
         edit: Offset,
     ) -> Result<(), Reason> {
-        let watched = StateKey::meter(entity, key);
         let before = reading(self.meter_value(canon, entity, key));
-        let State { meters, ledger, .. } = &mut *self;
-        let meter = meters.tracked_mut(entity, key).ok_or(Reason::UnknownId)?;
+        let (meters, watched, ledger) = self.meters_of_mut(entity, key);
+        let meter = meters.tracked_mut(key).ok_or(Reason::UnknownId)?;
         let at = || ComponentId::Meter(entity.clone(), key.to_string());
         if !ledger.track(at, meter, edit) {
             return Ok(());
@@ -107,30 +105,37 @@ impl State {
         self.require_entity(&entity)?;
         let meter = canon.modifiers.get(id).map(|def| def.meter.as_str());
         let meter_before = meter.map(|key| reading(self.meter_value(canon, &entity, key)));
-        let held = self.modifiers.get(&entity, id);
+        let held = self.actors.modifiers.get(actor_id, id);
         let stacks = held.map(|held| held.stacks.clone());
         let before = held.map_or(StateValue::Empty, ModifierLive::to_value);
         let puts = next.is_some();
-        let at = || ComponentId::Modifier(entity.clone(), id.to_string());
-        let State {
-            modifiers, ledger, ..
-        } = &mut *self;
-        let moved = match (modifiers.tracked_mut(&entity, id), next) {
+        let at = || ComponentId::Modifier(actor_id.to_string(), id.to_string());
+        let State { actors, ledger, .. } = &mut *self;
+        let modifiers = &mut actors.modifiers;
+        let moved = match (modifiers.tracked_mut(actor_id, id), next) {
             (Some(held), Some(next)) => ledger.track(at, held, next),
             (Some(_), None) => {
-                let held = modifiers.take(&entity, id).expect("a modifier held");
-                ledger.removed(Removed::Modifier(entity.clone(), id.to_string(), held));
+                let held = modifiers.take(actor_id, id).expect("a modifier held");
+                ledger.removed(Removed::Modifier(
+                    actor_id.to_string(),
+                    id.to_string(),
+                    held,
+                ));
                 true
             }
             (None, Some(next)) => {
-                modifiers.put(entity.clone(), id.to_string(), Tracked::new(next));
+                modifiers.put(actor_id, id.to_string(), Tracked::new(next));
                 ledger.added(at());
                 true
             }
             (None, None) => false,
         };
         if let (Some(meter), Some(before)) = (meter, meter_before) {
-            let now = self.modifiers.get(&entity, id).map(|held| &held.stacks);
+            let now = self
+                .actors
+                .modifiers
+                .get(actor_id, id)
+                .map(|held| &held.stacks);
             let stacks_moved = now != stacks.as_ref();
             let key = StateKey::ActorMeter(actor_id.to_string(), meter.to_string());
             if stacks_moved {
@@ -146,8 +151,8 @@ impl State {
             }
         }
         if moved {
-            let after =
-                (self.modifiers.get(&entity, id)).map_or(StateValue::Empty, ModifierLive::to_value);
+            let after = (self.actors.modifiers.get(actor_id, id))
+                .map_or(StateValue::Empty, ModifierLive::to_value);
             let key = StateKey::ActorModifier(actor_id.to_string(), id.to_string());
             self.ledger.note(key, before, after)?;
         }
@@ -160,14 +165,11 @@ impl State {
         canon: &Canon,
         world_time: u64,
     ) -> Result<(), Reason> {
-        let due: Vec<(EntityId, String)> = (self.modifiers.iter())
+        let due: Vec<(String, String)> = (self.actors.modifiers.iter())
             .filter(|(_, _, held)| held.until <= world_time)
-            .map(|(entity, id, _)| (entity.clone(), id.clone()))
+            .map(|(actor, id, _)| (actor.clone(), id.clone()))
             .collect();
-        for (entity, id) in due {
-            let EntityId::Actor(actor) = entity else {
-                continue;
-            };
+        for (actor, id) in due {
             self.put_modifier(canon, &actor, &id, None)?;
         }
         Ok(())
@@ -176,21 +178,21 @@ impl State {
     /// Set how many of item `id` `entity` holds to `count`, counted and kept as `edit_actor`
     /// says. Only an actor or a place holds items, and it must be in the save.
     pub fn set_items(&mut self, entity: &EntityId, id: &str, count: u32) -> Result<(), Reason> {
-        let watched = StateKey::item(entity, id).ok_or(Reason::Schema)?;
-        let held = self.item_count(entity, id).ok_or(Reason::UnknownId)?;
+        let held = self.item_count(entity, id);
+        let (mut items, watched, ledger) = self.items_of_mut(entity, id).ok_or(Reason::Schema)?;
+        let held = held.ok_or(Reason::UnknownId)?;
         if held == count {
             return Ok(());
         }
-        let State { items, ledger, .. } = self;
         let at = || ComponentId::Item(entity.clone(), id.to_string());
         if held == 0 {
-            items.put(entity.clone(), id.to_string(), Tracked::new(count));
+            items.put(id.to_string(), Tracked::new(count));
             ledger.added(at());
         } else if count == 0 {
-            let part = items.take(entity, id).expect("a count above 0");
+            let part = items.take(id).expect("a count above 0");
             ledger.removed(Removed::Item(entity.clone(), id.to_string(), part));
         } else {
-            let part = items.tracked_mut(entity, id).expect("a count above 0");
+            let part = items.tracked_mut(id).expect("a count above 0");
             ledger.track(at, part, Shift(i64::from(count) - i64::from(held)));
         }
         ledger.note(watched, number(u64::from(held)), number(u64::from(count)))
@@ -199,21 +201,19 @@ impl State {
     /// Set `entity`'s flag `key` on or off, counted and kept as `edit_actor` says. A flag
     /// already so changes nothing.
     pub fn set_flag(&mut self, entity: &EntityId, key: &str, on: bool) -> Result<(), Reason> {
-        if self.flags.get(entity, key).is_some() == on {
+        if self.has_flag(entity, key) == on {
             return Ok(());
         }
         if on {
             self.require_entity(entity)?;
         }
-        let State { flags, ledger, .. } = self;
-        let (entity, key) = (entity.clone(), key.to_string());
-        let watched = StateKey::flag(&entity, &key);
+        let (mut flags, watched, ledger) = self.flags_of_mut(entity, key);
         if on {
-            flags.put(entity.clone(), key.clone(), Tracked::default());
-            ledger.added(ComponentId::Flag(entity, key));
+            flags.put(key.to_string(), Tracked::default());
+            ledger.added(ComponentId::Flag(entity.clone(), key.to_string()));
         } else {
-            flags.take(&entity, &key);
-            ledger.removed(Removed::Flag(entity, key));
+            flags.take(key);
+            ledger.removed(Removed::Flag(entity.clone(), key.to_string()));
         }
         ledger.note(watched, StateValue::Bool(!on), StateValue::Bool(on))
     }
@@ -249,7 +249,7 @@ impl State {
 
     /// Set `counter` back to 0 on every actor.
     pub(crate) fn reset_acts(&mut self, counter: ActCounter) -> Result<(), Reason> {
-        let ids: Vec<String> = self.actors.keys().cloned().collect();
+        let ids: Vec<String> = self.actors.records.keys().cloned().collect();
         for id in ids {
             self.edit_actor(&id, ActorEdit::Acts(counter, 0))?;
         }
@@ -259,7 +259,12 @@ impl State {
     /// Count one act for `actor_id` this round, in the act window the table is in.
     pub(crate) fn count_act(&mut self, actor_id: &str) -> Result<(), Reason> {
         let round = self.round_index;
-        let act = &self.actors.get(actor_id).ok_or(Reason::UnknownId)?.act;
+        let act = &self
+            .actors
+            .records
+            .get(actor_id)
+            .ok_or(Reason::UnknownId)?
+            .act;
         let (counter, count) = if self.presence().players == 0 {
             (ActCounter::IdleActsThisWindow, act.idle_acts_this_window)
         } else {
@@ -282,7 +287,7 @@ impl State {
 
     /// End actor `id`'s action under way, if any, and free them: it never finishes here.
     pub(crate) fn take_pending(&mut self, id: &str) -> Result<Option<PendingAction>, Reason> {
-        let actor = self.actors.get(id).ok_or(Reason::UnknownId)?;
+        let actor = self.actors.records.get(id).ok_or(Reason::UnknownId)?;
         let taken = actor.act.pending.clone();
         self.edit_actor(id, ActorEdit::Busy(None, None))?;
         Ok(taken)
@@ -311,10 +316,10 @@ impl State {
 impl State {
     /// Give the save actor `id`, with `record` and no components yet.
     pub fn add_actor(&mut self, id: &str, record: crate::model::ActorLive) -> Result<(), Reason> {
-        if self.actors.contains_key(id) {
+        if self.actors.records.contains_key(id) {
             return Err(Reason::Schema);
         }
-        self.actors.get_mut().insert(id.to_string(), record.into());
+        self.actors.records.put(id.to_string(), record.into());
         self.ledger.added(ComponentId::Actor(id.to_string()));
         Ok(())
     }
@@ -323,14 +328,13 @@ impl State {
     /// reverse of the order a copy puts them on, then their record, so a rollback puts them all
     /// back.
     pub fn remove_actor(&mut self, canon: &Canon, id: &str) -> Result<(), Reason> {
-        if !self.actors.contains_key(id) {
+        if !self.actors.records.contains_key(id) {
             return Err(Reason::UnknownId);
         }
-        let entity = EntityId::Actor(id.to_string());
-        for at in self.components_on(&entity).into_iter().rev() {
-            self.put_component(canon, &at, &entity, false)?;
+        for part in self.parts_of(id).into_iter().rev() {
+            self.put_part(canon, id, part, false)?;
         }
-        let record = self.actors.get_mut().remove(id).expect("an actor");
+        let record = self.actors.records.take(id).expect("an actor");
         self.ledger
             .removed(Removed::Actor(id.to_string(), Box::new(record)));
         Ok(())
@@ -339,52 +343,48 @@ impl State {
     /// Give the save actor `to`, a copy of actor `from`: their record, then each of their
     /// components through its writer.
     pub fn copy_actor(&mut self, canon: &Canon, from: &str, to: &str) -> Result<(), Reason> {
-        let record = (**self.actors.get(from).ok_or(Reason::UnknownId)?).clone();
-        let components = self.components_on(&EntityId::Actor(from.to_string()));
+        let record = self
+            .actors
+            .records
+            .get(from)
+            .ok_or(Reason::UnknownId)?
+            .clone();
+        let parts = self.parts_of(from);
         self.add_actor(to, record)?;
-        let copy = EntityId::Actor(to.to_string());
-        for at in components {
-            self.put_component(canon, &at, &copy, true)?;
+        for part in parts {
+            self.put_part(canon, to, part, true)?;
         }
         Ok(())
     }
 
-    /// Every component on `entity`, by id, in the order `components` walks them, which is the
-    /// order a copy puts them on.
-    fn components_on(&self, entity: &EntityId) -> Vec<ComponentId> {
-        let on = |at: &ComponentId| at.stored().is_some_and(|(_, on)| on == entity);
-        self.components().filter(on).collect()
+    /// Every component actor `id` holds, in the order `ActorComponents::parts` walks them,
+    /// which is the order a copy puts them on.
+    fn parts_of(&self, id: &str) -> Vec<crate::model::ActorPart> {
+        let parts = self.actors.parts().into_iter();
+        parts
+            .filter(|(on, _)| on == id)
+            .map(|(_, part)| part)
+            .collect()
     }
 
-    /// Put component `at`, as it is now, on `onto` through its own writer, or take it off `onto`
-    /// when `on` is false.
-    fn put_component(
+    /// Put `part` on actor `onto` through its own writer, or take it off them when `on` is
+    /// false.
+    fn put_part(
         &mut self,
         canon: &Canon,
-        at: &ComponentId,
-        onto: &EntityId,
+        onto: &str,
+        part: crate::model::ActorPart,
         on: bool,
     ) -> Result<(), Reason> {
-        match at {
-            ComponentId::Item(from, id) => {
-                let count = self.items.get(from, id).copied().unwrap_or(0);
-                self.set_items(onto, id, if on { count } else { 0 })
+        use crate::model::ActorPart;
+        let entity = EntityId::Actor(onto.to_string());
+        match part {
+            ActorPart::Item(id, count) => self.set_items(&entity, &id, if on { count } else { 0 }),
+            ActorPart::Meter(key, live) => self.put_meter(canon, &entity, &key, on.then_some(live)),
+            ActorPart::Modifier(id, live) => {
+                self.put_modifier(canon, onto, &id, on.then_some(live))
             }
-            ComponentId::Meter(from, key) => {
-                let live = self.meters.get(from, key).cloned().filter(|_| on);
-                self.put_meter(canon, onto, key, live)
-            }
-            ComponentId::Modifier(from, id) => {
-                let EntityId::Actor(actor_id) = onto else {
-                    return Err(Reason::Schema);
-                };
-                let live = self.modifiers.get(from, id).cloned().filter(|_| on);
-                self.put_modifier(canon, actor_id, id, live)
-            }
-            ComponentId::Flag(_, key) => self.set_flag(onto, key, on),
-            ComponentId::Actor(_) | ComponentId::ExitOpen(_) | ComponentId::Notes => {
-                Err(Reason::Schema)
-            }
+            ActorPart::Flag(key) => self.set_flag(&entity, &key, on),
         }
     }
 }

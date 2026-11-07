@@ -20,7 +20,11 @@ pub(crate) fn help(
     presence: &Presence,
     actor_id: &str,
 ) -> Result<Vec<WordView>, Reason> {
-    let actor = state.actors.get(actor_id).ok_or(Reason::UnknownId)?;
+    let actor = state
+        .actors()
+        .records()
+        .get(actor_id)
+        .ok_or(Reason::UnknownId)?;
     let viewer = Viewer::Player(actor_id.to_string());
     let mut words: Vec<WordView> = WORDS
         .iter()
@@ -95,7 +99,7 @@ fn names_for(
             .collect(),
         TargetKind::Actor => nameable
             .iter()
-            .filter(|name| state.actors.contains_key(*name))
+            .filter(|name| state.actors().records().contains_key(name))
             .cloned()
             .collect(),
         TargetKind::Item => nameable
@@ -117,7 +121,11 @@ fn names_for(
 /// `map`: each place in the actor's `visited`, with the exits they saw there last. Where an
 /// exit goes, its ticks and whether it is locked are read now.
 pub(crate) fn map(canon: &Canon, state: &State, actor_id: &str) -> Result<Vec<PlaceView>, Reason> {
-    let actor = state.actors.get(actor_id).ok_or(Reason::UnknownId)?;
+    let actor = state
+        .actors()
+        .records()
+        .get(actor_id)
+        .ok_or(Reason::UnknownId)?;
     let places = actor.visited.iter().map(|(id, seen)| PlaceView {
         name: place_name(canon, id),
         exits: canon
@@ -140,7 +148,7 @@ pub(crate) fn map(canon: &Canon, state: &State, actor_id: &str) -> Result<Vec<Pl
 /// `chanting until tick 1300` on any other timed action, read from its verb, and
 /// `recovering until tick 1300` in a cooldown.
 pub(crate) fn busy_line(canon: &Canon, state: &State, actor_id: &str) -> Option<String> {
-    let actor = state.actors.get(actor_id)?;
+    let actor = state.actors().records().get(actor_id)?;
     if !actor.is_busy(state.world_time) {
         return None;
     }
@@ -166,7 +174,7 @@ fn gerund(verb: &str) -> String {
 
 /// Place prose for this actor's current place.
 pub(crate) fn place_prose(canon: &Canon, state: &State, actor_id: &str) -> String {
-    let Some(actor) = state.actors.get(actor_id) else {
+    let Some(actor) = state.actors().records().get(actor_id) else {
         return String::new();
     };
     let Some(place) = canon.places.get(&actor.place) else {

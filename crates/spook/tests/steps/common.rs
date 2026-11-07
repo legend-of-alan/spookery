@@ -118,13 +118,13 @@ fn break_pack(pack: &Path, fault: &str) {
         }
         "an item on the world" => replace_in_file(
             &pack.join("state/save.yaml"),
-            "items:\n",
-            "items:\n  world:\n    lamp_oil: 1\n",
+            "\nworld:\n",
+            "\nworld:\n  items:\n    lamp_oil: 1\n",
         ),
         "a meter on an unlisted actor" => replace_in_file(
             &pack.join("state/save.yaml"),
-            "meters:\n",
-            "meters:\n  ghost:\n    grit:\n      base: 1\n      offset: 0\n",
+            "\n  meters:\n",
+            "\n  meters:\n    ghost:\n      grit:\n        base: 1\n        offset: 0\n",
         ),
         "exit to an unknown place" => replace_in_file(
             &pack.join("world/places/docks_shop.md"),

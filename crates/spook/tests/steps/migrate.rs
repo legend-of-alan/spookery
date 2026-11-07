@@ -90,8 +90,8 @@ fn the_save_is_hand_edited(world: &mut World) {
     let mut text = fs::read_to_string(&now_path).unwrap();
     text = text.replace("world_time: 1080", "world_time: 7");
     text = text.replace(
-        "  pc_rowan:\n    kind: pc\n    place: docks_shop\n",
-        "  pc_rowan:\n    kind: pc\n    place: mira_rooms\n",
+        "    pc_rowan:\n      kind: pc\n      place: docks_shop\n",
+        "    pc_rowan:\n      kind: pc\n      place: mira_rooms\n",
     );
     fs::write(&now_path, text).unwrap();
     a_canon_file_gains_a_byte(world);
@@ -110,9 +110,9 @@ fn the_pack_adds_meter(world: &mut World, id: String, start: i64) {
 #[then(expr = "every actor has {string} at {int}")]
 fn every_actor_has_meter_at(world: &mut World, id: String, base: i64) {
     let now = state_of(table::pack(world));
-    for actor in now.actors.keys() {
+    for actor in now.actors().records().keys() {
         let entity = spookery_engine::EntityId::Actor(actor.clone());
-        let got = now.meters.get(&entity, &id).map(|meter| meter.base);
+        let got = now.meters_of(&entity).get(&id).map(|meter| meter.base);
         assert_eq!(got, Some(base), "{actor} {id}");
     }
 }
@@ -147,7 +147,7 @@ fn the_round_writes_nothing(world: &mut World) {
 fn the_save_drops_meter(world: &mut World, id: String) {
     let path = table::pack(world).join("state/save.yaml");
     let text = fs::read_to_string(&path).unwrap();
-    let needle = format!("    {id}:");
+    let needle = format!("      {id}:");
     let mut out = String::new();
     let mut skip = 0;
     let mut found = false;
@@ -203,7 +203,7 @@ fn state_rev_is_2(world: &mut World) {
     let now = state_of(table::pack(world));
     assert_eq!(now.state_rev, 2);
     assert_eq!(now.pack_rev, docks_pack_rev());
-    assert_eq!(now.actors.get("pc_rowan").unwrap().place, "docks_shop");
+    assert_eq!(now.actors().records()["pc_rowan"].place, "docks_shop");
     assert_eq!(
         now.item_count(
             &spookery_engine::EntityId::Place("docks_shop".to_string()),
@@ -231,7 +231,7 @@ fn migrate_keeps_the_hand_edit(world: &mut World) {
     assert_eq!(now.world_time, 7);
     assert_eq!(now.round_index, 0);
     assert_eq!(now.last_round_at, "2026-01-01T00:00:00Z");
-    assert_eq!(now.actors.get("pc_rowan").unwrap().place, "mira_rooms");
+    assert_eq!(now.actors().records()["pc_rowan"].place, "mira_rooms");
     assert!(spookery_engine::testing::journal::list_round_keys(pack).is_empty());
     assert_eq!(read_migrate_revs(pack), [1]);
 }

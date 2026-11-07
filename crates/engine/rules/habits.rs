@@ -10,7 +10,7 @@ use crate::rules::gate;
 
 /// One habit intent per NPC whose habit the gate admits, its target not yet stamped.
 pub(crate) fn intents(canon: &Canon, state: &State, presence: &Presence) -> Vec<Intent> {
-    let actors = state.actors.keys();
+    let actors = state.actors().records().keys();
     let intents = actors.filter_map(|actor_id| intent_of(canon, state, presence, actor_id));
     intents.collect()
 }
@@ -51,7 +51,7 @@ pub(crate) fn list_whose_if_holds(
 /// Whether the engine may run one of this NPC's habits on its own this round: its idle
 /// profile allows it, it is free, no seated player is with it, and its act window has room.
 fn is_eligible(canon: &Canon, state: &State, presence: &Presence, npc_id: &str) -> bool {
-    let Some(actor) = state.actors.get(npc_id) else {
+    let Some(actor) = state.actors().records().get(npc_id) else {
         return false;
     };
     if !actor.is_npc() {
@@ -81,6 +81,10 @@ fn is_eligible(canon: &Canon, state: &State, presence: &Presence, npc_id: &str) 
 pub(crate) fn is_player_at(state: &State, presence: &Presence, place: &str) -> bool {
     state.actors_at(place).iter().any(|id| {
         presence.actors_present.contains(id)
-            && state.actors.get(id).is_some_and(|actor| actor.is_pc())
+            && state
+                .actors()
+                .records()
+                .get(id)
+                .is_some_and(|actor| actor.is_pc())
     })
 }

@@ -1,113 +1,126 @@
 schema: save
 world_id: sample-d20
 pack_rev: blake2s:f912d54f4bef6761e315a3378111e3fdff63b6ff779889d48f8d96a5911b3971
-rules_rev: 24
+rules_rev: 25
 state_rev: 0
 round_index: 0
 world_time: 1080
 last_round_at: "2026-01-01T00:00:00Z"
 actors:
-  npc_briar:
-    kind: npc
-    place: gate_yard
-    known_facts: []
-    act:
-      last_act_round: 0
-      idle_acts_this_window: 0
-      live_acts_this_window: 0
-  npc_oden:
-    kind: npc
-    place: mill_lane
-    known_facts: []
-    act:
-      last_act_round: 0
-      idle_acts_this_window: 0
-      live_acts_this_window: 0
-  pc_lark:
-    kind: pc
-    place: gate_yard
-    known_facts: []
-    visited:
-      gate_yard:
-        - mill_lane
-        - loft
-        - wheel_shed
-    act:
-      last_act_round: 0
-      idle_acts_this_window: 0
-      live_acts_this_window: 0
-  pc_nell:
-    kind: pc
-    place: mill_lane
-    known_facts: []
-    visited:
-      mill_lane:
-        - gate_yard
-    act:
-      last_act_round: 0
-      idle_acts_this_window: 0
-      live_acts_this_window: 0
-items:
-  pc_lark:
-    tonic: 1
-  "place:loft":
-    latch: 1
-  "place:wheel_shed":
-    chock: 1
-meters:
-  npc_briar:
-    defense:
-      base: 14
-      offset: 0
-    grace:
-      base: 1
-      offset: 0
-    hp:
-      base: 8
-      offset: 0
-    might:
-      base: 2
-      offset: 0
-  npc_oden:
-    defense:
-      base: 10
-      offset: 0
-    grace:
-      base: 1
-      offset: 0
-    hp:
-      base: 8
-      offset: 0
-    might:
-      base: 1
-      offset: 0
-  pc_lark:
-    defense:
-      base: 11
-      offset: 0
-    grace:
-      base: 3
-      offset: 0
-    hp:
-      base: 8
-      offset: 0
-    might:
-      base: 30
-      offset: 0
-  pc_nell:
-    defense:
-      base: 10
-      offset: 0
-    grace:
-      base: 2
-      offset: 0
-    hp:
-      base: 8
-      offset: 0
-    might:
-      base: 1
-      offset: 0
-flags:
-  npc_briar:
-    - warden
+  records:
+    npc_briar:
+      kind: npc
+      place: gate_yard
+      known_facts: []
+      act:
+        last_act_round: 0
+        idle_acts_this_window: 0
+        live_acts_this_window: 0
+    npc_oden:
+      kind: npc
+      place: mill_lane
+      known_facts: []
+      act:
+        last_act_round: 0
+        idle_acts_this_window: 0
+        live_acts_this_window: 0
+    pc_lark:
+      kind: pc
+      place: gate_yard
+      known_facts: []
+      visited:
+        gate_yard:
+          - mill_lane
+          - loft
+          - wheel_shed
+      act:
+        last_act_round: 0
+        idle_acts_this_window: 0
+        live_acts_this_window: 0
+    pc_nell:
+      kind: pc
+      place: mill_lane
+      known_facts: []
+      visited:
+        mill_lane:
+          - gate_yard
+      act:
+        last_act_round: 0
+        idle_acts_this_window: 0
+        live_acts_this_window: 0
+  items:
+    pc_lark:
+      tonic: 1
+  meters:
+    npc_briar:
+      defense:
+        base: 14
+        offset: 0
+      grace:
+        base: 1
+        offset: 0
+      hp:
+        base: 8
+        offset: 0
+      might:
+        base: 2
+        offset: 0
+    npc_oden:
+      defense:
+        base: 10
+        offset: 0
+      grace:
+        base: 1
+        offset: 0
+      hp:
+        base: 8
+        offset: 0
+      might:
+        base: 1
+        offset: 0
+    pc_lark:
+      defense:
+        base: 11
+        offset: 0
+      grace:
+        base: 3
+        offset: 0
+      hp:
+        base: 8
+        offset: 0
+      might:
+        base: 30
+        offset: 0
+    pc_nell:
+      defense:
+        base: 10
+        offset: 0
+      grace:
+        base: 2
+        offset: 0
+      hp:
+        base: 8
+        offset: 0
+      might:
+        base: 1
+        offset: 0
+  modifiers: {}
+  flags:
+    npc_briar:
+      - warden
+places:
+  items:
+    loft:
+      latch: 1
+    wheel_shed:
+      chock: 1
+  meters: {}
+  flags: {}
+  open_exits: {}
+stories:
+  meters: {}
+  flags: {}
+world:
+  meters: {}
+  flags: []
 notes: []

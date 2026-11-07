@@ -57,11 +57,11 @@ fn lamp_oil(state: &State) -> u32 {
 }
 
 fn flags_of(state: &State, id: &str) -> Vec<String> {
-    assert!(state.actors.contains_key(id), "{id} missing");
+    assert!(state.actors().records().contains_key(id), "{id} missing");
     let actor = EntityId::Actor(id.to_string());
     state
-        .flags
-        .on(&actor)
+        .flags_of(&actor)
+        .iter()
         .map(|(flag, ())| flag.clone())
         .collect()
 }
@@ -111,10 +111,10 @@ fn evening_note() {
     play_pack_once(&pack).unwrap_or_else(|err| panic!("round: {err}"));
     let state = state_of(&pack);
     assert_eq!(lamp_oil(&state), 4);
-    assert_eq!(state.actors.get("mira").unwrap().place, "mira_rooms");
-    assert_eq!(state.notes.len(), 1);
-    assert_eq!(state.notes[0].id, "note_mira_door");
-    assert_eq!(state.notes[0].place.as_deref(), Some("docks_shop"));
+    assert_eq!(state.actors().records()["mira"].place, "mira_rooms");
+    assert_eq!(state.notes().len(), 1);
+    assert_eq!(state.notes()[0].id, "note_mira_door");
+    assert_eq!(state.notes()[0].place.as_deref(), Some("docks_shop"));
     let _ = fs::remove_dir_all(&pack);
 }
 
@@ -135,14 +135,14 @@ fn morning_restock() {
         write_save(&pack, &state);
     }
     assert_eq!(
-        state_of(&pack).actors.get("mira").unwrap().place,
+        state_of(&pack).actors().records()["mira"].place,
         "mira_rooms"
     );
     play_pack_once(&pack).unwrap_or_else(|err| panic!("round: {err}"));
     let state = state_of(&pack);
     assert_eq!(lamp_oil(&state), 8);
-    assert_eq!(state.actors.get("mira").unwrap().place, "mira_rooms");
-    assert_eq!(state.notes.len(), 1);
+    assert_eq!(state.actors().records()["mira"].place, "mira_rooms");
+    assert_eq!(state.notes().len(), 1);
     let _ = fs::remove_dir_all(&pack);
 }
 
@@ -187,7 +187,7 @@ fn off_hours_hold() {
     play_pack_once(&pack).unwrap_or_else(|err| panic!("round: {err}"));
     let state = state_of(&pack);
     assert_eq!(lamp_oil(&state), 4);
-    assert_eq!(state.notes.len(), 1);
+    assert_eq!(state.notes().len(), 1);
     let _ = fs::remove_dir_all(&pack);
 }
 
@@ -214,8 +214,8 @@ fn player_in_the_shop() {
         .unwrap_or_else(|err| panic!("round: {err}"));
     let state = state_of(&pack);
     assert_eq!(lamp_oil(&state), 4);
-    assert_eq!(state.notes.len(), 1);
-    assert_eq!(state.actors.get("mira").unwrap().act.last_act_round, 0);
+    assert_eq!(state.notes().len(), 1);
+    assert_eq!(state.actors().records()["mira"].act.last_act_round, 0);
     let _ = fs::remove_dir_all(&pack);
 }
 
@@ -258,7 +258,7 @@ fn gm_restocks() {
     queue_gm_intent(&mut opened, "gm-1", "mira", "restock_lamp_oil");
     opened.play(&rowan(), &wall).unwrap();
     assert_eq!(lamp_oil(opened.state()), 8);
-    assert_eq!(opened.state().notes.len(), 1);
+    assert_eq!(opened.state().notes().len(), 1);
     let _ = fs::remove_dir_all(&pack);
 }
 
@@ -420,8 +420,8 @@ fn a_busy_npc_skips() {
     play_pack_once(&pack).unwrap_or_else(|err| panic!("round: {err}"));
     let state = state_of(&pack);
     assert_eq!(lamp_oil(&state), 4);
-    assert_eq!(state.actors.get("mira").unwrap().act.last_act_round, 0);
-    assert_eq!(state.actors.get("bram").unwrap().act.last_act_round, 0);
+    assert_eq!(state.actors().records()["mira"].act.last_act_round, 0);
+    assert_eq!(state.actors().records()["bram"].act.last_act_round, 0);
     let _ = fs::remove_dir_all(&pack);
 }
 
@@ -501,11 +501,17 @@ rules:
     let state = state_of(&pack);
     assert_eq!(state.round_index, 1);
     assert_eq!(
-        state.actors.values().filter(|actor| actor.is_npc()).count(),
+        state
+            .actors()
+            .records()
+            .values()
+            .filter(|actor| actor.is_npc())
+            .count(),
         50
     );
     let acted = state
-        .actors
+        .actors()
+        .records()
         .values()
         .filter(|actor| actor.act.last_act_round == 1)
         .count();
@@ -769,7 +775,11 @@ fn a_held_knife_still_runs_the_opposed_row() {
     insert_nell(&held);
     let now_path = held.join("state/save.yaml");
     let text = fs::read_to_string(&now_path).unwrap();
-    let next = text.replacen("\nitems:\n", "\nitems:\n  pc_rowan:\n    knife: 1\n", 1);
+    let next = text.replacen(
+        "\n  items: {}\n",
+        "\n  items:\n    pc_rowan:\n      knife: 1\n",
+        1,
+    );
     assert_ne!(next, text);
     fs::write(&now_path, next).unwrap();
     stamp_pack_rev(&held);

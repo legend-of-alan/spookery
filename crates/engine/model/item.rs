@@ -1,9 +1,8 @@
 //! The item counts actors and places hold.
 
 use crate::model::tracked::{Edit, Store};
-use crate::rules::effect::EntityId;
 
-/// Every item count, on every actor and place, by the item's id. An entity with none of an item
+/// Every item count on each actor, or on each place, by the item's id. An entity with none of an item
 /// has no count for it: putting the first one in adds the count, and taking the last one out
 /// takes it off.
 pub type Items = Store<u32, Shift>;
@@ -20,11 +19,6 @@ impl Edit<u32> for Shift {
         *count = u32::try_from(i64::from(*count).checked_add(self.0)?).ok()?;
         Some(Shift(-self.0))
     }
-}
-
-/// Whether `entity` can hold items: only an actor or a place can.
-pub(crate) fn holds_items(entity: &EntityId) -> bool {
-    matches!(entity, EntityId::Actor(_) | EntityId::Place(_))
 }
 
 /// `current` plus `delta`. Removing from a count of 0 is `MISSING_ITEM`. A shortfall from a

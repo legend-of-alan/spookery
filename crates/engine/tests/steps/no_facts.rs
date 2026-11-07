@@ -72,7 +72,7 @@ fn mira_stands_in_a_place_with_no_facts(world: &mut World) {
             .edit_actor(
                 "mira",
                 spookery_engine::testing::ActorEdit::Forget(
-                    state.actors["mira"].known_facts.clone(),
+                    state.actors().records()["mira"].known_facts.clone(),
                 ),
             )
             .unwrap();
@@ -114,7 +114,7 @@ fn miras_habit_fires(world: &mut World) {
     let state = support::state_of(pack);
     assert!(
         state
-            .notes
+            .notes()
             .iter()
             .any(|message| message.id == "note_mira_door"),
         "the door note was not stored"
@@ -152,7 +152,8 @@ fn strip_room_facts(pack: &Path) {
 
 fn place_of(pack: &Path, actor: &str) -> String {
     support::state_of(pack)
-        .actors
+        .actors()
+        .records()
         .get(actor)
         .unwrap_or_else(|| panic!("{actor} missing"))
         .place

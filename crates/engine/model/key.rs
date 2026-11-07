@@ -2,8 +2,6 @@
 
 use std::fmt;
 
-use crate::rules::effect::EntityId;
-
 /// One budget identity. The commit diff summary is this type's `Display`,
 /// sorted as text. It is not a path inside `save.yaml`.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -60,36 +58,6 @@ impl fmt::Display for StateKey {
 }
 
 impl StateKey {
-    /// The key of meter `key` on `entity`.
-    pub(crate) fn meter(entity: &EntityId, key: &str) -> StateKey {
-        let key = key.to_string();
-        match entity {
-            EntityId::Actor(id) => StateKey::ActorMeter(id.clone(), key),
-            EntityId::Place(id) => StateKey::PlaceMeter(id.clone(), key),
-            EntityId::Story(id) => StateKey::StoryMeter(id.clone(), key),
-            EntityId::World => StateKey::WorldMeter(key),
-        }
-    }
-
-    /// The key of item `id` on `entity`. Only an actor or a place holds items.
-    pub(crate) fn item(entity: &EntityId, id: &str) -> Option<StateKey> {
-        Some(match entity {
-            EntityId::Actor(actor) => StateKey::ActorItem(actor.clone(), id.to_string()),
-            EntityId::Place(place) => StateKey::PlaceItem(place.clone(), id.to_string()),
-            EntityId::Story(_) | EntityId::World => return None,
-        })
-    }
-
-    /// The key of flag `key` on `entity`.
-    pub(crate) fn flag(entity: &EntityId, key: &str) -> StateKey {
-        match entity {
-            EntityId::Actor(id) => StateKey::ActorFlag(id.clone(), key.to_string()),
-            EntityId::Place(id) => StateKey::PlaceFlag(id.clone(), key.to_string()),
-            EntityId::Story(id) => StateKey::StoryFlag(id.clone(), key.to_string()),
-            EntityId::World => StateKey::WorldFlag(key.to_string()),
-        }
-    }
-
     /// The actor this key belongs to, when it has one.
     pub fn actor(&self) -> Option<&str> {
         match self {

@@ -201,7 +201,7 @@ fn grit_of(world: &World, actor: &str) -> i64 {
     let now = state_of(table::pack(world));
     let entity = spookery_engine::EntityId::Actor(actor.to_string());
     let live =
-        (now.meters.get(&entity, "grit")).unwrap_or_else(|| panic!("{actor}'s grit missing"));
+        (now.meters_of(&entity).get("grit")).unwrap_or_else(|| panic!("{actor}'s grit missing"));
     live.base + live.offset
 }
 

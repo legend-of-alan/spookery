@@ -64,7 +64,7 @@ fn the_host_text_lists_the_door_note(world: &mut World) {
         Some(4u32)
     );
     let rowan = spookery_engine::EntityId::Actor("pc_rowan".to_string());
-    let debt = now.meters.get(&rowan, "assassination_debt").unwrap();
+    let debt = now.meters_of(&rowan).get("assassination_debt").unwrap();
     assert_eq!((debt.base, debt.offset), (2, 0));
 }
 
@@ -203,7 +203,7 @@ fn the_player_resume_for_does_not_list(world: &mut World, actor: String, note: S
     let pack = table::pack(world);
     let now = state_of(pack);
     assert!(
-        now.notes.iter().any(|message| message.id == note),
+        now.notes().iter().any(|message| message.id == note),
         "the save has no {note}"
     );
     let resume = read_player_resume(world, &actor);
@@ -236,7 +236,7 @@ fn the_docks_pack_where_a_fact_has_no_hidden(world: &mut World, fact_id: String)
 #[given(expr = "{string} is in {string}")]
 fn is_in(world: &mut World, actor: String, place: String) {
     let now = state_of(table::pack(world));
-    assert_eq!(now.actors[&actor].place, place);
+    assert_eq!(now.actors().records()[&actor].place, place);
 }
 
 #[then(expr = "the perceive view for {string} lists the fact {string}")]

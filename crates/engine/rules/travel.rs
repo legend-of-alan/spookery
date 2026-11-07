@@ -59,7 +59,7 @@ pub(crate) fn exit_via<'c>(
     let actor = context
         .intent
         .actor_id()
-        .and_then(|id| context.state.actors.get(id));
+        .and_then(|id| context.state.actors().records().get(id));
     let from = actor.map_or("", |actor| actor.place.as_str());
     if let Some(exit) = exit_stood_on(context.canon, from) {
         return Ok(Some(exit));
@@ -212,7 +212,8 @@ pub(crate) fn exit_view(canon: &Canon, state: &State, exit: &Exit) -> ExitView {
 pub(crate) fn note_exits(canon: &Canon, state: &mut State) -> Result<(), Reason> {
     // A walker on an exit is in no place, so there is nothing to note.
     let seen: Vec<(String, ActorEdit)> = state
-        .actors
+        .actors()
+        .records()
         .iter()
         .filter(|(_, actor)| canon.places.contains_key(&actor.place))
         .map(|(id, actor)| {
@@ -232,7 +233,7 @@ pub(crate) fn note_exits(canon: &Canon, state: &mut State) -> Result<(), Reason>
 
 /// The exits of this actor's place that they are allowed to see.
 pub(crate) fn visible_exits(canon: &Canon, state: &State, actor_id: &str) -> Vec<ExitView> {
-    let actor = state.actors.get(actor_id);
+    let actor = state.actors().records().get(actor_id);
     match actor.and_then(|actor| canon.places.get(&actor.place)) {
         Some(place) => exits_at(canon, state, actor_id, place),
         None => Vec::new(),
@@ -258,7 +259,8 @@ pub(crate) struct DueAction {
 /// Clear every action that finishes at or before `end`, earliest first.
 pub(crate) fn take_due_actions(state: &mut State, end: u64) -> Result<Vec<DueAction>, Reason> {
     let mut due_keys: Vec<(u64, String)> = state
-        .actors
+        .actors()
+        .records()
         .iter()
         .filter_map(|(id, actor)| {
             let act = &actor.act;

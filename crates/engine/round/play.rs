@@ -107,7 +107,8 @@ fn seated_busy<L>(world: &World<L>, presence: &Presence) -> Vec<bool> {
         .iter()
         .map(|id| {
             state
-                .actors
+                .actors()
+                .records()
                 .get(id)
                 .is_some_and(|actor| actor.is_busy(state.world_time))
         })

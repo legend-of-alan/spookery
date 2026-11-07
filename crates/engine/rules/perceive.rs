@@ -51,7 +51,11 @@ pub(crate) fn perceive_budget<L>(
         return Err(Reason::UnscopedPerceive);
     }
     let (canon, state) = (world.canon(), world.state());
-    let actor = state.actors.get(as_arg).ok_or(Reason::UnknownId)?;
+    let actor = state
+        .actors()
+        .records()
+        .get(as_arg)
+        .ok_or(Reason::UnknownId)?;
     perceive_viewer_budget(
         canon,
         state,
@@ -78,12 +82,14 @@ fn perceive_viewer_budget(
     max_body_chars: usize,
 ) -> Result<View, Reason> {
     let actor = state
-        .actors
+        .actors()
+        .records()
         .get(viewer.actor_id())
         .ok_or(Reason::UnknownId)?;
     let place = actor.place.clone();
     let mut visible_actors: Vec<String> = state
-        .actors
+        .actors()
+        .records()
         .iter()
         .filter(|(_, other)| other.place == place)
         .map(|(id, _)| id.clone())
@@ -128,7 +134,7 @@ fn perceive_viewer_budget(
     unknown_mentions.sort();
 
     let mut notes = Vec::new();
-    for note in state.notes.iter() {
+    for note in state.notes().iter() {
         let here = note.place.as_deref() == Some(place.as_str());
         let addressed = note.to.iter().any(|id| id == viewer.actor_id());
         if !here && !addressed {
@@ -149,7 +155,8 @@ fn perceive_viewer_budget(
     notes.sort_by(|a, b| a.id.cmp(&b.id));
 
     let here = EntityId::Place(place.clone());
-    let items = (state.items.on(&here))
+    let items = (state.items_of(&here).into_iter())
+        .flat_map(|items| items.iter())
         .map(|(id, count)| ItemStack {
             id: id.clone(),
             count: *count,
@@ -197,7 +204,7 @@ fn perceive_viewer_budget(
 
 /// The meters `entity` carries that are not hidden, in id order.
 fn shown_meters(canon: &Canon, state: &State, entity: &EntityId) -> Vec<MeterView> {
-    (state.meters.on(entity))
+    (state.meters_of(entity).iter())
         .filter_map(|(id, _)| {
             let def = canon.meter_def(entity, id).filter(|def| !def.hidden)?;
             let value = state.meter_value(canon, entity, id).ok()?;

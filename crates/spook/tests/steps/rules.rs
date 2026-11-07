@@ -252,13 +252,13 @@ fn a_pc_at_ferry_dock_travels(world: &mut World) {
 #[then(expr = "place:ferry_dock\\/travel runs and verb:travel does not")]
 fn the_ferry_rule_runs(world: &mut World) {
     let now = state_of(world.pack.as_ref().unwrap());
-    let rowan = now.actors.get("pc_rowan").unwrap();
+    let rowan = &now.actors().records()["pc_rowan"];
     assert_eq!(rowan.place, "ferry_dock", "verb:travel moved the PC");
     let entity = spookery_engine::EntityId::Actor("pc_rowan".to_string());
     assert!(
         now.has_flag(&entity, "took_the_ferry"),
         "ferry flag missing: {:?}",
-        now.flags
+        now.actors().flags()
     );
 }
 
@@ -436,7 +436,7 @@ fn every_actor_used_its_idle_acts(world: &mut World, window: u64, tick: u64) {
     );
     edit_save(&pack, |now| {
         now.world_time = tick;
-        let ids: Vec<String> = now.actors.keys().cloned().collect();
+        let ids: Vec<String> = now.actors().records().keys().cloned().collect();
         for id in ids {
             let counter = spookery_engine::testing::ActCounter::IdleActsThisWindow;
             now.edit_actor(&id, spookery_engine::testing::ActorEdit::Acts(counter, 3))
@@ -464,7 +464,7 @@ fn a_seated_round_runs(world: &mut World) {
 fn every_actor_idle_acts(world: &mut World, tick: u64, acts: u32) {
     let now = state_of(world.pack.as_ref().unwrap());
     assert_eq!(now.world_time, tick);
-    for (id, actor) in &now.actors {
+    for (id, actor) in now.actors().records().iter() {
         assert_eq!(actor.act.idle_acts_this_window, acts, "{id}");
     }
 }
@@ -590,7 +590,7 @@ fn the_outcome_is_a_miss(world: &mut World) {
     assert_eq!(world.scratch, "miss");
     let now = state_of(world.pack.as_ref().unwrap());
     let briar = spookery_engine::EntityId::Actor("npc_briar".to_string());
-    let flags = &now.flags;
+    let flags = now.actors().flags();
     assert!(now.has_flag(&briar, "missed"), "{flags:?}");
     assert!(!now.has_flag(&briar, "hit"), "{flags:?}");
 }
@@ -771,7 +771,7 @@ rules:
     );
     edit_save(&pack, |_| {});
     let now = state_of(&pack);
-    assert_eq!(now.actors.get("pc_rowan").unwrap().place, "docks_shop");
+    assert_eq!(now.actors().records()["pc_rowan"].place, "docks_shop");
     world.pack = Some(pack);
 }
 
@@ -802,12 +802,12 @@ fn both_full_ids_are_refused(world: &mut World) {
         )
     );
     let now = state_of(world.pack.as_ref().unwrap());
-    let rowan = now.actors.get("pc_rowan").unwrap();
+    let rowan = &now.actors().records()["pc_rowan"];
     assert_eq!(rowan.place, "docks_shop");
     assert_eq!(now.world_time, 1080);
     assert_eq!(now.round_index, 0);
     assert!(
-        now.notes
+        now.notes()
             .iter()
             .all(|message| message.id != "note_mira_door"),
         "the habit note was stored"
@@ -880,7 +880,7 @@ fn the_seated_pc_queues_use_tonic(world: &mut World) {
 fn the_queued_target_is_that_item(world: &mut World) {
     assert_eq!(world.scratch, "Item(\"tonic\") use");
     let now = state_of(world.pack.as_ref().unwrap());
-    assert_eq!(now.actors.get("pc_rowan").unwrap().place, "docks_shop");
+    assert_eq!(now.actors().records()["pc_rowan"].place, "docks_shop");
     assert_eq!(now.world_time, 1080);
     assert_eq!(now.round_index, 0);
 }
@@ -1019,7 +1019,7 @@ fn briar_holds_ask_in_the_lane(world: &mut World) {
 fn lark_in_the_yard_plays(world: &mut World, line: String) {
     let now = state_of(world.pack.as_ref().unwrap());
     for actor in ["pc_lark", "npc_briar"] {
-        assert_eq!(now.actors.get(actor).unwrap().place, "gate_yard");
+        assert_eq!(now.actors().records()[actor].place, "gate_yard");
     }
     play_larks_line(world, &line);
 }
@@ -1028,7 +1028,8 @@ fn lark_in_the_yard_plays(world: &mut World, line: String) {
 fn lark_alone_plays(world: &mut World, line: String) {
     let now = state_of(world.pack.as_ref().unwrap());
     let yard = now
-        .actors
+        .actors()
+        .records()
         .iter()
         .filter(|(_, actor)| actor.place == "gate_yard");
     assert_eq!(
@@ -1045,7 +1046,7 @@ fn briars_ask_runs_on_briar(world: &mut World) {
     assert!(
         now.has_flag(&spookery_engine::EntityId::World, "passage"),
         "{:?}",
-        now.flags
+        now.world().flags()
     );
 }
 

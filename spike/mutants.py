@@ -4,7 +4,7 @@ the tree spike/mutate.py exports. Each text must occur exactly once in its file.
 L = 'crates/engine/model/ledger.rs'
 M = 'crates/engine/model/mod.rs'
 W = 'crates/engine/model/write.rs'
-S = 'crates/engine/store/save.rs'
+K = 'crates/engine/canon/lint.rs'
 C = 'crates/engine/store/commit.rs'
 
 MUTANTS = {
@@ -27,12 +27,18 @@ MUTANTS = {
     'no_derived_note': [(W, "                self.ledger.keep(Change { key, before, after });", "                let _ = (key, before, after);")],
     # Insertion rolls back.
     'added_stays': [(L, "                Touch::Added(at) => self.take_off(&at),", "                Touch::Added(_) => {}")],
-    'item_added_untracked': [(W, """            items.put(entity.clone(), id.to_string(), Tracked::new(count));
-            ledger.added(at());""", """            items.put(entity.clone(), id.to_string(), Tracked::new(count));""")],
+    'item_added_untracked': [(W, """            items.put(id.to_string(), Tracked::new(count));
+            ledger.added(at());""", """            items.put(id.to_string(), Tracked::new(count));""")],
     # Removal rolls back, the removed component whole.
-    'removed_modifier_lost': [(M, "            Removed::Modifier(entity, id, part) => self.modifiers.put(entity, id, part),", "            Removed::Modifier(..) => {}")],
-    'removed_flag_lost': [(M, "            Removed::Flag(entity, key) => self.flags.put(entity, key, Tracked::default()),", "            Removed::Flag(..) => {}")],
-    'removed_item_lost': [(M, "            Removed::Item(entity, id, part) => self.items.put(entity, id, part),", "            Removed::Item(..) => {}")],
+    'removed_modifier_lost': [(M, "            Removed::Modifier(actor, id, part) => self.actors.modifiers.put(&actor, id, part),", "            Removed::Modifier(..) => {}")],
+    'removed_flag_lost': [(M, """            Removed::Flag(entity, key) => {
+                self.flags_of_mut(&entity, &key).0.put(key.clone(), Tracked::default());
+            }""", "            Removed::Flag(..) => {}")],
+    'removed_item_lost': [(M, """            Removed::Item(entity, id, part) => {
+                if let Some((mut items, ..)) = self.items_of_mut(&entity, &id) {
+                    items.put(id.clone(), part);
+                }
+            }""", "            Removed::Item(..) => {}")],
     # A field no key answers for still rolls back.
     'visited_undo_wrong': [(M, "            ActorEdit::Visited(edit) => ActorEdit::Visited(edit.apply(&mut actor.visited)?),", """            ActorEdit::Visited(edit) => {
                 let id = edit.id.clone();
@@ -60,6 +66,6 @@ MUTANTS = {
     state.accept();""", """    let mut log_path = append_to_bundle(&world.root, &payload, &write)?;""")],
     # Seats are the round's: count_act reads who is seated.
     'seats_ignored': [(W, "        let (counter, count) = if self.presence().players == 0 {", "        let (counter, count) = if true {")],
-    # A component's entity must be one the save lists.
-    'entities_unchecked': [(S, "    diags.extend(check_entities(&state));", "")],
+    # A component on an actor must be on one the save holds a record of (C5).
+    'actor_ids_unchecked': [(K, "        if !actors.records().contains_key(&id) {", "        if false {")],
 }

@@ -654,7 +654,7 @@ pub(crate) fn write_meter(
     write: MeterWrite,
 ) -> Result<(), Reason> {
     let def = canon.meter_def(entity, key).ok_or(Reason::UnknownId)?;
-    let held = state.meters.get(entity, key);
+    let held = state.meters_of(entity).get(key);
     let edit = meter::write(def, held.ok_or(Reason::UnknownId)?, write)?;
     state.edit_meter(canon, entity, key, edit)
 }
@@ -669,9 +669,6 @@ pub(crate) fn shift_item(
     delta: i64,
     max: Option<i64>,
 ) -> Result<(), Reason> {
-    if !item::holds_items(entity) {
-        return Err(Reason::Schema);
-    }
     if matches!(entity, EntityId::Place(place) if !canon.places.contains_key(place)) {
         return Err(Reason::UnknownId);
     }
@@ -681,7 +678,7 @@ pub(crate) fn shift_item(
     let EntityId::Actor(actor) = entity else {
         return Ok(());
     };
-    let wielded = state.actors[actor].wielded.as_ref();
+    let wielded = state.actors().records()[actor].wielded.as_ref();
     let lets_go = wielded.is_some_and(|item| state.item_count(entity, item) == Some(0));
     if lets_go {
         state.edit_actor(actor, ActorEdit::Wielded(None))?;
@@ -705,8 +702,12 @@ fn apply_modifier(
         .meter_def(&entity, &def.meter)
         .ok_or(Reason::UnknownId)?;
     let now = state.world_time;
-    state.actors.get(actor_id).ok_or(Reason::UnknownId)?;
-    let mut next = (state.modifiers.get(&entity, id))
+    state
+        .actors()
+        .records()
+        .get(actor_id)
+        .ok_or(Reason::UnknownId)?;
+    let mut next = (state.actors().modifiers().get(actor_id, id))
         .cloned()
         .unwrap_or_else(|| ModifierLive {
             meter: def.meter.clone(),
@@ -748,7 +749,11 @@ fn move_actor(
     let in_canon = canon.places.contains_key(to);
     // A walker stands on the exit until they arrive. The exit is no place of its own.
     let on_exit = crate::rules::travel::exit_stood_on(canon, to).is_some();
-    let actor = state.actors.get(actor_id).ok_or(Reason::UnknownId)?;
+    let actor = state
+        .actors()
+        .records()
+        .get(actor_id)
+        .ok_or(Reason::UnknownId)?;
     if state.presence().players == 0 && actor.is_pc() {
         return Err(Reason::TableEmpty);
     }
@@ -848,7 +853,7 @@ fn leave_note(
     mut fact_ids: Vec<String>,
     text: String,
 ) -> Result<(), Reason> {
-    if state.notes.iter().any(|note| note.id == note_id) {
+    if state.notes().iter().any(|note| note.id == note_id) {
         return Err(Reason::UnknownId);
     }
     if let Some(place_id) = &place {

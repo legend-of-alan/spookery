@@ -42,7 +42,7 @@ fn plays(pack: &Path, actor: &str, verb: &str, target: Option<&str>) -> serde_js
 
 fn place_of(pack: &Path, actor: &str) -> String {
     let saved = spookery_engine::World::peek(pack).unwrap();
-    saved.state().actors[actor].place.clone()
+    saved.state().actors().records()[actor].place.clone()
 }
 
 fn stairs_open(pack: &Path) -> bool {

@@ -210,7 +210,8 @@ fn play_and_ai_gm_and_a_stub(world: &mut World) {
     // The view after the round shows the street.
     table::wait_suffix(&play.stdout, mark, "You are in Docks Street.");
     let place = state_of(&pack)
-        .actors
+        .actors()
+        .records()
         .get("pc_rowan")
         .map(|actor| actor.place.clone());
     assert_eq!(place.as_deref(), Some("docks_street"));
@@ -276,7 +277,8 @@ fn travel_rounds_once(world: &mut World, transport_error: bool) {
         assert_eq!(model.calls().len(), 1, "{}", model.calls().len());
         assert_eq!(
             state_of(pack)
-                .actors
+                .actors()
+                .records()
                 .get("pc_rowan")
                 .map(|actor| actor.place.clone()),
             Some("docks_street".to_string())

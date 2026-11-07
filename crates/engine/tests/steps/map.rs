@@ -42,7 +42,7 @@ fn mira_plays(pack: &Path, verb: &str, target: Option<&str>) {
 
 fn miras_place(pack: &Path) -> String {
     let saved = spookery_engine::World::peek(pack).unwrap();
-    saved.state().actors["mira"].place.clone()
+    saved.state().actors().records()["mira"].place.clone()
 }
 
 /// The exit names Mira's map lists for the Docks Shop.
@@ -125,7 +125,7 @@ fn mira_is_standing_in_the_shop(world: &mut World) {
 fn mira_learns_on_the_street(world: &mut World) {
     mira_plays(world.pack(), "dig", None);
     let saved = spookery_engine::World::peek(world.pack()).unwrap();
-    let mira = &saved.state().actors["mira"];
+    let mira = &saved.state().actors().records()["mira"];
     assert_eq!(mira.place, "docks_street");
     assert!(mira.known_facts.contains(&"fact_trapdoor".to_string()));
 }

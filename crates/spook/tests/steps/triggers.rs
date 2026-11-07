@@ -185,15 +185,13 @@ rules:
 fn nell_knows_the_ledger(world: &mut World, tide: i64) {
     let now = state_of(world.pack.as_ref().unwrap());
     assert!(
-        now.actors
-            .get("pc_nell")
-            .unwrap()
+        now.actors().records()["pc_nell"]
             .known_facts
             .iter()
             .any(|fact| fact == "fact_ledger"),
         "nell does not know fact_ledger"
     );
-    let live = now.meters.get(&EntityId::World, "tide").unwrap();
+    let live = now.meters_of(&EntityId::World).get("tide").unwrap();
     assert_eq!(live.base + live.offset, tide, "{live:?}");
 }
 
@@ -416,7 +414,7 @@ fn the_bog_roll_reproduces(world: &mut World) {
     let pack = world.pack.as_ref().unwrap();
     let now = state_of(pack);
     let nell = EntityId::Actor("pc_nell".to_string());
-    let grit = now.meters.get(&nell, "grit").unwrap();
+    let grit = now.meters_of(&nell).get("grit").unwrap();
     assert_eq!(grit.offset, -1, "the miss band did not spend grit");
     let output = support::run_spook(&["verify", &pack.to_string_lossy()]);
     let stderr = String::from_utf8_lossy(&output.stderr);
@@ -535,7 +533,7 @@ fn nell_reveals_the_trapdoor(world: &mut World) {
         &pack,
         vec![intent("nell-uncover", "pc_nell", "uncover", None)],
     );
-    world.scratch = now.actors.get("pc_nell").unwrap().known_facts.join(",");
+    world.scratch = now.actors().records()["pc_nell"].known_facts.join(",");
     world.pack = Some(pack);
 }
 
@@ -661,7 +659,7 @@ fn the_world_has_the_tide(world: &mut World) {
     assert!(
         now.has_flag(&EntityId::World, "tide_turned"),
         "flags: {:?}",
-        now.flags
+        now.world().flags()
     );
 }
 
@@ -824,8 +822,8 @@ fn the_rounds_only_refusal_is(world: &mut World, code: String) {
 #[then(expr = "no place has the {string} flag")]
 fn no_place_has_the_flag(world: &mut World, flag: String) {
     let now = state_of(world.pack.as_ref().unwrap());
-    let mut set = now.flags.iter();
-    assert!(set.all(|(entity, key, ())| !matches!(entity, EntityId::Place(_)) || *key != flag));
+    let mut set = now.places().flags().iter();
+    assert!(set.all(|(_, key, ())| *key != flag));
 }
 
 #[when(expr = "pc_nell travels from docks_street into docks_shop")]
@@ -1157,7 +1155,11 @@ fn insert_actor_copy(
     now.copy_actor(canon, from, id).unwrap();
     set_place(now, id, place);
     let copy = EntityId::Actor(id.to_string());
-    let flags: Vec<String> = now.flags.on(&copy).map(|(key, ())| key.clone()).collect();
+    let flags: Vec<String> = now
+        .flags_of(&copy)
+        .iter()
+        .map(|(key, ())| key.clone())
+        .collect();
     for flag in flags {
         now.set_flag(&copy, &flag, false).unwrap();
     }

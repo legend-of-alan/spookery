@@ -160,13 +160,13 @@ fn never_finished(world: &mut World, verb: String, rest: i64) {
     assert!(
         !now.has_flag(&spookery_engine::EntityId::World, &format!("{verb}_done")),
         "{:?}",
-        now.flags
+        now.world().flags()
     );
-    let rowan = &now.actors["pc_rowan"];
+    let rowan = &now.actors().records()["pc_rowan"];
     assert_eq!(rowan.act.pending, None);
     assert_eq!(rowan.act.busy_until, None);
     let entity = spookery_engine::EntityId::Actor("pc_rowan".to_string());
-    let meter = now.meters.get(&entity, "rest").unwrap();
+    let meter = now.meters_of(&entity).get("rest").unwrap();
     assert_eq!(meter.base + meter.offset, 3 - rest);
 }
 
@@ -176,7 +176,7 @@ fn finished(world: &mut World, verb: String) {
     assert!(
         now.has_flag(&spookery_engine::EntityId::World, &format!("{verb}_done")),
         "{:?}",
-        now.flags
+        now.world().flags()
     );
 }
 
@@ -206,7 +206,7 @@ fn spook_check_refuses_rowans_place(world: &mut World) {
     let diags = spookery_engine::check_pack(world.pack.as_ref().unwrap());
     let refused = diags
         .iter()
-        .any(|diag| diag.path.as_deref() == Some("actors.pc_rowan.place"));
+        .any(|diag| diag.path.as_deref() == Some("actors.records.pc_rowan.place"));
     assert!(refused, "{diags:?}");
 }
 
@@ -255,7 +255,7 @@ fn the_gm_queues_miras(world: &mut World, habit: String) {
 #[then(expr = "Rowan is at {word}")]
 fn rowan_is_at(world: &mut World, place: String) {
     let now = state_of(world.pack.as_ref().unwrap());
-    assert_eq!(now.actors["pc_rowan"].place, place);
+    assert_eq!(now.actors().records()["pc_rowan"].place, place);
 }
 
 #[then(expr = "Rowan holds lamp_oil")]
@@ -268,13 +268,13 @@ fn rowan_holds_lamp_oil(world: &mut World) {
 #[then(expr = "Rowan has used no act")]
 fn rowan_used_no_act(world: &mut World) {
     let now = state_of(world.pack.as_ref().unwrap());
-    assert_eq!(now.actors["pc_rowan"].act.last_act_round, 0);
+    assert_eq!(now.actors().records()["pc_rowan"].act.last_act_round, 0);
 }
 
 #[then(expr = "Rowan has used the act of round {int}")]
 fn rowan_used_the_act(world: &mut World, round: u64) {
     let now = state_of(world.pack.as_ref().unwrap());
-    assert_eq!(now.actors["pc_rowan"].act.last_act_round, round);
+    assert_eq!(now.actors().records()["pc_rowan"].act.last_act_round, round);
 }
 
 #[then(expr = "Wren's look does not show Rowan")]

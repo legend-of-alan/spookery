@@ -207,8 +207,10 @@ impl Canon {
     /// The def of meter `key` on `entity`, when that entity carries it.
     pub fn meter_def(&self, entity: &EntityId, key: &str) -> Option<&MeterDef> {
         match entity {
+            EntityId::Actor(_) | EntityId::Place(_) | EntityId::Story(_) => {
+                self.meters.get(key).filter(|def| def.is_on(entity))
+            }
             EntityId::World => self.world_meters.get(key),
-            _ => self.meters.get(key).filter(|def| def.is_on(entity)),
         }
     }
 

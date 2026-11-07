@@ -1,121 +1,135 @@
 schema: save
 world_id: docks-001
 pack_rev: blake2s:d9007ad32e134c6bf6292316c00fe04a015504c3ea6d99455fd791986b995d82
-rules_rev: 24
+rules_rev: 25
 state_rev: 0
 round_index: 0
 world_time: 1080
 last_round_at: "2026-01-01T00:00:00Z"
 actors:
-  aldric:
-    kind: npc
-    place: docks_shop
-    known_facts: []
-    act:
-      last_act_round: 0
-      idle_acts_this_window: 0
-      live_acts_this_window: 0
-  bram:
-    kind: npc
-    place: docks_street
-    known_facts: []
-    act:
-      last_act_round: 0
-      idle_acts_this_window: 0
-      live_acts_this_window: 0
-  mira:
-    kind: npc
-    place: mira_rooms
-    known_facts:
-      - fact_ledger_short
-    act:
-      last_act_round: 0
-      idle_acts_this_window: 0
-      live_acts_this_window: 0
-  pc_harbormouse:
-    kind: pc
-    place: docks_street
-    known_facts: []
-    visited:
-      docks_street:
-        - docks_shop
-    act:
-      last_act_round: 0
-      idle_acts_this_window: 0
-      live_acts_this_window: 0
-  pc_rowan:
-    kind: pc
-    place: docks_shop
-    known_facts: []
-    visited:
-      docks_shop:
-        - docks_street
-        - stairs
-    act:
-      last_act_round: 0
-      idle_acts_this_window: 0
-      live_acts_this_window: 0
-  pc_wren:
-    kind: pc
-    place: docks_street
-    known_facts: []
-    visited:
-      docks_street:
-        - docks_shop
-    act:
-      last_act_round: 0
-      idle_acts_this_window: 0
-      live_acts_this_window: 0
-items:
-  "place:docks_shop":
-    lamp_oil: 4
-meters:
-  aldric:
-    grit:
-      base: 1
-      offset: 0
-    rest:
-      base: 3
-      offset: 0
-  bram:
-    grit:
-      base: 1
-      offset: 0
-    rest:
-      base: 3
-      offset: 0
-  mira:
-    grit:
-      base: 1
-      offset: 0
-    rest:
-      base: 3
-      offset: 0
-    shop_day:
-      base: 1
-      offset: 0
-  pc_harbormouse:
-    grit:
-      base: 1
-      offset: 0
-    rest:
-      base: 3
-      offset: 0
-  pc_rowan:
-    assassination_debt:
-      base: 2
-      offset: 0
-    grit:
-      base: 1
-      offset: 0
-    rest:
-      base: 3
-      offset: 0
-  pc_wren:
-    grit:
-      base: 1
-      offset: 0
-    rest:
-      base: 3
-      offset: 0
+  records:
+    aldric:
+      kind: npc
+      place: docks_shop
+      known_facts: []
+      act:
+        last_act_round: 0
+        idle_acts_this_window: 0
+        live_acts_this_window: 0
+    bram:
+      kind: npc
+      place: docks_street
+      known_facts: []
+      act:
+        last_act_round: 0
+        idle_acts_this_window: 0
+        live_acts_this_window: 0
+    mira:
+      kind: npc
+      place: mira_rooms
+      known_facts:
+        - fact_ledger_short
+      act:
+        last_act_round: 0
+        idle_acts_this_window: 0
+        live_acts_this_window: 0
+    pc_harbormouse:
+      kind: pc
+      place: docks_street
+      known_facts: []
+      visited:
+        docks_street:
+          - docks_shop
+      act:
+        last_act_round: 0
+        idle_acts_this_window: 0
+        live_acts_this_window: 0
+    pc_rowan:
+      kind: pc
+      place: docks_shop
+      known_facts: []
+      visited:
+        docks_shop:
+          - docks_street
+          - stairs
+      act:
+        last_act_round: 0
+        idle_acts_this_window: 0
+        live_acts_this_window: 0
+    pc_wren:
+      kind: pc
+      place: docks_street
+      known_facts: []
+      visited:
+        docks_street:
+          - docks_shop
+      act:
+        last_act_round: 0
+        idle_acts_this_window: 0
+        live_acts_this_window: 0
+  items: {}
+  meters:
+    aldric:
+      grit:
+        base: 1
+        offset: 0
+      rest:
+        base: 3
+        offset: 0
+    bram:
+      grit:
+        base: 1
+        offset: 0
+      rest:
+        base: 3
+        offset: 0
+    mira:
+      grit:
+        base: 1
+        offset: 0
+      rest:
+        base: 3
+        offset: 0
+      shop_day:
+        base: 1
+        offset: 0
+    pc_harbormouse:
+      grit:
+        base: 1
+        offset: 0
+      rest:
+        base: 3
+        offset: 0
+    pc_rowan:
+      assassination_debt:
+        base: 2
+        offset: 0
+      grit:
+        base: 1
+        offset: 0
+      rest:
+        base: 3
+        offset: 0
+    pc_wren:
+      grit:
+        base: 1
+        offset: 0
+      rest:
+        base: 3
+        offset: 0
+  modifiers: {}
+  flags: {}
+places:
+  items:
+    docks_shop:
+      lamp_oil: 4
+  meters: {}
+  flags: {}
+  open_exits: {}
+stories:
+  meters: {}
+  flags: {}
+world:
+  meters: {}
+  flags: []
 notes: []

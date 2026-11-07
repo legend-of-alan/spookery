@@ -233,7 +233,8 @@ pub(crate) fn resolve_who_id(context: &Context, who: &Who) -> Result<String, Rea
             let actor_id = context.intent.actor_id().ok_or(Reason::Schema)?;
             context
                 .state
-                .actors
+                .actors()
+                .records()
                 .get(actor_id)
                 .map(|actor| actor.place.clone())
                 .ok_or(Reason::UnknownId)

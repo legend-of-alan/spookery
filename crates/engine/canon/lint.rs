@@ -5,9 +5,10 @@ use std::collections::{BTreeMap, BTreeSet};
 use crate::canon::source::{FileText, Locator, Problem};
 use crate::canon::{has_door, Canon, CastDef, FactDef, ItemDef, PlaceDef, StoryDef, OPEN};
 use crate::diagnostic::{error, schema_error, warning, Diagnostic};
-use crate::model::meter::{self, MeterDef};
+use crate::model::meter::{self, MeterDef, MeterLive, Meters};
 use crate::model::modifier::{self, ModifierDef};
-use crate::model::ExitId;
+use crate::model::tracked::Store;
+use crate::model::{ActorPart, ExitId, State};
 use crate::rules::effect::EntityId;
 use crate::rules::expr::Expr;
 use crate::rules::roll::Check;
@@ -554,11 +555,12 @@ pub(super) fn unknown_meters(
 /// item and wielded slot the pack does not define, every meter the pack gives an entity
 /// that the entity lacks, every meter outside its rules, every modifier the pack no longer
 /// gives that meter, every actor in a place or on an exit the pack lacks, every component on
-/// a place or story the pack lacks, every open door the pack lacks, and every empty id or
-/// zero count.
-pub fn check_save(canon: &Canon, state: &crate::model::State) -> Result<(), Vec<Diagnostic>> {
+/// an actor the save holds no record of or on a place or story the pack lacks, every open door
+/// the pack lacks, and every empty id or zero count.
+pub fn check_save(canon: &Canon, state: &State) -> Result<(), Vec<Diagnostic>> {
     let mut diags = Vec::new();
-    for (id, actor) in &state.actors {
+    let actors = state.actors();
+    for (id, actor) in actors.records().iter() {
         // An actor stands in one of the pack's places, or walks one of its exits.
         let stands = match crate::model::exit_parts(&actor.place) {
             Some(_) => crate::rules::travel::exit_stood_on(canon, &actor.place).is_some(),
@@ -569,103 +571,118 @@ pub fn check_save(canon: &Canon, state: &crate::model::State) -> Result<(), Vec<
                 "actor '{id}' stands on '{}', which the pack does not define",
                 actor.place
             );
-            let diag = schema_error("state/save.yaml", &problem, "move the actor to a place");
-            diags.push(diag.at_path(format!("actors.{id}.place")));
+            let diag = schema_error(SAVE, &problem, "move the actor to a place");
+            diags.push(diag.at_path(format!("actors.records.{id}.place")));
         }
         let entity = EntityId::Actor(id.clone());
-        let path = format!("actors.{id}.meters");
-        check_meters(canon, &entity, &state.meters, &path, &mut diags);
-        for (key, live) in state.modifiers.on(&entity) {
-            if !modifier::is_defined(&canon.modifiers, key, live) {
-                let problem = format!(
-                    "actor '{id}' holds modifier '{key}' on meter '{}', which the pack does not define",
-                    live.meter
+        let path = format!("actors.meters.{id}");
+        check_lacking_meters(canon, state, &entity, &path, &mut diags);
+    }
+    for (id, part) in actors.parts() {
+        let (store, key) = match &part {
+            ActorPart::Item(key, _) => ("items", key),
+            ActorPart::Meter(key, _) => ("meters", key),
+            ActorPart::Modifier(key, _) => ("modifiers", key),
+            ActorPart::Flag(key) => ("flags", key),
+        };
+        let path = format!("actors.{store}.{id}.{key}");
+        if !actors.records().contains_key(&id) {
+            let problem = format!("actors.{store} lists '{key}' on '{id}', which has no record");
+            let hint = "add the actor's record, or take the line out";
+            diags.push(schema_error(SAVE, &problem, hint).at_path(path));
+            continue;
+        }
+        let entity = EntityId::Actor(id.clone());
+        match part {
+            ActorPart::Item(item, count) => {
+                check_item(
+                    canon,
+                    &format!("actor '{id}'"),
+                    &item,
+                    count,
+                    &path,
+                    &mut diags,
                 );
-                let hint = "run spook migrate to drop the modifier";
-                let diag = schema_error("state/save.yaml", &problem, hint);
-                diags.push(diag.at_path(format!("actors.{id}.modifiers.{key}")));
             }
+            ActorPart::Meter(key, live) => {
+                check_held_meter(canon, &entity, &key, &live, &path, &mut diags);
+            }
+            ActorPart::Modifier(key, live) => {
+                if !modifier::is_defined(&canon.modifiers, &key, &live) {
+                    let problem = format!(
+                        "actor '{id}' holds modifier '{key}' on meter '{}', which the pack does not define",
+                        live.meter
+                    );
+                    let hint = "run spook migrate to drop the modifier";
+                    diags.push(schema_error(SAVE, &problem, hint).at_path(path));
+                }
+            }
+            ActorPart::Flag(_) => {}
         }
     }
-    check_meters(
+    let world = state.world();
+    check_lacking_meters(canon, state, &EntityId::World, "world.meters", &mut diags);
+    for (key, live) in world.meters().iter() {
+        let path = format!("world.meters.{key}");
+        check_held_meter(canon, &EntityId::World, key, live, &path, &mut diags);
+    }
+    let (places, stories) = (state.places(), state.stories());
+    check_kind_meters(
         canon,
-        &EntityId::World,
-        &state.meters,
-        "world_meters",
+        state,
+        "places",
+        &canon.places,
+        places.meters(),
+        EntityId::Place,
         &mut diags,
     );
-    let places = canon
-        .places
-        .keys()
-        .map(|id| (EntityId::Place(id.clone()), "places", id));
-    let stories = canon
-        .stories
-        .keys()
-        .map(|id| (EntityId::Story(id.clone()), "stories", id));
-    for (entity, list, id) in places.chain(stories) {
-        let path = format!("{list}.{id}.meters");
-        check_meters(canon, &entity, &state.meters, &path, &mut diags);
-    }
-    let mut unknown: Vec<(&str, EntityId)> = Vec::new();
-    for at in state.components() {
-        let (store, entity) = at.stored().expect("the walk yields stored components");
-        let known = match entity {
-            EntityId::Place(id) => canon.places.contains_key(id),
-            EntityId::Story(id) => canon.stories.contains_key(id),
-            EntityId::Actor(_) | EntityId::World => true,
-        };
-        if !known {
-            unknown.push((store, entity.clone()));
-        }
-    }
-    unknown.dedup();
-    for (store, entity) in unknown {
-        let problem = format!("{store} lists '{entity}', which the pack does not define");
-        let diag = schema_error(
-            "state/save.yaml",
-            &problem,
-            "take its line out of the store",
-        );
-        diags.push(diag.at_path(format!("{store}.{entity}")));
-    }
-    for (place, exits) in state.open_exits.iter() {
+    check_kind_meters(
+        canon,
+        state,
+        "stories",
+        &canon.stories,
+        stories.meters(),
+        EntityId::Story,
+        &mut diags,
+    );
+    check_defined("places.items", places.items(), &canon.places, &mut diags);
+    check_defined("places.meters", places.meters(), &canon.places, &mut diags);
+    check_defined("places.flags", places.flags(), &canon.places, &mut diags);
+    check_defined(
+        "stories.meters",
+        stories.meters(),
+        &canon.stories,
+        &mut diags,
+    );
+    check_defined("stories.flags", stories.flags(), &canon.stories, &mut diags);
+    for (place, exits) in places.open_exits() {
         for exit in exits {
             let door = ExitId::new(place, exit);
             if !canon.has_door(&door) {
                 let problem = format!("open_exits lists '{door}', which is no door of the pack");
-                let diag = schema_error("state/save.yaml", &problem, "take it out of open_exits");
-                diags.push(diag.at_path(format!("open_exits.{place}")));
+                let diag = schema_error(SAVE, &problem, "take it out of open_exits");
+                diags.push(diag.at_path(format!("places.open_exits.{place}")));
             }
         }
     }
-    for (entity, item, count) in state.items.iter() {
-        let path = format!("items.{entity}.{item}");
-        let who = match entity {
-            EntityId::Actor(id) => format!("actor '{id}'"),
-            EntityId::Place(id) => format!("place '{id}'"),
-            other => other.to_string(),
-        };
-        if item.is_empty() {
-            let problem = format!("{who} lists an empty item id");
-            let diag = schema_error("state/save.yaml", &problem, "give the item a non-empty id");
-            diags.push(diag.at_path(format!("items.{entity}")));
-        } else if !canon.items.contains_key(item) {
-            diags.push(unknown_item("state/save.yaml", item, &path));
-        }
-        if *count == 0 {
-            let problem = format!("{who} lists item '{item}' with a count of 0");
-            let diag = schema_error("state/save.yaml", &problem, "omit an item that is not held");
-            diags.push(diag.at_path(path));
+    for (id, item, count) in places.items().iter() {
+        if canon.places.contains_key(id) {
+            let path = format!("places.items.{id}.{item}");
+            check_item(
+                canon,
+                &format!("place '{id}'"),
+                item,
+                *count,
+                &path,
+                &mut diags,
+            );
         }
     }
-    for (actor_id, actor) in &state.actors {
+    for (actor_id, actor) in actors.records().iter() {
         if let Some(wielded) = actor.wielded.as_deref() {
+            let path = format!("actors.records.{actor_id}.wielded");
             if !canon.items.contains_key(wielded) {
-                diags.push(unknown_item(
-                    "state/save.yaml",
-                    wielded,
-                    &format!("actors.{actor_id}.wielded"),
-                ));
+                diags.push(unknown_item(SAVE, wielded, &path));
             } else if !canon
                 .items
                 .get(wielded)
@@ -673,20 +690,20 @@ pub fn check_save(canon: &Canon, state: &crate::model::State) -> Result<(), Vec<
             {
                 diags.push(
                     schema_error(
-                        "state/save.yaml",
+                        SAVE,
                         &format!("actor '{actor_id}' wields '{wielded}', which is not a weapon"),
                         "wield an item tagged weapon, or leave the slot empty",
                     )
-                    .at_path(format!("actors.{actor_id}.wielded")),
+                    .at_path(path),
                 );
             } else if state.item_count(&EntityId::Actor(actor_id.clone()), wielded) == Some(0) {
                 diags.push(
                     schema_error(
-                        "state/save.yaml",
+                        SAVE,
                         &format!("actor '{actor_id}' wields '{wielded}' without holding it"),
                         "put the item in inventory or clear wielded",
                     )
-                    .at_path(format!("actors.{actor_id}.wielded")),
+                    .at_path(path),
                 );
             }
         }
@@ -698,54 +715,126 @@ pub fn check_save(canon: &Canon, state: &crate::model::State) -> Result<(), Vec<
     }
 }
 
-/// The live meters of `entity`, at `path` in the save, against the meters the pack gives it.
-fn check_meters(
+const SAVE: &str = "state/save.yaml";
+
+/// Refuse each entity `store` lists that the pack does not define, once for each.
+fn check_defined<V, E, D>(
+    store: &str,
+    held: &Store<V, E>,
+    defined: &BTreeMap<String, D>,
+    diags: &mut Vec<Diagnostic>,
+) {
+    let mut ids: Vec<&String> = held.iter().map(|(id, _, _)| id).collect();
+    ids.dedup();
+    for id in ids.into_iter().filter(|id| !defined.contains_key(*id)) {
+        let problem = format!("{store} lists '{id}', which the pack does not define");
+        let diag = schema_error(SAVE, &problem, "take its line out of the store");
+        diags.push(diag.at_path(format!("{store}.{id}")));
+    }
+}
+
+/// Refuse an empty or unknown item id, or a count of 0, that `who` lists at `path`.
+fn check_item(
     canon: &Canon,
-    entity: &EntityId,
-    meters: &meter::Meters,
+    who: &str,
+    item: &str,
+    count: u32,
     path: &str,
     diags: &mut Vec<Diagnostic>,
 ) {
-    let (name, defs) = match entity {
-        EntityId::Actor(id) => (format!("actor '{id}'"), &canon.meters),
-        EntityId::World => ("the world".to_string(), &canon.world_meters),
-        _ => (entity.to_string(), &canon.meters),
-    };
-    for (key, def) in defs {
-        let carried = *entity == EntityId::World || def.is_on(entity);
-        if carried && meters.get(entity, key).is_none() {
-            diags.push(
-                schema_error(
-                    "state/save.yaml",
-                    &format!("{name} lacks meter '{key}', which the pack gives it"),
-                    "run spook migrate to add the meter",
-                )
-                .at_path(format!("{path}.{key}")),
-            );
+    if item.is_empty() {
+        let problem = format!("{who} lists an empty item id");
+        let diag = schema_error(SAVE, &problem, "give the item a non-empty id");
+        diags.push(diag.at_path(path));
+    } else if !canon.items.contains_key(item) {
+        diags.push(unknown_item(SAVE, item, path));
+    }
+    if count == 0 {
+        let problem = format!("{who} lists item '{item}' with a count of 0");
+        let diag = schema_error(SAVE, &problem, "omit an item that is not held");
+        diags.push(diag.at_path(path));
+    }
+}
+
+/// Refuse the meters of every entity of a kind the pack defines in `defined`, as `list` in the
+/// save holds them in `held`: each meter the pack gives one that it lacks, then each stored one
+/// the pack does not give it or that is outside its rules. `entity` names an entity by its id.
+fn check_kind_meters<D>(
+    canon: &Canon,
+    state: &State,
+    list: &str,
+    defined: &BTreeMap<String, D>,
+    held: &Meters,
+    entity: fn(String) -> EntityId,
+    diags: &mut Vec<Diagnostic>,
+) {
+    for id in defined.keys() {
+        let path = format!("{list}.meters.{id}");
+        check_lacking_meters(canon, state, &entity(id.clone()), &path, diags);
+    }
+    for (id, key, live) in held.iter() {
+        if defined.contains_key(id) {
+            let path = format!("{list}.meters.{id}.{key}");
+            check_held_meter(canon, &entity(id.clone()), key, live, &path, diags);
         }
     }
-    for (key, meter) in meters.on(entity) {
-        let Some(def) = canon.meter_def(entity, key) else {
-            diags.push(
-                schema_error(
-                    "state/save.yaml",
-                    &format!("{name} lists meter '{key}', which the pack does not give it"),
-                    "run spook migrate to drop the meter",
-                )
-                .at_path(format!("{path}.{key}")),
-            );
-            continue;
-        };
-        if !meter::is_storable(def, meter.base, meter.offset) {
-            diags.push(
-                schema_error(
-                    "state/save.yaml",
-                    &format!("{name} meter '{key}' is outside the rules"),
-                    "set base and offset so the stored pair fits the meter",
-                )
-                .at_path(format!("{path}.{key}")),
-            );
-        }
+}
+
+/// How a diagnostic names `entity`.
+fn describe_entity(entity: &EntityId) -> String {
+    match entity {
+        EntityId::Actor(id) => format!("actor '{id}'"),
+        EntityId::Place(_) | EntityId::Story(_) => entity.to_string(),
+        EntityId::World => "the world".to_string(),
+    }
+}
+
+/// Refuse each meter the pack gives `entity` that the save does not list under `path`.
+fn check_lacking_meters(
+    canon: &Canon,
+    state: &State,
+    entity: &EntityId,
+    path: &str,
+    diags: &mut Vec<Diagnostic>,
+) {
+    let held = state.meters_of(entity);
+    let lacks = |key: &String| held.get(key).is_none();
+    let lacking: Vec<&String> = match entity {
+        EntityId::Actor(_) | EntityId::Place(_) | EntityId::Story(_) => (canon.meters.iter())
+            .filter(|(key, def)| def.is_on(entity) && lacks(key))
+            .map(|(key, _)| key)
+            .collect(),
+        EntityId::World => canon.world_meters.keys().filter(|key| lacks(key)).collect(),
+    };
+    for key in lacking {
+        let name = describe_entity(entity);
+        let problem = format!("{name} lacks meter '{key}', which the pack gives it");
+        let diag = schema_error(SAVE, &problem, "run spook migrate to add the meter");
+        diags.push(diag.at_path(format!("{path}.{key}")));
+    }
+}
+
+/// Refuse meter `key`, which `entity` holds as `live` at `path`, when the pack does not give
+/// it that meter or `live` is outside the meter's rules.
+fn check_held_meter(
+    canon: &Canon,
+    entity: &EntityId,
+    key: &str,
+    live: &MeterLive,
+    path: &str,
+    diags: &mut Vec<Diagnostic>,
+) {
+    let name = describe_entity(entity);
+    let Some(def) = canon.meter_def(entity, key) else {
+        let problem = format!("{name} lists meter '{key}', which the pack does not give it");
+        let diag = schema_error(SAVE, &problem, "run spook migrate to drop the meter");
+        diags.push(diag.at_path(path));
+        return;
+    };
+    if !meter::is_storable(def, live.base, live.offset) {
+        let problem = format!("{name} meter '{key}' is outside the rules");
+        let hint = "set base and offset so the stored pair fits the meter";
+        diags.push(schema_error(SAVE, &problem, hint).at_path(path));
     }
 }
 

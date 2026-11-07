@@ -43,7 +43,7 @@ struct Scene {
 #[test]
 fn no_hidden_fact_reaches_a_player() {
     let world = World::open(&docks()).expect("docks pack opens");
-    let actors: Vec<String> = world.state().actors.keys().cloned().collect();
+    let actors: Vec<String> = world.state().actors().records().keys().cloned().collect();
     let places: Vec<String> = world.canon().places.keys().cloned().collect();
     let facts: Vec<String> = world.canon().facts.keys().cloned().collect();
     assert!(
@@ -125,7 +125,7 @@ fn apply_scene(
             .expect("an actor");
     }
     for (actor_id, known) in actors.iter().zip(&scene.known) {
-        let held = state.actors[actor_id].known_facts.clone();
+        let held = state.actors().records()[actor_id].known_facts.clone();
         let known = known
             .iter()
             .map(|index| facts[index % facts.len()].clone())
@@ -137,7 +137,7 @@ fn apply_scene(
             .edit_actor(actor_id, ActorEdit::Learn(known))
             .expect("an actor");
     }
-    assert!(state.notes.is_empty(), "the docks save leaves no notes");
+    assert!(state.notes().is_empty(), "the docks save leaves no notes");
     for (index, note) in scene.notes.iter().enumerate() {
         let mut fact_ids: Vec<String> = note
             .fact_ids
@@ -164,7 +164,7 @@ fn apply_scene(
 }
 
 fn assert_hidden_stays_hidden(canon: &Canon, state: &State) -> Result<(), TestCaseError> {
-    for (pc, actor) in &state.actors {
+    for (pc, actor) in state.actors().records().iter() {
         if !actor.is_pc() {
             continue;
         }

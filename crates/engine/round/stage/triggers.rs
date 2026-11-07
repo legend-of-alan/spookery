@@ -190,7 +190,7 @@ fn flips(change: &Change, becomes: bool) -> bool {
 }
 
 fn matches_who(state: &State, who: &WatchWho, actor_id: &str) -> bool {
-    let Some(actor) = state.actors.get(actor_id) else {
+    let Some(actor) = state.actors().records().get(actor_id) else {
         return false;
     };
     match who {

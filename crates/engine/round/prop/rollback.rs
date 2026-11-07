@@ -58,14 +58,12 @@ fn nested_rollbacks_put_the_save_back_exactly() {
     let path = pack.0.join("state/save.yaml");
     let text = std::fs::read_to_string(&path).expect("the docks save");
     assert!(
-        !text.contains("place:docks_street"),
+        !text.contains("\n    docks_street:"),
         "the street holds something"
     );
-    let edited = text.replace("\nitems:\n", "\nitems:\n  mira:\n    brass_key: 1\n");
-    assert!(
-        edited.contains("  mira:\n    brass_key: 1\n"),
-        "Mira holds no key"
-    );
+    let actor_items = "\n  items:\n    mira:\n      brass_key: 1\n";
+    let edited = text.replacen("\n  items: {}\n", actor_items, 1);
+    assert!(edited.contains(actor_items), "Mira holds no key");
     let edited = crate::store::save::parse(&edited).expect("the edited save reads");
     let edited = crate::store::save::emit(&edited).expect("the edited save writes");
     std::fs::write(&path, edited).expect("write the save");
@@ -184,9 +182,9 @@ fn every_moved_meter_is_reported(
             .meter_value(world.canon(), entity, key)
             .map_or(StateValue::Empty, StateValue::Number)
     };
-    for id in now.actors.keys() {
+    for id in now.actors().records().keys() {
         let entity = EntityId::Actor(id.clone());
-        for (key, _) in now.meters.on(&entity) {
+        for (key, _) in now.meters_of(&entity).iter() {
             let (before, after) = (read(taken, &entity, key), read(now, &entity, key));
             if before == after {
                 continue;
@@ -248,7 +246,7 @@ fn effect(state: &State, step: &Step, index: usize) -> Effect {
         },
         Step::Walk(to) => EffectKind::Location {
             actor_id: "mira".to_string(),
-            from: state.actors["mira"].place.clone(),
+            from: state.actors().records()["mira"].place.clone(),
             to: to.to_string(),
             arrived_at: None,
         },

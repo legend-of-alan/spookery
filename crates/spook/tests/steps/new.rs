@@ -143,7 +143,7 @@ fn the_travel_committed_a_round(world: &mut World) {
     wait_play(world, "You are in Lane.");
     let pack = table::pack(world);
     let now = state_of(pack);
-    assert_eq!(now.actors.get("pc_ada").unwrap().place, "lane");
+    assert_eq!(now.actors().records()["pc_ada"].place, "lane");
     assert!(
         spookery_engine::testing::journal::list_round_keys(pack)
             .contains(&"round-0001".to_string()),
@@ -174,12 +174,16 @@ fn the_keeper_habit_has_set_tended(world: &mut World) {
     assert_eq!(world.code, Some(0), "{}", world.stderr);
     let now = state_of(&idle);
     assert_eq!(now.world_time, 60, "idle round did not advance 60 ticks");
-    match now.actors.get("keeper") {
+    match now.actors().records().get("keeper") {
         Some(actor) if actor.is_npc() => {}
         other => panic!("keeper missing: {other:?}"),
     };
     let keeper = spookery_engine::EntityId::Actor("keeper".to_string());
-    assert!(now.has_flag(&keeper, "tended"), "{:?}", now.flags);
+    assert!(
+        now.has_flag(&keeper, "tended"),
+        "{:?}",
+        now.actors().flags()
+    );
     let _ = fs::remove_dir_all(idle);
 }
 

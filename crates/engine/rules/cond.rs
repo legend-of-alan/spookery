@@ -66,7 +66,8 @@ fn holds(context: &Context, cond: &Cond) -> Result<bool, Reason> {
             let actor = expr::resolve_who_id(context, who)?;
             let id = expr::resolve_item_id(context, id)?;
             Ok(state
-                .actors
+                .actors()
+                .records()
                 .get(&actor)
                 .is_some_and(|actor| actor.wielded.as_deref() == Some(id.as_str())))
         }
@@ -93,14 +94,16 @@ fn holds(context: &Context, cond: &Cond) -> Result<bool, Reason> {
         Cond::At { who, place } => {
             let actor = expr::resolve_who_id(context, who)?;
             Ok(state
-                .actors
+                .actors()
+                .records()
                 .get(&actor)
                 .is_some_and(|actor| actor.place == *place))
         }
         Cond::Knows { who, fact } => {
             let actor = expr::resolve_who_id(context, who)?;
             Ok(state
-                .actors
+                .actors()
+                .records()
                 .get(&actor)
                 .is_some_and(|actor| actor.known_facts.iter().any(|id| id == fact)))
         }
@@ -110,7 +113,7 @@ fn holds(context: &Context, cond: &Cond) -> Result<bool, Reason> {
             Ok(is_in_window(*from, *to, tick))
         }
         Cond::Players { op, value } => Ok(op.holds(i64::from(context.presence.players), *value)),
-        Cond::NoteExists(id) => Ok(state.notes.iter().any(|note| &note.id == id)),
+        Cond::NoteExists(id) => Ok(state.notes().iter().any(|note| &note.id == id)),
         Cond::All(inner) => {
             for cond in inner {
                 if !holds(context, cond)? {

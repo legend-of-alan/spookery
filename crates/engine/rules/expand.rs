@@ -339,7 +339,8 @@ fn location_effect(context: &Context, to: &str) -> Result<Effect, Reason> {
     let actor_id = expr::resolve_who_id(context, &Who::Self_)?;
     let from = context
         .state
-        .actors
+        .actors()
+        .records()
         .get(&actor_id)
         .map(|actor| actor.place.clone())
         .ok_or(Reason::UnknownId)?;
