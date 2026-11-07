@@ -382,7 +382,9 @@ pub fn render_check(roll: &Roll) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::protocol::{ItemStack, KnownFact, NoteView, QueuedMove, Roll, StatusPresence};
+    use crate::protocol::{
+        ItemStack, KnownFact, NoteView, PackSummary, QueuedMove, Roll, StatusPresence,
+    };
 
     fn assert_readable(text: &str) {
         assert!(!text.contains('{'), "{text}");
@@ -698,7 +700,7 @@ none"
             pack_rev: String::new(),
             last_round_at: String::new(),
             queued,
-            pack: None,
+            pack: PackSummary::default(),
         }
     }
 

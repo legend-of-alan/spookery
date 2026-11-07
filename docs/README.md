@@ -54,7 +54,7 @@ packs/                 sample-d20 is the starter. oneshot-docks is the multi-PC 
 crates/
   protocol/            spookery-protocol: the message envelope, its bodies, and the word table
   engine/              spookery-engine: world model, rules, rounds, and journal
-  agent/               spookery-agent: the reusable GM brain: turn graph, prompt, tools, Model and Seat
+  agent/               spookery-agent: the reusable GM brain: turn graph, prompt, tools, Model and Connection
   client/              spookery-client: play, gm, ai_gm (the three clients), ws, http_model, text
   server/              spookery-server: the table, the game port's WebSocket endpoint, MCP endpoint, GM words, seats, idle timer
   spook/               package and binary spook, library spookery

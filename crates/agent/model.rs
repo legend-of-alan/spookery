@@ -157,9 +157,10 @@ static TOOLS: LazyLock<Value> = LazyLock::new(|| {
     ])
 });
 
-/// Chat-completions body: the turn's `messages`, `model`, `stream` and the GM's tools.
-pub fn chat_body(model: &str, messages: &[ChatMessage]) -> Value {
-    let messages: Vec<Value> = messages.iter().map(wire_message).collect();
+/// Encodes a chat-completions body: the turn's `messages`, `model`, `stream` and the GM's
+/// tools.
+pub fn encode_chat_body(model: &str, messages: &[ChatMessage]) -> Value {
+    let messages: Vec<Value> = messages.iter().map(encode_message).collect();
     json!({
         "messages": messages,
         "model": model,
@@ -168,7 +169,7 @@ pub fn chat_body(model: &str, messages: &[ChatMessage]) -> Value {
     })
 }
 
-fn wire_message(message: &ChatMessage) -> Value {
+fn encode_message(message: &ChatMessage) -> Value {
     match message {
         ChatMessage::User { content } => json!({ "role": "user", "content": content }),
         ChatMessage::Assistant { tool_calls } => {
@@ -237,7 +238,7 @@ mod tests {
 
     #[test]
     fn the_tools_are_the_gm_words_and_end_turn_with_schema_parameters() {
-        let body = chat_body("grok-test", &[]);
+        let body = encode_chat_body("grok-test", &[]);
         let tools = body["tools"].as_array().unwrap();
         let names: Vec<&str> = tools
             .iter()
@@ -272,7 +273,7 @@ mod tests {
                 content: "said".into(),
             },
         ];
-        let body = chat_body("grok-test", &messages);
+        let body = encode_chat_body("grok-test", &messages);
         assert_eq!(
             body["messages"],
             json!([

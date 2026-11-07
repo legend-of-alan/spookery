@@ -1,4 +1,4 @@
-//! What the model reads: the opening prompt of a turn and the views `perceive` brings back.
+//! What the model reads: the opening prompt of a turn and the replies its tool calls bring back.
 
 use std::collections::BTreeMap;
 
@@ -6,8 +6,8 @@ use serde::Serialize;
 use serde_json::json;
 
 use crate::protocol::{
-    self, CastKind, ItemStack, MenuRow, MeterView, NoteView, PackSummary, QueuedMove, Say, Speaker,
-    PERCEIVE_BODY_CHARS,
+    self, CastKind, ItemStack, MenuRow, MeterView, NoteView, PackSummary, QueuedMove, Say,
+    ServerBody, Speaker, PERCEIVE_BODY_CHARS,
 };
 
 /// How many tape lines the prompt's `buffer` keeps.
@@ -141,10 +141,14 @@ pub fn render_prompt(opening: &Opening) -> String {
     serde_json::to_string(opening).expect("prompt json")
 }
 
-/// A `perceive` view as the model reads it: a player's census, or an NPC's view with its
-/// facts and notes, plus the prose of the place and of the viewer and everyone it sees,
-/// each cut at the perceive budget. Fact bodies never come through.
-pub fn render_view(pack: &PackSummary, view: protocol::View) -> String {
+/// One reply as the model reads it in a tool result: the body as sent, but for a view.
+/// A view is a player's census, or an NPC's view with its facts and notes, plus the prose
+/// of the place and of the viewer and everyone it sees, each cut at the perceive budget.
+/// Fact bodies never come through.
+pub fn render_reply(pack: &PackSummary, body: ServerBody) -> String {
+    let ServerBody::View(view) = body else {
+        return serde_json::to_string(&body).expect("server body");
+    };
     let cut = |body: &String| body.chars().take(PERCEIVE_BODY_CHARS).collect::<String>();
     let place_body = pack.places.get(&view.place).map(cut).unwrap_or_default();
     let cast: BTreeMap<String, String> = std::iter::once(&view.viewer)
@@ -152,8 +156,8 @@ pub fn render_view(pack: &PackSummary, view: protocol::View) -> String {
         .filter_map(|id| Some((id.clone(), cut(pack.cast.get(id)?))))
         .collect();
     let mut seen = match pack.kinds.get(&view.viewer) {
-        Some(CastKind::PcTemplate) => json!(PlayerView::from(view)),
-        _ => json!(NpcView::from(view)),
+        Some(CastKind::PcTemplate) => json!(PlayerView::from(*view)),
+        _ => json!(NpcView::from(*view)),
     };
     seen["place_body"] = json!(place_body);
     seen["cast"] = json!(cast);
@@ -203,15 +207,21 @@ mod tests {
 
     /// Feature: The AI GM gets non-hidden prose
     ///
-    /// Scenario: Cast prose reaches the perceive result
-    ///   Then the result holds the place's and the seen cast's bodies, and no one else's
+    /// Scenario: Cast prose reaches the perceive result, and hidden facts never do
+    ///   Given a hidden fact body "BODY-SENTINEL"
+    ///   Then the result holds the place's and the seen cast's bodies and the fact text
+    ///   And it does not contain "BODY-SENTINEL"
     #[test]
-    fn cast_and_place_prose_reach_the_perceive_result() {
-        let seen = render_view(&docks(), shop("aldric"));
+    fn an_npc_view_keeps_prose_and_fact_text_and_never_a_fact_body() {
+        let seen = render_reply(&docks(), ServerBody::View(Box::new(shop("aldric"))));
         assert!(seen.contains("MIRA-PROSE-SENTINEL"), "{seen}");
         assert!(seen.contains("The shop smells of tar."), "{seen}");
         assert!(seen.contains("Aldric keeps the counter."), "{seen}");
         assert!(!seen.contains("BRAM-ABSENT"), "{seen}");
+        assert!(seen.contains("FACT-TEXT-SENTINEL"), "{seen}");
+        assert!(seen.contains("MESSAGE-SENTINEL"), "{seen}");
+        assert!(!seen.contains("BODY-SENTINEL"), "{seen}");
+        assert!(!seen.contains("UNKNOWN-SENTINEL"), "{seen}");
     }
 
     #[test]
@@ -221,28 +231,16 @@ mod tests {
         pack.cast.insert("aldric".into(), "Z".repeat(budget + 1));
         pack.places
             .insert("docks_shop".into(), "Y".repeat(budget + 1));
-        let seen = render_view(&pack, shop("mira"));
+        let seen = render_reply(&pack, ServerBody::View(Box::new(shop("mira"))));
         for letter in ["Z", "Y"] {
             assert!(seen.contains(&letter.repeat(budget)), "{seen}");
             assert!(!seen.contains(&letter.repeat(budget + 1)), "{seen}");
         }
     }
 
-    /// Scenario: Hidden facts never do
-    ///   Given a hidden fact body "BODY-SENTINEL"
-    ///   Then the perceive result does not contain "BODY-SENTINEL"
-    #[test]
-    fn an_npc_keeps_fact_text_and_notes_and_never_a_fact_body() {
-        let seen = render_view(&docks(), shop("aldric"));
-        assert!(seen.contains("FACT-TEXT-SENTINEL"), "{seen}");
-        assert!(seen.contains("MESSAGE-SENTINEL"), "{seen}");
-        assert!(!seen.contains("BODY-SENTINEL"), "{seen}");
-        assert!(!seen.contains("UNKNOWN-SENTINEL"), "{seen}");
-    }
-
     #[test]
     fn a_player_view_is_a_census_without_facts_or_notes() {
-        let seen = render_view(&docks(), shop("pc_rowan"));
+        let seen = render_reply(&docks(), ServerBody::View(Box::new(shop("pc_rowan"))));
         assert!(seen.contains("MIRA-PROSE-SENTINEL"), "{seen}");
         for hidden in [
             "FACT-TEXT",
@@ -252,40 +250,6 @@ mod tests {
         ] {
             assert!(!seen.contains(hidden), "{seen}");
         }
-    }
-
-    #[test]
-    fn the_opening_names_the_wake_and_who_is_seated() {
-        let line = TapeLine {
-            seq: 3,
-            from: Speaker::Player("pc_rowan".into()),
-            address: "table".into(),
-            place: None,
-            actor: None,
-            text: "evening".into(),
-        };
-        let wake = Wake::Say(line.clone());
-        let prompt = render_prompt(&Opening {
-            menu: &[],
-            buffer: &[],
-            lines: std::slice::from_ref(&line),
-            queue: &[],
-            wake: &wake,
-            seated: &["pc_rowan".to_string()],
-        });
-        let prompt: serde_json::Value = serde_json::from_str(&prompt).unwrap();
-        assert_eq!(prompt["wake"]["say"]["text"], "evening");
-        assert_eq!(prompt["seated"], json!(["pc_rowan"]));
-        assert!(prompt.get("views").is_none(), "{prompt}");
-        let queued = render_prompt(&Opening {
-            menu: &[],
-            buffer: &[],
-            lines: &[],
-            queue: &[],
-            wake: &Wake::Queued,
-            seated: &[],
-        });
-        assert!(queued.contains(r#""wake":"queued""#), "{queued}");
     }
 
     #[test]

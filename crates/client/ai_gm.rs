@@ -3,7 +3,7 @@
 use std::io::Write;
 use std::net::SocketAddr;
 
-use spookery_agent::{Model, Seat, SeatError};
+use spookery_agent::{ConnectionError, Model};
 use tokio::sync::Mutex;
 
 use crate::protocol::{ClientMessage, ServerMessage};
@@ -23,28 +23,29 @@ pub async fn run(
         let mut err = err.lock().unwrap_or_else(|err| err.into_inner());
         let _ = writeln!(err, "{line}").and_then(|()| err.flush());
     };
-    spookery_agent::run(model, WsSeat(Mutex::new(connection)), report).await?;
+    spookery_agent::run(model, GmConnection(Mutex::new(connection)), report).await?;
     Ok(())
 }
 
-/// The GM seat's connection, one adapter call at a time.
-struct WsSeat(Mutex<Connection>);
+/// The GM seat's connection, shared by `&self` one call at a time. A newtype because the
+/// orphan rule keeps `spookery_agent::Connection` off `tokio::sync::Mutex<Connection>`.
+struct GmConnection(Mutex<Connection>);
 
-impl Seat for WsSeat {
-    async fn send(&self, message: ClientMessage) -> Result<(), SeatError> {
+impl spookery_agent::Connection for GmConnection {
+    async fn send(&self, message: ClientMessage) -> Result<(), ConnectionError> {
         let mut connection = self.0.lock().await;
         connection.send_message(&message).await.map_err(Into::into)
     }
 
-    async fn recv(&self) -> Option<Result<ServerMessage, SeatError>> {
+    async fn recv(&self) -> Option<Result<ServerMessage, ConnectionError>> {
         let mut connection = self.0.lock().await;
         Some(connection.recv().await?.map_err(Into::into))
     }
 }
 
-impl From<Error> for SeatError {
+impl From<Error> for ConnectionError {
     fn from(err: Error) -> Self {
-        SeatError(err.to_string())
+        ConnectionError(err.to_string())
     }
 }
 

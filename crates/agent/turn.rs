@@ -6,9 +6,17 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use graph_flow::{Context, Graph, GraphBuilder, NextAction, Session, Task, TaskResult};
-use serde_json::{Map, Value};
+use serde_json::{json, Map, Value};
 
-use crate::{ChatMessage, Model, Seat, Shared, ToolCall, Turn, MAX_TOOL_CALLS};
+use crate::prompt::render_reply;
+use crate::protocol::CommitArgs;
+use crate::{Agent, ChatMessage, Connection, Model, ToolCall, Turn, MAX_TOOL_CALLS};
+
+/// `commit` with its rounds, as `end_turn` and `close` send it.
+const COMMIT_ROUND: CommitArgs = CommitArgs {
+    include_round: true,
+    session_id: None,
+};
 
 /// The calls of the model's last reply that wait for an answer.
 const CALLS: &str = "calls";
@@ -31,11 +39,11 @@ fn is_done(context: &Context) -> bool {
 
 /// Built once per `run`. Edges are checked in the order added and the first match wins, so
 /// from `call` the step limit comes before the waiting calls, and `ask` is the fallback.
-pub(crate) fn graph<M: Model, S: Seat>(shared: &Arc<Shared<M, S>>) -> Graph {
+pub(crate) fn build_graph<M: Model, C: Connection>(agent: &Arc<Agent<M, C>>) -> Graph {
     GraphBuilder::new("gm_turn")
-        .add_task(Arc::new(Ask(Arc::clone(shared))))
-        .add_task(Arc::new(Call(Arc::clone(shared))))
-        .add_task(Arc::new(Close(Arc::clone(shared))))
+        .add_task(Arc::new(Ask(Arc::clone(agent))))
+        .add_task(Arc::new(Call(Arc::clone(agent))))
+        .add_task(Arc::new(Close(Arc::clone(agent))))
         .add_conditional_edge("ask", is_done, "close", "call")
         .add_conditional_edge("call", |c| call_count(c) >= MAX_TOOL_CALLS, "close", "ask")
         .add_conditional_edge("call", |c| !pending_calls(c).is_empty(), "call", "ask")
@@ -43,25 +51,25 @@ pub(crate) fn graph<M: Model, S: Seat>(shared: &Arc<Shared<M, S>>) -> Graph {
         .expect("turn graph")
 }
 
-/// Plays `turn` through `graph` to its end, then hands it back to the table.
-pub(crate) async fn play<M: Model, S: Seat>(
+/// Plays `turn` through `graph` to its end, then hands it back to the client state.
+pub(crate) async fn play<M: Model, C: Connection>(
     graph: &Graph,
-    shared: &Shared<M, S>,
+    agent: &Agent<M, C>,
     turn: Turn,
 ) -> graph_flow::Result<()> {
-    *shared.turn() = turn;
+    *agent.turn() = turn;
     let mut session = Session::new_from_task(String::new(), "ask");
     graph.execute_session(&mut session).await?;
-    let turn = std::mem::take(&mut *shared.turn());
-    shared.table().finish_turn(turn);
+    let turn = std::mem::take(&mut *agent.turn());
+    agent.state().finish_turn(turn);
     Ok(())
 }
 
 /// Asks the model for its next tool calls.
-struct Ask<M, S>(Arc<Shared<M, S>>);
+struct Ask<M, C>(Arc<Agent<M, C>>);
 
 #[async_trait]
-impl<M: Model, S: Seat> Task for Ask<M, S> {
+impl<M: Model, C: Connection> Task for Ask<M, C> {
     fn id(&self) -> &str {
         "ask"
     }
@@ -87,10 +95,10 @@ impl<M: Model, S: Seat> Task for Ask<M, S> {
 }
 
 /// Answers the first waiting call, through the seat or locally, with one tool message.
-struct Call<M, S>(Arc<Shared<M, S>>);
+struct Call<M, C>(Arc<Agent<M, C>>);
 
 #[async_trait]
-impl<M: Model, S: Seat> Task for Call<M, S> {
+impl<M: Model, C: Connection> Task for Call<M, C> {
     fn id(&self) -> &str {
         "call"
     }
@@ -109,7 +117,7 @@ impl<M: Model, S: Seat> Task for Call<M, S> {
     }
 }
 
-impl<M: Model, S: Seat> Call<M, S> {
+impl<M: Model, C: Connection> Call<M, C> {
     /// The table's reply to `call`, or the agent's own answer when no word goes out.
     async fn answer(&self, call: &ToolCall) -> graph_flow::Result<String> {
         let args = match call.arguments.trim() {
@@ -120,20 +128,22 @@ impl<M: Model, S: Seat> Call<M, S> {
             },
         };
         let move_waiting = self.0.turn().move_waiting;
-        match call.name.as_str() {
-            "perceive" | "say" | "queue" => self.0.relay(&call.name, args).await,
-            "end_turn" if move_waiting => self.0.commit().await,
-            "end_turn" => Ok("nothing is queued, so there is no round to play".to_string()),
-            name => Ok(format!("refused: there is no tool named {name}")),
-        }
+        let (word, args) = match call.name.as_str() {
+            "perceive" | "say" | "queue" => (call.name.as_str(), Value::Object(args)),
+            "end_turn" if move_waiting => ("commit", json!(COMMIT_ROUND)),
+            "end_turn" => return Ok("nothing is queued, so there is no round to play".into()),
+            name => return Ok(format!("refused: there is no tool named {name}")),
+        };
+        let body = self.0.call_word(word, args).await?;
+        Ok(render_reply(&self.0.state().pack, body))
     }
 }
 
 /// Ends the turn: warns when the step limit cut it short, and commits a waiting move.
-struct Close<M, S>(Arc<Shared<M, S>>);
+struct Close<M, C>(Arc<Agent<M, C>>);
 
 #[async_trait]
-impl<M: Model, S: Seat> Task for Close<M, S> {
+impl<M: Model, C: Connection> Task for Close<M, C> {
     fn id(&self) -> &str {
         "close"
     }
@@ -146,7 +156,7 @@ impl<M: Model, S: Seat> Task for Close<M, S> {
         }
         let move_waiting = self.0.turn().move_waiting;
         if move_waiting {
-            self.0.commit().await?;
+            self.0.call_word("commit", json!(COMMIT_ROUND)).await?;
         }
         Ok(TaskResult::new(None, NextAction::End))
     }
