@@ -32,7 +32,9 @@ MUTANTS = {
     # Removal rolls back, the removed component whole.
     'removed_modifier_lost': [(M, "            Removed::Modifier(actor, id, part) => self.actors.modifiers.put(&actor, id, part),", "            Removed::Modifier(..) => {}")],
     'removed_flag_lost': [(M, """            Removed::Flag(entity, key) => {
-                self.flags_of_mut(&entity, &key).0.put(key.clone(), Tracked::default());
+                self.flags_of_mut(&entity, &key)
+                    .0
+                    .put(key.clone(), Tracked::default());
             }""", "            Removed::Flag(..) => {}")],
     'removed_item_lost': [(M, """            Removed::Item(entity, id, part) => {
                 if let Some((mut items, ..)) = self.items_of_mut(&entity, &id) {
