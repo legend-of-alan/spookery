@@ -6,6 +6,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
 use crate::canon::Budget;
+use crate::model::item::Shift;
 use crate::model::key::{Change, StateKey, StateValue};
 use crate::model::meter::{MeterLive, Offset};
 use crate::model::modifier::ModifierLive;
@@ -89,6 +90,7 @@ pub(super) enum Removed {
     Modifier(Holder, String, Tracked<ModifierLive, ModifierLive>),
     /// A flag holds no value, so its holder and key are all there is.
     Flag(Holder, String),
+    Item(Holder, String, Tracked<u32, Shift>),
 }
 
 /// How far the round had come: the length of each log a rollback cuts back.

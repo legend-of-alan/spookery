@@ -3,13 +3,15 @@
 //! round's budget and is reported to the next take. No other code changes a component.
 
 use crate::canon::Canon;
+use crate::model::item::Shift;
 use crate::model::key::{Change, StateKey, StateValue};
 use crate::model::ledger::Removed;
 use crate::model::meter::{MeterLive, Offset};
 use crate::model::modifier::ModifierLive;
-use crate::model::tracked::{Count, Tracked};
-use crate::model::{reading, ActCounter, ActorEdit, ActorLive, ComponentId, MemoryLine, Note};
-use crate::model::{NoteEdit, PendingAction, PlaceEdit, State};
+use crate::model::tracked::Tracked;
+use crate::model::Note;
+use crate::model::{number, reading, ActCounter, ActorEdit, ActorLive, ComponentId, MemoryLine};
+use crate::model::{NoteEdit, PendingAction, State};
 use crate::rules::effect::Holder;
 use crate::Reason;
 
@@ -38,22 +40,12 @@ impl State {
         }
     }
 
-    /// Make `edit` on place `id`'s live record, which it must have, counted and kept as
-    /// `edit_actor` says.
-    fn edit_place(&mut self, id: &str, edit: PlaceEdit) -> Result<(), Reason> {
-        let State { places, ledger, .. } = self;
-        let place = places.get_mut().get_mut(id).ok_or(Reason::UnknownId)?;
-        let key = edit.key(id);
-        let at = || ComponentId::Place(id.to_string());
-        ledger.land(at, place, edit, key, |place, key| place.value(key))
-    }
-
     /// Give place or story `holder` an empty live record when it has none. No key answers for
     /// it.
     pub fn make_record(&mut self, holder: &Holder) -> Result<(), Reason> {
         let at = match holder {
-            Holder::Place(id) if !self.places.contains_key(id) => {
-                self.places.get_mut().insert(id.clone(), Tracked::default());
+            Holder::Place(id) if !self.places.contains(id) => {
+                self.places.get_mut().insert(id.clone());
                 ComponentId::Place(id.clone())
             }
             Holder::Story(id) if !self.stories.contains(id) => {
@@ -84,6 +76,7 @@ impl State {
         let holder = Holder::Actor(id.to_string());
         let State {
             actors,
+            items,
             meters,
             modifiers,
             flags,
@@ -91,6 +84,9 @@ impl State {
             ..
         } = self;
         let record = actors.get_mut().remove(id).ok_or(Reason::UnknownId)?;
+        for (key, part) in items.take_all(&holder) {
+            ledger.removed(Removed::Item(holder.clone(), key, part));
+        }
         for (key, part) in meters.take_all(&holder) {
             ledger.removed(Removed::Meter(holder.clone(), key, part));
         }
@@ -238,22 +234,24 @@ impl State {
     /// Set how many of item `id` `holder` holds to `count`, counted and kept as `edit_actor`
     /// says. Only an actor or a place holds items, and it must be in the save.
     pub fn set_items(&mut self, holder: &Holder, id: &str, count: u32) -> Result<(), Reason> {
-        let held = self.item_count(holder, id);
-        let edit = |held: u32| Count {
-            id: id.to_string(),
-            by: i64::from(count) - i64::from(held),
-        };
-        match holder {
-            Holder::Actor(actor) => {
-                let edit = edit(held.ok_or(Reason::UnknownId)?);
-                self.edit_actor(actor, ActorEdit::Item(edit))
-            }
-            Holder::Place(place) => {
-                let edit = edit(held.ok_or(Reason::UnknownId)?);
-                self.edit_place(place, PlaceEdit::Item(edit))
-            }
-            Holder::Story(_) | Holder::Exit(..) | Holder::World => Err(Reason::Schema),
+        let watched = StateKey::item(holder, id).ok_or(Reason::Schema)?;
+        let held = self.item_count(holder, id).ok_or(Reason::UnknownId)?;
+        if held == count {
+            return Ok(());
         }
+        let State { items, ledger, .. } = self;
+        let at = || ComponentId::Item(holder.clone(), id.to_string());
+        if held == 0 {
+            items.put(holder.clone(), id.to_string(), Tracked::new(count));
+            ledger.added(at());
+        } else if count == 0 {
+            let part = items.take(holder, id).expect("a count above 0");
+            ledger.removed(Removed::Item(holder.clone(), id.to_string(), part));
+        } else {
+            let part = items.tracked_mut(holder, id).expect("a count above 0");
+            ledger.track(at, part, Shift(i64::from(count) - i64::from(held)));
+        }
+        ledger.note(watched, number(u64::from(held)), number(u64::from(count)))
     }
 
     /// Set `holder`'s flag `key` on or off, counted and kept as `edit_actor` says. An exit's

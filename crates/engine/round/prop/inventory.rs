@@ -38,7 +38,7 @@ fn random_item_changes_never_leave_a_negative_count() {
     let pack = TempPack(copy_docks("inventory"));
     let world = World::open(&pack.0).expect("docks pack opens");
     let actors: Vec<String> = world.state().actors.keys().cloned().collect();
-    let places: Vec<String> = world.state().places.keys().cloned().collect();
+    let places: Vec<String> = world.state().places.iter().cloned().collect();
     assert!(
         actors.len() >= 2 && !places.is_empty(),
         "the pack needs actors and places to shift"
@@ -105,18 +105,9 @@ fn assert_same_save(state: &State, before: &State) -> Result<(), TestCaseError> 
 
 /// A stored count is a `u32`, so it cannot be negative. A count of 0 is omitted.
 fn assert_no_stored_zero(state: &State) -> Result<(), TestCaseError> {
-    for (actor_id, actor) in &state.actors {
-        for (item_id, count) in &actor.inventory {
-            if *count == 0 {
-                return fail(format!("{actor_id} stores a zero count of {item_id}"));
-            }
-        }
-    }
-    for (place_id, place) in &state.places {
-        for (item_id, count) in &place.items {
-            if *count == 0 {
-                return fail(format!("{place_id} stores a zero count of {item_id}"));
-            }
+    for (holder, item_id, count) in state.items.iter() {
+        if *count == 0 {
+            return fail(format!("{holder} stores a zero count of {item_id}"));
         }
     }
     Ok(())
@@ -125,26 +116,13 @@ fn assert_no_stored_zero(state: &State) -> Result<(), TestCaseError> {
 fn is_known_holder(state: &State, holder: &Holder) -> bool {
     match holder {
         Holder::Actor(id) => state.actors.contains_key(id),
-        Holder::Place(id) => state.places.contains_key(id),
+        Holder::Place(id) => state.places.contains(id),
         Holder::Story(_) | Holder::Exit(..) | Holder::World => false,
     }
 }
 
 fn count_of(state: &State, holder: &Holder, id: &str) -> u32 {
-    match holder {
-        Holder::Actor(actor_id) => state
-            .actors
-            .get(actor_id)
-            .map(|actor| actor.item_count(id))
-            .unwrap_or(0),
-        Holder::Place(place_id) => state
-            .places
-            .get(place_id)
-            .and_then(|place| place.items.get(id))
-            .copied()
-            .unwrap_or(0),
-        Holder::Story(_) | Holder::Exit(..) | Holder::World => 0,
-    }
+    state.item_count(holder, id).unwrap_or(0)
 }
 
 fn takes_more_than_held(held: u32, delta: i64) -> bool {

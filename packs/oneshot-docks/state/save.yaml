@@ -7,18 +7,13 @@ round_index: 0
 world_time: 1080
 last_round_at: "2026-01-01T00:00:00Z"
 places:
-  docks_shop:
-    items:
-      lamp_oil: 4
-  docks_street:
-    items: {}
-  mira_rooms:
-    items: {}
+  - docks_shop
+  - docks_street
+  - mira_rooms
 actors:
   aldric:
     kind: npc
     place: docks_shop
-    inventory: {}
     known_facts: []
     act:
       last_act_round: 0
@@ -27,7 +22,6 @@ actors:
   bram:
     kind: npc
     place: docks_street
-    inventory: {}
     known_facts: []
     act:
       last_act_round: 0
@@ -36,7 +30,6 @@ actors:
   mira:
     kind: npc
     place: mira_rooms
-    inventory: {}
     known_facts:
       - fact_ledger_short
     act:
@@ -46,7 +39,6 @@ actors:
   pc_harbormouse:
     kind: pc
     place: docks_street
-    inventory: {}
     known_facts: []
     visited:
       docks_street:
@@ -58,7 +50,6 @@ actors:
   pc_rowan:
     kind: pc
     place: docks_shop
-    inventory: {}
     known_facts: []
     visited:
       docks_shop:
@@ -71,7 +62,6 @@ actors:
   pc_wren:
     kind: pc
     place: docks_street
-    inventory: {}
     known_facts: []
     visited:
       docks_street:
@@ -80,6 +70,9 @@ actors:
       last_act_round: 0
       idle_acts_this_window: 0
       live_acts_this_window: 0
+items:
+  "place:docks_shop":
+    lamp_oil: 4
 meters:
   aldric:
     grit:

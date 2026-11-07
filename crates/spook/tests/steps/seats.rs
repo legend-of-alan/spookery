@@ -517,11 +517,8 @@ fn a_round_commits(world: &mut World) {
 
 fn street_oil(world: &World) -> u32 {
     let now = state_of(table::pack(world));
-    now.places
-        .get("docks_street")
-        .and_then(|place| place.items.get(HUMMED_OIL))
-        .copied()
-        .unwrap_or(0)
+    let street = spookery_engine::Holder::Place("docks_street".to_string());
+    now.item_count(&street, HUMMED_OIL).unwrap_or(0)
 }
 
 #[then(expr = "the habit does not fire")]

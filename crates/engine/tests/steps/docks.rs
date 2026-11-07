@@ -1,6 +1,5 @@
 use cucumber::{given, then, when};
 
-use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -59,10 +58,11 @@ fn write_text(path: &Path, text: &str) {
 
 fn lamp_oil(state: &State) -> u32 {
     state
-        .places
-        .get("docks_shop")
-        .and_then(|place| place.items.get("lamp_oil"))
-        .copied()
+        .item_count(
+            &spookery_engine::Holder::Place("docks_shop".to_string()),
+            "lamp_oil",
+        )
+        .filter(|count| *count > 0)
         .unwrap_or_else(|| panic!("lamp_oil missing"))
 }
 
@@ -372,7 +372,6 @@ Rowan.
         ActorLive {
             kind: ActorKind::Pc,
             place: "gate".to_string(),
-            inventory: BTreeMap::new(),
             wielded: None,
             known_facts: Vec::new(),
             visited: Default::default(),
@@ -494,7 +493,6 @@ rules:
             ActorLive {
                 kind: ActorKind::Npc,
                 place: "yard".to_string(),
-                inventory: BTreeMap::new(),
                 wielded: None,
                 known_facts: Vec::new(),
                 visited: Default::default(),
@@ -781,11 +779,7 @@ fn a_held_knife_still_runs_the_opposed_row() {
     insert_nell(&held);
     let now_path = held.join("state/save.yaml");
     let text = fs::read_to_string(&now_path).unwrap();
-    let next = text.replacen(
-        "  pc_rowan:\n    kind: pc\n    place: docks_shop\n    inventory: {}\n",
-        "  pc_rowan:\n    kind: pc\n    place: docks_shop\n    inventory:\n      knife: 1\n",
-        1,
-    );
+    let next = text.replacen("\nitems:\n", "\nitems:\n  pc_rowan:\n    knife: 1\n", 1);
     assert_ne!(next, text);
     fs::write(&now_path, next).unwrap();
     stamp_pack_rev(&held);

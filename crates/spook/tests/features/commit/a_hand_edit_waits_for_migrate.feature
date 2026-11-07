@@ -167,5 +167,5 @@ Feature: A hand edit waits for migrate
     Then the command exits 0
     And the journal line migrate-0001 is
       """
-      {"kind":"migrate","pack_rev_before":"blake2s:d9007ad32e134c6bf6292316c00fe04a015504c3ea6d99455fd791986b995d82","pack_rev_after":"blake2s:d9007ad32e134c6bf6292316c00fe04a015504c3ea6d99455fd791986b995d82","state_rev_before":0,"state_rev_after":1,"state_hash":"blake2s:287856f8555ffec2a5eec675dbefd967fa0285e05b2eda5001dc5ac23fe115cb","prev":"blake2s:966faa0b53df8854716488c867bbf28ffe2af8cb920a7d3fcc3ce79e10d12f43","chain":"blake2s:2b4ba0575451876fe99c3265e011dcef864fe967ca80bbb8cf3f3fc0485a97db"}
+      {"kind":"migrate","pack_rev_before":"blake2s:d9007ad32e134c6bf6292316c00fe04a015504c3ea6d99455fd791986b995d82","pack_rev_after":"blake2s:d9007ad32e134c6bf6292316c00fe04a015504c3ea6d99455fd791986b995d82","state_rev_before":0,"state_rev_after":1,"state_hash":"blake2s:a81da31d461b683824f35853b01e58d04ff281aa13d40f9b97cabfcb27020a21","prev":"blake2s:79ab85531d19f3d8e854a295bd4da24ce2b72c0b320fef41e3da2104692b0530","chain":"blake2s:7b733eb20d60efd79269dbe67e57fb8786f27d3d0d9c0fc3283d4c1f47f4c60e"}
       """

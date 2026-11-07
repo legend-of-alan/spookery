@@ -205,12 +205,11 @@ fn state_rev_is_2(world: &mut World) {
     assert_eq!(now.pack_rev, docks_pack_rev());
     assert_eq!(now.actors.get("pc_rowan").unwrap().place, "docks_shop");
     assert_eq!(
-        now.places
-            .get("docks_shop")
-            .unwrap()
-            .items
-            .get("lamp_oil")
-            .copied(),
+        now.item_count(
+            &spookery_engine::Holder::Place("docks_shop".to_string()),
+            "lamp_oil"
+        )
+        .filter(|count| *count > 0),
         Some(4u32)
     );
     assert_eq!(now.last_round_at, "2026-01-01T00:00:00Z");
@@ -242,11 +241,7 @@ fn the_shops_lamp_oil_is_hand_edited(world: &mut World, count: u32) {
     let pack = table::pack(world);
     let path = pack.join("state/save.yaml");
     let text = fs::read_to_string(&path).unwrap();
-    let edited = text.replacen(
-        "      lamp_oil: 4\n",
-        &format!("      lamp_oil: {count}\n"),
-        1,
-    );
+    let edited = text.replacen("    lamp_oil: 4\n", &format!("    lamp_oil: {count}\n"), 1);
     assert_ne!(edited, text, "the shop did not hold 4 lamp oil\n{text}");
     fs::write(&path, edited).unwrap();
     world.before = table::read_files(pack);
@@ -255,8 +250,8 @@ fn the_shops_lamp_oil_is_hand_edited(world: &mut World, count: u32) {
 #[then(expr = "the shop has {int} lamp oil")]
 fn the_shop_has_lamp_oil(world: &mut World, count: u32) {
     let now = state_of(table::pack(world));
-    let shop = now.places.get("docks_shop").unwrap();
-    assert_eq!(shop.items.get("lamp_oil").copied(), Some(count));
+    let shop = spookery_engine::Holder::Place("docks_shop".to_string());
+    assert_eq!(now.item_count(&shop, "lamp_oil"), Some(count));
 }
 
 #[then(expr = "verify trusts the operator edit at state_rev {int}")]

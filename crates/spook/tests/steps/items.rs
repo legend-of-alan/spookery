@@ -27,11 +27,8 @@ fn hp(pack: &Path, actor: &str) -> i64 {
 }
 
 fn count(pack: &Path, actor: &str, item: &str) -> u32 {
-    support::state_of(pack)
-        .actors
-        .get(actor)
-        .unwrap()
-        .item_count(item)
+    let actor = spookery_engine::Holder::Actor(actor.to_string());
+    support::state_of(pack).item_count(&actor, item).unwrap()
 }
 
 fn wielded(pack: &Path, actor: &str) -> Option<String> {
@@ -251,16 +248,19 @@ fn the_oil_moved(world: &mut World) {
     let pack = world.pack.as_ref().unwrap();
     let now = support::state_of(pack);
     assert_eq!(
-        now.places
-            .get("docks_shop")
-            .unwrap()
-            .items
-            .get("lamp_oil")
-            .copied(),
+        now.item_count(
+            &spookery_engine::Holder::Place("docks_shop".to_string()),
+            "lamp_oil"
+        )
+        .filter(|count| *count > 0),
         Some(2)
     );
     assert_eq!(
-        now.actors.get("pc_rowan").unwrap().item_count("lamp_oil"),
+        now.item_count(
+            &spookery_engine::Holder::Actor("pc_rowan".to_string()),
+            "lamp_oil"
+        )
+        .unwrap(),
         1
     );
 }
@@ -340,7 +340,14 @@ fn no_round_was_spent(world: &mut World) {
         "a round was spent"
     );
     assert!(spookery_engine::testing::journal::list_round_keys(pack).is_empty());
-    assert_eq!(now.actors.get("pc_lark").unwrap().item_count("latch"), 1);
+    assert_eq!(
+        now.item_count(
+            &spookery_engine::Holder::Actor("pc_lark".to_string()),
+            "latch"
+        )
+        .unwrap(),
+        1
+    );
 }
 
 #[then(expr = "the line is rejected with {word} and no round was written")]
@@ -383,16 +390,19 @@ fn the_drop_was_missing(world: &mut World) {
     assert_round_rejects_missing_item(pack);
     let now = support::state_of(pack);
     assert_eq!(
-        now.actors.get("pc_rowan").unwrap().item_count("lamp_oil"),
+        now.item_count(
+            &spookery_engine::Holder::Actor("pc_rowan".to_string()),
+            "lamp_oil"
+        )
+        .unwrap(),
         0
     );
     assert_eq!(
-        now.places
-            .get("docks_shop")
-            .unwrap()
-            .items
-            .get("lamp_oil")
-            .copied(),
+        now.item_count(
+            &spookery_engine::Holder::Place("docks_shop".to_string()),
+            "lamp_oil"
+        )
+        .filter(|count| *count > 0),
         Some(3)
     );
 }
@@ -556,19 +566,19 @@ fn the_slot_clears_in_the_round(world: &mut World) {
     assert_eq!(now.round_index, 1);
     assert_eq!(now.actors.get("pc_lark").unwrap().wielded.as_deref(), None);
     assert_eq!(
-        now.actors
-            .get("pc_lark")
-            .unwrap()
-            .item_count("poisoned_dagger"),
+        now.item_count(
+            &spookery_engine::Holder::Actor("pc_lark".to_string()),
+            "poisoned_dagger"
+        )
+        .unwrap(),
         0
     );
     assert_eq!(
-        now.places
-            .get("gate_yard")
-            .unwrap()
-            .items
-            .get("poisoned_dagger")
-            .copied(),
+        now.item_count(
+            &spookery_engine::Holder::Place("gate_yard".to_string()),
+            "poisoned_dagger"
+        )
+        .filter(|count| *count > 0),
         Some(1)
     );
 }

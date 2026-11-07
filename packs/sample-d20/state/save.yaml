@@ -7,21 +7,14 @@ round_index: 0
 world_time: 1080
 last_round_at: "2026-01-01T00:00:00Z"
 places:
-  gate_yard:
-    items: {}
-  loft:
-    items:
-      latch: 1
-  mill_lane:
-    items: {}
-  wheel_shed:
-    items:
-      chock: 1
+  - gate_yard
+  - loft
+  - mill_lane
+  - wheel_shed
 actors:
   npc_briar:
     kind: npc
     place: gate_yard
-    inventory: {}
     known_facts: []
     act:
       last_act_round: 0
@@ -30,7 +23,6 @@ actors:
   npc_oden:
     kind: npc
     place: mill_lane
-    inventory: {}
     known_facts: []
     act:
       last_act_round: 0
@@ -39,8 +31,6 @@ actors:
   pc_lark:
     kind: pc
     place: gate_yard
-    inventory:
-      tonic: 1
     known_facts: []
     visited:
       gate_yard:
@@ -54,7 +44,6 @@ actors:
   pc_nell:
     kind: pc
     place: mill_lane
-    inventory: {}
     known_facts: []
     visited:
       mill_lane:
@@ -63,6 +52,13 @@ actors:
       last_act_round: 0
       idle_acts_this_window: 0
       live_acts_this_window: 0
+items:
+  pc_lark:
+    tonic: 1
+  "place:loft":
+    latch: 1
+  "place:wheel_shed":
+    chock: 1
 meters:
   npc_briar:
     defense:

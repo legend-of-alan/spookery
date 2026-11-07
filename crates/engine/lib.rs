@@ -37,9 +37,7 @@ pub mod testing {
     pub use crate::canon::strip_body;
     pub use crate::canon::Canon;
     pub use crate::model::tracked::Entry;
-    pub use crate::model::{
-        Act, ActCounter, ActorEdit, ActorKind, ActorLive, PendingAction, PlaceLive,
-    };
+    pub use crate::model::{Act, ActCounter, ActorEdit, ActorKind, ActorLive, PendingAction};
     pub use crate::round::replay::replay_journal;
     pub use crate::rules::roll::{faces, RollKey};
 
@@ -277,7 +275,6 @@ pub mod testing {
             let nell = crate::model::ActorLive {
                 kind: crate::model::ActorKind::Pc,
                 place: "docks_shop".to_string(),
-                inventory: std::collections::BTreeMap::new(),
                 wielded: None,
                 known_facts: Vec::new(),
                 visited: Default::default(),

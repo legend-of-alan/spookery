@@ -749,7 +749,6 @@ mod tests {
         let ada = ActorLive {
             kind: ActorKind::Pc,
             place: "room".to_string(),
-            inventory: BTreeMap::new(),
             wielded: None,
             known_facts: Vec::new(),
             visited: Default::default(),

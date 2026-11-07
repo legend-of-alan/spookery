@@ -418,10 +418,11 @@ fn play_an_empty_round(pack: &Path) {
 fn lamp_oil_increases_by_4(world: &mut World) {
     let now = state_of(world.pack.as_ref().unwrap());
     let oil = now
-        .places
-        .get("docks_shop")
-        .and_then(|place| place.items.get("lamp_oil"))
-        .copied();
+        .item_count(
+            &spookery_engine::Holder::Place("docks_shop".to_string()),
+            "lamp_oil",
+        )
+        .filter(|count| *count > 0);
     assert_eq!(oil, Some(8u32), "world_time {}", now.world_time);
 }
 
@@ -473,7 +474,10 @@ fn every_actor_idle_acts(world: &mut World, tick: u64, acts: u32) {
 #[then(expr = "docks_shop holds {int} lamp_oil")]
 fn docks_shop_holds_lamp_oil(world: &mut World, count: u32) {
     let now = state_of(world.pack.as_ref().unwrap());
-    let oil = now.places["docks_shop"].items.get("lamp_oil").copied();
+    let oil = now.item_count(
+        &spookery_engine::Holder::Place("docks_shop".to_string()),
+        "lamp_oil",
+    );
     assert_eq!(oil, Some(count), "world_time {}", now.world_time);
 }
 

@@ -261,7 +261,8 @@ fn rowan_is_at(world: &mut World, place: String) {
 #[then(expr = "Rowan holds lamp_oil")]
 fn rowan_holds_lamp_oil(world: &mut World) {
     let now = state_of(world.pack.as_ref().unwrap());
-    assert_eq!(now.actors["pc_rowan"].item_count("lamp_oil"), 1);
+    let rowan = spookery_engine::Holder::Actor("pc_rowan".to_string());
+    assert_eq!(now.item_count(&rowan, "lamp_oil"), Some(1));
 }
 
 #[then(expr = "Rowan has used no act")]
@@ -329,6 +330,6 @@ fn the_gm_is_refused_at_once(world: &mut World) {
 fn a_round_later_the_shop_holds(world: &mut World, count: u32) {
     let mut opened = open(world.pack.as_ref().unwrap());
     play(&mut opened);
-    let shop = &opened.state().places["docks_shop"];
-    assert_eq!(shop.items.get("lamp_oil").copied(), Some(count));
+    let shop = spookery_engine::Holder::Place("docks_shop".to_string());
+    assert_eq!(opened.state().item_count(&shop, "lamp_oil"), Some(count));
 }

@@ -44,7 +44,7 @@ struct Scene {
 fn no_hidden_fact_reaches_a_player() {
     let world = World::open(&docks()).expect("docks pack opens");
     let actors: Vec<String> = world.state().actors.keys().cloned().collect();
-    let places: Vec<String> = world.state().places.keys().cloned().collect();
+    let places: Vec<String> = world.state().places.iter().cloned().collect();
     let facts: Vec<String> = world.canon().facts.keys().cloned().collect();
     assert!(
         !actors.is_empty() && !places.is_empty() && !facts.is_empty(),

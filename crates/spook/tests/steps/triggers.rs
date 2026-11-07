@@ -828,7 +828,7 @@ fn no_place_has_the_flag(world: &mut World, flag: String) {
     let now = state_of(world.pack.as_ref().unwrap());
     let places: Vec<Holder> = now
         .places
-        .keys()
+        .iter()
         .map(|id| Holder::Place(id.clone()))
         .collect();
     assert!(places.iter().all(|place| !now.has_flag(place, &flag)));

@@ -341,33 +341,6 @@ impl<V: PartialEq> Edit<BTreeMap<String, V>> for Entry<V> {
     }
 }
 
-/// A count in a map moves by `by`, a count of 0 being no entry. The writer has checked the
-/// count it moves to. Its undo moves it back.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Count {
-    pub(crate) id: String,
-    pub(crate) by: i64,
-}
-
-impl Edit<BTreeMap<String, u32>> for Count {
-    fn apply(self, counts: &mut BTreeMap<String, u32>) -> Option<Self> {
-        let held = counts.get(&self.id).copied().unwrap_or(0);
-        let next = u32::try_from(i64::from(held).checked_add(self.by)?).ok()?;
-        if next == held {
-            return None;
-        }
-        if next == 0 {
-            counts.remove(&self.id);
-        } else {
-            counts.insert(self.id.clone(), next);
-        }
-        Some(Count {
-            id: self.id,
-            by: -self.by,
-        })
-    }
-}
-
 /// Swap `value` into `field` when it differs, and give back the value it replaced.
 pub(crate) fn swap<T: PartialEq>(field: &mut T, value: T) -> Option<T> {
     (*field != value).then(|| std::mem::replace(field, value))
@@ -376,23 +349,19 @@ pub(crate) fn swap<T: PartialEq>(field: &mut T, value: T) -> Option<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::item::Shift;
 
     #[test]
     fn a_rebase_keeps_the_value_and_only_the_newest_undo() {
-        let count = |id: &str, by| Count { id: id.into(), by };
-        let mut items: Tracked<BTreeMap<String, u32>, Count> = Tracked::default();
-        assert!(items.apply(count("oil", 2)));
-        assert!(items.apply(count("rope", 1)));
-        assert!(!items.apply(count("rope", 0)), "no move");
-        items.rebase(1);
-        assert_eq!(
-            *items,
-            BTreeMap::from([("oil".into(), 2), ("rope".into(), 1)])
-        );
-        items.rollback(0);
-        let left = BTreeMap::from([("oil".into(), 2)]);
-        assert_eq!(*items, left, "the older edit can no longer be undone");
-        items.rebase(0);
-        assert_eq!(items.edits(), 0);
+        let mut oil: Tracked<u32, Shift> = Tracked::new(1);
+        assert!(oil.apply(Shift(2)));
+        assert!(oil.apply(Shift(3)));
+        assert!(!oil.apply(Shift(0)), "no move");
+        oil.rebase(1);
+        assert_eq!(*oil, 6);
+        oil.rollback(0);
+        assert_eq!(*oil, 3, "the older edit can no longer be undone");
+        oil.rebase(0);
+        assert_eq!(oil.edits(), 0);
     }
 }

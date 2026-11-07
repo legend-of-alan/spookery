@@ -72,6 +72,15 @@ impl StateKey {
         })
     }
 
+    /// The key of item `id` on `holder`. Only an actor or a place holds items.
+    pub(crate) fn item(holder: &Holder, id: &str) -> Option<StateKey> {
+        Some(match holder {
+            Holder::Actor(actor) => StateKey::ActorItem(actor.clone(), id.to_string()),
+            Holder::Place(place) => StateKey::PlaceItem(place.clone(), id.to_string()),
+            Holder::Story(_) | Holder::Exit(..) | Holder::World => return None,
+        })
+    }
+
     /// The key of flag `key` on `holder`. An exit's one flag, `open`, is its door.
     pub(crate) fn flag(holder: &Holder, key: &str) -> StateKey {
         match holder {

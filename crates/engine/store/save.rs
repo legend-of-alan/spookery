@@ -64,32 +64,37 @@ pub fn emit(state: &State) -> Result<String, Reason> {
 }
 
 /// Each component's holder must be one the save lists: an actor in `actors`, a place in
-/// `places`, a story in `stories`, an exit of a place in `places`, or the world.
+/// `places`, a story in `stories`, an exit of a place in `places`, or the world. Only an actor
+/// or a place holds items.
 fn check_holders(state: &State) -> Vec<Diagnostic> {
     let listed = |holder: &Holder| match holder {
         Holder::Actor(id) => state.actors.contains_key(id),
-        Holder::Place(id) | Holder::Exit(id, _) => state.places.contains_key(id),
+        Holder::Place(id) | Holder::Exit(id, _) => state.places.contains(id),
         Holder::Story(id) => state.stories.contains(id),
         Holder::World => true,
     };
+    let items = state.items.iter().map(|(holder, _, _)| ("items", holder));
     let meters = state.meters.iter().map(|(holder, _, _)| ("meters", holder));
-    let modifiers = state
-        .modifiers
-        .iter()
-        .map(|(holder, _, _)| ("modifiers", holder));
+    let modifiers = (state.modifiers.iter()).map(|(holder, _, _)| ("modifiers", holder));
     let flags = state.flags.iter().map(|(holder, _, _)| ("flags", holder));
-    let mut unlisted: Vec<(&str, &Holder)> = meters
-        .chain(modifiers)
-        .chain(flags)
-        .filter(|(_, holder)| !listed(holder))
+    let mut wrong: Vec<(&str, &Holder)> = (items.chain(meters).chain(modifiers).chain(flags))
+        .filter(|(store, holder)| {
+            let holds_items = matches!(holder, Holder::Actor(_) | Holder::Place(_));
+            !listed(holder) || (*store == "items" && !holds_items)
+        })
         .collect();
-    unlisted.dedup();
+    wrong.dedup();
     let diag = |(store, holder): (&str, &Holder)| {
-        let problem = format!("{store} lists '{holder}', which the save does not list");
-        let hint = "add its record, or take its line out of the store";
+        let (problem, hint) = if listed(holder) {
+            let problem = format!("{store} lists '{holder}', which cannot hold items");
+            (problem, "give the items to an actor or a place")
+        } else {
+            let problem = format!("{store} lists '{holder}', which the save does not list");
+            (problem, "add its record, or take its line out of the store")
+        };
         schema_error("state/save.yaml", &problem, hint).at_path(format!("{store}.{holder}"))
     };
-    unlisted.into_iter().map(diag).collect()
+    wrong.into_iter().map(diag).collect()
 }
 
 fn rules_rev_diagnostic(text: &str) -> Diagnostic {
@@ -120,7 +125,7 @@ fn check_actor_places(state: &State) -> Vec<Diagnostic> {
     for (id, actor) in &state.actors {
         // A walker stands on an exit of a place until they arrive.
         let place = exit_parts(&actor.place).map_or(actor.place.as_str(), |(place, _)| place);
-        if state.places.contains_key(place) {
+        if state.places.contains(place) {
             continue;
         }
         diags.push(
@@ -266,8 +271,7 @@ round_index: 0
 world_time: 0
 last_round_at: \"2026-01-01T00:00:00Z\"
 places:
-  gate:
-    items: {{}}
+  - gate
 actors: {{}}
 notes: []
 ",

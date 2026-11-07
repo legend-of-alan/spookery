@@ -596,54 +596,27 @@ pub fn check_save(canon: &Canon, state: &crate::model::State) -> Result<(), Vec<
         let path = format!("{list}.{id}.meters");
         check_meters(canon, &holder, &state.meters, &path, &mut diags);
     }
-    for (id, actor) in &state.actors {
-        for (item, count) in &actor.inventory {
-            if item.is_empty() {
-                diags.push(
-                    schema_error(
-                        "state/save.yaml",
-                        &format!("actor '{id}' lists an empty item id"),
-                        "give the item a non-empty id",
-                    )
-                    .at_path(format!("actors.{id}.inventory")),
-                );
-            }
-            if *count == 0 {
-                diags.push(
-                    schema_error(
-                        "state/save.yaml",
-                        &format!("actor '{id}' lists item '{item}' with a count of 0"),
-                        "omit an item the actor does not hold",
-                    )
-                    .at_path(format!("actors.{id}.inventory.{item}")),
-                );
-            }
+    for (holder, item, count) in state.items.iter() {
+        let path = format!("items.{holder}.{item}");
+        let who = match holder {
+            Holder::Actor(id) => format!("actor '{id}'"),
+            Holder::Place(id) => format!("place '{id}'"),
+            other => other.to_string(),
+        };
+        if item.is_empty() {
+            let problem = format!("{who} lists an empty item id");
+            let diag = schema_error("state/save.yaml", &problem, "give the item a non-empty id");
+            diags.push(diag.at_path(format!("items.{holder}")));
+        } else if !canon.items.contains_key(item) {
+            diags.push(unknown_item("state/save.yaml", item, &path));
         }
-    }
-    for (place, live) in &state.places {
-        for (item, count) in &live.items {
-            if *count == 0 {
-                diags.push(
-                    schema_error(
-                        "state/save.yaml",
-                        &format!("place '{place}' lists item '{item}' with a count of 0"),
-                        "omit an item that is not there",
-                    )
-                    .at_path(format!("places.{place}.items.{item}")),
-                );
-            }
+        if *count == 0 {
+            let problem = format!("{who} lists item '{item}' with a count of 0");
+            let diag = schema_error("state/save.yaml", &problem, "omit an item that is not held");
+            diags.push(diag.at_path(path));
         }
     }
     for (actor_id, actor) in &state.actors {
-        for item in actor.inventory.keys() {
-            if !canon.items.contains_key(item) {
-                diags.push(unknown_item(
-                    "state/save.yaml",
-                    item,
-                    &format!("actors.{actor_id}.inventory.{item}"),
-                ));
-            }
-        }
         if let Some(wielded) = actor.wielded.as_deref() {
             if !canon.items.contains_key(wielded) {
                 diags.push(unknown_item(
@@ -664,7 +637,7 @@ pub fn check_save(canon: &Canon, state: &crate::model::State) -> Result<(), Vec<
                     )
                     .at_path(format!("actors.{actor_id}.wielded")),
                 );
-            } else if actor.item_count(wielded) == 0 {
+            } else if state.item_count(&Holder::Actor(actor_id.clone()), wielded) == Some(0) {
                 diags.push(
                     schema_error(
                         "state/save.yaml",
@@ -673,17 +646,6 @@ pub fn check_save(canon: &Canon, state: &crate::model::State) -> Result<(), Vec<
                     )
                     .at_path(format!("actors.{actor_id}.wielded")),
                 );
-            }
-        }
-    }
-    for (place, live) in &state.places {
-        for item in live.items.keys() {
-            if !canon.items.contains_key(item) {
-                diags.push(unknown_item(
-                    "state/save.yaml",
-                    item,
-                    &format!("places.{place}.items.{item}"),
-                ));
             }
         }
     }

@@ -222,10 +222,11 @@ fn mira_plays(world: &mut World, move_name: String) {
     let (state, rolls, round) =
         play_queued(&pack, &[], vec![intent(&id, "mira", &move_name, None)]);
     let oil = state
-        .places
-        .get("docks_shop")
-        .and_then(|place| place.items.get("lamp_oil"))
-        .copied()
+        .item_count(
+            &spookery_engine::Holder::Place("docks_shop".to_string()),
+            "lamp_oil",
+        )
+        .filter(|count| *count > 0)
         .map(i64::from)
         .unwrap_or(-1);
     world.oil = oil.to_string().into_bytes();
@@ -372,10 +373,11 @@ fn max_effects_per_intent_is_1_and_a_row_with_2_effects(world: &mut World) {
     world.oil = format!(
         "{}",
         state
-            .places
-            .get("docks_shop")
-            .and_then(|place| place.items.get("lamp_oil"))
-            .copied()
+            .item_count(
+                &spookery_engine::Holder::Place("docks_shop".to_string()),
+                "lamp_oil"
+            )
+            .filter(|count| *count > 0)
             .map(i64::from)
             .unwrap_or(-1)
     )

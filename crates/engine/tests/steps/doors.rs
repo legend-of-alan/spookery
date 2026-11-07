@@ -115,7 +115,8 @@ fn the_door_is_open(world: &mut World) {
 fn mira_drops_the_key(world: &mut World) {
     plays(world.pack(), "mira", "drop", Some("brass_key"));
     let saved = spookery_engine::World::peek(world.pack()).unwrap();
-    assert_eq!(saved.state().actors["mira"].item_count("brass_key"), 0);
+    let mira = spookery_engine::Holder::Actor("mira".to_string());
+    assert_eq!(saved.state().item_count(&mira, "brass_key"), Some(0));
 }
 
 #[then(expr = "Mira can still take the stairs")]
@@ -127,7 +128,8 @@ fn mira_takes_the_stairs(world: &mut World) {
 #[when(expr = "Aldric, who has no key, takes the stairs")]
 fn aldric_takes_the_stairs(world: &mut World) {
     let saved = spookery_engine::World::peek(world.pack()).unwrap();
-    assert_eq!(saved.state().actors["aldric"].item_count("brass_key"), 0);
+    let aldric = spookery_engine::Holder::Actor("aldric".to_string());
+    assert_eq!(saved.state().item_count(&aldric, "brass_key"), Some(0));
     drop(saved);
     world.scratch = plays(world.pack(), "aldric", "travel", Some("stairs")).to_string();
 }

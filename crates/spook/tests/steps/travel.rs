@@ -113,7 +113,11 @@ fn rowan_sees_locked_and_nothing_changes(world: &mut World, text: String) {
         parts.next().unwrap()
     );
     assert_eq!(
-        now.actors.get("pc_rowan").unwrap().item_count("brass_key"),
+        now.item_count(
+            &spookery_engine::Holder::Actor("pc_rowan".to_string()),
+            "brass_key"
+        )
+        .unwrap(),
         0
     );
 }
@@ -205,7 +209,6 @@ fn two_arrivals(world: &mut World) {
         let nell = spookery_engine::testing::ActorLive {
             kind: spookery_engine::testing::ActorKind::Pc,
             place: "exit:docks_shop.docks_street".to_string(),
-            inventory: Default::default(),
             wielded: None,
             known_facts: Vec::new(),
             visited: Default::default(),
@@ -331,7 +334,6 @@ fn both_busy_without_a_gm(world: &mut World) {
         let nell = spookery_engine::testing::ActorLive {
             kind: spookery_engine::testing::ActorKind::Pc,
             place: "docks_shop".to_string(),
-            inventory: Default::default(),
             wielded: None,
             known_facts: Vec::new(),
             visited: Default::default(),

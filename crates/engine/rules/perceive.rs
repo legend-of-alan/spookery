@@ -148,20 +148,13 @@ fn perceive_viewer_budget(
     }
     notes.sort_by(|a, b| a.id.cmp(&b.id));
 
-    let items = state
-        .places
-        .get(&place)
-        .map(|place_live| {
-            place_live
-                .items
-                .iter()
-                .map(|(id, count)| ItemStack {
-                    id: id.clone(),
-                    count: *count,
-                })
-                .collect()
+    let here = Holder::Place(place.clone());
+    let items = (state.items.on(&here))
+        .map(|(id, count)| ItemStack {
+            id: id.clone(),
+            count: *count,
         })
-        .unwrap_or_default();
+        .collect();
 
     let meters = shown_meters(canon, state, &Holder::Actor(viewer.actor_id().to_string()));
     let world_meters = shown_meters(canon, state, &Holder::World);

@@ -44,11 +44,8 @@ pub(crate) fn afford(context: &Context, cost: &Cost) -> Result<(), gate::Refusal
         }
         let amount = expr::eval(context, expr).map_err(|_| cant_afford(id))?;
         let count = item_count(amount).map_err(|_| cant_afford(id))?;
-        let held = state
-            .actors
-            .get(who)
-            .map(|actor| actor.item_count(id))
-            .unwrap_or(0);
+        let actor = effect::Holder::Actor(who.to_string());
+        let held = state.item_count(&actor, id).unwrap_or(0);
         if held < count {
             return Err(cant_afford(id));
         }

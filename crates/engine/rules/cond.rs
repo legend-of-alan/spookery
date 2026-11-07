@@ -4,6 +4,7 @@ use crate::canon::Canon;
 use crate::intent::{Intent, Source, Target, Viewer};
 use crate::model::{Presence, State};
 use crate::rules::context::Context;
+use crate::rules::effect::Holder;
 use crate::rules::expr;
 use crate::rules::rule::Cond;
 use crate::Reason;
@@ -58,11 +59,7 @@ fn holds(context: &Context, cond: &Cond) -> Result<bool, Reason> {
         Cond::HasItem { who, id, count } => {
             let actor = expr::resolve_who_id(context, who)?;
             let id = expr::resolve_item_id(context, id)?;
-            let held = state
-                .actors
-                .get(&actor)
-                .map(|actor| actor.item_count(&id))
-                .unwrap_or(0);
+            let held = (state.item_count(&Holder::Actor(actor), &id)).unwrap_or(0);
             Ok(held >= *count)
         }
         Cond::Wielding { who, id } => {

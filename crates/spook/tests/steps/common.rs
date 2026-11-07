@@ -116,6 +116,11 @@ fn break_pack(pack: &Path, fault: &str) {
             // inserting one 0 changes the stored hash.
             fs::write(path, text).unwrap();
         }
+        "an item on the world" => replace_in_file(
+            &pack.join("state/save.yaml"),
+            "items:\n",
+            "items:\n  world:\n    lamp_oil: 1\n",
+        ),
         "a meter on an unlisted actor" => replace_in_file(
             &pack.join("state/save.yaml"),
             "meters:\n",

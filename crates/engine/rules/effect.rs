@@ -650,11 +650,8 @@ pub(crate) fn shift_item(
     let Holder::Actor(actor) = holder else {
         return Ok(());
     };
-    let live = &state.actors[actor];
-    let lets_go = live
-        .wielded
-        .as_ref()
-        .is_some_and(|item| live.item_count(item) == 0);
+    let wielded = state.actors[actor].wielded.as_ref();
+    let lets_go = wielded.is_some_and(|item| state.item_count(holder, item) == Some(0));
     if lets_go {
         state.edit_actor(actor, ActorEdit::Wielded(None))?;
     }
@@ -695,8 +692,8 @@ fn wield(canon: &Canon, state: &mut State, actor_id: &str, item_id: &str) -> Res
     if !item.tags.iter().any(|tag| tag == "weapon") {
         return Err(Reason::NotAWeapon);
     }
-    let actor = state.actors.get(actor_id);
-    if actor.ok_or(Reason::UnknownId)?.item_count(item_id) == 0 {
+    let held = state.item_count(&Holder::Actor(actor_id.to_string()), item_id);
+    if held.ok_or(Reason::UnknownId)? == 0 {
         return Err(Reason::MissingItem);
     }
     state.edit_actor(actor_id, ActorEdit::Wielded(Some(item_id.to_string())))
@@ -727,7 +724,7 @@ fn move_actor(
     if actor.place != from {
         return Err(Reason::OutOfRange);
     }
-    if !in_canon && !on_exit && !state.places.contains_key(to) {
+    if !in_canon && !on_exit && !state.places.contains(to) {
         return Err(Reason::NoExit);
     }
     // A canon place with no live record yet gets an empty one on the first arrival.
@@ -823,7 +820,7 @@ fn leave_note(
         return Err(Reason::UnknownId);
     }
     if let Some(place_id) = &place {
-        if !state.places.contains_key(place_id) {
+        if !state.places.contains(place_id) {
             return Err(Reason::UnknownId);
         }
     }

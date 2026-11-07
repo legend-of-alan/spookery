@@ -56,10 +56,11 @@ fn the_host_text_lists_the_door_note(world: &mut World) {
     assert_eq!(now.world_time, 1860);
     assert_eq!(now.last_round_at, "2026-01-01T00:00:00Z");
     assert_eq!(
-        now.places
-            .get("docks_shop")
-            .and_then(|place| place.items.get("lamp_oil"))
-            .copied(),
+        now.item_count(
+            &spookery_engine::Holder::Place("docks_shop".to_string()),
+            "lamp_oil"
+        )
+        .filter(|count| *count > 0),
         Some(4u32)
     );
     let rowan = spookery_engine::Holder::Actor("pc_rowan".to_string());
