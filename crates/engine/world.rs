@@ -4,7 +4,7 @@ use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use spookery_protocol::{PlaceView, WordView};
+use spookery_protocol::{CommandView, PlaceView};
 
 use crate::canon::Budget;
 use crate::canon::{check_save, load_canon, pack_rev, Canon};
@@ -171,7 +171,7 @@ impl<L> World<L> {
         self.canon.to_pack_summary()
     }
 
-    /// Every verb the pack's rules name: the words a player seat may send as moves.
+    /// Every verb the pack's rules name: the commands a player seat may send as moves.
     pub fn verbs(&self) -> Vec<String> {
         self.canon.verbs()
     }
@@ -344,8 +344,8 @@ impl<L> World<L> {
         crate::rules::perceive::perceive_budget(self, presence, as_arg, PERCEIVE_BODY_CHARS)
     }
 
-    /// The `help` words for `actor_id`: what they can do now, and what they can name.
-    pub fn help(&self, presence: &Presence, actor_id: &str) -> Result<Vec<WordView>, Reason> {
+    /// The `help` commands for `actor_id`: what they can do now, and what they can name.
+    pub fn help(&self, presence: &Presence, actor_id: &str) -> Result<Vec<CommandView>, Reason> {
         crate::rules::lines::help(&self.canon, &self.state, presence, actor_id)
     }
 

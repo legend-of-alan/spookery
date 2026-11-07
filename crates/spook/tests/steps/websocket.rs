@@ -19,8 +19,8 @@ fn a_player_connects_to_the_game_port(world: &mut World) {
     table::live_mut(world).unclaimed = Some(seat);
 }
 
-#[then(regex = r"^the hello lists the version and the words (.+)$")]
-fn the_hello_lists_the_version_and_the_words(world: &mut World, words: String) {
+#[then(regex = r"^the hello lists the version and the commands (.+)$")]
+fn the_hello_lists_the_version_and_the_words(world: &mut World, commands: String) {
     let hello = parse_messages(&world.scratch)
         .into_iter()
         .next()
@@ -29,11 +29,14 @@ fn the_hello_lists_the_version_and_the_words(world: &mut World, words: String) {
     assert_eq!(body["kind"], "hello", "{hello}");
     assert_eq!(body["version"], spookery::protocol::VERSION, "{hello}");
     assert!(hello.get("seq").is_none(), "{hello}");
-    let listed = body["words"]
+    let listed = body["commands"]
         .as_array()
-        .unwrap_or_else(|| panic!("no words\n{hello}"));
-    for word in words.split(", ") {
-        assert!(listed.iter().any(|known| known == word), "{word}\n{hello}");
+        .unwrap_or_else(|| panic!("no commands\n{hello}"));
+    for command in commands.split(", ") {
+        assert!(
+            listed.iter().any(|known| known == command),
+            "{command}\n{hello}"
+        );
     }
 }
 
@@ -81,7 +84,7 @@ fn the_gm_hears_the_wait_queued(world: &mut World) {
 
 #[when(expr = "the WebSocket GM commits")]
 fn the_websocket_gm_commits(world: &mut World) {
-    world.scratch = send_gm_word(world, "commit", json!({ "include_round": true }));
+    world.scratch = send_gm_command(world, "commit", json!({ "include_round": true }));
 }
 
 #[then(expr = "the WebSocket GM gets the round and then the commit reply")]
@@ -112,7 +115,7 @@ fn the_player_hears_that_round(world: &mut World) {
 
 #[when(expr = "the WebSocket GM says {string}")]
 fn the_websocket_gm_says(world: &mut World, text: String) {
-    world.scratch = send_gm_word(world, "say", json!({ "address": "table", "text": text }));
+    world.scratch = send_gm_command(world, "say", json!({ "address": "table", "text": text }));
 }
 
 #[then(expr = "the WebSocket GM's reply is its own say")]
@@ -125,14 +128,14 @@ fn the_gm_reply_is_its_own_say(world: &mut World) {
 
 #[when(expr = "the WebSocket GM releases the seat")]
 fn the_websocket_gm_releases_the_seat(world: &mut World) {
-    world.scratch = send_gm_word(world, "release", json!({}));
+    world.scratch = send_gm_command(world, "release", json!({}));
 }
 
 #[then(expr = "the WebSocket GM is told the seat is free")]
 fn the_gm_is_told_the_seat_is_free(world: &mut World) {
     let reply: Value = serde_json::from_str(&world.scratch).unwrap();
     assert_eq!(reply["body"]["kind"], "released", "{reply}");
-    let refused = send_gm_word(world, "status", json!({}));
+    let refused = send_gm_command(world, "status", json!({}));
     assert!(refused.contains("\"code\":\"NOT_IN_SPEC\""), "{refused}");
 }
 
@@ -151,10 +154,10 @@ fn every_gm_message_has_a_larger_seq(world: &mut World) {
     assert!(seqs.windows(2).all(|pair| pair[0] < pair[1]), "{text}");
 }
 
-/// Sends one GM word and returns its reply line.
-fn send_gm_word(world: &World, word: &str, args: Value) -> String {
+/// Sends one GM command and returns its reply line.
+fn send_gm_command(world: &World, command: &str, args: Value) -> String {
     let gm = ws_gm(world);
-    let id = gm.send(word, args);
+    let id = gm.send(command, args);
     gm.wait_reply(&id)
 }
 

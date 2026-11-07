@@ -303,8 +303,8 @@ fn the_gm_lists_the_tools(world: &mut World) {
 /// One row per shape a tool accepts, in the order `tools/list` gives: a `oneOf` schema has
 /// one shape per branch. Each shape must refuse keys it does not name, so its fields are all
 /// a GM may send.
-#[then(expr = "the tools are the GM words, and each input schema names these fields")]
-fn the_tools_are_the_gm_words(world: &mut World, step: &Step) {
+#[then(expr = "the tools are the GM commands, and each input schema names these fields")]
+fn the_tools_are_the_gm_commands(world: &mut World, step: &Step) {
     let tools: Vec<Value> =
         serde_json::from_str(&world.scratch).unwrap_or_else(|err| panic!("tools: {err}"));
     let mut shapes = Vec::new();
@@ -400,18 +400,18 @@ fn call_each_gm_tool(gm: &mut GmClient) {
 }
 
 /// One tool call; every message it sent the seat, the reply last.
-fn call(gm: &mut GmClient, word: &str, arguments: Value) -> Vec<ServerMessage> {
-    support::block_on(gm.call(word, &arguments)).unwrap_or_else(|err| panic!("{word}: {err}"))
+fn call(gm: &mut GmClient, command: &str, arguments: Value) -> Vec<ServerMessage> {
+    support::block_on(gm.call(command, &arguments)).unwrap_or_else(|err| panic!("{command}: {err}"))
 }
 
 /// The reply, the last message in the result, is not a refusal.
-fn assert_not_refused(messages: &[ServerMessage], word: &str) {
+fn assert_not_refused(messages: &[ServerMessage], command: &str) {
     let reply = messages
         .last()
-        .unwrap_or_else(|| panic!("{word} has no reply"));
+        .unwrap_or_else(|| panic!("{command} has no reply"));
     assert!(
         !matches!(reply.body, ServerBody::Refused(_)),
-        "{word} was refused: {messages:?}"
+        "{command} was refused: {messages:?}"
     );
 }
 
@@ -503,19 +503,19 @@ const TRAVEL_THEN_COMMIT: [(&str, &str); 3] = [
 fn each_sends_travel_and_commits(world: &mut World) {
     let mut over_mcp = Vec::new();
     let mut over_ws = Vec::new();
-    for (word, args) in TRAVEL_THEN_COMMIT {
+    for (command, args) in TRAVEL_THEN_COMMIT {
         let args: Value = serde_json::from_str(args).unwrap_or_else(|err| panic!("{err}"));
         let live = table::live_mut(world);
         let gm = live.gm.as_mut().unwrap_or_else(|| panic!("no GM on /mcp"));
-        let messages = support::block_on(gm.call(word, &args))
-            .unwrap_or_else(|err| panic!("{word} over /mcp: {err}"));
+        let messages = support::block_on(gm.call(command, &args))
+            .unwrap_or_else(|err| panic!("{command} over /mcp: {err}"));
         over_mcp.push(messages.iter().map(|message| json!(message)).collect());
         let gm = live
             .ws_gm
             .as_ref()
             .unwrap_or_else(|| panic!("no GM on WebSocket"));
         let mark = gm.mark();
-        let id = gm.send(word, args);
+        let id = gm.send(command, args);
         gm.wait_reply(&id);
         let text = support::text_of(&gm.text);
         over_ws.push(

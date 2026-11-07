@@ -1,4 +1,4 @@
-//! The GM words: how each one runs, and how its MCP tool describes it.
+//! The GM commands: how each one runs, and how its MCP tool describes it.
 
 use std::sync::Arc;
 
@@ -13,15 +13,15 @@ use crate::protocol::{
     PERCEIVE_BODY_CHARS,
 };
 
-/// Sent from a GM word's run back to the table, which answers the GM and updates seats.
+/// Sent from a GM command's run back to the table, which answers the GM and updates seats.
 pub(super) struct Reply {
     pub(super) body: ServerBody,
-    /// The speech this word put on the tape. The table delivers it, and the GM's copy is
+    /// The speech this command put on the tape. The table delivers it, and the GM's copy is
     /// the reply.
     pub(super) said: Option<TapeRecord>,
     /// The GM seat is cleared once this reply is sent.
     pub(super) release_seat: bool,
-    /// Rounds this word played, commit first.
+    /// Rounds this command played, commit first.
     pub(super) outputs: Vec<RoundOutput>,
 }
 
@@ -35,22 +35,22 @@ impl Reply {
         }
     }
 
-    /// The reply to a refused word.
+    /// The reply to a refused command.
     pub(super) fn refused(code: Reason) -> Self {
         Self::new(ServerBody::Refused(code.into()))
     }
 }
 
-/// Run one GM word. `presence` is who the seats hold. A word that is not a GM word is
+/// Run one GM command. `presence` is who the seats hold. A command that is not a GM command is
 /// `SCHEMA`.
-pub(super) fn run_gm_word(
+pub(super) fn run_gm_command(
     world: &mut World,
     presence: &Presence,
-    word: &str,
+    command: &str,
     args: &Map<String, Value>,
 ) -> Result<Reply, Reason> {
     let args = Some(args);
-    match word {
+    match command {
         "status" => status(world, presence, args),
         "perceive" => perceive(world, presence, args),
         "queue" => queue(world, presence, args),
@@ -61,10 +61,12 @@ pub(super) fn run_gm_word(
     }
 }
 
-/// What a GM word's MCP tool says about it, and the schema of the word's `args`. `None` for a
-/// word that is not a GM word.
-pub(super) fn describe_gm_word(word: &str) -> Option<(&'static str, Arc<Map<String, Value>>)> {
-    let described = match word {
+/// What a GM command's MCP tool says about it, and the schema of the command's `args`. `None` for a
+/// command that is not a GM command.
+pub(super) fn describe_gm_command(
+    command: &str,
+) -> Option<(&'static str, Arc<Map<String, Value>>)> {
+    let described = match command {
         "status" => (
             "status takes no keys. The reply is who is seated, the queue and the pack.",
             schema_for_type::<NoArgs>(),
@@ -220,14 +222,14 @@ mod tests {
 
     use spookery_engine::{Presence, Reason};
 
-    use super::{describe_gm_word, run_gm_word};
-    use crate::protocol::{QueuedMove, Seat, WORDS};
+    use super::{describe_gm_command, run_gm_command};
+    use crate::protocol::{QueuedMove, Seat, COMMANDS};
 
-    /// `run_gm_word` runs each GM word the hello lists: well-formed arguments are not
-    /// `SCHEMA`, and a word that is not one is.
+    /// `run_gm_command` runs each GM command the hello lists: well-formed arguments are not
+    /// `SCHEMA`, and a command that is not one is.
     #[test]
     fn each_gm_word_runs() {
-        let pack = copy_pack("oneshot-docks", "gm_words");
+        let pack = copy_pack("oneshot-docks", "gm_commands");
         let mut world = spookery_engine::testing::resume(&pack);
         let calls = [
             ("status", json!({})),
@@ -237,32 +239,36 @@ mod tests {
             ("commit", json!({"include_round": false})),
             ("release", json!({})),
         ];
-        let gm_words: Vec<&str> = WORDS
+        let gm_commands: Vec<&str> = COMMANDS
             .iter()
-            .filter(|word| word.seat == Seat::Gm)
-            .map(|word| word.name)
+            .filter(|command| command.seat == Seat::Gm)
+            .map(|command| command.name)
             .collect();
-        let called: Vec<&str> = calls.iter().map(|(word, _)| *word).collect();
-        assert_eq!(called, gm_words);
-        for (word, args) in calls {
+        let called: Vec<&str> = calls.iter().map(|(command, _)| *command).collect();
+        assert_eq!(called, gm_commands);
+        for (command, args) in calls {
             let args = args.as_object().cloned().unwrap_or_default();
-            let ran = run_gm_word(&mut world, &Presence::default(), word, &args);
-            assert!(!matches!(ran, Err(Reason::Schema)), "{word}");
+            let ran = run_gm_command(&mut world, &Presence::default(), command, &args);
+            assert!(!matches!(ran, Err(Reason::Schema)), "{command}");
         }
         assert!(matches!(
-            run_gm_word(&mut world, &Presence::default(), "fly", &Default::default()),
+            run_gm_command(&mut world, &Presence::default(), "fly", &Default::default()),
             Err(Reason::Schema)
         ));
     }
 
-    /// Every GM word the hello lists has a tool description and schema. A word that is not
-    /// a GM word has none.
+    /// Every GM command the hello lists has a tool description and schema. A command that is not
+    /// a GM command has none.
     #[test]
     fn each_gm_word_is_described() {
-        for word in WORDS.iter().filter(|word| word.seat == Seat::Gm) {
-            assert!(describe_gm_word(word.name).is_some(), "{}", word.name);
+        for command in COMMANDS.iter().filter(|command| command.seat == Seat::Gm) {
+            assert!(
+                describe_gm_command(command.name).is_some(),
+                "{}",
+                command.name
+            );
         }
-        assert!(describe_gm_word("fly").is_none());
+        assert!(describe_gm_command("fly").is_none());
     }
 
     #[test]

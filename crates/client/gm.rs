@@ -1,4 +1,4 @@
-//! The human GM: typed lines go out as words, and each message comes back as text.
+//! The human GM: typed lines go out as commands, and each message comes back as text.
 
 use std::io::{self, Write};
 use std::net::SocketAddr;
@@ -22,14 +22,14 @@ Commands:
       Queue a move. A target is a place id or an actor id.
   commit
       Commit the queue as one round.
-  <word> {...}
-      Send a word with these JSON arguments, such as
+  <command> {...}
+      Send a command with these JSON arguments, such as
       say {\"address\": \"place\", \"place\": \"docks_shop\", \"text\": \"...\"}.
   release
       Leave the seat.
   help
       Show these commands.
-A word the table does not list, or arguments it cannot read, is not sent.";
+A command the table does not list, or arguments it cannot read, is not sent.";
 
 /// Sit the GM seat on `/gm` at `addr` until the seat is released or the host closes it.
 pub async fn run(addr: SocketAddr, raw: bool) -> Result<(), Error> {
@@ -42,8 +42,8 @@ pub async fn run(addr: SocketAddr, raw: bool) -> Result<(), Error> {
     if raw {
         emit(&hello.to_text());
     }
-    let words = match hello.body {
-        ServerBody::Hello { words, .. } => words,
+    let commands = match hello.body {
+        ServerBody::Hello { commands, .. } => commands,
         _ => Vec::new(),
     };
     emit(HELP);
@@ -71,13 +71,13 @@ pub async fn run(addr: SocketAddr, raw: bool) -> Result<(), Error> {
                 match read_typed(&typed) {
                     None => {}
                     Some(("help", _)) => emit(HELP),
-                    Some((word, _)) if !words.iter().any(|known| known == word) => {
+                    Some((command, _)) if !commands.iter().any(|known| known == command) => {
                         report(&text::render_refusal(&Refusal::from(Reason::NotInSpec), raw));
                     }
-                    Some((word, Some(args))) => {
-                        seat.send(word, args).await?;
+                    Some((command, Some(args))) => {
+                        seat.send(command, args).await?;
                     }
-                    // A listed word that cannot read the line: its arguments are wrong.
+                    // A listed command that cannot read the line: its arguments are wrong.
                     Some((_, None)) => {
                         report(&text::render_refusal(&Refusal::from(Reason::Schema), raw));
                     }
@@ -117,24 +117,24 @@ fn report(line: &str) {
     let _ = io::stderr().flush();
 }
 
-/// The word a typed line names and its arguments, or `None` for an empty line. A JSON object
-/// after the word is sent as it is. Otherwise `say`, `perceive`, `queue` and `commit` read the
-/// rest of the line, and any other word takes nothing after it. No arguments means the word
+/// The command a typed line names and its arguments, or `None` for an empty line. A JSON object
+/// after the command is sent as it is. Otherwise `say`, `perceive`, `queue` and `commit` read the
+/// rest of the line, and any other command takes nothing after it. No arguments means the command
 /// cannot read that line.
 fn read_typed(line: &str) -> Option<(&str, Option<Value>)> {
     let line = line.trim();
-    let (word, rest) = line
+    let (command, rest) = line
         .split_once(' ')
-        .map_or((line, ""), |(word, rest)| (word, rest.trim()));
-    if word.is_empty() {
+        .map_or((line, ""), |(command, rest)| (command, rest.trim()));
+    if command.is_empty() {
         return None;
     }
     if rest.starts_with('{') {
         let args = serde_json::from_str(rest).ok().filter(Value::is_object);
-        return Some((word, args));
+        return Some((command, args));
     }
     let parts: Vec<&str> = rest.split_whitespace().collect();
-    let args = match (word, parts.as_slice()) {
+    let args = match (command, parts.as_slice()) {
         ("say", [_, ..]) => Some(json!({ "address": "table", "text": rest })),
         ("perceive", [actor]) => Some(json!({ "as": actor })),
         ("queue", [actor, move_name]) => Some(json!({ "actor_id": actor, "move": move_name })),
@@ -146,7 +146,7 @@ fn read_typed(line: &str) -> Option<(&str, Option<Value>)> {
         (_, []) => Some(json!({})),
         _ => None,
     };
-    Some((word, args))
+    Some((command, args))
 }
 
 #[cfg(test)]

@@ -44,7 +44,7 @@
               "format": "uint32",
               "minimum": 0
             },
-            "words": {
+            "commands": {
               "type": "array",
               "items": {
                 "type": "string"
@@ -70,7 +70,7 @@
           "required": [
             "kind",
             "version",
-            "words"
+            "commands"
           ]
         },
         {
@@ -316,13 +316,13 @@
           ]
         },
         {
-          "description": "The reply to `help`: the words this player can use now.",
+          "description": "The reply to `help`: the commands this player can use now.",
           "type": "object",
           "properties": {
-            "words": {
+            "commands": {
               "type": "array",
               "items": {
-                "$ref": "#/$defs/WordView"
+                "$ref": "#/$defs/CommandView"
               }
             },
             "kind": {
@@ -332,7 +332,7 @@
           },
           "required": [
             "kind",
-            "words"
+            "commands"
           ]
         },
         {
@@ -926,8 +926,8 @@
         "habits"
       ]
     },
-    "WordView": {
-      "description": "One word of a `help` reply. `target` is what the word takes: `none`, `actor`, `place`,\n`exit` or `item`. `names` lists what the player can name for it now. `owner` is the\ncast member or item whose verb this is, reached by naming them.",
+    "CommandView": {
+      "description": "One command of a `help` reply. `target` is what the command takes: `none`, `actor`, `place`,\n`exit` or `item`. `names` lists what the player can name for it now. `owner` is the\ncast member or item whose verb this is, reached by naming them.",
       "type": "object",
       "properties": {
         "name": {

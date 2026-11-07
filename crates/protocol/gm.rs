@@ -1,4 +1,4 @@
-//! The GM seat's word arguments, the bodies of its `status` and `committed` replies, and the
+//! The GM seat's command arguments, the bodies of its `status` and `committed` replies, and the
 //! result `/mcp` answers a tool call with.
 
 use serde::de::DeserializeOwned;
@@ -14,7 +14,7 @@ pub fn parse_args<T: DeserializeOwned>(
     serde_json::from_value(Value::Object(arguments.cloned().unwrap_or_default()))
 }
 
-/// The GM's `perceive` word arguments, sent from a GM client to the table.
+/// The GM's `perceive` command arguments, sent from a GM client to the table.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(deny_unknown_fields)]
@@ -28,7 +28,7 @@ pub struct PerceiveArgs {
     pub max_body_chars: Option<u64>,
 }
 
-/// The GM's `commit` word arguments, sent from a GM client to the table.
+/// The GM's `commit` command arguments, sent from a GM client to the table.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(deny_unknown_fields)]
@@ -50,7 +50,7 @@ struct SayWire {
     actor: Option<String>,
 }
 
-/// The `say` word arguments of either seat, sent from a client to the table.
+/// The `say` command arguments of either seat, sent from a client to the table.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 // The schema shows the three tagged shapes, closed and with non-empty names as `SayWire`
@@ -102,7 +102,7 @@ impl TryFrom<SayWire> for SayArgs {
     }
 }
 
-/// The GM's `queue` word arguments, sent from a GM client to the table.
+/// The GM's `queue` command arguments, sent from a GM client to the table.
 /// Serialized, a call names only the fields that are set.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
@@ -212,7 +212,7 @@ pub struct PackSummary {
 }
 
 /// The structured content of an `/mcp` tool result, sent from the table to an MCP GM client:
-/// every message the call's word sent this seat, in order, its reply last.
+/// every message the call's command sent this seat, in order, its reply last.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ToolResult {
     pub messages: Vec<ServerMessage>,

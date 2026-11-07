@@ -1,6 +1,6 @@
 //! The place name, place prose and busy line a view carries, and a player's help and map.
 
-use spookery_protocol::{PlaceView, Seat, WordView, WORDS};
+use spookery_protocol::{CommandView, PlaceView, Seat, COMMANDS};
 
 use crate::canon::Canon;
 use crate::intent::{Target, Viewer};
@@ -11,7 +11,7 @@ use crate::rules::rule::{Owner, TargetKind, When};
 use crate::rules::travel::{exit_stood_on, exit_view, exits_at};
 use crate::Reason;
 
-/// `help`: the built-in player words but `claim`, then each pack verb `verb_for` reaches
+/// `help`: the built-in player commands but `claim`, then each pack verb `verb_for` reaches
 /// now and whose `if` holds. A cast member's or item's verb is reached by naming them
 /// (`nameable`), so it carries that owner as its one name. Cost is not checked.
 pub(crate) fn help(
@@ -19,14 +19,14 @@ pub(crate) fn help(
     state: &State,
     presence: &Presence,
     actor_id: &str,
-) -> Result<Vec<WordView>, Reason> {
+) -> Result<Vec<CommandView>, Reason> {
     let actor = state.actors.get(actor_id).ok_or(Reason::UnknownId)?;
     let viewer = Viewer::Player(actor_id.to_string());
-    let mut words: Vec<WordView> = WORDS
+    let mut commands: Vec<CommandView> = COMMANDS
         .iter()
-        .filter(|word| word.seat == Seat::Player && word.name != "claim")
-        .map(|word| WordView {
-            name: word.name.to_string(),
+        .filter(|command| command.seat == Seat::Player && command.name != "claim")
+        .map(|command| CommandView {
+            name: command.name.to_string(),
             target: TargetKind::None.as_str().to_string(),
             names: Vec::new(),
             owner: None,
@@ -56,7 +56,7 @@ pub(crate) fn help(
                 When::Verb { target, .. } => *target,
                 _ => TargetKind::None,
             };
-            let word = WordView {
+            let command = CommandView {
                 name: verb.clone(),
                 target: kind.as_str().to_string(),
                 names: match owner {
@@ -65,15 +65,15 @@ pub(crate) fn help(
                 },
                 owner: owner.cloned(),
             };
-            if !words.contains(&word) {
-                words.push(word);
+            if !commands.contains(&command) {
+                commands.push(command);
             }
         }
     }
-    Ok(words)
+    Ok(commands)
 }
 
-/// What the actor can name now for a word that takes `kind`: the exits from here, the
+/// What the actor can name now for a command that takes `kind`: the exits from here, the
 /// actors or items among `nameable`, or the places they visited.
 fn names_for(
     canon: &Canon,

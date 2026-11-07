@@ -163,7 +163,7 @@ pub(crate) fn admit(context: &Context, rule: &Rule) -> Result<(), Refusal> {
     Ok(())
 }
 
-/// The player word that drops the actor's own action under way.
+/// The player command that drops the actor's own action under way.
 pub(crate) const CANCEL: &str = "cancel";
 
 /// Whether this intent is a player's `cancel`.

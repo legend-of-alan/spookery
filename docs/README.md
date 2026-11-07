@@ -52,11 +52,11 @@ docs/                  guarantees, first-pack guide, pack reference, expressions
 packs/                 sample-d20 is the starter. oneshot-docks is the multi-PC fixture
 .grok/skills/          the author-pack skill
 crates/
-  protocol/            spookery-protocol: the message envelope, its bodies, and the word table
+  protocol/            spookery-protocol: the message envelope, its bodies, and the command table
   engine/              spookery-engine: world model, rules, rounds, and journal
   agent/               spookery-agent: the reusable GM brain: turn graph, prompt, tools, Model and Connection
   client/              spookery-client: play, gm, ai_gm (the three clients), ws, http_model, text
-  server/              spookery-server: the table, the game port's WebSocket endpoint, MCP endpoint, GM words, seats, idle timer
+  server/              spookery-server: the table, the game port's WebSocket endpoint, MCP endpoint, GM commands, seats, idle timer
   spook/               package and binary spook, library spookery
     tests/features/    BDD scenarios
 ```
@@ -93,11 +93,11 @@ If a move leaves every seated player busy, the clock runs on until they arrive.
 
 `spook ai-gm` puts a model in the GM seat. It doesn't start the host, so run `spook run` first.
 
-It posts to `{SPOOK_GM_URL}/chat/completions` with four tools. Three are the GM seat's words: `perceive`, `say` and `queue`, with the parameters `crates/protocol/schema/client.json` gives them. The fourth, `end_turn`, plays the round: the AI GM sends `commit` for it.
+It posts to `{SPOOK_GM_URL}/chat/completions` with four tools. Three are the GM seat's commands: `perceive`, `say` and `queue`, with the parameters `crates/protocol/schema/client.json` gives them. The fourth, `end_turn`, plays the round: the AI GM sends `commit` for it.
 
 Each turn is a loop. A player's say or a queued move wakes it. The model calls tools, and each call goes to the table as it is. The table's reply comes back as that call's result, refusals included, so the model can look around first, try again after a refusal, and queue moves for several NPCs before it ends the turn. After `end_turn` it gets the rolls and can say what happened. The turn ends when the model answers with no tool calls.
 
-The engine still decides every effect. A turn commits only when it saw a queued move when it started or queued one itself, and it commits a waiting move itself when the model stops without `end_turn`. A turn stops after 20 tool calls and prints a `step limit` warning. If a word goes out and its reply can't be read, `spook ai-gm` stops and names the word, because the table may have applied it. Start it again and it reads the table afresh.
+The engine still decides every effect. A turn commits only when it saw a queued move when it started or queued one itself, and it commits a waiting move itself when the model stops without `end_turn`. A turn stops after 20 tool calls and prints a `step limit` warning. If a command goes out and its reply can't be read, `spook ai-gm` stops and names the command, because the table may have applied it. Start it again and it reads the table afresh.
 
 You need all three of these. There's no default URL.
 
@@ -140,7 +140,7 @@ If the provider refuses a call, stderr shows `model call returned <status>: <tex
 spook gm
 ```
 
-Type `help` to see the GM commands. A line is a word the hello listed, then its arguments: `queue mira restock_lamp_oil`, or a JSON object such as `say {"address": "place", "place": "docks_shop", "text": "..."}`. `spook gm --raw` prints each message as one JSON line instead.
+Type `help` to see the GM commands. A line is a command the hello listed, then its arguments: `queue mira restock_lamp_oil`, or a JSON object such as `say {"address": "place", "place": "docks_shop", "text": "..."}`. `spook gm --raw` prints each message as one JSON line instead.
 
 `spook gm` and `spook ai-gm` connect to the GM seat on `/gm` on the game port, so `--addr` points them. If you started the host with `--addr 127.0.0.1:0`, the OS picks the port and the listening line tells you: pass `game` to `--addr`.
 

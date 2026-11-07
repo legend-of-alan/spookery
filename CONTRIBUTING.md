@@ -183,4 +183,4 @@ Claude Desktop's config file only takes stdio. `mcp-remote` reaches the MCP endp
 }
 ```
 
-The tools are the GM words `status`, `perceive`, `queue`, `say`, `commit`, and `release`. A tool result lists every message the word sent the GM, its reply last. A client may ignore `spook/event` notifications. `release` answers after the GM seat is free.
+The tools are the GM commands `status`, `perceive`, `queue`, `say`, `commit`, and `release`. A tool result lists every message the command sent the GM, its reply last. A client may ignore `spook/event` notifications. `release` answers after the GM seat is free.

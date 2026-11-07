@@ -644,7 +644,7 @@ fn when_of(yaml: &WhenYaml) -> Result<When, String> {
                 }
                 if is_built_in(Seat::Player, verb) {
                     return Err(format!(
-                        "verb '{verb}' is a built-in word; give the rule another verb name"
+                        "verb '{verb}' is a built-in command; give the rule another verb name"
                     ));
                 }
                 let target = match map.target.as_deref() {

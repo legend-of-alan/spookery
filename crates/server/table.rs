@@ -1,4 +1,4 @@
-//! The table, the one owner of the world and its seats: connections, words, say and rounds.
+//! The table, the one owner of the world and its seats: connections, commands, say and rounds.
 //! Every message it sends but a hello takes the next `seq` from its one counter.
 
 use std::io::Write;
@@ -11,13 +11,13 @@ use spookery_engine::{
 use tokio::sync::{oneshot, watch};
 
 use super::frames;
-use super::gm::{run_gm_word, Reply};
+use super::gm::{run_gm_command, Reply};
 use super::idle::{self, now_stamp};
 use super::seat::{Claim, ConnId, Connection, FrameSender, Seats};
 use super::Error;
 use crate::protocol::{
     is_built_in, parse_args, ClaimArgs, ClientBody, ClientMessage, MoveArgs, NoArgs, SayArgs, Seat,
-    ServerBody, ServerMessage, VERSION, WORDS,
+    ServerBody, ServerMessage, COMMANDS, VERSION,
 };
 
 /// The host's cap. A pack may define more PCs than this.
@@ -54,7 +54,7 @@ pub(super) enum Request {
         ack: oneshot::Sender<()>,
     },
     /// One MCP tool call, as a client message. The reply is every message the table sent
-    /// this connection while it ran the word, the word's own reply last.
+    /// this connection while it ran the command, the command's own reply last.
     ToolCall {
         conn: ConnId,
         message: ClientMessage,
@@ -85,7 +85,7 @@ pub(crate) struct Table {
     seats: Seats,
     /// The `seq` of the last message sent.
     seq: u64,
-    /// The pack's verbs, which are player words too.
+    /// The pack's verbs, which are player commands too.
     verbs: Vec<String>,
     /// Each send restarts the idle timer.
     idle: watch::Sender<u64>,
@@ -197,14 +197,14 @@ impl Table {
             seat,
             out,
         });
-        let mut words: Vec<String> = WORDS
+        let mut commands: Vec<String> = COMMANDS
             .iter()
-            .filter(|word| word.seat == seat)
-            .map(|word| word.name.to_string())
+            .filter(|command| command.seat == seat)
+            .map(|command| command.name.to_string())
             .collect();
         let (mut open, mut taken) = (Vec::new(), Vec::new());
         if seat == Seat::Player {
-            words.extend(self.verbs.iter().cloned());
+            commands.extend(self.verbs.iter().cloned());
             (open, taken) = self.open_and_taken();
         }
         let hello = ServerMessage {
@@ -213,7 +213,7 @@ impl Table {
             reply_to: None,
             body: ServerBody::Hello {
                 version: VERSION,
-                words,
+                commands,
                 open,
                 taken,
             },
@@ -246,25 +246,28 @@ impl Table {
             }
         };
         match seat {
-            Seat::Player => self.handle_player_word(conn, id, body),
-            Seat::Gm => self.handle_gm_word(conn, id, body),
+            Seat::Player => self.handle_player_command(conn, id, body),
+            Seat::Gm => self.handle_gm_command(conn, id, body),
         }
     }
 
-    fn handle_player_word(&mut self, conn: ConnId, id: Option<String>, body: ClientBody) {
-        let ClientBody { word, args } = body;
-        let built_in = is_built_in(Seat::Player, &word);
-        if !built_in && !self.verbs.contains(&word) {
+    fn handle_player_command(&mut self, conn: ConnId, id: Option<String>, body: ClientBody) {
+        let ClientBody {
+            kind: command,
+            args,
+        } = body;
+        let built_in = is_built_in(Seat::Player, &command);
+        if !built_in && !self.verbs.contains(&command) {
             return self.reply(conn, id, ServerBody::Refused(Reason::Schema.into()));
         }
-        if word == "claim" {
+        if command == "claim" {
             return self.claim(conn, id, &args);
         }
         let Some(actor_id) = self.seats.claim_of(conn).map(|claim| claim.actor.clone()) else {
             return self.reply(conn, id, ServerBody::Refused(Reason::ChoosePc.into()));
         };
         let presence = self.seats.presence();
-        let body = match word.as_str() {
+        let body = match command.as_str() {
             "release" if read::<NoArgs>(&args).is_some() => return self.release_claim(conn, id),
             "say" => match read::<SayArgs>(&args) {
                 Some(args) => return self.say_as_player(conn, id, &actor_id, &args),
@@ -280,7 +283,7 @@ impl Table {
             // Data, read from the world as it is now. The client writes the text.
             "help" if read::<NoArgs>(&args).is_some() => {
                 match self.world.help(&presence, &actor_id) {
-                    Ok(words) => ServerBody::Help { words },
+                    Ok(commands) => ServerBody::Help { commands },
                     Err(code) => ServerBody::Refused(code.into()),
                 }
             }
@@ -290,7 +293,7 @@ impl Table {
             },
             "release" | "look" | "help" | "map" => ServerBody::Refused(Reason::Schema.into()),
             _ => match read::<MoveArgs>(&args) {
-                Some(args) => return self.play_move(conn, id, &actor_id, &word, args.target),
+                Some(args) => return self.play_move(conn, id, &actor_id, &command, args.target),
                 None => ServerBody::Refused(Reason::Schema.into()),
             },
         };
@@ -462,14 +465,14 @@ impl Table {
         }
     }
 
-    fn handle_gm_word(&mut self, conn: ConnId, id: Option<String>, body: ClientBody) {
+    fn handle_gm_command(&mut self, conn: ConnId, id: Option<String>, body: ClientBody) {
         if self.seats.gm != Some(conn) {
             return self.reply(conn, id, ServerBody::Refused(Reason::NotInSpec.into()));
         }
         let presence = self.seats.presence();
-        let reply = run_gm_word(&mut self.world, &presence, &body.word, &body.args)
+        let reply = run_gm_command(&mut self.world, &presence, &body.kind, &body.args)
             .unwrap_or_else(Reply::refused);
-        self.log_refused(&body.word, &reply);
+        self.log_refused(&body.kind, &reply);
         self.after_rounds(&reply.outputs);
         // A say's reply is the GM's copy of it.
         match &reply.said {
@@ -481,9 +484,9 @@ impl Table {
         }
     }
 
-    fn log_refused(&mut self, word: &str, reply: &Reply) {
+    fn log_refused(&mut self, command: &str, reply: &Reply) {
         if let ServerBody::Refused(refused) = &reply.body {
-            let _ = writeln!(self.out, "refused {word} {}", refused.code.as_str());
+            let _ = writeln!(self.out, "refused {command} {}", refused.code.as_str());
             let _ = self.out.flush();
         }
     }
@@ -695,7 +698,7 @@ fn stamp_message(seq: u64, reply_to: Option<String>, body: ServerBody) -> Server
     }
 }
 
-/// A word's arguments, or `None` when they do not fit its type.
+/// A command's arguments, or `None` when they do not fit its type.
 fn read<T: serde::de::DeserializeOwned>(args: &Map<String, Value>) -> Option<T> {
     parse_args(Some(args)).ok()
 }

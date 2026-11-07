@@ -1,8 +1,8 @@
 //! Readable text for player and GM messages, and the status and commit replies.
 
 use crate::protocol::{
-    self, CommitBody, ExitView, MeterView, NoteView, Outcome, PlaceView, Roll, Say, ServerBody,
-    Speaker, TableStatus, WordView,
+    self, CommandView, CommitBody, ExitView, MeterView, NoteView, Outcome, PlaceView, Roll, Say,
+    ServerBody, Speaker, TableStatus,
 };
 
 /// Readable text for one player body. Empty means print nothing.
@@ -19,7 +19,7 @@ pub fn render(body: &ServerBody) -> String {
         ServerBody::Lines { text } => text.clone(),
         ServerBody::Refused(refusal) => refusal.to_string(),
         ServerBody::View(view) => render_view(view),
-        ServerBody::Help { words } => render_help(words),
+        ServerBody::Help { commands } => render_help(commands),
         ServerBody::Map { places } => render_map(places),
         ServerBody::Claimed { scrollback, .. } => render_scrollback(scrollback),
         ServerBody::Hello { .. }
@@ -202,25 +202,25 @@ pub fn render_view(view: &protocol::View) -> String {
     sections.join("\n\n")
 }
 
-/// One word per line: `look`, `ask briar`, or `strike <actor>: briar, aldric`.
-pub fn render_help(words: &[WordView]) -> String {
-    let lines: Vec<String> = words.iter().map(word_line).collect();
+/// One command per line: `look`, `ask briar`, or `strike <actor>: briar, aldric`.
+pub fn render_help(commands: &[CommandView]) -> String {
+    let lines: Vec<String> = commands.iter().map(command_line).collect();
     lines.join("\n")
 }
 
-fn word_line(word: &WordView) -> String {
-    let name = &word.name;
-    if let Some(owner) = &word.owner {
+fn command_line(command: &CommandView) -> String {
+    let name = &command.name;
+    if let Some(owner) = &command.owner {
         return format!("{name} {owner}");
     }
-    if word.target == "none" {
+    if command.target == "none" {
         return name.clone();
     }
-    let line = format!("{name} <{}>", word.target);
-    if word.names.is_empty() {
+    let line = format!("{name} <{}>", command.target);
+    if command.names.is_empty() {
         line
     } else {
-        format!("{line}: {}", word.names.join(", "))
+        format!("{line}: {}", command.names.join(", "))
     }
 }
 

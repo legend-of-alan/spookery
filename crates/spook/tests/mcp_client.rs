@@ -122,13 +122,17 @@ impl GmClient {
             .map_err(|err| err.to_string())
     }
 
-    /// Send the word `word` as a tool call. The result is every message it sent this seat,
+    /// Send the command `command` as a tool call. The result is every message it sent this seat,
     /// its reply last.
-    pub async fn call(&mut self, word: &str, args: &Value) -> Result<Vec<ServerMessage>, String> {
+    pub async fn call(
+        &mut self,
+        command: &str,
+        args: &Value,
+    ) -> Result<Vec<ServerMessage>, String> {
         let Value::Object(arguments) = args.clone() else {
-            return Err(format!("{word} arguments: {args}"));
+            return Err(format!("{command} arguments: {args}"));
         };
-        let params = CallToolRequestParams::new(word.to_string()).with_arguments(arguments);
+        let params = CallToolRequestParams::new(command.to_string()).with_arguments(arguments);
         let result = self
             .service
             .call_tool(params)
@@ -140,7 +144,7 @@ impl GmClient {
         let body = result.structured_content.unwrap_or(Value::Null);
         serde_json::from_value::<ToolResult>(body.clone())
             .map(|result| result.messages)
-            .map_err(|_| format!("{word} result: {body}"))
+            .map_err(|_| format!("{command} result: {body}"))
     }
 
     /// Events read while waiting for the latest tool result, in arrival order.
@@ -327,13 +331,13 @@ impl RawSession {
         String::from_utf8_lossy(&raw).into_owned()
     }
 
-    /// Calls the tool `word` with no arguments. Returns the raw reply.
-    pub fn call(&self, word: &str) -> String {
+    /// Calls the tool `command` with no arguments. Returns the raw reply.
+    pub fn call(&self, command: &str) -> String {
         let call = serde_json::json!({
             "jsonrpc": "2.0",
             "id": 2,
             "method": "tools/call",
-            "params": { "name": word, "arguments": {} }
+            "params": { "name": command, "arguments": {} }
         });
         self.post(&call)
     }

@@ -7,9 +7,9 @@ use tungstenite::{Message, WebSocket};
 
 type Player = WebSocket<TcpStream>;
 
-/// Sends one word and reads until a view arrives.
-fn send_until_perceive(player: &mut Player, word: &str, args: serde_json::Value) {
-    let message = serde_json::json!({ "id": word, "body": { "word": word, "args": args } });
+/// Sends one command and reads until a view arrives.
+fn send_until_perceive(player: &mut Player, command: &str, args: serde_json::Value) {
+    let message = serde_json::json!({ "id": command, "body": { "kind": command, "args": args } });
     player.send(Message::text(message.to_string())).unwrap();
     loop {
         let Message::Text(text) = player.read().unwrap() else {

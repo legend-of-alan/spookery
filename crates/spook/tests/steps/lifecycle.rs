@@ -180,7 +180,7 @@ fn spook_check_refuses_the_verb(world: &mut World, verb: String) {
     let diags = spookery_engine::check_pack(world.pack.as_ref().unwrap());
     let refused = diags.iter().any(|diag| {
         diag.message
-            .contains(&format!("verb '{verb}' is a built-in word"))
+            .contains(&format!("verb '{verb}' is a built-in command"))
     });
     assert!(refused, "{diags:?}");
 }

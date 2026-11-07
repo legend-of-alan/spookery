@@ -37,10 +37,12 @@ pub use gm::{
 #[cfg(feature = "schema")]
 pub use message::{generate_client_schema, generate_server_schema};
 pub use message::{
-    is_built_in, ClaimArgs, ClientBody, ClientMessage, Message, MoveArgs, NoArgs, Say, Seat,
-    ServerBody, ServerMessage, Word, VERSION, WORDS,
+    is_built_in, ClaimArgs, ClientBody, ClientMessage, Command, Message, MoveArgs, NoArgs, Say,
+    Seat, ServerBody, ServerMessage, COMMANDS, VERSION,
 };
-pub use player::{ExitView, ItemStack, KnownFact, MeterView, NoteView, PlaceView, View, WordView};
+pub use player::{
+    CommandView, ExitView, ItemStack, KnownFact, MeterView, NoteView, PlaceView, View,
+};
 
 /// The listening line `spook run` prints on stdout once both ports are bound: the game port
 /// and the MCP address.
@@ -57,7 +59,7 @@ pub fn default_mcp_addr(game: std::net::SocketAddr) -> Option<std::net::SocketAd
     Some(std::net::SocketAddr::new(game.ip(), port))
 }
 
-/// The published client schema, `schema/client.json`. Its `$defs` hold each word's `args`.
+/// The published client schema, `schema/client.json`. Its `$defs` hold each command's `args`.
 pub const CLIENT_SCHEMA: &str = include_str!("schema/client.json");
 
 /// The perceive body budget in characters: the `perceive` default, the engine's trim
