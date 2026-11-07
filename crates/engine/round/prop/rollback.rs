@@ -3,9 +3,9 @@
 //! ```gherkin
 //! Feature: A rollback puts the save back exactly
 //!
-//!   Scenario: Random writes under nested savepoints roll back to each savepoint's save
-//!     Given the docks pack, with Mira holding one brass key, two flags the street can carry, and a burn on grit
-//!     When random effects, round writes and the end-of-round note of exits land under savepoints opened and rolled back at random
+//!   Scenario: Random writes to every store under nested savepoints roll back to each savepoint's save
+//!     Given the docks pack, with Mira holding one brass key, a flag Mira can carry, two flags and a meter the street can carry, a story with a meter and a flag, a world meter, and a burn on grit
+//!     When random effects on every store, round writes and the end-of-round note of exits land under savepoints opened and rolled back at random
 //!     Then each rollback leaves the save and the spent keys as they were when its savepoint was taken
 //!     And each take reports every meter whose value moved since the last take
 //!     And rolling back to the first savepoint leaves no change to report
@@ -15,9 +15,10 @@
 
 use std::sync::Arc;
 
+use crate::canon::StoryDef;
 use crate::intent::{Intent, IntentArgs, Source, Target, Viewer};
 use crate::model::key::{Change, StateKey, StateValue};
-use crate::model::meter::MeterWrite;
+use crate::model::meter::{MeterDef, MeterLive, MeterWrite};
 use crate::model::modifier::ModifierDef;
 use crate::model::{ExitId, State};
 use crate::rules::effect::{Effect, EffectKind, EntityId};
@@ -35,12 +36,11 @@ enum Step {
     Rollback,
     Take,
     Item(EntityId, &'static str, i64),
-    Meter(&'static str, i64),
+    Meter(EntityId, &'static str, i64),
     Burn(i64),
     Expire,
     Door(bool),
-    StreetFlag(&'static str, bool),
-    WorldFlag(bool),
+    Flag(EntityId, &'static str, bool),
     Walk(&'static str),
     Note,
     Reveal(&'static str),
@@ -68,16 +68,50 @@ fn nested_rollbacks_put_the_save_back_exactly() {
     let edited = crate::store::save::emit(&edited).expect("the edited save writes");
     std::fs::write(&path, edited).expect("write the save");
     let opened = World::open(&pack.0).expect("docks pack opens");
-    let state = opened.state().clone();
+    let mut state = opened.state().clone();
     let mut canon = opened.canon().clone();
     let street = canon.places.get_mut("docks_street").expect("the street");
     street.flags.extend(["lit".to_string(), "busy".to_string()]);
+    let mira = canon.cast.get_mut("mira").expect("Mira");
+    mira.flags.push("wary".to_string());
+    let tale = StoryDef {
+        flags: vec!["told".to_string()],
+    };
+    canon.stories.insert("tale".to_string(), tale);
     let burn = ModifierDef {
         meter: "grit".to_string(),
         max_stacks: 2,
         hidden: false,
     };
     canon.modifiers.insert("burn".to_string(), burn);
+    // The street, the tale and the world each carry a meter, put on the save at its start as
+    // migrate puts on a meter the pack adds, so every store takes writes.
+    let carried = [
+        (EntityId::Place("docks_street".into()), "glow"),
+        (EntityId::Story("tale".into()), "tension"),
+        (EntityId::World, "tide"),
+    ];
+    for (entity, key) in carried {
+        let def = MeterDef {
+            min: 0,
+            base_cap: 10,
+            max: 10,
+            start: 5,
+            hidden: false,
+            carrier: Some(entity.clone()),
+        };
+        let start = MeterLive {
+            base: def.start,
+            offset: 0,
+        };
+        match entity {
+            EntityId::World => canon.world_meters.insert(key.to_string(), def),
+            _ => canon.meters.insert(key.to_string(), def),
+        };
+        let put = state.put_meter(&canon, &entity, key, Some(start));
+        put.expect("the meter goes on");
+    }
+    state.accept();
     let world = World::from_parts(&pack.0, Arc::new(canon), state);
     let mut runner = TestRunner::new(runner_config());
     runner
@@ -219,9 +253,9 @@ fn effect(state: &State, step: &Step, index: usize) -> Effect {
                 max: None,
             }
         }
-        Step::Meter(actor, delta) => EffectKind::Meter {
-            entity: EntityId::Actor((*actor).into()),
-            key: "grit".to_string(),
+        Step::Meter(entity, key, delta) => EffectKind::Meter {
+            entity: entity.clone(),
+            key: key.to_string(),
             write: MeterWrite::Offset(*delta),
         },
         Step::Burn(add) => EffectKind::Modifier {
@@ -234,14 +268,9 @@ fn effect(state: &State, step: &Step, index: usize) -> Effect {
             exit: ExitId::new("docks_shop", "stairs"),
             open: *open,
         },
-        Step::StreetFlag(key, value) => EffectKind::Flag {
-            entity: EntityId::Place("docks_street".into()),
+        Step::Flag(entity, key, value) => EffectKind::Flag {
+            entity: entity.clone(),
             key: key.to_string(),
-            value: *value,
-        },
-        Step::WorldFlag(value) => EffectKind::Flag {
-            entity: EntityId::World,
-            key: "rung".to_string(),
             value: *value,
         },
         Step::Walk(to) => EffectKind::Location {
@@ -293,19 +322,34 @@ fn pick_step() -> impl Strategy<Value = Step> {
         EntityId::Actor("bram".into()),
         EntityId::Place("docks_shop".into()),
     ]);
+    // A meter and a flag on each kind of entity that carries one.
+    let meters = vec![
+        (EntityId::Actor("mira".into()), "grit"),
+        (EntityId::Actor("bram".into()), "grit"),
+        (EntityId::Place("docks_street".into()), "glow"),
+        (EntityId::Story("tale".into()), "tension"),
+        (EntityId::World, "tide"),
+    ];
+    let flags = vec![
+        (EntityId::Actor("mira".into()), "wary"),
+        (EntityId::Place("docks_street".into()), "lit"),
+        (EntityId::Place("docks_street".into()), "busy"),
+        (EntityId::Story("tale".into()), "told"),
+        (EntityId::World, "rung"),
+    ];
     prop_oneof![
         3 => Just(Step::Savepoint),
         3 => Just(Step::Rollback),
         2 => Just(Step::Take),
         1 => (entity, select(vec!["lamp_oil", "brass_key"]), -3i64..=3)
             .prop_map(|(entity, id, delta)| Step::Item(entity, id, delta)),
-        1 => (select(vec!["mira", "bram"]), -2i64..=2).prop_map(|(who, delta)| Step::Meter(who, delta)),
+        2 => (select(meters), -2i64..=2)
+            .prop_map(|((entity, key), delta)| Step::Meter(entity, key, delta)),
         1 => (-2i64..=2).prop_map(Step::Burn),
         1 => Just(Step::Expire),
         1 => any::<bool>().prop_map(Step::Door),
-        1 => (select(vec!["lit", "busy"]), any::<bool>())
-            .prop_map(|(key, value)| Step::StreetFlag(key, value)),
-        1 => any::<bool>().prop_map(Step::WorldFlag),
+        2 => (select(flags), any::<bool>())
+            .prop_map(|((entity, key), value)| Step::Flag(entity, key, value)),
         1 => select(vec!["docks_shop", "docks_street", "mira_rooms"]).prop_map(Step::Walk),
         1 => Just(Step::Note),
         1 => select(vec!["fact_oil_on_shelf", "fact_room_lamp"]).prop_map(Step::Reveal),

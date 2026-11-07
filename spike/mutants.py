@@ -157,6 +157,49 @@ MUTANTS = {
 """, """        let WorldComponents { meters, flags } = self;
 """)],
     'notes_not_undone': [(M, "        self.notes.undo_to(seq);\n", "")],
+    'actor_items_not_undone': [(M, """        records.undo_to(seq);
+        items.undo_to(seq);
+""", """        records.undo_to(seq);
+""")],
+    'actor_meters_not_undone': [(M, """        items.undo_to(seq);
+        meters.undo_to(seq);
+        modifiers.undo_to(seq);
+""", """        items.undo_to(seq);
+        modifiers.undo_to(seq);
+""")],
+    'actor_modifiers_not_undone': [(M, "        modifiers.undo_to(seq);\n", "")],
+    'actor_flags_not_undone': [(M, """        modifiers.undo_to(seq);
+        flags.undo_to(seq);
+""", """        modifiers.undo_to(seq);
+""")],
+    'place_items_not_undone': [(M, """        items.undo_to(seq);
+        meters.undo_to(seq);
+        flags.undo_to(seq);
+""", """        meters.undo_to(seq);
+        flags.undo_to(seq);
+""")],
+    'place_meters_not_undone': [(M, """        meters.undo_to(seq);
+        flags.undo_to(seq);
+        open_exits.undo_to(seq);
+""", """        flags.undo_to(seq);
+        open_exits.undo_to(seq);
+""")],
+    'place_flags_not_undone': [(M, """        flags.undo_to(seq);
+        open_exits.undo_to(seq);
+""", """        open_exits.undo_to(seq);
+""")],
+    'story_flags_not_undone': [(M, """        let StoryComponents { meters, flags } = self;
+        meters.undo_to(seq);
+        flags.undo_to(seq);
+""", """        let StoryComponents { meters, flags } = self;
+        meters.undo_to(seq);
+""")],
+    'world_flags_not_undone': [(M, """        let WorldComponents { meters, flags } = self;
+        meters.undo_to(seq);
+        flags.undo_to(seq);
+""", """        let WorldComponents { meters, flags } = self;
+        meters.undo_to(seq);
+""")],
     # A field no key answers for still rolls back.
     'visited_undo_wrong': [(M, "            ActorEdit::Visited(edit) => ActorEdit::Visited(edit.apply(&mut actor.visited)?),", """            ActorEdit::Visited(edit) => {
                 let id = edit.id.clone();
