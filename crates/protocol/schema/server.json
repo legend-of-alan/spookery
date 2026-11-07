@@ -689,15 +689,7 @@
           }
         },
         "pack": {
-          "description": "An older server never sends it.",
-          "anyOf": [
-            {
-              "$ref": "#/$defs/PackSummary"
-            },
-            {
-              "type": "null"
-            }
-          ]
+          "$ref": "#/$defs/PackSummary"
         }
       },
       "required": [
@@ -707,7 +699,8 @@
         "state_rev",
         "pack_rev",
         "last_round_at",
-        "queued"
+        "queued",
+        "pack"
       ]
     },
     "KnownFact": {

@@ -66,7 +66,9 @@ jobs:
         shell: bash
         run: |
           cargo tree -e normal -p spookery-client --locked | (! grep -E 'spookery-engine|spookery-server|rmcp')
-          cargo tree -e normal -p spookery-agent --locked | (! grep -E 'spookery-(engine|server|client)|tokio|reqwest|rmcp|socket2')
+          cargo tree -e normal -p spookery-agent --locked | (! grep -E 'spookery-(engine|server|client)|reqwest|rmcp|socket2|mio|tokio-macros')
+          # The agent awaits its adapters on the caller's runtime: it never builds, enters or blocks on one.
+          (! grep -rnE 'tokio::runtime|Handle::current|block_on|spawn_blocking' crates/agent --include='*.rs')
           # protocol, agent and client are MIT: every AND term of every license in their
           # trees must offer a permissive choice.
           for crate in spookery-protocol spookery-agent spookery-client; do
