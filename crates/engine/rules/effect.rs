@@ -187,7 +187,6 @@ pub(crate) enum EffectRecord {
         #[serde(rename = "as", default, skip_serializing_if = "Option::is_none")]
         as_viewer: Option<Viewer>,
         intent_id: String,
-        #[serde(rename = "holder")]
         entity: EntityId,
         key: String,
         #[serde(flatten)]
@@ -252,7 +251,6 @@ pub(crate) enum EffectRecord {
         #[serde(rename = "as", default, skip_serializing_if = "Option::is_none")]
         as_viewer: Option<Viewer>,
         intent_id: String,
-        #[serde(rename = "holder")]
         entity: EntityId,
         key: String,
         value: bool,
