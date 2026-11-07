@@ -13,6 +13,24 @@ use super::table;
 use crate::support::{self, copy_docks};
 use crate::World;
 
+/// Give the save actor `id` with `record`, carrying a copy of each meter pc_wren carries.
+fn add_with_wrens_meters(
+    now: &mut spookery_engine::State,
+    canon: &spookery_engine::testing::Canon,
+    id: &str,
+    record: spookery_engine::testing::ActorLive,
+) {
+    now.add_actor(id, record).unwrap();
+    let wren = spookery_engine::Holder::Actor("pc_wren".to_string());
+    let meters: Vec<_> = (now.meters.on(&wren))
+        .map(|(key, live)| (key.clone(), live.clone()))
+        .collect();
+    let actor = spookery_engine::Holder::Actor(id.to_string());
+    for (key, live) in meters {
+        now.put_meter(canon, &actor, &key, Some(live)).unwrap();
+    }
+}
+
 fn add_toll(pack: &Path) {
     let path = pack.join("cast/bram.md");
     let text = fs::read_to_string(&path).unwrap();
@@ -28,7 +46,11 @@ fn add_toll(pack: &Path) {
 fn docks_street_has_no_exit_to_mira_rooms(world: &mut World) {
     let pack = copy_docks("no-exit");
     edit_save(&pack, |now| {
-        now.actors.get_mut("pc_rowan").unwrap().place = "docks_street".to_string();
+        now.edit_actor(
+            "pc_rowan",
+            spookery_engine::testing::ActorEdit::Place("docks_street".to_string()),
+        )
+        .unwrap();
     });
     table::listen(world, &pack);
     table::seat_rowan(world, &pack);
@@ -91,7 +113,11 @@ fn rowan_sees_locked_and_nothing_changes(world: &mut World, text: String) {
         parts.next().unwrap()
     );
     assert_eq!(
-        now.actors.get("pc_rowan").unwrap().item_count("brass_key"),
+        now.item_count(
+            &spookery_engine::Holder::Actor("pc_rowan".to_string()),
+            "brass_key"
+        )
+        .unwrap(),
         0
     );
 }
@@ -131,10 +157,8 @@ fn a_place_rule_teleports(world: &mut World) {
     assert!(text.contains("id: slip"), "{text}");
     fs::write(&path, text).unwrap();
     edit_save(&pack, |now| {
-        now.places.insert(
-            "cellar".to_string(),
-            spookery_engine::testing::PlaceLive::default(),
-        );
+        now.make_record(&spookery_engine::Holder::Place("cellar".to_string()))
+            .unwrap();
     });
     table::listen(world, &pack);
     table::seat_rowan(world, &pack);
@@ -178,29 +202,23 @@ fn two_arrivals(world: &mut World) {
         "---\nschema: cast\nid: pc_nell\nkind: pc_template\ndisplay_name: Nell\nidle:\n  eligible: false\n---\nNell.\n",
     )
     .unwrap();
+    let canon = spookery_engine::load_canon(&pack).unwrap();
     edit_save(&pack, |now| {
         now.world_time = EVENING;
         set_busy(now, "pc_rowan", EVENING + 10, "docks_shop.stairs");
-        let meters = now.actors.get("pc_wren").unwrap().meters.clone();
-        now.actors.insert(
-            "pc_nell".to_string(),
-            spookery_engine::testing::ActorLive {
-                kind: spookery_engine::testing::ActorKind::Pc,
-                place: "exit:docks_shop.docks_street".to_string(),
-                flags: Vec::new(),
-                meters,
-                modifiers: Default::default(),
-                inventory: Default::default(),
-                wielded: None,
-                known_facts: Vec::new(),
-                visited: Default::default(),
-                act: spookery_engine::testing::Act {
-                    busy_until: Some(EVENING + 5),
-                    pending: Some(walk("docks_shop.docks_street")),
-                    ..Default::default()
-                },
+        let nell = spookery_engine::testing::ActorLive {
+            kind: spookery_engine::testing::ActorKind::Pc,
+            place: "exit:docks_shop.docks_street".to_string(),
+            wielded: None,
+            known_facts: Vec::new(),
+            visited: Default::default(),
+            act: spookery_engine::testing::Act {
+                busy_until: Some(EVENING + 5),
+                pending: Some(walk("docks_shop.docks_street")),
+                ..Default::default()
             },
-        );
+        };
+        add_with_wrens_meters(now, &canon, "pc_nell", nell);
     });
     table::listen(world, &pack);
     table::seat_rowan(world, &pack);
@@ -311,23 +329,17 @@ fn both_busy_without_a_gm(world: &mut World) {
         "---\nschema: cast\nid: pc_nell\nkind: pc_template\ndisplay_name: Nell\nidle:\n  eligible: false\n---\nNell.\n",
     )
     .unwrap();
+    let canon = spookery_engine::load_canon(&pack).unwrap();
     edit_save(&pack, |now| {
-        let meters = now.actors.get("pc_wren").unwrap().meters.clone();
-        now.actors.insert(
-            "pc_nell".to_string(),
-            spookery_engine::testing::ActorLive {
-                kind: spookery_engine::testing::ActorKind::Pc,
-                place: "docks_shop".to_string(),
-                flags: Vec::new(),
-                meters,
-                modifiers: Default::default(),
-                inventory: Default::default(),
-                wielded: None,
-                known_facts: Vec::new(),
-                visited: Default::default(),
-                act: spookery_engine::testing::Act::default(),
-            },
-        );
+        let nell = spookery_engine::testing::ActorLive {
+            kind: spookery_engine::testing::ActorKind::Pc,
+            place: "docks_shop".to_string(),
+            wielded: None,
+            known_facts: Vec::new(),
+            visited: Default::default(),
+            act: spookery_engine::testing::Act::default(),
+        };
+        add_with_wrens_meters(now, &canon, "pc_nell", nell);
         set_busy(now, "pc_nell", EVENING + 5, "docks_shop.docks_street");
     });
     table::listen(world, &pack);
@@ -439,13 +451,23 @@ fn rowan_visited_both_rooms(world: &mut World) {
     let pack = copy_docks("map");
     add_trapdoor(&pack);
     edit_save(&pack, |now| {
-        let rowan = now.actors.get_mut("pc_rowan").unwrap();
         let names = |exits: &[&str]| exits.iter().map(|name| name.to_string()).collect();
-        rowan.visited = [
-            ("docks_shop".to_string(), names(&["docks_street", "stairs"])),
-            ("mira_rooms".to_string(), names(&["stairs"])),
-        ]
-        .into();
+        let seen = [
+            ("docks_shop", names(&["docks_street", "stairs"])),
+            ("mira_rooms", names(&["stairs"])),
+        ];
+        for (place, exits) in seen {
+            let id = place.to_string();
+            let visit = spookery_engine::testing::Entry {
+                id,
+                value: Some(exits),
+            };
+            now.edit_actor(
+                "pc_rowan",
+                spookery_engine::testing::ActorEdit::Visited(visit),
+            )
+            .unwrap();
+        }
     });
     world.pack = Some(pack);
 }

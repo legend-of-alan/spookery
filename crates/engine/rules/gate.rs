@@ -8,6 +8,7 @@ use crate::model::{Presence, State};
 use crate::rules::cond;
 use crate::rules::context::Context;
 use crate::rules::cost;
+use crate::rules::effect::Holder;
 use crate::rules::perceive::perceive_as;
 use crate::rules::rule::{Owner, Rule, TargetKind, When};
 use crate::Reason;
@@ -107,7 +108,7 @@ fn owner_verb<'a>(canon: &'a Canon, owner: &Owner, verb: &str) -> Option<&'a Rul
 }
 
 /// The rule the intent's verb picks, for its actor and target.
-pub(crate) fn rule_of<'a>(context: &Context<'a>) -> Result<&'a Rule, Refusal> {
+pub(crate) fn rule_of<'c>(context: &Context<'c, '_>) -> Result<&'c Rule, Refusal> {
     let intent = context.intent;
     let (verb, hint) = (&intent.move_name, hint_of(&intent.target));
     let actor = intent
@@ -208,15 +209,8 @@ pub(crate) fn nameable(
     presence: &Presence,
     viewer: &Viewer,
 ) -> Vec<String> {
-    let mut names: Vec<String> = match state.actors.get(viewer.actor_id()) {
-        Some(actor) => actor
-            .inventory
-            .keys()
-            .filter(|id| actor.item_count(id) > 0)
-            .cloned()
-            .collect(),
-        None => Vec::new(),
-    };
+    let me = Holder::Actor(viewer.actor_id().to_string());
+    let mut names: Vec<String> = state.items.on(&me).map(|(id, _)| id.clone()).collect();
     if let Ok(view) = perceive_as(canon, state, presence, viewer) {
         names.push(view.place);
         let me = viewer.actor_id();

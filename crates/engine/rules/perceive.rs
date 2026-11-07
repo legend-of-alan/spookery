@@ -4,7 +4,6 @@ use std::collections::BTreeSet;
 
 use crate::canon::Canon;
 use crate::intent::Viewer;
-use crate::model::meter;
 use crate::model::{Note, Presence, State};
 use crate::rules::effect::Holder;
 use crate::rules::habits::list_whose_if_holds;
@@ -129,7 +128,7 @@ fn perceive_viewer_budget(
     unknown_mentions.sort();
 
     let mut notes = Vec::new();
-    for note in &state.notes {
+    for note in state.notes.iter() {
         let here = note.place.as_deref() == Some(place.as_str());
         let addressed = note.to.iter().any(|id| id == viewer.actor_id());
         if !here && !addressed {
@@ -149,20 +148,13 @@ fn perceive_viewer_budget(
     }
     notes.sort_by(|a, b| a.id.cmp(&b.id));
 
-    let items = state
-        .places
-        .get(&place)
-        .map(|place_live| {
-            place_live
-                .items
-                .iter()
-                .map(|(id, count)| ItemStack {
-                    id: id.clone(),
-                    count: *count,
-                })
-                .collect()
+    let here = Holder::Place(place.clone());
+    let items = (state.items.on(&here))
+        .map(|(id, count)| ItemStack {
+            id: id.clone(),
+            count: *count,
         })
-        .unwrap_or_default();
+        .collect();
 
     let meters = shown_meters(canon, state, &Holder::Actor(viewer.actor_id().to_string()));
     let world_meters = shown_meters(canon, state, &Holder::World);
@@ -201,15 +193,10 @@ fn perceive_viewer_budget(
 
 /// The meters `holder` carries that are not hidden, in id order.
 fn shown_meters(canon: &Canon, state: &State, holder: &Holder) -> Vec<MeterView> {
-    let Some(meters) = state.meters_of(holder) else {
-        return Vec::new();
-    };
-    meters
-        .iter()
-        .filter_map(|(id, live)| {
+    (state.meters.on(holder))
+        .filter_map(|(id, _)| {
             let def = canon.meter_def(holder, id).filter(|def| !def.hidden)?;
-            let modifiers = state.modifier_sum(holder, id).ok()?;
-            let value = meter::current(def, live, modifiers).ok()?;
+            let value = state.meter_value(canon, holder, id).ok()?;
             Some(MeterView {
                 id: id.clone(),
                 value,

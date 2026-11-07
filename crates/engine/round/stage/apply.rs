@@ -1,9 +1,9 @@
 //! Start each action: gate it again, pay for it, and finish it now or leave it pending.
 
 use crate::canon::{Canon, Exit};
-use crate::draft::Draft;
 use crate::intent::{Intent, Viewer};
 use crate::model::PendingAction;
+use crate::model::State;
 use crate::rules::context::Context;
 use crate::rules::cost;
 use crate::rules::effect::{Effect, EffectKind};
@@ -30,8 +30,8 @@ pub(crate) enum Landing {
 }
 
 pub(crate) fn run(
-    draft: &mut Draft,
     canon: &Canon,
+    state: &mut State,
     candidates: Vec<Candidate>,
     clock: &RoundTime,
     dice: &mut RoundDice,
@@ -48,19 +48,19 @@ pub(crate) fn run(
             refuse(log, intent, refusal, false);
             continue;
         }
-        let point = draft.savepoint();
+        let point = state.savepoint();
         let landing = match resolution {
             Resolution::Ready { rule, rolled } => {
                 // The world may have changed since the queue, so the gate checks the rule again.
-                let context = Context::new(canon, draft.state(), draft.presence, intent);
+                let context = Context::new(canon, state, state.presence(), intent);
                 if let Err(refusal) = gate::admit(&context, rule) {
                     refuse(log, intent, refusal, false);
                     continue;
                 }
                 let at = clock.world_time_before;
-                start(draft, canon, intent, rule, rolled, at, dice, log)
+                start(canon, state, intent, rule, rolled, at, dice, log)
             }
-            Resolution::Cancel => cancel(draft, canon, intent, log),
+            Resolution::Cancel => cancel(canon, state, intent, log),
             Resolution::Refused(refusal) => {
                 refuse(log, intent, refusal, false);
                 continue;
@@ -74,13 +74,13 @@ pub(crate) fn run(
             Landing::Landed if spends_slot => slots += 1,
             Landing::Landed => {}
             // The costs go back with the effects.
-            Landing::Refused => draft.rollback(point),
+            Landing::Refused => state.rollback(point),
             Landing::OverBudget => {
-                draft.rollback(point);
+                state.rollback(point);
                 keys_spent = true;
             }
         }
-        triggers::run(draft, canon, dice, log);
+        triggers::run(canon, state, dice, log);
     }
 }
 
@@ -89,8 +89,8 @@ pub(crate) fn run(
 /// until its ticks pass, and a walk puts the actor on the exit, in neither place.
 #[allow(clippy::too_many_arguments)]
 fn start(
-    draft: &mut Draft,
     canon: &Canon,
+    state: &mut State,
     intent: &Intent,
     rule: &Rule,
     rolled: Option<Roll>,
@@ -98,7 +98,7 @@ fn start(
     dice: &mut RoundDice,
     log: &mut RoundLog,
 ) -> Landing {
-    let context = Context::new(canon, draft.state(), draft.presence, intent);
+    let context = Context::new(canon, state, state.presence(), intent);
     let exit = travel::exit_of(&context, rule).ok().flatten().cloned();
     let ticks = travel::span(&context, rule);
     let mut roller = dice.roller(log, &rule.id, intent.actor_id());
@@ -107,13 +107,14 @@ fn start(
         .cost
         .iter()
         .chain(exit.as_ref().map(|exit| &exit.cost));
-    let mut started = costs.try_for_each(|cost| cost::pay(draft, intent, cost, &mut roller));
+    let mut started = costs.try_for_each(|cost| cost::pay(canon, state, intent, cost, &mut roller));
     drop(roller);
     if rule.start.counts_as_act {
-        started = started.and_then(|()| count_act(draft, intent));
+        started = started.and_then(|()| count_act(state, intent));
     }
     if ticks > 0 {
-        started = started.and_then(|()| pend(draft, intent, rule, exit.as_ref(), at + ticks, log));
+        started =
+            started.and_then(|()| pend(canon, state, intent, rule, exit.as_ref(), at + ticks, log));
     }
     if let Err(code) = started {
         refuse(log, intent, gate::Refusal::new(intent, code), false);
@@ -123,19 +124,19 @@ fn start(
         log.extra_steps.push(Step::Rule(rule.id.clone()));
         return Landing::Landed;
     }
-    finish(draft, canon, intent, rule, rolled, at, dice, log)
+    finish(canon, state, intent, rule, rolled, at, dice, log)
 }
 
 /// Drop the actor's action under way, with no refund, if the gate still allows it now. Its
 /// finish never runs.
-fn cancel(draft: &mut Draft, canon: &Canon, intent: &Intent, log: &mut RoundLog) -> Landing {
-    let context = Context::new(canon, draft.state(), draft.presence, intent);
+fn cancel(canon: &Canon, state: &mut State, intent: &Intent, log: &mut RoundLog) -> Landing {
+    let context = Context::new(canon, state, state.presence(), intent);
     if let Err(refusal) = gate::admit_cancel(&context) {
         refuse(log, intent, refusal, false);
         return Landing::Refused;
     }
     let actor_id = intent.actor_id().ok_or(Reason::UnknownId);
-    match actor_id.and_then(|id| draft.take_pending(id)) {
+    match actor_id.and_then(|id| state.take_pending(id)) {
         Ok(_) => Landing::Landed,
         Err(code) => {
             refuse(log, intent, gate::Refusal::new(intent, code), false);
@@ -146,7 +147,8 @@ fn cancel(draft: &mut Draft, canon: &Canon, intent: &Intent, log: &mut RoundLog)
 
 /// Leave `rule` pending until tick `until`. A walk first puts the actor on its exit.
 fn pend(
-    draft: &mut Draft,
+    canon: &Canon,
+    state: &mut State,
     intent: &Intent,
     rule: &Rule,
     exit: Option<&Exit>,
@@ -155,11 +157,7 @@ fn pend(
 ) -> Result<(), Reason> {
     let actor_id = intent.actor_id().ok_or(Reason::UnknownId)?;
     if let Some(exit) = exit {
-        let actor = draft
-            .state()
-            .actors
-            .get(actor_id)
-            .ok_or(Reason::UnknownId)?;
+        let actor = state.actors.get(actor_id).ok_or(Reason::UnknownId)?;
         let kind = EffectKind::Location {
             actor_id: actor_id.to_string(),
             from: actor.place.clone(),
@@ -167,7 +165,7 @@ fn pend(
             arrived_at: None,
         };
         let effect = Effect::new(intent.actor.as_ref(), &intent.id, kind);
-        effect.clone().apply(draft, intent)?;
+        effect.clone().apply(canon, state, intent)?;
         log.effects.push(effect);
     }
     let pending = PendingAction {
@@ -176,7 +174,7 @@ fn pend(
         target: intent.target.clone(),
         rule: rule.id.clone(),
     };
-    draft.set_busy(actor_id, until, Some(pending))
+    state.set_busy(actor_id, until, Some(pending))
 }
 
 /// Finish an action at tick `at`: pay the finish cost, count the act when the rule asks, keep
@@ -184,8 +182,8 @@ fn pend(
 /// walk's arrival stamped `at`. A refusal is journaled and the round goes on.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn finish(
-    draft: &mut Draft,
     canon: &Canon,
+    state: &mut State,
     intent: &Intent,
     rule: &Rule,
     rolled: Option<Roll>,
@@ -193,7 +191,7 @@ pub(crate) fn finish(
     dice: &mut RoundDice,
     log: &mut RoundLog,
 ) -> Landing {
-    let context = Context::new(canon, draft.state(), draft.presence, intent);
+    let context = Context::new(canon, state, state.presence(), intent);
     let roller = dice.roller(log, &rule.id, intent.actor_id());
     let mut expansion = match expand::expand(&context, rule, Cause::Finish, rolled, roller) {
         Ok(expansion) => expansion,
@@ -207,36 +205,36 @@ pub(crate) fn finish(
             *arrived_at = Some(at);
         }
     }
-    let point = draft.savepoint();
+    let point = state.savepoint();
     let mut roller = dice.roller(log, &rule.id, intent.actor_id());
     let mut finished = match &rule.finish.cost {
-        Some(cost) => cost::pay(draft, intent, cost, &mut roller),
+        Some(cost) => cost::pay(canon, state, intent, cost, &mut roller),
         None => Ok(()),
     };
     drop(roller);
     if rule.finish.counts_as_act {
-        finished = finished.and_then(|()| count_act(draft, intent));
+        finished = finished.and_then(|()| count_act(state, intent));
     }
     if rule.cooldown > 0 {
         finished = finished.and_then(|()| {
             let actor_id = intent.actor_id().ok_or(Reason::UnknownId)?;
-            draft.set_busy(actor_id, at + rule.cooldown, None)
+            state.set_busy(actor_id, at + rule.cooldown, None)
         });
     }
     if let Err(code) = finished {
-        draft.rollback(point);
+        state.rollback(point);
         refuse(log, intent, gate::Refusal::new(intent, code), false);
         return landing_of(code);
     }
-    let landing = land(draft, intent, rule, expansion, log);
+    let landing = land(canon, state, intent, rule, expansion, log);
     if !matches!(landing, Landing::Landed) {
-        draft.rollback(point);
+        state.rollback(point);
     }
     landing
 }
 
-fn count_act(draft: &mut Draft, intent: &Intent) -> Result<(), Reason> {
-    draft.count_act(intent.actor_id().ok_or(Reason::UnknownId)?)
+fn count_act(state: &mut State, intent: &Intent) -> Result<(), Reason> {
+    state.count_act(intent.actor_id().ok_or(Reason::UnknownId)?)
 }
 
 /// A refusal over the key budget spends the round's keys; any other refuses only this intent.
@@ -253,16 +251,17 @@ fn landing_of(code: Reason) -> Landing {
 /// otherwise the effects and the rolls are kept and the rule takes its `Rule` step. The
 /// expansion's `Cause` decides the steps and who hears a refusal.
 pub(crate) fn land(
-    draft: &mut Draft,
+    canon: &Canon,
+    state: &mut State,
     intent: &Intent,
     rule: &Rule,
     expansion: Expansion,
     log: &mut RoundLog,
 ) -> Landing {
     let cause = expansion.cause;
-    let point = draft.savepoint();
+    let point = state.savepoint();
     let written = expansion.effects.iter().try_for_each(|effect| {
-        effect.clone().apply(draft, intent)?;
+        effect.clone().apply(canon, state, intent)?;
         match cause {
             Cause::Finish => log.extra_steps.push(Step::EffectApplied),
             Cause::Trigger => {}
@@ -270,7 +269,7 @@ pub(crate) fn land(
         Ok(())
     });
     if let Err(code) = written {
-        draft.rollback(point);
+        state.rollback(point);
         let refusal = gate::Refusal::new(intent, code);
         match cause {
             Cause::Finish => refuse(log, intent, refusal, false),

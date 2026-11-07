@@ -2,9 +2,9 @@
 //! trigger pass after each.
 
 use crate::canon::Canon;
-use crate::draft::Draft;
 use crate::intent::Intent;
 use crate::model::PendingAction;
+use crate::model::State;
 use crate::Reason;
 
 use crate::round::dice::RoundDice;
@@ -13,13 +13,13 @@ use crate::round::stage::{apply, triggers};
 
 /// Finish every due action, earliest first.
 pub(crate) fn run(
-    draft: &mut Draft,
     canon: &Canon,
+    state: &mut State,
     end: u64,
     dice: &mut RoundDice,
     log: &mut RoundLog,
 ) -> Result<(), Reason> {
-    let due_actions = crate::rules::travel::take_due_actions(draft, end)?;
+    let due_actions = crate::rules::travel::take_due_actions(state, end)?;
     for due_action in due_actions {
         let PendingAction {
             verb,
@@ -28,11 +28,11 @@ pub(crate) fn run(
             rule,
         } = due_action.pending;
         let actor_id = &due_action.actor_id;
-        let intent = Intent::finish(draft.state(), actor_id, source, &verb, target)?;
+        let intent = Intent::finish(state, actor_id, source, &verb, target)?;
         let rule = canon.rules.get(&rule).ok_or(Reason::UnknownMove)?;
         let until = due_action.until;
-        apply::finish(draft, canon, &intent, rule, None, until, dice, log);
-        triggers::run(draft, canon, dice, log);
+        apply::finish(canon, state, &intent, rule, None, until, dice, log);
+        triggers::run(canon, state, dice, log);
     }
     Ok(())
 }

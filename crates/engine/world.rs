@@ -10,7 +10,7 @@ use crate::canon::Budget;
 use crate::canon::{check_save, load_canon, pack_rev, Canon};
 use crate::diagnostic::{error, first_reason, locate_nth, schema_error, Code, Diagnostic};
 use crate::intent::{Intent, IntentArgs, Source, Target};
-use crate::model::{ActorLive, Presence, State};
+use crate::model::{Presence, State};
 use crate::rules::context::Context;
 use crate::rules::effect::{payload_json, Effect, Holder};
 use crate::rules::gate;
@@ -106,7 +106,7 @@ impl World {
             .state
             .actors
             .get(actor_id)
-            .is_some_and(ActorLive::is_pc)
+            .is_some_and(|actor| actor.is_pc())
         {
             return Err(Reason::Schema);
         }
@@ -189,6 +189,14 @@ impl<L> World<L> {
         &self.state
     }
 
+    /// A copy of the save with a round open on it, under this canon's budget and with
+    /// `presence` seated: what a round writes, and commit takes.
+    pub(crate) fn begin_round(&self, presence: &Presence) -> State {
+        let mut state = self.state.clone();
+        state.open_round(&self.canon.budget, presence);
+        state
+    }
+
     /// Replace the in-memory state after a replay. This does not write `save.yaml`.
     pub(crate) fn set_state(&mut self, state: State) {
         self.state = state;
@@ -239,7 +247,7 @@ impl<L> World<L> {
             return Err(Reason::Schema);
         };
         let actor = self.state.actors.get(viewer.actor_id());
-        if !actor.is_some_and(ActorLive::is_pc) {
+        if !actor.is_some_and(|actor| actor.is_pc()) {
             return Err(Reason::Schema);
         }
         let (actor, verb) = (viewer, &line.move_name);

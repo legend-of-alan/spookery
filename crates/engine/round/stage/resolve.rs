@@ -25,7 +25,7 @@ pub(crate) struct Candidate<'a> {
 
 /// How resolve left an intent for apply.
 pub(crate) enum Resolution<'a> {
-    /// Picked against the state. Apply admits `rule` again against the draft when it starts,
+    /// Picked against the state. Apply admits `rule` again against the round's save when it starts,
     /// then pays for and expands it, so a move pays the cost of the rule it rolled for.
     Ready {
         rule: &'a Rule,
@@ -40,12 +40,13 @@ pub(crate) enum Resolution<'a> {
     CannotRoll(Reason),
 }
 
-/// What every roll in the round shares. The rules it gates borrow `canon`, past the resolver.
+/// What every roll in the round shares. The rules it picks borrow `canon`, and outlive its
+/// borrow of the save, so apply can write the save they were picked against.
 struct Resolver<'a, 'r> {
     canon: &'a Canon,
-    state: &'a State,
-    presence: &'a Presence,
-    queue: &'a [Intent],
+    state: &'r State,
+    presence: &'r Presence,
+    queue: &'r [Intent],
     rolled: BTreeMap<String, Roll>,
     dice: &'r mut RoundDice,
     log: &'r mut RoundLog,
@@ -53,10 +54,10 @@ struct Resolver<'a, 'r> {
 
 pub(crate) fn run<'a>(
     canon: &'a Canon,
-    state: &'a State,
-    presence: &'a Presence,
+    state: &State,
+    presence: &Presence,
     picked: &'a [Intent],
-    queue: &'a [Intent],
+    queue: &[Intent],
     dice: &mut RoundDice,
     log: &mut RoundLog,
 ) -> Vec<Candidate<'a>> {

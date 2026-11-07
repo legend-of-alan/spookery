@@ -90,8 +90,8 @@ fn the_save_is_hand_edited(world: &mut World) {
     let mut text = fs::read_to_string(&now_path).unwrap();
     text = text.replace("world_time: 1080", "world_time: 7");
     text = text.replace(
-        "kind: pc\n    place: docks_shop\n    flags: []\n    meters:\n      assassination_debt:\n        base: 2\n        offset: 0\n      grit:\n        base: 1\n        offset: 0\n      rest:\n        base: 3\n        offset: 0\n    inventory: {}\n    known_facts: []",
-        "kind: pc\n    place: mira_rooms\n    flags: []\n    meters:\n      assassination_debt:\n        base: 2\n        offset: 0\n      grit:\n        base: 1\n        offset: 0\n      rest:\n        base: 3\n        offset: 0\n    inventory: {}\n    known_facts: []",
+        "  pc_rowan:\n    kind: pc\n    place: docks_shop\n",
+        "  pc_rowan:\n    kind: pc\n    place: mira_rooms\n",
     );
     fs::write(&now_path, text).unwrap();
     a_canon_file_gains_a_byte(world);
@@ -110,8 +110,9 @@ fn the_pack_adds_meter(world: &mut World, id: String, start: i64) {
 #[then(expr = "every actor has {string} at {int}")]
 fn every_actor_has_meter_at(world: &mut World, id: String, base: i64) {
     let now = state_of(table::pack(world));
-    for (actor, live) in &now.actors {
-        let got = live.meters.get(&id).map(|meter| meter.base);
+    for actor in now.actors.keys() {
+        let holder = spookery_engine::Holder::Actor(actor.clone());
+        let got = now.meters.get(&holder, &id).map(|meter| meter.base);
         assert_eq!(got, Some(base), "{actor} {id}");
     }
 }
@@ -146,7 +147,7 @@ fn the_round_writes_nothing(world: &mut World) {
 fn the_save_drops_meter(world: &mut World, id: String) {
     let path = table::pack(world).join("state/save.yaml");
     let text = fs::read_to_string(&path).unwrap();
-    let needle = format!("      {id}:");
+    let needle = format!("    {id}:");
     let mut out = String::new();
     let mut skip = 0;
     let mut found = false;
@@ -204,12 +205,11 @@ fn state_rev_is_2(world: &mut World) {
     assert_eq!(now.pack_rev, docks_pack_rev());
     assert_eq!(now.actors.get("pc_rowan").unwrap().place, "docks_shop");
     assert_eq!(
-        now.places
-            .get("docks_shop")
-            .unwrap()
-            .items
-            .get("lamp_oil")
-            .copied(),
+        now.item_count(
+            &spookery_engine::Holder::Place("docks_shop".to_string()),
+            "lamp_oil"
+        )
+        .filter(|count| *count > 0),
         Some(4u32)
     );
     assert_eq!(now.last_round_at, "2026-01-01T00:00:00Z");
@@ -241,11 +241,7 @@ fn the_shops_lamp_oil_is_hand_edited(world: &mut World, count: u32) {
     let pack = table::pack(world);
     let path = pack.join("state/save.yaml");
     let text = fs::read_to_string(&path).unwrap();
-    let edited = text.replacen(
-        "      lamp_oil: 4\n",
-        &format!("      lamp_oil: {count}\n"),
-        1,
-    );
+    let edited = text.replacen("    lamp_oil: 4\n", &format!("    lamp_oil: {count}\n"), 1);
     assert_ne!(edited, text, "the shop did not hold 4 lamp oil\n{text}");
     fs::write(&path, edited).unwrap();
     world.before = table::read_files(pack);
@@ -254,8 +250,8 @@ fn the_shops_lamp_oil_is_hand_edited(world: &mut World, count: u32) {
 #[then(expr = "the shop has {int} lamp oil")]
 fn the_shop_has_lamp_oil(world: &mut World, count: u32) {
     let now = state_of(table::pack(world));
-    let shop = now.places.get("docks_shop").unwrap();
-    assert_eq!(shop.items.get("lamp_oil").copied(), Some(count));
+    let shop = spookery_engine::Holder::Place("docks_shop".to_string());
+    assert_eq!(now.item_count(&shop, "lamp_oil"), Some(count));
 }
 
 #[then(expr = "verify trusts the operator edit at state_rev {int}")]

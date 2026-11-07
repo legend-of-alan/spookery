@@ -96,22 +96,22 @@ fn seat_lark(world: &mut World, might: Option<i64>, tonic: bool) {
 fn set_lark_might(pack: &Path, base: i64) {
     let path = pack.join("state/save.yaml");
     let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read now: {err}"));
-    let from = "      might:\n        base: 30\n";
+    let from = "    might:\n      base: 30\n";
     assert_eq!(
         text.matches(from).count(),
         1,
         "Lark's might was not the only base 30"
     );
-    let next = text.replacen(from, &format!("      might:\n        base: {base}\n"), 1);
+    let next = text.replacen(from, &format!("    might:\n      base: {base}\n"), 1);
     fs::write(&path, next).unwrap_or_else(|err| panic!("write now: {err}"));
 }
 
 fn remove_larks_tonic(pack: &Path) {
     let path = pack.join("state/save.yaml");
     let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read now: {err}"));
-    let from = "    inventory:\n      tonic: 1\n";
+    let from = "  pc_lark:\n    tonic: 1\n";
     assert_eq!(text.matches(from).count(), 1, "tonic was not listed once");
-    let next = text.replacen(from, "    inventory: {}\n", 1);
+    let next = text.replacen(from, "", 1);
     fs::write(&path, next).unwrap_or_else(|err| panic!("write now: {err}"));
 }
 

@@ -6,15 +6,14 @@ use std::path::Path;
 
 use crate::canon::{check_save, pack_rev, Canon};
 use crate::diagnostic::first_reason;
-use crate::draft::Draft;
 use crate::hash::blake2s_tagged;
-use crate::model::State;
+use crate::model::{MemoryLine, State};
 use crate::store::durability::{fsync_dir, fsync_file, refuse_io, write_atomic};
 use crate::store::journal;
 use crate::store::lock::{lock_write, PackGuard, WriteGuard};
 use crate::store::records::{MigrateRecord, Record, RoundRecord};
 use crate::store::recovery::close_finished;
-use crate::store::save::{self, missing_meters, normalize};
+use crate::store::save::{self, missing_meters};
 use crate::world::World;
 use crate::Reason;
 
@@ -28,32 +27,35 @@ pub struct CommitOutcome {
     pub world_time: u64,
 }
 
-/// Seal one played round, append it, finish a due checkpoint, and clear the queue.
+/// Seal one played round, `state` with the round still open on it, append it, finish a due
+/// checkpoint, and clear the queue. The round is accepted only once it is persisted.
 pub fn commit(
     world: &mut World,
-    mut draft: Draft,
+    mut state: State,
     record: RoundRecord,
 ) -> Result<CommitOutcome, Reason> {
     let write = lock_write(&world.root, &world.lock)?;
     settle_checkpoint(world, &write)?;
-    bump_state_rev(&mut draft)?;
-    let now_bytes = save::emit(&draft.state)?.into_bytes();
+    let memories = state.take_memories();
+    state.state_rev = state.state_rev.checked_add(1).ok_or(Reason::OutOfRange)?;
+    let now_bytes = save::emit(&state)?.into_bytes();
     let line = seal_round(
         record,
         world.state.state_rev,
-        &draft,
+        (&state, memories),
         &now_bytes,
         &world.root,
     )?;
-    let due = is_checkpoint_due(world.canon().checkpoint_every, draft.state.round_index);
+    let due = is_checkpoint_due(world.canon().checkpoint_every, state.round_index);
     let (payload, chain) = if due {
-        let (payload, chain) = seal_checkpoint(line, &draft.state, &now_bytes)?;
+        let (payload, chain) = seal_checkpoint(line, &state, &now_bytes)?;
         (payload, Some(chain))
     } else {
         (line, None)
     };
     let mut log_path = append_to_bundle(&world.root, &payload, &write)?;
-    world.state = draft.state;
+    state.accept();
+    world.state = state;
     world.queue.clear();
     if let Some(chain) = chain {
         if finish_checkpoint(world, &now_bytes, &chain, &write) {
@@ -73,19 +75,10 @@ pub fn commit(
 }
 
 /// The journal already has this round. Keep the new state in memory.
-pub fn keep_in_memory(world: &mut World<()>, mut draft: Draft) -> Result<(), Reason> {
-    bump_state_rev(&mut draft)?;
-    world.state = draft.state;
-    Ok(())
-}
-
-fn bump_state_rev(draft: &mut Draft) -> Result<(), Reason> {
-    draft.state.state_rev = draft
-        .state
-        .state_rev
-        .checked_add(1)
-        .ok_or(Reason::OutOfRange)?;
-    normalize(&mut draft.state);
+pub fn keep_in_memory(world: &mut World<()>, mut state: State) -> Result<(), Reason> {
+    state.state_rev = state.state_rev.checked_add(1).ok_or(Reason::OutOfRange)?;
+    state.accept();
+    world.state = state;
     Ok(())
 }
 
@@ -108,13 +101,14 @@ pub fn commit_migrate(
     let dropped_modifiers = save::stale_modifiers(canon, &state);
     let dropped_meters = save::stale_meters(canon, &state);
     let state = save::migrate(
+        canon,
         state,
         &pack_rev_after,
         state_rev_after,
         &added,
         &dropped_modifiers,
         &dropped_meters,
-    );
+    )?;
     check_save(canon, &state).map_err(|diags| first_reason(&diags))?;
     let emitted = save::emit(&state)?.into_bytes();
     let entry = Record::Migrate(MigrateRecord {
@@ -175,13 +169,13 @@ fn seal_checkpoint(
 fn seal_round(
     mut record: RoundRecord,
     state_rev_before: u64,
-    draft: &Draft,
+    (state, memories): (&State, Vec<MemoryLine>),
     now_bytes: &[u8],
     root: &Path,
 ) -> Result<String, Reason> {
     record.state_rev_before = state_rev_before;
-    record.state_rev_after = draft.state.state_rev;
-    record.memories = draft.memories.clone();
+    record.state_rev_after = state.state_rev;
+    record.memories = memories;
     record.state_hash = blake2s_tagged(now_bytes);
     let prev = journal::read_chain_tip(root).map_err(|fault| fault.reason)?;
     Ok(journal::seal(&Record::Round(record), &prev))
@@ -300,7 +294,6 @@ mod tests {
     use std::fs;
     use std::path::Path;
 
-    use crate::draft::Draft;
     use crate::model::{MemoryLine, Presence};
     use crate::store::durability;
     use crate::store::lock::lock_pack;
@@ -320,8 +313,8 @@ mod tests {
         let root = copy_docks("journal-reopen");
         let mut world = crate::testing::resume(&root);
         let pre = fs::read(root.join("state/save.yaml")).unwrap();
-        let mut draft = Draft::begin(&world, &NOBODY);
-        draft.memories.push(MemoryLine {
+        let mut state = world.begin_round(&NOBODY);
+        state.push_memory(MemoryLine {
             round_index: 0,
             actor_id: "mira".to_string(),
             intent_id: "rest".to_string(),
@@ -330,7 +323,7 @@ mod tests {
             text: Some("kept".to_string()),
         });
         let line = round_line(0);
-        commit(&mut world, draft, line).unwrap();
+        commit(&mut world, state, line).unwrap();
         assert_no_tmp(&root);
         let bundle = root.join("state/journal/bundle-0000.jsonl");
         let bundle_bytes = fs::read(&bundle).unwrap();
@@ -345,7 +338,7 @@ mod tests {
             "{bundle_text}"
         );
         assert!(bundle_text.contains("kept"), "{bundle_text}");
-        let next = Draft::begin(&world, &NOBODY);
+        let next = world.begin_round(&NOBODY);
         commit(&mut world, next, round_line(1)).unwrap();
         let bundle_bytes = fs::read(&bundle).unwrap();
         drop(world);
@@ -363,10 +356,11 @@ mod tests {
         let _clear = FailGuard;
         set_checkpoint_every(&root, 1);
         let mut world = crate::testing::resume(&root);
-        let mut draft = Draft::begin(&world, &NOBODY);
-        draft.state.round_index = 1;
+        let mut state = world.begin_round(&NOBODY);
+        let last = world.state().last_round_at.clone();
+        state.stamp_round(1, world.state().world_time, &last);
         durability::fail_next(".jsonl.gz.tmp");
-        commit(&mut world, draft, round_line(1)).unwrap();
+        commit(&mut world, state, round_line(1)).unwrap();
         let live = crate::store::journal::read_live_records(&root).unwrap();
         let round_rev = live.iter().rev().find_map(|entry| match entry {
             crate::store::records::Record::Round(record) => Some(record.state_rev_after),
@@ -379,8 +373,9 @@ mod tests {
         assert!(root.join("state/journal/bundle-0000.jsonl").is_file());
         assert!(!root.join("state/journal/bundle-0000.jsonl.gz").is_file());
 
-        let mut again = Draft::begin(&world, &NOBODY);
-        again.state.round_index = 2;
+        let mut again = world.begin_round(&NOBODY);
+        let last = world.state().last_round_at.clone();
+        again.stamp_round(2, world.state().world_time, &last);
         commit(&mut world, again, round_line(2)).unwrap();
         assert!(world.take_warning().is_none());
         let bundles = crate::store::journal::read_bundle_records(&root).unwrap();
@@ -404,12 +399,14 @@ mod tests {
         let _clear = FailGuard;
         set_checkpoint_every(&root, 2);
         let mut world = crate::testing::resume(&root);
-        let mut first = Draft::begin(&world, &NOBODY);
-        first.state.round_index = 1;
+        let mut first = world.begin_round(&NOBODY);
+        let last = world.state().last_round_at.clone();
+        first.stamp_round(1, world.state().world_time, &last);
         commit(&mut world, first, round_line(1)).unwrap();
 
-        let mut second = Draft::begin(&world, &NOBODY);
-        second.state.round_index = 2;
+        let mut second = world.begin_round(&NOBODY);
+        let last = world.state().last_round_at.clone();
+        second.stamp_round(2, world.state().world_time, &last);
         durability::fail_next("save.yaml.tmp");
         commit(&mut world, second, round_line(2)).unwrap();
         let live = crate::store::journal::read_live_records(&root).unwrap();
@@ -417,8 +414,9 @@ mod tests {
         assert_eq!(world.state().state_rev, mark.state_rev);
         assert_eq!(world.take_warning(), Some(super::CHECKPOINT_WARNING));
 
-        let mut third = Draft::begin(&world, &NOBODY);
-        third.state.round_index = 3;
+        let mut third = world.begin_round(&NOBODY);
+        let last = world.state().last_round_at.clone();
+        third.stamp_round(3, world.state().world_time, &last);
         commit(&mut world, third, round_line(3)).unwrap();
         let bundles = crate::store::journal::read_bundle_records(&root).unwrap();
         assert_eq!(bundles.len(), 2, "{bundles:?}");

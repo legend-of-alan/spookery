@@ -26,13 +26,14 @@ pub(crate) use crate::support::edit_save;
 /// Rowan holds brass_key, and the stair door is open, as a round that ended with him in the
 /// shop would have left it.
 pub(crate) fn give_key(now: &mut State) {
-    now.actors
-        .get_mut("pc_rowan")
-        .unwrap()
-        .inventory
-        .insert("brass_key".to_string(), 1);
-    let shop = now.places.get_mut("docks_shop").unwrap();
-    shop.open.push("stairs".to_string());
+    now.set_items(
+        &spookery_engine::Holder::Actor("pc_rowan".to_string()),
+        "brass_key",
+        1,
+    )
+    .unwrap();
+    let stairs = spookery_engine::Holder::Exit("docks_shop".into(), "stairs".into());
+    now.set_flag(&stairs, "open", true).unwrap();
 }
 
 pub(crate) fn add_trapdoor(pack: &Path) {
@@ -115,6 +116,16 @@ fn break_pack(pack: &Path, fault: &str) {
             // inserting one 0 changes the stored hash.
             fs::write(path, text).unwrap();
         }
+        "an item on the world" => replace_in_file(
+            &pack.join("state/save.yaml"),
+            "items:\n",
+            "items:\n  world:\n    lamp_oil: 1\n",
+        ),
+        "a meter on an unlisted actor" => replace_in_file(
+            &pack.join("state/save.yaml"),
+            "meters:\n",
+            "meters:\n  ghost:\n    grit:\n      base: 1\n      offset: 0\n",
+        ),
         "exit to an unknown place" => replace_in_file(
             &pack.join("world/places/docks_shop.md"),
             "  - to: docks_street\n",
@@ -266,13 +277,11 @@ pub(crate) fn capture_play_stdout(world: &mut World) -> String {
 
 /// Put `actor` on the exit `<place>.<exit>`, walking it until tick `until`.
 pub(crate) fn set_busy(now: &mut State, actor: &str, until: u64, exit: &str) {
-    let actor = now
-        .actors
-        .get_mut(actor)
-        .unwrap_or_else(|| panic!("no {actor}"));
-    actor.place = format!("exit:{exit}");
-    actor.act.busy_until = Some(until);
-    actor.act.pending = Some(walk(exit));
+    let place = format!("exit:{exit}");
+    now.edit_actor(actor, spookery_engine::testing::ActorEdit::Place(place))
+        .unwrap();
+    let busy = spookery_engine::testing::ActorEdit::Busy(Some(until), Some(walk(exit)));
+    now.edit_actor(actor, busy).unwrap();
 }
 
 /// A walk through the exit `<place>.<exit>` by the travel verb.

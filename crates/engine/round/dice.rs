@@ -7,6 +7,7 @@ use crate::hash::blake2s_256;
 use crate::model::State;
 use crate::round::log::RoundLog;
 use crate::rules::context::Context;
+use crate::rules::effect::Holder;
 use crate::rules::expr::{eval_with_dice, Dice};
 use crate::rules::roll::Outcome;
 use crate::rules::roll::{self, faces, MoveReport, Roll, RollKey};
@@ -65,13 +66,11 @@ impl RoundDice {
         target: i64,
         partial_at: Option<i64>,
     ) -> Result<Roll, Reason> {
-        let actor = key
-            .subject_id
-            .as_ref()
-            .and_then(|id| state.actors.get(id))
-            .ok_or(Reason::UnknownId)?;
+        let actor = key.subject_id.as_ref().ok_or(Reason::UnknownId)?;
         let check = canon.checks.get(check_id).ok_or(Reason::UnknownId)?;
-        roll::roll_check(check, &canon.meters, actor, &key, target, partial_at)
+        let holder = Holder::Actor(actor.clone());
+        let stat = state.meter_value(canon, &holder, &check.stat)?;
+        roll::roll_check(check, stat, &key, target, partial_at)
     }
 
     pub(crate) fn roller<'a>(

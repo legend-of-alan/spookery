@@ -1,11 +1,11 @@
 //! Run a round, commit it, and catch the table up.
 
 use std::path::Path;
+use std::sync::Arc;
 
 use crate::canon::Budget;
-use crate::draft::Draft;
 use crate::intent::Intent;
-use crate::model::Presence;
+use crate::model::{Presence, State};
 use crate::rules::effect::Effect;
 use crate::rules::roll::MoveReport;
 use crate::rules::travel;
@@ -133,60 +133,53 @@ pub(crate) fn replay_round(
     presence: &Presence,
 ) -> Result<RoundOutput, Reason> {
     let StagedRound {
-        draft,
+        state,
         mut log,
         delivered,
         ..
     } = run_stages(world, presence, wall, queue)?;
     let output = record::take_output(&mut log, delivered);
-    crate::store::commit::keep_in_memory(world, draft)?;
+    crate::store::commit::keep_in_memory(world, state)?;
     Ok(output)
 }
 
 /// What the stages leave for `record`: the staged save, the round's time, its log, and what
 /// each seat hears.
-pub(crate) struct StagedRound<'p> {
-    pub(crate) draft: Draft<'p>,
+pub(crate) struct StagedRound {
+    pub(crate) state: State,
     pub(crate) clock: RoundTime,
     pub(crate) log: RoundLog,
     pub(crate) delivered: deliver::Deliveries,
 }
 
-/// Every stage but `record`, in order. The canon is cloned once: the candidates' rules borrow
-/// it while the later stages write the draft.
-fn run_stages<'p, L>(
+/// Every stage but `record`, in order, on a copy of the world's save with a round open on it.
+/// The canon is shared once: the candidates' rules borrow it while the later stages write.
+fn run_stages<L>(
     world: &World<L>,
-    presence: &'p Presence,
+    presence: &Presence,
     wall: &str,
     queue: &[Intent],
-) -> Result<StagedRound<'p>, Reason> {
-    let mut draft = Draft::begin(world, presence);
-    let canon = draft.shared_canon();
-    let clock = advance::run(&mut draft, wall)?;
-    let mut dice = RoundDice::new(draft.state().world_id.clone(), clock.round_index);
+) -> Result<StagedRound, Reason> {
+    let canon = Arc::clone(&world.canon);
+    let mut state = world.begin_round(presence);
+    let clock = advance::run(&canon, &mut state, wall)?;
+    let mut dice = RoundDice::new(state.world_id.clone(), clock.round_index);
     let mut log = RoundLog::default();
-    let picked = pick::run(&draft, queue, &mut log)?;
-    let state = draft.state().clone();
+    let picked = pick::run(&canon, &state, queue, &mut log)?;
     let candidates = resolve::run(
         &canon, &state, presence, &picked, queue, &mut dice, &mut log,
     );
-    apply::run(&mut draft, &canon, candidates, &clock, &mut dice, &mut log);
+    apply::run(&canon, &mut state, candidates, &clock, &mut dice, &mut log);
     let end = clock.world_time_after;
-    finish::run(&mut draft, &canon, end, &mut dice, &mut log)?;
+    finish::run(&canon, &mut state, end, &mut dice, &mut log)?;
     // A door that opens is a flag change, so change rules see it before the map refresh. This
     // pass also takes the clock's changes in a round where no action ran.
-    travel::open_doors(&mut draft, &mut log);
-    triggers::run(&mut draft, &canon, &mut dice, &mut log);
-    travel::note_exits(&mut draft);
-    let delivered = deliver::run(
-        &canon,
-        draft.state(),
-        draft.presence,
-        &log.changes,
-        &log.effects,
-    );
+    travel::open_doors(&canon, &mut state, &mut log);
+    triggers::run(&canon, &mut state, &mut dice, &mut log);
+    travel::note_exits(&canon, &mut state)?;
+    let delivered = deliver::run(&canon, &state, state.presence(), &log.changes, &log.effects);
     Ok(StagedRound {
-        draft,
+        state,
         clock,
         log,
         delivered,

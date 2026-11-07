@@ -1,9 +1,10 @@
 //! Whether an actor can pay a cost, and paying it.
 
-use crate::draft::Draft;
+use crate::canon::Canon;
 use crate::intent::Intent;
 use crate::model::key::StateKey;
 use crate::model::meter::MeterWrite;
+use crate::model::State;
 use crate::rules::context::Context;
 use crate::rules::effect;
 use crate::rules::expr::{self, Dice};
@@ -43,11 +44,8 @@ pub(crate) fn afford(context: &Context, cost: &Cost) -> Result<(), gate::Refusal
         }
         let amount = expr::eval(context, expr).map_err(|_| cant_afford(id))?;
         let count = item_count(amount).map_err(|_| cant_afford(id))?;
-        let held = state
-            .actors
-            .get(who)
-            .map(|actor| actor.item_count(id))
-            .unwrap_or(0);
+        let actor = effect::Holder::Actor(who.to_string());
+        let held = state.item_count(&actor, id).unwrap_or(0);
         if held < count {
             return Err(cant_afford(id));
         }
@@ -61,7 +59,8 @@ fn item_count(amount: i64) -> Result<u32, Reason> {
 
 /// Meters and items are paid at the start. Time is a duration for later completion.
 pub(crate) fn pay(
-    draft: &mut Draft,
+    canon: &Canon,
+    state: &mut State,
     intent: &Intent,
     cost: &Cost,
     dice: &mut dyn Dice,
@@ -69,22 +68,22 @@ pub(crate) fn pay(
     let who = intent.actor_id().ok_or(Reason::UnknownId)?;
     let holder = effect::Holder::Actor(who.to_string());
     for (key, expr) in &cost.meters {
-        let context = Context::new(draft.canon(), draft.state(), draft.presence, intent);
+        let context = Context::new(canon, state, state.presence(), intent);
         let amount = expr::eval_with_dice(&context, expr, dice)?;
         if amount < 0 {
             return Err(Reason::CantAfford);
         }
-        effect::write_meter(draft, &holder, key, MeterWrite::Offset(-amount))?;
+        effect::write_meter(canon, state, &holder, key, MeterWrite::Offset(-amount))?;
         if amount == 0 {
             // A cost of 0 leaves the meter as it was and still takes a key of the budget.
-            draft.track(StateKey::ActorMeter(who.to_string(), key.clone()))?;
+            state.count_key(&StateKey::ActorMeter(who.to_string(), key.clone()))?;
         }
     }
     for (id, expr) in &cost.items {
-        let context = Context::new(draft.canon(), draft.state(), draft.presence, intent);
+        let context = Context::new(canon, state, state.presence(), intent);
         let count = item_count(expr::eval_with_dice(&context, expr, dice)?)?;
         // The key budget keeps its own code; any other refusal of the take is a shortfall.
-        match effect::shift_item(draft, &holder, id, -i64::from(count), None) {
+        match effect::shift_item(state, &holder, id, -i64::from(count), None) {
             Err(Reason::Budget) => return Err(Reason::Budget),
             Err(_) => return Err(Reason::CantAfford),
             Ok(()) => {}

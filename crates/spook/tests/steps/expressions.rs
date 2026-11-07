@@ -199,13 +199,9 @@ fn grit(world: &World) -> i64 {
 
 fn grit_of(world: &World, actor: &str) -> i64 {
     let now = state_of(table::pack(world));
-    let live = now
-        .actors
-        .get(actor)
-        .unwrap_or_else(|| panic!("{actor} missing"))
-        .meters
-        .get("grit")
-        .unwrap_or_else(|| panic!("grit missing"));
+    let holder = spookery_engine::Holder::Actor(actor.to_string());
+    let live =
+        (now.meters.get(&holder, "grit")).unwrap_or_else(|| panic!("{actor}'s grit missing"));
     live.base + live.offset
 }
 

@@ -5,6 +5,11 @@ Feature: A rule's effects are all or nothing
     When Mira plays overreach
     Then lamp oil stays 4 and the round names OUT_OF_RANGE
 
+  Scenario: A refused rule leaves the flags it cleared and set, the door it opened and the modifier it applied as they were
+    Given a docks row unbar that clears Mira's calm, opens the stair door, sets calm again, braces her grit by 2 and then removes 8 lamp oil
+    When Mira plays unbar
+    Then lamp oil stays 4, the round names OUT_OF_RANGE, the stair door stays locked, and Mira keeps calm and wary, no brace and her grit
+
   Scenario: A rule over the effect cap is refused, not truncated
     Given max_effects_per_intent is 1 and a row with 2 effects
     Then no effect from that row applies and the round log names the refusal

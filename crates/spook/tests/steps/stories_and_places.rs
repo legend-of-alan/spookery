@@ -4,7 +4,7 @@ use std::fs;
 use std::path::Path;
 
 use cucumber::{given, then, when};
-use spookery_engine::testing::{state_of, PlaceLive};
+use spookery_engine::testing::state_of;
 use spookery_engine::{Presence, World as Opened};
 
 use super::meters::{assert_refused, migrate_and_play};
@@ -72,7 +72,8 @@ fn add_verb_doing(pack: &Path, verb: &str, effects: &str) {
 fn stand_in_the_loft(world: &mut World) {
     let pack = world.pack.clone().unwrap();
     edit_table(world, &pack, |now, seated| {
-        now.places.insert("loft".to_string(), PlaceLive::default());
+        now.make_record(&spookery_engine::Holder::Place("loft".to_string()))
+            .unwrap();
         set_place(now, "pc_rowan", "loft");
         set_place(now, "mira", "docks_shop");
         sit(seated, &["pc_rowan"]);
@@ -190,7 +191,8 @@ fn the_rule_runs(world: &mut World) {
 fn the_gm_sees_dread(world: &mut World) {
     assert_gm_saw(world, "story_meter ending dread");
     let now = state_of(world.pack.as_deref().unwrap());
-    assert_eq!(now.stories["ending"].meters["dread"].offset, 1);
+    let ending = spookery_engine::Holder::Story("ending".to_string());
+    assert_eq!(now.meters.get(&ending, "dread").unwrap().offset, 1);
 }
 
 #[then(expr = "no player's view lists dread")]
@@ -217,7 +219,7 @@ fn a_rule_tests_the_flag(world: &mut World, who: String, key: String) {
         ),
     );
     migrate_and_play(world, vec![intent("test", "pc_rowan", "test_mark", None)]);
-    assert!(state_of(&pack).flags.contains(&"mark_seen".to_string()));
+    assert!(state_of(&pack).has_flag(&spookery_engine::Holder::World, "mark_seen"));
 }
 
 #[then(expr = "the GM sees the flag change on the siege story")]

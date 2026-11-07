@@ -47,11 +47,8 @@ fn place_of(pack: &Path, actor: &str) -> String {
 
 fn stairs_open(pack: &Path) -> bool {
     let saved = spookery_engine::World::peek(pack).unwrap();
-    saved
-        .state()
-        .places
-        .get("docks_shop")
-        .is_some_and(|shop| shop.open.contains(&"stairs".to_string()))
+    let stairs = spookery_engine::Holder::Exit("docks_shop".into(), "stairs".into());
+    saved.state().has_flag(&stairs, "open")
 }
 
 /// The docks pack with Mira on the street holding brass_key and keeping no habits, a `bolt`
@@ -83,9 +80,12 @@ exits:";
     )
     .unwrap();
     support::edit_save(&pack, |state| {
-        let mira = state.actors.get_mut("mira").unwrap();
-        mira.place = "docks_street".to_string();
-        mira.inventory.insert("brass_key".to_string(), 1);
+        let place = "docks_street".to_string();
+        let mira = spookery_engine::Holder::Actor("mira".to_string());
+        state
+            .edit_actor("mira", support::ActorEdit::Place(place))
+            .unwrap();
+        state.set_items(&mira, "brass_key", 1).unwrap();
     });
     world.pack = Some(pack);
 }
@@ -115,7 +115,8 @@ fn the_door_is_open(world: &mut World) {
 fn mira_drops_the_key(world: &mut World) {
     plays(world.pack(), "mira", "drop", Some("brass_key"));
     let saved = spookery_engine::World::peek(world.pack()).unwrap();
-    assert_eq!(saved.state().actors["mira"].item_count("brass_key"), 0);
+    let mira = spookery_engine::Holder::Actor("mira".to_string());
+    assert_eq!(saved.state().item_count(&mira, "brass_key"), Some(0));
 }
 
 #[then(expr = "Mira can still take the stairs")]
@@ -127,7 +128,8 @@ fn mira_takes_the_stairs(world: &mut World) {
 #[when(expr = "Aldric, who has no key, takes the stairs")]
 fn aldric_takes_the_stairs(world: &mut World) {
     let saved = spookery_engine::World::peek(world.pack()).unwrap();
-    assert_eq!(saved.state().actors["aldric"].item_count("brass_key"), 0);
+    let aldric = spookery_engine::Holder::Actor("aldric".to_string());
+    assert_eq!(saved.state().item_count(&aldric, "brass_key"), Some(0));
     drop(saved);
     world.scratch = plays(world.pack(), "aldric", "travel", Some("stairs")).to_string();
 }
@@ -194,7 +196,9 @@ fn the_journal_has_the_open(world: &mut World) {
 #[then(expr = "a change rule watching open has run in that round")]
 fn the_watch_ran(world: &mut World) {
     let saved = spookery_engine::World::peek(world.pack()).unwrap();
-    assert!(saved.state().flags.contains(&"creaked".to_string()));
+    assert!(saved
+        .state()
+        .has_flag(&spookery_engine::Holder::World, "creaked"));
     drop(saved);
     let round = support::read_round(world.pack(), "round-0001");
     let creaked = round["effects"].as_array().unwrap().iter().any(|effect| {

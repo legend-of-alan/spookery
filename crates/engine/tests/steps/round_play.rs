@@ -111,6 +111,84 @@ fn a_docks_row_overreach(world: &mut World, add: i64, remove: i64) {
     world.pack = Some(pack);
 }
 
+/// Mira carries the flags `calm` and `wary`, both set. The row clears `calm`, opens the stair
+/// door, sets `calm` again, braces her grit by `add`, and then takes more oil than the shop has.
+/// Those are five effects, so the pack allows five.
+#[given(
+    expr = "a docks row unbar that clears Mira's calm, opens the stair door, sets calm again, braces her grit by {int} and then removes {int} lamp oil"
+)]
+fn a_docks_row_unbar(world: &mut World, add: i64, remove: i64) {
+    let pack = support::copy_pack("oneshot-docks", "unbar");
+    set_budget(&pack, "max_effects_per_intent", 5);
+    fs::write(
+        pack.join("rules/modifiers.yaml"),
+        "schema: modifiers
+modifiers:
+  - id: brace
+    meter: grit
+",
+    )
+    .unwrap();
+    support::append(
+        &pack.join("rules/verbs.yaml"),
+        &format!(
+            "
+  - id: unbar
+    when: {{ verb: unbar }}
+    do:
+      - flag: {{ who: self, key: calm, value: false }}
+      - flag: {{ who: \"exit:docks_shop.stairs\", key: open, value: true }}
+      - flag: {{ who: self, key: calm, value: true }}
+      - modifier: {{ who: self, id: brace, add: {add}, ticks: 10 }}
+      - item: {{ who: place:docks_shop, id: lamp_oil, add: -{remove} }}
+"
+        ),
+    );
+    let path = pack.join("cast/mira.md");
+    let text = fs::read_to_string(&path).unwrap();
+    let next = text.replacen(
+        "idle:
+",
+        "flags: [calm, wary]
+idle:
+",
+        1,
+    );
+    assert_ne!(text, next);
+    fs::write(&path, next).unwrap();
+    support::edit_save(&pack, |state| {
+        let mira = spookery_engine::Holder::Actor("mira".to_string());
+        for flag in ["calm", "wary"] {
+            state.set_flag(&mira.clone(), flag, true).unwrap();
+        }
+    });
+    make_mira_ineligible(&pack);
+    world.pack = Some(pack);
+}
+
+#[then(
+    expr = "lamp oil stays {int}, the round names {word}, the stair door stays locked, and Mira keeps calm and wary, no brace and her grit"
+)]
+fn the_door_stays_locked_and_mira_keeps_her_flags(world: &mut World, oil: i64, reason: String) {
+    assert_refusal(world, oil, &reason);
+    let saved = spookery_engine::World::peek(world.pack()).unwrap();
+    let stairs = spookery_engine::Holder::Exit("docks_shop".into(), "stairs".into());
+    assert!(!saved.state().has_flag(&stairs, "open"));
+    let mira = spookery_engine::Holder::Actor("mira".to_string());
+    let flags: Vec<_> = saved
+        .state()
+        .flags
+        .on(&mira)
+        .map(|(flag, ())| flag)
+        .collect();
+    assert_eq!(flags, ["calm", "wary"]);
+    let held: Vec<_> = saved.state().modifiers.on(&mira).collect();
+    assert!(held.is_empty(), "{held:?}");
+    let stored = saved.state().meters.get(&mira, "grit").unwrap();
+    let read = saved.state().meter_value(saved.canon(), &mira, "grit");
+    assert_eq!(read, Ok(stored.base + stored.offset));
+}
+
 #[given(expr = "a docks row spilled that rolls grit and then removes {int} lamp oil")]
 fn a_docks_row_spilled(world: &mut World, remove: i64) {
     let pack = support::copy_pack("oneshot-docks", "spilled");
@@ -144,10 +222,11 @@ fn mira_plays(world: &mut World, move_name: String) {
     let (state, rolls, round) =
         play_queued(&pack, &[], vec![intent(&id, "mira", &move_name, None)]);
     let oil = state
-        .places
-        .get("docks_shop")
-        .and_then(|place| place.items.get("lamp_oil"))
-        .copied()
+        .item_count(
+            &spookery_engine::Holder::Place("docks_shop".to_string()),
+            "lamp_oil",
+        )
+        .filter(|count| *count > 0)
         .map(i64::from)
         .unwrap_or(-1);
     world.oil = oil.to_string().into_bytes();
@@ -294,10 +373,11 @@ fn max_effects_per_intent_is_1_and_a_row_with_2_effects(world: &mut World) {
     world.oil = format!(
         "{}",
         state
-            .places
-            .get("docks_shop")
-            .and_then(|place| place.items.get("lamp_oil"))
-            .copied()
+            .item_count(
+                &spookery_engine::Holder::Place("docks_shop".to_string()),
+                "lamp_oil"
+            )
+            .filter(|count| *count > 0)
             .map(i64::from)
             .unwrap_or(-1)
     )
@@ -537,7 +617,8 @@ fn a_docks_pack_with_two_rummage_rules(world: &mut World, shop: i64, shared: i64
 fn rowan_walks_and_rummages(world: &mut World) {
     let rummage = intent("rummage", "pc_rowan", "rummage", None);
     let (state, round) = rowan_walks(world.pack(), vec![rummage]);
-    let rest = &state.actors["pc_rowan"].meters["rest"];
+    let rowan = spookery_engine::Holder::Actor("pc_rowan".to_string());
+    let rest = state.meters.get(&rowan, "rest").unwrap();
     world.count = usize::try_from(rest.base + rest.offset).unwrap();
     world.scratch = round.to_string();
 }
@@ -580,7 +661,10 @@ fn a_street_rule_over_the_cap(world: &mut World) {
 #[when(expr = "Rowan walks to the street")]
 fn rowan_walks_to_the_street(world: &mut World) {
     let (state, round) = rowan_walks(world.pack(), Vec::new());
-    world.count = state.actors["pc_rowan"].flags.len();
+    world.count = state
+        .flags
+        .on(&spookery_engine::Holder::Actor("pc_rowan".to_string()))
+        .count();
     world.scratch = round.to_string();
 }
 
@@ -779,15 +863,12 @@ fn strike_line(scratch: &str, actor: &str) -> (String, i64, i64) {
 
 fn indexed_roll(pack: &Path, actor_id: &str, roll_index: u32) -> (String, i64) {
     let world = spookery_engine::World::peek(pack).unwrap_or_else(|err| panic!("open: {err}"));
-    let actor = world
-        .state()
-        .actors
-        .get(actor_id)
-        .unwrap_or_else(|| panic!("missing {actor_id}"));
     let check = world.canon().checks.get("strike").unwrap();
-    let def = world.canon().meters.get(&check.stat).unwrap();
-    let live = actor.meters.get(&check.stat).unwrap();
-    let stat = (live.base + live.offset).clamp(def.min, def.max);
+    let holder = spookery_engine::Holder::Actor(actor_id.to_string());
+    let stat = world
+        .state()
+        .meter_value(world.canon(), &holder, &check.stat);
+    let stat = stat.unwrap_or_else(|err| panic!("{actor_id} {}: {err}", check.stat));
     let rolled = faces(
         &RollKey {
             world_id: world.state().world_id.clone(),
@@ -876,6 +957,73 @@ fn lark_roll(pack: &Path, extra_first: bool) -> (String, i64) {
         _ => None,
     });
     rolled.unwrap_or_else(|| panic!("Lark did not roll"))
+}
+
+#[given(
+    regex = r#"^the docks pack allows (\d+) state keys per round and a row "brace" that adds (\d+) to grit through a modifier$"#
+)]
+fn the_docks_pack_allows_keys_and_braces(world: &mut World, limit: u64, add: i64) {
+    let pack = support::copy_pack("oneshot-docks", "key-limit-brace");
+    set_budget(&pack, "max_state_keys_mutated", limit);
+    fs::write(
+        pack.join("rules/modifiers.yaml"),
+        "schema: modifiers\nmodifiers:\n  - id: brace\n    meter: grit\n",
+    )
+    .unwrap();
+    support::append(
+        &pack.join("rules/verbs.yaml"),
+        &format!(
+            "
+  - id: brace
+    when: {{ verb: brace }}
+    do:
+      - modifier: {{ who: self, id: brace, add: {add}, ticks: 10 }}
+"
+        ),
+    );
+    make_mira_ineligible(&pack);
+    world.pack = Some(pack);
+}
+
+#[when(expr = "Rowan plays brace")]
+fn rowan_braces(world: &mut World) {
+    let pack = world.pack().to_path_buf();
+    let lock = spookery_engine::lock_pack(&pack).unwrap();
+    let mut opened = spookery_engine::World::resume(&pack, lock).unwrap();
+    let wall = opened.state().last_round_at.clone();
+    let nobody = spookery_engine::Presence::default();
+    opened
+        .queue_gm_intent(
+            &nobody,
+            intent("rowan-brace", "pc_rowan", "brace", None),
+            || panic!("the GM chose the id"),
+        )
+        .unwrap();
+    let output = opened.play(&nobody, &wall).unwrap();
+    world.summary_lines = output.changed_keys.clone();
+    world.scratch = read_round(&pack, "round-0001").to_string();
+}
+
+#[then(expr = "Rowan's brace is refused {word}")]
+fn rowans_brace_is_refused(world: &mut World, code: String) {
+    let round: Value = serde_json::from_str(&world.scratch).unwrap();
+    let refused = round["refused"].as_array().unwrap();
+    assert_eq!(refused.len(), 1, "{round}");
+    assert_eq!(refused[0]["id"], "rowan-brace", "{round}");
+    assert_eq!(refused[0]["code"], code.as_str(), "{round}");
+}
+
+#[then(expr = "Rowan's brace lands, and the GM sees both {string} and {string} change")]
+fn rowans_brace_lands(world: &mut World, modifier: String, meter: String) {
+    let round: Value = serde_json::from_str(&world.scratch).unwrap();
+    assert_eq!(round["refused"].as_array().unwrap().len(), 0, "{round}");
+    for key in [modifier, meter] {
+        assert!(
+            world.summary_lines.contains(&key),
+            "{key}: {:?}",
+            world.summary_lines
+        );
+    }
 }
 
 /// The GM queues `intents`, then one round plays. Any `seated` players are at the table for it.

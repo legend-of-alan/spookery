@@ -2,6 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::model::tracked::{Edit, Store};
 use crate::rules::effect::Holder;
 use crate::Reason;
 
@@ -62,18 +63,32 @@ pub fn current(def: &MeterDef, live: &MeterLive, modifiers: i64) -> Result<i64, 
     Ok(sum.clamp(def.min, def.max))
 }
 
-/// `Ok(true)` means the stored pair changed and the caller should track
-/// the meter's key. A zero delta leaves the pair alone and is `Ok(false)`.
-/// The live record is assigned only after `is_storable` accepts the next pair.
-pub fn write(def: &MeterDef, live: &mut MeterLive, write: MeterWrite) -> Result<bool, Reason> {
-    let MeterWrite::Offset(delta) = write;
-    let next_offset = live.offset.checked_add(delta).ok_or(Reason::OutOfRange)?;
+/// Every live meter, on every holder, by the meter's id.
+pub type Meters = Store<MeterLive, Offset>;
+
+/// The edit that moves a meter's offset by the write's delta, once `is_storable` accepts the
+/// next pair.
+pub(crate) fn write(def: &MeterDef, live: &MeterLive, write: MeterWrite) -> Result<Offset, Reason> {
+    let MeterWrite::Offset(by) = write;
+    let next_offset = live.offset.checked_add(by).ok_or(Reason::OutOfRange)?;
     if !is_storable(def, live.base, next_offset) {
         return Err(Reason::OutOfRange);
     }
-    let changed = next_offset != live.offset;
-    live.offset = next_offset;
-    Ok(changed)
+    Ok(Offset(by))
+}
+
+/// A meter's offset moves by this much, a move `write` has checked. Its undo moves it back.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Offset(pub(crate) i64);
+
+impl Edit<MeterLive> for Offset {
+    fn apply(self, live: &mut MeterLive) -> Option<Self> {
+        if self.0 == 0 {
+            return None;
+        }
+        live.offset = live.offset.checked_add(self.0)?;
+        Some(Offset(-self.0))
+    }
 }
 
 #[cfg(test)]

@@ -165,7 +165,11 @@ fn a_docks_table_where_mira_can_oppose_a_mark(world: &mut World) {
     insert_mira_flags(&pack, "    - marked\n    - missed\n    - guarded\n");
     set_mira_grit(&pack, 100);
     super::common::edit_save(&pack, |now| {
-        now.actors.get_mut("mira").unwrap().place = "docks_shop".to_string();
+        now.edit_actor(
+            "mira",
+            spookery_engine::testing::ActorEdit::Place("docks_shop".to_string()),
+        )
+        .unwrap();
     });
     listen_and_seat_both(world, &pack);
     world.scratch = snapshot_pack(&pack).display().to_string();
@@ -356,8 +360,8 @@ fn insert_brace_habit(pack: &Path) {
 fn set_mira_grit(pack: &Path, base: i64) {
     let path = pack.join("state/save.yaml");
     let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read now: {err}"));
-    let from = "  mira:\n    kind: npc\n    place: mira_rooms\n    flags: []\n    meters:\n      grit:\n        base: 1\n";
-    let to = format!("  mira:\n    kind: npc\n    place: mira_rooms\n    flags: []\n    meters:\n      grit:\n        base: {base}\n");
+    let from = "  mira:\n    grit:\n      base: 1\n";
+    let to = format!("  mira:\n    grit:\n      base: {base}\n");
     let next = text.replacen(from, &to, 1);
     assert_ne!(next, text, "mira grit was not changed");
     fs::write(&path, next).unwrap_or_else(|err| panic!("write now: {err}"));
@@ -370,10 +374,14 @@ fn snapshot_pack(pack: &Path) -> PathBuf {
 }
 
 fn flags_of(world: &World, id: &str) -> Vec<String> {
-    let mut flags = match state_of(table::pack(world)).actors.get(id) {
-        Some(actor) => actor.flags.clone(),
-        _ => panic!("{id} missing"),
-    };
+    let now = state_of(table::pack(world));
+    assert!(now.actors.contains_key(id), "{id} missing");
+    let actor = spookery_engine::Holder::Actor(id.to_string());
+    let mut flags: Vec<String> = now
+        .flags
+        .on(&actor)
+        .map(|(flag, ())| flag.clone())
+        .collect();
     flags.sort();
     flags
 }
@@ -547,7 +555,11 @@ fn a_docks_table_where_mira_opposes_a_three_band_press(world: &mut World) {
     set_rowan_grit(&pack, 6);
     set_mira_grit(&pack, 100);
     super::common::edit_save(&pack, |now| {
-        now.actors.get_mut("mira").unwrap().place = "docks_shop".to_string();
+        now.edit_actor(
+            "mira",
+            spookery_engine::testing::ActorEdit::Place("docks_shop".to_string()),
+        )
+        .unwrap();
     });
     listen_and_seat_both(world, &pack);
     world.scratch = snapshot_pack(&pack).display().to_string();
@@ -694,7 +706,11 @@ fn prepare_press(world: &mut World, base: i64, sit: bool) {
     insert_mira_flags(&pack, PRESS_FLAGS);
     set_rowan_grit(&pack, base);
     super::common::edit_save(&pack, |now| {
-        now.actors.get_mut("mira").unwrap().place = "docks_shop".to_string();
+        now.edit_actor(
+            "mira",
+            spookery_engine::testing::ActorEdit::Place("docks_shop".to_string()),
+        )
+        .unwrap();
     });
     if sit {
         listen_and_seat_both(world, &pack);
@@ -712,8 +728,8 @@ fn append_check(pack: &Path, extra: &str) {
 fn set_rowan_grit(pack: &Path, base: i64) {
     let path = pack.join("state/save.yaml");
     let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read now: {err}"));
-    let from = "  pc_rowan:\n    kind: pc\n    place: docks_shop\n    flags: []\n    meters:\n      assassination_debt:\n        base: 2\n        offset: 0\n      grit:\n        base: 1\n";
-    let to = format!("  pc_rowan:\n    kind: pc\n    place: docks_shop\n    flags: []\n    meters:\n      assassination_debt:\n        base: 2\n        offset: 0\n      grit:\n        base: {base}\n");
+    let from = "  pc_rowan:\n    assassination_debt:\n      base: 2\n      offset: 0\n    grit:\n      base: 1\n";
+    let to = format!("  pc_rowan:\n    assassination_debt:\n      base: 2\n      offset: 0\n    grit:\n      base: {base}\n");
     let next = text.replacen(from, &to, 1);
     assert_ne!(next, text, "rowan grit was not changed");
     fs::write(&path, next).unwrap_or_else(|err| panic!("write now: {err}"));

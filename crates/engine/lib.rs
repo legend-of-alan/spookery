@@ -2,7 +2,6 @@
 
 pub(crate) mod canon;
 pub(crate) mod diagnostic;
-pub(crate) mod draft;
 pub(crate) mod hash;
 pub(crate) mod intent;
 pub(crate) mod model;
@@ -36,7 +35,9 @@ pub mod testing {
     use crate::store::lock::WriteGuard;
 
     pub use crate::canon::strip_body;
-    pub use crate::model::{Act, ActorKind, ActorLive, PendingAction, PlaceLive};
+    pub use crate::canon::Canon;
+    pub use crate::model::tracked::Entry;
+    pub use crate::model::{Act, ActCounter, ActorEdit, ActorKind, ActorLive, PendingAction};
     pub use crate::round::replay::replay_journal;
     pub use crate::rules::roll::{faces, RollKey};
 
@@ -206,6 +207,8 @@ pub mod testing {
         fs::write(&path, bytes).unwrap_or_else(|err| panic!("write {}: {err}", path.display()));
     }
 
+    /// Edit the pack's save through `State`'s writers, as migrate does, accept the edits, and
+    /// write it back with the pack's current `pack_rev`.
     pub fn edit_save(pack: &Path, edit: impl FnOnce(&mut crate::model::State)) {
         let path = crate::store::journal::save_path(pack);
         let text = fs::read_to_string(&path)
@@ -213,6 +216,7 @@ pub mod testing {
         let mut state = crate::store::save::parse(&text)
             .unwrap_or_else(|err| panic!("load {}: {err:?}", path.display()));
         edit(&mut state);
+        state.accept();
         state.pack_rev = crate::canon::pack_rev(pack)
             .unwrap_or_else(|err| panic!("rev {}: {err}", pack.display()));
         write_save(pack, &state);
@@ -237,31 +241,24 @@ pub mod testing {
         let from = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("fixtures/cast/pc-nell.md");
         fs::copy(&from, pack.join("cast/pc-nell.md"))
             .unwrap_or_else(|err| panic!("copy {}: {err}", from.display()));
+        let canon = crate::canon::load_canon(pack).unwrap_or_else(|err| panic!("canon: {err:?}"));
         edit_save(pack, |state| {
-            state.actors.insert(
-                "pc_nell".to_string(),
-                crate::model::ActorLive {
-                    kind: crate::model::ActorKind::Pc,
-                    place: "docks_shop".to_string(),
-                    flags: Vec::new(),
-                    meters: std::collections::BTreeMap::from([
-                        (
-                            "grit".to_string(),
-                            crate::MeterLive {
-                                base: 100,
-                                offset: 0,
-                            },
-                        ),
-                        ("rest".to_string(), crate::MeterLive { base: 3, offset: 0 }),
-                    ]),
-                    modifiers: Default::default(),
-                    inventory: std::collections::BTreeMap::new(),
-                    wielded: None,
-                    known_facts: Vec::new(),
-                    visited: Default::default(),
-                    act: crate::model::Act::default(),
-                },
-            );
+            let nell = crate::model::ActorLive {
+                kind: crate::model::ActorKind::Pc,
+                place: "docks_shop".to_string(),
+                wielded: None,
+                known_facts: Vec::new(),
+                visited: Default::default(),
+                act: crate::model::Act::default(),
+            };
+            state.add_actor("pc_nell", nell).expect("no pc_nell yet");
+            let nell = crate::Holder::Actor("pc_nell".to_string());
+            for (key, base) in [("grit", 100), ("rest", 3)] {
+                let live = crate::MeterLive { base, offset: 0 };
+                state
+                    .put_meter(&canon, &nell, key, Some(live))
+                    .expect("a meter");
+            }
         });
     }
 

@@ -4,12 +4,12 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
-use crate::draft::Draft;
+use crate::canon::Canon;
 use crate::intent::{Intent, Viewer};
-use crate::model::key::StateKey;
+use crate::model::item;
 use crate::model::meter::{self, MeterWrite};
 use crate::model::modifier::{self, ModifierLive};
-use crate::model::{self, MemoryLine, Note};
+use crate::model::{self, ActorEdit, MemoryLine, Note, State};
 use crate::rules::visibility::can_see_fact;
 use crate::Reason;
 
@@ -96,13 +96,20 @@ impl Effect {
         }
     }
 
-    /// Write this effect into the staged save.
-    pub(crate) fn apply(self, draft: &mut Draft, intent: &Intent) -> Result<(), Reason> {
+    /// Write this effect into the save, under the rules of `canon`.
+    pub(crate) fn apply(
+        self,
+        canon: &Canon,
+        state: &mut State,
+        intent: &Intent,
+    ) -> Result<(), Reason> {
         if !viewer_matches(intent, &self) {
             return Err(Reason::ViewerMismatch);
         }
         match self.kind {
-            EffectKind::Meter { holder, key, write } => write_meter(draft, &holder, &key, write),
+            EffectKind::Meter { holder, key, write } => {
+                write_meter(canon, state, &holder, &key, write)
+            }
             EffectKind::Item {
                 actor_id,
                 place,
@@ -115,35 +122,35 @@ impl Effect {
                     (None, Some(place)) => Holder::Place(place),
                     _ => return Err(Reason::Schema),
                 };
-                shift_item(draft, &holder, &id, delta, max)
+                shift_item(state, &holder, &id, delta, max)
             }
             EffectKind::Modifier {
                 actor_id,
                 id,
                 add,
                 ticks,
-            } => apply_modifier(draft, &actor_id, &id, add, ticks),
-            EffectKind::Wield { actor_id, id } => wield(draft, &actor_id, &id),
-            EffectKind::Unwield { actor_id } => unwield(draft, &actor_id),
+            } => apply_modifier(canon, state, &actor_id, &id, add, ticks),
+            EffectKind::Wield { actor_id, id } => wield(canon, state, &actor_id, &id),
+            EffectKind::Unwield { actor_id } => unwield(state, &actor_id),
             EffectKind::Location {
                 actor_id, from, to, ..
-            } => move_actor(draft, intent, &actor_id, &from, &to),
+            } => move_actor(canon, state, intent, &actor_id, &from, &to),
             EffectKind::Memory {
                 actor_id,
                 fact_ids,
                 tags,
                 text,
-            } => remember(draft, intent, &actor_id, fact_ids, tags, text),
-            EffectKind::Flag { holder, key, value } => set_flag(draft, &holder, &key, value),
+            } => remember(canon, state, intent, &actor_id, fact_ids, tags, text),
+            EffectKind::Flag { holder, key, value } => set_flag(canon, state, &holder, &key, value),
             EffectKind::Note {
                 note_id,
                 to,
                 place,
                 fact_ids,
                 text,
-            } => leave_note(draft, note_id, to, place, fact_ids, text),
+            } => leave_note(state, note_id, to, place, fact_ids, text),
             EffectKind::Narrate { .. } => Ok(()),
-            EffectKind::Reveal { actor_id, fact } => reveal(draft, &actor_id, &fact),
+            EffectKind::Reveal { actor_id, fact } => reveal(canon, state, &actor_id, &fact),
         }
     }
 }
@@ -565,7 +572,7 @@ fn viewer_matches(intent: &Intent, effect: &Effect) -> bool {
 /// Who holds a meter, a flag or an item count: an actor, a place, a story, an exit, or the
 /// world. Saved as `world`, `{actor: id}`, `{place: id}`, `{story: id}` or
 /// `{exit: [place, exit]}`. An exit holds only its flag `open`.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Holder {
     Actor(String),
@@ -589,127 +596,117 @@ impl fmt::Display for Holder {
     }
 }
 
+/// Read a holder back from the words `Display` writes, as the save's stores key them.
+impl std::str::FromStr for Holder {
+    type Err = String;
+
+    fn from_str(word: &str) -> Result<Self, String> {
+        let named = |id: &str| (!id.is_empty()).then(|| id.to_string());
+        let holder = if let Some(id) = word.strip_prefix("place:") {
+            named(id).map(Holder::Place)
+        } else if let Some(id) = word.strip_prefix("story:") {
+            named(id).map(Holder::Story)
+        } else if let Some((place, exit)) = model::exit_parts(word) {
+            Some(Holder::Exit(place.to_string(), exit.to_string()))
+        } else if word == "world" {
+            Some(Holder::World)
+        } else {
+            (!word.contains(':'))
+                .then(|| named(word).map(Holder::Actor))
+                .flatten()
+        };
+        holder.ok_or_else(|| format!("'{word}' names no holder"))
+    }
+}
+
 /// Write a meter `holder` carries, inside the bounds the pack gives it.
 pub(crate) fn write_meter(
-    draft: &mut Draft,
+    canon: &Canon,
+    state: &mut State,
     holder: &Holder,
     key: &str,
     write: MeterWrite,
 ) -> Result<(), Reason> {
-    let def = draft
-        .canon()
-        .meter_def(holder, key)
-        .cloned()
-        .ok_or(Reason::UnknownId)?;
-    let state_key = StateKey::meter(holder, key).ok_or(Reason::UnknownId)?;
-    draft.mutate(state_key, |state| {
-        let meters = state.meters_mut(holder)?;
-        meter::write(&def, meters.get_mut(key).ok_or(Reason::UnknownId)?, write)
-    })
+    let def = canon.meter_def(holder, key).ok_or(Reason::UnknownId)?;
+    let held = state.meters.get(holder, key);
+    let edit = meter::write(def, held.ok_or(Reason::UnknownId)?, write)?;
+    state.edit_meter(canon, holder, key, edit)
 }
 
 /// Add `delta` to the count `holder` has of item `id`. An actor who no longer holds the item
 /// they wield lets go of it.
 pub(crate) fn shift_item(
-    draft: &mut Draft,
+    state: &mut State,
     holder: &Holder,
     id: &str,
     delta: i64,
     max: Option<i64>,
 ) -> Result<(), Reason> {
-    match holder {
-        Holder::Actor(actor_id) => {
-            let state_key = StateKey::ActorItem(actor_id.clone(), id.to_string());
-            draft.mutate(state_key, |state| {
-                model::shift_count(&mut state.actor_mut(actor_id)?.inventory, id, delta, max)
-            })?;
-            draft.mutate(StateKey::ActorWielded(actor_id.clone()), |state| {
-                Ok(state.actor_mut(actor_id)?.release_wielded())
-            })
-        }
-        Holder::Place(place) => {
-            let state_key = StateKey::PlaceItem(place.clone(), id.to_string());
-            draft.mutate(state_key, |state| {
-                let place_live = state.places.get_mut(place).ok_or(Reason::UnknownId)?;
-                model::shift_count(&mut place_live.items, id, delta, max)
-            })
-        }
-        Holder::Story(_) | Holder::Exit(..) | Holder::World => Err(Reason::Schema),
+    if !item::holds_items(holder) {
+        return Err(Reason::Schema);
     }
+    let held = state.item_count(holder, id).ok_or(Reason::UnknownId)?;
+    let count = item::shift_count(held, delta, max)?;
+    state.set_items(holder, id, count)?;
+    let Holder::Actor(actor) = holder else {
+        return Ok(());
+    };
+    let wielded = state.actors[actor].wielded.as_ref();
+    let lets_go = wielded.is_some_and(|item| state.item_count(holder, item) == Some(0));
+    if lets_go {
+        state.edit_actor(actor, ActorEdit::Wielded(None))?;
+    }
+    Ok(())
 }
 
 /// Apply one stack of modifier `id` to an actor that carries its meter, lasting `ticks`, as
-/// `modifier::stack` says. The meter's key is tracked when the stacks move.
+/// `modifier::stack` says.
 fn apply_modifier(
-    draft: &mut Draft,
+    canon: &Canon,
+    state: &mut State,
     actor_id: &str,
     id: &str,
     add: i64,
     ticks: u64,
 ) -> Result<(), Reason> {
-    let canon = draft.shared_canon();
     let def = canon.modifiers.get(id).ok_or(Reason::UnknownId)?;
     let holder = Holder::Actor(actor_id.to_string());
     canon
         .meter_def(&holder, &def.meter)
         .ok_or(Reason::UnknownId)?;
-    let now = draft.state().world_time;
-    let actor = draft
-        .state()
-        .actors
-        .get(actor_id)
-        .ok_or(Reason::UnknownId)?;
-    let held = actor.modifiers.get(id);
-    let mut next = held.cloned().unwrap_or_else(|| ModifierLive {
-        meter: def.meter.clone(),
-        until: now,
-        max_ticks: 0,
-        stacks: Vec::new(),
-    });
+    let now = state.world_time;
+    state.actors.get(actor_id).ok_or(Reason::UnknownId)?;
+    let mut next = (state.modifiers.get(&holder, id))
+        .cloned()
+        .unwrap_or_else(|| ModifierLive {
+            meter: def.meter.clone(),
+            until: now,
+            max_ticks: 0,
+            stacks: Vec::new(),
+        });
     modifier::stack(def, &mut next, add, ticks, now);
-    let changed = held != Some(&next);
-    if held.map(|live| &live.stacks) != Some(&next.stacks) {
-        draft.track(StateKey::ActorMeter(
-            actor_id.to_string(),
-            def.meter.clone(),
-        ))?;
-    }
-    draft.mutate(
-        StateKey::ActorModifier(actor_id.to_string(), id.to_string()),
-        |state| {
-            state
-                .actor_mut(actor_id)?
-                .modifiers
-                .insert(id.to_string(), next);
-            state.meter_value(&canon, &holder, &def.meter)?;
-            Ok(changed)
-        },
-    )
+    state.put_modifier(canon, actor_id, id, Some(next))
 }
 
-fn wield(draft: &mut Draft, actor_id: &str, item_id: &str) -> Result<(), Reason> {
-    let item = draft.canon().items.get(item_id).ok_or(Reason::UnknownId)?;
+fn wield(canon: &Canon, state: &mut State, actor_id: &str, item_id: &str) -> Result<(), Reason> {
+    let item = canon.items.get(item_id).ok_or(Reason::UnknownId)?;
     if !item.tags.iter().any(|tag| tag == "weapon") {
         return Err(Reason::NotAWeapon);
     }
-    draft.mutate(StateKey::ActorWielded(actor_id.to_string()), |state| {
-        let actor = state.actor_mut(actor_id)?;
-        if actor.item_count(item_id) == 0 {
-            return Err(Reason::MissingItem);
-        }
-        let wielded = actor.wielded.replace(item_id.to_string());
-        Ok(wielded.as_deref() != Some(item_id))
-    })
+    let held = state.item_count(&Holder::Actor(actor_id.to_string()), item_id);
+    if held.ok_or(Reason::UnknownId)? == 0 {
+        return Err(Reason::MissingItem);
+    }
+    state.edit_actor(actor_id, ActorEdit::Wielded(Some(item_id.to_string())))
 }
 
-fn unwield(draft: &mut Draft, actor_id: &str) -> Result<(), Reason> {
-    draft.mutate(StateKey::ActorWielded(actor_id.to_string()), |state| {
-        Ok(state.actor_mut(actor_id)?.wielded.take().is_some())
-    })
+fn unwield(state: &mut State, actor_id: &str) -> Result<(), Reason> {
+    state.edit_actor(actor_id, ActorEdit::Wielded(None))
 }
 
 fn move_actor(
-    draft: &mut Draft,
+    canon: &Canon,
+    state: &mut State,
     intent: &Intent,
     actor_id: &str,
     from: &str,
@@ -718,33 +715,29 @@ fn move_actor(
     if intent.actor_id() != Some(actor_id) {
         return Err(Reason::ActorMismatch);
     }
-    let table_empty = draft.presence.players == 0;
-    let in_canon = draft.canon().places.contains_key(to);
+    let in_canon = canon.places.contains_key(to);
     // A walker stands on the exit until they arrive. The exit is no place of its own.
-    let on_exit = crate::rules::travel::exit_stood_on(draft.canon(), to).is_some();
-    draft.mutate(StateKey::ActorPlace(actor_id.to_string()), |state| {
-        let actor = state.actors.get_mut(actor_id).ok_or(Reason::UnknownId)?;
-        if table_empty && actor.is_pc() {
-            return Err(Reason::TableEmpty);
-        }
-        if actor.place != from {
-            return Err(Reason::OutOfRange);
-        }
-        if !in_canon && !on_exit && !state.places.contains_key(to) {
-            return Err(Reason::NoExit);
-        }
-        let moved = actor.place != to;
-        actor.place = to.to_string();
-        // A canon place with no live record yet gets an empty one on the first arrival.
-        if !on_exit {
-            state.places.entry(to.to_string()).or_default();
-        }
-        Ok(moved)
-    })
+    let on_exit = crate::rules::travel::exit_stood_on(canon, to).is_some();
+    let actor = state.actors.get(actor_id).ok_or(Reason::UnknownId)?;
+    if state.presence().players == 0 && actor.is_pc() {
+        return Err(Reason::TableEmpty);
+    }
+    if actor.place != from {
+        return Err(Reason::OutOfRange);
+    }
+    if !in_canon && !on_exit && !state.places.contains(to) {
+        return Err(Reason::NoExit);
+    }
+    // A canon place with no live record yet gets an empty one on the first arrival.
+    if !on_exit {
+        state.make_record(&Holder::Place(to.to_string()))?;
+    }
+    state.edit_actor(actor_id, ActorEdit::Place(to.to_string()))
 }
 
 fn remember(
-    draft: &mut Draft,
+    canon: &Canon,
+    state: &mut State,
     intent: &Intent,
     actor_id: &str,
     mut fact_ids: Vec<String>,
@@ -762,24 +755,16 @@ fn remember(
         return Err(Reason::Schema);
     }
     for fact in &fact_ids {
-        if !can_see_fact(draft.canon(), draft.state(), viewer, fact) {
+        if !can_see_fact(canon, state, viewer, fact) {
             return Err(Reason::IllegalKnowledge);
         }
     }
-    draft.count_memory_write()?;
+    state.count_memory_write()?;
     model::sort_unique(&mut fact_ids);
-    draft.mutate(StateKey::ActorKnownFact(actor_id.to_string()), |state| {
-        let known = &mut state.actor_mut(actor_id)?.known_facts;
-        let learned = fact_ids.iter().any(|fact| !known.contains(fact));
-        if learned {
-            known.extend(fact_ids.iter().cloned());
-            model::sort_unique(known);
-        }
-        Ok(learned)
-    })?;
+    learn(state, actor_id, &fact_ids)?;
     model::sort_unique(&mut tags);
-    draft.push_memory(MemoryLine {
-        round_index: draft.state().round_index,
+    state.push_memory(MemoryLine {
+        round_index: state.round_index,
         actor_id: actor_id.to_string(),
         intent_id: intent.id.clone(),
         fact_ids,
@@ -789,57 +774,64 @@ fn remember(
     Ok(())
 }
 
-/// Set or clear a flag `holder` carries.
-fn set_flag(draft: &mut Draft, holder: &Holder, key: &str, value: bool) -> Result<(), Reason> {
-    if !draft.canon().carries_flag(holder, key) {
-        return Err(Reason::UnknownId);
-    }
-    draft.mutate(StateKey::flag(holder, key), |state| {
-        state.set_flag(holder, key, value)
-    })
+/// Add `facts` to what actor `actor_id` knows.
+fn learn(state: &mut State, actor_id: &str, facts: &[String]) -> Result<(), Reason> {
+    state.edit_actor(actor_id, ActorEdit::Learn(facts.to_vec()))
 }
 
-fn reveal(draft: &mut Draft, actor_id: &str, fact: &str) -> Result<(), Reason> {
-    if !draft.canon().facts.contains_key(fact) {
+/// Set or clear a flag `holder` carries. A place or story gets a live record on its first
+/// flag, and a place on its first open exit.
+fn set_flag(
+    canon: &Canon,
+    state: &mut State,
+    holder: &Holder,
+    key: &str,
+    value: bool,
+) -> Result<(), Reason> {
+    if !canon.carries_flag(holder, key) {
         return Err(Reason::UnknownId);
     }
-    draft.mutate(StateKey::ActorKnownFact(actor_id.to_string()), |state| {
-        let known = &mut state.actor_mut(actor_id)?.known_facts;
-        if known.iter().any(|id| id == fact) {
-            return Ok(false);
-        }
-        known.push(fact.to_string());
-        model::sort_unique(known);
-        Ok(true)
-    })
+    let record = match holder {
+        Holder::Place(place) | Holder::Exit(place, _) => Some(Holder::Place(place.clone())),
+        Holder::Story(story) => Some(Holder::Story(story.clone())),
+        Holder::Actor(_) | Holder::World => None,
+    };
+    if let Some(record) = record.filter(|_| value) {
+        state.make_record(&record)?;
+    }
+    state.set_flag(holder, key, value)
+}
+
+fn reveal(canon: &Canon, state: &mut State, actor_id: &str, fact: &str) -> Result<(), Reason> {
+    if !canon.facts.contains_key(fact) {
+        return Err(Reason::UnknownId);
+    }
+    learn(state, actor_id, &[fact.to_string()])
 }
 
 fn leave_note(
-    draft: &mut Draft,
+    state: &mut State,
     note_id: String,
     mut to: Vec<String>,
     place: Option<String>,
     mut fact_ids: Vec<String>,
     text: String,
 ) -> Result<(), Reason> {
-    draft.mutate(StateKey::Note(note_id.clone()), |state| {
-        if state.notes.iter().any(|note| note.id == note_id) {
+    if state.notes.iter().any(|note| note.id == note_id) {
+        return Err(Reason::UnknownId);
+    }
+    if let Some(place_id) = &place {
+        if !state.places.contains(place_id) {
             return Err(Reason::UnknownId);
         }
-        if let Some(place_id) = &place {
-            if !state.places.contains_key(place_id) {
-                return Err(Reason::UnknownId);
-            }
-        }
-        model::sort_unique(&mut to);
-        model::sort_unique(&mut fact_ids);
-        state.notes.push(Note {
-            id: note_id,
-            to,
-            place,
-            fact_ids,
-            text,
-        });
-        Ok(true)
+    }
+    model::sort_unique(&mut to);
+    model::sort_unique(&mut fact_ids);
+    state.leave_note(Note {
+        id: note_id,
+        to,
+        place,
+        fact_ids,
+        text,
     })
 }

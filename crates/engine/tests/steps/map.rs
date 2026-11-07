@@ -98,7 +98,12 @@ fn the_shop_has_a_trapdoor(world: &mut World) {
     )
     .unwrap();
     support::edit_save(&pack, |state| {
-        state.actors.get_mut("mira").unwrap().place = "docks_shop".to_string();
+        state
+            .edit_actor(
+                "mira",
+                spookery_engine::testing::ActorEdit::Place("docks_shop".to_string()),
+            )
+            .unwrap();
     });
     world.pack = Some(pack);
 }
