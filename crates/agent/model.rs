@@ -122,7 +122,7 @@ pub fn provider_detail(body: &str, key: &str) -> String {
     cut
 }
 
-/// The GM's tools: the seat words `perceive`, `say` and `queue`, their parameters read from
+/// The GM's tools: the GM commands `perceive`, `say` and `queue`, their parameters read from
 /// the published client schema, and `end_turn`, which the agent answers with `commit`.
 static TOOLS: LazyLock<Value> = LazyLock::new(|| {
     let schema: Value = serde_json::from_str(CLIENT_SCHEMA).expect("client schema");
@@ -141,12 +141,12 @@ static TOOLS: LazyLock<Value> = LazyLock::new(|| {
         ),
         tool(
             "say",
-            "Speak to the table, to everyone in one place, or to one actor. No game time passes.",
+            "Speak to everyone (address `table`), to everyone in one place, or to one actor. No game time passes.",
             args("SayArgs"),
         ),
         tool(
             "queue",
-            "Queue a move from the menu for an actor. The table answers queued or refused.",
+            "Queue a move from the menu for an actor. The server answers queued or refused.",
             args("IntentArgs"),
         ),
         tool(

@@ -1,4 +1,4 @@
-Feature: The AI GM sits the GM seat
+Feature: The AI GM connects as the GM
 
   Scenario: The AI GM with an extra argument is a usage error
     Given a docks table

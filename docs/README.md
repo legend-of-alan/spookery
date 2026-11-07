@@ -142,7 +142,7 @@ spook gm
 
 Type `help` to see the GM commands. A line is a word the hello listed, then its arguments: `queue mira restock_lamp_oil`, or a JSON object such as `say {"address": "place", "place": "docks_shop", "text": "..."}`. `spook gm --raw` prints each message as one JSON line instead.
 
-`spook gm` and `spook ai-gm` sit the GM seat on `/gm` on the game port, so `--addr` points them. If you started the host with `--addr 127.0.0.1:0`, the OS picks the port and the listening line tells you: pass `game` to `--addr`.
+`spook gm` and `spook ai-gm` connect to the GM seat on `/gm` on the game port, so `--addr` points them. If you started the host with `--addr 127.0.0.1:0`, the OS picks the port and the listening line tells you: pass `game` to `--addr`.
 
 ## Privacy
 

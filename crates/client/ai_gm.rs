@@ -1,4 +1,4 @@
-//! Sit the GM seat for `spookery_agent::run` over the WebSocket connection.
+//! Connect `spookery_agent::run` to the server as the GM over the WebSocket connection.
 
 use std::io::Write;
 use std::net::SocketAddr;
@@ -10,8 +10,8 @@ use crate::protocol::{ClientMessage, ServerMessage};
 use crate::ws::Connection;
 use crate::Error;
 
-/// Sit the GM seat on the game port at `addr` and play each turn through `model` until the
-/// host closes the seat. `listening` and each warning go to `err`, one line each.
+/// Connect as the GM on the game port at `addr` and play each turn through `model` until
+/// the server closes the connection. `listening` and each warning go to `err`, one line each.
 pub async fn run(
     addr: SocketAddr,
     model: impl Model,
@@ -27,7 +27,7 @@ pub async fn run(
     Ok(())
 }
 
-/// The GM seat's connection, shared by `&self` one call at a time. A newtype because the
+/// The GM's connection, shared by `&self` one call at a time. A newtype because the
 /// orphan rule keeps `spookery_agent::Connection` off `tokio::sync::Mutex<Connection>`.
 struct GmConnection(Mutex<Connection>);
 

@@ -31,8 +31,8 @@ Feature: The AI GM plays a turn as a loop
     And the GM reports a step limit warning
 
   Scenario: A quiet table outlasts the graph's task timeout
-    Given a docks table with a seated player and the AI GM sitting
+    Given a docks table with a seated player and the AI GM connected
     When the table stays quiet for longer than the graph's task timeout
     And the player says "evening" in the shop
     Then the scripted model is called for that say
-    And the AI GM is still seated
+    And the AI GM is still connected

@@ -46,13 +46,13 @@ fn a_docks_table_with_a_queued_move(world: &mut World) {
     world.pack = Some(pack);
 }
 
-#[given(expr = "a docks table with a seated player and the AI GM sitting")]
+#[given(expr = "a docks table with a seated player and the AI GM connected")]
 fn a_docks_table_with_the_ai_gm_sitting(world: &mut World) {
     let pack = copy_docks("ai-gm-quiet");
     table::listen(world, &pack);
     table::seat_rowan(world, &pack);
     world.pack = Some(pack);
-    sit_ai_gm(world);
+    start_ai_gm_once(world);
 }
 
 #[given(
@@ -93,8 +93,8 @@ fn a_model_that_only_perceives(world: &mut World) {
     world.model.repeat(&[("perceive", r#"{"as":"pc_rowan"}"#)]);
 }
 
-/// Sits the AI GM with the scenario's model, unless it already sits.
-fn sit_ai_gm(world: &mut World) {
+/// Starts the AI GM with the scenario's model, unless it already runs.
+fn start_ai_gm_once(world: &mut World) {
     if world.ai_gm.is_none() {
         world.ai_gm = Some(start_ai_gm(world, world.model.clone()));
     }
@@ -111,9 +111,9 @@ fn the_table_refuses_the_queue(world: &mut World) {
     player_says(world, "evening");
 }
 
-/// Sits the AI GM, has the player say `text`, and waits until the turn it woke is done.
+/// Starts the AI GM, has the player say `text`, and waits until the turn it woke is done.
 fn player_says(world: &mut World, text: &str) {
-    sit_ai_gm(world);
+    start_ai_gm_once(world);
     world.mark = table::player_mark(world);
     table::player_send(world, &format!("say {text}"), "\"kind\":\"say\"");
     world.model.wait_past_script();
@@ -121,7 +121,7 @@ fn player_says(world: &mut World, text: &str) {
 
 #[when(expr = "the player queues travel")]
 fn the_player_queues_travel(world: &mut World) {
-    sit_ai_gm(world);
+    start_ai_gm_once(world);
     world.mark = table::player_mark(world);
     table::player_send(world, "travel docks_street", "\"kind\":\"queued\"");
     world.model.wait_past_script();
@@ -130,13 +130,13 @@ fn the_player_queues_travel(world: &mut World) {
 #[when(expr = "the GM's turn runs")]
 fn the_gms_turn_runs(world: &mut World) {
     world.mark = table::player_mark(world);
-    sit_ai_gm(world);
+    start_ai_gm_once(world);
     table::wait_rounds_to_view(world, world.mark);
 }
 
 #[when(expr = "the table stays quiet for longer than the graph's task timeout")]
 fn the_table_stays_quiet(world: &mut World) {
-    let gm = world.ai_gm.as_ref().expect("the AI GM sits");
+    let gm = world.ai_gm.as_ref().expect("the AI GM runs");
     gm.advance(GRAPH_TASK_TIMEOUT + Duration::from_secs(1));
 }
 
@@ -219,7 +219,7 @@ fn the_client_stops_after(world: &mut World, count: usize) {
 
 #[then(expr = "the GM reports a step limit warning")]
 fn the_gm_reports_a_step_limit_warning(world: &mut World) {
-    let gm = world.ai_gm.as_ref().expect("the AI GM sits");
+    let gm = world.ai_gm.as_ref().expect("the AI GM runs");
     table::wait_suffix(&gm.err, 0, "step limit");
 }
 
@@ -233,9 +233,9 @@ fn the_model_is_called_for_that_say(world: &mut World) {
     assert!(content.contains("evening"), "{content}");
 }
 
-#[then(expr = "the AI GM is still seated")]
-fn the_ai_gm_is_still_seated(world: &mut World) {
-    let gm = world.ai_gm.as_ref().expect("the AI GM sits");
+#[then(expr = "the AI GM is still connected")]
+fn the_ai_gm_is_still_connected(world: &mut World) {
+    let gm = world.ai_gm.as_ref().expect("the AI GM runs");
     assert!(
         !gm.thread.is_finished(),
         "{}",

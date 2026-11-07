@@ -94,7 +94,7 @@ impl<M: Model, C: Connection> Task for Ask<M, C> {
     }
 }
 
-/// Answers the first waiting call, through the seat or locally, with one tool message.
+/// Answers the first waiting call, through the server or locally, with one tool message.
 struct Call<M, C>(Arc<Agent<M, C>>);
 
 #[async_trait]
@@ -118,7 +118,7 @@ impl<M: Model, C: Connection> Task for Call<M, C> {
 }
 
 impl<M: Model, C: Connection> Call<M, C> {
-    /// The table's reply to `call`, or the agent's own answer when no word goes out.
+    /// The server's reply to `call`, or the agent's own answer when no command goes out.
     async fn answer(&self, call: &ToolCall) -> graph_flow::Result<String> {
         let args = match call.arguments.trim() {
             "" => Map::new(),

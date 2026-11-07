@@ -13,9 +13,9 @@ use crate::protocol::{
 /// How many tape lines the prompt's `buffer` keeps.
 const RECENT_LINES: usize = 16;
 
-/// One say as the model reads it in the prompt's `buffer` and `lines`, with the `seq` of the
+/// One say as the model reads it in the prompt's `buffer` and `new_player_lines`, with the `seq` of the
 /// message that carried it and without `recipients`. The GM's own lines carry the `seq` of
-/// the table's reply.
+/// the server's reply.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct TapeLine {
     pub seq: u64,
@@ -126,15 +126,15 @@ pub fn keep_recent(buffer: &mut Vec<TapeLine>, line: TapeLine) {
 }
 
 /// What the model reads first on a turn: the menu, the recent tape, the new player lines,
-/// the queue, what woke the turn and who is seated.
+/// the queue, what woke the turn and the actors present.
 #[derive(Serialize)]
 pub struct Opening<'a> {
     pub menu: &'a [MenuRow],
     pub buffer: &'a [TapeLine],
-    pub lines: &'a [TapeLine],
+    pub new_player_lines: &'a [TapeLine],
     pub queue: &'a [QueuedMove],
     pub wake: &'a Wake,
-    pub seated: &'a [String],
+    pub actors_present: &'a [String],
 }
 
 pub fn render_prompt(opening: &Opening) -> String {

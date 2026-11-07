@@ -1,6 +1,6 @@
-//! The Spookery AI GM. `run` sits the GM seat and plays each turn through a graph that
+//! The Spookery AI GM. `run` connects as the GM and plays each turn through a graph that
 //! awaits two adapters the client implements: a `Model` and a `Connection`. It reads the
-//! seat's one ordered stream and decides from everything up to the last `seq` it read.
+//! server's one ordered stream and decides from everything up to the last `seq` it read.
 
 mod model;
 mod prompt;
@@ -29,14 +29,14 @@ use crate::protocol::{
 /// The most tool calls one turn makes, valid or not, `end_turn` included.
 pub const MAX_TOOL_CALLS: usize = 20;
 
-/// The GM seat's connection to the table: the seat's one ordered stream, as the client
-/// carries it.
+/// The GM's connection to the server: the server's one ordered stream of messages, as the
+/// client carries it.
 pub trait Connection: Send + Sync + 'static {
     fn send(
         &self,
         message: ClientMessage,
     ) -> impl Future<Output = Result<(), ConnectionError>> + Send;
-    /// The seat's next message. `None` when the host closed it.
+    /// The server's next message. `None` when the server closed the connection.
     fn recv(&self) -> impl Future<Output = Option<Result<ServerMessage, ConnectionError>>> + Send;
 }
 
@@ -51,18 +51,18 @@ impl fmt::Display for ConnectionError {
     }
 }
 
-/// Why `run` stopped before the host closed the seat. Display is the line the client prints.
+/// Why `run` stopped before the server closed the connection. Display is the line the client prints.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Error {
-    /// The table refused the `status` the agent sits with. Display is the refusal's body.
+    /// The server refused the agent's first `status`. Display is the refusal's body.
     Refused(Refusal),
     /// The `status` reply was some other body.
     Unexpected,
     /// The connection failed between turns.
     Connection(ConnectionError),
-    /// `word` was sent and its reply never read, so the table may have applied it.
-    Unanswered { word: String },
-    /// The turn graph stopped with no word in flight.
+    /// `command` was sent and its reply never read, so the server may have applied it.
+    Unanswered { command: String },
+    /// The turn graph stopped with no command in flight.
     Graph(String),
 }
 
@@ -74,9 +74,9 @@ impl fmt::Display for Error {
             }
             Error::Unexpected => f.write_str("unexpected status reply"),
             Error::Connection(err) => err.fmt(f),
-            Error::Unanswered { word } => write!(
+            Error::Unanswered { command } => write!(
                 f,
-                "no reply was read to {word}, so the table may have applied it; restart spook ai-gm to read the table again"
+                "no reply was read to {command}, so the server may have applied it; restart spook ai-gm to read the server's state again"
             ),
             Error::Graph(detail) => write!(f, "the GM turn stopped: {detail}"),
         }
@@ -85,7 +85,7 @@ impl fmt::Display for Error {
 
 impl std::error::Error for Error {}
 
-/// Sits the GM seat and plays turns until the host closes it. `report` gets "listening"
+/// Connects as the GM and plays turns until the server closes the connection. `report` gets "listening"
 /// and each warning, one line each.
 pub async fn run<M: Model, C: Connection>(
     model: M,
@@ -104,7 +104,7 @@ pub async fn run<M: Model, C: Connection>(
     });
     let graph = turn::build_graph(&agent);
     match agent.send_command("status", json!({})).await {
-        Ok(ServerBody::Status(status)) => agent.state().sit(*status),
+        Ok(ServerBody::Status(status)) => agent.state().initialize(*status),
         Ok(ServerBody::Refused(refusal)) => return Err(Error::Refused(refusal)),
         Ok(_) => return Err(Error::Unexpected),
         Err(err) => return agent.end_run(err),
@@ -127,8 +127,8 @@ pub async fn run<M: Model, C: Connection>(
     }
 }
 
-/// The AI GM at one seat: the adapters, the client state read so far, the turn being
-/// played, and the word in flight. `run` and the turn graph's tasks hold it in an `Arc`.
+/// The AI GM on one connection: the adapters, the client state read so far, the turn being
+/// played, and the command in flight. `run` and the turn graph's tasks hold it in an `Arc`.
 struct Agent<M, C> {
     model: M,
     connection: C,
@@ -137,9 +137,9 @@ struct Agent<M, C> {
     turn: Mutex<Turn>,
     /// The number in the last message id.
     last_id: AtomicU64,
-    /// The word sent whose reply has not been read.
+    /// The command sent whose reply has not been read.
     in_flight: Mutex<Option<String>>,
-    /// Set once the host closed the seat.
+    /// Set once the server closed the connection.
     closed: AtomicBool,
 }
 
@@ -174,35 +174,36 @@ impl<M: Model, C: Connection> Agent<M, C> {
             if message.reply_to.as_deref() == Some(id.as_str()) {
                 self.in_flight.lock().expect("in flight").take();
                 let seq = message.seq.unwrap_or_default();
-                self.turn().note_reply(seq, &message.body);
+                self.turn().record_reply(seq, &message.body);
                 return Ok(message.body);
             }
         }
     }
 
     /// How `run` ends once the connection or the graph stopped with `detail`: quietly when
-    /// the host closed the seat, and otherwise naming the word in flight.
+    /// the server closed the connection, and otherwise naming the command in flight.
     fn end_run(&self, detail: impl fmt::Display) -> Result<(), Error> {
         if self.closed.load(Ordering::Relaxed) {
             return Ok(());
         }
         Err(match self.in_flight.lock().expect("in flight").take() {
-            Some(word) => Error::Unanswered { word },
+            Some(command) => Error::Unanswered { command },
             None => Error::Graph(detail.to_string()),
         })
     }
 }
 
-/// The table as the seat's stream has shown this client so far, and the turns it wakes.
+/// The server's state as its messages have shown this client so far, and the turns they
+/// wake.
 #[derive(Default)]
 struct ClientState {
     pack: PackSummary,
-    /// Who is seated, as of the last message read.
-    present: Vec<String>,
+    /// The actors present, as of the last message read.
+    actors_present: Vec<String>,
     /// The queue, as of the last message read.
     queue: Vec<QueuedMove>,
-    /// Player says read since a turn last took them.
-    heard: Vec<TapeLine>,
+    /// Player says read since a turn last showed them to the model.
+    new_player_lines: Vec<TapeLine>,
     wakes: VecDeque<Wake>,
     /// The recent tape every opening prompt shows.
     buffer: Vec<TapeLine>,
@@ -216,41 +217,45 @@ struct Turn {
     /// itself since its last commit.
     move_waiting: bool,
     /// The player says this turn shows the model.
-    lines: Vec<TapeLine>,
-    /// The GM's says this turn.
-    said: Vec<TapeLine>,
+    player_lines: Vec<TapeLine>,
+    /// The says the GM sent this turn, as the server confirmed them.
+    gm_lines: Vec<TapeLine>,
 }
 
 impl Turn {
-    /// Notes what the reply to one of the agent's words changes: a queued move waits, a
-    /// commit plays it, and the GM's say joins the turn's lines.
-    fn note_reply(&mut self, seq: u64, body: &ServerBody) {
+    /// Records the reply to one of the agent's commands: a `queued` reply means a move
+    /// waits, a `committed` reply means none does, and the GM's confirmed say joins
+    /// `gm_lines`. Every other reply leaves the turn as it is.
+    fn record_reply(&mut self, seq: u64, body: &ServerBody) {
         match body {
             ServerBody::Queued { .. } => self.move_waiting = true,
             ServerBody::Committed(_) => self.move_waiting = false,
-            ServerBody::Say(said) => self.said.push(TapeLine::new(seq, said.clone())),
+            ServerBody::Say(say) => self.gm_lines.push(TapeLine::new(seq, say.clone())),
             _ => {}
         }
     }
 }
 
 impl ClientState {
-    fn sit(&mut self, status: TableStatus) {
+    /// Fills the state from the first `status`: the pack, the actors present and the queue,
+    /// which wakes a turn when a move already waits.
+    fn initialize(&mut self, status: TableStatus) {
         self.pack = status.pack;
-        self.present = status.presence.actors_present;
+        self.actors_present = status.presence.actors_present;
         self.queue = status.queued;
         if !self.queue.is_empty() && !self.wakes.contains(&Wake::Queued) {
             self.wakes.push_front(Wake::Queued);
         }
     }
 
-    /// What one message says about the table: a player's say wakes a turn, a queued move
-    /// joins the queue and wakes one, a round empties the queue, and presence is who sits.
+    /// What one message says about the server's state: a player's say wakes a turn, a queued
+    /// move joins the queue and wakes one, a round empties the queue, and presence names the
+    /// actors present.
     fn record(&mut self, message: &ServerMessage) {
         match &message.body {
             ServerBody::Say(say) if matches!(say.from, Speaker::Player(_)) => {
                 let line = TapeLine::new(message.seq.unwrap_or_default(), say.clone());
-                self.heard.push(line.clone());
+                self.new_player_lines.push(line.clone());
                 self.wakes.push_back(Wake::Say(line));
             }
             ServerBody::Queued {
@@ -272,7 +277,9 @@ impl ClientState {
                 self.queue.clear();
                 self.wakes.retain(|wake| *wake != Wake::Queued);
             }
-            ServerBody::Presence { actors_present } => self.present = actors_present.clone(),
+            ServerBody::Presence { actors_present } => {
+                self.actors_present = actors_present.clone();
+            }
             _ => {}
         }
     }
@@ -280,27 +287,28 @@ impl ClientState {
     /// The next turn, when a wake waits: its opening prompt and the new player lines.
     fn start_turn(&mut self) -> Option<Turn> {
         let wake = self.wakes.pop_front()?;
-        let lines = std::mem::take(&mut self.heard);
+        let player_lines = std::mem::take(&mut self.new_player_lines);
         let prompt = render_prompt(&Opening {
             menu: &self.pack.menu,
             buffer: &self.buffer,
-            lines: &lines,
+            new_player_lines: &player_lines,
             queue: &self.queue,
             wake: &wake,
-            seated: &self.present,
+            actors_present: &self.actors_present,
         });
         Some(Turn {
             messages: vec![ChatMessage::User { content: prompt }],
             move_waiting: !self.queue.is_empty(),
-            lines,
-            said: Vec::new(),
+            player_lines,
+            gm_lines: Vec::new(),
         })
     }
 
-    /// The turn's lines join the buffer, and a say the model has now read wakes no turn.
+    /// The turn's player and GM lines join the buffer, and a say the model has now read
+    /// wakes no turn.
     fn finish_turn(&mut self, turn: Turn) {
-        let seen = turn.lines.iter().map(|line| line.seq).max();
-        for line in turn.lines.into_iter().chain(turn.said) {
+        let seen = turn.player_lines.iter().map(|line| line.seq).max();
+        for line in turn.player_lines.into_iter().chain(turn.gm_lines) {
             keep_recent(&mut self.buffer, line);
         }
         if let Some(seen) = seen {
@@ -330,7 +338,7 @@ mod tests {
     const PERCEIVE: (&str, &str) = ("perceive", r#"{"as":"pc"}"#);
     const SAY: (&str, &str) = ("say", r#"{"address":"table","text":"ok"}"#);
 
-    /// What the scripted table sends for one word: `bodies`, the last of them the reply, and
+    /// What the scripted server sends for one command: `bodies`, the last of them the reply, and
     /// then `then`, which arrive while the agent waits.
     struct Answer {
         word: &'static str,
@@ -346,15 +354,15 @@ mod tests {
         }
     }
 
-    /// The status the agent sits with, then a player's say that wakes a turn.
-    fn sit_and_wake() -> Answer {
+    /// The agent's first status, then a player's say that wakes a turn.
+    fn status_then_wake() -> Answer {
         Answer {
             then: vec![PLAYER_SAY],
             ..answer("status", &[STATUS])
         }
     }
 
-    /// A table that answers each word in the order scripted, and closes once nothing is
+    /// A server that answers each command in the order scripted, and closes once nothing is
     /// left to read.
     #[derive(Default)]
     struct ScriptedConnection {
@@ -461,7 +469,7 @@ mod tests {
         }
     }
 
-    /// Runs the agent until the scripted table closes.
+    /// Runs the agent until the scripted server closes the connection.
     async fn play(
         model: &Arc<ScriptedModel>,
         connection: &Arc<ScriptedConnection>,
@@ -477,7 +485,8 @@ mod tests {
             ("say", "[1]"),
             ("end_turn", "{}"),
         ]]);
-        let connection = ScriptedConnection::new(vec![sit_and_wake(), answer("perceive", &[VIEW])]);
+        let connection =
+            ScriptedConnection::new(vec![status_then_wake(), answer("perceive", &[VIEW])]);
         assert_eq!(play(&model, &connection).await, Ok(()));
         let calls = model.calls();
         assert_eq!(calls.len(), 2);
@@ -496,7 +505,7 @@ mod tests {
         assert!(results[0].1.contains("\"viewer\":\"pc\""), "{results:?}");
         assert!(results[1].1.contains("no tool named dance"), "{results:?}");
         assert!(results[2].1.contains("not a JSON object"), "{results:?}");
-        // Nothing was queued, so end_turn sends no word.
+        // Nothing was queued, so end_turn sends no command.
         assert!(results[3].1.contains("nothing is queued"), "{results:?}");
         assert_eq!(connection.words(), ["status", "perceive"]);
     }
@@ -505,7 +514,7 @@ mod tests {
     async fn a_round_the_agent_did_not_play_drops_the_queued_wake() {
         let model = ScriptedModel::new(vec![vec![SAY]]);
         let connection = ScriptedConnection::new(vec![
-            sit_and_wake(),
+            status_then_wake(),
             answer("say", &[QUEUED, ROUND, GM_SAY]),
         ]);
         assert_eq!(play(&model, &connection).await, Ok(()));
@@ -519,11 +528,13 @@ mod tests {
     async fn a_lost_reply_stops_the_agent_naming_the_word() {
         for lost in [BROKEN, SILENT] {
             let model = ScriptedModel::new(vec![vec![PERCEIVE, SAY]]);
-            let connection =
-                ScriptedConnection::new(vec![sit_and_wake(), answer("perceive", &[lost, VIEW])]);
-            let word = "perceive".to_string();
+            let connection = ScriptedConnection::new(vec![
+                status_then_wake(),
+                answer("perceive", &[lost, VIEW]),
+            ]);
+            let command = "perceive".to_string();
             let result = play(&model, &connection).await;
-            assert_eq!(result, Err(Error::Unanswered { word }), "{lost}");
+            assert_eq!(result, Err(Error::Unanswered { command }), "{lost}");
             // No retry, no commit and no further words.
             assert_eq!(connection.words(), ["status", "perceive"], "{lost}");
         }

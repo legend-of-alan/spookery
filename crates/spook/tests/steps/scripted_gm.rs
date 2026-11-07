@@ -1,4 +1,4 @@
-//! A scripted model and the AI GM it sits, run in this process on a paused clock.
+//! A scripted model and the AI GM that plays with it, run in this process on a paused clock.
 
 use std::collections::VecDeque;
 use std::io::Write;
@@ -160,7 +160,7 @@ impl AiGm {
     }
 }
 
-/// Sits `model` as the AI GM and returns once it has written `listening`.
+/// Starts the AI GM with `model` and returns once it has written `listening`.
 pub fn start_ai_gm(world: &World, model: impl Model) -> AiGm {
     let addr: SocketAddr = table::game_addr(world).parse().unwrap();
     let (read, mut write) = std::io::pipe().unwrap_or_else(|err| panic!("pipe: {err}"));
@@ -207,7 +207,7 @@ pub fn start_ai_gm(world: &World, model: impl Model) -> AiGm {
     gm
 }
 
-/// Stops the host, which closes the AI GM's seat, and waits for the AI GM to end.
+/// Stops the host, which closes the AI GM's connection, and waits for the AI GM to end.
 pub fn stop_ai_gm(world: &mut World, gm: AiGm) {
     table::live_mut(world).host.take();
     let _ = gm.thread.join();

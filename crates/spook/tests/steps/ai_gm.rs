@@ -160,7 +160,7 @@ fn the_scripted_ai_gm_plays_the_turn_checks(world: &mut World) {
     travel_rounds_once(world, false);
     travel_rounds_once(world, true);
     the_rolls_are_narrated_without_another_round(world);
-    sit_commits_the_waiting_queue(world);
+    startup_commits_the_waiting_queue(world);
 }
 
 #[when(expr = "play and the AI GM and a stub run a speech turn and a travel turn")]
@@ -233,11 +233,15 @@ fn play_and_ai_gm_and_a_stub(world: &mut World) {
 fn speech_leaves_world_time_and_a_gm_say_does_not_call(world: &mut World) {
     run_ai_gm(world, "host-speech", |world, pack, model| {
         table::seat_rowan(world, pack);
-        let sit = state_of(pack).world_time;
+        let start_ticks = state_of(pack).world_time;
         model.push(&[("say", r#"{"address":"table","text":"evening"}"#)]);
         let (mark, _) = table::player_send(world, "say hello", "\"kind\":\"say\"");
         table::wait_player_from(world, mark, "evening");
-        assert_eq!(state_of(pack).world_time, sit, "speech changed world_time");
+        assert_eq!(
+            state_of(pack).world_time,
+            start_ticks,
+            "speech changed world_time"
+        );
         let tape = tape_text(pack);
         assert!(tape.contains("\"from\":\"gm\""), "{tape}");
         assert!(tape.contains("evening"), "{tape}");
@@ -247,7 +251,7 @@ fn speech_leaves_world_time_and_a_gm_say_does_not_call(world: &mut World) {
             2,
             "a gm say called the model"
         );
-        assert_eq!(state_of(pack).world_time, sit);
+        assert_eq!(state_of(pack).world_time, start_ticks);
     });
 }
 
@@ -266,10 +270,10 @@ fn travel_rounds_once(world: &mut World, transport_error: bool) {
             model.push(&[]);
         }
         table::seat_rowan(world, pack);
-        let sit = state_of(pack).world_time;
+        let start_ticks = state_of(pack).world_time;
         let (mark, _) = table::player_send(world, "travel docks_street", "\"kind\":\"queued\"");
         let rounds = table::wait_rounds_to_view(world, mark);
-        assert_eq!(rounds, [sit + 5], "travel ran twice");
+        assert_eq!(rounds, [start_ticks + 5], "travel ran twice");
         assert_eq!(model.calls().len(), 1, "{}", model.calls().len());
         assert_eq!(
             state_of(pack)
@@ -286,9 +290,9 @@ fn the_rolls_are_narrated_without_another_round(world: &mut World) {
         model.push(&[("end_turn", "{}")]);
         model.push(&[("say", r#"{"address":"table","text":"the roll lands"}"#)]);
         table::seat_rowan(world, pack);
-        let sit = state_of(pack).world_time;
+        let start_ticks = state_of(pack).world_time;
         let (mark, _) = table::player_send(world, "grit", "\"kind\":\"queued\"");
-        assert_eq!(table::wait_rounds_to_view(world, mark), [sit + 5]);
+        assert_eq!(table::wait_rounds_to_view(world, mark), [start_ticks + 5]);
         table::wait_player_from(world, mark, "the roll lands");
         let tape = tape_text(pack);
         assert!(tape.contains("the roll lands"), "{tape}");
@@ -298,14 +302,14 @@ fn the_rolls_are_narrated_without_another_round(world: &mut World) {
         assert!(rolls[0].contains("\"rolls\""), "{rolls:?}");
         assert_eq!(
             state_of(pack).world_time,
-            sit + 5,
+            start_ticks + 5,
             "the narration played a round"
         );
     });
 }
 
-fn sit_commits_the_waiting_queue(world: &mut World) {
-    let pack = copy_docks("host-sit");
+fn startup_commits_the_waiting_queue(world: &mut World) {
+    let pack = copy_docks("host-startup");
     table::listen(world, &pack);
     table::seat_gm(world);
     table::seat_rowan(world, &pack);
@@ -334,7 +338,7 @@ fn a_player_queues_travel_while_the_model_answers_their_say(world: &mut World) {
     model.hold_next();
     let gm = start_ai_gm(world, model.clone());
     table::seat_rowan(world, &pack);
-    let sit = state_of(&pack).world_time;
+    let start_ticks = state_of(&pack).world_time;
     table::player_send(world, "say hello", "\"kind\":\"say\"");
     table::poll_until("the say's model call", || match model.calls().len() {
         1 => Ok(()),
@@ -348,7 +352,7 @@ fn a_player_queues_travel_while_the_model_answers_their_say(world: &mut World) {
     stop_ai_gm(world, gm);
     let _ = fs::remove_dir_all(&pack);
     world.mark = model.calls().len();
-    world.stdout = if world_time == sit + 5 {
+    world.stdout = if world_time == start_ticks + 5 {
         "advanced".to_string()
     } else {
         world_time.to_string()
@@ -396,7 +400,7 @@ const STUB_SAY: &[(&str, &str)] = &[("say", r#"{"address":"table","text":"STUB-S
 
 #[when(expr = "a hung model call meets a queued player line")]
 fn a_hung_model_call_meets_a_queued_player_line(world: &mut World) {
-    let (pack, sit) = queued_travel(world, "host-hang");
+    let (pack, start_ticks) = queued_travel(world, "host-hang");
     let (stub, seen) = start_model_stub([Reply::Hang, Reply::Hang]);
     let gm = start_ai_gm(world, http_model(stub));
     // The paused clock moves only here: past each call's limit, and past the pause between.
@@ -412,7 +416,7 @@ fn a_hung_model_call_meets_a_queued_player_line(world: &mut World) {
     wait_stub(&seen, 2, 1);
     gm.advance(MODEL_CALL_TIMEOUT);
     wait_stub(&seen, 2, 2);
-    table::wait_round(world, sit + 5);
+    table::wait_round(world, start_ticks + 5);
     let up = !gm.thread.is_finished();
     stop_ai_gm(world, gm);
     let _ = fs::remove_dir_all(&pack);
@@ -425,7 +429,7 @@ fn a_hung_model_call_meets_a_queued_player_line(world: &mut World) {
 
 #[when(expr = "a model answers 500 once and then a say")]
 fn a_model_answers_500_once_and_then_a_say(world: &mut World) {
-    let (pack, sit) = queued_travel(world, "host-retry");
+    let (pack, start_ticks) = queued_travel(world, "host-retry");
     let replies = [
         Reply::Status(500, "{\"error\":\"busy\"}"),
         Reply::Tools(STUB_SAY),
@@ -436,16 +440,16 @@ fn a_model_answers_500_once_and_then_a_say(world: &mut World) {
     // Its socket closes once the 500 is read, so this lands in the pause before the retry.
     wait_stub(&seen, 1, 1);
     gm.advance(RETRY_BACKOFF);
-    finish_http_turn(world, gm, &pack, sit, &seen);
+    finish_http_turn(world, gm, &pack, start_ticks, &seen);
 }
 
 #[when(expr = "a model answers 401")]
 fn a_model_answers_401(world: &mut World) {
-    let (pack, sit) = queued_travel(world, "host-unauthorized");
+    let (pack, start_ticks) = queued_travel(world, "host-unauthorized");
     let (stub, seen) = start_model_stub([Reply::Status(401, UNAUTHORIZED_BODY)]);
     let gm = start_ai_gm(world, http_model(stub));
     table::wait_suffix(&gm.err, 0, "model call returned 401");
-    finish_http_turn(world, gm, &pack, sit, &seen);
+    finish_http_turn(world, gm, &pack, start_ticks, &seen);
 }
 
 /// A provider 401 body that echoes the key back, the way some providers do.
@@ -501,8 +505,14 @@ fn the_models_say_did_not_land(world: &mut World) {
 }
 
 /// Waits for the queued travel's round, stops the AI GM, and keeps what the turn showed.
-fn finish_http_turn(world: &mut World, gm: AiGm, pack: &Path, sit: u64, seen: &Mutex<Seen>) {
-    table::wait_round(world, sit + 5);
+fn finish_http_turn(
+    world: &mut World,
+    gm: AiGm,
+    pack: &Path,
+    start_ticks: u64,
+    seen: &Mutex<Seen>,
+) {
+    table::wait_round(world, start_ticks + 5);
     let tape = tape_text(pack);
     let err = support::text_of(&gm.err);
     stop_ai_gm(world, gm);
@@ -527,15 +537,15 @@ pub fn queued_travel(world: &mut World, label: &str) -> (PathBuf, u64) {
     table::listen(world, &pack);
     table::seat_gm(world);
     table::seat_rowan(world, &pack);
-    let sit = state_of(&pack).world_time;
+    let start_ticks = state_of(&pack).world_time;
     table::player_send(world, "travel docks_street", "\"kind\":\"queued\"");
     assert_eq!(
         state_of(&pack).world_time,
-        sit,
+        start_ticks,
         "travel committed before the host"
     );
     table::release_gm(world);
-    (pack, sit)
+    (pack, start_ticks)
 }
 
 fn http_model(port: u16) -> HttpModel {
