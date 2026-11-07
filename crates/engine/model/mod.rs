@@ -15,8 +15,8 @@ use serde::{Deserialize, Serialize};
 use item::Items;
 use key::{StateKey, StateValue};
 use ledger::{Ledger, Removed};
-use meter::{MeterLive, Meters};
-use modifier::{ModifierLive, Modifiers};
+use meter::Meters;
+use modifier::Modifiers;
 use tracked::{swap, Edit, Entry, ReadOnly, Rewind, Store, Tracked};
 
 use crate::canon::Canon;
@@ -90,38 +90,36 @@ pub(crate) enum ComponentId {
     Notes,
 }
 
-/// One component on a holder, by value: what `State::components` reads and `put_component`
-/// writes.
-pub(crate) enum Component {
-    Item(String, u32),
-    Meter(String, MeterLive),
-    Modifier(String, ModifierLive),
-    Flag(String),
-}
-
-impl Component {
-    /// The store the save keeps it in, as the file names it.
-    pub(crate) fn store(&self) -> &'static str {
+impl ComponentId {
+    /// The store this component is in, as the file names it, and the holder it is on. A record
+    /// and the notes are in no store.
+    pub(crate) fn stored(&self) -> Option<(&'static str, &Holder)> {
         match self {
-            Component::Item(..) => "items",
-            Component::Meter(..) => "meters",
-            Component::Modifier(..) => "modifiers",
-            Component::Flag(_) => "flags",
+            ComponentId::Item(holder, _) => Some(("items", holder)),
+            ComponentId::Meter(holder, _) => Some(("meters", holder)),
+            ComponentId::Modifier(holder, _) => Some(("modifiers", holder)),
+            ComponentId::Flag(holder, _) => Some(("flags", holder)),
+            ComponentId::Actor(_)
+            | ComponentId::Place(_)
+            | ComponentId::Story(_)
+            | ComponentId::Notes => None,
         }
     }
 }
 
 impl State {
-    /// Every component in the save, with its holder, by store and then by holder: items,
-    /// meters, the modifiers that read those meters, then flags. The one walk over every store.
-    pub(crate) fn components(&self) -> impl Iterator<Item = (&Holder, Component)> {
+    /// Every component in the stores, by id: items, meters, the modifiers that read those meters,
+    /// then flags, each by holder. The one walk over every store: the load check reads it, and
+    /// so do copying and removing an actor.
+    pub(crate) fn components(&self) -> impl Iterator<Item = ComponentId> + '_ {
         let items =
-            (self.items.iter()).map(|(at, id, count)| (at, Component::Item(id.clone(), *count)));
-        let meters = (self.meters.iter())
-            .map(|(at, key, live)| (at, Component::Meter(key.clone(), live.clone())));
+            (self.items.iter()).map(|(at, id, _)| ComponentId::Item(at.clone(), id.clone()));
+        let meters =
+            (self.meters.iter()).map(|(at, key, _)| ComponentId::Meter(at.clone(), key.clone()));
         let modifiers = (self.modifiers.iter())
-            .map(|(at, id, live)| (at, Component::Modifier(id.clone(), live.clone())));
-        let flags = (self.flags.iter()).map(|(at, key, ())| (at, Component::Flag(key.clone())));
+            .map(|(at, id, _)| ComponentId::Modifier(at.clone(), id.clone()));
+        let flags =
+            (self.flags.iter()).map(|(at, key, _)| ComponentId::Flag(at.clone(), key.clone()));
         items.chain(meters).chain(modifiers).chain(flags)
     }
 
@@ -192,6 +190,7 @@ impl State {
     /// Put back a component a write took off, with the undo it held.
     fn put_back(&mut self, removed: Removed) {
         match removed {
+            #[cfg(any(test, feature = "testing"))]
             Removed::Actor(id, record) => drop(self.actors.get_mut().insert(id, *record)),
             Removed::Meter(holder, key, part) => self.meters.put(holder, key, part),
             Removed::Modifier(holder, id, part) => self.modifiers.put(holder, id, part),

@@ -8,7 +8,7 @@ use crate::diagnostic::{check_tag, error, locate_nth, parse_file, schema_error, 
 use crate::model::item::holds_items;
 use crate::model::meter::MeterLive;
 use crate::model::modifier;
-use crate::model::{exit_parts, sort_unique, Component, State};
+use crate::model::{exit_parts, sort_unique, ComponentId, State};
 use crate::rules::effect::Holder;
 use crate::store::records::{AddedMeter, DroppedMeter};
 use crate::Reason;
@@ -68,15 +68,17 @@ pub fn emit(state: &State) -> Result<String, Reason> {
 /// `places`, a story in `stories`, an exit of a place in `places`, or the world. Only an actor
 /// or a place holds items.
 fn check_holders(state: &State) -> Vec<Diagnostic> {
-    let wrong = state.components().filter(|(holder, component)| {
-        let itemless = matches!(component, Component::Item(..)) && !holds_items(holder);
-        !state.lists(holder) || itemless
-    });
-    let mut wrong: Vec<(&str, &Holder)> =
-        (wrong.map(|(holder, component)| (component.store(), holder))).collect();
+    let mut wrong: Vec<(&str, Holder)> = Vec::new();
+    for at in state.components() {
+        let (store, holder) = at.stored().expect("the walk yields stored components");
+        let itemless = matches!(at, ComponentId::Item(..)) && !holds_items(holder);
+        if !state.lists(holder) || itemless {
+            wrong.push((store, holder.clone()));
+        }
+    }
     wrong.dedup();
-    let diag = |(store, holder): (&str, &Holder)| {
-        let (problem, hint) = if state.lists(holder) {
+    let diag = |(store, holder): (&str, Holder)| {
+        let (problem, hint) = if state.lists(&holder) {
             let problem = format!("{store} lists '{holder}', which cannot hold items");
             (problem, "give the items to an actor or a place")
         } else {

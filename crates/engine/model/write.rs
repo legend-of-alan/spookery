@@ -11,7 +11,7 @@ use crate::model::modifier::ModifierLive;
 use crate::model::tracked::Tracked;
 use crate::model::MemoryLine;
 use crate::model::Note;
-use crate::model::{number, reading, ActCounter, ActorEdit, ActorLive, Component, ComponentId};
+use crate::model::{number, reading, ActCounter, ActorEdit, ComponentId};
 use crate::model::{NoteEdit, PendingAction, State};
 use crate::rules::effect::Holder;
 use crate::Reason;
@@ -63,76 +63,6 @@ impl State {
         };
         self.ledger.added(at);
         Ok(())
-    }
-
-    /// Give the save actor `id`, with `record` and no components yet. Only fixtures make an
-    /// actor: a pack's actors come from its save.
-    pub fn add_actor(&mut self, id: &str, record: ActorLive) -> Result<(), Reason> {
-        if self.actors.contains_key(id) {
-            return Err(Reason::Schema);
-        }
-        self.actors.get_mut().insert(id.to_string(), record.into());
-        self.ledger.added(ComponentId::Actor(id.to_string()));
-        Ok(())
-    }
-
-    /// Take actor `id` out of the save: each of their components through its writer, in the
-    /// reverse of the order a copy puts them on, then their record, so a rollback puts them all
-    /// back.
-    pub fn remove_actor(&mut self, canon: &Canon, id: &str) -> Result<(), Reason> {
-        if !self.actors.contains_key(id) {
-            return Err(Reason::UnknownId);
-        }
-        let holder = Holder::Actor(id.to_string());
-        for component in self.components_on(&holder).into_iter().rev() {
-            self.put_component(canon, &holder, component, false)?;
-        }
-        let record = self.actors.get_mut().remove(id).expect("an actor");
-        self.ledger
-            .removed(Removed::Actor(id.to_string(), Box::new(record)));
-        Ok(())
-    }
-
-    /// Give the save actor `to`, a copy of actor `from`: their record, then each of their
-    /// components through its writer.
-    #[cfg(feature = "testing")]
-    pub fn copy_actor(&mut self, canon: &Canon, from: &str, to: &str) -> Result<(), Reason> {
-        let record = (**self.actors.get(from).ok_or(Reason::UnknownId)?).clone();
-        let components = self.components_on(&Holder::Actor(from.to_string()));
-        self.add_actor(to, record)?;
-        let copy = Holder::Actor(to.to_string());
-        for component in components {
-            self.put_component(canon, &copy, component, true)?;
-        }
-        Ok(())
-    }
-
-    /// Every component on `holder`, in the order `components` walks them, which is the order
-    /// a copy puts them on.
-    fn components_on(&self, holder: &Holder) -> Vec<Component> {
-        let on = self.components().filter(|(at, _)| *at == holder);
-        on.map(|(_, component)| component).collect()
-    }
-
-    /// Put `component` on `holder` through its own writer, or take it off when `on` is false.
-    fn put_component(
-        &mut self,
-        canon: &Canon,
-        holder: &Holder,
-        component: Component,
-        on: bool,
-    ) -> Result<(), Reason> {
-        match component {
-            Component::Item(id, count) => self.set_items(holder, &id, if on { count } else { 0 }),
-            Component::Meter(key, live) => self.put_meter(canon, holder, &key, on.then_some(live)),
-            Component::Modifier(id, live) => {
-                let Holder::Actor(actor_id) = holder else {
-                    return Err(Reason::Schema);
-                };
-                self.put_modifier(canon, actor_id, &id, on.then_some(live))
-            }
-            Component::Flag(key) => self.set_flag(holder, &key, on),
-        }
     }
 
     /// Put meter `key` on `holder` as `next`, `None` taking it off, outside the writes a
@@ -382,6 +312,91 @@ impl State {
     }
 }
 
+/// Making, copying and removing an actor, with every component they hold. Only fixtures do: a
+/// pack's actors come from its save, and none leaves it.
+#[cfg(any(test, feature = "testing"))]
+impl State {
+    /// Give the save actor `id`, with `record` and no components yet.
+    pub fn add_actor(&mut self, id: &str, record: crate::model::ActorLive) -> Result<(), Reason> {
+        if self.actors.contains_key(id) {
+            return Err(Reason::Schema);
+        }
+        self.actors.get_mut().insert(id.to_string(), record.into());
+        self.ledger.added(ComponentId::Actor(id.to_string()));
+        Ok(())
+    }
+
+    /// Take actor `id` out of the save: each of their components through its writer, in the
+    /// reverse of the order a copy puts them on, then their record, so a rollback puts them all
+    /// back.
+    pub fn remove_actor(&mut self, canon: &Canon, id: &str) -> Result<(), Reason> {
+        if !self.actors.contains_key(id) {
+            return Err(Reason::UnknownId);
+        }
+        let holder = Holder::Actor(id.to_string());
+        for at in self.components_on(&holder).into_iter().rev() {
+            self.put_component(canon, &at, &holder, false)?;
+        }
+        let record = self.actors.get_mut().remove(id).expect("an actor");
+        self.ledger
+            .removed(Removed::Actor(id.to_string(), Box::new(record)));
+        Ok(())
+    }
+
+    /// Give the save actor `to`, a copy of actor `from`: their record, then each of their
+    /// components through its writer.
+    pub fn copy_actor(&mut self, canon: &Canon, from: &str, to: &str) -> Result<(), Reason> {
+        let record = (**self.actors.get(from).ok_or(Reason::UnknownId)?).clone();
+        let components = self.components_on(&Holder::Actor(from.to_string()));
+        self.add_actor(to, record)?;
+        let copy = Holder::Actor(to.to_string());
+        for at in components {
+            self.put_component(canon, &at, &copy, true)?;
+        }
+        Ok(())
+    }
+
+    /// Every component on `holder`, by id, in the order `components` walks them, which is the
+    /// order a copy puts them on.
+    fn components_on(&self, holder: &Holder) -> Vec<ComponentId> {
+        let on = |at: &ComponentId| at.stored().is_some_and(|(_, on)| on == holder);
+        self.components().filter(on).collect()
+    }
+
+    /// Put component `at`, as it is now, on `onto` through its own writer, or take it off `onto`
+    /// when `on` is false.
+    fn put_component(
+        &mut self,
+        canon: &Canon,
+        at: &ComponentId,
+        onto: &Holder,
+        on: bool,
+    ) -> Result<(), Reason> {
+        match at {
+            ComponentId::Item(from, id) => {
+                let count = self.items.get(from, id).copied().unwrap_or(0);
+                self.set_items(onto, id, if on { count } else { 0 })
+            }
+            ComponentId::Meter(from, key) => {
+                let live = self.meters.get(from, key).cloned().filter(|_| on);
+                self.put_meter(canon, onto, key, live)
+            }
+            ComponentId::Modifier(from, id) => {
+                let Holder::Actor(actor_id) = onto else {
+                    return Err(Reason::Schema);
+                };
+                let live = self.modifiers.get(from, id).cloned().filter(|_| on);
+                self.put_modifier(canon, actor_id, id, live)
+            }
+            ComponentId::Flag(_, key) => self.set_flag(onto, key, on),
+            ComponentId::Actor(_)
+            | ComponentId::Place(_)
+            | ComponentId::Story(_)
+            | ComponentId::Notes => Err(Reason::Schema),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
@@ -429,5 +444,25 @@ mod tests {
         assert_eq!(write("mira", "rest", 1), Ok(()), "a counted key is free");
         assert_eq!(write("aldric", "rest", 0), Ok(()), "unchanged: no key");
         assert_eq!(write("aldric", "rest", 1), Err(Reason::Budget));
+    }
+
+    #[test]
+    fn a_copy_holds_its_sources_items_and_removing_it_leaves_the_save_as_it_was() {
+        let pack =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packs/oneshot-docks");
+        let opened = World::open(&pack).expect("open");
+        let canon = opened.canon();
+        let (mira, briar) = (Holder::Actor("mira".into()), Holder::Actor("briar".into()));
+        let oil = |state: &State, holder: &Holder| state.item_count(holder, "lamp_oil");
+        let mut state = opened.state().clone();
+        state.set_items(&mira, "lamp_oil", 2).unwrap();
+        state.accept();
+        let before = state.clone();
+        state.copy_actor(canon, "mira", "briar").unwrap();
+        assert_eq!(oil(&state, &briar), Some(2), "the copy's oil");
+        assert_eq!(oil(&state, &mira), Some(2), "the source's oil");
+        state.remove_actor(canon, "briar").unwrap();
+        state.accept();
+        assert_eq!(state, before);
     }
 }

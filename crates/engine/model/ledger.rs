@@ -11,7 +11,7 @@ use crate::model::key::{Change, StateKey, StateValue};
 use crate::model::meter::{MeterLive, Offset};
 use crate::model::modifier::ModifierLive;
 use crate::model::tracked::{Edit, Tracked};
-use crate::model::{ActorEdit, ActorLive, ComponentId, MemoryLine, Presence, State};
+use crate::model::{ComponentId, MemoryLine, Presence, State};
 use crate::rules::effect::Holder;
 use crate::Reason;
 
@@ -85,7 +85,11 @@ enum Touch {
 /// A component a write took off, whole, with the undo it held, to put back.
 pub(super) enum Removed {
     /// An actor's record, which only a fixture takes off, boxed for its size.
-    Actor(String, Box<Tracked<ActorLive, ActorEdit>>),
+    #[cfg(any(test, feature = "testing"))]
+    Actor(
+        String,
+        Box<Tracked<crate::model::ActorLive, crate::model::ActorEdit>>,
+    ),
     Meter(Holder, String, Tracked<MeterLive, Offset>),
     Modifier(Holder, String, Tracked<ModifierLive, ModifierLive>),
     /// A flag holds no value, so its holder and key are all there is.
