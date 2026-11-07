@@ -140,8 +140,8 @@ mod tests {
     fn sum_counts_only_the_named_meter_and_refuses_an_overflow() {
         let rowan = Holder::Actor("rowan".to_string());
         let mut map = Modifiers::default();
-        map.insert(rowan.clone(), "burn".to_string(), held(&[-1, -2]));
-        map.insert(
+        map.put(rowan.clone(), "burn".to_string(), held(&[-1, -2]).into());
+        map.put(
             rowan.clone(),
             "calm".to_string(),
             ModifierLive {
@@ -149,11 +149,12 @@ mod tests {
                 until: 2,
                 max_ticks: 10,
                 stacks: vec![5],
-            },
+            }
+            .into(),
         );
         assert_eq!(sum(&map, &rowan, "grit"), Ok(-3));
         assert_eq!(sum(&map, &rowan, "nerve"), Ok(0));
-        map.insert(rowan.clone(), "vast".to_string(), held(&[i64::MIN]));
+        map.put(rowan.clone(), "vast".to_string(), held(&[i64::MIN]).into());
         assert_eq!(sum(&map, &rowan, "grit"), Err(Reason::OutOfRange));
     }
 }

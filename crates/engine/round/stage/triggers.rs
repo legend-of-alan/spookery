@@ -1,9 +1,9 @@
 //! Change rules, edge-triggered, to a fixpoint, after each start and each finish lands.
 
 use crate::canon::{Canon, OPEN};
-use crate::draft::Draft;
 use crate::intent::Intent;
 use crate::model::key::{Change, StateKey, StateValue};
+use crate::model::State;
 use crate::rules::cond;
 use crate::rules::context::Context;
 use crate::rules::expand::{self, Cause};
@@ -17,17 +17,17 @@ use crate::round::stage::apply;
 
 /// One trigger pass: fire the change rules the changes since the last pass match, and again on
 /// what they write, at most `max_trigger_depth` times. Every change record goes on the log.
-pub(crate) fn run(draft: &mut Draft, canon: &Canon, dice: &mut RoundDice, log: &mut RoundLog) {
-    let max = draft.budget().max_trigger_depth;
+pub(crate) fn run(canon: &Canon, state: &mut State, dice: &mut RoundDice, log: &mut RoundLog) {
+    let max = canon.budget.max_trigger_depth;
     let rules = change_rules(canon);
     let mut depth = 0u64;
     loop {
-        let changes = draft.take_changes();
+        let changes = state.take_changes();
         if changes.is_empty() {
             break;
         }
         log.changes.extend(changes.iter().cloned());
-        let matched_triggers = match_rules(draft, &rules, &changes);
+        let matched_triggers = match_rules(state, &rules, &changes);
         if matched_triggers.is_empty() {
             break;
         }
@@ -37,7 +37,14 @@ pub(crate) fn run(draft: &mut Draft, canon: &Canon, dice: &mut RoundDice, log: &
         }
         depth += 1;
         for matched in matched_triggers {
-            fire(draft, dice, log, matched.rule, matched.subject.as_deref());
+            fire(
+                canon,
+                state,
+                dice,
+                log,
+                matched.rule,
+                matched.subject.as_deref(),
+            );
         }
     }
 }
@@ -65,7 +72,7 @@ fn change_rules(canon: &Canon) -> Vec<&Rule> {
 }
 
 /// Which rules a batch of changes triggers, and for whom.
-fn match_rules<'a>(draft: &Draft, rules: &[&'a Rule], changes: &[Change]) -> Vec<Trigger<'a>> {
+fn match_rules<'a>(state: &State, rules: &[&'a Rule], changes: &[Change]) -> Vec<Trigger<'a>> {
     let mut matched_triggers = Vec::new();
     for &rule in rules {
         let When::Change(watch) = &rule.when else {
@@ -73,7 +80,7 @@ fn match_rules<'a>(draft: &Draft, rules: &[&'a Rule], changes: &[Change]) -> Vec
         };
         let mut subject_ids = Vec::new();
         for change in changes {
-            if !matches_watch(draft, rule, watch, change) {
+            if !matches_watch(state, rule, watch, change) {
                 continue;
             }
             let subject = change.key.actor().map(str::to_string);
@@ -92,41 +99,37 @@ fn match_rules<'a>(draft: &Draft, rules: &[&'a Rule], changes: &[Change]) -> Vec
 /// Run a change rule for `subject`, or for no one on a world change, when its `if` holds. A
 /// refusal is journaled and told to nobody.
 fn fire(
-    draft: &mut Draft,
+    canon: &Canon,
+    state: &mut State,
     dice: &mut RoundDice,
     log: &mut RoundLog,
     rule: &Rule,
     subject: Option<&str>,
 ) {
-    let Ok(intent) = Intent::trigger(draft.state(), subject, &rule.id) else {
+    let Ok(intent) = Intent::trigger(state, subject, &rule.id) else {
         return;
     };
-    let context = Context::new(
-        draft.canon(),
-        draft.state(),
-        draft.state().presence(),
-        &intent,
-    );
+    let context = Context::new(canon, state, state.presence(), &intent);
     if cond::all_hold(&context, &rule.if_).is_err() {
         return;
     }
     let roller = dice.roller(log, &rule.id, subject);
     match expand::expand(&context, rule, Cause::Trigger, None, roller) {
         Ok(expansion) => {
-            apply::land(draft, &intent, rule, expansion, log);
+            apply::land(canon, state, &intent, rule, expansion, log);
         }
         Err(code) => log.refused.push(gate::Refusal::new(&intent, code)),
     }
 }
 
-fn matches_watch(draft: &Draft, rule: &Rule, watch: &ChangeWatch, change: &Change) -> bool {
+fn matches_watch(state: &State, rule: &Rule, watch: &ChangeWatch, change: &Change) -> bool {
     match watch {
         ChangeWatch::Arrive { place, who } => match &change.key {
             StateKey::ActorPlace(actor) => {
                 let place = rule.watched_place(place);
                 change.before.as_text() != Some(place)
                     && change.after.as_text() == Some(place)
-                    && matches_who(draft, who, actor)
+                    && matches_who(state, who, actor)
             }
             _ => false,
         },
@@ -135,7 +138,7 @@ fn matches_watch(draft: &Draft, rule: &Rule, watch: &ChangeWatch, change: &Chang
                 let place = rule.watched_place(place);
                 change.before.as_text() == Some(place)
                     && change.after.as_text() != Some(place)
-                    && matches_who(draft, who, actor)
+                    && matches_who(state, who, actor)
             }
             _ => false,
         },
@@ -186,8 +189,8 @@ fn flips(change: &Change, becomes: bool) -> bool {
     change.before.as_bool() == Some(!becomes) && change.after.as_bool() == Some(becomes)
 }
 
-fn matches_who(draft: &Draft, who: &WatchWho, actor_id: &str) -> bool {
-    let Some(actor) = draft.state().actors.get(actor_id) else {
+fn matches_who(state: &State, who: &WatchWho, actor_id: &str) -> bool {
+    let Some(actor) = state.actors.get(actor_id) else {
         return false;
     };
     match who {

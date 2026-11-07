@@ -159,7 +159,7 @@ idle:
     support::edit_save(&pack, |state| {
         let mira = spookery_engine::Holder::Actor("mira".to_string());
         for flag in ["calm", "wary"] {
-            state.flags.insert(mira.clone(), flag.to_string(), ());
+            state.set_flag(&mira.clone(), flag, true).unwrap();
         }
     });
     make_mira_ineligible(&pack);

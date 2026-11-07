@@ -5,16 +5,17 @@ pub(crate) mod ledger;
 pub(crate) mod meter;
 pub(crate) mod modifier;
 pub(crate) mod tracked;
+pub(crate) mod write;
 
 use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
 use key::{StateKey, StateValue};
-use ledger::Ledger;
+use ledger::{Ledger, Removed};
 use meter::Meters;
 use modifier::Modifiers;
-use tracked::{swap, Count, Edit, Entry, Rewind, Store, Tracked};
+use tracked::{swap, Count, Edit, Entry, ReadOnly, Rewind, Store, Tracked};
 
 use crate::canon::Canon;
 use crate::intent::{Target, Viewer};
@@ -22,6 +23,11 @@ use crate::rules::effect::Holder;
 
 /// The live save: each record, each component store, and the ledger of the round writing it.
 /// `save.yaml` is this, field for field: the records by id, then each store by holder.
+///
+/// Anyone may read any of it. Only the writers in `write` change a record or a component, and
+/// each goes on the ledger: no record table, store or record hands out a way to change it, so
+/// round code can hold `&mut State` without a way around the ledger. The clock and revision
+/// numbers are plain fields: nothing tracks or rolls them back.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct State {
@@ -36,11 +42,11 @@ pub struct State {
     /// Ticks since the world began.
     pub world_time: u64,
     pub last_round_at: String,
-    pub places: BTreeMap<String, Tracked<PlaceLive, PlaceEdit>>,
-    pub actors: BTreeMap<String, Tracked<ActorLive, ActorEdit>>,
+    pub places: ReadOnly<BTreeMap<String, Tracked<PlaceLive, PlaceEdit>>>,
+    pub actors: ReadOnly<BTreeMap<String, Tracked<ActorLive, ActorEdit>>>,
     /// The stories the save lists. A story's meters and flags are in the stores.
     #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
-    pub stories: BTreeSet<String>,
+    pub stories: ReadOnly<BTreeSet<String>>,
     /// Every live meter: each actor's, place's and story's, and the world's.
     #[serde(default, skip_serializing_if = "Store::is_empty")]
     pub meters: Meters,
@@ -56,7 +62,7 @@ pub struct State {
     pub flags: Flags,
     pub notes: Tracked<Vec<Note>, NoteEdit>,
     #[serde(skip)]
-    pub(crate) ledger: Ledger,
+    ledger: Ledger,
 }
 
 /// Each flag set on each holder. A flag is only on or off, so it has no edits: setting one puts
@@ -92,16 +98,27 @@ impl State {
         meter::current(def, live, modifier::sum(&self.modifiers, holder, key)?)
     }
 
+    /// How many of item `id` `holder` holds: an actor or place the save lists. `None` for
+    /// any other holder.
+    pub fn item_count(&self, holder: &Holder, id: &str) -> Option<u32> {
+        let items = match holder {
+            Holder::Actor(actor) => &self.actors.get(actor)?.inventory,
+            Holder::Place(place) => &self.places.get(place)?.items,
+            Holder::Story(_) | Holder::Exit(..) | Holder::World => return None,
+        };
+        Some(items.get(id).copied().unwrap_or(0))
+    }
+
     /// Whether `holder` has flag `key` set.
     pub fn has_flag(&self, holder: &Holder, key: &str) -> bool {
         self.flags.get(holder, key).is_some()
     }
 
     /// The component `at` names, to roll back or rebase, when it has edits to.
-    pub(crate) fn component_mut(&mut self, at: &ComponentId) -> Option<&mut dyn Rewind> {
+    fn component_mut(&mut self, at: &ComponentId) -> Option<&mut dyn Rewind> {
         Some(match at {
-            ComponentId::Actor(id) => self.actors.get_mut(id)?,
-            ComponentId::Place(id) => self.places.get_mut(id)?,
+            ComponentId::Actor(id) => self.actors.get_mut().get_mut(id)?,
+            ComponentId::Place(id) => self.places.get_mut().get_mut(id)?,
             ComponentId::Meter(holder, key) => self.meters.tracked_mut(holder, key)?,
             ComponentId::Modifier(holder, id) => self.modifiers.tracked_mut(holder, id)?,
             ComponentId::Notes => &mut self.notes,
@@ -112,14 +129,47 @@ impl State {
     /// Take off the component `at` names, which a write put on.
     fn take_off(&mut self, at: &ComponentId) {
         match at {
-            ComponentId::Place(id) => drop(self.places.remove(id)),
-            ComponentId::Story(id) => drop(self.stories.remove(id)),
+            ComponentId::Actor(id) => drop(self.actors.get_mut().remove(id)),
+            ComponentId::Place(id) => drop(self.places.get_mut().remove(id)),
+            ComponentId::Story(id) => drop(self.stories.get_mut().remove(id)),
+            ComponentId::Meter(holder, key) => drop(self.meters.take(holder, key)),
             ComponentId::Modifier(holder, id) => drop(self.modifiers.take(holder, id)),
             ComponentId::Flag(holder, key) => drop(self.flags.take(holder, key)),
-            ComponentId::Actor(_) | ComponentId::Meter(..) | ComponentId::Notes => {
-                unreachable!("no write puts on {at:?}")
-            }
+            ComponentId::Notes => unreachable!("no write puts the notes on"),
         }
+    }
+
+    /// Put back a component a write took off, with the undo it held.
+    fn put_back(&mut self, removed: Removed) {
+        match removed {
+            Removed::Actor(id, record) => drop(self.actors.get_mut().insert(id, *record)),
+            Removed::Meter(holder, key, part) => self.meters.put(holder, key, part),
+            Removed::Modifier(holder, id, part) => self.modifiers.put(holder, id, part),
+            Removed::Flag(holder, key) => self.flags.put(holder, key, Tracked::default()),
+        }
+    }
+
+    /// This save in the order its file holds: notes by id, and each note's readers and facts,
+    /// and each actor's known facts, sorted. A sorted list is a different value only in order,
+    /// so this writes past the ledger, and so only `accept` and `to_canonical` call it, when
+    /// no write is left to roll back.
+    fn normalize(&mut self) {
+        let notes = self.notes.frontier_mut();
+        notes.sort_by(|a, b| a.id.cmp(&b.id));
+        for note in notes {
+            sort_unique(&mut note.to);
+            sort_unique(&mut note.fact_ids);
+        }
+        for actor in self.actors.get_mut().values_mut() {
+            sort_unique(&mut actor.frontier_mut().known_facts);
+        }
+    }
+
+    /// A copy of this save in the order its file holds, as `normalize` says.
+    pub(crate) fn to_canonical(&self) -> State {
+        let mut canonical = self.clone();
+        canonical.normalize();
+        canonical
     }
 
     /// The seat actor `id` acts from.

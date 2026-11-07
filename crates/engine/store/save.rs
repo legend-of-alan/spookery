@@ -55,10 +55,9 @@ pub fn parse(text: &str) -> Result<State, Vec<Diagnostic>> {
 }
 
 pub fn emit(state: &State) -> Result<String, Reason> {
-    let mut canonical = state.clone();
+    let mut canonical = state.to_canonical();
     canonical.schema = crate::diagnostic::SAVE_SCHEMA.to_string();
     canonical.rules_rev = super::RULES_REV;
-    normalize(&mut canonical);
     let text = serde_saphyr::to_string_with_options(&canonical, emit_options())
         .map_err(|_| Reason::Schema)?;
     Ok(one_trailing_lf(text))
@@ -113,18 +112,6 @@ fn one_trailing_lf(mut text: String) -> String {
     }
     text.push('\n');
     text
-}
-
-pub fn normalize(state: &mut State) {
-    let notes = state.notes.frontier_mut();
-    notes.sort_by(|a, b| a.id.cmp(&b.id));
-    for note in notes {
-        sort_unique(&mut note.to);
-        sort_unique(&mut note.fact_ids);
-    }
-    for actor in state.actors.values_mut() {
-        sort_unique(&mut actor.frontier_mut().known_facts);
-    }
 }
 
 fn check_actor_places(state: &State) -> Vec<Diagnostic> {
@@ -202,26 +189,23 @@ pub(crate) fn stale_modifiers(canon: &Canon, state: &State) -> Vec<String> {
 /// `dropped_modifiers` from every actor and each `dropped_meters` from its holder, then stamp
 /// `pack_rev` and `state_rev`. Live migrate and replay both call this. It does not touch the disk.
 pub fn migrate(
+    canon: &Canon,
     mut state: State,
     pack_rev: &str,
     state_rev: u64,
     meters: &[AddedMeter],
     dropped_modifiers: &[String],
     dropped_meters: &[DroppedMeter],
-) -> State {
+) -> Result<State, Reason> {
     for meter in meters {
         let start = MeterLive {
             base: meter.start,
             offset: 0,
         };
         let holders: Vec<Holder> = match &meter.carrier {
-            Some(Holder::Place(id)) => {
-                state.places.entry(id.clone()).or_default();
-                vec![Holder::Place(id.clone())]
-            }
-            Some(Holder::Story(id)) => {
-                state.stories.insert(id.clone());
-                vec![Holder::Story(id.clone())]
+            Some(holder @ (Holder::Place(_) | Holder::Story(_))) => {
+                state.make_record(holder)?;
+                vec![holder.clone()]
             }
             Some(holder @ Holder::World) => vec![holder.clone()],
             carrier => (state.actors.keys())
@@ -231,18 +215,27 @@ pub fn migrate(
         };
         for holder in holders {
             if state.meters.get(&holder, &meter.id).is_none() {
-                state.meters.insert(holder, meter.id.clone(), start.clone());
+                state.put_meter(canon, &holder, &meter.id, Some(start.clone()))?;
             }
         }
     }
-    (state.modifiers).retain(|_, id, _| !dropped_modifiers.iter().any(|dropped| dropped == id));
+    let dropped: Vec<(String, String)> = (state.modifiers.iter())
+        .filter(|(_, id, _)| dropped_modifiers.contains(id))
+        .filter_map(|(holder, id, _)| match holder {
+            Holder::Actor(actor) => Some((actor.clone(), id.clone())),
+            _ => None,
+        })
+        .collect();
+    for (actor, id) in dropped {
+        state.put_modifier(canon, &actor, &id, None)?;
+    }
     for meter in dropped_meters {
-        state.meters.remove(&meter.carrier, &meter.id);
+        state.put_meter(canon, &meter.carrier, &meter.id, None)?;
     }
     state.pack_rev = pack_rev.to_string();
     state.state_rev = state_rev;
-    normalize(&mut state);
-    state
+    state.accept();
+    Ok(state)
 }
 
 #[cfg(test)]

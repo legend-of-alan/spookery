@@ -165,7 +165,11 @@ fn a_docks_table_where_mira_can_oppose_a_mark(world: &mut World) {
     insert_mira_flags(&pack, "    - marked\n    - missed\n    - guarded\n");
     set_mira_grit(&pack, 100);
     super::common::edit_save(&pack, |now| {
-        now.actors.get_mut("mira").unwrap().frontier_mut().place = "docks_shop".to_string();
+        now.edit_actor(
+            "mira",
+            spookery_engine::testing::ActorEdit::Place("docks_shop".to_string()),
+        )
+        .unwrap();
     });
     listen_and_seat_both(world, &pack);
     world.scratch = snapshot_pack(&pack).display().to_string();
@@ -551,7 +555,11 @@ fn a_docks_table_where_mira_opposes_a_three_band_press(world: &mut World) {
     set_rowan_grit(&pack, 6);
     set_mira_grit(&pack, 100);
     super::common::edit_save(&pack, |now| {
-        now.actors.get_mut("mira").unwrap().frontier_mut().place = "docks_shop".to_string();
+        now.edit_actor(
+            "mira",
+            spookery_engine::testing::ActorEdit::Place("docks_shop".to_string()),
+        )
+        .unwrap();
     });
     listen_and_seat_both(world, &pack);
     world.scratch = snapshot_pack(&pack).display().to_string();
@@ -698,7 +706,11 @@ fn prepare_press(world: &mut World, base: i64, sit: bool) {
     insert_mira_flags(&pack, PRESS_FLAGS);
     set_rowan_grit(&pack, base);
     super::common::edit_save(&pack, |now| {
-        now.actors.get_mut("mira").unwrap().frontier_mut().place = "docks_shop".to_string();
+        now.edit_actor(
+            "mira",
+            spookery_engine::testing::ActorEdit::Place("docks_shop".to_string()),
+        )
+        .unwrap();
     });
     if sit {
         listen_and_seat_both(world, &pack);

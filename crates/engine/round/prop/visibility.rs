@@ -17,7 +17,7 @@ use std::path::PathBuf;
 
 use crate::canon::Canon;
 use crate::intent::Viewer;
-use crate::model::{sort_unique, Note, Presence, State};
+use crate::model::{sort_unique, ActorEdit, Note, Presence, State};
 use crate::rules::perceive::{perceive_as, View};
 use crate::world::World;
 
@@ -119,29 +119,25 @@ fn apply_scene(
         }
     }
     for (actor_id, place_index) in actors.iter().zip(&scene.place_of) {
-        if let Some(actor) = state
-            .actors
-            .get_mut(actor_id)
-            .map(|actor| actor.frontier_mut())
-        {
-            actor.place = places[place_index % places.len()].clone();
-        }
+        let place = places[place_index % places.len()].clone();
+        state
+            .edit_actor(actor_id, ActorEdit::Place(place))
+            .expect("an actor");
     }
     for (actor_id, known) in actors.iter().zip(&scene.known) {
-        let Some(actor) = state
-            .actors
-            .get_mut(actor_id)
-            .map(|actor| actor.frontier_mut())
-        else {
-            continue;
-        };
-        actor.known_facts = known
+        let held = state.actors[actor_id].known_facts.clone();
+        let known = known
             .iter()
             .map(|index| facts[index % facts.len()].clone())
             .collect();
-        sort_unique(&mut actor.known_facts);
+        state
+            .edit_actor(actor_id, ActorEdit::Forget(held))
+            .expect("an actor");
+        state
+            .edit_actor(actor_id, ActorEdit::Learn(known))
+            .expect("an actor");
     }
-    state.notes.frontier_mut().clear();
+    assert!(state.notes.is_empty(), "the docks save leaves no notes");
     for (index, note) in scene.notes.iter().enumerate() {
         let mut fact_ids: Vec<String> = note
             .fact_ids
@@ -155,14 +151,16 @@ fn apply_scene(
             .map(|actor| actors[actor % actors.len()].clone())
             .collect();
         sort_unique(&mut to);
-        state.notes.frontier_mut().push(Note {
+        let note = Note {
             id: format!("note-{index}"),
             to,
             place: note.place.map(|place| places[place % places.len()].clone()),
             fact_ids,
             text: "The hour is late.".to_string(),
-        });
+        };
+        state.leave_note(note).expect("a new note");
     }
+    state.accept();
 }
 
 fn assert_hidden_stays_hidden(canon: &Canon, state: &State) -> Result<(), TestCaseError> {

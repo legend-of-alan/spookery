@@ -4,7 +4,7 @@ use std::fs;
 use std::path::Path;
 
 use cucumber::{given, then, when};
-use spookery_engine::testing::{state_of, PlaceLive};
+use spookery_engine::testing::state_of;
 use spookery_engine::{Presence, World as Opened};
 
 use super::meters::{assert_refused, migrate_and_play};
@@ -72,8 +72,8 @@ fn add_verb_doing(pack: &Path, verb: &str, effects: &str) {
 fn stand_in_the_loft(world: &mut World) {
     let pack = world.pack.clone().unwrap();
     edit_table(world, &pack, |now, seated| {
-        now.places
-            .insert("loft".to_string(), PlaceLive::default().into());
+        now.make_record(&spookery_engine::Holder::Place("loft".to_string()))
+            .unwrap();
         set_place(now, "pc_rowan", "loft");
         set_place(now, "mira", "docks_shop");
         sit(seated, &["pc_rowan"]);

@@ -25,7 +25,7 @@ pub(crate) struct Candidate<'a> {
 
 /// How resolve left an intent for apply.
 pub(crate) enum Resolution<'a> {
-    /// Picked against the state. Apply admits `rule` again against the draft when it starts,
+    /// Picked against the state. Apply admits `rule` again against the round's save when it starts,
     /// then pays for and expands it, so a move pays the cost of the rule it rolled for.
     Ready {
         rule: &'a Rule,

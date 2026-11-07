@@ -140,7 +140,7 @@ exits:";
     fs::write(&path, next).unwrap_or_else(|err| panic!("write yard: {err}"));
     edit_save(&pack, |now| {
         let loft = spookery_engine::Holder::Exit("gate_yard".into(), "loft".into());
-        now.flags.insert(loft, "open".to_string(), ());
+        now.set_flag(&loft, "open", true).unwrap();
     });
     world.pack = Some(pack);
 }

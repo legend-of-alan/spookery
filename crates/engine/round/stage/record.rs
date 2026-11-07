@@ -31,7 +31,7 @@ pub(crate) fn run(
     fast_forward: bool,
 ) -> Result<RoundOutput, Reason> {
     let StagedRound {
-        draft,
+        state,
         clock,
         mut log,
         delivered,
@@ -44,9 +44,9 @@ pub(crate) fn run(
         state_rev_after: 0,
         world_time_before: clock.world_time_before,
         world_time_after: clock.world_time_after,
-        presence_players: draft.state().presence().players,
-        actors_present: draft.state().presence().actors_present.clone(),
-        seed: round_seed(&draft.state().world_id, clock.round_index),
+        presence_players: state.presence().players,
+        actors_present: state.presence().actors_present.clone(),
+        seed: round_seed(&state.world_id, clock.round_index),
         last_round_at: wall.to_string(),
         intents: world.queued_intents().to_vec(),
         refused: log.refused,
@@ -59,7 +59,7 @@ pub(crate) fn run(
         prev: String::new(),
         chain: String::new(),
     };
-    output.commit = Some(commit::commit(world, draft, record)?);
+    output.commit = Some(commit::commit(world, state, record)?);
     Ok(output)
 }
 

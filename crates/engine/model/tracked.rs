@@ -53,13 +53,13 @@ impl<T, E> Tracked<T, E> {
     }
 
     /// How many edits since the frontier can be undone.
-    pub(crate) fn edits(&self) -> usize {
+    pub(super) fn edits(&self) -> usize {
         self.undo.len()
     }
 
     /// Keep the undo of only the newest `keep` edits. The value stays. `rebase(0)` makes the
     /// value the frontier.
-    pub(crate) fn rebase(&mut self, keep: usize) {
+    pub(super) fn rebase(&mut self, keep: usize) {
         let older = self.undo.len().saturating_sub(keep);
         self.undo.drain(..older);
     }
@@ -67,7 +67,7 @@ impl<T, E> Tracked<T, E> {
     /// The value, to change in place at its frontier: outside a round, where nothing can be
     /// rolled back. A change here while an edit can still be undone would be lost to a
     /// rollback, so that panics.
-    pub fn frontier_mut(&mut self) -> &mut T {
+    pub(super) fn frontier_mut(&mut self) -> &mut T {
         assert!(
             self.undo.is_empty(),
             "a tracked value changed past its edits"
@@ -78,7 +78,7 @@ impl<T, E> Tracked<T, E> {
 
 impl<T, E: Edit<T>> Tracked<T, E> {
     /// Make `edit` and keep its undo. Whether the value moved.
-    pub(crate) fn apply(&mut self, edit: E) -> bool {
+    pub(super) fn apply(&mut self, edit: E) -> bool {
         let Some(undo) = edit.apply(&mut self.value) else {
             return false;
         };
@@ -87,7 +87,7 @@ impl<T, E: Edit<T>> Tracked<T, E> {
     }
 
     /// Undo the newest edits, newest first, until `edits` are left.
-    pub(crate) fn rollback(&mut self, edits: usize) {
+    pub(super) fn rollback(&mut self, edits: usize) {
         for undo in self.undo.drain(edits..).rev() {
             // The edit it undoes was the newest one, so the value is as that edit left it.
             let redo = undo.apply(&mut self.value);
@@ -97,7 +97,7 @@ impl<T, E: Edit<T>> Tracked<T, E> {
 }
 
 /// A rollback or rebase of a tracked value, whatever it holds.
-pub(crate) trait Rewind {
+pub(super) trait Rewind {
     fn rollback(&mut self, edits: usize);
     fn rebase(&mut self, keep: usize);
 }
@@ -259,49 +259,18 @@ impl<V, E> Store<V, E> {
             .flat_map(|(holder, parts)| parts.iter().map(move |(key, part)| (holder, key, &**part)))
     }
 
-    /// Put `value` on `holder` under `key` at its frontier, outside a round, in place of any
-    /// value there.
-    pub fn insert(&mut self, holder: Holder, key: String, value: V) {
-        self.put(holder, key, Tracked::new(value));
-    }
-
-    /// Take the component on `holder` under `key` off at its frontier, outside a round. Taking
-    /// off one that can still be undone panics, as `Tracked::frontier_mut` does.
-    pub fn remove(&mut self, holder: &Holder, key: &str) -> Option<V> {
-        let mut part = self.take(holder, key)?;
-        part.frontier_mut();
-        Some(part.value)
-    }
-
-    /// The component on `holder` under `key`, to change at its frontier, as
-    /// `Tracked::frontier_mut` says.
-    pub fn frontier_mut(&mut self, holder: &Holder, key: &str) -> Option<&mut V> {
-        Some(self.on.get_mut(holder)?.get_mut(key)?.frontier_mut())
-    }
-
-    /// Keep only the components `keep` accepts, outside a round.
-    pub fn retain(&mut self, mut keep: impl FnMut(&Holder, &str, &V) -> bool) {
-        for (holder, parts) in &mut self.on {
-            parts.retain(|key, part| {
-                part.frontier_mut();
-                keep(holder, key, part)
-            });
-        }
-        self.on.retain(|_, parts| !parts.is_empty());
-    }
-
-    pub(crate) fn tracked_mut(&mut self, holder: &Holder, key: &str) -> Option<&mut Tracked<V, E>> {
+    pub(super) fn tracked_mut(&mut self, holder: &Holder, key: &str) -> Option<&mut Tracked<V, E>> {
         self.on.get_mut(holder)?.get_mut(key)
     }
 
     /// Put `part` on `holder` under `key`, with the undo it holds.
-    pub(crate) fn put(&mut self, holder: Holder, key: String, part: Tracked<V, E>) {
+    pub(super) fn put(&mut self, holder: Holder, key: String, part: Tracked<V, E>) {
         self.on.entry(holder).or_default().insert(key, part);
     }
 
     /// Take the component on `holder` under `key` off, with the undo it holds. A holder left
     /// with none has no entry, so a store reads the same after an add is rolled back.
-    pub(crate) fn take(&mut self, holder: &Holder, key: &str) -> Option<Tracked<V, E>> {
+    pub(super) fn take(&mut self, holder: &Holder, key: &str) -> Option<Tracked<V, E>> {
         let parts = self.on.get_mut(holder)?;
         let part = parts.remove(key);
         if parts.is_empty() {
@@ -309,13 +278,51 @@ impl<V, E> Store<V, E> {
         }
         part
     }
+
+    /// Take every component on `holder` off, with the undo each holds, in key order.
+    pub(super) fn take_all(&mut self, holder: &Holder) -> BTreeMap<String, Tracked<V, E>> {
+        self.on.remove(holder).unwrap_or_default()
+    }
+}
+
+/// A collection round code reads but cannot change: only `State`'s writers put an entry in or
+/// take one out, through the ledger. It reads as the collection it holds.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ReadOnly<C>(C);
+
+impl<C> Deref for ReadOnly<C> {
+    type Target = C;
+
+    fn deref(&self) -> &C {
+        &self.0
+    }
+}
+
+impl<'a, C> IntoIterator for &'a ReadOnly<C>
+where
+    &'a C: IntoIterator,
+{
+    type Item = <&'a C as IntoIterator>::Item;
+    type IntoIter = <&'a C as IntoIterator>::IntoIter;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
+    }
+}
+
+impl<C> ReadOnly<C> {
+    /// The collection, to change: for `State`'s writers alone.
+    pub(super) fn get_mut(&mut self) -> &mut C {
+        &mut self.0
+    }
 }
 
 /// Map entry `id` takes `value`, `None` being no entry. Its undo holds the entry it replaced.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Entry<V> {
-    pub(crate) id: String,
-    pub(crate) value: Option<V>,
+    pub id: String,
+    pub value: Option<V>,
 }
 
 impl<V: PartialEq> Edit<BTreeMap<String, V>> for Entry<V> {

@@ -63,13 +63,16 @@ fn lunge_pack(limit: Option<&str>, rule: &str) -> PathBuf {
         fs::write(&path, text.replacen(old.expect("limit key"), limit, 1)).unwrap();
     }
     crate::testing::append(&pack.join("rules/verbs.yaml"), &format!("{LUNGE}{rule}"));
+    let canon = crate::canon::load_canon(&pack).expect("the pack loads");
     crate::testing::edit_save(&pack, |state| {
         let briar = crate::rules::effect::Holder::Actor("npc_briar".to_string());
+        let might = crate::model::meter::MeterLive {
+            base: 30,
+            offset: 0,
+        };
         state
-            .meters
-            .frontier_mut(&briar, "might")
-            .expect("might")
-            .base = 30;
+            .put_meter(&canon, &briar, "might", Some(might))
+            .expect("might");
     });
     pack
 }

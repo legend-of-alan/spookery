@@ -12,7 +12,7 @@ use super::common::replace_in_file;
 use super::record::read_extra_steps;
 use super::table;
 use super::triggers::{
-    add_verb, edit_table, intent, play_round, seen_of, set_place, sit, PlayedRound,
+    add_verb, edit_table, edit_table_with, intent, play_round, seen_of, set_place, sit, PlayedRound,
 };
 use crate::support::{self, copy_docks};
 use crate::World;
@@ -240,15 +240,15 @@ fn it_refuses_the_second_grit(world: &mut World) {
 fn rowan_and_mira_stand_in_the_shop(world: &mut World) {
     let pack = copy_docks("meter-sight");
     add_mira_meter_habit(&pack, "shop_day", 1);
-    edit_table(world, &pack, |now, seated| {
+    edit_table_with(world, &pack, |now, canon, seated| {
         set_place(now, "mira", "docks_shop");
-        now.meters
-            .frontier_mut(
-                &spookery_engine::Holder::Actor("mira".to_string()),
-                "shop_day",
-            )
-            .unwrap()
-            .base = 0;
+        now.put_meter(
+            canon,
+            &spookery_engine::Holder::Actor("mira".to_string()),
+            "shop_day",
+            Some(spookery_engine::MeterLive { base: 0, offset: 0 }),
+        )
+        .unwrap();
         sit(seated, &["pc_rowan"]);
     });
     world.pack = Some(pack);
@@ -603,14 +603,16 @@ fn the_gm_sees_both_meters(world: &mut World) {
 #[given(expr = "dawn has fallen to {int} while pc_rowan's player was away")]
 fn dawn_has_fallen(world: &mut World, value: i64) {
     let pack = world.pack.clone().unwrap();
-    edit_table(world, &pack, |now, _| {
+    edit_table_with(world, &pack, |now, canon, _| {
         let fallen = MeterLive {
             base: 6,
             offset: value - 6,
         };
-        now.meters.insert(Holder::World, "dawn".to_string(), fallen);
+        now.put_meter(canon, &Holder::World, "dawn", Some(fallen))
+            .unwrap();
         let doom = MeterLive { base: 6, offset: 0 };
-        now.meters.insert(Holder::World, "doom".to_string(), doom);
+        now.put_meter(canon, &Holder::World, "doom", Some(doom))
+            .unwrap();
     });
     assert_eq!(value_on(&pack, &Holder::World, "dawn"), Some(value));
 }

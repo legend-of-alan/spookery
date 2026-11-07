@@ -743,39 +743,26 @@ mod tests {
     }
 
     fn state() -> State {
-        let mut meters = crate::model::meter::Meters::default();
-        let ada = crate::rules::effect::Holder::Actor("ada".to_string());
-        meters.insert(ada, "str_mod".to_string(), MeterLive { base: 3, offset: 0 });
-        State {
-            schema: "save".to_string(),
-            world_id: "t".to_string(),
-            pack_rev: String::new(),
-            rules_rev: 0,
-            state_rev: 0,
-            round_index: 0,
-            world_time: 0,
-            last_round_at: String::new(),
-            places: BTreeMap::new(),
-            actors: BTreeMap::from([(
-                "ada".to_string(),
-                ActorLive {
-                    kind: ActorKind::Pc,
-                    place: "room".to_string(),
-                    inventory: BTreeMap::new(),
-                    wielded: None,
-                    known_facts: Vec::new(),
-                    visited: Default::default(),
-                    act: Act::default(),
-                }
-                .into(),
-            )]),
-            stories: Default::default(),
-            meters,
-            modifiers: Default::default(),
-            notes: Default::default(),
-            flags: Default::default(),
-            ledger: Default::default(),
-        }
+        let mut state = State::default();
+        state.schema = "save".to_string();
+        state.world_id = "t".to_string();
+        let ada = ActorLive {
+            kind: ActorKind::Pc,
+            place: "room".to_string(),
+            inventory: BTreeMap::new(),
+            wielded: None,
+            known_facts: Vec::new(),
+            visited: Default::default(),
+            act: Act::default(),
+        };
+        state.add_actor("ada", ada).unwrap();
+        let holder = crate::rules::effect::Holder::Actor("ada".to_string());
+        let str_mod = MeterLive { base: 3, offset: 0 };
+        state
+            .put_meter(&canon(), &holder, "str_mod", Some(str_mod))
+            .unwrap();
+        state.accept();
+        state
     }
 
     #[test]

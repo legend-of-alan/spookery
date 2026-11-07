@@ -1,7 +1,6 @@
 //! Exits, admission, and the journeys that follow them.
 
 use crate::canon::{Canon, Exit, PlaceDef, OPEN};
-use crate::draft::Draft;
 use crate::intent::{Intent, Source, Target, Viewer};
 use crate::model::tracked::Entry;
 use crate::model::{ActorEdit, PendingAction, State};
@@ -132,23 +131,23 @@ fn door(exit: &Exit) -> Holder {
 /// Open each locked door whose `if` some actor in its place meets, with a `flag` effect
 /// written as no one, under the intent `door:<place>.<exit>`. Runs at the end of each round,
 /// after triggers.
-pub(crate) fn open_doors(draft: &mut Draft, log: &mut RoundLog) {
-    let (canon, state) = (draft.canon(), draft.state());
+pub(crate) fn open_doors(canon: &Canon, state: &mut State, log: &mut RoundLog) {
     let mut opens = Vec::new();
+    let seen: &State = state;
     for (place, def) in &canon.places {
-        let here: Vec<Viewer> = state
+        let here: Vec<Viewer> = seen
             .actors_at(place)
             .iter()
-            .filter_map(|id| state.viewer_of(id))
+            .filter_map(|id| seen.viewer_of(id))
             .collect();
-        for exit in def.exits.iter().filter(|exit| is_locked(state, exit)) {
+        for exit in def.exits.iter().filter(|exit| is_locked(seen, exit)) {
             let target = Target::Exit(exit.name.clone());
             let met = here.iter().any(|viewer| {
                 let target = target.clone();
                 cond::if_holds(
                     canon,
-                    state,
-                    draft.state().presence(),
+                    seen,
+                    seen.presence(),
                     viewer,
                     "travel",
                     target,
@@ -159,7 +158,7 @@ pub(crate) fn open_doors(draft: &mut Draft, log: &mut RoundLog) {
                 continue;
             }
             let id = format!("door:{place}.{}", exit.name);
-            let intent = Intent::new(id, state.round_index, None, Source::Engine, "door", target);
+            let intent = Intent::new(id, seen.round_index, None, Source::Engine, "door", target);
             let kind = EffectKind::Flag {
                 holder: door(exit),
                 key: OPEN.to_string(),
@@ -169,11 +168,11 @@ pub(crate) fn open_doors(draft: &mut Draft, log: &mut RoundLog) {
         }
     }
     for (effect, intent) in opens {
-        let point = draft.savepoint();
-        match effect.clone().apply(draft, &intent) {
+        let point = state.savepoint();
+        match effect.clone().apply(canon, state, &intent) {
             Ok(()) => log.effects.push(effect),
             Err(code) => {
-                draft.rollback(point);
+                state.rollback(point);
                 log.refused.push(gate::Refusal::new(&intent, code));
             }
         }
@@ -208,9 +207,7 @@ pub(crate) fn exit_view(canon: &Canon, state: &State, exit: &Exit) -> ExitView {
 
 /// Every actor notes the exits they see where they stand, for `map`. Runs once at the end
 /// of each round, after triggers, so a reveal is seen in the round it lands.
-pub(crate) fn note_exits(draft: &mut Draft) -> Result<(), Reason> {
-    let canon = draft.canon();
-    let state = draft.state();
+pub(crate) fn note_exits(canon: &Canon, state: &mut State) -> Result<(), Reason> {
     // A walker on an exit is in no place, so there is nothing to note.
     let seen: Vec<(String, ActorEdit)> = state
         .actors
@@ -228,7 +225,7 @@ pub(crate) fn note_exits(draft: &mut Draft) -> Result<(), Reason> {
         })
         .collect();
     seen.into_iter()
-        .try_for_each(|(id, edit)| draft.edit_actor(&id, edit))
+        .try_for_each(|(id, edit)| state.edit_actor(&id, edit))
 }
 
 /// The exits of this actor's place that they are allowed to see.
@@ -257,9 +254,8 @@ pub(crate) struct DueAction {
 }
 
 /// Clear every action that finishes at or before `end`, earliest first.
-pub(crate) fn take_due_actions(draft: &mut Draft, end: u64) -> Result<Vec<DueAction>, Reason> {
-    let mut due_keys: Vec<(u64, String)> = draft
-        .state()
+pub(crate) fn take_due_actions(state: &mut State, end: u64) -> Result<Vec<DueAction>, Reason> {
+    let mut due_keys: Vec<(u64, String)> = state
         .actors
         .iter()
         .filter_map(|(id, actor)| {
@@ -274,7 +270,7 @@ pub(crate) fn take_due_actions(draft: &mut Draft, end: u64) -> Result<Vec<DueAct
     due_keys.sort();
     let mut due_actions = Vec::new();
     for (until, actor_id) in due_keys {
-        let Some(pending) = draft.take_pending(&actor_id)? else {
+        let Some(pending) = state.take_pending(&actor_id)? else {
             continue;
         };
         due_actions.push(DueAction {

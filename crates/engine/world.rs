@@ -189,6 +189,14 @@ impl<L> World<L> {
         &self.state
     }
 
+    /// A copy of the save with a round open on it, under this canon's budget and with
+    /// `presence` seated: what a round writes, and commit takes.
+    pub(crate) fn begin_round(&self, presence: &Presence) -> State {
+        let mut state = self.state.clone();
+        state.open_round(&self.canon.budget, presence);
+        state
+    }
+
     /// Replace the in-memory state after a replay. This does not write `save.yaml`.
     pub(crate) fn set_state(&mut self, state: State) {
         self.state = state;

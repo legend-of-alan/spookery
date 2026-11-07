@@ -3,7 +3,6 @@
 use std::collections::BTreeSet;
 
 use crate::canon::Canon;
-use crate::draft::Draft;
 use crate::intent::{Intent, Target, Viewer};
 use crate::model::{Presence, State};
 use crate::rules::context::Context;
@@ -22,11 +21,12 @@ use crate::round::stage::apply::refuse;
 /// The queue and the habits, stamped, in priority order, cut to the budget. Each intent past
 /// the cut is refused `BUDGET`.
 pub(crate) fn run(
-    draft: &Draft,
+    canon: &Canon,
+    state: &State,
     queue: &[Intent],
     log: &mut RoundLog,
 ) -> Result<Vec<Intent>, Reason> {
-    let (canon, state, presence) = (draft.canon(), draft.state(), draft.state().presence());
+    let presence = state.presence();
     let mut candidates = queue.to_vec();
     candidates.extend(habits::intents(canon, state, presence));
     for intent in &mut candidates {
@@ -34,7 +34,7 @@ pub(crate) fn run(
     }
     candidates.sort_by_cached_key(|intent| priority(canon, state, presence, intent));
     check_unique_ids(&candidates)?;
-    let limit = (draft.budget().max_intents_applied as usize).min(candidates.len());
+    let limit = (canon.budget.max_intents_applied as usize).min(candidates.len());
     for intent in candidates.split_off(limit) {
         let refusal = gate::Refusal::new(&intent, Reason::Budget);
         refuse(log, &intent, refusal, false);

@@ -15,7 +15,6 @@
 
 use std::sync::Arc;
 
-use crate::draft::Draft;
 use crate::intent::{Intent, IntentArgs, Source, Target, Viewer};
 use crate::model::key::{Change, StateKey, StateValue};
 use crate::model::meter::MeterWrite;
@@ -53,10 +52,16 @@ enum Step {
 #[test]
 fn nested_rollbacks_put_the_save_back_exactly() {
     let pack = TempPack(copy_docks("rollback"));
-    let opened = World::open(&pack.0).expect("docks pack opens");
     // The street has no live record yet, so walking there or lighting it gives it its first one.
-    let mut state = opened.state().clone();
-    state.places.remove("docks_street");
+    // A hand edit of the save takes it out, and moves the two who stood there into the shop.
+    let path = pack.0.join("state/save.yaml");
+    let text = std::fs::read_to_string(&path).expect("the docks save");
+    let edited = (text.replace("  docks_street:\n    items: {}\n", ""))
+        .replace("    place: docks_street\n", "    place: docks_shop\n");
+    assert_ne!(edited, text, "the street had a record");
+    std::fs::write(&path, edited).expect("write the save");
+    let opened = World::open(&pack.0).expect("docks pack opens");
+    let state = opened.state().clone();
     let mut canon = opened.canon().clone();
     let street = canon.places.get_mut("docks_street").expect("the street");
     street.flags.extend(["lit".to_string(), "busy".to_string()]);
@@ -84,73 +89,73 @@ struct Open {
 
 fn play_steps(world: &World<()>, steps: &[Step]) -> Result<(), TestCaseError> {
     let nobody = crate::model::Presence::default();
-    let mut draft = Draft::begin(world, &nobody);
+    let canon = world.canon();
+    let mut state = world.begin_round(&nobody);
     let intent = mira_intent();
-    let open_at = |draft: &Draft| Open {
-        point: draft.savepoint(),
-        saved: draft.state().clone(),
-        keys: draft.keys_spent(),
+    let open_at = |state: &State| Open {
+        point: state.savepoint(),
+        saved: state.clone(),
+        keys: state.keys_spent(),
     };
-    let mut open = vec![open_at(&draft)];
-    let mut taken = draft.state().clone();
+    let mut open = vec![open_at(&state)];
+    let mut taken = state.clone();
     for (index, step) in steps.iter().enumerate() {
         // A refused write is left for a savepoint to undo, as in a round.
         match step {
-            Step::Savepoint => open.push(open_at(&draft)),
+            Step::Savepoint => open.push(open_at(&state)),
             Step::Rollback if open.len() > 1 => {
                 let at = open.pop().expect("an open savepoint");
-                roll_back(&mut draft, at)?;
+                roll_back(&mut state, at)?;
             }
             Step::Rollback => {}
             // A round takes changes only between actions, outside any savepoint but the first.
             Step::Take if open.len() == 1 => {
-                let changes = draft.take_changes();
-                every_moved_meter_is_reported(world, &taken, draft.state(), &changes)?;
-                taken = draft.state().clone();
+                let changes = state.take_changes();
+                every_moved_meter_is_reported(world, &taken, &state, &changes)?;
+                taken = state.clone();
             }
             Step::Take => {}
             Step::Expire => {
-                let _ = draft.expire_modifiers(u64::MAX);
+                let _ = state.expire_modifiers(canon, u64::MAX);
             }
             Step::Act => {
-                let _ = draft.count_act("mira");
+                let _ = state.count_act("mira");
             }
             Step::Busy(true) => {
-                let _ = draft.set_busy("mira", 9, None);
+                let _ = state.set_busy("mira", 9, None);
             }
             Step::Busy(false) => {
-                let _ = draft.take_pending("mira");
+                let _ = state.take_pending("mira");
             }
             Step::NoteExits => {
-                let _ = crate::rules::travel::note_exits(&mut draft);
+                let _ = crate::rules::travel::note_exits(canon, &mut state);
             }
             _ => {
-                let _ = effect(&draft, step, index).apply(&mut draft, &intent);
+                let _ = effect(&state, step, index).apply(canon, &mut state, &intent);
             }
         }
     }
     while let Some(at) = open.pop() {
-        roll_back(&mut draft, at)?;
+        roll_back(&mut state, at)?;
     }
-    if !draft.take_changes().is_empty() {
+    if !state.take_changes().is_empty() {
         return Err(TestCaseError::fail("a rolled-back write is still reported"));
     }
     Ok(())
 }
 
-fn roll_back(draft: &mut Draft, at: Open) -> Result<(), TestCaseError> {
-    draft.rollback(at.point);
-    if draft.state() != &at.saved {
+fn roll_back(state: &mut State, at: Open) -> Result<(), TestCaseError> {
+    state.rollback(at.point);
+    if *state != at.saved {
         return Err(TestCaseError::fail(format!(
             "the rollback left {:#?}\ninstead of {:#?}",
-            draft.state(),
-            at.saved
+            state, at.saved
         )));
     }
-    if draft.keys_spent() != at.keys {
+    if state.keys_spent() != at.keys {
         return Err(TestCaseError::fail(format!(
             "the rollback left {} keys spent instead of {}",
-            draft.keys_spent(),
+            state.keys_spent(),
             at.keys
         )));
     }
@@ -192,7 +197,7 @@ fn every_moved_meter_is_reported(
     Ok(())
 }
 
-fn effect(draft: &Draft, step: &Step, index: usize) -> Effect {
+fn effect(state: &State, step: &Step, index: usize) -> Effect {
     let kind = match step {
         Step::Item(holder, id, delta) => {
             let (actor_id, place) = match holder {
@@ -235,7 +240,7 @@ fn effect(draft: &Draft, step: &Step, index: usize) -> Effect {
         },
         Step::Walk(to) => EffectKind::Location {
             actor_id: "mira".to_string(),
-            from: draft.state().actors["mira"].place.clone(),
+            from: state.actors["mira"].place.clone(),
             to: to.to_string(),
             arrived_at: None,
         },

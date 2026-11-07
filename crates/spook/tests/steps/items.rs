@@ -13,12 +13,9 @@ use crate::support;
 use crate::World;
 
 fn keep_briar_busy(now: &mut State) {
-    if let Some(briar) = now
-        .actors
-        .get_mut("npc_briar")
-        .map(|briar| briar.frontier_mut())
-    {
-        briar.act.busy_until = Some(u64::MAX);
+    if now.actors.contains_key("npc_briar") {
+        let busy = spookery_engine::testing::ActorEdit::Busy(Some(u64::MAX), None);
+        now.edit_actor("npc_briar", busy).unwrap();
     }
 }
 
@@ -136,21 +133,29 @@ fn add_attack_rules(pack: &Path, attack: &str) {
 }
 
 fn hold_dagger(now: &mut State, wield: bool) {
-    now.actors.get_mut("pc_lark").unwrap().frontier_mut().place = "gate_yard".to_string();
-    now.actors.get_mut("pc_nell").unwrap().frontier_mut().place = "gate_yard".to_string();
+    now.edit_actor(
+        "pc_lark",
+        spookery_engine::testing::ActorEdit::Place("gate_yard".to_string()),
+    )
+    .unwrap();
+    now.edit_actor(
+        "pc_nell",
+        spookery_engine::testing::ActorEdit::Place("gate_yard".to_string()),
+    )
+    .unwrap();
     keep_briar_busy(now);
-    now.actors
-        .get_mut("pc_lark")
-        .unwrap()
-        .frontier_mut()
-        .inventory
-        .insert("poisoned_dagger".to_string(), 1);
+    now.set_items(
+        &spookery_engine::Holder::Actor("pc_lark".to_string()),
+        "poisoned_dagger",
+        1,
+    )
+    .unwrap();
     if wield {
-        now.actors
-            .get_mut("pc_lark")
-            .unwrap()
-            .frontier_mut()
-            .wielded = Some("poisoned_dagger".to_string());
+        now.edit_actor(
+            "pc_lark",
+            spookery_engine::testing::ActorEdit::Wielded(Some("poisoned_dagger".to_string())),
+        )
+        .unwrap();
     }
 }
 
@@ -162,19 +167,27 @@ fn nell_holds_a_tonic(world: &mut World) {
     let next = text.replace("base_cap: 12\n    max: 16", "base_cap: 10\n    max: 10");
     assert_ne!(text, next, "hp meter was not narrowed");
     fs::write(&meters, next).unwrap();
+    let canon = spookery_engine::load_canon(&pack).unwrap();
     support::edit_save(&pack, |now| {
-        now.actors.get_mut("pc_nell").unwrap().frontier_mut().place = "gate_yard".to_string();
+        now.edit_actor(
+            "pc_nell",
+            spookery_engine::testing::ActorEdit::Place("gate_yard".to_string()),
+        )
+        .unwrap();
         keep_briar_busy(now);
-        now.actors
-            .get_mut("pc_nell")
-            .unwrap()
-            .frontier_mut()
-            .inventory
-            .insert("tonic".to_string(), 1);
-        now.meters
-            .frontier_mut(&spookery_engine::Holder::Actor("pc_nell".to_string()), "hp")
-            .unwrap()
-            .base = 3;
+        now.set_items(
+            &spookery_engine::Holder::Actor("pc_nell".to_string()),
+            "tonic",
+            1,
+        )
+        .unwrap();
+        now.put_meter(
+            &canon,
+            &spookery_engine::Holder::Actor("pc_nell".to_string()),
+            "hp",
+            Some(spookery_engine::MeterLive { base: 3, offset: 0 }),
+        )
+        .unwrap();
     });
     world.pack = Some(pack);
 }
@@ -216,12 +229,12 @@ fn again_is_refused(world: &mut World, line: String, code: String) {
 fn docks_shop_has_3_lamp_oil(world: &mut World) {
     let pack = support::copy_pack("oneshot-docks", "take");
     support::edit_save(&pack, |now| {
-        now.places
-            .get_mut("docks_shop")
-            .unwrap()
-            .frontier_mut()
-            .items
-            .insert("lamp_oil".to_string(), 3);
+        now.set_items(
+            &spookery_engine::Holder::Place("docks_shop".to_string()),
+            "lamp_oil",
+            3,
+        )
+        .unwrap();
     });
     world.pack = Some(pack);
 }
@@ -288,8 +301,8 @@ fn lark_holds_a_latch_at_a_table(world: &mut World) {
     let pack = support::copy_pack("sample-d20", "use-latch");
     support::edit_save(&pack, |now| {
         keep_briar_busy(now);
-        let lark = now.actors.get_mut("pc_lark").unwrap().frontier_mut();
-        lark.inventory.insert("latch".to_string(), 1);
+        let lark = spookery_engine::Holder::Actor("pc_lark".to_string());
+        now.set_items(&lark, "latch", 1).unwrap();
     });
     table::listen(world, &pack);
     table::seat_actor(world, &pack, "pc_lark");
@@ -342,12 +355,8 @@ fn the_line_is_refused_and_quiet(world: &mut World, code: String) {
 fn the_shop_has_no_oil(world: &mut World) {
     let pack = support::copy_pack("oneshot-docks", "take-none");
     support::edit_save(&pack, |now| {
-        now.places
-            .get_mut("docks_shop")
-            .unwrap()
-            .frontier_mut()
-            .items
-            .remove("lamp_oil");
+        let shop = spookery_engine::Holder::Place("docks_shop".to_string());
+        now.set_items(&shop, "lamp_oil", 0).unwrap();
     });
     world.pack = Some(pack);
 }
@@ -392,12 +401,12 @@ fn the_drop_was_missing(world: &mut World) {
 fn the_save_lists_an_unknown_item(world: &mut World) {
     let pack = support::copy_pack("oneshot-docks", "unknown-item");
     support::edit_save(&pack, |now| {
-        now.actors
-            .get_mut("pc_rowan")
-            .unwrap()
-            .frontier_mut()
-            .inventory
-            .insert("ghost".to_string(), 1);
+        now.set_items(
+            &spookery_engine::Holder::Actor("pc_rowan".to_string()),
+            "ghost",
+            1,
+        )
+        .unwrap();
     });
     world.pack = Some(pack);
 }
@@ -419,14 +428,18 @@ fn lark_holds_a_dagger(world: &mut World) {
     let pack = support::copy_pack("sample-d20", "wield");
     write_dagger(&pack, "");
     support::edit_save(&pack, |now| {
-        now.actors.get_mut("pc_lark").unwrap().frontier_mut().place = "gate_yard".to_string();
+        now.edit_actor(
+            "pc_lark",
+            spookery_engine::testing::ActorEdit::Place("gate_yard".to_string()),
+        )
+        .unwrap();
         keep_briar_busy(now);
-        now.actors
-            .get_mut("pc_lark")
-            .unwrap()
-            .frontier_mut()
-            .inventory
-            .insert("poisoned_dagger".to_string(), 1);
+        now.set_items(
+            &spookery_engine::Holder::Actor("pc_lark".to_string()),
+            "poisoned_dagger",
+            1,
+        )
+        .unwrap();
     });
     world.pack = Some(pack);
 }
@@ -641,19 +654,26 @@ fn nell_resists_on_a_seeded_roll(world: &mut World) {
     let mut verbs = fs::read_to_string(pack.join("rules/verbs.yaml")).unwrap();
     verbs.push_str(BARE_HANDS_ATTACK);
     fs::write(pack.join("rules/verbs.yaml"), verbs).unwrap();
+    let canon = spookery_engine::load_canon(&pack).unwrap();
     support::edit_save(&pack, |now| {
         hold_dagger(now, true);
-        now.meters
-            .frontier_mut(&spookery_engine::Holder::Actor("pc_nell".to_string()), "hp")
-            .unwrap()
-            .base = 10;
+        now.put_meter(
+            &canon,
+            &spookery_engine::Holder::Actor("pc_nell".to_string()),
+            "hp",
+            Some(spookery_engine::MeterLive {
+                base: 10,
+                offset: 0,
+            }),
+        )
+        .unwrap();
         let nell = spookery_engine::Holder::Actor("pc_nell".to_string());
         let constitution = spookery_engine::MeterLive {
             base: stat,
             offset: 0,
         };
-        now.meters
-            .insert(nell, "constitution".to_string(), constitution);
+        now.put_meter(&canon, &nell, "constitution", Some(constitution))
+            .unwrap();
     });
     spookery_engine::migrate_pack(&pack).unwrap_or_else(|err| panic!("migrate: {err}"));
     world.pack = Some(pack);

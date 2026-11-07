@@ -55,11 +55,16 @@ fn a_round_that_changes_a_hidden_fact(world: &mut World) {
 #[when(expr = "lark's might is raised and the seeded strike succeeds")]
 fn larks_might_is_raised(world: &mut World) {
     let pack = world.pack().to_path_buf();
+    let canon = spookery_engine::load_canon(&pack).unwrap();
     testing::edit_save(&pack, |state| {
         let lark = spookery_engine::Holder::Actor("pc_lark".to_string());
-        let might = state.meters.frontier_mut(&lark, "might").unwrap();
-        might.base = 40;
-        might.offset = 0;
+        let might = spookery_engine::MeterLive {
+            base: 40,
+            offset: 0,
+        };
+        state
+            .put_meter(&canon, &lark, "might", Some(might))
+            .unwrap();
     });
     let mut opened = resume_with_lark(&pack);
     let output = play(&mut opened, "strike npc_briar");
@@ -152,12 +157,12 @@ fn a_tonic_is_on_the_ground(world: &mut World) {
     let pack = world.pack().to_path_buf();
     testing::edit_save(&pack, |state| {
         state
-            .places
-            .get_mut("gate_yard")
-            .unwrap()
-            .frontier_mut()
-            .items
-            .insert("tonic".to_string(), 1);
+            .set_items(
+                &spookery_engine::Holder::Place("gate_yard".to_string()),
+                "tonic",
+                1,
+            )
+            .unwrap();
     });
 }
 

@@ -80,9 +80,12 @@ exits:";
     )
     .unwrap();
     support::edit_save(&pack, |state| {
-        let mira = state.actors.get_mut("mira").unwrap().frontier_mut();
-        mira.place = "docks_street".to_string();
-        mira.inventory.insert("brass_key".to_string(), 1);
+        let place = "docks_street".to_string();
+        let mira = spookery_engine::Holder::Actor("mira".to_string());
+        state
+            .edit_actor("mira", support::ActorEdit::Place(place))
+            .unwrap();
+        state.set_items(&mira, "brass_key", 1).unwrap();
     });
     world.pack = Some(pack);
 }

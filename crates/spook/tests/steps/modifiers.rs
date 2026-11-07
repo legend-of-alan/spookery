@@ -8,7 +8,7 @@ use spookery_engine::testing::{edit_save, stamp_pack_rev, state_of};
 use spookery_engine::{load_canon, Holder, MeterLive, ModifierLive};
 
 use super::common::replace_in_file;
-use super::triggers::{add_verb, edit_table, intent, play_round, seen_of, set_place, sit};
+use super::triggers::{add_verb, edit_table_with, intent, play_round, seen_of, set_place, sit};
 use crate::support::copy_docks;
 use crate::World;
 
@@ -96,7 +96,8 @@ fn ticks_left(pack: &Path, id: &str) -> u64 {
 
 /// Give pc_rowan these stacks of modifier `id`, expiring `left` ticks from now, `left` being the longest so far.
 fn hold(pack: &Path, id: &str, stacks: Vec<i64>, left: u64) {
-    let def = load_canon(pack).unwrap().modifiers[id].clone();
+    let canon = load_canon(pack).unwrap();
+    let def = canon.modifiers[id].clone();
     edit_save(pack, |now| {
         let until = now.world_time + left;
         let live = ModifierLive {
@@ -105,8 +106,8 @@ fn hold(pack: &Path, id: &str, stacks: Vec<i64>, left: u64) {
             max_ticks: left,
             stacks,
         };
-        let rowan = Holder::Actor("pc_rowan".to_string());
-        now.modifiers.insert(rowan, id.to_string(), live);
+        now.put_modifier(&canon, "pc_rowan", id, Some(live))
+            .unwrap();
     });
 }
 
@@ -127,13 +128,21 @@ fn docks_with_one_tick_rounds(world: &mut World) {
         "live_ticks_per_round: 5\n",
         "live_ticks_per_round: 1\n",
     );
-    edit_table(world, &pack, |now, seated| {
+    edit_table_with(world, &pack, |now, canon, seated| {
         set_place(now, "pc_wren", "docks_shop");
         set_place(now, "pc_harbormouse", "docks_shop");
-        let rowan = now.actors.get_mut("pc_rowan").unwrap().frontier_mut();
-        rowan.place = "docks_shop".to_string();
+        set_place(now, "pc_rowan", "docks_shop");
         let rowan = Holder::Actor("pc_rowan".to_string());
-        now.meters.frontier_mut(&rowan, "grit").unwrap().base = 20;
+        now.put_meter(
+            canon,
+            &rowan,
+            "grit",
+            Some(spookery_engine::MeterLive {
+                base: 20,
+                offset: 0,
+            }),
+        )
+        .unwrap();
         sit(seated, &["pc_harbormouse", "pc_rowan", "pc_wren"]);
     });
     world.pack = Some(pack);
@@ -197,6 +206,7 @@ fn two_modifiers_on_sight(world: &mut World, rain: String, fog: String) {
     let mut meters = fs::read_to_string(&path).unwrap();
     meters.push_str("  - id: sight\n    min: 0\n    base_cap: 10\n    max: 10\n    base: 5\n");
     fs::write(path, meters).unwrap();
+    let canon = spookery_engine::load_canon(&pack).unwrap();
     edit_save(&pack, |now| {
         let actors: Vec<Holder> = now
             .actors
@@ -204,8 +214,13 @@ fn two_modifiers_on_sight(world: &mut World, rain: String, fog: String) {
             .map(|id| Holder::Actor(id.clone()))
             .collect();
         for actor in actors {
-            now.meters
-                .insert(actor, "sight".into(), MeterLive { base: 5, offset: 0 });
+            now.put_meter(
+                &canon,
+                &actor,
+                "sight",
+                Some(MeterLive { base: 5, offset: 0 }),
+            )
+            .unwrap();
         }
     });
     add_modifier(&pack, &rain, "sight", "");
@@ -335,12 +350,19 @@ meters:
 {tide}"
     );
     fs::write(pack.join("world/meters.yaml"), text).unwrap();
+    let canon = spookery_engine::load_canon(&pack).unwrap();
     edit_save(&pack, |now| {
         let luck = MeterLive { base: 1, offset: 0 };
         let tide = MeterLive { base: 4, offset: 0 };
-        now.meters
-            .insert(Holder::Actor("pc_rowan".to_string()), "luck".into(), luck);
-        now.meters.insert(Holder::World, "tide".into(), tide);
+        now.put_meter(
+            &canon,
+            &Holder::Actor("pc_rowan".to_string()),
+            "luck",
+            Some(luck),
+        )
+        .unwrap();
+        now.put_meter(&canon, &Holder::World, "tide", Some(tide))
+            .unwrap();
     });
 }
 

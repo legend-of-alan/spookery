@@ -2,7 +2,6 @@
 
 pub(crate) mod canon;
 pub(crate) mod diagnostic;
-pub(crate) mod draft;
 pub(crate) mod hash;
 pub(crate) mod intent;
 pub(crate) mod model;
@@ -36,7 +35,11 @@ pub mod testing {
     use crate::store::lock::WriteGuard;
 
     pub use crate::canon::strip_body;
-    pub use crate::model::{Act, ActorKind, ActorLive, PendingAction, PlaceLive};
+    pub use crate::canon::Canon;
+    pub use crate::model::tracked::Entry;
+    pub use crate::model::{
+        Act, ActCounter, ActorEdit, ActorKind, ActorLive, PendingAction, PlaceLive,
+    };
     pub use crate::round::replay::replay_journal;
     pub use crate::rules::roll::{faces, RollKey};
 
@@ -206,6 +209,8 @@ pub mod testing {
         fs::write(&path, bytes).unwrap_or_else(|err| panic!("write {}: {err}", path.display()));
     }
 
+    /// Edit the pack's save through `State`'s writers, as migrate does, accept the edits, and
+    /// write it back with the pack's current `pack_rev`.
     pub fn edit_save(pack: &Path, edit: impl FnOnce(&mut crate::model::State)) {
         let path = crate::store::journal::save_path(pack);
         let text = fs::read_to_string(&path)
@@ -213,45 +218,39 @@ pub mod testing {
         let mut state = crate::store::save::parse(&text)
             .unwrap_or_else(|err| panic!("load {}: {err:?}", path.display()));
         edit(&mut state);
+        state.accept();
         state.pack_rev = crate::canon::pack_rev(pack)
             .unwrap_or_else(|err| panic!("rev {}: {err}", pack.display()));
         write_save(pack, &state);
     }
 
-    /// Give the save an actor `to` that is a copy of actor `from`: their record, meters,
-    /// modifiers and flags.
-    pub fn copy_actor(state: &mut crate::State, from: &str, to: &str) {
-        let record = state.actors[from].clone();
-        state.actors.insert(to.to_string(), record);
-        let (from, to) = (
-            crate::Holder::Actor(from.to_string()),
-            crate::Holder::Actor(to.to_string()),
-        );
-        let meters: Vec<_> = (state.meters.on(&from))
+    /// Give the save an actor `to` that is a copy of actor `from`, through the writers
+    /// production uses: their record, then each of their meters, modifiers and flags.
+    pub fn copy_actor(state: &mut crate::State, canon: &crate::canon::Canon, from: &str, to: &str) {
+        let at = crate::Holder::Actor(from.to_string());
+        let record = (**state.actors.get(from).expect("the actor to copy")).clone();
+        let meters: Vec<_> = (state.meters.on(&at))
             .map(|(key, live)| (key.clone(), live.clone()))
             .collect();
+        let held: Vec<_> = (state.modifiers.on(&at))
+            .map(|(key, live)| (key.clone(), live.clone()))
+            .collect();
+        let flags: Vec<String> = state.flags.on(&at).map(|(key, ())| key.clone()).collect();
+        state.add_actor(to, record).expect("a new actor id");
+        let copy = crate::Holder::Actor(to.to_string());
         for (key, live) in meters {
-            state.meters.insert(to.clone(), key, live);
+            state
+                .put_meter(canon, &copy, &key, Some(live))
+                .expect("a meter");
         }
-        let held: Vec<_> = (state.modifiers.on(&from))
-            .map(|(key, live)| (key.clone(), live.clone()))
-            .collect();
         for (key, live) in held {
-            state.modifiers.insert(to.clone(), key, live);
+            state
+                .put_modifier(canon, to, &key, Some(live))
+                .expect("a modifier");
         }
-        let flags: Vec<String> = state.flags.on(&from).map(|(key, ())| key.clone()).collect();
         for key in flags {
-            state.flags.insert(to.clone(), key, ());
+            state.set_flag(&copy, &key, true).expect("a flag");
         }
-    }
-
-    /// Take actor `id` out of the save: their record, meters, modifiers and flags.
-    pub fn remove_actor(state: &mut crate::State, id: &str) {
-        state.actors.remove(id);
-        let actor = crate::Holder::Actor(id.to_string());
-        state.meters.retain(|holder, _, _| *holder != actor);
-        state.modifiers.retain(|holder, _, _| *holder != actor);
-        state.flags.retain(|holder, _, _| *holder != actor);
     }
 
     pub fn stamp_pack_rev(pack: &Path) {
@@ -273,25 +272,25 @@ pub mod testing {
         let from = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("fixtures/cast/pc-nell.md");
         fs::copy(&from, pack.join("cast/pc-nell.md"))
             .unwrap_or_else(|err| panic!("copy {}: {err}", from.display()));
+        let canon = crate::canon::load_canon(pack).unwrap_or_else(|err| panic!("canon: {err:?}"));
         edit_save(pack, |state| {
+            let nell = crate::model::ActorLive {
+                kind: crate::model::ActorKind::Pc,
+                place: "docks_shop".to_string(),
+                inventory: std::collections::BTreeMap::new(),
+                wielded: None,
+                known_facts: Vec::new(),
+                visited: Default::default(),
+                act: crate::model::Act::default(),
+            };
+            state.add_actor("pc_nell", nell).expect("no pc_nell yet");
             let nell = crate::Holder::Actor("pc_nell".to_string());
             for (key, base) in [("grit", 100), ("rest", 3)] {
                 let live = crate::MeterLive { base, offset: 0 };
-                state.meters.insert(nell.clone(), key.to_string(), live);
+                state
+                    .put_meter(&canon, &nell, key, Some(live))
+                    .expect("a meter");
             }
-            state.actors.insert(
-                "pc_nell".to_string(),
-                crate::model::ActorLive {
-                    kind: crate::model::ActorKind::Pc,
-                    place: "docks_shop".to_string(),
-                    inventory: std::collections::BTreeMap::new(),
-                    wielded: None,
-                    known_facts: Vec::new(),
-                    visited: Default::default(),
-                    act: crate::model::Act::default(),
-                }
-                .into(),
-            );
         });
     }
 
