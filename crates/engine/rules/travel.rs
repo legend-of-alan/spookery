@@ -25,10 +25,10 @@ pub(crate) fn find_exit<'a>(canon: &'a Canon, from: &str, name: &str) -> Option<
 
 /// The exit this rule travels by: the one its first `location via` that is not a teleport
 /// names. `None` when the rule does not travel.
-pub(crate) fn exit_of<'a>(
-    context: &Context<'a>,
+pub(crate) fn exit_of<'c>(
+    context: &Context<'c, '_>,
     rule: &Rule,
-) -> Result<Option<&'a Exit>, gate::Refusal> {
+) -> Result<Option<&'c Exit>, gate::Refusal> {
     let via = rule.top_templates().find_map(|effect| match effect {
         EffectTemplate::Location {
             to: LocationTo::Via(via),
@@ -47,7 +47,10 @@ pub(crate) fn exit_of<'a>(
 /// The exit `via` names from the actor's place, or `NO_EXIT`. `via: target` is the intent's
 /// exit target, and `None` when the target is not an exit; any other word is an exit name.
 /// A walker on an exit is still on it when the walk finishes, so it is that exit.
-pub(crate) fn exit_via<'a>(context: &Context<'a>, via: &str) -> Result<Option<&'a Exit>, Reason> {
+pub(crate) fn exit_via<'c>(
+    context: &Context<'c, '_>,
+    via: &str,
+) -> Result<Option<&'c Exit>, Reason> {
     let name = match (via, &context.intent.target) {
         ("target", Target::Exit(name)) => name.as_str(),
         ("target", _) => return Ok(None),

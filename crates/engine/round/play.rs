@@ -166,15 +166,8 @@ fn run_stages<L>(
     let mut dice = RoundDice::new(state.world_id.clone(), clock.round_index);
     let mut log = RoundLog::default();
     let picked = pick::run(&canon, &state, queue, &mut log)?;
-    let resolved_on = state.clone();
     let candidates = resolve::run(
-        &canon,
-        &resolved_on,
-        presence,
-        &picked,
-        queue,
-        &mut dice,
-        &mut log,
+        &canon, &state, presence, &picked, queue, &mut dice, &mut log,
     );
     apply::run(&canon, &mut state, candidates, &clock, &mut dice, &mut log);
     let end = clock.world_time_after;

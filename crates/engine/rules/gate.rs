@@ -108,7 +108,7 @@ fn owner_verb<'a>(canon: &'a Canon, owner: &Owner, verb: &str) -> Option<&'a Rul
 }
 
 /// The rule the intent's verb picks, for its actor and target.
-pub(crate) fn rule_of<'a>(context: &Context<'a>) -> Result<&'a Rule, Refusal> {
+pub(crate) fn rule_of<'c>(context: &Context<'c, '_>) -> Result<&'c Rule, Refusal> {
     let intent = context.intent;
     let (verb, hint) = (&intent.move_name, hint_of(&intent.target));
     let actor = intent

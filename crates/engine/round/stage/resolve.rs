@@ -40,12 +40,13 @@ pub(crate) enum Resolution<'a> {
     CannotRoll(Reason),
 }
 
-/// What every roll in the round shares. The rules it gates borrow `canon`, past the resolver.
+/// What every roll in the round shares. The rules it picks borrow `canon`, and outlive its
+/// borrow of the save, so apply can write the save they were picked against.
 struct Resolver<'a, 'r> {
     canon: &'a Canon,
-    state: &'a State,
-    presence: &'a Presence,
-    queue: &'a [Intent],
+    state: &'r State,
+    presence: &'r Presence,
+    queue: &'r [Intent],
     rolled: BTreeMap<String, Roll>,
     dice: &'r mut RoundDice,
     log: &'r mut RoundLog,
@@ -53,10 +54,10 @@ struct Resolver<'a, 'r> {
 
 pub(crate) fn run<'a>(
     canon: &'a Canon,
-    state: &'a State,
-    presence: &'a Presence,
+    state: &State,
+    presence: &Presence,
     picked: &'a [Intent],
-    queue: &'a [Intent],
+    queue: &[Intent],
     dice: &mut RoundDice,
     log: &mut RoundLog,
 ) -> Vec<Candidate<'a>> {
