@@ -15,8 +15,8 @@ use serde::{Deserialize, Serialize};
 use item::Items;
 use key::{StateKey, StateValue};
 use ledger::{Ledger, Removed};
-use meter::Meters;
-use modifier::Modifiers;
+use meter::{MeterLive, Meters};
+use modifier::{ModifierLive, Modifiers};
 use tracked::{swap, Edit, Entry, ReadOnly, Rewind, Store, Tracked};
 
 use crate::canon::Canon;
@@ -90,7 +90,52 @@ pub(crate) enum ComponentId {
     Notes,
 }
 
+/// One component on a holder, by value: what `State::components` reads and `put_component`
+/// writes.
+pub(crate) enum Component {
+    Item(String, u32),
+    Meter(String, MeterLive),
+    Modifier(String, ModifierLive),
+    Flag(String),
+}
+
+impl Component {
+    /// The store the save keeps it in, as the file names it.
+    pub(crate) fn store(&self) -> &'static str {
+        match self {
+            Component::Item(..) => "items",
+            Component::Meter(..) => "meters",
+            Component::Modifier(..) => "modifiers",
+            Component::Flag(_) => "flags",
+        }
+    }
+}
+
 impl State {
+    /// Every component in the save, with its holder, by store and then by holder: items,
+    /// meters, the modifiers that read those meters, then flags. The one walk over every store.
+    pub(crate) fn components(&self) -> impl Iterator<Item = (&Holder, Component)> {
+        let items =
+            (self.items.iter()).map(|(at, id, count)| (at, Component::Item(id.clone(), *count)));
+        let meters = (self.meters.iter())
+            .map(|(at, key, live)| (at, Component::Meter(key.clone(), live.clone())));
+        let modifiers = (self.modifiers.iter())
+            .map(|(at, id, live)| (at, Component::Modifier(id.clone(), live.clone())));
+        let flags = (self.flags.iter()).map(|(at, key, ())| (at, Component::Flag(key.clone())));
+        items.chain(meters).chain(modifiers).chain(flags)
+    }
+
+    /// Whether the save lists `holder`: an actor, place or story with a record, an exit of a
+    /// listed place, or the world.
+    pub(crate) fn lists(&self, holder: &Holder) -> bool {
+        match holder {
+            Holder::Actor(id) => self.actors.contains_key(id),
+            Holder::Place(id) | Holder::Exit(id, _) => self.places.contains(id),
+            Holder::Story(id) => self.stories.contains(id),
+            Holder::World => true,
+        }
+    }
+
     /// The value of meter `key` on `holder`: its base and offset, plus what the holder's
     /// modifiers add to it, inside the pack's bounds. `UNKNOWN_ID` when the pack or the holder
     /// has no such meter. Every read of a meter's value, and every change reported for one,
@@ -109,12 +154,8 @@ impl State {
     /// How many of item `id` `holder` holds: an actor or place the save lists. `None` for
     /// any other holder.
     pub fn item_count(&self, holder: &Holder, id: &str) -> Option<u32> {
-        let listed = match holder {
-            Holder::Actor(actor) => self.actors.contains_key(actor),
-            Holder::Place(place) => self.places.contains(place),
-            Holder::Story(_) | Holder::Exit(..) | Holder::World => false,
-        };
-        listed.then(|| self.items.get(holder, id).copied().unwrap_or(0))
+        (item::holds_items(holder) && self.lists(holder))
+            .then(|| self.items.get(holder, id).copied().unwrap_or(0))
     }
 
     /// Whether `holder` has flag `key` set.
@@ -353,36 +394,6 @@ fn count(value: u32) -> StateValue {
 
 pub(crate) fn number(value: u64) -> StateValue {
     StateValue::Number(i64::try_from(value).unwrap_or(i64::MAX))
-}
-
-/// `current` plus `delta`. Removing from a count of 0 is `MISSING_ITEM`. A shortfall from a
-/// positive count is `OUT_OF_RANGE`. A positive `max` caps the result.
-pub(crate) fn shift_count(
-    current: u32,
-    delta: i64,
-    max: Option<i64>,
-) -> Result<u32, crate::Reason> {
-    let current = i64::from(current);
-    let mut next = current
-        .checked_add(delta)
-        .ok_or(crate::Reason::OutOfRange)?;
-    if next < 0 {
-        if current == 0 {
-            return Err(crate::Reason::MissingItem);
-        }
-        return Err(crate::Reason::OutOfRange);
-    }
-    if delta > 0 {
-        if let Some(cap) = max {
-            if cap < 0 {
-                return Err(crate::Reason::OutOfRange);
-            }
-            if next > cap {
-                next = cap;
-            }
-        }
-    }
-    u32::try_from(next).map_err(|_| crate::Reason::OutOfRange)
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]

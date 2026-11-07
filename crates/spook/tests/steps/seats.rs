@@ -144,7 +144,7 @@ Lark watches the street from a dry doorway.
     fs::write(pack.join("cast/pc-lark.md"), cast).unwrap_or_else(|err| panic!("cast: {err}"));
     let canon = spookery_engine::load_canon(&pack).unwrap();
     crate::support::edit_save(&pack, |now| {
-        spookery_engine::testing::copy_actor(now, &canon, "pc_wren", "pc_lark");
+        now.copy_actor(&canon, "pc_wren", "pc_lark").unwrap();
         let place = "docks_street".to_string();
         now.edit_actor("pc_lark", spookery_engine::testing::ActorEdit::Place(place))
             .unwrap();
@@ -186,9 +186,10 @@ fn a_one_player_docks_table(world: &mut World) {
         .unwrap_or_else(|err| panic!("remove harbormouse: {err}"));
     fs::remove_file(pack.join("cast/pc-wren.md"))
         .unwrap_or_else(|err| panic!("remove wren: {err}"));
+    let canon = spookery_engine::load_canon(&pack).unwrap();
     crate::support::edit_save(&pack, |now| {
-        now.remove_actor("pc_harbormouse").unwrap();
-        now.remove_actor("pc_wren").unwrap();
+        now.remove_actor(&canon, "pc_harbormouse").unwrap();
+        now.remove_actor(&canon, "pc_wren").unwrap();
     });
     spookery_engine::World::open(&pack).unwrap_or_else(|err| panic!("one-pc pack: {err}"));
     table::listen(world, &pack);

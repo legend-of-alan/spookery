@@ -1160,7 +1160,7 @@ fn insert_actor_copy(
     id: &str,
     place: &str,
 ) {
-    spookery_engine::testing::copy_actor(now, canon, from, id);
+    now.copy_actor(canon, from, id).unwrap();
     set_place(now, id, place);
     let copy = Holder::Actor(id.to_string());
     let flags: Vec<String> = now.flags.on(&copy).map(|(key, ())| key.clone()).collect();

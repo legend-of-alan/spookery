@@ -222,35 +222,6 @@ pub mod testing {
         write_save(pack, &state);
     }
 
-    /// Give the save an actor `to` that is a copy of actor `from`, through the writers
-    /// production uses: their record, then each of their meters, modifiers and flags.
-    pub fn copy_actor(state: &mut crate::State, canon: &crate::canon::Canon, from: &str, to: &str) {
-        let at = crate::Holder::Actor(from.to_string());
-        let record = (**state.actors.get(from).expect("the actor to copy")).clone();
-        let meters: Vec<_> = (state.meters.on(&at))
-            .map(|(key, live)| (key.clone(), live.clone()))
-            .collect();
-        let held: Vec<_> = (state.modifiers.on(&at))
-            .map(|(key, live)| (key.clone(), live.clone()))
-            .collect();
-        let flags: Vec<String> = state.flags.on(&at).map(|(key, ())| key.clone()).collect();
-        state.add_actor(to, record).expect("a new actor id");
-        let copy = crate::Holder::Actor(to.to_string());
-        for (key, live) in meters {
-            state
-                .put_meter(canon, &copy, &key, Some(live))
-                .expect("a meter");
-        }
-        for (key, live) in held {
-            state
-                .put_modifier(canon, to, &key, Some(live))
-                .expect("a modifier");
-        }
-        for key in flags {
-            state.set_flag(&copy, &key, true).expect("a flag");
-        }
-    }
-
     pub fn stamp_pack_rev(pack: &Path) {
         edit_save(pack, |_| {});
     }

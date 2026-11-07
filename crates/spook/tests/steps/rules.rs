@@ -351,7 +351,7 @@ fn an_empty_round_lands_at(world: &mut World, tick: u64) {
             Some(spookery_engine::MeterLive { base: 0, offset: 0 }),
         )
         .unwrap();
-        spookery_engine::testing::copy_actor(now, &canon, "mira", "briar");
+        now.copy_actor(&canon, "mira", "briar").unwrap();
         let briar = spookery_engine::Holder::Actor("briar".to_string());
         now.put_meter(&canon, &briar, "shop_day", None).unwrap();
         now.edit_actor(

@@ -9,8 +9,9 @@ use crate::model::ledger::Removed;
 use crate::model::meter::{MeterLive, Offset};
 use crate::model::modifier::ModifierLive;
 use crate::model::tracked::Tracked;
+use crate::model::MemoryLine;
 use crate::model::Note;
-use crate::model::{number, reading, ActCounter, ActorEdit, ActorLive, ComponentId, MemoryLine};
+use crate::model::{number, reading, ActCounter, ActorEdit, ActorLive, Component, ComponentId};
 use crate::model::{NoteEdit, PendingAction, State};
 use crate::rules::effect::Holder;
 use crate::Reason;
@@ -70,34 +71,63 @@ impl State {
         Ok(())
     }
 
-    /// Take actor `id` out of the save: each of their components, then their record, each as
-    /// one removal on the ledger, so a rollback puts them all back.
-    pub fn remove_actor(&mut self, id: &str) -> Result<(), Reason> {
+    /// Take actor `id` out of the save: each of their components through its writer, in the
+    /// reverse of the order a copy puts them on, then their record, so a rollback puts them all
+    /// back.
+    pub fn remove_actor(&mut self, canon: &Canon, id: &str) -> Result<(), Reason> {
+        if !self.actors.contains_key(id) {
+            return Err(Reason::UnknownId);
+        }
         let holder = Holder::Actor(id.to_string());
-        let State {
-            actors,
-            items,
-            meters,
-            modifiers,
-            flags,
-            ledger,
-            ..
-        } = self;
-        let record = actors.get_mut().remove(id).ok_or(Reason::UnknownId)?;
-        for (key, part) in items.take_all(&holder) {
-            ledger.removed(Removed::Item(holder.clone(), key, part));
+        for component in self.components_on(&holder).into_iter().rev() {
+            self.put_component(canon, &holder, component, false)?;
         }
-        for (key, part) in meters.take_all(&holder) {
-            ledger.removed(Removed::Meter(holder.clone(), key, part));
-        }
-        for (key, part) in modifiers.take_all(&holder) {
-            ledger.removed(Removed::Modifier(holder.clone(), key, part));
-        }
-        for (key, _) in flags.take_all(&holder) {
-            ledger.removed(Removed::Flag(holder.clone(), key));
-        }
-        ledger.removed(Removed::Actor(id.to_string(), Box::new(record)));
+        let record = self.actors.get_mut().remove(id).expect("an actor");
+        self.ledger
+            .removed(Removed::Actor(id.to_string(), Box::new(record)));
         Ok(())
+    }
+
+    /// Give the save actor `to`, a copy of actor `from`: their record, then each of their
+    /// components through its writer.
+    #[cfg(feature = "testing")]
+    pub fn copy_actor(&mut self, canon: &Canon, from: &str, to: &str) -> Result<(), Reason> {
+        let record = (**self.actors.get(from).ok_or(Reason::UnknownId)?).clone();
+        let components = self.components_on(&Holder::Actor(from.to_string()));
+        self.add_actor(to, record)?;
+        let copy = Holder::Actor(to.to_string());
+        for component in components {
+            self.put_component(canon, &copy, component, true)?;
+        }
+        Ok(())
+    }
+
+    /// Every component on `holder`, in the order `components` walks them, which is the order
+    /// a copy puts them on.
+    fn components_on(&self, holder: &Holder) -> Vec<Component> {
+        let on = self.components().filter(|(at, _)| *at == holder);
+        on.map(|(_, component)| component).collect()
+    }
+
+    /// Put `component` on `holder` through its own writer, or take it off when `on` is false.
+    fn put_component(
+        &mut self,
+        canon: &Canon,
+        holder: &Holder,
+        component: Component,
+        on: bool,
+    ) -> Result<(), Reason> {
+        match component {
+            Component::Item(id, count) => self.set_items(holder, &id, if on { count } else { 0 }),
+            Component::Meter(key, live) => self.put_meter(canon, holder, &key, on.then_some(live)),
+            Component::Modifier(id, live) => {
+                let Holder::Actor(actor_id) = holder else {
+                    return Err(Reason::Schema);
+                };
+                self.put_modifier(canon, actor_id, &id, on.then_some(live))
+            }
+            Component::Flag(key) => self.set_flag(holder, &key, on),
+        }
     }
 
     /// Put meter `key` on `holder` as `next`, `None` taking it off, outside the writes a

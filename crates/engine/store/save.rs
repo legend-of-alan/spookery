@@ -5,9 +5,10 @@ use serde_saphyr::SerializerOptions;
 
 use crate::canon::Canon;
 use crate::diagnostic::{check_tag, error, locate_nth, parse_file, schema_error, Diagnostic};
+use crate::model::item::holds_items;
 use crate::model::meter::MeterLive;
 use crate::model::modifier;
-use crate::model::{exit_parts, sort_unique, State};
+use crate::model::{exit_parts, sort_unique, Component, State};
 use crate::rules::effect::Holder;
 use crate::store::records::{AddedMeter, DroppedMeter};
 use crate::Reason;
@@ -67,25 +68,15 @@ pub fn emit(state: &State) -> Result<String, Reason> {
 /// `places`, a story in `stories`, an exit of a place in `places`, or the world. Only an actor
 /// or a place holds items.
 fn check_holders(state: &State) -> Vec<Diagnostic> {
-    let listed = |holder: &Holder| match holder {
-        Holder::Actor(id) => state.actors.contains_key(id),
-        Holder::Place(id) | Holder::Exit(id, _) => state.places.contains(id),
-        Holder::Story(id) => state.stories.contains(id),
-        Holder::World => true,
-    };
-    let items = state.items.iter().map(|(holder, _, _)| ("items", holder));
-    let meters = state.meters.iter().map(|(holder, _, _)| ("meters", holder));
-    let modifiers = (state.modifiers.iter()).map(|(holder, _, _)| ("modifiers", holder));
-    let flags = state.flags.iter().map(|(holder, _, _)| ("flags", holder));
-    let mut wrong: Vec<(&str, &Holder)> = (items.chain(meters).chain(modifiers).chain(flags))
-        .filter(|(store, holder)| {
-            let holds_items = matches!(holder, Holder::Actor(_) | Holder::Place(_));
-            !listed(holder) || (*store == "items" && !holds_items)
-        })
-        .collect();
+    let wrong = state.components().filter(|(holder, component)| {
+        let itemless = matches!(component, Component::Item(..)) && !holds_items(holder);
+        !state.lists(holder) || itemless
+    });
+    let mut wrong: Vec<(&str, &Holder)> =
+        (wrong.map(|(holder, component)| (component.store(), holder))).collect();
     wrong.dedup();
     let diag = |(store, holder): (&str, &Holder)| {
-        let (problem, hint) = if listed(holder) {
+        let (problem, hint) = if state.lists(holder) {
             let problem = format!("{store} lists '{holder}', which cannot hold items");
             (problem, "give the items to an actor or a place")
         } else {

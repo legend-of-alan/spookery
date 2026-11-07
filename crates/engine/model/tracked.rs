@@ -278,11 +278,6 @@ impl<V, E> Store<V, E> {
         }
         part
     }
-
-    /// Take every component on `holder` off, with the undo each holds, in key order.
-    pub(super) fn take_all(&mut self, holder: &Holder) -> BTreeMap<String, Tracked<V, E>> {
-        self.on.remove(holder).unwrap_or_default()
-    }
 }
 
 /// A collection round code reads but cannot change: only `State`'s writers put an entry in or

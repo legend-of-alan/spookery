@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::canon::Canon;
 use crate::intent::{Intent, Viewer};
+use crate::model::item;
 use crate::model::meter::{self, MeterWrite};
 use crate::model::modifier::{self, ModifierLive};
 use crate::model::{self, ActorEdit, MemoryLine, Note, State};
@@ -641,11 +642,11 @@ pub(crate) fn shift_item(
     delta: i64,
     max: Option<i64>,
 ) -> Result<(), Reason> {
-    if !matches!(holder, Holder::Actor(_) | Holder::Place(_)) {
+    if !item::holds_items(holder) {
         return Err(Reason::Schema);
     }
     let held = state.item_count(holder, id).ok_or(Reason::UnknownId)?;
-    let count = model::shift_count(held, delta, max)?;
+    let count = item::shift_count(held, delta, max)?;
     state.set_items(holder, id, count)?;
     let Holder::Actor(actor) = holder else {
         return Ok(());
