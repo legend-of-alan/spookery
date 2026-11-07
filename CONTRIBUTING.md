@@ -61,7 +61,6 @@ A test earns its place by failing when something a player, GM or pack author wou
 Default to the [Rust API Guidelines](https://rust-lang.github.io/api-guidelines/checklist.html) (casing, `as_`/`to_`/`into_` conversions, getters, constructors, typed units and the rest), with these exceptions and additions:
 
 1. Choose names that let a human newcomer follow a file top to bottom from its names and types alone, and easily trace the code without already knowing its implementation.
-   Name each module for its responsibility and each operation for what it does. Avoid vague catch-all names and thematic shorthand.
    A short name is useful only when its meaning is clear where it appears. Review names from the caller's perspective, not the author's.
 2. Types are nouns and functions are verbs. A getter can be a noun. A pair constructor that mirrors `mpsc::channel()`, like `frame_queue()`, can be a noun when its doc comment says so.
    Ask "a value of this type is a ___". If the answer is a noun, that noun is the name, so not `Evaluated` but `Verdict`. A past participle or adjective is a name only for an enum variant that is a state or past event of its enum's noun (`Cow::Borrowed`, `Bound::Excluded`, `ErrorKind::TimedOut`), for the type a same-named method returns (`Iterator::copied()` returns `Copied`), or under rule 15.
