@@ -13,12 +13,12 @@ use crate::protocol::CLIENT_SCHEMA;
 /// Sent from the agent to its `Model`: one message of a turn's conversation.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ChatMessage {
-    /// The turn's opening prompt.
-    User { content: String },
-    /// One model reply, its tool calls echoed back as they came.
-    Assistant { tool_calls: Vec<ToolCall> },
-    /// The answer to the tool call `tool_call_id`.
-    Tool {
+    /// The turn's opening prompt, sent with the role `user`.
+    Prompt { content: String },
+    /// One model reply, its tool calls echoed back as they came, with the role `assistant`.
+    ModelReply { tool_calls: Vec<ToolCall> },
+    /// The result of the tool call `tool_call_id`, with the role `tool`.
+    ToolResult {
         tool_call_id: String,
         content: String,
     },
@@ -67,10 +67,10 @@ impl fmt::Display for CompletionError {
 
 impl std::error::Error for CompletionError {}
 
-/// One model call: the turn's messages in, the reply's tool calls out, none when the model
-/// is done. The HTTP client and the tests' scripted models implement this.
+/// The model: given the turn's messages, it requests the next tool calls, none when it is
+/// done. The HTTP client and the tests' scripted models implement this.
 pub trait Model: Send + Sync + 'static {
-    fn complete(
+    fn request_tool_calls(
         &self,
         messages: &[ChatMessage],
     ) -> impl Future<Output = Result<Vec<ToolCall>, CompletionError>> + Send;
@@ -157,10 +157,9 @@ static TOOLS: LazyLock<Value> = LazyLock::new(|| {
     ])
 });
 
-/// Encodes a chat-completions body: the turn's `messages`, `model`, `stream` and the GM's
-/// tools.
-pub fn encode_chat_body(model: &str, messages: &[ChatMessage]) -> Value {
-    let messages: Vec<Value> = messages.iter().map(encode_message).collect();
+/// The chat-completions body: the turn's `messages`, `model`, `stream` and the GM's tools.
+pub fn render_chat_body(model: &str, messages: &[ChatMessage]) -> Value {
+    let messages: Vec<Value> = messages.iter().map(render_message).collect();
     json!({
         "messages": messages,
         "model": model,
@@ -169,10 +168,10 @@ pub fn encode_chat_body(model: &str, messages: &[ChatMessage]) -> Value {
     })
 }
 
-fn encode_message(message: &ChatMessage) -> Value {
+fn render_message(message: &ChatMessage) -> Value {
     match message {
-        ChatMessage::User { content } => json!({ "role": "user", "content": content }),
-        ChatMessage::Assistant { tool_calls } => {
+        ChatMessage::Prompt { content } => json!({ "role": "user", "content": content }),
+        ChatMessage::ModelReply { tool_calls } => {
             let calls: Vec<Value> = tool_calls
                 .iter()
                 .map(|call| {
@@ -185,7 +184,7 @@ fn encode_message(message: &ChatMessage) -> Value {
                 .collect();
             json!({ "role": "assistant", "content": null, "tool_calls": calls })
         }
-        ChatMessage::Tool {
+        ChatMessage::ToolResult {
             tool_call_id,
             content,
         } => json!({ "role": "tool", "tool_call_id": tool_call_id, "content": content }),
@@ -238,7 +237,7 @@ mod tests {
 
     #[test]
     fn the_tools_are_the_gm_words_and_end_turn_with_schema_parameters() {
-        let body = encode_chat_body("grok-test", &[]);
+        let body = render_chat_body("grok-test", &[]);
         let tools = body["tools"].as_array().unwrap();
         let names: Vec<&str> = tools
             .iter()
@@ -262,18 +261,18 @@ mod tests {
             arguments: r#"{"address":"table","text":"hi"}"#.into(),
         };
         let messages = [
-            ChatMessage::User {
+            ChatMessage::Prompt {
                 content: "the table is quiet".into(),
             },
-            ChatMessage::Assistant {
+            ChatMessage::ModelReply {
                 tool_calls: vec![call],
             },
-            ChatMessage::Tool {
+            ChatMessage::ToolResult {
                 tool_call_id: "call_7".into(),
                 content: "said".into(),
             },
         ];
-        let body = encode_chat_body("grok-test", &messages);
+        let body = render_chat_body("grok-test", &messages);
         assert_eq!(
             body["messages"],
             json!([

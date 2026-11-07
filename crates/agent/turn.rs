@@ -1,5 +1,5 @@
-//! The GM turn graph: `ask` the model, answer each tool `call` it made, and `close` the
-//! turn. The graph owns every transition inside a turn; its context holds only what the
+//! The GM turn graph: `ask_model` for tool calls, `run_tool_call` for each one, and
+//! `finish_turn`. The graph owns every transition inside a turn; its context holds only what the
 //! edges read.
 
 use std::sync::Arc;
@@ -12,13 +12,18 @@ use crate::prompt::render_reply;
 use crate::protocol::CommitArgs;
 use crate::{Agent, ChatMessage, Connection, Model, ToolCall, Turn, MAX_TOOL_CALLS};
 
-/// `commit` with its rounds, as `end_turn` and `close` send it.
+/// `commit` with its rounds, as the `end_turn` tool and `finish_turn` send it.
 const COMMIT_ROUND: CommitArgs = CommitArgs {
     include_round: true,
     session_id: None,
 };
 
-/// The calls of the model's last reply that wait for an answer.
+/// The graph's nodes.
+const ASK_MODEL: &str = "ask_model";
+const RUN_TOOL_CALL: &str = "run_tool_call";
+const FINISH_TURN: &str = "finish_turn";
+
+/// The calls of the model's last reply that wait for a result.
 const CALLS: &str = "calls";
 /// How many tool calls this turn made.
 const USED: &str = "used";
@@ -38,15 +43,26 @@ fn is_done(context: &Context) -> bool {
 }
 
 /// Built once per `run`. Edges are checked in the order added and the first match wins, so
-/// from `call` the step limit comes before the waiting calls, and `ask` is the fallback.
+/// from `run_tool_call` the step limit comes before the waiting calls, and `ask_model` is the
+/// fallback.
 pub(crate) fn build_graph<M: Model, C: Connection>(agent: &Arc<Agent<M, C>>) -> Graph {
     GraphBuilder::new("gm_turn")
-        .add_task(Arc::new(Ask(Arc::clone(agent))))
-        .add_task(Arc::new(Call(Arc::clone(agent))))
-        .add_task(Arc::new(Close(Arc::clone(agent))))
-        .add_conditional_edge("ask", is_done, "close", "call")
-        .add_conditional_edge("call", |c| call_count(c) >= MAX_TOOL_CALLS, "close", "ask")
-        .add_conditional_edge("call", |c| !pending_calls(c).is_empty(), "call", "ask")
+        .add_task(Arc::new(AskModel(Arc::clone(agent))))
+        .add_task(Arc::new(RunToolCall(Arc::clone(agent))))
+        .add_task(Arc::new(FinishTurn(Arc::clone(agent))))
+        .add_conditional_edge(ASK_MODEL, is_done, FINISH_TURN, RUN_TOOL_CALL)
+        .add_conditional_edge(
+            RUN_TOOL_CALL,
+            |c| call_count(c) >= MAX_TOOL_CALLS,
+            FINISH_TURN,
+            ASK_MODEL,
+        )
+        .add_conditional_edge(
+            RUN_TOOL_CALL,
+            |c| !pending_calls(c).is_empty(),
+            RUN_TOOL_CALL,
+            ASK_MODEL,
+        )
         .build()
         .expect("turn graph")
 }
@@ -58,31 +74,31 @@ pub(crate) async fn play<M: Model, C: Connection>(
     turn: Turn,
 ) -> graph_flow::Result<()> {
     *agent.turn() = turn;
-    let mut session = Session::new_from_task(String::new(), "ask");
+    let mut session = Session::new_from_task(String::new(), ASK_MODEL);
     graph.execute_session(&mut session).await?;
     let turn = std::mem::take(&mut *agent.turn());
-    agent.state().finish_turn(turn);
+    agent.state().record_turn(turn);
     Ok(())
 }
 
 /// Asks the model for its next tool calls.
-struct Ask<M, C>(Arc<Agent<M, C>>);
+struct AskModel<M, C>(Arc<Agent<M, C>>);
 
 #[async_trait]
-impl<M: Model, C: Connection> Task for Ask<M, C> {
+impl<M: Model, C: Connection> Task for AskModel<M, C> {
     fn id(&self) -> &str {
-        "ask"
+        ASK_MODEL
     }
 
     async fn run(&self, context: Context) -> graph_flow::Result<TaskResult> {
         let messages = self.0.turn().messages.clone();
-        match self.0.model.complete(&messages).await {
+        match self.0.model.request_tool_calls(&messages).await {
             Ok(tool_calls) if !tool_calls.is_empty() => {
                 context.set(CALLS, &tool_calls)?;
                 self.0
                     .turn()
                     .messages
-                    .push(ChatMessage::Assistant { tool_calls });
+                    .push(ChatMessage::ModelReply { tool_calls });
             }
             Ok(_) => context.set(DONE, true)?,
             Err(err) => {
@@ -94,13 +110,14 @@ impl<M: Model, C: Connection> Task for Ask<M, C> {
     }
 }
 
-/// Answers the first waiting call, through the server or locally, with one tool message.
-struct Call<M, C>(Arc<Agent<M, C>>);
+/// Runs the first waiting tool call, through the server or locally, and adds its one
+/// tool result to the conversation.
+struct RunToolCall<M, C>(Arc<Agent<M, C>>);
 
 #[async_trait]
-impl<M: Model, C: Connection> Task for Call<M, C> {
+impl<M: Model, C: Connection> Task for RunToolCall<M, C> {
     fn id(&self) -> &str {
-        "call"
+        RUN_TOOL_CALL
     }
 
     async fn run(&self, context: Context) -> graph_flow::Result<TaskResult> {
@@ -108,8 +125,8 @@ impl<M: Model, C: Connection> Task for Call<M, C> {
         let call = waiting.remove(0);
         context.set(CALLS, waiting)?;
         context.set(USED, call_count(&context) + 1)?;
-        let content = self.answer(&call).await?;
-        self.0.turn().messages.push(ChatMessage::Tool {
+        let content = self.fetch_tool_result(&call).await?;
+        self.0.turn().messages.push(ChatMessage::ToolResult {
             tool_call_id: call.id,
             content,
         });
@@ -117,9 +134,10 @@ impl<M: Model, C: Connection> Task for Call<M, C> {
     }
 }
 
-impl<M: Model, C: Connection> Call<M, C> {
-    /// The server's reply to `call`, or the agent's own answer when no command goes out.
-    async fn answer(&self, call: &ToolCall) -> graph_flow::Result<String> {
+impl<M: Model, C: Connection> RunToolCall<M, C> {
+    /// Fetches `call`'s result: the server's reply to the command it asks for, or the
+    /// agent's own answer when no command goes out.
+    async fn fetch_tool_result(&self, call: &ToolCall) -> graph_flow::Result<String> {
         let args = match call.arguments.trim() {
             "" => Map::new(),
             text => match serde_json::from_str(text) {
@@ -139,13 +157,13 @@ impl<M: Model, C: Connection> Call<M, C> {
     }
 }
 
-/// Ends the turn: warns when the step limit cut it short, and commits a waiting move.
-struct Close<M, C>(Arc<Agent<M, C>>);
+/// Finishes the turn: warns when the step limit cut it short, and commits a waiting move.
+struct FinishTurn<M, C>(Arc<Agent<M, C>>);
 
 #[async_trait]
-impl<M: Model, C: Connection> Task for Close<M, C> {
+impl<M: Model, C: Connection> Task for FinishTurn<M, C> {
     fn id(&self) -> &str {
-        "close"
+        FINISH_TURN
     }
 
     async fn run(&self, context: Context) -> graph_flow::Result<TaskResult> {

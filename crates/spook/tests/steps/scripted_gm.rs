@@ -84,7 +84,10 @@ impl ScriptedModel {
 }
 
 impl Model for ScriptedModel {
-    async fn complete(&self, messages: &[ChatMessage]) -> Result<Vec<ToolCall>, CompletionError> {
+    async fn request_tool_calls(
+        &self,
+        messages: &[ChatMessage],
+    ) -> Result<Vec<ToolCall>, CompletionError> {
         let (reply, held) = {
             let mut script = self.script.lock().unwrap();
             script.calls.push(messages.to_vec());
@@ -132,7 +135,7 @@ pub fn read_tool_results(messages: &[ChatMessage]) -> Vec<String> {
     messages
         .iter()
         .filter_map(|message| match message {
-            ChatMessage::Tool { content, .. } => Some(content.clone()),
+            ChatMessage::ToolResult { content, .. } => Some(content.clone()),
             _ => None,
         })
         .collect()

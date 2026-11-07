@@ -17,7 +17,7 @@ use serde_json::{json, Value};
 use spookery_protocol as protocol;
 
 pub use crate::model::{
-    encode_chat_body, parse_completion, provider_detail, ChatMessage, CompletionError, FailureKind,
+    parse_completion, provider_detail, render_chat_body, ChatMessage, CompletionError, FailureKind,
     Model, ToolCall, MAX_DETAIL_CHARS,
 };
 use crate::prompt::{keep_recent, render_prompt, Opening, TapeLine, Wake};
@@ -200,8 +200,8 @@ struct ClientState {
     pack: PackSummary,
     /// The actors present, as of the last message read.
     actors_present: Vec<String>,
-    /// The queue, as of the last message read.
-    queue: Vec<QueuedMove>,
+    /// The queued moves, as of the last message read.
+    queued_moves: Vec<QueuedMove>,
     /// Player says read since a turn last showed them to the model.
     new_player_lines: Vec<TapeLine>,
     wakes: VecDeque<Wake>,
@@ -242,14 +242,14 @@ impl ClientState {
     fn initialize(&mut self, status: TableStatus) {
         self.pack = status.pack;
         self.actors_present = status.presence.actors_present;
-        self.queue = status.queued;
-        if !self.queue.is_empty() && !self.wakes.contains(&Wake::Queued) {
-            self.wakes.push_front(Wake::Queued);
+        self.queued_moves = status.queued;
+        if !self.queued_moves.is_empty() && !self.wakes.contains(&Wake::QueuedMove) {
+            self.wakes.push_front(Wake::QueuedMove);
         }
     }
 
     /// What one message says about the server's state: a player's say wakes a turn, a queued
-    /// move joins the queue and wakes one, a round empties the queue, and presence names the
+    /// move joins the queued moves and wakes one, a round empties them, and presence names the
     /// actors present.
     fn record(&mut self, message: &ServerMessage) {
         match &message.body {
@@ -264,18 +264,18 @@ impl ClientState {
                 move_name,
                 ..
             } => {
-                self.queue.push(QueuedMove {
+                self.queued_moves.push(QueuedMove {
                     id: intent.clone(),
                     actor_id: actor.clone(),
                     move_name: move_name.clone(),
                 });
-                if !self.wakes.contains(&Wake::Queued) {
-                    self.wakes.push_back(Wake::Queued);
+                if !self.wakes.contains(&Wake::QueuedMove) {
+                    self.wakes.push_back(Wake::QueuedMove);
                 }
             }
             ServerBody::Round { .. } => {
-                self.queue.clear();
-                self.wakes.retain(|wake| *wake != Wake::Queued);
+                self.queued_moves.clear();
+                self.wakes.retain(|wake| *wake != Wake::QueuedMove);
             }
             ServerBody::Presence { actors_present } => {
                 self.actors_present = actors_present.clone();
@@ -292,21 +292,21 @@ impl ClientState {
             menu: &self.pack.menu,
             buffer: &self.buffer,
             new_player_lines: &player_lines,
-            queue: &self.queue,
+            queued_moves: &self.queued_moves,
             wake: &wake,
             actors_present: &self.actors_present,
         });
         Some(Turn {
-            messages: vec![ChatMessage::User { content: prompt }],
-            move_waiting: !self.queue.is_empty(),
+            messages: vec![ChatMessage::Prompt { content: prompt }],
+            move_waiting: !self.queued_moves.is_empty(),
             player_lines,
             gm_lines: Vec::new(),
         })
     }
 
-    /// The turn's player and GM lines join the buffer, and a say the model has now read
-    /// wakes no turn.
-    fn finish_turn(&mut self, turn: Turn) {
+    /// Records a played turn: its player and GM lines join the buffer, and a say the model
+    /// has now read wakes no turn.
+    fn record_turn(&mut self, turn: Turn) {
         let seen = turn.player_lines.iter().map(|line| line.seq).max();
         for line in turn.player_lines.into_iter().chain(turn.gm_lines) {
             keep_recent(&mut self.buffer, line);
@@ -314,7 +314,7 @@ impl ClientState {
         if let Some(seen) = seen {
             self.wakes.retain(|wake| match wake {
                 Wake::Say(line) => line.seq > seen,
-                Wake::Queued => true,
+                Wake::QueuedMove => true,
             });
         }
     }
@@ -449,7 +449,7 @@ mod tests {
     }
 
     impl Model for Arc<ScriptedModel> {
-        async fn complete(
+        async fn request_tool_calls(
             &self,
             messages: &[ChatMessage],
         ) -> Result<Vec<ToolCall>, CompletionError> {
@@ -493,7 +493,7 @@ mod tests {
         let results: Vec<(&str, &str)> = calls[1]
             .iter()
             .filter_map(|message| match message {
-                ChatMessage::Tool {
+                ChatMessage::ToolResult {
                     tool_call_id,
                     content,
                 } => Some((tool_call_id.as_str(), content.as_str())),

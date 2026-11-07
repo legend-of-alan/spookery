@@ -42,12 +42,12 @@ impl TapeLine {
     }
 }
 
-/// What starts a turn: a player's say, or a move in the queue.
+/// What starts a turn: a player's say, or a queued move.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "lowercase")]
+#[serde(rename_all = "snake_case")]
 pub enum Wake {
     Say(TapeLine),
-    Queued,
+    QueuedMove,
 }
 
 /// A player's view as `perceive` shows it to the model: who and what is here, no facts and no notes.
@@ -126,13 +126,13 @@ pub fn keep_recent(buffer: &mut Vec<TapeLine>, line: TapeLine) {
 }
 
 /// What the model reads first on a turn: the menu, the recent tape, the new player lines,
-/// the queue, what woke the turn and the actors present.
+/// the queued moves, what woke the turn and the actors present.
 #[derive(Serialize)]
 pub struct Opening<'a> {
     pub menu: &'a [MenuRow],
     pub buffer: &'a [TapeLine],
     pub new_player_lines: &'a [TapeLine],
-    pub queue: &'a [QueuedMove],
+    pub queued_moves: &'a [QueuedMove],
     pub wake: &'a Wake,
     pub actors_present: &'a [String],
 }
