@@ -156,7 +156,7 @@ mod tests {
     use super::read_typed;
 
     #[test]
-    fn a_typed_line_is_a_word_and_its_args() {
+    fn a_typed_line_is_a_command_and_its_args() {
         assert_eq!(read_typed("status"), Some(("status", Some(json!({})))));
         assert_eq!(
             read_typed("commit"),
@@ -197,7 +197,7 @@ mod tests {
     }
 
     #[test]
-    fn a_line_a_word_cannot_read_has_no_args() {
+    fn a_line_a_command_cannot_read_has_no_args() {
         assert_eq!(read_typed("   "), None);
         assert_eq!(read_typed("status now"), Some(("status", None)));
         assert_eq!(read_typed("perceive"), Some(("perceive", None)));

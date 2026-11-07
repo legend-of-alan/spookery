@@ -228,7 +228,7 @@ mod tests {
     /// `run_gm_command` runs each GM command the hello lists: well-formed arguments are not
     /// `SCHEMA`, and a command that is not one is.
     #[test]
-    fn each_gm_word_runs() {
+    fn each_gm_command_runs() {
         let pack = copy_pack("oneshot-docks", "gm_commands");
         let mut world = spookery_engine::testing::resume(&pack);
         let calls = [
@@ -260,7 +260,7 @@ mod tests {
     /// Every GM command the hello lists has a tool description and schema. A command that is not
     /// a GM command has none.
     #[test]
-    fn each_gm_word_is_described() {
+    fn each_gm_command_is_described() {
         for command in COMMANDS.iter().filter(|command| command.seat == Seat::Gm) {
             assert!(
                 describe_gm_command(command.name).is_some(),

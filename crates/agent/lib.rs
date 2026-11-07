@@ -525,7 +525,7 @@ mod tests {
 
     /// A read that fails, and a read the graph's task timeout cuts off.
     #[tokio::test(start_paused = true)]
-    async fn a_lost_reply_stops_the_agent_naming_the_word() {
+    async fn a_lost_reply_stops_the_agent_naming_the_command() {
         for lost in [BROKEN, SILENT] {
             let model = ScriptedModel::new(vec![vec![PERCEIVE, SAY]]);
             let connection = ScriptedConnection::new(vec![

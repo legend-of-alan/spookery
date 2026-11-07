@@ -289,7 +289,7 @@ mod tests {
     }
 
     #[test]
-    fn a_client_body_is_a_word_and_its_args() {
+    fn a_client_body_is_a_kind_and_its_args() {
         let message: ClientMessage =
             serde_json::from_str(r#"{"id":"c8","body":{"kind":"travel","args":{"target":"x"}}}"#)
                 .unwrap();

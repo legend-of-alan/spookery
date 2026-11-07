@@ -20,7 +20,7 @@ fn a_player_connects_to_the_game_port(world: &mut World) {
 }
 
 #[then(regex = r"^the hello lists the version and the commands (.+)$")]
-fn the_hello_lists_the_version_and_the_words(world: &mut World, commands: String) {
+fn the_hello_lists_the_version_and_the_commands(world: &mut World, commands: String) {
     let hello = parse_messages(&world.scratch)
         .into_iter()
         .next()

@@ -248,7 +248,7 @@ mod tests {
     }
 
     #[test]
-    fn a_typed_line_is_a_word_and_its_args() {
+    fn a_typed_line_is_a_command_and_its_args() {
         let view: View = serde_json::from_value(json!({
             "viewer": "pc_rowan", "place": "docks_gate", "visible_actors": ["pc_rowan", "mira"],
             "known_facts": [], "notes": [], "unknown_mentions": [], "items": [],
