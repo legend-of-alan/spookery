@@ -1,4 +1,4 @@
-//! The human player: claims a PC, turns typed lines into words, and prints each message.
+//! The human player: claims a PC, turns typed lines into commands, and prints each message.
 //! Quitting releases the PC. A dropped connection dials again and takes it back by token.
 
 use std::io::{self, Write};
@@ -19,10 +19,13 @@ pub async fn run(addr: SocketAddr, raw: bool) -> Result<(), Error> {
     };
     let mut input = crate::stdin_lines();
     let (seat, hello) = Connection::open(addr, "player").await?;
-    let (words, open, taken) = match hello.body {
+    let (commands, open, taken) = match hello.body {
         ServerBody::Hello {
-            words, open, taken, ..
-        } => (words, open, taken),
+            commands,
+            open,
+            taken,
+            ..
+        } => (commands, open, taken),
         _ => Default::default(),
     };
     // The choice may take longer than the first-message timeout, so dial again after.
@@ -69,16 +72,16 @@ pub async fn run(addr: SocketAddr, raw: bool) -> Result<(), Error> {
                 if typed.trim() == "release" {
                     return seat.release().await;
                 }
-                let Some((word, args)) = parse_typed(&typed, &here) else {
+                let Some((command, args)) = parse_typed(&typed, &here) else {
                     continue;
                 };
-                // A word the hello did not list points at help, and is not sent.
-                if !words.iter().any(|known| known == word) {
+                // A command the hello did not list points at help, and is not sent.
+                if !commands.iter().any(|known| known == command) {
                     let refusal = Refusal::from(Reason::NotInSpec);
                     eprintln!("{}", text::render_refusal(&refusal, raw));
                     continue;
                 }
-                match seat.send(word, args.clone()).await {
+                match seat.send(command, args.clone()).await {
                     Ok(_) => {}
                     // The table dropped this connection: take the PC back, then send again.
                     Err(Error::Io(_)) => {
@@ -86,7 +89,7 @@ pub async fn run(addr: SocketAddr, raw: bool) -> Result<(), Error> {
                             return Ok(());
                         };
                         (seat, here, token) = back;
-                        seat.send(word, args).await?;
+                        seat.send(command, args).await?;
                     }
                     Err(err) => return Err(err),
                 }
@@ -202,15 +205,15 @@ fn parse_pc_id(token: &str) -> Result<String, Error> {
     }
 }
 
-/// The word a typed line names, and its arguments. `say place <text>` speaks to the place
+/// The command a typed line names, and its arguments. `say place <text>` speaks to the place
 /// `here` shows, and `say <actor> <text>` to an actor `here` sees. Any other first word is a
 /// move with the rest of the line as its target. An empty line names none.
 fn parse_typed<'l>(line: &'l str, here: &protocol::View) -> Option<(&'l str, Value)> {
-    let (word, rest) = line.trim().split_once(' ').unwrap_or((line.trim(), ""));
-    if word.is_empty() {
+    let (command, rest) = line.trim().split_once(' ').unwrap_or((line.trim(), ""));
+    if command.is_empty() {
         return None;
     }
-    if word == "say" {
+    if command == "say" {
         let (head, text) = rest.split_once(' ').unwrap_or((rest, ""));
         let args = if head == "place" && !text.is_empty() {
             json!({ "address": "place", "place": here.place, "text": text })
@@ -219,12 +222,12 @@ fn parse_typed<'l>(line: &'l str, here: &protocol::View) -> Option<(&'l str, Val
         } else {
             json!({ "address": "table", "text": rest })
         };
-        return Some((word, args));
+        return Some((command, args));
     }
     if rest.is_empty() {
-        return Some((word, json!({})));
+        return Some((command, json!({})));
     }
-    Some((word, json!({ "target": rest })))
+    Some((command, json!({ "target": rest })))
 }
 
 #[cfg(test)]
@@ -245,7 +248,7 @@ mod tests {
     }
 
     #[test]
-    fn a_typed_line_is_a_word_and_its_args() {
+    fn a_typed_line_is_a_command_and_its_args() {
         let view: View = serde_json::from_value(json!({
             "viewer": "pc_rowan", "place": "docks_gate", "visible_actors": ["pc_rowan", "mira"],
             "known_facts": [], "notes": [], "unknown_mentions": [], "items": [],

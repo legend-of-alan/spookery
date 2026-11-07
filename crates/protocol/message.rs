@@ -1,10 +1,10 @@
-//! The one envelope every seat sends and receives, its bodies, and the word table.
+//! The one envelope every seat sends and receives, its bodies, and the command table.
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
 use crate::{
-    CommitBody, NoteView, Outcome, PlaceView, Refusal, Speaker, TableStatus, View, WordView,
+    CommandView, CommitBody, NoteView, Outcome, PlaceView, Refusal, Speaker, TableStatus, View,
 };
 
 /// The wire version the hello announces.
@@ -32,28 +32,29 @@ pub type ClientMessage = Message<ClientBody>;
 /// Sent from the table to a client.
 pub type ServerMessage = Message<ServerBody>;
 
-/// One word and its arguments. Each word reads `args` as its own argument type.
+/// One command, named by `kind`, and its arguments. Each command reads `args` as its own
+/// argument type.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct ClientBody {
-    pub word: String,
+    pub kind: String,
     #[serde(default, skip_serializing_if = "Map::is_empty")]
     pub args: Map<String, Value>,
 }
 
 impl ClientMessage {
-    /// A client message with `id` and `word`. Panics when `args` is not a JSON object.
-    pub fn new(id: &str, word: &str, args: Value) -> Self {
+    /// A client message with `id` and `command`. Panics when `args` is not a JSON object.
+    pub fn new(id: &str, command: &str, args: Value) -> Self {
         let Value::Object(args) = args else {
-            panic!("{word} arguments are not an object");
+            panic!("{command} arguments are not an object");
         };
         Self {
             id: Some(id.to_string()),
             seq: None,
             reply_to: None,
             body: ClientBody {
-                word: word.to_string(),
+                kind: command.to_string(),
                 args,
             },
         }
@@ -69,7 +70,7 @@ pub enum ServerBody {
     /// `open` lists the PCs nobody holds and `taken` the PCs held right now.
     Hello {
         version: u32,
-        words: Vec<String>,
+        commands: Vec<String>,
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         open: Vec<String>,
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -126,9 +127,9 @@ pub enum ServerBody {
     Lines {
         text: String,
     },
-    /// The reply to `help`: the words this player can use now.
+    /// The reply to `help`: the commands this player can use now.
     Help {
-        words: Vec<WordView>,
+        commands: Vec<CommandView>,
     },
     /// The reply to `map`: each place this player visited.
     Map {
@@ -151,47 +152,47 @@ pub struct Say {
     pub text: String,
 }
 
-/// Which seat may send a word.
+/// Which seat may send a command.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Seat {
     Player,
     Gm,
 }
 
-/// One built-in word. A player seat also has the pack's verbs as words.
-pub struct Word {
+/// One built-in command. A player seat also has the pack's verbs as commands.
+pub struct Command {
     pub name: &'static str,
     pub seat: Seat,
 }
 
-impl Word {
+impl Command {
     const fn new(name: &'static str, seat: Seat) -> Self {
         Self { name, seat }
     }
 }
 
-/// Every built-in word, in hello order.
-pub const WORDS: &[Word] = &[
-    Word::new("claim", Seat::Player),
-    Word::new("release", Seat::Player),
-    Word::new("say", Seat::Player),
-    Word::new("look", Seat::Player),
-    Word::new("help", Seat::Player),
-    Word::new("map", Seat::Player),
-    Word::new("cancel", Seat::Player),
-    Word::new("status", Seat::Gm),
-    Word::new("perceive", Seat::Gm),
-    Word::new("queue", Seat::Gm),
-    Word::new("say", Seat::Gm),
-    Word::new("commit", Seat::Gm),
-    Word::new("release", Seat::Gm),
+/// Every built-in command, in hello order.
+pub const COMMANDS: &[Command] = &[
+    Command::new("claim", Seat::Player),
+    Command::new("release", Seat::Player),
+    Command::new("say", Seat::Player),
+    Command::new("look", Seat::Player),
+    Command::new("help", Seat::Player),
+    Command::new("map", Seat::Player),
+    Command::new("cancel", Seat::Player),
+    Command::new("status", Seat::Gm),
+    Command::new("perceive", Seat::Gm),
+    Command::new("queue", Seat::Gm),
+    Command::new("say", Seat::Gm),
+    Command::new("commit", Seat::Gm),
+    Command::new("release", Seat::Gm),
 ];
 
-/// Whether `name` is a built-in word for `seat`.
+/// Whether `name` is a built-in command for `seat`.
 pub fn is_built_in(seat: Seat, name: &str) -> bool {
-    WORDS
+    COMMANDS
         .iter()
-        .any(|word| word.seat == seat && word.name == name)
+        .any(|command| command.seat == seat && command.name == name)
 }
 
 /// `claim` arguments: a free PC, or the token of a claim this player held before and the
@@ -221,7 +222,7 @@ pub struct MoveArgs {
     pub target: Option<String>,
 }
 
-/// The arguments of a word that takes none.
+/// The arguments of a command that takes none.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(deny_unknown_fields)]
@@ -235,7 +236,7 @@ impl ServerMessage {
 }
 
 /// The JSON Schema of a client message, published as `schema/client.json`. Its `$defs`
-/// also hold each word's `args`, named after the type that reads them.
+/// also hold each command's `args`, named after the type that reads them.
 #[cfg(feature = "schema")]
 pub fn generate_client_schema() -> schemars::Schema {
     let mut generator = schemars::SchemaGenerator::default();
@@ -288,16 +289,16 @@ mod tests {
     }
 
     #[test]
-    fn a_client_body_is_a_word_and_its_args() {
+    fn a_client_body_is_a_kind_and_its_args() {
         let message: ClientMessage =
-            serde_json::from_str(r#"{"id":"c8","body":{"word":"travel","args":{"target":"x"}}}"#)
+            serde_json::from_str(r#"{"id":"c8","body":{"kind":"travel","args":{"target":"x"}}}"#)
                 .unwrap();
-        assert_eq!(message.body.word, "travel");
+        assert_eq!(message.body.kind, "travel");
         let args: MoveArgs = serde_json::from_value(Value::Object(message.body.args)).unwrap();
         assert_eq!(args.target.as_deref(), Some("x"));
-        let bare: ClientMessage = serde_json::from_str(r#"{"body":{"word":"wait"}}"#).unwrap();
+        let bare: ClientMessage = serde_json::from_str(r#"{"body":{"kind":"wait"}}"#).unwrap();
         assert!(bare.body.args.is_empty());
-        assert!(serde_json::from_str::<ClientMessage>(r#"{"body":{"word":"w","x":1}}"#).is_err());
+        assert!(serde_json::from_str::<ClientMessage>(r#"{"body":{"kind":"w","x":1}}"#).is_err());
     }
 
     #[test]
@@ -349,14 +350,14 @@ mod tests {
             reply_to: None,
             body: ServerBody::Hello {
                 version: VERSION,
-                words: vec!["claim".into()],
+                commands: vec!["claim".into()],
                 open: vec!["pc_rowan".into()],
                 taken: vec!["pc_wren".into()],
             },
         };
         assert_eq!(
             hello.to_text(),
-            r#"{"body":{"kind":"hello","version":2,"words":["claim"],"open":["pc_rowan"],"taken":["pc_wren"]}}"#
+            r#"{"body":{"kind":"hello","version":2,"commands":["claim"],"open":["pc_rowan"],"taken":["pc_wren"]}}"#
         );
         let released = ServerMessage {
             body: ServerBody::Released,

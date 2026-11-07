@@ -341,14 +341,14 @@ mod tests {
     /// What the scripted server sends for one command: `bodies`, the last of them the reply, and
     /// then `then`, which arrive while the agent waits.
     struct Answer {
-        word: &'static str,
+        command: &'static str,
         bodies: Vec<&'static str>,
         then: Vec<&'static str>,
     }
 
-    fn answer(word: &'static str, bodies: &[&'static str]) -> Answer {
+    fn answer(command: &'static str, bodies: &[&'static str]) -> Answer {
         Answer {
-            word,
+            command,
             bodies: bodies.to_vec(),
             then: Vec::new(),
         }
@@ -368,7 +368,7 @@ mod tests {
     struct ScriptedConnection {
         answers: Mutex<VecDeque<Answer>>,
         inbox: Mutex<VecDeque<ServerMessage>>,
-        words: Mutex<Vec<String>>,
+        commands: Mutex<Vec<String>>,
         seq: AtomicU64,
     }
 
@@ -393,8 +393,8 @@ mod tests {
             });
         }
 
-        fn words(&self) -> Vec<String> {
-            self.words.lock().unwrap().clone()
+        fn commands(&self) -> Vec<String> {
+            self.commands.lock().unwrap().clone()
         }
     }
 
@@ -402,7 +402,7 @@ mod tests {
         async fn send(&self, message: ClientMessage) -> Result<(), ConnectionError> {
             let answer = self.answers.lock().unwrap().pop_front();
             let answer = answer.unwrap_or_else(|| panic!("unscripted {:?}", message.body));
-            assert_eq!(message.body.word, answer.word, "{:?}", message.body);
+            assert_eq!(message.body.kind, answer.command, "{:?}", message.body);
             let (reply, before) = answer.bodies.split_last().unwrap();
             for body in before {
                 self.push(body, None);
@@ -411,7 +411,7 @@ mod tests {
             for body in &answer.then {
                 self.push(body, None);
             }
-            self.words.lock().unwrap().push(message.body.word);
+            self.commands.lock().unwrap().push(message.body.kind);
             Ok(())
         }
 
@@ -507,7 +507,7 @@ mod tests {
         assert!(results[2].1.contains("not a JSON object"), "{results:?}");
         // Nothing was queued, so end_turn sends no command.
         assert!(results[3].1.contains("nothing is queued"), "{results:?}");
-        assert_eq!(connection.words(), ["status", "perceive"]);
+        assert_eq!(connection.commands(), ["status", "perceive"]);
     }
 
     #[tokio::test(start_paused = true)]
@@ -520,12 +520,12 @@ mod tests {
         assert_eq!(play(&model, &connection).await, Ok(()));
         // Someone else's round played that move, so no turn waits for it.
         assert_eq!(model.calls().len(), 2);
-        assert_eq!(connection.words(), ["status", "say"]);
+        assert_eq!(connection.commands(), ["status", "say"]);
     }
 
     /// A read that fails, and a read the graph's task timeout cuts off.
     #[tokio::test(start_paused = true)]
-    async fn a_lost_reply_stops_the_agent_naming_the_word() {
+    async fn a_lost_reply_stops_the_agent_naming_the_command() {
         for lost in [BROKEN, SILENT] {
             let model = ScriptedModel::new(vec![vec![PERCEIVE, SAY]]);
             let connection = ScriptedConnection::new(vec![
@@ -535,8 +535,8 @@ mod tests {
             let command = "perceive".to_string();
             let result = play(&model, &connection).await;
             assert_eq!(result, Err(Error::Unanswered { command }), "{lost}");
-            // No retry, no commit and no further words.
-            assert_eq!(connection.words(), ["status", "perceive"], "{lost}");
+            // No retry, no commit and no further commands.
+            assert_eq!(connection.commands(), ["status", "perceive"], "{lost}");
         }
     }
 }

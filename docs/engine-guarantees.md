@@ -303,7 +303,7 @@ move the actor does not have. `TABLE_FULL` is a fourth player or a second GM.
 `SEAT_TAKEN` is a claim for a character another seat holds, even one whose
 connection dropped. `ACTOR_MISMATCH` is a GM move for a PC a player holds.
 `UNKNOWN_ID` is a claim by a token no claim holds. `LINE_TOO_LONG`
-is a message over 8 KiB, and the connection stays up. `SCHEMA` is a word the
+is a message over 8 KiB, and the connection stays up. `SCHEMA` is a command the
 hello did not list. `NOT_IN_SPEC` is a full rule id used as a move, an address
 that is not loopback, or a verb no rule matches, which is refused before the
 round so the turn is kept. `UNKNOWN_EFFECT` is
@@ -352,7 +352,7 @@ what changed, built from the change records they are allowed to know. That line
 names a meter change and an item gained or lost. A hidden fact stays off the
 line. A hidden exit stays off the exit list. `look` answers with a fresh view and
 does not take a round, and nor do `help` and `map`. The table sends both as
-data and the client prints them: `help` lists the words this player can use
+data and the client prints them: `help` lists the commands this player can use
 here and now, each with what it takes and what they can name for it, and `map`
 lists each place their save says they visited, with the exits they saw there
 when they last stood there at the end of a round. Where those exits go and
@@ -361,7 +361,7 @@ whether they are locked is read now. A busy player sees what keeps them busy:
 other timed move, and `recovering until tick 1300` in a cooldown. A player names only
 what they hold or what that view shows. Anything else reads like an unknown
 word and takes no round. A pack that omits `display_name` fails check. An
-unknown word tells the player to type help.
+unknown command tells the player to type help.
 
 Tested in `features/seats/a_player_knows_the_place.feature`,
 `features/changes/actions_visibly_matter.feature`,

@@ -45,11 +45,11 @@ Feature: Coding agents reach the GM seat
     Then the event stream is refused with "TABLE_FULL"
     And that session's status call is answered
 
-  Scenario: The tools are the GM words
+  Scenario: The tools are the GM commands
     Given a docks table
     When a GM holds the seat over HTTP
     And the GM lists the tools
-    Then the tools are the GM words, and each input schema names these fields
+    Then the tools are the GM commands, and each input schema names these fields
       | tool     | fields                                                | required           |
       | status   |                                                       |                    |
       | perceive | as max_body_chars                                     | as                 |

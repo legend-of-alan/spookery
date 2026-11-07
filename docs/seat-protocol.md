@@ -27,12 +27,12 @@ Every message, the client's and the table's alike, is one JSON object in one Web
 
 - `id` is the client's choice. The table copies it into `reply_to` on the one reply to that message.
 - `seq` is set by the table on everything it sends but the hello, from one counter for the whole table. A message several seats get has the same `seq` on each. A seat's `seq`s only grow, but they skip the messages other seats got.
-- A client's `body` is a `word` and its `args`, an object that may be left out when the word takes none.
+- A client's `body` is a command `kind` and its `args`, an object that may be left out when the command takes none.
 - A table's `body` is tagged by `kind`.
 
 <!-- example: player-claim -->
 ```json
-{"id":"c1","body":{"word":"claim","args":{"actor":"pc_rowan"}}}
+{"id":"c1","body":{"kind":"claim","args":{"actor":"pc_rowan"}}}
 ```
 
 <!-- example: player-claimed -->
@@ -42,25 +42,25 @@ Every message, the client's and the table's alike, is one JSON object in one Web
 
 ## Hello
 
-The table speaks first, with `version`, the `words` this seat may send, and, on `/player`, `open`, the PCs nobody holds now, and `taken`, the PCs held now. A claim on an open PC is still refused with `TABLE_FULL` while every player seat is held. Either is left out when empty. A player's words are the table's own and then every verb the pack's rules name.
+The table speaks first, with `version`, the `commands` this seat may send, and, on `/player`, `open`, the PCs nobody holds now, and `taken`, the PCs held now. A claim on an open PC is still refused with `TABLE_FULL` while every player seat is held. Either is left out when empty. A player's commands are the table's own and then every verb the pack's rules name.
 
 <!-- example: player-hello -->
 ```json
-{"body":{"kind":"hello","version":2,"words":["claim","release","say","look","help","map","cancel","drop","grit","take","travel","unwield","wait","wield"],"open":["pc_harbormouse","pc_rowan","pc_wren"]}}
+{"body":{"kind":"hello","version":2,"commands":["claim","release","say","look","help","map","cancel","drop","grit","take","travel","unwield","wait","wield"],"open":["pc_harbormouse","pc_rowan","pc_wren"]}}
 ```
 
 <!-- example: gm-hello -->
 ```json
-{"body":{"kind":"hello","version":2,"words":["status","perceive","queue","say","commit","release"]}}
+{"body":{"kind":"hello","version":2,"commands":["status","perceive","queue","say","commit","release"]}}
 ```
 
 One GM sits at a time, on `/gm` or on `/mcp`. A second GM on `/gm` gets one `refused` with `TABLE_FULL`, and the connection closes.
 
-## Words
+## Commands
 
-Each word reads `args` as one type, and the schema's `$defs` in `client.json` hold each type under the name below. A word a seat's hello did not list is `SCHEMA`, and so are arguments of the wrong shape or with a key the type does not name. Nothing is written for a refused word.
+Each command reads `args` as one type, and the schema's `$defs` in `client.json` hold each type under the name below. A command a seat's hello did not list is `SCHEMA`, and so are arguments of the wrong shape or with a key the type does not name. Nothing is written for a refused command.
 
-| Word | Seat | `args` | Reply |
+| Command | Seat | `args` | Reply |
 |---|---|---|---|
 | `claim` | player | `ClaimArgs`: `actor`, or `token` and `last_seq` | `claimed`, then a `resume` and a `view` |
 | `release` | both | `NoArgs` | `released` |
@@ -77,7 +77,7 @@ Each word reads `args` as one type, and the schema's `$defs` in `client.json` ho
 
 ### claim and release
 
-A player claims one PC, and the table holds three claims at most. A word other than `claim` before a claim is `CHOOSE_PC`. The hello already listed the open PCs:
+A player claims one PC, and the table holds three claims at most. A command other than `claim` before a claim is `CHOOSE_PC`. The hello already listed the open PCs:
 
 <!-- example: player-choose-pc -->
 ```json
@@ -97,7 +97,7 @@ Only `release` ends a claim. A connection that closes or is dropped leaves its P
 
 <!-- example: player-claim-token -->
 ```json
-{"id":"c1","body":{"word":"claim","args":{"token":"<token>","last_seq":21}}}
+{"id":"c1","body":{"kind":"claim","args":{"token":"<token>","last_seq":21}}}
 ```
 
 <!-- example: player-claimed-token -->
@@ -107,7 +107,7 @@ Only `release` ends a claim. A connection that closes or is dropped leaves its P
 
 A new claim's `claimed` carries `scrollback` instead, the says this PC heard before, oldest first.
 
-A GM's `release` frees the seat before its reply. A later word on that connection is `NOT_IN_SPEC`. With the GM seat empty, each player move commits its own round.
+A GM's `release` frees the seat before its reply. A later command on that connection is `NOT_IN_SPEC`. With the GM seat empty, each player move commits its own round.
 
 ### say
 
@@ -115,7 +115,7 @@ A GM's `release` frees the seat before its reply. A later word on that connectio
 
 <!-- example: player-say -->
 ```json
-{"id":"c2","body":{"word":"say","args":{"address":"table","text":"evening"}}}
+{"id":"c2","body":{"kind":"say","args":{"address":"table","text":"evening"}}}
 ```
 
 <!-- example: player-said -->
@@ -134,7 +134,7 @@ A move is a pack verb, its target in `target`. With a GM seated, the move waits 
 
 <!-- example: player-grit -->
 ```json
-{"id":"c3","body":{"word":"grit"}}
+{"id":"c3","body":{"kind":"grit"}}
 ```
 
 <!-- example: player-queued -->
@@ -151,11 +151,11 @@ A move the table can judge at once is refused before it is queued. Here Rowan se
 {"seq":21,"reply_to":"c5","body":{"kind":"refused","code":"NO_EXIT","detail":"The stair door is locked."}}
 ```
 
-`look` takes no round and answers with a fresh `view`. `help` and `map` take none either, and answer with data the client prints. `help` lists the player words but `claim`, then each pack verb this PC can use here and now. Each word has a `target`: `none`, `actor`, `place`, `exit` or `item`. `names` lists what the PC can name for it now: the exits from here, the actors or items it may name, or the places it visited. A cast member's or item's verb carries that `owner` as its one name, so it reads as `ask briar`, and it shows only while they are in sight. A verb whose `if` fails now is left out, but cost is not checked. The exits and the busy line are in the `view`, not in `help`.
+`look` takes no round and answers with a fresh `view`. `help` and `map` take none either, and answer with data the client prints. `help` lists the player commands but `claim`, then each pack verb this PC can use here and now. Each command has a `target`: `none`, `actor`, `place`, `exit` or `item`. `names` lists what the PC can name for it now: the exits from here, the actors or items it may name, or the places it visited. A cast member's or item's verb carries that `owner` as its one name, so it reads as `ask briar`, and it shows only while they are in sight. A verb whose `if` fails now is left out, but cost is not checked. The exits and the busy line are in the `view`, not in `help`.
 
 <!-- example: player-help -->
 ```json
-{"seq":30,"reply_to":"c3","body":{"kind":"help","words":[
+{"seq":30,"reply_to":"c3","body":{"kind":"help","commands":[
   {"name":"release","target":"none"},
   {"name":"say","target":"none"},
   {"name":"look","target":"none"},
@@ -286,7 +286,7 @@ The table's state for a GM. `world_time` is the game clock in ticks. `pack_rev` 
 
 <!-- example: gm-queue -->
 ```json
-{"id":"c2","body":{"word":"queue","args":{"actor_id":"aldric","move":"wait","id":"gm-wait"}}}
+{"id":"c2","body":{"kind":"queue","args":{"actor_id":"aldric","move":"wait","id":"gm-wait"}}}
 ```
 
 <!-- example: gm-queued -->
@@ -300,7 +300,7 @@ The table's state for a GM. `world_time` is the game clock in ticks. `pack_rev` 
 
 <!-- example: gm-commit -->
 ```json
-{"id":"c3","body":{"word":"commit","args":{"include_round":true}}}
+{"id":"c3","body":{"kind":"commit","args":{"include_round":true}}}
 ```
 
 <!-- example: gm-round -->
@@ -321,7 +321,7 @@ A client ignores a `kind` or a field it does not know. `server.json` gives every
 
 | Kind | Who gets it | What it says |
 |---|---|---|
-| `hello` | the new connection | `version`, `words`, `open`, `taken` |
+| `hello` | the new connection | `version`, `commands`, `open`, `taken` |
 | `claimed` | the claiming player | `actor`, `token`, and `scrollback` or `missed` and `gap` |
 | `released` | the releasing seat | the claim or the GM seat is free |
 | `presence` | the GM | `actors_present` after a claim starts or ends |
@@ -335,7 +335,7 @@ A client ignores a `kind` or a field it does not know. `server.json` gives every
 | `view` | a player, or the GM on `perceive` | what one actor can see |
 | `resume` | a player | the `notes` addressed to that PC |
 | `lines` | a player | text to print: one narrate line, or the changes that player saw |
-| `help` | the asking player | `words`, each with `name`, `target`, `names` and `owner` |
+| `help` | the asking player | `commands`, each with `name`, `target`, `names` and `owner` |
 | `map` | the asking player | `places`, each with `name` and `exits` |
 
 ### view and resume
@@ -439,14 +439,14 @@ Each seated player gets, in order: the `round`, a `check` for each of their own 
 
 ## MCP
 
-`/mcp` is a translator onto the GM words. `tools/list` has one tool per GM word, named after it, in hello order, and each tool's input schema is its word's arguments. A `tools/call` is sent to the table as that word, the arguments as its `args` and the JSON-RPC id as its `id`. A tool that is not a GM word is `SCHEMA`.
+`/mcp` is a translator onto the GM commands. `tools/list` has one tool per GM command, named after it, in hello order, and each tool's input schema is its command's arguments. A `tools/call` is sent to the table as that command, the arguments as its `args` and the JSON-RPC id as its `id`. A tool that is not a GM command is `SCHEMA`.
 
 <!-- example: mcp-call -->
 ```json
 {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"queue","arguments":{"actor_id":"aldric","move":"wait","id":"mcp-wait"}}}
 ```
 
-The result's `structuredContent` is `messages`: every message the word sent this seat, in order, the reply last.
+The result's `structuredContent` is `messages`: every message the command sent this seat, in order, the reply last.
 
 <!-- example: mcp-result -->
 ```json
@@ -462,7 +462,7 @@ Every other message the table sends this seat, the hello first, comes as a `spoo
 
 An `initialize` opens a session and is never refused for a full table. POST it with `Accept` listing both `application/json` and `text/event-stream` and with `Content-Type: application/json`. Keep the `mcp-session-id` response header, and send the negotiated `protocolVersion` as `MCP-Protocol-Version` on every later request.
 
-The session's `GET /mcp` event stream takes the GM seat, and its first event is the hello. Call a word only after the hello: a session with no event stream holds no seat, so its tool calls are `NOT_IN_SPEC`. Hold that one stream open: the seat is freed when it closes, when a DELETE names the session, or on `release`. A GET while the seat is held, or a second GET for a session that already has its stream, is refused on that stream as its only event, and nothing else closes:
+The session's `GET /mcp` event stream takes the GM seat, and its first event is the hello. Call a command only after the hello: a session with no event stream holds no seat, so its tool calls are `NOT_IN_SPEC`. Hold that one stream open: the seat is freed when it closes, when a DELETE names the session, or on `release`. A GET while the seat is held, or a second GET for a session that already has its stream, is refused on that stream as its only event, and nothing else closes:
 
 <!-- example: mcp-table-full -->
 ```json
@@ -485,7 +485,7 @@ A refusal is a `refused` body, and the connection stays up. `detail` is there on
 | `TABLE_FULL` | Stop. Three PCs are claimed, or the GM seat is held. Try again only after a seat is free. |
 | `SEAT_TAKEN` | That PC is held. Claim another. |
 | `CHOOSE_PC` | Claim one of the PCs in the hello's `open`. An empty `open` means none is free. |
-| `SCHEMA` | Fix the message: its shape, its word, or its arguments. |
+| `SCHEMA` | Fix the message: its shape, its command, or its arguments. |
 | `NOT_IN_SPEC` | The verb has no rule that applies, `commit` set `include_round` false with a move queued, or the seat was released or, over MCP, never taken. |
 | `LINE_TOO_LONG` | Send a message under 8 KiB. |
 | `UNSCOPED_PERCEIVE` | Send `perceive` with `as` set to a bare actor id. |
@@ -506,12 +506,13 @@ The MCP endpoint answers with an HTTP status before any seat: 400 for an `MCP-Pr
 
 - A client ignores a body `kind` and a field it does not know.
 - Changes only add. A field never changes meaning, and a new meaning gets a new name.
-- The hello announces `version` and the words. A word is removed only after one release of being marked as going away. Version 2 has no such word and no marker yet. The marker is added to the hello before the first word needs it.
+- The hello announces `version` and the commands. A command is removed only after one release of being marked as going away. Version 2 has no such command and no marker yet. The marker is added to the hello before the first command needs it.
 - Version 2 broke version 1 once, on purpose: clocks left the wire with world clocks. `clocks` left `view` and `resume`, `pause` left `status`, `PAUSED_CLOCK` left the refusal codes, and `view.status` became `view.cant_act`. `view.world_meters` was added. The session recorded against version 1 was replaced by one recorded against version 2.
 - Version 2 dropped one field before any release, on purpose: `CHOOSE_PC` no longer lists the open PCs in `detail`, since the hello's `open` already does, so `detail` is always a string. The version stayed 2 because no build had shipped.
 - Version 2 renamed two things before any release, on purpose, when game time became ticks: an exit's `minutes` became `ticks`, and the changed key `live_acts_this_hour` became `live_acts_this_window`. The recording took the docks pack's new `pack_rev` with them. The version stayed 2 because no build had shipped.
 - Version 2 renamed one more thing before any release, on purpose, when the engine stopped counting days: the changed key `idle_acts_today` became `idle_acts_this_window`, and `cant_act` names where a journey ends as `until tick N`, not a clock time. The recording took the docks pack's new `pack_rev` with it. The version stayed 2 because no build had shipped.
 - Version 2 narrowed one field before any release, on purpose, when every move got one start and finish: `cant_act` now means the viewer can't send a move at all, and being busy moved to the new `busy`. A walk's line moved with it. The version stayed 2 because no build had shipped.
 - Version 2 narrowed `status` before any release, on purpose: `pack` is now required, so a GM client no longer allows for a server that leaves it out. The version stayed 2 because no build had shipped.
+- Version 2 renamed the command fields before any release, on purpose, so a client body is named by `kind` like a server body: a client body's `word` became `kind`, and the `words` of `hello` and `help` became `commands`. The command names did not change. The recording took the new names with it. The version stayed 2 because no build had shipped.
 - The recorded session must still replay. Each message it got must still arrive at that seat, in order, with every field it had and the same value. New kinds and fields may come between. Only `seq`, which a new kind moves, and `token`, which each table mints, may differ.
 - The journal and refusal codes stay strict: `spook verify` fails on a code it does not know.

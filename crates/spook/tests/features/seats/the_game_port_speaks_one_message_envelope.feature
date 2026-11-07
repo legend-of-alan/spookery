@@ -1,10 +1,10 @@
 Feature: The game port speaks one message envelope
 
-  Scenario: A word the table does not know is refused in a numbered reply
+  Scenario: A command the table does not know is refused in a numbered reply
     Given a docks table
     When a player connects to the game port
-    Then the hello lists the version and the words travel, say, look, claim, release
-    When it sends {"id":"c1","body":{"word":"fly"}}
+    Then the hello lists the version and the commands travel, say, look, claim, release
+    When it sends {"id":"c1","body":{"kind":"fly"}}
     Then it gets {"seq":1,"reply_to":"c1","body":{"kind":"refused","code":"SCHEMA"}}
 
   Scenario: A GM drives a session on the game port

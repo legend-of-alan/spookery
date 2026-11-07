@@ -82,12 +82,12 @@
       "additionalProperties": false
     },
     "NoArgs": {
-      "description": "The arguments of a word that takes none.",
+      "description": "The arguments of a command that takes none.",
       "type": "object",
       "additionalProperties": false
     },
     "SayArgs": {
-      "description": "The `say` word arguments of either seat, sent from a client to the table.",
+      "description": "The `say` command arguments of either seat, sent from a client to the table.",
       "type": "object",
       "oneOf": [
         {
@@ -154,7 +154,7 @@
       ]
     },
     "PerceiveArgs": {
-      "description": "The GM's `perceive` word arguments, sent from a GM client to the table.",
+      "description": "The GM's `perceive` command arguments, sent from a GM client to the table.",
       "type": "object",
       "properties": {
         "as": {
@@ -175,7 +175,7 @@
       ]
     },
     "IntentArgs": {
-      "description": "The GM's `queue` word arguments, sent from a GM client to the table.\nSerialized, a call names only the fields that are set.",
+      "description": "The GM's `queue` command arguments, sent from a GM client to the table.\nSerialized, a call names only the fields that are set.",
       "type": "object",
       "properties": {
         "id": {
@@ -224,7 +224,7 @@
       ]
     },
     "CommitArgs": {
-      "description": "The GM's `commit` word arguments, sent from a GM client to the table.",
+      "description": "The GM's `commit` command arguments, sent from a GM client to the table.",
       "type": "object",
       "properties": {
         "include_round": {
@@ -243,10 +243,10 @@
       ]
     },
     "ClientBody": {
-      "description": "One word and its arguments. Each word reads `args` as its own argument type.",
+      "description": "One command, named by `kind`, and its arguments. Each command reads `args` as its own\nargument type.",
       "type": "object",
       "properties": {
-        "word": {
+        "kind": {
           "type": "string"
         },
         "args": {
@@ -256,7 +256,7 @@
       },
       "additionalProperties": false,
       "required": [
-        "word"
+        "kind"
       ]
     }
   }

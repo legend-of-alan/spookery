@@ -77,7 +77,7 @@ Feature: A human GM runs a round
     And the GM types "perceive pc_rowan"
     Then the GM shows "You are in Docks Shop."
 
-  Scenario: An unknown GM word points at help
+  Scenario: An unknown GM command points at help
     Given a docks table
     When a human GM sits on a free loopback port
     And the GM types "dance"

@@ -229,9 +229,9 @@ mod tests {
 
     #[test]
     fn an_unreadable_message_keeps_the_id_it_named() {
-        let named = read_message(r#"{"id":"c1","body":{"word":7}}"#).unwrap_err();
+        let named = read_message(r#"{"id":"c1","body":{"kind":7}}"#).unwrap_err();
         assert_eq!(named.id.as_deref(), Some("c1"));
         assert!(read_message("not json").unwrap_err().id.is_none());
-        assert!(read_message(r#"{"id":"c2","body":{"word":"wait"}}"#).is_ok());
+        assert!(read_message(r#"{"id":"c2","body":{"kind":"wait"}}"#).is_ok());
     }
 }

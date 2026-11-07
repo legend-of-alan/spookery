@@ -29,7 +29,7 @@ use super::gm;
 use super::limits::GM_BODY_CAP;
 use super::seat::{frame_queue, ConnId, FrameReceiver};
 use super::table::{report_close, Request};
-use crate::protocol::{ClientBody, ClientMessage, Seat, ToolResult, WORDS};
+use crate::protocol::{ClientBody, ClientMessage, Seat, ToolResult, COMMANDS};
 
 pub(super) async fn serve(
     listener: tokio::net::TcpListener,
@@ -299,7 +299,7 @@ impl ServerHandler for Handler {
         self.negotiate_initialize(&request)
     }
 
-    /// The tool is the word and its arguments are the word's `args`. The JSON-RPC id is the
+    /// The tool is the command and its arguments are the command's `args`. The JSON-RPC id is the
     /// message `id`, so the reply's `reply_to` names this call.
     async fn call_tool(
         &self,
@@ -314,7 +314,7 @@ impl ServerHandler for Handler {
             seq: None,
             reply_to: None,
             body: ClientBody {
-                word: request.name.into_owned(),
+                kind: request.name.into_owned(),
                 args: request.arguments.unwrap_or_default(),
             },
         };
@@ -332,16 +332,16 @@ impl ServerHandler for Handler {
     }
 }
 
-/// One tool per GM word, in the word table's order and named after the word. Its input schema
-/// is the word's `args`.
+/// One tool per GM command, in the command table's order and named after the command. Its input
+/// schema is the command's `args`.
 fn list_gm_tools() -> Vec<Tool> {
-    WORDS
+    COMMANDS
         .iter()
-        .filter(|word| word.seat == Seat::Gm)
-        .filter_map(|word| {
-            let (about, schema) = gm::describe_gm_word(word.name)?;
+        .filter(|command| command.seat == Seat::Gm)
+        .filter_map(|command| {
+            let (about, schema) = gm::describe_gm_command(command.name)?;
             Some(Tool::new(
-                word.name,
+                command.name,
                 format!("{about} {SEAT_NOTES}"),
                 schema,
             ))
@@ -349,7 +349,7 @@ fn list_gm_tools() -> Vec<Tool> {
         .collect()
 }
 
-const SEAT_NOTES: &str = "The result lists every message the word sent this seat, its reply last. Player moves stay queued until commit. say does not tick. Other messages arrive as spook/event notifications on the GET /mcp event stream, which holds the seat.";
+const SEAT_NOTES: &str = "The result lists every message the command sent this seat, its reply last. Player moves stay queued until commit. say does not tick. Other messages arrive as spook/event notifications on the GET /mcp event stream, which holds the seat.";
 
 #[cfg(test)]
 mod tests {

@@ -93,11 +93,11 @@ impl Seat {
         }
     }
 
-    /// Sends `word` with `args` under the next id, and returns that id.
-    pub fn send(&self, word: &str, args: Value) -> String {
+    /// Sends `command` with `args` under the next id, and returns that id.
+    pub fn send(&self, command: &str, args: Value) -> String {
         let id = format!("t{}", self.next_id.fetch_add(1, Ordering::Relaxed));
-        let message = ClientMessage::new(&id, word, args);
-        let text = serde_json::to_string(&message).unwrap_or_else(|err| panic!("{word}: {err}"));
+        let message = ClientMessage::new(&id, command, args);
+        let text = serde_json::to_string(&message).unwrap_or_else(|err| panic!("{command}: {err}"));
         self.send_raw(Message::text(text));
         id
     }
@@ -141,12 +141,12 @@ impl Seat {
     }
 }
 
-/// The word a typed line names and its arguments, as `spook play` sends it: `say <text>`
+/// The command a typed line names and its arguments, as `spook play` sends it: `say <text>`
 /// speaks to the table, and any other first word is a move with the rest as its target.
 pub fn parse_typed(line: &str) -> (&str, Value) {
     match line.split_once(' ') {
         Some(("say", text)) => ("say", json!({ "address": "table", "text": text })),
-        Some((word, target)) => (word, json!({ "target": target })),
+        Some((command, target)) => (command, json!({ "target": target })),
         None => (line, json!({})),
     }
 }
@@ -664,13 +664,13 @@ fn send_tool_call(
     gm: &mut GmClient,
     gm_text: &Arc<Mutex<String>>,
     id: u64,
-    word: &str,
+    command: &str,
     arguments: &str,
 ) -> String {
     let value: Value =
         serde_json::from_str(arguments).unwrap_or_else(|err| panic!("arguments: {err}"));
     let messages =
-        support::block_on(gm.call(word, &value)).unwrap_or_else(|err| panic!("gm call: {err}"));
+        support::block_on(gm.call(command, &value)).unwrap_or_else(|err| panic!("gm call: {err}"));
     for event in gm.drain_events() {
         push_line(gm_text, &event_line(&event));
     }
@@ -799,8 +799,8 @@ pub fn actor_text(world: &World, actor_id: &str) -> String {
 pub fn actor_send(world: &mut World, actor_id: &str, line: &str, needle: &str) -> String {
     let player = player_client(world, actor_id);
     let mark = player.seat.mark();
-    let (word, args) = parse_typed(line);
-    let id = player.seat.send(word, args);
+    let (command, args) = parse_typed(line);
+    let id = player.seat.send(command, args);
     player.seat.wait_reply(&id);
     wait_actor_from(world, actor_id, mark, needle)
 }
@@ -809,8 +809,8 @@ pub fn actor_send(world: &mut World, actor_id: &str, line: &str, needle: &str) -
 pub fn actor_write(world: &mut World, actor_id: &str, line: &str) -> usize {
     let player = player_client(world, actor_id);
     let mark = player.seat.mark();
-    let (word, args) = parse_typed(line);
-    player.seat.send(word, args);
+    let (command, args) = parse_typed(line);
+    player.seat.send(command, args);
     mark
 }
 
@@ -909,8 +909,8 @@ fn call_table_status(world: &mut World) -> Value {
 }
 
 /// One GM tool call; the body of its reply.
-pub fn call_gm_tool(world: &mut World, word: &str, arguments: &str) -> Value {
-    read_reply(&gm_tool_call(world, 1, word, arguments))
+pub fn call_gm_tool(world: &mut World, command: &str, arguments: &str) -> Value {
+    read_reply(&gm_tool_call(world, 1, command, arguments))
 }
 
 /// The body of the reply in a tool call's result line: the last message.

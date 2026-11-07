@@ -141,7 +141,7 @@ fn parse_lines(text: &str) -> Vec<Value> {
 #[then(expr = "the player is offered {string}")]
 fn the_player_is_offered(world: &mut World, name: String) {
     wait_player_frame(world, &format!("help with {name}"), |frame| {
-        help_word(frame, &name).is_some()
+        help_command(frame, &name).is_some()
     });
 }
 
@@ -153,11 +153,11 @@ fn the_players_map_lists(world: &mut World, place_name: String) {
     });
 }
 
-/// The word `name` of a `help` body.
-fn help_word<'a>(frame: &'a Value, name: &str) -> Option<&'a Value> {
+/// The command `name` of a `help` body.
+fn help_command<'a>(frame: &'a Value, name: &str) -> Option<&'a Value> {
     if frame["kind"] != "help" {
         return None;
     }
-    let words = frame["words"].as_array()?;
-    words.iter().find(|word| word["name"] == name)
+    let commands = frame["commands"].as_array()?;
+    commands.iter().find(|command| command["name"] == name)
 }

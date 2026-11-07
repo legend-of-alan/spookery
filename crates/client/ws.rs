@@ -39,11 +39,11 @@ impl Connection {
         }
     }
 
-    /// Send `word` with `args`, a JSON object, under the next id. Returns that id.
-    pub async fn send(&mut self, word: &str, args: Value) -> Result<String, Error> {
+    /// Send `command` with `args`, a JSON object, under the next id. Returns that id.
+    pub async fn send(&mut self, command: &str, args: Value) -> Result<String, Error> {
         let id = format!("c{}", self.next_id);
         self.next_id += 1;
-        self.send_message(&ClientMessage::new(&id, word, args))
+        self.send_message(&ClientMessage::new(&id, command, args))
             .await?;
         Ok(id)
     }

@@ -236,7 +236,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_tools_are_the_gm_words_and_end_turn_with_schema_parameters() {
+    fn the_tools_are_the_gm_commands_and_end_turn_with_schema_parameters() {
         let body = render_chat_body("grok-test", &[]);
         let tools = body["tools"].as_array().unwrap();
         let names: Vec<&str> = tools

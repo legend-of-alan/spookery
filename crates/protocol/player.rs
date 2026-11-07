@@ -95,12 +95,12 @@ pub struct MeterView {
     pub max: i64,
 }
 
-/// One word of a `help` reply. `target` is what the word takes: `none`, `actor`, `place`,
+/// One command of a `help` reply. `target` is what the command takes: `none`, `actor`, `place`,
 /// `exit` or `item`. `names` lists what the player can name for it now. `owner` is the
 /// cast member or item whose verb this is, reached by naming them.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
-pub struct WordView {
+pub struct CommandView {
     pub name: String,
     pub target: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]

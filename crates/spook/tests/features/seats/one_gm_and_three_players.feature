@@ -81,7 +81,7 @@ Feature: One GM seat and up to three player seats
     When three play clients sit on a free port
     Then each play client shows its first perceive
 
-  Scenario: A word before a claim is refused
+  Scenario: A command before a claim is refused
     Given a docks table
     When an unclaimed player waits
     Then the hello is refused with "CHOOSE_PC"

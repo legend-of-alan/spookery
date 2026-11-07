@@ -309,12 +309,12 @@ fn open_seat(port: u16, seat: &str) -> SeatClient {
     }
 }
 
-/// Sends `word` with `args` under the next id. Returns the message sent.
-fn send(seat: &mut SeatClient, word: &str, args: Value) -> Value {
+/// Sends `command` with `args` under the next id. Returns the message sent.
+fn send(seat: &mut SeatClient, command: &str, args: Value) -> Value {
     let id = format!("c{}", seat.next_id);
     seat.next_id += 1;
-    let message = serde_json::to_value(ClientMessage::new(&id, word, args))
-        .unwrap_or_else(|err| panic!("{word}: {err}"));
+    let message = serde_json::to_value(ClientMessage::new(&id, command, args))
+        .unwrap_or_else(|err| panic!("{command}: {err}"));
     seat.write
         .send(Message::text(message.to_string()))
         .unwrap_or_else(|err| panic!("send: {err}"));
@@ -345,10 +345,10 @@ fn connect(port: u16) -> TcpStream {
     stream
 }
 
-/// A new player connection sends one word. Returns its reply.
-fn refused_reply(port: u16, word: &str, args: Value) -> Value {
+/// A new player connection sends one command. Returns its reply.
+fn refused_reply(port: u16, command: &str, args: Value) -> Value {
     let mut player = open_unclaimed(port);
-    send(&mut player, word, args);
+    send(&mut player, command, args);
     next_json(&player)
 }
 
@@ -360,9 +360,9 @@ fn open_unclaimed(port: u16) -> SeatClient {
 }
 
 /// One tool call. Returns its structured content.
-fn call(gm: &mut GmClient, word: &str, arguments: Value) -> Value {
-    let messages =
-        support::block_on(gm.call(word, &arguments)).unwrap_or_else(|err| panic!("{word}: {err}"));
+fn call(gm: &mut GmClient, command: &str, arguments: Value) -> Value {
+    let messages = support::block_on(gm.call(command, &arguments))
+        .unwrap_or_else(|err| panic!("{command}: {err}"));
     json!(ToolResult { messages })
 }
 
