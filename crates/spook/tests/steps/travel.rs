@@ -157,7 +157,7 @@ fn a_place_rule_teleports(world: &mut World) {
     assert!(text.contains("id: slip"), "{text}");
     fs::write(&path, text).unwrap();
     edit_save(&pack, |now| {
-        now.make_record(&spookery_engine::Holder::Place("cellar".to_string()))
+        now.list(&spookery_engine::Holder::Place("cellar".to_string()))
             .unwrap();
     });
     table::listen(world, &pack);

@@ -523,7 +523,7 @@ Under the street.
     write_nell(&pack, &[]);
     edit_table_with(world, &pack, |now, canon, seated| {
         insert_actor_copy(now, canon, seated, "pc_rowan", "pc_nell", "docks_street");
-        now.make_record(&spookery_engine::Holder::Place("cellar".to_string()))
+        now.list(&spookery_engine::Holder::Place("cellar".to_string()))
             .unwrap();
     });
     world.pack = Some(pack);

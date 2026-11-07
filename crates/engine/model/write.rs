@@ -41,20 +41,25 @@ impl State {
         }
     }
 
-    /// Give place or story `holder` an empty live record when it has none. No key answers for
-    /// it.
-    pub fn make_record(&mut self, holder: &Holder) -> Result<(), Reason> {
+    /// List `holder` in the save, so a component can go on it. Every writer that puts a
+    /// component on calls this first. A place or story the save does not list yet is listed, and
+    /// an exit's place is; an actor is listed only with their record, so one the save does not
+    /// hold is `UNKNOWN_ID`; the world always is. Listing counts no key.
+    pub fn list(&mut self, holder: &Holder) -> Result<(), Reason> {
+        if self.lists(holder) {
+            return Ok(());
+        }
         let at = match holder {
-            Holder::Place(id) if !self.places.contains(id) => {
+            Holder::Place(id) | Holder::Exit(id, _) => {
                 self.places.get_mut().insert(id.clone());
                 ComponentId::Place(id.clone())
             }
-            Holder::Story(id) if !self.stories.contains(id) => {
+            Holder::Story(id) => {
                 self.stories.get_mut().insert(id.clone());
                 ComponentId::Story(id.clone())
             }
-            Holder::Place(_) | Holder::Story(_) => return Ok(()),
-            Holder::Actor(_) | Holder::Exit(..) | Holder::World => return Err(Reason::Schema),
+            Holder::Actor(_) => return Err(Reason::UnknownId),
+            Holder::World => return Ok(()),
         };
         self.ledger.added(at);
         Ok(())
@@ -144,6 +149,9 @@ impl State {
         if self.meters.get(holder, key) == next.as_ref() {
             return Ok(());
         }
+        if next.is_some() {
+            self.list(holder)?;
+        }
         let before = reading(self.meter_value(canon, holder, key));
         let State { meters, ledger, .. } = &mut *self;
         if let Some(part) = meters.take(holder, key) {
@@ -189,10 +197,8 @@ impl State {
         id: &str,
         next: Option<ModifierLive>,
     ) -> Result<(), Reason> {
-        if !self.actors.contains_key(actor_id) {
-            return Err(Reason::UnknownId);
-        }
         let holder = Holder::Actor(actor_id.to_string());
+        self.list(&holder)?;
         let meter = canon.modifiers.get(id).map(|def| def.meter.as_str());
         let meter_before = meter.map(|key| reading(self.meter_value(canon, &holder, key)));
         let held = self.modifiers.get(&holder, id);
@@ -287,10 +293,13 @@ impl State {
     /// Set `holder`'s flag `key` on or off, counted and kept as `edit_actor` says. An exit's
     /// one flag is `open`. A flag already so changes nothing.
     pub fn set_flag(&mut self, holder: &Holder, key: &str, on: bool) -> Result<(), Reason> {
-        let State { flags, ledger, .. } = self;
-        if flags.get(holder, key).is_some() == on {
+        if self.flags.get(holder, key).is_some() == on {
             return Ok(());
         }
+        if on {
+            self.list(holder)?;
+        }
+        let State { flags, ledger, .. } = self;
         let (holder, key) = (holder.clone(), key.to_string());
         let watched = StateKey::flag(&holder, &key);
         if on {

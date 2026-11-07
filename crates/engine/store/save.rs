@@ -199,11 +199,9 @@ pub fn migrate(
             offset: 0,
         };
         let holders: Vec<Holder> = match &meter.carrier {
-            Some(holder @ (Holder::Place(_) | Holder::Story(_))) => {
-                state.make_record(holder)?;
+            Some(holder @ (Holder::Place(_) | Holder::Story(_) | Holder::World)) => {
                 vec![holder.clone()]
             }
-            Some(holder @ Holder::World) => vec![holder.clone()],
             carrier => (state.actors.keys())
                 .map(|id| Holder::Actor(id.clone()))
                 .filter(|actor| carrier.as_ref().is_none_or(|carrier| carrier == actor))

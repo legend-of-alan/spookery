@@ -52,6 +52,12 @@ Feature: Meters belong to their holder
     When the author runs spook check
     Then it refuses Mira's habit, saying Mira carries no dawn meter
 
+  Scenario: A flag on a cast member the save does not hold is refused, and the save still reads
+    Given Mira has a habit that sets the "hiding" flag on Briar, whose cast file lists it but who is not in the save
+    When an empty round passes
+    Then the round's only refusal is "UNKNOWN_ID"
+    And spook verify passes on this pack
+
   Scenario: The world and an actor may each have a meter with the same name
     Given world/meters.yaml declares a "dawn" meter at 6
     And cast/mira.md declares her own "dawn" meter at 0

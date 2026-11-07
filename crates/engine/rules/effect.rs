@@ -728,9 +728,9 @@ fn move_actor(
     if !in_canon && !on_exit && !state.places.contains(to) {
         return Err(Reason::NoExit);
     }
-    // A canon place with no live record yet gets an empty one on the first arrival.
+    // A canon place the save does not list yet is listed on the first arrival.
     if !on_exit {
-        state.make_record(&Holder::Place(to.to_string()))?;
+        state.list(&Holder::Place(to.to_string()))?;
     }
     state.edit_actor(actor_id, ActorEdit::Place(to.to_string()))
 }
@@ -779,8 +779,8 @@ fn learn(state: &mut State, actor_id: &str, facts: &[String]) -> Result<(), Reas
     state.edit_actor(actor_id, ActorEdit::Learn(facts.to_vec()))
 }
 
-/// Set or clear a flag `holder` carries. A place or story gets a live record on its first
-/// flag, and a place on its first open exit.
+/// Set or clear a flag `holder` carries. Setting one lists its holder, as every component's
+/// writer does.
 fn set_flag(
     canon: &Canon,
     state: &mut State,
@@ -790,14 +790,6 @@ fn set_flag(
 ) -> Result<(), Reason> {
     if !canon.carries_flag(holder, key) {
         return Err(Reason::UnknownId);
-    }
-    let record = match holder {
-        Holder::Place(place) | Holder::Exit(place, _) => Some(Holder::Place(place.clone())),
-        Holder::Story(story) => Some(Holder::Story(story.clone())),
-        Holder::Actor(_) | Holder::World => None,
-    };
-    if let Some(record) = record.filter(|_| value) {
-        state.make_record(&record)?;
     }
     state.set_flag(holder, key, value)
 }

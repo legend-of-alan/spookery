@@ -32,9 +32,7 @@ fn bare_save(
     state.rules_rev = spookery_engine::testing::RULES_REV;
     state.last_round_at = "2026-01-01T00:00:00Z".to_string();
     for place in places {
-        state
-            .make_record(&Holder::Place(place.to_string()))
-            .unwrap();
+        state.list(&Holder::Place(place.to_string())).unwrap();
     }
     for (id, record) in actors {
         state.add_actor(&id, record).unwrap();

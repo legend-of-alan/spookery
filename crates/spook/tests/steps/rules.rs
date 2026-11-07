@@ -223,7 +223,7 @@ The ferry waits at the dock.
     assert_ne!(text, next, "rowan profile was not found");
     fs::write(&rowan, next).unwrap();
     edit_save(&pack, |now| {
-        now.make_record(&spookery_engine::Holder::Place("ferry_dock".to_string()))
+        now.list(&spookery_engine::Holder::Place("ferry_dock".to_string()))
             .unwrap();
         now.edit_actor(
             "pc_rowan",

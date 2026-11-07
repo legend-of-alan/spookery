@@ -513,6 +513,25 @@ fn mira_adds_to_dawn(world: &mut World, who: String) {
     add_mira_meter_habit(pack(world), "dawn", 1);
 }
 
+#[given(
+    expr = "Mira has a habit that sets the {string} flag on Briar, whose cast file lists it but who is not in the save"
+)]
+fn mira_flags_an_absent_briar(world: &mut World, flag: String) {
+    let pack = copy_docks("absent-briar-flag");
+    let briar = format!(
+        "---\nschema: cast\nid: briar\nkind: npc\ndisplay_name: Briar\nflags:\n  - {flag}\n---\nBriar keeps to the lane.\n"
+    );
+    fs::write(pack.join("cast/briar.md"), briar).unwrap_or_else(|err| panic!("briar: {err}"));
+    replace_in_file(
+        &pack.join("cast/mira.md"),
+        "rules:\n  - id: leave_door_note\n",
+        &format!("rules:\n  - id: hide_briar\n    when: habit\n    do:\n      - flag:\n          who: briar\n          key: {flag}\n          value: true\n  - id: leave_door_note\n"),
+    );
+    edit_table(world, &pack, |_, _| {});
+    assert!(!state_of(&pack).actors.contains_key("briar"));
+    world.pack = Some(pack);
+}
+
 #[then(expr = "it refuses Mira's habit, saying Mira carries no dawn meter")]
 fn it_refuses_miras_habit(world: &mut World) {
     assert_refused(
