@@ -140,10 +140,7 @@ fn expand_template(
             if key != OPEN {
                 return Err(Reason::UnknownId);
             }
-            let exit = ExitId {
-                place: place.clone(),
-                exit: exit.clone(),
-            };
+            let exit = ExitId::new(place, exit);
             let kind = EffectKind::ExitOpen { exit, open: *value };
             effects.push(Effect::new(viewer, &intent.id, kind));
         }

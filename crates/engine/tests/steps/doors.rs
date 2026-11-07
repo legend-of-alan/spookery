@@ -47,10 +47,7 @@ fn place_of(pack: &Path, actor: &str) -> String {
 
 fn stairs_open(pack: &Path) -> bool {
     let saved = spookery_engine::World::peek(pack).unwrap();
-    let stairs = spookery_engine::ExitId {
-        place: "docks_shop".into(),
-        exit: "stairs".into(),
-    };
+    let stairs = spookery_engine::ExitId::new("docks_shop", "stairs");
     saved.state().is_exit_open(&stairs)
 }
 

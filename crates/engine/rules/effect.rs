@@ -826,8 +826,7 @@ fn set_exit_open(
     exit: &ExitId,
     open: bool,
 ) -> Result<(), Reason> {
-    let place = canon.places.get(&exit.place);
-    if !place.is_some_and(|place| place.has_door(&exit.exit)) {
+    if !canon.has_door(exit) {
         return Err(Reason::UnknownId);
     }
     state.set_exit_open(exit, open)

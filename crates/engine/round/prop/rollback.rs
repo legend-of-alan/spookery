@@ -233,10 +233,7 @@ fn effect(state: &State, step: &Step, index: usize) -> Effect {
             ticks: 3,
         },
         Step::Door(open) => EffectKind::ExitOpen {
-            exit: ExitId {
-                place: "docks_shop".to_string(),
-                exit: "stairs".to_string(),
-            },
+            exit: ExitId::new("docks_shop", "stairs"),
             open: *open,
         },
         Step::StreetFlag(key, value) => EffectKind::Flag {

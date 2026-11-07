@@ -128,10 +128,7 @@ fn is_locked(state: &State, exit: &Exit) -> bool {
 
 /// The address of the exit's door.
 fn door(exit: &Exit) -> ExitId {
-    ExitId {
-        place: exit.from.clone(),
-        exit: exit.name.clone(),
-    }
+    ExitId::new(&exit.from, &exit.name)
 }
 
 /// Open each locked door whose `if` some actor in its place meets, with an `exit_open` effect

@@ -85,13 +85,7 @@ fn holds(context: &Context, cond: &Cond) -> Result<bool, Reason> {
             who: Who::Exit(place, exit),
             key,
             is,
-        } => {
-            let exit = ExitId {
-                place: place.clone(),
-                exit: exit.clone(),
-            };
-            Ok((key == OPEN && state.is_exit_open(&exit)) == *is)
-        }
+        } => Ok((key == OPEN && state.is_exit_open(&ExitId::new(place, exit))) == *is),
         Cond::Flag { who, key, is } => {
             let holder = expr::resolve_holder(context, who)?;
             Ok(state.has_flag(&holder, key) == *is)

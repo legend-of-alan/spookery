@@ -9,6 +9,7 @@ use crate::diagnostic::Diagnostic;
 use crate::hash::blake2s_tagged;
 use crate::model::meter::MeterDef;
 use crate::model::modifier::ModifierDef;
+use crate::model::ExitId;
 use crate::rules::effect::Holder;
 use crate::rules::roll::Check;
 use crate::rules::rule::{Cond, Cost, Owner, RuleTable, TargetKind, When};
@@ -115,6 +116,12 @@ pub struct PlaceDef {
     pub flags: Vec<String>,
 }
 
+/// Whether `exit` is a door of one of `places`: an exit there with an `if`. The load's lint
+/// asks before the canon is whole; `Canon::has_door` asks it of the canon's places.
+pub(crate) fn has_door(places: &BTreeMap<String, PlaceDef>, exit: &ExitId) -> bool {
+    (places.get(&exit.place)).is_some_and(|place| place.has_door(&exit.exit))
+}
+
 impl PlaceDef {
     /// Whether exit `name` here is a door: it has an `if`, so it carries the flag `open`.
     pub(crate) fn has_door(&self, name: &str) -> bool {
@@ -214,6 +221,11 @@ impl Canon {
             Holder::World => return !key.is_empty() && key != "busy",
         };
         flags.is_some_and(|flags| flags.iter().any(|flag| flag == key))
+    }
+
+    /// Whether `exit` is a door of the pack's, as `has_door` says.
+    pub(crate) fn has_door(&self, exit: &ExitId) -> bool {
+        has_door(&self.places, exit)
     }
 
     pub fn idle_profile(&self, actor_id: &str) -> Option<&IdleProfile> {

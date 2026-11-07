@@ -95,6 +95,16 @@ pub struct ExitId {
     pub exit: String,
 }
 
+impl ExitId {
+    /// The exit named `exit` out of `place`.
+    pub fn new(place: &str, exit: &str) -> ExitId {
+        ExitId {
+            place: place.to_string(),
+            exit: exit.to_string(),
+        }
+    }
+}
+
 /// The exit as a walker on it has it for their place: `exit:<place>.<exit>`.
 impl fmt::Display for ExitId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

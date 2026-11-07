@@ -139,10 +139,7 @@ exits:";
     assert_ne!(text, next, "the loft exit was not locked");
     fs::write(&path, next).unwrap_or_else(|err| panic!("write yard: {err}"));
     edit_save(&pack, |now| {
-        let loft = spookery_engine::ExitId {
-            place: "gate_yard".into(),
-            exit: "loft".into(),
-        };
+        let loft = spookery_engine::ExitId::new("gate_yard", "loft");
         now.set_exit_open(&loft, true).unwrap();
     });
     world.pack = Some(pack);

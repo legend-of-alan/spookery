@@ -172,10 +172,7 @@ idle:
 fn the_door_stays_locked_and_mira_keeps_her_flags(world: &mut World, oil: i64, reason: String) {
     assert_refusal(world, oil, &reason);
     let saved = spookery_engine::World::peek(world.pack()).unwrap();
-    let stairs = spookery_engine::ExitId {
-        place: "docks_shop".into(),
-        exit: "stairs".into(),
-    };
+    let stairs = spookery_engine::ExitId::new("docks_shop", "stairs");
     assert!(!saved.state().is_exit_open(&stairs));
     let mira = spookery_engine::Holder::Actor("mira".to_string());
     let flags: Vec<_> = saved

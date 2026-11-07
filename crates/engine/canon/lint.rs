@@ -3,7 +3,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::canon::source::{FileText, Locator, Problem};
-use crate::canon::{Canon, CastDef, FactDef, ItemDef, PlaceDef, StoryDef, OPEN};
+use crate::canon::{has_door, Canon, CastDef, FactDef, ItemDef, PlaceDef, StoryDef, OPEN};
 use crate::diagnostic::{error, schema_error, warning, Diagnostic};
 use crate::model::meter::{self, MeterDef};
 use crate::model::modifier::{self, ModifierDef};
@@ -381,16 +381,13 @@ impl HolderScope<'_> {
     /// Why flag `key` on `who` can never be set or tested, or `None` when it may be.
     fn why_undeclared(&self, fixed_self: Option<&str>, who: &Who, key: &str) -> Option<String> {
         if let Who::Exit(place, exit) = who {
-            let door = ExitId {
-                place: place.clone(),
-                exit: exit.clone(),
-            };
+            let door = ExitId::new(place, exit);
             return if self.unknown_who(who).is_some() {
                 Some(format!("{door} is not an exit"))
             } else if key != OPEN {
                 Some(format!("an exit carries only the flag '{OPEN}'"))
             } else {
-                let locks = self.places.get(place).is_some_and(|at| at.has_door(exit));
+                let locks = has_door(self.places, &door);
                 (!locks).then(|| format!("{door} has no if, so it is always open"))
             };
         }
@@ -409,10 +406,7 @@ impl HolderScope<'_> {
     /// A holder known only at play time is not guessed: only its key is checked.
     fn why_not_carried(&self, fixed_self: Option<&str>, who: &Who, key: &str) -> Option<String> {
         if let Who::Exit(place, exit) = who {
-            let door = ExitId {
-                place: place.clone(),
-                exit: exit.clone(),
-            };
+            let door = ExitId::new(place, exit);
             return Some(format!("{door} carries no meter '{key}'"));
         }
         let def = self.meters.get(key);
@@ -636,11 +630,8 @@ pub fn check_save(canon: &Canon, state: &crate::model::State) -> Result<(), Vec<
     }
     for (place, exits) in state.open_exits.iter() {
         for exit in exits {
-            if !canon.places.get(place).is_some_and(|at| at.has_door(exit)) {
-                let door = ExitId {
-                    place: place.clone(),
-                    exit: exit.clone(),
-                };
+            let door = ExitId::new(place, exit);
+            if !canon.has_door(&door) {
                 let problem = format!("open_exits lists '{door}', which is no door of the pack");
                 let diag = schema_error("state/save.yaml", &problem, "take it out of open_exits");
                 diags.push(diag.at_path(format!("open_exits.{place}")));

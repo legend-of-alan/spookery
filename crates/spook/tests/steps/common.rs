@@ -32,10 +32,7 @@ pub(crate) fn give_key(now: &mut State) {
         1,
     )
     .unwrap();
-    let stairs = spookery_engine::ExitId {
-        place: "docks_shop".into(),
-        exit: "stairs".into(),
-    };
+    let stairs = spookery_engine::ExitId::new("docks_shop", "stairs");
     now.set_exit_open(&stairs, true).unwrap();
 }
 
