@@ -1,18 +1,13 @@
 //! The round a save is being written in: its limits, who is seated for it, and what its
-//! writes owe the save: the keys counted toward the budget, each change for the next take, each
-//! component they touched, for a rollback, and the memory lines they wrote.
+//! writes owe the save: the keys counted toward the budget, each change for the next take, the
+//! memory lines they wrote, and the seq each undo a store keeps is tagged with.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
 use crate::canon::Budget;
-use crate::model::item::Shift;
 use crate::model::key::{Change, StateKey, StateValue};
-use crate::model::meter::{MeterLive, Offset};
-use crate::model::modifier::ModifierLive;
-use crate::model::tracked::{Edit, Tracked};
-use crate::model::{ComponentId, ExitId, MemoryLine, Presence, State};
-use crate::rules::effect::EntityId;
+use crate::model::{MemoryLine, Presence, State};
 use crate::Reason;
 
 /// The one ledger of a round, kept on its save. Out of a round it has no limits and nobody is
@@ -27,8 +22,8 @@ pub(crate) struct Ledger {
     keys: BTreeSet<StateKey>,
     /// The same keys in the order they were counted, so a savepoint can give them back.
     key_order: Vec<StateKey>,
-    /// Each component a write changed, put on or took off, oldest first.
-    touched: Vec<Touch>,
+    /// The seq the next undo a store keeps is tagged with.
+    seq: u64,
     /// Each key a write moved, with its value before and after that write, oldest first.
     changes: Vec<Change>,
     /// How many changes the last take had reported.
@@ -45,7 +40,7 @@ impl Default for Ledger {
             presence: Presence::default(),
             keys: BTreeSet::new(),
             key_order: Vec::new(),
-            touched: Vec::new(),
+            seq: 0,
             changes: Vec::new(),
             taken: 0,
             memories: Vec::new(),
@@ -74,36 +69,11 @@ impl fmt::Debug for Ledger {
     }
 }
 
-/// A component a write changed, with how many edits it held before; one a write put on; or
-/// one it took off. A rollback undoes each touch since its savepoint, newest first.
-enum Touch {
-    Edited(ComponentId, usize),
-    Added(ComponentId),
-    Removed(Removed),
-}
-
-/// A component a write took off, whole, with the undo it held, to put back.
-pub(super) enum Removed {
-    /// An actor's record, which only a fixture takes off, boxed for its size.
-    #[cfg(any(test, feature = "testing"))]
-    Actor(
-        String,
-        Box<Tracked<crate::model::ActorLive, crate::model::ActorEdit>>,
-    ),
-    Meter(EntityId, String, Tracked<MeterLive, Offset>),
-    /// A modifier, on the actor it names.
-    Modifier(String, String, Tracked<ModifierLive, ModifierLive>),
-    /// A flag holds no value, so its entity and key are all there is.
-    Flag(EntityId, String),
-    Item(EntityId, String, Tracked<u32, Shift>),
-    /// A door holds no value either: its exit is all there is.
-    ExitOpen(ExitId),
-}
-
-/// How far the round had come: the length of each log a rollback cuts back.
+/// How far the round had come: the seq the next undo will carry, and the length of each log a
+/// rollback cuts back.
 #[derive(Clone, Copy)]
 pub(crate) struct Savepoint {
-    touched: usize,
+    seq: u64,
     keys: usize,
     changes: usize,
     taken: usize,
@@ -112,48 +82,12 @@ pub(crate) struct Savepoint {
 }
 
 impl Ledger {
-    /// Make `edit` on `part`, which `at` names, and keep how many edits it held before, for a
-    /// rollback. Whether it moved.
-    pub(super) fn track<T, E: Edit<T>>(
-        &mut self,
-        at: impl FnOnce() -> ComponentId,
-        part: &mut Tracked<T, E>,
-        edit: E,
-    ) -> bool {
-        let edits = part.edits();
-        let moved = part.apply(edit);
-        if moved {
-            self.touched.push(Touch::Edited(at(), edits));
-        }
-        moved
-    }
-
-    /// Make `edit` on `part`, and when it moved, count `key` and keep its values before and
-    /// after, as `read` reads them.
-    pub(super) fn land<T, E: Edit<T>>(
-        &mut self,
-        at: impl FnOnce() -> ComponentId,
-        part: &mut Tracked<T, E>,
-        edit: E,
-        key: StateKey,
-        read: impl Fn(&T, &StateKey) -> StateValue,
-    ) -> Result<(), Reason> {
-        let before = read(part, &key);
-        if !self.track(at, part, edit) {
-            return Ok(());
-        }
-        let after = read(part, &key);
-        self.note(key, before, after)
-    }
-
-    /// Keep that a write put on the component `at` names, for a rollback to take off.
-    pub(super) fn added(&mut self, at: ComponentId) {
-        self.touched.push(Touch::Added(at));
-    }
-
-    /// Keep a component a write took off, for a rollback to put back.
-    pub(super) fn removed(&mut self, removed: Removed) {
-        self.touched.push(Touch::Removed(removed));
+    /// The seq to tag the undo of a change that just moved a value with: the counter, which
+    /// then moves on.
+    pub(super) fn issue_seq(&mut self) -> u64 {
+        let seq = self.seq;
+        self.seq += 1;
+        seq
     }
 
     /// Count `key` and keep its change for the next take.
@@ -205,10 +139,7 @@ impl State {
     /// Begin a round on this save under `budget`, with `presence` seated. Its writes count
     /// toward the budget until `accept`; out of a round they count toward nothing.
     pub(crate) fn open_round(&mut self, budget: &Budget, presence: &Presence) {
-        debug_assert!(
-            self.ledger.touched.is_empty(),
-            "a round opened on unaccepted writes"
-        );
+        debug_assert!(!self.has_undo(), "a round opened on unaccepted writes");
         self.ledger = Ledger {
             max_keys: budget.max_state_keys_mutated as usize,
             max_memory_writes: budget.max_memory_writes,
@@ -231,7 +162,7 @@ impl State {
     pub(crate) fn savepoint(&self) -> Savepoint {
         let ledger = &self.ledger;
         Savepoint {
-            touched: ledger.touched.len(),
+            seq: ledger.seq,
             keys: ledger.key_order.len(),
             changes: ledger.changes.len(),
             taken: ledger.taken,
@@ -240,21 +171,10 @@ impl State {
         }
     }
 
-    /// Undo everything since `point`: undo each touch since, newest first, and give back the
-    /// keys, changes and memories added since.
+    /// Undo everything since `point`: each store undoes its changes since, newest first, and
+    /// the ledger gives back the keys, changes and memories added since. The seq goes on.
     pub(crate) fn rollback(&mut self, point: Savepoint) {
-        let touched: Vec<Touch> = self.ledger.touched.drain(point.touched..).collect();
-        for touch in touched.into_iter().rev() {
-            match touch {
-                Touch::Edited(at, edits) => {
-                    if let Some(part) = self.component_mut(&at) {
-                        part.rollback(edits);
-                    }
-                }
-                Touch::Added(at) => self.take_off(&at),
-                Touch::Removed(removed) => self.put_back(removed),
-            }
-        }
+        self.undo_to(point.seq);
         let ledger = &mut self.ledger;
         for key in ledger.key_order.drain(point.keys..) {
             ledger.keys.remove(&key);
@@ -266,18 +186,12 @@ impl State {
     }
 
     /// Accept every write since the round opened, or since the last accept out of a round:
-    /// nothing can roll them back now, so each component they touched keeps no undo, the
-    /// ledger starts over at rest, and the save is put in the order its file holds. Commit
-    /// calls this once the round is persisted; migrate and fixtures, once their writes are in.
+    /// nothing can roll them back now, so every store forgets its undo, the ledger starts over
+    /// at rest with its seq at 0, and the save is put in the order its file holds. Commit calls
+    /// this once the round is persisted; migrate and fixtures, once their writes are in.
     pub fn accept(&mut self) {
-        let ledger = std::mem::take(&mut self.ledger);
-        for touch in ledger.touched {
-            if let Touch::Edited(at, _) | Touch::Added(at) = touch {
-                if let Some(part) = self.component_mut(&at) {
-                    part.rebase(0);
-                }
-            }
-        }
+        self.clear_log();
+        self.ledger = Ledger::default();
         self.normalize();
     }
 

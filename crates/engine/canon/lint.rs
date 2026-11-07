@@ -5,9 +5,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use crate::canon::source::{FileText, Locator, Problem};
 use crate::canon::{has_door, Canon, CastDef, FactDef, ItemDef, PlaceDef, StoryDef, OPEN};
 use crate::diagnostic::{error, schema_error, warning, Diagnostic};
-use crate::model::meter::{self, MeterDef, MeterLive, Meters};
+use crate::model::meter::{self, MeterDef, MeterLive};
 use crate::model::modifier::{self, ModifierDef};
-use crate::model::tracked::Store;
+use crate::model::tracked::EntityMaps;
 use crate::model::{ActorPart, ExitId, State};
 use crate::rules::effect::EntityId;
 use crate::rules::expr::Expr;
@@ -657,14 +657,12 @@ pub fn check_save(canon: &Canon, state: &State) -> Result<(), Vec<Diagnostic>> {
         &mut diags,
     );
     check_defined("stories.flags", stories.flags(), &canon.stories, &mut diags);
-    for (place, exits) in places.open_exits() {
-        for exit in exits {
-            let door = ExitId::new(place, exit);
-            if !canon.has_door(&door) {
-                let problem = format!("open_exits lists '{door}', which is no door of the pack");
-                let diag = schema_error(SAVE, &problem, "take it out of open_exits");
-                diags.push(diag.at_path(format!("places.open_exits.{place}")));
-            }
+    for (place, exit, ()) in places.open_exits().iter() {
+        let door = ExitId::new(place, exit);
+        if !canon.has_door(&door) {
+            let problem = format!("open_exits lists '{door}', which is no door of the pack");
+            let diag = schema_error(SAVE, &problem, "take it out of open_exits");
+            diags.push(diag.at_path(format!("places.open_exits.{place}")));
         }
     }
     for (id, item, count) in places.items().iter() {
@@ -722,9 +720,9 @@ pub fn check_save(canon: &Canon, state: &State) -> Result<(), Vec<Diagnostic>> {
 const SAVE: &str = "state/save.yaml";
 
 /// Refuse each entity `store` lists that the pack does not define, once for each.
-fn check_defined<V, E, D>(
+fn check_defined<V, D>(
     store: &str,
-    held: &Store<V, E>,
+    held: &EntityMaps<V>,
     defined: &BTreeMap<String, D>,
     diags: &mut Vec<Diagnostic>,
 ) {
@@ -768,7 +766,7 @@ fn check_kind_meters<D>(
     state: &State,
     list: &str,
     defined: &BTreeMap<String, D>,
-    held: &Meters,
+    held: &EntityMaps<MeterLive>,
     entity: fn(String) -> EntityId,
     diags: &mut Vec<Diagnostic>,
 ) {

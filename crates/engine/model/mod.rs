@@ -9,17 +9,18 @@ pub(crate) mod tracked;
 pub(crate) mod write;
 
 use std::borrow::Borrow;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
+use std::convert::Infallible;
 use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
 use item::{Items, Shift};
 use key::{StateKey, StateValue};
-use ledger::{Ledger, Removed};
+use ledger::Ledger;
 use meter::{MeterLive, Meters, Offset};
 use modifier::{ModifierLive, Modifiers};
-use tracked::{swap, Edit, Entry, Parts, PartsMut, Rewind, Store, Tracked, TrackedMap};
+use tracked::{swap, Edit, EntityMaps, EntityStore, Entry, KeyStore, Parts, PartsMut, Store};
 
 use crate::canon::Canon;
 use crate::intent::{Target, Viewer};
@@ -31,9 +32,9 @@ use crate::rules::effect::EntityId;
 /// pack's, so the save lists none: what it holds is in its kind's stores.
 ///
 /// Anyone may read any of it, through its getters. Only the writers in `write` change a record
-/// or a component, and each goes on the ledger: no getter hands out a way to change one, so
-/// round code can hold `&mut State` without a way around the ledger. The clock and revision
-/// numbers are plain fields: nothing tracks or rolls them back.
+/// or a component, and each keeps its undo in its store and goes on the ledger: no getter hands
+/// out a way to change one, so round code can hold `&mut State` without a way around them. The
+/// clock and revision numbers are plain fields: nothing tracks or rolls them back.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct State {
@@ -55,21 +56,21 @@ pub struct State {
     stories: StoryComponents,
     #[serde(default)]
     world: WorldComponents,
-    notes: Tracked<Vec<Note>, NoteEdit>,
+    notes: Store<Vec<Note>, NoteEdit>,
     #[serde(skip)]
     ledger: Ledger,
 }
 
 /// Each flag set on each entity of a kind. A flag is only on or off, so it has no edits:
 /// setting one puts it on, and clearing it takes it off.
-pub type Flags = Store<(), ()>;
+pub type Flags = EntityStore<(), Infallible>;
 
 /// Every actor's record and the components each holds, by actor id. An actor exists when it
 /// has a record.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct ActorComponents {
-    records: TrackedMap<ActorLive, ActorEdit>,
+    records: KeyStore<ActorLive, ActorEdit>,
     items: Items,
     meters: Meters,
     modifiers: Modifiers,
@@ -86,7 +87,8 @@ pub struct PlaceComponents {
     #[serde(with = "tracked::marks::by_entity")]
     flags: Flags,
     /// The name of each exit whose door is open, by its place.
-    open_exits: BTreeMap<String, BTreeSet<String>>,
+    #[serde(with = "tracked::marks::by_entity")]
+    open_exits: EntityStore<(), Infallible>,
 }
 
 /// The meters and flags each story holds, by story id.
@@ -102,30 +104,76 @@ pub struct StoryComponents {
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct WorldComponents {
-    meters: TrackedMap<MeterLive, Offset>,
+    meters: KeyStore<MeterLive, Offset>,
     #[serde(with = "tracked::marks")]
-    flags: TrackedMap<(), ()>,
+    flags: KeyStore<(), Infallible>,
 }
 
 impl ActorComponents {
-    pub fn records(&self) -> &TrackedMap<ActorLive, ActorEdit> {
+    pub fn records(&self) -> &BTreeMap<String, ActorLive> {
         &self.records
     }
 
-    pub fn items(&self) -> &Items {
+    pub fn items(&self) -> &EntityMaps<u32> {
         &self.items
     }
 
-    pub fn meters(&self) -> &Meters {
+    pub fn meters(&self) -> &EntityMaps<MeterLive> {
         &self.meters
     }
 
-    pub fn modifiers(&self) -> &Modifiers {
+    pub fn modifiers(&self) -> &EntityMaps<ModifierLive> {
         &self.modifiers
     }
 
-    pub fn flags(&self) -> &Flags {
+    pub fn flags(&self) -> &EntityMaps<()> {
         &self.flags
+    }
+
+    /// Undo every change to the actors' stores whose seq is `seq` or later.
+    fn undo_to(&mut self, seq: u64) {
+        let ActorComponents {
+            records,
+            items,
+            meters,
+            modifiers,
+            flags,
+        } = self;
+        records.undo_to(seq);
+        items.undo_to(seq);
+        meters.undo_to(seq);
+        modifiers.undo_to(seq);
+        flags.undo_to(seq);
+    }
+
+    fn clear_log(&mut self) {
+        let ActorComponents {
+            records,
+            items,
+            meters,
+            modifiers,
+            flags,
+        } = self;
+        records.clear_log();
+        items.clear_log();
+        meters.clear_log();
+        modifiers.clear_log();
+        flags.clear_log();
+    }
+
+    fn has_undo(&self) -> bool {
+        let ActorComponents {
+            records,
+            items,
+            meters,
+            modifiers,
+            flags,
+        } = self;
+        records.has_undo()
+            || items.has_undo()
+            || meters.has_undo()
+            || modifiers.has_undo()
+            || flags.has_undo()
     }
 
     /// Every component in the actors' stores, with the actor holding it: items, then meters,
@@ -166,55 +214,114 @@ pub(crate) enum ActorPart {
 }
 
 impl PlaceComponents {
-    pub fn items(&self) -> &Items {
+    pub fn items(&self) -> &EntityMaps<u32> {
         &self.items
     }
 
-    pub fn meters(&self) -> &Meters {
+    pub fn meters(&self) -> &EntityMaps<MeterLive> {
         &self.meters
     }
 
-    pub fn flags(&self) -> &Flags {
+    pub fn flags(&self) -> &EntityMaps<()> {
         &self.flags
     }
 
-    pub fn open_exits(&self) -> &BTreeMap<String, BTreeSet<String>> {
+    pub fn open_exits(&self) -> &EntityMaps<()> {
         &self.open_exits
+    }
+
+    /// Undo every change to the places' stores whose seq is `seq` or later.
+    fn undo_to(&mut self, seq: u64) {
+        let PlaceComponents {
+            items,
+            meters,
+            flags,
+            open_exits,
+        } = self;
+        items.undo_to(seq);
+        meters.undo_to(seq);
+        flags.undo_to(seq);
+        open_exits.undo_to(seq);
+    }
+
+    fn clear_log(&mut self) {
+        let PlaceComponents {
+            items,
+            meters,
+            flags,
+            open_exits,
+        } = self;
+        items.clear_log();
+        meters.clear_log();
+        flags.clear_log();
+        open_exits.clear_log();
+    }
+
+    fn has_undo(&self) -> bool {
+        let PlaceComponents {
+            items,
+            meters,
+            flags,
+            open_exits,
+        } = self;
+        items.has_undo() || meters.has_undo() || flags.has_undo() || open_exits.has_undo()
     }
 }
 
 impl StoryComponents {
-    pub fn meters(&self) -> &Meters {
+    pub fn meters(&self) -> &EntityMaps<MeterLive> {
         &self.meters
     }
 
-    pub fn flags(&self) -> &Flags {
+    pub fn flags(&self) -> &EntityMaps<()> {
         &self.flags
+    }
+
+    /// Undo every change to the stories' stores whose seq is `seq` or later.
+    fn undo_to(&mut self, seq: u64) {
+        let StoryComponents { meters, flags } = self;
+        meters.undo_to(seq);
+        flags.undo_to(seq);
+    }
+
+    fn clear_log(&mut self) {
+        let StoryComponents { meters, flags } = self;
+        meters.clear_log();
+        flags.clear_log();
+    }
+
+    fn has_undo(&self) -> bool {
+        let StoryComponents { meters, flags } = self;
+        meters.has_undo() || flags.has_undo()
     }
 }
 
 impl WorldComponents {
-    pub fn meters(&self) -> &TrackedMap<MeterLive, Offset> {
+    pub fn meters(&self) -> &BTreeMap<String, MeterLive> {
         &self.meters
     }
 
-    pub fn flags(&self) -> &TrackedMap<(), ()> {
+    pub fn flags(&self) -> &BTreeMap<String, ()> {
         &self.flags
     }
-}
 
-/// One tracked component of the save: a live record, a meter, a modifier or a flag on its
-/// entity, an open door, or the notes.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum ComponentId {
-    Actor(String),
-    Meter(EntityId, String),
-    /// A modifier, on the actor it names.
-    Modifier(String, String),
-    Flag(EntityId, String),
-    Item(EntityId, String),
-    ExitOpen(ExitId),
-    Notes,
+    /// Undo every change to the world's stores whose seq is `seq` or later.
+    fn undo_to(&mut self, seq: u64) {
+        let WorldComponents { meters, flags } = self;
+        meters.undo_to(seq);
+        flags.undo_to(seq);
+    }
+
+    fn clear_log(&mut self) {
+        let WorldComponents { meters, flags } = self;
+        meters.clear_log();
+        flags.clear_log();
+    }
+
+    fn has_undo(&self) -> bool {
+        let WorldComponents { meters, flags } = self;
+        meters.has_undo() || flags.has_undo()
+    }
 }
 
 /// Declares `$name`, the id of one kind of entity: a string saved as itself, which an id of
@@ -325,28 +432,28 @@ impl State {
     }
 
     /// The meters `entity` holds.
-    pub fn meters_of(&self, entity: &EntityId) -> Parts<'_, MeterLive, Offset> {
+    pub fn meters_of(&self, entity: &EntityId) -> Parts<'_, MeterLive> {
         Parts(match entity {
             EntityId::Actor(id) => self.actors.meters.of(id.as_str()),
             EntityId::Place(id) => self.places.meters.of(id.as_str()),
             EntityId::Story(id) => self.stories.meters.of(id.as_str()),
-            EntityId::World => Some(&self.world.meters),
+            EntityId::World => Some(&*self.world.meters),
         })
     }
 
     /// The flags set on `entity`.
-    pub fn flags_of(&self, entity: &EntityId) -> Parts<'_, (), ()> {
+    pub fn flags_of(&self, entity: &EntityId) -> Parts<'_, ()> {
         Parts(match entity {
             EntityId::Actor(id) => self.actors.flags.of(id.as_str()),
             EntityId::Place(id) => self.places.flags.of(id.as_str()),
             EntityId::Story(id) => self.stories.flags.of(id.as_str()),
-            EntityId::World => Some(&self.world.flags),
+            EntityId::World => Some(&*self.world.flags),
         })
     }
 
     /// The items `entity` holds. `None` for a story or the world: only an actor or a place
     /// holds items.
-    pub fn items_of(&self, entity: &EntityId) -> Option<Parts<'_, u32, Shift>> {
+    pub fn items_of(&self, entity: &EntityId) -> Option<Parts<'_, u32>> {
         Some(Parts(match entity {
             EntityId::Actor(id) => self.actors.items.of(id.as_str()),
             EntityId::Place(id) => self.places.items.of(id.as_str()),
@@ -396,7 +503,7 @@ impl State {
         &'a mut self,
         entity: &'a EntityId,
         key: &str,
-    ) -> (PartsMut<'a, (), ()>, StateKey, &'a mut Ledger) {
+    ) -> (PartsMut<'a, (), Infallible>, StateKey, &'a mut Ledger) {
         let State {
             actors,
             places,
@@ -497,84 +604,40 @@ impl State {
 
     /// Whether the door of `exit` is open.
     pub fn is_exit_open(&self, exit: &ExitId) -> bool {
-        (self.places.open_exits.get(exit.place.as_str()))
-            .is_some_and(|open| open.contains(&exit.exit))
+        (self.places.open_exits.get(exit.place.as_str(), &exit.exit)).is_some()
     }
 
-    /// Open or shut the door of `exit` past the ledger, for its writer and a rollback. A place
-    /// left with no door open has no entry, so the save reads the same after an open is rolled
-    /// back.
-    fn put_exit_open(&mut self, exit: &ExitId, open: bool) {
-        let open_exits = &mut self.places.open_exits;
-        if open {
-            let names = open_exits.entry(exit.place.to_string()).or_default();
-            names.insert(exit.exit.clone());
-        } else if let Some(names) = open_exits.get_mut(exit.place.as_str()) {
-            names.remove(&exit.exit);
-            if names.is_empty() {
-                open_exits.remove(exit.place.as_str());
-            }
-        }
+    /// Undo every change to any store whose seq is `seq` or later.
+    fn undo_to(&mut self, seq: u64) {
+        self.actors.undo_to(seq);
+        self.places.undo_to(seq);
+        self.stories.undo_to(seq);
+        self.world.undo_to(seq);
+        self.notes.undo_to(seq);
     }
 
-    /// The component `at` names, to roll back or rebase, when it has edits to.
-    fn component_mut<'a>(&'a mut self, at: &'a ComponentId) -> Option<&'a mut dyn Rewind> {
-        Some(match at {
-            ComponentId::Actor(id) => self.actors.records.tracked_mut(id)?,
-            ComponentId::Meter(entity, key) => {
-                self.meters_of_mut(entity, key).0.tracked_mut(key)?
-            }
-            ComponentId::Modifier(actor, id) => self.actors.modifiers.tracked_mut(actor, id)?,
-            ComponentId::Item(entity, id) => self.items_of_mut(entity, id)?.0.tracked_mut(id)?,
-            ComponentId::Notes => &mut self.notes,
-            ComponentId::Flag(..) | ComponentId::ExitOpen(_) => return None,
-        })
+    /// Forget every store's undo.
+    fn clear_log(&mut self) {
+        self.actors.clear_log();
+        self.places.clear_log();
+        self.stories.clear_log();
+        self.world.clear_log();
+        self.notes.clear_log();
     }
 
-    /// Take off the component `at` names, which a write put on.
-    fn take_off(&mut self, at: &ComponentId) {
-        match at {
-            ComponentId::Actor(id) => drop(self.actors.records.take(id)),
-            ComponentId::Meter(entity, key) => drop(self.meters_of_mut(entity, key).0.take(key)),
-            ComponentId::Modifier(actor, id) => drop(self.actors.modifiers.take(actor, id)),
-            ComponentId::Flag(entity, key) => drop(self.flags_of_mut(entity, key).0.take(key)),
-            ComponentId::Item(entity, id) => {
-                if let Some((mut items, ..)) = self.items_of_mut(entity, id) {
-                    items.take(id);
-                }
-            }
-            ComponentId::ExitOpen(exit) => self.put_exit_open(exit, false),
-            ComponentId::Notes => unreachable!("no write puts the notes on"),
-        }
-    }
-
-    /// Put back a component a write took off, with the undo it held.
-    fn put_back(&mut self, removed: Removed) {
-        match removed {
-            #[cfg(any(test, feature = "testing"))]
-            Removed::Actor(id, record) => self.actors.records.put(id, *record),
-            Removed::Meter(entity, key, part) => {
-                self.meters_of_mut(&entity, &key).0.put(key.clone(), part);
-            }
-            Removed::Modifier(actor, id, part) => self.actors.modifiers.put(&actor, id, part),
-            Removed::Flag(entity, key) => {
-                self.flags_of_mut(&entity, &key)
-                    .0
-                    .put(key.clone(), Tracked::default());
-            }
-            Removed::Item(entity, id, part) => {
-                if let Some((mut items, ..)) = self.items_of_mut(&entity, &id) {
-                    items.put(id.clone(), part);
-                }
-            }
-            Removed::ExitOpen(exit) => self.put_exit_open(&exit, true),
-        }
+    /// Whether any store can still undo a change.
+    fn has_undo(&self) -> bool {
+        self.actors.has_undo()
+            || self.places.has_undo()
+            || self.stories.has_undo()
+            || self.world.has_undo()
+            || self.notes.has_undo()
     }
 
     /// This save in the order its file holds: notes by id, and each note's readers and facts,
     /// and each actor's known facts, sorted. A sorted list is a different value only in order,
-    /// so this writes past the ledger, and so only `accept` and `to_canonical` call it, when
-    /// no write is left to roll back.
+    /// so this writes past the stores' logs, and so only `accept` and `to_canonical` call it,
+    /// when no write is left to roll back.
     fn normalize(&mut self) {
         let notes = self.notes.frontier_mut();
         notes.sort_by(|a, b| a.id.cmp(&b.id));
@@ -582,8 +645,8 @@ impl State {
             sort_unique(&mut note.to);
             sort_unique(&mut note.fact_ids);
         }
-        for actor in self.actors.records.values_mut() {
-            sort_unique(&mut actor.frontier_mut().known_facts);
+        for actor in self.actors.records.frontier_mut().values_mut() {
+            sort_unique(&mut actor.known_facts);
         }
     }
 

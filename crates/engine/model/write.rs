@@ -1,17 +1,17 @@
 //! Every write the save takes. In a round and out of one alike, each lands at once, so a later
-//! read sees it, and goes on the save's ledger, so it can be rolled back, counts toward the
-//! round's budget and is reported to the next take. No other code changes a component.
+//! read sees it; its store keeps its undo, tagged with the ledger's seq, so it can be rolled
+//! back; and it goes on the save's ledger, so it counts toward the round's budget and is
+//! reported to the next take. No other code changes a component.
 
 use crate::canon::Canon;
 use crate::model::item::Shift;
 use crate::model::key::{Change, StateKey, StateValue};
-use crate::model::ledger::Removed;
 use crate::model::meter::{MeterLive, Offset};
 use crate::model::modifier::ModifierLive;
-use crate::model::tracked::Tracked;
+use crate::model::tracked::{Entry, MapEdit, PartsMut};
 use crate::model::MemoryLine;
 use crate::model::Note;
-use crate::model::{number, reading, ActCounter, ActorEdit, ActorId, ComponentId, ExitId};
+use crate::model::{number, reading, ActCounter, ActorEdit, ActorId, ExitId};
 use crate::model::{NoteEdit, PendingAction, State};
 use crate::rules::effect::EntityId;
 use crate::Reason;
@@ -30,18 +30,19 @@ impl State {
     /// caller's savepoint to undo.
     pub fn edit_actor(&mut self, id: &ActorId, edit: ActorEdit) -> Result<(), Reason> {
         let State { actors, ledger, .. } = self;
-        let actor = actors
-            .records
-            .tracked_mut(id.as_str())
-            .ok_or(Reason::UnknownId)?;
-        let at = || ComponentId::Actor(id.to_string());
-        match edit.key(id.as_str()) {
-            Some(key) => ledger.land(at, actor, edit, key, |actor, key| actor.value(key)),
-            None => {
-                ledger.track(at, actor, edit);
-                Ok(())
-            }
+        let records = &mut actors.records;
+        let actor = records.get(id.as_str()).ok_or(Reason::UnknownId)?;
+        let key = edit.key(id.as_str());
+        let before = key.as_ref().map(|key| actor.value(key));
+        let edit = MapEdit::Value(id.to_string(), edit);
+        if !records.apply(edit, || ledger.issue_seq()) {
+            return Ok(());
         }
+        let (Some(key), Some(before)) = (key, before) else {
+            return Ok(());
+        };
+        let after = records[id.as_str()].value(&key);
+        ledger.note(key, before, after)
     }
 
     /// Put meter `key` on `entity` as `next`, `None` taking it off, outside the writes a
@@ -61,14 +62,12 @@ impl State {
             self.require_entity(entity)?;
         }
         let before = reading(self.meter_value(canon, entity, key));
-        let (mut meters, watched, ledger) = self.meters_of_mut(entity, key);
-        if let Some(part) = meters.take(key) {
-            ledger.removed(Removed::Meter(entity.clone(), key.to_string(), part));
-        }
-        if let Some(live) = next {
-            meters.put(key.to_string(), Tracked::new(live));
-            ledger.added(ComponentId::Meter(entity.clone(), key.to_string()));
-        }
+        let (meters, watched, ledger) = self.meters_of_mut(entity, key);
+        let entry = Entry {
+            id: key.to_string(),
+            value: next,
+        };
+        meters.apply(MapEdit::Entry(entry), || ledger.issue_seq());
         let after = reading(self.meter_value(canon, entity, key));
         self.ledger.note(watched, before, after)
     }
@@ -83,10 +82,11 @@ impl State {
         edit: Offset,
     ) -> Result<(), Reason> {
         let before = reading(self.meter_value(canon, entity, key));
+        if self.meters_of(entity).get(key).is_none() {
+            return Err(Reason::UnknownId);
+        }
         let (meters, watched, ledger) = self.meters_of_mut(entity, key);
-        let meter = meters.tracked_mut(key).ok_or(Reason::UnknownId)?;
-        let at = || ComponentId::Meter(entity.clone(), key.to_string());
-        if !ledger.track(at, meter, edit) {
+        if !meters.apply(MapEdit::Value(key.to_string(), edit), || ledger.issue_seq()) {
             return Ok(());
         }
         let after = reading(self.meter_value(canon, entity, key));
@@ -113,27 +113,16 @@ impl State {
         let stacks = held.map(|held| held.stacks.clone());
         let before = held.map_or(StateValue::Empty, ModifierLive::to_value);
         let puts = next.is_some();
-        let at = || ComponentId::Modifier(actor_id.to_string(), id.to_string());
-        let State { actors, ledger, .. } = &mut *self;
-        let modifiers = &mut actors.modifiers;
-        let moved = match (modifiers.tracked_mut(actor_id, id), next) {
-            (Some(held), Some(next)) => ledger.track(at, held, next),
-            (Some(_), None) => {
-                let held = modifiers.take(actor_id, id).expect("a modifier held");
-                ledger.removed(Removed::Modifier(
-                    actor_id.to_string(),
-                    id.to_string(),
-                    held,
-                ));
-                true
-            }
-            (None, Some(next)) => {
-                modifiers.put(actor_id, id.to_string(), Tracked::new(next));
-                ledger.added(at());
-                true
-            }
-            (None, None) => false,
+        let edit = match (held, next) {
+            (Some(_), Some(next)) => MapEdit::Value(id.to_string(), next),
+            (_, value) => MapEdit::Entry(Entry {
+                id: id.to_string(),
+                value,
+            }),
         };
+        let State { actors, ledger, .. } = &mut *self;
+        let modifiers = PartsMut::Stored(&mut actors.modifiers, actor_id);
+        let moved = modifiers.apply(edit, || ledger.issue_seq());
         if let (Some(meter), Some(before)) = (meter, meter_before) {
             let now = self
                 .actors
@@ -183,22 +172,20 @@ impl State {
     /// says. Only an actor or a place holds items, and it must be in the save.
     pub fn set_items(&mut self, entity: &EntityId, id: &str, count: u32) -> Result<(), Reason> {
         let held = self.item_count(entity, id);
-        let (mut items, watched, ledger) = self.items_of_mut(entity, id).ok_or(Reason::Schema)?;
+        let (items, watched, ledger) = self.items_of_mut(entity, id).ok_or(Reason::Schema)?;
         let held = held.ok_or(Reason::UnknownId)?;
         if held == count {
             return Ok(());
         }
-        let at = || ComponentId::Item(entity.clone(), id.to_string());
-        if held == 0 {
-            items.put(id.to_string(), Tracked::new(count));
-            ledger.added(at());
-        } else if count == 0 {
-            let part = items.take(id).expect("a count above 0");
-            ledger.removed(Removed::Item(entity.clone(), id.to_string(), part));
+        let edit = if held == 0 || count == 0 {
+            MapEdit::Entry(Entry {
+                id: id.to_string(),
+                value: (count > 0).then_some(count),
+            })
         } else {
-            let part = items.tracked_mut(id).expect("a count above 0");
-            ledger.track(at, part, Shift(i64::from(count) - i64::from(held)));
-        }
+            MapEdit::Value(id.to_string(), Shift(i64::from(count) - i64::from(held)))
+        };
+        items.apply(edit, || ledger.issue_seq());
         ledger.note(watched, number(u64::from(held)), number(u64::from(count)))
     }
 
@@ -211,44 +198,48 @@ impl State {
         if on {
             self.require_entity(entity)?;
         }
-        let (mut flags, watched, ledger) = self.flags_of_mut(entity, key);
-        if on {
-            flags.put(key.to_string(), Tracked::default());
-            ledger.added(ComponentId::Flag(entity.clone(), key.to_string()));
-        } else {
-            flags.take(key);
-            ledger.removed(Removed::Flag(entity.clone(), key.to_string()));
-        }
+        let (flags, watched, ledger) = self.flags_of_mut(entity, key);
+        let entry = Entry {
+            id: key.to_string(),
+            value: on.then_some(()),
+        };
+        flags.apply(MapEdit::Entry(entry), || ledger.issue_seq());
         ledger.note(watched, StateValue::Bool(!on), StateValue::Bool(on))
     }
 
     /// Open or shut the door of `exit`, counted and kept as `edit_actor` says. A door already
     /// so changes nothing.
     pub fn set_exit_open(&mut self, exit: &ExitId, open: bool) -> Result<(), Reason> {
-        if self.is_exit_open(exit) == open {
+        let State { places, ledger, .. } = self;
+        let doors = PartsMut::Stored(&mut places.open_exits, exit.place.as_str());
+        let entry = Entry {
+            id: exit.exit.clone(),
+            value: open.then_some(()),
+        };
+        if !doors.apply(MapEdit::Entry(entry), || ledger.issue_seq()) {
             return Ok(());
         }
-        self.put_exit_open(exit, open);
-        if open {
-            self.ledger.added(ComponentId::ExitOpen(exit.clone()));
-        } else {
-            self.ledger.removed(Removed::ExitOpen(exit.clone()));
-        }
         let watched = StateKey::ExitOpen(exit.place.to_string(), exit.exit.clone());
-        self.ledger
-            .note(watched, StateValue::Bool(!open), StateValue::Bool(open))
+        ledger.note(watched, StateValue::Bool(!open), StateValue::Bool(open))
     }
 
     /// Leave `note`, whose id no note has yet.
     pub fn leave_note(&mut self, note: Note) -> Result<(), Reason> {
         let State { notes, ledger, .. } = self;
-        let key = StateKey::Note(note.id.clone());
-        let read = |notes: &Vec<Note>, key: &StateKey| match key {
-            StateKey::Note(id) if notes.iter().any(|note| note.id == *id) => StateValue::Bool(true),
-            _ => StateValue::Empty,
+        let id = note.id.clone();
+        let read = |notes: &[Note]| {
+            if notes.iter().any(|note| note.id == id) {
+                StateValue::Bool(true)
+            } else {
+                StateValue::Empty
+            }
         };
-        let edit = NoteEdit::Leave(note);
-        ledger.land(|| ComponentId::Notes, notes, edit, key, read)
+        let before = read(notes);
+        if !notes.apply(NoteEdit::Leave(note), || ledger.issue_seq()) {
+            return Ok(());
+        }
+        let after = read(notes);
+        ledger.note(StateKey::Note(id), before, after)
     }
 
     /// Set `counter` back to 0 on every actor.
@@ -336,8 +327,7 @@ impl State {
         if self.actors.records.contains_key(id.as_str()) {
             return Err(Reason::Schema);
         }
-        self.actors.records.put(id.to_string(), record.into());
-        self.ledger.added(ComponentId::Actor(id.to_string()));
+        self.put_record(id, Some(record));
         Ok(())
     }
 
@@ -351,10 +341,21 @@ impl State {
         for part in self.parts_of(id).into_iter().rev() {
             self.put_part(canon, id, part, false)?;
         }
-        let record = self.actors.records.take(id.as_str()).expect("an actor");
-        self.ledger
-            .removed(Removed::Actor(id.to_string(), Box::new(record)));
+        self.put_record(id, None);
         Ok(())
+    }
+
+    /// Put actor `id`'s record on as `record`, `None` taking it off, through the records'
+    /// store, which keeps its undo as every store does.
+    fn put_record(&mut self, id: &ActorId, record: Option<crate::model::ActorLive>) {
+        let State { actors, ledger, .. } = self;
+        let entry = Entry {
+            id: id.to_string(),
+            value: record,
+        };
+        actors
+            .records
+            .apply(MapEdit::Entry(entry), || ledger.issue_seq());
     }
 
     /// Give the save actor `to`, a copy of actor `from`: their record, then each of their
@@ -417,6 +418,7 @@ mod tests {
 
     use super::*;
     use crate::intent::Intent;
+    use crate::model::ledger::Savepoint;
     use crate::model::meter::MeterWrite;
     use crate::rules::effect::{Effect, EffectKind};
     use crate::World;
@@ -483,5 +485,38 @@ mod tests {
         state.remove_actor(canon, &"briar".into()).unwrap();
         state.accept();
         assert_eq!(state, before);
+    }
+
+    #[test]
+    fn a_rollback_undoes_each_write_since_its_savepoint_and_none_before() {
+        let pack =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packs/oneshot-docks");
+        let world = World::open(&pack).expect("open");
+        let mut state = world.begin_round(&crate::model::Presence::default());
+        let mira = EntityId::Actor("mira".into());
+        let oil = |state: &mut State, count| state.set_items(&mira, "lamp_oil", count).unwrap();
+        let lit = |state: &mut State, on| state.set_flag(&EntityId::World, "lit", on).unwrap();
+        let savepoint = |state: &State| (state.savepoint(), state.clone());
+        let roll_back = |state: &mut State, (point, saved): (Savepoint, State)| {
+            state.rollback(point);
+            assert_eq!(*state, saved);
+        };
+        oil(&mut state, 1);
+        let kept = savepoint(&state);
+        roll_back(&mut state, kept);
+        let undone = savepoint(&state);
+        lit(&mut state, true);
+        roll_back(&mut state, undone);
+        oil(&mut state, 2);
+        let after_a = savepoint(&state);
+        lit(&mut state, true);
+        roll_back(&mut state, after_a);
+        let outer = savepoint(&state);
+        oil(&mut state, 3);
+        let inner = savepoint(&state);
+        lit(&mut state, true);
+        roll_back(&mut state, inner);
+        oil(&mut state, 0);
+        roll_back(&mut state, outer);
     }
 }

@@ -1,11 +1,11 @@
 //! The item counts actors and places hold.
 
-use crate::model::tracked::{Edit, Store};
+use crate::model::tracked::{Edit, EntityStore};
 
 /// Every item count on each actor, or on each place, by the item's id. An entity with none of an item
 /// has no count for it: putting the first one in adds the count, and taking the last one out
 /// takes it off.
-pub type Items = Store<u32, Shift>;
+pub type Items = EntityStore<u32, Shift>;
 
 /// A count moves by this much, to a count above 0 the writer has checked. Its undo moves it back.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

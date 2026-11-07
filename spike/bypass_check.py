@@ -1,4 +1,4 @@
-"""Show that round code outside `model` cannot change the save past the ledger.
+"""Show that round code outside `model` cannot change the save past `State`'s writers.
 
     python spike/bypass_check.py <scratch dir> [<rev>]
 
@@ -18,25 +18,34 @@ GROUPS = {
     'private mutators': '''
 #[allow(dead_code, unused, unreachable_code)]
 fn bypass(state: &mut State, entity: crate::rules::effect::EntityId) {
-    state.actors().meters().take("mira", "grit");
-    state.places().flags().put("docks_shop", String::new(), unreachable!());
-    state.actors().items().tracked_mut("mira", "lamp_oil");
-    state.world().meters().take("tide");
+    state.actors().meters().apply(unreachable!(), || 0);
+    state.places().flags().undo_to(0);
+    state.actors().items().clear_log();
+    state.world().meters().apply(unreachable!(), || 0);
     state.meters_of_mut(&entity, "grit");
     state.notes.frontier_mut();
-    state.notes.apply(unreachable!());
+    state.notes.apply(unreachable!(), || 0);
+    state.notes.undo_to(0);
+    state.actors().undo_to(0);
+    state.undo_to(0);
+    state.clear_log();
+    crate::model::tracked::Store::<Vec<crate::model::Note>, crate::model::NoteEdit>::default().apply(unreachable!(), || 0);
+    crate::model::tracked::Store::<Vec<crate::model::Note>, crate::model::NoteEdit>::default().undo_to(0);
+    crate::model::tracked::Store::<Vec<crate::model::Note>, crate::model::NoteEdit>::default().clear_log();
+    crate::model::ledger::Ledger::default().issue_seq();
     let ledger = &mut state.ledger;
     state.normalize();
     state.world_time = 0;
 }
 ''',
     'record tables': '''
-#[allow(dead_code, unused)]
+#[allow(dead_code, unused, unreachable_code)]
 fn bypass(state: &mut State, actor: crate::model::ActorLive) {
-    state.actors().records().put(String::new(), actor.into());
-    state.actors().records().tracked_mut("mira");
-    state.actors().records().take("mira");
+    state.actors().records().apply(unreachable!(), || 0);
+    state.actors.records.undo_to(0);
+    state.actors().records.clear_log();
     state.places().open_exits.remove("docks_shop");
+    state.places().open_exits().undo_to(0);
     state.world_time = 0;
 }
 ''',
@@ -56,10 +65,13 @@ fn bypass(state: &mut State) {
 ''',
     'writes through a getter': '''
 #[allow(dead_code, unused)]
-fn bypass(state: &mut State) {
+fn bypass(state: &mut State, actor: crate::model::ActorLive) {
     *state.actors().meters() = Default::default();
     *state.world() = Default::default();
-    state.places().open_exits().clear();
+    *state.places().open_exits() = Default::default();
+    state.actors().records().insert(String::new(), actor);
+    state.actors().records().remove("mira");
+    state.world().flags().insert(String::new(), ());
     state.world_time = 0;
 }
 ''',

@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::model::tracked::{Edit, Store};
+use crate::model::tracked::{Edit, EntityStore};
 use crate::rules::effect::EntityId;
 use crate::Reason;
 
@@ -64,7 +64,7 @@ pub fn current(def: &MeterDef, live: &MeterLive, modifiers: i64) -> Result<i64, 
 }
 
 /// Every live meter on each entity of a kind, by the meter's id.
-pub type Meters = Store<MeterLive, Offset>;
+pub type Meters = EntityStore<MeterLive, Offset>;
 
 /// The edit that moves a meter's offset by the write's delta, once `is_storable` accepts the
 /// next pair.

@@ -99,7 +99,7 @@ fn names_for(
             .collect(),
         TargetKind::Actor => nameable
             .iter()
-            .filter(|name| state.actors().records().contains_key(name))
+            .filter(|name| state.actors().records().contains_key(name.as_str()))
             .cloned()
             .collect(),
         TargetKind::Item => nameable
