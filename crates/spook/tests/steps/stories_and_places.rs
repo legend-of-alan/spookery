@@ -21,7 +21,7 @@ fn meter_row(id: &str, hidden: Option<bool>) -> String {
 
 /// The pack this scenario already set up, or a fresh docks copy.
 fn pack(world: &mut World) -> &Path {
-    world.pack.get_or_insert_with(|| copy_docks("holders"))
+    world.pack.get_or_insert_with(|| copy_docks("entities"))
 }
 
 /// Write `story/<id>.yaml` with these extra keys and an empty rule list to append to.

@@ -337,7 +337,7 @@ pub(super) fn unknown_carriers(scope: &EntityScope, rules: &RuleTable) -> Vec<Di
                 schema_error(
                     &rule.file,
                     &format!("rule '{}' names {kind} '{key}', but {why}", rule.local_id),
-                    "declare it on that holder, or name a holder that has it",
+                    "declare it on that entity, or name an entity that has it",
                 )
                 .at_path(format!("rules[{}]", rule.index)),
             );
@@ -459,7 +459,7 @@ impl EntityScope<'_> {
                 if let Some(why) = self.why_not_carried(fixed_self, who, key) {
                     diags.push(refuse(
                         format!("expression reads meter '{key}', but {why}"),
-                        "declare the meter on that holder, or read one that exists",
+                        "declare the meter on that entity, or read one that exists",
                     ));
                 }
                 if let Some(name) = self.unknown_who(who) {

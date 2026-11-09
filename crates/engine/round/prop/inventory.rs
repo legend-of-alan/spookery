@@ -65,7 +65,7 @@ fn apply_changes(world: &World<()>, steps: &[ItemChange]) -> Result<(), TestCase
         assert_no_stored_zero(draft.state())?;
         if !known {
             if outcome.is_ok() {
-                return fail("an unknown holder accepted an item effect");
+                return fail("an unknown entity accepted an item effect");
             }
             assert_same_save(draft.state(), &before)?;
             continue;

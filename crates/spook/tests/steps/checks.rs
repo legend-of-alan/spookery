@@ -276,7 +276,7 @@ fn the_round_log_records_miras_engine_brace(world: &mut World) {
         .as_array()
         .unwrap()
         .iter()
-        .filter(|effect| effect["kind"] == "flag" && effect["holder"]["actor"] == "mira")
+        .filter(|effect| effect["kind"] == "flag" && effect["entity"]["actor"] == "mira")
         .collect();
     assert_eq!(flags.len(), 1, "{round}");
     assert_eq!(flags[0]["as"], "npc:mira", "{round}");

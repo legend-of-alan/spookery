@@ -200,7 +200,7 @@ fn the_watch_ran(world: &mut World) {
     drop(saved);
     let round = support::read_round(world.pack(), "round-0001");
     let creaked = round["effects"].as_array().unwrap().iter().any(|effect| {
-        effect["kind"] == "flag" && effect["holder"] == "world" && effect["key"] == "creaked"
+        effect["kind"] == "flag" && effect["entity"] == "world" && effect["key"] == "creaked"
     });
     assert!(creaked, "{round}");
 }

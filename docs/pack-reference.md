@@ -213,7 +213,7 @@ A short knife.
 
 `kind` is `npc` or `pc_template`. A template does not sit a player. The save does. The file name is not the id: `cast/pc-ada.md` has id `pc_ada`. `display_name` is required, and it is the name a player sees. A cast page has no `facts`: what an actor knows is `known_facts` on the save.
 
-`flags` lists the flags an effect may set on this actor. A flag effect or condition whose `who` is fixed by the pack, as for meters, names a flag that holder's file lists, or check refuses it. World flags are not listed: any name but `busy` is one. `meters` lists the meters only this actor carries, in the shape of `rules/meters.yaml`; see [Meters](#meters). `idle.eligible` says whether the idle runner may pick this NPC. `when: habit` is a habit of that NPC. The runner takes the first habit whose `if` holds and whose `do` list expands.
+`flags` lists the flags an effect may set on this actor. A flag effect or condition whose `who` is fixed by the pack, as for meters, names a flag that entity's file lists, or check refuses it. World flags are not listed: any name but `busy` is one. `meters` lists the meters only this actor carries, in the shape of `rules/meters.yaml`; see [Meters](#meters). `idle.eligible` says whether the idle runner may pick this NPC. `when: habit` is a habit of that NPC. The runner takes the first habit whose `if` holds and whose `do` list expands.
 
 A meter never pauses. To stop a rule from advancing a meter while no player is seated, give the rule `if: players >= 1`.
 
@@ -386,7 +386,7 @@ A change rule fires when its watch becomes true. It does not fire again while th
 |---|---|
 | Arrive | `arrive` is a place id, or `here` on a place rule. `who` is `any` (the default), `pc`, `npc`, or an actor id. |
 | Leave | `leave` and `who`, same as arrive. |
-| Meter | `meter` is a meter id, on any holder that carries it. `crosses` is an operator and a number, such as `<=0`. |
+| Meter | `meter` is a meter id, on any entity that carries it. `crosses` is an operator and a number, such as `<=0`. |
 | Flag | `flag` is the flag. `becomes` is `true` or `false`. |
 | Item | `item` is an item id, with `gained: true` or `lost: true`. |
 | Knows | `knows` is a fact id. The watch is that fact becoming known. |
@@ -650,16 +650,16 @@ rules:
 
 ## Meters
 
-`min` is the floor, `base_cap` is the trained cap, and `max` is as high as current can go. Current is base plus offset, and it is not stored. A meter's holder is the file that declares it:
+`min` is the floor, `base_cap` is the trained cap, and `max` is as high as current can go. Current is base plus offset, and it is not stored. A meter's entity is the one whose file declares it:
 
 - `rules/meters.yaml` gives the meter to every actor.
 - `meters:` in `cast/<name>.md` gives it to that one actor. The id is refused when `rules/meters.yaml` or another cast file has it too. `cast/keeper.md` declares `shop_day`.
 - `meters:` in `world/places/<id>.md` gives it to that one place, and `meters:` in `story/<id>.yaml` to that one story. The id is refused when `rules/meters.yaml`, a cast, place or other story file has it too, and a story's also when `world/meters.yaml` has it. `world/places/loft.md` declares `light`, and `story/samples.yaml` declares `dread`.
-- `world/meters.yaml` gives it to the world, held once in the save as `world_meters` and shared by every rule that names `who: world`. The world and an actor or place may each declare a meter with the same id, and `who` picks which one.
+- `world/meters.yaml` gives it to the world, held once in the save under `world.meters` and shared by every rule that names `who: world`. The world and an actor or place may each declare a meter with the same id, and `who` picks which one.
 
-`base` is the base a new meter takes on its holder when `spook migrate` runs, and migrate drops a meter from a holder the pack no longer gives it. A save that lacks a meter the pack gives a holder, with no migrate to add it, is refused. So is a save that lists a meter on a holder the pack does not give it, with no migrate to drop it.
+`base` is the base a new meter takes on its entity when `spook migrate` runs, and migrate drops a meter from an entity the pack no longer gives it. A save that lacks a meter the pack gives an entity, with no migrate to add it, is refused. So is a save that lists a meter on an entity the pack does not give it, with no migrate to drop it.
 
-A meter effect, condition or read whose `who` is fixed by the pack names one holder: `world`, `place:<id>`, `story:<id>`, an actor id, or `self` on a cast member's own habit. Check refuses one that names a meter that holder does not carry. `target` and other holders known only at play time are not guessed. A check's `meter` is one every actor carries.
+A meter effect, condition or read whose `who` is fixed by the pack names one entity: `world`, `place:<id>`, `story:<id>`, an actor id, or `self` on a cast member's own habit. Check refuses one that names a meter that entity does not carry. `target` and other entities known only at play time are not guessed. A check's `meter` is one every actor carries.
 
 Visibility: the GM sees every meter change. An actor's meter change is shown to that actor only, not to others in the same place. A world meter is hidden from players unless its row says `hidden: false`; then every player sees its changes and its current value in their view. A story or place meter is hidden the same way; with `hidden: false` every player sees a story meter's changes, and the players standing in a place see that place's, but neither is listed in a view. `hidden: true` keeps an actor's meter off that actor's own view. A flag change, on an actor, a place, a story or the world, is never shown to a player: use a meter with `hidden: false` or a fact for state players should see.
 
