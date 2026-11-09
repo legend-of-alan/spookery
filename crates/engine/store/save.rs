@@ -155,72 +155,46 @@ pub(crate) fn stale_modifiers(canon: &Canon, state: &State) -> Vec<String> {
     stale
 }
 
-/// Migrate a save: give each entity the `meters` it lacks, at their `start`, drop the
-/// `dropped_modifiers` from every actor and each `dropped_meters` from its entity, then stamp
-/// `pack_rev` and `state_rev`. Live migrate and replay both call this. It does not touch the disk.
+/// Migrate a save through the writers a round uses: give each entity the `meters` it lacks, at
+/// their `start`, take the `dropped_modifiers` off every actor and each `dropped_meters` off its
+/// entity, then stamp `pack_rev` and `state_rev`. A meter an entity holds keeps its value. Live
+/// migrate and replay both call this. It does not touch the disk.
+#[allow(clippy::too_many_arguments)]
 pub fn migrate(
+    canon: &Canon,
     mut state: State,
     pack_rev: &str,
     state_rev: u64,
     meters: &[AddedMeter],
     dropped_modifiers: &[String],
     dropped_meters: &[DroppedMeter],
-) -> State {
+) -> Result<State, Reason> {
     for meter in meters {
         let start = Meter {
             base: meter.start,
             offset: 0,
         };
-        let key = meter.id.clone();
-        match &meter.carrier {
-            Some(EntityId::World) => {
-                state.world.meters.entry(key).or_insert(start);
-            }
-            Some(EntityId::Place(id)) => {
-                state
-                    .places
-                    .meters
-                    .entry((id.clone(), key))
-                    .or_insert(start);
-            }
-            Some(EntityId::Story(id)) => {
-                state
-                    .stories
-                    .meters
-                    .entry((id.clone(), key))
-                    .or_insert(start);
-            }
-            carrier => {
-                for id in state.actors.kind.keys() {
-                    if carrier
-                        .as_ref()
-                        .is_none_or(|carrier| *carrier == EntityId::Actor(id.clone()))
-                    {
-                        let live = state.actors.meters.entry((id.clone(), key.clone()));
-                        live.or_insert(start.clone());
-                    }
-                }
-            }
+        for entity in find_lacking_carriers(&state, &meter.carrier, &meter.id) {
+            let mut carrier = state.entity_mut(&entity);
+            carrier.set_meter(canon, &meter.id, Some(start.clone()))?;
         }
     }
-    let dropped = |carrier: EntityId, id: &String| {
-        dropped_meters.contains(&DroppedMeter {
-            id: id.clone(),
-            carrier,
-        })
-    };
-    state
-        .actors
-        .modifiers
-        .retain(|(_, id), _| !dropped_modifiers.contains(id));
-    (state.actors.meters).retain(|(on, id), _| !dropped(EntityId::Actor(on.clone()), id));
-    (state.places.meters).retain(|(on, id), _| !dropped(EntityId::Place(on.clone()), id));
-    (state.stories.meters).retain(|(on, id), _| !dropped(EntityId::Story(on.clone()), id));
-    (state.world.meters).retain(|id, _| !dropped(EntityId::World, id));
+    let modifiers = state.actors().modifiers.keys();
+    let held: Vec<(ActorId, String)> = (modifiers.filter(|(_, id)| dropped_modifiers.contains(id)))
+        .cloned()
+        .collect();
+    for (actor, id) in &held {
+        state.actors_mut().set_modifier(canon, actor, id, None)?;
+    }
+    for meter in dropped_meters {
+        state
+            .entity_mut(&meter.carrier)
+            .set_meter(canon, &meter.id, None)?;
+    }
     state.pack_rev = pack_rev.to_string();
     state.state_rev = state_rev;
     state.accept();
-    state
+    Ok(state)
 }
 
 #[cfg(test)]
