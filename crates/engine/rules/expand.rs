@@ -319,7 +319,10 @@ fn meter_offset(
         )?));
     }
     let desired = expr::eval_with_dice(context, set.ok_or(Reason::Schema)?, dice)?;
-    let current = context.state.meter_value(context.canon, entity, key)?;
+    let current = context
+        .state
+        .entity(entity)
+        .meter_value(context.canon, key)?;
     Ok(MeterWrite::Offset(
         desired.checked_sub(current).ok_or(Reason::OutOfRange)?,
     ))
@@ -330,7 +333,7 @@ fn location_effect(context: &Context, to: &str) -> Result<Effect, Reason> {
     let actor_id = expr::resolve_actor(context, &Who::Self_)?.clone();
     let from = context
         .state
-        .actors
+        .actors()
         .place
         .get(&actor_id)
         .cloned()

@@ -59,7 +59,7 @@ fn holds(context: &Context, cond: &Cond) -> Result<bool, Reason> {
             let actor = expr::resolve_actor(context, who)?;
             let id = expr::resolve_item_id(context, id)?;
             let held = state
-                .actors
+                .actors()
                 .items
                 .get(&(actor.clone(), id))
                 .copied()
@@ -70,7 +70,7 @@ fn holds(context: &Context, cond: &Cond) -> Result<bool, Reason> {
             let actor = expr::resolve_actor(context, who)?;
             let id = expr::resolve_item_id(context, id)?;
             Ok(state
-                .actors
+                .actors()
                 .wielded
                 .get(actor)
                 .is_some_and(|wielded| *wielded == id))
@@ -82,7 +82,7 @@ fn holds(context: &Context, cond: &Cond) -> Result<bool, Reason> {
             value,
         } => {
             let entity = expr::resolve_entity(context, who)?;
-            let current = state.meter_value(context.canon, &entity, key)?;
+            let current = state.entity(&entity).meter_value(context.canon, key)?;
             let right = expr::eval(context, value)?;
             Ok(op.holds(current, right))
         }
@@ -90,19 +90,23 @@ fn holds(context: &Context, cond: &Cond) -> Result<bool, Reason> {
             who: Who::Exit(exit),
             key,
             is,
-        } => Ok((key == OPEN && state.places.is_exit_open(exit)) == *is),
+        } => Ok((key == OPEN && state.places().is_exit_open(exit)) == *is),
         Cond::Flag { who, key, is } => {
             let entity = expr::resolve_entity(context, who)?;
-            Ok(state.has_flag(&entity, key) == *is)
+            Ok(state.entity(&entity).has_flag(key) == *is)
         }
         Cond::At { who, place } => {
             let actor = expr::resolve_actor(context, who)?;
-            Ok(state.actors.place.get(actor).is_some_and(|at| at == place))
+            Ok(state
+                .actors()
+                .place
+                .get(actor)
+                .is_some_and(|at| at == place))
         }
         Cond::Knows { who, fact } => {
             let actor = expr::resolve_actor(context, who)?;
             Ok(state
-                .actors
+                .actors()
                 .known_facts
                 .get(actor)
                 .is_some_and(|facts| facts.iter().any(|id| id == fact)))
@@ -113,7 +117,7 @@ fn holds(context: &Context, cond: &Cond) -> Result<bool, Reason> {
             Ok(is_in_window(*from, *to, tick))
         }
         Cond::Players { op, value } => Ok(op.holds(i64::from(context.presence.players), *value)),
-        Cond::NoteExists(id) => Ok(state.notes.iter().any(|note| &note.id == id)),
+        Cond::NoteExists(id) => Ok(state.notes().iter().any(|note| &note.id == id)),
         Cond::All(inner) => {
             for cond in inner {
                 if !holds(context, cond)? {

@@ -5,11 +5,11 @@ use serde_saphyr::SerializerOptions;
 
 use crate::canon::Canon;
 use crate::diagnostic::{check_tag, error, locate_nth, parse_file, Diagnostic};
-use crate::state::id::{EntityId, EntityRef};
+use crate::state::id::{ActorId, EntityId};
 use crate::state::meter::Meter;
 use crate::state::modifier;
-use crate::state::{sort_unique, State};
-use crate::store::records::{AddedMeter, DroppedMeter};
+use crate::state::{nested_map, sort_unique, State};
+use crate::store::records::{AddedMeter, DroppedMeter, MigrateRecord};
 use crate::Reason;
 
 pub(crate) fn emit_options() -> SerializerOptions {
@@ -51,7 +51,8 @@ pub fn emit(state: &State) -> Result<String, Reason> {
     let mut canonical = state.clone();
     canonical.schema = crate::diagnostic::SAVE_SCHEMA.to_string();
     canonical.rules_rev = super::RULES_REV;
-    normalize(&mut canonical);
+    // A clone holds no round, so accepting it only puts it in file order.
+    canonical.accept();
     let text = serde_saphyr::to_string_with_options(&canonical, emit_options())
         .map_err(|_| Reason::Schema)?;
     Ok(one_trailing_lf(text))
@@ -79,54 +80,65 @@ fn one_trailing_lf(mut text: String) -> String {
     text
 }
 
-pub fn normalize(state: &mut State) {
-    state.notes.sort_by(|a, b| a.id.cmp(&b.id));
-    for note in &mut state.notes {
-        sort_unique(&mut note.to);
-        sort_unique(&mut note.fact_ids);
-    }
-    for known in state.actors.known_facts.values_mut() {
-        sort_unique(known);
-    }
-}
-
 /// Meters the pack gives an entity that the entity lacks, each at its `start`.
 pub(crate) fn missing_meters(canon: &Canon, state: &State) -> Vec<AddedMeter> {
     let mut added = Vec::new();
     for (id, def) in &canon.meters {
-        let lacking = match &def.carrier {
-            Some(entity) if !def.is_actor_meter() => {
-                !state.meters_of(entity).contains_key(id.as_str())
-            }
-            _ => state.actors.kind.keys().any(|actor| {
-                def.is_on(EntityRef::Actor(actor))
-                    && !state
-                        .actors
-                        .meters
-                        .contains_key(&(actor.clone(), id.clone()))
-            }),
-        };
-        if lacking {
+        if !find_lacking_carriers(state, &def.carrier, id).is_empty() {
             added.push(AddedMeter::new(id, def));
         }
     }
     for (id, def) in &canon.world_meters {
-        if !state.world.meters.contains_key(id) {
+        if !state.world().meters.contains_key(id) {
             added.push(AddedMeter::new(id, def));
         }
     }
     added
 }
 
+/// The entities `carrier` names that lack meter `id`. Every-actor and one-actor carriers are read
+/// off the save's actors, so a cast member the save does not list names nobody; any other carrier
+/// is itself. The one kind match migrate keeps of its own.
+pub(crate) fn find_lacking_carriers(
+    state: &State,
+    carrier: &Option<EntityId>,
+    id: &str,
+) -> Vec<EntityId> {
+    let held = match carrier {
+        None | Some(EntityId::Actor(_)) => {
+            let actors = state.actors();
+            let named =
+                |actor: &&ActorId| !matches!(carrier, Some(EntityId::Actor(one)) if one != *actor);
+            let lacks = |actor: &&ActorId| actors.meter(actor, id).is_none();
+            let lacking = actors.kind.keys().filter(named).filter(lacks).cloned();
+            return lacking.map(EntityId::Actor).collect();
+        }
+        Some(EntityId::Place(place)) => nested_map::get(&state.places().meters, place, id),
+        Some(EntityId::Story(story)) => nested_map::get(&state.stories().meters, story, id),
+        Some(EntityId::World) => state.world().meters.get(id),
+    };
+    held.is_none()
+        .then(|| carrier.clone())
+        .flatten()
+        .into_iter()
+        .collect()
+}
+
 /// Meters an actor, place, story or the world lists that the pack no longer gives it.
 pub(crate) fn stale_meters(canon: &Canon, state: &State) -> Vec<DroppedMeter> {
-    let actors = state.actors.meters.keys();
-    let places = state.places.meters.keys();
-    let stories = state.stories.meters.keys();
+    let actors = state.actors().meters.keys();
+    let places = state.places().meters.keys();
+    let stories = state.stories().meters.keys();
     let carriers = (actors.map(|(id, key)| (EntityId::Actor(id.clone()), key)))
         .chain(places.map(|(id, key)| (EntityId::Place(id.clone()), key)))
         .chain(stories.map(|(id, key)| (EntityId::Story(id.clone()), key)))
-        .chain(state.world.meters.keys().map(|key| (EntityId::World, key)));
+        .chain(
+            state
+                .world()
+                .meters
+                .keys()
+                .map(|key| (EntityId::World, key)),
+        );
     carriers
         .filter(|(carrier, id)| canon.meter_def(carrier.as_ref(), id).is_none())
         .map(|(carrier, id)| DroppedMeter {
@@ -139,7 +151,7 @@ pub(crate) fn stale_meters(canon: &Canon, state: &State) -> Vec<DroppedMeter> {
 /// Modifiers some actor holds that the pack no longer defines, or now defines on another meter.
 pub(crate) fn stale_modifiers(canon: &Canon, state: &State) -> Vec<String> {
     let mut stale: Vec<String> = state
-        .actors
+        .actors()
         .modifiers
         .iter()
         .filter(|((_, id), live)| !modifier::is_defined(&canon.modifiers, id, live))
@@ -149,72 +161,37 @@ pub(crate) fn stale_modifiers(canon: &Canon, state: &State) -> Vec<String> {
     stale
 }
 
-/// Migrate a save: give each entity the `meters` it lacks, at their `start`, drop the
-/// `dropped_modifiers` from every actor and each `dropped_meters` from its entity, then stamp
-/// `pack_rev` and `state_rev`. Live migrate and replay both call this. It does not touch the disk.
-pub fn migrate(
-    mut state: State,
-    pack_rev: &str,
-    state_rev: u64,
-    meters: &[AddedMeter],
-    dropped_modifiers: &[String],
-    dropped_meters: &[DroppedMeter],
-) -> State {
-    for meter in meters {
+/// Migrate a save as `record` says, through the writers a round uses: give each entity the
+/// meters it lacks, at their `start`, take the dropped modifiers off every actor and each dropped
+/// meter off its entity, then stamp the record's `pack_rev_after` and `state_rev_after`. A meter
+/// an entity holds keeps its value. Live migrate and replay both call this. It does not touch the
+/// disk, and it reads no hash or chain from the record.
+pub fn migrate(canon: &Canon, mut state: State, record: &MigrateRecord) -> Result<State, Reason> {
+    for meter in &record.meters {
         let start = Meter {
             base: meter.start,
             offset: 0,
         };
-        let key = meter.id.clone();
-        match &meter.carrier {
-            Some(EntityId::World) => {
-                state.world.meters.entry(key).or_insert(start);
-            }
-            Some(EntityId::Place(id)) => {
-                state
-                    .places
-                    .meters
-                    .entry((id.clone(), key))
-                    .or_insert(start);
-            }
-            Some(EntityId::Story(id)) => {
-                state
-                    .stories
-                    .meters
-                    .entry((id.clone(), key))
-                    .or_insert(start);
-            }
-            carrier => {
-                for id in state.actors.kind.keys() {
-                    if carrier
-                        .as_ref()
-                        .is_none_or(|carrier| *carrier == EntityId::Actor(id.clone()))
-                    {
-                        let live = state.actors.meters.entry((id.clone(), key.clone()));
-                        live.or_insert(start.clone());
-                    }
-                }
-            }
+        for entity in find_lacking_carriers(&state, &meter.carrier, &meter.id) {
+            let mut carrier = state.entity_mut(&entity);
+            carrier.set_meter(canon, &meter.id, Some(start.clone()))?;
         }
     }
-    let dropped = |carrier: EntityId, id: &String| {
-        dropped_meters.contains(&DroppedMeter {
-            id: id.clone(),
-            carrier,
-        })
-    };
-    state
-        .actors
-        .modifiers
-        .retain(|(_, id), _| !dropped_modifiers.contains(id));
-    (state.actors.meters).retain(|(on, id), _| !dropped(EntityId::Actor(on.clone()), id));
-    (state.places.meters).retain(|(on, id), _| !dropped(EntityId::Place(on.clone()), id));
-    (state.stories.meters).retain(|(on, id), _| !dropped(EntityId::Story(on.clone()), id));
-    (state.world.meters).retain(|id, _| !dropped(EntityId::World, id));
-    state.pack_rev = pack_rev.to_string();
-    state.state_rev = state_rev;
-    normalize(&mut state);
-    state
+    let modifiers = state.actors().modifiers.keys();
+    let dropped = |(_, id): &&(ActorId, String)| record.dropped_modifiers.contains(id);
+    let held: Vec<(ActorId, String)> = (modifiers.filter(dropped)).cloned().collect();
+    for (actor, id) in &held {
+        state.actors_mut().set_modifier(canon, actor, id, None)?;
+    }
+    for meter in &record.dropped_meters {
+        state
+            .entity_mut(&meter.carrier)
+            .set_meter(canon, &meter.id, None)?;
+    }
+    state.pack_rev = record.pack_rev_after.clone();
+    state.state_rev = record.state_rev_after;
+    state.accept();
+    Ok(state)
 }
 
 #[cfg(test)]

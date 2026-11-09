@@ -16,7 +16,7 @@ fn the_player_says(world: &mut World, text: String) {
 
 #[when(expr = "the player says {string} to the place")]
 fn the_player_says_to_the_place(world: &mut World, text: String) {
-    let place = state_of(table::pack(world)).actors.place["pc_rowan"].clone();
+    let place = state_of(table::pack(world)).actors().place["pc_rowan"].clone();
     let args = serde_json::json!({ "address": "place", "place": place, "text": text });
     say_as_rowan(world, args);
 }

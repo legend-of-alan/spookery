@@ -1,7 +1,6 @@
 //! Exits, admission, and the journeys that follow them.
 
 use crate::canon::{Canon, Exit, PlaceDef};
-use crate::draft::Draft;
 use crate::intent::{Intent, Source, Target, Viewer};
 use crate::round::log::RoundLog;
 use crate::rules::cond;
@@ -13,7 +12,7 @@ use crate::rules::lines::place_name;
 use crate::rules::rule::{EffectTemplate, LocationTo, Rule};
 use crate::rules::visibility::can_see_fact;
 use crate::state::id::ActorId;
-use crate::state::{PendingAction, State};
+use crate::state::{PendingAction, Presence, State};
 use crate::Reason;
 use spookery_protocol::ExitView;
 
@@ -27,7 +26,7 @@ pub(crate) fn find_exit<'a>(canon: &'a Canon, from: &str, name: &str) -> Option<
 /// The exit this rule travels by: the one its first `location via` that is not a teleport
 /// names. `None` when the rule does not travel.
 pub(crate) fn exit_of<'a>(
-    context: &Context<'a>,
+    context: &Context<'a, '_>,
     rule: &Rule,
 ) -> Result<Option<&'a Exit>, gate::Refusal> {
     let via = rule.top_templates().find_map(|effect| match effect {
@@ -48,7 +47,10 @@ pub(crate) fn exit_of<'a>(
 /// The exit `via` names from the actor's place, or `NO_EXIT`. `via: target` is the intent's
 /// exit target, and `None` when the target is not an exit; any other word is an exit name.
 /// A walker on an exit is still on it when the walk finishes, so it is that exit.
-pub(crate) fn exit_via<'a>(context: &Context<'a>, via: &str) -> Result<Option<&'a Exit>, Reason> {
+pub(crate) fn exit_via<'a>(
+    context: &Context<'a, '_>,
+    via: &str,
+) -> Result<Option<&'a Exit>, Reason> {
     let name = match (via, &context.intent.target) {
         ("target", Target::Exit(name)) => name.as_str(),
         ("target", _) => return Ok(None),
@@ -57,7 +59,7 @@ pub(crate) fn exit_via<'a>(context: &Context<'a>, via: &str) -> Result<Option<&'
     let from = context
         .intent
         .actor_id()
-        .and_then(|id| context.state.actors.place.get(id))
+        .and_then(|id| context.state.actors().place.get(id))
         .map_or("", String::as_str);
     if let Some(exit) = exit_stood_on(context.canon, from) {
         return Ok(Some(exit));
@@ -121,14 +123,18 @@ fn is_revealed(canon: &Canon, state: &State, actor_id: &ActorId, exit: &Exit) ->
 
 /// A door is locked until it opens. An exit with no `if` is no door, so it is always open.
 fn is_locked(state: &State, exit: &Exit) -> bool {
-    !exit.if_.is_empty() && !state.places.is_exit_open(&exit.id())
+    !exit.if_.is_empty() && !state.places().is_exit_open(&exit.id())
 }
 
 /// Open each locked door whose `if` some actor in its place meets, with an `exit_open` effect
 /// written as no one, under the intent `door:<place>.<exit>`. Runs at the end of each round,
 /// after triggers.
-pub(crate) fn open_doors(draft: &mut Draft, log: &mut RoundLog) {
-    let (canon, state) = (draft.canon(), draft.state());
+pub(crate) fn open_doors(
+    canon: &Canon,
+    state: &mut State,
+    presence: &Presence,
+    log: &mut RoundLog,
+) {
     let mut opens = Vec::new();
     for (place, def) in &canon.places {
         let here: Vec<Viewer> = state
@@ -140,15 +146,7 @@ pub(crate) fn open_doors(draft: &mut Draft, log: &mut RoundLog) {
             let target = Target::Exit(exit.name.clone());
             let met = here.iter().any(|viewer| {
                 let target = target.clone();
-                cond::if_holds(
-                    canon,
-                    state,
-                    draft.presence,
-                    viewer,
-                    "travel",
-                    target,
-                    &exit.if_,
-                )
+                cond::if_holds(canon, state, presence, viewer, "travel", target, &exit.if_)
             });
             if !met {
                 continue;
@@ -163,11 +161,11 @@ pub(crate) fn open_doors(draft: &mut Draft, log: &mut RoundLog) {
         }
     }
     for (effect, intent) in opens {
-        let point = draft.savepoint();
-        match effect.clone().apply(draft, &intent) {
+        let point = state.savepoint();
+        match effect.clone().apply(canon, state, presence, &intent) {
             Ok(()) => log.effects.push(effect),
             Err(code) => {
-                draft.rollback(point);
+                state.rollback(point);
                 log.refused.push(gate::Refusal::new(&intent, code));
             }
         }
@@ -202,29 +200,26 @@ pub(crate) fn exit_view(canon: &Canon, state: &State, exit: &Exit) -> ExitView {
 
 /// Every actor notes the exits they see where they stand, for `map`. Runs once at the end
 /// of each round, after triggers, so a reveal is seen in the round it lands.
-pub(crate) fn note_exits(draft: &mut Draft) {
-    let canon = draft.canon();
-    let state = draft.state();
+pub(crate) fn note_exits(canon: &Canon, state: &mut State) -> Result<(), Reason> {
     // A walker on an exit is in no place, so there is nothing to note.
-    let seen: Vec<((ActorId, String), Vec<String>)> = state
-        .actors
-        .place
-        .iter()
+    let seen: Vec<(ActorId, String, Vec<String>)> = (state.actors().place.iter())
         .filter(|(_, place)| canon.places.contains_key(place.as_str()))
         .map(|(id, place)| {
             let exits = visible_exits(canon, state, id);
-            (
-                (id.clone(), place.clone()),
-                exits.into_iter().map(|exit| exit.name).collect(),
-            )
+            let names = exits.into_iter().map(|exit| exit.name).collect();
+            (id.clone(), place.clone(), names)
         })
         .collect();
-    draft.state_mut().actors.visited.extend(seen);
+    let mut actors = state.actors_mut();
+    for (actor, place, exits) in seen {
+        actors.note_exits(&actor, &place, exits)?;
+    }
+    Ok(())
 }
 
 /// The exits of this actor's place that they are allowed to see.
 pub(crate) fn visible_exits(canon: &Canon, state: &State, actor_id: &ActorId) -> Vec<ExitView> {
-    let place = state.actors.place.get(actor_id);
+    let place = state.actors().place.get(actor_id);
     match place.and_then(|place| canon.places.get(place.as_str())) {
         Some(place) => exits_at(canon, state, actor_id, place),
         None => Vec::new(),
@@ -248,11 +243,8 @@ pub(crate) struct DueAction {
 }
 
 /// Clear every action that finishes at or before `end`, earliest first.
-pub(crate) fn take_due_actions(draft: &mut Draft, end: u64) -> Result<Vec<DueAction>, Reason> {
-    let mut due_keys: Vec<(u64, ActorId)> = draft
-        .state()
-        .actors
-        .acts
+pub(crate) fn take_due_actions(state: &mut State, end: u64) -> Result<Vec<DueAction>, Reason> {
+    let mut due_keys: Vec<(u64, ActorId)> = (state.actors().acts)
         .iter()
         .filter_map(|(id, act)| {
             let until = act.busy_until?;
@@ -265,7 +257,7 @@ pub(crate) fn take_due_actions(draft: &mut Draft, end: u64) -> Result<Vec<DueAct
     due_keys.sort();
     let mut due_actions = Vec::new();
     for (until, actor_id) in due_keys {
-        let Some(pending) = draft.take_pending(&actor_id)? else {
+        let Some(pending) = state.actors_mut().take_pending(&actor_id)? else {
             continue;
         };
         due_actions.push(DueAction {

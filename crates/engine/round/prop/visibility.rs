@@ -44,7 +44,7 @@ struct Scene {
 #[test]
 fn no_hidden_fact_reaches_a_player() {
     let world = World::open(&docks()).expect("docks pack opens");
-    let actors: Vec<ActorId> = world.state().actors.kind.keys().cloned().collect();
+    let actors: Vec<ActorId> = world.state().actors().kind.keys().cloned().collect();
     let places: Vec<PlaceId> = world.canon().places.keys().cloned().collect();
     let facts: Vec<String> = world.canon().facts.keys().cloned().collect();
     assert!(
@@ -119,13 +119,20 @@ fn apply_scene(
             fact.hidden = *hidden;
         }
     }
+    // No writer forgets a fact or takes a note back, so the scene starts from the save as the
+    // file holds it with neither.
+    let mut save = serde_json::to_value(&*state).expect("the save serializes");
+    save["actors"]["known_facts"] = serde_json::json!({});
+    save["notes"] = serde_json::json!([]);
+    *state = serde_json::from_value(save).expect("the save deserializes");
     for (actor_id, place_index) in actors.iter().zip(&scene.place_of) {
-        if let Some(place) = state.actors.place.get_mut(actor_id) {
-            *place = places[place_index % places.len()].to_string();
+        if state.actors().place.contains_key(actor_id) {
+            let place = places[place_index % places.len()].as_str();
+            state.actors_mut().set_place(actor_id, place).unwrap();
         }
     }
     for (actor_id, known) in actors.iter().zip(&scene.known) {
-        if !state.actors.kind.contains_key(actor_id) {
+        if !state.actors().kind.contains_key(actor_id) {
             continue;
         }
         let mut known_facts: Vec<String> = known
@@ -133,16 +140,8 @@ fn apply_scene(
             .map(|index| facts[index % facts.len()].clone())
             .collect();
         sort_unique(&mut known_facts);
-        if known_facts.is_empty() {
-            state.actors.known_facts.remove(actor_id);
-        } else {
-            state
-                .actors
-                .known_facts
-                .insert(actor_id.clone(), known_facts);
-        }
+        state.actors_mut().learn(actor_id, &known_facts).unwrap();
     }
-    state.notes.clear();
     for (index, note) in scene.notes.iter().enumerate() {
         let mut fact_ids: Vec<String> = note
             .fact_ids
@@ -156,22 +155,25 @@ fn apply_scene(
             .map(|actor| actors[actor % actors.len()].clone())
             .collect();
         sort_unique(&mut to);
-        state.notes.push(Note {
-            id: format!("note-{index}"),
-            to,
-            place: note.place.map(|place| places[place % places.len()].clone()),
-            fact_ids,
-            text: "The hour is late.".to_string(),
-        });
+        state
+            .notes_mut()
+            .leave(Note {
+                id: format!("note-{index}"),
+                to,
+                place: note.place.map(|place| places[place % places.len()].clone()),
+                fact_ids,
+                text: "The hour is late.".to_string(),
+            })
+            .unwrap();
     }
 }
 
 fn assert_hidden_stays_hidden(canon: &Canon, state: &State) -> Result<(), TestCaseError> {
-    for (pc, kind) in &state.actors.kind {
+    for (pc, kind) in &state.actors().kind {
         if *kind != ActorKind::Pc {
             continue;
         }
-        let known_facts = state.actors.known_facts.get(pc);
+        let known_facts = state.actors().known_facts.get(pc);
         let view = perceive_as(
             canon,
             state,

@@ -32,7 +32,7 @@ pub(crate) fn run(
     if presence.players == 0 {
         return delivered;
     }
-    for id in state.actors.kind.keys().cloned() {
+    for id in state.actors().kind.keys().cloned() {
         let delivery = visibility::show_to(
             canon,
             state,

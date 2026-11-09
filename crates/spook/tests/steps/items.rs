@@ -5,7 +5,7 @@ use std::path::Path;
 use cucumber::{given, then, when};
 use serde_json::Value;
 use spookery_engine::testing::{faces, RollKey};
-use spookery_engine::State;
+use spookery_engine::{EntityId, State};
 
 use super::common::split_line;
 use super::table;
@@ -13,21 +13,32 @@ use crate::support;
 use crate::World;
 
 fn keep_briar_busy(now: &mut State) {
-    if let Some(briar) = now.actors.acts.get_mut("npc_briar") {
-        briar.busy_until = Some(u64::MAX);
+    if let Some(briar) = now.actors().acts.get("npc_briar") {
+        let pending = briar.pending.clone();
+        let mut actors = now.actors_mut();
+        actors
+            .set_busy(&"npc_briar".into(), u64::MAX, pending)
+            .unwrap();
     }
+}
+
+/// Give `actor` one more of `item`.
+fn give(now: &mut State, actor: &str, item: &str) {
+    now.actors_mut()
+        .shift_item(&actor.into(), item, 1, None)
+        .unwrap();
 }
 
 fn hp(pack: &Path, actor: &str) -> i64 {
     let now = support::state_of(pack);
     let canon = spookery_engine::load_canon(pack).unwrap();
     let entity = spookery_engine::EntityId::Actor(actor.into());
-    now.meter_value(&canon, &entity, "hp").unwrap()
+    now.entity(&entity).meter_value(&canon, "hp").unwrap()
 }
 
 fn count(pack: &Path, actor: &str, item: &str) -> u32 {
     support::state_of(pack)
-        .actors
+        .actors()
         .items
         .get(&(actor.into(), item.to_string()))
         .copied()
@@ -35,7 +46,7 @@ fn count(pack: &Path, actor: &str, item: &str) -> u32 {
 }
 
 fn wielded(pack: &Path, actor: &str) -> Option<String> {
-    support::state_of(pack).actors.wielded.get(actor).cloned()
+    support::state_of(pack).actors().wielded.get(actor).cloned()
 }
 
 /// One line at a table with no GM: queue it, then commit its round.
@@ -130,16 +141,19 @@ fn add_attack_rules(pack: &Path, attack: &str) {
 }
 
 fn hold_dagger(now: &mut State, wield: bool) {
-    *now.actors.place.get_mut("pc_lark").unwrap() = "gate_yard".to_string();
-    *now.actors.place.get_mut("pc_nell").unwrap() = "gate_yard".to_string();
+    now.actors_mut()
+        .set_place(&"pc_lark".into(), "gate_yard")
+        .unwrap();
+    now.actors_mut()
+        .set_place(&"pc_nell".into(), "gate_yard")
+        .unwrap();
     keep_briar_busy(now);
-    now.actors
-        .items
-        .insert(("pc_lark".into(), "poisoned_dagger".to_string()), 1);
+    give(now, "pc_lark", "poisoned_dagger");
     if wield {
-        now.actors
-            .wielded
-            .insert("pc_lark".into(), "poisoned_dagger".to_string());
+        let mut actors = now.actors_mut();
+        actors
+            .set_wielded(&"pc_lark".into(), Some("poisoned_dagger"))
+            .unwrap();
     }
 }
 
@@ -151,17 +165,13 @@ fn nell_holds_a_tonic(world: &mut World) {
     let next = text.replace("base_cap: 12\n    max: 16", "base_cap: 10\n    max: 10");
     assert_ne!(text, next, "hp meter was not narrowed");
     fs::write(&meters, next).unwrap();
-    support::edit_save(&pack, |now| {
-        *now.actors.place.get_mut("pc_nell").unwrap() = "gate_yard".to_string();
+    support::edit_save_with(&pack, |now, canon| {
+        now.actors_mut()
+            .set_place(&"pc_nell".into(), "gate_yard")
+            .unwrap();
         keep_briar_busy(now);
-        now.actors
-            .items
-            .insert(("pc_nell".into(), "tonic".to_string()), 1);
-        now.actors
-            .meters
-            .get_mut(&("pc_nell".into(), "hp".to_string()))
-            .unwrap()
-            .base = 3;
+        give(now, "pc_nell", "tonic");
+        support::edit_meter(now, canon, "pc_nell", "hp", |hp| hp.base = 3);
     });
     world.pack = Some(pack);
 }
@@ -202,10 +212,9 @@ fn again_is_refused(world: &mut World, line: String, code: String) {
 #[given(expr = "docks_shop has 3 lamp_oil")]
 fn docks_shop_has_3_lamp_oil(world: &mut World) {
     let pack = support::copy_pack("oneshot-docks", "take");
-    support::edit_save(&pack, |now| {
-        now.places
-            .items
-            .insert(("docks_shop".into(), "lamp_oil".to_string()), 3);
+    support::edit_save_with(&pack, |now, canon| {
+        let shop = EntityId::Place("docks_shop".into());
+        support::put_items(now, canon, &shop, "lamp_oil", 3);
     });
     world.pack = Some(pack);
 }
@@ -222,14 +231,14 @@ fn the_oil_moved(world: &mut World) {
     let pack = world.pack.as_ref().unwrap();
     let now = support::state_of(pack);
     assert_eq!(
-        now.places
+        now.places()
             .items
             .get(&("docks_shop".into(), "lamp_oil".to_string()))
             .copied(),
         Some(2)
     );
     assert_eq!(
-        now.actors
+        now.actors()
             .items
             .get(&("pc_rowan".into(), "lamp_oil".to_string()))
             .copied()
@@ -274,8 +283,7 @@ fn lark_holds_a_latch_at_a_table(world: &mut World) {
     let pack = support::copy_pack("sample-d20", "use-latch");
     support::edit_save(&pack, |now| {
         keep_briar_busy(now);
-        let latch = ("pc_lark".into(), "latch".to_string());
-        now.actors.items.insert(latch, 1);
+        give(now, "pc_lark", "latch");
     });
     table::listen(world, &pack);
     table::seat_actor(world, &pack, "pc_lark");
@@ -314,7 +322,7 @@ fn no_round_was_spent(world: &mut World) {
     );
     assert!(spookery_engine::testing::journal::list_round_keys(pack).is_empty());
     assert_eq!(
-        now.actors
+        now.actors()
             .items
             .get(&("pc_lark".into(), "latch".to_string()))
             .copied()
@@ -334,9 +342,9 @@ fn the_line_is_refused_and_quiet(world: &mut World, code: String) {
 #[given(expr = "docks_shop has no lamp_oil")]
 fn the_shop_has_no_oil(world: &mut World) {
     let pack = support::copy_pack("oneshot-docks", "take-none");
-    support::edit_save(&pack, |now| {
-        let oil = ("docks_shop".into(), "lamp_oil".to_string());
-        now.places.items.remove(&oil);
+    support::edit_save_with(&pack, |now, canon| {
+        let shop = EntityId::Place("docks_shop".into());
+        support::put_items(now, canon, &shop, "lamp_oil", 0);
     });
     world.pack = Some(pack);
 }
@@ -363,7 +371,7 @@ fn the_drop_was_missing(world: &mut World) {
     assert_round_rejects_missing_item(pack);
     let now = support::state_of(pack);
     assert_eq!(
-        now.actors
+        now.actors()
             .items
             .get(&("pc_rowan".into(), "lamp_oil".to_string()))
             .copied()
@@ -371,7 +379,7 @@ fn the_drop_was_missing(world: &mut World) {
         0
     );
     assert_eq!(
-        now.places
+        now.places()
             .items
             .get(&("docks_shop".into(), "lamp_oil".to_string()))
             .copied(),
@@ -382,11 +390,7 @@ fn the_drop_was_missing(world: &mut World) {
 #[given(expr = "save.yaml lists an item with no definition")]
 fn the_save_lists_an_unknown_item(world: &mut World) {
     let pack = support::copy_pack("oneshot-docks", "unknown-item");
-    support::edit_save(&pack, |now| {
-        now.actors
-            .items
-            .insert(("pc_rowan".into(), "ghost".to_string()), 1);
-    });
+    support::edit_save(&pack, |now| give(now, "pc_rowan", "ghost"));
     world.pack = Some(pack);
 }
 
@@ -407,11 +411,11 @@ fn lark_holds_a_dagger(world: &mut World) {
     let pack = support::copy_pack("sample-d20", "wield");
     write_dagger(&pack, "");
     support::edit_save(&pack, |now| {
-        *now.actors.place.get_mut("pc_lark").unwrap() = "gate_yard".to_string();
+        now.actors_mut()
+            .set_place(&"pc_lark".into(), "gate_yard")
+            .unwrap();
         keep_briar_busy(now);
-        now.actors
-            .items
-            .insert(("pc_lark".into(), "poisoned_dagger".to_string()), 1);
+        give(now, "pc_lark", "poisoned_dagger");
     });
     world.pack = Some(pack);
 }
@@ -526,9 +530,9 @@ fn the_slot_clears_in_the_round(world: &mut World) {
     let pack = world.pack.as_ref().unwrap();
     let now = support::state_of(pack);
     assert_eq!(now.round_index, 1);
-    assert_eq!(now.actors.wielded.get("pc_lark"), None);
+    assert_eq!(now.actors().wielded.get("pc_lark"), None);
     assert_eq!(
-        now.actors
+        now.actors()
             .items
             .get(&("pc_lark".into(), "poisoned_dagger".to_string()))
             .copied()
@@ -536,7 +540,7 @@ fn the_slot_clears_in_the_round(world: &mut World) {
         0
     );
     assert_eq!(
-        now.places
+        now.places()
             .items
             .get(&("gate_yard".into(), "poisoned_dagger".to_string()))
             .copied(),
@@ -625,20 +629,11 @@ fn nell_resists_on_a_seeded_roll(world: &mut World) {
     let mut verbs = fs::read_to_string(pack.join("rules/verbs.yaml")).unwrap();
     verbs.push_str(BARE_HANDS_ATTACK);
     fs::write(pack.join("rules/verbs.yaml"), verbs).unwrap();
-    support::edit_save(&pack, |now| {
+    support::edit_save_with(&pack, |now, canon| {
         hold_dagger(now, true);
-        now.actors
-            .meters
-            .get_mut(&("pc_nell".into(), "hp".to_string()))
-            .unwrap()
-            .base = 10;
-        now.actors.meters.insert(
-            ("pc_nell".into(), "constitution".to_string()),
-            spookery_engine::Meter {
-                base: stat,
-                offset: 0,
-            },
-        );
+        support::edit_meter(now, canon, "pc_nell", "hp", |hp| hp.base = 10);
+        let nell = EntityId::Actor("pc_nell".into());
+        support::put_meter(now, canon, &nell, "constitution", stat);
     });
     spookery_engine::migrate_pack(&pack).unwrap_or_else(|err| panic!("migrate: {err}"));
     world.pack = Some(pack);
@@ -674,7 +669,7 @@ fn the_poison_fades(world: &mut World, text: String) {
     let pack = world.pack.as_ref().unwrap();
     assert_eq!(hp(pack, "pc_nell"), 7);
     let poisoned = ("pc_nell".into(), "poisoned".to_string());
-    assert!(!support::state_of(pack).actors.flags.contains(&poisoned));
+    assert!(!support::state_of(pack).actors().flags.contains(&poisoned));
     let round: Value = serde_json::from_str(read_first_round_line(pack).trim()).unwrap();
     assert!(round["refused"].as_array().unwrap().is_empty(), "{round}");
     let effects = round["effects"].to_string();

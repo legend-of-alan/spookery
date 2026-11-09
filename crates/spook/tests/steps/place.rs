@@ -11,7 +11,9 @@ fn rowan_starts_in_docks_street(world: &mut World) {
     let pack = crate::support::copy_docks("arrive");
     let path = pack.join("state/save.yaml");
     let mut now = parse_save(&fs::read_to_string(&path).unwrap()).unwrap();
-    *now.actors.place.get_mut("pc_rowan").unwrap() = "docks_street".to_string();
+    now.actors_mut()
+        .set_place(&"pc_rowan".into(), "docks_street")
+        .unwrap();
     fs::write(&path, emit_save(&now).unwrap()).unwrap();
     world.pack = Some(pack);
 }

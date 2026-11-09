@@ -5,9 +5,11 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
-use super::id::{ExitId, PlaceId};
-use super::meter::Meter;
-use super::nested_map;
+use super::id::{EntityRef, ExitId, PlaceId};
+use super::meter::{self, Meter};
+use super::{change, flag, item, nested_map, Writer};
+use crate::canon::Canon;
+use crate::Reason;
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
@@ -25,8 +27,99 @@ pub struct PlaceComponents {
 }
 
 impl PlaceComponents {
+    /// The current value of meter `key` on `place`, or `UNKNOWN_ID` when it does not carry it.
+    pub fn meter_value(&self, canon: &Canon, place: &PlaceId, key: &str) -> Result<i64, Reason> {
+        let def = canon.meter_def(EntityRef::Place(place), key);
+        meter::read(def, nested_map::get(&self.meters, place, key))
+    }
+
+    /// How many of `item` lie in `place`.
+    pub fn item_count(&self, place: &PlaceId, item: &str) -> u32 {
+        nested_map::get(&self.items, place, item)
+            .copied()
+            .unwrap_or(0)
+    }
+
+    pub fn has_flag(&self, place: &PlaceId, key: &str) -> bool {
+        nested_map::contains(&self.flags, place, key)
+    }
+
     /// Whether the door of `exit` is open.
     pub fn is_exit_open(&self, exit: &ExitId) -> bool {
-        (self.open_exits).contains(&(exit.place.clone(), exit.exit.clone()))
+        nested_map::contains(&self.open_exits, &exit.place, &exit.exit)
+    }
+}
+
+impl Writer<'_, PlaceComponents> {
+    /// Move the count of `id` lying in `place` as `item::shift_count` says. A place the pack does
+    /// not define is `UNKNOWN_ID`.
+    pub fn shift_item(
+        &mut self,
+        canon: &Canon,
+        place: &PlaceId,
+        id: &str,
+        delta: i64,
+        max: Option<i64>,
+    ) -> Result<(), Reason> {
+        let Writer { part, transaction } = self;
+        canon.places.get(place).ok_or(Reason::UnknownId)?;
+        let entry = (place.clone(), id.to_string());
+        let key = change::Key::PlaceItem(place.to_string(), id.to_string());
+        item::shift(&mut part.items, transaction, entry, delta, max, key)
+    }
+
+    /// Move `place`'s meter `key` by `delta` inside its bounds.
+    pub fn shift_meter(
+        &mut self,
+        canon: &Canon,
+        place: &PlaceId,
+        key: &str,
+        delta: i64,
+    ) -> Result<(), Reason> {
+        let Writer { part, transaction } = self;
+        let def = canon
+            .meter_def(EntityRef::Place(place), key)
+            .ok_or(Reason::UnknownId)?;
+        let held = nested_map::get_mut(&mut part.meters, place, key).ok_or(Reason::UnknownId)?;
+        let watched = change::Key::PlaceMeter(place.to_string(), key.to_string());
+        meter::shift(held, transaction, def, Ok(0), delta, watched)
+    }
+
+    /// Give `place` meter `key` as `meter` says, `None` taking it off, outside a round's rules.
+    pub fn set_meter(
+        &mut self,
+        canon: &Canon,
+        place: &PlaceId,
+        key: &str,
+        meter: Option<Meter>,
+    ) -> Result<(), Reason> {
+        let Writer { part, transaction } = self;
+        let def = canon.meter_def(EntityRef::Place(place), key);
+        let entry = (place.clone(), key.to_string());
+        let watched = change::Key::PlaceMeter(place.to_string(), key.to_string());
+        meter::set(
+            &mut part.meters,
+            transaction,
+            entry,
+            meter,
+            def,
+            Ok(0),
+            watched,
+        )
+    }
+
+    pub fn set_flag(&mut self, place: &PlaceId, key: &str, on: bool) -> Result<(), Reason> {
+        let Writer { part, transaction } = self;
+        let entry = (place.clone(), key.to_string());
+        let watched = change::Key::PlaceFlag(place.to_string(), key.to_string());
+        flag::set(&mut part.flags, transaction, entry, on, watched)
+    }
+
+    /// Open or shut the door of `exit`.
+    pub fn set_exit_open(&mut self, exit: &ExitId, open: bool) -> Result<(), Reason> {
+        let Writer { part, transaction } = self;
+        let entry = (exit.place.clone(), exit.exit.clone());
+        let watched = change::Key::ExitOpen(exit.place.to_string(), exit.exit.clone());
+        flag::set(&mut part.open_exits, transaction, entry, open, watched)
     }
 }

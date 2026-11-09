@@ -3,8 +3,8 @@ use std::path::Path;
 
 use cucumber::{given, then, when};
 use spookery_engine::testing::{self, stamp_pack_rev};
-use spookery_engine::Presence;
 use spookery_engine::World as EngineWorld;
+use spookery_engine::{Meter, Presence};
 
 use crate::{split_line, World};
 
@@ -55,14 +55,15 @@ fn a_round_that_changes_a_hidden_fact(world: &mut World) {
 #[when(expr = "lark's might is raised and the seeded strike succeeds")]
 fn larks_might_is_raised(world: &mut World) {
     let pack = world.pack().to_path_buf();
-    testing::edit_save(&pack, |state| {
-        let might = state
-            .actors
-            .meters
-            .get_mut(&("pc_lark".into(), "might".to_string()))
+    testing::edit_save_with(&pack, |state, canon| {
+        let might = Meter {
+            base: 40,
+            offset: 0,
+        };
+        let mut actors = state.actors_mut();
+        actors
+            .set_meter(canon, &"pc_lark".into(), "might", Some(might))
             .unwrap();
-        might.base = 40;
-        might.offset = 0;
     });
     let mut opened = resume_with_lark(&pack);
     let output = play(&mut opened, "strike npc_briar");
@@ -122,9 +123,11 @@ fn lark_drops_the_tonic(world: &mut World) {
 #[given(expr = "a tonic is on the ground")]
 fn a_tonic_is_on_the_ground(world: &mut World) {
     let pack = world.pack().to_path_buf();
-    testing::edit_save(&pack, |state| {
-        let tonic = ("gate_yard".into(), "tonic".to_string());
-        state.places.items.insert(tonic, 1);
+    testing::edit_save_with(&pack, |state, canon| {
+        let mut places = state.places_mut();
+        places
+            .shift_item(canon, &"gate_yard".into(), "tonic", 1, None)
+            .unwrap();
     });
 }
 
@@ -271,4 +274,35 @@ fn meter_lines(world: &EngineWorld) -> String {
         .map(|meter| format!("{}: {}", meter.id, meter.value))
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+#[when(expr = "lark plays a juggle that gains a tonic and gives it back")]
+fn lark_juggles_a_tonic(world: &mut World) {
+    let pack = world.pack().to_path_buf();
+    let mut verbs = fs::read_to_string(pack.join("rules/verbs.yaml")).unwrap();
+    verbs.push('\n');
+    verbs.push_str(
+        "  - id: juggle\n    when:\n      verb: juggle\n    do:\n      - item:\n          who: pc_lark\n          id: tonic\n          add: 1\n      - item:\n          who: pc_lark\n          id: tonic\n          add: -1\n",
+    );
+    fs::write(pack.join("rules/verbs.yaml"), verbs).unwrap();
+    stamp_pack_rev(&pack);
+    let mut opened = resume_with_lark(&pack);
+    let output = play(&mut opened, "juggle");
+    world.summary_lines = output.changed_keys.clone();
+    world.seen = change_line(&output);
+}
+
+#[then(expr = "the round names no change to lark's tonic")]
+fn no_change_to_the_tonic(world: &mut World) {
+    let named = |item: &String| item.contains("actor_item pc_lark tonic");
+    assert!(
+        !world.summary_lines.iter().any(named),
+        "{:?}",
+        world.summary_lines
+    );
+    assert!(
+        !world.seen.to_lowercase().contains("tonic"),
+        "{}",
+        world.seen
+    );
 }

@@ -7,7 +7,6 @@ use crate::intent::Viewer;
 use crate::rules::habits::list_whose_if_holds;
 use crate::rules::visibility::can_see_fact;
 use crate::state::id::{ActorId, EntityId, PlaceId};
-use crate::state::meter;
 use crate::state::nested_map;
 use crate::state::{Note, Presence, State};
 use crate::world::World;
@@ -54,7 +53,7 @@ pub(crate) fn perceive_budget<L>(
     }
     let (canon, state) = (world.canon(), world.state());
     let (id, kind) = state
-        .actors
+        .actors()
         .kind
         .get_key_value(as_arg)
         .ok_or(Reason::UnknownId)?;
@@ -78,7 +77,7 @@ fn perceive_viewer_budget(
     max_body_chars: usize,
 ) -> Result<View, Reason> {
     let place = state
-        .actors
+        .actors()
         .place
         .get(viewer.actor_id())
         .ok_or(Reason::UnknownId)?
@@ -91,7 +90,7 @@ fn perceive_viewer_budget(
         ids.insert(id.clone());
     }
     for id in state
-        .actors
+        .actors()
         .known_facts
         .get(viewer.actor_id())
         .into_iter()
@@ -130,7 +129,7 @@ fn perceive_viewer_budget(
     unknown_mentions.sort();
 
     let mut notes = Vec::new();
-    for note in &state.notes {
+    for note in state.notes() {
         let here = note.place.as_ref().is_some_and(|at| at == place.as_str());
         let addressed = note.to.iter().any(|id| id == viewer.actor_id());
         if !here && !addressed {
@@ -150,7 +149,7 @@ fn perceive_viewer_budget(
     }
     notes.sort_by(|a, b| a.id.cmp(&b.id));
 
-    let items = nested_map::entries_of(&state.places.items, &PlaceId::from(place.clone()))
+    let items = nested_map::entries_of(&state.places().items, &PlaceId::from(place.clone()))
         .map(|(id, count)| ItemStack {
             id: id.to_string(),
             count: *count,
@@ -194,15 +193,17 @@ fn perceive_viewer_budget(
 
 /// The meters `entity` carries that are not hidden, in id order.
 fn shown_meters(canon: &Canon, state: &State, entity: &EntityId) -> Vec<MeterView> {
-    state
-        .meters_of(entity)
-        .into_iter()
-        .filter_map(|(id, live)| {
+    let defs = if *entity == EntityId::World {
+        &canon.world_meters
+    } else {
+        &canon.meters
+    };
+    defs.keys()
+        .filter_map(|id| {
             let def = canon
                 .meter_def(entity.as_ref(), id)
                 .filter(|def| !def.hidden)?;
-            let modifiers = state.modifier_sum(entity, id).ok()?;
-            let value = meter::current(def, live, modifiers).ok()?;
+            let value = state.entity(entity).meter_value(canon, id).ok()?;
             Some(MeterView {
                 id: id.to_string(),
                 value,

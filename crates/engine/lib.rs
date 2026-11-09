@@ -2,7 +2,7 @@
 
 pub(crate) mod canon;
 pub(crate) mod diagnostic;
-pub(crate) mod draft;
+pub(crate) mod entity;
 pub(crate) mod hash;
 pub(crate) mod intent;
 pub(crate) mod round;
@@ -13,6 +13,7 @@ pub(crate) mod world;
 
 pub use canon::{load_canon, pack_rev};
 pub use diagnostic::{first_reason, Code, Diagnostic};
+pub use entity::{Entity, EntityMut};
 pub use intent::{Intent, IntentArgs, Source, Target, Viewer};
 pub use round::{migrate_pack, play_pack_once, verify_pack, verify_quick, RoundOutput};
 pub use rules::gate::Refusal;
@@ -20,10 +21,10 @@ pub use rules::perceive::View;
 pub use rules::roll::MoveReport;
 pub use rules::visibility::RecipientLine;
 pub use spookery_protocol::Reason;
-pub use state::id::{ActorId, EntityId, PlaceId, StoryId};
+pub use state::id::{ActorId, EntityId, ExitId, PlaceId, StoryId};
 pub use state::meter::Meter;
 pub use state::modifier::Modifier;
-pub use state::{Note, Presence, State};
+pub use state::{Note, Presence, State, Writer};
 pub use store::save::{emit as emit_save, parse as parse_save};
 pub use store::{emit_tape_record, lock_pack, PackGuard, TapeRecord};
 pub use world::{check_pack, Address, World};
@@ -35,7 +36,7 @@ pub mod testing {
 
     use crate::store::lock::WriteGuard;
 
-    pub use crate::canon::strip_body;
+    pub use crate::canon::{strip_body, Canon};
     pub use crate::round::replay::replay_journal;
     pub use crate::rules::roll::{faces, RollKey};
     pub use crate::state::{Act, ActorComponents, ActorKind, PendingAction};
@@ -206,6 +207,8 @@ pub mod testing {
         fs::write(&path, bytes).unwrap_or_else(|err| panic!("write {}: {err}", path.display()));
     }
 
+    /// Edit the pack's save through the writers, with no round open, and write it back stamped
+    /// with the pack's revision.
     pub fn edit_save(pack: &Path, edit: impl FnOnce(&mut crate::state::State)) {
         let path = crate::store::journal::save_path(pack);
         let text = fs::read_to_string(&path)
@@ -213,9 +216,20 @@ pub mod testing {
         let mut state = crate::store::save::parse(&text)
             .unwrap_or_else(|err| panic!("load {}: {err:?}", path.display()));
         edit(&mut state);
+        state.accept();
         state.pack_rev = crate::canon::pack_rev(pack)
             .unwrap_or_else(|err| panic!("rev {}: {err}", pack.display()));
         write_save(pack, &state);
+    }
+
+    /// `edit_save` for an edit whose writers read the pack's canon.
+    pub fn edit_save_with(
+        pack: &Path,
+        edit: impl FnOnce(&mut crate::state::State, &crate::canon::Canon),
+    ) {
+        let canon = crate::canon::load_canon(pack)
+            .unwrap_or_else(|err| panic!("canon {}: {err:?}", pack.display()));
+        edit_save(pack, |state| edit(state, &canon));
     }
 
     pub fn stamp_pack_rev(pack: &Path) {
@@ -237,25 +251,14 @@ pub mod testing {
         let from = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("fixtures/cast/pc-nell.md");
         fs::copy(&from, pack.join("cast/pc-nell.md"))
             .unwrap_or_else(|err| panic!("copy {}: {err}", from.display()));
-        edit_save(pack, |state| {
+        edit_save_with(pack, |state, canon| {
             let nell = crate::ActorId::from("pc_nell");
-            let actors = &mut state.actors;
-            actors
-                .kind
-                .insert(nell.clone(), crate::state::ActorKind::Pc);
-            actors.place.insert(nell.clone(), "docks_shop".to_string());
-            actors
-                .acts
-                .insert(nell.clone(), crate::state::Act::default());
-            let grit = crate::Meter {
-                base: 100,
-                offset: 0,
-            };
-            let rest = crate::Meter { base: 3, offset: 0 };
-            actors
-                .meters
-                .insert((nell.clone(), "grit".to_string()), grit);
-            actors.meters.insert((nell, "rest".to_string()), rest);
+            let mut actors = state.actors_mut();
+            actors.add_actor(&nell, crate::state::ActorKind::Pc, "docks_shop");
+            for (key, base) in [("grit", 100), ("rest", 3)] {
+                let meter = crate::Meter { base, offset: 0 };
+                actors.set_meter(canon, &nell, key, Some(meter)).unwrap();
+            }
         });
     }
 

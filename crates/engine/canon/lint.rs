@@ -14,7 +14,7 @@ use crate::rules::rule::{
 use crate::state::id::{ActorId, EntityId, PlaceId, StoryId};
 use crate::state::meter::{self, MeterDef};
 use crate::state::modifier::{self, ModifierDef};
-use crate::state::ActorComponents;
+use crate::state::{nested_map, ActorComponents};
 use crate::Reason;
 
 /// Exits whose `to` is not a place, and facts or items an exit names but the pack does not.
@@ -551,7 +551,7 @@ pub(super) fn unknown_meters(
 pub fn check_save(canon: &Canon, state: &crate::state::State) -> Result<(), Vec<Diagnostic>> {
     const FILE: &str = "state/save.yaml";
     let mut diags = Vec::new();
-    let actors = &state.actors;
+    let actors = &state.actors();
     // Every store, with no `..`: a store added later must be listed here to compile.
     let ActorComponents {
         kind: _,
@@ -602,9 +602,15 @@ pub fn check_save(canon: &Canon, state: &crate::state::State) -> Result<(), Vec<
         }
     }
     for id in actors.kind.keys() {
-        let entity = EntityId::Actor(id.clone());
+        let held = nested_map::entries_of(&actors.meters, id).collect();
         let path = format!("actors.meters.{id}");
-        check_meters(canon, &entity, &state.meters_of(&entity), &path, &mut diags);
+        check_meters(
+            canon,
+            &EntityId::Actor(id.clone()),
+            &held,
+            &path,
+            &mut diags,
+        );
     }
     for ((id, key), live) in &actors.modifiers {
         if !modifier::is_defined(&canon.modifiers, key, live) {
@@ -617,19 +623,20 @@ pub fn check_save(canon: &Canon, state: &crate::state::State) -> Result<(), Vec<
             diags.push(diag.at_path(format!("actors.modifiers.{id}.{key}")));
         }
     }
-    let world = state.meters_of(&EntityId::World);
+    let world_meters = state.world().meters.iter();
+    let world = world_meters.map(|(id, held)| (id.as_str(), held)).collect();
     check_meters(canon, &EntityId::World, &world, "world.meters", &mut diags);
-    let places = canon
-        .places
-        .keys()
-        .map(|id| (EntityId::Place(id.clone()), "places", id.as_str()));
-    let stories = canon
-        .stories
-        .keys()
-        .map(|id| (EntityId::Story(id.clone()), "stories", id.as_str()));
-    for (entity, list, id) in places.chain(stories) {
+    let places = canon.places.keys().map(|id| {
+        let held = nested_map::entries_of(&state.places().meters, id).collect();
+        (EntityId::Place(id.clone()), "places", id.as_str(), held)
+    });
+    let stories = canon.stories.keys().map(|id| {
+        let held = nested_map::entries_of(&state.stories().meters, id).collect();
+        (EntityId::Story(id.clone()), "stories", id.as_str(), held)
+    });
+    for (entity, list, id, held) in places.chain(stories) {
         let path = format!("{list}.meters.{id}");
-        check_meters(canon, &entity, &state.meters_of(&entity), &path, &mut diags);
+        check_meters(canon, &entity, &held, &path, &mut diags);
     }
     for ((id, item), count) in &actors.items {
         if item.is_empty() {
@@ -653,7 +660,7 @@ pub fn check_save(canon: &Canon, state: &crate::state::State) -> Result<(), Vec<
             );
         }
     }
-    for ((place, item), count) in &state.places.items {
+    for ((place, item), count) in &state.places().items {
         if *count == 0 {
             diags.push(
                 schema_error(
@@ -705,7 +712,7 @@ pub fn check_save(canon: &Canon, state: &crate::state::State) -> Result<(), Vec<
             );
         }
     }
-    for (place, item) in state.places.items.keys() {
+    for (place, item) in state.places().items.keys() {
         if !canon.items.contains_key(item) {
             let path = format!("places.items.{place}.{item}");
             diags.push(unknown_item(FILE, item, &path));

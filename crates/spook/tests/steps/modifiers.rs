@@ -4,12 +4,12 @@ use std::fs;
 use std::path::Path;
 
 use cucumber::{given, then, when};
-use spookery_engine::testing::{edit_save, stamp_pack_rev, state_of};
+use spookery_engine::testing::{stamp_pack_rev, state_of};
 use spookery_engine::{load_canon, EntityId, Meter, Modifier};
 
 use super::common::replace_in_file;
-use super::triggers::{add_verb, edit_table, intent, play_round, seen_of, set_place, sit};
-use crate::support::copy_docks;
+use super::triggers::{add_verb, edit_table_with, intent, play_round, seen_of, set_place, sit};
+use crate::support::{self, copy_docks};
 use crate::World;
 
 fn pack(world: &World) -> &Path {
@@ -65,7 +65,8 @@ fn hit_rowan(world: &mut World, moves: &[(&str, &str)]) {
 }
 
 fn modifier_of(pack: &Path, id: &str) -> Option<Modifier> {
-    let modifiers = state_of(pack).actors.modifiers;
+    let now = state_of(pack);
+    let modifiers = &now.actors().modifiers;
     modifiers.get(&("pc_rowan".into(), id.to_string())).cloned()
 }
 
@@ -81,29 +82,30 @@ fn lowered(pack: &Path, meter: &str) -> i64 {
     let canon = load_canon(pack).unwrap_or_else(|err| panic!("load: {err:?}"));
     let rowan = EntityId::Actor("pc_rowan".into());
     let key = ("pc_rowan".into(), meter.to_string());
-    let Meter { base, offset } = now.actors.meters[&key].clone();
-    base + offset - now.meter_value(&canon, &rowan, meter).unwrap()
+    let Meter { base, offset } = now.actors().meters[&key].clone();
+    base + offset - now.entity(&rowan).meter_value(&canon, meter).unwrap()
 }
 
 /// Ticks from the latest round until modifier `id` expires.
 fn ticks_left(pack: &Path, id: &str) -> u64 {
     let now = state_of(pack);
-    now.actors.modifiers[&("pc_rowan".into(), id.to_string())].ticks_left(now.world_time)
+    now.actors().modifiers[&("pc_rowan".into(), id.to_string())].ticks_left(now.world_time)
 }
 
 /// Give pc_rowan these stacks of modifier `id`, expiring `left` ticks from now, `left` being the longest so far.
 fn hold(pack: &Path, id: &str, stacks: Vec<i64>, left: u64) {
-    let def = load_canon(pack).unwrap().modifiers[id].clone();
-    edit_save(pack, |now| {
+    support::edit_save_with(pack, |now, canon| {
         let until = now.world_time + left;
         let live = Modifier {
-            meter: def.meter,
+            meter: canon.modifiers[id].meter.clone(),
             until,
             max_ticks: left,
             stacks,
         };
-        let key = ("pc_rowan".into(), id.to_string());
-        now.actors.modifiers.insert(key, live);
+        let mut actors = now.actors_mut();
+        actors
+            .set_modifier(canon, &"pc_rowan".into(), id, Some(live))
+            .unwrap();
     });
 }
 
@@ -124,12 +126,13 @@ fn docks_with_one_tick_rounds(world: &mut World) {
         "live_ticks_per_round: 5\n",
         "live_ticks_per_round: 1\n",
     );
-    edit_table(world, &pack, |now, seated| {
+    edit_table_with(world, &pack, |now, seated, canon| {
         set_place(now, "pc_wren", "docks_shop");
         set_place(now, "pc_harbormouse", "docks_shop");
-        *now.actors.place.get_mut("pc_rowan").unwrap() = "docks_shop".to_string();
-        let grit = ("pc_rowan".into(), "grit".to_string());
-        now.actors.meters.get_mut(&grit).unwrap().base = 20;
+        now.actors_mut()
+            .set_place(&"pc_rowan".into(), "docks_shop")
+            .unwrap();
+        support::edit_meter(now, canon, "pc_rowan", "grit", |grit| grit.base = 20);
         sit(seated, &["pc_harbormouse", "pc_rowan", "pc_wren"]);
     });
     world.pack = Some(pack);
@@ -193,13 +196,10 @@ fn two_modifiers_on_sight(world: &mut World, rain: String, fog: String) {
     let mut meters = fs::read_to_string(&path).unwrap();
     meters.push_str("  - id: sight\n    min: 0\n    base_cap: 10\n    max: 10\n    base: 5\n");
     fs::write(path, meters).unwrap();
-    edit_save(&pack, |now| {
-        let actors: Vec<_> = now.actors.kind.keys().cloned().collect();
+    support::edit_save_with(&pack, |now, canon| {
+        let actors: Vec<_> = now.actors().kind.keys().cloned().collect();
         for actor in actors {
-            let sight = (actor, "sight".to_string());
-            now.actors
-                .meters
-                .insert(sight, Meter { base: 5, offset: 0 });
+            support::put_meter(now, canon, &EntityId::Actor(actor), "sight", 5);
         }
     });
     add_modifier(&pack, &rain, "sight", "");
@@ -326,12 +326,9 @@ meters:
 {tide}"
     );
     fs::write(pack.join("world/meters.yaml"), text).unwrap();
-    edit_save(&pack, |now| {
-        let luck = Meter { base: 1, offset: 0 };
-        let tide = Meter { base: 4, offset: 0 };
-        let rowans_luck = ("pc_rowan".into(), "luck".to_string());
-        now.actors.meters.insert(rowans_luck, luck);
-        now.world.meters.insert("tide".into(), tide);
+    support::edit_save_with(&pack, |now, canon| {
+        support::put_meter(now, canon, &EntityId::Actor("pc_rowan".into()), "luck", 1);
+        support::put_meter(now, canon, &EntityId::World, "tide", 4);
     });
 }
 
@@ -386,24 +383,27 @@ fn rowan_has_no_burn(world: &mut World) {
     let canon = load_canon(pack(world)).unwrap();
     let rowan = EntityId::Actor("pc_rowan".into());
     assert_eq!(
-        state_of(pack(world)).meter_value(&canon, &rowan, "grit"),
+        state_of(pack(world))
+            .entity(&rowan)
+            .meter_value(&canon, "grit"),
         Ok(20)
     );
 }
 
 #[then(expr = "pc_rowan has neither burn nor soaked")]
 fn rowan_has_neither(world: &mut World) {
-    let modifiers = state_of(pack(world)).actors.modifiers;
+    let now = state_of(pack(world));
+    let modifiers = &now.actors().modifiers;
     assert!(!modifiers.keys().any(|(owner, _)| *owner == *"pc_rowan"));
 }
 
 #[then(expr = "pc_rowan has no luck and the world has no tide")]
 fn neither_keeps_the_dropped_meter(world: &mut World) {
     let now = state_of(pack(world));
-    let meters = &now.actors.meters;
+    let meters = &now.actors().meters;
     assert!(!meters.contains_key(&("pc_rowan".into(), "luck".to_string())));
     assert!(meters.contains_key(&("pc_rowan".into(), "grit".to_string())));
-    assert!(!now.world.meters.contains_key("tide"));
+    assert!(!now.world().meters.contains_key("tide"));
 }
 
 #[then(expr = "the GM sees {string} as a changed key")]

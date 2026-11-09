@@ -106,8 +106,8 @@ fn story_declares_a_shown_meter(world: &mut World, story: String, key: String) {
 fn rowan_and_wren_are_seated_apart(world: &mut World) {
     let pack = world.pack.clone().unwrap();
     edit_table(world, &pack, |now, seated| {
-        assert_eq!(now.actors.place["pc_rowan"], "docks_shop");
-        assert_eq!(now.actors.place["pc_wren"], "docks_street");
+        assert_eq!(now.actors().place["pc_rowan"], "docks_shop");
+        assert_eq!(now.actors().place["pc_wren"], "docks_street");
         sit(seated, &["pc_rowan", "pc_wren"]);
     });
 }
@@ -191,7 +191,7 @@ fn the_gm_sees_dread(world: &mut World) {
     assert_gm_saw(world, "story_meter ending dread");
     let now = state_of(world.pack.as_deref().unwrap());
     let dread = ("ending".into(), "dread".to_string());
-    assert_eq!(now.stories.meters[&dread].offset, 1);
+    assert_eq!(now.stories().meters[&dread].offset, 1);
 }
 
 #[then(expr = "no player's view lists dread")]
@@ -218,7 +218,7 @@ fn a_rule_tests_the_flag(world: &mut World, who: String, key: String) {
         ),
     );
     migrate_and_play(world, vec![intent("test", "pc_rowan", "test_mark", None)]);
-    assert!(state_of(&pack).world.flags.contains("mark_seen"));
+    assert!(state_of(&pack).world().flags.contains("mark_seen"));
 }
 
 #[then(expr = "the GM sees the flag change on the siege story")]
@@ -351,7 +351,7 @@ fn a_rule_gives_lamp_oil(world: &mut World, who: String) {
 fn the_loft_holds_lamp_oil(world: &mut World) {
     let now = state_of(world.pack.as_deref().unwrap());
     let held = now
-        .places
+        .places()
         .items
         .get(&("loft".into(), "lamp_oil".to_string()));
     assert_eq!(held, Some(&1));

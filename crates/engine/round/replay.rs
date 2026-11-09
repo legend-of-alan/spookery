@@ -570,14 +570,8 @@ fn apply_migrate(world: &mut World<()>, record: &MigrateRecord) -> Result<(), Er
         world.set_state(load_save_bytes(&bytes)?);
         return Ok(());
     }
-    let next = save::migrate(
-        world.state().clone(),
-        &record.pack_rev_after,
-        record.state_rev_after,
-        &record.meters,
-        &record.dropped_modifiers,
-        &record.dropped_meters,
-    );
+    let next =
+        save::migrate(world.canon(), world.state().clone(), record).map_err(Error::Reason)?;
     let bytes = save::emit(&next).map_err(Error::Reason)?.into_bytes();
     if blake2s_tagged(&bytes) != record.state_hash {
         return Err(diverged("state_hash differed").replayed(bytes).into());

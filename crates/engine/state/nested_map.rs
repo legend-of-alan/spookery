@@ -6,14 +6,42 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
+/// The key `name` has under `owner`. It clones both: std's maps look a key up by a borrowed
+/// form only through `Borrow`, which a pair of owned strings cannot give to `(&Id, &str)`.
+fn key_of<Id: Clone>(owner: &Id, name: &str) -> (Id, String) {
+    (owner.clone(), name.to_string())
+}
+
+/// The entry `name` that `owner` holds in a map keyed by `(owner, name)`.
+pub fn get<'a, Id: Ord + Clone, V>(
+    map: &'a BTreeMap<(Id, String), V>,
+    owner: &Id,
+    name: &str,
+) -> Option<&'a V> {
+    map.get(&key_of(owner, name))
+}
+
+/// The same entry, to write.
+pub(super) fn get_mut<'a, Id: Ord + Clone, V>(
+    map: &'a mut BTreeMap<(Id, String), V>,
+    owner: &Id,
+    name: &str,
+) -> Option<&'a mut V> {
+    map.get_mut(&key_of(owner, name))
+}
+
+/// Whether `owner` holds `name` in a set of `(owner, name)`.
+pub fn contains<Id: Ord + Clone>(set: &BTreeSet<(Id, String)>, owner: &Id, name: &str) -> bool {
+    set.contains(&key_of(owner, name))
+}
+
 /// The entries `owner` holds in a map keyed by `(owner, name)`, in name order.
 pub fn entries_of<'a, Id: Ord + Clone, V>(
     map: &'a BTreeMap<(Id, String), V>,
-    owner: &Id,
+    owner: &'a Id,
 ) -> impl Iterator<Item = (&'a str, &'a V)> {
-    let owner = owner.clone();
-    map.range((owner.clone(), String::new())..)
-        .take_while(move |((held_by, _), _)| *held_by == owner)
+    map.range(key_of(owner, "")..)
+        .take_while(move |((held_by, _), _)| held_by == owner)
         .map(|((_, name), value)| (name.as_str(), value))
 }
 

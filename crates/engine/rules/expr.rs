@@ -189,7 +189,10 @@ fn negate_body(body: &str) -> String {
 
 fn read_meter(context: &Context, who: &Who, key: &str) -> Result<i64, Reason> {
     let entity = resolve_entity(context, who)?;
-    context.state.meter_value(context.canon, &entity, key)
+    context
+        .state
+        .entity(&entity)
+        .meter_value(context.canon, key)
 }
 
 /// `id: target` is the intent's target token. Any other id is itself.
@@ -224,7 +227,7 @@ pub(crate) fn resolve_entity(context: &Context, who: &Who) -> Result<EntityId, R
 /// The actor `who` names: the one acting, the move's target, or an actor by id. A target that
 /// is a place, an exit or an item names no actor, so it is `UNKNOWN_ID`.
 pub(crate) fn resolve_actor<'a>(
-    context: &Context<'a>,
+    context: &Context<'_, 'a>,
     who: &'a Who,
 ) -> Result<&'a ActorId, Reason> {
     match who {
@@ -242,11 +245,11 @@ pub(crate) fn resolve_actor<'a>(
 }
 
 /// Where the acting actor stands: a place id, or an exit's address while they walk.
-pub(crate) fn resolve_here<'a>(context: &Context<'a>) -> Result<&'a str, Reason> {
+pub(crate) fn resolve_here<'a>(context: &Context<'_, 'a>) -> Result<&'a str, Reason> {
     let actor_id = context.intent.actor_id().ok_or(Reason::Schema)?;
     context
         .state
-        .actors
+        .actors()
         .place
         .get(actor_id)
         .map(String::as_str)
@@ -663,8 +666,8 @@ mod tests {
     use crate::rules::context::Context;
     use crate::rules::rule::Who;
     use crate::state::id::ActorId;
-    use crate::state::meter::{Meter, MeterDef};
-    use crate::state::{Act, ActorKind, Presence, State};
+    use crate::state::meter::MeterDef;
+    use crate::state::{Presence, State};
     use crate::Reason;
 
     static EMPTY: Presence = Presence {
@@ -751,30 +754,29 @@ mod tests {
         }
     }
 
+    /// A save holding one PC, `ada`, in `room` with `str_mod` 3.
     fn state() -> State {
-        let ada = ActorId::from("ada");
-        let mut state = State {
-            schema: "save".to_string(),
-            world_id: "t".to_string(),
-            pack_rev: String::new(),
-            rules_rev: 0,
-            state_rev: 0,
-            round_index: 0,
-            world_time: 0,
-            last_round_at: String::new(),
-            actors: Default::default(),
-            places: Default::default(),
-            stories: Default::default(),
-            world: Default::default(),
-            notes: Vec::new(),
-        };
-        let actors = &mut state.actors;
-        actors.kind.insert(ada.clone(), ActorKind::Pc);
-        actors.place.insert(ada.clone(), "room".to_string());
-        actors.acts.insert(ada.clone(), Act::default());
-        let str_mod = Meter { base: 3, offset: 0 };
-        actors.meters.insert((ada, "str_mod".to_string()), str_mod);
-        state
+        let rules_rev = crate::store::RULES_REV;
+        let text = format!(
+            "\
+schema: save
+world_id: t
+pack_rev: ''
+rules_rev: {rules_rev}
+state_rev: 0
+round_index: 0
+world_time: 0
+last_round_at: ''
+actors:
+  kind: {{ ada: pc }}
+  place: {{ ada: room }}
+  acts:
+    ada: {{ last_act_round: 0, idle_acts_this_window: 0, live_acts_this_window: 0 }}
+  meters: {{ ada: {{ str_mod: {{ base: 3, offset: 0 }} }} }}
+notes: []
+"
+        );
+        crate::store::save::parse(&text).unwrap()
     }
 
     #[test]

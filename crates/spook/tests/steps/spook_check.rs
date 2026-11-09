@@ -5,6 +5,7 @@ use std::path::Path;
 use cucumber::{then, when};
 use serde_json::Value;
 
+use crate::support;
 use crate::World;
 
 use super::table;
@@ -239,4 +240,17 @@ fn worked_example_row() -> String {
         row.push('\n');
     }
     row
+}
+
+/// No writer gives a component to an actor with no kind, so the hand edit puts one in the save
+/// as its file holds it.
+#[when(expr = "the save gives meters to an actor with no kind")]
+fn the_save_gives_meters_to_an_actor_with_no_kind(world: &mut World) {
+    let pack = table::pack(world).to_path_buf();
+    support::edit_save(&pack, |now| {
+        support::edit_as_saved(now, |save| {
+            let grit = serde_json::json!({ "grit": { "base": 1, "offset": 0 } });
+            save["actors"]["meters"]["nobody"] = grit;
+        });
+    });
 }

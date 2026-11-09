@@ -79,7 +79,9 @@ fn three_in_the_shop(world: &mut World) {
     let pack = copy_docks("action-triggers");
     edit_save(&pack, |now| {
         for id in PCS {
-            *now.actors.place.get_mut(id).unwrap() = "docks_shop".to_string();
+            now.actors_mut()
+                .set_place(&id.into(), "docks_shop")
+                .unwrap();
         }
     });
     world.pack = Some(pack);
@@ -135,9 +137,9 @@ fn wren_is_refused(world: &mut World) {
     assert_eq!(refused.len(), 1, "{round}");
     assert_eq!(refused[0]["code"], "NOT_IN_SPEC", "{round}");
     let now = state_of(world.pack.as_ref().unwrap());
-    assert_eq!(now.actors.place["pc_rowan"], "docks_street");
-    assert!(now.world.flags.iter().any(|flag| flag == "gate_locked"));
-    assert!(!now.world.flags.iter().any(|flag| flag == "gate_passed"));
+    assert_eq!(now.actors().place["pc_rowan"], "docks_street");
+    assert!(now.world().flags.iter().any(|flag| flag == "gate_locked"));
+    assert!(!now.world().flags.iter().any(|flag| flag == "gate_passed"));
 }
 
 #[given(
@@ -164,9 +166,9 @@ fn both_chains_ran(world: &mut World) {
     let now = state_of(world.pack.as_ref().unwrap());
     for flag in ["rang", "echoed"] {
         assert!(
-            now.world.flags.iter().any(|held| held == flag),
+            now.world().flags.iter().any(|held| held == flag),
             "{:?}",
-            now.world.flags
+            now.world().flags
         );
     }
 }

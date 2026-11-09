@@ -31,6 +31,12 @@ pub struct Modifier {
 }
 
 impl Modifier {
+    /// The modifier as a change value: its stacks, the tick it expires at and its longest ticks.
+    pub(crate) fn to_value(&self) -> crate::state::change::Value {
+        let (stacks, until, max_ticks) = (&self.stacks, self.until, self.max_ticks);
+        crate::state::change::Value::Text(format!("{stacks:?} until {until} max_ticks {max_ticks}"))
+    }
+
     /// Ticks from `now` until it expires.
     pub fn ticks_left(&self, now: u64) -> u64 {
         self.until.saturating_sub(now)

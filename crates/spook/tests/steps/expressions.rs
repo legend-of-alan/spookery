@@ -200,7 +200,7 @@ fn grit(world: &World) -> i64 {
 fn grit_of(world: &World, actor: &str) -> i64 {
     let now = state_of(table::pack(world));
     let live = now
-        .actors
+        .actors()
         .meters
         .get(&(actor.into(), "grit".to_string()))
         .unwrap_or_else(|| panic!("{actor}'s grit missing"));

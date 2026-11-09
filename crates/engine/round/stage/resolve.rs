@@ -40,9 +40,10 @@ pub(crate) enum Resolution<'a> {
     CannotRoll(Reason),
 }
 
-/// What every roll in the round shares. The rules it gates borrow `canon`, past the resolver.
-struct Resolver<'a, 'r> {
-    canon: &'a Canon,
+/// What every roll in the round shares. The rules it gates borrow `canon`, past the resolver
+/// and the save.
+struct Resolver<'c, 'a, 'r> {
+    canon: &'c Canon,
     state: &'a State,
     presence: &'a Presence,
     queue: &'a [Intent],
@@ -51,15 +52,15 @@ struct Resolver<'a, 'r> {
     log: &'r mut RoundLog,
 }
 
-pub(crate) fn run<'a>(
-    canon: &'a Canon,
-    state: &'a State,
-    presence: &'a Presence,
-    picked: &'a [Intent],
-    queue: &'a [Intent],
+pub(crate) fn run<'c>(
+    canon: &'c Canon,
+    state: &State,
+    presence: &Presence,
+    picked: &'c [Intent],
+    queue: &[Intent],
     dice: &mut RoundDice,
     log: &mut RoundLog,
-) -> Vec<Candidate<'a>> {
+) -> Vec<Candidate<'c>> {
     let mut resolver = Resolver {
         canon,
         state,
@@ -78,7 +79,7 @@ pub(crate) fn run<'a>(
         .collect()
 }
 
-fn resolve_intent<'a>(resolver: &mut Resolver<'a, '_>, intent: &'a Intent) -> Resolution<'a> {
+fn resolve_intent<'c>(resolver: &mut Resolver<'c, '_, '_>, intent: &'c Intent) -> Resolution<'c> {
     if gate::is_cancel(intent) {
         return Resolution::Cancel;
     }

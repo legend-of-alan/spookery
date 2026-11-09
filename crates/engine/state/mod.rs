@@ -2,24 +2,33 @@
 
 mod actors;
 pub(crate) mod change;
+#[cfg(any(test, feature = "testing"))]
+mod fixtures;
+mod flag;
 pub(crate) mod id;
+mod item;
 pub(crate) mod meter;
 pub(crate) mod modifier;
 pub(crate) mod nested_map;
+mod notes;
 mod places;
 mod stories;
+mod transaction;
 mod world;
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::ops::Deref;
 
 use serde::{Deserialize, Serialize};
 
+#[cfg(any(test, feature = "testing"))]
+pub use actors::Act;
 pub(crate) use actors::ActCounter;
-pub use actors::{Act, ActorComponents, ActorKind, PendingAction};
-use id::{ActorId, EntityId, PlaceId};
-use meter::Meter;
+pub use actors::{ActorComponents, ActorKind, PendingAction};
+use id::ActorId;
+pub use notes::Note;
 pub use places::PlaceComponents;
 pub use stories::StoryComponents;
+use transaction::Transaction;
 pub use world::WorldComponents;
 
 use crate::intent::Viewer;
@@ -38,102 +47,92 @@ pub struct State {
     /// Ticks since the world began.
     pub world_time: u64,
     pub last_round_at: String,
-    pub actors: ActorComponents,
+    actors: ActorComponents,
     #[serde(default)]
-    pub places: PlaceComponents,
+    places: PlaceComponents,
     #[serde(default)]
-    pub stories: StoryComponents,
+    stories: StoryComponents,
     #[serde(default)]
-    pub world: WorldComponents,
-    pub notes: Vec<Note>,
+    world: WorldComponents,
+    notes: Vec<Note>,
+    #[serde(skip)]
+    transaction: Transaction,
+}
+
+/// One part of the save with the round's transaction, borrowed apart from the rest: the only way
+/// to write that part. Reads go through `Deref`; there is no `DerefMut`, and only `State`'s
+/// `*_mut` getters build one.
+///
+/// ```compile_fail
+/// # fn bypass(state: &mut spookery_engine::State) {
+/// *state.actors_mut() = Default::default();
+/// # }
+/// ```
+///
+/// ```compile_fail
+/// # fn bypass(state: &mut spookery_engine::State) {
+/// let kind = *state.actors().kind.values().next().unwrap();
+/// state.actors().kind.insert("x".into(), kind);
+/// # }
+/// ```
+pub struct Writer<'a, P> {
+    part: &'a mut P,
+    transaction: &'a mut Transaction,
+}
+
+impl<'a, P> Writer<'a, P> {
+    /// The one place a `Writer` is built; only `State`'s `*_mut` getters call it.
+    fn new(part: &'a mut P, transaction: &'a mut Transaction) -> Self {
+        Writer { part, transaction }
+    }
+}
+
+impl<P> Deref for Writer<'_, P> {
+    type Target = P;
+    fn deref(&self) -> &P {
+        self.part
+    }
 }
 
 impl State {
-    /// The current value of meter `key` on `entity`, or `UNKNOWN_ID` when it does not carry it.
-    pub fn meter_value(
-        &self,
-        canon: &crate::canon::Canon,
-        entity: &EntityId,
-        key: &str,
-    ) -> Result<i64, crate::Reason> {
-        let def = canon
-            .meter_def(entity.as_ref(), key)
-            .ok_or(crate::Reason::UnknownId)?;
-        let meters = self.meters_of(entity);
-        let live = meters.get(key).ok_or(crate::Reason::UnknownId)?;
-        meter::current(def, live, self.modifier_sum(entity, key)?)
+    pub fn actors(&self) -> &ActorComponents {
+        &self.actors
     }
 
-    /// What `entity`'s modifiers add to its meter `key`. Only an actor holds modifiers.
-    pub(crate) fn modifier_sum(&self, entity: &EntityId, key: &str) -> Result<i64, crate::Reason> {
-        match entity {
-            EntityId::Actor(id) => {
-                let held = nested_map::entries_of(&self.actors.modifiers, id).map(|(_, held)| held);
-                modifier::sum(held, key)
-            }
-            EntityId::World | EntityId::Place(_) | EntityId::Story(_) => Ok(0),
-        }
+    pub fn places(&self) -> &PlaceComponents {
+        &self.places
     }
 
-    /// The live meters `entity` carries, by id.
-    pub(crate) fn meters_of(&self, entity: &EntityId) -> BTreeMap<&str, &Meter> {
-        match entity {
-            EntityId::Actor(id) => nested_map::entries_of(&self.actors.meters, id).collect(),
-            EntityId::Place(id) => nested_map::entries_of(&self.places.meters, id).collect(),
-            EntityId::Story(id) => nested_map::entries_of(&self.stories.meters, id).collect(),
-            EntityId::World => self
-                .world
-                .meters
-                .iter()
-                .map(|(id, live)| (id.as_str(), live))
-                .collect(),
-        }
+    pub fn stories(&self) -> &StoryComponents {
+        &self.stories
     }
 
-    /// Live meter `key` on `entity`, to write.
-    pub(crate) fn meter_mut(
-        &mut self,
-        entity: &EntityId,
-        key: &str,
-    ) -> Result<&mut Meter, crate::Reason> {
-        let key = key.to_string();
-        let live = match entity {
-            EntityId::Actor(id) => self.actors.meters.get_mut(&(id.clone(), key)),
-            EntityId::Place(id) => self.places.meters.get_mut(&(id.clone(), key)),
-            EntityId::Story(id) => self.stories.meters.get_mut(&(id.clone(), key)),
-            EntityId::World => self.world.meters.get_mut(&key),
-        };
-        live.ok_or(crate::Reason::UnknownId)
+    pub fn world(&self) -> &WorldComponents {
+        &self.world
     }
 
-    /// Whether `entity` has flag `key` set.
-    pub(crate) fn has_flag(&self, entity: &EntityId, key: &str) -> bool {
-        let key = key.to_string();
-        match entity {
-            EntityId::Actor(id) => self.actors.flags.contains(&(id.clone(), key)),
-            EntityId::Place(id) => self.places.flags.contains(&(id.clone(), key)),
-            EntityId::Story(id) => self.stories.flags.contains(&(id.clone(), key)),
-            EntityId::World => self.world.flags.contains(&key),
-        }
+    pub fn notes(&self) -> &[Note] {
+        &self.notes
     }
 
-    /// Set or clear `entity`'s flag `key`, and say whether it changed.
-    pub(crate) fn set_flag(
-        &mut self,
-        entity: &EntityId,
-        key: &str,
-        value: bool,
-    ) -> Result<bool, crate::Reason> {
-        let key = key.to_string();
-        Ok(match entity {
-            EntityId::Actor(id) if !self.actors.kind.contains_key(id) => {
-                return Err(crate::Reason::UnknownId)
-            }
-            EntityId::Actor(id) => set_member(&mut self.actors.flags, (id.clone(), key), value),
-            EntityId::Place(id) => set_member(&mut self.places.flags, (id.clone(), key), value),
-            EntityId::Story(id) => set_member(&mut self.stories.flags, (id.clone(), key), value),
-            EntityId::World => set_member(&mut self.world.flags, key, value),
-        })
+    pub fn actors_mut(&mut self) -> Writer<'_, ActorComponents> {
+        Writer::new(&mut self.actors, &mut self.transaction)
+    }
+
+    pub fn places_mut(&mut self) -> Writer<'_, PlaceComponents> {
+        Writer::new(&mut self.places, &mut self.transaction)
+    }
+
+    pub fn stories_mut(&mut self) -> Writer<'_, StoryComponents> {
+        Writer::new(&mut self.stories, &mut self.transaction)
+    }
+
+    pub fn world_mut(&mut self) -> Writer<'_, WorldComponents> {
+        Writer::new(&mut self.world, &mut self.transaction)
+    }
+
+    pub fn notes_mut(&mut self) -> Writer<'_, Vec<Note>> {
+        Writer::new(&mut self.notes, &mut self.transaction)
     }
 
     /// The seat actor `id` acts from.
@@ -152,70 +151,12 @@ impl State {
     }
 }
 
-/// Put `entry` in `set` or take it out, and say whether that changed the set.
-pub(crate) fn set_member<K: Ord>(set: &mut BTreeSet<K>, entry: K, on: bool) -> bool {
-    if on {
-        set.insert(entry)
-    } else {
-        set.remove(&entry)
-    }
-}
-
 /// Who is seated. The host's seats own it and hand it to each round; the save never holds it.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Presence {
     pub players: u32,
     pub actors_present: Vec<ActorId>,
-}
-
-/// Add `delta` to the count under `key`. Removing from a count of 0 is `MISSING_ITEM`.
-/// A shortfall from a positive count is `OUT_OF_RANGE`. A positive `max` caps the result.
-pub(crate) fn shift_count<K: Ord>(
-    counts: &mut BTreeMap<K, u32>,
-    key: K,
-    delta: i64,
-    max: Option<i64>,
-) -> Result<bool, crate::Reason> {
-    let current = i64::from(counts.get(&key).copied().unwrap_or(0));
-    let mut next = current
-        .checked_add(delta)
-        .ok_or(crate::Reason::OutOfRange)?;
-    if next < 0 {
-        if current == 0 {
-            return Err(crate::Reason::MissingItem);
-        }
-        return Err(crate::Reason::OutOfRange);
-    }
-    if delta > 0 {
-        if let Some(cap) = max {
-            if cap < 0 {
-                return Err(crate::Reason::OutOfRange);
-            }
-            if next > cap {
-                next = cap;
-            }
-        }
-    }
-    let stored = u32::try_from(next).map_err(|_| crate::Reason::OutOfRange)?;
-    let changed = stored != u32::try_from(current).unwrap_or(0);
-    if stored == 0 {
-        counts.remove(&key);
-    } else {
-        counts.insert(key, stored);
-    }
-    Ok(changed)
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Note {
-    pub id: String,
-    pub to: Vec<ActorId>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub place: Option<PlaceId>,
-    pub fact_ids: Vec<String>,
-    pub text: String,
 }
 
 /// The place and exit names in an exit's id, `exit:<place>.<exit>`: where a walker stands

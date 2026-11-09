@@ -22,7 +22,7 @@ pub(crate) fn help(
     presence: &Presence,
     actor_id: &ActorId,
 ) -> Result<Vec<CommandView>, Reason> {
-    if !state.actors.kind.contains_key(actor_id) {
+    if !state.actors().kind.contains_key(actor_id) {
         return Err(Reason::UnknownId);
     }
     let viewer = Viewer::Player(actor_id.clone());
@@ -89,7 +89,7 @@ fn names_for(
     let picked: Vec<String> = match kind {
         TargetKind::None => Vec::new(),
         TargetKind::Exit => state
-            .actors
+            .actors()
             .place
             .get(actor_id)
             .and_then(|place| canon.places.get(place.as_str()))
@@ -100,7 +100,7 @@ fn names_for(
             .collect(),
         TargetKind::Actor => nameable
             .iter()
-            .filter(|name| state.actors.kind.contains_key(name.as_str()))
+            .filter(|name| state.actors().kind.contains_key(name.as_str()))
             .cloned()
             .collect(),
         TargetKind::Item => nameable
@@ -108,7 +108,7 @@ fn names_for(
             .filter(|name| canon.items.contains_key(*name))
             .cloned()
             .collect(),
-        TargetKind::Place => nested_map::entries_of(&state.actors.visited, actor_id)
+        TargetKind::Place => nested_map::entries_of(&state.actors().visited, actor_id)
             .map(|(place, _)| place.to_string())
             .collect(),
     };
@@ -128,11 +128,11 @@ pub(crate) fn map(
     state: &State,
     actor_id: &ActorId,
 ) -> Result<Vec<PlaceView>, Reason> {
-    if !state.actors.kind.contains_key(actor_id) {
+    if !state.actors().kind.contains_key(actor_id) {
         return Err(Reason::UnknownId);
     }
     let places =
-        nested_map::entries_of(&state.actors.visited, actor_id).map(|(id, seen)| PlaceView {
+        nested_map::entries_of(&state.actors().visited, actor_id).map(|(id, seen)| PlaceView {
             name: place_name(canon, id),
             exits: canon
                 .places
@@ -154,8 +154,8 @@ pub(crate) fn map(
 /// `chanting until tick 1300` on any other timed action, read from its verb, and
 /// `recovering until tick 1300` in a cooldown.
 pub(crate) fn busy_line(canon: &Canon, state: &State, actor_id: &ActorId) -> Option<String> {
-    let act = state.actors.acts.get(actor_id)?;
-    let place = state.actors.place.get(actor_id)?;
+    let act = state.actors().acts.get(actor_id)?;
+    let place = state.actors().place.get(actor_id)?;
     if !act.is_busy(state.world_time) {
         return None;
     }
@@ -181,7 +181,7 @@ fn gerund(verb: &str) -> String {
 
 /// Place prose for this actor's current place.
 pub(crate) fn place_prose(canon: &Canon, state: &State, actor_id: &ActorId) -> String {
-    let place = state.actors.place.get(actor_id);
+    let place = state.actors().place.get(actor_id);
     let Some(place) = place.and_then(|place| canon.places.get(place.as_str())) else {
         return String::new();
     };

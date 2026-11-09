@@ -165,7 +165,9 @@ fn a_docks_table_where_mira_can_oppose_a_mark(world: &mut World) {
     insert_mira_flags(&pack, "    - marked\n    - missed\n    - guarded\n");
     set_mira_grit(&pack, 100);
     super::common::edit_save(&pack, |now| {
-        *now.actors.place.get_mut("mira").unwrap() = "docks_shop".to_string();
+        now.actors_mut()
+            .set_place(&"mira".into(), "docks_shop")
+            .unwrap();
     });
     listen_and_seat_both(world, &pack);
     world.scratch = snapshot_pack(&pack).display().to_string();
@@ -371,8 +373,8 @@ fn snapshot_pack(pack: &Path) -> PathBuf {
 
 fn flags_of(world: &World, id: &str) -> Vec<String> {
     let now = state_of(table::pack(world));
-    assert!(now.actors.kind.contains_key(id), "{id} missing");
-    let flags = now.actors.flags.iter().filter(|(owner, _)| *owner == *id);
+    assert!(now.actors().kind.contains_key(id), "{id} missing");
+    let flags = now.actors().flags.iter().filter(|(owner, _)| *owner == *id);
     flags.map(|(_, flag)| flag.clone()).collect()
 }
 
@@ -545,7 +547,9 @@ fn a_docks_table_where_mira_opposes_a_three_band_press(world: &mut World) {
     set_rowan_grit(&pack, 6);
     set_mira_grit(&pack, 100);
     super::common::edit_save(&pack, |now| {
-        *now.actors.place.get_mut("mira").unwrap() = "docks_shop".to_string();
+        now.actors_mut()
+            .set_place(&"mira".into(), "docks_shop")
+            .unwrap();
     });
     listen_and_seat_both(world, &pack);
     world.scratch = snapshot_pack(&pack).display().to_string();
@@ -692,7 +696,9 @@ fn prepare_press(world: &mut World, base: i64, sit: bool) {
     insert_mira_flags(&pack, PRESS_FLAGS);
     set_rowan_grit(&pack, base);
     super::common::edit_save(&pack, |now| {
-        *now.actors.place.get_mut("mira").unwrap() = "docks_shop".to_string();
+        now.actors_mut()
+            .set_place(&"mira".into(), "docks_shop")
+            .unwrap();
     });
     if sit {
         listen_and_seat_both(world, &pack);

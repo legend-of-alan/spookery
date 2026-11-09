@@ -1,7 +1,11 @@
 //! Meter bounds from the pack, and the live value on its entity.
 
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 
+use super::change;
+use super::transaction::Transaction;
 use crate::state::id::{EntityId, EntityRef};
 use crate::Reason;
 
@@ -62,18 +66,66 @@ pub fn current(def: &MeterDef, live: &Meter, modifiers: i64) -> Result<i64, Reas
     Ok(sum.clamp(def.min, def.max))
 }
 
-/// `Ok(true)` means the stored pair changed and the caller should track
-/// the meter's key. A zero delta leaves the pair alone and is `Ok(false)`.
-/// The live record is assigned only after `is_storable` accepts the next pair.
-pub fn write(def: &MeterDef, live: &mut Meter, write: MeterWrite) -> Result<bool, Reason> {
-    let MeterWrite::Offset(delta) = write;
-    let next_offset = live.offset.checked_add(delta).ok_or(Reason::OutOfRange)?;
-    if !is_storable(def, live.base, next_offset) {
+/// The current value of a meter no modifier reaches, or `UNKNOWN_ID` when the pack does not give
+/// it or the save does not hold it.
+pub fn read(def: Option<&MeterDef>, held: Option<&Meter>) -> Result<i64, Reason> {
+    current(
+        def.ok_or(Reason::UnknownId)?,
+        held.ok_or(Reason::UnknownId)?,
+        0,
+    )
+}
+
+/// Move `held`'s offset by `delta` inside `def`'s bounds, and report the change under `key`, its
+/// value read with `modifiers`. A sum past `i64` reads as no value and never refuses the write;
+/// a zero delta moves nothing and reports nothing.
+pub(super) fn shift(
+    held: &mut Meter,
+    transaction: &mut Transaction,
+    def: &MeterDef,
+    modifiers: Result<i64, Reason>,
+    delta: i64,
+    key: change::Key,
+) -> Result<(), Reason> {
+    let next_offset = held.offset.checked_add(delta).ok_or(Reason::OutOfRange)?;
+    if !is_storable(def, held.base, next_offset) {
         return Err(Reason::OutOfRange);
     }
-    let changed = next_offset != live.offset;
-    live.offset = next_offset;
-    Ok(changed)
+    if next_offset == held.offset {
+        return Ok(());
+    }
+    let reading = |held: &Meter| {
+        change::Value::from_reading(modifiers.and_then(|sum| current(def, held, sum)))
+    };
+    let before = reading(held);
+    held.offset = next_offset;
+    transaction.report(key, before, reading(held))
+}
+
+/// Put `meter` under `entry`, `None` taking it off, outside a round's rules, and report the change
+/// under `key`, its value read with `def` and `modifiers`.
+pub(super) fn set<K: Ord>(
+    meters: &mut BTreeMap<K, Meter>,
+    transaction: &mut Transaction,
+    entry: K,
+    meter: Option<Meter>,
+    def: Option<&MeterDef>,
+    modifiers: Result<i64, Reason>,
+    key: change::Key,
+) -> Result<(), Reason> {
+    let reading = |held: Option<&Meter>| {
+        let value = (def.zip(held).ok_or(Reason::UnknownId))
+            .and_then(|(def, held)| current(def, held, modifiers?));
+        change::Value::from_reading(value)
+    };
+    let held = match &meter {
+        Some(meter) => meters.insert(entry, meter.clone()),
+        None => meters.remove(&entry),
+    };
+    if held == meter {
+        return Ok(());
+    }
+    transaction.report(key, reading(held.as_ref()), reading(meter.as_ref()))
 }
 
 #[cfg(test)]

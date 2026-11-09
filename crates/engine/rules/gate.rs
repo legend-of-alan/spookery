@@ -80,7 +80,7 @@ pub(crate) fn verb_for<'a>(
     verb: &str,
     hint: Option<&str>,
 ) -> Option<&'a Rule> {
-    let wielded = state.actors.wielded.get(actor_id).map(String::as_str);
+    let wielded = state.actors().wielded.get(actor_id).map(String::as_str);
     if let Some(item) = wielded.filter(|item| !item.is_empty()) {
         if let Some(rule) = owner_verb(canon, &Owner::Item(item.to_string()), verb) {
             return Some(rule);
@@ -94,7 +94,7 @@ pub(crate) fn verb_for<'a>(
             return Some(rule);
         }
     }
-    if let Some(place) = state.actors.place.get(actor_id) {
+    if let Some(place) = state.actors().place.get(actor_id) {
         if let Some(rule) = owner_verb(canon, &Owner::Place(place.to_string()), verb) {
             return Some(rule);
         }
@@ -109,7 +109,7 @@ fn owner_verb<'a>(canon: &'a Canon, owner: &Owner, verb: &str) -> Option<&'a Rul
 }
 
 /// The rule the intent's verb picks, for its actor and target.
-pub(crate) fn rule_of<'a>(context: &Context<'a>) -> Result<&'a Rule, Refusal> {
+pub(crate) fn rule_of<'c>(context: &Context<'c, '_>) -> Result<&'c Rule, Refusal> {
     let intent = context.intent;
     let (verb, hint) = (&intent.move_name, hint_of(&intent.target));
     let actor = intent
@@ -133,7 +133,7 @@ pub(crate) fn rule_of<'a>(context: &Context<'a>) -> Result<&'a Rule, Refusal> {
 /// every rule.
 pub(crate) fn admit(context: &Context, rule: &Rule) -> Result<(), Refusal> {
     let (state, intent) = (context.state, context.intent);
-    if let Some(act) = intent.actor_id().and_then(|id| state.actors.acts.get(id)) {
+    if let Some(act) = intent.actor_id().and_then(|id| state.actors().acts.get(id)) {
         let acted = act.last_act_round == intent.round_index;
         if acted && rule.start.counts_as_act && matches!(rule.when, When::Habit) {
             return Err(Refusal::new(intent, Reason::Ineligible));
@@ -177,7 +177,7 @@ pub(crate) fn is_cancel(intent: &Intent) -> bool {
 /// `cancellable`. Anything else is `INELIGIBLE`.
 pub(crate) fn admit_cancel(context: &Context) -> Result<(), Refusal> {
     let intent = context.intent;
-    let actors = &context.state.actors;
+    let actors = &context.state.actors();
     let actor_id = intent.actor_id();
     let pending = actor_id
         .and_then(|id| actors.acts.get(id))
@@ -213,7 +213,7 @@ pub(crate) fn nameable(
     presence: &Presence,
     viewer: &Viewer,
 ) -> Vec<String> {
-    let mut names: Vec<String> = nested_map::entries_of(&state.actors.items, viewer.actor_id())
+    let mut names: Vec<String> = nested_map::entries_of(&state.actors().items, viewer.actor_id())
         .filter(|(_, count)| **count > 0)
         .map(|(id, _)| id.to_string())
         .collect();
