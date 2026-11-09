@@ -270,3 +270,27 @@ fn the_journal_line_is(world: &mut World, key: String, step: &Step) {
     let golden = step.docstring.as_deref().unwrap_or_default();
     assert_eq!(line, golden.trim());
 }
+
+#[when(expr = "Rowan's grit offset is hand edited to {int} and Nell joins without grit")]
+fn rowan_moves_grit_and_nell_joins(world: &mut World, offset: i64) {
+    let pack = table::pack(world).to_path_buf();
+    spookery_engine::testing::edit_save(&pack, |now| {
+        let grit = ("pc_rowan".into(), "grit".to_string());
+        now.actors.meters.get_mut(&grit).unwrap().offset = offset;
+        support::copy_actor(now, "pc_rowan", "pc_nell", "docks_shop");
+        now.actors
+            .meters
+            .remove(&("pc_nell".into(), "grit".to_string()));
+    });
+}
+
+#[then(expr = "{word}'s grit is at base {int} and offset {int}")]
+fn grit_is_at(world: &mut World, actor: String, base: i64, offset: i64) {
+    let now = state_of(table::pack(world));
+    let grit = now
+        .actors
+        .meters
+        .get(&(actor.as_str().into(), "grit".to_string()));
+    let got = grit.map(|grit| (grit.base, grit.offset));
+    assert_eq!(got, Some((base, offset)), "{actor}");
+}
