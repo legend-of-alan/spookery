@@ -382,6 +382,14 @@ impl<L> World<L> {
 
     /// One row per meter that one actor, place or story, or the world, carries:
     /// `meter <entity> <id> <value> <max>`, the entity spelled as a rule's `who` names it.
+    /// A working copy of the save with a round open on it under the pack's budget. A stage that
+    /// refuses, or a commit that fails, drops the copy and the save stays as it was.
+    pub(crate) fn begin_round(&self) -> State {
+        let mut state = self.state.clone();
+        state.open_round(&self.canon.budget);
+        state
+    }
+
     fn carried_meter_rows(&self) -> Vec<String> {
         let carried = self
             .canon

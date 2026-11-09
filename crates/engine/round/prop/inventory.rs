@@ -15,7 +15,6 @@
 //! Deterministic in CI: 64 cases, seed `0x0018_0018`, no failure file.
 
 use crate::canon::Canon;
-use crate::draft::Draft;
 use crate::intent::{Intent, IntentArgs, Source, Target, Viewer};
 use crate::rules::effect::{Effect, EffectKind};
 use crate::state::id::{ActorId, EntityId, PlaceId};
@@ -55,26 +54,26 @@ fn random_item_changes_never_leave_a_negative_count() {
 
 fn apply_changes(world: &World<()>, steps: &[ItemChange]) -> Result<(), TestCaseError> {
     let nobody = crate::state::Presence::default();
-    let mut draft = Draft::begin(world, &nobody);
+    let (canon, mut state) = (world.canon(), world.begin_round());
     let intent = npc_intent();
     for step in steps {
-        let before = draft.state().clone();
-        let known = is_known_entity(draft.canon(), draft.state(), &step.entity);
-        let held = count_of(draft.state(), &step.entity, &step.id);
-        let outcome = item_effect(step).apply(&mut draft, &intent);
-        assert_no_stored_zero(draft.state())?;
+        let before = state.clone();
+        let known = is_known_entity(canon, &state, &step.entity);
+        let held = count_of(&state, &step.entity, &step.id);
+        let outcome = item_effect(step).apply(canon, &mut state, &nobody, &intent);
+        assert_no_stored_zero(&state)?;
         if !known {
             if outcome.is_ok() {
                 return fail("an unknown entity accepted an item effect");
             }
-            assert_same_save(draft.state(), &before)?;
+            assert_same_save(&state, &before)?;
             continue;
         }
         if outcome.is_err() {
-            assert_same_save(draft.state(), &before)?;
+            assert_same_save(&state, &before)?;
             continue;
         }
-        let got = count_of(draft.state(), &step.entity, &step.id);
+        let got = count_of(&state, &step.entity, &step.id);
         if takes_more_than_held(held, step.delta) {
             return fail(format!(
                 "taking {} from {held} of {} was accepted and the count is {got}",

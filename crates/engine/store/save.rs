@@ -51,7 +51,8 @@ pub fn emit(state: &State) -> Result<String, Reason> {
     let mut canonical = state.clone();
     canonical.schema = crate::diagnostic::SAVE_SCHEMA.to_string();
     canonical.rules_rev = super::RULES_REV;
-    normalize(&mut canonical);
+    // A clone holds no round, so accepting it only puts it in file order.
+    canonical.accept();
     let text = serde_saphyr::to_string_with_options(&canonical, emit_options())
         .map_err(|_| Reason::Schema)?;
     Ok(one_trailing_lf(text))
@@ -77,17 +78,6 @@ fn one_trailing_lf(mut text: String) -> String {
     }
     text.push('\n');
     text
-}
-
-pub fn normalize(state: &mut State) {
-    state.notes.sort_by(|a, b| a.id.cmp(&b.id));
-    for note in &mut state.notes {
-        sort_unique(&mut note.to);
-        sort_unique(&mut note.fact_ids);
-    }
-    for known in state.actors.known_facts.values_mut() {
-        sort_unique(known);
-    }
 }
 
 /// Meters the pack gives an entity that the entity lacks, each at its `start`.
@@ -229,7 +219,7 @@ pub fn migrate(
     (state.world.meters).retain(|id, _| !dropped(EntityId::World, id));
     state.pack_rev = pack_rev.to_string();
     state.state_rev = state_rev;
-    normalize(&mut state);
+    state.accept();
     state
 }
 

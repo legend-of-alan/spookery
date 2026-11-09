@@ -2,8 +2,6 @@
 
 use std::fmt;
 
-use crate::state::id::EntityId;
-
 /// One budget identity. The commit diff summary is this type's `Display`,
 /// sorted as text. It is not a path inside `save.yaml`.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -60,28 +58,6 @@ impl fmt::Display for Key {
 }
 
 impl Key {
-    /// The key of meter `key` on `entity`.
-    pub(crate) fn meter(entity: &EntityId, key: &str) -> Key {
-        let key = key.to_string();
-        match entity {
-            EntityId::Actor(id) => Key::ActorMeter(id.to_string(), key),
-            EntityId::Place(id) => Key::PlaceMeter(id.to_string(), key),
-            EntityId::Story(id) => Key::StoryMeter(id.to_string(), key),
-            EntityId::World => Key::WorldMeter(key),
-        }
-    }
-
-    /// The key of flag `key` on `entity`.
-    pub(crate) fn flag(entity: &EntityId, key: &str) -> Key {
-        let key = key.to_string();
-        match entity {
-            EntityId::Actor(id) => Key::ActorFlag(id.to_string(), key),
-            EntityId::Place(id) => Key::PlaceFlag(id.to_string(), key),
-            EntityId::Story(id) => Key::StoryFlag(id.to_string(), key),
-            EntityId::World => Key::WorldFlag(key),
-        }
-    }
-
     /// The actor this key belongs to, when it has one.
     pub fn actor(&self) -> Option<&str> {
         match self {
@@ -120,6 +96,11 @@ pub enum Value {
 }
 
 impl Value {
+    /// A meter's reading as a change value: `Empty` when it does not read.
+    pub(crate) fn from_reading(value: Result<i64, crate::Reason>) -> Value {
+        value.map_or(Value::Empty, Value::Number)
+    }
+
     pub(crate) fn as_text(&self) -> Option<&str> {
         match self {
             Value::Text(text) => Some(text),

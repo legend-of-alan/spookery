@@ -314,21 +314,7 @@ Rowan.
         .unwrap_or_else(|err| panic!("copy {name}: {err}"));
     }
     let rev = spookery_engine::pack_rev(&pack).unwrap();
-    let mut state = State {
-        schema: "save".to_string(),
-        world_id: "ex".to_string(),
-        pack_rev: rev,
-        rules_rev: spookery_engine::testing::RULES_REV,
-        state_rev: 0,
-        round_index: 0,
-        world_time: 0,
-        last_round_at: "2026-01-01T00:00:00Z".to_string(),
-        actors: Default::default(),
-        places: Default::default(),
-        stories: Default::default(),
-        world: Default::default(),
-        notes: Vec::new(),
-    };
+    let mut state = empty_save("ex", &rev);
     add_actor(&mut state, "pc_rowan", ActorKind::Pc, "gate", 1);
     write_text(&pack.join("state/save.yaml"), &emit_save(&state).unwrap());
     let place_before = fs::read(pack.join("world/places/gate.md")).unwrap();
@@ -437,21 +423,7 @@ rules:
         fs::copy(rules.join(name), &dest).unwrap();
     }
     let rev = spookery_engine::pack_rev(&pack).unwrap();
-    let mut state = State {
-        schema: "save".to_string(),
-        world_id: "crowd".to_string(),
-        pack_rev: rev,
-        rules_rev: spookery_engine::testing::RULES_REV,
-        state_rev: 0,
-        round_index: 0,
-        world_time: 0,
-        last_round_at: "2026-01-01T00:00:00Z".to_string(),
-        actors: Default::default(),
-        places: Default::default(),
-        stories: Default::default(),
-        world: Default::default(),
-        notes: Vec::new(),
-    };
+    let mut state = empty_save("crowd", &rev);
     for id in &npcs {
         add_actor(&mut state, id, ActorKind::Npc, "yard", 1);
     }
@@ -952,4 +924,24 @@ fn an_opposing_total_is_in_the_queue(_world: &mut World) {
 #[when(expr = "Rowan marks Nell while holding the knife")]
 fn rowan_marks_nell_while_holding_the_knife(_world: &mut World) {
     a_held_knife_still_runs_the_opposed_row();
+}
+
+/// A save with no actors, for world `world_id` at pack revision `rev`.
+fn empty_save(world_id: &str, rev: &str) -> State {
+    let rules_rev = spookery_engine::testing::RULES_REV;
+    let text = format!(
+        "\
+schema: save
+world_id: {world_id}
+pack_rev: \"{rev}\"
+rules_rev: {rules_rev}
+state_rev: 0
+round_index: 0
+world_time: 0
+last_round_at: \"2026-01-01T00:00:00Z\"
+actors: {{}}
+notes: []
+"
+    );
+    spookery_engine::parse_save(&text).unwrap_or_else(|err| panic!("save: {err:?}"))
 }
