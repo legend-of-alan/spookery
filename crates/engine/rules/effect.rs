@@ -682,10 +682,11 @@ fn move_actor(
         return Err(Reason::ActorMismatch);
     }
     let actors = state.actors();
-    let kind = actors.kind.get(actor_id).ok_or(Reason::UnknownId)?;
-    if presence.players == 0 && *kind == ActorKind::Pc {
+    if presence.players == 0 && actors.kind.get(actor_id) == Some(&ActorKind::Pc) {
         return Err(Reason::TableEmpty);
     }
+    // The place is read to compare with `from`; an actor the save lacks has none, and is refused
+    // here, before the canon's checks, as `set_place` would refuse it.
     if actors.place.get(actor_id).ok_or(Reason::UnknownId)? != from {
         return Err(Reason::OutOfRange);
     }
