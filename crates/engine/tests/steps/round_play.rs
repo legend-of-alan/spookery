@@ -144,7 +144,7 @@ fn mira_plays(world: &mut World, move_name: String) {
     let (state, rolls, round) =
         play_queued(&pack, &[], vec![intent(&id, "mira", &move_name, None)]);
     let oil = state
-        .places
+        .places()
         .items
         .get(&("docks_shop".into(), "lamp_oil".to_string()))
         .copied()
@@ -212,8 +212,8 @@ fn the_wait_lands_and_miras_habit_is_ineligible(world: &mut World) {
     assert_eq!(refused[0]["code"], "INELIGIBLE", "{round}");
     assert_ne!(refused[0]["id"], "gm-wait", "{round}");
     let state = support::state_of(world.pack());
-    assert_eq!(state.actors.acts["mira"].last_act_round, 1);
-    assert!(state.notes.is_empty(), "{:?}", state.notes);
+    assert_eq!(state.actors().acts["mira"].last_act_round, 1);
+    assert!(state.notes().is_empty(), "{:?}", state.notes());
 }
 
 #[when(expr = "Lark and Briar strike each other")]
@@ -294,7 +294,7 @@ fn max_effects_per_intent_is_1_and_a_row_with_2_effects(world: &mut World) {
     world.oil = format!(
         "{}",
         state
-            .places
+            .places()
             .items
             .get(&("docks_shop".into(), "lamp_oil".to_string()))
             .copied()
@@ -359,7 +359,7 @@ fn rowan_asks_aldric_until_it_finishes(world: &mut World) {
         let output = table.play(&rowan, &wall);
         output.unwrap_or_else(|err| panic!("round {round}: {err}"));
         let state = table.state();
-        if !state.actors.acts["pc_rowan"].is_busy(state.world_time) {
+        if !state.actors().acts["pc_rowan"].is_busy(state.world_time) {
             break;
         }
         assert!(round < 6, "Rowan is still busy after {round} rounds");
@@ -420,7 +420,7 @@ fn rowan_hauls_until_it_finishes(world: &mut World) {
             return;
         }
         let state = table.state();
-        if !state.actors.acts["pc_rowan"].is_busy(state.world_time) {
+        if !state.actors().acts["pc_rowan"].is_busy(state.world_time) {
             break;
         }
     }
@@ -444,7 +444,7 @@ fn the_refused_finish_commits(world: &mut World) {
     let saved = spookery_engine::World::peek(pack).unwrap_or_else(|err| panic!("open: {err}"));
     let state = saved.state();
     assert!(
-        !state.actors.acts["pc_rowan"].is_busy(state.world_time),
+        !state.actors().acts["pc_rowan"].is_busy(state.world_time),
         "{round}"
     );
     spookery_engine::verify_pack(pack, None).unwrap_or_else(|err| panic!("verify: {err}"));
@@ -486,7 +486,7 @@ fn wrens_pick_is_refused(world: &mut World, code: String) {
         "{round}"
     );
     let saved = spookery_engine::World::peek(world.pack()).unwrap();
-    assert_eq!(saved.state().actors.place["pc_rowan"], "docks_street");
+    assert_eq!(saved.state().actors().place["pc_rowan"], "docks_street");
 }
 
 #[then(expr = "the next round plays and spook verify passes")]
@@ -542,7 +542,7 @@ fn a_docks_pack_with_two_rummage_rules(world: &mut World, shop: i64, shared: i64
 fn rowan_walks_and_rummages(world: &mut World) {
     let rummage = intent("rummage", "pc_rowan", "rummage", None);
     let (state, round) = rowan_walks(world.pack(), vec![rummage]);
-    let rest = &state.actors.meters[&("pc_rowan".into(), "rest".to_string())];
+    let rest = &state.actors().meters[&("pc_rowan".into(), "rest".to_string())];
     world.count = usize::try_from(rest.base + rest.offset).unwrap();
     world.scratch = round.to_string();
 }
@@ -585,7 +585,7 @@ fn a_street_rule_over_the_cap(world: &mut World) {
 #[when(expr = "Rowan walks to the street")]
 fn rowan_walks_to_the_street(world: &mut World) {
     let (state, round) = rowan_walks(world.pack(), Vec::new());
-    let flags = state.actors.flags.iter();
+    let flags = state.actors().flags.iter();
     world.count = flags.filter(|(owner, _)| *owner == *"pc_rowan").count();
     world.scratch = round.to_string();
 }
@@ -641,7 +641,7 @@ fn miras_travel_is_picked_first(world: &mut World) {
 #[then(expr = "Mira has visited the Docks Shop")]
 fn mira_has_visited_the_shop(world: &mut World) {
     let saved = spookery_engine::World::peek(world.pack()).unwrap();
-    let actors = &saved.state().actors;
+    let actors = &saved.state().actors();
     assert_eq!(actors.place["mira"], "docks_shop");
     assert!(
         actors
@@ -745,7 +745,7 @@ fn rowan_walks(
     let mut intents = vec![intent("walk", "pc_rowan", "travel", Some("docks_street"))];
     intents.extend(then);
     let (state, _rolls, round) = play_queued(pack, &["pc_rowan"], intents);
-    assert_eq!(state.actors.place["pc_rowan"], "docks_street", "{round}");
+    assert_eq!(state.actors().place["pc_rowan"], "docks_street", "{round}");
     (state, round)
 }
 
@@ -791,7 +791,7 @@ fn indexed_roll(pack: &Path, actor_id: &str, roll_index: u32) -> (String, i64) {
     let def = world.canon().meters.get(&check.stat).unwrap();
     let live = world
         .state()
-        .actors
+        .actors()
         .meters
         .get(&(actor_id.into(), check.stat.clone()))
         .unwrap_or_else(|| panic!("missing {actor_id}'s {}", check.stat));

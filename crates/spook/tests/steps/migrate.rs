@@ -107,8 +107,8 @@ fn the_pack_adds_meter(world: &mut World, id: String, start: i64) {
 #[then(expr = "every actor has {string} at {int}")]
 fn every_actor_has_meter_at(world: &mut World, id: String, base: i64) {
     let now = state_of(table::pack(world));
-    for actor in now.actors.kind.keys() {
-        let meter = now.actors.meters.get(&(actor.clone(), id.clone()));
+    for actor in now.actors().kind.keys() {
+        let meter = now.actors().meters.get(&(actor.clone(), id.clone()));
         let got = meter.map(|meter| meter.base);
         assert_eq!(got, Some(base), "{actor} {id}");
     }
@@ -200,9 +200,9 @@ fn state_rev_is_2(world: &mut World) {
     let now = state_of(table::pack(world));
     assert_eq!(now.state_rev, 2);
     assert_eq!(now.pack_rev, docks_pack_rev());
-    assert_eq!(now.actors.place["pc_rowan"], "docks_shop");
+    assert_eq!(now.actors().place["pc_rowan"], "docks_shop");
     assert_eq!(
-        now.places
+        now.places()
             .items
             .get(&("docks_shop".into(), "lamp_oil".to_string()))
             .copied(),
@@ -227,7 +227,7 @@ fn migrate_keeps_the_hand_edit(world: &mut World) {
     assert_eq!(now.world_time, 7);
     assert_eq!(now.round_index, 0);
     assert_eq!(now.last_round_at, "2026-01-01T00:00:00Z");
-    assert_eq!(now.actors.place["pc_rowan"], "mira_rooms");
+    assert_eq!(now.actors().place["pc_rowan"], "mira_rooms");
     assert!(spookery_engine::testing::journal::list_round_keys(pack).is_empty());
     assert_eq!(read_migrate_revs(pack), [1]);
 }
@@ -251,7 +251,7 @@ fn the_shops_lamp_oil_is_hand_edited(world: &mut World, count: u32) {
 fn the_shop_has_lamp_oil(world: &mut World, count: u32) {
     let now = state_of(table::pack(world));
     let oil = ("docks_shop".into(), "lamp_oil".to_string());
-    assert_eq!(now.places.items.get(&oil).copied(), Some(count));
+    assert_eq!(now.places().items.get(&oil).copied(), Some(count));
 }
 
 #[then(expr = "verify trusts the operator edit at state_rev {int}")]
@@ -274,13 +274,12 @@ fn the_journal_line_is(world: &mut World, key: String, step: &Step) {
 #[when(expr = "Rowan's grit offset is hand edited to {int} and Nell joins without grit")]
 fn rowan_moves_grit_and_nell_joins(world: &mut World, offset: i64) {
     let pack = table::pack(world).to_path_buf();
-    spookery_engine::testing::edit_save(&pack, |now| {
-        let grit = ("pc_rowan".into(), "grit".to_string());
-        now.actors.meters.get_mut(&grit).unwrap().offset = offset;
-        support::copy_actor(now, "pc_rowan", "pc_nell", "docks_shop");
-        now.actors
-            .meters
-            .remove(&("pc_nell".into(), "grit".to_string()));
+    spookery_engine::testing::edit_save_with(&pack, |now, canon| {
+        support::edit_meter(now, canon, "pc_rowan", "grit", |grit| grit.offset = offset);
+        let (rowan, nell) = (&"pc_rowan".into(), &"pc_nell".into());
+        let mut actors = now.actors_mut();
+        actors.copy_actor(canon, rowan, nell, "docks_shop").unwrap();
+        actors.set_meter(canon, nell, "grit", None).unwrap();
     });
 }
 
@@ -288,7 +287,7 @@ fn rowan_moves_grit_and_nell_joins(world: &mut World, offset: i64) {
 fn grit_is_at(world: &mut World, actor: String, base: i64, offset: i64) {
     let now = state_of(table::pack(world));
     let grit = now
-        .actors
+        .actors()
         .meters
         .get(&(actor.as_str().into(), "grit".to_string()));
     let got = grit.map(|grit| (grit.base, grit.offset));

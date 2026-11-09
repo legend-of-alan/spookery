@@ -26,10 +26,15 @@ pub(crate) use crate::support::edit_save;
 /// Rowan holds brass_key, and the stair door is open, as a round that ended with him in the
 /// shop would have left it.
 pub(crate) fn give_key(now: &mut State) {
-    let key = ("pc_rowan".into(), "brass_key".to_string());
-    now.actors.items.insert(key, 1);
-    let stairs = ("docks_shop".into(), "stairs".to_string());
-    now.places.open_exits.insert(stairs);
+    let mut actors = now.actors_mut();
+    actors
+        .shift_item(&"pc_rowan".into(), "brass_key", 1, None)
+        .unwrap();
+    let stairs = spookery_engine::ExitId {
+        place: "docks_shop".into(),
+        exit: "stairs".to_string(),
+    };
+    now.places_mut().set_exit_open(&stairs, true).unwrap();
 }
 
 pub(crate) fn add_trapdoor(pack: &Path) {
@@ -263,15 +268,9 @@ pub(crate) fn capture_play_stdout(world: &mut World) -> String {
 
 /// Put `actor` on the exit `<place>.<exit>`, walking it until tick `until`.
 pub(crate) fn set_busy(now: &mut State, actor: &str, until: u64, exit: &str) {
-    let place = now
-        .actors
-        .place
-        .get_mut(actor)
-        .unwrap_or_else(|| panic!("no {actor}"));
-    *place = format!("exit:{exit}");
-    let act = now.actors.acts.get_mut(actor).unwrap();
-    act.busy_until = Some(until);
-    act.pending = Some(walk(exit));
+    let (mut actors, actor) = (now.actors_mut(), actor.into());
+    actors.set_place(&actor, &format!("exit:{exit}")).unwrap();
+    actors.set_busy(&actor, until, Some(walk(exit))).unwrap();
 }
 
 /// A walk through the exit `<place>.<exit>` by the travel verb.

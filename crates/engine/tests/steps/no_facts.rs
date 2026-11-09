@@ -68,7 +68,12 @@ fn mira_stands_in_a_place_with_no_facts(world: &mut World) {
     let pack = support::copy_docks("no-facts");
     strip_room_facts(&pack);
     support::edit_save(&pack, |state| {
-        state.actors.known_facts.remove("mira");
+        // No writer forgets a fact, so Mira's come off the save as the file holds it.
+        let mut save = serde_json::to_value(&*state).unwrap();
+        if let Some(known) = save["actors"]["known_facts"].as_object_mut() {
+            known.remove("mira");
+        }
+        *state = serde_json::from_value(save).unwrap();
     });
     let opened = spookery_engine::World::open(&pack).unwrap_or_else(|err| panic!("open: {err}"));
     let view = opened
@@ -107,7 +112,7 @@ fn miras_habit_fires(world: &mut World) {
     let state = support::state_of(pack);
     assert!(
         state
-            .notes
+            .notes()
             .iter()
             .any(|message| message.id == "note_mira_door"),
         "the door note was not stored"
@@ -145,7 +150,7 @@ fn strip_room_facts(pack: &Path) {
 
 fn place_of(pack: &Path, actor: &str) -> String {
     support::state_of(pack)
-        .actors
+        .actors()
         .place
         .get(actor)
         .unwrap_or_else(|| panic!("{actor} missing"))

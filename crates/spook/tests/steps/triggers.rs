@@ -5,9 +5,9 @@ use cucumber::{given, then, when};
 use serde_json::Value;
 use spookery::protocol;
 use spookery_engine::testing::state_of;
-use spookery_engine::Meter;
+use spookery_engine::testing::Canon;
 use spookery_engine::{emit_save, parse_save};
-use spookery_engine::{Presence, State};
+use spookery_engine::{EntityId, Presence, State};
 
 use super::common::replace_in_file;
 use super::meters::write_world_meters;
@@ -26,8 +26,8 @@ fn nell_travels_via_door(world: &mut World) {
     );
     flag_pcs(&pack, "heard_bell");
     write_nell(&pack, &["heard_bell"]);
-    edit_table(world, &pack, |now, seated| {
-        insert_actor_copy(now, seated, "pc_rowan", "pc_nell", "docks_street");
+    edit_table_with(world, &pack, |now, seated, canon| {
+        insert_actor_copy(now, canon, seated, ("pc_rowan", "pc_nell"), "docks_street");
     });
     play(
         world,
@@ -93,7 +93,7 @@ fn briar_has_flag_downed(world: &mut World) {
     );
     assert!(
         state_of(pack)
-            .actors
+            .actors()
             .flags
             .contains(&("briar".into(), "downed".to_string())),
         "briar is not downed"
@@ -167,13 +167,13 @@ rules:
     )
     .unwrap();
     write_nell(&pack, &["found_key"]);
-    edit_table(world, &pack, |now, seated| {
-        insert_actor_copy(now, seated, "pc_rowan", "pc_nell", "docks_street");
-        now.actors
-            .flags
-            .insert(("pc_nell".into(), "found_key".to_string()));
-        let start = Meter { base: 0, offset: 0 };
-        now.world.meters.insert("tide".to_string(), start);
+    edit_table_with(world, &pack, |now, seated, canon| {
+        insert_actor_copy(now, canon, seated, ("pc_rowan", "pc_nell"), "docks_street");
+        let mut actors = now.actors_mut();
+        actors
+            .set_flag(&"pc_nell".into(), "found_key", true)
+            .unwrap();
+        support::put_meter(now, canon, &EntityId::World, "tide", 0);
     });
     play(
         world,
@@ -187,12 +187,12 @@ rules:
 fn nell_knows_the_ledger(world: &mut World, tide: i64) {
     let now = state_of(world.pack.as_ref().unwrap());
     assert!(
-        now.actors.known_facts["pc_nell"]
+        now.actors().known_facts["pc_nell"]
             .iter()
             .any(|fact| fact == "fact_ledger"),
         "nell does not know fact_ledger"
     );
-    let live = &now.world.meters["tide"];
+    let live = &now.world().meters["tide"];
     assert_eq!(live.base + live.offset, tide, "{live:?}");
 }
 
@@ -242,8 +242,8 @@ rules:
 ",
     )
     .unwrap();
-    edit_table(world, &pack, |now, seated| {
-        insert_actor_copy(now, seated, "pc_rowan", "pc_nell", "docks_shop");
+    edit_table_with(world, &pack, |now, seated, canon| {
+        insert_actor_copy(now, canon, seated, ("pc_rowan", "pc_nell"), "docks_shop");
     });
     world.pack = Some(pack);
 }
@@ -330,8 +330,8 @@ fn verify_passes_after_triggers(world: &mut World) {
     add_bell(&pack);
     flag_pcs(&pack, "heard_bell");
     write_nell(&pack, &["heard_bell"]);
-    edit_table(world, &pack, |now, seated| {
-        insert_actor_copy(now, seated, "pc_rowan", "pc_nell", "docks_street");
+    edit_table_with(world, &pack, |now, seated, canon| {
+        insert_actor_copy(now, canon, seated, ("pc_rowan", "pc_nell"), "docks_street");
     });
     play(
         world,
@@ -392,8 +392,8 @@ The ground gives.
         "    meter: grit\n  - id: stamina\n    dice:\n      count: 1\n      sides: 6\n    meter: grit\n",
     );
     write_nell(&pack, &[]);
-    edit_table(world, &pack, |now, seated| {
-        insert_actor_copy(now, seated, "pc_rowan", "pc_nell", "docks_street");
+    edit_table_with(world, &pack, |now, seated, canon| {
+        insert_actor_copy(now, canon, seated, ("pc_rowan", "pc_nell"), "docks_street");
     });
     let (_now, rolls, round) = play(
         world,
@@ -415,7 +415,7 @@ fn the_bog_roll_reproduces(world: &mut World) {
     let pack = world.pack.as_ref().unwrap();
     let now = state_of(pack);
     let grit = now
-        .actors
+        .actors()
         .meters
         .get(&("pc_nell".into(), "grit".to_string()))
         .unwrap();
@@ -433,8 +433,8 @@ fn nell_travels_and_the_bell_narrates(world: &mut World) {
     add_bell_narrate(&pack);
     flag_pcs(&pack, "heard_bell");
     write_nell(&pack, &["heard_bell"]);
-    edit_table(world, &pack, |now, seated| {
-        insert_actor_copy(now, seated, "pc_rowan", "pc_nell", "docks_street");
+    edit_table_with(world, &pack, |now, seated, canon| {
+        insert_actor_copy(now, canon, seated, ("pc_rowan", "pc_nell"), "docks_street");
     });
     let played = play_round(
         world,
@@ -523,8 +523,8 @@ Under the street.
         "\n  - id: uncover\n    when:\n      verb: uncover\n    do:\n      - reveal:\n          who: self\n          fact: fact_trapdoor\n",
     );
     write_nell(&pack, &[]);
-    edit_table(world, &pack, |now, seated| {
-        insert_actor_copy(now, seated, "pc_rowan", "pc_nell", "docks_street");
+    edit_table_with(world, &pack, |now, seated, canon| {
+        insert_actor_copy(now, canon, seated, ("pc_rowan", "pc_nell"), "docks_street");
     });
     world.pack = Some(pack);
 }
@@ -537,7 +537,7 @@ fn nell_reveals_the_trapdoor(world: &mut World) {
         &pack,
         vec![intent("nell-uncover", "pc_nell", "uncover", None)],
     );
-    world.scratch = now.actors.known_facts["pc_nell"].join(",");
+    world.scratch = now.actors().known_facts["pc_nell"].join(",");
     world.pack = Some(pack);
 }
 
@@ -640,8 +640,8 @@ rules:
 fn rowan_and_nell_are_seated(world: &mut World) {
     let pack = world.pack.clone().unwrap();
     write_nell(&pack, &[]);
-    edit_table(world, &pack, |now, seated| {
-        insert_actor_copy(now, seated, "pc_rowan", "pc_nell", "docks_street");
+    edit_table_with(world, &pack, |now, seated, canon| {
+        insert_actor_copy(now, canon, seated, ("pc_rowan", "pc_nell"), "docks_street");
         sit(seated, &["pc_rowan", "pc_nell"]);
     });
     spookery_engine::migrate_pack(&pack).unwrap_or_else(|err| panic!("migrate: {err}"));
@@ -661,9 +661,9 @@ fn nell_sets_the_tide(world: &mut World) {
 fn the_world_has_the_tide(world: &mut World) {
     let now = state_of(world.pack.as_ref().unwrap());
     assert!(
-        now.world.flags.iter().any(|flag| flag == "tide_turned"),
+        now.world().flags.iter().any(|flag| flag == "tide_turned"),
         "flags: {:?}",
-        now.world.flags
+        now.world().flags
     );
 }
 
@@ -698,8 +698,8 @@ fn the_viewer_summary_omits(world: &mut World, viewer: String, key: String) {
 fn a_round_runs(world: &mut World) {
     let pack = copy_docks("trigger-round-counter");
     write_nell(&pack, &[]);
-    edit_table(world, &pack, |now, seated| {
-        insert_actor_copy(now, seated, "pc_rowan", "pc_nell", "docks_street");
+    edit_table_with(world, &pack, |now, seated, canon| {
+        insert_actor_copy(now, canon, seated, ("pc_rowan", "pc_nell"), "docks_street");
     });
     play_and_keep_summaries(world, pack, Vec::new());
 }
@@ -735,8 +735,8 @@ fn nell_learns_the_trapdoor_beside_wren(world: &mut World) {
         "\n  - id: learn\n    when:\n      verb: learn\n    do:\n      - reveal:\n          who: self\n          fact: fact_trapdoor\n",
     );
     write_nell(&pack, &[]);
-    edit_table(world, &pack, |now, seated| {
-        insert_actor_copy(now, seated, "pc_rowan", "pc_nell", "docks_street");
+    edit_table_with(world, &pack, |now, seated, canon| {
+        insert_actor_copy(now, canon, seated, ("pc_rowan", "pc_nell"), "docks_street");
         sit(seated, &["pc_nell", "pc_wren"]);
     });
     play_and_keep_summaries(
@@ -763,8 +763,8 @@ fn an_item_is_taken_from_the_shop(world: &mut World) {
 fn rowan_takes_an_item_beside_nell(world: &mut World) {
     let pack = copy_docks("trigger-actor-item");
     write_nell(&pack, &[]);
-    edit_table(world, &pack, |now, seated| {
-        insert_actor_copy(now, seated, "pc_rowan", "pc_nell", "docks_shop");
+    edit_table_with(world, &pack, |now, seated, canon| {
+        insert_actor_copy(now, canon, seated, ("pc_rowan", "pc_nell"), "docks_shop");
         sit(seated, &["pc_rowan", "pc_nell", "pc_wren"]);
     });
     play_and_keep_summaries(
@@ -826,15 +826,15 @@ fn the_rounds_only_refusal_is(world: &mut World, code: String) {
 #[then(expr = "no place has the {string} flag")]
 fn no_place_has_the_flag(world: &mut World, flag: String) {
     let now = state_of(world.pack.as_ref().unwrap());
-    assert!(!now.places.flags.iter().any(|(_, set)| *set == flag));
+    assert!(!now.places().flags.iter().any(|(_, set)| *set == flag));
 }
 
 #[when(expr = "pc_nell travels from docks_street into docks_shop")]
 fn nell_travels_from_the_street_into_the_shop(world: &mut World) {
     let pack = copy_docks("trigger-both-rooms");
     write_nell(&pack, &[]);
-    edit_table(world, &pack, |now, seated| {
-        insert_actor_copy(now, seated, "pc_rowan", "pc_nell", "docks_street");
+    edit_table_with(world, &pack, |now, seated, canon| {
+        insert_actor_copy(now, canon, seated, ("pc_rowan", "pc_nell"), "docks_street");
         set_place(now, "pc_harbormouse", "mira_rooms");
         sit(seated, &["pc_nell"]);
     });
@@ -853,8 +853,8 @@ fn a_message_hidden_from_wren_is_written(world: &mut World) {
         "\n  - id: pass_word\n    when:\n      verb: pass_word\n    do:\n      - note:\n          id: note_private\n          to:\n            - pc_nell\n          text: The tide turns at dusk.\n",
     );
     write_nell(&pack, &[]);
-    edit_table(world, &pack, |now, seated| {
-        insert_actor_copy(now, seated, "pc_rowan", "pc_nell", "docks_street");
+    edit_table_with(world, &pack, |now, seated, canon| {
+        insert_actor_copy(now, canon, seated, ("pc_rowan", "pc_nell"), "docks_street");
         sit(seated, &["pc_nell", "pc_wren"]);
     });
     play_and_keep_summaries(
@@ -960,7 +960,7 @@ fn play_and_keep_summaries(
 }
 
 pub(crate) fn set_place(now: &mut State, id: &str, place: &str) {
-    *now.actors.place.get_mut(id).unwrap() = place.to_string();
+    now.actors_mut().set_place(&id.into(), place).unwrap();
 }
 
 /// Seat these PCs, sorted the way the host's seats are.
@@ -1048,18 +1048,12 @@ rules:
         ),
     )
     .unwrap();
-    edit_table(world, &pack, |now, seated| {
-        insert_actor_copy(now, seated, "aldric", "briar", "docks_shop");
+    edit_table_with(world, &pack, |now, seated, canon| {
+        insert_actor_copy(now, canon, seated, ("aldric", "briar"), "docks_shop");
         let briar = spookery_engine::ActorId::from("briar");
-        let meter = Meter {
-            base: hp,
-            offset: 0,
-        };
-        now.actors
-            .meters
-            .insert((briar.clone(), "hp".to_string()), meter);
+        support::put_meter(now, canon, &EntityId::Actor(briar.clone()), "hp", hp);
         if downed {
-            now.actors.flags.insert((briar, "downed".to_string()));
+            now.actors_mut().set_flag(&briar, "downed", true).unwrap();
         }
         sit(seated, &["pc_rowan"]);
     });
@@ -1140,13 +1134,27 @@ Nell walks the docks.
     .unwrap();
 }
 
-fn insert_actor_copy(now: &mut State, seated: &mut Presence, from: &str, id: &str, place: &str) {
-    support::copy_actor(now, from, id, place);
-    now.actors.flags.retain(|(owner, _)| *owner != *id);
+fn insert_actor_copy(
+    now: &mut State,
+    canon: &Canon,
+    seated: &mut Presence,
+    (from, id): (&str, &str),
+    place: &str,
+) {
+    let (from, to) = (from.into(), id.into());
+    let mut actors = now.actors_mut();
+    actors.copy_actor(canon, &from, &to, place).unwrap();
+    let flags: Vec<String> = (actors.flags.iter())
+        .filter(|(owner, _)| *owner == to)
+        .map(|(_, key)| key.clone())
+        .collect();
+    for key in flags {
+        actors.set_flag(&to, &key, false).unwrap();
+    }
     // Only pc_rowan carries the debt, so a copy of them does not.
-    now.actors
-        .meters
-        .remove(&(id.into(), "assassination_debt".to_string()));
+    actors
+        .set_meter(canon, &to, "assassination_debt", None)
+        .unwrap();
     sit(seated, &[id]);
 }
 
@@ -1163,6 +1171,16 @@ pub(crate) fn edit_table(
     remember_presence(world, pack, seated);
     now.pack_rev = spookery_engine::pack_rev(pack).unwrap();
     fs::write(path, emit_save(&now).unwrap()).unwrap();
+}
+
+/// `edit_table` for an edit whose writers read the pack's canon.
+pub(crate) fn edit_table_with(
+    world: &mut World,
+    pack: &Path,
+    edit: impl FnOnce(&mut State, &mut Presence, &Canon),
+) {
+    let canon = spookery_engine::load_canon(pack).unwrap_or_else(|err| panic!("canon: {err:?}"));
+    edit_table(world, pack, |now, seated| edit(now, seated, &canon));
 }
 
 fn remember_presence(world: &mut World, pack: &Path, presence: Presence) {

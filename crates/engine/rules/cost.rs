@@ -28,7 +28,8 @@ pub(crate) fn afford(context: &Context, cost: &Cost) -> Result<(), gate::Refusal
         if amount < 0 {
             return Err(cant_afford(key));
         }
-        let current = (state.actors.meter_value(canon, who, key)).map_err(|_| cant_afford(key))?;
+        let current =
+            (state.actors().meter_value(canon, who, key)).map_err(|_| cant_afford(key))?;
         if current < amount {
             return Err(cant_afford(key));
         }
@@ -40,7 +41,7 @@ pub(crate) fn afford(context: &Context, cost: &Cost) -> Result<(), gate::Refusal
         let amount = expr::eval(context, expr).map_err(|_| cant_afford(id))?;
         let count = item_count(amount).map_err(|_| cant_afford(id))?;
         let held = state
-            .actors
+            .actors()
             .items
             .get(&(who.clone(), id.clone()))
             .copied()

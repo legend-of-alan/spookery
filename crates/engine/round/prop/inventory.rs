@@ -39,7 +39,7 @@ struct ItemChange {
 fn random_item_changes_never_leave_a_negative_count() {
     let pack = TempPack(copy_docks("inventory"));
     let world = World::open(&pack.0).expect("docks pack opens");
-    let actors: Vec<ActorId> = world.state().actors.kind.keys().cloned().collect();
+    let actors: Vec<ActorId> = world.state().actors().kind.keys().cloned().collect();
     let places: Vec<PlaceId> = world.canon().places.keys().cloned().collect();
     assert!(
         actors.len() >= 2 && !places.is_empty(),
@@ -106,12 +106,12 @@ fn assert_same_save(state: &State, before: &State) -> Result<(), TestCaseError> 
 
 /// A stored count is a `u32`, so it cannot be negative. A count of 0 is omitted.
 fn assert_no_stored_zero(state: &State) -> Result<(), TestCaseError> {
-    for ((actor_id, item_id), count) in &state.actors.items {
+    for ((actor_id, item_id), count) in &state.actors().items {
         if *count == 0 {
             return fail(format!("{actor_id} stores a zero count of {item_id}"));
         }
     }
-    for ((place_id, item_id), count) in &state.places.items {
+    for ((place_id, item_id), count) in &state.places().items {
         if *count == 0 {
             return fail(format!("{place_id} stores a zero count of {item_id}"));
         }
@@ -121,7 +121,7 @@ fn assert_no_stored_zero(state: &State) -> Result<(), TestCaseError> {
 
 fn is_known_entity(canon: &Canon, state: &State, entity: &EntityId) -> bool {
     match entity {
-        EntityId::Actor(id) => state.actors.kind.contains_key(id),
+        EntityId::Actor(id) => state.actors().kind.contains_key(id),
         EntityId::Place(id) => canon.places.contains_key(id),
         EntityId::Story(_) | EntityId::World => false,
     }
@@ -130,13 +130,13 @@ fn is_known_entity(canon: &Canon, state: &State, entity: &EntityId) -> bool {
 fn count_of(state: &State, entity: &EntityId, id: &str) -> u32 {
     match entity {
         EntityId::Actor(actor_id) => state
-            .actors
+            .actors()
             .items
             .get(&(actor_id.clone(), id.to_string()))
             .copied()
             .unwrap_or(0),
         EntityId::Place(place_id) => state
-            .places
+            .places()
             .items
             .get(&(place_id.clone(), id.to_string()))
             .copied()

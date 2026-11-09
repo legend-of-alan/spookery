@@ -89,7 +89,7 @@ pub(crate) fn missing_meters(canon: &Canon, state: &State) -> Vec<AddedMeter> {
         }
     }
     for (id, def) in &canon.world_meters {
-        if !state.world.meters.contains_key(id) {
+        if !state.world().meters.contains_key(id) {
             added.push(AddedMeter::new(id, def));
         }
     }
@@ -126,13 +126,19 @@ pub(crate) fn find_lacking_carriers(
 
 /// Meters an actor, place, story or the world lists that the pack no longer gives it.
 pub(crate) fn stale_meters(canon: &Canon, state: &State) -> Vec<DroppedMeter> {
-    let actors = state.actors.meters.keys();
-    let places = state.places.meters.keys();
-    let stories = state.stories.meters.keys();
+    let actors = state.actors().meters.keys();
+    let places = state.places().meters.keys();
+    let stories = state.stories().meters.keys();
     let carriers = (actors.map(|(id, key)| (EntityId::Actor(id.clone()), key)))
         .chain(places.map(|(id, key)| (EntityId::Place(id.clone()), key)))
         .chain(stories.map(|(id, key)| (EntityId::Story(id.clone()), key)))
-        .chain(state.world.meters.keys().map(|key| (EntityId::World, key)));
+        .chain(
+            state
+                .world()
+                .meters
+                .keys()
+                .map(|key| (EntityId::World, key)),
+        );
     carriers
         .filter(|(carrier, id)| canon.meter_def(carrier.as_ref(), id).is_none())
         .map(|(carrier, id)| DroppedMeter {
@@ -145,7 +151,7 @@ pub(crate) fn stale_meters(canon: &Canon, state: &State) -> Vec<DroppedMeter> {
 /// Modifiers some actor holds that the pack no longer defines, or now defines on another meter.
 pub(crate) fn stale_modifiers(canon: &Canon, state: &State) -> Vec<String> {
     let mut stale: Vec<String> = state
-        .actors
+        .actors()
         .modifiers
         .iter()
         .filter(|((_, id), live)| !modifier::is_defined(&canon.modifiers, id, live))

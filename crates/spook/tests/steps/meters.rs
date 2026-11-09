@@ -12,7 +12,7 @@ use super::common::replace_in_file;
 use super::record::read_extra_steps;
 use super::table;
 use super::triggers::{
-    add_verb, edit_table, intent, play_round, seen_of, set_place, sit, PlayedRound,
+    add_verb, edit_table, edit_table_with, intent, play_round, seen_of, set_place, sit, PlayedRound,
 };
 use crate::support::{self, copy_docks};
 use crate::World;
@@ -138,7 +138,7 @@ fn bram_and_rowan_do_not(world: &mut World) {
     let now = state_of(pack(world));
     for id in ["bram", "pc_rowan"] {
         let shop_day = (id.into(), "shop_day".to_string());
-        assert!(!now.actors.meters.contains_key(&shop_day), "{id}");
+        assert!(!now.actors().meters.contains_key(&shop_day), "{id}");
     }
 }
 
@@ -157,7 +157,7 @@ fn miras_habit_reads_and_resets(world: &mut World) {
 #[then(expr = "the habit runs as it did when shop_day was a clock")]
 fn the_habit_runs_as_before(world: &mut World) {
     let now = state_of(pack(world));
-    let note = now.notes.iter().find(|note| note.id == "note_mira_door");
+    let note = now.notes().iter().find(|note| note.id == "note_mira_door");
     assert_eq!(
         note.map(|note| note.to.clone()),
         Some(vec!["pc_rowan".into()])
@@ -240,13 +240,9 @@ fn it_refuses_the_second_grit(world: &mut World) {
 fn rowan_and_mira_stand_in_the_shop(world: &mut World) {
     let pack = copy_docks("meter-sight");
     add_mira_meter_habit(&pack, "shop_day", 1);
-    edit_table(world, &pack, |now, seated| {
+    edit_table_with(world, &pack, |now, seated, canon| {
         set_place(now, "mira", "docks_shop");
-        now.actors
-            .meters
-            .get_mut(&("mira".into(), "shop_day".to_string()))
-            .unwrap()
-            .base = 0;
+        support::edit_meter(now, canon, "mira", "shop_day", |shop_day| shop_day.base = 0);
         sit(seated, &["pc_rowan"]);
     });
     world.pack = Some(pack);
@@ -387,9 +383,9 @@ fn dawn_is_zero(world: &mut World) {
 #[then(expr = "no actor carries a dawn meter")]
 fn no_actor_carries_dawn(world: &mut World) {
     let now = state_of(pack(world));
-    for id in now.actors.kind.keys() {
+    for id in now.actors().kind.keys() {
         let dawn = (id.clone(), "dawn".to_string());
-        assert!(!now.actors.meters.contains_key(&dawn), "{id}");
+        assert!(!now.actors().meters.contains_key(&dawn), "{id}");
     }
 }
 
@@ -403,7 +399,7 @@ fn the_vigil_fires_once(world: &mut World) {
         .filter(|name| name == "story:vigil/dawn_breaks")
         .count();
     assert_eq!(fired, 1);
-    assert!(state_of(pack).world.flags.contains("dawn_broke"));
+    assert!(state_of(pack).world().flags.contains("dawn_broke"));
 }
 
 /// Give the world a `morning` meter from 0, and append effects to the vigil's dawn rule, the
@@ -601,14 +597,15 @@ fn the_gm_sees_both_meters(world: &mut World) {
 #[given(expr = "dawn has fallen to {int} while pc_rowan's player was away")]
 fn dawn_has_fallen(world: &mut World, value: i64) {
     let pack = world.pack.clone().unwrap();
-    edit_table(world, &pack, |now, _| {
+    edit_table_with(world, &pack, |now, _, canon| {
         let fallen = Meter {
             base: 6,
             offset: value - 6,
         };
-        now.world.meters.insert("dawn".to_string(), fallen);
-        let doom = Meter { base: 6, offset: 0 };
-        now.world.meters.insert("doom".to_string(), doom);
+        now.world_mut()
+            .set_meter(canon, "dawn", Some(fallen))
+            .unwrap();
+        support::put_meter(now, canon, &EntityId::World, "doom", 6);
     });
     assert_eq!(value_on(&pack, &EntityId::World, "dawn"), Some(value));
 }

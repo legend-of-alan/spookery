@@ -69,7 +69,7 @@ impl RoundDice {
         let actor_id = key
             .subject_id
             .as_ref()
-            .filter(|id| state.actors.kind.contains_key(*id))
+            .filter(|id| state.actors().kind.contains_key(*id))
             .ok_or(Reason::UnknownId)?;
         let check = canon.checks.get(check_id).ok_or(Reason::UnknownId)?;
         roll::roll_check(check, canon, state, actor_id, &key, target, partial_at)

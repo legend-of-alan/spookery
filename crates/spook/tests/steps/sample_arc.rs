@@ -137,7 +137,7 @@ fn they_arrive_at_the_exits_cost(world: &mut World) {
     let cost = lane_cost(&pack);
     let now = state_of(&pack);
     let arrived = arrival_tick(&pack);
-    assert_eq!(now.actors.place["pc_lark"], "mill_lane");
+    assert_eq!(now.actors().place["pc_lark"], "mill_lane");
     assert_eq!(arrived.saturating_sub(started), cost);
     assert!(cost > 0);
     assert!(is_finished(&pack));
@@ -212,11 +212,11 @@ fn commit_line(world: &mut World, line: &str) {
 
 fn larks_tonic(now: &spookery_engine::State) -> u32 {
     let tonic = ("pc_lark".into(), "tonic".to_string());
-    now.actors.items.get(&tonic).copied().unwrap_or(0)
+    now.actors().items.get(&tonic).copied().unwrap_or(0)
 }
 
 fn is_finished(pack: &Path) -> bool {
-    state_of(pack).world.flags.contains("finished")
+    state_of(pack).world().flags.contains("finished")
 }
 
 fn lane_cost(pack: &Path) -> u64 {

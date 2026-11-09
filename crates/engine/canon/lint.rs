@@ -551,7 +551,7 @@ pub(super) fn unknown_meters(
 pub fn check_save(canon: &Canon, state: &crate::state::State) -> Result<(), Vec<Diagnostic>> {
     const FILE: &str = "state/save.yaml";
     let mut diags = Vec::new();
-    let actors = &state.actors;
+    let actors = &state.actors();
     // Every store, with no `..`: a store added later must be listed here to compile.
     let ActorComponents {
         kind: _,
@@ -660,7 +660,7 @@ pub fn check_save(canon: &Canon, state: &crate::state::State) -> Result<(), Vec<
             );
         }
     }
-    for ((place, item), count) in &state.places.items {
+    for ((place, item), count) in &state.places().items {
         if *count == 0 {
             diags.push(
                 schema_error(
@@ -712,7 +712,7 @@ pub fn check_save(canon: &Canon, state: &crate::state::State) -> Result<(), Vec<
             );
         }
     }
-    for (place, item) in state.places.items.keys() {
+    for (place, item) in state.places().items.keys() {
         if !canon.items.contains_key(item) {
             let path = format!("places.items.{place}.{item}");
             diags.push(unknown_item(FILE, item, &path));

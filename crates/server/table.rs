@@ -400,7 +400,7 @@ impl Table {
         actor_id: &ActorId,
         args: &SayArgs,
     ) {
-        let here = self.world.state().actors.place.get(actor_id).cloned();
+        let here = self.world.state().actors().place.get(actor_id).cloned();
         let heard = match args {
             SayArgs::Table { .. } => Address::Table,
             SayArgs::Place { place, .. } if here.as_ref() == Some(place) => Address::Place(place),

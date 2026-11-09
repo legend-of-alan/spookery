@@ -53,7 +53,7 @@ pub(crate) fn perceive_budget<L>(
     }
     let (canon, state) = (world.canon(), world.state());
     let (id, kind) = state
-        .actors
+        .actors()
         .kind
         .get_key_value(as_arg)
         .ok_or(Reason::UnknownId)?;
@@ -77,7 +77,7 @@ fn perceive_viewer_budget(
     max_body_chars: usize,
 ) -> Result<View, Reason> {
     let place = state
-        .actors
+        .actors()
         .place
         .get(viewer.actor_id())
         .ok_or(Reason::UnknownId)?
@@ -90,7 +90,7 @@ fn perceive_viewer_budget(
         ids.insert(id.clone());
     }
     for id in state
-        .actors
+        .actors()
         .known_facts
         .get(viewer.actor_id())
         .into_iter()
@@ -129,7 +129,7 @@ fn perceive_viewer_budget(
     unknown_mentions.sort();
 
     let mut notes = Vec::new();
-    for note in &state.notes {
+    for note in state.notes() {
         let here = note.place.as_ref().is_some_and(|at| at == place.as_str());
         let addressed = note.to.iter().any(|id| id == viewer.actor_id());
         if !here && !addressed {
@@ -149,7 +149,7 @@ fn perceive_viewer_budget(
     }
     notes.sort_by(|a, b| a.id.cmp(&b.id));
 
-    let items = nested_map::entries_of(&state.places.items, &PlaceId::from(place.clone()))
+    let items = nested_map::entries_of(&state.places().items, &PlaceId::from(place.clone()))
         .map(|(id, count)| ItemStack {
             id: id.to_string(),
             count: *count,

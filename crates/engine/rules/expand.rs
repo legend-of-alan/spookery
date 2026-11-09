@@ -333,7 +333,7 @@ fn location_effect(context: &Context, to: &str) -> Result<Effect, Reason> {
     let actor_id = expr::resolve_actor(context, &Who::Self_)?.clone();
     let from = context
         .state
-        .actors
+        .actors()
         .place
         .get(&actor_id)
         .cloned()

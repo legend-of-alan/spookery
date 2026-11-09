@@ -101,7 +101,7 @@ pub(crate) fn play_rounds(pack: &Path, rounds: &[RoundPlan]) -> Result<(), Strin
 fn pc_count(world: &World) -> usize {
     world
         .state()
-        .actors
+        .actors()
         .kind
         .values()
         .filter(|kind| **kind == ActorKind::Pc)
@@ -134,7 +134,7 @@ fn add_grit_success(pack: &Path) -> Result<(), String> {
 fn queue_move(world: &mut World, plan: &MovePlan) {
     let pcs: Vec<ActorId> = world
         .state()
-        .actors
+        .actors()
         .kind
         .iter()
         .filter(|(_, kind)| **kind == ActorKind::Pc)
@@ -176,13 +176,13 @@ fn target_for(world: &World, actor: &ActorId, verb: &str, token: usize) -> Optio
 fn item_tokens(world: &World, actor: &ActorId) -> Vec<String> {
     let mut ids: Vec<String> = world.canon().items.keys().cloned().collect();
     let state = world.state();
-    if let Some(place) = state.actors.place.get(actor) {
+    if let Some(place) = state.actors().place.get(actor) {
         ids.extend(
-            nested_map::entries_of(&state.actors.items, actor).map(|(id, _)| id.to_string()),
+            nested_map::entries_of(&state.actors().items, actor).map(|(id, _)| id.to_string()),
         );
         let place = PlaceId::from(place.clone());
         ids.extend(
-            nested_map::entries_of(&state.places.items, &place).map(|(id, _)| id.to_string()),
+            nested_map::entries_of(&state.places().items, &place).map(|(id, _)| id.to_string()),
         );
     }
     ids.sort();

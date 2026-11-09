@@ -2,6 +2,8 @@
 
 mod actors;
 pub(crate) mod change;
+#[cfg(any(test, feature = "testing"))]
+mod fixtures;
 mod flag;
 pub(crate) mod id;
 mod item;
@@ -45,14 +47,14 @@ pub struct State {
     /// Ticks since the world began.
     pub world_time: u64,
     pub last_round_at: String,
-    pub actors: ActorComponents,
+    actors: ActorComponents,
     #[serde(default)]
-    pub places: PlaceComponents,
+    places: PlaceComponents,
     #[serde(default)]
-    pub stories: StoryComponents,
+    stories: StoryComponents,
     #[serde(default)]
-    pub world: WorldComponents,
-    pub notes: Vec<Note>,
+    world: WorldComponents,
+    notes: Vec<Note>,
     #[serde(skip)]
     transaction: Transaction,
 }

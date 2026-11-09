@@ -103,7 +103,7 @@ impl World {
         heard: Address<'_>,
         text: &str,
     ) -> Result<TapeRecord, Reason> {
-        if self.state.actors.kind.get(actor_id) != Some(&ActorKind::Pc) {
+        if self.state.actors().kind.get(actor_id) != Some(&ActorKind::Pc) {
             return Err(Reason::Schema);
         }
         let from = Speaker::Player(actor_id.to_string());
@@ -129,7 +129,7 @@ impl World {
     ) -> Result<TapeRecord, Reason> {
         let text = check_say_text(text)?.to_string();
         if let Address::Actor(actor) = heard {
-            if !self.state.actors.kind.contains_key(actor) {
+            if !self.state.actors().kind.contains_key(actor) {
                 return Err(Reason::Schema);
             }
         }
@@ -175,7 +175,7 @@ impl<L> World<L> {
     /// Every PC in the cast.
     pub fn pcs(&self) -> impl Iterator<Item = &ActorId> {
         self.state
-            .actors
+            .actors()
             .kind
             .iter()
             .filter(|(_, kind)| **kind == ActorKind::Pc)
@@ -235,7 +235,7 @@ impl<L> World<L> {
         let Some(viewer) = &line.actor else {
             return Err(Reason::Schema);
         };
-        if self.state.actors.kind.get(viewer.actor_id()) != Some(&ActorKind::Pc) {
+        if self.state.actors().kind.get(viewer.actor_id()) != Some(&ActorKind::Pc) {
             return Err(Reason::Schema);
         }
         let (actor, verb) = (viewer, &line.move_name);
@@ -701,7 +701,7 @@ pub fn check_pack(root: &Path) -> Vec<Diagnostic> {
 
 fn check_save_text(state: &State, bytes: &[u8]) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
-    if state.actors.kind.contains_key("world") {
+    if state.actors().kind.contains_key("world") {
         diags.push(
             schema_error(
                 "state/save.yaml",

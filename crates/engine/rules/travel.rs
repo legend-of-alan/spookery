@@ -59,7 +59,7 @@ pub(crate) fn exit_via<'a>(
     let from = context
         .intent
         .actor_id()
-        .and_then(|id| context.state.actors.place.get(id))
+        .and_then(|id| context.state.actors().place.get(id))
         .map_or("", String::as_str);
     if let Some(exit) = exit_stood_on(context.canon, from) {
         return Ok(Some(exit));
@@ -123,7 +123,7 @@ fn is_revealed(canon: &Canon, state: &State, actor_id: &ActorId, exit: &Exit) ->
 
 /// A door is locked until it opens. An exit with no `if` is no door, so it is always open.
 fn is_locked(state: &State, exit: &Exit) -> bool {
-    !exit.if_.is_empty() && !state.places.is_exit_open(&exit.id())
+    !exit.if_.is_empty() && !state.places().is_exit_open(&exit.id())
 }
 
 /// Open each locked door whose `if` some actor in its place meets, with an `exit_open` effect
@@ -219,7 +219,7 @@ pub(crate) fn note_exits(canon: &Canon, state: &mut State) -> Result<(), Reason>
 
 /// The exits of this actor's place that they are allowed to see.
 pub(crate) fn visible_exits(canon: &Canon, state: &State, actor_id: &ActorId) -> Vec<ExitView> {
-    let place = state.actors.place.get(actor_id);
+    let place = state.actors().place.get(actor_id);
     match place.and_then(|place| canon.places.get(place.as_str())) {
         Some(place) => exits_at(canon, state, actor_id, place),
         None => Vec::new(),

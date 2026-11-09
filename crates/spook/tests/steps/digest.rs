@@ -56,13 +56,13 @@ fn the_host_text_lists_the_door_note(world: &mut World) {
     assert_eq!(now.world_time, 1860);
     assert_eq!(now.last_round_at, "2026-01-01T00:00:00Z");
     assert_eq!(
-        now.places
+        now.places()
             .items
             .get(&("docks_shop".into(), "lamp_oil".to_string()))
             .copied(),
         Some(4u32)
     );
-    let debt = &now.actors.meters[&("pc_rowan".into(), "assassination_debt".to_string())];
+    let debt = &now.actors().meters[&("pc_rowan".into(), "assassination_debt".to_string())];
     assert_eq!((debt.base, debt.offset), (2, 0));
 }
 
@@ -201,7 +201,7 @@ fn the_player_resume_for_does_not_list(world: &mut World, actor: String, note: S
     let pack = table::pack(world);
     let now = state_of(pack);
     assert!(
-        now.notes.iter().any(|message| message.id == note),
+        now.notes().iter().any(|message| message.id == note),
         "the save has no {note}"
     );
     let resume = read_player_resume(world, &actor);
@@ -234,7 +234,7 @@ fn the_docks_pack_where_a_fact_has_no_hidden(world: &mut World, fact_id: String)
 #[given(expr = "{string} is in {string}")]
 fn is_in(world: &mut World, actor: String, place: String) {
     let now = state_of(table::pack(world));
-    assert_eq!(now.actors.place[actor.as_str()], place);
+    assert_eq!(now.actors().place[actor.as_str()], place);
 }
 
 #[then(expr = "the perceive view for {string} lists the fact {string}")]
