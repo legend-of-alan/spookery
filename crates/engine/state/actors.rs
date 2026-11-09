@@ -81,14 +81,12 @@ impl ActorComponents {
 }
 
 impl Writer<'_, ActorComponents> {
-    /// The components and the transaction, once `actor`, when one is given, is known to exist.
-    fn known(
+    /// The components and the transaction, once `actor` is known to exist.
+    fn check_actor(
         &mut self,
-        actor: Option<&ActorId>,
+        actor: &ActorId,
     ) -> Result<(&mut ActorComponents, &mut Transaction), Reason> {
-        if let Some(actor) = actor {
-            self.part.kind.get(actor).ok_or(Reason::UnknownId)?;
-        }
+        self.part.kind.get(actor).ok_or(Reason::UnknownId)?;
         Ok((&mut *self.part, &mut *self.transaction))
     }
 
@@ -102,7 +100,7 @@ impl Writer<'_, ActorComponents> {
         read: impl Fn(&ActorComponents) -> change::Value,
         write: impl FnOnce(&mut ActorComponents) -> Result<bool, Reason>,
     ) -> Result<(), Reason> {
-        let (part, transaction) = self.known(Some(actor))?;
+        let (part, transaction) = self.check_actor(actor)?;
         let before = read(part);
         if write(part)? {
             transaction.report(key, before, read(part))?;
@@ -113,7 +111,7 @@ impl Writer<'_, ActorComponents> {
     /// Stand `actor` at `to`: a place id, or an exit address while they walk.
     pub fn set_place(&mut self, actor: &ActorId, to: &str) -> Result<(), Reason> {
         let key = change::Key::ActorPlace(actor.to_string());
-        let read = |part: &ActorComponents| text(part.place.get(actor));
+        let read = |part: &ActorComponents| text_value(part.place.get(actor));
         self.write(actor, key, read, |part| {
             let place = part.place.get_mut(actor).ok_or(Reason::UnknownId)?;
             Ok(std::mem::replace(place, to.to_string()) != to)
@@ -123,7 +121,7 @@ impl Writer<'_, ActorComponents> {
     /// Wield `item`, which `actor` must hold, or with `None` let go of what they wield.
     pub fn set_wielded(&mut self, actor: &ActorId, item: Option<&str>) -> Result<(), Reason> {
         let key = change::Key::ActorWielded(actor.to_string());
-        let read = |part: &ActorComponents| text(part.wielded.get(actor));
+        let read = |part: &ActorComponents| text_value(part.wielded.get(actor));
         self.write(actor, key, read, |part| {
             let before = match item {
                 Some(item) if nested_map::get(&part.items, actor, item).is_none() => {
@@ -167,7 +165,11 @@ impl Writer<'_, ActorComponents> {
         pending: Option<PendingAction>,
     ) -> Result<(), Reason> {
         let key = change::Key::ActorBusy(actor.to_string());
-        let read = |part: &ActorComponents| busy(part, actor);
+        let read = |part: &ActorComponents| {
+            part.acts
+                .get(actor)
+                .map_or(change::Value::Empty, Act::busy_value)
+        };
         self.write(actor, key, read, |part| {
             let act = part.acts.get_mut(actor).ok_or(Reason::UnknownId)?;
             let moved = act.busy_until != Some(until) || act.pending != pending;
@@ -180,7 +182,11 @@ impl Writer<'_, ActorComponents> {
     /// `finish` see it.
     pub fn take_pending(&mut self, actor: &ActorId) -> Result<Option<PendingAction>, Reason> {
         let (key, mut taken) = (change::Key::ActorBusy(actor.to_string()), None);
-        let read = |part: &ActorComponents| busy(part, actor);
+        let read = |part: &ActorComponents| {
+            part.acts
+                .get(actor)
+                .map_or(change::Value::Empty, Act::busy_value)
+        };
         self.write(actor, key, read, |part| {
             let act = part.acts.get_mut(actor).ok_or(Reason::UnknownId)?;
             taken = act.pending.take();
@@ -236,7 +242,7 @@ impl Writer<'_, ActorComponents> {
         place: &str,
         exits: Vec<String>,
     ) -> Result<(), Reason> {
-        let (part, _) = self.known(Some(actor))?;
+        let (part, _) = self.check_actor(actor)?;
         part.visited
             .insert((actor.clone(), place.to_string()), exits);
         Ok(())
@@ -251,7 +257,7 @@ impl Writer<'_, ActorComponents> {
         delta: i64,
         max: Option<i64>,
     ) -> Result<(), Reason> {
-        let (part, transaction) = self.known(Some(actor))?;
+        let (part, transaction) = self.check_actor(actor)?;
         let entry = (actor.clone(), id.to_string());
         let key = change::Key::ActorItem(actor.to_string(), id.to_string());
         item::shift(&mut part.items, transaction, entry, delta, max, key)?;
@@ -270,7 +276,7 @@ impl Writer<'_, ActorComponents> {
         key: &str,
         delta: i64,
     ) -> Result<(), Reason> {
-        let (part, transaction) = self.known(Some(actor))?;
+        let (part, transaction) = self.check_actor(actor)?;
         let def = canon
             .meter_def(EntityRef::Actor(actor), key)
             .ok_or(Reason::UnknownId)?;
@@ -289,7 +295,11 @@ impl Writer<'_, ActorComponents> {
         key: &str,
         meter: Option<Meter>,
     ) -> Result<(), Reason> {
-        let (part, transaction) = self.known(meter.is_some().then_some(actor))?;
+        // Taking a meter off checks no owner: the entry is its own evidence.
+        let (part, transaction) = match meter {
+            Some(_) => self.check_actor(actor)?,
+            None => (&mut *self.part, &mut *self.transaction),
+        };
         let def = canon.meter_def(EntityRef::Actor(actor), key);
         let modifiers = part.modifier_sum(actor, key);
         let entry = (actor.clone(), key.to_string());
@@ -325,7 +335,11 @@ impl Writer<'_, ActorComponents> {
             (None, Some(held)) => held.meter.clone(),
             (None, None) => return Ok(()),
         };
-        let (part, transaction) = self.known(next.is_some().then_some(actor))?;
+        // Taking a modifier off checks no owner: the entry is its own evidence.
+        let (part, transaction) = match next {
+            Some(_) => self.check_actor(actor)?,
+            None => (&mut *self.part, &mut *self.transaction),
+        };
         let held = nested_map::get(&part.modifiers, actor, id);
         let reading = |part: &ActorComponents| {
             change::Value::from_reading(part.meter_value(canon, actor, &meter))
@@ -368,7 +382,7 @@ impl Writer<'_, ActorComponents> {
     }
 
     pub fn set_flag(&mut self, actor: &ActorId, key: &str, on: bool) -> Result<(), Reason> {
-        let (part, transaction) = self.known(Some(actor))?;
+        let (part, transaction) = self.check_actor(actor)?;
         let entry = (actor.clone(), key.to_string());
         let watched = change::Key::ActorFlag(actor.to_string(), key.to_string());
         flag::set(&mut part.flags, transaction, entry, on, watched)
@@ -376,29 +390,22 @@ impl Writer<'_, ActorComponents> {
 }
 
 /// A count as a change value.
-fn number(count: u64) -> change::Value {
+fn count_value(count: u64) -> change::Value {
     change::Value::Number(i64::try_from(count).unwrap_or(i64::MAX))
 }
 
 /// A component's text as a change value, `Empty` when there is none.
-fn text(held: Option<&String>) -> change::Value {
+fn text_value(held: Option<&String>) -> change::Value {
     held.map_or(change::Value::Empty, |held| {
         change::Value::Text(held.clone())
     })
-}
-
-/// The tick `actor` is busy until, as a change value.
-fn busy(part: &ActorComponents, actor: &ActorId) -> change::Value {
-    part.acts
-        .get(actor)
-        .map_or(change::Value::Empty, Act::busy_value)
 }
 
 /// One count of `actor`'s action state, as a change value.
 fn act_value(part: &ActorComponents, actor: &ActorId, read: impl Fn(&Act) -> u64) -> change::Value {
     part.acts
         .get(actor)
-        .map_or(change::Value::Empty, |act| number(read(act)))
+        .map_or(change::Value::Empty, |act| count_value(read(act)))
 }
 
 /// Whether an actor is a PC or an NPC.
@@ -435,7 +442,7 @@ pub struct Act {
 impl Act {
     /// The tick the actor is busy until, as a change value.
     fn busy_value(&self) -> change::Value {
-        self.busy_until.map_or(change::Value::Empty, number)
+        self.busy_until.map_or(change::Value::Empty, count_value)
     }
 
     /// Busy means an action under way, or a cooldown whose `busy_until` is still after this

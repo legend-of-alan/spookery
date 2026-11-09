@@ -9,7 +9,7 @@ use crate::state::id::{ActorId, EntityId};
 use crate::state::meter::Meter;
 use crate::state::modifier;
 use crate::state::{nested_map, sort_unique, State};
-use crate::store::records::{AddedMeter, DroppedMeter};
+use crate::store::records::{AddedMeter, DroppedMeter, MigrateRecord};
 use crate::Reason;
 
 pub(crate) fn emit_options() -> SerializerOptions {
@@ -161,21 +161,13 @@ pub(crate) fn stale_modifiers(canon: &Canon, state: &State) -> Vec<String> {
     stale
 }
 
-/// Migrate a save through the writers a round uses: give each entity the `meters` it lacks, at
-/// their `start`, take the `dropped_modifiers` off every actor and each `dropped_meters` off its
-/// entity, then stamp `pack_rev` and `state_rev`. A meter an entity holds keeps its value. Live
-/// migrate and replay both call this. It does not touch the disk.
-#[allow(clippy::too_many_arguments)]
-pub fn migrate(
-    canon: &Canon,
-    mut state: State,
-    pack_rev: &str,
-    state_rev: u64,
-    meters: &[AddedMeter],
-    dropped_modifiers: &[String],
-    dropped_meters: &[DroppedMeter],
-) -> Result<State, Reason> {
-    for meter in meters {
+/// Migrate a save as `record` says, through the writers a round uses: give each entity the
+/// meters it lacks, at their `start`, take the dropped modifiers off every actor and each dropped
+/// meter off its entity, then stamp the record's `pack_rev_after` and `state_rev_after`. A meter
+/// an entity holds keeps its value. Live migrate and replay both call this. It does not touch the
+/// disk, and it reads no hash or chain from the record.
+pub fn migrate(canon: &Canon, mut state: State, record: &MigrateRecord) -> Result<State, Reason> {
+    for meter in &record.meters {
         let start = Meter {
             base: meter.start,
             offset: 0,
@@ -186,19 +178,18 @@ pub fn migrate(
         }
     }
     let modifiers = state.actors().modifiers.keys();
-    let held: Vec<(ActorId, String)> = (modifiers.filter(|(_, id)| dropped_modifiers.contains(id)))
-        .cloned()
-        .collect();
+    let dropped = |(_, id): &&(ActorId, String)| record.dropped_modifiers.contains(id);
+    let held: Vec<(ActorId, String)> = (modifiers.filter(dropped)).cloned().collect();
     for (actor, id) in &held {
         state.actors_mut().set_modifier(canon, actor, id, None)?;
     }
-    for meter in dropped_meters {
+    for meter in &record.dropped_meters {
         state
             .entity_mut(&meter.carrier)
             .set_meter(canon, &meter.id, None)?;
     }
-    state.pack_rev = pack_rev.to_string();
-    state.state_rev = state_rev;
+    state.pack_rev = record.pack_rev_after.clone();
+    state.state_rev = record.state_rev_after;
     state.accept();
     Ok(state)
 }

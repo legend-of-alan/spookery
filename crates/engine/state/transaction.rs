@@ -24,7 +24,7 @@ pub(crate) struct Transaction {
     changes: Vec<Change>,
     taken: usize,
     memories: Vec<MemoryLine>,
-    memory_writes: u32,
+    memory_writes: u64,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -91,7 +91,7 @@ pub(crate) struct Savepoint {
     changes: usize,
     taken: usize,
     memories: usize,
-    memory_writes: u32,
+    memory_writes: u64,
 }
 
 impl State {
@@ -179,7 +179,7 @@ impl State {
         let limit = transaction
             .limits
             .map_or(u64::MAX, |limits| limits.memory_writes);
-        if u64::from(transaction.memory_writes) >= limit {
+        if transaction.memory_writes >= limit {
             return Err(Reason::Budget);
         }
         transaction.memory_writes += 1;
