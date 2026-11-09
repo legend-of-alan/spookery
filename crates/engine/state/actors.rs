@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use super::id::{ActorId, EntityRef};
 use super::meter::{self, Meter};
 use super::modifier::{self, Modifier};
+use super::transaction::Transaction;
 use super::{change, flag, item, nested_map, sort_unique, Writer};
 use crate::canon::Canon;
 use crate::intent::{Target, Viewer};
@@ -80,63 +81,81 @@ impl ActorComponents {
 }
 
 impl Writer<'_, ActorComponents> {
+    /// The components and the transaction, once `actor`, when one is given, is known to exist.
+    fn known(
+        &mut self,
+        actor: Option<&ActorId>,
+    ) -> Result<(&mut ActorComponents, &mut Transaction), Reason> {
+        if let Some(actor) = actor {
+            self.part.kind.get(actor).ok_or(Reason::UnknownId)?;
+        }
+        Ok((&mut *self.part, &mut *self.transaction))
+    }
+
+    /// The one write an actor writer makes: `actor` must exist; `write` changes the components and
+    /// says whether it moved the stored value; a move reports `key`'s change from what `read`
+    /// gives before to what it gives after. A write that moves nothing reports nothing.
+    fn write(
+        &mut self,
+        actor: &ActorId,
+        key: change::Key,
+        read: impl Fn(&ActorComponents) -> change::Value,
+        write: impl FnOnce(&mut ActorComponents) -> Result<bool, Reason>,
+    ) -> Result<(), Reason> {
+        let (part, transaction) = self.known(Some(actor))?;
+        let before = read(part);
+        if write(part)? {
+            transaction.report(key, before, read(part))?;
+        }
+        Ok(())
+    }
+
     /// Stand `actor` at `to`: a place id, or an exit address while they walk.
     pub fn set_place(&mut self, actor: &ActorId, to: &str) -> Result<(), Reason> {
-        let Writer { part, transaction } = self;
-        part.kind.get(actor).ok_or(Reason::UnknownId)?;
-        let place = part.place.get_mut(actor).ok_or(Reason::UnknownId)?;
-        if place == to {
-            return Ok(());
-        }
-        let before = change::Value::Text(std::mem::replace(place, to.to_string()));
-        let after = change::Value::Text(to.to_string());
-        transaction.report(change::Key::ActorPlace(actor.to_string()), before, after)
+        let key = change::Key::ActorPlace(actor.to_string());
+        let read = |part: &ActorComponents| text(part.place.get(actor));
+        self.write(actor, key, read, |part| {
+            let place = part.place.get_mut(actor).ok_or(Reason::UnknownId)?;
+            Ok(std::mem::replace(place, to.to_string()) != to)
+        })
     }
 
     /// Wield `item`, which `actor` must hold, or with `None` let go of what they wield.
     pub fn set_wielded(&mut self, actor: &ActorId, item: Option<&str>) -> Result<(), Reason> {
-        let Writer { part, transaction } = self;
-        part.kind.get(actor).ok_or(Reason::UnknownId)?;
-        if item.is_some_and(|item| nested_map::get(&part.items, actor, item).is_none()) {
-            return Err(Reason::MissingItem);
-        }
-        let before = match item {
-            Some(item) => part.wielded.insert(actor.clone(), item.to_string()),
-            None => part.wielded.remove(actor),
-        };
-        if before.as_deref() == item {
-            return Ok(());
-        }
-        let text = |item: Option<String>| item.map_or(change::Value::Empty, change::Value::Text);
-        let after = text(item.map(str::to_string));
-        transaction.report(
-            change::Key::ActorWielded(actor.to_string()),
-            text(before),
-            after,
-        )
+        let key = change::Key::ActorWielded(actor.to_string());
+        let read = |part: &ActorComponents| text(part.wielded.get(actor));
+        self.write(actor, key, read, |part| {
+            let before = match item {
+                Some(item) if nested_map::get(&part.items, actor, item).is_none() => {
+                    return Err(Reason::MissingItem)
+                }
+                Some(item) => part.wielded.insert(actor.clone(), item.to_string()),
+                None => part.wielded.remove(actor),
+            };
+            Ok(before.as_deref() != item)
+        })
     }
 
     /// `actor` knows `facts` from now on, kept in order with no repeats.
     pub fn learn(&mut self, actor: &ActorId, facts: &[String]) -> Result<(), Reason> {
-        let Writer { part, transaction } = self;
-        part.kind.get(actor).ok_or(Reason::UnknownId)?;
-        let held = part.known_facts.get(actor);
-        if facts
-            .iter()
-            .all(|fact| held.is_some_and(|held| held.contains(fact)))
-        {
-            return Ok(());
-        }
-        let before = change::Value::List(held.cloned().unwrap_or_default());
-        let known = part.known_facts.entry(actor.clone()).or_default();
-        known.extend_from_slice(facts);
-        sort_unique(known);
-        let after = change::Value::List(known.clone());
-        transaction.report(
-            change::Key::ActorKnownFact(actor.to_string()),
-            before,
-            after,
-        )
+        let key = change::Key::ActorKnownFact(actor.to_string());
+        let read = |part: &ActorComponents| {
+            change::Value::List(part.known_facts.get(actor).cloned().unwrap_or_default())
+        };
+        self.write(actor, key, read, |part| {
+            let known = |fact: &String| {
+                part.known_facts
+                    .get(actor)
+                    .is_some_and(|held| held.contains(fact))
+            };
+            if facts.iter().all(known) {
+                return Ok(false);
+            }
+            let known = part.known_facts.entry(actor.clone()).or_default();
+            known.extend_from_slice(facts);
+            sort_unique(known);
+            Ok(true)
+        })
     }
 
     /// Keep `actor` busy until `until`, on `pending` while an action is under way and on `None`
@@ -147,30 +166,27 @@ impl Writer<'_, ActorComponents> {
         until: u64,
         pending: Option<PendingAction>,
     ) -> Result<(), Reason> {
-        let Writer { part, transaction } = self;
-        part.kind.get(actor).ok_or(Reason::UnknownId)?;
-        let act = part.acts.get_mut(actor).ok_or(Reason::UnknownId)?;
-        if act.busy_until == Some(until) && act.pending == pending {
-            return Ok(());
-        }
-        let before = act.busy_value();
-        (act.busy_until, act.pending) = (Some(until), pending);
         let key = change::Key::ActorBusy(actor.to_string());
-        transaction.report(key, before, act.busy_value())
+        let read = |part: &ActorComponents| busy(part, actor);
+        self.write(actor, key, read, |part| {
+            let act = part.acts.get_mut(actor).ok_or(Reason::UnknownId)?;
+            let moved = act.busy_until != Some(until) || act.pending != pending;
+            (act.busy_until, act.pending) = (Some(until), pending);
+            Ok(moved)
+        })
     }
 
     /// End `actor`'s action under way, if any, and free them. The action, so `cancel` and
     /// `finish` see it.
     pub fn take_pending(&mut self, actor: &ActorId) -> Result<Option<PendingAction>, Reason> {
-        let Writer { part, transaction } = self;
-        part.kind.get(actor).ok_or(Reason::UnknownId)?;
-        let act = part.acts.get_mut(actor).ok_or(Reason::UnknownId)?;
-        let before = act.busy_value();
-        if act.busy_until.take().is_some() | act.pending.is_some() {
-            let key = change::Key::ActorBusy(actor.to_string());
-            transaction.report(key, before, change::Value::Empty)?;
-        }
-        Ok(act.pending.take())
+        let (key, mut taken) = (change::Key::ActorBusy(actor.to_string()), None);
+        let read = |part: &ActorComponents| busy(part, actor);
+        self.write(actor, key, read, |part| {
+            let act = part.acts.get_mut(actor).ok_or(Reason::UnknownId)?;
+            taken = act.pending.take();
+            Ok(act.busy_until.take().is_some() || taken.is_some())
+        })?;
+        Ok(taken)
     }
 
     /// Count one act for `actor` in round `round_index`, in the act window the table is in: the
@@ -181,37 +197,34 @@ impl Writer<'_, ActorComponents> {
         round_index: u64,
         players: u32,
     ) -> Result<(), Reason> {
-        let Writer { part, transaction } = self;
-        part.kind.get(actor).ok_or(Reason::UnknownId)?;
-        let act = part.acts.get_mut(actor).ok_or(Reason::UnknownId)?;
+        let key = change::Key::LastActRound(actor.to_string());
+        let read = |part: &ActorComponents| act_value(part, actor, |act| act.last_act_round);
+        self.write(actor, key, read, |part| {
+            let act = part.acts.get_mut(actor).ok_or(Reason::UnknownId)?;
+            Ok(std::mem::replace(&mut act.last_act_round, round_index) != round_index)
+        })?;
         let counter = match players {
             0 => ActCounter::IdleActsThisWindow,
             _ => ActCounter::LiveActsThisWindow,
         };
-        let last = std::mem::replace(&mut act.last_act_round, round_index);
-        let count = counter.count_mut(act);
-        let counted = std::mem::replace(count, count.saturating_add(1));
-        if last != round_index {
-            let key = change::Key::LastActRound(actor.to_string());
-            transaction.report(key, number(last), number(round_index))?;
-        }
-        if *count != counted {
-            let key = counter.key(actor.to_string());
-            transaction.report(key, number(counted.into()), number((*count).into()))?;
-        }
-        Ok(())
+        let read = |part: &ActorComponents| act_value(part, actor, |act| counter.count(act).into());
+        self.write(actor, counter.key(actor.to_string()), read, |part| {
+            let count = counter.count_mut(part.acts.get_mut(actor).ok_or(Reason::UnknownId)?);
+            let counted = std::mem::replace(count, count.saturating_add(1));
+            Ok(*count != counted)
+        })
     }
 
     /// Set `counter` back to 0 on every actor.
     pub(crate) fn reset_acts(&mut self, counter: ActCounter) -> Result<(), Reason> {
-        let Writer { part, transaction } = self;
-        for actor in part.kind.keys() {
-            let act = part.acts.get_mut(actor).ok_or(Reason::UnknownId)?;
-            let count = std::mem::take(counter.count_mut(act));
-            if count != 0 {
-                let key = counter.key(actor.to_string());
-                transaction.report(key, number(count.into()), number(0))?;
-            }
+        let actors: Vec<ActorId> = self.kind.keys().cloned().collect();
+        for actor in &actors {
+            let read =
+                |part: &ActorComponents| act_value(part, actor, |act| counter.count(act).into());
+            self.write(actor, counter.key(actor.to_string()), read, |part| {
+                let act = part.acts.get_mut(actor).ok_or(Reason::UnknownId)?;
+                Ok(std::mem::take(counter.count_mut(act)) != 0)
+            })?;
         }
         Ok(())
     }
@@ -223,9 +236,8 @@ impl Writer<'_, ActorComponents> {
         place: &str,
         exits: Vec<String>,
     ) -> Result<(), Reason> {
-        self.part.kind.get(actor).ok_or(Reason::UnknownId)?;
-        self.part
-            .visited
+        let (part, _) = self.known(Some(actor))?;
+        part.visited
             .insert((actor.clone(), place.to_string()), exits);
         Ok(())
     }
@@ -239,13 +251,12 @@ impl Writer<'_, ActorComponents> {
         delta: i64,
         max: Option<i64>,
     ) -> Result<(), Reason> {
-        let Writer { part, transaction } = self;
-        part.kind.get(actor).ok_or(Reason::UnknownId)?;
+        let (part, transaction) = self.known(Some(actor))?;
         let entry = (actor.clone(), id.to_string());
         let key = change::Key::ActorItem(actor.to_string(), id.to_string());
         item::shift(&mut part.items, transaction, entry, delta, max, key)?;
-        let wielded = part.wielded.get(actor);
-        if wielded.is_some_and(|held| nested_map::get(&part.items, actor, held).is_none()) {
+        let wielded = self.wielded.get(actor);
+        if wielded.is_some_and(|held| nested_map::get(&self.items, actor, held).is_none()) {
             self.set_wielded(actor, None)?;
         }
         Ok(())
@@ -259,8 +270,7 @@ impl Writer<'_, ActorComponents> {
         key: &str,
         delta: i64,
     ) -> Result<(), Reason> {
-        let Writer { part, transaction } = self;
-        part.kind.get(actor).ok_or(Reason::UnknownId)?;
+        let (part, transaction) = self.known(Some(actor))?;
         let def = canon
             .meter_def(EntityRef::Actor(actor), key)
             .ok_or(Reason::UnknownId)?;
@@ -279,10 +289,7 @@ impl Writer<'_, ActorComponents> {
         key: &str,
         meter: Option<Meter>,
     ) -> Result<(), Reason> {
-        let Writer { part, transaction } = self;
-        if meter.is_some() {
-            part.kind.get(actor).ok_or(Reason::UnknownId)?;
-        }
+        let (part, transaction) = self.known(meter.is_some().then_some(actor))?;
         let def = canon.meter_def(EntityRef::Actor(actor), key);
         let modifiers = part.modifier_sum(actor, key);
         let entry = (actor.clone(), key.to_string());
@@ -308,21 +315,18 @@ impl Writer<'_, ActorComponents> {
         id: &str,
         next: Option<Modifier>,
     ) -> Result<(), Reason> {
-        let Writer { part, transaction } = self;
-        let held = nested_map::get(&part.modifiers, actor, id);
-        let meter = match (&next, held) {
-            (Some(_), _) => {
-                part.kind.get(actor).ok_or(Reason::UnknownId)?;
-                canon
-                    .modifiers
-                    .get(id)
-                    .ok_or(Reason::UnknownId)?
-                    .meter
-                    .clone()
-            }
+        let meter = match (&next, nested_map::get(&self.modifiers, actor, id)) {
+            (Some(_), _) => canon
+                .modifiers
+                .get(id)
+                .ok_or(Reason::UnknownId)?
+                .meter
+                .clone(),
             (None, Some(held)) => held.meter.clone(),
             (None, None) => return Ok(()),
         };
+        let (part, transaction) = self.known(next.is_some().then_some(actor))?;
+        let held = nested_map::get(&part.modifiers, actor, id);
         let reading = |part: &ActorComponents| {
             change::Value::from_reading(part.meter_value(canon, actor, &meter))
         };
@@ -364,8 +368,7 @@ impl Writer<'_, ActorComponents> {
     }
 
     pub fn set_flag(&mut self, actor: &ActorId, key: &str, on: bool) -> Result<(), Reason> {
-        let Writer { part, transaction } = self;
-        part.kind.get(actor).ok_or(Reason::UnknownId)?;
+        let (part, transaction) = self.known(Some(actor))?;
         let entry = (actor.clone(), key.to_string());
         let watched = change::Key::ActorFlag(actor.to_string(), key.to_string());
         flag::set(&mut part.flags, transaction, entry, on, watched)
@@ -375,6 +378,27 @@ impl Writer<'_, ActorComponents> {
 /// A count as a change value.
 fn number(count: u64) -> change::Value {
     change::Value::Number(i64::try_from(count).unwrap_or(i64::MAX))
+}
+
+/// A component's text as a change value, `Empty` when there is none.
+fn text(held: Option<&String>) -> change::Value {
+    held.map_or(change::Value::Empty, |held| {
+        change::Value::Text(held.clone())
+    })
+}
+
+/// The tick `actor` is busy until, as a change value.
+fn busy(part: &ActorComponents, actor: &ActorId) -> change::Value {
+    part.acts
+        .get(actor)
+        .map_or(change::Value::Empty, Act::busy_value)
+}
+
+/// One count of `actor`'s action state, as a change value.
+fn act_value(part: &ActorComponents, actor: &ActorId, read: impl Fn(&Act) -> u64) -> change::Value {
+    part.acts
+        .get(actor)
+        .map_or(change::Value::Empty, |act| number(read(act)))
 }
 
 /// Whether an actor is a PC or an NPC.
@@ -434,6 +458,14 @@ impl ActCounter {
         match self {
             ActCounter::IdleActsThisWindow => change::Key::IdleActsThisWindow(id),
             ActCounter::LiveActsThisWindow => change::Key::LiveActsThisWindow(id),
+        }
+    }
+
+    /// This count on `act`.
+    pub(crate) fn count(self, act: &Act) -> u32 {
+        match self {
+            ActCounter::IdleActsThisWindow => act.idle_acts_this_window,
+            ActCounter::LiveActsThisWindow => act.live_acts_this_window,
         }
     }
 
