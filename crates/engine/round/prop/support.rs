@@ -6,8 +6,8 @@ use std::path::{Path, PathBuf};
 use crate::canon::pack_rev;
 use crate::intent::Target;
 use crate::rules::travel::visible_exits;
-use crate::state::grouped;
 use crate::state::id::{ActorId, PlaceId};
+use crate::state::nested_map;
 use crate::state::{ActorKind, Presence};
 use crate::store::journal;
 use crate::store::save;
@@ -177,9 +177,13 @@ fn item_tokens(world: &World, actor: &ActorId) -> Vec<String> {
     let mut ids: Vec<String> = world.canon().items.keys().cloned().collect();
     let state = world.state();
     if let Some(place) = state.actors.place.get(actor) {
-        ids.extend(grouped::entries_of(&state.actors.items, actor).map(|(id, _)| id.to_string()));
+        ids.extend(
+            nested_map::entries_of(&state.actors.items, actor).map(|(id, _)| id.to_string()),
+        );
         let place = PlaceId::from(place.clone());
-        ids.extend(grouped::entries_of(&state.places.items, &place).map(|(id, _)| id.to_string()));
+        ids.extend(
+            nested_map::entries_of(&state.places.items, &place).map(|(id, _)| id.to_string()),
+        );
     }
     ids.sort();
     ids.dedup();

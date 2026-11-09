@@ -6,9 +6,9 @@ use crate::canon::Canon;
 use crate::intent::Viewer;
 use crate::rules::habits::list_whose_if_holds;
 use crate::rules::visibility::can_see_fact;
-use crate::state::grouped;
 use crate::state::id::{ActorId, EntityId, PlaceId};
 use crate::state::meter;
+use crate::state::nested_map;
 use crate::state::{Note, Presence, State};
 use crate::world::World;
 use crate::Reason;
@@ -150,7 +150,7 @@ fn perceive_viewer_budget(
     }
     notes.sort_by(|a, b| a.id.cmp(&b.id));
 
-    let items = grouped::entries_of(&state.places.items, &PlaceId::from(place.clone()))
+    let items = nested_map::entries_of(&state.places.items, &PlaceId::from(place.clone()))
         .map(|(id, count)| ItemStack {
             id: id.to_string(),
             count: *count,

@@ -5,10 +5,10 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde::{Deserialize, Serialize};
 
 use super::change;
-use super::grouped;
 use super::id::ActorId;
 use super::meter::Meter;
 use super::modifier::Modifier;
+use super::nested_map;
 use crate::intent::{Target, Viewer};
 
 /// Every actor's components, by actor id. An actor exists when it has a kind; `kind`, `place`
@@ -26,17 +26,17 @@ pub struct ActorComponents {
     pub known_facts: BTreeMap<ActorId, Vec<String>>,
     /// Each place an actor has stood at the end of a round, with the names of the exits they
     /// saw there then.
-    #[serde(with = "grouped", skip_serializing_if = "BTreeMap::is_empty")]
+    #[serde(with = "nested_map", skip_serializing_if = "BTreeMap::is_empty")]
     pub visited: BTreeMap<(ActorId, String), Vec<String>>,
     pub acts: BTreeMap<ActorId, Act>,
-    #[serde(with = "grouped")]
+    #[serde(with = "nested_map")]
     pub items: BTreeMap<(ActorId, String), u32>,
-    #[serde(with = "grouped")]
+    #[serde(with = "nested_map")]
     pub meters: BTreeMap<(ActorId, String), Meter>,
     /// The modifiers each actor holds, by modifier id.
-    #[serde(with = "grouped")]
+    #[serde(with = "nested_map")]
     pub modifiers: BTreeMap<(ActorId, String), Modifier>,
-    #[serde(with = "grouped::lists")]
+    #[serde(with = "nested_map::lists")]
     pub flags: BTreeSet<(ActorId, String)>,
 }
 

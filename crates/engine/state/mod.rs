@@ -2,10 +2,10 @@
 
 mod actors;
 pub(crate) mod change;
-pub(crate) mod grouped;
 pub(crate) mod id;
 pub(crate) mod meter;
 pub(crate) mod modifier;
+pub(crate) mod nested_map;
 mod places;
 mod stories;
 mod world;
@@ -68,7 +68,7 @@ impl State {
     pub(crate) fn modifier_sum(&self, entity: &EntityId, key: &str) -> Result<i64, crate::Reason> {
         match entity {
             EntityId::Actor(id) => {
-                let held = grouped::entries_of(&self.actors.modifiers, id).map(|(_, held)| held);
+                let held = nested_map::entries_of(&self.actors.modifiers, id).map(|(_, held)| held);
                 modifier::sum(held, key)
             }
             EntityId::World | EntityId::Place(_) | EntityId::Story(_) => Ok(0),
@@ -78,9 +78,9 @@ impl State {
     /// The live meters `entity` carries, by id.
     pub(crate) fn meters_of(&self, entity: &EntityId) -> BTreeMap<&str, &Meter> {
         match entity {
-            EntityId::Actor(id) => grouped::entries_of(&self.actors.meters, id).collect(),
-            EntityId::Place(id) => grouped::entries_of(&self.places.meters, id).collect(),
-            EntityId::Story(id) => grouped::entries_of(&self.stories.meters, id).collect(),
+            EntityId::Actor(id) => nested_map::entries_of(&self.actors.meters, id).collect(),
+            EntityId::Place(id) => nested_map::entries_of(&self.places.meters, id).collect(),
+            EntityId::Story(id) => nested_map::entries_of(&self.stories.meters, id).collect(),
             EntityId::World => self
                 .world
                 .meters

@@ -9,8 +9,8 @@ use crate::rules::context::Context;
 use crate::rules::cost;
 use crate::rules::perceive::perceive_as;
 use crate::rules::rule::{Owner, Rule, TargetKind, When};
-use crate::state::grouped;
 use crate::state::id::ActorId;
+use crate::state::nested_map;
 use crate::state::{Presence, State};
 use crate::Reason;
 
@@ -213,7 +213,7 @@ pub(crate) fn nameable(
     presence: &Presence,
     viewer: &Viewer,
 ) -> Vec<String> {
-    let mut names: Vec<String> = grouped::entries_of(&state.actors.items, viewer.actor_id())
+    let mut names: Vec<String> = nested_map::entries_of(&state.actors.items, viewer.actor_id())
         .filter(|(_, count)| **count > 0)
         .map(|(id, _)| id.to_string())
         .collect();

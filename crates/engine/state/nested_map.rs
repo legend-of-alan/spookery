@@ -1,4 +1,4 @@
-//! Maps keyed by an owner's id and a name, written grouped by owner: the pair-keyed map
+//! Maps keyed by an owner's id and a name, written as a nested map by owner: the pair-keyed map
 //! `{(mira, grit): meter}` is `mira: { grit: meter }` in the save, and an owner with no entries
 //! writes nothing.
 

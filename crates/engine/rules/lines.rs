@@ -8,8 +8,8 @@ use crate::rules::cond;
 use crate::rules::gate::{nameable, verb_for};
 use crate::rules::rule::{Owner, TargetKind, When};
 use crate::rules::travel::{exit_stood_on, exit_view, exits_at};
-use crate::state::grouped;
 use crate::state::id::ActorId;
+use crate::state::nested_map;
 use crate::state::{Presence, State};
 use crate::Reason;
 
@@ -108,7 +108,7 @@ fn names_for(
             .filter(|name| canon.items.contains_key(*name))
             .cloned()
             .collect(),
-        TargetKind::Place => grouped::entries_of(&state.actors.visited, actor_id)
+        TargetKind::Place => nested_map::entries_of(&state.actors.visited, actor_id)
             .map(|(place, _)| place.to_string())
             .collect(),
     };
@@ -131,21 +131,22 @@ pub(crate) fn map(
     if !state.actors.kind.contains_key(actor_id) {
         return Err(Reason::UnknownId);
     }
-    let places = grouped::entries_of(&state.actors.visited, actor_id).map(|(id, seen)| PlaceView {
-        name: place_name(canon, id),
-        exits: canon
-            .places
-            .get(id)
-            .map(|place| {
-                place
-                    .exits
-                    .iter()
-                    .filter(|exit| seen.contains(&exit.name))
-                    .map(|exit| exit_view(canon, state, exit))
-                    .collect()
-            })
-            .unwrap_or_default(),
-    });
+    let places =
+        nested_map::entries_of(&state.actors.visited, actor_id).map(|(id, seen)| PlaceView {
+            name: place_name(canon, id),
+            exits: canon
+                .places
+                .get(id)
+                .map(|place| {
+                    place
+                        .exits
+                        .iter()
+                        .filter(|exit| seen.contains(&exit.name))
+                        .map(|exit| exit_view(canon, state, exit))
+                        .collect()
+                })
+                .unwrap_or_default(),
+        });
     Ok(places.collect())
 }
 

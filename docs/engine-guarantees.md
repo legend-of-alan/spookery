@@ -222,7 +222,7 @@ Tested in `features/meters/modifiers_stack_and_expire.feature`.
 
 A missing exit and a locked exit change nothing. A locked exit shows its locked
 text. An exit with an `if` is locked until, at the end of a round, some actor in
-its place meets that `if`. Then the engine records a `flag` effect that sets the
+its place meets that `if`. Then the engine records an `exit_open` effect that sets the
 exit's `open`, and the exit stays open for every actor until a rule sets `open`
 to false. A hidden exit the traveller does not know stays off the view and `help`.
 A walk that takes ticks puts the traveller on the exit at once, in neither

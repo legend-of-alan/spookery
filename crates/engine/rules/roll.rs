@@ -4,10 +4,10 @@ use std::collections::BTreeMap;
 
 use crate::hash::blake2s_256;
 use crate::rules::gate;
-use crate::state::grouped;
 use crate::state::id::ActorId;
 use crate::state::meter::{self, MeterDef};
 use crate::state::modifier;
+use crate::state::nested_map;
 use crate::state::State;
 use crate::Reason;
 
@@ -102,7 +102,7 @@ pub(crate) fn roll_check(
         .meters
         .get(&(actor_id.clone(), check.stat.clone()))
         .ok_or(Reason::UnknownId)?;
-    let held = grouped::entries_of(&state.actors.modifiers, actor_id).map(|(_, held)| held);
+    let held = nested_map::entries_of(&state.actors.modifiers, actor_id).map(|(_, held)| held);
     let stat = meter::current(def, live, modifier::sum(held, &check.stat)?)?;
     let faces = faces(key, 0, check.dice_count, check.dice_sides)?;
     let total = faces.iter().map(|face| i64::from(*face)).sum::<i64>() + stat;

@@ -56,7 +56,7 @@ An exit has `to` and `name`. It may have `cost`, `if`, `locked_text`, and `hidde
 
 `cost.ticks` is the game time the cost takes, a whole number of ticks. Omitted means 0. An exit with an `if` is a door, and the `if`, in the same conditions as a rule, is what it takes to open it. A door starts locked: travel through it shows `locked_text` and changes nothing.
 
-To start a door already open, list its exit name under `places.<id>.open` in the starting save. Meeting its `if` alone opens it only at the end of each round, after change rules, when any actor in its place meets that `if`, and it stays open for everyone, whoever holds the key after. The engine opens it with a `flag` effect it records in the journal.
+To start a door already open, list its exit name under that place in `places.open_exits` in the starting save. Meeting its `if` alone opens it only at the end of each round, after change rules, when any actor in its place meets that `if`, and it stays open for everyone, whoever holds the key after. The engine opens it with an `exit_open` effect it records in the journal.
 
 A door carries one flag, `open`, which the engine owns: a rule names it with `who: exit:<place>.<exit>` and `key: open`, sets it to `false` to lock the door again, and may watch it like any flag. An exit with no `if` has no flag and is always open. The `bar` rule below locks the cellar door again.
 
