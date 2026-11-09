@@ -5,6 +5,11 @@ Feature: A rule's effects are all or nothing
     When Mira plays overreach
     Then lamp oil stays 4 and the round names OUT_OF_RANGE
 
+  Scenario: An effect on a cast member the save does not list is refused UNKNOWN_ID
+    Given the docks pack has a cast member pc_nell the save does not list and a row "mark" that marks her
+    When Rowan plays mark
+    Then Rowan's mark is refused UNKNOWN_ID
+
   Scenario: A rule over the effect cap is refused, not truncated
     Given max_effects_per_intent is 1 and a row with 2 effects
     Then no effect from that row applies and the round log names the refusal

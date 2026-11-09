@@ -968,8 +968,34 @@ fn the_docks_pack_allows_keys_and_braces(world: &mut World, limit: u64, add: i64
     world.pack = Some(pack);
 }
 
-#[when(expr = "Rowan plays brace")]
-fn rowan_braces(world: &mut World) {
+/// A cast member the save does not list, who carries the flag `marked`, and a row that sets it.
+#[given(
+    expr = "the docks pack has a cast member pc_nell the save does not list and a row {string} that marks her"
+)]
+fn a_cast_member_the_save_does_not_list(world: &mut World, row: String) {
+    let pack = support::copy_pack("oneshot-docks", "unlisted-actor");
+    fs::write(
+        pack.join("cast/pc-nell.md"),
+        "---\nschema: cast\nid: pc_nell\nkind: pc_template\ndisplay_name: Nell\nidle:\n  eligible: false\nflags:\n    - marked\n---\nNell.\n",
+    )
+    .unwrap();
+    support::append(
+        &pack.join("rules/verbs.yaml"),
+        &format!(
+            "
+  - id: {row}
+    when: {{ verb: {row} }}
+    do:
+      - flag: {{ who: pc_nell, key: marked, value: true }}
+"
+        ),
+    );
+    make_mira_ineligible(&pack);
+    world.pack = Some(pack);
+}
+
+#[when(expr = "Rowan plays {word}")]
+fn rowan_plays(world: &mut World, verb: String) {
     let pack = world.pack().to_path_buf();
     let lock = spookery_engine::lock_pack(&pack).unwrap();
     let mut opened = spookery_engine::World::resume(&pack, lock).unwrap();
@@ -978,7 +1004,7 @@ fn rowan_braces(world: &mut World) {
     opened
         .queue_gm_intent(
             &nobody,
-            intent("rowan-brace", "pc_rowan", "brace", None),
+            intent(&format!("rowan-{verb}"), "pc_rowan", &verb, None),
             || panic!("the GM chose the id"),
         )
         .unwrap();
@@ -987,12 +1013,16 @@ fn rowan_braces(world: &mut World) {
     world.scratch = read_round(&pack, "round-0001").to_string();
 }
 
-#[then(expr = "Rowan's brace is refused {word}")]
-fn rowans_brace_is_refused(world: &mut World, code: String) {
+#[then(expr = "Rowan's {word} is refused {word}")]
+fn rowans_move_is_refused(world: &mut World, verb: String, code: String) {
     let round: Value = serde_json::from_str(&world.scratch).unwrap();
     let refused = round["refused"].as_array().unwrap();
     assert_eq!(refused.len(), 1, "{round}");
-    assert_eq!(refused[0]["id"], "rowan-brace", "{round}");
+    assert_eq!(
+        refused[0]["id"],
+        format!("rowan-{verb}").as_str(),
+        "{round}"
+    );
     assert_eq!(refused[0]["code"], code.as_str(), "{round}");
 }
 

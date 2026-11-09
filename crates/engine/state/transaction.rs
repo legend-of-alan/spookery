@@ -222,55 +222,8 @@ mod tests {
     }
 
     #[test]
-    fn a_writer_refuses_an_actor_the_save_does_not_list() {
-        let world = docks();
-        let (canon, mut state) = (world.canon(), world.state().clone());
-        let nobody = ActorId::from("nobody");
-        let grit = Meter { base: 1, offset: 0 };
-        let mut actors = state.actors_mut();
-        assert_eq!(
-            actors.set_flag(&nobody, "calm", true),
-            Err(Reason::UnknownId)
-        );
-        assert_eq!(
-            actors.shift_item(&nobody, "lamp_oil", 1, None),
-            Err(Reason::UnknownId)
-        );
-        assert_eq!(
-            actors.learn(&nobody, &["fact".to_string()]),
-            Err(Reason::UnknownId)
-        );
-        assert_eq!(
-            actors.set_meter(canon, &nobody, "grit", Some(grit)),
-            Err(Reason::UnknownId)
-        );
-        assert_eq!(actors.set_wielded(&nobody, None), Err(Reason::UnknownId));
-        assert_eq!(
-            &state,
-            world.state(),
-            "a refused write left the save unchanged"
-        );
-    }
-
-    #[test]
-    fn check_save_refuses_a_component_on_an_actor_with_no_kind() {
-        let world = docks();
-        let mut save = serde_json::to_value(world.state()).unwrap();
-        save["actors"]["meters"]["nobody"] =
-            serde_json::json!({ "grit": { "base": 1, "offset": 0 } });
-        let state: crate::state::State = serde_json::from_value(save).unwrap();
-        let diags = crate::canon::check_save(world.canon(), &state).unwrap_err();
-        let named = diags
-            .iter()
-            .any(|diag| diag.message.contains("'nobody' has meters but no kind"));
-        assert!(named, "{diags:?}");
-    }
-
-    #[test]
     fn a_key_counts_toward_the_budget_only_once_a_write_changes_it() {
-        let pack =
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packs/oneshot-docks");
-        let opened = World::open(&pack).expect("open");
+        let opened = docks();
         let mut canon = opened.canon().clone();
         canon.budget.max_state_keys_mutated = 2;
         let mut state = opened.state().clone();
@@ -285,7 +238,7 @@ mod tests {
             .set_meter(&canon, &bram, "grit", Some(grit))
             .unwrap();
         state.accept();
-        let world = World::from_parts(&pack, Arc::new(canon), state);
+        let world = World::from_parts(opened.root(), Arc::new(canon), state);
         let (canon, mut state, nobody) = (world.canon(), world.begin_round(), Presence::default());
         let intent = Intent::habit(world.state(), &"mira".into(), "leave_door_note");
         let mut write = |actor: &str, key: &str, delta: i64| {

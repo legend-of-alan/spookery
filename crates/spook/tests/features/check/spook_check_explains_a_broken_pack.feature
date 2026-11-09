@@ -95,6 +95,13 @@ Feature: spook check explains a broken pack
     And stderr is empty
     And the pack bytes are unchanged
 
+  Scenario: A component on an actor with no kind is refused
+    Given a docks table
+    When the save gives meters to an actor with no kind
+    And the operator runs spook check --json
+    Then the check exits 1
+    And the JSON array is one diagnostic code "SCHEMA" file "state/save.yaml" path "actors.meters.nobody"
+
   Scenario: JSON diagnostics stay in the same order
     Given a docks table
     When the copy is broken by "missing when"
