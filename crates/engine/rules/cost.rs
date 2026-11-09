@@ -7,7 +7,7 @@ use crate::rules::effect;
 use crate::rules::expr::{self, Dice};
 use crate::rules::gate;
 use crate::rules::rule::Cost;
-use crate::state::change::ChangeKey;
+use crate::state::change;
 use crate::state::meter::MeterWrite;
 use crate::Reason;
 
@@ -77,7 +77,7 @@ pub(crate) fn pay(
         effect::write_meter(draft, &entity, key, MeterWrite::Offset(-amount))?;
         if amount == 0 {
             // A cost of 0 leaves the meter as it was and still takes a key of the budget.
-            draft.track(ChangeKey::ActorMeter(who.to_string(), key.clone()))?;
+            draft.track(change::Key::ActorMeter(who.to_string(), key.clone()))?;
         }
     }
     for (id, expr) in &cost.items {

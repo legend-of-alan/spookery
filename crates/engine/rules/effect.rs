@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use crate::draft::Draft;
 use crate::intent::{Intent, Viewer};
 use crate::rules::visibility::can_see_fact;
-use crate::state::change::ChangeKey;
+use crate::state::change;
 use crate::state::meter::{self, MeterWrite};
 use crate::state::modifier::{self, Modifier};
 use crate::state::{self, MemoryLine, Note};
@@ -564,9 +564,9 @@ fn viewer_matches(intent: &Intent, effect: &Effect) -> bool {
     effect.viewer == intent.actor
 }
 
-/// Who holds a meter, a flag or an item count: an actor, a place, a story, an exit, or the
-/// world. Saved as `world`, `{actor: id}`, `{place: id}`, `{story: id}` or
-/// `{exit: [place, exit]}`. An exit holds only its flag `open`.
+/// The entity a meter, a flag or an item count belongs to: an actor, a place, a story, an
+/// exit, or the world. Saved as `world`, `{actor: id}`, `{place: id}`, `{story: id}` or
+/// `{exit: [place, exit]}`. An exit carries only its flag `open`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum EntityId {
@@ -603,7 +603,7 @@ pub(crate) fn write_meter(
         .meter_def(entity, key)
         .cloned()
         .ok_or(Reason::UnknownId)?;
-    let change_key = ChangeKey::meter(entity, key).ok_or(Reason::UnknownId)?;
+    let change_key = change::Key::meter(entity, key).ok_or(Reason::UnknownId)?;
     draft.mutate(change_key, |state| {
         let meters = state.meters_mut(entity)?;
         meter::write(&def, meters.get_mut(key).ok_or(Reason::UnknownId)?, write)
@@ -621,16 +621,16 @@ pub(crate) fn shift_item(
 ) -> Result<(), Reason> {
     match entity {
         EntityId::Actor(actor_id) => {
-            let change_key = ChangeKey::ActorItem(actor_id.clone(), id.to_string());
+            let change_key = change::Key::ActorItem(actor_id.clone(), id.to_string());
             draft.mutate(change_key, |state| {
                 state::shift_count(&mut state.actor_mut(actor_id)?.inventory, id, delta, max)
             })?;
-            draft.mutate(ChangeKey::ActorWielded(actor_id.clone()), |state| {
+            draft.mutate(change::Key::ActorWielded(actor_id.clone()), |state| {
                 Ok(state.actor_mut(actor_id)?.release_wielded())
             })
         }
         EntityId::Place(place) => {
-            let change_key = ChangeKey::PlaceItem(place.clone(), id.to_string());
+            let change_key = change::Key::PlaceItem(place.clone(), id.to_string());
             draft.mutate(change_key, |state| {
                 let place_live = state.places.get_mut(place).ok_or(Reason::UnknownId)?;
                 state::shift_count(&mut place_live.items, id, delta, max)
@@ -671,13 +671,13 @@ fn apply_modifier(
     modifier::stack(def, &mut next, add, ticks, now);
     let changed = held != Some(&next);
     if held.map(|live| &live.stacks) != Some(&next.stacks) {
-        draft.track(ChangeKey::ActorMeter(
+        draft.track(change::Key::ActorMeter(
             actor_id.to_string(),
             def.meter.clone(),
         ))?;
     }
     draft.mutate(
-        ChangeKey::ActorModifier(actor_id.to_string(), id.to_string()),
+        change::Key::ActorModifier(actor_id.to_string(), id.to_string()),
         |state| {
             state
                 .actor_mut(actor_id)?
@@ -694,7 +694,7 @@ fn wield(draft: &mut Draft, actor_id: &str, item_id: &str) -> Result<(), Reason>
     if !item.tags.iter().any(|tag| tag == "weapon") {
         return Err(Reason::NotAWeapon);
     }
-    draft.mutate(ChangeKey::ActorWielded(actor_id.to_string()), |state| {
+    draft.mutate(change::Key::ActorWielded(actor_id.to_string()), |state| {
         let actor = state.actor_mut(actor_id)?;
         if actor.item_count(item_id) == 0 {
             return Err(Reason::MissingItem);
@@ -705,7 +705,7 @@ fn wield(draft: &mut Draft, actor_id: &str, item_id: &str) -> Result<(), Reason>
 }
 
 fn unwield(draft: &mut Draft, actor_id: &str) -> Result<(), Reason> {
-    draft.mutate(ChangeKey::ActorWielded(actor_id.to_string()), |state| {
+    draft.mutate(change::Key::ActorWielded(actor_id.to_string()), |state| {
         Ok(state.actor_mut(actor_id)?.wielded.take().is_some())
     })
 }
@@ -724,7 +724,7 @@ fn move_actor(
     let in_canon = draft.canon().places.contains_key(to);
     // A walker stands on the exit until they arrive. The exit is no place of its own.
     let on_exit = crate::rules::travel::exit_stood_on(draft.canon(), to).is_some();
-    draft.mutate(ChangeKey::ActorPlace(actor_id.to_string()), |state| {
+    draft.mutate(change::Key::ActorPlace(actor_id.to_string()), |state| {
         let actor = state.actors.get_mut(actor_id).ok_or(Reason::UnknownId)?;
         if table_empty && actor.is_pc() {
             return Err(Reason::TableEmpty);
@@ -770,7 +770,7 @@ fn remember(
     }
     draft.count_memory_write()?;
     state::sort_unique(&mut fact_ids);
-    draft.mutate(ChangeKey::ActorKnownFact(actor_id.to_string()), |state| {
+    draft.mutate(change::Key::ActorKnownFact(actor_id.to_string()), |state| {
         let known = &mut state.actor_mut(actor_id)?.known_facts;
         let learned = fact_ids.iter().any(|fact| !known.contains(fact));
         if learned {
@@ -796,7 +796,7 @@ fn set_flag(draft: &mut Draft, entity: &EntityId, key: &str, value: bool) -> Res
     if !draft.canon().carries_flag(entity, key) {
         return Err(Reason::UnknownId);
     }
-    draft.mutate(ChangeKey::flag(entity, key), |state| {
+    draft.mutate(change::Key::flag(entity, key), |state| {
         state.set_flag(entity, key, value)
     })
 }
@@ -805,7 +805,7 @@ fn reveal(draft: &mut Draft, actor_id: &str, fact: &str) -> Result<(), Reason> {
     if !draft.canon().facts.contains_key(fact) {
         return Err(Reason::UnknownId);
     }
-    draft.mutate(ChangeKey::ActorKnownFact(actor_id.to_string()), |state| {
+    draft.mutate(change::Key::ActorKnownFact(actor_id.to_string()), |state| {
         let known = &mut state.actor_mut(actor_id)?.known_facts;
         if known.iter().any(|id| id == fact) {
             return Ok(false);
@@ -824,7 +824,7 @@ fn leave_note(
     mut fact_ids: Vec<String>,
     text: String,
 ) -> Result<(), Reason> {
-    draft.mutate(ChangeKey::Note(note_id.clone()), |state| {
+    draft.mutate(change::Key::Note(note_id.clone()), |state| {
         if state.notes.iter().any(|note| note.id == note_id) {
             return Err(Reason::UnknownId);
         }

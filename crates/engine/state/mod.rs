@@ -8,7 +8,6 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-use change::ChangeKey;
 use meter::Meter;
 use modifier::Modifier;
 
@@ -333,10 +332,10 @@ pub(crate) enum ActCounter {
 
 impl ActCounter {
     /// The key this count is tracked under for actor `id`.
-    pub(crate) fn key(self, id: String) -> ChangeKey {
+    pub(crate) fn key(self, id: String) -> change::Key {
         match self {
-            ActCounter::IdleActsThisWindow => ChangeKey::IdleActsThisWindow(id),
-            ActCounter::LiveActsThisWindow => ChangeKey::LiveActsThisWindow(id),
+            ActCounter::IdleActsThisWindow => change::Key::IdleActsThisWindow(id),
+            ActCounter::LiveActsThisWindow => change::Key::LiveActsThisWindow(id),
         }
     }
 
