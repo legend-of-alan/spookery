@@ -686,7 +686,7 @@ fn apply_modifier(
         |state| {
             let key = (actor_id.clone(), id.to_string());
             state.actors.modifiers.insert(key, next);
-            state.meter_value(&canon, &entity, &def.meter)?;
+            state.actors.meter_value(&canon, actor_id, &def.meter)?;
             Ok(changed)
         },
     )

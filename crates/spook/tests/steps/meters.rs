@@ -69,7 +69,7 @@ fn pack(world: &World) -> &Path {
 
 fn value_on(pack: &Path, entity: &EntityId, key: &str) -> Option<i64> {
     let canon = load_canon(pack).unwrap_or_else(|err| panic!("load: {err:?}"));
-    state_of(pack).meter_value(&canon, entity, key).ok()
+    state_of(pack).entity(entity).meter_value(&canon, key).ok()
 }
 
 fn mira() -> EntityId {

@@ -62,6 +62,16 @@ pub fn current(def: &MeterDef, live: &Meter, modifiers: i64) -> Result<i64, Reas
     Ok(sum.clamp(def.min, def.max))
 }
 
+/// The current value of a meter no modifier reaches, or `UNKNOWN_ID` when the pack does not give
+/// it or the save does not hold it.
+pub fn read(def: Option<&MeterDef>, held: Option<&Meter>) -> Result<i64, Reason> {
+    current(
+        def.ok_or(Reason::UnknownId)?,
+        held.ok_or(Reason::UnknownId)?,
+        0,
+    )
+}
+
 /// `Ok(true)` means the stored pair changed and the caller should track
 /// the meter's key. A zero delta leaves the pair alone and is `Ok(false)`.
 /// The live record is assigned only after `is_storable` accepts the next pair.

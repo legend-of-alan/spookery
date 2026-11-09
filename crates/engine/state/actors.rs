@@ -5,11 +5,13 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde::{Deserialize, Serialize};
 
 use super::change;
-use super::id::ActorId;
-use super::meter::Meter;
-use super::modifier::Modifier;
+use super::id::{ActorId, EntityRef};
+use super::meter::{self, Meter};
+use super::modifier::{self, Modifier};
 use super::nested_map;
+use crate::canon::Canon;
 use crate::intent::{Target, Viewer};
+use crate::Reason;
 
 /// Every actor's components, by actor id. An actor exists when it has a kind; `kind`, `place`
 /// and `acts` have an entry for every actor, the rest only for actors holding something.
@@ -38,6 +40,44 @@ pub struct ActorComponents {
     pub modifiers: BTreeMap<(ActorId, String), Modifier>,
     #[serde(with = "nested_map::lists")]
     pub flags: BTreeSet<(ActorId, String)>,
+}
+
+impl ActorComponents {
+    /// Meter `key` as `actor` holds it, before modifiers.
+    pub fn meter(&self, actor: &ActorId, key: &str) -> Option<&Meter> {
+        nested_map::get(&self.meters, actor, key)
+    }
+
+    /// What `actor`'s modifiers add to meter `key`.
+    pub fn modifier_sum(&self, actor: &ActorId, key: &str) -> Result<i64, Reason> {
+        let held = nested_map::entries_of(&self.modifiers, actor).map(|(_, held)| held);
+        modifier::sum(held, key)
+    }
+
+    /// The current value of meter `key` on `actor`, or `UNKNOWN_ID` when they do not carry it.
+    pub fn meter_value(&self, canon: &Canon, actor: &ActorId, key: &str) -> Result<i64, Reason> {
+        let def = canon.meter_def(EntityRef::Actor(actor), key);
+        let held = self.meter(actor, key).ok_or(Reason::UnknownId);
+        meter::current(
+            def.ok_or(Reason::UnknownId)?,
+            held?,
+            self.modifier_sum(actor, key)?,
+        )
+    }
+
+    /// How many of `item` `actor` holds, or `None` when there is no such actor.
+    pub fn item_count(&self, actor: &ActorId, item: &str) -> Option<u32> {
+        self.kind.get(actor)?;
+        Some(
+            nested_map::get(&self.items, actor, item)
+                .copied()
+                .unwrap_or(0),
+        )
+    }
+
+    pub fn has_flag(&self, actor: &ActorId, key: &str) -> bool {
+        nested_map::contains(&self.flags, actor, key)
+    }
 }
 
 /// Whether an actor is a PC or an NPC.

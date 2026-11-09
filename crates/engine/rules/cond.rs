@@ -82,7 +82,7 @@ fn holds(context: &Context, cond: &Cond) -> Result<bool, Reason> {
             value,
         } => {
             let entity = expr::resolve_entity(context, who)?;
-            let current = state.meter_value(context.canon, &entity, key)?;
+            let current = state.entity(&entity).meter_value(context.canon, key)?;
             let right = expr::eval(context, value)?;
             Ok(op.holds(current, right))
         }
@@ -93,7 +93,7 @@ fn holds(context: &Context, cond: &Cond) -> Result<bool, Reason> {
         } => Ok((key == OPEN && state.places.is_exit_open(exit)) == *is),
         Cond::Flag { who, key, is } => {
             let entity = expr::resolve_entity(context, who)?;
-            Ok(state.has_flag(&entity, key) == *is)
+            Ok(state.entity(&entity).has_flag(key) == *is)
         }
         Cond::At { who, place } => {
             let actor = expr::resolve_actor(context, who)?;

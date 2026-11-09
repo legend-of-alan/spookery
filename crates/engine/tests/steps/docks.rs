@@ -760,7 +760,8 @@ fn rowans_debt(pack: &Path) -> i64 {
     let canon = load_canon(pack).unwrap_or_else(|err| panic!("load: {err:?}"));
     let rowan = EntityId::Actor("pc_rowan".into());
     state_of(pack)
-        .meter_value(&canon, &rowan, "assassination_debt")
+        .entity(&rowan)
+        .meter_value(&canon, "assassination_debt")
         .unwrap_or_else(|err| panic!("assassination_debt: {err}"))
 }
 

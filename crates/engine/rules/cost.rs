@@ -31,9 +31,7 @@ pub(crate) fn afford(context: &Context, cost: &Cost) -> Result<(), gate::Refusal
         if amount < 0 {
             return Err(cant_afford(key));
         }
-        let current = state
-            .meter_value(canon, &EntityId::Actor(who.clone()), key)
-            .map_err(|_| cant_afford(key))?;
+        let current = (state.actors.meter_value(canon, who, key)).map_err(|_| cant_afford(key))?;
         if current < amount {
             return Err(cant_afford(key));
         }

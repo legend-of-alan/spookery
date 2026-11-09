@@ -7,7 +7,6 @@ use crate::intent::Viewer;
 use crate::rules::habits::list_whose_if_holds;
 use crate::rules::visibility::can_see_fact;
 use crate::state::id::{ActorId, EntityId, PlaceId};
-use crate::state::meter;
 use crate::state::nested_map;
 use crate::state::{Note, Presence, State};
 use crate::world::World;
@@ -194,15 +193,17 @@ fn perceive_viewer_budget(
 
 /// The meters `entity` carries that are not hidden, in id order.
 fn shown_meters(canon: &Canon, state: &State, entity: &EntityId) -> Vec<MeterView> {
-    state
-        .meters_of(entity)
-        .into_iter()
-        .filter_map(|(id, live)| {
+    let defs = if *entity == EntityId::World {
+        &canon.world_meters
+    } else {
+        &canon.meters
+    };
+    defs.keys()
+        .filter_map(|id| {
             let def = canon
                 .meter_def(entity.as_ref(), id)
                 .filter(|def| !def.hidden)?;
-            let modifiers = state.modifier_sum(entity, id).ok()?;
-            let value = meter::current(def, live, modifiers).ok()?;
+            let value = state.entity(entity).meter_value(canon, id).ok()?;
             Some(MeterView {
                 id: id.to_string(),
                 value,

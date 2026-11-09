@@ -319,7 +319,10 @@ fn meter_offset(
         )?));
     }
     let desired = expr::eval_with_dice(context, set.ok_or(Reason::Schema)?, dice)?;
-    let current = context.state.meter_value(context.canon, entity, key)?;
+    let current = context
+        .state
+        .entity(entity)
+        .meter_value(context.canon, key)?;
     Ok(MeterWrite::Offset(
         desired.checked_sub(current).ok_or(Reason::OutOfRange)?,
     ))

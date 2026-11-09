@@ -22,7 +22,7 @@ fn hp(pack: &Path, actor: &str) -> i64 {
     let now = support::state_of(pack);
     let canon = spookery_engine::load_canon(pack).unwrap();
     let entity = spookery_engine::EntityId::Actor(actor.into());
-    now.meter_value(&canon, &entity, "hp").unwrap()
+    now.entity(&entity).meter_value(&canon, "hp").unwrap()
 }
 
 fn count(pack: &Path, actor: &str, item: &str) -> u32 {

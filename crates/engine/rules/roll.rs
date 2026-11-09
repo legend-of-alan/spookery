@@ -1,13 +1,9 @@
 //! Check definitions, one roll of a check, and the band its total lands in.
 
-use std::collections::BTreeMap;
-
+use crate::canon::Canon;
 use crate::hash::blake2s_256;
 use crate::rules::gate;
 use crate::state::id::ActorId;
-use crate::state::meter::{self, MeterDef};
-use crate::state::modifier;
-use crate::state::nested_map;
 use crate::state::State;
 use crate::Reason;
 
@@ -89,21 +85,14 @@ pub fn faces(key: &RollKey, start: usize, count: u32, sides: u32) -> Result<Vec<
 /// `target`. `partial_at` `None` keeps the roll binary; an opposing total passes `None`.
 pub(crate) fn roll_check(
     check: &Check,
-    meters: &BTreeMap<String, MeterDef>,
+    canon: &Canon,
     state: &State,
     actor_id: &ActorId,
     key: &RollKey,
     target: i64,
     partial_at: Option<i64>,
 ) -> Result<Roll, Reason> {
-    let def = meters.get(&check.stat).ok_or(Reason::UnknownId)?;
-    let live = state
-        .actors
-        .meters
-        .get(&(actor_id.clone(), check.stat.clone()))
-        .ok_or(Reason::UnknownId)?;
-    let held = nested_map::entries_of(&state.actors.modifiers, actor_id).map(|(_, held)| held);
-    let stat = meter::current(def, live, modifier::sum(held, &check.stat)?)?;
+    let stat = state.actors().meter_value(canon, actor_id, &check.stat)?;
     let faces = faces(key, 0, check.dice_count, check.dice_sides)?;
     let total = faces.iter().map(|face| i64::from(*face)).sum::<i64>() + stat;
     Ok(Roll {
@@ -139,49 +128,8 @@ fn block_bytes(seed: &[u8; 32], block: usize) -> [u8; 32] {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeMap;
-
     use super::{classify, face_at, roll_check, Check, Outcome, RollKey};
     use crate::state::id::ActorId;
-    use crate::state::meter::{Meter, MeterDef};
-    use crate::state::{Act, ActorKind, State};
-
-    fn grit_def() -> MeterDef {
-        MeterDef {
-            min: 0,
-            base_cap: 100,
-            max: 110,
-            start: 1,
-            hidden: false,
-            carrier: None,
-        }
-    }
-
-    /// A save holding one NPC, `mira`, with grit 1.
-    fn npc() -> State {
-        let mut state = State {
-            schema: "save".to_string(),
-            world_id: "docks".to_string(),
-            pack_rev: String::new(),
-            rules_rev: 0,
-            state_rev: 0,
-            round_index: 0,
-            world_time: 0,
-            last_round_at: String::new(),
-            actors: Default::default(),
-            places: Default::default(),
-            stories: Default::default(),
-            world: Default::default(),
-            notes: Vec::new(),
-        };
-        let (actors, mira) = (&mut state.actors, ActorId::from("mira"));
-        actors.kind.insert(mira.clone(), ActorKind::Npc);
-        actors.place.insert(mira.clone(), "mira_rooms".to_string());
-        actors.acts.insert(mira.clone(), Act::default());
-        let grit = Meter { base: 1, offset: 0 };
-        actors.meters.insert((mira, "grit".to_string()), grit);
-        state
-    }
 
     fn check_of(count: u32) -> Check {
         Check {
@@ -226,11 +174,13 @@ mod tests {
 
     #[test]
     fn the_same_key_rolls_the_same_faces() {
-        let (state, mira) = (npc(), ActorId::from("mira"));
-        let defs = BTreeMap::from([("grit".to_string(), grit_def())]);
+        let pack =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packs/oneshot-docks");
+        let docks = crate::World::open(&pack).expect("open");
+        let (canon, state, mira) = (docks.canon(), docks.state(), ActorId::from("mira"));
         let check = check_of(2);
-        let once = roll_check(&check, &defs, &state, &mira, &key(0), 9, None).unwrap();
-        let twice = roll_check(&check, &defs, &state, &mira, &key(0), 9, None).unwrap();
+        let once = roll_check(&check, canon, state, &mira, &key(0), 9, None).unwrap();
+        let twice = roll_check(&check, canon, state, &mira, &key(0), 9, None).unwrap();
         assert_eq!(once, twice);
         assert_eq!(once.faces.len(), 2);
     }

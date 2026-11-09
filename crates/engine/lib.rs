@@ -3,6 +3,7 @@
 pub(crate) mod canon;
 pub(crate) mod diagnostic;
 pub(crate) mod draft;
+pub(crate) mod entity;
 pub(crate) mod hash;
 pub(crate) mod intent;
 pub(crate) mod round;
@@ -13,6 +14,7 @@ pub(crate) mod world;
 
 pub use canon::{load_canon, pack_rev};
 pub use diagnostic::{first_reason, Code, Diagnostic};
+pub use entity::Entity;
 pub use intent::{Intent, IntentArgs, Source, Target, Viewer};
 pub use round::{migrate_pack, play_pack_once, verify_pack, verify_quick, RoundOutput};
 pub use rules::gate::Refusal;

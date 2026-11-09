@@ -49,45 +49,24 @@ pub struct State {
 }
 
 impl State {
-    /// The current value of meter `key` on `entity`, or `UNKNOWN_ID` when it does not carry it.
-    pub fn meter_value(
-        &self,
-        canon: &crate::canon::Canon,
-        entity: &EntityId,
-        key: &str,
-    ) -> Result<i64, crate::Reason> {
-        let def = canon
-            .meter_def(entity.as_ref(), key)
-            .ok_or(crate::Reason::UnknownId)?;
-        let meters = self.meters_of(entity);
-        let live = meters.get(key).ok_or(crate::Reason::UnknownId)?;
-        meter::current(def, live, self.modifier_sum(entity, key)?)
+    pub fn actors(&self) -> &ActorComponents {
+        &self.actors
     }
 
-    /// What `entity`'s modifiers add to its meter `key`. Only an actor holds modifiers.
-    pub(crate) fn modifier_sum(&self, entity: &EntityId, key: &str) -> Result<i64, crate::Reason> {
-        match entity {
-            EntityId::Actor(id) => {
-                let held = nested_map::entries_of(&self.actors.modifiers, id).map(|(_, held)| held);
-                modifier::sum(held, key)
-            }
-            EntityId::World | EntityId::Place(_) | EntityId::Story(_) => Ok(0),
-        }
+    pub fn places(&self) -> &PlaceComponents {
+        &self.places
     }
 
-    /// The live meters `entity` carries, by id.
-    pub(crate) fn meters_of(&self, entity: &EntityId) -> BTreeMap<&str, &Meter> {
-        match entity {
-            EntityId::Actor(id) => nested_map::entries_of(&self.actors.meters, id).collect(),
-            EntityId::Place(id) => nested_map::entries_of(&self.places.meters, id).collect(),
-            EntityId::Story(id) => nested_map::entries_of(&self.stories.meters, id).collect(),
-            EntityId::World => self
-                .world
-                .meters
-                .iter()
-                .map(|(id, live)| (id.as_str(), live))
-                .collect(),
-        }
+    pub fn stories(&self) -> &StoryComponents {
+        &self.stories
+    }
+
+    pub fn world(&self) -> &WorldComponents {
+        &self.world
+    }
+
+    pub fn notes(&self) -> &[Note] {
+        &self.notes
     }
 
     /// Live meter `key` on `entity`, to write.
@@ -96,25 +75,13 @@ impl State {
         entity: &EntityId,
         key: &str,
     ) -> Result<&mut Meter, crate::Reason> {
-        let key = key.to_string();
         let live = match entity {
-            EntityId::Actor(id) => self.actors.meters.get_mut(&(id.clone(), key)),
-            EntityId::Place(id) => self.places.meters.get_mut(&(id.clone(), key)),
-            EntityId::Story(id) => self.stories.meters.get_mut(&(id.clone(), key)),
-            EntityId::World => self.world.meters.get_mut(&key),
+            EntityId::Actor(id) => nested_map::get_mut(&mut self.actors.meters, id, key),
+            EntityId::Place(id) => nested_map::get_mut(&mut self.places.meters, id, key),
+            EntityId::Story(id) => nested_map::get_mut(&mut self.stories.meters, id, key),
+            EntityId::World => self.world.meters.get_mut(key),
         };
         live.ok_or(crate::Reason::UnknownId)
-    }
-
-    /// Whether `entity` has flag `key` set.
-    pub(crate) fn has_flag(&self, entity: &EntityId, key: &str) -> bool {
-        let key = key.to_string();
-        match entity {
-            EntityId::Actor(id) => self.actors.flags.contains(&(id.clone(), key)),
-            EntityId::Place(id) => self.places.flags.contains(&(id.clone(), key)),
-            EntityId::Story(id) => self.stories.flags.contains(&(id.clone(), key)),
-            EntityId::World => self.world.flags.contains(&key),
-        }
     }
 
     /// Set or clear `entity`'s flag `key`, and say whether it changed.

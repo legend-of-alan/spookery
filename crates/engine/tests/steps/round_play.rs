@@ -366,8 +366,13 @@ fn rowan_asks_aldric_until_it_finishes(world: &mut World) {
     }
     let state = table.state();
     let aldric = spookery_engine::EntityId::Actor("aldric".into());
-    world.count =
-        usize::try_from(state.meter_value(table.canon(), &aldric, "rest").unwrap()).unwrap();
+    world.count = usize::try_from(
+        state
+            .entity(&aldric)
+            .meter_value(table.canon(), "rest")
+            .unwrap(),
+    )
+    .unwrap();
 }
 
 #[then(expr = "Aldric's rest is {int}")]

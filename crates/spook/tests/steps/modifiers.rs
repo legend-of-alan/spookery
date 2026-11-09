@@ -82,7 +82,7 @@ fn lowered(pack: &Path, meter: &str) -> i64 {
     let rowan = EntityId::Actor("pc_rowan".into());
     let key = ("pc_rowan".into(), meter.to_string());
     let Meter { base, offset } = now.actors.meters[&key].clone();
-    base + offset - now.meter_value(&canon, &rowan, meter).unwrap()
+    base + offset - now.entity(&rowan).meter_value(&canon, meter).unwrap()
 }
 
 /// Ticks from the latest round until modifier `id` expires.
@@ -386,7 +386,9 @@ fn rowan_has_no_burn(world: &mut World) {
     let canon = load_canon(pack(world)).unwrap();
     let rowan = EntityId::Actor("pc_rowan".into());
     assert_eq!(
-        state_of(pack(world)).meter_value(&canon, &rowan, "grit"),
+        state_of(pack(world))
+            .entity(&rowan)
+            .meter_value(&canon, "grit"),
         Ok(20)
     );
 }

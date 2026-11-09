@@ -258,16 +258,14 @@ impl<'p> Draft<'p> {
                 .map(|place| change::Value::Text(place.clone()))
                 .unwrap_or(change::Value::Empty),
             change::Key::ActorFlag(id, flag) => self.actor_value(id, |actor| {
-                change::Value::Bool(self.state.has_flag(&EntityId::Actor(actor.clone()), flag))
+                change::Value::Bool(self.state.actors.has_flag(actor, flag))
             }),
-            change::Key::PlaceFlag(id, flag) => change::Value::Bool(
-                self.state
-                    .has_flag(&EntityId::Place(id.clone().into()), flag),
-            ),
-            change::Key::StoryFlag(id, flag) => change::Value::Bool(
-                self.state
-                    .has_flag(&EntityId::Story(id.clone().into()), flag),
-            ),
+            change::Key::PlaceFlag(id, flag) => {
+                change::Value::Bool(self.state.places.has_flag(&id.clone().into(), flag))
+            }
+            change::Key::StoryFlag(id, flag) => {
+                change::Value::Bool(self.state.stories.has_flag(&id.clone().into(), flag))
+            }
             change::Key::ExitOpen(place, exit) => {
                 let place = place.clone().into();
                 let exit = ExitId {
@@ -348,7 +346,7 @@ impl<'p> Draft<'p> {
     }
 
     fn meter_value(&self, entity: &EntityId, key: &str) -> change::Value {
-        match self.state.meter_value(&self.canon, entity, key) {
+        match self.state.entity(entity).meter_value(&self.canon, key) {
             Ok(current) => change::Value::Number(current),
             Err(_) => change::Value::Empty,
         }

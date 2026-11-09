@@ -396,7 +396,11 @@ impl<L> World<L> {
         carried
             .chain(world_meters)
             .filter_map(|(entity, id)| {
-                let value = self.state.meter_value(&self.canon, &entity, id).ok()?;
+                let value = self
+                    .state
+                    .entity(&entity)
+                    .meter_value(&self.canon, id)
+                    .ok()?;
                 let max = self.canon.meter_def(entity.as_ref(), id)?.max;
                 Some(format!("meter {entity} {id} {value} {max}"))
             })

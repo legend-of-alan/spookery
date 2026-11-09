@@ -5,10 +5,10 @@ use serde_saphyr::SerializerOptions;
 
 use crate::canon::Canon;
 use crate::diagnostic::{check_tag, error, locate_nth, parse_file, Diagnostic};
-use crate::state::id::{EntityId, EntityRef};
+use crate::state::id::{ActorId, EntityId};
 use crate::state::meter::Meter;
 use crate::state::modifier;
-use crate::state::{sort_unique, State};
+use crate::state::{nested_map, sort_unique, State};
 use crate::store::records::{AddedMeter, DroppedMeter};
 use crate::Reason;
 
@@ -94,19 +94,7 @@ pub fn normalize(state: &mut State) {
 pub(crate) fn missing_meters(canon: &Canon, state: &State) -> Vec<AddedMeter> {
     let mut added = Vec::new();
     for (id, def) in &canon.meters {
-        let lacking = match &def.carrier {
-            Some(entity) if !def.is_actor_meter() => {
-                !state.meters_of(entity).contains_key(id.as_str())
-            }
-            _ => state.actors.kind.keys().any(|actor| {
-                def.is_on(EntityRef::Actor(actor))
-                    && !state
-                        .actors
-                        .meters
-                        .contains_key(&(actor.clone(), id.clone()))
-            }),
-        };
-        if lacking {
+        if !find_lacking_carriers(state, &def.carrier, id).is_empty() {
             added.push(AddedMeter::new(id, def));
         }
     }
@@ -116,6 +104,34 @@ pub(crate) fn missing_meters(canon: &Canon, state: &State) -> Vec<AddedMeter> {
         }
     }
     added
+}
+
+/// The entities `carrier` names that lack meter `id`. Every-actor and one-actor carriers are read
+/// off the save's actors, so a cast member the save does not list names nobody; any other carrier
+/// is itself. The one kind match migrate keeps of its own.
+pub(crate) fn find_lacking_carriers(
+    state: &State,
+    carrier: &Option<EntityId>,
+    id: &str,
+) -> Vec<EntityId> {
+    let held = match carrier {
+        None | Some(EntityId::Actor(_)) => {
+            let actors = state.actors();
+            let named =
+                |actor: &&ActorId| !matches!(carrier, Some(EntityId::Actor(one)) if one != *actor);
+            let lacks = |actor: &&ActorId| actors.meter(actor, id).is_none();
+            let lacking = actors.kind.keys().filter(named).filter(lacks).cloned();
+            return lacking.map(EntityId::Actor).collect();
+        }
+        Some(EntityId::Place(place)) => nested_map::get(&state.places().meters, place, id),
+        Some(EntityId::Story(story)) => nested_map::get(&state.stories().meters, story, id),
+        Some(EntityId::World) => state.world().meters.get(id),
+    };
+    held.is_none()
+        .then(|| carrier.clone())
+        .flatten()
+        .into_iter()
+        .collect()
 }
 
 /// Meters an actor, place, story or the world lists that the pack no longer gives it.
