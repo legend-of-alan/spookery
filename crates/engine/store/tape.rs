@@ -41,8 +41,8 @@ pub fn emit_tape_record(record: &TapeRecord) -> String {
 }
 
 /// Append one tape record. The pack lock makes the host the only writer.
-/// `seq` is set one past the last complete line. Drops a trailing partial line and does not open
-/// a `Draft`. When the line would pass `MAX_BYTES`, the oldest whole lines go first, keeping the
+/// `seq` is set one past the last complete line. Drops a trailing partial line and opens no
+/// round. When the line would pass `MAX_BYTES`, the oldest whole lines go first, keeping the
 /// newest half.
 pub fn append_record(root: &Path, mut record: TapeRecord) -> Result<TapeRecord, Reason> {
     let state = root.join("state");
