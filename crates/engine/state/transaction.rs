@@ -205,6 +205,14 @@ impl State {
 }
 
 #[cfg(test)]
+impl State {
+    /// How many keys the round has counted toward the budget.
+    pub(crate) fn keys_counted(&self) -> usize {
+        self.transaction.key_order.len()
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use std::sync::Arc;
 
@@ -212,7 +220,7 @@ mod tests {
     use crate::rules::effect::{Effect, EffectKind};
     use crate::state::id::{ActorId, EntityId};
     use crate::state::meter::{Meter, MeterWrite};
-    use crate::state::Presence;
+    use crate::state::{Presence, State};
     use crate::{Reason, World};
 
     fn docks() -> World<()> {
@@ -256,5 +264,58 @@ mod tests {
         assert_eq!(write("mira", "rest", 1), Ok(()), "a counted key is free");
         assert_eq!(write("aldric", "rest", 0), Ok(()), "unchanged: no key");
         assert_eq!(write("aldric", "rest", 1), Err(Reason::Budget));
+    }
+
+    #[test]
+    fn a_rollback_undoes_the_writes_after_its_savepoint_and_keeps_those_before() {
+        let world = docks();
+        let (canon, mut state) = (world.canon(), world.begin_round());
+        let (mira, bram) = (ActorId::from("mira"), ActorId::from("bram"));
+        let rest = |state: &mut State, actor: &ActorId, delta: i64| {
+            let shifted = state.actors_mut().shift_meter(canon, actor, "rest", delta);
+            shifted.expect("rest moves");
+        };
+        // The write just before the savepoint stays; the one just after it goes.
+        rest(&mut state, &mira, -1);
+        let before = state.clone();
+        let point = state.savepoint();
+        rest(&mut state, &mira, -1);
+        state.rollback(point);
+        assert_eq!(
+            state, before,
+            "only the write after the savepoint is undone"
+        );
+        // Nested: the inner rollback keeps the outer savepoint's writes, and the outer one
+        // undoes everything after it, the writes after the inner rollback included.
+        let outer = state.savepoint();
+        rest(&mut state, &bram, -1);
+        let between = state.clone();
+        let inner = state.savepoint();
+        rest(&mut state, &bram, -1);
+        state
+            .places_mut()
+            .set_flag(&"docks_shop".into(), "lit", true)
+            .ok();
+        state.rollback(inner);
+        assert_eq!(
+            state, between,
+            "the inner rollback keeps Bram's first write"
+        );
+        rest(&mut state, &mira, 1);
+        state.rollback(outer);
+        assert_eq!(
+            state, before,
+            "the outer rollback undoes both rounds of writes"
+        );
+        let changes = state.take_changes();
+        let keys: Vec<_> = changes
+            .iter()
+            .map(|change| change.key.to_string())
+            .collect();
+        assert_eq!(
+            keys,
+            ["actor_meter mira rest"],
+            "only the kept write is reported"
+        );
     }
 }

@@ -28,6 +28,8 @@ use id::ActorId;
 pub use notes::Note;
 pub use places::PlaceComponents;
 pub use stories::StoryComponents;
+#[cfg(test)]
+pub(crate) use transaction::Savepoint;
 use transaction::Transaction;
 pub use world::WorldComponents;
 
