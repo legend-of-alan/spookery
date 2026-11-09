@@ -21,8 +21,8 @@ pub use rules::perceive::View;
 pub use rules::roll::MoveReport;
 pub use rules::visibility::RecipientLine;
 pub use spookery_protocol::Reason;
-pub use state::meter::MeterLive;
-pub use state::modifier::ModifierLive;
+pub use state::meter::Meter;
+pub use state::modifier::Modifier;
 pub use state::{Note, Presence, State};
 pub use store::save::{emit as emit_save, parse as parse_save};
 pub use store::{emit_tape_record, lock_pack, PackGuard, TapeRecord};
@@ -247,12 +247,12 @@ pub mod testing {
                     meters: std::collections::BTreeMap::from([
                         (
                             "grit".to_string(),
-                            crate::MeterLive {
+                            crate::Meter {
                                 base: 100,
                                 offset: 0,
                             },
                         ),
-                        ("rest".to_string(), crate::MeterLive { base: 3, offset: 0 }),
+                        ("rest".to_string(), crate::Meter { base: 3, offset: 0 }),
                     ]),
                     modifiers: Default::default(),
                     inventory: std::collections::BTreeMap::new(),

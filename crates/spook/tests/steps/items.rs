@@ -641,7 +641,7 @@ fn nell_resists_on_a_seeded_roll(world: &mut World) {
             .base = 10;
         now.actors.get_mut("pc_nell").unwrap().meters.insert(
             "constitution".to_string(),
-            spookery_engine::MeterLive {
+            spookery_engine::Meter {
                 base: stat,
                 offset: 0,
             },

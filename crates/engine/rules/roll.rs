@@ -134,7 +134,7 @@ mod tests {
     use std::collections::BTreeMap;
 
     use super::{classify, face_at, roll_check, Check, Outcome, RollKey};
-    use crate::state::meter::{MeterDef, MeterLive};
+    use crate::state::meter::{Meter, MeterDef};
     use crate::state::{Act, ActorKind, ActorLive};
 
     fn grit_def() -> MeterDef {
@@ -154,7 +154,7 @@ mod tests {
             place: "mira_rooms".to_string(),
             flags: Vec::new(),
 
-            meters: BTreeMap::from([("grit".to_string(), MeterLive { base: 1, offset: 0 })]),
+            meters: BTreeMap::from([("grit".to_string(), Meter { base: 1, offset: 0 })]),
             modifiers: Default::default(),
             inventory: BTreeMap::new(),
             wielded: None,

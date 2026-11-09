@@ -6,7 +6,7 @@ use std::path::Path;
 use cucumber::{given, then, when};
 use serde_json::Value;
 use spookery_engine::testing::state_of;
-use spookery_engine::{load_canon, EntityId, MeterLive, Presence};
+use spookery_engine::{load_canon, EntityId, Meter, Presence};
 
 use super::common::replace_in_file;
 use super::record::read_extra_steps;
@@ -602,12 +602,12 @@ fn the_gm_sees_both_meters(world: &mut World) {
 fn dawn_has_fallen(world: &mut World, value: i64) {
     let pack = world.pack.clone().unwrap();
     edit_table(world, &pack, |now, _| {
-        let fallen = MeterLive {
+        let fallen = Meter {
             base: 6,
             offset: value - 6,
         };
         now.world_meters.insert("dawn".to_string(), fallen);
-        let doom = MeterLive { base: 6, offset: 0 };
+        let doom = Meter { base: 6, offset: 0 };
         now.world_meters.insert("doom".to_string(), doom);
     });
     assert_eq!(value_on(&pack, &EntityId::World, "dawn"), Some(value));

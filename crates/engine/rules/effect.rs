@@ -7,9 +7,9 @@ use serde::{Deserialize, Serialize};
 use crate::draft::Draft;
 use crate::intent::{Intent, Viewer};
 use crate::rules::visibility::can_see_fact;
-use crate::state::change::StateKey;
+use crate::state::change::ChangeKey;
 use crate::state::meter::{self, MeterWrite};
-use crate::state::modifier::{self, ModifierLive};
+use crate::state::modifier::{self, Modifier};
 use crate::state::{self, MemoryLine, Note};
 use crate::Reason;
 
@@ -603,8 +603,8 @@ pub(crate) fn write_meter(
         .meter_def(entity, key)
         .cloned()
         .ok_or(Reason::UnknownId)?;
-    let state_key = StateKey::meter(entity, key).ok_or(Reason::UnknownId)?;
-    draft.mutate(state_key, |state| {
+    let change_key = ChangeKey::meter(entity, key).ok_or(Reason::UnknownId)?;
+    draft.mutate(change_key, |state| {
         let meters = state.meters_mut(entity)?;
         meter::write(&def, meters.get_mut(key).ok_or(Reason::UnknownId)?, write)
     })
@@ -621,17 +621,17 @@ pub(crate) fn shift_item(
 ) -> Result<(), Reason> {
     match entity {
         EntityId::Actor(actor_id) => {
-            let state_key = StateKey::ActorItem(actor_id.clone(), id.to_string());
-            draft.mutate(state_key, |state| {
+            let change_key = ChangeKey::ActorItem(actor_id.clone(), id.to_string());
+            draft.mutate(change_key, |state| {
                 state::shift_count(&mut state.actor_mut(actor_id)?.inventory, id, delta, max)
             })?;
-            draft.mutate(StateKey::ActorWielded(actor_id.clone()), |state| {
+            draft.mutate(ChangeKey::ActorWielded(actor_id.clone()), |state| {
                 Ok(state.actor_mut(actor_id)?.release_wielded())
             })
         }
         EntityId::Place(place) => {
-            let state_key = StateKey::PlaceItem(place.clone(), id.to_string());
-            draft.mutate(state_key, |state| {
+            let change_key = ChangeKey::PlaceItem(place.clone(), id.to_string());
+            draft.mutate(change_key, |state| {
                 let place_live = state.places.get_mut(place).ok_or(Reason::UnknownId)?;
                 state::shift_count(&mut place_live.items, id, delta, max)
             })
@@ -662,7 +662,7 @@ fn apply_modifier(
         .get(actor_id)
         .ok_or(Reason::UnknownId)?;
     let held = actor.modifiers.get(id);
-    let mut next = held.cloned().unwrap_or_else(|| ModifierLive {
+    let mut next = held.cloned().unwrap_or_else(|| Modifier {
         meter: def.meter.clone(),
         until: now,
         max_ticks: 0,
@@ -671,13 +671,13 @@ fn apply_modifier(
     modifier::stack(def, &mut next, add, ticks, now);
     let changed = held != Some(&next);
     if held.map(|live| &live.stacks) != Some(&next.stacks) {
-        draft.track(StateKey::ActorMeter(
+        draft.track(ChangeKey::ActorMeter(
             actor_id.to_string(),
             def.meter.clone(),
         ))?;
     }
     draft.mutate(
-        StateKey::ActorModifier(actor_id.to_string(), id.to_string()),
+        ChangeKey::ActorModifier(actor_id.to_string(), id.to_string()),
         |state| {
             state
                 .actor_mut(actor_id)?
@@ -694,7 +694,7 @@ fn wield(draft: &mut Draft, actor_id: &str, item_id: &str) -> Result<(), Reason>
     if !item.tags.iter().any(|tag| tag == "weapon") {
         return Err(Reason::NotAWeapon);
     }
-    draft.mutate(StateKey::ActorWielded(actor_id.to_string()), |state| {
+    draft.mutate(ChangeKey::ActorWielded(actor_id.to_string()), |state| {
         let actor = state.actor_mut(actor_id)?;
         if actor.item_count(item_id) == 0 {
             return Err(Reason::MissingItem);
@@ -705,7 +705,7 @@ fn wield(draft: &mut Draft, actor_id: &str, item_id: &str) -> Result<(), Reason>
 }
 
 fn unwield(draft: &mut Draft, actor_id: &str) -> Result<(), Reason> {
-    draft.mutate(StateKey::ActorWielded(actor_id.to_string()), |state| {
+    draft.mutate(ChangeKey::ActorWielded(actor_id.to_string()), |state| {
         Ok(state.actor_mut(actor_id)?.wielded.take().is_some())
     })
 }
@@ -724,7 +724,7 @@ fn move_actor(
     let in_canon = draft.canon().places.contains_key(to);
     // A walker stands on the exit until they arrive. The exit is no place of its own.
     let on_exit = crate::rules::travel::exit_stood_on(draft.canon(), to).is_some();
-    draft.mutate(StateKey::ActorPlace(actor_id.to_string()), |state| {
+    draft.mutate(ChangeKey::ActorPlace(actor_id.to_string()), |state| {
         let actor = state.actors.get_mut(actor_id).ok_or(Reason::UnknownId)?;
         if table_empty && actor.is_pc() {
             return Err(Reason::TableEmpty);
@@ -770,7 +770,7 @@ fn remember(
     }
     draft.count_memory_write()?;
     state::sort_unique(&mut fact_ids);
-    draft.mutate(StateKey::ActorKnownFact(actor_id.to_string()), |state| {
+    draft.mutate(ChangeKey::ActorKnownFact(actor_id.to_string()), |state| {
         let known = &mut state.actor_mut(actor_id)?.known_facts;
         let learned = fact_ids.iter().any(|fact| !known.contains(fact));
         if learned {
@@ -796,7 +796,7 @@ fn set_flag(draft: &mut Draft, entity: &EntityId, key: &str, value: bool) -> Res
     if !draft.canon().carries_flag(entity, key) {
         return Err(Reason::UnknownId);
     }
-    draft.mutate(StateKey::flag(entity, key), |state| {
+    draft.mutate(ChangeKey::flag(entity, key), |state| {
         state.set_flag(entity, key, value)
     })
 }
@@ -805,7 +805,7 @@ fn reveal(draft: &mut Draft, actor_id: &str, fact: &str) -> Result<(), Reason> {
     if !draft.canon().facts.contains_key(fact) {
         return Err(Reason::UnknownId);
     }
-    draft.mutate(StateKey::ActorKnownFact(actor_id.to_string()), |state| {
+    draft.mutate(ChangeKey::ActorKnownFact(actor_id.to_string()), |state| {
         let known = &mut state.actor_mut(actor_id)?.known_facts;
         if known.iter().any(|id| id == fact) {
             return Ok(false);
@@ -824,7 +824,7 @@ fn leave_note(
     mut fact_ids: Vec<String>,
     text: String,
 ) -> Result<(), Reason> {
-    draft.mutate(StateKey::Note(note_id.clone()), |state| {
+    draft.mutate(ChangeKey::Note(note_id.clone()), |state| {
         if state.notes.iter().any(|note| note.id == note_id) {
             return Err(Reason::UnknownId);
         }

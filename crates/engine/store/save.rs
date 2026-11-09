@@ -8,7 +8,7 @@ use serde_saphyr::SerializerOptions;
 use crate::canon::Canon;
 use crate::diagnostic::{check_tag, error, locate_nth, parse_file, schema_error, Diagnostic};
 use crate::rules::effect::EntityId;
-use crate::state::meter::MeterLive;
+use crate::state::meter::Meter;
 use crate::state::modifier;
 use crate::state::{exit_parts, sort_unique, State};
 use crate::store::records::{AddedMeter, DroppedMeter};
@@ -158,7 +158,7 @@ pub(crate) fn missing_meters(canon: &Canon, state: &State) -> Vec<AddedMeter> {
 /// Meters an actor, place, story or the world lists that the pack no longer gives it.
 pub(crate) fn stale_meters(canon: &Canon, state: &State) -> Vec<DroppedMeter> {
     let mut dropped = Vec::new();
-    let mut drop_stale = |carrier: EntityId, live: &BTreeMap<String, MeterLive>| {
+    let mut drop_stale = |carrier: EntityId, live: &BTreeMap<String, Meter>| {
         for id in live.keys() {
             if canon.meter_def(&carrier, id).is_none() {
                 dropped.push(DroppedMeter {
@@ -206,7 +206,7 @@ pub fn migrate(
     dropped_meters: &[DroppedMeter],
 ) -> State {
     for meter in meters {
-        let start = MeterLive {
+        let start = Meter {
             base: meter.start,
             offset: 0,
         };

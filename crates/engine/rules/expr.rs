@@ -654,7 +654,7 @@ mod tests {
     use crate::intent::{Intent, IntentArgs, Source, Target, Viewer};
     use crate::rules::context::Context;
     use crate::rules::rule::Who;
-    use crate::state::meter::{MeterDef, MeterLive};
+    use crate::state::meter::{Meter, MeterDef};
     use crate::state::{Act, ActorKind, ActorLive, Presence, State};
     use crate::Reason;
 
@@ -744,7 +744,7 @@ mod tests {
 
     fn state() -> State {
         let mut meters = BTreeMap::new();
-        meters.insert("str_mod".to_string(), MeterLive { base: 3, offset: 0 });
+        meters.insert("str_mod".to_string(), Meter { base: 3, offset: 0 });
         State {
             schema: "save".to_string(),
             world_id: "t".to_string(),

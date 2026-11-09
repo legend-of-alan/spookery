@@ -700,7 +700,7 @@ pub fn check_save(canon: &Canon, state: &crate::state::State) -> Result<(), Vec<
 fn check_meters(
     canon: &Canon,
     entity: &EntityId,
-    live: &BTreeMap<String, meter::MeterLive>,
+    live: &BTreeMap<String, meter::Meter>,
     path: &str,
     diags: &mut Vec<Diagnostic>,
 ) {

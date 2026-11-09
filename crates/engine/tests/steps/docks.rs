@@ -9,7 +9,7 @@ use spookery_engine::testing::{
     stamp_pack_rev, state_of, write_save, Act, ActorKind, ActorLive, PlaceLive,
 };
 use spookery_engine::{
-    emit_save, load_canon, play_pack_once, EntityId, MeterLive, MoveReport, Note, Presence, State,
+    emit_save, load_canon, play_pack_once, EntityId, Meter, MoveReport, Note, Presence, State,
 };
 use spookery_protocol::Outcome;
 
@@ -17,16 +17,16 @@ use crate::World;
 
 const LEDGER: &str = "The lamp-oil ledger is short.";
 
-fn meters(grit: i64) -> BTreeMap<String, MeterLive> {
+fn meters(grit: i64) -> BTreeMap<String, Meter> {
     BTreeMap::from([
         (
             "grit".to_string(),
-            MeterLive {
+            Meter {
                 base: grit,
                 offset: 0,
             },
         ),
-        ("rest".to_string(), MeterLive { base: 3, offset: 0 }),
+        ("rest".to_string(), Meter { base: 3, offset: 0 }),
     ])
 }
 

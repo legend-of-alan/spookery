@@ -8,7 +8,7 @@ use std::sync::Arc;
 use crate::canon::Budget;
 use crate::canon::{Canon, OPEN};
 use crate::rules::effect::EntityId;
-use crate::state::change::{Change, StateKey, StateValue};
+use crate::state::change::{Change, ChangeKey, ChangeValue};
 use crate::state::{ActCounter, MemoryLine, PendingAction, Presence, State};
 use crate::world::World;
 use crate::Reason;
@@ -18,7 +18,7 @@ pub(crate) struct Draft<'p> {
     pub(crate) state: State,
     /// Who is seated for this round. The round reads it and never writes it.
     pub(crate) presence: &'p Presence,
-    keys: BTreeSet<StateKey>,
+    keys: BTreeSet<ChangeKey>,
     priors: Vec<Prior>,
     pub(crate) memories: Vec<MemoryLine>,
     memory_writes: u32,
@@ -91,9 +91,9 @@ impl<'p> Draft<'p> {
             })
             .collect();
         for (actor, id, meter) in due {
-            self.track(StateKey::ActorMeter(actor.clone(), meter))?;
+            self.track(ChangeKey::ActorMeter(actor.clone(), meter))?;
             self.mutate(
-                StateKey::ActorModifier(actor.clone(), id.clone()),
+                ChangeKey::ActorModifier(actor.clone(), id.clone()),
                 |state| Ok(state.actor_mut(&actor)?.modifiers.remove(&id).is_some()),
             )?;
         }
@@ -120,13 +120,13 @@ impl<'p> Draft<'p> {
         let new_live = current_live.saturating_add(1);
         let mut keys = Vec::new();
         if round_index != current_last {
-            keys.push(StateKey::LastActRound(actor_id.to_string()));
+            keys.push(ChangeKey::LastActRound(actor_id.to_string()));
         }
         if players == 0 && new_idle != current_idle {
-            keys.push(StateKey::IdleActsThisWindow(actor_id.to_string()));
+            keys.push(ChangeKey::IdleActsThisWindow(actor_id.to_string()));
         }
         if players > 0 && new_live != current_live {
-            keys.push(StateKey::LiveActsThisWindow(actor_id.to_string()));
+            keys.push(ChangeKey::LiveActsThisWindow(actor_id.to_string()));
         }
         self.track_many(&keys)?;
         let counters = &mut self.state.actor_mut(actor_id)?.act;
@@ -147,7 +147,7 @@ impl<'p> Draft<'p> {
         until: u64,
         pending: Option<PendingAction>,
     ) -> Result<(), Reason> {
-        self.mutate(StateKey::ActorBusy(id.to_string()), |state| {
+        self.mutate(ChangeKey::ActorBusy(id.to_string()), |state| {
             let act = &mut state.actor_mut(id)?.act;
             let changed = act.busy_until != Some(until) || act.pending != pending;
             act.busy_until = Some(until);
@@ -159,7 +159,7 @@ impl<'p> Draft<'p> {
     /// End actor `id`'s action under way, if any, and free them: it never finishes here.
     pub(crate) fn take_pending(&mut self, id: &str) -> Result<Option<PendingAction>, Reason> {
         let mut taken = None;
-        self.mutate(StateKey::ActorBusy(id.to_string()), |state| {
+        self.mutate(ChangeKey::ActorBusy(id.to_string()), |state| {
             let act = &mut state.actor_mut(id)?.act;
             taken = act.pending.take();
             Ok(act.busy_until.take().is_some() || taken.is_some())
@@ -174,7 +174,7 @@ impl<'p> Draft<'p> {
     /// `Err` from the budget can leave the write in place: the caller's savepoint undoes it.
     pub(crate) fn mutate(
         &mut self,
-        key: StateKey,
+        key: ChangeKey,
         write: impl FnOnce(&mut State) -> Result<bool, Reason>,
     ) -> Result<(), Reason> {
         let before = self.read_value(&key);
@@ -184,12 +184,12 @@ impl<'p> Draft<'p> {
         Ok(())
     }
 
-    pub(crate) fn track(&mut self, key: StateKey) -> Result<(), Reason> {
+    pub(crate) fn track(&mut self, key: ChangeKey) -> Result<(), Reason> {
         self.track_many(std::slice::from_ref(&key))
     }
 
     /// Record `before` as this key's value from before the write that just landed.
-    fn track_before(&mut self, key: StateKey, before: StateValue) -> Result<(), Reason> {
+    fn track_before(&mut self, key: ChangeKey, before: ChangeValue) -> Result<(), Reason> {
         let max = self.canon.budget.max_state_keys_mutated as usize;
         self.reserve_key(&key, &mut Vec::new(), max)?;
         if !self.priors.iter().any(|prior| prior.key == key) {
@@ -198,7 +198,7 @@ impl<'p> Draft<'p> {
         Ok(())
     }
 
-    fn track_many(&mut self, keys: &[StateKey]) -> Result<(), Reason> {
+    fn track_many(&mut self, keys: &[ChangeKey]) -> Result<(), Reason> {
         let max = self.canon.budget.max_state_keys_mutated as usize;
         let mut added = Vec::new();
         for key in keys {
@@ -216,8 +216,8 @@ impl<'p> Draft<'p> {
 
     fn reserve_key(
         &mut self,
-        key: &StateKey,
-        added: &mut Vec<StateKey>,
+        key: &ChangeKey,
+        added: &mut Vec<ChangeKey>,
         max: usize,
     ) -> Result<(), Reason> {
         if self.keys.contains(key) {
@@ -254,116 +254,116 @@ impl<'p> Draft<'p> {
         records
     }
 
-    fn read_value(&self, key: &StateKey) -> StateValue {
+    fn read_value(&self, key: &ChangeKey) -> ChangeValue {
         match key {
-            StateKey::ActorPlace(id) => self
+            ChangeKey::ActorPlace(id) => self
                 .state
                 .actors
                 .get(id)
-                .map(|actor| StateValue::Text(actor.place.clone()))
-                .unwrap_or(StateValue::Empty),
-            StateKey::ActorFlag(id, flag) => self
+                .map(|actor| ChangeValue::Text(actor.place.clone()))
+                .unwrap_or(ChangeValue::Empty),
+            ChangeKey::ActorFlag(id, flag) => self
                 .state
                 .actors
                 .get(id)
-                .map(|actor| StateValue::Bool(actor.flags.iter().any(|item| item == flag)))
-                .unwrap_or(StateValue::Empty),
-            StateKey::PlaceFlag(id, flag) => {
-                StateValue::Bool(self.state.has_flag(&EntityId::Place(id.clone()), flag))
+                .map(|actor| ChangeValue::Bool(actor.flags.iter().any(|item| item == flag)))
+                .unwrap_or(ChangeValue::Empty),
+            ChangeKey::PlaceFlag(id, flag) => {
+                ChangeValue::Bool(self.state.has_flag(&EntityId::Place(id.clone()), flag))
             }
-            StateKey::StoryFlag(id, flag) => {
-                StateValue::Bool(self.state.has_flag(&EntityId::Story(id.clone()), flag))
+            ChangeKey::StoryFlag(id, flag) => {
+                ChangeValue::Bool(self.state.has_flag(&EntityId::Story(id.clone()), flag))
             }
-            StateKey::ExitOpen(place, exit) => {
+            ChangeKey::ExitOpen(place, exit) => {
                 let entity = EntityId::Exit(place.clone(), exit.clone());
-                StateValue::Bool(self.state.has_flag(&entity, OPEN))
+                ChangeValue::Bool(self.state.has_flag(&entity, OPEN))
             }
-            StateKey::PlaceMeter(id, meter) => {
+            ChangeKey::PlaceMeter(id, meter) => {
                 self.meter_value(&EntityId::Place(id.clone()), meter)
             }
-            StateKey::StoryMeter(id, meter) => {
+            ChangeKey::StoryMeter(id, meter) => {
                 self.meter_value(&EntityId::Story(id.clone()), meter)
             }
-            StateKey::ActorMeter(id, meter) => {
+            ChangeKey::ActorMeter(id, meter) => {
                 self.meter_value(&EntityId::Actor(id.clone()), meter)
             }
-            StateKey::ActorModifier(id, key) => self
+            ChangeKey::ActorModifier(id, key) => self
                 .state
                 .actors
                 .get(id)
                 .and_then(|actor| actor.modifiers.get(key))
                 .map(|live| {
-                    StateValue::Text(format!(
+                    ChangeValue::Text(format!(
                         "{:?} until {} max_ticks {}",
                         live.stacks, live.until, live.max_ticks
                     ))
                 })
-                .unwrap_or(StateValue::Empty),
-            StateKey::ActorBusy(id) => self
+                .unwrap_or(ChangeValue::Empty),
+            ChangeKey::ActorBusy(id) => self
                 .state
                 .actors
                 .get(id)
                 .map(|actor| match actor.act.busy_until {
-                    Some(until) => StateValue::Number(i64::try_from(until).unwrap_or(i64::MAX)),
-                    None => StateValue::Empty,
+                    Some(until) => ChangeValue::Number(i64::try_from(until).unwrap_or(i64::MAX)),
+                    None => ChangeValue::Empty,
                 })
-                .unwrap_or(StateValue::Empty),
-            StateKey::ActorKnownFact(id) => self
+                .unwrap_or(ChangeValue::Empty),
+            ChangeKey::ActorKnownFact(id) => self
                 .state
                 .actors
                 .get(id)
-                .map(|actor| StateValue::List(actor.known_facts.clone()))
-                .unwrap_or(StateValue::Empty),
-            StateKey::LastActRound(id) => self.act_number(id, |act| {
+                .map(|actor| ChangeValue::List(actor.known_facts.clone()))
+                .unwrap_or(ChangeValue::Empty),
+            ChangeKey::LastActRound(id) => self.act_number(id, |act| {
                 i64::try_from(act.last_act_round).unwrap_or(i64::MAX)
             }),
-            StateKey::IdleActsThisWindow(id) => {
+            ChangeKey::IdleActsThisWindow(id) => {
                 self.act_number(id, |act| i64::from(act.idle_acts_this_window))
             }
-            StateKey::LiveActsThisWindow(id) => {
+            ChangeKey::LiveActsThisWindow(id) => {
                 self.act_number(id, |act| i64::from(act.live_acts_this_window))
             }
-            StateKey::ActorItem(id, item) => self
+            ChangeKey::ActorItem(id, item) => self
                 .state
                 .actors
                 .get(id)
-                .map(|actor| StateValue::Number(i64::from(actor.item_count(item))))
-                .unwrap_or(StateValue::Empty),
-            StateKey::PlaceItem(place, item) => self
+                .map(|actor| ChangeValue::Number(i64::from(actor.item_count(item))))
+                .unwrap_or(ChangeValue::Empty),
+            ChangeKey::PlaceItem(place, item) => self
                 .state
                 .places
                 .get(place)
                 .map(|place| {
-                    StateValue::Number(i64::from(place.items.get(item).copied().unwrap_or(0)))
+                    ChangeValue::Number(i64::from(place.items.get(item).copied().unwrap_or(0)))
                 })
-                .unwrap_or(StateValue::Empty),
-            StateKey::ActorWielded(id) => self
+                .unwrap_or(ChangeValue::Empty),
+            ChangeKey::ActorWielded(id) => self
                 .state
                 .actors
                 .get(id)
                 .map(|actor| match actor.wielded.as_deref() {
-                    Some(item) => StateValue::Text(item.to_string()),
-                    None => StateValue::Empty,
+                    Some(item) => ChangeValue::Text(item.to_string()),
+                    None => ChangeValue::Empty,
                 })
-                .unwrap_or(StateValue::Empty),
-            StateKey::Note(id) => {
+                .unwrap_or(ChangeValue::Empty),
+            ChangeKey::Note(id) => {
                 if self.state.notes.iter().any(|note| &note.id == id) {
-                    StateValue::Bool(true)
+                    ChangeValue::Bool(true)
                 } else {
-                    StateValue::Empty
+                    ChangeValue::Empty
                 }
             }
-            StateKey::WorldFlag(key) => {
-                StateValue::Bool(self.state.flags.iter().any(|flag| flag == key))
+            ChangeKey::WorldFlag(key) => {
+                ChangeValue::Bool(self.state.flags.iter().any(|flag| flag == key))
             }
-            StateKey::WorldMeter(key) => self.meter_value(&EntityId::World, key),
+            ChangeKey::WorldMeter(key) => self.meter_value(&EntityId::World, key),
         }
     }
 
-    fn meter_value(&self, entity: &EntityId, key: &str) -> StateValue {
+    fn meter_value(&self, entity: &EntityId, key: &str) -> ChangeValue {
         match self.state.meter_value(&self.canon, entity, key) {
-            Ok(current) => StateValue::Number(current),
-            Err(_) => StateValue::Empty,
+            Ok(current) => ChangeValue::Number(current),
+            Err(_) => ChangeValue::Empty,
         }
     }
 
@@ -371,12 +371,12 @@ impl<'p> Draft<'p> {
         &self,
         actor_id: &str,
         read: impl FnOnce(&crate::state::Act) -> i64,
-    ) -> StateValue {
+    ) -> ChangeValue {
         self.state
             .actors
             .get(actor_id)
-            .map(|actor| StateValue::Number(read(&actor.act)))
-            .unwrap_or(StateValue::Empty)
+            .map(|actor| ChangeValue::Number(read(&actor.act)))
+            .unwrap_or(ChangeValue::Empty)
     }
 
     pub(crate) fn count_memory_write(&mut self) -> Result<(), Reason> {
@@ -413,13 +413,13 @@ impl<'p> Draft<'p> {
 /// A tracked key and its value from before the round wrote it.
 #[derive(Clone)]
 struct Prior {
-    key: StateKey,
-    before: StateValue,
+    key: ChangeKey,
+    before: ChangeValue,
 }
 
 pub(crate) struct Savepoint {
     state: State,
-    keys: BTreeSet<StateKey>,
+    keys: BTreeSet<ChangeKey>,
     priors: Vec<Prior>,
     memories: Vec<MemoryLine>,
     memory_writes: u32,

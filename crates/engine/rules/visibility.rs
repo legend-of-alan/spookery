@@ -5,7 +5,7 @@ use std::collections::BTreeSet;
 use crate::canon::Canon;
 use crate::intent::Viewer;
 use crate::rules::effect::{Effect, EffectKind, EntityId};
-use crate::state::change::{Change, StateKey, StateValue};
+use crate::state::change::{Change, ChangeKey, ChangeValue};
 use crate::state::State;
 
 pub(crate) fn can_see_fact(canon: &Canon, state: &State, viewer: &Viewer, fact_id: &str) -> bool {
@@ -88,7 +88,7 @@ pub(crate) fn show_to(
 /// One sentence for a meter or item change this viewer may know.
 fn sentence(canon: &Canon, viewer: &str, change: &Change, changes: &[Change]) -> Option<String> {
     match &change.key {
-        StateKey::ActorMeter(actor, key) => {
+        ChangeKey::ActorMeter(actor, key) => {
             let whose = possessive_for(canon, viewer, actor);
             meter_sentence(
                 canon,
@@ -98,23 +98,23 @@ fn sentence(canon: &Canon, viewer: &str, change: &Change, changes: &[Change]) ->
                 &change.after,
             )
         }
-        StateKey::WorldMeter(key) => {
+        ChangeKey::WorldMeter(key) => {
             meter_sentence(canon, &EntityId::World, key, "The world's", &change.after)
         }
-        StateKey::StoryMeter(story, key) => {
+        ChangeKey::StoryMeter(story, key) => {
             let entity = EntityId::Story(story.clone());
             let whose = format!("The {story} story's");
             meter_sentence(canon, &entity, key, &whose, &change.after)
         }
-        StateKey::PlaceMeter(place, key) => {
+        ChangeKey::PlaceMeter(place, key) => {
             let entity = EntityId::Place(place.clone());
             let whose = format!("{}'s", crate::rules::lines::place_name(canon, place));
             meter_sentence(canon, &entity, key, &whose, &change.after)
         }
-        StateKey::ActorItem(actor, id) => {
+        ChangeKey::ActorItem(actor, id) => {
             actor_item_sentence(canon, viewer, actor, id, change, changes)
         }
-        StateKey::PlaceItem(_, id) => place_item_sentence(canon, id, change, changes),
+        ChangeKey::PlaceItem(_, id) => place_item_sentence(canon, id, change, changes),
         _ => None,
     }
 }
@@ -124,12 +124,12 @@ fn meter_sentence(
     entity: &EntityId,
     key: &str,
     whose: &str,
-    after: &StateValue,
+    after: &ChangeValue,
 ) -> Option<String> {
     if canon.meter_def(entity, key).is_none_or(|def| def.hidden) {
         return None;
     }
-    let StateValue::Number(value) = after else {
+    let ChangeValue::Number(value) = after else {
         return None;
     };
     Some(format!("{whose} {key} is now {value}."))
@@ -195,8 +195,8 @@ fn other_side(changes: &[Change], change: &Change, id: &str) -> Option<EntityId>
             return None;
         }
         match &other.key {
-            StateKey::ActorItem(actor, item) if item == id => Some(EntityId::Actor(actor.clone())),
-            StateKey::PlaceItem(place, item) if item == id => Some(EntityId::Place(place.clone())),
+            ChangeKey::ActorItem(actor, item) if item == id => Some(EntityId::Actor(actor.clone())),
+            ChangeKey::PlaceItem(place, item) if item == id => Some(EntityId::Place(place.clone())),
             _ => None,
         }
     })
@@ -265,35 +265,35 @@ fn can_see(canon: &Canon, state: &State, viewer: &str, change: &Change) -> bool 
     }
     match &change.key {
         // Flags are rules bookkeeping: the GM narrates what one means.
-        StateKey::WorldFlag(_)
-        | StateKey::ActorFlag(_, _)
-        | StateKey::PlaceFlag(_, _)
-        | StateKey::StoryFlag(_, _)
-        | StateKey::ExitOpen(_, _)
-        | StateKey::LastActRound(_)
-        | StateKey::IdleActsThisWindow(_)
-        | StateKey::LiveActsThisWindow(_) => false,
-        StateKey::WorldMeter(key) => is_shown(canon, &EntityId::World, key),
-        StateKey::StoryMeter(story, key) => is_shown(canon, &EntityId::Story(story.clone()), key),
-        StateKey::PlaceMeter(place, key) => {
+        ChangeKey::WorldFlag(_)
+        | ChangeKey::ActorFlag(_, _)
+        | ChangeKey::PlaceFlag(_, _)
+        | ChangeKey::StoryFlag(_, _)
+        | ChangeKey::ExitOpen(_, _)
+        | ChangeKey::LastActRound(_)
+        | ChangeKey::IdleActsThisWindow(_)
+        | ChangeKey::LiveActsThisWindow(_) => false,
+        ChangeKey::WorldMeter(key) => is_shown(canon, &EntityId::World, key),
+        ChangeKey::StoryMeter(story, key) => is_shown(canon, &EntityId::Story(story.clone()), key),
+        ChangeKey::PlaceMeter(place, key) => {
             place_of(state, viewer) == Some(place.as_str())
                 && is_shown(canon, &EntityId::Place(place.clone()), key)
         }
-        StateKey::ActorKnownFact(actor) | StateKey::ActorMeter(actor, _) => actor == viewer,
-        StateKey::ActorModifier(actor, id) => {
+        ChangeKey::ActorKnownFact(actor) | ChangeKey::ActorMeter(actor, _) => actor == viewer,
+        ChangeKey::ActorModifier(actor, id) => {
             actor == viewer && canon.modifiers.get(id).is_some_and(|def| !def.hidden)
         }
-        StateKey::PlaceItem(place, _) => place_of(state, viewer) == Some(place.as_str()),
-        StateKey::Note(id) => can_see_note(canon, state, viewer, id),
-        StateKey::ActorPlace(actor) => {
+        ChangeKey::PlaceItem(place, _) => place_of(state, viewer) == Some(place.as_str()),
+        ChangeKey::Note(id) => can_see_note(canon, state, viewer, id),
+        ChangeKey::ActorPlace(actor) => {
             actor == viewer
                 || same_place(state, viewer, actor)
                 || is_at(state, viewer, &change.before)
                 || is_at(state, viewer, &change.after)
         }
-        StateKey::ActorBusy(actor)
-        | StateKey::ActorItem(actor, _)
-        | StateKey::ActorWielded(actor) => actor == viewer || same_place(state, viewer, actor),
+        ChangeKey::ActorBusy(actor)
+        | ChangeKey::ActorItem(actor, _)
+        | ChangeKey::ActorWielded(actor) => actor == viewer || same_place(state, viewer, actor),
     }
 }
 
@@ -313,9 +313,9 @@ fn same_place(state: &State, viewer: &str, actor: &str) -> bool {
     }
 }
 
-fn is_at(state: &State, viewer: &str, value: &StateValue) -> bool {
+fn is_at(state: &State, viewer: &str, value: &ChangeValue) -> bool {
     match (place_of(state, viewer), value) {
-        (Some(place), StateValue::Text(text)) => place == text,
+        (Some(place), ChangeValue::Text(text)) => place == text,
         _ => false,
     }
 }

@@ -5,7 +5,7 @@ use std::path::Path;
 
 use cucumber::{given, then, when};
 use spookery_engine::testing::{edit_save, stamp_pack_rev, state_of};
-use spookery_engine::{load_canon, EntityId, MeterLive, ModifierLive};
+use spookery_engine::{load_canon, EntityId, Meter, Modifier};
 
 use super::common::replace_in_file;
 use super::triggers::{add_verb, edit_table, intent, play_round, seen_of, set_place, sit};
@@ -64,7 +64,7 @@ fn hit_rowan(world: &mut World, moves: &[(&str, &str)]) {
     world.seen = played.seen;
 }
 
-fn modifier_of(pack: &Path, id: &str) -> Option<ModifierLive> {
+fn modifier_of(pack: &Path, id: &str) -> Option<Modifier> {
     state_of(pack).actors["pc_rowan"].modifiers.get(id).cloned()
 }
 
@@ -79,7 +79,7 @@ fn lowered(pack: &Path, meter: &str) -> i64 {
     let now = state_of(pack);
     let canon = load_canon(pack).unwrap_or_else(|err| panic!("load: {err:?}"));
     let rowan = EntityId::Actor("pc_rowan".to_string());
-    let MeterLive { base, offset } = now.actors["pc_rowan"].meters[meter].clone();
+    let Meter { base, offset } = now.actors["pc_rowan"].meters[meter].clone();
     base + offset - now.meter_value(&canon, &rowan, meter).unwrap()
 }
 
@@ -94,7 +94,7 @@ fn hold(pack: &Path, id: &str, stacks: Vec<i64>, left: u64) {
     let def = load_canon(pack).unwrap().modifiers[id].clone();
     edit_save(pack, |now| {
         let until = now.world_time + left;
-        let live = ModifierLive {
+        let live = Modifier {
             meter: def.meter,
             until,
             max_ticks: left,
@@ -198,7 +198,7 @@ fn two_modifiers_on_sight(world: &mut World, rain: String, fog: String) {
         for actor in now.actors.values_mut() {
             actor
                 .meters
-                .insert("sight".into(), MeterLive { base: 5, offset: 0 });
+                .insert("sight".into(), Meter { base: 5, offset: 0 });
         }
     });
     add_modifier(&pack, &rain, "sight", "");
@@ -326,8 +326,8 @@ meters:
     );
     fs::write(pack.join("world/meters.yaml"), text).unwrap();
     edit_save(&pack, |now| {
-        let luck = MeterLive { base: 1, offset: 0 };
-        let tide = MeterLive { base: 4, offset: 0 };
+        let luck = Meter { base: 1, offset: 0 };
+        let tide = Meter { base: 4, offset: 0 };
         now.actors
             .get_mut("pc_rowan")
             .unwrap()

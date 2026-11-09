@@ -8,9 +8,9 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-use change::StateKey;
-use meter::MeterLive;
-use modifier::ModifierLive;
+use change::ChangeKey;
+use meter::Meter;
+use modifier::Modifier;
 
 use crate::canon::OPEN;
 use crate::intent::{Target, Viewer};
@@ -37,7 +37,7 @@ pub struct State {
     pub stories: BTreeMap<String, StoryLive>,
     /// The meters `world/meters.yaml` declares, held once by the world. Omitted when empty.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub world_meters: BTreeMap<String, MeterLive>,
+    pub world_meters: BTreeMap<String, Meter>,
     pub notes: Vec<Note>,
     /// World flags. Omitted from the save when empty.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -74,7 +74,7 @@ impl State {
     }
 
     /// The live meters `entity` carries.
-    pub(crate) fn meters_of(&self, entity: &EntityId) -> Option<&BTreeMap<String, MeterLive>> {
+    pub(crate) fn meters_of(&self, entity: &EntityId) -> Option<&BTreeMap<String, Meter>> {
         match entity {
             EntityId::Actor(id) => self.actors.get(id).map(|actor| &actor.meters),
             EntityId::Place(id) => self.places.get(id).map(|place| &place.meters),
@@ -88,7 +88,7 @@ impl State {
     pub(crate) fn meters_mut(
         &mut self,
         entity: &EntityId,
-    ) -> Result<&mut BTreeMap<String, MeterLive>, crate::Reason> {
+    ) -> Result<&mut BTreeMap<String, Meter>, crate::Reason> {
         match entity {
             EntityId::Actor(id) => Ok(&mut self.actor_mut(id)?.meters),
             EntityId::Place(id) => Ok(&mut self
@@ -185,7 +185,7 @@ pub struct PlaceLive {
     pub items: BTreeMap<String, u32>,
     /// The meters the place file declares. Omitted when empty.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub meters: BTreeMap<String, MeterLive>,
+    pub meters: BTreeMap<String, Meter>,
     /// The flags set on this place. Omitted when empty.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub flags: Vec<String>,
@@ -199,7 +199,7 @@ pub struct PlaceLive {
 #[serde(deny_unknown_fields)]
 pub struct StoryLive {
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub meters: BTreeMap<String, MeterLive>,
+    pub meters: BTreeMap<String, Meter>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub flags: Vec<String>,
 }
@@ -210,10 +210,10 @@ pub struct ActorLive {
     pub kind: ActorKind,
     pub place: String,
     pub flags: Vec<String>,
-    pub meters: BTreeMap<String, MeterLive>,
+    pub meters: BTreeMap<String, Meter>,
     /// The modifiers this actor holds, by id. Omitted when empty.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub modifiers: BTreeMap<String, ModifierLive>,
+    pub modifiers: BTreeMap<String, Modifier>,
     pub inventory: BTreeMap<String, u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub wielded: Option<String>,
@@ -333,10 +333,10 @@ pub(crate) enum ActCounter {
 
 impl ActCounter {
     /// The key this count is tracked under for actor `id`.
-    pub(crate) fn key(self, id: String) -> StateKey {
+    pub(crate) fn key(self, id: String) -> ChangeKey {
         match self {
-            ActCounter::IdleActsThisWindow => StateKey::IdleActsThisWindow(id),
-            ActCounter::LiveActsThisWindow => StateKey::LiveActsThisWindow(id),
+            ActCounter::IdleActsThisWindow => ChangeKey::IdleActsThisWindow(id),
+            ActCounter::LiveActsThisWindow => ChangeKey::LiveActsThisWindow(id),
         }
     }
 

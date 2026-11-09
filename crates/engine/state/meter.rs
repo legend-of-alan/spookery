@@ -34,7 +34,7 @@ impl MeterDef {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct MeterLive {
+pub struct Meter {
     pub base: i64,
     pub offset: i64,
 }
@@ -53,7 +53,7 @@ pub fn is_storable(def: &MeterDef, base: i64, offset: i64) -> bool {
 }
 
 /// `base + offset`, plus what the entity's modifiers add to this meter, clamped to the bounds.
-pub fn current(def: &MeterDef, live: &MeterLive, modifiers: i64) -> Result<i64, Reason> {
+pub fn current(def: &MeterDef, live: &Meter, modifiers: i64) -> Result<i64, Reason> {
     let sum = live
         .base
         .checked_add(live.offset)
@@ -65,7 +65,7 @@ pub fn current(def: &MeterDef, live: &MeterLive, modifiers: i64) -> Result<i64, 
 /// `Ok(true)` means the stored pair changed and the caller should track
 /// the meter's key. A zero delta leaves the pair alone and is `Ok(false)`.
 /// The live record is assigned only after `is_storable` accepts the next pair.
-pub fn write(def: &MeterDef, live: &mut MeterLive, write: MeterWrite) -> Result<bool, Reason> {
+pub fn write(def: &MeterDef, live: &mut Meter, write: MeterWrite) -> Result<bool, Reason> {
     let MeterWrite::Offset(delta) = write;
     let next_offset = live.offset.checked_add(delta).ok_or(Reason::OutOfRange)?;
     if !is_storable(def, live.base, next_offset) {
@@ -95,7 +95,7 @@ mod tests {
     fn stored_accepts_a_sum_past_max_and_current_clamps() {
         let def = grit();
         assert!(is_storable(&def, 100, 20));
-        let live = MeterLive {
+        let live = Meter {
             base: 100,
             offset: 20,
         };
