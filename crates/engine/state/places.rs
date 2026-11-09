@@ -7,7 +7,8 @@ use serde::{Deserialize, Serialize};
 
 use super::id::{EntityRef, ExitId, PlaceId};
 use super::meter::{self, Meter};
-use super::{change, flag, item, nested_map, Writer};
+use super::undo::LogCut;
+use super::{change, flag, item, nested_map, Store, Writer};
 use crate::canon::Canon;
 use crate::Reason;
 
@@ -15,15 +16,15 @@ use crate::Reason;
 #[serde(default, deny_unknown_fields)]
 pub struct PlaceComponents {
     #[serde(with = "nested_map")]
-    pub items: BTreeMap<(PlaceId, String), u32>,
+    pub items: Store<BTreeMap<(PlaceId, String), u32>>,
     /// The meters each place file declares.
     #[serde(with = "nested_map")]
-    pub meters: BTreeMap<(PlaceId, String), Meter>,
+    pub meters: Store<BTreeMap<(PlaceId, String), Meter>>,
     #[serde(with = "nested_map::lists")]
-    pub flags: BTreeSet<(PlaceId, String)>,
+    pub flags: Store<BTreeSet<(PlaceId, String)>>,
     /// The name of each exit whose door is open, by its place.
     #[serde(with = "nested_map::lists")]
-    pub open_exits: BTreeSet<(PlaceId, String)>,
+    pub open_exits: Store<BTreeSet<(PlaceId, String)>>,
 }
 
 impl PlaceComponents {
@@ -47,6 +48,21 @@ impl PlaceComponents {
     /// Whether the door of `exit` is open.
     pub fn is_exit_open(&self, exit: &ExitId) -> bool {
         nested_map::contains(&self.open_exits, &exit.place, &exit.exit)
+    }
+
+    /// Cut every store's log as `cut` says.
+    pub(super) fn cut_logs(&mut self, cut: LogCut) {
+        // Every store, with no `..`: a store added later must be cut here to compile.
+        let PlaceComponents {
+            items,
+            meters,
+            flags,
+            open_exits,
+        } = self;
+        items.cut_log(cut);
+        meters.cut_log(cut);
+        flags.cut_log(cut);
+        open_exits.cut_log(cut);
     }
 }
 
@@ -80,9 +96,17 @@ impl Writer<'_, PlaceComponents> {
         let def = canon
             .meter_def(EntityRef::Place(place), key)
             .ok_or(Reason::UnknownId)?;
-        let held = nested_map::get_mut(&mut part.meters, place, key).ok_or(Reason::UnknownId)?;
+        let entry = (place.clone(), key.to_string());
         let watched = change::Key::PlaceMeter(place.to_string(), key.to_string());
-        meter::shift(held, transaction, def, Ok(0), delta, watched)
+        meter::shift(
+            &mut part.meters,
+            transaction,
+            entry,
+            def,
+            Ok(0),
+            delta,
+            watched,
+        )
     }
 
     /// Give `place` meter `key` as `meter` says, `None` taking it off, outside a round's rules.

@@ -7,7 +7,8 @@ use serde::{Deserialize, Serialize};
 
 use super::id::{EntityRef, StoryId};
 use super::meter::{self, Meter};
-use super::{change, flag, nested_map, Writer};
+use super::undo::LogCut;
+use super::{change, flag, nested_map, Store, Writer};
 use crate::canon::Canon;
 use crate::Reason;
 
@@ -16,9 +17,9 @@ use crate::Reason;
 pub struct StoryComponents {
     /// The meters each story file declares.
     #[serde(with = "nested_map")]
-    pub meters: BTreeMap<(StoryId, String), Meter>,
+    pub meters: Store<BTreeMap<(StoryId, String), Meter>>,
     #[serde(with = "nested_map::lists")]
-    pub flags: BTreeSet<(StoryId, String)>,
+    pub flags: Store<BTreeSet<(StoryId, String)>>,
 }
 
 impl StoryComponents {
@@ -30,6 +31,14 @@ impl StoryComponents {
 
     pub fn has_flag(&self, story: &StoryId, key: &str) -> bool {
         nested_map::contains(&self.flags, story, key)
+    }
+
+    /// Cut every store's log as `cut` says.
+    pub(super) fn cut_logs(&mut self, cut: LogCut) {
+        // Every store, with no `..`: a store added later must be cut here to compile.
+        let StoryComponents { meters, flags } = self;
+        meters.cut_log(cut);
+        flags.cut_log(cut);
     }
 }
 
@@ -46,9 +55,17 @@ impl Writer<'_, StoryComponents> {
         let def = canon
             .meter_def(EntityRef::Story(story), key)
             .ok_or(Reason::UnknownId)?;
-        let held = nested_map::get_mut(&mut part.meters, story, key).ok_or(Reason::UnknownId)?;
+        let entry = (story.clone(), key.to_string());
         let watched = change::Key::StoryMeter(story.to_string(), key.to_string());
-        meter::shift(held, transaction, def, Ok(0), delta, watched)
+        meter::shift(
+            &mut part.meters,
+            transaction,
+            entry,
+            def,
+            Ok(0),
+            delta,
+            watched,
+        )
     }
 
     /// Give `story` meter `key` as `meter` says, `None` taking it off, outside a round's rules.

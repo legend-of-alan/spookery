@@ -5,7 +5,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde::{Deserialize, Serialize};
 
 use super::meter::{self, Meter};
-use super::{change, flag, Writer};
+use super::undo::LogCut;
+use super::{change, flag, Store, Writer};
 use crate::canon::Canon;
 use crate::Reason;
 
@@ -13,8 +14,8 @@ use crate::Reason;
 #[serde(default, deny_unknown_fields)]
 pub struct WorldComponents {
     /// The meters `world/meters.yaml` declares.
-    pub meters: BTreeMap<String, Meter>,
-    pub flags: BTreeSet<String>,
+    pub meters: Store<BTreeMap<String, Meter>>,
+    pub flags: Store<BTreeSet<String>>,
 }
 
 impl WorldComponents {
@@ -26,6 +27,14 @@ impl WorldComponents {
     pub fn has_flag(&self, key: &str) -> bool {
         self.flags.contains(key)
     }
+
+    /// Cut every store's log as `cut` says.
+    pub(super) fn cut_logs(&mut self, cut: LogCut) {
+        // Every store, with no `..`: a store added later must be cut here to compile.
+        let WorldComponents { meters, flags } = self;
+        meters.cut_log(cut);
+        flags.cut_log(cut);
+    }
 }
 
 impl Writer<'_, WorldComponents> {
@@ -33,9 +42,17 @@ impl Writer<'_, WorldComponents> {
     pub fn shift_meter(&mut self, canon: &Canon, key: &str, delta: i64) -> Result<(), Reason> {
         let Writer { part, transaction } = self;
         let def = canon.world_meters.get(key).ok_or(Reason::UnknownId)?;
-        let held = part.meters.get_mut(key).ok_or(Reason::UnknownId)?;
         let watched = change::Key::WorldMeter(key.to_string());
-        meter::shift(held, transaction, def, Ok(0), delta, watched)
+        let entry = key.to_string();
+        meter::shift(
+            &mut part.meters,
+            transaction,
+            entry,
+            def,
+            Ok(0),
+            delta,
+            watched,
+        )
     }
 
     /// Give the world meter `key` as `meter` says, `None` taking it off, outside a round's rules.

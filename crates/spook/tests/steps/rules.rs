@@ -439,7 +439,7 @@ fn a_seated_round_runs(world: &mut World) {
 fn every_actor_idle_acts(world: &mut World, tick: u64, acts: u32) {
     let now = state_of(world.pack.as_ref().unwrap());
     assert_eq!(now.world_time, tick);
-    for (id, act) in &now.actors().acts {
+    for (id, act) in now.actors().acts.iter() {
         assert_eq!(act.idle_acts_this_window, acts, "{id}");
     }
 }

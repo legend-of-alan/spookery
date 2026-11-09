@@ -1,19 +1,19 @@
 //! The round's transaction: the keys counted toward the budget, each change for the next take,
-//! the memory lines, and the savepoints a refused action rolls back to.
+//! the memory lines, the change number each store's inverses are tagged with, and the savepoints
+//! a refused action rolls back to.
 
 use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, BTreeSet};
 
 use super::change::{self, Change};
-use super::{
-    sort_unique, ActorComponents, MemoryLine, Note, PlaceComponents, State, StoryComponents,
-    WorldComponents,
-};
+use super::undo::LogCut;
+use super::{sort_unique, MemoryLine, State};
 use crate::canon::Budget;
 use crate::Reason;
 
 /// What the round's writes owe it: the keys counted toward the budget, in the order they were
-/// counted, each change for the next take, and the memory lines. At rest it has no limits.
+/// counted, each change for the next take, the memory lines, and the number the next inverse is
+/// tagged with. At rest it has no limits and no change made.
 /// `Clone` gives one at rest and any two are equal: a copy of the save holds no round.
 #[derive(Debug, Default)]
 pub(crate) struct Transaction {
@@ -25,6 +25,8 @@ pub(crate) struct Transaction {
     taken: usize,
     memories: Vec<MemoryLine>,
     memory_writes: u64,
+    /// The number the next change's inverse is tagged with: how many changes the round made.
+    change_no: u64,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -64,29 +66,27 @@ impl Transaction {
         Ok(())
     }
 
-    /// Count `key`, then keep its change for the next take. The write it reports has already
-    /// landed, so a `BUDGET` here is for the caller's savepoint to undo.
-    pub(super) fn report(
-        &mut self,
-        key: change::Key,
-        before: change::Value,
-        after: change::Value,
-    ) -> Result<(), Reason> {
-        self.count_key(&key)?;
-        self.changes.push(Change { key, before, after });
+    /// Count `change`'s key, then keep it for the next take. The write it reports has already
+    /// landed, so a `BUDGET` here is for the caller's savepoint to undo. Only a store's write
+    /// calls it, with the reports the writer handed the write.
+    pub(super) fn report(&mut self, change: Change) -> Result<(), Reason> {
+        self.count_key(&change.key)?;
+        self.changes.push(change);
         Ok(())
+    }
+
+    /// The number to tag the next change's inverse with.
+    pub(super) fn next_change_no(&mut self) -> u64 {
+        self.change_no += 1;
+        self.change_no - 1
     }
 }
 
-/// The parts as they stood, and how far the round's transaction had come.
+/// How far the round had come: the number the next change takes, and the length of each of the
+/// transaction's logs.
+#[derive(Clone, Copy)]
 pub(crate) struct Savepoint {
-    parts: (
-        ActorComponents,
-        PlaceComponents,
-        StoryComponents,
-        WorldComponents,
-        Vec<Note>,
-    ),
+    change_no: u64,
     keys: usize,
     changes: usize,
     taken: usize,
@@ -95,11 +95,14 @@ pub(crate) struct Savepoint {
 }
 
 impl State {
-    /// Open a round on this save under `budget`'s limits. Opening it again would forget what the
-    /// round counted, so that panics in every build.
+    /// Open a round on this save under `budget`'s limits. Opening it on writes not yet accepted
+    /// would forget what the round counted, so that panics in every build.
     pub(crate) fn open_round(&mut self, budget: &Budget) {
         let transaction = &mut self.transaction;
-        assert!(transaction.limits.is_none(), "a round opened twice");
+        assert!(
+            transaction.change_no == 0,
+            "a round opened on unaccepted writes"
+        );
         transaction.limits = Some(Limits {
             keys: usize::try_from(budget.max_state_keys_mutated).unwrap_or(usize::MAX),
             memory_writes: budget.max_memory_writes,
@@ -109,13 +112,7 @@ impl State {
     pub(crate) fn savepoint(&self) -> Savepoint {
         let transaction = &self.transaction;
         Savepoint {
-            parts: (
-                self.actors.clone(),
-                self.places.clone(),
-                self.stories.clone(),
-                self.world.clone(),
-                self.notes.clone(),
-            ),
+            change_no: transaction.change_no,
             keys: transaction.key_order.len(),
             changes: transaction.changes.len(),
             taken: transaction.taken,
@@ -124,17 +121,12 @@ impl State {
         }
     }
 
-    /// Put the parts back as `point` found them, and cut the transaction back to it. The round's
-    /// limits stay.
+    /// Undo, in every store, each change made since `point`, and cut the transaction back to it.
+    /// The round's limits stay.
     pub(crate) fn rollback(&mut self, point: Savepoint) {
-        (
-            self.actors,
-            self.places,
-            self.stories,
-            self.world,
-            self.notes,
-        ) = point.parts;
+        self.cut_logs(LogCut::UndoFrom(point.change_no));
         let transaction = &mut self.transaction;
+        transaction.change_no = point.change_no;
         for key in transaction.key_order.drain(point.keys..) {
             transaction.keys.remove(&key);
         }
@@ -142,6 +134,15 @@ impl State {
         transaction.taken = point.taken;
         transaction.memories.truncate(point.memories);
         transaction.memory_writes = point.memory_writes;
+    }
+
+    /// Cut every part's logs as `cut` says.
+    fn cut_logs(&mut self, cut: LogCut) {
+        self.actors.cut_logs(cut);
+        self.places.cut_logs(cut);
+        self.stories.cut_logs(cut);
+        self.world.cut_logs(cut);
+        self.notes.cut_log(cut);
     }
 
     /// The changes since the last take, one per key from its first value to its last, less the
@@ -190,15 +191,18 @@ impl State {
         self.transaction.memories.push(line);
     }
 
-    /// Close the round: the transaction goes back to rest, and the save into file order.
+    /// Close the round: every store forgets its inverses, the transaction goes back to rest, and
+    /// the save into file order.
     pub fn accept(&mut self) {
+        self.cut_logs(LogCut::DropAll);
         self.transaction = Transaction::default();
-        self.notes.sort_by(|a, b| a.id.cmp(&b.id));
-        for note in &mut self.notes {
+        let notes = self.notes.value_mut();
+        notes.sort_by(|a, b| a.id.cmp(&b.id));
+        for note in notes {
             sort_unique(&mut note.to);
             sort_unique(&mut note.fact_ids);
         }
-        for known in self.actors.known_facts.values_mut() {
+        for known in self.actors.known_facts.value_mut().values_mut() {
             sort_unique(known);
         }
     }
@@ -220,7 +224,7 @@ mod tests {
     use crate::rules::effect::{Effect, EffectKind};
     use crate::state::id::{ActorId, EntityId};
     use crate::state::meter::{Meter, MeterWrite};
-    use crate::state::{Presence, State};
+    use crate::state::{ActorKind, Presence, State};
     use crate::{Reason, World};
 
     fn docks() -> World<()> {
@@ -317,5 +321,20 @@ mod tests {
             ["actor_meter mira rest"],
             "only the kept write is reported"
         );
+    }
+
+    #[test]
+    fn a_rollback_takes_an_added_actor_off_every_store_it_was_put_on() {
+        let world = docks();
+        let mut state = world.begin_round();
+        let before = state.clone();
+        let point = state.savepoint();
+        let nell = ActorId::from("nell");
+        state
+            .actors_mut()
+            .add_actor(&nell, ActorKind::Npc, "docks_shop");
+        assert!(state.actors().acts.contains_key(&nell), "Nell is added");
+        state.rollback(point);
+        assert_eq!(state, before, "her kind, place and action state all go");
     }
 }

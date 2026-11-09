@@ -9,9 +9,11 @@ use crate::Reason;
 impl Writer<'_, ActorComponents> {
     /// Add `actor`, of `kind`, standing at `place`: the three stores every actor has, together.
     pub fn add_actor(&mut self, actor: &ActorId, kind: ActorKind, place: &str) {
-        self.part.kind.insert(actor.clone(), kind);
-        self.part.place.insert(actor.clone(), place.to_string());
-        self.part.acts.insert(actor.clone(), Act::default());
+        let Writer { part, transaction } = self;
+        let added = part.kind.set(transaction, actor.clone(), Some(kind), []);
+        added.expect("a write that reports nothing is never refused");
+        part.place.put(transaction, actor, Some(place.to_string()));
+        part.acts.put(transaction, actor, Some(Act::default()));
     }
 
     /// Add `to`, standing at `place`, with everything `from` has.
@@ -36,7 +38,8 @@ impl Writer<'_, ActorComponents> {
             flags,
         } = (*self.part).clone();
         self.add_actor(to, *kind.get(from).ok_or(Reason::UnknownId)?, place);
-        self.part.acts.insert(to.clone(), acts[from].clone());
+        let act = acts.get(from).cloned();
+        self.part.acts.put(self.transaction, to, act);
         for (id, count) in nested_map::entries_of(&items, from) {
             self.shift_item(to, id, (*count).into(), None)?;
         }
@@ -65,7 +68,7 @@ impl Writer<'_, ActorComponents> {
             place: _,
             wielded: _,
             known_facts: _,
-            visited: _,
+            visited,
             acts: _,
             items,
             meters,
@@ -86,12 +89,14 @@ impl Writer<'_, ActorComponents> {
             self.set_flag(actor, key, false)?;
         }
         // No production writer takes these off: production removes no actor.
-        let part = &mut self.part;
-        part.known_facts.remove(actor);
-        part.visited.retain(|(owner, _), _| owner != actor);
-        part.acts.remove(actor);
-        part.place.remove(actor);
-        part.kind.remove(actor);
-        Ok(())
+        let Writer { part, transaction } = self;
+        part.known_facts.set(transaction, actor.clone(), None, [])?;
+        for (place, _) in nested_map::entries_of(&visited, actor) {
+            let entry = (actor.clone(), place.to_string());
+            part.visited.set(transaction, entry, None, [])?;
+        }
+        part.acts.put(transaction, actor, None);
+        part.place.put(transaction, actor, None);
+        part.kind.set(transaction, actor.clone(), None, [])
     }
 }
