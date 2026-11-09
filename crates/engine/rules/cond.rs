@@ -90,10 +90,7 @@ fn holds(context: &Context, cond: &Cond) -> Result<bool, Reason> {
             who: Who::Exit(exit),
             key,
             is,
-        } => {
-            let door = (exit.place.clone(), exit.exit.clone());
-            Ok((key == OPEN && state.places.open_exits.contains(&door)) == *is)
-        }
+        } => Ok((key == OPEN && state.places.is_exit_open(exit)) == *is),
         Cond::Flag { who, key, is } => {
             let entity = expr::resolve_entity(context, who)?;
             Ok(state.has_flag(&entity, key) == *is)

@@ -213,7 +213,7 @@ pub(crate) fn nameable(
     presence: &Presence,
     viewer: &Viewer,
 ) -> Vec<String> {
-    let mut names: Vec<String> = grouped::of(&state.actors.items, viewer.actor_id())
+    let mut names: Vec<String> = grouped::entries_of(&state.actors.items, viewer.actor_id())
         .filter(|(_, count)| **count > 0)
         .map(|(id, _)| id.to_string())
         .collect();

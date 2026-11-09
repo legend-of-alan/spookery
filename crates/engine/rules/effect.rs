@@ -824,7 +824,7 @@ fn open_exit(draft: &mut Draft, exit: &ExitId, open: bool) -> Result<(), Reason>
     let key = change::Key::ExitOpen(exit.place.to_string(), exit.exit.clone());
     draft.mutate(key, |state| {
         let door = (exit.place.clone(), exit.exit.clone());
-        Ok(state::turn(&mut state.places.open_exits, door, open))
+        Ok(state::set_member(&mut state.places.open_exits, door, open))
     })
 }
 

@@ -8,7 +8,7 @@ use std::sync::Arc;
 use crate::canon::Budget;
 use crate::canon::Canon;
 use crate::state::change::{self, Change};
-use crate::state::id::{ActorId, EntityId};
+use crate::state::id::{ActorId, EntityId, ExitId};
 use crate::state::{ActCounter, MemoryLine, PendingAction, Presence, State};
 use crate::world::World;
 use crate::Reason;
@@ -269,8 +269,12 @@ impl<'p> Draft<'p> {
                     .has_flag(&EntityId::Story(id.clone().into()), flag),
             ),
             change::Key::ExitOpen(place, exit) => {
-                let door = (place.clone().into(), exit.clone());
-                change::Value::Bool(self.state.places.open_exits.contains(&door))
+                let place = place.clone().into();
+                let exit = ExitId {
+                    place,
+                    exit: exit.clone(),
+                };
+                change::Value::Bool(self.state.places.is_exit_open(&exit))
             }
             change::Key::PlaceMeter(id, meter) => {
                 self.meter_value(&EntityId::Place(id.clone().into()), meter)

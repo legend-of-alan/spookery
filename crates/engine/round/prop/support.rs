@@ -177,9 +177,9 @@ fn item_tokens(world: &World, actor: &ActorId) -> Vec<String> {
     let mut ids: Vec<String> = world.canon().items.keys().cloned().collect();
     let state = world.state();
     if let Some(place) = state.actors.place.get(actor) {
-        ids.extend(grouped::of(&state.actors.items, actor).map(|(id, _)| id.to_string()));
+        ids.extend(grouped::entries_of(&state.actors.items, actor).map(|(id, _)| id.to_string()));
         let place = PlaceId::from(place.clone());
-        ids.extend(grouped::of(&state.places.items, &place).map(|(id, _)| id.to_string()));
+        ids.extend(grouped::entries_of(&state.places.items, &place).map(|(id, _)| id.to_string()));
     }
     ids.sort();
     ids.dedup();

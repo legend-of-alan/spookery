@@ -126,7 +126,7 @@ pub struct ExitId {
     pub exit: String,
 }
 
-/// The exit as a walker on it has it for their place: `exit:<place>.<exit>`.
+/// Where a walker on this exit stands: `exit:<place>.<exit>`.
 impl fmt::Display for ExitId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "exit:{}.{}", self.place, self.exit)

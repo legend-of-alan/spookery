@@ -7,7 +7,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 /// The entries `owner` holds in a map keyed by `(owner, name)`, in name order.
-pub fn of<'a, Id: Ord + Clone, V>(
+pub fn entries_of<'a, Id: Ord + Clone, V>(
     map: &'a BTreeMap<(Id, String), V>,
     owner: &Id,
 ) -> impl Iterator<Item = (&'a str, &'a V)> {

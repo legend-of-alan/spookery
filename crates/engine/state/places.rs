@@ -6,7 +6,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde::{Deserialize, Serialize};
 
 use super::grouped;
-use super::id::PlaceId;
+use super::id::{ExitId, PlaceId};
 use super::meter::Meter;
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -22,4 +22,11 @@ pub struct PlaceComponents {
     /// The name of each exit whose door is open, by its place.
     #[serde(with = "grouped::lists")]
     pub open_exits: BTreeSet<(PlaceId, String)>,
+}
+
+impl PlaceComponents {
+    /// Whether the door of `exit` is open.
+    pub fn is_exit_open(&self, exit: &ExitId) -> bool {
+        (self.open_exits).contains(&(exit.place.clone(), exit.exit.clone()))
+    }
 }

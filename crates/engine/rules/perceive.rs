@@ -150,7 +150,7 @@ fn perceive_viewer_budget(
     }
     notes.sort_by(|a, b| a.id.cmp(&b.id));
 
-    let items = grouped::of(&state.places.items, &PlaceId::from(place.clone()))
+    let items = grouped::entries_of(&state.places.items, &PlaceId::from(place.clone()))
         .map(|(id, count)| ItemStack {
             id: id.to_string(),
             count: *count,

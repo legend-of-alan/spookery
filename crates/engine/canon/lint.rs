@@ -14,6 +14,7 @@ use crate::rules::rule::{
 use crate::state::id::{ActorId, EntityId, PlaceId, StoryId};
 use crate::state::meter::{self, MeterDef};
 use crate::state::modifier::{self, ModifierDef};
+use crate::state::ActorComponents;
 use crate::Reason;
 
 /// Exits whose `to` is not a place, and facts or items an exit names but the pack does not.
@@ -551,15 +552,28 @@ pub fn check_save(canon: &Canon, state: &crate::state::State) -> Result<(), Vec<
     const FILE: &str = "state/save.yaml";
     let mut diags = Vec::new();
     let actors = &state.actors;
-    let held: BTreeSet<(&str, &ActorId)> = (actors.place.keys().map(|id| ("place", id)))
-        .chain(actors.wielded.keys().map(|id| ("wielded", id)))
-        .chain(actors.known_facts.keys().map(|id| ("known_facts", id)))
-        .chain(actors.visited.keys().map(|(id, _)| ("visited", id)))
-        .chain(actors.acts.keys().map(|id| ("acts", id)))
-        .chain(actors.items.keys().map(|(id, _)| ("items", id)))
-        .chain(actors.meters.keys().map(|(id, _)| ("meters", id)))
-        .chain(actors.modifiers.keys().map(|(id, _)| ("modifiers", id)))
-        .chain(actors.flags.iter().map(|(id, _)| ("flags", id)))
+    // Every store, with no `..`: a store added later must be listed here to compile.
+    let ActorComponents {
+        kind: _,
+        place,
+        wielded,
+        known_facts,
+        visited,
+        acts,
+        items,
+        meters,
+        modifiers,
+        flags,
+    } = actors;
+    let held: BTreeSet<(&str, &ActorId)> = (place.keys().map(|id| ("place", id)))
+        .chain(wielded.keys().map(|id| ("wielded", id)))
+        .chain(known_facts.keys().map(|id| ("known_facts", id)))
+        .chain(visited.keys().map(|(id, _)| ("visited", id)))
+        .chain(acts.keys().map(|id| ("acts", id)))
+        .chain(items.keys().map(|(id, _)| ("items", id)))
+        .chain(meters.keys().map(|(id, _)| ("meters", id)))
+        .chain(modifiers.keys().map(|(id, _)| ("modifiers", id)))
+        .chain(flags.iter().map(|(id, _)| ("flags", id)))
         .collect();
     for (store, id) in held.iter().filter(|(_, id)| !actors.kind.contains_key(*id)) {
         let problem = format!("actor '{id}' has {store} but no kind");

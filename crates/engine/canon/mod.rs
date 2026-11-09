@@ -106,6 +106,16 @@ pub struct Exit {
     pub index: usize,
 }
 
+impl Exit {
+    /// This exit's door, by its place and its name.
+    pub(crate) fn id(&self) -> ExitId {
+        ExitId {
+            place: self.from.clone(),
+            exit: self.name.clone(),
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct PlaceDef {
     pub display_name: String,

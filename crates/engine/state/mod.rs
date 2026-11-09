@@ -68,7 +68,7 @@ impl State {
     pub(crate) fn modifier_sum(&self, entity: &EntityId, key: &str) -> Result<i64, crate::Reason> {
         match entity {
             EntityId::Actor(id) => {
-                let held = grouped::of(&self.actors.modifiers, id).map(|(_, held)| held);
+                let held = grouped::entries_of(&self.actors.modifiers, id).map(|(_, held)| held);
                 modifier::sum(held, key)
             }
             EntityId::World | EntityId::Place(_) | EntityId::Story(_) => Ok(0),
@@ -78,9 +78,9 @@ impl State {
     /// The live meters `entity` carries, by id.
     pub(crate) fn meters_of(&self, entity: &EntityId) -> BTreeMap<&str, &Meter> {
         match entity {
-            EntityId::Actor(id) => grouped::of(&self.actors.meters, id).collect(),
-            EntityId::Place(id) => grouped::of(&self.places.meters, id).collect(),
-            EntityId::Story(id) => grouped::of(&self.stories.meters, id).collect(),
+            EntityId::Actor(id) => grouped::entries_of(&self.actors.meters, id).collect(),
+            EntityId::Place(id) => grouped::entries_of(&self.places.meters, id).collect(),
+            EntityId::Story(id) => grouped::entries_of(&self.stories.meters, id).collect(),
             EntityId::World => self
                 .world
                 .meters
@@ -129,10 +129,10 @@ impl State {
             EntityId::Actor(id) if !self.actors.kind.contains_key(id) => {
                 return Err(crate::Reason::UnknownId)
             }
-            EntityId::Actor(id) => turn(&mut self.actors.flags, (id.clone(), key), value),
-            EntityId::Place(id) => turn(&mut self.places.flags, (id.clone(), key), value),
-            EntityId::Story(id) => turn(&mut self.stories.flags, (id.clone(), key), value),
-            EntityId::World => turn(&mut self.world.flags, key, value),
+            EntityId::Actor(id) => set_member(&mut self.actors.flags, (id.clone(), key), value),
+            EntityId::Place(id) => set_member(&mut self.places.flags, (id.clone(), key), value),
+            EntityId::Story(id) => set_member(&mut self.stories.flags, (id.clone(), key), value),
+            EntityId::World => set_member(&mut self.world.flags, key, value),
         })
     }
 
@@ -153,7 +153,7 @@ impl State {
 }
 
 /// Put `entry` in `set` or take it out, and say whether that changed the set.
-pub(crate) fn turn<K: Ord>(set: &mut BTreeSet<K>, entry: K, on: bool) -> bool {
+pub(crate) fn set_member<K: Ord>(set: &mut BTreeSet<K>, entry: K, on: bool) -> bool {
     if on {
         set.insert(entry)
     } else {

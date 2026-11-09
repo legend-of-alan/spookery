@@ -12,7 +12,7 @@ use crate::rules::gate;
 use crate::rules::lines::place_name;
 use crate::rules::rule::{EffectTemplate, LocationTo, Rule};
 use crate::rules::visibility::can_see_fact;
-use crate::state::id::{ActorId, ExitId};
+use crate::state::id::ActorId;
 use crate::state::{PendingAction, State};
 use crate::Reason;
 use spookery_protocol::ExitView;
@@ -76,7 +76,7 @@ pub(crate) fn exit_stood_on<'a>(canon: &'a Canon, place: &str) -> Option<&'a Exi
 
 /// Where a walker stands while they walk through `exit`: `exit:<place>.<exit>`.
 pub(crate) fn on_exit(exit: &Exit) -> String {
-    format!("exit:{}.{}", exit.from, exit.name)
+    exit.id().to_string()
 }
 
 /// Refuse a missing, hidden, locked, or unpaid exit. A clear exit is `Ok`.
@@ -121,8 +121,7 @@ fn is_revealed(canon: &Canon, state: &State, actor_id: &ActorId, exit: &Exit) ->
 
 /// A door is locked until it opens. An exit with no `if` is no door, so it is always open.
 fn is_locked(state: &State, exit: &Exit) -> bool {
-    let door = (exit.from.clone(), exit.name.clone());
-    !exit.if_.is_empty() && !state.places.open_exits.contains(&door)
+    !exit.if_.is_empty() && !state.places.is_exit_open(&exit.id())
 }
 
 /// Open each locked door whose `if` some actor in its place meets, with an `exit_open` effect
@@ -156,11 +155,10 @@ pub(crate) fn open_doors(draft: &mut Draft, log: &mut RoundLog) {
             }
             let id = format!("door:{place}.{}", exit.name);
             let intent = Intent::new(id, state.round_index, None, Source::Engine, "door", target);
-            let exit = ExitId {
-                place: exit.from.clone(),
-                exit: exit.name.clone(),
+            let kind = EffectKind::ExitOpen {
+                exit: exit.id(),
+                open: true,
             };
-            let kind = EffectKind::ExitOpen { exit, open: true };
             opens.push((Effect::new(None, &intent.id, kind), intent));
         }
     }

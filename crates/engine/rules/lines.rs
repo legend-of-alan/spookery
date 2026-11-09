@@ -108,7 +108,7 @@ fn names_for(
             .filter(|name| canon.items.contains_key(*name))
             .cloned()
             .collect(),
-        TargetKind::Place => grouped::of(&state.actors.visited, actor_id)
+        TargetKind::Place => grouped::entries_of(&state.actors.visited, actor_id)
             .map(|(place, _)| place.to_string())
             .collect(),
     };
@@ -131,7 +131,7 @@ pub(crate) fn map(
     if !state.actors.kind.contains_key(actor_id) {
         return Err(Reason::UnknownId);
     }
-    let places = grouped::of(&state.actors.visited, actor_id).map(|(id, seen)| PlaceView {
+    let places = grouped::entries_of(&state.actors.visited, actor_id).map(|(id, seen)| PlaceView {
         name: place_name(canon, id),
         exits: canon
             .places

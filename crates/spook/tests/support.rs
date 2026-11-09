@@ -97,33 +97,41 @@ pub fn copy_actor(state: &mut spookery_engine::State, from: &str, to: &str, plac
         spookery_engine::ActorId::from(from),
         spookery_engine::ActorId::from(to),
     );
-    let actors = &mut state.actors;
-    let kind = *actors
-        .kind
-        .get(&from)
-        .unwrap_or_else(|| panic!("no actor {from}"));
-    actors.kind.insert(to.clone(), kind);
-    actors.place.insert(to.clone(), place.to_string());
-    if let Some(act) = actors.acts.get(&from).cloned() {
-        actors.acts.insert(to.clone(), act);
+    // Every store, with no `..`: a store added later must be copied here to compile.
+    let ActorComponents {
+        kind,
+        place: at,
+        wielded,
+        known_facts,
+        visited,
+        acts,
+        items,
+        meters,
+        modifiers,
+        flags,
+    } = &mut state.actors;
+    let copied = *kind.get(&from).unwrap_or_else(|| panic!("no actor {from}"));
+    kind.insert(to.clone(), copied);
+    at.insert(to.clone(), place.to_string());
+    if let Some(act) = acts.get(&from).cloned() {
+        acts.insert(to.clone(), act);
     }
-    if let Some(wielded) = actors.wielded.get(&from).cloned() {
-        actors.wielded.insert(to.clone(), wielded);
+    if let Some(item) = wielded.get(&from).cloned() {
+        wielded.insert(to.clone(), item);
     }
-    if let Some(known) = actors.known_facts.get(&from).cloned() {
-        actors.known_facts.insert(to.clone(), known);
+    if let Some(known) = known_facts.get(&from).cloned() {
+        known_facts.insert(to.clone(), known);
     }
-    copy_owned(&mut actors.visited, &from, &to);
-    copy_owned(&mut actors.items, &from, &to);
-    copy_owned(&mut actors.meters, &from, &to);
-    copy_owned(&mut actors.modifiers, &from, &to);
-    let flags: Vec<_> = actors
-        .flags
+    copy_owned(visited, &from, &to);
+    copy_owned(items, &from, &to);
+    copy_owned(meters, &from, &to);
+    copy_owned(modifiers, &from, &to);
+    let copied: Vec<_> = flags
         .iter()
         .filter(|(owner, _)| *owner == from)
         .map(|(_, flag)| (to.clone(), flag.clone()))
         .collect();
-    actors.flags.extend(flags);
+    flags.extend(copied);
 }
 
 /// Copy `from`'s entries in a store keyed by `(actor, name)` to `to`.
@@ -142,15 +150,27 @@ fn copy_owned<V: Clone>(
 
 /// Take actor `id` and everything it holds out of `state`.
 pub fn remove_actor(state: &mut spookery_engine::State, id: &str) {
-    let actors = &mut state.actors;
-    actors.kind.remove(id);
-    actors.place.remove(id);
-    actors.acts.remove(id);
-    actors.wielded.remove(id);
-    actors.known_facts.remove(id);
-    actors.visited.retain(|(owner, _), _| *owner != *id);
-    actors.items.retain(|(owner, _), _| *owner != *id);
-    actors.meters.retain(|(owner, _), _| *owner != *id);
-    actors.modifiers.retain(|(owner, _), _| *owner != *id);
-    actors.flags.retain(|(owner, _)| *owner != *id);
+    // Every store, with no `..`: a store added later must be emptied here to compile.
+    let ActorComponents {
+        kind,
+        place,
+        wielded,
+        known_facts,
+        visited,
+        acts,
+        items,
+        meters,
+        modifiers,
+        flags,
+    } = &mut state.actors;
+    kind.remove(id);
+    place.remove(id);
+    acts.remove(id);
+    wielded.remove(id);
+    known_facts.remove(id);
+    visited.retain(|(owner, _), _| *owner != *id);
+    items.retain(|(owner, _), _| *owner != *id);
+    meters.retain(|(owner, _), _| *owner != *id);
+    modifiers.retain(|(owner, _), _| *owner != *id);
+    flags.retain(|(owner, _)| *owner != *id);
 }

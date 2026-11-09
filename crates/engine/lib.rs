@@ -38,7 +38,7 @@ pub mod testing {
     pub use crate::canon::strip_body;
     pub use crate::round::replay::replay_journal;
     pub use crate::rules::roll::{faces, RollKey};
-    pub use crate::state::{Act, ActorKind, PendingAction};
+    pub use crate::state::{Act, ActorComponents, ActorKind, PendingAction};
 
     /// The write guard of the pack `world` holds the lock on.
     pub fn lock_write(world: &crate::World) -> Result<WriteGuard, crate::Reason> {
