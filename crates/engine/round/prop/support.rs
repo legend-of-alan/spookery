@@ -6,7 +6,9 @@ use std::path::{Path, PathBuf};
 use crate::canon::pack_rev;
 use crate::intent::Target;
 use crate::rules::travel::visible_exits;
-use crate::state::Presence;
+use crate::state::id::{ActorId, PlaceId};
+use crate::state::nested_map;
+use crate::state::{ActorKind, Presence};
 use crate::store::journal;
 use crate::store::save;
 use crate::world::World;
@@ -100,8 +102,9 @@ fn pc_count(world: &World) -> usize {
     world
         .state()
         .actors
+        .kind
         .values()
-        .filter(|actor| actor.is_pc())
+        .filter(|kind| **kind == ActorKind::Pc)
         .count()
 }
 
@@ -129,11 +132,12 @@ fn add_grit_success(pack: &Path) -> Result<(), String> {
 }
 
 fn queue_move(world: &mut World, plan: &MovePlan) {
-    let pcs: Vec<String> = world
+    let pcs: Vec<ActorId> = world
         .state()
         .actors
+        .kind
         .iter()
-        .filter(|(_, actor)| actor.is_pc())
+        .filter(|(_, kind)| **kind == ActorKind::Pc)
         .map(|(id, _)| id.clone())
         .collect();
     if pcs.is_empty() {
@@ -148,7 +152,7 @@ fn queue_move(world: &mut World, plan: &MovePlan) {
     let _ = world.queue_player_move(&Presence::default(), actor, verb, target.token());
 }
 
-fn target_for(world: &World, actor: &str, verb: &str, token: usize) -> Option<Target> {
+fn target_for(world: &World, actor: &ActorId, verb: &str, token: usize) -> Option<Target> {
     match verb {
         "wait" | "grit" | "unwield" => Some(Target::Empty),
         "travel" => {
@@ -169,13 +173,17 @@ fn target_for(world: &World, actor: &str, verb: &str, token: usize) -> Option<Ta
     }
 }
 
-fn item_tokens(world: &World, actor: &str) -> Vec<String> {
+fn item_tokens(world: &World, actor: &ActorId) -> Vec<String> {
     let mut ids: Vec<String> = world.canon().items.keys().cloned().collect();
-    if let Some(actor) = world.state().actors.get(actor) {
-        ids.extend(actor.inventory.keys().cloned());
-        if let Some(place) = world.state().places.get(&actor.place) {
-            ids.extend(place.items.keys().cloned());
-        }
+    let state = world.state();
+    if let Some(place) = state.actors.place.get(actor) {
+        ids.extend(
+            nested_map::entries_of(&state.actors.items, actor).map(|(id, _)| id.to_string()),
+        );
+        let place = PlaceId::from(place.clone());
+        ids.extend(
+            nested_map::entries_of(&state.places.items, &place).map(|(id, _)| id.to_string()),
+        );
     }
     ids.sort();
     ids.dedup();

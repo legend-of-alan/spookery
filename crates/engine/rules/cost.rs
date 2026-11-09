@@ -8,6 +8,7 @@ use crate::rules::expr::{self, Dice};
 use crate::rules::gate;
 use crate::rules::rule::Cost;
 use crate::state::change;
+use crate::state::id::EntityId;
 use crate::state::meter::MeterWrite;
 use crate::Reason;
 
@@ -31,7 +32,7 @@ pub(crate) fn afford(context: &Context, cost: &Cost) -> Result<(), gate::Refusal
             return Err(cant_afford(key));
         }
         let current = state
-            .meter_value(canon, &effect::EntityId::Actor(who.to_string()), key)
+            .meter_value(canon, &EntityId::Actor(who.clone()), key)
             .map_err(|_| cant_afford(key))?;
         if current < amount {
             return Err(cant_afford(key));
@@ -45,8 +46,9 @@ pub(crate) fn afford(context: &Context, cost: &Cost) -> Result<(), gate::Refusal
         let count = item_count(amount).map_err(|_| cant_afford(id))?;
         let held = state
             .actors
-            .get(who)
-            .map(|actor| actor.item_count(id))
+            .items
+            .get(&(who.clone(), id.clone()))
+            .copied()
             .unwrap_or(0);
         if held < count {
             return Err(cant_afford(id));
@@ -67,7 +69,7 @@ pub(crate) fn pay(
     dice: &mut dyn Dice,
 ) -> Result<(), Reason> {
     let who = intent.actor_id().ok_or(Reason::UnknownId)?;
-    let entity = effect::EntityId::Actor(who.to_string());
+    let entity = EntityId::Actor(who.clone());
     for (key, expr) in &cost.meters {
         let context = Context::new(draft.canon(), draft.state(), draft.presence, intent);
         let amount = expr::eval_with_dice(&context, expr, dice)?;

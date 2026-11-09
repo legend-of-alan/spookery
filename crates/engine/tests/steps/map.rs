@@ -11,7 +11,7 @@ use crate::World;
 fn rowan_seated() -> Presence {
     Presence {
         players: 1,
-        actors_present: vec!["pc_rowan".to_string()],
+        actors_present: vec!["pc_rowan".into()],
     }
 }
 
@@ -42,13 +42,13 @@ fn mira_plays(pack: &Path, verb: &str, target: Option<&str>) {
 
 fn miras_place(pack: &Path) -> String {
     let saved = spookery_engine::World::peek(pack).unwrap();
-    saved.state().actors["mira"].place.clone()
+    saved.state().actors.place["mira"].clone()
 }
 
 /// The exit names Mira's map lists for the Docks Shop.
 fn shop_exits_on_miras_map(pack: &Path) -> Vec<String> {
     let saved = spookery_engine::World::peek(pack).unwrap();
-    let places = saved.map("mira").unwrap();
+    let places = saved.map(&"mira".into()).unwrap();
     let shop = places
         .iter()
         .find(|place| place.name == "Docks Shop")
@@ -98,7 +98,7 @@ fn the_shop_has_a_trapdoor(world: &mut World) {
     )
     .unwrap();
     support::edit_save(&pack, |state| {
-        state.actors.get_mut("mira").unwrap().place = "docks_shop".to_string();
+        *state.actors.place.get_mut("mira").unwrap() = "docks_shop".to_string();
     });
     world.pack = Some(pack);
 }
@@ -120,9 +120,9 @@ fn mira_is_standing_in_the_shop(world: &mut World) {
 fn mira_learns_on_the_street(world: &mut World) {
     mira_plays(world.pack(), "dig", None);
     let saved = spookery_engine::World::peek(world.pack()).unwrap();
-    let mira = &saved.state().actors["mira"];
-    assert_eq!(mira.place, "docks_street");
-    assert!(mira.known_facts.contains(&"fact_trapdoor".to_string()));
+    let actors = &saved.state().actors;
+    assert_eq!(actors.place["mira"], "docks_street");
+    assert!(actors.known_facts["mira"].contains(&"fact_trapdoor".to_string()));
 }
 
 #[when(expr = "Mira learns fact_trapdoor")]

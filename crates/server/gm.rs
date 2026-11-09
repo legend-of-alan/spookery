@@ -200,7 +200,11 @@ fn queue(
 ) -> Result<Reply, Reason> {
     let call: IntentArgs = parse_args(arguments).map_err(|_| Reason::Schema)?;
     if let Some(actor_id) = &call.actor_id {
-        if presence.actors_present.contains(actor_id) {
+        if presence
+            .actors_present
+            .iter()
+            .any(|id| id == actor_id.as_str())
+        {
             return Err(Reason::ActorMismatch);
         }
     }
@@ -288,6 +292,6 @@ mod tests {
         assert_eq!(queued, want);
         let intent = &world.queued_intents()[0];
         assert_eq!(intent.move_name, "wait");
-        assert_eq!(intent.args.message_to, Some(vec!["pc_wren".to_string()]));
+        assert_eq!(intent.args.message_to, Some(vec!["pc_wren".into()]));
     }
 }

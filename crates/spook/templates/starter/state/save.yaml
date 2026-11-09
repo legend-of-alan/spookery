@@ -1,46 +1,52 @@
 schema: save
 world_id: starter
 pack_rev: blake2s:44bb2e0e66408d4b2ede71de4589bdf54968bfdde381651c901c8ab13a8bd942
-rules_rev: 21
+rules_rev: 22
 state_rev: 0
 round_index: 0
 world_time: 0
 last_round_at: "2026-01-01T00:00:00Z"
-places:
-  lane:
-    items: {}
-  yard:
-    items: {}
 actors:
-  keeper:
-    kind: npc
-    place: lane
-    flags: []
-    meters:
-      nerve:
-        base: 1
-        offset: 0
-    inventory: {}
-    known_facts: []
-    act:
-      last_act_round: 0
-      idle_acts_this_window: 0
-      live_acts_this_window: 0
-  pc_ada:
-    kind: pc
-    place: yard
-    flags: []
-    meters:
-      nerve:
-        base: 1
-        offset: 0
-    inventory: {}
-    known_facts: []
-    visited:
+  kind:
+    keeper: npc
+    pc_ada: pc
+  place:
+    keeper: lane
+    pc_ada: yard
+  visited:
+    pc_ada:
       yard:
         - lane
-    act:
+  acts:
+    keeper:
       last_act_round: 0
       idle_acts_this_window: 0
       live_acts_this_window: 0
+    pc_ada:
+      last_act_round: 0
+      idle_acts_this_window: 0
+      live_acts_this_window: 0
+  items: {}
+  meters:
+    keeper:
+      nerve:
+        base: 1
+        offset: 0
+    pc_ada:
+      nerve:
+        base: 1
+        offset: 0
+  modifiers: {}
+  flags: {}
+places:
+  items: {}
+  meters: {}
+  flags: {}
+  open_exits: {}
+stories:
+  meters: {}
+  flags: {}
+world:
+  meters: {}
+  flags: []
 notes: []

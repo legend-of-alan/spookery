@@ -1,10 +1,10 @@
 //! Whether the conditions on a rule hold.
 
-use crate::canon::Canon;
+use crate::canon::{Canon, OPEN};
 use crate::intent::{Intent, Source, Target, Viewer};
 use crate::rules::context::Context;
 use crate::rules::expr;
-use crate::rules::rule::Cond;
+use crate::rules::rule::{Cond, Who};
 use crate::state::{Presence, State};
 use crate::Reason;
 
@@ -56,22 +56,24 @@ fn holds(context: &Context, cond: &Cond) -> Result<bool, Reason> {
     let state = context.state;
     match cond {
         Cond::HasItem { who, id, count } => {
-            let actor = expr::resolve_who_id(context, who)?;
+            let actor = expr::resolve_actor(context, who)?;
             let id = expr::resolve_item_id(context, id)?;
             let held = state
                 .actors
-                .get(&actor)
-                .map(|actor| actor.item_count(&id))
+                .items
+                .get(&(actor.clone(), id))
+                .copied()
                 .unwrap_or(0);
             Ok(held >= *count)
         }
         Cond::Wielding { who, id } => {
-            let actor = expr::resolve_who_id(context, who)?;
+            let actor = expr::resolve_actor(context, who)?;
             let id = expr::resolve_item_id(context, id)?;
             Ok(state
                 .actors
-                .get(&actor)
-                .is_some_and(|actor| actor.wielded.as_deref() == Some(id.as_str())))
+                .wielded
+                .get(actor)
+                .is_some_and(|wielded| *wielded == id))
         }
         Cond::Meter {
             who,
@@ -84,23 +86,26 @@ fn holds(context: &Context, cond: &Cond) -> Result<bool, Reason> {
             let right = expr::eval(context, value)?;
             Ok(op.holds(current, right))
         }
+        Cond::Flag {
+            who: Who::Exit(exit),
+            key,
+            is,
+        } => Ok((key == OPEN && state.places.is_exit_open(exit)) == *is),
         Cond::Flag { who, key, is } => {
             let entity = expr::resolve_entity(context, who)?;
             Ok(state.has_flag(&entity, key) == *is)
         }
         Cond::At { who, place } => {
-            let actor = expr::resolve_who_id(context, who)?;
-            Ok(state
-                .actors
-                .get(&actor)
-                .is_some_and(|actor| actor.place == *place))
+            let actor = expr::resolve_actor(context, who)?;
+            Ok(state.actors.place.get(actor).is_some_and(|at| at == place))
         }
         Cond::Knows { who, fact } => {
-            let actor = expr::resolve_who_id(context, who)?;
+            let actor = expr::resolve_actor(context, who)?;
             Ok(state
                 .actors
-                .get(&actor)
-                .is_some_and(|actor| actor.known_facts.iter().any(|id| id == fact)))
+                .known_facts
+                .get(actor)
+                .is_some_and(|facts| facts.iter().any(|id| id == fact)))
         }
         Cond::Cycle { name, from, to } => {
             let length = context.canon.budget.cycles.get(name);

@@ -1,14 +1,15 @@
 //! Turn a rule template into effects for one intent.
 
-use crate::canon::Canon;
+use crate::canon::{Canon, OPEN};
 use crate::intent::Target;
 use crate::round::dice::Roller;
 use crate::rules::context::Context;
-use crate::rules::effect::{Effect, EffectKind, EntityId};
+use crate::rules::effect::{Effect, EffectKind};
 use crate::rules::expr::{self, Dice, Expr};
 use crate::rules::roll::Outcome;
 use crate::rules::roll::{MoveReport, Roll};
 use crate::rules::rule::{EffectTemplate, LocationTo, NarrateTo, ResistSpec, Rule, Who};
+use crate::state::id::{ActorId, EntityId};
 use crate::state::meter::MeterWrite;
 use crate::state::State;
 use crate::Reason;
@@ -113,9 +114,9 @@ fn expand_template(
                 target,
                 resisted,
             } => {
-                let actor = expr::resolve_who_id(context, who)?;
+                let actor = expr::resolve_actor(context, who)?;
                 let number = expr::eval_with_dice(context, target, dice)?;
-                let band = dice.resist(canon, state, &actor, check, number)?;
+                let band = dice.resist(canon, state, actor, check, number)?;
                 *last_resist = Some(band);
                 if band == Outcome::Success {
                     for alt in resisted {
@@ -134,15 +135,18 @@ fn expand_template(
         EffectTemplate::Flag {
             who, key, value, ..
         } => {
-            effects.push(Effect::new(
-                viewer,
-                &intent.id,
-                EffectKind::Flag {
+            let kind = match who {
+                Who::Exit(exit) if key == OPEN => EffectKind::ExitOpen {
+                    exit: exit.clone(),
+                    open: *value,
+                },
+                _ => EffectKind::Flag {
                     entity: expr::resolve_entity(context, who)?,
                     key: key.clone(),
                     value: *value,
                 },
-            ));
+            };
+            effects.push(Effect::new(viewer, &intent.id, kind));
         }
         EffectTemplate::Modifier {
             who,
@@ -154,7 +158,7 @@ fn expand_template(
                 viewer,
                 &intent.id,
                 EffectKind::Modifier {
-                    actor_id: expr::resolve_who_id(context, who)?,
+                    actor_id: expr::resolve_actor(context, who)?.clone(),
                     id: id.clone(),
                     add: expr::eval_with_dice(context, add, dice)?,
                     ticks: *ticks,
@@ -169,7 +173,7 @@ fn expand_template(
                 }
                 LocationTo::Place(id) if *teleport => id.clone(),
                 LocationTo::Target if *teleport => match &intent.target {
-                    Target::Place(id) => id.clone(),
+                    Target::Place(id) => id.to_string(),
                     _ => return Err(Reason::Schema),
                 },
                 LocationTo::Place(_) | LocationTo::Target => return Err(Reason::NotInSpec),
@@ -198,9 +202,7 @@ fn expand_template(
             let (actor_id, place) = match expr::resolve_entity(context, who)? {
                 EntityId::Actor(id) => (Some(id), None),
                 EntityId::Place(id) => (None, Some(id)),
-                EntityId::Story(_) | EntityId::Exit(..) | EntityId::World => {
-                    return Err(Reason::Schema)
-                }
+                EntityId::Story(_) | EntityId::World => return Err(Reason::Schema),
             };
             effects.push(Effect::new(
                 viewer,
@@ -215,7 +217,7 @@ fn expand_template(
             ));
         }
         EffectTemplate::Wield { who, id } => {
-            let actor_id = expr::resolve_who_id(context, who)?;
+            let actor_id = expr::resolve_actor(context, who)?.clone();
             effects.push(Effect::new(
                 viewer,
                 &intent.id,
@@ -226,7 +228,7 @@ fn expand_template(
             ));
         }
         EffectTemplate::Unwield { who } => {
-            let actor_id = expr::resolve_who_id(context, who)?;
+            let actor_id = expr::resolve_actor(context, who)?.clone();
             effects.push(Effect::new(
                 viewer,
                 &intent.id,
@@ -256,8 +258,8 @@ fn expand_template(
             to, text, fact_ids, ..
         } => {
             let to = match to {
-                NarrateTo::Here => state.actors_at(&expr::resolve_who_id(context, &Who::Here)?),
-                NarrateTo::Self_ => vec![expr::resolve_who_id(context, &Who::Self_)?],
+                NarrateTo::Here => state.actors_at(expr::resolve_here(context)?),
+                NarrateTo::Self_ => vec![expr::resolve_actor(context, &Who::Self_)?.clone()],
                 NarrateTo::Actors(ids) => ids.clone(),
                 NarrateTo::Present => context.presence.actors_present.clone(),
             };
@@ -276,7 +278,7 @@ fn expand_template(
             fact_ids,
             text,
         } => {
-            let actor_id = expr::resolve_who_id(context, who)?;
+            let actor_id = expr::resolve_actor(context, who)?.clone();
             effects.push(Effect::new(
                 viewer,
                 &intent.id,
@@ -289,7 +291,7 @@ fn expand_template(
             ));
         }
         EffectTemplate::Reveal { who, fact } => {
-            let actor_id = expr::resolve_who_id(context, who)?;
+            let actor_id = expr::resolve_actor(context, who)?.clone();
             effects.push(Effect::new(
                 viewer,
                 &intent.id,
@@ -325,12 +327,13 @@ fn meter_offset(
 
 fn location_effect(context: &Context, to: &str) -> Result<Effect, Reason> {
     let intent = context.intent;
-    let actor_id = expr::resolve_who_id(context, &Who::Self_)?;
+    let actor_id = expr::resolve_actor(context, &Who::Self_)?.clone();
     let from = context
         .state
         .actors
+        .place
         .get(&actor_id)
-        .map(|actor| actor.place.clone())
+        .cloned()
         .ok_or(Reason::UnknownId)?;
     Ok(Effect::new(
         intent.actor.as_ref(),
@@ -362,7 +365,7 @@ impl Dice for PreviewDice {
         &mut self,
         _: &Canon,
         _: &State,
-        _: &str,
+        _: &ActorId,
         _: &str,
         _: i64,
     ) -> Result<Outcome, Reason> {

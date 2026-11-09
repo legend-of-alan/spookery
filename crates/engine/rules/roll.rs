@@ -4,9 +4,11 @@ use std::collections::BTreeMap;
 
 use crate::hash::blake2s_256;
 use crate::rules::gate;
+use crate::state::id::ActorId;
 use crate::state::meter::{self, MeterDef};
 use crate::state::modifier;
-use crate::state::ActorLive;
+use crate::state::nested_map;
+use crate::state::State;
 use crate::Reason;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -41,11 +43,11 @@ pub use spookery_protocol::Roll;
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum MoveReport {
     Rolled {
-        actor_id: String,
+        actor_id: ActorId,
         roll: Roll,
     },
     Refused {
-        actor_id: String,
+        actor_id: ActorId,
         refusal: gate::Refusal,
     },
 }
@@ -57,7 +59,7 @@ pub struct RollKey {
     pub round_index: u64,
     pub rule_id: String,
     /// The actor the rule runs for, or `None` for a change rule on a world change.
-    pub subject_id: Option<String>,
+    pub subject_id: Option<ActorId>,
     pub index: u32,
 }
 
@@ -88,14 +90,20 @@ pub fn faces(key: &RollKey, start: usize, count: u32, sides: u32) -> Result<Vec<
 pub(crate) fn roll_check(
     check: &Check,
     meters: &BTreeMap<String, MeterDef>,
-    actor: &ActorLive,
+    state: &State,
+    actor_id: &ActorId,
     key: &RollKey,
     target: i64,
     partial_at: Option<i64>,
 ) -> Result<Roll, Reason> {
     let def = meters.get(&check.stat).ok_or(Reason::UnknownId)?;
-    let live = actor.meters.get(&check.stat).ok_or(Reason::UnknownId)?;
-    let stat = meter::current(def, live, modifier::sum(&actor.modifiers, &check.stat)?)?;
+    let live = state
+        .actors
+        .meters
+        .get(&(actor_id.clone(), check.stat.clone()))
+        .ok_or(Reason::UnknownId)?;
+    let held = nested_map::entries_of(&state.actors.modifiers, actor_id).map(|(_, held)| held);
+    let stat = meter::current(def, live, modifier::sum(held, &check.stat)?)?;
     let faces = faces(key, 0, check.dice_count, check.dice_sides)?;
     let total = faces.iter().map(|face| i64::from(*face)).sum::<i64>() + stat;
     Ok(Roll {
@@ -134,8 +142,9 @@ mod tests {
     use std::collections::BTreeMap;
 
     use super::{classify, face_at, roll_check, Check, Outcome, RollKey};
+    use crate::state::id::ActorId;
     use crate::state::meter::{Meter, MeterDef};
-    use crate::state::{Act, ActorKind, ActorLive};
+    use crate::state::{Act, ActorKind, State};
 
     fn grit_def() -> MeterDef {
         MeterDef {
@@ -148,20 +157,30 @@ mod tests {
         }
     }
 
-    fn npc() -> ActorLive {
-        ActorLive {
-            kind: ActorKind::Npc,
-            place: "mira_rooms".to_string(),
-            flags: Vec::new(),
-
-            meters: BTreeMap::from([("grit".to_string(), Meter { base: 1, offset: 0 })]),
-            modifiers: Default::default(),
-            inventory: BTreeMap::new(),
-            wielded: None,
-            known_facts: Vec::new(),
-            visited: Default::default(),
-            act: Act::default(),
-        }
+    /// A save holding one NPC, `mira`, with grit 1.
+    fn npc() -> State {
+        let mut state = State {
+            schema: "save".to_string(),
+            world_id: "docks".to_string(),
+            pack_rev: String::new(),
+            rules_rev: 0,
+            state_rev: 0,
+            round_index: 0,
+            world_time: 0,
+            last_round_at: String::new(),
+            actors: Default::default(),
+            places: Default::default(),
+            stories: Default::default(),
+            world: Default::default(),
+            notes: Vec::new(),
+        };
+        let (actors, mira) = (&mut state.actors, ActorId::from("mira"));
+        actors.kind.insert(mira.clone(), ActorKind::Npc);
+        actors.place.insert(mira.clone(), "mira_rooms".to_string());
+        actors.acts.insert(mira.clone(), Act::default());
+        let grit = Meter { base: 1, offset: 0 };
+        actors.meters.insert((mira, "grit".to_string()), grit);
+        state
     }
 
     fn check_of(count: u32) -> Check {
@@ -177,7 +196,7 @@ mod tests {
             world_id: "docks".to_string(),
             round_index: 1,
             rule_id: "grit".to_string(),
-            subject_id: Some("mira".to_string()),
+            subject_id: Some("mira".into()),
             index,
         }
     }
@@ -207,11 +226,11 @@ mod tests {
 
     #[test]
     fn the_same_key_rolls_the_same_faces() {
-        let actor = npc();
+        let (state, mira) = (npc(), ActorId::from("mira"));
         let defs = BTreeMap::from([("grit".to_string(), grit_def())]);
         let check = check_of(2);
-        let once = roll_check(&check, &defs, &actor, &key(0), 9, None).unwrap();
-        let twice = roll_check(&check, &defs, &actor, &key(0), 9, None).unwrap();
+        let once = roll_check(&check, &defs, &state, &mira, &key(0), 9, None).unwrap();
+        let twice = roll_check(&check, &defs, &state, &mira, &key(0), 9, None).unwrap();
         assert_eq!(once, twice);
         assert_eq!(once.faces.len(), 2);
     }

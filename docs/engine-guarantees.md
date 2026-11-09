@@ -181,14 +181,14 @@ Tested in `features/rules/triggers.feature`,
 
 ## Meters
 
-A meter lives on the holder whose file declares it: every actor for
+A meter lives on the entity whose file declares it: every actor for
 `rules/meters.yaml`, one actor for a cast file's `meters`, and the world for
 `world/meters.yaml`. A world meter is held once, so every rule that names
 `who: world` reads and writes the same value, and its change rules fire once per
 change, whoever is seated. The world and an actor may each carry a meter of one name, and
 `who` picks which. Check refuses a cast meter whose id `rules/meters.yaml` or
 another cast file already has, and a rule whose fixed `who` names a meter that
-holder does not carry.
+entity does not carry.
 
 An actor's meter change is told to that actor only, not to a player in the
 same room. A world meter is hidden from players unless the pack shows it. A
@@ -196,7 +196,7 @@ shown one is told to every player, and its current value is in each view, so a
 player who comes back sees it. The GM sees every meter change. A meter never
 pauses: a rule that should wait for a seated player says so in its `if`.
 
-Tested in `features/meters/meters_belong_to_their_holder.feature` and
+Tested in `features/meters/meters_belong_to_their_entity.feature` and
 `features/meters/the_debt_waits_while_no_player_is_seated.feature`.
 
 ## Modifiers
@@ -222,7 +222,7 @@ Tested in `features/meters/modifiers_stack_and_expire.feature`.
 
 A missing exit and a locked exit change nothing. A locked exit shows its locked
 text. An exit with an `if` is locked until, at the end of a round, some actor in
-its place meets that `if`. Then the engine records a `flag` effect that sets the
+its place meets that `if`. Then the engine records an `exit_open` effect that sets the
 exit's `open`, and the exit stays open for every actor until a rule sets `open`
 to false. A hidden exit the traveller does not know stays off the view and `help`.
 A walk that takes ticks puts the traveller on the exit at once, in neither

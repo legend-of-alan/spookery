@@ -26,13 +26,10 @@ pub(crate) use crate::support::edit_save;
 /// Rowan holds brass_key, and the stair door is open, as a round that ended with him in the
 /// shop would have left it.
 pub(crate) fn give_key(now: &mut State) {
-    now.actors
-        .get_mut("pc_rowan")
-        .unwrap()
-        .inventory
-        .insert("brass_key".to_string(), 1);
-    let shop = now.places.get_mut("docks_shop").unwrap();
-    shop.open.push("stairs".to_string());
+    let key = ("pc_rowan".into(), "brass_key".to_string());
+    now.actors.items.insert(key, 1);
+    let stairs = ("docks_shop".into(), "stairs".to_string());
+    now.places.open_exits.insert(stairs);
 }
 
 pub(crate) fn add_trapdoor(pack: &Path) {
@@ -266,13 +263,15 @@ pub(crate) fn capture_play_stdout(world: &mut World) -> String {
 
 /// Put `actor` on the exit `<place>.<exit>`, walking it until tick `until`.
 pub(crate) fn set_busy(now: &mut State, actor: &str, until: u64, exit: &str) {
-    let actor = now
+    let place = now
         .actors
+        .place
         .get_mut(actor)
         .unwrap_or_else(|| panic!("no {actor}"));
-    actor.place = format!("exit:{exit}");
-    actor.act.busy_until = Some(until);
-    actor.act.pending = Some(walk(exit));
+    *place = format!("exit:{exit}");
+    let act = now.actors.acts.get_mut(actor).unwrap();
+    act.busy_until = Some(until);
+    act.pending = Some(walk(exit));
 }
 
 /// A walk through the exit `<place>.<exit>` by the travel verb.

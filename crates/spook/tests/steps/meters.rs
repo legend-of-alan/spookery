@@ -73,7 +73,7 @@ fn value_on(pack: &Path, entity: &EntityId, key: &str) -> Option<i64> {
 }
 
 fn mira() -> EntityId {
-    EntityId::Actor("mira".to_string())
+    EntityId::Actor("mira".into())
 }
 
 /// Give the save the meters the pack now declares, then play one round.
@@ -137,7 +137,8 @@ fn mira_has_shop_day(world: &mut World) {
 fn bram_and_rowan_do_not(world: &mut World) {
     let now = state_of(pack(world));
     for id in ["bram", "pc_rowan"] {
-        assert!(!now.actors[id].meters.contains_key("shop_day"), "{id}");
+        let shop_day = (id.into(), "shop_day".to_string());
+        assert!(!now.actors.meters.contains_key(&shop_day), "{id}");
     }
 }
 
@@ -159,7 +160,7 @@ fn the_habit_runs_as_before(world: &mut World) {
     let note = now.notes.iter().find(|note| note.id == "note_mira_door");
     assert_eq!(
         note.map(|note| note.to.clone()),
-        Some(vec!["pc_rowan".to_string()])
+        Some(vec!["pc_rowan".into()])
     );
     assert_eq!(value_on(pack(world), &mira(), "shop_day"), Some(0));
 }
@@ -242,10 +243,8 @@ fn rowan_and_mira_stand_in_the_shop(world: &mut World) {
     edit_table(world, &pack, |now, seated| {
         set_place(now, "mira", "docks_shop");
         now.actors
-            .get_mut("mira")
-            .unwrap()
             .meters
-            .get_mut("shop_day")
+            .get_mut(&("mira".into(), "shop_day".to_string()))
             .unwrap()
             .base = 0;
         sit(seated, &["pc_rowan"]);
@@ -388,8 +387,9 @@ fn dawn_is_zero(world: &mut World) {
 #[then(expr = "no actor carries a dawn meter")]
 fn no_actor_carries_dawn(world: &mut World) {
     let now = state_of(pack(world));
-    for (id, actor) in &now.actors {
-        assert!(!actor.meters.contains_key("dawn"), "{id}");
+    for id in now.actors.kind.keys() {
+        let dawn = (id.clone(), "dawn".to_string());
+        assert!(!now.actors.meters.contains_key(&dawn), "{id}");
     }
 }
 
@@ -403,7 +403,7 @@ fn the_vigil_fires_once(world: &mut World) {
         .filter(|name| name == "story:vigil/dawn_breaks")
         .count();
     assert_eq!(fired, 1);
-    assert!(state_of(pack).flags.contains(&"dawn_broke".to_string()));
+    assert!(state_of(pack).world.flags.contains("dawn_broke"));
 }
 
 /// Give the world a `morning` meter from 0, and append effects to the vigil's dawn rule, the
@@ -502,7 +502,7 @@ fn rowan_and_nell_each_see_once(world: &mut World, text: String) {
 #[given(expr = "Mira carries no dawn meter")]
 fn mira_carries_no_dawn(world: &mut World) {
     let canon = load_canon(pack(world)).unwrap_or_else(|err| panic!("load: {err:?}"));
-    assert!(canon.meter_def(&mira(), "dawn").is_none());
+    assert!(canon.meter_def(mira().as_ref(), "dawn").is_none());
 }
 
 #[given(expr = "Mira has a habit that adds 1 to who {string} meter dawn")]
@@ -606,9 +606,9 @@ fn dawn_has_fallen(world: &mut World, value: i64) {
             base: 6,
             offset: value - 6,
         };
-        now.world_meters.insert("dawn".to_string(), fallen);
+        now.world.meters.insert("dawn".to_string(), fallen);
         let doom = Meter { base: 6, offset: 0 };
-        now.world_meters.insert("doom".to_string(), doom);
+        now.world.meters.insert("doom".to_string(), doom);
     });
     assert_eq!(value_on(&pack, &EntityId::World, "dawn"), Some(value));
 }

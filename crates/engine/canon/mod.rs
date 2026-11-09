@@ -7,9 +7,9 @@ use serde::Deserialize;
 
 use crate::diagnostic::Diagnostic;
 use crate::hash::blake2s_tagged;
-use crate::rules::effect::EntityId;
 use crate::rules::roll::Check;
 use crate::rules::rule::{Cond, Cost, Owner, RuleTable, TargetKind, When};
+use crate::state::id::{ActorId, EntityId, EntityRef, ExitId, PlaceId, StoryId};
 use crate::state::meter::MeterDef;
 use crate::state::modifier::ModifierDef;
 use crate::Reason;
@@ -54,10 +54,10 @@ pub struct Canon {
     pub title: String,
     pub system: String,
     pub start_place: String,
-    pub places: BTreeMap<String, PlaceDef>,
-    pub cast: BTreeMap<String, CastDef>,
+    pub places: BTreeMap<PlaceId, PlaceDef>,
+    pub cast: BTreeMap<ActorId, CastDef>,
     pub facts: BTreeMap<String, FactDef>,
-    pub stories: BTreeMap<String, StoryDef>,
+    pub stories: BTreeMap<StoryId, StoryDef>,
     pub rules: RuleTable,
     pub checks: BTreeMap<String, Check>,
     /// The meters `rules/meters.yaml` gives every actor, and those one cast, place or story
@@ -95,7 +95,7 @@ pub(crate) const OPEN: &str = "open";
 pub struct Exit {
     pub name: String,
     /// The place this exit leaves.
-    pub from: String,
+    pub from: PlaceId,
     pub to: String,
     pub cost: Cost,
     pub if_: Vec<Cond>,
@@ -104,6 +104,16 @@ pub struct Exit {
     pub revealed_by: Option<String>,
     pub file: String,
     pub index: usize,
+}
+
+impl Exit {
+    /// This exit's door, by its place and its name.
+    pub(crate) fn id(&self) -> ExitId {
+        ExitId {
+            place: self.from.clone(),
+            exit: self.name.clone(),
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -177,17 +187,21 @@ impl Canon {
                 target: token.to_string(),
             })
             .collect();
-        let kinds = self.cast.iter().map(|(k, m)| (k.clone(), m.kind)).collect();
+        let kinds = self
+            .cast
+            .iter()
+            .map(|(k, m)| (k.to_string(), m.kind))
+            .collect();
         let clip = |s: &str| s.chars().take(800).collect();
         let places = self
             .places
             .iter()
-            .map(|(k, p)| (k.clone(), clip(&p.body)))
+            .map(|(k, p)| (k.to_string(), clip(&p.body)))
             .collect();
         let cast = self
             .cast
             .iter()
-            .map(|(k, m)| (k.clone(), clip(&m.body)))
+            .map(|(k, m)| (k.to_string(), clip(&m.body)))
             .collect();
         PackSummary {
             menu,
@@ -198,29 +212,27 @@ impl Canon {
     }
 
     /// The def of meter `key` on `entity`, when that entity carries it.
-    pub fn meter_def(&self, entity: &EntityId, key: &str) -> Option<&MeterDef> {
+    pub fn meter_def(&self, entity: EntityRef<'_>, key: &str) -> Option<&MeterDef> {
         match entity {
-            EntityId::World => self.world_meters.get(key),
+            EntityRef::World => self.world_meters.get(key),
             _ => self.meters.get(key).filter(|def| def.is_on(entity)),
         }
     }
 
-    /// Whether `entity` carries flag `key`: one its file declares, `open` on an exit with an
-    /// `if`, or any world flag but `busy`.
-    pub(crate) fn carries_flag(&self, entity: &EntityId, key: &str) -> bool {
-        let flags = match entity {
-            EntityId::Actor(id) => self.cast.get(id).map(|cast| &cast.flags),
-            EntityId::Place(id) => self.places.get(id).map(|place| &place.flags),
-            EntityId::Story(id) => self.stories.get(id).map(|story| &story.flags),
-            EntityId::Exit(place, exit) => {
-                return key == OPEN && self.places.get(place).is_some_and(|at| at.has_door(exit))
-            }
-            EntityId::World => return !key.is_empty() && key != "busy",
-        };
-        flags.is_some_and(|flags| flags.iter().any(|flag| flag == key))
+    /// Whether `entity` carries flag `key`: one its file declares, or any world flag but `busy`.
+    pub(crate) fn carries_flag(&self, entity: EntityRef<'_>, key: &str) -> bool {
+        match declared_flags(&self.cast, &self.places, &self.stories, entity) {
+            Some(flags) => flags.iter().any(|flag| flag == key),
+            None => !key.is_empty() && key != "busy",
+        }
     }
 
-    pub fn idle_profile(&self, actor_id: &str) -> Option<&IdleProfile> {
+    /// Whether `exit` is a door: an exit of its place with an `if`, so it can be open or shut.
+    pub(crate) fn has_door(&self, exit: &ExitId) -> bool {
+        (self.places.get(&exit.place)).is_some_and(|at| at.has_door(&exit.exit))
+    }
+
+    pub fn idle_profile(&self, actor_id: &ActorId) -> Option<&IdleProfile> {
         self.cast.get(actor_id).and_then(|cast| cast.idle.as_ref())
     }
 
@@ -236,9 +248,27 @@ impl Canon {
             return "";
         };
         self.places
-            .get(&fact.place_id)
+            .get(fact.place_id.as_str())
             .map_or("", |place| &place.body)
     }
+}
+
+/// The flags `entity`'s file declares, none for an id the pack lacks: `None` for the world,
+/// which carries any flag but `busy`. Lint asks before the canon is assembled, so it takes the
+/// three maps.
+pub(crate) fn declared_flags<'c>(
+    cast: &'c BTreeMap<ActorId, CastDef>,
+    places: &'c BTreeMap<PlaceId, PlaceDef>,
+    stories: &'c BTreeMap<StoryId, StoryDef>,
+    entity: EntityRef<'_>,
+) -> Option<&'c [String]> {
+    let flags = match entity {
+        EntityRef::Actor(id) => cast.get(id).map(|cast| &cast.flags),
+        EntityRef::Place(id) => places.get(id).map(|place| &place.flags),
+        EntityRef::Story(id) => stories.get(id).map(|story| &story.flags),
+        EntityRef::World => return None,
+    };
+    Some(flags.map_or(&[], Vec::as_slice))
 }
 
 pub fn pack_rev(root: &Path) -> Result<String, Reason> {

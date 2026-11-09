@@ -14,9 +14,11 @@
 //!
 //! Deterministic in CI: 64 cases, seed `0x0018_0018`, no failure file.
 
+use crate::canon::Canon;
 use crate::draft::Draft;
 use crate::intent::{Intent, IntentArgs, Source, Target, Viewer};
-use crate::rules::effect::{Effect, EffectKind, EntityId};
+use crate::rules::effect::{Effect, EffectKind};
+use crate::state::id::{ActorId, EntityId, PlaceId};
 use crate::state::State;
 use crate::testing::copy_docks;
 use crate::world::World;
@@ -38,8 +40,8 @@ struct ItemChange {
 fn random_item_changes_never_leave_a_negative_count() {
     let pack = TempPack(copy_docks("inventory"));
     let world = World::open(&pack.0).expect("docks pack opens");
-    let actors: Vec<String> = world.state().actors.keys().cloned().collect();
-    let places: Vec<String> = world.state().places.keys().cloned().collect();
+    let actors: Vec<ActorId> = world.state().actors.kind.keys().cloned().collect();
+    let places: Vec<PlaceId> = world.canon().places.keys().cloned().collect();
     assert!(
         actors.len() >= 2 && !places.is_empty(),
         "the pack needs actors and places to shift"
@@ -57,13 +59,13 @@ fn apply_changes(world: &World<()>, steps: &[ItemChange]) -> Result<(), TestCase
     let intent = npc_intent();
     for step in steps {
         let before = draft.state().clone();
-        let known = is_known_entity(draft.state(), &step.entity);
+        let known = is_known_entity(draft.canon(), draft.state(), &step.entity);
         let held = count_of(draft.state(), &step.entity, &step.id);
         let outcome = item_effect(step).apply(&mut draft, &intent);
         assert_no_stored_zero(draft.state())?;
         if !known {
             if outcome.is_ok() {
-                return fail("an unknown holder accepted an item effect");
+                return fail("an unknown entity accepted an item effect");
             }
             assert_same_save(draft.state(), &before)?;
             continue;
@@ -105,28 +107,24 @@ fn assert_same_save(state: &State, before: &State) -> Result<(), TestCaseError> 
 
 /// A stored count is a `u32`, so it cannot be negative. A count of 0 is omitted.
 fn assert_no_stored_zero(state: &State) -> Result<(), TestCaseError> {
-    for (actor_id, actor) in &state.actors {
-        for (item_id, count) in &actor.inventory {
-            if *count == 0 {
-                return fail(format!("{actor_id} stores a zero count of {item_id}"));
-            }
+    for ((actor_id, item_id), count) in &state.actors.items {
+        if *count == 0 {
+            return fail(format!("{actor_id} stores a zero count of {item_id}"));
         }
     }
-    for (place_id, place) in &state.places {
-        for (item_id, count) in &place.items {
-            if *count == 0 {
-                return fail(format!("{place_id} stores a zero count of {item_id}"));
-            }
+    for ((place_id, item_id), count) in &state.places.items {
+        if *count == 0 {
+            return fail(format!("{place_id} stores a zero count of {item_id}"));
         }
     }
     Ok(())
 }
 
-fn is_known_entity(state: &State, entity: &EntityId) -> bool {
+fn is_known_entity(canon: &Canon, state: &State, entity: &EntityId) -> bool {
     match entity {
-        EntityId::Actor(id) => state.actors.contains_key(id),
-        EntityId::Place(id) => state.places.contains_key(id),
-        EntityId::Story(_) | EntityId::Exit(..) | EntityId::World => false,
+        EntityId::Actor(id) => state.actors.kind.contains_key(id),
+        EntityId::Place(id) => canon.places.contains_key(id),
+        EntityId::Story(_) | EntityId::World => false,
     }
 }
 
@@ -134,16 +132,17 @@ fn count_of(state: &State, entity: &EntityId, id: &str) -> u32 {
     match entity {
         EntityId::Actor(actor_id) => state
             .actors
-            .get(actor_id)
-            .map(|actor| actor.item_count(id))
+            .items
+            .get(&(actor_id.clone(), id.to_string()))
+            .copied()
             .unwrap_or(0),
         EntityId::Place(place_id) => state
             .places
-            .get(place_id)
-            .and_then(|place| place.items.get(id))
+            .items
+            .get(&(place_id.clone(), id.to_string()))
             .copied()
             .unwrap_or(0),
-        EntityId::Story(_) | EntityId::Exit(..) | EntityId::World => 0,
+        EntityId::Story(_) | EntityId::World => 0,
     }
 }
 
@@ -158,7 +157,7 @@ fn npc_intent() -> Intent {
     Intent {
         id: "shift-item".to_string(),
         round_index: 0,
-        actor: Some(Viewer::Npc("mira".to_string())),
+        actor: Some(Viewer::Npc("mira".into())),
         source: Source::Engine,
         move_name: "shift_item".to_string(),
         target: Target::Empty,
@@ -171,7 +170,7 @@ fn item_effect(step: &ItemChange) -> Effect {
     let (actor_id, place) = match &step.entity {
         EntityId::Actor(id) => (Some(id.clone()), None),
         EntityId::Place(id) => (None, Some(id.clone())),
-        EntityId::Story(_) | EntityId::Exit(..) | EntityId::World => (None, None),
+        EntityId::Story(_) | EntityId::World => (None, None),
     };
     Effect {
         kind: EffectKind::Item {
@@ -181,14 +180,14 @@ fn item_effect(step: &ItemChange) -> Effect {
             delta: step.delta,
             max: step.max,
         },
-        viewer: Some(Viewer::Npc("mira".to_string())),
+        viewer: Some(Viewer::Npc("mira".into())),
         intent_id: "shift-item".to_string(),
     }
 }
 
 /// Two actors, every place, and three item ids stay under `max_state_keys_mutated`.
 /// A budget miss is the round's rollback, not a count change this property watches.
-fn pick_changes(actors: &[String], places: &[String]) -> impl Strategy<Value = Vec<ItemChange>> {
+fn pick_changes(actors: &[ActorId], places: &[PlaceId]) -> impl Strategy<Value = Vec<ItemChange>> {
     prop::collection::vec(
         (
             pick_entity(actors, places),
@@ -206,7 +205,7 @@ fn pick_changes(actors: &[String], places: &[String]) -> impl Strategy<Value = V
     )
 }
 
-fn pick_entity(actors: &[String], places: &[String]) -> impl Strategy<Value = EntityId> {
+fn pick_entity(actors: &[ActorId], places: &[PlaceId]) -> impl Strategy<Value = EntityId> {
     let mut known = Vec::new();
     for id in actors.iter().take(2) {
         known.push(EntityId::Actor(id.clone()));
@@ -216,8 +215,8 @@ fn pick_entity(actors: &[String], places: &[String]) -> impl Strategy<Value = En
     }
     prop_oneof![
         8 => select(known),
-        1 => Just(EntityId::Actor("nobody".to_string())),
-        1 => Just(EntityId::Place("nowhere".to_string())),
+        1 => Just(EntityId::Actor("nobody".into())),
+        1 => Just(EntityId::Place("nowhere".into())),
     ]
 }
 

@@ -31,7 +31,7 @@ fn plays(pack: &Path, actor: &str, verb: &str, target: Option<&str>) -> serde_js
     let wall = world.state().last_round_at.clone();
     let seated = Presence {
         players: 1,
-        actors_present: vec!["pc_rowan".to_string()],
+        actors_present: vec!["pc_rowan".into()],
     };
     world
         .play(&seated, &wall)
@@ -42,7 +42,7 @@ fn plays(pack: &Path, actor: &str, verb: &str, target: Option<&str>) -> serde_js
 
 fn place_of(pack: &Path, actor: &str) -> String {
     let saved = spookery_engine::World::peek(pack).unwrap();
-    saved.state().actors[actor].place.clone()
+    saved.state().actors.place[actor].clone()
 }
 
 fn stairs_open(pack: &Path) -> bool {
@@ -50,8 +50,8 @@ fn stairs_open(pack: &Path) -> bool {
     saved
         .state()
         .places
-        .get("docks_shop")
-        .is_some_and(|shop| shop.open.contains(&"stairs".to_string()))
+        .open_exits
+        .contains(&("docks_shop".into(), "stairs".to_string()))
 }
 
 /// The docks pack with Mira on the street holding brass_key and keeping no habits, a `bolt`
@@ -83,9 +83,9 @@ exits:";
     )
     .unwrap();
     support::edit_save(&pack, |state| {
-        let mira = state.actors.get_mut("mira").unwrap();
-        mira.place = "docks_street".to_string();
-        mira.inventory.insert("brass_key".to_string(), 1);
+        *state.actors.place.get_mut("mira").unwrap() = "docks_street".to_string();
+        let key = ("mira".into(), "brass_key".to_string());
+        state.actors.items.insert(key, 1);
     });
     world.pack = Some(pack);
 }
@@ -115,7 +115,8 @@ fn the_door_is_open(world: &mut World) {
 fn mira_drops_the_key(world: &mut World) {
     plays(world.pack(), "mira", "drop", Some("brass_key"));
     let saved = spookery_engine::World::peek(world.pack()).unwrap();
-    assert_eq!(saved.state().actors["mira"].item_count("brass_key"), 0);
+    let key = ("mira".into(), "brass_key".to_string());
+    assert!(!saved.state().actors.items.contains_key(&key));
 }
 
 #[then(expr = "Mira can still take the stairs")]
@@ -127,7 +128,8 @@ fn mira_takes_the_stairs(world: &mut World) {
 #[when(expr = "Aldric, who has no key, takes the stairs")]
 fn aldric_takes_the_stairs(world: &mut World) {
     let saved = spookery_engine::World::peek(world.pack()).unwrap();
-    assert_eq!(saved.state().actors["aldric"].item_count("brass_key"), 0);
+    let key = ("aldric".into(), "brass_key".to_string());
+    assert!(!saved.state().actors.items.contains_key(&key));
     drop(saved);
     world.scratch = plays(world.pack(), "aldric", "travel", Some("stairs")).to_string();
 }
@@ -179,14 +181,14 @@ fn it_opens_again_with_the_key(world: &mut World) {
     assert!(stairs_open(world.pack()));
 }
 
-#[then(expr = "the journal has a flag effect setting open on exit:docks_shop.stairs to true")]
+#[then(expr = "the journal has an exit_open effect opening exit:docks_shop.stairs")]
 fn the_journal_has_the_open(world: &mut World) {
     let round = support::read_round(world.pack(), "round-0001");
     let opened = round["effects"].as_array().unwrap().iter().any(|effect| {
-        effect["kind"] == "flag"
-            && effect["holder"] == serde_json::json!({ "exit": ["docks_shop", "stairs"] })
-            && effect["key"] == "open"
-            && effect["value"] == true
+        effect["kind"] == "exit_open"
+            && effect["place"] == "docks_shop"
+            && effect["exit"] == "stairs"
+            && effect["open"] == true
     });
     assert!(opened, "{round}");
 }
@@ -194,11 +196,11 @@ fn the_journal_has_the_open(world: &mut World) {
 #[then(expr = "a change rule watching open has run in that round")]
 fn the_watch_ran(world: &mut World) {
     let saved = spookery_engine::World::peek(world.pack()).unwrap();
-    assert!(saved.state().flags.contains(&"creaked".to_string()));
+    assert!(saved.state().world.flags.contains("creaked"));
     drop(saved);
     let round = support::read_round(world.pack(), "round-0001");
     let creaked = round["effects"].as_array().unwrap().iter().any(|effect| {
-        effect["kind"] == "flag" && effect["holder"] == "world" && effect["key"] == "creaked"
+        effect["kind"] == "flag" && effect["entity"] == "world" && effect["key"] == "creaked"
     });
     assert!(creaked, "{round}");
 }

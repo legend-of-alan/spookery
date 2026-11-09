@@ -8,7 +8,9 @@ use crate::rules::cond;
 use crate::rules::gate::{nameable, verb_for};
 use crate::rules::rule::{Owner, TargetKind, When};
 use crate::rules::travel::{exit_stood_on, exit_view, exits_at};
-use crate::state::{ActorLive, Presence, State};
+use crate::state::id::ActorId;
+use crate::state::nested_map;
+use crate::state::{Presence, State};
 use crate::Reason;
 
 /// `help`: the built-in player commands but `claim`, then each pack verb `verb_for` reaches
@@ -18,10 +20,12 @@ pub(crate) fn help(
     canon: &Canon,
     state: &State,
     presence: &Presence,
-    actor_id: &str,
+    actor_id: &ActorId,
 ) -> Result<Vec<CommandView>, Reason> {
-    let actor = state.actors.get(actor_id).ok_or(Reason::UnknownId)?;
-    let viewer = Viewer::Player(actor_id.to_string());
+    if !state.actors.kind.contains_key(actor_id) {
+        return Err(Reason::UnknownId);
+    }
+    let viewer = Viewer::Player(actor_id.clone());
     let mut commands: Vec<CommandView> = COMMANDS
         .iter()
         .filter(|command| command.seat == Seat::Player && command.name != "claim")
@@ -44,7 +48,7 @@ pub(crate) fn help(
             let (owner, target) = match (&rule.owner, hint) {
                 (_, None) => (None, Target::Empty),
                 (Owner::Cast(id), Some(hint)) if id == hint => {
-                    (Some(id), Target::Actor(id.clone()))
+                    (Some(id), Target::Actor(id.clone().into()))
                 }
                 (Owner::Item(id), Some(hint)) if id == hint => (Some(id), Target::Item(id.clone())),
                 _ => continue,
@@ -61,7 +65,7 @@ pub(crate) fn help(
                 target: kind.as_str().to_string(),
                 names: match owner {
                     Some(owner) => vec![owner.clone()],
-                    None => names_for(canon, state, actor_id, actor, kind, &names),
+                    None => names_for(canon, state, actor_id, kind, &names),
                 },
                 owner: owner.cloned(),
             };
@@ -78,16 +82,17 @@ pub(crate) fn help(
 fn names_for(
     canon: &Canon,
     state: &State,
-    actor_id: &str,
-    actor: &ActorLive,
+    actor_id: &ActorId,
     kind: TargetKind,
     nameable: &[String],
 ) -> Vec<String> {
     let picked: Vec<String> = match kind {
         TargetKind::None => Vec::new(),
-        TargetKind::Exit => canon
-            .places
-            .get(&actor.place)
+        TargetKind::Exit => state
+            .actors
+            .place
+            .get(actor_id)
+            .and_then(|place| canon.places.get(place.as_str()))
             .map(|place| exits_at(canon, state, actor_id, place))
             .unwrap_or_default()
             .into_iter()
@@ -95,7 +100,7 @@ fn names_for(
             .collect(),
         TargetKind::Actor => nameable
             .iter()
-            .filter(|name| state.actors.contains_key(*name))
+            .filter(|name| state.actors.kind.contains_key(name.as_str()))
             .cloned()
             .collect(),
         TargetKind::Item => nameable
@@ -103,7 +108,9 @@ fn names_for(
             .filter(|name| canon.items.contains_key(*name))
             .cloned()
             .collect(),
-        TargetKind::Place => actor.visited.keys().cloned().collect(),
+        TargetKind::Place => nested_map::entries_of(&state.actors.visited, actor_id)
+            .map(|(place, _)| place.to_string())
+            .collect(),
     };
     let mut names = Vec::new();
     for name in picked {
@@ -116,36 +123,44 @@ fn names_for(
 
 /// `map`: each place in the actor's `visited`, with the exits they saw there last. Where an
 /// exit goes, its ticks and whether it is locked are read now.
-pub(crate) fn map(canon: &Canon, state: &State, actor_id: &str) -> Result<Vec<PlaceView>, Reason> {
-    let actor = state.actors.get(actor_id).ok_or(Reason::UnknownId)?;
-    let places = actor.visited.iter().map(|(id, seen)| PlaceView {
-        name: place_name(canon, id),
-        exits: canon
-            .places
-            .get(id)
-            .map(|place| {
-                place
-                    .exits
-                    .iter()
-                    .filter(|exit| seen.contains(&exit.name))
-                    .map(|exit| exit_view(canon, state, exit))
-                    .collect()
-            })
-            .unwrap_or_default(),
-    });
+pub(crate) fn map(
+    canon: &Canon,
+    state: &State,
+    actor_id: &ActorId,
+) -> Result<Vec<PlaceView>, Reason> {
+    if !state.actors.kind.contains_key(actor_id) {
+        return Err(Reason::UnknownId);
+    }
+    let places =
+        nested_map::entries_of(&state.actors.visited, actor_id).map(|(id, seen)| PlaceView {
+            name: place_name(canon, id),
+            exits: canon
+                .places
+                .get(id)
+                .map(|place| {
+                    place
+                        .exits
+                        .iter()
+                        .filter(|exit| seen.contains(&exit.name))
+                        .map(|exit| exit_view(canon, state, exit))
+                        .collect()
+                })
+                .unwrap_or_default(),
+        });
     Ok(places.collect())
 }
 
 /// What keeps this actor busy, and until when: `on the stairs until tick 1300` on a walk,
 /// `chanting until tick 1300` on any other timed action, read from its verb, and
 /// `recovering until tick 1300` in a cooldown.
-pub(crate) fn busy_line(canon: &Canon, state: &State, actor_id: &str) -> Option<String> {
-    let actor = state.actors.get(actor_id)?;
-    if !actor.is_busy(state.world_time) {
+pub(crate) fn busy_line(canon: &Canon, state: &State, actor_id: &ActorId) -> Option<String> {
+    let act = state.actors.acts.get(actor_id)?;
+    let place = state.actors.place.get(actor_id)?;
+    if !act.is_busy(state.world_time) {
         return None;
     }
-    let until = actor.act.busy_until?;
-    let doing = match (&actor.act.pending, exit_stood_on(canon, &actor.place)) {
+    let until = act.busy_until?;
+    let doing = match (&act.pending, exit_stood_on(canon, place)) {
         (Some(_), Some(exit)) => format!("on the {}", exit.name),
         (Some(pending), None) => gerund(&pending.verb),
         (None, _) => "recovering".to_string(),
@@ -165,11 +180,9 @@ fn gerund(verb: &str) -> String {
 }
 
 /// Place prose for this actor's current place.
-pub(crate) fn place_prose(canon: &Canon, state: &State, actor_id: &str) -> String {
-    let Some(actor) = state.actors.get(actor_id) else {
-        return String::new();
-    };
-    let Some(place) = canon.places.get(&actor.place) else {
+pub(crate) fn place_prose(canon: &Canon, state: &State, actor_id: &ActorId) -> String {
+    let place = state.actors.place.get(actor_id);
+    let Some(place) = place.and_then(|place| canon.places.get(place.as_str())) else {
         return String::new();
     };
     place

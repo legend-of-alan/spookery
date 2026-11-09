@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 
 use crate::intent::{Intent, Source, Target};
 use crate::rules::gate;
+use crate::state::id::ActorId;
 use crate::state::Presence;
 use crate::store::journal;
 use crate::store::records::{Record, Step};
@@ -64,8 +65,13 @@ fn lunge_pack(limit: Option<&str>, rule: &str) -> PathBuf {
     }
     crate::testing::append(&pack.join("rules/verbs.yaml"), &format!("{LUNGE}{rule}"));
     crate::testing::edit_save(&pack, |state| {
-        let briar = state.actors.get_mut("npc_briar").expect("Briar");
-        briar.meters.get_mut("might").expect("might").base = 30;
+        let might = (ActorId::from("npc_briar"), "might".to_string());
+        state
+            .actors
+            .meters
+            .get_mut(&might)
+            .expect("Briar's might")
+            .base = 30;
     });
     pack
 }
@@ -81,7 +87,7 @@ fn fight(base: &Path, warmup: u32, refused: Option<Reason>) -> Result<(), String
     let mut world = World::resume(&pack.0, lock).map_err(|err| fail("resume", err.to_string()))?;
     let lark = Presence {
         players: 1,
-        actors_present: vec!["pc_lark".to_string()],
+        actors_present: vec!["pc_lark".into()],
     };
     let wall = world.state().last_round_at.clone();
     for _ in 0..warmup {
@@ -96,8 +102,8 @@ fn fight(base: &Path, warmup: u32, refused: Option<Reason>) -> Result<(), String
         ("briar-strike", "npc_briar", "strike", "pc_lark"),
         ("lark-lunge", "pc_lark", "lunge", "npc_briar"),
     ] {
-        let viewer = world.state().viewer_of(actor);
-        let target = Target::Actor(target.to_string());
+        let viewer = world.state().viewer_of(&actor.into());
+        let target = Target::Actor(target.into());
         let intent = Intent::new(
             id.to_string(),
             round_index,

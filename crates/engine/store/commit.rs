@@ -323,7 +323,7 @@ mod tests {
         let mut draft = Draft::begin(&world, &NOBODY);
         draft.memories.push(MemoryLine {
             round_index: 0,
-            actor_id: "mira".to_string(),
+            actor_id: "mira".into(),
             intent_id: "rest".to_string(),
             fact_ids: vec![],
             tags: vec![],

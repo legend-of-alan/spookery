@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::task::{ready, Context, Poll};
 
-use spookery_engine::Presence;
+use spookery_engine::{ActorId, Presence};
 use tokio::sync::{mpsc, watch};
 
 use super::limits::{MISSED_MESSAGE_CAP, OUTBOUND_BYTE_CAP, OUTBOUND_FRAME_CAP};
@@ -38,7 +38,7 @@ impl Seats {
     /// The claimed PCs, sorted, so a round records the same `actors_present` bytes. A claim
     /// whose connection dropped is still present.
     pub(super) fn presence(&self) -> Presence {
-        let mut actors_present: Vec<String> = self
+        let mut actors_present: Vec<ActorId> = self
             .claims
             .iter()
             .map(|claim| claim.actor.clone())
@@ -62,8 +62,8 @@ impl Seats {
     }
 
     /// The claim on the PC `actor`.
-    pub(super) fn claim_of_actor_mut(&mut self, actor: &str) -> Option<&mut Claim> {
-        self.claims.iter_mut().find(|claim| claim.actor == actor)
+    pub(super) fn claim_of_actor_mut(&mut self, actor: &ActorId) -> Option<&mut Claim> {
+        self.claims.iter_mut().find(|claim| claim.actor == *actor)
     }
 
     pub(super) fn connection(&self, conn: ConnId) -> Option<&Connection> {
@@ -93,7 +93,7 @@ pub(super) struct Connection {
 /// claim by its `token` takes it back, with the messages it kept.
 pub(super) struct Claim {
     pub(super) token: String,
-    pub(super) actor: String,
+    pub(super) actor: ActorId,
     /// The connection that drives it, while one does.
     pub(super) conn: Option<ConnId>,
     /// The newest `MISSED_MESSAGE_CAP` messages sent to this claim, oldest first.
@@ -103,7 +103,7 @@ pub(super) struct Claim {
 }
 
 impl Claim {
-    pub(super) fn new(token: String, actor: String) -> Self {
+    pub(super) fn new(token: String, actor: ActorId) -> Self {
         Self {
             token,
             actor,

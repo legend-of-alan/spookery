@@ -143,13 +143,7 @@ Lark watches the street from a dry doorway.
 ";
     fs::write(pack.join("cast/pc-lark.md"), cast).unwrap_or_else(|err| panic!("cast: {err}"));
     crate::support::edit_save(&pack, |now| {
-        let mut actor = now
-            .actors
-            .get("pc_wren")
-            .unwrap_or_else(|| panic!("pc_wren"))
-            .clone();
-        actor.place = "docks_street".to_string();
-        now.actors.insert("pc_lark".to_string(), actor);
+        crate::support::copy_actor(now, "pc_wren", "pc_lark", "docks_street");
     });
     spookery_engine::World::open(&pack).unwrap_or_else(|err| panic!("four-pc pack: {err}"));
     world.pack = Some(pack);
@@ -189,8 +183,8 @@ fn a_one_player_docks_table(world: &mut World) {
     fs::remove_file(pack.join("cast/pc-wren.md"))
         .unwrap_or_else(|err| panic!("remove wren: {err}"));
     crate::support::edit_save(&pack, |now| {
-        now.actors.remove("pc_harbormouse");
-        now.actors.remove("pc_wren");
+        crate::support::remove_actor(now, "pc_harbormouse");
+        crate::support::remove_actor(now, "pc_wren");
     });
     spookery_engine::World::open(&pack).unwrap_or_else(|err| panic!("one-pc pack: {err}"));
     table::listen(world, &pack);
@@ -233,11 +227,9 @@ fn a_docks_table_where_one_pc_knows_a_hidden_fact(world: &mut World) {
     );
     fs::write(&path, text).unwrap_or_else(|err| panic!("write shop: {err}"));
     crate::support::edit_save(&pack, |now| {
-        now.actors
-            .get_mut("pc_wren")
-            .unwrap_or_else(|| panic!("pc_wren"))
-            .known_facts
-            .push(HIDDEN_FACT.to_string());
+        assert!(now.actors.kind.contains_key("pc_wren"), "pc_wren");
+        let known = now.actors.known_facts.entry("pc_wren".into());
+        known.or_default().push(HIDDEN_FACT.to_string());
     });
     spookery_engine::World::open(&pack).unwrap_or_else(|err| panic!("hidden fact pack: {err}"));
     world.pack = Some(pack);
@@ -357,10 +349,10 @@ fn each_wait_committed_its_own_round(world: &mut World) {
 fn a_docks_table_with_two_pcs_in_the_shop(world: &mut World) {
     let pack = crate::support::copy_docks("two-shop");
     crate::support::edit_save(&pack, |now| {
-        now.actors
+        *now.actors
+            .place
             .get_mut("pc_harbormouse")
-            .unwrap_or_else(|| panic!("pc_harbormouse"))
-            .place = "docks_shop".to_string();
+            .unwrap_or_else(|| panic!("pc_harbormouse")) = "docks_shop".to_string();
     });
     table::listen(world, &pack);
     seat_three(world, &pack);
@@ -521,8 +513,8 @@ fn a_round_commits(world: &mut World) {
 fn street_oil(world: &World) -> u32 {
     let now = state_of(table::pack(world));
     now.places
-        .get("docks_street")
-        .and_then(|place| place.items.get(HUMMED_OIL))
+        .items
+        .get(&("docks_street".into(), HUMMED_OIL.to_string()))
         .copied()
         .unwrap_or(0)
 }

@@ -58,10 +58,8 @@ fn larks_might_is_raised(world: &mut World) {
     testing::edit_save(&pack, |state| {
         let might = state
             .actors
-            .get_mut("pc_lark")
-            .unwrap()
             .meters
-            .get_mut("might")
+            .get_mut(&("pc_lark".into(), "might".to_string()))
             .unwrap();
         might.base = 40;
         might.offset = 0;
@@ -125,12 +123,8 @@ fn lark_drops_the_tonic(world: &mut World) {
 fn a_tonic_is_on_the_ground(world: &mut World) {
     let pack = world.pack().to_path_buf();
     testing::edit_save(&pack, |state| {
-        state
-            .places
-            .get_mut("gate_yard")
-            .unwrap()
-            .items
-            .insert("tonic".to_string(), 1);
+        let tonic = ("gate_yard".into(), "tonic".to_string());
+        state.places.items.insert(tonic, 1);
     });
 }
 
@@ -243,7 +237,7 @@ fn resume_with_lark(pack: &Path) -> EngineWorld {
 fn lark() -> Presence {
     Presence {
         players: 1,
-        actors_present: vec!["pc_lark".to_string()],
+        actors_present: vec!["pc_lark".into()],
     }
 }
 
@@ -251,7 +245,7 @@ fn play(world: &mut EngineWorld, line: &str) -> spookery_engine::RoundOutput {
     let (verb, target) = split_line(line);
     let wall = world.state().last_round_at.clone();
     world
-        .queue_player_move(&lark(), "pc_lark", verb, target)
+        .queue_player_move(&lark(), &"pc_lark".into(), verb, target)
         .unwrap_or_else(|err| panic!("{line}: {}", err.code.as_str()));
     let outputs = world
         .commit_then_fast_forward(&lark(), &wall)
@@ -263,7 +257,7 @@ fn change_line(output: &spookery_engine::RoundOutput) -> String {
     output
         .seen
         .iter()
-        .find(|seen| seen.viewer == "pc_lark")
+        .find(|seen| seen.viewer == *"pc_lark")
         .map(|seen| seen.line.clone())
         .unwrap_or_default()
 }

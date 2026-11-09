@@ -11,10 +11,11 @@ use crate::canon::{check_save, load_canon, pack_rev, Canon};
 use crate::diagnostic::{error, first_reason, locate_nth, schema_error, Code, Diagnostic};
 use crate::intent::{Intent, IntentArgs, Source, Target};
 use crate::rules::context::Context;
-use crate::rules::effect::{payload_json, Effect, EntityId};
+use crate::rules::effect::{payload_json, Effect};
 use crate::rules::gate;
 use crate::rules::rule::{Rule, TargetKind, When};
-use crate::state::{ActorLive, Presence, State};
+use crate::state::id::{ActorId, EntityId};
+use crate::state::{ActorKind, Presence, State};
 use crate::store::journal;
 use crate::store::records::Record;
 use crate::store::save;
@@ -98,16 +99,11 @@ impl World {
     pub fn say_as_player(
         &self,
         presence: &Presence,
-        actor_id: &str,
+        actor_id: &ActorId,
         heard: Address<'_>,
         text: &str,
     ) -> Result<TapeRecord, Reason> {
-        if !self
-            .state
-            .actors
-            .get(actor_id)
-            .is_some_and(ActorLive::is_pc)
-        {
+        if self.state.actors.kind.get(actor_id) != Some(&ActorKind::Pc) {
             return Err(Reason::Schema);
         }
         let from = Speaker::Player(actor_id.to_string());
@@ -127,13 +123,13 @@ impl World {
         &self,
         presence: &Presence,
         from: Speaker,
-        speaker: Option<&str>,
+        speaker: Option<&ActorId>,
         heard: Address<'_>,
         text: &str,
     ) -> Result<TapeRecord, Reason> {
         let text = check_say_text(text)?.to_string();
         if let Address::Actor(actor) = heard {
-            if !self.state.actors.contains_key(actor) {
+            if !self.state.actors.kind.contains_key(actor) {
                 return Err(Reason::Schema);
             }
         }
@@ -177,11 +173,12 @@ impl<L> World<L> {
     }
 
     /// Every PC in the cast.
-    pub fn pcs(&self) -> impl Iterator<Item = &String> {
+    pub fn pcs(&self) -> impl Iterator<Item = &ActorId> {
         self.state
             .actors
+            .kind
             .iter()
-            .filter(|(_, a)| a.is_pc())
+            .filter(|(_, kind)| **kind == ActorKind::Pc)
             .map(|(id, _)| id)
     }
 
@@ -200,7 +197,7 @@ impl<L> World<L> {
     pub fn queue_player_move(
         &mut self,
         presence: &Presence,
-        actor_id: &str,
+        actor_id: &ActorId,
         verb: &str,
         target: Option<&str>,
     ) -> Result<QueuedMove, gate::Refusal> {
@@ -238,8 +235,7 @@ impl<L> World<L> {
         let Some(viewer) = &line.actor else {
             return Err(Reason::Schema);
         };
-        let actor = self.state.actors.get(viewer.actor_id());
-        if !actor.is_some_and(ActorLive::is_pc) {
+        if self.state.actors.kind.get(viewer.actor_id()) != Some(&ActorKind::Pc) {
             return Err(Reason::Schema);
         }
         let (actor, verb) = (viewer, &line.move_name);
@@ -259,10 +255,11 @@ impl<L> World<L> {
         spec: spookery_protocol::IntentArgs,
         mint_id: impl FnOnce() -> Result<String, Reason>,
     ) -> Result<QueuedMove, Reason> {
-        let actor_id = spec
+        let actor_id: ActorId = spec
             .actor_id
             .filter(|id| !id.is_empty() && !id.contains(':'))
-            .ok_or(Reason::Schema)?;
+            .ok_or(Reason::Schema)?
+            .into();
         let move_name = spec
             .move_name
             .filter(|m| !m.is_empty())
@@ -289,7 +286,9 @@ impl<L> World<L> {
                 .ok_or(Reason::Schema)?,
         };
         let args = IntentArgs {
-            message_to: spec.message_to,
+            message_to: spec
+                .message_to
+                .map(|ids| ids.into_iter().map(ActorId::from).collect()),
         };
         let intent = Intent {
             id: id.clone(),
@@ -306,13 +305,13 @@ impl<L> World<L> {
         self.queue_intent(intent);
         Ok(QueuedMove {
             id,
-            actor_id,
+            actor_id: actor_id.into(),
             move_name,
         })
     }
 
-    pub fn player_scrollback(&self, actor_id: &str) -> Result<Vec<TapeRecord>, Reason> {
-        read_scrollback(&self.root, actor_id)
+    pub fn player_scrollback(&self, actor_id: &ActorId) -> Result<Vec<TapeRecord>, Reason> {
+        read_scrollback(&self.root, actor_id.as_str())
     }
 
     pub fn budget(&self) -> &Budget {
@@ -345,12 +344,16 @@ impl<L> World<L> {
     }
 
     /// The `help` commands for `actor_id`: what they can do now, and what they can name.
-    pub fn help(&self, presence: &Presence, actor_id: &str) -> Result<Vec<CommandView>, Reason> {
+    pub fn help(
+        &self,
+        presence: &Presence,
+        actor_id: &ActorId,
+    ) -> Result<Vec<CommandView>, Reason> {
         crate::rules::lines::help(&self.canon, &self.state, presence, actor_id)
     }
 
     /// The `map` for `actor_id`: each place they visited, with the exits they saw there last.
-    pub fn map(&self, actor_id: &str) -> Result<Vec<PlaceView>, Reason> {
+    pub fn map(&self, actor_id: &ActorId) -> Result<Vec<PlaceView>, Reason> {
         crate::rules::lines::map(&self.canon, &self.state, actor_id)
     }
 
@@ -394,7 +397,7 @@ impl<L> World<L> {
             .chain(world_meters)
             .filter_map(|(entity, id)| {
                 let value = self.state.meter_value(&self.canon, &entity, id).ok()?;
-                let max = self.canon.meter_def(&entity, id)?.max;
+                let max = self.canon.meter_def(entity.as_ref(), id)?.max;
                 Some(format!("meter {entity} {id} {value} {max}"))
             })
             .collect()
@@ -508,21 +511,26 @@ impl World<()> {
 fn speech_recipients(
     state: &State,
     presence: &Presence,
-    speaker: Option<&str>,
+    speaker: Option<&ActorId>,
     heard: Address<'_>,
 ) -> Vec<String> {
     let mut ids = BTreeSet::new();
     let seated = &presence.actors_present;
     match heard {
         Address::Table => {
-            ids.extend(seated.iter().cloned());
+            ids.extend(seated.iter().map(ActorId::to_string));
         }
         Address::Place(place) => {
             let here = state.actors_at(place);
-            ids.extend(seated.iter().filter(|id| here.contains(id)).cloned());
+            ids.extend(
+                seated
+                    .iter()
+                    .filter(|id| here.contains(id))
+                    .map(ActorId::to_string),
+            );
         }
         Address::Actor(actor) => {
-            if seated.iter().any(|id| id == actor) {
+            if seated.iter().any(|id| *id == *actor) {
                 ids.insert(actor.to_string());
             }
         }
@@ -681,7 +689,7 @@ pub fn check_pack(root: &Path) -> Vec<Diagnostic> {
 
 fn check_save_text(state: &State, bytes: &[u8]) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
-    if state.actors.contains_key("world") {
+    if state.actors.kind.contains_key("world") {
         diags.push(
             schema_error(
                 "state/save.yaml",

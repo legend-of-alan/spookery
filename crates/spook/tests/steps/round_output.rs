@@ -41,8 +41,8 @@ fn listen_with_wren(world: &mut World, travelling: bool) {
     if travelling {
         edit_save(&pack, |now| {
             let until = now.world_time + 30;
-            let wren = now.actors.get_mut("pc_wren").expect("pc_wren");
-            wren.place = "mira_rooms".to_string();
+            let wren = now.actors.place.get_mut("pc_wren").expect("pc_wren");
+            *wren = "mira_rooms".to_string();
             set_busy(now, "pc_wren", until, "docks_shop.stairs");
         });
     }
@@ -72,6 +72,7 @@ fn both_players_are_travelling(world: &mut World) {
     for actor in ["pc_rowan", "pc_wren"] {
         assert!(
             now.actors
+                .acts
                 .get(actor)
                 .unwrap_or_else(|| panic!("no {actor}"))
                 .is_busy(now.world_time),

@@ -15,7 +15,7 @@ const PCS: [&str; 3] = ["pc_rowan", "pc_wren", "pc_harbormouse"];
 fn seated() -> Presence {
     Presence {
         players: 3,
-        actors_present: PCS.iter().map(|id| id.to_string()).collect(),
+        actors_present: PCS.iter().map(|id| (*id).into()).collect(),
     }
 }
 
@@ -23,7 +23,7 @@ fn seated() -> Presence {
 fn play_in_one_round(world: &World, moves: &[(&str, &str)]) {
     let mut opened = open(world.pack.as_ref().unwrap());
     for (actor, verb) in moves {
-        if let Err(refusal) = opened.queue_player_move(&seated(), actor, verb, None) {
+        if let Err(refusal) = opened.queue_player_move(&seated(), &(*actor).into(), verb, None) {
             panic!("{actor} {verb}: {}", refusal.code.as_str());
         }
     }
@@ -79,7 +79,7 @@ fn three_in_the_shop(world: &mut World) {
     let pack = copy_docks("action-triggers");
     edit_save(&pack, |now| {
         for id in PCS {
-            now.actors.get_mut(id).unwrap().place = "docks_shop".to_string();
+            *now.actors.place.get_mut(id).unwrap() = "docks_shop".to_string();
         }
     });
     world.pack = Some(pack);
@@ -135,9 +135,9 @@ fn wren_is_refused(world: &mut World) {
     assert_eq!(refused.len(), 1, "{round}");
     assert_eq!(refused[0]["code"], "NOT_IN_SPEC", "{round}");
     let now = state_of(world.pack.as_ref().unwrap());
-    assert_eq!(now.actors["pc_rowan"].place, "docks_street");
-    assert!(now.flags.iter().any(|flag| flag == "gate_locked"));
-    assert!(!now.flags.iter().any(|flag| flag == "gate_passed"));
+    assert_eq!(now.actors.place["pc_rowan"], "docks_street");
+    assert!(now.world.flags.iter().any(|flag| flag == "gate_locked"));
+    assert!(!now.world.flags.iter().any(|flag| flag == "gate_passed"));
 }
 
 #[given(
@@ -163,6 +163,10 @@ fn both_chains_ran(world: &mut World) {
     assert!(!steps.iter().any(|name| name == "trigger_depth"), "{round}");
     let now = state_of(world.pack.as_ref().unwrap());
     for flag in ["rang", "echoed"] {
-        assert!(now.flags.iter().any(|held| held == flag), "{:?}", now.flags);
+        assert!(
+            now.world.flags.iter().any(|held| held == flag),
+            "{:?}",
+            now.world.flags
+        );
     }
 }

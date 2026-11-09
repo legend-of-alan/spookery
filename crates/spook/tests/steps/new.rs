@@ -1,4 +1,4 @@
-use spookery_engine::testing::state_of;
+use spookery_engine::testing::{state_of, ActorKind};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -143,7 +143,7 @@ fn the_travel_committed_a_round(world: &mut World) {
     wait_play(world, "You are in Lane.");
     let pack = table::pack(world);
     let now = state_of(pack);
-    assert_eq!(now.actors.get("pc_ada").unwrap().place, "lane");
+    assert_eq!(now.actors.place["pc_ada"], "lane");
     assert!(
         spookery_engine::testing::journal::list_round_keys(pack)
             .contains(&"round-0001".to_string()),
@@ -174,11 +174,13 @@ fn the_keeper_habit_has_set_tended(world: &mut World) {
     assert_eq!(world.code, Some(0), "{}", world.stderr);
     let now = state_of(&idle);
     assert_eq!(now.world_time, 60, "idle round did not advance 60 ticks");
-    let flags = match now.actors.get("keeper") {
-        Some(actor) if actor.is_npc() => &actor.flags,
-        other => panic!("keeper missing: {other:?}"),
-    };
-    assert!(flags.iter().any(|flag| flag == "tended"), "{flags:?}");
+    let kind = now.actors.kind.get("keeper");
+    assert_eq!(kind, Some(&ActorKind::Npc), "keeper missing: {kind:?}");
+    let flags = &now.actors.flags;
+    assert!(
+        flags.contains(&("keeper".into(), "tended".to_string())),
+        "{flags:?}"
+    );
     let _ = fs::remove_dir_all(idle);
 }
 

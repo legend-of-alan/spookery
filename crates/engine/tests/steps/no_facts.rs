@@ -68,7 +68,7 @@ fn mira_stands_in_a_place_with_no_facts(world: &mut World) {
     let pack = support::copy_docks("no-facts");
     strip_room_facts(&pack);
     support::edit_save(&pack, |state| {
-        state.actors.get_mut("mira").unwrap().known_facts.clear();
+        state.actors.known_facts.remove("mira");
     });
     let opened = spookery_engine::World::open(&pack).unwrap_or_else(|err| panic!("open: {err}"));
     let view = opened
@@ -121,12 +121,12 @@ fn play(world: &mut World, actor: &str, line: &str) {
         spookery_engine::World::resume(pack, lock).unwrap_or_else(|err| panic!("resume: {err}"));
     let seated = Presence {
         players: 1,
-        actors_present: vec![actor.to_string()],
+        actors_present: vec![actor.into()],
     };
     let (verb, target) = split_line(line);
     let wall = opened.state().last_round_at.clone();
     opened
-        .queue_player_move(&seated, actor, verb, target)
+        .queue_player_move(&seated, &actor.into(), verb, target)
         .unwrap_or_else(|err| panic!("{line}: {}", err.code.as_str()));
     opened
         .commit_then_fast_forward(&seated, &wall)
@@ -146,9 +146,9 @@ fn strip_room_facts(pack: &Path) {
 fn place_of(pack: &Path, actor: &str) -> String {
     support::state_of(pack)
         .actors
+        .place
         .get(actor)
         .unwrap_or_else(|| panic!("{actor} missing"))
-        .place
         .to_string()
 }
 

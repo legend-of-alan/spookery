@@ -3,29 +3,30 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::canon::source::{FileText, Locator, Problem};
-use crate::canon::{Canon, CastDef, FactDef, ItemDef, PlaceDef, StoryDef, OPEN};
+use crate::canon::{declared_flags, Canon, CastDef, FactDef, ItemDef, PlaceDef, StoryDef, OPEN};
 use crate::diagnostic::{error, schema_error, warning, Diagnostic};
-use crate::rules::effect::EntityId;
 use crate::rules::expr::Expr;
 use crate::rules::roll::Check;
 use crate::rules::rule::{
     ChangeWatch, Cond, Cost, EffectTemplate, LocationTo, NarrateTo, Owner, ResistSpec, Rule,
     RuleTable, When, Who,
 };
+use crate::state::id::{ActorId, EntityId, PlaceId, StoryId};
 use crate::state::meter::{self, MeterDef};
 use crate::state::modifier::{self, ModifierDef};
+use crate::state::ActorComponents;
 use crate::Reason;
 
 /// Exits whose `to` is not a place, and facts or items an exit names but the pack does not.
 pub(super) fn broken_exits(
-    places: &BTreeMap<String, PlaceDef>,
+    places: &BTreeMap<PlaceId, PlaceDef>,
     facts: &BTreeMap<String, FactDef>,
     items: &BTreeMap<String, ItemDef>,
 ) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
     for place in places.values() {
         for exit in &place.exits {
-            if !places.contains_key(&exit.to) {
+            if !places.contains_key(exit.to.as_str()) {
                 diags.push(
                     schema_error(
                         &exit.file,
@@ -337,7 +338,7 @@ pub(super) fn unknown_carriers(scope: &EntityScope, rules: &RuleTable) -> Vec<Di
                 schema_error(
                     &rule.file,
                     &format!("rule '{}' names {kind} '{key}', but {why}", rule.local_id),
-                    "declare it on that holder, or name a holder that has it",
+                    "declare it on that entity, or name an entity that has it",
                 )
                 .at_path(format!("rules[{}]", rule.index)),
             );
@@ -358,9 +359,9 @@ fn fixed_self(rule: &Rule) -> Option<&str> {
 pub(super) struct EntityScope<'a> {
     pub meters: &'a BTreeMap<String, MeterDef>,
     pub world_meters: &'a BTreeMap<String, MeterDef>,
-    pub cast: &'a BTreeMap<String, CastDef>,
-    pub places: &'a BTreeMap<String, PlaceDef>,
-    pub stories: &'a BTreeMap<String, StoryDef>,
+    pub cast: &'a BTreeMap<ActorId, CastDef>,
+    pub places: &'a BTreeMap<PlaceId, PlaceDef>,
+    pub stories: &'a BTreeMap<StoryId, StoryDef>,
 }
 
 impl EntityScope<'_> {
@@ -371,33 +372,27 @@ impl EntityScope<'_> {
             Who::World => Some(EntityId::World),
             Who::Place(id) => Some(EntityId::Place(id.clone())),
             Who::Story(id) => Some(EntityId::Story(id.clone())),
-            Who::Exit(place, exit) => Some(EntityId::Exit(place.clone(), exit.clone())),
             Who::Actor(id) if self.cast.contains_key(id) => Some(EntityId::Actor(id.clone())),
-            Who::Self_ => fixed_self.map(|id| EntityId::Actor(id.to_string())),
+            Who::Self_ => fixed_self.map(|id| EntityId::Actor(id.into())),
             _ => None,
         }
     }
 
     /// Why flag `key` on `who` can never be set or tested, or `None` when it may be.
     fn why_undeclared(&self, fixed_self: Option<&str>, who: &Who, key: &str) -> Option<String> {
+        if let Who::Exit(exit) = who {
+            return if self.unknown_who(who).is_some() {
+                Some(format!("{exit} is not an exit"))
+            } else if key != OPEN {
+                Some(format!("an exit carries only the flag '{OPEN}'"))
+            } else {
+                let door = (self.places.get(&exit.place)).is_some_and(|at| at.has_door(&exit.exit));
+                (!door).then(|| format!("{exit} has no if, so it is always open"))
+            };
+        }
         let entity = self.fixed_entity(fixed_self, who)?;
-        let flags = match &entity {
-            EntityId::World => return None,
-            EntityId::Actor(id) => self.cast.get(id).map(|cast| &cast.flags),
-            EntityId::Place(id) => self.places.get(id).map(|place| &place.flags),
-            EntityId::Story(id) => self.stories.get(id).map(|story| &story.flags),
-            EntityId::Exit(place, exit) => {
-                return if self.unknown_who(who).is_some() {
-                    Some(format!("{entity} is not an exit"))
-                } else if key != OPEN {
-                    Some(format!("an exit carries only the flag '{OPEN}'"))
-                } else {
-                    let door = self.places.get(place).is_some_and(|at| at.has_door(exit));
-                    (!door).then(|| format!("{entity} has no if, so it is always open"))
-                };
-            }
-        };
-        let declared = flags.is_some_and(|flags| flags.contains(&key.to_string()));
+        let flags = declared_flags(self.cast, self.places, self.stories, entity.as_ref())?;
+        let declared = flags.iter().any(|flag| flag == key);
         (!declared).then(|| format!("{entity} does not declare it"))
     }
 
@@ -405,10 +400,13 @@ impl EntityScope<'_> {
     /// An entity known only at play time is not guessed: only its key is checked.
     fn why_not_carried(&self, fixed_self: Option<&str>, who: &Who, key: &str) -> Option<String> {
         let def = self.meters.get(key);
+        if let Who::Exit(exit) = who {
+            return Some(format!("{exit} carries no meter '{key}'"));
+        }
         match self.fixed_entity(fixed_self, who) {
             Some(EntityId::World) if self.world_meters.contains_key(key) => None,
             Some(EntityId::World) => Some(format!("the world carries no meter '{key}'")),
-            Some(entity) if !def.is_some_and(|def| def.is_on(&entity)) => {
+            Some(entity) if !def.is_some_and(|def| def.is_on(entity.as_ref())) => {
                 Some(match def.and_then(|def| def.carrier.as_ref()) {
                     Some(carrier) => format!("only {carrier} carries meter '{key}'"),
                     None => format!("{entity} carries no meter '{key}'"),
@@ -427,13 +425,13 @@ impl EntityScope<'_> {
             Who::Place(id) => Some(format!("place:{id}")),
             Who::Story(id) if self.stories.contains_key(id) => None,
             Who::Story(id) => Some(format!("story:{id}")),
-            Who::Exit(place, exit) => {
-                let exits = self.places.get(place).map(|at| at.exits.as_slice());
-                let known = exits.is_some_and(|exits| exits.iter().any(|at| &at.name == exit));
-                (!known).then(|| format!("exit:{place}.{exit}"))
+            Who::Exit(exit) => {
+                let exits = self.places.get(&exit.place).map(|at| at.exits.as_slice());
+                let known = exits.is_some_and(|exits| exits.iter().any(|at| at.name == exit.exit));
+                (!known).then(|| exit.to_string())
             }
             Who::Actor(id) if self.cast.contains_key(id) => None,
-            Who::Actor(id) => Some(id.clone()),
+            Who::Actor(id) => Some(id.to_string()),
         }
     }
 
@@ -462,7 +460,7 @@ impl EntityScope<'_> {
                 if let Some(why) = self.why_not_carried(fixed_self, who, key) {
                     diags.push(refuse(
                         format!("expression reads meter '{key}', but {why}"),
-                        "declare the meter on that holder, or read one that exists",
+                        "declare the meter on that entity, or read one that exists",
                     ));
                 }
                 if let Some(name) = self.unknown_who(who) {
@@ -545,148 +543,172 @@ pub(super) fn unknown_meters(
     diags
 }
 
-/// Check the save against the pack without changing it. Refuse every meter,
-/// item and wielded slot the pack does not define, every meter the pack gives an entity
-/// that the entity lacks, every meter outside its rules, every modifier the pack no longer
-/// gives that meter, every walker on an exit the pack lacks, and every empty id or zero count.
+/// Check the save against the pack without changing it. Refuse every component on an actor
+/// with no kind, every actor without a place or an action state, every actor in a place or on
+/// an exit the pack lacks, every meter, item and wielded slot the pack does not define, every
+/// meter the pack gives an entity that the entity lacks, every meter outside its rules, every
+/// modifier the pack no longer gives that meter, and every empty id or zero count.
 pub fn check_save(canon: &Canon, state: &crate::state::State) -> Result<(), Vec<Diagnostic>> {
+    const FILE: &str = "state/save.yaml";
     let mut diags = Vec::new();
-    for (id, actor) in &state.actors {
-        // A walker stands on an exit, which must be one of the pack's.
-        let on_exit = crate::state::exit_parts(&actor.place).is_some();
-        if on_exit && crate::rules::travel::exit_stood_on(canon, &actor.place).is_none() {
-            let problem = format!(
-                "actor '{id}' stands on exit '{}', which the pack does not define",
-                actor.place
-            );
-            let diag = schema_error("state/save.yaml", &problem, "move the actor to a place");
-            diags.push(diag.at_path(format!("actors.{id}.place")));
-        }
-        let entity = EntityId::Actor(id.clone());
-        let path = format!("actors.{id}.meters");
-        check_meters(canon, &entity, &actor.meters, &path, &mut diags);
-        for (key, live) in &actor.modifiers {
-            if !modifier::is_defined(&canon.modifiers, key, live) {
-                let problem = format!(
-                    "actor '{id}' holds modifier '{key}' on meter '{}', which the pack does not define",
-                    live.meter
-                );
-                let hint = "run spook migrate to drop the modifier";
-                let diag = schema_error("state/save.yaml", &problem, hint);
-                diags.push(diag.at_path(format!("actors.{id}.modifiers.{key}")));
+    let actors = &state.actors;
+    // Every store, with no `..`: a store added later must be listed here to compile.
+    let ActorComponents {
+        kind: _,
+        place,
+        wielded,
+        known_facts,
+        visited,
+        acts,
+        items,
+        meters,
+        modifiers,
+        flags,
+    } = actors;
+    let held: BTreeSet<(&str, &ActorId)> = (place.keys().map(|id| ("place", id)))
+        .chain(wielded.keys().map(|id| ("wielded", id)))
+        .chain(known_facts.keys().map(|id| ("known_facts", id)))
+        .chain(visited.keys().map(|(id, _)| ("visited", id)))
+        .chain(acts.keys().map(|id| ("acts", id)))
+        .chain(items.keys().map(|(id, _)| ("items", id)))
+        .chain(meters.keys().map(|(id, _)| ("meters", id)))
+        .chain(modifiers.keys().map(|(id, _)| ("modifiers", id)))
+        .chain(flags.iter().map(|(id, _)| ("flags", id)))
+        .collect();
+    for (store, id) in held.iter().filter(|(_, id)| !actors.kind.contains_key(*id)) {
+        let problem = format!("actor '{id}' has {store} but no kind");
+        let diag = schema_error(FILE, &problem, "give the actor a kind under actors.kind");
+        diags.push(diag.at_path(format!("actors.{store}.{id}")));
+    }
+    for id in actors.kind.keys() {
+        for store in ["place", "acts"] {
+            if !held.contains(&(store, id)) {
+                let problem = format!("actor '{id}' has a kind but no {store}");
+                let diag = schema_error(FILE, &problem, "give every actor a place and acts");
+                diags.push(diag.at_path(format!("actors.{store}.{id}")));
             }
         }
     }
-    check_meters(
-        canon,
-        &EntityId::World,
-        &state.world_meters,
-        "world_meters",
-        &mut diags,
-    );
+    for (id, place) in &actors.place {
+        // A walker stands on an exit, which must be one of the pack's.
+        let known = match crate::state::exit_parts(place) {
+            Some(_) => crate::rules::travel::exit_stood_on(canon, place).is_some(),
+            None => canon.places.contains_key(place.as_str()),
+        };
+        if !known {
+            let problem = format!("actor '{id}' is at '{place}', which the pack does not define");
+            let diag = schema_error(FILE, &problem, "move the actor to a place");
+            diags.push(diag.at_path(format!("actors.place.{id}")));
+        }
+    }
+    for id in actors.kind.keys() {
+        let entity = EntityId::Actor(id.clone());
+        let path = format!("actors.meters.{id}");
+        check_meters(canon, &entity, &state.meters_of(&entity), &path, &mut diags);
+    }
+    for ((id, key), live) in &actors.modifiers {
+        if !modifier::is_defined(&canon.modifiers, key, live) {
+            let problem = format!(
+                "actor '{id}' holds modifier '{key}' on meter '{}', which the pack does not define",
+                live.meter
+            );
+            let hint = "run spook migrate to drop the modifier";
+            let diag = schema_error(FILE, &problem, hint);
+            diags.push(diag.at_path(format!("actors.modifiers.{id}.{key}")));
+        }
+    }
+    let world = state.meters_of(&EntityId::World);
+    check_meters(canon, &EntityId::World, &world, "world.meters", &mut diags);
     let places = canon
         .places
         .keys()
-        .map(|id| (EntityId::Place(id.clone()), "places", id));
+        .map(|id| (EntityId::Place(id.clone()), "places", id.as_str()));
     let stories = canon
         .stories
         .keys()
-        .map(|id| (EntityId::Story(id.clone()), "stories", id));
+        .map(|id| (EntityId::Story(id.clone()), "stories", id.as_str()));
     for (entity, list, id) in places.chain(stories) {
-        let none = BTreeMap::new();
-        let live = state.meters_of(&entity).unwrap_or(&none);
-        let path = format!("{list}.{id}.meters");
-        check_meters(canon, &entity, live, &path, &mut diags);
+        let path = format!("{list}.meters.{id}");
+        check_meters(canon, &entity, &state.meters_of(&entity), &path, &mut diags);
     }
-    for (id, actor) in &state.actors {
-        for (item, count) in &actor.inventory {
-            if item.is_empty() {
-                diags.push(
-                    schema_error(
-                        "state/save.yaml",
-                        &format!("actor '{id}' lists an empty item id"),
-                        "give the item a non-empty id",
-                    )
-                    .at_path(format!("actors.{id}.inventory")),
-                );
-            }
-            if *count == 0 {
-                diags.push(
-                    schema_error(
-                        "state/save.yaml",
-                        &format!("actor '{id}' lists item '{item}' with a count of 0"),
-                        "omit an item the actor does not hold",
-                    )
-                    .at_path(format!("actors.{id}.inventory.{item}")),
-                );
-            }
+    for ((id, item), count) in &actors.items {
+        if item.is_empty() {
+            diags.push(
+                schema_error(
+                    FILE,
+                    &format!("actor '{id}' lists an empty item id"),
+                    "give the item a non-empty id",
+                )
+                .at_path(format!("actors.items.{id}")),
+            );
+        }
+        if *count == 0 {
+            diags.push(
+                schema_error(
+                    FILE,
+                    &format!("actor '{id}' lists item '{item}' with a count of 0"),
+                    "omit an item the actor does not hold",
+                )
+                .at_path(format!("actors.items.{id}.{item}")),
+            );
         }
     }
-    for (place, live) in &state.places {
-        for (item, count) in &live.items {
-            if *count == 0 {
-                diags.push(
-                    schema_error(
-                        "state/save.yaml",
-                        &format!("place '{place}' lists item '{item}' with a count of 0"),
-                        "omit an item that is not there",
-                    )
-                    .at_path(format!("places.{place}.items.{item}")),
-                );
-            }
+    for ((place, item), count) in &state.places.items {
+        if *count == 0 {
+            diags.push(
+                schema_error(
+                    FILE,
+                    &format!("place '{place}' lists item '{item}' with a count of 0"),
+                    "omit an item that is not there",
+                )
+                .at_path(format!("places.items.{place}.{item}")),
+            );
         }
     }
-    for (actor_id, actor) in &state.actors {
-        for item in actor.inventory.keys() {
-            if !canon.items.contains_key(item) {
-                diags.push(unknown_item(
-                    "state/save.yaml",
-                    item,
-                    &format!("actors.{actor_id}.inventory.{item}"),
-                ));
-            }
-        }
-        if let Some(wielded) = actor.wielded.as_deref() {
-            if !canon.items.contains_key(wielded) {
-                diags.push(unknown_item(
-                    "state/save.yaml",
-                    wielded,
-                    &format!("actors.{actor_id}.wielded"),
-                ));
-            } else if !canon
-                .items
-                .get(wielded)
-                .is_some_and(|item: &ItemDef| item.tags.iter().any(|tag| tag == "weapon"))
-            {
-                diags.push(
-                    schema_error(
-                        "state/save.yaml",
-                        &format!("actor '{actor_id}' wields '{wielded}', which is not a weapon"),
-                        "wield an item tagged weapon, or leave the slot empty",
-                    )
-                    .at_path(format!("actors.{actor_id}.wielded")),
-                );
-            } else if actor.item_count(wielded) == 0 {
-                diags.push(
-                    schema_error(
-                        "state/save.yaml",
-                        &format!("actor '{actor_id}' wields '{wielded}' without holding it"),
-                        "put the item in inventory or clear wielded",
-                    )
-                    .at_path(format!("actors.{actor_id}.wielded")),
-                );
-            }
+    for (actor_id, item) in actors.items.keys() {
+        if !canon.items.contains_key(item) {
+            let path = format!("actors.items.{actor_id}.{item}");
+            diags.push(unknown_item(FILE, item, &path));
         }
     }
-    for (place, live) in &state.places {
-        for item in live.items.keys() {
-            if !canon.items.contains_key(item) {
-                diags.push(unknown_item(
-                    "state/save.yaml",
-                    item,
-                    &format!("places.{place}.items.{item}"),
-                ));
-            }
+    for (actor_id, wielded) in &actors.wielded {
+        if !canon.items.contains_key(wielded) {
+            diags.push(unknown_item(
+                FILE,
+                wielded,
+                &format!("actors.wielded.{actor_id}"),
+            ));
+        } else if !canon
+            .items
+            .get(wielded)
+            .is_some_and(|item: &ItemDef| item.tags.iter().any(|tag| tag == "weapon"))
+        {
+            diags.push(
+                schema_error(
+                    FILE,
+                    &format!("actor '{actor_id}' wields '{wielded}', which is not a weapon"),
+                    "wield an item tagged weapon, or leave the slot empty",
+                )
+                .at_path(format!("actors.wielded.{actor_id}")),
+            );
+        } else if !actors
+            .items
+            .contains_key(&(actor_id.clone(), wielded.clone()))
+        {
+            diags.push(
+                schema_error(
+                    FILE,
+                    &format!("actor '{actor_id}' wields '{wielded}' without holding it"),
+                    "put the item in items or clear wielded",
+                )
+                .at_path(format!("actors.wielded.{actor_id}")),
+            );
+        }
+    }
+    for (place, item) in state.places.items.keys() {
+        if !canon.items.contains_key(item) {
+            let path = format!("places.items.{place}.{item}");
+            diags.push(unknown_item(FILE, item, &path));
         }
     }
     if diags.is_empty() {
@@ -700,7 +722,7 @@ pub fn check_save(canon: &Canon, state: &crate::state::State) -> Result<(), Vec<
 fn check_meters(
     canon: &Canon,
     entity: &EntityId,
-    live: &BTreeMap<String, meter::Meter>,
+    live: &BTreeMap<&str, &meter::Meter>,
     path: &str,
     diags: &mut Vec<Diagnostic>,
 ) {
@@ -710,8 +732,8 @@ fn check_meters(
         _ => (entity.to_string(), &canon.meters),
     };
     for (key, def) in defs {
-        let carried = *entity == EntityId::World || def.is_on(entity);
-        if carried && !live.contains_key(key) {
+        let carried = *entity == EntityId::World || def.is_on(entity.as_ref());
+        if carried && !live.contains_key(key.as_str()) {
             diags.push(
                 schema_error(
                     "state/save.yaml",
@@ -723,7 +745,7 @@ fn check_meters(
         }
     }
     for (key, meter) in live {
-        let Some(def) = canon.meter_def(entity, key) else {
+        let Some(def) = canon.meter_def(entity.as_ref(), key) else {
             diags.push(
                 schema_error(
                     "state/save.yaml",
@@ -818,7 +840,7 @@ fn check_reachable_places(canon: &Canon) -> Vec<Diagnostic> {
         if !seen.insert(place.clone()) {
             continue;
         }
-        if let Some(node) = canon.places.get(&place) {
+        if let Some(node) = canon.places.get(place.as_str()) {
             for exit in &node.exits {
                 queue.push(exit.to.clone());
             }
@@ -826,7 +848,7 @@ fn check_reachable_places(canon: &Canon) -> Vec<Diagnostic> {
     }
     let mut diags = Vec::new();
     for id in canon.places.keys() {
-        if seen.contains(id) {
+        if seen.contains(id.as_str()) {
             continue;
         }
         diags.push(

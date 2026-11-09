@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::rules::effect::EntityId;
+use crate::state::id::{EntityId, EntityRef};
 use crate::Reason;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -19,10 +19,10 @@ pub struct MeterDef {
 
 impl MeterDef {
     /// Whether `entity` carries this meter.
-    pub fn is_on(&self, entity: &EntityId) -> bool {
+    pub fn is_on(&self, entity: EntityRef<'_>) -> bool {
         match &self.carrier {
-            None => matches!(entity, EntityId::Actor(_)),
-            Some(carrier) => carrier == entity,
+            None => matches!(entity, EntityRef::Actor(_)),
+            Some(carrier) => carrier.as_ref() == entity,
         }
     }
 

@@ -57,12 +57,12 @@ fn the_host_text_lists_the_door_note(world: &mut World) {
     assert_eq!(now.last_round_at, "2026-01-01T00:00:00Z");
     assert_eq!(
         now.places
-            .get("docks_shop")
-            .and_then(|place| place.items.get("lamp_oil"))
+            .items
+            .get(&("docks_shop".into(), "lamp_oil".to_string()))
             .copied(),
         Some(4u32)
     );
-    let debt = &now.actors["pc_rowan"].meters["assassination_debt"];
+    let debt = &now.actors.meters[&("pc_rowan".into(), "assassination_debt".to_string())];
     assert_eq!((debt.base, debt.offset), (2, 0));
 }
 
@@ -234,7 +234,7 @@ fn the_docks_pack_where_a_fact_has_no_hidden(world: &mut World, fact_id: String)
 #[given(expr = "{string} is in {string}")]
 fn is_in(world: &mut World, actor: String, place: String) {
     let now = state_of(table::pack(world));
-    assert_eq!(now.actors[&actor].place, place);
+    assert_eq!(now.actors.place[actor.as_str()], place);
 }
 
 #[then(expr = "the perceive view for {string} lists the fact {string}")]

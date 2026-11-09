@@ -4,9 +4,10 @@ use std::fs;
 use std::path::Path;
 
 use cucumber::{given, then, when};
-use spookery_engine::testing::{state_of, PlaceLive};
+use spookery_engine::testing::state_of;
 use spookery_engine::{Presence, World as Opened};
 
+use super::common::replace_in_file;
 use super::meters::{assert_refused, migrate_and_play};
 use super::triggers::{add_verb, edit_table, intent, seen_of, set_place, sit};
 use crate::support::copy_docks;
@@ -20,7 +21,7 @@ fn meter_row(id: &str, hidden: Option<bool>) -> String {
 
 /// The pack this scenario already set up, or a fresh docks copy.
 fn pack(world: &mut World) -> &Path {
-    world.pack.get_or_insert_with(|| copy_docks("holders"))
+    world.pack.get_or_insert_with(|| copy_docks("entities"))
 }
 
 /// Write `story/<id>.yaml` with these extra keys and an empty rule list to append to.
@@ -72,7 +73,6 @@ fn add_verb_doing(pack: &Path, verb: &str, effects: &str) {
 fn stand_in_the_loft(world: &mut World) {
     let pack = world.pack.clone().unwrap();
     edit_table(world, &pack, |now, seated| {
-        now.places.insert("loft".to_string(), PlaceLive::default());
         set_place(now, "pc_rowan", "loft");
         set_place(now, "mira", "docks_shop");
         sit(seated, &["pc_rowan"]);
@@ -106,8 +106,8 @@ fn story_declares_a_shown_meter(world: &mut World, story: String, key: String) {
 fn rowan_and_wren_are_seated_apart(world: &mut World) {
     let pack = world.pack.clone().unwrap();
     edit_table(world, &pack, |now, seated| {
-        assert_eq!(now.actors["pc_rowan"].place, "docks_shop");
-        assert_eq!(now.actors["pc_wren"].place, "docks_street");
+        assert_eq!(now.actors.place["pc_rowan"], "docks_shop");
+        assert_eq!(now.actors.place["pc_wren"], "docks_street");
         sit(seated, &["pc_rowan", "pc_wren"]);
     });
 }
@@ -190,7 +190,8 @@ fn the_rule_runs(world: &mut World) {
 fn the_gm_sees_dread(world: &mut World) {
     assert_gm_saw(world, "story_meter ending dread");
     let now = state_of(world.pack.as_deref().unwrap());
-    assert_eq!(now.stories["ending"].meters["dread"].offset, 1);
+    let dread = ("ending".into(), "dread".to_string());
+    assert_eq!(now.stories.meters[&dread].offset, 1);
 }
 
 #[then(expr = "no player's view lists dread")]
@@ -217,7 +218,7 @@ fn a_rule_tests_the_flag(world: &mut World, who: String, key: String) {
         ),
     );
     migrate_and_play(world, vec![intent("test", "pc_rowan", "test_mark", None)]);
-    assert!(state_of(&pack).flags.contains(&"mark_seen".to_string()));
+    assert!(state_of(&pack).world.flags.contains("mark_seen"));
 }
 
 #[then(expr = "the GM sees the flag change on the siege story")]
@@ -325,6 +326,74 @@ fn mira_sees_neither(world: &mut World) {
         seen.iter().all(|key| !key.starts_with("place_meter")),
         "{seen:?}"
     );
+}
+
+#[given(expr = "the docks pack gains world\\/places\\/loft.md and is migrated")]
+fn the_docks_pack_gains_the_loft(world: &mut World) {
+    write_loft(world, "");
+    spookery_engine::migrate_pack(pack(world)).unwrap_or_else(|err| panic!("migrate: {err}"));
+}
+
+#[when(expr = "a rule gives who {string} 1 lamp_oil")]
+fn a_rule_gives_lamp_oil(world: &mut World, who: String) {
+    let effect = format!(
+        "      - item:
+          who: {who}
+          id: lamp_oil
+          add: 1
+"
+    );
+    add_verb_doing(pack(world), "stash", &effect);
+    migrate_and_play(world, vec![intent("stash", "pc_rowan", "stash", None)]);
+}
+
+#[then(expr = "the loft holds 1 lamp_oil")]
+fn the_loft_holds_lamp_oil(world: &mut World) {
+    let now = state_of(world.pack.as_deref().unwrap());
+    let held = now
+        .places
+        .items
+        .get(&("loft".into(), "lamp_oil".to_string()));
+    assert_eq!(held, Some(&1));
+}
+
+#[when(expr = "a rule leaves a note in the loft")]
+fn a_rule_leaves_a_note_in_the_loft(world: &mut World) {
+    let effect = "      - note:
+          id: note_loft
+          to:
+            - mira
+          place: loft
+          text: Mind the ladder.
+";
+    let pack = world.pack.clone().unwrap();
+    let mut seated = Presence::default();
+    sit(&mut seated, &["pc_rowan"]);
+    world.seated.push((pack.clone(), seated));
+    add_verb_doing(&pack, "scrawl", effect);
+    let ladder = "exits:
+  - to: loft
+    name: ladder
+";
+    replace_in_file(
+        &pack.join("world/places/docks_shop.md"),
+        "exits:
+",
+        ladder,
+    );
+    // Mira leaves the note before anyone has stood in the loft; then Rowan climbs to it.
+    migrate_and_play(world, vec![intent("scrawl", "mira", "scrawl", None)]);
+    let climb = intent("climb", "pc_rowan", "travel", Some("ladder"));
+    migrate_and_play(world, vec![climb]);
+}
+
+#[then(expr = "pc_rowan, standing in the loft, perceives the note")]
+fn rowan_in_the_loft_perceives_the_note(world: &mut World) {
+    let pack = world.pack.clone().unwrap();
+    let opened = Opened::peek(&pack).unwrap_or_else(|err| panic!("peek: {err:?}"));
+    let view = opened.perceive(&Presence::default(), "pc_rowan").unwrap();
+    let ids: Vec<&str> = view.notes.iter().map(|note| note.id.as_str()).collect();
+    assert!(ids.contains(&"note_loft"), "{ids:?}");
 }
 
 #[then(expr = "pc_rowan's change line does not show it")]

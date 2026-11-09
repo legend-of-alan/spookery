@@ -6,14 +6,15 @@ use std::str::FromStr;
 use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::rules::rule::TargetKind;
+use crate::state::id::{ActorId, PlaceId};
 use crate::state::State;
 use crate::Reason;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[serde(into = "String")]
 pub enum Viewer {
-    Player(String),
-    Npc(String),
+    Player(ActorId),
+    Npc(ActorId),
 }
 
 /// `player:<id>` or `npc:<id>`.
@@ -28,15 +29,15 @@ impl FromStr for Viewer {
             return Err(Reason::UnscopedPerceive);
         }
         match kind {
-            "player" => Ok(Viewer::Player(id.to_string())),
-            "npc" => Ok(Viewer::Npc(id.to_string())),
+            "player" => Ok(Viewer::Player(id.into())),
+            "npc" => Ok(Viewer::Npc(id.into())),
             _ => Err(Reason::UnscopedPerceive),
         }
     }
 }
 
 impl Viewer {
-    pub fn actor_id(&self) -> &str {
+    pub fn actor_id(&self) -> &ActorId {
         match self {
             Viewer::Player(id) | Viewer::Npc(id) => id,
         }
@@ -79,9 +80,9 @@ pub enum Source {
 pub enum Target {
     #[default]
     Empty,
-    Place(String),
+    Place(PlaceId),
     Exit(String),
-    Actor(String),
+    Actor(ActorId),
     Item(String),
 }
 
@@ -90,9 +91,9 @@ impl Target {
         let token = token.to_string();
         match kind {
             TargetKind::None => Target::Empty,
-            TargetKind::Place => Target::Place(token),
+            TargetKind::Place => Target::Place(token.into()),
             TargetKind::Exit => Target::Exit(token),
-            TargetKind::Actor => Target::Actor(token),
+            TargetKind::Actor => Target::Actor(token.into()),
             TargetKind::Item => Target::Item(token),
         }
     }
@@ -104,7 +105,9 @@ impl Target {
     /// The id a move names.
     pub(crate) fn token(&self) -> Option<&str> {
         match self {
-            Target::Place(id) | Target::Exit(id) | Target::Actor(id) | Target::Item(id) => Some(id),
+            Target::Place(id) => Some(id.as_str()),
+            Target::Actor(id) => Some(id.as_str()),
+            Target::Exit(id) | Target::Item(id) => Some(id),
             Target::Empty => None,
         }
     }
@@ -114,7 +117,7 @@ impl Target {
 #[serde(deny_unknown_fields)]
 pub struct IntentArgs {
     #[serde(rename = "to", default, skip_serializing_if = "Option::is_none")]
-    pub message_to: Option<Vec<String>>,
+    pub message_to: Option<Vec<ActorId>>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -156,7 +159,7 @@ impl Intent {
     }
 
     /// The acting actor's id, or `None` for a change rule on a world change.
-    pub fn actor_id(&self) -> Option<&str> {
+    pub fn actor_id(&self) -> Option<&ActorId> {
         self.actor.as_ref().map(Viewer::actor_id)
     }
 
@@ -164,7 +167,7 @@ impl Intent {
     /// can refuse it by id before the rule it picks shapes the target, which starts empty.
     pub(crate) fn player(
         state: &State,
-        actor_id: &str,
+        actor_id: &ActorId,
         verb: &str,
         token: Option<&str>,
     ) -> Result<Self, Reason> {
@@ -173,16 +176,16 @@ impl Intent {
             Some(token) => format!("{verb} {token}"),
             None => verb.to_string(),
         };
-        let id = intent_id(&state.world_id, round, actor_id, &line);
-        let actor = Some(Viewer::Player(actor_id.to_string()));
+        let id = intent_id(&state.world_id, round, actor_id.as_str(), &line);
+        let actor = Some(Viewer::Player(actor_id.clone()));
         let intent = Self::new(id, round, actor, Source::Player, verb, Target::Empty);
         Ok(intent)
     }
 
     /// The engine running `actor_id`'s habit `local_id` this round.
-    pub(crate) fn habit(state: &State, actor_id: &str, local_id: &str) -> Self {
-        let (round, npc) = (state.round_index, Some(Viewer::Npc(actor_id.to_string())));
-        let id = intent_id(&state.world_id, round, actor_id, local_id);
+    pub(crate) fn habit(state: &State, actor_id: &ActorId, local_id: &str) -> Self {
+        let (round, npc) = (state.round_index, Some(Viewer::Npc(actor_id.clone())));
+        let id = intent_id(&state.world_id, round, actor_id.as_str(), local_id);
         Self::new(id, round, npc, Source::Engine, local_id, Target::Empty)
     }
 
@@ -190,7 +193,7 @@ impl Intent {
     /// `trigger:<rule>:<actor>`, or for a world change, with no subject, as `trigger:<rule>`.
     pub(crate) fn trigger(
         state: &State,
-        subject: Option<&str>,
+        subject: Option<&ActorId>,
         rule_id: &str,
     ) -> Result<Self, Reason> {
         let (actor, id) = match subject {
@@ -215,7 +218,7 @@ impl Intent {
     /// and target it began with.
     pub(crate) fn finish(
         state: &State,
-        actor_id: &str,
+        actor_id: &ActorId,
         source: Source,
         verb: &str,
         target: Target,
@@ -237,11 +240,11 @@ impl Intent {
 #[serde(deny_unknown_fields)]
 struct TargetWire {
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    place: Option<String>,
+    place: Option<PlaceId>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     exit: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    actor: Option<String>,
+    actor: Option<ActorId>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     item: Option<String>,
 }

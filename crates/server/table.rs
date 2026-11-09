@@ -6,7 +6,8 @@ use std::sync::mpsc::{Receiver, Sender};
 
 use serde_json::{Map, Value};
 use spookery_engine::{
-    emit_tape_record, Address, Presence, Reason, RecipientLine, RoundOutput, TapeRecord, World,
+    emit_tape_record, ActorId, Address, Presence, Reason, RecipientLine, RoundOutput, TapeRecord,
+    World,
 };
 use tokio::sync::{oneshot, watch};
 
@@ -225,10 +226,12 @@ impl Table {
     /// The hello's `open` and `taken`: the PCs nobody holds now, and the PCs held now.
     fn open_and_taken(&self) -> (Vec<String>, Vec<String>) {
         let presence = self.seats.presence();
-        self.world
-            .pcs()
-            .cloned()
-            .partition(|id| !presence.actors_present.contains(id))
+        self.world.pcs().map(ActorId::to_string).partition(|id| {
+            !presence
+                .actors_present
+                .iter()
+                .any(|actor| actor == id.as_str())
+        })
     }
 
     fn handle_message(&mut self, conn: ConnId, received: Result<ClientMessage, Rejection>) {
@@ -275,7 +278,7 @@ impl Table {
             },
             // The view, not text: the client writes the look from it.
             "look" if read::<NoArgs>(&args).is_some() => {
-                match self.world.perceive(&presence, &actor_id) {
+                match self.world.perceive(&presence, actor_id.as_str()) {
                     Ok(view) => frames::render_view(&view),
                     Err(code) => ServerBody::Refused(code.into()),
                 }
@@ -306,7 +309,7 @@ impl Table {
         let args = read::<ClaimArgs>(args).filter(|_| self.seats.claim_of(conn).is_none());
         let fresh = matches!(args, Some(ClaimArgs::Actor { .. }));
         let taken = match args {
-            Some(ClaimArgs::Actor { actor }) => self.claim_free_pc(actor),
+            Some(ClaimArgs::Actor { actor }) => self.claim_free_pc(actor.into()),
             Some(ClaimArgs::Token { token, last_seq }) => self.claim_by_token(&token, last_seq),
             None => Err(Reason::Schema),
         };
@@ -338,7 +341,7 @@ impl Table {
     }
 
     /// A new claim on a free PC, under a new token, with the says this PC heard before.
-    fn claim_free_pc(&mut self, actor: String) -> Result<(String, String, ServerBody), Reason> {
+    fn claim_free_pc(&mut self, actor: ActorId) -> Result<(String, ActorId, ServerBody), Reason> {
         let presence = self.seats.presence();
         if presence.actors_present.len() >= MAX_PLAYER_SEATS {
             return Err(Reason::TableFull);
@@ -346,8 +349,7 @@ impl Table {
         if presence.actors_present.contains(&actor) {
             return Err(Reason::SeatTaken);
         }
-        let live = self.world.state().actors.get(&actor);
-        if !live.is_some_and(|live| live.is_pc()) {
+        if !self.world.pcs().any(|pc| *pc == actor) {
             return Err(Reason::Schema);
         }
         let scrollback = self.world.player_scrollback(&actor)?;
@@ -365,7 +367,7 @@ impl Table {
         &mut self,
         token: &str,
         last_seq: u64,
-    ) -> Result<(String, String, ServerBody), Reason> {
+    ) -> Result<(String, ActorId, ServerBody), Reason> {
         let claim = self
             .seats
             .claims
@@ -375,7 +377,7 @@ impl Table {
         claim.conn = None;
         let (missed, gap) = claim.messages_after(last_seq);
         let claimed = ServerBody::Claimed {
-            actor: claim.actor.clone(),
+            actor: claim.actor.to_string(),
             token: token.to_string(),
             scrollback: Vec::new(),
             missed,
@@ -391,13 +393,14 @@ impl Table {
     }
 
     /// A player's `place` say is heard where that player stands, and nowhere else.
-    fn say_as_player(&mut self, conn: ConnId, id: Option<String>, actor_id: &str, args: &SayArgs) {
-        let here = self
-            .world
-            .state()
-            .actors
-            .get(actor_id)
-            .map(|actor| actor.place.clone());
+    fn say_as_player(
+        &mut self,
+        conn: ConnId,
+        id: Option<String>,
+        actor_id: &ActorId,
+        args: &SayArgs,
+    ) {
+        let here = self.world.state().actors.place.get(actor_id).cloned();
         let heard = match args {
             SayArgs::Table { .. } => Address::Table,
             SayArgs::Place { place, .. } if here.as_ref() == Some(place) => Address::Place(place),
@@ -423,7 +426,7 @@ impl Table {
         &mut self,
         conn: ConnId,
         id: Option<String>,
-        actor_id: &str,
+        actor_id: &ActorId,
         verb: &str,
         target: Option<String>,
     ) {
@@ -515,7 +518,7 @@ impl Table {
         if outputs.is_empty() {
             return;
         }
-        let players: Vec<String> = self
+        let players: Vec<ActorId> = self
             .seats
             .claims
             .iter()
@@ -579,12 +582,12 @@ impl Table {
         let (sender, id) = sender.unzip();
         let id = id.flatten();
         let reply_to = |conn: ConnId| (sender == Some(conn)).then(|| id.clone()).flatten();
-        let hears: Vec<(String, Option<ConnId>)> = self
+        let hears: Vec<(ActorId, Option<ConnId>)> = self
             .seats
             .claims
             .iter()
             .filter(|claim| {
-                said.recipients.contains(&claim.actor)
+                said.recipients.iter().any(|id| claim.actor == **id)
                     || claim.conn.is_some_and(|conn| sender == Some(conn))
             })
             .map(|claim| (claim.actor.clone(), claim.conn))
@@ -605,7 +608,13 @@ impl Table {
         if let Some(gm) = self.seats.gm {
             let seq = self.stamp();
             let body = ServerBody::Presence {
-                actors_present: self.seats.presence().actors_present,
+                actors_present: self
+                    .seats
+                    .presence()
+                    .actors_present
+                    .into_iter()
+                    .map(String::from)
+                    .collect(),
             };
             self.send(gm, stamp_message(seq, None, body));
         }
@@ -635,14 +644,14 @@ impl Table {
     }
 
     /// A message that answers nothing, to a PC.
-    fn notify_pc(&mut self, actor_id: &str, body: ServerBody) {
+    fn notify_pc(&mut self, actor_id: &ActorId, body: ServerBody) {
         let seq = self.stamp();
         self.send_to_pc(actor_id, stamp_message(seq, None, body));
     }
 
     /// Keeps the message on the PC's claim for a reconnect, and sends it if a connection
     /// drives that claim.
-    fn send_to_pc(&mut self, actor_id: &str, message: ServerMessage) {
+    fn send_to_pc(&mut self, actor_id: &ActorId, message: ServerMessage) {
         let Some(claim) = self.seats.claim_of_actor_mut(actor_id) else {
             return;
         };
@@ -703,17 +712,21 @@ fn read<T: serde::de::DeserializeOwned>(args: &Map<String, Value>) -> Option<T> 
     parse_args(Some(args)).ok()
 }
 
-fn narrate_lines_for(lines: &[RecipientLine], viewer: &str) -> Vec<String> {
+fn narrate_lines_for(lines: &[RecipientLine], viewer: &ActorId) -> Vec<String> {
     let mut out = Vec::new();
     for line in lines {
-        if line.to == viewer && !out.contains(&line.text) {
+        if line.to == *viewer && !out.contains(&line.text) {
             out.push(line.text.clone());
         }
     }
     out
 }
 
-fn refresh(world: &World, presence: &Presence, actor_id: &str) -> Result<[ServerBody; 2], Reason> {
-    let view = world.perceive(presence, actor_id)?;
+fn refresh(
+    world: &World,
+    presence: &Presence,
+    actor_id: &ActorId,
+) -> Result<[ServerBody; 2], Reason> {
+    let view = world.perceive(presence, actor_id.as_str())?;
     Ok([frames::render_resume(&view), frames::render_view(&view)])
 }

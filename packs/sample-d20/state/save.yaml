@@ -1,29 +1,53 @@
 schema: save
 world_id: sample-d20
 pack_rev: blake2s:f912d54f4bef6761e315a3378111e3fdff63b6ff779889d48f8d96a5911b3971
-rules_rev: 21
+rules_rev: 22
 state_rev: 0
 round_index: 0
 world_time: 1080
 last_round_at: "2026-01-01T00:00:00Z"
-places:
-  gate_yard:
-    items: {}
-  loft:
-    items:
-      latch: 1
-  mill_lane:
-    items: {}
-  wheel_shed:
-    items:
-      chock: 1
 actors:
-  npc_briar:
-    kind: npc
-    place: gate_yard
-    flags:
-      - warden
-    meters:
+  kind:
+    npc_briar: npc
+    npc_oden: npc
+    pc_lark: pc
+    pc_nell: pc
+  place:
+    npc_briar: gate_yard
+    npc_oden: mill_lane
+    pc_lark: gate_yard
+    pc_nell: mill_lane
+  visited:
+    pc_lark:
+      gate_yard:
+        - mill_lane
+        - loft
+        - wheel_shed
+    pc_nell:
+      mill_lane:
+        - gate_yard
+  acts:
+    npc_briar:
+      last_act_round: 0
+      idle_acts_this_window: 0
+      live_acts_this_window: 0
+    npc_oden:
+      last_act_round: 0
+      idle_acts_this_window: 0
+      live_acts_this_window: 0
+    pc_lark:
+      last_act_round: 0
+      idle_acts_this_window: 0
+      live_acts_this_window: 0
+    pc_nell:
+      last_act_round: 0
+      idle_acts_this_window: 0
+      live_acts_this_window: 0
+  items:
+    pc_lark:
+      tonic: 1
+  meters:
+    npc_briar:
       defense:
         base: 14
         offset: 0
@@ -36,17 +60,7 @@ actors:
       might:
         base: 2
         offset: 0
-    inventory: {}
-    known_facts: []
-    act:
-      last_act_round: 0
-      idle_acts_this_window: 0
-      live_acts_this_window: 0
-  npc_oden:
-    kind: npc
-    place: mill_lane
-    flags: []
-    meters:
+    npc_oden:
       defense:
         base: 10
         offset: 0
@@ -59,17 +73,7 @@ actors:
       might:
         base: 1
         offset: 0
-    inventory: {}
-    known_facts: []
-    act:
-      last_act_round: 0
-      idle_acts_this_window: 0
-      live_acts_this_window: 0
-  pc_lark:
-    kind: pc
-    place: gate_yard
-    flags: []
-    meters:
+    pc_lark:
       defense:
         base: 11
         offset: 0
@@ -82,23 +86,7 @@ actors:
       might:
         base: 30
         offset: 0
-    inventory:
-      tonic: 1
-    known_facts: []
-    visited:
-      gate_yard:
-        - mill_lane
-        - loft
-        - wheel_shed
-    act:
-      last_act_round: 0
-      idle_acts_this_window: 0
-      live_acts_this_window: 0
-  pc_nell:
-    kind: pc
-    place: mill_lane
-    flags: []
-    meters:
+    pc_nell:
       defense:
         base: 10
         offset: 0
@@ -111,13 +99,23 @@ actors:
       might:
         base: 1
         offset: 0
-    inventory: {}
-    known_facts: []
-    visited:
-      mill_lane:
-        - gate_yard
-    act:
-      last_act_round: 0
-      idle_acts_this_window: 0
-      live_acts_this_window: 0
+  modifiers: {}
+  flags:
+    npc_briar:
+      - warden
+places:
+  items:
+    loft:
+      latch: 1
+    wheel_shed:
+      chock: 1
+  meters: {}
+  flags: {}
+  open_exits: {}
+stories:
+  meters: {}
+  flags: {}
+world:
+  meters: {}
+  flags: []
 notes: []

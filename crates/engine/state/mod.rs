@@ -1,19 +1,28 @@
-//! The live save: places, actors, stories, world meters, and notes.
+//! The live save: the clock, each kind's components, and the notes.
 
+mod actors;
 pub(crate) mod change;
+pub(crate) mod id;
 pub(crate) mod meter;
 pub(crate) mod modifier;
+pub(crate) mod nested_map;
+mod places;
+mod stories;
+mod world;
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
+pub(crate) use actors::ActCounter;
+pub use actors::{Act, ActorComponents, ActorKind, PendingAction};
+use id::{ActorId, EntityId, PlaceId};
 use meter::Meter;
-use modifier::Modifier;
+pub use places::PlaceComponents;
+pub use stories::StoryComponents;
+pub use world::WorldComponents;
 
-use crate::canon::OPEN;
-use crate::intent::{Target, Viewer};
-use crate::rules::effect::EntityId;
+use crate::intent::Viewer;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -29,18 +38,14 @@ pub struct State {
     /// Ticks since the world began.
     pub world_time: u64,
     pub last_round_at: String,
-    pub places: BTreeMap<String, PlaceLive>,
-    pub actors: BTreeMap<String, ActorLive>,
-    /// The meters and flags each story holds. Omitted when empty.
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub stories: BTreeMap<String, StoryLive>,
-    /// The meters `world/meters.yaml` declares, held once by the world. Omitted when empty.
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub world_meters: BTreeMap<String, Meter>,
+    pub actors: ActorComponents,
+    #[serde(default)]
+    pub places: PlaceComponents,
+    #[serde(default)]
+    pub stories: StoryComponents,
+    #[serde(default)]
+    pub world: WorldComponents,
     pub notes: Vec<Note>,
-    /// World flags. Omitted from the save when empty.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub flags: Vec<String>,
 }
 
 impl State {
@@ -52,121 +57,107 @@ impl State {
         key: &str,
     ) -> Result<i64, crate::Reason> {
         let def = canon
-            .meter_def(entity, key)
+            .meter_def(entity.as_ref(), key)
             .ok_or(crate::Reason::UnknownId)?;
-        let live = self
-            .meters_of(entity)
-            .and_then(|meters| meters.get(key))
-            .ok_or(crate::Reason::UnknownId)?;
+        let meters = self.meters_of(entity);
+        let live = meters.get(key).ok_or(crate::Reason::UnknownId)?;
         meter::current(def, live, self.modifier_sum(entity, key)?)
     }
 
     /// What `entity`'s modifiers add to its meter `key`. Only an actor holds modifiers.
     pub(crate) fn modifier_sum(&self, entity: &EntityId, key: &str) -> Result<i64, crate::Reason> {
         match entity {
-            EntityId::Actor(id) => self
-                .actors
-                .get(id)
-                .map_or(Ok(0), |actor| modifier::sum(&actor.modifiers, key)),
-            EntityId::World | EntityId::Place(_) | EntityId::Story(_) | EntityId::Exit(..) => Ok(0),
+            EntityId::Actor(id) => {
+                let held = nested_map::entries_of(&self.actors.modifiers, id).map(|(_, held)| held);
+                modifier::sum(held, key)
+            }
+            EntityId::World | EntityId::Place(_) | EntityId::Story(_) => Ok(0),
         }
     }
 
-    /// The live meters `entity` carries.
-    pub(crate) fn meters_of(&self, entity: &EntityId) -> Option<&BTreeMap<String, Meter>> {
+    /// The live meters `entity` carries, by id.
+    pub(crate) fn meters_of(&self, entity: &EntityId) -> BTreeMap<&str, &Meter> {
         match entity {
-            EntityId::Actor(id) => self.actors.get(id).map(|actor| &actor.meters),
-            EntityId::Place(id) => self.places.get(id).map(|place| &place.meters),
-            EntityId::Story(id) => self.stories.get(id).map(|story| &story.meters),
-            EntityId::Exit(..) => None,
-            EntityId::World => Some(&self.world_meters),
+            EntityId::Actor(id) => nested_map::entries_of(&self.actors.meters, id).collect(),
+            EntityId::Place(id) => nested_map::entries_of(&self.places.meters, id).collect(),
+            EntityId::Story(id) => nested_map::entries_of(&self.stories.meters, id).collect(),
+            EntityId::World => self
+                .world
+                .meters
+                .iter()
+                .map(|(id, live)| (id.as_str(), live))
+                .collect(),
         }
     }
 
-    /// The live meters `entity` carries, to write.
-    pub(crate) fn meters_mut(
+    /// Live meter `key` on `entity`, to write.
+    pub(crate) fn meter_mut(
         &mut self,
         entity: &EntityId,
-    ) -> Result<&mut BTreeMap<String, Meter>, crate::Reason> {
+        key: &str,
+    ) -> Result<&mut Meter, crate::Reason> {
+        let key = key.to_string();
+        let live = match entity {
+            EntityId::Actor(id) => self.actors.meters.get_mut(&(id.clone(), key)),
+            EntityId::Place(id) => self.places.meters.get_mut(&(id.clone(), key)),
+            EntityId::Story(id) => self.stories.meters.get_mut(&(id.clone(), key)),
+            EntityId::World => self.world.meters.get_mut(&key),
+        };
+        live.ok_or(crate::Reason::UnknownId)
+    }
+
+    /// Whether `entity` has flag `key` set.
+    pub(crate) fn has_flag(&self, entity: &EntityId, key: &str) -> bool {
+        let key = key.to_string();
         match entity {
-            EntityId::Actor(id) => Ok(&mut self.actor_mut(id)?.meters),
-            EntityId::Place(id) => Ok(&mut self
-                .places
-                .get_mut(id)
-                .ok_or(crate::Reason::UnknownId)?
-                .meters),
-            EntityId::Story(id) => Ok(&mut self
-                .stories
-                .get_mut(id)
-                .ok_or(crate::Reason::UnknownId)?
-                .meters),
-            EntityId::Exit(..) => Err(crate::Reason::UnknownId),
-            EntityId::World => Ok(&mut self.world_meters),
+            EntityId::Actor(id) => self.actors.flags.contains(&(id.clone(), key)),
+            EntityId::Place(id) => self.places.flags.contains(&(id.clone(), key)),
+            EntityId::Story(id) => self.stories.flags.contains(&(id.clone(), key)),
+            EntityId::World => self.world.flags.contains(&key),
         }
     }
 
-    /// Whether `entity` has flag `key` set. An exit's `open` is its name in its place's list.
-    pub(crate) fn has_flag(&self, entity: &EntityId, key: &str) -> bool {
-        let (flags, entry) = match entity {
-            EntityId::Actor(id) => (self.actors.get(id).map(|actor| &actor.flags), key),
-            EntityId::Place(id) => (self.places.get(id).map(|place| &place.flags), key),
-            EntityId::Story(id) => (self.stories.get(id).map(|story| &story.flags), key),
-            EntityId::Exit(place, exit) if key == OPEN => (
-                self.places.get(place).map(|place| &place.open),
-                exit.as_str(),
-            ),
-            EntityId::Exit(..) => (None, key),
-            EntityId::World => (Some(&self.flags), key),
-        };
-        flags.is_some_and(|flags| flags.iter().any(|flag| flag == entry))
-    }
-
-    /// Set or clear `entity`'s flag `key`, and say whether it changed. A place or story gets a
-    /// live record on its first flag, and a place on its first open exit.
+    /// Set or clear `entity`'s flag `key`, and say whether it changed.
     pub(crate) fn set_flag(
         &mut self,
         entity: &EntityId,
         key: &str,
         value: bool,
     ) -> Result<bool, crate::Reason> {
-        if self.has_flag(entity, key) == value {
-            return Ok(false);
-        }
-        let (flags, entry) = match entity {
-            EntityId::Actor(id) => (&mut self.actor_mut(id)?.flags, key),
-            EntityId::Place(id) => (&mut self.places.entry(id.clone()).or_default().flags, key),
-            EntityId::Story(id) => (&mut self.stories.entry(id.clone()).or_default().flags, key),
-            EntityId::Exit(place, exit) => {
-                let place = self.places.entry(place.clone()).or_default();
-                (&mut place.open, exit.as_str())
+        let key = key.to_string();
+        Ok(match entity {
+            EntityId::Actor(id) if !self.actors.kind.contains_key(id) => {
+                return Err(crate::Reason::UnknownId)
             }
-            EntityId::World => (&mut self.flags, key),
-        };
-        if value {
-            flags.push(entry.to_string());
-        } else {
-            flags.retain(|flag| flag != entry);
-        }
-        Ok(true)
-    }
-
-    /// Actor `id`'s live record to write, or `UNKNOWN_ID`.
-    pub(crate) fn actor_mut(&mut self, id: &str) -> Result<&mut ActorLive, crate::Reason> {
-        self.actors.get_mut(id).ok_or(crate::Reason::UnknownId)
+            EntityId::Actor(id) => set_member(&mut self.actors.flags, (id.clone(), key), value),
+            EntityId::Place(id) => set_member(&mut self.places.flags, (id.clone(), key), value),
+            EntityId::Story(id) => set_member(&mut self.stories.flags, (id.clone(), key), value),
+            EntityId::World => set_member(&mut self.world.flags, key, value),
+        })
     }
 
     /// The seat actor `id` acts from.
-    pub(crate) fn viewer_of(&self, id: &str) -> Option<Viewer> {
-        self.actors.get(id).map(|actor| actor.viewer(id))
+    pub(crate) fn viewer_of(&self, id: &ActorId) -> Option<Viewer> {
+        self.actors.kind.get(id).map(|kind| kind.viewer(id))
     }
 
     /// The actors in `place`, in id order.
-    pub(crate) fn actors_at(&self, place: &str) -> Vec<String> {
+    pub(crate) fn actors_at(&self, place: &str) -> Vec<ActorId> {
         self.actors
+            .place
             .iter()
-            .filter(|(_, actor)| actor.place == place)
+            .filter(|(_, at)| *at == place)
             .map(|(id, _)| id.clone())
             .collect()
+    }
+}
+
+/// Put `entry` in `set` or take it out, and say whether that changed the set.
+pub(crate) fn set_member<K: Ord>(set: &mut BTreeSet<K>, entry: K, on: bool) -> bool {
+    if on {
+        set.insert(entry)
+    } else {
+        set.remove(&entry)
     }
 }
 
@@ -175,112 +166,18 @@ impl State {
 #[serde(deny_unknown_fields)]
 pub struct Presence {
     pub players: u32,
-    pub actors_present: Vec<String>,
+    pub actors_present: Vec<ActorId>,
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct PlaceLive {
-    pub items: BTreeMap<String, u32>,
-    /// The meters the place file declares. Omitted when empty.
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub meters: BTreeMap<String, Meter>,
-    /// The flags set on this place. Omitted when empty.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub flags: Vec<String>,
-    /// The names of this place's exits whose door is open. Omitted when empty.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub open: Vec<String>,
-}
-
-/// The meters a story file declares and the flags set on that story.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct StoryLive {
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub meters: BTreeMap<String, Meter>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub flags: Vec<String>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct ActorLive {
-    pub kind: ActorKind,
-    pub place: String,
-    pub flags: Vec<String>,
-    pub meters: BTreeMap<String, Meter>,
-    /// The modifiers this actor holds, by id. Omitted when empty.
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub modifiers: BTreeMap<String, Modifier>,
-    pub inventory: BTreeMap<String, u32>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub wielded: Option<String>,
-    pub known_facts: Vec<String>,
-    /// Each place this actor has stood at the end of a round, with the names of the exits
-    /// they saw there then. Omitted when empty.
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub visited: BTreeMap<String, Vec<String>>,
-    pub act: Act,
-}
-
-/// Whether a live actor is a PC or an NPC.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ActorKind {
-    Npc,
-    Pc,
-}
-
-impl ActorLive {
-    /// Busy means an action under way, or a cooldown whose `busy_until` is still after this
-    /// tick. An action stays under way until the round that reaches its finish ends.
-    pub fn is_busy(&self, world_time: u64) -> bool {
-        self.act.pending.is_some() || self.act.busy_until.is_some_and(|until| until > world_time)
-    }
-
-    pub fn is_npc(&self) -> bool {
-        self.kind == ActorKind::Npc
-    }
-
-    pub fn is_pc(&self) -> bool {
-        self.kind == ActorKind::Pc
-    }
-
-    /// The seat this actor acts from, given its own id.
-    pub fn viewer(&self, id: &str) -> Viewer {
-        match self.kind {
-            ActorKind::Pc => Viewer::Player(id.to_string()),
-            ActorKind::Npc => Viewer::Npc(id.to_string()),
-        }
-    }
-
-    pub fn item_count(&self, id: &str) -> u32 {
-        self.inventory.get(id).copied().unwrap_or(0)
-    }
-
-    /// Drop the wielded id once the actor no longer holds it.
-    pub(crate) fn release_wielded(&mut self) -> bool {
-        let Some(id) = self.wielded.clone() else {
-            return false;
-        };
-        if self.item_count(&id) > 0 {
-            return false;
-        }
-        self.wielded = None;
-        true
-    }
-}
-
-/// Add `delta` to a count. Removing from a count of 0 is `MISSING_ITEM`.
+/// Add `delta` to the count under `key`. Removing from a count of 0 is `MISSING_ITEM`.
 /// A shortfall from a positive count is `OUT_OF_RANGE`. A positive `max` caps the result.
-pub(crate) fn shift_count(
-    counts: &mut BTreeMap<String, u32>,
-    id: &str,
+pub(crate) fn shift_count<K: Ord>(
+    counts: &mut BTreeMap<K, u32>,
+    key: K,
     delta: i64,
     max: Option<i64>,
 ) -> Result<bool, crate::Reason> {
-    let current = i64::from(counts.get(id).copied().unwrap_or(0));
+    let current = i64::from(counts.get(&key).copied().unwrap_or(0));
     let mut next = current
         .checked_add(delta)
         .ok_or(crate::Reason::OutOfRange)?;
@@ -303,70 +200,20 @@ pub(crate) fn shift_count(
     let stored = u32::try_from(next).map_err(|_| crate::Reason::OutOfRange)?;
     let changed = stored != u32::try_from(current).unwrap_or(0);
     if stored == 0 {
-        counts.remove(id);
+        counts.remove(&key);
     } else {
-        counts.insert(id.to_string(), stored);
+        counts.insert(key, stored);
     }
     Ok(changed)
-}
-
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-/// How many times an actor has acted, and the action they are still on.
-pub struct Act {
-    pub last_act_round: u64,
-    pub idle_acts_this_window: u32,
-    pub live_acts_this_window: u32,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub busy_until: Option<u64>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub pending: Option<PendingAction>,
-}
-
-/// One of the `Act` counts the end of its act window sets back to 0.
-#[derive(Clone, Copy)]
-pub(crate) enum ActCounter {
-    IdleActsThisWindow,
-    LiveActsThisWindow,
-}
-
-impl ActCounter {
-    /// The key this count is tracked under for actor `id`.
-    pub(crate) fn key(self, id: String) -> change::Key {
-        match self {
-            ActCounter::IdleActsThisWindow => change::Key::IdleActsThisWindow(id),
-            ActCounter::LiveActsThisWindow => change::Key::LiveActsThisWindow(id),
-        }
-    }
-
-    /// This count on `act`, to write.
-    pub(crate) fn count_mut(self, act: &mut Act) -> &mut u32 {
-        match self {
-            ActCounter::IdleActsThisWindow => &mut act.idle_acts_this_window,
-            ActCounter::LiveActsThisWindow => &mut act.live_acts_this_window,
-        }
-    }
-}
-
-/// A timed action that finishes when `busy_until` is reached: its verb, who queued it, the
-/// target it was queued against, and the rule it started with.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct PendingAction {
-    pub verb: String,
-    pub source: crate::intent::Source,
-    #[serde(default, skip_serializing_if = "Target::is_empty")]
-    pub target: Target,
-    pub rule: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Note {
     pub id: String,
-    pub to: Vec<String>,
+    pub to: Vec<ActorId>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub place: Option<String>,
+    pub place: Option<PlaceId>,
     pub fact_ids: Vec<String>,
     pub text: String,
 }
@@ -378,7 +225,7 @@ pub(crate) fn exit_parts(id: &str) -> Option<(&str, &str)> {
     (!place.is_empty() && !exit.is_empty()).then_some((place, exit))
 }
 
-pub(crate) fn sort_unique(items: &mut Vec<String>) {
+pub(crate) fn sort_unique<T: Ord>(items: &mut Vec<T>) {
     items.sort();
     items.dedup();
 }
@@ -387,7 +234,7 @@ pub(crate) fn sort_unique(items: &mut Vec<String>) {
 #[serde(deny_unknown_fields)]
 pub struct MemoryLine {
     pub round_index: u64,
-    pub actor_id: String,
+    pub actor_id: ActorId,
     pub intent_id: String,
     pub fact_ids: Vec<String>,
     pub tags: Vec<String>,

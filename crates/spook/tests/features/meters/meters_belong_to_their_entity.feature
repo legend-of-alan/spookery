@@ -1,4 +1,4 @@
-Feature: Meters belong to their holder
+Feature: Meters belong to their entity
 
   Scenario: Mira's shop day is a meter only Mira carries
     Given cast/mira.md declares a "shop_day" meter
@@ -45,7 +45,7 @@ Feature: Meters belong to their holder
     And no actor carries a dawn meter
     And the vigil's change rule fires once
 
-  Scenario: A rule naming a meter its holder does not carry is refused
+  Scenario: A rule naming a meter its entity does not carry is refused
     Given world/meters.yaml declares a "dawn" meter
     And Mira carries no dawn meter
     And Mira has a habit that adds 1 to who "self" meter dawn

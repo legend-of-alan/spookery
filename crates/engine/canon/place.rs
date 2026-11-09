@@ -10,8 +10,8 @@ use crate::canon::rule_list::{self, RuleYaml};
 use crate::canon::source::{load_tagged, Diags, FileText, Locator, Page, PLACE_SCHEMA};
 use crate::canon::{Exit, PlaceDef};
 use crate::diagnostic::{schema_error, Diagnostic};
-use crate::rules::effect::EntityId;
 use crate::rules::rule::{Cost, Owner, Rule};
+use crate::state::id::{EntityId, PlaceId};
 use crate::state::meter::MeterDef;
 
 /// The meters one place file declares, by that file, for `load_canon` to add once the meters
@@ -23,7 +23,7 @@ pub(super) type PlaceMeters = Vec<(String, BTreeMap<String, MeterDef>)>;
 pub(super) fn add_place(
     page: Page,
     facts: &mut Facts,
-    places: &mut BTreeMap<String, PlaceDef>,
+    places: &mut BTreeMap<PlaceId, PlaceDef>,
     meters: &mut PlaceMeters,
     diags: &mut Diags,
 ) -> Option<Vec<Rule>> {
@@ -38,19 +38,20 @@ pub(super) fn add_place(
         .keep(compile_exits(&page.file, &file.id, &file.exits))
         .unwrap_or_default();
     let twice = ("place", "is already defined", "keep one place with this id");
-    let taken = places.contains_key(&file.id);
+    let taken = places.contains_key(file.id.as_str());
     if let Some(diag) =
         taken.then(|| whole.refuse_duplicate(&file.id, "id", Locator::Nowhere, twice))
     {
         diags.push(diag);
         return None;
     }
-    let carrier = Some(EntityId::Place(file.id.clone()));
+    let id: PlaceId = file.id.clone().into();
+    let carrier = Some(EntityId::Place(id.clone()));
     if let Some(own) = diags.keep(meter_defs(&whole, file.meters, carrier)) {
         meters.push((page.file.clone(), own));
     }
     places.insert(
-        file.id.clone(),
+        id,
         PlaceDef {
             display_name: file.display_name,
             body: page.body,
@@ -139,7 +140,7 @@ fn compile_exits(file: &str, from: &str, exits: &[ExitYaml]) -> Result<Vec<Exit>
         }
         compiled.push(Exit {
             name: exit.name.clone(),
-            from: from.to_string(),
+            from: from.into(),
             to: exit.to.clone(),
             cost,
             if_,

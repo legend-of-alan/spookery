@@ -67,7 +67,7 @@ fn stamp_target(canon: &Canon, state: &State, presence: &Presence, intent: &mut 
     for effect in &effects {
         if !keeps_empty && intent.target == Target::Empty {
             if let EffectKind::Location { to, .. } = &effect.kind {
-                intent.target = Target::Place(to.clone());
+                intent.target = Target::Place(to.clone().into());
             }
         }
         if let EffectKind::Note { to, .. } = &effect.kind {
@@ -137,12 +137,13 @@ fn touches_seated_player(
 ) -> bool {
     let present = &presence.actors_present;
     let target_hit = match &intent.target {
-        Target::Actor(id) | Target::Item(id) => present.iter().any(|actor| actor == id),
-        Target::Place(place) => is_player_at(state, presence, place),
+        Target::Actor(id) => present.contains(id),
+        Target::Item(id) => present.iter().any(|actor| *actor == **id),
+        Target::Place(place) => is_player_at(state, presence, place.as_str()),
         Target::Exit(name) => intent
             .actor_id()
-            .and_then(|id| state.actors.get(id))
-            .and_then(|actor| find_exit(canon, &actor.place, name))
+            .and_then(|id| state.actors.place.get(id))
+            .and_then(|place| find_exit(canon, place, name))
             .is_some_and(|exit| is_player_at(state, presence, &exit.to)),
         _ => false,
     };

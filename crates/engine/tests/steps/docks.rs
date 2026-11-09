@@ -1,15 +1,15 @@
 use cucumber::{given, then, when};
 
-use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use spookery_engine::testing::{
     self as support, insert_nell, journal::list_round_keys, read_round as round_value, resume,
-    stamp_pack_rev, state_of, write_save, Act, ActorKind, ActorLive, PlaceLive,
+    stamp_pack_rev, state_of, write_save, Act, ActorKind,
 };
 use spookery_engine::{
-    emit_save, load_canon, play_pack_once, EntityId, Meter, MoveReport, Note, Presence, State,
+    emit_save, load_canon, play_pack_once, ActorId, EntityId, Meter, MoveReport, Note, Presence,
+    State,
 };
 use spookery_protocol::Outcome;
 
@@ -17,17 +17,19 @@ use crate::World;
 
 const LEDGER: &str = "The lamp-oil ledger is short.";
 
-fn meters(grit: i64) -> BTreeMap<String, Meter> {
-    BTreeMap::from([
-        (
-            "grit".to_string(),
-            Meter {
-                base: grit,
-                offset: 0,
-            },
-        ),
-        ("rest".to_string(), Meter { base: 3, offset: 0 }),
-    ])
+/// Put actor `id` of `kind` in `place`, with grit `grit` and rest 3 and nothing else.
+fn add_actor(state: &mut State, id: &str, kind: ActorKind, place: &str, grit: i64) {
+    let (actors, id) = (&mut state.actors, ActorId::from(id));
+    actors.kind.insert(id.clone(), kind);
+    actors.place.insert(id.clone(), place.to_string());
+    actors.acts.insert(id.clone(), Act::default());
+    let grit = Meter {
+        base: grit,
+        offset: 0,
+    };
+    actors.meters.insert((id.clone(), "grit".to_string()), grit);
+    let rest = Meter { base: 3, offset: 0 };
+    actors.meters.insert((id, "rest".to_string()), rest);
 }
 
 fn write_text(path: &Path, text: &str) {
@@ -41,17 +43,16 @@ fn write_text(path: &Path, text: &str) {
 fn lamp_oil(state: &State) -> u32 {
     state
         .places
-        .get("docks_shop")
-        .and_then(|place| place.items.get("lamp_oil"))
+        .items
+        .get(&("docks_shop".into(), "lamp_oil".to_string()))
         .copied()
         .unwrap_or_else(|| panic!("lamp_oil missing"))
 }
 
 fn flags_of(state: &State, id: &str) -> Vec<String> {
-    match state.actors.get(id) {
-        Some(actor) => actor.flags.clone(),
-        None => panic!("{id} missing"),
-    }
+    assert!(state.actors.kind.contains_key(id), "{id} missing");
+    let flags = state.actors.flags.iter().filter(|(owner, _)| *owner == *id);
+    flags.map(|(_, flag)| flag.clone()).collect()
 }
 
 fn snapshot(root: &Path) -> Vec<(PathBuf, Vec<u8>)> {
@@ -79,8 +80,8 @@ fn snapshot(root: &Path) -> Vec<(PathBuf, Vec<u8>)> {
 fn door_note() -> Note {
     Note {
         id: "note_mira_door".to_string(),
-        to: vec!["pc_rowan".to_string()],
-        place: Some("docks_shop".to_string()),
+        to: vec!["pc_rowan".into()],
+        place: Some("docks_shop".into()),
         fact_ids: Vec::new(),
         text: "Back at dusk. Oil on the shelf.".to_string(),
     }
@@ -90,7 +91,7 @@ fn door_note() -> Note {
 fn rowan() -> Presence {
     Presence {
         players: 1,
-        actors_present: vec!["pc_rowan".to_string()],
+        actors_present: vec!["pc_rowan".into()],
     }
 }
 
@@ -99,10 +100,10 @@ fn evening_note() {
     play_pack_once(&pack).unwrap_or_else(|err| panic!("round: {err}"));
     let state = state_of(&pack);
     assert_eq!(lamp_oil(&state), 4);
-    assert_eq!(state.actors.get("mira").unwrap().place, "mira_rooms");
+    assert_eq!(state.actors.place["mira"], "mira_rooms");
     assert_eq!(state.notes.len(), 1);
     assert_eq!(state.notes[0].id, "note_mira_door");
-    assert_eq!(state.notes[0].place.as_deref(), Some("docks_shop"));
+    assert_eq!(state.notes[0].place, Some("docks_shop".into()));
     let _ = fs::remove_dir_all(&pack);
 }
 
@@ -114,17 +115,14 @@ fn morning_restock() {
         drop(opened);
         state.world_time = 600;
         state.notes.push(door_note());
-        state.actors.get_mut("pc_rowan").unwrap().place = "docks_street".to_string();
+        *state.actors.place.get_mut("pc_rowan").unwrap() = "docks_street".to_string();
         write_save(&pack, &state);
     }
-    assert_eq!(
-        state_of(&pack).actors.get("mira").unwrap().place,
-        "mira_rooms"
-    );
+    assert_eq!(state_of(&pack).actors.place["mira"], "mira_rooms");
     play_pack_once(&pack).unwrap_or_else(|err| panic!("round: {err}"));
     let state = state_of(&pack);
     assert_eq!(lamp_oil(&state), 8);
-    assert_eq!(state.actors.get("mira").unwrap().place, "mira_rooms");
+    assert_eq!(state.actors.place["mira"], "mira_rooms");
     assert_eq!(state.notes.len(), 1);
     let _ = fs::remove_dir_all(&pack);
 }
@@ -137,13 +135,9 @@ fn capped_restock() -> u32 {
         drop(opened);
         state.world_time = 600;
         state.notes.push(door_note());
-        state.actors.get_mut("pc_rowan").unwrap().place = "docks_street".to_string();
-        state
-            .places
-            .get_mut("docks_shop")
-            .unwrap()
-            .items
-            .insert("lamp_oil".to_string(), 6);
+        *state.actors.place.get_mut("pc_rowan").unwrap() = "docks_street".to_string();
+        let oil = ("docks_shop".into(), "lamp_oil".to_string());
+        state.places.items.insert(oil, 6);
         write_save(&pack, &state);
     }
     play_pack_once(&pack).unwrap_or_else(|err| panic!("round: {err}"));
@@ -176,7 +170,7 @@ fn player_in_the_shop() {
         drop(opened);
         state.world_time = 600;
         state.notes.push(door_note());
-        state.actors.get_mut("mira").unwrap().place = "docks_shop".to_string();
+        *state.actors.place.get_mut("mira").unwrap() = "docks_shop".to_string();
         write_save(&pack, &state);
     }
     let mut opened = resume(&pack);
@@ -187,7 +181,7 @@ fn player_in_the_shop() {
     let state = state_of(&pack);
     assert_eq!(lamp_oil(&state), 4);
     assert_eq!(state.notes.len(), 1);
-    assert_eq!(state.actors.get("mira").unwrap().act.last_act_round, 0);
+    assert_eq!(state.actors.acts["mira"].last_act_round, 0);
     let _ = fs::remove_dir_all(&pack);
 }
 
@@ -217,7 +211,7 @@ fn gm_restocks() {
         drop(opened);
         state.world_time = 600;
         state.notes.push(door_note());
-        state.actors.get_mut("mira").unwrap().place = "docks_shop".to_string();
+        *state.actors.place.get_mut("mira").unwrap() = "docks_shop".to_string();
         write_save(&pack, &state);
     }
     let mut opened = resume(&pack);
@@ -235,7 +229,7 @@ fn claimed_note_sorts_first() {
         let opened = resume(&pack);
         let mut state = opened.state().clone();
         drop(opened);
-        state.actors.get_mut("mira").unwrap().place = "docks_shop".to_string();
+        *state.actors.place.get_mut("mira").unwrap() = "docks_shop".to_string();
         write_save(&pack, &state);
     }
     let mut opened = resume(&pack);
@@ -320,25 +314,7 @@ Rowan.
         .unwrap_or_else(|err| panic!("copy {name}: {err}"));
     }
     let rev = spookery_engine::pack_rev(&pack).unwrap();
-    let mut places = BTreeMap::new();
-    places.insert("gate".to_string(), PlaceLive::default());
-    let mut actors = BTreeMap::new();
-    actors.insert(
-        "pc_rowan".to_string(),
-        ActorLive {
-            kind: ActorKind::Pc,
-            place: "gate".to_string(),
-            flags: Vec::new(),
-            meters: meters(1),
-            modifiers: Default::default(),
-            inventory: BTreeMap::new(),
-            wielded: None,
-            known_facts: Vec::new(),
-            visited: Default::default(),
-            act: Act::default(),
-        },
-    );
-    let state = State {
+    let mut state = State {
         schema: "save".to_string(),
         world_id: "ex".to_string(),
         pack_rev: rev,
@@ -347,13 +323,13 @@ Rowan.
         round_index: 0,
         world_time: 0,
         last_round_at: "2026-01-01T00:00:00Z".to_string(),
-        places,
-        actors,
-        stories: BTreeMap::new(),
-        world_meters: BTreeMap::new(),
+        actors: Default::default(),
+        places: Default::default(),
+        stories: Default::default(),
+        world: Default::default(),
         notes: Vec::new(),
-        flags: Vec::new(),
     };
+    add_actor(&mut state, "pc_rowan", ActorKind::Pc, "gate", 1);
     write_text(&pack.join("state/save.yaml"), &emit_save(&state).unwrap());
     let place_before = fs::read(pack.join("world/places/gate.md")).unwrap();
     let cast_before = fs::read(pack.join("cast/pc_rowan.md")).unwrap();
@@ -388,15 +364,15 @@ fn a_busy_npc_skips() {
         drop(opened);
         state.world_time = 600;
         state.notes.push(door_note());
-        state.actors.get_mut("mira").unwrap().act.busy_until = Some(u64::MAX);
-        state.actors.get_mut("pc_rowan").unwrap().place = "docks_street".to_string();
+        state.actors.acts.get_mut("mira").unwrap().busy_until = Some(u64::MAX);
+        *state.actors.place.get_mut("pc_rowan").unwrap() = "docks_street".to_string();
         write_save(&pack, &state);
     }
     play_pack_once(&pack).unwrap_or_else(|err| panic!("round: {err}"));
     let state = state_of(&pack);
     assert_eq!(lamp_oil(&state), 4);
-    assert_eq!(state.actors.get("mira").unwrap().act.last_act_round, 0);
-    assert_eq!(state.actors.get("bram").unwrap().act.last_act_round, 0);
+    assert_eq!(state.actors.acts["mira"].last_act_round, 0);
+    assert_eq!(state.actors.acts["bram"].last_act_round, 0);
     let _ = fs::remove_dir_all(&pack);
 }
 
@@ -430,7 +406,7 @@ facts:
 A yard.
 ",
     );
-    let mut actors = BTreeMap::new();
+    let mut npcs = Vec::new();
     for index in 1..=50 {
         let id = format!("n{index}");
         write_text(
@@ -453,21 +429,7 @@ rules:
 "
             ),
         );
-        actors.insert(
-            id,
-            ActorLive {
-                kind: ActorKind::Npc,
-                place: "yard".to_string(),
-                flags: Vec::new(),
-                meters: meters(1),
-                modifiers: Default::default(),
-                inventory: BTreeMap::new(),
-                wielded: None,
-                known_facts: Vec::new(),
-                visited: Default::default(),
-                act: Act::default(),
-            },
-        );
+        npcs.push(id);
     }
     for name in ["verbs.yaml", "checks.yaml", "meters.yaml", "budget.yaml"] {
         let dest = pack.join("rules").join(name);
@@ -475,9 +437,7 @@ rules:
         fs::copy(rules.join(name), &dest).unwrap();
     }
     let rev = spookery_engine::pack_rev(&pack).unwrap();
-    let mut places = BTreeMap::new();
-    places.insert("yard".to_string(), PlaceLive::default());
-    let state = State {
+    let mut state = State {
         schema: "save".to_string(),
         world_id: "crowd".to_string(),
         pack_rev: rev,
@@ -486,25 +446,33 @@ rules:
         round_index: 0,
         world_time: 0,
         last_round_at: "2026-01-01T00:00:00Z".to_string(),
-        places,
-        actors,
-        stories: BTreeMap::new(),
-        world_meters: BTreeMap::new(),
+        actors: Default::default(),
+        places: Default::default(),
+        stories: Default::default(),
+        world: Default::default(),
         notes: Vec::new(),
-        flags: Vec::new(),
     };
+    for id in &npcs {
+        add_actor(&mut state, id, ActorKind::Npc, "yard", 1);
+    }
     write_text(&pack.join("state/save.yaml"), &emit_save(&state).unwrap());
     play_pack_once(&pack).unwrap_or_else(|err| panic!("round: {err}"));
     let state = state_of(&pack);
     assert_eq!(state.round_index, 1);
     assert_eq!(
-        state.actors.values().filter(|actor| actor.is_npc()).count(),
+        state
+            .actors
+            .kind
+            .values()
+            .filter(|kind| **kind == ActorKind::Npc)
+            .count(),
         50
     );
     let acted = state
         .actors
+        .acts
         .values()
-        .filter(|actor| actor.act.last_act_round == 1)
+        .filter(|act| act.last_act_round == 1)
         .count();
     let applied = round_value(&pack, "round-0001")["extra_steps"]
         .as_array()
@@ -623,7 +591,7 @@ fn patch_mira_flags_and_place(pack: &Path, flags: &str) {
     fs::write(&path, next).unwrap();
     let now_path = pack.join("state/save.yaml");
     let mut state = spookery_engine::parse_save(&fs::read_to_string(&now_path).unwrap()).unwrap();
-    state.actors.get_mut("mira").unwrap().place = "docks_shop".to_string();
+    *state.actors.place.get_mut("mira").unwrap() = "docks_shop".to_string();
     write_save(pack, &state);
 }
 
@@ -631,7 +599,7 @@ fn play_mark(pack: &Path) -> State {
     let mut opened = resume(pack);
     let wall = opened.state().last_round_at.clone();
     opened
-        .queue_player_move(&rowan(), "pc_rowan", "mark", Some("mira"))
+        .queue_player_move(&rowan(), &"pc_rowan".into(), "mark", Some("mira"))
         .unwrap();
     let played = opened.commit_then_fast_forward(&rowan(), &wall).unwrap();
     assert!(!played.is_empty(), "mark mira did not commit");
@@ -712,7 +680,7 @@ fn opposing_total_reused() {
         }
         let wall = opened.state().last_round_at.clone();
         opened
-            .queue_player_move(&rowan(), "pc_rowan", "mark", Some("pc_nell"))
+            .queue_player_move(&rowan(), &"pc_rowan".into(), "mark", Some("pc_nell"))
             .unwrap();
         assert_eq!(opened.state().world_time, 1080);
         let outputs = opened.commit_then_fast_forward(&rowan(), &wall).unwrap();
@@ -762,8 +730,8 @@ fn a_held_knife_still_runs_the_opposed_row() {
     let now_path = held.join("state/save.yaml");
     let text = fs::read_to_string(&now_path).unwrap();
     let next = text.replacen(
-        "  pc_rowan:\n    kind: pc\n    place: docks_shop\n    flags: []\n    meters:\n      assassination_debt:\n        base: 2\n        offset: 0\n      grit:\n        base: 1\n        offset: 0\n      rest:\n        base: 3\n        offset: 0\n    inventory: {}\n",
-        "  pc_rowan:\n    kind: pc\n    place: docks_shop\n    flags: []\n    meters:\n      assassination_debt:\n        base: 2\n        offset: 0\n      grit:\n        base: 1\n        offset: 0\n      rest:\n        base: 3\n        offset: 0\n    inventory:\n      knife: 1\n",
+        "  items: {}\n  meters:\n",
+        "  items:\n    pc_rowan:\n      knife: 1\n  meters:\n",
         1,
     );
     assert_ne!(next, text);
@@ -773,7 +741,7 @@ fn a_held_knife_still_runs_the_opposed_row() {
     queue_gm_intent(&mut opened, "gm-1", "pc_nell", "defend");
     let wall = opened.state().last_round_at.clone();
     opened
-        .queue_player_move(&rowan(), "pc_rowan", "mark", Some("pc_nell"))
+        .queue_player_move(&rowan(), &"pc_rowan".into(), "mark", Some("pc_nell"))
         .unwrap();
     let before = opened.state().world_time;
     let outputs = opened.commit_then_fast_forward(&rowan(), &wall).unwrap();
@@ -790,7 +758,7 @@ fn a_held_knife_still_runs_the_opposed_row() {
 
 fn rowans_debt(pack: &Path) -> i64 {
     let canon = load_canon(pack).unwrap_or_else(|err| panic!("load: {err:?}"));
-    let rowan = EntityId::Actor("pc_rowan".to_string());
+    let rowan = EntityId::Actor("pc_rowan".into());
     state_of(pack)
         .meter_value(&canon, &rowan, "assassination_debt")
         .unwrap_or_else(|err| panic!("assassination_debt: {err}"))
@@ -914,7 +882,7 @@ fn a_docks_table(world: &mut World) {
 #[when(expr = "a player queues take lamp_oil and the host stops before a round")]
 fn a_player_queues_take_and_the_host_stops(world: &mut World) {
     let mut host = resume(world.pack());
-    host.queue_player_move(&rowan(), "pc_rowan", "take", Some("lamp_oil"))
+    host.queue_player_move(&rowan(), &"pc_rowan".into(), "take", Some("lamp_oil"))
         .unwrap();
     assert_eq!(host.queued_intents().len(), 1);
 }

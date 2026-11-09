@@ -28,11 +28,11 @@ fn a_docks_table_with_npcs_in_the_shop(world: &mut World) {
     let pack = copy_docks("ai-gm-loop");
     // Aldric starts in the shop. Mira starts upstairs.
     super::common::edit_save(&pack, |now| {
-        now.actors.get_mut("mira").unwrap().place = "docks_shop".to_string();
+        *now.actors.place.get_mut("mira").unwrap() = "docks_shop".to_string();
     });
     let state = state_of(&pack);
     for npc in ["mira", "aldric"] {
-        let place = state.actors.get(npc).map(|actor| actor.place.as_str());
+        let place = state.actors.place.get(npc).map(String::as_str);
         assert_eq!(place, Some("docks_shop"), "{npc}");
     }
     table::listen(world, &pack);

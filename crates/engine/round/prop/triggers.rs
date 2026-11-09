@@ -114,7 +114,7 @@ fn rowan_oil_gains(record: &RoundRecord) -> usize {
         else {
             continue;
         };
-        if place.is_some() || actor_id.as_deref() != Some("pc_rowan") || id != "lamp_oil" {
+        if place.is_some() || *actor_id != Some("pc_rowan".into()) || id != "lamp_oil" {
             continue;
         }
         match nets
