@@ -2,7 +2,7 @@
 
 use crate::canon::Canon;
 use crate::rules::context::Context;
-use crate::rules::effect::Holder;
+use crate::rules::effect::EntityId;
 use crate::rules::roll::Outcome;
 use crate::rules::rule::{LineColumn, Who};
 use crate::state::State;
@@ -187,8 +187,8 @@ fn negate_body(body: &str) -> String {
 }
 
 fn read_meter(context: &Context, who: &Who, key: &str) -> Result<i64, Reason> {
-    let holder = resolve_holder(context, who)?;
-    context.state.meter_value(context.canon, &holder, key)
+    let entity = resolve_entity(context, who)?;
+    context.state.meter_value(context.canon, &entity, key)
 }
 
 /// `id: target` is the intent's target token. Any other id is itself.
@@ -206,13 +206,13 @@ pub(crate) fn resolve_item_id(context: &Context, id: &str) -> Result<String, Rea
 
 /// Who holds the meter, flag or item a rule names: `here` and `place:` are a place, `story:`
 /// is a story, `exit:` is an exit, `world` is the world, and anyone else is an actor.
-pub(crate) fn resolve_holder(context: &Context, who: &Who) -> Result<Holder, Reason> {
+pub(crate) fn resolve_entity(context: &Context, who: &Who) -> Result<EntityId, Reason> {
     match who {
-        Who::World => Ok(Holder::World),
-        Who::Story(id) => Ok(Holder::Story(id.clone())),
-        Who::Exit(place, exit) => Ok(Holder::Exit(place.clone(), exit.clone())),
-        Who::Here | Who::Place(_) => Ok(Holder::Place(resolve_who_id(context, who)?)),
-        _ => Ok(Holder::Actor(resolve_who_id(context, who)?)),
+        Who::World => Ok(EntityId::World),
+        Who::Story(id) => Ok(EntityId::Story(id.clone())),
+        Who::Exit(place, exit) => Ok(EntityId::Exit(place.clone(), exit.clone())),
+        Who::Here | Who::Place(_) => Ok(EntityId::Place(resolve_who_id(context, who)?)),
+        _ => Ok(EntityId::Actor(resolve_who_id(context, who)?)),
     }
 }
 

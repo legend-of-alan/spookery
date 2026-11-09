@@ -2,7 +2,7 @@
 
 use std::fmt;
 
-use crate::rules::effect::Holder;
+use crate::rules::effect::EntityId;
 
 /// One budget identity. The commit diff summary is this type's `Display`,
 /// sorted as text. It is not a path inside `save.yaml`.
@@ -60,27 +60,27 @@ impl fmt::Display for StateKey {
 }
 
 impl StateKey {
-    /// The key of meter `key` on `holder`. An exit carries no meters.
-    pub(crate) fn meter(holder: &Holder, key: &str) -> Option<StateKey> {
+    /// The key of meter `key` on `entity`. An exit carries no meters.
+    pub(crate) fn meter(entity: &EntityId, key: &str) -> Option<StateKey> {
         let key = key.to_string();
-        match holder {
-            Holder::Actor(id) => Some(StateKey::ActorMeter(id.clone(), key)),
-            Holder::Place(id) => Some(StateKey::PlaceMeter(id.clone(), key)),
-            Holder::Story(id) => Some(StateKey::StoryMeter(id.clone(), key)),
-            Holder::Exit(..) => None,
-            Holder::World => Some(StateKey::WorldMeter(key)),
+        match entity {
+            EntityId::Actor(id) => Some(StateKey::ActorMeter(id.clone(), key)),
+            EntityId::Place(id) => Some(StateKey::PlaceMeter(id.clone(), key)),
+            EntityId::Story(id) => Some(StateKey::StoryMeter(id.clone(), key)),
+            EntityId::Exit(..) => None,
+            EntityId::World => Some(StateKey::WorldMeter(key)),
         }
     }
 
-    /// The key of flag `key` on `holder`. An exit's one flag is `open`.
-    pub(crate) fn flag(holder: &Holder, key: &str) -> StateKey {
+    /// The key of flag `key` on `entity`. An exit's one flag is `open`.
+    pub(crate) fn flag(entity: &EntityId, key: &str) -> StateKey {
         let key = key.to_string();
-        match holder {
-            Holder::Exit(place, exit) => StateKey::ExitOpen(place.clone(), exit.clone()),
-            Holder::Actor(id) => StateKey::ActorFlag(id.clone(), key),
-            Holder::Place(id) => StateKey::PlaceFlag(id.clone(), key),
-            Holder::Story(id) => StateKey::StoryFlag(id.clone(), key),
-            Holder::World => StateKey::WorldFlag(key),
+        match entity {
+            EntityId::Exit(place, exit) => StateKey::ExitOpen(place.clone(), exit.clone()),
+            EntityId::Actor(id) => StateKey::ActorFlag(id.clone(), key),
+            EntityId::Place(id) => StateKey::PlaceFlag(id.clone(), key),
+            EntityId::Story(id) => StateKey::StoryFlag(id.clone(), key),
+            EntityId::World => StateKey::WorldFlag(key),
         }
     }
 

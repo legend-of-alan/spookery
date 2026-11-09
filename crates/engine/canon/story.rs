@@ -13,7 +13,7 @@ use crate::canon::source::{
 };
 use crate::canon::StoryDef;
 use crate::diagnostic::schema_error;
-use crate::rules::effect::Holder;
+use crate::rules::effect::EntityId;
 use crate::rules::rule::{Owner, Rule};
 use crate::state::meter::MeterDef;
 
@@ -52,7 +52,7 @@ pub(super) fn load_stories(
             text,
             line_base: 0,
         };
-        let carrier = Some(Holder::Story(story.id.clone()));
+        let carrier = Some(EntityId::Story(story.id.clone()));
         let own = diags.keep(meter_defs(&source, story.meters, carrier));
         if let (Some(meters), Some(own)) = (meters.as_deref_mut(), own) {
             add_own_meters(meters, own, world_meters, &source, diags);

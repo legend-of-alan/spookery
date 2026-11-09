@@ -4,7 +4,7 @@ use std::collections::BTreeSet;
 
 use crate::canon::Canon;
 use crate::intent::Viewer;
-use crate::rules::effect::{Effect, EffectKind, Holder};
+use crate::rules::effect::{Effect, EffectKind, EntityId};
 use crate::state::change::{Change, StateKey, StateValue};
 use crate::state::State;
 
@@ -92,24 +92,24 @@ fn sentence(canon: &Canon, viewer: &str, change: &Change, changes: &[Change]) ->
             let whose = possessive_for(canon, viewer, actor);
             meter_sentence(
                 canon,
-                &Holder::Actor(actor.clone()),
+                &EntityId::Actor(actor.clone()),
                 key,
                 &whose,
                 &change.after,
             )
         }
         StateKey::WorldMeter(key) => {
-            meter_sentence(canon, &Holder::World, key, "The world's", &change.after)
+            meter_sentence(canon, &EntityId::World, key, "The world's", &change.after)
         }
         StateKey::StoryMeter(story, key) => {
-            let holder = Holder::Story(story.clone());
+            let entity = EntityId::Story(story.clone());
             let whose = format!("The {story} story's");
-            meter_sentence(canon, &holder, key, &whose, &change.after)
+            meter_sentence(canon, &entity, key, &whose, &change.after)
         }
         StateKey::PlaceMeter(place, key) => {
-            let holder = Holder::Place(place.clone());
+            let entity = EntityId::Place(place.clone());
             let whose = format!("{}'s", crate::rules::lines::place_name(canon, place));
-            meter_sentence(canon, &holder, key, &whose, &change.after)
+            meter_sentence(canon, &entity, key, &whose, &change.after)
         }
         StateKey::ActorItem(actor, id) => {
             actor_item_sentence(canon, viewer, actor, id, change, changes)
@@ -121,12 +121,12 @@ fn sentence(canon: &Canon, viewer: &str, change: &Change, changes: &[Change]) ->
 
 fn meter_sentence(
     canon: &Canon,
-    holder: &Holder,
+    entity: &EntityId,
     key: &str,
     whose: &str,
     after: &StateValue,
 ) -> Option<String> {
-    if canon.meter_def(holder, key).is_none_or(|def| def.hidden) {
+    if canon.meter_def(entity, key).is_none_or(|def| def.hidden) {
         return None;
     }
     let StateValue::Number(value) = after else {
@@ -149,9 +149,9 @@ fn actor_item_sentence(
     let who = subject_for(canon, viewer, actor);
     let owner = possessive_for(canon, viewer, actor);
     let sentence = match (after < before, other_side(changes, change, id)) {
-        (true, Some(Holder::Actor(_))) => format!("{who} handed over the {name}."),
+        (true, Some(EntityId::Actor(_))) => format!("{who} handed over the {name}."),
         (true, Some(_)) => format!("{who} dropped the {name}."),
-        (false, Some(Holder::Actor(_))) => format!("{who} received the {name}."),
+        (false, Some(EntityId::Actor(_))) => format!("{who} received the {name}."),
         (false, Some(_)) => format!("{who} picked up the {name}."),
         (true, None) if after == 0 => format!("{owner} {name} was used up."),
         (true, None) => format!("{owner} {name} was lost."),
@@ -168,7 +168,7 @@ fn place_item_sentence(
     changes: &[Change],
 ) -> Option<String> {
     let (before, after) = counts(change)?;
-    if matches!(other_side(changes, change, id), Some(Holder::Actor(_))) {
+    if matches!(other_side(changes, change, id), Some(EntityId::Actor(_))) {
         return None;
     }
     let name = item_name(canon, id);
@@ -186,7 +186,7 @@ fn counts(change: &Change) -> Option<(i64, i64)> {
 }
 
 /// Where the item went to or came from, among changes this viewer can see.
-fn other_side(changes: &[Change], change: &Change, id: &str) -> Option<Holder> {
+fn other_side(changes: &[Change], change: &Change, id: &str) -> Option<EntityId> {
     let (before, after) = counts(change)?;
     let down = after < before;
     changes.iter().find_map(|other| {
@@ -195,8 +195,8 @@ fn other_side(changes: &[Change], change: &Change, id: &str) -> Option<Holder> {
             return None;
         }
         match &other.key {
-            StateKey::ActorItem(actor, item) if item == id => Some(Holder::Actor(actor.clone())),
-            StateKey::PlaceItem(place, item) if item == id => Some(Holder::Place(place.clone())),
+            StateKey::ActorItem(actor, item) if item == id => Some(EntityId::Actor(actor.clone())),
+            StateKey::PlaceItem(place, item) if item == id => Some(EntityId::Place(place.clone())),
             _ => None,
         }
     })
@@ -273,11 +273,11 @@ fn can_see(canon: &Canon, state: &State, viewer: &str, change: &Change) -> bool 
         | StateKey::LastActRound(_)
         | StateKey::IdleActsThisWindow(_)
         | StateKey::LiveActsThisWindow(_) => false,
-        StateKey::WorldMeter(key) => is_shown(canon, &Holder::World, key),
-        StateKey::StoryMeter(story, key) => is_shown(canon, &Holder::Story(story.clone()), key),
+        StateKey::WorldMeter(key) => is_shown(canon, &EntityId::World, key),
+        StateKey::StoryMeter(story, key) => is_shown(canon, &EntityId::Story(story.clone()), key),
         StateKey::PlaceMeter(place, key) => {
             place_of(state, viewer) == Some(place.as_str())
-                && is_shown(canon, &Holder::Place(place.clone()), key)
+                && is_shown(canon, &EntityId::Place(place.clone()), key)
         }
         StateKey::ActorKnownFact(actor) | StateKey::ActorMeter(actor, _) => actor == viewer,
         StateKey::ActorModifier(actor, id) => {
@@ -297,9 +297,9 @@ fn can_see(canon: &Canon, state: &State, viewer: &str, change: &Change) -> bool 
     }
 }
 
-/// Whether the pack shows meter `key` on `holder` to players.
-fn is_shown(canon: &Canon, holder: &Holder, key: &str) -> bool {
-    canon.meter_def(holder, key).is_some_and(|def| !def.hidden)
+/// Whether the pack shows meter `key` on `entity` to players.
+fn is_shown(canon: &Canon, entity: &EntityId, key: &str) -> bool {
+    canon.meter_def(entity, key).is_some_and(|def| !def.hidden)
 }
 
 fn place_of<'a>(state: &'a State, viewer: &str) -> Option<&'a str> {

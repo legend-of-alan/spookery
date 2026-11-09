@@ -4,7 +4,7 @@ use crate::canon::Canon;
 use crate::intent::Target;
 use crate::round::dice::Roller;
 use crate::rules::context::Context;
-use crate::rules::effect::{Effect, EffectKind, Holder};
+use crate::rules::effect::{Effect, EffectKind, EntityId};
 use crate::rules::expr::{self, Dice, Expr};
 use crate::rules::roll::Outcome;
 use crate::rules::roll::{MoveReport, Roll};
@@ -138,7 +138,7 @@ fn expand_template(
                 viewer,
                 &intent.id,
                 EffectKind::Flag {
-                    holder: expr::resolve_holder(context, who)?,
+                    entity: expr::resolve_entity(context, who)?,
                     key: key.clone(),
                     value: *value,
                 },
@@ -179,13 +179,13 @@ fn expand_template(
         EffectTemplate::Meter {
             who, key, add, set, ..
         } => {
-            let holder = expr::resolve_holder(context, who)?;
-            let write = meter_offset(context, &holder, key, add.as_ref(), set.as_ref(), dice)?;
+            let entity = expr::resolve_entity(context, who)?;
+            let write = meter_offset(context, &entity, key, add.as_ref(), set.as_ref(), dice)?;
             effects.push(Effect::new(
                 viewer,
                 &intent.id,
                 EffectKind::Meter {
-                    holder,
+                    entity,
                     key: key.clone(),
                     write,
                 },
@@ -195,10 +195,12 @@ fn expand_template(
             who, id, add, max, ..
         } => {
             let item_id = expr::resolve_item_id(context, id)?;
-            let (actor_id, place) = match expr::resolve_holder(context, who)? {
-                Holder::Actor(id) => (Some(id), None),
-                Holder::Place(id) => (None, Some(id)),
-                Holder::Story(_) | Holder::Exit(..) | Holder::World => return Err(Reason::Schema),
+            let (actor_id, place) = match expr::resolve_entity(context, who)? {
+                EntityId::Actor(id) => (Some(id), None),
+                EntityId::Place(id) => (None, Some(id)),
+                EntityId::Story(_) | EntityId::Exit(..) | EntityId::World => {
+                    return Err(Reason::Schema)
+                }
             };
             effects.push(Effect::new(
                 viewer,
@@ -303,7 +305,7 @@ fn expand_template(
 
 fn meter_offset(
     context: &Context,
-    holder: &Holder,
+    entity: &EntityId,
     key: &str,
     add: Option<&Expr>,
     set: Option<&Expr>,
@@ -315,7 +317,7 @@ fn meter_offset(
         )?));
     }
     let desired = expr::eval_with_dice(context, set.ok_or(Reason::Schema)?, dice)?;
-    let current = context.state.meter_value(context.canon, holder, key)?;
+    let current = context.state.meter_value(context.canon, entity, key)?;
     Ok(MeterWrite::Offset(
         desired.checked_sub(current).ok_or(Reason::OutOfRange)?,
     ))

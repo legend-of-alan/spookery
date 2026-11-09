@@ -7,7 +7,7 @@ use serde::Deserialize;
 
 use crate::diagnostic::Diagnostic;
 use crate::hash::blake2s_tagged;
-use crate::rules::effect::Holder;
+use crate::rules::effect::EntityId;
 use crate::rules::roll::Check;
 use crate::rules::rule::{Cond, Cost, Owner, RuleTable, TargetKind, When};
 use crate::state::meter::MeterDef;
@@ -37,7 +37,7 @@ use fact::Facts;
 use item::add_item;
 use lint::{
     broken_exits, resist_same_without_roll, reveal_problems, unknown_carriers, unknown_checks,
-    unknown_meters, unknown_modifiers, unknown_reads, unknown_rule_items, HolderScope,
+    unknown_meters, unknown_modifiers, unknown_reads, unknown_rule_items, EntityScope,
 };
 pub(crate) use lint::{check_canon, check_save};
 use meters::{add_own_meters, load_meters};
@@ -61,7 +61,7 @@ pub struct Canon {
     pub rules: RuleTable,
     pub checks: BTreeMap<String, Check>,
     /// The meters `rules/meters.yaml` gives every actor, and those one cast, place or story
-    /// file gives its holder. An id is listed once.
+    /// file gives its entity. An id is listed once.
     pub meters: BTreeMap<String, MeterDef>,
     /// The meters `world/meters.yaml` gives the world. An id here may also be an actor meter.
     pub world_meters: BTreeMap<String, MeterDef>,
@@ -197,25 +197,25 @@ impl Canon {
         }
     }
 
-    /// The def of meter `key` on `holder`, when that holder carries it.
-    pub fn meter_def(&self, holder: &Holder, key: &str) -> Option<&MeterDef> {
-        match holder {
-            Holder::World => self.world_meters.get(key),
-            _ => self.meters.get(key).filter(|def| def.is_on(holder)),
+    /// The def of meter `key` on `entity`, when that entity carries it.
+    pub fn meter_def(&self, entity: &EntityId, key: &str) -> Option<&MeterDef> {
+        match entity {
+            EntityId::World => self.world_meters.get(key),
+            _ => self.meters.get(key).filter(|def| def.is_on(entity)),
         }
     }
 
-    /// Whether `holder` carries flag `key`: one its file declares, `open` on an exit with an
+    /// Whether `entity` carries flag `key`: one its file declares, `open` on an exit with an
     /// `if`, or any world flag but `busy`.
-    pub(crate) fn carries_flag(&self, holder: &Holder, key: &str) -> bool {
-        let flags = match holder {
-            Holder::Actor(id) => self.cast.get(id).map(|cast| &cast.flags),
-            Holder::Place(id) => self.places.get(id).map(|place| &place.flags),
-            Holder::Story(id) => self.stories.get(id).map(|story| &story.flags),
-            Holder::Exit(place, exit) => {
+    pub(crate) fn carries_flag(&self, entity: &EntityId, key: &str) -> bool {
+        let flags = match entity {
+            EntityId::Actor(id) => self.cast.get(id).map(|cast| &cast.flags),
+            EntityId::Place(id) => self.places.get(id).map(|place| &place.flags),
+            EntityId::Story(id) => self.stories.get(id).map(|story| &story.flags),
+            EntityId::Exit(place, exit) => {
                 return key == OPEN && self.places.get(place).is_some_and(|at| at.has_door(exit))
             }
-            Holder::World => return !key.is_empty() && key != "busy",
+            EntityId::World => return !key.is_empty() && key != "busy",
         };
         flags.is_some_and(|flags| flags.iter().any(|flag| flag == key))
     }
@@ -286,7 +286,7 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
     let world_meters = if root.join("world/meters.yaml").is_file() {
         let rel = "world/meters.yaml";
         diags.keep(
-            read_text(root, rel).and_then(|text| load_meters(rel, &text, Some(Holder::World))),
+            read_text(root, rel).and_then(|text| load_meters(rel, &text, Some(EntityId::World))),
         )
     } else {
         Some(BTreeMap::new())
@@ -349,7 +349,7 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
         diags.extend(unknown_meters(meters, checks));
     }
     if let (Some(meters), Some(world_meters)) = (&meters, &world_meters) {
-        let scope = HolderScope {
+        let scope = EntityScope {
             meters,
             world_meters,
             cast: &cast,

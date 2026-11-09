@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use crate::canon::Budget;
 use crate::canon::{Canon, OPEN};
-use crate::rules::effect::Holder;
+use crate::rules::effect::EntityId;
 use crate::state::change::{Change, StateKey, StateValue};
 use crate::state::{ActCounter, MemoryLine, PendingAction, Presence, State};
 use crate::world::World;
@@ -269,18 +269,24 @@ impl<'p> Draft<'p> {
                 .map(|actor| StateValue::Bool(actor.flags.iter().any(|item| item == flag)))
                 .unwrap_or(StateValue::Empty),
             StateKey::PlaceFlag(id, flag) => {
-                StateValue::Bool(self.state.has_flag(&Holder::Place(id.clone()), flag))
+                StateValue::Bool(self.state.has_flag(&EntityId::Place(id.clone()), flag))
             }
             StateKey::StoryFlag(id, flag) => {
-                StateValue::Bool(self.state.has_flag(&Holder::Story(id.clone()), flag))
+                StateValue::Bool(self.state.has_flag(&EntityId::Story(id.clone()), flag))
             }
             StateKey::ExitOpen(place, exit) => {
-                let holder = Holder::Exit(place.clone(), exit.clone());
-                StateValue::Bool(self.state.has_flag(&holder, OPEN))
+                let entity = EntityId::Exit(place.clone(), exit.clone());
+                StateValue::Bool(self.state.has_flag(&entity, OPEN))
             }
-            StateKey::PlaceMeter(id, meter) => self.meter_value(&Holder::Place(id.clone()), meter),
-            StateKey::StoryMeter(id, meter) => self.meter_value(&Holder::Story(id.clone()), meter),
-            StateKey::ActorMeter(id, meter) => self.meter_value(&Holder::Actor(id.clone()), meter),
+            StateKey::PlaceMeter(id, meter) => {
+                self.meter_value(&EntityId::Place(id.clone()), meter)
+            }
+            StateKey::StoryMeter(id, meter) => {
+                self.meter_value(&EntityId::Story(id.clone()), meter)
+            }
+            StateKey::ActorMeter(id, meter) => {
+                self.meter_value(&EntityId::Actor(id.clone()), meter)
+            }
             StateKey::ActorModifier(id, key) => self
                 .state
                 .actors
@@ -350,12 +356,12 @@ impl<'p> Draft<'p> {
             StateKey::WorldFlag(key) => {
                 StateValue::Bool(self.state.flags.iter().any(|flag| flag == key))
             }
-            StateKey::WorldMeter(key) => self.meter_value(&Holder::World, key),
+            StateKey::WorldMeter(key) => self.meter_value(&EntityId::World, key),
         }
     }
 
-    fn meter_value(&self, holder: &Holder, key: &str) -> StateValue {
-        match self.state.meter_value(&self.canon, holder, key) {
+    fn meter_value(&self, entity: &EntityId, key: &str) -> StateValue {
+        match self.state.meter_value(&self.canon, entity, key) {
             Ok(current) => StateValue::Number(current),
             Err(_) => StateValue::Empty,
         }
@@ -443,7 +449,7 @@ mod tests {
         let intent = Intent::habit(world.state(), "mira", "leave_door_note");
         let mut write = |actor: &str, key: &str, delta: i64| {
             let kind = EffectKind::Meter {
-                holder: Holder::Actor(actor.to_string()),
+                entity: EntityId::Actor(actor.to_string()),
                 key: key.to_string(),
                 write: MeterWrite::Offset(delta),
             };

@@ -31,7 +31,7 @@ pub(crate) fn afford(context: &Context, cost: &Cost) -> Result<(), gate::Refusal
             return Err(cant_afford(key));
         }
         let current = state
-            .meter_value(canon, &effect::Holder::Actor(who.to_string()), key)
+            .meter_value(canon, &effect::EntityId::Actor(who.to_string()), key)
             .map_err(|_| cant_afford(key))?;
         if current < amount {
             return Err(cant_afford(key));
@@ -67,14 +67,14 @@ pub(crate) fn pay(
     dice: &mut dyn Dice,
 ) -> Result<(), Reason> {
     let who = intent.actor_id().ok_or(Reason::UnknownId)?;
-    let holder = effect::Holder::Actor(who.to_string());
+    let entity = effect::EntityId::Actor(who.to_string());
     for (key, expr) in &cost.meters {
         let context = Context::new(draft.canon(), draft.state(), draft.presence, intent);
         let amount = expr::eval_with_dice(&context, expr, dice)?;
         if amount < 0 {
             return Err(Reason::CantAfford);
         }
-        effect::write_meter(draft, &holder, key, MeterWrite::Offset(-amount))?;
+        effect::write_meter(draft, &entity, key, MeterWrite::Offset(-amount))?;
         if amount == 0 {
             // A cost of 0 leaves the meter as it was and still takes a key of the budget.
             draft.track(StateKey::ActorMeter(who.to_string(), key.clone()))?;
@@ -84,7 +84,7 @@ pub(crate) fn pay(
         let context = Context::new(draft.canon(), draft.state(), draft.presence, intent);
         let count = item_count(expr::eval_with_dice(&context, expr, dice)?)?;
         // The key budget keeps its own code; any other refusal of the take is a shortfall.
-        match effect::shift_item(draft, &holder, id, -i64::from(count), None) {
+        match effect::shift_item(draft, &entity, id, -i64::from(count), None) {
             Err(Reason::Budget) => return Err(Reason::Budget),
             Err(_) => return Err(Reason::CantAfford),
             Ok(()) => {}

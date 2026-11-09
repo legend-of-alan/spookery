@@ -15,7 +15,7 @@ pub use canon::{load_canon, pack_rev};
 pub use diagnostic::{first_reason, Code, Diagnostic};
 pub use intent::{Intent, IntentArgs, Source, Target, Viewer};
 pub use round::{migrate_pack, play_pack_once, verify_pack, verify_quick, RoundOutput};
-pub use rules::effect::Holder;
+pub use rules::effect::EntityId;
 pub use rules::gate::Refusal;
 pub use rules::perceive::View;
 pub use rules::roll::MoveReport;

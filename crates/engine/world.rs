@@ -11,7 +11,7 @@ use crate::canon::{check_save, load_canon, pack_rev, Canon};
 use crate::diagnostic::{error, first_reason, locate_nth, schema_error, Code, Diagnostic};
 use crate::intent::{Intent, IntentArgs, Source, Target};
 use crate::rules::context::Context;
-use crate::rules::effect::{payload_json, Effect, Holder};
+use crate::rules::effect::{payload_json, Effect, EntityId};
 use crate::rules::gate;
 use crate::rules::rule::{Rule, TargetKind, When};
 use crate::state::{ActorLive, Presence, State};
@@ -378,20 +378,24 @@ impl<L> World<L> {
     }
 
     /// One row per meter that one actor, place or story, or the world, carries:
-    /// `meter <holder> <id> <value> <max>`, the holder spelled as a rule's `who` names it.
+    /// `meter <entity> <id> <value> <max>`, the entity spelled as a rule's `who` names it.
     fn carried_meter_rows(&self) -> Vec<String> {
         let carried = self
             .canon
             .meters
             .iter()
             .filter_map(|(id, def)| Some((def.carrier.clone()?, id)));
-        let world_meters = self.canon.world_meters.keys().map(|id| (Holder::World, id));
+        let world_meters = self
+            .canon
+            .world_meters
+            .keys()
+            .map(|id| (EntityId::World, id));
         carried
             .chain(world_meters)
-            .filter_map(|(holder, id)| {
-                let value = self.state.meter_value(&self.canon, &holder, id).ok()?;
-                let max = self.canon.meter_def(&holder, id)?.max;
-                Some(format!("meter {holder} {id} {value} {max}"))
+            .filter_map(|(entity, id)| {
+                let value = self.state.meter_value(&self.canon, &entity, id).ok()?;
+                let max = self.canon.meter_def(&entity, id)?.max;
+                Some(format!("meter {entity} {id} {value} {max}"))
             })
             .collect()
     }

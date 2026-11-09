@@ -9,7 +9,7 @@ use spookery_engine::testing::{
     stamp_pack_rev, state_of, write_save, Act, ActorKind, ActorLive, PlaceLive,
 };
 use spookery_engine::{
-    emit_save, load_canon, play_pack_once, Holder, MeterLive, MoveReport, Note, Presence, State,
+    emit_save, load_canon, play_pack_once, EntityId, MeterLive, MoveReport, Note, Presence, State,
 };
 use spookery_protocol::Outcome;
 
@@ -790,7 +790,7 @@ fn a_held_knife_still_runs_the_opposed_row() {
 
 fn rowans_debt(pack: &Path) -> i64 {
     let canon = load_canon(pack).unwrap_or_else(|err| panic!("load: {err:?}"));
-    let rowan = Holder::Actor("pc_rowan".to_string());
+    let rowan = EntityId::Actor("pc_rowan".to_string());
     state_of(pack)
         .meter_value(&canon, &rowan, "assassination_debt")
         .unwrap_or_else(|err| panic!("assassination_debt: {err}"))
