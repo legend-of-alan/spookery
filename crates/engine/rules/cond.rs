@@ -1,10 +1,10 @@
 //! Whether the conditions on a rule hold.
 
-use crate::canon::Canon;
+use crate::canon::{Canon, OPEN};
 use crate::intent::{Intent, Source, Target, Viewer};
 use crate::rules::context::Context;
 use crate::rules::expr;
-use crate::rules::rule::Cond;
+use crate::rules::rule::{Cond, Who};
 use crate::state::{Presence, State};
 use crate::Reason;
 
@@ -85,6 +85,14 @@ fn holds(context: &Context, cond: &Cond) -> Result<bool, Reason> {
             let current = state.meter_value(context.canon, &entity, key)?;
             let right = expr::eval(context, value)?;
             Ok(op.holds(current, right))
+        }
+        Cond::Flag {
+            who: Who::Exit(exit),
+            key,
+            is,
+        } => {
+            let door = (exit.place.clone(), exit.exit.clone());
+            Ok((key == OPEN && state.places.open_exits.contains(&door)) == *is)
         }
         Cond::Flag { who, key, is } => {
             let entity = expr::resolve_entity(context, who)?;

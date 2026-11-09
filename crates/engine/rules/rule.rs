@@ -1,7 +1,7 @@
 //! One rule shape. The id is namespaced by the file that owns it.
 
 use crate::rules::expr::Expr;
-use crate::state::id::{ActorId, PlaceId, StoryId};
+use crate::state::id::{ActorId, ExitId, PlaceId, StoryId};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Rule {
@@ -277,7 +277,7 @@ pub enum Who {
     Place(PlaceId),
     Story(StoryId),
     /// An exit, by its place and its name: `exit:<place>.<exit>`.
-    Exit(PlaceId, String),
+    Exit(ExitId),
     Actor(ActorId),
 }
 

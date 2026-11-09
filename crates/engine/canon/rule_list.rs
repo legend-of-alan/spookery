@@ -17,7 +17,7 @@ use crate::rules::rule::{
     ChangeWatch, Cond, Cost, EffectTemplate, LineColumn, LocationTo, NarrateTo, Op, Owner, Phase,
     ResistSpec, RollSpec, Rule, TargetKind, WatchWho, When, Who,
 };
-use crate::state::id::{ActorId, PlaceId};
+use crate::state::id::{ActorId, ExitId, PlaceId};
 
 const MOVES_REPLACED: &str = "rules/moves.yaml was replaced by rules/verbs.yaml";
 
@@ -1080,7 +1080,8 @@ fn who_of(yaml: &Spanned<String>) -> Result<Who, Fault> {
     if let Some(exit) = word.strip_prefix("exit:") {
         return match exit.split_once('.') {
             Some((place, name)) if !place.is_empty() && !name.is_empty() => {
-                Ok(Who::Exit(place.into(), name.to_string()))
+                let (place, exit) = (place.into(), name.to_string());
+                Ok(Who::Exit(ExitId { place, exit }))
             }
             _ => Err(fault("exit: needs <place>.<exit>".to_string())),
         };

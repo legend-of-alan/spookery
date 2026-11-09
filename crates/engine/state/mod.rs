@@ -22,7 +22,6 @@ pub use places::PlaceComponents;
 pub use stories::StoryComponents;
 pub use world::WorldComponents;
 
-use crate::canon::OPEN;
 use crate::intent::Viewer;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -72,7 +71,7 @@ impl State {
                 let held = grouped::of(&self.actors.modifiers, id).map(|(_, held)| held);
                 modifier::sum(held, key)
             }
-            EntityId::World | EntityId::Place(_) | EntityId::Story(_) | EntityId::Exit(..) => Ok(0),
+            EntityId::World | EntityId::Place(_) | EntityId::Story(_) => Ok(0),
         }
     }
 
@@ -82,7 +81,6 @@ impl State {
             EntityId::Actor(id) => grouped::of(&self.actors.meters, id).collect(),
             EntityId::Place(id) => grouped::of(&self.places.meters, id).collect(),
             EntityId::Story(id) => grouped::of(&self.stories.meters, id).collect(),
-            EntityId::Exit(..) => BTreeMap::new(),
             EntityId::World => self
                 .world
                 .meters
@@ -103,26 +101,18 @@ impl State {
             EntityId::Actor(id) => self.actors.meters.get_mut(&(id.clone(), key)),
             EntityId::Place(id) => self.places.meters.get_mut(&(id.clone(), key)),
             EntityId::Story(id) => self.stories.meters.get_mut(&(id.clone(), key)),
-            EntityId::Exit(..) => None,
             EntityId::World => self.world.meters.get_mut(&key),
         };
         live.ok_or(crate::Reason::UnknownId)
     }
 
-    /// Whether `entity` has flag `key` set. An exit's `open` is its door in `open_exits`.
+    /// Whether `entity` has flag `key` set.
     pub(crate) fn has_flag(&self, entity: &EntityId, key: &str) -> bool {
         let key = key.to_string();
         match entity {
             EntityId::Actor(id) => self.actors.flags.contains(&(id.clone(), key)),
             EntityId::Place(id) => self.places.flags.contains(&(id.clone(), key)),
             EntityId::Story(id) => self.stories.flags.contains(&(id.clone(), key)),
-            EntityId::Exit(place, exit) => {
-                key == OPEN
-                    && self
-                        .places
-                        .open_exits
-                        .contains(&(place.clone(), exit.clone()))
-            }
             EntityId::World => self.world.flags.contains(&key),
         }
     }
@@ -142,11 +132,6 @@ impl State {
             EntityId::Actor(id) => turn(&mut self.actors.flags, (id.clone(), key), value),
             EntityId::Place(id) => turn(&mut self.places.flags, (id.clone(), key), value),
             EntityId::Story(id) => turn(&mut self.stories.flags, (id.clone(), key), value),
-            EntityId::Exit(place, exit) => turn(
-                &mut self.places.open_exits,
-                (place.clone(), exit.clone()),
-                value,
-            ),
             EntityId::World => turn(&mut self.world.flags, key, value),
         })
     }
@@ -168,7 +153,7 @@ impl State {
 }
 
 /// Put `entry` in `set` or take it out, and say whether that changed the set.
-fn turn<K: Ord>(set: &mut BTreeSet<K>, entry: K, on: bool) -> bool {
+pub(crate) fn turn<K: Ord>(set: &mut BTreeSet<K>, entry: K, on: bool) -> bool {
     if on {
         set.insert(entry)
     } else {

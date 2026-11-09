@@ -75,27 +75,23 @@ string_id! {
 }
 
 /// Who holds a meter, a flag or an item count, as a rule's `who` names it and the journal
-/// writes it: `world`, `{actor: id}`, `{place: id}`, `{story: id}`, or an exit's door as
-/// `{exit: [place, exit]}`. An exit carries only its flag `open`.
+/// writes it: `world`, `{actor: id}`, `{place: id}` or `{story: id}`.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum EntityId {
     Actor(ActorId),
     Place(PlaceId),
     Story(StoryId),
-    Exit(PlaceId, String),
     World,
 }
 
-/// The entity as a rule's `who` names it: an actor id, `place:<id>`, `story:<id>`,
-/// `exit:<place>.<exit>` or `world`.
+/// The entity as a rule's `who` names it: an actor id, `place:<id>`, `story:<id>` or `world`.
 impl fmt::Display for EntityId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             EntityId::Actor(id) => write!(f, "{id}"),
             EntityId::Place(id) => write!(f, "place:{id}"),
             EntityId::Story(id) => write!(f, "story:{id}"),
-            EntityId::Exit(place, exit) => write!(f, "exit:{place}.{exit}"),
             EntityId::World => write!(f, "world"),
         }
     }
@@ -108,7 +104,6 @@ pub enum EntityRef<'a> {
     Actor(&'a ActorId),
     Place(&'a PlaceId),
     Story(&'a StoryId),
-    Exit(&'a PlaceId, &'a str),
     World,
 }
 
@@ -118,8 +113,22 @@ impl EntityId {
             EntityId::Actor(id) => EntityRef::Actor(id),
             EntityId::Place(id) => EntityRef::Place(id),
             EntityId::Story(id) => EntityRef::Story(id),
-            EntityId::Exit(place, exit) => EntityRef::Exit(place, exit),
             EntityId::World => EntityRef::World,
         }
+    }
+}
+
+/// One exit's door, by its place and its name. An address, not an entity: it holds nothing but
+/// whether the door is open.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct ExitId {
+    pub place: PlaceId,
+    pub exit: String,
+}
+
+/// The exit as a walker on it has it for their place: `exit:<place>.<exit>`.
+impl fmt::Display for ExitId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "exit:{}.{}", self.place, self.exit)
     }
 }

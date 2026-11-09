@@ -9,7 +9,7 @@ use crate::diagnostic::Diagnostic;
 use crate::hash::blake2s_tagged;
 use crate::rules::roll::Check;
 use crate::rules::rule::{Cond, Cost, Owner, RuleTable, TargetKind, When};
-use crate::state::id::{ActorId, EntityId, EntityRef, PlaceId, StoryId};
+use crate::state::id::{ActorId, EntityId, EntityRef, ExitId, PlaceId, StoryId};
 use crate::state::meter::MeterDef;
 use crate::state::modifier::ModifierDef;
 use crate::Reason;
@@ -209,19 +209,17 @@ impl Canon {
         }
     }
 
-    /// Whether `entity` carries flag `key`: one its file declares, `open` on an exit with an
-    /// `if`, or any world flag but `busy`.
+    /// Whether `entity` carries flag `key`: one its file declares, or any world flag but `busy`.
     pub(crate) fn carries_flag(&self, entity: EntityRef<'_>, key: &str) -> bool {
-        let flags = match entity {
-            EntityRef::Actor(id) => self.cast.get(id).map(|cast| &cast.flags),
-            EntityRef::Place(id) => self.places.get(id).map(|place| &place.flags),
-            EntityRef::Story(id) => self.stories.get(id).map(|story| &story.flags),
-            EntityRef::Exit(place, exit) => {
-                return key == OPEN && self.places.get(place).is_some_and(|at| at.has_door(exit))
-            }
-            EntityRef::World => return !key.is_empty() && key != "busy",
-        };
-        flags.is_some_and(|flags| flags.iter().any(|flag| flag == key))
+        match declared_flags(&self.cast, &self.places, &self.stories, entity) {
+            Some(flags) => flags.iter().any(|flag| flag == key),
+            None => !key.is_empty() && key != "busy",
+        }
+    }
+
+    /// Whether `exit` is a door: an exit of its place with an `if`, so it can be open or shut.
+    pub(crate) fn has_door(&self, exit: &ExitId) -> bool {
+        (self.places.get(&exit.place)).is_some_and(|at| at.has_door(&exit.exit))
     }
 
     pub fn idle_profile(&self, actor_id: &ActorId) -> Option<&IdleProfile> {
@@ -243,6 +241,24 @@ impl Canon {
             .get(fact.place_id.as_str())
             .map_or("", |place| &place.body)
     }
+}
+
+/// The flags `entity`'s file declares, none for an id the pack lacks: `None` for the world,
+/// which carries any flag but `busy`. Lint asks before the canon is assembled, so it takes the
+/// three maps.
+pub(crate) fn declared_flags<'c>(
+    cast: &'c BTreeMap<ActorId, CastDef>,
+    places: &'c BTreeMap<PlaceId, PlaceDef>,
+    stories: &'c BTreeMap<StoryId, StoryDef>,
+    entity: EntityRef<'_>,
+) -> Option<&'c [String]> {
+    let flags = match entity {
+        EntityRef::Actor(id) => cast.get(id).map(|cast| &cast.flags),
+        EntityRef::Place(id) => places.get(id).map(|place| &place.flags),
+        EntityRef::Story(id) => stories.get(id).map(|story| &story.flags),
+        EntityRef::World => return None,
+    };
+    Some(flags.map_or(&[], Vec::as_slice))
 }
 
 pub fn pack_rev(root: &Path) -> Result<String, Reason> {

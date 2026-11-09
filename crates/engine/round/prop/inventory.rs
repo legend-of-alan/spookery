@@ -124,7 +124,7 @@ fn is_known_entity(canon: &Canon, state: &State, entity: &EntityId) -> bool {
     match entity {
         EntityId::Actor(id) => state.actors.kind.contains_key(id),
         EntityId::Place(id) => canon.places.contains_key(id),
-        EntityId::Story(_) | EntityId::Exit(..) | EntityId::World => false,
+        EntityId::Story(_) | EntityId::World => false,
     }
 }
 
@@ -142,7 +142,7 @@ fn count_of(state: &State, entity: &EntityId, id: &str) -> u32 {
             .get(&(place_id.clone(), id.to_string()))
             .copied()
             .unwrap_or(0),
-        EntityId::Story(_) | EntityId::Exit(..) | EntityId::World => 0,
+        EntityId::Story(_) | EntityId::World => 0,
     }
 }
 
@@ -170,7 +170,7 @@ fn item_effect(step: &ItemChange) -> Effect {
     let (actor_id, place) = match &step.entity {
         EntityId::Actor(id) => (Some(id.clone()), None),
         EntityId::Place(id) => (None, Some(id.clone())),
-        EntityId::Story(_) | EntityId::Exit(..) | EntityId::World => (None, None),
+        EntityId::Story(_) | EntityId::World => (None, None),
     };
     Effect {
         kind: EffectKind::Item {

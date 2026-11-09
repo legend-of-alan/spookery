@@ -26,5 +26,5 @@ Feature: Exit locks open once and stay open
   Scenario: The journal shows the door opening and verify passes
     Given the stair door in the shop needs brass_key
     When Mira arrives at the shop holding brass_key
-    Then the journal has a flag effect setting open on exit:docks_shop.stairs to true
+    Then the journal has an exit_open effect opening exit:docks_shop.stairs
     And spook verify replays the journal and passes

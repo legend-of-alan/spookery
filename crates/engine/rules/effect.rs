@@ -6,7 +6,7 @@ use crate::draft::Draft;
 use crate::intent::{Intent, Viewer};
 use crate::rules::visibility::can_see_fact;
 use crate::state::change;
-use crate::state::id::{ActorId, EntityId, PlaceId};
+use crate::state::id::{ActorId, EntityId, ExitId, PlaceId};
 use crate::state::meter::{self, MeterWrite};
 use crate::state::modifier::{self, Modifier};
 use crate::state::{self, ActorKind, MemoryLine, Note};
@@ -67,6 +67,11 @@ pub enum EffectKind {
         entity: EntityId,
         key: String,
         value: bool,
+    },
+    /// Open or shut the door of an exit.
+    ExitOpen {
+        exit: ExitId,
+        open: bool,
     },
     Note {
         note_id: String,
@@ -134,6 +139,7 @@ impl Effect {
                 text,
             } => remember(draft, intent, &actor_id, fact_ids, tags, text),
             EffectKind::Flag { entity, key, value } => set_flag(draft, &entity, &key, value),
+            EffectKind::ExitOpen { exit, open } => open_exit(draft, &exit, open),
             EffectKind::Note {
                 note_id,
                 to,
@@ -158,6 +164,7 @@ impl EffectKind {
             EffectKind::Location { .. } => "location",
             EffectKind::Memory { .. } => "memory",
             EffectKind::Flag { .. } => "flag",
+            EffectKind::ExitOpen { .. } => "exit_open",
             EffectKind::Note { .. } => "note",
             EffectKind::Narrate { .. } => "narrate",
             EffectKind::Reveal { .. } => "reveal",
@@ -241,6 +248,14 @@ pub(crate) enum EffectRecord {
         entity: EntityId,
         key: String,
         value: bool,
+    },
+    ExitOpen {
+        #[serde(rename = "as", default, skip_serializing_if = "Option::is_none")]
+        as_viewer: Option<Viewer>,
+        intent_id: String,
+        place: PlaceId,
+        exit: String,
+        open: bool,
     },
     Note {
         #[serde(rename = "as", default, skip_serializing_if = "Option::is_none")]
@@ -355,6 +370,13 @@ impl From<Effect> for EffectRecord {
                 entity,
                 key,
                 value,
+            },
+            EffectKind::ExitOpen { exit, open } => Self::ExitOpen {
+                as_viewer,
+                intent_id,
+                place: exit.place,
+                exit: exit.exit,
+                open,
             },
             EffectKind::Note {
                 note_id,
@@ -501,6 +523,16 @@ impl TryFrom<EffectRecord> for Effect {
                 as_viewer,
                 intent_id,
             ),
+            EffectRecord::ExitOpen {
+                as_viewer,
+                intent_id,
+                place,
+                exit,
+                open,
+            } => {
+                let exit = ExitId { place, exit };
+                (EffectKind::ExitOpen { exit, open }, as_viewer, intent_id)
+            }
             EffectRecord::Note {
                 as_viewer,
                 intent_id,
@@ -575,7 +607,7 @@ pub(crate) fn write_meter(
         .meter_def(entity.as_ref(), key)
         .cloned()
         .ok_or(Reason::UnknownId)?;
-    let change_key = change::Key::meter(entity, key).ok_or(Reason::UnknownId)?;
+    let change_key = change::Key::meter(entity, key);
     draft.mutate(change_key, |state| {
         meter::write(&def, state.meter_mut(entity, key)?, write)
     })
@@ -614,7 +646,7 @@ pub(crate) fn shift_item(
                 state::shift_count(&mut state.places.items, key, delta, max)
             })
         }
-        EntityId::Story(_) | EntityId::Exit(..) | EntityId::World => Err(Reason::Schema),
+        EntityId::Story(_) | EntityId::World => Err(Reason::Schema),
     }
 }
 
@@ -781,6 +813,20 @@ fn set_flag(draft: &mut Draft, entity: &EntityId, key: &str, value: bool) -> Res
     }
     draft.mutate(change::Key::flag(entity, key), |state| {
         state.set_flag(entity, key, value)
+    })
+}
+
+/// Open or shut the door of `exit`. An exit with no `if` has no door.
+fn open_exit(draft: &mut Draft, exit: &ExitId, open: bool) -> Result<(), Reason> {
+    draft
+        .canon()
+        .has_door(exit)
+        .then_some(())
+        .ok_or(Reason::UnknownId)?;
+    let key = change::Key::ExitOpen(exit.place.to_string(), exit.exit.clone());
+    draft.mutate(key, |state| {
+        let door = (exit.place.clone(), exit.exit.clone());
+        Ok(state::turn(&mut state.places.open_exits, door, open))
     })
 }
 

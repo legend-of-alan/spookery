@@ -3,7 +3,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::canon::source::{FileText, Locator, Problem};
-use crate::canon::{Canon, CastDef, FactDef, ItemDef, PlaceDef, StoryDef, OPEN};
+use crate::canon::{declared_flags, Canon, CastDef, FactDef, ItemDef, PlaceDef, StoryDef, OPEN};
 use crate::diagnostic::{error, schema_error, warning, Diagnostic};
 use crate::rules::expr::Expr;
 use crate::rules::roll::Check;
@@ -371,7 +371,6 @@ impl EntityScope<'_> {
             Who::World => Some(EntityId::World),
             Who::Place(id) => Some(EntityId::Place(id.clone())),
             Who::Story(id) => Some(EntityId::Story(id.clone())),
-            Who::Exit(place, exit) => Some(EntityId::Exit(place.clone(), exit.clone())),
             Who::Actor(id) if self.cast.contains_key(id) => Some(EntityId::Actor(id.clone())),
             Who::Self_ => fixed_self.map(|id| EntityId::Actor(id.into())),
             _ => None,
@@ -380,24 +379,19 @@ impl EntityScope<'_> {
 
     /// Why flag `key` on `who` can never be set or tested, or `None` when it may be.
     fn why_undeclared(&self, fixed_self: Option<&str>, who: &Who, key: &str) -> Option<String> {
+        if let Who::Exit(exit) = who {
+            return if self.unknown_who(who).is_some() {
+                Some(format!("{exit} is not an exit"))
+            } else if key != OPEN {
+                Some(format!("an exit carries only the flag '{OPEN}'"))
+            } else {
+                let door = (self.places.get(&exit.place)).is_some_and(|at| at.has_door(&exit.exit));
+                (!door).then(|| format!("{exit} has no if, so it is always open"))
+            };
+        }
         let entity = self.fixed_entity(fixed_self, who)?;
-        let flags = match &entity {
-            EntityId::World => return None,
-            EntityId::Actor(id) => self.cast.get(id).map(|cast| &cast.flags),
-            EntityId::Place(id) => self.places.get(id).map(|place| &place.flags),
-            EntityId::Story(id) => self.stories.get(id).map(|story| &story.flags),
-            EntityId::Exit(place, exit) => {
-                return if self.unknown_who(who).is_some() {
-                    Some(format!("{entity} is not an exit"))
-                } else if key != OPEN {
-                    Some(format!("an exit carries only the flag '{OPEN}'"))
-                } else {
-                    let door = self.places.get(place).is_some_and(|at| at.has_door(exit));
-                    (!door).then(|| format!("{entity} has no if, so it is always open"))
-                };
-            }
-        };
-        let declared = flags.is_some_and(|flags| flags.contains(&key.to_string()));
+        let flags = declared_flags(self.cast, self.places, self.stories, entity.as_ref())?;
+        let declared = flags.iter().any(|flag| flag == key);
         (!declared).then(|| format!("{entity} does not declare it"))
     }
 
@@ -405,6 +399,9 @@ impl EntityScope<'_> {
     /// An entity known only at play time is not guessed: only its key is checked.
     fn why_not_carried(&self, fixed_self: Option<&str>, who: &Who, key: &str) -> Option<String> {
         let def = self.meters.get(key);
+        if let Who::Exit(exit) = who {
+            return Some(format!("{exit} carries no meter '{key}'"));
+        }
         match self.fixed_entity(fixed_self, who) {
             Some(EntityId::World) if self.world_meters.contains_key(key) => None,
             Some(EntityId::World) => Some(format!("the world carries no meter '{key}'")),
@@ -427,10 +424,10 @@ impl EntityScope<'_> {
             Who::Place(id) => Some(format!("place:{id}")),
             Who::Story(id) if self.stories.contains_key(id) => None,
             Who::Story(id) => Some(format!("story:{id}")),
-            Who::Exit(place, exit) => {
-                let exits = self.places.get(place).map(|at| at.exits.as_slice());
-                let known = exits.is_some_and(|exits| exits.iter().any(|at| &at.name == exit));
-                (!known).then(|| format!("exit:{place}.{exit}"))
+            Who::Exit(exit) => {
+                let exits = self.places.get(&exit.place).map(|at| at.exits.as_slice());
+                let known = exits.is_some_and(|exits| exits.iter().any(|at| at.name == exit.exit));
+                (!known).then(|| exit.to_string())
             }
             Who::Actor(id) if self.cast.contains_key(id) => None,
             Who::Actor(id) => Some(id.to_string()),

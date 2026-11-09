@@ -181,14 +181,14 @@ fn it_opens_again_with_the_key(world: &mut World) {
     assert!(stairs_open(world.pack()));
 }
 
-#[then(expr = "the journal has a flag effect setting open on exit:docks_shop.stairs to true")]
+#[then(expr = "the journal has an exit_open effect opening exit:docks_shop.stairs")]
 fn the_journal_has_the_open(world: &mut World) {
     let round = support::read_round(world.pack(), "round-0001");
     let opened = round["effects"].as_array().unwrap().iter().any(|effect| {
-        effect["kind"] == "flag"
-            && effect["holder"] == serde_json::json!({ "exit": ["docks_shop", "stairs"] })
-            && effect["key"] == "open"
-            && effect["value"] == true
+        effect["kind"] == "exit_open"
+            && effect["place"] == "docks_shop"
+            && effect["exit"] == "stairs"
+            && effect["open"] == true
     });
     assert!(opened, "{round}");
 }

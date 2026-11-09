@@ -6,7 +6,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use crate::canon::Budget;
-use crate::canon::{Canon, OPEN};
+use crate::canon::Canon;
 use crate::state::change::{self, Change};
 use crate::state::id::{ActorId, EntityId};
 use crate::state::{ActCounter, MemoryLine, PendingAction, Presence, State};
@@ -269,8 +269,8 @@ impl<'p> Draft<'p> {
                     .has_flag(&EntityId::Story(id.clone().into()), flag),
             ),
             change::Key::ExitOpen(place, exit) => {
-                let entity = EntityId::Exit(place.clone().into(), exit.clone());
-                change::Value::Bool(self.state.has_flag(&entity, OPEN))
+                let door = (place.clone().into(), exit.clone());
+                change::Value::Bool(self.state.places.open_exits.contains(&door))
             }
             change::Key::PlaceMeter(id, meter) => {
                 self.meter_value(&EntityId::Place(id.clone().into()), meter)

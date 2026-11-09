@@ -206,12 +206,13 @@ pub(crate) fn resolve_item_id(context: &Context, id: &str) -> Result<String, Rea
 }
 
 /// Who holds the meter, flag or item a rule names: `here` and `place:` are a place, `story:`
-/// is a story, `exit:` is an exit, `world` is the world, and anyone else is an actor.
+/// is a story, `world` is the world, and anyone else is an actor. An exit holds none of them:
+/// its door is an `exit_open`, and a door's flag is read by `cond::holds`.
 pub(crate) fn resolve_entity(context: &Context, who: &Who) -> Result<EntityId, Reason> {
     match who {
         Who::World => Ok(EntityId::World),
         Who::Story(id) => Ok(EntityId::Story(id.clone())),
-        Who::Exit(place, exit) => Ok(EntityId::Exit(place.clone(), exit.clone())),
+        Who::Exit(_) => Err(Reason::UnknownId),
         Who::Place(id) => Ok(EntityId::Place(id.clone())),
         Who::Here => Ok(EntityId::Place(resolve_here(context)?.into())),
         Who::Self_ | Who::Target | Who::Actor(_) => {

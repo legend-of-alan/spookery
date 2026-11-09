@@ -1,6 +1,6 @@
 //! Turn a rule template into effects for one intent.
 
-use crate::canon::Canon;
+use crate::canon::{Canon, OPEN};
 use crate::intent::Target;
 use crate::round::dice::Roller;
 use crate::rules::context::Context;
@@ -135,15 +135,18 @@ fn expand_template(
         EffectTemplate::Flag {
             who, key, value, ..
         } => {
-            effects.push(Effect::new(
-                viewer,
-                &intent.id,
-                EffectKind::Flag {
+            let kind = match who {
+                Who::Exit(exit) if key == OPEN => EffectKind::ExitOpen {
+                    exit: exit.clone(),
+                    open: *value,
+                },
+                _ => EffectKind::Flag {
                     entity: expr::resolve_entity(context, who)?,
                     key: key.clone(),
                     value: *value,
                 },
-            ));
+            };
+            effects.push(Effect::new(viewer, &intent.id, kind));
         }
         EffectTemplate::Modifier {
             who,
@@ -199,9 +202,7 @@ fn expand_template(
             let (actor_id, place) = match expr::resolve_entity(context, who)? {
                 EntityId::Actor(id) => (Some(id), None),
                 EntityId::Place(id) => (None, Some(id)),
-                EntityId::Story(_) | EntityId::Exit(..) | EntityId::World => {
-                    return Err(Reason::Schema)
-                }
+                EntityId::Story(_) | EntityId::World => return Err(Reason::Schema),
             };
             effects.push(Effect::new(
                 viewer,

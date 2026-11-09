@@ -1,6 +1,6 @@
 //! Exits, admission, and the journeys that follow them.
 
-use crate::canon::{Canon, Exit, PlaceDef, OPEN};
+use crate::canon::{Canon, Exit, PlaceDef};
 use crate::draft::Draft;
 use crate::intent::{Intent, Source, Target, Viewer};
 use crate::round::log::RoundLog;
@@ -12,7 +12,7 @@ use crate::rules::gate;
 use crate::rules::lines::place_name;
 use crate::rules::rule::{EffectTemplate, LocationTo, Rule};
 use crate::rules::visibility::can_see_fact;
-use crate::state::id::{ActorId, EntityId};
+use crate::state::id::{ActorId, ExitId};
 use crate::state::{PendingAction, State};
 use crate::Reason;
 use spookery_protocol::ExitView;
@@ -76,7 +76,7 @@ pub(crate) fn exit_stood_on<'a>(canon: &'a Canon, place: &str) -> Option<&'a Exi
 
 /// Where a walker stands while they walk through `exit`: `exit:<place>.<exit>`.
 pub(crate) fn on_exit(exit: &Exit) -> String {
-    door(exit).to_string()
+    format!("exit:{}.{}", exit.from, exit.name)
 }
 
 /// Refuse a missing, hidden, locked, or unpaid exit. A clear exit is `Ok`.
@@ -121,15 +121,11 @@ fn is_revealed(canon: &Canon, state: &State, actor_id: &ActorId, exit: &Exit) ->
 
 /// A door is locked until it opens. An exit with no `if` is no door, so it is always open.
 fn is_locked(state: &State, exit: &Exit) -> bool {
-    !exit.if_.is_empty() && !state.has_flag(&door(exit), OPEN)
+    let door = (exit.from.clone(), exit.name.clone());
+    !exit.if_.is_empty() && !state.places.open_exits.contains(&door)
 }
 
-/// The exit as the entity that carries its flag `open`.
-fn door(exit: &Exit) -> EntityId {
-    EntityId::Exit(exit.from.clone(), exit.name.clone())
-}
-
-/// Open each locked door whose `if` some actor in its place meets, with a `flag` effect
+/// Open each locked door whose `if` some actor in its place meets, with an `exit_open` effect
 /// written as no one, under the intent `door:<place>.<exit>`. Runs at the end of each round,
 /// after triggers.
 pub(crate) fn open_doors(draft: &mut Draft, log: &mut RoundLog) {
@@ -160,11 +156,11 @@ pub(crate) fn open_doors(draft: &mut Draft, log: &mut RoundLog) {
             }
             let id = format!("door:{place}.{}", exit.name);
             let intent = Intent::new(id, state.round_index, None, Source::Engine, "door", target);
-            let kind = EffectKind::Flag {
-                entity: door(exit),
-                key: OPEN.to_string(),
-                value: true,
+            let exit = ExitId {
+                place: exit.from.clone(),
+                exit: exit.name.clone(),
             };
+            let kind = EffectKind::ExitOpen { exit, open: true };
             opens.push((Effect::new(None, &intent.id, kind), intent));
         }
     }

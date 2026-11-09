@@ -60,23 +60,21 @@ impl fmt::Display for Key {
 }
 
 impl Key {
-    /// The key of meter `key` on `entity`. An exit carries no meters.
-    pub(crate) fn meter(entity: &EntityId, key: &str) -> Option<Key> {
+    /// The key of meter `key` on `entity`.
+    pub(crate) fn meter(entity: &EntityId, key: &str) -> Key {
         let key = key.to_string();
         match entity {
-            EntityId::Actor(id) => Some(Key::ActorMeter(id.to_string(), key)),
-            EntityId::Place(id) => Some(Key::PlaceMeter(id.to_string(), key)),
-            EntityId::Story(id) => Some(Key::StoryMeter(id.to_string(), key)),
-            EntityId::Exit(..) => None,
-            EntityId::World => Some(Key::WorldMeter(key)),
+            EntityId::Actor(id) => Key::ActorMeter(id.to_string(), key),
+            EntityId::Place(id) => Key::PlaceMeter(id.to_string(), key),
+            EntityId::Story(id) => Key::StoryMeter(id.to_string(), key),
+            EntityId::World => Key::WorldMeter(key),
         }
     }
 
-    /// The key of flag `key` on `entity`. An exit's one flag is `open`.
+    /// The key of flag `key` on `entity`.
     pub(crate) fn flag(entity: &EntityId, key: &str) -> Key {
         let key = key.to_string();
         match entity {
-            EntityId::Exit(place, exit) => Key::ExitOpen(place.to_string(), exit.clone()),
             EntityId::Actor(id) => Key::ActorFlag(id.to_string(), key),
             EntityId::Place(id) => Key::PlaceFlag(id.to_string(), key),
             EntityId::Story(id) => Key::StoryFlag(id.to_string(), key),
