@@ -80,6 +80,13 @@ pub struct Writer<'a, P> {
     transaction: &'a mut Transaction,
 }
 
+impl<'a, P> Writer<'a, P> {
+    /// The one place a `Writer` is built; only `State`'s `*_mut` getters call it.
+    fn new(part: &'a mut P, transaction: &'a mut Transaction) -> Self {
+        Writer { part, transaction }
+    }
+}
+
 impl<P> Deref for Writer<'_, P> {
     type Target = P;
     fn deref(&self) -> &P {
@@ -109,38 +116,23 @@ impl State {
     }
 
     pub fn actors_mut(&mut self) -> Writer<'_, ActorComponents> {
-        Writer {
-            part: &mut self.actors,
-            transaction: &mut self.transaction,
-        }
+        Writer::new(&mut self.actors, &mut self.transaction)
     }
 
     pub fn places_mut(&mut self) -> Writer<'_, PlaceComponents> {
-        Writer {
-            part: &mut self.places,
-            transaction: &mut self.transaction,
-        }
+        Writer::new(&mut self.places, &mut self.transaction)
     }
 
     pub fn stories_mut(&mut self) -> Writer<'_, StoryComponents> {
-        Writer {
-            part: &mut self.stories,
-            transaction: &mut self.transaction,
-        }
+        Writer::new(&mut self.stories, &mut self.transaction)
     }
 
     pub fn world_mut(&mut self) -> Writer<'_, WorldComponents> {
-        Writer {
-            part: &mut self.world,
-            transaction: &mut self.transaction,
-        }
+        Writer::new(&mut self.world, &mut self.transaction)
     }
 
     pub fn notes_mut(&mut self) -> Writer<'_, Vec<Note>> {
-        Writer {
-            part: &mut self.notes,
-            transaction: &mut self.transaction,
-        }
+        Writer::new(&mut self.notes, &mut self.transaction)
     }
 
     /// The seat actor `id` acts from.
