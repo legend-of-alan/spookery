@@ -66,13 +66,21 @@ impl RoundDice {
         target: i64,
         partial_at: Option<i64>,
     ) -> Result<Roll, Reason> {
-        let actor = key
+        let actor_id = key
             .subject_id
             .as_ref()
-            .and_then(|id| state.actors.get(id))
+            .filter(|id| state.actors.kind.contains_key(*id))
             .ok_or(Reason::UnknownId)?;
         let check = canon.checks.get(check_id).ok_or(Reason::UnknownId)?;
-        roll::roll_check(check, &canon.meters, actor, &key, target, partial_at)
+        roll::roll_check(
+            check,
+            &canon.meters,
+            state,
+            actor_id,
+            &key,
+            target,
+            partial_at,
+        )
     }
 
     pub(crate) fn roller<'a>(

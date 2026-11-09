@@ -4,7 +4,7 @@ use std::fs;
 use std::path::Path;
 
 use cucumber::{given, then, when};
-use spookery_engine::testing::{state_of, PlaceLive};
+use spookery_engine::testing::state_of;
 use spookery_engine::{Presence, World as Opened};
 
 use super::common::replace_in_file;
@@ -73,7 +73,6 @@ fn add_verb_doing(pack: &Path, verb: &str, effects: &str) {
 fn stand_in_the_loft(world: &mut World) {
     let pack = world.pack.clone().unwrap();
     edit_table(world, &pack, |now, seated| {
-        now.places.insert("loft".into(), PlaceLive::default());
         set_place(now, "pc_rowan", "loft");
         set_place(now, "mira", "docks_shop");
         sit(seated, &["pc_rowan"]);
@@ -107,8 +106,8 @@ fn story_declares_a_shown_meter(world: &mut World, story: String, key: String) {
 fn rowan_and_wren_are_seated_apart(world: &mut World) {
     let pack = world.pack.clone().unwrap();
     edit_table(world, &pack, |now, seated| {
-        assert_eq!(now.actors["pc_rowan"].place, "docks_shop");
-        assert_eq!(now.actors["pc_wren"].place, "docks_street");
+        assert_eq!(now.actors.place["pc_rowan"], "docks_shop");
+        assert_eq!(now.actors.place["pc_wren"], "docks_street");
         sit(seated, &["pc_rowan", "pc_wren"]);
     });
 }
@@ -191,7 +190,8 @@ fn the_rule_runs(world: &mut World) {
 fn the_gm_sees_dread(world: &mut World) {
     assert_gm_saw(world, "story_meter ending dread");
     let now = state_of(world.pack.as_deref().unwrap());
-    assert_eq!(now.stories["ending"].meters["dread"].offset, 1);
+    let dread = ("ending".into(), "dread".to_string());
+    assert_eq!(now.stories.meters[&dread].offset, 1);
 }
 
 #[then(expr = "no player's view lists dread")]
@@ -218,7 +218,7 @@ fn a_rule_tests_the_flag(world: &mut World, who: String, key: String) {
         ),
     );
     migrate_and_play(world, vec![intent("test", "pc_rowan", "test_mark", None)]);
-    assert!(state_of(&pack).flags.contains(&"mark_seen".to_string()));
+    assert!(state_of(&pack).world.flags.contains("mark_seen"));
 }
 
 #[then(expr = "the GM sees the flag change on the siege story")]
@@ -352,8 +352,8 @@ fn the_loft_holds_lamp_oil(world: &mut World) {
     let now = state_of(world.pack.as_deref().unwrap());
     let held = now
         .places
-        .get("loft")
-        .and_then(|loft| loft.items.get("lamp_oil"));
+        .items
+        .get(&("loft".into(), "lamp_oil".to_string()));
     assert_eq!(held, Some(&1));
 }
 

@@ -155,14 +155,15 @@ fn pend(
 ) -> Result<(), Reason> {
     let actor_id = intent.actor_id().ok_or(Reason::UnknownId)?;
     if let Some(exit) = exit {
-        let actor = draft
+        let from = draft
             .state()
             .actors
+            .place
             .get(actor_id)
             .ok_or(Reason::UnknownId)?;
         let kind = EffectKind::Location {
             actor_id: actor_id.clone(),
-            from: actor.place.clone(),
+            from: from.clone(),
             to: travel::on_exit(exit),
             arrived_at: None,
         };

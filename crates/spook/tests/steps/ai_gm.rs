@@ -204,10 +204,7 @@ fn play_and_ai_gm_and_a_stub(world: &mut World) {
     wait_stub(&seen, 2, 0);
     // The view after the round shows the street.
     table::wait_suffix(&play.stdout, mark, "You are in Docks Street.");
-    let place = state_of(&pack)
-        .actors
-        .get("pc_rowan")
-        .map(|actor| actor.place.clone());
+    let place = state_of(&pack).actors.place.get("pc_rowan").cloned();
     assert_eq!(place.as_deref(), Some("docks_street"));
     let second = seen.lock().unwrap().posts[1].clone();
     assert!(second.contains("end_turn"), "{second}");
@@ -276,10 +273,7 @@ fn travel_rounds_once(world: &mut World, transport_error: bool) {
         assert_eq!(rounds, [start_ticks + 5], "travel ran twice");
         assert_eq!(model.calls().len(), 1, "{}", model.calls().len());
         assert_eq!(
-            state_of(pack)
-                .actors
-                .get("pc_rowan")
-                .map(|actor| actor.place.clone()),
+            state_of(pack).actors.place.get("pc_rowan").cloned(),
             Some("docks_street".to_string())
         );
     });

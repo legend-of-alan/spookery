@@ -9,7 +9,7 @@ use crate::state::change;
 use crate::state::id::{ActorId, EntityId, PlaceId};
 use crate::state::meter::{self, MeterWrite};
 use crate::state::modifier::{self, Modifier};
-use crate::state::{self, MemoryLine, Note};
+use crate::state::{self, ActorKind, MemoryLine, Note};
 use crate::Reason;
 
 /// One effect. JSON is `kind`, `as`, `intent_id`, then the fields of `kind`.
@@ -577,8 +577,7 @@ pub(crate) fn write_meter(
         .ok_or(Reason::UnknownId)?;
     let change_key = change::Key::meter(entity, key).ok_or(Reason::UnknownId)?;
     draft.mutate(change_key, |state| {
-        let meters = state.meters_mut(entity)?;
-        meter::write(&def, meters.get_mut(key).ok_or(Reason::UnknownId)?, write)
+        meter::write(&def, state.meter_mut(entity, key)?, write)
     })
 }
 
@@ -595,17 +594,24 @@ pub(crate) fn shift_item(
         EntityId::Actor(actor_id) => {
             let change_key = change::Key::ActorItem(actor_id.to_string(), id.to_string());
             draft.mutate(change_key, |state| {
-                state::shift_count(&mut state.actor_mut(actor_id)?.inventory, id, delta, max)
+                state.actors.kind.get(actor_id).ok_or(Reason::UnknownId)?;
+                let key = (actor_id.clone(), id.to_string());
+                state::shift_count(&mut state.actors.items, key, delta, max)
             })?;
             draft.mutate(change::Key::ActorWielded(actor_id.to_string()), |state| {
-                Ok(state.actor_mut(actor_id)?.release_wielded())
+                let actors = &mut state.actors;
+                let wielded = actors.wielded.get(actor_id).cloned();
+                let gone = wielded
+                    .is_some_and(|item| !actors.items.contains_key(&(actor_id.clone(), item)));
+                Ok(gone && actors.wielded.remove(actor_id).is_some())
             })
         }
         EntityId::Place(place) => {
             let change_key = change::Key::PlaceItem(place.to_string(), id.to_string());
+            draft.canon().places.get(place).ok_or(Reason::UnknownId)?;
             draft.mutate(change_key, |state| {
-                let place_live = state.places.get_mut(place).ok_or(Reason::UnknownId)?;
-                state::shift_count(&mut place_live.items, id, delta, max)
+                let key = (place.clone(), id.to_string());
+                state::shift_count(&mut state.places.items, key, delta, max)
             })
         }
         EntityId::Story(_) | EntityId::Exit(..) | EntityId::World => Err(Reason::Schema),
@@ -628,12 +634,9 @@ fn apply_modifier(
         .meter_def(entity.as_ref(), &def.meter)
         .ok_or(Reason::UnknownId)?;
     let now = draft.state().world_time;
-    let actor = draft
-        .state()
-        .actors
-        .get(actor_id)
-        .ok_or(Reason::UnknownId)?;
-    let held = actor.modifiers.get(id);
+    let actors = &draft.state().actors;
+    actors.kind.get(actor_id).ok_or(Reason::UnknownId)?;
+    let held = actors.modifiers.get(&(actor_id.clone(), id.to_string()));
     let mut next = held.cloned().unwrap_or_else(|| Modifier {
         meter: def.meter.clone(),
         until: now,
@@ -651,10 +654,8 @@ fn apply_modifier(
     draft.mutate(
         change::Key::ActorModifier(actor_id.to_string(), id.to_string()),
         |state| {
-            state
-                .actor_mut(actor_id)?
-                .modifiers
-                .insert(id.to_string(), next);
+            let key = (actor_id.clone(), id.to_string());
+            state.actors.modifiers.insert(key, next);
             state.meter_value(&canon, &entity, &def.meter)?;
             Ok(changed)
         },
@@ -667,18 +668,19 @@ fn wield(draft: &mut Draft, actor_id: &ActorId, item_id: &str) -> Result<(), Rea
         return Err(Reason::NotAWeapon);
     }
     draft.mutate(change::Key::ActorWielded(actor_id.to_string()), |state| {
-        let actor = state.actor_mut(actor_id)?;
-        if actor.item_count(item_id) == 0 {
+        state.actors.kind.get(actor_id).ok_or(Reason::UnknownId)?;
+        if !(state.actors.items).contains_key(&(actor_id.clone(), item_id.to_string())) {
             return Err(Reason::MissingItem);
         }
-        let wielded = actor.wielded.replace(item_id.to_string());
+        let wielded = (state.actors.wielded).insert(actor_id.clone(), item_id.to_string());
         Ok(wielded.as_deref() != Some(item_id))
     })
 }
 
 fn unwield(draft: &mut Draft, actor_id: &ActorId) -> Result<(), Reason> {
     draft.mutate(change::Key::ActorWielded(actor_id.to_string()), |state| {
-        Ok(state.actor_mut(actor_id)?.wielded.take().is_some())
+        state.actors.kind.get(actor_id).ok_or(Reason::UnknownId)?;
+        Ok(state.actors.wielded.remove(actor_id).is_some())
     })
 }
 
@@ -697,22 +699,23 @@ fn move_actor(
     // A walker stands on the exit until they arrive. The exit is no place of its own.
     let on_exit = crate::rules::travel::exit_stood_on(draft.canon(), to).is_some();
     draft.mutate(change::Key::ActorPlace(actor_id.to_string()), |state| {
-        let actor = state.actors.get_mut(actor_id).ok_or(Reason::UnknownId)?;
-        if table_empty && actor.is_pc() {
+        let kind = state.actors.kind.get(actor_id).ok_or(Reason::UnknownId)?;
+        if table_empty && *kind == ActorKind::Pc {
             return Err(Reason::TableEmpty);
         }
-        if actor.place != from {
+        let place = state
+            .actors
+            .place
+            .get_mut(actor_id)
+            .ok_or(Reason::UnknownId)?;
+        if place != from {
             return Err(Reason::OutOfRange);
         }
-        if !in_canon && !on_exit && !state.places.contains_key(to) {
+        if !in_canon && !on_exit {
             return Err(Reason::NoExit);
         }
-        let moved = actor.place != to;
-        actor.place = to.to_string();
-        // A canon place with no live record yet gets an empty one on the first arrival.
-        if !on_exit {
-            state.places.entry(to.into()).or_default();
-        }
+        let moved = place != to;
+        *place = to.to_string();
         Ok(moved)
     })
 }
@@ -743,9 +746,17 @@ fn remember(
     draft.count_memory_write()?;
     state::sort_unique(&mut fact_ids);
     draft.mutate(change::Key::ActorKnownFact(actor_id.to_string()), |state| {
-        let known = &mut state.actor_mut(actor_id)?.known_facts;
-        let learned = fact_ids.iter().any(|fact| !known.contains(fact));
+        state.actors.kind.get(actor_id).ok_or(Reason::UnknownId)?;
+        let known = state.actors.known_facts.get(actor_id);
+        let learned = fact_ids
+            .iter()
+            .any(|fact| known.is_none_or(|known| !known.contains(fact)));
         if learned {
+            let known = state
+                .actors
+                .known_facts
+                .entry(actor_id.clone())
+                .or_default();
             known.extend(fact_ids.iter().cloned());
             state::sort_unique(known);
         }
@@ -778,7 +789,12 @@ fn reveal(draft: &mut Draft, actor_id: &ActorId, fact: &str) -> Result<(), Reaso
         return Err(Reason::UnknownId);
     }
     draft.mutate(change::Key::ActorKnownFact(actor_id.to_string()), |state| {
-        let known = &mut state.actor_mut(actor_id)?.known_facts;
+        state.actors.kind.get(actor_id).ok_or(Reason::UnknownId)?;
+        let known = state
+            .actors
+            .known_facts
+            .entry(actor_id.clone())
+            .or_default();
         if known.iter().any(|id| id == fact) {
             return Ok(false);
         }
@@ -796,14 +812,12 @@ fn leave_note(
     mut fact_ids: Vec<String>,
     text: String,
 ) -> Result<(), Reason> {
+    let known_place = place
+        .as_ref()
+        .is_none_or(|at| draft.canon().places.contains_key(at));
     draft.mutate(change::Key::Note(note_id.clone()), |state| {
-        if state.notes.iter().any(|note| note.id == note_id) {
+        if state.notes.iter().any(|note| note.id == note_id) || !known_place {
             return Err(Reason::UnknownId);
-        }
-        if let Some(place_id) = &place {
-            if !state.places.contains_key(place_id) {
-                return Err(Reason::UnknownId);
-            }
         }
         state::sort_unique(&mut to);
         state::sort_unique(&mut fact_ids);

@@ -65,7 +65,8 @@ fn hit_rowan(world: &mut World, moves: &[(&str, &str)]) {
 }
 
 fn modifier_of(pack: &Path, id: &str) -> Option<Modifier> {
-    state_of(pack).actors["pc_rowan"].modifiers.get(id).cloned()
+    let modifiers = state_of(pack).actors.modifiers;
+    modifiers.get(&("pc_rowan".into(), id.to_string())).cloned()
 }
 
 fn stacks_of(pack: &Path, id: &str) -> Vec<i64> {
@@ -79,14 +80,15 @@ fn lowered(pack: &Path, meter: &str) -> i64 {
     let now = state_of(pack);
     let canon = load_canon(pack).unwrap_or_else(|err| panic!("load: {err:?}"));
     let rowan = EntityId::Actor("pc_rowan".into());
-    let Meter { base, offset } = now.actors["pc_rowan"].meters[meter].clone();
+    let key = ("pc_rowan".into(), meter.to_string());
+    let Meter { base, offset } = now.actors.meters[&key].clone();
     base + offset - now.meter_value(&canon, &rowan, meter).unwrap()
 }
 
 /// Ticks from the latest round until modifier `id` expires.
 fn ticks_left(pack: &Path, id: &str) -> u64 {
     let now = state_of(pack);
-    now.actors["pc_rowan"].modifiers[id].ticks_left(now.world_time)
+    now.actors.modifiers[&("pc_rowan".into(), id.to_string())].ticks_left(now.world_time)
 }
 
 /// Give pc_rowan these stacks of modifier `id`, expiring `left` ticks from now, `left` being the longest so far.
@@ -100,11 +102,8 @@ fn hold(pack: &Path, id: &str, stacks: Vec<i64>, left: u64) {
             max_ticks: left,
             stacks,
         };
-        now.actors
-            .get_mut("pc_rowan")
-            .unwrap()
-            .modifiers
-            .insert(id.to_string(), live);
+        let key = ("pc_rowan".into(), id.to_string());
+        now.actors.modifiers.insert(key, live);
     });
 }
 
@@ -128,9 +127,9 @@ fn docks_with_one_tick_rounds(world: &mut World) {
     edit_table(world, &pack, |now, seated| {
         set_place(now, "pc_wren", "docks_shop");
         set_place(now, "pc_harbormouse", "docks_shop");
-        let rowan = now.actors.get_mut("pc_rowan").unwrap();
-        rowan.place = "docks_shop".to_string();
-        rowan.meters.get_mut("grit").unwrap().base = 20;
+        *now.actors.place.get_mut("pc_rowan").unwrap() = "docks_shop".to_string();
+        let grit = ("pc_rowan".into(), "grit".to_string());
+        now.actors.meters.get_mut(&grit).unwrap().base = 20;
         sit(seated, &["pc_harbormouse", "pc_rowan", "pc_wren"]);
     });
     world.pack = Some(pack);
@@ -195,10 +194,12 @@ fn two_modifiers_on_sight(world: &mut World, rain: String, fog: String) {
     meters.push_str("  - id: sight\n    min: 0\n    base_cap: 10\n    max: 10\n    base: 5\n");
     fs::write(path, meters).unwrap();
     edit_save(&pack, |now| {
-        for actor in now.actors.values_mut() {
-            actor
+        let actors: Vec<_> = now.actors.kind.keys().cloned().collect();
+        for actor in actors {
+            let sight = (actor, "sight".to_string());
+            now.actors
                 .meters
-                .insert("sight".into(), Meter { base: 5, offset: 0 });
+                .insert(sight, Meter { base: 5, offset: 0 });
         }
     });
     add_modifier(&pack, &rain, "sight", "");
@@ -328,12 +329,9 @@ meters:
     edit_save(&pack, |now| {
         let luck = Meter { base: 1, offset: 0 };
         let tide = Meter { base: 4, offset: 0 };
-        now.actors
-            .get_mut("pc_rowan")
-            .unwrap()
-            .meters
-            .insert("luck".into(), luck);
-        now.world_meters.insert("tide".into(), tide);
+        let rowans_luck = ("pc_rowan".into(), "luck".to_string());
+        now.actors.meters.insert(rowans_luck, luck);
+        now.world.meters.insert("tide".into(), tide);
     });
 }
 
@@ -395,17 +393,17 @@ fn rowan_has_no_burn(world: &mut World) {
 
 #[then(expr = "pc_rowan has neither burn nor soaked")]
 fn rowan_has_neither(world: &mut World) {
-    assert!(state_of(pack(world)).actors["pc_rowan"]
-        .modifiers
-        .is_empty());
+    let modifiers = state_of(pack(world)).actors.modifiers;
+    assert!(!modifiers.keys().any(|(owner, _)| *owner == *"pc_rowan"));
 }
 
 #[then(expr = "pc_rowan has no luck and the world has no tide")]
 fn neither_keeps_the_dropped_meter(world: &mut World) {
     let now = state_of(pack(world));
-    assert!(!now.actors["pc_rowan"].meters.contains_key("luck"));
-    assert!(now.actors["pc_rowan"].meters.contains_key("grit"));
-    assert!(!now.world_meters.contains_key("tide"));
+    let meters = &now.actors.meters;
+    assert!(!meters.contains_key(&("pc_rowan".into(), "luck".to_string())));
+    assert!(meters.contains_key(&("pc_rowan".into(), "grit".to_string())));
+    assert!(!now.world.meters.contains_key("tide"));
 }
 
 #[then(expr = "the GM sees {string} as a changed key")]

@@ -77,9 +77,8 @@ pub fn is_defined(defs: &BTreeMap<String, ModifierDef>, id: &str, live: &Modifie
 }
 
 /// What the modifiers in `held` add to meter `key`: the sum of their stacks.
-pub fn sum(held: &BTreeMap<String, Modifier>, key: &str) -> Result<i64, Reason> {
-    held.values()
-        .filter(|live| live.meter == key)
+pub fn sum<'a>(held: impl Iterator<Item = &'a Modifier>, key: &str) -> Result<i64, Reason> {
+    held.filter(|live| live.meter == key)
         .flat_map(|live| &live.stacks)
         .try_fold(0i64, |total, add| total.checked_add(*add))
         .ok_or(Reason::OutOfRange)
@@ -125,9 +124,9 @@ mod tests {
                 stacks: vec![5],
             },
         );
-        assert_eq!(sum(&map, "grit"), Ok(-3));
-        assert_eq!(sum(&map, "nerve"), Ok(0));
+        assert_eq!(sum(map.values(), "grit"), Ok(-3));
+        assert_eq!(sum(map.values(), "nerve"), Ok(0));
         map.insert("vast".to_string(), held(&[i64::MIN]));
-        assert_eq!(sum(&map, "grit"), Err(Reason::OutOfRange));
+        assert_eq!(sum(map.values(), "grit"), Err(Reason::OutOfRange));
     }
 }

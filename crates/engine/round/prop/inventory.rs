@@ -14,6 +14,7 @@
 //!
 //! Deterministic in CI: 64 cases, seed `0x0018_0018`, no failure file.
 
+use crate::canon::Canon;
 use crate::draft::Draft;
 use crate::intent::{Intent, IntentArgs, Source, Target, Viewer};
 use crate::rules::effect::{Effect, EffectKind};
@@ -39,8 +40,8 @@ struct ItemChange {
 fn random_item_changes_never_leave_a_negative_count() {
     let pack = TempPack(copy_docks("inventory"));
     let world = World::open(&pack.0).expect("docks pack opens");
-    let actors: Vec<ActorId> = world.state().actors.keys().cloned().collect();
-    let places: Vec<PlaceId> = world.state().places.keys().cloned().collect();
+    let actors: Vec<ActorId> = world.state().actors.kind.keys().cloned().collect();
+    let places: Vec<PlaceId> = world.canon().places.keys().cloned().collect();
     assert!(
         actors.len() >= 2 && !places.is_empty(),
         "the pack needs actors and places to shift"
@@ -58,7 +59,7 @@ fn apply_changes(world: &World<()>, steps: &[ItemChange]) -> Result<(), TestCase
     let intent = npc_intent();
     for step in steps {
         let before = draft.state().clone();
-        let known = is_known_entity(draft.state(), &step.entity);
+        let known = is_known_entity(draft.canon(), draft.state(), &step.entity);
         let held = count_of(draft.state(), &step.entity, &step.id);
         let outcome = item_effect(step).apply(&mut draft, &intent);
         assert_no_stored_zero(draft.state())?;
@@ -106,27 +107,23 @@ fn assert_same_save(state: &State, before: &State) -> Result<(), TestCaseError> 
 
 /// A stored count is a `u32`, so it cannot be negative. A count of 0 is omitted.
 fn assert_no_stored_zero(state: &State) -> Result<(), TestCaseError> {
-    for (actor_id, actor) in &state.actors {
-        for (item_id, count) in &actor.inventory {
-            if *count == 0 {
-                return fail(format!("{actor_id} stores a zero count of {item_id}"));
-            }
+    for ((actor_id, item_id), count) in &state.actors.items {
+        if *count == 0 {
+            return fail(format!("{actor_id} stores a zero count of {item_id}"));
         }
     }
-    for (place_id, place) in &state.places {
-        for (item_id, count) in &place.items {
-            if *count == 0 {
-                return fail(format!("{place_id} stores a zero count of {item_id}"));
-            }
+    for ((place_id, item_id), count) in &state.places.items {
+        if *count == 0 {
+            return fail(format!("{place_id} stores a zero count of {item_id}"));
         }
     }
     Ok(())
 }
 
-fn is_known_entity(state: &State, entity: &EntityId) -> bool {
+fn is_known_entity(canon: &Canon, state: &State, entity: &EntityId) -> bool {
     match entity {
-        EntityId::Actor(id) => state.actors.contains_key(id),
-        EntityId::Place(id) => state.places.contains_key(id),
+        EntityId::Actor(id) => state.actors.kind.contains_key(id),
+        EntityId::Place(id) => canon.places.contains_key(id),
         EntityId::Story(_) | EntityId::Exit(..) | EntityId::World => false,
     }
 }
@@ -135,13 +132,14 @@ fn count_of(state: &State, entity: &EntityId, id: &str) -> u32 {
     match entity {
         EntityId::Actor(actor_id) => state
             .actors
-            .get(actor_id)
-            .map(|actor| actor.item_count(id))
+            .items
+            .get(&(actor_id.clone(), id.to_string()))
+            .copied()
             .unwrap_or(0),
         EntityId::Place(place_id) => state
             .places
-            .get(place_id)
-            .and_then(|place| place.items.get(id))
+            .items
+            .get(&(place_id.clone(), id.to_string()))
             .copied()
             .unwrap_or(0),
         EntityId::Story(_) | EntityId::Exit(..) | EntityId::World => 0,

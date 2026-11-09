@@ -70,3 +70,14 @@ Feature: Stories and places carry meters and flags
     And pc_rowan stands in the loft
     When a rule sets who "place:loft" flag lamp_lit to true
     Then pc_rowan's change line does not show it
+
+  Scenario: An item can be put in a place the pack added after its save was made
+    Given the docks pack gains world/places/loft.md and is migrated
+    When a rule gives who "place:loft" 1 lamp_oil
+    Then the loft holds 1 lamp_oil
+    And spook verify passes on this pack
+
+  Scenario: A note can be left in a place the pack added after its save was made
+    Given the docks pack gains world/places/loft.md and is migrated
+    When a rule leaves a note in the loft
+    Then pc_rowan, standing in the loft, perceives the note

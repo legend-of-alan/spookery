@@ -68,7 +68,7 @@ fn mira_stands_in_a_place_with_no_facts(world: &mut World) {
     let pack = support::copy_docks("no-facts");
     strip_room_facts(&pack);
     support::edit_save(&pack, |state| {
-        state.actors.get_mut("mira").unwrap().known_facts.clear();
+        state.actors.known_facts.remove("mira");
     });
     let opened = spookery_engine::World::open(&pack).unwrap_or_else(|err| panic!("open: {err}"));
     let view = opened
@@ -146,9 +146,9 @@ fn strip_room_facts(pack: &Path) {
 fn place_of(pack: &Path, actor: &str) -> String {
     support::state_of(pack)
         .actors
+        .place
         .get(actor)
         .unwrap_or_else(|| panic!("{actor} missing"))
-        .place
         .to_string()
 }
 

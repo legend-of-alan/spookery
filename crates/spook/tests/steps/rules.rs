@@ -3,7 +3,9 @@ use std::path::Path;
 
 use cucumber::{given, then, when};
 use serde_json::Value;
-use spookery_engine::testing::{faces, PlaceLive, RollKey};
+use spookery_engine::testing::{faces, RollKey};
+
+use crate::support::copy_actor;
 use spookery_engine::MoveReport;
 use spookery_engine::{Presence, Reason};
 
@@ -223,8 +225,7 @@ The ferry waits at the dock.
     assert_ne!(text, next, "rowan profile was not found");
     fs::write(&rowan, next).unwrap();
     edit_save(&pack, |now| {
-        now.places.insert("ferry_dock".into(), PlaceLive::default());
-        now.actors.get_mut("pc_rowan").unwrap().place = "ferry_dock".to_string();
+        *now.actors.place.get_mut("pc_rowan").unwrap() = "ferry_dock".to_string();
     });
     world.pack = Some(pack);
 }
@@ -249,12 +250,14 @@ fn a_pc_at_ferry_dock_travels(world: &mut World) {
 #[then(expr = "place:ferry_dock\\/travel runs and verb:travel does not")]
 fn the_ferry_rule_runs(world: &mut World) {
     let now = state_of(world.pack.as_ref().unwrap());
-    let rowan = now.actors.get("pc_rowan").unwrap();
-    assert_eq!(rowan.place, "ferry_dock", "verb:travel moved the PC");
+    assert_eq!(
+        now.actors.place["pc_rowan"], "ferry_dock",
+        "verb:travel moved the PC"
+    );
+    let flags = &now.actors.flags;
     assert!(
-        rowan.flags.iter().any(|flag| flag == "took_the_ferry"),
-        "ferry flag missing: {:?}",
-        rowan.flags
+        flags.contains(&("pc_rowan".into(), "took_the_ferry".to_string())),
+        "ferry flag missing: {flags:?}"
     );
 }
 
@@ -336,16 +339,18 @@ fn an_empty_round_lands_at(world: &mut World, tick: u64) {
     let pack = world.pack.clone().unwrap();
     edit_save(&pack, |now| {
         now.world_time = tick - 60;
-        let mira = now.actors.get_mut("mira").unwrap();
-        mira.meters.get_mut("shop_day").unwrap().base = 0;
-        let mut briar = mira.clone();
-        briar.meters.remove("shop_day");
-        now.actors.insert("briar".into(), briar);
-        now.actors.get_mut("briar").unwrap().place = "docks_shop".to_string();
+        let shop_day = ("mira".into(), "shop_day".to_string());
+        now.actors.meters.get_mut(&shop_day).unwrap().base = 0;
+        let mira_place = now.actors.place["mira"].clone();
+        copy_actor(now, "mira", "briar", &mira_place);
         now.actors
+            .meters
+            .remove(&("briar".into(), "shop_day".to_string()));
+        *now.actors.place.get_mut("briar").unwrap() = "docks_shop".to_string();
+        now.actors
+            .acts
             .get_mut("mira")
             .unwrap()
-            .act
             .idle_acts_this_window = 3;
     });
     play_an_empty_round(&pack);
@@ -358,9 +363,9 @@ fn an_empty_round_lands_with_mira(world: &mut World, tick: u64) {
     let pack = world.pack.clone().unwrap();
     edit_save(&pack, |now| {
         now.world_time = tick - 60;
-        let mira = now.actors.get_mut("mira").unwrap();
-        mira.meters.get_mut("shop_day").unwrap().base = 0;
-        mira.place = "docks_shop".to_string();
+        let shop_day = ("mira".into(), "shop_day".to_string());
+        now.actors.meters.get_mut(&shop_day).unwrap().base = 0;
+        *now.actors.place.get_mut("mira").unwrap() = "docks_shop".to_string();
     });
     play_an_empty_round(&pack);
 }
@@ -388,8 +393,8 @@ fn lamp_oil_increases_by_4(world: &mut World) {
     let now = state_of(world.pack.as_ref().unwrap());
     let oil = now
         .places
-        .get("docks_shop")
-        .and_then(|place| place.items.get("lamp_oil"))
+        .items
+        .get(&("docks_shop".into(), "lamp_oil".to_string()))
         .copied();
     assert_eq!(oil, Some(8u32), "world_time {}", now.world_time);
 }
@@ -406,8 +411,8 @@ fn every_actor_used_its_idle_acts(world: &mut World, window: u64, tick: u64) {
     );
     edit_save(&pack, |now| {
         now.world_time = tick;
-        for actor in now.actors.values_mut() {
-            actor.act.idle_acts_this_window = 3;
+        for act in now.actors.acts.values_mut() {
+            act.idle_acts_this_window = 3;
         }
     });
     world.pack = Some(pack);
@@ -431,15 +436,16 @@ fn a_seated_round_runs(world: &mut World) {
 fn every_actor_idle_acts(world: &mut World, tick: u64, acts: u32) {
     let now = state_of(world.pack.as_ref().unwrap());
     assert_eq!(now.world_time, tick);
-    for (id, actor) in &now.actors {
-        assert_eq!(actor.act.idle_acts_this_window, acts, "{id}");
+    for (id, act) in &now.actors.acts {
+        assert_eq!(act.idle_acts_this_window, acts, "{id}");
     }
 }
 
 #[then(expr = "docks_shop holds {int} lamp_oil")]
 fn docks_shop_holds_lamp_oil(world: &mut World, count: u32) {
     let now = state_of(world.pack.as_ref().unwrap());
-    let oil = now.places["docks_shop"].items.get("lamp_oil").copied();
+    let shop_oil = ("docks_shop".into(), "lamp_oil".to_string());
+    let oil = now.places.items.get(&shop_oil).copied();
     assert_eq!(oil, Some(count), "world_time {}", now.world_time);
 }
 
@@ -483,14 +489,12 @@ fn attack_targets_defense(world: &mut World) {
     edit_save(&pack, |now| {
         let defense = now
             .actors
-            .get_mut("npc_briar")
-            .unwrap()
             .meters
-            .get_mut("defense")
+            .get_mut(&("npc_briar".into(), "defense".to_string()))
             .unwrap();
         defense.base = 12;
         defense.offset = 0;
-        now.actors.get_mut("npc_briar").unwrap().act.busy_until = Some(u64::MAX);
+        now.actors.acts.get_mut("npc_briar").unwrap().busy_until = Some(u64::MAX);
     });
     world.pack = Some(pack);
 }
@@ -515,10 +519,8 @@ fn lark_attacks(world: &mut World) {
     edit_save(&pack, |now| {
         let might = now
             .actors
-            .get_mut("pc_lark")
-            .unwrap()
             .meters
-            .get_mut("might")
+            .get_mut(&("pc_lark".into(), "might".to_string()))
             .unwrap();
         might.base = 21 - i64::from(face);
         might.offset = 0;
@@ -552,9 +554,10 @@ fn lark_attacks(world: &mut World) {
 fn the_outcome_is_a_miss(world: &mut World) {
     assert_eq!(world.scratch, "miss");
     let now = state_of(world.pack.as_ref().unwrap());
-    let flags = &now.actors.get("npc_briar").unwrap().flags;
-    assert!(flags.iter().any(|flag| flag == "missed"), "{flags:?}");
-    assert!(!flags.iter().any(|flag| flag == "hit"), "{flags:?}");
+    let flags = &now.actors.flags;
+    let briars = |flag: &str| ("npc_briar".into(), flag.to_string());
+    assert!(flags.contains(&briars("missed")), "{flags:?}");
+    assert!(!flags.contains(&briars("hit")), "{flags:?}");
 }
 
 #[given(expr = "a pack with rules\\/moves.yaml")]
@@ -683,10 +686,8 @@ fn steady_costs_five_grit(world: &mut World) {
     edit_save(&pack, |now| {
         let grit = now
             .actors
-            .get_mut("pc_rowan")
-            .unwrap()
             .meters
-            .get_mut("grit")
+            .get_mut(&("pc_rowan".into(), "grit".to_string()))
             .unwrap();
         grit.base = 1;
         grit.offset = 0;
@@ -738,7 +739,7 @@ rules:
     );
     edit_save(&pack, |_| {});
     let now = state_of(&pack);
-    assert_eq!(now.actors.get("pc_rowan").unwrap().place, "docks_shop");
+    assert_eq!(now.actors.place["pc_rowan"], "docks_shop");
     world.pack = Some(pack);
 }
 
@@ -769,8 +770,7 @@ fn both_full_ids_are_refused(world: &mut World) {
         )
     );
     let now = state_of(world.pack.as_ref().unwrap());
-    let rowan = now.actors.get("pc_rowan").unwrap();
-    assert_eq!(rowan.place, "docks_shop");
+    assert_eq!(now.actors.place["pc_rowan"], "docks_shop");
     assert_eq!(now.world_time, 1080);
     assert_eq!(now.round_index, 0);
     assert!(
@@ -780,7 +780,9 @@ fn both_full_ids_are_refused(world: &mut World) {
         "the habit note was stored"
     );
     assert!(
-        !rowan.flags.iter().any(|flag| flag == "took_the_street"),
+        !now.actors
+            .flags
+            .contains(&("pc_rowan".into(), "took_the_street".to_string())),
         "the far place rule ran"
     );
 }
@@ -816,8 +818,8 @@ A small bottle.
 ",
     );
     edit_save(&pack, |now| {
-        let rowan = now.actors.get_mut("pc_rowan").unwrap();
-        rowan.inventory.insert("tonic".to_string(), 1);
+        let tonic = ("pc_rowan".into(), "tonic".to_string());
+        now.actors.items.insert(tonic, 1);
     });
     world.pack = Some(pack);
 }
@@ -849,7 +851,7 @@ fn the_seated_pc_queues_use_tonic(world: &mut World) {
 fn the_queued_target_is_that_item(world: &mut World) {
     assert_eq!(world.scratch, "Item(\"tonic\") use");
     let now = state_of(world.pack.as_ref().unwrap());
-    assert_eq!(now.actors.get("pc_rowan").unwrap().place, "docks_shop");
+    assert_eq!(now.actors.place["pc_rowan"], "docks_shop");
     assert_eq!(now.world_time, 1080);
     assert_eq!(now.round_index, 0);
 }
@@ -975,7 +977,7 @@ fn briar_holds_ask(world: &mut World) {
 fn briar_holds_ask_in_the_lane(world: &mut World) {
     let pack = copy_pack("sample-d20", "rules-scoped-gone");
     edit_save(&pack, |now| {
-        now.actors.get_mut("npc_briar").unwrap().place = "mill_lane".to_string();
+        *now.actors.place.get_mut("npc_briar").unwrap() = "mill_lane".to_string();
     });
     world.pack = Some(pack);
 }
@@ -984,7 +986,7 @@ fn briar_holds_ask_in_the_lane(world: &mut World) {
 fn lark_in_the_yard_plays(world: &mut World, line: String) {
     let now = state_of(world.pack.as_ref().unwrap());
     for actor in ["pc_lark", "npc_briar"] {
-        assert_eq!(now.actors.get(actor).unwrap().place, "gate_yard");
+        assert_eq!(now.actors.place[actor], "gate_yard");
     }
     play_larks_line(world, &line);
 }
@@ -994,8 +996,9 @@ fn lark_alone_plays(world: &mut World, line: String) {
     let now = state_of(world.pack.as_ref().unwrap());
     let yard = now
         .actors
+        .place
         .iter()
-        .filter(|(_, actor)| actor.place == "gate_yard");
+        .filter(|(_, place)| *place == "gate_yard");
     assert_eq!(
         yard.map(|(id, _)| id.as_str()).collect::<Vec<_>>(),
         ["pc_lark"]
@@ -1008,9 +1011,9 @@ fn briars_ask_runs_on_briar(world: &mut World) {
     assert_eq!(world.scratch, r#"{"actor":"npc_briar"} cast:npc_briar/ask"#);
     let now = state_of(world.pack.as_ref().unwrap());
     assert!(
-        now.flags.iter().any(|flag| flag == "passage"),
+        now.world.flags.iter().any(|flag| flag == "passage"),
         "{:?}",
-        now.flags
+        now.world.flags
     );
 }
 

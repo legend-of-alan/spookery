@@ -13,8 +13,8 @@ use crate::support;
 use crate::World;
 
 fn keep_briar_busy(now: &mut State) {
-    if let Some(briar) = now.actors.get_mut("npc_briar") {
-        briar.act.busy_until = Some(u64::MAX);
+    if let Some(briar) = now.actors.acts.get_mut("npc_briar") {
+        briar.busy_until = Some(u64::MAX);
     }
 }
 
@@ -28,16 +28,14 @@ fn hp(pack: &Path, actor: &str) -> i64 {
 fn count(pack: &Path, actor: &str, item: &str) -> u32 {
     support::state_of(pack)
         .actors
-        .get(actor)
-        .unwrap()
-        .item_count(item)
+        .items
+        .get(&(actor.into(), item.to_string()))
+        .copied()
+        .unwrap_or(0)
 }
 
 fn wielded(pack: &Path, actor: &str) -> Option<String> {
-    support::state_of(pack)
-        .actors
-        .get(actor)
-        .and_then(|actor| actor.wielded.clone())
+    support::state_of(pack).actors.wielded.get(actor).cloned()
 }
 
 /// One line at a table with no GM: queue it, then commit its round.
@@ -132,16 +130,16 @@ fn add_attack_rules(pack: &Path, attack: &str) {
 }
 
 fn hold_dagger(now: &mut State, wield: bool) {
-    now.actors.get_mut("pc_lark").unwrap().place = "gate_yard".to_string();
-    now.actors.get_mut("pc_nell").unwrap().place = "gate_yard".to_string();
+    *now.actors.place.get_mut("pc_lark").unwrap() = "gate_yard".to_string();
+    *now.actors.place.get_mut("pc_nell").unwrap() = "gate_yard".to_string();
     keep_briar_busy(now);
     now.actors
-        .get_mut("pc_lark")
-        .unwrap()
-        .inventory
-        .insert("poisoned_dagger".to_string(), 1);
+        .items
+        .insert(("pc_lark".into(), "poisoned_dagger".to_string()), 1);
     if wield {
-        now.actors.get_mut("pc_lark").unwrap().wielded = Some("poisoned_dagger".to_string());
+        now.actors
+            .wielded
+            .insert("pc_lark".into(), "poisoned_dagger".to_string());
     }
 }
 
@@ -154,18 +152,14 @@ fn nell_holds_a_tonic(world: &mut World) {
     assert_ne!(text, next, "hp meter was not narrowed");
     fs::write(&meters, next).unwrap();
     support::edit_save(&pack, |now| {
-        now.actors.get_mut("pc_nell").unwrap().place = "gate_yard".to_string();
+        *now.actors.place.get_mut("pc_nell").unwrap() = "gate_yard".to_string();
         keep_briar_busy(now);
         now.actors
-            .get_mut("pc_nell")
-            .unwrap()
-            .inventory
-            .insert("tonic".to_string(), 1);
+            .items
+            .insert(("pc_nell".into(), "tonic".to_string()), 1);
         now.actors
-            .get_mut("pc_nell")
-            .unwrap()
             .meters
-            .get_mut("hp")
+            .get_mut(&("pc_nell".into(), "hp".to_string()))
             .unwrap()
             .base = 3;
     });
@@ -210,10 +204,8 @@ fn docks_shop_has_3_lamp_oil(world: &mut World) {
     let pack = support::copy_pack("oneshot-docks", "take");
     support::edit_save(&pack, |now| {
         now.places
-            .get_mut("docks_shop")
-            .unwrap()
             .items
-            .insert("lamp_oil".to_string(), 3);
+            .insert(("docks_shop".into(), "lamp_oil".to_string()), 3);
     });
     world.pack = Some(pack);
 }
@@ -231,15 +223,17 @@ fn the_oil_moved(world: &mut World) {
     let now = support::state_of(pack);
     assert_eq!(
         now.places
-            .get("docks_shop")
-            .unwrap()
             .items
-            .get("lamp_oil")
+            .get(&("docks_shop".into(), "lamp_oil".to_string()))
             .copied(),
         Some(2)
     );
     assert_eq!(
-        now.actors.get("pc_rowan").unwrap().item_count("lamp_oil"),
+        now.actors
+            .items
+            .get(&("pc_rowan".into(), "lamp_oil".to_string()))
+            .copied()
+            .unwrap_or(0),
         1
     );
 }
@@ -280,8 +274,8 @@ fn lark_holds_a_latch_at_a_table(world: &mut World) {
     let pack = support::copy_pack("sample-d20", "use-latch");
     support::edit_save(&pack, |now| {
         keep_briar_busy(now);
-        let lark = now.actors.get_mut("pc_lark").unwrap();
-        lark.inventory.insert("latch".to_string(), 1);
+        let latch = ("pc_lark".into(), "latch".to_string());
+        now.actors.items.insert(latch, 1);
     });
     table::listen(world, &pack);
     table::seat_actor(world, &pack, "pc_lark");
@@ -319,7 +313,14 @@ fn no_round_was_spent(world: &mut World) {
         "a round was spent"
     );
     assert!(spookery_engine::testing::journal::list_round_keys(pack).is_empty());
-    assert_eq!(now.actors.get("pc_lark").unwrap().item_count("latch"), 1);
+    assert_eq!(
+        now.actors
+            .items
+            .get(&("pc_lark".into(), "latch".to_string()))
+            .copied()
+            .unwrap_or(0),
+        1
+    );
 }
 
 #[then(expr = "the line is rejected with {word} and no round was written")]
@@ -334,11 +335,8 @@ fn the_line_is_refused_and_quiet(world: &mut World, code: String) {
 fn the_shop_has_no_oil(world: &mut World) {
     let pack = support::copy_pack("oneshot-docks", "take-none");
     support::edit_save(&pack, |now| {
-        now.places
-            .get_mut("docks_shop")
-            .unwrap()
-            .items
-            .remove("lamp_oil");
+        let oil = ("docks_shop".into(), "lamp_oil".to_string());
+        now.places.items.remove(&oil);
     });
     world.pack = Some(pack);
 }
@@ -365,15 +363,17 @@ fn the_drop_was_missing(world: &mut World) {
     assert_round_rejects_missing_item(pack);
     let now = support::state_of(pack);
     assert_eq!(
-        now.actors.get("pc_rowan").unwrap().item_count("lamp_oil"),
+        now.actors
+            .items
+            .get(&("pc_rowan".into(), "lamp_oil".to_string()))
+            .copied()
+            .unwrap_or(0),
         0
     );
     assert_eq!(
         now.places
-            .get("docks_shop")
-            .unwrap()
             .items
-            .get("lamp_oil")
+            .get(&("docks_shop".into(), "lamp_oil".to_string()))
             .copied(),
         Some(3)
     );
@@ -384,10 +384,8 @@ fn the_save_lists_an_unknown_item(world: &mut World) {
     let pack = support::copy_pack("oneshot-docks", "unknown-item");
     support::edit_save(&pack, |now| {
         now.actors
-            .get_mut("pc_rowan")
-            .unwrap()
-            .inventory
-            .insert("ghost".to_string(), 1);
+            .items
+            .insert(("pc_rowan".into(), "ghost".to_string()), 1);
     });
     world.pack = Some(pack);
 }
@@ -409,13 +407,11 @@ fn lark_holds_a_dagger(world: &mut World) {
     let pack = support::copy_pack("sample-d20", "wield");
     write_dagger(&pack, "");
     support::edit_save(&pack, |now| {
-        now.actors.get_mut("pc_lark").unwrap().place = "gate_yard".to_string();
+        *now.actors.place.get_mut("pc_lark").unwrap() = "gate_yard".to_string();
         keep_briar_busy(now);
         now.actors
-            .get_mut("pc_lark")
-            .unwrap()
-            .inventory
-            .insert("poisoned_dagger".to_string(), 1);
+            .items
+            .insert(("pc_lark".into(), "poisoned_dagger".to_string()), 1);
     });
     world.pack = Some(pack);
 }
@@ -530,20 +526,19 @@ fn the_slot_clears_in_the_round(world: &mut World) {
     let pack = world.pack.as_ref().unwrap();
     let now = support::state_of(pack);
     assert_eq!(now.round_index, 1);
-    assert_eq!(now.actors.get("pc_lark").unwrap().wielded.as_deref(), None);
+    assert_eq!(now.actors.wielded.get("pc_lark"), None);
     assert_eq!(
         now.actors
-            .get("pc_lark")
-            .unwrap()
-            .item_count("poisoned_dagger"),
+            .items
+            .get(&("pc_lark".into(), "poisoned_dagger".to_string()))
+            .copied()
+            .unwrap_or(0),
         0
     );
     assert_eq!(
         now.places
-            .get("gate_yard")
-            .unwrap()
             .items
-            .get("poisoned_dagger")
+            .get(&("gate_yard".into(), "poisoned_dagger".to_string()))
             .copied(),
         Some(1)
     );
@@ -633,14 +628,12 @@ fn nell_resists_on_a_seeded_roll(world: &mut World) {
     support::edit_save(&pack, |now| {
         hold_dagger(now, true);
         now.actors
-            .get_mut("pc_nell")
-            .unwrap()
             .meters
-            .get_mut("hp")
+            .get_mut(&("pc_nell".into(), "hp".to_string()))
             .unwrap()
             .base = 10;
-        now.actors.get_mut("pc_nell").unwrap().meters.insert(
-            "constitution".to_string(),
+        now.actors.meters.insert(
+            ("pc_nell".into(), "constitution".to_string()),
             spookery_engine::Meter {
                 base: stat,
                 offset: 0,
@@ -680,13 +673,8 @@ fn lark_hits_with_the_dagger(world: &mut World) {
 fn the_poison_fades(world: &mut World, text: String) {
     let pack = world.pack.as_ref().unwrap();
     assert_eq!(hp(pack, "pc_nell"), 7);
-    assert!(!support::state_of(pack)
-        .actors
-        .get("pc_nell")
-        .unwrap()
-        .flags
-        .iter()
-        .any(|flag| flag == "poisoned"));
+    let poisoned = ("pc_nell".into(), "poisoned".to_string());
+    assert!(!support::state_of(pack).actors.flags.contains(&poisoned));
     let round: Value = serde_json::from_str(read_first_round_line(pack).trim()).unwrap();
     assert!(round["refused"].as_array().unwrap().is_empty(), "{round}");
     let effects = round["effects"].to_string();

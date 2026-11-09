@@ -46,8 +46,9 @@ pub(crate) fn afford(context: &Context, cost: &Cost) -> Result<(), gate::Refusal
         let count = item_count(amount).map_err(|_| cant_afford(id))?;
         let held = state
             .actors
-            .get(who)
-            .map(|actor| actor.item_count(id))
+            .items
+            .get(&(who.clone(), id.clone()))
+            .copied()
             .unwrap_or(0);
         if held < count {
             return Err(cant_afford(id));

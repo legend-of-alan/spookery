@@ -246,8 +246,9 @@ pub(crate) fn resolve_here<'a>(context: &Context<'a>) -> Result<&'a str, Reason>
     context
         .state
         .actors
+        .place
         .get(actor_id)
-        .map(|actor| actor.place.as_str())
+        .map(String::as_str)
         .ok_or(Reason::UnknownId)
 }
 
@@ -662,7 +663,7 @@ mod tests {
     use crate::rules::rule::Who;
     use crate::state::id::ActorId;
     use crate::state::meter::{Meter, MeterDef};
-    use crate::state::{Act, ActorKind, ActorLive, Presence, State};
+    use crate::state::{Act, ActorKind, Presence, State};
     use crate::Reason;
 
     static EMPTY: Presence = Presence {
@@ -750,9 +751,8 @@ mod tests {
     }
 
     fn state() -> State {
-        let mut meters = BTreeMap::new();
-        meters.insert("str_mod".to_string(), Meter { base: 3, offset: 0 });
-        State {
+        let ada = ActorId::from("ada");
+        let mut state = State {
             schema: "save".to_string(),
             world_id: "t".to_string(),
             pack_rev: String::new(),
@@ -761,27 +761,19 @@ mod tests {
             round_index: 0,
             world_time: 0,
             last_round_at: String::new(),
-            places: BTreeMap::new(),
-            actors: BTreeMap::from([(
-                "ada".into(),
-                ActorLive {
-                    kind: ActorKind::Pc,
-                    place: "room".to_string(),
-                    flags: Vec::new(),
-                    meters,
-                    modifiers: Default::default(),
-                    inventory: BTreeMap::new(),
-                    wielded: None,
-                    known_facts: Vec::new(),
-                    visited: Default::default(),
-                    act: Act::default(),
-                },
-            )]),
-            stories: BTreeMap::new(),
-            world_meters: BTreeMap::new(),
+            actors: Default::default(),
+            places: Default::default(),
+            stories: Default::default(),
+            world: Default::default(),
             notes: Vec::new(),
-            flags: Vec::new(),
-        }
+        };
+        let actors = &mut state.actors;
+        actors.kind.insert(ada.clone(), ActorKind::Pc);
+        actors.place.insert(ada.clone(), "room".to_string());
+        actors.acts.insert(ada.clone(), Act::default());
+        let str_mod = Meter { base: 3, offset: 0 };
+        actors.meters.insert((ada, "str_mod".to_string()), str_mod);
+        state
     }
 
     #[test]

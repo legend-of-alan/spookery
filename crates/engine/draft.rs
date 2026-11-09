@@ -68,10 +68,11 @@ impl<'p> Draft<'p> {
 
     /// Set `counter` back to 0 on every actor.
     pub(crate) fn reset_acts(&mut self, counter: ActCounter) -> Result<(), Reason> {
-        let ids: Vec<ActorId> = self.state.actors.keys().cloned().collect();
+        let ids: Vec<ActorId> = self.state.actors.kind.keys().cloned().collect();
         for id in ids {
             self.mutate(counter.key(id.to_string()), |state| {
-                Ok(std::mem::take(counter.count_mut(&mut state.actor_mut(&id)?.act)) != 0)
+                let act = state.actors.acts.get_mut(&id).ok_or(Reason::UnknownId)?;
+                Ok(std::mem::take(counter.count_mut(act)) != 0)
             })?;
         }
         Ok(())
@@ -82,19 +83,16 @@ impl<'p> Draft<'p> {
         let due: Vec<(ActorId, String, String)> = self
             .state
             .actors
+            .modifiers
             .iter()
-            .flat_map(|(actor, live)| {
-                live.modifiers
-                    .iter()
-                    .filter(|(_, held)| held.until <= world_time)
-                    .map(|(id, held)| (actor.clone(), id.clone(), held.meter.clone()))
-            })
+            .filter(|(_, held)| held.until <= world_time)
+            .map(|((actor, id), held)| (actor.clone(), id.clone(), held.meter.clone()))
             .collect();
         for (actor, id, meter) in due {
             self.track(change::Key::ActorMeter(actor.to_string(), meter))?;
             self.mutate(
                 change::Key::ActorModifier(actor.to_string(), id.clone()),
-                |state| Ok(state.actor_mut(&actor)?.modifiers.remove(&id).is_some()),
+                |state| Ok(state.actors.modifiers.remove(&(actor, id)).is_some()),
             )?;
         }
         Ok(())
@@ -104,12 +102,8 @@ impl<'p> Draft<'p> {
     pub(crate) fn count_act(&mut self, actor_id: &ActorId) -> Result<(), Reason> {
         let (round_index, players) = (self.state.round_index, self.presence.players);
         let (current_idle, current_live, current_last) = {
-            let counters = &self
-                .state
-                .actors
-                .get(actor_id)
-                .ok_or(Reason::UnknownId)?
-                .act;
+            let counters = self.state.actors.acts.get(actor_id);
+            let counters = counters.ok_or(Reason::UnknownId)?;
             (
                 counters.idle_acts_this_window,
                 counters.live_acts_this_window,
@@ -129,7 +123,8 @@ impl<'p> Draft<'p> {
             keys.push(change::Key::LiveActsThisWindow(actor_id.to_string()));
         }
         self.track_many(&keys)?;
-        let counters = &mut self.state.actor_mut(actor_id)?.act;
+        let acts = &mut self.state.actors.acts;
+        let counters = acts.get_mut(actor_id).ok_or(Reason::UnknownId)?;
         counters.last_act_round = round_index;
         if players == 0 {
             counters.idle_acts_this_window = new_idle;
@@ -148,7 +143,7 @@ impl<'p> Draft<'p> {
         pending: Option<PendingAction>,
     ) -> Result<(), Reason> {
         self.mutate(change::Key::ActorBusy(id.to_string()), |state| {
-            let act = &mut state.actor_mut(id)?.act;
+            let act = state.actors.acts.get_mut(id).ok_or(Reason::UnknownId)?;
             let changed = act.busy_until != Some(until) || act.pending != pending;
             act.busy_until = Some(until);
             act.pending = pending;
@@ -160,7 +155,7 @@ impl<'p> Draft<'p> {
     pub(crate) fn take_pending(&mut self, id: &ActorId) -> Result<Option<PendingAction>, Reason> {
         let mut taken = None;
         self.mutate(change::Key::ActorBusy(id.to_string()), |state| {
-            let act = &mut state.actor_mut(id)?.act;
+            let act = state.actors.acts.get_mut(id).ok_or(Reason::UnknownId)?;
             taken = act.pending.take();
             Ok(act.busy_until.take().is_some() || taken.is_some())
         })?;
@@ -255,19 +250,16 @@ impl<'p> Draft<'p> {
     }
 
     fn read_value(&self, key: &change::Key) -> change::Value {
+        let actors = &self.state.actors;
         match key {
-            change::Key::ActorPlace(id) => self
-                .state
-                .actors
+            change::Key::ActorPlace(id) => actors
+                .place
                 .get(id.as_str())
-                .map(|actor| change::Value::Text(actor.place.clone()))
+                .map(|place| change::Value::Text(place.clone()))
                 .unwrap_or(change::Value::Empty),
-            change::Key::ActorFlag(id, flag) => self
-                .state
-                .actors
-                .get(id.as_str())
-                .map(|actor| change::Value::Bool(actor.flags.iter().any(|item| item == flag)))
-                .unwrap_or(change::Value::Empty),
+            change::Key::ActorFlag(id, flag) => self.actor_value(id, |actor| {
+                change::Value::Bool(self.state.has_flag(&EntityId::Actor(actor.clone()), flag))
+            }),
             change::Key::PlaceFlag(id, flag) => change::Value::Bool(
                 self.state
                     .has_flag(&EntityId::Place(id.clone().into()), flag),
@@ -289,11 +281,9 @@ impl<'p> Draft<'p> {
             change::Key::ActorMeter(id, meter) => {
                 self.meter_value(&EntityId::Actor(id.clone().into()), meter)
             }
-            change::Key::ActorModifier(id, key) => self
-                .state
-                .actors
-                .get(id.as_str())
-                .and_then(|actor| actor.modifiers.get(key))
+            change::Key::ActorModifier(id, key) => actors
+                .modifiers
+                .get(&(id.clone().into(), key.clone()))
                 .map(|live| {
                     change::Value::Text(format!(
                         "{:?} until {} max_ticks {}",
@@ -301,21 +291,15 @@ impl<'p> Draft<'p> {
                     ))
                 })
                 .unwrap_or(change::Value::Empty),
-            change::Key::ActorBusy(id) => self
-                .state
-                .actors
+            change::Key::ActorBusy(id) => actors
+                .acts
                 .get(id.as_str())
-                .map(|actor| match actor.act.busy_until {
-                    Some(until) => change::Value::Number(i64::try_from(until).unwrap_or(i64::MAX)),
-                    None => change::Value::Empty,
-                })
+                .and_then(|act| act.busy_until)
+                .map(|until| change::Value::Number(i64::try_from(until).unwrap_or(i64::MAX)))
                 .unwrap_or(change::Value::Empty),
-            change::Key::ActorKnownFact(id) => self
-                .state
-                .actors
-                .get(id.as_str())
-                .map(|actor| change::Value::List(actor.known_facts.clone()))
-                .unwrap_or(change::Value::Empty),
+            change::Key::ActorKnownFact(id) => self.actor_value(id, |actor| {
+                change::Value::List(actors.known_facts.get(actor).cloned().unwrap_or_default())
+            }),
             change::Key::LastActRound(id) => self.act_number(id, |act| {
                 i64::try_from(act.last_act_round).unwrap_or(i64::MAX)
             }),
@@ -325,28 +309,25 @@ impl<'p> Draft<'p> {
             change::Key::LiveActsThisWindow(id) => {
                 self.act_number(id, |act| i64::from(act.live_acts_this_window))
             }
-            change::Key::ActorItem(id, item) => self
-                .state
-                .actors
+            change::Key::ActorItem(id, item) => self.actor_value(id, |actor| {
+                let count = actors.items.get(&(actor.clone(), item.clone()));
+                change::Value::Number(i64::from(count.copied().unwrap_or(0)))
+            }),
+            change::Key::PlaceItem(place, item)
+                if self.canon.places.contains_key(place.as_str()) =>
+            {
+                let count = self
+                    .state
+                    .places
+                    .items
+                    .get(&(place.clone().into(), item.clone()));
+                change::Value::Number(i64::from(count.copied().unwrap_or(0)))
+            }
+            change::Key::PlaceItem(..) => change::Value::Empty,
+            change::Key::ActorWielded(id) => actors
+                .wielded
                 .get(id.as_str())
-                .map(|actor| change::Value::Number(i64::from(actor.item_count(item))))
-                .unwrap_or(change::Value::Empty),
-            change::Key::PlaceItem(place, item) => self
-                .state
-                .places
-                .get(place.as_str())
-                .map(|place| {
-                    change::Value::Number(i64::from(place.items.get(item).copied().unwrap_or(0)))
-                })
-                .unwrap_or(change::Value::Empty),
-            change::Key::ActorWielded(id) => self
-                .state
-                .actors
-                .get(id.as_str())
-                .map(|actor| match actor.wielded.as_deref() {
-                    Some(item) => change::Value::Text(item.to_string()),
-                    None => change::Value::Empty,
-                })
+                .map(|item| change::Value::Text(item.clone()))
                 .unwrap_or(change::Value::Empty),
             change::Key::Note(id) => {
                 if self.state.notes.iter().any(|note| &note.id == id) {
@@ -356,7 +337,7 @@ impl<'p> Draft<'p> {
                 }
             }
             change::Key::WorldFlag(key) => {
-                change::Value::Bool(self.state.flags.iter().any(|flag| flag == key))
+                change::Value::Bool(self.state.world.flags.contains(key))
             }
             change::Key::WorldMeter(key) => self.meter_value(&EntityId::World, key),
         }
@@ -369,6 +350,12 @@ impl<'p> Draft<'p> {
         }
     }
 
+    /// `read` of actor `id`, or `Empty` when the save has no such actor.
+    fn actor_value(&self, id: &str, read: impl FnOnce(&ActorId) -> change::Value) -> change::Value {
+        let actor = self.state.actors.kind.get_key_value(id);
+        actor.map_or(change::Value::Empty, |(actor, _)| read(actor))
+    }
+
     fn act_number(
         &self,
         actor_id: &str,
@@ -376,8 +363,9 @@ impl<'p> Draft<'p> {
     ) -> change::Value {
         self.state
             .actors
+            .acts
             .get(actor_id)
-            .map(|actor| change::Value::Number(read(&actor.act)))
+            .map(|act| change::Value::Number(read(act)))
             .unwrap_or(change::Value::Empty)
     }
 
@@ -446,8 +434,8 @@ mod tests {
         let nobody = crate::state::Presence::default();
         let mut draft = Draft::begin(&world, &nobody);
         // Bram's grit sits clamped at its minimum: taking more moves the offset, not the value.
-        let meters = &mut draft.state.actor_mut(&"bram".into()).unwrap().meters;
-        meters.get_mut("grit").unwrap().offset = -5;
+        let grit = (ActorId::from("bram"), "grit".to_string());
+        draft.state.actors.meters.get_mut(&grit).unwrap().offset = -5;
         let intent = Intent::habit(world.state(), &"mira".into(), "leave_door_note");
         let mut write = |actor: &str, key: &str, delta: i64| {
             let kind = EffectKind::Meter {

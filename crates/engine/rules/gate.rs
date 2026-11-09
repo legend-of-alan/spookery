@@ -9,6 +9,7 @@ use crate::rules::context::Context;
 use crate::rules::cost;
 use crate::rules::perceive::perceive_as;
 use crate::rules::rule::{Owner, Rule, TargetKind, When};
+use crate::state::grouped;
 use crate::state::id::ActorId;
 use crate::state::{Presence, State};
 use crate::Reason;
@@ -79,8 +80,7 @@ pub(crate) fn verb_for<'a>(
     verb: &str,
     hint: Option<&str>,
 ) -> Option<&'a Rule> {
-    let actor = state.actors.get(actor_id);
-    let wielded = actor.and_then(|actor| actor.wielded.as_deref());
+    let wielded = state.actors.wielded.get(actor_id).map(String::as_str);
     if let Some(item) = wielded.filter(|item| !item.is_empty()) {
         if let Some(rule) = owner_verb(canon, &Owner::Item(item.to_string()), verb) {
             return Some(rule);
@@ -94,7 +94,7 @@ pub(crate) fn verb_for<'a>(
             return Some(rule);
         }
     }
-    if let Some(place) = actor.map(|actor| &actor.place) {
+    if let Some(place) = state.actors.place.get(actor_id) {
         if let Some(rule) = owner_verb(canon, &Owner::Place(place.to_string()), verb) {
             return Some(rule);
         }
@@ -133,12 +133,12 @@ pub(crate) fn rule_of<'a>(context: &Context<'a>) -> Result<&'a Rule, Refusal> {
 /// every rule.
 pub(crate) fn admit(context: &Context, rule: &Rule) -> Result<(), Refusal> {
     let (state, intent) = (context.state, context.intent);
-    if let Some(actor) = intent.actor_id().and_then(|id| state.actors.get(id)) {
-        let acted = actor.act.last_act_round == intent.round_index;
+    if let Some(act) = intent.actor_id().and_then(|id| state.actors.acts.get(id)) {
+        let acted = act.last_act_round == intent.round_index;
         if acted && rule.start.counts_as_act && matches!(rule.when, When::Habit) {
             return Err(Refusal::new(intent, Reason::Ineligible));
         }
-        if actor.is_busy(state.world_time) {
+        if act.is_busy(state.world_time) {
             return Err(Refusal::new(intent, Reason::Busy));
         }
     }
@@ -177,11 +177,14 @@ pub(crate) fn is_cancel(intent: &Intent) -> bool {
 /// `cancellable`. Anything else is `INELIGIBLE`.
 pub(crate) fn admit_cancel(context: &Context) -> Result<(), Refusal> {
     let intent = context.intent;
-    let actor = intent
-        .actor_id()
-        .and_then(|id| context.state.actors.get(id));
-    let pending = actor.and_then(|actor| actor.act.pending.as_ref());
-    let walking = actor.is_some_and(|actor| crate::state::exit_parts(&actor.place).is_some());
+    let actors = &context.state.actors;
+    let actor_id = intent.actor_id();
+    let pending = actor_id
+        .and_then(|id| actors.acts.get(id))
+        .and_then(|act| act.pending.as_ref());
+    let walking = actor_id
+        .and_then(|id| actors.place.get(id))
+        .is_some_and(|place| crate::state::exit_parts(place).is_some());
     let rule = pending.and_then(|pending| context.canon.rules.get(&pending.rule));
     if walking || !rule.is_some_and(|rule| rule.cancellable) {
         return Err(Refusal::new(intent, Reason::Ineligible));
@@ -210,15 +213,10 @@ pub(crate) fn nameable(
     presence: &Presence,
     viewer: &Viewer,
 ) -> Vec<String> {
-    let mut names: Vec<String> = match state.actors.get(viewer.actor_id()) {
-        Some(actor) => actor
-            .inventory
-            .keys()
-            .filter(|id| actor.item_count(id) > 0)
-            .cloned()
-            .collect(),
-        None => Vec::new(),
-    };
+    let mut names: Vec<String> = grouped::of(&state.actors.items, viewer.actor_id())
+        .filter(|(_, count)| **count > 0)
+        .map(|(id, _)| id.to_string())
+        .collect();
     if let Ok(view) = perceive_as(canon, state, presence, viewer) {
         names.push(view.place);
         let me = viewer.actor_id();

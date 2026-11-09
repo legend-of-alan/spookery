@@ -330,8 +330,9 @@ fn location_effect(context: &Context, to: &str) -> Result<Effect, Reason> {
     let from = context
         .state
         .actors
+        .place
         .get(&actor_id)
-        .map(|actor| actor.place.clone())
+        .cloned()
         .ok_or(Reason::UnknownId)?;
     Ok(Effect::new(
         intent.actor.as_ref(),

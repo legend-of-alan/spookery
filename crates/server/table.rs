@@ -349,8 +349,7 @@ impl Table {
         if presence.actors_present.contains(&actor) {
             return Err(Reason::SeatTaken);
         }
-        let live = self.world.state().actors.get(&actor);
-        if !live.is_some_and(|live| live.is_pc()) {
+        if !self.world.pcs().any(|pc| *pc == actor) {
             return Err(Reason::Schema);
         }
         let scrollback = self.world.player_scrollback(&actor)?;
@@ -401,12 +400,7 @@ impl Table {
         actor_id: &ActorId,
         args: &SayArgs,
     ) {
-        let here = self
-            .world
-            .state()
-            .actors
-            .get(actor_id)
-            .map(|actor| actor.place.clone());
+        let here = self.world.state().actors.place.get(actor_id).cloned();
         let heard = match args {
             SayArgs::Table { .. } => Address::Table,
             SayArgs::Place { place, .. } if here.as_ref() == Some(place) => Address::Place(place),

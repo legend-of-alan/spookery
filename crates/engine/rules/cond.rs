@@ -60,8 +60,9 @@ fn holds(context: &Context, cond: &Cond) -> Result<bool, Reason> {
             let id = expr::resolve_item_id(context, id)?;
             let held = state
                 .actors
-                .get(actor)
-                .map(|actor| actor.item_count(&id))
+                .items
+                .get(&(actor.clone(), id))
+                .copied()
                 .unwrap_or(0);
             Ok(held >= *count)
         }
@@ -70,8 +71,9 @@ fn holds(context: &Context, cond: &Cond) -> Result<bool, Reason> {
             let id = expr::resolve_item_id(context, id)?;
             Ok(state
                 .actors
+                .wielded
                 .get(actor)
-                .is_some_and(|actor| actor.wielded.as_deref() == Some(id.as_str())))
+                .is_some_and(|wielded| *wielded == id))
         }
         Cond::Meter {
             who,
@@ -90,17 +92,15 @@ fn holds(context: &Context, cond: &Cond) -> Result<bool, Reason> {
         }
         Cond::At { who, place } => {
             let actor = expr::resolve_actor(context, who)?;
-            Ok(state
-                .actors
-                .get(actor)
-                .is_some_and(|actor| actor.place == *place))
+            Ok(state.actors.place.get(actor).is_some_and(|at| at == place))
         }
         Cond::Knows { who, fact } => {
             let actor = expr::resolve_actor(context, who)?;
             Ok(state
                 .actors
+                .known_facts
                 .get(actor)
-                .is_some_and(|actor| actor.known_facts.iter().any(|id| id == fact)))
+                .is_some_and(|facts| facts.iter().any(|id| id == fact)))
         }
         Cond::Cycle { name, from, to } => {
             let length = context.canon.budget.cycles.get(name);

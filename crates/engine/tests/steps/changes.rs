@@ -58,10 +58,8 @@ fn larks_might_is_raised(world: &mut World) {
     testing::edit_save(&pack, |state| {
         let might = state
             .actors
-            .get_mut("pc_lark")
-            .unwrap()
             .meters
-            .get_mut("might")
+            .get_mut(&("pc_lark".into(), "might".to_string()))
             .unwrap();
         might.base = 40;
         might.offset = 0;
@@ -125,12 +123,8 @@ fn lark_drops_the_tonic(world: &mut World) {
 fn a_tonic_is_on_the_ground(world: &mut World) {
     let pack = world.pack().to_path_buf();
     testing::edit_save(&pack, |state| {
-        state
-            .places
-            .get_mut("gate_yard")
-            .unwrap()
-            .items
-            .insert("tonic".to_string(), 1);
+        let tonic = ("gate_yard".into(), "tonic".to_string());
+        state.places.items.insert(tonic, 1);
     });
 }
 

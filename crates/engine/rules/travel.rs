@@ -54,11 +54,11 @@ pub(crate) fn exit_via<'a>(context: &Context<'a>, via: &str) -> Result<Option<&'
         ("target", _) => return Ok(None),
         (name, _) => name,
     };
-    let actor = context
+    let from = context
         .intent
         .actor_id()
-        .and_then(|id| context.state.actors.get(id));
-    let from = actor.map_or("", |actor| actor.place.as_str());
+        .and_then(|id| context.state.actors.place.get(id))
+        .map_or("", String::as_str);
     if let Some(exit) = exit_stood_on(context.canon, from) {
         return Ok(Some(exit));
     }
@@ -212,29 +212,26 @@ pub(crate) fn note_exits(draft: &mut Draft) {
     let canon = draft.canon();
     let state = draft.state();
     // A walker on an exit is in no place, so there is nothing to note.
-    let seen: Vec<(ActorId, Vec<String>)> = state
+    let seen: Vec<((ActorId, String), Vec<String>)> = state
         .actors
+        .place
         .iter()
-        .filter(|(_, actor)| canon.places.contains_key(actor.place.as_str()))
-        .map(|(id, _)| {
+        .filter(|(_, place)| canon.places.contains_key(place.as_str()))
+        .map(|(id, place)| {
             let exits = visible_exits(canon, state, id);
             (
-                id.clone(),
+                (id.clone(), place.clone()),
                 exits.into_iter().map(|exit| exit.name).collect(),
             )
         })
         .collect();
-    for (id, exits) in seen {
-        if let Some(actor) = draft.state_mut().actors.get_mut(&id) {
-            actor.visited.insert(actor.place.clone(), exits);
-        }
-    }
+    draft.state_mut().actors.visited.extend(seen);
 }
 
 /// The exits of this actor's place that they are allowed to see.
 pub(crate) fn visible_exits(canon: &Canon, state: &State, actor_id: &ActorId) -> Vec<ExitView> {
-    let actor = state.actors.get(actor_id);
-    match actor.and_then(|actor| canon.places.get(actor.place.as_str())) {
+    let place = state.actors.place.get(actor_id);
+    match place.and_then(|place| canon.places.get(place.as_str())) {
         Some(place) => exits_at(canon, state, actor_id, place),
         None => Vec::new(),
     }
@@ -261,9 +258,9 @@ pub(crate) fn take_due_actions(draft: &mut Draft, end: u64) -> Result<Vec<DueAct
     let mut due_keys: Vec<(u64, ActorId)> = draft
         .state()
         .actors
+        .acts
         .iter()
-        .filter_map(|(id, actor)| {
-            let act = &actor.act;
+        .filter_map(|(id, act)| {
             let until = act.busy_until?;
             if act.pending.is_none() || until > end {
                 return None;

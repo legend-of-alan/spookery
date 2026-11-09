@@ -7,11 +7,11 @@ use crate::rules::context::Context;
 use crate::rules::expand;
 use crate::rules::gate;
 use crate::state::id::ActorId;
-use crate::state::{ActorLive, Presence, State};
+use crate::state::{ActorKind, Presence, State};
 
 /// One habit intent per NPC whose habit the gate admits, its target not yet stamped.
 pub(crate) fn intents(canon: &Canon, state: &State, presence: &Presence) -> Vec<Intent> {
-    let actors = state.actors.keys();
+    let actors = state.actors.kind.keys();
     let intents = actors.filter_map(|actor_id| intent_of(canon, state, presence, actor_id));
     intents.collect()
 }
@@ -57,10 +57,7 @@ pub(crate) fn list_whose_if_holds(
 /// Whether the engine may run one of this NPC's habits on its own this round: its idle
 /// profile allows it, it is free, no seated player is with it, and its act window has room.
 fn is_eligible(canon: &Canon, state: &State, presence: &Presence, npc_id: &ActorId) -> bool {
-    let Some(actor) = state.actors.get(npc_id) else {
-        return false;
-    };
-    if !actor.is_npc() {
+    if state.actors.kind.get(npc_id) != Some(&ActorKind::Npc) {
         return false;
     }
     let Some(profile) = canon.idle_profile(npc_id) else {
@@ -69,10 +66,15 @@ fn is_eligible(canon: &Canon, state: &State, presence: &Presence, npc_id: &Actor
     if !profile.eligible {
         return false;
     }
-    if actor.is_busy(state.world_time) || is_player_at(state, presence, &actor.place) {
+    let (Some(counters), Some(place)) = (
+        state.actors.acts.get(npc_id),
+        state.actors.place.get(npc_id),
+    ) else {
+        return false;
+    };
+    if counters.is_busy(state.world_time) || is_player_at(state, presence, place) {
         return false;
     }
-    let counters = &actor.act;
     if counters.last_act_round == state.round_index {
         return false;
     }
@@ -86,6 +88,6 @@ fn is_eligible(canon: &Canon, state: &State, presence: &Presence, npc_id: &Actor
 /// A seated player's PC is in `place`.
 pub(crate) fn is_player_at(state: &State, presence: &Presence, place: &str) -> bool {
     state.actors_at(place).iter().any(|id| {
-        presence.actors_present.contains(id) && state.actors.get(id).is_some_and(ActorLive::is_pc)
+        presence.actors_present.contains(id) && state.actors.kind.get(id) == Some(&ActorKind::Pc)
     })
 }

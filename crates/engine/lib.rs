@@ -38,7 +38,7 @@ pub mod testing {
     pub use crate::canon::strip_body;
     pub use crate::round::replay::replay_journal;
     pub use crate::rules::roll::{faces, RollKey};
-    pub use crate::state::{Act, ActorKind, ActorLive, PendingAction, PlaceLive};
+    pub use crate::state::{Act, ActorKind, PendingAction};
 
     /// The write guard of the pack `world` holds the lock on.
     pub fn lock_write(world: &crate::World) -> Result<WriteGuard, crate::Reason> {
@@ -238,30 +238,24 @@ pub mod testing {
         fs::copy(&from, pack.join("cast/pc-nell.md"))
             .unwrap_or_else(|err| panic!("copy {}: {err}", from.display()));
         edit_save(pack, |state| {
-            state.actors.insert(
-                "pc_nell".into(),
-                crate::state::ActorLive {
-                    kind: crate::state::ActorKind::Pc,
-                    place: "docks_shop".to_string(),
-                    flags: Vec::new(),
-                    meters: std::collections::BTreeMap::from([
-                        (
-                            "grit".to_string(),
-                            crate::Meter {
-                                base: 100,
-                                offset: 0,
-                            },
-                        ),
-                        ("rest".to_string(), crate::Meter { base: 3, offset: 0 }),
-                    ]),
-                    modifiers: Default::default(),
-                    inventory: std::collections::BTreeMap::new(),
-                    wielded: None,
-                    known_facts: Vec::new(),
-                    visited: Default::default(),
-                    act: crate::state::Act::default(),
-                },
-            );
+            let nell = crate::ActorId::from("pc_nell");
+            let actors = &mut state.actors;
+            actors
+                .kind
+                .insert(nell.clone(), crate::state::ActorKind::Pc);
+            actors.place.insert(nell.clone(), "docks_shop".to_string());
+            actors
+                .acts
+                .insert(nell.clone(), crate::state::Act::default());
+            let grit = crate::Meter {
+                base: 100,
+                offset: 0,
+            };
+            let rest = crate::Meter { base: 3, offset: 0 };
+            actors
+                .meters
+                .insert((nell.clone(), "grit".to_string()), grit);
+            actors.meters.insert((nell, "rest".to_string()), rest);
         });
     }
 

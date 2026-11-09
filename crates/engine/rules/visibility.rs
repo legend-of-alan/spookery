@@ -10,16 +10,18 @@ use crate::state::id::{ActorId, EntityId, PlaceId};
 use crate::state::State;
 
 pub(crate) fn can_see_fact(canon: &Canon, state: &State, viewer: &Viewer, fact_id: &str) -> bool {
-    let Some(actor) = state.actors.get(viewer.actor_id()) else {
+    let actor_id = viewer.actor_id();
+    let Some(place) = state.actors.place.get(actor_id) else {
         return false;
     };
-    if actor.known_facts.iter().any(|id| id == fact_id) {
+    let known = state.actors.known_facts.get(actor_id);
+    if known.is_some_and(|facts| facts.iter().any(|id| id == fact_id)) {
         return true;
     }
     let Some(fact) = canon.facts.get(fact_id) else {
         return false;
     };
-    !fact.hidden && fact.place_id == actor.place
+    !fact.hidden && fact.place_id == *place
 }
 
 /// Who is asking.
@@ -273,7 +275,7 @@ fn can_see_facts(canon: &Canon, state: &State, viewer: &ActorId, fact_ids: &[Str
 }
 
 fn can_see(canon: &Canon, state: &State, viewer: &ActorId, change: &Change) -> bool {
-    if !state.actors.contains_key(viewer) {
+    if !state.actors.kind.contains_key(viewer) {
         return false;
     }
     match &change.key {
@@ -324,11 +326,11 @@ fn is_shown(canon: &Canon, entity: &EntityId, key: &str) -> bool {
 }
 
 fn place_of<'a>(state: &'a State, viewer: &ActorId) -> Option<&'a str> {
-    state.actors.get(viewer).map(|actor| actor.place.as_str())
+    state.actors.place.get(viewer).map(String::as_str)
 }
 
 fn same_place(state: &State, viewer: &ActorId, actor: &str) -> bool {
-    let actor_place = state.actors.get(actor).map(|actor| actor.place.as_str());
+    let actor_place = state.actors.place.get(actor).map(String::as_str);
     match (place_of(state, viewer), actor_place) {
         (Some(left), Some(right)) => left == right,
         _ => false,

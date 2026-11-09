@@ -10,6 +10,7 @@ use crate::rules::gate;
 use crate::rules::rule::{ChangeWatch, Op, Rule, WatchWho, When};
 use crate::state::change::{self, Change};
 use crate::state::id::ActorId;
+use crate::state::ActorKind;
 use crate::store::records::Step;
 
 use crate::round::dice::RoundDice;
@@ -183,13 +184,13 @@ fn flips(change: &Change, becomes: bool) -> bool {
 }
 
 fn matches_who(draft: &Draft, who: &WatchWho, actor_id: &str) -> bool {
-    let Some(actor) = draft.state().actors.get(actor_id) else {
+    let Some(kind) = draft.state().actors.kind.get(actor_id) else {
         return false;
     };
     match who {
         WatchWho::Any => true,
-        WatchWho::Pc => actor.is_pc(),
-        WatchWho::Npc => actor.is_npc(),
+        WatchWho::Pc => *kind == ActorKind::Pc,
+        WatchWho::Npc => *kind == ActorKind::Npc,
         WatchWho::Actor(expected) => expected == actor_id,
     }
 }

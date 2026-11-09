@@ -15,7 +15,7 @@ use crate::rules::effect::{payload_json, Effect};
 use crate::rules::gate;
 use crate::rules::rule::{Rule, TargetKind, When};
 use crate::state::id::{ActorId, EntityId};
-use crate::state::{ActorLive, Presence, State};
+use crate::state::{ActorKind, Presence, State};
 use crate::store::journal;
 use crate::store::records::Record;
 use crate::store::save;
@@ -103,12 +103,7 @@ impl World {
         heard: Address<'_>,
         text: &str,
     ) -> Result<TapeRecord, Reason> {
-        if !self
-            .state
-            .actors
-            .get(actor_id)
-            .is_some_and(ActorLive::is_pc)
-        {
+        if self.state.actors.kind.get(actor_id) != Some(&ActorKind::Pc) {
             return Err(Reason::Schema);
         }
         let from = Speaker::Player(actor_id.to_string());
@@ -134,7 +129,7 @@ impl World {
     ) -> Result<TapeRecord, Reason> {
         let text = check_say_text(text)?.to_string();
         if let Address::Actor(actor) = heard {
-            if !self.state.actors.contains_key(actor) {
+            if !self.state.actors.kind.contains_key(actor) {
                 return Err(Reason::Schema);
             }
         }
@@ -181,8 +176,9 @@ impl<L> World<L> {
     pub fn pcs(&self) -> impl Iterator<Item = &ActorId> {
         self.state
             .actors
+            .kind
             .iter()
-            .filter(|(_, a)| a.is_pc())
+            .filter(|(_, kind)| **kind == ActorKind::Pc)
             .map(|(id, _)| id)
     }
 
@@ -239,8 +235,7 @@ impl<L> World<L> {
         let Some(viewer) = &line.actor else {
             return Err(Reason::Schema);
         };
-        let actor = self.state.actors.get(viewer.actor_id());
-        if !actor.is_some_and(ActorLive::is_pc) {
+        if self.state.actors.kind.get(viewer.actor_id()) != Some(&ActorKind::Pc) {
             return Err(Reason::Schema);
         }
         let (actor, verb) = (viewer, &line.move_name);
@@ -694,7 +689,7 @@ pub fn check_pack(root: &Path) -> Vec<Diagnostic> {
 
 fn check_save_text(state: &State, bytes: &[u8]) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
-    if state.actors.contains_key("world") {
+    if state.actors.kind.contains_key("world") {
         diags.push(
             schema_error(
                 "state/save.yaml",

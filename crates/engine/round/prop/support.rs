@@ -6,8 +6,9 @@ use std::path::{Path, PathBuf};
 use crate::canon::pack_rev;
 use crate::intent::Target;
 use crate::rules::travel::visible_exits;
-use crate::state::id::ActorId;
-use crate::state::Presence;
+use crate::state::grouped;
+use crate::state::id::{ActorId, PlaceId};
+use crate::state::{ActorKind, Presence};
 use crate::store::journal;
 use crate::store::save;
 use crate::world::World;
@@ -101,8 +102,9 @@ fn pc_count(world: &World) -> usize {
     world
         .state()
         .actors
+        .kind
         .values()
-        .filter(|actor| actor.is_pc())
+        .filter(|kind| **kind == ActorKind::Pc)
         .count()
 }
 
@@ -133,8 +135,9 @@ fn queue_move(world: &mut World, plan: &MovePlan) {
     let pcs: Vec<ActorId> = world
         .state()
         .actors
+        .kind
         .iter()
-        .filter(|(_, actor)| actor.is_pc())
+        .filter(|(_, kind)| **kind == ActorKind::Pc)
         .map(|(id, _)| id.clone())
         .collect();
     if pcs.is_empty() {
@@ -172,11 +175,11 @@ fn target_for(world: &World, actor: &ActorId, verb: &str, token: usize) -> Optio
 
 fn item_tokens(world: &World, actor: &ActorId) -> Vec<String> {
     let mut ids: Vec<String> = world.canon().items.keys().cloned().collect();
-    if let Some(actor) = world.state().actors.get(actor) {
-        ids.extend(actor.inventory.keys().cloned());
-        if let Some(place) = world.state().places.get(actor.place.as_str()) {
-            ids.extend(place.items.keys().cloned());
-        }
+    let state = world.state();
+    if let Some(place) = state.actors.place.get(actor) {
+        ids.extend(grouped::of(&state.actors.items, actor).map(|(id, _)| id.to_string()));
+        let place = PlaceId::from(place.clone());
+        ids.extend(grouped::of(&state.places.items, &place).map(|(id, _)| id.to_string()));
     }
     ids.sort();
     ids.dedup();

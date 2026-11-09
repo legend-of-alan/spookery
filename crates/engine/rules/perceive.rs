@@ -6,7 +6,8 @@ use crate::canon::Canon;
 use crate::intent::Viewer;
 use crate::rules::habits::list_whose_if_holds;
 use crate::rules::visibility::can_see_fact;
-use crate::state::id::{ActorId, EntityId};
+use crate::state::grouped;
+use crate::state::id::{ActorId, EntityId, PlaceId};
 use crate::state::meter;
 use crate::state::{Note, Presence, State};
 use crate::world::World;
@@ -52,11 +53,12 @@ pub(crate) fn perceive_budget<L>(
         return Err(Reason::UnscopedPerceive);
     }
     let (canon, state) = (world.canon(), world.state());
-    let (id, actor) = state
+    let (id, kind) = state
         .actors
+        .kind
         .get_key_value(as_arg)
         .ok_or(Reason::UnknownId)?;
-    perceive_viewer_budget(canon, state, presence, &actor.viewer(id), max_body_chars)
+    perceive_viewer_budget(canon, state, presence, &kind.viewer(id), max_body_chars)
 }
 
 pub(crate) fn perceive_as(
@@ -75,24 +77,26 @@ fn perceive_viewer_budget(
     viewer: &Viewer,
     max_body_chars: usize,
 ) -> Result<View, Reason> {
-    let actor = state
+    let place = state
         .actors
+        .place
         .get(viewer.actor_id())
-        .ok_or(Reason::UnknownId)?;
-    let place = actor.place.clone();
-    let mut visible_actors: Vec<ActorId> = state
-        .actors
-        .iter()
-        .filter(|(_, other)| other.place == place)
-        .map(|(id, _)| id.clone())
-        .collect();
+        .ok_or(Reason::UnknownId)?
+        .clone();
+    let mut visible_actors: Vec<ActorId> = state.actors_at(&place);
     visible_actors.sort();
 
     let mut ids = BTreeSet::new();
     for id in canon.facts.keys() {
         ids.insert(id.clone());
     }
-    for id in &actor.known_facts {
+    for id in state
+        .actors
+        .known_facts
+        .get(viewer.actor_id())
+        .into_iter()
+        .flatten()
+    {
         ids.insert(id.clone());
     }
     let mut known_facts = Vec::new();
@@ -146,20 +150,12 @@ fn perceive_viewer_budget(
     }
     notes.sort_by(|a, b| a.id.cmp(&b.id));
 
-    let items = state
-        .places
-        .get(place.as_str())
-        .map(|place_live| {
-            place_live
-                .items
-                .iter()
-                .map(|(id, count)| ItemStack {
-                    id: id.clone(),
-                    count: *count,
-                })
-                .collect()
+    let items = grouped::of(&state.places.items, &PlaceId::from(place.clone()))
+        .map(|(id, count)| ItemStack {
+            id: id.to_string(),
+            count: *count,
         })
-        .unwrap_or_default();
+        .collect();
 
     let meters = shown_meters(canon, state, &EntityId::Actor(viewer.actor_id().clone()));
     let world_meters = shown_meters(canon, state, &EntityId::World);
@@ -198,11 +194,9 @@ fn perceive_viewer_budget(
 
 /// The meters `entity` carries that are not hidden, in id order.
 fn shown_meters(canon: &Canon, state: &State, entity: &EntityId) -> Vec<MeterView> {
-    let Some(meters) = state.meters_of(entity) else {
-        return Vec::new();
-    };
-    meters
-        .iter()
+    state
+        .meters_of(entity)
+        .into_iter()
         .filter_map(|(id, live)| {
             let def = canon
                 .meter_def(entity.as_ref(), id)
@@ -210,7 +204,7 @@ fn shown_meters(canon: &Canon, state: &State, entity: &EntityId) -> Vec<MeterVie
             let modifiers = state.modifier_sum(entity, id).ok()?;
             let value = meter::current(def, live, modifiers).ok()?;
             Some(MeterView {
-                id: id.clone(),
+                id: id.to_string(),
                 value,
                 max: def.max,
             })
