@@ -18,6 +18,7 @@ use std::path::PathBuf;
 use crate::canon::Canon;
 use crate::intent::Viewer;
 use crate::rules::perceive::{perceive_as, View};
+use crate::state::id::{ActorId, PlaceId};
 use crate::state::{sort_unique, Note, Presence, State};
 use crate::world::World;
 
@@ -43,8 +44,8 @@ struct Scene {
 #[test]
 fn no_hidden_fact_reaches_a_player() {
     let world = World::open(&docks()).expect("docks pack opens");
-    let actors: Vec<String> = world.state().actors.keys().cloned().collect();
-    let places: Vec<String> = world.state().places.keys().cloned().collect();
+    let actors: Vec<ActorId> = world.state().actors.keys().cloned().collect();
+    let places: Vec<PlaceId> = world.state().places.keys().cloned().collect();
     let facts: Vec<String> = world.canon().facts.keys().cloned().collect();
     assert!(
         !actors.is_empty() && !places.is_empty() && !facts.is_empty(),
@@ -108,8 +109,8 @@ fn pick_note(
 fn apply_scene(
     canon: &mut Canon,
     state: &mut State,
-    actors: &[String],
-    places: &[String],
+    actors: &[ActorId],
+    places: &[PlaceId],
     facts: &[String],
     scene: &Scene,
 ) {
@@ -120,7 +121,7 @@ fn apply_scene(
     }
     for (actor_id, place_index) in actors.iter().zip(&scene.place_of) {
         if let Some(actor) = state.actors.get_mut(actor_id) {
-            actor.place = places[place_index % places.len()].clone();
+            actor.place = places[place_index % places.len()].to_string();
         }
     }
     for (actor_id, known) in actors.iter().zip(&scene.known) {
@@ -141,7 +142,7 @@ fn apply_scene(
             .map(|fact| facts[fact % facts.len()].clone())
             .collect();
         sort_unique(&mut fact_ids);
-        let mut to: Vec<String> = note
+        let mut to: Vec<ActorId> = note
             .to
             .iter()
             .map(|actor| actors[actor % actors.len()].clone())

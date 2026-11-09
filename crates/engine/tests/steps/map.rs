@@ -11,7 +11,7 @@ use crate::World;
 fn rowan_seated() -> Presence {
     Presence {
         players: 1,
-        actors_present: vec!["pc_rowan".to_string()],
+        actors_present: vec!["pc_rowan".into()],
     }
 }
 
@@ -48,7 +48,7 @@ fn miras_place(pack: &Path) -> String {
 /// The exit names Mira's map lists for the Docks Shop.
 fn shop_exits_on_miras_map(pack: &Path) -> Vec<String> {
     let saved = spookery_engine::World::peek(pack).unwrap();
-    let places = saved.map("mira").unwrap();
+    let places = saved.map(&"mira".into()).unwrap();
     let shop = places
         .iter()
         .find(|place| place.name == "Docks Shop")

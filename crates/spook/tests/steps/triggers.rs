@@ -536,7 +536,7 @@ Under the street.
     edit_table(world, &pack, |now, seated| {
         insert_actor_copy(now, seated, "pc_rowan", "pc_nell", "docks_street");
         now.places.insert(
-            "cellar".to_string(),
+            "cellar".into(),
             spookery_engine::testing::PlaceLive::default(),
         );
     });
@@ -908,7 +908,7 @@ fn the_empty_table_narrates_and_then_rowan_narrates(world: &mut World) {
         });
     let rowan = Presence {
         players: 1,
-        actors_present: vec!["pc_rowan".to_string()],
+        actors_present: vec!["pc_rowan".into()],
     };
     queue(&mut kernel, intent("back", "pc_rowan", "back", None));
     let wall = kernel.state().last_round_at.clone();
@@ -919,7 +919,7 @@ fn the_empty_table_narrates_and_then_rowan_narrates(world: &mut World) {
         .lines
         .into_iter()
         .chain(back.lines)
-        .map(|line| (line.to, line.text))
+        .map(|line| (line.to.into(), line.text))
         .collect();
     world.pack = Some(pack);
 }
@@ -983,7 +983,7 @@ pub(crate) fn set_place(now: &mut State, id: &str, place: &str) {
 /// Seat these PCs, sorted the way the host's seats are.
 pub(crate) fn sit(seated: &mut Presence, ids: &[&str]) {
     seated.players = u32::try_from(ids.len()).unwrap();
-    seated.actors_present = ids.iter().map(|id| (*id).to_string()).collect();
+    seated.actors_present = ids.iter().map(|id| (*id).into()).collect();
     seated.actors_present.sort();
 }
 
@@ -1163,7 +1163,7 @@ fn insert_actor_copy(now: &mut State, seated: &mut Presence, from: &str, id: &st
     actor.flags.clear();
     // Only pc_rowan carries the debt, so a copy of them does not.
     actor.meters.remove("assassination_debt");
-    now.actors.insert(id.to_string(), actor);
+    now.actors.insert(id.into(), actor);
     sit(seated, &[id]);
 }
 
@@ -1231,12 +1231,12 @@ pub(crate) fn play_round(
     let told = output
         .lines
         .into_iter()
-        .map(|line| (line.to, line.text))
+        .map(|line| (line.to.into(), line.text))
         .collect();
     let seen = output
         .seen
         .iter()
-        .map(|item| (item.viewer.clone(), item.changes.clone()))
+        .map(|item| (item.viewer.to_string(), item.changes.clone()))
         .collect();
     PlayedRound {
         now: round.state().clone(),

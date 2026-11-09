@@ -9,6 +9,7 @@ use crate::rules::context::Context;
 use crate::rules::cost;
 use crate::rules::perceive::perceive_as;
 use crate::rules::rule::{Owner, Rule, TargetKind, When};
+use crate::state::id::ActorId;
 use crate::state::{Presence, State};
 use crate::Reason;
 
@@ -60,7 +61,8 @@ pub(crate) fn pick<'a>(
 /// The owner an intent's target names for `pick` to look in first: an actor or an item.
 pub(crate) fn hint_of(target: &Target) -> Option<&str> {
     match target {
-        Target::Actor(token) | Target::Item(token) => Some(token),
+        Target::Actor(id) => Some(id.as_str()),
+        Target::Item(token) => Some(token),
         _ => None,
     }
 }
@@ -73,7 +75,7 @@ pub(crate) fn hint_of(target: &Target) -> Option<&str> {
 pub(crate) fn verb_for<'a>(
     canon: &'a Canon,
     state: &State,
-    actor_id: &str,
+    actor_id: &ActorId,
     verb: &str,
     hint: Option<&str>,
 ) -> Option<&'a Rule> {
@@ -220,7 +222,12 @@ pub(crate) fn nameable(
     if let Ok(view) = perceive_as(canon, state, presence, viewer) {
         names.push(view.place);
         let me = viewer.actor_id();
-        names.extend(view.visible_actors.into_iter().filter(|id| id != me));
+        names.extend(
+            view.visible_actors
+                .into_iter()
+                .filter(|id| id != me)
+                .map(String::from),
+        );
         names.extend(view.items.into_iter().map(|item| item.id));
         names.extend(view.exits.into_iter().map(|exit| exit.name));
     }

@@ -223,8 +223,7 @@ The ferry waits at the dock.
     assert_ne!(text, next, "rowan profile was not found");
     fs::write(&rowan, next).unwrap();
     edit_save(&pack, |now| {
-        now.places
-            .insert("ferry_dock".to_string(), PlaceLive::default());
+        now.places.insert("ferry_dock".into(), PlaceLive::default());
         now.actors.get_mut("pc_rowan").unwrap().place = "ferry_dock".to_string();
     });
     world.pack = Some(pack);
@@ -239,7 +238,7 @@ fn a_pc_at_ferry_dock_travels(world: &mut World) {
         actors_present: Vec::new(),
     };
     opened
-        .queue_player_move(&one_human, "pc_rowan", "travel", Some("ferry_dock"))
+        .queue_player_move(&one_human, &"pc_rowan".into(), "travel", Some("ferry_dock"))
         .unwrap_or_else(|err| panic!("travel {}", err.code.as_str()));
     let wall = opened.state().last_round_at.clone();
     opened
@@ -341,7 +340,7 @@ fn an_empty_round_lands_at(world: &mut World, tick: u64) {
         mira.meters.get_mut("shop_day").unwrap().base = 0;
         let mut briar = mira.clone();
         briar.meters.remove("shop_day");
-        now.actors.insert("briar".to_string(), briar);
+        now.actors.insert("briar".into(), briar);
         now.actors.get_mut("briar").unwrap().place = "docks_shop".to_string();
         now.actors
             .get_mut("mira")
@@ -419,7 +418,7 @@ fn a_seated_round_runs(world: &mut World) {
     let pack = world.pack.clone().unwrap();
     let rowan = Presence {
         players: 1,
-        actors_present: vec!["pc_rowan".to_string()],
+        actors_present: vec!["pc_rowan".into()],
     };
     let mut opened = open(&pack);
     let wall = opened.state().last_round_at.clone();
@@ -505,7 +504,7 @@ fn lark_attacks(world: &mut World) {
             world_id: loaded.world_id.clone(),
             round_index: loaded.round_index + 1,
             rule_id: "verb:attack".to_string(),
-            subject_id: Some("pc_lark".to_string()),
+            subject_id: Some("pc_lark".into()),
             index: 0,
         },
         0,
@@ -527,7 +526,7 @@ fn lark_attacks(world: &mut World) {
     let mut opened = open(&pack);
     let nobody = Presence::default();
     opened
-        .queue_player_move(&nobody, "pc_lark", "attack", Some("npc_briar"))
+        .queue_player_move(&nobody, &"pc_lark".into(), "attack", Some("npc_briar"))
         .unwrap_or_else(|err| panic!("attack {}", err.code.as_str()));
     let wall = opened.state().last_round_at.clone();
     let outputs = opened
@@ -535,7 +534,7 @@ fn lark_attacks(world: &mut World) {
         .unwrap_or_else(|err| panic!("attack {err}"));
     let reports = outputs.into_iter().next().unwrap().reports;
     let rolled = reports.into_iter().find_map(|report| match report {
-        MoveReport::Rolled { actor_id, roll } if actor_id == "pc_lark" => Some(roll),
+        MoveReport::Rolled { actor_id, roll } if actor_id == *"pc_lark" => Some(roll),
         _ => None,
     });
     let rolled = rolled.unwrap_or_else(|| panic!("Lark did not roll"));
@@ -699,7 +698,7 @@ fn steady_costs_five_grit(world: &mut World) {
 fn the_seated_pc_plays_steady(world: &mut World) {
     let pack = world.pack.clone().unwrap();
     let mut opened = open(&pack);
-    let played = opened.queue_player_move(&Presence::default(), "pc_rowan", "steady", None);
+    let played = opened.queue_player_move(&Presence::default(), &"pc_rowan".into(), "steady", None);
     world.scratch = match played {
         Err(err) => format!("{} {}", err.code.as_str(), err.detail.unwrap_or_default()),
         Ok(_) => "queued".to_string(),
@@ -749,7 +748,7 @@ fn a_pc_is_gated_on_those_full_ids(world: &mut World) {
     let mut opened = open(&pack);
     let mut codes = Vec::new();
     for move_name in ["cast:mira/leave_door_note", "place:docks_street/travel"] {
-        match opened.queue_player_move(&Presence::default(), "pc_rowan", move_name, None) {
+        match opened.queue_player_move(&Presence::default(), &"pc_rowan".into(), move_name, None) {
             Err(miss) if miss.code == Reason::NotInSpec => {
                 codes.push(miss.code.as_str());
             }
@@ -827,7 +826,12 @@ A small bottle.
 fn the_seated_pc_queues_use_tonic(world: &mut World) {
     let pack = world.pack.clone().unwrap();
     let mut opened = open(&pack);
-    let played = opened.queue_player_move(&Presence::default(), "pc_rowan", "use", Some("tonic"));
+    let played = opened.queue_player_move(
+        &Presence::default(),
+        &"pc_rowan".into(),
+        "use",
+        Some("tonic"),
+    );
     world.scratch = match played {
         Ok(queued) => {
             let intent = opened
@@ -1028,7 +1032,7 @@ fn play_larks_line(world: &mut World, line: &str) {
     world.before = table::read_files(&pack);
     let (verb, target) = split_line(line);
     let (lark, mut opened) = (seated_lark(), open(&pack));
-    if let Err(refusal) = opened.queue_player_move(&lark, "pc_lark", verb, target) {
+    if let Err(refusal) = opened.queue_player_move(&lark, &"pc_lark".into(), verb, target) {
         world.scratch = refusal.code.as_str().to_string();
         return;
     }
@@ -1048,7 +1052,7 @@ fn play_larks_line(world: &mut World, line: &str) {
 fn seated_lark() -> Presence {
     Presence {
         players: 1,
-        actors_present: vec!["pc_lark".to_string()],
+        actors_present: vec!["pc_lark".into()],
     }
 }
 

@@ -79,8 +79,8 @@ fn snapshot(root: &Path) -> Vec<(PathBuf, Vec<u8>)> {
 fn door_note() -> Note {
     Note {
         id: "note_mira_door".to_string(),
-        to: vec!["pc_rowan".to_string()],
-        place: Some("docks_shop".to_string()),
+        to: vec!["pc_rowan".into()],
+        place: Some("docks_shop".into()),
         fact_ids: Vec::new(),
         text: "Back at dusk. Oil on the shelf.".to_string(),
     }
@@ -90,7 +90,7 @@ fn door_note() -> Note {
 fn rowan() -> Presence {
     Presence {
         players: 1,
-        actors_present: vec!["pc_rowan".to_string()],
+        actors_present: vec!["pc_rowan".into()],
     }
 }
 
@@ -102,7 +102,7 @@ fn evening_note() {
     assert_eq!(state.actors.get("mira").unwrap().place, "mira_rooms");
     assert_eq!(state.notes.len(), 1);
     assert_eq!(state.notes[0].id, "note_mira_door");
-    assert_eq!(state.notes[0].place.as_deref(), Some("docks_shop"));
+    assert_eq!(state.notes[0].place, Some("docks_shop".into()));
     let _ = fs::remove_dir_all(&pack);
 }
 
@@ -321,10 +321,10 @@ Rowan.
     }
     let rev = spookery_engine::pack_rev(&pack).unwrap();
     let mut places = BTreeMap::new();
-    places.insert("gate".to_string(), PlaceLive::default());
+    places.insert("gate".into(), PlaceLive::default());
     let mut actors = BTreeMap::new();
     actors.insert(
-        "pc_rowan".to_string(),
+        "pc_rowan".into(),
         ActorLive {
             kind: ActorKind::Pc,
             place: "gate".to_string(),
@@ -454,7 +454,7 @@ rules:
             ),
         );
         actors.insert(
-            id,
+            id.into(),
             ActorLive {
                 kind: ActorKind::Npc,
                 place: "yard".to_string(),
@@ -476,7 +476,7 @@ rules:
     }
     let rev = spookery_engine::pack_rev(&pack).unwrap();
     let mut places = BTreeMap::new();
-    places.insert("yard".to_string(), PlaceLive::default());
+    places.insert("yard".into(), PlaceLive::default());
     let state = State {
         schema: "save".to_string(),
         world_id: "crowd".to_string(),
@@ -631,7 +631,7 @@ fn play_mark(pack: &Path) -> State {
     let mut opened = resume(pack);
     let wall = opened.state().last_round_at.clone();
     opened
-        .queue_player_move(&rowan(), "pc_rowan", "mark", Some("mira"))
+        .queue_player_move(&rowan(), &"pc_rowan".into(), "mark", Some("mira"))
         .unwrap();
     let played = opened.commit_then_fast_forward(&rowan(), &wall).unwrap();
     assert!(!played.is_empty(), "mark mira did not commit");
@@ -712,7 +712,7 @@ fn opposing_total_reused() {
         }
         let wall = opened.state().last_round_at.clone();
         opened
-            .queue_player_move(&rowan(), "pc_rowan", "mark", Some("pc_nell"))
+            .queue_player_move(&rowan(), &"pc_rowan".into(), "mark", Some("pc_nell"))
             .unwrap();
         assert_eq!(opened.state().world_time, 1080);
         let outputs = opened.commit_then_fast_forward(&rowan(), &wall).unwrap();
@@ -773,7 +773,7 @@ fn a_held_knife_still_runs_the_opposed_row() {
     queue_gm_intent(&mut opened, "gm-1", "pc_nell", "defend");
     let wall = opened.state().last_round_at.clone();
     opened
-        .queue_player_move(&rowan(), "pc_rowan", "mark", Some("pc_nell"))
+        .queue_player_move(&rowan(), &"pc_rowan".into(), "mark", Some("pc_nell"))
         .unwrap();
     let before = opened.state().world_time;
     let outputs = opened.commit_then_fast_forward(&rowan(), &wall).unwrap();
@@ -790,7 +790,7 @@ fn a_held_knife_still_runs_the_opposed_row() {
 
 fn rowans_debt(pack: &Path) -> i64 {
     let canon = load_canon(pack).unwrap_or_else(|err| panic!("load: {err:?}"));
-    let rowan = EntityId::Actor("pc_rowan".to_string());
+    let rowan = EntityId::Actor("pc_rowan".into());
     state_of(pack)
         .meter_value(&canon, &rowan, "assassination_debt")
         .unwrap_or_else(|err| panic!("assassination_debt: {err}"))
@@ -914,7 +914,7 @@ fn a_docks_table(world: &mut World) {
 #[when(expr = "a player queues take lamp_oil and the host stops before a round")]
 fn a_player_queues_take_and_the_host_stops(world: &mut World) {
     let mut host = resume(world.pack());
-    host.queue_player_move(&rowan(), "pc_rowan", "take", Some("lamp_oil"))
+    host.queue_player_move(&rowan(), &"pc_rowan".into(), "take", Some("lamp_oil"))
         .unwrap();
     assert_eq!(host.queued_intents().len(), 1);
 }

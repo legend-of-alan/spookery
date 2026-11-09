@@ -3,8 +3,9 @@
 use serde::{Deserialize, Serialize};
 
 use crate::intent::Intent;
-use crate::rules::effect::{Effect, EntityId};
+use crate::rules::effect::Effect;
 use crate::rules::gate;
+use crate::state::id::{ActorId, EntityId};
 use crate::state::meter::MeterDef;
 use crate::state::MemoryLine;
 
@@ -103,7 +104,7 @@ pub struct RoundRecord {
     pub world_time_after: u64,
     pub presence_players: u32,
     /// Seated actor ids when the round ran.
-    pub actors_present: Vec<String>,
+    pub actors_present: Vec<ActorId>,
     pub seed: String,
     pub last_round_at: String,
     /// The intents queued for this round, before stamping and habits, which replay plays again.

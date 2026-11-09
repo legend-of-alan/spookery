@@ -16,7 +16,8 @@
 
 use crate::draft::Draft;
 use crate::intent::{Intent, IntentArgs, Source, Target, Viewer};
-use crate::rules::effect::{Effect, EffectKind, EntityId};
+use crate::rules::effect::{Effect, EffectKind};
+use crate::state::id::{ActorId, EntityId, PlaceId};
 use crate::state::State;
 use crate::testing::copy_docks;
 use crate::world::World;
@@ -38,8 +39,8 @@ struct ItemChange {
 fn random_item_changes_never_leave_a_negative_count() {
     let pack = TempPack(copy_docks("inventory"));
     let world = World::open(&pack.0).expect("docks pack opens");
-    let actors: Vec<String> = world.state().actors.keys().cloned().collect();
-    let places: Vec<String> = world.state().places.keys().cloned().collect();
+    let actors: Vec<ActorId> = world.state().actors.keys().cloned().collect();
+    let places: Vec<PlaceId> = world.state().places.keys().cloned().collect();
     assert!(
         actors.len() >= 2 && !places.is_empty(),
         "the pack needs actors and places to shift"
@@ -158,7 +159,7 @@ fn npc_intent() -> Intent {
     Intent {
         id: "shift-item".to_string(),
         round_index: 0,
-        actor: Some(Viewer::Npc("mira".to_string())),
+        actor: Some(Viewer::Npc("mira".into())),
         source: Source::Engine,
         move_name: "shift_item".to_string(),
         target: Target::Empty,
@@ -181,14 +182,14 @@ fn item_effect(step: &ItemChange) -> Effect {
             delta: step.delta,
             max: step.max,
         },
-        viewer: Some(Viewer::Npc("mira".to_string())),
+        viewer: Some(Viewer::Npc("mira".into())),
         intent_id: "shift-item".to_string(),
     }
 }
 
 /// Two actors, every place, and three item ids stay under `max_state_keys_mutated`.
 /// A budget miss is the round's rollback, not a count change this property watches.
-fn pick_changes(actors: &[String], places: &[String]) -> impl Strategy<Value = Vec<ItemChange>> {
+fn pick_changes(actors: &[ActorId], places: &[PlaceId]) -> impl Strategy<Value = Vec<ItemChange>> {
     prop::collection::vec(
         (
             pick_entity(actors, places),
@@ -206,7 +207,7 @@ fn pick_changes(actors: &[String], places: &[String]) -> impl Strategy<Value = V
     )
 }
 
-fn pick_entity(actors: &[String], places: &[String]) -> impl Strategy<Value = EntityId> {
+fn pick_entity(actors: &[ActorId], places: &[PlaceId]) -> impl Strategy<Value = EntityId> {
     let mut known = Vec::new();
     for id in actors.iter().take(2) {
         known.push(EntityId::Actor(id.clone()));
@@ -216,8 +217,8 @@ fn pick_entity(actors: &[String], places: &[String]) -> impl Strategy<Value = En
     }
     prop_oneof![
         8 => select(known),
-        1 => Just(EntityId::Actor("nobody".to_string())),
-        1 => Just(EntityId::Place("nowhere".to_string())),
+        1 => Just(EntityId::Actor("nobody".into())),
+        1 => Just(EntityId::Place("nowhere".into())),
     ]
 }
 

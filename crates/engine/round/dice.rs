@@ -10,6 +10,7 @@ use crate::rules::expr::{eval_with_dice, Dice};
 use crate::rules::roll::Outcome;
 use crate::rules::roll::{self, faces, MoveReport, Roll, RollKey};
 use crate::rules::rule::RollSpec;
+use crate::state::id::ActorId;
 use crate::state::State;
 use crate::Reason;
 
@@ -18,7 +19,7 @@ pub(crate) fn round_seed(world_id: &str, round_index: u64) -> String {
     format!("{world_id}|{round_index}")
 }
 
-pub(crate) fn shuffle_key(world_id: &str, round_index: u64, actor_id: &str) -> [u8; 32] {
+pub(crate) fn shuffle_key(world_id: &str, round_index: u64, actor_id: &ActorId) -> [u8; 32] {
     blake2s_256(format!("{world_id}|{round_index}|{actor_id}").as_bytes())
 }
 
@@ -26,7 +27,7 @@ pub(crate) fn shuffle_key(world_id: &str, round_index: u64, actor_id: &str) -> [
 pub(crate) struct RoundDice {
     world_id: String,
     round_index: u64,
-    counts: BTreeMap<(String, Option<String>), u32>,
+    counts: BTreeMap<(String, Option<ActorId>), u32>,
 }
 
 impl RoundDice {
@@ -39,10 +40,10 @@ impl RoundDice {
     }
 
     /// The one allocator: the next key for this rule and subject.
-    pub(crate) fn next_key(&mut self, rule: &str, subject: Option<&str>) -> RollKey {
+    pub(crate) fn next_key(&mut self, rule: &str, subject: Option<&ActorId>) -> RollKey {
         let index = self
             .counts
-            .entry((rule.to_string(), subject.map(str::to_string)))
+            .entry((rule.to_string(), subject.cloned()))
             .or_insert(0);
         let roll_index = *index;
         *index += 1;
@@ -50,7 +51,7 @@ impl RoundDice {
             world_id: self.world_id.clone(),
             round_index: self.round_index,
             rule_id: rule.to_string(),
-            subject_id: subject.map(str::to_string),
+            subject_id: subject.cloned(),
             index: roll_index,
         }
     }
@@ -78,7 +79,7 @@ impl RoundDice {
         &'a mut self,
         log: &'a mut RoundLog,
         rule: &'a str,
-        subject: Option<&'a str>,
+        subject: Option<&'a ActorId>,
     ) -> Roller<'a> {
         Roller {
             dice: self,
@@ -98,7 +99,7 @@ pub(crate) struct Roller<'a> {
     dice: &'a mut RoundDice,
     log: &'a mut RoundLog,
     rule: &'a str,
-    subject: Option<&'a str>,
+    subject: Option<&'a ActorId>,
     key: Option<RollKey>,
     drawn: usize,
     reports: Vec<MoveReport>,
@@ -162,7 +163,7 @@ impl Dice for Roller<'_> {
         &mut self,
         canon: &Canon,
         state: &State,
-        actor_id: &str,
+        actor_id: &ActorId,
         check_id: &str,
         target: i64,
     ) -> Result<Outcome, Reason> {
@@ -171,7 +172,7 @@ impl Dice for Roller<'_> {
             .dice
             .roll_check(canon, state, key, check_id, target, None)?;
         self.reports.push(MoveReport::Rolled {
-            actor_id: actor_id.to_string(),
+            actor_id: actor_id.clone(),
             roll: out.clone(),
         });
         Ok(out.outcome)

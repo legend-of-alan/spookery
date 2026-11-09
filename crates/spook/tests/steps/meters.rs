@@ -73,7 +73,7 @@ fn value_on(pack: &Path, entity: &EntityId, key: &str) -> Option<i64> {
 }
 
 fn mira() -> EntityId {
-    EntityId::Actor("mira".to_string())
+    EntityId::Actor("mira".into())
 }
 
 /// Give the save the meters the pack now declares, then play one round.
@@ -159,7 +159,7 @@ fn the_habit_runs_as_before(world: &mut World) {
     let note = now.notes.iter().find(|note| note.id == "note_mira_door");
     assert_eq!(
         note.map(|note| note.to.clone()),
-        Some(vec!["pc_rowan".to_string()])
+        Some(vec!["pc_rowan".into()])
     );
     assert_eq!(value_on(pack(world), &mira(), "shop_day"), Some(0));
 }
@@ -502,7 +502,7 @@ fn rowan_and_nell_each_see_once(world: &mut World, text: String) {
 #[given(expr = "Mira carries no dawn meter")]
 fn mira_carries_no_dawn(world: &mut World) {
     let canon = load_canon(pack(world)).unwrap_or_else(|err| panic!("load: {err:?}"));
-    assert!(canon.meter_def(&mira(), "dawn").is_none());
+    assert!(canon.meter_def(mira().as_ref(), "dawn").is_none());
 }
 
 #[given(expr = "Mira has a habit that adds 1 to who {string} meter dawn")]

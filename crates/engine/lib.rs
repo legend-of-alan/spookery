@@ -15,12 +15,12 @@ pub use canon::{load_canon, pack_rev};
 pub use diagnostic::{first_reason, Code, Diagnostic};
 pub use intent::{Intent, IntentArgs, Source, Target, Viewer};
 pub use round::{migrate_pack, play_pack_once, verify_pack, verify_quick, RoundOutput};
-pub use rules::effect::EntityId;
 pub use rules::gate::Refusal;
 pub use rules::perceive::View;
 pub use rules::roll::MoveReport;
 pub use rules::visibility::RecipientLine;
 pub use spookery_protocol::Reason;
+pub use state::id::{ActorId, EntityId, PlaceId, StoryId};
 pub use state::meter::Meter;
 pub use state::modifier::Modifier;
 pub use state::{Note, Presence, State};
@@ -239,7 +239,7 @@ pub mod testing {
             .unwrap_or_else(|err| panic!("copy {}: {err}", from.display()));
         edit_save(pack, |state| {
             state.actors.insert(
-                "pc_nell".to_string(),
+                "pc_nell".into(),
                 crate::state::ActorLive {
                     kind: crate::state::ActorKind::Pc,
                     place: "docks_shop".to_string(),

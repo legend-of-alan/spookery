@@ -56,21 +56,21 @@ fn holds(context: &Context, cond: &Cond) -> Result<bool, Reason> {
     let state = context.state;
     match cond {
         Cond::HasItem { who, id, count } => {
-            let actor = expr::resolve_who_id(context, who)?;
+            let actor = expr::resolve_actor(context, who)?;
             let id = expr::resolve_item_id(context, id)?;
             let held = state
                 .actors
-                .get(&actor)
+                .get(actor)
                 .map(|actor| actor.item_count(&id))
                 .unwrap_or(0);
             Ok(held >= *count)
         }
         Cond::Wielding { who, id } => {
-            let actor = expr::resolve_who_id(context, who)?;
+            let actor = expr::resolve_actor(context, who)?;
             let id = expr::resolve_item_id(context, id)?;
             Ok(state
                 .actors
-                .get(&actor)
+                .get(actor)
                 .is_some_and(|actor| actor.wielded.as_deref() == Some(id.as_str())))
         }
         Cond::Meter {
@@ -89,17 +89,17 @@ fn holds(context: &Context, cond: &Cond) -> Result<bool, Reason> {
             Ok(state.has_flag(&entity, key) == *is)
         }
         Cond::At { who, place } => {
-            let actor = expr::resolve_who_id(context, who)?;
+            let actor = expr::resolve_actor(context, who)?;
             Ok(state
                 .actors
-                .get(&actor)
+                .get(actor)
                 .is_some_and(|actor| actor.place == *place))
         }
         Cond::Knows { who, fact } => {
-            let actor = expr::resolve_who_id(context, who)?;
+            let actor = expr::resolve_actor(context, who)?;
             Ok(state
                 .actors
-                .get(&actor)
+                .get(actor)
                 .is_some_and(|actor| actor.known_facts.iter().any(|id| id == fact)))
         }
         Cond::Cycle { name, from, to } => {

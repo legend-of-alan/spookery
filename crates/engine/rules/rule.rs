@@ -1,6 +1,7 @@
 //! One rule shape. The id is namespaced by the file that owns it.
 
 use crate::rules::expr::Expr;
+use crate::state::id::{ActorId, PlaceId, StoryId};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Rule {
@@ -273,11 +274,11 @@ pub enum Who {
     Target,
     Here,
     World,
-    Place(String),
-    Story(String),
+    Place(PlaceId),
+    Story(StoryId),
     /// An exit, by its place and its name: `exit:<place>.<exit>`.
-    Exit(String, String),
-    Actor(String),
+    Exit(PlaceId, String),
+    Actor(ActorId),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -308,8 +309,8 @@ pub enum EffectTemplate {
     },
     Note {
         id: String,
-        to: Vec<String>,
-        place: Option<String>,
+        to: Vec<ActorId>,
+        place: Option<PlaceId>,
         fact_ids: Vec<String>,
         text: String,
     },
@@ -367,7 +368,7 @@ pub enum LocationTo {
 pub enum NarrateTo {
     Here,
     Self_,
-    Actors(Vec<String>),
+    Actors(Vec<ActorId>),
     /// No `to`: every seated player.
     Present,
 }
@@ -408,11 +409,11 @@ impl RuleTable {
         })
     }
 
-    pub(crate) fn habits_of(&self, actor: &str) -> Vec<&Rule> {
+    pub(crate) fn habits_of(&self, actor: &ActorId) -> Vec<&Rule> {
         self.rules
             .iter()
             .filter(|rule| {
-                matches!(&rule.owner, Owner::Cast(id) if id == actor)
+                matches!(&rule.owner, Owner::Cast(id) if *actor == **id)
                     && matches!(rule.when, When::Habit)
             })
             .collect()

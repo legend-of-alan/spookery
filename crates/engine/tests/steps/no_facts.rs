@@ -121,12 +121,12 @@ fn play(world: &mut World, actor: &str, line: &str) {
         spookery_engine::World::resume(pack, lock).unwrap_or_else(|err| panic!("resume: {err}"));
     let seated = Presence {
         players: 1,
-        actors_present: vec![actor.to_string()],
+        actors_present: vec![actor.into()],
     };
     let (verb, target) = split_line(line);
     let wall = opened.state().last_round_at.clone();
     opened
-        .queue_player_move(&seated, actor, verb, target)
+        .queue_player_move(&seated, &actor.into(), verb, target)
         .unwrap_or_else(|err| panic!("{line}: {}", err.code.as_str()));
     opened
         .commit_then_fast_forward(&seated, &wall)

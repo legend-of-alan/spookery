@@ -9,14 +9,14 @@ use crate::canon::rule_list::{self, RuleYaml};
 use crate::canon::source::{load_tagged, Diags, FileText, Locator, Page, Problem, CAST_SCHEMA};
 use crate::canon::{CastDef, CastKind, IdleProfile};
 use crate::diagnostic::Diagnostic;
-use crate::rules::effect::EntityId;
 use crate::rules::rule::{Owner, Rule};
+use crate::state::id::{ActorId, EntityId};
 use crate::state::meter::MeterDef;
 
 /// One cast page into `cast`, its own meters into `meters` when those loaded, and its rules.
 pub(super) fn add_cast(
     page: Page,
-    cast: &mut BTreeMap<String, CastDef>,
+    cast: &mut BTreeMap<ActorId, CastDef>,
     meters: Option<&mut BTreeMap<String, MeterDef>>,
     diags: &mut Diags,
 ) -> Option<Vec<Rule>> {
@@ -34,14 +34,14 @@ pub(super) fn add_cast(
     };
     let hint = "keep one cast file with this id";
     let twice = ("cast id", "is already defined", hint);
-    let taken = cast.contains_key(&file.id);
+    let taken = cast.contains_key(file.id.as_str());
     if let Some(diag) =
         taken.then(|| whole.refuse_duplicate(&file.id, "id", Locator::Nowhere, twice))
     {
         diags.push(diag);
         return None;
     }
-    let id = file.id.clone();
+    let id: ActorId = file.id.clone().into();
     let carrier = Some(EntityId::Actor(id.clone()));
     let own = diags.keep(meter_defs(&whole, file.meters, carrier));
     if let (Some(meters), Some(own)) = (meters, own) {
@@ -57,7 +57,11 @@ pub(super) fn add_cast(
             idle: file.idle,
         },
     );
-    diags.keep(rule_list::compile(&page.file, file.rules, &Owner::Cast(id)))
+    diags.keep(rule_list::compile(
+        &page.file,
+        file.rules,
+        &Owner::Cast(id.into()),
+    ))
 }
 
 fn load_cast(file: &str, yaml: &str, line_base: u32) -> Result<CastDoc, Vec<Diagnostic>> {

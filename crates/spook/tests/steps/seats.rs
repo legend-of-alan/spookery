@@ -149,7 +149,7 @@ Lark watches the street from a dry doorway.
             .unwrap_or_else(|| panic!("pc_wren"))
             .clone();
         actor.place = "docks_street".to_string();
-        now.actors.insert("pc_lark".to_string(), actor);
+        now.actors.insert("pc_lark".into(), actor);
     });
     spookery_engine::World::open(&pack).unwrap_or_else(|err| panic!("four-pc pack: {err}"));
     world.pack = Some(pack);

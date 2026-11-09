@@ -15,7 +15,7 @@ const PCS: [&str; 3] = ["pc_rowan", "pc_wren", "pc_harbormouse"];
 fn seated() -> Presence {
     Presence {
         players: 3,
-        actors_present: PCS.iter().map(|id| id.to_string()).collect(),
+        actors_present: PCS.iter().map(|id| (*id).into()).collect(),
     }
 }
 
@@ -23,7 +23,7 @@ fn seated() -> Presence {
 fn play_in_one_round(world: &World, moves: &[(&str, &str)]) {
     let mut opened = open(world.pack.as_ref().unwrap());
     for (actor, verb) in moves {
-        if let Err(refusal) = opened.queue_player_move(&seated(), actor, verb, None) {
+        if let Err(refusal) = opened.queue_player_move(&seated(), &(*actor).into(), verb, None) {
             panic!("{actor} {verb}: {}", refusal.code.as_str());
         }
     }

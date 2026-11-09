@@ -5,7 +5,8 @@ use crate::protocol::{
     TableStatus,
 };
 use spookery_engine::{
-    self as engine, Intent, MoveReport, Note, Presence, RoundOutput, State, TapeRecord,
+    self as engine, ActorId, Intent, MoveReport, Note, PlaceId, Presence, RoundOutput, State,
+    TapeRecord,
 };
 
 /// A move the gate or a round refused. Its `detail` is the meter or item id, or the
@@ -38,7 +39,11 @@ fn build_say(tape: &TapeRecord, gm: bool) -> Say {
 }
 
 /// The reply to a new claim: the PC, its token, and the says it heard before.
-pub(super) fn render_claimed(actor: &str, token: &str, scrollback: &[TapeRecord]) -> ServerBody {
+pub(super) fn render_claimed(
+    actor: &ActorId,
+    token: &str,
+    scrollback: &[TapeRecord],
+) -> ServerBody {
     ServerBody::Claimed {
         actor: actor.to_string(),
         token: token.to_string(),
@@ -52,7 +57,7 @@ pub(super) fn render_claimed(actor: &str, token: &str, scrollback: &[TapeRecord]
 }
 
 /// The `check` and `refused` bodies of this actor's moves.
-pub(super) fn render_checks(reports: &[MoveReport], actor_id: &str) -> Vec<ServerBody> {
+pub(super) fn render_checks(reports: &[MoveReport], actor_id: &ActorId) -> Vec<ServerBody> {
     reports
         .iter()
         .filter_map(|report| match report {
@@ -97,7 +102,7 @@ pub(super) fn render_view(view: &engine::View) -> ServerBody {
         actor_names: view.actor_names.clone(),
         cant_act: String::new(),
         busy: view.busy.clone(),
-        visible_actors: view.visible_actors.clone(),
+        visible_actors: view.visible_actors.iter().map(ActorId::to_string).collect(),
         known_facts: view.known_facts.clone(),
         notes: view.notes.iter().map(note_view).collect(),
         unknown_mentions: view.unknown_mentions.clone(),
@@ -140,7 +145,11 @@ pub(super) fn render_status(
     ServerBody::Status(Box::new(TableStatus {
         presence: StatusPresence {
             players: presence.players,
-            actors_present: presence.actors_present.clone(),
+            actors_present: presence
+                .actors_present
+                .iter()
+                .map(ActorId::to_string)
+                .collect(),
         },
         world_time: now.world_time,
         round_index: now.round_index,
@@ -164,8 +173,8 @@ pub(super) fn render_status(
 fn note_view(note: &Note) -> NoteView {
     NoteView {
         id: note.id.clone(),
-        to: note.to.clone(),
-        place: note.place.clone(),
+        to: note.to.iter().map(ActorId::to_string).collect(),
+        place: note.place.as_ref().map(PlaceId::to_string),
         fact_ids: note.fact_ids.clone(),
         text: note.text.clone(),
     }

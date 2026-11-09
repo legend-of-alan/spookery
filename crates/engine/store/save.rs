@@ -7,7 +7,7 @@ use serde_saphyr::SerializerOptions;
 
 use crate::canon::Canon;
 use crate::diagnostic::{check_tag, error, locate_nth, parse_file, schema_error, Diagnostic};
-use crate::rules::effect::EntityId;
+use crate::state::id::{EntityId, EntityRef};
 use crate::state::meter::Meter;
 use crate::state::modifier;
 use crate::state::{exit_parts, sort_unique, State};
@@ -140,7 +140,7 @@ pub(crate) fn missing_meters(canon: &Canon, state: &State) -> Vec<AddedMeter> {
                 .meters_of(entity)
                 .is_none_or(|live| !live.contains_key(id)),
             _ => state.actors.iter().any(|(actor, live)| {
-                def.is_on(&EntityId::Actor(actor.clone())) && !live.meters.contains_key(id)
+                def.is_on(EntityRef::Actor(actor)) && !live.meters.contains_key(id)
             }),
         };
         if lacking {
@@ -160,7 +160,7 @@ pub(crate) fn stale_meters(canon: &Canon, state: &State) -> Vec<DroppedMeter> {
     let mut dropped = Vec::new();
     let mut drop_stale = |carrier: EntityId, live: &BTreeMap<String, Meter>| {
         for id in live.keys() {
-            if canon.meter_def(&carrier, id).is_none() {
+            if canon.meter_def(carrier.as_ref(), id).is_none() {
                 dropped.push(DroppedMeter {
                     id: id.clone(),
                     carrier: carrier.clone(),

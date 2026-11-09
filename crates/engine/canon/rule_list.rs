@@ -17,6 +17,7 @@ use crate::rules::rule::{
     ChangeWatch, Cond, Cost, EffectTemplate, LineColumn, LocationTo, NarrateTo, Op, Owner, Phase,
     ResistSpec, RollSpec, Rule, TargetKind, WatchWho, When, Who,
 };
+use crate::state::id::{ActorId, PlaceId};
 
 const MOVES_REPLACED: &str = "rules/moves.yaml was replaced by rules/verbs.yaml";
 
@@ -350,8 +351,8 @@ pub struct LocationYaml {
 pub struct NoteYaml {
     pub id: String,
     #[serde(default)]
-    pub to: Vec<String>,
-    pub place: Option<String>,
+    pub to: Vec<ActorId>,
+    pub place: Option<PlaceId>,
     #[serde(default)]
     pub fact_ids: Vec<String>,
     pub text: String,
@@ -981,7 +982,7 @@ fn effect_of(yaml: &EffectYaml) -> Result<EffectTemplate, Fault> {
         let to = match narrate.to.as_deref() {
             Some("here") => NarrateTo::Here,
             Some("self") => NarrateTo::Self_,
-            Some(other) => NarrateTo::Actors(vec![other.to_string()]),
+            Some(other) => NarrateTo::Actors(vec![other.into()]),
             None => NarrateTo::Present,
         };
         effect = Some(EffectTemplate::Narrate {
@@ -1068,18 +1069,18 @@ fn who_of(yaml: &Spanned<String>) -> Result<Who, Fault> {
         if place.is_empty() {
             return Err(fault("place: needs an id".to_string()));
         }
-        return Ok(Who::Place(place.to_string()));
+        return Ok(Who::Place(place.into()));
     }
     if let Some(story) = word.strip_prefix("story:") {
         if story.is_empty() {
             return Err(fault("story: needs an id".to_string()));
         }
-        return Ok(Who::Story(story.to_string()));
+        return Ok(Who::Story(story.into()));
     }
     if let Some(exit) = word.strip_prefix("exit:") {
         return match exit.split_once('.') {
             Some((place, name)) if !place.is_empty() && !name.is_empty() => {
-                Ok(Who::Exit(place.to_string(), name.to_string()))
+                Ok(Who::Exit(place.into(), name.to_string()))
             }
             _ => Err(fault("exit: needs <place>.<exit>".to_string())),
         };
@@ -1092,9 +1093,7 @@ fn who_of(yaml: &Spanned<String>) -> Result<Who, Fault> {
         "subject" => Err(fault(
             "who 'subject' is not a who; use self, or target for the move's target".to_string(),
         )),
-        other if !other.is_empty() && !is_retired_selector(other) => {
-            Ok(Who::Actor(other.to_string()))
-        }
+        other if !other.is_empty() && !is_retired_selector(other) => Ok(Who::Actor(other.into())),
         other => Err(fault(format!("who '{other}' is not a who"))),
     }
 }

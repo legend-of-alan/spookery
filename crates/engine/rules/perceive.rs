@@ -4,9 +4,9 @@ use std::collections::BTreeSet;
 
 use crate::canon::Canon;
 use crate::intent::Viewer;
-use crate::rules::effect::EntityId;
 use crate::rules::habits::list_whose_if_holds;
 use crate::rules::visibility::can_see_fact;
+use crate::state::id::{ActorId, EntityId};
 use crate::state::meter;
 use crate::state::{Note, Presence, State};
 use crate::world::World;
@@ -22,7 +22,7 @@ pub struct View {
     pub place: String,
     pub place_name: String,
     pub prose: String,
-    pub visible_actors: Vec<String>,
+    pub visible_actors: Vec<ActorId>,
     pub actor_names: Vec<String>,
     pub known_facts: Vec<KnownFact>,
     pub notes: Vec<Note>,
@@ -52,14 +52,11 @@ pub(crate) fn perceive_budget<L>(
         return Err(Reason::UnscopedPerceive);
     }
     let (canon, state) = (world.canon(), world.state());
-    let actor = state.actors.get(as_arg).ok_or(Reason::UnknownId)?;
-    perceive_viewer_budget(
-        canon,
-        state,
-        presence,
-        &actor.viewer(as_arg),
-        max_body_chars,
-    )
+    let (id, actor) = state
+        .actors
+        .get_key_value(as_arg)
+        .ok_or(Reason::UnknownId)?;
+    perceive_viewer_budget(canon, state, presence, &actor.viewer(id), max_body_chars)
 }
 
 pub(crate) fn perceive_as(
@@ -83,7 +80,7 @@ fn perceive_viewer_budget(
         .get(viewer.actor_id())
         .ok_or(Reason::UnknownId)?;
     let place = actor.place.clone();
-    let mut visible_actors: Vec<String> = state
+    let mut visible_actors: Vec<ActorId> = state
         .actors
         .iter()
         .filter(|(_, other)| other.place == place)
@@ -130,7 +127,7 @@ fn perceive_viewer_budget(
 
     let mut notes = Vec::new();
     for note in &state.notes {
-        let here = note.place.as_deref() == Some(place.as_str());
+        let here = note.place.as_ref().is_some_and(|at| at == place.as_str());
         let addressed = note.to.iter().any(|id| id == viewer.actor_id());
         if !here && !addressed {
             continue;
@@ -151,7 +148,7 @@ fn perceive_viewer_budget(
 
     let items = state
         .places
-        .get(&place)
+        .get(place.as_str())
         .map(|place_live| {
             place_live
                 .items
@@ -164,11 +161,7 @@ fn perceive_viewer_budget(
         })
         .unwrap_or_default();
 
-    let meters = shown_meters(
-        canon,
-        state,
-        &EntityId::Actor(viewer.actor_id().to_string()),
-    );
+    let meters = shown_meters(canon, state, &EntityId::Actor(viewer.actor_id().clone()));
     let world_meters = shown_meters(canon, state, &EntityId::World);
 
     let habits = match viewer {
@@ -178,7 +171,7 @@ fn perceive_viewer_budget(
     let exits = crate::rules::travel::visible_exits(canon, state, viewer.actor_id());
     let actor_names = visible_actors
         .iter()
-        .map(|id| canon.display_name(id))
+        .map(|id| canon.display_name(id.as_str()))
         .collect();
     let place_name = crate::rules::lines::place_name(canon, &place);
     let prose = crate::rules::lines::place_prose(canon, state, viewer.actor_id());
@@ -211,7 +204,9 @@ fn shown_meters(canon: &Canon, state: &State, entity: &EntityId) -> Vec<MeterVie
     meters
         .iter()
         .filter_map(|(id, live)| {
-            let def = canon.meter_def(entity, id).filter(|def| !def.hidden)?;
+            let def = canon
+                .meter_def(entity.as_ref(), id)
+                .filter(|def| !def.hidden)?;
             let modifiers = state.modifier_sum(entity, id).ok()?;
             let value = meter::current(def, live, modifiers).ok()?;
             Some(MeterView {

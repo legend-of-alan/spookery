@@ -1,10 +1,11 @@
 //! Dice and arithmetic inside a rule number.
 
 use crate::canon::Canon;
+use crate::intent::Target;
 use crate::rules::context::Context;
-use crate::rules::effect::EntityId;
 use crate::rules::roll::Outcome;
 use crate::rules::rule::{LineColumn, Who};
+use crate::state::id::{ActorId, EntityId};
 use crate::state::State;
 use crate::Reason;
 
@@ -18,7 +19,7 @@ pub(crate) trait Dice {
         &mut self,
         canon: &Canon,
         state: &State,
-        actor_id: &str,
+        actor_id: &ActorId,
         check_id: &str,
         target: i64,
     ) -> Result<Outcome, Reason>;
@@ -40,7 +41,7 @@ impl Dice for NoDice {
         &mut self,
         _: &Canon,
         _: &State,
-        _: &str,
+        _: &ActorId,
         _: &str,
         _: i64,
     ) -> Result<Outcome, Reason> {
@@ -211,38 +212,43 @@ pub(crate) fn resolve_entity(context: &Context, who: &Who) -> Result<EntityId, R
         Who::World => Ok(EntityId::World),
         Who::Story(id) => Ok(EntityId::Story(id.clone())),
         Who::Exit(place, exit) => Ok(EntityId::Exit(place.clone(), exit.clone())),
-        Who::Here | Who::Place(_) => Ok(EntityId::Place(resolve_who_id(context, who)?)),
-        _ => Ok(EntityId::Actor(resolve_who_id(context, who)?)),
+        Who::Place(id) => Ok(EntityId::Place(id.clone())),
+        Who::Here => Ok(EntityId::Place(resolve_here(context)?.into())),
+        Who::Self_ | Who::Target | Who::Actor(_) => {
+            Ok(EntityId::Actor(resolve_actor(context, who)?.clone()))
+        }
     }
 }
 
-/// The actor or place id `who` names. The world, a story and an exit are not one.
-pub(crate) fn resolve_who_id(context: &Context, who: &Who) -> Result<String, Reason> {
+/// The actor `who` names: the one acting, the move's target, or an actor by id. A target that
+/// is a place, an exit or an item names no actor, so it is `UNKNOWN_ID`.
+pub(crate) fn resolve_actor<'a>(
+    context: &Context<'a>,
+    who: &'a Who,
+) -> Result<&'a ActorId, Reason> {
     match who {
-        Who::Self_ => context
-            .intent
-            .actor_id()
-            .map(str::to_string)
-            .ok_or(Reason::Schema),
-        Who::Target => context
-            .intent
-            .target
-            .token()
-            .map(str::to_string)
-            .ok_or(Reason::Schema),
-        Who::Here => {
-            let actor_id = context.intent.actor_id().ok_or(Reason::Schema)?;
-            context
-                .state
-                .actors
-                .get(actor_id)
-                .map(|actor| actor.place.clone())
-                .ok_or(Reason::UnknownId)
+        Who::Self_ => context.intent.actor_id().ok_or(Reason::Schema),
+        Who::Target => match &context.intent.target {
+            Target::Actor(id) => Ok(id),
+            Target::Empty => Err(Reason::Schema),
+            Target::Place(_) | Target::Exit(_) | Target::Item(_) => Err(Reason::UnknownId),
+        },
+        Who::Actor(id) => Ok(id),
+        Who::Here | Who::World | Who::Place(_) | Who::Story(_) | Who::Exit(..) => {
+            Err(Reason::Schema)
         }
-        Who::Actor(id) => Ok(id.clone()),
-        Who::Place(id) => Ok(id.clone()),
-        Who::World | Who::Story(_) | Who::Exit(..) => Err(Reason::Schema),
     }
+}
+
+/// Where the acting actor stands: a place id, or an exit's address while they walk.
+pub(crate) fn resolve_here<'a>(context: &Context<'a>) -> Result<&'a str, Reason> {
+    let actor_id = context.intent.actor_id().ok_or(Reason::Schema)?;
+    context
+        .state
+        .actors
+        .get(actor_id)
+        .map(|actor| actor.place.as_str())
+        .ok_or(Reason::UnknownId)
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -562,16 +568,16 @@ impl<'a> Parser<'a> {
             });
         }
         let who = if word == "place" && self.eat(':') {
-            Who::Place(self.ident()?)
+            Who::Place(self.ident()?.into())
         } else if word == "story" && self.eat(':') {
-            Who::Story(self.ident()?)
+            Who::Story(self.ident()?.into())
         } else {
             match word.as_str() {
                 "self" => Who::Self_,
                 "target" => Who::Target,
                 "here" => Who::Here,
                 "world" => Who::World,
-                _ => Who::Actor(word),
+                _ => Who::Actor(word.into()),
             }
         };
         self.skip_whitespace();
@@ -654,6 +660,7 @@ mod tests {
     use crate::intent::{Intent, IntentArgs, Source, Target, Viewer};
     use crate::rules::context::Context;
     use crate::rules::rule::Who;
+    use crate::state::id::ActorId;
     use crate::state::meter::{Meter, MeterDef};
     use crate::state::{Act, ActorKind, ActorLive, Presence, State};
     use crate::Reason;
@@ -690,7 +697,7 @@ mod tests {
             &mut self,
             _: &Canon,
             _: &State,
-            _: &str,
+            _: &ActorId,
             _: &str,
             _: i64,
         ) -> Result<crate::rules::roll::Outcome, Reason> {
@@ -702,10 +709,10 @@ mod tests {
         Intent {
             id: "t".to_string(),
             round_index: 0,
-            actor: Some(Viewer::Player(actor.to_string())),
+            actor: Some(Viewer::Player(actor.into())),
             source: Source::Player,
             move_name: "hit".to_string(),
-            target: Target::Actor(target.to_string()),
+            target: Target::Actor(target.into()),
             args: IntentArgs::default(),
             rationale_code: String::new(),
         }
@@ -756,7 +763,7 @@ mod tests {
             last_round_at: String::new(),
             places: BTreeMap::new(),
             actors: BTreeMap::from([(
-                "ada".to_string(),
+                "ada".into(),
                 ActorLive {
                     kind: ActorKind::Pc,
                     place: "room".to_string(),
@@ -857,7 +864,7 @@ mod tests {
                 key,
                 ..
             } => {
-                assert_eq!(id, "loft");
+                assert_eq!(id, *"loft");
                 assert_eq!(key, "light");
             }
             other => panic!("{other:?}"),

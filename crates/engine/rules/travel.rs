@@ -7,11 +7,12 @@ use crate::round::log::RoundLog;
 use crate::rules::cond;
 use crate::rules::context::Context;
 use crate::rules::cost;
-use crate::rules::effect::{Effect, EffectKind, EntityId};
+use crate::rules::effect::{Effect, EffectKind};
 use crate::rules::gate;
 use crate::rules::lines::place_name;
 use crate::rules::rule::{EffectTemplate, LocationTo, Rule};
 use crate::rules::visibility::can_see_fact;
+use crate::state::id::{ActorId, EntityId};
 use crate::state::{PendingAction, State};
 use crate::Reason;
 use spookery_protocol::ExitView;
@@ -105,7 +106,7 @@ pub(crate) fn admit(context: &Context, rule: &Rule) -> Result<(), gate::Refusal>
     cost::afford(context, &exit.cost)
 }
 
-fn is_revealed(canon: &Canon, state: &State, actor_id: &str, exit: &Exit) -> bool {
+fn is_revealed(canon: &Canon, state: &State, actor_id: &ActorId, exit: &Exit) -> bool {
     if !exit.hidden {
         return true;
     }
@@ -136,7 +137,7 @@ pub(crate) fn open_doors(draft: &mut Draft, log: &mut RoundLog) {
     let mut opens = Vec::new();
     for (place, def) in &canon.places {
         let here: Vec<Viewer> = state
-            .actors_at(place)
+            .actors_at(place.as_str())
             .iter()
             .filter_map(|id| state.viewer_of(id))
             .collect();
@@ -183,7 +184,7 @@ pub(crate) fn open_doors(draft: &mut Draft, log: &mut RoundLog) {
 pub(crate) fn exits_at(
     canon: &Canon,
     state: &State,
-    actor_id: &str,
+    actor_id: &ActorId,
     place: &PlaceDef,
 ) -> Vec<ExitView> {
     place
@@ -211,10 +212,10 @@ pub(crate) fn note_exits(draft: &mut Draft) {
     let canon = draft.canon();
     let state = draft.state();
     // A walker on an exit is in no place, so there is nothing to note.
-    let seen: Vec<(String, Vec<String>)> = state
+    let seen: Vec<(ActorId, Vec<String>)> = state
         .actors
         .iter()
-        .filter(|(_, actor)| canon.places.contains_key(&actor.place))
+        .filter(|(_, actor)| canon.places.contains_key(actor.place.as_str()))
         .map(|(id, _)| {
             let exits = visible_exits(canon, state, id);
             (
@@ -231,9 +232,9 @@ pub(crate) fn note_exits(draft: &mut Draft) {
 }
 
 /// The exits of this actor's place that they are allowed to see.
-pub(crate) fn visible_exits(canon: &Canon, state: &State, actor_id: &str) -> Vec<ExitView> {
+pub(crate) fn visible_exits(canon: &Canon, state: &State, actor_id: &ActorId) -> Vec<ExitView> {
     let actor = state.actors.get(actor_id);
-    match actor.and_then(|actor| canon.places.get(&actor.place)) {
+    match actor.and_then(|actor| canon.places.get(actor.place.as_str())) {
         Some(place) => exits_at(canon, state, actor_id, place),
         None => Vec::new(),
     }
@@ -250,14 +251,14 @@ pub(crate) fn span(context: &Context, rule: &Rule) -> u64 {
 
 /// One action whose finish tick has been reached. The actor is no longer busy.
 pub(crate) struct DueAction {
-    pub actor_id: String,
+    pub actor_id: ActorId,
     pub until: u64,
     pub pending: PendingAction,
 }
 
 /// Clear every action that finishes at or before `end`, earliest first.
 pub(crate) fn take_due_actions(draft: &mut Draft, end: u64) -> Result<Vec<DueAction>, Reason> {
-    let mut due_keys: Vec<(u64, String)> = draft
+    let mut due_keys: Vec<(u64, ActorId)> = draft
         .state()
         .actors
         .iter()

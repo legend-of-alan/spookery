@@ -349,10 +349,10 @@ fn rowan_asks_aldric_until_it_finishes(world: &mut World) {
     let mut table = spookery_engine::World::resume(&pack, lock).unwrap_or_else(|e| panic!("{e}"));
     let rowan = spookery_engine::Presence {
         players: 1,
-        actors_present: vec!["pc_rowan".to_string()],
+        actors_present: vec!["pc_rowan".into()],
     };
     table
-        .queue_player_move(&rowan, "pc_rowan", "ask", Some("aldric"))
+        .queue_player_move(&rowan, &"pc_rowan".into(), "ask", Some("aldric"))
         .unwrap_or_else(|refusal| panic!("ask aldric: {refusal:?}"));
     let wall = table.state().last_round_at.clone();
     for round in 1..=6 {
@@ -365,7 +365,7 @@ fn rowan_asks_aldric_until_it_finishes(world: &mut World) {
         assert!(round < 6, "Rowan is still busy after {round} rounds");
     }
     let state = table.state();
-    let aldric = spookery_engine::EntityId::Actor("aldric".to_string());
+    let aldric = spookery_engine::EntityId::Actor("aldric".into());
     world.count =
         usize::try_from(state.meter_value(table.canon(), &aldric, "rest").unwrap()).unwrap();
 }
@@ -402,10 +402,10 @@ fn rowan_hauls_until_it_finishes(world: &mut World) {
     let mut table = support::resume(&pack);
     let rowan = spookery_engine::Presence {
         players: 1,
-        actors_present: vec!["pc_rowan".to_string()],
+        actors_present: vec!["pc_rowan".into()],
     };
     table
-        .queue_player_move(&rowan, "pc_rowan", "haul", None)
+        .queue_player_move(&rowan, &"pc_rowan".into(), "haul", None)
         .unwrap_or_else(|refusal| panic!("haul: {refusal:?}"));
     let wall = table.state().last_round_at.clone();
     world.scratch.clear();
@@ -793,7 +793,7 @@ fn indexed_roll(pack: &Path, actor_id: &str, roll_index: u32) -> (String, i64) {
             world_id: world.state().world_id.clone(),
             round_index: world.state().round_index,
             rule_id: "verb:strike".to_string(),
-            subject_id: Some(actor_id.to_string()),
+            subject_id: Some(actor_id.into()),
             index: roll_index,
         },
         0,
@@ -865,7 +865,7 @@ fn lark_roll(pack: &Path, extra_first: bool) -> (String, i64) {
         MoveReport::Rolled {
             actor_id,
             roll: out,
-        } if actor_id == "pc_lark" => Some((
+        } if actor_id == *"pc_lark" => Some((
             out.faces
                 .iter()
                 .map(|face| face.to_string())
@@ -889,7 +889,7 @@ fn play_queued(
         spookery_engine::World::resume(pack, lock).unwrap_or_else(|err| panic!("open: {err}"));
     let presence = spookery_engine::Presence {
         players: u32::try_from(seated.len()).unwrap(),
-        actors_present: seated.iter().map(|id| id.to_string()).collect(),
+        actors_present: seated.iter().map(|id| (*id).into()).collect(),
     };
     let wall = world.state().last_round_at.clone();
     for intent in intents {

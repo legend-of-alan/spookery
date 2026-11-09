@@ -4,6 +4,7 @@ use std::collections::BTreeMap;
 
 use crate::hash::blake2s_256;
 use crate::rules::gate;
+use crate::state::id::ActorId;
 use crate::state::meter::{self, MeterDef};
 use crate::state::modifier;
 use crate::state::ActorLive;
@@ -41,11 +42,11 @@ pub use spookery_protocol::Roll;
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum MoveReport {
     Rolled {
-        actor_id: String,
+        actor_id: ActorId,
         roll: Roll,
     },
     Refused {
-        actor_id: String,
+        actor_id: ActorId,
         refusal: gate::Refusal,
     },
 }
@@ -57,7 +58,7 @@ pub struct RollKey {
     pub round_index: u64,
     pub rule_id: String,
     /// The actor the rule runs for, or `None` for a change rule on a world change.
-    pub subject_id: Option<String>,
+    pub subject_id: Option<ActorId>,
     pub index: u32,
 }
 
@@ -177,7 +178,7 @@ mod tests {
             world_id: "docks".to_string(),
             round_index: 1,
             rule_id: "grit".to_string(),
-            subject_id: Some("mira".to_string()),
+            subject_id: Some("mira".into()),
             index,
         }
     }

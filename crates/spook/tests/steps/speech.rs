@@ -45,7 +45,7 @@ fn say_to_mira_on_an_empty_table(world: &mut World, text: String) {
     opened
         .say_as_player(
             &spookery_engine::Presence::default(),
-            "pc_rowan",
+            &"pc_rowan".into(),
             spookery_engine::Address::Actor("mira"),
             &text,
         )

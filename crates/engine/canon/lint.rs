@@ -5,27 +5,27 @@ use std::collections::{BTreeMap, BTreeSet};
 use crate::canon::source::{FileText, Locator, Problem};
 use crate::canon::{Canon, CastDef, FactDef, ItemDef, PlaceDef, StoryDef, OPEN};
 use crate::diagnostic::{error, schema_error, warning, Diagnostic};
-use crate::rules::effect::EntityId;
 use crate::rules::expr::Expr;
 use crate::rules::roll::Check;
 use crate::rules::rule::{
     ChangeWatch, Cond, Cost, EffectTemplate, LocationTo, NarrateTo, Owner, ResistSpec, Rule,
     RuleTable, When, Who,
 };
+use crate::state::id::{ActorId, EntityId, PlaceId, StoryId};
 use crate::state::meter::{self, MeterDef};
 use crate::state::modifier::{self, ModifierDef};
 use crate::Reason;
 
 /// Exits whose `to` is not a place, and facts or items an exit names but the pack does not.
 pub(super) fn broken_exits(
-    places: &BTreeMap<String, PlaceDef>,
+    places: &BTreeMap<PlaceId, PlaceDef>,
     facts: &BTreeMap<String, FactDef>,
     items: &BTreeMap<String, ItemDef>,
 ) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
     for place in places.values() {
         for exit in &place.exits {
-            if !places.contains_key(&exit.to) {
+            if !places.contains_key(exit.to.as_str()) {
                 diags.push(
                     schema_error(
                         &exit.file,
@@ -358,9 +358,9 @@ fn fixed_self(rule: &Rule) -> Option<&str> {
 pub(super) struct EntityScope<'a> {
     pub meters: &'a BTreeMap<String, MeterDef>,
     pub world_meters: &'a BTreeMap<String, MeterDef>,
-    pub cast: &'a BTreeMap<String, CastDef>,
-    pub places: &'a BTreeMap<String, PlaceDef>,
-    pub stories: &'a BTreeMap<String, StoryDef>,
+    pub cast: &'a BTreeMap<ActorId, CastDef>,
+    pub places: &'a BTreeMap<PlaceId, PlaceDef>,
+    pub stories: &'a BTreeMap<StoryId, StoryDef>,
 }
 
 impl EntityScope<'_> {
@@ -373,7 +373,7 @@ impl EntityScope<'_> {
             Who::Story(id) => Some(EntityId::Story(id.clone())),
             Who::Exit(place, exit) => Some(EntityId::Exit(place.clone(), exit.clone())),
             Who::Actor(id) if self.cast.contains_key(id) => Some(EntityId::Actor(id.clone())),
-            Who::Self_ => fixed_self.map(|id| EntityId::Actor(id.to_string())),
+            Who::Self_ => fixed_self.map(|id| EntityId::Actor(id.into())),
             _ => None,
         }
     }
@@ -408,7 +408,7 @@ impl EntityScope<'_> {
         match self.fixed_entity(fixed_self, who) {
             Some(EntityId::World) if self.world_meters.contains_key(key) => None,
             Some(EntityId::World) => Some(format!("the world carries no meter '{key}'")),
-            Some(entity) if !def.is_some_and(|def| def.is_on(&entity)) => {
+            Some(entity) if !def.is_some_and(|def| def.is_on(entity.as_ref())) => {
                 Some(match def.and_then(|def| def.carrier.as_ref()) {
                     Some(carrier) => format!("only {carrier} carries meter '{key}'"),
                     None => format!("{entity} carries no meter '{key}'"),
@@ -433,7 +433,7 @@ impl EntityScope<'_> {
                 (!known).then(|| format!("exit:{place}.{exit}"))
             }
             Who::Actor(id) if self.cast.contains_key(id) => None,
-            Who::Actor(id) => Some(id.clone()),
+            Who::Actor(id) => Some(id.to_string()),
         }
     }
 
@@ -587,11 +587,11 @@ pub fn check_save(canon: &Canon, state: &crate::state::State) -> Result<(), Vec<
     let places = canon
         .places
         .keys()
-        .map(|id| (EntityId::Place(id.clone()), "places", id));
+        .map(|id| (EntityId::Place(id.clone()), "places", id.as_str()));
     let stories = canon
         .stories
         .keys()
-        .map(|id| (EntityId::Story(id.clone()), "stories", id));
+        .map(|id| (EntityId::Story(id.clone()), "stories", id.as_str()));
     for (entity, list, id) in places.chain(stories) {
         let none = BTreeMap::new();
         let live = state.meters_of(&entity).unwrap_or(&none);
@@ -710,7 +710,7 @@ fn check_meters(
         _ => (entity.to_string(), &canon.meters),
     };
     for (key, def) in defs {
-        let carried = *entity == EntityId::World || def.is_on(entity);
+        let carried = *entity == EntityId::World || def.is_on(entity.as_ref());
         if carried && !live.contains_key(key) {
             diags.push(
                 schema_error(
@@ -723,7 +723,7 @@ fn check_meters(
         }
     }
     for (key, meter) in live {
-        let Some(def) = canon.meter_def(entity, key) else {
+        let Some(def) = canon.meter_def(entity.as_ref(), key) else {
             diags.push(
                 schema_error(
                     "state/save.yaml",
@@ -818,7 +818,7 @@ fn check_reachable_places(canon: &Canon) -> Vec<Diagnostic> {
         if !seen.insert(place.clone()) {
             continue;
         }
-        if let Some(node) = canon.places.get(&place) {
+        if let Some(node) = canon.places.get(place.as_str()) {
             for exit in &node.exits {
                 queue.push(exit.to.clone());
             }
@@ -826,7 +826,7 @@ fn check_reachable_places(canon: &Canon) -> Vec<Diagnostic> {
     }
     let mut diags = Vec::new();
     for id in canon.places.keys() {
-        if seen.contains(id) {
+        if seen.contains(id.as_str()) {
             continue;
         }
         diags.push(

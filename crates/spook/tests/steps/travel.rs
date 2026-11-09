@@ -132,7 +132,7 @@ fn a_place_rule_teleports(world: &mut World) {
     fs::write(&path, text).unwrap();
     edit_save(&pack, |now| {
         now.places.insert(
-            "cellar".to_string(),
+            "cellar".into(),
             spookery_engine::testing::PlaceLive::default(),
         );
     });
@@ -183,7 +183,7 @@ fn two_arrivals(world: &mut World) {
         set_busy(now, "pc_rowan", EVENING + 10, "docks_shop.stairs");
         let meters = now.actors.get("pc_wren").unwrap().meters.clone();
         now.actors.insert(
-            "pc_nell".to_string(),
+            "pc_nell".into(),
             spookery_engine::testing::ActorLive {
                 kind: spookery_engine::testing::ActorKind::Pc,
                 place: "exit:docks_shop.docks_street".to_string(),
@@ -314,7 +314,7 @@ fn both_busy_without_a_gm(world: &mut World) {
     edit_save(&pack, |now| {
         let meters = now.actors.get("pc_wren").unwrap().meters.clone();
         now.actors.insert(
-            "pc_nell".to_string(),
+            "pc_nell".into(),
             spookery_engine::testing::ActorLive {
                 kind: spookery_engine::testing::ActorKind::Pc,
                 place: "docks_shop".to_string(),

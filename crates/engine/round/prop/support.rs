@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use crate::canon::pack_rev;
 use crate::intent::Target;
 use crate::rules::travel::visible_exits;
+use crate::state::id::ActorId;
 use crate::state::Presence;
 use crate::store::journal;
 use crate::store::save;
@@ -129,7 +130,7 @@ fn add_grit_success(pack: &Path) -> Result<(), String> {
 }
 
 fn queue_move(world: &mut World, plan: &MovePlan) {
-    let pcs: Vec<String> = world
+    let pcs: Vec<ActorId> = world
         .state()
         .actors
         .iter()
@@ -148,7 +149,7 @@ fn queue_move(world: &mut World, plan: &MovePlan) {
     let _ = world.queue_player_move(&Presence::default(), actor, verb, target.token());
 }
 
-fn target_for(world: &World, actor: &str, verb: &str, token: usize) -> Option<Target> {
+fn target_for(world: &World, actor: &ActorId, verb: &str, token: usize) -> Option<Target> {
     match verb {
         "wait" | "grit" | "unwield" => Some(Target::Empty),
         "travel" => {
@@ -169,11 +170,11 @@ fn target_for(world: &World, actor: &str, verb: &str, token: usize) -> Option<Ta
     }
 }
 
-fn item_tokens(world: &World, actor: &str) -> Vec<String> {
+fn item_tokens(world: &World, actor: &ActorId) -> Vec<String> {
     let mut ids: Vec<String> = world.canon().items.keys().cloned().collect();
     if let Some(actor) = world.state().actors.get(actor) {
         ids.extend(actor.inventory.keys().cloned());
-        if let Some(place) = world.state().places.get(&actor.place) {
+        if let Some(place) = world.state().places.get(actor.place.as_str()) {
             ids.extend(place.items.keys().cloned());
         }
     }

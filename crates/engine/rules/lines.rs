@@ -8,6 +8,7 @@ use crate::rules::cond;
 use crate::rules::gate::{nameable, verb_for};
 use crate::rules::rule::{Owner, TargetKind, When};
 use crate::rules::travel::{exit_stood_on, exit_view, exits_at};
+use crate::state::id::ActorId;
 use crate::state::{ActorLive, Presence, State};
 use crate::Reason;
 
@@ -18,10 +19,10 @@ pub(crate) fn help(
     canon: &Canon,
     state: &State,
     presence: &Presence,
-    actor_id: &str,
+    actor_id: &ActorId,
 ) -> Result<Vec<CommandView>, Reason> {
     let actor = state.actors.get(actor_id).ok_or(Reason::UnknownId)?;
-    let viewer = Viewer::Player(actor_id.to_string());
+    let viewer = Viewer::Player(actor_id.clone());
     let mut commands: Vec<CommandView> = COMMANDS
         .iter()
         .filter(|command| command.seat == Seat::Player && command.name != "claim")
@@ -44,7 +45,7 @@ pub(crate) fn help(
             let (owner, target) = match (&rule.owner, hint) {
                 (_, None) => (None, Target::Empty),
                 (Owner::Cast(id), Some(hint)) if id == hint => {
-                    (Some(id), Target::Actor(id.clone()))
+                    (Some(id), Target::Actor(id.clone().into()))
                 }
                 (Owner::Item(id), Some(hint)) if id == hint => (Some(id), Target::Item(id.clone())),
                 _ => continue,
@@ -78,7 +79,7 @@ pub(crate) fn help(
 fn names_for(
     canon: &Canon,
     state: &State,
-    actor_id: &str,
+    actor_id: &ActorId,
     actor: &ActorLive,
     kind: TargetKind,
     nameable: &[String],
@@ -87,7 +88,7 @@ fn names_for(
         TargetKind::None => Vec::new(),
         TargetKind::Exit => canon
             .places
-            .get(&actor.place)
+            .get(actor.place.as_str())
             .map(|place| exits_at(canon, state, actor_id, place))
             .unwrap_or_default()
             .into_iter()
@@ -95,7 +96,7 @@ fn names_for(
             .collect(),
         TargetKind::Actor => nameable
             .iter()
-            .filter(|name| state.actors.contains_key(*name))
+            .filter(|name| state.actors.contains_key(name.as_str()))
             .cloned()
             .collect(),
         TargetKind::Item => nameable
@@ -116,13 +117,17 @@ fn names_for(
 
 /// `map`: each place in the actor's `visited`, with the exits they saw there last. Where an
 /// exit goes, its ticks and whether it is locked are read now.
-pub(crate) fn map(canon: &Canon, state: &State, actor_id: &str) -> Result<Vec<PlaceView>, Reason> {
+pub(crate) fn map(
+    canon: &Canon,
+    state: &State,
+    actor_id: &ActorId,
+) -> Result<Vec<PlaceView>, Reason> {
     let actor = state.actors.get(actor_id).ok_or(Reason::UnknownId)?;
     let places = actor.visited.iter().map(|(id, seen)| PlaceView {
         name: place_name(canon, id),
         exits: canon
             .places
-            .get(id)
+            .get(id.as_str())
             .map(|place| {
                 place
                     .exits
@@ -139,7 +144,7 @@ pub(crate) fn map(canon: &Canon, state: &State, actor_id: &str) -> Result<Vec<Pl
 /// What keeps this actor busy, and until when: `on the stairs until tick 1300` on a walk,
 /// `chanting until tick 1300` on any other timed action, read from its verb, and
 /// `recovering until tick 1300` in a cooldown.
-pub(crate) fn busy_line(canon: &Canon, state: &State, actor_id: &str) -> Option<String> {
+pub(crate) fn busy_line(canon: &Canon, state: &State, actor_id: &ActorId) -> Option<String> {
     let actor = state.actors.get(actor_id)?;
     if !actor.is_busy(state.world_time) {
         return None;
@@ -165,11 +170,11 @@ fn gerund(verb: &str) -> String {
 }
 
 /// Place prose for this actor's current place.
-pub(crate) fn place_prose(canon: &Canon, state: &State, actor_id: &str) -> String {
+pub(crate) fn place_prose(canon: &Canon, state: &State, actor_id: &ActorId) -> String {
     let Some(actor) = state.actors.get(actor_id) else {
         return String::new();
     };
-    let Some(place) = canon.places.get(&actor.place) else {
+    let Some(place) = canon.places.get(actor.place.as_str()) else {
         return String::new();
     };
     place

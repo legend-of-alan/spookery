@@ -7,6 +7,7 @@ use cucumber::{given, then, when};
 use spookery_engine::testing::{state_of, PlaceLive};
 use spookery_engine::{Presence, World as Opened};
 
+use super::common::replace_in_file;
 use super::meters::{assert_refused, migrate_and_play};
 use super::triggers::{add_verb, edit_table, intent, seen_of, set_place, sit};
 use crate::support::copy_docks;
@@ -72,7 +73,7 @@ fn add_verb_doing(pack: &Path, verb: &str, effects: &str) {
 fn stand_in_the_loft(world: &mut World) {
     let pack = world.pack.clone().unwrap();
     edit_table(world, &pack, |now, seated| {
-        now.places.insert("loft".to_string(), PlaceLive::default());
+        now.places.insert("loft".into(), PlaceLive::default());
         set_place(now, "pc_rowan", "loft");
         set_place(now, "mira", "docks_shop");
         sit(seated, &["pc_rowan"]);
@@ -325,6 +326,74 @@ fn mira_sees_neither(world: &mut World) {
         seen.iter().all(|key| !key.starts_with("place_meter")),
         "{seen:?}"
     );
+}
+
+#[given(expr = "the docks pack gains world\\/places\\/loft.md and is migrated")]
+fn the_docks_pack_gains_the_loft(world: &mut World) {
+    write_loft(world, "");
+    spookery_engine::migrate_pack(pack(world)).unwrap_or_else(|err| panic!("migrate: {err}"));
+}
+
+#[when(expr = "a rule gives who {string} 1 lamp_oil")]
+fn a_rule_gives_lamp_oil(world: &mut World, who: String) {
+    let effect = format!(
+        "      - item:
+          who: {who}
+          id: lamp_oil
+          add: 1
+"
+    );
+    add_verb_doing(pack(world), "stash", &effect);
+    migrate_and_play(world, vec![intent("stash", "pc_rowan", "stash", None)]);
+}
+
+#[then(expr = "the loft holds 1 lamp_oil")]
+fn the_loft_holds_lamp_oil(world: &mut World) {
+    let now = state_of(world.pack.as_deref().unwrap());
+    let held = now
+        .places
+        .get("loft")
+        .and_then(|loft| loft.items.get("lamp_oil"));
+    assert_eq!(held, Some(&1));
+}
+
+#[when(expr = "a rule leaves a note in the loft")]
+fn a_rule_leaves_a_note_in_the_loft(world: &mut World) {
+    let effect = "      - note:
+          id: note_loft
+          to:
+            - mira
+          place: loft
+          text: Mind the ladder.
+";
+    let pack = world.pack.clone().unwrap();
+    let mut seated = Presence::default();
+    sit(&mut seated, &["pc_rowan"]);
+    world.seated.push((pack.clone(), seated));
+    add_verb_doing(&pack, "scrawl", effect);
+    let ladder = "exits:
+  - to: loft
+    name: ladder
+";
+    replace_in_file(
+        &pack.join("world/places/docks_shop.md"),
+        "exits:
+",
+        ladder,
+    );
+    // Mira leaves the note before anyone has stood in the loft; then Rowan climbs to it.
+    migrate_and_play(world, vec![intent("scrawl", "mira", "scrawl", None)]);
+    let climb = intent("climb", "pc_rowan", "travel", Some("ladder"));
+    migrate_and_play(world, vec![climb]);
+}
+
+#[then(expr = "pc_rowan, standing in the loft, perceives the note")]
+fn rowan_in_the_loft_perceives_the_note(world: &mut World) {
+    let pack = world.pack.clone().unwrap();
+    let opened = Opened::peek(&pack).unwrap_or_else(|err| panic!("peek: {err:?}"));
+    let view = opened.perceive(&Presence::default(), "pc_rowan").unwrap();
+    let ids: Vec<&str> = view.notes.iter().map(|note| note.id.as_str()).collect();
+    assert!(ids.contains(&"note_loft"), "{ids:?}");
 }
 
 #[then(expr = "pc_rowan's change line does not show it")]

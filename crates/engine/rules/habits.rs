@@ -6,6 +6,7 @@ use crate::rules::cond;
 use crate::rules::context::Context;
 use crate::rules::expand;
 use crate::rules::gate;
+use crate::state::id::ActorId;
 use crate::state::{ActorLive, Presence, State};
 
 /// One habit intent per NPC whose habit the gate admits, its target not yet stamped.
@@ -17,7 +18,12 @@ pub(crate) fn intents(canon: &Canon, state: &State, presence: &Presence) -> Vec<
 
 /// For an NPC the engine may move now, the first habit, in file order, that the gate admits
 /// and whose effects expand.
-fn intent_of(canon: &Canon, state: &State, presence: &Presence, actor_id: &str) -> Option<Intent> {
+fn intent_of(
+    canon: &Canon,
+    state: &State,
+    presence: &Presence,
+    actor_id: &ActorId,
+) -> Option<Intent> {
     if !is_eligible(canon, state, presence, actor_id) {
         return None;
     }
@@ -35,9 +41,9 @@ pub(crate) fn list_whose_if_holds(
     canon: &Canon,
     state: &State,
     presence: &Presence,
-    npc_id: &str,
+    npc_id: &ActorId,
 ) -> Vec<String> {
-    let npc = Viewer::Npc(npc_id.to_string());
+    let npc = Viewer::Npc(npc_id.clone());
     let habits = canon.rules.habits_of(npc_id).into_iter();
     habits
         .filter(|rule| {
@@ -50,7 +56,7 @@ pub(crate) fn list_whose_if_holds(
 
 /// Whether the engine may run one of this NPC's habits on its own this round: its idle
 /// profile allows it, it is free, no seated player is with it, and its act window has room.
-fn is_eligible(canon: &Canon, state: &State, presence: &Presence, npc_id: &str) -> bool {
+fn is_eligible(canon: &Canon, state: &State, presence: &Presence, npc_id: &ActorId) -> bool {
     let Some(actor) = state.actors.get(npc_id) else {
         return false;
     };

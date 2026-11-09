@@ -78,7 +78,7 @@ fn stacks_of(pack: &Path, id: &str) -> Vec<i64> {
 fn lowered(pack: &Path, meter: &str) -> i64 {
     let now = state_of(pack);
     let canon = load_canon(pack).unwrap_or_else(|err| panic!("load: {err:?}"));
-    let rowan = EntityId::Actor("pc_rowan".to_string());
+    let rowan = EntityId::Actor("pc_rowan".into());
     let Meter { base, offset } = now.actors["pc_rowan"].meters[meter].clone();
     base + offset - now.meter_value(&canon, &rowan, meter).unwrap()
 }
@@ -386,7 +386,7 @@ fn rowan_has_no_burn(world: &mut World) {
     assert_eq!(modifier_of(pack(world), "burn"), None);
     assert_eq!(lowered(pack(world), "grit"), 0);
     let canon = load_canon(pack(world)).unwrap();
-    let rowan = EntityId::Actor("pc_rowan".to_string());
+    let rowan = EntityId::Actor("pc_rowan".into());
     assert_eq!(
         state_of(pack(world)).meter_value(&canon, &rowan, "grit"),
         Ok(20)

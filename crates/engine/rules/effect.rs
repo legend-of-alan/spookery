@@ -1,13 +1,12 @@
 //! One effect: its kind, and the fields that kind carries.
 
-use std::fmt;
-
 use serde::{Deserialize, Serialize};
 
 use crate::draft::Draft;
 use crate::intent::{Intent, Viewer};
 use crate::rules::visibility::can_see_fact;
 use crate::state::change;
+use crate::state::id::{ActorId, EntityId, PlaceId};
 use crate::state::meter::{self, MeterWrite};
 use crate::state::modifier::{self, Modifier};
 use crate::state::{self, MemoryLine, Note};
@@ -31,35 +30,35 @@ pub enum EffectKind {
         write: MeterWrite,
     },
     Item {
-        actor_id: Option<String>,
-        place: Option<String>,
+        actor_id: Option<ActorId>,
+        place: Option<PlaceId>,
         id: String,
         delta: i64,
         max: Option<i64>,
     },
     /// One application of modifier `id`, of magnitude `add`, to an actor, lasting `ticks`.
     Modifier {
-        actor_id: String,
+        actor_id: ActorId,
         id: String,
         add: i64,
         ticks: u64,
     },
     Wield {
-        actor_id: String,
+        actor_id: ActorId,
         id: String,
     },
     Unwield {
-        actor_id: String,
+        actor_id: ActorId,
     },
     Location {
-        actor_id: String,
+        actor_id: ActorId,
         from: String,
         to: String,
         /// Exact tick of a timed arrival. Instant moves leave this empty.
         arrived_at: Option<u64>,
     },
     Memory {
-        actor_id: String,
+        actor_id: ActorId,
         fact_ids: Vec<String>,
         tags: Vec<String>,
         text: Option<String>,
@@ -71,18 +70,18 @@ pub enum EffectKind {
     },
     Note {
         note_id: String,
-        to: Vec<String>,
-        place: Option<String>,
+        to: Vec<ActorId>,
+        place: Option<PlaceId>,
         fact_ids: Vec<String>,
         text: String,
     },
     Narrate {
-        to: Vec<String>,
+        to: Vec<ActorId>,
         fact_ids: Vec<String>,
         text: String,
     },
     Reveal {
-        actor_id: String,
+        actor_id: ActorId,
         fact: String,
     },
 }
@@ -184,9 +183,9 @@ pub(crate) enum EffectRecord {
         as_viewer: Option<Viewer>,
         intent_id: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        actor_id: Option<String>,
+        actor_id: Option<ActorId>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        place: Option<String>,
+        place: Option<PlaceId>,
         id: String,
         delta: i64,
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -196,7 +195,7 @@ pub(crate) enum EffectRecord {
         #[serde(rename = "as", default, skip_serializing_if = "Option::is_none")]
         as_viewer: Option<Viewer>,
         intent_id: String,
-        actor_id: String,
+        actor_id: ActorId,
         id: String,
         add: i64,
         ticks: u64,
@@ -205,20 +204,20 @@ pub(crate) enum EffectRecord {
         #[serde(rename = "as", default, skip_serializing_if = "Option::is_none")]
         as_viewer: Option<Viewer>,
         intent_id: String,
-        actor_id: String,
+        actor_id: ActorId,
         id: String,
     },
     Unwield {
         #[serde(rename = "as", default, skip_serializing_if = "Option::is_none")]
         as_viewer: Option<Viewer>,
         intent_id: String,
-        actor_id: String,
+        actor_id: ActorId,
     },
     Location {
         #[serde(rename = "as", default, skip_serializing_if = "Option::is_none")]
         as_viewer: Option<Viewer>,
         intent_id: String,
-        actor_id: String,
+        actor_id: ActorId,
         from: String,
         to: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -228,7 +227,7 @@ pub(crate) enum EffectRecord {
         #[serde(rename = "as", default, skip_serializing_if = "Option::is_none")]
         as_viewer: Option<Viewer>,
         intent_id: String,
-        actor_id: String,
+        actor_id: ActorId,
         fact_ids: Vec<String>,
         tags: Vec<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -248,9 +247,9 @@ pub(crate) enum EffectRecord {
         as_viewer: Option<Viewer>,
         intent_id: String,
         note_id: String,
-        to: Vec<String>,
+        to: Vec<ActorId>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        place: Option<String>,
+        place: Option<PlaceId>,
         fact_ids: Vec<String>,
         text: String,
     },
@@ -258,7 +257,7 @@ pub(crate) enum EffectRecord {
         #[serde(rename = "as", default, skip_serializing_if = "Option::is_none")]
         as_viewer: Option<Viewer>,
         intent_id: String,
-        to: Vec<String>,
+        to: Vec<ActorId>,
         fact_ids: Vec<String>,
         text: String,
     },
@@ -266,7 +265,7 @@ pub(crate) enum EffectRecord {
         #[serde(rename = "as", default, skip_serializing_if = "Option::is_none")]
         as_viewer: Option<Viewer>,
         intent_id: String,
-        actor_id: String,
+        actor_id: ActorId,
         fact: String,
     },
     #[serde(other)]
@@ -564,33 +563,6 @@ fn viewer_matches(intent: &Intent, effect: &Effect) -> bool {
     effect.viewer == intent.actor
 }
 
-/// The entity a meter, a flag or an item count belongs to: an actor, a place, a story, an
-/// exit, or the world. Saved as `world`, `{actor: id}`, `{place: id}`, `{story: id}` or
-/// `{exit: [place, exit]}`. An exit carries only its flag `open`.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum EntityId {
-    Actor(String),
-    Place(String),
-    Story(String),
-    Exit(String, String),
-    World,
-}
-
-/// The entity as a rule's `who` names it: an actor id, `place:<id>`, `story:<id>`,
-/// `exit:<place>.<exit>` or `world`.
-impl fmt::Display for EntityId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            EntityId::Actor(id) => write!(f, "{id}"),
-            EntityId::Place(id) => write!(f, "place:{id}"),
-            EntityId::Story(id) => write!(f, "story:{id}"),
-            EntityId::Exit(place, exit) => write!(f, "exit:{place}.{exit}"),
-            EntityId::World => write!(f, "world"),
-        }
-    }
-}
-
 /// Write a meter `entity` carries, inside the bounds the pack gives it.
 pub(crate) fn write_meter(
     draft: &mut Draft,
@@ -600,7 +572,7 @@ pub(crate) fn write_meter(
 ) -> Result<(), Reason> {
     let def = draft
         .canon()
-        .meter_def(entity, key)
+        .meter_def(entity.as_ref(), key)
         .cloned()
         .ok_or(Reason::UnknownId)?;
     let change_key = change::Key::meter(entity, key).ok_or(Reason::UnknownId)?;
@@ -621,16 +593,16 @@ pub(crate) fn shift_item(
 ) -> Result<(), Reason> {
     match entity {
         EntityId::Actor(actor_id) => {
-            let change_key = change::Key::ActorItem(actor_id.clone(), id.to_string());
+            let change_key = change::Key::ActorItem(actor_id.to_string(), id.to_string());
             draft.mutate(change_key, |state| {
                 state::shift_count(&mut state.actor_mut(actor_id)?.inventory, id, delta, max)
             })?;
-            draft.mutate(change::Key::ActorWielded(actor_id.clone()), |state| {
+            draft.mutate(change::Key::ActorWielded(actor_id.to_string()), |state| {
                 Ok(state.actor_mut(actor_id)?.release_wielded())
             })
         }
         EntityId::Place(place) => {
-            let change_key = change::Key::PlaceItem(place.clone(), id.to_string());
+            let change_key = change::Key::PlaceItem(place.to_string(), id.to_string());
             draft.mutate(change_key, |state| {
                 let place_live = state.places.get_mut(place).ok_or(Reason::UnknownId)?;
                 state::shift_count(&mut place_live.items, id, delta, max)
@@ -644,16 +616,16 @@ pub(crate) fn shift_item(
 /// `modifier::stack` says. The meter's key is tracked when the stacks move.
 fn apply_modifier(
     draft: &mut Draft,
-    actor_id: &str,
+    actor_id: &ActorId,
     id: &str,
     add: i64,
     ticks: u64,
 ) -> Result<(), Reason> {
     let canon = draft.shared_canon();
     let def = canon.modifiers.get(id).ok_or(Reason::UnknownId)?;
-    let entity = EntityId::Actor(actor_id.to_string());
+    let entity = EntityId::Actor(actor_id.clone());
     canon
-        .meter_def(&entity, &def.meter)
+        .meter_def(entity.as_ref(), &def.meter)
         .ok_or(Reason::UnknownId)?;
     let now = draft.state().world_time;
     let actor = draft
@@ -689,7 +661,7 @@ fn apply_modifier(
     )
 }
 
-fn wield(draft: &mut Draft, actor_id: &str, item_id: &str) -> Result<(), Reason> {
+fn wield(draft: &mut Draft, actor_id: &ActorId, item_id: &str) -> Result<(), Reason> {
     let item = draft.canon().items.get(item_id).ok_or(Reason::UnknownId)?;
     if !item.tags.iter().any(|tag| tag == "weapon") {
         return Err(Reason::NotAWeapon);
@@ -704,7 +676,7 @@ fn wield(draft: &mut Draft, actor_id: &str, item_id: &str) -> Result<(), Reason>
     })
 }
 
-fn unwield(draft: &mut Draft, actor_id: &str) -> Result<(), Reason> {
+fn unwield(draft: &mut Draft, actor_id: &ActorId) -> Result<(), Reason> {
     draft.mutate(change::Key::ActorWielded(actor_id.to_string()), |state| {
         Ok(state.actor_mut(actor_id)?.wielded.take().is_some())
     })
@@ -713,7 +685,7 @@ fn unwield(draft: &mut Draft, actor_id: &str) -> Result<(), Reason> {
 fn move_actor(
     draft: &mut Draft,
     intent: &Intent,
-    actor_id: &str,
+    actor_id: &ActorId,
     from: &str,
     to: &str,
 ) -> Result<(), Reason> {
@@ -739,7 +711,7 @@ fn move_actor(
         actor.place = to.to_string();
         // A canon place with no live record yet gets an empty one on the first arrival.
         if !on_exit {
-            state.places.entry(to.to_string()).or_default();
+            state.places.entry(to.into()).or_default();
         }
         Ok(moved)
     })
@@ -748,7 +720,7 @@ fn move_actor(
 fn remember(
     draft: &mut Draft,
     intent: &Intent,
-    actor_id: &str,
+    actor_id: &ActorId,
     mut fact_ids: Vec<String>,
     mut tags: Vec<String>,
     text: Option<String>,
@@ -782,7 +754,7 @@ fn remember(
     state::sort_unique(&mut tags);
     draft.push_memory(MemoryLine {
         round_index: draft.state().round_index,
-        actor_id: actor_id.to_string(),
+        actor_id: actor_id.clone(),
         intent_id: intent.id.clone(),
         fact_ids,
         tags,
@@ -793,7 +765,7 @@ fn remember(
 
 /// Set or clear a flag `entity` carries.
 fn set_flag(draft: &mut Draft, entity: &EntityId, key: &str, value: bool) -> Result<(), Reason> {
-    if !draft.canon().carries_flag(entity, key) {
+    if !draft.canon().carries_flag(entity.as_ref(), key) {
         return Err(Reason::UnknownId);
     }
     draft.mutate(change::Key::flag(entity, key), |state| {
@@ -801,7 +773,7 @@ fn set_flag(draft: &mut Draft, entity: &EntityId, key: &str, value: bool) -> Res
     })
 }
 
-fn reveal(draft: &mut Draft, actor_id: &str, fact: &str) -> Result<(), Reason> {
+fn reveal(draft: &mut Draft, actor_id: &ActorId, fact: &str) -> Result<(), Reason> {
     if !draft.canon().facts.contains_key(fact) {
         return Err(Reason::UnknownId);
     }
@@ -819,8 +791,8 @@ fn reveal(draft: &mut Draft, actor_id: &str, fact: &str) -> Result<(), Reason> {
 fn leave_note(
     draft: &mut Draft,
     note_id: String,
-    mut to: Vec<String>,
-    place: Option<String>,
+    mut to: Vec<ActorId>,
+    place: Option<PlaceId>,
     mut fact_ids: Vec<String>,
     text: String,
 ) -> Result<(), Reason> {

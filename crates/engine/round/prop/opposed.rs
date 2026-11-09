@@ -81,7 +81,7 @@ fn fight(base: &Path, warmup: u32, refused: Option<Reason>) -> Result<(), String
     let mut world = World::resume(&pack.0, lock).map_err(|err| fail("resume", err.to_string()))?;
     let lark = Presence {
         players: 1,
-        actors_present: vec!["pc_lark".to_string()],
+        actors_present: vec!["pc_lark".into()],
     };
     let wall = world.state().last_round_at.clone();
     for _ in 0..warmup {
@@ -96,8 +96,8 @@ fn fight(base: &Path, warmup: u32, refused: Option<Reason>) -> Result<(), String
         ("briar-strike", "npc_briar", "strike", "pc_lark"),
         ("lark-lunge", "pc_lark", "lunge", "npc_briar"),
     ] {
-        let viewer = world.state().viewer_of(actor);
-        let target = Target::Actor(target.to_string());
+        let viewer = world.state().viewer_of(&actor.into());
+        let target = Target::Actor(target.into());
         let intent = Intent::new(
             id.to_string(),
             round_index,

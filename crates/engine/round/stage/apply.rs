@@ -161,7 +161,7 @@ fn pend(
             .get(actor_id)
             .ok_or(Reason::UnknownId)?;
         let kind = EffectKind::Location {
-            actor_id: actor_id.to_string(),
+            actor_id: actor_id.clone(),
             from: actor.place.clone(),
             to: travel::on_exit(exit),
             arrived_at: None,

@@ -1,6 +1,7 @@
 //! The live save: places, actors, stories, world meters, and notes.
 
 pub(crate) mod change;
+pub(crate) mod id;
 pub(crate) mod meter;
 pub(crate) mod modifier;
 
@@ -13,7 +14,7 @@ use modifier::Modifier;
 
 use crate::canon::OPEN;
 use crate::intent::{Target, Viewer};
-use crate::rules::effect::EntityId;
+use id::{ActorId, EntityId, PlaceId, StoryId};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -29,11 +30,11 @@ pub struct State {
     /// Ticks since the world began.
     pub world_time: u64,
     pub last_round_at: String,
-    pub places: BTreeMap<String, PlaceLive>,
-    pub actors: BTreeMap<String, ActorLive>,
+    pub places: BTreeMap<PlaceId, PlaceLive>,
+    pub actors: BTreeMap<ActorId, ActorLive>,
     /// The meters and flags each story holds. Omitted when empty.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub stories: BTreeMap<String, StoryLive>,
+    pub stories: BTreeMap<StoryId, StoryLive>,
     /// The meters `world/meters.yaml` declares, held once by the world. Omitted when empty.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub world_meters: BTreeMap<String, Meter>,
@@ -52,7 +53,7 @@ impl State {
         key: &str,
     ) -> Result<i64, crate::Reason> {
         let def = canon
-            .meter_def(entity, key)
+            .meter_def(entity.as_ref(), key)
             .ok_or(crate::Reason::UnknownId)?;
         let live = self
             .meters_of(entity)
@@ -151,17 +152,17 @@ impl State {
     }
 
     /// Actor `id`'s live record to write, or `UNKNOWN_ID`.
-    pub(crate) fn actor_mut(&mut self, id: &str) -> Result<&mut ActorLive, crate::Reason> {
+    pub(crate) fn actor_mut(&mut self, id: &ActorId) -> Result<&mut ActorLive, crate::Reason> {
         self.actors.get_mut(id).ok_or(crate::Reason::UnknownId)
     }
 
     /// The seat actor `id` acts from.
-    pub(crate) fn viewer_of(&self, id: &str) -> Option<Viewer> {
+    pub(crate) fn viewer_of(&self, id: &ActorId) -> Option<Viewer> {
         self.actors.get(id).map(|actor| actor.viewer(id))
     }
 
     /// The actors in `place`, in id order.
-    pub(crate) fn actors_at(&self, place: &str) -> Vec<String> {
+    pub(crate) fn actors_at(&self, place: &str) -> Vec<ActorId> {
         self.actors
             .iter()
             .filter(|(_, actor)| actor.place == place)
@@ -175,7 +176,7 @@ impl State {
 #[serde(deny_unknown_fields)]
 pub struct Presence {
     pub players: u32,
-    pub actors_present: Vec<String>,
+    pub actors_present: Vec<ActorId>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -248,10 +249,10 @@ impl ActorLive {
     }
 
     /// The seat this actor acts from, given its own id.
-    pub fn viewer(&self, id: &str) -> Viewer {
+    pub fn viewer(&self, id: &ActorId) -> Viewer {
         match self.kind {
-            ActorKind::Pc => Viewer::Player(id.to_string()),
-            ActorKind::Npc => Viewer::Npc(id.to_string()),
+            ActorKind::Pc => Viewer::Player(id.clone()),
+            ActorKind::Npc => Viewer::Npc(id.clone()),
         }
     }
 
@@ -364,9 +365,9 @@ pub struct PendingAction {
 #[serde(deny_unknown_fields)]
 pub struct Note {
     pub id: String,
-    pub to: Vec<String>,
+    pub to: Vec<ActorId>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub place: Option<String>,
+    pub place: Option<PlaceId>,
     pub fact_ids: Vec<String>,
     pub text: String,
 }
@@ -378,7 +379,7 @@ pub(crate) fn exit_parts(id: &str) -> Option<(&str, &str)> {
     (!place.is_empty() && !exit.is_empty()).then_some((place, exit))
 }
 
-pub(crate) fn sort_unique(items: &mut Vec<String>) {
+pub(crate) fn sort_unique<T: Ord>(items: &mut Vec<T>) {
     items.sort();
     items.dedup();
 }
@@ -387,7 +388,7 @@ pub(crate) fn sort_unique(items: &mut Vec<String>) {
 #[serde(deny_unknown_fields)]
 pub struct MemoryLine {
     pub round_index: u64,
-    pub actor_id: String,
+    pub actor_id: ActorId,
     pub intent_id: String,
     pub fact_ids: Vec<String>,
     pub tags: Vec<String>,

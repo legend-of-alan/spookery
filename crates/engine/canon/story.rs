@@ -13,8 +13,8 @@ use crate::canon::source::{
 };
 use crate::canon::StoryDef;
 use crate::diagnostic::schema_error;
-use crate::rules::effect::EntityId;
 use crate::rules::rule::{Owner, Rule};
+use crate::state::id::{EntityId, StoryId};
 use crate::state::meter::MeterDef;
 
 /// Every `story/*.yaml` file in directory order: its rules compiled, and its meters added to
@@ -24,7 +24,7 @@ pub(super) fn load_stories(
     mut meters: Option<&mut BTreeMap<String, MeterDef>>,
     world_meters: Option<&BTreeMap<String, MeterDef>>,
     diags: &mut Diags,
-) -> (Vec<Rule>, BTreeMap<String, StoryDef>) {
+) -> (Vec<Rule>, BTreeMap<StoryId, StoryDef>) {
     let dir = root.join("story");
     let mut files = Vec::new();
     if dir.is_dir() && collect_files(&dir, root, &mut files).is_err() {
@@ -52,12 +52,13 @@ pub(super) fn load_stories(
             text,
             line_base: 0,
         };
-        let carrier = Some(EntityId::Story(story.id.clone()));
+        let id: StoryId = story.id.clone().into();
+        let carrier = Some(EntityId::Story(id.clone()));
         let own = diags.keep(meter_defs(&source, story.meters, carrier));
         if let (Some(meters), Some(own)) = (meters.as_deref_mut(), own) {
             add_own_meters(meters, own, world_meters, &source, diags);
         }
-        stories.insert(story.id.clone(), StoryDef { flags: story.flags });
+        stories.insert(id, StoryDef { flags: story.flags });
         let compiled = rule_list::compile(&file, story.rules, &Owner::Story(story.id));
         rules.extend(diags.keep(compiled).unwrap_or_default());
     }

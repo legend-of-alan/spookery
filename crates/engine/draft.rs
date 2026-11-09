@@ -7,8 +7,8 @@ use std::sync::Arc;
 
 use crate::canon::Budget;
 use crate::canon::{Canon, OPEN};
-use crate::rules::effect::EntityId;
 use crate::state::change::{self, Change};
+use crate::state::id::{ActorId, EntityId};
 use crate::state::{ActCounter, MemoryLine, PendingAction, Presence, State};
 use crate::world::World;
 use crate::Reason;
@@ -68,9 +68,9 @@ impl<'p> Draft<'p> {
 
     /// Set `counter` back to 0 on every actor.
     pub(crate) fn reset_acts(&mut self, counter: ActCounter) -> Result<(), Reason> {
-        let ids: Vec<String> = self.state.actors.keys().cloned().collect();
+        let ids: Vec<ActorId> = self.state.actors.keys().cloned().collect();
         for id in ids {
-            self.mutate(counter.key(id.clone()), |state| {
+            self.mutate(counter.key(id.to_string()), |state| {
                 Ok(std::mem::take(counter.count_mut(&mut state.actor_mut(&id)?.act)) != 0)
             })?;
         }
@@ -79,7 +79,7 @@ impl<'p> Draft<'p> {
 
     /// Expire every modifier whose tick has come by `world_time`, all its stacks at once.
     pub(crate) fn expire_modifiers(&mut self, world_time: u64) -> Result<(), Reason> {
-        let due: Vec<(String, String, String)> = self
+        let due: Vec<(ActorId, String, String)> = self
             .state
             .actors
             .iter()
@@ -91,9 +91,9 @@ impl<'p> Draft<'p> {
             })
             .collect();
         for (actor, id, meter) in due {
-            self.track(change::Key::ActorMeter(actor.clone(), meter))?;
+            self.track(change::Key::ActorMeter(actor.to_string(), meter))?;
             self.mutate(
-                change::Key::ActorModifier(actor.clone(), id.clone()),
+                change::Key::ActorModifier(actor.to_string(), id.clone()),
                 |state| Ok(state.actor_mut(&actor)?.modifiers.remove(&id).is_some()),
             )?;
         }
@@ -101,7 +101,7 @@ impl<'p> Draft<'p> {
     }
 
     /// Count one act for `actor_id` this round, in the act window the table is in.
-    pub(crate) fn count_act(&mut self, actor_id: &str) -> Result<(), Reason> {
+    pub(crate) fn count_act(&mut self, actor_id: &ActorId) -> Result<(), Reason> {
         let (round_index, players) = (self.state.round_index, self.presence.players);
         let (current_idle, current_live, current_last) = {
             let counters = &self
@@ -143,7 +143,7 @@ impl<'p> Draft<'p> {
     /// `None` when it is a cooldown.
     pub(crate) fn set_busy(
         &mut self,
-        id: &str,
+        id: &ActorId,
         until: u64,
         pending: Option<PendingAction>,
     ) -> Result<(), Reason> {
@@ -157,7 +157,7 @@ impl<'p> Draft<'p> {
     }
 
     /// End actor `id`'s action under way, if any, and free them: it never finishes here.
-    pub(crate) fn take_pending(&mut self, id: &str) -> Result<Option<PendingAction>, Reason> {
+    pub(crate) fn take_pending(&mut self, id: &ActorId) -> Result<Option<PendingAction>, Reason> {
         let mut taken = None;
         self.mutate(change::Key::ActorBusy(id.to_string()), |state| {
             let act = &mut state.actor_mut(id)?.act;
@@ -259,38 +259,40 @@ impl<'p> Draft<'p> {
             change::Key::ActorPlace(id) => self
                 .state
                 .actors
-                .get(id)
+                .get(id.as_str())
                 .map(|actor| change::Value::Text(actor.place.clone()))
                 .unwrap_or(change::Value::Empty),
             change::Key::ActorFlag(id, flag) => self
                 .state
                 .actors
-                .get(id)
+                .get(id.as_str())
                 .map(|actor| change::Value::Bool(actor.flags.iter().any(|item| item == flag)))
                 .unwrap_or(change::Value::Empty),
-            change::Key::PlaceFlag(id, flag) => {
-                change::Value::Bool(self.state.has_flag(&EntityId::Place(id.clone()), flag))
-            }
-            change::Key::StoryFlag(id, flag) => {
-                change::Value::Bool(self.state.has_flag(&EntityId::Story(id.clone()), flag))
-            }
+            change::Key::PlaceFlag(id, flag) => change::Value::Bool(
+                self.state
+                    .has_flag(&EntityId::Place(id.clone().into()), flag),
+            ),
+            change::Key::StoryFlag(id, flag) => change::Value::Bool(
+                self.state
+                    .has_flag(&EntityId::Story(id.clone().into()), flag),
+            ),
             change::Key::ExitOpen(place, exit) => {
-                let entity = EntityId::Exit(place.clone(), exit.clone());
+                let entity = EntityId::Exit(place.clone().into(), exit.clone());
                 change::Value::Bool(self.state.has_flag(&entity, OPEN))
             }
             change::Key::PlaceMeter(id, meter) => {
-                self.meter_value(&EntityId::Place(id.clone()), meter)
+                self.meter_value(&EntityId::Place(id.clone().into()), meter)
             }
             change::Key::StoryMeter(id, meter) => {
-                self.meter_value(&EntityId::Story(id.clone()), meter)
+                self.meter_value(&EntityId::Story(id.clone().into()), meter)
             }
             change::Key::ActorMeter(id, meter) => {
-                self.meter_value(&EntityId::Actor(id.clone()), meter)
+                self.meter_value(&EntityId::Actor(id.clone().into()), meter)
             }
             change::Key::ActorModifier(id, key) => self
                 .state
                 .actors
-                .get(id)
+                .get(id.as_str())
                 .and_then(|actor| actor.modifiers.get(key))
                 .map(|live| {
                     change::Value::Text(format!(
@@ -302,7 +304,7 @@ impl<'p> Draft<'p> {
             change::Key::ActorBusy(id) => self
                 .state
                 .actors
-                .get(id)
+                .get(id.as_str())
                 .map(|actor| match actor.act.busy_until {
                     Some(until) => change::Value::Number(i64::try_from(until).unwrap_or(i64::MAX)),
                     None => change::Value::Empty,
@@ -311,7 +313,7 @@ impl<'p> Draft<'p> {
             change::Key::ActorKnownFact(id) => self
                 .state
                 .actors
-                .get(id)
+                .get(id.as_str())
                 .map(|actor| change::Value::List(actor.known_facts.clone()))
                 .unwrap_or(change::Value::Empty),
             change::Key::LastActRound(id) => self.act_number(id, |act| {
@@ -326,13 +328,13 @@ impl<'p> Draft<'p> {
             change::Key::ActorItem(id, item) => self
                 .state
                 .actors
-                .get(id)
+                .get(id.as_str())
                 .map(|actor| change::Value::Number(i64::from(actor.item_count(item))))
                 .unwrap_or(change::Value::Empty),
             change::Key::PlaceItem(place, item) => self
                 .state
                 .places
-                .get(place)
+                .get(place.as_str())
                 .map(|place| {
                     change::Value::Number(i64::from(place.items.get(item).copied().unwrap_or(0)))
                 })
@@ -340,7 +342,7 @@ impl<'p> Draft<'p> {
             change::Key::ActorWielded(id) => self
                 .state
                 .actors
-                .get(id)
+                .get(id.as_str())
                 .map(|actor| match actor.wielded.as_deref() {
                     Some(item) => change::Value::Text(item.to_string()),
                     None => change::Value::Empty,
@@ -444,12 +446,12 @@ mod tests {
         let nobody = crate::state::Presence::default();
         let mut draft = Draft::begin(&world, &nobody);
         // Bram's grit sits clamped at its minimum: taking more moves the offset, not the value.
-        let meters = &mut draft.state.actor_mut("bram").unwrap().meters;
+        let meters = &mut draft.state.actor_mut(&"bram".into()).unwrap().meters;
         meters.get_mut("grit").unwrap().offset = -5;
-        let intent = Intent::habit(world.state(), "mira", "leave_door_note");
+        let intent = Intent::habit(world.state(), &"mira".into(), "leave_door_note");
         let mut write = |actor: &str, key: &str, delta: i64| {
             let kind = EffectKind::Meter {
-                entity: EntityId::Actor(actor.to_string()),
+                entity: EntityId::Actor(actor.into()),
                 key: key.to_string(),
                 write: MeterWrite::Offset(delta),
             };

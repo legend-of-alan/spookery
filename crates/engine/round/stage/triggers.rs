@@ -9,6 +9,7 @@ use crate::rules::expand::{self, Cause};
 use crate::rules::gate;
 use crate::rules::rule::{ChangeWatch, Op, Rule, WatchWho, When};
 use crate::state::change::{self, Change};
+use crate::state::id::ActorId;
 use crate::store::records::Step;
 
 use crate::round::dice::RoundDice;
@@ -37,7 +38,7 @@ pub(crate) fn run(draft: &mut Draft, canon: &Canon, dice: &mut RoundDice, log: &
         }
         depth += 1;
         for matched in matched_triggers {
-            fire(draft, dice, log, matched.rule, matched.subject.as_deref());
+            fire(draft, dice, log, matched.rule, matched.subject.as_ref());
         }
     }
 }
@@ -45,7 +46,7 @@ pub(crate) fn run(draft: &mut Draft, canon: &Canon, dice: &mut RoundDice, log: &
 /// One change rule to fire, and the actor it fires for. A world change has none.
 struct Trigger<'a> {
     rule: &'a Rule,
-    subject: Option<String>,
+    subject: Option<ActorId>,
 }
 
 fn change_rules(canon: &Canon) -> Vec<&Rule> {
@@ -76,7 +77,7 @@ fn match_rules<'a>(draft: &Draft, rules: &[&'a Rule], changes: &[Change]) -> Vec
             if !matches_watch(draft, rule, watch, change) {
                 continue;
             }
-            let subject = change.key.actor().map(str::to_string);
+            let subject = change.key.actor().map(ActorId::from);
             if !subject_ids.contains(&subject) {
                 subject_ids.push(subject);
             }
@@ -96,7 +97,7 @@ fn fire(
     dice: &mut RoundDice,
     log: &mut RoundLog,
     rule: &Rule,
-    subject: Option<&str>,
+    subject: Option<&ActorId>,
 ) {
     let Ok(intent) = Intent::trigger(draft.state(), subject, &rule.id) else {
         return;

@@ -9,7 +9,7 @@ use crate::canon::source::{
     load_tagged, Diags, DuplicateWords, FileText, Locator, Problem, METERS_SCHEMA,
 };
 use crate::diagnostic::Diagnostic;
-use crate::rules::effect::EntityId;
+use crate::state::id::EntityId;
 use crate::state::meter::MeterDef;
 
 /// A meters file, whose meters `carrier` carries.

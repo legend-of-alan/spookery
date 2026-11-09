@@ -13,7 +13,7 @@ use crate::World;
 fn seated() -> Presence {
     Presence {
         players: 2,
-        actors_present: vec!["pc_rowan".to_string(), "pc_wren".to_string()],
+        actors_present: vec!["pc_rowan".into(), "pc_wren".into()],
     }
 }
 
@@ -29,7 +29,7 @@ fn queue(opened: &mut Engine, line: &str) {
     let (verb, target) = line
         .split_once(' ')
         .map_or((line, None), |(v, t)| (v, Some(t)));
-    if let Err(refusal) = opened.queue_player_move(&seated(), "pc_rowan", verb, target) {
+    if let Err(refusal) = opened.queue_player_move(&seated(), &"pc_rowan".into(), verb, target) {
         panic!("{line}: {}", refusal.code.as_str());
     }
 }
@@ -289,7 +289,7 @@ fn rowans_look_shows(world: &mut World, line: String) {
 fn refused_at_once(world: &mut World, line: String, code: String) {
     let mut opened = open(world.pack.as_ref().unwrap());
     let refusal = opened
-        .queue_player_move(&seated(), "pc_rowan", &line, None)
+        .queue_player_move(&seated(), &"pc_rowan".into(), &line, None)
         .expect_err("the line is refused");
     assert_eq!(refusal.code.as_str(), code);
     assert!(opened.queued_intents().is_empty());

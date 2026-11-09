@@ -243,7 +243,7 @@ fn resume_with_lark(pack: &Path) -> EngineWorld {
 fn lark() -> Presence {
     Presence {
         players: 1,
-        actors_present: vec!["pc_lark".to_string()],
+        actors_present: vec!["pc_lark".into()],
     }
 }
 
@@ -251,7 +251,7 @@ fn play(world: &mut EngineWorld, line: &str) -> spookery_engine::RoundOutput {
     let (verb, target) = split_line(line);
     let wall = world.state().last_round_at.clone();
     world
-        .queue_player_move(&lark(), "pc_lark", verb, target)
+        .queue_player_move(&lark(), &"pc_lark".into(), verb, target)
         .unwrap_or_else(|err| panic!("{line}: {}", err.code.as_str()));
     let outputs = world
         .commit_then_fast_forward(&lark(), &wall)
@@ -263,7 +263,7 @@ fn change_line(output: &spookery_engine::RoundOutput) -> String {
     output
         .seen
         .iter()
-        .find(|seen| seen.viewer == "pc_lark")
+        .find(|seen| seen.viewer == *"pc_lark")
         .map(|seen| seen.line.clone())
         .unwrap_or_default()
 }

@@ -21,7 +21,7 @@ fn keep_briar_busy(now: &mut State) {
 fn hp(pack: &Path, actor: &str) -> i64 {
     let now = support::state_of(pack);
     let canon = spookery_engine::load_canon(pack).unwrap();
-    let entity = spookery_engine::EntityId::Actor(actor.to_string());
+    let entity = spookery_engine::EntityId::Actor(actor.into());
     now.meter_value(&canon, &entity, "hp").unwrap()
 }
 
@@ -49,7 +49,7 @@ fn handle_move(
     let mut world = super::rules::open(pack);
     let (verb, target) = split_line(line);
     let nobody = spookery_engine::Presence::default();
-    world.queue_player_move(&nobody, actor, verb, target)?;
+    world.queue_player_move(&nobody, &actor.into(), verb, target)?;
     let stamp = world.state().last_round_at.clone();
     Ok(world
         .commit_then_fast_forward(&nobody, &stamp)
@@ -557,7 +557,7 @@ fn nell_resists_on_a_seeded_roll(world: &mut World) {
             world_id: "sample-d20".to_string(),
             round_index: 1,
             rule_id: "item:poisoned_dagger/attack".to_string(),
-            subject_id: Some("pc_nell".to_string()),
+            subject_id: Some("pc_nell".into()),
             index: 0,
         },
         0,
