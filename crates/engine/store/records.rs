@@ -3,10 +3,10 @@
 use serde::{Deserialize, Serialize};
 
 use crate::intent::Intent;
-use crate::model::meter::MeterDef;
-use crate::model::MemoryLine;
 use crate::rules::effect::{Effect, Holder};
 use crate::rules::gate;
+use crate::state::meter::MeterDef;
+use crate::state::MemoryLine;
 
 /// One meter a migrate added, stored at that meter's `start`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

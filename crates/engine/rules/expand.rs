@@ -2,8 +2,6 @@
 
 use crate::canon::Canon;
 use crate::intent::Target;
-use crate::model::meter::MeterWrite;
-use crate::model::State;
 use crate::round::dice::Roller;
 use crate::rules::context::Context;
 use crate::rules::effect::{Effect, EffectKind, Holder};
@@ -11,6 +9,8 @@ use crate::rules::expr::{self, Dice, Expr};
 use crate::rules::roll::Outcome;
 use crate::rules::roll::{MoveReport, Roll};
 use crate::rules::rule::{EffectTemplate, LocationTo, NarrateTo, ResistSpec, Rule, Who};
+use crate::state::meter::MeterWrite;
+use crate::state::State;
 use crate::Reason;
 
 /// Why a rule's effects are expanded and landed, which decides what the landing journals.

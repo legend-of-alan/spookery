@@ -4,11 +4,11 @@ use spookery_protocol::{CommandView, PlaceView, Seat, COMMANDS};
 
 use crate::canon::Canon;
 use crate::intent::{Target, Viewer};
-use crate::model::{ActorLive, Presence, State};
 use crate::rules::cond;
 use crate::rules::gate::{nameable, verb_for};
 use crate::rules::rule::{Owner, TargetKind, When};
 use crate::rules::travel::{exit_stood_on, exit_view, exits_at};
+use crate::state::{ActorLive, Presence, State};
 use crate::Reason;
 
 /// `help`: the built-in player commands but `claim`, then each pack verb `verb_for` reaches

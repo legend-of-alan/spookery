@@ -4,12 +4,12 @@ use serde::{Deserialize, Serialize};
 
 use crate::canon::Canon;
 use crate::intent::{Intent, Source, Target, Viewer};
-use crate::model::{Presence, State};
 use crate::rules::cond;
 use crate::rules::context::Context;
 use crate::rules::cost;
 use crate::rules::perceive::perceive_as;
 use crate::rules::rule::{Owner, Rule, TargetKind, When};
+use crate::state::{Presence, State};
 use crate::Reason;
 
 /// One refused intent: its id, its code, and a detail when there is one. Returned from the
@@ -179,7 +179,7 @@ pub(crate) fn admit_cancel(context: &Context) -> Result<(), Refusal> {
         .actor_id()
         .and_then(|id| context.state.actors.get(id));
     let pending = actor.and_then(|actor| actor.act.pending.as_ref());
-    let walking = actor.is_some_and(|actor| crate::model::exit_parts(&actor.place).is_some());
+    let walking = actor.is_some_and(|actor| crate::state::exit_parts(&actor.place).is_some());
     let rule = pending.and_then(|pending| context.canon.rules.get(&pending.rule));
     if walking || !rule.is_some_and(|rule| rule.cancellable) {
         return Err(Refusal::new(intent, Reason::Ineligible));

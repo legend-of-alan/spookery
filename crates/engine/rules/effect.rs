@@ -6,11 +6,11 @@ use serde::{Deserialize, Serialize};
 
 use crate::draft::Draft;
 use crate::intent::{Intent, Viewer};
-use crate::model::key::StateKey;
-use crate::model::meter::{self, MeterWrite};
-use crate::model::modifier::{self, ModifierLive};
-use crate::model::{self, MemoryLine, Note};
 use crate::rules::visibility::can_see_fact;
+use crate::state::change::StateKey;
+use crate::state::meter::{self, MeterWrite};
+use crate::state::modifier::{self, ModifierLive};
+use crate::state::{self, MemoryLine, Note};
 use crate::Reason;
 
 /// One effect. JSON is `kind`, `as`, `intent_id`, then the fields of `kind`.
@@ -621,7 +621,7 @@ pub(crate) fn shift_item(
         Holder::Actor(actor_id) => {
             let state_key = StateKey::ActorItem(actor_id.clone(), id.to_string());
             draft.mutate(state_key, |state| {
-                model::shift_count(&mut state.actor_mut(actor_id)?.inventory, id, delta, max)
+                state::shift_count(&mut state.actor_mut(actor_id)?.inventory, id, delta, max)
             })?;
             draft.mutate(StateKey::ActorWielded(actor_id.clone()), |state| {
                 Ok(state.actor_mut(actor_id)?.release_wielded())
@@ -631,7 +631,7 @@ pub(crate) fn shift_item(
             let state_key = StateKey::PlaceItem(place.clone(), id.to_string());
             draft.mutate(state_key, |state| {
                 let place_live = state.places.get_mut(place).ok_or(Reason::UnknownId)?;
-                model::shift_count(&mut place_live.items, id, delta, max)
+                state::shift_count(&mut place_live.items, id, delta, max)
             })
         }
         Holder::Story(_) | Holder::Exit(..) | Holder::World => Err(Reason::Schema),
@@ -767,17 +767,17 @@ fn remember(
         }
     }
     draft.count_memory_write()?;
-    model::sort_unique(&mut fact_ids);
+    state::sort_unique(&mut fact_ids);
     draft.mutate(StateKey::ActorKnownFact(actor_id.to_string()), |state| {
         let known = &mut state.actor_mut(actor_id)?.known_facts;
         let learned = fact_ids.iter().any(|fact| !known.contains(fact));
         if learned {
             known.extend(fact_ids.iter().cloned());
-            model::sort_unique(known);
+            state::sort_unique(known);
         }
         Ok(learned)
     })?;
-    model::sort_unique(&mut tags);
+    state::sort_unique(&mut tags);
     draft.push_memory(MemoryLine {
         round_index: draft.state().round_index,
         actor_id: actor_id.to_string(),
@@ -809,7 +809,7 @@ fn reveal(draft: &mut Draft, actor_id: &str, fact: &str) -> Result<(), Reason> {
             return Ok(false);
         }
         known.push(fact.to_string());
-        model::sort_unique(known);
+        state::sort_unique(known);
         Ok(true)
     })
 }
@@ -831,8 +831,8 @@ fn leave_note(
                 return Err(Reason::UnknownId);
             }
         }
-        model::sort_unique(&mut to);
-        model::sort_unique(&mut fact_ids);
+        state::sort_unique(&mut to);
+        state::sort_unique(&mut fact_ids);
         state.notes.push(Note {
             id: note_id,
             to,

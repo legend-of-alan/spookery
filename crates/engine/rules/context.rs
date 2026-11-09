@@ -2,7 +2,7 @@
 
 use crate::canon::Canon;
 use crate::intent::Intent;
-use crate::model::{Presence, State};
+use crate::state::{Presence, State};
 
 /// The canon, the save, who is seated, and the intent a rule's conditions, costs and effects read.
 ///

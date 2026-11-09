@@ -4,11 +4,11 @@ use std::collections::BTreeSet;
 
 use crate::canon::Canon;
 use crate::intent::Viewer;
-use crate::model::meter;
-use crate::model::{Note, Presence, State};
 use crate::rules::effect::Holder;
 use crate::rules::habits::list_whose_if_holds;
 use crate::rules::visibility::can_see_fact;
+use crate::state::meter;
+use crate::state::{Note, Presence, State};
 use crate::world::World;
 use crate::Reason;
 use spookery_protocol::{ExitView, PERCEIVE_BODY_CHARS};

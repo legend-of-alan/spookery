@@ -5,8 +5,6 @@ use std::collections::{BTreeMap, BTreeSet};
 use crate::canon::source::{FileText, Locator, Problem};
 use crate::canon::{Canon, CastDef, FactDef, ItemDef, PlaceDef, StoryDef, OPEN};
 use crate::diagnostic::{error, schema_error, warning, Diagnostic};
-use crate::model::meter::{self, MeterDef};
-use crate::model::modifier::{self, ModifierDef};
 use crate::rules::effect::Holder;
 use crate::rules::expr::Expr;
 use crate::rules::roll::Check;
@@ -14,6 +12,8 @@ use crate::rules::rule::{
     ChangeWatch, Cond, Cost, EffectTemplate, LocationTo, NarrateTo, Owner, ResistSpec, Rule,
     RuleTable, When, Who,
 };
+use crate::state::meter::{self, MeterDef};
+use crate::state::modifier::{self, ModifierDef};
 use crate::Reason;
 
 /// Exits whose `to` is not a place, and facts or items an exit names but the pack does not.
@@ -549,11 +549,11 @@ pub(super) fn unknown_meters(
 /// item and wielded slot the pack does not define, every meter the pack gives a holder
 /// that the holder lacks, every meter outside its rules, every modifier the pack no longer
 /// gives that meter, every walker on an exit the pack lacks, and every empty id or zero count.
-pub fn check_save(canon: &Canon, state: &crate::model::State) -> Result<(), Vec<Diagnostic>> {
+pub fn check_save(canon: &Canon, state: &crate::state::State) -> Result<(), Vec<Diagnostic>> {
     let mut diags = Vec::new();
     for (id, actor) in &state.actors {
         // A walker stands on an exit, which must be one of the pack's.
-        let on_exit = crate::model::exit_parts(&actor.place).is_some();
+        let on_exit = crate::state::exit_parts(&actor.place).is_some();
         if on_exit && crate::rules::travel::exit_stood_on(canon, &actor.place).is_none() {
             let problem = format!(
                 "actor '{id}' stands on exit '{}', which the pack does not define",

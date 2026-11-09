@@ -5,8 +5,8 @@ use std::str::FromStr;
 
 use serde::{Deserialize, Deserializer, Serialize};
 
-use crate::model::State;
 use crate::rules::rule::TargetKind;
+use crate::state::State;
 use crate::Reason;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]

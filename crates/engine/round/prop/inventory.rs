@@ -16,8 +16,8 @@
 
 use crate::draft::Draft;
 use crate::intent::{Intent, IntentArgs, Source, Target, Viewer};
-use crate::model::State;
 use crate::rules::effect::{Effect, EffectKind, Holder};
+use crate::state::State;
 use crate::testing::copy_docks;
 use crate::world::World;
 
@@ -52,7 +52,7 @@ fn random_item_changes_never_leave_a_negative_count() {
 }
 
 fn apply_changes(world: &World<()>, steps: &[ItemChange]) -> Result<(), TestCaseError> {
-    let nobody = crate::model::Presence::default();
+    let nobody = crate::state::Presence::default();
     let mut draft = Draft::begin(world, &nobody);
     let intent = npc_intent();
     for step in steps {

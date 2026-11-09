@@ -1,11 +1,11 @@
 //! Dice and arithmetic inside a rule number.
 
 use crate::canon::Canon;
-use crate::model::State;
 use crate::rules::context::Context;
 use crate::rules::effect::Holder;
 use crate::rules::roll::Outcome;
 use crate::rules::rule::{LineColumn, Who};
+use crate::state::State;
 use crate::Reason;
 
 /// Faces for one expression. `begin` starts a new roll seed. `note` records the shown line.
@@ -652,10 +652,10 @@ mod tests {
     use super::{eval_with_dice, BinOp, Dice, Expr, Func, Keep};
     use crate::canon::Canon;
     use crate::intent::{Intent, IntentArgs, Source, Target, Viewer};
-    use crate::model::meter::{MeterDef, MeterLive};
-    use crate::model::{Act, ActorKind, ActorLive, Presence, State};
     use crate::rules::context::Context;
     use crate::rules::rule::Who;
+    use crate::state::meter::{MeterDef, MeterLive};
+    use crate::state::{Act, ActorKind, ActorLive, Presence, State};
     use crate::Reason;
 
     static EMPTY: Presence = Presence {

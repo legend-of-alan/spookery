@@ -1,6 +1,6 @@
 //! The live save: places, actors, stories, world meters, and notes.
 
-pub(crate) mod key;
+pub(crate) mod change;
 pub(crate) mod meter;
 pub(crate) mod modifier;
 
@@ -8,7 +8,7 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-use key::StateKey;
+use change::StateKey;
 use meter::MeterLive;
 use modifier::ModifierLive;
 

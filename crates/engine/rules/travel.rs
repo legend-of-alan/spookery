@@ -3,7 +3,6 @@
 use crate::canon::{Canon, Exit, PlaceDef, OPEN};
 use crate::draft::Draft;
 use crate::intent::{Intent, Source, Target, Viewer};
-use crate::model::{PendingAction, State};
 use crate::round::log::RoundLog;
 use crate::rules::cond;
 use crate::rules::context::Context;
@@ -13,6 +12,7 @@ use crate::rules::gate;
 use crate::rules::lines::place_name;
 use crate::rules::rule::{EffectTemplate, LocationTo, Rule};
 use crate::rules::visibility::can_see_fact;
+use crate::state::{PendingAction, State};
 use crate::Reason;
 use spookery_protocol::ExitView;
 
@@ -69,7 +69,7 @@ pub(crate) fn exit_via<'a>(context: &Context<'a>, via: &str) -> Result<Option<&'
 /// The exit a walker stands on, from the place id `exit:<place>.<exit>` they hold while
 /// walking. `None` for a place.
 pub(crate) fn exit_stood_on<'a>(canon: &'a Canon, place: &str) -> Option<&'a Exit> {
-    let (from, name) = crate::model::exit_parts(place)?;
+    let (from, name) = crate::state::exit_parts(place)?;
     find_exit(canon, from, name)
 }
 

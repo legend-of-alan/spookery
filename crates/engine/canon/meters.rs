@@ -9,8 +9,8 @@ use crate::canon::source::{
     load_tagged, Diags, DuplicateWords, FileText, Locator, Problem, METERS_SCHEMA,
 };
 use crate::diagnostic::Diagnostic;
-use crate::model::meter::MeterDef;
 use crate::rules::effect::Holder;
+use crate::state::meter::MeterDef;
 
 /// A meters file, whose meters `carrier` carries.
 pub(super) fn load_meters(

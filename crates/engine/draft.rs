@@ -7,9 +7,9 @@ use std::sync::Arc;
 
 use crate::canon::Budget;
 use crate::canon::{Canon, OPEN};
-use crate::model::key::{Change, StateKey, StateValue};
-use crate::model::{ActCounter, MemoryLine, PendingAction, Presence, State};
 use crate::rules::effect::Holder;
+use crate::state::change::{Change, StateKey, StateValue};
+use crate::state::{ActCounter, MemoryLine, PendingAction, Presence, State};
 use crate::world::World;
 use crate::Reason;
 
@@ -364,7 +364,7 @@ impl<'p> Draft<'p> {
     fn act_number(
         &self,
         actor_id: &str,
-        read: impl FnOnce(&crate::model::Act) -> i64,
+        read: impl FnOnce(&crate::state::Act) -> i64,
     ) -> StateValue {
         self.state
             .actors
@@ -423,8 +423,8 @@ pub(crate) struct Savepoint {
 mod tests {
     use super::*;
     use crate::intent::Intent;
-    use crate::model::meter::MeterWrite;
     use crate::rules::effect::{Effect, EffectKind};
+    use crate::state::meter::MeterWrite;
     use crate::World;
 
     #[test]
@@ -435,7 +435,7 @@ mod tests {
         let mut canon = opened.canon().clone();
         canon.budget.max_state_keys_mutated = 2;
         let world = World::from_parts(&pack, Arc::new(canon), opened.state().clone());
-        let nobody = crate::model::Presence::default();
+        let nobody = crate::state::Presence::default();
         let mut draft = Draft::begin(&world, &nobody);
         // Bram's grit sits clamped at its minimum: taking more moves the offset, not the value.
         let meters = &mut draft.state.actor_mut("bram").unwrap().meters;

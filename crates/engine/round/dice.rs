@@ -4,13 +4,13 @@ use std::collections::BTreeMap;
 
 use crate::canon::Canon;
 use crate::hash::blake2s_256;
-use crate::model::State;
 use crate::round::log::RoundLog;
 use crate::rules::context::Context;
 use crate::rules::expr::{eval_with_dice, Dice};
 use crate::rules::roll::Outcome;
 use crate::rules::roll::{self, faces, MoveReport, Roll, RollKey};
 use crate::rules::rule::RollSpec;
+use crate::state::State;
 use crate::Reason;
 
 /// The round line's `seed` field. A roll uses `RollKey`, not this string.

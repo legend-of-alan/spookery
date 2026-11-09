@@ -3,7 +3,6 @@
 use crate::canon::{Canon, Exit};
 use crate::draft::Draft;
 use crate::intent::{Intent, Viewer};
-use crate::model::PendingAction;
 use crate::rules::context::Context;
 use crate::rules::cost;
 use crate::rules::effect::{Effect, EffectKind};
@@ -12,6 +11,7 @@ use crate::rules::gate;
 use crate::rules::roll::{MoveReport, Roll};
 use crate::rules::rule::Rule;
 use crate::rules::travel;
+use crate::state::PendingAction;
 use crate::store::records::Step;
 use crate::Reason;
 

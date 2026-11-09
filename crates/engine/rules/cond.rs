@@ -2,10 +2,10 @@
 
 use crate::canon::Canon;
 use crate::intent::{Intent, Source, Target, Viewer};
-use crate::model::{Presence, State};
 use crate::rules::context::Context;
 use crate::rules::expr;
 use crate::rules::rule::Cond;
+use crate::state::{Presence, State};
 use crate::Reason;
 
 /// Every condition holds. A failed `has_item` is [`Reason::MissingItem`].

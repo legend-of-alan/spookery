@@ -7,11 +7,11 @@ use serde::Deserialize;
 
 use crate::diagnostic::Diagnostic;
 use crate::hash::blake2s_tagged;
-use crate::model::meter::MeterDef;
-use crate::model::modifier::ModifierDef;
 use crate::rules::effect::Holder;
 use crate::rules::roll::Check;
 use crate::rules::rule::{Cond, Cost, Owner, RuleTable, TargetKind, When};
+use crate::state::meter::MeterDef;
+use crate::state::modifier::ModifierDef;
 use crate::Reason;
 pub use spookery_protocol::{CastKind, MenuRow, PackSummary};
 

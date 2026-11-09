@@ -5,8 +5,8 @@ use std::path::{Path, PathBuf};
 
 use crate::canon::pack_rev;
 use crate::intent::Target;
-use crate::model::Presence;
 use crate::rules::travel::visible_exits;
+use crate::state::Presence;
 use crate::store::journal;
 use crate::store::save;
 use crate::world::World;
