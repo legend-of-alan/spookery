@@ -8,7 +8,7 @@ use crate::canon::{check_save, pack_rev, Canon};
 use crate::diagnostic::first_reason;
 use crate::draft::Draft;
 use crate::hash::blake2s_tagged;
-use crate::model::State;
+use crate::state::State;
 use crate::store::durability::{fsync_dir, fsync_file, refuse_io, write_atomic};
 use crate::store::journal;
 use crate::store::lock::{lock_write, PackGuard, WriteGuard};
@@ -301,7 +301,7 @@ mod tests {
     use std::path::Path;
 
     use crate::draft::Draft;
-    use crate::model::{MemoryLine, Presence};
+    use crate::state::{MemoryLine, Presence};
     use crate::store::durability;
     use crate::store::lock::lock_pack;
     use crate::store::records::RoundRecord;

@@ -8,9 +8,9 @@ use crate::rules::roll::classify;
 
 use crate::canon::Canon;
 use crate::intent::{Intent, Target};
-use crate::model::{Presence, State};
 use crate::rules::roll::Roll;
 use crate::rules::rule::{RollSpec, Rule, When};
+use crate::state::{Presence, State};
 use crate::store::records::Step;
 use crate::Reason;
 

@@ -13,9 +13,9 @@ use crate::canon::source::{
 };
 use crate::canon::StoryDef;
 use crate::diagnostic::schema_error;
-use crate::model::meter::MeterDef;
-use crate::rules::effect::Holder;
+use crate::rules::effect::EntityId;
 use crate::rules::rule::{Owner, Rule};
+use crate::state::meter::MeterDef;
 
 /// Every `story/*.yaml` file in directory order: its rules compiled, and its meters added to
 /// `meters` when those loaded. A pack without `story/` has none.
@@ -52,7 +52,7 @@ pub(super) fn load_stories(
             text,
             line_base: 0,
         };
-        let carrier = Some(Holder::Story(story.id.clone()));
+        let carrier = Some(EntityId::Story(story.id.clone()));
         let own = diags.keep(meter_defs(&source, story.meters, carrier));
         if let (Some(meters), Some(own)) = (meters.as_deref_mut(), own) {
             add_own_meters(meters, own, world_meters, &source, diags);

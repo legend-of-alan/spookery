@@ -1,10 +1,10 @@
 //! Decide what the GM and each seated viewer may see and hear.
 
 use crate::canon::Canon;
-use crate::model::key::Change;
-use crate::model::{Presence, State};
 use crate::rules::effect::Effect;
 use crate::rules::visibility::{self, Recipient, RecipientLine, ViewerChanges};
+use crate::state::change::Change;
+use crate::state::{Presence, State};
 
 /// What the GM and each viewer may see and hear. Passed from the deliver stage to `record`,
 /// which puts it on the `RoundOutput`.

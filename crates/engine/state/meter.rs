@@ -1,8 +1,8 @@
-//! Meter bounds from the pack, and the live value on its holder.
+//! Meter bounds from the pack, and the live value on its entity.
 
 use serde::{Deserialize, Serialize};
 
-use crate::rules::effect::Holder;
+use crate::rules::effect::EntityId;
 use crate::Reason;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -14,27 +14,27 @@ pub struct MeterDef {
     /// Kept off the players' views.
     pub hidden: bool,
     /// Who carries it, from the file that declares it. `None` is every actor.
-    pub carrier: Option<Holder>,
+    pub carrier: Option<EntityId>,
 }
 
 impl MeterDef {
-    /// Whether `holder` carries this meter.
-    pub fn is_on(&self, holder: &Holder) -> bool {
+    /// Whether `entity` carries this meter.
+    pub fn is_on(&self, entity: &EntityId) -> bool {
         match &self.carrier {
-            None => matches!(holder, Holder::Actor(_)),
-            Some(carrier) => carrier == holder,
+            None => matches!(entity, EntityId::Actor(_)),
+            Some(carrier) => carrier == entity,
         }
     }
 
     /// Whether every actor, or one actor, carries this meter.
     pub fn is_actor_meter(&self) -> bool {
-        matches!(self.carrier, None | Some(Holder::Actor(_)))
+        matches!(self.carrier, None | Some(EntityId::Actor(_)))
     }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct MeterLive {
+pub struct Meter {
     pub base: i64,
     pub offset: i64,
 }
@@ -52,8 +52,8 @@ pub fn is_storable(def: &MeterDef, base: i64, offset: i64) -> bool {
     (def.min..=def.base_cap).contains(&base) && base.checked_add(offset).is_some()
 }
 
-/// `base + offset`, plus what the holder's modifiers add to this meter, clamped to the bounds.
-pub fn current(def: &MeterDef, live: &MeterLive, modifiers: i64) -> Result<i64, Reason> {
+/// `base + offset`, plus what the entity's modifiers add to this meter, clamped to the bounds.
+pub fn current(def: &MeterDef, live: &Meter, modifiers: i64) -> Result<i64, Reason> {
     let sum = live
         .base
         .checked_add(live.offset)
@@ -65,7 +65,7 @@ pub fn current(def: &MeterDef, live: &MeterLive, modifiers: i64) -> Result<i64, 
 /// `Ok(true)` means the stored pair changed and the caller should track
 /// the meter's key. A zero delta leaves the pair alone and is `Ok(false)`.
 /// The live record is assigned only after `is_storable` accepts the next pair.
-pub fn write(def: &MeterDef, live: &mut MeterLive, write: MeterWrite) -> Result<bool, Reason> {
+pub fn write(def: &MeterDef, live: &mut Meter, write: MeterWrite) -> Result<bool, Reason> {
     let MeterWrite::Offset(delta) = write;
     let next_offset = live.offset.checked_add(delta).ok_or(Reason::OutOfRange)?;
     if !is_storable(def, live.base, next_offset) {
@@ -95,7 +95,7 @@ mod tests {
     fn stored_accepts_a_sum_past_max_and_current_clamps() {
         let def = grit();
         assert!(is_storable(&def, 100, 20));
-        let live = MeterLive {
+        let live = Meter {
             base: 100,
             offset: 20,
         };

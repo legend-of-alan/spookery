@@ -2,11 +2,11 @@
 
 use crate::canon::Canon;
 use crate::intent::{Intent, Target, Viewer};
-use crate::model::{ActorLive, Presence, State};
 use crate::rules::cond;
 use crate::rules::context::Context;
 use crate::rules::expand;
 use crate::rules::gate;
+use crate::state::{ActorLive, Presence, State};
 
 /// One habit intent per NPC whose habit the gate admits, its target not yet stamped.
 pub(crate) fn intents(canon: &Canon, state: &State, presence: &Presence) -> Vec<Intent> {

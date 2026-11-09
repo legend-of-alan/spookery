@@ -21,7 +21,7 @@ pub struct ModifierDef {
 /// can tell when the def now names another one.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct ModifierLive {
+pub struct Modifier {
     pub meter: String,
     /// The tick it expires at.
     pub until: u64,
@@ -30,7 +30,7 @@ pub struct ModifierLive {
     pub stacks: Vec<i64>,
 }
 
-impl ModifierLive {
+impl Modifier {
     /// Ticks from `now` until it expires.
     pub fn ticks_left(&self, now: u64) -> u64 {
         self.until.saturating_sub(now)
@@ -42,7 +42,7 @@ impl ModifierLive {
 /// Below `max_stacks` it is one more stack. At the cap it replaces the first weakest
 /// stack when its absolute value is larger. Stacks past a `max_stacks` the pack lowered
 /// go first, weakest first.
-pub fn stack(def: &ModifierDef, live: &mut ModifierLive, add: i64, ticks: u64, now: u64) {
+pub fn stack(def: &ModifierDef, live: &mut Modifier, add: i64, ticks: u64, now: u64) {
     live.max_ticks = live.max_ticks.max(ticks);
     let left = live.ticks_left(now).saturating_add(ticks);
     live.until = now.saturating_add(left.min(live.max_ticks));
@@ -72,12 +72,12 @@ fn weakest(stacks: &[i64]) -> Option<usize> {
 }
 
 /// Whether `defs` still define modifier `id` on the meter `live` was applied to.
-pub fn is_defined(defs: &BTreeMap<String, ModifierDef>, id: &str, live: &ModifierLive) -> bool {
+pub fn is_defined(defs: &BTreeMap<String, ModifierDef>, id: &str, live: &Modifier) -> bool {
     defs.get(id).is_some_and(|def| def.meter == live.meter)
 }
 
 /// What the modifiers in `held` add to meter `key`: the sum of their stacks.
-pub fn sum(held: &BTreeMap<String, ModifierLive>, key: &str) -> Result<i64, Reason> {
+pub fn sum(held: &BTreeMap<String, Modifier>, key: &str) -> Result<i64, Reason> {
     held.values()
         .filter(|live| live.meter == key)
         .flat_map(|live| &live.stacks)
@@ -97,8 +97,8 @@ mod tests {
         }
     }
 
-    fn held(stacks: &[i64]) -> ModifierLive {
-        ModifierLive {
+    fn held(stacks: &[i64]) -> Modifier {
+        Modifier {
             meter: "grit".to_string(),
             until: 2,
             max_ticks: 10,
@@ -118,7 +118,7 @@ mod tests {
         let mut map = BTreeMap::from([("burn".to_string(), held(&[-1, -2]))]);
         map.insert(
             "calm".to_string(),
-            ModifierLive {
+            Modifier {
                 meter: "rest".to_string(),
                 until: 2,
                 max_ticks: 10,

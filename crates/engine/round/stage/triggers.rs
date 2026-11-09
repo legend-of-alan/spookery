@@ -3,12 +3,12 @@
 use crate::canon::{Canon, OPEN};
 use crate::draft::Draft;
 use crate::intent::Intent;
-use crate::model::key::{Change, StateKey, StateValue};
 use crate::rules::cond;
 use crate::rules::context::Context;
 use crate::rules::expand::{self, Cause};
 use crate::rules::gate;
 use crate::rules::rule::{ChangeWatch, Op, Rule, WatchWho, When};
+use crate::state::change::{self, Change};
 use crate::store::records::Step;
 
 use crate::round::dice::RoundDice;
@@ -117,7 +117,7 @@ fn fire(
 fn matches_watch(draft: &Draft, rule: &Rule, watch: &ChangeWatch, change: &Change) -> bool {
     match watch {
         ChangeWatch::Arrive { place, who } => match &change.key {
-            StateKey::ActorPlace(actor) => {
+            change::Key::ActorPlace(actor) => {
                 let place = rule.watched_place(place);
                 change.before.as_text() != Some(place)
                     && change.after.as_text() == Some(place)
@@ -126,7 +126,7 @@ fn matches_watch(draft: &Draft, rule: &Rule, watch: &ChangeWatch, change: &Chang
             _ => false,
         },
         ChangeWatch::Leave { place, who } => match &change.key {
-            StateKey::ActorPlace(actor) => {
+            change::Key::ActorPlace(actor) => {
                 let place = rule.watched_place(place);
                 change.before.as_text() == Some(place)
                     && change.after.as_text() != Some(place)
@@ -135,10 +135,10 @@ fn matches_watch(draft: &Draft, rule: &Rule, watch: &ChangeWatch, change: &Chang
             _ => false,
         },
         ChangeWatch::Meter { key, op, bound } => match &change.key {
-            StateKey::ActorMeter(_, meter)
-            | StateKey::PlaceMeter(_, meter)
-            | StateKey::StoryMeter(_, meter)
-            | StateKey::WorldMeter(meter)
+            change::Key::ActorMeter(_, meter)
+            | change::Key::PlaceMeter(_, meter)
+            | change::Key::StoryMeter(_, meter)
+            | change::Key::WorldMeter(meter)
                 if meter == key =>
             {
                 crosses(&change.before, &change.after, *op, *bound)
@@ -146,19 +146,19 @@ fn matches_watch(draft: &Draft, rule: &Rule, watch: &ChangeWatch, change: &Chang
             _ => false,
         },
         ChangeWatch::Flag { key, becomes } => match &change.key {
-            StateKey::ActorFlag(_, flag)
-            | StateKey::PlaceFlag(_, flag)
-            | StateKey::StoryFlag(_, flag)
-            | StateKey::WorldFlag(flag)
+            change::Key::ActorFlag(_, flag)
+            | change::Key::PlaceFlag(_, flag)
+            | change::Key::StoryFlag(_, flag)
+            | change::Key::WorldFlag(flag)
                 if flag == key =>
             {
                 flips(change, *becomes)
             }
-            StateKey::ExitOpen(_, _) if key == OPEN => flips(change, *becomes),
+            change::Key::ExitOpen(_, _) if key == OPEN => flips(change, *becomes),
             _ => false,
         },
         ChangeWatch::Item { id, gained } => match &change.key {
-            StateKey::ActorItem(_, item) if item == id => {
+            change::Key::ActorItem(_, item) if item == id => {
                 match (change.before.as_number(), change.after.as_number()) {
                     (Some(before), Some(after)) if *gained => after > before,
                     (Some(before), Some(after)) => after < before,
@@ -168,7 +168,7 @@ fn matches_watch(draft: &Draft, rule: &Rule, watch: &ChangeWatch, change: &Chang
             _ => false,
         },
         ChangeWatch::Knows { fact } => match &change.key {
-            StateKey::ActorKnownFact(_) => {
+            change::Key::ActorKnownFact(_) => {
                 change.after.contains(fact) && !change.before.contains(fact)
             }
             _ => false,
@@ -193,7 +193,7 @@ fn matches_who(draft: &Draft, who: &WatchWho, actor_id: &str) -> bool {
     }
 }
 
-fn crosses(before: &StateValue, after: &StateValue, op: Op, bound: i64) -> bool {
+fn crosses(before: &change::Value, after: &change::Value, op: Op, bound: i64) -> bool {
     let (Some(before), Some(after)) = (before.as_number(), after.as_number()) else {
         return false;
     };

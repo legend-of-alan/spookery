@@ -21,9 +21,9 @@ use crate::world::World;
 use proptest::test_runner::{TestCaseError, TestRunner};
 
 use super::support::{arb_rounds, play_rounds, runner_config, TempPack};
-use crate::model::Presence;
 use crate::round::play::replay_round;
 use crate::round::replay::first_effect_diff;
+use crate::state::Presence;
 use crate::testing::{copy_dir, copy_docks, fresh_dir};
 
 #[test]

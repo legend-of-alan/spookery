@@ -1,5 +1,5 @@
 //! Meter lists: `rules/meters.yaml` for every actor, `world/meters.yaml` for the world, and
-//! the `meters:` of a cast, place or story file for that one holder.
+//! the `meters:` of a cast, place or story file for that one entity.
 
 use std::collections::BTreeMap;
 
@@ -9,14 +9,14 @@ use crate::canon::source::{
     load_tagged, Diags, DuplicateWords, FileText, Locator, Problem, METERS_SCHEMA,
 };
 use crate::diagnostic::Diagnostic;
-use crate::model::meter::MeterDef;
-use crate::rules::effect::Holder;
+use crate::rules::effect::EntityId;
+use crate::state::meter::MeterDef;
 
 /// A meters file, whose meters `carrier` carries.
 pub(super) fn load_meters(
     rel: &str,
     text: &str,
-    carrier: Option<Holder>,
+    carrier: Option<EntityId>,
 ) -> Result<BTreeMap<String, MeterDef>, Vec<Diagnostic>> {
     let doc: MetersDoc = load_tagged(rel, text, METERS_SCHEMA, 0)?;
     let source = FileText {
@@ -32,9 +32,9 @@ pub(super) fn load_meters(
 pub(super) fn meter_defs(
     source: &FileText,
     rows: Vec<MeterYaml>,
-    carrier: Option<Holder>,
+    carrier: Option<EntityId>,
 ) -> Result<BTreeMap<String, MeterDef>, Vec<Diagnostic>> {
-    let hidden_by_default = !matches!(carrier, None | Some(Holder::Actor(_)));
+    let hidden_by_default = !matches!(carrier, None | Some(EntityId::Actor(_)));
     let mut diags = Diags::default();
     let mut meters = BTreeMap::new();
     for (row, entry) in rows.into_iter().enumerate() {
@@ -131,7 +131,7 @@ pub(super) fn add_own_meters(
     const KEEP_ONE: &str = "keep one meter with this id";
     for (key, def) in own {
         let taken = if world.is_some_and(|world| world.contains_key(&key)) {
-            Some(Some(Holder::World))
+            Some(Some(EntityId::World))
         } else {
             meters.get(&key).map(|taken| taken.carrier.clone())
         };
@@ -144,7 +144,7 @@ pub(super) fn add_own_meters(
                 "is already in rules/meters.yaml",
                 "rename it, or drop it and use the one every actor carries",
             ),
-            Some(Some(Holder::World)) => ("is already in world/meters.yaml", KEEP_ONE),
+            Some(Some(EntityId::World)) => ("is already in world/meters.yaml", KEEP_ONE),
             Some(Some(_)) => (
                 "is already declared in another cast, place or story file",
                 KEEP_ONE,

@@ -3,16 +3,16 @@
 use crate::canon::{Canon, Exit, PlaceDef, OPEN};
 use crate::draft::Draft;
 use crate::intent::{Intent, Source, Target, Viewer};
-use crate::model::{PendingAction, State};
 use crate::round::log::RoundLog;
 use crate::rules::cond;
 use crate::rules::context::Context;
 use crate::rules::cost;
-use crate::rules::effect::{Effect, EffectKind, Holder};
+use crate::rules::effect::{Effect, EffectKind, EntityId};
 use crate::rules::gate;
 use crate::rules::lines::place_name;
 use crate::rules::rule::{EffectTemplate, LocationTo, Rule};
 use crate::rules::visibility::can_see_fact;
+use crate::state::{PendingAction, State};
 use crate::Reason;
 use spookery_protocol::ExitView;
 
@@ -69,7 +69,7 @@ pub(crate) fn exit_via<'a>(context: &Context<'a>, via: &str) -> Result<Option<&'
 /// The exit a walker stands on, from the place id `exit:<place>.<exit>` they hold while
 /// walking. `None` for a place.
 pub(crate) fn exit_stood_on<'a>(canon: &'a Canon, place: &str) -> Option<&'a Exit> {
-    let (from, name) = crate::model::exit_parts(place)?;
+    let (from, name) = crate::state::exit_parts(place)?;
     find_exit(canon, from, name)
 }
 
@@ -123,9 +123,9 @@ fn is_locked(state: &State, exit: &Exit) -> bool {
     !exit.if_.is_empty() && !state.has_flag(&door(exit), OPEN)
 }
 
-/// The exit as the holder of its flag `open`.
-fn door(exit: &Exit) -> Holder {
-    Holder::Exit(exit.from.clone(), exit.name.clone())
+/// The exit as the entity that carries its flag `open`.
+fn door(exit: &Exit) -> EntityId {
+    EntityId::Exit(exit.from.clone(), exit.name.clone())
 }
 
 /// Open each locked door whose `if` some actor in its place meets, with a `flag` effect
@@ -160,7 +160,7 @@ pub(crate) fn open_doors(draft: &mut Draft, log: &mut RoundLog) {
             let id = format!("door:{place}.{}", exit.name);
             let intent = Intent::new(id, state.round_index, None, Source::Engine, "door", target);
             let kind = EffectKind::Flag {
-                holder: door(exit),
+                entity: door(exit),
                 key: OPEN.to_string(),
                 value: true,
             };

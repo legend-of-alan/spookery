@@ -5,7 +5,7 @@ use cucumber::{given, then, when};
 use serde_json::Value;
 use spookery::protocol;
 use spookery_engine::testing::state_of;
-use spookery_engine::MeterLive;
+use spookery_engine::Meter;
 use spookery_engine::{emit_save, parse_save};
 use spookery_engine::{Presence, State};
 
@@ -177,7 +177,7 @@ rules:
             .unwrap()
             .flags
             .push("found_key".to_string());
-        let start = MeterLive { base: 0, offset: 0 };
+        let start = Meter { base: 0, offset: 0 };
         now.world_meters.insert("tide".to_string(), start);
     });
     play(
@@ -1070,7 +1070,7 @@ rules:
         let briar = now.actors.get_mut("briar").unwrap();
         briar.meters.insert(
             "hp".to_string(),
-            MeterLive {
+            Meter {
                 base: hp,
                 offset: 0,
             },

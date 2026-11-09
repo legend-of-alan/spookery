@@ -7,8 +7,8 @@ use serde::Deserialize;
 
 use crate::canon::source::{load_tagged, Diags, FileText, Locator, Problem, MODIFIERS_SCHEMA};
 use crate::diagnostic::Diagnostic;
-use crate::model::meter::MeterDef;
-use crate::model::modifier::ModifierDef;
+use crate::state::meter::MeterDef;
+use crate::state::modifier::ModifierDef;
 
 pub(super) const MODIFIERS_FILE: &str = "rules/modifiers.yaml";
 

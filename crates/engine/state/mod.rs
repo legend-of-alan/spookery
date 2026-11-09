@@ -1,6 +1,6 @@
 //! The live save: places, actors, stories, world meters, and notes.
 
-pub(crate) mod key;
+pub(crate) mod change;
 pub(crate) mod meter;
 pub(crate) mod modifier;
 
@@ -8,13 +8,12 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-use key::StateKey;
-use meter::MeterLive;
-use modifier::ModifierLive;
+use meter::Meter;
+use modifier::Modifier;
 
 use crate::canon::OPEN;
 use crate::intent::{Target, Viewer};
-use crate::rules::effect::Holder;
+use crate::rules::effect::EntityId;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -37,7 +36,7 @@ pub struct State {
     pub stories: BTreeMap<String, StoryLive>,
     /// The meters `world/meters.yaml` declares, held once by the world. Omitted when empty.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub world_meters: BTreeMap<String, MeterLive>,
+    pub world_meters: BTreeMap<String, Meter>,
     pub notes: Vec<Note>,
     /// World flags. Omitted from the save when empty.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -45,103 +44,103 @@ pub struct State {
 }
 
 impl State {
-    /// The current value of meter `key` on `holder`, or `UNKNOWN_ID` when it does not carry it.
+    /// The current value of meter `key` on `entity`, or `UNKNOWN_ID` when it does not carry it.
     pub fn meter_value(
         &self,
         canon: &crate::canon::Canon,
-        holder: &Holder,
+        entity: &EntityId,
         key: &str,
     ) -> Result<i64, crate::Reason> {
         let def = canon
-            .meter_def(holder, key)
+            .meter_def(entity, key)
             .ok_or(crate::Reason::UnknownId)?;
         let live = self
-            .meters_of(holder)
+            .meters_of(entity)
             .and_then(|meters| meters.get(key))
             .ok_or(crate::Reason::UnknownId)?;
-        meter::current(def, live, self.modifier_sum(holder, key)?)
+        meter::current(def, live, self.modifier_sum(entity, key)?)
     }
 
-    /// What `holder`'s modifiers add to its meter `key`. Only an actor holds modifiers.
-    pub(crate) fn modifier_sum(&self, holder: &Holder, key: &str) -> Result<i64, crate::Reason> {
-        match holder {
-            Holder::Actor(id) => self
+    /// What `entity`'s modifiers add to its meter `key`. Only an actor holds modifiers.
+    pub(crate) fn modifier_sum(&self, entity: &EntityId, key: &str) -> Result<i64, crate::Reason> {
+        match entity {
+            EntityId::Actor(id) => self
                 .actors
                 .get(id)
                 .map_or(Ok(0), |actor| modifier::sum(&actor.modifiers, key)),
-            Holder::World | Holder::Place(_) | Holder::Story(_) | Holder::Exit(..) => Ok(0),
+            EntityId::World | EntityId::Place(_) | EntityId::Story(_) | EntityId::Exit(..) => Ok(0),
         }
     }
 
-    /// The live meters `holder` carries.
-    pub(crate) fn meters_of(&self, holder: &Holder) -> Option<&BTreeMap<String, MeterLive>> {
-        match holder {
-            Holder::Actor(id) => self.actors.get(id).map(|actor| &actor.meters),
-            Holder::Place(id) => self.places.get(id).map(|place| &place.meters),
-            Holder::Story(id) => self.stories.get(id).map(|story| &story.meters),
-            Holder::Exit(..) => None,
-            Holder::World => Some(&self.world_meters),
+    /// The live meters `entity` carries.
+    pub(crate) fn meters_of(&self, entity: &EntityId) -> Option<&BTreeMap<String, Meter>> {
+        match entity {
+            EntityId::Actor(id) => self.actors.get(id).map(|actor| &actor.meters),
+            EntityId::Place(id) => self.places.get(id).map(|place| &place.meters),
+            EntityId::Story(id) => self.stories.get(id).map(|story| &story.meters),
+            EntityId::Exit(..) => None,
+            EntityId::World => Some(&self.world_meters),
         }
     }
 
-    /// The live meters `holder` carries, to write.
+    /// The live meters `entity` carries, to write.
     pub(crate) fn meters_mut(
         &mut self,
-        holder: &Holder,
-    ) -> Result<&mut BTreeMap<String, MeterLive>, crate::Reason> {
-        match holder {
-            Holder::Actor(id) => Ok(&mut self.actor_mut(id)?.meters),
-            Holder::Place(id) => Ok(&mut self
+        entity: &EntityId,
+    ) -> Result<&mut BTreeMap<String, Meter>, crate::Reason> {
+        match entity {
+            EntityId::Actor(id) => Ok(&mut self.actor_mut(id)?.meters),
+            EntityId::Place(id) => Ok(&mut self
                 .places
                 .get_mut(id)
                 .ok_or(crate::Reason::UnknownId)?
                 .meters),
-            Holder::Story(id) => Ok(&mut self
+            EntityId::Story(id) => Ok(&mut self
                 .stories
                 .get_mut(id)
                 .ok_or(crate::Reason::UnknownId)?
                 .meters),
-            Holder::Exit(..) => Err(crate::Reason::UnknownId),
-            Holder::World => Ok(&mut self.world_meters),
+            EntityId::Exit(..) => Err(crate::Reason::UnknownId),
+            EntityId::World => Ok(&mut self.world_meters),
         }
     }
 
-    /// Whether `holder` has flag `key` set. An exit's `open` is its name in its place's list.
-    pub(crate) fn has_flag(&self, holder: &Holder, key: &str) -> bool {
-        let (flags, entry) = match holder {
-            Holder::Actor(id) => (self.actors.get(id).map(|actor| &actor.flags), key),
-            Holder::Place(id) => (self.places.get(id).map(|place| &place.flags), key),
-            Holder::Story(id) => (self.stories.get(id).map(|story| &story.flags), key),
-            Holder::Exit(place, exit) if key == OPEN => (
+    /// Whether `entity` has flag `key` set. An exit's `open` is its name in its place's list.
+    pub(crate) fn has_flag(&self, entity: &EntityId, key: &str) -> bool {
+        let (flags, entry) = match entity {
+            EntityId::Actor(id) => (self.actors.get(id).map(|actor| &actor.flags), key),
+            EntityId::Place(id) => (self.places.get(id).map(|place| &place.flags), key),
+            EntityId::Story(id) => (self.stories.get(id).map(|story| &story.flags), key),
+            EntityId::Exit(place, exit) if key == OPEN => (
                 self.places.get(place).map(|place| &place.open),
                 exit.as_str(),
             ),
-            Holder::Exit(..) => (None, key),
-            Holder::World => (Some(&self.flags), key),
+            EntityId::Exit(..) => (None, key),
+            EntityId::World => (Some(&self.flags), key),
         };
         flags.is_some_and(|flags| flags.iter().any(|flag| flag == entry))
     }
 
-    /// Set or clear `holder`'s flag `key`, and say whether it changed. A place or story gets a
+    /// Set or clear `entity`'s flag `key`, and say whether it changed. A place or story gets a
     /// live record on its first flag, and a place on its first open exit.
     pub(crate) fn set_flag(
         &mut self,
-        holder: &Holder,
+        entity: &EntityId,
         key: &str,
         value: bool,
     ) -> Result<bool, crate::Reason> {
-        if self.has_flag(holder, key) == value {
+        if self.has_flag(entity, key) == value {
             return Ok(false);
         }
-        let (flags, entry) = match holder {
-            Holder::Actor(id) => (&mut self.actor_mut(id)?.flags, key),
-            Holder::Place(id) => (&mut self.places.entry(id.clone()).or_default().flags, key),
-            Holder::Story(id) => (&mut self.stories.entry(id.clone()).or_default().flags, key),
-            Holder::Exit(place, exit) => {
+        let (flags, entry) = match entity {
+            EntityId::Actor(id) => (&mut self.actor_mut(id)?.flags, key),
+            EntityId::Place(id) => (&mut self.places.entry(id.clone()).or_default().flags, key),
+            EntityId::Story(id) => (&mut self.stories.entry(id.clone()).or_default().flags, key),
+            EntityId::Exit(place, exit) => {
                 let place = self.places.entry(place.clone()).or_default();
                 (&mut place.open, exit.as_str())
             }
-            Holder::World => (&mut self.flags, key),
+            EntityId::World => (&mut self.flags, key),
         };
         if value {
             flags.push(entry.to_string());
@@ -185,7 +184,7 @@ pub struct PlaceLive {
     pub items: BTreeMap<String, u32>,
     /// The meters the place file declares. Omitted when empty.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub meters: BTreeMap<String, MeterLive>,
+    pub meters: BTreeMap<String, Meter>,
     /// The flags set on this place. Omitted when empty.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub flags: Vec<String>,
@@ -199,7 +198,7 @@ pub struct PlaceLive {
 #[serde(deny_unknown_fields)]
 pub struct StoryLive {
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub meters: BTreeMap<String, MeterLive>,
+    pub meters: BTreeMap<String, Meter>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub flags: Vec<String>,
 }
@@ -210,10 +209,10 @@ pub struct ActorLive {
     pub kind: ActorKind,
     pub place: String,
     pub flags: Vec<String>,
-    pub meters: BTreeMap<String, MeterLive>,
+    pub meters: BTreeMap<String, Meter>,
     /// The modifiers this actor holds, by id. Omitted when empty.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub modifiers: BTreeMap<String, ModifierLive>,
+    pub modifiers: BTreeMap<String, Modifier>,
     pub inventory: BTreeMap<String, u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub wielded: Option<String>,
@@ -333,10 +332,10 @@ pub(crate) enum ActCounter {
 
 impl ActCounter {
     /// The key this count is tracked under for actor `id`.
-    pub(crate) fn key(self, id: String) -> StateKey {
+    pub(crate) fn key(self, id: String) -> change::Key {
         match self {
-            ActCounter::IdleActsThisWindow => StateKey::IdleActsThisWindow(id),
-            ActCounter::LiveActsThisWindow => StateKey::LiveActsThisWindow(id),
+            ActCounter::IdleActsThisWindow => change::Key::IdleActsThisWindow(id),
+            ActCounter::LiveActsThisWindow => change::Key::LiveActsThisWindow(id),
         }
     }
 

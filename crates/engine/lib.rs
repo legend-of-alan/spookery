@@ -5,25 +5,25 @@ pub(crate) mod diagnostic;
 pub(crate) mod draft;
 pub(crate) mod hash;
 pub(crate) mod intent;
-pub(crate) mod model;
 pub(crate) mod round;
 pub(crate) mod rules;
+pub(crate) mod state;
 pub(crate) mod store;
 pub(crate) mod world;
 
 pub use canon::{load_canon, pack_rev};
 pub use diagnostic::{first_reason, Code, Diagnostic};
 pub use intent::{Intent, IntentArgs, Source, Target, Viewer};
-pub use model::meter::MeterLive;
-pub use model::modifier::ModifierLive;
-pub use model::{Note, Presence, State};
 pub use round::{migrate_pack, play_pack_once, verify_pack, verify_quick, RoundOutput};
-pub use rules::effect::Holder;
+pub use rules::effect::EntityId;
 pub use rules::gate::Refusal;
 pub use rules::perceive::View;
 pub use rules::roll::MoveReport;
 pub use rules::visibility::RecipientLine;
 pub use spookery_protocol::Reason;
+pub use state::meter::Meter;
+pub use state::modifier::Modifier;
+pub use state::{Note, Presence, State};
 pub use store::save::{emit as emit_save, parse as parse_save};
 pub use store::{emit_tape_record, lock_pack, PackGuard, TapeRecord};
 pub use world::{check_pack, Address, World};
@@ -36,9 +36,9 @@ pub mod testing {
     use crate::store::lock::WriteGuard;
 
     pub use crate::canon::strip_body;
-    pub use crate::model::{Act, ActorKind, ActorLive, PendingAction, PlaceLive};
     pub use crate::round::replay::replay_journal;
     pub use crate::rules::roll::{faces, RollKey};
+    pub use crate::state::{Act, ActorKind, ActorLive, PendingAction, PlaceLive};
 
     /// The write guard of the pack `world` holds the lock on.
     pub fn lock_write(world: &crate::World) -> Result<WriteGuard, crate::Reason> {
@@ -190,7 +190,7 @@ pub mod testing {
         replay_journal(pack, &records, None, None)
     }
 
-    pub fn state_of(pack: &Path) -> crate::model::State {
+    pub fn state_of(pack: &Path) -> crate::state::State {
         let report =
             replay_pack(pack).unwrap_or_else(|err| panic!("replay_pack {}: {err}", pack.display()));
         let yaml = std::str::from_utf8(&report.now_yaml)
@@ -199,14 +199,14 @@ pub mod testing {
             .unwrap_or_else(|err| panic!("load {}: {err:?}", pack.display()))
     }
 
-    pub fn write_save(pack: &Path, state: &crate::model::State) {
+    pub fn write_save(pack: &Path, state: &crate::state::State) {
         let path = crate::store::journal::save_path(pack);
         let bytes = crate::store::save::emit(state)
             .unwrap_or_else(|err| panic!("emit {}: {err}", path.display()));
         fs::write(&path, bytes).unwrap_or_else(|err| panic!("write {}: {err}", path.display()));
     }
 
-    pub fn edit_save(pack: &Path, edit: impl FnOnce(&mut crate::model::State)) {
+    pub fn edit_save(pack: &Path, edit: impl FnOnce(&mut crate::state::State)) {
         let path = crate::store::journal::save_path(pack);
         let text = fs::read_to_string(&path)
             .unwrap_or_else(|err| panic!("read {}: {err}", path.display()));
@@ -240,26 +240,26 @@ pub mod testing {
         edit_save(pack, |state| {
             state.actors.insert(
                 "pc_nell".to_string(),
-                crate::model::ActorLive {
-                    kind: crate::model::ActorKind::Pc,
+                crate::state::ActorLive {
+                    kind: crate::state::ActorKind::Pc,
                     place: "docks_shop".to_string(),
                     flags: Vec::new(),
                     meters: std::collections::BTreeMap::from([
                         (
                             "grit".to_string(),
-                            crate::MeterLive {
+                            crate::Meter {
                                 base: 100,
                                 offset: 0,
                             },
                         ),
-                        ("rest".to_string(), crate::MeterLive { base: 3, offset: 0 }),
+                        ("rest".to_string(), crate::Meter { base: 3, offset: 0 }),
                     ]),
                     modifiers: Default::default(),
                     inventory: std::collections::BTreeMap::new(),
                     wielded: None,
                     known_facts: Vec::new(),
                     visited: Default::default(),
-                    act: crate::model::Act::default(),
+                    act: crate::state::Act::default(),
                 },
             );
         });

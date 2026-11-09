@@ -4,7 +4,7 @@
 use crate::canon::Canon;
 use crate::draft::Draft;
 use crate::intent::Intent;
-use crate::model::PendingAction;
+use crate::state::PendingAction;
 use crate::Reason;
 
 use crate::round::dice::RoundDice;

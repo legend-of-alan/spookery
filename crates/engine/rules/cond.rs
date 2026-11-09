@@ -2,10 +2,10 @@
 
 use crate::canon::Canon;
 use crate::intent::{Intent, Source, Target, Viewer};
-use crate::model::{Presence, State};
 use crate::rules::context::Context;
 use crate::rules::expr;
 use crate::rules::rule::Cond;
+use crate::state::{Presence, State};
 use crate::Reason;
 
 /// Every condition holds. A failed `has_item` is [`Reason::MissingItem`].
@@ -79,14 +79,14 @@ fn holds(context: &Context, cond: &Cond) -> Result<bool, Reason> {
             op,
             value,
         } => {
-            let holder = expr::resolve_holder(context, who)?;
-            let current = state.meter_value(context.canon, &holder, key)?;
+            let entity = expr::resolve_entity(context, who)?;
+            let current = state.meter_value(context.canon, &entity, key)?;
             let right = expr::eval(context, value)?;
             Ok(op.holds(current, right))
         }
         Cond::Flag { who, key, is } => {
-            let holder = expr::resolve_holder(context, who)?;
-            Ok(state.has_flag(&holder, key) == *is)
+            let entity = expr::resolve_entity(context, who)?;
+            Ok(state.has_flag(&entity, key) == *is)
         }
         Cond::At { who, place } => {
             let actor = expr::resolve_who_id(context, who)?;

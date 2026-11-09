@@ -21,8 +21,8 @@ fn keep_briar_busy(now: &mut State) {
 fn hp(pack: &Path, actor: &str) -> i64 {
     let now = support::state_of(pack);
     let canon = spookery_engine::load_canon(pack).unwrap();
-    let holder = spookery_engine::Holder::Actor(actor.to_string());
-    now.meter_value(&canon, &holder, "hp").unwrap()
+    let entity = spookery_engine::EntityId::Actor(actor.to_string());
+    now.meter_value(&canon, &entity, "hp").unwrap()
 }
 
 fn count(pack: &Path, actor: &str, item: &str) -> u32 {
@@ -641,7 +641,7 @@ fn nell_resists_on_a_seeded_roll(world: &mut World) {
             .base = 10;
         now.actors.get_mut("pc_nell").unwrap().meters.insert(
             "constitution".to_string(),
-            spookery_engine::MeterLive {
+            spookery_engine::Meter {
                 base: stat,
                 offset: 0,
             },

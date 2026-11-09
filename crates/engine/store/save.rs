@@ -7,10 +7,10 @@ use serde_saphyr::SerializerOptions;
 
 use crate::canon::Canon;
 use crate::diagnostic::{check_tag, error, locate_nth, parse_file, schema_error, Diagnostic};
-use crate::model::meter::MeterLive;
-use crate::model::modifier;
-use crate::model::{exit_parts, sort_unique, State};
-use crate::rules::effect::Holder;
+use crate::rules::effect::EntityId;
+use crate::state::meter::Meter;
+use crate::state::modifier;
+use crate::state::{exit_parts, sort_unique, State};
 use crate::store::records::{AddedMeter, DroppedMeter};
 use crate::Reason;
 
@@ -131,16 +131,16 @@ fn check_actor_places(state: &State) -> Vec<Diagnostic> {
     diags
 }
 
-/// Meters the pack gives a holder that the holder lacks, each at its `start`.
+/// Meters the pack gives an entity that the entity lacks, each at its `start`.
 pub(crate) fn missing_meters(canon: &Canon, state: &State) -> Vec<AddedMeter> {
     let mut added = Vec::new();
     for (id, def) in &canon.meters {
         let lacking = match &def.carrier {
-            Some(holder) if !def.is_actor_meter() => state
-                .meters_of(holder)
+            Some(entity) if !def.is_actor_meter() => state
+                .meters_of(entity)
                 .is_none_or(|live| !live.contains_key(id)),
             _ => state.actors.iter().any(|(actor, live)| {
-                def.is_on(&Holder::Actor(actor.clone())) && !live.meters.contains_key(id)
+                def.is_on(&EntityId::Actor(actor.clone())) && !live.meters.contains_key(id)
             }),
         };
         if lacking {
@@ -158,7 +158,7 @@ pub(crate) fn missing_meters(canon: &Canon, state: &State) -> Vec<AddedMeter> {
 /// Meters an actor, place, story or the world lists that the pack no longer gives it.
 pub(crate) fn stale_meters(canon: &Canon, state: &State) -> Vec<DroppedMeter> {
     let mut dropped = Vec::new();
-    let mut drop_stale = |carrier: Holder, live: &BTreeMap<String, MeterLive>| {
+    let mut drop_stale = |carrier: EntityId, live: &BTreeMap<String, Meter>| {
         for id in live.keys() {
             if canon.meter_def(&carrier, id).is_none() {
                 dropped.push(DroppedMeter {
@@ -169,15 +169,15 @@ pub(crate) fn stale_meters(canon: &Canon, state: &State) -> Vec<DroppedMeter> {
         }
     };
     for (id, actor) in &state.actors {
-        drop_stale(Holder::Actor(id.clone()), &actor.meters);
+        drop_stale(EntityId::Actor(id.clone()), &actor.meters);
     }
     for (id, place) in &state.places {
-        drop_stale(Holder::Place(id.clone()), &place.meters);
+        drop_stale(EntityId::Place(id.clone()), &place.meters);
     }
     for (id, story) in &state.stories {
-        drop_stale(Holder::Story(id.clone()), &story.meters);
+        drop_stale(EntityId::Story(id.clone()), &story.meters);
     }
-    drop_stale(Holder::World, &state.world_meters);
+    drop_stale(EntityId::World, &state.world_meters);
     dropped
 }
 
@@ -194,8 +194,8 @@ pub(crate) fn stale_modifiers(canon: &Canon, state: &State) -> Vec<String> {
     stale
 }
 
-/// Migrate a save: give each holder the `meters` it lacks, at their `start`, drop the
-/// `dropped_modifiers` from every actor and each `dropped_meters` from its holder, then stamp
+/// Migrate a save: give each entity the `meters` it lacks, at their `start`, drop the
+/// `dropped_modifiers` from every actor and each `dropped_meters` from its entity, then stamp
 /// `pack_rev` and `state_rev`. Live migrate and replay both call this. It does not touch the disk.
 pub fn migrate(
     mut state: State,
@@ -206,20 +206,20 @@ pub fn migrate(
     dropped_meters: &[DroppedMeter],
 ) -> State {
     for meter in meters {
-        let start = MeterLive {
+        let start = Meter {
             base: meter.start,
             offset: 0,
         };
         match &meter.carrier {
-            Some(Holder::World) => {
+            Some(EntityId::World) => {
                 let live = state.world_meters.entry(meter.id.clone());
                 live.or_insert(start);
             }
-            Some(Holder::Place(id)) => {
+            Some(EntityId::Place(id)) => {
                 let place = state.places.entry(id.clone()).or_default();
                 place.meters.entry(meter.id.clone()).or_insert(start);
             }
-            Some(Holder::Story(id)) => {
+            Some(EntityId::Story(id)) => {
                 let story = state.stories.entry(id.clone()).or_default();
                 story.meters.entry(meter.id.clone()).or_insert(start);
             }
@@ -227,7 +227,7 @@ pub fn migrate(
                 for (id, actor) in &mut state.actors {
                     if carrier
                         .as_ref()
-                        .is_none_or(|carrier| *carrier == Holder::Actor(id.clone()))
+                        .is_none_or(|carrier| *carrier == EntityId::Actor(id.clone()))
                     {
                         let live = actor.meters.entry(meter.id.clone());
                         live.or_insert(start.clone());

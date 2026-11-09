@@ -5,15 +5,15 @@ use std::collections::{BTreeMap, BTreeSet};
 use crate::canon::source::{FileText, Locator, Problem};
 use crate::canon::{Canon, CastDef, FactDef, ItemDef, PlaceDef, StoryDef, OPEN};
 use crate::diagnostic::{error, schema_error, warning, Diagnostic};
-use crate::model::meter::{self, MeterDef};
-use crate::model::modifier::{self, ModifierDef};
-use crate::rules::effect::Holder;
+use crate::rules::effect::EntityId;
 use crate::rules::expr::Expr;
 use crate::rules::roll::Check;
 use crate::rules::rule::{
     ChangeWatch, Cond, Cost, EffectTemplate, LocationTo, NarrateTo, Owner, ResistSpec, Rule,
     RuleTable, When, Who,
 };
+use crate::state::meter::{self, MeterDef};
+use crate::state::modifier::{self, ModifierDef};
 use crate::Reason;
 
 /// Exits whose `to` is not a place, and facts or items an exit names but the pack does not.
@@ -278,7 +278,7 @@ pub(super) fn unknown_checks(
     diags
 }
 
-pub(super) fn unknown_reads(scope: &HolderScope, rules: &RuleTable) -> Vec<Diagnostic> {
+pub(super) fn unknown_reads(scope: &EntityScope, rules: &RuleTable) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
     for rule in rules.iter() {
         let mut exprs = Vec::new();
@@ -306,9 +306,9 @@ pub(super) fn unknown_reads(scope: &HolderScope, rules: &RuleTable) -> Vec<Diagn
     diags
 }
 
-/// Meter and flag effects and conditions whose holder is fixed by the pack and does not carry
+/// Meter and flag effects and conditions whose entity is fixed by the pack and does not carry
 /// the meter or declare the flag. The world's flags are free names, so they are not checked.
-pub(super) fn unknown_carriers(scope: &HolderScope, rules: &RuleTable) -> Vec<Diagnostic> {
+pub(super) fn unknown_carriers(scope: &EntityScope, rules: &RuleTable) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
     for rule in rules.iter() {
         let mut named = Vec::new();
@@ -354,8 +354,8 @@ fn fixed_self(rule: &Rule) -> Option<&str> {
     }
 }
 
-/// The meters each holder carries, and the cast, places and stories a `who` may name.
-pub(super) struct HolderScope<'a> {
+/// The meters each entity carries, and the cast, places and stories a `who` may name.
+pub(super) struct EntityScope<'a> {
     pub meters: &'a BTreeMap<String, MeterDef>,
     pub world_meters: &'a BTreeMap<String, MeterDef>,
     pub cast: &'a BTreeMap<String, CastDef>,
@@ -363,55 +363,55 @@ pub(super) struct HolderScope<'a> {
     pub stories: &'a BTreeMap<String, StoryDef>,
 }
 
-impl HolderScope<'_> {
-    /// The one holder `who` names whatever the round: `world`, a place, a story, a cast id, or
+impl EntityScope<'_> {
+    /// The one entity `who` names whatever the round: `world`, a place, a story, a cast id, or
     /// `self` on a cast member's own habit. `None` when only play time knows it.
-    fn fixed_holder(&self, fixed_self: Option<&str>, who: &Who) -> Option<Holder> {
+    fn fixed_entity(&self, fixed_self: Option<&str>, who: &Who) -> Option<EntityId> {
         match who {
-            Who::World => Some(Holder::World),
-            Who::Place(id) => Some(Holder::Place(id.clone())),
-            Who::Story(id) => Some(Holder::Story(id.clone())),
-            Who::Exit(place, exit) => Some(Holder::Exit(place.clone(), exit.clone())),
-            Who::Actor(id) if self.cast.contains_key(id) => Some(Holder::Actor(id.clone())),
-            Who::Self_ => fixed_self.map(|id| Holder::Actor(id.to_string())),
+            Who::World => Some(EntityId::World),
+            Who::Place(id) => Some(EntityId::Place(id.clone())),
+            Who::Story(id) => Some(EntityId::Story(id.clone())),
+            Who::Exit(place, exit) => Some(EntityId::Exit(place.clone(), exit.clone())),
+            Who::Actor(id) if self.cast.contains_key(id) => Some(EntityId::Actor(id.clone())),
+            Who::Self_ => fixed_self.map(|id| EntityId::Actor(id.to_string())),
             _ => None,
         }
     }
 
     /// Why flag `key` on `who` can never be set or tested, or `None` when it may be.
     fn why_undeclared(&self, fixed_self: Option<&str>, who: &Who, key: &str) -> Option<String> {
-        let holder = self.fixed_holder(fixed_self, who)?;
-        let flags = match &holder {
-            Holder::World => return None,
-            Holder::Actor(id) => self.cast.get(id).map(|cast| &cast.flags),
-            Holder::Place(id) => self.places.get(id).map(|place| &place.flags),
-            Holder::Story(id) => self.stories.get(id).map(|story| &story.flags),
-            Holder::Exit(place, exit) => {
+        let entity = self.fixed_entity(fixed_self, who)?;
+        let flags = match &entity {
+            EntityId::World => return None,
+            EntityId::Actor(id) => self.cast.get(id).map(|cast| &cast.flags),
+            EntityId::Place(id) => self.places.get(id).map(|place| &place.flags),
+            EntityId::Story(id) => self.stories.get(id).map(|story| &story.flags),
+            EntityId::Exit(place, exit) => {
                 return if self.unknown_who(who).is_some() {
-                    Some(format!("{holder} is not an exit"))
+                    Some(format!("{entity} is not an exit"))
                 } else if key != OPEN {
                     Some(format!("an exit carries only the flag '{OPEN}'"))
                 } else {
                     let door = self.places.get(place).is_some_and(|at| at.has_door(exit));
-                    (!door).then(|| format!("{holder} has no if, so it is always open"))
+                    (!door).then(|| format!("{entity} has no if, so it is always open"))
                 };
             }
         };
         let declared = flags.is_some_and(|flags| flags.contains(&key.to_string()));
-        (!declared).then(|| format!("{holder} does not declare it"))
+        (!declared).then(|| format!("{entity} does not declare it"))
     }
 
     /// Why meter `key` on `who` can never be read or written, or `None` when it may be.
-    /// A holder known only at play time is not guessed: only its key is checked.
+    /// An entity known only at play time is not guessed: only its key is checked.
     fn why_not_carried(&self, fixed_self: Option<&str>, who: &Who, key: &str) -> Option<String> {
         let def = self.meters.get(key);
-        match self.fixed_holder(fixed_self, who) {
-            Some(Holder::World) if self.world_meters.contains_key(key) => None,
-            Some(Holder::World) => Some(format!("the world carries no meter '{key}'")),
-            Some(holder) if !def.is_some_and(|def| def.is_on(&holder)) => {
+        match self.fixed_entity(fixed_self, who) {
+            Some(EntityId::World) if self.world_meters.contains_key(key) => None,
+            Some(EntityId::World) => Some(format!("the world carries no meter '{key}'")),
+            Some(entity) if !def.is_some_and(|def| def.is_on(&entity)) => {
                 Some(match def.and_then(|def| def.carrier.as_ref()) {
                     Some(carrier) => format!("only {carrier} carries meter '{key}'"),
-                    None => format!("{holder} carries no meter '{key}'"),
+                    None => format!("{entity} carries no meter '{key}'"),
                 })
             }
             None if def.is_none() => Some(format!("no file declares meter '{key}'")),
@@ -546,14 +546,14 @@ pub(super) fn unknown_meters(
 }
 
 /// Check the save against the pack without changing it. Refuse every meter,
-/// item and wielded slot the pack does not define, every meter the pack gives a holder
-/// that the holder lacks, every meter outside its rules, every modifier the pack no longer
+/// item and wielded slot the pack does not define, every meter the pack gives an entity
+/// that the entity lacks, every meter outside its rules, every modifier the pack no longer
 /// gives that meter, every walker on an exit the pack lacks, and every empty id or zero count.
-pub fn check_save(canon: &Canon, state: &crate::model::State) -> Result<(), Vec<Diagnostic>> {
+pub fn check_save(canon: &Canon, state: &crate::state::State) -> Result<(), Vec<Diagnostic>> {
     let mut diags = Vec::new();
     for (id, actor) in &state.actors {
         // A walker stands on an exit, which must be one of the pack's.
-        let on_exit = crate::model::exit_parts(&actor.place).is_some();
+        let on_exit = crate::state::exit_parts(&actor.place).is_some();
         if on_exit && crate::rules::travel::exit_stood_on(canon, &actor.place).is_none() {
             let problem = format!(
                 "actor '{id}' stands on exit '{}', which the pack does not define",
@@ -562,9 +562,9 @@ pub fn check_save(canon: &Canon, state: &crate::model::State) -> Result<(), Vec<
             let diag = schema_error("state/save.yaml", &problem, "move the actor to a place");
             diags.push(diag.at_path(format!("actors.{id}.place")));
         }
-        let holder = Holder::Actor(id.clone());
+        let entity = EntityId::Actor(id.clone());
         let path = format!("actors.{id}.meters");
-        check_meters(canon, &holder, &actor.meters, &path, &mut diags);
+        check_meters(canon, &entity, &actor.meters, &path, &mut diags);
         for (key, live) in &actor.modifiers {
             if !modifier::is_defined(&canon.modifiers, key, live) {
                 let problem = format!(
@@ -579,7 +579,7 @@ pub fn check_save(canon: &Canon, state: &crate::model::State) -> Result<(), Vec<
     }
     check_meters(
         canon,
-        &Holder::World,
+        &EntityId::World,
         &state.world_meters,
         "world_meters",
         &mut diags,
@@ -587,16 +587,16 @@ pub fn check_save(canon: &Canon, state: &crate::model::State) -> Result<(), Vec<
     let places = canon
         .places
         .keys()
-        .map(|id| (Holder::Place(id.clone()), "places", id));
+        .map(|id| (EntityId::Place(id.clone()), "places", id));
     let stories = canon
         .stories
         .keys()
-        .map(|id| (Holder::Story(id.clone()), "stories", id));
-    for (holder, list, id) in places.chain(stories) {
+        .map(|id| (EntityId::Story(id.clone()), "stories", id));
+    for (entity, list, id) in places.chain(stories) {
         let none = BTreeMap::new();
-        let live = state.meters_of(&holder).unwrap_or(&none);
+        let live = state.meters_of(&entity).unwrap_or(&none);
         let path = format!("{list}.{id}.meters");
-        check_meters(canon, &holder, live, &path, &mut diags);
+        check_meters(canon, &entity, live, &path, &mut diags);
     }
     for (id, actor) in &state.actors {
         for (item, count) in &actor.inventory {
@@ -696,21 +696,21 @@ pub fn check_save(canon: &Canon, state: &crate::model::State) -> Result<(), Vec<
     }
 }
 
-/// The live meters of `holder`, at `path` in the save, against the meters the pack gives it.
+/// The live meters of `entity`, at `path` in the save, against the meters the pack gives it.
 fn check_meters(
     canon: &Canon,
-    holder: &Holder,
-    live: &BTreeMap<String, meter::MeterLive>,
+    entity: &EntityId,
+    live: &BTreeMap<String, meter::Meter>,
     path: &str,
     diags: &mut Vec<Diagnostic>,
 ) {
-    let (name, defs) = match holder {
-        Holder::Actor(id) => (format!("actor '{id}'"), &canon.meters),
-        Holder::World => ("the world".to_string(), &canon.world_meters),
-        _ => (holder.to_string(), &canon.meters),
+    let (name, defs) = match entity {
+        EntityId::Actor(id) => (format!("actor '{id}'"), &canon.meters),
+        EntityId::World => ("the world".to_string(), &canon.world_meters),
+        _ => (entity.to_string(), &canon.meters),
     };
     for (key, def) in defs {
-        let carried = *holder == Holder::World || def.is_on(holder);
+        let carried = *entity == EntityId::World || def.is_on(entity);
         if carried && !live.contains_key(key) {
             diags.push(
                 schema_error(
@@ -723,7 +723,7 @@ fn check_meters(
         }
     }
     for (key, meter) in live {
-        let Some(def) = canon.meter_def(holder, key) else {
+        let Some(def) = canon.meter_def(entity, key) else {
             diags.push(
                 schema_error(
                     "state/save.yaml",

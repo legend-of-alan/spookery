@@ -4,11 +4,11 @@ use std::collections::BTreeSet;
 
 use crate::canon::Canon;
 use crate::intent::Viewer;
-use crate::model::meter;
-use crate::model::{Note, Presence, State};
-use crate::rules::effect::Holder;
+use crate::rules::effect::EntityId;
 use crate::rules::habits::list_whose_if_holds;
 use crate::rules::visibility::can_see_fact;
+use crate::state::meter;
+use crate::state::{Note, Presence, State};
 use crate::world::World;
 use crate::Reason;
 use spookery_protocol::{ExitView, PERCEIVE_BODY_CHARS};
@@ -164,8 +164,12 @@ fn perceive_viewer_budget(
         })
         .unwrap_or_default();
 
-    let meters = shown_meters(canon, state, &Holder::Actor(viewer.actor_id().to_string()));
-    let world_meters = shown_meters(canon, state, &Holder::World);
+    let meters = shown_meters(
+        canon,
+        state,
+        &EntityId::Actor(viewer.actor_id().to_string()),
+    );
+    let world_meters = shown_meters(canon, state, &EntityId::World);
 
     let habits = match viewer {
         Viewer::Player(_) => Vec::new(),
@@ -199,16 +203,16 @@ fn perceive_viewer_budget(
     })
 }
 
-/// The meters `holder` carries that are not hidden, in id order.
-fn shown_meters(canon: &Canon, state: &State, holder: &Holder) -> Vec<MeterView> {
-    let Some(meters) = state.meters_of(holder) else {
+/// The meters `entity` carries that are not hidden, in id order.
+fn shown_meters(canon: &Canon, state: &State, entity: &EntityId) -> Vec<MeterView> {
+    let Some(meters) = state.meters_of(entity) else {
         return Vec::new();
     };
     meters
         .iter()
         .filter_map(|(id, live)| {
-            let def = canon.meter_def(holder, id).filter(|def| !def.hidden)?;
-            let modifiers = state.modifier_sum(holder, id).ok()?;
+            let def = canon.meter_def(entity, id).filter(|def| !def.hidden)?;
+            let modifiers = state.modifier_sum(entity, id).ok()?;
             let value = meter::current(def, live, modifiers).ok()?;
             Some(MeterView {
                 id: id.clone(),

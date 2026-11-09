@@ -17,8 +17,8 @@ use std::path::PathBuf;
 
 use crate::canon::Canon;
 use crate::intent::Viewer;
-use crate::model::{sort_unique, Note, Presence, State};
 use crate::rules::perceive::{perceive_as, View};
+use crate::state::{sort_unique, Note, Presence, State};
 use crate::world::World;
 
 use super::support::runner_config;
