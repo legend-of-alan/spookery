@@ -124,7 +124,7 @@ impl State {
     /// Undo, in every store, each change made since `point`, and cut the transaction back to it.
     /// The round's limits stay.
     pub(crate) fn rollback(&mut self, point: Savepoint) {
-        self.cut_logs(LogCut::UndoFrom(point.change_no));
+        self.truncate_logs(LogCut::UndoFrom(point.change_no));
         let transaction = &mut self.transaction;
         transaction.change_no = point.change_no;
         for key in transaction.key_order.drain(point.keys..) {
@@ -136,13 +136,13 @@ impl State {
         transaction.memory_writes = point.memory_writes;
     }
 
-    /// Cut every part's logs as `cut` says.
-    fn cut_logs(&mut self, cut: LogCut) {
-        self.actors.cut_logs(cut);
-        self.places.cut_logs(cut);
-        self.stories.cut_logs(cut);
-        self.world.cut_logs(cut);
-        self.notes.cut_log(cut);
+    /// Truncate every part's logs as `cut` says.
+    fn truncate_logs(&mut self, cut: LogCut) {
+        self.actors.truncate_logs(cut);
+        self.places.truncate_logs(cut);
+        self.stories.truncate_logs(cut);
+        self.world.truncate_logs(cut);
+        self.notes.truncate_log(cut);
     }
 
     /// The changes since the last take, one per key from its first value to its last, less the
@@ -194,7 +194,7 @@ impl State {
     /// Close the round: every store forgets its inverses, the transaction goes back to rest, and
     /// the save into file order.
     pub fn accept(&mut self) {
-        self.cut_logs(LogCut::DropAll);
+        self.truncate_logs(LogCut::DropAll);
         self.transaction = Transaction::default();
         let notes = self.notes.value_mut();
         notes.sort_by(|a, b| a.id.cmp(&b.id));

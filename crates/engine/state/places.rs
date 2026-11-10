@@ -50,19 +50,19 @@ impl PlaceComponents {
         nested_map::contains(&self.open_exits, &exit.place, &exit.exit)
     }
 
-    /// Cut every store's log as `cut` says.
-    pub(super) fn cut_logs(&mut self, cut: LogCut) {
-        // Every store, with no `..`: a store added later must be cut here to compile.
+    /// Truncate every store's log as `cut` says.
+    pub(super) fn truncate_logs(&mut self, cut: LogCut) {
+        // Every store, with no `..`: a store added later must be truncated here to compile.
         let PlaceComponents {
             items,
             meters,
             flags,
             open_exits,
         } = self;
-        items.cut_log(cut);
-        meters.cut_log(cut);
-        flags.cut_log(cut);
-        open_exits.cut_log(cut);
+        items.truncate_log(cut);
+        meters.truncate_log(cut);
+        flags.truncate_log(cut);
+        open_exits.truncate_log(cut);
     }
 }
 
@@ -81,7 +81,8 @@ impl Writer<'_, PlaceComponents> {
         canon.places.get(place).ok_or(Reason::UnknownId)?;
         let entry = (place.clone(), id.to_string());
         let key = change::Key::PlaceItem(place.to_string(), id.to_string());
-        item::shift(&mut part.items, transaction, entry, delta, max, key)
+        let (next, change) = item::shift(part.items.get(&entry).copied(), delta, max, key)?;
+        part.items.set(transaction, entry, next, [change])
     }
 
     /// Move `place`'s meter `key` by `delta` inside its bounds.
@@ -98,15 +99,8 @@ impl Writer<'_, PlaceComponents> {
             .ok_or(Reason::UnknownId)?;
         let entry = (place.clone(), key.to_string());
         let watched = change::Key::PlaceMeter(place.to_string(), key.to_string());
-        meter::shift(
-            &mut part.meters,
-            transaction,
-            entry,
-            def,
-            Ok(0),
-            delta,
-            watched,
-        )
+        let (next, change) = meter::shift(part.meters.get(&entry), def, Ok(0), delta, watched)?;
+        part.meters.set(transaction, entry, Some(next), [change])
     }
 
     /// Give `place` meter `key` as `meter` says, `None` taking it off, outside a round's rules.
@@ -121,22 +115,16 @@ impl Writer<'_, PlaceComponents> {
         let def = canon.meter_def(EntityRef::Place(place), key);
         let entry = (place.clone(), key.to_string());
         let watched = change::Key::PlaceMeter(place.to_string(), key.to_string());
-        meter::set(
-            &mut part.meters,
-            transaction,
-            entry,
-            meter,
-            def,
-            Ok(0),
-            watched,
-        )
+        let (next, change) = meter::set(part.meters.get(&entry), meter, def, Ok(0), watched);
+        part.meters.set(transaction, entry, next, [change])
     }
 
     pub fn set_flag(&mut self, place: &PlaceId, key: &str, on: bool) -> Result<(), Reason> {
         let Writer { part, transaction } = self;
         let entry = (place.clone(), key.to_string());
         let watched = change::Key::PlaceFlag(place.to_string(), key.to_string());
-        flag::set(&mut part.flags, transaction, entry, on, watched)
+        let (next, change) = flag::set(on, watched);
+        part.flags.set(transaction, entry, next, [change])
     }
 
     /// Open or shut the door of `exit`.
@@ -144,6 +132,7 @@ impl Writer<'_, PlaceComponents> {
         let Writer { part, transaction } = self;
         let entry = (exit.place.clone(), exit.exit.clone());
         let watched = change::Key::ExitOpen(exit.place.to_string(), exit.exit.clone());
-        flag::set(&mut part.open_exits, transaction, entry, open, watched)
+        let (next, change) = flag::set(open, watched);
+        part.open_exits.set(transaction, entry, next, [change])
     }
 }

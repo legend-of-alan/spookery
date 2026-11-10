@@ -89,9 +89,9 @@ impl ActorComponents {
         nested_map::contains(&self.flags, actor, key)
     }
 
-    /// Cut every store's log as `cut` says.
-    pub(super) fn cut_logs(&mut self, cut: LogCut) {
-        // Every store, with no `..`: a store added later must be cut here to compile.
+    /// Truncate every store's log as `cut` says.
+    pub(super) fn truncate_logs(&mut self, cut: LogCut) {
+        // Every store, with no `..`: a store added later must be truncated here to compile.
         let ActorComponents {
             kind,
             place,
@@ -104,16 +104,16 @@ impl ActorComponents {
             modifiers,
             flags,
         } = self;
-        kind.cut_log(cut);
-        place.cut_log(cut);
-        wielded.cut_log(cut);
-        known_facts.cut_log(cut);
-        visited.cut_log(cut);
-        acts.cut_log(cut);
-        items.cut_log(cut);
-        meters.cut_log(cut);
-        modifiers.cut_log(cut);
-        flags.cut_log(cut);
+        kind.truncate_log(cut);
+        place.truncate_log(cut);
+        wielded.truncate_log(cut);
+        known_facts.truncate_log(cut);
+        visited.truncate_log(cut);
+        acts.truncate_log(cut);
+        items.truncate_log(cut);
+        meters.truncate_log(cut);
+        modifiers.truncate_log(cut);
+        flags.truncate_log(cut);
     }
 }
 
@@ -297,7 +297,8 @@ impl Writer<'_, ActorComponents> {
         let (part, transaction) = self.check_actor(actor)?;
         let entry = (actor.clone(), id.to_string());
         let key = change::Key::ActorItem(actor.to_string(), id.to_string());
-        item::shift(&mut part.items, transaction, entry, delta, max, key)?;
+        let (next, change) = item::shift(part.items.get(&entry).copied(), delta, max, key)?;
+        part.items.set(transaction, entry, next, [change])?;
         let wielded = self.wielded.get(actor);
         if wielded.is_some_and(|held| nested_map::get(&self.items, actor, held).is_none()) {
             self.set_wielded(actor, None)?;
@@ -320,15 +321,8 @@ impl Writer<'_, ActorComponents> {
         let modifiers = part.modifier_sum(actor, key);
         let entry = (actor.clone(), key.to_string());
         let watched = change::Key::ActorMeter(actor.to_string(), key.to_string());
-        meter::shift(
-            &mut part.meters,
-            transaction,
-            entry,
-            def,
-            modifiers,
-            delta,
-            watched,
-        )
+        let (next, change) = meter::shift(part.meters.get(&entry), def, modifiers, delta, watched)?;
+        part.meters.set(transaction, entry, Some(next), [change])
     }
 
     /// Give `actor` meter `key` as `meter` says, `None` taking it off, outside a round's rules:
@@ -349,15 +343,9 @@ impl Writer<'_, ActorComponents> {
         let modifiers = part.modifier_sum(actor, key);
         let entry = (actor.clone(), key.to_string());
         let watched = change::Key::ActorMeter(actor.to_string(), key.to_string());
-        meter::set(
-            &mut part.meters,
-            transaction,
-            entry,
-            meter,
-            def,
-            modifiers,
-            watched,
-        )
+        let held = part.meters.get(&entry);
+        let (next, change) = meter::set(held, meter, def, modifiers, watched);
+        part.meters.set(transaction, entry, next, [change])
     }
 
     /// Put `next` on as modifier `id`, `None` taking it off. The meter's key is counted when the
@@ -425,7 +413,8 @@ impl Writer<'_, ActorComponents> {
         let (part, transaction) = self.check_actor(actor)?;
         let entry = (actor.clone(), key.to_string());
         let watched = change::Key::ActorFlag(actor.to_string(), key.to_string());
-        flag::set(&mut part.flags, transaction, entry, on, watched)
+        let (next, change) = flag::set(on, watched);
+        part.flags.set(transaction, entry, next, [change])
     }
 }
 

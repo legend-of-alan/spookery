@@ -145,8 +145,8 @@ impl<T: Undo> Store<T> {
         (reports.into_iter()).try_for_each(|change| transaction.report(change))
     }
 
-    /// Cut the log as `cut` says.
-    pub(super) fn cut_log(&mut self, cut: LogCut) {
+    /// Truncate the log as `cut` says.
+    pub(super) fn truncate_log(&mut self, cut: LogCut) {
         match cut {
             LogCut::UndoFrom(change_no) => {
                 while self.log.last().is_some_and(|(at, _)| *at >= change_no) {
@@ -223,7 +223,7 @@ impl<V: PartialEq + Debug> DenseStore<V> {
         put.expect("a write that reports nothing is never refused");
     }
 
-    pub(super) fn cut_log(&mut self, cut: LogCut) {
-        self.0.cut_log(cut);
+    pub(super) fn truncate_log(&mut self, cut: LogCut) {
+        self.0.truncate_log(cut);
     }
 }

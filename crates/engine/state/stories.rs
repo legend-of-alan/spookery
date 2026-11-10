@@ -33,12 +33,12 @@ impl StoryComponents {
         nested_map::contains(&self.flags, story, key)
     }
 
-    /// Cut every store's log as `cut` says.
-    pub(super) fn cut_logs(&mut self, cut: LogCut) {
-        // Every store, with no `..`: a store added later must be cut here to compile.
+    /// Truncate every store's log as `cut` says.
+    pub(super) fn truncate_logs(&mut self, cut: LogCut) {
+        // Every store, with no `..`: a store added later must be truncated here to compile.
         let StoryComponents { meters, flags } = self;
-        meters.cut_log(cut);
-        flags.cut_log(cut);
+        meters.truncate_log(cut);
+        flags.truncate_log(cut);
     }
 }
 
@@ -57,15 +57,8 @@ impl Writer<'_, StoryComponents> {
             .ok_or(Reason::UnknownId)?;
         let entry = (story.clone(), key.to_string());
         let watched = change::Key::StoryMeter(story.to_string(), key.to_string());
-        meter::shift(
-            &mut part.meters,
-            transaction,
-            entry,
-            def,
-            Ok(0),
-            delta,
-            watched,
-        )
+        let (next, change) = meter::shift(part.meters.get(&entry), def, Ok(0), delta, watched)?;
+        part.meters.set(transaction, entry, Some(next), [change])
     }
 
     /// Give `story` meter `key` as `meter` says, `None` taking it off, outside a round's rules.
@@ -80,21 +73,15 @@ impl Writer<'_, StoryComponents> {
         let def = canon.meter_def(EntityRef::Story(story), key);
         let entry = (story.clone(), key.to_string());
         let watched = change::Key::StoryMeter(story.to_string(), key.to_string());
-        meter::set(
-            &mut part.meters,
-            transaction,
-            entry,
-            meter,
-            def,
-            Ok(0),
-            watched,
-        )
+        let (next, change) = meter::set(part.meters.get(&entry), meter, def, Ok(0), watched);
+        part.meters.set(transaction, entry, next, [change])
     }
 
     pub fn set_flag(&mut self, story: &StoryId, key: &str, on: bool) -> Result<(), Reason> {
         let Writer { part, transaction } = self;
         let entry = (story.clone(), key.to_string());
         let watched = change::Key::StoryFlag(story.to_string(), key.to_string());
-        flag::set(&mut part.flags, transaction, entry, on, watched)
+        let (next, change) = flag::set(on, watched);
+        part.flags.set(transaction, entry, next, [change])
     }
 }
