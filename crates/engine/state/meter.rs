@@ -98,7 +98,7 @@ pub(super) fn shift(
 
 /// `meter` in place of `held`, `None` taking it off, outside a round's rules, and the change that
 /// reports under `key`, each value read with `def` and `modifiers`.
-pub(super) fn set(
+pub(super) fn next(
     held: Option<&Meter>,
     meter: Option<Meter>,
     def: Option<&MeterDef>,

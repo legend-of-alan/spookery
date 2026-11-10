@@ -115,7 +115,7 @@ impl Writer<'_, PlaceComponents> {
         let def = canon.meter_def(EntityRef::Place(place), key);
         let entry = (place.clone(), key.to_string());
         let watched = change::Key::PlaceMeter(place.to_string(), key.to_string());
-        let (next, change) = meter::set(part.meters.get(&entry), meter, def, Ok(0), watched);
+        let (next, change) = meter::next(part.meters.get(&entry), meter, def, Ok(0), watched);
         part.meters.set(transaction, entry, next, [change])
     }
 
@@ -123,7 +123,7 @@ impl Writer<'_, PlaceComponents> {
         let Writer { part, transaction } = self;
         let entry = (place.clone(), key.to_string());
         let watched = change::Key::PlaceFlag(place.to_string(), key.to_string());
-        let (next, change) = flag::set(on, watched);
+        let (next, change) = flag::next(on, watched);
         part.flags.set(transaction, entry, next, [change])
     }
 
@@ -132,7 +132,7 @@ impl Writer<'_, PlaceComponents> {
         let Writer { part, transaction } = self;
         let entry = (exit.place.clone(), exit.exit.clone());
         let watched = change::Key::ExitOpen(exit.place.to_string(), exit.exit.clone());
-        let (next, change) = flag::set(open, watched);
+        let (next, change) = flag::next(open, watched);
         part.open_exits.set(transaction, entry, next, [change])
     }
 }

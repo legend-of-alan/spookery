@@ -73,7 +73,7 @@ impl Writer<'_, StoryComponents> {
         let def = canon.meter_def(EntityRef::Story(story), key);
         let entry = (story.clone(), key.to_string());
         let watched = change::Key::StoryMeter(story.to_string(), key.to_string());
-        let (next, change) = meter::set(part.meters.get(&entry), meter, def, Ok(0), watched);
+        let (next, change) = meter::next(part.meters.get(&entry), meter, def, Ok(0), watched);
         part.meters.set(transaction, entry, next, [change])
     }
 
@@ -81,7 +81,7 @@ impl Writer<'_, StoryComponents> {
         let Writer { part, transaction } = self;
         let entry = (story.clone(), key.to_string());
         let watched = change::Key::StoryFlag(story.to_string(), key.to_string());
-        let (next, change) = flag::set(on, watched);
+        let (next, change) = flag::next(on, watched);
         part.flags.set(transaction, entry, next, [change])
     }
 }

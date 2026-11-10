@@ -58,7 +58,7 @@ impl Writer<'_, WorldComponents> {
         let Writer { part, transaction } = self;
         let def = canon.world_meters.get(key);
         let watched = change::Key::WorldMeter(key.to_string());
-        let (next, change) = meter::set(part.meters.get(key), meter, def, Ok(0), watched);
+        let (next, change) = meter::next(part.meters.get(key), meter, def, Ok(0), watched);
         part.meters
             .set(transaction, key.to_string(), next, [change])
     }
@@ -66,7 +66,7 @@ impl Writer<'_, WorldComponents> {
     pub fn set_flag(&mut self, key: &str, on: bool) -> Result<(), Reason> {
         let Writer { part, transaction } = self;
         let watched = change::Key::WorldFlag(key.to_string());
-        let (next, change) = flag::set(on, watched);
+        let (next, change) = flag::next(on, watched);
         part.flags.set(transaction, key.to_string(), next, [change])
     }
 }

@@ -19,15 +19,10 @@ pub struct Note {
     pub text: String,
 }
 
-/// What leaving a note took away: the note, which is the last one left.
-#[derive(Debug)]
-pub enum NoteInverse {
-    TakeBack,
-}
-
 impl Undo for Vec<Note> {
-    type Inverse = NoteInverse;
-    fn undo(&mut self, NoteInverse::TakeBack: NoteInverse) {
+    type Inverse = ();
+    /// Take back the last note left: leaving one is the only change the notes take.
+    fn undo(&mut self, (): ()) {
         self.pop();
     }
 }
@@ -43,10 +38,7 @@ impl Writer<'_, Store<Vec<Note>>> {
         sort_unique(&mut note.fact_ids);
         let key = change::Key::Note(note.id.clone());
         let change = Change::new(key, change::Value::Empty, change::Value::Bool(true));
-        let leave = |notes: &mut Vec<Note>| {
-            notes.push(note);
-            NoteInverse::TakeBack
-        };
+        let leave = |notes: &mut Vec<Note>| notes.push(note);
         part.record(transaction, leave, [change])
     }
 }

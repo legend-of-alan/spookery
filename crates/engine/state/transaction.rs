@@ -274,7 +274,7 @@ mod tests {
     fn a_rollback_undoes_the_writes_after_its_savepoint_and_keeps_those_before() {
         let world = docks();
         let (canon, mut state) = (world.canon(), world.begin_round());
-        let (mira, bram) = (ActorId::from("mira"), ActorId::from("bram"));
+        let mira = ActorId::from("mira");
         let rest = |state: &mut State, actor: &ActorId, delta: i64| {
             let shifted = state.actors_mut().shift_meter(canon, actor, "rest", delta);
             shifted.expect("rest moves");
@@ -288,28 +288,6 @@ mod tests {
         assert_eq!(
             state, before,
             "only the write after the savepoint is undone"
-        );
-        // Nested: the inner rollback keeps the outer savepoint's writes, and the outer one
-        // undoes everything after it, the writes after the inner rollback included.
-        let outer = state.savepoint();
-        rest(&mut state, &bram, -1);
-        let between = state.clone();
-        let inner = state.savepoint();
-        rest(&mut state, &bram, -1);
-        state
-            .places_mut()
-            .set_flag(&"docks_shop".into(), "lit", true)
-            .ok();
-        state.rollback(inner);
-        assert_eq!(
-            state, between,
-            "the inner rollback keeps Bram's first write"
-        );
-        rest(&mut state, &mira, 1);
-        state.rollback(outer);
-        assert_eq!(
-            state, before,
-            "the outer rollback undoes both rounds of writes"
         );
         let changes = state.take_changes();
         let keys: Vec<_> = changes

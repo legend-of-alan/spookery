@@ -23,7 +23,7 @@ pub trait Undo {
 pub trait Entries {
     type Key: Ord + Clone + Debug;
     type Value: PartialEq + Debug;
-    fn held(&self, key: &Self::Key) -> Option<&Self::Value>;
+    fn get(&self, key: &Self::Key) -> Option<&Self::Value>;
     /// Put `value` under `key`, `None` taking the entry off. What the entry held before. The key
     /// is cloned only for an entry that is new.
     fn put(&mut self, key: &Self::Key, value: Option<Self::Value>) -> Option<Self::Value>;
@@ -46,8 +46,8 @@ impl<T: Entries> Undo for T {
 impl<K: Ord + Clone + Debug, V: PartialEq + Debug> Entries for BTreeMap<K, V> {
     type Key = K;
     type Value = V;
-    fn held(&self, key: &K) -> Option<&V> {
-        self.get(key)
+    fn get(&self, key: &K) -> Option<&V> {
+        BTreeMap::get(self, key)
     }
     fn put(&mut self, key: &K, value: Option<V>) -> Option<V> {
         match (value, self.get_mut(key)) {
@@ -61,7 +61,7 @@ impl<K: Ord + Clone + Debug, V: PartialEq + Debug> Entries for BTreeMap<K, V> {
 impl<K: Ord + Clone + Debug> Entries for BTreeSet<K> {
     type Key = K;
     type Value = ();
-    fn held(&self, key: &K) -> Option<&()> {
+    fn get(&self, key: &K) -> Option<&()> {
         self.contains(key).then_some(&())
     }
     fn put(&mut self, key: &K, value: Option<()>) -> Option<()> {
@@ -178,7 +178,7 @@ impl<T: Entries> Store<T> {
         value: Option<T::Value>,
         reports: impl IntoIterator<Item = Change>,
     ) -> Result<(), Reason> {
-        if self.held(&key) == value.as_ref() {
+        if self.value.get(&key) == value.as_ref() {
             return Ok(());
         }
         let undo = |held: &mut T| EntryInverse {

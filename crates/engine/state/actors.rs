@@ -344,7 +344,7 @@ impl Writer<'_, ActorComponents> {
         let entry = (actor.clone(), key.to_string());
         let watched = change::Key::ActorMeter(actor.to_string(), key.to_string());
         let held = part.meters.get(&entry);
-        let (next, change) = meter::set(held, meter, def, modifiers, watched);
+        let (next, change) = meter::next(held, meter, def, modifiers, watched);
         part.meters.set(transaction, entry, next, [change])
     }
 
@@ -413,7 +413,7 @@ impl Writer<'_, ActorComponents> {
         let (part, transaction) = self.check_actor(actor)?;
         let entry = (actor.clone(), key.to_string());
         let watched = change::Key::ActorFlag(actor.to_string(), key.to_string());
-        let (next, change) = flag::set(on, watched);
+        let (next, change) = flag::next(on, watched);
         part.flags.set(transaction, entry, next, [change])
     }
 }
