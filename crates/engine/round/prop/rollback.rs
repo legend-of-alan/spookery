@@ -5,7 +5,7 @@
 //!
 //!   Scenario: Random writes to every store under nested savepoints roll back to each savepoint's save
 //!     Given the docks pack, with Mira holding one brass key, a flag Mira can carry, two flags and a meter the street can carry, a story with a meter and a flag, a world meter, and a burn on grit
-//!     When random effects on every store, the actor's place, wielded item, known facts, visited places and action state included, land under savepoints opened and rolled back at random
+//!     When random effects on every store, the actor's place, wielded item, known facts, visited places and action state included, land under savepoints opened and rolled back at random, Mira's memory of the shop's exits written over among them
 //!     Then each rollback leaves the save and the counted keys as they were when its savepoint was taken
 //!     And each take reports every meter whose value moved since the last take
 //!     And rolling back to the first savepoint leaves no change to report
@@ -51,6 +51,7 @@ enum Step {
     ResetActs,
     Busy(bool),
     NoteExits,
+    SeeExits(bool),
 }
 
 #[test]
@@ -80,6 +81,9 @@ fn nested_rollbacks_put_the_save_back_exactly() {
     street.flags.extend(["lit".to_string(), "busy".to_string()]);
     let mira = canon.cast.get_mut("mira").expect("Mira");
     mira.flags.push("wary".to_string());
+    // The brass key is a weapon here, so Mira can wield the key she holds.
+    let key = canon.items.get_mut("brass_key").expect("the brass key");
+    key.tags.push("weapon".to_string());
     let tale = StoryDef {
         flags: vec!["told".to_string()],
     };
@@ -182,6 +186,12 @@ fn play_steps(world: &World<()>, steps: &[Step]) -> Result<(), TestCaseError> {
             }
             Step::NoteExits => {
                 let _ = crate::rules::travel::note_exits(canon, &mut state);
+            }
+            // Mira's memory of the shop's exits, written over with another list.
+            Step::SeeExits(both) => {
+                let exits = ["docks_street", "stairs"][..if *both { 2 } else { 1 }].iter();
+                let exits = exits.map(|exit| exit.to_string()).collect();
+                let _ = (state.actors_mut()).note_exits(&mira, "docks_shop", exits);
             }
             _ => {
                 let effect = effect(&state, step, index);
@@ -315,7 +325,8 @@ fn effect(state: &State, step: &Step, index: usize) -> Effect {
         | Step::Act(_)
         | Step::ResetActs
         | Step::Busy(_)
-        | Step::NoteExits => {
+        | Step::NoteExits
+        | Step::SeeExits(_) => {
             unreachable!("not an effect")
         }
     };
@@ -378,5 +389,6 @@ fn pick_step() -> impl Strategy<Value = Step> {
         1 => Just(Step::ResetActs),
         1 => any::<bool>().prop_map(Step::Busy),
         1 => Just(Step::NoteExits),
+        1 => any::<bool>().prop_map(Step::SeeExits),
     ]
 }
