@@ -7,8 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use super::id::{EntityRef, StoryId};
 use super::meter::{self, Meter};
-use super::undo::LogCut;
-use super::{change, flag, nested_map, Store, Writer};
+use super::{change, flag, nested_map, undo, Writer};
 use crate::canon::Canon;
 use crate::Reason;
 
@@ -17,9 +16,9 @@ use crate::Reason;
 pub struct StoryComponents {
     /// The meters each story file declares.
     #[serde(with = "nested_map")]
-    pub meters: Store<BTreeMap<(StoryId, String), Meter>>,
+    pub meters: undo::Store<BTreeMap<(StoryId, String), Meter>>,
     #[serde(with = "nested_map::lists")]
-    pub flags: Store<BTreeSet<(StoryId, String)>>,
+    pub flags: undo::Store<BTreeSet<(StoryId, String)>>,
 }
 
 impl StoryComponents {
@@ -33,12 +32,11 @@ impl StoryComponents {
         nested_map::contains(&self.flags, story, key)
     }
 
-    /// Truncate every store's log as `cut` says.
-    pub(super) fn truncate_logs(&mut self, cut: LogCut) {
-        // Every store, with no `..`: a store added later must be truncated here to compile.
+    /// Every store, as the log a rollback undoes and an accept clears.
+    pub(super) fn logs_mut(&mut self) -> [&mut dyn undo::Log; 2] {
+        // Every store, with no `..`: a store added later must be listed here to compile.
         let StoryComponents { meters, flags } = self;
-        meters.truncate_log(cut);
-        flags.truncate_log(cut);
+        [meters, flags]
     }
 }
 

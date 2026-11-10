@@ -6,8 +6,7 @@ use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, BTreeSet};
 
 use super::change::{self, Change};
-use super::undo::LogCut;
-use super::{sort_unique, MemoryLine, State};
+use super::{sort_unique, undo, MemoryLine, State};
 use crate::canon::Budget;
 use crate::Reason;
 
@@ -124,7 +123,9 @@ impl State {
     /// Undo, in every store, each change made since `point`, and cut the transaction back to it.
     /// The round's limits stay.
     pub(crate) fn rollback(&mut self, point: Savepoint) {
-        self.truncate_logs(LogCut::UndoFrom(point.change_no));
+        for log in self.logs_mut() {
+            log.undo_to(point.change_no);
+        }
         let transaction = &mut self.transaction;
         transaction.change_no = point.change_no;
         for key in transaction.key_order.drain(point.keys..) {
@@ -136,13 +137,14 @@ impl State {
         transaction.memory_writes = point.memory_writes;
     }
 
-    /// Truncate the logs of every kind and the notes as `cut` says.
-    fn truncate_logs(&mut self, cut: LogCut) {
-        self.actors.truncate_logs(cut);
-        self.places.truncate_logs(cut);
-        self.stories.truncate_logs(cut);
-        self.world.truncate_logs(cut);
-        self.notes.truncate_log(cut);
+    /// Every kind's stores and the notes, as the logs a rollback undoes and an accept clears.
+    fn logs_mut(&mut self) -> impl Iterator<Item = &mut dyn undo::Log> {
+        let notes: &mut dyn undo::Log = &mut self.notes;
+        (self.actors.logs_mut().into_iter())
+            .chain(self.places.logs_mut())
+            .chain(self.stories.logs_mut())
+            .chain(self.world.logs_mut())
+            .chain([notes])
     }
 
     /// The changes since the last take, one per key from its first value to its last, less the
@@ -194,7 +196,9 @@ impl State {
     /// Close the round: every store forgets its inverses, the transaction goes back to rest, and
     /// the save into file order.
     pub fn accept(&mut self) {
-        self.truncate_logs(LogCut::DropAll);
+        for log in self.logs_mut() {
+            log.clear();
+        }
         self.transaction = Transaction::default();
         let notes = self.notes.value_mut();
         notes.sort_by(|a, b| a.id.cmp(&b.id));

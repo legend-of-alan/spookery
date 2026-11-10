@@ -14,7 +14,7 @@ mod notes;
 mod places;
 mod stories;
 mod transaction;
-mod undo;
+pub mod undo;
 mod world;
 
 use std::ops::Deref;
@@ -32,7 +32,6 @@ pub use stories::StoryComponents;
 #[cfg(test)]
 pub(crate) use transaction::Savepoint;
 use transaction::Transaction;
-pub use undo::{DenseStore, Store};
 pub use world::WorldComponents;
 
 use crate::intent::Viewer;
@@ -58,7 +57,7 @@ pub struct State {
     stories: StoryComponents,
     #[serde(default)]
     world: WorldComponents,
-    notes: Store<Vec<Note>>,
+    notes: undo::Store<Vec<Note>>,
     #[serde(skip)]
     transaction: Transaction,
 }
@@ -138,7 +137,7 @@ impl State {
         Writer::new(&mut self.world, &mut self.transaction)
     }
 
-    pub fn notes_mut(&mut self) -> Writer<'_, Store<Vec<Note>>> {
+    pub fn notes_mut(&mut self) -> Writer<'_, undo::Store<Vec<Note>>> {
         Writer::new(&mut self.notes, &mut self.transaction)
     }
 

@@ -7,8 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use super::id::{EntityRef, ExitId, PlaceId};
 use super::meter::{self, Meter};
-use super::undo::LogCut;
-use super::{change, flag, item, nested_map, Store, Writer};
+use super::{change, flag, item, nested_map, undo, Writer};
 use crate::canon::Canon;
 use crate::Reason;
 
@@ -16,15 +15,15 @@ use crate::Reason;
 #[serde(default, deny_unknown_fields)]
 pub struct PlaceComponents {
     #[serde(with = "nested_map")]
-    pub items: Store<BTreeMap<(PlaceId, String), u32>>,
+    pub items: undo::Store<BTreeMap<(PlaceId, String), u32>>,
     /// The meters each place file declares.
     #[serde(with = "nested_map")]
-    pub meters: Store<BTreeMap<(PlaceId, String), Meter>>,
+    pub meters: undo::Store<BTreeMap<(PlaceId, String), Meter>>,
     #[serde(with = "nested_map::lists")]
-    pub flags: Store<BTreeSet<(PlaceId, String)>>,
+    pub flags: undo::Store<BTreeSet<(PlaceId, String)>>,
     /// The name of each exit whose door is open, by its place.
     #[serde(with = "nested_map::lists")]
-    pub open_exits: Store<BTreeSet<(PlaceId, String)>>,
+    pub open_exits: undo::Store<BTreeSet<(PlaceId, String)>>,
 }
 
 impl PlaceComponents {
@@ -50,19 +49,16 @@ impl PlaceComponents {
         nested_map::contains(&self.open_exits, &exit.place, &exit.exit)
     }
 
-    /// Truncate every store's log as `cut` says.
-    pub(super) fn truncate_logs(&mut self, cut: LogCut) {
-        // Every store, with no `..`: a store added later must be truncated here to compile.
+    /// Every store, as the log a rollback undoes and an accept clears.
+    pub(super) fn logs_mut(&mut self) -> [&mut dyn undo::Log; 4] {
+        // Every store, with no `..`: a store added later must be listed here to compile.
         let PlaceComponents {
             items,
             meters,
             flags,
             open_exits,
         } = self;
-        items.truncate_log(cut);
-        meters.truncate_log(cut);
-        flags.truncate_log(cut);
-        open_exits.truncate_log(cut);
+        [items, meters, flags, open_exits]
     }
 }
 

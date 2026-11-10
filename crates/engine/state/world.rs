@@ -5,8 +5,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde::{Deserialize, Serialize};
 
 use super::meter::{self, Meter};
-use super::undo::LogCut;
-use super::{change, flag, Store, Writer};
+use super::{change, flag, undo, Writer};
 use crate::canon::Canon;
 use crate::Reason;
 
@@ -14,8 +13,8 @@ use crate::Reason;
 #[serde(default, deny_unknown_fields)]
 pub struct WorldComponents {
     /// The meters `world/meters.yaml` declares.
-    pub meters: Store<BTreeMap<String, Meter>>,
-    pub flags: Store<BTreeSet<String>>,
+    pub meters: undo::Store<BTreeMap<String, Meter>>,
+    pub flags: undo::Store<BTreeSet<String>>,
 }
 
 impl WorldComponents {
@@ -28,12 +27,11 @@ impl WorldComponents {
         self.flags.contains(key)
     }
 
-    /// Truncate every store's log as `cut` says.
-    pub(super) fn truncate_logs(&mut self, cut: LogCut) {
-        // Every store, with no `..`: a store added later must be truncated here to compile.
+    /// Every store, as the log a rollback undoes and an accept clears.
+    pub(super) fn logs_mut(&mut self) -> [&mut dyn undo::Log; 2] {
+        // Every store, with no `..`: a store added later must be listed here to compile.
         let WorldComponents { meters, flags } = self;
-        meters.truncate_log(cut);
-        flags.truncate_log(cut);
+        [meters, flags]
     }
 }
 

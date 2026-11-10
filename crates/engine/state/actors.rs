@@ -9,8 +9,7 @@ use super::id::{ActorId, EntityRef};
 use super::meter::{self, Meter};
 use super::modifier::{self, Modifier};
 use super::transaction::Transaction;
-use super::undo::LogCut;
-use super::{flag, item, nested_map, sort_unique, DenseStore, Store, Writer};
+use super::{flag, item, nested_map, sort_unique, undo, Writer};
 use crate::canon::Canon;
 use crate::intent::{Target, Viewer};
 use crate::Reason;
@@ -21,27 +20,27 @@ use crate::Reason;
 #[serde(default, deny_unknown_fields)]
 pub struct ActorComponents {
     /// Whether each actor is a PC or an NPC. An actor exists when it has a kind.
-    pub kind: Store<BTreeMap<ActorId, ActorKind>>,
+    pub kind: undo::Store<BTreeMap<ActorId, ActorKind>>,
     /// Where each actor stands: a place id, or `exit:<place>.<exit>` while they walk.
-    pub place: DenseStore<String>,
+    pub place: undo::DenseStore<String>,
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
-    pub wielded: Store<BTreeMap<ActorId, String>>,
+    pub wielded: undo::Store<BTreeMap<ActorId, String>>,
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
-    pub known_facts: Store<BTreeMap<ActorId, Vec<String>>>,
+    pub known_facts: undo::Store<BTreeMap<ActorId, Vec<String>>>,
     /// Each place an actor has stood at the end of a round, with the names of the exits they
     /// saw there then.
     #[serde(with = "nested_map", skip_serializing_if = "BTreeMap::is_empty")]
-    pub visited: Store<BTreeMap<(ActorId, String), Vec<String>>>,
-    pub acts: DenseStore<Act>,
+    pub visited: undo::Store<BTreeMap<(ActorId, String), Vec<String>>>,
+    pub acts: undo::DenseStore<Act>,
     #[serde(with = "nested_map")]
-    pub items: Store<BTreeMap<(ActorId, String), u32>>,
+    pub items: undo::Store<BTreeMap<(ActorId, String), u32>>,
     #[serde(with = "nested_map")]
-    pub meters: Store<BTreeMap<(ActorId, String), Meter>>,
+    pub meters: undo::Store<BTreeMap<(ActorId, String), Meter>>,
     /// The modifiers each actor holds, by modifier id.
     #[serde(with = "nested_map")]
-    pub modifiers: Store<BTreeMap<(ActorId, String), Modifier>>,
+    pub modifiers: undo::Store<BTreeMap<(ActorId, String), Modifier>>,
     #[serde(with = "nested_map::lists")]
-    pub flags: Store<BTreeSet<(ActorId, String)>>,
+    pub flags: undo::Store<BTreeSet<(ActorId, String)>>,
 }
 
 impl ActorComponents {
@@ -89,9 +88,9 @@ impl ActorComponents {
         nested_map::contains(&self.flags, actor, key)
     }
 
-    /// Truncate every store's log as `cut` says.
-    pub(super) fn truncate_logs(&mut self, cut: LogCut) {
-        // Every store, with no `..`: a store added later must be truncated here to compile.
+    /// Every store, as the log a rollback undoes and an accept clears.
+    pub(super) fn logs_mut(&mut self) -> [&mut dyn undo::Log; 10] {
+        // Every store, with no `..`: a store added later must be listed here to compile.
         let ActorComponents {
             kind,
             place,
@@ -104,16 +103,18 @@ impl ActorComponents {
             modifiers,
             flags,
         } = self;
-        kind.truncate_log(cut);
-        place.truncate_log(cut);
-        wielded.truncate_log(cut);
-        known_facts.truncate_log(cut);
-        visited.truncate_log(cut);
-        acts.truncate_log(cut);
-        items.truncate_log(cut);
-        meters.truncate_log(cut);
-        modifiers.truncate_log(cut);
-        flags.truncate_log(cut);
+        [
+            kind,
+            place,
+            wielded,
+            known_facts,
+            visited,
+            acts,
+            items,
+            meters,
+            modifiers,
+            flags,
+        ]
     }
 }
 

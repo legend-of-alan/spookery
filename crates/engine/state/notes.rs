@@ -4,8 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use super::change::{self, Change};
 use super::id::{ActorId, PlaceId};
-use super::undo::{Store, Undo};
-use super::{sort_unique, Writer};
+use super::{sort_unique, undo, Writer};
 use crate::Reason;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -19,7 +18,7 @@ pub struct Note {
     pub text: String,
 }
 
-impl Undo for Vec<Note> {
+impl undo::Undo for Vec<Note> {
     type Inverse = ();
     /// Take back the last note left: leaving one is the only change the notes take.
     fn undo(&mut self, (): ()) {
@@ -27,7 +26,7 @@ impl Undo for Vec<Note> {
     }
 }
 
-impl Writer<'_, Store<Vec<Note>>> {
+impl Writer<'_, undo::Store<Vec<Note>>> {
     /// Leave `note`, its recipients and facts in order. A note id is left once: `UNKNOWN_ID` again.
     pub fn leave(&mut self, mut note: Note) -> Result<(), Reason> {
         let Writer {

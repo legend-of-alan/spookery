@@ -73,13 +73,12 @@ impl<K: Ord + Clone + Debug> Entries for BTreeSet<K> {
     }
 }
 
-/// What a rollback or an accept does to each store's log.
-#[derive(Clone, Copy)]
-pub(super) enum LogCut {
-    /// A rollback: undo every change numbered this or later, newest first.
-    UndoFrom(u64),
+/// A store's log of inverses, as a rollback and an accept work through it.
+pub trait Log {
+    /// A rollback: undo every change numbered `change_no` or later, newest first.
+    fn undo_to(&mut self, change_no: u64);
     /// An accept: drop every inverse, so nothing rolls the value back past here.
-    DropAll,
+    fn clear(&mut self);
 }
 
 /// One component's value, and beside it the inverse of each change made since the last accept,
@@ -145,24 +144,23 @@ impl<T: Undo> Store<T> {
         (reports.into_iter()).try_for_each(|change| transaction.report(change))
     }
 
-    /// Truncate the log as `cut` says.
-    pub(super) fn truncate_log(&mut self, cut: LogCut) {
-        match cut {
-            LogCut::UndoFrom(change_no) => {
-                while self.log.last().is_some_and(|(at, _)| *at >= change_no) {
-                    let (_, inverse) = self.log.pop().expect("the last inverse");
-                    self.value.undo(inverse);
-                }
-            }
-            LogCut::DropAll => self.log.clear(),
-        }
-    }
-
     /// The value, to change past the log: only out of a round, so it panics while an inverse is
     /// held.
     pub(super) fn value_mut(&mut self) -> &mut T {
         assert!(self.log.is_empty(), "a store changed past its log");
         &mut self.value
+    }
+}
+
+impl<T: Undo> Log for Store<T> {
+    fn undo_to(&mut self, change_no: u64) {
+        while let Some((_, inverse)) = self.log.pop_if(|(at, _)| *at >= change_no) {
+            self.value.undo(inverse);
+        }
+    }
+
+    fn clear(&mut self) {
+        self.log.clear();
     }
 }
 
@@ -222,8 +220,14 @@ impl<V: PartialEq + Debug> DenseStore<V> {
         let put = self.0.set(transaction, actor.clone(), value, []);
         put.expect("a write that reports nothing is never refused");
     }
+}
 
-    pub(super) fn truncate_log(&mut self, cut: LogCut) {
-        self.0.truncate_log(cut);
+impl<V: PartialEq + Debug> Log for DenseStore<V> {
+    fn undo_to(&mut self, change_no: u64) {
+        self.0.undo_to(change_no);
+    }
+
+    fn clear(&mut self) {
+        self.0.clear();
     }
 }
