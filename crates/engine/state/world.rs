@@ -38,10 +38,7 @@ impl WorldComponents {
 impl Writer<'_, WorldComponents> {
     /// Move world meter `key` by `delta` inside its bounds.
     pub fn shift_meter(&mut self, canon: &Canon, key: &str, delta: i64) -> Result<(), Reason> {
-        let Writer {
-            components,
-            transaction,
-        } = self;
+        let (components, transaction) = (&mut *self.components, &mut *self.transaction);
         let def = canon.world_meters.get(key).ok_or(Reason::UnknownId)?;
         let watched = change::Key::WorldMeter(key.to_string());
         let (next, change) = meter::shift(components.meters.get(key), def, Ok(0), delta, watched)?;
@@ -57,10 +54,7 @@ impl Writer<'_, WorldComponents> {
         key: &str,
         meter: Option<Meter>,
     ) -> Result<(), Reason> {
-        let Writer {
-            components,
-            transaction,
-        } = self;
+        let (components, transaction) = (&mut *self.components, &mut *self.transaction);
         let def = canon.world_meters.get(key);
         let watched = change::Key::WorldMeter(key.to_string());
         let (next, change) = meter::next(components.meters.get(key), meter, def, Ok(0), watched);
@@ -70,10 +64,7 @@ impl Writer<'_, WorldComponents> {
     }
 
     pub fn set_flag(&mut self, key: &str, on: bool) -> Result<(), Reason> {
-        let Writer {
-            components,
-            transaction,
-        } = self;
+        let (components, transaction) = (&mut *self.components, &mut *self.transaction);
         let watched = change::Key::WorldFlag(key.to_string());
         let (next, change) = flag::next(on, watched);
         components

@@ -49,10 +49,7 @@ impl Writer<'_, StoryComponents> {
         key: &str,
         delta: i64,
     ) -> Result<(), Reason> {
-        let Writer {
-            components,
-            transaction,
-        } = self;
+        let (components, transaction) = (&mut *self.components, &mut *self.transaction);
         let def = canon
             .meter_def(EntityRef::Story(story), key)
             .ok_or(Reason::UnknownId)?;
@@ -73,10 +70,7 @@ impl Writer<'_, StoryComponents> {
         key: &str,
         meter: Option<Meter>,
     ) -> Result<(), Reason> {
-        let Writer {
-            components,
-            transaction,
-        } = self;
+        let (components, transaction) = (&mut *self.components, &mut *self.transaction);
         let def = canon.meter_def(EntityRef::Story(story), key);
         let entry = (story.clone(), key.to_string());
         let watched = change::Key::StoryMeter(story.to_string(), key.to_string());
@@ -85,10 +79,7 @@ impl Writer<'_, StoryComponents> {
     }
 
     pub fn set_flag(&mut self, story: &StoryId, key: &str, on: bool) -> Result<(), Reason> {
-        let Writer {
-            components,
-            transaction,
-        } = self;
+        let (components, transaction) = (&mut *self.components, &mut *self.transaction);
         let entry = (story.clone(), key.to_string());
         let watched = change::Key::StoryFlag(story.to_string(), key.to_string());
         let (next, change) = flag::next(on, watched);

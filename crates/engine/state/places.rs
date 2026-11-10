@@ -73,10 +73,7 @@ impl Writer<'_, PlaceComponents> {
         delta: i64,
         max: Option<i64>,
     ) -> Result<(), Reason> {
-        let Writer {
-            components,
-            transaction,
-        } = self;
+        let (components, transaction) = (&mut *self.components, &mut *self.transaction);
         canon.places.get(place).ok_or(Reason::UnknownId)?;
         let entry = (place.clone(), id.to_string());
         let key = change::Key::PlaceItem(place.to_string(), id.to_string());
@@ -92,10 +89,7 @@ impl Writer<'_, PlaceComponents> {
         key: &str,
         delta: i64,
     ) -> Result<(), Reason> {
-        let Writer {
-            components,
-            transaction,
-        } = self;
+        let (components, transaction) = (&mut *self.components, &mut *self.transaction);
         let def = canon
             .meter_def(EntityRef::Place(place), key)
             .ok_or(Reason::UnknownId)?;
@@ -116,10 +110,7 @@ impl Writer<'_, PlaceComponents> {
         key: &str,
         meter: Option<Meter>,
     ) -> Result<(), Reason> {
-        let Writer {
-            components,
-            transaction,
-        } = self;
+        let (components, transaction) = (&mut *self.components, &mut *self.transaction);
         let def = canon.meter_def(EntityRef::Place(place), key);
         let entry = (place.clone(), key.to_string());
         let watched = change::Key::PlaceMeter(place.to_string(), key.to_string());
@@ -128,10 +119,7 @@ impl Writer<'_, PlaceComponents> {
     }
 
     pub fn set_flag(&mut self, place: &PlaceId, key: &str, on: bool) -> Result<(), Reason> {
-        let Writer {
-            components,
-            transaction,
-        } = self;
+        let (components, transaction) = (&mut *self.components, &mut *self.transaction);
         let entry = (place.clone(), key.to_string());
         let watched = change::Key::PlaceFlag(place.to_string(), key.to_string());
         let (next, change) = flag::next(on, watched);
@@ -140,10 +128,7 @@ impl Writer<'_, PlaceComponents> {
 
     /// Open or shut the door of `exit`.
     pub fn set_exit_open(&mut self, exit: &ExitId, open: bool) -> Result<(), Reason> {
-        let Writer {
-            components,
-            transaction,
-        } = self;
+        let (components, transaction) = (&mut *self.components, &mut *self.transaction);
         let entry = (exit.place.clone(), exit.exit.clone());
         let watched = change::Key::ExitOpen(exit.place.to_string(), exit.exit.clone());
         let (next, change) = flag::next(open, watched);

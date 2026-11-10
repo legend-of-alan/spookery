@@ -29,10 +29,7 @@ impl undo::Undo for Vec<Note> {
 impl Writer<'_, undo::Store<Vec<Note>>> {
     /// Leave `note`, its recipients and facts in order. A note id is left once: `UNKNOWN_ID` again.
     pub fn leave(&mut self, mut note: Note) -> Result<(), Reason> {
-        let Writer {
-            components,
-            transaction,
-        } = self;
+        let (components, transaction) = (&mut *self.components, &mut *self.transaction);
         if components.iter().any(|held| held.id == note.id) {
             return Err(Reason::UnknownId);
         }

@@ -9,10 +9,7 @@ use crate::Reason;
 impl Writer<'_, ActorComponents> {
     /// Add `actor`, of `kind`, standing at `place`: the three stores every actor has, together.
     pub fn add_actor(&mut self, actor: &ActorId, kind: ActorKind, place: &str) {
-        let Writer {
-            components,
-            transaction,
-        } = self;
+        let (components, transaction) = (&mut *self.components, &mut *self.transaction);
         let added = components
             .kind
             .set(transaction, actor.clone(), Some(kind), []);
@@ -98,10 +95,7 @@ impl Writer<'_, ActorComponents> {
             self.set_flag(actor, key, false)?;
         }
         // No production writer takes these off: production removes no actor.
-        let Writer {
-            components,
-            transaction,
-        } = self;
+        let (components, transaction) = (&mut *self.components, &mut *self.transaction);
         components
             .known_facts
             .set(transaction, actor.clone(), None, [])?;
