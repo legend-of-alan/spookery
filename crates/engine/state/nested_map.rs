@@ -21,15 +21,6 @@ pub fn get<'a, Id: Ord + Clone, V>(
     map.get(&key_of(owner, name))
 }
 
-/// The same entry, to write.
-pub(super) fn get_mut<'a, Id: Ord + Clone, V>(
-    map: &'a mut BTreeMap<(Id, String), V>,
-    owner: &Id,
-    name: &str,
-) -> Option<&'a mut V> {
-    map.get_mut(&key_of(owner, name))
-}
-
 /// Whether `owner` holds `name` in a set of `(owner, name)`.
 pub fn contains<Id: Ord + Clone>(set: &BTreeSet<(Id, String)>, owner: &Id, name: &str) -> bool {
     set.contains(&key_of(owner, name))
@@ -61,11 +52,13 @@ where
     grouped.serialize(serializer)
 }
 
-pub fn deserialize<'de, D, Id, V>(deserializer: D) -> Result<BTreeMap<(Id, String), V>, D::Error>
+/// The map a nested map in the file reads as, or the store that holds it.
+pub fn deserialize<'de, D, Id, V, T>(deserializer: D) -> Result<T, D::Error>
 where
     D: Deserializer<'de>,
     Id: Deserialize<'de> + Ord + Clone,
     V: Deserialize<'de>,
+    T: From<BTreeMap<(Id, String), V>>,
 {
     let grouped = BTreeMap::<Id, BTreeMap<String, V>>::deserialize(deserializer)?;
     let pairs = grouped.into_iter().flat_map(|(owner, named)| {
@@ -73,7 +66,7 @@ where
             .into_iter()
             .map(move |(name, value)| ((owner.clone(), name), value))
     });
-    Ok(pairs.collect())
+    Ok(pairs.collect::<BTreeMap<_, _>>().into())
 }
 
 /// A set of `(owner, name)`, such as the flags set on each actor, written as each owner's list
@@ -93,15 +86,16 @@ pub mod lists {
         grouped.serialize(serializer)
     }
 
-    pub fn deserialize<'de, D, Id>(deserializer: D) -> Result<BTreeSet<(Id, String)>, D::Error>
+    pub fn deserialize<'de, D, Id, T>(deserializer: D) -> Result<T, D::Error>
     where
         D: Deserializer<'de>,
         Id: Deserialize<'de> + Ord + Clone,
+        T: From<BTreeSet<(Id, String)>>,
     {
         let grouped = BTreeMap::<Id, Vec<String>>::deserialize(deserializer)?;
         let pairs = grouped
             .into_iter()
             .flat_map(|(owner, names)| names.into_iter().map(move |name| (owner.clone(), name)));
-        Ok(pairs.collect())
+        Ok(pairs.collect::<BTreeSet<_>>().into())
     }
 }

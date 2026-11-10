@@ -1,9 +1,6 @@
 //! Item counts, and the kind-free rule for shifting one.
 
-use std::collections::BTreeMap;
-
-use super::change;
-use super::transaction::Transaction;
+use super::change::{self, Change};
 use crate::Reason;
 
 /// `current` moved by `delta`. Removing from a count of 0 is `MISSING_ITEM`, and a shortfall from
@@ -28,26 +25,17 @@ pub(super) fn shift_count(current: u32, delta: i64, max: Option<i64>) -> Result<
     u32::try_from(next).map_err(|_| Reason::OutOfRange)
 }
 
-/// Move the count under `entry` as `shift_count` says, and report the change under `key`. A count
+/// The count `held` moved as `shift_count` says, and the change that reports under `key`. A count
 /// of 0 is no entry.
-pub(super) fn shift<K: Ord>(
-    counts: &mut BTreeMap<K, u32>,
-    transaction: &mut Transaction,
-    entry: K,
+pub(super) fn shift(
+    held: Option<u32>,
     delta: i64,
     max: Option<i64>,
     key: change::Key,
-) -> Result<(), Reason> {
-    let current = counts.get(&entry).copied().unwrap_or(0);
+) -> Result<(Option<u32>, Change), Reason> {
+    let current = held.unwrap_or(0);
     let next = shift_count(current, delta, max)?;
-    if next == current {
-        return Ok(());
-    }
-    if next == 0 {
-        counts.remove(&entry);
-    } else {
-        counts.insert(entry, next);
-    }
     let count = |count: u32| change::Value::Number(count.into());
-    transaction.report(key, count(current), count(next))
+    let change = Change::new(key, count(current), count(next));
+    Ok(((next > 0).then_some(next), change))
 }

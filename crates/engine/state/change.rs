@@ -135,3 +135,9 @@ pub struct Change {
     pub before: Value,
     pub after: Value,
 }
+
+impl Change {
+    pub(crate) fn new(key: Key, before: Value, after: Value) -> Change {
+        Change { key, before, after }
+    }
+}

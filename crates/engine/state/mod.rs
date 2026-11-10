@@ -14,6 +14,7 @@ mod notes;
 mod places;
 mod stories;
 mod transaction;
+pub mod undo;
 mod world;
 
 use std::ops::Deref;
@@ -28,6 +29,8 @@ use id::ActorId;
 pub use notes::Note;
 pub use places::PlaceComponents;
 pub use stories::StoryComponents;
+#[cfg(test)]
+pub(crate) use transaction::Savepoint;
 use transaction::Transaction;
 pub use world::WorldComponents;
 
@@ -54,14 +57,14 @@ pub struct State {
     stories: StoryComponents,
     #[serde(default)]
     world: WorldComponents,
-    notes: Vec<Note>,
+    notes: undo::Store<Vec<Note>>,
     #[serde(skip)]
     transaction: Transaction,
 }
 
-/// One part of the save with the round's transaction, borrowed apart from the rest: the only way
-/// to write that part. Reads go through `Deref`; there is no `DerefMut`, and only `State`'s
-/// `*_mut` getters build one.
+/// One kind's components, or the notes, with the round's transaction, borrowed apart from the
+/// rest of the save: the only way to write them. Reads go through `Deref`; there is no
+/// `DerefMut`, and only `State`'s `*_mut` getters build one.
 ///
 /// ```compile_fail
 /// # fn bypass(state: &mut spookery_engine::State) {
@@ -75,22 +78,25 @@ pub struct State {
 /// state.actors().kind.insert("x".into(), kind);
 /// # }
 /// ```
-pub struct Writer<'a, P> {
-    part: &'a mut P,
+pub struct Writer<'a, C> {
+    components: &'a mut C,
     transaction: &'a mut Transaction,
 }
 
-impl<'a, P> Writer<'a, P> {
+impl<'a, C> Writer<'a, C> {
     /// The one place a `Writer` is built; only `State`'s `*_mut` getters call it.
-    fn new(part: &'a mut P, transaction: &'a mut Transaction) -> Self {
-        Writer { part, transaction }
+    fn new(components: &'a mut C, transaction: &'a mut Transaction) -> Self {
+        Writer {
+            components,
+            transaction,
+        }
     }
 }
 
-impl<P> Deref for Writer<'_, P> {
-    type Target = P;
-    fn deref(&self) -> &P {
-        self.part
+impl<C> Deref for Writer<'_, C> {
+    type Target = C;
+    fn deref(&self) -> &C {
+        self.components
     }
 }
 
@@ -131,7 +137,7 @@ impl State {
         Writer::new(&mut self.world, &mut self.transaction)
     }
 
-    pub fn notes_mut(&mut self) -> Writer<'_, Vec<Note>> {
+    pub fn notes_mut(&mut self) -> Writer<'_, undo::Store<Vec<Note>>> {
         Writer::new(&mut self.notes, &mut self.transaction)
     }
 

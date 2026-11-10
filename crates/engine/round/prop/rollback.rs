@@ -1,0 +1,394 @@
+//! The scenario this property checks:
+//!
+//! ```gherkin
+//! Feature: A rollback puts the save back exactly
+//!
+//!   Scenario: Random writes to every store under nested savepoints roll back to each savepoint's save
+//!     Given the docks pack, with Mira holding one brass key, a flag Mira can carry, two flags and a meter the street can carry, a story with a meter and a flag, a world meter, and a burn on grit
+//!     When random effects on every store, the actor's place, wielded item, known facts, visited places and action state included, land under savepoints opened and rolled back at random, Mira's memory of the shop's exits written over among them
+//!     Then each rollback leaves the save and the counted keys as they were when its savepoint was taken
+//!     And each take reports every meter whose value moved since the last take
+//!     And rolling back to the first savepoint leaves no change to report
+//! ```
+//!
+//! Deterministic in CI: 64 cases, seed `0x0018_0018`, no failure file.
+
+use std::sync::Arc;
+
+use crate::canon::StoryDef;
+use crate::intent::{Intent, IntentArgs, Source, Target, Viewer};
+use crate::rules::effect::{Effect, EffectKind};
+use crate::state::change::{self, Change};
+use crate::state::id::{ActorId, EntityId, ExitId};
+use crate::state::meter::{Meter, MeterDef, MeterWrite};
+use crate::state::modifier::ModifierDef;
+use crate::state::{ActCounter, Presence, State};
+use crate::testing::copy_docks;
+use crate::world::World;
+
+use super::support::{runner_config, TempPack};
+use proptest::prelude::*;
+use proptest::sample::select;
+use proptest::test_runner::{TestCaseError, TestRunner};
+
+#[derive(Clone, Debug)]
+enum Step {
+    Savepoint,
+    Rollback,
+    Take,
+    Item(EntityId, &'static str, i64),
+    Meter(EntityId, &'static str, i64),
+    Burn(i64),
+    Expire,
+    Door(bool),
+    Flag(EntityId, &'static str, bool),
+    Walk(&'static str),
+    Wield(&'static str),
+    Unwield,
+    Note,
+    Reveal(&'static str),
+    Act(u32),
+    ResetActs,
+    Busy(bool),
+    NoteExits,
+    SeeExits(bool),
+}
+
+#[test]
+fn nested_rollbacks_put_the_save_back_exactly() {
+    let pack = TempPack(copy_docks("rollback"));
+    // The street holds nothing yet, so lighting it puts its first component on it, which a
+    // rollback takes off whole. Mira holds one brass key, so a take under a savepoint can take
+    // her last one out, and she can wield it.
+    let path = pack.0.join("state/save.yaml");
+    let text = std::fs::read_to_string(&path).expect("the docks save");
+    assert!(
+        !text.contains("\n    docks_street:"),
+        "the street holds something"
+    );
+    let actor_items = "\n  items:\n    mira:\n      brass_key: 1\n";
+    let edited = text.replacen("\n  items: {}\n", actor_items, 1);
+    assert!(edited.contains(actor_items), "Mira holds no key");
+    let edited = crate::store::save::parse(&edited).expect("the edited save reads");
+    let edited = crate::store::save::emit(&edited).expect("the edited save writes");
+    std::fs::write(&path, edited).expect("write the save");
+    let opened = World::open(&pack.0).expect("docks pack opens");
+    let mut state = opened.state().clone();
+    let mut canon = opened.canon().clone();
+    // Room for every key the steps can touch: a refusal past the budget is the unit tests'.
+    canon.budget.max_state_keys_mutated = 1000;
+    let street = canon.places.get_mut("docks_street").expect("the street");
+    street.flags.extend(["lit".to_string(), "busy".to_string()]);
+    let mira = canon.cast.get_mut("mira").expect("Mira");
+    mira.flags.push("wary".to_string());
+    // The brass key is a weapon here, so Mira can wield the key she holds.
+    let key = canon.items.get_mut("brass_key").expect("the brass key");
+    key.tags.push("weapon".to_string());
+    let tale = StoryDef {
+        flags: vec!["told".to_string()],
+    };
+    canon.stories.insert("tale".into(), tale);
+    let burn = ModifierDef {
+        meter: "grit".to_string(),
+        max_stacks: 2,
+        hidden: false,
+    };
+    canon.modifiers.insert("burn".to_string(), burn);
+    // The street, the tale and the world each carry a meter, put on the save at its start as
+    // migrate puts on a meter the pack adds, so every store takes writes.
+    let carried = [
+        (EntityId::Place("docks_street".into()), "glow"),
+        (EntityId::Story("tale".into()), "tension"),
+        (EntityId::World, "tide"),
+    ];
+    for (entity, key) in carried {
+        let def = MeterDef {
+            min: 0,
+            base_cap: 10,
+            max: 10,
+            start: 5,
+            hidden: false,
+            carrier: Some(entity.clone()),
+        };
+        let start = Meter {
+            base: def.start,
+            offset: 0,
+        };
+        match entity {
+            EntityId::World => canon.world_meters.insert(key.to_string(), def),
+            _ => canon.meters.insert(key.to_string(), def),
+        };
+        let put = state
+            .entity_mut(&entity)
+            .set_meter(&canon, key, Some(start));
+        put.expect("the meter goes on");
+    }
+    state.accept();
+    let world = World::from_parts(&pack.0, Arc::new(canon), state);
+    let mut runner = TestRunner::new(runner_config());
+    runner
+        .run(&prop::collection::vec(pick_step(), 1..40), |steps| {
+            play_steps(&world, &steps)
+        })
+        .unwrap_or_else(|err| panic!("rollback property failed: {err}"));
+}
+
+/// A savepoint, with the save and the counted keys as they were when it was taken.
+struct Open {
+    point: crate::state::Savepoint,
+    saved: State,
+    keys: usize,
+}
+
+fn play_steps(world: &World<()>, steps: &[Step]) -> Result<(), TestCaseError> {
+    let nobody = Presence::default();
+    let canon = world.canon();
+    let mut state = world.begin_round();
+    let intent = mira_intent();
+    let mira = ActorId::from("mira");
+    let open_at = |state: &State| Open {
+        point: state.savepoint(),
+        saved: state.clone(),
+        keys: state.keys_counted(),
+    };
+    let mut open = vec![open_at(&state)];
+    let mut taken = state.clone();
+    for (index, step) in steps.iter().enumerate() {
+        // A refused write is left for a savepoint to undo, as in a round.
+        match step {
+            Step::Savepoint => open.push(open_at(&state)),
+            Step::Rollback if open.len() > 1 => {
+                let at = open.pop().expect("an open savepoint");
+                roll_back(&mut state, at)?;
+            }
+            Step::Rollback => {}
+            // A round takes changes only between actions, outside any savepoint but the first.
+            Step::Take if open.len() == 1 => {
+                let changes = state.take_changes();
+                every_moved_meter_is_reported(world, &taken, &state, &changes)?;
+                taken = state.clone();
+            }
+            Step::Take => {}
+            Step::Expire => {
+                let _ = state.actors_mut().expire_modifiers(canon, u64::MAX);
+            }
+            Step::Act(players) => {
+                let _ = state.actors_mut().count_act(&mira, 1, *players);
+            }
+            Step::ResetActs => {
+                let _ = (state.actors_mut()).reset_acts(ActCounter::IdleActsThisWindow);
+            }
+            Step::Busy(true) => {
+                let _ = state.actors_mut().set_busy(&mira, 9, None);
+            }
+            Step::Busy(false) => {
+                let _ = state.actors_mut().take_pending(&mira);
+            }
+            Step::NoteExits => {
+                let _ = crate::rules::travel::note_exits(canon, &mut state);
+            }
+            // Mira's memory of the shop's exits, written over with another list.
+            Step::SeeExits(both) => {
+                let exits = ["docks_street", "stairs"][..if *both { 2 } else { 1 }].iter();
+                let exits = exits.map(|exit| exit.to_string()).collect();
+                let _ = (state.actors_mut()).note_exits(&mira, "docks_shop", exits);
+            }
+            _ => {
+                let effect = effect(&state, step, index);
+                let _ = effect.apply(canon, &mut state, &nobody, &intent);
+            }
+        }
+    }
+    while let Some(at) = open.pop() {
+        roll_back(&mut state, at)?;
+    }
+    if !state.take_changes().is_empty() {
+        return Err(TestCaseError::fail("a rolled-back write is still reported"));
+    }
+    Ok(())
+}
+
+fn roll_back(state: &mut State, at: Open) -> Result<(), TestCaseError> {
+    state.rollback(at.point);
+    if *state != at.saved {
+        return Err(TestCaseError::fail(format!(
+            "the rollback left {:#?}\ninstead of {:#?}",
+            state, at.saved
+        )));
+    }
+    if state.keys_counted() != at.keys {
+        return Err(TestCaseError::fail(format!(
+            "the rollback left {} keys counted instead of {}",
+            state.keys_counted(),
+            at.keys
+        )));
+    }
+    Ok(())
+}
+
+/// Every actor meter whose value differs between `taken` and `now` is in `changes`, with the
+/// value it had at the last take and the value it has now.
+fn every_moved_meter_is_reported(
+    world: &World<()>,
+    taken: &State,
+    now: &State,
+    changes: &[Change],
+) -> Result<(), TestCaseError> {
+    let read = |state: &State, actor: &ActorId, key: &str| {
+        let value = state.actors().meter_value(world.canon(), actor, key);
+        value.map_or(change::Value::Empty, change::Value::Number)
+    };
+    for (actor, key) in now.actors().meters.keys() {
+        let (before, after) = (read(taken, actor, key), read(now, actor, key));
+        if before == after {
+            continue;
+        }
+        let moved = Change {
+            key: change::Key::ActorMeter(actor.to_string(), key.clone()),
+            before,
+            after,
+        };
+        if !changes.contains(&moved) {
+            return Err(TestCaseError::fail(format!(
+                "{moved:?} is missing from {changes:?}"
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn effect(state: &State, step: &Step, index: usize) -> Effect {
+    let mira = ActorId::from("mira");
+    let kind = match step {
+        Step::Item(entity, id, delta) => {
+            let (actor_id, place) = match entity {
+                EntityId::Actor(id) => (Some(id.clone()), None),
+                _ => (None, Some("docks_shop".into())),
+            };
+            EffectKind::Item {
+                actor_id,
+                place,
+                id: id.to_string(),
+                delta: *delta,
+                max: None,
+            }
+        }
+        Step::Meter(entity, key, delta) => EffectKind::Meter {
+            entity: entity.clone(),
+            key: key.to_string(),
+            write: MeterWrite::Offset(*delta),
+        },
+        Step::Burn(add) => EffectKind::Modifier {
+            actor_id: mira,
+            id: "burn".to_string(),
+            add: *add,
+            ticks: 3,
+        },
+        Step::Door(open) => EffectKind::ExitOpen {
+            exit: ExitId {
+                place: "docks_shop".into(),
+                exit: "stairs".to_string(),
+            },
+            open: *open,
+        },
+        Step::Flag(entity, key, value) => EffectKind::Flag {
+            entity: entity.clone(),
+            key: key.to_string(),
+            value: *value,
+        },
+        Step::Walk(to) => EffectKind::Location {
+            from: state.actors().place.get(&mira).cloned().unwrap_or_default(),
+            actor_id: mira,
+            to: to.to_string(),
+            arrived_at: None,
+        },
+        Step::Wield(id) => EffectKind::Wield {
+            actor_id: mira,
+            id: id.to_string(),
+        },
+        Step::Unwield => EffectKind::Unwield { actor_id: mira },
+        Step::Note => EffectKind::Note {
+            note_id: format!("note_rollback_{index}"),
+            to: vec!["pc_rowan".into()],
+            place: Some("docks_shop".into()),
+            fact_ids: Vec::new(),
+            text: "A test note.".to_string(),
+        },
+        Step::Reveal(fact) => EffectKind::Reveal {
+            actor_id: mira,
+            fact: fact.to_string(),
+        },
+        Step::Savepoint
+        | Step::Rollback
+        | Step::Take
+        | Step::Expire
+        | Step::Act(_)
+        | Step::ResetActs
+        | Step::Busy(_)
+        | Step::NoteExits
+        | Step::SeeExits(_) => {
+            unreachable!("not an effect")
+        }
+    };
+    Effect::new(Some(&Viewer::Npc("mira".into())), "rollback", kind)
+}
+
+fn mira_intent() -> Intent {
+    Intent {
+        id: "rollback".to_string(),
+        round_index: 0,
+        actor: Some(Viewer::Npc("mira".into())),
+        source: Source::Engine,
+        move_name: "rollback".to_string(),
+        target: Target::Empty,
+        args: IntentArgs::default(),
+        rationale_code: String::new(),
+    }
+}
+
+fn pick_step() -> impl Strategy<Value = Step> {
+    let entity = select(vec![
+        EntityId::Actor("mira".into()),
+        EntityId::Actor("bram".into()),
+        EntityId::Place("docks_shop".into()),
+    ]);
+    // A meter and a flag on each kind of entity that carries one.
+    let meters = vec![
+        (EntityId::Actor("mira".into()), "grit"),
+        (EntityId::Actor("bram".into()), "grit"),
+        (EntityId::Place("docks_street".into()), "glow"),
+        (EntityId::Story("tale".into()), "tension"),
+        (EntityId::World, "tide"),
+    ];
+    let flags = vec![
+        (EntityId::Actor("mira".into()), "wary"),
+        (EntityId::Place("docks_street".into()), "lit"),
+        (EntityId::Place("docks_street".into()), "busy"),
+        (EntityId::Story("tale".into()), "told"),
+        (EntityId::World, "rung"),
+    ];
+    prop_oneof![
+        3 => Just(Step::Savepoint),
+        3 => Just(Step::Rollback),
+        2 => Just(Step::Take),
+        1 => (entity, select(vec!["lamp_oil", "brass_key"]), -3i64..=3)
+            .prop_map(|(entity, id, delta)| Step::Item(entity, id, delta)),
+        2 => (select(meters), -2i64..=2)
+            .prop_map(|((entity, key), delta)| Step::Meter(entity, key, delta)),
+        1 => (-2i64..=2).prop_map(Step::Burn),
+        1 => Just(Step::Expire),
+        1 => any::<bool>().prop_map(Step::Door),
+        2 => (select(flags), any::<bool>())
+            .prop_map(|((entity, key), value)| Step::Flag(entity, key, value)),
+        1 => select(vec!["docks_shop", "docks_street", "mira_rooms"]).prop_map(Step::Walk),
+        1 => select(vec!["brass_key", "lamp_oil"]).prop_map(Step::Wield),
+        1 => Just(Step::Unwield),
+        1 => Just(Step::Note),
+        1 => select(vec!["fact_oil_on_shelf", "fact_room_lamp"]).prop_map(Step::Reveal),
+        1 => (0u32..=1).prop_map(Step::Act),
+        1 => Just(Step::ResetActs),
+        1 => any::<bool>().prop_map(Step::Busy),
+        1 => Just(Step::NoteExits),
+        1 => any::<bool>().prop_map(Step::SeeExits),
+    ]
+}

@@ -589,7 +589,7 @@ pub fn check_save(canon: &Canon, state: &crate::state::State) -> Result<(), Vec<
             }
         }
     }
-    for (id, place) in &actors.place {
+    for (id, place) in actors.place.iter() {
         // A walker stands on an exit, which must be one of the pack's.
         let known = match crate::state::exit_parts(place) {
             Some(_) => crate::rules::travel::exit_stood_on(canon, place).is_some(),
@@ -612,7 +612,7 @@ pub fn check_save(canon: &Canon, state: &crate::state::State) -> Result<(), Vec<
             &mut diags,
         );
     }
-    for ((id, key), live) in &actors.modifiers {
+    for ((id, key), live) in actors.modifiers.iter() {
         if !modifier::is_defined(&canon.modifiers, key, live) {
             let problem = format!(
                 "actor '{id}' holds modifier '{key}' on meter '{}', which the pack does not define",
@@ -638,7 +638,7 @@ pub fn check_save(canon: &Canon, state: &crate::state::State) -> Result<(), Vec<
         let path = format!("{list}.meters.{id}");
         check_meters(canon, &entity, &held, &path, &mut diags);
     }
-    for ((id, item), count) in &actors.items {
+    for ((id, item), count) in actors.items.iter() {
         if item.is_empty() {
             diags.push(
                 schema_error(
@@ -660,7 +660,7 @@ pub fn check_save(canon: &Canon, state: &crate::state::State) -> Result<(), Vec<
             );
         }
     }
-    for ((place, item), count) in &state.places().items {
+    for ((place, item), count) in state.places().items.iter() {
         if *count == 0 {
             diags.push(
                 schema_error(
@@ -678,7 +678,7 @@ pub fn check_save(canon: &Canon, state: &crate::state::State) -> Result<(), Vec<
             diags.push(unknown_item(FILE, item, &path));
         }
     }
-    for (actor_id, wielded) in &actors.wielded {
+    for (actor_id, wielded) in actors.wielded.iter() {
         if !canon.items.contains_key(wielded) {
             diags.push(unknown_item(
                 FILE,

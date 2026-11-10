@@ -5,7 +5,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde::{Deserialize, Serialize};
 
 use super::meter::{self, Meter};
-use super::{change, flag, Writer};
+use super::{change, flag, undo, Writer};
 use crate::canon::Canon;
 use crate::Reason;
 
@@ -13,8 +13,8 @@ use crate::Reason;
 #[serde(default, deny_unknown_fields)]
 pub struct WorldComponents {
     /// The meters `world/meters.yaml` declares.
-    pub meters: BTreeMap<String, Meter>,
-    pub flags: BTreeSet<String>,
+    pub meters: undo::Store<BTreeMap<String, Meter>>,
+    pub flags: undo::Store<BTreeSet<String>>,
 }
 
 impl WorldComponents {
@@ -26,16 +26,25 @@ impl WorldComponents {
     pub fn has_flag(&self, key: &str) -> bool {
         self.flags.contains(key)
     }
+
+    /// Every store, as the log a rollback undoes and an accept clears.
+    pub(super) fn logs_mut(&mut self) -> [&mut dyn undo::Log; 2] {
+        // Every store, with no `..`: a store added later must be listed here to compile.
+        let WorldComponents { meters, flags } = self;
+        [meters, flags]
+    }
 }
 
 impl Writer<'_, WorldComponents> {
     /// Move world meter `key` by `delta` inside its bounds.
     pub fn shift_meter(&mut self, canon: &Canon, key: &str, delta: i64) -> Result<(), Reason> {
-        let Writer { part, transaction } = self;
+        let (components, transaction) = (&mut *self.components, &mut *self.transaction);
         let def = canon.world_meters.get(key).ok_or(Reason::UnknownId)?;
-        let held = part.meters.get_mut(key).ok_or(Reason::UnknownId)?;
         let watched = change::Key::WorldMeter(key.to_string());
-        meter::shift(held, transaction, def, Ok(0), delta, watched)
+        let (next, change) = meter::shift(components.meters.get(key), def, Ok(0), delta, watched)?;
+        components
+            .meters
+            .set(transaction, key.to_string(), Some(next), [change])
     }
 
     /// Give the world meter `key` as `meter` says, `None` taking it off, outside a round's rules.
@@ -45,23 +54,21 @@ impl Writer<'_, WorldComponents> {
         key: &str,
         meter: Option<Meter>,
     ) -> Result<(), Reason> {
-        let Writer { part, transaction } = self;
+        let (components, transaction) = (&mut *self.components, &mut *self.transaction);
         let def = canon.world_meters.get(key);
         let watched = change::Key::WorldMeter(key.to_string());
-        meter::set(
-            &mut part.meters,
-            transaction,
-            key.to_string(),
-            meter,
-            def,
-            Ok(0),
-            watched,
-        )
+        let (next, change) = meter::next(components.meters.get(key), meter, def, Ok(0), watched);
+        components
+            .meters
+            .set(transaction, key.to_string(), next, [change])
     }
 
     pub fn set_flag(&mut self, key: &str, on: bool) -> Result<(), Reason> {
-        let Writer { part, transaction } = self;
+        let (components, transaction) = (&mut *self.components, &mut *self.transaction);
         let watched = change::Key::WorldFlag(key.to_string());
-        flag::set(&mut part.flags, transaction, key.to_string(), on, watched)
+        let (next, change) = flag::next(on, watched);
+        components
+            .flags
+            .set(transaction, key.to_string(), next, [change])
     }
 }

@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use super::id::{EntityRef, StoryId};
 use super::meter::{self, Meter};
-use super::{change, flag, nested_map, Writer};
+use super::{change, flag, nested_map, undo, Writer};
 use crate::canon::Canon;
 use crate::Reason;
 
@@ -16,9 +16,9 @@ use crate::Reason;
 pub struct StoryComponents {
     /// The meters each story file declares.
     #[serde(with = "nested_map")]
-    pub meters: BTreeMap<(StoryId, String), Meter>,
+    pub meters: undo::Store<BTreeMap<(StoryId, String), Meter>>,
     #[serde(with = "nested_map::lists")]
-    pub flags: BTreeSet<(StoryId, String)>,
+    pub flags: undo::Store<BTreeSet<(StoryId, String)>>,
 }
 
 impl StoryComponents {
@@ -31,6 +31,13 @@ impl StoryComponents {
     pub fn has_flag(&self, story: &StoryId, key: &str) -> bool {
         nested_map::contains(&self.flags, story, key)
     }
+
+    /// Every store, as the log a rollback undoes and an accept clears.
+    pub(super) fn logs_mut(&mut self) -> [&mut dyn undo::Log; 2] {
+        // Every store, with no `..`: a store added later must be listed here to compile.
+        let StoryComponents { meters, flags } = self;
+        [meters, flags]
+    }
 }
 
 impl Writer<'_, StoryComponents> {
@@ -42,13 +49,17 @@ impl Writer<'_, StoryComponents> {
         key: &str,
         delta: i64,
     ) -> Result<(), Reason> {
-        let Writer { part, transaction } = self;
+        let (components, transaction) = (&mut *self.components, &mut *self.transaction);
         let def = canon
             .meter_def(EntityRef::Story(story), key)
             .ok_or(Reason::UnknownId)?;
-        let held = nested_map::get_mut(&mut part.meters, story, key).ok_or(Reason::UnknownId)?;
+        let entry = (story.clone(), key.to_string());
         let watched = change::Key::StoryMeter(story.to_string(), key.to_string());
-        meter::shift(held, transaction, def, Ok(0), delta, watched)
+        let (next, change) =
+            meter::shift(components.meters.get(&entry), def, Ok(0), delta, watched)?;
+        components
+            .meters
+            .set(transaction, entry, Some(next), [change])
     }
 
     /// Give `story` meter `key` as `meter` says, `None` taking it off, outside a round's rules.
@@ -59,25 +70,19 @@ impl Writer<'_, StoryComponents> {
         key: &str,
         meter: Option<Meter>,
     ) -> Result<(), Reason> {
-        let Writer { part, transaction } = self;
+        let (components, transaction) = (&mut *self.components, &mut *self.transaction);
         let def = canon.meter_def(EntityRef::Story(story), key);
         let entry = (story.clone(), key.to_string());
         let watched = change::Key::StoryMeter(story.to_string(), key.to_string());
-        meter::set(
-            &mut part.meters,
-            transaction,
-            entry,
-            meter,
-            def,
-            Ok(0),
-            watched,
-        )
+        let (next, change) = meter::next(components.meters.get(&entry), meter, def, Ok(0), watched);
+        components.meters.set(transaction, entry, next, [change])
     }
 
     pub fn set_flag(&mut self, story: &StoryId, key: &str, on: bool) -> Result<(), Reason> {
-        let Writer { part, transaction } = self;
+        let (components, transaction) = (&mut *self.components, &mut *self.transaction);
         let entry = (story.clone(), key.to_string());
         let watched = change::Key::StoryFlag(story.to_string(), key.to_string());
-        flag::set(&mut part.flags, transaction, entry, on, watched)
+        let (next, change) = flag::next(on, watched);
+        components.flags.set(transaction, entry, next, [change])
     }
 }

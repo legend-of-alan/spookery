@@ -169,7 +169,7 @@ fn apply_scene(
 }
 
 fn assert_hidden_stays_hidden(canon: &Canon, state: &State) -> Result<(), TestCaseError> {
-    for (pc, kind) in &state.actors().kind {
+    for (pc, kind) in state.actors().kind.iter() {
         if *kind != ActorKind::Pc {
             continue;
         }

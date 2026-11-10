@@ -1,26 +1,9 @@
-//! The kind-free rule for setting a flag.
+//! The kind-free rule for a flag's next entry.
 
-use std::collections::BTreeSet;
+use super::change::{self, Change};
 
-use super::change;
-use super::transaction::Transaction;
-use crate::Reason;
-
-/// Put `entry` in `flags` when `on`, take it out when not, and report the change under `key`.
-pub(super) fn set<K: Ord>(
-    flags: &mut BTreeSet<K>,
-    transaction: &mut Transaction,
-    entry: K,
-    on: bool,
-    key: change::Key,
-) -> Result<(), Reason> {
-    let moved = if on {
-        flags.insert(entry)
-    } else {
-        flags.remove(&entry)
-    };
-    if !moved {
-        return Ok(());
-    }
-    transaction.report(key, change::Value::Bool(!on), change::Value::Bool(on))
+/// A flag's entry when `on`, none when not, and the change that reports under `key`.
+pub(super) fn next(on: bool, key: change::Key) -> (Option<()>, Change) {
+    let change = Change::new(key, change::Value::Bool(!on), change::Value::Bool(on));
+    (on.then_some(()), change)
 }

@@ -4,6 +4,7 @@ mod inventory;
 mod opposed;
 mod replay;
 mod replay_effects;
+mod rollback;
 mod support;
 mod triggers;
 mod visibility;

@@ -2,8 +2,9 @@
 
 use serde::{Deserialize, Serialize};
 
+use super::change::{self, Change};
 use super::id::{ActorId, PlaceId};
-use super::{change, sort_unique, Writer};
+use super::{sort_unique, undo, Writer};
 use crate::Reason;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -17,17 +18,26 @@ pub struct Note {
     pub text: String,
 }
 
-impl Writer<'_, Vec<Note>> {
+impl undo::Undo for Vec<Note> {
+    type Inverse = ();
+    /// Take back the last note left: leaving one is the only change the notes take.
+    fn undo(&mut self, (): ()) {
+        self.pop();
+    }
+}
+
+impl Writer<'_, undo::Store<Vec<Note>>> {
     /// Leave `note`, its recipients and facts in order. A note id is left once: `UNKNOWN_ID` again.
     pub fn leave(&mut self, mut note: Note) -> Result<(), Reason> {
-        let Writer { part, transaction } = self;
-        if part.iter().any(|held| held.id == note.id) {
+        let (components, transaction) = (&mut *self.components, &mut *self.transaction);
+        if components.iter().any(|held| held.id == note.id) {
             return Err(Reason::UnknownId);
         }
         sort_unique(&mut note.to);
         sort_unique(&mut note.fact_ids);
         let key = change::Key::Note(note.id.clone());
-        part.push(note);
-        transaction.report(key, change::Value::Empty, change::Value::Bool(true))
+        let change = Change::new(key, change::Value::Empty, change::Value::Bool(true));
+        let leave = |notes: &mut Vec<Note>| notes.push(note);
+        components.record(transaction, leave, [change])
     }
 }
