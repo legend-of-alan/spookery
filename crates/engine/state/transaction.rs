@@ -136,7 +136,7 @@ impl State {
         transaction.memory_writes = point.memory_writes;
     }
 
-    /// Truncate every part's logs as `cut` says.
+    /// Truncate the logs of every kind and the notes as `cut` says.
     fn truncate_logs(&mut self, cut: LogCut) {
         self.actors.truncate_logs(cut);
         self.places.truncate_logs(cut);

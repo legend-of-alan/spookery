@@ -123,8 +123,8 @@ impl Writer<'_, ActorComponents> {
         &mut self,
         actor: &ActorId,
     ) -> Result<(&mut ActorComponents, &mut Transaction), Reason> {
-        self.part.kind.get(actor).ok_or(Reason::UnknownId)?;
-        Ok((&mut *self.part, &mut *self.transaction))
+        self.components.kind.get(actor).ok_or(Reason::UnknownId)?;
+        Ok((&mut *self.components, &mut *self.transaction))
     }
 
     /// The one write an actor writer makes: `actor` must exist; `set` puts the next value in its
@@ -138,9 +138,9 @@ impl Writer<'_, ActorComponents> {
         after: change::Value,
         set: impl FnOnce(&mut ActorComponents, &mut Transaction, [Change; 1]) -> Result<(), Reason>,
     ) -> Result<(), Reason> {
-        let (part, transaction) = self.check_actor(actor)?;
-        let before = read(part);
-        set(part, transaction, [Change::new(key, before, after)])
+        let (components, transaction) = self.check_actor(actor)?;
+        let before = read(components);
+        set(components, transaction, [Change::new(key, before, after)])
     }
 
     /// The one write to `actor`'s action state: `edit` made to what they hold, reporting `key`'s
@@ -155,37 +155,57 @@ impl Writer<'_, ActorComponents> {
         let mut next = self.acts.get(actor).cloned().unwrap_or_default();
         edit(&mut next);
         let after = read(&next);
-        let before =
-            |part: &ActorComponents| part.acts.get(actor).map_or(change::Value::Empty, &read);
-        self.write(actor, key, before, after, |part, transaction, reports| {
-            part.acts.set(transaction, actor, next, reports)
-        })
+        let before = |components: &ActorComponents| {
+            components
+                .acts
+                .get(actor)
+                .map_or(change::Value::Empty, &read)
+        };
+        self.write(
+            actor,
+            key,
+            before,
+            after,
+            |components, transaction, reports| {
+                components.acts.set(transaction, actor, next, reports)
+            },
+        )
     }
 
     /// Stand `actor` at `to`: a place id, or an exit address while they walk.
     pub fn set_place(&mut self, actor: &ActorId, to: &str) -> Result<(), Reason> {
         let key = change::Key::ActorPlace(actor.to_string());
-        let read = |part: &ActorComponents| text_value(part.place.get(actor));
+        let read = |components: &ActorComponents| text_value(components.place.get(actor));
         let after = text_value(Some(to));
-        self.write(actor, key, read, after, |part, transaction, reports| {
-            part.place.set(transaction, actor, to.to_string(), reports)
-        })
+        self.write(
+            actor,
+            key,
+            read,
+            after,
+            |components, transaction, reports| {
+                components
+                    .place
+                    .set(transaction, actor, to.to_string(), reports)
+            },
+        )
     }
 
     /// Wield `item`, which `actor` must hold, or with `None` let go of what they wield.
     pub fn set_wielded(&mut self, actor: &ActorId, item: Option<&str>) -> Result<(), Reason> {
         let key = change::Key::ActorWielded(actor.to_string());
-        let read = |part: &ActorComponents| text_value(part.wielded.get(actor));
+        let read = |components: &ActorComponents| text_value(components.wielded.get(actor));
         self.write(
             actor,
             key,
             read,
             text_value(item),
-            |part, transaction, reports| {
-                if item.is_some_and(|item| nested_map::get(&part.items, actor, item).is_none()) {
+            |components, transaction, reports| {
+                if item
+                    .is_some_and(|item| nested_map::get(&components.items, actor, item).is_none())
+                {
                     return Err(Reason::MissingItem);
                 }
-                part.wielded.set(
+                components.wielded.set(
                     transaction,
                     actor.clone(),
                     item.map(str::to_string),
@@ -198,21 +218,34 @@ impl Writer<'_, ActorComponents> {
     /// `actor` knows `facts` from now on, kept in order with no repeats.
     pub fn learn(&mut self, actor: &ActorId, facts: &[String]) -> Result<(), Reason> {
         let key = change::Key::ActorKnownFact(actor.to_string());
-        let read = |part: &ActorComponents| {
-            change::Value::List(part.known_facts.get(actor).cloned().unwrap_or_default())
+        let read = |components: &ActorComponents| {
+            change::Value::List(
+                components
+                    .known_facts
+                    .get(actor)
+                    .cloned()
+                    .unwrap_or_default(),
+            )
         };
         let mut next = self.known_facts.get(actor).cloned().unwrap_or_default();
         let unknown = facts.iter().any(|fact| !next.contains(fact));
         next.extend_from_slice(facts);
         sort_unique(&mut next);
         let after = change::Value::List(next.clone());
-        self.write(actor, key, read, after, |part, transaction, reports| {
-            if !unknown {
-                return Ok(());
-            }
-            part.known_facts
-                .set(transaction, actor.clone(), Some(next), reports)
-        })
+        self.write(
+            actor,
+            key,
+            read,
+            after,
+            |components, transaction, reports| {
+                if !unknown {
+                    return Ok(());
+                }
+                components
+                    .known_facts
+                    .set(transaction, actor.clone(), Some(next), reports)
+            },
+        )
     }
 
     /// Keep `actor` busy until `until`, on `pending` while an action is under way and on `None`
@@ -280,9 +313,9 @@ impl Writer<'_, ActorComponents> {
         place: &str,
         exits: Vec<String>,
     ) -> Result<(), Reason> {
-        let (part, transaction) = self.check_actor(actor)?;
+        let (components, transaction) = self.check_actor(actor)?;
         let entry = (actor.clone(), place.to_string());
-        part.visited.set(transaction, entry, Some(exits), [])
+        components.visited.set(transaction, entry, Some(exits), [])
     }
 
     /// Move `actor`'s count of `id` as `item::shift_count` says. An actor who no longer holds
@@ -294,11 +327,11 @@ impl Writer<'_, ActorComponents> {
         delta: i64,
         max: Option<i64>,
     ) -> Result<(), Reason> {
-        let (part, transaction) = self.check_actor(actor)?;
+        let (components, transaction) = self.check_actor(actor)?;
         let entry = (actor.clone(), id.to_string());
         let key = change::Key::ActorItem(actor.to_string(), id.to_string());
-        let (next, change) = item::shift(part.items.get(&entry).copied(), delta, max, key)?;
-        part.items.set(transaction, entry, next, [change])?;
+        let (next, change) = item::shift(components.items.get(&entry).copied(), delta, max, key)?;
+        components.items.set(transaction, entry, next, [change])?;
         let wielded = self.wielded.get(actor);
         if wielded.is_some_and(|held| nested_map::get(&self.items, actor, held).is_none()) {
             self.set_wielded(actor, None)?;
@@ -314,15 +347,23 @@ impl Writer<'_, ActorComponents> {
         key: &str,
         delta: i64,
     ) -> Result<(), Reason> {
-        let (part, transaction) = self.check_actor(actor)?;
+        let (components, transaction) = self.check_actor(actor)?;
         let def = canon
             .meter_def(EntityRef::Actor(actor), key)
             .ok_or(Reason::UnknownId)?;
-        let modifiers = part.modifier_sum(actor, key);
+        let modifiers = components.modifier_sum(actor, key);
         let entry = (actor.clone(), key.to_string());
         let watched = change::Key::ActorMeter(actor.to_string(), key.to_string());
-        let (next, change) = meter::shift(part.meters.get(&entry), def, modifiers, delta, watched)?;
-        part.meters.set(transaction, entry, Some(next), [change])
+        let (next, change) = meter::shift(
+            components.meters.get(&entry),
+            def,
+            modifiers,
+            delta,
+            watched,
+        )?;
+        components
+            .meters
+            .set(transaction, entry, Some(next), [change])
     }
 
     /// Give `actor` meter `key` as `meter` says, `None` taking it off, outside a round's rules:
@@ -335,17 +376,17 @@ impl Writer<'_, ActorComponents> {
         meter: Option<Meter>,
     ) -> Result<(), Reason> {
         // Taking a meter off checks no owner: the entry is its own evidence.
-        let (part, transaction) = match meter {
+        let (components, transaction) = match meter {
             Some(_) => self.check_actor(actor)?,
-            None => (&mut *self.part, &mut *self.transaction),
+            None => (&mut *self.components, &mut *self.transaction),
         };
         let def = canon.meter_def(EntityRef::Actor(actor), key);
-        let modifiers = part.modifier_sum(actor, key);
+        let modifiers = components.modifier_sum(actor, key);
         let entry = (actor.clone(), key.to_string());
         let watched = change::Key::ActorMeter(actor.to_string(), key.to_string());
-        let held = part.meters.get(&entry);
+        let held = components.meters.get(&entry);
         let (next, change) = meter::next(held, meter, def, modifiers, watched);
-        part.meters.set(transaction, entry, next, [change])
+        components.meters.set(transaction, entry, next, [change])
     }
 
     /// Put `next` on as modifier `id`, `None` taking it off. The meter's key is counted when the
@@ -369,11 +410,11 @@ impl Writer<'_, ActorComponents> {
             (None, None) => return Ok(()),
         };
         // Taking a modifier off checks no owner: the entry is its own evidence.
-        let (part, transaction) = match next {
+        let (components, transaction) = match next {
             Some(_) => self.check_actor(actor)?,
-            None => (&mut *self.part, &mut *self.transaction),
+            None => (&mut *self.components, &mut *self.transaction),
         };
-        let held = nested_map::get(&part.modifiers, actor, id);
+        let held = nested_map::get(&components.modifiers, actor, id);
         let own = |held: Option<&Modifier>| held.map_or(change::Value::Empty, Modifier::to_value);
         let own_key = change::Key::ActorModifier(actor.to_string(), id.to_string());
         let own = Change::new(own_key, own(held), own(next.as_ref()));
@@ -384,17 +425,18 @@ impl Writer<'_, ActorComponents> {
         }
         // The meter as it reads with `next` in place of what is held, which must read when it
         // goes on.
-        let others = nested_map::entries_of(&part.modifiers, actor).filter(|(held, _)| *held != id);
+        let others =
+            nested_map::entries_of(&components.modifiers, actor).filter(|(held, _)| *held != id);
         let sum = modifier::sum(others.map(|(_, held)| held).chain(&next), &meter);
-        let after = part.meter_value_with(canon, actor, &meter, sum);
+        let after = components.meter_value_with(canon, actor, &meter, sum);
         if next.is_some() {
             after?;
         }
-        let before = change::Value::from_reading(part.meter_value(canon, actor, &meter));
+        let before = change::Value::from_reading(components.meter_value(canon, actor, &meter));
         let meter_change = Change::new(watched, before, change::Value::from_reading(after));
         let reports = stacks_move.then_some(meter_change).into_iter().chain([own]);
         let entry = (actor.clone(), id.to_string());
-        part.modifiers.set(transaction, entry, next, reports)
+        components.modifiers.set(transaction, entry, next, reports)
     }
 
     /// Take off every modifier whose tick has come by `world_time`, all its stacks at once.
@@ -410,11 +452,11 @@ impl Writer<'_, ActorComponents> {
     }
 
     pub fn set_flag(&mut self, actor: &ActorId, key: &str, on: bool) -> Result<(), Reason> {
-        let (part, transaction) = self.check_actor(actor)?;
+        let (components, transaction) = self.check_actor(actor)?;
         let entry = (actor.clone(), key.to_string());
         let watched = change::Key::ActorFlag(actor.to_string(), key.to_string());
         let (next, change) = flag::next(on, watched);
-        part.flags.set(transaction, entry, next, [change])
+        components.flags.set(transaction, entry, next, [change])
     }
 }
 

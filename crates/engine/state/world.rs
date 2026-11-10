@@ -40,11 +40,15 @@ impl WorldComponents {
 impl Writer<'_, WorldComponents> {
     /// Move world meter `key` by `delta` inside its bounds.
     pub fn shift_meter(&mut self, canon: &Canon, key: &str, delta: i64) -> Result<(), Reason> {
-        let Writer { part, transaction } = self;
+        let Writer {
+            components,
+            transaction,
+        } = self;
         let def = canon.world_meters.get(key).ok_or(Reason::UnknownId)?;
         let watched = change::Key::WorldMeter(key.to_string());
-        let (next, change) = meter::shift(part.meters.get(key), def, Ok(0), delta, watched)?;
-        part.meters
+        let (next, change) = meter::shift(components.meters.get(key), def, Ok(0), delta, watched)?;
+        components
+            .meters
             .set(transaction, key.to_string(), Some(next), [change])
     }
 
@@ -55,18 +59,27 @@ impl Writer<'_, WorldComponents> {
         key: &str,
         meter: Option<Meter>,
     ) -> Result<(), Reason> {
-        let Writer { part, transaction } = self;
+        let Writer {
+            components,
+            transaction,
+        } = self;
         let def = canon.world_meters.get(key);
         let watched = change::Key::WorldMeter(key.to_string());
-        let (next, change) = meter::next(part.meters.get(key), meter, def, Ok(0), watched);
-        part.meters
+        let (next, change) = meter::next(components.meters.get(key), meter, def, Ok(0), watched);
+        components
+            .meters
             .set(transaction, key.to_string(), next, [change])
     }
 
     pub fn set_flag(&mut self, key: &str, on: bool) -> Result<(), Reason> {
-        let Writer { part, transaction } = self;
+        let Writer {
+            components,
+            transaction,
+        } = self;
         let watched = change::Key::WorldFlag(key.to_string());
         let (next, change) = flag::next(on, watched);
-        part.flags.set(transaction, key.to_string(), next, [change])
+        components
+            .flags
+            .set(transaction, key.to_string(), next, [change])
     }
 }

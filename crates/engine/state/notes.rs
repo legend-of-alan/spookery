@@ -30,8 +30,11 @@ impl Undo for Vec<Note> {
 impl Writer<'_, Store<Vec<Note>>> {
     /// Leave `note`, its recipients and facts in order. A note id is left once: `UNKNOWN_ID` again.
     pub fn leave(&mut self, mut note: Note) -> Result<(), Reason> {
-        let Writer { part, transaction } = self;
-        if part.iter().any(|held| held.id == note.id) {
+        let Writer {
+            components,
+            transaction,
+        } = self;
+        if components.iter().any(|held| held.id == note.id) {
             return Err(Reason::UnknownId);
         }
         sort_unique(&mut note.to);
@@ -39,6 +42,6 @@ impl Writer<'_, Store<Vec<Note>>> {
         let key = change::Key::Note(note.id.clone());
         let change = Change::new(key, change::Value::Empty, change::Value::Bool(true));
         let leave = |notes: &mut Vec<Note>| notes.push(note);
-        part.record(transaction, leave, [change])
+        components.record(transaction, leave, [change])
     }
 }

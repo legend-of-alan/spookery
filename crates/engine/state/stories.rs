@@ -51,14 +51,20 @@ impl Writer<'_, StoryComponents> {
         key: &str,
         delta: i64,
     ) -> Result<(), Reason> {
-        let Writer { part, transaction } = self;
+        let Writer {
+            components,
+            transaction,
+        } = self;
         let def = canon
             .meter_def(EntityRef::Story(story), key)
             .ok_or(Reason::UnknownId)?;
         let entry = (story.clone(), key.to_string());
         let watched = change::Key::StoryMeter(story.to_string(), key.to_string());
-        let (next, change) = meter::shift(part.meters.get(&entry), def, Ok(0), delta, watched)?;
-        part.meters.set(transaction, entry, Some(next), [change])
+        let (next, change) =
+            meter::shift(components.meters.get(&entry), def, Ok(0), delta, watched)?;
+        components
+            .meters
+            .set(transaction, entry, Some(next), [change])
     }
 
     /// Give `story` meter `key` as `meter` says, `None` taking it off, outside a round's rules.
@@ -69,19 +75,25 @@ impl Writer<'_, StoryComponents> {
         key: &str,
         meter: Option<Meter>,
     ) -> Result<(), Reason> {
-        let Writer { part, transaction } = self;
+        let Writer {
+            components,
+            transaction,
+        } = self;
         let def = canon.meter_def(EntityRef::Story(story), key);
         let entry = (story.clone(), key.to_string());
         let watched = change::Key::StoryMeter(story.to_string(), key.to_string());
-        let (next, change) = meter::next(part.meters.get(&entry), meter, def, Ok(0), watched);
-        part.meters.set(transaction, entry, next, [change])
+        let (next, change) = meter::next(components.meters.get(&entry), meter, def, Ok(0), watched);
+        components.meters.set(transaction, entry, next, [change])
     }
 
     pub fn set_flag(&mut self, story: &StoryId, key: &str, on: bool) -> Result<(), Reason> {
-        let Writer { part, transaction } = self;
+        let Writer {
+            components,
+            transaction,
+        } = self;
         let entry = (story.clone(), key.to_string());
         let watched = change::Key::StoryFlag(story.to_string(), key.to_string());
         let (next, change) = flag::next(on, watched);
-        part.flags.set(transaction, entry, next, [change])
+        components.flags.set(transaction, entry, next, [change])
     }
 }
