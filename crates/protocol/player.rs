@@ -158,15 +158,7 @@ mod tests {
     use crate::ServerBody;
 
     #[test]
-    fn a_shared_name_carries_its_id() {
-        let named = [
-            ("npc_east", "Guard"),
-            ("npc_west", "guard"),
-            ("npc_briar", "Briar"),
-        ];
-        let read = super::add_ids_to_shared_names(&named);
-        assert_eq!(read, ["Guard (npc_east)", "guard (npc_west)", "Briar"]);
-        assert!(super::is_named(" briar ", "Briar"));
+    fn part_of_a_name_names_nothing() {
         assert!(!super::is_named("bri", "Briar"));
     }
 

@@ -214,12 +214,12 @@ impl<L> World<L> {
     ) -> Result<QueuedMove, gate::Refusal> {
         let typed = target.filter(|token| !token.is_empty());
         let named = match typed {
-            Some(typed) if verb != gate::CANCEL => {
+            Some(typed) => {
                 let viewer = Viewer::Player(actor_id.clone());
                 let nameable = gate::list_nameable(&self.canon, &self.state, presence, &viewer);
                 gate::find_named(&nameable, typed).map(|id| id.map(String::from))
             }
-            _ => Ok(None),
+            None => Ok(None),
         };
         let resolved = named.clone().unwrap_or_default();
         let token = resolved.as_deref().or(typed);
