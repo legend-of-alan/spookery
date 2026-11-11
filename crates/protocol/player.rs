@@ -57,6 +57,18 @@ pub struct ExitView {
     pub locked: bool,
 }
 
+impl ExitView {
+    /// The name a player reads for this exit: where it goes, when the exit is named by the
+    /// place it goes to, or else its own name, such as `stairs`.
+    pub fn display_name(&self) -> &str {
+        if self.name == self.to && !self.place_name.is_empty() {
+            &self.place_name
+        } else {
+            &self.name
+        }
+    }
+}
+
 /// Part of a `View`, sent from the table to a player client.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
@@ -84,6 +96,9 @@ pub struct NoteView {
 pub struct ItemStack {
     pub id: String,
     pub count: u32,
+    /// The item's display name.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub name: String,
 }
 
 /// Part of a `View`, sent from the table to a player client.
@@ -96,8 +111,9 @@ pub struct MeterView {
 }
 
 /// One command of a `help` reply. `target` is what the command takes: `none`, `actor`, `place`,
-/// `exit` or `item`. `names` lists what the player can name for it now. `owner` is the
-/// cast member or item whose verb this is, reached by naming them.
+/// `exit` or `item`. `names` lists what the player can name for it now, by the names they
+/// read. `owner` is the id of the cast member or item whose verb this is, reached by naming
+/// them, and then `names` holds its name alone.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct CommandView {
@@ -118,9 +134,41 @@ pub struct PlaceView {
     pub exits: Vec<ExitView>,
 }
 
+/// Whether `typed` is `name`, ignoring case and outer spaces.
+pub fn is_named(typed: &str, name: &str) -> bool {
+    typed.trim().to_lowercase() == name.trim().to_lowercase()
+}
+
+/// Each `(id, name)` as a player reads it: the name, with the id after it when another one
+/// has that name too, as `Guard (npc_guard_east)`.
+pub fn add_ids_to_shared_names(named: &[(&str, &str)]) -> Vec<String> {
+    let shared = |id: &str, name: &str| {
+        (named.iter()).any(|(other, other_name)| *other != id && is_named(other_name, name))
+    };
+    (named.iter())
+        .map(|(id, name)| match shared(id, name) {
+            true => format!("{name} ({id})"),
+            false => name.to_string(),
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use crate::ServerBody;
+
+    #[test]
+    fn a_shared_name_carries_its_id() {
+        let named = [
+            ("npc_east", "Guard"),
+            ("npc_west", "guard"),
+            ("npc_briar", "Briar"),
+        ];
+        let read = super::add_ids_to_shared_names(&named);
+        assert_eq!(read, ["Guard (npc_east)", "guard (npc_west)", "Briar"]);
+        assert!(super::is_named(" briar ", "Briar"));
+        assert!(!super::is_named("bri", "Briar"));
+    }
 
     #[test]
     fn a_view_body_ignores_unknown_fields() {

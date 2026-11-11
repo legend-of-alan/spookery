@@ -8,26 +8,26 @@ Feature: A player knows where they are and what they can do
     And play shows "Docks Shop"
     And play shows "Aldric"
     And play shows "stairs (locked) — 2 ticks"
-    And play shows "docks_street — 0 ticks"
+    And play shows "Docks Street — 0 ticks"
     And play does not show "Pc rowan"
     And play does not show "Npc aldric"
 
   Scenario: help shows a verb that takes an actor with the actors in sight
     Given the docks have a greet verb that takes an actor, and the CLI holds rowan
     When I type "help"
-    Then help shows "greet <actor>: aldric" and not "greet"
+    Then help shows "greet <actor>: Aldric" and not "greet"
 
   Scenario: help shows a cast verb only while that cast member is here
     Given Aldric has an ask verb and the CLI holds rowan in the shop
     When I type "help"
-    Then I see the lines "look", "ask aldric" and "travel <exit>: docks_street, stairs"
-    And help shows "ask aldric" and not "ask <actor>: aldric"
-    And help shows "travel <exit>: docks_street, stairs" and not "Exits:"
+    Then I see the lines "look", "ask Aldric" and "travel <exit>: Docks Street, stairs"
+    And help shows "ask Aldric" and not "ask <actor>: Aldric"
+    And help shows "travel <exit>: Docks Street, stairs" and not "Exits:"
     And play does not show the line "claim"
     And no round record was written
     When I type "travel docks_street"
     And I type "help"
-    Then help shows "travel <exit>: docks_shop" and not "ask aldric"
+    Then help shows "travel <exit>: Docks Shop" and not "ask Aldric"
 
   Scenario: help hides a verb whose if fails
     Given the shop has a pray verb if rowan holds lamp_oil, and the CLI holds rowan
@@ -40,7 +40,7 @@ Feature: A player knows where they are and what they can do
   Scenario: help shows the verb of an item lying in sight
     Given lamp_oil has a sniff verb, and the CLI holds rowan
     When I type "help"
-    Then help shows "sniff lamp_oil" and not "claim"
+    Then help shows "sniff Lamp oil" and not "claim"
 
   Scenario: look reprints the place from the view
     Given the CLI is connected as a player holding rowan
@@ -60,3 +60,32 @@ Feature: A player knows where they are and what they can do
     And play types "dance"
     Then play's error shows "The table does not understand that. Type help."
     And world_time is 1080
+
+  Scenario: A player can read and type the names they see
+    Given a copy of the sample-d20 pack
+    When play joins the sample table
+    Then play shows "Lark"
+    And play does not show "pc_lark"
+    And play shows "Mill Lane (locked) — 15 ticks"
+    And play does not show "mill_lane"
+    When play types "help"
+    Then play shows "ask Briar"
+    And play shows "travel <exit>: Mill Lane, Loft, Wheel Shed"
+    When play types "travel Mill Lane"
+    Then play's error shows "The lane is shut."
+    And no round record was written
+    When play types "ask briar"
+    Then play shows "Briar steps aside."
+    When play types "travel Wheel Shed"
+    Then play shows "Wheel chock: 1"
+    When play types "take Wheel chock"
+    Then play shows "You picked up the Wheel chock."
+
+  Scenario: Two things here with one name are refused by that name
+    Given a copy of the sample-d20 pack where Oden is also called Briar and stands in the Gate Yard
+    When play joins the sample table
+    And play types "ask Briar"
+    Then play's error shows "More than one thing here is called Briar. Type help."
+    And no round record was written
+    When play types "help"
+    Then play shows "ask Briar (npc_briar)"

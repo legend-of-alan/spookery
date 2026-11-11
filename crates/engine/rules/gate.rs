@@ -1,6 +1,7 @@
 //! Pick the rule a move runs, then admit it or refuse it with a reason.
 
 use serde::{Deserialize, Serialize};
+use spookery_protocol::is_named;
 
 use crate::canon::Canon;
 use crate::intent::{Intent, Source, Target, Viewer};
@@ -201,33 +202,77 @@ fn can_name(context: &Context) -> bool {
     let Some(actor) = &intent.actor else {
         return false;
     };
-    let names = nameable(context.canon, context.state, context.presence, actor);
-    names.iter().any(|name| name == id)
+    let nameable = list_nameable(context.canon, context.state, context.presence, actor);
+    nameable.iter().any(|thing| thing.id == id)
 }
 
-/// Every id a seat may name: the items its actor holds, then the place, other actors, items
-/// and exits `look` shows them. A seat never names its own actor.
-pub(crate) fn nameable(
+/// An id a seat may name, with the names a player reads and types for it.
+pub(crate) struct NamedId {
+    pub(crate) id: String,
+    /// The name the seat reads for it.
+    pub(crate) name: String,
+    /// The other names it answers to when typed: where an exit goes, by id and by name.
+    pub(crate) aliases: Vec<String>,
+}
+
+impl NamedId {
+    pub(crate) fn new(id: &str, name: String) -> Self {
+        let id = id.to_string();
+        Self {
+            id,
+            name,
+            aliases: Vec::new(),
+        }
+    }
+}
+
+/// Everything a seat may name: the items its actor holds, then the place, other actors,
+/// items and exits `look` shows them, each with the name that view gives it. A seat never
+/// names its own actor.
+pub(crate) fn list_nameable(
     canon: &Canon,
     state: &State,
     presence: &Presence,
     viewer: &Viewer,
-) -> Vec<String> {
-    let mut names: Vec<String> = nested_map::entries_of(&state.actors().items, viewer.actor_id())
-        .filter(|(_, count)| **count > 0)
-        .map(|(id, _)| id.to_string())
-        .collect();
+) -> Vec<NamedId> {
+    let mut nameable: Vec<NamedId> =
+        nested_map::entries_of(&state.actors().items, viewer.actor_id())
+            .filter(|(_, count)| **count > 0)
+            .map(|(id, _)| NamedId::new(id, canon.display_name(id)))
+            .collect();
     if let Ok(view) = perceive_as(canon, state, presence, viewer) {
-        names.push(view.place);
+        nameable.push(NamedId::new(&view.place, view.place_name));
         let me = viewer.actor_id();
-        names.extend(
-            view.visible_actors
-                .into_iter()
-                .filter(|id| id != me)
-                .map(String::from),
-        );
-        names.extend(view.items.into_iter().map(|item| item.id));
-        names.extend(view.exits.into_iter().map(|exit| exit.name));
+        let actors = view.visible_actors.iter().zip(view.actor_names);
+        let others = actors.filter(|(id, _)| *id != me);
+        nameable.extend(others.map(|(id, name)| NamedId::new(id.as_str(), name)));
+        let items = view.items.into_iter();
+        nameable.extend(items.map(|item| NamedId::new(&item.id, item.name)));
+        nameable.extend(view.exits.into_iter().map(|exit| NamedId {
+            name: exit.display_name().to_string(),
+            aliases: vec![exit.to, exit.place_name],
+            id: exit.name,
+        }));
     }
-    names
+    nameable
+}
+
+/// The id `typed` names among `nameable`, by the id or any name, ignoring case and outer
+/// spaces. `None` when nothing has that name, and `AMBIGUOUS_NAME` when two ids do.
+pub(crate) fn find_named<'a>(
+    nameable: &'a [NamedId],
+    typed: &str,
+) -> Result<Option<&'a str>, Reason> {
+    let mut found: Option<&str> = None;
+    for thing in nameable {
+        let mut names = [&thing.id, &thing.name].into_iter().chain(&thing.aliases);
+        if !names.any(|name| is_named(typed, name)) {
+            continue;
+        }
+        match found {
+            Some(id) if id != thing.id => return Err(Reason::AmbiguousName),
+            _ => found = Some(&thing.id),
+        }
+    }
+    Ok(found)
 }

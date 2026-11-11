@@ -188,7 +188,11 @@ pub fn render_view(view: &protocol::View) -> String {
     if !items.is_empty() {
         let mut lines = Vec::new();
         for item in items {
-            lines.push(format!("{}: {}", humanize(&item.id), item.count));
+            let name = match item.name.as_str() {
+                "" => humanize(&item.id),
+                name => name.to_string(),
+            };
+            lines.push(format!("{name}: {}", item.count));
         }
         sections.push(format!("Items:\n{}", lines.join("\n")));
     }
@@ -202,7 +206,7 @@ pub fn render_view(view: &protocol::View) -> String {
     sections.join("\n\n")
 }
 
-/// One command per line: `look`, `ask briar`, or `strike <actor>: briar, aldric`.
+/// One command per line: `look`, `ask Briar`, or `strike <actor>: Briar, Aldric`.
 pub fn render_help(commands: &[CommandView]) -> String {
     let lines: Vec<String> = commands.iter().map(command_line).collect();
     lines.join("\n")
@@ -211,6 +215,7 @@ pub fn render_help(commands: &[CommandView]) -> String {
 fn command_line(command: &CommandView) -> String {
     let name = &command.name;
     if let Some(owner) = &command.owner {
+        let owner = command.names.first().unwrap_or(owner);
         return format!("{name} {owner}");
     }
     if command.target == "none" {
@@ -236,9 +241,10 @@ pub fn render_map(places: &[PlaceView]) -> String {
     lines.join("\n")
 }
 
-/// `stairs (locked) — 2 ticks`.
+/// `stairs (locked) — 2 ticks`, or `Docks Street — 0 ticks` for an exit named by where it
+/// goes.
 fn exit_phrase(exit: &ExitView) -> String {
-    let (name, ticks) = (&exit.name, exit.ticks);
+    let (name, ticks) = (exit.display_name(), exit.ticks);
     if exit.locked {
         format!("{name} (locked) — {ticks} ticks")
     } else {
@@ -582,6 +588,7 @@ You are in Gate Yard."
             items: vec![ItemStack {
                 id: "lamp_oil".to_string(),
                 count: 4,
+                name: "Lamp oil".to_string(),
             }],
             meters: vec![MeterView {
                 id: "grit".to_string(),

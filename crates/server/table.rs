@@ -1,6 +1,7 @@
 //! The table, the one owner of the world and its seats: connections, commands, say and rounds.
 //! Every message it sends but a hello takes the next `seq` from its one counter.
 
+use std::collections::BTreeMap;
 use std::io::Write;
 use std::sync::mpsc::{Receiver, Sender};
 
@@ -203,10 +204,13 @@ impl Table {
             .filter(|command| command.seat == seat)
             .map(|command| command.name.to_string())
             .collect();
-        let (mut open, mut taken) = (Vec::new(), Vec::new());
+        let (mut open, mut taken, mut pc_names) = (Vec::new(), Vec::new(), BTreeMap::new());
         if seat == Seat::Player {
             commands.extend(self.verbs.iter().cloned());
             (open, taken) = self.open_and_taken();
+            let canon = self.world.canon();
+            let ids = open.iter().chain(&taken);
+            pc_names = ids.map(|id| (id.clone(), canon.display_name(id))).collect();
         }
         let hello = ServerMessage {
             id: None,
@@ -217,6 +221,7 @@ impl Table {
                 commands,
                 open,
                 taken,
+                pc_names,
             },
         };
         self.send(conn, hello);
@@ -309,7 +314,7 @@ impl Table {
         let args = read::<ClaimArgs>(args).filter(|_| self.seats.claim_of(conn).is_none());
         let fresh = matches!(args, Some(ClaimArgs::Actor { .. }));
         let taken = match args {
-            Some(ClaimArgs::Actor { actor }) => self.claim_free_pc(actor.into()),
+            Some(ClaimArgs::Actor { actor }) => self.claim_free_pc(&actor),
             Some(ClaimArgs::Token { token, last_seq }) => self.claim_by_token(&token, last_seq),
             None => Err(Reason::Schema),
         };
@@ -340,17 +345,16 @@ impl Table {
         }
     }
 
-    /// A new claim on a free PC, under a new token, with the says this PC heard before.
-    fn claim_free_pc(&mut self, actor: ActorId) -> Result<(String, ActorId, ServerBody), Reason> {
+    /// A new claim on a free PC, named by id or display name, under a new token, with the
+    /// says this PC heard before.
+    fn claim_free_pc(&mut self, typed: &str) -> Result<(String, ActorId, ServerBody), Reason> {
         let presence = self.seats.presence();
         if presence.actors_present.len() >= MAX_PLAYER_SEATS {
             return Err(Reason::TableFull);
         }
+        let actor = self.world.find_pc(typed)?.ok_or(Reason::Schema)?;
         if presence.actors_present.contains(&actor) {
             return Err(Reason::SeatTaken);
-        }
-        if !self.world.pcs().any(|pc| *pc == actor) {
-            return Err(Reason::Schema);
         }
         let scrollback = self.world.player_scrollback(&actor)?;
         let token = uuid::Uuid::new_v4().simple().to_string();

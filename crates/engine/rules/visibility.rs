@@ -156,7 +156,7 @@ fn actor_item_sentence(
     changes: &[Change],
 ) -> Option<String> {
     let (before, after) = counts(change)?;
-    let name = item_name(canon, id);
+    let name = canon.display_name(id);
     let who = subject_for(canon, viewer, actor);
     let owner = possessive_for(canon, viewer, actor);
     let sentence = match (after < before, other_side(changes, change, id)) {
@@ -182,7 +182,7 @@ fn place_item_sentence(
     if matches!(other_side(changes, change, id), Some(EntityId::Actor(_))) {
         return None;
     }
-    let name = item_name(canon, id);
+    let name = canon.display_name(id);
     if after < before {
         Some(format!("The {name} here is gone."))
     } else {
@@ -232,15 +232,6 @@ fn possessive_for(canon: &Canon, viewer: &ActorId, actor: &str) -> String {
     } else {
         format!("{}'s", canon.display_name(actor))
     }
-}
-
-fn item_name(canon: &Canon, id: &str) -> String {
-    canon
-        .items
-        .get(id)
-        .map(|item| item.name.clone())
-        .filter(|name| !name.is_empty())
-        .unwrap_or_else(|| id.replace('_', " "))
 }
 
 fn narrations(

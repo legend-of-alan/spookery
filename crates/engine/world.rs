@@ -9,7 +9,7 @@ use spookery_protocol::{CommandView, PlaceView};
 use crate::canon::Budget;
 use crate::canon::{check_save, load_canon, pack_rev, Canon};
 use crate::diagnostic::{error, first_reason, locate_nth, schema_error, Code, Diagnostic};
-use crate::intent::{Intent, IntentArgs, Source, Target};
+use crate::intent::{Intent, IntentArgs, Source, Target, Viewer};
 use crate::rules::context::Context;
 use crate::rules::effect::{payload_json, Effect};
 use crate::rules::gate;
@@ -182,6 +182,16 @@ impl<L> World<L> {
             .map(|(id, _)| id)
     }
 
+    /// The PC `typed` names, by id or display name, ignoring case and outer spaces. `None`
+    /// when no PC has that name, and `AMBIGUOUS_NAME` when two do.
+    pub fn find_pc(&self, typed: &str) -> Result<Option<ActorId>, Reason> {
+        let pcs = self
+            .pcs()
+            .map(|id| (id.as_str(), self.canon.display_name(id.as_str())));
+        let pcs: Vec<gate::NamedId> = pcs.map(|(id, name)| gate::NamedId::new(id, name)).collect();
+        Ok(gate::find_named(&pcs, typed)?.map(ActorId::from))
+    }
+
     pub fn state(&self) -> &State {
         &self.state
     }
@@ -192,8 +202,9 @@ impl<L> World<L> {
     }
 
     /// Gate a player's line with `presence` seated, then queue it. The line is an intent
-    /// from the start, so each refusal names its id. Only a save at the last round index has
-    /// no next round to name, and refuses `SCHEMA` with an empty id.
+    /// from the start, so each refusal names its id. A typed name stands for the one id in
+    /// sight that has it, and a name two of them share is `AMBIGUOUS_NAME`. Only a save at
+    /// the last round index has no next round to name, and refuses `SCHEMA` with an empty id.
     pub fn queue_player_move(
         &mut self,
         presence: &Presence,
@@ -201,7 +212,17 @@ impl<L> World<L> {
         verb: &str,
         target: Option<&str>,
     ) -> Result<QueuedMove, gate::Refusal> {
-        let token = target.filter(|token| !token.is_empty());
+        let typed = target.filter(|token| !token.is_empty());
+        let named = match typed {
+            Some(typed) if verb != gate::CANCEL => {
+                let viewer = Viewer::Player(actor_id.clone());
+                let nameable = gate::list_nameable(&self.canon, &self.state, presence, &viewer);
+                gate::find_named(&nameable, typed).map(|id| id.map(String::from))
+            }
+            _ => Ok(None),
+        };
+        let resolved = named.clone().unwrap_or_default();
+        let token = resolved.as_deref().or(typed);
         let Ok(mut intent) = Intent::player(&self.state, actor_id, verb, token) else {
             return Err(gate::Refusal {
                 id: String::new(),
@@ -209,6 +230,13 @@ impl<L> World<L> {
                 detail: None,
             });
         };
+        if let Err(code) = named {
+            let detail = typed.map(|typed| typed.trim().to_string());
+            return Err(gate::Refusal {
+                detail,
+                ..gate::Refusal::new(&intent, code)
+            });
+        }
         if gate::is_cancel(&intent) {
             if token.is_some() || self.queue.iter().any(|queued| queued.id == intent.id) {
                 return Err(gate::Refusal::new(&intent, Reason::Schema));

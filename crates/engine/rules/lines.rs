@@ -1,11 +1,11 @@
 //! The place name, place prose and busy line a view carries, and a player's help and map.
 
-use spookery_protocol::{CommandView, PlaceView, Seat, COMMANDS};
+use spookery_protocol::{add_ids_to_shared_names, CommandView, PlaceView, Seat, COMMANDS};
 
 use crate::canon::Canon;
 use crate::intent::{Target, Viewer};
 use crate::rules::cond;
-use crate::rules::gate::{nameable, verb_for};
+use crate::rules::gate::{list_nameable, verb_for};
 use crate::rules::rule::{Owner, TargetKind, When};
 use crate::rules::travel::{exit_stood_on, exit_view, exits_at};
 use crate::state::id::ActorId;
@@ -15,7 +15,8 @@ use crate::Reason;
 
 /// `help`: the built-in player commands but `claim`, then each pack verb `verb_for` reaches
 /// now and whose `if` holds. A cast member's or item's verb is reached by naming them
-/// (`nameable`), so it carries that owner as its one name. Cost is not checked.
+/// (`list_nameable`), so it carries that owner as its one name. Each name is the one the player
+/// reads, with its id after it when two share it. Cost is not checked.
 pub(crate) fn help(
     canon: &Canon,
     state: &State,
@@ -36,8 +37,17 @@ pub(crate) fn help(
             owner: None,
         })
         .collect();
-    let names = nameable(canon, state, presence, &viewer);
-    let hints = std::iter::once(None).chain(names.iter().map(|name| Some(name.as_str())));
+    let nameable = list_nameable(canon, state, presence, &viewer);
+    let named: Vec<(&str, &str)> = (nameable.iter())
+        .map(|thing| (thing.id.as_str(), thing.name.as_str()))
+        .collect();
+    let shown = add_ids_to_shared_names(&named);
+    let read_as = |id: &str| match named.iter().position(|(named, _)| *named == id) {
+        Some(at) => shown[at].clone(),
+        None => place_name(canon, id),
+    };
+    let ids: Vec<String> = nameable.iter().map(|thing| thing.id.clone()).collect();
+    let hints = std::iter::once(None).chain(ids.iter().map(|id| Some(id.as_str())));
     let hints: Vec<Option<&str>> = hints.collect();
     for verb in canon.verbs() {
         for &hint in &hints {
@@ -60,13 +70,14 @@ pub(crate) fn help(
                 When::Verb { target, .. } => *target,
                 _ => TargetKind::None,
             };
+            let names = match owner {
+                Some(owner) => vec![owner.clone()],
+                None => names_for(canon, state, actor_id, kind, &ids),
+            };
             let command = CommandView {
                 name: verb.clone(),
                 target: kind.as_str().to_string(),
-                names: match owner {
-                    Some(owner) => vec![owner.clone()],
-                    None => names_for(canon, state, actor_id, kind, &names),
-                },
+                names: names.iter().map(|id| read_as(id)).collect(),
                 owner: owner.cloned(),
             };
             if !commands.contains(&command) {

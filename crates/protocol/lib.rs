@@ -41,7 +41,8 @@ pub use message::{
     Seat, ServerBody, ServerMessage, COMMANDS, VERSION,
 };
 pub use player::{
-    CommandView, ExitView, ItemStack, KnownFact, MeterView, NoteView, PlaceView, View,
+    add_ids_to_shared_names, is_named, CommandView, ExitView, ItemStack, KnownFact, MeterView,
+    NoteView, PlaceView, View,
 };
 
 /// The listening line `spook run` prints on stdout once both ports are bound: the game port
@@ -103,6 +104,7 @@ pub enum Reason {
     NoExit,
     Busy,
     TriggerLeak,
+    AmbiguousName,
 }
 
 impl Reason {
@@ -138,6 +140,7 @@ impl Reason {
             Reason::NoExit => "NO_EXIT",
             Reason::Busy => "BUSY",
             Reason::TriggerLeak => "TRIGGER_LEAK",
+            Reason::AmbiguousName => "AMBIGUOUS_NAME",
         }
     }
 }
@@ -245,6 +248,15 @@ impl fmt::Display for Refusal {
                 None => "There is no exit that way.",
             },
             Reason::Busy => "You are busy.",
+            Reason::AmbiguousName => match named {
+                Some(name) => {
+                    return write!(
+                        f,
+                        "More than one thing here is called {name}. Type help. [{code}]"
+                    )
+                }
+                None => "More than one thing here has that name. Type help.",
+            },
             Reason::CantAfford => match named {
                 Some(what) => return write!(f, "You cannot afford {what}. [{code}]"),
                 None => "You cannot afford that.",
@@ -313,7 +325,7 @@ impl From<Speaker> for String {
 mod tests {
     use super::*;
 
-    const ALL: [Reason; 30] = [
+    const ALL: [Reason; 31] = [
         Reason::UnknownEffect,
         Reason::IllegalKnowledge,
         Reason::OutOfRange,
@@ -344,6 +356,7 @@ mod tests {
         Reason::NotAWeapon,
         Reason::NoExit,
         Reason::Busy,
+        Reason::AmbiguousName,
     ];
 
     /// A new variant fails to compile here until it is added to `ALL`.
@@ -378,7 +391,8 @@ mod tests {
             | Reason::CantAfford
             | Reason::NotAWeapon
             | Reason::NoExit
-            | Reason::Busy => ALL.contains(&reason),
+            | Reason::Busy
+            | Reason::AmbiguousName => ALL.contains(&reason),
         }
     }
 
