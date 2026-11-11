@@ -8,6 +8,7 @@ use spookery_engine::testing::{stamp_pack_rev, state_of};
 use spookery_engine::{entity, load_canon, Meter, Modifier};
 
 use super::common::replace_in_file;
+use super::meters::{assert_refused, run_check};
 use super::triggers::{add_verb, edit_table_with, intent, play_round, seen_of, set_place, sit};
 use crate::support::{self, copy_docks};
 use crate::World;
@@ -337,6 +338,18 @@ fn the_pack_drops_luck_and_tide(world: &mut World) {
     let pack = world.pack.clone().unwrap();
     replace_in_file(&pack.join("cast/pc-rowan.md"), LUCK_ROW, "");
     fs::remove_file(pack.join("world/meters.yaml")).unwrap();
+}
+
+#[when(expr = "spook check reports pc_rowan holds {word}")]
+fn check_reports_rowan_holds(world: &mut World, id: String) {
+    run_check(world);
+    assert_refused(world, &[&format!("actor 'pc_rowan' holds modifier '{id}'")]);
+}
+
+#[when(expr = "spook check reports the world lists meter {word}")]
+fn check_reports_the_world_lists(world: &mut World, id: String) {
+    run_check(world);
+    assert_refused(world, &[&format!("the world lists meter '{id}'")]);
 }
 
 #[when(expr = "the operator migrates the pack")]

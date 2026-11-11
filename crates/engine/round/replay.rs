@@ -4,7 +4,7 @@ use std::fs;
 use std::path::Path;
 use std::sync::Arc;
 
-use crate::canon::{check_save, load_canon};
+use crate::canon::load_canon;
 use crate::diagnostic::first_reason;
 use crate::hash::blake2s_tagged;
 use crate::rules::effect::Effect;
@@ -242,7 +242,7 @@ pub(crate) fn peek_at_tip(path: &Path) -> Result<World<()>, Reason> {
     let mut world = World::open(path)?;
     // Open checked a save with nothing past it. A replayed tip is checked here.
     if replay_tail(&mut world)? {
-        check_save(world.canon(), world.state()).map_err(|diags| first_reason(&diags))?;
+        save::check_save(world.canon(), world.state()).map_err(|diags| first_reason(&diags))?;
     }
     Ok(world)
 }

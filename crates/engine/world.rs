@@ -7,7 +7,7 @@ use std::sync::Arc;
 use spookery_protocol::{CommandView, PlaceView};
 
 use crate::canon::Budget;
-use crate::canon::{check_save, load_canon, pack_rev, Canon};
+use crate::canon::{load_canon, pack_rev, Canon};
 use crate::diagnostic::{error, first_reason, locate_nth, schema_error, Code, Diagnostic};
 use crate::entity;
 use crate::intent::{Intent, IntentArgs, Source, Target, Viewer};
@@ -714,7 +714,7 @@ fn load_save_file(
         }
     }
     if let Some(canon) = canon.filter(|_| !continues) {
-        if let Err(more) = check_save(canon, &state) {
+        if let Err(more) = save::check_save(canon, &state) {
             problems.extend(more);
         }
     }
