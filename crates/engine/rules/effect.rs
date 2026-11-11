@@ -1,6 +1,9 @@
 //! One effect: its kind, and the fields that kind carries.
 
-use serde::{Deserialize, Serialize};
+use serde::de::Error as _;
+use serde::ser::Error as _;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde_json::{Map, Value};
 
 use crate::canon::Canon;
 use crate::entity;
@@ -13,8 +16,7 @@ use crate::state::{self, nested_map, ActorKind, MemoryLine, Note, Presence, Stat
 use crate::Reason;
 
 /// One effect. JSON is `kind`, `as`, `intent_id`, then the fields of `kind`.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(into = "EffectRecord", try_from = "EffectRecord")]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Effect {
     pub kind: EffectKind,
     /// Who the effect was written as, or `None` for a change rule on a world change.
@@ -22,18 +24,23 @@ pub struct Effect {
     pub intent_id: String,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum EffectKind {
     Meter {
         entity: entity::Id,
         key: String,
+        #[serde(flatten)]
         write: MeterWrite,
     },
     Item {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         actor_id: Option<ActorId>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         place: Option<PlaceId>,
         id: String,
         delta: i64,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         max: Option<i64>,
     },
     /// One application of modifier `id`, of magnitude `add`, to an actor, lasting `ticks`.
@@ -55,12 +62,14 @@ pub enum EffectKind {
         from: String,
         to: String,
         /// Exact tick of a timed arrival. Instant moves leave this empty.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         arrived_at: Option<u64>,
     },
     Memory {
         actor_id: ActorId,
         fact_ids: Vec<String>,
         tags: Vec<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         text: Option<String>,
     },
     Flag {
@@ -68,14 +77,16 @@ pub enum EffectKind {
         key: String,
         value: bool,
     },
-    /// Open or shut the door of an exit.
+    /// Open or shut the door of an exit. JSON writes the exit as `place` and `exit`.
     ExitOpen {
+        #[serde(flatten)]
         exit: ExitId,
         open: bool,
     },
     Note {
         note_id: String,
         to: Vec<ActorId>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         place: Option<PlaceId>,
         fact_ids: Vec<String>,
         text: String,
@@ -89,6 +100,66 @@ pub enum EffectKind {
         actor_id: ActorId,
         fact: String,
     },
+}
+
+/// Writes `kind`, then `as` when there is one, then `intent_id`, then the fields of `kind`.
+impl Serialize for Effect {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let Value::Object(mut fields) =
+            serde_json::to_value(&self.kind).map_err(S::Error::custom)?
+        else {
+            return Err(S::Error::custom("effect kind is not an object"));
+        };
+        fields.shift_insert(1, "intent_id".into(), self.intent_id.clone().into());
+        if let Some(viewer) = &self.viewer {
+            fields.shift_insert(1, "as".into(), viewer.to_string().into());
+        }
+        fields.serialize(serializer)
+    }
+}
+
+/// Reads what `serialize` writes. A `kind` the engine does not run is `UNKNOWN_EFFECT`.
+impl<'de> Deserialize<'de> for Effect {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let mut fields = Map::deserialize(deserializer)?;
+        let viewer = fields
+            .shift_remove("as")
+            .map(Viewer::deserialize)
+            .transpose()
+            .map_err(D::Error::custom)?;
+        let intent_id = fields
+            .shift_remove("intent_id")
+            .ok_or_else(|| D::Error::missing_field("intent_id"))?;
+        let intent_id = String::deserialize(intent_id).map_err(D::Error::custom)?;
+        let kind_name = fields
+            .get("kind")
+            .and_then(Value::as_str)
+            .map(str::to_owned);
+        let kind = EffectKind::deserialize(Value::Object(fields)).map_err(|err| {
+            let unknown = kind_name.is_some_and(|name| {
+                err.to_string()
+                    .starts_with(&format!("unknown variant `{name}`"))
+            });
+            if unknown {
+                D::Error::custom(Reason::UnknownEffect)
+            } else {
+                D::Error::custom(err)
+            }
+        })?;
+        if let EffectKind::Item {
+            actor_id, place, ..
+        } = &kind
+        {
+            if actor_id.is_some() == place.is_some() {
+                return Err(D::Error::custom(Reason::Schema));
+            }
+        }
+        Ok(Effect {
+            kind,
+            viewer,
+            intent_id,
+        })
+    }
 }
 
 impl Effect {
@@ -222,420 +293,12 @@ impl EffectKind {
     }
 }
 
-#[derive(Serialize, Deserialize)]
-#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
-pub(crate) enum EffectRecord {
-    Meter {
-        #[serde(rename = "as", default, skip_serializing_if = "Option::is_none")]
-        as_viewer: Option<Viewer>,
-        intent_id: String,
-        entity: entity::Id,
-        key: String,
-        #[serde(flatten)]
-        write: MeterWrite,
-    },
-    Item {
-        #[serde(rename = "as", default, skip_serializing_if = "Option::is_none")]
-        as_viewer: Option<Viewer>,
-        intent_id: String,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        actor_id: Option<ActorId>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        place: Option<PlaceId>,
-        id: String,
-        delta: i64,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        max: Option<i64>,
-    },
-    Modifier {
-        #[serde(rename = "as", default, skip_serializing_if = "Option::is_none")]
-        as_viewer: Option<Viewer>,
-        intent_id: String,
-        actor_id: ActorId,
-        id: String,
-        add: i64,
-        ticks: u64,
-    },
-    Wield {
-        #[serde(rename = "as", default, skip_serializing_if = "Option::is_none")]
-        as_viewer: Option<Viewer>,
-        intent_id: String,
-        actor_id: ActorId,
-        id: String,
-    },
-    Unwield {
-        #[serde(rename = "as", default, skip_serializing_if = "Option::is_none")]
-        as_viewer: Option<Viewer>,
-        intent_id: String,
-        actor_id: ActorId,
-    },
-    Location {
-        #[serde(rename = "as", default, skip_serializing_if = "Option::is_none")]
-        as_viewer: Option<Viewer>,
-        intent_id: String,
-        actor_id: ActorId,
-        from: String,
-        to: String,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        arrived_at: Option<u64>,
-    },
-    Memory {
-        #[serde(rename = "as", default, skip_serializing_if = "Option::is_none")]
-        as_viewer: Option<Viewer>,
-        intent_id: String,
-        actor_id: ActorId,
-        fact_ids: Vec<String>,
-        tags: Vec<String>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        text: Option<String>,
-    },
-    Flag {
-        #[serde(rename = "as", default, skip_serializing_if = "Option::is_none")]
-        as_viewer: Option<Viewer>,
-        intent_id: String,
-        entity: entity::Id,
-        key: String,
-        value: bool,
-    },
-    ExitOpen {
-        #[serde(rename = "as", default, skip_serializing_if = "Option::is_none")]
-        as_viewer: Option<Viewer>,
-        intent_id: String,
-        place: PlaceId,
-        exit: String,
-        open: bool,
-    },
-    Note {
-        #[serde(rename = "as", default, skip_serializing_if = "Option::is_none")]
-        as_viewer: Option<Viewer>,
-        intent_id: String,
-        note_id: String,
-        to: Vec<ActorId>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        place: Option<PlaceId>,
-        fact_ids: Vec<String>,
-        text: String,
-    },
-    Narrate {
-        #[serde(rename = "as", default, skip_serializing_if = "Option::is_none")]
-        as_viewer: Option<Viewer>,
-        intent_id: String,
-        to: Vec<ActorId>,
-        fact_ids: Vec<String>,
-        text: String,
-    },
-    Reveal {
-        #[serde(rename = "as", default, skip_serializing_if = "Option::is_none")]
-        as_viewer: Option<Viewer>,
-        intent_id: String,
-        actor_id: ActorId,
-        fact: String,
-    },
-    #[serde(other)]
-    Unknown,
-}
-
-impl From<Effect> for EffectRecord {
-    fn from(effect: Effect) -> Self {
-        let as_viewer = effect.viewer;
-        let intent_id = effect.intent_id;
-        match effect.kind {
-            EffectKind::Meter { entity, key, write } => Self::Meter {
-                as_viewer,
-                intent_id,
-                entity,
-                key,
-                write,
-            },
-            EffectKind::Item {
-                actor_id,
-                place,
-                id,
-                delta,
-                max,
-            } => Self::Item {
-                as_viewer,
-                intent_id,
-                actor_id,
-                place,
-                id,
-                delta,
-                max,
-            },
-            EffectKind::Modifier {
-                actor_id,
-                id,
-                add,
-                ticks,
-            } => Self::Modifier {
-                as_viewer,
-                intent_id,
-                actor_id,
-                id,
-                add,
-                ticks,
-            },
-            EffectKind::Wield { actor_id, id } => Self::Wield {
-                as_viewer,
-                intent_id,
-                actor_id,
-                id,
-            },
-            EffectKind::Unwield { actor_id } => Self::Unwield {
-                as_viewer,
-                intent_id,
-                actor_id,
-            },
-            EffectKind::Location {
-                actor_id,
-                from,
-                to,
-                arrived_at,
-            } => Self::Location {
-                as_viewer,
-                intent_id,
-                actor_id,
-                from,
-                to,
-                arrived_at,
-            },
-            EffectKind::Memory {
-                actor_id,
-                fact_ids,
-                tags,
-                text,
-            } => Self::Memory {
-                as_viewer,
-                intent_id,
-                actor_id,
-                fact_ids,
-                tags,
-                text,
-            },
-            EffectKind::Flag { entity, key, value } => Self::Flag {
-                as_viewer,
-                intent_id,
-                entity,
-                key,
-                value,
-            },
-            EffectKind::ExitOpen { exit, open } => Self::ExitOpen {
-                as_viewer,
-                intent_id,
-                place: exit.place,
-                exit: exit.exit,
-                open,
-            },
-            EffectKind::Note {
-                note_id,
-                to,
-                place,
-                fact_ids,
-                text,
-            } => Self::Note {
-                as_viewer,
-                intent_id,
-                note_id,
-                to,
-                place,
-                fact_ids,
-                text,
-            },
-            EffectKind::Narrate { to, fact_ids, text } => Self::Narrate {
-                as_viewer,
-                intent_id,
-                to,
-                fact_ids,
-                text,
-            },
-            EffectKind::Reveal { actor_id, fact } => Self::Reveal {
-                as_viewer,
-                intent_id,
-                actor_id,
-                fact,
-            },
-        }
-    }
-}
-
-impl TryFrom<EffectRecord> for Effect {
-    type Error = Reason;
-
-    fn try_from(record: EffectRecord) -> Result<Self, Self::Error> {
-        let (kind, as_viewer, intent_id) = match record {
-            EffectRecord::Meter {
-                as_viewer,
-                intent_id,
-                entity,
-                key,
-                write,
-            } => (
-                EffectKind::Meter { entity, key, write },
-                as_viewer,
-                intent_id,
-            ),
-            EffectRecord::Item {
-                as_viewer,
-                intent_id,
-                actor_id,
-                place,
-                id,
-                delta,
-                max,
-            } => {
-                if actor_id.is_some() == place.is_some() {
-                    return Err(Reason::Schema);
-                }
-                (
-                    EffectKind::Item {
-                        actor_id,
-                        place,
-                        id,
-                        delta,
-                        max,
-                    },
-                    as_viewer,
-                    intent_id,
-                )
-            }
-            EffectRecord::Modifier {
-                as_viewer,
-                intent_id,
-                actor_id,
-                id,
-                add,
-                ticks,
-            } => (
-                EffectKind::Modifier {
-                    actor_id,
-                    id,
-                    add,
-                    ticks,
-                },
-                as_viewer,
-                intent_id,
-            ),
-            EffectRecord::Wield {
-                as_viewer,
-                intent_id,
-                actor_id,
-                id,
-            } => (EffectKind::Wield { actor_id, id }, as_viewer, intent_id),
-            EffectRecord::Unwield {
-                as_viewer,
-                intent_id,
-                actor_id,
-            } => (EffectKind::Unwield { actor_id }, as_viewer, intent_id),
-            EffectRecord::Location {
-                as_viewer,
-                intent_id,
-                actor_id,
-                from,
-                to,
-                arrived_at,
-            } => (
-                EffectKind::Location {
-                    actor_id,
-                    from,
-                    to,
-                    arrived_at,
-                },
-                as_viewer,
-                intent_id,
-            ),
-            EffectRecord::Memory {
-                as_viewer,
-                intent_id,
-                actor_id,
-                fact_ids,
-                tags,
-                text,
-            } => (
-                EffectKind::Memory {
-                    actor_id,
-                    fact_ids,
-                    tags,
-                    text,
-                },
-                as_viewer,
-                intent_id,
-            ),
-            EffectRecord::Flag {
-                as_viewer,
-                intent_id,
-                entity,
-                key,
-                value,
-            } => (
-                EffectKind::Flag { entity, key, value },
-                as_viewer,
-                intent_id,
-            ),
-            EffectRecord::ExitOpen {
-                as_viewer,
-                intent_id,
-                place,
-                exit,
-                open,
-            } => {
-                let exit = ExitId { place, exit };
-                (EffectKind::ExitOpen { exit, open }, as_viewer, intent_id)
-            }
-            EffectRecord::Note {
-                as_viewer,
-                intent_id,
-                note_id,
-                to,
-                place,
-                fact_ids,
-                text,
-            } => (
-                EffectKind::Note {
-                    note_id,
-                    to,
-                    place,
-                    fact_ids,
-                    text,
-                },
-                as_viewer,
-                intent_id,
-            ),
-            EffectRecord::Narrate {
-                as_viewer,
-                intent_id,
-                to,
-                fact_ids,
-                text,
-            } => (
-                EffectKind::Narrate { to, fact_ids, text },
-                as_viewer,
-                intent_id,
-            ),
-            EffectRecord::Reveal {
-                as_viewer,
-                intent_id,
-                actor_id,
-                fact,
-            } => (EffectKind::Reveal { actor_id, fact }, as_viewer, intent_id),
-            EffectRecord::Unknown => return Err(Reason::UnknownEffect),
-        };
-        Ok(Effect {
-            kind,
-            viewer: as_viewer,
-            intent_id,
-        })
-    }
-}
-
-/// The effect's record minus `kind`, `as` and `intent_id`, keys in declaration order.
+/// The effect's fields minus `kind`, keys in declaration order.
 pub(crate) fn payload_json(effect: &Effect) -> String {
-    let record = serde_json::to_value(effect).expect("effect payload");
-    let serde_json::Value::Object(mut fields) = record else {
-        unreachable!("effect records are objects")
+    let Ok(Value::Object(mut fields)) = serde_json::to_value(&effect.kind) else {
+        unreachable!("effect kinds are objects")
     };
-    for key in ["kind", "as", "intent_id"] {
-        fields.shift_remove(key);
-    }
+    fields.shift_remove("kind");
     serde_json::to_string(&fields).expect("effect payload")
 }
 
