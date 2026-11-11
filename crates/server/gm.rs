@@ -224,10 +224,10 @@ mod tests {
 
     use spookery_engine::{Presence, Reason};
 
-    use super::{describe, run};
+    use crate::gm;
     use crate::protocol::{QueuedMove, Seat, COMMANDS};
 
-    /// `run` runs each GM command the hello lists: well-formed arguments are not
+    /// `gm::run` runs each GM command the hello lists: well-formed arguments are not
     /// `SCHEMA`, and a command that is not one is.
     #[test]
     fn each_gm_command_runs() {
@@ -250,11 +250,11 @@ mod tests {
         assert_eq!(called, gm_commands);
         for (command, args) in calls {
             let args = args.as_object().cloned().unwrap_or_default();
-            let ran = run(&mut world, &Presence::default(), command, &args);
+            let ran = gm::run(&mut world, &Presence::default(), command, &args);
             assert!(!matches!(ran, Err(Reason::Schema)), "{command}");
         }
         assert!(matches!(
-            run(&mut world, &Presence::default(), "fly", &Default::default()),
+            gm::run(&mut world, &Presence::default(), "fly", &Default::default()),
             Err(Reason::Schema)
         ));
     }
@@ -264,9 +264,9 @@ mod tests {
     #[test]
     fn each_gm_command_is_described() {
         for command in COMMANDS.iter().filter(|command| command.seat == Seat::Gm) {
-            assert!(describe(command.name).is_some(), "{}", command.name);
+            assert!(gm::describe(command.name).is_some(), "{}", command.name);
         }
-        assert!(describe("fly").is_none());
+        assert!(gm::describe("fly").is_none());
     }
 
     #[test]
