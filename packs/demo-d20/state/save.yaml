@@ -1,0 +1,121 @@
+schema: save
+world_id: demo-d20
+pack_rev: blake2s:0cf357b1edefcb4658d370dc12254e21c7cf87125b76d50dcb8b4ab7fffe9857
+rules_rev: 22
+state_rev: 0
+round_index: 0
+world_time: 1080
+last_round_at: "2026-01-01T00:00:00Z"
+actors:
+  kind:
+    npc_briar: npc
+    npc_oden: npc
+    pc_corin: pc
+    pc_nell: pc
+  place:
+    npc_briar: gate_yard
+    npc_oden: wheel_shed
+    pc_corin: gate_yard
+    pc_nell: mill_lane
+  visited:
+    pc_corin:
+      gate_yard:
+        - mill_lane
+        - loft
+        - wheel_shed
+    pc_nell:
+      mill_lane:
+        - gate_yard
+  acts:
+    npc_briar:
+      last_act_round: 0
+      idle_acts_this_window: 0
+      live_acts_this_window: 0
+    npc_oden:
+      last_act_round: 0
+      idle_acts_this_window: 0
+      live_acts_this_window: 0
+    pc_corin:
+      last_act_round: 0
+      idle_acts_this_window: 0
+      live_acts_this_window: 0
+    pc_nell:
+      last_act_round: 0
+      idle_acts_this_window: 0
+      live_acts_this_window: 0
+  items:
+    pc_corin:
+      tonic: 1
+  meters:
+    npc_briar:
+      defense:
+        base: 14
+        offset: 0
+      grace:
+        base: 1
+        offset: 0
+      hp:
+        base: 8
+        offset: 0
+      might:
+        base: 2
+        offset: 0
+    npc_oden:
+      defense:
+        base: 10
+        offset: 0
+      grace:
+        base: 1
+        offset: 0
+      hp:
+        base: 8
+        offset: 0
+      might:
+        base: 1
+        offset: 0
+    pc_corin:
+      defense:
+        base: 11
+        offset: 0
+      grace:
+        base: 3
+        offset: 0
+      hp:
+        base: 8
+        offset: 0
+      might:
+        base: 30
+        offset: 0
+    pc_nell:
+      defense:
+        base: 10
+        offset: 0
+      grace:
+        base: 2
+        offset: 0
+      hp:
+        base: 8
+        offset: 0
+      might:
+        base: 1
+        offset: 0
+  modifiers: {}
+  flags:
+    npc_briar:
+      - warden
+places:
+  items:
+    loft:
+      latch: 1
+    wheel_shed:
+      nail: 1
+  meters: {}
+  flags: {}
+  open_exits: {}
+stories:
+  meters: {}
+  flags: {}
+world:
+  meters: {}
+  flags: []
+notes: []
