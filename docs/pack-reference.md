@@ -376,7 +376,104 @@ rules:
 
 ## Rules
 
-[Reading a pack line](reading-a-pack-line.md) says how to read a rule's line as a clause: what `subject`, `target`, `of`, `to`, `from`, `at` and `via` each name, and how a roll compares its total to `threshold`. The tables below list the fields.
+### Reading a rule line
+
+A pack line reads as a clause. Each word keeps one part of speech and one role:
+
+| Word | Part of speech | Role |
+|---|---|---|
+| `subject` | subject | the actor doing the verb, move or resist |
+| verb | verb | the action |
+| `target` | direct object | the thing the verb acts on, and nothing else |
+| `of` | preposition | the owner whose value or state the line reads or changes, e.g. `meter: hp, of: target` reads as "hp of the target" |
+| `to` | preposition | where something ends up: a time, a place, or an indirect object |
+| `from` | preposition | where something starts: a time or a place |
+| `at` | preposition | when or where: a time or a place |
+| `via` | preposition | the way through |
+
+**One role per preposition.** A preposition is used only for the role it fits, and a word never changes role from one line to the next. `for` and `by` are not used. The number a roll has to beat is `threshold`, never `target`, because `target` is only ever the thing the verb acts on.
+
+The arrival in `packs/sample-d20/story/ending.yaml`:
+
+```
+    when:
+      change:
+        arrive: mill_lane
+        subject: pc
+    do:
+      - flag:
+          of: world
+          key: finished
+          value: true
+      - narrate:
+          to: self
+          text: Oden and Nell are on the lane. That is the end.
+```
+
+reads as *when a PC (the subject) arrives at mill_lane, set the flag finished of the world to true, and narrate to self.* `arrive` names the verb and its place together. `subject` is the actor whose arrival the rule watches; omitted, it is `any`.
+
+The strike in `packs/sample-d20/rules/verbs.yaml`:
+
+```
+    when:
+      verb: strike
+      target: actor
+    roll:
+      check: strike
+      threshold: 38
+      partial_at: 32
+    success:
+      - meter:
+          of: target
+          key: hp
+          add: "-(self.might / 10)"
+```
+
+reads as *the subject strikes an actor (the target): roll strike against 38, and on a success subtract might of self over 10 from hp of the target.* The subject is whoever played the move, written `self`. `target: actor` says what the verb acts on; `of: target` says the hp belongs to it.
+
+The take in the same file:
+
+```
+      - item:
+          of: here
+          id: target
+          add: -1
+      - item:
+          of: self
+          id: target
+          add: 1
+```
+
+reads as *one fewer of the target item here, one more of it on self.* `id: target` names which item; `of` names whose count changes. `location: { via: target }` in `packs/oneshot-docks/rules/verbs.yaml` reads as *move the subject via the target exit*; a location may name `to` instead, the place the subject ends up.
+
+Mira's restock in `packs/oneshot-docks/cast/mira.md`:
+
+```
+    if:
+      - cycle:
+          name: day
+          from: 480
+          to: 960
+    do:
+      - item:
+          of: place:docks_shop
+          id: lamp_oil
+          add: 4
+```
+
+reads as *while the day is from tick 480 to tick 960, add 4 lamp_oil of place:docks_shop.* A cycle window is `from` inclusive and `to` exclusive: tick 480 is inside it and tick 960 is not.
+
+In the `shrug` rule below, `resist: { subject: target, check: nerve, threshold: 4 }` on a nerve loss of self reads as *unless the target resists: the target rolls nerve against 4.* In `resist`, `subject` is the actor who rolls; omitted, it is the move's `target`. `{ meter: { of: self, key: nerve }, plus: 2 }` reads as *nerve of self, plus 2*; in an [expression](spec.md) the owner comes first instead, as in `self.nerve`.
+
+A roll's total is its check's dice plus the rolling actor's stat meter, compared to `threshold` (`crates/engine/rules/roll.rs`):
+
+- `total >= threshold` is a success.
+- `partial_at <= total < threshold` is a partial, only when the roll sets `partial_at`.
+- Any lower total is a miss. A roll without `partial_at` is a success or a miss.
+
+When another player's move opposes this one, the opposing total is the threshold and the roll has no partial band. A resist roll has no partial band either: on a success the effect is shrugged off and its `resisted` list runs in its place, and on a miss the effect lands.
+
+### Rule fields
 
 A rule has `id`, `when`, and `do`. It may have `if`, `cost`, `start`, `finish`, `cooldown`, `cancellable`, `roll`, `success`, `partial`, and `miss`.
 

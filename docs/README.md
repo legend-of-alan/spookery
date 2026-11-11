@@ -7,7 +7,6 @@ Start with the [README](../README.md) to build and play. This page points at eve
 | [Engine guarantees](engine-guarantees.md) | What the engine promises. The feature files test it, and they win if the two disagree. |
 | [Write your first pack](first-pack.md) | A walkthrough that starts from `spook new` and makes your first edits. |
 | [Pack reference](pack-reference.md) | Every pack field, for people and agents writing packs. |
-| [Reading a pack line](reading-a-pack-line.md) | How to read a rule's line as a clause: subject, target, of, to, from, at, via, and a roll's threshold. |
 | [Expressions](spec.md) | The small number language pack fields use, like `2d6` or `self.might`. |
 | [Seat protocol](seat-protocol.md) | The seat protocol, for anyone writing a player client or a GM. |
 | [CONTRIBUTING](../CONTRIBUTING.md) | Issue rules, running the tests, and pointing a coding agent at the table. |
