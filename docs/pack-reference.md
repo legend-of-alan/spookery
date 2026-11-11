@@ -391,7 +391,7 @@ A pack line reads as a clause. Each word keeps one part of speech and one role:
 | `at` | preposition | when or where: a time or a place |
 | `via` | preposition | the way through |
 
-**One role per preposition.** A preposition is used only for the role it fits, and a word never changes role from one line to the next. `for` and `by` are not used. The number a roll has to beat is `threshold`, never `target`, because `target` is only ever the thing the verb acts on.
+**One role per preposition.** A preposition is used only for the role it fits, and a word never changes role from one line to the next. `for` and `by` are not used. The number a roll has to beat is `threshold`, never `target`, because `target` is only ever the thing the verb acts on. The value after a preposition is its object; in Rust that value is a `grammar::Object`.
 
 The arrival in `packs/sample-d20/story/ending.yaml`:
 
@@ -463,7 +463,7 @@ Mira's restock in `packs/oneshot-docks/cast/mira.md`:
 
 reads as *while the day is from tick 480 to tick 960, add 4 lamp_oil of place:docks_shop.* A cycle window is `from` inclusive and `to` exclusive: tick 480 is inside it and tick 960 is not.
 
-In the `shrug` rule below, `resist: { subject: target, check: nerve, threshold: 4 }` on a nerve loss of self reads as *unless the target resists: the target rolls nerve against 4.* In `resist`, `subject` is the actor who rolls; omitted, it is the move's `target`.
+In the `shrug` rule below, `resist: { subject: target, check: nerve, threshold: 4 }` on a nerve loss of self reads as *unless the target resists: the target rolls nerve against 4.* In `resist`, `subject` is the actor who rolls to resist, not the subject of the outer line; omitted, it is the move's `target`.
 
 In the `give_oil` rule below, the resist's `threshold: { meter: { of: self, key: nerve }, plus: 2 }` reads as *nerve of self, plus 2*; in an [expression](spec.md) the owner comes first instead, as in `self.nerve`.
 

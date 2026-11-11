@@ -11,8 +11,9 @@ pub enum Subject {
     Actor(String),
 }
 
-/// The owner a rule's `of:` names, and the actor a resist's `subject:` names. The pack writes
-/// `world` for `Object::Global`.
+/// The owner a rule's `of:` names: the object of that preposition. A resist's `subject:` (the
+/// actor who rolls to resist, not the subject of the outer line) reuses this value set until
+/// pack lines have a parse tree. The pack writes `world` for `Object::Global`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Object {
     Self_,
