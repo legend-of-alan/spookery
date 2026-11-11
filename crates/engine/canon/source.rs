@@ -100,12 +100,13 @@ impl<'a> FileText<'a> {
             self.refusal(&format!("{noun}s[{row}].{field}"), at, message, hint)
         };
         let empty = format!("a {noun} id is empty");
-        let mut found: Vec<Diagnostic> = (id.is_empty())
+        let broken = rules.into_iter().filter(|(broken, ..)| *broken);
+        let mut found: Vec<Diagnostic> = id
+            .is_empty()
             .then(|| refuse("id", empty, "set id to a short name"))
             .into_iter()
+            .chain(broken.map(|(_, field, message, hint)| refuse(field, message, hint)))
             .collect();
-        let broken = rules.into_iter().filter(|(broken, ..)| *broken);
-        found.extend(broken.map(|(_, field, message, hint)| refuse(field, message, hint)));
         if found.is_empty() && taken {
             let twice = format!("{noun} '{id}' is listed twice");
             found.push(refuse("id", twice, &format!("keep one {noun}")));
