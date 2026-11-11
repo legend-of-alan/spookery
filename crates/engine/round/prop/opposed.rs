@@ -70,7 +70,7 @@ fn lunge_pack(limit: Option<&str>, rule: &str) -> PathBuf {
             .actors()
             .meter(&briar, "might")
             .expect("Briar's might");
-        let might = crate::state::meter::Meter {
+        let might = crate::state::component::meter::Meter {
             base: 30,
             ..held.clone()
         };

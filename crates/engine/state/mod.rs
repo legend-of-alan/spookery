@@ -1,38 +1,29 @@
-//! The live save: the clock, each kind's components, and the notes.
+//! The live save: the clock, each collection's components, and the notes.
 
-mod actors;
 pub(crate) mod change;
+pub(crate) mod component;
+pub(crate) mod entity;
 #[cfg(any(test, feature = "testing"))]
 mod fixtures;
-mod flag;
 pub(crate) mod id;
-mod item;
-pub(crate) mod meter;
-pub(crate) mod modifier;
 pub(crate) mod nested_map;
 mod notes;
-mod places;
-mod stories;
 mod transaction;
 pub mod undo;
-mod world;
 
 use std::ops::Deref;
 
 use serde::{Deserialize, Serialize};
 
 #[cfg(any(test, feature = "testing"))]
-pub use actors::Act;
-pub(crate) use actors::ActCounter;
-pub use actors::{ActorComponents, ActorKind, PendingAction};
+pub use entity::actors::Act;
+pub(crate) use entity::actors::ActCounter;
+pub use entity::actors::{ActorKind, PendingAction};
 use id::ActorId;
 pub use notes::Note;
-pub use places::PlaceComponents;
-pub use stories::StoryComponents;
 #[cfg(test)]
 pub(crate) use transaction::Savepoint;
 use transaction::Transaction;
-pub use world::WorldComponents;
 
 use crate::intent::Viewer;
 
@@ -50,19 +41,19 @@ pub struct State {
     /// Ticks since the world began.
     pub world_time: u64,
     pub last_round_at: String,
-    actors: ActorComponents,
+    actors: entity::Actors,
     #[serde(default)]
-    places: PlaceComponents,
+    places: entity::Places,
     #[serde(default)]
-    stories: StoryComponents,
+    stories: entity::Stories,
     #[serde(default)]
-    world: WorldComponents,
+    world: entity::Globals,
     notes: undo::Store<Vec<Note>>,
     #[serde(skip)]
     transaction: Transaction,
 }
 
-/// One kind's components, or the notes, with the round's transaction, borrowed apart from the
+/// One collection's components, or the notes, with the round's transaction, borrowed apart from the
 /// rest of the save: the only way to write them. Reads go through `Deref`; there is no
 /// `DerefMut`, and only `State`'s `*_mut` getters build one.
 ///
@@ -78,14 +69,14 @@ pub struct State {
 /// state.actors().kind.insert("x".into(), kind);
 /// # }
 /// ```
-pub struct Writer<'a, C> {
-    components: &'a mut C,
+pub struct Writer<'a, E> {
+    components: &'a mut E,
     transaction: &'a mut Transaction,
 }
 
-impl<'a, C> Writer<'a, C> {
+impl<'a, E> Writer<'a, E> {
     /// The one place a `Writer` is built; only `State`'s `*_mut` getters call it.
-    fn new(components: &'a mut C, transaction: &'a mut Transaction) -> Self {
+    fn new(components: &'a mut E, transaction: &'a mut Transaction) -> Self {
         Writer {
             components,
             transaction,
@@ -93,27 +84,27 @@ impl<'a, C> Writer<'a, C> {
     }
 }
 
-impl<C> Deref for Writer<'_, C> {
-    type Target = C;
-    fn deref(&self) -> &C {
+impl<E> Deref for Writer<'_, E> {
+    type Target = E;
+    fn deref(&self) -> &E {
         self.components
     }
 }
 
 impl State {
-    pub fn actors(&self) -> &ActorComponents {
+    pub fn actors(&self) -> &entity::Actors {
         &self.actors
     }
 
-    pub fn places(&self) -> &PlaceComponents {
+    pub fn places(&self) -> &entity::Places {
         &self.places
     }
 
-    pub fn stories(&self) -> &StoryComponents {
+    pub fn stories(&self) -> &entity::Stories {
         &self.stories
     }
 
-    pub fn world(&self) -> &WorldComponents {
+    pub fn globals(&self) -> &entity::Globals {
         &self.world
     }
 
@@ -121,19 +112,19 @@ impl State {
         &self.notes
     }
 
-    pub fn actors_mut(&mut self) -> Writer<'_, ActorComponents> {
+    pub fn actors_mut(&mut self) -> Writer<'_, entity::Actors> {
         Writer::new(&mut self.actors, &mut self.transaction)
     }
 
-    pub fn places_mut(&mut self) -> Writer<'_, PlaceComponents> {
+    pub fn places_mut(&mut self) -> Writer<'_, entity::Places> {
         Writer::new(&mut self.places, &mut self.transaction)
     }
 
-    pub fn stories_mut(&mut self) -> Writer<'_, StoryComponents> {
+    pub fn stories_mut(&mut self) -> Writer<'_, entity::Stories> {
         Writer::new(&mut self.stories, &mut self.transaction)
     }
 
-    pub fn world_mut(&mut self) -> Writer<'_, WorldComponents> {
+    pub fn globals_mut(&mut self) -> Writer<'_, entity::Globals> {
         Writer::new(&mut self.world, &mut self.transaction)
     }
 

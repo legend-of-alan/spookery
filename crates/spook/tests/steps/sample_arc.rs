@@ -216,7 +216,7 @@ fn larks_tonic(now: &spookery_engine::State) -> u32 {
 }
 
 fn is_finished(pack: &Path) -> bool {
-    state_of(pack).world().flags.contains("finished")
+    state_of(pack).globals().flags.contains("finished")
 }
 
 fn lane_cost(pack: &Path) -> u64 {

@@ -365,7 +365,7 @@ fn rowan_asks_aldric_until_it_finishes(world: &mut World) {
         assert!(round < 6, "Rowan is still busy after {round} rounds");
     }
     let state = table.state();
-    let aldric = spookery_engine::EntityId::Actor("aldric".into());
+    let aldric = spookery_engine::entity::Id::Actor("aldric".into());
     world.count = usize::try_from(
         state
             .entity(&aldric)

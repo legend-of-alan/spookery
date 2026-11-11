@@ -156,9 +156,9 @@ fn travel_is_cancellable(world: &mut World) {
 fn never_finished(world: &mut World, verb: String, rest: i64) {
     let now = state_of(world.pack.as_ref().unwrap());
     assert!(
-        !now.world().flags.contains(&format!("{verb}_done")),
+        !now.globals().flags.contains(&format!("{verb}_done")),
         "{:?}",
-        now.world().flags
+        now.globals().flags
     );
     let act = &now.actors().acts["pc_rowan"];
     assert_eq!(act.pending, None);
@@ -171,9 +171,9 @@ fn never_finished(world: &mut World, verb: String, rest: i64) {
 fn finished(world: &mut World, verb: String) {
     let now = state_of(world.pack.as_ref().unwrap());
     assert!(
-        now.world().flags.contains(&format!("{verb}_done")),
+        now.globals().flags.contains(&format!("{verb}_done")),
         "{:?}",
-        now.world().flags
+        now.globals().flags
     );
 }
 

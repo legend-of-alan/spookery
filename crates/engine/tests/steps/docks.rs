@@ -8,7 +8,7 @@ use spookery_engine::testing::{
     stamp_pack_rev, state_of, write_save, ActorKind, Canon,
 };
 use spookery_engine::{
-    emit_save, load_canon, play_pack_once, ActorId, EntityId, Meter, MoveReport, Note, Presence,
+    emit_save, entity, load_canon, play_pack_once, ActorId, Meter, MoveReport, Note, Presence,
     State,
 };
 use spookery_protocol::Outcome;
@@ -755,7 +755,7 @@ fn a_held_knife_still_runs_the_opposed_row() {
 
 fn rowans_debt(pack: &Path) -> i64 {
     let canon = load_canon(pack).unwrap_or_else(|err| panic!("load: {err:?}"));
-    let rowan = EntityId::Actor("pc_rowan".into());
+    let rowan = entity::Id::Actor("pc_rowan".into());
     state_of(pack)
         .entity(&rowan)
         .meter_value(&canon, "assassination_debt")
