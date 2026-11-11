@@ -11,14 +11,14 @@ exits:
       - all:
           - any:
               - flag:
-                  who: world
+                  of: world
                   key: passage
                   is: true
               - has_item:
-                  who: self
+                  subject: self
                   id: latch
           - flag:
-              who: world
+              of: world
               key: chocked
               is: true
     locked_text: The lane is shut until the wheel is set and the way is clear.

@@ -16,7 +16,7 @@ Feature: Trigger delivery
 
   Scenario: A rule watching a world flag runs when it turns
     Given a verb sets world flag tide_turned
-    And a change rule watches tide_turned become true and adds 1 to who "world" meter tides
+    And a change rule watches tide_turned become true and adds 1 to meter tides of "world"
     And pc_rowan and pc_nell are seated
     When pc_nell sets the tide
     Then the world has flag tide_turned

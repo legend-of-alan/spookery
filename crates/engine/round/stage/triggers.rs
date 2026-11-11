@@ -6,7 +6,8 @@ use crate::rules::cond;
 use crate::rules::context::Context;
 use crate::rules::expand::{self, Cause};
 use crate::rules::gate;
-use crate::rules::rule::{ChangeWatch, Op, Rule, WatchWho, When};
+use crate::rules::grammar;
+use crate::rules::rule::{ChangeWatch, Op, Rule, When};
 use crate::state::change::{self, Change};
 use crate::state::id::ActorId;
 use crate::state::{ActorKind, Presence, State};
@@ -126,21 +127,21 @@ fn fire(
 
 fn matches_watch(state: &State, rule: &Rule, watch: &ChangeWatch, change: &Change) -> bool {
     match watch {
-        ChangeWatch::Arrive { place, who } => match &change.key {
+        ChangeWatch::Arrive { place, subject } => match &change.key {
             change::Key::ActorPlace(actor) => {
                 let place = rule.watched_place(place);
                 change.before.as_text() != Some(place)
                     && change.after.as_text() == Some(place)
-                    && matches_who(state, who, actor)
+                    && matches_subject(state, subject, actor)
             }
             _ => false,
         },
-        ChangeWatch::Leave { place, who } => match &change.key {
+        ChangeWatch::Leave { place, subject } => match &change.key {
             change::Key::ActorPlace(actor) => {
                 let place = rule.watched_place(place);
                 change.before.as_text() == Some(place)
                     && change.after.as_text() != Some(place)
-                    && matches_who(state, who, actor)
+                    && matches_subject(state, subject, actor)
             }
             _ => false,
         },
@@ -191,15 +192,15 @@ fn flips(change: &Change, becomes: bool) -> bool {
     change.before.as_bool() == Some(!becomes) && change.after.as_bool() == Some(becomes)
 }
 
-fn matches_who(state: &State, who: &WatchWho, actor_id: &str) -> bool {
+fn matches_subject(state: &State, subject: &grammar::Subject, actor_id: &str) -> bool {
     let Some(kind) = state.actors().kind.get(actor_id) else {
         return false;
     };
-    match who {
-        WatchWho::Any => true,
-        WatchWho::Pc => *kind == ActorKind::Pc,
-        WatchWho::Npc => *kind == ActorKind::Npc,
-        WatchWho::Actor(expected) => expected == actor_id,
+    match subject {
+        grammar::Subject::Any => true,
+        grammar::Subject::Pc => *kind == ActorKind::Pc,
+        grammar::Subject::Npc => *kind == ActorKind::Npc,
+        grammar::Subject::Actor(expected) => expected == actor_id,
     }
 }
 

@@ -17,15 +17,15 @@ const NOTICE_ROWS: &str = "
       verb: notice_sure
     roll:
       check: grit
-      target: 3
+      threshold: 3
     success:
       - flag:
-          who: self
+          of: self
           key: braced
           value: true
     miss:
       - flag:
-          who: self
+          of: self
           key: slipped
           value: true
   - id: notice_hard
@@ -33,15 +33,15 @@ const NOTICE_ROWS: &str = "
       verb: notice_hard
     roll:
       check: grit
-      target: 14
+      threshold: 14
     success:
       - flag:
-          who: self
+          of: self
           key: braced
           value: true
     miss:
       - flag:
-          who: self
+          of: self
           key: slipped
           value: true
 ";
@@ -53,15 +53,15 @@ const OPPOSE_ROWS: &str = "
       target: actor
     roll:
       check: grit
-      target: 0
+      threshold: 0
     success:
       - flag:
-          who: target
+          of: target
           key: marked
           value: true
     miss:
       - flag:
-          who: target
+          of: target
           key: missed
           value: true
   - id: defend
@@ -69,10 +69,10 @@ const OPPOSE_ROWS: &str = "
       verb: defend
     roll:
       check: grit
-      target: 0
+      threshold: 0
     success:
       - flag:
-          who: self
+          of: self
           key: guarded
           value: true
 ";
@@ -348,7 +348,7 @@ fn insert_brace_habit(pack: &Path) {
     let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read mira: {err}"));
     let next = text.replacen(
         "rules:\n  - id: leave_door_note\n",
-        "rules:\n  - id: brace\n    when: habit\n    roll:\n      check: grit\n      target: 14\n    success:\n      - flag:\n          who: self\n          key: braced\n          value: true\n    miss:\n      - flag:\n          who: self\n          key: slipped\n          value: true\n  - id: leave_door_note\n",
+        "rules:\n  - id: brace\n    when: habit\n    roll:\n      check: grit\n      threshold: 14\n    success:\n      - flag:\n          of: self\n          key: braced\n          value: true\n    miss:\n      - flag:\n          of: self\n          key: slipped\n          value: true\n  - id: leave_door_note\n",
         1,
     );
     assert_ne!(next, text, "mira habit was not inserted");
@@ -447,26 +447,26 @@ const PRESS_ROW: &str = "
       target: actor
     roll:
       check: band
-      target: 10
+      threshold: 10
       partial_at: 7
     do:
       - flag:
-          who: target
+          of: target
           key: touched
           value: true
     success:
       - flag:
-          who: target
+          of: target
           key: clean
           value: true
     partial:
       - flag:
-          who: target
+          of: target
           key: halfway
           value: true
     miss:
       - flag:
-          who: target
+          of: target
           key: missed
           value: true
 ";
@@ -477,26 +477,26 @@ const NOTICE_PARTIAL_ROW: &str = "
       verb: notice_partial
     roll:
       check: band
-      target: 10
+      threshold: 10
       partial_at: 7
     do:
       - flag:
-          who: self
+          of: self
           key: touched
           value: true
     success:
       - flag:
-          who: self
+          of: self
           key: clean
           value: true
     partial:
       - flag:
-          who: self
+          of: self
           key: halfway
           value: true
     miss:
       - flag:
-          who: self
+          of: self
           key: missed
           value: true
 ";
@@ -507,10 +507,10 @@ const DEFEND_ROW: &str = "
       verb: defend
     roll:
       check: grit
-      target: 0
+      threshold: 0
     success:
       - flag:
-          who: self
+          of: self
           key: guarded
           value: true
 ";
@@ -585,16 +585,16 @@ fn the_gm_queues_miras_partial_notice(world: &mut World) {
 fn the_verbs_file_gains(world: &mut World, fault: String) {
     let row = match fault.as_str() {
         "partial_at without partial" => {
-            "\n  - id: press\n    when:\n      verb: press\n    roll:\n      check: grit\n      target: 10\n      partial_at: 7\n    do:\n      - flag:\n          who: self\n          key: touched\n          value: true\n"
+            "\n  - id: press\n    when:\n      verb: press\n    roll:\n      check: grit\n      threshold: 10\n      partial_at: 7\n    do:\n      - flag:\n          of: self\n          key: touched\n          value: true\n"
         }
         "partial without partial_at" => {
-            "\n  - id: press\n    when:\n      verb: press\n    roll:\n      check: grit\n      target: 10\n    partial:\n      - flag:\n          who: self\n          key: halfway\n          value: true\n"
+            "\n  - id: press\n    when:\n      verb: press\n    roll:\n      check: grit\n      threshold: 10\n    partial:\n      - flag:\n          of: self\n          key: halfway\n          value: true\n"
         }
         "partial_at above difficulty" => {
-            "\n  - id: press\n    when:\n      verb: press\n    roll:\n      check: grit\n      target: 10\n      partial_at: 10\n    success:\n      - flag:\n          who: self\n          key: touched\n          value: true\n    partial:\n      - flag:\n          who: self\n          key: halfway\n          value: true\n"
+            "\n  - id: press\n    when:\n      verb: press\n    roll:\n      check: grit\n      threshold: 10\n      partial_at: 10\n    success:\n      - flag:\n          of: self\n          key: touched\n          value: true\n    partial:\n      - flag:\n          of: self\n          key: halfway\n          value: true\n"
         }
         "partial_at without a check" => {
-            "\n  - id: press\n    when:\n      verb: press\n    partial:\n      - flag:\n          who: self\n          key: halfway\n          value: true\n"
+            "\n  - id: press\n    when:\n      verb: press\n    partial:\n      - flag:\n          of: self\n          key: halfway\n          value: true\n"
         }
         other => panic!("unknown partial fault {other}"),
     };

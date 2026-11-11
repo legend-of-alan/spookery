@@ -209,7 +209,7 @@ rules:
       target: place
     do:
       - flag:
-          who: self
+          of: self
           key: took_the_ferry
           value: true
 ---
@@ -325,7 +325,7 @@ rules:
           value: 0
     do:
       - item:
-          who: place:docks_shop
+          of: place:docks_shop
           id: lamp_oil
           add: 4
 ---
@@ -464,19 +464,19 @@ fn attack_targets_defense(world: &mut World) {
       target: actor
     roll:
       check: strike
-      target:
+      threshold:
         meter:
-          who: target
+          of: target
           key: defense
         plus: 10
     success:
       - flag:
-          who: target
+          of: target
           key: hit
           value: true
     miss:
       - flag:
-          who: target
+          of: target
           key: missed
           value: true
 "#,
@@ -642,10 +642,10 @@ fn two_conditions_under_one_dash(world: &mut World) {
       verb: both
     if:
       - has_item:
-          who: self
+          subject: self
           id: knife
         flag:
-          who: self
+          of: self
           key: marked
           is: true
     do: []
@@ -726,7 +726,7 @@ rules:
       target: place
     do:
       - flag:
-          who: self
+          of: self
           key: took_the_street
           value: true
 ",
@@ -868,13 +868,13 @@ fn a_verb_with_time_and_resist(world: &mut World) {
       ticks: 10
     do:
       - meter:
-          who: self
+          of: self
           key: grit
           add: 1
           resist:
-            who: self
+            subject: self
             check: grit
-            target: 2
+            threshold: 2
 "#,
     );
     edit_save(&pack, |_| {});
@@ -897,7 +897,7 @@ const BARE_SAME: &str = "
       verb: shrug
     do:
       - meter:
-          who: self
+          of: self
           key: grit
           add: 1
           resist: same
@@ -909,16 +909,16 @@ const SAME_AFTER_ROLL: &str = "
       verb: shrug
     do:
       - meter:
-          who: self
+          of: self
           key: grit
           add: -1
           resist:
-            who: self
+            subject: self
             check: grit
-            target: 2
+            threshold: 2
             resisted: []
       - meter:
-          who: self
+          of: self
           key: grit
           add: 1
           resist: same

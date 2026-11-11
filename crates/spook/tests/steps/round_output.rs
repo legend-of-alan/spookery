@@ -34,7 +34,7 @@ fn listen_with_wren(world: &mut World, travelling: bool) {
     let verbs = pack.join("rules/verbs.yaml");
     let mut rules = fs::read_to_string(&verbs).unwrap_or_else(|err| panic!("read verbs: {err}"));
     rules.push_str(
-        "\n  - id: hit\n    when:\n      verb: hit\n    do:\n      - meter:\n          who: self\n          key: grit\n          add: \"2d6\"\n",
+        "\n  - id: hit\n    when:\n      verb: hit\n    do:\n      - meter:\n          of: self\n          key: grit\n          add: \"2d6\"\n",
     );
     fs::write(&verbs, rules).unwrap_or_else(|err| panic!("write verbs: {err}"));
     support::stamp_pack_rev(&pack);

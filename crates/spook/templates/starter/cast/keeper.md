@@ -12,7 +12,7 @@ rules:
     when: habit
     do:
       - flag:
-          who: self
+          of: self
           key: tended
           value: true
   # more-habits

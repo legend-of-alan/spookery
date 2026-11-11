@@ -49,14 +49,14 @@ fn write_rules(world: &World, verbs: &str, story: &str, rules: &str) {
 /// A verb that sets world flag `key` to `value`, when every condition in `if_` holds.
 fn flag_verb(verb: &str, key: &str, value: bool, if_: &str) -> String {
     format!(
-        "\n  - id: {verb}\n    when:\n      verb: {verb}\n{if_}    do:\n      - flag:\n          who: world\n          key: {key}\n          value: {value}\n"
+        "\n  - id: {verb}\n    when:\n      verb: {verb}\n{if_}    do:\n      - flag:\n          of: world\n          key: {key}\n          value: {value}\n"
     )
 }
 
 /// `if:` holding world flag `key` at `is`.
 fn world_flag_is(key: &str, is: bool) -> String {
     format!(
-        "    if:\n      - flag:\n          who: world\n          key: {key}\n          is: {is}\n"
+        "    if:\n      - flag:\n          of: world\n          key: {key}\n          is: {is}\n"
     )
 }
 
@@ -64,7 +64,7 @@ fn world_flag_is(key: &str, is: bool) -> String {
 /// condition in `if_` holds.
 fn chain_rule(id: &str, watch: &str, then: &str, if_: &str) -> String {
     format!(
-        "  - id: {id}\n    when:\n      change:\n        flag: {watch}\n        becomes: true\n{if_}    do:\n      - flag:\n          who: world\n          key: {then}\n          value: true\n"
+        "  - id: {id}\n    when:\n      change:\n        flag: {watch}\n        becomes: true\n{if_}    do:\n      - flag:\n          of: world\n          key: {then}\n          value: true\n"
     )
 }
 
@@ -121,7 +121,7 @@ fn the_bell_rings_twice(world: &mut World) {
 fn a_gate_that_locks(world: &mut World) {
     let verbs = "\n  - id: go_street\n    when:\n      verb: go_street\n    do:\n      - location:\n          to: docks_street\n          teleport: true\n".to_string()
         + &flag_verb("go_gate", "gate_passed", true, &world_flag_is("gate_locked", false));
-    let lock = "  - id: lock_gate\n    when:\n      change:\n        arrive: docks_street\n        who: pc_rowan\n    do:\n      - flag:\n          who: world\n          key: gate_locked\n          value: true\n";
+    let lock = "  - id: lock_gate\n    when:\n      change:\n        arrive: docks_street\n        subject: pc_rowan\n    do:\n      - flag:\n          of: world\n          key: gate_locked\n          value: true\n";
     write_rules(world, &verbs, "gate", lock);
 }
 

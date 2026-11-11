@@ -63,8 +63,8 @@ fn a_docks_table_with_a_gm_terminal(world: &mut World, actor: String) {
     // verb gives the commit reply one dice line beside that check.
     let verbs = pack.join("rules/verbs.yaml");
     let text = fs::read_to_string(&verbs).unwrap_or_else(|err| panic!("read verbs: {err}"));
-    let from = "    roll:\n      check: grit\n      target: 0\n    do: []\n";
-    let to = "    roll:\n      check: grit\n      target: 0\n    do:\n      - meter:\n          who: self\n          key: grit\n          add: \"2d6\"\n";
+    let from = "    roll:\n      check: grit\n      threshold: 0\n    do: []\n";
+    let to = "    roll:\n      check: grit\n      threshold: 0\n    do:\n      - meter:\n          of: self\n          key: grit\n          add: \"2d6\"\n";
     assert!(text.contains(from), "{text}");
     fs::write(&verbs, text.replacen(from, to, 1))
         .unwrap_or_else(|err| panic!("write verbs: {err}"));

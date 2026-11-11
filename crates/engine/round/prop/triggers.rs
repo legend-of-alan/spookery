@@ -319,7 +319,7 @@ fn rule_yaml(id: &str, watch: Option<&str>, effects: &[(String, bool)]) -> Strin
     for (key, value) in effects {
         let value = if *value { "true" } else { "false" };
         body.push_str(&format!(
-            "      - flag:\n          who: self\n          key: {key}\n          value: {value}\n"
+            "      - flag:\n          of: self\n          key: {key}\n          value: {value}\n"
         ));
     }
     body

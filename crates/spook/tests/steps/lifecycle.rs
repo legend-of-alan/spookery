@@ -106,7 +106,7 @@ fn timed_verb(verb: &str, ticks: u64, extra: &str) -> String {
       ticks: {ticks}
 {extra}    do:
       - flag:
-          who: world
+          of: world
           key: {verb}_done
           value: true
 "

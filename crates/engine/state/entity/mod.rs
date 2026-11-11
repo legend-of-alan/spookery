@@ -17,7 +17,7 @@ pub use stories::Stories;
 
 use crate::state::id::{ActorId, PlaceId, StoryId};
 
-/// Who holds a meter, a flag or an item count, as a rule's `who` names it and the journal
+/// Who holds a meter, a flag or an item count, as a rule's `of` names it and the journal
 /// writes it: `world`, `{actor: id}`, `{place: id}` or `{story: id}`.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -29,7 +29,7 @@ pub enum Id {
     Global,
 }
 
-/// The entity as a rule's `who` names it: an actor id, `place:<id>`, `story:<id>` or `world`.
+/// The entity as a rule's `of` names it: an actor id, `place:<id>`, `story:<id>` or `world`.
 impl fmt::Display for Id {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {

@@ -5,15 +5,15 @@ rules:
     when:
       change:
         arrive: mill_lane
-        who: pc
+        subject: pc
     if:
       - not:
           has_item:
-            who: self
+            subject: self
             id: nail
     do:
       - flag:
-          who: world
+          of: world
           key: finished
           value: true
       - narrate:
@@ -23,14 +23,14 @@ rules:
     when:
       change:
         arrive: mill_lane
-        who: pc
+        subject: pc
     if:
       - has_item:
-          who: self
+          subject: self
           id: nail
     do:
       - flag:
-          who: world
+          of: world
           key: finished
           value: true
       - narrate:

@@ -16,7 +16,7 @@ rules:
     when: habit
     if:
       - meter:
-          who: self
+          of: self
           id: shop_day
           op: ">="
           value: 1
@@ -40,7 +40,7 @@ rules:
           to: 960
     do:
       - item:
-          who: place:docks_shop
+          of: place:docks_shop
           id: lamp_oil
           add: 4
           max: 8

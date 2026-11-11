@@ -18,7 +18,7 @@ rules:
       verb: grit
     roll:
       check: grit
-      target: 0
+      threshold: 0
     do: []
 
   - id: take
@@ -27,11 +27,11 @@ rules:
       target: item
     do:
       - item:
-          who: here
+          of: here
           id: target
           add: -1
       - item:
-          who: self
+          of: self
           id: target
           add: 1
 
@@ -41,11 +41,11 @@ rules:
       target: item
     do:
       - item:
-          who: self
+          of: self
           id: target
           add: -1
       - item:
-          who: here
+          of: here
           id: target
           add: 1
 
@@ -55,7 +55,7 @@ rules:
       target: item
     do:
       - wield:
-          who: self
+          subject: self
           id: target
 
   - id: unwield
@@ -63,4 +63,4 @@ rules:
       verb: unwield
     do:
       - unwield:
-          who: self
+          subject: self

@@ -42,7 +42,7 @@ fn a_round_that_changes_a_hidden_fact(world: &mut World) {
     fs::write(lane, place).unwrap();
     let mut verbs = fs::read_to_string(pack.join("rules/verbs.yaml")).unwrap();
     verbs.push_str(&format!(
-        "  - id: spill\n    when:\n      verb: spill\n    do:\n      - reveal:\n          who: npc_briar\n          fact: {SECRET_ID}\n      - flag:\n          who: world\n          key: {SECRET_ID}\n          value: true\n      - meter:\n          who: npc_briar\n          key: hp\n          add: -1\n"
+        "  - id: spill\n    when:\n      verb: spill\n    do:\n      - reveal:\n          to: npc_briar\n          fact: {SECRET_ID}\n      - flag:\n          of: world\n          key: {SECRET_ID}\n          value: true\n      - meter:\n          of: npc_briar\n          key: hp\n          add: -1\n"
     ));
     fs::write(pack.join("rules/verbs.yaml"), verbs).unwrap();
     stamp_pack_rev(&pack);
@@ -84,7 +84,7 @@ fn lark_uses_her_tonic_while_oden_gains_one(world: &mut World) {
     let mut verbs = fs::read_to_string(pack.join("rules/verbs.yaml")).unwrap();
     verbs.push('\n');
     verbs.push_str(
-        "  - id: sip\n    when:\n      verb: sip\n    cost:\n      items:\n        tonic: 1\n    do:\n      - item:\n          who: npc_oden\n          id: tonic\n          add: 1\n",
+        "  - id: sip\n    when:\n      verb: sip\n    cost:\n      items:\n        tonic: 1\n    do:\n      - item:\n          of: npc_oden\n          id: tonic\n          add: 1\n",
     );
     fs::write(pack.join("rules/verbs.yaml"), verbs).unwrap();
     stamp_pack_rev(&pack);
@@ -282,7 +282,7 @@ fn lark_juggles_a_tonic(world: &mut World) {
     let mut verbs = fs::read_to_string(pack.join("rules/verbs.yaml")).unwrap();
     verbs.push('\n');
     verbs.push_str(
-        "  - id: juggle\n    when:\n      verb: juggle\n    do:\n      - item:\n          who: pc_lark\n          id: tonic\n          add: 1\n      - item:\n          who: pc_lark\n          id: tonic\n          add: -1\n",
+        "  - id: juggle\n    when:\n      verb: juggle\n    do:\n      - item:\n          of: pc_lark\n          id: tonic\n          add: 1\n      - item:\n          of: pc_lark\n          id: tonic\n          add: -1\n",
     );
     fs::write(pack.join("rules/verbs.yaml"), verbs).unwrap();
     stamp_pack_rev(&pack);

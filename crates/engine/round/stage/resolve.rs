@@ -104,7 +104,7 @@ fn resolve_intent<'c>(resolver: &mut Resolver<'c, '_, '_>, intent: &'c Intent) -
 }
 
 /// Roll the intent's check, against the opposing total when another player's move opposes it.
-/// An intent already rolled as another's opposition keeps its faces and takes its own target.
+/// An intent already rolled as another's opposition keeps its faces and takes its own threshold.
 fn roll_check(
     resolver: &mut Resolver,
     context: &Context,
@@ -115,16 +115,16 @@ fn roll_check(
     let actor_id = intent.actor_id();
     let opposed = opposing_total(resolver, intent)?;
     if let Some(out) = resolver.rolled.get(&intent.id) {
-        let (target, partial_at) = match opposed {
+        let (threshold, partial_at) = match opposed {
             Some(total) => (total, None),
             None => resolver
                 .dice
                 .roller(resolver.log, rule_id, actor_id)
                 .eval_thresholds(context, roll)?,
         };
-        let outcome = classify(out.total, target, partial_at);
+        let outcome = classify(out.total, threshold, partial_at);
         return Ok(Roll {
-            target,
+            target: threshold,
             outcome,
             ..out.clone()
         });

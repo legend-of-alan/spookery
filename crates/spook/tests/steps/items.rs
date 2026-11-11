@@ -94,14 +94,14 @@ const DAGGER_ATTACK: &str = "
       target: actor
     if:
       - wielding:
-          who: self
+          subject: self
           id: poisoned_dagger
     roll:
       check: strike
-      target: 0
+      threshold: 0
     success:
       - meter:
-          who: target
+          of: target
           key: hp
           add: -3
 ";
@@ -113,7 +113,7 @@ const DAGGER_STRIKE: &str = "
       target: actor
     do:
       - meter:
-          who: target
+          of: target
           key: hp
           add: -3
 ";
@@ -125,10 +125,10 @@ const BARE_HANDS_ATTACK: &str = "
       target: actor
     roll:
       check: strike
-      target: 0
+      threshold: 0
     success:
       - meter:
-          who: target
+          of: target
           key: hp
           add: -1
 ";
@@ -597,30 +597,30 @@ fn nell_resists_on_a_seeded_roll(world: &mut World) {
       target: actor
     if:
       - wielding:
-          who: self
+          subject: self
           id: poisoned_dagger
     roll:
       check: strike
-      target: 0
+      threshold: 0
     success:
       - meter:
-          who: target
+          of: target
           key: hp
           add: -3
       - meter:
-          who: target
+          of: target
           key: hp
           add: -2
           resist:
-            who: target
+            subject: target
             check: constitution
-            target: 12
+            threshold: 12
             resisted:
               - narrate:
                   to: here
                   text: The poison burns, then fades.
       - flag:
-          who: target
+          of: target
           key: poisoned
           value: true
           resist: same

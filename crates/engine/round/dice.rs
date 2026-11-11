@@ -63,7 +63,7 @@ impl RoundDice {
         state: &State,
         key: RollKey,
         check_id: &str,
-        target: i64,
+        threshold: i64,
         partial_at: Option<i64>,
     ) -> Result<Roll, Reason> {
         let actor_id = key
@@ -72,7 +72,7 @@ impl RoundDice {
             .filter(|id| state.actors().kind.contains_key(*id))
             .ok_or(Reason::UnknownId)?;
         let check = canon.checks.get(check_id).ok_or(Reason::UnknownId)?;
-        roll::roll_check(check, canon, state, actor_id, &key, target, partial_at)
+        roll::roll_check(check, canon, state, actor_id, &key, threshold, partial_at)
     }
 
     pub(crate) fn roller<'a>(
@@ -108,30 +108,30 @@ pub(crate) struct Roller<'a> {
 impl Roller<'_> {
     /// Evaluate a rule's `roll:` spec, then roll its check.
     pub(crate) fn roll_spec(&mut self, context: &Context, spec: &RollSpec) -> Result<Roll, Reason> {
-        let (target, partial_at) = self.eval_thresholds(context, spec)?;
+        let (threshold, partial_at) = self.eval_thresholds(context, spec)?;
         let key = self.dice.next_key(self.rule, self.subject);
         self.dice.roll_check(
             context.canon,
             context.state,
             key,
             &spec.check,
-            target,
+            threshold,
             partial_at,
         )
     }
 
-    /// The one order a `roll:` spec's thresholds draw dice in: target, then partial_at.
+    /// The one order a `roll:` spec's thresholds draw dice in: threshold, then partial_at.
     pub(crate) fn eval_thresholds(
         &mut self,
         context: &Context,
         spec: &RollSpec,
     ) -> Result<(i64, Option<i64>), Reason> {
-        let target = eval_with_dice(context, &spec.target, self)?;
+        let threshold = eval_with_dice(context, &spec.threshold, self)?;
         let partial_at = match &spec.partial_at {
             Some(expr) => Some(eval_with_dice(context, expr, self)?),
             None => None,
         };
-        Ok((target, partial_at))
+        Ok((threshold, partial_at))
     }
 
     /// The resist rolls this roller made, in order.
@@ -165,12 +165,12 @@ impl Dice for Roller<'_> {
         state: &State,
         actor_id: &ActorId,
         check_id: &str,
-        target: i64,
+        threshold: i64,
     ) -> Result<Outcome, Reason> {
         let key = self.dice.next_key(self.rule, Some(actor_id));
         let out = self
             .dice
-            .roll_check(canon, state, key, check_id, target, None)?;
+            .roll_check(canon, state, key, check_id, threshold, None)?;
         self.reports.push(MoveReport::Rolled {
             actor_id: actor_id.clone(),
             roll: out.clone(),

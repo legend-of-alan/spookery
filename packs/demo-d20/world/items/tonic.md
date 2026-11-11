@@ -12,14 +12,14 @@ rules:
       target: item
     if:
       - has_item:
-          who: self
+          subject: self
           id: tonic
     cost:
       items:
         tonic: 1
     do:
       - meter:
-          who: self
+          of: self
           key: hp
           add: 4
 ---

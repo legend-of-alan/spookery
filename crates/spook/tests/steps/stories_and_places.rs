@@ -53,12 +53,12 @@ fn write_loft(world: &mut World, keys: &str) {
     fs::write(pack(world).join("world/places/loft.md"), text).unwrap();
 }
 
-fn meter_effect(who: &str, key: &str) -> String {
-    format!("      - meter:\n          who: {who}\n          key: {key}\n          add: 1\n")
+fn meter_effect(of: &str, key: &str) -> String {
+    format!("      - meter:\n          of: {of}\n          key: {key}\n          add: 1\n")
 }
 
-fn flag_effect(who: &str, key: &str) -> String {
-    format!("      - flag:\n          who: {who}\n          key: {key}\n          value: true\n")
+fn flag_effect(of: &str, key: &str) -> String {
+    format!("      - flag:\n          of: {of}\n          key: {key}\n          value: true\n")
 }
 
 /// Add verb `verb` to `rules/verbs.yaml` with these effects.
@@ -148,35 +148,35 @@ fn story_declares_no_flags(world: &mut World, story: String) {
     write_story(world, &story, "");
 }
 
-#[given(expr = "a rule in story\\/{word}.yaml adds 1 to who {string} meter {word}")]
-fn a_story_rule_adds(world: &mut World, story: String, who: String, key: String) {
-    append_story_rule(pack(world), &story, &meter_effect(&who, &key));
+#[given(expr = "a rule in story\\/{word}.yaml adds 1 to meter {word} of {string}")]
+fn a_story_rule_adds(world: &mut World, story: String, key: String, of: String) {
+    append_story_rule(pack(world), &story, &meter_effect(&of, &key));
 }
 
-#[given(expr = "a rule in story\\/{word}.yaml sets who {string} flag {word} to true")]
-fn a_story_rule_sets(world: &mut World, story: String, who: String, key: String) {
-    append_story_rule(pack(world), &story, &flag_effect(&who, &key));
+#[given(expr = "a rule in story\\/{word}.yaml sets flag {word} of {string} to true")]
+fn a_story_rule_sets(world: &mut World, story: String, key: String, of: String) {
+    append_story_rule(pack(world), &story, &flag_effect(&of, &key));
 }
 
-#[given(expr = "a rule sets who {string} flag {word}")]
-fn a_verb_sets(world: &mut World, who: String, key: String) {
-    add_verb_doing(pack(world), "set_mark", &flag_effect(&who, &key));
+#[given(expr = "a rule sets flag {word} of {string}")]
+fn a_verb_sets(world: &mut World, key: String, of: String) {
+    add_verb_doing(pack(world), "set_mark", &flag_effect(&of, &key));
 }
 
-#[given(expr = "a rule sets who {string} flag {word} to true")]
-fn a_shared_rule_sets(world: &mut World, who: String, key: String) {
+#[given(expr = "a rule sets flag {word} of {string} to true")]
+fn a_shared_rule_sets(world: &mut World, key: String, of: String) {
     let rule = format!(
         "\n  - id: on_oil\n    when:\n      change:\n        item: lamp_oil\n        gained: true\n    do:\n{}",
-        flag_effect(&who, &key)
+        flag_effect(&of, &key)
     );
     add_verb(pack(world), &rule);
 }
 
-#[given(expr = "a rule adds 1 to who {string} meter {word}")]
-fn a_rule_adds(world: &mut World, who: String, key: String) {
-    match who.strip_prefix("story:") {
-        Some(story) => append_story_rule(pack(world), story, &meter_effect(&who, &key)),
-        None => add_verb_doing(pack(world), "bump", &meter_effect(&who, &key)),
+#[given(expr = "a rule adds 1 to meter {word} of {string}")]
+fn a_rule_adds(world: &mut World, key: String, of: String) {
+    match of.strip_prefix("story:") {
+        Some(story) => append_story_rule(pack(world), story, &meter_effect(&of, &key)),
+        None => add_verb_doing(pack(world), "bump", &meter_effect(&of, &key)),
     }
 }
 
@@ -207,13 +207,13 @@ fn no_view_lists_dread(world: &mut World) {
     }
 }
 
-#[then(expr = "a rule testing who {string} flag {word} is true sees it as set")]
-fn a_rule_tests_the_flag(world: &mut World, who: String, key: String) {
+#[then(expr = "a rule testing flag {word} of {string} is true sees it as set")]
+fn a_rule_tests_the_flag(world: &mut World, key: String, of: String) {
     let pack = world.pack.clone().unwrap();
     add_verb(
         &pack,
         &format!(
-            "\n  - id: test_mark\n    when:\n      verb: test_mark\n    if:\n      - flag:\n          who: {who}\n          key: {key}\n          is: true\n    do:\n{}",
+            "\n  - id: test_mark\n    when:\n      verb: test_mark\n    if:\n      - flag:\n          of: {of}\n          key: {key}\n          is: true\n    do:\n{}",
             flag_effect("world", "mark_seen")
         ),
     );
@@ -292,19 +292,19 @@ fn rowan_in_the_loft(world: &mut World) {
     stand_in_the_loft(world);
 }
 
-#[when(expr = "a rule adds 1 to who {string} meter light and meter draft")]
-fn a_rule_adds_light_and_draft(world: &mut World, who: String) {
+#[when(expr = "a rule adds 1 to meters light and draft of {string}")]
+fn a_rule_adds_light_and_draft(world: &mut World, of: String) {
     let pack = world.pack.clone().unwrap();
-    let effects = meter_effect(&who, "light") + &meter_effect(&who, "draft");
+    let effects = meter_effect(&of, "light") + &meter_effect(&of, "draft");
     add_verb_doing(&pack, "air_out", &effects);
     edit_table(world, &pack, |_, seated| sit(seated, &["pc_rowan"]));
     migrate_and_play(world, vec![intent("air", "pc_rowan", "air_out", None)]);
 }
 
-#[when(expr = "a rule sets who {string} flag {word} to true")]
-fn a_verb_sets_and_runs(world: &mut World, who: String, key: String) {
+#[when(expr = "a rule sets flag {word} of {string} to true")]
+fn a_verb_sets_and_runs(world: &mut World, key: String, of: String) {
     let pack = world.pack.clone().unwrap();
-    add_verb_doing(&pack, "light_lamp", &flag_effect(&who, &key));
+    add_verb_doing(&pack, "light_lamp", &flag_effect(&of, &key));
     edit_table(world, &pack, |_, seated| sit(seated, &["pc_rowan"]));
     migrate_and_play(world, vec![intent("light", "pc_rowan", "light_lamp", None)]);
 }
@@ -334,11 +334,11 @@ fn the_docks_pack_gains_the_loft(world: &mut World) {
     spookery_engine::migrate_pack(pack(world)).unwrap_or_else(|err| panic!("migrate: {err}"));
 }
 
-#[when(expr = "a rule gives who {string} 1 lamp_oil")]
-fn a_rule_gives_lamp_oil(world: &mut World, who: String) {
+#[when(expr = "a rule adds 1 to item lamp_oil of {string}")]
+fn a_rule_gives_lamp_oil(world: &mut World, of: String) {
     let effect = format!(
         "      - item:
-          who: {who}
+          of: {of}
           id: lamp_oil
           add: 1
 "
