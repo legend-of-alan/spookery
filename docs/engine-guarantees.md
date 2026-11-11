@@ -359,11 +359,13 @@ when they last stood there at the end of a round. Where those exits go and
 whether they are locked is read now. A busy player sees what keeps them busy:
 `on the stairs until tick 1300` on a walk, `chanting until tick 1300` on any
 other timed move, and `recovering until tick 1300` in a cooldown. A player names only
-what they hold or what that view shows. Anything else reads like an unknown
-word and takes no round. A pack that omits `display_name` fails check. An
-unknown command tells the player to type help. A player reads display names and may
-type them, in any case, and ids still work. A name two things in sight share is
-refused by that name and takes no round.
+what they hold or what that view shows, by its id or by the display name they
+read, in any case. `help`, the room's items, the exits and the character
+picker show display names, and an exit named by where it goes shows that
+place's name. A name two things in sight share is refused by that name and
+takes no round. Anything else reads like an unknown word and takes no round.
+A pack that omits `display_name` fails check. An unknown command tells the
+player to type help.
 
 Tested in `features/seats/a_player_knows_the_place.feature`,
 `features/seats/the_picker_shows_every_pc.feature`,
