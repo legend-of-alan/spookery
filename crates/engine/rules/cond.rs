@@ -4,7 +4,7 @@ use crate::canon::{Canon, OPEN};
 use crate::intent::{Intent, Source, Target, Viewer};
 use crate::rules::context::Context;
 use crate::rules::expr;
-use crate::rules::rule::{Cond, Subject};
+use crate::rules::rule::{Cond, Who};
 use crate::state::{Presence, State};
 use crate::Reason;
 
@@ -87,7 +87,7 @@ fn holds(context: &Context, cond: &Cond) -> Result<bool, Reason> {
             Ok(op.holds(current, right))
         }
         Cond::Flag {
-            who: Subject::Exit(exit),
+            who: Who::Exit(exit),
             key,
             is,
         } => Ok((key == OPEN && state.places().is_exit_open(exit)) == *is),

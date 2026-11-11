@@ -15,7 +15,7 @@ use crate::diagnostic::{schema_error, Diagnostic};
 use crate::rules::expr::{stamp_expr, BinOp, Expr};
 use crate::rules::rule::{
     ChangeWatch, Cond, Cost, EffectTemplate, LineColumn, LocationTo, NarrateTo, Op, Owner, Phase,
-    ResistSpec, RollSpec, Rule, Subject, TargetKind, WatchWho, When,
+    ResistSpec, RollSpec, Rule, TargetKind, WatchWho, When, Who,
 };
 use crate::state::id::{ActorId, ExitId, PlaceId};
 
@@ -1046,7 +1046,7 @@ fn resist_of(yaml: Option<&ResistYaml>) -> Result<Option<ResistSpec>, Fault> {
         ResistYaml::Roll(roll) => Ok(Some(ResistSpec::Roll {
             who: match &roll.who {
                 Some(who) => who_of(who)?,
-                None => Subject::Target,
+                None => Who::Target,
             },
             check: roll.check.clone(),
             target: expr_of(&roll.target)?,
@@ -1059,7 +1059,7 @@ fn resist_of(yaml: Option<&ResistYaml>) -> Result<Option<ResistSpec>, Fault> {
     }
 }
 
-fn who_of(yaml: &Spanned<String>) -> Result<Subject, Fault> {
+fn who_of(yaml: &Spanned<String>) -> Result<Who, Fault> {
     let fault = |message: String| Fault {
         message,
         spot: spot_of(yaml),
@@ -1069,34 +1069,32 @@ fn who_of(yaml: &Spanned<String>) -> Result<Subject, Fault> {
         if place.is_empty() {
             return Err(fault("place: needs an id".to_string()));
         }
-        return Ok(Subject::Place(place.into()));
+        return Ok(Who::Place(place.into()));
     }
     if let Some(story) = word.strip_prefix("story:") {
         if story.is_empty() {
             return Err(fault("story: needs an id".to_string()));
         }
-        return Ok(Subject::Story(story.into()));
+        return Ok(Who::Story(story.into()));
     }
     if let Some(exit) = word.strip_prefix("exit:") {
         return match exit.split_once('.') {
             Some((place, name)) if !place.is_empty() && !name.is_empty() => {
                 let (place, exit) = (place.into(), name.to_string());
-                Ok(Subject::Exit(ExitId { place, exit }))
+                Ok(Who::Exit(ExitId { place, exit }))
             }
             _ => Err(fault("exit: needs <place>.<exit>".to_string())),
         };
     }
     match word {
-        "self" => Ok(Subject::Self_),
-        "target" => Ok(Subject::Target),
-        "here" => Ok(Subject::Here),
-        "world" => Ok(Subject::Global),
+        "self" => Ok(Who::Self_),
+        "target" => Ok(Who::Target),
+        "here" => Ok(Who::Here),
+        "world" => Ok(Who::Global),
         "subject" => Err(fault(
             "who 'subject' is not a who; use self, or target for the move's target".to_string(),
         )),
-        other if !other.is_empty() && !is_retired_selector(other) => {
-            Ok(Subject::Actor(other.into()))
-        }
+        other if !other.is_empty() && !is_retired_selector(other) => Ok(Who::Actor(other.into())),
         other => Err(fault(format!("who '{other}' is not a who"))),
     }
 }
