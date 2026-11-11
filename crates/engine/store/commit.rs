@@ -13,7 +13,7 @@ use crate::store::journal;
 use crate::store::lock::{lock_write, PackGuard, WriteGuard};
 use crate::store::records::{MigrateRecord, Record, RoundRecord};
 use crate::store::recovery::close_finished;
-use crate::store::save::{self, missing_meters};
+use crate::store::save::{self, find_missing_meters};
 use crate::world::World;
 use crate::Reason;
 
@@ -107,9 +107,9 @@ pub fn commit_migrate(
         state_rev_before,
         state_rev_after,
         state_hash: String::new(),
-        meters: missing_meters(canon, &state),
-        dropped_modifiers: save::stale_modifiers(canon, &state),
-        dropped_meters: save::stale_meters(canon, &state),
+        meters: find_missing_meters(canon, &state),
+        dropped_modifiers: save::find_stale_modifiers(canon, &state),
+        dropped_meters: save::find_stale_meters(canon, &state),
         edited,
         prev: String::new(),
         chain: String::new(),

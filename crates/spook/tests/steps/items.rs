@@ -5,7 +5,7 @@ use std::path::Path;
 use cucumber::{given, then, when};
 use serde_json::Value;
 use spookery_engine::testing::{faces, RollKey};
-use spookery_engine::{EntityId, State};
+use spookery_engine::{entity, State};
 
 use super::common::split_line;
 use super::table;
@@ -32,8 +32,8 @@ fn give(now: &mut State, actor: &str, item: &str) {
 fn hp(pack: &Path, actor: &str) -> i64 {
     let now = support::state_of(pack);
     let canon = spookery_engine::load_canon(pack).unwrap();
-    let entity = spookery_engine::EntityId::Actor(actor.into());
-    now.entity(&entity).meter_value(&canon, "hp").unwrap()
+    let id = spookery_engine::entity::Id::Actor(actor.into());
+    now.entity(&id).meter_value(&canon, "hp").unwrap()
 }
 
 fn count(pack: &Path, actor: &str, item: &str) -> u32 {
@@ -213,7 +213,7 @@ fn again_is_refused(world: &mut World, line: String, code: String) {
 fn docks_shop_has_3_lamp_oil(world: &mut World) {
     let pack = support::copy_pack("oneshot-docks", "take");
     support::edit_save_with(&pack, |now, canon| {
-        let shop = EntityId::Place("docks_shop".into());
+        let shop = entity::Id::Place("docks_shop".into());
         support::put_items(now, canon, &shop, "lamp_oil", 3);
     });
     world.pack = Some(pack);
@@ -343,7 +343,7 @@ fn the_line_is_refused_and_quiet(world: &mut World, code: String) {
 fn the_shop_has_no_oil(world: &mut World) {
     let pack = support::copy_pack("oneshot-docks", "take-none");
     support::edit_save_with(&pack, |now, canon| {
-        let shop = EntityId::Place("docks_shop".into());
+        let shop = entity::Id::Place("docks_shop".into());
         support::put_items(now, canon, &shop, "lamp_oil", 0);
     });
     world.pack = Some(pack);
@@ -632,7 +632,7 @@ fn nell_resists_on_a_seeded_roll(world: &mut World) {
     support::edit_save_with(&pack, |now, canon| {
         hold_dagger(now, true);
         support::edit_meter(now, canon, "pc_nell", "hp", |hp| hp.base = 10);
-        let nell = EntityId::Actor("pc_nell".into());
+        let nell = entity::Id::Actor("pc_nell".into());
         support::put_meter(now, canon, &nell, "constitution", stat);
     });
     spookery_engine::migrate_pack(&pack).unwrap_or_else(|err| panic!("migrate: {err}"));

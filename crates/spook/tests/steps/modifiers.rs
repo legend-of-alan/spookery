@@ -5,7 +5,7 @@ use std::path::Path;
 
 use cucumber::{given, then, when};
 use spookery_engine::testing::{stamp_pack_rev, state_of};
-use spookery_engine::{load_canon, EntityId, Meter, Modifier};
+use spookery_engine::{entity, load_canon, Meter, Modifier};
 
 use super::common::replace_in_file;
 use super::triggers::{add_verb, edit_table_with, intent, play_round, seen_of, set_place, sit};
@@ -80,7 +80,7 @@ fn stacks_of(pack: &Path, id: &str) -> Vec<i64> {
 fn lowered(pack: &Path, meter: &str) -> i64 {
     let now = state_of(pack);
     let canon = load_canon(pack).unwrap_or_else(|err| panic!("load: {err:?}"));
-    let rowan = EntityId::Actor("pc_rowan".into());
+    let rowan = entity::Id::Actor("pc_rowan".into());
     let key = ("pc_rowan".into(), meter.to_string());
     let Meter { base, offset } = now.actors().meters[&key].clone();
     base + offset - now.entity(&rowan).meter_value(&canon, meter).unwrap()
@@ -199,7 +199,7 @@ fn two_modifiers_on_sight(world: &mut World, rain: String, fog: String) {
     support::edit_save_with(&pack, |now, canon| {
         let actors: Vec<_> = now.actors().kind.keys().cloned().collect();
         for actor in actors {
-            support::put_meter(now, canon, &EntityId::Actor(actor), "sight", 5);
+            support::put_meter(now, canon, &entity::Id::Actor(actor), "sight", 5);
         }
     });
     add_modifier(&pack, &rain, "sight", "");
@@ -327,8 +327,8 @@ meters:
     );
     fs::write(pack.join("world/meters.yaml"), text).unwrap();
     support::edit_save_with(&pack, |now, canon| {
-        support::put_meter(now, canon, &EntityId::Actor("pc_rowan".into()), "luck", 1);
-        support::put_meter(now, canon, &EntityId::World, "tide", 4);
+        support::put_meter(now, canon, &entity::Id::Actor("pc_rowan".into()), "luck", 1);
+        support::put_meter(now, canon, &entity::Id::Global, "tide", 4);
     });
 }
 
@@ -381,7 +381,7 @@ fn rowan_has_no_burn(world: &mut World) {
     assert_eq!(modifier_of(pack(world), "burn"), None);
     assert_eq!(lowered(pack(world), "grit"), 0);
     let canon = load_canon(pack(world)).unwrap();
-    let rowan = EntityId::Actor("pc_rowan".into());
+    let rowan = entity::Id::Actor("pc_rowan".into());
     assert_eq!(
         state_of(pack(world))
             .entity(&rowan)
@@ -403,7 +403,7 @@ fn neither_keeps_the_dropped_meter(world: &mut World) {
     let meters = &now.actors().meters;
     assert!(!meters.contains_key(&("pc_rowan".into(), "luck".to_string())));
     assert!(meters.contains_key(&("pc_rowan".into(), "grit".to_string())));
-    assert!(!now.world().meters.contains_key("tide"));
+    assert!(!now.globals().meters.contains_key("tide"));
 }
 
 #[then(expr = "the GM sees {string} as a changed key")]

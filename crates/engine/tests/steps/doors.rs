@@ -201,7 +201,7 @@ fn the_journal_has_the_open(world: &mut World) {
 #[then(expr = "a change rule watching open has run in that round")]
 fn the_watch_ran(world: &mut World) {
     let saved = spookery_engine::World::peek(world.pack()).unwrap();
-    assert!(saved.state().world().flags.contains("creaked"));
+    assert!(saved.state().globals().flags.contains("creaked"));
     drop(saved);
     let round = support::read_round(world.pack(), "round-0001");
     let creaked = round["effects"].as_array().unwrap().iter().any(|effect| {

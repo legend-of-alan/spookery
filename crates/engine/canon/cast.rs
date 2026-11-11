@@ -9,9 +9,10 @@ use crate::canon::rule_list::{self, RuleYaml};
 use crate::canon::source::{load_tagged, Diags, FileText, Locator, Page, Problem, CAST_SCHEMA};
 use crate::canon::{CastDef, CastKind, IdleProfile};
 use crate::diagnostic::Diagnostic;
+use crate::entity;
 use crate::rules::rule::{Owner, Rule};
-use crate::state::id::{ActorId, EntityId};
-use crate::state::meter::MeterDef;
+use crate::state::component::meter::MeterDef;
+use crate::state::id::ActorId;
 
 /// One cast page into `cast`, its own meters into `meters` when those loaded, and its rules.
 pub(super) fn add_cast(
@@ -42,7 +43,7 @@ pub(super) fn add_cast(
         return None;
     }
     let id: ActorId = file.id.clone().into();
-    let carrier = Some(EntityId::Actor(id.clone()));
+    let carrier = Some(entity::Id::Actor(id.clone()));
     let own = diags.keep(meter_defs(&whole, file.meters, carrier));
     if let (Some(meters), Some(own)) = (meters, own) {
         add_own_meters(meters, own, None, &whole, diags);

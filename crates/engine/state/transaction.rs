@@ -137,7 +137,7 @@ impl State {
         transaction.memory_writes = point.memory_writes;
     }
 
-    /// Every kind's stores and the notes, as the logs a rollback undoes and an accept clears.
+    /// Every collection's stores and the notes, as the logs a rollback undoes and an accept clears.
     fn logs_mut(&mut self) -> impl Iterator<Item = &mut dyn undo::Log> {
         let notes: &mut dyn undo::Log = &mut self.notes;
         (self.actors.logs_mut().into_iter())
@@ -226,8 +226,9 @@ mod tests {
 
     use crate::intent::Intent;
     use crate::rules::effect::{Effect, EffectKind};
-    use crate::state::id::{ActorId, EntityId};
-    use crate::state::meter::{Meter, MeterWrite};
+    use crate::state::component::meter::{Meter, MeterWrite};
+    use crate::state::entity;
+    use crate::state::id::ActorId;
     use crate::state::{ActorKind, Presence, State};
     use crate::{Reason, World};
 
@@ -259,7 +260,7 @@ mod tests {
         let intent = Intent::habit(world.state(), &"mira".into(), "leave_door_note");
         let mut write = |actor: &str, key: &str, delta: i64| {
             let kind = EffectKind::Meter {
-                entity: EntityId::Actor(actor.into()),
+                entity: entity::Id::Actor(actor.into()),
                 key: key.to_string(),
                 write: MeterWrite::Offset(delta),
             };

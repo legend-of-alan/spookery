@@ -1,13 +1,12 @@
-//! Entity identity: each kind's id, any entity's id as rules and the journal spell it, and the
-//! borrowed form the canon's lookups take.
+//! The id of an actor, of a place and of a story, and the address of an exit.
 
 use std::borrow::Borrow;
 use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
-/// Declares `$name`, the id of one kind of entity: a string saved as itself, which an id of
-/// another kind cannot stand in for.
+/// Declares `$name`, the id of an entity in one collection: a string saved as itself, which an id
+/// from another collection cannot stand in for.
 macro_rules! string_id {
     ($(#[$doc:meta])* $name:ident) => {
         $(#[$doc])*
@@ -72,50 +71,6 @@ string_id! {
 string_id! {
     /// A story's id, as the pack's stories key them.
     StoryId
-}
-
-/// Who holds a meter, a flag or an item count, as a rule's `who` names it and the journal
-/// writes it: `world`, `{actor: id}`, `{place: id}` or `{story: id}`.
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum EntityId {
-    Actor(ActorId),
-    Place(PlaceId),
-    Story(StoryId),
-    World,
-}
-
-/// The entity as a rule's `who` names it: an actor id, `place:<id>`, `story:<id>` or `world`.
-impl fmt::Display for EntityId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            EntityId::Actor(id) => write!(f, "{id}"),
-            EntityId::Place(id) => write!(f, "place:{id}"),
-            EntityId::Story(id) => write!(f, "story:{id}"),
-            EntityId::World => write!(f, "world"),
-        }
-    }
-}
-
-/// An entity by reference, for the canon's lookups: no id is cloned to ask what an entity
-/// carries.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum EntityRef<'a> {
-    Actor(&'a ActorId),
-    Place(&'a PlaceId),
-    Story(&'a StoryId),
-    World,
-}
-
-impl EntityId {
-    pub fn as_ref(&self) -> EntityRef<'_> {
-        match self {
-            EntityId::Actor(id) => EntityRef::Actor(id),
-            EntityId::Place(id) => EntityRef::Place(id),
-            EntityId::Story(id) => EntityRef::Story(id),
-            EntityId::World => EntityRef::World,
-        }
-    }
 }
 
 /// One exit's door, by its place and its name. An address, not an entity: it holds nothing but

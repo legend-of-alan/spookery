@@ -1090,7 +1090,7 @@ fn who_of(yaml: &Spanned<String>) -> Result<Who, Fault> {
         "self" => Ok(Who::Self_),
         "target" => Ok(Who::Target),
         "here" => Ok(Who::Here),
-        "world" => Ok(Who::World),
+        "world" => Ok(Who::Global),
         "subject" => Err(fault(
             "who 'subject' is not a who; use self, or target for the move's target".to_string(),
         )),

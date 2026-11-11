@@ -1,6 +1,7 @@
 //! Turn a rule template into effects for one intent.
 
 use crate::canon::{Canon, OPEN};
+use crate::entity;
 use crate::intent::Target;
 use crate::round::dice::Roller;
 use crate::rules::context::Context;
@@ -9,8 +10,8 @@ use crate::rules::expr::{self, Dice, Expr};
 use crate::rules::roll::Outcome;
 use crate::rules::roll::{MoveReport, Roll};
 use crate::rules::rule::{EffectTemplate, LocationTo, NarrateTo, ResistSpec, Rule, Who};
-use crate::state::id::{ActorId, EntityId};
-use crate::state::meter::MeterWrite;
+use crate::state::component::meter::MeterWrite;
+use crate::state::id::ActorId;
 use crate::state::State;
 use crate::Reason;
 
@@ -200,9 +201,9 @@ fn expand_template(
         } => {
             let item_id = expr::resolve_item_id(context, id)?;
             let (actor_id, place) = match expr::resolve_entity(context, who)? {
-                EntityId::Actor(id) => (Some(id), None),
-                EntityId::Place(id) => (None, Some(id)),
-                EntityId::Story(_) | EntityId::World => return Err(Reason::Schema),
+                entity::Id::Actor(id) => (Some(id), None),
+                entity::Id::Place(id) => (None, Some(id)),
+                entity::Id::Story(_) | entity::Id::Global => return Err(Reason::Schema),
             };
             effects.push(Effect::new(
                 viewer,
@@ -307,7 +308,7 @@ fn expand_template(
 
 fn meter_offset(
     context: &Context,
-    entity: &EntityId,
+    id: &entity::Id,
     key: &str,
     add: Option<&Expr>,
     set: Option<&Expr>,
@@ -319,10 +320,7 @@ fn meter_offset(
         )?));
     }
     let desired = expr::eval_with_dice(context, set.ok_or(Reason::Schema)?, dice)?;
-    let current = context
-        .state
-        .entity(entity)
-        .meter_value(context.canon, key)?;
+    let current = context.state.entity(id).meter_value(context.canon, key)?;
     Ok(MeterWrite::Offset(
         desired.checked_sub(current).ok_or(Reason::OutOfRange)?,
     ))

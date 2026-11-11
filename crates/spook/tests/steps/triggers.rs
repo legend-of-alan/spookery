@@ -7,7 +7,7 @@ use spookery::protocol;
 use spookery_engine::testing::state_of;
 use spookery_engine::testing::Canon;
 use spookery_engine::{emit_save, parse_save};
-use spookery_engine::{EntityId, Presence, State};
+use spookery_engine::{entity, Presence, State};
 
 use super::common::replace_in_file;
 use super::meters::write_world_meters;
@@ -173,7 +173,7 @@ rules:
         actors
             .set_flag(&"pc_nell".into(), "found_key", true)
             .unwrap();
-        support::put_meter(now, canon, &EntityId::World, "tide", 0);
+        support::put_meter(now, canon, &entity::Id::Global, "tide", 0);
     });
     play(
         world,
@@ -192,7 +192,7 @@ fn nell_knows_the_ledger(world: &mut World, tide: i64) {
             .any(|fact| fact == "fact_ledger"),
         "nell does not know fact_ledger"
     );
-    let live = &now.world().meters["tide"];
+    let live = &now.globals().meters["tide"];
     assert_eq!(live.base + live.offset, tide, "{live:?}");
 }
 
@@ -661,9 +661,9 @@ fn nell_sets_the_tide(world: &mut World) {
 fn the_world_has_the_tide(world: &mut World) {
     let now = state_of(world.pack.as_ref().unwrap());
     assert!(
-        now.world().flags.iter().any(|flag| flag == "tide_turned"),
+        now.globals().flags.iter().any(|flag| flag == "tide_turned"),
         "flags: {:?}",
-        now.world().flags
+        now.globals().flags
     );
 }
 
@@ -1051,7 +1051,7 @@ rules:
     edit_table_with(world, &pack, |now, seated, canon| {
         insert_actor_copy(now, canon, seated, ("aldric", "briar"), "docks_shop");
         let briar = spookery_engine::ActorId::from("briar");
-        support::put_meter(now, canon, &EntityId::Actor(briar.clone()), "hp", hp);
+        support::put_meter(now, canon, &entity::Id::Actor(briar.clone()), "hp", hp);
         if downed {
             now.actors_mut().set_flag(&briar, "downed", true).unwrap();
         }

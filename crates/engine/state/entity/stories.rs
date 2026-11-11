@@ -5,15 +5,16 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
-use super::id::{EntityRef, StoryId};
-use super::meter::{self, Meter};
-use super::{change, flag, nested_map, undo, Writer};
 use crate::canon::Canon;
+use crate::state::component::flag;
+use crate::state::component::meter::{self, Meter};
+use crate::state::id::StoryId;
+use crate::state::{change, entity, nested_map, undo, Writer};
 use crate::Reason;
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
-pub struct StoryComponents {
+pub struct Stories {
     /// The meters each story file declares.
     #[serde(with = "nested_map")]
     pub meters: undo::Store<BTreeMap<(StoryId, String), Meter>>,
@@ -21,10 +22,10 @@ pub struct StoryComponents {
     pub flags: undo::Store<BTreeSet<(StoryId, String)>>,
 }
 
-impl StoryComponents {
+impl Stories {
     /// The current value of meter `key` on `story`, or `UNKNOWN_ID` when it does not carry it.
     pub fn meter_value(&self, canon: &Canon, story: &StoryId, key: &str) -> Result<i64, Reason> {
-        let def = canon.meter_def(EntityRef::Story(story), key);
+        let def = canon.meter_def(entity::IdRef::Story(story), key);
         meter::read(def, nested_map::get(&self.meters, story, key))
     }
 
@@ -33,14 +34,14 @@ impl StoryComponents {
     }
 
     /// Every store, as the log a rollback undoes and an accept clears.
-    pub(super) fn logs_mut(&mut self) -> [&mut dyn undo::Log; 2] {
+    pub(in crate::state) fn logs_mut(&mut self) -> [&mut dyn undo::Log; 2] {
         // Every store, with no `..`: a store added later must be listed here to compile.
-        let StoryComponents { meters, flags } = self;
+        let Stories { meters, flags } = self;
         [meters, flags]
     }
 }
 
-impl Writer<'_, StoryComponents> {
+impl Writer<'_, Stories> {
     /// Move `story`'s meter `key` by `delta` inside its bounds.
     pub fn shift_meter(
         &mut self,
@@ -51,7 +52,7 @@ impl Writer<'_, StoryComponents> {
     ) -> Result<(), Reason> {
         let (components, transaction) = (&mut *self.components, &mut *self.transaction);
         let def = canon
-            .meter_def(EntityRef::Story(story), key)
+            .meter_def(entity::IdRef::Story(story), key)
             .ok_or(Reason::UnknownId)?;
         let entry = (story.clone(), key.to_string());
         let watched = change::Key::StoryMeter(story.to_string(), key.to_string());
@@ -71,7 +72,7 @@ impl Writer<'_, StoryComponents> {
         meter: Option<Meter>,
     ) -> Result<(), Reason> {
         let (components, transaction) = (&mut *self.components, &mut *self.transaction);
-        let def = canon.meter_def(EntityRef::Story(story), key);
+        let def = canon.meter_def(entity::IdRef::Story(story), key);
         let entry = (story.clone(), key.to_string());
         let watched = change::Key::StoryMeter(story.to_string(), key.to_string());
         let (next, change) = meter::next(components.meters.get(&entry), meter, def, Ok(0), watched);

@@ -2,11 +2,12 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::entity;
 use crate::intent::Intent;
 use crate::rules::effect::Effect;
 use crate::rules::gate;
-use crate::state::id::{ActorId, EntityId};
-use crate::state::meter::MeterDef;
+use crate::state::component::meter::MeterDef;
+use crate::state::id::ActorId;
 use crate::state::MemoryLine;
 
 /// One meter a migrate added, stored at that meter's `start`.
@@ -17,7 +18,7 @@ pub struct AddedMeter {
     pub start: i64,
     /// The one actor or the world that carries it. Omitted for a meter every actor carries.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub carrier: Option<EntityId>,
+    pub carrier: Option<entity::Id>,
 }
 
 impl AddedMeter {
@@ -35,7 +36,7 @@ impl AddedMeter {
 #[serde(deny_unknown_fields)]
 pub struct DroppedMeter {
     pub id: String,
-    pub carrier: EntityId,
+    pub carrier: entity::Id,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
