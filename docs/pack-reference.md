@@ -391,7 +391,7 @@ A pack line reads as a clause. Each word keeps one part of speech and one role:
 | `at` | preposition | when or where: a time or a place |
 | `via` | preposition | the way through |
 
-**One role per preposition.** A preposition is used only for the role it fits, and a word never changes role from one line to the next. `for` and `by` are not used. The number a roll has to beat is `threshold`, never `target`, because `target` is only ever the thing the verb acts on. The value after a preposition is its object; in Rust that value is a `grammar::Object`.
+**One role per preposition.** A preposition is used only for the role it fits, and a word never changes role from one line to the next. `for` and `by` are not used. The number a roll has to beat is `threshold`, never `target`, because `target` is only ever the thing the verb acts on. The target and the value after a preposition are objects; in Rust, `of:`'s value is a `grammar::Object`.
 
 The arrival in `packs/sample-d20/story/ending.yaml`:
 

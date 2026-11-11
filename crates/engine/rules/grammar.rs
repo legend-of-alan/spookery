@@ -11,9 +11,10 @@ pub enum Subject {
     Actor(String),
 }
 
-/// The owner a rule's `of:` names: the object of that preposition. A resist's `subject:` (the
-/// actor who rolls to resist, not the subject of the outer line) reuses this value set until
-/// pack lines have a parse tree. The pack writes `world` for `Object::Global`.
+/// What a pack line names as an object: a direct object or the object of a preposition. Today
+/// it is the value of `of:`. A resist's `subject:` (the actor who rolls to resist, not the
+/// subject of the outer line) reuses this value set until pack lines have a parse tree. The
+/// pack writes `world` for `Object::Global`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Object {
     Self_,
