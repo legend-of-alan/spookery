@@ -53,7 +53,7 @@ pub(crate) fn run(
             Resolution::Ready { rule, rolled } => {
                 // The world may have changed since the queue, so the gate checks the rule again.
                 let context = Context::new(canon, state, presence, intent);
-                if let Err(refusal) = gate::admit(&context, rule) {
+                if let Err(refusal) = gate::admit(&context, rule, None) {
                     refuse(log, intent, refusal, false);
                     continue;
                 }

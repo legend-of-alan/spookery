@@ -103,7 +103,7 @@ impl Target {
     }
 
     /// The id a move names.
-    pub(crate) fn token(&self) -> Option<&str> {
+    pub fn token(&self) -> Option<&str> {
         match self {
             Target::Place(id) => Some(id.as_str()),
             Target::Actor(id) => Some(id.as_str()),

@@ -130,7 +130,7 @@ A GM's `release` frees the seat before its reply. A later command on that connec
 
 ### Moves
 
-A move is a pack verb, its target in `target`. The target is an id or a display name the player sees, ignoring case and outer spaces, and an exit also answers to the place it goes to, by id or name. A name that two things in sight share is refused `AMBIGUOUS_NAME` before it is queued, with that name in `detail`. With a GM seated, the move waits for `commit`. The reply is `queued`, and the GM gets the same `queued` under the same `seq`. `intent` is the queue id. With no GM seated, the move commits its own round, and the reply comes after that round is written.
+A move is a pack verb, its target in `target`. The target is an id or a display name the player sees, ignoring case and outer spaces, and an exit also answers to the place it goes to, by id or name. A name that two things in sight share is refused `AMBIGUOUS_NAME` before it is queued, and `detail` is that name and every id that has it, `Briar: npc_briar, npc_oden`. With a GM seated, the move waits for `commit`. The reply is `queued`, and the GM gets the same `queued` under the same `seq`. `intent` is the queue id. With no GM seated, the move commits its own round, and the reply comes after that round is written.
 
 <!-- example: player-grit -->
 ```json
@@ -151,7 +151,7 @@ A move the table can judge at once is refused before it is queued. Here Rowan se
 {"seq":21,"reply_to":"c5","body":{"kind":"refused","code":"NO_EXIT","detail":"The stair door is locked."}}
 ```
 
-`look` takes no round and answers with a fresh `view`. `help` and `map` take none either, and answer with data the client prints. `help` lists the player commands but `claim`, then each pack verb this PC can use here and now. Each command has a `target`: `none`, `actor`, `place`, `exit` or `item`. `names` lists what the PC can name for it now, by the names the player reads: the exits from here, the actors or items it may name, or the places it visited. A name two things in sight share carries the id after it, as `Guard (npc_guard_east)`. A cast member's or item's verb carries that `owner` id, and its name as its one name, so it reads as `ask Briar`, and it shows only while they are in sight. A verb whose `if` fails now is left out, but cost is not checked. The exits and the busy line are in the `view`, not in `help`.
+`look` takes no round and answers with a fresh `view`. `help` and `map` take none either, and answer with data the client prints. `help` lists the player commands but `claim`, then each pack verb this PC can use here and now. Each command has a `target`: `none`, `actor`, `place`, `exit` or `item`. `names` lists what the PC can name for it now, by the names the player reads: the exits from here, the actors or items it may name, or the places it visited. A cast member's or item's verb carries that `owner` id, and its name as its one name, so it reads as `ask Briar`, and it shows only while they are in sight. A verb whose `if` fails now is left out, but cost is not checked. The exits and the busy line are in the `view`, not in `help`.
 
 <!-- example: player-help -->
 ```json
@@ -492,7 +492,7 @@ A refusal is a `refused` body, and the connection stays up. `detail` is there on
 | `UNSCOPED_PERCEIVE` | Send `perceive` with `as` set to a bare actor id. |
 | `ACTOR_MISMATCH` | That actor is a player's, or the move is not this actor's. |
 | `NO_EXIT`, `CANT_AFFORD`, `MISSING_ITEM`, `NOT_A_WEAPON`, `BUSY` | The move was not queued. `BUSY` clears when the character is free. |
-| `AMBIGUOUS_NAME` | Two things in sight, or two PCs, have the name `detail` gives. Name one by the id `help` shows after it. |
+| `AMBIGUOUS_NAME` | Two things in sight, or two PCs, share that name. Name one by an id `detail` lists. |
 | `UNKNOWN_MOVE`, `UNKNOWN_ID` | That move or id is not in the world, or the token is no claim's. |
 | `INELIGIBLE`, `OUT_OF_RANGE`, `BUDGET`, `UNKNOWN_EFFECT`, `ILLEGAL_KNOWLEDGE`, `VIEWER_MISMATCH`, `ENGINE_ON_PLAYER`, `TABLE_EMPTY` | The rules refused the change, and nothing of it was kept. |
 | `COMMIT_CONFLICT` | Another process holds the pack. Stop. |

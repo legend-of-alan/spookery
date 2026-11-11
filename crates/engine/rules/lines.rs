@@ -1,6 +1,6 @@
 //! The place name, place prose and busy line a view carries, and a player's help and map.
 
-use spookery_protocol::{add_ids_to_shared_names, CommandView, PlaceView, Seat, COMMANDS};
+use spookery_protocol::{CommandView, PlaceView, Seat, COMMANDS};
 
 use crate::canon::Canon;
 use crate::intent::{Target, Viewer};
@@ -15,8 +15,8 @@ use crate::Reason;
 
 /// `help`: the built-in player commands but `claim`, then each pack verb `verb_for` reaches
 /// now and whose `if` holds. A cast member's or item's verb is reached by naming them
-/// (`list_nameable`), so it carries that owner as its one name. Each name is the one the player
-/// reads, with its id after it when two share it. Cost is not checked.
+/// (`list_nameable`), so it carries that owner as its one name. Each name is the one the
+/// player reads. Cost is not checked.
 pub(crate) fn help(
     canon: &Canon,
     state: &State,
@@ -38,12 +38,8 @@ pub(crate) fn help(
         })
         .collect();
     let nameable = list_nameable(canon, state, presence, &viewer);
-    let named: Vec<(&str, &str)> = (nameable.iter())
-        .map(|thing| (thing.id.as_str(), thing.name.as_str()))
-        .collect();
-    let shown = add_ids_to_shared_names(&named);
-    let read_as = |id: &str| match named.iter().position(|(named, _)| *named == id) {
-        Some(at) => shown[at].clone(),
+    let name_of = |id: &String| match nameable.iter().find(|thing| thing.id == *id) {
+        Some(thing) => thing.name.clone(),
         None => place_name(canon, id),
     };
     let ids: Vec<String> = nameable.iter().map(|thing| thing.id.clone()).collect();
@@ -77,7 +73,7 @@ pub(crate) fn help(
             let command = CommandView {
                 name: verb.clone(),
                 target: kind.as_str().to_string(),
-                names: names.iter().map(|id| read_as(id)).collect(),
+                names: names.iter().map(name_of).collect(),
                 owner: owner.cloned(),
             };
             if !commands.contains(&command) {

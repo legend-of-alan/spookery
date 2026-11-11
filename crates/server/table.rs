@@ -441,12 +441,16 @@ impl Table {
             .world
             .queue_player_move(&presence, actor_id, verb, target.as_deref())
         {
-            Ok(queued) => ServerBody::Queued {
-                intent: queued.id,
-                actor: queued.actor_id,
-                move_name: queued.move_name,
-                target,
-            },
+            Ok(queued) => {
+                let queue = self.world.queued_intents().iter();
+                let intent = queue.rev().find(|intent| intent.id == queued.id);
+                ServerBody::Queued {
+                    target: intent.and_then(|intent| intent.target.token().map(String::from)),
+                    intent: queued.id,
+                    actor: queued.actor_id,
+                    move_name: queued.move_name,
+                }
+            }
             Err(refused) if gm.is_none() && refused.code == Reason::Busy => {
                 ServerBody::Refused(frames::render_refused_move(&refused))
             }

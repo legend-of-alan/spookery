@@ -41,8 +41,7 @@ pub use message::{
     Seat, ServerBody, ServerMessage, COMMANDS, VERSION,
 };
 pub use player::{
-    add_ids_to_shared_names, is_named, CommandView, ExitView, ItemStack, KnownFact, MeterView,
-    NoteView, PlaceView, View,
+    is_named, CommandView, ExitView, ItemStack, KnownFact, MeterView, NoteView, PlaceView, View,
 };
 
 /// The listening line `spook run` prints on stdout once both ports are bound: the game port
@@ -250,12 +249,9 @@ impl fmt::Display for Refusal {
             Reason::Busy => "You are busy.",
             Reason::AmbiguousName => match named {
                 Some(name) => {
-                    return write!(
-                        f,
-                        "More than one thing here is called {name}. Type help. [{code}]"
-                    )
+                    return write!(f, "More than one thing here is called {name}. [{code}]")
                 }
-                None => "More than one thing here has that name. Type help.",
+                None => "More than one thing here has that name.",
             },
             Reason::CantAfford => match named {
                 Some(what) => return write!(f, "You cannot afford {what}. [{code}]"),

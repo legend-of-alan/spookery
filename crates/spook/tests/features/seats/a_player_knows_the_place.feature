@@ -81,11 +81,9 @@ Feature: A player knows where they are and what they can do
     When play types "take Wheel chock"
     Then play shows "You picked up the Wheel chock."
 
-  Scenario: Two things here with one name are refused by that name
+  Scenario: Two things here with one name are refused, naming both ids
     Given a copy of the sample-d20 pack where Oden is also called Briar and stands in the Gate Yard
     When play joins the sample table
     And play types "ask Briar"
-    Then play's error shows "More than one thing here is called Briar. Type help."
+    Then play's error shows "More than one thing here is called Briar: npc_briar, npc_oden."
     And no round record was written
-    When play types "help"
-    Then play shows "ask Briar (npc_briar)"

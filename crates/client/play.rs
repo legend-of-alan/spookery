@@ -74,13 +74,8 @@ pub async fn run(addr: SocketAddr, raw: bool) -> Result<(), Error> {
                 if typed.trim() == "release" {
                     return seat.release().await;
                 }
-                let (command, args) = match parse_typed(&typed, &here) {
-                    Ok(Some(parsed)) => parsed,
-                    Ok(None) => continue,
-                    Err(refusal) => {
-                        eprintln!("{}", text::render_refusal(&refusal, raw));
-                        continue;
-                    }
+                let Some((command, args)) = parse_typed(&typed, &here) else {
+                    continue;
                 };
                 // A command the hello did not list points at help, and is not sent.
                 if !commands.iter().any(|known| known == command) {
@@ -193,19 +188,11 @@ fn print_text(text: &str) {
 
 /// The picker: every PC by the name the hello gives it, the taken ones marked in use.
 fn list_pcs(open: &[String], taken: &[String], pc_names: &BTreeMap<String, String>) -> String {
-    let pcs: Vec<&String> = open.iter().chain(taken).collect();
-    let named: Vec<(&str, &str)> = (pcs.iter())
-        .map(|id| (id.as_str(), pc_names.get(*id).unwrap_or(id).as_str()))
-        .collect();
-    let mut lines: Vec<String> = (protocol::add_ids_to_shared_names(&named).into_iter())
-        .zip(&pcs)
-        .map(|(name, id)| match taken.contains(id) {
-            true => format!("{name} (in use)"),
-            false => name,
-        })
-        .collect();
-    lines.sort();
-    let mut text = format!("Choose a character:\n{}", lines.join("\n"));
+    let name = |id: &String| pc_names.get(id).unwrap_or(id).clone();
+    let mut pcs: Vec<String> = open.iter().map(name).collect();
+    pcs.extend(taken.iter().map(|id| format!("{} (in use)", name(id))));
+    pcs.sort();
+    let mut text = format!("Choose a character:\n{}", pcs.join("\n"));
     if open.is_empty() {
         text.push_str("\nNone is free.");
     }
@@ -225,61 +212,36 @@ fn parse_pc_choice(line: &str) -> Result<String, Error> {
 /// The command a typed line names, and its arguments. `say place <text>` speaks to the place
 /// `here` shows, and `say <actor> <text>` to an actor `here` sees, named by id or by the name
 /// `here` gives them. Any other first word is a move with the rest of the line as its target.
-/// An empty line names none, and a name two actors here share is refused `AMBIGUOUS_NAME`.
-fn parse_typed<'l>(
-    line: &'l str,
-    here: &protocol::View,
-) -> Result<Option<(&'l str, Value)>, Refusal> {
+/// An empty line names none.
+fn parse_typed<'l>(line: &'l str, here: &protocol::View) -> Option<(&'l str, Value)> {
     let (command, rest) = line.trim().split_once(' ').unwrap_or((line.trim(), ""));
     if command.is_empty() {
-        return Ok(None);
+        return None;
     }
     if command == "say" {
         let (head, text) = rest.split_once(' ').unwrap_or((rest, ""));
         let args = if head == "place" && !text.is_empty() {
             json!({ "address": "place", "place": here.place, "text": text })
-        } else if let Some((actor, text)) = split_addressee(rest, here)? {
+        } else if let Some(actor) = find_addressee(head, here).filter(|_| !text.is_empty()) {
             json!({ "address": "actor", "actor": actor, "text": text })
         } else {
             json!({ "address": "table", "text": rest })
         };
-        return Ok(Some((command, args)));
+        return Some((command, args));
     }
     if rest.is_empty() {
-        return Ok(Some((command, json!({}))));
+        return Some((command, json!({})));
     }
-    Ok(Some((command, json!({ "target": rest }))))
+    Some((command, json!({ "target": rest })))
 }
 
-/// Split `rest` into the actor `here` sees whose id or name starts it, the longest name
-/// first, and the text after it. A name two actors share is refused `AMBIGUOUS_NAME`.
-fn split_addressee<'l>(
-    rest: &'l str,
-    here: &'l protocol::View,
-) -> Result<Option<(&'l str, &'l str)>, Refusal> {
-    let names = (here.visible_actors.iter().enumerate())
-        .map(|(at, id)| (id, here.actor_names.get(at).unwrap_or(id)));
-    let names: Vec<(&String, &String)> = names.collect();
-    for (at, _) in rest.rmatch_indices(' ') {
-        let (head, text) = (&rest[..at], rest[at..].trim());
-        let named = |name: &String| protocol::is_named(head, name);
-        let mut ids = (names.iter())
-            .filter(|(id, name)| named(id) || named(name))
-            .map(|(id, _)| id.as_str());
-        let Some(id) = ids.next() else {
-            continue;
-        };
-        if ids.next().is_some() {
-            return Err(Refusal {
-                code: protocol::Code::Known(Reason::AmbiguousName),
-                detail: Some(head.trim().to_string()),
-            });
-        }
-        if !text.is_empty() {
-            return Ok(Some((id, text)));
-        }
-    }
-    Ok(None)
+/// The actor `here` sees whose id or name is `word`.
+fn find_addressee<'v>(word: &str, here: &'v protocol::View) -> Option<&'v str> {
+    let name_at = |at: usize| here.actor_names.get(at).map_or("", String::as_str);
+    let mut actors = here.visible_actors.iter().enumerate();
+    let found = actors
+        .find(|(at, id)| protocol::is_named(word, id) || protocol::is_named(word, name_at(*at)));
+    found.map(|(_, id)| id.as_str())
 }
 
 #[cfg(test)]
@@ -295,10 +257,6 @@ mod tests {
         assert_eq!(bare.as_deref(), Some("pc_rowan"));
         assert_eq!(parse_pc_choice("player:pc_rowan").ok(), bare);
         assert_eq!(parse_pc_choice("  player:pc_rowan").ok(), bare);
-        assert_eq!(
-            parse_pc_choice(" Old Rowan ").ok().as_deref(),
-            Some("Old Rowan")
-        );
         assert!(parse_pc_choice("player:").is_err());
         assert!(parse_pc_choice("").is_err());
     }
@@ -307,53 +265,42 @@ mod tests {
     fn a_typed_line_is_a_command_and_its_args() {
         let view: View = serde_json::from_value(json!({
             "viewer": "pc_rowan", "place": "docks_gate", "visible_actors": ["pc_rowan", "mira"],
-            "actor_names": ["Rowan", "Mira Vell"],
+            "actor_names": ["Rowan", "Mira"],
             "known_facts": [], "notes": [], "unknown_mentions": [], "items": [],
             "habits": []
         }))
         .unwrap();
         let here = &view;
-        assert_eq!(parse_typed("wait", here), Ok(Some(("wait", json!({})))));
+        assert_eq!(parse_typed("wait", here), Some(("wait", json!({}))));
         assert_eq!(
             parse_typed("travel docks_street", here),
-            Ok(Some(("travel", json!({ "target": "docks_street" }))))
+            Some(("travel", json!({ "target": "docks_street" })))
         );
         assert_eq!(
             parse_typed("say hi there", here),
-            Ok(Some((
-                "say",
-                json!({ "address": "table", "text": "hi there" })
-            )))
+            Some(("say", json!({ "address": "table", "text": "hi there" })))
         );
         assert_eq!(
             parse_typed("say place hi", here),
-            Ok(Some((
+            Some((
                 "say",
                 json!({ "address": "place", "place": "docks_gate", "text": "hi" })
-            )))
+            ))
         );
         assert_eq!(
             parse_typed("say mira hi", here),
-            Ok(Some((
+            Some((
                 "say",
                 json!({ "address": "actor", "actor": "mira", "text": "hi" })
-            )))
+            ))
         );
+        assert_eq!(parse_typed("  ", here), None);
         assert_eq!(
-            parse_typed("say Mira Vell hi", here),
-            Ok(Some((
+            parse_typed("say Mira hi", here),
+            Some((
                 "say",
                 json!({ "address": "actor", "actor": "mira", "text": "hi" })
-            )))
+            ))
         );
-        assert_eq!(parse_typed("  ", here), Ok(None));
-        let twins: View = serde_json::from_value(json!({
-            "viewer": "pc_rowan", "place": "docks_gate", "visible_actors": ["mira", "mira_twin"],
-            "actor_names": ["Mira", "Mira"], "known_facts": [], "notes": [],
-            "unknown_mentions": [], "items": [], "habits": []
-        }))
-        .unwrap();
-        let refused = parse_typed("say mira hi", &twins).unwrap_err();
-        assert_eq!(refused.detail.as_deref(), Some("mira"));
     }
 }

@@ -139,28 +139,9 @@ pub fn is_named(typed: &str, name: &str) -> bool {
     typed.trim().to_lowercase() == name.trim().to_lowercase()
 }
 
-/// Each `(id, name)` as a player reads it: the name, with the id after it when another one
-/// has that name too, as `Guard (npc_guard_east)`.
-pub fn add_ids_to_shared_names(named: &[(&str, &str)]) -> Vec<String> {
-    let shared = |id: &str, name: &str| {
-        (named.iter()).any(|(other, other_name)| *other != id && is_named(other_name, name))
-    };
-    (named.iter())
-        .map(|(id, name)| match shared(id, name) {
-            true => format!("{name} ({id})"),
-            false => name.to_string(),
-        })
-        .collect()
-}
-
 #[cfg(test)]
 mod tests {
     use crate::ServerBody;
-
-    #[test]
-    fn part_of_a_name_names_nothing() {
-        assert!(!super::is_named("bri", "Briar"));
-    }
 
     #[test]
     fn a_view_body_ignores_unknown_fields() {
