@@ -57,11 +57,10 @@ pub(super) fn load_stories(
         let empty = ("id is empty", "set id to a short story id");
         let twice = ("story", "is already defined", "keep one story with this id");
         let taken = stories.contains_key(story.id.as_str());
+        let at = Locator::Key("id:");
         let refused = source
-            .refuse_empty(&story.id, "id", Locator::Key("id:"), empty)
-            .or_else(|| {
-                taken.then(|| source.refuse_duplicate(&story.id, "id", Locator::Key("id:"), twice))
-            });
+            .refuse_empty(&story.id, "id", at, empty)
+            .or_else(|| taken.then(|| source.refuse_duplicate(&story.id, "id", at, twice)));
         if let Some(diag) = refused {
             diags.push(diag);
             continue;

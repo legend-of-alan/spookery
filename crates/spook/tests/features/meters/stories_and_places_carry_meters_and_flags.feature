@@ -82,12 +82,12 @@ Feature: Stories and places carry meters and flags
     When a rule leaves a note in the loft
     Then pc_rowan, standing in the loft, perceives the note
 
-  Scenario: Two story files share an id
+  Scenario: The pack check refuses a repeated story id
     Given story/a.yaml and story/b.yaml both have id samples
     When the author runs spook check
     Then it refuses story/b.yaml, saying story id samples is already defined
 
-  Scenario: A story id is empty
+  Scenario: The pack check refuses an empty story id
     Given story/a.yaml has an empty id
     When the author runs spook check
     Then it refuses story/a.yaml, saying the story id is empty
