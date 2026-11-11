@@ -232,7 +232,7 @@ fn rounds_pass_until(world: &mut World, tick: u64) {
 #[when(expr = "the GM queues Mira's {string} outside the hours its if allows")]
 fn the_gm_queues_miras(world: &mut World, habit: String) {
     let mut opened = open(world.pack.as_ref().unwrap());
-    let spec = spookery_protocol::IntentArgs {
+    let spec = spookery_protocol::QueueArgs {
         id: Some("gm-1".to_string()),
         round_index: None,
         actor_id: Some("mira".to_string()),

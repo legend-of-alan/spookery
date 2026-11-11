@@ -539,7 +539,7 @@ fn compile_one(
     let do_ = effects_of(file, &entry.do_)?;
     let success = effects_of(file, &entry.success)?;
     let partial = effects_of(file, &entry.partial)?;
-    let failure = effects_of(file, &entry.miss)?;
+    let miss = effects_of(file, &entry.miss)?;
     if let Some(when) = &when {
         let timed = cost.is_some()
             || entry.start.is_some()
@@ -553,14 +553,14 @@ fn compile_one(
                 "remove them; a change is a consequence, not an action",
             ));
         }
-        if roll.is_none() && (!success.is_empty() || !partial.is_empty() || !failure.is_empty()) {
+        if roll.is_none() && (!success.is_empty() || !partial.is_empty() || !miss.is_empty()) {
             diags.push(schema_error(
                 file,
                 &format!("rule '{local}' lists an outcome without a roll"),
                 "add roll or move those effects to do",
             ));
         }
-        if roll.is_some() && success.is_empty() && (!partial.is_empty() || !failure.is_empty()) {
+        if roll.is_some() && success.is_empty() && (!partial.is_empty() || !miss.is_empty()) {
             diags.push(schema_error(
                 file,
                 &format!("rule '{local}' rolls without a success list"),
@@ -629,7 +629,7 @@ fn compile_one(
         do_,
         success,
         partial,
-        failure,
+        miss,
         file: file.to_string(),
         index,
     })

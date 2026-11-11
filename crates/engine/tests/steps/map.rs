@@ -20,7 +20,7 @@ fn mira_plays(pack: &Path, verb: &str, target: Option<&str>) {
     let lock = spookery_engine::lock_pack(pack).unwrap();
     let mut world =
         spookery_engine::World::resume(pack, lock).unwrap_or_else(|err| panic!("open: {err}"));
-    let intent = spookery_protocol::IntentArgs {
+    let intent = spookery_protocol::QueueArgs {
         id: Some(format!("mira-{}", world.state().round_index + 1)),
         round_index: None,
         actor_id: Some("mira".to_string()),

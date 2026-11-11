@@ -107,7 +107,7 @@ impl TryFrom<SayWire> for SayArgs {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(deny_unknown_fields)]
-pub struct IntentArgs {
+pub struct QueueArgs {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -241,21 +241,21 @@ mod tests {
         );
         let m =
             serde_json::from_str(r#"{"actor_id":"a","move":"m","target":"t","to":["b"]}"#).unwrap();
-        let c: IntentArgs = parse_args(Some(&m)).unwrap();
+        let c: QueueArgs = parse_args(Some(&m)).unwrap();
         assert_eq!(c.actor_id.as_deref(), Some("a"));
         assert_eq!(c.move_name.as_deref(), Some("m"));
         assert_eq!(c.target.as_deref(), Some("t"));
         assert_eq!(c.message_to, Some(vec!["b".to_string()]));
         let nested =
             serde_json::from_str(r#"{"actor_id":"a","move":"m","args":{"to":["b"]}}"#).unwrap();
-        assert!(parse_args::<IntentArgs>(Some(&nested)).is_err());
+        assert!(parse_args::<QueueArgs>(Some(&nested)).is_err());
     }
 
     #[test]
     fn an_intent_call_names_only_the_set_fields() {
         let call = |raw: &str| {
             let args = serde_json::from_str(raw).unwrap();
-            serde_json::to_string(&parse_args::<IntentArgs>(Some(&args)).unwrap()).unwrap()
+            serde_json::to_string(&parse_args::<QueueArgs>(Some(&args)).unwrap()).unwrap()
         };
         let bare = r#"{"actor_id":"mira","move":"restock_lamp_oil"}"#;
         assert_eq!(call(bare), bare);

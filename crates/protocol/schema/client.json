@@ -174,7 +174,7 @@
         "as"
       ]
     },
-    "IntentArgs": {
+    "QueueArgs": {
       "description": "The GM's `queue` command arguments, sent from a GM client to the table.\nSerialized, a call names only the fields that are set.",
       "type": "object",
       "properties": {

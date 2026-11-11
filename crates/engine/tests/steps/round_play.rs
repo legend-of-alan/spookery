@@ -742,7 +742,7 @@ fn set_budget(pack: &Path, key: &str, value: u64) {
 /// Rowan, seated, takes the street exit, then plays `then` in the same round.
 fn rowan_walks(
     pack: &Path,
-    then: Vec<spookery_protocol::IntentArgs>,
+    then: Vec<spookery_protocol::QueueArgs>,
 ) -> (spookery_engine::State, Value) {
     let mut intents = vec![intent("walk", "pc_rowan", "travel", Some("docks_street"))];
     intents.extend(then);
@@ -892,7 +892,7 @@ fn lark_roll(pack: &Path, extra_first: bool) -> (String, i64) {
 fn play_queued(
     pack: &Path,
     seated: &[&str],
-    intents: Vec<spookery_protocol::IntentArgs>,
+    intents: Vec<spookery_protocol::QueueArgs>,
 ) -> (spookery_engine::State, Vec<MoveReport>, Value) {
     let lock = spookery_engine::lock_pack(pack).unwrap();
     let mut world =
@@ -923,8 +923,8 @@ fn intent(
     actor_id: &str,
     verb: &str,
     target: Option<&str>,
-) -> spookery_protocol::IntentArgs {
-    spookery_protocol::IntentArgs {
+) -> spookery_protocol::QueueArgs {
+    spookery_protocol::QueueArgs {
         id: Some(id.to_string()),
         round_index: None,
         actor_id: Some(actor_id.to_string()),

@@ -76,7 +76,7 @@ fn mira() -> entity::Id {
 }
 
 /// Give the save the meters the pack now declares, then play one round.
-pub(crate) fn migrate_and_play(world: &mut World, intents: Vec<spookery::protocol::IntentArgs>) {
+pub(crate) fn migrate_and_play(world: &mut World, intents: Vec<spookery::protocol::QueueArgs>) {
     let pack = world.pack.clone().unwrap();
     spookery_engine::migrate_pack(&pack).unwrap_or_else(|err| panic!("migrate: {err}"));
     let played = play_round(world, &pack, intents);

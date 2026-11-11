@@ -31,7 +31,7 @@ impl Outcome {
 }
 
 pub use gm::{
-    parse_args, CastKind, CommitArgs, CommitBody, IntentArgs, MenuRow, PackSummary, PerceiveArgs,
+    parse_args, CastKind, CommitArgs, CommitBody, MenuRow, PackSummary, PerceiveArgs, QueueArgs,
     QueuedMove, Roll, SayArgs, StatusPresence, TableStatus, ToolResult,
 };
 #[cfg(feature = "schema")]

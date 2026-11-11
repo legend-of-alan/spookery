@@ -302,8 +302,8 @@ impl<L> World<L> {
     pub fn queue_gm_intent(
         &mut self,
         presence: &Presence,
-        spec: spookery_protocol::IntentArgs,
-        mint_id: impl FnOnce() -> Result<String, Reason>,
+        spec: spookery_protocol::QueueArgs,
+        new_id: impl FnOnce() -> Result<String, Reason>,
     ) -> Result<QueuedMove, Reason> {
         let actor_id: ActorId = spec
             .actor_id
@@ -322,7 +322,7 @@ impl<L> World<L> {
         let id = match spec.id {
             Some(id) if !id.is_empty() => id,
             Some(_) => return Err(Reason::Schema),
-            None => mint_id()?,
+            None => new_id()?,
         };
         if self.queue.iter().any(|intent| intent.id == id) {
             return Err(Reason::Schema);

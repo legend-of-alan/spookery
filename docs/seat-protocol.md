@@ -72,7 +72,7 @@ Each command reads `args` as one type, and the schema's `$defs` in `client.json`
 | a pack verb | player | `MoveArgs`: `target`, when the verb takes one | `queued` |
 | `status` | GM | `NoArgs` | `status` |
 | `perceive` | GM | `PerceiveArgs`: `as`, `max_body_chars` | `view` |
-| `queue` | GM | `IntentArgs`: `actor_id`, `move`, `id`, `target`, `to`, `round_index`, `rationale_code` | `queued` |
+| `queue` | GM | `QueueArgs`: `actor_id`, `move`, `id`, `target`, `to`, `round_index`, `rationale_code` | `queued` |
 | `commit` | GM | `CommitArgs`: `include_round`, `session_id` | a `round` for each round played, then `committed` |
 
 ### claim and release

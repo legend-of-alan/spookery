@@ -14,7 +14,7 @@ fn plays(pack: &Path, actor: &str, verb: &str, target: Option<&str>) -> serde_js
     let mut world =
         spookery_engine::World::resume(pack, lock).unwrap_or_else(|err| panic!("open: {err}"));
     let round = world.state().round_index + 1;
-    let intent = spookery_protocol::IntentArgs {
+    let intent = spookery_protocol::QueueArgs {
         id: Some(format!("{actor}-{round}")),
         round_index: None,
         actor_id: Some(actor.to_string()),
@@ -160,7 +160,7 @@ fn a_rule_locks_the_door(world: &mut World) {
 fn the_door_refuses_aldric(world: &mut World) {
     let lock = spookery_engine::lock_pack(world.pack()).unwrap();
     let mut opened = spookery_engine::World::resume(world.pack(), lock).unwrap();
-    let intent = spookery_protocol::IntentArgs {
+    let intent = spookery_protocol::QueueArgs {
         id: Some("aldric-stairs".to_string()),
         round_index: None,
         actor_id: Some("aldric".to_string()),

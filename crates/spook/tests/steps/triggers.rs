@@ -951,7 +951,7 @@ fn is_act_counter(key: &str) -> bool {
 fn play_and_keep_summaries(
     world: &mut World,
     pack: std::path::PathBuf,
-    intents: Vec<protocol::IntentArgs>,
+    intents: Vec<protocol::QueueArgs>,
 ) {
     let played = play_round(world, &pack, intents);
     world.summary = played.changed_keys;
@@ -1208,7 +1208,7 @@ pub(crate) struct PlayedRound {
 fn play(
     world: &mut World,
     pack: &Path,
-    intents: Vec<protocol::IntentArgs>,
+    intents: Vec<protocol::QueueArgs>,
 ) -> (State, Vec<spookery_engine::MoveReport>, Value) {
     let played = play_round(world, pack, intents);
     (played.now, played.reports, played.record)
@@ -1217,7 +1217,7 @@ fn play(
 pub(crate) fn play_round(
     scenario: &mut World,
     pack: &Path,
-    intents: Vec<protocol::IntentArgs>,
+    intents: Vec<protocol::QueueArgs>,
 ) -> PlayedRound {
     let mut round = super::rules::open(pack);
     let presence = remembered_presence(scenario, pack).unwrap_or_default();
@@ -1255,8 +1255,8 @@ pub(crate) fn intent(
     actor_id: &str,
     verb: &str,
     target: Option<&str>,
-) -> protocol::IntentArgs {
-    protocol::IntentArgs {
+) -> protocol::QueueArgs {
+    protocol::QueueArgs {
         id: Some(id.to_string()),
         round_index: None,
         actor_id: Some(actor_id.to_string()),
@@ -1268,7 +1268,7 @@ pub(crate) fn intent(
 }
 
 /// The GM queues `intent` under the id it names.
-fn queue(round: &mut spookery_engine::World, intent: protocol::IntentArgs) {
+fn queue(round: &mut spookery_engine::World, intent: protocol::QueueArgs) {
     round
         .queue_gm_intent(&spookery_engine::Presence::default(), intent, || {
             panic!("the GM chose the id")
