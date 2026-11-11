@@ -61,22 +61,10 @@ fn another_play_picks_on_that_table(world: &mut World, pc: String) {
     let port = table::live_mut(world).game_port;
     let addr = format!("127.0.0.1:{port}");
     let mut play = spawn_play(&addr, &pc, &[]);
-    let status = play
-        .child
-        .wait()
-        .unwrap_or_else(|err| panic!("play: {err}"));
+    let (status, stdout, stderr) = play.wait_with_output();
     world.code = status.code();
-    // The pipes drain on their own threads, so read stderr once its refusal line is whole.
-    // The picker was printed before the claim went out, so stdout already holds it.
-    world.stderr = table::poll_until("a refusal line", || {
-        let stderr = support::text_of(&play.stderr);
-        if stderr.ends_with("]\n") {
-            Ok(stderr)
-        } else {
-            Err(stderr)
-        }
-    });
-    world.stdout = support::text_of(&play.stdout);
+    world.stdout = stdout;
+    world.stderr = stderr;
 }
 
 #[then(expr = "play received the first perceive")]

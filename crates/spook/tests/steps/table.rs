@@ -460,7 +460,7 @@ pub fn spawn_table(pack: &Path, flags: &[&str]) -> Pending {
 pub fn wait_addrs(mut pending: Pending) -> RunningTable {
     let (game, mcp_addr, seen) = expect_addrs(&mut pending);
     let stdout = Arc::new(Mutex::new(seen));
-    drop(support::drain(pending.stdout, Arc::clone(&stdout)));
+    let stdout_drain = support::drain(pending.stdout, Arc::clone(&stdout));
     RunningTable {
         game,
         mcp_addr,
@@ -469,6 +469,11 @@ pub fn wait_addrs(mut pending: Pending) -> RunningTable {
             stdin: pending.stdin,
             stdout,
             stderr: pending.stderr,
+            drains: pending
+                .stderr_drain
+                .into_iter()
+                .chain([stdout_drain])
+                .collect(),
         },
     }
 }

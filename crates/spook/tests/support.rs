@@ -1,6 +1,6 @@
 use std::io::Read;
 use std::path::Path;
-use std::process::{Child, ChildStdin, Command, Stdio};
+use std::process::{Child, ChildStdin, Command, ExitStatus, Stdio};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 
@@ -78,6 +78,25 @@ pub struct Process {
     pub stdin: Option<ChildStdin>,
     pub stdout: Arc<Mutex<String>>,
     pub stderr: Arc<Mutex<String>>,
+    /// The threads that copy stdout and stderr into their buffers.
+    pub drains: Vec<JoinHandle<()>>,
+}
+
+impl Process {
+    /// Waits for the child to exit and both pipes to reach EOF, then returns its status,
+    /// stdout and stderr. Stdin stays open, so the child decides when it is done.
+    pub fn wait_with_output(&mut self) -> (ExitStatus, String, String) {
+        let status = self
+            .child
+            .wait()
+            .unwrap_or_else(|err| panic!("wait: {err}"));
+        for drain in std::mem::take(&mut self.drains) {
+            drain
+                .join()
+                .unwrap_or_else(|_| panic!("a drain thread panicked"));
+        }
+        (status, text_of(&self.stdout), text_of(&self.stderr))
+    }
 }
 
 impl Drop for Process {
@@ -102,13 +121,16 @@ pub fn spawn(args: &[&str]) -> Process {
     let stderr = child.stderr.take().unwrap();
     let stdout_buf = Arc::new(Mutex::new(String::new()));
     let stderr_buf = Arc::new(Mutex::new(String::new()));
-    drain(stdout, Arc::clone(&stdout_buf));
-    drain(stderr, Arc::clone(&stderr_buf));
+    let drains = vec![
+        drain(stdout, Arc::clone(&stdout_buf)),
+        drain(stderr, Arc::clone(&stderr_buf)),
+    ];
     Process {
         child,
         stdin,
         stdout: stdout_buf,
         stderr: stderr_buf,
+        drains,
     }
 }
 
