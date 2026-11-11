@@ -79,6 +79,14 @@ pub(crate) fn read_head(pack: &Path) -> Result<Option<CheckpointHead>, Error> {
     Ok(Some(parse_json("head.json", &text)?))
 }
 
+/// `true` when a save at `state_rev` claims the checkpoint head's `state_rev` but not its
+/// `bytes`. A save from before the head is a checkpoint that did not land, not an edit.
+pub(crate) fn edits_head(pack: &Path, state_rev: u64, bytes: &[u8]) -> Result<bool, Error> {
+    Ok(read_head(pack)?.is_some_and(|head| {
+        head.state_rev == state_rev && head.state_hash != blake2s_tagged(bytes)
+    }))
+}
+
 #[derive(Debug)]
 pub struct Error {
     pub file: String,

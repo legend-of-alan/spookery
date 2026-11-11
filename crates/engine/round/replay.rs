@@ -262,7 +262,8 @@ fn load_migrate_tip(path: &Path, lock: &PackGuard) -> Result<(State, bool), Reas
     let bytes = journal::read_save(&journal::save_path(path))?;
     let text = std::str::from_utf8(&bytes).map_err(|_| Reason::Schema)?;
     let file_state = save::parse(text).map_err(|diags| first_reason(&diags))?;
-    let edited = crate::world::edits_head(path, &file_state, &bytes)?;
+    let edited =
+        journal::edits_head(path, file_state.state_rev, &bytes).map_err(|fault| fault.reason)?;
     let ahead = journal::read_live_records(path)
         .map_err(|fault| fault.reason)?
         .iter()
