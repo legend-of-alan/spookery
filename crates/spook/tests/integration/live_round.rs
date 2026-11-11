@@ -143,13 +143,16 @@ fn spawn_ai_gm(addr: &str, key: &str, url: &str, model: &str) -> Process {
         .unwrap_or_else(|err| panic!("spawn ai-gm: {err}"));
     let stdout = Arc::new(Mutex::new(String::new()));
     let stderr = Arc::new(Mutex::new(String::new()));
-    drain(child.stdout.take().unwrap(), Arc::clone(&stdout));
-    drain(child.stderr.take().unwrap(), Arc::clone(&stderr));
+    let drains = vec![
+        drain(child.stdout.take().unwrap(), Arc::clone(&stdout)),
+        drain(child.stderr.take().unwrap(), Arc::clone(&stderr)),
+    ];
     Process {
         child,
         stdin: None,
         stdout,
         stderr,
+        drains,
     }
 }
 
