@@ -69,7 +69,7 @@ pub(crate) fn preview(context: &Context, rule: &Rule) -> Result<Vec<Effect>, Rea
     expand_lists(context, rule, None, &mut PreviewDice)
 }
 
-/// `do`, then the list `outcome` picks: `success`, `partial` or `failure`. `None` means the
+/// `do`, then the list `outcome` picks: `success`, `partial` or `miss`. `None` means the
 /// rule did not roll. `dice.resist` returns the subject's band; success shrugs the effect off.
 fn expand_lists(
     context: &Context,
@@ -82,7 +82,7 @@ fn expand_lists(
     match outcome {
         Some(Outcome::Success) => selected.extend(rule.success.iter()),
         Some(Outcome::Partial) => selected.extend(rule.partial.iter()),
-        Some(Outcome::Miss) => selected.extend(rule.failure.iter()),
+        Some(Outcome::Miss) => selected.extend(rule.miss.iter()),
         None => {}
     }
     let mut effects = Vec::with_capacity(selected.len());

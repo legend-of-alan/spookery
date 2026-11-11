@@ -9,7 +9,7 @@ use spookery_engine::{Address, Presence, Reason, RoundOutput, TapeRecord, World}
 use super::frames;
 use super::table::commit_then_fast_forward;
 use crate::protocol::{
-    parse_args, CommitArgs, IntentArgs, NoArgs, PerceiveArgs, SayArgs, ServerBody,
+    parse_args, CommitArgs, NoArgs, PerceiveArgs, QueueArgs, SayArgs, ServerBody,
     PERCEIVE_BODY_CHARS,
 };
 
@@ -43,7 +43,7 @@ impl Reply {
 
 /// Run one GM command. `presence` is who the seats hold. A command that is not a GM command is
 /// `SCHEMA`.
-pub(super) fn run_gm_command(
+pub(super) fn run(
     world: &mut World,
     presence: &Presence,
     command: &str,
@@ -63,9 +63,7 @@ pub(super) fn run_gm_command(
 
 /// What a GM command's MCP tool says about it, and the schema of the command's `args`. `None` for a
 /// command that is not a GM command.
-pub(super) fn describe_gm_command(
-    command: &str,
-) -> Option<(&'static str, Arc<Map<String, Value>>)> {
+pub(super) fn describe(command: &str) -> Option<(&'static str, Arc<Map<String, Value>>)> {
     let described = match command {
         "status" => (
             "status takes no keys. The reply is who is seated, the queue and the pack.",
@@ -77,7 +75,7 @@ pub(super) fn describe_gm_command(
         ),
         "queue" => (
             "queue requires actor_id and move. A habit row is legal when actor_id is an npc. A PC a player holds is ACTOR_MISMATCH.",
-            schema_for_type::<IntentArgs>(),
+            schema_for_type::<QueueArgs>(),
         ),
         "say" => (
             "say requires address and text. place is required when address is place. actor is required when address is actor. table takes neither place nor actor. A supplied from is SCHEMA.",
@@ -198,7 +196,7 @@ fn queue(
     presence: &Presence,
     arguments: Option<&Map<String, Value>>,
 ) -> Result<Reply, Reason> {
-    let call: IntentArgs = parse_args(arguments).map_err(|_| Reason::Schema)?;
+    let call: QueueArgs = parse_args(arguments).map_err(|_| Reason::Schema)?;
     if let Some(actor_id) = &call.actor_id {
         if presence
             .actors_present
@@ -209,8 +207,8 @@ fn queue(
         }
     }
     let target = call.target.clone().filter(|target| !target.is_empty());
-    let mint = || Ok(uuid::Uuid::new_v4().to_string());
-    let queued = world.queue_gm_intent(presence, call, mint)?;
+    let new_id = || Ok(uuid::Uuid::new_v4().to_string());
+    let queued = world.queue_gm_intent(presence, call, new_id)?;
     Ok(Reply::new(ServerBody::Queued {
         intent: queued.id,
         actor: queued.actor_id,
@@ -226,10 +224,10 @@ mod tests {
 
     use spookery_engine::{Presence, Reason};
 
-    use super::{describe_gm_command, run_gm_command};
+    use crate::gm;
     use crate::protocol::{QueuedMove, Seat, COMMANDS};
 
-    /// `run_gm_command` runs each GM command the hello lists: well-formed arguments are not
+    /// `gm::run` runs each GM command the hello lists: well-formed arguments are not
     /// `SCHEMA`, and a command that is not one is.
     #[test]
     fn each_gm_command_runs() {
@@ -252,11 +250,11 @@ mod tests {
         assert_eq!(called, gm_commands);
         for (command, args) in calls {
             let args = args.as_object().cloned().unwrap_or_default();
-            let ran = run_gm_command(&mut world, &Presence::default(), command, &args);
+            let ran = gm::run(&mut world, &Presence::default(), command, &args);
             assert!(!matches!(ran, Err(Reason::Schema)), "{command}");
         }
         assert!(matches!(
-            run_gm_command(&mut world, &Presence::default(), "fly", &Default::default()),
+            gm::run(&mut world, &Presence::default(), "fly", &Default::default()),
             Err(Reason::Schema)
         ));
     }
@@ -266,13 +264,9 @@ mod tests {
     #[test]
     fn each_gm_command_is_described() {
         for command in COMMANDS.iter().filter(|command| command.seat == Seat::Gm) {
-            assert!(
-                describe_gm_command(command.name).is_some(),
-                "{}",
-                command.name
-            );
+            assert!(gm::describe(command.name).is_some(), "{}", command.name);
         }
-        assert!(describe_gm_command("fly").is_none());
+        assert!(gm::describe("fly").is_none());
     }
 
     #[test]

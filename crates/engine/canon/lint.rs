@@ -181,7 +181,7 @@ pub(super) fn resist_same_without_roll(rules: &RuleTable) -> Vec<Diagnostic> {
         let after_do = scan_resist(&rule.do_, false, rule, &mut diags);
         scan_resist(&rule.success, after_do, rule, &mut diags);
         scan_resist(&rule.partial, after_do, rule, &mut diags);
-        scan_resist(&rule.failure, after_do, rule, &mut diags);
+        scan_resist(&rule.miss, after_do, rule, &mut diags);
     }
     diags
 }

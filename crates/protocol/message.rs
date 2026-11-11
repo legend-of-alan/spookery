@@ -250,7 +250,7 @@ pub fn generate_client_schema() -> schemars::Schema {
     generator.subschema_for::<NoArgs>();
     generator.subschema_for::<crate::SayArgs>();
     generator.subschema_for::<crate::PerceiveArgs>();
-    generator.subschema_for::<crate::IntentArgs>();
+    generator.subschema_for::<crate::QueueArgs>();
     generator.subschema_for::<crate::CommitArgs>();
     generator.into_root_schema_for::<ClientMessage>()
 }

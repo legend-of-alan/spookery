@@ -201,7 +201,7 @@ fn queue_gm_intent(opened: &mut spookery_engine::World, id: &str, actor: &str, m
     opened
         .queue_gm_intent(
             &spookery_engine::Presence::default(),
-            spookery_protocol::IntentArgs {
+            spookery_protocol::QueueArgs {
                 id: None,
                 round_index: None,
                 actor_id: Some(actor.to_string()),

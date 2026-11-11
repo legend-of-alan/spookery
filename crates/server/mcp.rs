@@ -325,7 +325,7 @@ fn list_gm_tools() -> Vec<Tool> {
         .iter()
         .filter(|command| command.seat == Seat::Gm)
         .filter_map(|command| {
-            let (about, schema) = gm::describe_gm_command(command.name)?;
+            let (about, schema) = gm::describe(command.name)?;
             Some(Tool::new(
                 command.name,
                 format!("{about} {SEAT_NOTES}"),

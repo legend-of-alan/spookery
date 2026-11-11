@@ -24,7 +24,7 @@ pub struct Rule {
     pub do_: Vec<EffectTemplate>,
     pub success: Vec<EffectTemplate>,
     pub partial: Vec<EffectTemplate>,
-    pub failure: Vec<EffectTemplate>,
+    pub miss: Vec<EffectTemplate>,
     pub file: String,
     pub index: usize,
 }
@@ -49,7 +49,7 @@ impl Rule {
             .iter()
             .chain(&self.success)
             .chain(&self.partial)
-            .chain(&self.failure)
+            .chain(&self.miss)
     }
 
     pub(crate) fn visit_templates<'a>(&'a self, mut visit: impl FnMut(&'a EffectTemplate)) {
@@ -64,7 +64,7 @@ impl Rule {
         walk(&self.do_, &mut visit);
         walk(&self.success, &mut visit);
         walk(&self.partial, &mut visit);
-        walk(&self.failure, &mut visit);
+        walk(&self.miss, &mut visit);
     }
 }
 

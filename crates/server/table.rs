@@ -13,7 +13,7 @@ use spookery_engine::{
 use tokio::sync::{oneshot, watch};
 
 use super::frames;
-use super::gm::{run_gm_command, Reply};
+use super::gm::{self, Reply};
 use super::idle::{self, now_stamp};
 use super::seat::{Claim, ConnId, Connection, FrameSender, Seats};
 use super::Error;
@@ -187,7 +187,7 @@ impl Table {
         out: FrameSender,
     ) -> Result<(), Box<ServerMessage>> {
         if seat == Seat::Gm && (self.seats.gm.is_some() || self.seats.connection(conn).is_some()) {
-            let seq = self.stamp();
+            let seq = self.next_seq();
             let refused = stamp_message(seq, None, ServerBody::Refused(Reason::TableFull.into()));
             return Err(Box::new(refused));
         }
@@ -459,7 +459,7 @@ impl Table {
             }
         };
         if let Some(gm) = gm {
-            let seq = self.stamp();
+            let seq = self.next_seq();
             self.send_to_pc(actor_id, stamp_message(seq, id, reply.clone()));
             return self.send(gm, stamp_message(seq, None, reply));
         }
@@ -477,7 +477,7 @@ impl Table {
             return self.reply(conn, id, ServerBody::Refused(Reason::NotInSpec.into()));
         }
         let presence = self.seats.presence();
-        let reply = run_gm_command(&mut self.world, &presence, &body.kind, &body.args)
+        let reply = gm::run(&mut self.world, &presence, &body.kind, &body.args)
             .unwrap_or_else(Reply::refused);
         self.log_refused(&body.kind, &reply);
         self.after_rounds(&reply.outputs);
@@ -529,7 +529,7 @@ impl Table {
             .map(|claim| claim.actor.clone())
             .collect();
         for commit in outputs.iter().filter_map(|output| output.commit.as_ref()) {
-            let seq = self.stamp();
+            let seq = self.next_seq();
             let body = ServerBody::Round {
                 round_index: commit.round_index,
                 world_time: commit.world_time,
@@ -582,7 +582,7 @@ impl Table {
     fn deliver_say(&mut self, said: &TapeRecord, sender: Option<(ConnId, Option<String>)>) {
         let _ = writeln!(self.out, "{}", emit_tape_record(said));
         let _ = self.out.flush();
-        let seq = self.stamp();
+        let seq = self.next_seq();
         let (sender, id) = sender.unzip();
         let id = id.flatten();
         let reply_to = |conn: ConnId| (sender == Some(conn)).then(|| id.clone()).flatten();
@@ -610,7 +610,7 @@ impl Table {
     /// Tells the GM who is present now, and the host.
     fn announce_presence(&mut self) {
         if let Some(gm) = self.seats.gm {
-            let seq = self.stamp();
+            let seq = self.next_seq();
             let body = ServerBody::Presence {
                 actors_present: self
                     .seats
@@ -626,7 +626,7 @@ impl Table {
     }
 
     /// The next `seq`.
-    fn stamp(&mut self) -> u64 {
+    fn next_seq(&mut self) -> u64 {
         self.seq += 1;
         self.seq
     }
@@ -634,7 +634,7 @@ impl Table {
     /// The reply to the message `id` named. One to a connection that drives a claim goes
     /// to that PC.
     fn reply(&mut self, conn: ConnId, id: Option<String>, body: ServerBody) {
-        let seq = self.stamp();
+        let seq = self.next_seq();
         let message = stamp_message(seq, id, body);
         match self.seats.claim_of(conn).map(|claim| claim.actor.clone()) {
             Some(actor_id) => self.send_to_pc(&actor_id, message),
@@ -649,7 +649,7 @@ impl Table {
 
     /// A message that answers nothing, to a PC.
     fn notify_pc(&mut self, actor_id: &ActorId, body: ServerBody) {
-        let seq = self.stamp();
+        let seq = self.next_seq();
         self.send_to_pc(actor_id, stamp_message(seq, None, body));
     }
 

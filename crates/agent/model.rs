@@ -147,7 +147,7 @@ static TOOLS: LazyLock<Value> = LazyLock::new(|| {
         tool(
             "queue",
             "Queue a move from the menu for an actor. The server answers queued or refused.",
-            args("IntentArgs"),
+            args("QueueArgs"),
         ),
         tool(
             "end_turn",
@@ -245,7 +245,7 @@ mod tests {
             .collect();
         assert_eq!(names, ["perceive", "say", "queue", "end_turn"]);
         let schema: Value = serde_json::from_str(CLIENT_SCHEMA).unwrap();
-        for (tool, args) in tools.iter().zip(["PerceiveArgs", "SayArgs", "IntentArgs"]) {
+        for (tool, args) in tools.iter().zip(["PerceiveArgs", "SayArgs", "QueueArgs"]) {
             assert_eq!(tool["function"]["parameters"], schema["$defs"][args]);
         }
         assert!(!body.to_string().contains("$ref"), "{body}");
