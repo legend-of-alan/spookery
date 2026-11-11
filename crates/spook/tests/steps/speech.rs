@@ -27,14 +27,6 @@ fn the_player_says_to(world: &mut World, text: String, actor: String) {
     say_as_rowan(world, args);
 }
 
-#[then(expr = "a line to mira, out of sight, is refused {string}")]
-fn a_line_to_mira_is_refused(world: &mut World, code: String) {
-    let args = serde_json::json!({ "address": "actor", "actor": "mira", "text": "hello" });
-    let seat = &table::player_client(world, "pc_rowan").seat;
-    let reply = seat.wait_reply(&seat.send("say", args));
-    assert!(reply.contains(&format!("\"code\":\"{code}\"")), "{reply}");
-}
-
 fn say_as_rowan(world: &World, args: Value) {
     let seat = &table::player_client(world, "pc_rowan").seat;
     let id = seat.send("say", args);

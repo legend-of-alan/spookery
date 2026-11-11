@@ -70,7 +70,7 @@ Type `help` any time. It lists the commands you can type here and now, and what 
 | Type | What it does |
 | --- | --- |
 | `look` | Shows the place again |
-| `say <words>` | Talks. Talking takes no game time |
+| `say <words>` | Talks. `say Mira hi` (or `tell Mira hi`) talks to Mira. Talking takes no game time |
 | `travel <exit>` | Walks to another place |
 | `take <item>` | Picks something up |
 

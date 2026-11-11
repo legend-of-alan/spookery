@@ -59,12 +59,12 @@ fn a_copy_of_the_sample_d20_pack(world: &mut World) {
     world.pack = Some(support::copy_pack("sample-d20", "sample"));
 }
 
-#[cucumber::given(expr = "a copy of the sample-d20 pack where Oden is also called Briar and stands in the Gate Yard")]
-fn a_sample_where_oden_is_also_called_briar(world: &mut World) {
-    let pack = support::copy_pack("sample-d20", "two-briars");
+#[cucumber::given(expr = "a copy of the sample-d20 pack where Oden is called {string} and stands in the Gate Yard")]
+fn a_sample_where_oden_is_called(world: &mut World, name: String) {
+    let pack = support::copy_pack("sample-d20", "oden-renamed");
     let oden = pack.join("cast/oden.md");
     let text = std::fs::read_to_string(&oden).unwrap_or_else(|err| panic!("oden: {err}"));
-    let renamed = text.replace("display_name: Oden", "display_name: Briar");
+    let renamed = text.replace("display_name: Oden", &format!("display_name: {name}"));
     std::fs::write(&oden, renamed).unwrap_or_else(|err| panic!("oden: {err}"));
     spookery_engine::testing::edit_save_with(&pack, |now, _| {
         let mut actors = now.actors_mut();
