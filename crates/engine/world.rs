@@ -10,6 +10,7 @@ use crate::canon::Budget;
 use crate::canon::{check_save, load_canon, pack_rev, Canon};
 use crate::diagnostic::{error, first_reason, locate_nth, schema_error, Code, Diagnostic};
 use crate::entity;
+use crate::hash::blake2s_tagged;
 use crate::intent::{Intent, IntentArgs, Source, Target};
 use crate::rules::context::Context;
 use crate::rules::effect::{payload_json, Effect};
@@ -479,23 +480,8 @@ impl World<()> {
         }
         let now_bytes = journal::read_save(&journal::save_path(root))?;
         let canon = Arc::new(load_canon(root).map_err(|diags| first_reason(&diags))?);
-        let now_text = std::str::from_utf8(&now_bytes).map_err(|_| Reason::Schema)?;
-        let state = save::parse(now_text).map_err(|diags| first_reason(&diags))?;
-        let live = journal::read_live_records(root).unwrap_or_default();
-        let mut problems = check_save_text(&state, &now_bytes);
-        if let Some(diag) = check_pack_rev(root, tip_pack_rev(&live, &state), &now_bytes) {
-            problems.insert(0, diag);
-        }
-        let continues = journal_continues(&live, &state);
-        if continues {
-            problems.retain(|diag| diag.code != Code::Error(Reason::HandEdit));
-        }
-        if !problems.is_empty() {
-            return Err(first_reason(&problems));
-        }
-        if !continues {
-            check_save(&canon, &state).map_err(|diags| first_reason(&diags))?;
-        }
+        let state = check_save_file(root, Some(&canon), &now_bytes)
+            .map_err(|diags| first_reason(&diags))?;
         Ok(Self {
             root: root.to_path_buf(),
             canon,
@@ -627,6 +613,68 @@ fn journal_continues(live: &[Record], state: &State) -> bool {
     })
 }
 
+/// `true` when the save claims the checkpoint head's `state_rev` but not its bytes.
+/// A save from before the head is a checkpoint that did not land, not an edit.
+pub(crate) fn edits_head(root: &Path, state: &State, bytes: &[u8]) -> Result<bool, Reason> {
+    let head = journal::read_head(root).map_err(|fault| fault.reason)?;
+    Ok(head.is_some_and(|head| {
+        head.state_rev == state.state_rev && head.state_hash != blake2s_tagged(bytes)
+    }))
+}
+
+/// The save in `bytes`, or every problem with it. A hand edit is refused unless a later
+/// migrate record accepted it. A checkpoint save is not the tip, so only a save that no
+/// record continues is checked against `canon`.
+fn check_save_file(
+    root: &Path,
+    canon: Option<&Canon>,
+    bytes: &[u8],
+) -> Result<State, Vec<Diagnostic>> {
+    let text = std::str::from_utf8(bytes).map_err(|_| {
+        vec![schema_error(
+            "state/save.yaml",
+            "this file is not UTF-8 text",
+            "save it as UTF-8",
+        )
+        .at_path("schema")]
+    })?;
+    let state = save::parse(text)?;
+    let live = journal::read_live_records(root).unwrap_or_default();
+    let mut problems = check_save_text(&state, bytes);
+    if let Some(diag) = check_pack_rev(root, tip_pack_rev(&live, &state), bytes) {
+        problems.insert(0, diag);
+    }
+    let migrate_follows = live.iter().any(|entry| {
+        matches!(entry, Record::Migrate(_)) && entry.state_rev_after() > state.state_rev
+    });
+    let continues = journal_continues(&live, &state);
+    let is_hand_edit = |diag: &Diagnostic| diag.code == Code::Error(Reason::HandEdit);
+    if migrate_follows {
+        problems.retain(|diag| !is_hand_edit(diag));
+    } else if !problems.iter().any(is_hand_edit) && edits_head(root, &state, bytes).unwrap_or(false)
+    {
+        problems.push(
+            error(
+                "state/save.yaml",
+                Reason::HandEdit,
+                "this save differs from the checkpoint head it claims",
+                "restore the file, or run spook migrate to keep the edit if no round follows it",
+            )
+            .at_path("save"),
+        );
+    }
+    if let Some(canon) = canon.filter(|_| !continues) {
+        if let Err(more) = check_save(canon, &state) {
+            problems.extend(more);
+        }
+    }
+    if problems.is_empty() {
+        Ok(state)
+    } else {
+        Err(problems)
+    }
+}
+
 /// Read the pack and report every loader and lint problem. Writes nothing.
 pub fn check_pack(root: &Path) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
@@ -637,62 +685,22 @@ pub fn check_pack(root: &Path) -> Vec<Diagnostic> {
             None
         }
     };
-    let now_path = journal::save_path(root);
-    let loaded = match journal::read_save(&now_path) {
-        Ok(bytes) => match std::str::from_utf8(&bytes) {
-            Ok(text) => match save::parse(text) {
-                Ok(state) => Some((bytes, state)),
-                Err(more) => {
-                    diags.extend(more);
-                    None
-                }
-            },
-            Err(_) => {
-                diags.push(
-                    schema_error(
-                        "state/save.yaml",
-                        "this file is not UTF-8 text",
-                        "save it as UTF-8",
-                    )
-                    .at_path("schema"),
-                );
-                None
-            }
-        },
-        Err(Reason::NotInSpec) => None,
-        Err(reason) => {
-            diags.push(
-                error(
-                    "state/save.yaml",
-                    reason,
-                    "state/save.yaml could not be read",
-                    "check that the file is readable",
-                )
-                .at_path("schema"),
-            );
-            None
-        }
-    };
-    if let Some((bytes, state)) = &loaded {
-        let live = journal::read_live_records(root).unwrap_or_default();
-        let mut problems = check_save_text(state, bytes);
-        // A migrate record past the checkpoint has already accepted the save's edit.
-        let migrating = live.iter().any(|entry| {
-            matches!(entry, Record::Migrate(_)) && entry.state_rev_after() > state.state_rev
-        });
-        if migrating {
-            problems.retain(|diag| diag.code != Code::Error(Reason::HandEdit));
-        }
-        if let Some(diag) = check_pack_rev(root, tip_pack_rev(&live, state), bytes) {
-            problems.insert(0, diag);
-        }
-        diags.extend(problems);
-        // A checkpoint save is not the tip. Resume checks the tip when it opens.
-        if let Some(canon) = canon.as_ref().filter(|_| !journal_continues(&live, state)) {
-            if let Err(more) = check_save(canon, state) {
+    match journal::read_save(&journal::save_path(root)) {
+        Ok(bytes) => {
+            if let Err(more) = check_save_file(root, canon.as_ref(), &bytes) {
                 diags.extend(more);
             }
         }
+        Err(Reason::NotInSpec) => {}
+        Err(reason) => diags.push(
+            error(
+                "state/save.yaml",
+                reason,
+                "state/save.yaml could not be read",
+                "check that the file is readable",
+            )
+            .at_path("schema"),
+        ),
     }
     if let Some(canon) = &canon {
         diags.extend(crate::canon::check_canon(canon));

@@ -262,12 +262,7 @@ fn load_migrate_tip(path: &Path, lock: &PackGuard) -> Result<(State, bool), Reas
     let bytes = journal::read_save(&journal::save_path(path))?;
     let text = std::str::from_utf8(&bytes).map_err(|_| Reason::Schema)?;
     let file_state = save::parse(text).map_err(|diags| first_reason(&diags))?;
-    // A save from before the head is a checkpoint that did not land, not an edit.
-    let edited = journal::read_head(path)
-        .map_err(|fault| fault.reason)?
-        .is_some_and(|head| {
-            head.state_rev == file_state.state_rev && head.state_hash != blake2s_tagged(&bytes)
-        });
+    let edited = crate::world::edits_head(path, &file_state, &bytes)?;
     let ahead = journal::read_live_records(path)
         .map_err(|fault| fault.reason)?
         .iter()
@@ -335,13 +330,15 @@ fn rebuild_save(path: &Path, lock: &PackGuard) -> Result<(), Error> {
             if blake2s_tagged(&bytes) == mark.state_hash {
                 return Ok(());
             }
+            // A hand edit is left for open to refuse. Only a save the head has passed is rebuilt.
             if let Ok(text) = std::str::from_utf8(&bytes) {
                 if let Ok(state) = save::parse(text) {
-                    if save::emit(&state)
-                        .map(|emitted| emitted.into_bytes())
-                        .ok()
-                        .as_deref()
-                        != Some(bytes.as_slice())
+                    if state.state_rev == mark.state_rev
+                        || save::emit(&state)
+                            .map(|emitted| emitted.into_bytes())
+                            .ok()
+                            .as_deref()
+                            != Some(bytes.as_slice())
                     {
                         return Ok(());
                     }
