@@ -87,3 +87,5 @@ Feature: A player knows where they are and what they can do
     And play types "ask Briar"
     Then play's error shows "More than one thing here is called Briar: npc_briar, npc_oden."
     And no round record was written
+    When play types "say briar hello"
+    Then play's error shows "More than one thing here is called briar: npc_briar, npc_oden."

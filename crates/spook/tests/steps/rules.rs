@@ -834,7 +834,7 @@ fn the_seated_pc_queues_use_tonic(world: &mut World) {
         Some("tonic"),
     );
     world.scratch = match played {
-        Ok(queued) => {
+        Ok((queued, _)) => {
             let intent = opened
                 .queued_intents()
                 .iter()

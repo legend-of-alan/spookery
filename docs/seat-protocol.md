@@ -111,7 +111,7 @@ A GM's `release` frees the seat before its reply. A later command on that connec
 
 ### say
 
-`address` is `table`, `place` with a `place` id, or `actor` with an `actor` id. `text` is at most 4096 characters. The table sets `from` from the connection: `player:<id>` or `gm`. A `from` in `args` is `SCHEMA`. A say goes on the session tape and takes no round. Every seat that hears it gets one `say` under one `seq`, and the sender's copy is the reply. The GM's copy lists `recipients`, the seated players who heard it.
+`address` is `table`, `place` with a `place` id, or `actor` with an `actor`. A player names the actor by id or display name, as a move names its target: an actor not in sight is `NOT_IN_SPEC`, and a name two in sight share is `AMBIGUOUS_NAME`. `text` is at most 4096 characters. The table sets `from` from the connection: `player:<id>` or `gm`. A `from` in `args` is `SCHEMA`. A say goes on the session tape and takes no round. Every seat that hears it gets one `say` under one `seq`, and the sender's copy is the reply. The GM's copy lists `recipients`, the seated players who heard it.
 
 <!-- example: player-say -->
 ```json
@@ -487,7 +487,7 @@ A refusal is a `refused` body, and the connection stays up. `detail` is there on
 | `SEAT_TAKEN` | That PC is held. Claim another. |
 | `CHOOSE_PC` | Claim one of the PCs in the hello's `open`. An empty `open` means none is free. |
 | `SCHEMA` | Fix the message: its shape, its command, or its arguments. |
-| `NOT_IN_SPEC` | The verb has no rule that applies, `commit` set `include_round` false with a move queued, or the seat was released or, over MCP, never taken. |
+| `NOT_IN_SPEC` | The verb has no rule that applies, its target or a say's actor is not in sight, `commit` set `include_round` false with a move queued, or the seat was released or, over MCP, never taken. |
 | `LINE_TOO_LONG` | Send a message under 8 KiB. |
 | `UNSCOPED_PERCEIVE` | Send `perceive` with `as` set to a bare actor id. |
 | `ACTOR_MISMATCH` | That actor is a player's, or the move is not this actor's. |

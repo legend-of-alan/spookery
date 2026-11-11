@@ -211,7 +211,7 @@ fn parse_pc_choice(line: &str) -> Result<String, Error> {
 
 /// The command a typed line names, and its arguments. `say place <text>` speaks to the place
 /// `here` shows, and `say <actor> <text>` to an actor `here` sees, named by id or by the name
-/// `here` gives them. Any other first word is a move with the rest of the line as its target.
+/// `here` gives them, as typed. Any other first word is a move with the rest of the line as its target.
 /// An empty line names none.
 fn parse_typed<'l>(line: &'l str, here: &protocol::View) -> Option<(&'l str, Value)> {
     let (command, rest) = line.trim().split_once(' ').unwrap_or((line.trim(), ""));
@@ -222,8 +222,8 @@ fn parse_typed<'l>(line: &'l str, here: &protocol::View) -> Option<(&'l str, Val
         let (head, text) = rest.split_once(' ').unwrap_or((rest, ""));
         let args = if head == "place" && !text.is_empty() {
             json!({ "address": "place", "place": here.place, "text": text })
-        } else if let Some(actor) = find_addressee(head, here).filter(|_| !text.is_empty()) {
-            json!({ "address": "actor", "actor": actor, "text": text })
+        } else if !text.is_empty() && names_an_actor_here(head, here) {
+            json!({ "address": "actor", "actor": head, "text": text })
         } else {
             json!({ "address": "table", "text": rest })
         };
@@ -235,13 +235,11 @@ fn parse_typed<'l>(line: &'l str, here: &protocol::View) -> Option<(&'l str, Val
     Some((command, json!({ "target": rest })))
 }
 
-/// The actor `here` sees whose id or name is `word`.
-fn find_addressee<'v>(word: &str, here: &'v protocol::View) -> Option<&'v str> {
-    let name_at = |at: usize| here.actor_names.get(at).map_or("", String::as_str);
-    let mut actors = here.visible_actors.iter().enumerate();
-    let found = actors
-        .find(|(at, id)| protocol::is_named(word, id) || protocol::is_named(word, name_at(*at)));
-    found.map(|(_, id)| id.as_str())
+/// Whether `word` is the id or name of an actor `here` sees. The table resolves which one.
+fn names_an_actor_here(word: &str, here: &protocol::View) -> bool {
+    let ids = here.visible_actors.iter().map(String::as_str);
+    let mut names = ids.chain(here.actor_names.iter().map(String::as_str));
+    names.any(|name| protocol::is_named(word, name))
 }
 
 #[cfg(test)]
@@ -299,7 +297,7 @@ mod tests {
             parse_typed("say Mira hi", here),
             Some((
                 "say",
-                json!({ "address": "actor", "actor": "mira", "text": "hi" })
+                json!({ "address": "actor", "actor": "Mira", "text": "hi" })
             ))
         );
     }

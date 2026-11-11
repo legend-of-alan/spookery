@@ -361,8 +361,9 @@ whether they are locked is read now. A busy player sees what keeps them busy:
 other timed move, and `recovering until tick 1300` in a cooldown. A player names only
 what they hold or what that view shows. Anything else reads like an unknown
 word and takes no round. A pack that omits `display_name` fails check. An
-unknown command tells the player to type help.
-A player reads display names and may type them, in any case, and ids still work.
+unknown command tells the player to type help. A player reads display names and may
+type them, in any case, and ids still work. A name two things in sight share is
+refused by that name and takes no round.
 
 Tested in `features/seats/a_player_knows_the_place.feature`,
 `features/seats/the_picker_shows_every_pc.feature`,

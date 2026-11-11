@@ -22,7 +22,7 @@ use crate::store::records::Record;
 use crate::store::save;
 use crate::store::tape::{append_record, read_scrollback, TapeRecord};
 use crate::Reason;
-use spookery_protocol::{QueuedMove, Speaker, PERCEIVE_BODY_CHARS};
+use spookery_protocol::{QueuedMove, Refusal, Speaker, PERCEIVE_BODY_CHARS};
 
 /// One say, in characters. Four kibibytes still fits in an 8 KiB client message.
 const MAX_SAY_CHARS: usize = 4 * 1024;
@@ -96,27 +96,36 @@ impl World {
         crate::round::play_catch_up(self, now_wall, downtime_hours)
     }
 
-    /// Append a player's say. `presence` is who can hear it. An actor it is said to must be
-    /// one the player may name, else it is `NOT_IN_SPEC`.
+    /// Append a player's say. `presence` is who can hear it. The actor it is said to is named
+    /// by id or display name among the actors in sight, as a move's target is: none is
+    /// `NOT_IN_SPEC`, and a name two of them share is `AMBIGUOUS_NAME`.
     pub fn say_as_player(
         &self,
         presence: &Presence,
         actor_id: &ActorId,
         heard: Address<'_>,
         text: &str,
-    ) -> Result<TapeRecord, Reason> {
+    ) -> Result<TapeRecord, Refusal> {
         if self.state.actors().kind.get(actor_id) != Some(&ActorKind::Pc) {
-            return Err(Reason::Schema);
+            return Err(Reason::Schema.into());
         }
-        if let Address::Actor(actor) = heard {
-            let viewer = Viewer::Player(actor_id.clone());
-            let nameable = gate::list_nameable(&self.canon, &self.state, presence, &viewer);
-            if !nameable.iter().any(|thing| thing.id == actor) {
-                return Err(Reason::NotInSpec);
+        let addressee;
+        let heard = match heard {
+            Address::Actor(typed) => {
+                let viewer = Viewer::Player(actor_id.clone());
+                let mut nameable = gate::list_nameable(&self.canon, &self.state, presence, &viewer);
+                nameable.retain(|thing| self.state.actors().kind.contains_key(thing.id.as_str()));
+                let found = gate::find_named(&nameable, typed).map_err(|detail| Refusal {
+                    detail: Some(detail),
+                    ..Reason::AmbiguousName.into()
+                })?;
+                addressee = found.ok_or(Reason::NotInSpec)?.to_string();
+                Address::Actor(&addressee)
             }
-        }
+            heard => heard,
+        };
         let from = Speaker::Player(actor_id.to_string());
-        self.append_speech(presence, from, Some(actor_id), heard, text)
+        Ok(self.append_speech(presence, from, Some(actor_id), heard, text)?)
     }
 
     pub fn say_as_gm(
@@ -216,22 +225,24 @@ impl<L> World<L> {
     /// sight that has it, and a name two of them share is `AMBIGUOUS_NAME`, its detail the
     /// name and those ids, as `Briar: npc_briar, npc_oden`. Only a save at
     /// the last round index has no next round to name, and refuses `SCHEMA` with an empty id.
+    /// Returns the queued move and the target id it names.
     pub fn queue_player_move(
         &mut self,
         presence: &Presence,
         actor_id: &ActorId,
         verb: &str,
         target: Option<&str>,
-    ) -> Result<QueuedMove, gate::Refusal> {
+    ) -> Result<(QueuedMove, Option<String>), gate::Refusal> {
         let typed = target.filter(|token| !token.is_empty());
         let viewer = Viewer::Player(actor_id.clone());
         let nameable = match typed {
             Some(_) => gate::list_nameable(&self.canon, &self.state, presence, &viewer),
             None => Vec::new(),
         };
-        let typed_or_empty = typed.unwrap_or_default();
-        let found = gate::find_named(&nameable, typed_or_empty).map(|id| id.map(String::from));
-        let named = found.map_err(|ids| format!("{}: {}", typed_or_empty.trim(), ids.join(", ")));
+        let named = match typed {
+            Some(typed) => gate::find_named(&nameable, typed).map(|id| id.map(String::from)),
+            None => Ok(None),
+        };
         let resolved = named.clone().unwrap_or_default();
         let token = resolved.as_deref().or(typed);
         let Ok(mut intent) = Intent::player(&self.state, actor_id, verb, token) else {
@@ -264,8 +275,9 @@ impl<L> World<L> {
             actor_id: actor_id.to_string(),
             move_name: verb.to_string(),
         };
+        let target = intent.target.token().map(String::from);
         self.queue_intent(intent);
-        Ok(queued)
+        Ok((queued, target))
     }
 
     /// The target a PC's line names for the rule it picks. A line already queued is `SCHEMA`.
