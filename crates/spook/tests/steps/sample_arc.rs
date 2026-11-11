@@ -99,11 +99,7 @@ fn the_script_is_played_with_the_stub_gm(world: &mut World) {
                 now.world_time
             );
             assert_eq!(larks_tonic(&now), 0, "the tonic is still in inventory");
-            assert!(
-                table::player_text(world).contains("\"kind\":\"check\""),
-                "the opening roll was not shown\n{}",
-                table::player_text(world)
-            );
+            table::wait_player_from(world, 0, "\"kind\":\"check\"");
         }
     }
     world.pack = Some(pack);
@@ -166,11 +162,7 @@ fn they_arrive_at_the_exits_cost(world: &mut World) {
         read_rounds(&pack).iter().any(|r| r["fast_forward"] == true),
         "the journey did not fast-forward"
     );
-    assert!(
-        table::player_text(world).contains("Oden and Nell are on the lane. That is the end."),
-        "the arrival line was not shown\n{}",
-        table::player_text(world)
-    );
+    table::wait_player_from(world, 0, "Oden and Nell are on the lane. That is the end.");
 }
 
 #[when(expr = "a player uses the consumable")]
@@ -239,20 +231,12 @@ fn the_demo_script_is_played_with_the_stub_gm(world: &mut World) {
 
 #[then(expr = "the player sees the default ending")]
 fn the_player_sees_the_default_ending(world: &mut World) {
-    let text = table::player_text(world);
-    assert!(
-        text.contains(DEFAULT_ENDING),
-        "the default ending was not shown\n{text}"
-    );
+    table::wait_player_from(world, 0, DEFAULT_ENDING);
 }
 
 #[then(expr = "the player sees the nail-kept ending and not the default ending")]
 fn the_player_sees_the_nail_kept_ending_and_not_the_default(world: &mut World) {
-    let text = table::player_text(world);
-    assert!(
-        text.contains(NAIL_KEPT_ENDING),
-        "the nail-kept ending was not shown\n{text}"
-    );
+    let text = table::wait_player_from(world, 0, NAIL_KEPT_ENDING);
     assert!(
         !text.contains(DEFAULT_ENDING),
         "the default ending was also shown\n{text}"
