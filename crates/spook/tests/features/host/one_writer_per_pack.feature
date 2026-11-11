@@ -29,7 +29,8 @@ Feature: One writer per pack
   Scenario: spook run stopped with a seated GM exits and frees the pack
     Given a docks table with a seated GM
     When spook run is stopped while the GM is seated
-    Then the pack can be opened again
+    Then spook run exits 0
+    And the pack can be opened again
 
   Scenario Outline: spook <command> on a path that is not a pack says NOT_IN_SPEC
     When the host runs spook <command> on a missing pack
