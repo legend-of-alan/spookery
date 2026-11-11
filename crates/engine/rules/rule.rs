@@ -268,6 +268,8 @@ impl Op {
     }
 }
 
+/// What a rule names to read or write. The pack still writes it as `who:`, and `who: world` is
+/// `Subject::Global`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Subject {
     Self_,

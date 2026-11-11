@@ -1210,7 +1210,7 @@ fn narrates_to_present(rule: &Rule) -> bool {
 /// Whether `rule` needs a subject: `self` or `here` as a who or a narrate's `to`, a location
 /// effect, which moves the subject, or a roll, which is the subject's.
 fn names_subject(rule: &Rule) -> bool {
-    let mut whos = Vec::new();
+    let mut subjects = Vec::new();
     for cond in &rule.if_ {
         cond.visit(|cond| match cond {
             Cond::HasItem { who, .. }
@@ -1218,14 +1218,14 @@ fn names_subject(rule: &Rule) -> bool {
             | Cond::Flag { who, .. }
             | Cond::At { who, .. }
             | Cond::Knows { who, .. }
-            | Cond::Wielding { who, .. } => whos.push(who),
+            | Cond::Wielding { who, .. } => subjects.push(who),
             _ => {}
         });
     }
     let mut exprs = Vec::new();
     push_rule_exprs(rule, &mut exprs);
     for expr in exprs {
-        whos.extend(
+        subjects.extend(
             expr.meter_reads()
                 .into_iter()
                 .map(|(subject, _, _)| subject),
@@ -1241,7 +1241,7 @@ fn names_subject(rule: &Rule) -> bool {
             | EffectTemplate::Item { who, .. }
             | EffectTemplate::Reveal { who, .. }
             | EffectTemplate::Wield { who, .. }
-            | EffectTemplate::Unwield { who } => whos.push(who),
+            | EffectTemplate::Unwield { who } => subjects.push(who),
             EffectTemplate::Narrate { to, .. } => {
                 needs |= matches!(to, NarrateTo::Self_ | NarrateTo::Here);
             }
@@ -1249,11 +1249,11 @@ fn names_subject(rule: &Rule) -> bool {
             EffectTemplate::Note { .. } => {}
         }
         if let Some(ResistSpec::Roll { who, .. }) = effect.resist() {
-            whos.push(who);
+            subjects.push(who);
         }
     });
     needs
-        || whos
+        || subjects
             .iter()
             .any(|subject| matches!(subject, Subject::Self_ | Subject::Here))
 }
