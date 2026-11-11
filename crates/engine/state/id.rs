@@ -75,7 +75,7 @@ string_id! {
 
 /// One exit's door, by its place and its name. An address, not an entity: it holds nothing but
 /// whether the door is open.
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct ExitId {
     pub place: PlaceId,
     pub exit: String,
