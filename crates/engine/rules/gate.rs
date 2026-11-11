@@ -1,6 +1,7 @@
 //! Pick the rule a move runs, then admit it or refuse it with a reason.
 
 use serde::{Deserialize, Serialize};
+use spookery_protocol::is_named;
 
 use crate::canon::Canon;
 use crate::intent::{Intent, Source, Target, Viewer};
@@ -129,9 +130,13 @@ pub(crate) fn rule_of<'c>(context: &Context<'c, '_>) -> Result<&'c Rule, Refusal
 
 /// Check a rule already picked, whoever queued it. A habit whose start counts as an act is
 /// `INELIGIBLE` once its NPC has acted this round, and any rule is `BUSY` while its actor is.
-/// A verb's target is one the actor may name. The `if` and the start cost are checked for
-/// every rule.
-pub(crate) fn admit(context: &Context, rule: &Rule) -> Result<(), Refusal> {
+/// A verb's target is one the actor may name, read from `nameable` when the caller listed
+/// it already. The `if` and the start cost are checked for every rule.
+pub(crate) fn admit(
+    context: &Context,
+    rule: &Rule,
+    nameable: Option<&[NamedId]>,
+) -> Result<(), Refusal> {
     let (state, intent) = (context.state, context.intent);
     if let Some(act) = intent.actor_id().and_then(|id| state.actors().acts.get(id)) {
         let acted = act.last_act_round == intent.round_index;
@@ -144,7 +149,7 @@ pub(crate) fn admit(context: &Context, rule: &Rule) -> Result<(), Refusal> {
     }
     crate::rules::travel::admit(context, rule)?;
     if let When::Verb { target, .. } = &rule.when {
-        if !can_name(context) {
+        if !can_name(context, nameable) {
             return Err(Refusal::new(intent, Reason::NotInSpec));
         }
         let shaped = match target {
@@ -192,8 +197,9 @@ pub(crate) fn admit_cancel(context: &Context) -> Result<(), Refusal> {
     Ok(())
 }
 
-/// A seat names only what its actor holds or what `look` shows them.
-fn can_name(context: &Context) -> bool {
+/// A seat names only what its actor holds or what `look` shows them: one of `nameable`,
+/// listed here when the caller has not.
+fn can_name(context: &Context, nameable: Option<&[NamedId]>) -> bool {
     let intent = context.intent;
     let Some(id) = intent.target.token() else {
         return true;
@@ -201,33 +207,87 @@ fn can_name(context: &Context) -> bool {
     let Some(actor) = &intent.actor else {
         return false;
     };
-    let names = nameable(context.canon, context.state, context.presence, actor);
-    names.iter().any(|name| name == id)
+    let listed;
+    let nameable = match nameable {
+        Some(nameable) => nameable,
+        None => {
+            listed = list_nameable(context.canon, context.state, context.presence, actor);
+            &listed
+        }
+    };
+    nameable.iter().any(|thing| thing.id == id)
 }
 
-/// Every id a seat may name: the items its actor holds, then the place, other actors, items
-/// and exits `look` shows them. A seat never names its own actor.
-pub(crate) fn nameable(
+/// An id a seat may name, with the names a player reads and types for it.
+pub(crate) struct NamedId {
+    pub(crate) id: String,
+    /// The name the seat reads for it.
+    pub(crate) name: String,
+    /// The other names it answers to when typed: where an exit goes, by id and by name.
+    pub(crate) aliases: Vec<String>,
+}
+
+impl NamedId {
+    pub(crate) fn new(id: &str, name: String) -> Self {
+        let id = id.to_string();
+        Self {
+            id,
+            name,
+            aliases: Vec::new(),
+        }
+    }
+}
+
+/// Everything a seat may name: the items its actor holds, then the place, other actors,
+/// items and exits `look` shows them, each with the name that view gives it. A seat never
+/// names its own actor.
+pub(crate) fn list_nameable(
     canon: &Canon,
     state: &State,
     presence: &Presence,
     viewer: &Viewer,
-) -> Vec<String> {
-    let mut names: Vec<String> = nested_map::entries_of(&state.actors().items, viewer.actor_id())
-        .filter(|(_, count)| **count > 0)
-        .map(|(id, _)| id.to_string())
-        .collect();
+) -> Vec<NamedId> {
+    let mut nameable: Vec<NamedId> =
+        nested_map::entries_of(&state.actors().items, viewer.actor_id())
+            .filter(|(_, count)| **count > 0)
+            .map(|(id, _)| NamedId::new(id, canon.display_name(id)))
+            .collect();
     if let Ok(view) = perceive_as(canon, state, presence, viewer) {
-        names.push(view.place);
+        nameable.push(NamedId::new(&view.place, view.place_name));
         let me = viewer.actor_id();
-        names.extend(
-            view.visible_actors
-                .into_iter()
-                .filter(|id| id != me)
-                .map(String::from),
-        );
-        names.extend(view.items.into_iter().map(|item| item.id));
-        names.extend(view.exits.into_iter().map(|exit| exit.name));
+        let actors = view.visible_actors.iter().zip(view.actor_names);
+        let others = actors.filter(|(id, _)| *id != me);
+        nameable.extend(others.map(|(id, name)| NamedId::new(id.as_str(), name)));
+        let items = view.items.into_iter();
+        nameable.extend(items.map(|item| NamedId::new(&item.id, item.name)));
+        nameable.extend(view.exits.into_iter().map(|exit| NamedId {
+            name: exit.display_name().to_string(),
+            aliases: vec![exit.to, exit.place_name],
+            id: exit.name,
+        }));
     }
-    names
+    nameable
+}
+
+/// The id `typed` names among `nameable`, by the id or any name, ignoring case and outer
+/// spaces. `None` when nothing has that name. When two or more ids have it, the `Err` is the
+/// detail of the `AMBIGUOUS_NAME` refusal: the name and those ids, `Briar: npc_briar, npc_oden`.
+pub(crate) fn find_named<'a>(
+    nameable: &'a [NamedId],
+    typed: &str,
+) -> Result<Option<&'a str>, String> {
+    let has_name = |thing: &NamedId| {
+        let mut names = [&thing.id, &thing.name].into_iter().chain(&thing.aliases);
+        names.any(|name| is_named(typed, name))
+    };
+    let mut ids: Vec<&str> = (nameable.iter().filter(|thing| has_name(thing)))
+        .map(|thing| thing.id.as_str())
+        .collect();
+    ids.sort_unstable();
+    ids.dedup();
+    match ids[..] {
+        [] => Ok(None),
+        [id] => Ok(Some(id)),
+        _ => Err(format!("{}: {}", typed.trim(), ids.join(", "))),
+    }
 }

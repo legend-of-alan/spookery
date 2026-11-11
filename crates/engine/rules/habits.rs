@@ -31,7 +31,8 @@ fn intent_of(
     habits.into_iter().find_map(|rule| {
         let intent = Intent::habit(state, actor_id, &rule.local_id);
         let context = Context::new(canon, state, presence, &intent);
-        let runs = gate::admit(&context, rule).is_ok() && expand::preview(&context, rule).is_ok();
+        let runs =
+            gate::admit(&context, rule, None).is_ok() && expand::preview(&context, rule).is_ok();
         runs.then_some(intent)
     })
 }

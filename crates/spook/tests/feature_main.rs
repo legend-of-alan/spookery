@@ -59,6 +59,20 @@ fn a_copy_of_the_sample_d20_pack(world: &mut World) {
     world.pack = Some(support::copy_pack("sample-d20", "sample"));
 }
 
+#[cucumber::given(expr = "a copy of the sample-d20 pack where Oden is also called Briar and stands in the Gate Yard")]
+fn a_sample_where_oden_is_also_called_briar(world: &mut World) {
+    let pack = support::copy_pack("sample-d20", "two-briars");
+    let oden = pack.join("cast/oden.md");
+    let text = std::fs::read_to_string(&oden).unwrap_or_else(|err| panic!("oden: {err}"));
+    let renamed = text.replace("display_name: Oden", "display_name: Briar");
+    std::fs::write(&oden, renamed).unwrap_or_else(|err| panic!("oden: {err}"));
+    spookery_engine::testing::edit_save_with(&pack, |now, _| {
+        let mut actors = now.actors_mut();
+        actors.set_place(&"npc_oden".into(), "gate_yard").unwrap();
+    });
+    world.pack = Some(pack);
+}
+
 /// The folders under `tests/features` the host program runs. The world program runs everything else there.
 const HOST: &[&str] = &[
     "cli", "digest", "host", "limits", "loopback", "mcp", "new", "seats", "sessions", "speech",

@@ -106,6 +106,52 @@ fn break_pack(pack: &Path, fault: &str) {
         "missing meters" => {
             fs::remove_file(pack.join("rules/meters.yaml")).unwrap();
         }
+        "meter min above base_cap" => replace_in_file(
+            &pack.join("rules/meters.yaml"),
+            "    min: 0
+    base_cap: 100
+",
+            "    min: 200
+    base_cap: 100
+",
+        ),
+        "meter base_cap above max" => replace_in_file(
+            &pack.join("rules/meters.yaml"),
+            "    base_cap: 5
+    max: 5
+",
+            "    base_cap: 5
+    max: 4
+",
+        ),
+        "meter base outside its range" => replace_in_file(
+            &pack.join("rules/meters.yaml"),
+            "    base: 3
+",
+            "    base: 9
+",
+        ),
+        "check rolls zero dice" => replace_in_file(
+            &pack.join("rules/checks.yaml"),
+            "      count: 2
+",
+            "      count: 0
+",
+        ),
+        "a die with zero sides" => replace_in_file(
+            &pack.join("rules/checks.yaml"),
+            "      sides: 6
+",
+            "      sides: 0
+",
+        ),
+        "check names no meter" => replace_in_file(
+            &pack.join("rules/checks.yaml"),
+            "    meter: grit
+",
+            "    meter: \"\"
+",
+        ),
         "missing display_name" => {
             replace_in_file(&pack.join("cast/pc-rowan.md"), "display_name: Rowan\n", "")
         }
@@ -372,10 +418,20 @@ fn play_joins_the_table_on_a_free_loopback_address(world: &mut World) {
 
 #[when(expr = "play joins the sample table")]
 fn play_joins_the_sample_table(world: &mut World) {
+    join_sample(world, "pc_lark");
+}
+
+#[when(expr = "play joins the sample table as {string}")]
+fn play_joins_the_sample_table_as(world: &mut World, pick: String) {
+    join_sample(world, &pick);
+}
+
+/// Runs play on the sample table, picks `pick` and waits for the Gate Yard.
+fn join_sample(world: &mut World, pick: &str) {
     let pack = table::pack(world).to_path_buf();
     table::listen(world, &pack);
     let addr = table::game_addr(world);
-    world.play = Some(spawn_play(&addr, "pc_lark", &[]));
+    world.play = Some(spawn_play(&addr, pick, &[]));
     wait_play(world, "Gate Yard");
 }
 

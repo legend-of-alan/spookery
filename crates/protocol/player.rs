@@ -57,6 +57,18 @@ pub struct ExitView {
     pub locked: bool,
 }
 
+impl ExitView {
+    /// The name a player reads for this exit: where it goes, when the exit is named by the
+    /// place it goes to, or else its own name, such as `stairs`.
+    pub fn display_name(&self) -> &str {
+        if self.name == self.to && !self.place_name.is_empty() {
+            &self.place_name
+        } else {
+            &self.name
+        }
+    }
+}
+
 /// Part of a `View`, sent from the table to a player client.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
@@ -84,6 +96,9 @@ pub struct NoteView {
 pub struct ItemStack {
     pub id: String,
     pub count: u32,
+    /// The item's display name.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub name: String,
 }
 
 /// Part of a `View`, sent from the table to a player client.
@@ -96,8 +111,9 @@ pub struct MeterView {
 }
 
 /// One command of a `help` reply. `target` is what the command takes: `none`, `actor`, `place`,
-/// `exit` or `item`. `names` lists what the player can name for it now. `owner` is the
-/// cast member or item whose verb this is, reached by naming them.
+/// `exit` or `item`. `names` lists what the player can name for it now, by the names they
+/// read. `owner` is the id of the cast member or item whose verb this is, reached by naming
+/// them, and then `names` holds its name alone.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct CommandView {
@@ -116,6 +132,11 @@ pub struct PlaceView {
     pub name: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub exits: Vec<ExitView>,
+}
+
+/// Whether `typed` is `name`, ignoring case and outer spaces.
+pub fn is_named(typed: &str, name: &str) -> bool {
+    typed.trim().to_lowercase() == name.trim().to_lowercase()
 }
 
 #[cfg(test)]

@@ -154,6 +154,7 @@ fn perceive_viewer_budget(
         .map(|(id, count)| ItemStack {
             id: id.to_string(),
             count: *count,
+            name: canon.display_name(id),
         })
         .collect();
 

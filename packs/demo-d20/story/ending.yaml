@@ -1,0 +1,38 @@
+schema: story
+id: ending
+rules:
+  - id: lane_clear
+    when:
+      change:
+        arrive: mill_lane
+        who: pc
+    if:
+      - not:
+          has_item:
+            who: self
+            id: nail
+    do:
+      - flag:
+          who: world
+          key: finished
+          value: true
+      - narrate:
+          to: self
+          text: Nell is on the lane. That is the end.
+  - id: lane_clear_nail_kept
+    when:
+      change:
+        arrive: mill_lane
+        who: pc
+    if:
+      - has_item:
+          who: self
+          id: nail
+    do:
+      - flag:
+          who: world
+          key: finished
+          value: true
+      - narrate:
+          to: self
+          text: The nail is still in Corin's pocket, unspent. Oden will remember who put a shoulder to his cart. That is the end.

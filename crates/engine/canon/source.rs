@@ -75,6 +75,45 @@ impl<'a> FileText<'a> {
         )
     }
 
+    /// The refusals for the `row`th item of the top-level `{noun}s:` list, whose id is
+    /// `id`: an empty id, then each rule the row breaks, then, when nothing else is wrong
+    /// and `taken` says an earlier row has this id, the repeat.
+    pub fn refuse_row(
+        &self,
+        noun: &str,
+        row: usize,
+        id: &str,
+        taken: bool,
+        rules: impl IntoIterator<Item = RowRule>,
+    ) -> Vec<Diagnostic> {
+        let list = format!("{noun}s:");
+        let refuse = |field: &str, message: String, hint: &str| {
+            let key = format!(
+                "{}:",
+                field.rsplit_once('.').map_or(field, |(_, last)| last)
+            );
+            let at = Locator::Row {
+                list: &list,
+                row,
+                key: &key,
+            };
+            self.refusal(&format!("{noun}s[{row}].{field}"), at, message, hint)
+        };
+        let empty = format!("a {noun} id is empty");
+        let broken = rules.into_iter().filter(|(broken, ..)| *broken);
+        let mut found: Vec<Diagnostic> = id
+            .is_empty()
+            .then(|| refuse("id", empty, "set id to a short name"))
+            .into_iter()
+            .chain(broken.map(|(_, field, message, hint)| refuse(field, message, hint)))
+            .collect();
+        if found.is_empty() && taken {
+            let twice = format!("{noun} '{id}' is listed twice");
+            found.push(refuse("id", twice, &format!("keep one {noun}")));
+        }
+        found
+    }
+
     /// A converter's `fault` at the spot it recorded, refused as a schema error.
     pub fn fault(&self, path: &str, fault: Fault, hint: &str) -> Diagnostic {
         self.refusal(path, Locator::Spot(fault.spot), fault.message, hint)
@@ -91,6 +130,10 @@ impl<'a> FileText<'a> {
         .into_diagnostic()
     }
 }
+
+/// One rule a list row must keep: whether the row breaks it, the field it is about
+/// (such as `dice.count`), the message and the hint.
+pub(super) type RowRule = (bool, &'static str, String, &'static str);
 
 /// How an empty id is refused: the sentence and the hint, worded per kind.
 pub(super) type EmptyWords = (&'static str, &'static str);
