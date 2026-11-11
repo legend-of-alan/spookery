@@ -310,16 +310,16 @@ mod tests {
     fn a_claim_names_an_actor_or_a_token() {
         let read = |text: &str| serde_json::from_str::<ClaimArgs>(text);
         let actor = ClaimArgs::Actor {
-            actor: "pc_rowan".into(),
+            actor: "rowan".into(),
         };
-        assert_eq!(read(r#"{"actor":"pc_rowan"}"#).unwrap(), actor);
+        assert_eq!(read(r#"{"actor":"rowan"}"#).unwrap(), actor);
         let token = ClaimArgs::Token {
             token: "t1".into(),
             last_seq: 4,
         };
         assert_eq!(read(r#"{"token":"t1","last_seq":4}"#).unwrap(), token);
-        assert!(read(r#"{"actor":"pc_rowan","token":"t1"}"#).is_err());
-        assert!(read(r#"{"actor":"pc_rowan","last_seq":4}"#).is_err());
+        assert!(read(r#"{"actor":"rowan","token":"t1"}"#).is_err());
+        assert!(read(r#"{"actor":"rowan","last_seq":4}"#).is_err());
         assert!(read("{}").is_err());
     }
 
@@ -356,14 +356,14 @@ mod tests {
             body: ServerBody::Hello {
                 version: VERSION,
                 commands: vec!["claim".into()],
-                open: vec!["pc_rowan".into()],
-                taken: vec!["pc_wren".into()],
+                open: vec!["rowan".into()],
+                taken: vec!["wren".into()],
                 pc_names: BTreeMap::new(),
             },
         };
         assert_eq!(
             hello.to_text(),
-            r#"{"body":{"kind":"hello","version":2,"commands":["claim"],"open":["pc_rowan"],"taken":["pc_wren"]}}"#
+            r#"{"body":{"kind":"hello","version":2,"commands":["claim"],"open":["rowan"],"taken":["wren"]}}"#
         );
         let released = ServerMessage {
             body: ServerBody::Released,

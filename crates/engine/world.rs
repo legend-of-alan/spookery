@@ -231,7 +231,7 @@ impl<L> World<L> {
     /// Gate a player's line with `presence` seated, then queue it. The line is an intent
     /// from the start, so each refusal names its id. A typed name stands for the one id in
     /// sight that has it, and a name two of them share is `AMBIGUOUS_NAME`, its detail the
-    /// name and those ids, as `Briar: npc_briar, npc_oden`. Only a save at
+    /// name and those ids, as `Briar: briar, oden`. Only a save at
     /// the last round index has no next round to name, and refuses `SCHEMA` with an empty id.
     /// Returns the queued move and the target id it names.
     pub fn queue_player_move(

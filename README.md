@@ -46,7 +46,7 @@ It prints a `listening` line and waits. Open a second terminal in the repo folde
 spook play
 ```
 
-Pick `pc_lark` when it asks who you are. You're in the Gate Yard and a mill cart is blocking the lane out. Here's the end of a short run, where you type `chock` and then `travel mill_lane`:
+Pick `lark` when it asks who you are. You're in the Gate Yard and a mill cart is blocking the lane out. Here's the end of a short run, where you type `chock` and then `travel mill_lane`:
 
 ```text
 chock

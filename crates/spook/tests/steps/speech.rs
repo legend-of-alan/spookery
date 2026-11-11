@@ -16,7 +16,7 @@ fn the_player_says(world: &mut World, text: String) {
 
 #[when(expr = "the player says {string} to the place")]
 fn the_player_says_to_the_place(world: &mut World, text: String) {
-    let place = state_of(table::pack(world)).actors().place["pc_rowan"].clone();
+    let place = state_of(table::pack(world)).actors().place["rowan"].clone();
     let args = serde_json::json!({ "address": "place", "place": place, "text": text });
     say_as_rowan(world, args);
 }
@@ -28,7 +28,7 @@ fn the_player_says_to(world: &mut World, text: String, actor: String) {
 }
 
 fn say_as_rowan(world: &World, args: Value) {
-    let seat = &table::player_client(world, "pc_rowan").seat;
+    let seat = &table::player_client(world, "rowan").seat;
     let id = seat.send("say", args);
     let reply = seat.wait_reply(&id);
     assert!(reply.contains("\"kind\":\"say\""), "{reply}");
@@ -43,7 +43,7 @@ fn say_to_mira_on_an_empty_table(world: &mut World, text: String) {
     opened
         .say_as_player(
             &spookery_engine::Presence::default(),
-            &"pc_rowan".into(),
+            &"rowan".into(),
             spookery_engine::Address::Actor("aldric"),
             &text,
         )
@@ -60,7 +60,7 @@ fn the_tape_already_holds_a_full_mib(world: &mut World) {
             address: "table".to_string(),
             place: None,
             actor: None,
-            recipients: vec!["pc_rowan".to_string()],
+            recipients: vec!["rowan".to_string()],
             text: format!("old line {seq}"),
             round_index: 0,
             world_time: 0,

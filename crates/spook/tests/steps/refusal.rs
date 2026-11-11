@@ -58,7 +58,7 @@ rules:
     fs::write(&path, next).unwrap_or_else(|err| panic!("write oden: {err}"));
     edit_save(&pack, |_| {});
     table::listen(world, &pack);
-    table::seat_actor(world, &pack, "pc_lark");
+    table::seat_actor(world, &pack, "lark");
     world.pack = Some(pack);
 }
 
@@ -200,7 +200,7 @@ fn the_gm_is_seated_and_play_joins(world: &mut World) {
     table::listen(world, &pack);
     table::seat_gm(world);
     let addr = table::game_addr(world);
-    world.play = Some(spawn_play(&addr, "pc_lark", &[]));
+    world.play = Some(spawn_play(&addr, "lark", &[]));
     wait_play(world, "You are in");
 }
 
@@ -226,7 +226,7 @@ fn lark_queues(world: &mut World, line: String) {
 
 #[when(expr = "the GM sends Lark's strike on {word}")]
 fn the_gm_sends_larks_strike(world: &mut World, target: String) {
-    let args = format!(r#"{{"actor_id":"pc_lark","move":"strike","target":"{target}"}}"#);
+    let args = format!(r#"{{"actor_id":"lark","move":"strike","target":"{target}"}}"#);
     world.scratch = table::gm_tool_call(world, 4, "queue", &args);
 }
 
@@ -295,7 +295,7 @@ rules:
       verb: sap
     do:
       - meter:
-          of: npc_oden
+          of: oden
           key: grit
           add: -1
 ",
@@ -303,7 +303,7 @@ rules:
     edit_save(&pack, |_| {});
     spookery_engine::migrate_pack(&pack).unwrap_or_else(|err| panic!("migrate: {err}"));
     table::listen(world, &pack);
-    table::seat_actor(world, &pack, "pc_lark");
+    table::seat_actor(world, &pack, "lark");
     world.pack = Some(pack);
 }
 
@@ -322,7 +322,7 @@ fn the_round_rejects_that_habit_with(world: &mut World, word: String) {
 fn seat_gm_and_lark(world: &mut World, pack: std::path::PathBuf) {
     table::listen(world, &pack);
     table::seat_gm(world);
-    table::seat_actor(world, &pack, "pc_lark");
+    table::seat_actor(world, &pack, "lark");
     world.pack = Some(pack);
 }
 

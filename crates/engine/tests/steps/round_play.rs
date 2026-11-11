@@ -36,7 +36,7 @@ fn larks_faces_and_total_are_identical(world: &mut World) {
 fn ten_rolling_intents_in_one_round(world: &mut World) {
     let pack = support::copy_pack("oneshot-docks", "ten-dice");
     let intents = (0..10)
-        .map(|index| intent(&format!("grit-{index}"), "pc_rowan", "grit", None))
+        .map(|index| intent(&format!("grit-{index}"), "rowan", "grit", None))
         .collect();
     let (_state, rolls, round) = play_queued(&pack, &[], intents);
     world.scratch = round.to_string();
@@ -58,12 +58,7 @@ fn all_ten_resolve_and_none_is_refused_not_in_spec(world: &mut World) {
 #[given(expr = "a played d20 fight")]
 fn a_played_d20_fight(world: &mut World) {
     let pack = support::copy_pack("sample-d20", "d20-fight");
-    let intents = vec![intent(
-        "strike-lark",
-        "pc_lark",
-        "strike",
-        Some("npc_briar"),
-    )];
+    let intents = vec![intent("strike-lark", "lark", "strike", Some("briar"))];
     let (state, _rolls, _round) = play_queued(&pack, &[], intents);
     world.oil = spookery_engine::emit_save(&state).unwrap().into_bytes();
     world.pack = Some(pack);
@@ -223,8 +218,8 @@ fn lark_and_briar_strike_each_other(world: &mut World) {
         &pack,
         &[],
         vec![
-            intent("lark-strike", "pc_lark", "strike", Some("npc_briar")),
-            intent("briar-strike", "npc_briar", "strike", Some("pc_lark")),
+            intent("lark-strike", "lark", "strike", Some("briar")),
+            intent("briar-strike", "briar", "strike", Some("lark")),
         ],
     );
     world.pack = Some(pack);
@@ -250,12 +245,12 @@ fn lark_and_briar_strike_each_other(world: &mut World) {
 #[then(expr = "each strike is scored on the other's own roll")]
 fn each_strike_is_scored_on_the_others_own_roll(world: &mut World) {
     let pack = world.pack.as_ref().unwrap();
-    let lark = strike_line(&world.scratch, "pc_lark");
-    let briar = strike_line(&world.scratch, "npc_briar");
-    let lark_once = indexed_roll(pack, "pc_lark", 0);
-    let lark_again = indexed_roll(pack, "pc_lark", 1);
-    let briar_once = indexed_roll(pack, "npc_briar", 0);
-    let briar_again = indexed_roll(pack, "npc_briar", 1);
+    let lark = strike_line(&world.scratch, "lark");
+    let briar = strike_line(&world.scratch, "briar");
+    let lark_once = indexed_roll(pack, "lark", 0);
+    let lark_again = indexed_roll(pack, "lark", 1);
+    let briar_once = indexed_roll(pack, "briar", 0);
+    let briar_again = indexed_roll(pack, "briar", 1);
     assert_ne!(lark_once.1, lark_again.1, "lark's two indexes collide");
     assert_ne!(briar_once.1, briar_again.1, "briar's two indexes collide");
     assert_eq!(lark.0, lark_once.0, "lark was rolled twice");
@@ -349,17 +344,17 @@ fn rowan_asks_aldric_until_it_finishes(world: &mut World) {
     let mut table = spookery_engine::World::resume(&pack, lock).unwrap_or_else(|e| panic!("{e}"));
     let rowan = spookery_engine::Presence {
         players: 1,
-        actors_present: vec!["pc_rowan".into()],
+        actors_present: vec!["rowan".into()],
     };
     table
-        .queue_player_move(&rowan, &"pc_rowan".into(), "ask", Some("aldric"))
+        .queue_player_move(&rowan, &"rowan".into(), "ask", Some("aldric"))
         .unwrap_or_else(|refusal| panic!("ask aldric: {refusal:?}"));
     let wall = table.state().last_round_at.clone();
     for round in 1..=6 {
         let output = table.play(&rowan, &wall);
         output.unwrap_or_else(|err| panic!("round {round}: {err}"));
         let state = table.state();
-        if !state.actors().acts["pc_rowan"].is_busy(state.world_time) {
+        if !state.actors().acts["rowan"].is_busy(state.world_time) {
             break;
         }
         assert!(round < 6, "Rowan is still busy after {round} rounds");
@@ -407,10 +402,10 @@ fn rowan_hauls_until_it_finishes(world: &mut World) {
     let mut table = support::resume(&pack);
     let rowan = spookery_engine::Presence {
         players: 1,
-        actors_present: vec!["pc_rowan".into()],
+        actors_present: vec!["rowan".into()],
     };
     table
-        .queue_player_move(&rowan, &"pc_rowan".into(), "haul", None)
+        .queue_player_move(&rowan, &"rowan".into(), "haul", None)
         .unwrap_or_else(|refusal| panic!("haul: {refusal:?}"));
     let wall = table.state().last_round_at.clone();
     world.scratch.clear();
@@ -420,7 +415,7 @@ fn rowan_hauls_until_it_finishes(world: &mut World) {
             return;
         }
         let state = table.state();
-        if !state.actors().acts["pc_rowan"].is_busy(state.world_time) {
+        if !state.actors().acts["rowan"].is_busy(state.world_time) {
             break;
         }
     }
@@ -428,7 +423,7 @@ fn rowan_hauls_until_it_finishes(world: &mut World) {
 }
 
 #[then(
-    expr = "the finishing round commits with finish:pc_rowan refused MISSING_ITEM, Rowan is no longer busy, and spook verify passes"
+    expr = "the finishing round commits with finish:rowan refused MISSING_ITEM, Rowan is no longer busy, and spook verify passes"
 )]
 fn the_refused_finish_commits(world: &mut World) {
     assert!(world.scratch.is_empty(), "{}", world.scratch);
@@ -438,13 +433,13 @@ fn the_refused_finish_commits(world: &mut World) {
     assert!(
         refused
             .iter()
-            .any(|item| item["id"] == "finish:pc_rowan" && item["code"] == "MISSING_ITEM"),
+            .any(|item| item["id"] == "finish:rowan" && item["code"] == "MISSING_ITEM"),
         "{round}"
     );
     let saved = spookery_engine::World::peek(pack).unwrap_or_else(|err| panic!("open: {err}"));
     let state = saved.state();
     assert!(
-        !state.actors().acts["pc_rowan"].is_busy(state.world_time),
+        !state.actors().acts["rowan"].is_busy(state.world_time),
         "{round}"
     );
     spookery_engine::verify_pack(pack, None).unwrap_or_else(|err| panic!("verify: {err}"));
@@ -472,7 +467,7 @@ fn a_docks_pack_with_a_broken_pick(world: &mut World) {
 
 #[when(expr = "Rowan walks to the street and Wren plays pick in the same round")]
 fn rowan_walks_and_wren_picks(world: &mut World) {
-    let pick = intent("pick-1", "pc_wren", "pick", None);
+    let pick = intent("pick-1", "wren", "pick", None);
     let (_state, round) = rowan_walks(world.pack(), vec![pick]);
     world.scratch = round.to_string();
 }
@@ -488,7 +483,7 @@ fn wrens_pick_is_refused(world: &mut World, code: String) {
         "{round}"
     );
     let saved = spookery_engine::World::peek(world.pack()).unwrap();
-    assert_eq!(saved.state().actors().place["pc_rowan"], "docks_street");
+    assert_eq!(saved.state().actors().place["rowan"], "docks_street");
 }
 
 #[then(expr = "the next round plays and spook verify passes")]
@@ -501,7 +496,7 @@ fn the_next_round_plays_and_verify_passes(world: &mut World) {
     table
         .queue_gm_intent(
             &spookery_engine::Presence::default(),
-            intent("wait-1", "pc_wren", "wait", None),
+            intent("wait-1", "wren", "wait", None),
             || panic!("the GM chose the id"),
         )
         .unwrap_or_else(|code| panic!("queue: {code}"));
@@ -542,9 +537,9 @@ fn a_docks_pack_with_two_rummage_rules(world: &mut World, shop: i64, shared: i64
 
 #[when(expr = "Rowan walks to the street and rummages in the same round")]
 fn rowan_walks_and_rummages(world: &mut World) {
-    let rummage = intent("rummage", "pc_rowan", "rummage", None);
+    let rummage = intent("rummage", "rowan", "rummage", None);
     let (state, round) = rowan_walks(world.pack(), vec![rummage]);
-    let rest = &state.actors().meters[&("pc_rowan".into(), "rest".to_string())];
+    let rest = &state.actors().meters[&("rowan".into(), "rest".to_string())];
     world.count = usize::try_from(rest.base + rest.offset).unwrap();
     world.scratch = round.to_string();
 }
@@ -574,7 +569,7 @@ fn a_street_rule_over_the_cap(world: &mut World) {
     let pack = support::copy_pack("oneshot-docks", "trigger-cap");
     set_budget(&pack, "max_effects_per_intent", 1);
     let rule = "  - id: greeted
-    when: { change: { arrive: here, subject: pc_rowan } }
+    when: { change: { arrive: here, subject: rowan } }
     do:
       - flag: { of: self, key: greeted, value: true }
       - flag: { of: self, key: welcomed, value: true }";
@@ -588,7 +583,7 @@ fn a_street_rule_over_the_cap(world: &mut World) {
 fn rowan_walks_to_the_street(world: &mut World) {
     let (state, round) = rowan_walks(world.pack(), Vec::new());
     let flags = state.actors().flags.iter();
-    world.count = flags.filter(|(owner, _)| *owner == *"pc_rowan").count();
+    world.count = flags.filter(|(owner, _)| *owner == *"rowan").count();
     world.scratch = round.to_string();
 }
 
@@ -597,7 +592,7 @@ fn neither_flag_is_set(world: &mut World, code: String) {
     assert_eq!(world.count, 0, "flags were set");
     let round: Value = serde_json::from_str(&world.scratch).unwrap();
     let rejected = round["refused"].as_array().unwrap();
-    let id = "trigger:place:docks_street/greeted:pc_rowan";
+    let id = "trigger:place:docks_street/greeted:rowan";
     assert!(
         rejected
             .iter()
@@ -618,7 +613,7 @@ fn two_wait_and_mira_travels(world: &mut World, exit: String) {
         intent("wait-aldric", "aldric", "wait", None),
         intent("walk-mira", "mira", "travel", Some(&exit)),
     ];
-    let (_state, _rolls, round) = play_queued(world.pack(), &["pc_rowan"], intents);
+    let (_state, _rolls, round) = play_queued(world.pack(), &["rowan"], intents);
     world.scratch = round.to_string();
 }
 
@@ -665,8 +660,8 @@ fn the_d20_pack_allows_intents(world: &mut World, limit: u64) {
 #[when(expr = "Lark waits and Briar waits in the same round")]
 fn lark_and_briar_wait(world: &mut World) {
     let intents = vec![
-        intent("lark-wait", "pc_lark", "wait", None),
-        intent("briar-wait", "npc_briar", "wait", None),
+        intent("lark-wait", "lark", "wait", None),
+        intent("briar-wait", "briar", "wait", None),
     ];
     let (_state, _rolls, round) = play_queued(world.pack(), &[], intents);
     world.scratch = round.to_string();
@@ -700,8 +695,8 @@ fn the_docks_pack_allows_keys(world: &mut World, limit: u64) {
 #[when(expr = "Rowan plays overset and then Wren waits in the same round")]
 fn rowan_oversets_and_wren_waits(world: &mut World) {
     let intents = vec![
-        intent("rowan-overset", "pc_rowan", "overset", None),
-        intent("wren-wait", "pc_wren", "wait", None),
+        intent("rowan-overset", "rowan", "overset", None),
+        intent("wren-wait", "wren", "wait", None),
     ];
     let (_state, _rolls, round) = play_queued(world.pack(), &[], intents);
     world.scratch = round.to_string();
@@ -744,10 +739,10 @@ fn rowan_walks(
     pack: &Path,
     then: Vec<spookery_protocol::QueueArgs>,
 ) -> (spookery_engine::State, Value) {
-    let mut intents = vec![intent("walk", "pc_rowan", "travel", Some("docks_street"))];
+    let mut intents = vec![intent("walk", "rowan", "travel", Some("docks_street"))];
     intents.extend(then);
-    let (state, _rolls, round) = play_queued(pack, &["pc_rowan"], intents);
-    assert_eq!(state.actors().place["pc_rowan"], "docks_street", "{round}");
+    let (state, _rolls, round) = play_queued(pack, &["rowan"], intents);
+    assert_eq!(state.actors().place["rowan"], "docks_street", "{round}");
     (state, round)
 }
 
@@ -862,20 +857,15 @@ fn lark_pack() -> PathBuf {
 fn lark_roll(pack: &Path, extra_first: bool) -> (String, i64) {
     let mut intents = Vec::new();
     if extra_first {
-        intents.push(intent(
-            "briar-strike",
-            "npc_briar",
-            "strike",
-            Some("pc_lark"),
-        ));
+        intents.push(intent("briar-strike", "briar", "strike", Some("lark")));
     }
-    intents.push(intent("lark-grit", "pc_lark", "grit", None));
+    intents.push(intent("lark-grit", "lark", "grit", None));
     let (_state, rolls, _round) = play_queued(pack, &[], intents);
     let rolled = rolls.into_iter().find_map(|report| match report {
         MoveReport::Rolled {
             actor_id,
             roll: out,
-        } if actor_id == *"pc_lark" => Some((
+        } if actor_id == *"lark" => Some((
             out.faces
                 .iter()
                 .map(|face| face.to_string())
@@ -972,13 +962,13 @@ fn the_docks_pack_allows_keys_and_braces(world: &mut World, limit: u64, add: i64
 
 /// A cast member the save does not list, who carries the flag `marked`, and a row that sets it.
 #[given(
-    expr = "the docks pack has a cast member pc_nell the save does not list and a row {string} that marks her"
+    expr = "the docks pack has a cast member nell the save does not list and a row {string} that marks her"
 )]
 fn a_cast_member_the_save_does_not_list(world: &mut World, row: String) {
     let pack = support::copy_pack("oneshot-docks", "unlisted-actor");
     fs::write(
         pack.join("cast/pc-nell.md"),
-        "---\nschema: cast\nid: pc_nell\nkind: pc_template\ndisplay_name: Nell\nidle:\n  eligible: false\nflags:\n    - marked\n---\nNell.\n",
+        "---\nschema: cast\nid: nell\nkind: pc_template\ndisplay_name: Nell\nidle:\n  eligible: false\nflags:\n    - marked\n---\nNell.\n",
     )
     .unwrap();
     support::append(
@@ -988,7 +978,7 @@ fn a_cast_member_the_save_does_not_list(world: &mut World, row: String) {
   - id: {row}
     when: {{ verb: {row} }}
     do:
-      - flag: {{ of: pc_nell, key: marked, value: true }}
+      - flag: {{ of: nell, key: marked, value: true }}
 "
         ),
     );
@@ -1006,7 +996,7 @@ fn rowan_plays(world: &mut World, verb: String) {
     opened
         .queue_gm_intent(
             &nobody,
-            intent(&format!("rowan-{verb}"), "pc_rowan", &verb, None),
+            intent(&format!("rowan-{verb}"), "rowan", &verb, None),
             || panic!("the GM chose the id"),
         )
         .unwrap();

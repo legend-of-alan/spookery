@@ -13,13 +13,13 @@ use crate::support;
 use crate::World;
 
 const START_TIME: u64 = 1080;
-const OPENING: &[&str] = &["strike npc_briar", "use tonic"];
+const OPENING: &[&str] = &["strike briar", "use tonic"];
 const SCRIPT: &[&str] = &[
-    "strike npc_briar",
+    "strike briar",
     "use tonic",
     "travel loft",
     "travel gate_yard",
-    "ask npc_briar",
+    "ask briar",
     "travel wheel_shed",
     "take chock",
     "travel gate_yard",
@@ -28,7 +28,7 @@ const SCRIPT: &[&str] = &[
 ];
 const BRANCHES: &[&[&str]] = &[
     &[
-        "ask npc_briar",
+        "ask briar",
         "travel wheel_shed",
         "take chock",
         "travel gate_yard",
@@ -36,11 +36,11 @@ const BRANCHES: &[&[&str]] = &[
         "travel mill_lane",
     ],
     &[
-        "strike npc_briar",
-        "strike npc_briar",
-        "strike npc_briar",
-        "strike npc_briar",
-        "strike npc_briar",
+        "strike briar",
+        "strike briar",
+        "strike briar",
+        "strike briar",
+        "strike briar",
         "travel wheel_shed",
         "take chock",
         "travel gate_yard",
@@ -60,7 +60,7 @@ const BRANCHES: &[&[&str]] = &[
 ];
 
 const DEMO_WARD: &[&str] = &[
-    "ask npc_briar",
+    "ask briar",
     "travel wheel_shed",
     "take nail",
     "travel gate_yard",
@@ -68,7 +68,7 @@ const DEMO_WARD: &[&str] = &[
     "travel mill_lane",
 ];
 const DEMO_BRACE: &[&str] = &[
-    "ask npc_briar",
+    "ask briar",
     "travel wheel_shed",
     "take nail",
     "brace",
@@ -140,7 +140,7 @@ fn each_branch_reaches_an_ending(world: &mut World) {
 #[when(expr = "the party travels through the locked exit after unlocking it")]
 fn the_party_travels_through_the_locked_exit(world: &mut World) {
     let pack = seat_gm_and_lark(world, "showcase-journey");
-    commit_line(world, "ask npc_briar");
+    commit_line(world, "ask briar");
     commit_line(world, "travel wheel_shed");
     commit_line(world, "take chock");
     commit_line(world, "travel gate_yard");
@@ -158,7 +158,7 @@ fn they_arrive_at_the_exits_cost(world: &mut World) {
     let cost = lane_cost(&pack);
     let now = state_of(&pack);
     let arrived = arrival_tick(&pack);
-    assert_eq!(now.actors().place["pc_lark"], "mill_lane");
+    assert_eq!(now.actors().place["lark"], "mill_lane");
     assert_eq!(arrived.saturating_sub(started), cost);
     assert!(cost > 0);
     assert!(is_finished(&pack));
@@ -177,7 +177,7 @@ fn they_arrive_at_the_exits_cost(world: &mut World) {
 fn a_player_uses_the_consumable(world: &mut World) {
     let pack = support::copy_pack("sample-d20", "showcase-tonic");
     table::listen(world, &pack);
-    table::seat_actor(world, &pack, "pc_lark");
+    table::seat_actor(world, &pack, "lark");
     let (_mark, added) = table::player_send(world, "use tonic", "tonic");
     world.player_added = added;
     world.pack = Some(pack);
@@ -231,7 +231,7 @@ fn the_demo_script_is_played_with_the_stub_gm(world: &mut World) {
         "brace" => DEMO_BRACE,
         other => panic!("unknown demo script: {other}"),
     };
-    seat_gm_and_actor(world, "demo-d20", "pc_corin", "demo-script");
+    seat_gm_and_actor(world, "demo-d20", "corin", "demo-script");
     for line in lines {
         commit_line(world, line);
     }
@@ -260,7 +260,7 @@ fn the_player_sees_the_nail_kept_ending_and_not_the_default(world: &mut World) {
 }
 
 fn seat_gm_and_lark(world: &mut World, label: &str) -> PathBuf {
-    seat_gm_and_actor(world, "sample-d20", "pc_lark", label)
+    seat_gm_and_actor(world, "sample-d20", "lark", label)
 }
 
 fn seat_gm_and_actor(world: &mut World, pack_name: &str, actor_id: &str, label: &str) -> PathBuf {
@@ -281,7 +281,7 @@ fn commit_line(world: &mut World, line: &str) {
 }
 
 fn larks_tonic(now: &spookery_engine::State) -> u32 {
-    let tonic = ("pc_lark".into(), "tonic".to_string());
+    let tonic = ("lark".into(), "tonic".to_string());
     now.actors().items.get(&tonic).copied().unwrap_or(0)
 }
 

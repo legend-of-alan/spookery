@@ -1,6 +1,6 @@
 schema: save
 world_id: starter
-pack_rev: blake2s:aa00f3b00f57b7ae629d6f532793319ea7e459558e94fd7530a13003da3e8d38
+pack_rev: blake2s:8e2eb3b3ad3e9a26ed9624d53be3a7e009f7b3530fe12ac1d7cdbb84b2149096
 rules_rev: 23
 state_rev: 0
 round_index: 0
@@ -8,31 +8,31 @@ world_time: 0
 last_round_at: "2026-01-01T00:00:00Z"
 actors:
   kind:
+    ada: pc
     keeper: npc
-    pc_ada: pc
   place:
+    ada: yard
     keeper: lane
-    pc_ada: yard
   visited:
-    pc_ada:
+    ada:
       yard:
         - lane
   acts:
-    keeper:
+    ada:
       last_act_round: 0
       idle_acts_this_window: 0
       live_acts_this_window: 0
-    pc_ada:
+    keeper:
       last_act_round: 0
       idle_acts_this_window: 0
       live_acts_this_window: 0
   items: {}
   meters:
-    keeper:
+    ada:
       nerve:
         base: 1
         offset: 0
-    pc_ada:
+    keeper:
       nerve:
         base: 1
         offset: 0

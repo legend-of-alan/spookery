@@ -235,8 +235,8 @@ mod tests {
         let mut world = spookery_engine::testing::resume(&pack);
         let calls = [
             ("status", json!({})),
-            ("perceive", json!({"as": "pc_rowan"})),
-            ("queue", json!({"actor_id": "pc_rowan", "move": "wait"})),
+            ("perceive", json!({"as": "rowan"})),
+            ("queue", json!({"actor_id": "rowan", "move": "wait"})),
             ("say", json!({"address": "table", "text": "hi"})),
             ("commit", json!({"include_round": false})),
             ("release", json!({})),
@@ -273,19 +273,19 @@ mod tests {
     fn parsed_intent_reaches_the_world_with_move_and_to() {
         let pack = copy_pack("oneshot-docks", "gm_intent");
         let mut world = World::open(&pack).unwrap();
-        let args = json!({"actor_id": "pc_rowan", "move": "wait", "to": ["pc_wren"]});
+        let args = json!({"actor_id": "rowan", "move": "wait", "to": ["wren"]});
         let call = crate::protocol::parse_args(args.as_object()).unwrap();
         let queued = world
             .queue_gm_intent(&Presence::default(), call, || Ok("i1".into()))
             .unwrap();
         let want = QueuedMove {
             id: "i1".into(),
-            actor_id: "pc_rowan".into(),
+            actor_id: "rowan".into(),
             move_name: "wait".into(),
         };
         assert_eq!(queued, want);
         let intent = &world.queued_intents()[0];
         assert_eq!(intent.move_name, "wait");
-        assert_eq!(intent.args.message_to, Some(vec!["pc_wren".into()]));
+        assert_eq!(intent.args.message_to, Some(vec!["wren".into()]));
     }
 }

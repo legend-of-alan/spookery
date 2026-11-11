@@ -16,7 +16,7 @@ Feature: A player and a GM share a table
   Scenario: The player and the GM hear each other
     Given rowan is in the shop and a GM is seated
     When the player says "evening"
-    Then the GM hears pc_rowan say "evening"
+    Then the GM hears rowan say "evening"
     When the GM says "good evening" to the table
     Then the player hears the GM say "good evening"
 

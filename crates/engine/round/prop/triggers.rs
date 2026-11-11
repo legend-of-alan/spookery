@@ -12,7 +12,7 @@
 //!     And replaying the journal yields the state hash stored on the last record
 //! ```
 //!
-//! The chain lives on pc_rowan. It starts after each of that PC's actions that
+//! The chain lives on rowan. It starts after each of that PC's actions that
 //! leaves its lamp oil count higher than before the action, and runs to the cap
 //! before the next action. Other PCs are not given the flags, so a fire for
 //! them rolls back and the log has one subject.
@@ -99,7 +99,7 @@ fn assert_triggers_stop(
     assert_replay_matches(pack)
 }
 
-/// How many of the round's actions left pc_rowan with more lamp oil, in order. A trigger pass
+/// How many of the round's actions left rowan with more lamp oil, in order. A trigger pass
 /// runs after each action and sees that action's net write.
 fn rowan_oil_gains(record: &RoundRecord) -> usize {
     let mut nets: Vec<(&str, i64)> = Vec::new();
@@ -114,7 +114,7 @@ fn rowan_oil_gains(record: &RoundRecord) -> usize {
         else {
             continue;
         };
-        if place.is_some() || *actor_id != Some("pc_rowan".into()) || id != "lamp_oil" {
+        if place.is_some() || *actor_id != Some("rowan".into()) || id != "lamp_oil" {
             continue;
         }
         match nets
@@ -334,7 +334,7 @@ fn write_flags(pack: &Path, flags: &[String]) -> Result<(), String> {
     }
     let needle = "idle:\n  eligible: false\n";
     if !text.contains(needle) {
-        return Err("pc_rowan idle block was not where the property expected".to_string());
+        return Err("rowan idle block was not where the property expected".to_string());
     }
     let replacement = format!("idle:\n  eligible: false\n{listed}");
     fs::write(&path, text.replacen(needle, &replacement, 1)).map_err(|err| err.to_string())

@@ -12,18 +12,18 @@ use crate::World;
 use super::table;
 
 const METERS: &str = "\
-meter pc_rowan assassination_debt 2 6
+meter rowan assassination_debt 2 6
 meter mira shop_day 1 1
 ";
 
 /// `shop_day` sorts last, so its meter line ends every host printout.
 const PRINTOUT_END: &str = "meter mira shop_day ";
 
-const DOOR_NOTE: &str = "effect note 1 {\"note_id\":\"note_mira_door\",\"to\":[\"pc_rowan\"],\"place\":\"docks_shop\",\"fact_ids\":[],\"text\":\"Back at dusk. Oil on the shelf.\"}";
+const DOOR_NOTE: &str = "effect note 1 {\"note_id\":\"note_mira_door\",\"to\":[\"rowan\"],\"place\":\"docks_shop\",\"fact_ids\":[],\"text\":\"Back at dusk. Oil on the shelf.\"}";
 
 const HOST: &str = "\
-effect note 1 {\"note_id\":\"note_mira_door\",\"to\":[\"pc_rowan\"],\"place\":\"docks_shop\",\"fact_ids\":[],\"text\":\"Back at dusk. Oil on the shelf.\"}
-meter pc_rowan assassination_debt 2 6
+effect note 1 {\"note_id\":\"note_mira_door\",\"to\":[\"rowan\"],\"place\":\"docks_shop\",\"fact_ids\":[],\"text\":\"Back at dusk. Oil on the shelf.\"}
+meter rowan assassination_debt 2 6
 meter mira shop_day 1 1
 ";
 
@@ -62,7 +62,7 @@ fn the_host_text_lists_the_door_note(world: &mut World) {
             .copied(),
         Some(4u32)
     );
-    let debt = &now.actors().meters[&("pc_rowan".into(), "assassination_debt".to_string())];
+    let debt = &now.actors().meters[&("rowan".into(), "assassination_debt".to_string())];
     assert_eq!((debt.base, debt.offset), (2, 0));
 }
 
@@ -175,7 +175,7 @@ fn the_docks_pack_where_miras_door_note_carries(world: &mut World, fact_id: Stri
 
 #[then(expr = "the player resume lists the door message")]
 fn the_player_resume_lists_the_door_message(world: &mut World) {
-    let resume = read_player_resume(world, "pc_rowan");
+    let resume = read_player_resume(world, "rowan");
     assert_eq!(
         resume,
         serde_json::json!({
@@ -183,7 +183,7 @@ fn the_player_resume_lists_the_door_message(world: &mut World) {
             "notes": [
                 {
                     "id": "note_mira_door",
-                    "to": ["pc_rowan"],
+                    "to": ["rowan"],
                     "place": "docks_shop",
                     "fact_ids": [],
                     "text": "Back at dusk. Oil on the shelf."
@@ -287,7 +287,7 @@ fn rewrite_mira(pack: &Path, from: &str, to: &str) {
 fn the_shop_lists_the_oil(world: &mut World) {
     let pack = table::pack(world);
     let opened = spookery_engine::World::peek(pack).unwrap();
-    let shop = opened.perceive(&Presence::default(), "pc_rowan").unwrap();
+    let shop = opened.perceive(&Presence::default(), "rowan").unwrap();
     assert_eq!(shop.place, "docks_shop");
     assert_eq!(
         shop.items,

@@ -359,7 +359,7 @@ fn a_queue_call_with_to_is_accepted(world: &mut World) {
         .http_gm
         .as_mut()
         .unwrap_or_else(|| panic!("no GM holds the seat"));
-    let arguments = json!({"actor_id": "pc_rowan", "move": "wait", "to": ["pc_wren"]});
+    let arguments = json!({"actor_id": "rowan", "move": "wait", "to": ["wren"]});
     let queued = call(holder, "queue", arguments);
     assert_not_refused(&queued, "queue");
 }
@@ -389,8 +389,8 @@ fn agent_says_over_http(world: &mut World) {
 fn call_each_gm_tool(gm: &mut GmClient) {
     for (name, arguments) in [
         ("status", json!({})),
-        ("perceive", json!({"as": "pc_rowan"})),
-        ("queue", json!({"actor_id": "pc_rowan", "move": "wait"})),
+        ("perceive", json!({"as": "rowan"})),
+        ("queue", json!({"actor_id": "rowan", "move": "wait"})),
         ("say", json!({"address": "table", "text": "good evening"})),
         ("commit", json!({"include_round": true})),
     ] {

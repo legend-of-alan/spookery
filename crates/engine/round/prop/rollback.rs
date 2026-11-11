@@ -310,7 +310,7 @@ fn effect(state: &State, step: &Step, index: usize) -> Effect {
         Step::Unwield => EffectKind::Unwield { actor_id: mira },
         Step::Note => EffectKind::Note {
             note_id: format!("note_rollback_{index}"),
-            to: vec!["pc_rowan".into()],
+            to: vec!["rowan".into()],
             place: Some("docks_shop".into()),
             fact_ids: Vec::new(),
             text: "A test note.".to_string(),

@@ -147,9 +147,9 @@ mod tests {
     #[test]
     fn an_appended_say_keeps_the_tape_bytes() {
         let root = fresh_dir("tape-bytes");
-        let stored = append_record(&root, sample(0, "pc_rowan", "line0")).unwrap();
+        let stored = append_record(&root, sample(0, "rowan", "line0")).unwrap();
         let bytes = fs::read(root.join("state/tape.jsonl")).unwrap();
-        let line = "{\"seq\":1,\"from\":\"gm\",\"address\":\"actor\",\"place\":null,\"actor\":\"pc_rowan\",\"recipients\":[\"pc_rowan\"],\"text\":\"line0\",\"round_index\":0,\"world_time\":1080}\n";
+        let line = "{\"seq\":1,\"from\":\"gm\",\"address\":\"actor\",\"place\":null,\"actor\":\"rowan\",\"recipients\":[\"rowan\"],\"text\":\"line0\",\"round_index\":0,\"world_time\":1080}\n";
         assert_eq!(bytes, line.as_bytes());
         assert_eq!(parse_record(line.trim_end()).unwrap(), stored);
         let _ = fs::remove_dir_all(&root);

@@ -4,7 +4,7 @@ Feature: A human GM runs a round
     Given a docks table
     When play and a human GM share a free loopback port
     And the player says hello to the GM
-    Then the GM shows "Pc rowan: hello"
+    Then the GM shows "Rowan: hello"
     When the GM says "good evening"
     Then play shows "GM: good evening"
     When the GM queues Mira's door note and commits
@@ -15,8 +15,8 @@ Feature: A human GM runs a round
     Given a docks table
     When two players and a human GM share a free loopback port
     And each player queues a wait
-    Then the GM shows "Pc rowan queued: wait"
-    And the GM shows "Pc wren queued: wait"
+    Then the GM shows "Rowan queued: wait"
+    And the GM shows "Wren queued: wait"
     When the GM commits the queue
     Then the round log records Rowan and Wren waiting
 
@@ -31,7 +31,7 @@ Feature: A human GM runs a round
     Given a docks table
     When play and a human GM share a free loopback port
     And the player says hello to the GM
-    Then the GM shows "Pc rowan: hello"
+    Then the GM shows "Rowan: hello"
     And the GM shows no protocol JSON
 
   Scenario: Raw frames are JSON lines
@@ -74,7 +74,7 @@ Feature: A human GM runs a round
   Scenario: The GM perceives an actor
     Given a docks table
     When a human GM sits on a free loopback port
-    And the GM types "perceive pc_rowan"
+    And the GM types "perceive rowan"
     Then the GM shows "You are in Docks Shop."
 
   Scenario: An unknown GM command points at help

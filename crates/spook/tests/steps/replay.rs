@@ -57,16 +57,16 @@ fn the_operator_plays_n_rounds(world: &mut World, count: usize) {
 fn two_players_play_a_round(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
     table::listen(world, &pack);
-    table::seat_actor(world, &pack, "pc_rowan");
-    table::seat_actor(world, &pack, "pc_harbormouse");
-    let _ = table::actor_send(world, "pc_rowan", "wait", "\"kind\":");
-    let _ = table::actor_send(world, "pc_harbormouse", "wait", "\"kind\":");
+    table::seat_actor(world, &pack, "rowan");
+    table::seat_actor(world, &pack, "harbormouse");
+    let _ = table::actor_send(world, "rowan", "wait", "\"kind\":");
+    let _ = table::actor_send(world, "harbormouse", "wait", "\"kind\":");
     table::seat_gm(world);
-    let _ = table::actor_send(world, "pc_rowan", "wait", "\"kind\":");
+    let _ = table::actor_send(world, "rowan", "wait", "\"kind\":");
     let _ = table::gm_tool_call(world, 7, "commit", r#"{"include_round":true}"#);
-    table::close_actor(world, "pc_harbormouse");
+    table::close_actor(world, "harbormouse");
     table::wait_players(world, 1);
-    table::close_actor(world, "pc_rowan");
+    table::close_actor(world, "rowan");
     table::wait_players(world, 0);
     table::stop_host(world);
 }
@@ -75,7 +75,7 @@ fn two_players_play_a_round(world: &mut World) {
 fn a_seated_players_host_is_killed_and_restarted(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
     table::listen(world, &pack);
-    table::seat_actor(world, &pack, "pc_rowan");
+    table::seat_actor(world, &pack, "rowan");
     table::wait_players(world, 1);
     // A hard kill, so the restart has a crashed presence to repair.
     table::live_mut(world).host.take();
@@ -96,7 +96,7 @@ fn a_queued_intent_is_written_into_a_round_record(world: &mut World) {
         intents.push(serde_json::json!({
             "id": "written-in",
             "round_index": 1,
-            "actor": "player:pc_rowan",
+            "actor": "player:rowan",
             "source": "player",
             "move": "take",
             "target": { "item": "lamp_oil" },

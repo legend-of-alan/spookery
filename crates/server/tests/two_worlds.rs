@@ -54,7 +54,7 @@ async fn two_worlds_serve_on_port_zero_and_stop_independently() {
     let (mut c1, stop1, first) = host(&first_dir);
     assert_eq!(lock_pack(&first_dir).err(), Some(Reason::CommitConflict));
     let (mut c2, stop2, second) = host(&second_dir);
-    let rowan = serde_json::json!({ "actor": "pc_rowan" });
+    let rowan = serde_json::json!({ "actor": "rowan" });
     let none = serde_json::json!({});
     send_until_perceive(&mut c1, "claim", rowan.clone());
     send_until_perceive(&mut c1, "wait", none.clone());

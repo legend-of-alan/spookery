@@ -1,6 +1,6 @@
 ---
 schema: cast
-id: pc_nell
+id: nell
 kind: pc_template
 display_name: Nell
 flags:

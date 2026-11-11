@@ -106,7 +106,7 @@ rules:
           subject: self
           place: wheel_shed
       - at:
-          subject: npc_oden
+          subject: oden
           place: wheel_shed
     cost:
       ticks: 15

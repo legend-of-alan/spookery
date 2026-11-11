@@ -18,7 +18,7 @@ Feature: An intent the round has no room for is refused BUDGET
     Examples:
       | keys | outcome                                                                                      |
       | 3    | is refused BUDGET                                                                            |
-      | 4    | lands, and the GM sees both "modifier pc_rowan brace" and "actor_meter pc_rowan grit" change |
+      | 4    | lands, and the GM sees both "modifier rowan brace" and "actor_meter rowan grit" change |
 
   Scenario Outline: A modifier that overflows its meter is refused BUDGET only when the meter's key does not fit
     Given the docks pack allows <keys> state keys per round and a row "brace" that adds 9223372036854775807 to grit through a modifier

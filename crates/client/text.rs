@@ -400,7 +400,7 @@ mod tests {
     #[test]
     fn an_id_reads_as_words() {
         assert_eq!(humanize("docks_shop"), "Docks shop");
-        assert_eq!(humanize("pc_rowan"), "Pc rowan");
+        assert_eq!(humanize("rowan"), "Rowan");
         assert_eq!(humanize("mira"), "Mira");
     }
 
@@ -429,7 +429,7 @@ mod tests {
         assert_readable(&gm);
 
         let you = render(&ServerBody::Say(Say {
-            from: Speaker::Player("pc_rowan".to_string()),
+            from: Speaker::Player("rowan".to_string()),
             address: "actor".to_string(),
             text: "hello".to_string(),
             place: None,
@@ -444,7 +444,7 @@ mod tests {
     fn a_queued_action_is_a_sentence() {
         let text = render(&ServerBody::Queued {
             intent: "queue-id-42".to_string(),
-            actor: "pc_rowan".to_string(),
+            actor: "rowan".to_string(),
             move_name: "wait".to_string(),
             target: None,
         });
@@ -475,7 +475,7 @@ mod tests {
     fn note(id: &str, text: &str) -> NoteView {
         NoteView {
             id: id.to_string(),
-            to: vec!["pc_rowan".to_string()],
+            to: vec!["rowan".to_string()],
             place: Some("docks_shop".to_string()),
             fact_ids: Vec::new(),
             text: text.to_string(),
@@ -524,10 +524,10 @@ mod tests {
     fn replayed_speech_sits_under_one_heading() {
         let mut player_text = PlayerText::new();
         let claimed = player_text.render(&ServerBody::Claimed {
-            actor: "pc_lark".to_string(),
+            actor: "lark".to_string(),
             token: "t1".to_string(),
             scrollback: vec![
-                table_say(Speaker::Player("pc_lark".to_string()), "hello Briar"),
+                table_say(Speaker::Player("lark".to_string()), "hello Briar"),
                 table_say(Speaker::Gm, "evening"),
             ],
             missed: Vec::new(),
@@ -552,7 +552,7 @@ GM: evening"
 You are in Gate Yard."
         );
         let quiet = PlayerText::new().render(&ServerBody::Claimed {
-            actor: "pc_lark".to_string(),
+            actor: "lark".to_string(),
             token: "t1".to_string(),
             scrollback: Vec::new(),
             missed: Vec::new(),
@@ -564,14 +564,14 @@ You are in Gate Yard."
     #[test]
     fn a_perceive_names_the_place_and_skips_empty_sections() {
         let text = render(&ServerBody::View(Box::new(protocol::View {
-            viewer: "pc_rowan".to_string(),
+            viewer: "rowan".to_string(),
             place: "docks_shop".to_string(),
             place_name: "Docks Shop".to_string(),
             body: "The shop faces the water. Tins sit in a row.".to_string(),
             actor_names: vec!["Aldric".to_string(), "Rowan".to_string()],
             cant_act: String::new(),
             busy: String::new(),
-            visible_actors: vec!["aldric".to_string(), "pc_rowan".to_string()],
+            visible_actors: vec!["aldric".to_string(), "rowan".to_string()],
             known_facts: vec![KnownFact {
                 id: "fact_oil_on_shelf".to_string(),
                 text: "Oil is on the shelf.".to_string(),
@@ -579,7 +579,7 @@ You are in Gate Yard."
             }],
             notes: vec![NoteView {
                 id: "note_door".to_string(),
-                to: vec!["pc_rowan".to_string()],
+                to: vec!["rowan".to_string()],
                 place: Some("docks_shop".to_string()),
                 fact_ids: vec!["fact_oil_on_shelf".to_string()],
                 text: "Back in an hour.".to_string(),
@@ -644,7 +644,7 @@ stairs (locked) — 2 ticks"
         assert_readable(&text);
 
         let quiet = render(&ServerBody::View(Box::new(protocol::View {
-            viewer: "pc_rowan".to_string(),
+            viewer: "rowan".to_string(),
             place: "docks_street".to_string(),
             place_name: "Docks Street".to_string(),
             body: String::new(),
@@ -713,8 +713,8 @@ none"
 
     #[test]
     fn each_gm_body_renders_as_text() {
-        let player = render_gm(&say("player:pc_rowan", "hello"));
-        assert_eq!(player, "Pc rowan: hello");
+        let player = render_gm(&say("player:rowan", "hello"));
+        assert_eq!(player, "Rowan: hello");
         assert!(!player.contains('{'));
 
         let gm = render_gm(&say("gm", "good evening"));
@@ -725,11 +725,11 @@ none"
 
         let queued = render_gm(&ServerBody::Queued {
             intent: "id-1".to_string(),
-            actor: "pc_wren".to_string(),
+            actor: "wren".to_string(),
             move_name: "wait".to_string(),
             target: None,
         });
-        assert_eq!(queued, "Pc wren queued: wait");
+        assert_eq!(queued, "Wren queued: wait");
         assert_eq!(
             render_gm(&ServerBody::Round {
                 round_index: 1,
@@ -752,17 +752,14 @@ none"
     #[test]
     fn a_status_names_the_seated_players_and_the_queue() {
         let body = status(
-            vec!["pc_rowan"],
+            vec!["rowan"],
             vec![QueuedMove {
                 id: "q".to_string(),
-                actor_id: "pc_rowan".to_string(),
+                actor_id: "rowan".to_string(),
                 move_name: "wait".to_string(),
             }],
         );
-        assert_eq!(
-            render_status(&body),
-            "Seated: Pc rowan\nQueue:\nPc rowan: wait"
-        );
+        assert_eq!(render_status(&body), "Seated: Rowan\nQueue:\nRowan: wait");
         assert_eq!(
             render_status(&status(Vec::new(), Vec::new())),
             "Seated: nobody\nQueue: empty"
@@ -773,14 +770,14 @@ none"
     fn a_commit_shows_its_changes_rolls_and_dice() {
         let body = CommitBody {
             state_rev: 2,
-            changed_keys: vec!["actors.pc_rowan.meters.grit".to_string()],
+            changed_keys: vec!["actors.rowan.meters.grit".to_string()],
             journal_path: None,
             rolls: vec![roll(vec![4, 2], 1, 7, 0, Outcome::Success)],
             dice: vec!["2d6 = 3 + 4 = 7".to_string()],
         };
         assert_eq!(
             render_gm(&ServerBody::Committed(body)),
-            "Changed:\nactors.pc_rowan.meters.grit\nRoll: 4 + 2, +1 = 7 vs 0, success\ndice 2d6 = 3 + 4 = 7"
+            "Changed:\nactors.rowan.meters.grit\nRoll: 4 + 2, +1 = 7 vs 0, success\ndice 2d6 = 3 + 4 = 7"
         );
     }
 }

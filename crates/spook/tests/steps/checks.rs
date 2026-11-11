@@ -209,7 +209,7 @@ fn an_engine_habit_rolls_a_check_for_mira(world: &mut World) {
 
 #[when(expr = "the player sends a line with a player prefix")]
 fn the_player_sends_a_line_with_a_player_prefix(world: &mut World) {
-    let (mark, added) = table::player_send(world, "player:pc_nell grit", "\"kind\":\"refused\"");
+    let (mark, added) = table::player_send(world, "player:nell grit", "\"kind\":\"refused\"");
     world.mark = mark;
     world.player_added = added;
 }
@@ -716,8 +716,8 @@ fn append_check(pack: &Path, extra: &str) {
 fn set_rowan_grit(pack: &Path, base: i64) {
     let path = pack.join("state/save.yaml");
     let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read now: {err}"));
-    let from = "    pc_rowan:\n      assassination_debt:\n        base: 2\n        offset: 0\n      grit:\n        base: 1\n";
-    let to = format!("    pc_rowan:\n      assassination_debt:\n        base: 2\n        offset: 0\n      grit:\n        base: {base}\n");
+    let from = "    rowan:\n      assassination_debt:\n        base: 2\n        offset: 0\n      grit:\n        base: 1\n";
+    let to = format!("    rowan:\n      assassination_debt:\n        base: 2\n        offset: 0\n      grit:\n        base: {base}\n");
     let next = text.replacen(from, &to, 1);
     assert_ne!(next, text, "rowan grit was not changed");
     fs::write(&path, next).unwrap_or_else(|err| panic!("write now: {err}"));

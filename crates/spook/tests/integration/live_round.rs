@@ -56,7 +56,7 @@ fn a_live_model_plays_one_round() {
     let sit = world_time(&pack);
     let mut player = crate::support::spawn(&["--addr", &addr, "play"]);
     let stdin = player.stdin.as_mut().expect("player stdin");
-    stdin.write_all(b"pc_rowan\n").expect("pick pc_rowan");
+    stdin.write_all(b"rowan\n").expect("pick rowan");
     stdin.flush().expect("flush pick");
     wait_text(
         &player,

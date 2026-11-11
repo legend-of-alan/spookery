@@ -188,7 +188,7 @@ fn play_and_ai_gm_and_a_stub(world: &mut World) {
     support::drain(host_err, Arc::clone(&host_stderr));
     world.children.push(host);
     table::wait_suffix(&host_stderr, 0, "listening");
-    let mut play = super::common::spawn_play(&addr, "pc_rowan", &[]);
+    let mut play = super::common::spawn_play(&addr, "rowan", &[]);
     table::wait_suffix(&play.stdout, 0, "Docks Shop");
     let mut play_in = play.stdin.take().unwrap();
     writeln!(play_in, "say hello").unwrap();
@@ -204,7 +204,7 @@ fn play_and_ai_gm_and_a_stub(world: &mut World) {
     wait_stub(&seen, 2, 0);
     // The view after the round shows the street.
     table::wait_suffix(&play.stdout, mark, "You are in Docks Street.");
-    let place = state_of(&pack).actors().place.get("pc_rowan").cloned();
+    let place = state_of(&pack).actors().place.get("rowan").cloned();
     assert_eq!(place.as_deref(), Some("docks_street"));
     let second = seen.lock().unwrap().posts[1].clone();
     assert!(second.contains("end_turn"), "{second}");
@@ -273,7 +273,7 @@ fn travel_rounds_once(world: &mut World, transport_error: bool) {
         assert_eq!(rounds, [start_ticks + 5], "travel ran twice");
         assert_eq!(model.calls().len(), 1, "{}", model.calls().len());
         assert_eq!(
-            state_of(pack).actors().place.get("pc_rowan").cloned(),
+            state_of(pack).actors().place.get("rowan").cloned(),
             Some("docks_street".to_string())
         );
     });

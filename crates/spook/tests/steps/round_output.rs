@@ -10,7 +10,7 @@ use super::table;
 use crate::support::{self, copy_docks};
 use crate::World;
 
-#[given(expr = "a docks table with a GM and pc_wren seated")]
+#[given(expr = "a docks table with a GM and wren seated")]
 fn a_docks_table_with_a_gm_and_one_pc(world: &mut World) {
     listen_with_wren(world, false);
 }
@@ -18,7 +18,7 @@ fn a_docks_table_with_a_gm_and_one_pc(world: &mut World) {
 /// Wren is busy in Mira's rooms, so a commit fast-forwards, and Rowan's travel to the street
 /// touches no seated player, so his moves keep queue order. Rowan has no player, so the GM
 /// drives him.
-#[given(expr = "a docks table with a GM and a travelling pc_wren seated")]
+#[given(expr = "a docks table with a GM and a travelling wren seated")]
 fn a_docks_table_with_a_gm_and_a_busy_pc(world: &mut World) {
     listen_with_wren(world, true);
 }
@@ -41,33 +41,33 @@ fn listen_with_wren(world: &mut World, travelling: bool) {
     if travelling {
         edit_save(&pack, |now| {
             let until = now.world_time + 30;
-            set_busy(now, "pc_wren", until, "docks_shop.stairs");
+            set_busy(now, "wren", until, "docks_shop.stairs");
         });
     }
     table::listen(world, &pack);
     table::seat_gm(world);
-    table::seat_actor(world, &pack, "pc_wren");
+    table::seat_actor(world, &pack, "wren");
     world.pack = Some(pack);
 }
 
-#[given(expr = "a docks table with pc_rowan and pc_wren seated and no GM")]
+#[given(expr = "a docks table with rowan and wren seated and no GM")]
 fn a_docks_table_with_two_players_and_no_gm(world: &mut World) {
     let pack = copy_docks("round-output-busy");
     edit_save(&pack, |now| {
         let until = now.world_time + 10;
-        set_busy(now, "pc_rowan", until, "docks_shop.docks_street");
-        set_busy(now, "pc_wren", until, "docks_street.docks_shop");
+        set_busy(now, "rowan", until, "docks_shop.docks_street");
+        set_busy(now, "wren", until, "docks_street.docks_shop");
     });
     table::listen(world, &pack);
-    table::seat_actor(world, &pack, "pc_rowan");
-    table::seat_actor(world, &pack, "pc_wren");
+    table::seat_actor(world, &pack, "rowan");
+    table::seat_actor(world, &pack, "wren");
     world.pack = Some(pack);
 }
 
 #[given(expr = "both players are travelling")]
 fn both_players_are_travelling(world: &mut World) {
     let now = state_of(table::pack(world));
-    for actor in ["pc_rowan", "pc_wren"] {
+    for actor in ["rowan", "wren"] {
         assert!(
             now.actors()
                 .acts
@@ -96,7 +96,7 @@ fn the_player_sends_a_move(world: &mut World, actor: String) {
     });
     let host = table::host_stdout(world).len();
     let rowan = table::actor_text(world, &actor).len();
-    let wren = table::actor_text(world, "pc_wren").len();
+    let wren = table::actor_text(world, "wren").len();
     world.mark = rowan;
     world.host_mark = host;
     world.wren_mark = wren;
@@ -142,7 +142,7 @@ fn the_player_is_refused(world: &mut World, actor: String, code: String) {
 
 #[then(expr = "each seated player then gets a resume line and a perceive line")]
 fn each_player_gets_one_refresh(world: &mut World) {
-    let rowan = table::wait_actor_from(world, "pc_rowan", world.mark, "\"kind\":\"view\"");
+    let rowan = table::wait_actor_from(world, "rowan", world.mark, "\"kind\":\"view\"");
     let busy = rowan
         .find("\"code\":\"BUSY\"")
         .unwrap_or_else(|| panic!("no refusal\n{rowan}"));
@@ -156,7 +156,7 @@ fn each_player_gets_one_refresh(world: &mut World) {
     assert_eq!(rowan.matches("\"kind\":\"resume\"").count(), 1, "{rowan}");
     assert_eq!(rowan.matches("\"kind\":\"view\"").count(), 1, "{rowan}");
     let wren_mark = world.wren_mark;
-    let wren = table::wait_actor_from(world, "pc_wren", wren_mark, "\"kind\":\"view\"");
+    let wren = table::wait_actor_from(world, "wren", wren_mark, "\"kind\":\"view\"");
     assert_eq!(wren.matches("\"kind\":\"resume\"").count(), 1, "{wren}");
     assert_eq!(wren.matches("\"kind\":\"view\"").count(), 1, "{wren}");
 }

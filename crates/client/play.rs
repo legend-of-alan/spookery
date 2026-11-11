@@ -245,10 +245,10 @@ mod tests {
 
     #[test]
     fn a_bare_id_and_a_player_prefix_are_one_id() {
-        let bare = parse_pc_choice("pc_rowan").ok();
-        assert_eq!(bare.as_deref(), Some("pc_rowan"));
-        assert_eq!(parse_pc_choice("player:pc_rowan").ok(), bare);
-        assert_eq!(parse_pc_choice("  player:pc_rowan").ok(), bare);
+        let bare = parse_pc_choice("rowan").ok();
+        assert_eq!(bare.as_deref(), Some("rowan"));
+        assert_eq!(parse_pc_choice("player:rowan").ok(), bare);
+        assert_eq!(parse_pc_choice("  player:rowan").ok(), bare);
         assert!(parse_pc_choice("player:").is_err());
         assert!(parse_pc_choice("").is_err());
     }
@@ -256,7 +256,7 @@ mod tests {
     #[test]
     fn a_typed_line_is_a_command_and_its_args() {
         let view: View = serde_json::from_value(json!({
-            "viewer": "pc_rowan", "place": "docks_gate", "visible_actors": ["pc_rowan", "mira"],
+            "viewer": "rowan", "place": "docks_gate", "visible_actors": ["rowan", "mira"],
             "actor_names": ["Rowan", "Mira"],
             "known_facts": [], "notes": [], "unknown_mentions": [], "items": [],
             "habits": []

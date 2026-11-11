@@ -16,12 +16,12 @@ fn a_copy_of_the_sample_d20_pack(world: &mut World) {
 
 #[when(expr = "Lark plays {string}")]
 fn lark_plays(world: &mut World, line: String) {
-    play(world, "pc_lark", &line);
+    play(world, "lark", &line);
 }
 
 #[then(expr = "the journal commits two location effects for Lark")]
 fn two_location_effects_for_lark(world: &mut World) {
-    let moves = location_effects(world.pack(), "pc_lark");
+    let moves = location_effects(world.pack(), "lark");
     assert_eq!(
         moves,
         vec![
@@ -34,12 +34,12 @@ fn two_location_effects_for_lark(world: &mut World) {
 
 #[then(expr = "Lark is in the Gate Yard")]
 fn lark_is_in_the_gate_yard(world: &mut World) {
-    assert_eq!(place_of(world.pack(), "pc_lark"), "gate_yard");
+    assert_eq!(place_of(world.pack(), "lark"), "gate_yard");
 }
 
 #[when(expr = "Nell waits")]
 fn nell_waits(world: &mut World) {
-    play(world, "pc_nell", "wait");
+    play(world, "nell", "wait");
 }
 
 #[then(expr = "the wait commits with nothing rejected")]
@@ -51,7 +51,7 @@ fn the_wait_commits_with_nothing_rejected(world: &mut World) {
         let waited = round["intents"].as_array().is_some_and(|intents| {
             intents
                 .iter()
-                .any(|intent| intent["move"] == "wait" && intent["actor"] == "player:pc_nell")
+                .any(|intent| intent["move"] == "wait" && intent["actor"] == "player:nell")
         });
         if !waited {
             continue;

@@ -1,6 +1,6 @@
 ---
 schema: cast
-id: pc_rowan
+id: rowan
 kind: pc_template
 display_name: Rowan
 idle:

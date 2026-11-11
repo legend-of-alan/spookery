@@ -448,7 +448,7 @@ mod tests {
     fn a_speaker_is_gm_or_a_prefixed_id() {
         for (text, speaker) in [
             ("gm", Speaker::Gm),
-            ("player:pc_rowan", Speaker::Player("pc_rowan".into())),
+            ("player:rowan", Speaker::Player("rowan".into())),
             ("npc:mira", Speaker::Npc("mira".into())),
             ("player:a:b", Speaker::Player("a:b".into())),
         ] {

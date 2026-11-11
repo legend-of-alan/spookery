@@ -32,12 +32,12 @@ Every message, the client's and the table's alike, is one JSON object in one Web
 
 <!-- example: player-claim -->
 ```json
-{"id":"c1","body":{"kind":"claim","args":{"actor":"pc_rowan"}}}
+{"id":"c1","body":{"kind":"claim","args":{"actor":"rowan"}}}
 ```
 
 <!-- example: player-claimed -->
 ```json
-{"seq":1,"reply_to":"c1","body":{"kind":"claimed","actor":"pc_rowan","token":"<token>"}}
+{"seq":1,"reply_to":"c1","body":{"kind":"claimed","actor":"rowan","token":"<token>"}}
 ```
 
 ## Hello
@@ -46,7 +46,7 @@ The table speaks first, with `version`, the `commands` this seat may send, and, 
 
 <!-- example: player-hello -->
 ```json
-{"body":{"kind":"hello","version":2,"commands":["claim","release","say","look","help","map","cancel","drop","grit","take","travel","unwield","wait","wield"],"open":["pc_harbormouse","pc_rowan","pc_wren"],"pc_names":{"pc_harbormouse":"Harbormouse","pc_rowan":"Rowan","pc_wren":"Wren"}}}
+{"body":{"kind":"hello","version":2,"commands":["claim","release","say","look","help","map","cancel","drop","grit","take","travel","unwield","wait","wield"],"open":["harbormouse","rowan","wren"],"pc_names":{"harbormouse":"Harbormouse","rowan":"Rowan","wren":"Wren"}}}
 ```
 
 <!-- example: gm-hello -->
@@ -90,7 +90,7 @@ Only `release` ends a claim. A connection that closes or is dropped leaves its P
 
 <!-- example: gm-presence -->
 ```json
-{"seq":4,"body":{"kind":"presence","actors_present":["pc_rowan"]}}
+{"seq":4,"body":{"kind":"presence","actors_present":["rowan"]}}
 ```
 
 `token` in `claimed` takes the PC back from a new connection, so treat it as a secret. A held claim keeps the newest 256 messages sent to it. `claim` with `token` and `last_seq`, the last `seq` the old connection read, answers with `missed`, the kept messages after `last_seq`, oldest first. A missing `last_seq` means 0. `gap` is `true` when a message after `last_seq` was dropped. The `resume` and `view` after it are current either way. A connection that held the claim before lets go of it and stays up. A released claim's token is `UNKNOWN_ID`.
@@ -102,7 +102,7 @@ Only `release` ends a claim. A connection that closes or is dropped leaves its P
 
 <!-- example: player-claimed-token -->
 ```json
-{"seq":23,"reply_to":"c1","body":{"kind":"claimed","actor":"pc_rowan","token":"<token>","missed":[{"seq":22,"body":{"kind":"say","from":"gm","address":"table","text":"still there?"}}]}}
+{"seq":23,"reply_to":"c1","body":{"kind":"claimed","actor":"rowan","token":"<token>","missed":[{"seq":22,"body":{"kind":"say","from":"gm","address":"table","text":"still there?"}}]}}
 ```
 
 A new claim's `claimed` carries `scrollback` instead, the says this PC heard before, oldest first.
@@ -120,17 +120,17 @@ A GM's `release` frees the seat before its reply. A later command on that connec
 
 <!-- example: player-said -->
 ```json
-{"seq":6,"reply_to":"c2","body":{"kind":"say","from":"player:pc_rowan","address":"table","text":"evening"}}
+{"seq":6,"reply_to":"c2","body":{"kind":"say","from":"player:rowan","address":"table","text":"evening"}}
 ```
 
 <!-- example: gm-heard -->
 ```json
-{"seq":6,"body":{"kind":"say","from":"player:pc_rowan","address":"table","recipients":["pc_rowan"],"text":"evening"}}
+{"seq":6,"body":{"kind":"say","from":"player:rowan","address":"table","recipients":["rowan"],"text":"evening"}}
 ```
 
 ### Moves
 
-A move is a pack verb, its target in `target`. The target is an id or a display name the player sees, ignoring case and outer spaces, and an exit also answers to the place it goes to, by id or name. A name that two things in sight share is refused `AMBIGUOUS_NAME` before it is queued, and `detail` is that name and every id that has it, `Briar: npc_briar, npc_oden`. With a GM seated, the move waits for `commit`. The reply is `queued`, and the GM gets the same `queued` under the same `seq`. `intent` is the queue id. With no GM seated, the move commits its own round, and the reply comes after that round is written.
+A move is a pack verb, its target in `target`. The target is an id or a display name the player sees, ignoring case and outer spaces, and an exit also answers to the place it goes to, by id or name. A name that two things in sight share is refused `AMBIGUOUS_NAME` before it is queued, and `detail` is that name and every id that has it, `Briar: briar, oden`. With a GM seated, the move waits for `commit`. The reply is `queued`, and the GM gets the same `queued` under the same `seq`. `intent` is the queue id. With no GM seated, the move commits its own round, and the reply comes after that round is written.
 
 <!-- example: player-grit -->
 ```json
@@ -139,7 +139,7 @@ A move is a pack verb, its target in `target`. The target is an id or a display 
 
 <!-- example: player-queued -->
 ```json
-{"seq":9,"reply_to":"c3","body":{"kind":"queued","intent":"ed0db120f54c1447842c340c5d523932d1518c796c886f24b1030a9b4a12f73a","actor":"pc_rowan","move":"grit"}}
+{"seq":9,"reply_to":"c3","body":{"kind":"queued","intent":"53dc6ddc605a3b0dbfe37bab2b4b7af0665868159e8efaa8df153a5634a84976","actor":"rowan","move":"grit"}}
 ```
 
 `cancel` is a move too, and a busy player may send it. It drops the PC's own action under way when its rule says `cancellable`, with no refund, and the action never finishes. A walk is never cancelled. With nothing to cancel, or an action whose rule does not allow it, `cancel` is refused `INELIGIBLE` and the action still lands.
@@ -193,13 +193,13 @@ The table's state for a GM. `world_time` is the game clock in ticks. `pack_rev` 
     "presence": {
       "players": 1,
       "actors_present": [
-        "pc_rowan"
+        "rowan"
       ]
     },
     "world_time": 1080,
     "round_index": 0,
     "state_rev": 0,
-    "pack_rev": "blake2s:94d91cbe58bbffb352642733b49b025c821278a3ffbb8e3df30c1fd2ce8915bd",
+    "pack_rev": "blake2s:f83d3bd86eb8b01d3b4c4a7e8b8863dc6d2e478405a3cc5e2ef6a9e44e387e0c",
     "last_round_at": "2026-01-01T00:00:00Z",
     "queued": [],
     "pack": {
@@ -254,9 +254,9 @@ The table's state for a GM. `world_time` is the game clock in ticks. `pack_rev` 
         "aldric": "npc",
         "bram": "npc",
         "mira": "npc",
-        "pc_harbormouse": "pc_template",
-        "pc_rowan": "pc_template",
-        "pc_wren": "pc_template"
+        "harbormouse": "pc_template",
+        "rowan": "pc_template",
+        "wren": "pc_template"
       },
       "places": {
         "docks_shop": "The shop faces the water. Tins sit in a row.\n",
@@ -267,9 +267,9 @@ The table's state for a GM. `world_time` is the game clock in ticks. `pack_rev` 
         "aldric": "Aldric sweeps the shop and does not keep the books.\n",
         "bram": "Bram walks the night watch between the street and the shop.\n",
         "mira": "Mira keeps the shop neat and the tin out of sight.\n",
-        "pc_harbormouse": "Harbormouse walks the night street and sleeps in a coil of rope.\n",
-        "pc_rowan": "Rowan keeps the shop and walks the street.\n",
-        "pc_wren": "Wren mends nets on the street and keeps the tide chart in their head.\n"
+        "harbormouse": "Harbormouse walks the night street and sleeps in a coil of rope.\n",
+        "rowan": "Rowan keeps the shop and walks the street.\n",
+        "wren": "Wren mends nets on the street and keeps the tide chart in their head.\n"
       }
     }
   }
@@ -310,7 +310,7 @@ The table's state for a GM. `world_time` is the game clock in ticks. `pack_rev` 
 
 <!-- example: gm-committed -->
 ```json
-{"seq":14,"reply_to":"c3","body":{"kind":"committed","state_rev":1,"changed_keys":["last_act_round aldric","last_act_round mira","last_act_round pc_rowan","live_acts_this_window aldric","live_acts_this_window mira","live_acts_this_window pc_rowan","note note_mira_door"],"journal_path":"state/journal/bundle-0000.jsonl","rolls":[{"faces":[5,2],"stat":1,"total":8,"target":0,"outcome":"success"}]}}
+{"seq":14,"reply_to":"c3","body":{"kind":"committed","state_rev":1,"changed_keys":["last_act_round aldric","last_act_round mira","last_act_round rowan","live_acts_this_window aldric","live_acts_this_window mira","live_acts_this_window rowan","note note_mira_door"],"journal_path":"state/journal/bundle-0000.jsonl","rolls":[{"faces":[1,6],"stat":1,"total":8,"target":0,"outcome":"success"}]}}
 ```
 
 `changed_keys` are the state keys the round changed, every one of them: a meter is `actor_meter <actor> <id>` or `world_meter <id>`, a modifier is `modifier <actor> <id>`, and a flag is `actor_flag <actor> <key>` or `world_flag <key>`. `journal_path` is the round's journal file, or null when the round wrote none. `rolls` are the checks rolled, faces and all. Faces go to the GM only.
@@ -353,7 +353,7 @@ A client ignores a `kind` or a field it does not know. `server.json` gives every
   "seq": 3,
   "body": {
     "kind": "view",
-    "viewer": "pc_rowan",
+    "viewer": "rowan",
     "place": "docks_shop",
     "place_name": "Docks Shop",
     "body": "The shop faces the water. Tins sit in a row.",
@@ -363,7 +363,7 @@ A client ignores a `kind` or a field it does not know. `server.json` gives every
     ],
     "visible_actors": [
       "aldric",
-      "pc_rowan"
+      "rowan"
     ],
     "known_facts": [
       {
@@ -458,7 +458,7 @@ Every other message the table sends this seat, the hello first, comes as a `spoo
 
 <!-- example: mcp-event -->
 ```json
-{"jsonrpc":"2.0","method":"spook/event","params":{"seq":28,"body":{"kind":"queued","intent":"f756bf6b7077bf5c623ac2d933339f8357220b557f99dbf3492e145ff42e16a8","actor":"pc_rowan","move":"grit"}}}
+{"jsonrpc":"2.0","method":"spook/event","params":{"seq":28,"body":{"kind":"queued","intent":"c802d4b692c7ee8e5a8fde0a4043d7d1ba27f3c2b63da88472f7a132f21f0ee6","actor":"rowan","move":"grit"}}}
 ```
 
 An `initialize` opens a session and is never refused for a full table. POST it with `Accept` listing both `application/json` and `text/event-stream` and with `Content-Type: application/json`. Keep the `mcp-session-id` response header, and send the negotiated `protocolVersion` as `MCP-Protocol-Version` on every later request.

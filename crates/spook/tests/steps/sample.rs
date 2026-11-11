@@ -27,7 +27,7 @@ fn a_sample_d20_table_where_lark_has_no_tonic(world: &mut World) {
 
 #[when(expr = "the player strikes the raider")]
 fn the_player_strikes_the_raider(world: &mut World) {
-    let (mark, added) = table::player_send(world, "strike npc_briar", "\"kind\":\"check\"");
+    let (mark, added) = table::player_send(world, "strike briar", "\"kind\":\"check\"");
     world.mark = mark;
     world.player_added = added;
 }
@@ -37,7 +37,7 @@ fn the_player_waits_and_strikes(world: &mut World, times: usize) {
     for _ in 0..times {
         table::player_send(world, "wait", "\"kind\":\"view\"");
     }
-    let (mark, added) = table::player_send(world, "strike npc_briar", "\"kind\":\"check\"");
+    let (mark, added) = table::player_send(world, "strike briar", "\"kind\":\"check\"");
     world.mark = mark;
     world.player_added = added;
 }
@@ -66,12 +66,12 @@ fn the_save_before_the_fight_is_kept(world: &mut World) {
 
 #[then(expr = "the raider's hp is {int}")]
 fn the_raiders_hp_is(world: &mut World, hp: usize) {
-    wait_hp(world, "npc_briar", hp as i64);
+    wait_hp(world, "briar", hp as i64);
 }
 
 #[then(expr = "Lark's hp is {int}")]
 fn larks_hp_is(world: &mut World, hp: usize) {
-    wait_hp(world, "pc_lark", hp as i64);
+    wait_hp(world, "lark", hp as i64);
 }
 
 #[then(expr = "play shows {int} successful rolls")]
@@ -89,7 +89,7 @@ fn seat_lark(world: &mut World, might: Option<i64>, tonic: bool) {
         remove_larks_tonic(&pack);
     }
     table::listen(world, &pack);
-    table::seat_actor(world, &pack, "pc_lark");
+    table::seat_actor(world, &pack, "lark");
     world.pack = Some(pack);
 }
 
@@ -109,7 +109,7 @@ fn set_lark_might(pack: &Path, base: i64) {
 fn remove_larks_tonic(pack: &Path) {
     let path = pack.join("state/save.yaml");
     let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read now: {err}"));
-    let from = "  items:\n    pc_lark:\n      tonic: 1\n";
+    let from = "  items:\n    lark:\n      tonic: 1\n";
     assert_eq!(text.matches(from).count(), 1, "tonic was not listed once");
     let next = text.replacen(from, "  items: {}\n", 1);
     fs::write(&path, next).unwrap_or_else(|err| panic!("write now: {err}"));

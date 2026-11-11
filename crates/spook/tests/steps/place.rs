@@ -12,16 +12,16 @@ fn rowan_starts_in_docks_street(world: &mut World) {
     let path = pack.join("state/save.yaml");
     let mut now = parse_save(&fs::read_to_string(&path).unwrap()).unwrap();
     now.actors_mut()
-        .set_place(&"pc_rowan".into(), "docks_street")
+        .set_place(&"rowan".into(), "docks_street")
         .unwrap();
     fs::write(&path, emit_save(&now).unwrap()).unwrap();
     world.pack = Some(pack);
 }
 
-#[given(expr = "pc_wren is seated and not travelling")]
-fn pc_wren_is_seated(world: &mut World) {
+#[given(expr = "wren is seated and not travelling")]
+fn wren_is_seated(world: &mut World) {
     let pack = world.pack.clone().unwrap();
-    table::seat_actor(world, &pack, "pc_wren");
+    table::seat_actor(world, &pack, "wren");
 }
 
 #[then(expr = "the seated player sees {string}")]

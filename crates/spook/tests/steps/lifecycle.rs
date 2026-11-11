@@ -13,7 +13,7 @@ use crate::World;
 fn seated() -> Presence {
     Presence {
         players: 2,
-        actors_present: vec!["pc_rowan".into(), "pc_wren".into()],
+        actors_present: vec!["rowan".into(), "wren".into()],
     }
 }
 
@@ -29,7 +29,7 @@ fn queue(opened: &mut Engine, line: &str) {
     let (verb, target) = line
         .split_once(' ')
         .map_or((line, None), |(v, t)| (v, Some(t)));
-    if let Err(refusal) = opened.queue_player_move(&seated(), &"pc_rowan".into(), verb, target) {
+    if let Err(refusal) = opened.queue_player_move(&seated(), &"rowan".into(), verb, target) {
         panic!("{line}: {}", refusal.code.as_str());
     }
 }
@@ -45,7 +45,7 @@ fn rowan_and_wren_in_the_shop(world: &mut World) {
     let pack = copy_docks("lifecycle");
     edit_save(&pack, |now| {
         now.actors_mut()
-            .set_place(&"pc_wren".into(), "docks_shop")
+            .set_place(&"wren".into(), "docks_shop")
             .unwrap();
     });
     world.pack = Some(pack);
@@ -160,10 +160,10 @@ fn never_finished(world: &mut World, verb: String, rest: i64) {
         "{:?}",
         now.globals().flags
     );
-    let act = &now.actors().acts["pc_rowan"];
+    let act = &now.actors().acts["rowan"];
     assert_eq!(act.pending, None);
     assert_eq!(act.busy_until, None);
-    let meter = &now.actors().meters[&("pc_rowan".into(), "rest".to_string())];
+    let meter = &now.actors().meters[&("rowan".into(), "rest".to_string())];
     assert_eq!(meter.base + meter.offset, 3 - rest);
 }
 
@@ -190,9 +190,7 @@ fn spook_check_refuses_the_verb(world: &mut World, verb: String) {
 #[given(expr = "Rowan stands on {word} in the save")]
 fn rowan_stands_on(world: &mut World, place: String) {
     edit_save(world.pack.as_ref().unwrap(), |now| {
-        now.actors_mut()
-            .set_place(&"pc_rowan".into(), &place)
-            .unwrap();
+        now.actors_mut().set_place(&"rowan".into(), &place).unwrap();
     });
 }
 
@@ -201,7 +199,7 @@ fn spook_check_refuses_rowans_place(world: &mut World) {
     let diags = spookery_engine::check_pack(world.pack.as_ref().unwrap());
     let refused = diags
         .iter()
-        .any(|diag| diag.path.as_deref() == Some("actors.place.pc_rowan"));
+        .any(|diag| diag.path.as_deref() == Some("actors.place.rowan"));
     assert!(refused, "{diags:?}");
 }
 
@@ -250,7 +248,7 @@ fn the_gm_queues_miras(world: &mut World, habit: String) {
 #[then(expr = "Rowan is at {word}")]
 fn rowan_is_at(world: &mut World, place: String) {
     let now = state_of(world.pack.as_ref().unwrap());
-    assert_eq!(now.actors().place["pc_rowan"], place);
+    assert_eq!(now.actors().place["rowan"], place);
 }
 
 #[then(expr = "Rowan holds lamp_oil")]
@@ -259,28 +257,28 @@ fn rowan_holds_lamp_oil(world: &mut World) {
     let oil = now
         .actors()
         .items
-        .get(&("pc_rowan".into(), "lamp_oil".to_string()));
+        .get(&("rowan".into(), "lamp_oil".to_string()));
     assert_eq!(oil.copied().unwrap_or(0), 1);
 }
 
 #[then(expr = "Rowan has used no act")]
 fn rowan_used_no_act(world: &mut World) {
     let now = state_of(world.pack.as_ref().unwrap());
-    assert_eq!(now.actors().acts["pc_rowan"].last_act_round, 0);
+    assert_eq!(now.actors().acts["rowan"].last_act_round, 0);
 }
 
 #[then(expr = "Rowan has used the act of round {int}")]
 fn rowan_used_the_act(world: &mut World, round: u64) {
     let now = state_of(world.pack.as_ref().unwrap());
-    assert_eq!(now.actors().acts["pc_rowan"].last_act_round, round);
+    assert_eq!(now.actors().acts["rowan"].last_act_round, round);
 }
 
 #[then(expr = "Wren's look does not show Rowan")]
 fn wrens_look_does_not_show_rowan(world: &mut World) {
     let opened = open(world.pack.as_ref().unwrap());
-    let view = opened.perceive(&seated(), "pc_wren").unwrap();
+    let view = opened.perceive(&seated(), "wren").unwrap();
     assert!(
-        !view.visible_actors.iter().any(|id| id == "pc_rowan"),
+        !view.visible_actors.iter().any(|id| id == "rowan"),
         "{:?}",
         view.visible_actors
     );
@@ -289,7 +287,7 @@ fn wrens_look_does_not_show_rowan(world: &mut World) {
 #[then(expr = "Rowan's look shows {string}")]
 fn rowans_look_shows(world: &mut World, line: String) {
     let opened = open(world.pack.as_ref().unwrap());
-    let view = opened.perceive(&seated(), "pc_rowan").unwrap();
+    let view = opened.perceive(&seated(), "rowan").unwrap();
     assert_eq!(view.busy, line);
 }
 
@@ -297,7 +295,7 @@ fn rowans_look_shows(world: &mut World, line: String) {
 fn refused_at_once(world: &mut World, line: String, code: String) {
     let mut opened = open(world.pack.as_ref().unwrap());
     let refusal = opened
-        .queue_player_move(&seated(), &"pc_rowan".into(), &line, None)
+        .queue_player_move(&seated(), &"rowan".into(), &line, None)
         .expect_err("the line is refused");
     assert_eq!(refusal.code.as_str(), code);
     assert!(opened.queued_intents().is_empty());

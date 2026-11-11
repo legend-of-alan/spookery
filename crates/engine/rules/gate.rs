@@ -271,7 +271,7 @@ pub(crate) fn list_nameable(
 
 /// The id `typed` names among `nameable`, by the id or any name, ignoring case and outer
 /// spaces. `None` when nothing has that name. When two or more ids have it, the `Err` is the
-/// detail of the `AMBIGUOUS_NAME` refusal: the name and those ids, `Briar: npc_briar, npc_oden`.
+/// detail of the `AMBIGUOUS_NAME` refusal: the name and those ids, `Briar: briar, oden`.
 pub(crate) fn find_named<'a>(
     nameable: &'a [NamedId],
     typed: &str,

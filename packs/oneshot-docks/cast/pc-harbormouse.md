@@ -1,6 +1,6 @@
 ---
 schema: cast
-id: pc_harbormouse
+id: harbormouse
 kind: pc_template
 display_name: Harbormouse
 idle:

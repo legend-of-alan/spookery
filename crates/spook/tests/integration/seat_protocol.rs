@@ -106,7 +106,7 @@ fn capture() -> BTreeMap<String, Example> {
     insert_json(&mut out, "gm-hello", next_kind(&gm, "hello"));
     let mut player = open_seat(table.game, "player");
     insert_json(&mut out, "player-hello", next_kind(&player, "hello"));
-    let claim = send(&mut player, "claim", json!({"actor": "pc_rowan"}));
+    let claim = send(&mut player, "claim", json!({"actor": "rowan"}));
     insert_json(&mut out, "player-claim", claim);
     let mut claimed = next_kind(&player, "claimed");
     let token = scrub_token(&mut claimed["body"]);

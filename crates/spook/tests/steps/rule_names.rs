@@ -38,7 +38,7 @@ fn append_verbs(world: &mut World, extra: &str) {
 
 #[when(expr = "the player marks nell")]
 fn the_player_marks_nell(world: &mut World) {
-    let (_mark, added) = table::player_send(world, "mark pc_nell", "\"kind\":");
+    let (_mark, added) = table::player_send(world, "mark nell", "\"kind\":");
     world.player_added = added;
 }
 
@@ -73,7 +73,7 @@ fn assert_location(pack: &Path, name: &str) {
         .as_array()
         .unwrap()
         .iter()
-        .filter(|effect| effect["kind"] == "location" && effect["actor_id"] == "pc_rowan")
+        .filter(|effect| effect["kind"] == "location" && effect["actor_id"] == "rowan")
         .collect();
     assert_eq!(hits.len(), 1);
     assert_eq!(hits[0]["from"], "docks_shop");
@@ -84,7 +84,7 @@ fn rowan_place(pack: &Path) -> String {
     state_of(pack)
         .actors()
         .place
-        .get("pc_rowan")
+        .get("rowan")
         .unwrap()
         .to_string()
 }

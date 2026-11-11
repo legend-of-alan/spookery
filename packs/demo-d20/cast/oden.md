@@ -1,6 +1,6 @@
 ---
 schema: cast
-id: npc_oden
+id: oden
 kind: npc
 display_name: Oden
 idle:
@@ -10,7 +10,7 @@ rules:
     when: habit
     if:
       - at:
-          subject: pc_corin
+          subject: corin
           place: wheel_shed
       - not:
           note_exists: note_cart
@@ -22,7 +22,7 @@ rules:
       - note:
           id: note_cart
           to:
-            - pc_corin
+            - corin
           place: wheel_shed
           fact_ids: []
           text: Oden is ready when you are.

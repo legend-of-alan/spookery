@@ -4,11 +4,11 @@ Feature: Meters belong to their entity
     Given cast/mira.md declares a "shop_day" meter
     When the pack loads
     Then Mira has a shop_day meter
-    And Bram and pc_rowan do not
+    And Bram and rowan do not
     When a round runs and Mira's habit reads and resets shop_day
     Then the habit runs as it did when shop_day was a clock
     And the GM sees shop_day on Mira's meters
-    And pc_rowan's view does not list it
+    And rowan's view does not list it
 
   Scenario: The pack check refuses a rule that writes a scoped meter on the wrong actor
     Given cast/mira.md declares a "shop_day" meter
@@ -23,16 +23,16 @@ Feature: Meters belong to their entity
     Then it refuses the second grit
 
   Scenario: A player in the same room does not see another actor's meter change
-    Given pc_rowan and Mira stand in the shop
+    Given rowan and Mira stand in the shop
     When Mira's habit adds 1 to her shop_day
     Then Mira's change line shows shop_day
-    And pc_rowan's change line does not
+    And rowan's change line does not
 
   Scenario: A player does not see a flag change
-    Given pc_rowan stands in the shop
+    Given rowan stands in the shop
     When a rule sets the world flag "bells_rung"
     And a rule sets Mira's flag "shop_open"
-    Then pc_rowan's change line shows neither flag
+    Then rowan's change line shows neither flag
     And the GM sees both as changed keys
 
   Scenario: Two stories share one dawn countdown
@@ -63,12 +63,12 @@ Feature: Meters belong to their entity
   Scenario: A world meter is hidden unless the pack shows it
     Given world/meters.yaml declares "dawn" with hidden false and "doom" with no hidden key
     When a rule adds -1 to meter dawn of "world" and to meter doom of "world"
-    Then pc_rowan's change line shows dawn and not doom
+    Then rowan's change line shows dawn and not doom
     And the GM sees both
 
   Scenario: A reconnecting player gets current world meter values
     Given world/meters.yaml declares "dawn" with hidden false and "doom" with no hidden key
-    And dawn has fallen to 3 while pc_rowan's player was away
-    When the player reconnects and claims pc_rowan
+    And dawn has fallen to 3 while rowan's player was away
+    When the player reconnects and claims rowan
     Then the catch-up view lists dawn at 3
     And it does not list doom

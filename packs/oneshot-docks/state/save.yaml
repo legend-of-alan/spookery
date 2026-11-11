@@ -1,6 +1,6 @@
 schema: save
 world_id: docks-001
-pack_rev: blake2s:94d91cbe58bbffb352642733b49b025c821278a3ffbb8e3df30c1fd2ce8915bd
+pack_rev: blake2s:f83d3bd86eb8b01d3b4c4a7e8b8863dc6d2e478405a3cc5e2ef6a9e44e387e0c
 rules_rev: 23
 state_rev: 0
 round_index: 0
@@ -10,29 +10,29 @@ actors:
   kind:
     aldric: npc
     bram: npc
+    harbormouse: pc
     mira: npc
-    pc_harbormouse: pc
-    pc_rowan: pc
-    pc_wren: pc
+    rowan: pc
+    wren: pc
   place:
     aldric: docks_shop
     bram: docks_street
+    harbormouse: docks_street
     mira: mira_rooms
-    pc_harbormouse: docks_street
-    pc_rowan: docks_shop
-    pc_wren: docks_street
+    rowan: docks_shop
+    wren: docks_street
   known_facts:
     mira:
       - fact_ledger_short
   visited:
-    pc_harbormouse:
+    harbormouse:
       docks_street:
         - docks_shop
-    pc_rowan:
+    rowan:
       docks_shop:
         - docks_street
         - stairs
-    pc_wren:
+    wren:
       docks_street:
         - docks_shop
   acts:
@@ -44,19 +44,19 @@ actors:
       last_act_round: 0
       idle_acts_this_window: 0
       live_acts_this_window: 0
+    harbormouse:
+      last_act_round: 0
+      idle_acts_this_window: 0
+      live_acts_this_window: 0
     mira:
       last_act_round: 0
       idle_acts_this_window: 0
       live_acts_this_window: 0
-    pc_harbormouse:
+    rowan:
       last_act_round: 0
       idle_acts_this_window: 0
       live_acts_this_window: 0
-    pc_rowan:
-      last_act_round: 0
-      idle_acts_this_window: 0
-      live_acts_this_window: 0
-    pc_wren:
+    wren:
       last_act_round: 0
       idle_acts_this_window: 0
       live_acts_this_window: 0
@@ -76,6 +76,13 @@ actors:
       rest:
         base: 3
         offset: 0
+    harbormouse:
+      grit:
+        base: 1
+        offset: 0
+      rest:
+        base: 3
+        offset: 0
     mira:
       grit:
         base: 1
@@ -86,14 +93,7 @@ actors:
       shop_day:
         base: 1
         offset: 0
-    pc_harbormouse:
-      grit:
-        base: 1
-        offset: 0
-      rest:
-        base: 3
-        offset: 0
-    pc_rowan:
+    rowan:
       assassination_debt:
         base: 2
         offset: 0
@@ -103,7 +103,7 @@ actors:
       rest:
         base: 3
         offset: 0
-    pc_wren:
+    wren:
       grit:
         base: 1
         offset: 0

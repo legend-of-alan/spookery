@@ -77,7 +77,7 @@ fn the_gm_hears_the_wait_queued(world: &mut World) {
     let gm = ws_gm(world);
     let heard = table::wait_suffix(&gm.text, 0, "\"kind\":\"queued\"");
     let heard = queued(&heard).unwrap_or_else(|| panic!("{heard}"));
-    assert_eq!(heard["body"]["actor"], "pc_rowan", "{heard}");
+    assert_eq!(heard["body"]["actor"], "rowan", "{heard}");
     assert_eq!(heard["seq"], player["seq"], "{heard}\n{player}");
     assert!(heard.get("reply_to").is_none(), "{heard}");
 }
@@ -123,7 +123,7 @@ fn the_gm_reply_is_its_own_say(world: &mut World) {
     let reply: Value = serde_json::from_str(&world.scratch).unwrap();
     assert_eq!(reply["body"]["kind"], "say", "{reply}");
     assert_eq!(reply["body"]["from"], "gm", "{reply}");
-    assert_eq!(reply["body"]["recipients"], json!(["pc_rowan"]), "{reply}");
+    assert_eq!(reply["body"]["recipients"], json!(["rowan"]), "{reply}");
 }
 
 #[when(expr = "the WebSocket GM releases the seat")]

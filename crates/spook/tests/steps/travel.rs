@@ -31,7 +31,7 @@ fn docks_street_has_no_exit_to_mira_rooms(world: &mut World) {
     let pack = copy_docks("no-exit");
     edit_save(&pack, |now| {
         now.actors_mut()
-            .set_place(&"pc_rowan".into(), "docks_street")
+            .set_place(&"rowan".into(), "docks_street")
             .unwrap();
     });
     table::listen(world, &pack);
@@ -54,7 +54,7 @@ fn refused_no_exit_and_stays(world: &mut World) {
         world.player_added
     );
     let now = state_of(table::pack(world));
-    assert_eq!(now.actors().place["pc_rowan"], "docks_street");
+    assert_eq!(now.actors().place["rowan"], "docks_street");
     assert_eq!(now.world_time, 1080);
     assert!(
         list_round_keys(table::pack(world)).is_empty(),
@@ -77,7 +77,7 @@ fn rowan_travels_via_stairs(world: &mut World) {
         "{} {} {}",
         before.world_time,
         before.round_index,
-        before.actors().place["pc_rowan"]
+        before.actors().place["rowan"]
     );
     let (_mark, added) = table::player_send(world, "travel stairs", "locked");
     world.player_added = added;
@@ -90,11 +90,11 @@ fn rowan_sees_locked_and_nothing_changes(world: &mut World, text: String) {
     let mut parts = world.scratch.split(' ');
     assert_eq!(now.world_time.to_string(), parts.next().unwrap());
     assert_eq!(now.round_index.to_string(), parts.next().unwrap());
-    assert_eq!(now.actors().place["pc_rowan"], parts.next().unwrap());
+    assert_eq!(now.actors().place["rowan"], parts.next().unwrap());
     assert_eq!(
         now.actors()
             .items
-            .get(&("pc_rowan".into(), "brass_key".to_string()))
+            .get(&("rowan".into(), "brass_key".to_string()))
             .copied()
             .unwrap_or(0),
         0
@@ -117,10 +117,10 @@ fn rowan_travels_holding_the_key(world: &mut World) {
 fn rowan_arrives_and_the_cost_is_stamped(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
     let now = state_of(&pack);
-    assert_eq!(now.actors().place["pc_rowan"], "mira_rooms");
+    assert_eq!(now.actors().place["rowan"], "mira_rooms");
     assert_eq!(now.world_time, 1085, "the round shortened or skipped");
     let round = crate::support::read_round(&pack, "round-0001");
-    assert_eq!(arrival(&round, "pc_rowan")["arrived_at"], 1082);
+    assert_eq!(arrival(&round, "rowan")["arrived_at"], 1082);
     assert_eq!(round["world_time_after"], 1085);
     assert_eq!(round["world_time_before"], 1080);
 }
@@ -145,7 +145,7 @@ fn a_place_rule_teleports(world: &mut World) {
 fn the_pc_reaches_the_cellar(world: &mut World) {
     let (_mark, added) = table::player_send(world, "slip", "cellar");
     assert_eq!(
-        state_of(table::pack(world)).actors().place["pc_rowan"],
+        state_of(table::pack(world)).actors().place["rowan"],
         "cellar",
         "{added}"
     );
@@ -155,7 +155,7 @@ fn the_pc_reaches_the_cellar(world: &mut World) {
 fn rowan_is_in_mira_rooms_at_tick_1300(world: &mut World) {
     let now = state_of(table::pack(world));
     assert_eq!(now.world_time, EVENING + 10);
-    assert_eq!(now.actors().place["pc_rowan"], "mira_rooms");
+    assert_eq!(now.actors().place["rowan"], "mira_rooms");
 }
 
 #[then(expr = "rowan's line shows {string}")]
@@ -170,27 +170,27 @@ fn two_arrivals(world: &mut World) {
     let pack = copy_docks("two-arrivals");
     fs::write(
         pack.join("cast/pc-nell.md"),
-        "---\nschema: cast\nid: pc_nell\nkind: pc_template\ndisplay_name: Nell\nidle:\n  eligible: false\n---\nNell.\n",
+        "---\nschema: cast\nid: nell\nkind: pc_template\ndisplay_name: Nell\nidle:\n  eligible: false\n---\nNell.\n",
     )
     .unwrap();
     edit_save_with(&pack, |now, canon| {
         now.world_time = EVENING;
-        set_busy(now, "pc_rowan", EVENING + 10, "docks_shop.stairs");
+        set_busy(now, "rowan", EVENING + 10, "docks_shop.stairs");
         let walking = (EVENING + 5, walk("docks_shop.docks_street"));
         add_nell(now, canon, "exit:docks_shop.docks_street", Some(walking));
     });
     table::listen(world, &pack);
     table::seat_rowan(world, &pack);
-    table::seat_actor(world, &pack, "pc_nell");
+    table::seat_actor(world, &pack, "nell");
     world.pack = Some(pack);
 }
 
-/// Add pc_nell, a PC with pc_wren's meters and nothing else, at `place`, busy with `walk`
+/// Add nell, a PC with wren's meters and nothing else, at `place`, busy with `walk`
 /// until its tick when it is `Some`.
 fn add_nell(now: &mut State, canon: &Canon, place: &str, walk: Option<(u64, PendingAction)>) {
-    let nell = ActorId::from("pc_nell");
+    let nell = ActorId::from("nell");
     let meters: Vec<_> = (now.actors().meters.iter())
-        .filter(|((owner, _), _)| *owner == *"pc_wren")
+        .filter(|((owner, _), _)| *owner == *"wren")
         .map(|((_, key), meter)| (key.clone(), meter.clone()))
         .collect();
     let mut actors = now.actors_mut();
@@ -212,9 +212,9 @@ fn arrivals_are_in_time_order(world: &mut World) {
     let first = crate::support::read_round(&pack, &names[0]);
     let second = crate::support::read_round(&pack, &names[1]);
     assert_eq!(first["world_time_after"], EVENING + 5);
-    assert_eq!(arrival(&first, "pc_nell")["to"], "docks_street");
+    assert_eq!(arrival(&first, "nell")["to"], "docks_street");
     assert_eq!(second["world_time_after"], EVENING + 10);
-    assert_eq!(arrival(&second, "pc_rowan")["to"], "mira_rooms");
+    assert_eq!(arrival(&second, "rowan")["to"], "mira_rooms");
     assert!(first["round_index"].as_u64() < second["round_index"].as_u64());
 }
 
@@ -246,7 +246,7 @@ fn the_round_still_ends_at_tick_1295(world: &mut World) {
 #[then(expr = "rowan's arrival is recorded with arrived_at 1292 in that round's line")]
 fn arrival_is_stamped(world: &mut World) {
     let round = crate::support::read_round(table::pack(world), "round-0001");
-    assert_eq!(arrival(&round, "pc_rowan")["arrived_at"], EVENING + 2);
+    assert_eq!(arrival(&round, "rowan")["arrived_at"], EVENING + 2);
     let stamped = round["effects"]
         .as_array()
         .unwrap()
@@ -261,7 +261,7 @@ fn the_next_round_accepts_a_move(world: &mut World) {
     assert!(!added.contains("BUSY"), "{added}");
     let now = state_of(table::pack(world));
     assert_eq!(now.world_time, EVENING + 10);
-    assert!(!now.actors().acts["pc_rowan"].is_busy(now.world_time));
+    assert!(!now.actors().acts["rowan"].is_busy(now.world_time));
 }
 
 #[then(
@@ -299,20 +299,20 @@ fn both_busy_without_a_gm(world: &mut World) {
     add_toll(&pack);
     edit_save(&pack, |now| {
         now.world_time = EVENING;
-        set_busy(now, "pc_rowan", EVENING + 10, "docks_shop.stairs");
+        set_busy(now, "rowan", EVENING + 10, "docks_shop.stairs");
     });
     fs::write(
         pack.join("cast/pc-nell.md"),
-        "---\nschema: cast\nid: pc_nell\nkind: pc_template\ndisplay_name: Nell\nidle:\n  eligible: false\n---\nNell.\n",
+        "---\nschema: cast\nid: nell\nkind: pc_template\ndisplay_name: Nell\nidle:\n  eligible: false\n---\nNell.\n",
     )
     .unwrap();
     edit_save_with(&pack, |now, canon| {
         add_nell(now, canon, "docks_shop", None);
-        set_busy(now, "pc_nell", EVENING + 5, "docks_shop.docks_street");
+        set_busy(now, "nell", EVENING + 5, "docks_shop.docks_street");
     });
     table::listen(world, &pack);
     table::seat_rowan(world, &pack);
-    table::seat_actor(world, &pack, "pc_nell");
+    table::seat_actor(world, &pack, "nell");
     world.pack = Some(pack);
 }
 
@@ -368,7 +368,7 @@ fn a_long_journey_and_the_cap(world: &mut World) {
     let pack = copy_docks("cap");
     edit_save(&pack, |now| {
         now.world_time = EVENING;
-        set_busy(now, "pc_rowan", EVENING + 200 * 5, "docks_shop.stairs");
+        set_busy(now, "rowan", EVENING + 200 * 5, "docks_shop.stairs");
     });
     table::listen(world, &pack);
     table::seat_rowan(world, &pack);
@@ -386,7 +386,7 @@ fn twelve_rounds_then_more(world: &mut World) {
     assert_eq!(list_round_keys(&pack).len(), 12, "first burst");
     let mid = state_of(&pack).world_time;
     assert_eq!(mid, EVENING + 12 * 5);
-    assert!(state_of(&pack).actors().acts["pc_rowan"].is_busy(mid));
+    assert!(state_of(&pack).actors().acts["rowan"].is_busy(mid));
     let mark = table::player_write(world, "wait");
     table::wait_round_count(&pack, 24);
     let added = table::wait_player_from(world, mark, "BUSY");
@@ -400,7 +400,7 @@ fn verify_passes(world: &mut World) {
     let pack = copy_docks("verify-journey");
     edit_save(&pack, |now| {
         now.world_time = EVENING;
-        set_busy(now, "pc_rowan", EVENING + 10, "docks_shop.stairs");
+        set_busy(now, "rowan", EVENING + 10, "docks_shop.stairs");
     });
     table::listen(world, &pack);
     table::seat_rowan(world, &pack);
@@ -425,9 +425,9 @@ fn rowan_visited_both_rooms(world: &mut World) {
             save["actors"]["visited"]
                 .as_object_mut()
                 .unwrap()
-                .remove("pc_rowan");
+                .remove("rowan");
         });
-        let (mut actors, rowan) = (now.actors_mut(), "pc_rowan".into());
+        let (mut actors, rowan) = (now.actors_mut(), "rowan".into());
         let seen = [
             ("docks_shop", vec!["docks_street", "stairs"]),
             ("mira_rooms", vec!["stairs"]),

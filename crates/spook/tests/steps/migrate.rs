@@ -89,7 +89,7 @@ fn the_save_is_hand_edited(world: &mut World) {
     let now_path = pack.join("state/save.yaml");
     let mut text = fs::read_to_string(&now_path).unwrap();
     text = text.replace("world_time: 1080", "world_time: 7");
-    text = text.replace("    pc_rowan: docks_shop\n", "    pc_rowan: mira_rooms\n");
+    text = text.replace("    rowan: docks_shop\n", "    rowan: mira_rooms\n");
     fs::write(&now_path, text).unwrap();
     a_canon_file_gains_a_byte(world);
 }
@@ -190,7 +190,7 @@ fn state_rev_is_2(world: &mut World) {
     let now = state_of(table::pack(world));
     assert_eq!(now.state_rev, 2);
     assert_eq!(now.pack_rev, docks_pack_rev());
-    assert_eq!(now.actors().place["pc_rowan"], "docks_shop");
+    assert_eq!(now.actors().place["rowan"], "docks_shop");
     assert_eq!(
         now.places()
             .items
@@ -217,7 +217,7 @@ fn migrate_keeps_the_hand_edit(world: &mut World) {
     assert_eq!(now.world_time, 7);
     assert_eq!(now.round_index, 0);
     assert_eq!(now.last_round_at, "2026-01-01T00:00:00Z");
-    assert_eq!(now.actors().place["pc_rowan"], "mira_rooms");
+    assert_eq!(now.actors().place["rowan"], "mira_rooms");
     assert!(spookery_engine::testing::journal::list_round_keys(pack).is_empty());
     assert_eq!(read_migrate_revs(pack), [1]);
 }
@@ -265,8 +265,8 @@ fn the_journal_line_is(world: &mut World, key: String, step: &Step) {
 fn rowan_moves_grit_and_nell_joins(world: &mut World, offset: i64) {
     let pack = table::pack(world).to_path_buf();
     spookery_engine::testing::edit_save_with(&pack, |now, canon| {
-        support::edit_meter(now, canon, "pc_rowan", "grit", |grit| grit.offset = offset);
-        let (rowan, nell) = (&"pc_rowan".into(), &"pc_nell".into());
+        support::edit_meter(now, canon, "rowan", "grit", |grit| grit.offset = offset);
+        let (rowan, nell) = (&"rowan".into(), &"nell".into());
         let mut actors = now.actors_mut();
         actors.copy_actor(canon, rowan, nell, "docks_shop").unwrap();
         actors.set_meter(canon, nell, "grit", None).unwrap();

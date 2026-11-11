@@ -18,15 +18,15 @@ Feature: Status is the host view
     And the pack bytes are unchanged
 
   Scenario: The host prints each round's effects once
-    Given a docks table with "pc_rowan" seated and no GM
-    When "pc_rowan" waits three times
+    Given a docks table with "rowan" seated and no GM
+    When "rowan" waits three times
     And the operator runs status
     Then the host printed the door note exactly once
     And every host printout ends with the meters
     And the status lists the door note
 
   Scenario: A seat change prints the meters and no effects
-    Given a docks table with "pc_rowan" seated and no GM
-    And "pc_rowan" has waited once
-    When "pc_rowan" closes the seat
+    Given a docks table with "rowan" seated and no GM
+    And "rowan" has waited once
+    When "rowan" closes the seat
     Then the host's last printout lists the meters and no effect rows

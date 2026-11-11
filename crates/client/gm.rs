@@ -163,8 +163,8 @@ mod tests {
             Some(("commit", Some(json!({ "include_round": true }))))
         );
         assert_eq!(
-            read_typed("perceive pc_rowan"),
-            Some(("perceive", Some(json!({ "as": "pc_rowan" }))))
+            read_typed("perceive rowan"),
+            Some(("perceive", Some(json!({ "as": "rowan" }))))
         );
         assert_eq!(
             read_typed("say good evening"),
@@ -181,10 +181,10 @@ mod tests {
             ))
         );
         assert_eq!(
-            read_typed("queue pc_rowan travel docks_street"),
+            read_typed("queue rowan travel docks_street"),
             Some((
                 "queue",
-                Some(json!({ "actor_id": "pc_rowan", "move": "travel", "target": "docks_street" }))
+                Some(json!({ "actor_id": "rowan", "move": "travel", "target": "docks_street" }))
             ))
         );
         assert_eq!(

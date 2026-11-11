@@ -44,8 +44,8 @@ fn the_state_is_unchanged(world: &mut World) {
 fn a_seated_player_commits_a_move(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
     table::seat_rowan(world, &pack);
-    table::actor_send(world, "pc_rowan", "wait", "\"kind\":");
-    table::wait_committed_wait(&pack, "pc_rowan", 0);
+    table::actor_send(world, "rowan", "wait", "\"kind\":");
+    table::wait_committed_wait(&pack, "rowan", 0);
 }
 
 #[when(expr = "spook run is stopped while the GM is seated")]

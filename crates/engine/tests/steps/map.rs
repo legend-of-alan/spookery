@@ -11,7 +11,7 @@ use crate::World;
 fn rowan_seated() -> Presence {
     Presence {
         players: 1,
-        actors_present: vec!["pc_rowan".into()],
+        actors_present: vec!["rowan".into()],
     }
 }
 

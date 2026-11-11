@@ -2,24 +2,24 @@ Feature: The host's seats say who is present
 
   Scenario: The players condition sees who is seated
     Given a pack with a habit rule that requires players == 0
-    When "pc_rowan" sits and a round commits
+    When "rowan" sits and a round commits
     Then the habit does not fire
-    When "pc_rowan" leaves and a round commits
+    When "rowan" leaves and a round commits
     Then the habit fires
 
   Scenario: Say routing reaches only seated players
-    Given a docks table with "pc_rowan" seated and "pc_wren" not seated
+    Given a docks table with "rowan" seated and "wren" not seated
     When the GM says a line to the table
-    Then "pc_rowan" hears it and "pc_wren" does not
+    Then "rowan" hears it and "wren" does not
 
   Scenario: The GM status reply lists who is seated
-    Given a docks table with "pc_rowan" and "pc_wren" seated
-    When "pc_wren" leaves
-    Then status shows players 1 and actors_present "pc_rowan"
+    Given a docks table with "rowan" and "wren" seated
+    When "wren" leaves
+    Then status shows players 1 and actors_present "rowan"
 
   Scenario: The journal records who was seated when the round ran
-    Given a docks table with "pc_rowan" and "pc_wren" seated
-    When "pc_wren" leaves
+    Given a docks table with "rowan" and "wren" seated
+    When "wren" leaves
     And a round commits
-    Then the round's presence_players is 1 and actors_present is "pc_rowan"
+    Then the round's presence_players is 1 and actors_present is "rowan"
     And spook verify passes

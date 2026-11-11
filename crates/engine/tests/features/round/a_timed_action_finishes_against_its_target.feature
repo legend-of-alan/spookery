@@ -8,4 +8,4 @@ Feature: A timed action finishes against its target
   Scenario: A finish that is refused is journaled and the round still commits
     Given a docks pack whose verbs hold a ten-tick verb "haul" that takes 8 lamp oil from the actor
     When Rowan hauls with no lamp oil and the table plays until the action finishes
-    Then the finishing round commits with finish:pc_rowan refused MISSING_ITEM, Rowan is no longer busy, and spook verify passes
+    Then the finishing round commits with finish:rowan refused MISSING_ITEM, Rowan is no longer busy, and spook verify passes
