@@ -12,6 +12,10 @@ Feature: Play shows readable text
     When play joins the table on a free loopback address
     And play says "hello"
     Then play shows "You: hello"
+    When play types "say Aldric hi"
+    Then play shows "You: hi"
+    When play types "tell aldric good evening"
+    Then play shows "You: good evening"
     And play shows no protocol JSON
 
   Scenario: A second player is refused in a sentence

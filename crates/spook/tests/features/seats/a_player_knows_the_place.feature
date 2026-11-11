@@ -82,10 +82,18 @@ Feature: A player knows where they are and what they can do
     Then play shows "You picked up the Wheel chock."
 
   Scenario: Two things here with one name are refused, naming both ids
-    Given a copy of the sample-d20 pack where Oden is also called Briar and stands in the Gate Yard
+    Given a copy of the sample-d20 pack where Oden is called "Briar" and stands in the Gate Yard
     When play joins the sample table
     And play types "ask Briar"
     Then play's error shows "More than one thing here is called Briar: npc_briar, npc_oden."
     And no round record was written
     When play types "say briar hello"
     Then play's error shows "More than one thing here is called briar: npc_briar, npc_oden."
+
+  Scenario: A say reaches a name with a space in it, and half the name stays at the table
+    Given a copy of the sample-d20 pack where Oden is called "Oden Vell" and stands in the Gate Yard
+    When play joins the sample table
+    And play types "say Oden Vell hi"
+    Then play shows "You: hi"
+    When play types "say Oden hi"
+    Then play shows "You: Oden hi"

@@ -209,37 +209,31 @@ fn parse_pc_choice(line: &str) -> Result<String, Error> {
     Ok(choice.to_string())
 }
 
-/// The command a typed line names, and its arguments. `say place <text>` speaks to the place
-/// `here` shows, and `say <actor> <text>` to an actor `here` sees, named by id or by the name
-/// `here` gives them, as typed. Any other first word is a move with the rest of the line as its target.
-/// An empty line names none.
+/// The command a typed line names, and its arguments. `tell` is the word `say`.
+/// `say place <text>` speaks to the place `here` shows. Any other say of two or more words
+/// goes to the table as typed, the first word in `actor` and the rest in `text`, and the
+/// table finds who it names. Any other first word is a move with the rest of the line as
+/// its target. An empty line names none.
 fn parse_typed<'l>(line: &'l str, here: &protocol::View) -> Option<(&'l str, Value)> {
     let (command, rest) = line.trim().split_once(' ').unwrap_or((line.trim(), ""));
     if command.is_empty() {
         return None;
     }
-    if command == "say" {
+    if command == "say" || command == "tell" {
         let (head, text) = rest.split_once(' ').unwrap_or((rest, ""));
         let args = if head == "place" && !text.is_empty() {
             json!({ "address": "place", "place": here.place, "text": text })
-        } else if !text.is_empty() && names_an_actor_here(head, here) {
+        } else if !text.is_empty() {
             json!({ "address": "actor", "actor": head, "text": text })
         } else {
             json!({ "address": "table", "text": rest })
         };
-        return Some((command, args));
+        return Some(("say", args));
     }
     if rest.is_empty() {
         return Some((command, json!({})));
     }
     Some((command, json!({ "target": rest })))
-}
-
-/// Whether `word` is the id or name of an actor `here` sees. The table resolves which one.
-fn names_an_actor_here(word: &str, here: &protocol::View) -> bool {
-    let ids = here.visible_actors.iter().map(String::as_str);
-    let mut names = ids.chain(here.actor_names.iter().map(String::as_str));
-    names.any(|name| protocol::is_named(word, name))
 }
 
 #[cfg(test)]
@@ -275,8 +269,8 @@ mod tests {
             Some(("travel", json!({ "target": "docks_street" })))
         );
         assert_eq!(
-            parse_typed("say hi there", here),
-            Some(("say", json!({ "address": "table", "text": "hi there" })))
+            parse_typed("say hi", here),
+            Some(("say", json!({ "address": "table", "text": "hi" })))
         );
         assert_eq!(
             parse_typed("say place hi", here),
@@ -285,20 +279,12 @@ mod tests {
                 json!({ "address": "place", "place": "docks_gate", "text": "hi" })
             ))
         );
+        let typed = json!({ "address": "actor", "actor": "Mira", "text": "Vell hi" });
         assert_eq!(
-            parse_typed("say mira hi", here),
-            Some((
-                "say",
-                json!({ "address": "actor", "actor": "mira", "text": "hi" })
-            ))
+            parse_typed("say Mira Vell hi", here),
+            Some(("say", typed.clone()))
         );
+        assert_eq!(parse_typed("tell Mira Vell hi", here), Some(("say", typed)));
         assert_eq!(parse_typed("  ", here), None);
-        assert_eq!(
-            parse_typed("say Mira hi", here),
-            Some((
-                "say",
-                json!({ "address": "actor", "actor": "Mira", "text": "hi" })
-            ))
-        );
     }
 }

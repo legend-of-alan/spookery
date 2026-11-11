@@ -111,7 +111,7 @@ A GM's `release` frees the seat before its reply. A later command on that connec
 
 ### say
 
-`address` is `table`, `place` with a `place` id, or `actor` with an `actor`. A player names the actor by id or display name, as a move names its target: an actor not in sight is `NOT_IN_SPEC`, and a name two in sight share is `AMBIGUOUS_NAME`. `text` is at most 4096 characters. The table sets `from` from the connection: `player:<id>` or `gm`. A `from` in `args` is `SCHEMA`. A say goes on the session tape and takes no round. Every seat that hears it gets one `say` under one `seq`, and the sender's copy is the reply. The GM's copy lists `recipients`, the seated players who heard it.
+`address` is `table`, `place` with a `place` id, or `actor` with an `actor`. A player's actor say is read as one line, `actor` then `text`, so `spook play` sends `say Mira Vell hi` (or `tell Mira Vell hi`, the same line) as `actor` `Mira` and `text` `Vell hi`. The longest run of leading words that names an actor in sight, by id or display name and ignoring case and outer spaces as a move's target does, is who it is said to, and the rest is the text. A name two in sight share is `AMBIGUOUS_NAME`, with the move's `detail`. A line that names nobody in sight is said at the table, its text the whole line. `text` is at most 4096 characters. The table sets `from` from the connection: `player:<id>` or `gm`. A `from` in `args` is `SCHEMA`. A say goes on the session tape and takes no round. Every seat that hears it gets one `say` under one `seq`, and the sender's copy is the reply. The GM's copy lists `recipients`, the seated players who heard it.
 
 <!-- example: player-say -->
 ```json

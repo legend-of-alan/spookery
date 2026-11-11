@@ -369,6 +369,7 @@ player to type help.
 
 Tested in `features/seats/a_player_knows_the_place.feature`,
 `features/seats/the_picker_shows_every_pc.feature`,
+`features/seats/play_shows_readable_text.feature`,
 `features/changes/actions_visibly_matter.feature`,
 `features/items/items_are_real.feature`,
 `features/perceive/the_map_shows_exits_as_the_actor_last_saw_them.feature` and

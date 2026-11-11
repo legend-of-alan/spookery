@@ -656,9 +656,9 @@ rules:
           fact_ids: []
           text: A chalk mark points down the lane.
 
-  - id: tell
+  - id: ring_bell
     when:
-      verb: tell
+      verb: ring_bell
     do:
       - narrate:
           to: here

@@ -96,9 +96,11 @@ impl World {
         crate::round::play_catch_up(self, now_wall, downtime_hours)
     }
 
-    /// Append a player's say. `presence` is who can hear it. The actor it is said to is named
-    /// by id or display name among the actors in sight, as a move's target is: none is
-    /// `NOT_IN_SPEC`, and a name two of them share is `AMBIGUOUS_NAME`.
+    /// Append a player's say. `presence` is who can hear it. An actor say reads `typed` and
+    /// `text` as one line, and its addressee is the longest run of leading words that names
+    /// an actor in sight, by id or display name, as a move's target is; the rest is the text.
+    /// A name two of them share is `AMBIGUOUS_NAME`, and a line that names nobody is said
+    /// at the table, its text the whole line.
     pub fn say_as_player(
         &self,
         presence: &Presence,
@@ -109,22 +111,28 @@ impl World {
         if self.state.actors().kind.get(actor_id) != Some(&ActorKind::Pc) {
             return Err(Reason::Schema.into());
         }
-        let addressee;
-        let heard = match heard {
-            Address::Actor(typed) => {
-                let viewer = Viewer::Player(actor_id.clone());
-                let mut nameable = gate::list_nameable(&self.canon, &self.state, presence, &viewer);
-                nameable.retain(|thing| self.state.actors().kind.contains_key(thing.id.as_str()));
-                let found = gate::find_named(&nameable, typed).map_err(|detail| Refusal {
-                    detail: Some(detail),
-                    ..Reason::AmbiguousName.into()
-                })?;
-                addressee = found.ok_or(Reason::NotInSpec)?.to_string();
-                Address::Actor(&addressee)
-            }
-            heard => heard,
-        };
         let from = Speaker::Player(actor_id.to_string());
+        let Address::Actor(typed) = heard else {
+            return Ok(self.append_speech(presence, from, Some(actor_id), heard, text)?);
+        };
+        let viewer = Viewer::Player(actor_id.clone());
+        let mut nameable = gate::list_nameable(&self.canon, &self.state, presence, &viewer);
+        nameable.retain(|thing| self.state.actors().kind.contains_key(thing.id.as_str()));
+        let line = format!("{typed} {text}");
+        let line = line.trim();
+        let mut said_to = (Address::Table, line);
+        let breaks = line.match_indices(' ').map(|(at, _)| at).rev();
+        for (name, said) in breaks.map(|at| line.split_at(at)) {
+            let found = gate::find_named(&nameable, name).map_err(|detail| Refusal {
+                detail: Some(detail),
+                ..Reason::AmbiguousName.into()
+            })?;
+            if let Some(addressee) = found {
+                said_to = (Address::Actor(addressee), said.trim());
+                break;
+            }
+        }
+        let (heard, text) = said_to;
         Ok(self.append_speech(presence, from, Some(actor_id), heard, text)?)
     }
 
@@ -265,9 +273,9 @@ impl<L> World<L> {
             gate::admit_cancel(&Context::new(&self.canon, &self.state, presence, &intent))?;
         } else {
             let shaped = self.shape_line(&intent, token);
-            intent.target = shaped.map_err(|code| gate::Refusal::new(&intent, code))?;
+            let (rule, target) = shaped.map_err(|code| gate::Refusal::new(&intent, code))?;
+            intent.target = target;
             let context = Context::new(&self.canon, &self.state, presence, &intent);
-            let rule = gate::rule_of(&context)?;
             gate::admit(&context, rule, Some(&nameable))?;
         }
         let queued = QueuedMove {
@@ -280,8 +288,9 @@ impl<L> World<L> {
         Ok((queued, target))
     }
 
-    /// The target a PC's line names for the rule it picks. A line already queued is `SCHEMA`.
-    fn shape_line(&self, line: &Intent, token: Option<&str>) -> Result<Target, Reason> {
+    /// The rule a PC's line picks, and the target the line names for it. A line already
+    /// queued is `SCHEMA`.
+    fn shape_line(&self, line: &Intent, token: Option<&str>) -> Result<(&Rule, Target), Reason> {
         let Some(viewer) = &line.actor else {
             return Err(Reason::Schema);
         };
@@ -294,7 +303,7 @@ impl<L> World<L> {
         if self.queue.iter().any(|queued| queued.id == line.id) {
             return Err(Reason::Schema);
         }
-        Ok(target)
+        Ok((rule, target))
     }
 
     /// Pick the GM's intent's rule, admit it with `presence` seated, then queue it. A refusal
