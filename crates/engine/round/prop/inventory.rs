@@ -30,7 +30,7 @@ use proptest::test_runner::{TestCaseError, TestRunner};
 
 #[derive(Clone, Debug)]
 struct ItemChange {
-    holder: entity::Id,
+    carrier: entity::Id,
     id: String,
     delta: i64,
     max: Option<i64>,
@@ -59,8 +59,8 @@ fn apply_changes(world: &World<()>, steps: &[ItemChange]) -> Result<(), TestCase
     let intent = npc_intent();
     for step in steps {
         let before = state.clone();
-        let known = is_known_entity(canon, &state, &step.holder);
-        let held = count_of(&state, &step.holder, &step.id);
+        let known = is_known_entity(canon, &state, &step.carrier);
+        let held = count_of(&state, &step.carrier, &step.id);
         let outcome = item_effect(step).apply(canon, &mut state, &nobody, &intent);
         assert_no_stored_zero(&state)?;
         if !known {
@@ -74,7 +74,7 @@ fn apply_changes(world: &World<()>, steps: &[ItemChange]) -> Result<(), TestCase
             assert_same_save(&state, &before)?;
             continue;
         }
-        let got = count_of(&state, &step.holder, &step.id);
+        let got = count_of(&state, &step.carrier, &step.id);
         if takes_more_than_held(held, step.delta) {
             return fail(format!(
                 "taking {} from {held} of {} was accepted and the count is {got}",
@@ -120,16 +120,16 @@ fn assert_no_stored_zero(state: &State) -> Result<(), TestCaseError> {
     Ok(())
 }
 
-fn is_known_entity(canon: &Canon, state: &State, holder: &entity::Id) -> bool {
-    match holder {
+fn is_known_entity(canon: &Canon, state: &State, carrier: &entity::Id) -> bool {
+    match carrier {
         entity::Id::Actor(id) => state.actors().kind.contains_key(id),
         entity::Id::Place(id) => canon.places.contains_key(id),
-        entity::Id::Story(_) | entity::Id::World => false,
+        entity::Id::Story(_) | entity::Id::Global => false,
     }
 }
 
-fn count_of(state: &State, holder: &entity::Id, id: &str) -> u32 {
-    match holder {
+fn count_of(state: &State, carrier: &entity::Id, id: &str) -> u32 {
+    match carrier {
         entity::Id::Actor(actor_id) => state
             .actors()
             .items
@@ -142,7 +142,7 @@ fn count_of(state: &State, holder: &entity::Id, id: &str) -> u32 {
             .get(&(place_id.clone(), id.to_string()))
             .copied()
             .unwrap_or(0),
-        entity::Id::Story(_) | entity::Id::World => 0,
+        entity::Id::Story(_) | entity::Id::Global => 0,
     }
 }
 
@@ -167,10 +167,10 @@ fn npc_intent() -> Intent {
 }
 
 fn item_effect(step: &ItemChange) -> Effect {
-    let (actor_id, place) = match &step.holder {
+    let (actor_id, place) = match &step.carrier {
         entity::Id::Actor(id) => (Some(id.clone()), None),
         entity::Id::Place(id) => (None, Some(id.clone())),
-        entity::Id::Story(_) | entity::Id::World => (None, None),
+        entity::Id::Story(_) | entity::Id::Global => (None, None),
     };
     Effect {
         kind: EffectKind::Item {
@@ -195,8 +195,8 @@ fn pick_changes(actors: &[ActorId], places: &[PlaceId]) -> impl Strategy<Value =
             pick_delta(),
             pick_max(),
         )
-            .prop_map(|(holder, id, delta, max)| ItemChange {
-                holder,
+            .prop_map(|(carrier, id, delta, max)| ItemChange {
+                carrier,
                 id,
                 delta,
                 max,

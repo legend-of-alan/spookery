@@ -328,7 +328,7 @@ meters:
     fs::write(pack.join("world/meters.yaml"), text).unwrap();
     support::edit_save_with(&pack, |now, canon| {
         support::put_meter(now, canon, &entity::Id::Actor("pc_rowan".into()), "luck", 1);
-        support::put_meter(now, canon, &entity::Id::World, "tide", 4);
+        support::put_meter(now, canon, &entity::Id::Global, "tide", 4);
     });
 }
 

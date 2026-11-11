@@ -377,7 +377,7 @@ fn both_rules_run_three_rounds(world: &mut World) {
 
 #[then(expr = "dawn is 0, held once by the world")]
 fn dawn_is_zero(world: &mut World) {
-    assert_eq!(value_on(pack(world), &entity::Id::World, "dawn"), Some(0));
+    assert_eq!(value_on(pack(world), &entity::Id::Global, "dawn"), Some(0));
 }
 
 #[then(expr = "no actor carries a dawn meter")]
@@ -541,7 +541,10 @@ fn the_worlds_dawn_is_still(world: &mut World, value: i64) {
 
 #[then(expr = "the world's {word} is {int}")]
 fn the_worlds_meter_is(world: &mut World, key: String, value: i64) {
-    assert_eq!(value_on(pack(world), &entity::Id::World, &key), Some(value));
+    assert_eq!(
+        value_on(pack(world), &entity::Id::Global, &key),
+        Some(value)
+    );
 }
 
 #[then(expr = "it refuses the rule, saying a world change rule has no self")]
@@ -605,9 +608,9 @@ fn dawn_has_fallen(world: &mut World, value: i64) {
         now.globals_mut()
             .set_meter(canon, "dawn", Some(fallen))
             .unwrap();
-        support::put_meter(now, canon, &entity::Id::World, "doom", 6);
+        support::put_meter(now, canon, &entity::Id::Global, "doom", 6);
     });
-    assert_eq!(value_on(&pack, &entity::Id::World, "dawn"), Some(value));
+    assert_eq!(value_on(&pack, &entity::Id::Global, "dawn"), Some(value));
 }
 
 #[when(expr = "the player reconnects and claims pc_rowan")]

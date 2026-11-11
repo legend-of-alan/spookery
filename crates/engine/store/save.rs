@@ -118,7 +118,7 @@ pub(crate) fn find_lacking_carriers(
         }
         Some(entity::Id::Place(place)) => nested_map::get(&state.places().meters, place, id),
         Some(entity::Id::Story(story)) => nested_map::get(&state.stories().meters, story, id),
-        Some(entity::Id::World) => state.globals().meters.get(id),
+        Some(entity::Id::Global) => state.globals().meters.get(id),
     };
     held.is_none()
         .then(|| carrier.clone())
@@ -140,7 +140,7 @@ pub(crate) fn find_stale_meters(canon: &Canon, state: &State) -> Vec<DroppedMete
                 .globals()
                 .meters
                 .keys()
-                .map(|key| (entity::Id::World, key)),
+                .map(|key| (entity::Id::Global, key)),
         );
     carriers
         .filter(|(carrier, id)| canon.meter_def(carrier.as_ref(), id).is_none())

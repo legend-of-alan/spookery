@@ -175,27 +175,27 @@ pub struct Cost {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Cond {
     HasItem {
-        who: Who,
+        who: Subject,
         id: String,
         count: u32,
     },
     Meter {
-        who: Who,
+        who: Subject,
         key: String,
         op: Op,
         value: Expr,
     },
     Flag {
-        who: Who,
+        who: Subject,
         key: String,
         is: bool,
     },
     At {
-        who: Who,
+        who: Subject,
         place: String,
     },
     Knows {
-        who: Who,
+        who: Subject,
         fact: String,
     },
     /// A tick of the named cycle in `from..to`, wrapping past the cycle's end when `from > to`.
@@ -210,7 +210,7 @@ pub enum Cond {
     },
     NoteExists(String),
     Wielding {
-        who: Who,
+        who: Subject,
         id: String,
     },
     All(Vec<Cond>),
@@ -269,11 +269,11 @@ impl Op {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Who {
+pub enum Subject {
     Self_,
     Target,
     Here,
-    World,
+    Global,
     Place(PlaceId),
     Story(StoryId),
     /// An exit, by its place and its name: `exit:<place>.<exit>`.
@@ -284,21 +284,21 @@ pub enum Who {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum EffectTemplate {
     Meter {
-        who: Who,
+        who: Subject,
         key: String,
         add: Option<Expr>,
         set: Option<Expr>,
         resist: Option<ResistSpec>,
     },
     Flag {
-        who: Who,
+        who: Subject,
         key: String,
         value: bool,
         resist: Option<ResistSpec>,
     },
     /// One application of modifier `id` to an actor, with magnitude `add`, lasting `ticks`.
     Modifier {
-        who: Who,
+        who: Subject,
         id: String,
         add: Expr,
         ticks: u64,
@@ -321,27 +321,27 @@ pub enum EffectTemplate {
         resist: Option<ResistSpec>,
     },
     Memory {
-        who: Who,
+        who: Subject,
         fact_ids: Vec<String>,
         text: Option<String>,
     },
     Item {
-        who: Who,
+        who: Subject,
         id: String,
         add: i64,
         max: Option<i64>,
         resist: Option<ResistSpec>,
     },
     Reveal {
-        who: Who,
+        who: Subject,
         fact: String,
     },
     Wield {
-        who: Who,
+        who: Subject,
         id: String,
     },
     Unwield {
-        who: Who,
+        who: Subject,
     },
 }
 
@@ -377,7 +377,7 @@ pub enum NarrateTo {
 pub enum ResistSpec {
     Same,
     Roll {
-        who: Who,
+        who: Subject,
         check: String,
         target: Expr,
         resisted: Vec<EffectTemplate>,

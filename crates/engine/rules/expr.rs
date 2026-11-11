@@ -5,7 +5,7 @@ use crate::entity;
 use crate::intent::Target;
 use crate::rules::context::Context;
 use crate::rules::roll::Outcome;
-use crate::rules::rule::{LineColumn, Who};
+use crate::rules::rule::{LineColumn, Subject};
 use crate::state::id::ActorId;
 use crate::state::State;
 use crate::Reason;
@@ -188,8 +188,8 @@ fn negate_body(body: &str) -> String {
     }
 }
 
-fn read_meter(context: &Context, who: &Who, key: &str) -> Result<i64, Reason> {
-    let entity = resolve_entity(context, who)?;
+fn read_meter(context: &Context, subject: &Subject, key: &str) -> Result<i64, Reason> {
+    let entity = resolve_entity(context, subject)?;
     context
         .state
         .entity(&entity)
@@ -212,36 +212,38 @@ pub(crate) fn resolve_item_id(context: &Context, id: &str) -> Result<String, Rea
 /// Who holds the meter, flag or item a rule names: `here` and `place:` are a place, `story:`
 /// is a story, `world` is the world, and anyone else is an actor. An exit holds none of them:
 /// its door is an `exit_open`, and a door's flag is read by `cond::holds`.
-pub(crate) fn resolve_entity(context: &Context, who: &Who) -> Result<entity::Id, Reason> {
-    match who {
-        Who::World => Ok(entity::Id::World),
-        Who::Story(id) => Ok(entity::Id::Story(id.clone())),
-        Who::Exit(_) => Err(Reason::UnknownId),
-        Who::Place(id) => Ok(entity::Id::Place(id.clone())),
-        Who::Here => Ok(entity::Id::Place(resolve_here(context)?.into())),
-        Who::Self_ | Who::Target | Who::Actor(_) => {
-            Ok(entity::Id::Actor(resolve_actor(context, who)?.clone()))
+pub(crate) fn resolve_entity(context: &Context, subject: &Subject) -> Result<entity::Id, Reason> {
+    match subject {
+        Subject::Global => Ok(entity::Id::Global),
+        Subject::Story(id) => Ok(entity::Id::Story(id.clone())),
+        Subject::Exit(_) => Err(Reason::UnknownId),
+        Subject::Place(id) => Ok(entity::Id::Place(id.clone())),
+        Subject::Here => Ok(entity::Id::Place(resolve_here(context)?.into())),
+        Subject::Self_ | Subject::Target | Subject::Actor(_) => {
+            Ok(entity::Id::Actor(resolve_actor(context, subject)?.clone()))
         }
     }
 }
 
-/// The actor `who` names: the one acting, the move's target, or an actor by id. A target that
+/// The actor `subject` names: the one acting, the move's target, or an actor by id. A target that
 /// is a place, an exit or an item names no actor, so it is `UNKNOWN_ID`.
 pub(crate) fn resolve_actor<'a>(
     context: &Context<'_, 'a>,
-    who: &'a Who,
+    subject: &'a Subject,
 ) -> Result<&'a ActorId, Reason> {
-    match who {
-        Who::Self_ => context.intent.actor_id().ok_or(Reason::Schema),
-        Who::Target => match &context.intent.target {
+    match subject {
+        Subject::Self_ => context.intent.actor_id().ok_or(Reason::Schema),
+        Subject::Target => match &context.intent.target {
             Target::Actor(id) => Ok(id),
             Target::Empty => Err(Reason::Schema),
             Target::Place(_) | Target::Exit(_) | Target::Item(_) => Err(Reason::UnknownId),
         },
-        Who::Actor(id) => Ok(id),
-        Who::Here | Who::World | Who::Place(_) | Who::Story(_) | Who::Exit(..) => {
-            Err(Reason::Schema)
-        }
+        Subject::Actor(id) => Ok(id),
+        Subject::Here
+        | Subject::Global
+        | Subject::Place(_)
+        | Subject::Story(_)
+        | Subject::Exit(..) => Err(Reason::Schema),
     }
 }
 
@@ -287,7 +289,7 @@ pub enum Expr {
         keep: Option<Keep>,
     },
     Meter {
-        who: Who,
+        who: Subject,
         key: String,
         spot: Option<LineColumn>,
     },
@@ -363,7 +365,7 @@ impl Expr {
         }
     }
 
-    pub(crate) fn meter_reads(&self) -> Vec<(&Who, &str, Option<LineColumn>)> {
+    pub(crate) fn meter_reads(&self) -> Vec<(&Subject, &str, Option<LineColumn>)> {
         match self {
             Expr::Meter { who, key, spot } => vec![(who, key, *spot)],
             Expr::Neg(inner) => inner.meter_reads(),
@@ -573,17 +575,17 @@ impl<'a> Parser<'a> {
                 right: Box::new(right),
             });
         }
-        let who = if word == "place" && self.eat(':') {
-            Who::Place(self.ident()?.into())
+        let subject = if word == "place" && self.eat(':') {
+            Subject::Place(self.ident()?.into())
         } else if word == "story" && self.eat(':') {
-            Who::Story(self.ident()?.into())
+            Subject::Story(self.ident()?.into())
         } else {
             match word.as_str() {
-                "self" => Who::Self_,
-                "target" => Who::Target,
-                "here" => Who::Here,
-                "world" => Who::World,
-                _ => Who::Actor(word.into()),
+                "self" => Subject::Self_,
+                "target" => Subject::Target,
+                "here" => Subject::Here,
+                "world" => Subject::Global,
+                _ => Subject::Actor(word.into()),
             }
         };
         self.skip_whitespace();
@@ -592,7 +594,7 @@ impl<'a> Parser<'a> {
         }
         let key = self.ident()?;
         Ok(Expr::Meter {
-            who,
+            who: subject,
             key,
             spot: None,
         })
@@ -665,7 +667,7 @@ mod tests {
     use crate::canon::Canon;
     use crate::intent::{Intent, IntentArgs, Source, Target, Viewer};
     use crate::rules::context::Context;
-    use crate::rules::rule::Who;
+    use crate::rules::rule::Subject;
     use crate::state::component::meter::MeterDef;
     use crate::state::id::ActorId;
     use crate::state::{Presence, State};
@@ -856,7 +858,7 @@ notes: []
         }
         match Expr::parse("place:loft.light").unwrap() {
             Expr::Meter {
-                who: Who::Place(id),
+                who: Subject::Place(id),
                 key,
                 ..
             } => {

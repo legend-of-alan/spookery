@@ -10,7 +10,7 @@ use crate::rules::expr::Expr;
 use crate::rules::roll::Check;
 use crate::rules::rule::{
     ChangeWatch, Cond, Cost, EffectTemplate, LocationTo, NarrateTo, Owner, ResistSpec, Rule,
-    RuleTable, When, Who,
+    RuleTable, Subject, When,
 };
 use crate::state::component::meter::{self, MeterDef};
 use crate::state::component::modifier::{self, ModifierDef};
@@ -227,7 +227,7 @@ pub(super) fn reveal_problems(
             let EffectTemplate::Reveal { who, fact } = effect else {
                 return;
             };
-            if matches!(who, Who::World) {
+            if matches!(who, Subject::Global) {
                 diags.push(
                     schema_error(
                         &rule.file,
@@ -327,10 +327,10 @@ pub(super) fn unknown_carriers(scope: &EntityScope, rules: &RuleTable) -> Vec<Di
             _ => {}
         });
         let fixed = fixed_self(rule);
-        for (kind, who, key) in named {
+        for (kind, subject, key) in named {
             let why = match kind {
-                "meter" => scope.why_not_carried(fixed, who, key),
-                _ => scope.why_undeclared(fixed, who, key),
+                "meter" => scope.why_not_carried(fixed, subject, key),
+                _ => scope.why_undeclared(fixed, subject, key),
             };
             let Some(why) = why else {
                 continue;
@@ -366,23 +366,28 @@ pub(super) struct EntityScope<'a> {
 }
 
 impl EntityScope<'_> {
-    /// The one entity `who` names whatever the round: `world`, a place, a story, a cast id, or
+    /// The one entity `subject` names whatever the round: `world`, a place, a story, a cast id, or
     /// `self` on a cast member's own habit. `None` when only play time knows it.
-    fn fixed_entity(&self, fixed_self: Option<&str>, who: &Who) -> Option<entity::Id> {
-        match who {
-            Who::World => Some(entity::Id::World),
-            Who::Place(id) => Some(entity::Id::Place(id.clone())),
-            Who::Story(id) => Some(entity::Id::Story(id.clone())),
-            Who::Actor(id) if self.cast.contains_key(id) => Some(entity::Id::Actor(id.clone())),
-            Who::Self_ => fixed_self.map(|id| entity::Id::Actor(id.into())),
+    fn fixed_entity(&self, fixed_self: Option<&str>, subject: &Subject) -> Option<entity::Id> {
+        match subject {
+            Subject::Global => Some(entity::Id::Global),
+            Subject::Place(id) => Some(entity::Id::Place(id.clone())),
+            Subject::Story(id) => Some(entity::Id::Story(id.clone())),
+            Subject::Actor(id) if self.cast.contains_key(id) => Some(entity::Id::Actor(id.clone())),
+            Subject::Self_ => fixed_self.map(|id| entity::Id::Actor(id.into())),
             _ => None,
         }
     }
 
-    /// Why flag `key` on `who` can never be set or tested, or `None` when it may be.
-    fn why_undeclared(&self, fixed_self: Option<&str>, who: &Who, key: &str) -> Option<String> {
-        if let Who::Exit(exit) = who {
-            return if self.unknown_who(who).is_some() {
+    /// Why flag `key` on `subject` can never be set or tested, or `None` when it may be.
+    fn why_undeclared(
+        &self,
+        fixed_self: Option<&str>,
+        subject: &Subject,
+        key: &str,
+    ) -> Option<String> {
+        if let Subject::Exit(exit) = subject {
+            return if self.unknown_who(subject).is_some() {
                 Some(format!("{exit} is not an exit"))
             } else if key != OPEN {
                 Some(format!("an exit carries only the flag '{OPEN}'"))
@@ -391,22 +396,27 @@ impl EntityScope<'_> {
                 (!door).then(|| format!("{exit} has no if, so it is always open"))
             };
         }
-        let entity = self.fixed_entity(fixed_self, who)?;
+        let entity = self.fixed_entity(fixed_self, subject)?;
         let flags = declared_flags(self.cast, self.places, self.stories, entity.as_ref())?;
         let declared = flags.iter().any(|flag| flag == key);
         (!declared).then(|| format!("{entity} does not declare it"))
     }
 
-    /// Why meter `key` on `who` can never be read or written, or `None` when it may be.
+    /// Why meter `key` on `subject` can never be read or written, or `None` when it may be.
     /// An entity known only at play time is not guessed: only its key is checked.
-    fn why_not_carried(&self, fixed_self: Option<&str>, who: &Who, key: &str) -> Option<String> {
+    fn why_not_carried(
+        &self,
+        fixed_self: Option<&str>,
+        subject: &Subject,
+        key: &str,
+    ) -> Option<String> {
         let def = self.meters.get(key);
-        if let Who::Exit(exit) = who {
+        if let Subject::Exit(exit) = subject {
             return Some(format!("{exit} carries no meter '{key}'"));
         }
-        match self.fixed_entity(fixed_self, who) {
-            Some(entity::Id::World) if self.world_meters.contains_key(key) => None,
-            Some(entity::Id::World) => Some(format!("the world carries no meter '{key}'")),
+        match self.fixed_entity(fixed_self, subject) {
+            Some(entity::Id::Global) if self.world_meters.contains_key(key) => None,
+            Some(entity::Id::Global) => Some(format!("the world carries no meter '{key}'")),
             Some(entity) if !def.is_some_and(|def| def.is_on(entity.as_ref())) => {
                 Some(match def.and_then(|def| def.carrier.as_ref()) {
                     Some(carrier) => format!("only {carrier} carries meter '{key}'"),
@@ -418,21 +428,21 @@ impl EntityScope<'_> {
         }
     }
 
-    /// The name `who` gives when no place, story or cast member has it.
-    fn unknown_who(&self, who: &Who) -> Option<String> {
-        match who {
-            Who::Self_ | Who::Target | Who::Here | Who::World => None,
-            Who::Place(id) if self.places.contains_key(id) => None,
-            Who::Place(id) => Some(format!("place:{id}")),
-            Who::Story(id) if self.stories.contains_key(id) => None,
-            Who::Story(id) => Some(format!("story:{id}")),
-            Who::Exit(exit) => {
+    /// The name `subject` gives when no place, story or cast member has it.
+    fn unknown_who(&self, subject: &Subject) -> Option<String> {
+        match subject {
+            Subject::Self_ | Subject::Target | Subject::Here | Subject::Global => None,
+            Subject::Place(id) if self.places.contains_key(id) => None,
+            Subject::Place(id) => Some(format!("place:{id}")),
+            Subject::Story(id) if self.stories.contains_key(id) => None,
+            Subject::Story(id) => Some(format!("story:{id}")),
+            Subject::Exit(exit) => {
                 let exits = self.places.get(&exit.place).map(|at| at.exits.as_slice());
                 let known = exits.is_some_and(|exits| exits.iter().any(|at| at.name == exit.exit));
                 (!known).then(|| exit.to_string())
             }
-            Who::Actor(id) if self.cast.contains_key(id) => None,
-            Who::Actor(id) => Some(id.to_string()),
+            Subject::Actor(id) if self.cast.contains_key(id) => None,
+            Subject::Actor(id) => Some(id.to_string()),
         }
     }
 
@@ -446,7 +456,7 @@ impl EntityScope<'_> {
         diags: &mut Vec<Diagnostic>,
     ) {
         for expr in exprs {
-            for (who, key, spot) in expr.meter_reads() {
+            for (subject, key, spot) in expr.meter_reads() {
                 let at = Locator::Spot(spot);
                 let refuse = |problem, hint| {
                     Problem {
@@ -458,13 +468,13 @@ impl EntityScope<'_> {
                     }
                     .into_diagnostic()
                 };
-                if let Some(why) = self.why_not_carried(fixed_self, who, key) {
+                if let Some(why) = self.why_not_carried(fixed_self, subject, key) {
                     diags.push(refuse(
                         format!("expression reads meter '{key}', but {why}"),
                         "declare the meter on that entity, or read one that exists",
                     ));
                 }
-                if let Some(name) = self.unknown_who(who) {
+                if let Some(name) = self.unknown_who(subject) {
                     diags.push(refuse(
                         format!("expression names '{name}', which is not a who"),
                         "use self, target, here, world, place:<id>, story:<id>, or a cast id",
@@ -628,7 +638,7 @@ pub fn check_save(canon: &Canon, state: &crate::state::State) -> Result<(), Vec<
     let world = world_meters.map(|(id, held)| (id.as_str(), held)).collect();
     check_meters(
         canon,
-        &entity::Id::World,
+        &entity::Id::Global,
         &world,
         "world.meters",
         &mut diags,
@@ -742,11 +752,11 @@ fn check_meters(
 ) {
     let (name, defs) = match carrier {
         entity::Id::Actor(id) => (format!("actor '{id}'"), &canon.meters),
-        entity::Id::World => ("the world".to_string(), &canon.world_meters),
+        entity::Id::Global => ("the world".to_string(), &canon.world_meters),
         _ => (carrier.to_string(), &canon.meters),
     };
     for (key, def) in defs {
-        let carried = *carrier == entity::Id::World || def.is_on(carrier.as_ref());
+        let carried = *carrier == entity::Id::Global || def.is_on(carrier.as_ref());
         if carried && !live.contains_key(key.as_str()) {
             diags.push(
                 schema_error(
@@ -1125,7 +1135,7 @@ fn watches_world(canon: &Canon, watch: &ChangeWatch) -> bool {
                     let mut sets = false;
                     rule.visit_templates(|effect| {
                         if let EffectTemplate::Flag {
-                            who: Who::World,
+                            who: Subject::Global,
                             key: written,
                             ..
                         } = effect
@@ -1215,7 +1225,11 @@ fn names_subject(rule: &Rule) -> bool {
     let mut exprs = Vec::new();
     push_rule_exprs(rule, &mut exprs);
     for expr in exprs {
-        whos.extend(expr.meter_reads().into_iter().map(|(who, _, _)| who));
+        whos.extend(
+            expr.meter_reads()
+                .into_iter()
+                .map(|(subject, _, _)| subject),
+        );
     }
     let mut needs = rule.roll.is_some();
     rule.visit_templates(|effect| {
@@ -1238,7 +1252,10 @@ fn names_subject(rule: &Rule) -> bool {
             whos.push(who);
         }
     });
-    needs || whos.iter().any(|who| matches!(who, Who::Self_ | Who::Here))
+    needs
+        || whos
+            .iter()
+            .any(|subject| matches!(subject, Subject::Self_ | Subject::Here))
 }
 
 fn mark_cycles(next: &[Vec<usize>], hit: &mut [bool]) {

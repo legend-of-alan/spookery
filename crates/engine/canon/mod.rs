@@ -215,7 +215,7 @@ impl Canon {
     /// The def of meter `key` on `id`, when that entity carries it.
     pub fn meter_def(&self, id: entity::IdRef<'_>, key: &str) -> Option<&MeterDef> {
         match id {
-            entity::IdRef::World => self.world_meters.get(key),
+            entity::IdRef::Global => self.world_meters.get(key),
             _ => self.meters.get(key).filter(|def| def.is_on(id)),
         }
     }
@@ -267,7 +267,7 @@ pub(crate) fn declared_flags<'c>(
         entity::IdRef::Actor(id) => cast.get(id).map(|cast| &cast.flags),
         entity::IdRef::Place(id) => places.get(id).map(|place| &place.flags),
         entity::IdRef::Story(id) => stories.get(id).map(|story| &story.flags),
-        entity::IdRef::World => return None,
+        entity::IdRef::Global => return None,
     };
     Some(flags.map_or(&[], Vec::as_slice))
 }
@@ -317,7 +317,7 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
     let world_meters = if root.join("world/meters.yaml").is_file() {
         let rel = "world/meters.yaml";
         diags.keep(
-            read_text(root, rel).and_then(|text| load_meters(rel, &text, Some(entity::Id::World))),
+            read_text(root, rel).and_then(|text| load_meters(rel, &text, Some(entity::Id::Global))),
         )
     } else {
         Some(BTreeMap::new())

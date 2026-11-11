@@ -107,9 +107,13 @@ fn sentence(
                 &change.after,
             )
         }
-        change::Key::WorldMeter(key) => {
-            meter_sentence(canon, &entity::Id::World, key, "The world's", &change.after)
-        }
+        change::Key::WorldMeter(key) => meter_sentence(
+            canon,
+            &entity::Id::Global,
+            key,
+            "The world's",
+            &change.after,
+        ),
         change::Key::StoryMeter(story, key) => {
             let id = entity::Id::Story(story.clone().into());
             let whose = format!("The {story} story's");
@@ -289,7 +293,7 @@ fn can_see(canon: &Canon, state: &State, viewer: &ActorId, change: &Change) -> b
         | change::Key::LastActRound(_)
         | change::Key::IdleActsThisWindow(_)
         | change::Key::LiveActsThisWindow(_) => false,
-        change::Key::WorldMeter(key) => is_shown(canon, &entity::Id::World, key),
+        change::Key::WorldMeter(key) => is_shown(canon, &entity::Id::Global, key),
         change::Key::StoryMeter(story, key) => {
             is_shown(canon, &entity::Id::Story(story.clone().into()), key)
         }

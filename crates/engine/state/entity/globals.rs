@@ -11,8 +11,8 @@ use crate::state::{change, undo, Writer};
 use crate::Reason;
 
 /// The world's collection: what the one world holds. The wire and the save still say `world`
-/// (`world_flag`, `world_meter`, the `world:` key, `entity::Id::World`), and those names do not
-/// change.
+/// (`world_flag`, `world_meter`, the `world:` key, and `entity::Id::Global`, which serializes as
+/// `world`), and those names do not change.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Globals {

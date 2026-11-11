@@ -173,7 +173,7 @@ rules:
         actors
             .set_flag(&"pc_nell".into(), "found_key", true)
             .unwrap();
-        support::put_meter(now, canon, &entity::Id::World, "tide", 0);
+        support::put_meter(now, canon, &entity::Id::Global, "tide", 0);
     });
     play(
         world,

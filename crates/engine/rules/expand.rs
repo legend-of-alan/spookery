@@ -9,7 +9,7 @@ use crate::rules::effect::{Effect, EffectKind};
 use crate::rules::expr::{self, Dice, Expr};
 use crate::rules::roll::Outcome;
 use crate::rules::roll::{MoveReport, Roll};
-use crate::rules::rule::{EffectTemplate, LocationTo, NarrateTo, ResistSpec, Rule, Who};
+use crate::rules::rule::{EffectTemplate, LocationTo, NarrateTo, ResistSpec, Rule, Subject};
 use crate::state::component::meter::MeterWrite;
 use crate::state::id::ActorId;
 use crate::state::State;
@@ -137,7 +137,7 @@ fn expand_template(
             who, key, value, ..
         } => {
             let kind = match who {
-                Who::Exit(exit) if key == OPEN => EffectKind::ExitOpen {
+                Subject::Exit(exit) if key == OPEN => EffectKind::ExitOpen {
                     exit: exit.clone(),
                     open: *value,
                 },
@@ -203,7 +203,7 @@ fn expand_template(
             let (actor_id, place) = match expr::resolve_entity(context, who)? {
                 entity::Id::Actor(id) => (Some(id), None),
                 entity::Id::Place(id) => (None, Some(id)),
-                entity::Id::Story(_) | entity::Id::World => return Err(Reason::Schema),
+                entity::Id::Story(_) | entity::Id::Global => return Err(Reason::Schema),
             };
             effects.push(Effect::new(
                 viewer,
@@ -260,7 +260,7 @@ fn expand_template(
         } => {
             let to = match to {
                 NarrateTo::Here => state.actors_at(expr::resolve_here(context)?),
-                NarrateTo::Self_ => vec![expr::resolve_actor(context, &Who::Self_)?.clone()],
+                NarrateTo::Self_ => vec![expr::resolve_actor(context, &Subject::Self_)?.clone()],
                 NarrateTo::Actors(ids) => ids.clone(),
                 NarrateTo::Present => context.presence.actors_present.clone(),
             };
@@ -328,7 +328,7 @@ fn meter_offset(
 
 fn location_effect(context: &Context, to: &str) -> Result<Effect, Reason> {
     let intent = context.intent;
-    let actor_id = expr::resolve_actor(context, &Who::Self_)?.clone();
+    let actor_id = expr::resolve_actor(context, &Subject::Self_)?.clone();
     let from = context
         .state
         .actors()

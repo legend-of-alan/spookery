@@ -131,7 +131,7 @@ pub(super) fn add_own_meters(
     const KEEP_ONE: &str = "keep one meter with this id";
     for (key, def) in own {
         let taken = if world.is_some_and(|world| world.contains_key(&key)) {
-            Some(Some(entity::Id::World))
+            Some(Some(entity::Id::Global))
         } else {
             meters.get(&key).map(|taken| taken.carrier.clone())
         };
@@ -144,7 +144,7 @@ pub(super) fn add_own_meters(
                 "is already in rules/meters.yaml",
                 "rename it, or drop it and use the one every actor carries",
             ),
-            Some(Some(entity::Id::World)) => ("is already in world/meters.yaml", KEEP_ONE),
+            Some(Some(entity::Id::Global)) => ("is already in world/meters.yaml", KEEP_ONE),
             Some(Some(_)) => (
                 "is already declared in another cast, place or story file",
                 KEEP_ONE,

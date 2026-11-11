@@ -25,7 +25,8 @@ pub enum Id {
     Actor(ActorId),
     Place(PlaceId),
     Story(StoryId),
-    World,
+    #[serde(rename = "world")]
+    Global,
 }
 
 /// The entity as a rule's `who` names it: an actor id, `place:<id>`, `story:<id>` or `world`.
@@ -35,7 +36,7 @@ impl fmt::Display for Id {
             Id::Actor(id) => write!(f, "{id}"),
             Id::Place(id) => write!(f, "place:{id}"),
             Id::Story(id) => write!(f, "story:{id}"),
-            Id::World => write!(f, "world"),
+            Id::Global => write!(f, "world"),
         }
     }
 }
@@ -47,7 +48,7 @@ pub enum IdRef<'a> {
     Actor(&'a ActorId),
     Place(&'a PlaceId),
     Story(&'a StoryId),
-    World,
+    Global,
 }
 
 impl Id {
@@ -56,7 +57,7 @@ impl Id {
             Id::Actor(id) => IdRef::Actor(id),
             Id::Place(id) => IdRef::Place(id),
             Id::Story(id) => IdRef::Story(id),
-            Id::World => IdRef::World,
+            Id::Global => IdRef::Global,
         }
     }
 }

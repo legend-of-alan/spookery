@@ -158,7 +158,7 @@ fn perceive_viewer_budget(
         .collect();
 
     let meters = shown_meters(canon, state, &entity::Id::Actor(viewer.actor_id().clone()));
-    let world_meters = shown_meters(canon, state, &entity::Id::World);
+    let world_meters = shown_meters(canon, state, &entity::Id::Global);
 
     let habits = match viewer {
         Viewer::Player(_) => Vec::new(),
@@ -194,7 +194,7 @@ fn perceive_viewer_budget(
 
 /// The meters `carrier` carries that are not hidden, in id order.
 fn shown_meters(canon: &Canon, state: &State, carrier: &entity::Id) -> Vec<MeterView> {
-    let defs = if *carrier == entity::Id::World {
+    let defs = if *carrier == entity::Id::Global {
         &canon.world_meters
     } else {
         &canon.meters

@@ -100,7 +100,7 @@ fn nested_rollbacks_put_the_save_back_exactly() {
     let carried = [
         (entity::Id::Place("docks_street".into()), "glow"),
         (entity::Id::Story("tale".into()), "tension"),
-        (entity::Id::World, "tide"),
+        (entity::Id::Global, "tide"),
     ];
     for (entity, key) in carried {
         let def = MeterDef {
@@ -116,7 +116,7 @@ fn nested_rollbacks_put_the_save_back_exactly() {
             offset: 0,
         };
         match entity {
-            entity::Id::World => canon.world_meters.insert(key.to_string(), def),
+            entity::Id::Global => canon.world_meters.insert(key.to_string(), def),
             _ => canon.meters.insert(key.to_string(), def),
         };
         let put = state
@@ -359,14 +359,14 @@ fn pick_step() -> impl Strategy<Value = Step> {
         (entity::Id::Actor("bram".into()), "grit"),
         (entity::Id::Place("docks_street".into()), "glow"),
         (entity::Id::Story("tale".into()), "tension"),
-        (entity::Id::World, "tide"),
+        (entity::Id::Global, "tide"),
     ];
     let flags = vec![
         (entity::Id::Actor("mira".into()), "wary"),
         (entity::Id::Place("docks_street".into()), "lit"),
         (entity::Id::Place("docks_street".into()), "busy"),
         (entity::Id::Story("tale".into()), "told"),
-        (entity::Id::World, "rung"),
+        (entity::Id::Global, "rung"),
     ];
     prop_oneof![
         3 => Just(Step::Savepoint),

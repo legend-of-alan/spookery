@@ -401,7 +401,7 @@ impl<L> World<L> {
             .canon
             .world_meters
             .keys()
-            .map(|id| (entity::Id::World, id));
+            .map(|id| (entity::Id::Global, id));
         carried
             .chain(world_meters)
             .filter_map(|(entity, id)| {
