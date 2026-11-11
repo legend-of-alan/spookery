@@ -404,14 +404,14 @@ impl<L> World<L> {
             .map(|id| (entity::Id::Global, id));
         carried
             .chain(world_meters)
-            .filter_map(|(entity, id)| {
+            .filter_map(|(carrier, id)| {
                 let value = self
                     .state
-                    .entity(&entity)
+                    .entity(&carrier)
                     .meter_value(&self.canon, id)
                     .ok()?;
-                let max = self.canon.meter_def(entity.as_ref(), id)?.max;
-                Some(format!("meter {entity} {id} {value} {max}"))
+                let max = self.canon.meter_def(carrier.as_ref(), id)?.max;
+                Some(format!("meter {carrier} {id} {value} {max}"))
             })
             .collect()
     }

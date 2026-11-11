@@ -102,25 +102,25 @@ fn nested_rollbacks_put_the_save_back_exactly() {
         (entity::Id::Story("tale".into()), "tension"),
         (entity::Id::Global, "tide"),
     ];
-    for (entity, key) in carried {
+    for (carrier, key) in carried {
         let def = MeterDef {
             min: 0,
             base_cap: 10,
             max: 10,
             start: 5,
             hidden: false,
-            carrier: Some(entity.clone()),
+            carrier: Some(carrier.clone()),
         };
         let start = Meter {
             base: def.start,
             offset: 0,
         };
-        match entity {
+        match carrier {
             entity::Id::Global => canon.world_meters.insert(key.to_string(), def),
             _ => canon.meters.insert(key.to_string(), def),
         };
         let put = state
-            .entity_mut(&entity)
+            .entity_mut(&carrier)
             .set_meter(&canon, key, Some(start));
         put.expect("the meter goes on");
     }
@@ -261,8 +261,8 @@ fn every_moved_meter_is_reported(
 fn effect(state: &State, step: &Step, index: usize) -> Effect {
     let mira = ActorId::from("mira");
     let kind = match step {
-        Step::Item(entity, id, delta) => {
-            let (actor_id, place) = match entity {
+        Step::Item(carrier, id, delta) => {
+            let (actor_id, place) = match carrier {
                 entity::Id::Actor(id) => (Some(id.clone()), None),
                 _ => (None, Some("docks_shop".into())),
             };
@@ -274,8 +274,8 @@ fn effect(state: &State, step: &Step, index: usize) -> Effect {
                 max: None,
             }
         }
-        Step::Meter(entity, key, delta) => EffectKind::Meter {
-            entity: entity.clone(),
+        Step::Meter(carrier, key, delta) => EffectKind::Meter {
+            entity: carrier.clone(),
             key: key.to_string(),
             write: MeterWrite::Offset(*delta),
         },
@@ -292,8 +292,8 @@ fn effect(state: &State, step: &Step, index: usize) -> Effect {
             },
             open: *open,
         },
-        Step::Flag(entity, key, value) => EffectKind::Flag {
-            entity: entity.clone(),
+        Step::Flag(carrier, key, value) => EffectKind::Flag {
+            entity: carrier.clone(),
             key: key.to_string(),
             value: *value,
         },
@@ -348,7 +348,7 @@ fn mira_intent() -> Intent {
 }
 
 fn pick_step() -> impl Strategy<Value = Step> {
-    let entity = select(vec![
+    let carrier = select(vec![
         entity::Id::Actor("mira".into()),
         entity::Id::Actor("bram".into()),
         entity::Id::Place("docks_shop".into()),
@@ -372,15 +372,15 @@ fn pick_step() -> impl Strategy<Value = Step> {
         3 => Just(Step::Savepoint),
         3 => Just(Step::Rollback),
         2 => Just(Step::Take),
-        1 => (entity, select(vec!["lamp_oil", "brass_key"]), -3i64..=3)
-            .prop_map(|(entity, id, delta)| Step::Item(entity, id, delta)),
+        1 => (carrier, select(vec!["lamp_oil", "brass_key"]), -3i64..=3)
+            .prop_map(|(carrier, id, delta)| Step::Item(carrier, id, delta)),
         2 => (select(meters), -2i64..=2)
-            .prop_map(|((entity, key), delta)| Step::Meter(entity, key, delta)),
+            .prop_map(|((carrier, key), delta)| Step::Meter(carrier, key, delta)),
         1 => (-2i64..=2).prop_map(Step::Burn),
         1 => Just(Step::Expire),
         1 => any::<bool>().prop_map(Step::Door),
         2 => (select(flags), any::<bool>())
-            .prop_map(|((entity, key), value)| Step::Flag(entity, key, value)),
+            .prop_map(|((carrier, key), value)| Step::Flag(carrier, key, value)),
         1 => select(vec!["docks_shop", "docks_street", "mira_rooms"]).prop_map(Step::Walk),
         1 => select(vec!["brass_key", "lamp_oil"]).prop_map(Step::Wield),
         1 => Just(Step::Unwield),

@@ -391,10 +391,10 @@ impl EntityScope<'_> {
                 (!door).then(|| format!("{exit} has no if, so it is always open"))
             };
         }
-        let entity = self.fixed_entity(fixed_self, who)?;
-        let flags = declared_flags(self.cast, self.places, self.stories, entity.as_ref())?;
+        let id = self.fixed_entity(fixed_self, who)?;
+        let flags = declared_flags(self.cast, self.places, self.stories, id.as_ref())?;
         let declared = flags.iter().any(|flag| flag == key);
-        (!declared).then(|| format!("{entity} does not declare it"))
+        (!declared).then(|| format!("{id} does not declare it"))
     }
 
     /// Why meter `key` on `who` can never be read or written, or `None` when it may be.
@@ -407,10 +407,10 @@ impl EntityScope<'_> {
         match self.fixed_entity(fixed_self, who) {
             Some(entity::Id::Global) if self.world_meters.contains_key(key) => None,
             Some(entity::Id::Global) => Some(format!("the world carries no meter '{key}'")),
-            Some(entity) if !def.is_some_and(|def| def.is_on(entity.as_ref())) => {
+            Some(id) if !def.is_some_and(|def| def.is_on(id.as_ref())) => {
                 Some(match def.and_then(|def| def.carrier.as_ref()) {
                     Some(carrier) => format!("only {carrier} carries meter '{key}'"),
-                    None => format!("{entity} carries no meter '{key}'"),
+                    None => format!("{id} carries no meter '{key}'"),
                 })
             }
             None if def.is_none() => Some(format!("no file declares meter '{key}'")),
@@ -641,9 +641,9 @@ pub fn check_save(canon: &Canon, state: &crate::state::State) -> Result<(), Vec<
         let held = nested_map::entries_of(&state.stories().meters, id).collect();
         (entity::Id::Story(id.clone()), "stories", id.as_str(), held)
     });
-    for (entity, list, id, held) in places.chain(stories) {
+    for (carrier, list, id, held) in places.chain(stories) {
         let path = format!("{list}.meters.{id}");
-        check_meters(canon, &entity, &held, &path, &mut diags);
+        check_meters(canon, &carrier, &held, &path, &mut diags);
     }
     for ((id, item), count) in actors.items.iter() {
         if item.is_empty() {

@@ -123,12 +123,14 @@ impl Effect {
                 delta,
                 max,
             } => {
-                let entity = match (actor_id, place) {
+                let carrier = match (actor_id, place) {
                     (Some(actor_id), None) => entity::Id::Actor(actor_id),
                     (None, Some(place)) => entity::Id::Place(place),
                     _ => return Err(Reason::Schema),
                 };
-                state.entity_mut(&entity).shift_item(canon, &id, delta, max)
+                state
+                    .entity_mut(&carrier)
+                    .shift_item(canon, &id, delta, max)
             }
             EffectKind::Modifier {
                 actor_id,

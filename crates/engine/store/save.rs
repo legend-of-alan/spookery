@@ -175,8 +175,8 @@ pub fn migrate(canon: &Canon, mut state: State, record: &MigrateRecord) -> Resul
             base: meter.start,
             offset: 0,
         };
-        for entity in find_lacking_carriers(&state, &meter.carrier, &meter.id) {
-            let mut carrier = state.entity_mut(&entity);
+        for id in find_lacking_carriers(&state, &meter.carrier, &meter.id) {
+            let mut carrier = state.entity_mut(&id);
             carrier.set_meter(canon, &meter.id, Some(start.clone()))?;
         }
     }

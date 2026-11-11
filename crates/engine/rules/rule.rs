@@ -268,6 +268,7 @@ impl Op {
     }
 }
 
+/// What a rule's `who:` names. The pack writes `world` for `Who::Global`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Who {
     Self_,
