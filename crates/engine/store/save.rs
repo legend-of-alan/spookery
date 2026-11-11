@@ -5,7 +5,7 @@ use std::collections::BTreeSet;
 use serde::Deserialize;
 use serde_saphyr::SerializerOptions;
 
-use crate::canon::{Canon, ItemDef};
+use crate::canon::{unknown_item, Canon, ItemDef};
 use crate::diagnostic::{check_tag, error, locate_nth, parse_file, schema_error, Diagnostic};
 use crate::entity;
 use crate::state::component::meter::{self, Meter};
@@ -94,7 +94,7 @@ pub(crate) fn find_missing_meters(canon: &Canon, state: &State) -> Vec<AddedMete
 
 /// The entities `carrier` names that lack meter `id`. Every-actor and one-actor carriers are read
 /// off the save's actors, so a cast member the save does not list names nobody; any other carrier
-/// is itself. The one match on a collection that migrate keeps of its own.
+/// is itself. Migrate and `check_save` both read it, so they agree on who lacks a meter.
 pub(crate) fn find_lacking_carriers(
     state: &State,
     carrier: &Option<entity::Id>,
@@ -309,12 +309,12 @@ pub fn check_save(canon: &Canon, state: &State) -> Result<(), Vec<Diagnostic>> {
     for (actor_id, item) in actors.items.keys() {
         if !canon.items.contains_key(item) {
             let path = format!("actors.items.{actor_id}.{item}");
-            diags.push(crate::canon::unknown_item(FILE, item, &path));
+            diags.push(unknown_item(FILE, item, &path));
         }
     }
     for (actor_id, wielded) in actors.wielded.iter() {
         if !canon.items.contains_key(wielded) {
-            diags.push(crate::canon::unknown_item(
+            diags.push(unknown_item(
                 FILE,
                 wielded,
                 &format!("actors.wielded.{actor_id}"),
@@ -349,7 +349,7 @@ pub fn check_save(canon: &Canon, state: &State) -> Result<(), Vec<Diagnostic>> {
     for (place, item) in state.places().items.keys() {
         if !canon.items.contains_key(item) {
             let path = format!("places.items.{place}.{item}");
-            diags.push(crate::canon::unknown_item(FILE, item, &path));
+            diags.push(unknown_item(FILE, item, &path));
         }
     }
     if diags.is_empty() {
