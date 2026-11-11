@@ -1,11 +1,12 @@
 //! Dice and arithmetic inside a rule number.
 
 use crate::canon::Canon;
+use crate::entity;
 use crate::intent::Target;
 use crate::rules::context::Context;
 use crate::rules::roll::Outcome;
 use crate::rules::rule::{LineColumn, Who};
-use crate::state::id::{ActorId, EntityId};
+use crate::state::id::ActorId;
 use crate::state::State;
 use crate::Reason;
 
@@ -211,15 +212,15 @@ pub(crate) fn resolve_item_id(context: &Context, id: &str) -> Result<String, Rea
 /// Who holds the meter, flag or item a rule names: `here` and `place:` are a place, `story:`
 /// is a story, `world` is the world, and anyone else is an actor. An exit holds none of them:
 /// its door is an `exit_open`, and a door's flag is read by `cond::holds`.
-pub(crate) fn resolve_entity(context: &Context, who: &Who) -> Result<EntityId, Reason> {
+pub(crate) fn resolve_entity(context: &Context, who: &Who) -> Result<entity::Id, Reason> {
     match who {
-        Who::World => Ok(EntityId::World),
-        Who::Story(id) => Ok(EntityId::Story(id.clone())),
+        Who::World => Ok(entity::Id::World),
+        Who::Story(id) => Ok(entity::Id::Story(id.clone())),
         Who::Exit(_) => Err(Reason::UnknownId),
-        Who::Place(id) => Ok(EntityId::Place(id.clone())),
-        Who::Here => Ok(EntityId::Place(resolve_here(context)?.into())),
+        Who::Place(id) => Ok(entity::Id::Place(id.clone())),
+        Who::Here => Ok(entity::Id::Place(resolve_here(context)?.into())),
         Who::Self_ | Who::Target | Who::Actor(_) => {
-            Ok(EntityId::Actor(resolve_actor(context, who)?.clone()))
+            Ok(entity::Id::Actor(resolve_actor(context, who)?.clone()))
         }
     }
 }
@@ -665,8 +666,8 @@ mod tests {
     use crate::intent::{Intent, IntentArgs, Source, Target, Viewer};
     use crate::rules::context::Context;
     use crate::rules::rule::Who;
+    use crate::state::component::meter::MeterDef;
     use crate::state::id::ActorId;
-    use crate::state::meter::MeterDef;
     use crate::state::{Presence, State};
     use crate::Reason;
 

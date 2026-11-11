@@ -218,7 +218,7 @@ fn a_rule_tests_the_flag(world: &mut World, who: String, key: String) {
         ),
     );
     migrate_and_play(world, vec![intent("test", "pc_rowan", "test_mark", None)]);
-    assert!(state_of(&pack).world().flags.contains("mark_seen"));
+    assert!(state_of(&pack).globals().flags.contains("mark_seen"));
 }
 
 #[then(expr = "the GM sees the flag change on the siege story")]

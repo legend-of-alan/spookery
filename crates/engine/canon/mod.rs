@@ -6,12 +6,13 @@ use std::path::Path;
 use serde::Deserialize;
 
 use crate::diagnostic::Diagnostic;
+use crate::entity;
 use crate::hash::blake2s_tagged;
 use crate::rules::roll::Check;
 use crate::rules::rule::{Cond, Cost, Owner, RuleTable, TargetKind, When};
-use crate::state::id::{ActorId, EntityId, EntityRef, ExitId, PlaceId, StoryId};
-use crate::state::meter::MeterDef;
-use crate::state::modifier::ModifierDef;
+use crate::state::component::meter::MeterDef;
+use crate::state::component::modifier::ModifierDef;
+use crate::state::id::{ActorId, ExitId, PlaceId, StoryId};
 use crate::Reason;
 pub use spookery_protocol::{CastKind, MenuRow, PackSummary};
 
@@ -211,17 +212,17 @@ impl Canon {
         }
     }
 
-    /// The def of meter `key` on `entity`, when that entity carries it.
-    pub fn meter_def(&self, entity: EntityRef<'_>, key: &str) -> Option<&MeterDef> {
-        match entity {
-            EntityRef::World => self.world_meters.get(key),
-            _ => self.meters.get(key).filter(|def| def.is_on(entity)),
+    /// The def of meter `key` on `id`, when that entity carries it.
+    pub fn meter_def(&self, id: entity::IdRef<'_>, key: &str) -> Option<&MeterDef> {
+        match id {
+            entity::IdRef::World => self.world_meters.get(key),
+            _ => self.meters.get(key).filter(|def| def.is_on(id)),
         }
     }
 
-    /// Whether `entity` carries flag `key`: one its file declares, or any world flag but `busy`.
-    pub(crate) fn carries_flag(&self, entity: EntityRef<'_>, key: &str) -> bool {
-        match declared_flags(&self.cast, &self.places, &self.stories, entity) {
+    /// Whether `id` carries flag `key`: one its file declares, or any world flag but `busy`.
+    pub(crate) fn carries_flag(&self, id: entity::IdRef<'_>, key: &str) -> bool {
+        match declared_flags(&self.cast, &self.places, &self.stories, id) {
             Some(flags) => flags.iter().any(|flag| flag == key),
             None => !key.is_empty() && key != "busy",
         }
@@ -253,20 +254,20 @@ impl Canon {
     }
 }
 
-/// The flags `entity`'s file declares, none for an id the pack lacks: `None` for the world,
+/// The flags `carrier`'s file declares, none for an id the pack lacks: `None` for the world,
 /// which carries any flag but `busy`. Lint asks before the canon is assembled, so it takes the
 /// three maps.
 pub(crate) fn declared_flags<'c>(
     cast: &'c BTreeMap<ActorId, CastDef>,
     places: &'c BTreeMap<PlaceId, PlaceDef>,
     stories: &'c BTreeMap<StoryId, StoryDef>,
-    entity: EntityRef<'_>,
+    carrier: entity::IdRef<'_>,
 ) -> Option<&'c [String]> {
-    let flags = match entity {
-        EntityRef::Actor(id) => cast.get(id).map(|cast| &cast.flags),
-        EntityRef::Place(id) => places.get(id).map(|place| &place.flags),
-        EntityRef::Story(id) => stories.get(id).map(|story| &story.flags),
-        EntityRef::World => return None,
+    let flags = match carrier {
+        entity::IdRef::Actor(id) => cast.get(id).map(|cast| &cast.flags),
+        entity::IdRef::Place(id) => places.get(id).map(|place| &place.flags),
+        entity::IdRef::Story(id) => stories.get(id).map(|story| &story.flags),
+        entity::IdRef::World => return None,
     };
     Some(flags.map_or(&[], Vec::as_slice))
 }
@@ -316,7 +317,7 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
     let world_meters = if root.join("world/meters.yaml").is_file() {
         let rel = "world/meters.yaml";
         diags.keep(
-            read_text(root, rel).and_then(|text| load_meters(rel, &text, Some(EntityId::World))),
+            read_text(root, rel).and_then(|text| load_meters(rel, &text, Some(entity::Id::World))),
         )
     } else {
         Some(BTreeMap::new())

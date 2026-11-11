@@ -16,12 +16,13 @@
 use std::sync::Arc;
 
 use crate::canon::StoryDef;
+use crate::entity;
 use crate::intent::{Intent, IntentArgs, Source, Target, Viewer};
 use crate::rules::effect::{Effect, EffectKind};
 use crate::state::change::{self, Change};
-use crate::state::id::{ActorId, EntityId, ExitId};
-use crate::state::meter::{Meter, MeterDef, MeterWrite};
-use crate::state::modifier::ModifierDef;
+use crate::state::component::meter::{Meter, MeterDef, MeterWrite};
+use crate::state::component::modifier::ModifierDef;
+use crate::state::id::{ActorId, ExitId};
 use crate::state::{ActCounter, Presence, State};
 use crate::testing::copy_docks;
 use crate::world::World;
@@ -36,12 +37,12 @@ enum Step {
     Savepoint,
     Rollback,
     Take,
-    Item(EntityId, &'static str, i64),
-    Meter(EntityId, &'static str, i64),
+    Item(entity::Id, &'static str, i64),
+    Meter(entity::Id, &'static str, i64),
     Burn(i64),
     Expire,
     Door(bool),
-    Flag(EntityId, &'static str, bool),
+    Flag(entity::Id, &'static str, bool),
     Walk(&'static str),
     Wield(&'static str),
     Unwield,
@@ -97,9 +98,9 @@ fn nested_rollbacks_put_the_save_back_exactly() {
     // The street, the tale and the world each carry a meter, put on the save at its start as
     // migrate puts on a meter the pack adds, so every store takes writes.
     let carried = [
-        (EntityId::Place("docks_street".into()), "glow"),
-        (EntityId::Story("tale".into()), "tension"),
-        (EntityId::World, "tide"),
+        (entity::Id::Place("docks_street".into()), "glow"),
+        (entity::Id::Story("tale".into()), "tension"),
+        (entity::Id::World, "tide"),
     ];
     for (entity, key) in carried {
         let def = MeterDef {
@@ -115,7 +116,7 @@ fn nested_rollbacks_put_the_save_back_exactly() {
             offset: 0,
         };
         match entity {
-            EntityId::World => canon.world_meters.insert(key.to_string(), def),
+            entity::Id::World => canon.world_meters.insert(key.to_string(), def),
             _ => canon.meters.insert(key.to_string(), def),
         };
         let put = state
@@ -262,7 +263,7 @@ fn effect(state: &State, step: &Step, index: usize) -> Effect {
     let kind = match step {
         Step::Item(entity, id, delta) => {
             let (actor_id, place) = match entity {
-                EntityId::Actor(id) => (Some(id.clone()), None),
+                entity::Id::Actor(id) => (Some(id.clone()), None),
                 _ => (None, Some("docks_shop".into())),
             };
             EffectKind::Item {
@@ -348,24 +349,24 @@ fn mira_intent() -> Intent {
 
 fn pick_step() -> impl Strategy<Value = Step> {
     let entity = select(vec![
-        EntityId::Actor("mira".into()),
-        EntityId::Actor("bram".into()),
-        EntityId::Place("docks_shop".into()),
+        entity::Id::Actor("mira".into()),
+        entity::Id::Actor("bram".into()),
+        entity::Id::Place("docks_shop".into()),
     ]);
-    // A meter and a flag on each kind of entity that carries one.
+    // A meter and a flag in each collection that carries one.
     let meters = vec![
-        (EntityId::Actor("mira".into()), "grit"),
-        (EntityId::Actor("bram".into()), "grit"),
-        (EntityId::Place("docks_street".into()), "glow"),
-        (EntityId::Story("tale".into()), "tension"),
-        (EntityId::World, "tide"),
+        (entity::Id::Actor("mira".into()), "grit"),
+        (entity::Id::Actor("bram".into()), "grit"),
+        (entity::Id::Place("docks_street".into()), "glow"),
+        (entity::Id::Story("tale".into()), "tension"),
+        (entity::Id::World, "tide"),
     ];
     let flags = vec![
-        (EntityId::Actor("mira".into()), "wary"),
-        (EntityId::Place("docks_street".into()), "lit"),
-        (EntityId::Place("docks_street".into()), "busy"),
-        (EntityId::Story("tale".into()), "told"),
-        (EntityId::World, "rung"),
+        (entity::Id::Actor("mira".into()), "wary"),
+        (entity::Id::Place("docks_street".into()), "lit"),
+        (entity::Id::Place("docks_street".into()), "busy"),
+        (entity::Id::Story("tale".into()), "told"),
+        (entity::Id::World, "rung"),
     ];
     prop_oneof![
         3 => Just(Step::Savepoint),

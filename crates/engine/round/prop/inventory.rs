@@ -15,9 +15,10 @@
 //! Deterministic in CI: 64 cases, seed `0x0018_0018`, no failure file.
 
 use crate::canon::Canon;
+use crate::entity;
 use crate::intent::{Intent, IntentArgs, Source, Target, Viewer};
 use crate::rules::effect::{Effect, EffectKind};
-use crate::state::id::{ActorId, EntityId, PlaceId};
+use crate::state::id::{ActorId, PlaceId};
 use crate::state::State;
 use crate::testing::copy_docks;
 use crate::world::World;
@@ -29,7 +30,7 @@ use proptest::test_runner::{TestCaseError, TestRunner};
 
 #[derive(Clone, Debug)]
 struct ItemChange {
-    entity: EntityId,
+    holder: entity::Id,
     id: String,
     delta: i64,
     max: Option<i64>,
@@ -58,8 +59,8 @@ fn apply_changes(world: &World<()>, steps: &[ItemChange]) -> Result<(), TestCase
     let intent = npc_intent();
     for step in steps {
         let before = state.clone();
-        let known = is_known_entity(canon, &state, &step.entity);
-        let held = count_of(&state, &step.entity, &step.id);
+        let known = is_known_entity(canon, &state, &step.holder);
+        let held = count_of(&state, &step.holder, &step.id);
         let outcome = item_effect(step).apply(canon, &mut state, &nobody, &intent);
         assert_no_stored_zero(&state)?;
         if !known {
@@ -73,7 +74,7 @@ fn apply_changes(world: &World<()>, steps: &[ItemChange]) -> Result<(), TestCase
             assert_same_save(&state, &before)?;
             continue;
         }
-        let got = count_of(&state, &step.entity, &step.id);
+        let got = count_of(&state, &step.holder, &step.id);
         if takes_more_than_held(held, step.delta) {
             return fail(format!(
                 "taking {} from {held} of {} was accepted and the count is {got}",
@@ -119,29 +120,29 @@ fn assert_no_stored_zero(state: &State) -> Result<(), TestCaseError> {
     Ok(())
 }
 
-fn is_known_entity(canon: &Canon, state: &State, entity: &EntityId) -> bool {
-    match entity {
-        EntityId::Actor(id) => state.actors().kind.contains_key(id),
-        EntityId::Place(id) => canon.places.contains_key(id),
-        EntityId::Story(_) | EntityId::World => false,
+fn is_known_entity(canon: &Canon, state: &State, holder: &entity::Id) -> bool {
+    match holder {
+        entity::Id::Actor(id) => state.actors().kind.contains_key(id),
+        entity::Id::Place(id) => canon.places.contains_key(id),
+        entity::Id::Story(_) | entity::Id::World => false,
     }
 }
 
-fn count_of(state: &State, entity: &EntityId, id: &str) -> u32 {
-    match entity {
-        EntityId::Actor(actor_id) => state
+fn count_of(state: &State, holder: &entity::Id, id: &str) -> u32 {
+    match holder {
+        entity::Id::Actor(actor_id) => state
             .actors()
             .items
             .get(&(actor_id.clone(), id.to_string()))
             .copied()
             .unwrap_or(0),
-        EntityId::Place(place_id) => state
+        entity::Id::Place(place_id) => state
             .places()
             .items
             .get(&(place_id.clone(), id.to_string()))
             .copied()
             .unwrap_or(0),
-        EntityId::Story(_) | EntityId::World => 0,
+        entity::Id::Story(_) | entity::Id::World => 0,
     }
 }
 
@@ -166,10 +167,10 @@ fn npc_intent() -> Intent {
 }
 
 fn item_effect(step: &ItemChange) -> Effect {
-    let (actor_id, place) = match &step.entity {
-        EntityId::Actor(id) => (Some(id.clone()), None),
-        EntityId::Place(id) => (None, Some(id.clone())),
-        EntityId::Story(_) | EntityId::World => (None, None),
+    let (actor_id, place) = match &step.holder {
+        entity::Id::Actor(id) => (Some(id.clone()), None),
+        entity::Id::Place(id) => (None, Some(id.clone())),
+        entity::Id::Story(_) | entity::Id::World => (None, None),
     };
     Effect {
         kind: EffectKind::Item {
@@ -194,8 +195,8 @@ fn pick_changes(actors: &[ActorId], places: &[PlaceId]) -> impl Strategy<Value =
             pick_delta(),
             pick_max(),
         )
-            .prop_map(|(entity, id, delta, max)| ItemChange {
-                entity,
+            .prop_map(|(holder, id, delta, max)| ItemChange {
+                holder,
                 id,
                 delta,
                 max,
@@ -204,18 +205,18 @@ fn pick_changes(actors: &[ActorId], places: &[PlaceId]) -> impl Strategy<Value =
     )
 }
 
-fn pick_entity(actors: &[ActorId], places: &[PlaceId]) -> impl Strategy<Value = EntityId> {
+fn pick_entity(actors: &[ActorId], places: &[PlaceId]) -> impl Strategy<Value = entity::Id> {
     let mut known = Vec::new();
     for id in actors.iter().take(2) {
-        known.push(EntityId::Actor(id.clone()));
+        known.push(entity::Id::Actor(id.clone()));
     }
     for id in places {
-        known.push(EntityId::Place(id.clone()));
+        known.push(entity::Id::Place(id.clone()));
     }
     prop_oneof![
         8 => select(known),
-        1 => Just(EntityId::Actor("nobody".into())),
-        1 => Just(EntityId::Place("nowhere".into())),
+        1 => Just(entity::Id::Actor("nobody".into())),
+        1 => Just(entity::Id::Place("nowhere".into())),
     ]
 }
 

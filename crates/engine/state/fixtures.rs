@@ -2,11 +2,11 @@
 //! Each component goes through its production writer where one exists.
 
 use super::id::ActorId;
-use super::{nested_map, Act, ActorComponents, ActorKind, Writer};
+use super::{entity, nested_map, Act, ActorKind, Writer};
 use crate::canon::Canon;
 use crate::Reason;
 
-impl Writer<'_, ActorComponents> {
+impl Writer<'_, entity::Actors> {
     /// Add `actor`, of `kind`, standing at `place`: the three stores every actor has, together.
     pub fn add_actor(&mut self, actor: &ActorId, kind: ActorKind, place: &str) {
         let (components, transaction) = (&mut *self.components, &mut *self.transaction);
@@ -31,7 +31,7 @@ impl Writer<'_, ActorComponents> {
         place: &str,
     ) -> Result<(), Reason> {
         // Every store, with no `..`: a store added later must be copied here to compile.
-        let ActorComponents {
+        let entity::Actors {
             kind,
             place: _,
             wielded,
@@ -69,7 +69,7 @@ impl Writer<'_, ActorComponents> {
     /// Take `actor` off every store, `kind` last.
     pub fn remove_actor(&mut self, canon: &Canon, actor: &ActorId) -> Result<(), Reason> {
         // Every store, with no `..`: a store added later must be emptied here to compile.
-        let ActorComponents {
+        let entity::Actors {
             kind: _,
             place: _,
             wielded: _,

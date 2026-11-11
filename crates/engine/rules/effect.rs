@@ -3,11 +3,12 @@
 use serde::{Deserialize, Serialize};
 
 use crate::canon::Canon;
+use crate::entity;
 use crate::intent::{Intent, Viewer};
 use crate::rules::visibility::can_see_fact;
-use crate::state::id::{ActorId, EntityId, EntityRef, ExitId, PlaceId};
-use crate::state::meter::MeterWrite;
-use crate::state::modifier::{self, Modifier};
+use crate::state::component::meter::MeterWrite;
+use crate::state::component::modifier::{self, Modifier};
+use crate::state::id::{ActorId, ExitId, PlaceId};
 use crate::state::{self, nested_map, ActorKind, MemoryLine, Note, Presence, State};
 use crate::Reason;
 
@@ -24,7 +25,7 @@ pub struct Effect {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum EffectKind {
     Meter {
-        entity: EntityId,
+        entity: entity::Id,
         key: String,
         write: MeterWrite,
     },
@@ -63,7 +64,7 @@ pub enum EffectKind {
         text: Option<String>,
     },
     Flag {
-        entity: EntityId,
+        entity: entity::Id,
         key: String,
         value: bool,
     },
@@ -123,8 +124,8 @@ impl Effect {
                 max,
             } => {
                 let entity = match (actor_id, place) {
-                    (Some(actor_id), None) => EntityId::Actor(actor_id),
-                    (None, Some(place)) => EntityId::Place(place),
+                    (Some(actor_id), None) => entity::Id::Actor(actor_id),
+                    (None, Some(place)) => entity::Id::Place(place),
                     _ => return Err(Reason::Schema),
                 };
                 state.entity_mut(&entity).shift_item(canon, &id, delta, max)
@@ -226,7 +227,7 @@ pub(crate) enum EffectRecord {
         #[serde(rename = "as", default, skip_serializing_if = "Option::is_none")]
         as_viewer: Option<Viewer>,
         intent_id: String,
-        entity: EntityId,
+        entity: entity::Id,
         key: String,
         #[serde(flatten)]
         write: MeterWrite,
@@ -290,7 +291,7 @@ pub(crate) enum EffectRecord {
         #[serde(rename = "as", default, skip_serializing_if = "Option::is_none")]
         as_viewer: Option<Viewer>,
         intent_id: String,
-        entity: EntityId,
+        entity: entity::Id,
         key: String,
         value: bool,
     },
@@ -651,7 +652,7 @@ fn apply_modifier(
     ticks: u64,
 ) -> Result<(), Reason> {
     let def = canon.modifiers.get(id).ok_or(Reason::UnknownId)?;
-    let carried = canon.meter_def(EntityRef::Actor(actor_id), &def.meter);
+    let carried = canon.meter_def(entity::IdRef::Actor(actor_id), &def.meter);
     carried.ok_or(Reason::UnknownId)?;
     let now = state.world_time;
     let held = nested_map::get(&state.actors().modifiers, actor_id, id);

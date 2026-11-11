@@ -7,7 +7,7 @@ use spookery_engine::testing::{faces, RollKey};
 
 use crate::support::{edit_as_saved, edit_meter, edit_save_with, put_items};
 use spookery_engine::MoveReport;
-use spookery_engine::{EntityId, Presence, Reason};
+use spookery_engine::{entity, Presence, Reason};
 
 use super::common::split_line;
 use super::table;
@@ -812,7 +812,13 @@ A small bottle.
 ",
     );
     edit_save_with(&pack, |now, canon| {
-        put_items(now, canon, &EntityId::Actor("pc_rowan".into()), "tonic", 1);
+        put_items(
+            now,
+            canon,
+            &entity::Id::Actor("pc_rowan".into()),
+            "tonic",
+            1,
+        );
     });
     world.pack = Some(pack);
 }
@@ -1006,9 +1012,9 @@ fn briars_ask_runs_on_briar(world: &mut World) {
     assert_eq!(world.scratch, r#"{"actor":"npc_briar"} cast:npc_briar/ask"#);
     let now = state_of(world.pack.as_ref().unwrap());
     assert!(
-        now.world().flags.iter().any(|flag| flag == "passage"),
+        now.globals().flags.iter().any(|flag| flag == "passage"),
         "{:?}",
-        now.world().flags
+        now.globals().flags
     );
 }
 

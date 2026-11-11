@@ -1,75 +1,74 @@
 //! One entity, resolved from the id a rule named, to read or to write. This module is outside
 //! `state` on purpose: it sees only `State`'s public getters and handles, so every method here
-//! can only select a kind and call that kind's method of the same name.
+//! can only select a collection and call that collection's method of the same name.
 
 use crate::canon::Canon;
-use crate::state::id::{ActorId, EntityId, PlaceId, StoryId};
-use crate::state::meter::Meter;
-use crate::state::{
-    ActorComponents, PlaceComponents, State, StoryComponents, WorldComponents, Writer,
-};
+use crate::state::component::meter::Meter;
+pub use crate::state::entity::{Id, IdRef};
+use crate::state::id::{ActorId, PlaceId, StoryId};
+use crate::state::{self, State, Writer};
 use crate::Reason;
 
-/// One entity's components, to read: the kind's components and the id. It borrows the save
+/// One entity's components, to read: the collection's components and the id. It borrows the save
 /// immutably, so a condition reads through it with no transaction in hand.
-pub enum Entity<'a> {
-    Actor(&'a ActorComponents, &'a ActorId),
-    Place(&'a PlaceComponents, &'a PlaceId),
-    Story(&'a StoryComponents, &'a StoryId),
-    World(&'a WorldComponents),
+pub enum EntityRef<'a> {
+    Actor(&'a state::entity::Actors, &'a ActorId),
+    Place(&'a state::entity::Places, &'a PlaceId),
+    Story(&'a state::entity::Stories, &'a StoryId),
+    World(&'a state::entity::Globals),
 }
 
 impl State {
     /// The entity `id` names, to read.
-    pub fn entity<'a>(&'a self, id: &'a EntityId) -> Entity<'a> {
+    pub fn entity<'a>(&'a self, id: &'a Id) -> EntityRef<'a> {
         match id {
-            EntityId::Actor(actor) => Entity::Actor(self.actors(), actor),
-            EntityId::Place(place) => Entity::Place(self.places(), place),
-            EntityId::Story(story) => Entity::Story(self.stories(), story),
-            EntityId::World => Entity::World(self.world()),
+            Id::Actor(actor) => EntityRef::Actor(self.actors(), actor),
+            Id::Place(place) => EntityRef::Place(self.places(), place),
+            Id::Story(story) => EntityRef::Story(self.stories(), story),
+            Id::World => EntityRef::World(self.globals()),
         }
     }
 }
 
-impl Entity<'_> {
+impl EntityRef<'_> {
     /// The current value of meter `key`, or `UNKNOWN_ID` when the entity does not carry it.
     pub fn meter_value(&self, canon: &Canon, key: &str) -> Result<i64, Reason> {
         match self {
-            Entity::Actor(actors, id) => actors.meter_value(canon, id, key),
-            Entity::Place(places, id) => places.meter_value(canon, id, key),
-            Entity::Story(stories, id) => stories.meter_value(canon, id, key),
-            Entity::World(world) => world.meter_value(canon, key),
+            EntityRef::Actor(actors, id) => actors.meter_value(canon, id, key),
+            EntityRef::Place(places, id) => places.meter_value(canon, id, key),
+            EntityRef::Story(stories, id) => stories.meter_value(canon, id, key),
+            EntityRef::World(world) => world.meter_value(canon, key),
         }
     }
 
     pub fn has_flag(&self, key: &str) -> bool {
         match self {
-            Entity::Actor(actors, id) => actors.has_flag(id, key),
-            Entity::Place(places, id) => places.has_flag(id, key),
-            Entity::Story(stories, id) => stories.has_flag(id, key),
-            Entity::World(world) => world.has_flag(key),
+            EntityRef::Actor(actors, id) => actors.has_flag(id, key),
+            EntityRef::Place(places, id) => places.has_flag(id, key),
+            EntityRef::Story(stories, id) => stories.has_flag(id, key),
+            EntityRef::World(world) => world.has_flag(key),
         }
     }
 }
 
-/// The same entity, to write: the kind's `Writer` and the id. Every method selects the variant
-/// and calls the kind writer's method of the same name; nothing here validates, writes, counts
+/// The same entity, to write: the collection's `Writer` and the id. Every method selects the variant
+/// and calls the collection writer's method of the same name; nothing here validates, writes, counts
 /// or reports on its own, and nothing here could.
 pub enum EntityMut<'a> {
-    Actor(Writer<'a, ActorComponents>, &'a ActorId),
-    Place(Writer<'a, PlaceComponents>, &'a PlaceId),
-    Story(Writer<'a, StoryComponents>, &'a StoryId),
-    World(Writer<'a, WorldComponents>),
+    Actor(Writer<'a, state::entity::Actors>, &'a ActorId),
+    Place(Writer<'a, state::entity::Places>, &'a PlaceId),
+    Story(Writer<'a, state::entity::Stories>, &'a StoryId),
+    World(Writer<'a, state::entity::Globals>),
 }
 
 impl State {
     /// The entity `id` names, to write.
-    pub fn entity_mut<'a>(&'a mut self, id: &'a EntityId) -> EntityMut<'a> {
+    pub fn entity_mut<'a>(&'a mut self, id: &'a Id) -> EntityMut<'a> {
         match id {
-            EntityId::Actor(actor) => EntityMut::Actor(self.actors_mut(), actor),
-            EntityId::Place(place) => EntityMut::Place(self.places_mut(), place),
-            EntityId::Story(story) => EntityMut::Story(self.stories_mut(), story),
-            EntityId::World => EntityMut::World(self.world_mut()),
+            Id::Actor(actor) => EntityMut::Actor(self.actors_mut(), actor),
+            Id::Place(place) => EntityMut::Place(self.places_mut(), place),
+            Id::Story(story) => EntityMut::Story(self.stories_mut(), story),
+            Id::World => EntityMut::World(self.globals_mut()),
         }
     }
 }

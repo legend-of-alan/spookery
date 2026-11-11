@@ -5,16 +5,17 @@ use std::collections::{BTreeMap, BTreeSet};
 use crate::canon::source::{FileText, Locator, Problem};
 use crate::canon::{declared_flags, Canon, CastDef, FactDef, ItemDef, PlaceDef, StoryDef, OPEN};
 use crate::diagnostic::{error, schema_error, warning, Diagnostic};
+use crate::entity;
 use crate::rules::expr::Expr;
 use crate::rules::roll::Check;
 use crate::rules::rule::{
     ChangeWatch, Cond, Cost, EffectTemplate, LocationTo, NarrateTo, Owner, ResistSpec, Rule,
     RuleTable, When, Who,
 };
-use crate::state::id::{ActorId, EntityId, PlaceId, StoryId};
-use crate::state::meter::{self, MeterDef};
-use crate::state::modifier::{self, ModifierDef};
-use crate::state::{nested_map, ActorComponents};
+use crate::state::component::meter::{self, MeterDef};
+use crate::state::component::modifier::{self, ModifierDef};
+use crate::state::id::{ActorId, PlaceId, StoryId};
+use crate::state::{self, nested_map};
 use crate::Reason;
 
 /// Exits whose `to` is not a place, and facts or items an exit names but the pack does not.
@@ -367,13 +368,13 @@ pub(super) struct EntityScope<'a> {
 impl EntityScope<'_> {
     /// The one entity `who` names whatever the round: `world`, a place, a story, a cast id, or
     /// `self` on a cast member's own habit. `None` when only play time knows it.
-    fn fixed_entity(&self, fixed_self: Option<&str>, who: &Who) -> Option<EntityId> {
+    fn fixed_entity(&self, fixed_self: Option<&str>, who: &Who) -> Option<entity::Id> {
         match who {
-            Who::World => Some(EntityId::World),
-            Who::Place(id) => Some(EntityId::Place(id.clone())),
-            Who::Story(id) => Some(EntityId::Story(id.clone())),
-            Who::Actor(id) if self.cast.contains_key(id) => Some(EntityId::Actor(id.clone())),
-            Who::Self_ => fixed_self.map(|id| EntityId::Actor(id.into())),
+            Who::World => Some(entity::Id::World),
+            Who::Place(id) => Some(entity::Id::Place(id.clone())),
+            Who::Story(id) => Some(entity::Id::Story(id.clone())),
+            Who::Actor(id) if self.cast.contains_key(id) => Some(entity::Id::Actor(id.clone())),
+            Who::Self_ => fixed_self.map(|id| entity::Id::Actor(id.into())),
             _ => None,
         }
     }
@@ -404,8 +405,8 @@ impl EntityScope<'_> {
             return Some(format!("{exit} carries no meter '{key}'"));
         }
         match self.fixed_entity(fixed_self, who) {
-            Some(EntityId::World) if self.world_meters.contains_key(key) => None,
-            Some(EntityId::World) => Some(format!("the world carries no meter '{key}'")),
+            Some(entity::Id::World) if self.world_meters.contains_key(key) => None,
+            Some(entity::Id::World) => Some(format!("the world carries no meter '{key}'")),
             Some(entity) if !def.is_some_and(|def| def.is_on(entity.as_ref())) => {
                 Some(match def.and_then(|def| def.carrier.as_ref()) {
                     Some(carrier) => format!("only {carrier} carries meter '{key}'"),
@@ -553,7 +554,7 @@ pub fn check_save(canon: &Canon, state: &crate::state::State) -> Result<(), Vec<
     let mut diags = Vec::new();
     let actors = &state.actors();
     // Every store, with no `..`: a store added later must be listed here to compile.
-    let ActorComponents {
+    let state::entity::Actors {
         kind: _,
         place,
         wielded,
@@ -606,7 +607,7 @@ pub fn check_save(canon: &Canon, state: &crate::state::State) -> Result<(), Vec<
         let path = format!("actors.meters.{id}");
         check_meters(
             canon,
-            &EntityId::Actor(id.clone()),
+            &entity::Id::Actor(id.clone()),
             &held,
             &path,
             &mut diags,
@@ -623,16 +624,22 @@ pub fn check_save(canon: &Canon, state: &crate::state::State) -> Result<(), Vec<
             diags.push(diag.at_path(format!("actors.modifiers.{id}.{key}")));
         }
     }
-    let world_meters = state.world().meters.iter();
+    let world_meters = state.globals().meters.iter();
     let world = world_meters.map(|(id, held)| (id.as_str(), held)).collect();
-    check_meters(canon, &EntityId::World, &world, "world.meters", &mut diags);
+    check_meters(
+        canon,
+        &entity::Id::World,
+        &world,
+        "world.meters",
+        &mut diags,
+    );
     let places = canon.places.keys().map(|id| {
         let held = nested_map::entries_of(&state.places().meters, id).collect();
-        (EntityId::Place(id.clone()), "places", id.as_str(), held)
+        (entity::Id::Place(id.clone()), "places", id.as_str(), held)
     });
     let stories = canon.stories.keys().map(|id| {
         let held = nested_map::entries_of(&state.stories().meters, id).collect();
-        (EntityId::Story(id.clone()), "stories", id.as_str(), held)
+        (entity::Id::Story(id.clone()), "stories", id.as_str(), held)
     });
     for (entity, list, id, held) in places.chain(stories) {
         let path = format!("{list}.meters.{id}");
@@ -725,21 +732,21 @@ pub fn check_save(canon: &Canon, state: &crate::state::State) -> Result<(), Vec<
     }
 }
 
-/// The live meters of `entity`, at `path` in the save, against the meters the pack gives it.
+/// The live meters of `carrier`, at `path` in the save, against the meters the pack gives it.
 fn check_meters(
     canon: &Canon,
-    entity: &EntityId,
+    carrier: &entity::Id,
     live: &BTreeMap<&str, &meter::Meter>,
     path: &str,
     diags: &mut Vec<Diagnostic>,
 ) {
-    let (name, defs) = match entity {
-        EntityId::Actor(id) => (format!("actor '{id}'"), &canon.meters),
-        EntityId::World => ("the world".to_string(), &canon.world_meters),
-        _ => (entity.to_string(), &canon.meters),
+    let (name, defs) = match carrier {
+        entity::Id::Actor(id) => (format!("actor '{id}'"), &canon.meters),
+        entity::Id::World => ("the world".to_string(), &canon.world_meters),
+        _ => (carrier.to_string(), &canon.meters),
     };
     for (key, def) in defs {
-        let carried = *entity == EntityId::World || def.is_on(entity.as_ref());
+        let carried = *carrier == entity::Id::World || def.is_on(carrier.as_ref());
         if carried && !live.contains_key(key.as_str()) {
             diags.push(
                 schema_error(
@@ -752,7 +759,7 @@ fn check_meters(
         }
     }
     for (key, meter) in live {
-        let Some(def) = canon.meter_def(entity.as_ref(), key) else {
+        let Some(def) = canon.meter_def(carrier.as_ref(), key) else {
             diags.push(
                 schema_error(
                     "state/save.yaml",

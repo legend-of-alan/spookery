@@ -9,12 +9,13 @@ use spookery_protocol::{CommandView, PlaceView};
 use crate::canon::Budget;
 use crate::canon::{check_save, load_canon, pack_rev, Canon};
 use crate::diagnostic::{error, first_reason, locate_nth, schema_error, Code, Diagnostic};
+use crate::entity;
 use crate::intent::{Intent, IntentArgs, Source, Target};
 use crate::rules::context::Context;
 use crate::rules::effect::{payload_json, Effect};
 use crate::rules::gate;
 use crate::rules::rule::{Rule, TargetKind, When};
-use crate::state::id::{ActorId, EntityId};
+use crate::state::id::ActorId;
 use crate::state::{ActorKind, Presence, State};
 use crate::store::journal;
 use crate::store::records::Record;
@@ -400,7 +401,7 @@ impl<L> World<L> {
             .canon
             .world_meters
             .keys()
-            .map(|id| (EntityId::World, id));
+            .map(|id| (entity::Id::World, id));
         carried
             .chain(world_meters)
             .filter_map(|(entity, id)| {

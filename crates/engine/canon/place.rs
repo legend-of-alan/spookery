@@ -10,9 +10,10 @@ use crate::canon::rule_list::{self, RuleYaml};
 use crate::canon::source::{load_tagged, Diags, FileText, Locator, Page, PLACE_SCHEMA};
 use crate::canon::{Exit, PlaceDef};
 use crate::diagnostic::{schema_error, Diagnostic};
+use crate::entity;
 use crate::rules::rule::{Cost, Owner, Rule};
-use crate::state::id::{EntityId, PlaceId};
-use crate::state::meter::MeterDef;
+use crate::state::component::meter::MeterDef;
+use crate::state::id::PlaceId;
 
 /// The meters one place file declares, by that file, for `load_canon` to add once the meters
 /// every actor carries have loaded.
@@ -46,7 +47,7 @@ pub(super) fn add_place(
         return None;
     }
     let id: PlaceId = file.id.clone().into();
-    let carrier = Some(EntityId::Place(id.clone()));
+    let carrier = Some(entity::Id::Place(id.clone()));
     if let Some(own) = diags.keep(meter_defs(&whole, file.meters, carrier)) {
         meters.push((page.file.clone(), own));
     }

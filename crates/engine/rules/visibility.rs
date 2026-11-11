@@ -3,10 +3,11 @@
 use std::collections::BTreeSet;
 
 use crate::canon::Canon;
+use crate::entity;
 use crate::intent::Viewer;
 use crate::rules::effect::{Effect, EffectKind};
 use crate::state::change::{self, Change};
-use crate::state::id::{ActorId, EntityId, PlaceId};
+use crate::state::id::{ActorId, PlaceId};
 use crate::state::State;
 
 pub(crate) fn can_see_fact(canon: &Canon, state: &State, viewer: &Viewer, fact_id: &str) -> bool {
@@ -100,24 +101,24 @@ fn sentence(
             let whose = possessive_for(canon, viewer, actor);
             meter_sentence(
                 canon,
-                &EntityId::Actor(actor.clone().into()),
+                &entity::Id::Actor(actor.clone().into()),
                 key,
                 &whose,
                 &change.after,
             )
         }
         change::Key::WorldMeter(key) => {
-            meter_sentence(canon, &EntityId::World, key, "The world's", &change.after)
+            meter_sentence(canon, &entity::Id::World, key, "The world's", &change.after)
         }
         change::Key::StoryMeter(story, key) => {
-            let entity = EntityId::Story(story.clone().into());
+            let id = entity::Id::Story(story.clone().into());
             let whose = format!("The {story} story's");
-            meter_sentence(canon, &entity, key, &whose, &change.after)
+            meter_sentence(canon, &id, key, &whose, &change.after)
         }
         change::Key::PlaceMeter(place, key) => {
-            let entity = EntityId::Place(place.clone().into());
+            let id = entity::Id::Place(place.clone().into());
             let whose = format!("{}'s", crate::rules::lines::place_name(canon, place));
-            meter_sentence(canon, &entity, key, &whose, &change.after)
+            meter_sentence(canon, &id, key, &whose, &change.after)
         }
         change::Key::ActorItem(actor, id) => {
             actor_item_sentence(canon, viewer, actor, id, change, changes)
@@ -129,13 +130,13 @@ fn sentence(
 
 fn meter_sentence(
     canon: &Canon,
-    entity: &EntityId,
+    id: &entity::Id,
     key: &str,
     whose: &str,
     after: &change::Value,
 ) -> Option<String> {
     if canon
-        .meter_def(entity.as_ref(), key)
+        .meter_def(id.as_ref(), key)
         .is_none_or(|def| def.hidden)
     {
         return None;
@@ -160,9 +161,9 @@ fn actor_item_sentence(
     let who = subject_for(canon, viewer, actor);
     let owner = possessive_for(canon, viewer, actor);
     let sentence = match (after < before, other_side(changes, change, id)) {
-        (true, Some(EntityId::Actor(_))) => format!("{who} handed over the {name}."),
+        (true, Some(entity::Id::Actor(_))) => format!("{who} handed over the {name}."),
         (true, Some(_)) => format!("{who} dropped the {name}."),
-        (false, Some(EntityId::Actor(_))) => format!("{who} received the {name}."),
+        (false, Some(entity::Id::Actor(_))) => format!("{who} received the {name}."),
         (false, Some(_)) => format!("{who} picked up the {name}."),
         (true, None) if after == 0 => format!("{owner} {name} was used up."),
         (true, None) => format!("{owner} {name} was lost."),
@@ -179,7 +180,7 @@ fn place_item_sentence(
     changes: &[Change],
 ) -> Option<String> {
     let (before, after) = counts(change)?;
-    if matches!(other_side(changes, change, id), Some(EntityId::Actor(_))) {
+    if matches!(other_side(changes, change, id), Some(entity::Id::Actor(_))) {
         return None;
     }
     let name = item_name(canon, id);
@@ -197,7 +198,7 @@ fn counts(change: &Change) -> Option<(i64, i64)> {
 }
 
 /// Where the item went to or came from, among changes this viewer can see.
-fn other_side(changes: &[Change], change: &Change, id: &str) -> Option<EntityId> {
+fn other_side(changes: &[Change], change: &Change, id: &str) -> Option<entity::Id> {
     let (before, after) = counts(change)?;
     let down = after < before;
     changes.iter().find_map(|other| {
@@ -207,10 +208,10 @@ fn other_side(changes: &[Change], change: &Change, id: &str) -> Option<EntityId>
         }
         match &other.key {
             change::Key::ActorItem(actor, item) if item == id => {
-                Some(EntityId::Actor(actor.clone().into()))
+                Some(entity::Id::Actor(actor.clone().into()))
             }
             change::Key::PlaceItem(place, item) if item == id => {
-                Some(EntityId::Place(place.clone().into()))
+                Some(entity::Id::Place(place.clone().into()))
             }
             _ => None,
         }
@@ -288,13 +289,13 @@ fn can_see(canon: &Canon, state: &State, viewer: &ActorId, change: &Change) -> b
         | change::Key::LastActRound(_)
         | change::Key::IdleActsThisWindow(_)
         | change::Key::LiveActsThisWindow(_) => false,
-        change::Key::WorldMeter(key) => is_shown(canon, &EntityId::World, key),
+        change::Key::WorldMeter(key) => is_shown(canon, &entity::Id::World, key),
         change::Key::StoryMeter(story, key) => {
-            is_shown(canon, &EntityId::Story(story.clone().into()), key)
+            is_shown(canon, &entity::Id::Story(story.clone().into()), key)
         }
         change::Key::PlaceMeter(place, key) => {
             place_of(state, viewer) == Some(place.as_str())
-                && is_shown(canon, &EntityId::Place(place.clone().into()), key)
+                && is_shown(canon, &entity::Id::Place(place.clone().into()), key)
         }
         change::Key::ActorKnownFact(actor) | change::Key::ActorMeter(actor, _) => {
             *viewer == **actor
@@ -318,10 +319,10 @@ fn can_see(canon: &Canon, state: &State, viewer: &ActorId, change: &Change) -> b
     }
 }
 
-/// Whether the pack shows meter `key` on `entity` to players.
-fn is_shown(canon: &Canon, entity: &EntityId, key: &str) -> bool {
+/// Whether the pack shows meter `key` on `id` to players.
+fn is_shown(canon: &Canon, id: &entity::Id, key: &str) -> bool {
     canon
-        .meter_def(entity.as_ref(), key)
+        .meter_def(id.as_ref(), key)
         .is_some_and(|def| !def.hidden)
 }
 

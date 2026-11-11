@@ -5,9 +5,10 @@ use serde_saphyr::SerializerOptions;
 
 use crate::canon::Canon;
 use crate::diagnostic::{check_tag, error, locate_nth, parse_file, Diagnostic};
-use crate::state::id::{ActorId, EntityId};
-use crate::state::meter::Meter;
-use crate::state::modifier;
+use crate::entity;
+use crate::state::component::meter::Meter;
+use crate::state::component::modifier;
+use crate::state::id::ActorId;
 use crate::state::{nested_map, sort_unique, State};
 use crate::store::records::{AddedMeter, DroppedMeter, MigrateRecord};
 use crate::Reason;
@@ -81,7 +82,7 @@ fn one_trailing_lf(mut text: String) -> String {
 }
 
 /// Meters the pack gives an entity that the entity lacks, each at its `start`.
-pub(crate) fn missing_meters(canon: &Canon, state: &State) -> Vec<AddedMeter> {
+pub(crate) fn find_missing_meters(canon: &Canon, state: &State) -> Vec<AddedMeter> {
     let mut added = Vec::new();
     for (id, def) in &canon.meters {
         if !find_lacking_carriers(state, &def.carrier, id).is_empty() {
@@ -89,7 +90,7 @@ pub(crate) fn missing_meters(canon: &Canon, state: &State) -> Vec<AddedMeter> {
         }
     }
     for (id, def) in &canon.world_meters {
-        if !state.world().meters.contains_key(id) {
+        if !state.globals().meters.contains_key(id) {
             added.push(AddedMeter::new(id, def));
         }
     }
@@ -98,24 +99,26 @@ pub(crate) fn missing_meters(canon: &Canon, state: &State) -> Vec<AddedMeter> {
 
 /// The entities `carrier` names that lack meter `id`. Every-actor and one-actor carriers are read
 /// off the save's actors, so a cast member the save does not list names nobody; any other carrier
-/// is itself. The one kind match migrate keeps of its own.
+/// is itself. The one match on a collection that migrate keeps of its own.
 pub(crate) fn find_lacking_carriers(
     state: &State,
-    carrier: &Option<EntityId>,
+    carrier: &Option<entity::Id>,
     id: &str,
-) -> Vec<EntityId> {
+) -> Vec<entity::Id> {
     let held = match carrier {
-        None | Some(EntityId::Actor(_)) => {
+        None | Some(entity::Id::Actor(_)) => {
             let actors = state.actors();
-            let named =
-                |actor: &&ActorId| !matches!(carrier, Some(EntityId::Actor(one)) if one != *actor);
+            let named = |actor: &&ActorId| {
+                let other = matches!(carrier, Some(entity::Id::Actor(one)) if one != *actor);
+                !other
+            };
             let lacks = |actor: &&ActorId| actors.meter(actor, id).is_none();
             let lacking = actors.kind.keys().filter(named).filter(lacks).cloned();
-            return lacking.map(EntityId::Actor).collect();
+            return lacking.map(entity::Id::Actor).collect();
         }
-        Some(EntityId::Place(place)) => nested_map::get(&state.places().meters, place, id),
-        Some(EntityId::Story(story)) => nested_map::get(&state.stories().meters, story, id),
-        Some(EntityId::World) => state.world().meters.get(id),
+        Some(entity::Id::Place(place)) => nested_map::get(&state.places().meters, place, id),
+        Some(entity::Id::Story(story)) => nested_map::get(&state.stories().meters, story, id),
+        Some(entity::Id::World) => state.globals().meters.get(id),
     };
     held.is_none()
         .then(|| carrier.clone())
@@ -125,19 +128,19 @@ pub(crate) fn find_lacking_carriers(
 }
 
 /// Meters an actor, place, story or the world lists that the pack no longer gives it.
-pub(crate) fn stale_meters(canon: &Canon, state: &State) -> Vec<DroppedMeter> {
+pub(crate) fn find_stale_meters(canon: &Canon, state: &State) -> Vec<DroppedMeter> {
     let actors = state.actors().meters.keys();
     let places = state.places().meters.keys();
     let stories = state.stories().meters.keys();
-    let carriers = (actors.map(|(id, key)| (EntityId::Actor(id.clone()), key)))
-        .chain(places.map(|(id, key)| (EntityId::Place(id.clone()), key)))
-        .chain(stories.map(|(id, key)| (EntityId::Story(id.clone()), key)))
+    let carriers = (actors.map(|(id, key)| (entity::Id::Actor(id.clone()), key)))
+        .chain(places.map(|(id, key)| (entity::Id::Place(id.clone()), key)))
+        .chain(stories.map(|(id, key)| (entity::Id::Story(id.clone()), key)))
         .chain(
             state
-                .world()
+                .globals()
                 .meters
                 .keys()
-                .map(|key| (EntityId::World, key)),
+                .map(|key| (entity::Id::World, key)),
         );
     carriers
         .filter(|(carrier, id)| canon.meter_def(carrier.as_ref(), id).is_none())
@@ -149,7 +152,7 @@ pub(crate) fn stale_meters(canon: &Canon, state: &State) -> Vec<DroppedMeter> {
 }
 
 /// Modifiers some actor holds that the pack no longer defines, or now defines on another meter.
-pub(crate) fn stale_modifiers(canon: &Canon, state: &State) -> Vec<String> {
+pub(crate) fn find_stale_modifiers(canon: &Canon, state: &State) -> Vec<String> {
     let mut stale: Vec<String> = state
         .actors()
         .modifiers
