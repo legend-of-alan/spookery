@@ -37,7 +37,7 @@ impl EntityRef<'_> {
             EntityRef::Actor(actors, id) => actors.meter_value(canon, id, key),
             EntityRef::Place(places, id) => places.meter_value(canon, id, key),
             EntityRef::Story(stories, id) => stories.meter_value(canon, id, key),
-            EntityRef::World(world) => world.meter_value(canon, key),
+            EntityRef::World(globals) => globals.meter_value(canon, key),
         }
     }
 
@@ -46,7 +46,7 @@ impl EntityRef<'_> {
             EntityRef::Actor(actors, id) => actors.has_flag(id, key),
             EntityRef::Place(places, id) => places.has_flag(id, key),
             EntityRef::Story(stories, id) => stories.has_flag(id, key),
-            EntityRef::World(world) => world.has_flag(key),
+            EntityRef::World(globals) => globals.has_flag(key),
         }
     }
 }
@@ -79,7 +79,7 @@ impl EntityMut<'_> {
             EntityMut::Actor(actors, id) => actors.shift_meter(canon, id, key, delta),
             EntityMut::Place(places, id) => places.shift_meter(canon, id, key, delta),
             EntityMut::Story(stories, id) => stories.shift_meter(canon, id, key, delta),
-            EntityMut::World(world) => world.shift_meter(canon, key, delta),
+            EntityMut::World(globals) => globals.shift_meter(canon, key, delta),
         }
     }
 
@@ -88,7 +88,7 @@ impl EntityMut<'_> {
             EntityMut::Actor(actors, id) => actors.set_flag(id, key, on),
             EntityMut::Place(places, id) => places.set_flag(id, key, on),
             EntityMut::Story(stories, id) => stories.set_flag(id, key, on),
-            EntityMut::World(world) => world.set_flag(key, on),
+            EntityMut::World(globals) => globals.set_flag(key, on),
         }
     }
 
@@ -118,7 +118,7 @@ impl EntityMut<'_> {
             EntityMut::Actor(actors, id) => actors.set_meter(canon, id, key, meter),
             EntityMut::Place(places, id) => places.set_meter(canon, id, key, meter),
             EntityMut::Story(stories, id) => stories.set_meter(canon, id, key, meter),
-            EntityMut::World(world) => world.set_meter(canon, key, meter),
+            EntityMut::World(globals) => globals.set_meter(canon, key, meter),
         }
     }
 }

@@ -108,9 +108,9 @@ pub(crate) fn find_lacking_carriers(
     let held = match carrier {
         None | Some(entity::Id::Actor(_)) => {
             let actors = state.actors();
-            let named = |actor: &&ActorId| {
-                let other = matches!(carrier, Some(entity::Id::Actor(one)) if one != *actor);
-                !other
+            let named = |actor: &&ActorId| match carrier {
+                Some(entity::Id::Actor(one)) => one == *actor,
+                _ => true,
             };
             let lacks = |actor: &&ActorId| actors.meter(actor, id).is_none();
             let lacking = actors.kind.keys().filter(named).filter(lacks).cloned();
