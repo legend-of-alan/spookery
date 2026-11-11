@@ -42,11 +42,11 @@ Every message, the client's and the table's alike, is one JSON object in one Web
 
 ## Hello
 
-The table speaks first, with `version`, the `commands` this seat may send, and, on `/player`, `open`, the PCs nobody holds now, and `taken`, the PCs held now. A claim on an open PC is still refused with `TABLE_FULL` while every player seat is held. Either is left out when empty. A player's commands are the table's own and then every verb the pack's rules name.
+The table speaks first, with `version`, the `commands` this seat may send, and, on `/player`, `open`, the PCs nobody holds now, `taken`, the PCs held now, and `pc_names`, each of those PCs' display name by id. A claim on an open PC is still refused with `TABLE_FULL` while every player seat is held. Each is left out when empty. A player's commands are the table's own and then every verb the pack's rules name.
 
 <!-- example: player-hello -->
 ```json
-{"body":{"kind":"hello","version":2,"commands":["claim","release","say","look","help","map","cancel","drop","grit","take","travel","unwield","wait","wield"],"open":["pc_harbormouse","pc_rowan","pc_wren"]}}
+{"body":{"kind":"hello","version":2,"commands":["claim","release","say","look","help","map","cancel","drop","grit","take","travel","unwield","wait","wield"],"open":["pc_harbormouse","pc_rowan","pc_wren"],"pc_names":{"pc_harbormouse":"Harbormouse","pc_rowan":"Rowan","pc_wren":"Wren"}}}
 ```
 
 <!-- example: gm-hello -->
@@ -84,7 +84,7 @@ A player claims one PC, and the table holds three claims at most. A command othe
 {"seq":5,"reply_to":"c1","body":{"kind":"refused","code":"CHOOSE_PC"}}
 ```
 
-A PC another claim holds is `SEAT_TAKEN`, a fourth claim is `TABLE_FULL`, and an id that is not a live PC is `SCHEMA`. A refused claim leaves the connection up.
+`actor` names the PC by id or by display name, ignoring case and outer spaces. A PC another claim holds is `SEAT_TAKEN`, a fourth claim is `TABLE_FULL`, a name two PCs share is `AMBIGUOUS_NAME`, and anything that names no live PC is `SCHEMA`. A refused claim leaves the connection up.
 
 Only `release` ends a claim. A connection that closes or is dropped leaves its PC held and present, so no other player can claim it, the GM cannot queue for it, and rounds still count it. The claim lasts until a `release` or until `spook run` stops. Presence is kept in memory and does not bump `state_rev`. The GM hears a `presence` whenever a claim starts or ends:
 
@@ -111,7 +111,7 @@ A GM's `release` frees the seat before its reply. A later command on that connec
 
 ### say
 
-`address` is `table`, `place` with a `place` id, or `actor` with an `actor` id. `text` is at most 4096 characters. The table sets `from` from the connection: `player:<id>` or `gm`. A `from` in `args` is `SCHEMA`. A say goes on the session tape and takes no round. Every seat that hears it gets one `say` under one `seq`, and the sender's copy is the reply. The GM's copy lists `recipients`, the seated players who heard it.
+`address` is `table`, `place` with a `place` id, or `actor` with an `actor`. A player names the actor by id or display name, as a move names its target: an actor not in sight is `NOT_IN_SPEC`, and a name two in sight share is `AMBIGUOUS_NAME`. `text` is at most 4096 characters. The table sets `from` from the connection: `player:<id>` or `gm`. A `from` in `args` is `SCHEMA`. A say goes on the session tape and takes no round. Every seat that hears it gets one `say` under one `seq`, and the sender's copy is the reply. The GM's copy lists `recipients`, the seated players who heard it.
 
 <!-- example: player-say -->
 ```json
@@ -130,7 +130,7 @@ A GM's `release` frees the seat before its reply. A later command on that connec
 
 ### Moves
 
-A move is a pack verb, its target in `target`. With a GM seated, the move waits for `commit`. The reply is `queued`, and the GM gets the same `queued` under the same `seq`. `intent` is the queue id. With no GM seated, the move commits its own round, and the reply comes after that round is written.
+A move is a pack verb, its target in `target`. The target is an id or a display name the player sees, ignoring case and outer spaces, and an exit also answers to the place it goes to, by id or name. A name that two things in sight share is refused `AMBIGUOUS_NAME` before it is queued, and `detail` is that name and every id that has it, `Briar: npc_briar, npc_oden`. With a GM seated, the move waits for `commit`. The reply is `queued`, and the GM gets the same `queued` under the same `seq`. `intent` is the queue id. With no GM seated, the move commits its own round, and the reply comes after that round is written.
 
 <!-- example: player-grit -->
 ```json
@@ -151,7 +151,7 @@ A move the table can judge at once is refused before it is queued. Here Rowan se
 {"seq":21,"reply_to":"c5","body":{"kind":"refused","code":"NO_EXIT","detail":"The stair door is locked."}}
 ```
 
-`look` takes no round and answers with a fresh `view`. `help` and `map` take none either, and answer with data the client prints. `help` lists the player commands but `claim`, then each pack verb this PC can use here and now. Each command has a `target`: `none`, `actor`, `place`, `exit` or `item`. `names` lists what the PC can name for it now: the exits from here, the actors or items it may name, or the places it visited. A cast member's or item's verb carries that `owner` as its one name, so it reads as `ask briar`, and it shows only while they are in sight. A verb whose `if` fails now is left out, but cost is not checked. The exits and the busy line are in the `view`, not in `help`.
+`look` takes no round and answers with a fresh `view`. `help` and `map` take none either, and answer with data the client prints. `help` lists the player commands but `claim`, then each pack verb this PC can use here and now. Each command has a `target`: `none`, `actor`, `place`, `exit` or `item`. `names` lists what the PC can name for it now, by the names the player reads: the exits from here, the actors or items it may name, or the places it visited. A cast member's or item's verb carries that `owner` id, and its name as its one name, so it reads as `ask Briar`, and it shows only while they are in sight. A verb whose `if` fails now is left out, but cost is not checked. The exits and the busy line are in the `view`, not in `help`.
 
 <!-- example: player-help -->
 ```json
@@ -162,13 +162,13 @@ A move the table can judge at once is refused before it is queued. Here Rowan se
   {"name":"help","target":"none"},
   {"name":"map","target":"none"},
   {"name":"cancel","target":"none"},
-  {"name":"drop","target":"item","names":["lamp_oil"]},
+  {"name":"drop","target":"item","names":["Lamp oil"]},
   {"name":"grit","target":"none"},
-  {"name":"take","target":"item","names":["lamp_oil"]},
-  {"name":"travel","target":"exit","names":["docks_street","stairs"]},
+  {"name":"take","target":"item","names":["Lamp oil"]},
+  {"name":"travel","target":"exit","names":["Docks Street","stairs"]},
   {"name":"unwield","target":"none"},
   {"name":"wait","target":"none"},
-  {"name":"wield","target":"item","names":["lamp_oil"]}
+  {"name":"wield","target":"item","names":["Lamp oil"]}
 ]}}
 ```
 
@@ -340,7 +340,7 @@ A client ignores a `kind` or a field it does not know. `server.json` gives every
 
 ### view and resume
 
-`viewer` is the bare actor id. `place_name` and `actor_names` are the pack's display names, and `body` is the place prose. `known_facts` hold only the facts that actor knows, with the prose that actor may read. `meters` are the viewer's own, without hidden ones. `world_meters` are the world's meters whose pack row says `hidden: false`, at their current values, so a player who comes back sees them. `exits` is left out when the place has none. `busy` says what keeps the viewer busy and until when, and is left out when they are free: `on the stairs until tick 1300` on a walk, `chanting until tick 1300` on any other timed move, read from its verb, and `recovering until tick 1300` in a cooldown. A busy player may still send a move, and it is refused `BUSY`, except `cancel` (see [Moves](#moves)). `cant_act` says why the viewer can't send a move at all, and is left out when they can, so `View::can_act()` is `cant_act` being empty. Nothing sets it yet.
+`viewer` is the bare actor id. `place_name`, `actor_names` and each item's `name` are the pack's display names, and `body` is the place prose. `known_facts` hold only the facts that actor knows, with the prose that actor may read. `meters` are the viewer's own, without hidden ones. `world_meters` are the world's meters whose pack row says `hidden: false`, at their current values, so a player who comes back sees them. `exits` is left out when the place has none. `busy` says what keeps the viewer busy and until when, and is left out when they are free: `on the stairs until tick 1300` on a walk, `chanting until tick 1300` on any other timed move, read from its verb, and `recovering until tick 1300` in a cooldown. A busy player may still send a move, and it is refused `BUSY`, except `cancel` (see [Moves](#moves)). `cant_act` says why the viewer can't send a move at all, and is left out when they can, so `View::can_act()` is `cant_act` being empty. Nothing sets it yet.
 
 <!-- example: player-resume -->
 ```json
@@ -377,7 +377,8 @@ A client ignores a `kind` or a field it does not know. `server.json` gives every
     "items": [
       {
         "id": "lamp_oil",
-        "count": 4
+        "count": 4,
+        "name": "Lamp oil"
       }
     ],
     "meters": [
@@ -486,11 +487,12 @@ A refusal is a `refused` body, and the connection stays up. `detail` is there on
 | `SEAT_TAKEN` | That PC is held. Claim another. |
 | `CHOOSE_PC` | Claim one of the PCs in the hello's `open`. An empty `open` means none is free. |
 | `SCHEMA` | Fix the message: its shape, its command, or its arguments. |
-| `NOT_IN_SPEC` | The verb has no rule that applies, `commit` set `include_round` false with a move queued, or the seat was released or, over MCP, never taken. |
+| `NOT_IN_SPEC` | The verb has no rule that applies, its target or a say's actor is not in sight, `commit` set `include_round` false with a move queued, or the seat was released or, over MCP, never taken. |
 | `LINE_TOO_LONG` | Send a message under 8 KiB. |
 | `UNSCOPED_PERCEIVE` | Send `perceive` with `as` set to a bare actor id. |
 | `ACTOR_MISMATCH` | That actor is a player's, or the move is not this actor's. |
 | `NO_EXIT`, `CANT_AFFORD`, `MISSING_ITEM`, `NOT_A_WEAPON`, `BUSY` | The move was not queued. `BUSY` clears when the character is free. |
+| `AMBIGUOUS_NAME` | Two things in sight, or two PCs, share that name. Name one by an id `detail` lists. |
 | `UNKNOWN_MOVE`, `UNKNOWN_ID` | That move or id is not in the world, or the token is no claim's. |
 | `INELIGIBLE`, `OUT_OF_RANGE`, `BUDGET`, `UNKNOWN_EFFECT`, `ILLEGAL_KNOWLEDGE`, `VIEWER_MISMATCH`, `ENGINE_ON_PLAYER`, `TABLE_EMPTY` | The rules refused the change, and nothing of it was kept. |
 | `COMMIT_CONFLICT` | Another process holds the pack. Stop. |

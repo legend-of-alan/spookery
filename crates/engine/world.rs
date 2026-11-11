@@ -10,7 +10,7 @@ use crate::canon::Budget;
 use crate::canon::{check_save, load_canon, pack_rev, Canon};
 use crate::diagnostic::{error, first_reason, locate_nth, schema_error, Code, Diagnostic};
 use crate::entity;
-use crate::intent::{Intent, IntentArgs, Source, Target};
+use crate::intent::{Intent, IntentArgs, Source, Target, Viewer};
 use crate::rules::context::Context;
 use crate::rules::effect::{payload_json, Effect};
 use crate::rules::gate;
@@ -22,7 +22,7 @@ use crate::store::records::Record;
 use crate::store::save;
 use crate::store::tape::{append_record, read_scrollback, TapeRecord};
 use crate::Reason;
-use spookery_protocol::{QueuedMove, Speaker, PERCEIVE_BODY_CHARS};
+use spookery_protocol::{QueuedMove, Refusal, Speaker, PERCEIVE_BODY_CHARS};
 
 /// One say, in characters. Four kibibytes still fits in an 8 KiB client message.
 const MAX_SAY_CHARS: usize = 4 * 1024;
@@ -96,19 +96,36 @@ impl World {
         crate::round::play_catch_up(self, now_wall, downtime_hours)
     }
 
-    /// Append a player's say. `presence` is who can hear it.
+    /// Append a player's say. `presence` is who can hear it. The actor it is said to is named
+    /// by id or display name among the actors in sight, as a move's target is: none is
+    /// `NOT_IN_SPEC`, and a name two of them share is `AMBIGUOUS_NAME`.
     pub fn say_as_player(
         &self,
         presence: &Presence,
         actor_id: &ActorId,
         heard: Address<'_>,
         text: &str,
-    ) -> Result<TapeRecord, Reason> {
+    ) -> Result<TapeRecord, Refusal> {
         if self.state.actors().kind.get(actor_id) != Some(&ActorKind::Pc) {
-            return Err(Reason::Schema);
+            return Err(Reason::Schema.into());
         }
+        let addressee;
+        let heard = match heard {
+            Address::Actor(typed) => {
+                let viewer = Viewer::Player(actor_id.clone());
+                let mut nameable = gate::list_nameable(&self.canon, &self.state, presence, &viewer);
+                nameable.retain(|thing| self.state.actors().kind.contains_key(thing.id.as_str()));
+                let found = gate::find_named(&nameable, typed).map_err(|detail| Refusal {
+                    detail: Some(detail),
+                    ..Reason::AmbiguousName.into()
+                })?;
+                addressee = found.ok_or(Reason::NotInSpec)?.to_string();
+                Address::Actor(&addressee)
+            }
+            heard => heard,
+        };
         let from = Speaker::Player(actor_id.to_string());
-        self.append_speech(presence, from, Some(actor_id), heard, text)
+        Ok(self.append_speech(presence, from, Some(actor_id), heard, text)?)
     }
 
     pub fn say_as_gm(
@@ -183,6 +200,17 @@ impl<L> World<L> {
             .map(|(id, _)| id)
     }
 
+    /// The PC `typed` names, by id or display name, ignoring case and outer spaces. `None`
+    /// when no PC has that name, and `AMBIGUOUS_NAME` when two do.
+    pub fn find_pc(&self, typed: &str) -> Result<Option<ActorId>, Reason> {
+        let pcs = self
+            .pcs()
+            .map(|id| (id.as_str(), self.canon.display_name(id.as_str())));
+        let pcs: Vec<gate::NamedId> = pcs.map(|(id, name)| gate::NamedId::new(id, name)).collect();
+        let found = gate::find_named(&pcs, typed).map_err(|_| Reason::AmbiguousName)?;
+        Ok(found.map(ActorId::from))
+    }
+
     pub fn state(&self) -> &State {
         &self.state
     }
@@ -193,16 +221,30 @@ impl<L> World<L> {
     }
 
     /// Gate a player's line with `presence` seated, then queue it. The line is an intent
-    /// from the start, so each refusal names its id. Only a save at the last round index has
-    /// no next round to name, and refuses `SCHEMA` with an empty id.
+    /// from the start, so each refusal names its id. A typed name stands for the one id in
+    /// sight that has it, and a name two of them share is `AMBIGUOUS_NAME`, its detail the
+    /// name and those ids, as `Briar: npc_briar, npc_oden`. Only a save at
+    /// the last round index has no next round to name, and refuses `SCHEMA` with an empty id.
+    /// Returns the queued move and the target id it names.
     pub fn queue_player_move(
         &mut self,
         presence: &Presence,
         actor_id: &ActorId,
         verb: &str,
         target: Option<&str>,
-    ) -> Result<QueuedMove, gate::Refusal> {
-        let token = target.filter(|token| !token.is_empty());
+    ) -> Result<(QueuedMove, Option<String>), gate::Refusal> {
+        let typed = target.filter(|token| !token.is_empty());
+        let viewer = Viewer::Player(actor_id.clone());
+        let nameable = match typed {
+            Some(_) => gate::list_nameable(&self.canon, &self.state, presence, &viewer),
+            None => Vec::new(),
+        };
+        let named = match typed {
+            Some(typed) => gate::find_named(&nameable, typed).map(|id| id.map(String::from)),
+            None => Ok(None),
+        };
+        let resolved = named.clone().unwrap_or_default();
+        let token = resolved.as_deref().or(typed);
         let Ok(mut intent) = Intent::player(&self.state, actor_id, verb, token) else {
             return Err(gate::Refusal {
                 id: String::new(),
@@ -210,6 +252,12 @@ impl<L> World<L> {
                 detail: None,
             });
         };
+        if let Err(detail) = named {
+            return Err(gate::Refusal {
+                detail: Some(detail),
+                ..gate::Refusal::new(&intent, Reason::AmbiguousName)
+            });
+        }
         if gate::is_cancel(&intent) {
             if token.is_some() || self.queue.iter().any(|queued| queued.id == intent.id) {
                 return Err(gate::Refusal::new(&intent, Reason::Schema));
@@ -220,15 +268,16 @@ impl<L> World<L> {
             intent.target = shaped.map_err(|code| gate::Refusal::new(&intent, code))?;
             let context = Context::new(&self.canon, &self.state, presence, &intent);
             let rule = gate::rule_of(&context)?;
-            gate::admit(&context, rule)?;
+            gate::admit(&context, rule, Some(&nameable))?;
         }
         let queued = QueuedMove {
             id: intent.id.clone(),
             actor_id: actor_id.to_string(),
             move_name: verb.to_string(),
         };
+        let target = intent.target.token().map(String::from);
         self.queue_intent(intent);
-        Ok(queued)
+        Ok((queued, target))
     }
 
     /// The target a PC's line names for the rule it picks. A line already queued is `SCHEMA`.
@@ -302,7 +351,7 @@ impl<L> World<L> {
             rationale_code: spec.rationale_code,
         };
         let context = Context::new(canon, state, presence, &intent);
-        gate::admit(&context, rule).map_err(|refusal| refusal.code)?;
+        gate::admit(&context, rule, None).map_err(|refusal| refusal.code)?;
         self.queue_intent(intent);
         Ok(QueuedMove {
             id,
@@ -479,23 +528,8 @@ impl World<()> {
         }
         let now_bytes = journal::read_save(&journal::save_path(root))?;
         let canon = Arc::new(load_canon(root).map_err(|diags| first_reason(&diags))?);
-        let now_text = std::str::from_utf8(&now_bytes).map_err(|_| Reason::Schema)?;
-        let state = save::parse(now_text).map_err(|diags| first_reason(&diags))?;
-        let live = journal::read_live_records(root).unwrap_or_default();
-        let mut problems = check_save_text(&state, &now_bytes);
-        if let Some(diag) = check_pack_rev(root, tip_pack_rev(&live, &state), &now_bytes) {
-            problems.insert(0, diag);
-        }
-        let continues = journal_continues(&live, &state);
-        if continues {
-            problems.retain(|diag| diag.code != Code::Error(Reason::HandEdit));
-        }
-        if !problems.is_empty() {
-            return Err(first_reason(&problems));
-        }
-        if !continues {
-            check_save(&canon, &state).map_err(|diags| first_reason(&diags))?;
-        }
+        let state =
+            load_save_file(root, Some(&canon), &now_bytes).map_err(|diags| first_reason(&diags))?;
         Ok(Self {
             root: root.to_path_buf(),
             canon,
@@ -627,6 +661,70 @@ fn journal_continues(live: &[Record], state: &State) -> bool {
     })
 }
 
+/// The save in `bytes`, or every problem with it. A hand edit is refused unless a later
+/// migrate record accepted it. A checkpoint save is not the tip, so only a save that no
+/// record continues is checked against `canon`.
+fn load_save_file(
+    root: &Path,
+    canon: Option<&Canon>,
+    bytes: &[u8],
+) -> Result<State, Vec<Diagnostic>> {
+    let text = std::str::from_utf8(bytes).map_err(|_| {
+        vec![schema_error(
+            "state/save.yaml",
+            "this file is not UTF-8 text",
+            "save it as UTF-8",
+        )
+        .at_path("schema")]
+    })?;
+    let state = save::parse(text)?;
+    let live = journal::read_live_records(root).unwrap_or_default();
+    let mut problems = check_save_text(&state, bytes);
+    if let Some(diag) = check_pack_rev(root, tip_pack_rev(&live, &state), bytes) {
+        problems.insert(0, diag);
+    }
+    let migrate_follows = live.iter().any(|entry| {
+        matches!(entry, Record::Migrate(_)) && entry.state_rev_after() > state.state_rev
+    });
+    let continues = journal_continues(&live, &state);
+    let is_hand_edit = |diag: &Diagnostic| diag.code == Code::Error(Reason::HandEdit);
+    if migrate_follows {
+        problems.retain(|diag| !is_hand_edit(diag));
+    } else if !problems.iter().any(is_hand_edit) {
+        match journal::edits_head(root, state.state_rev, bytes) {
+            Ok(false) => {}
+            Ok(true) => problems.push(
+                error(
+                    "state/save.yaml",
+                    Reason::HandEdit,
+                    "this save differs from the checkpoint head it claims",
+                    "restore the file, or run spook migrate to keep the edit if no round follows it",
+                )
+                .at_path("save"),
+            ),
+            Err(fault) => problems.push(
+                error(
+                    "state/journal/head.json",
+                    fault.reason,
+                    "the checkpoint head could not be read",
+                    "check that state/journal/head.json is readable",
+                )
+                .at_path("schema"),
+            ),
+        }
+    }
+    if let Some(canon) = canon.filter(|_| !continues) {
+        if let Err(more) = check_save(canon, &state) {
+            problems.extend(more);
+        }
+    }
+    if problems.is_empty() {
+        Ok(state)
+    } else {
+        Err(problems)
+    }
+}
+
 /// Read the pack and report every loader and lint problem. Writes nothing.
 pub fn check_pack(root: &Path) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
@@ -637,62 +735,22 @@ pub fn check_pack(root: &Path) -> Vec<Diagnostic> {
             None
         }
     };
-    let now_path = journal::save_path(root);
-    let loaded = match journal::read_save(&now_path) {
-        Ok(bytes) => match std::str::from_utf8(&bytes) {
-            Ok(text) => match save::parse(text) {
-                Ok(state) => Some((bytes, state)),
-                Err(more) => {
-                    diags.extend(more);
-                    None
-                }
-            },
-            Err(_) => {
-                diags.push(
-                    schema_error(
-                        "state/save.yaml",
-                        "this file is not UTF-8 text",
-                        "save it as UTF-8",
-                    )
-                    .at_path("schema"),
-                );
-                None
-            }
-        },
-        Err(Reason::NotInSpec) => None,
-        Err(reason) => {
-            diags.push(
-                error(
-                    "state/save.yaml",
-                    reason,
-                    "state/save.yaml could not be read",
-                    "check that the file is readable",
-                )
-                .at_path("schema"),
-            );
-            None
-        }
-    };
-    if let Some((bytes, state)) = &loaded {
-        let live = journal::read_live_records(root).unwrap_or_default();
-        let mut problems = check_save_text(state, bytes);
-        // A migrate record past the checkpoint has already accepted the save's edit.
-        let migrating = live.iter().any(|entry| {
-            matches!(entry, Record::Migrate(_)) && entry.state_rev_after() > state.state_rev
-        });
-        if migrating {
-            problems.retain(|diag| diag.code != Code::Error(Reason::HandEdit));
-        }
-        if let Some(diag) = check_pack_rev(root, tip_pack_rev(&live, state), bytes) {
-            problems.insert(0, diag);
-        }
-        diags.extend(problems);
-        // A checkpoint save is not the tip. Resume checks the tip when it opens.
-        if let Some(canon) = canon.as_ref().filter(|_| !journal_continues(&live, state)) {
-            if let Err(more) = check_save(canon, state) {
+    match journal::read_save(&journal::save_path(root)) {
+        Ok(bytes) => {
+            if let Err(more) = load_save_file(root, canon.as_ref(), &bytes) {
                 diags.extend(more);
             }
         }
+        Err(Reason::NotInSpec) => {}
+        Err(reason) => diags.push(
+            error(
+                "state/save.yaml",
+                reason,
+                "state/save.yaml could not be read",
+                "check that the file is readable",
+            )
+            .at_path("schema"),
+        ),
     }
     if let Some(canon) = &canon {
         diags.extend(crate::canon::check_canon(canon));

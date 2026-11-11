@@ -27,6 +27,14 @@ fn the_player_says_to(world: &mut World, text: String, actor: String) {
     say_as_rowan(world, args);
 }
 
+#[then(expr = "a line to mira, out of sight, is refused {string}")]
+fn a_line_to_mira_is_refused(world: &mut World, code: String) {
+    let args = serde_json::json!({ "address": "actor", "actor": "mira", "text": "hello" });
+    let seat = &table::player_client(world, "pc_rowan").seat;
+    let reply = seat.wait_reply(&seat.send("say", args));
+    assert!(reply.contains(&format!("\"code\":\"{code}\"")), "{reply}");
+}
+
 fn say_as_rowan(world: &World, args: Value) {
     let seat = &table::player_client(world, "pc_rowan").seat;
     let id = seat.send("say", args);
@@ -34,7 +42,7 @@ fn say_as_rowan(world: &World, args: Value) {
     assert!(reply.contains("\"kind\":\"say\""), "{reply}");
 }
 
-#[when(expr = "say to mira is submitted on an empty table saying {string}")]
+#[when(expr = "say to aldric is submitted on an empty table saying {string}")]
 fn say_to_mira_on_an_empty_table(world: &mut World, text: String) {
     let pack = table::pack(world);
     let opened = spookery_engine::testing::resume(pack);
@@ -44,7 +52,7 @@ fn say_to_mira_on_an_empty_table(world: &mut World, text: String) {
         .say_as_player(
             &spookery_engine::Presence::default(),
             &"pc_rowan".into(),
-            spookery_engine::Address::Actor("mira"),
+            spookery_engine::Address::Actor("aldric"),
             &text,
         )
         .unwrap_or_else(|err| panic!("speak: {err}"));

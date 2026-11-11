@@ -23,9 +23,9 @@ Feature: Play shows readable text
     And stdout shows the picker:
       """
       Choose a character:
-      pc_harbormouse
-      pc_rowan (in use)
-      pc_wren
+      Harbormouse
+      Rowan (in use)
+      Wren
       """
 
   Scenario: Raw play shows protocol frames

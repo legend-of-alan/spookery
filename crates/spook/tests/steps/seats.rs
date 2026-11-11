@@ -65,9 +65,9 @@ fn players_is(world: &mut World, count: u32) {
     assert_eq!(table::read_presence(world).0, count);
 }
 
-#[then(expr = "the present actor is pc_rowan")]
-fn the_present_actor_is_pc_rowan(world: &mut World) {
-    assert_eq!(table::read_presence(world).1, vec!["pc_rowan".to_string()]);
+#[then(expr = "the present actor is {word}")]
+fn the_present_actor_is(world: &mut World, actor: String) {
+    assert_eq!(table::read_presence(world).1, vec![actor]);
 }
 
 #[then(expr = "state_rev is 0")]

@@ -1,0 +1,14 @@
+schema: budget
+max_intents_applied: 12
+max_npcs_acting: 8
+max_effects_per_intent: 4
+max_state_keys_mutated: 24
+max_memory_writes: 8
+idle_acts_per_window: 3
+live_acts_per_window: 6
+live_act_window_ticks: 60
+round_every_real_seconds: 300
+idle_ticks_per_round: 60
+live_ticks_per_round: 5
+idle_catchup_max_rounds: 12
+idle_max_ticks_per_real_hour: 480

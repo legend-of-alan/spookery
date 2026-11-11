@@ -160,6 +160,9 @@ Feature: A hand edit waits for migrate
     Then the command exits 1
     And stderr names HAND_EDIT
     And the pack bytes are unchanged
+    When the operator runs spook check
+    Then stderr names HAND_EDIT
+    And the host refuses to start with HAND_EDIT
 
   Scenario: A plain migrate keeps its bytes
     Given a docks table
