@@ -6,4 +6,4 @@ tags: []
 rules: []
 ---
 
-A rune-cut iron nail, made to hold a wheel.
+A rune-cut iron nail, made to ward the wheel on the cart in the yard.

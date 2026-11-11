@@ -64,21 +64,21 @@ const DEMO_WARD: &[&str] = &[
     "travel wheel_shed",
     "take nail",
     "travel gate_yard",
-    "ward_the_wheel",
+    "ward",
     "travel mill_lane",
 ];
 const DEMO_BRACE: &[&str] = &[
     "ask npc_briar",
     "travel wheel_shed",
     "take nail",
-    "brace_the_cart",
+    "brace",
     "travel gate_yard",
     "travel mill_lane",
 ];
 
 const DEFAULT_ENDING: &str = "Nell is on the lane. That is the end.";
 const NAIL_KEPT_ENDING: &str =
-    "The nail is still in Corin's pocket, unspent. Oden will remember who put a shoulder to his cart.";
+    "The nail is still in Corin's pocket, unspent. Oden will remember who put a shoulder to his cart. That is the end.";
 
 #[given(expr = "sample-d20 and a recorded line script")]
 fn sample_d20_and_a_recorded_line_script(world: &mut World) {

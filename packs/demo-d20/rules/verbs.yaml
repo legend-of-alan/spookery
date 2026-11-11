@@ -76,9 +76,9 @@ rules:
       - unwield:
           who: self
 
-  - id: ward_the_wheel
+  - id: ward
     when:
-      verb: ward_the_wheel
+      verb: ward
     if:
       - at:
           who: self
@@ -98,9 +98,9 @@ rules:
           to: self
           text: The nail holds the wheel. The cart settles.
 
-  - id: brace_the_cart
+  - id: brace
     when:
-      verb: brace_the_cart
+      verb: brace
     if:
       - at:
           who: self

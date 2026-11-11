@@ -80,7 +80,7 @@ Type `help` any time. It lists the commands you can type here and now, and what 
 
 `packs/sample-d20` is the one to play first. It's one small yard with a single puzzle and a few ways to solve it. The tests play it to the ending.
 
-`packs/demo-d20` is a short demo built from that yard. Corin can ward the wheel with a nail, or help Oden brace the cart and keep the nail, and the two paths have different closing lines. The tests play it to both endings.
+`packs/demo-d20` is a short demo built from that yard. Corin can type `ward` to set the wheel with a nail, or `brace` to help Oden and keep the nail, and the two paths have different closing lines. The tests play it to both endings.
 
 `packs/oneshot-docks` is a test fixture. It has three player characters at the docks, and the engine and seat tests use it to check multi-player rules. You can host it too, but there's no story to finish.
 

@@ -25,6 +25,6 @@ rules:
             - pc_corin
           place: wheel_shed
           fact_ids: []
-          text: Oden keeps the wheel turning. The cart stays until that wheel is warded, or until someone puts a shoulder to it.
+          text: Ward the wheel with the nail, back at the cart in the yard, or brace the cart here with him and keep the nail.
 ---
 Oden works the wheel in the shed and stays out of the yard.

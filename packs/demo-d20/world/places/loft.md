@@ -9,4 +9,4 @@ facts:
   - id: fact_ask_briar
     text: Briar steps aside if asked. A swing at him can miss.
 ---
-A ladder leads to a dry loft above the yard. A slate leans on the ladder.
+A ladder leads to a dry loft above the yard. A bent iron latch lies by the slate on the ladder.
