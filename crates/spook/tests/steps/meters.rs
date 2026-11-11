@@ -6,7 +6,7 @@ use std::path::Path;
 use cucumber::{given, then, when};
 use serde_json::Value;
 use spookery_engine::testing::state_of;
-use spookery_engine::{load_canon, EntityId, Meter, Presence};
+use spookery_engine::{entity, load_canon, Meter, Presence};
 
 use super::common::replace_in_file;
 use super::record::read_extra_steps;
@@ -67,13 +67,13 @@ fn pack(world: &World) -> &Path {
     world.pack.as_deref().unwrap()
 }
 
-fn value_on(pack: &Path, entity: &EntityId, key: &str) -> Option<i64> {
+fn value_on(pack: &Path, id: &entity::Id, key: &str) -> Option<i64> {
     let canon = load_canon(pack).unwrap_or_else(|err| panic!("load: {err:?}"));
-    state_of(pack).entity(entity).meter_value(&canon, key).ok()
+    state_of(pack).entity(id).meter_value(&canon, key).ok()
 }
 
-fn mira() -> EntityId {
-    EntityId::Actor("mira".into())
+fn mira() -> entity::Id {
+    entity::Id::Actor("mira".into())
 }
 
 /// Give the save the meters the pack now declares, then play one round.
@@ -377,7 +377,7 @@ fn both_rules_run_three_rounds(world: &mut World) {
 
 #[then(expr = "dawn is 0, held once by the world")]
 fn dawn_is_zero(world: &mut World) {
-    assert_eq!(value_on(pack(world), &EntityId::World, "dawn"), Some(0));
+    assert_eq!(value_on(pack(world), &entity::Id::Global, "dawn"), Some(0));
 }
 
 #[then(expr = "no actor carries a dawn meter")]
@@ -399,7 +399,7 @@ fn the_vigil_fires_once(world: &mut World) {
         .filter(|name| name == "story:vigil/dawn_breaks")
         .count();
     assert_eq!(fired, 1);
-    assert!(state_of(pack).world().flags.contains("dawn_broke"));
+    assert!(state_of(pack).globals().flags.contains("dawn_broke"));
 }
 
 /// Give the world a `morning` meter from 0, and append effects to the vigil's dawn rule, the
@@ -541,7 +541,10 @@ fn the_worlds_dawn_is_still(world: &mut World, value: i64) {
 
 #[then(expr = "the world's {word} is {int}")]
 fn the_worlds_meter_is(world: &mut World, key: String, value: i64) {
-    assert_eq!(value_on(pack(world), &EntityId::World, &key), Some(value));
+    assert_eq!(
+        value_on(pack(world), &entity::Id::Global, &key),
+        Some(value)
+    );
 }
 
 #[then(expr = "it refuses the rule, saying a world change rule has no self")]
@@ -602,12 +605,12 @@ fn dawn_has_fallen(world: &mut World, value: i64) {
             base: 6,
             offset: value - 6,
         };
-        now.world_mut()
+        now.globals_mut()
             .set_meter(canon, "dawn", Some(fallen))
             .unwrap();
-        support::put_meter(now, canon, &EntityId::World, "doom", 6);
+        support::put_meter(now, canon, &entity::Id::Global, "doom", 6);
     });
-    assert_eq!(value_on(&pack, &EntityId::World, "dawn"), Some(value));
+    assert_eq!(value_on(&pack, &entity::Id::Global, "dawn"), Some(value));
 }
 
 #[when(expr = "the player reconnects and claims pc_rowan")]

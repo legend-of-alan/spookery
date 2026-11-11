@@ -1,6 +1,6 @@
-//! Item counts, and the kind-free rule for shifting one.
+//! Item counts, and the rule for shifting one, the same in every collection.
 
-use super::change::{self, Change};
+use crate::state::change::{self, Change};
 use crate::Reason;
 
 /// `current` moved by `delta`. Removing from a count of 0 is `MISSING_ITEM`, and a shortfall from
@@ -27,7 +27,7 @@ pub(super) fn shift_count(current: u32, delta: i64, max: Option<i64>) -> Result<
 
 /// The count `held` moved as `shift_count` says, and the change that reports under `key`. A count
 /// of 0 is no entry.
-pub(super) fn shift(
+pub(in crate::state) fn shift(
     held: Option<u32>,
     delta: i64,
     max: Option<i64>,

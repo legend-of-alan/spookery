@@ -5,15 +5,16 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
-use super::id::{EntityRef, ExitId, PlaceId};
-use super::meter::{self, Meter};
-use super::{change, flag, item, nested_map, undo, Writer};
 use crate::canon::Canon;
+use crate::state::component::meter::{self, Meter};
+use crate::state::component::{flag, item};
+use crate::state::id::{ExitId, PlaceId};
+use crate::state::{change, entity, nested_map, undo, Writer};
 use crate::Reason;
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
-pub struct PlaceComponents {
+pub struct Places {
     #[serde(with = "nested_map")]
     pub items: undo::Store<BTreeMap<(PlaceId, String), u32>>,
     /// The meters each place file declares.
@@ -26,10 +27,10 @@ pub struct PlaceComponents {
     pub open_exits: undo::Store<BTreeSet<(PlaceId, String)>>,
 }
 
-impl PlaceComponents {
+impl Places {
     /// The current value of meter `key` on `place`, or `UNKNOWN_ID` when it does not carry it.
     pub fn meter_value(&self, canon: &Canon, place: &PlaceId, key: &str) -> Result<i64, Reason> {
-        let def = canon.meter_def(EntityRef::Place(place), key);
+        let def = canon.meter_def(entity::IdRef::Place(place), key);
         meter::read(def, nested_map::get(&self.meters, place, key))
     }
 
@@ -50,9 +51,9 @@ impl PlaceComponents {
     }
 
     /// Every store, as the log a rollback undoes and an accept clears.
-    pub(super) fn logs_mut(&mut self) -> [&mut dyn undo::Log; 4] {
+    pub(in crate::state) fn logs_mut(&mut self) -> [&mut dyn undo::Log; 4] {
         // Every store, with no `..`: a store added later must be listed here to compile.
-        let PlaceComponents {
+        let Places {
             items,
             meters,
             flags,
@@ -62,7 +63,7 @@ impl PlaceComponents {
     }
 }
 
-impl Writer<'_, PlaceComponents> {
+impl Writer<'_, Places> {
     /// Move the count of `id` lying in `place` as `item::shift_count` says. A place the pack does
     /// not define is `UNKNOWN_ID`.
     pub fn shift_item(
@@ -91,7 +92,7 @@ impl Writer<'_, PlaceComponents> {
     ) -> Result<(), Reason> {
         let (components, transaction) = (&mut *self.components, &mut *self.transaction);
         let def = canon
-            .meter_def(EntityRef::Place(place), key)
+            .meter_def(entity::IdRef::Place(place), key)
             .ok_or(Reason::UnknownId)?;
         let entry = (place.clone(), key.to_string());
         let watched = change::Key::PlaceMeter(place.to_string(), key.to_string());
@@ -111,7 +112,7 @@ impl Writer<'_, PlaceComponents> {
         meter: Option<Meter>,
     ) -> Result<(), Reason> {
         let (components, transaction) = (&mut *self.components, &mut *self.transaction);
-        let def = canon.meter_def(EntityRef::Place(place), key);
+        let def = canon.meter_def(entity::IdRef::Place(place), key);
         let entry = (place.clone(), key.to_string());
         let watched = change::Key::PlaceMeter(place.to_string(), key.to_string());
         let (next, change) = meter::next(components.meters.get(&entry), meter, def, Ok(0), watched);

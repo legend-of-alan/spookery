@@ -4,21 +4,22 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
-use super::change::{self, Change};
-use super::id::{ActorId, EntityRef};
-use super::meter::{self, Meter};
-use super::modifier::{self, Modifier};
-use super::transaction::Transaction;
-use super::{flag, item, nested_map, sort_unique, undo, Writer};
 use crate::canon::Canon;
 use crate::intent::{Target, Viewer};
+use crate::state::change::{self, Change};
+use crate::state::component::meter::{self, Meter};
+use crate::state::component::modifier::{self, Modifier};
+use crate::state::component::{flag, item};
+use crate::state::id::ActorId;
+use crate::state::transaction::Transaction;
+use crate::state::{entity, nested_map, sort_unique, undo, Writer};
 use crate::Reason;
 
 /// Every actor's components, by actor id. An actor exists when it has a kind; `kind`, `place`
 /// and `acts` have an entry for every actor, the rest only for actors holding something.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
-pub struct ActorComponents {
+pub struct Actors {
     /// Whether each actor is a PC or an NPC. An actor exists when it has a kind.
     pub kind: undo::Store<BTreeMap<ActorId, ActorKind>>,
     /// Where each actor stands: a place id, or `exit:<place>.<exit>` while they walk.
@@ -43,7 +44,7 @@ pub struct ActorComponents {
     pub flags: undo::Store<BTreeSet<(ActorId, String)>>,
 }
 
-impl ActorComponents {
+impl Actors {
     /// Meter `key` as `actor` holds it, before modifiers.
     pub fn meter(&self, actor: &ActorId, key: &str) -> Option<&Meter> {
         nested_map::get(&self.meters, actor, key)
@@ -69,9 +70,9 @@ impl ActorComponents {
         key: &str,
         modifiers: Result<i64, Reason>,
     ) -> Result<i64, Reason> {
-        let def = canon.meter_def(EntityRef::Actor(actor), key);
+        let def = canon.meter_def(entity::IdRef::Actor(actor), key);
         let held = self.meter(actor, key).ok_or(Reason::UnknownId);
-        meter::current(def.ok_or(Reason::UnknownId)?, held?, modifiers?)
+        meter::value(def.ok_or(Reason::UnknownId)?, held?, modifiers?)
     }
 
     /// How many of `item` `actor` holds, or `None` when there is no such actor.
@@ -89,9 +90,9 @@ impl ActorComponents {
     }
 
     /// Every store, as the log a rollback undoes and an accept clears.
-    pub(super) fn logs_mut(&mut self) -> [&mut dyn undo::Log; 10] {
+    pub(in crate::state) fn logs_mut(&mut self) -> [&mut dyn undo::Log; 10] {
         // Every store, with no `..`: a store added later must be listed here to compile.
-        let ActorComponents {
+        let Actors {
             kind,
             place,
             wielded,
@@ -118,12 +119,9 @@ impl ActorComponents {
     }
 }
 
-impl Writer<'_, ActorComponents> {
+impl Writer<'_, Actors> {
     /// The components and the transaction, once `actor` is known to exist.
-    fn check_actor(
-        &mut self,
-        actor: &ActorId,
-    ) -> Result<(&mut ActorComponents, &mut Transaction), Reason> {
+    fn check_actor(&mut self, actor: &ActorId) -> Result<(&mut Actors, &mut Transaction), Reason> {
         self.components.kind.get(actor).ok_or(Reason::UnknownId)?;
         Ok((&mut *self.components, &mut *self.transaction))
     }
@@ -135,9 +133,9 @@ impl Writer<'_, ActorComponents> {
         &mut self,
         actor: &ActorId,
         key: change::Key,
-        read: impl FnOnce(&ActorComponents) -> change::Value,
+        read: impl FnOnce(&Actors) -> change::Value,
         after: change::Value,
-        set: impl FnOnce(&mut ActorComponents, &mut Transaction, [Change; 1]) -> Result<(), Reason>,
+        set: impl FnOnce(&mut Actors, &mut Transaction, [Change; 1]) -> Result<(), Reason>,
     ) -> Result<(), Reason> {
         let (components, transaction) = self.check_actor(actor)?;
         let before = read(components);
@@ -156,7 +154,7 @@ impl Writer<'_, ActorComponents> {
         let mut next = self.acts.get(actor).cloned().unwrap_or_default();
         edit(&mut next);
         let after = read(&next);
-        let before = |components: &ActorComponents| {
+        let before = |components: &Actors| {
             components
                 .acts
                 .get(actor)
@@ -176,7 +174,7 @@ impl Writer<'_, ActorComponents> {
     /// Stand `actor` at `to`: a place id, or an exit address while they walk.
     pub fn set_place(&mut self, actor: &ActorId, to: &str) -> Result<(), Reason> {
         let key = change::Key::ActorPlace(actor.to_string());
-        let read = |components: &ActorComponents| text_value(components.place.get(actor));
+        let read = |components: &Actors| text_value(components.place.get(actor));
         let after = text_value(Some(to));
         self.write(
             actor,
@@ -194,7 +192,7 @@ impl Writer<'_, ActorComponents> {
     /// Wield `item`, which `actor` must hold, or with `None` let go of what they wield.
     pub fn set_wielded(&mut self, actor: &ActorId, item: Option<&str>) -> Result<(), Reason> {
         let key = change::Key::ActorWielded(actor.to_string());
-        let read = |components: &ActorComponents| text_value(components.wielded.get(actor));
+        let read = |components: &Actors| text_value(components.wielded.get(actor));
         self.write(
             actor,
             key,
@@ -219,7 +217,7 @@ impl Writer<'_, ActorComponents> {
     /// `actor` knows `facts` from now on, kept in order with no repeats.
     pub fn learn(&mut self, actor: &ActorId, facts: &[String]) -> Result<(), Reason> {
         let key = change::Key::ActorKnownFact(actor.to_string());
-        let read = |components: &ActorComponents| {
+        let read = |components: &Actors| {
             change::Value::List(
                 components
                     .known_facts
@@ -350,7 +348,7 @@ impl Writer<'_, ActorComponents> {
     ) -> Result<(), Reason> {
         let (components, transaction) = self.check_actor(actor)?;
         let def = canon
-            .meter_def(EntityRef::Actor(actor), key)
+            .meter_def(entity::IdRef::Actor(actor), key)
             .ok_or(Reason::UnknownId)?;
         let modifiers = components.modifier_sum(actor, key);
         let entry = (actor.clone(), key.to_string());
@@ -381,7 +379,7 @@ impl Writer<'_, ActorComponents> {
             Some(_) => self.check_actor(actor)?,
             None => (&mut *self.components, &mut *self.transaction),
         };
-        let def = canon.meter_def(EntityRef::Actor(actor), key);
+        let def = canon.meter_def(entity::IdRef::Actor(actor), key);
         let modifiers = components.modifier_sum(actor, key);
         let entry = (actor.clone(), key.to_string());
         let watched = change::Key::ActorMeter(actor.to_string(), key.to_string());

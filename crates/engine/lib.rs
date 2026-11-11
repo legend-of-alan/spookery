@@ -2,7 +2,7 @@
 
 pub(crate) mod canon;
 pub(crate) mod diagnostic;
-pub(crate) mod entity;
+pub mod entity;
 pub(crate) mod hash;
 pub(crate) mod intent;
 pub(crate) mod round;
@@ -13,7 +13,6 @@ pub(crate) mod world;
 
 pub use canon::{load_canon, pack_rev};
 pub use diagnostic::{first_reason, Code, Diagnostic};
-pub use entity::{Entity, EntityMut};
 pub use intent::{Intent, IntentArgs, Source, Target, Viewer};
 pub use round::{migrate_pack, play_pack_once, verify_pack, verify_quick, RoundOutput};
 pub use rules::gate::Refusal;
@@ -21,9 +20,9 @@ pub use rules::perceive::View;
 pub use rules::roll::MoveReport;
 pub use rules::visibility::RecipientLine;
 pub use spookery_protocol::Reason;
-pub use state::id::{ActorId, EntityId, ExitId, PlaceId, StoryId};
-pub use state::meter::Meter;
-pub use state::modifier::Modifier;
+pub use state::component::meter::Meter;
+pub use state::component::modifier::Modifier;
+pub use state::id::{ActorId, ExitId, PlaceId, StoryId};
 pub use state::{Note, Presence, State, Writer};
 pub use store::save::{emit as emit_save, parse as parse_save};
 pub use store::{emit_tape_record, lock_pack, PackGuard, TapeRecord};
@@ -39,7 +38,8 @@ pub mod testing {
     pub use crate::canon::{strip_body, Canon};
     pub use crate::round::replay::replay_journal;
     pub use crate::rules::roll::{faces, RollKey};
-    pub use crate::state::{Act, ActorComponents, ActorKind, PendingAction};
+    pub use crate::state::entity::Actors;
+    pub use crate::state::{Act, ActorKind, PendingAction};
 
     /// The write guard of the pack `world` holds the lock on.
     pub fn lock_write(world: &crate::World) -> Result<WriteGuard, crate::Reason> {

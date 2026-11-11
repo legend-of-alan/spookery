@@ -9,12 +9,13 @@ use spookery_protocol::{CommandView, PlaceView};
 use crate::canon::Budget;
 use crate::canon::{check_save, load_canon, pack_rev, Canon};
 use crate::diagnostic::{error, first_reason, locate_nth, schema_error, Code, Diagnostic};
+use crate::entity;
 use crate::intent::{Intent, IntentArgs, Source, Target, Viewer};
 use crate::rules::context::Context;
 use crate::rules::effect::{payload_json, Effect};
 use crate::rules::gate;
 use crate::rules::rule::{Rule, TargetKind, When};
-use crate::state::id::{ActorId, EntityId};
+use crate::state::id::ActorId;
 use crate::state::{ActorKind, Presence, State};
 use crate::store::journal;
 use crate::store::records::Record;
@@ -428,17 +429,17 @@ impl<L> World<L> {
             .canon
             .world_meters
             .keys()
-            .map(|id| (EntityId::World, id));
+            .map(|id| (entity::Id::Global, id));
         carried
             .chain(world_meters)
-            .filter_map(|(entity, id)| {
+            .filter_map(|(carrier, id)| {
                 let value = self
                     .state
-                    .entity(&entity)
+                    .entity(&carrier)
                     .meter_value(&self.canon, id)
                     .ok()?;
-                let max = self.canon.meter_def(entity.as_ref(), id)?.max;
-                Some(format!("meter {entity} {id} {value} {max}"))
+                let max = self.canon.meter_def(carrier.as_ref(), id)?.max;
+                Some(format!("meter {carrier} {id} {value} {max}"))
             })
             .collect()
     }

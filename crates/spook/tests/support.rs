@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 
 pub use spookery_engine::testing::*;
-use spookery_engine::{ActorId, EntityId, Meter, State};
+use spookery_engine::{entity, ActorId, Meter, State};
 
 /// Change `actor`'s meter `key` as `edit` says, through the writer.
 pub fn edit_meter(
@@ -25,10 +25,10 @@ pub fn edit_meter(
     actors.set_meter(canon, &actor, key, Some(meter)).unwrap();
 }
 
-/// Give `entity` meter `key` at `base`, with no offset, through the writer.
-pub fn put_meter(now: &mut State, canon: &Canon, entity: &EntityId, key: &str, base: i64) {
+/// Give `id` meter `key` at `base`, with no offset, through the writer.
+pub fn put_meter(now: &mut State, canon: &Canon, id: &entity::Id, key: &str, base: i64) {
     let meter = Meter { base, offset: 0 };
-    now.entity_mut(entity)
+    now.entity_mut(id)
         .set_meter(canon, key, Some(meter))
         .unwrap();
 }
@@ -41,15 +41,15 @@ pub fn edit_as_saved(now: &mut State, edit: impl FnOnce(&mut serde_json::Value))
     *now = serde_json::from_value(save).unwrap_or_else(|err| panic!("edited save: {err}"));
 }
 
-/// Leave `entity`, an actor or a place, holding `count` of `item`, through the writer.
-pub fn put_items(now: &mut State, canon: &Canon, entity: &EntityId, item: &str, count: u32) {
-    let held = match entity {
-        EntityId::Actor(actor) => now.actors().item_count(actor, item).unwrap_or(0),
-        EntityId::Place(place) => now.places().item_count(place, item),
-        _ => panic!("{entity} holds no items"),
+/// Leave `id`, an actor or a place, holding `count` of `item`, through the writer.
+pub fn put_items(now: &mut State, canon: &Canon, id: &entity::Id, item: &str, count: u32) {
+    let held = match id {
+        entity::Id::Actor(actor) => now.actors().item_count(actor, item).unwrap_or(0),
+        entity::Id::Place(place) => now.places().item_count(place, item),
+        _ => panic!("{id} holds no items"),
     };
     let delta = i64::from(count) - i64::from(held);
-    now.entity_mut(entity)
+    now.entity_mut(id)
         .shift_item(canon, item, delta, None)
         .unwrap();
 }

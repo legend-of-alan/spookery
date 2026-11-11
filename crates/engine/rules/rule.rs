@@ -268,12 +268,13 @@ impl Op {
     }
 }
 
+/// What a rule's `who:` names. The pack writes `world` for `Who::Global`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Who {
     Self_,
     Target,
     Here,
-    World,
+    Global,
     Place(PlaceId),
     Story(StoryId),
     /// An exit, by its place and its name: `exit:<place>.<exit>`.

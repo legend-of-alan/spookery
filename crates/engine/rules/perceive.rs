@@ -3,10 +3,11 @@
 use std::collections::BTreeSet;
 
 use crate::canon::Canon;
+use crate::entity;
 use crate::intent::Viewer;
 use crate::rules::habits::list_whose_if_holds;
 use crate::rules::visibility::can_see_fact;
-use crate::state::id::{ActorId, EntityId, PlaceId};
+use crate::state::id::{ActorId, PlaceId};
 use crate::state::nested_map;
 use crate::state::{Note, Presence, State};
 use crate::world::World;
@@ -157,8 +158,8 @@ fn perceive_viewer_budget(
         })
         .collect();
 
-    let meters = shown_meters(canon, state, &EntityId::Actor(viewer.actor_id().clone()));
-    let world_meters = shown_meters(canon, state, &EntityId::World);
+    let meters = shown_meters(canon, state, &entity::Id::Actor(viewer.actor_id().clone()));
+    let world_meters = shown_meters(canon, state, &entity::Id::Global);
 
     let habits = match viewer {
         Viewer::Player(_) => Vec::new(),
@@ -192,9 +193,9 @@ fn perceive_viewer_budget(
     })
 }
 
-/// The meters `entity` carries that are not hidden, in id order.
-fn shown_meters(canon: &Canon, state: &State, entity: &EntityId) -> Vec<MeterView> {
-    let defs = if *entity == EntityId::World {
+/// The meters `carrier` carries that are not hidden, in id order.
+fn shown_meters(canon: &Canon, state: &State, carrier: &entity::Id) -> Vec<MeterView> {
+    let defs = if *carrier == entity::Id::Global {
         &canon.world_meters
     } else {
         &canon.meters
@@ -202,9 +203,9 @@ fn shown_meters(canon: &Canon, state: &State, entity: &EntityId) -> Vec<MeterVie
     defs.keys()
         .filter_map(|id| {
             let def = canon
-                .meter_def(entity.as_ref(), id)
+                .meter_def(carrier.as_ref(), id)
                 .filter(|def| !def.hidden)?;
-            let value = state.entity(entity).meter_value(canon, id).ok()?;
+            let value = state.entity(carrier).meter_value(canon, id).ok()?;
             Some(MeterView {
                 id: id.to_string(),
                 value,

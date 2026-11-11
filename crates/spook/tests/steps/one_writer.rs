@@ -1,6 +1,6 @@
 use cucumber::{given, then, when};
 
-use crate::support::copy_docks;
+use crate::support::{self, copy_docks};
 use crate::World;
 
 use super::table;
@@ -46,6 +46,29 @@ fn a_seated_player_commits_a_move(world: &mut World) {
     table::seat_rowan(world, &pack);
     table::actor_send(world, "pc_rowan", "wait", "\"kind\":");
     table::wait_committed_wait(&pack, "pc_rowan", 0);
+}
+
+#[when(expr = "spook run is stopped while the GM is seated")]
+fn spook_run_is_stopped_while_the_gm_is_seated(world: &mut World) {
+    assert!(table::live_mut(world).gm.is_some(), "no seated GM");
+    if let Some((status, stderr)) = table::interrupt_host(world) {
+        world.code = status.code();
+        world.stderr = stderr;
+    }
+}
+
+#[then(expr = "spook run exits 0")]
+fn spook_run_exits_0(world: &mut World) {
+    // On Windows the stop kills the child, so there is no exit to check.
+    if cfg!(unix) {
+        assert_eq!(world.code, Some(0), "spook run exited\n{}", world.stderr);
+    }
+}
+
+#[then(expr = "the pack can be opened again")]
+fn the_pack_can_be_opened_again(world: &mut World) {
+    // `lock_pack` then `World::resume`, as `spook run` opens the pack.
+    drop(support::resume(table::pack(world)));
 }
 
 #[when(expr = "the host runs spook {word} on a missing pack")]
