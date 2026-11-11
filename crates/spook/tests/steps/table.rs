@@ -822,8 +822,13 @@ pub fn stop_host(world: &mut World) {
     live.closed_gm.take();
     // An in-process host stops when its shutdown future resolves.
     live.in_process.take();
-    // Stop the host the way a person does, with Ctrl+C. Windows just drops it, which kills.
-    if let Some(mut server) = live.host.take() {
+    interrupt_host(world);
+}
+
+/// Stops the `spook run` child the way a person does, with Ctrl+C, and checks that it
+/// exits 0. Seats stay open. Windows just drops it, which kills.
+pub fn interrupt_host(world: &mut World) {
+    if let Some(mut server) = live_mut(world).host.take() {
         if cfg!(unix) {
             let pid = server.child.id().to_string();
             let kill = std::process::Command::new("kill")
