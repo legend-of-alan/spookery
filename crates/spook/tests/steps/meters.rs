@@ -57,9 +57,8 @@ fn add_mira_habit(pack: &Path, id: &str, effect: &str) {
 }
 
 fn add_mira_meter_habit(pack: &Path, key: &str, add: i64) {
-    let effect = format!(
-        "      - meter:\n          who: self\n          key: {key}\n          add: {add}\n"
-    );
+    let effect =
+        format!("      - meter:\n          of: self\n          key: {key}\n          add: {add}\n");
     add_mira_habit(pack, &format!("bump_{key}"), &effect);
 }
 
@@ -148,7 +147,7 @@ fn miras_habit_reads_and_resets(world: &mut World) {
     replace_in_file(
         &pack.join("cast/mira.md"),
         "          text: Back at dusk. Oil on the shelf.\n",
-        "          text: Back at dusk. Oil on the shelf.\n      - meter:\n          who: self\n          key: shop_day\n          set: 0\n",
+        "          text: Back at dusk. Oil on the shelf.\n      - meter:\n          of: self\n          key: shop_day\n          set: 0\n",
     );
     edit_table(world, &pack, |_, _| {});
     migrate_and_play(world, Vec::new());
@@ -191,7 +190,7 @@ fn bram_adds_to_his_own_shop_day(world: &mut World) {
     replace_in_file(
         &pack(world).join("cast/bram.md"),
         "  eligible: true\n",
-        "  eligible: true\nrules:\n  - id: tally_shop_day\n    when: habit\n    do:\n      - meter:\n          who: self\n          key: shop_day\n          add: 1\n",
+        "  eligible: true\nrules:\n  - id: tally_shop_day\n    when: habit\n    do:\n      - meter:\n          of: self\n          key: shop_day\n          add: 1\n",
     );
 }
 
@@ -280,7 +279,7 @@ fn rowan_stands_in_the_shop(world: &mut World) {
     );
     add_verb(
         &pack,
-        "\n  - id: ring_bells\n    when:\n      verb: ring_bells\n    do:\n      - flag:\n          who: world\n          key: bells_rung\n          value: true\n  - id: open_shop\n    when:\n      verb: open_shop\n    do:\n      - flag:\n          who: mira\n          key: shop_open\n          value: true\n",
+        "\n  - id: ring_bells\n    when:\n      verb: ring_bells\n    do:\n      - flag:\n          of: world\n          key: bells_rung\n          value: true\n  - id: open_shop\n    when:\n      verb: open_shop\n    do:\n      - flag:\n          of: mira\n          key: shop_open\n          value: true\n",
     );
     edit_table(world, &pack, |now, seated| {
         set_place(now, "mira", "docks_shop");
@@ -334,27 +333,27 @@ fn world_meters_declares(world: &mut World, key: String) {
 fn write_dawn_story(pack: &Path, story: &str, more: &str) {
     fs::create_dir_all(pack.join("story")).unwrap();
     let text = format!(
-        "schema: story\nid: {story}\nrules:\n  - id: dawn_nears\n    when:\n      change:\n        item: lamp_oil\n        gained: true\n    do:\n      - meter:\n          who: world\n          key: dawn\n          add: -1\n{more}"
+        "schema: story\nid: {story}\nrules:\n  - id: dawn_nears\n    when:\n      change:\n        item: lamp_oil\n        gained: true\n    do:\n      - meter:\n          of: world\n          key: dawn\n          add: -1\n{more}"
     );
     fs::write(pack.join(format!("story/{story}.yaml")), text).unwrap();
 }
 
-#[given(expr = "story\\/siege.yaml has a rule that adds -1 to who {string} meter dawn")]
-fn siege_counts_down(world: &mut World, who: String) {
-    assert_eq!(who, "world");
+#[given(expr = "story\\/siege.yaml has a rule that adds -1 to meter dawn of {string}")]
+fn siege_counts_down(world: &mut World, of: String) {
+    assert_eq!(of, "world");
     write_dawn_story(pack(world), "siege", "");
 }
 
-#[given(expr = "story\\/vigil.yaml has a rule that adds -1 to who {string} meter dawn")]
-fn vigil_counts_down(world: &mut World, who: String) {
-    assert_eq!(who, "world");
+#[given(expr = "story\\/vigil.yaml has a rule that adds -1 to meter dawn of {string}")]
+fn vigil_counts_down(world: &mut World, of: String) {
+    assert_eq!(of, "world");
     write_dawn_story(pack(world), "vigil", "");
 }
 
 #[given(expr = "story\\/vigil.yaml has a change rule that watches dawn cross {string}")]
 fn vigil_watches_dawn(world: &mut World, crosses: String) {
     let watch = format!(
-        "  - id: dawn_breaks\n    when:\n      change:\n        meter: dawn\n        crosses: \"{crosses}\"\n    do:\n      - flag:\n          who: world\n          key: dawn_broke\n          value: true\n"
+        "  - id: dawn_breaks\n    when:\n      change:\n        meter: dawn\n        crosses: \"{crosses}\"\n    do:\n      - flag:\n          of: world\n          key: dawn_broke\n          value: true\n"
     );
     write_dawn_story(pack(world), "vigil", &watch);
 }
@@ -415,32 +414,32 @@ fn add_to_dawn_rule(pack: &Path, effects: &str) {
     fs::write(story, text).unwrap();
 }
 
-fn add_morning(who: &str) -> String {
+fn add_morning(of: &str) -> String {
     format!(
         "      - meter:
-          who: {who}
+          of: {of}
           key: morning
           add: 1
 "
     )
 }
 
-#[given(expr = "that rule narrates {string} and adds 1 to who {string} meter morning")]
-fn the_dawn_rule_narrates(world: &mut World, text: String, who: String) {
+#[given(expr = "that rule narrates {string} and adds 1 to meter morning of {string}")]
+fn the_dawn_rule_narrates(world: &mut World, text: String, of: String) {
     let narrate = format!(
         "      - narrate:
           text: {text}
 "
     );
-    add_to_dawn_rule(pack(world), &(narrate + &add_morning(&who)));
+    add_to_dawn_rule(pack(world), &(narrate + &add_morning(&of)));
 }
 
 #[given(
-    expr = "story\\/vigil.yaml has a change rule that watches dawn cross {string} and adds 1 to who {string} meter morning"
+    expr = "story\\/vigil.yaml has a change rule that watches dawn cross {string} and adds 1 to meter morning of {string}"
 )]
-fn vigil_watches_dawn_and_adds_morning(world: &mut World, crosses: String, who: String) {
+fn vigil_watches_dawn_and_adds_morning(world: &mut World, crosses: String, of: String) {
     vigil_watches_dawn(world, crosses);
-    add_to_dawn_rule(pack(world), &add_morning(&who));
+    add_to_dawn_rule(pack(world), &add_morning(&of));
 }
 
 #[given(expr = "nobody is seated")]
@@ -449,8 +448,8 @@ fn nobody_is_seated(world: &mut World) {
     edit_table(world, &pack, |_, _| {});
 }
 
-#[when(expr = "a rule adds -1 to who {string} meter dawn")]
-fn a_rule_adds_to_dawn(world: &mut World, who: String) {
+#[when(expr = "a rule adds -1 to meter dawn of {string}")]
+fn a_rule_adds_to_dawn(world: &mut World, of: String) {
     let pack = world.pack.clone().unwrap();
     add_verb(
         &pack,
@@ -461,7 +460,7 @@ fn a_rule_adds_to_dawn(world: &mut World, who: String) {
       verb: dawn_falls
     do:
       - meter:
-          who: {who}
+          of: {of}
           key: dawn
           add: -1
 "
@@ -470,11 +469,11 @@ fn a_rule_adds_to_dawn(world: &mut World, who: String) {
     migrate_and_play(world, vec![intent("dawn", "pc_rowan", "dawn_falls", None)]);
 }
 
-#[when(expr = "a habit adds -1 to who {string} meter dawn")]
-fn a_habit_adds_to_dawn(world: &mut World, who: String) {
+#[when(expr = "a habit adds -1 to meter dawn of {string}")]
+fn a_habit_adds_to_dawn(world: &mut World, of: String) {
     let effect = format!(
         "      - meter:
-          who: {who}
+          of: {of}
           key: dawn
           add: -1
 "
@@ -501,9 +500,9 @@ fn mira_carries_no_dawn(world: &mut World) {
     assert!(canon.meter_def(mira().as_ref(), "dawn").is_none());
 }
 
-#[given(expr = "Mira has a habit that adds 1 to who {string} meter dawn")]
-fn mira_adds_to_dawn(world: &mut World, who: String) {
-    assert_eq!(who, "self");
+#[given(expr = "Mira has a habit that adds 1 to meter dawn of {string}")]
+fn mira_adds_to_dawn(world: &mut World, of: String) {
+    assert_eq!(of, "self");
     add_mira_meter_habit(pack(world), "dawn", 1);
 }
 
@@ -567,13 +566,13 @@ fn world_meters_shown_and_hidden(world: &mut World, shown: String, hidden: Strin
     world.pack = Some(pack);
 }
 
-#[when(expr = "a rule adds -1 to who {string} meter dawn and to who {string} meter doom")]
+#[when(expr = "a rule adds -1 to meter dawn of {string} and to meter doom of {string}")]
 fn a_rule_darkens_dawn_and_doom(world: &mut World, first: String, second: String) {
     assert_eq!((first.as_str(), second.as_str()), ("world", "world"));
     let pack = world.pack.clone().unwrap();
     add_verb(
         &pack,
-        "\n  - id: darken\n    when:\n      verb: darken\n    do:\n      - meter:\n          who: world\n          key: dawn\n          add: -1\n      - meter:\n          who: world\n          key: doom\n          add: -1\n",
+        "\n  - id: darken\n    when:\n      verb: darken\n    do:\n      - meter:\n          of: world\n          key: dawn\n          add: -1\n      - meter:\n          of: world\n          key: doom\n          add: -1\n",
     );
     edit_table(world, &pack, |_, seated| sit(seated, &["pc_rowan"]));
     migrate_and_play(world, vec![intent("darken", "pc_rowan", "darken", None)]);

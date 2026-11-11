@@ -66,11 +66,11 @@ fn the_stair_door_needs_the_key(world: &mut World) {
   - id: bolt
     when: { verb: bolt }
     do:
-      - flag: { who: \"exit:docks_shop.stairs\", key: open, value: false }
+      - flag: { of: \"exit:docks_shop.stairs\", key: open, value: false }
   - id: creak
     when: { change: { flag: open, becomes: true } }
     do:
-      - flag: { who: world, key: creaked, value: true }
+      - flag: { of: world, key: creaked, value: true }
 exits:";
     let next = text.replacen("exits:", bolt, 1);
     assert_ne!(next, text);

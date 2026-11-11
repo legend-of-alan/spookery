@@ -50,7 +50,7 @@ rules:
     when: habit
     do:
       - item:
-          who: here
+          of: here
           id: tonic
           add: -1
 ",
@@ -121,7 +121,7 @@ fn dropping_the_tonic_locks_the_loft(world: &mut World) {
     name: loft
     if:
       - has_item:
-          who: self
+          of: self
           id: tonic
     locked_text: The loft door is locked.
 ",
@@ -131,9 +131,9 @@ fn dropping_the_tonic_locks_the_loft(world: &mut World) {
   - id: drop
     when: { verb: drop, target: item }
     do:
-      - item: { who: self, id: target, add: -1 }
-      - item: { who: here, id: target, add: 1 }
-      - flag: { who: \"exit:gate_yard.loft\", key: open, value: false }
+      - item: { of: self, id: target, add: -1 }
+      - item: { of: here, id: target, add: 1 }
+      - flag: { of: \"exit:gate_yard.loft\", key: open, value: false }
 exits:";
     let next = next.replacen("exits:", drop, 1);
     assert_ne!(text, next, "the loft exit was not locked");
@@ -185,7 +185,7 @@ fn one_effect_is_over_budget(world: &mut World) {
       verb: tap
     do:
       - flag:
-          who: self
+          of: self
           key: tapped
           value: true
 ",
@@ -281,7 +281,7 @@ rules:
         grit: 1
     do:
       - flag:
-          who: self
+          of: self
           key: heaved
           value: true
 ",
@@ -295,7 +295,7 @@ rules:
       verb: sap
     do:
       - meter:
-          who: npc_oden
+          of: npc_oden
           key: grit
           add: -1
 ",

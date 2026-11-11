@@ -32,19 +32,19 @@ Feature: Dice and arithmetic in rule numbers
     And the report names the expression line
 
     Examples:
-      | expression   | phrase                                        |
-      | 2d6 +        | is not a number                               |
-      | self.nope    | meter 'nope'                                  |
-      | world.grit   | the world carries no meter 'grit'             |
-      | subject.grit | names 'subject', which is not a who; use self |
-      | 100000000d6  | rolls more than 1000 dice                     |
+      | expression   | phrase                                           |
+      | 2d6 +        | is not a number                                  |
+      | self.nope    | meter 'nope'                                     |
+      | world.grit   | the world carries no meter 'grit'                |
+      | subject.grit | names 'subject', which is not an owner; use self |
+      | 100000000d6  | rolls more than 1000 dice                        |
 
-  Scenario: A subject who fails spook check
+  Scenario: An owner named subject fails spook check
     Given a docks table
     When the pack's hit raises the grit of "subject"
     And the operator runs spook check
     Then the check exits 1
-    And the report says "'subject' is not a who"
+    And the report says "'subject' is not an owner"
     And the report says "use self"
     And the report names the line holding "subject"
 

@@ -148,19 +148,19 @@ rules:
     when:
       change:
         arrive: mira_rooms
-        who: pc
+        subject: pc
     if:
       - flag:
-          who: self
+          of: self
           key: found_key
           is: true
     do:
       - memory:
-          who: self
+          of: self
           fact_ids:
             - fact_ledger
       - meter:
-          who: world
+          of: world
           key: tide
           add: 1
 ",
@@ -202,7 +202,7 @@ fn two_rules_set_each_others_flag(world: &mut World) {
     write_nell(&pack, &["sun", "moon"]);
     add_verb(
         &pack,
-        "\n  - id: raise\n    when:\n      verb: raise\n    do:\n      - flag:\n          who: self\n          key: sun\n          value: true\n",
+        "\n  - id: raise\n    when:\n      verb: raise\n    do:\n      - flag:\n          of: self\n          key: sun\n          value: true\n",
     );
     fs::create_dir_all(pack.join("story")).unwrap();
     fs::write(
@@ -218,11 +218,11 @@ rules:
         becomes: true
     do:
       - flag:
-          who: self
+          of: self
           key: moon
           value: true
       - flag:
-          who: self
+          of: self
           key: sun
           value: false
   - id: moon_to_sun
@@ -232,11 +232,11 @@ rules:
         becomes: true
     do:
       - flag:
-          who: self
+          of: self
           key: sun
           value: true
       - flag:
-          who: self
+          of: self
           key: moon
           value: false
 ",
@@ -367,18 +367,18 @@ rules:
     when:
       change:
         arrive: here
-        who: pc
+        subject: pc
     roll:
       check: stamina
-      target: 100
+      threshold: 100
     success:
       - meter:
-          who: self
+          of: self
           key: grit
           add: 0
     miss:
       - meter:
-          who: self
+          of: self
           key: grit
           add: -1
 ---
@@ -520,7 +520,7 @@ Under the street.
     .unwrap();
     add_verb(
         &pack,
-        "\n  - id: uncover\n    when:\n      verb: uncover\n    do:\n      - reveal:\n          who: self\n          fact: fact_trapdoor\n",
+        "\n  - id: uncover\n    when:\n      verb: uncover\n    do:\n      - reveal:\n          of: self\n          fact: fact_trapdoor\n",
     );
     write_nell(&pack, &[]);
     edit_table_with(world, &pack, |now, seated, canon| {
@@ -575,7 +575,7 @@ fn a_verb_sets_the_tide(world: &mut World) {
       verb: turn_tide
     do:
       - flag:
-          who: world
+          of: world
           key: tide_turned
           value: true
 ",
@@ -584,16 +584,16 @@ fn a_verb_sets_the_tide(world: &mut World) {
 }
 
 #[given(
-    expr = "a change rule watches tide_turned become true and adds 1 to who {string} meter tides"
+    expr = "a change rule watches tide_turned become true and adds 1 to meter tides of {string}"
 )]
-fn a_rule_counts_tides(world: &mut World, who: String) {
+fn a_rule_counts_tides(world: &mut World, of: String) {
     let pack = world.pack.as_ref().unwrap();
     write_world_meters(pack, &[("tides", 0, None)]);
     write_tide_story(
         pack,
         &format!(
             "      - meter:
-          who: {who}
+          of: {of}
           key: tides
           add: 1
 "
@@ -601,12 +601,12 @@ fn a_rule_counts_tides(world: &mut World, who: String) {
     );
 }
 
-#[given(expr = "a change rule watches world flag tide_turned and sets who {string} flag saw_tide")]
-fn a_world_rule_marks_self(world: &mut World, who: String) {
+#[given(expr = "a change rule watches world flag tide_turned and sets flag saw_tide of {string}")]
+fn a_world_rule_marks_self(world: &mut World, of: String) {
     a_verb_sets_the_tide(world);
     let effect = format!(
         "      - flag:
-          who: {who}
+          of: {of}
           key: saw_tide
           value: true
 "
@@ -732,7 +732,7 @@ fn nell_learns_the_trapdoor_beside_wren(world: &mut World) {
     );
     add_verb(
         &pack,
-        "\n  - id: learn\n    when:\n      verb: learn\n    do:\n      - reveal:\n          who: self\n          fact: fact_trapdoor\n",
+        "\n  - id: learn\n    when:\n      verb: learn\n    do:\n      - reveal:\n          of: self\n          fact: fact_trapdoor\n",
     );
     write_nell(&pack, &[]);
     edit_table_with(world, &pack, |now, seated, canon| {
@@ -774,7 +774,7 @@ fn rowan_takes_an_item_beside_nell(world: &mut World) {
     );
 }
 
-/// `who: here` is known only at play time, so the pack check lets the habit through.
+/// `of: here` is known only at play time, so the pack check lets the habit through.
 #[given(
     expr = "Mira has a habit that sets the {string} flag on her place, which its file does not list"
 )]
@@ -783,7 +783,7 @@ fn mira_has_an_unlisted_place_flag_habit(world: &mut World, flag: String) {
     replace_in_file(
         &pack.join("cast/mira.md"),
         "rules:\n  - id: leave_door_note\n",
-        &format!("rules:\n  - id: mark_restock\n    when: habit\n    do:\n      - flag:\n          who: here\n          key: {flag}\n          value: true\n  - id: leave_door_note\n"),
+        &format!("rules:\n  - id: mark_restock\n    when: habit\n    do:\n      - flag:\n          of: here\n          key: {flag}\n          value: true\n  - id: leave_door_note\n"),
     );
     edit_table(world, &pack, |_, _| {});
     world.pack = Some(pack);
@@ -927,7 +927,7 @@ Reserved.
     .unwrap();
     add_verb(
         &pack,
-        "\n  - id: bad\n    when:\n      verb: bad\n    do:\n      - reveal:\n          who: world\n          fact: missing_fact\n      - reveal:\n          who: self\n          fact: missing_fact\n",
+        "\n  - id: bad\n    when:\n      verb: bad\n    do:\n      - reveal:\n          of: world\n          fact: missing_fact\n      - reveal:\n          of: self\n          fact: missing_fact\n",
     );
     edit_table(world, &pack, |_, _| {});
     world.pack = Some(pack);
@@ -988,7 +988,7 @@ fn add_bell_narrate(pack: &Path) {
     replace_in_file(
         &pack.join("world/places/docks_shop.md"),
         "    locked_text: The stair door is locked.\n",
-        "    locked_text: The stair door is locked.\nrules:\n  - id: bell\n    when:\n      change:\n        arrive: here\n        who: pc\n    do:\n      - flag:\n          who: self\n          key: heard_bell\n          value: true\n      - narrate:\n          to: here\n          text: The bell rings.\n",
+        "    locked_text: The stair door is locked.\nrules:\n  - id: bell\n    when:\n      change:\n        arrive: here\n        subject: pc\n    do:\n      - flag:\n          of: self\n          key: heard_bell\n          value: true\n      - narrate:\n          to: here\n          text: The bell rings.\n",
     );
 }
 
@@ -1007,7 +1007,7 @@ fn downed_pack(
     );
     add_verb(
         &pack,
-        "\n  - id: hit\n    when:\n      verb: hit\n      target: actor\n    do:\n      - meter:\n          who: target\n          key: hp\n          add: -4\n  - id: nick\n    when:\n      verb: nick\n      target: actor\n    do:\n      - meter:\n          who: target\n          key: hp\n          add: -1\n",
+        "\n  - id: hit\n    when:\n      verb: hit\n      target: actor\n    do:\n      - meter:\n          of: target\n          key: hp\n          add: -4\n  - id: nick\n    when:\n      verb: nick\n      target: actor\n    do:\n      - meter:\n          of: target\n          key: hp\n          add: -1\n",
     );
     fs::write(
         pack.join("cast/briar.md"),
@@ -1041,7 +1041,7 @@ rules:
         crosses: \"{crosses}\"
     do:
       - flag:
-          who: self
+          of: self
           key: downed
           value: true
 "
@@ -1081,7 +1081,7 @@ fn add_bell(pack: &Path) {
     replace_in_file(
         &pack.join("world/places/docks_shop.md"),
         "    locked_text: The stair door is locked.\n",
-        "    locked_text: The stair door is locked.\nrules:\n  - id: bell\n    when:\n      change:\n        arrive: here\n        who: pc\n    do:\n      - flag:\n          who: self\n          key: heard_bell\n          value: true\n",
+        "    locked_text: The stair door is locked.\nrules:\n  - id: bell\n    when:\n      change:\n        arrive: here\n        subject: pc\n    do:\n      - flag:\n          of: self\n          key: heard_bell\n          value: true\n",
     );
 }
 

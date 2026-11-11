@@ -26,14 +26,14 @@ fn add_modifier(pack: &Path, id: &str, meter: &str, extra: &str) {
     stamp_pack_rev(pack);
 }
 
-/// A verb that applies each `(modifier, add)` to `who` for 10 ticks: its target, or the actor using it.
-fn add_modifier_verb(pack: &Path, verb: &str, who: &str, applies: &[(&str, i64)]) {
-    add_timed_verb(pack, verb, who, applies, 10);
+/// A verb that applies each `(modifier, add)` to `of` for 10 ticks: its target, or the actor using it.
+fn add_modifier_verb(pack: &Path, verb: &str, of: &str, applies: &[(&str, i64)]) {
+    add_timed_verb(pack, verb, of, applies, 10);
 }
 
 /// As `add_modifier_verb`, with each effect lasting `ticks`.
-fn add_timed_verb(pack: &Path, verb: &str, who: &str, applies: &[(&str, i64)], ticks: u64) {
-    let target = if who == "target" {
+fn add_timed_verb(pack: &Path, verb: &str, of: &str, applies: &[(&str, i64)], ticks: u64) {
+    let target = if of == "target" {
         "\n      target: actor"
     } else {
         ""
@@ -41,7 +41,7 @@ fn add_timed_verb(pack: &Path, verb: &str, who: &str, applies: &[(&str, i64)], t
     let effects: String = applies
         .iter()
         .map(|(id, add)| {
-            format!("      - modifier:\n          who: {who}\n          id: {id}\n          add: {add}\n          ticks: {ticks}\n")
+            format!("      - modifier:\n          of: {of}\n          id: {id}\n          add: {add}\n          ticks: {ticks}\n")
         })
         .collect();
     add_verb(

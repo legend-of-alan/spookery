@@ -135,7 +135,7 @@ a rule that goes over the state-key limit.
 
 Tested in `features/round/a_rules_effects_are_all_or_nothing.feature`,
 `features/round/an_intent_the_round_has_no_room_for_is_refused_budget.feature`,
-`features/round/a_broken_roll_target_refuses_one_move.feature`,
+`features/round/a_broken_roll_threshold_refuses_one_move.feature`,
 `features/round/apply_pays_the_rule_that_rolled.feature`,
 `features/rules/rules_live_with_their_owner.feature`,
 `features/rules/a_gm_queued_habit_is_judged_like_the_engines.feature`,
@@ -184,10 +184,10 @@ Tested in `features/rules/triggers.feature`,
 A meter lives on the entity whose file declares it: every actor for
 `rules/meters.yaml`, one actor for a cast file's `meters`, and the world for
 `world/meters.yaml`. A world meter is held once, so every rule that names
-`who: world` reads and writes the same value, and its change rules fire once per
+`of: world` reads and writes the same value, and its change rules fire once per
 change, whoever is seated. The world and an actor may each carry a meter of one name, and
-`who` picks which. Check refuses a cast meter whose id `rules/meters.yaml` or
-another cast file already has, and a rule whose fixed `who` names a meter that
+`of` picks which. Check refuses a cast meter whose id `rules/meters.yaml` or
+another cast file already has, and a rule whose fixed `of` names a meter that
 entity does not carry.
 
 An actor's meter change is told to that actor only, not to a player in the

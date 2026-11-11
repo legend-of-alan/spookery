@@ -37,8 +37,8 @@ Feature: Meters belong to their entity
 
   Scenario: Two stories share one dawn countdown
     Given world/meters.yaml declares a "dawn" meter at 6
-    And story/siege.yaml has a rule that adds -1 to who "world" meter dawn
-    And story/vigil.yaml has a rule that adds -1 to who "world" meter dawn
+    And story/siege.yaml has a rule that adds -1 to meter dawn of "world"
+    And story/vigil.yaml has a rule that adds -1 to meter dawn of "world"
     And story/vigil.yaml has a change rule that watches dawn cross "<=0"
     When both rules run in one round, three rounds in a row
     Then dawn is 0, held once by the world
@@ -48,21 +48,21 @@ Feature: Meters belong to their entity
   Scenario: A rule naming a meter its entity does not carry is refused
     Given world/meters.yaml declares a "dawn" meter
     And Mira carries no dawn meter
-    And Mira has a habit that adds 1 to who "self" meter dawn
+    And Mira has a habit that adds 1 to meter dawn of "self"
     When the author runs spook check
     Then it refuses Mira's habit, saying Mira carries no dawn meter
 
   Scenario: The world and an actor may each have a meter with the same name
     Given world/meters.yaml declares a "dawn" meter at 6
     And cast/mira.md declares her own "dawn" meter at 0
-    And Mira has a habit that adds 1 to who "self" meter dawn
+    And Mira has a habit that adds 1 to meter dawn of "self"
     When one round runs
     Then Mira's dawn is 1
     And the world's dawn is still 6
 
   Scenario: A world meter is hidden unless the pack shows it
     Given world/meters.yaml declares "dawn" with hidden false and "doom" with no hidden key
-    When a rule adds -1 to who "world" meter dawn and to who "world" meter doom
+    When a rule adds -1 to meter dawn of "world" and to meter doom of "world"
     Then pc_rowan's change line shows dawn and not doom
     And the GM sees both
 

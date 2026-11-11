@@ -4,7 +4,8 @@ use crate::canon::{Canon, OPEN};
 use crate::intent::{Intent, Source, Target, Viewer};
 use crate::rules::context::Context;
 use crate::rules::expr;
-use crate::rules::rule::{Cond, Who};
+use crate::rules::grammar;
+use crate::rules::rule::Cond;
 use crate::state::{Presence, State};
 use crate::Reason;
 
@@ -55,8 +56,8 @@ fn refusal_code(cond: &Cond) -> Reason {
 fn holds(context: &Context, cond: &Cond) -> Result<bool, Reason> {
     let state = context.state;
     match cond {
-        Cond::HasItem { who, id, count } => {
-            let actor = expr::resolve_actor(context, who)?;
+        Cond::HasItem { of, id, count } => {
+            let actor = expr::resolve_actor(context, of)?;
             let id = expr::resolve_item_id(context, id)?;
             let held = state
                 .actors()
@@ -66,8 +67,8 @@ fn holds(context: &Context, cond: &Cond) -> Result<bool, Reason> {
                 .unwrap_or(0);
             Ok(held >= *count)
         }
-        Cond::Wielding { who, id } => {
-            let actor = expr::resolve_actor(context, who)?;
+        Cond::Wielding { of, id } => {
+            let actor = expr::resolve_actor(context, of)?;
             let id = expr::resolve_item_id(context, id)?;
             Ok(state
                 .actors()
@@ -75,36 +76,31 @@ fn holds(context: &Context, cond: &Cond) -> Result<bool, Reason> {
                 .get(actor)
                 .is_some_and(|wielded| *wielded == id))
         }
-        Cond::Meter {
-            who,
-            key,
-            op,
-            value,
-        } => {
-            let entity = expr::resolve_entity(context, who)?;
+        Cond::Meter { of, key, op, value } => {
+            let entity = expr::resolve_entity(context, of)?;
             let current = state.entity(&entity).meter_value(context.canon, key)?;
             let right = expr::eval(context, value)?;
             Ok(op.holds(current, right))
         }
         Cond::Flag {
-            who: Who::Exit(exit),
+            of: grammar::Object::Exit(exit),
             key,
             is,
         } => Ok((key == OPEN && state.places().is_exit_open(exit)) == *is),
-        Cond::Flag { who, key, is } => {
-            let entity = expr::resolve_entity(context, who)?;
+        Cond::Flag { of, key, is } => {
+            let entity = expr::resolve_entity(context, of)?;
             Ok(state.entity(&entity).has_flag(key) == *is)
         }
-        Cond::At { who, place } => {
-            let actor = expr::resolve_actor(context, who)?;
+        Cond::At { of, place } => {
+            let actor = expr::resolve_actor(context, of)?;
             Ok(state
                 .actors()
                 .place
                 .get(actor)
                 .is_some_and(|at| at == place))
         }
-        Cond::Knows { who, fact } => {
-            let actor = expr::resolve_actor(context, who)?;
+        Cond::Knows { of, fact } => {
+            let actor = expr::resolve_actor(context, of)?;
             Ok(state
                 .actors()
                 .known_facts

@@ -18,10 +18,10 @@ use crate::testing::{copy_dir, copy_pack, fresh_dir};
 const LUNGE: &str = "
   - id: lunge
     when: { verb: lunge, target: actor }
-    roll: { check: strike, target: 38, partial_at: 32 }
-    success: [meter: { who: target, key: hp, add: -1 }, meter: { who: target, key: hp, add: -1 }]
-    partial: [meter: { who: target, key: hp, add: -1 }, meter: { who: target, key: hp, add: -1 }]
-    miss: [meter: { who: self, key: hp, add: -1 }, meter: { who: self, key: hp, add: -1 }]
+    roll: { check: strike, threshold: 38, partial_at: 32 }
+    success: [meter: { of: target, key: hp, add: -1 }, meter: { of: target, key: hp, add: -1 }]
+    partial: [meter: { of: target, key: hp, add: -1 }, meter: { of: target, key: hp, add: -1 }]
+    miss: [meter: { of: self, key: hp, add: -1 }, meter: { of: self, key: hp, add: -1 }]
 ";
 
 #[test]
@@ -32,7 +32,7 @@ fn a_refused_or_dropped_opposing_roll_replays_the_same_way() {
         // A failed gate at the start: Lark holds no chock.
         (
             None,
-            "    if: [has_item: { who: self, id: chock }]\n",
+            "    if: [has_item: { of: self, id: chock }]\n",
             Some(Reason::MissingItem),
         ),
         // A dice cost passes the gate, then goes unpaid in apply.

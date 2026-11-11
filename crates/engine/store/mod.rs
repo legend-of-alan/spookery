@@ -16,7 +16,7 @@ pub use tape::{emit_tape_record, TapeRecord};
 
 /// Rules version stamped on every save and every round.
 /// A different version is refused. Only `spook migrate` reads a save from rules 11.
-pub const RULES_REV: u64 = 22;
+pub const RULES_REV: u64 = 23;
 
 pub(crate) fn require_rules_rev(rev: u64) -> Result<(), Reason> {
     if rev == RULES_REV {

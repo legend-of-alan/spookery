@@ -82,7 +82,7 @@ fn the_shop_has_a_trapdoor(world: &mut World) {
     let dig = "  - id: dig
     when: { verb: dig }
     do:
-      - reveal: { who: self, fact: fact_trapdoor }";
+      - reveal: { of: self, fact: fact_trapdoor }";
     for place in ["docks_shop", "docks_street"] {
         let path = pack.join(format!("world/places/{place}.md"));
         let text = fs::read_to_string(&path).unwrap();

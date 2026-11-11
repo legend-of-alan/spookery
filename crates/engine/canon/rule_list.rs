@@ -13,9 +13,10 @@ use crate::canon::source::{
 };
 use crate::diagnostic::{schema_error, Diagnostic};
 use crate::rules::expr::{stamp_expr, BinOp, Expr};
+use crate::rules::grammar;
 use crate::rules::rule::{
     ChangeWatch, Cond, Cost, EffectTemplate, LineColumn, LocationTo, NarrateTo, Op, Owner, Phase,
-    ResistSpec, RollSpec, Rule, TargetKind, WatchWho, When, Who,
+    ResistSpec, RollSpec, Rule, TargetKind, When,
 };
 use crate::state::id::{ActorId, ExitId, PlaceId};
 
@@ -87,7 +88,7 @@ pub struct WhenMap {
 pub struct ChangeYaml {
     pub arrive: Option<String>,
     pub leave: Option<String>,
-    pub who: Option<String>,
+    pub subject: Option<String>,
     pub meter: Option<String>,
     pub crosses: Option<String>,
     pub flag: Option<String>,
@@ -161,7 +162,7 @@ pub struct CondYaml {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct HasItemYaml {
-    pub who: Spanned<String>,
+    pub of: Spanned<String>,
     pub id: String,
     #[serde(default = "default_count")]
     pub count: u32,
@@ -170,7 +171,7 @@ pub struct HasItemYaml {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct WieldingYaml {
-    pub who: Spanned<String>,
+    pub of: Spanned<String>,
     pub id: String,
 }
 
@@ -181,7 +182,7 @@ fn default_count() -> u32 {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MeterCondYaml {
-    pub who: Spanned<String>,
+    pub of: Spanned<String>,
     pub id: String,
     pub op: String,
     pub value: Spanned<ExprYaml>,
@@ -190,7 +191,7 @@ pub struct MeterCondYaml {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct FlagCondYaml {
-    pub who: Spanned<String>,
+    pub of: Spanned<String>,
     pub key: String,
     #[serde(rename = "is")]
     pub is_: bool,
@@ -199,14 +200,14 @@ pub struct FlagCondYaml {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AtYaml {
-    pub who: Spanned<String>,
+    pub of: Spanned<String>,
     pub place: String,
 }
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct KnowsYaml {
-    pub who: Spanned<String>,
+    pub of: Spanned<String>,
     pub fact: String,
 }
 
@@ -265,7 +266,7 @@ pub enum Counts {
 #[serde(deny_unknown_fields)]
 pub struct RollYaml {
     pub check: String,
-    pub target: Spanned<ExprYaml>,
+    pub threshold: Spanned<ExprYaml>,
     pub partial_at: Option<Spanned<ExprYaml>>,
 }
 
@@ -280,15 +281,15 @@ pub enum ExprYaml {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MeterPlusYaml {
-    pub meter: MeterWhoYaml,
+    pub meter: MeterOfYaml,
     #[serde(default)]
     pub plus: i64,
 }
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct MeterWhoYaml {
-    pub who: Spanned<String>,
+pub struct MeterOfYaml {
+    pub of: Spanned<String>,
     pub key: Spanned<String>,
 }
 
@@ -311,7 +312,7 @@ pub struct EffectYaml {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MeterEffectYaml {
-    pub who: Spanned<String>,
+    pub of: Spanned<String>,
     pub key: String,
     pub add: Option<Spanned<ExprYaml>>,
     pub set: Option<Spanned<ExprYaml>>,
@@ -321,7 +322,7 @@ pub struct MeterEffectYaml {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct FlagEffectYaml {
-    pub who: Spanned<String>,
+    pub of: Spanned<String>,
     pub key: String,
     pub value: bool,
     pub resist: Option<ResistYaml>,
@@ -330,7 +331,7 @@ pub struct FlagEffectYaml {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ModifierEffectYaml {
-    pub who: Spanned<String>,
+    pub of: Spanned<String>,
     pub id: String,
     pub add: Spanned<ExprYaml>,
     /// How long this application lasts, 1 or more.
@@ -371,7 +372,7 @@ pub struct NarrateYaml {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MemoryYaml {
-    pub who: Spanned<String>,
+    pub of: Spanned<String>,
     #[serde(default)]
     pub fact_ids: Vec<String>,
     pub text: Option<String>,
@@ -380,7 +381,7 @@ pub struct MemoryYaml {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ItemEffectYaml {
-    pub who: Spanned<String>,
+    pub of: Spanned<String>,
     pub id: String,
     pub add: i64,
     pub max: Option<i64>,
@@ -390,21 +391,21 @@ pub struct ItemEffectYaml {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RevealYaml {
-    pub who: Spanned<String>,
+    pub of: Spanned<String>,
     pub fact: String,
 }
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct WieldYaml {
-    pub who: Spanned<String>,
+    pub of: Spanned<String>,
     pub id: String,
 }
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct UnwieldYaml {
-    pub who: Spanned<String>,
+    pub of: Spanned<String>,
 }
 
 #[derive(Deserialize)]
@@ -417,9 +418,9 @@ pub enum ResistYaml {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ResistRollYaml {
-    pub who: Option<Spanned<String>>,
+    pub subject: Option<Spanned<String>>,
     pub check: String,
-    pub target: Spanned<ExprYaml>,
+    pub threshold: Spanned<ExprYaml>,
     #[serde(default)]
     pub resisted: Vec<EffectYaml>,
 }
@@ -531,7 +532,7 @@ fn compile_one(
     let roll = match entry.roll.as_ref().map(roll_of).transpose() {
         Ok(roll) => roll,
         Err(fault) => {
-            diags.push(source.fault("", fault, "name a check and a target"));
+            diags.push(source.fault("", fault, "name a check and a threshold"));
             None
         }
     };
@@ -584,14 +585,14 @@ fn compile_one(
             Some(spec)
                 if spec.partial_at.as_ref().is_some_and(|band| {
                     band.constant()
-                        .zip(spec.target.constant())
-                        .is_some_and(|(band, target)| band >= target)
+                        .zip(spec.threshold.constant())
+                        .is_some_and(|(band, threshold)| band >= threshold)
                 }) =>
             {
                 diags.push(schema_error(
                     file,
-                    &format!("rule '{local}' sets partial_at at or above the target"),
-                    "set partial_at strictly below the target",
+                    &format!("rule '{local}' sets partial_at at or above the threshold"),
+                    "set partial_at strictly below the threshold",
                 ));
             }
             _ => {}
@@ -668,22 +669,22 @@ fn when_of(yaml: &WhenYaml) -> Result<When, String> {
 }
 
 fn change_of(yaml: &ChangeYaml) -> Result<When, String> {
-    let who = match yaml.who.as_deref() {
-        None | Some("any") => WatchWho::Any,
-        Some("pc") => WatchWho::Pc,
-        Some("npc") => WatchWho::Npc,
-        Some(actor) => WatchWho::Actor(actor.to_string()),
+    let subject = match yaml.subject.as_deref() {
+        None | Some("any") => grammar::Subject::Any,
+        Some("pc") => grammar::Subject::Pc,
+        Some("npc") => grammar::Subject::Npc,
+        Some(actor) => grammar::Subject::Actor(actor.to_string()),
     };
     if let Some(place) = &yaml.arrive {
         return Ok(When::Change(ChangeWatch::Arrive {
             place: place.clone(),
-            who,
+            subject,
         }));
     }
     if let Some(place) = &yaml.leave {
         return Ok(When::Change(ChangeWatch::Leave {
             place: place.clone(),
-            who,
+            subject,
         }));
     }
     if let Some(key) = &yaml.meter {
@@ -737,7 +738,7 @@ pub(super) fn cond_of(yaml: &CondYaml) -> Result<Cond, Fault> {
     if let Some(item) = &yaml.has_item {
         found += 1;
         cond = Some(Cond::HasItem {
-            who: who_of(&item.who)?,
+            of: object_of(&item.of)?,
             id: item.id.clone(),
             count: item.count,
         });
@@ -745,7 +746,7 @@ pub(super) fn cond_of(yaml: &CondYaml) -> Result<Cond, Fault> {
     if let Some(meter) = &yaml.meter {
         found += 1;
         cond = Some(Cond::Meter {
-            who: who_of(&meter.who)?,
+            of: object_of(&meter.of)?,
             key: meter.id.clone(),
             op: op_of(&meter.op)?,
             value: cond_value_of(&meter.value)?,
@@ -754,7 +755,7 @@ pub(super) fn cond_of(yaml: &CondYaml) -> Result<Cond, Fault> {
     if let Some(flag) = &yaml.flag {
         found += 1;
         cond = Some(Cond::Flag {
-            who: who_of(&flag.who)?,
+            of: object_of(&flag.of)?,
             key: flag.key.clone(),
             is: flag.is_,
         });
@@ -762,14 +763,14 @@ pub(super) fn cond_of(yaml: &CondYaml) -> Result<Cond, Fault> {
     if let Some(at) = &yaml.at {
         found += 1;
         cond = Some(Cond::At {
-            who: who_of(&at.who)?,
+            of: object_of(&at.of)?,
             place: at.place.clone(),
         });
     }
     if let Some(knows) = &yaml.knows {
         found += 1;
         cond = Some(Cond::Knows {
-            who: who_of(&knows.who)?,
+            of: object_of(&knows.of)?,
             fact: knows.fact.clone(),
         });
     }
@@ -798,7 +799,7 @@ pub(super) fn cond_of(yaml: &CondYaml) -> Result<Cond, Fault> {
     if let Some(wielding) = &yaml.wielding {
         found += 1;
         cond = Some(Cond::Wielding {
-            who: who_of(&wielding.who)?,
+            of: object_of(&wielding.of)?,
             id: wielding.id.clone(),
         });
     }
@@ -848,7 +849,7 @@ fn roll_of(yaml: &RollYaml) -> Result<RollSpec, Fault> {
     }
     Ok(RollSpec {
         check: yaml.check.clone(),
-        target: expr_of(&yaml.target)?,
+        threshold: expr_of(&yaml.threshold)?,
         partial_at: yaml.partial_at.as_ref().map(expr_of).transpose()?,
     })
 }
@@ -877,7 +878,7 @@ fn expr_of(yaml: &Spanned<ExprYaml>) -> Result<Expr, Fault> {
         }
         ExprYaml::Plus(plus) => {
             let meter = Expr::Meter {
-                who: who_of(&plus.meter.who)?,
+                of: object_of(&plus.meter.of)?,
                 key: plus.meter.key.value.clone(),
                 spot: spot_of(&plus.meter.key).or(spot),
             };
@@ -920,7 +921,7 @@ fn effect_of(yaml: &EffectYaml) -> Result<EffectTemplate, Fault> {
             return Err("a meter effect needs add or set, not both".into());
         }
         effect = Some(EffectTemplate::Meter {
-            who: who_of(&meter.who)?,
+            of: object_of(&meter.of)?,
             key: meter.key.clone(),
             add: meter.add.as_ref().map(expr_of).transpose()?,
             set: meter.set.as_ref().map(expr_of).transpose()?,
@@ -933,7 +934,7 @@ fn effect_of(yaml: &EffectYaml) -> Result<EffectTemplate, Fault> {
             return Err("flag key busy is not a flag".into());
         }
         effect = Some(EffectTemplate::Flag {
-            who: who_of(&flag.who)?,
+            of: object_of(&flag.of)?,
             key: flag.key.clone(),
             value: flag.value,
             resist: resist_of(flag.resist.as_ref())?,
@@ -945,7 +946,7 @@ fn effect_of(yaml: &EffectYaml) -> Result<EffectTemplate, Fault> {
             return Err("a modifier effect has ticks below 1, so set ticks to 1 or more".into());
         }
         effect = Some(EffectTemplate::Modifier {
-            who: who_of(&modifier.who)?,
+            of: object_of(&modifier.of)?,
             id: modifier.id.clone(),
             add: expr_of(&modifier.add)?,
             ticks: modifier.ticks,
@@ -995,7 +996,7 @@ fn effect_of(yaml: &EffectYaml) -> Result<EffectTemplate, Fault> {
     if let Some(memory) = &yaml.memory {
         found += 1;
         effect = Some(EffectTemplate::Memory {
-            who: who_of(&memory.who)?,
+            of: object_of(&memory.of)?,
             fact_ids: memory.fact_ids.clone(),
             text: memory.text.clone(),
         });
@@ -1003,7 +1004,7 @@ fn effect_of(yaml: &EffectYaml) -> Result<EffectTemplate, Fault> {
     if let Some(item) = &yaml.item {
         found += 1;
         effect = Some(EffectTemplate::Item {
-            who: who_of(&item.who)?,
+            of: object_of(&item.of)?,
             id: item.id.clone(),
             add: item.add,
             max: item.max,
@@ -1013,21 +1014,21 @@ fn effect_of(yaml: &EffectYaml) -> Result<EffectTemplate, Fault> {
     if let Some(reveal) = &yaml.reveal {
         found += 1;
         effect = Some(EffectTemplate::Reveal {
-            who: who_of(&reveal.who)?,
+            of: object_of(&reveal.of)?,
             fact: reveal.fact.clone(),
         });
     }
     if let Some(wield) = &yaml.wield {
         found += 1;
         effect = Some(EffectTemplate::Wield {
-            who: who_of(&wield.who)?,
+            of: object_of(&wield.of)?,
             id: wield.id.clone(),
         });
     }
     if let Some(unwield) = &yaml.unwield {
         found += 1;
         effect = Some(EffectTemplate::Unwield {
-            who: who_of(&unwield.who)?,
+            of: object_of(&unwield.of)?,
         });
     }
     if found == 1 {
@@ -1044,12 +1045,12 @@ fn resist_of(yaml: Option<&ResistYaml>) -> Result<Option<ResistSpec>, Fault> {
         ResistYaml::Word(word) if word == "same" => Ok(Some(ResistSpec::Same)),
         ResistYaml::Word(word) => Err(format!("resist '{word}' is not same").into()),
         ResistYaml::Roll(roll) => Ok(Some(ResistSpec::Roll {
-            who: match &roll.who {
-                Some(who) => who_of(who)?,
-                None => Who::Target,
+            subject: match &roll.subject {
+                Some(subject) => object_of(subject)?,
+                None => grammar::Object::Target,
             },
             check: roll.check.clone(),
-            target: expr_of(&roll.target)?,
+            threshold: expr_of(&roll.threshold)?,
             resisted: roll
                 .resisted
                 .iter()
@@ -1059,7 +1060,7 @@ fn resist_of(yaml: Option<&ResistYaml>) -> Result<Option<ResistSpec>, Fault> {
     }
 }
 
-fn who_of(yaml: &Spanned<String>) -> Result<Who, Fault> {
+fn object_of(yaml: &Spanned<String>) -> Result<grammar::Object, Fault> {
     let fault = |message: String| Fault {
         message,
         spot: spot_of(yaml),
@@ -1069,33 +1070,35 @@ fn who_of(yaml: &Spanned<String>) -> Result<Who, Fault> {
         if place.is_empty() {
             return Err(fault("place: needs an id".to_string()));
         }
-        return Ok(Who::Place(place.into()));
+        return Ok(grammar::Object::Place(place.into()));
     }
     if let Some(story) = word.strip_prefix("story:") {
         if story.is_empty() {
             return Err(fault("story: needs an id".to_string()));
         }
-        return Ok(Who::Story(story.into()));
+        return Ok(grammar::Object::Story(story.into()));
     }
     if let Some(exit) = word.strip_prefix("exit:") {
         return match exit.split_once('.') {
             Some((place, name)) if !place.is_empty() && !name.is_empty() => {
                 let (place, exit) = (place.into(), name.to_string());
-                Ok(Who::Exit(ExitId { place, exit }))
+                Ok(grammar::Object::Exit(ExitId { place, exit }))
             }
             _ => Err(fault("exit: needs <place>.<exit>".to_string())),
         };
     }
     match word {
-        "self" => Ok(Who::Self_),
-        "target" => Ok(Who::Target),
-        "here" => Ok(Who::Here),
-        "world" => Ok(Who::Global),
+        "self" => Ok(grammar::Object::Self_),
+        "target" => Ok(grammar::Object::Target),
+        "here" => Ok(grammar::Object::Here),
+        "world" => Ok(grammar::Object::Global),
         "subject" => Err(fault(
-            "who 'subject' is not a who; use self, or target for the move's target".to_string(),
+            "of 'subject' is not an owner; use self, or target for the move's target".to_string(),
         )),
-        other if !other.is_empty() && !is_retired_selector(other) => Ok(Who::Actor(other.into())),
-        other => Err(fault(format!("who '{other}' is not a who"))),
+        other if !other.is_empty() && !is_retired_selector(other) => {
+            Ok(grammar::Object::Actor(other.into()))
+        }
+        other => Err(fault(format!("of '{other}' is not an owner"))),
     }
 }
 

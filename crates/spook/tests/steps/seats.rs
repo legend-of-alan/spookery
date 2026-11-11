@@ -462,7 +462,7 @@ rules:
           value: 0
     do:
       - item:
-          who: place:docks_street
+          of: place:docks_street
           id: lamp_oil
           add: 1
 ---

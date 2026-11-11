@@ -7,6 +7,7 @@ pub(crate) mod effect;
 pub(crate) mod expand;
 pub(crate) mod expr;
 pub(crate) mod gate;
+pub(crate) mod grammar;
 pub(crate) mod habits;
 pub(crate) mod lines;
 pub(crate) mod perceive;

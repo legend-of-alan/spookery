@@ -89,7 +89,7 @@ Append a yield to `rules/verbs.yaml`. A yield commits a round and changes no num
 
 ## Add a check with partial_at
 
-`partial_at` is an absolute total, strictly below the roll `target`. The rule needs `check` and a `partial` list. A total at or above the target takes `success`. A total at or above `partial_at` and below the target takes `partial`. A lower total is a miss. This rule reuses the `nerve` check. The target is 8 and `partial_at` is 4, so a 2d6 plus the nerve meter can land in either band.
+`partial_at` is an absolute total, strictly below the roll `threshold`. The rule needs `check` and a `partial` list. A total at or above the threshold takes `success`. A total at or above `partial_at` and below the threshold takes `partial`. A lower total is a miss. This rule reuses the `nerve` check. The threshold is 8 and `partial_at` is 4, so a 2d6 plus the nerve meter can land in either band.
 
 ```yaml path=rules/verbs.yaml mode=append
   - id: press
@@ -97,7 +97,7 @@ Append a yield to `rules/verbs.yaml`. A yield commits a round and changes no num
       verb: press
     roll:
       check: nerve
-      target: 8
+      threshold: 8
       partial_at: 4
     success:
       - note:

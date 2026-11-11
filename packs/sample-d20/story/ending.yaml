@@ -5,10 +5,10 @@ rules:
     when:
       change:
         arrive: mill_lane
-        who: pc
+        subject: pc
     do:
       - flag:
-          who: world
+          of: world
           key: finished
           value: true
       - narrate:

@@ -16,11 +16,11 @@ pub struct Check {
 
 pub use spookery_protocol::Outcome;
 
-/// `total` against `target`, with an optional lower band.
-/// `total >= target` is success. `partial_at <= total < target` is partial.
+/// `total` against `threshold`, with an optional lower band.
+/// `total >= threshold` is success. `partial_at <= total < threshold` is partial.
 /// Anything lower, and any binary roll, is a miss.
-pub(crate) fn classify(total: i64, target: i64, partial_at: Option<i64>) -> Outcome {
-    if total >= target {
+pub(crate) fn classify(total: i64, threshold: i64, partial_at: Option<i64>) -> Outcome {
+    if total >= threshold {
         Outcome::Success
     } else if partial_at.is_some_and(|band| total >= band) {
         Outcome::Partial
@@ -82,14 +82,14 @@ pub fn faces(key: &RollKey, start: usize, count: u32, sides: u32) -> Result<Vec<
 }
 
 /// The only roll: `check`'s dice from this key's own seed, plus the actor's stat, against
-/// `target`. `partial_at` `None` keeps the roll binary; an opposing total passes `None`.
+/// `threshold`. `partial_at` `None` keeps the roll binary; an opposing total passes `None`.
 pub(crate) fn roll_check(
     check: &Check,
     canon: &Canon,
     state: &State,
     actor_id: &ActorId,
     key: &RollKey,
-    target: i64,
+    threshold: i64,
     partial_at: Option<i64>,
 ) -> Result<Roll, Reason> {
     let stat = state.actors().meter_value(canon, actor_id, &check.stat)?;
@@ -99,8 +99,8 @@ pub(crate) fn roll_check(
         faces,
         stat,
         total,
-        target,
-        outcome: classify(total, target, partial_at),
+        target: threshold,
+        outcome: classify(total, threshold, partial_at),
     })
 }
 
@@ -204,11 +204,11 @@ mod tests {
             (-1, 0, Some(-1), partial),
             (-2, 0, Some(-1), miss),
         ];
-        for (total, target, partial_at, expected) in cases {
+        for (total, threshold, partial_at, expected) in cases {
             assert_eq!(
-                classify(total, target, partial_at),
+                classify(total, threshold, partial_at),
                 expected,
-                "{total} vs {target} band {partial_at:?}"
+                "{total} vs {threshold} band {partial_at:?}"
             );
         }
     }

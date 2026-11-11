@@ -608,7 +608,7 @@ fn effects_run_on_both_outcomes_and_lists_run_on_one() {
         let pack = support::copy_docks(label);
         let mut moves = fs::read_to_string(pack.join("rules/verbs.yaml")).unwrap();
         moves.push_str(&format!(
-            "\n  - id: mark\n    when:\n      verb: mark\n      target: actor\n    roll:\n      check: grit\n      target: {difficulty}\n    do:\n      - flag:\n          who: target\n          key: marked\n          value: true\n",
+            "\n  - id: mark\n    when:\n      verb: mark\n      target: actor\n    roll:\n      check: grit\n      threshold: {difficulty}\n    do:\n      - flag:\n          of: target\n          key: marked\n          value: true\n",
         ));
         fs::write(pack.join("rules/verbs.yaml"), moves).unwrap();
         patch_mira_flags_and_place(&pack, "    - marked\n");
@@ -638,7 +638,7 @@ fn effects_run_on_both_outcomes_and_lists_run_on_one() {
         let pack = support::copy_docks(label);
         let mut moves = fs::read_to_string(pack.join("rules/verbs.yaml")).unwrap();
         moves.push_str(&format!(
-            "\n  - id: mark\n    when:\n      verb: mark\n      target: actor\n    roll:\n      check: grit\n      target: {difficulty}\n    success:\n      - flag:\n          who: target\n          key: marked\n          value: true\n    miss:\n      - flag:\n          who: target\n          key: missed\n          value: true\n",
+            "\n  - id: mark\n    when:\n      verb: mark\n      target: actor\n    roll:\n      check: grit\n      threshold: {difficulty}\n    success:\n      - flag:\n          of: target\n          key: marked\n          value: true\n    miss:\n      - flag:\n          of: target\n          key: missed\n          value: true\n",
         ));
         fs::write(pack.join("rules/verbs.yaml"), moves).unwrap();
         patch_mira_flags_and_place(&pack, "    - marked\n    - missed\n");
@@ -666,7 +666,7 @@ fn opposing_total_reused() {
         let pack = support::copy_docks(label);
         let mut moves = fs::read_to_string(pack.join("rules/verbs.yaml")).unwrap();
         moves.push_str(
-            "\n  - id: mark\n    when:\n      verb: mark\n      target: actor\n    roll:\n      check: grit\n      target: 0\n    success:\n      - flag:\n          who: target\n          key: marked\n          value: true\n    miss:\n      - flag:\n          who: target\n          key: missed\n          value: true\n  - id: defend\n    when:\n      verb: defend\n    roll:\n      check: grit\n      target: 0\n    success:\n      - flag:\n          who: self\n          key: guarded\n          value: true\n",
+            "\n  - id: mark\n    when:\n      verb: mark\n      target: actor\n    roll:\n      check: grit\n      threshold: 0\n    success:\n      - flag:\n          of: target\n          key: marked\n          value: true\n    miss:\n      - flag:\n          of: target\n          key: missed\n          value: true\n  - id: defend\n    when:\n      verb: defend\n    roll:\n      check: grit\n      threshold: 0\n    success:\n      - flag:\n          of: self\n          key: guarded\n          value: true\n",
         );
         fs::write(pack.join("rules/verbs.yaml"), moves).unwrap();
         insert_nell(&pack);
@@ -713,7 +713,7 @@ fn a_held_knife_still_runs_the_opposed_row() {
     let held = support::copy_docks("item-held");
     let mut moves = fs::read_to_string(held.join("rules/verbs.yaml")).unwrap();
     moves.push_str(
-        "\n  - id: mark\n    when:\n      verb: mark\n      target: actor\n    if:\n      - has_item:\n          who: self\n          id: knife\n    roll:\n      check: grit\n      target: 0\n    success:\n      - flag:\n          who: target\n          key: marked\n          value: true\n    miss:\n      - flag:\n          who: target\n          key: missed\n          value: true\n  - id: defend\n    when:\n      verb: defend\n    roll:\n      check: grit\n      target: 0\n    success:\n      - flag:\n          who: self\n          key: guarded\n          value: true\n",
+        "\n  - id: mark\n    when:\n      verb: mark\n      target: actor\n    if:\n      - has_item:\n          of: self\n          id: knife\n    roll:\n      check: grit\n      threshold: 0\n    success:\n      - flag:\n          of: target\n          key: marked\n          value: true\n    miss:\n      - flag:\n          of: target\n          key: missed\n          value: true\n  - id: defend\n    when:\n      verb: defend\n    roll:\n      check: grit\n      threshold: 0\n    success:\n      - flag:\n          of: self\n          key: guarded\n          value: true\n",
     );
     fs::write(held.join("rules/verbs.yaml"), moves).unwrap();
     let knife = held.join("world/items/knife.md");
@@ -784,7 +784,7 @@ rules:
           value: 1
     do:
       - meter:
-          who: self
+          of: self
           key: assassination_debt
           add: 1
 ---

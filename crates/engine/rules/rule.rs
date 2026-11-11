@@ -1,7 +1,8 @@
 //! One rule shape. The id is namespaced by the file that owns it.
 
 use crate::rules::expr::Expr;
-use crate::state::id::{ActorId, ExitId, PlaceId, StoryId};
+use crate::rules::grammar;
+use crate::state::id::{ActorId, PlaceId};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Rule {
@@ -134,27 +135,37 @@ impl TargetKind {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum WatchWho {
-    Any,
-    Pc,
-    Npc,
-    Actor(String),
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ChangeWatch {
-    Arrive { place: String, who: WatchWho },
-    Leave { place: String, who: WatchWho },
-    Meter { key: String, op: Op, bound: i64 },
-    Flag { key: String, becomes: bool },
-    Item { id: String, gained: bool },
-    Knows { fact: String },
+    Arrive {
+        place: String,
+        subject: grammar::Subject,
+    },
+    Leave {
+        place: String,
+        subject: grammar::Subject,
+    },
+    Meter {
+        key: String,
+        op: Op,
+        bound: i64,
+    },
+    Flag {
+        key: String,
+        becomes: bool,
+    },
+    Item {
+        id: String,
+        gained: bool,
+    },
+    Knows {
+        fact: String,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RollSpec {
     pub check: String,
-    pub target: Expr,
+    pub threshold: Expr,
     pub partial_at: Option<Expr>,
 }
 
@@ -175,27 +186,27 @@ pub struct Cost {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Cond {
     HasItem {
-        who: Who,
+        of: grammar::Object,
         id: String,
         count: u32,
     },
     Meter {
-        who: Who,
+        of: grammar::Object,
         key: String,
         op: Op,
         value: Expr,
     },
     Flag {
-        who: Who,
+        of: grammar::Object,
         key: String,
         is: bool,
     },
     At {
-        who: Who,
+        of: grammar::Object,
         place: String,
     },
     Knows {
-        who: Who,
+        of: grammar::Object,
         fact: String,
     },
     /// A tick of the named cycle in `from..to`, wrapping past the cycle's end when `from > to`.
@@ -210,7 +221,7 @@ pub enum Cond {
     },
     NoteExists(String),
     Wielding {
-        who: Who,
+        of: grammar::Object,
         id: String,
     },
     All(Vec<Cond>),
@@ -268,38 +279,24 @@ impl Op {
     }
 }
 
-/// What a rule's `who:` names. The pack writes `world` for `Who::Global`.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Who {
-    Self_,
-    Target,
-    Here,
-    Global,
-    Place(PlaceId),
-    Story(StoryId),
-    /// An exit, by its place and its name: `exit:<place>.<exit>`.
-    Exit(ExitId),
-    Actor(ActorId),
-}
-
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum EffectTemplate {
     Meter {
-        who: Who,
+        of: grammar::Object,
         key: String,
         add: Option<Expr>,
         set: Option<Expr>,
         resist: Option<ResistSpec>,
     },
     Flag {
-        who: Who,
+        of: grammar::Object,
         key: String,
         value: bool,
         resist: Option<ResistSpec>,
     },
     /// One application of modifier `id` to an actor, with magnitude `add`, lasting `ticks`.
     Modifier {
-        who: Who,
+        of: grammar::Object,
         id: String,
         add: Expr,
         ticks: u64,
@@ -322,27 +319,27 @@ pub enum EffectTemplate {
         resist: Option<ResistSpec>,
     },
     Memory {
-        who: Who,
+        of: grammar::Object,
         fact_ids: Vec<String>,
         text: Option<String>,
     },
     Item {
-        who: Who,
+        of: grammar::Object,
         id: String,
         add: i64,
         max: Option<i64>,
         resist: Option<ResistSpec>,
     },
     Reveal {
-        who: Who,
+        of: grammar::Object,
         fact: String,
     },
     Wield {
-        who: Who,
+        of: grammar::Object,
         id: String,
     },
     Unwield {
-        who: Who,
+        of: grammar::Object,
     },
 }
 
@@ -378,9 +375,9 @@ pub enum NarrateTo {
 pub enum ResistSpec {
     Same,
     Roll {
-        who: Who,
+        subject: grammar::Object,
         check: String,
-        target: Expr,
+        threshold: Expr,
         resisted: Vec<EffectTemplate>,
     },
 }

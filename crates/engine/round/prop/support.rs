@@ -113,8 +113,8 @@ fn pc_count(world: &World) -> usize {
 fn add_grit_success(pack: &Path) -> Result<(), String> {
     let path = pack.join("rules/verbs.yaml");
     let text = fs::read_to_string(&path).map_err(|err| err.to_string())?;
-    let needle = "      target: 0\n    do: []\n";
-    let replacement = "      target: 0\n    do: []\n    success:\n      - item:\n          who: self\n          id: lamp_oil\n          add: 1\n";
+    let needle = "      threshold: 0\n    do: []\n";
+    let replacement = "      threshold: 0\n    do: []\n    success:\n      - item:\n          of: self\n          id: lamp_oil\n          add: 1\n";
     if !text.contains(needle) {
         return Err("the grit check was not where the property expected".to_string());
     }

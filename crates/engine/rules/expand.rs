@@ -7,9 +7,10 @@ use crate::round::dice::Roller;
 use crate::rules::context::Context;
 use crate::rules::effect::{Effect, EffectKind};
 use crate::rules::expr::{self, Dice, Expr};
+use crate::rules::grammar;
 use crate::rules::roll::Outcome;
 use crate::rules::roll::{MoveReport, Roll};
-use crate::rules::rule::{EffectTemplate, LocationTo, NarrateTo, ResistSpec, Rule, Who};
+use crate::rules::rule::{EffectTemplate, LocationTo, NarrateTo, ResistSpec, Rule};
 use crate::state::component::meter::MeterWrite;
 use crate::state::id::ActorId;
 use crate::state::State;
@@ -110,13 +111,13 @@ fn expand_template(
                 None => return Err(Reason::Schema),
             },
             ResistSpec::Roll {
-                who,
+                subject,
                 check,
-                target,
+                threshold,
                 resisted,
             } => {
-                let actor = expr::resolve_actor(context, who)?;
-                let number = expr::eval_with_dice(context, target, dice)?;
+                let actor = expr::resolve_actor(context, subject)?;
+                let number = expr::eval_with_dice(context, threshold, dice)?;
                 let band = dice.resist(canon, state, actor, check, number)?;
                 *last_resist = Some(band);
                 if band == Outcome::Success {
@@ -133,33 +134,26 @@ fn expand_template(
         }
     }
     match template {
-        EffectTemplate::Flag {
-            who, key, value, ..
-        } => {
-            let kind = match who {
-                Who::Exit(exit) if key == OPEN => EffectKind::ExitOpen {
+        EffectTemplate::Flag { of, key, value, .. } => {
+            let kind = match of {
+                grammar::Object::Exit(exit) if key == OPEN => EffectKind::ExitOpen {
                     exit: exit.clone(),
                     open: *value,
                 },
                 _ => EffectKind::Flag {
-                    entity: expr::resolve_entity(context, who)?,
+                    entity: expr::resolve_entity(context, of)?,
                     key: key.clone(),
                     value: *value,
                 },
             };
             effects.push(Effect::new(viewer, &intent.id, kind));
         }
-        EffectTemplate::Modifier {
-            who,
-            id,
-            add,
-            ticks,
-        } => {
+        EffectTemplate::Modifier { of, id, add, ticks } => {
             effects.push(Effect::new(
                 viewer,
                 &intent.id,
                 EffectKind::Modifier {
-                    actor_id: expr::resolve_actor(context, who)?.clone(),
+                    actor_id: expr::resolve_actor(context, of)?.clone(),
                     id: id.clone(),
                     add: expr::eval_with_dice(context, add, dice)?,
                     ticks: *ticks,
@@ -182,9 +176,9 @@ fn expand_template(
             effects.push(location_effect(context, &place)?);
         }
         EffectTemplate::Meter {
-            who, key, add, set, ..
+            of, key, add, set, ..
         } => {
-            let entity = expr::resolve_entity(context, who)?;
+            let entity = expr::resolve_entity(context, of)?;
             let write = meter_offset(context, &entity, key, add.as_ref(), set.as_ref(), dice)?;
             effects.push(Effect::new(
                 viewer,
@@ -197,10 +191,10 @@ fn expand_template(
             ));
         }
         EffectTemplate::Item {
-            who, id, add, max, ..
+            of, id, add, max, ..
         } => {
             let item_id = expr::resolve_item_id(context, id)?;
-            let (actor_id, place) = match expr::resolve_entity(context, who)? {
+            let (actor_id, place) = match expr::resolve_entity(context, of)? {
                 entity::Id::Actor(id) => (Some(id), None),
                 entity::Id::Place(id) => (None, Some(id)),
                 entity::Id::Story(_) | entity::Id::Global => return Err(Reason::Schema),
@@ -217,8 +211,8 @@ fn expand_template(
                 },
             ));
         }
-        EffectTemplate::Wield { who, id } => {
-            let actor_id = expr::resolve_actor(context, who)?.clone();
+        EffectTemplate::Wield { of, id } => {
+            let actor_id = expr::resolve_actor(context, of)?.clone();
             effects.push(Effect::new(
                 viewer,
                 &intent.id,
@@ -228,8 +222,8 @@ fn expand_template(
                 },
             ));
         }
-        EffectTemplate::Unwield { who } => {
-            let actor_id = expr::resolve_actor(context, who)?.clone();
+        EffectTemplate::Unwield { of } => {
+            let actor_id = expr::resolve_actor(context, of)?.clone();
             effects.push(Effect::new(
                 viewer,
                 &intent.id,
@@ -260,7 +254,9 @@ fn expand_template(
         } => {
             let to = match to {
                 NarrateTo::Here => state.actors_at(expr::resolve_here(context)?),
-                NarrateTo::Self_ => vec![expr::resolve_actor(context, &Who::Self_)?.clone()],
+                NarrateTo::Self_ => {
+                    vec![expr::resolve_actor(context, &grammar::Object::Self_)?.clone()]
+                }
                 NarrateTo::Actors(ids) => ids.clone(),
                 NarrateTo::Present => context.presence.actors_present.clone(),
             };
@@ -274,12 +270,8 @@ fn expand_template(
                 },
             ));
         }
-        EffectTemplate::Memory {
-            who,
-            fact_ids,
-            text,
-        } => {
-            let actor_id = expr::resolve_actor(context, who)?.clone();
+        EffectTemplate::Memory { of, fact_ids, text } => {
+            let actor_id = expr::resolve_actor(context, of)?.clone();
             effects.push(Effect::new(
                 viewer,
                 &intent.id,
@@ -291,8 +283,8 @@ fn expand_template(
                 },
             ));
         }
-        EffectTemplate::Reveal { who, fact } => {
-            let actor_id = expr::resolve_actor(context, who)?.clone();
+        EffectTemplate::Reveal { of, fact } => {
+            let actor_id = expr::resolve_actor(context, of)?.clone();
             effects.push(Effect::new(
                 viewer,
                 &intent.id,
@@ -328,7 +320,7 @@ fn meter_offset(
 
 fn location_effect(context: &Context, to: &str) -> Result<Effect, Reason> {
     let intent = context.intent;
-    let actor_id = expr::resolve_actor(context, &Who::Self_)?.clone();
+    let actor_id = expr::resolve_actor(context, &grammar::Object::Self_)?.clone();
     let from = context
         .state
         .actors()

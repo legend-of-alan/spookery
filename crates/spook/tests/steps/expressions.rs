@@ -16,8 +16,8 @@ fn the_packs_hit_adds(world: &mut World, add: String) {
 }
 
 #[when(expr = "the pack's hit raises the grit of {string}")]
-fn the_packs_hit_raises_the_grit_of(world: &mut World, who: String) {
-    append_hit(world, &who, "1");
+fn the_packs_hit_raises_the_grit_of(world: &mut World, of: String) {
+    append_hit(world, &of, "1");
 }
 
 #[when(expr = "Mira's habit adds {string} to grit")]
@@ -28,7 +28,7 @@ fn miras_habit_adds(world: &mut World, add: String) {
     let next = text.replacen(
         "rules:\n  - id: leave_door_note\n",
         &format!(
-            "rules:\n  - id: toss\n    when: habit\n    do:\n      - meter:\n          who: self\n          key: grit\n          add: \"{add}\"\n  - id: leave_door_note\n"
+            "rules:\n  - id: toss\n    when: habit\n    do:\n      - meter:\n          of: self\n          key: grit\n          add: \"{add}\"\n  - id: leave_door_note\n"
         ),
         1,
     );
@@ -49,7 +49,7 @@ fn the_packs_hit_requires(world: &mut World, value: String) {
     let path = pack.join("rules/verbs.yaml");
     let mut text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read verbs: {err}"));
     text.push_str(&format!(
-        "\n  - id: hit\n    when:\n      verb: hit\n    if:\n      - meter:\n          who: self\n          id: grit\n          op: \">=\"\n          value: \"{value}\"\n    do:\n      - meter:\n          who: self\n          key: grit\n          add: 1\n"
+        "\n  - id: hit\n    when:\n      verb: hit\n    if:\n      - meter:\n          of: self\n          id: grit\n          op: \">=\"\n          value: \"{value}\"\n    do:\n      - meter:\n          of: self\n          key: grit\n          add: 1\n"
     ));
     fs::write(&path, text).unwrap_or_else(|err| panic!("write verbs: {err}"));
 }
@@ -182,12 +182,12 @@ fn the_journal_rejects_the_hit_as_out_of_range(world: &mut World) {
     );
 }
 
-fn append_hit(world: &World, who: &str, add: &str) {
+fn append_hit(world: &World, of: &str, add: &str) {
     let pack = table::pack(world).to_path_buf();
     let path = pack.join("rules/verbs.yaml");
     let mut text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read verbs: {err}"));
     text.push_str(&format!(
-        "\n  - id: hit\n    when:\n      verb: hit\n    do:\n      - meter:\n          who: {who}\n          key: grit\n          add: {add}\n"
+        "\n  - id: hit\n    when:\n      verb: hit\n    do:\n      - meter:\n          of: {of}\n          key: grit\n          add: {add}\n"
     ));
     fs::write(&path, &text).unwrap_or_else(|err| panic!("write verbs: {err}"));
     crate::support::stamp_pack_rev(&pack);

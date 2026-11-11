@@ -7,10 +7,11 @@ use crate::canon::{declared_flags, Canon, CastDef, FactDef, ItemDef, PlaceDef, S
 use crate::diagnostic::{error, schema_error, warning, Diagnostic};
 use crate::entity;
 use crate::rules::expr::Expr;
+use crate::rules::grammar;
 use crate::rules::roll::Check;
 use crate::rules::rule::{
     ChangeWatch, Cond, Cost, EffectTemplate, LocationTo, NarrateTo, Owner, ResistSpec, Rule,
-    RuleTable, When, Who,
+    RuleTable, When,
 };
 use crate::state::component::meter::{self, MeterDef};
 use crate::state::component::modifier::{self, ModifierDef};
@@ -224,10 +225,10 @@ pub(super) fn reveal_problems(
     let mut diags = Vec::new();
     for rule in rules.iter() {
         rule.visit_templates(|effect| {
-            let EffectTemplate::Reveal { who, fact } = effect else {
+            let EffectTemplate::Reveal { of, fact } = effect else {
                 return;
             };
-            if matches!(who, Who::Global) {
+            if matches!(of, grammar::Object::Global) {
                 diags.push(
                     schema_error(
                         &rule.file,
@@ -316,21 +317,21 @@ pub(super) fn unknown_carriers(scope: &EntityScope, rules: &RuleTable) -> Vec<Di
         let mut named = Vec::new();
         for cond in &rule.if_ {
             cond.visit(|cond| match cond {
-                Cond::Meter { who, key, .. } => named.push(("meter", who, key.as_str())),
-                Cond::Flag { who, key, .. } => named.push(("flag", who, key.as_str())),
+                Cond::Meter { of, key, .. } => named.push(("meter", of, key.as_str())),
+                Cond::Flag { of, key, .. } => named.push(("flag", of, key.as_str())),
                 _ => {}
             });
         }
         rule.visit_templates(|effect| match effect {
-            EffectTemplate::Meter { who, key, .. } => named.push(("meter", who, key.as_str())),
-            EffectTemplate::Flag { who, key, .. } => named.push(("flag", who, key.as_str())),
+            EffectTemplate::Meter { of, key, .. } => named.push(("meter", of, key.as_str())),
+            EffectTemplate::Flag { of, key, .. } => named.push(("flag", of, key.as_str())),
             _ => {}
         });
         let fixed = fixed_self(rule);
-        for (kind, who, key) in named {
+        for (kind, of, key) in named {
             let why = match kind {
-                "meter" => scope.why_not_carried(fixed, who, key),
-                _ => scope.why_undeclared(fixed, who, key),
+                "meter" => scope.why_not_carried(fixed, of, key),
+                _ => scope.why_undeclared(fixed, of, key),
             };
             let Some(why) = why else {
                 continue;
@@ -356,7 +357,7 @@ fn fixed_self(rule: &Rule) -> Option<&str> {
     }
 }
 
-/// The meters each entity carries, and the cast, places and stories a `who` may name.
+/// The meters each entity carries, and the cast, places and stories an `of` may name.
 pub(super) struct EntityScope<'a> {
     pub meters: &'a BTreeMap<String, MeterDef>,
     pub world_meters: &'a BTreeMap<String, MeterDef>,
@@ -366,23 +367,30 @@ pub(super) struct EntityScope<'a> {
 }
 
 impl EntityScope<'_> {
-    /// The one entity `who` names whatever the round: `world`, a place, a story, a cast id, or
+    /// The one entity `of` names whatever the round: `world`, a place, a story, a cast id, or
     /// `self` on a cast member's own habit. `None` when only play time knows it.
-    fn fixed_entity(&self, fixed_self: Option<&str>, who: &Who) -> Option<entity::Id> {
-        match who {
-            Who::Global => Some(entity::Id::Global),
-            Who::Place(id) => Some(entity::Id::Place(id.clone())),
-            Who::Story(id) => Some(entity::Id::Story(id.clone())),
-            Who::Actor(id) if self.cast.contains_key(id) => Some(entity::Id::Actor(id.clone())),
-            Who::Self_ => fixed_self.map(|id| entity::Id::Actor(id.into())),
+    fn fixed_entity(&self, fixed_self: Option<&str>, of: &grammar::Object) -> Option<entity::Id> {
+        match of {
+            grammar::Object::Global => Some(entity::Id::Global),
+            grammar::Object::Place(id) => Some(entity::Id::Place(id.clone())),
+            grammar::Object::Story(id) => Some(entity::Id::Story(id.clone())),
+            grammar::Object::Actor(id) if self.cast.contains_key(id) => {
+                Some(entity::Id::Actor(id.clone()))
+            }
+            grammar::Object::Self_ => fixed_self.map(|id| entity::Id::Actor(id.into())),
             _ => None,
         }
     }
 
-    /// Why flag `key` on `who` can never be set or tested, or `None` when it may be.
-    fn why_undeclared(&self, fixed_self: Option<&str>, who: &Who, key: &str) -> Option<String> {
-        if let Who::Exit(exit) = who {
-            return if self.unknown_who(who).is_some() {
+    /// Why flag `key` of the owner `of` names can never be set or tested, or `None` when it may be.
+    fn why_undeclared(
+        &self,
+        fixed_self: Option<&str>,
+        of: &grammar::Object,
+        key: &str,
+    ) -> Option<String> {
+        if let grammar::Object::Exit(exit) = of {
+            return if self.unknown_object(of).is_some() {
                 Some(format!("{exit} is not an exit"))
             } else if key != OPEN {
                 Some(format!("an exit carries only the flag '{OPEN}'"))
@@ -391,20 +399,26 @@ impl EntityScope<'_> {
                 (!door).then(|| format!("{exit} has no if, so it is always open"))
             };
         }
-        let id = self.fixed_entity(fixed_self, who)?;
+        let id = self.fixed_entity(fixed_self, of)?;
         let flags = declared_flags(self.cast, self.places, self.stories, id.as_ref())?;
         let declared = flags.iter().any(|flag| flag == key);
         (!declared).then(|| format!("{id} does not declare it"))
     }
 
-    /// Why meter `key` on `who` can never be read or written, or `None` when it may be.
+    /// Why meter `key` of the owner `of` names can never be read or written, or `None` when it
+    /// may be.
     /// An entity known only at play time is not guessed: only its key is checked.
-    fn why_not_carried(&self, fixed_self: Option<&str>, who: &Who, key: &str) -> Option<String> {
+    fn why_not_carried(
+        &self,
+        fixed_self: Option<&str>,
+        of: &grammar::Object,
+        key: &str,
+    ) -> Option<String> {
         let def = self.meters.get(key);
-        if let Who::Exit(exit) = who {
+        if let grammar::Object::Exit(exit) = of {
             return Some(format!("{exit} carries no meter '{key}'"));
         }
-        match self.fixed_entity(fixed_self, who) {
+        match self.fixed_entity(fixed_self, of) {
             Some(entity::Id::Global) if self.world_meters.contains_key(key) => None,
             Some(entity::Id::Global) => Some(format!("the world carries no meter '{key}'")),
             Some(id) if !def.is_some_and(|def| def.is_on(id.as_ref())) => {
@@ -418,21 +432,24 @@ impl EntityScope<'_> {
         }
     }
 
-    /// The name `who` gives when no place, story or cast member has it.
-    fn unknown_who(&self, who: &Who) -> Option<String> {
-        match who {
-            Who::Self_ | Who::Target | Who::Here | Who::Global => None,
-            Who::Place(id) if self.places.contains_key(id) => None,
-            Who::Place(id) => Some(format!("place:{id}")),
-            Who::Story(id) if self.stories.contains_key(id) => None,
-            Who::Story(id) => Some(format!("story:{id}")),
-            Who::Exit(exit) => {
+    /// The name `of` gives when no place, story or cast member has it.
+    fn unknown_object(&self, of: &grammar::Object) -> Option<String> {
+        match of {
+            grammar::Object::Self_
+            | grammar::Object::Target
+            | grammar::Object::Here
+            | grammar::Object::Global => None,
+            grammar::Object::Place(id) if self.places.contains_key(id) => None,
+            grammar::Object::Place(id) => Some(format!("place:{id}")),
+            grammar::Object::Story(id) if self.stories.contains_key(id) => None,
+            grammar::Object::Story(id) => Some(format!("story:{id}")),
+            grammar::Object::Exit(exit) => {
                 let exits = self.places.get(&exit.place).map(|at| at.exits.as_slice());
                 let known = exits.is_some_and(|exits| exits.iter().any(|at| at.name == exit.exit));
                 (!known).then(|| exit.to_string())
             }
-            Who::Actor(id) if self.cast.contains_key(id) => None,
-            Who::Actor(id) => Some(id.to_string()),
+            grammar::Object::Actor(id) if self.cast.contains_key(id) => None,
+            grammar::Object::Actor(id) => Some(id.to_string()),
         }
     }
 
@@ -446,7 +463,7 @@ impl EntityScope<'_> {
         diags: &mut Vec<Diagnostic>,
     ) {
         for expr in exprs {
-            for (who, key, spot) in expr.meter_reads() {
+            for (of, key, spot) in expr.meter_reads() {
                 let at = Locator::Spot(spot);
                 let refuse = |problem, hint| {
                     Problem {
@@ -458,15 +475,15 @@ impl EntityScope<'_> {
                     }
                     .into_diagnostic()
                 };
-                if let Some(why) = self.why_not_carried(fixed_self, who, key) {
+                if let Some(why) = self.why_not_carried(fixed_self, of, key) {
                     diags.push(refuse(
                         format!("expression reads meter '{key}', but {why}"),
                         "declare the meter on that entity, or read one that exists",
                     ));
                 }
-                if let Some(name) = self.unknown_who(who) {
+                if let Some(name) = self.unknown_object(of) {
                     diags.push(refuse(
-                        format!("expression names '{name}', which is not a who"),
+                        format!("expression names '{name}', which is not an owner"),
                         "use self, target, here, world, place:<id>, story:<id>, or a cast id",
                     ));
                 }
@@ -477,7 +494,7 @@ impl EntityScope<'_> {
 
 fn push_rule_exprs<'a>(rule: &'a Rule, exprs: &mut Vec<&'a Expr>) {
     if let Some(roll) = &rule.roll {
-        exprs.push(&roll.target);
+        exprs.push(&roll.threshold);
         if let Some(band) = &roll.partial_at {
             exprs.push(band);
         }
@@ -504,8 +521,8 @@ fn push_rule_exprs<'a>(rule: &'a Rule, exprs: &mut Vec<&'a Expr>) {
                 exprs.push(expr);
             }
         }
-        if let Some(ResistSpec::Roll { target, .. }) = effect.resist() {
-            exprs.push(target);
+        if let Some(ResistSpec::Roll { threshold, .. }) = effect.resist() {
+            exprs.push(threshold);
         }
     });
 }
@@ -1105,7 +1122,7 @@ fn is_too_wide(sight: &Sight, reach: &Reach) -> bool {
 
 /// Whether `watch` can match a change no actor holds, which has no subject: a meter the world,
 /// a place or a story carries, a flag a place or story declares, or a flag some rule sets with
-/// `who: world`.
+/// `of: world`.
 fn watches_world(canon: &Canon, watch: &ChangeWatch) -> bool {
     match watch {
         ChangeWatch::Meter { key, .. } => {
@@ -1125,7 +1142,7 @@ fn watches_world(canon: &Canon, watch: &ChangeWatch) -> bool {
                     let mut sets = false;
                     rule.visit_templates(|effect| {
                         if let EffectTemplate::Flag {
-                            who: Who::Global,
+                            of: grammar::Object::Global,
                             key: written,
                             ..
                         } = effect
@@ -1197,48 +1214,51 @@ fn narrates_to_present(rule: &Rule) -> bool {
     present
 }
 
-/// Whether `rule` needs a subject: `self` or `here` as a who or a narrate's `to`, a location
-/// effect, which moves the subject, or a roll, which is the subject's.
+/// Whether `rule` needs a subject: `self` or `here` as an `of`, a resist's `subject` or a
+/// narrate's `to`, a location effect, which moves the subject, or a roll, which is the subject's.
 fn names_subject(rule: &Rule) -> bool {
-    let mut whos = Vec::new();
+    let mut objects = Vec::new();
     for cond in &rule.if_ {
         cond.visit(|cond| match cond {
-            Cond::HasItem { who, .. }
-            | Cond::Meter { who, .. }
-            | Cond::Flag { who, .. }
-            | Cond::At { who, .. }
-            | Cond::Knows { who, .. }
-            | Cond::Wielding { who, .. } => whos.push(who),
+            Cond::HasItem { of, .. }
+            | Cond::Meter { of, .. }
+            | Cond::Flag { of, .. }
+            | Cond::At { of, .. }
+            | Cond::Knows { of, .. }
+            | Cond::Wielding { of, .. } => objects.push(of),
             _ => {}
         });
     }
     let mut exprs = Vec::new();
     push_rule_exprs(rule, &mut exprs);
     for expr in exprs {
-        whos.extend(expr.meter_reads().into_iter().map(|(who, _, _)| who));
+        objects.extend(expr.meter_reads().into_iter().map(|(of, _, _)| of));
     }
     let mut needs = rule.roll.is_some();
     rule.visit_templates(|effect| {
         match effect {
-            EffectTemplate::Meter { who, .. }
-            | EffectTemplate::Flag { who, .. }
-            | EffectTemplate::Modifier { who, .. }
-            | EffectTemplate::Memory { who, .. }
-            | EffectTemplate::Item { who, .. }
-            | EffectTemplate::Reveal { who, .. }
-            | EffectTemplate::Wield { who, .. }
-            | EffectTemplate::Unwield { who } => whos.push(who),
+            EffectTemplate::Meter { of, .. }
+            | EffectTemplate::Flag { of, .. }
+            | EffectTemplate::Modifier { of, .. }
+            | EffectTemplate::Memory { of, .. }
+            | EffectTemplate::Item { of, .. }
+            | EffectTemplate::Reveal { of, .. }
+            | EffectTemplate::Wield { of, .. }
+            | EffectTemplate::Unwield { of } => objects.push(of),
             EffectTemplate::Narrate { to, .. } => {
                 needs |= matches!(to, NarrateTo::Self_ | NarrateTo::Here);
             }
             EffectTemplate::Location { .. } => needs = true,
             EffectTemplate::Note { .. } => {}
         }
-        if let Some(ResistSpec::Roll { who, .. }) = effect.resist() {
-            whos.push(who);
+        if let Some(ResistSpec::Roll { subject, .. }) = effect.resist() {
+            objects.push(subject);
         }
     });
-    needs || whos.iter().any(|who| matches!(who, Who::Self_ | Who::Here))
+    needs
+        || objects
+            .iter()
+            .any(|of| matches!(of, grammar::Object::Self_ | grammar::Object::Here))
 }
 
 fn mark_cycles(next: &[Vec<usize>], hit: &mut [bool]) {

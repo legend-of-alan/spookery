@@ -96,11 +96,11 @@ fn a_docks_row_overreach(world: &mut World, add: i64, remove: i64) {
       verb: overreach
     do:
       - item:
-          who: place:docks_shop
+          of: place:docks_shop
           id: lamp_oil
           add: {add}
       - item:
-          who: place:docks_shop
+          of: place:docks_shop
           id: lamp_oil
           add: -{remove}
 "
@@ -123,10 +123,10 @@ fn a_docks_row_spilled(world: &mut World, remove: i64) {
       verb: spilled
     roll:
       check: grit
-      target: 0
+      threshold: 0
     do:
       - item:
-          who: place:docks_shop
+          of: place:docks_shop
           id: lamp_oil
           add: -{remove}
 "
@@ -278,11 +278,11 @@ fn max_effects_per_intent_is_1_and_a_row_with_2_effects(world: &mut World) {
       verb: two_stock
     do:
       - item:
-          who: place:docks_shop
+          of: place:docks_shop
           id: lamp_oil
           add: 1
       - item:
-          who: place:docks_shop
+          of: place:docks_shop
           id: lamp_oil
           add: 1
 ",
@@ -332,7 +332,7 @@ rules:
   - id: ask
     when: { verb: ask, target: actor }
     cost: { ticks: 10 }
-    do: [meter: { who: target, key: rest, add: -1 }]
+    do: [meter: { of: target, key: rest, add: -1 }]
 ---";
     let next = text.replacen("  eligible: false\n---", rule, 1);
     assert_ne!(next, text, "aldric's front matter moved");
@@ -392,7 +392,7 @@ fn a_docks_pack_with_a_timed_haul(world: &mut World, oil: i64) {
   - id: haul
     when: {{ verb: haul }}
     cost: {{ ticks: 10 }}
-    do: [item: {{ who: self, id: lamp_oil, add: -{oil} }}]
+    do: [item: {{ of: self, id: lamp_oil, add: -{oil} }}]
 "
         ),
     );
@@ -450,16 +450,18 @@ fn the_refused_finish_commits(world: &mut World) {
     spookery_engine::verify_pack(pack, None).unwrap_or_else(|err| panic!("verify: {err}"));
 }
 
-#[given(expr = "a docks pack whose \"pick\" rule rolls grit against a target that divides by zero")]
+#[given(
+    expr = "a docks pack whose \"pick\" rule rolls grit against a threshold that divides by zero"
+)]
 fn a_docks_pack_with_a_broken_pick(world: &mut World) {
-    let pack = support::copy_pack("oneshot-docks", "broken-target");
+    let pack = support::copy_pack("oneshot-docks", "broken-threshold");
     // Grit starts at 1, so the divisor is 0 only at play, past `spook check`.
     support::append(
         &pack.join("rules/verbs.yaml"),
         "
   - id: pick
     when: { verb: pick }
-    roll: { check: grit, target: \"10 / (self.grit - 1)\" }
+    roll: { check: grit, threshold: \"10 / (self.grit - 1)\" }
     do: []
 ",
     );
@@ -520,7 +522,7 @@ fn a_docks_pack_with_two_rummage_rules(world: &mut World, shop: i64, shared: i64
         "  - id: rummage
     when: {{ verb: rummage }}
     cost: {{ meters: {{ rest: {shop} }} }}
-    roll: {{ check: grit, target: 0 }}
+    roll: {{ check: grit, threshold: 0 }}
     do: []"
     );
     add_place_rules(&pack, "docks_shop", &rule);
@@ -572,10 +574,10 @@ fn a_street_rule_over_the_cap(world: &mut World) {
     let pack = support::copy_pack("oneshot-docks", "trigger-cap");
     set_budget(&pack, "max_effects_per_intent", 1);
     let rule = "  - id: greeted
-    when: { change: { arrive: here, who: pc_rowan } }
+    when: { change: { arrive: here, subject: pc_rowan } }
     do:
-      - flag: { who: self, key: greeted, value: true }
-      - flag: { who: self, key: welcomed, value: true }";
+      - flag: { of: self, key: greeted, value: true }
+      - flag: { of: self, key: welcomed, value: true }";
     add_place_rules(&pack, "docks_street", rule);
     support::stamp_pack_rev(&pack);
     make_mira_ineligible(&pack);
@@ -687,8 +689,8 @@ fn the_docks_pack_allows_keys(world: &mut World, limit: u64) {
   - id: overset
     when: { verb: overset }
     do:
-      - flag: { who: world, key: greeted, value: true }
-      - flag: { who: world, key: welcomed, value: true }
+      - flag: { of: world, key: greeted, value: true }
+      - flag: { of: world, key: welcomed, value: true }
 ",
     );
     make_mira_ineligible(&pack);
@@ -848,7 +850,7 @@ fn lark_pack() -> PathBuf {
       verb: grit
     roll:
       check: grit
-      target: 0
+      threshold: 0
     do: []
 ",
     );
@@ -960,7 +962,7 @@ fn the_docks_pack_allows_keys_and_braces(world: &mut World, limit: u64, add: i64
   - id: brace
     when: {{ verb: brace }}
     do:
-      - modifier: {{ who: self, id: brace, add: {add}, ticks: 10 }}
+      - modifier: {{ of: self, id: brace, add: {add}, ticks: 10 }}
 "
         ),
     );
@@ -986,7 +988,7 @@ fn a_cast_member_the_save_does_not_list(world: &mut World, row: String) {
   - id: {row}
     when: {{ verb: {row} }}
     do:
-      - flag: {{ who: pc_nell, key: marked, value: true }}
+      - flag: {{ of: pc_nell, key: marked, value: true }}
 "
         ),
     );
