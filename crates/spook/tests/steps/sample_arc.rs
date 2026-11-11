@@ -76,6 +76,10 @@ const DEMO_BRACE: &[&str] = &[
     "travel mill_lane",
 ];
 
+const DEFAULT_ENDING: &str = "Nell is on the lane. That is the end.";
+const NAIL_KEPT_ENDING: &str =
+    "The nail is still in Corin's pocket, unspent. Oden will remember who put a shoulder to his cart.";
+
 #[given(expr = "sample-d20 and a recorded line script")]
 fn sample_d20_and_a_recorded_line_script(world: &mut World) {
     world.scratch = SCRIPT.join("\n");
@@ -210,35 +214,47 @@ fn the_attempt_is_refused_and_in_the_log(world: &mut World) {
     assert_eq!(saved, table::live_mut(world).opened_save);
 }
 
-#[given(expr = "demo-d20 and Corin and a recorded line script")]
-fn demo_d20_and_corin_and_a_recorded_line_script(world: &mut World) {
-    world.scratch = DEMO_WARD.join("\n");
+#[given(expr = "demo-d20 and Corin and the ward script")]
+fn demo_d20_and_corin_and_the_ward_script(world: &mut World) {
+    world.scratch = "ward".to_string();
 }
 
 #[given(expr = "demo-d20 and Corin and the brace script")]
 fn demo_d20_and_corin_and_the_brace_script(world: &mut World) {
-    world.scratch = DEMO_BRACE.join("\n");
+    world.scratch = "brace".to_string();
 }
 
 #[when(expr = "the demo script is played with the stub GM")]
 fn the_demo_script_is_played_with_the_stub_gm(world: &mut World) {
-    let lines: Vec<String> = world.scratch.lines().map(str::to_string).collect();
-    let lines: Vec<&str> = lines.iter().map(String::as_str).collect();
-    play_script(world, "demo-d20", "pc_corin", "demo-script", &lines);
+    let lines = match world.scratch.as_str() {
+        "ward" => DEMO_WARD,
+        "brace" => DEMO_BRACE,
+        other => panic!("unknown demo script: {other}"),
+    };
+    seat_gm_and_actor(world, "demo-d20", "pc_corin", "demo-script");
+    for line in lines {
+        commit_line(world, line);
+    }
+}
+
+#[then(expr = "the player sees the default ending")]
+fn the_player_sees_the_default_ending(world: &mut World) {
+    let text = table::player_text(world);
+    assert!(
+        text.contains(DEFAULT_ENDING),
+        "the default ending was not shown\n{text}"
+    );
 }
 
 #[then(expr = "the player sees the nail-kept ending and not the default ending")]
 fn the_player_sees_the_nail_kept_ending_and_not_the_default(world: &mut World) {
     let text = table::player_text(world);
-    const KEPT: &str =
-        "The nail is still in Corin's pocket, unspent. Oden will remember who put a shoulder to his cart.";
-    const DEFAULT: &str = "Nell is on the lane. That is the end.";
     assert!(
-        text.contains(KEPT),
+        text.contains(NAIL_KEPT_ENDING),
         "the nail-kept ending was not shown\n{text}"
     );
     assert!(
-        !text.contains(DEFAULT),
+        !text.contains(DEFAULT_ENDING),
         "the default ending was also shown\n{text}"
     );
 }
@@ -253,20 +269,6 @@ fn seat_gm_and_actor(world: &mut World, pack_name: &str, actor_id: &str, label: 
     table::seat_gm(world);
     table::seat_actor(world, &pack, actor_id);
     world.pack = Some(pack.clone());
-    pack
-}
-
-fn play_script(
-    world: &mut World,
-    pack_name: &str,
-    actor_id: &str,
-    label: &str,
-    lines: &[&str],
-) -> PathBuf {
-    let pack = seat_gm_and_actor(world, pack_name, actor_id, label);
-    for line in lines {
-        commit_line(world, line);
-    }
     pack
 }
 
