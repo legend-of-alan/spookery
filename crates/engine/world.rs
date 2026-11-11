@@ -7,7 +7,7 @@ use std::sync::Arc;
 use spookery_protocol::{CommandView, PlaceView};
 
 use crate::canon::Budget;
-use crate::canon::{check_save, load_canon, pack_rev, Canon};
+use crate::canon::{load_canon, pack_rev, Canon};
 use crate::diagnostic::{error, first_reason, locate_nth, schema_error, Code, Diagnostic};
 use crate::entity;
 use crate::intent::{Intent, IntentArgs, Source, Target};
@@ -494,7 +494,7 @@ impl World<()> {
             return Err(first_reason(&problems));
         }
         if !continues {
-            check_save(&canon, &state).map_err(|diags| first_reason(&diags))?;
+            save::check_save(&canon, &state).map_err(|diags| first_reason(&diags))?;
         }
         Ok(Self {
             root: root.to_path_buf(),
@@ -689,7 +689,7 @@ pub fn check_pack(root: &Path) -> Vec<Diagnostic> {
         diags.extend(problems);
         // A checkpoint save is not the tip. Resume checks the tip when it opens.
         if let Some(canon) = canon.as_ref().filter(|_| !journal_continues(&live, state)) {
-            if let Err(more) = check_save(canon, state) {
+            if let Err(more) = save::check_save(canon, state) {
                 diags.extend(more);
             }
         }

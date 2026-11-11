@@ -97,6 +97,7 @@ Feature: Modifiers stack per application, add ticks on reapply, and expire at on
     And "soaked" modifies grit and has no max_stacks
     And pc_rowan has 3 stacks of burn and 1 of soaked
     When the pack drops burn and soaked now modifies rest
+    And spook check reports pc_rowan holds burn
     And the operator migrates the pack
     Then pc_rowan has neither burn nor soaked
     And spook verify reproduces the journal
@@ -104,6 +105,7 @@ Feature: Modifiers stack per application, add ticks on reapply, and expire at on
   Scenario: Migrate drops a meter the pack no longer gives
     Given pc_rowan carries meter "luck" and the world carries meter "tide"
     When the pack drops luck and tide
+    And spook check reports the world lists meter tide
     And the operator migrates the pack
     Then pc_rowan has no luck and the world has no tide
     And spook verify reproduces the journal

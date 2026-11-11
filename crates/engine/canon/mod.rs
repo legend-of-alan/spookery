@@ -40,7 +40,7 @@ use lint::{
     broken_exits, resist_same_without_roll, reveal_problems, unknown_carriers, unknown_checks,
     unknown_meters, unknown_modifiers, unknown_reads, unknown_rule_items, EntityScope,
 };
-pub(crate) use lint::{check_canon, check_save};
+pub(crate) use lint::{check_canon, unknown_item};
 use meters::{add_own_meters, load_meters};
 use modifiers::{load_modifiers, MODIFIERS_FILE};
 use pack::load_pack_yaml;

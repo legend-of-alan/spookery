@@ -91,7 +91,7 @@ fn keep(world: &mut World, played: PlayedRound) {
     world.told.extend(played.lines);
 }
 
-fn run_check(world: &mut World) {
+pub(crate) fn run_check(world: &mut World) {
     let output = support::run_spook(&["check", &support::pack_arg(pack(world))]);
     world.code = output.status.code();
     world.stdout = String::from_utf8_lossy(&output.stdout).into_owned();

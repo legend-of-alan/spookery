@@ -4,16 +4,16 @@ use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::Path;
 
-use crate::canon::{check_save, pack_rev, Canon};
+use crate::canon::{pack_rev, Canon};
 use crate::diagnostic::first_reason;
 use crate::hash::blake2s_tagged;
-use crate::state::State;
+use crate::state::{sort_unique, State};
 use crate::store::durability::{fsync_dir, fsync_file, refuse_io, write_atomic};
 use crate::store::journal;
 use crate::store::lock::{lock_write, PackGuard, WriteGuard};
 use crate::store::records::{MigrateRecord, Record, RoundRecord};
 use crate::store::recovery::close_finished;
-use crate::store::save::{self, find_missing_meters};
+use crate::store::save::{self, check_save, find_missing_meters};
 use crate::world::World;
 use crate::Reason;
 
@@ -101,6 +101,9 @@ pub fn commit_migrate(
     let pack_rev_before = state.pack_rev.clone();
     let state_rev_before = state.state_rev;
     let state_rev_after = state_rev_before.checked_add(1).ok_or(Reason::OutOfRange)?;
+    let stale = save::find_stale_modifiers(canon, &state).into_iter();
+    let mut dropped_modifiers: Vec<String> = stale.map(|(_, id)| id).collect();
+    sort_unique(&mut dropped_modifiers);
     let mut record = MigrateRecord {
         pack_rev_before,
         pack_rev_after,
@@ -108,7 +111,7 @@ pub fn commit_migrate(
         state_rev_after,
         state_hash: String::new(),
         meters: find_missing_meters(canon, &state),
-        dropped_modifiers: save::find_stale_modifiers(canon, &state),
+        dropped_modifiers,
         dropped_meters: save::find_stale_meters(canon, &state),
         edited,
         prev: String::new(),
