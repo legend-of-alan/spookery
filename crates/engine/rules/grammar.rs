@@ -11,8 +11,8 @@ pub enum Subject {
     Actor(String),
 }
 
-/// What a pack line names as an object: a direct object or the object of a preposition. Today
-/// it is the value of `of:`. A resist's `subject:` (the actor who rolls to resist, not the
+/// A grammatical object a pack line names, including but not limited to a direct object, an
+/// indirect object or the object of a preposition. Today it is the value of `of:`. A resist's `subject:` (the actor who rolls to resist, not the
 /// subject of the outer line) reuses this value set until pack lines have a parse tree. The
 /// pack writes `world` for `Object::Global`.
 #[derive(Clone, Debug, PartialEq, Eq)]
