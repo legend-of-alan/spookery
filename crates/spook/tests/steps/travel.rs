@@ -450,9 +450,10 @@ fn play_joins_again(world: &mut World) {
 fn plays_map_lists_both_rooms(world: &mut World) {
     let mark = capture_play_stdout(world).len();
     write_play(world, "map");
+    // Mira's Rooms is printed last, with one exit, so its finished exit line ends the map.
     wait_play_until(
         world,
-        |stdout| stdout[mark..].contains("Mira's Rooms"),
+        |stdout| stdout[mark..].contains("Mira's Rooms\n  ") && stdout.ends_with('\n'),
         "the map",
     );
     let map = capture_play_stdout(world)[mark..].to_string();
