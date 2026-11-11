@@ -10,12 +10,12 @@ rules:
     when: habit
     if:
       - at:
-          who: pc_corin
+          of: pc_corin
           place: wheel_shed
       - not:
           note_exists: note_cart
       - flag:
-          who: world
+          of: world
           key: chocked
           is: false
     do:

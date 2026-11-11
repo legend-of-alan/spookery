@@ -26,12 +26,12 @@ rules:
         crosses: "<=0"
     if:
       - flag:
-          who: self
+          of: self
           key: warden
           is: true
     do:
       - flag:
-          who: world
+          of: world
           key: passage
           value: true
   - id: ask
@@ -40,7 +40,7 @@ rules:
       target: actor
     do:
       - flag:
-          who: world
+          of: world
           key: passage
           value: true
       - narrate:

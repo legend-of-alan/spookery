@@ -19,16 +19,16 @@ rules:
       target: actor
     roll:
       check: strike
-      target: 38
+      threshold: 38
       partial_at: 32
     success:
       - meter:
-          who: target
+          of: target
           key: hp
           add: "-(self.might / 10)"
     partial:
       - meter:
-          who: target
+          of: target
           key: hp
           add: -1
 
@@ -38,11 +38,11 @@ rules:
       target: item
     do:
       - item:
-          who: here
+          of: here
           id: target
           add: -1
       - item:
-          who: self
+          of: self
           id: target
           add: 1
 
@@ -52,11 +52,11 @@ rules:
       target: item
     do:
       - item:
-          who: self
+          of: self
           id: target
           add: -1
       - item:
-          who: here
+          of: here
           id: target
           add: 1
 
@@ -66,7 +66,7 @@ rules:
       target: item
     do:
       - wield:
-          who: self
+          of: self
           id: target
 
   - id: unwield
@@ -74,24 +74,24 @@ rules:
       verb: unwield
     do:
       - unwield:
-          who: self
+          of: self
 
   - id: ward
     when:
       verb: ward
     if:
       - at:
-          who: self
+          of: self
           place: gate_yard
       - has_item:
-          who: self
+          of: self
           id: nail
     cost:
       items:
         nail: 1
     do:
       - flag:
-          who: world
+          of: world
           key: chocked
           value: true
       - narrate:
@@ -103,16 +103,16 @@ rules:
       verb: brace
     if:
       - at:
-          who: self
+          of: self
           place: wheel_shed
       - at:
-          who: npc_oden
+          of: npc_oden
           place: wheel_shed
     cost:
       ticks: 15
     do:
       - flag:
-          who: world
+          of: world
           key: chocked
           value: true
       - narrate:
