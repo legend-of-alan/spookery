@@ -25,6 +25,6 @@ rules:
             - pc_corin
           place: wheel_shed
           fact_ids: []
-          text: Ward the wheel with the nail, back at the cart in the yard, or brace the cart here with him and keep the nail.
+          text: Oden is ready when you are.
 ---
-Oden works the wheel in the shed and stays out of the yard.
+Oden works in the shed and stays out of the yard.
