@@ -32,7 +32,7 @@ fn write_story(world: &mut World, id: &str, keys: &str) {
     fs::write(dir.join(format!("{id}.yaml")), text).unwrap();
 }
 
-/// Append a change rule that runs `effect` each time pc_rowan gains lamp oil.
+/// Append a change rule that runs `effect` each time rowan gains lamp oil.
 fn append_story_rule(pack: &Path, story: &str, effect: &str) {
     let path = pack.join(format!("story/{story}.yaml"));
     let mut text = fs::read_to_string(&path).unwrap_or_else(|_| {
@@ -69,13 +69,13 @@ fn add_verb_doing(pack: &Path, verb: &str, effects: &str) {
     );
 }
 
-/// Put pc_rowan in the loft, seated, and Mira in the shop.
+/// Put rowan in the loft, seated, and Mira in the shop.
 fn stand_in_the_loft(world: &mut World) {
     let pack = world.pack.clone().unwrap();
     edit_table(world, &pack, |now, seated| {
-        set_place(now, "pc_rowan", "loft");
+        set_place(now, "rowan", "loft");
         set_place(now, "mira", "docks_shop");
-        sit(seated, &["pc_rowan"]);
+        sit(seated, &["rowan"]);
     });
 }
 
@@ -102,19 +102,19 @@ fn story_declares_a_shown_meter(world: &mut World, story: String, key: String) {
     write_story(world, &story, &keys);
 }
 
-#[given(expr = "pc_rowan in the shop and pc_wren in the street are seated")]
+#[given(expr = "rowan in the shop and wren in the street are seated")]
 fn rowan_and_wren_are_seated_apart(world: &mut World) {
     let pack = world.pack.clone().unwrap();
     edit_table(world, &pack, |now, seated| {
-        assert_eq!(now.actors().place["pc_rowan"], "docks_shop");
-        assert_eq!(now.actors().place["pc_wren"], "docks_street");
-        sit(seated, &["pc_rowan", "pc_wren"]);
+        assert_eq!(now.actors().place["rowan"], "docks_shop");
+        assert_eq!(now.actors().place["wren"], "docks_street");
+        sit(seated, &["rowan", "wren"]);
     });
 }
 
-#[then(expr = "pc_rowan's and pc_wren's change lines show dread")]
+#[then(expr = "rowan's and wren's change lines show dread")]
 fn rowan_and_wren_see_dread(world: &mut World) {
-    for id in ["pc_rowan", "pc_wren"] {
+    for id in ["rowan", "wren"] {
         let seen = seen_of(world, id);
         assert!(
             seen.contains(&"story_meter ending dread".to_string()),
@@ -182,7 +182,7 @@ fn a_rule_adds(world: &mut World, key: String, of: String) {
 
 #[when(expr = "the rule runs")]
 fn the_rule_runs(world: &mut World) {
-    let take = intent("take", "pc_rowan", "take", Some("lamp_oil"));
+    let take = intent("take", "rowan", "take", Some("lamp_oil"));
     migrate_and_play(world, vec![take]);
 }
 
@@ -198,7 +198,7 @@ fn the_gm_sees_dread(world: &mut World) {
 fn no_view_lists_dread(world: &mut World) {
     let pack = world.pack.clone().unwrap();
     let opened = Opened::peek(&pack).unwrap();
-    for id in ["pc_rowan", "pc_wren", "pc_harbormouse"] {
+    for id in ["rowan", "wren", "harbormouse"] {
         let view = opened.perceive(&Presence::default(), id).unwrap();
         let mut listed = view.meters.iter().chain(&view.world_meters);
         assert!(listed.all(|meter| meter.id != "dread"), "{id}");
@@ -217,7 +217,7 @@ fn a_rule_tests_the_flag(world: &mut World, key: String, of: String) {
             flag_effect("world", "mark_seen")
         ),
     );
-    migrate_and_play(world, vec![intent("test", "pc_rowan", "test_mark", None)]);
+    migrate_and_play(world, vec![intent("test", "rowan", "test_mark", None)]);
     assert!(state_of(&pack).globals().flags.contains("mark_seen"));
 }
 
@@ -282,12 +282,12 @@ fn it_refuses_the_loft_meter(world: &mut World) {
     );
 }
 
-#[given(expr = "pc_rowan stands in the loft and Mira stands in the shop")]
+#[given(expr = "rowan stands in the loft and Mira stands in the shop")]
 fn rowan_in_the_loft_mira_in_the_shop(world: &mut World) {
     stand_in_the_loft(world);
 }
 
-#[given(expr = "pc_rowan stands in the loft")]
+#[given(expr = "rowan stands in the loft")]
 fn rowan_in_the_loft(world: &mut World) {
     stand_in_the_loft(world);
 }
@@ -297,21 +297,21 @@ fn a_rule_adds_light_and_draft(world: &mut World, of: String) {
     let pack = world.pack.clone().unwrap();
     let effects = meter_effect(&of, "light") + &meter_effect(&of, "draft");
     add_verb_doing(&pack, "air_out", &effects);
-    edit_table(world, &pack, |_, seated| sit(seated, &["pc_rowan"]));
-    migrate_and_play(world, vec![intent("air", "pc_rowan", "air_out", None)]);
+    edit_table(world, &pack, |_, seated| sit(seated, &["rowan"]));
+    migrate_and_play(world, vec![intent("air", "rowan", "air_out", None)]);
 }
 
 #[when(expr = "a rule sets flag {word} of {string} to true")]
 fn a_verb_sets_and_runs(world: &mut World, key: String, of: String) {
     let pack = world.pack.clone().unwrap();
     add_verb_doing(&pack, "light_lamp", &flag_effect(&of, &key));
-    edit_table(world, &pack, |_, seated| sit(seated, &["pc_rowan"]));
-    migrate_and_play(world, vec![intent("light", "pc_rowan", "light_lamp", None)]);
+    edit_table(world, &pack, |_, seated| sit(seated, &["rowan"]));
+    migrate_and_play(world, vec![intent("light", "rowan", "light_lamp", None)]);
 }
 
-#[then(expr = "pc_rowan's change line shows light and not draft")]
+#[then(expr = "rowan's change line shows light and not draft")]
 fn rowan_sees_light_not_draft(world: &mut World) {
-    let seen = seen_of(world, "pc_rowan");
+    let seen = seen_of(world, "rowan");
     assert!(
         seen.contains(&"place_meter loft light".to_string()),
         "{seen:?}"
@@ -344,7 +344,7 @@ fn a_rule_gives_lamp_oil(world: &mut World, of: String) {
 "
     );
     add_verb_doing(pack(world), "stash", &effect);
-    migrate_and_play(world, vec![intent("stash", "pc_rowan", "stash", None)]);
+    migrate_and_play(world, vec![intent("stash", "rowan", "stash", None)]);
 }
 
 #[then(expr = "the loft holds 1 lamp_oil")]
@@ -368,7 +368,7 @@ fn a_rule_leaves_a_note_in_the_loft(world: &mut World) {
 ";
     let pack = world.pack.clone().unwrap();
     let mut seated = Presence::default();
-    sit(&mut seated, &["pc_rowan"]);
+    sit(&mut seated, &["rowan"]);
     world.seated.push((pack.clone(), seated));
     add_verb_doing(&pack, "scrawl", effect);
     let ladder = "exits:
@@ -383,23 +383,23 @@ fn a_rule_leaves_a_note_in_the_loft(world: &mut World) {
     );
     // Mira leaves the note before anyone has stood in the loft; then Rowan climbs to it.
     migrate_and_play(world, vec![intent("scrawl", "mira", "scrawl", None)]);
-    let climb = intent("climb", "pc_rowan", "travel", Some("ladder"));
+    let climb = intent("climb", "rowan", "travel", Some("ladder"));
     migrate_and_play(world, vec![climb]);
 }
 
-#[then(expr = "pc_rowan, standing in the loft, perceives the note")]
+#[then(expr = "rowan, standing in the loft, perceives the note")]
 fn rowan_in_the_loft_perceives_the_note(world: &mut World) {
     let pack = world.pack.clone().unwrap();
     let opened = Opened::peek(&pack).unwrap_or_else(|err| panic!("peek: {err:?}"));
-    let view = opened.perceive(&Presence::default(), "pc_rowan").unwrap();
+    let view = opened.perceive(&Presence::default(), "rowan").unwrap();
     let ids: Vec<&str> = view.notes.iter().map(|note| note.id.as_str()).collect();
     assert!(ids.contains(&"note_loft"), "{ids:?}");
 }
 
-#[then(expr = "pc_rowan's change line does not show it")]
+#[then(expr = "rowan's change line does not show it")]
 fn rowan_does_not_see_the_flag(world: &mut World) {
     assert_gm_saw(world, "place_flag loft lamp_lit");
-    let seen = seen_of(world, "pc_rowan");
+    let seen = seen_of(world, "rowan");
     assert!(seen.iter().all(|key| !key.contains("lamp_lit")), "{seen:?}");
 }
 

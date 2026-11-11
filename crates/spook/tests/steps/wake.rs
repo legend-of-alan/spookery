@@ -39,7 +39,7 @@ fn serve_docks(world: &mut World, name: &str, idle: Option<&str>) -> PathBuf {
 
 /// Rowan's `wait` with a GM seated: the id of the queued line.
 fn queue_rowan_wait(world: &mut World) -> String {
-    let text = table::actor_send(world, "pc_rowan", "wait", "\"kind\":\"queued\"");
+    let text = table::actor_send(world, "rowan", "wait", "\"kind\":\"queued\"");
     let line = text
         .lines()
         .find(|line| line.contains("\"kind\":\"queued\""))
@@ -51,8 +51,8 @@ fn queue_rowan_wait(world: &mut World) -> String {
 /// Rowan's `wait` with no GM seated commits its own round.
 fn commit_rowan_wait(world: &mut World, pack: &Path) {
     let before = list_round_keys(pack).len();
-    table::actor_write(world, "pc_rowan", "wait");
-    table::wait_committed_wait(pack, "pc_rowan", before);
+    table::actor_write(world, "rowan", "wait");
+    table::wait_committed_wait(pack, "rowan", before);
 }
 
 /// Advance one interval, then read status so the wake it sent has run.
@@ -85,7 +85,7 @@ fn a_queued_wait_meets_wakes(world: &mut World) {
     table::seat_gm(world);
     let id = queue_rowan_wait(world);
     advance_and_settle(world, INTERVAL);
-    table::close_actor(world, "pc_rowan");
+    table::close_actor(world, "rowan");
     table::wait_players(world, 0);
     advance_and_settle(world, INTERVAL);
     table::live_mut(world).players.clear();
@@ -97,7 +97,7 @@ fn a_queued_wait_meets_wakes(world: &mut World) {
         .unwrap_or_else(|| panic!("no queue\n{status}"));
     assert_eq!(rows.len(), 1, "{status}");
     assert_eq!(rows[0]["id"], id.as_str(), "{status}");
-    assert_eq!(rows[0]["actor_id"], "pc_rowan", "{status}");
+    assert_eq!(rows[0]["actor_id"], "rowan", "{status}");
     assert_eq!(state_of(&pack).world_time, 1080);
     assert!(list_round_keys(&pack).is_empty());
 }
@@ -109,7 +109,7 @@ fn a_committed_wait_wakes_early(world: &mut World) {
     commit_rowan_wait(world, &pack);
     let committed = state_of(&pack);
     assert_eq!(committed.world_time, 1085);
-    table::close_actor(world, "pc_rowan");
+    table::close_actor(world, "rowan");
     table::wait_players(world, 0);
     table::release_probe_gm(world);
     // The timer fires a full interval later, but the save's stamp is seconds old.
@@ -127,7 +127,7 @@ fn a_queued_wait_is_due(world: &mut World) {
     table::seat_gm(world);
     table::seat_rowan(world, &pack);
     let id = queue_rowan_wait(world);
-    table::close_actor(world, "pc_rowan");
+    table::close_actor(world, "rowan");
     table::wait_players(world, 0);
     let _ = table::release_gm(world);
     advance_and_settle(world, INTERVAL);

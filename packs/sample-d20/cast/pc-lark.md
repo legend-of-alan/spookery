@@ -1,6 +1,6 @@
 ---
 schema: cast
-id: pc_lark
+id: lark
 kind: pc_template
 display_name: Lark
 idle:

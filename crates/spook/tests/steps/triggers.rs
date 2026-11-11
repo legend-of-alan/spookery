@@ -27,12 +27,12 @@ fn nell_travels_via_door(world: &mut World) {
     flag_pcs(&pack, "heard_bell");
     write_nell(&pack, &["heard_bell"]);
     edit_table_with(world, &pack, |now, seated, canon| {
-        insert_actor_copy(now, canon, seated, ("pc_rowan", "pc_nell"), "docks_street");
+        insert_actor_copy(now, canon, seated, ("rowan", "nell"), "docks_street");
     });
     play(
         world,
         &pack,
-        vec![intent("nell-door", "pc_nell", "travel", Some("door"))],
+        vec![intent("nell-door", "nell", "travel", Some("door"))],
     );
     world.pack = Some(pack);
 }
@@ -54,7 +54,7 @@ fn teleport_also_fires_the_bell(world: &mut World) {
     play(
         world,
         &pack,
-        vec![intent("wren-blink", "pc_wren", "blink", None)],
+        vec![intent("wren-blink", "wren", "blink", None)],
     );
     let round = read_latest_round(&pack);
     assert!(
@@ -77,7 +77,7 @@ fn an_attack_removes_4_hp(world: &mut World) {
     play(
         world,
         &pack,
-        vec![intent("hit-briar", "pc_rowan", "hit", Some("briar"))],
+        vec![intent("hit-briar", "rowan", "hit", Some("briar"))],
     );
 }
 
@@ -112,7 +112,7 @@ fn another_round_passes(world: &mut World) {
     play(
         world,
         &pack,
-        vec![intent("nick-briar", "pc_rowan", "nick", Some("briar"))],
+        vec![intent("nick-briar", "rowan", "nick", Some("briar"))],
     );
 }
 
@@ -168,17 +168,15 @@ rules:
     .unwrap();
     write_nell(&pack, &["found_key"]);
     edit_table_with(world, &pack, |now, seated, canon| {
-        insert_actor_copy(now, canon, seated, ("pc_rowan", "pc_nell"), "docks_street");
+        insert_actor_copy(now, canon, seated, ("rowan", "nell"), "docks_street");
         let mut actors = now.actors_mut();
-        actors
-            .set_flag(&"pc_nell".into(), "found_key", true)
-            .unwrap();
+        actors.set_flag(&"nell".into(), "found_key", true).unwrap();
         support::put_meter(now, canon, &entity::Id::Global, "tide", 0);
     });
     play(
         world,
         &pack,
-        vec![intent("nell-rooms", "pc_nell", "travel", Some("rooms"))],
+        vec![intent("nell-rooms", "nell", "travel", Some("rooms"))],
     );
     world.pack = Some(pack);
 }
@@ -187,7 +185,7 @@ rules:
 fn nell_knows_the_ledger(world: &mut World, tide: i64) {
     let now = state_of(world.pack.as_ref().unwrap());
     assert!(
-        now.actors().known_facts["pc_nell"]
+        now.actors().known_facts["nell"]
             .iter()
             .any(|fact| fact == "fact_ledger"),
         "nell does not know fact_ledger"
@@ -243,7 +241,7 @@ rules:
     )
     .unwrap();
     edit_table_with(world, &pack, |now, seated, canon| {
-        insert_actor_copy(now, canon, seated, ("pc_rowan", "pc_nell"), "docks_shop");
+        insert_actor_copy(now, canon, seated, ("rowan", "nell"), "docks_shop");
     });
     world.pack = Some(pack);
 }
@@ -265,7 +263,7 @@ fn a_round_stops_at_depth_4(world: &mut World) {
     play(
         world,
         &pack,
-        vec![intent("raise-sun", "pc_nell", "raise", None)],
+        vec![intent("raise-sun", "nell", "raise", None)],
     );
     let round = read_latest_round(&pack);
     let names = read_extra_steps(&round);
@@ -331,12 +329,12 @@ fn verify_passes_after_triggers(world: &mut World) {
     flag_pcs(&pack, "heard_bell");
     write_nell(&pack, &["heard_bell"]);
     edit_table_with(world, &pack, |now, seated, canon| {
-        insert_actor_copy(now, canon, seated, ("pc_rowan", "pc_nell"), "docks_street");
+        insert_actor_copy(now, canon, seated, ("rowan", "nell"), "docks_street");
     });
     play(
         world,
         &pack,
-        vec![intent("nell-door", "pc_nell", "travel", Some("door"))],
+        vec![intent("nell-door", "nell", "travel", Some("door"))],
     );
     let output = support::run_spook(&["verify", &pack.to_string_lossy()]);
     let stderr = String::from_utf8_lossy(&output.stderr);
@@ -393,16 +391,16 @@ The ground gives.
     );
     write_nell(&pack, &[]);
     edit_table_with(world, &pack, |now, seated, canon| {
-        insert_actor_copy(now, canon, seated, ("pc_rowan", "pc_nell"), "docks_street");
+        insert_actor_copy(now, canon, seated, ("rowan", "nell"), "docks_street");
     });
     let (_now, rolls, round) = play(
         world,
         &pack,
-        vec![intent("nell-bog", "pc_nell", "travel", Some("bog"))],
+        vec![intent("nell-bog", "nell", "travel", Some("bog"))],
     );
     let faces = rolls.iter().any(|report| match report {
         spookery_engine::MoveReport::Rolled { actor_id, .. }
-        | spookery_engine::MoveReport::Refused { actor_id, .. } => actor_id == "pc_nell",
+        | spookery_engine::MoveReport::Refused { actor_id, .. } => actor_id == "nell",
     });
     assert!(faces, "nell did not roll\n{round}");
     world.scratch = "rolled".to_string();
@@ -417,7 +415,7 @@ fn the_bog_roll_reproduces(world: &mut World) {
     let grit = now
         .actors()
         .meters
-        .get(&("pc_nell".into(), "grit".to_string()))
+        .get(&("nell".into(), "grit".to_string()))
         .unwrap();
     assert_eq!(grit.offset, -1, "the miss band did not spend grit");
     let output = support::run_spook(&["verify", &pack.to_string_lossy()]);
@@ -434,12 +432,12 @@ fn nell_travels_and_the_bell_narrates(world: &mut World) {
     flag_pcs(&pack, "heard_bell");
     write_nell(&pack, &["heard_bell"]);
     edit_table_with(world, &pack, |now, seated, canon| {
-        insert_actor_copy(now, canon, seated, ("pc_rowan", "pc_nell"), "docks_street");
+        insert_actor_copy(now, canon, seated, ("rowan", "nell"), "docks_street");
     });
     let played = play_round(
         world,
         &pack,
-        vec![intent("nell-door", "pc_nell", "travel", Some("door"))],
+        vec![intent("nell-door", "nell", "travel", Some("door"))],
     );
     world.scratch = played.record.to_string();
     world.summary = played.changed_keys;
@@ -524,24 +522,24 @@ Under the street.
     );
     write_nell(&pack, &[]);
     edit_table_with(world, &pack, |now, seated, canon| {
-        insert_actor_copy(now, canon, seated, ("pc_rowan", "pc_nell"), "docks_street");
+        insert_actor_copy(now, canon, seated, ("rowan", "nell"), "docks_street");
     });
     world.pack = Some(pack);
 }
 
-#[when(expr = "pc_nell reveals fact_trapdoor")]
+#[when(expr = "nell reveals fact_trapdoor")]
 fn nell_reveals_the_trapdoor(world: &mut World) {
     let pack = world.pack.as_ref().unwrap().clone();
     let (now, _, _) = play(
         world,
         &pack,
-        vec![intent("nell-uncover", "pc_nell", "uncover", None)],
+        vec![intent("nell-uncover", "nell", "uncover", None)],
     );
-    world.scratch = now.actors().known_facts["pc_nell"].join(",");
+    world.scratch = now.actors().known_facts["nell"].join(",");
     world.pack = Some(pack);
 }
 
-#[then(expr = "pc_nell knows fact_trapdoor")]
+#[then(expr = "nell knows fact_trapdoor")]
 fn nell_knows_the_trapdoor(world: &mut World) {
     assert!(
         world.scratch.split(',').any(|id| id == "fact_trapdoor"),
@@ -550,12 +548,12 @@ fn nell_knows_the_trapdoor(world: &mut World) {
     );
 }
 
-#[then(expr = "pc_nell can see the trapdoor")]
+#[then(expr = "nell can see the trapdoor")]
 fn nell_can_see_the_trapdoor(world: &mut World) {
     let pack = world.pack.as_ref().unwrap();
     let world_now = spookery_engine::World::peek(pack).unwrap();
     let exits = world_now
-        .perceive(&Presence::default(), "pc_nell")
+        .perceive(&Presence::default(), "nell")
         .unwrap()
         .exits;
     assert!(
@@ -635,25 +633,25 @@ rules:
     .unwrap();
 }
 
-/// Add pc_nell on the street beside pc_rowan in the shop, seat both, and migrate the save.
-#[given(expr = "pc_rowan and pc_nell are seated")]
+/// Add nell on the street beside rowan in the shop, seat both, and migrate the save.
+#[given(expr = "rowan and nell are seated")]
 fn rowan_and_nell_are_seated(world: &mut World) {
     let pack = world.pack.clone().unwrap();
     write_nell(&pack, &[]);
     edit_table_with(world, &pack, |now, seated, canon| {
-        insert_actor_copy(now, canon, seated, ("pc_rowan", "pc_nell"), "docks_street");
-        sit(seated, &["pc_rowan", "pc_nell"]);
+        insert_actor_copy(now, canon, seated, ("rowan", "nell"), "docks_street");
+        sit(seated, &["rowan", "nell"]);
     });
     spookery_engine::migrate_pack(&pack).unwrap_or_else(|err| panic!("migrate: {err}"));
 }
 
-#[when(expr = "pc_nell sets the tide")]
+#[when(expr = "nell sets the tide")]
 fn nell_sets_the_tide(world: &mut World) {
     let pack = world.pack.as_ref().unwrap().clone();
     play(
         world,
         &pack,
-        vec![intent("nell-tide", "pc_nell", "turn_tide", None)],
+        vec![intent("nell-tide", "nell", "turn_tide", None)],
     );
 }
 
@@ -699,7 +697,7 @@ fn a_round_runs(world: &mut World) {
     let pack = copy_docks("trigger-round-counter");
     write_nell(&pack, &[]);
     edit_table_with(world, &pack, |now, seated, canon| {
-        insert_actor_copy(now, canon, seated, ("pc_rowan", "pc_nell"), "docks_street");
+        insert_actor_copy(now, canon, seated, ("rowan", "nell"), "docks_street");
     });
     play_and_keep_summaries(world, pack, Vec::new());
 }
@@ -722,7 +720,7 @@ fn the_viewer_summary_omits_round_counters(world: &mut World, viewer: String) {
     );
 }
 
-#[when(expr = "pc_nell learns fact_trapdoor while pc_wren is in the same room")]
+#[when(expr = "nell learns fact_trapdoor while wren is in the same room")]
 fn nell_learns_the_trapdoor_beside_wren(world: &mut World) {
     let pack = copy_docks("trigger-known-fact");
     replace_in_file(
@@ -736,13 +734,13 @@ fn nell_learns_the_trapdoor_beside_wren(world: &mut World) {
     );
     write_nell(&pack, &[]);
     edit_table_with(world, &pack, |now, seated, canon| {
-        insert_actor_copy(now, canon, seated, ("pc_rowan", "pc_nell"), "docks_street");
-        sit(seated, &["pc_nell", "pc_wren"]);
+        insert_actor_copy(now, canon, seated, ("rowan", "nell"), "docks_street");
+        sit(seated, &["nell", "wren"]);
     });
     play_and_keep_summaries(
         world,
         pack,
-        vec![intent("nell-learn", "pc_nell", "learn", None)],
+        vec![intent("nell-learn", "nell", "learn", None)],
     );
 }
 
@@ -750,27 +748,27 @@ fn nell_learns_the_trapdoor_beside_wren(world: &mut World) {
 fn an_item_is_taken_from_the_shop(world: &mut World) {
     let pack = copy_docks("trigger-place-item");
     edit_table(world, &pack, |_, seated| {
-        sit(seated, &["pc_rowan"]);
+        sit(seated, &["rowan"]);
     });
     play_and_keep_summaries(
         world,
         pack,
-        vec![intent("rowan-take", "pc_rowan", "take", Some("lamp_oil"))],
+        vec![intent("rowan-take", "rowan", "take", Some("lamp_oil"))],
     );
 }
 
-#[when(expr = "pc_rowan takes an item while pc_nell is in the same room")]
+#[when(expr = "rowan takes an item while nell is in the same room")]
 fn rowan_takes_an_item_beside_nell(world: &mut World) {
     let pack = copy_docks("trigger-actor-item");
     write_nell(&pack, &[]);
     edit_table_with(world, &pack, |now, seated, canon| {
-        insert_actor_copy(now, canon, seated, ("pc_rowan", "pc_nell"), "docks_shop");
-        sit(seated, &["pc_rowan", "pc_nell", "pc_wren"]);
+        insert_actor_copy(now, canon, seated, ("rowan", "nell"), "docks_shop");
+        sit(seated, &["rowan", "nell", "wren"]);
     });
     play_and_keep_summaries(
         world,
         pack,
-        vec![intent("rowan-take", "pc_rowan", "take", Some("lamp_oil"))],
+        vec![intent("rowan-take", "rowan", "take", Some("lamp_oil"))],
     );
 }
 
@@ -789,13 +787,13 @@ fn mira_has_an_unlisted_place_flag_habit(world: &mut World, flag: String) {
     world.pack = Some(pack);
 }
 
-#[given(expr = "pc_rowan and pc_wren are seated in the shop with Mira")]
+#[given(expr = "rowan and wren are seated in the shop with Mira")]
 fn rowan_and_wren_are_seated_with_mira(world: &mut World) {
     let pack = world.pack.clone().unwrap();
     edit_table(world, &pack, |now, seated| {
         set_place(now, "mira", "docks_shop");
-        set_place(now, "pc_wren", "docks_shop");
-        sit(seated, &["pc_rowan", "pc_wren"]);
+        set_place(now, "wren", "docks_shop");
+        sit(seated, &["rowan", "wren"]);
     });
 }
 
@@ -829,38 +827,38 @@ fn no_place_has_the_flag(world: &mut World, flag: String) {
     assert!(!now.places().flags.iter().any(|(_, set)| *set == flag));
 }
 
-#[when(expr = "pc_nell travels from docks_street into docks_shop")]
+#[when(expr = "nell travels from docks_street into docks_shop")]
 fn nell_travels_from_the_street_into_the_shop(world: &mut World) {
     let pack = copy_docks("trigger-both-rooms");
     write_nell(&pack, &[]);
     edit_table_with(world, &pack, |now, seated, canon| {
-        insert_actor_copy(now, canon, seated, ("pc_rowan", "pc_nell"), "docks_street");
-        set_place(now, "pc_harbormouse", "mira_rooms");
-        sit(seated, &["pc_nell"]);
+        insert_actor_copy(now, canon, seated, ("rowan", "nell"), "docks_street");
+        set_place(now, "harbormouse", "mira_rooms");
+        sit(seated, &["nell"]);
     });
     play_and_keep_summaries(
         world,
         pack,
-        vec![intent("nell-shop", "pc_nell", "travel", Some("docks_shop"))],
+        vec![intent("nell-shop", "nell", "travel", Some("docks_shop"))],
     );
 }
 
-#[when(expr = "a message hidden from pc_wren is written")]
+#[when(expr = "a message hidden from wren is written")]
 fn a_message_hidden_from_wren_is_written(world: &mut World) {
     let pack = copy_docks("trigger-message");
     add_verb(
         &pack,
-        "\n  - id: pass_word\n    when:\n      verb: pass_word\n    do:\n      - note:\n          id: note_private\n          to:\n            - pc_nell\n          text: The tide turns at dusk.\n",
+        "\n  - id: pass_word\n    when:\n      verb: pass_word\n    do:\n      - note:\n          id: note_private\n          to:\n            - nell\n          text: The tide turns at dusk.\n",
     );
     write_nell(&pack, &[]);
     edit_table_with(world, &pack, |now, seated, canon| {
-        insert_actor_copy(now, canon, seated, ("pc_rowan", "pc_nell"), "docks_street");
-        sit(seated, &["pc_nell", "pc_wren"]);
+        insert_actor_copy(now, canon, seated, ("rowan", "nell"), "docks_street");
+        sit(seated, &["nell", "wren"]);
     });
     play_and_keep_summaries(
         world,
         pack,
-        vec![intent("nell-word", "pc_nell", "pass_word", None)],
+        vec![intent("nell-word", "nell", "pass_word", None)],
     );
 }
 
@@ -878,11 +876,11 @@ fn the_empty_table_narrates_and_then_rowan_narrates(world: &mut World) {
     let pack = copy_docks("trigger-idle-narrate");
     add_verb(
         &pack,
-        "\n  - id: quiet\n    when:\n      verb: quiet\n    do:\n      - narrate:\n          to: pc_rowan\n          text: The shop is quiet.\n  - id: back\n    when:\n      verb: back\n    do:\n      - narrate:\n          to: self\n          text: You are back.\n",
+        "\n  - id: quiet\n    when:\n      verb: quiet\n    do:\n      - narrate:\n          to: rowan\n          text: The shop is quiet.\n  - id: back\n    when:\n      verb: back\n    do:\n      - narrate:\n          to: self\n          text: You are back.\n",
     );
     edit_table(world, &pack, |_, _| {});
     let mut kernel = spookery_engine::testing::resume(&pack);
-    queue(&mut kernel, intent("quiet", "pc_rowan", "quiet", None));
+    queue(&mut kernel, intent("quiet", "rowan", "quiet", None));
     let wall = kernel.state().last_round_at.clone();
     let quiet = kernel
         .play(&Presence::default(), &wall)
@@ -891,9 +889,9 @@ fn the_empty_table_narrates_and_then_rowan_narrates(world: &mut World) {
         });
     let rowan = Presence {
         players: 1,
-        actors_present: vec!["pc_rowan".into()],
+        actors_present: vec!["rowan".into()],
     };
-    queue(&mut kernel, intent("back", "pc_rowan", "back", None));
+    queue(&mut kernel, intent("back", "rowan", "back", None));
     let wall = kernel.state().last_round_at.clone();
     let back = kernel
         .play(&rowan, &wall)
@@ -1055,7 +1053,7 @@ rules:
         if downed {
             now.actors_mut().set_flag(&briar, "downed", true).unwrap();
         }
-        sit(seated, &["pc_rowan"]);
+        sit(seated, &["rowan"]);
     });
     spookery_engine::migrate_pack(&pack).unwrap_or_else(|err| panic!("migrate: {err}"));
     pack
@@ -1121,7 +1119,7 @@ fn write_nell(pack: &Path, flags: &[&str]) {
             "\
 ---
 schema: cast
-id: pc_nell
+id: nell
 kind: pc_template
 display_name: Nell
 idle:
@@ -1151,7 +1149,7 @@ fn insert_actor_copy(
     for key in flags {
         actors.set_flag(&to, &key, false).unwrap();
     }
-    // Only pc_rowan carries the debt, so a copy of them does not.
+    // Only rowan carries the debt, so a copy of them does not.
     actors
         .set_meter(canon, &to, "assassination_debt", None)
         .unwrap();

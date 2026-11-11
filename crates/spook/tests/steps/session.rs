@@ -29,7 +29,7 @@ fn the_player_looks(world: &mut World) {
 
 #[when(expr = "the player closes the seat")]
 fn the_player_closes_the_seat(world: &mut World) {
-    table::close_actor(world, "pc_rowan");
+    table::close_actor(world, "rowan");
 }
 
 #[when(expr = "the GM says {string} to the table")]
@@ -46,7 +46,7 @@ fn the_gm_closes_the_seat(world: &mut World) {
 #[then(expr = "the player sees rowan arrive at {word}")]
 fn the_player_sees_rowan_arrive(world: &mut World, place: String) {
     wait_player_frame(world, &format!("a view at {place}"), |frame| {
-        frame["kind"] == "view" && frame["viewer"] == "pc_rowan" && frame["place"] == place
+        frame["kind"] == "view" && frame["viewer"] == "rowan" && frame["place"] == place
     });
 }
 
@@ -77,7 +77,7 @@ fn the_player_is_refused(world: &mut World, code: String) {
 #[then(expr = "the GM sees rowan's travel queued")]
 fn the_gm_sees_the_travel_queued(world: &mut World) {
     wait_gm_event(world, "rowan's travel queued", |event| {
-        event["kind"] == "queued" && event["actor"] == "pc_rowan" && event["move"] == "travel"
+        event["kind"] == "queued" && event["actor"] == "rowan" && event["move"] == "travel"
     });
 }
 
@@ -91,7 +91,7 @@ fn the_gm_hears(world: &mut World, actor_id: String, text: String) {
 
 #[then(expr = "the GM sees rowan in {word}")]
 fn the_gm_sees_rowan_in(world: &mut World, place: String) {
-    let view = table::call_gm_tool(world, "perceive", r#"{"as":"pc_rowan"}"#);
+    let view = table::call_gm_tool(world, "perceive", r#"{"as":"rowan"}"#);
     assert_eq!(view["place"], place, "{view}");
 }
 

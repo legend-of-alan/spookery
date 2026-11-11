@@ -42,7 +42,7 @@ fn a_round_that_changes_a_hidden_fact(world: &mut World) {
     fs::write(lane, place).unwrap();
     let mut verbs = fs::read_to_string(pack.join("rules/verbs.yaml")).unwrap();
     verbs.push_str(&format!(
-        "  - id: spill\n    when:\n      verb: spill\n    do:\n      - reveal:\n          to: npc_briar\n          fact: {SECRET_ID}\n      - flag:\n          of: world\n          key: {SECRET_ID}\n          value: true\n      - meter:\n          of: npc_briar\n          key: hp\n          add: -1\n"
+        "  - id: spill\n    when:\n      verb: spill\n    do:\n      - reveal:\n          to: briar\n          fact: {SECRET_ID}\n      - flag:\n          of: world\n          key: {SECRET_ID}\n          value: true\n      - meter:\n          of: briar\n          key: hp\n          add: -1\n"
     ));
     fs::write(pack.join("rules/verbs.yaml"), verbs).unwrap();
     stamp_pack_rev(&pack);
@@ -62,11 +62,11 @@ fn larks_might_is_raised(world: &mut World) {
         };
         let mut actors = state.actors_mut();
         actors
-            .set_meter(canon, &"pc_lark".into(), "might", Some(might))
+            .set_meter(canon, &"lark".into(), "might", Some(might))
             .unwrap();
     });
     let mut opened = resume_with_lark(&pack);
-    let output = play(&mut opened, "strike npc_briar");
+    let output = play(&mut opened, "strike briar");
     world.seen = change_line(&output);
 }
 
@@ -84,7 +84,7 @@ fn lark_uses_her_tonic_while_oden_gains_one(world: &mut World) {
     let mut verbs = fs::read_to_string(pack.join("rules/verbs.yaml")).unwrap();
     verbs.push('\n');
     verbs.push_str(
-        "  - id: sip\n    when:\n      verb: sip\n    cost:\n      items:\n        tonic: 1\n    do:\n      - item:\n          of: npc_oden\n          id: tonic\n          add: 1\n",
+        "  - id: sip\n    when:\n      verb: sip\n    cost:\n      items:\n        tonic: 1\n    do:\n      - item:\n          of: oden\n          id: tonic\n          add: 1\n",
     );
     fs::write(pack.join("rules/verbs.yaml"), verbs).unwrap();
     stamp_pack_rev(&pack);
@@ -100,7 +100,7 @@ fn the_line_skips_the_unseen_gain(world: &mut World) {
         world
             .summary_lines
             .iter()
-            .any(|item| item.contains("actor_item npc_oden tonic")),
+            .any(|item| item.contains("actor_item oden tonic")),
         "{:?}",
         world.summary_lines
     );
@@ -204,7 +204,7 @@ fn the_change_line_hides_the_fact(world: &mut World) {
         world
             .summary_lines
             .iter()
-            .any(|item| item.contains("actor_meter npc_briar hp")),
+            .any(|item| item.contains("actor_meter briar hp")),
         "{:?}",
         world.summary_lines
     );
@@ -240,7 +240,7 @@ fn resume_with_lark(pack: &Path) -> EngineWorld {
 fn lark() -> Presence {
     Presence {
         players: 1,
-        actors_present: vec!["pc_lark".into()],
+        actors_present: vec!["lark".into()],
     }
 }
 
@@ -248,7 +248,7 @@ fn play(world: &mut EngineWorld, line: &str) -> spookery_engine::RoundOutput {
     let (verb, target) = split_line(line);
     let wall = world.state().last_round_at.clone();
     world
-        .queue_player_move(&lark(), &"pc_lark".into(), verb, target)
+        .queue_player_move(&lark(), &"lark".into(), verb, target)
         .unwrap_or_else(|err| panic!("{line}: {}", err.code.as_str()));
     let outputs = world
         .commit_then_fast_forward(&lark(), &wall)
@@ -260,14 +260,14 @@ fn change_line(output: &spookery_engine::RoundOutput) -> String {
     output
         .seen
         .iter()
-        .find(|seen| seen.viewer == *"pc_lark")
+        .find(|seen| seen.viewer == *"lark")
         .map(|seen| seen.line.clone())
         .unwrap_or_default()
 }
 
 fn meter_lines(world: &EngineWorld) -> String {
     let view = world
-        .perceive(&lark(), "pc_lark")
+        .perceive(&lark(), "lark")
         .unwrap_or_else(|err| panic!("perceive: {}", err.as_str()));
     view.meters
         .iter()
@@ -282,7 +282,7 @@ fn lark_juggles_a_tonic(world: &mut World) {
     let mut verbs = fs::read_to_string(pack.join("rules/verbs.yaml")).unwrap();
     verbs.push('\n');
     verbs.push_str(
-        "  - id: juggle\n    when:\n      verb: juggle\n    do:\n      - item:\n          of: pc_lark\n          id: tonic\n          add: 1\n      - item:\n          of: pc_lark\n          id: tonic\n          add: -1\n",
+        "  - id: juggle\n    when:\n      verb: juggle\n    do:\n      - item:\n          of: lark\n          id: tonic\n          add: 1\n      - item:\n          of: lark\n          id: tonic\n          add: -1\n",
     );
     fs::write(pack.join("rules/verbs.yaml"), verbs).unwrap();
     stamp_pack_rev(&pack);
@@ -294,7 +294,7 @@ fn lark_juggles_a_tonic(world: &mut World) {
 
 #[then(expr = "the round names no change to lark's tonic")]
 fn no_change_to_the_tonic(world: &mut World) {
-    let named = |item: &String| item.contains("actor_item pc_lark tonic");
+    let named = |item: &String| item.contains("actor_item lark tonic");
     assert!(
         !world.summary_lines.iter().any(named),
         "{:?}",

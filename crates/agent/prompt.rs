@@ -177,14 +177,14 @@ mod tests {
                 ("aldric".into(), CastKind::Npc),
                 ("bram".into(), CastKind::Npc),
                 ("mira".into(), CastKind::Npc),
-                ("pc_rowan".into(), CastKind::PcTemplate),
+                ("rowan".into(), CastKind::PcTemplate),
             ]),
             places: BTreeMap::from([("docks_shop".into(), "The shop smells of tar.".into())]),
             cast: BTreeMap::from([
                 ("aldric".into(), "Aldric keeps the counter.".into()),
                 ("bram".into(), "BRAM-ABSENT".into()),
                 ("mira".into(), "MIRA-PROSE-SENTINEL".into()),
-                ("pc_rowan".into(), "Rowan came in from the rain.".into()),
+                ("rowan".into(), "Rowan came in from the rain.".into()),
             ]),
         }
     }
@@ -195,7 +195,7 @@ mod tests {
         serde_json::from_value(json!({
             "viewer": viewer,
             "place": "docks_shop",
-            "visible_actors": ["aldric", "mira", "pc_rowan"],
+            "visible_actors": ["aldric", "mira", "rowan"],
             "known_facts": [{"id": "f", "text": "FACT-TEXT-SENTINEL", "owner_body": "BODY-SENTINEL"}],
             "notes": [{"id": "m", "to": [], "fact_ids": [], "text": "MESSAGE-SENTINEL"}],
             "unknown_mentions": ["UNKNOWN-SENTINEL"],
@@ -240,7 +240,7 @@ mod tests {
 
     #[test]
     fn a_player_view_is_a_census_without_facts_or_notes() {
-        let seen = render_reply(&docks(), ServerBody::View(Box::new(shop("pc_rowan"))));
+        let seen = render_reply(&docks(), ServerBody::View(Box::new(shop("rowan"))));
         assert!(seen.contains("MIRA-PROSE-SENTINEL"), "{seen}");
         for hidden in [
             "FACT-TEXT",
@@ -258,7 +258,7 @@ mod tests {
         for index in 0..20 {
             let line = TapeLine {
                 seq: index,
-                from: Speaker::Player("pc_rowan".to_string()),
+                from: Speaker::Player("rowan".to_string()),
                 address: "table".to_string(),
                 place: None,
                 actor: None,

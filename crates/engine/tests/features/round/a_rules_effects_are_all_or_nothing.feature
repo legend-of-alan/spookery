@@ -6,7 +6,7 @@ Feature: A rule's effects are all or nothing
     Then lamp oil stays 4 and the round names OUT_OF_RANGE
 
   Scenario: An effect on a cast member the save does not list is refused UNKNOWN_ID
-    Given the docks pack has a cast member pc_nell the save does not list and a row "mark" that marks her
+    Given the docks pack has a cast member nell the save does not list and a row "mark" that marks her
     When Rowan plays mark
     Then Rowan's mark is refused UNKNOWN_ID
 

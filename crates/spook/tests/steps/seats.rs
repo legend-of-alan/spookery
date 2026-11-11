@@ -10,7 +10,7 @@ use super::table;
 
 #[when(expr = "a second player connects")]
 fn a_second_player_connects(world: &mut World) {
-    world.scratch = table::claim(world, "pc_rowan");
+    world.scratch = table::claim(world, "rowan");
 }
 
 #[when(expr = "a second GM connects on the game port")]
@@ -92,12 +92,12 @@ fn the_state_directory_is_unchanged(world: &mut World) {
 fn a_player_sits(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
     table::listen(world, &pack);
-    table::seat_actor(world, &pack, "pc_rowan");
+    table::seat_actor(world, &pack, "rowan");
 }
 
 #[when(expr = "the player leaves")]
 fn the_player_leaves(world: &mut World) {
-    table::close_actor(world, "pc_rowan");
+    table::close_actor(world, "rowan");
     table::wait_players(world, 0);
 }
 
@@ -115,7 +115,7 @@ fn nobody_is_present(world: &mut World) {
     assert!(actors.is_empty(), "{actors:?}");
 }
 
-const DOCKS_PCS: [&str; 3] = ["pc_harbormouse", "pc_rowan", "pc_wren"];
+const DOCKS_PCS: [&str; 3] = ["harbormouse", "rowan", "wren"];
 const HIDDEN_FACT: &str = "fact_wren_channel";
 const HIDDEN_TEXT: &str = "The tide chart marks a private channel.";
 
@@ -133,7 +133,7 @@ fn a_docks_table_whose_pack_defines_four_pcs(world: &mut World) {
     let cast = "\
 ---
 schema: cast
-id: pc_lark
+id: lark
 kind: pc_template
 display_name: Lark
 idle:
@@ -143,7 +143,7 @@ Lark watches the street from a dry doorway.
 ";
     fs::write(pack.join("cast/pc-lark.md"), cast).unwrap_or_else(|err| panic!("cast: {err}"));
     crate::support::edit_save_with(&pack, |now, canon| {
-        let (from, to) = (&"pc_wren".into(), &"pc_lark".into());
+        let (from, to) = (&"wren".into(), &"lark".into());
         let mut actors = now.actors_mut();
         actors.copy_actor(canon, from, to, "docks_street").unwrap();
     });
@@ -186,14 +186,12 @@ fn a_one_player_docks_table(world: &mut World) {
         .unwrap_or_else(|err| panic!("remove wren: {err}"));
     crate::support::edit_save_with(&pack, |now, canon| {
         let mut actors = now.actors_mut();
-        actors
-            .remove_actor(canon, &"pc_harbormouse".into())
-            .unwrap();
-        actors.remove_actor(canon, &"pc_wren".into()).unwrap();
+        actors.remove_actor(canon, &"harbormouse".into()).unwrap();
+        actors.remove_actor(canon, &"wren".into()).unwrap();
     });
     spookery_engine::World::open(&pack).unwrap_or_else(|err| panic!("one-pc pack: {err}"));
     table::listen(world, &pack);
-    table::seat_actor(world, &pack, "pc_rowan");
+    table::seat_actor(world, &pack, "rowan");
     world.pack = Some(pack);
 }
 
@@ -207,15 +205,15 @@ fn a_docks_table_with_three_seated_players(world: &mut World) {
 
 #[when(expr = "the first player drops")]
 fn the_first_player_drops(world: &mut World) {
-    table::close_actor(world, "pc_rowan");
+    table::close_actor(world, "rowan");
     table::wait_players(world, 2);
 }
 
-#[then(expr = "the present actors are pc_harbormouse and pc_wren")]
+#[then(expr = "the present actors are harbormouse and wren")]
 fn the_present_actors_are_harbormouse_and_wren(world: &mut World) {
     assert_eq!(
         table::read_presence(world).1,
-        vec!["pc_harbormouse".to_string(), "pc_wren".to_string()]
+        vec!["harbormouse".to_string(), "wren".to_string()]
     );
 }
 
@@ -232,10 +230,10 @@ fn a_docks_table_where_one_pc_knows_a_hidden_fact(world: &mut World) {
     );
     fs::write(&path, text).unwrap_or_else(|err| panic!("write shop: {err}"));
     crate::support::edit_save(&pack, |now| {
-        assert!(now.actors().kind.contains_key("pc_wren"), "pc_wren");
+        assert!(now.actors().kind.contains_key("wren"), "wren");
         let mut actors = now.actors_mut();
         actors
-            .learn(&"pc_wren".into(), &[HIDDEN_FACT.to_string()])
+            .learn(&"wren".into(), &[HIDDEN_FACT.to_string()])
             .unwrap();
     });
     spookery_engine::World::open(&pack).unwrap_or_else(|err| panic!("hidden fact pack: {err}"));
@@ -244,9 +242,9 @@ fn a_docks_table_where_one_pc_knows_a_hidden_fact(world: &mut World) {
 
 #[then(expr = "only that PC's perceive shows the hidden fact")]
 fn only_that_pcs_perceive_shows_the_hidden_fact(world: &mut World) {
-    let wren = table::actor_text(world, "pc_wren");
+    let wren = table::actor_text(world, "wren");
     assert!(wren.contains(HIDDEN_FACT), "{wren}");
-    for id in ["pc_rowan", "pc_harbormouse"] {
+    for id in ["rowan", "harbormouse"] {
         let text = table::actor_text(world, id);
         assert!(!text.contains(HIDDEN_FACT), "{id}\n{text}");
     }
@@ -254,10 +252,10 @@ fn only_that_pcs_perceive_shows_the_hidden_fact(world: &mut World) {
 
 #[when(expr = "that PC says the hidden fact and another PC waits")]
 fn that_pc_says_the_hidden_fact(world: &mut World) {
-    let marks = ["pc_rowan", "pc_harbormouse"].map(|id| (id, table::actor_text(world, id).len()));
+    let marks = ["rowan", "harbormouse"].map(|id| (id, table::actor_text(world, id).len()));
     let say = format!("say {HIDDEN_TEXT}");
-    table::actor_send(world, "pc_wren", &say, "\"kind\":\"say\"");
-    table::actor_send(world, "pc_rowan", "wait", "\"kind\":\"view\"");
+    table::actor_send(world, "wren", &say, "\"kind\":\"say\"");
+    table::actor_send(world, "rowan", "wait", "\"kind\":\"view\"");
     for (id, mark) in marks {
         let heard = table::wait_actor_from(world, id, mark, "\"kind\":\"view\"");
         assert!(heard.contains(HIDDEN_TEXT), "{id} did not hear it\n{heard}");
@@ -269,8 +267,8 @@ fn a_docks_table_with_a_gm_and_two_seated_players(world: &mut World) {
     let pack = crate::support::copy_docks("two-queue");
     table::listen(world, &pack);
     table::seat_gm(world);
-    table::seat_actor(world, &pack, "pc_rowan");
-    table::seat_actor(world, &pack, "pc_harbormouse");
+    table::seat_actor(world, &pack, "rowan");
+    table::seat_actor(world, &pack, "harbormouse");
     world.pack = Some(pack);
 }
 
@@ -278,8 +276,8 @@ fn a_docks_table_with_a_gm_and_two_seated_players(world: &mut World) {
 fn a_docks_table_with_two_seated_players(world: &mut World) {
     let pack = crate::support::copy_docks("two-live");
     table::listen(world, &pack);
-    table::seat_actor(world, &pack, "pc_rowan");
-    table::seat_actor(world, &pack, "pc_harbormouse");
+    table::seat_actor(world, &pack, "rowan");
+    table::seat_actor(world, &pack, "harbormouse");
     world.pack = Some(pack);
 }
 
@@ -305,17 +303,15 @@ fn both_lines_are_queued_for_the_gm(world: &mut World) {
                 && line.contains("\"move\":\"wait\"")
         })
     };
-    table::wait_gm_until(
-        world,
-        "queued waits for pc_rowan and pc_harbormouse",
-        |text| queued(text, "pc_rowan") && queued(text, "pc_harbormouse"),
-    );
+    table::wait_gm_until(world, "queued waits for rowan and harbormouse", |text| {
+        queued(text, "rowan") && queued(text, "harbormouse")
+    });
 }
 
 #[then(expr = "table status lists both queued lines")]
 fn table_status_lists_both_queued_lines(world: &mut World) {
     let text = table::gm_tool_call(world, 4, "status", "{}");
-    for id in ["pc_rowan", "pc_harbormouse"] {
+    for id in ["rowan", "harbormouse"] {
         assert!(text.contains(id), "{text}");
     }
     assert!(
@@ -327,10 +323,7 @@ fn table_status_lists_both_queued_lines(world: &mut World) {
 #[then(expr = "the round log records both waits")]
 fn the_round_log_records_both_waits(world: &mut World) {
     let actors = table::list_player_waits(table::pack(world), "round-0001");
-    assert_eq!(
-        actors,
-        vec!["pc_rowan".to_string(), "pc_harbormouse".to_string()]
-    );
+    assert_eq!(actors, vec!["rowan".to_string(), "harbormouse".to_string()]);
 }
 
 #[then(expr = "each wait committed its own round")]
@@ -344,11 +337,11 @@ fn each_wait_committed_its_own_round(world: &mut World) {
     );
     assert_eq!(
         table::list_player_waits(pack, "round-0001"),
-        vec!["pc_rowan".to_string()]
+        vec!["rowan".to_string()]
     );
     assert_eq!(
         table::list_player_waits(pack, "round-0002"),
-        vec!["pc_harbormouse".to_string()]
+        vec!["harbormouse".to_string()]
     );
 }
 
@@ -358,7 +351,7 @@ fn a_docks_table_with_two_pcs_in_the_shop(world: &mut World) {
     crate::support::edit_save(&pack, |now| {
         let mut actors = now.actors_mut();
         actors
-            .set_place(&"pc_harbormouse".into(), "docks_shop")
+            .set_place(&"harbormouse".into(), "docks_shop")
             .unwrap();
     });
     table::listen(world, &pack);
@@ -368,7 +361,7 @@ fn a_docks_table_with_two_pcs_in_the_shop(world: &mut World) {
 
 #[when(expr = "the shop player speaks to the place")]
 fn the_shop_player_speaks_to_the_place(world: &mut World) {
-    let rowan = &table::player_client(world, "pc_rowan").seat;
+    let rowan = &table::player_client(world, "rowan").seat;
     let say = serde_json::json!({
         "address": "place",
         "place": "docks_shop",
@@ -377,7 +370,7 @@ fn the_shop_player_speaks_to_the_place(world: &mut World) {
     let id = rowan.send("say", say);
     rowan.wait_reply(&id);
     table::poll_until("harbormouse to hear the place say", || {
-        let heard = table::actor_text(world, "pc_harbormouse");
+        let heard = table::actor_text(world, "harbormouse");
         if heard.contains("the blue rope is tied") {
             Ok(())
         } else {
@@ -388,13 +381,13 @@ fn the_shop_player_speaks_to_the_place(world: &mut World) {
 
 #[then(expr = "only the shop players receive the say")]
 fn only_the_shop_players_receive_the_say(world: &mut World) {
-    assert!(table::actor_text(world, "pc_rowan").contains("the blue rope is tied"));
-    assert!(table::actor_text(world, "pc_harbormouse").contains("the blue rope is tied"));
+    assert!(table::actor_text(world, "rowan").contains("the blue rope is tied"));
+    assert!(table::actor_text(world, "harbormouse").contains("the blue rope is tied"));
     // The table answers in order, so Wren's seat would have the say before this reply.
-    let wren = &table::player_client(world, "pc_wren").seat;
+    let wren = &table::player_client(world, "wren").seat;
     let id = wren.send("look", serde_json::json!({}));
     wren.wait_reply(&id);
-    let wren = table::actor_text(world, "pc_wren");
+    let wren = table::actor_text(world, "wren");
     assert!(!wren.contains("the blue rope is tied"), "{wren}");
 }
 
@@ -423,7 +416,7 @@ fn listen_pack(world: &mut World) {
 }
 
 fn seat_three(world: &mut World, pack: &std::path::Path) {
-    for id in ["pc_rowan", "pc_harbormouse", "pc_wren"] {
+    for id in ["rowan", "harbormouse", "wren"] {
         table::seat_actor(world, pack, id);
     }
 }

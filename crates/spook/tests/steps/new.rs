@@ -133,7 +133,7 @@ fn play_joins_that_pack_on_a_free_loopback_address(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
     table::listen(world, &pack);
     let addr = table::game_addr(world);
-    world.play = Some(spawn_play(&addr, "pc_ada", &[]));
+    world.play = Some(spawn_play(&addr, "ada", &[]));
     wait_play(world, "You are in Yard.");
 }
 
@@ -143,7 +143,7 @@ fn the_travel_committed_a_round(world: &mut World) {
     wait_play(world, "You are in Lane.");
     let pack = table::pack(world);
     let now = state_of(pack);
-    assert_eq!(now.actors().place["pc_ada"], "lane");
+    assert_eq!(now.actors().place["ada"], "lane");
     assert!(
         spookery_engine::testing::journal::list_round_keys(pack)
             .contains(&"round-0001".to_string()),

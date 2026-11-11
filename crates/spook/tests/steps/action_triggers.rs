@@ -10,7 +10,7 @@ use super::rules::open;
 use crate::support::{append, copy_docks, edit_save, read_round, stamp_pack_rev, state_of};
 use crate::World;
 
-const PCS: [&str; 3] = ["pc_rowan", "pc_wren", "pc_harbormouse"];
+const PCS: [&str; 3] = ["rowan", "wren", "harbormouse"];
 
 fn seated() -> Presence {
     Presence {
@@ -100,9 +100,9 @@ fn open_close_open(world: &mut World) {
     play_in_one_round(
         world,
         &[
-            ("pc_rowan", "open_cellar"),
-            ("pc_wren", "close_cellar"),
-            ("pc_harbormouse", "open_cellar"),
+            ("rowan", "open_cellar"),
+            ("wren", "close_cellar"),
+            ("harbormouse", "open_cellar"),
         ],
     );
 }
@@ -121,13 +121,13 @@ fn the_bell_rings_twice(world: &mut World) {
 fn a_gate_that_locks(world: &mut World) {
     let verbs = "\n  - id: go_street\n    when:\n      verb: go_street\n    do:\n      - location:\n          to: docks_street\n          teleport: true\n".to_string()
         + &flag_verb("go_gate", "gate_passed", true, &world_flag_is("gate_locked", false));
-    let lock = "  - id: lock_gate\n    when:\n      change:\n        arrive: docks_street\n        subject: pc_rowan\n    do:\n      - flag:\n          of: world\n          key: gate_locked\n          value: true\n";
+    let lock = "  - id: lock_gate\n    when:\n      change:\n        arrive: docks_street\n        subject: rowan\n    do:\n      - flag:\n          of: world\n          key: gate_locked\n          value: true\n";
     write_rules(world, &verbs, "gate", lock);
 }
 
 #[when(expr = "Rowan plays {string} and Wren plays {string} in the same round")]
 fn rowan_and_wren_play(world: &mut World, rowan: String, wren: String) {
-    play_in_one_round(world, &[("pc_rowan", &rowan), ("pc_wren", &wren)]);
+    play_in_one_round(world, &[("rowan", &rowan), ("wren", &wren)]);
 }
 
 #[then(expr = "Wren is refused because the gate is locked")]
@@ -137,7 +137,7 @@ fn wren_is_refused(world: &mut World) {
     assert_eq!(refused.len(), 1, "{round}");
     assert_eq!(refused[0]["code"], "NOT_IN_SPEC", "{round}");
     let now = state_of(world.pack.as_ref().unwrap());
-    assert_eq!(now.actors().place["pc_rowan"], "docks_street");
+    assert_eq!(now.actors().place["rowan"], "docks_street");
     assert!(now.globals().flags.iter().any(|flag| flag == "gate_locked"));
     assert!(!now.globals().flags.iter().any(|flag| flag == "gate_passed"));
 }

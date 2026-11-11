@@ -194,7 +194,7 @@ fn append_hit(world: &World, of: &str, add: &str) {
 }
 
 fn grit(world: &World) -> i64 {
-    grit_of(world, "pc_rowan")
+    grit_of(world, "rowan")
 }
 
 fn grit_of(world: &World, actor: &str) -> i64 {

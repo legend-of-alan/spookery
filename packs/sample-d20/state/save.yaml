@@ -1,6 +1,6 @@
 schema: save
 world_id: sample-d20
-pack_rev: blake2s:6ecedd94c6f22d270b9845bb86f4ea9418137297a4504e488f2de361dbfb2040
+pack_rev: blake2s:0e57d55ed674344debb35c4cb461abf1c6538e766083c8bc05f979ebd95240f2
 rules_rev: 23
 state_rev: 0
 round_index: 0
@@ -8,46 +8,46 @@ world_time: 1080
 last_round_at: "2026-01-01T00:00:00Z"
 actors:
   kind:
-    npc_briar: npc
-    npc_oden: npc
-    pc_lark: pc
-    pc_nell: pc
+    briar: npc
+    lark: pc
+    nell: pc
+    oden: npc
   place:
-    npc_briar: gate_yard
-    npc_oden: mill_lane
-    pc_lark: gate_yard
-    pc_nell: mill_lane
+    briar: gate_yard
+    lark: gate_yard
+    nell: mill_lane
+    oden: mill_lane
   visited:
-    pc_lark:
+    lark:
       gate_yard:
         - mill_lane
         - loft
         - wheel_shed
-    pc_nell:
+    nell:
       mill_lane:
         - gate_yard
   acts:
-    npc_briar:
+    briar:
       last_act_round: 0
       idle_acts_this_window: 0
       live_acts_this_window: 0
-    npc_oden:
+    lark:
       last_act_round: 0
       idle_acts_this_window: 0
       live_acts_this_window: 0
-    pc_lark:
+    nell:
       last_act_round: 0
       idle_acts_this_window: 0
       live_acts_this_window: 0
-    pc_nell:
+    oden:
       last_act_round: 0
       idle_acts_this_window: 0
       live_acts_this_window: 0
   items:
-    pc_lark:
+    lark:
       tonic: 1
   meters:
-    npc_briar:
+    briar:
       defense:
         base: 14
         offset: 0
@@ -60,20 +60,7 @@ actors:
       might:
         base: 2
         offset: 0
-    npc_oden:
-      defense:
-        base: 10
-        offset: 0
-      grace:
-        base: 1
-        offset: 0
-      hp:
-        base: 8
-        offset: 0
-      might:
-        base: 1
-        offset: 0
-    pc_lark:
+    lark:
       defense:
         base: 11
         offset: 0
@@ -86,7 +73,7 @@ actors:
       might:
         base: 30
         offset: 0
-    pc_nell:
+    nell:
       defense:
         base: 10
         offset: 0
@@ -99,9 +86,22 @@ actors:
       might:
         base: 1
         offset: 0
+    oden:
+      defense:
+        base: 10
+        offset: 0
+      grace:
+        base: 1
+        offset: 0
+      hp:
+        base: 8
+        offset: 0
+      might:
+        base: 1
+        offset: 0
   modifiers: {}
   flags:
-    npc_briar:
+    briar:
       - warden
 places:
   items:

@@ -47,14 +47,14 @@ Feature: Items are real
 
     Examples:
       | line              |
-      | strike npc_oden   |
-      | strike npc_nobody |
+      | strike oden   |
+      | strike nobody |
       | wield chock       |
       | wield zzz         |
       | take latch        |
 
   Scenario: A verb that takes an actor can't name the player's own actor
-    When lark types "strike pc_lark"
+    When lark types "strike lark"
     Then the line is rejected with NOT_IN_SPEC and no round was written
 
   Scenario: Dropping an item you do not hold is refused
@@ -87,7 +87,7 @@ Feature: Items are real
 
   Scenario: A wielded item's rule wins for any verb
     Given lark wields a poisoned_dagger with a strike rule
-    When lark types "strike pc_nell"
+    When lark types "strike nell"
     Then item:poisoned_dagger/strike ran, not verb:strike
 
   Scenario: Dropping the wielded item empties the slot

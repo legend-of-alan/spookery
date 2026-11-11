@@ -8,7 +8,7 @@ Feature: The d20 pack runs a fight
 
   Scenario: A fixed seed succeeds and lowers the raider's hp by the hit amount
     Given a sample-d20 table
-    When the player waits 2 and strikes the raider
+    When the player waits 1 and strikes the raider
     Then the roll is "success"
     And the raider's hp is 5
 
@@ -40,12 +40,12 @@ Feature: The d20 pack runs a fight
     Given a copy of the sample-d20 pack
     When play joins the sample table
     And the save before the fight is kept
-    And play types "strike npc_briar"
+    And play types "strike briar"
     Then play shows "Your roll partly succeeded."
-    When play types "strike npc_briar"
-    And play types "strike npc_briar"
-    And play types "strike npc_briar"
-    And play types "strike npc_briar"
+    When play types "strike briar"
+    And play types "strike briar"
+    And play types "strike briar"
+    And play types "strike briar"
     Then play shows 2 successful rolls
     And the raider's hp is 0
     And replaying the round reproduces the save

@@ -52,13 +52,13 @@ fn add_timed_verb(pack: &Path, verb: &str, to: &str, applies: &[(&str, i64)], ti
     stamp_pack_rev(pack);
 }
 
-/// Play one round of these `(actor, verb)` moves, each aimed at pc_rowan.
+/// Play one round of these `(actor, verb)` moves, each aimed at rowan.
 fn hit_rowan(world: &mut World, moves: &[(&str, &str)]) {
     let pack = world.pack.clone().unwrap();
     let intents = moves
         .iter()
         .enumerate()
-        .map(|(n, (actor, verb))| intent(&format!("hit-{n}"), actor, verb, Some("pc_rowan")))
+        .map(|(n, (actor, verb))| intent(&format!("hit-{n}"), actor, verb, Some("rowan")))
         .collect();
     let played = play_round(world, &pack, intents);
     world.summary = played.changed_keys;
@@ -68,7 +68,7 @@ fn hit_rowan(world: &mut World, moves: &[(&str, &str)]) {
 fn modifier_of(pack: &Path, id: &str) -> Option<Modifier> {
     let now = state_of(pack);
     let modifiers = &now.actors().modifiers;
-    modifiers.get(&("pc_rowan".into(), id.to_string())).cloned()
+    modifiers.get(&("rowan".into(), id.to_string())).cloned()
 }
 
 fn stacks_of(pack: &Path, id: &str) -> Vec<i64> {
@@ -77,12 +77,12 @@ fn stacks_of(pack: &Path, id: &str) -> Vec<i64> {
         .unwrap_or_default()
 }
 
-/// How far pc_rowan's modifiers hold `meter` below its stored base and offset.
+/// How far rowan's modifiers hold `meter` below its stored base and offset.
 fn lowered(pack: &Path, meter: &str) -> i64 {
     let now = state_of(pack);
     let canon = load_canon(pack).unwrap_or_else(|err| panic!("load: {err:?}"));
-    let rowan = entity::Id::Actor("pc_rowan".into());
-    let key = ("pc_rowan".into(), meter.to_string());
+    let rowan = entity::Id::Actor("rowan".into());
+    let key = ("rowan".into(), meter.to_string());
     let Meter { base, offset } = now.actors().meters[&key].clone();
     base + offset - now.entity(&rowan).meter_value(&canon, meter).unwrap()
 }
@@ -90,10 +90,10 @@ fn lowered(pack: &Path, meter: &str) -> i64 {
 /// Ticks from the latest round until modifier `id` expires.
 fn ticks_left(pack: &Path, id: &str) -> u64 {
     let now = state_of(pack);
-    now.actors().modifiers[&("pc_rowan".into(), id.to_string())].ticks_left(now.world_time)
+    now.actors().modifiers[&("rowan".into(), id.to_string())].ticks_left(now.world_time)
 }
 
-/// Give pc_rowan these stacks of modifier `id`, expiring `left` ticks from now, `left` being the longest so far.
+/// Give rowan these stacks of modifier `id`, expiring `left` ticks from now, `left` being the longest so far.
 fn hold(pack: &Path, id: &str, stacks: Vec<i64>, left: u64) {
     support::edit_save_with(pack, |now, canon| {
         let until = now.world_time + left;
@@ -105,7 +105,7 @@ fn hold(pack: &Path, id: &str, stacks: Vec<i64>, left: u64) {
         };
         let mut actors = now.actors_mut();
         actors
-            .set_modifier(canon, &"pc_rowan".into(), id, Some(live))
+            .set_modifier(canon, &"rowan".into(), id, Some(live))
             .unwrap();
     });
 }
@@ -118,7 +118,7 @@ fn numbers(list: &str) -> Vec<i64> {
 }
 
 #[given(
-    expr = "the docks pack with one-tick rounds and pc_rowan's grit at 20, with three PCs in the shop"
+    expr = "the docks pack with one-tick rounds and rowan's grit at 20, with three PCs in the shop"
 )]
 fn docks_with_one_tick_rounds(world: &mut World) {
     let pack = copy_docks("modifiers");
@@ -128,13 +128,13 @@ fn docks_with_one_tick_rounds(world: &mut World) {
         "live_ticks_per_round: 1\n",
     );
     edit_table_with(world, &pack, |now, seated, canon| {
-        set_place(now, "pc_wren", "docks_shop");
-        set_place(now, "pc_harbormouse", "docks_shop");
+        set_place(now, "wren", "docks_shop");
+        set_place(now, "harbormouse", "docks_shop");
         now.actors_mut()
-            .set_place(&"pc_rowan".into(), "docks_shop")
+            .set_place(&"rowan".into(), "docks_shop")
             .unwrap();
-        support::edit_meter(now, canon, "pc_rowan", "grit", |grit| grit.base = 20);
-        sit(seated, &["pc_harbormouse", "pc_rowan", "pc_wren"]);
+        support::edit_meter(now, canon, "rowan", "grit", |grit| grit.base = 20);
+        sit(seated, &["harbormouse", "rowan", "wren"]);
     });
     world.pack = Some(pack);
 }
@@ -168,23 +168,23 @@ fn torch_and_brand(world: &mut World) {
 }
 
 #[given(
-    regex = r"^pc_rowan has \d+ stacks of (\w+) of (-?\d+(?:, -?\d+)* and -?\d+), with (\d+) ticks left$"
+    regex = r"^rowan has \d+ stacks of (\w+) of (-?\d+(?:, -?\d+)* and -?\d+), with (\d+) ticks left$"
 )]
 fn rowan_holds_these_stacks(world: &mut World, id: String, list: String, left: u64) {
     hold(pack(world), &id, numbers(&list), left);
 }
 
-#[given(regex = r"^pc_rowan has (\d+) stacks of (\w+) of (-?\d+) each, with (\d+) ticks left$")]
+#[given(regex = r"^rowan has (\d+) stacks of (\w+) of (-?\d+) each, with (\d+) ticks left$")]
 fn rowan_holds_even_stacks(world: &mut World, count: usize, id: String, add: i64, left: u64) {
     hold(pack(world), &id, vec![add; count], left);
 }
 
-#[given(regex = r"^pc_rowan has (\d+) stacks of (\w+)$")]
+#[given(regex = r"^rowan has (\d+) stacks of (\w+)$")]
 fn rowan_holds_fresh_stacks(world: &mut World, count: usize, id: String) {
     hold(pack(world), &id, vec![-1; count], 10);
 }
 
-#[given(expr = "pc_rowan has 3 stacks of burn and 1 of soaked")]
+#[given(expr = "rowan has 3 stacks of burn and 1 of soaked")]
 fn rowan_holds_burn_and_soaked(world: &mut World) {
     hold(pack(world), "burn", vec![-1, -2, -1], 10);
     hold(pack(world), "soaked", vec![-1], 10);
@@ -224,15 +224,15 @@ fn verb_applies_an_undefined_modifier(world: &mut World, id: String) {
     add_modifier_verb(pack(world), "scorch", "self", &[(&id, -1)]);
 }
 
-#[when(expr = "pc_rowan is hit by the torch and then the brand in one round")]
+#[when(expr = "rowan is hit by the torch and then the brand in one round")]
 fn rowan_is_torched_and_branded(world: &mut World) {
-    hit_rowan(world, &[("pc_wren", "torch"), ("pc_harbormouse", "brand")]);
+    hit_rowan(world, &[("wren", "torch"), ("harbormouse", "brand")]);
 }
 
 #[when(regex = r"^the (\w+) applies (\w+) (-?\d+) for (\d+) ticks$")]
 fn a_verb_applies(world: &mut World, verb: String, id: String, add: i64, ticks: u64) {
     add_timed_verb(pack(world), &verb, "target", &[(&id, add)], ticks);
-    hit_rowan(world, &[("pc_wren", &verb)]);
+    hit_rowan(world, &[("wren", &verb)]);
 }
 
 #[when(regex = r"^the (\w+)'s (\d+) ticks pass with no reapply$")]
@@ -251,34 +251,34 @@ fn verb_applies_for_ticks(world: &mut World, verb: String, id: String, add: i64,
 }
 
 /// One round with the first verb, `later - 1` empty rounds, then a round with the second.
-#[when(regex = r"^pc_rowan is hit by the (\w+) and, (\d+) ticks? later, by the (\w+)$")]
+#[when(regex = r"^rowan is hit by the (\w+) and, (\d+) ticks? later, by the (\w+)$")]
 fn rowan_is_hit_later(world: &mut World, first: String, later: u64, second: String) {
     let pack = world.pack.clone().unwrap();
-    hit_rowan(world, &[("pc_wren", &first)]);
+    hit_rowan(world, &[("wren", &first)]);
     for _ in 1..later {
         play_round(world, &pack, Vec::new());
     }
-    hit_rowan(world, &[("pc_wren", &second)]);
+    hit_rowan(world, &[("wren", &second)]);
 }
 
-#[when(expr = "pc_rowan is soaked by -1 and then soaked again by -1")]
+#[when(expr = "rowan is soaked by -1 and then soaked again by -1")]
 fn rowan_is_soaked_twice(world: &mut World) {
     add_modifier_verb(pack(world), "soak", "target", &[("soaked", -1)]);
-    hit_rowan(world, &[("pc_wren", "soak")]);
-    hit_rowan(world, &[("pc_wren", "soak")]);
+    hit_rowan(world, &[("wren", "soak")]);
+    hit_rowan(world, &[("wren", "soak")]);
 }
 
-#[when(expr = "pc_rowan stands in rain and fog")]
+#[when(expr = "rowan stands in rain and fog")]
 fn rowan_stands_in_the_weather(world: &mut World) {
     let pack = world.pack.clone().unwrap();
     play_round(
         world,
         &pack,
-        vec![intent("weather", "pc_rowan", "weather", None)],
+        vec![intent("weather", "rowan", "weather", None)],
     );
 }
 
-#[when(expr = "pc_wren burns pc_rowan and fills them with dread")]
+#[when(expr = "wren burns rowan and fills them with dread")]
 fn wren_torments_rowan(world: &mut World) {
     add_modifier_verb(
         pack(world),
@@ -286,7 +286,7 @@ fn wren_torments_rowan(world: &mut World) {
         "target",
         &[("burn", -1), ("dread", -1)],
     );
-    hit_rowan(world, &[("pc_wren", "torment")]);
+    hit_rowan(world, &[("wren", "torment")]);
 }
 
 #[when(expr = "the pack drops burn and soaked now modifies rest")]
@@ -302,7 +302,7 @@ const LUCK_ROW: &str = "  - id: luck
     base: 1
 ";
 
-#[given(expr = "pc_rowan carries meter \"luck\" and the world carries meter \"tide\"")]
+#[given(expr = "rowan carries meter \"luck\" and the world carries meter \"tide\"")]
 fn rowan_and_the_world_carry(world: &mut World) {
     let pack = world.pack.clone().unwrap();
     let rowan = pack.join("cast/pc-rowan.md");
@@ -328,7 +328,7 @@ meters:
     );
     fs::write(pack.join("world/meters.yaml"), text).unwrap();
     support::edit_save_with(&pack, |now, canon| {
-        support::put_meter(now, canon, &entity::Id::Actor("pc_rowan".into()), "luck", 1);
+        support::put_meter(now, canon, &entity::Id::Actor("rowan".into()), "luck", 1);
         support::put_meter(now, canon, &entity::Id::Global, "tide", 4);
     });
 }
@@ -340,10 +340,10 @@ fn the_pack_drops_luck_and_tide(world: &mut World) {
     fs::remove_file(pack.join("world/meters.yaml")).unwrap();
 }
 
-#[when(expr = "spook check reports pc_rowan holds {word}")]
+#[when(expr = "spook check reports rowan holds {word}")]
 fn check_reports_rowan_holds(world: &mut World, id: String) {
     run_check(world);
-    assert_refused(world, &[&format!("actor 'pc_rowan' holds modifier '{id}'")]);
+    assert_refused(world, &[&format!("actor 'rowan' holds modifier '{id}'")]);
 }
 
 #[when(expr = "spook check reports the world lists meter {word}")]
@@ -357,18 +357,18 @@ fn the_operator_migrates(world: &mut World) {
     spookery_engine::migrate_pack(pack(world)).unwrap_or_else(|err| panic!("migrate: {err}"));
 }
 
-#[then(regex = r"^pc_rowan has (\d+) stacks? of (\w+) and (\w+) is (\d+) lower$")]
+#[then(regex = r"^rowan has (\d+) stacks? of (\w+) and (\w+) is (\d+) lower$")]
 fn rowan_has_stacks_and_lower(world: &mut World, count: usize, id: String, meter: String, by: i64) {
     assert_eq!(stacks_of(pack(world), &id).len(), count);
     assert_eq!(lowered(pack(world), &meter), by);
 }
 
-#[then(regex = r"^pc_rowan has \d+ stacks of (\w+) of (-?\d+(?:, -?\d+)* and -?\d+)$")]
+#[then(regex = r"^rowan has \d+ stacks of (\w+) of (-?\d+(?:, -?\d+)* and -?\d+)$")]
 fn rowan_has_these_stacks(world: &mut World, id: String, list: String) {
     assert_eq!(stacks_of(pack(world), &id), numbers(&list));
 }
 
-#[then(regex = r"^pc_rowan still has (\d+) stacks of (-?\d+) and grit is (\d+) lower$")]
+#[then(regex = r"^rowan still has (\d+) stacks of (-?\d+) and grit is (\d+) lower$")]
 fn rowan_still_has_burn(world: &mut World, count: usize, add: i64, by: i64) {
     assert_eq!(stacks_of(pack(world), "burn"), vec![add; count]);
     assert_eq!(lowered(pack(world), "grit"), by);
@@ -389,12 +389,12 @@ fn modifier_left_after_the_second(world: &mut World, id: String, ticks: u64) {
     assert_eq!(ticks_left(pack(world), &id), ticks);
 }
 
-#[then(expr = "pc_rowan has no burn and grit is back")]
+#[then(expr = "rowan has no burn and grit is back")]
 fn rowan_has_no_burn(world: &mut World) {
     assert_eq!(modifier_of(pack(world), "burn"), None);
     assert_eq!(lowered(pack(world), "grit"), 0);
     let canon = load_canon(pack(world)).unwrap();
-    let rowan = entity::Id::Actor("pc_rowan".into());
+    let rowan = entity::Id::Actor("rowan".into());
     assert_eq!(
         state_of(pack(world))
             .entity(&rowan)
@@ -403,19 +403,19 @@ fn rowan_has_no_burn(world: &mut World) {
     );
 }
 
-#[then(expr = "pc_rowan has neither burn nor soaked")]
+#[then(expr = "rowan has neither burn nor soaked")]
 fn rowan_has_neither(world: &mut World) {
     let now = state_of(pack(world));
     let modifiers = &now.actors().modifiers;
-    assert!(!modifiers.keys().any(|(owner, _)| *owner == *"pc_rowan"));
+    assert!(!modifiers.keys().any(|(owner, _)| *owner == *"rowan"));
 }
 
-#[then(expr = "pc_rowan has no luck and the world has no tide")]
+#[then(expr = "rowan has no luck and the world has no tide")]
 fn neither_keeps_the_dropped_meter(world: &mut World) {
     let now = state_of(pack(world));
     let meters = &now.actors().meters;
-    assert!(!meters.contains_key(&("pc_rowan".into(), "luck".to_string())));
-    assert!(meters.contains_key(&("pc_rowan".into(), "grit".to_string())));
+    assert!(!meters.contains_key(&("rowan".into(), "luck".to_string())));
+    assert!(meters.contains_key(&("rowan".into(), "grit".to_string())));
     assert!(!now.globals().meters.contains_key("tide"));
 }
 
@@ -424,25 +424,23 @@ fn the_gm_sees_the_key(world: &mut World, key: String) {
     assert!(world.summary.contains(&key), "{:?}", world.summary);
 }
 
-#[then(expr = "pc_rowan's change line shows burn and not dread")]
+#[then(expr = "rowan's change line shows burn and not dread")]
 fn rowan_sees_burn_only(world: &mut World) {
-    let seen = seen_of(world, "pc_rowan");
+    let seen = seen_of(world, "rowan");
     assert!(
-        seen.contains(&"modifier pc_rowan burn".to_string()),
+        seen.contains(&"modifier rowan burn".to_string()),
         "{seen:?}"
     );
     assert!(
-        !seen.contains(&"modifier pc_rowan dread".to_string()),
+        !seen.contains(&"modifier rowan dread".to_string()),
         "{seen:?}"
     );
-    assert!(world
-        .summary
-        .contains(&"modifier pc_rowan dread".to_string()));
+    assert!(world.summary.contains(&"modifier rowan dread".to_string()));
 }
 
-#[then(expr = "pc_wren's change line shows neither")]
+#[then(expr = "wren's change line shows neither")]
 fn wren_sees_neither(world: &mut World) {
-    let seen = seen_of(world, "pc_wren");
+    let seen = seen_of(world, "wren");
     assert!(
         seen.iter().all(|key| !key.starts_with("modifier ")),
         "{seen:?}"

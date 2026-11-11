@@ -234,7 +234,7 @@ mod tests {
             assert_eq!(back, v);
         }
         assert_reencodes::<TableStatus>(
-            r#"{"presence":{"players":1,"actors_present":["pc_rowan"],"x":1},"world_time":10,"round_index":1,"state_rev":2,"pack_rev":"p","last_round_at":"t","queued":[{"id":"q1","actor_id":"pc_rowan","move":"wait","x":1}],"pack":{"menu":[],"kinds":{},"places":{},"cast":{},"x":1},"x":1}"#,
+            r#"{"presence":{"players":1,"actors_present":["rowan"],"x":1},"world_time":10,"round_index":1,"state_rev":2,"pack_rev":"p","last_round_at":"t","queued":[{"id":"q1","actor_id":"rowan","move":"wait","x":1}],"pack":{"menu":[],"kinds":{},"places":{},"cast":{},"x":1},"x":1}"#,
         );
         assert_reencodes::<CommitBody>(
             r#"{"state_rev":3,"changed_keys":["d"],"journal_path":null,"rolls":[{"faces":[3,4],"stat":1,"total":8,"target":7,"outcome":"partial","x":1}],"x":1}"#,
@@ -259,7 +259,7 @@ mod tests {
         };
         let bare = r#"{"actor_id":"mira","move":"restock_lamp_oil"}"#;
         assert_eq!(call(bare), bare);
-        let aimed = r#"{"actor_id":"pc_rowan","move":"travel","target":"docks_street"}"#;
+        let aimed = r#"{"actor_id":"rowan","move":"travel","target":"docks_street"}"#;
         assert_eq!(call(aimed), aimed);
     }
 
@@ -267,11 +267,10 @@ mod tests {
     fn missing_arguments_are_an_empty_object() {
         let args = |raw: &str| serde_json::from_str::<Map<String, Value>>(raw).unwrap();
         let read =
-            parse_args::<PerceiveArgs>(Some(&args(r#"{"as":"pc_rowan","max_body_chars":200}"#)));
+            parse_args::<PerceiveArgs>(Some(&args(r#"{"as":"rowan","max_body_chars":200}"#)));
         assert_eq!(read.unwrap().max_body_chars, Some(200));
         assert!(
-            parse_args::<PerceiveArgs>(Some(&args(r#"{"as":"pc_rowan","focus":"place"}"#)))
-                .is_err()
+            parse_args::<PerceiveArgs>(Some(&args(r#"{"as":"rowan","focus":"place"}"#))).is_err()
         );
         assert!(parse_args::<CommitArgs>(None).is_err());
         assert!(parse_args::<SayArgs>(None).is_err());

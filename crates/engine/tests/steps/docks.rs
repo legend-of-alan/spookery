@@ -79,7 +79,7 @@ fn snapshot(root: &Path) -> Vec<(PathBuf, Vec<u8>)> {
 fn door_note() -> Note {
     Note {
         id: "note_mira_door".to_string(),
-        to: vec!["pc_rowan".into()],
+        to: vec!["rowan".into()],
         place: Some("docks_shop".into()),
         fact_ids: Vec::new(),
         text: "Back at dusk. Oil on the shelf.".to_string(),
@@ -90,7 +90,7 @@ fn door_note() -> Note {
 fn rowan() -> Presence {
     Presence {
         players: 1,
-        actors_present: vec!["pc_rowan".into()],
+        actors_present: vec!["rowan".into()],
     }
 }
 
@@ -116,7 +116,7 @@ fn morning_restock() {
         state.notes_mut().leave(door_note()).unwrap();
         state
             .actors_mut()
-            .set_place(&"pc_rowan".into(), "docks_street")
+            .set_place(&"rowan".into(), "docks_street")
             .unwrap();
         write_save(&pack, &state);
     }
@@ -139,7 +139,7 @@ fn capped_restock() -> u32 {
         state.notes_mut().leave(door_note()).unwrap();
         state
             .actors_mut()
-            .set_place(&"pc_rowan".into(), "docks_street")
+            .set_place(&"rowan".into(), "docks_street")
             .unwrap();
         let shop = "docks_shop".into();
         let held = i64::from(state.places().item_count(&shop, "lamp_oil"));
@@ -273,7 +273,7 @@ fn claimed_note_sorts_first() {
         .iter()
         .find(|effect| effect["kind"] == "note")
         .unwrap_or_else(|| panic!("no door note: {log}"));
-    assert_eq!(note["to"], serde_json::json!(["pc_rowan"]));
+    assert_eq!(note["to"], serde_json::json!(["rowan"]));
     let _ = fs::remove_dir_all(&pack);
 }
 
@@ -312,11 +312,11 @@ A gate.
 ",
     );
     write_text(
-        &pack.join("cast/pc_rowan.md"),
+        &pack.join("cast/rowan.md"),
         "\
 ---
 schema: cast
-id: pc_rowan
+id: rowan
 kind: pc_template
 display_name: Rowan
 ---
@@ -333,10 +333,10 @@ Rowan.
     }
     let rev = spookery_engine::pack_rev(&pack).unwrap();
     let (canon, mut state) = (load_canon(&pack).unwrap(), empty_save("ex", &rev));
-    add_actor(&mut state, &canon, "pc_rowan", ActorKind::Pc, "gate", 1);
+    add_actor(&mut state, &canon, "rowan", ActorKind::Pc, "gate", 1);
     write_text(&pack.join("state/save.yaml"), &emit_save(&state).unwrap());
     let place_before = fs::read(pack.join("world/places/gate.md")).unwrap();
-    let cast_before = fs::read(pack.join("cast/pc_rowan.md")).unwrap();
+    let cast_before = fs::read(pack.join("cast/rowan.md")).unwrap();
     let mut opened = resume(&pack);
     let wall = opened.state().last_round_at.clone();
     opened
@@ -353,10 +353,7 @@ Rowan.
         fs::read(pack.join("world/places/gate.md")).unwrap(),
         place_before
     );
-    assert_eq!(
-        fs::read(pack.join("cast/pc_rowan.md")).unwrap(),
-        cast_before
-    );
+    assert_eq!(fs::read(pack.join("cast/rowan.md")).unwrap(), cast_before);
     let _ = fs::remove_dir_all(&pack);
 }
 
@@ -372,7 +369,7 @@ fn a_busy_npc_skips() {
         actors.set_busy(&"mira".into(), u64::MAX, None).unwrap();
         state
             .actors_mut()
-            .set_place(&"pc_rowan".into(), "docks_street")
+            .set_place(&"rowan".into(), "docks_street")
             .unwrap();
         write_save(&pack, &state);
     }
@@ -596,7 +593,7 @@ fn play_mark(pack: &Path) -> State {
     let mut opened = resume(pack);
     let wall = opened.state().last_round_at.clone();
     opened
-        .queue_player_move(&rowan(), &"pc_rowan".into(), "mark", Some("mira"))
+        .queue_player_move(&rowan(), &"rowan".into(), "mark", Some("mira"))
         .unwrap();
     let played = opened.commit_then_fast_forward(&rowan(), &wall).unwrap();
     assert!(!played.is_empty(), "mark mira did not commit");
@@ -673,11 +670,11 @@ fn opposing_total_reused() {
         stamp_pack_rev(&pack);
         let mut opened = resume(&pack);
         if opposed {
-            queue_gm_intent(&mut opened, "gm-1", "pc_nell", "defend");
+            queue_gm_intent(&mut opened, "gm-1", "nell", "defend");
         }
         let wall = opened.state().last_round_at.clone();
         opened
-            .queue_player_move(&rowan(), &"pc_rowan".into(), "mark", Some("pc_nell"))
+            .queue_player_move(&rowan(), &"rowan".into(), "mark", Some("nell"))
             .unwrap();
         assert_eq!(opened.state().world_time, 1080);
         let outputs = opened.commit_then_fast_forward(&rowan(), &wall).unwrap();
@@ -694,16 +691,13 @@ fn opposing_total_reused() {
             assert!(nell.total >= 102, "{nell:?}");
             assert_eq!(rowan.target, nell.total);
             assert_eq!(rowan.outcome, Outcome::Miss);
-            let mut flags = flags_of(opened.state(), "pc_nell");
+            let mut flags = flags_of(opened.state(), "nell");
             flags.sort();
             assert_eq!(flags, vec!["guarded".to_string(), "missed".to_string()]);
         } else {
             assert_eq!(rowan.target, 0);
             assert_eq!(rowan.outcome, Outcome::Success);
-            assert_eq!(
-                flags_of(opened.state(), "pc_nell"),
-                vec!["marked".to_string()]
-            );
+            assert_eq!(flags_of(opened.state(), "nell"), vec!["marked".to_string()]);
         }
         let _ = fs::remove_dir_all(&pack);
     }
@@ -728,17 +722,17 @@ fn a_held_knife_still_runs_the_opposed_row() {
     let text = fs::read_to_string(&now_path).unwrap();
     let next = text.replacen(
         "  items: {}\n  meters:\n",
-        "  items:\n    pc_rowan:\n      knife: 1\n  meters:\n",
+        "  items:\n    rowan:\n      knife: 1\n  meters:\n",
         1,
     );
     assert_ne!(next, text);
     fs::write(&now_path, next).unwrap();
     stamp_pack_rev(&held);
     let mut opened = resume(&held);
-    queue_gm_intent(&mut opened, "gm-1", "pc_nell", "defend");
+    queue_gm_intent(&mut opened, "gm-1", "nell", "defend");
     let wall = opened.state().last_round_at.clone();
     opened
-        .queue_player_move(&rowan(), &"pc_rowan".into(), "mark", Some("pc_nell"))
+        .queue_player_move(&rowan(), &"rowan".into(), "mark", Some("nell"))
         .unwrap();
     let before = opened.state().world_time;
     let outputs = opened.commit_then_fast_forward(&rowan(), &wall).unwrap();
@@ -755,14 +749,14 @@ fn a_held_knife_still_runs_the_opposed_row() {
 
 fn rowans_debt(pack: &Path) -> i64 {
     let canon = load_canon(pack).unwrap_or_else(|err| panic!("load: {err:?}"));
-    let rowan = entity::Id::Actor("pc_rowan".into());
+    let rowan = entity::Id::Actor("rowan".into());
     state_of(pack)
         .entity(&rowan)
         .meter_value(&canon, "assassination_debt")
         .unwrap_or_else(|err| panic!("assassination_debt: {err}"))
 }
 
-#[given(expr = "pc_rowan's {string} meter is {int}")]
+#[given(expr = "rowan's {string} meter is {int}")]
 fn rowans_meter_is(world: &mut World, key: String, value: i64) {
     assert_eq!(key, "assassination_debt");
     let pack = support::copy_docks("debt");
@@ -795,7 +789,7 @@ Rowan";
     stamp_pack_rev(pack);
     let canon = load_canon(pack).unwrap_or_else(|err| panic!("load: {err:?}"));
     let rules = canon.rules.ids_in_order();
-    assert!(rules.contains(&"cast:pc_rowan/debt_grows"), "{rules:?}");
+    assert!(rules.contains(&"cast:rowan/debt_grows"), "{rules:?}");
 }
 
 #[when(expr = "twelve empty rounds pass")]
@@ -880,7 +874,7 @@ fn a_docks_table(world: &mut World) {
 #[when(expr = "a player queues take lamp_oil and the host stops before a round")]
 fn a_player_queues_take_and_the_host_stops(world: &mut World) {
     let mut host = resume(world.pack());
-    host.queue_player_move(&rowan(), &"pc_rowan".into(), "take", Some("lamp_oil"))
+    host.queue_player_move(&rowan(), &"rowan".into(), "take", Some("lamp_oil"))
         .unwrap();
     assert_eq!(host.queued_intents().len(), 1);
 }

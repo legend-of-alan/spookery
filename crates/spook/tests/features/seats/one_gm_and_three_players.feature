@@ -12,7 +12,7 @@ Feature: One GM seat and up to three player seats
     Then the hello is refused with "SEAT_TAKEN"
     And save.yaml is unchanged since the seat
     And players is 1
-    And the present actor is pc_rowan
+    And the present actor is rowan
 
   Scenario: A seated GM writes nothing
     Given a docks table with a seated GM
@@ -45,7 +45,7 @@ Feature: One GM seat and up to three player seats
     Given a docks table with three seated players
     When the first player drops
     Then players is 2
-    And the present actors are pc_harbormouse and pc_wren
+    And the present actors are harbormouse and wren
 
   Scenario: A player perceives only a fact that PC knows
     Given a docks table where one PC knows a hidden fact

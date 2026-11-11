@@ -552,7 +552,7 @@ fn parse_addrs_line(line: &str) -> Option<(SocketAddr, SocketAddr)> {
 }
 
 pub fn seat_rowan(world: &mut World, pack: &Path) {
-    seat_actor(world, pack, "pc_rowan");
+    seat_actor(world, pack, "rowan");
 }
 
 pub fn seat_actor(world: &mut World, pack: &Path, actor_id: &str) {

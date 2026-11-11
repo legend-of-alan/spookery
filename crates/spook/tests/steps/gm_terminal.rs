@@ -21,8 +21,8 @@ fn play_and_a_human_gm_share_a_port(world: &mut World) {
 #[when(expr = "two players and a human GM share a free loopback port")]
 fn two_players_and_a_human_gm_share_a_port(world: &mut World) {
     let addr = sit_gm(world, false);
-    join_play_at(world, &addr, Some("pc_rowan"));
-    join_play_at(world, &addr, Some("pc_wren"));
+    join_play_at(world, &addr, Some("rowan"));
+    join_play_at(world, &addr, Some("wren"));
 }
 
 #[when(expr = "a human GM sits on a free loopback port")]
@@ -104,7 +104,7 @@ fn the_gm_terminal_shows_one_check_and_one_dice(world: &mut World, shown: String
 #[when(expr = "the GM queues Wren's grit and commits")]
 fn the_gm_queues_grit_and_commits(world: &mut World) {
     let before = count_gm_matches(world, "Queue:");
-    write_gm(world, "queue pc_wren grit");
+    write_gm(world, "queue wren grit");
     write_gm(world, "commit");
     // The status result follows every check event of that commit on the
     // socket, so its Queue line means the client has read them all.
@@ -258,8 +258,8 @@ fn the_round_log_records_rowan_and_wren(world: &mut World) {
                 .to_string()
         })
         .collect::<Vec<_>>();
-    assert!(waits.iter().any(|id| id == "pc_rowan"), "{waits:?}");
-    assert!(waits.iter().any(|id| id == "pc_wren"), "{waits:?}");
+    assert!(waits.iter().any(|id| id == "rowan"), "{waits:?}");
+    assert!(waits.iter().any(|id| id == "wren"), "{waits:?}");
     assert_eq!(waits.len(), 2, "{waits:?}");
 }
 
@@ -294,7 +294,7 @@ fn sit_gm(world: &mut World, raw: bool) -> String {
 }
 
 fn join_play_at(world: &mut World, addr: &str, as_player: Option<&str>) {
-    let mut play = common::spawn_play(addr, as_player.unwrap_or("pc_rowan"), &[]);
+    let mut play = common::spawn_play(addr, as_player.unwrap_or("rowan"), &[]);
     common::wait_proc_until(
         &mut play,
         |stdout| stdout.contains("You are in"),

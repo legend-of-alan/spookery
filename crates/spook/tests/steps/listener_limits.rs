@@ -36,7 +36,7 @@ const WINDOW: usize = 8 * 1024;
 
 #[when(expr = "the player sends a message over the cap")]
 fn the_player_sends_a_message_over_the_cap(world: &mut World) {
-    let player = table::player_client(world, "pc_rowan");
+    let player = table::player_client(world, "rowan");
     let mark = player.seat.mark();
     let long = json!({ "id": "long", "body": { "kind": "wait" }, "pad": "a".repeat(MESSAGE_CAP) });
     player.seat.send_raw(Message::text(long.to_string()));
@@ -67,9 +67,9 @@ fn a_second_player_can_sit_and_wait(world: &mut World) {
     table::release_probe_gm(world);
     let pack = table::pack(world).to_path_buf();
     let before = list_round_keys(&pack).len();
-    table::seat_actor(world, &pack, "pc_harbormouse");
-    table::actor_write(world, "pc_harbormouse", "wait");
-    table::wait_committed_wait(&pack, "pc_harbormouse", before);
+    table::seat_actor(world, &pack, "harbormouse");
+    table::actor_write(world, "harbormouse", "wait");
+    table::wait_committed_wait(&pack, "harbormouse", before);
 }
 
 #[when(expr = "the GM releases the seat")]
@@ -151,7 +151,7 @@ fn a_new_gm_can_sit(world: &mut World) {
 
 #[when(expr = "the player sends a binary message")]
 fn the_player_sends_a_binary_message(world: &mut World) {
-    let player = table::player_client(world, "pc_rowan");
+    let player = table::player_client(world, "rowan");
     let mark = player.seat.mark();
     player.seat.send_raw(Message::binary(vec![0xff]));
     world.player_added = table::wait_player_from(world, mark, "\"code\":\"SCHEMA\"");
@@ -202,7 +202,7 @@ fn the_player_can_wait(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
     let before = list_round_keys(&pack).len();
     table::player_write(world, "wait");
-    table::wait_committed_wait(&pack, "pc_rowan", before);
+    table::wait_committed_wait(&pack, "rowan", before);
 }
 
 #[when(expr = "a socket connects and sends nothing")]
@@ -227,10 +227,10 @@ fn one_player_sends_200_lines(world: &mut World) {
     // The flood's pace is paused time, so serve this table in process.
     let pack = table::pack(world).to_path_buf();
     table::serve_in_process(world, &pack);
-    table::seat_actor(world, &pack, "pc_rowan");
-    table::seat_actor(world, &pack, "pc_harbormouse");
+    table::seat_actor(world, &pack, "rowan");
+    table::seat_actor(world, &pack, "harbormouse");
     let before = list_round_keys(&pack).len();
-    for (actor_id, count) in [("pc_rowan", 200), ("pc_harbormouse", 1)] {
+    for (actor_id, count) in [("rowan", 200), ("harbormouse", 1)] {
         let player = table::player_client(world, actor_id);
         for _ in 0..count {
             player.seat.send("wait", json!({}));
@@ -241,7 +241,7 @@ fn one_player_sends_200_lines(world: &mut World) {
     let other_waits = |key: &String| {
         table::list_player_waits(&pack, key)
             .iter()
-            .any(|id| id == "pc_harbormouse")
+            .any(|id| id == "harbormouse")
     };
     // Paused time refills nothing: the flood's burst and the other line commit.
     let keys = table::wait_rounds_until(&pack, "the burst and the other player's wait", |keys| {
@@ -292,17 +292,17 @@ fn one_player_stops_reading(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
     table::listen(world, &pack);
     table::seat_gm(world);
-    table::seat_actor(world, &pack, "pc_harbormouse");
+    table::seat_actor(world, &pack, "harbormouse");
     let port = table::live_mut(world).game_port;
     let (stream, recv) = connect_small_window(port);
     let send = granted_send_buffer(WINDOW);
     let quiet = table::Seat::from_stream(stream, port, "player", false);
-    quiet.send("claim", json!({ "actor": "pc_rowan" }));
-    table::wait_presence(world, "pc_rowan seated", |_, present| {
-        present.iter().any(|actor| actor == "pc_rowan")
+    quiet.send("claim", json!({ "actor": "rowan" }));
+    table::wait_presence(world, "rowan seated", |_, present| {
+        present.iter().any(|actor| actor == "rowan")
     });
     table::live_mut(world).players.push(table::PlayerClient {
-        actor_id: "pc_rowan".to_string(),
+        actor_id: "rowan".to_string(),
         seat: quiet,
     });
     let say = "n".repeat(SAY_TEXT_BYTES);
@@ -333,7 +333,7 @@ fn one_player_stops_reading(world: &mut World) {
     let mut sent = 0usize;
     let args = format!(r#"{{"address":"table","text":"{say}"}}"#);
     // A write fails once the table has closed the connection. The claim stays held.
-    while is_open(table::player_client(world, "pc_rowan")) {
+    while is_open(table::player_client(world, "rowan")) {
         if start.elapsed() > Duration::from_secs(60) || sent > budget {
             let stderr = table::live_mut(world)
                 .host
@@ -347,7 +347,7 @@ fn one_player_stops_reading(world: &mut World) {
         let _ = table::gm_tool_call(world, 2, "say", &args);
         sent = sent.saturating_add(frame);
     }
-    world.player_added = table::wait_actor_from(world, "pc_harbormouse", 0, "\"kind\":\"say\"");
+    world.player_added = table::wait_actor_from(world, "harbormouse", 0, "\"kind\":\"say\"");
 }
 
 /// A pong the table ignores, so writing it only tests the connection.
@@ -360,14 +360,11 @@ fn is_open(player: &table::PlayerClient) -> bool {
 
 #[then(expr = "that player is disconnected and still holds its PC")]
 fn that_player_is_disconnected(world: &mut World) {
-    assert!(!is_open(table::player_client(world, "pc_rowan")));
+    assert!(!is_open(table::player_client(world, "rowan")));
     let (_, present) = table::read_presence(world);
+    assert!(present.iter().any(|actor| actor == "rowan"), "{present:?}");
     assert!(
-        present.iter().any(|actor| actor == "pc_rowan"),
-        "{present:?}"
-    );
-    assert!(
-        present.iter().any(|actor| actor == "pc_harbormouse"),
+        present.iter().any(|actor| actor == "harbormouse"),
         "{present:?}"
     );
     table::release_probe_gm(world);

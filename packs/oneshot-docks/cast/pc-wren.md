@@ -1,6 +1,6 @@
 ---
 schema: cast
-id: pc_wren
+id: wren
 kind: pc_template
 display_name: Wren
 idle:

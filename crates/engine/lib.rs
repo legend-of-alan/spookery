@@ -252,7 +252,7 @@ pub mod testing {
         fs::copy(&from, pack.join("cast/pc-nell.md"))
             .unwrap_or_else(|err| panic!("copy {}: {err}", from.display()));
         edit_save_with(pack, |state, canon| {
-            let nell = crate::ActorId::from("pc_nell");
+            let nell = crate::ActorId::from("nell");
             let mut actors = state.actors_mut();
             actors.add_actor(&nell, crate::state::ActorKind::Pc, "docks_shop");
             for (key, base) in [("grit", 100), ("rest", 3)] {

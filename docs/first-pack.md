@@ -11,7 +11,7 @@ spook new /tmp/mypack
 The pack is a waystation with two places, so travel has somewhere to go.
 
 - `yard` is the start place. `lane` is the other place.
-- `pc_ada` is the player character. The cast file `cast/pc-ada.md` is a `pc_template`, and `state/save.yaml` has a live `pc_ada` actor. A template alone does not sit a player.
+- `ada` is the player character. The cast file `cast/pc-ada.md` is a `pc_template`, and `state/save.yaml` has a live `ada` actor. A template alone does not sit a player.
 - `keeper` is an NPC in the lane. One habit, `tend_the_yard`, runs while the table is empty and sets the flag `tended`.
 
 `rules/meters.yaml` defines the meter the check uses:
@@ -103,13 +103,13 @@ Append a yield to `rules/verbs.yaml`. A yield commits a round and changes no num
       - note:
           id: note_press
           to:
-            - pc_ada
+            - ada
           text: The press holds.
     partial:
       - note:
           id: note_press_part
           to:
-            - pc_ada
+            - ada
           text: The press slips.
 ```
 
@@ -124,7 +124,7 @@ A habit is a rule on the cast file with `when: habit`. The cast file keeps a `# 
       - note:
           id: note_lamp
           to:
-            - pc_ada
+            - ada
           place: yard
           fact_ids: []
           text: The lamp is lit.
@@ -150,4 +150,4 @@ spook run /tmp/mypack
 spook play
 ```
 
-It lists every PC and marks the ones in use. Type `pc_ada` to sit. The first picture is the yard. `travel lane` leaves for the lane and commits a round, because no GM is seated. `listen`, `wait`, `steady`, and `press` are the other player verbs.
+It lists every PC and marks the ones in use. Type `ada` to sit. The first picture is the yard. `travel lane` leaves for the lane and commits a round, because no GM is seated. `listen`, `wait`, `steady`, and `press` are the other player verbs.

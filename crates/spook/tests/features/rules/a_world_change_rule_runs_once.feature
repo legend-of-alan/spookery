@@ -4,9 +4,9 @@ Feature: A world change rule runs once per change
     Given world/meters.yaml declares a "dawn" meter at 1
     And story/vigil.yaml has a change rule that watches dawn cross "<=0"
     And that rule narrates "The sun is up." and adds 1 to meter morning of "world"
-    And pc_rowan and pc_nell are seated
+    And rowan and nell are seated
     When a rule adds -1 to meter dawn of "world"
-    Then pc_rowan and pc_nell each see "The sun is up." once
+    Then rowan and nell each see "The sun is up." once
     And the world's morning is 1
 
   Scenario: With nobody seated the crossing still runs its rule

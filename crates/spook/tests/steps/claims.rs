@@ -19,7 +19,7 @@ fn a_player_claimed_rowan(world: &mut World) {
         table::listen(world, &pack);
     }
     let seat = Seat::open(table::live_mut(world).game_port, "player");
-    let id = seat.send("claim", json!({ "actor": "pc_rowan" }));
+    let id = seat.send("claim", json!({ "actor": "rowan" }));
     let reply = parse(&seat.wait_reply(&id));
     assert_eq!(reply["body"]["kind"], "claimed", "{reply}");
     let view = table::wait_suffix(&seat.text, 0, "\"kind\":\"view\"");
@@ -30,7 +30,7 @@ fn a_player_claimed_rowan(world: &mut World) {
         .to_string();
     world.mark = seq_of(&view) as usize;
     table::live_mut(world).players.push(PlayerClient {
-        actor_id: "pc_rowan".to_string(),
+        actor_id: "rowan".to_string(),
         seat,
     });
 }
@@ -39,7 +39,7 @@ fn a_player_claimed_rowan(world: &mut World) {
 fn the_connection_drops(world: &mut World) {
     table::live_mut(world)
         .players
-        .retain(|player| player.actor_id != "pc_rowan");
+        .retain(|player| player.actor_id != "rowan");
 }
 
 #[when(expr = "the connection drops without release and {int} server messages pass")]
@@ -57,7 +57,7 @@ fn the_connection_drops_and_messages_pass(world: &mut World, count: usize) {
 
 #[when(expr = "the player releases rowan")]
 fn the_player_releases_rowan(world: &mut World) {
-    table::close_actor(world, "pc_rowan");
+    table::close_actor(world, "rowan");
     the_connection_drops(world);
 }
 
@@ -70,7 +70,7 @@ fn the_player_reconnects(world: &mut World) {
     let id = seat.send("claim", args);
     world.player_added = seat.wait_reply(&id);
     table::live_mut(world).players.push(PlayerClient {
-        actor_id: "pc_rowan".to_string(),
+        actor_id: "rowan".to_string(),
         seat,
     });
 }
@@ -80,7 +80,7 @@ fn it_holds_rowan_and_catches_up(world: &mut World) {
     let missed = held_again(world, false);
     let texts: Vec<String> = (1..=100).map(|index| format!("line {index}")).collect();
     assert_eq!(says_in(&missed), texts);
-    let player = table::player_client(world, "pc_rowan");
+    let player = table::player_client(world, "rowan");
     let id = player.seat.send("look", json!({}));
     let looked = parse(&player.seat.wait_reply(&id));
     assert_eq!(looked["body"]["kind"], "view", "{looked}");
@@ -106,7 +106,7 @@ fn a_gm_intent_for_rowan_is_accepted(world: &mut World) {
 
 #[then(expr = "another player's claim on rowan is refused with {string}")]
 fn another_claim_is_refused(world: &mut World, code: String) {
-    let reply = parse(&table::claim(world, "pc_rowan"));
+    let reply = parse(&table::claim(world, "rowan"));
     assert_eq!(reply["body"]["code"], code.as_str(), "{reply}");
 }
 
@@ -122,7 +122,7 @@ fn held_again(world: &World, gap: bool) -> Vec<Value> {
     let reply = parse(&world.player_added);
     let body = &reply["body"];
     assert_eq!(body["kind"], "claimed", "{reply}");
-    assert_eq!(body["actor"], "pc_rowan", "{reply}");
+    assert_eq!(body["actor"], "rowan", "{reply}");
     assert_eq!(body["token"], world.scratch.as_str(), "{reply}");
     assert_eq!(body["gap"].as_bool().unwrap_or(false), gap, "{reply}");
     let missed = body["missed"].as_array().cloned().unwrap_or_default();
@@ -150,7 +150,7 @@ fn queue_rowan_wait(world: &mut World) -> Value {
     if table::live_mut(world).gm.is_none() {
         table::seat_gm(world);
     }
-    table::call_gm_tool(world, "queue", r#"{"actor_id":"pc_rowan","move":"wait"}"#)
+    table::call_gm_tool(world, "queue", r#"{"actor_id":"rowan","move":"wait"}"#)
 }
 
 fn parse(line: &str) -> Value {
@@ -181,7 +181,7 @@ fn play_exits_0(world: &mut World) {
 
 #[then(expr = "a new player can claim rowan")]
 fn a_new_player_can_claim_rowan(world: &mut World) {
-    let reply = parse(&table::claim(world, "pc_rowan"));
+    let reply = parse(&table::claim(world, "rowan"));
     assert_eq!(reply["body"]["kind"], "claimed", "{reply}");
 }
 

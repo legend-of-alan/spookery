@@ -1,6 +1,6 @@
 ---
 schema: cast
-id: npc_briar
+id: briar
 kind: npc
 display_name: Briar
 idle:
@@ -15,7 +15,7 @@ rules:
       - note:
           id: note_gate_watch
           to:
-            - pc_corin
+            - corin
           place: gate_yard
           fact_ids: []
           text: The yard stays watched.

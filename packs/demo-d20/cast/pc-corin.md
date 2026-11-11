@@ -1,6 +1,6 @@
 ---
 schema: cast
-id: pc_corin
+id: corin
 kind: pc_template
 display_name: Corin
 idle:

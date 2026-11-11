@@ -541,7 +541,7 @@ mod tests {
             ("max", offset, r#""write":"offset","delta":-3,"max":3"#),
             ("clear_offset", offset, r#""write":"clear_offset""#),
             ("system", r#""source":"player""#, r#""source":"system""#),
-            ("cc", r#""to":["pc_wren"]"#, r#""cc":["pc_wren"]"#),
+            ("cc", r#""to":["wren"]"#, r#""cc":["wren"]"#),
         ] {
             let refused = parse_line("round.jsonl", &written.replacen(from, to, 1)).unwrap_err();
             assert_eq!(refused.reason, Reason::JournalDiverged);

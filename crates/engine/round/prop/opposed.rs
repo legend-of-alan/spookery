@@ -65,7 +65,7 @@ fn lunge_pack(limit: Option<&str>, rule: &str) -> PathBuf {
     }
     crate::testing::append(&pack.join("rules/verbs.yaml"), &format!("{LUNGE}{rule}"));
     crate::testing::edit_save_with(&pack, |state, canon| {
-        let briar = ActorId::from("npc_briar");
+        let briar = ActorId::from("briar");
         let held = state
             .actors()
             .meter(&briar, "might")
@@ -93,7 +93,7 @@ fn fight(base: &Path, warmup: u32, refused: Option<Reason>) -> Result<(), String
     let mut world = World::resume(&pack.0, lock).map_err(|err| fail("resume", err.to_string()))?;
     let lark = Presence {
         players: 1,
-        actors_present: vec!["pc_lark".into()],
+        actors_present: vec!["lark".into()],
     };
     let wall = world.state().last_round_at.clone();
     for _ in 0..warmup {
@@ -105,8 +105,8 @@ fn fight(base: &Path, warmup: u32, refused: Option<Reason>) -> Result<(), String
     // gate is what refuses the lunge.
     let round_index = world.state().round_index + 1;
     for (id, actor, verb, target) in [
-        ("briar-strike", "npc_briar", "strike", "pc_lark"),
-        ("lark-lunge", "pc_lark", "lunge", "npc_briar"),
+        ("briar-strike", "briar", "strike", "lark"),
+        ("lark-lunge", "lark", "lunge", "briar"),
     ] {
         let viewer = world.state().viewer_of(&actor.into());
         let target = Target::Actor(target.into());

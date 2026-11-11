@@ -1,6 +1,6 @@
 ---
 schema: cast
-id: pc_ada
+id: ada
 kind: pc_template
 display_name: Ada
 idle:

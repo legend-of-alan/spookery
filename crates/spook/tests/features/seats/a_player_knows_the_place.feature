@@ -9,7 +9,7 @@ Feature: A player knows where they are and what they can do
     And play shows "Aldric"
     And play shows "stairs (locked) — 2 ticks"
     And play shows "Docks Street — 0 ticks"
-    And play does not show "Pc rowan"
+    And play does not show "rowan"
     And play does not show "Npc aldric"
 
   Scenario: help shows a verb that takes an actor with the actors in sight
@@ -50,7 +50,7 @@ Feature: A player knows where they are and what they can do
 
   Scenario: A busy traveller sees where they are
     Given the stairs exit costs 10 ticks
-    And pc_wren is seated and not travelling
+    And wren is seated and not travelling
     When rowan travels via stairs at tick 1290
     Then the seated player sees "on the stairs until tick 1300"
 
@@ -65,7 +65,7 @@ Feature: A player knows where they are and what they can do
     Given a copy of the sample-d20 pack
     When play joins the sample table
     Then play shows "Lark"
-    And play does not show "pc_lark"
+    And play does not show "lark"
     And play shows "Mill Lane (locked) — 15 ticks"
     And play does not show "mill_lane"
     When play types "help"
@@ -85,15 +85,15 @@ Feature: A player knows where they are and what they can do
     Given a copy of the sample-d20 pack where Oden is called "Briar" and stands in the Gate Yard
     When play joins the sample table
     And play types "ask Briar"
-    Then play's error shows "More than one thing here is called Briar: npc_briar, npc_oden."
+    Then play's error shows "More than one thing here is called Briar: briar, oden."
     And no round record was written
     When play types "say briar hello"
-    Then play's error shows "More than one thing here is called briar: npc_briar, npc_oden."
+    Then play's error shows "More than one thing here is called briar: briar, oden."
 
   Scenario: A say reaches a name with a space in it, and half the name stays at the table
-    Given a copy of the sample-d20 pack where Oden is called "Oden Vell" and stands in the Gate Yard
+    Given a copy of the sample-d20 pack where Oden is called "Old Vell" and stands in the Gate Yard
     When play joins the sample table
-    And play types "say Oden Vell hi"
+    And play types "say Old Vell hi"
     Then play shows "You: hi"
-    When play types "say Oden hi"
-    Then play shows "You: Oden hi"
+    When play types "say Old hi"
+    Then play shows "You: Old hi"

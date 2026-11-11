@@ -68,7 +68,7 @@ fn a_sample_where_oden_is_called(world: &mut World, name: String) {
     std::fs::write(&oden, renamed).unwrap_or_else(|err| panic!("oden: {err}"));
     spookery_engine::testing::edit_save_with(&pack, |now, _| {
         let mut actors = now.actors_mut();
-        actors.set_place(&"npc_oden".into(), "gate_yard").unwrap();
+        actors.set_place(&"oden".into(), "gate_yard").unwrap();
     });
     world.pack = Some(pack);
 }

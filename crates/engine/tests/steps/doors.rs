@@ -31,7 +31,7 @@ fn plays(pack: &Path, actor: &str, verb: &str, target: Option<&str>) -> serde_js
     let wall = world.state().last_round_at.clone();
     let seated = Presence {
         players: 1,
-        actors_present: vec!["pc_rowan".into()],
+        actors_present: vec!["rowan".into()],
     };
     world
         .play(&seated, &wall)

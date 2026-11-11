@@ -92,7 +92,7 @@ fn a_model_that_queues_two_npcs(world: &mut World) {
 
 #[given(expr = "a scripted model that only ever calls perceive")]
 fn a_model_that_only_perceives(world: &mut World) {
-    world.model.repeat(&[("perceive", r#"{"as":"pc_rowan"}"#)]);
+    world.model.repeat(&[("perceive", r#"{"as":"rowan"}"#)]);
 }
 
 /// Starts the AI GM with the scenario's model, unless it already runs.
@@ -200,7 +200,7 @@ fn the_round_resolves_three_moves(world: &mut World) {
         .iter()
         .filter_map(|intent| intent["actor"].as_str()?.split(':').nth(1))
         .collect();
-    for actor in ["pc_rowan", "mira", "aldric"] {
+    for actor in ["rowan", "mira", "aldric"] {
         assert!(actors.contains(&actor), "{actors:?}");
     }
 }

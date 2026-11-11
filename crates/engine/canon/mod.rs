@@ -485,7 +485,7 @@ mod tests {
             .iter()
             .any(|row| row.name == "restock_lamp_oil" && row.kind == "habit"));
         assert_eq!(summary.kinds.get("mira"), Some(&CastKind::Npc));
-        assert_eq!(summary.kinds.get("pc_rowan"), Some(&CastKind::PcTemplate));
+        assert_eq!(summary.kinds.get("rowan"), Some(&CastKind::PcTemplate));
         let rendered = format!("{:?}{:?}", summary.menu, summary.kinds);
         assert!(!rendered.contains("CAST-BODY-SENTINEL"));
         assert_eq!(

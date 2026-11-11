@@ -28,7 +28,7 @@ pub(crate) use crate::support::edit_save;
 pub(crate) fn give_key(now: &mut State) {
     let mut actors = now.actors_mut();
     actors
-        .shift_item(&"pc_rowan".into(), "brass_key", 1, None)
+        .shift_item(&"rowan".into(), "brass_key", 1, None)
         .unwrap();
     let stairs = spookery_engine::ExitId {
         place: "docks_shop".into(),
@@ -247,7 +247,7 @@ pub(crate) fn join_play(world: &mut World, raw: bool) {
     table::listen(world, &pack);
     let addr = table::game_addr(world);
     let flags: &[&str] = if raw { &["--raw"] } else { &[] };
-    world.play = Some(spawn_play(&addr, "pc_rowan", flags));
+    world.play = Some(spawn_play(&addr, "rowan", flags));
     let needle = if raw {
         "\"kind\":\"view\""
     } else {
@@ -418,7 +418,7 @@ fn play_joins_the_table_on_a_free_loopback_address(world: &mut World) {
 
 #[when(expr = "play joins the sample table")]
 fn play_joins_the_sample_table(world: &mut World) {
-    join_sample(world, "pc_lark");
+    join_sample(world, "lark");
 }
 
 #[when(expr = "play joins the sample table as {string}")]
