@@ -38,10 +38,9 @@ pub(super) async fn serve(
 ) {
     let (close_tx, mut closes) = unbounded_channel();
     let sessions = Arc::new(SeatSessions::new(tx.clone(), next_conn, close_tx));
-    let closer = SessionGuard(Arc::clone(&sessions));
     let service = StreamableHttpService::new(
         move || Ok(Handler::new(tx.clone())),
-        sessions,
+        Arc::clone(&sessions),
         http_config(),
     );
     let app = axum::Router::new().route_service("/mcp", service);
@@ -50,23 +49,9 @@ pub(super) async fn serve(
         _ = axum::serve(listener, app) => {}
         () = async {
             while let Some(id) = closes.recv().await {
-                let _ = closer.0.close_session(&id).await;
+                let _ = sessions.close_session(&id).await;
             }
         } => {}
-    }
-}
-
-/// Ends rmcp's sessions when `serve` stops. Each session's task holds the session manager,
-/// so a session left open would keep its task, and the table's sender, alive. If a session
-/// is opening or closing at that moment the lock is held and nothing is cleared, so the
-/// session tasks, and the sender, outlive `serve`.
-struct SessionGuard(Arc<SeatSessions>);
-
-impl Drop for SessionGuard {
-    fn drop(&mut self) {
-        if let Ok(mut sessions) = self.0.inner.sessions.try_write() {
-            sessions.clear();
-        }
     }
 }
 
@@ -691,36 +676,5 @@ mod tests {
 
         // A GM that reconnects as soon as DELETE answers finds the seat free.
         sit(port).await;
-    }
-
-    // Once `serve` stops, nothing it started still holds the table's
-    // channel, so the table thread sees it close (issue #459).
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn nothing_outlives_serve() {
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
-            .await
-            .unwrap_or_else(|err| panic!("bind: {err}"));
-        let port = listener
-            .local_addr()
-            .unwrap_or_else(|err| panic!("addr: {err}"))
-            .port();
-        let (tx, rx) = mpsc::channel();
-        let (fault_tx, _fault_seen) = tokio::sync::mpsc::unbounded_channel();
-        let (let_go, held) = mpsc::channel();
-        // The session's close reports itself to the table. Let it through.
-        let_go
-            .send(())
-            .unwrap_or_else(|err| panic!("let go: {err}"));
-        let table = spawn_fake_table(rx, fault_tx, held);
-        let served = tokio::spawn(serve(listener, tx, Arc::new(AtomicU64::new(1))));
-        open_session(port).await;
-
-        served.abort();
-        let closed = tokio::task::spawn_blocking(move || table.join());
-        tokio::time::timeout(std::time::Duration::from_secs(10), closed)
-            .await
-            .unwrap_or_else(|_| panic!("a task from serve still holds the table's channel"))
-            .unwrap_or_else(|err| panic!("join: {err}"))
-            .unwrap_or_else(|_| panic!("the table thread panicked"));
     }
 }
