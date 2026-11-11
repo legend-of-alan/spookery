@@ -9,7 +9,7 @@ use crate::canon::{unknown_item, Canon, ItemDef};
 use crate::diagnostic::{check_tag, error, locate_nth, parse_file, schema_error, Diagnostic};
 use crate::entity;
 use crate::state::component::meter::{self, Meter};
-use crate::state::component::modifier;
+use crate::state::component::modifier::{self, Modifier};
 use crate::state::id::ActorId;
 use crate::state::{nested_map, State};
 use crate::store::records::{AddedMeter, DroppedMeter, MigrateRecord};
@@ -145,11 +145,14 @@ pub(crate) fn find_stale_meters(canon: &Canon, state: &State) -> Vec<DroppedMete
         .collect()
 }
 
-/// Each actor's modifiers that the pack no longer defines, or now defines on another meter.
-pub(crate) fn find_stale_modifiers(canon: &Canon, state: &State) -> Vec<(ActorId, String)> {
+/// Each actor's modifiers that the pack no longer defines, or now defines on another meter:
+/// the actor and modifier id, with the modifier as the save holds it.
+pub(crate) fn find_stale_modifiers<'a>(
+    canon: &Canon,
+    state: &'a State,
+) -> Vec<(&'a (ActorId, String), &'a Modifier)> {
     let held = state.actors().modifiers.iter();
     held.filter(|((_, id), live)| !modifier::is_defined(&canon.modifiers, id, live))
-        .map(|(key, _)| key.clone())
         .collect()
 }
 
@@ -266,9 +269,11 @@ pub fn check_save(canon: &Canon, state: &State) -> Result<(), Vec<Diagnostic>> {
             diags.push(meter_error(&carrier, key, &problem, hint));
         }
     }
-    for (id, key) in find_stale_modifiers(canon, state) {
-        let problem =
-            format!("actor '{id}' holds modifier '{key}', which the pack does not give its meter");
+    for ((id, key), live) in find_stale_modifiers(canon, state) {
+        let problem = format!(
+            "actor '{id}' holds modifier '{key}' on meter '{}', which the pack does not define",
+            live.meter
+        );
         let diag = schema_error(FILE, &problem, "run spook migrate to drop the modifier");
         diags.push(diag.at_path(format!("actors.modifiers.{id}.{key}")));
     }
