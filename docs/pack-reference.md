@@ -336,7 +336,7 @@ Keeper sweeps the yard.
 
 ## Story
 
-A story file is YAML. Its rules take the id `story:<id>/<local>`. Verb resolution does not read them. `flags` lists the flags an effect may set on the story, and `meters` the meters only it carries, in the shape of `rules/meters.yaml`. A rule names them with `of: story:<id>`.
+A story file is YAML. Check refuses an empty `id` or one another story file has. Its rules take the id `story:<id>/<local>`. Verb resolution does not read them. `flags` lists the flags an effect may set on the story, and `meters` the meters only it carries, in the shape of `rules/meters.yaml`. A rule names them with `of: story:<id>`.
 
 ```yaml file=story/samples.yaml
 schema: story

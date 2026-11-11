@@ -9,7 +9,7 @@ use serde::Deserialize;
 use crate::canon::meters::{add_own_meters, meter_defs, MeterYaml};
 use crate::canon::rule_list::{self, RuleYaml};
 use crate::canon::source::{
-    collect_files, load_tagged, unreadable_dir, Diags, FileText, STORY_SCHEMA,
+    collect_files, load_tagged, unreadable_dir, Diags, FileText, Locator, STORY_SCHEMA,
 };
 use crate::canon::StoryDef;
 use crate::diagnostic::schema_error;
@@ -19,7 +19,8 @@ use crate::state::component::meter::MeterDef;
 use crate::state::id::StoryId;
 
 /// Every `story/*.yaml` file in directory order: its rules compiled, and its meters added to
-/// `meters` when those loaded. A pack without `story/` has none.
+/// `meters` when those loaded. A file with an empty id, or an id an earlier file has, is refused
+/// and skipped. A pack without `story/` has none.
 pub(super) fn load_stories(
     root: &Path,
     mut meters: Option<&mut BTreeMap<String, MeterDef>>,
@@ -53,6 +54,17 @@ pub(super) fn load_stories(
             text,
             line_base: 0,
         };
+        let empty = ("id is empty", "set id to a short story id");
+        let twice = ("story", "is already defined", "keep one story with this id");
+        let taken = stories.contains_key(story.id.as_str());
+        let at = Locator::Key("id:");
+        let refused = source
+            .refuse_empty(&story.id, "id", at, empty)
+            .or_else(|| taken.then(|| source.refuse_duplicate(&story.id, "id", at, twice)));
+        if let Some(diag) = refused {
+            diags.push(diag);
+            continue;
+        }
         let id: StoryId = story.id.clone().into();
         let carrier = Some(entity::Id::Story(id.clone()));
         let own = diags.keep(meter_defs(&source, story.meters, carrier));

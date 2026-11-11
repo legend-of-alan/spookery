@@ -402,3 +402,35 @@ fn rowan_does_not_see_the_flag(world: &mut World) {
     let seen = seen_of(world, "pc_rowan");
     assert!(seen.iter().all(|key| !key.contains("lamp_lit")), "{seen:?}");
 }
+
+/// Write `story/<file>.yaml` with this id and one flag, so a second file's flag would replace it.
+fn write_story_with_id(world: &mut World, file: &str, id: &str) {
+    let dir = pack(world).join("story");
+    fs::create_dir_all(&dir).unwrap();
+    let text = format!("schema: story\nid: \"{id}\"\nflags:\n  - {file}_flag\n");
+    fs::write(dir.join(format!("{file}.yaml")), text).unwrap();
+}
+
+#[given(expr = "story\\/a.yaml and story\\/b.yaml both have id {word}")]
+fn two_story_files_share_an_id(world: &mut World, id: String) {
+    write_story_with_id(world, "a", &id);
+    write_story_with_id(world, "b", &id);
+}
+
+#[given(expr = "story\\/a.yaml has an empty id")]
+fn a_story_file_has_an_empty_id(world: &mut World) {
+    write_story_with_id(world, "a", "");
+}
+
+#[then(expr = "it refuses story\\/b.yaml, saying story id {word} is already defined")]
+fn it_refuses_the_repeated_story(world: &mut World, id: String) {
+    assert_refused(
+        world,
+        &["story/b.yaml", &format!("story '{id}' is already defined")],
+    );
+}
+
+#[then(expr = "it refuses story\\/a.yaml, saying the story id is empty")]
+fn it_refuses_the_empty_story_id(world: &mut World) {
+    assert_refused(world, &["story/a.yaml", "id is empty"]);
+}
