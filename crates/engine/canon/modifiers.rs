@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 
 use serde::Deserialize;
 
-use crate::canon::source::{load_tagged, Diags, FileText, Locator, Problem, MODIFIERS_SCHEMA};
+use crate::canon::source::{load_tagged, Diags, FileText, MODIFIERS_SCHEMA};
 use crate::diagnostic::Diagnostic;
 use crate::state::component::meter::MeterDef;
 use crate::state::component::modifier::ModifierDef;
@@ -26,33 +26,12 @@ pub(super) fn load_modifiers(
     let mut diags = Diags::default();
     let mut modifiers = BTreeMap::new();
     for (row, entry) in doc.modifiers.into_iter().enumerate() {
-        let path = format!("modifiers[{row}]");
-        let refuse = |key: &'static str, message: String, hint: &'static str| {
-            Problem {
-                source: &source,
-                path: &format!("{path}.{}", key.trim_end_matches(':')),
-                at: Locator::Row {
-                    list: "modifiers:",
-                    row,
-                    key,
-                },
-                message,
-                hint,
-            }
-            .into_diagnostic()
-        };
         let id = &entry.id;
         let max_stacks = usize::try_from(entry.max_stacks.unwrap_or(1)).unwrap_or(0);
-        let checks = [
-            (
-                id.is_empty(),
-                "id:",
-                "a modifier id is empty".to_string(),
-                "set id to a short name",
-            ),
+        let rules = [
             (
                 !meters.contains_key(&entry.meter),
-                "meter:",
+                "meter",
                 format!(
                     "modifier '{id}' names meter '{}', which no actor carries",
                     entry.meter
@@ -61,22 +40,12 @@ pub(super) fn load_modifiers(
             ),
             (
                 max_stacks == 0,
-                "max_stacks:",
+                "max_stacks",
                 format!("modifier '{id}' has max_stacks below 1"),
                 "set max_stacks to 1 or more, or leave it out for 1",
             ),
-            (
-                modifiers.contains_key(id),
-                "id:",
-                format!("modifier '{id}' is listed twice"),
-                "keep one modifier",
-            ),
         ];
-        let found: Vec<Diagnostic> = checks
-            .into_iter()
-            .filter(|(failed, ..)| *failed)
-            .map(|(_, key, message, hint)| refuse(key, message, hint))
-            .collect();
+        let found = source.refuse_row("modifier", row, id, modifiers.contains_key(id), rules);
         if found.is_empty() {
             let def = ModifierDef {
                 meter: entry.meter,

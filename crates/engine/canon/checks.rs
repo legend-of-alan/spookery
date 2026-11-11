@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 
 use serde::Deserialize;
 
-use crate::canon::source::{load_tagged, Diags, FileText, Locator, Problem, CHECKS_SCHEMA};
+use crate::canon::source::{load_tagged, Diags, FileText, CHECKS_SCHEMA};
 use crate::diagnostic::Diagnostic;
 use crate::rules::roll::Check;
 
@@ -21,68 +21,28 @@ pub(super) fn load_checks(
     let mut diags = Diags::default();
     let mut checks = BTreeMap::new();
     for (row, entry) in doc.checks.into_iter().enumerate() {
-        let path = format!("checks[{row}]");
-        let mut found = Vec::new();
-        let id_path = format!("{path}.id");
-        let id_at = Locator::Row {
-            list: "checks:",
-            row,
-            key: "id:",
-        };
-        let empty = ("a check id is empty", "set id to a short name");
-        found.extend(source.refuse_empty(&entry.id, &id_path, id_at, empty));
-        if entry.dice.count == 0 {
-            found.push(
-                Problem {
-                    source: &source,
-                    path: &format!("{path}.dice.count"),
-                    at: Locator::Row {
-                        list: "checks:",
-                        row,
-                        key: "count:",
-                    },
-                    message: format!("check '{}' rolls zero dice", entry.id),
-                    hint: "set dice.count to 1 or more",
-                }
-                .into_diagnostic(),
-            );
-        }
-        if entry.dice.sides == 0 {
-            found.push(
-                Problem {
-                    source: &source,
-                    path: &format!("{path}.dice.sides"),
-                    at: Locator::Row {
-                        list: "checks:",
-                        row,
-                        key: "sides:",
-                    },
-                    message: format!("check '{}' has a die with zero sides", entry.id),
-                    hint: "set dice.sides to 2 or more",
-                }
-                .into_diagnostic(),
-            );
-        }
-        if entry.meter.is_empty() {
-            found.push(
-                Problem {
-                    source: &source,
-                    path: &format!("{path}.meter"),
-                    at: Locator::Row {
-                        list: "checks:",
-                        row,
-                        key: "meter:",
-                    },
-                    message: format!("check '{}' names no meter", entry.id),
-                    hint: "set meter to a meter id from rules/meters.yaml",
-                }
-                .into_diagnostic(),
-            );
-        }
-        let twice = ("check", "is listed twice", "keep one check");
-        // A repeat is checked only on a row with nothing else wrong.
-        let taken = found.is_empty() && checks.contains_key(&entry.id);
-        found.extend(taken.then(|| source.refuse_duplicate(&entry.id, &id_path, id_at, twice)));
+        let id = &entry.id;
+        let rules = [
+            (
+                entry.dice.count == 0,
+                "dice.count",
+                format!("check '{id}' rolls zero dice"),
+                "set dice.count to 1 or more",
+            ),
+            (
+                entry.dice.sides == 0,
+                "dice.sides",
+                format!("check '{id}' has a die with zero sides"),
+                "set dice.sides to 2 or more",
+            ),
+            (
+                entry.meter.is_empty(),
+                "meter",
+                format!("check '{id}' names no meter"),
+                "set meter to a meter id from rules/meters.yaml",
+            ),
+        ];
+        let found = source.refuse_row("check", row, id, checks.contains_key(id), rules);
         if !found.is_empty() {
             diags.extend(found);
             continue;
@@ -120,52 +80,4 @@ struct CheckYaml {
 struct DiceYaml {
     count: u32,
     sides: u32,
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn load_checks(text: &str) -> Result<BTreeMap<String, Check>, Vec<Diagnostic>> {
-        super::load_checks("rules/checks.yaml", text)
-    }
-
-    #[test]
-    fn a_check_refusal_names_the_row() {
-        let duplicate = "\
-schema: checks
-checks:
-  - id: grit
-    dice:
-      count: 2
-      sides: 6
-    meter: grit
-  - id: grit
-    dice:
-      count: 1
-      sides: 6
-    meter: grit
-";
-        let err = load_checks(duplicate).unwrap_err();
-        assert!(
-            err.iter().any(|diag| {
-                diag.message.contains("listed twice")
-                    && diag.path.as_deref() == Some("checks[1].id")
-                    && diag.line.is_some()
-            }),
-            "{err:?}"
-        );
-        let zero = "\
-schema: checks
-checks:
-  - id: grit
-    dice:
-      count: 0
-      sides: 0
-    meter: grit
-";
-        let err = load_checks(zero).unwrap_err();
-        assert!(err.iter().any(|diag| diag.message.contains("zero dice")));
-        assert!(err.iter().any(|diag| diag.message.contains("zero sides")));
-    }
 }
