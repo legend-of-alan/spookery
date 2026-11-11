@@ -106,6 +106,52 @@ fn break_pack(pack: &Path, fault: &str) {
         "missing meters" => {
             fs::remove_file(pack.join("rules/meters.yaml")).unwrap();
         }
+        "meter min above base_cap" => replace_in_file(
+            &pack.join("rules/meters.yaml"),
+            "    min: 0
+    base_cap: 100
+",
+            "    min: 200
+    base_cap: 100
+",
+        ),
+        "meter base_cap above max" => replace_in_file(
+            &pack.join("rules/meters.yaml"),
+            "    base_cap: 5
+    max: 5
+",
+            "    base_cap: 5
+    max: 4
+",
+        ),
+        "meter base outside its range" => replace_in_file(
+            &pack.join("rules/meters.yaml"),
+            "    base: 3
+",
+            "    base: 9
+",
+        ),
+        "check rolls zero dice" => replace_in_file(
+            &pack.join("rules/checks.yaml"),
+            "      count: 2
+",
+            "      count: 0
+",
+        ),
+        "a die with zero sides" => replace_in_file(
+            &pack.join("rules/checks.yaml"),
+            "      sides: 6
+",
+            "      sides: 0
+",
+        ),
+        "check names no meter" => replace_in_file(
+            &pack.join("rules/checks.yaml"),
+            "    meter: grit
+",
+            "    meter: \"\"
+",
+        ),
         "missing display_name" => {
             replace_in_file(&pack.join("cast/pc-rowan.md"), "display_name: Rowan\n", "")
         }

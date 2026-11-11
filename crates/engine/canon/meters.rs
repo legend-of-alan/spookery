@@ -5,9 +5,7 @@ use std::collections::BTreeMap;
 
 use serde::Deserialize;
 
-use crate::canon::source::{
-    load_tagged, Diags, DuplicateWords, FileText, Locator, Problem, METERS_SCHEMA,
-};
+use crate::canon::source::{load_tagged, Diags, DuplicateWords, FileText, Locator, METERS_SCHEMA};
 use crate::diagnostic::Diagnostic;
 use crate::entity;
 use crate::state::component::meter::MeterDef;
@@ -38,68 +36,28 @@ pub(super) fn meter_defs(
     let mut diags = Diags::default();
     let mut meters = BTreeMap::new();
     for (row, entry) in rows.into_iter().enumerate() {
-        let path = format!("meters[{row}]");
-        let mut found = Vec::new();
-        let id_path = format!("{path}.id");
-        let id_at = Locator::Row {
-            list: "meters:",
-            row,
-            key: "id:",
-        };
-        let empty = ("a meter id is empty", "set id to a short name");
-        found.extend(source.refuse_empty(&entry.id, &id_path, id_at, empty));
-        if entry.min > entry.base_cap {
-            found.push(
-                Problem {
-                    source,
-                    path: &format!("{path}.min"),
-                    at: Locator::Row {
-                        list: "meters:",
-                        row,
-                        key: "min:",
-                    },
-                    message: format!("meter '{}' has min above base_cap", entry.id),
-                    hint: "set min at or below base_cap",
-                }
-                .into_diagnostic(),
-            );
-        }
-        if entry.base_cap > entry.max {
-            found.push(
-                Problem {
-                    source,
-                    path: &format!("{path}.base_cap"),
-                    at: Locator::Row {
-                        list: "meters:",
-                        row,
-                        key: "base_cap:",
-                    },
-                    message: format!("meter '{}' has base_cap above max", entry.id),
-                    hint: "set base_cap at or below max",
-                }
-                .into_diagnostic(),
-            );
-        }
-        if !(entry.min..=entry.base_cap).contains(&entry.base) {
-            found.push(
-                Problem {
-                    source,
-                    path: &format!("{path}.base"),
-                    at: Locator::Row {
-                        list: "meters:",
-                        row,
-                        key: "base:",
-                    },
-                    message: format!("meter '{}' has base outside min and base_cap", entry.id),
-                    hint: "set base between min and base_cap",
-                }
-                .into_diagnostic(),
-            );
-        }
-        let twice = ("meter", "is listed twice", "keep one meter");
-        // A repeat is checked only on a row with nothing else wrong.
-        let taken = found.is_empty() && meters.contains_key(&entry.id);
-        found.extend(taken.then(|| source.refuse_duplicate(&entry.id, &id_path, id_at, twice)));
+        let id = &entry.id;
+        let rules = [
+            (
+                entry.min > entry.base_cap,
+                "min",
+                format!("meter '{id}' has min above base_cap"),
+                "set min at or below base_cap",
+            ),
+            (
+                entry.base_cap > entry.max,
+                "base_cap",
+                format!("meter '{id}' has base_cap above max"),
+                "set base_cap at or below max",
+            ),
+            (
+                !(entry.min..=entry.base_cap).contains(&entry.base),
+                "base",
+                format!("meter '{id}' has base outside min and base_cap"),
+                "set base between min and base_cap",
+            ),
+        ];
+        let found = source.refuse_row("meter", row, id, meters.contains_key(id), rules);
         if !found.is_empty() {
             diags.extend(found);
             continue;
@@ -177,54 +135,12 @@ pub(super) struct MeterYaml {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::diagnostic::first_reason;
     use crate::Reason;
 
-    fn load_meters(text: &str) -> Result<BTreeMap<String, MeterDef>, Vec<Diagnostic>> {
-        super::load_meters("rules/meters.yaml", text, None)
-    }
-
     #[test]
-    fn load_meters_rejects_a_broken_inequality_a_duplicate_id_and_an_unknown_key() {
-        let broken = "\
-schema: meters
-meters:
-  - id: grit
-    min: 2
-    base_cap: 1
-    max: 3
-    base: 1
-";
-        let err = load_meters(broken).unwrap_err();
-        assert!(
-            err.iter()
-                .any(|diag| diag.message.contains("min above base_cap")),
-            "{err:?}"
-        );
-        assert_eq!(first_reason(&err), Reason::Schema);
-        let duplicate = "\
-schema: meters
-meters:
-  - id: grit
-    min: 0
-    base_cap: 1
-    max: 1
-    base: 1
-  - id: grit
-    min: 0
-    base_cap: 1
-    max: 1
-    base: 0
-";
-        let err = load_meters(duplicate).unwrap_err();
-        assert!(
-            err.iter().any(|diag| diag.message.contains("listed twice")),
-            "{err:?}"
-        );
-        assert_eq!(first_reason(&err), Reason::Schema);
-        let unknown = "\
-schema: meters
+    fn load_meters_rejects_an_unknown_key_at_its_line() {
+        let unknown = "schema: meters
 meters:
   - id: grit
     min: 0
@@ -233,33 +149,10 @@ meters:
     base: 1
     kind: stat
 ";
-        let err = load_meters(unknown).unwrap_err();
+        let err = super::load_meters("rules/meters.yaml", unknown, None).unwrap_err();
         assert_eq!(err.len(), 1, "{err:?}");
         assert!(err[0].message.contains("unknown field 'kind'"), "{err:?}");
         assert_eq!(err[0].line, Some(8), "{err:?}");
         assert_eq!(first_reason(&err), Reason::Schema);
-    }
-
-    #[test]
-    fn a_row_problem_points_at_that_rows_field() {
-        let text = "schema: meters
-meters:
-  - id: grit
-    min: 0
-    base_cap: 1
-    max: 1
-    base: 1
-  - id: nerve
-    min: 2
-    base_cap: 1
-    max: 3
-    base: 1
-";
-        let err = load_meters(text).unwrap_err();
-        let min = err
-            .iter()
-            .find(|diag| diag.message.contains("min above base_cap"))
-            .unwrap();
-        assert_eq!((min.line, min.column), (Some(9), Some(5)), "{min:?}");
     }
 }
