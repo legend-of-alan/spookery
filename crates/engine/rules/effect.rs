@@ -105,7 +105,9 @@ pub enum EffectKind {
 /// Writes `kind`, then `as` when there is one, then `intent_id`, then the fields of `kind`.
 impl Serialize for Effect {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let Ok(Value::Object(mut fields)) = serde_json::to_value(&self.kind) else {
+        let Value::Object(mut fields) =
+            serde_json::to_value(&self.kind).map_err(S::Error::custom)?
+        else {
             return Err(S::Error::custom("effect kind is not an object"));
         };
         fields.shift_insert(1, "intent_id".into(), self.intent_id.clone().into());
@@ -291,15 +293,12 @@ impl EffectKind {
     }
 }
 
-/// The effect's record minus `kind`, `as` and `intent_id`, keys in declaration order.
+/// The effect's fields minus `kind`, keys in declaration order.
 pub(crate) fn payload_json(effect: &Effect) -> String {
-    let record = serde_json::to_value(effect).expect("effect payload");
-    let serde_json::Value::Object(mut fields) = record else {
-        unreachable!("effect records are objects")
+    let Ok(Value::Object(mut fields)) = serde_json::to_value(&effect.kind) else {
+        unreachable!("effect kinds are objects")
     };
-    for key in ["kind", "as", "intent_id"] {
-        fields.shift_remove(key);
-    }
+    fields.shift_remove("kind");
     serde_json::to_string(&fields).expect("effect payload")
 }
 
