@@ -81,3 +81,13 @@ Feature: Stories and places carry meters and flags
     Given the docks pack gains world/places/loft.md and is migrated
     When a rule leaves a note in the loft
     Then pc_rowan, standing in the loft, perceives the note
+
+  Scenario: Two story files share an id
+    Given story/a.yaml and story/b.yaml both have id samples
+    When the author runs spook check
+    Then it refuses story/b.yaml, saying story id samples is already defined
+
+  Scenario: A story id is empty
+    Given story/a.yaml has an empty id
+    When the author runs spook check
+    Then it refuses story/a.yaml, saying the story id is empty
