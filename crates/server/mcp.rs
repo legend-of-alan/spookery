@@ -190,23 +190,24 @@ impl SessionManager for SeatSessions {
         &self,
         id: &SessionId,
     ) -> Result<impl Stream<Item = ServerSseMessage> + Send + Sync + 'static, Self::Error> {
-        let conn = self
-            .conns
-            .lock()
-            .unwrap_or_else(|err| err.into_inner())
-            .get(id)
-            .copied()
-            .ok_or_else(|| LocalSessionManagerError::SessionNotFound(id.clone()))?;
         let (frames_tx, frames_rx) = frame_queue();
         let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
-        self.tx
-            .send(Request::Open {
-                conn,
-                seat: Seat::Gm,
-                frames_tx,
-                reply: reply_tx,
-            })
-            .map_err(|_| SessionError::SessionServiceTerminated)?;
+        {
+            // Hold `conns` until `Open` is queued, so a DELETE's `Close` queues after it.
+            let conns = self.conns.lock().unwrap_or_else(|err| err.into_inner());
+            let conn = conns
+                .get(id)
+                .copied()
+                .ok_or_else(|| LocalSessionManagerError::SessionNotFound(id.clone()))?;
+            self.tx
+                .send(Request::Open {
+                    conn,
+                    seat: Seat::Gm,
+                    frames_tx,
+                    reply: reply_tx,
+                })
+                .map_err(|_| SessionError::SessionServiceTerminated)?;
+        }
         match reply_rx
             .await
             .map_err(|_| SessionError::SessionServiceTerminated)?
