@@ -12,7 +12,7 @@ rules:
       target: item
     if:
       - has_item:
-          of: self
+          subject: self
           id: tonic
     cost:
       items:

@@ -17,7 +17,7 @@ exits:
       ticks: 2
     if:
       - has_item:
-          of: self
+          subject: self
           id: brass_key
     locked_text: The stair door is locked.
 ---

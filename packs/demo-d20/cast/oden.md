@@ -10,7 +10,7 @@ rules:
     when: habit
     if:
       - at:
-          of: pc_corin
+          subject: pc_corin
           place: wheel_shed
       - not:
           note_exists: note_cart

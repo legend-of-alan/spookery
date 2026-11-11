@@ -55,7 +55,7 @@ rules:
       target: item
     do:
       - wield:
-          of: self
+          subject: self
           id: target
 
   - id: unwield
@@ -63,4 +63,4 @@ rules:
       verb: unwield
     do:
       - unwield:
-          of: self
+          subject: self

@@ -66,7 +66,7 @@ rules:
       target: item
     do:
       - wield:
-          of: self
+          subject: self
           id: target
 
   - id: unwield
@@ -74,17 +74,17 @@ rules:
       verb: unwield
     do:
       - unwield:
-          of: self
+          subject: self
 
   - id: chock
     when:
       verb: chock
     if:
       - at:
-          of: self
+          subject: self
           place: gate_yard
       - has_item:
-          of: self
+          subject: self
           id: chock
     cost:
       items:

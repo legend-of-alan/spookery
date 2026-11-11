@@ -32,7 +32,7 @@ fn a_refused_or_dropped_opposing_roll_replays_the_same_way() {
         // A failed gate at the start: Lark holds no chock.
         (
             None,
-            "    if: [has_item: { of: self, id: chock }]\n",
+            "    if: [has_item: { subject: self, id: chock }]\n",
             Some(Reason::MissingItem),
         ),
         // A dice cost passes the gate, then goes unpaid in apply.

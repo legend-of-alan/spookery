@@ -225,10 +225,10 @@ pub(super) fn reveal_problems(
     let mut diags = Vec::new();
     for rule in rules.iter() {
         rule.visit_templates(|effect| {
-            let EffectTemplate::Reveal { of, fact } = effect else {
+            let EffectTemplate::Reveal { to, fact } = effect else {
                 return;
             };
-            if matches!(of, grammar::Object::Global) {
+            if matches!(to, grammar::Object::Global) {
                 diags.push(
                     schema_error(
                         &rule.file,
@@ -1214,18 +1214,18 @@ fn narrates_to_present(rule: &Rule) -> bool {
     present
 }
 
-/// Whether `rule` needs a subject: `self` or `here` as an `of`, a resist's `subject` or a
-/// narrate's `to`, a location effect, which moves the subject, or a roll, which is the subject's.
+/// Whether `rule` needs a subject: `self` or `here` named as `of`, `subject` or `to`, a
+/// resist's `subject`, a narrate's `to`, a location effect, which moves the subject, or a
+/// roll, which is the subject's.
 fn names_subject(rule: &Rule) -> bool {
     let mut objects = Vec::new();
     for cond in &rule.if_ {
         cond.visit(|cond| match cond {
-            Cond::HasItem { of, .. }
-            | Cond::Meter { of, .. }
-            | Cond::Flag { of, .. }
-            | Cond::At { of, .. }
-            | Cond::Knows { of, .. }
-            | Cond::Wielding { of, .. } => objects.push(of),
+            Cond::HasItem { subject, .. }
+            | Cond::At { subject, .. }
+            | Cond::Knows { subject, .. }
+            | Cond::Wielding { subject, .. } => objects.push(subject),
+            Cond::Meter { of, .. } | Cond::Flag { of, .. } => objects.push(of),
             _ => {}
         });
     }
@@ -1239,12 +1239,13 @@ fn names_subject(rule: &Rule) -> bool {
         match effect {
             EffectTemplate::Meter { of, .. }
             | EffectTemplate::Flag { of, .. }
-            | EffectTemplate::Modifier { of, .. }
-            | EffectTemplate::Memory { of, .. }
-            | EffectTemplate::Item { of, .. }
-            | EffectTemplate::Reveal { of, .. }
-            | EffectTemplate::Wield { of, .. }
-            | EffectTemplate::Unwield { of } => objects.push(of),
+            | EffectTemplate::Item { of, .. } => objects.push(of),
+            EffectTemplate::Modifier { to, .. }
+            | EffectTemplate::Memory { to, .. }
+            | EffectTemplate::Reveal { to, .. } => objects.push(to),
+            EffectTemplate::Wield { subject, .. } | EffectTemplate::Unwield { subject } => {
+                objects.push(subject)
+            }
             EffectTemplate::Narrate { to, .. } => {
                 needs |= matches!(to, NarrateTo::Self_ | NarrateTo::Here);
             }

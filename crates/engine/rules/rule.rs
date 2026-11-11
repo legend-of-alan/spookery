@@ -186,7 +186,7 @@ pub struct Cost {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Cond {
     HasItem {
-        of: grammar::Object,
+        subject: grammar::Object,
         id: String,
         count: u32,
     },
@@ -202,11 +202,11 @@ pub enum Cond {
         is: bool,
     },
     At {
-        of: grammar::Object,
+        subject: grammar::Object,
         place: String,
     },
     Knows {
-        of: grammar::Object,
+        subject: grammar::Object,
         fact: String,
     },
     /// A tick of the named cycle in `from..to`, wrapping past the cycle's end when `from > to`.
@@ -221,7 +221,7 @@ pub enum Cond {
     },
     NoteExists(String),
     Wielding {
-        of: grammar::Object,
+        subject: grammar::Object,
         id: String,
     },
     All(Vec<Cond>),
@@ -296,7 +296,7 @@ pub enum EffectTemplate {
     },
     /// One application of modifier `id` to an actor, with magnitude `add`, lasting `ticks`.
     Modifier {
-        of: grammar::Object,
+        to: grammar::Object,
         id: String,
         add: Expr,
         ticks: u64,
@@ -319,7 +319,7 @@ pub enum EffectTemplate {
         resist: Option<ResistSpec>,
     },
     Memory {
-        of: grammar::Object,
+        to: grammar::Object,
         fact_ids: Vec<String>,
         text: Option<String>,
     },
@@ -331,15 +331,15 @@ pub enum EffectTemplate {
         resist: Option<ResistSpec>,
     },
     Reveal {
-        of: grammar::Object,
+        to: grammar::Object,
         fact: String,
     },
     Wield {
-        of: grammar::Object,
+        subject: grammar::Object,
         id: String,
     },
     Unwield {
-        of: grammar::Object,
+        subject: grammar::Object,
     },
 }
 

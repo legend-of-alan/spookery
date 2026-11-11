@@ -1,6 +1,6 @@
 schema: save
 world_id: docks-001
-pack_rev: blake2s:7bd949261c61876195f94c42abf7a17291d465767435a7487bbc25082b1ade0c
+pack_rev: blake2s:94d91cbe58bbffb352642733b49b025c821278a3ffbb8e3df30c1fd2ce8915bd
 rules_rev: 23
 state_rev: 0
 round_index: 0

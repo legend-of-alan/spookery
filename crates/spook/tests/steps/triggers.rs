@@ -156,7 +156,7 @@ rules:
           is: true
     do:
       - memory:
-          of: self
+          to: self
           fact_ids:
             - fact_ledger
       - meter:
@@ -520,7 +520,7 @@ Under the street.
     .unwrap();
     add_verb(
         &pack,
-        "\n  - id: uncover\n    when:\n      verb: uncover\n    do:\n      - reveal:\n          of: self\n          fact: fact_trapdoor\n",
+        "\n  - id: uncover\n    when:\n      verb: uncover\n    do:\n      - reveal:\n          to: self\n          fact: fact_trapdoor\n",
     );
     write_nell(&pack, &[]);
     edit_table_with(world, &pack, |now, seated, canon| {
@@ -732,7 +732,7 @@ fn nell_learns_the_trapdoor_beside_wren(world: &mut World) {
     );
     add_verb(
         &pack,
-        "\n  - id: learn\n    when:\n      verb: learn\n    do:\n      - reveal:\n          of: self\n          fact: fact_trapdoor\n",
+        "\n  - id: learn\n    when:\n      verb: learn\n    do:\n      - reveal:\n          to: self\n          fact: fact_trapdoor\n",
     );
     write_nell(&pack, &[]);
     edit_table_with(world, &pack, |now, seated, canon| {
@@ -927,7 +927,7 @@ Reserved.
     .unwrap();
     add_verb(
         &pack,
-        "\n  - id: bad\n    when:\n      verb: bad\n    do:\n      - reveal:\n          of: world\n          fact: missing_fact\n      - reveal:\n          of: self\n          fact: missing_fact\n",
+        "\n  - id: bad\n    when:\n      verb: bad\n    do:\n      - reveal:\n          to: world\n          fact: missing_fact\n      - reveal:\n          to: self\n          fact: missing_fact\n",
     );
     edit_table(world, &pack, |_, _| {});
     world.pack = Some(pack);

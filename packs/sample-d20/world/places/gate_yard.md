@@ -15,7 +15,7 @@ exits:
                   key: passage
                   is: true
               - has_item:
-                  of: self
+                  subject: self
                   id: latch
           - flag:
               of: world

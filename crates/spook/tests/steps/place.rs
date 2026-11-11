@@ -117,7 +117,7 @@ fn the_docks_have_a_greet_verb(world: &mut World) {
 #[given(expr = "the shop has a pray verb if rowan holds lamp_oil, and the CLI holds rowan")]
 fn the_shop_has_a_pray_verb(world: &mut World) {
     let from = "    locked_text: The stair door is locked.\n";
-    let rules = "    locked_text: The stair door is locked.\nrules:\n  - id: pray\n    when:\n      verb: pray\n    if:\n      - has_item:\n          of: self\n          id: lamp_oil\n    do: []\n";
+    let rules = "    locked_text: The stair door is locked.\nrules:\n  - id: pray\n    when:\n      verb: pray\n    if:\n      - has_item:\n          subject: self\n          id: lamp_oil\n    do: []\n";
     add_rule_and_join(world, "help-if", "world/places/docks_shop.md", from, rules);
 }
 

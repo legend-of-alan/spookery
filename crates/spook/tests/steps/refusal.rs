@@ -121,7 +121,7 @@ fn dropping_the_tonic_locks_the_loft(world: &mut World) {
     name: loft
     if:
       - has_item:
-          of: self
+          subject: self
           id: tonic
     locked_text: The loft door is locked.
 ",

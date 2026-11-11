@@ -1,4 +1,4 @@
-//! The words a pack line names its actor and its owner with: `subject:` and `of:`.
+//! The words a pack line names its actor, its owner and its receiver with: `subject:`, `of:` and `to:`.
 
 use crate::state::id::{ActorId, ExitId, PlaceId, StoryId};
 

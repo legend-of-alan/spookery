@@ -962,7 +962,7 @@ fn the_docks_pack_allows_keys_and_braces(world: &mut World, limit: u64, add: i64
   - id: brace
     when: {{ verb: brace }}
     do:
-      - modifier: {{ of: self, id: brace, add: {add}, ticks: 10 }}
+      - modifier: {{ to: self, id: brace, add: {add}, ticks: 10 }}
 "
         ),
     );

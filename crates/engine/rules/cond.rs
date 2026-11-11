@@ -56,8 +56,8 @@ fn refusal_code(cond: &Cond) -> Reason {
 fn holds(context: &Context, cond: &Cond) -> Result<bool, Reason> {
     let state = context.state;
     match cond {
-        Cond::HasItem { of, id, count } => {
-            let actor = expr::resolve_actor(context, of)?;
+        Cond::HasItem { subject, id, count } => {
+            let actor = expr::resolve_actor(context, subject)?;
             let id = expr::resolve_item_id(context, id)?;
             let held = state
                 .actors()
@@ -67,8 +67,8 @@ fn holds(context: &Context, cond: &Cond) -> Result<bool, Reason> {
                 .unwrap_or(0);
             Ok(held >= *count)
         }
-        Cond::Wielding { of, id } => {
-            let actor = expr::resolve_actor(context, of)?;
+        Cond::Wielding { subject, id } => {
+            let actor = expr::resolve_actor(context, subject)?;
             let id = expr::resolve_item_id(context, id)?;
             Ok(state
                 .actors()
@@ -91,16 +91,16 @@ fn holds(context: &Context, cond: &Cond) -> Result<bool, Reason> {
             let entity = expr::resolve_entity(context, of)?;
             Ok(state.entity(&entity).has_flag(key) == *is)
         }
-        Cond::At { of, place } => {
-            let actor = expr::resolve_actor(context, of)?;
+        Cond::At { subject, place } => {
+            let actor = expr::resolve_actor(context, subject)?;
             Ok(state
                 .actors()
                 .place
                 .get(actor)
                 .is_some_and(|at| at == place))
         }
-        Cond::Knows { of, fact } => {
-            let actor = expr::resolve_actor(context, of)?;
+        Cond::Knows { subject, fact } => {
+            let actor = expr::resolve_actor(context, subject)?;
             Ok(state
                 .actors()
                 .known_facts

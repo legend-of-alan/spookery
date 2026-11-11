@@ -162,7 +162,7 @@ pub struct CondYaml {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct HasItemYaml {
-    pub of: Spanned<String>,
+    pub subject: Spanned<String>,
     pub id: String,
     #[serde(default = "default_count")]
     pub count: u32,
@@ -171,7 +171,7 @@ pub struct HasItemYaml {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct WieldingYaml {
-    pub of: Spanned<String>,
+    pub subject: Spanned<String>,
     pub id: String,
 }
 
@@ -200,14 +200,14 @@ pub struct FlagCondYaml {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AtYaml {
-    pub of: Spanned<String>,
+    pub subject: Spanned<String>,
     pub place: String,
 }
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct KnowsYaml {
-    pub of: Spanned<String>,
+    pub subject: Spanned<String>,
     pub fact: String,
 }
 
@@ -331,7 +331,7 @@ pub struct FlagEffectYaml {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ModifierEffectYaml {
-    pub of: Spanned<String>,
+    pub to: Spanned<String>,
     pub id: String,
     pub add: Spanned<ExprYaml>,
     /// How long this application lasts, 1 or more.
@@ -372,7 +372,7 @@ pub struct NarrateYaml {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MemoryYaml {
-    pub of: Spanned<String>,
+    pub to: Spanned<String>,
     #[serde(default)]
     pub fact_ids: Vec<String>,
     pub text: Option<String>,
@@ -391,21 +391,21 @@ pub struct ItemEffectYaml {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RevealYaml {
-    pub of: Spanned<String>,
+    pub to: Spanned<String>,
     pub fact: String,
 }
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct WieldYaml {
-    pub of: Spanned<String>,
+    pub subject: Spanned<String>,
     pub id: String,
 }
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct UnwieldYaml {
-    pub of: Spanned<String>,
+    pub subject: Spanned<String>,
 }
 
 #[derive(Deserialize)]
@@ -738,7 +738,7 @@ pub(super) fn cond_of(yaml: &CondYaml) -> Result<Cond, Fault> {
     if let Some(item) = &yaml.has_item {
         found += 1;
         cond = Some(Cond::HasItem {
-            of: object_of(&item.of)?,
+            subject: object_of(&item.subject)?,
             id: item.id.clone(),
             count: item.count,
         });
@@ -763,14 +763,14 @@ pub(super) fn cond_of(yaml: &CondYaml) -> Result<Cond, Fault> {
     if let Some(at) = &yaml.at {
         found += 1;
         cond = Some(Cond::At {
-            of: object_of(&at.of)?,
+            subject: object_of(&at.subject)?,
             place: at.place.clone(),
         });
     }
     if let Some(knows) = &yaml.knows {
         found += 1;
         cond = Some(Cond::Knows {
-            of: object_of(&knows.of)?,
+            subject: object_of(&knows.subject)?,
             fact: knows.fact.clone(),
         });
     }
@@ -799,7 +799,7 @@ pub(super) fn cond_of(yaml: &CondYaml) -> Result<Cond, Fault> {
     if let Some(wielding) = &yaml.wielding {
         found += 1;
         cond = Some(Cond::Wielding {
-            of: object_of(&wielding.of)?,
+            subject: object_of(&wielding.subject)?,
             id: wielding.id.clone(),
         });
     }
@@ -946,7 +946,7 @@ fn effect_of(yaml: &EffectYaml) -> Result<EffectTemplate, Fault> {
             return Err("a modifier effect has ticks below 1, so set ticks to 1 or more".into());
         }
         effect = Some(EffectTemplate::Modifier {
-            of: object_of(&modifier.of)?,
+            to: object_of(&modifier.to)?,
             id: modifier.id.clone(),
             add: expr_of(&modifier.add)?,
             ticks: modifier.ticks,
@@ -996,7 +996,7 @@ fn effect_of(yaml: &EffectYaml) -> Result<EffectTemplate, Fault> {
     if let Some(memory) = &yaml.memory {
         found += 1;
         effect = Some(EffectTemplate::Memory {
-            of: object_of(&memory.of)?,
+            to: object_of(&memory.to)?,
             fact_ids: memory.fact_ids.clone(),
             text: memory.text.clone(),
         });
@@ -1014,21 +1014,21 @@ fn effect_of(yaml: &EffectYaml) -> Result<EffectTemplate, Fault> {
     if let Some(reveal) = &yaml.reveal {
         found += 1;
         effect = Some(EffectTemplate::Reveal {
-            of: object_of(&reveal.of)?,
+            to: object_of(&reveal.to)?,
             fact: reveal.fact.clone(),
         });
     }
     if let Some(wield) = &yaml.wield {
         found += 1;
         effect = Some(EffectTemplate::Wield {
-            of: object_of(&wield.of)?,
+            subject: object_of(&wield.subject)?,
             id: wield.id.clone(),
         });
     }
     if let Some(unwield) = &yaml.unwield {
         found += 1;
         effect = Some(EffectTemplate::Unwield {
-            of: object_of(&unwield.of)?,
+            subject: object_of(&unwield.subject)?,
         });
     }
     if found == 1 {

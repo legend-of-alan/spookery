@@ -642,7 +642,7 @@ fn two_conditions_under_one_dash(world: &mut World) {
       verb: both
     if:
       - has_item:
-          of: self
+          subject: self
           id: knife
         flag:
           of: self

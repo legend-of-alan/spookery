@@ -148,12 +148,12 @@ fn expand_template(
             };
             effects.push(Effect::new(viewer, &intent.id, kind));
         }
-        EffectTemplate::Modifier { of, id, add, ticks } => {
+        EffectTemplate::Modifier { to, id, add, ticks } => {
             effects.push(Effect::new(
                 viewer,
                 &intent.id,
                 EffectKind::Modifier {
-                    actor_id: expr::resolve_actor(context, of)?.clone(),
+                    actor_id: expr::resolve_actor(context, to)?.clone(),
                     id: id.clone(),
                     add: expr::eval_with_dice(context, add, dice)?,
                     ticks: *ticks,
@@ -211,8 +211,8 @@ fn expand_template(
                 },
             ));
         }
-        EffectTemplate::Wield { of, id } => {
-            let actor_id = expr::resolve_actor(context, of)?.clone();
+        EffectTemplate::Wield { subject, id } => {
+            let actor_id = expr::resolve_actor(context, subject)?.clone();
             effects.push(Effect::new(
                 viewer,
                 &intent.id,
@@ -222,8 +222,8 @@ fn expand_template(
                 },
             ));
         }
-        EffectTemplate::Unwield { of } => {
-            let actor_id = expr::resolve_actor(context, of)?.clone();
+        EffectTemplate::Unwield { subject } => {
+            let actor_id = expr::resolve_actor(context, subject)?.clone();
             effects.push(Effect::new(
                 viewer,
                 &intent.id,
@@ -270,8 +270,8 @@ fn expand_template(
                 },
             ));
         }
-        EffectTemplate::Memory { of, fact_ids, text } => {
-            let actor_id = expr::resolve_actor(context, of)?.clone();
+        EffectTemplate::Memory { to, fact_ids, text } => {
+            let actor_id = expr::resolve_actor(context, to)?.clone();
             effects.push(Effect::new(
                 viewer,
                 &intent.id,
@@ -283,8 +283,8 @@ fn expand_template(
                 },
             ));
         }
-        EffectTemplate::Reveal { of, fact } => {
-            let actor_id = expr::resolve_actor(context, of)?.clone();
+        EffectTemplate::Reveal { to, fact } => {
+            let actor_id = expr::resolve_actor(context, to)?.clone();
             effects.push(Effect::new(
                 viewer,
                 &intent.id,

@@ -94,7 +94,7 @@ const DAGGER_ATTACK: &str = "
       target: actor
     if:
       - wielding:
-          of: self
+          subject: self
           id: poisoned_dagger
     roll:
       check: strike
@@ -597,7 +597,7 @@ fn nell_resists_on_a_seeded_roll(world: &mut World) {
       target: actor
     if:
       - wielding:
-          of: self
+          subject: self
           id: poisoned_dagger
     roll:
       check: strike

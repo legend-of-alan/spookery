@@ -713,7 +713,7 @@ fn a_held_knife_still_runs_the_opposed_row() {
     let held = support::copy_docks("item-held");
     let mut moves = fs::read_to_string(held.join("rules/verbs.yaml")).unwrap();
     moves.push_str(
-        "\n  - id: mark\n    when:\n      verb: mark\n      target: actor\n    if:\n      - has_item:\n          of: self\n          id: knife\n    roll:\n      check: grit\n      threshold: 0\n    success:\n      - flag:\n          of: target\n          key: marked\n          value: true\n    miss:\n      - flag:\n          of: target\n          key: missed\n          value: true\n  - id: defend\n    when:\n      verb: defend\n    roll:\n      check: grit\n      threshold: 0\n    success:\n      - flag:\n          of: self\n          key: guarded\n          value: true\n",
+        "\n  - id: mark\n    when:\n      verb: mark\n      target: actor\n    if:\n      - has_item:\n          subject: self\n          id: knife\n    roll:\n      check: grit\n      threshold: 0\n    success:\n      - flag:\n          of: target\n          key: marked\n          value: true\n    miss:\n      - flag:\n          of: target\n          key: missed\n          value: true\n  - id: defend\n    when:\n      verb: defend\n    roll:\n      check: grit\n      threshold: 0\n    success:\n      - flag:\n          of: self\n          key: guarded\n          value: true\n",
     );
     fs::write(held.join("rules/verbs.yaml"), moves).unwrap();
     let knife = held.join("world/items/knife.md");

@@ -9,7 +9,7 @@ rules:
     if:
       - not:
           has_item:
-            of: self
+            subject: self
             id: nail
     do:
       - flag:
@@ -26,7 +26,7 @@ rules:
         subject: pc
     if:
       - has_item:
-          of: self
+          subject: self
           id: nail
     do:
       - flag:
