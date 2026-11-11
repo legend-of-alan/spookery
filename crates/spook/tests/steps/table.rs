@@ -2,7 +2,7 @@ use std::fs;
 use std::io::Read;
 use std::net::{SocketAddr, TcpStream};
 use std::path::Path;
-use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
+use std::process::{Child, ChildStdin, ChildStdout, Command, ExitStatus, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
@@ -822,22 +822,29 @@ pub fn stop_host(world: &mut World) {
     live.closed_gm.take();
     // An in-process host stops when its shutdown future resolves.
     live.in_process.take();
-    // Stop the host the way a person does, with Ctrl+C. Windows just drops it, which kills.
-    if let Some(mut server) = live.host.take() {
-        if cfg!(unix) {
-            let pid = server.child.id().to_string();
-            let kill = std::process::Command::new("kill")
-                .args(["-INT", &pid])
-                .status();
-            assert!(kill.is_ok_and(|s| s.success()), "kill -INT {pid}");
-            let status = server
-                .child
-                .wait()
-                .unwrap_or_else(|err| panic!("wait: {err}"));
-            let stderr = support::text_of(&server.stderr);
-            assert!(status.success(), "host exited {status:?}\n{stderr}");
-        }
+    if let Some((status, stderr)) = interrupt_host(world) {
+        assert!(status.success(), "host exited {status:?}\n{stderr}");
     }
+}
+
+/// Stops the `spook run` child the way a person does, with Ctrl+C, and returns its exit
+/// status and stderr. Seats stay open. Windows just drops it, which kills, so there is
+/// no exit to return.
+pub fn interrupt_host(world: &mut World) -> Option<(ExitStatus, String)> {
+    let mut server = live_mut(world).host.take()?;
+    if !cfg!(unix) {
+        return None;
+    }
+    let pid = server.child.id().to_string();
+    let kill = std::process::Command::new("kill")
+        .args(["-INT", &pid])
+        .status();
+    assert!(kill.is_ok_and(|s| s.success()), "kill -INT {pid}");
+    let status = server
+        .child
+        .wait()
+        .unwrap_or_else(|err| panic!("wait: {err}"));
+    Some((status, support::text_of(&server.stderr)))
 }
 
 /// Releases the claim and waits until the table has let go of it.
