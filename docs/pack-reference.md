@@ -463,7 +463,9 @@ Mira's restock in `packs/oneshot-docks/cast/mira.md`:
 
 reads as *while the day is from tick 480 to tick 960, add 4 lamp_oil of place:docks_shop.* A cycle window is `from` inclusive and `to` exclusive: tick 480 is inside it and tick 960 is not.
 
-In the `shrug` rule below, `resist: { subject: target, check: nerve, threshold: 4 }` on a nerve loss of self reads as *unless the target resists: the target rolls nerve against 4.* In `resist`, `subject` is the actor who rolls; omitted, it is the move's `target`. `{ meter: { of: self, key: nerve }, plus: 2 }` reads as *nerve of self, plus 2*; in an [expression](spec.md) the owner comes first instead, as in `self.nerve`.
+In the `shrug` rule below, `resist: { subject: target, check: nerve, threshold: 4 }` on a nerve loss of self reads as *unless the target resists: the target rolls nerve against 4.* In `resist`, `subject` is the actor who rolls; omitted, it is the move's `target`.
+
+In the `give_oil` rule below, the resist's `threshold: { meter: { of: self, key: nerve }, plus: 2 }` reads as *nerve of self, plus 2*; in an [expression](spec.md) the owner comes first instead, as in `self.nerve`.
 
 A roll's total is its check's dice plus the rolling actor's stat meter, compared to `threshold` (`crates/engine/rules/roll.rs`):
 

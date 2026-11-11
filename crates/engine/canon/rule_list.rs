@@ -1093,12 +1093,12 @@ fn object_of(yaml: &Spanned<String>) -> Result<grammar::Object, Fault> {
         "here" => Ok(grammar::Object::Here),
         "world" => Ok(grammar::Object::Global),
         "subject" => Err(fault(
-            "of 'subject' is not an owner; use self, or target for the move's target".to_string(),
+            "'subject' is not an owner; use self, or target for the move's target".to_string(),
         )),
         other if !other.is_empty() && !is_retired_selector(other) => {
             Ok(grammar::Object::Actor(other.into()))
         }
-        other => Err(fault(format!("of '{other}' is not an owner"))),
+        other => Err(fault(format!("'{other}' is not an owner"))),
     }
 }
 
