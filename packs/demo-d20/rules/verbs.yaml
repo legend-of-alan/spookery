@@ -1,0 +1,120 @@
+schema: verbs
+rules:
+  - id: wait
+    when:
+      verb: wait
+    do: []
+
+  - id: travel
+    when:
+      verb: travel
+      target: exit
+    do:
+      - location:
+          via: target
+
+  - id: strike
+    when:
+      verb: strike
+      target: actor
+    roll:
+      check: strike
+      target: 38
+      partial_at: 32
+    success:
+      - meter:
+          who: target
+          key: hp
+          add: "-(self.might / 10)"
+    partial:
+      - meter:
+          who: target
+          key: hp
+          add: -1
+
+  - id: take
+    when:
+      verb: take
+      target: item
+    do:
+      - item:
+          who: here
+          id: target
+          add: -1
+      - item:
+          who: self
+          id: target
+          add: 1
+
+  - id: drop
+    when:
+      verb: drop
+      target: item
+    do:
+      - item:
+          who: self
+          id: target
+          add: -1
+      - item:
+          who: here
+          id: target
+          add: 1
+
+  - id: wield
+    when:
+      verb: wield
+      target: item
+    do:
+      - wield:
+          who: self
+          id: target
+
+  - id: unwield
+    when:
+      verb: unwield
+    do:
+      - unwield:
+          who: self
+
+  - id: ward
+    when:
+      verb: ward
+    if:
+      - at:
+          who: self
+          place: gate_yard
+      - has_item:
+          who: self
+          id: nail
+    cost:
+      items:
+        nail: 1
+    do:
+      - flag:
+          who: world
+          key: chocked
+          value: true
+      - narrate:
+          to: self
+          text: The nail holds the wheel. The cart settles.
+
+  - id: brace
+    when:
+      verb: brace
+    if:
+      - at:
+          who: self
+          place: wheel_shed
+      - at:
+          who: npc_oden
+          place: wheel_shed
+    cost:
+      ticks: 15
+    do:
+      - flag:
+          who: world
+          key: chocked
+          value: true
+      - narrate:
+          to: self
+          text: The two of you lean into the cart. It takes longer than a nail would, and then the wheel holds.

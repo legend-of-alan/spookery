@@ -1,0 +1,6 @@
+schema: pack
+id: demo-d20
+title: The Mill Cart
+system: demo-d20
+start:
+  place: gate_yard

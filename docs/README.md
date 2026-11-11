@@ -49,7 +49,7 @@ The model does not keep the world. It can talk, and it can ask the engine to com
 ```text
 README.md              how to build and play
 docs/                  guarantees, first-pack guide, pack reference, expressions, seat protocol, this file
-packs/                 sample-d20 is the starter. oneshot-docks is the multi-PC fixture
+packs/                 sample-d20 is the starter. demo-d20 is the short demo. oneshot-docks is the multi-PC fixture
 .grok/skills/          the author-pack skill
 crates/
   protocol/            spookery-protocol: the message envelope, its bodies, and the command table
