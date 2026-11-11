@@ -19,12 +19,13 @@ Feature: Speech appends to the tape and does not play a round
     And save.yaml is unchanged since the seat
     And no round record was written
 
-  Scenario: A seated player says a line to mira
+  Scenario: A seated player says a line to aldric, and not to mira out of sight
     Given a docks table with a seated player
-    When the player says "good evening" to mira
+    When the player says "good evening" to aldric
     Then the tape contains the text "good evening"
     And the tape address is "actor"
-    And the tape names the actor "mira"
+    And the tape names the actor "aldric"
+    And a line to mira, out of sight, is refused "NOT_IN_SPEC"
     And save.yaml is unchanged since the seat
     And no round record was written
 
@@ -36,12 +37,12 @@ Feature: Speech appends to the tape and does not play a round
     And save.yaml is unchanged since the seat
     And no round record was written
 
-  Scenario: Say to mira while nobody is seated
+  Scenario: Say to aldric while nobody is seated
     Given a docks table
-    When say to mira is submitted on an empty table saying "good evening"
+    When say to aldric is submitted on an empty table saying "good evening"
     Then the tape contains the text "good evening"
     And the tape address is "actor"
-    And the tape names the actor "mira"
+    And the tape names the actor "aldric"
     And save.yaml matches the bytes from before the line
     And no round record was written
 

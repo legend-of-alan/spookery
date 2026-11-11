@@ -7,9 +7,9 @@ Feature: The character picker shows every PC
     And stdout shows the picker:
       """
       Choose a character:
-      pc_harbormouse (in use)
-      pc_rowan (in use)
-      pc_wren (in use)
+      Harbormouse (in use)
+      Rowan (in use)
+      Wren (in use)
       None is free.
       """
 
@@ -23,8 +23,20 @@ Feature: The character picker shows every PC
     And stdout shows the picker:
       """
       Choose a character:
-      pc_harbormouse (in use)
-      pc_lark
-      pc_rowan (in use)
-      pc_wren (in use)
+      Harbormouse (in use)
+      Lark
+      Rowan (in use)
+      Wren (in use)
       """
+
+  Scenario: A player picks a character by the name the picker shows
+    Given a copy of the sample-d20 pack
+    When play joins the sample table as "Lark"
+    Then stdout shows the picker:
+      """
+      Choose a character:
+      Lark
+      Nell
+      """
+    And play shows "Gate Yard"
+    And the present actor is pc_lark

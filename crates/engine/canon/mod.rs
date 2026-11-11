@@ -237,11 +237,20 @@ impl Canon {
         self.cast.get(actor_id).and_then(|cast| cast.idle.as_ref())
     }
 
+    /// The name a player sees for a cast member, place or item: its `display_name`, an
+    /// unnamed item's id with spaces, or else the id.
     pub fn display_name(&self, id: &str) -> String {
-        self.cast
-            .get(id)
-            .map(|cast| cast.display_name.clone())
-            .unwrap_or_else(|| id.to_string())
+        if let Some(cast) = self.cast.get(id) {
+            return cast.display_name.clone();
+        }
+        if let Some(place) = self.places.get(id) {
+            return place.display_name.clone();
+        }
+        match self.items.get(id) {
+            Some(item) if !item.name.is_empty() => item.name.clone(),
+            Some(_) => id.replace('_', " "),
+            None => id.to_string(),
+        }
     }
 
     pub(crate) fn body_of_fact(&self, fact_id: &str) -> &str {

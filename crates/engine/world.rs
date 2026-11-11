@@ -10,7 +10,7 @@ use crate::canon::Budget;
 use crate::canon::{check_save, load_canon, pack_rev, Canon};
 use crate::diagnostic::{error, first_reason, locate_nth, schema_error, Code, Diagnostic};
 use crate::entity;
-use crate::intent::{Intent, IntentArgs, Source, Target};
+use crate::intent::{Intent, IntentArgs, Source, Target, Viewer};
 use crate::rules::context::Context;
 use crate::rules::effect::{payload_json, Effect};
 use crate::rules::gate;
@@ -22,7 +22,7 @@ use crate::store::records::Record;
 use crate::store::save;
 use crate::store::tape::{append_record, read_scrollback, TapeRecord};
 use crate::Reason;
-use spookery_protocol::{QueuedMove, Speaker, PERCEIVE_BODY_CHARS};
+use spookery_protocol::{QueuedMove, Refusal, Speaker, PERCEIVE_BODY_CHARS};
 
 /// One say, in characters. Four kibibytes still fits in an 8 KiB client message.
 const MAX_SAY_CHARS: usize = 4 * 1024;
@@ -96,19 +96,36 @@ impl World {
         crate::round::play_catch_up(self, now_wall, downtime_hours)
     }
 
-    /// Append a player's say. `presence` is who can hear it.
+    /// Append a player's say. `presence` is who can hear it. The actor it is said to is named
+    /// by id or display name among the actors in sight, as a move's target is: none is
+    /// `NOT_IN_SPEC`, and a name two of them share is `AMBIGUOUS_NAME`.
     pub fn say_as_player(
         &self,
         presence: &Presence,
         actor_id: &ActorId,
         heard: Address<'_>,
         text: &str,
-    ) -> Result<TapeRecord, Reason> {
+    ) -> Result<TapeRecord, Refusal> {
         if self.state.actors().kind.get(actor_id) != Some(&ActorKind::Pc) {
-            return Err(Reason::Schema);
+            return Err(Reason::Schema.into());
         }
+        let addressee;
+        let heard = match heard {
+            Address::Actor(typed) => {
+                let viewer = Viewer::Player(actor_id.clone());
+                let mut nameable = gate::list_nameable(&self.canon, &self.state, presence, &viewer);
+                nameable.retain(|thing| self.state.actors().kind.contains_key(thing.id.as_str()));
+                let found = gate::find_named(&nameable, typed).map_err(|detail| Refusal {
+                    detail: Some(detail),
+                    ..Reason::AmbiguousName.into()
+                })?;
+                addressee = found.ok_or(Reason::NotInSpec)?.to_string();
+                Address::Actor(&addressee)
+            }
+            heard => heard,
+        };
         let from = Speaker::Player(actor_id.to_string());
-        self.append_speech(presence, from, Some(actor_id), heard, text)
+        Ok(self.append_speech(presence, from, Some(actor_id), heard, text)?)
     }
 
     pub fn say_as_gm(
@@ -183,6 +200,17 @@ impl<L> World<L> {
             .map(|(id, _)| id)
     }
 
+    /// The PC `typed` names, by id or display name, ignoring case and outer spaces. `None`
+    /// when no PC has that name, and `AMBIGUOUS_NAME` when two do.
+    pub fn find_pc(&self, typed: &str) -> Result<Option<ActorId>, Reason> {
+        let pcs = self
+            .pcs()
+            .map(|id| (id.as_str(), self.canon.display_name(id.as_str())));
+        let pcs: Vec<gate::NamedId> = pcs.map(|(id, name)| gate::NamedId::new(id, name)).collect();
+        let found = gate::find_named(&pcs, typed).map_err(|_| Reason::AmbiguousName)?;
+        Ok(found.map(ActorId::from))
+    }
+
     pub fn state(&self) -> &State {
         &self.state
     }
@@ -193,16 +221,30 @@ impl<L> World<L> {
     }
 
     /// Gate a player's line with `presence` seated, then queue it. The line is an intent
-    /// from the start, so each refusal names its id. Only a save at the last round index has
-    /// no next round to name, and refuses `SCHEMA` with an empty id.
+    /// from the start, so each refusal names its id. A typed name stands for the one id in
+    /// sight that has it, and a name two of them share is `AMBIGUOUS_NAME`, its detail the
+    /// name and those ids, as `Briar: npc_briar, npc_oden`. Only a save at
+    /// the last round index has no next round to name, and refuses `SCHEMA` with an empty id.
+    /// Returns the queued move and the target id it names.
     pub fn queue_player_move(
         &mut self,
         presence: &Presence,
         actor_id: &ActorId,
         verb: &str,
         target: Option<&str>,
-    ) -> Result<QueuedMove, gate::Refusal> {
-        let token = target.filter(|token| !token.is_empty());
+    ) -> Result<(QueuedMove, Option<String>), gate::Refusal> {
+        let typed = target.filter(|token| !token.is_empty());
+        let viewer = Viewer::Player(actor_id.clone());
+        let nameable = match typed {
+            Some(_) => gate::list_nameable(&self.canon, &self.state, presence, &viewer),
+            None => Vec::new(),
+        };
+        let named = match typed {
+            Some(typed) => gate::find_named(&nameable, typed).map(|id| id.map(String::from)),
+            None => Ok(None),
+        };
+        let resolved = named.clone().unwrap_or_default();
+        let token = resolved.as_deref().or(typed);
         let Ok(mut intent) = Intent::player(&self.state, actor_id, verb, token) else {
             return Err(gate::Refusal {
                 id: String::new(),
@@ -210,6 +252,12 @@ impl<L> World<L> {
                 detail: None,
             });
         };
+        if let Err(detail) = named {
+            return Err(gate::Refusal {
+                detail: Some(detail),
+                ..gate::Refusal::new(&intent, Reason::AmbiguousName)
+            });
+        }
         if gate::is_cancel(&intent) {
             if token.is_some() || self.queue.iter().any(|queued| queued.id == intent.id) {
                 return Err(gate::Refusal::new(&intent, Reason::Schema));
@@ -220,15 +268,16 @@ impl<L> World<L> {
             intent.target = shaped.map_err(|code| gate::Refusal::new(&intent, code))?;
             let context = Context::new(&self.canon, &self.state, presence, &intent);
             let rule = gate::rule_of(&context)?;
-            gate::admit(&context, rule)?;
+            gate::admit(&context, rule, Some(&nameable))?;
         }
         let queued = QueuedMove {
             id: intent.id.clone(),
             actor_id: actor_id.to_string(),
             move_name: verb.to_string(),
         };
+        let target = intent.target.token().map(String::from);
         self.queue_intent(intent);
-        Ok(queued)
+        Ok((queued, target))
     }
 
     /// The target a PC's line names for the rule it picks. A line already queued is `SCHEMA`.
@@ -302,7 +351,7 @@ impl<L> World<L> {
             rationale_code: spec.rationale_code,
         };
         let context = Context::new(canon, state, presence, &intent);
-        gate::admit(&context, rule).map_err(|refusal| refusal.code)?;
+        gate::admit(&context, rule, None).map_err(|refusal| refusal.code)?;
         self.queue_intent(intent);
         Ok(QueuedMove {
             id,

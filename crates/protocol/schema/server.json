@@ -36,7 +36,7 @@
       "description": "What the table sends. A client ignores a kind or a field it does not know.",
       "oneOf": [
         {
-          "description": "The first message on a connection, and the only one with no `seq`. On a player seat,\n`open` lists the PCs nobody holds and `taken` the PCs held right now.",
+          "description": "The first message on a connection, and the only one with no `seq`. On a player seat,\n`open` lists the PCs nobody holds, `taken` the PCs held right now, and `pc_names`\neach one's display name by id.",
           "type": "object",
           "properties": {
             "version": {
@@ -59,6 +59,12 @@
             "taken": {
               "type": "array",
               "items": {
+                "type": "string"
+              }
+            },
+            "pc_names": {
+              "type": "object",
+              "additionalProperties": {
                 "type": "string"
               }
             },
@@ -443,7 +449,8 @@
         "NOT_A_WEAPON",
         "NO_EXIT",
         "BUSY",
-        "TRIGGER_LEAK"
+        "TRIGGER_LEAK",
+        "AMBIGUOUS_NAME"
       ]
     },
     "Refusal": {
@@ -770,6 +777,10 @@
           "type": "integer",
           "format": "uint32",
           "minimum": 0
+        },
+        "name": {
+          "description": "The item's display name.",
+          "type": "string"
         }
       },
       "required": [
@@ -927,7 +938,7 @@
       ]
     },
     "CommandView": {
-      "description": "One command of a `help` reply. `target` is what the command takes: `none`, `actor`, `place`,\n`exit` or `item`. `names` lists what the player can name for it now. `owner` is the\ncast member or item whose verb this is, reached by naming them.",
+      "description": "One command of a `help` reply. `target` is what the command takes: `none`, `actor`, `place`,\n`exit` or `item`. `names` lists what the player can name for it now, by the names they\nread. `owner` is the id of the cast member or item whose verb this is, reached by naming\nthem, and then `names` holds its name alone.",
       "type": "object",
       "properties": {
         "name": {

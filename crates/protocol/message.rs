@@ -1,5 +1,7 @@
 //! The one envelope every seat sends and receives, its bodies, and the command table.
 
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
@@ -67,7 +69,8 @@ impl ClientMessage {
 #[serde(tag = "kind", rename_all = "lowercase")]
 pub enum ServerBody {
     /// The first message on a connection, and the only one with no `seq`. On a player seat,
-    /// `open` lists the PCs nobody holds and `taken` the PCs held right now.
+    /// `open` lists the PCs nobody holds, `taken` the PCs held right now, and `pc_names`
+    /// each one's display name by id.
     Hello {
         version: u32,
         commands: Vec<String>,
@@ -75,6 +78,8 @@ pub enum ServerBody {
         open: Vec<String>,
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         taken: Vec<String>,
+        #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+        pc_names: BTreeMap<String, String>,
     },
     /// The reply to `claim`. `token` takes this PC back after a dropped connection. A new
     /// claim carries `scrollback`, the says this PC heard before, oldest first. A claim by
@@ -353,6 +358,7 @@ mod tests {
                 commands: vec!["claim".into()],
                 open: vec!["pc_rowan".into()],
                 taken: vec!["pc_wren".into()],
+                pc_names: BTreeMap::new(),
             },
         };
         assert_eq!(

@@ -1,12 +1,13 @@
 //! The human player: claims a PC, turns typed lines into commands, and prints each message.
 //! Quitting releases the PC. A dropped connection dials again and takes it back by token.
 
+use std::collections::BTreeMap;
 use std::io::{self, Write};
 use std::net::SocketAddr;
 
 use serde_json::{json, Value};
 
-use crate::protocol::{self, Reason, Refusal, ServerBody, ServerMessage, Speaker};
+use crate::protocol::{self, Reason, Refusal, ServerBody, ServerMessage};
 use crate::text;
 use crate::ws::Connection;
 use crate::Error;
@@ -19,22 +20,23 @@ pub async fn run(addr: SocketAddr, raw: bool) -> Result<(), Error> {
     };
     let mut input = crate::stdin_lines();
     let (seat, hello) = Connection::open(addr, "player").await?;
-    let (commands, open, taken) = match hello.body {
+    let (commands, open, taken, pc_names) = match hello.body {
         ServerBody::Hello {
             commands,
             open,
             taken,
+            pc_names,
             ..
-        } => (commands, open, taken),
+        } => (commands, open, taken, pc_names),
         _ => Default::default(),
     };
     // The choice may take longer than the first-message timeout, so dial again after.
     drop(seat);
-    print_text(&list_pcs(&open, &taken));
+    print_text(&list_pcs(&open, &taken, &pc_names));
     let Some(chosen) = input.recv().await else {
         return Ok(());
     };
-    let actor = parse_pc_id(&chosen)?;
+    let actor = parse_pc_choice(&chosen)?;
     let mut seat = Connection::open(addr, "player").await?.0;
     let (mut here, mut token) =
         take_claim(&mut seat, json!({ "actor": actor }), &mut printer).await?;
@@ -184,10 +186,11 @@ fn print_text(text: &str) {
     let _ = io::stdout().flush();
 }
 
-/// The picker: every PC, the taken ones marked in use.
-fn list_pcs(open: &[String], taken: &[String]) -> String {
-    let mut pcs = open.to_vec();
-    pcs.extend(taken.iter().map(|id| format!("{id} (in use)")));
+/// The picker: every PC by the name the hello gives it, the taken ones marked in use.
+fn list_pcs(open: &[String], taken: &[String], pc_names: &BTreeMap<String, String>) -> String {
+    let name = |id: &String| pc_names.get(id).unwrap_or(id).clone();
+    let mut pcs: Vec<String> = open.iter().map(name).collect();
+    pcs.extend(taken.iter().map(|id| format!("{} (in use)", name(id))));
     pcs.sort();
     let mut text = format!("Choose a character:\n{}", pcs.join("\n"));
     if open.is_empty() {
@@ -196,18 +199,20 @@ fn list_pcs(open: &[String], taken: &[String]) -> String {
     text
 }
 
-fn parse_pc_id(token: &str) -> Result<String, Error> {
-    let token = token.trim();
-    let id = token.strip_prefix("player:").unwrap_or(token);
-    match format!("player:{id}").parse() {
-        Ok(Speaker::Player(id)) => Ok(id),
-        _ => Err(Error::Message("SCHEMA".into())),
+/// The PC a picker line names, by id, `player:<id>` or display name.
+fn parse_pc_choice(line: &str) -> Result<String, Error> {
+    let line = line.trim();
+    let choice = line.strip_prefix("player:").unwrap_or(line).trim();
+    if choice.is_empty() {
+        return Err(Error::Message("SCHEMA".into()));
     }
+    Ok(choice.to_string())
 }
 
 /// The command a typed line names, and its arguments. `say place <text>` speaks to the place
-/// `here` shows, and `say <actor> <text>` to an actor `here` sees. Any other first word is a
-/// move with the rest of the line as its target. An empty line names none.
+/// `here` shows, and `say <actor> <text>` to an actor `here` sees, named by id or by the name
+/// `here` gives them, as typed. Any other first word is a move with the rest of the line as its target.
+/// An empty line names none.
 fn parse_typed<'l>(line: &'l str, here: &protocol::View) -> Option<(&'l str, Value)> {
     let (command, rest) = line.trim().split_once(' ').unwrap_or((line.trim(), ""));
     if command.is_empty() {
@@ -217,7 +222,7 @@ fn parse_typed<'l>(line: &'l str, here: &protocol::View) -> Option<(&'l str, Val
         let (head, text) = rest.split_once(' ').unwrap_or((rest, ""));
         let args = if head == "place" && !text.is_empty() {
             json!({ "address": "place", "place": here.place, "text": text })
-        } else if !text.is_empty() && here.visible_actors.iter().any(|id| id == head) {
+        } else if !text.is_empty() && names_an_actor_here(head, here) {
             json!({ "address": "actor", "actor": head, "text": text })
         } else {
             json!({ "address": "table", "text": rest })
@@ -230,27 +235,35 @@ fn parse_typed<'l>(line: &'l str, here: &protocol::View) -> Option<(&'l str, Val
     Some((command, json!({ "target": rest })))
 }
 
+/// Whether `word` is the id or name of an actor `here` sees. The table resolves which one.
+fn names_an_actor_here(word: &str, here: &protocol::View) -> bool {
+    let ids = here.visible_actors.iter().map(String::as_str);
+    let mut names = ids.chain(here.actor_names.iter().map(String::as_str));
+    names.any(|name| protocol::is_named(word, name))
+}
+
 #[cfg(test)]
 mod tests {
     use serde_json::json;
 
-    use super::{parse_pc_id, parse_typed};
+    use super::{parse_pc_choice, parse_typed};
     use crate::protocol::View;
 
     #[test]
     fn a_bare_id_and_a_player_prefix_are_one_id() {
-        let bare = parse_pc_id("pc_rowan").ok();
+        let bare = parse_pc_choice("pc_rowan").ok();
         assert_eq!(bare.as_deref(), Some("pc_rowan"));
-        assert_eq!(parse_pc_id("player:pc_rowan").ok(), bare);
-        assert_eq!(parse_pc_id("  player:pc_rowan").ok(), bare);
-        assert!(parse_pc_id("player:").is_err());
-        assert!(parse_pc_id("").is_err());
+        assert_eq!(parse_pc_choice("player:pc_rowan").ok(), bare);
+        assert_eq!(parse_pc_choice("  player:pc_rowan").ok(), bare);
+        assert!(parse_pc_choice("player:").is_err());
+        assert!(parse_pc_choice("").is_err());
     }
 
     #[test]
     fn a_typed_line_is_a_command_and_its_args() {
         let view: View = serde_json::from_value(json!({
             "viewer": "pc_rowan", "place": "docks_gate", "visible_actors": ["pc_rowan", "mira"],
+            "actor_names": ["Rowan", "Mira"],
             "known_facts": [], "notes": [], "unknown_mentions": [], "items": [],
             "habits": []
         }))
@@ -280,5 +293,12 @@ mod tests {
             ))
         );
         assert_eq!(parse_typed("  ", here), None);
+        assert_eq!(
+            parse_typed("say Mira hi", here),
+            Some((
+                "say",
+                json!({ "address": "actor", "actor": "Mira", "text": "hi" })
+            ))
+        );
     }
 }

@@ -418,10 +418,20 @@ fn play_joins_the_table_on_a_free_loopback_address(world: &mut World) {
 
 #[when(expr = "play joins the sample table")]
 fn play_joins_the_sample_table(world: &mut World) {
+    join_sample(world, "pc_lark");
+}
+
+#[when(expr = "play joins the sample table as {string}")]
+fn play_joins_the_sample_table_as(world: &mut World, pick: String) {
+    join_sample(world, &pick);
+}
+
+/// Runs play on the sample table, picks `pick` and waits for the Gate Yard.
+fn join_sample(world: &mut World, pick: &str) {
     let pack = table::pack(world).to_path_buf();
     table::listen(world, &pack);
     let addr = table::game_addr(world);
-    world.play = Some(spawn_play(&addr, "pc_lark", &[]));
+    world.play = Some(spawn_play(&addr, pick, &[]));
     wait_play(world, "Gate Yard");
 }
 

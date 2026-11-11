@@ -294,6 +294,7 @@ fn the_shop_lists_the_oil(world: &mut World) {
         vec![ItemStack {
             id: "lamp_oil".to_string(),
             count: 4,
+            name: "Lamp oil".to_string(),
         }]
     );
     let rooms = opened.perceive(&Presence::default(), "mira").unwrap();
