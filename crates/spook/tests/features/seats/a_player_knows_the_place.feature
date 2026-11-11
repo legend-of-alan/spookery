@@ -90,7 +90,7 @@ Feature: A player knows where they are and what they can do
     When play types "say briar hello"
     Then play's error shows "More than one thing here is called briar: npc_briar, npc_oden."
 
-  Scenario: A say reaches a name with a space in it
+  Scenario: A say reaches a name with a space in it, and half the name stays at the table
     Given a copy of the sample-d20 pack where Oden is called "Oden Vell" and stands in the Gate Yard
     When play joins the sample table
     And play types "say Oden Vell hi"

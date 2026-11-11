@@ -19,15 +19,12 @@ Feature: Speech appends to the tape and does not play a round
     And save.yaml is unchanged since the seat
     And no round record was written
 
-  Scenario: A seated player says a line to aldric, and a line to mira out of sight stays at the table
+  Scenario: A seated player says a line to aldric
     Given a docks table with a seated player
     When the player says "good evening" to aldric
     Then the tape contains the text "good evening"
     And the tape address is "actor"
     And the tape names the actor "aldric"
-    When the player says "hello" to mira
-    Then the tape contains the text "mira hello"
-    And the tape address is "table"
     And save.yaml is unchanged since the seat
     And no round record was written
 

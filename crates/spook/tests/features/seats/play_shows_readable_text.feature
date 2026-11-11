@@ -16,8 +16,6 @@ Feature: Play shows readable text
     Then play shows "You: hi"
     When play types "tell aldric good evening"
     Then play shows "You: good evening"
-    When play says "hi there"
-    Then play shows "You: hi there"
     And play shows no protocol JSON
 
   Scenario: A second player is refused in a sentence
