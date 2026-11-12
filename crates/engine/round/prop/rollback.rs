@@ -22,7 +22,7 @@ use crate::rules::effect::{Effect, EffectKind};
 use crate::state::change::{self, Change};
 use crate::state::component;
 use crate::state::component::meter::{Meter, MeterDef, MeterWrite};
-use crate::state::component::modifier::{self, ModifierDef};
+use crate::state::component::modifier::ModifierDef;
 use crate::state::id::{ActorId, ExitId};
 use crate::state::{ActCounter, Presence, Save, State};
 use crate::testing::copy_docks;
@@ -123,7 +123,10 @@ fn nested_rollbacks_put_the_save_back_exactly() {
             base: def.expect("the meter's definition").start,
             offset: 0,
         };
-        let put = state.entity_mut(carrier).set_meter(key, Some(start));
+        let put = state
+            .entity_mut(carrier)
+            .get_mut::<Meter>()
+            .set(key, Some(start));
         put.expect("the meter goes on");
     }
     state.accept();
@@ -247,7 +250,7 @@ fn every_moved_meter_is_reported(
     changes: &[Change],
 ) -> Result<(), TestCaseError> {
     let read = |state: &State, actor: &ActorId, key: &str| {
-        let value = modifier::value(state.actors(), actor, key);
+        let value = state.actors().get::<Meter>(actor).value(key);
         value.map_or(change::Value::Empty, change::Value::Number)
     };
     for (actor, key) in now.actors().meters.keys() {

@@ -158,7 +158,8 @@ fn never_finished(world: &mut World, verb: String, rest: i64) {
     let now = state_of(world.pack.as_ref().unwrap());
     assert!(
         !now.entity(&entity::Id::Global)
-            .has_flag(&format!("{verb}_done")),
+            .get::<component::Flag>()
+            .contains(&format!("{verb}_done")),
         "{:?}",
         now.globals().flags
     );
@@ -174,7 +175,8 @@ fn finished(world: &mut World, verb: String) {
     let now = state_of(world.pack.as_ref().unwrap());
     assert!(
         now.entity(&entity::Id::Global)
-            .has_flag(&format!("{verb}_done")),
+            .get::<component::Flag>()
+            .contains(&format!("{verb}_done")),
         "{:?}",
         now.globals().flags
     );

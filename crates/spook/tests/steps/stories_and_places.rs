@@ -220,7 +220,8 @@ fn a_rule_tests_the_flag(world: &mut World, key: String, of: String) {
     migrate_and_play(world, vec![intent("test", "rowan", "test_mark", None)]);
     assert!(state_of(&pack)
         .entity(&entity::Id::Global)
-        .has_flag("mark_seen"));
+        .get::<component::Flag>()
+        .contains("mark_seen"));
 }
 
 #[then(expr = "the GM sees the flag change on the siege story")]

@@ -149,9 +149,9 @@ fn capped_restock() -> u32 {
             .unwrap();
         let entry = ("docks_shop".into(), "lamp_oil".to_string());
         let held = i64::from(state.places().items.get(&entry).copied().unwrap_or(0));
-        let shop = entity::Id::Place(entry.0);
-        let mut places = state.entity_mut(&shop);
-        places.shift_item("lamp_oil", 6 - held, None).unwrap();
+        let mut places = state.places_mut();
+        let mut shop = places.get_mut::<component::Item>(&entry.0);
+        shop.shift("lamp_oil", 6 - held, None).unwrap();
         write_save(&pack, &state);
     }
     play_pack_once(&pack).unwrap_or_else(|err| panic!("round: {err}"));
@@ -766,7 +766,8 @@ fn rowans_debt(pack: &Path) -> i64 {
     let rowan = entity::Id::Actor("rowan".into());
     state_of(pack)
         .entity(&rowan)
-        .meter_value("assassination_debt")
+        .get::<component::Meter>()
+        .value("assassination_debt")
         .unwrap_or_else(|err| panic!("assassination_debt: {err}"))
 }
 

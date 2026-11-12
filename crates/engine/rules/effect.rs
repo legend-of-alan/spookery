@@ -185,7 +185,7 @@ impl Effect {
         match self.kind {
             EffectKind::Meter { entity, key, write } => {
                 let MeterWrite::Offset(delta) = write;
-                state.entity_mut(&entity).shift_meter(&key, delta)
+                (state.entity_mut(&entity).get_mut::<component::Meter>()).shift(&key, delta)
             }
             EffectKind::Item {
                 actor_id,
@@ -194,12 +194,13 @@ impl Effect {
                 delta,
                 max,
             } => {
-                let carrier = match (actor_id, place) {
-                    (Some(actor_id), None) => entity::Id::Actor(actor_id),
-                    (None, Some(place)) => entity::Id::Place(place),
-                    _ => return Err(Reason::Schema),
-                };
-                state.entity_mut(&carrier).shift_item(&id, delta, max)
+                match (actor_id, place) {
+                    (Some(actor), None) => (state.actors_mut().get_mut::<component::Item>(&actor))
+                        .shift(&id, delta, max),
+                    (None, Some(place)) => (state.places_mut().get_mut::<component::Item>(&place))
+                        .shift(&id, delta, max),
+                    _ => Err(Reason::Schema),
+                }
             }
             EffectKind::Modifier {
                 actor_id,
@@ -232,7 +233,7 @@ impl Effect {
                 if !canon.carries_flag(entity.as_ref(), &key) {
                     return Err(Reason::UnknownId);
                 }
-                state.entity_mut(&entity).set_flag(&key, value)
+                (state.entity_mut(&entity).get_mut::<component::Flag>()).set(&key, value)
             }
             // An exit with no `if` has no door.
             EffectKind::ExitOpen { exit, open } => {

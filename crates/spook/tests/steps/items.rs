@@ -25,14 +25,18 @@ fn keep_briar_busy(now: &mut State) {
 
 /// Give `actor` one more of `item`.
 fn give(now: &mut State, actor: &str, item: &str) {
-    let actor = entity::Id::Actor(actor.into());
-    now.entity_mut(&actor).shift_item(item, 1, None).unwrap();
+    let (actor, mut actors) = (actor.into(), now.actors_mut());
+    let mut held = actors.get_mut::<component::Item>(&actor);
+    held.shift(item, 1, None).unwrap();
 }
 
 fn hp(pack: &Path, actor: &str) -> i64 {
     let now = support::state_of(pack);
     let id = spookery_engine::entity::Id::Actor(actor.into());
-    now.entity(&id).meter_value("hp").unwrap()
+    now.entity(&id)
+        .get::<component::Meter>()
+        .value("hp")
+        .unwrap()
 }
 
 fn count(pack: &Path, actor: &str, item: &str) -> u32 {

@@ -4,7 +4,7 @@ use std::path::Path;
 use cucumber::{given, then, when};
 use spookery_engine::testing::{self, stamp_pack_rev};
 use spookery_engine::World as EngineWorld;
-use spookery_engine::{entity, Meter, Presence};
+use spookery_engine::{component, Meter, Presence};
 
 use crate::{split_line, World};
 
@@ -126,10 +126,10 @@ fn lark_drops_the_tonic(world: &mut World) {
 fn a_tonic_is_on_the_ground(world: &mut World) {
     let pack = world.pack().to_path_buf();
     testing::edit_save(&pack, |state| {
-        let yard = entity::Id::Place("gate_yard".into());
         state
-            .entity_mut(&yard)
-            .shift_item("tonic", 1, None)
+            .places_mut()
+            .get_mut::<component::Item>(&"gate_yard".into())
+            .shift("tonic", 1, None)
             .unwrap();
     });
 }

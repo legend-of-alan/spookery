@@ -1,3 +1,4 @@
+use spookery_engine::component;
 use spookery_engine::testing::state_of;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -118,7 +119,8 @@ fn remove_larks_tonic(pack: &Path) {
 fn hp_of(pack: &Path, actor_id: &str) -> i64 {
     let now = state_of(pack);
     now.entity(&spookery_engine::entity::Id::Actor(actor_id.into()))
-        .meter_value("hp")
+        .get::<component::Meter>()
+        .value("hp")
         .unwrap_or_else(|err| panic!("hp: {}", err.as_str()))
 }
 

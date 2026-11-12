@@ -312,7 +312,7 @@ fn meter_offset(
         )?));
     }
     let desired = expr::eval_with_dice(context, set.ok_or(Reason::Schema)?, dice)?;
-    let current = context.state.entity(id).meter_value(key)?;
+    let current = (context.state.entity(id).get::<component::Meter>()).value(key)?;
     Ok(MeterWrite::Offset(
         desired.checked_sub(current).ok_or(Reason::OutOfRange)?,
     ))

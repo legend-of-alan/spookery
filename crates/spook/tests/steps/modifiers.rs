@@ -83,7 +83,8 @@ fn lowered(pack: &Path, meter: &str) -> i64 {
     let rowan = entity::Id::Actor("rowan".into());
     let key = ("rowan".into(), meter.to_string());
     let Meter { base, offset } = now.actors().meters[&key].clone();
-    base + offset - now.entity(&rowan).meter_value(meter).unwrap()
+    let value = now.entity(&rowan).get::<component::Meter>().value(meter);
+    base + offset - value.unwrap()
 }
 
 /// Ticks from the latest round until modifier `id` expires.
@@ -396,7 +397,10 @@ fn rowan_has_no_burn(world: &mut World) {
     assert_eq!(lowered(pack(world), "grit"), 0);
     let rowan = entity::Id::Actor("rowan".into());
     assert_eq!(
-        state_of(pack(world)).entity(&rowan).meter_value("grit"),
+        state_of(pack(world))
+            .entity(&rowan)
+            .get::<component::Meter>()
+            .value("grit"),
         Ok(20)
     );
 }
@@ -544,7 +548,10 @@ fn rowan_pays_one_grit(world: &mut World) {
 
 fn strained(pack: &Path, flag: &str) -> bool {
     let strain = entity::Id::Story("strain".into());
-    state_of(pack).entity(&strain).has_flag(flag)
+    state_of(pack)
+        .entity(&strain)
+        .get::<component::Flag>()
+        .contains(flag)
 }
 
 /// The change's `after` is the line rowan reads. Its `before` is below 4, since the rule on `<4`

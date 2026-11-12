@@ -15,6 +15,7 @@ use crate::rules::context::Context;
 use crate::rules::effect::{payload_json, Effect};
 use crate::rules::gate;
 use crate::rules::rule::{Rule, TargetKind, When};
+use crate::state::component::Meter;
 use crate::state::id::ActorId;
 use crate::state::{component, Presence, Save, State};
 use crate::store::journal;
@@ -461,7 +462,7 @@ impl<L> World<L> {
         carried
             .chain(world_meters)
             .filter_map(|(carrier, id)| {
-                let value = self.state.entity(&carrier).meter_value(id).ok()?;
+                let value = self.state.entity(&carrier).get::<Meter>().value(id).ok()?;
                 let max = self.canon().meter_def(carrier.as_ref(), id)?.max;
                 Some(format!("meter {carrier} {id} {value} {max}"))
             })

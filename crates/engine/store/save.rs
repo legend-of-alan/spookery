@@ -167,8 +167,7 @@ pub fn migrate(mut state: State, record: &MigrateRecord) -> Result<State, Reason
             offset: 0,
         };
         for id in find_lacking_carriers(&state, &meter.carrier, &meter.id) {
-            let mut carrier = state.entity_mut(&id);
-            carrier.set_meter(&meter.id, Some(start.clone()))?;
+            (state.entity_mut(&id).get_mut::<Meter>()).set(&meter.id, Some(start.clone()))?;
         }
     }
     let actors = state.actors();
@@ -178,9 +177,7 @@ pub fn migrate(mut state: State, record: &MigrateRecord) -> Result<State, Reason
         (state.actors_mut().get_mut::<Modifier>(actor)).set(id, None)?;
     }
     for meter in &record.dropped_meters {
-        state
-            .entity_mut(&meter.carrier)
-            .set_meter(&meter.id, None)?;
+        (state.entity_mut(&meter.carrier).get_mut::<Meter>()).set(&meter.id, None)?;
     }
     state.pack_rev = record.pack_rev_after.clone();
     state.state_rev = record.state_rev_after;
