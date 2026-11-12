@@ -1,5 +1,6 @@
 //! Dice and arithmetic in rule numbers.
 
+use spookery_engine::component;
 use spookery_engine::testing::state_of;
 use std::fs;
 
@@ -199,11 +200,11 @@ fn grit(world: &World) -> i64 {
 
 fn grit_of(world: &World, actor: &str) -> i64 {
     let now = state_of(table::pack(world));
+    let id = actor.into();
     let live = now
         .actors()
-        .stores()
-        .meters
-        .get(&(actor.into(), "grit".to_string()))
+        .get::<component::Meter>(&id)
+        .get("grit")
         .unwrap_or_else(|| panic!("{actor}'s grit missing"));
     live.base + live.offset
 }

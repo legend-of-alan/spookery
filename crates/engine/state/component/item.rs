@@ -1,7 +1,7 @@
 //! Item counts, and the rule for shifting one, the same in every collection that holds items.
 
 use crate::state::change::{self, Change};
-use crate::state::component::{Component, Mut};
+use crate::state::component::{Component, Mut, WieldedItem};
 use crate::state::{entity, nested_map};
 use crate::Reason;
 
@@ -51,7 +51,7 @@ impl Mut<'_, entity::Actors, Item> {
         let (actors, actor) = (&self.writer, self.id);
         let wielded = actors.wielded.get(actor);
         if wielded.is_some_and(|held| nested_map::get(&actors.items, actor, held).is_none()) {
-            self.writer.set_wielded(self.id, None)?;
+            (self.writer.get_mut::<WieldedItem>(self.id)).set(None)?;
         }
         Ok(())
     }

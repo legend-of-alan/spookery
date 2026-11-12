@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use cucumber::{given, then, when};
 use serde_json::Value;
 use spookery_engine::testing::{faces, RollKey};
-use spookery_engine::MoveReport;
+use spookery_engine::{component, MoveReport};
 
 use crate::World;
 use spookery_engine::testing::{self as support, read_round};
@@ -576,8 +576,9 @@ fn a_street_rule_over_the_cap(world: &mut World) {
 #[when(expr = "Rowan walks to the street")]
 fn rowan_walks_to_the_street(world: &mut World) {
     let (state, round) = rowan_walks(world.pack(), Vec::new());
-    let flags = state.actors().stores().flags.keys();
-    world.count = flags.filter(|(owner, _)| *owner == *"rowan").count();
+    let rowan = "rowan".into();
+    let flags = state.actors().get::<component::Flag>(&rowan);
+    world.count = flags.iter().count();
     world.scratch = round.to_string();
 }
 
@@ -780,12 +781,12 @@ fn indexed_roll(pack: &Path, actor_id: &str, roll_index: u32) -> (String, i64) {
     let world = spookery_engine::World::peek(pack).unwrap_or_else(|err| panic!("open: {err}"));
     let check = world.canon().checks.get("strike").unwrap();
     let def = world.canon().meters.get(&check.stat).unwrap();
+    let actor = actor_id.into();
     let live = world
         .state()
         .actors()
-        .stores()
-        .meters
-        .get(&(actor_id.into(), check.stat.clone()))
+        .get::<component::Meter>(&actor)
+        .get(&check.stat)
         .unwrap_or_else(|| panic!("missing {actor_id}'s {}", check.stat));
     let stat = (live.base + live.offset).clamp(def.min, def.max);
     let rolled = faces(

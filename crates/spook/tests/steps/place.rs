@@ -1,3 +1,4 @@
+use spookery_engine::component;
 use std::fs;
 
 use cucumber::{given, then, when};
@@ -10,7 +11,8 @@ fn rowan_starts_in_docks_street(world: &mut World) {
     let pack = crate::support::copy_docks("arrive");
     crate::support::edit_save(&pack, |now| {
         now.actors_mut()
-            .set_place(&"rowan".into(), "docks_street")
+            .get_mut::<component::Place>(&"rowan".into())
+            .set("docks_street")
             .unwrap();
     });
     world.pack = Some(pack);

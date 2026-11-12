@@ -1,6 +1,7 @@
 //! The AI GM's turn loop against a real table: perceive first, recover from a refusal,
 //! queue several NPCs, stop at the step limit, and outwait the graph's task timeout.
 
+use spookery_engine::component;
 use std::time::Duration;
 
 use cucumber::{given, then, when};
@@ -29,12 +30,14 @@ fn a_docks_table_with_npcs_in_the_shop(world: &mut World) {
     // Aldric starts in the shop. Mira starts upstairs.
     super::common::edit_save(&pack, |now| {
         now.actors_mut()
-            .set_place(&"mira".into(), "docks_shop")
+            .get_mut::<component::Place>(&"mira".into())
+            .set("docks_shop")
             .unwrap();
     });
     let state = state_of(&pack);
     for npc in ["mira", "aldric"] {
-        let place = state.actors().stores().place.get(npc).map(String::as_str);
+        let npc = npc.into();
+        let place = state.actors().get::<component::Place>(&npc).get();
         assert_eq!(place, Some("docks_shop"), "{npc}");
     }
     table::listen(world, &pack);

@@ -65,11 +65,8 @@ fn holds(context: &Context, cond: &Cond) -> Result<bool, Reason> {
         Cond::Wielding { subject, id } => {
             let actor = expr::resolve_actor(context, subject)?;
             let id = expr::resolve_item_id(context, id)?;
-            Ok(state
-                .actors()
-                .wielded
-                .get(actor)
-                .is_some_and(|wielded| *wielded == id))
+            let wielded = state.actors().get::<component::WieldedItem>(actor).get();
+            Ok(wielded.is_some_and(|wielded| wielded == id))
         }
         Cond::Meter { of, key, op, value } => {
             let entity = expr::resolve_entity(context, of)?;
@@ -88,19 +85,13 @@ fn holds(context: &Context, cond: &Cond) -> Result<bool, Reason> {
         }
         Cond::At { subject, place } => {
             let actor = expr::resolve_actor(context, subject)?;
-            Ok(state
-                .actors()
-                .place
-                .get(actor)
-                .is_some_and(|at| at == place))
+            let at = state.actors().get::<component::Place>(actor).get();
+            Ok(at.is_some_and(|at| at == place))
         }
         Cond::Knows { subject, fact } => {
             let actor = expr::resolve_actor(context, subject)?;
-            Ok(state
-                .actors()
-                .known_facts
-                .get(actor)
-                .is_some_and(|facts| facts.iter().any(|id| id == fact)))
+            let known = state.actors().get::<component::KnownFacts>(actor).get();
+            Ok(known.is_some_and(|facts| facts.iter().any(|id| id == fact)))
         }
         Cond::Cycle { name, from, to } => {
             let length = context.canon.budget.cycles.get(name);

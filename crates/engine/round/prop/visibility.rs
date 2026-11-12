@@ -19,7 +19,7 @@ use crate::canon::Canon;
 use crate::intent::Viewer;
 use crate::rules::perceive::{perceive_as, View};
 use crate::state::id::{ActorId, PlaceId};
-use crate::state::{sort_unique, ActorKind, Note, Presence, State};
+use crate::state::{component, sort_unique, ActorKind, Note, Presence, State};
 use crate::world::World;
 
 use super::support::runner_config;
@@ -128,7 +128,11 @@ fn apply_scene(
     for (actor_id, place_index) in actors.iter().zip(&scene.place_of) {
         if state.actors().place.contains_key(actor_id) {
             let place = places[place_index % places.len()].as_str();
-            state.actors_mut().set_place(actor_id, place).unwrap();
+            state
+                .actors_mut()
+                .get_mut::<component::Place>(actor_id)
+                .set(place)
+                .unwrap();
         }
     }
     for (actor_id, known) in actors.iter().zip(&scene.known) {
@@ -140,7 +144,11 @@ fn apply_scene(
             .map(|index| facts[index % facts.len()].clone())
             .collect();
         sort_unique(&mut known_facts);
-        state.actors_mut().learn(actor_id, &known_facts).unwrap();
+        state
+            .actors_mut()
+            .get_mut::<component::KnownFacts>(actor_id)
+            .learn(&known_facts)
+            .unwrap();
     }
     for (index, note) in scene.notes.iter().enumerate() {
         let mut fact_ids: Vec<String> = note
@@ -173,7 +181,7 @@ fn assert_hidden_stays_hidden(canon: &Canon, state: &State) -> Result<(), TestCa
         if *kind != ActorKind::Pc {
             continue;
         }
-        let known_facts = state.actors().stores().known_facts.get(pc);
+        let known_facts = state.actors().get::<component::KnownFacts>(pc).get();
         let view = perceive_as(
             canon,
             state,

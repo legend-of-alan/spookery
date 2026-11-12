@@ -7,8 +7,8 @@ use std::sync::mpsc::{Receiver, Sender};
 
 use serde_json::{Map, Value};
 use spookery_engine::{
-    emit_tape_record, ActorId, Address, Presence, Reason, RecipientLine, RoundOutput, TapeRecord,
-    World,
+    component, emit_tape_record, ActorId, Address, Presence, Reason, RecipientLine, RoundOutput,
+    TapeRecord, World,
 };
 use tokio::sync::{oneshot, watch};
 
@@ -404,10 +404,15 @@ impl Table {
         actor_id: &ActorId,
         args: &SayArgs,
     ) {
-        let here = self.world.state().actors().place.get(actor_id).cloned();
+        let here = self
+            .world
+            .state()
+            .actors()
+            .get::<component::Place>(actor_id)
+            .get();
         let heard = match args {
             SayArgs::Table { .. } => Address::Table,
-            SayArgs::Place { place, .. } if here.as_ref() == Some(place) => Address::Place(place),
+            SayArgs::Place { place, .. } if here == Some(place.as_str()) => Address::Place(place),
             SayArgs::Actor { actor, .. } => Address::Actor(actor),
             SayArgs::Place { .. } => {
                 return self.reply(conn, id, ServerBody::Refused(Reason::Schema.into()));

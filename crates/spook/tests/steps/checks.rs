@@ -1,3 +1,4 @@
+use spookery_engine::component;
 use spookery_engine::testing::state_of;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -166,7 +167,8 @@ fn a_docks_table_where_mira_can_oppose_a_mark(world: &mut World) {
     set_mira_grit(&pack, 100);
     super::common::edit_save(&pack, |now| {
         now.actors_mut()
-            .set_place(&"mira".into(), "docks_shop")
+            .get_mut::<component::Place>(&"mira".into())
+            .set("docks_shop")
             .unwrap();
     });
     listen_and_seat_both(world, &pack);
@@ -374,13 +376,9 @@ fn snapshot_pack(pack: &Path) -> PathBuf {
 fn flags_of(world: &World, id: &str) -> Vec<String> {
     let now = state_of(table::pack(world));
     assert!(now.actors().kind.contains_key(id), "{id} missing");
-    let flags = now
-        .actors()
-        .stores()
-        .flags
-        .keys()
-        .filter(|(owner, _)| *owner == *id);
-    flags.map(|(_, flag)| flag.clone()).collect()
+    let id = id.into();
+    let flags = now.actors().get::<component::Flag>(&id);
+    flags.iter().map(|(flag, ())| flag.to_string()).collect()
 }
 
 fn assert_one_roll(world: &mut World, stat: i64, target: i64, outcome: &str) {
@@ -553,7 +551,8 @@ fn a_docks_table_where_mira_opposes_a_three_band_press(world: &mut World) {
     set_mira_grit(&pack, 100);
     super::common::edit_save(&pack, |now| {
         now.actors_mut()
-            .set_place(&"mira".into(), "docks_shop")
+            .get_mut::<component::Place>(&"mira".into())
+            .set("docks_shop")
             .unwrap();
     });
     listen_and_seat_both(world, &pack);
@@ -702,7 +701,8 @@ fn prepare_press(world: &mut World, base: i64, sit: bool) {
     set_rowan_grit(&pack, base);
     super::common::edit_save(&pack, |now| {
         now.actors_mut()
-            .set_place(&"mira".into(), "docks_shop")
+            .get_mut::<component::Place>(&"mira".into())
+            .set("docks_shop")
             .unwrap();
     });
     if sit {

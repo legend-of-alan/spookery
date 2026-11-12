@@ -1,23 +1,32 @@
 //! What an entity holds, one module per component. A marker type names each component;
 //! `Reader::get` borrows one entity's share of its store, and `Writer::get_mut` writes it.
 
+pub(in crate::state) mod act;
 pub(in crate::state) mod exit;
 pub(in crate::state) mod flag;
 pub(in crate::state) mod item;
+pub(in crate::state) mod known_facts;
 pub(crate) mod meter;
 pub(crate) mod modifier;
+pub(in crate::state) mod place;
 pub(in crate::state) mod visit;
+pub(in crate::state) mod wielded_item;
 
 use std::collections::BTreeMap;
 use std::fmt::Debug;
 use std::marker::PhantomData;
 
+pub(crate) use act::ActCounter;
+pub use act::{Act, PendingAction};
 pub use exit::OpenExit;
 pub use flag::Flag;
 pub use item::Item;
+pub use known_facts::KnownFacts;
 pub use meter::Meter;
 pub use modifier::Modifier;
+pub use place::Place;
 pub use visit::Visit;
+pub use wielded_item::WieldedItem;
 
 use crate::state::change::{self, Change};
 use crate::state::{entity, nested_map, Reader, Writer};
@@ -100,4 +109,11 @@ impl<E: entity::Has<C>, C: Component<Value = ()>> Mut<'_, E, C> {
         let (store, reports) = (self.writer.components.store_mut(), [change.into()]);
         store.set(self.writer.transaction, entry, on.then_some(()), reports)
     }
+}
+
+/// A component's text as a change value, `Empty` when there is none.
+fn text_value(held: Option<impl AsRef<str>>) -> change::Value {
+    held.map_or(change::Value::Empty, |held| {
+        change::Value::Text(held.as_ref().to_string())
+    })
 }

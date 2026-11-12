@@ -20,6 +20,7 @@ pub use rules::perceive::View;
 pub use rules::roll::MoveReport;
 pub use rules::visibility::RecipientLine;
 pub use spookery_protocol::Reason;
+pub use state::component;
 pub use state::component::meter::Meter;
 pub use state::component::modifier::Modifier;
 pub use state::id::{ActorId, ExitId, PlaceId, StoryId};

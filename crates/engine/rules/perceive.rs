@@ -54,8 +54,7 @@ pub(crate) fn perceive_budget<L>(
     let (canon, state) = (world.canon(), world.state());
     let (id, kind) = state
         .actors()
-        .stores()
-        .kind
+        .roster()
         .get_key_value(as_arg)
         .ok_or(Reason::UnknownId)?;
     perceive_viewer_budget(canon, state, presence, &kind.viewer(id), max_body_chars)
@@ -79,10 +78,10 @@ fn perceive_viewer_budget(
 ) -> Result<View, Reason> {
     let place = state
         .actors()
-        .place
-        .get(viewer.actor_id())
+        .get::<component::Place>(viewer.actor_id())
+        .get()
         .ok_or(Reason::UnknownId)?
-        .clone();
+        .to_string();
     let mut visible_actors: Vec<ActorId> = state.actors_at(&place);
     visible_actors.sort();
 
@@ -92,8 +91,8 @@ fn perceive_viewer_budget(
     }
     for id in state
         .actors()
-        .known_facts
-        .get(viewer.actor_id())
+        .get::<component::KnownFacts>(viewer.actor_id())
+        .get()
         .into_iter()
         .flatten()
     {

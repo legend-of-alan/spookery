@@ -43,8 +43,10 @@ impl Writer<'_, entity::Actors> {
         for (id, count) in nested_map::entries_of(&items, from) {
             (self.get_mut::<component::Item>(to)).shift(id, (*count).into(), None)?;
         }
-        self.set_wielded(to, wielded.get(from).map(String::as_str))?;
-        self.learn(to, known_facts.get(from).map_or(&[], Vec::as_slice))?;
+        let wielded = wielded.get(from).map(String::as_str);
+        (self.get_mut::<component::WieldedItem>(to)).set(wielded)?;
+        let known = known_facts.get(from).map_or(&[][..], Vec::as_slice);
+        (self.get_mut::<component::KnownFacts>(to)).learn(known)?;
         for (place, exits) in nested_map::entries_of(&visited, from) {
             (self.get_mut::<component::Visit>(to)).set(place, exits.clone())?;
         }
@@ -75,7 +77,7 @@ impl Writer<'_, entity::Actors> {
             modifiers,
             flags,
         } = (*self.components).clone();
-        self.set_wielded(actor, None)?;
+        (self.get_mut::<component::WieldedItem>(actor)).set(None)?;
         for (id, count) in nested_map::entries_of(&items, actor) {
             (self.get_mut::<component::Item>(actor)).shift(id, -i64::from(*count), None)?;
         }

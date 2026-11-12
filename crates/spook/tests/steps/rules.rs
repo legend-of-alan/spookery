@@ -7,7 +7,7 @@ use spookery_engine::testing::{faces, RollKey};
 
 use crate::support::{edit_as_saved, edit_meter, put_items};
 use spookery_engine::MoveReport;
-use spookery_engine::{entity, Meter, Presence, Reason};
+use spookery_engine::{component, entity, Meter, Presence, Reason};
 
 use super::common::split_line;
 use super::table;
@@ -228,7 +228,8 @@ The ferry waits at the dock.
     fs::write(&rowan, next).unwrap();
     edit_save(&pack, |now| {
         now.actors_mut()
-            .set_place(&"rowan".into(), "ferry_dock")
+            .get_mut::<component::Place>(&"rowan".into())
+            .set("ferry_dock")
             .unwrap();
     });
     world.pack = Some(pack);
@@ -353,7 +354,10 @@ fn an_empty_round_lands_at(world: &mut World, tick: u64) {
             .get_mut::<Meter>(briar)
             .set("shop_day", None)
             .unwrap();
-        actors.set_place(briar, "docks_shop").unwrap();
+        actors
+            .get_mut::<component::Place>(briar)
+            .set("docks_shop")
+            .unwrap();
         edit_as_saved(now, |save| {
             save["actors"]["acts"]["mira"]["idle_acts_this_window"] = 3.into()
         });
@@ -370,7 +374,8 @@ fn an_empty_round_lands_with_mira(world: &mut World, tick: u64) {
         now.world_time = tick - 60;
         edit_meter(now, "mira", "shop_day", |shop_day| shop_day.base = 0);
         now.actors_mut()
-            .set_place(&"mira".into(), "docks_shop")
+            .get_mut::<component::Place>(&"mira".into())
+            .set("docks_shop")
             .unwrap();
     });
     play_an_empty_round(&pack);
@@ -499,7 +504,10 @@ fn attack_targets_defense(world: &mut World) {
             (defense.base, defense.offset) = (12, 0);
         });
         let mut actors = now.actors_mut();
-        actors.set_busy(&"briar".into(), u64::MAX, None).unwrap();
+        actors
+            .get_mut::<component::Act>(&"briar".into())
+            .set_busy(u64::MAX, None)
+            .unwrap();
     });
     world.pack = Some(pack);
 }
@@ -970,7 +978,8 @@ fn briar_holds_ask_in_the_lane(world: &mut World) {
     let pack = copy_pack("sample-d20", "rules-scoped-gone");
     edit_save(&pack, |now| {
         now.actors_mut()
-            .set_place(&"briar".into(), "mill_lane")
+            .get_mut::<component::Place>(&"briar".into())
+            .set("mill_lane")
             .unwrap();
     });
     world.pack = Some(pack);
@@ -988,12 +997,8 @@ fn lark_in_the_yard_plays(world: &mut World, line: String) {
 #[when(regex = r"^lark, alone in the yard, plays (.+)$")]
 fn lark_alone_plays(world: &mut World, line: String) {
     let now = state_of(world.pack.as_ref().unwrap());
-    let yard = now
-        .actors()
-        .stores()
-        .place
-        .iter()
-        .filter(|(_, place)| *place == "gate_yard");
+    let actors = now.actors();
+    let yard = (actors.place.iter()).filter(|(_, place)| *place == "gate_yard");
     assert_eq!(
         yard.map(|(id, _)| id.as_str()).collect::<Vec<_>>(),
         ["lark"]

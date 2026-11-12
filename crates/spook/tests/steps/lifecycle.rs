@@ -3,7 +3,7 @@
 use std::fs;
 
 use cucumber::{given, then, when};
-use spookery_engine::{entity, Presence, World as Engine};
+use spookery_engine::{component, entity, Presence, World as Engine};
 
 use super::common::give_key;
 use super::rules::open;
@@ -45,7 +45,8 @@ fn rowan_and_wren_in_the_shop(world: &mut World) {
     let pack = copy_docks("lifecycle");
     edit_save(&pack, |now| {
         now.actors_mut()
-            .set_place(&"wren".into(), "docks_shop")
+            .get_mut::<component::Place>(&"wren".into())
+            .set("docks_shop")
             .unwrap();
     });
     world.pack = Some(pack);
@@ -192,7 +193,10 @@ fn spook_check_refuses_the_verb(world: &mut World, verb: String) {
 #[given(expr = "Rowan stands on {word} in the save")]
 fn rowan_stands_on(world: &mut World, place: String) {
     edit_save(world.pack.as_ref().unwrap(), |now| {
-        now.actors_mut().set_place(&"rowan".into(), &place).unwrap();
+        now.actors_mut()
+            .get_mut::<component::Place>(&"rowan".into())
+            .set(&place)
+            .unwrap();
     });
 }
 
@@ -256,11 +260,8 @@ fn rowan_is_at(world: &mut World, place: String) {
 #[then(expr = "Rowan holds lamp_oil")]
 fn rowan_holds_lamp_oil(world: &mut World) {
     let now = state_of(world.pack.as_ref().unwrap());
-    let oil = now
-        .actors()
-        .stores()
-        .items
-        .get(&("rowan".into(), "lamp_oil".to_string()));
+    let rowan = "rowan".into();
+    let oil = now.actors().get::<component::Item>(&rowan).get("lamp_oil");
     assert_eq!(oil.copied().unwrap_or(0), 1);
 }
 

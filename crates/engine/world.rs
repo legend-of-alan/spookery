@@ -197,11 +197,7 @@ impl<L> World<L> {
 
     /// Every PC in the cast.
     pub fn pcs(&self) -> impl Iterator<Item = &ActorId> {
-        self.state
-            .actors()
-            .stores()
-            .kind
-            .iter()
+        (self.state.actors().roster().iter())
             .filter(|(_, kind)| **kind == ActorKind::Pc)
             .map(|(id, _)| id)
     }

@@ -5,7 +5,7 @@ use std::path::Path;
 use cucumber::{given, then, when};
 use serde_json::Value;
 use spookery_engine::testing::{faces, RollKey};
-use spookery_engine::{entity, State};
+use spookery_engine::{component, entity, State};
 
 use super::common::split_line;
 use super::table;
@@ -16,7 +16,10 @@ fn keep_briar_busy(now: &mut State) {
     if let Some(briar) = now.actors().acts.get("briar") {
         let pending = briar.pending.clone();
         let mut actors = now.actors_mut();
-        actors.set_busy(&"briar".into(), u64::MAX, pending).unwrap();
+        actors
+            .get_mut::<component::Act>(&"briar".into())
+            .set_busy(u64::MAX, pending)
+            .unwrap();
     }
 }
 
@@ -138,17 +141,20 @@ fn add_attack_rules(pack: &Path, attack: &str) {
 
 fn hold_dagger(now: &mut State, wield: bool) {
     now.actors_mut()
-        .set_place(&"lark".into(), "gate_yard")
+        .get_mut::<component::Place>(&"lark".into())
+        .set("gate_yard")
         .unwrap();
     now.actors_mut()
-        .set_place(&"nell".into(), "gate_yard")
+        .get_mut::<component::Place>(&"nell".into())
+        .set("gate_yard")
         .unwrap();
     keep_briar_busy(now);
     give(now, "lark", "poisoned_dagger");
     if wield {
         let mut actors = now.actors_mut();
         actors
-            .set_wielded(&"lark".into(), Some("poisoned_dagger"))
+            .get_mut::<component::WieldedItem>(&"lark".into())
+            .set(Some("poisoned_dagger"))
             .unwrap();
     }
 }
@@ -163,7 +169,8 @@ fn nell_holds_a_tonic(world: &mut World) {
     fs::write(&meters, next).unwrap();
     support::edit_save(&pack, |now| {
         now.actors_mut()
-            .set_place(&"nell".into(), "gate_yard")
+            .get_mut::<component::Place>(&"nell".into())
+            .set("gate_yard")
             .unwrap();
         keep_briar_busy(now);
         give(now, "nell", "tonic");
@@ -408,7 +415,8 @@ fn lark_holds_a_dagger(world: &mut World) {
     write_dagger(&pack, "");
     support::edit_save(&pack, |now| {
         now.actors_mut()
-            .set_place(&"lark".into(), "gate_yard")
+            .get_mut::<component::Place>(&"lark".into())
+            .set("gate_yard")
             .unwrap();
         keep_briar_busy(now);
         give(now, "lark", "poisoned_dagger");

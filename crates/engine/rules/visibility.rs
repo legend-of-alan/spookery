@@ -8,14 +8,14 @@ use crate::intent::Viewer;
 use crate::rules::effect::{Effect, EffectKind};
 use crate::state::change::{self, Change};
 use crate::state::id::{ActorId, PlaceId};
-use crate::state::State;
+use crate::state::{component, State};
 
 pub(crate) fn can_see_fact(canon: &Canon, state: &State, viewer: &Viewer, fact_id: &str) -> bool {
     let actor_id = viewer.actor_id();
-    let Some(place) = state.actors().stores().place.get(actor_id) else {
+    let Some(place) = state.actors().get::<component::Place>(actor_id).get() else {
         return false;
     };
-    let known = state.actors().stores().known_facts.get(actor_id);
+    let known = state.actors().get::<component::KnownFacts>(actor_id).get();
     if known.is_some_and(|facts| facts.iter().any(|id| id == fact_id)) {
         return true;
     }
@@ -321,12 +321,15 @@ fn is_shown(canon: &Canon, id: &entity::Id, key: &str) -> bool {
         .is_some_and(|def| !def.hidden)
 }
 
-fn place_of<'a>(state: &'a State, viewer: &ActorId) -> Option<&'a str> {
-    (state.actors().stores().place.get(viewer)).map(String::as_str)
+/// Where `viewer` stands. The place is borrowed for as long as both the save and the id are.
+fn place_of<'a>(state: &'a State, viewer: &'a ActorId) -> Option<&'a str> {
+    state.actors().get::<component::Place>(viewer).get()
 }
 
 fn same_place(state: &State, viewer: &ActorId, actor: &str) -> bool {
-    let actor_place = state.actors().stores().place.get(actor).map(String::as_str);
+    // The actor comes out of a change key as text, so it is read under its id.
+    let actor = ActorId::from(actor);
+    let actor_place = state.actors().get::<component::Place>(&actor).get();
     match (place_of(state, viewer), actor_place) {
         (Some(left), Some(right)) => left == right,
         _ => false,

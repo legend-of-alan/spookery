@@ -5,7 +5,7 @@ use std::path::Path;
 use cucumber::{given, then, when};
 use spookery_engine::testing::journal::list_round_keys;
 use spookery_engine::testing::{ActorKind, PendingAction};
-use spookery_engine::{ActorId, Meter, State};
+use spookery_engine::{component, ActorId, Meter, State};
 
 use super::common::{
     add_trapdoor, capture_play_stdout, edit_save, give_key, join_play, set_busy, wait_play_until,
@@ -31,7 +31,8 @@ fn docks_street_has_no_exit_to_mira_rooms(world: &mut World) {
     let pack = copy_docks("no-exit");
     edit_save(&pack, |now| {
         now.actors_mut()
-            .set_place(&"rowan".into(), "docks_street")
+            .get_mut::<component::Place>(&"rowan".into())
+            .set("docks_street")
             .unwrap();
     });
     table::listen(world, &pack);
@@ -202,7 +203,10 @@ fn add_nell(now: &mut State, place: &str, walk: Option<(u64, PendingAction)>) {
             .unwrap();
     }
     if let Some((until, pending)) = walk {
-        actors.set_busy(&nell, until, Some(pending)).unwrap();
+        actors
+            .get_mut::<component::Act>(&nell)
+            .set_busy(until, Some(pending))
+            .unwrap();
     }
 }
 

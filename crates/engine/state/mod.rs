@@ -1,7 +1,7 @@
 //! The save as the file holds it, and the live save that reads it against the pack's canon.
 
 pub(crate) mod change;
-pub(crate) mod component;
+pub mod component;
 pub(crate) mod entity;
 #[cfg(any(test, feature = "testing"))]
 mod fixtures;
@@ -18,9 +18,10 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 
 #[cfg(any(test, feature = "testing"))]
-pub use entity::actors::Act;
-pub(crate) use entity::actors::ActCounter;
-pub use entity::actors::{ActorKind, PendingAction};
+pub use component::Act;
+pub(crate) use component::ActCounter;
+pub use component::PendingAction;
+pub use entity::actors::ActorKind;
 use id::ActorId;
 pub use notes::Note;
 #[cfg(test)]
@@ -96,11 +97,6 @@ impl<E> Copy for Reader<'_, E> {}
 impl<'a, E> Reader<'a, E> {
     fn new(components: &'a E, canon: &'a Canon) -> Self {
         Reader { components, canon }
-    }
-
-    /// The collection, borrowed for as long as the save is: for a read that outlives the handle.
-    pub fn stores(self) -> &'a E {
-        self.components
     }
 }
 

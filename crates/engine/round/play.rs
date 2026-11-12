@@ -9,7 +9,7 @@ use crate::rules::effect::Effect;
 use crate::rules::roll::MoveReport;
 use crate::rules::travel;
 use crate::rules::visibility::{RecipientLine, ViewerChanges};
-use crate::state::{Presence, State};
+use crate::state::{component, Presence, State};
 use crate::store::commit::CommitOutcome;
 use crate::store::lock::lock_pack;
 use crate::world::World;
@@ -105,7 +105,8 @@ fn seated_busy<L>(world: &World<L>, presence: &Presence) -> Vec<bool> {
     presence
         .actors_present
         .iter()
-        .map(|id| (state.actors().acts.get(id)).is_some_and(|act| act.is_busy(state.world_time)))
+        .map(|id| state.actors().get::<component::Act>(id).get())
+        .map(|act| act.is_some_and(|act| act.is_busy(state.world_time)))
         .collect()
 }
 

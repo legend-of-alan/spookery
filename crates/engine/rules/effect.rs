@@ -12,7 +12,7 @@ use crate::rules::visibility::can_see_fact;
 use crate::state::component::meter::MeterWrite;
 use crate::state::component::modifier::{self, Modifier};
 use crate::state::id::{ActorId, ExitId, PlaceId};
-use crate::state::{self, ActorKind, MemoryLine, Note, Presence, State};
+use crate::state::{self, component, ActorKind, MemoryLine, Note, Presence, State};
 use crate::Reason;
 
 /// One effect. JSON is `kind`, `as`, `intent_id`, then the fields of `kind`.
@@ -212,9 +212,13 @@ impl Effect {
                 if !item.tags.iter().any(|tag| tag == "weapon") {
                     return Err(Reason::NotAWeapon);
                 }
-                state.actors_mut().set_wielded(&actor_id, Some(&id))
+                let mut actors = state.actors_mut();
+                (actors.get_mut::<component::WieldedItem>(&actor_id)).set(Some(&id))
             }
-            EffectKind::Unwield { actor_id } => state.actors_mut().set_wielded(&actor_id, None),
+            EffectKind::Unwield { actor_id } => {
+                let mut actors = state.actors_mut();
+                (actors.get_mut::<component::WieldedItem>(&actor_id)).set(None)
+            }
             EffectKind::Location {
                 actor_id, from, to, ..
             } => move_actor(canon, state, presence, intent, &actor_id, &from, &to),
@@ -266,7 +270,8 @@ impl Effect {
                 if !canon.facts.contains_key(&fact) {
                     return Err(Reason::UnknownId);
                 }
-                state.actors_mut().learn(&actor_id, &[fact])
+                let mut actors = state.actors_mut();
+                (actors.get_mut::<component::KnownFacts>(&actor_id)).learn(&[fact])
             }
         }
     }
@@ -348,8 +353,9 @@ fn move_actor(
         return Err(Reason::TableEmpty);
     }
     // The place is read to compare with `from`; an actor the save lacks has none, and is refused
-    // here, before the canon's checks, as `set_place` would refuse it.
-    if actors.place.get(actor_id).ok_or(Reason::UnknownId)? != from {
+    // here, before the canon's checks, as the place's write would refuse it.
+    let place = actors.get::<component::Place>(actor_id).get();
+    if place.ok_or(Reason::UnknownId)? != from {
         return Err(Reason::OutOfRange);
     }
     // A walker stands on the exit until they arrive. The exit is no place of its own.
@@ -357,7 +363,7 @@ fn move_actor(
     if !canon.places.contains_key(to) && !on_exit {
         return Err(Reason::NoExit);
     }
-    state.actors_mut().set_place(actor_id, to)
+    (state.actors_mut().get_mut::<component::Place>(actor_id)).set(to)
 }
 
 fn remember(
@@ -386,7 +392,8 @@ fn remember(
     }
     state.count_memory_write()?;
     state::sort_unique(&mut fact_ids);
-    state.actors_mut().learn(actor_id, &fact_ids)?;
+    let mut actors = state.actors_mut();
+    (actors.get_mut::<component::KnownFacts>(actor_id)).learn(&fact_ids)?;
     state::sort_unique(&mut tags);
     state.push_memory(MemoryLine {
         round_index: state.round_index,

@@ -9,8 +9,8 @@ use spookery_engine::testing::{
     stamp_pack_rev, state_of, write_save, ActorKind, Canon,
 };
 use spookery_engine::{
-    emit_save, entity, load_canon, play_pack_once, ActorId, Meter, MoveReport, Note, Presence,
-    Save, State,
+    component, emit_save, entity, load_canon, play_pack_once, ActorId, Meter, MoveReport, Note,
+    Presence, Save, State,
 };
 use spookery_protocol::Outcome;
 
@@ -47,13 +47,9 @@ fn lamp_oil(state: &Save) -> u32 {
 
 fn flags_of(state: &State, id: &str) -> Vec<String> {
     assert!(state.actors().kind.contains_key(id), "{id} missing");
-    let flags = state
-        .actors()
-        .stores()
-        .flags
-        .keys()
-        .filter(|(owner, _)| *owner == *id);
-    flags.map(|(_, flag)| flag.clone()).collect()
+    let id = id.into();
+    let flags = state.actors().get::<component::Flag>(&id);
+    flags.iter().map(|(flag, ())| flag.to_string()).collect()
 }
 
 fn snapshot(root: &Path) -> Vec<(PathBuf, Vec<u8>)> {
@@ -118,7 +114,8 @@ fn morning_restock() {
         state.notes_mut().leave(door_note()).unwrap();
         state
             .actors_mut()
-            .set_place(&"rowan".into(), "docks_street")
+            .get_mut::<component::Place>(&"rowan".into())
+            .set("docks_street")
             .unwrap();
         write_save(&pack, &state);
     }
@@ -141,7 +138,8 @@ fn capped_restock() -> u32 {
         state.notes_mut().leave(door_note()).unwrap();
         state
             .actors_mut()
-            .set_place(&"rowan".into(), "docks_street")
+            .get_mut::<component::Place>(&"rowan".into())
+            .set("docks_street")
             .unwrap();
         let entry = ("docks_shop".into(), "lamp_oil".to_string());
         let held = i64::from(state.places().items.get(&entry).copied().unwrap_or(0));
@@ -182,7 +180,8 @@ fn player_in_the_shop() {
         state.notes_mut().leave(door_note()).unwrap();
         state
             .actors_mut()
-            .set_place(&"mira".into(), "docks_shop")
+            .get_mut::<component::Place>(&"mira".into())
+            .set("docks_shop")
             .unwrap();
         write_save(&pack, &state);
     }
@@ -226,7 +225,8 @@ fn gm_restocks() {
         state.notes_mut().leave(door_note()).unwrap();
         state
             .actors_mut()
-            .set_place(&"mira".into(), "docks_shop")
+            .get_mut::<component::Place>(&"mira".into())
+            .set("docks_shop")
             .unwrap();
         write_save(&pack, &state);
     }
@@ -247,7 +247,8 @@ fn claimed_note_sorts_first() {
         drop(opened);
         state
             .actors_mut()
-            .set_place(&"mira".into(), "docks_shop")
+            .get_mut::<component::Place>(&"mira".into())
+            .set("docks_shop")
             .unwrap();
         write_save(&pack, &state);
     }
@@ -367,10 +368,14 @@ fn a_busy_npc_skips() {
         state.world_time = 600;
         state.notes_mut().leave(door_note()).unwrap();
         let mut actors = state.actors_mut();
-        actors.set_busy(&"mira".into(), u64::MAX, None).unwrap();
+        actors
+            .get_mut::<component::Act>(&"mira".into())
+            .set_busy(u64::MAX, None)
+            .unwrap();
         state
             .actors_mut()
-            .set_place(&"rowan".into(), "docks_street")
+            .get_mut::<component::Place>(&"rowan".into())
+            .set("docks_street")
             .unwrap();
         write_save(&pack, &state);
     }
@@ -587,7 +592,8 @@ fn patch_mira_flags_and_place(pack: &Path, flags: &str) {
     let mut state = State::new(save, Arc::new(canon));
     state
         .actors_mut()
-        .set_place(&"mira".into(), "docks_shop")
+        .get_mut::<component::Place>(&"mira".into())
+        .set("docks_shop")
         .unwrap();
     write_save(pack, &state);
 }

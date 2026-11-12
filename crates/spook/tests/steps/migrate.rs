@@ -1,5 +1,5 @@
 use spookery_engine::testing::state_of;
-use spookery_engine::Meter;
+use spookery_engine::{component, Meter};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -109,11 +109,7 @@ fn the_pack_adds_meter(world: &mut World, id: String, start: i64) {
 fn every_actor_has_meter_at(world: &mut World, id: String, base: i64) {
     let now = state_of(table::pack(world));
     for actor in now.actors().kind.keys() {
-        let meter = now
-            .actors()
-            .stores()
-            .meters
-            .get(&(actor.clone(), id.clone()));
+        let meter = now.actors().get::<component::Meter>(actor).get(&id);
         let got = meter.map(|meter| meter.base);
         assert_eq!(got, Some(base), "{actor} {id}");
     }
@@ -281,11 +277,8 @@ fn rowan_moves_grit_and_nell_joins(world: &mut World, offset: i64) {
 #[then(expr = "{word}'s grit is at base {int} and offset {int}")]
 fn grit_is_at(world: &mut World, actor: String, base: i64, offset: i64) {
     let now = state_of(table::pack(world));
-    let grit = now
-        .actors()
-        .stores()
-        .meters
-        .get(&(actor.as_str().into(), "grit".to_string()));
+    let id = actor.as_str().into();
+    let grit = now.actors().get::<component::Meter>(&id).get("grit");
     let got = grit.map(|grit| (grit.base, grit.offset));
     assert_eq!(got, Some((base, offset)), "{actor}");
 }

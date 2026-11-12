@@ -7,11 +7,11 @@ use crate::rules::context::Context;
 use crate::rules::expand;
 use crate::rules::gate;
 use crate::state::id::ActorId;
-use crate::state::{ActorKind, Presence, State};
+use crate::state::{component, ActorKind, Presence, State};
 
 /// One habit intent per NPC whose habit the gate admits, its target not yet stamped.
 pub(crate) fn intents(canon: &Canon, state: &State, presence: &Presence) -> Vec<Intent> {
-    let actors = state.actors().stores().kind.keys();
+    let actors = state.actors().roster().keys();
     let intents = actors.filter_map(|actor_id| intent_of(canon, state, presence, actor_id));
     intents.collect()
 }
@@ -68,8 +68,8 @@ fn is_eligible(canon: &Canon, state: &State, presence: &Presence, npc_id: &Actor
         return false;
     }
     let (Some(counters), Some(place)) = (
-        state.actors().stores().acts.get(npc_id),
-        state.actors().stores().place.get(npc_id),
+        state.actors().get::<component::Act>(npc_id).get(),
+        state.actors().get::<component::Place>(npc_id).get(),
     ) else {
         return false;
     };

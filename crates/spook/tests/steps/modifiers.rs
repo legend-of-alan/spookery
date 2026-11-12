@@ -5,7 +5,7 @@ use std::path::Path;
 
 use cucumber::{given, then, when};
 use spookery_engine::testing::{stamp_pack_rev, state_of};
-use spookery_engine::{entity, Meter, Modifier};
+use spookery_engine::{component, entity, Meter, Modifier};
 
 use super::common::replace_in_file;
 use super::meters::{assert_refused, run_check};
@@ -131,7 +131,8 @@ fn docks_with_one_tick_rounds(world: &mut World) {
         set_place(now, "wren", "docks_shop");
         set_place(now, "harbormouse", "docks_shop");
         now.actors_mut()
-            .set_place(&"rowan".into(), "docks_shop")
+            .get_mut::<component::Place>(&"rowan".into())
+            .set("docks_shop")
             .unwrap();
         support::edit_meter(now, "rowan", "grit", |grit| grit.base = 20);
         sit(seated, &["harbormouse", "rowan", "wren"]);

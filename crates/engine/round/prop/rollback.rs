@@ -176,16 +176,25 @@ fn play_steps(world: &World<()>, steps: &[Step]) -> Result<(), TestCaseError> {
                 let _ = state.actors_mut().expire_modifiers(u64::MAX);
             }
             Step::Act(players) => {
-                let _ = state.actors_mut().count_act(&mira, 1, *players);
+                let _ = state
+                    .actors_mut()
+                    .get_mut::<component::Act>(&mira)
+                    .count(1, *players);
             }
             Step::ResetActs => {
                 let _ = (state.actors_mut()).reset_acts(ActCounter::IdleActsThisWindow);
             }
             Step::Busy(true) => {
-                let _ = state.actors_mut().set_busy(&mira, 9, None);
+                let _ = state
+                    .actors_mut()
+                    .get_mut::<component::Act>(&mira)
+                    .set_busy(9, None);
             }
             Step::Busy(false) => {
-                let _ = state.actors_mut().take_pending(&mira);
+                let _ = state
+                    .actors_mut()
+                    .get_mut::<component::Act>(&mira)
+                    .take_pending();
             }
             Step::NoteExits => {
                 let _ = crate::rules::travel::note_exits(canon, &mut state);

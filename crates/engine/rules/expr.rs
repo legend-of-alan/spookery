@@ -8,7 +8,7 @@ use crate::rules::grammar;
 use crate::rules::roll::Outcome;
 use crate::rules::rule::LineColumn;
 use crate::state::id::ActorId;
-use crate::state::State;
+use crate::state::{component, State};
 use crate::Reason;
 
 /// Faces for one expression. `begin` starts a new roll seed. `note` records the shown line.
@@ -251,14 +251,8 @@ pub(crate) fn resolve_actor<'a>(
 /// Where the acting actor stands: a place id, or an exit's address while they walk.
 pub(crate) fn resolve_here<'a>(context: &Context<'_, 'a>) -> Result<&'a str, Reason> {
     let actor_id = context.intent.actor_id().ok_or(Reason::Schema)?;
-    context
-        .state
-        .actors()
-        .stores()
-        .place
-        .get(actor_id)
-        .map(String::as_str)
-        .ok_or(Reason::UnknownId)
+    let place = context.state.actors().get::<component::Place>(actor_id);
+    place.get().ok_or(Reason::UnknownId)
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

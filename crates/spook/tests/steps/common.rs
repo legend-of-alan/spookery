@@ -7,7 +7,7 @@ use std::path::Path;
 
 use cucumber::{given, then, when};
 use spookery_engine::testing::journal::list_round_keys;
-use spookery_engine::{entity, State};
+use spookery_engine::{component, entity, State};
 
 use super::table;
 use crate::support::{self, copy_docks};
@@ -315,8 +315,14 @@ pub(crate) fn capture_play_stdout(world: &mut World) -> String {
 /// Put `actor` on the exit `<place>.<exit>`, walking it until tick `until`.
 pub(crate) fn set_busy(now: &mut State, actor: &str, until: u64, exit: &str) {
     let (mut actors, actor) = (now.actors_mut(), actor.into());
-    actors.set_place(&actor, &format!("exit:{exit}")).unwrap();
-    actors.set_busy(&actor, until, Some(walk(exit))).unwrap();
+    actors
+        .get_mut::<component::Place>(&actor)
+        .set(&format!("exit:{exit}"))
+        .unwrap();
+    actors
+        .get_mut::<component::Act>(&actor)
+        .set_busy(until, Some(walk(exit)))
+        .unwrap();
 }
 
 /// A walk through the exit `<place>.<exit>` by the travel verb.

@@ -3,7 +3,7 @@ use std::path::Path;
 
 use cucumber::{given, then, when};
 use spookery_engine::testing as support;
-use spookery_engine::{entity, Presence};
+use spookery_engine::{component, entity, Presence};
 
 use crate::World;
 
@@ -85,7 +85,8 @@ exits:";
     support::edit_save(&pack, |state| {
         state
             .actors_mut()
-            .set_place(&"mira".into(), "docks_street")
+            .get_mut::<component::Place>(&"mira".into())
+            .set("docks_street")
             .unwrap();
         let mira = entity::Id::Actor("mira".into());
         state

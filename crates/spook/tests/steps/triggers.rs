@@ -6,7 +6,7 @@ use cucumber::{given, then, when};
 use serde_json::Value;
 use spookery::protocol;
 use spookery_engine::testing::{stamp_pack_rev, state_of};
-use spookery_engine::{emit_save, parse_save};
+use spookery_engine::{component, emit_save, parse_save};
 use spookery_engine::{entity, Presence, State};
 
 use super::common::replace_in_file;
@@ -190,7 +190,8 @@ fn nell_knows_the_ledger(world: &mut World, tide: i64) {
             .any(|fact| fact == "fact_ledger"),
         "nell does not know fact_ledger"
     );
-    let tide_meter = (now.globals().stores().meters.iter()).find(|((_, id), _)| id == "tide");
+    let globals = now.globals();
+    let tide_meter = (globals.meters.iter()).find(|((_, id), _)| id == "tide");
     let live = tide_meter.expect("the world's tide").1;
     assert_eq!(live.base + live.offset, tide, "{live:?}");
 }
@@ -413,11 +414,11 @@ fn the_bog_roll_reproduces(world: &mut World) {
     assert_eq!(world.scratch, "rolled");
     let pack = world.pack.as_ref().unwrap();
     let now = state_of(pack);
+    let nell = "nell".into();
     let grit = now
         .actors()
-        .stores()
-        .meters
-        .get(&("nell".into(), "grit".to_string()))
+        .get::<component::Meter>(&nell)
+        .get("grit")
         .unwrap();
     assert_eq!(grit.offset, -1, "the miss band did not spend grit");
     let output = support::run_spook(&["verify", &pack.to_string_lossy()]);
@@ -960,7 +961,10 @@ fn play_and_keep_summaries(
 }
 
 pub(crate) fn set_place(now: &mut State, id: &str, place: &str) {
-    now.actors_mut().set_place(&id.into(), place).unwrap();
+    now.actors_mut()
+        .get_mut::<component::Place>(&id.into())
+        .set(place)
+        .unwrap();
 }
 
 /// Seat these PCs, sorted the way the host's seats are.

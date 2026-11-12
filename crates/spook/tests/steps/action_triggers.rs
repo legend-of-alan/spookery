@@ -3,7 +3,7 @@
 use std::fs;
 
 use cucumber::{given, then, when};
-use spookery_engine::{entity, Presence};
+use spookery_engine::{component, entity, Presence};
 
 use super::record::read_extra_steps;
 use super::rules::open;
@@ -80,7 +80,8 @@ fn three_in_the_shop(world: &mut World) {
     edit_save(&pack, |now| {
         for id in PCS {
             now.actors_mut()
-                .set_place(&id.into(), "docks_shop")
+                .get_mut::<component::Place>(&id.into())
+                .set("docks_shop")
                 .unwrap();
         }
     });

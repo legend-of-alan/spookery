@@ -59,8 +59,8 @@ pub(crate) fn exit_via<'a>(
     let from = context
         .intent
         .actor_id()
-        .and_then(|id| context.state.actors().stores().place.get(id))
-        .map_or("", String::as_str);
+        .and_then(|id| context.state.actors().get::<component::Place>(id).get())
+        .unwrap_or("");
     if let Some(exit) = exit_stood_on(context.canon, from) {
         return Ok(Some(exit));
     }
@@ -219,8 +219,8 @@ pub(crate) fn note_exits(canon: &Canon, state: &mut State) -> Result<(), Reason>
 
 /// The exits of this actor's place that they are allowed to see.
 pub(crate) fn visible_exits(canon: &Canon, state: &State, actor_id: &ActorId) -> Vec<ExitView> {
-    let place = state.actors().stores().place.get(actor_id);
-    match place.and_then(|place| canon.places.get(place.as_str())) {
+    let place = state.actors().get::<component::Place>(actor_id).get();
+    match place.and_then(|place| canon.places.get(place)) {
         Some(place) => exits_at(canon, state, actor_id, place),
         None => Vec::new(),
     }
@@ -257,7 +257,8 @@ pub(crate) fn take_due_actions(state: &mut State, end: u64) -> Result<Vec<DueAct
     due_keys.sort();
     let mut due_actions = Vec::new();
     for (until, actor_id) in due_keys {
-        let Some(pending) = state.actors_mut().take_pending(&actor_id)? else {
+        let mut actors = state.actors_mut();
+        let Some(pending) = actors.get_mut::<component::Act>(&actor_id).take_pending()? else {
             continue;
         };
         due_actions.push(DueAction {

@@ -148,7 +148,8 @@ pub(crate) fn find_stale_meters(state: &State) -> Vec<DroppedMeter> {
 /// Each actor's modifiers that the pack no longer defines, or now defines on another meter:
 /// the actor and modifier id, with the modifier as the save holds it.
 pub(crate) fn find_stale_modifiers(state: &State) -> Vec<(&(ActorId, String), &Modifier)> {
-    let held = state.actors().stores().modifiers.iter();
+    // The modifiers are borrowed from the save, which outlives a read handle.
+    let held = Save::actors(state).modifiers.iter();
     held.filter(|((_, id), live)| !modifier::is_defined(&state.canon().modifiers, id, live))
         .collect()
 }
@@ -169,9 +170,9 @@ pub fn migrate(mut state: State, record: &MigrateRecord) -> Result<State, Reason
             carrier.set_meter(&meter.id, Some(start.clone()))?;
         }
     }
-    let modifiers = state.actors().stores().modifiers.keys();
+    let actors = state.actors();
     let dropped = |(_, id): &&(ActorId, String)| record.dropped_modifiers.contains(id);
-    let held: Vec<(ActorId, String)> = (modifiers.filter(dropped)).cloned().collect();
+    let held: Vec<(ActorId, String)> = (actors.modifiers.keys().filter(dropped)).cloned().collect();
     for (actor, id) in &held {
         (state.actors_mut().get_mut::<Modifier>(actor)).set(id, None)?;
     }
@@ -194,7 +195,7 @@ pub fn migrate(mut state: State, record: &MigrateRecord) -> Result<State, Reason
 pub fn check_save(state: &State) -> Result<(), Vec<Diagnostic>> {
     let canon = state.canon();
     let mut diags = Vec::new();
-    let actors = state.actors().stores();
+    let actors = state.actors();
     // Every store, with no `..`: a store added later must be listed here to compile.
     let crate::state::entity::Actors {
         kind: _,
@@ -207,7 +208,7 @@ pub fn check_save(state: &State) -> Result<(), Vec<Diagnostic>> {
         meters,
         modifiers,
         flags,
-    } = actors;
+    } = &*actors;
     let held: BTreeSet<(&str, &ActorId)> = (place.keys().map(|id| ("place", id)))
         .chain(wielded.keys().map(|id| ("wielded", id)))
         .chain(known_facts.keys().map(|id| ("known_facts", id)))
