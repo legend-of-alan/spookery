@@ -9,8 +9,7 @@ use crate::rules::gate::{list_nameable, verb_for};
 use crate::rules::rule::{Owner, TargetKind, When};
 use crate::rules::travel::{exit_stood_on, exit_view, exits_at};
 use crate::state::id::ActorId;
-use crate::state::nested_map;
-use crate::state::{Presence, State};
+use crate::state::{component, Presence, State};
 use crate::Reason;
 
 /// `help`: the built-in player commands but `claim`, then each pack verb `verb_for` reaches
@@ -115,7 +114,7 @@ fn names_for(
             .filter(|name| canon.items.contains_key(*name))
             .cloned()
             .collect(),
-        TargetKind::Place => nested_map::entries_of(&state.actors().visited, actor_id)
+        TargetKind::Place => (state.actors().get::<component::Visit>(actor_id).iter())
             .map(|(place, _)| place.to_string())
             .collect(),
     };
@@ -139,22 +138,20 @@ pub(crate) fn map(
         return Err(Reason::UnknownId);
     }
     let places =
-        nested_map::entries_of(&state.actors().stores().visited, actor_id).map(|(id, seen)| {
-            PlaceView {
-                name: place_name(canon, id),
-                exits: canon
-                    .places
-                    .get(id)
-                    .map(|place| {
-                        place
-                            .exits
-                            .iter()
-                            .filter(|exit| seen.contains(&exit.name))
-                            .map(|exit| exit_view(canon, state, exit))
-                            .collect()
-                    })
-                    .unwrap_or_default(),
-            }
+        (state.actors().get::<component::Visit>(actor_id).iter()).map(|(id, seen)| PlaceView {
+            name: place_name(canon, id),
+            exits: canon
+                .places
+                .get(id)
+                .map(|place| {
+                    place
+                        .exits
+                        .iter()
+                        .filter(|exit| seen.contains(&exit.name))
+                        .map(|exit| exit_view(canon, state, exit))
+                        .collect()
+                })
+                .unwrap_or_default(),
         });
     Ok(places.collect())
 }

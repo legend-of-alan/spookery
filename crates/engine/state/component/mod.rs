@@ -6,6 +6,7 @@ pub(in crate::state) mod flag;
 pub(in crate::state) mod item;
 pub(crate) mod meter;
 pub(crate) mod modifier;
+pub(in crate::state) mod visit;
 
 use std::collections::BTreeMap;
 use std::fmt::Debug;
@@ -15,6 +16,8 @@ pub use exit::OpenExit;
 pub use flag::Flag;
 pub use item::Item;
 pub use meter::Meter;
+pub use modifier::Modifier;
+pub use visit::Visit;
 
 use crate::state::change::{self, Change};
 use crate::state::{entity, nested_map, Reader, Writer};

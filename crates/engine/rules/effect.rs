@@ -12,7 +12,7 @@ use crate::rules::visibility::can_see_fact;
 use crate::state::component::meter::MeterWrite;
 use crate::state::component::modifier::{self, Modifier};
 use crate::state::id::{ActorId, ExitId, PlaceId};
-use crate::state::{self, nested_map, ActorKind, MemoryLine, Note, Presence, State};
+use crate::state::{self, ActorKind, MemoryLine, Note, Presence, State};
 use crate::Reason;
 
 /// One effect. JSON is `kind`, `as`, `intent_id`, then the fields of `kind`.
@@ -318,7 +318,7 @@ fn apply_modifier(
     let carried = canon.meter_def(entity::IdRef::Actor(actor_id), &def.meter);
     carried.ok_or(Reason::UnknownId)?;
     let now = state.world_time;
-    let held = nested_map::get(&state.actors().stores().modifiers, actor_id, id);
+    let held = state.actors().get::<Modifier>(actor_id).get(id);
     let mut next = held.cloned().unwrap_or_else(|| Modifier {
         meter: def.meter.clone(),
         until: now,
@@ -326,7 +326,7 @@ fn apply_modifier(
         stacks: Vec::new(),
     });
     modifier::stack(def, &mut next, add, ticks, now);
-    state.actors_mut().set_modifier(actor_id, id, Some(next))
+    (state.actors_mut().get_mut::<Modifier>(actor_id)).set(id, Some(next))
 }
 
 /// Move the intent's own actor from `from` to `to`, a place or the exit they walk. A PC moves

@@ -173,7 +173,7 @@ pub fn migrate(mut state: State, record: &MigrateRecord) -> Result<State, Reason
     let dropped = |(_, id): &&(ActorId, String)| record.dropped_modifiers.contains(id);
     let held: Vec<(ActorId, String)> = (modifiers.filter(dropped)).cloned().collect();
     for (actor, id) in &held {
-        state.actors_mut().set_modifier(actor, id, None)?;
+        (state.actors_mut().get_mut::<Modifier>(actor)).set(id, None)?;
     }
     for meter in &record.dropped_meters {
         state

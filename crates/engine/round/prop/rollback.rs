@@ -20,6 +20,7 @@ use crate::entity;
 use crate::intent::{Intent, IntentArgs, Source, Target, Viewer};
 use crate::rules::effect::{Effect, EffectKind};
 use crate::state::change::{self, Change};
+use crate::state::component;
 use crate::state::component::meter::{Meter, MeterDef, MeterWrite};
 use crate::state::component::modifier::{self, ModifierDef};
 use crate::state::id::{ActorId, ExitId};
@@ -193,7 +194,8 @@ fn play_steps(world: &World<()>, steps: &[Step]) -> Result<(), TestCaseError> {
             Step::SeeExits(both) => {
                 let exits = ["docks_street", "stairs"][..if *both { 2 } else { 1 }].iter();
                 let exits = exits.map(|exit| exit.to_string()).collect();
-                let _ = (state.actors_mut()).note_exits(&mira, "docks_shop", exits);
+                let mut actors = state.actors_mut();
+                let _ = (actors.get_mut::<component::Visit>(&mira)).set("docks_shop", exits);
             }
             _ => {
                 let effect = effect(&state, step, index);
