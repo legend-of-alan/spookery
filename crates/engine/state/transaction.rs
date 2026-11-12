@@ -316,6 +316,54 @@ mod tests {
     }
 
     #[test]
+    fn a_meter_that_comes_back_inside_one_take_is_not_taken_and_stays_counted() {
+        use crate::state::component::modifier::{Modifier, ModifierDef};
+        let opened = docks();
+        let mut canon = opened.canon().clone();
+        let burn = ModifierDef {
+            meter: "rest".to_string(),
+            max_stacks: 1,
+            hidden: false,
+        };
+        canon.modifiers.insert("burn".to_string(), burn);
+        let save = Save::clone(opened.state());
+        let world = World::from_parts(opened.root(), State::new(save, Arc::new(canon)));
+        let mut state = world.begin_round();
+        let mira = ActorId::from("mira");
+        // A: down one, B: back up one, in one take window.
+        for delta in [-1, 1] {
+            let shifted = state.actors_mut().shift_meter(&mira, "rest", delta);
+            shifted.expect("rest moves");
+        }
+        assert_eq!(state.actors().meter_value(&mira, "rest"), Ok(3));
+        assert_eq!(
+            state.take_changes(),
+            [],
+            "the key that came back is dropped"
+        );
+        assert_eq!(state.keys_counted(), 1, "and still counted");
+        // The same with a modifier that lowers rest, put on and taken off.
+        let lowers = Modifier {
+            meter: "rest".to_string(),
+            until: 99,
+            max_ticks: 99,
+            stacks: vec![-2],
+        };
+        let put = state.actors_mut().set_modifier(&mira, "burn", Some(lowers));
+        put.unwrap();
+        assert_eq!(state.actors().meter_value(&mira, "rest"), Ok(1));
+        let taken = state.actors_mut().set_modifier(&mira, "burn", None);
+        taken.unwrap();
+        let changes = state.take_changes();
+        assert_eq!(changes, [], "the meter and the modifier are dropped");
+        assert_eq!(
+            state.keys_counted(),
+            2,
+            "the meter's key was counted already; the modifier's key is new"
+        );
+    }
+
+    #[test]
     fn a_rollback_takes_an_added_actor_off_every_store_it_was_put_on() {
         let world = docks();
         let mut state = world.begin_round();

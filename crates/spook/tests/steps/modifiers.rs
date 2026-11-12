@@ -478,3 +478,89 @@ fn it_refuses_the_scorch_verb(world: &mut World) {
 fn verify_reproduces_the_journal(world: &mut World) {
     spookery_engine::verify_pack(pack(world), None).unwrap_or_else(|err| panic!("{err:?}"));
 }
+
+#[given(
+    expr = "{string} modifies grit, and rowan holds one stack of burn of -2 over a stored grit of 5"
+)]
+fn burn_over_stored_grit(world: &mut World, id: String) {
+    add_modifier(pack(world), &id, "grit", "    max_stacks: 4\n");
+    support::edit_save(pack(world), |now| {
+        support::edit_meter(now, "rowan", "grit", |grit| {
+            *grit = Meter { base: 5, offset: 0 }
+        });
+    });
+    hold(pack(world), &id, vec![-2], 10);
+}
+
+/// A story whose rules watch grit cross below 3 and below 4, each setting a flag of its own.
+const STRAIN: &str = "schema: story
+id: strain
+flags:
+  - under_3
+  - under_4
+rules:
+  - id: under_3
+    when:
+      change:
+        meter: grit
+        crosses: \"<3\"
+    do:
+      - flag:
+          of: story:strain
+          key: under_3
+          value: true
+  - id: under_4
+    when:
+      change:
+        meter: grit
+        crosses: \"<4\"
+    do:
+      - flag:
+          of: story:strain
+          key: under_4
+          value: true
+";
+
+#[when(expr = "rowan makes a move that costs 1 grit")]
+fn rowan_pays_one_grit(world: &mut World) {
+    let pack = world.pack.clone().unwrap();
+    fs::create_dir_all(pack.join("story")).unwrap();
+    fs::write(pack.join("story/strain.yaml"), STRAIN).unwrap();
+    add_verb(
+        &pack,
+        "\n  - id: brace\n    when:\n      verb: brace\n    cost:\n      meters:\n        grit: 1\n    do: []\n",
+    );
+    stamp_pack_rev(&pack);
+    let played = play_round(world, &pack, vec![intent("brace", "rowan", "brace", None)]);
+    world.summary = played.changed_keys;
+    let rowan = played
+        .change_lines
+        .into_iter()
+        .find(|(who, _)| who == "rowan");
+    world.scratch = rowan.map(|(_, line)| line).unwrap_or_default();
+}
+
+fn strained(pack: &Path, flag: &str) -> bool {
+    let strain = entity::Id::Story("strain".into());
+    state_of(pack).entity(&strain).has_flag(flag)
+}
+
+/// The change's `after` is the line rowan reads; its `before` is pinned by the rule on
+/// `< from + 1` not firing and the rule on `< from` firing.
+#[then(expr = "the GM sees {string} as a changed key, going from {int} to {int}")]
+fn the_gm_sees_the_key_move(world: &mut World, key: String, from: i64, to: i64) {
+    assert!(world.summary.contains(&key), "{:?}", world.summary);
+    let line = &world.scratch;
+    assert!(line.contains(&format!("grit is now {to}.")), "{line:?}");
+    assert_eq!((from, to), (3, 2), "the strain story watches 3 and 4");
+    assert!(!strained(pack(world), "under_4"), "grit started below 4");
+    assert!(
+        strained(pack(world), "under_3"),
+        "grit started at 3 or more"
+    );
+}
+
+#[then(expr = "a change rule that waits for grit below 3 fires")]
+fn the_rule_below_three_fires(world: &mut World) {
+    assert!(strained(pack(world), "under_3"));
+}

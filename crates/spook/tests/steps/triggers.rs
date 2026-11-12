@@ -1191,6 +1191,8 @@ pub(crate) struct PlayedRound {
     pub(crate) changed_keys: Vec<String>,
     pub(crate) seen: Vec<(String, Vec<String>)>,
     pub(crate) lines: Vec<(String, String)>,
+    /// Each viewer's change line.
+    pub(crate) change_lines: Vec<(String, String)>,
 }
 
 fn play(
@@ -1227,6 +1229,11 @@ pub(crate) fn play_round(
         .iter()
         .map(|item| (item.viewer.to_string(), item.changes.clone()))
         .collect();
+    let change_lines = output
+        .seen
+        .iter()
+        .map(|item| (item.viewer.to_string(), item.line.clone()))
+        .collect();
     PlayedRound {
         now: round.state().clone(),
         reports: output.reports,
@@ -1234,6 +1241,7 @@ pub(crate) fn play_round(
         changed_keys: output.changed_keys,
         seen,
         lines: told,
+        change_lines,
     }
 }
 
