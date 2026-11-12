@@ -21,6 +21,11 @@ impl Component for ControlType {
 }
 
 impl ControlType {
+    /// Whether a player controls the actor. An actor no player controls is an NPC.
+    pub fn is_pc(self) -> bool {
+        self == ControlType::Pc
+    }
+
     /// The seat actor `id` with this control type acts from.
     pub fn viewer(self, id: &ActorId) -> Viewer {
         match self {

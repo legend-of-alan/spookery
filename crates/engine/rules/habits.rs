@@ -59,7 +59,7 @@ pub(crate) fn list_whose_if_holds(
 /// Whether the engine may run one of this NPC's habits on its own this round: its idle
 /// profile allows it, it is free, no seated player is with it, and its act window has room.
 fn is_eligible(canon: &Canon, state: &State, presence: &Presence, npc_id: &ActorId) -> bool {
-    if state.actors().control_type.get(npc_id) != Some(&component::ControlType::Npc) {
+    if (state.actors().control_type.get(npc_id)).is_none_or(|control| control.is_pc()) {
         return false;
     }
     let Some(profile) = canon.idle_profile(npc_id) else {
@@ -90,7 +90,7 @@ fn is_eligible(canon: &Canon, state: &State, presence: &Presence, npc_id: &Actor
 /// A seated player's PC is in `place`.
 pub(crate) fn is_player_at(state: &State, presence: &Presence, place: &str) -> bool {
     state.actors_at(place).iter().any(|id| {
-        presence.actors_present.contains(id)
-            && state.actors().control_type.get(id) == Some(&component::ControlType::Pc)
+        let is_pc = (state.actors().control_type.get(id)).is_some_and(|control| control.is_pc());
+        presence.actors_present.contains(id) && is_pc
     })
 }

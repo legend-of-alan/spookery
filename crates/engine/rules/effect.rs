@@ -349,9 +349,8 @@ fn move_actor(
         return Err(Reason::ActorMismatch);
     }
     let actors = state.actors();
-    if presence.players == 0
-        && actors.control_type.get(actor_id) == Some(&component::ControlType::Pc)
-    {
+    let is_pc = (actors.control_type.get(actor_id)).is_some_and(|control| control.is_pc());
+    if presence.players == 0 && is_pc {
         return Err(Reason::TableEmpty);
     }
     // The place is read to compare with `from`; an actor the save lacks has none, and is refused
