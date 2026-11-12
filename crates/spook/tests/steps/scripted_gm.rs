@@ -8,7 +8,7 @@ use std::thread;
 use std::time::Duration;
 
 use serde_json::{json, Value};
-use spookery::agent::{parse_completion, ChatMessage, CompletionError, Model, ToolCall};
+use spookery::agent::{model, parse_completion, CompletionError, Model, ToolCall};
 use spookery::ai_gm;
 
 use crate::support;
@@ -36,7 +36,7 @@ struct Script {
     repeat: Option<String>,
     /// How many of the next calls wait `HOLD` before they answer.
     held: usize,
-    calls: Vec<Vec<ChatMessage>>,
+    calls: Vec<Vec<model::Message>>,
 }
 
 impl ScriptedModel {
@@ -65,13 +65,13 @@ impl ScriptedModel {
     }
 
     /// The messages of each call so far.
-    pub fn calls(&self) -> Vec<Vec<ChatMessage>> {
+    pub fn calls(&self) -> Vec<Vec<model::Message>> {
         self.script.lock().unwrap().calls.clone()
     }
 
     /// Waits until the model was called once past its script: the turn that read the last
     /// scripted reply has asked again, and was told it is done.
-    pub fn wait_past_script(&self) -> Vec<Vec<ChatMessage>> {
+    pub fn wait_past_script(&self) -> Vec<Vec<model::Message>> {
         table::poll_until("a model call past the script", || {
             let script = self.script.lock().unwrap();
             if script.calls.len() > script.scripted {
@@ -86,7 +86,7 @@ impl ScriptedModel {
 impl Model for ScriptedModel {
     async fn request_tool_calls(
         &self,
-        messages: &[ChatMessage],
+        messages: &[model::Message],
     ) -> Result<Vec<ToolCall>, CompletionError> {
         let (reply, held) = {
             let mut script = self.script.lock().unwrap();
@@ -131,11 +131,11 @@ pub fn render_completion(calls: &[(&str, &str)]) -> String {
 }
 
 /// The tool results a model call carried, in order.
-pub fn read_tool_results(messages: &[ChatMessage]) -> Vec<String> {
+pub fn read_tool_results(messages: &[model::Message]) -> Vec<String> {
     messages
         .iter()
         .filter_map(|message| match message {
-            ChatMessage::ToolResult { content, .. } => Some(content.clone()),
+            model::Message::Tool { content, .. } => Some(content.clone()),
             _ => None,
         })
         .collect()

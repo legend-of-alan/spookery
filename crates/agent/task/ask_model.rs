@@ -1,0 +1,39 @@
+//! The `ask_model` node.
+
+use std::sync::Arc;
+
+use async_trait::async_trait;
+use graph_flow::{NextAction, Task, TaskResult};
+
+use crate::model::Message;
+use crate::turn::{ASK_MODEL, DONE, PENDING_CALLS};
+use crate::{Agent, Connection, Model};
+
+/// Asks the model for its next tool calls.
+pub(crate) struct AskModel<M, C>(pub(crate) Arc<Agent<M, C>>);
+
+#[async_trait]
+impl<M: Model, C: Connection> Task for AskModel<M, C> {
+    fn id(&self) -> &str {
+        ASK_MODEL
+    }
+
+    async fn run(&self, context: graph_flow::Context) -> graph_flow::Result<TaskResult> {
+        let messages = self.0.turn().messages.clone();
+        match self.0.model.request_tool_calls(&messages).await {
+            Ok(tool_calls) if !tool_calls.is_empty() => {
+                context.set(PENDING_CALLS, &tool_calls)?;
+                self.0
+                    .turn()
+                    .messages
+                    .push(Message::Assistant { tool_calls });
+            }
+            Ok(_) => context.set(DONE, true)?,
+            Err(err) => {
+                (self.0.report)(&err.to_string());
+                context.set(DONE, true)?;
+            }
+        }
+        Ok(TaskResult::new(None, NextAction::ContinueAndExecute))
+    }
+}

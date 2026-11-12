@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use cucumber::{given, then, when};
 use serde_json::Value;
-use spookery::agent::{ChatMessage, MAX_TOOL_CALLS};
+use spookery::agent::{model, MAX_TOOL_CALLS};
 use spookery_engine::testing::journal::{list_round_keys, read_record_line};
 use spookery_engine::testing::state_of;
 
@@ -169,7 +169,7 @@ fn the_player_saw_mira_say_hello(world: &mut World) {
 fn the_next_call_carries_the_refusal(world: &mut World) {
     let calls = world.model.calls();
     assert!(
-        matches!(calls[1].last(), Some(ChatMessage::ToolResult { content, .. }) if content.contains("\"kind\":\"refused\"")),
+        matches!(calls[1].last(), Some(model::Message::Tool { content, .. }) if content.contains("\"kind\":\"refused\"")),
         "{:?}",
         calls[1].last()
     );
@@ -232,7 +232,7 @@ fn the_gm_reports_a_step_limit_warning(world: &mut World) {
 fn the_model_is_called_for_that_say(world: &mut World) {
     let calls = world.model.calls();
     assert_eq!(calls.len(), 1);
-    let ChatMessage::Prompt { content } = &calls[0][0] else {
+    let model::Message::User { content } = &calls[0][0] else {
         panic!("{:?}", calls[0]);
     };
     assert!(content.contains("evening"), "{content}");

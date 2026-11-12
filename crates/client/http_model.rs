@@ -3,7 +3,7 @@
 use std::time::Duration;
 
 use spookery_agent::{
-    parse_completion, provider_detail, render_chat_body, ChatMessage, CompletionError, FailureKind,
+    model, parse_completion, redact_error_body, render_chat_body, CompletionError, FailureKind,
     Model, ToolCall,
 };
 
@@ -102,7 +102,7 @@ impl HttpModel {
         Ok(Self { settings, client })
     }
 
-    async fn post_chat_completion(&self, messages: &[ChatMessage]) -> Attempt {
+    async fn post_chat_completion(&self, messages: &[model::Message]) -> Attempt {
         let body = render_chat_body(&self.settings.model, messages);
         let url = format!("{}/chat/completions", self.settings.url);
         let response = match self
@@ -120,7 +120,7 @@ impl HttpModel {
         if !status.is_success() {
             let kind = FailureKind::Status(status.as_u16());
             let body = response.text().await.unwrap_or_default();
-            let detail = provider_detail(&body, &self.settings.key);
+            let detail = redact_error_body(&body, &self.settings.key);
             return Attempt {
                 retry: kind.is_retryable(),
                 result: Err(CompletionError::transport(
@@ -140,7 +140,7 @@ impl HttpModel {
         }
     }
 
-    async fn attempt(&self, messages: &[ChatMessage]) -> Attempt {
+    async fn attempt(&self, messages: &[model::Message]) -> Attempt {
         // A timed-out attempt is dropped before this returns, which closes its socket.
         match tokio::time::timeout(MODEL_CALL_TIMEOUT, self.post_chat_completion(messages)).await {
             Ok(attempt) => attempt,
@@ -152,7 +152,7 @@ impl HttpModel {
 impl Model for HttpModel {
     async fn request_tool_calls(
         &self,
-        messages: &[ChatMessage],
+        messages: &[model::Message],
     ) -> Result<Vec<ToolCall>, CompletionError> {
         let first = self.attempt(messages).await;
         if !first.retry {

@@ -1,44 +1,68 @@
-//! The GM turn graph: `ask_model` for tool calls, `run_tool_call` for each one, and
-//! `finish_turn`. The graph owns every transition inside a turn; its context holds only what the
-//! edges read.
+//! One GM turn and the graph that plays it: `ask_model` for tool calls, `run_tool_call` for
+//! each one, and `finish_turn`. The graph owns every transition inside a turn; its context
+//! holds only what the edges read.
 
 use std::sync::Arc;
 
-use async_trait::async_trait;
-use graph_flow::{Context, Graph, GraphBuilder, NextAction, Session, Task, TaskResult};
-use serde_json::{json, Map, Value};
+use graph_flow::{Graph, GraphBuilder, Session};
 
-use crate::prompt::render_reply;
-use crate::protocol::CommitArgs;
-use crate::{Agent, ChatMessage, Connection, Model, ToolCall, Turn, MAX_TOOL_CALLS};
+use crate::context::TapeLine;
+use crate::model::Message;
+use crate::protocol::ServerBody;
+use crate::task::{AskModel, FinishTurn, RunToolCall};
+use crate::{Agent, Connection, Model, ToolCall};
 
-/// `commit` with its rounds, as the `end_turn` tool and `finish_turn` send it.
-const COMMIT_ROUND: CommitArgs = CommitArgs {
-    include_round: true,
-    session_id: None,
-};
+/// The most tool calls one turn makes, valid or not, `end_turn` included.
+pub const MAX_TOOL_CALLS: usize = 20;
 
 /// The graph's nodes.
-const ASK_MODEL: &str = "ask_model";
-const RUN_TOOL_CALL: &str = "run_tool_call";
-const FINISH_TURN: &str = "finish_turn";
+pub(crate) const ASK_MODEL: &str = "ask_model";
+pub(crate) const RUN_TOOL_CALL: &str = "run_tool_call";
+pub(crate) const FINISH_TURN: &str = "finish_turn";
 
 /// The calls of the model's last reply that wait for a result.
-const CALLS: &str = "calls";
+pub(crate) const PENDING_CALLS: &str = "pending_calls";
 /// How many tool calls this turn made.
-const USED: &str = "used";
+pub(crate) const CALL_COUNT: &str = "call_count";
 /// Set when the model is done or its call failed.
-const DONE: &str = "done";
+pub(crate) const DONE: &str = "done";
 
-fn pending_calls(context: &Context) -> Vec<ToolCall> {
-    context.get(CALLS).unwrap_or_default()
+/// One turn: the conversation with the model and what the commit rule reads.
+#[derive(Default)]
+pub(crate) struct Turn {
+    pub(crate) messages: Vec<Message>,
+    /// A move waits for a commit: the turn saw a queue when it started, or queued a move
+    /// itself since its last commit.
+    pub(crate) move_waiting: bool,
+    /// The player says this turn shows the model.
+    pub(crate) player_lines: Vec<TapeLine>,
+    /// The says the GM sent this turn, as the server confirmed them.
+    pub(crate) gm_lines: Vec<TapeLine>,
 }
 
-fn call_count(context: &Context) -> usize {
-    context.get(USED).unwrap_or_default()
+impl Turn {
+    /// Records the reply to one of the agent's commands: a `queued` reply means a move
+    /// waits, a `committed` reply means none does, and the GM's confirmed say joins
+    /// `gm_lines`. Every other reply leaves the turn as it is.
+    pub(crate) fn record_reply(&mut self, seq: u64, body: &ServerBody) {
+        match body {
+            ServerBody::Queued { .. } => self.move_waiting = true,
+            ServerBody::Committed(_) => self.move_waiting = false,
+            ServerBody::Say(say) => self.gm_lines.push(TapeLine::new(seq, say.clone())),
+            _ => {}
+        }
+    }
 }
 
-fn is_done(context: &Context) -> bool {
+pub(crate) fn pending_calls(context: &graph_flow::Context) -> Vec<ToolCall> {
+    context.get(PENDING_CALLS).unwrap_or_default()
+}
+
+pub(crate) fn call_count(context: &graph_flow::Context) -> usize {
+    context.get(CALL_COUNT).unwrap_or_default()
+}
+
+fn is_done(context: &graph_flow::Context) -> bool {
     context.get(DONE).unwrap_or_default()
 }
 
@@ -79,103 +103,4 @@ pub(crate) async fn play<M: Model, C: Connection>(
     let turn = std::mem::take(&mut *agent.turn());
     agent.state().record_turn(turn);
     Ok(())
-}
-
-/// Asks the model for its next tool calls.
-struct AskModel<M, C>(Arc<Agent<M, C>>);
-
-#[async_trait]
-impl<M: Model, C: Connection> Task for AskModel<M, C> {
-    fn id(&self) -> &str {
-        ASK_MODEL
-    }
-
-    async fn run(&self, context: Context) -> graph_flow::Result<TaskResult> {
-        let messages = self.0.turn().messages.clone();
-        match self.0.model.request_tool_calls(&messages).await {
-            Ok(tool_calls) if !tool_calls.is_empty() => {
-                context.set(CALLS, &tool_calls)?;
-                self.0
-                    .turn()
-                    .messages
-                    .push(ChatMessage::ModelReply { tool_calls });
-            }
-            Ok(_) => context.set(DONE, true)?,
-            Err(err) => {
-                (self.0.report)(&err.to_string());
-                context.set(DONE, true)?;
-            }
-        }
-        Ok(TaskResult::new(None, NextAction::ContinueAndExecute))
-    }
-}
-
-/// Runs the first waiting tool call, through the server or locally, and adds its one
-/// tool result to the conversation.
-struct RunToolCall<M, C>(Arc<Agent<M, C>>);
-
-#[async_trait]
-impl<M: Model, C: Connection> Task for RunToolCall<M, C> {
-    fn id(&self) -> &str {
-        RUN_TOOL_CALL
-    }
-
-    async fn run(&self, context: Context) -> graph_flow::Result<TaskResult> {
-        let mut waiting = pending_calls(&context);
-        let call = waiting.remove(0);
-        context.set(CALLS, waiting)?;
-        context.set(USED, call_count(&context) + 1)?;
-        let content = self.fetch_tool_result(&call).await?;
-        self.0.turn().messages.push(ChatMessage::ToolResult {
-            tool_call_id: call.id,
-            content,
-        });
-        Ok(TaskResult::new(None, NextAction::ContinueAndExecute))
-    }
-}
-
-impl<M: Model, C: Connection> RunToolCall<M, C> {
-    /// Fetches `call`'s result: the server's reply to the command it asks for, or the
-    /// agent's own answer when no command goes out.
-    async fn fetch_tool_result(&self, call: &ToolCall) -> graph_flow::Result<String> {
-        let args = match call.arguments.trim() {
-            "" => Map::new(),
-            text => match serde_json::from_str(text) {
-                Ok(Value::Object(args)) => args,
-                _ => return Ok("refused: the arguments are not a JSON object".to_string()),
-            },
-        };
-        let move_waiting = self.0.turn().move_waiting;
-        let (command, args) = match call.name.as_str() {
-            "perceive" | "say" | "queue" => (call.name.as_str(), Value::Object(args)),
-            "end_turn" if move_waiting => ("commit", json!(COMMIT_ROUND)),
-            "end_turn" => return Ok("nothing is queued, so there is no round to play".into()),
-            name => return Ok(format!("refused: there is no tool named {name}")),
-        };
-        let body = self.0.send_command(command, args).await?;
-        Ok(render_reply(&self.0.state().pack, body))
-    }
-}
-
-/// Finishes the turn: warns when the step limit cut it short, and commits a waiting move.
-struct FinishTurn<M, C>(Arc<Agent<M, C>>);
-
-#[async_trait]
-impl<M: Model, C: Connection> Task for FinishTurn<M, C> {
-    fn id(&self) -> &str {
-        FINISH_TURN
-    }
-
-    async fn run(&self, context: Context) -> graph_flow::Result<TaskResult> {
-        if call_count(&context) >= MAX_TOOL_CALLS {
-            (self.0.report)(&format!(
-                "step limit: the GM turn stopped after {MAX_TOOL_CALLS} tool calls"
-            ));
-        }
-        let move_waiting = self.0.turn().move_waiting;
-        if move_waiting {
-            self.0.send_command("commit", json!(COMMIT_ROUND)).await?;
-        }
-        Ok(TaskResult::new(None, NextAction::End))
-    }
 }
