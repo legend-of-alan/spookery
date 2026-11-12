@@ -16,7 +16,7 @@ use crate::rules::effect::{payload_json, Effect};
 use crate::rules::gate;
 use crate::rules::rule::{Rule, TargetKind, When};
 use crate::state::id::ActorId;
-use crate::state::{Presence, Save, State};
+use crate::state::{component, Presence, Save, State};
 use crate::store::journal;
 use crate::store::records::Record;
 use crate::store::save;
@@ -106,7 +106,7 @@ impl World {
         text: &str,
     ) -> Result<TapeRecord, Refusal> {
         let actors = self.state.actors();
-        if !(actors.control_type.get(actor_id)).is_some_and(|control| control.is_pc()) {
+        if !actors.get::<component::ControlType>(actor_id).is_pc() {
             return Err(Reason::Schema.into());
         }
         let from = Speaker::Player(actor_id.to_string());
@@ -292,8 +292,7 @@ impl<L> World<L> {
             return Err(Reason::Schema);
         };
         let actors = self.state.actors();
-        let control_type = actors.control_type.get(viewer.actor_id());
-        if !control_type.is_some_and(|control| control.is_pc()) {
+        if !(actors.get::<component::ControlType>(viewer.actor_id())).is_pc() {
             return Err(Reason::Schema);
         }
         let (actor, verb) = (viewer, &line.move_name);

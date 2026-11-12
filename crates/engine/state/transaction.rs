@@ -452,7 +452,10 @@ mod tests {
             .add_actor(&nell, component::ControlType::Npc, "docks_shop");
         assert!(state.actors().acts.contains_key(&nell), "Nell is added");
         state.rollback(point);
-        assert_eq!(*state, *before, "her kind, place and action state all go");
+        assert_eq!(
+            *state, *before,
+            "her control type, place and action state all go"
+        );
     }
 
     #[test]

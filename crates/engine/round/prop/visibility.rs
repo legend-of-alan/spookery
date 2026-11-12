@@ -184,7 +184,7 @@ fn apply_scene(
 
 fn assert_hidden_stays_hidden(canon: &Canon, state: &State) -> Result<(), TestCaseError> {
     for (pc, control_type) in state.actors().control_type.iter() {
-        if *control_type != component::ControlType::Pc {
+        if !control_type.is_pc() {
             continue;
         }
         let known_facts = state.actors().get::<component::KnownFacts>(pc).get();

@@ -467,7 +467,7 @@ rules:
             .actors()
             .control_type
             .values()
-            .filter(|control_type| **control_type == component::ControlType::Npc)
+            .filter(|control_type| !control_type.is_pc())
             .count(),
         50
     );

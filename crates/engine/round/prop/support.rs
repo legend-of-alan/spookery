@@ -8,7 +8,7 @@ use crate::intent::Target;
 use crate::rules::travel::visible_exits;
 use crate::state::id::{ActorId, PlaceId};
 use crate::state::nested_map;
-use crate::state::{component, Presence};
+use crate::state::Presence;
 use crate::store::journal;
 use crate::store::save;
 use crate::world::World;
@@ -104,7 +104,7 @@ fn pc_count(world: &World) -> usize {
         .actors()
         .control_type
         .values()
-        .filter(|control_type| **control_type == component::ControlType::Pc)
+        .filter(|control_type| control_type.is_pc())
         .count()
 }
 
@@ -137,7 +137,7 @@ fn queue_move(world: &mut World, plan: &MovePlan) {
         .actors()
         .control_type
         .iter()
-        .filter(|(_, control_type)| **control_type == component::ControlType::Pc)
+        .filter(|(_, control_type)| control_type.is_pc())
         .map(|(id, _)| id.clone())
         .collect();
     if pcs.is_empty() {
