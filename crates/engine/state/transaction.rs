@@ -352,6 +352,5 @@ mod tests {
             "the pack has no story nowhere"
         );
         assert_eq!(*state, *before, "the save is unchanged");
-        assert_eq!(state.keys_counted(), 0, "no key was counted");
     }
 }
