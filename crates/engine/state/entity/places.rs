@@ -113,8 +113,10 @@ impl Writer<'_, Places> {
         components.meters.set(transaction, entry, next, [change])
     }
 
+    /// Set or clear `place`'s flag `key`. A place the pack does not define is `UNKNOWN_ID`.
     pub fn set_flag(&mut self, place: &PlaceId, key: &str, on: bool) -> Result<(), Reason> {
         let (components, transaction) = (&mut *self.components, &mut *self.transaction);
+        self.canon.places.get(place).ok_or(Reason::UnknownId)?;
         let entry = (place.clone(), key.to_string());
         let watched = change::Key::PlaceFlag(place.to_string(), key.to_string());
         let (next, change) = flag::next(on, watched);
