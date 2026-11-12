@@ -95,9 +95,9 @@ impl Mut<'_, entity::Actors, Act> {
             0 => ActCounter::IdleActsThisWindow,
             _ => ActCounter::LiveActsThisWindow,
         };
-        let read = |act: &Act| count_value(counter.count(act).into());
+        let read = |act: &Act| count_value(counter.get(act).into());
         self.write(counter.key(self.id.to_string()), read, |act| {
-            let count = counter.count_mut(act);
+            let count = counter.get_mut(act);
             *count = count.saturating_add(1);
         })
     }
@@ -108,10 +108,10 @@ impl Writer<'_, entity::Actors> {
     pub(crate) fn reset_acts(&mut self, counter: ActCounter) -> Result<(), Reason> {
         let actors: Vec<ActorId> = self.kind.keys().cloned().collect();
         for actor in &actors {
-            let read = |act: &Act| count_value(counter.count(act).into());
+            let read = |act: &Act| count_value(counter.get(act).into());
             let key = counter.key(actor.to_string());
             let mut action_state = self.get_mut::<Act>(actor);
-            action_state.write(key, read, |act| *counter.count_mut(act) = 0)?;
+            action_state.write(key, read, |act| *counter.get_mut(act) = 0)?;
         }
         Ok(())
     }
@@ -139,7 +139,7 @@ impl ActCounter {
     }
 
     /// This count on `act`.
-    pub(crate) fn count(self, act: &Act) -> u32 {
+    pub(crate) fn get(self, act: &Act) -> u32 {
         match self {
             ActCounter::IdleActsThisWindow => act.idle_acts_this_window,
             ActCounter::LiveActsThisWindow => act.live_acts_this_window,
@@ -147,7 +147,7 @@ impl ActCounter {
     }
 
     /// This count on `act`, to write.
-    pub(crate) fn count_mut(self, act: &mut Act) -> &mut u32 {
+    pub(crate) fn get_mut(self, act: &mut Act) -> &mut u32 {
         match self {
             ActCounter::IdleActsThisWindow => &mut act.idle_acts_this_window,
             ActCounter::LiveActsThisWindow => &mut act.live_acts_this_window,

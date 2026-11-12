@@ -45,7 +45,7 @@ impl Writer<'_, entity::Actors> {
         }
         let wielded = wielded.get(from).map(String::as_str);
         (self.get_mut::<component::WieldedItem>(to)).set(wielded)?;
-        let known = known_facts.get(from).map_or(&[][..], Vec::as_slice);
+        let known = known_facts.get(from).map(Vec::as_slice).unwrap_or_default();
         (self.get_mut::<component::KnownFacts>(to)).learn(known)?;
         for (place, exits) in nested_map::entries_of(&visited, from) {
             (self.get_mut::<component::Visit>(to)).set(place, exits.clone())?;

@@ -14,8 +14,8 @@ impl Component for KnownFacts {
 
 impl<'a> Ref<'a, entity::Actors, KnownFacts> {
     /// The facts the actor knows.
-    pub fn get(&self) -> Option<&'a Vec<String>> {
-        self.entities.components.known_facts.get(self.id)
+    pub fn get(&self) -> Option<&'a [String]> {
+        (self.entities.components.known_facts.get(self.id)).map(Vec::as_slice)
     }
 }
 
