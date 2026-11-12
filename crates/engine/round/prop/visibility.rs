@@ -121,10 +121,10 @@ fn apply_scene(
     }
     // No writer forgets a fact or takes a note back, so the scene starts from the save as the
     // file holds it with neither.
-    let mut save = serde_json::to_value(&*state).expect("the save serializes");
+    let mut save = serde_json::to_value(&**state).expect("the save serializes");
     save["actors"]["known_facts"] = serde_json::json!({});
     save["notes"] = serde_json::json!([]);
-    *state = serde_json::from_value(save).expect("the save deserializes");
+    **state = serde_json::from_value(save).expect("the save deserializes");
     for (actor_id, place_index) in actors.iter().zip(&scene.place_of) {
         if state.actors().place.contains_key(actor_id) {
             let place = places[place_index % places.len()].as_str();
@@ -173,7 +173,7 @@ fn assert_hidden_stays_hidden(canon: &Canon, state: &State) -> Result<(), TestCa
         if *kind != ActorKind::Pc {
             continue;
         }
-        let known_facts = state.actors().known_facts.get(pc);
+        let known_facts = state.actors().stores().known_facts.get(pc);
         let view = perceive_as(
             canon,
             state,

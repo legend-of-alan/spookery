@@ -191,7 +191,7 @@ fn negate_body(body: &str) -> String {
 
 fn read_meter(context: &Context, of: &grammar::Object, key: &str) -> Result<i64, Reason> {
     let id = resolve_entity(context, of)?;
-    context.state.entity(&id).meter_value(context.canon, key)
+    context.state.entity(&id).meter_value(key)
 }
 
 /// `id: target` is the intent's target token. Any other id is itself.
@@ -254,6 +254,7 @@ pub(crate) fn resolve_here<'a>(context: &Context<'_, 'a>) -> Result<&'a str, Rea
     context
         .state
         .actors()
+        .stores()
         .place
         .get(actor_id)
         .map(String::as_str)
@@ -780,7 +781,8 @@ actors:
 notes: []
 "
         );
-        crate::store::save::parse(&text).unwrap()
+        let save = crate::store::save::parse(&text).unwrap();
+        State::new(save, std::sync::Arc::new(canon()))
     }
 
     #[test]

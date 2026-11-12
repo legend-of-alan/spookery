@@ -8,50 +8,40 @@ pub use spookery_engine::testing::*;
 use spookery_engine::{entity, ActorId, Meter, State};
 
 /// Change `actor`'s meter `key` as `edit` says, through the writer.
-pub fn edit_meter(
-    now: &mut State,
-    canon: &Canon,
-    actor: &str,
-    key: &str,
-    edit: impl FnOnce(&mut Meter),
-) {
+pub fn edit_meter(now: &mut State, actor: &str, key: &str, edit: impl FnOnce(&mut Meter)) {
     let actor = ActorId::from(actor);
-    let held = now.actors().meter(&actor, key);
+    let held = now.actors().stores().meter(&actor, key);
     let mut meter = held
         .cloned()
         .unwrap_or_else(|| panic!("{actor} has no {key}"));
     edit(&mut meter);
     let mut actors = now.actors_mut();
-    actors.set_meter(canon, &actor, key, Some(meter)).unwrap();
+    actors.set_meter(&actor, key, Some(meter)).unwrap();
 }
 
 /// Give `id` meter `key` at `base`, with no offset, through the writer.
-pub fn put_meter(now: &mut State, canon: &Canon, id: &entity::Id, key: &str, base: i64) {
+pub fn put_meter(now: &mut State, id: &entity::Id, key: &str, base: i64) {
     let meter = Meter { base, offset: 0 };
-    now.entity_mut(id)
-        .set_meter(canon, key, Some(meter))
-        .unwrap();
+    now.entity_mut(id).set_meter(key, Some(meter)).unwrap();
 }
 
 /// Edit the save as its file holds it, for a fixture no writer makes: a count set outright, a
 /// fact forgotten.
 pub fn edit_as_saved(now: &mut State, edit: impl FnOnce(&mut serde_json::Value)) {
-    let mut save = serde_json::to_value(&*now).unwrap();
+    let mut save = serde_json::to_value(&**now).unwrap();
     edit(&mut save);
-    *now = serde_json::from_value(save).unwrap_or_else(|err| panic!("edited save: {err}"));
+    **now = serde_json::from_value(save).unwrap_or_else(|err| panic!("edited save: {err}"));
 }
 
 /// Leave `id`, an actor or a place, holding `count` of `item`, through the writer.
-pub fn put_items(now: &mut State, canon: &Canon, id: &entity::Id, item: &str, count: u32) {
+pub fn put_items(now: &mut State, id: &entity::Id, item: &str, count: u32) {
     let held = match id {
         entity::Id::Actor(actor) => now.actors().item_count(actor, item).unwrap_or(0),
         entity::Id::Place(place) => now.places().item_count(place, item),
         _ => panic!("{id} holds no items"),
     };
     let delta = i64::from(count) - i64::from(held);
-    now.entity_mut(id)
-        .shift_item(canon, item, delta, None)
-        .unwrap();
+    now.entity_mut(id).shift_item(item, delta, None).unwrap();
 }
 
 /// Run async work from a sync step on the test runtime.

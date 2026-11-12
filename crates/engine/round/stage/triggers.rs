@@ -193,7 +193,7 @@ fn flips(change: &Change, becomes: bool) -> bool {
 }
 
 fn matches_subject(state: &State, subject: &grammar::Subject, actor_id: &str) -> bool {
-    let Some(kind) = state.actors().kind.get(actor_id) else {
+    let Some(kind) = state.actors().stores().kind.get(actor_id) else {
         return false;
     };
     match subject {

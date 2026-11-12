@@ -11,7 +11,7 @@ use crate::Reason;
 
 /// Refuse a cost the actor cannot pay as `CANT_AFFORD`, with the meter or item id as `detail`.
 pub(crate) fn afford(context: &Context, cost: &Cost) -> Result<(), gate::Refusal> {
-    let (canon, state, intent) = (context.canon, context.state, context.intent);
+    let (state, intent) = (context.state, context.intent);
     let who = intent
         .actor_id()
         .ok_or_else(|| gate::Refusal::new(intent, Reason::UnknownId))?;
@@ -28,8 +28,7 @@ pub(crate) fn afford(context: &Context, cost: &Cost) -> Result<(), gate::Refusal
         if amount < 0 {
             return Err(cant_afford(key));
         }
-        let current =
-            (state.actors().meter_value(canon, who, key)).map_err(|_| cant_afford(key))?;
+        let current = (state.actors().meter_value(who, key)).map_err(|_| cant_afford(key))?;
         if current < amount {
             return Err(cant_afford(key));
         }
@@ -73,7 +72,7 @@ pub(crate) fn pay(
         if amount < 0 {
             return Err(Reason::CantAfford);
         }
-        state.actors_mut().shift_meter(canon, who, key, -amount)?;
+        state.actors_mut().shift_meter(who, key, -amount)?;
         if amount == 0 {
             // A cost of 0 leaves the meter as it was and still takes a key of the budget.
             state.count_key(&change::Key::ActorMeter(who.to_string(), key.clone()))?;

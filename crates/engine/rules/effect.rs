@@ -185,7 +185,7 @@ impl Effect {
         match self.kind {
             EffectKind::Meter { entity, key, write } => {
                 let MeterWrite::Offset(delta) = write;
-                state.entity_mut(&entity).shift_meter(canon, &key, delta)
+                state.entity_mut(&entity).shift_meter(&key, delta)
             }
             EffectKind::Item {
                 actor_id,
@@ -199,9 +199,7 @@ impl Effect {
                     (None, Some(place)) => entity::Id::Place(place),
                     _ => return Err(Reason::Schema),
                 };
-                state
-                    .entity_mut(&carrier)
-                    .shift_item(canon, &id, delta, max)
+                state.entity_mut(&carrier).shift_item(&id, delta, max)
             }
             EffectKind::Modifier {
                 actor_id,
@@ -320,7 +318,7 @@ fn apply_modifier(
     let carried = canon.meter_def(entity::IdRef::Actor(actor_id), &def.meter);
     carried.ok_or(Reason::UnknownId)?;
     let now = state.world_time;
-    let held = nested_map::get(&state.actors().modifiers, actor_id, id);
+    let held = nested_map::get(&state.actors().stores().modifiers, actor_id, id);
     let mut next = held.cloned().unwrap_or_else(|| Modifier {
         meter: def.meter.clone(),
         until: now,
@@ -328,9 +326,7 @@ fn apply_modifier(
         stacks: Vec::new(),
     });
     modifier::stack(def, &mut next, add, ticks, now);
-    state
-        .actors_mut()
-        .set_modifier(canon, actor_id, id, Some(next))
+    state.actors_mut().set_modifier(actor_id, id, Some(next))
 }
 
 /// Move the intent's own actor from `from` to `to`, a place or the exit they walk. A PC moves

@@ -23,7 +23,7 @@ use crate::state::change::{self, Change};
 use crate::state::component::meter::{Meter, MeterDef, MeterWrite};
 use crate::state::component::modifier::ModifierDef;
 use crate::state::id::{ActorId, ExitId};
-use crate::state::{ActCounter, Presence, State};
+use crate::state::{ActCounter, Presence, Save, State};
 use crate::testing::copy_docks;
 use crate::world::World;
 
@@ -74,7 +74,6 @@ fn nested_rollbacks_put_the_save_back_exactly() {
     let edited = crate::store::save::emit(&edited).expect("the edited save writes");
     std::fs::write(&path, edited).expect("write the save");
     let opened = World::open(&pack.0).expect("docks pack opens");
-    let mut state = opened.state().clone();
     let mut canon = opened.canon().clone();
     // Room for every key the steps can touch: a refusal past the budget is the unit tests'.
     canon.budget.max_state_keys_mutated = 1000;
@@ -102,7 +101,7 @@ fn nested_rollbacks_put_the_save_back_exactly() {
         (entity::Id::Story("tale".into()), "tension"),
         (entity::Id::Global, "tide"),
     ];
-    for (carrier, key) in carried {
+    for (carrier, key) in &carried {
         let def = MeterDef {
             min: 0,
             base_cap: 10,
@@ -111,21 +110,23 @@ fn nested_rollbacks_put_the_save_back_exactly() {
             hidden: false,
             carrier: Some(carrier.clone()),
         };
-        let start = Meter {
-            base: def.start,
-            offset: 0,
-        };
         match carrier {
             entity::Id::Global => canon.world_meters.insert(key.to_string(), def),
             _ => canon.meters.insert(key.to_string(), def),
         };
-        let put = state
-            .entity_mut(&carrier)
-            .set_meter(&canon, key, Some(start));
+    }
+    let mut state = State::new(Save::clone(opened.state()), Arc::new(canon));
+    for (carrier, key) in &carried {
+        let def = state.canon().meter_def(carrier.as_ref(), key);
+        let start = Meter {
+            base: def.expect("the meter's definition").start,
+            offset: 0,
+        };
+        let put = state.entity_mut(carrier).set_meter(key, Some(start));
         put.expect("the meter goes on");
     }
     state.accept();
-    let world = World::from_parts(&pack.0, Arc::new(canon), state);
+    let world = World::from_parts(&pack.0, state);
     let mut runner = TestRunner::new(runner_config());
     runner
         .run(&prop::collection::vec(pick_step(), 1..40), |steps| {
@@ -166,12 +167,12 @@ fn play_steps(world: &World<()>, steps: &[Step]) -> Result<(), TestCaseError> {
             // A round takes changes only between actions, outside any savepoint but the first.
             Step::Take if open.len() == 1 => {
                 let changes = state.take_changes();
-                every_moved_meter_is_reported(world, &taken, &state, &changes)?;
+                every_moved_meter_is_reported(&taken, &state, &changes)?;
                 taken = state.clone();
             }
             Step::Take => {}
             Step::Expire => {
-                let _ = state.actors_mut().expire_modifiers(canon, u64::MAX);
+                let _ = state.actors_mut().expire_modifiers(u64::MAX);
             }
             Step::Act(players) => {
                 let _ = state.actors_mut().count_act(&mira, 1, *players);
@@ -211,7 +212,7 @@ fn play_steps(world: &World<()>, steps: &[Step]) -> Result<(), TestCaseError> {
 
 fn roll_back(state: &mut State, at: Open) -> Result<(), TestCaseError> {
     state.rollback(at.point);
-    if *state != at.saved {
+    if **state != *at.saved {
         return Err(TestCaseError::fail(format!(
             "the rollback left {:#?}\ninstead of {:#?}",
             state, at.saved
@@ -230,13 +231,12 @@ fn roll_back(state: &mut State, at: Open) -> Result<(), TestCaseError> {
 /// Every actor meter whose value differs between `taken` and `now` is in `changes`, with the
 /// value it had at the last take and the value it has now.
 fn every_moved_meter_is_reported(
-    world: &World<()>,
     taken: &State,
     now: &State,
     changes: &[Change],
 ) -> Result<(), TestCaseError> {
     let read = |state: &State, actor: &ActorId, key: &str| {
-        let value = state.actors().meter_value(world.canon(), actor, key);
+        let value = state.actors().meter_value(actor, key);
         value.map_or(change::Value::Empty, change::Value::Number)
     };
     for (actor, key) in now.actors().meters.keys() {

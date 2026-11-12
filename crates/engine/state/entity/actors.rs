@@ -4,7 +4,6 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
-use crate::canon::Canon;
 use crate::intent::{Target, Viewer};
 use crate::state::change::{self, Change};
 use crate::state::component::meter::{self, Meter};
@@ -12,7 +11,7 @@ use crate::state::component::modifier::{self, Modifier};
 use crate::state::component::{flag, item};
 use crate::state::id::ActorId;
 use crate::state::transaction::Transaction;
-use crate::state::{entity, nested_map, sort_unique, undo, Writer};
+use crate::state::{entity, nested_map, sort_unique, undo, Reader, Writer};
 use crate::Reason;
 
 /// Every actor's components, by actor id. An actor exists when it has a kind; `kind`, `place`
@@ -56,25 +55,6 @@ impl Actors {
         modifier::sum(held, key)
     }
 
-    /// The current value of meter `key` on `actor`, or `UNKNOWN_ID` when they do not carry it.
-    pub fn meter_value(&self, canon: &Canon, actor: &ActorId, key: &str) -> Result<i64, Reason> {
-        self.meter_value_with(canon, actor, key, self.modifier_sum(actor, key))
-    }
-
-    /// The value of meter `key` on `actor` with `modifiers` added, for a write that has not
-    /// landed: the same refusals as `meter_value`, in the same order.
-    fn meter_value_with(
-        &self,
-        canon: &Canon,
-        actor: &ActorId,
-        key: &str,
-        modifiers: Result<i64, Reason>,
-    ) -> Result<i64, Reason> {
-        let def = canon.meter_def(entity::IdRef::Actor(actor), key);
-        let held = self.meter(actor, key).ok_or(Reason::UnknownId);
-        meter::value(def.ok_or(Reason::UnknownId)?, held?, modifiers?)
-    }
-
     /// How many of `item` `actor` holds, or `None` when there is no such actor.
     pub fn item_count(&self, actor: &ActorId, item: &str) -> Option<u32> {
         self.kind.get(actor)?;
@@ -116,6 +96,26 @@ impl Actors {
             modifiers,
             flags,
         ]
+    }
+}
+
+impl Reader<'_, Actors> {
+    /// The current value of meter `key` on `actor`, or `UNKNOWN_ID` when they do not carry it.
+    pub fn meter_value(self, actor: &ActorId, key: &str) -> Result<i64, Reason> {
+        self.meter_value_with(actor, key, self.modifier_sum(actor, key))
+    }
+
+    /// The value of meter `key` on `actor` with `modifiers` added, for a write that has not
+    /// landed: the same refusals as `meter_value`, in the same order.
+    fn meter_value_with(
+        self,
+        actor: &ActorId,
+        key: &str,
+        modifiers: Result<i64, Reason>,
+    ) -> Result<i64, Reason> {
+        let def = self.canon.meter_def(entity::IdRef::Actor(actor), key);
+        let held = self.meter(actor, key).ok_or(Reason::UnknownId);
+        meter::value(def.ok_or(Reason::UnknownId)?, held?, modifiers?)
     }
 }
 
@@ -339,13 +339,8 @@ impl Writer<'_, Actors> {
     }
 
     /// Move `actor`'s meter `key` by `delta` inside its bounds.
-    pub fn shift_meter(
-        &mut self,
-        canon: &Canon,
-        actor: &ActorId,
-        key: &str,
-        delta: i64,
-    ) -> Result<(), Reason> {
+    pub fn shift_meter(&mut self, actor: &ActorId, key: &str, delta: i64) -> Result<(), Reason> {
+        let canon = self.canon;
         let (components, transaction) = self.check_actor(actor)?;
         let def = canon
             .meter_def(entity::IdRef::Actor(actor), key)
@@ -369,11 +364,11 @@ impl Writer<'_, Actors> {
     /// migrate and fixtures. Taking one off checks no owner.
     pub fn set_meter(
         &mut self,
-        canon: &Canon,
         actor: &ActorId,
         key: &str,
         meter: Option<Meter>,
     ) -> Result<(), Reason> {
+        let canon = self.canon;
         // Taking a meter off checks no owner: the entry is its own evidence.
         let (components, transaction) = match meter {
             Some(_) => self.check_actor(actor)?,
@@ -393,11 +388,11 @@ impl Writer<'_, Actors> {
     /// order the budget refuses in. Taking one off checks no owner.
     pub fn set_modifier(
         &mut self,
-        canon: &Canon,
         actor: &ActorId,
         id: &str,
         next: Option<Modifier>,
     ) -> Result<(), Reason> {
+        let canon = self.canon;
         let meter = match (&next, nested_map::get(&self.modifiers, actor, id)) {
             (Some(_), _) => canon
                 .modifiers
@@ -427,11 +422,12 @@ impl Writer<'_, Actors> {
         let others =
             nested_map::entries_of(&components.modifiers, actor).filter(|(held, _)| *held != id);
         let sum = modifier::sum(others.map(|(_, held)| held).chain(&next), &meter);
-        let after = components.meter_value_with(canon, actor, &meter, sum);
+        let reader = Reader::new(&*components, canon);
+        let after = reader.meter_value_with(actor, &meter, sum);
         if next.is_some() {
             after?;
         }
-        let before = change::Value::from_reading(components.meter_value(canon, actor, &meter));
+        let before = change::Value::from_reading(reader.meter_value(actor, &meter));
         let meter_change = Change::new(watched, before, change::Value::from_reading(after));
         let reports = stacks_move.then_some(meter_change).into_iter().chain([own]);
         let entry = (actor.clone(), id.to_string());
@@ -439,13 +435,13 @@ impl Writer<'_, Actors> {
     }
 
     /// Take off every modifier whose tick has come by `world_time`, all its stacks at once.
-    pub fn expire_modifiers(&mut self, canon: &Canon, world_time: u64) -> Result<(), Reason> {
+    pub fn expire_modifiers(&mut self, world_time: u64) -> Result<(), Reason> {
         let due: Vec<(ActorId, String)> = (self.modifiers.iter())
             .filter(|(_, held)| held.until <= world_time)
             .map(|(due, _)| due.clone())
             .collect();
         for (actor, id) in due {
-            self.set_modifier(canon, &actor, &id, None)?;
+            self.set_modifier(&actor, &id, None)?;
         }
         Ok(())
     }

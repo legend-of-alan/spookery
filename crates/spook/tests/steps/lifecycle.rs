@@ -256,6 +256,7 @@ fn rowan_holds_lamp_oil(world: &mut World) {
     let now = state_of(world.pack.as_ref().unwrap());
     let oil = now
         .actors()
+        .stores()
         .items
         .get(&("rowan".into(), "lamp_oil".to_string()));
     assert_eq!(oil.copied().unwrap_or(0), 1);

@@ -3,7 +3,6 @@
 
 use super::id::ActorId;
 use super::{entity, nested_map, Act, ActorKind, Writer};
-use crate::canon::Canon;
 use crate::Reason;
 
 impl Writer<'_, entity::Actors> {
@@ -23,13 +22,7 @@ impl Writer<'_, entity::Actors> {
     }
 
     /// Add `to`, standing at `place`, with everything `from` has.
-    pub fn copy_actor(
-        &mut self,
-        canon: &Canon,
-        from: &ActorId,
-        to: &ActorId,
-        place: &str,
-    ) -> Result<(), Reason> {
+    pub fn copy_actor(&mut self, from: &ActorId, to: &ActorId, place: &str) -> Result<(), Reason> {
         // Every store, with no `..`: a store added later must be copied here to compile.
         let entity::Actors {
             kind,
@@ -55,10 +48,10 @@ impl Writer<'_, entity::Actors> {
             self.note_exits(to, place, exits.clone())?;
         }
         for (key, meter) in nested_map::entries_of(&meters, from) {
-            self.set_meter(canon, to, key, Some(meter.clone()))?;
+            self.set_meter(to, key, Some(meter.clone()))?;
         }
         for (id, modifier) in nested_map::entries_of(&modifiers, from) {
-            self.set_modifier(canon, to, id, Some(modifier.clone()))?;
+            self.set_modifier(to, id, Some(modifier.clone()))?;
         }
         for (_, key) in flags.iter().filter(|(owner, _)| owner == from) {
             self.set_flag(to, key, true)?;
@@ -67,7 +60,7 @@ impl Writer<'_, entity::Actors> {
     }
 
     /// Take `actor` off every store, `kind` last.
-    pub fn remove_actor(&mut self, canon: &Canon, actor: &ActorId) -> Result<(), Reason> {
+    pub fn remove_actor(&mut self, actor: &ActorId) -> Result<(), Reason> {
         // Every store, with no `..`: a store added later must be emptied here to compile.
         let entity::Actors {
             kind: _,
@@ -86,10 +79,10 @@ impl Writer<'_, entity::Actors> {
             self.shift_item(actor, id, -i64::from(*count), None)?;
         }
         for (id, _) in nested_map::entries_of(&modifiers, actor) {
-            self.set_modifier(canon, actor, id, None)?;
+            self.set_modifier(actor, id, None)?;
         }
         for (key, _) in nested_map::entries_of(&meters, actor) {
-            self.set_meter(canon, actor, key, None)?;
+            self.set_meter(actor, key, None)?;
         }
         for (_, key) in flags.iter().filter(|(owner, _)| owner == actor) {
             self.set_flag(actor, key, false)?;

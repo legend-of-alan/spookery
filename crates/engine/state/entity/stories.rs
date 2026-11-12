@@ -5,11 +5,10 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
-use crate::canon::Canon;
 use crate::state::component::flag;
 use crate::state::component::meter::{self, Meter};
 use crate::state::id::StoryId;
-use crate::state::{change, entity, nested_map, undo, Writer};
+use crate::state::{change, entity, nested_map, undo, Reader, Writer};
 use crate::Reason;
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -23,12 +22,6 @@ pub struct Stories {
 }
 
 impl Stories {
-    /// The current value of meter `key` on `story`, or `UNKNOWN_ID` when it does not carry it.
-    pub fn meter_value(&self, canon: &Canon, story: &StoryId, key: &str) -> Result<i64, Reason> {
-        let def = canon.meter_def(entity::IdRef::Story(story), key);
-        meter::read(def, nested_map::get(&self.meters, story, key))
-    }
-
     pub fn has_flag(&self, story: &StoryId, key: &str) -> bool {
         nested_map::contains(&self.flags, story, key)
     }
@@ -41,17 +34,20 @@ impl Stories {
     }
 }
 
+impl Reader<'_, Stories> {
+    /// The current value of meter `key` on `story`, or `UNKNOWN_ID` when it does not carry it.
+    pub fn meter_value(self, story: &StoryId, key: &str) -> Result<i64, Reason> {
+        let def = self.canon.meter_def(entity::IdRef::Story(story), key);
+        meter::read(def, nested_map::get(&self.meters, story, key))
+    }
+}
+
 impl Writer<'_, Stories> {
     /// Move `story`'s meter `key` by `delta` inside its bounds.
-    pub fn shift_meter(
-        &mut self,
-        canon: &Canon,
-        story: &StoryId,
-        key: &str,
-        delta: i64,
-    ) -> Result<(), Reason> {
+    pub fn shift_meter(&mut self, story: &StoryId, key: &str, delta: i64) -> Result<(), Reason> {
         let (components, transaction) = (&mut *self.components, &mut *self.transaction);
-        let def = canon
+        let def = self
+            .canon
             .meter_def(entity::IdRef::Story(story), key)
             .ok_or(Reason::UnknownId)?;
         let entry = (story.clone(), key.to_string());
@@ -66,13 +62,12 @@ impl Writer<'_, Stories> {
     /// Give `story` meter `key` as `meter` says, `None` taking it off, outside a round's rules.
     pub fn set_meter(
         &mut self,
-        canon: &Canon,
         story: &StoryId,
         key: &str,
         meter: Option<Meter>,
     ) -> Result<(), Reason> {
         let (components, transaction) = (&mut *self.components, &mut *self.transaction);
-        let def = canon.meter_def(entity::IdRef::Story(story), key);
+        let def = self.canon.meter_def(entity::IdRef::Story(story), key);
         let entry = (story.clone(), key.to_string());
         let watched = change::Key::StoryMeter(story.to_string(), key.to_string());
         let (next, change) = meter::next(components.meters.get(&entry), meter, def, Ok(0), watched);

@@ -1,4 +1,4 @@
-//! The live save: the clock, each collection's components, and the notes.
+//! The save as the file holds it, and the live save that reads it against the pack's canon.
 
 pub(crate) mod change;
 pub(crate) mod component;
@@ -11,7 +11,8 @@ mod notes;
 mod transaction;
 pub mod undo;
 
-use std::ops::Deref;
+use std::ops::{Deref, DerefMut};
+use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 
@@ -25,11 +26,14 @@ pub use notes::Note;
 pub(crate) use transaction::Savepoint;
 use transaction::Transaction;
 
+use crate::canon::Canon;
 use crate::intent::Viewer;
 
+/// The save as the file holds it: the clock, each collection's components, and the notes. It has
+/// no canon and no writers; `State::new` opens it to read and write.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct State {
+pub struct Save {
     pub schema: String,
     pub world_id: String,
     pub pack_rev: String,
@@ -49,12 +53,65 @@ pub struct State {
     #[serde(default)]
     world: entity::Globals,
     notes: undo::Store<Vec<Note>>,
-    #[serde(skip)]
+}
+
+/// The live save: what the file holds, the pack's canon it is read against, and the round's
+/// transaction. A `State` never exists without its canon.
+#[derive(Clone, Debug)]
+pub struct State {
+    save: Save,
+    canon: Arc<Canon>,
     transaction: Transaction,
 }
 
-/// One collection's components, or the notes, with the round's transaction, borrowed apart from the
-/// rest of the save: the only way to write them. Reads go through `Deref`; there is no
+impl Deref for State {
+    type Target = Save;
+    fn deref(&self) -> &Save {
+        &self.save
+    }
+}
+
+impl DerefMut for State {
+    fn deref_mut(&mut self) -> &mut Save {
+        &mut self.save
+    }
+}
+
+/// One collection with the pack's canon, borrowed to read. It is `Copy`, and reads the stores
+/// through `Deref`; only `State`'s getters build one.
+pub struct Reader<'a, E> {
+    components: &'a E,
+    canon: &'a Canon,
+}
+
+impl<E> Clone for Reader<'_, E> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<E> Copy for Reader<'_, E> {}
+
+impl<'a, E> Reader<'a, E> {
+    fn new(components: &'a E, canon: &'a Canon) -> Self {
+        Reader { components, canon }
+    }
+
+    /// The collection, borrowed for as long as the save is: for a read that outlives the handle.
+    pub fn stores(self) -> &'a E {
+        self.components
+    }
+}
+
+impl<E> Deref for Reader<'_, E> {
+    type Target = E;
+    fn deref(&self) -> &E {
+        self.components
+    }
+}
+
+/// One collection's components, or the notes, with the round's transaction and the pack's canon,
+/// borrowed apart from the rest of the save: the only way to write them. Reads go through `Deref`; there is no
 /// `DerefMut`, and only `State`'s `*_mut` getters build one.
 ///
 /// ```compile_fail
@@ -72,14 +129,16 @@ pub struct State {
 pub struct Writer<'a, E> {
     components: &'a mut E,
     transaction: &'a mut Transaction,
+    canon: &'a Canon,
 }
 
 impl<'a, E> Writer<'a, E> {
     /// The one place a `Writer` is built; only `State`'s `*_mut` getters call it.
-    fn new(components: &'a mut E, transaction: &'a mut Transaction) -> Self {
+    fn new(components: &'a mut E, transaction: &'a mut Transaction, canon: &'a Canon) -> Self {
         Writer {
             components,
             transaction,
+            canon,
         }
     }
 }
@@ -91,7 +150,7 @@ impl<E> Deref for Writer<'_, E> {
     }
 }
 
-impl State {
+impl Save {
     pub fn actors(&self) -> &entity::Actors {
         &self.actors
     }
@@ -112,26 +171,6 @@ impl State {
         &self.notes
     }
 
-    pub fn actors_mut(&mut self) -> Writer<'_, entity::Actors> {
-        Writer::new(&mut self.actors, &mut self.transaction)
-    }
-
-    pub fn places_mut(&mut self) -> Writer<'_, entity::Places> {
-        Writer::new(&mut self.places, &mut self.transaction)
-    }
-
-    pub fn stories_mut(&mut self) -> Writer<'_, entity::Stories> {
-        Writer::new(&mut self.stories, &mut self.transaction)
-    }
-
-    pub fn globals_mut(&mut self) -> Writer<'_, entity::Globals> {
-        Writer::new(&mut self.world, &mut self.transaction)
-    }
-
-    pub fn notes_mut(&mut self) -> Writer<'_, undo::Store<Vec<Note>>> {
-        Writer::new(&mut self.notes, &mut self.transaction)
-    }
-
     /// The seat actor `id` acts from.
     pub(crate) fn viewer_of(&self, id: &ActorId) -> Option<Viewer> {
         self.actors.kind.get(id).map(|kind| kind.viewer(id))
@@ -145,6 +184,57 @@ impl State {
             .filter(|(_, at)| *at == place)
             .map(|(id, _)| id.clone())
             .collect()
+    }
+}
+
+impl State {
+    /// The live save of `save`, read against `canon`.
+    pub fn new(save: Save, canon: Arc<Canon>) -> State {
+        State {
+            save,
+            canon,
+            transaction: Transaction::default(),
+        }
+    }
+
+    pub fn canon(&self) -> &Arc<Canon> {
+        &self.canon
+    }
+
+    pub fn actors(&self) -> Reader<'_, entity::Actors> {
+        Reader::new(&self.save.actors, &self.canon)
+    }
+
+    pub fn places(&self) -> Reader<'_, entity::Places> {
+        Reader::new(&self.save.places, &self.canon)
+    }
+
+    pub fn stories(&self) -> Reader<'_, entity::Stories> {
+        Reader::new(&self.save.stories, &self.canon)
+    }
+
+    pub fn globals(&self) -> Reader<'_, entity::Globals> {
+        Reader::new(&self.save.world, &self.canon)
+    }
+
+    pub fn actors_mut(&mut self) -> Writer<'_, entity::Actors> {
+        Writer::new(&mut self.save.actors, &mut self.transaction, &self.canon)
+    }
+
+    pub fn places_mut(&mut self) -> Writer<'_, entity::Places> {
+        Writer::new(&mut self.save.places, &mut self.transaction, &self.canon)
+    }
+
+    pub fn stories_mut(&mut self) -> Writer<'_, entity::Stories> {
+        Writer::new(&mut self.save.stories, &mut self.transaction, &self.canon)
+    }
+
+    pub fn globals_mut(&mut self) -> Writer<'_, entity::Globals> {
+        Writer::new(&mut self.save.world, &mut self.transaction, &self.canon)
+    }
+
+    pub fn notes_mut(&mut self) -> Writer<'_, undo::Store<Vec<Note>>> {
+        Writer::new(&mut self.save.notes, &mut self.transaction, &self.canon)
     }
 }
 

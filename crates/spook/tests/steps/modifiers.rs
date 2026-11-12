@@ -5,11 +5,11 @@ use std::path::Path;
 
 use cucumber::{given, then, when};
 use spookery_engine::testing::{stamp_pack_rev, state_of};
-use spookery_engine::{entity, load_canon, Meter, Modifier};
+use spookery_engine::{entity, Meter, Modifier};
 
 use super::common::replace_in_file;
 use super::meters::{assert_refused, run_check};
-use super::triggers::{add_verb, edit_table_with, intent, play_round, seen_of, set_place, sit};
+use super::triggers::{add_verb, edit_table, intent, play_round, seen_of, set_place, sit};
 use crate::support::{self, copy_docks};
 use crate::World;
 
@@ -80,11 +80,10 @@ fn stacks_of(pack: &Path, id: &str) -> Vec<i64> {
 /// How far rowan's modifiers hold `meter` below its stored base and offset.
 fn lowered(pack: &Path, meter: &str) -> i64 {
     let now = state_of(pack);
-    let canon = load_canon(pack).unwrap_or_else(|err| panic!("load: {err:?}"));
     let rowan = entity::Id::Actor("rowan".into());
     let key = ("rowan".into(), meter.to_string());
     let Meter { base, offset } = now.actors().meters[&key].clone();
-    base + offset - now.entity(&rowan).meter_value(&canon, meter).unwrap()
+    base + offset - now.entity(&rowan).meter_value(meter).unwrap()
 }
 
 /// Ticks from the latest round until modifier `id` expires.
@@ -95,17 +94,17 @@ fn ticks_left(pack: &Path, id: &str) -> u64 {
 
 /// Give rowan these stacks of modifier `id`, expiring `left` ticks from now, `left` being the longest so far.
 fn hold(pack: &Path, id: &str, stacks: Vec<i64>, left: u64) {
-    support::edit_save_with(pack, |now, canon| {
+    support::edit_save(pack, |now| {
         let until = now.world_time + left;
         let live = Modifier {
-            meter: canon.modifiers[id].meter.clone(),
+            meter: now.canon().modifiers[id].meter.clone(),
             until,
             max_ticks: left,
             stacks,
         };
         let mut actors = now.actors_mut();
         actors
-            .set_modifier(canon, &"rowan".into(), id, Some(live))
+            .set_modifier(&"rowan".into(), id, Some(live))
             .unwrap();
     });
 }
@@ -127,13 +126,13 @@ fn docks_with_one_tick_rounds(world: &mut World) {
         "live_ticks_per_round: 5\n",
         "live_ticks_per_round: 1\n",
     );
-    edit_table_with(world, &pack, |now, seated, canon| {
+    edit_table(world, &pack, |now, seated| {
         set_place(now, "wren", "docks_shop");
         set_place(now, "harbormouse", "docks_shop");
         now.actors_mut()
             .set_place(&"rowan".into(), "docks_shop")
             .unwrap();
-        support::edit_meter(now, canon, "rowan", "grit", |grit| grit.base = 20);
+        support::edit_meter(now, "rowan", "grit", |grit| grit.base = 20);
         sit(seated, &["harbormouse", "rowan", "wren"]);
     });
     world.pack = Some(pack);
@@ -197,10 +196,10 @@ fn two_modifiers_on_sight(world: &mut World, rain: String, fog: String) {
     let mut meters = fs::read_to_string(&path).unwrap();
     meters.push_str("  - id: sight\n    min: 0\n    base_cap: 10\n    max: 10\n    base: 5\n");
     fs::write(path, meters).unwrap();
-    support::edit_save_with(&pack, |now, canon| {
+    support::edit_save(&pack, |now| {
         let actors: Vec<_> = now.actors().kind.keys().cloned().collect();
         for actor in actors {
-            support::put_meter(now, canon, &entity::Id::Actor(actor), "sight", 5);
+            support::put_meter(now, &entity::Id::Actor(actor), "sight", 5);
         }
     });
     add_modifier(&pack, &rain, "sight", "");
@@ -327,9 +326,9 @@ meters:
 {tide}"
     );
     fs::write(pack.join("world/meters.yaml"), text).unwrap();
-    support::edit_save_with(&pack, |now, canon| {
-        support::put_meter(now, canon, &entity::Id::Actor("rowan".into()), "luck", 1);
-        support::put_meter(now, canon, &entity::Id::Global, "tide", 4);
+    support::edit_save(&pack, |now| {
+        support::put_meter(now, &entity::Id::Actor("rowan".into()), "luck", 1);
+        support::put_meter(now, &entity::Id::Global, "tide", 4);
     });
 }
 
@@ -393,12 +392,9 @@ fn modifier_left_after_the_second(world: &mut World, id: String, ticks: u64) {
 fn rowan_has_no_burn(world: &mut World) {
     assert_eq!(modifier_of(pack(world), "burn"), None);
     assert_eq!(lowered(pack(world), "grit"), 0);
-    let canon = load_canon(pack(world)).unwrap();
     let rowan = entity::Id::Actor("rowan".into());
     assert_eq!(
-        state_of(pack(world))
-            .entity(&rowan)
-            .meter_value(&canon, "grit"),
+        state_of(pack(world)).entity(&rowan).meter_value("grit"),
         Ok(20)
     );
 }

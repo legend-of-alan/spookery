@@ -8,7 +8,7 @@ use crate::canon::load_canon;
 use crate::diagnostic::first_reason;
 use crate::hash::blake2s_tagged;
 use crate::rules::effect::Effect;
-use crate::state::{Presence, State};
+use crate::state::{Presence, Save, State};
 use crate::store::durability::write_atomic;
 use crate::store::journal;
 use crate::store::lock::{lock_pack, lock_write, PackGuard};
@@ -242,7 +242,7 @@ pub(crate) fn peek_at_tip(path: &Path) -> Result<World<()>, Reason> {
     let mut world = World::open(path)?;
     // Open checked a save with nothing past it. A replayed tip is checked here.
     if replay_tail(&mut world)? {
-        save::check_save(world.canon(), world.state()).map_err(|diags| first_reason(&diags))?;
+        save::check_save(world.state()).map_err(|diags| first_reason(&diags))?;
     }
     Ok(world)
 }
@@ -250,15 +250,16 @@ pub(crate) fn peek_at_tip(path: &Path) -> Result<World<()>, Reason> {
 /// Migrate the journal tip. A save that the journal has not passed is migrated as it stands.
 pub fn migrate_pack(path: &Path) -> Result<(), Reason> {
     let lock = lock_pack(path)?;
-    let (state, edited) = load_migrate_tip(path, &lock)?;
+    let (save, edited) = load_migrate_tip(path, &lock)?;
     let canon = load_canon(path).map_err(|diags| first_reason(&diags))?;
-    crate::store::commit::commit_migrate(path, &canon, state, edited, &lock)?;
+    let state = State::new(save, Arc::new(canon));
+    crate::store::commit::commit_migrate(path, state, edited, &lock)?;
     Ok(())
 }
 
 /// The state to migrate, and whether it is a hand edit of the checkpoint head. A hand edit
 /// with live rounds past it is refused, because the tip does not hold it.
-fn load_migrate_tip(path: &Path, lock: &PackGuard) -> Result<(State, bool), Reason> {
+fn load_migrate_tip(path: &Path, lock: &PackGuard) -> Result<(Save, bool), Reason> {
     let bytes = journal::read_save(&journal::save_path(path))?;
     let text = std::str::from_utf8(&bytes).map_err(|_| Reason::Schema)?;
     let file_state = save::parse(text).map_err(|diags| first_reason(&diags))?;
@@ -273,7 +274,10 @@ fn load_migrate_tip(path: &Path, lock: &PackGuard) -> Result<(State, bool), Reas
         });
     match (ahead, edited) {
         (true, true) => Err(Reason::HandEdit),
-        (true, false) => Ok((replay_tip_unchecked(path, lock)?.state().clone(), false)),
+        (true, false) => Ok((
+            Save::clone(replay_tip_unchecked(path, lock)?.state()),
+            false,
+        )),
         (false, _) => Ok((file_state, edited)),
     }
 }
@@ -291,9 +295,9 @@ fn replay_tip_unchecked(path: &Path, lock: &PackGuard) -> Result<World<()>, Reas
 
 /// A replay world at `base` with the pack's canon.
 pub(crate) fn open_for_replay(pack: &Path, base: &[u8]) -> Result<World<()>, Error> {
-    let state = load_save_bytes(base)?;
+    let save = load_save_bytes(base)?;
     let canon = load_canon(pack).map_err(|diags| Error::Reason(first_reason(&diags)))?;
-    Ok(World::from_parts(pack, Arc::new(canon), state))
+    Ok(World::from_parts(pack, State::new(save, Arc::new(canon))))
 }
 
 /// Replay the live records past the save. `true` when any record was replayed.
@@ -565,11 +569,11 @@ fn apply_migrate(world: &mut World<()>, record: &MigrateRecord) -> Result<(), Er
         if blake2s_tagged(&bytes) != record.state_hash {
             return Err(diverged("state_hash differed").replayed(bytes).into());
         }
-        world.set_state(load_save_bytes(&bytes)?);
+        let canon = Arc::clone(world.state().canon());
+        world.set_state(State::new(load_save_bytes(&bytes)?, canon));
         return Ok(());
     }
-    let next =
-        save::migrate(world.canon(), world.state().clone(), record).map_err(Error::Reason)?;
+    let next = save::migrate(world.state().clone(), record).map_err(Error::Reason)?;
     let bytes = save::emit(&next).map_err(Error::Reason)?.into_bytes();
     if blake2s_tagged(&bytes) != record.state_hash {
         return Err(diverged("state_hash differed").replayed(bytes).into());
@@ -578,7 +582,7 @@ fn apply_migrate(world: &mut World<()>, record: &MigrateRecord) -> Result<(), Er
     Ok(())
 }
 
-pub(crate) fn load_save_bytes(bytes: &[u8]) -> Result<State, Error> {
+pub(crate) fn load_save_bytes(bytes: &[u8]) -> Result<Save, Error> {
     let text = std::str::from_utf8(bytes).map_err(|_| Error::Reason(Reason::Schema))?;
     save::parse(text).map_err(|diag| Error::Reason(first_reason(&diag)))
 }

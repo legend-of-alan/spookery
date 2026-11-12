@@ -81,7 +81,7 @@ pub(crate) fn verb_for<'a>(
     verb: &str,
     hint: Option<&str>,
 ) -> Option<&'a Rule> {
-    let wielded = state.actors().wielded.get(actor_id).map(String::as_str);
+    let wielded = (state.actors().stores().wielded.get(actor_id)).map(String::as_str);
     if let Some(item) = wielded.filter(|item| !item.is_empty()) {
         if let Some(rule) = owner_verb(canon, &Owner::Item(item.to_string()), verb) {
             return Some(rule);
@@ -138,7 +138,10 @@ pub(crate) fn admit(
     nameable: Option<&[NamedId]>,
 ) -> Result<(), Refusal> {
     let (state, intent) = (context.state, context.intent);
-    if let Some(act) = intent.actor_id().and_then(|id| state.actors().acts.get(id)) {
+    if let Some(act) = intent
+        .actor_id()
+        .and_then(|id| state.actors().stores().acts.get(id))
+    {
         let acted = act.last_act_round == intent.round_index;
         if acted && rule.start.counts_as_act && matches!(rule.when, When::Habit) {
             return Err(Refusal::new(intent, Reason::Ineligible));

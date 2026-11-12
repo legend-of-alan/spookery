@@ -23,7 +23,7 @@ pub use spookery_protocol::Reason;
 pub use state::component::meter::Meter;
 pub use state::component::modifier::Modifier;
 pub use state::id::{ActorId, ExitId, PlaceId, StoryId};
-pub use state::{Note, Presence, State, Writer};
+pub use state::{Note, Presence, Reader, Save, State, Writer};
 pub use store::save::{emit as emit_save, parse as parse_save};
 pub use store::{emit_tape_record, lock_pack, PackGuard, TapeRecord};
 pub use world::{check_pack, Address, World};
@@ -196,44 +196,47 @@ pub mod testing {
             replay_pack(pack).unwrap_or_else(|err| panic!("replay_pack {}: {err}", pack.display()));
         let yaml = std::str::from_utf8(&report.now_yaml)
             .unwrap_or_else(|err| panic!("utf-8 {}: {err}", pack.display()));
-        crate::store::save::parse(yaml)
-            .unwrap_or_else(|err| panic!("load {}: {err:?}", pack.display()))
+        let save = crate::store::save::parse(yaml)
+            .unwrap_or_else(|err| panic!("load {}: {err:?}", pack.display()));
+        let canon = crate::canon::load_canon(pack)
+            .unwrap_or_else(|err| panic!("canon {}: {err:?}", pack.display()));
+        crate::state::State::new(save, std::sync::Arc::new(canon))
     }
 
-    pub fn write_save(pack: &Path, state: &crate::state::State) {
+    pub fn write_save(pack: &Path, save: &crate::state::Save) {
         let path = crate::store::journal::save_path(pack);
-        let bytes = crate::store::save::emit(state)
+        let bytes = crate::store::save::emit(save)
             .unwrap_or_else(|err| panic!("emit {}: {err}", path.display()));
         fs::write(&path, bytes).unwrap_or_else(|err| panic!("write {}: {err}", path.display()));
     }
 
-    /// Edit the pack's save through the writers, with no round open, and write it back stamped
-    /// with the pack's revision.
+    /// Edit the pack's save through the writers, with no round open, on the pack's canon, and
+    /// write it back stamped with the pack's revision.
     pub fn edit_save(pack: &Path, edit: impl FnOnce(&mut crate::state::State)) {
         let path = crate::store::journal::save_path(pack);
         let text = fs::read_to_string(&path)
             .unwrap_or_else(|err| panic!("read {}: {err}", path.display()));
-        let mut state = crate::store::save::parse(&text)
+        let save = crate::store::save::parse(&text)
             .unwrap_or_else(|err| panic!("load {}: {err:?}", path.display()));
-        edit(&mut state);
-        state.accept();
-        state.pack_rev = crate::canon::pack_rev(pack)
-            .unwrap_or_else(|err| panic!("rev {}: {err}", pack.display()));
-        write_save(pack, &state);
-    }
-
-    /// `edit_save` for an edit whose writers read the pack's canon.
-    pub fn edit_save_with(
-        pack: &Path,
-        edit: impl FnOnce(&mut crate::state::State, &crate::canon::Canon),
-    ) {
         let canon = crate::canon::load_canon(pack)
             .unwrap_or_else(|err| panic!("canon {}: {err:?}", pack.display()));
-        edit_save(pack, |state| edit(state, &canon));
+        let mut state = crate::state::State::new(save, std::sync::Arc::new(canon));
+        edit(&mut state);
+        state.accept();
+        write_save(pack, &state);
+        stamp_pack_rev(pack);
     }
 
+    /// Stamp the save with the pack's revision, as its file holds it: the canon need not load.
     pub fn stamp_pack_rev(pack: &Path) {
-        edit_save(pack, |_| {});
+        let path = crate::store::journal::save_path(pack);
+        let text = fs::read_to_string(&path)
+            .unwrap_or_else(|err| panic!("read {}: {err}", path.display()));
+        let mut save = crate::store::save::parse(&text)
+            .unwrap_or_else(|err| panic!("load {}: {err:?}", path.display()));
+        save.pack_rev = crate::canon::pack_rev(pack)
+            .unwrap_or_else(|err| panic!("rev {}: {err}", pack.display()));
+        write_save(pack, &save);
     }
 
     pub fn append(path: &Path, extra: &str) {
@@ -251,13 +254,13 @@ pub mod testing {
         let from = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("fixtures/cast/pc-nell.md");
         fs::copy(&from, pack.join("cast/pc-nell.md"))
             .unwrap_or_else(|err| panic!("copy {}: {err}", from.display()));
-        edit_save_with(pack, |state, canon| {
+        edit_save(pack, |state| {
             let nell = crate::ActorId::from("nell");
             let mut actors = state.actors_mut();
             actors.add_actor(&nell, crate::state::ActorKind::Pc, "docks_shop");
             for (key, base) in [("grit", 100), ("rest", 3)] {
                 let meter = crate::Meter { base, offset: 0 };
-                actors.set_meter(canon, &nell, key, Some(meter)).unwrap();
+                actors.set_meter(&nell, key, Some(meter)).unwrap();
             }
         });
     }

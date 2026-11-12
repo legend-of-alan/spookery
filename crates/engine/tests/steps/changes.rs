@@ -55,14 +55,14 @@ fn a_round_that_changes_a_hidden_fact(world: &mut World) {
 #[when(expr = "lark's might is raised and the seeded strike succeeds")]
 fn larks_might_is_raised(world: &mut World) {
     let pack = world.pack().to_path_buf();
-    testing::edit_save_with(&pack, |state, canon| {
+    testing::edit_save(&pack, |state| {
         let might = Meter {
             base: 40,
             offset: 0,
         };
         let mut actors = state.actors_mut();
         actors
-            .set_meter(canon, &"lark".into(), "might", Some(might))
+            .set_meter(&"lark".into(), "might", Some(might))
             .unwrap();
     });
     let mut opened = resume_with_lark(&pack);
@@ -123,10 +123,10 @@ fn lark_drops_the_tonic(world: &mut World) {
 #[given(expr = "a tonic is on the ground")]
 fn a_tonic_is_on_the_ground(world: &mut World) {
     let pack = world.pack().to_path_buf();
-    testing::edit_save_with(&pack, |state, canon| {
+    testing::edit_save(&pack, |state| {
         let mut places = state.places_mut();
         places
-            .shift_item(canon, &"gate_yard".into(), "tonic", 1, None)
+            .shift_item(&"gate_yard".into(), "tonic", 1, None)
             .unwrap();
     });
 }

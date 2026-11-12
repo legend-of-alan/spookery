@@ -108,7 +108,11 @@ fn the_pack_adds_meter(world: &mut World, id: String, start: i64) {
 fn every_actor_has_meter_at(world: &mut World, id: String, base: i64) {
     let now = state_of(table::pack(world));
     for actor in now.actors().kind.keys() {
-        let meter = now.actors().meters.get(&(actor.clone(), id.clone()));
+        let meter = now
+            .actors()
+            .stores()
+            .meters
+            .get(&(actor.clone(), id.clone()));
         let got = meter.map(|meter| meter.base);
         assert_eq!(got, Some(base), "{actor} {id}");
     }
@@ -264,12 +268,12 @@ fn the_journal_line_is(world: &mut World, key: String, step: &Step) {
 #[when(expr = "Rowan's grit offset is hand edited to {int} and Nell joins without grit")]
 fn rowan_moves_grit_and_nell_joins(world: &mut World, offset: i64) {
     let pack = table::pack(world).to_path_buf();
-    spookery_engine::testing::edit_save_with(&pack, |now, canon| {
-        support::edit_meter(now, canon, "rowan", "grit", |grit| grit.offset = offset);
+    spookery_engine::testing::edit_save(&pack, |now| {
+        support::edit_meter(now, "rowan", "grit", |grit| grit.offset = offset);
         let (rowan, nell) = (&"rowan".into(), &"nell".into());
         let mut actors = now.actors_mut();
-        actors.copy_actor(canon, rowan, nell, "docks_shop").unwrap();
-        actors.set_meter(canon, nell, "grit", None).unwrap();
+        actors.copy_actor(rowan, nell, "docks_shop").unwrap();
+        actors.set_meter(nell, "grit", None).unwrap();
     });
 }
 
@@ -278,6 +282,7 @@ fn grit_is_at(world: &mut World, actor: String, base: i64, offset: i64) {
     let now = state_of(table::pack(world));
     let grit = now
         .actors()
+        .stores()
         .meters
         .get(&(actor.as_str().into(), "grit".to_string()));
     let got = grit.map(|grit| (grit.base, grit.offset));

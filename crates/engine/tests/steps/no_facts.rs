@@ -69,11 +69,11 @@ fn mira_stands_in_a_place_with_no_facts(world: &mut World) {
     strip_room_facts(&pack);
     support::edit_save(&pack, |state| {
         // No writer forgets a fact, so Mira's come off the save as the file holds it.
-        let mut save = serde_json::to_value(&*state).unwrap();
+        let mut save = serde_json::to_value(&**state).unwrap();
         if let Some(known) = save["actors"]["known_facts"].as_object_mut() {
             known.remove("mira");
         }
-        *state = serde_json::from_value(save).unwrap();
+        **state = serde_json::from_value(save).unwrap();
     });
     let opened = spookery_engine::World::open(&pack).unwrap_or_else(|err| panic!("open: {err}"));
     let view = opened

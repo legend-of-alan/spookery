@@ -12,10 +12,10 @@ use crate::state::State;
 
 pub(crate) fn can_see_fact(canon: &Canon, state: &State, viewer: &Viewer, fact_id: &str) -> bool {
     let actor_id = viewer.actor_id();
-    let Some(place) = state.actors().place.get(actor_id) else {
+    let Some(place) = state.actors().stores().place.get(actor_id) else {
         return false;
     };
-    let known = state.actors().known_facts.get(actor_id);
+    let known = state.actors().stores().known_facts.get(actor_id);
     if known.is_some_and(|facts| facts.iter().any(|id| id == fact_id)) {
         return true;
     }
@@ -322,11 +322,11 @@ fn is_shown(canon: &Canon, id: &entity::Id, key: &str) -> bool {
 }
 
 fn place_of<'a>(state: &'a State, viewer: &ActorId) -> Option<&'a str> {
-    state.actors().place.get(viewer).map(String::as_str)
+    (state.actors().stores().place.get(viewer)).map(String::as_str)
 }
 
 fn same_place(state: &State, viewer: &ActorId, actor: &str) -> bool {
-    let actor_place = state.actors().place.get(actor).map(String::as_str);
+    let actor_place = state.actors().stores().place.get(actor).map(String::as_str);
     match (place_of(state, viewer), actor_place) {
         (Some(left), Some(right)) => left == right,
         _ => false,

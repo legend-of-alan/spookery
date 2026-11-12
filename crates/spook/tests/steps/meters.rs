@@ -12,7 +12,7 @@ use super::common::replace_in_file;
 use super::record::read_extra_steps;
 use super::table;
 use super::triggers::{
-    add_verb, edit_table, edit_table_with, intent, play_round, seen_of, set_place, sit, PlayedRound,
+    add_verb, edit_table, intent, play_round, seen_of, set_place, sit, PlayedRound,
 };
 use crate::support::{self, copy_docks};
 use crate::World;
@@ -67,8 +67,7 @@ fn pack(world: &World) -> &Path {
 }
 
 fn value_on(pack: &Path, id: &entity::Id, key: &str) -> Option<i64> {
-    let canon = load_canon(pack).unwrap_or_else(|err| panic!("load: {err:?}"));
-    state_of(pack).entity(id).meter_value(&canon, key).ok()
+    state_of(pack).entity(id).meter_value(key).ok()
 }
 
 fn mira() -> entity::Id {
@@ -236,9 +235,9 @@ fn it_refuses_the_second_grit(world: &mut World) {
 fn rowan_and_mira_stand_in_the_shop(world: &mut World) {
     let pack = copy_docks("meter-sight");
     add_mira_meter_habit(&pack, "shop_day", 1);
-    edit_table_with(world, &pack, |now, seated, canon| {
+    edit_table(world, &pack, |now, seated| {
         set_place(now, "mira", "docks_shop");
-        support::edit_meter(now, canon, "mira", "shop_day", |shop_day| shop_day.base = 0);
+        support::edit_meter(now, "mira", "shop_day", |shop_day| shop_day.base = 0);
         sit(seated, &["rowan"]);
     });
     world.pack = Some(pack);
@@ -591,15 +590,13 @@ fn the_gm_sees_both_meters(world: &mut World) {
 #[given(expr = "dawn has fallen to {int} while rowan's player was away")]
 fn dawn_has_fallen(world: &mut World, value: i64) {
     let pack = world.pack.clone().unwrap();
-    edit_table_with(world, &pack, |now, _, canon| {
+    edit_table(world, &pack, |now, _| {
         let fallen = Meter {
             base: 6,
             offset: value - 6,
         };
-        now.globals_mut()
-            .set_meter(canon, "dawn", Some(fallen))
-            .unwrap();
-        support::put_meter(now, canon, &entity::Id::Global, "doom", 6);
+        now.globals_mut().set_meter("dawn", Some(fallen)).unwrap();
+        support::put_meter(now, &entity::Id::Global, "doom", 6);
     });
     assert_eq!(value_on(&pack, &entity::Id::Global, "dawn"), Some(value));
 }

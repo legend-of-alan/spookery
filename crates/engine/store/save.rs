@@ -5,13 +5,13 @@ use std::collections::BTreeSet;
 use serde::Deserialize;
 use serde_saphyr::SerializerOptions;
 
-use crate::canon::{unknown_item, Canon, ItemDef};
+use crate::canon::{unknown_item, ItemDef};
 use crate::diagnostic::{check_tag, error, locate_nth, parse_file, schema_error, Diagnostic};
 use crate::entity;
 use crate::state::component::meter::{self, Meter};
 use crate::state::component::modifier::{self, Modifier};
 use crate::state::id::ActorId;
-use crate::state::{nested_map, State};
+use crate::state::{nested_map, Save, State};
 use crate::store::records::{AddedMeter, DroppedMeter, MigrateRecord};
 use crate::Reason;
 
@@ -32,7 +32,7 @@ pub(crate) fn emit_options() -> SerializerOptions {
     }
 }
 
-pub fn parse(text: &str) -> Result<State, Vec<Diagnostic>> {
+pub fn parse(text: &str) -> Result<Save, Vec<Diagnostic>> {
     if let Some(diag) = check_tag(text, crate::diagnostic::SAVE_SCHEMA, FILE, 0) {
         return Err(vec![diag]);
     }
@@ -51,12 +51,11 @@ pub fn parse(text: &str) -> Result<State, Vec<Diagnostic>> {
     parse_file(FILE, text, 0)
 }
 
-pub fn emit(state: &State) -> Result<String, Reason> {
-    let mut canonical = state.clone();
+pub fn emit(save: &Save) -> Result<String, Reason> {
+    let mut canonical = save.clone();
     canonical.schema = crate::diagnostic::SAVE_SCHEMA.to_string();
     canonical.rules_rev = super::RULES_REV;
-    // A clone holds no round, so accepting it only puts it in file order.
-    canonical.accept();
+    canonical.sort();
     let text = serde_saphyr::to_string_with_options(&canonical, emit_options())
         .map_err(|_| Reason::Schema)?;
     Ok(one_trailing_lf(text))
@@ -85,7 +84,8 @@ fn one_trailing_lf(mut text: String) -> String {
 }
 
 /// Meters the pack gives an entity that the entity lacks, each at its `start`.
-pub(crate) fn find_missing_meters(canon: &Canon, state: &State) -> Vec<AddedMeter> {
+pub(crate) fn find_missing_meters(state: &State) -> Vec<AddedMeter> {
+    let canon = state.canon();
     let defs = canon.meters.iter().chain(&canon.world_meters);
     defs.filter(|(id, def)| !find_lacking_carriers(state, &def.carrier, id).is_empty())
         .map(|(id, def)| AddedMeter::new(id, def))
@@ -96,13 +96,13 @@ pub(crate) fn find_missing_meters(canon: &Canon, state: &State) -> Vec<AddedMete
 /// off the save's actors, so a cast member the save does not list names nobody; any other carrier
 /// is itself. Migrate and `check_save` both read it, so they agree on who lacks a meter.
 pub(crate) fn find_lacking_carriers(
-    state: &State,
+    save: &Save,
     carrier: &Option<entity::Id>,
     id: &str,
 ) -> Vec<entity::Id> {
     let held = match carrier {
         None | Some(entity::Id::Actor(_)) => {
-            let actors = state.actors();
+            let actors = save.actors();
             let named = |actor: &&ActorId| match carrier {
                 Some(entity::Id::Actor(one)) => one == *actor,
                 _ => true,
@@ -111,9 +111,9 @@ pub(crate) fn find_lacking_carriers(
             let lacking = actors.kind.keys().filter(named).filter(lacks).cloned();
             return lacking.map(entity::Id::Actor).collect();
         }
-        Some(entity::Id::Place(place)) => nested_map::get(&state.places().meters, place, id),
-        Some(entity::Id::Story(story)) => nested_map::get(&state.stories().meters, story, id),
-        Some(entity::Id::Global) => state.globals().meters.get(id),
+        Some(entity::Id::Place(place)) => nested_map::get(&save.places().meters, place, id),
+        Some(entity::Id::Story(story)) => nested_map::get(&save.stories().meters, story, id),
+        Some(entity::Id::Global) => save.globals().meters.get(id),
     };
     held.is_none()
         .then(|| carrier.clone())
@@ -123,11 +123,11 @@ pub(crate) fn find_lacking_carriers(
 }
 
 /// Every meter the save lists, with the actor, place, story or world that holds it.
-fn held_meters(state: &State) -> impl Iterator<Item = (entity::Id, &String, &Meter)> {
-    let actors = state.actors().meters.iter();
-    let places = state.places().meters.iter();
-    let stories = state.stories().meters.iter();
-    let world = state.globals().meters.iter();
+fn held_meters(save: &Save) -> impl Iterator<Item = (entity::Id, &String, &Meter)> {
+    let actors = save.actors().meters.iter();
+    let places = save.places().meters.iter();
+    let stories = save.stories().meters.iter();
+    let world = save.globals().meters.iter();
     (actors.map(|((id, key), held)| (entity::Id::Actor(id.clone()), key, held)))
         .chain(places.map(|((id, key), held)| (entity::Id::Place(id.clone()), key, held)))
         .chain(stories.map(|((id, key), held)| (entity::Id::Story(id.clone()), key, held)))
@@ -135,9 +135,9 @@ fn held_meters(state: &State) -> impl Iterator<Item = (entity::Id, &String, &Met
 }
 
 /// Meters an actor, place, story or the world lists that the pack no longer gives it.
-pub(crate) fn find_stale_meters(canon: &Canon, state: &State) -> Vec<DroppedMeter> {
+pub(crate) fn find_stale_meters(state: &State) -> Vec<DroppedMeter> {
     held_meters(state)
-        .filter(|(carrier, id, _)| canon.meter_def(carrier.as_ref(), id).is_none())
+        .filter(|(carrier, id, _)| state.canon().meter_def(carrier.as_ref(), id).is_none())
         .map(|(carrier, id, _)| DroppedMeter {
             id: id.clone(),
             carrier,
@@ -147,12 +147,9 @@ pub(crate) fn find_stale_meters(canon: &Canon, state: &State) -> Vec<DroppedMete
 
 /// Each actor's modifiers that the pack no longer defines, or now defines on another meter:
 /// the actor and modifier id, with the modifier as the save holds it.
-pub(crate) fn find_stale_modifiers<'a>(
-    canon: &Canon,
-    state: &'a State,
-) -> Vec<(&'a (ActorId, String), &'a Modifier)> {
-    let held = state.actors().modifiers.iter();
-    held.filter(|((_, id), live)| !modifier::is_defined(&canon.modifiers, id, live))
+pub(crate) fn find_stale_modifiers(state: &State) -> Vec<(&(ActorId, String), &Modifier)> {
+    let held = state.actors().stores().modifiers.iter();
+    held.filter(|((_, id), live)| !modifier::is_defined(&state.canon().modifiers, id, live))
         .collect()
 }
 
@@ -161,7 +158,7 @@ pub(crate) fn find_stale_modifiers<'a>(
 /// meter off its entity, then stamp the record's `pack_rev_after` and `state_rev_after`. A meter
 /// an entity holds keeps its value. Live migrate and replay both call this. It does not touch the
 /// disk, and it reads no hash or chain from the record.
-pub fn migrate(canon: &Canon, mut state: State, record: &MigrateRecord) -> Result<State, Reason> {
+pub fn migrate(mut state: State, record: &MigrateRecord) -> Result<State, Reason> {
     for meter in &record.meters {
         let start = Meter {
             base: meter.start,
@@ -169,19 +166,19 @@ pub fn migrate(canon: &Canon, mut state: State, record: &MigrateRecord) -> Resul
         };
         for id in find_lacking_carriers(&state, &meter.carrier, &meter.id) {
             let mut carrier = state.entity_mut(&id);
-            carrier.set_meter(canon, &meter.id, Some(start.clone()))?;
+            carrier.set_meter(&meter.id, Some(start.clone()))?;
         }
     }
-    let modifiers = state.actors().modifiers.keys();
+    let modifiers = state.actors().stores().modifiers.keys();
     let dropped = |(_, id): &&(ActorId, String)| record.dropped_modifiers.contains(id);
     let held: Vec<(ActorId, String)> = (modifiers.filter(dropped)).cloned().collect();
     for (actor, id) in &held {
-        state.actors_mut().set_modifier(canon, actor, id, None)?;
+        state.actors_mut().set_modifier(actor, id, None)?;
     }
     for meter in &record.dropped_meters {
         state
             .entity_mut(&meter.carrier)
-            .set_meter(canon, &meter.id, None)?;
+            .set_meter(&meter.id, None)?;
     }
     state.pack_rev = record.pack_rev_after.clone();
     state.state_rev = record.state_rev_after;
@@ -194,9 +191,10 @@ pub fn migrate(canon: &Canon, mut state: State, record: &MigrateRecord) -> Resul
 /// an exit the pack lacks, every meter, item and wielded slot the pack does not define, every
 /// meter the pack gives an entity that the entity lacks, every meter outside its rules, every
 /// modifier the pack no longer gives that meter, and every empty id or zero count.
-pub fn check_save(canon: &Canon, state: &State) -> Result<(), Vec<Diagnostic>> {
+pub fn check_save(state: &State) -> Result<(), Vec<Diagnostic>> {
+    let canon = state.canon();
     let mut diags = Vec::new();
-    let actors = &state.actors();
+    let actors = state.actors().stores();
     // Every store, with no `..`: a store added later must be listed here to compile.
     let crate::state::entity::Actors {
         kind: _,
@@ -253,7 +251,7 @@ pub fn check_save(canon: &Canon, state: &State) -> Result<(), Vec<Diagnostic>> {
             diags.push(meter_error(&carrier, key, &problem, hint));
         }
     }
-    for meter in find_stale_meters(canon, state) {
+    for meter in find_stale_meters(state) {
         let problem = format!(
             "lists meter '{}', which the pack does not give it",
             meter.id
@@ -269,7 +267,7 @@ pub fn check_save(canon: &Canon, state: &State) -> Result<(), Vec<Diagnostic>> {
             diags.push(meter_error(&carrier, key, &problem, hint));
         }
     }
-    for ((id, key), live) in find_stale_modifiers(canon, state) {
+    for ((id, key), live) in find_stale_modifiers(state) {
         let problem = format!(
             "actor '{id}' holds modifier '{key}' on meter '{}', which the pack does not define",
             live.meter

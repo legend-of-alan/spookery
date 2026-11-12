@@ -16,7 +16,7 @@ use crate::rules::effect::{payload_json, Effect};
 use crate::rules::gate;
 use crate::rules::rule::{Rule, TargetKind, When};
 use crate::state::id::ActorId;
-use crate::state::{ActorKind, Presence, State};
+use crate::state::{ActorKind, Presence, Save, State};
 use crate::store::journal;
 use crate::store::records::Record;
 use crate::store::save;
@@ -36,7 +36,6 @@ pub enum Address<'a> {
 
 pub struct World<L = crate::PackGuard> {
     pub(crate) root: PathBuf,
-    pub(crate) canon: Arc<Canon>,
     pub(crate) state: State,
     pub(crate) queue: Vec<Intent>,
     warning: Option<&'static str>,
@@ -49,7 +48,6 @@ impl World {
     pub fn resume(root: &Path, lock: crate::PackGuard) -> Result<Self, Reason> {
         let World {
             root,
-            canon,
             state,
             queue,
             warning,
@@ -57,7 +55,6 @@ impl World {
         } = crate::round::replay::open_at_tip(root, &lock)?;
         Ok(World {
             root,
-            canon,
             state,
             queue,
             warning,
@@ -116,7 +113,7 @@ impl World {
             return Ok(self.append_speech(presence, from, Some(actor_id), heard, text)?);
         };
         let viewer = Viewer::Player(actor_id.clone());
-        let mut nameable = gate::list_nameable(&self.canon, &self.state, presence, &viewer);
+        let mut nameable = gate::list_nameable(self.canon(), &self.state, presence, &viewer);
         nameable.retain(|thing| self.state.actors().kind.contains_key(thing.id.as_str()));
         let line = format!("{typed} {text}");
         let line = line.trim();
@@ -186,22 +183,23 @@ impl<L> World<L> {
     }
 
     pub fn canon(&self) -> &Canon {
-        &self.canon
+        self.state.canon()
     }
 
     pub fn pack_summary(&self) -> spookery_protocol::PackSummary {
-        self.canon.to_pack_summary()
+        self.canon().to_pack_summary()
     }
 
     /// Every verb the pack's rules name: the commands a player seat may send as moves.
     pub fn verbs(&self) -> Vec<String> {
-        self.canon.verbs()
+        self.canon().verbs()
     }
 
     /// Every PC in the cast.
     pub fn pcs(&self) -> impl Iterator<Item = &ActorId> {
         self.state
             .actors()
+            .stores()
             .kind
             .iter()
             .filter(|(_, kind)| **kind == ActorKind::Pc)
@@ -213,7 +211,7 @@ impl<L> World<L> {
     pub fn find_pc(&self, typed: &str) -> Result<Option<ActorId>, Reason> {
         let pcs = self
             .pcs()
-            .map(|id| (id.as_str(), self.canon.display_name(id.as_str())));
+            .map(|id| (id.as_str(), self.canon().display_name(id.as_str())));
         let pcs: Vec<gate::NamedId> = pcs.map(|(id, name)| gate::NamedId::new(id, name)).collect();
         let found = gate::find_named(&pcs, typed).map_err(|_| Reason::AmbiguousName)?;
         Ok(found.map(ActorId::from))
@@ -244,7 +242,7 @@ impl<L> World<L> {
         let typed = target.filter(|token| !token.is_empty());
         let viewer = Viewer::Player(actor_id.clone());
         let nameable = match typed {
-            Some(_) => gate::list_nameable(&self.canon, &self.state, presence, &viewer),
+            Some(_) => gate::list_nameable(self.canon(), &self.state, presence, &viewer),
             None => Vec::new(),
         };
         let named = match typed {
@@ -270,12 +268,12 @@ impl<L> World<L> {
             if token.is_some() || self.queue.iter().any(|queued| queued.id == intent.id) {
                 return Err(gate::Refusal::new(&intent, Reason::Schema));
             }
-            gate::admit_cancel(&Context::new(&self.canon, &self.state, presence, &intent))?;
+            gate::admit_cancel(&Context::new(self.canon(), &self.state, presence, &intent))?;
         } else {
             let shaped = self.shape_line(&intent, token);
             let (rule, target) = shaped.map_err(|code| gate::Refusal::new(&intent, code))?;
             intent.target = target;
-            let context = Context::new(&self.canon, &self.state, presence, &intent);
+            let context = Context::new(self.canon(), &self.state, presence, &intent);
             gate::admit(&context, rule, Some(&nameable))?;
         }
         let queued = QueuedMove {
@@ -298,7 +296,7 @@ impl<L> World<L> {
             return Err(Reason::Schema);
         }
         let (actor, verb) = (viewer, &line.move_name);
-        let rule = gate::pick(&self.canon, &self.state, actor, line.source, verb, token)?;
+        let rule = gate::pick(self.canon(), &self.state, actor, line.source, verb, token)?;
         let target = target_for(rule, token)?;
         if self.queue.iter().any(|queued| queued.id == line.id) {
             return Err(Reason::Schema);
@@ -325,7 +323,7 @@ impl<L> World<L> {
             .ok_or(Reason::Schema)?;
         let viewer = self.state.viewer_of(&actor_id).ok_or(Reason::UnknownId)?;
         let token = spec.target.as_deref().filter(|t| !t.is_empty());
-        let (canon, state) = (&self.canon, &self.state);
+        let (canon, state) = (self.canon(), &self.state);
         let rule = gate::pick(canon, state, &viewer, Source::Gm, &move_name, token)?;
         let target = target_for(rule, token)?;
         let id = match spec.id {
@@ -374,7 +372,7 @@ impl<L> World<L> {
     }
 
     pub fn budget(&self) -> &Budget {
-        &self.canon.budget
+        &self.canon().budget
     }
 
     pub fn queued_intents(&self) -> &[Intent] {
@@ -408,12 +406,12 @@ impl<L> World<L> {
         presence: &Presence,
         actor_id: &ActorId,
     ) -> Result<Vec<CommandView>, Reason> {
-        crate::rules::lines::help(&self.canon, &self.state, presence, actor_id)
+        crate::rules::lines::help(self.canon(), &self.state, presence, actor_id)
     }
 
     /// The `map` for `actor_id`: each place they visited, with the exits they saw there last.
     pub fn map(&self, actor_id: &ActorId) -> Result<Vec<PlaceView>, Reason> {
-        crate::rules::lines::map(&self.canon, &self.state, actor_id)
+        crate::rules::lines::map(self.canon(), &self.state, actor_id)
     }
 
     pub fn perceive_trimmed(
@@ -445,30 +443,26 @@ impl<L> World<L> {
     /// refuses, or a commit that fails, drops the copy and the save stays as it was.
     pub(crate) fn begin_round(&self) -> State {
         let mut state = self.state.clone();
-        state.open_round(&self.canon.budget);
+        state.open_round(&self.canon().budget);
         state
     }
 
     fn carried_meter_rows(&self) -> Vec<String> {
         let carried = self
-            .canon
+            .canon()
             .meters
             .iter()
             .filter_map(|(id, def)| Some((def.carrier.clone()?, id)));
         let world_meters = self
-            .canon
+            .canon()
             .world_meters
             .keys()
             .map(|id| (entity::Id::Global, id));
         carried
             .chain(world_meters)
             .filter_map(|(carrier, id)| {
-                let value = self
-                    .state
-                    .entity(&carrier)
-                    .meter_value(&self.canon, id)
-                    .ok()?;
-                let max = self.canon.meter_def(carrier.as_ref(), id)?.max;
+                let value = self.state.entity(&carrier).meter_value(id).ok()?;
+                let max = self.canon().meter_def(carrier.as_ref(), id)?.max;
                 Some(format!("meter {carrier} {id} {value} {max}"))
             })
             .collect()
@@ -537,24 +531,22 @@ impl World<()> {
         }
         let now_bytes = journal::read_save(&journal::save_path(root))?;
         let canon = Arc::new(load_canon(root).map_err(|diags| first_reason(&diags))?);
-        let state =
+        let save =
             load_save_file(root, Some(&canon), &now_bytes).map_err(|diags| first_reason(&diags))?;
         Ok(Self {
             root: root.to_path_buf(),
-            canon,
-            state,
+            state: State::new(save, canon),
             queue: Vec::new(),
             warning: None,
             lock: (),
         })
     }
 
-    /// The pack's canon with a save from memory, for replay. Nothing is checked:
-    /// each journal record's hash proves the state it reaches.
-    pub(crate) fn from_parts(pack: &Path, canon: Arc<Canon>, state: State) -> Self {
+    /// A live save from memory, for replay. Nothing is checked: each journal record's hash proves
+    /// the state it reaches.
+    pub(crate) fn from_parts(pack: &Path, state: State) -> Self {
         Self {
             root: pack.to_path_buf(),
-            canon,
             state,
             queue: Vec::new(),
             warning: None,
@@ -620,7 +612,7 @@ fn check_say_text(text: &str) -> Result<&str, Reason> {
 }
 
 /// Hash of the newest migrate in `live` past the checkpoint, or the save's own hash.
-fn tip_pack_rev<'a>(live: &'a [Record], state: &'a State) -> &'a str {
+fn tip_pack_rev<'a>(live: &'a [Record], state: &'a Save) -> &'a str {
     live.iter()
         .rev()
         .filter(|entry| entry.state_rev_after() > state.state_rev)
@@ -663,7 +655,7 @@ fn check_pack_rev(root: &Path, tip: &str, bytes: &[u8]) -> Option<Diagnostic> {
 }
 
 /// The on-disk save is a checkpoint. Later live records still have to be replayed.
-fn journal_continues(live: &[Record], state: &State) -> bool {
+fn journal_continues(live: &[Record], state: &Save) -> bool {
     live.iter().any(|entry| match entry {
         Record::Checkpoint(_) => false,
         _ => entry.state_rev_after() > state.state_rev,
@@ -675,9 +667,9 @@ fn journal_continues(live: &[Record], state: &State) -> bool {
 /// record continues is checked against `canon`.
 fn load_save_file(
     root: &Path,
-    canon: Option<&Canon>,
+    canon: Option<&Arc<Canon>>,
     bytes: &[u8],
-) -> Result<State, Vec<Diagnostic>> {
+) -> Result<Save, Vec<Diagnostic>> {
     let text = std::str::from_utf8(bytes).map_err(|_| {
         vec![schema_error(
             "state/save.yaml",
@@ -723,7 +715,7 @@ fn load_save_file(
         }
     }
     if let Some(canon) = canon.filter(|_| !continues) {
-        if let Err(more) = save::check_save(canon, &state) {
+        if let Err(more) = save::check_save(&State::new(state.clone(), Arc::clone(canon))) {
             problems.extend(more);
         }
     }
@@ -738,7 +730,7 @@ fn load_save_file(
 pub fn check_pack(root: &Path) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
     let canon = match load_canon(root) {
-        Ok(canon) => Some(canon),
+        Ok(canon) => Some(Arc::new(canon)),
         Err(more) => {
             diags.extend(more);
             None
@@ -767,7 +759,7 @@ pub fn check_pack(root: &Path) -> Vec<Diagnostic> {
     diags
 }
 
-fn check_save_text(state: &State, bytes: &[u8]) -> Vec<Diagnostic> {
+fn check_save_text(state: &Save, bytes: &[u8]) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
     if state.actors().kind.contains_key("world") {
         diags.push(

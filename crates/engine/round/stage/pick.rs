@@ -142,7 +142,7 @@ fn touches_seated_player(
         Target::Place(place) => is_player_at(state, presence, place.as_str()),
         Target::Exit(name) => intent
             .actor_id()
-            .and_then(|id| state.actors().place.get(id))
+            .and_then(|id| state.actors().stores().place.get(id))
             .and_then(|place| find_exit(canon, place, name))
             .is_some_and(|exit| is_player_at(state, presence, &exit.to)),
         _ => false,

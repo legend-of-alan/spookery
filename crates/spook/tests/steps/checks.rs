@@ -374,7 +374,12 @@ fn snapshot_pack(pack: &Path) -> PathBuf {
 fn flags_of(world: &World, id: &str) -> Vec<String> {
     let now = state_of(table::pack(world));
     assert!(now.actors().kind.contains_key(id), "{id} missing");
-    let flags = now.actors().flags.iter().filter(|(owner, _)| *owner == *id);
+    let flags = now
+        .actors()
+        .stores()
+        .flags
+        .iter()
+        .filter(|(owner, _)| *owner == *id);
     flags.map(|(_, flag)| flag.clone()).collect()
 }
 

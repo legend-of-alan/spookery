@@ -34,7 +34,7 @@ fn a_docks_table_with_npcs_in_the_shop(world: &mut World) {
     });
     let state = state_of(&pack);
     for npc in ["mira", "aldric"] {
-        let place = state.actors().place.get(npc).map(String::as_str);
+        let place = state.actors().stores().place.get(npc).map(String::as_str);
         assert_eq!(place, Some("docks_shop"), "{npc}");
     }
     table::listen(world, &pack);

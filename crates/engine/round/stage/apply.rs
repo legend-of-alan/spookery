@@ -178,7 +178,7 @@ fn pend(
 ) -> Result<(), Reason> {
     let actor_id = intent.actor_id().ok_or(Reason::UnknownId)?;
     if let Some(exit) = exit {
-        let from = (state.actors().place.get(actor_id)).ok_or(Reason::UnknownId)?;
+        let from = (state.actors().stores().place.get(actor_id)).ok_or(Reason::UnknownId)?;
         let kind = EffectKind::Location {
             actor_id: actor_id.clone(),
             from: from.clone(),
