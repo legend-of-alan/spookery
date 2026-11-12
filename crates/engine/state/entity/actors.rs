@@ -11,7 +11,7 @@ use crate::state::component::modifier::{self, Modifier};
 use crate::state::component::{self, Meter};
 use crate::state::id::ActorId;
 use crate::state::transaction::Transaction;
-use crate::state::{entity, nested_map, sort_unique, undo, Reader, Writer};
+use crate::state::{entity, nested_map, sort_unique, undo, Writer};
 use crate::Reason;
 
 /// Every actor's components, by actor id. An actor exists when it has a kind; `kind`, `place`
@@ -30,7 +30,7 @@ pub struct Actors {
     /// Each place an actor has stood at the end of a round, with the names of the exits they
     /// saw there then.
     #[serde(with = "nested_map", skip_serializing_if = "BTreeMap::is_empty")]
-    pub visited: undo::Store<BTreeMap<(ActorId, String), Vec<String>>>,
+    pub visited: undo::Store<component::Map<ActorId, component::Visit>>,
     pub acts: undo::DenseStore<Act>,
     #[serde(with = "nested_map")]
     pub items: undo::Store<component::Map<ActorId, component::Item>>,
@@ -38,7 +38,7 @@ pub struct Actors {
     pub meters: undo::Store<component::Map<ActorId, Meter>>,
     /// The modifiers each actor holds, by modifier id.
     #[serde(with = "nested_map")]
-    pub modifiers: undo::Store<BTreeMap<(ActorId, String), Modifier>>,
+    pub modifiers: undo::Store<component::Map<ActorId, Modifier>>,
     #[serde(with = "nested_map::lists")]
     pub flags: undo::Store<component::Map<ActorId, component::Flag>>,
 }
@@ -54,6 +54,8 @@ impl entity::Entities for Actors {
 entity::has!(Actors, component::Item, items);
 entity::has!(Actors, Meter, meters);
 entity::has!(Actors, component::Flag, flags);
+entity::has!(Actors, Modifier, modifiers);
+entity::has!(Actors, component::Visit, visited);
 
 impl Actors {
     /// What `actor`'s modifiers add to meter `key`.
@@ -275,80 +277,6 @@ impl Writer<'_, Actors> {
             let read = |act: &Act| count_value(counter.count(act).into());
             let key = counter.key(actor.to_string());
             self.write_act(actor, key, read, |act| *counter.count_mut(act) = 0)?;
-        }
-        Ok(())
-    }
-
-    /// `actor` saw `exits` at `place`, for `map`. No key answers for it, so nothing is reported.
-    pub fn note_exits(
-        &mut self,
-        actor: &ActorId,
-        place: &str,
-        exits: Vec<String>,
-    ) -> Result<(), Reason> {
-        let (components, transaction) = self.check_actor(actor)?;
-        let entry = (actor.clone(), place.to_string());
-        components.visited.set(transaction, entry, Some(exits), [])
-    }
-
-    /// Put `next` on as modifier `id`, `None` taking it off. The meter's key is counted when the
-    /// stacks move, the meter must still read with `next` on, then the modifier's own key: the
-    /// order the budget refuses in. When the stacks move it reports the meter's key with what the
-    /// modifiers added before, and the change is read when the changes are taken. Taking one off
-    /// checks no owner.
-    pub fn set_modifier(
-        &mut self,
-        actor: &ActorId,
-        id: &str,
-        next: Option<Modifier>,
-    ) -> Result<(), Reason> {
-        let canon = self.canon;
-        let meter = match (&next, nested_map::get(&self.modifiers, actor, id)) {
-            (Some(_), _) => canon
-                .modifiers
-                .get(id)
-                .ok_or(Reason::UnknownId)?
-                .meter
-                .clone(),
-            (None, Some(held)) => held.meter.clone(),
-            (None, None) => return Ok(()),
-        };
-        // Taking a modifier off checks no owner: the entry is its own evidence.
-        let (components, transaction) = match next {
-            Some(_) => self.check_actor(actor)?,
-            None => (&mut *self.components, &mut *self.transaction),
-        };
-        let held = nested_map::get(&components.modifiers, actor, id);
-        let own = |held: Option<&Modifier>| held.map_or(change::Value::Empty, Modifier::to_value);
-        let own_key = change::Key::ActorModifier(actor.to_string(), id.to_string());
-        let own = Change::new(own_key, own(held), own(next.as_ref()));
-        let stacks_move = held.map(|held| &held.stacks) != next.as_ref().map(|next| &next.stacks);
-        let watched = change::Key::ActorMeter(actor.to_string(), meter.clone());
-        if stacks_move {
-            transaction.count_key(&watched)?;
-        }
-        // The meter must read with `next` in place of what is held when it goes on.
-        let others =
-            nested_map::entries_of(&components.modifiers, actor).filter(|(held, _)| *held != id);
-        let sum = modifier::sum(others.map(|(_, held)| held).chain(&next), &meter);
-        if next.is_some() {
-            modifier::value_with(Reader::new(&*components, canon), actor, &meter, sum)?;
-        }
-        let before = components.modifier_sum(actor, &meter);
-        let watched = stacks_move.then_some(change::Report::Modifiers(watched, before));
-        let reports = watched.into_iter().chain([own.into()]);
-        let entry = (actor.clone(), id.to_string());
-        components.modifiers.set(transaction, entry, next, reports)
-    }
-
-    /// Take off every modifier whose tick has come by `world_time`, all its stacks at once.
-    pub fn expire_modifiers(&mut self, world_time: u64) -> Result<(), Reason> {
-        let due: Vec<(ActorId, String)> = (self.modifiers.iter())
-            .filter(|(_, held)| held.until <= world_time)
-            .map(|(due, _)| due.clone())
-            .collect();
-        for (actor, id) in due {
-            self.set_modifier(&actor, &id, None)?;
         }
         Ok(())
     }

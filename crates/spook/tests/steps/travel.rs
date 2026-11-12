@@ -422,22 +422,14 @@ fn rowan_visited_both_rooms(world: &mut World) {
     let pack = copy_docks("map");
     add_trapdoor(&pack);
     edit_save(&pack, |now| {
-        let names = |exits: &[&str]| exits.iter().map(|name| name.to_string()).collect();
-        // No writer forgets a visit, so Rowan's earlier ones come off the save as the file holds it.
+        // No writer forgets a visit, so Rowan's visits are replaced in the save as the file
+        // holds it.
         support::edit_as_saved(now, |save| {
-            save["actors"]["visited"]
-                .as_object_mut()
-                .unwrap()
-                .remove("rowan");
+            save["actors"]["visited"]["rowan"] = serde_json::json!({
+                "docks_shop": ["docks_street", "stairs"],
+                "mira_rooms": ["stairs"],
+            });
         });
-        let (mut actors, rowan) = (now.actors_mut(), "rowan".into());
-        let seen = [
-            ("docks_shop", vec!["docks_street", "stairs"]),
-            ("mira_rooms", vec!["stairs"]),
-        ];
-        for (place, exits) in seen {
-            actors.note_exits(&rowan, place, names(&exits)).unwrap();
-        }
     });
     world.pack = Some(pack);
 }

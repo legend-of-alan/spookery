@@ -5,10 +5,12 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
+use crate::state::change::{self, Change};
 use crate::state::component::meter::{self, Meter};
+use crate::state::component::{Component, Mut};
 use crate::state::entity;
 use crate::state::id::ActorId;
-use crate::state::Reader;
+use crate::state::{Reader, Writer};
 use crate::Reason;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -33,6 +35,10 @@ pub struct Modifier {
     /// The longest `ticks` applied so far, the most ticks a refresh leaves.
     pub max_ticks: u64,
     pub stacks: Vec<i64>,
+}
+
+impl Component for Modifier {
+    type Value = Modifier;
 }
 
 impl Modifier {
@@ -118,6 +124,65 @@ pub(in crate::state) fn value_with(
     let held = actors.get::<Meter>(actor).get(name);
     let held = held.ok_or(Reason::UnknownId);
     meter::value(def.ok_or(Reason::UnknownId)?, held?, modifiers?)
+}
+
+impl Mut<'_, entity::Actors, Modifier> {
+    /// Put `next` on as modifier `id`, `None` taking it off. The meter's key is counted when the
+    /// stacks move, the meter must still read with `next` on, then the modifier's own key: the
+    /// order the budget refuses in. When the stacks move it reports the meter's key with what the
+    /// modifiers added before, and the change is read when the changes are taken. Taking one off
+    /// checks no owner: the entry is its own evidence.
+    pub fn set(&mut self, id: &str, next: Option<Modifier>) -> Result<(), Reason> {
+        let (canon, actor) = (self.writer.canon, self.id);
+        let actors = Reader::new(&*self.writer.components, canon);
+        let held = actors.get::<Modifier>(actor).get(id);
+        let meter = match (&next, held) {
+            (Some(_), _) => canon
+                .modifiers
+                .get(id)
+                .ok_or(Reason::UnknownId)?
+                .meter
+                .clone(),
+            (None, Some(held)) => held.meter.clone(),
+            (None, None) => return Ok(()),
+        };
+        if next.is_some() {
+            self.check_exists()?;
+        }
+        let own = |held: Option<&Modifier>| held.map_or(change::Value::Empty, Modifier::to_value);
+        let own_key = change::Key::ActorModifier(actor.to_string(), id.to_string());
+        let own = Change::new(own_key, own(held), own(next.as_ref()));
+        let stacks_move = held.map(|held| &held.stacks) != next.as_ref().map(|next| &next.stacks);
+        let watched = change::Key::ActorMeter(actor.to_string(), meter.clone());
+        if stacks_move {
+            self.writer.transaction.count_key(&watched)?;
+        }
+        // The meter must read with `next` in place of what is held when it goes on.
+        let others = (actors.get::<Modifier>(actor).iter()).filter(|(held, _)| *held != id);
+        let with_next = sum(others.map(|(_, held)| held).chain(&next), &meter);
+        if next.is_some() {
+            value_with(actors, actor, &meter, with_next)?;
+        }
+        let before = actors.modifier_sum(actor, &meter);
+        let watched = stacks_move.then_some(change::Report::Modifiers(watched, before));
+        let reports = watched.into_iter().chain([own.into()]);
+        let entry = (actor.clone(), id.to_string());
+        (self.writer.components.modifiers).set(self.writer.transaction, entry, next, reports)
+    }
+}
+
+impl Writer<'_, entity::Actors> {
+    /// Take off every modifier whose tick has come by `world_time`, all its stacks at once.
+    pub fn expire_modifiers(&mut self, world_time: u64) -> Result<(), Reason> {
+        let due: Vec<(ActorId, String)> = (self.modifiers.iter())
+            .filter(|(_, held)| held.until <= world_time)
+            .map(|(due, _)| due.clone())
+            .collect();
+        for (actor, id) in due {
+            self.get_mut::<Modifier>(&actor).set(&id, None)?;
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]

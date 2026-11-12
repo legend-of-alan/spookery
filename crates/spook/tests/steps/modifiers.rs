@@ -102,9 +102,10 @@ fn hold(pack: &Path, id: &str, stacks: Vec<i64>, left: u64) {
             max_ticks: left,
             stacks,
         };
-        let mut actors = now.actors_mut();
+        let (mut actors, rowan) = (now.actors_mut(), "rowan".into());
         actors
-            .set_modifier(&"rowan".into(), id, Some(live))
+            .get_mut::<Modifier>(&rowan)
+            .set(id, Some(live))
             .unwrap();
     });
 }

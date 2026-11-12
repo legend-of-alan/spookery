@@ -12,7 +12,7 @@ use crate::rules::lines::place_name;
 use crate::rules::rule::{EffectTemplate, LocationTo, Rule};
 use crate::rules::visibility::can_see_fact;
 use crate::state::id::ActorId;
-use crate::state::{PendingAction, Presence, State};
+use crate::state::{component, PendingAction, Presence, State};
 use crate::Reason;
 use spookery_protocol::ExitView;
 
@@ -212,7 +212,7 @@ pub(crate) fn note_exits(canon: &Canon, state: &mut State) -> Result<(), Reason>
         .collect();
     let mut actors = state.actors_mut();
     for (actor, place, exits) in seen {
-        actors.note_exits(&actor, &place, exits)?;
+        (actors.get_mut::<component::Visit>(&actor)).set(&place, exits)?;
     }
     Ok(())
 }

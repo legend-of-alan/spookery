@@ -426,10 +426,10 @@ mod tests {
             max_ticks: 99,
             stacks: vec![-2],
         };
-        let put = state.actors_mut().set_modifier(&mira, "burn", Some(lowers));
+        let put = (state.actors_mut().get_mut::<Modifier>(&mira)).set("burn", Some(lowers));
         put.unwrap();
         assert_eq!(modifier::value(state.actors(), &mira, "rest"), Ok(1));
-        let taken = state.actors_mut().set_modifier(&mira, "burn", None);
+        let taken = (state.actors_mut().get_mut::<Modifier>(&mira)).set("burn", None);
         taken.unwrap();
         let changes = state.take_changes();
         assert_eq!(changes, [], "the meter and the modifier are dropped");

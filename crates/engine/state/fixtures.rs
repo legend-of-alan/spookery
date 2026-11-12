@@ -46,13 +46,13 @@ impl Writer<'_, entity::Actors> {
         self.set_wielded(to, wielded.get(from).map(String::as_str))?;
         self.learn(to, known_facts.get(from).map_or(&[], Vec::as_slice))?;
         for (place, exits) in nested_map::entries_of(&visited, from) {
-            self.note_exits(to, place, exits.clone())?;
+            (self.get_mut::<component::Visit>(to)).set(place, exits.clone())?;
         }
         for (key, meter) in nested_map::entries_of(&meters, from) {
             self.get_mut::<Meter>(to).set(key, Some(meter.clone()))?;
         }
         for (id, modifier) in nested_map::entries_of(&modifiers, from) {
-            self.set_modifier(to, id, Some(modifier.clone()))?;
+            (self.get_mut::<component::Modifier>(to)).set(id, Some(modifier.clone()))?;
         }
         for (key, ()) in nested_map::entries_of(&flags, from) {
             self.get_mut::<component::Flag>(to).set(key, true)?;
@@ -80,7 +80,7 @@ impl Writer<'_, entity::Actors> {
             (self.get_mut::<component::Item>(actor)).shift(id, -i64::from(*count), None)?;
         }
         for (id, _) in nested_map::entries_of(&modifiers, actor) {
-            self.set_modifier(actor, id, None)?;
+            self.get_mut::<component::Modifier>(actor).set(id, None)?;
         }
         for (key, _) in nested_map::entries_of(&meters, actor) {
             self.get_mut::<Meter>(actor).set(key, None)?;
