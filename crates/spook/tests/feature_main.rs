@@ -1,3 +1,4 @@
+use spookery_engine::component;
 use std::net::TcpListener;
 use std::path::{Path, PathBuf};
 use std::process::Child;
@@ -68,7 +69,7 @@ fn a_sample_where_oden_is_called(world: &mut World, name: String) {
     std::fs::write(&oden, renamed).unwrap_or_else(|err| panic!("oden: {err}"));
     spookery_engine::testing::edit_save(&pack, |now| {
         let mut actors = now.actors_mut();
-        actors.set_place(&"oden".into(), "gate_yard").unwrap();
+        actors.get_mut::<component::Place>(&"oden".into()).set("gate_yard").unwrap();
     });
     world.pack = Some(pack);
 }

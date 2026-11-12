@@ -40,7 +40,13 @@ struct ItemChange {
 fn random_item_changes_never_leave_a_negative_count() {
     let pack = TempPack(copy_docks("inventory"));
     let world = World::open(&pack.0).expect("docks pack opens");
-    let actors: Vec<ActorId> = world.state().actors().kind.keys().cloned().collect();
+    let actors: Vec<ActorId> = world
+        .state()
+        .actors()
+        .control_type
+        .keys()
+        .cloned()
+        .collect();
     let places: Vec<PlaceId> = world.canon().places.keys().cloned().collect();
     assert!(
         actors.len() >= 2 && !places.is_empty(),
@@ -122,7 +128,7 @@ fn assert_no_stored_zero(state: &State) -> Result<(), TestCaseError> {
 
 fn is_known_entity(canon: &Canon, state: &State, carrier: &entity::Id) -> bool {
     match carrier {
-        entity::Id::Actor(id) => state.actors().kind.contains_key(id),
+        entity::Id::Actor(id) => state.actors().control_type.contains_key(id),
         entity::Id::Place(id) => canon.places.contains_key(id),
         entity::Id::Story(_) | entity::Id::Global => false,
     }

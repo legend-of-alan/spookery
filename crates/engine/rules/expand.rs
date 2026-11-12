@@ -13,7 +13,7 @@ use crate::rules::roll::{MoveReport, Roll};
 use crate::rules::rule::{EffectTemplate, LocationTo, NarrateTo, ResistSpec, Rule};
 use crate::state::component::meter::MeterWrite;
 use crate::state::id::ActorId;
-use crate::state::State;
+use crate::state::{component, State};
 use crate::Reason;
 
 /// Why a rule's effects are expanded and landed, which decides what the landing journals.
@@ -324,10 +324,9 @@ fn location_effect(context: &Context, to: &str) -> Result<Effect, Reason> {
     let from = context
         .state
         .actors()
-        .place
-        .get(&actor_id)
-        .cloned()
-        .ok_or(Reason::UnknownId)?;
+        .get::<component::Place>(&actor_id)
+        .get();
+    let from = from.ok_or(Reason::UnknownId)?.to_string();
     Ok(Effect::new(
         intent.actor.as_ref(),
         &intent.id,

@@ -1,4 +1,5 @@
-use spookery_engine::testing::{state_of, ActorKind};
+use spookery_engine::component;
+use spookery_engine::testing::state_of;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -174,8 +175,10 @@ fn the_keeper_habit_has_set_tended(world: &mut World) {
     assert_eq!(world.code, Some(0), "{}", world.stderr);
     let now = state_of(&idle);
     assert_eq!(now.world_time, 60, "idle round did not advance 60 ticks");
-    let kind = now.actors().stores().kind.get("keeper");
-    assert_eq!(kind, Some(&ActorKind::Npc), "keeper missing: {kind:?}");
+    let keeper = "keeper".into();
+    let control_type = now.actors().get::<component::ControlType>(&keeper).get();
+    let npc = Some(component::ControlType::Npc);
+    assert_eq!(control_type, npc, "keeper missing: {control_type:?}");
     let flags = &now.actors().flags;
     assert!(
         flags.contains_key(&("keeper".into(), "tended".to_string())),

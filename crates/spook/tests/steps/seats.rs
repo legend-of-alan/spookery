@@ -1,3 +1,4 @@
+use spookery_engine::component;
 use spookery_engine::testing::state_of;
 use std::fs;
 
@@ -230,10 +231,11 @@ fn a_docks_table_where_one_pc_knows_a_hidden_fact(world: &mut World) {
     );
     fs::write(&path, text).unwrap_or_else(|err| panic!("write shop: {err}"));
     crate::support::edit_save(&pack, |now| {
-        assert!(now.actors().kind.contains_key("wren"), "wren");
+        assert!(now.actors().control_type.contains_key("wren"), "wren");
         let mut actors = now.actors_mut();
         actors
-            .learn(&"wren".into(), &[HIDDEN_FACT.to_string()])
+            .get_mut::<component::KnownFacts>(&"wren".into())
+            .learn(&[HIDDEN_FACT.to_string()])
             .unwrap();
     });
     spookery_engine::World::open(&pack).unwrap_or_else(|err| panic!("hidden fact pack: {err}"));
@@ -351,7 +353,8 @@ fn a_docks_table_with_two_pcs_in_the_shop(world: &mut World) {
     crate::support::edit_save(&pack, |now| {
         let mut actors = now.actors_mut();
         actors
-            .set_place(&"harbormouse".into(), "docks_shop")
+            .get_mut::<component::Place>(&"harbormouse".into())
+            .set("docks_shop")
             .unwrap();
     });
     table::listen(world, &pack);

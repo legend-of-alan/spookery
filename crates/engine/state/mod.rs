@@ -1,7 +1,7 @@
 //! The save as the file holds it, and the live save that reads it against the pack's canon.
 
 pub(crate) mod change;
-pub(crate) mod component;
+pub mod component;
 pub(crate) mod entity;
 #[cfg(any(test, feature = "testing"))]
 mod fixtures;
@@ -18,9 +18,9 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 
 #[cfg(any(test, feature = "testing"))]
-pub use entity::actors::Act;
-pub(crate) use entity::actors::ActCounter;
-pub use entity::actors::{ActorKind, PendingAction};
+pub use component::Act;
+pub(crate) use component::ActCounter;
+pub use component::PendingAction;
 use id::ActorId;
 pub use notes::Note;
 #[cfg(test)]
@@ -97,11 +97,6 @@ impl<'a, E> Reader<'a, E> {
     fn new(components: &'a E, canon: &'a Canon) -> Self {
         Reader { components, canon }
     }
-
-    /// The collection, borrowed for as long as the save is: for a read that outlives the handle.
-    pub fn stores(self) -> &'a E {
-        self.components
-    }
 }
 
 impl<'a, E: entity::Entities> Reader<'a, E> {
@@ -130,8 +125,8 @@ impl<E> Deref for Reader<'_, E> {
 ///
 /// ```compile_fail
 /// # fn bypass(state: &mut spookery_engine::State) {
-/// let kind = *state.actors().kind.values().next().unwrap();
-/// state.actors().kind.insert("x".into(), kind);
+/// let control_type = *state.actors().control_type.values().next().unwrap();
+/// state.actors().control_type.insert("x".into(), control_type);
 /// # }
 /// ```
 pub struct Writer<'a, E> {
@@ -192,7 +187,7 @@ impl Save {
 
     /// The seat actor `id` acts from.
     pub(crate) fn viewer_of(&self, id: &ActorId) -> Option<Viewer> {
-        self.actors.kind.get(id).map(|kind| kind.viewer(id))
+        (self.actors.control_type.get(id)).map(|control| control.viewer(id))
     }
 
     /// The actors in `place`, in id order.

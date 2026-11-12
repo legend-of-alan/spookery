@@ -10,7 +10,7 @@ use crate::rules::gate;
 use crate::rules::roll::{MoveReport, Roll};
 use crate::rules::rule::Rule;
 use crate::rules::travel;
-use crate::state::{PendingAction, Presence, State};
+use crate::state::{component, PendingAction, Presence, State};
 use crate::store::records::Step;
 use crate::Reason;
 
@@ -155,7 +155,8 @@ fn cancel(
         return Landing::Refused;
     }
     let actor_id = intent.actor_id().ok_or(Reason::UnknownId);
-    match actor_id.and_then(|id| state.actors_mut().take_pending(id)) {
+    match actor_id.and_then(|id| (state.actors_mut().get_mut::<component::Act>(id)).take_pending())
+    {
         Ok(_) => Landing::Landed,
         Err(code) => {
             refuse(log, intent, gate::Refusal::new(intent, code), false);
@@ -178,10 +179,10 @@ fn pend(
 ) -> Result<(), Reason> {
     let actor_id = intent.actor_id().ok_or(Reason::UnknownId)?;
     if let Some(exit) = exit {
-        let from = (state.actors().stores().place.get(actor_id)).ok_or(Reason::UnknownId)?;
+        let from = state.actors().get::<component::Place>(actor_id).get();
         let kind = EffectKind::Location {
             actor_id: actor_id.clone(),
-            from: from.clone(),
+            from: from.ok_or(Reason::UnknownId)?.to_string(),
             to: travel::on_exit(exit),
             arrived_at: None,
         };
@@ -195,7 +196,7 @@ fn pend(
         target: intent.target.clone(),
         rule: rule.id.clone(),
     };
-    state.actors_mut().set_busy(actor_id, until, Some(pending))
+    (state.actors_mut().get_mut::<component::Act>(actor_id)).set_busy(until, Some(pending))
 }
 
 /// Finish an action at tick `at`: pay the finish cost, count the act when the rule asks, keep
@@ -240,9 +241,8 @@ pub(crate) fn finish(
     if rule.cooldown > 0 {
         finished = finished.and_then(|()| {
             let actor_id = intent.actor_id().ok_or(Reason::UnknownId)?;
-            state
-                .actors_mut()
-                .set_busy(actor_id, at + rule.cooldown, None)
+            let mut actors = state.actors_mut();
+            (actors.get_mut::<component::Act>(actor_id)).set_busy(at + rule.cooldown, None)
         });
     }
     if let Err(code) = finished {
@@ -260,7 +260,8 @@ pub(crate) fn finish(
 fn count_act(state: &mut State, presence: &Presence, intent: &Intent) -> Result<(), Reason> {
     let actor_id = intent.actor_id().ok_or(Reason::UnknownId)?;
     let round_index = state.round_index;
-    (state.actors_mut()).count_act(actor_id, round_index, presence.players)
+    let mut actors = state.actors_mut();
+    (actors.get_mut::<component::Act>(actor_id)).count(round_index, presence.players)
 }
 
 /// A refusal over the key budget spends the round's keys; any other refuses only this intent.

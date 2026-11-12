@@ -3,7 +3,7 @@ use std::path::Path;
 
 use cucumber::{given, then, when};
 use spookery_engine::testing as support;
-use spookery_engine::Presence;
+use spookery_engine::{component, Presence};
 
 use crate::World;
 
@@ -100,7 +100,8 @@ fn the_shop_has_a_trapdoor(world: &mut World) {
     support::edit_save(&pack, |state| {
         state
             .actors_mut()
-            .set_place(&"mira".into(), "docks_shop")
+            .get_mut::<component::Place>(&"mira".into())
+            .set("docks_shop")
             .unwrap();
     });
     world.pack = Some(pack);

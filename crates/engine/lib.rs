@@ -20,6 +20,7 @@ pub use rules::perceive::View;
 pub use rules::roll::MoveReport;
 pub use rules::visibility::RecipientLine;
 pub use spookery_protocol::Reason;
+pub use state::component;
 pub use state::component::meter::Meter;
 pub use state::component::modifier::Modifier;
 pub use state::id::{ActorId, ExitId, PlaceId, StoryId};
@@ -39,7 +40,7 @@ pub mod testing {
     pub use crate::round::replay::replay_journal;
     pub use crate::rules::roll::{faces, RollKey};
     pub use crate::state::entity::Actors;
-    pub use crate::state::{Act, ActorKind, PendingAction};
+    pub use crate::state::{Act, PendingAction};
 
     /// The write guard of the pack `world` holds the lock on.
     pub fn lock_write(world: &crate::World) -> Result<WriteGuard, crate::Reason> {
@@ -257,7 +258,7 @@ pub mod testing {
         edit_save(pack, |state| {
             let nell = crate::ActorId::from("nell");
             let mut actors = state.actors_mut();
-            actors.add_actor(&nell, crate::state::ActorKind::Pc, "docks_shop");
+            actors.add_actor(&nell, crate::component::ControlType::Pc, "docks_shop");
             for (key, base) in [("grit", 100), ("rest", 3)] {
                 let meter = crate::Meter { base, offset: 0 };
                 let set = (actors.get_mut::<crate::Meter>(&nell)).set(key, Some(meter));

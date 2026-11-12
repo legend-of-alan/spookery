@@ -5,7 +5,7 @@ use std::path::Path;
 
 use cucumber::{given, then, when};
 use spookery_engine::testing::state_of;
-use spookery_engine::{entity, Presence, World as Opened};
+use spookery_engine::{component, entity, Presence, World as Opened};
 
 use super::common::replace_in_file;
 use super::meters::{assert_refused, migrate_and_play};
@@ -352,11 +352,8 @@ fn a_rule_gives_lamp_oil(world: &mut World, of: String) {
 #[then(expr = "the loft holds 1 lamp_oil")]
 fn the_loft_holds_lamp_oil(world: &mut World) {
     let now = state_of(world.pack.as_deref().unwrap());
-    let held = now
-        .places()
-        .stores()
-        .items
-        .get(&("loft".into(), "lamp_oil".to_string()));
+    let loft = "loft".into();
+    let held = now.places().get::<component::Item>(&loft).get("lamp_oil");
     assert_eq!(held, Some(&1));
 }
 

@@ -80,7 +80,7 @@ pub(crate) fn verb_for<'a>(
     verb: &str,
     hint: Option<&str>,
 ) -> Option<&'a Rule> {
-    let wielded = (state.actors().stores().wielded.get(actor_id)).map(String::as_str);
+    let wielded = state.actors().get::<component::WieldedItem>(actor_id).get();
     if let Some(item) = wielded.filter(|item| !item.is_empty()) {
         if let Some(rule) = owner_verb(canon, &Owner::Item(item.to_string()), verb) {
             return Some(rule);
@@ -94,7 +94,7 @@ pub(crate) fn verb_for<'a>(
             return Some(rule);
         }
     }
-    if let Some(place) = state.actors().place.get(actor_id) {
+    if let Some(place) = state.actors().get::<component::Place>(actor_id).get() {
         if let Some(rule) = owner_verb(canon, &Owner::Place(place.to_string()), verb) {
             return Some(rule);
         }
@@ -139,7 +139,7 @@ pub(crate) fn admit(
     let (state, intent) = (context.state, context.intent);
     if let Some(act) = intent
         .actor_id()
-        .and_then(|id| state.actors().stores().acts.get(id))
+        .and_then(|id| state.actors().get::<component::Act>(id).get())
     {
         let acted = act.last_act_round == intent.round_index;
         if acted && rule.start.counts_as_act && matches!(rule.when, When::Habit) {
@@ -184,13 +184,13 @@ pub(crate) fn is_cancel(intent: &Intent) -> bool {
 /// `cancellable`. Anything else is `INELIGIBLE`.
 pub(crate) fn admit_cancel(context: &Context) -> Result<(), Refusal> {
     let intent = context.intent;
-    let actors = &context.state.actors();
+    let actors = context.state.actors();
     let actor_id = intent.actor_id();
     let pending = actor_id
-        .and_then(|id| actors.acts.get(id))
+        .and_then(|id| actors.get::<component::Act>(id).get())
         .and_then(|act| act.pending.as_ref());
     let walking = actor_id
-        .and_then(|id| actors.place.get(id))
+        .and_then(|id| actors.get::<component::Place>(id).get())
         .is_some_and(|place| crate::state::exit_parts(place).is_some());
     let rule = pending.and_then(|pending| context.canon.rules.get(&pending.rule));
     if walking || !rule.is_some_and(|rule| rule.cancellable) {

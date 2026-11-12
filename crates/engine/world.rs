@@ -16,7 +16,7 @@ use crate::rules::effect::{payload_json, Effect};
 use crate::rules::gate;
 use crate::rules::rule::{Rule, TargetKind, When};
 use crate::state::id::ActorId;
-use crate::state::{ActorKind, Presence, Save, State};
+use crate::state::{component, Presence, Save, State};
 use crate::store::journal;
 use crate::store::records::Record;
 use crate::store::save;
@@ -105,7 +105,8 @@ impl World {
         heard: Address<'_>,
         text: &str,
     ) -> Result<TapeRecord, Refusal> {
-        if self.state.actors().kind.get(actor_id) != Some(&ActorKind::Pc) {
+        let actors = self.state.actors();
+        if !actors.get::<component::ControlType>(actor_id).is_pc() {
             return Err(Reason::Schema.into());
         }
         let from = Speaker::Player(actor_id.to_string());
@@ -114,7 +115,8 @@ impl World {
         };
         let viewer = Viewer::Player(actor_id.clone());
         let mut nameable = gate::list_nameable(self.canon(), &self.state, presence, &viewer);
-        nameable.retain(|thing| self.state.actors().kind.contains_key(thing.id.as_str()));
+        let actors = self.state.actors();
+        nameable.retain(|thing| actors.control_type.contains_key(thing.id.as_str()));
         let line = format!("{typed} {text}");
         let line = line.trim();
         let mut said_to = (Address::Table, line);
@@ -152,7 +154,7 @@ impl World {
     ) -> Result<TapeRecord, Reason> {
         let text = check_say_text(text)?.to_string();
         if let Address::Actor(actor) = heard {
-            if !self.state.actors().kind.contains_key(actor) {
+            if !self.state.actors().control_type.contains_key(actor) {
                 return Err(Reason::Schema);
             }
         }
@@ -197,12 +199,9 @@ impl<L> World<L> {
 
     /// Every PC in the cast.
     pub fn pcs(&self) -> impl Iterator<Item = &ActorId> {
-        self.state
-            .actors()
-            .stores()
-            .kind
-            .iter()
-            .filter(|(_, kind)| **kind == ActorKind::Pc)
+        // The ids are borrowed from the save, which outlives a read handle.
+        (Save::actors(&self.state).control_type.iter())
+            .filter(|(_, control_type)| control_type.is_pc())
             .map(|(id, _)| id)
     }
 
@@ -292,7 +291,8 @@ impl<L> World<L> {
         let Some(viewer) = &line.actor else {
             return Err(Reason::Schema);
         };
-        if self.state.actors().kind.get(viewer.actor_id()) != Some(&ActorKind::Pc) {
+        let actors = self.state.actors();
+        if !(actors.get::<component::ControlType>(viewer.actor_id())).is_pc() {
             return Err(Reason::Schema);
         }
         let (actor, verb) = (viewer, &line.move_name);
@@ -761,7 +761,7 @@ pub fn check_pack(root: &Path) -> Vec<Diagnostic> {
 
 fn check_save_text(state: &Save, bytes: &[u8]) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
-    if state.actors().kind.contains_key("world") {
+    if state.actors().control_type.contains_key("world") {
         diags.push(
             schema_error(
                 "state/save.yaml",

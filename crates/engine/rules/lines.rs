@@ -22,7 +22,7 @@ pub(crate) fn help(
     presence: &Presence,
     actor_id: &ActorId,
 ) -> Result<Vec<CommandView>, Reason> {
-    if !state.actors().kind.contains_key(actor_id) {
+    if !state.actors().control_type.contains_key(actor_id) {
         return Err(Reason::UnknownId);
     }
     let viewer = Viewer::Player(actor_id.clone());
@@ -96,9 +96,9 @@ fn names_for(
         TargetKind::None => Vec::new(),
         TargetKind::Exit => state
             .actors()
-            .place
-            .get(actor_id)
-            .and_then(|place| canon.places.get(place.as_str()))
+            .get::<component::Place>(actor_id)
+            .get()
+            .and_then(|place| canon.places.get(place))
             .map(|place| exits_at(canon, state, actor_id, place))
             .unwrap_or_default()
             .into_iter()
@@ -106,7 +106,7 @@ fn names_for(
             .collect(),
         TargetKind::Actor => nameable
             .iter()
-            .filter(|name| state.actors().kind.contains_key(name.as_str()))
+            .filter(|name| state.actors().control_type.contains_key(name.as_str()))
             .cloned()
             .collect(),
         TargetKind::Item => nameable
@@ -134,7 +134,7 @@ pub(crate) fn map(
     state: &State,
     actor_id: &ActorId,
 ) -> Result<Vec<PlaceView>, Reason> {
-    if !state.actors().kind.contains_key(actor_id) {
+    if !state.actors().control_type.contains_key(actor_id) {
         return Err(Reason::UnknownId);
     }
     let places =
@@ -160,8 +160,8 @@ pub(crate) fn map(
 /// `chanting until tick 1300` on any other timed action, read from its verb, and
 /// `recovering until tick 1300` in a cooldown.
 pub(crate) fn busy_line(canon: &Canon, state: &State, actor_id: &ActorId) -> Option<String> {
-    let act = state.actors().stores().acts.get(actor_id)?;
-    let place = state.actors().stores().place.get(actor_id)?;
+    let act = state.actors().get::<component::Act>(actor_id).get()?;
+    let place = state.actors().get::<component::Place>(actor_id).get()?;
     if !act.is_busy(state.world_time) {
         return None;
     }
@@ -187,8 +187,8 @@ fn gerund(verb: &str) -> String {
 
 /// Place prose for this actor's current place.
 pub(crate) fn place_prose(canon: &Canon, state: &State, actor_id: &ActorId) -> String {
-    let place = state.actors().stores().place.get(actor_id);
-    let Some(place) = place.and_then(|place| canon.places.get(place.as_str())) else {
+    let place = state.actors().get::<component::Place>(actor_id).get();
+    let Some(place) = place.and_then(|place| canon.places.get(place)) else {
         return String::new();
     };
     place

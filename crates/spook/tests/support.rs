@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 
 pub use spookery_engine::testing::*;
-use spookery_engine::{entity, ActorId, Meter, State};
+use spookery_engine::{component, entity, ActorId, Meter, State};
 
 /// Change `actor`'s meter `key` as `edit` says, through the writer.
 pub fn edit_meter(now: &mut State, actor: &str, key: &str, edit: impl FnOnce(&mut Meter)) {
@@ -39,12 +39,8 @@ pub fn edit_as_saved(now: &mut State, edit: impl FnOnce(&mut serde_json::Value))
 /// Leave `id`, an actor or a place, holding `count` of `item`, through the writer.
 pub fn put_items(now: &mut State, id: &entity::Id, item: &str, count: u32) {
     let held = match id {
-        entity::Id::Actor(actor) => {
-            (now.actors().stores().items).get(&(actor.clone(), item.into()))
-        }
-        entity::Id::Place(place) => {
-            (now.places().stores().items).get(&(place.clone(), item.into()))
-        }
+        entity::Id::Actor(actor) => now.actors().get::<component::Item>(actor).get(item),
+        entity::Id::Place(place) => now.places().get::<component::Item>(place).get(item),
         _ => panic!("{id} holds no items"),
     };
     let delta = i64::from(count) - i64::from(held.copied().unwrap_or(0));

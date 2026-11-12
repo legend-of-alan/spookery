@@ -10,7 +10,7 @@ use crate::rules::grammar;
 use crate::rules::rule::{ChangeWatch, Op, Rule, When};
 use crate::state::change::{self, Change};
 use crate::state::id::ActorId;
-use crate::state::{ActorKind, Presence, State};
+use crate::state::{component, Presence, State};
 use crate::store::records::Step;
 
 use crate::round::dice::RoundDice;
@@ -193,13 +193,14 @@ fn flips(change: &Change, becomes: bool) -> bool {
 }
 
 fn matches_subject(state: &State, subject: &grammar::Subject, actor_id: &str) -> bool {
-    let Some(kind) = state.actors().stores().kind.get(actor_id) else {
+    let actor = ActorId::from(actor_id);
+    let Some(control_type) = state.actors().get::<component::ControlType>(&actor).get() else {
         return false;
     };
     match subject {
         grammar::Subject::Any => true,
-        grammar::Subject::Pc => *kind == ActorKind::Pc,
-        grammar::Subject::Npc => *kind == ActorKind::Npc,
+        grammar::Subject::Pc => control_type == component::ControlType::Pc,
+        grammar::Subject::Npc => control_type == component::ControlType::Npc,
         grammar::Subject::Actor(expected) => expected == actor_id,
     }
 }
