@@ -5,7 +5,7 @@
 use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, BTreeSet};
 
-use super::change::{self, Change, Report};
+use super::change::{self, Change};
 use super::component::{meter, Meter};
 use super::id::{ActorId, GlobalId, PlaceId, StoryId};
 use super::{entity, nested_map, sort_unique, undo, MemoryLine, Save, State};
@@ -22,7 +22,7 @@ pub(crate) struct Transaction {
     limits: Option<Limits>,
     keys: BTreeSet<change::Key>,
     key_order: Vec<change::Key>,
-    changes: Vec<Report>,
+    changes: Vec<change::Report>,
     taken: usize,
     memories: Vec<MemoryLine>,
     memory_writes: u64,
@@ -70,7 +70,7 @@ impl Transaction {
     /// Count `report`'s key, then keep it for the next take. The write it reports has already
     /// landed, so a `BUDGET` here is for the caller's savepoint to undo. Only a store's write
     /// calls it, with the reports the writer handed the write.
-    pub(super) fn report(&mut self, report: Report) -> Result<(), Reason> {
+    pub(super) fn report(&mut self, report: change::Report) -> Result<(), Reason> {
         self.count_key(report.key())?;
         self.changes.push(report);
         Ok(())
@@ -161,16 +161,16 @@ impl State {
         let mut meters: BTreeMap<_, (Option<Option<&Meter>>, Option<_>)> = BTreeMap::new();
         for report in &transaction.changes[transaction.taken..] {
             match report {
-                Report::Change(change) => match net.entry(change.key.clone()) {
+                change::Report::Change(change) => match net.entry(change.key.clone()) {
                     Entry::Vacant(entry) => {
                         entry.insert(change.clone());
                     }
                     Entry::Occupied(mut entry) => entry.get_mut().after = change.after.clone(),
                 },
-                Report::Meter(key, held) => {
+                change::Report::Meter(key, held) => {
                     (meters.entry(key).or_default().0).get_or_insert(held.as_ref());
                 }
-                Report::Modifiers(key, sum) => {
+                change::Report::Modifiers(key, sum) => {
                     (meters.entry(key).or_default().1).get_or_insert(*sum);
                 }
             }

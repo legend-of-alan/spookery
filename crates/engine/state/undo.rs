@@ -7,7 +7,7 @@ use std::ops::Deref;
 
 use serde::{Deserialize, Serialize};
 
-use super::change::Report;
+use super::change;
 use super::id::ActorId;
 use super::transaction::Transaction;
 use crate::Reason;
@@ -122,7 +122,7 @@ impl<T: Undo> Store<T> {
         &mut self,
         transaction: &mut Transaction,
         change: impl FnOnce(&mut T) -> T::Inverse,
-        reports: impl IntoIterator<Item = Report>,
+        reports: impl IntoIterator<Item = change::Report>,
     ) -> Result<(), Reason> {
         let inverse = change(&mut self.value);
         self.log.push((transaction.next_change_no(), inverse));
@@ -159,7 +159,7 @@ impl<T: Entries> Store<T> {
         transaction: &mut Transaction,
         key: T::Key,
         value: Option<T::Value>,
-        reports: impl IntoIterator<Item = Report>,
+        reports: impl IntoIterator<Item = change::Report>,
     ) -> Result<(), Reason> {
         if self.value.get(&key) == value.as_ref() {
             return Ok(());
@@ -193,7 +193,7 @@ impl<V: PartialEq + Debug> DenseStore<V> {
         transaction: &mut Transaction,
         actor: &ActorId,
         value: V,
-        reports: impl IntoIterator<Item = Report>,
+        reports: impl IntoIterator<Item = change::Report>,
     ) -> Result<(), Reason> {
         self.0.get(actor).ok_or(Reason::UnknownId)?;
         self.0.set(transaction, actor.clone(), Some(value), reports)

@@ -182,14 +182,14 @@ pub(crate) enum Report {
 impl Report {
     pub(crate) fn key(&self) -> &Key {
         match self {
-            Report::Change(change) => &change.key,
-            Report::Meter(key, _) | Report::Modifiers(key, _) => key,
+            Self::Change(change) => &change.key,
+            Self::Meter(key, _) | Self::Modifiers(key, _) => key,
         }
     }
 }
 
 impl From<Change> for Report {
-    fn from(change: Change) -> Report {
-        Report::Change(change)
+    fn from(change: Change) -> Self {
+        Self::Change(change)
     }
 }
