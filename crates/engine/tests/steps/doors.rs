@@ -3,7 +3,7 @@ use std::path::Path;
 
 use cucumber::{given, then, when};
 use spookery_engine::testing as support;
-use spookery_engine::Presence;
+use spookery_engine::{entity, Presence};
 
 use crate::World;
 
@@ -51,7 +51,7 @@ fn stairs_open(pack: &Path) -> bool {
         .state()
         .places()
         .open_exits
-        .contains(&("docks_shop".into(), "stairs".to_string()))
+        .contains_key(&("docks_shop".into(), "stairs".to_string()))
 }
 
 /// The docks pack with Mira on the street holding brass_key and keeping no habits, a `bolt`
@@ -87,9 +87,10 @@ exits:";
             .actors_mut()
             .set_place(&"mira".into(), "docks_street")
             .unwrap();
-        let mut actors = state.actors_mut();
-        actors
-            .shift_item(&"mira".into(), "brass_key", 1, None)
+        let mira = entity::Id::Actor("mira".into());
+        state
+            .entity_mut(&mira)
+            .shift_item("brass_key", 1, None)
             .unwrap();
     });
     world.pack = Some(pack);
@@ -201,7 +202,10 @@ fn the_journal_has_the_open(world: &mut World) {
 #[then(expr = "a change rule watching open has run in that round")]
 fn the_watch_ran(world: &mut World) {
     let saved = spookery_engine::World::peek(world.pack()).unwrap();
-    assert!(saved.state().globals().flags.contains("creaked"));
+    assert!(saved
+        .state()
+        .entity(&entity::Id::Global)
+        .has_flag("creaked"));
     drop(saved);
     let round = support::read_round(world.pack(), "round-0001");
     let creaked = round["effects"].as_array().unwrap().iter().any(|effect| {

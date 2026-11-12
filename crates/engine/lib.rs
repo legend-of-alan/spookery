@@ -260,7 +260,8 @@ pub mod testing {
             actors.add_actor(&nell, crate::state::ActorKind::Pc, "docks_shop");
             for (key, base) in [("grit", 100), ("rest", 3)] {
                 let meter = crate::Meter { base, offset: 0 };
-                actors.set_meter(&nell, key, Some(meter)).unwrap();
+                let set = (actors.get_mut::<crate::Meter>(&nell)).set(key, Some(meter));
+                set.unwrap();
             }
         });
     }

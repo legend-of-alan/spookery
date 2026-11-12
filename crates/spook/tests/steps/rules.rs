@@ -7,7 +7,7 @@ use spookery_engine::testing::{faces, RollKey};
 
 use crate::support::{edit_as_saved, edit_meter, put_items};
 use spookery_engine::MoveReport;
-use spookery_engine::{entity, Presence, Reason};
+use spookery_engine::{entity, Meter, Presence, Reason};
 
 use super::common::split_line;
 use super::table;
@@ -261,7 +261,7 @@ fn the_ferry_rule_runs(world: &mut World) {
     );
     let flags = &now.actors().flags;
     assert!(
-        flags.contains(&("rowan".into(), "took_the_ferry".to_string())),
+        flags.contains_key(&("rowan".into(), "took_the_ferry".to_string())),
         "ferry flag missing: {flags:?}"
     );
 }
@@ -349,7 +349,10 @@ fn an_empty_round_lands_at(world: &mut World, tick: u64) {
         let (mira, briar) = (&"mira".into(), &"briar".into());
         let mut actors = now.actors_mut();
         actors.copy_actor(mira, briar, &mira_place).unwrap();
-        actors.set_meter(briar, "shop_day", None).unwrap();
+        actors
+            .get_mut::<Meter>(briar)
+            .set("shop_day", None)
+            .unwrap();
         actors.set_place(briar, "docks_shop").unwrap();
         edit_as_saved(now, |save| {
             save["actors"]["acts"]["mira"]["idle_acts_this_window"] = 3.into()
@@ -554,8 +557,8 @@ fn the_outcome_is_a_miss(world: &mut World) {
     let now = state_of(world.pack.as_ref().unwrap());
     let flags = &now.actors().flags;
     let briars = |flag: &str| ("briar".into(), flag.to_string());
-    assert!(flags.contains(&briars("missed")), "{flags:?}");
-    assert!(!flags.contains(&briars("hit")), "{flags:?}");
+    assert!(flags.contains_key(&briars("missed")), "{flags:?}");
+    assert!(!flags.contains_key(&briars("hit")), "{flags:?}");
 }
 
 #[given(expr = "a pack with rules\\/moves.yaml")]
@@ -776,7 +779,7 @@ fn both_full_ids_are_refused(world: &mut World) {
     assert!(
         !now.actors()
             .flags
-            .contains(&("rowan".into(), "took_the_street".to_string())),
+            .contains_key(&("rowan".into(), "took_the_street".to_string())),
         "the far place rule ran"
     );
 }
@@ -1003,7 +1006,7 @@ fn briars_ask_runs_on_briar(world: &mut World) {
     assert_eq!(world.scratch, r#"{"actor":"briar"} cast:briar/ask"#);
     let now = state_of(world.pack.as_ref().unwrap());
     assert!(
-        now.globals().flags.iter().any(|flag| flag == "passage"),
+        now.entity(&entity::Id::Global).has_flag("passage"),
         "{:?}",
         now.globals().flags
     );

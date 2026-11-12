@@ -1,4 +1,5 @@
 use spookery_engine::testing::state_of;
+use spookery_engine::Meter;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -273,7 +274,7 @@ fn rowan_moves_grit_and_nell_joins(world: &mut World, offset: i64) {
         let (rowan, nell) = (&"rowan".into(), &"nell".into());
         let mut actors = now.actors_mut();
         actors.copy_actor(rowan, nell, "docks_shop").unwrap();
-        actors.set_meter(nell, "grit", None).unwrap();
+        actors.get_mut::<Meter>(nell).set("grit", None).unwrap();
     });
 }
 

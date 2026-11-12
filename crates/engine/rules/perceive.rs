@@ -8,8 +8,7 @@ use crate::intent::Viewer;
 use crate::rules::habits::list_whose_if_holds;
 use crate::rules::visibility::can_see_fact;
 use crate::state::id::{ActorId, PlaceId};
-use crate::state::nested_map;
-use crate::state::{Note, Presence, State};
+use crate::state::{component, Note, Presence, State};
 use crate::world::World;
 use crate::Reason;
 use spookery_protocol::{ExitView, PERCEIVE_BODY_CHARS};
@@ -151,7 +150,8 @@ fn perceive_viewer_budget(
     }
     notes.sort_by(|a, b| a.id.cmp(&b.id));
 
-    let items = nested_map::entries_of(&state.places().items, &PlaceId::from(place.clone()))
+    let place_id = PlaceId::from(place.clone());
+    let items = (state.places().get::<component::Item>(&place_id).iter())
         .map(|(id, count)| ItemStack {
             id: id.to_string(),
             count: *count,

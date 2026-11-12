@@ -1,14 +1,14 @@
 //! The actors' components, one store per component, keyed by actor id.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
+use crate::canon::Canon;
 use crate::intent::{Target, Viewer};
 use crate::state::change::{self, Change};
-use crate::state::component::meter::{self, Meter};
 use crate::state::component::modifier::{self, Modifier};
-use crate::state::component::{flag, item};
+use crate::state::component::{self, Meter};
 use crate::state::id::ActorId;
 use crate::state::transaction::Transaction;
 use crate::state::{entity, nested_map, sort_unique, undo, Reader, Writer};
@@ -33,40 +33,33 @@ pub struct Actors {
     pub visited: undo::Store<BTreeMap<(ActorId, String), Vec<String>>>,
     pub acts: undo::DenseStore<Act>,
     #[serde(with = "nested_map")]
-    pub items: undo::Store<BTreeMap<(ActorId, String), u32>>,
+    pub items: undo::Store<component::Map<ActorId, component::Item>>,
     #[serde(with = "nested_map")]
-    pub meters: undo::Store<BTreeMap<(ActorId, String), Meter>>,
+    pub meters: undo::Store<component::Map<ActorId, Meter>>,
     /// The modifiers each actor holds, by modifier id.
     #[serde(with = "nested_map")]
     pub modifiers: undo::Store<BTreeMap<(ActorId, String), Modifier>>,
     #[serde(with = "nested_map::lists")]
-    pub flags: undo::Store<BTreeSet<(ActorId, String)>>,
+    pub flags: undo::Store<component::Map<ActorId, component::Flag>>,
 }
 
-impl Actors {
-    /// Meter `key` as `actor` holds it, before modifiers.
-    pub fn meter(&self, actor: &ActorId, key: &str) -> Option<&Meter> {
-        nested_map::get(&self.meters, actor, key)
-    }
+impl entity::Entities for Actors {
+    type Id = ActorId;
 
+    fn contains(&self, _: &Canon, id: &ActorId) -> bool {
+        self.kind.contains_key(id)
+    }
+}
+
+entity::has!(Actors, component::Item, items);
+entity::has!(Actors, Meter, meters);
+entity::has!(Actors, component::Flag, flags);
+
+impl Actors {
     /// What `actor`'s modifiers add to meter `key`.
     pub fn modifier_sum(&self, actor: &ActorId, key: &str) -> Result<i64, Reason> {
         let held = nested_map::entries_of(&self.modifiers, actor).map(|(_, held)| held);
         modifier::sum(held, key)
-    }
-
-    /// How many of `item` `actor` holds, or `None` when there is no such actor.
-    pub fn item_count(&self, actor: &ActorId, item: &str) -> Option<u32> {
-        self.kind.get(actor)?;
-        Some(
-            nested_map::get(&self.items, actor, item)
-                .copied()
-                .unwrap_or(0),
-        )
-    }
-
-    pub fn has_flag(&self, actor: &ActorId, key: &str) -> bool {
-        nested_map::contains(&self.flags, actor, key)
     }
 
     /// Every store, as the log a rollback undoes and an accept clears.
@@ -99,26 +92,6 @@ impl Actors {
     }
 }
 
-impl Reader<'_, Actors> {
-    /// The current value of meter `key` on `actor`, or `UNKNOWN_ID` when they do not carry it.
-    pub fn meter_value(self, actor: &ActorId, key: &str) -> Result<i64, Reason> {
-        self.meter_value_with(actor, key, self.modifier_sum(actor, key))
-    }
-
-    /// The value of meter `key` on `actor` with `modifiers` added, for a write that has not
-    /// landed: the same refusals as `meter_value`, in the same order.
-    fn meter_value_with(
-        self,
-        actor: &ActorId,
-        key: &str,
-        modifiers: Result<i64, Reason>,
-    ) -> Result<i64, Reason> {
-        let def = self.canon.meter_def(entity::IdRef::Actor(actor), key);
-        let held = self.meter(actor, key).ok_or(Reason::UnknownId);
-        meter::value(def.ok_or(Reason::UnknownId)?, held?, modifiers?)
-    }
-}
-
 impl Writer<'_, Actors> {
     /// The components and the transaction, once `actor` is known to exist.
     fn check_actor(&mut self, actor: &ActorId) -> Result<(&mut Actors, &mut Transaction), Reason> {
@@ -135,11 +108,12 @@ impl Writer<'_, Actors> {
         key: change::Key,
         read: impl FnOnce(&Actors) -> change::Value,
         after: change::Value,
-        set: impl FnOnce(&mut Actors, &mut Transaction, [Change; 1]) -> Result<(), Reason>,
+        set: impl FnOnce(&mut Actors, &mut Transaction, [change::Report; 1]) -> Result<(), Reason>,
     ) -> Result<(), Reason> {
         let (components, transaction) = self.check_actor(actor)?;
         let before = read(components);
-        set(components, transaction, [Change::new(key, before, after)])
+        let report = Change::new(key, before, after).into();
+        set(components, transaction, [report])
     }
 
     /// The one write to `actor`'s action state: `edit` made to what they hold, reporting `key`'s
@@ -317,75 +291,11 @@ impl Writer<'_, Actors> {
         components.visited.set(transaction, entry, Some(exits), [])
     }
 
-    /// Move `actor`'s count of `id` as `item::shift_count` says. An actor who no longer holds
-    /// the item they wield lets go of it.
-    pub fn shift_item(
-        &mut self,
-        actor: &ActorId,
-        id: &str,
-        delta: i64,
-        max: Option<i64>,
-    ) -> Result<(), Reason> {
-        let (components, transaction) = self.check_actor(actor)?;
-        let entry = (actor.clone(), id.to_string());
-        let key = change::Key::ActorItem(actor.to_string(), id.to_string());
-        let (next, change) = item::shift(components.items.get(&entry).copied(), delta, max, key)?;
-        components.items.set(transaction, entry, next, [change])?;
-        let wielded = self.wielded.get(actor);
-        if wielded.is_some_and(|held| nested_map::get(&self.items, actor, held).is_none()) {
-            self.set_wielded(actor, None)?;
-        }
-        Ok(())
-    }
-
-    /// Move `actor`'s meter `key` by `delta` inside its bounds.
-    pub fn shift_meter(&mut self, actor: &ActorId, key: &str, delta: i64) -> Result<(), Reason> {
-        let canon = self.canon;
-        let (components, transaction) = self.check_actor(actor)?;
-        let def = canon
-            .meter_def(entity::IdRef::Actor(actor), key)
-            .ok_or(Reason::UnknownId)?;
-        let modifiers = components.modifier_sum(actor, key);
-        let entry = (actor.clone(), key.to_string());
-        let watched = change::Key::ActorMeter(actor.to_string(), key.to_string());
-        let (next, change) = meter::shift(
-            components.meters.get(&entry),
-            def,
-            modifiers,
-            delta,
-            watched,
-        )?;
-        components
-            .meters
-            .set(transaction, entry, Some(next), [change])
-    }
-
-    /// Give `actor` meter `key` as `meter` says, `None` taking it off, outside a round's rules:
-    /// migrate and fixtures. Taking one off checks no owner.
-    pub fn set_meter(
-        &mut self,
-        actor: &ActorId,
-        key: &str,
-        meter: Option<Meter>,
-    ) -> Result<(), Reason> {
-        let canon = self.canon;
-        // Taking a meter off checks no owner: the entry is its own evidence.
-        let (components, transaction) = match meter {
-            Some(_) => self.check_actor(actor)?,
-            None => (&mut *self.components, &mut *self.transaction),
-        };
-        let def = canon.meter_def(entity::IdRef::Actor(actor), key);
-        let modifiers = components.modifier_sum(actor, key);
-        let entry = (actor.clone(), key.to_string());
-        let watched = change::Key::ActorMeter(actor.to_string(), key.to_string());
-        let held = components.meters.get(&entry);
-        let (next, change) = meter::next(held, meter, def, modifiers, watched);
-        components.meters.set(transaction, entry, next, [change])
-    }
-
     /// Put `next` on as modifier `id`, `None` taking it off. The meter's key is counted when the
     /// stacks move, the meter must still read with `next` on, then the modifier's own key: the
-    /// order the budget refuses in. Taking one off checks no owner.
+    /// order the budget refuses in. When the stacks move it reports the meter's key with what the
+    /// modifiers added before, and the change is read when the changes are taken. Taking one off
+    /// checks no owner.
     pub fn set_modifier(
         &mut self,
         actor: &ActorId,
@@ -417,19 +327,16 @@ impl Writer<'_, Actors> {
         if stacks_move {
             transaction.count_key(&watched)?;
         }
-        // The meter as it reads with `next` in place of what is held, which must read when it
-        // goes on.
+        // The meter must read with `next` in place of what is held when it goes on.
         let others =
             nested_map::entries_of(&components.modifiers, actor).filter(|(held, _)| *held != id);
         let sum = modifier::sum(others.map(|(_, held)| held).chain(&next), &meter);
-        let reader = Reader::new(&*components, canon);
-        let after = reader.meter_value_with(actor, &meter, sum);
         if next.is_some() {
-            after?;
+            modifier::value_with(Reader::new(&*components, canon), actor, &meter, sum)?;
         }
-        let before = change::Value::from_reading(reader.meter_value(actor, &meter));
-        let meter_change = Change::new(watched, before, change::Value::from_reading(after));
-        let reports = stacks_move.then_some(meter_change).into_iter().chain([own]);
+        let before = components.modifier_sum(actor, &meter);
+        let watched = stacks_move.then_some(change::Report::Modifiers(watched, before));
+        let reports = watched.into_iter().chain([own.into()]);
         let entry = (actor.clone(), id.to_string());
         components.modifiers.set(transaction, entry, next, reports)
     }
@@ -444,14 +351,6 @@ impl Writer<'_, Actors> {
             self.set_modifier(&actor, &id, None)?;
         }
         Ok(())
-    }
-
-    pub fn set_flag(&mut self, actor: &ActorId, key: &str, on: bool) -> Result<(), Reason> {
-        let (components, transaction) = self.check_actor(actor)?;
-        let entry = (actor.clone(), key.to_string());
-        let watched = change::Key::ActorFlag(actor.to_string(), key.to_string());
-        let (next, change) = flag::next(on, watched);
-        components.flags.set(transaction, entry, next, [change])
     }
 }
 

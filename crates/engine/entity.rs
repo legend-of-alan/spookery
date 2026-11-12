@@ -1,10 +1,10 @@
 //! One entity, resolved from the id a rule named, to read or to write. This module is outside
 //! `state` on purpose: it sees only `State`'s public getters and handles, so every method here
-//! can only select a collection and call that collection's method of the same name.
+//! can only select a collection and read or write the same component on it.
 
-use crate::state::component::meter::Meter;
+use crate::state::component::{self, modifier, Meter};
 pub use crate::state::entity::{Id, IdRef};
-use crate::state::id::{ActorId, PlaceId, StoryId};
+use crate::state::id::{ActorId, GlobalId, PlaceId, StoryId};
 use crate::state::{self, Reader, State, Writer};
 use crate::Reason;
 
@@ -30,29 +30,30 @@ impl State {
 }
 
 impl Ref<'_> {
-    /// The current value of meter `key`, or `UNKNOWN_ID` when the entity does not carry it.
+    /// The current value of meter `key`, an actor's with their modifiers, or `UNKNOWN_ID` when
+    /// the entity does not carry it.
     pub fn meter_value(&self, key: &str) -> Result<i64, Reason> {
-        match self {
-            Ref::Actor(actors, id) => actors.meter_value(id, key),
-            Ref::Place(places, id) => places.meter_value(id, key),
-            Ref::Story(stories, id) => stories.meter_value(id, key),
-            Ref::Global(globals) => globals.meter_value(key),
+        match *self {
+            Ref::Actor(actors, id) => modifier::value(actors, id, key),
+            Ref::Place(places, id) => places.get::<Meter>(id).value(key),
+            Ref::Story(stories, id) => stories.get::<Meter>(id).value(key),
+            Ref::Global(globals) => globals.get::<Meter>(&GlobalId).value(key),
         }
     }
 
     pub fn has_flag(&self, key: &str) -> bool {
-        match self {
-            Ref::Actor(actors, id) => actors.has_flag(id, key),
-            Ref::Place(places, id) => places.has_flag(id, key),
-            Ref::Story(stories, id) => stories.has_flag(id, key),
-            Ref::Global(globals) => globals.has_flag(key),
+        match *self {
+            Ref::Actor(actors, id) => actors.get::<component::Flag>(id).contains(key),
+            Ref::Place(places, id) => places.get::<component::Flag>(id).contains(key),
+            Ref::Story(stories, id) => stories.get::<component::Flag>(id).contains(key),
+            Ref::Global(globals) => globals.get::<component::Flag>(&GlobalId).contains(key),
         }
     }
 }
 
 /// The same entity, to write: the collection's `Writer` and the id. Every method selects the variant
-/// and calls the collection writer's method of the same name; nothing here validates, writes, counts
-/// or reports on its own, and nothing here could.
+/// and makes the same component write on it; nothing here validates, writes, counts or reports on
+/// its own, and nothing here could.
 pub enum Mut<'a> {
     Actor(Writer<'a, state::entity::Actors>, &'a ActorId),
     Place(Writer<'a, state::entity::Places>, &'a PlaceId),
@@ -75,27 +76,31 @@ impl State {
 impl Mut<'_> {
     pub fn shift_meter(&mut self, key: &str, delta: i64) -> Result<(), Reason> {
         match self {
-            Mut::Actor(actors, id) => actors.shift_meter(id, key, delta),
-            Mut::Place(places, id) => places.shift_meter(id, key, delta),
-            Mut::Story(stories, id) => stories.shift_meter(id, key, delta),
-            Mut::Global(globals) => globals.shift_meter(key, delta),
+            Mut::Actor(actors, id) => actors.get_mut::<Meter>(id).shift(key, delta),
+            Mut::Place(places, id) => places.get_mut::<Meter>(id).shift(key, delta),
+            Mut::Story(stories, id) => stories.get_mut::<Meter>(id).shift(key, delta),
+            Mut::Global(globals) => globals.get_mut::<Meter>(&GlobalId).shift(key, delta),
         }
     }
 
     pub fn set_flag(&mut self, key: &str, on: bool) -> Result<(), Reason> {
         match self {
-            Mut::Actor(actors, id) => actors.set_flag(id, key, on),
-            Mut::Place(places, id) => places.set_flag(id, key, on),
-            Mut::Story(stories, id) => stories.set_flag(id, key, on),
-            Mut::Global(globals) => globals.set_flag(key, on),
+            Mut::Actor(actors, id) => actors.get_mut::<component::Flag>(id).set(key, on),
+            Mut::Place(places, id) => places.get_mut::<component::Flag>(id).set(key, on),
+            Mut::Story(stories, id) => stories.get_mut::<component::Flag>(id).set(key, on),
+            Mut::Global(globals) => globals.get_mut::<component::Flag>(&GlobalId).set(key, on),
         }
     }
 
     /// Actors and places hold items; a story or the world is `SCHEMA`, decided here once.
     pub fn shift_item(&mut self, id: &str, delta: i64, max: Option<i64>) -> Result<(), Reason> {
         match self {
-            Mut::Actor(actors, actor) => actors.shift_item(actor, id, delta, max),
-            Mut::Place(places, place) => places.shift_item(place, id, delta, max),
+            Mut::Actor(actors, actor) => actors
+                .get_mut::<component::Item>(actor)
+                .shift(id, delta, max),
+            Mut::Place(places, place) => places
+                .get_mut::<component::Item>(place)
+                .shift(id, delta, max),
             Mut::Story(..) | Mut::Global(_) => Err(Reason::Schema),
         }
     }
@@ -103,10 +108,10 @@ impl Mut<'_> {
     /// Give the entity meter `key`, `None` taking it off, outside a round's rules: migrate.
     pub fn set_meter(&mut self, key: &str, meter: Option<Meter>) -> Result<(), Reason> {
         match self {
-            Mut::Actor(actors, id) => actors.set_meter(id, key, meter),
-            Mut::Place(places, id) => places.set_meter(id, key, meter),
-            Mut::Story(stories, id) => stories.set_meter(id, key, meter),
-            Mut::Global(globals) => globals.set_meter(key, meter),
+            Mut::Actor(actors, id) => actors.get_mut::<Meter>(id).set(key, meter),
+            Mut::Place(places, id) => places.get_mut::<Meter>(id).set(key, meter),
+            Mut::Story(stories, id) => stories.get_mut::<Meter>(id).set(key, meter),
+            Mut::Global(globals) => globals.get_mut::<Meter>(&GlobalId).set(key, meter),
         }
     }
 }

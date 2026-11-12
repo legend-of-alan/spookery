@@ -21,7 +21,7 @@ use crate::intent::{Intent, IntentArgs, Source, Target, Viewer};
 use crate::rules::effect::{Effect, EffectKind};
 use crate::state::change::{self, Change};
 use crate::state::component::meter::{Meter, MeterDef, MeterWrite};
-use crate::state::component::modifier::ModifierDef;
+use crate::state::component::modifier::{self, ModifierDef};
 use crate::state::id::{ActorId, ExitId};
 use crate::state::{ActCounter, Presence, Save, State};
 use crate::testing::copy_docks;
@@ -236,7 +236,7 @@ fn every_moved_meter_is_reported(
     changes: &[Change],
 ) -> Result<(), TestCaseError> {
     let read = |state: &State, actor: &ActorId, key: &str| {
-        let value = state.actors().meter_value(actor, key);
+        let value = modifier::value(state.actors(), actor, key);
         value.map_or(change::Value::Empty, change::Value::Number)
     };
     for (actor, key) in now.actors().meters.keys() {

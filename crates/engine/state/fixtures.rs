@@ -1,6 +1,7 @@
 //! The actor lifecycle only fixtures need: production has no path that adds or removes an actor.
 //! Each component goes through its production writer where one exists.
 
+use super::component::{self, Meter};
 use super::id::ActorId;
 use super::{entity, nested_map, Act, ActorKind, Writer};
 use crate::Reason;
@@ -40,7 +41,7 @@ impl Writer<'_, entity::Actors> {
         let act = acts.get(from).cloned();
         self.components.acts.put(self.transaction, to, act);
         for (id, count) in nested_map::entries_of(&items, from) {
-            self.shift_item(to, id, (*count).into(), None)?;
+            (self.get_mut::<component::Item>(to)).shift(id, (*count).into(), None)?;
         }
         self.set_wielded(to, wielded.get(from).map(String::as_str))?;
         self.learn(to, known_facts.get(from).map_or(&[], Vec::as_slice))?;
@@ -48,13 +49,13 @@ impl Writer<'_, entity::Actors> {
             self.note_exits(to, place, exits.clone())?;
         }
         for (key, meter) in nested_map::entries_of(&meters, from) {
-            self.set_meter(to, key, Some(meter.clone()))?;
+            self.get_mut::<Meter>(to).set(key, Some(meter.clone()))?;
         }
         for (id, modifier) in nested_map::entries_of(&modifiers, from) {
             self.set_modifier(to, id, Some(modifier.clone()))?;
         }
-        for (_, key) in flags.iter().filter(|(owner, _)| owner == from) {
-            self.set_flag(to, key, true)?;
+        for (key, ()) in nested_map::entries_of(&flags, from) {
+            self.get_mut::<component::Flag>(to).set(key, true)?;
         }
         Ok(())
     }
@@ -76,16 +77,16 @@ impl Writer<'_, entity::Actors> {
         } = (*self.components).clone();
         self.set_wielded(actor, None)?;
         for (id, count) in nested_map::entries_of(&items, actor) {
-            self.shift_item(actor, id, -i64::from(*count), None)?;
+            (self.get_mut::<component::Item>(actor)).shift(id, -i64::from(*count), None)?;
         }
         for (id, _) in nested_map::entries_of(&modifiers, actor) {
             self.set_modifier(actor, id, None)?;
         }
         for (key, _) in nested_map::entries_of(&meters, actor) {
-            self.set_meter(actor, key, None)?;
+            self.get_mut::<Meter>(actor).set(key, None)?;
         }
-        for (_, key) in flags.iter().filter(|(owner, _)| owner == actor) {
-            self.set_flag(actor, key, false)?;
+        for (key, ()) in nested_map::entries_of(&flags, actor) {
+            self.get_mut::<component::Flag>(actor).set(key, false)?;
         }
         // No production writer takes these off: production removes no actor.
         let (components, transaction) = (&mut *self.components, &mut *self.transaction);

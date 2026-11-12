@@ -576,7 +576,7 @@ fn a_street_rule_over_the_cap(world: &mut World) {
 #[when(expr = "Rowan walks to the street")]
 fn rowan_walks_to_the_street(world: &mut World) {
     let (state, round) = rowan_walks(world.pack(), Vec::new());
-    let flags = state.actors().stores().flags.iter();
+    let flags = state.actors().stores().flags.keys();
     world.count = flags.filter(|(owner, _)| *owner == *"rowan").count();
     world.scratch = round.to_string();
 }

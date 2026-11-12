@@ -378,7 +378,7 @@ fn flags_of(world: &World, id: &str) -> Vec<String> {
         .actors()
         .stores()
         .flags
-        .iter()
+        .keys()
         .filter(|(owner, _)| *owner == *id);
     flags.map(|(_, flag)| flag.clone()).collect()
 }

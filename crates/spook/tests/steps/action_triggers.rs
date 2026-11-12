@@ -3,7 +3,7 @@
 use std::fs;
 
 use cucumber::{given, then, when};
-use spookery_engine::Presence;
+use spookery_engine::{entity, Presence};
 
 use super::record::read_extra_steps;
 use super::rules::open;
@@ -138,8 +138,9 @@ fn wren_is_refused(world: &mut World) {
     assert_eq!(refused[0]["code"], "NOT_IN_SPEC", "{round}");
     let now = state_of(world.pack.as_ref().unwrap());
     assert_eq!(now.actors().place["rowan"], "docks_street");
-    assert!(now.globals().flags.iter().any(|flag| flag == "gate_locked"));
-    assert!(!now.globals().flags.iter().any(|flag| flag == "gate_passed"));
+    let world_flags = now.entity(&entity::Id::Global);
+    assert!(world_flags.has_flag("gate_locked"));
+    assert!(!world_flags.has_flag("gate_passed"));
 }
 
 #[given(
@@ -166,7 +167,7 @@ fn both_chains_ran(world: &mut World) {
     let now = state_of(world.pack.as_ref().unwrap());
     for flag in ["rang", "echoed"] {
         assert!(
-            now.globals().flags.iter().any(|held| held == flag),
+            now.entity(&entity::Id::Global).has_flag(flag),
             "{:?}",
             now.globals().flags
         );

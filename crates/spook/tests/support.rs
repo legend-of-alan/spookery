@@ -10,13 +10,16 @@ use spookery_engine::{entity, ActorId, Meter, State};
 /// Change `actor`'s meter `key` as `edit` says, through the writer.
 pub fn edit_meter(now: &mut State, actor: &str, key: &str, edit: impl FnOnce(&mut Meter)) {
     let actor = ActorId::from(actor);
-    let held = now.actors().stores().meter(&actor, key);
+    let held = now.actors().get::<Meter>(&actor).get(key);
     let mut meter = held
         .cloned()
         .unwrap_or_else(|| panic!("{actor} has no {key}"));
     edit(&mut meter);
     let mut actors = now.actors_mut();
-    actors.set_meter(&actor, key, Some(meter)).unwrap();
+    actors
+        .get_mut::<Meter>(&actor)
+        .set(key, Some(meter))
+        .unwrap();
 }
 
 /// Give `id` meter `key` at `base`, with no offset, through the writer.
@@ -36,11 +39,15 @@ pub fn edit_as_saved(now: &mut State, edit: impl FnOnce(&mut serde_json::Value))
 /// Leave `id`, an actor or a place, holding `count` of `item`, through the writer.
 pub fn put_items(now: &mut State, id: &entity::Id, item: &str, count: u32) {
     let held = match id {
-        entity::Id::Actor(actor) => now.actors().item_count(actor, item).unwrap_or(0),
-        entity::Id::Place(place) => now.places().item_count(place, item),
+        entity::Id::Actor(actor) => {
+            (now.actors().stores().items).get(&(actor.clone(), item.into()))
+        }
+        entity::Id::Place(place) => {
+            (now.places().stores().items).get(&(place.clone(), item.into()))
+        }
         _ => panic!("{id} holds no items"),
     };
-    let delta = i64::from(count) - i64::from(held);
+    let delta = i64::from(count) - i64::from(held.copied().unwrap_or(0));
     now.entity_mut(id).shift_item(item, delta, None).unwrap();
 }
 

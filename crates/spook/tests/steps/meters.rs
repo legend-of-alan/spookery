@@ -389,7 +389,9 @@ fn the_vigil_fires_once(world: &mut World) {
         .filter(|name| name == "story:vigil/dawn_breaks")
         .count();
     assert_eq!(fired, 1);
-    assert!(state_of(pack).globals().flags.contains("dawn_broke"));
+    assert!(state_of(pack)
+        .entity(&entity::Id::Global)
+        .has_flag("dawn_broke"));
 }
 
 /// Give the world a `morning` meter from 0, and append effects to the vigil's dawn rule, the
@@ -595,7 +597,10 @@ fn dawn_has_fallen(world: &mut World, value: i64) {
             base: 6,
             offset: value - 6,
         };
-        now.globals_mut().set_meter("dawn", Some(fallen)).unwrap();
+        let world_meters = now
+            .entity_mut(&entity::Id::Global)
+            .set_meter("dawn", Some(fallen));
+        world_meters.unwrap();
         support::put_meter(now, &entity::Id::Global, "doom", 6);
     });
     assert_eq!(value_on(&pack, &entity::Id::Global, "dawn"), Some(value));

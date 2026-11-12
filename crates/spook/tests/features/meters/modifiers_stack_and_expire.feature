@@ -47,6 +47,12 @@ Feature: Modifiers stack per application, add ticks on reapply, and expire at on
     When rowan is hit by the torch and, 2 ticks later, by the brand
     Then the burn has 2 ticks left, the 1 left plus its 1
 
+  Scenario: A cost paid while burn is on moves grit as its player reads it
+    Given "burn" modifies grit, and rowan holds one stack of burn of -2 over a stored grit of 5
+    When rowan makes a move that costs 1 grit
+    Then the GM sees "actor_meter rowan grit" as a changed key, going from 3 to 2
+    And a change rule that waits for grit below 3 fires
+
   Scenario: Burn expires and all its stacks go at once
     Given "burn" modifies grit and has max_stacks 4
     And rowan has 3 stacks of burn

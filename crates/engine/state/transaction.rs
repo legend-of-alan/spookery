@@ -6,7 +6,9 @@ use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, BTreeSet};
 
 use super::change::{self, Change};
-use super::{sort_unique, undo, MemoryLine, Save, State};
+use super::component::{meter, Meter};
+use super::id::{ActorId, GlobalId, PlaceId, StoryId};
+use super::{entity, nested_map, sort_unique, undo, MemoryLine, Save, State};
 use crate::canon::Budget;
 use crate::Reason;
 
@@ -20,7 +22,7 @@ pub(crate) struct Transaction {
     limits: Option<Limits>,
     keys: BTreeSet<change::Key>,
     key_order: Vec<change::Key>,
-    changes: Vec<Change>,
+    changes: Vec<change::Report>,
     taken: usize,
     memories: Vec<MemoryLine>,
     memory_writes: u64,
@@ -65,12 +67,12 @@ impl Transaction {
         Ok(())
     }
 
-    /// Count `change`'s key, then keep it for the next take. The write it reports has already
+    /// Count `report`'s key, then keep it for the next take. The write it reports has already
     /// landed, so a `BUDGET` here is for the caller's savepoint to undo. Only a store's write
     /// calls it, with the reports the writer handed the write.
-    pub(super) fn report(&mut self, change: Change) -> Result<(), Reason> {
-        self.count_key(&change.key)?;
-        self.changes.push(change);
+    pub(super) fn report(&mut self, report: change::Report) -> Result<(), Reason> {
+        self.count_key(report.key())?;
+        self.changes.push(report);
         Ok(())
     }
 
@@ -149,23 +151,91 @@ impl State {
     }
 
     /// The changes since the last take, one per key from its first value to its last, less the
-    /// keys that came back to where they were, in key order. The counted keys stay.
+    /// keys that came back to where they were, in key order. A meter reads as rules read it,
+    /// before its first write since the last take and now. The counted keys stay.
     pub(crate) fn take_changes(&mut self) -> Vec<Change> {
-        let transaction = &mut self.transaction;
+        let transaction = &self.transaction;
         let mut net = BTreeMap::new();
-        for change in transaction.changes[transaction.taken..].iter().cloned() {
-            match net.entry(change.key.clone()) {
-                Entry::Vacant(entry) => {
-                    entry.insert(change);
+        // Each meter's stored value and modifier sum before the first write to each since the
+        // last take.
+        let mut meters: BTreeMap<_, (Option<Option<&Meter>>, Option<_>)> = BTreeMap::new();
+        for report in &transaction.changes[transaction.taken..] {
+            match report {
+                change::Report::Change(change) => match net.entry(change.key.clone()) {
+                    Entry::Vacant(entry) => {
+                        entry.insert(change.clone());
+                    }
+                    Entry::Occupied(mut entry) => entry.get_mut().after = change.after.clone(),
+                },
+                change::Report::Meter(key, held) => {
+                    (meters.entry(key).or_default().0).get_or_insert(held.as_ref());
                 }
-                Entry::Occupied(mut entry) => entry.get_mut().after = change.after,
+                change::Report::Modifiers(key, sum) => {
+                    (meters.entry(key).or_default().1).get_or_insert(*sum);
+                }
             }
         }
-        transaction.taken = transaction.changes.len();
+        for (key, (held, sum)) in meters {
+            net.insert(key.clone(), self.read_meter_change(key, held, sum));
+        }
+        self.transaction.taken = self.transaction.changes.len();
         let moved = net
             .into_values()
             .filter(|change| change.before != change.after);
         moved.collect()
+    }
+
+    /// Meter `key`'s change as rules read it: before, from `held` and `sum` where a write handed
+    /// them over and from the meter as it is where none did; and as it is now.
+    fn read_meter_change(
+        &self,
+        key: &change::Key,
+        held: Option<Option<&Meter>>,
+        sum: Option<Result<i64, Reason>>,
+    ) -> Change {
+        let (canon, save) = (&*self.canon, &self.save);
+        let (def, now, sum_now) = match key {
+            change::Key::ActorMeter(actor, name) => {
+                let actor = ActorId::from(actor.as_str());
+                let def = canon.meter_def(entity::IdRef::Actor(&actor), name);
+                let now = nested_map::get(&save.actors.meters, &actor, name);
+                (def, now, save.actors.modifier_sum(&actor, name))
+            }
+            change::Key::PlaceMeter(place, name) => {
+                let place = PlaceId::from(place.as_str());
+                let def = canon.meter_def(entity::IdRef::Place(&place), name);
+                (
+                    def,
+                    nested_map::get(&save.places.meters, &place, name),
+                    Ok(0),
+                )
+            }
+            change::Key::StoryMeter(story, name) => {
+                let story = StoryId::from(story.as_str());
+                let def = canon.meter_def(entity::IdRef::Story(&story), name);
+                (
+                    def,
+                    nested_map::get(&save.stories.meters, &story, name),
+                    Ok(0),
+                )
+            }
+            change::Key::WorldMeter(name) => {
+                let def = canon.meter_def(entity::IdRef::Global, name);
+                (
+                    def,
+                    nested_map::get(&save.world.meters, &GlobalId, name),
+                    Ok(0),
+                )
+            }
+            _ => unreachable!("only a meter's write reports a meter's key alone"),
+        };
+        let reading = |held: Option<&Meter>, sum: Result<i64, Reason>| {
+            let value = (def.zip(held).ok_or(Reason::UnknownId))
+                .and_then(|(def, held)| meter::value(def, held, sum?));
+            change::Value::from_reading(value)
+        };
+        let before = reading(held.unwrap_or(now), sum.unwrap_or(sum_now));
+        Change::new(key.clone(), before, reading(now, sum_now))
     }
 
     pub(crate) fn take_memories(&mut self) -> Vec<MemoryLine> {
@@ -236,8 +306,8 @@ mod tests {
     use crate::intent::Intent;
     use crate::rules::effect::{Effect, EffectKind};
     use crate::state::component::meter::{Meter, MeterWrite};
-    use crate::state::entity;
     use crate::state::id::{ActorId, PlaceId, StoryId};
+    use crate::state::{component, entity};
     use crate::state::{ActorKind, Presence, Save, State};
     use crate::{Reason, World};
 
@@ -259,9 +329,10 @@ mod tests {
             base: 1,
             offset: -5,
         };
-        state
-            .actors_mut()
-            .set_meter(&bram, "grit", Some(grit))
+        let mut actors = state.actors_mut();
+        actors
+            .get_mut::<Meter>(&bram)
+            .set("grit", Some(grit))
             .unwrap();
         state.accept();
         let world = World::from_parts(opened.root(), state);
@@ -290,7 +361,10 @@ mod tests {
         let mut state = world.begin_round();
         let mira = ActorId::from("mira");
         let rest = |state: &mut State, actor: &ActorId, delta: i64| {
-            let shifted = state.actors_mut().shift_meter(actor, "rest", delta);
+            let shifted = state
+                .actors_mut()
+                .get_mut::<Meter>(actor)
+                .shift("rest", delta);
             shifted.expect("rest moves");
         };
         // The write just before the savepoint stays; the one just after it goes.
@@ -316,6 +390,57 @@ mod tests {
     }
 
     #[test]
+    fn a_meter_that_comes_back_inside_one_take_is_not_taken_and_stays_counted() {
+        use crate::state::component::modifier::{self, Modifier, ModifierDef};
+        let opened = docks();
+        let mut canon = opened.canon().clone();
+        let burn = ModifierDef {
+            meter: "rest".to_string(),
+            max_stacks: 1,
+            hidden: false,
+        };
+        canon.modifiers.insert("burn".to_string(), burn);
+        let save = Save::clone(opened.state());
+        let world = World::from_parts(opened.root(), State::new(save, Arc::new(canon)));
+        let mut state = world.begin_round();
+        let mira = ActorId::from("mira");
+        // A: down one, B: back up one, in one take window.
+        for delta in [-1, 1] {
+            let shifted = state
+                .actors_mut()
+                .get_mut::<Meter>(&mira)
+                .shift("rest", delta);
+            shifted.expect("rest moves");
+        }
+        assert_eq!(modifier::value(state.actors(), &mira, "rest"), Ok(3));
+        assert_eq!(
+            state.take_changes(),
+            [],
+            "the key that came back is dropped"
+        );
+        assert_eq!(state.keys_counted(), 1, "and still counted");
+        // The same with a modifier that lowers rest, put on and taken off.
+        let lowers = Modifier {
+            meter: "rest".to_string(),
+            until: 99,
+            max_ticks: 99,
+            stacks: vec![-2],
+        };
+        let put = state.actors_mut().set_modifier(&mira, "burn", Some(lowers));
+        put.unwrap();
+        assert_eq!(modifier::value(state.actors(), &mira, "rest"), Ok(1));
+        let taken = state.actors_mut().set_modifier(&mira, "burn", None);
+        taken.unwrap();
+        let changes = state.take_changes();
+        assert_eq!(changes, [], "the meter and the modifier are dropped");
+        assert_eq!(
+            state.keys_counted(),
+            2,
+            "the meter's key was counted already; the modifier's key is new"
+        );
+    }
+
+    #[test]
     fn a_rollback_takes_an_added_actor_off_every_store_it_was_put_on() {
         let world = docks();
         let mut state = world.begin_round();
@@ -337,7 +462,8 @@ mod tests {
         let before = state.clone();
         let place = state
             .places_mut()
-            .set_flag(&PlaceId::from("nowhere"), "lit", true);
+            .get_mut::<component::Flag>(&PlaceId::from("nowhere"))
+            .set("lit", true);
         assert_eq!(
             place,
             Err(Reason::UnknownId),
@@ -345,7 +471,8 @@ mod tests {
         );
         let story = state
             .stories_mut()
-            .set_flag(&StoryId::from("nowhere"), "lit", true);
+            .get_mut::<component::Flag>(&StoryId::from("nowhere"))
+            .set("lit", true);
         assert_eq!(
             story,
             Err(Reason::UnknownId),

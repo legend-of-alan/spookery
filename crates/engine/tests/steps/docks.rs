@@ -24,7 +24,7 @@ fn add_actor(state: &mut State, id: &str, kind: ActorKind, place: &str, grit: i6
     actors.add_actor(&id, kind, place);
     for (key, base) in [("grit", grit), ("rest", 3)] {
         let meter = Meter { base, offset: 0 };
-        actors.set_meter(&id, key, Some(meter)).unwrap();
+        actors.get_mut::<Meter>(&id).set(key, Some(meter)).unwrap();
     }
 }
 
@@ -51,7 +51,7 @@ fn flags_of(state: &State, id: &str) -> Vec<String> {
         .actors()
         .stores()
         .flags
-        .iter()
+        .keys()
         .filter(|(owner, _)| *owner == *id);
     flags.map(|(_, flag)| flag.clone()).collect()
 }
@@ -143,12 +143,11 @@ fn capped_restock() -> u32 {
             .actors_mut()
             .set_place(&"rowan".into(), "docks_street")
             .unwrap();
-        let shop = "docks_shop".into();
-        let held = i64::from(state.places().item_count(&shop, "lamp_oil"));
-        let mut places = state.places_mut();
-        places
-            .shift_item(&shop, "lamp_oil", 6 - held, None)
-            .unwrap();
+        let entry = ("docks_shop".into(), "lamp_oil".to_string());
+        let held = i64::from(state.places().items.get(&entry).copied().unwrap_or(0));
+        let shop = entity::Id::Place(entry.0);
+        let mut places = state.entity_mut(&shop);
+        places.shift_item("lamp_oil", 6 - held, None).unwrap();
         write_save(&pack, &state);
     }
     play_pack_once(&pack).unwrap_or_else(|err| panic!("round: {err}"));

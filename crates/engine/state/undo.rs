@@ -1,13 +1,13 @@
 //! A store: one component's value, and the inverse of each change made to it since the last
 //! accept, so a rollback puts the value back from the store alone.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::fmt::Debug;
 use std::ops::Deref;
 
 use serde::{Deserialize, Serialize};
 
-use super::change::Change;
+use super::change;
 use super::id::ActorId;
 use super::transaction::Transaction;
 use crate::Reason;
@@ -19,7 +19,7 @@ pub trait Undo {
     fn undo(&mut self, inverse: Self::Inverse);
 }
 
-/// A map, or a set whose entries hold `()`, written one entry at a time.
+/// A map, written one entry at a time.
 pub trait Entries {
     type Key: Ord + Clone + Debug;
     type Value: PartialEq + Debug;
@@ -55,21 +55,6 @@ impl<K: Ord + Clone + Debug, V: PartialEq + Debug> Entries for BTreeMap<K, V> {
             (Some(value), None) => self.insert(key.clone(), value),
             (None, _) => self.remove(key),
         }
-    }
-}
-
-impl<K: Ord + Clone + Debug> Entries for BTreeSet<K> {
-    type Key = K;
-    type Value = ();
-    fn get(&self, key: &K) -> Option<&()> {
-        self.contains(key).then_some(&())
-    }
-    fn put(&mut self, key: &K, value: Option<()>) -> Option<()> {
-        let held = match value {
-            Some(()) => !self.insert(key.clone()),
-            None => self.remove(key),
-        };
-        held.then_some(())
     }
 }
 
@@ -137,11 +122,11 @@ impl<T: Undo> Store<T> {
         &mut self,
         transaction: &mut Transaction,
         change: impl FnOnce(&mut T) -> T::Inverse,
-        reports: impl IntoIterator<Item = Change>,
+        reports: impl IntoIterator<Item = change::Report>,
     ) -> Result<(), Reason> {
         let inverse = change(&mut self.value);
         self.log.push((transaction.next_change_no(), inverse));
-        (reports.into_iter()).try_for_each(|change| transaction.report(change))
+        (reports.into_iter()).try_for_each(|report| transaction.report(report))
     }
 
     /// The value, to change past the log: only out of a round, so it panics while an inverse is
@@ -174,7 +159,7 @@ impl<T: Entries> Store<T> {
         transaction: &mut Transaction,
         key: T::Key,
         value: Option<T::Value>,
-        reports: impl IntoIterator<Item = Change>,
+        reports: impl IntoIterator<Item = change::Report>,
     ) -> Result<(), Reason> {
         if self.value.get(&key) == value.as_ref() {
             return Ok(());
@@ -208,7 +193,7 @@ impl<V: PartialEq + Debug> DenseStore<V> {
         transaction: &mut Transaction,
         actor: &ActorId,
         value: V,
-        reports: impl IntoIterator<Item = Change>,
+        reports: impl IntoIterator<Item = change::Report>,
     ) -> Result<(), Reason> {
         self.0.get(actor).ok_or(Reason::UnknownId)?;
         self.0.set(transaction, actor.clone(), Some(value), reports)
