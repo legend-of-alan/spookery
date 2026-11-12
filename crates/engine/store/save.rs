@@ -381,9 +381,11 @@ mod tests {
     use std::fs;
 
     #[test]
-    fn world_stores_round_trip_byte_for_byte() {
+    fn docks_now_round_trips_through_emitter() {
         let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("../../packs/oneshot-docks/state/save.yaml");
+        let original = fs::read_to_string(&path).unwrap();
+        // The same save with a world that holds meters and flags, which key on `GlobalId`.
         let empty = "world:
   meters: {}
   flags: []
@@ -400,22 +402,13 @@ mod tests {
     - gate_locked
     - rang
 ";
-        let original = fs::read_to_string(&path).unwrap();
         assert!(original.contains(empty));
-        let original = original.replace(empty, held);
-        let state = parse(&original).unwrap();
-        assert_eq!(emit(&state).unwrap(), original);
-    }
-
-    #[test]
-    fn docks_now_round_trips_through_emitter() {
-        let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../../packs/oneshot-docks/state/save.yaml");
-        let original = fs::read_to_string(&path).unwrap();
-        let state = parse(&original).unwrap();
-        let emitted = emit(&state).unwrap();
-        assert_eq!(emitted, original);
-        assert_eq!(parse(&emitted).unwrap(), state);
+        for text in [original.clone(), original.replace(empty, held)] {
+            let state = parse(&text).unwrap();
+            let emitted = emit(&state).unwrap();
+            assert_eq!(emitted, text);
+            assert_eq!(parse(&emitted).unwrap(), state);
+        }
     }
 
     fn save_text(tag: &str) -> String {

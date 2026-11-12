@@ -36,18 +36,21 @@ pub trait Has<C: Component>: Entities {
     fn store_mut(&mut self) -> &mut undo::Store<component::Map<Self::Id, C>>;
 }
 
-/// Declares that `$entities` stores `$component` in its field `$store`. The caller has `undo` and
-/// `component` in scope, as a collection's file does for its stores.
+/// Declares that `$entities` stores `$component` in its field `$store`.
 macro_rules! has {
     ($entities:ty, $component:ty, $store:ident) => {
-        impl $crate::state::entity::Has<$component> for $entities {
-            fn store(&self) -> &undo::Store<component::Map<Self::Id, $component>> {
-                &self.$store
+        const _: () = {
+            use $crate::state::{component::Map, undo::Store};
+
+            impl $crate::state::entity::Has<$component> for $entities {
+                fn store(&self) -> &Store<Map<Self::Id, $component>> {
+                    &self.$store
+                }
+                fn store_mut(&mut self) -> &mut Store<Map<Self::Id, $component>> {
+                    &mut self.$store
+                }
             }
-            fn store_mut(&mut self) -> &mut undo::Store<component::Map<Self::Id, $component>> {
-                &mut self.$store
-            }
-        }
+        };
     };
 }
 pub(in crate::state) use has;

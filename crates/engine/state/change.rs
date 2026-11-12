@@ -168,9 +168,8 @@ impl Change {
     }
 }
 
-/// What a store's write reports: a change with both its values, or a meter's key with what the
-/// write had in hand of its reading before, read as rules read the meter when the changes are
-/// taken.
+/// What a store's write reports: a finished change, or, for a meter, what the write replaced, so
+/// the take can read the meter's change as rules read the meter.
 #[derive(Clone, Debug)]
 pub(crate) enum Report {
     Change(Change),

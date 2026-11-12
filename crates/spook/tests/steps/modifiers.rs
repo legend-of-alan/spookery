@@ -545,22 +545,20 @@ fn strained(pack: &Path, flag: &str) -> bool {
     state_of(pack).entity(&strain).has_flag(flag)
 }
 
-/// The change's `after` is the line rowan reads; its `before` is pinned by the rule on
-/// `< from + 1` not firing and the rule on `< from` firing.
-#[then(expr = "the GM sees {string} as a changed key, going from {int} to {int}")]
-fn the_gm_sees_the_key_move(world: &mut World, key: String, from: i64, to: i64) {
+/// The change's `after` is the line rowan reads. Its `before` is below 4, since the rule on `<4`
+/// does not fire, and the next step's rule on `<3` firing puts it at 3 or more.
+#[then(expr = "the GM sees {string} as a changed key, going from 3 to 2")]
+fn the_gm_sees_grit_go_from_3_to_2(world: &mut World, key: String) {
     assert!(world.summary.contains(&key), "{:?}", world.summary);
     let line = &world.scratch;
-    assert!(line.contains(&format!("grit is now {to}.")), "{line:?}");
-    assert_eq!((from, to), (3, 2), "the strain story watches 3 and 4");
+    assert!(line.contains("grit is now 2."), "{line:?}");
     assert!(!strained(pack(world), "under_4"), "grit started below 4");
-    assert!(
-        strained(pack(world), "under_3"),
-        "grit started at 3 or more"
-    );
 }
 
 #[then(expr = "a change rule that waits for grit below 3 fires")]
 fn the_rule_below_three_fires(world: &mut World) {
-    assert!(strained(pack(world), "under_3"));
+    assert!(
+        strained(pack(world), "under_3"),
+        "grit started at 3 or more"
+    );
 }

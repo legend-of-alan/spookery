@@ -10,11 +10,7 @@ use spookery_engine::{entity, ActorId, Meter, State};
 /// Change `actor`'s meter `key` as `edit` says, through the writer.
 pub fn edit_meter(now: &mut State, actor: &str, key: &str, edit: impl FnOnce(&mut Meter)) {
     let actor = ActorId::from(actor);
-    let held = now
-        .actors()
-        .stores()
-        .meters
-        .get(&(actor.clone(), key.to_string()));
+    let held = now.actors().get::<Meter>(&actor).get(key);
     let mut meter = held
         .cloned()
         .unwrap_or_else(|| panic!("{actor} has no {key}"));
