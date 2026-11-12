@@ -1,7 +1,6 @@
 use std::fs;
 
 use cucumber::{given, then, when};
-use spookery_engine::{emit_save, parse_save};
 
 use super::{common, table};
 use crate::World;
@@ -9,12 +8,11 @@ use crate::World;
 #[given(expr = "rowan starts in docks_street")]
 fn rowan_starts_in_docks_street(world: &mut World) {
     let pack = crate::support::copy_docks("arrive");
-    let path = pack.join("state/save.yaml");
-    let mut now = parse_save(&fs::read_to_string(&path).unwrap()).unwrap();
-    now.actors_mut()
-        .set_place(&"rowan".into(), "docks_street")
-        .unwrap();
-    fs::write(&path, emit_save(&now).unwrap()).unwrap();
+    crate::support::edit_save(&pack, |now| {
+        now.actors_mut()
+            .set_place(&"rowan".into(), "docks_street")
+            .unwrap();
+    });
     world.pack = Some(pack);
 }
 

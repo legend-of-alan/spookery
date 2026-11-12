@@ -59,7 +59,7 @@ pub(crate) fn exit_via<'a>(
     let from = context
         .intent
         .actor_id()
-        .and_then(|id| context.state.actors().place.get(id))
+        .and_then(|id| context.state.actors().stores().place.get(id))
         .map_or("", String::as_str);
     if let Some(exit) = exit_stood_on(context.canon, from) {
         return Ok(Some(exit));
@@ -219,7 +219,7 @@ pub(crate) fn note_exits(canon: &Canon, state: &mut State) -> Result<(), Reason>
 
 /// The exits of this actor's place that they are allowed to see.
 pub(crate) fn visible_exits(canon: &Canon, state: &State, actor_id: &ActorId) -> Vec<ExitView> {
-    let place = state.actors().place.get(actor_id);
+    let place = state.actors().stores().place.get(actor_id);
     match place.and_then(|place| canon.places.get(place.as_str())) {
         Some(place) => exits_at(canon, state, actor_id, place),
         None => Vec::new(),

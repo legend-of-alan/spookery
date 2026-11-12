@@ -6,7 +6,7 @@ use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, BTreeSet};
 
 use super::change::{self, Change};
-use super::{sort_unique, undo, MemoryLine, State};
+use super::{sort_unique, undo, MemoryLine, Save, State};
 use crate::canon::Budget;
 use crate::Reason;
 
@@ -139,11 +139,12 @@ impl State {
 
     /// Every collection's stores and the notes, as the logs a rollback undoes and an accept clears.
     fn logs_mut(&mut self) -> impl Iterator<Item = &mut dyn undo::Log> {
-        let notes: &mut dyn undo::Log = &mut self.notes;
-        (self.actors.logs_mut().into_iter())
-            .chain(self.places.logs_mut())
-            .chain(self.stories.logs_mut())
-            .chain(self.world.logs_mut())
+        let save = &mut self.save;
+        let notes: &mut dyn undo::Log = &mut save.notes;
+        (save.actors.logs_mut().into_iter())
+            .chain(save.places.logs_mut())
+            .chain(save.stories.logs_mut())
+            .chain(save.world.logs_mut())
             .chain([notes])
     }
 
@@ -200,6 +201,14 @@ impl State {
             log.clear();
         }
         self.transaction = Transaction::default();
+        self.save.sort();
+    }
+}
+
+impl Save {
+    /// Put the save in file order: the notes by id, and each list a note or an actor's known facts
+    /// hold sorted with no repeats.
+    pub(crate) fn sort(&mut self) {
         let notes = self.notes.value_mut();
         notes.sort_by(|a, b| a.id.cmp(&b.id));
         for note in notes {
@@ -229,7 +238,7 @@ mod tests {
     use crate::state::component::meter::{Meter, MeterWrite};
     use crate::state::entity;
     use crate::state::id::ActorId;
-    use crate::state::{ActorKind, Presence, State};
+    use crate::state::{ActorKind, Presence, Save, State};
     use crate::{Reason, World};
 
     fn docks() -> World<()> {
@@ -243,7 +252,7 @@ mod tests {
         let opened = docks();
         let mut canon = opened.canon().clone();
         canon.budget.max_state_keys_mutated = 2;
-        let mut state = opened.state().clone();
+        let mut state = State::new(Save::clone(opened.state()), Arc::new(canon));
         // Bram's grit sits clamped at its minimum: taking more moves the offset, not the value.
         let bram = ActorId::from("bram");
         let grit = Meter {
@@ -252,10 +261,10 @@ mod tests {
         };
         state
             .actors_mut()
-            .set_meter(&canon, &bram, "grit", Some(grit))
+            .set_meter(&bram, "grit", Some(grit))
             .unwrap();
         state.accept();
-        let world = World::from_parts(opened.root(), Arc::new(canon), state);
+        let world = World::from_parts(opened.root(), state);
         let (canon, mut state, nobody) = (world.canon(), world.begin_round(), Presence::default());
         let intent = Intent::habit(world.state(), &"mira".into(), "leave_door_note");
         let mut write = |actor: &str, key: &str, delta: i64| {
@@ -278,10 +287,10 @@ mod tests {
     #[test]
     fn a_rollback_undoes_the_writes_after_its_savepoint_and_keeps_those_before() {
         let world = docks();
-        let (canon, mut state) = (world.canon(), world.begin_round());
+        let mut state = world.begin_round();
         let mira = ActorId::from("mira");
         let rest = |state: &mut State, actor: &ActorId, delta: i64| {
-            let shifted = state.actors_mut().shift_meter(canon, actor, "rest", delta);
+            let shifted = state.actors_mut().shift_meter(actor, "rest", delta);
             shifted.expect("rest moves");
         };
         // The write just before the savepoint stays; the one just after it goes.
@@ -291,7 +300,7 @@ mod tests {
         rest(&mut state, &mira, -1);
         state.rollback(point);
         assert_eq!(
-            state, before,
+            *state, *before,
             "only the write after the savepoint is undone"
         );
         let changes = state.take_changes();
@@ -318,6 +327,6 @@ mod tests {
             .add_actor(&nell, ActorKind::Npc, "docks_shop");
         assert!(state.actors().acts.contains_key(&nell), "Nell is added");
         state.rollback(point);
-        assert_eq!(state, before, "her kind, place and action state all go");
+        assert_eq!(*state, *before, "her kind, place and action state all go");
     }
 }

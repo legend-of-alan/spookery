@@ -5,11 +5,10 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
-use crate::canon::Canon;
 use crate::state::component::meter::{self, Meter};
 use crate::state::component::{flag, item};
 use crate::state::id::{ExitId, PlaceId};
-use crate::state::{change, entity, nested_map, undo, Writer};
+use crate::state::{change, entity, nested_map, undo, Reader, Writer};
 use crate::Reason;
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -28,12 +27,6 @@ pub struct Places {
 }
 
 impl Places {
-    /// The current value of meter `key` on `place`, or `UNKNOWN_ID` when it does not carry it.
-    pub fn meter_value(&self, canon: &Canon, place: &PlaceId, key: &str) -> Result<i64, Reason> {
-        let def = canon.meter_def(entity::IdRef::Place(place), key);
-        meter::read(def, nested_map::get(&self.meters, place, key))
-    }
-
     /// How many of `item` lie in `place`.
     pub fn item_count(&self, place: &PlaceId, item: &str) -> u32 {
         nested_map::get(&self.items, place, item)
@@ -63,19 +56,26 @@ impl Places {
     }
 }
 
+impl Reader<'_, Places> {
+    /// The current value of meter `key` on `place`, or `UNKNOWN_ID` when it does not carry it.
+    pub fn meter_value(self, place: &PlaceId, key: &str) -> Result<i64, Reason> {
+        let def = self.canon.meter_def(entity::IdRef::Place(place), key);
+        meter::read(def, nested_map::get(&self.meters, place, key))
+    }
+}
+
 impl Writer<'_, Places> {
     /// Move the count of `id` lying in `place` as `item::shift_count` says. A place the pack does
     /// not define is `UNKNOWN_ID`.
     pub fn shift_item(
         &mut self,
-        canon: &Canon,
         place: &PlaceId,
         id: &str,
         delta: i64,
         max: Option<i64>,
     ) -> Result<(), Reason> {
         let (components, transaction) = (&mut *self.components, &mut *self.transaction);
-        canon.places.get(place).ok_or(Reason::UnknownId)?;
+        self.canon.places.get(place).ok_or(Reason::UnknownId)?;
         let entry = (place.clone(), id.to_string());
         let key = change::Key::PlaceItem(place.to_string(), id.to_string());
         let (next, change) = item::shift(components.items.get(&entry).copied(), delta, max, key)?;
@@ -83,15 +83,10 @@ impl Writer<'_, Places> {
     }
 
     /// Move `place`'s meter `key` by `delta` inside its bounds.
-    pub fn shift_meter(
-        &mut self,
-        canon: &Canon,
-        place: &PlaceId,
-        key: &str,
-        delta: i64,
-    ) -> Result<(), Reason> {
+    pub fn shift_meter(&mut self, place: &PlaceId, key: &str, delta: i64) -> Result<(), Reason> {
         let (components, transaction) = (&mut *self.components, &mut *self.transaction);
-        let def = canon
+        let def = self
+            .canon
             .meter_def(entity::IdRef::Place(place), key)
             .ok_or(Reason::UnknownId)?;
         let entry = (place.clone(), key.to_string());
@@ -106,13 +101,12 @@ impl Writer<'_, Places> {
     /// Give `place` meter `key` as `meter` says, `None` taking it off, outside a round's rules.
     pub fn set_meter(
         &mut self,
-        canon: &Canon,
         place: &PlaceId,
         key: &str,
         meter: Option<Meter>,
     ) -> Result<(), Reason> {
         let (components, transaction) = (&mut *self.components, &mut *self.transaction);
-        let def = canon.meter_def(entity::IdRef::Place(place), key);
+        let def = self.canon.meter_def(entity::IdRef::Place(place), key);
         let entry = (place.clone(), key.to_string());
         let watched = change::Key::PlaceMeter(place.to_string(), key.to_string());
         let (next, change) = meter::next(components.meters.get(&entry), meter, def, Ok(0), watched);

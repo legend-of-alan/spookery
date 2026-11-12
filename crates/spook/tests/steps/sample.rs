@@ -117,14 +117,8 @@ fn remove_larks_tonic(pack: &Path) {
 
 fn hp_of(pack: &Path, actor_id: &str) -> i64 {
     let now = state_of(pack);
-    let canon = spookery_engine::load_canon(pack).unwrap_or_else(|err| {
-        panic!(
-            "load canon: {}",
-            spookery_engine::first_reason(&err).as_str()
-        )
-    });
     now.entity(&spookery_engine::entity::Id::Actor(actor_id.into()))
-        .meter_value(&canon, "hp")
+        .meter_value("hp")
         .unwrap_or_else(|err| panic!("hp: {}", err.as_str()))
 }
 

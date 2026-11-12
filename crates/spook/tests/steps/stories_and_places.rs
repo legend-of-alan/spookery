@@ -352,6 +352,7 @@ fn the_loft_holds_lamp_oil(world: &mut World) {
     let now = state_of(world.pack.as_deref().unwrap());
     let held = now
         .places()
+        .stores()
         .items
         .get(&("loft".into(), "lamp_oil".to_string()));
     assert_eq!(held, Some(&1));

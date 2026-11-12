@@ -2,20 +2,19 @@
 //! `state` on purpose: it sees only `State`'s public getters and handles, so every method here
 //! can only select a collection and call that collection's method of the same name.
 
-use crate::canon::Canon;
 use crate::state::component::meter::Meter;
 pub use crate::state::entity::{Id, IdRef};
 use crate::state::id::{ActorId, PlaceId, StoryId};
-use crate::state::{self, State, Writer};
+use crate::state::{self, Reader, State, Writer};
 use crate::Reason;
 
-/// One entity's components, to read: the collection's components and the id. It borrows the save
+/// One entity's components, to read: the collection's `Reader` and the id. It borrows the save
 /// immutably, so a condition reads through it with no transaction in hand.
 pub enum Ref<'a> {
-    Actor(&'a state::entity::Actors, &'a ActorId),
-    Place(&'a state::entity::Places, &'a PlaceId),
-    Story(&'a state::entity::Stories, &'a StoryId),
-    Global(&'a state::entity::Globals),
+    Actor(Reader<'a, state::entity::Actors>, &'a ActorId),
+    Place(Reader<'a, state::entity::Places>, &'a PlaceId),
+    Story(Reader<'a, state::entity::Stories>, &'a StoryId),
+    Global(Reader<'a, state::entity::Globals>),
 }
 
 impl State {
@@ -32,12 +31,12 @@ impl State {
 
 impl Ref<'_> {
     /// The current value of meter `key`, or `UNKNOWN_ID` when the entity does not carry it.
-    pub fn meter_value(&self, canon: &Canon, key: &str) -> Result<i64, Reason> {
+    pub fn meter_value(&self, key: &str) -> Result<i64, Reason> {
         match self {
-            Ref::Actor(actors, id) => actors.meter_value(canon, id, key),
-            Ref::Place(places, id) => places.meter_value(canon, id, key),
-            Ref::Story(stories, id) => stories.meter_value(canon, id, key),
-            Ref::Global(globals) => globals.meter_value(canon, key),
+            Ref::Actor(actors, id) => actors.meter_value(id, key),
+            Ref::Place(places, id) => places.meter_value(id, key),
+            Ref::Story(stories, id) => stories.meter_value(id, key),
+            Ref::Global(globals) => globals.meter_value(key),
         }
     }
 
@@ -74,12 +73,12 @@ impl State {
 }
 
 impl Mut<'_> {
-    pub fn shift_meter(&mut self, canon: &Canon, key: &str, delta: i64) -> Result<(), Reason> {
+    pub fn shift_meter(&mut self, key: &str, delta: i64) -> Result<(), Reason> {
         match self {
-            Mut::Actor(actors, id) => actors.shift_meter(canon, id, key, delta),
-            Mut::Place(places, id) => places.shift_meter(canon, id, key, delta),
-            Mut::Story(stories, id) => stories.shift_meter(canon, id, key, delta),
-            Mut::Global(globals) => globals.shift_meter(canon, key, delta),
+            Mut::Actor(actors, id) => actors.shift_meter(id, key, delta),
+            Mut::Place(places, id) => places.shift_meter(id, key, delta),
+            Mut::Story(stories, id) => stories.shift_meter(id, key, delta),
+            Mut::Global(globals) => globals.shift_meter(key, delta),
         }
     }
 
@@ -93,32 +92,21 @@ impl Mut<'_> {
     }
 
     /// Actors and places hold items; a story or the world is `SCHEMA`, decided here once.
-    pub fn shift_item(
-        &mut self,
-        canon: &Canon,
-        id: &str,
-        delta: i64,
-        max: Option<i64>,
-    ) -> Result<(), Reason> {
+    pub fn shift_item(&mut self, id: &str, delta: i64, max: Option<i64>) -> Result<(), Reason> {
         match self {
             Mut::Actor(actors, actor) => actors.shift_item(actor, id, delta, max),
-            Mut::Place(places, place) => places.shift_item(canon, place, id, delta, max),
+            Mut::Place(places, place) => places.shift_item(place, id, delta, max),
             Mut::Story(..) | Mut::Global(_) => Err(Reason::Schema),
         }
     }
 
     /// Give the entity meter `key`, `None` taking it off, outside a round's rules: migrate.
-    pub fn set_meter(
-        &mut self,
-        canon: &Canon,
-        key: &str,
-        meter: Option<Meter>,
-    ) -> Result<(), Reason> {
+    pub fn set_meter(&mut self, key: &str, meter: Option<Meter>) -> Result<(), Reason> {
         match self {
-            Mut::Actor(actors, id) => actors.set_meter(canon, id, key, meter),
-            Mut::Place(places, id) => places.set_meter(canon, id, key, meter),
-            Mut::Story(stories, id) => stories.set_meter(canon, id, key, meter),
-            Mut::Global(globals) => globals.set_meter(canon, key, meter),
+            Mut::Actor(actors, id) => actors.set_meter(id, key, meter),
+            Mut::Place(places, id) => places.set_meter(id, key, meter),
+            Mut::Story(stories, id) => stories.set_meter(id, key, meter),
+            Mut::Global(globals) => globals.set_meter(key, meter),
         }
     }
 }

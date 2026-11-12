@@ -55,6 +55,7 @@ pub(crate) fn perceive_budget<L>(
     let (canon, state) = (world.canon(), world.state());
     let (id, kind) = state
         .actors()
+        .stores()
         .kind
         .get_key_value(as_arg)
         .ok_or(Reason::UnknownId)?;
@@ -205,7 +206,7 @@ fn shown_meters(canon: &Canon, state: &State, carrier: &entity::Id) -> Vec<Meter
             let def = canon
                 .meter_def(carrier.as_ref(), id)
                 .filter(|def| !def.hidden)?;
-            let value = state.entity(carrier).meter_value(canon, id).ok()?;
+            let value = state.entity(carrier).meter_value(id).ok()?;
             Some(MeterView {
                 id: id.to_string(),
                 value,

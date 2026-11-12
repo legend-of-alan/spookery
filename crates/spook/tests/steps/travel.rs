@@ -4,7 +4,7 @@ use std::path::Path;
 
 use cucumber::{given, then, when};
 use spookery_engine::testing::journal::list_round_keys;
-use spookery_engine::testing::{ActorKind, Canon, PendingAction};
+use spookery_engine::testing::{ActorKind, PendingAction};
 use spookery_engine::{ActorId, State};
 
 use super::common::{
@@ -12,7 +12,7 @@ use super::common::{
     walk, write_play, EVENING,
 };
 use super::table;
-use crate::support::{self, copy_docks, edit_save_with};
+use crate::support::{self, copy_docks};
 use crate::World;
 
 fn add_toll(pack: &Path) {
@@ -173,11 +173,11 @@ fn two_arrivals(world: &mut World) {
         "---\nschema: cast\nid: nell\nkind: pc_template\ndisplay_name: Nell\nidle:\n  eligible: false\n---\nNell.\n",
     )
     .unwrap();
-    edit_save_with(&pack, |now, canon| {
+    edit_save(&pack, |now| {
         now.world_time = EVENING;
         set_busy(now, "rowan", EVENING + 10, "docks_shop.stairs");
         let walking = (EVENING + 5, walk("docks_shop.docks_street"));
-        add_nell(now, canon, "exit:docks_shop.docks_street", Some(walking));
+        add_nell(now, "exit:docks_shop.docks_street", Some(walking));
     });
     table::listen(world, &pack);
     table::seat_rowan(world, &pack);
@@ -187,7 +187,7 @@ fn two_arrivals(world: &mut World) {
 
 /// Add nell, a PC with wren's meters and nothing else, at `place`, busy with `walk`
 /// until its tick when it is `Some`.
-fn add_nell(now: &mut State, canon: &Canon, place: &str, walk: Option<(u64, PendingAction)>) {
+fn add_nell(now: &mut State, place: &str, walk: Option<(u64, PendingAction)>) {
     let nell = ActorId::from("nell");
     let meters: Vec<_> = (now.actors().meters.iter())
         .filter(|((owner, _), _)| *owner == *"wren")
@@ -196,7 +196,7 @@ fn add_nell(now: &mut State, canon: &Canon, place: &str, walk: Option<(u64, Pend
     let mut actors = now.actors_mut();
     actors.add_actor(&nell, ActorKind::Pc, place);
     for (key, meter) in meters {
-        actors.set_meter(canon, &nell, &key, Some(meter)).unwrap();
+        actors.set_meter(&nell, &key, Some(meter)).unwrap();
     }
     if let Some((until, pending)) = walk {
         actors.set_busy(&nell, until, Some(pending)).unwrap();
@@ -306,8 +306,8 @@ fn both_busy_without_a_gm(world: &mut World) {
         "---\nschema: cast\nid: nell\nkind: pc_template\ndisplay_name: Nell\nidle:\n  eligible: false\n---\nNell.\n",
     )
     .unwrap();
-    edit_save_with(&pack, |now, canon| {
-        add_nell(now, canon, "docks_shop", None);
+    edit_save(&pack, |now| {
+        add_nell(now, "docks_shop", None);
         set_busy(now, "nell", EVENING + 5, "docks_shop.docks_street");
     });
     table::listen(world, &pack);

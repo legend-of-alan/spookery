@@ -78,7 +78,7 @@ fn holds(context: &Context, cond: &Cond) -> Result<bool, Reason> {
         }
         Cond::Meter { of, key, op, value } => {
             let entity = expr::resolve_entity(context, of)?;
-            let current = state.entity(&entity).meter_value(context.canon, key)?;
+            let current = state.entity(&entity).meter_value(key)?;
             let right = expr::eval(context, value)?;
             Ok(op.holds(current, right))
         }

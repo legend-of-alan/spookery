@@ -139,20 +139,22 @@ pub(crate) fn map(
         return Err(Reason::UnknownId);
     }
     let places =
-        nested_map::entries_of(&state.actors().visited, actor_id).map(|(id, seen)| PlaceView {
-            name: place_name(canon, id),
-            exits: canon
-                .places
-                .get(id)
-                .map(|place| {
-                    place
-                        .exits
-                        .iter()
-                        .filter(|exit| seen.contains(&exit.name))
-                        .map(|exit| exit_view(canon, state, exit))
-                        .collect()
-                })
-                .unwrap_or_default(),
+        nested_map::entries_of(&state.actors().stores().visited, actor_id).map(|(id, seen)| {
+            PlaceView {
+                name: place_name(canon, id),
+                exits: canon
+                    .places
+                    .get(id)
+                    .map(|place| {
+                        place
+                            .exits
+                            .iter()
+                            .filter(|exit| seen.contains(&exit.name))
+                            .map(|exit| exit_view(canon, state, exit))
+                            .collect()
+                    })
+                    .unwrap_or_default(),
+            }
         });
     Ok(places.collect())
 }
@@ -161,8 +163,8 @@ pub(crate) fn map(
 /// `chanting until tick 1300` on any other timed action, read from its verb, and
 /// `recovering until tick 1300` in a cooldown.
 pub(crate) fn busy_line(canon: &Canon, state: &State, actor_id: &ActorId) -> Option<String> {
-    let act = state.actors().acts.get(actor_id)?;
-    let place = state.actors().place.get(actor_id)?;
+    let act = state.actors().stores().acts.get(actor_id)?;
+    let place = state.actors().stores().place.get(actor_id)?;
     if !act.is_busy(state.world_time) {
         return None;
     }
@@ -188,7 +190,7 @@ fn gerund(verb: &str) -> String {
 
 /// Place prose for this actor's current place.
 pub(crate) fn place_prose(canon: &Canon, state: &State, actor_id: &ActorId) -> String {
-    let place = state.actors().place.get(actor_id);
+    let place = state.actors().stores().place.get(actor_id);
     let Some(place) = place.and_then(|place| canon.places.get(place.as_str())) else {
         return String::new();
     };

@@ -98,7 +98,7 @@ fn fail(message: impl Into<String>) -> Result<(), TestCaseError> {
 }
 
 fn assert_same_save(state: &State, before: &State) -> Result<(), TestCaseError> {
-    if state == before {
+    if **state == **before {
         Ok(())
     } else {
         fail("a refused item effect changed the save")

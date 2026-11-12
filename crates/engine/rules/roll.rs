@@ -1,6 +1,5 @@
 //! Check definitions, one roll of a check, and the band its total lands in.
 
-use crate::canon::Canon;
 use crate::hash::blake2s_256;
 use crate::rules::gate;
 use crate::state::id::ActorId;
@@ -85,14 +84,13 @@ pub fn faces(key: &RollKey, start: usize, count: u32, sides: u32) -> Result<Vec<
 /// `threshold`. `partial_at` `None` keeps the roll binary; an opposing total passes `None`.
 pub(crate) fn roll_check(
     check: &Check,
-    canon: &Canon,
     state: &State,
     actor_id: &ActorId,
     key: &RollKey,
     threshold: i64,
     partial_at: Option<i64>,
 ) -> Result<Roll, Reason> {
-    let stat = state.actors().meter_value(canon, actor_id, &check.stat)?;
+    let stat = state.actors().meter_value(actor_id, &check.stat)?;
     let faces = faces(key, 0, check.dice_count, check.dice_sides)?;
     let total = faces.iter().map(|face| i64::from(*face)).sum::<i64>() + stat;
     Ok(Roll {
@@ -177,10 +175,10 @@ mod tests {
         let pack =
             std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packs/oneshot-docks");
         let docks = crate::World::open(&pack).expect("open");
-        let (canon, state, mira) = (docks.canon(), docks.state(), ActorId::from("mira"));
+        let (state, mira) = (docks.state(), ActorId::from("mira"));
         let check = check_of(2);
-        let once = roll_check(&check, canon, state, &mira, &key(0), 9, None).unwrap();
-        let twice = roll_check(&check, canon, state, &mira, &key(0), 9, None).unwrap();
+        let once = roll_check(&check, state, &mira, &key(0), 9, None).unwrap();
+        let twice = roll_check(&check, state, &mira, &key(0), 9, None).unwrap();
         assert_eq!(once, twice);
         assert_eq!(once.faces.len(), 2);
     }

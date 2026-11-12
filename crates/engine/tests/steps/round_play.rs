@@ -361,13 +361,7 @@ fn rowan_asks_aldric_until_it_finishes(world: &mut World) {
     }
     let state = table.state();
     let aldric = spookery_engine::entity::Id::Actor("aldric".into());
-    world.count = usize::try_from(
-        state
-            .entity(&aldric)
-            .meter_value(table.canon(), "rest")
-            .unwrap(),
-    )
-    .unwrap();
+    world.count = usize::try_from(state.entity(&aldric).meter_value("rest").unwrap()).unwrap();
 }
 
 #[then(expr = "Aldric's rest is {int}")]
@@ -582,7 +576,7 @@ fn a_street_rule_over_the_cap(world: &mut World) {
 #[when(expr = "Rowan walks to the street")]
 fn rowan_walks_to_the_street(world: &mut World) {
     let (state, round) = rowan_walks(world.pack(), Vec::new());
-    let flags = state.actors().flags.iter();
+    let flags = state.actors().stores().flags.iter();
     world.count = flags.filter(|(owner, _)| *owner == *"rowan").count();
     world.scratch = round.to_string();
 }
@@ -789,6 +783,7 @@ fn indexed_roll(pack: &Path, actor_id: &str, roll_index: u32) -> (String, i64) {
     let live = world
         .state()
         .actors()
+        .stores()
         .meters
         .get(&(actor_id.into(), check.stat.clone()))
         .unwrap_or_else(|| panic!("missing {actor_id}'s {}", check.stat));

@@ -2,6 +2,7 @@ use cucumber::{given, then, when};
 
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use spookery_engine::testing::{
     self as support, insert_nell, journal::list_round_keys, read_round as round_value, resume,
@@ -9,7 +10,7 @@ use spookery_engine::testing::{
 };
 use spookery_engine::{
     emit_save, entity, load_canon, play_pack_once, ActorId, Meter, MoveReport, Note, Presence,
-    State,
+    Save, State,
 };
 use spookery_protocol::Outcome;
 
@@ -18,12 +19,12 @@ use crate::World;
 const LEDGER: &str = "The lamp-oil ledger is short.";
 
 /// Put actor `id` of `kind` in `place`, with grit `grit` and rest 3 and nothing else.
-fn add_actor(state: &mut State, canon: &Canon, id: &str, kind: ActorKind, place: &str, grit: i64) {
+fn add_actor(state: &mut State, id: &str, kind: ActorKind, place: &str, grit: i64) {
     let (mut actors, id) = (state.actors_mut(), ActorId::from(id));
     actors.add_actor(&id, kind, place);
     for (key, base) in [("grit", grit), ("rest", 3)] {
         let meter = Meter { base, offset: 0 };
-        actors.set_meter(canon, &id, key, Some(meter)).unwrap();
+        actors.set_meter(&id, key, Some(meter)).unwrap();
     }
 }
 
@@ -35,7 +36,7 @@ fn write_text(path: &Path, text: &str) {
     fs::write(path, text).unwrap_or_else(|err| panic!("write {}: {err}", path.display()));
 }
 
-fn lamp_oil(state: &State) -> u32 {
+fn lamp_oil(state: &Save) -> u32 {
     state
         .places()
         .items
@@ -48,6 +49,7 @@ fn flags_of(state: &State, id: &str) -> Vec<String> {
     assert!(state.actors().kind.contains_key(id), "{id} missing");
     let flags = state
         .actors()
+        .stores()
         .flags
         .iter()
         .filter(|(owner, _)| *owner == *id);
@@ -133,7 +135,7 @@ fn capped_restock() -> u32 {
     let pack = support::copy_docks("capped");
     {
         let opened = resume(&pack);
-        let (canon, mut state) = (opened.canon().clone(), opened.state().clone());
+        let mut state = opened.state().clone();
         drop(opened);
         state.world_time = 600;
         state.notes_mut().leave(door_note()).unwrap();
@@ -145,7 +147,7 @@ fn capped_restock() -> u32 {
         let held = i64::from(state.places().item_count(&shop, "lamp_oil"));
         let mut places = state.places_mut();
         places
-            .shift_item(&canon, &shop, "lamp_oil", 6 - held, None)
+            .shift_item(&shop, "lamp_oil", 6 - held, None)
             .unwrap();
         write_save(&pack, &state);
     }
@@ -332,8 +334,8 @@ Rowan.
         .unwrap_or_else(|err| panic!("copy {name}: {err}"));
     }
     let rev = spookery_engine::pack_rev(&pack).unwrap();
-    let (canon, mut state) = (load_canon(&pack).unwrap(), empty_save("ex", &rev));
-    add_actor(&mut state, &canon, "rowan", ActorKind::Pc, "gate", 1);
+    let mut state = empty_save(load_canon(&pack).unwrap(), "ex", &rev);
+    add_actor(&mut state, "rowan", ActorKind::Pc, "gate", 1);
     write_text(&pack.join("state/save.yaml"), &emit_save(&state).unwrap());
     let place_before = fs::read(pack.join("world/places/gate.md")).unwrap();
     let cast_before = fs::read(pack.join("cast/rowan.md")).unwrap();
@@ -442,9 +444,9 @@ rules:
         fs::copy(rules.join(name), &dest).unwrap();
     }
     let rev = spookery_engine::pack_rev(&pack).unwrap();
-    let (canon, mut state) = (load_canon(&pack).unwrap(), empty_save("crowd", &rev));
+    let mut state = empty_save(load_canon(&pack).unwrap(), "crowd", &rev);
     for id in &npcs {
-        add_actor(&mut state, &canon, id, ActorKind::Npc, "yard", 1);
+        add_actor(&mut state, id, ActorKind::Npc, "yard", 1);
     }
     write_text(&pack.join("state/save.yaml"), &emit_save(&state).unwrap());
     play_pack_once(&pack).unwrap_or_else(|err| panic!("round: {err}"));
@@ -581,7 +583,9 @@ fn patch_mira_flags_and_place(pack: &Path, flags: &str) {
     assert_ne!(next, text, "mira round block was not patched");
     fs::write(&path, next).unwrap();
     let now_path = pack.join("state/save.yaml");
-    let mut state = spookery_engine::parse_save(&fs::read_to_string(&now_path).unwrap()).unwrap();
+    let save = spookery_engine::parse_save(&fs::read_to_string(&now_path).unwrap()).unwrap();
+    let canon = load_canon(pack).unwrap_or_else(|err| panic!("load: {err:?}"));
+    let mut state = State::new(save, Arc::new(canon));
     state
         .actors_mut()
         .set_place(&"mira".into(), "docks_shop")
@@ -748,11 +752,10 @@ fn a_held_knife_still_runs_the_opposed_row() {
 }
 
 fn rowans_debt(pack: &Path) -> i64 {
-    let canon = load_canon(pack).unwrap_or_else(|err| panic!("load: {err:?}"));
     let rowan = entity::Id::Actor("rowan".into());
     state_of(pack)
         .entity(&rowan)
-        .meter_value(&canon, "assassination_debt")
+        .meter_value("assassination_debt")
         .unwrap_or_else(|err| panic!("assassination_debt: {err}"))
 }
 
@@ -945,8 +948,8 @@ fn rowan_marks_nell_while_holding_the_knife(_world: &mut World) {
     a_held_knife_still_runs_the_opposed_row();
 }
 
-/// A save with no actors, for world `world_id` at pack revision `rev`.
-fn empty_save(world_id: &str, rev: &str) -> State {
+/// A save with no actors on `canon`, for world `world_id` at pack revision `rev`.
+fn empty_save(canon: Canon, world_id: &str, rev: &str) -> State {
     let rules_rev = spookery_engine::testing::RULES_REV;
     let text = format!(
         "\
@@ -962,5 +965,6 @@ actors: {{}}
 notes: []
 "
     );
-    spookery_engine::parse_save(&text).unwrap_or_else(|err| panic!("save: {err:?}"))
+    let save = spookery_engine::parse_save(&text).unwrap_or_else(|err| panic!("save: {err:?}"));
+    State::new(save, Arc::new(canon))
 }

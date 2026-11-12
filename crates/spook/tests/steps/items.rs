@@ -29,9 +29,8 @@ fn give(now: &mut State, actor: &str, item: &str) {
 
 fn hp(pack: &Path, actor: &str) -> i64 {
     let now = support::state_of(pack);
-    let canon = spookery_engine::load_canon(pack).unwrap();
     let id = spookery_engine::entity::Id::Actor(actor.into());
-    now.entity(&id).meter_value(&canon, "hp").unwrap()
+    now.entity(&id).meter_value("hp").unwrap()
 }
 
 fn count(pack: &Path, actor: &str, item: &str) -> u32 {
@@ -163,13 +162,13 @@ fn nell_holds_a_tonic(world: &mut World) {
     let next = text.replace("base_cap: 12\n    max: 16", "base_cap: 10\n    max: 10");
     assert_ne!(text, next, "hp meter was not narrowed");
     fs::write(&meters, next).unwrap();
-    support::edit_save_with(&pack, |now, canon| {
+    support::edit_save(&pack, |now| {
         now.actors_mut()
             .set_place(&"nell".into(), "gate_yard")
             .unwrap();
         keep_briar_busy(now);
         give(now, "nell", "tonic");
-        support::edit_meter(now, canon, "nell", "hp", |hp| hp.base = 3);
+        support::edit_meter(now, "nell", "hp", |hp| hp.base = 3);
     });
     world.pack = Some(pack);
 }
@@ -210,9 +209,9 @@ fn again_is_refused(world: &mut World, line: String, code: String) {
 #[given(expr = "docks_shop has 3 lamp_oil")]
 fn docks_shop_has_3_lamp_oil(world: &mut World) {
     let pack = support::copy_pack("oneshot-docks", "take");
-    support::edit_save_with(&pack, |now, canon| {
+    support::edit_save(&pack, |now| {
         let shop = entity::Id::Place("docks_shop".into());
-        support::put_items(now, canon, &shop, "lamp_oil", 3);
+        support::put_items(now, &shop, "lamp_oil", 3);
     });
     world.pack = Some(pack);
 }
@@ -340,9 +339,9 @@ fn the_line_is_refused_and_quiet(world: &mut World, code: String) {
 #[given(expr = "docks_shop has no lamp_oil")]
 fn the_shop_has_no_oil(world: &mut World) {
     let pack = support::copy_pack("oneshot-docks", "take-none");
-    support::edit_save_with(&pack, |now, canon| {
+    support::edit_save(&pack, |now| {
         let shop = entity::Id::Place("docks_shop".into());
-        support::put_items(now, canon, &shop, "lamp_oil", 0);
+        support::put_items(now, &shop, "lamp_oil", 0);
     });
     world.pack = Some(pack);
 }
@@ -625,11 +624,11 @@ fn nell_resists_on_a_seeded_roll(world: &mut World) {
     let mut verbs = fs::read_to_string(pack.join("rules/verbs.yaml")).unwrap();
     verbs.push_str(BARE_HANDS_ATTACK);
     fs::write(pack.join("rules/verbs.yaml"), verbs).unwrap();
-    support::edit_save_with(&pack, |now, canon| {
+    support::edit_save(&pack, |now| {
         hold_dagger(now, true);
-        support::edit_meter(now, canon, "nell", "hp", |hp| hp.base = 10);
+        support::edit_meter(now, "nell", "hp", |hp| hp.base = 10);
         let nell = entity::Id::Actor("nell".into());
-        support::put_meter(now, canon, &nell, "constitution", stat);
+        support::put_meter(now, &nell, "constitution", stat);
     });
     spookery_engine::migrate_pack(&pack).unwrap_or_else(|err| panic!("migrate: {err}"));
     world.pack = Some(pack);

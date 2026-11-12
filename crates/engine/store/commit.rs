@@ -4,7 +4,7 @@ use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::Path;
 
-use crate::canon::{pack_rev, Canon};
+use crate::canon::pack_rev;
 use crate::diagnostic::first_reason;
 use crate::hash::blake2s_tagged;
 use crate::state::{sort_unique, State};
@@ -92,7 +92,6 @@ fn bump_state_rev(state: &mut State) -> Result<(), Reason> {
 /// from it. The caller holds the pack lock.
 pub fn commit_migrate(
     root: &Path,
-    canon: &Canon,
     state: State,
     edited: bool,
     lock: &PackGuard,
@@ -101,7 +100,7 @@ pub fn commit_migrate(
     let pack_rev_before = state.pack_rev.clone();
     let state_rev_before = state.state_rev;
     let state_rev_after = state_rev_before.checked_add(1).ok_or(Reason::OutOfRange)?;
-    let stale = save::find_stale_modifiers(canon, &state).into_iter();
+    let stale = save::find_stale_modifiers(&state).into_iter();
     let mut dropped_modifiers: Vec<String> = stale.map(|((_, id), _)| id.clone()).collect();
     sort_unique(&mut dropped_modifiers);
     let mut record = MigrateRecord {
@@ -110,15 +109,15 @@ pub fn commit_migrate(
         state_rev_before,
         state_rev_after,
         state_hash: String::new(),
-        meters: find_missing_meters(canon, &state),
+        meters: find_missing_meters(&state),
         dropped_modifiers,
-        dropped_meters: save::find_stale_meters(canon, &state),
+        dropped_meters: save::find_stale_meters(&state),
         edited,
         prev: String::new(),
         chain: String::new(),
     };
-    let state = save::migrate(canon, state, &record)?;
-    check_save(canon, &state).map_err(|diags| first_reason(&diags))?;
+    let state = save::migrate(state, &record)?;
+    check_save(&state).map_err(|diags| first_reason(&diags))?;
     let emitted = save::emit(&state)?.into_bytes();
     record.state_hash = blake2s_tagged(&emitted);
     let entry = Record::Migrate(record);

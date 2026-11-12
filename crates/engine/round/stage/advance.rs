@@ -29,7 +29,7 @@ pub(crate) fn run(
     state.round_index = round_index;
     state.world_time = world_after;
     state.last_round_at = wall.to_string();
-    state.actors_mut().expire_modifiers(canon, world_after)?;
+    state.actors_mut().expire_modifiers(world_after)?;
     // Each act count resets when the round crosses the end of its window.
     for (counter, ticks) in windows {
         if world_before / ticks != world_after / ticks {

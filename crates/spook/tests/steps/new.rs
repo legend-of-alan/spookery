@@ -174,7 +174,7 @@ fn the_keeper_habit_has_set_tended(world: &mut World) {
     assert_eq!(world.code, Some(0), "{}", world.stderr);
     let now = state_of(&idle);
     assert_eq!(now.world_time, 60, "idle round did not advance 60 ticks");
-    let kind = now.actors().kind.get("keeper");
+    let kind = now.actors().stores().kind.get("keeper");
     assert_eq!(kind, Some(&ActorKind::Npc), "keeper missing: {kind:?}");
     let flags = &now.actors().flags;
     assert!(

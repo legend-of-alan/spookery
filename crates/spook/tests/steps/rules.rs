@@ -5,13 +5,15 @@ use cucumber::{given, then, when};
 use serde_json::Value;
 use spookery_engine::testing::{faces, RollKey};
 
-use crate::support::{edit_as_saved, edit_meter, edit_save_with, put_items};
+use crate::support::{edit_as_saved, edit_meter, put_items};
 use spookery_engine::MoveReport;
 use spookery_engine::{entity, Presence, Reason};
 
 use super::common::split_line;
 use super::table;
-use crate::support::{append, copy_docks, copy_pack, edit_save, read_round, run_spook, state_of};
+use crate::support::{
+    append, copy_docks, copy_pack, edit_save, read_round, run_spook, stamp_pack_rev, state_of,
+};
 use crate::World;
 #[given(expr = "a save from older rules")]
 fn a_save_from_older_rules(world: &mut World) {
@@ -340,14 +342,14 @@ Briar tops up the oil before the shop opens.
 #[when(expr = "an empty round lands at tick {int} with briar in the shop")]
 fn an_empty_round_lands_at(world: &mut World, tick: u64) {
     let pack = world.pack.clone().unwrap();
-    edit_save_with(&pack, |now, canon| {
+    edit_save(&pack, |now| {
         now.world_time = tick - 60;
-        edit_meter(now, canon, "mira", "shop_day", |shop_day| shop_day.base = 0);
+        edit_meter(now, "mira", "shop_day", |shop_day| shop_day.base = 0);
         let mira_place = now.actors().place["mira"].clone();
         let (mira, briar) = (&"mira".into(), &"briar".into());
         let mut actors = now.actors_mut();
-        actors.copy_actor(canon, mira, briar, &mira_place).unwrap();
-        actors.set_meter(canon, briar, "shop_day", None).unwrap();
+        actors.copy_actor(mira, briar, &mira_place).unwrap();
+        actors.set_meter(briar, "shop_day", None).unwrap();
         actors.set_place(briar, "docks_shop").unwrap();
         edit_as_saved(now, |save| {
             save["actors"]["acts"]["mira"]["idle_acts_this_window"] = 3.into()
@@ -361,9 +363,9 @@ fn an_empty_round_lands_at(world: &mut World, tick: u64) {
 #[when(expr = "an empty round lands at tick {int} with Mira in the shop")]
 fn an_empty_round_lands_with_mira(world: &mut World, tick: u64) {
     let pack = world.pack.clone().unwrap();
-    edit_save_with(&pack, |now, canon| {
+    edit_save(&pack, |now| {
         now.world_time = tick - 60;
-        edit_meter(now, canon, "mira", "shop_day", |shop_day| shop_day.base = 0);
+        edit_meter(now, "mira", "shop_day", |shop_day| shop_day.base = 0);
         now.actors_mut()
             .set_place(&"mira".into(), "docks_shop")
             .unwrap();
@@ -489,8 +491,8 @@ fn attack_targets_defense(world: &mut World) {
     );
     assert_ne!(text, next, "briar profile was not found");
     fs::write(&briar, next).unwrap();
-    edit_save_with(&pack, |now, canon| {
-        edit_meter(now, canon, "briar", "defense", |defense| {
+    edit_save(&pack, |now| {
+        edit_meter(now, "briar", "defense", |defense| {
             (defense.base, defense.offset) = (12, 0);
         });
         let mut actors = now.actors_mut();
@@ -516,8 +518,8 @@ fn lark_attacks(world: &mut World) {
         20,
     )
     .unwrap_or_else(|err| panic!("faces {}", err.as_str()))[0];
-    edit_save_with(&pack, |now, canon| {
-        edit_meter(now, canon, "lark", "might", |might| {
+    edit_save(&pack, |now| {
+        edit_meter(now, "lark", "might", |might| {
             (might.base, might.offset) = (21 - i64::from(face), 0);
         });
     });
@@ -598,7 +600,7 @@ fn bogus_appears_in_earlier_text(world: &mut World) {
 fn an_effect_key_is_bogus(world: &mut World) {
     let pack = world.pack.clone().unwrap();
     append(&pack.join("rules/verbs.yaml"), "      - bogus: true\n");
-    edit_save(&pack, |_| {});
+    stamp_pack_rev(&pack);
 }
 
 #[then(expr = "spook check reports that key at its own line and column")]
@@ -649,7 +651,7 @@ fn two_conditions_under_one_dash(world: &mut World) {
     do: []
 "#,
     );
-    edit_save(&pack, |_| {});
+    stamp_pack_rev(&pack);
     world.pack = Some(pack);
 }
 
@@ -679,8 +681,8 @@ fn steady_costs_five_grit(world: &mut World) {
     do: []
 "#,
     );
-    edit_save_with(&pack, |now, canon| {
-        edit_meter(now, canon, "rowan", "grit", |grit| {
+    edit_save(&pack, |now| {
+        edit_meter(now, "rowan", "grit", |grit| {
             (grit.base, grit.offset) = (1, 0)
         });
     });
@@ -809,8 +811,8 @@ A small bottle.
     do: []
 ",
     );
-    edit_save_with(&pack, |now, canon| {
-        put_items(now, canon, &entity::Id::Actor("rowan".into()), "tonic", 1);
+    edit_save(&pack, |now| {
+        put_items(now, &entity::Id::Actor("rowan".into()), "tonic", 1);
     });
     world.pack = Some(pack);
 }
@@ -916,7 +918,7 @@ const SAME_AFTER_ROLL: &str = "
 fn a_verb_whose_only_resist_is_same(world: &mut World) {
     let pack = copy_docks("rules-bare-same");
     append(&pack.join("rules/verbs.yaml"), BARE_SAME);
-    edit_save(&pack, |_| {});
+    stamp_pack_rev(&pack);
     world.pack = Some(pack);
 }
 
@@ -985,6 +987,7 @@ fn lark_alone_plays(world: &mut World, line: String) {
     let now = state_of(world.pack.as_ref().unwrap());
     let yard = now
         .actors()
+        .stores()
         .place
         .iter()
         .filter(|(_, place)| *place == "gate_yard");

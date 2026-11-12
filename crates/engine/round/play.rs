@@ -116,7 +116,7 @@ pub(crate) fn play_round(
     wall: &str,
     fast_forward: bool,
 ) -> Result<RoundOutput, Reason> {
-    let canon = Arc::clone(&world.canon);
+    let canon = Arc::clone(world.state.canon());
     let state = world.begin_round();
     let staged = run_stages(&canon, state, presence, wall, world.queued_intents())?;
     record::run(world, staged, presence, wall, fast_forward)
@@ -129,7 +129,7 @@ pub(crate) fn replay_round(
     queue: &[Intent],
     presence: &Presence,
 ) -> Result<RoundOutput, Reason> {
-    let canon = Arc::clone(&world.canon);
+    let canon = Arc::clone(world.state.canon());
     let state = world.begin_round();
     let StagedRound {
         state,

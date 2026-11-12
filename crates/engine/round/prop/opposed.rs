@@ -64,10 +64,11 @@ fn lunge_pack(limit: Option<&str>, rule: &str) -> PathBuf {
         fs::write(&path, text.replacen(old.expect("limit key"), limit, 1)).unwrap();
     }
     crate::testing::append(&pack.join("rules/verbs.yaml"), &format!("{LUNGE}{rule}"));
-    crate::testing::edit_save_with(&pack, |state, canon| {
+    crate::testing::edit_save(&pack, |state| {
         let briar = ActorId::from("briar");
         let held = state
             .actors()
+            .stores()
             .meter(&briar, "might")
             .expect("Briar's might");
         let might = crate::state::component::meter::Meter {
@@ -75,9 +76,7 @@ fn lunge_pack(limit: Option<&str>, rule: &str) -> PathBuf {
             ..held.clone()
         };
         let mut actors = state.actors_mut();
-        actors
-            .set_meter(canon, &briar, "might", Some(might))
-            .unwrap();
+        actors.set_meter(&briar, "might", Some(might)).unwrap();
     });
     pack
 }
