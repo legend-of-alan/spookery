@@ -4,7 +4,7 @@ use std::path::Path;
 
 use cucumber::{given, then, when};
 use spookery_engine::testing::journal::list_round_keys;
-use spookery_engine::testing::{ActorKind, PendingAction};
+use spookery_engine::testing::PendingAction;
 use spookery_engine::{component, ActorId, Meter, State};
 
 use super::common::{
@@ -195,7 +195,7 @@ fn add_nell(now: &mut State, place: &str, walk: Option<(u64, PendingAction)>) {
         .map(|((_, key), meter)| (key.clone(), meter.clone()))
         .collect();
     let mut actors = now.actors_mut();
-    actors.add_actor(&nell, ActorKind::Pc, place);
+    actors.add_actor(&nell, component::ControlType::Pc, place);
     for (key, meter) in meters {
         actors
             .get_mut::<Meter>(&nell)

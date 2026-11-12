@@ -108,7 +108,8 @@ pub(crate) fn find_lacking_carriers(
                 _ => true,
             };
             let lacks = |actor: &&ActorId| nested_map::get(&actors.meters, actor, id).is_none();
-            let lacking = actors.kind.keys().filter(named).filter(lacks).cloned();
+            let ids = actors.control_type.keys();
+            let lacking = ids.filter(named).filter(lacks).cloned();
             return lacking.map(entity::Id::Actor).collect();
         }
         Some(entity::Id::Place(place)) => nested_map::get(&save.places().meters, place, id),
@@ -187,18 +188,18 @@ pub fn migrate(mut state: State, record: &MigrateRecord) -> Result<State, Reason
     Ok(state)
 }
 
-/// Check the save against the pack without changing it. Refuse every component on an actor
-/// with no kind, every actor without a place or an action state, every actor in a place or on
-/// an exit the pack lacks, every meter, item and wielded slot the pack does not define, every
-/// meter the pack gives an entity that the entity lacks, every meter outside its rules, every
-/// modifier the pack no longer gives that meter, and every empty id or zero count.
+/// Check the save against the pack without changing it. Refuse every component on an actor with no
+/// control type, every actor without a place or an action state, every actor in a place or on an
+/// exit the pack lacks, every meter, item and wielded slot the pack does not define, every meter
+/// the pack gives an entity that the entity lacks, every meter outside its rules, every modifier
+/// the pack no longer gives that meter, and every empty id or zero count.
 pub fn check_save(state: &State) -> Result<(), Vec<Diagnostic>> {
     let canon = state.canon();
     let mut diags = Vec::new();
     let actors = state.actors();
     // Every store, with no `..`: a store added later must be listed here to compile.
     let crate::state::entity::Actors {
-        kind: _,
+        control_type: _,
         place,
         wielded,
         known_facts,
@@ -219,15 +220,19 @@ pub fn check_save(state: &State) -> Result<(), Vec<Diagnostic>> {
         .chain(modifiers.keys().map(|(id, _)| ("modifiers", id)))
         .chain(flags.keys().map(|(id, _)| ("flags", id)))
         .collect();
-    for (store, id) in held.iter().filter(|(_, id)| !actors.kind.contains_key(*id)) {
-        let problem = format!("actor '{id}' has {store} but no kind");
-        let diag = schema_error(FILE, &problem, "give the actor a kind under actors.kind");
+    let lacking = held
+        .iter()
+        .filter(|(_, id)| !actors.control_type.contains_key(*id));
+    for (store, id) in lacking {
+        let problem = format!("actor '{id}' has {store} but no control type");
+        let hint = "give the actor a control type under actors.control_type";
+        let diag = schema_error(FILE, &problem, hint);
         diags.push(diag.at_path(format!("actors.{store}.{id}")));
     }
-    for id in actors.kind.keys() {
+    for id in actors.control_type.keys() {
         for store in ["place", "acts"] {
             if !held.contains(&(store, id)) {
-                let problem = format!("actor '{id}' has a kind but no {store}");
+                let problem = format!("actor '{id}' has a control type but no {store}");
                 let diag = schema_error(FILE, &problem, "give every actor a place and acts");
                 diags.push(diag.at_path(format!("actors.{store}.{id}")));
             }

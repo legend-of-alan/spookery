@@ -7,12 +7,13 @@ use crate::rules::context::Context;
 use crate::rules::expand;
 use crate::rules::gate;
 use crate::state::id::ActorId;
-use crate::state::{component, ActorKind, Presence, State};
+use crate::state::{component, Presence, State};
 
 /// One habit intent per NPC whose habit the gate admits, its target not yet stamped.
 pub(crate) fn intents(canon: &Canon, state: &State, presence: &Presence) -> Vec<Intent> {
-    let actors = state.actors().roster().keys();
-    let intents = actors.filter_map(|actor_id| intent_of(canon, state, presence, actor_id));
+    let actors = state.actors();
+    let ids = actors.control_type.keys();
+    let intents = ids.filter_map(|actor_id| intent_of(canon, state, presence, actor_id));
     intents.collect()
 }
 
@@ -58,7 +59,7 @@ pub(crate) fn list_whose_if_holds(
 /// Whether the engine may run one of this NPC's habits on its own this round: its idle
 /// profile allows it, it is free, no seated player is with it, and its act window has room.
 fn is_eligible(canon: &Canon, state: &State, presence: &Presence, npc_id: &ActorId) -> bool {
-    if state.actors().kind.get(npc_id) != Some(&ActorKind::Npc) {
+    if state.actors().control_type.get(npc_id) != Some(&component::ControlType::Npc) {
         return false;
     }
     let Some(profile) = canon.idle_profile(npc_id) else {
@@ -89,6 +90,7 @@ fn is_eligible(canon: &Canon, state: &State, presence: &Presence, npc_id: &Actor
 /// A seated player's PC is in `place`.
 pub(crate) fn is_player_at(state: &State, presence: &Presence, place: &str) -> bool {
     state.actors_at(place).iter().any(|id| {
-        presence.actors_present.contains(id) && state.actors().kind.get(id) == Some(&ActorKind::Pc)
+        presence.actors_present.contains(id)
+            && state.actors().control_type.get(id) == Some(&component::ControlType::Pc)
     })
 }

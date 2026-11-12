@@ -2,6 +2,7 @@
 //! `Reader::get` borrows one entity's share of its store, and `Writer::get_mut` writes it.
 
 pub(in crate::state) mod act;
+pub(in crate::state) mod control_type;
 pub(in crate::state) mod exit;
 pub(in crate::state) mod flag;
 pub(in crate::state) mod item;
@@ -18,6 +19,7 @@ use std::marker::PhantomData;
 
 pub(crate) use act::ActCounter;
 pub use act::{Act, PendingAction};
+pub use control_type::ControlType;
 pub use exit::OpenExit;
 pub use flag::Flag;
 pub use item::Item;

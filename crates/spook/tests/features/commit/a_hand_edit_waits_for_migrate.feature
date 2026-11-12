@@ -170,7 +170,7 @@ Feature: A hand edit waits for migrate
     Then the command exits 0
     And the journal line migrate-0001 is
       """
-      {"kind":"migrate","pack_rev_before":"blake2s:f83d3bd86eb8b01d3b4c4a7e8b8863dc6d2e478405a3cc5e2ef6a9e44e387e0c","pack_rev_after":"blake2s:f83d3bd86eb8b01d3b4c4a7e8b8863dc6d2e478405a3cc5e2ef6a9e44e387e0c","state_rev_before":0,"state_rev_after":1,"state_hash":"blake2s:97b9bd5505ac0ddcabc67958362d6a05f7b095c668484e964451b62006998620","prev":"blake2s:b50af3b95f0064d08197c5c0c1213cedcaaccfac42e696ff26e441132ac63cfe","chain":"blake2s:20926406391da630ad0242583d5e14f5e0e9b60fc4b9df44039e311fc9caf1d7"}
+      {"kind":"migrate","pack_rev_before":"blake2s:f83d3bd86eb8b01d3b4c4a7e8b8863dc6d2e478405a3cc5e2ef6a9e44e387e0c","pack_rev_after":"blake2s:f83d3bd86eb8b01d3b4c4a7e8b8863dc6d2e478405a3cc5e2ef6a9e44e387e0c","state_rev_before":0,"state_rev_after":1,"state_hash":"blake2s:1d960438e79916ff392fb292db1b4a51d6ff5d31e32cd80e0901ba3e77fddb13","prev":"blake2s:6a02262f6c1473473d94d729e6155d6f68f6bdbd69d229dc8397074b687556c2","chain":"blake2s:9f561b22a2021cba34e2b17a32375943fb2ca6150b92e1d8cfe1cd28f4c172c3"}
       """
 
   Scenario: Migrate gives a meter only to the actors that lack it

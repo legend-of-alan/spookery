@@ -373,7 +373,7 @@ fn dawn_is_zero(world: &mut World) {
 #[then(expr = "no actor carries a dawn meter")]
 fn no_actor_carries_dawn(world: &mut World) {
     let now = state_of(pack(world));
-    for id in now.actors().kind.keys() {
+    for id in now.actors().control_type.keys() {
         let dawn = (id.clone(), "dawn".to_string());
         assert!(!now.actors().meters.contains_key(&dawn), "{id}");
     }

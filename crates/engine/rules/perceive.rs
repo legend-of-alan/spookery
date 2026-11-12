@@ -52,12 +52,10 @@ pub(crate) fn perceive_budget<L>(
         return Err(Reason::UnscopedPerceive);
     }
     let (canon, state) = (world.canon(), world.state());
-    let (id, kind) = state
-        .actors()
-        .roster()
-        .get_key_value(as_arg)
-        .ok_or(Reason::UnknownId)?;
-    perceive_viewer_budget(canon, state, presence, &kind.viewer(id), max_body_chars)
+    let id = ActorId::from(as_arg);
+    let control_type = state.actors().get::<component::ControlType>(&id).get();
+    let viewer = control_type.ok_or(Reason::UnknownId)?.viewer(&id);
+    perceive_viewer_budget(canon, state, presence, &viewer, max_body_chars)
 }
 
 pub(crate) fn perceive_as(

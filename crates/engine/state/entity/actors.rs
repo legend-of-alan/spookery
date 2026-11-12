@@ -5,20 +5,20 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
 use crate::canon::Canon;
-use crate::intent::Viewer;
 use crate::state::component::modifier::{self, Modifier};
 use crate::state::component::{self, Act, Meter};
 use crate::state::id::ActorId;
-use crate::state::{entity, nested_map, undo, Reader};
+use crate::state::{entity, nested_map, undo};
 use crate::Reason;
 
-/// Every actor's components, by actor id. An actor exists when it has a kind; `kind`, `place`
-/// and `acts` have an entry for every actor, the rest only for actors holding something.
+/// Every actor's components, by actor id. An actor exists when it has a control type;
+/// `control_type`, `place` and `acts` have an entry for every actor, the rest only for actors
+/// holding something.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Actors {
-    /// Whether each actor is a PC or an NPC. An actor exists when it has a kind.
-    pub kind: undo::Store<BTreeMap<ActorId, ActorKind>>,
+    /// Who controls each actor, a player or the engine. An actor exists when it has one.
+    pub control_type: undo::Store<BTreeMap<ActorId, component::ControlType>>,
     /// Where each actor stands: a place id, or `exit:<place>.<exit>` while they walk.
     pub place: undo::DenseStore<String>,
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
@@ -45,7 +45,7 @@ impl entity::Entities for Actors {
     type Id = ActorId;
 
     fn contains(&self, _: &Canon, id: &ActorId) -> bool {
-        self.kind.contains_key(id)
+        self.control_type.contains_key(id)
     }
 }
 
@@ -66,7 +66,7 @@ impl Actors {
     pub(in crate::state) fn logs_mut(&mut self) -> [&mut dyn undo::Log; 10] {
         // Every store, with no `..`: a store added later must be listed here to compile.
         let Actors {
-            kind,
+            control_type,
             place,
             wielded,
             known_facts,
@@ -78,7 +78,7 @@ impl Actors {
             flags,
         } = self;
         [
-            kind,
+            control_type,
             place,
             wielded,
             known_facts,
@@ -89,31 +89,5 @@ impl Actors {
             modifiers,
             flags,
         ]
-    }
-}
-
-impl<'a> Reader<'a, Actors> {
-    /// Every actor the save lists, and whether each is a PC or an NPC: the record `contains`
-    /// answers from.
-    pub fn roster(self) -> &'a BTreeMap<ActorId, ActorKind> {
-        &self.components.kind
-    }
-}
-
-/// Whether an actor is a PC or an NPC.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ActorKind {
-    Npc,
-    Pc,
-}
-
-impl ActorKind {
-    /// The seat actor `id` of this kind acts from.
-    pub fn viewer(self, id: &ActorId) -> Viewer {
-        match self {
-            ActorKind::Pc => Viewer::Player(id.clone()),
-            ActorKind::Npc => Viewer::Npc(id.clone()),
-        }
     }
 }

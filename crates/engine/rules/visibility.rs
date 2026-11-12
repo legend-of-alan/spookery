@@ -271,7 +271,7 @@ fn can_see_facts(canon: &Canon, state: &State, viewer: &ActorId, fact_ids: &[Str
 }
 
 fn can_see(canon: &Canon, state: &State, viewer: &ActorId, change: &Change) -> bool {
-    if !state.actors().kind.contains_key(viewer) {
+    if !state.actors().control_type.contains_key(viewer) {
         return false;
     }
     match &change.key {

@@ -106,7 +106,7 @@ impl Mut<'_, entity::Actors, Act> {
 impl Writer<'_, entity::Actors> {
     /// Set `counter` back to 0 on every actor.
     pub(crate) fn reset_acts(&mut self, counter: ActCounter) -> Result<(), Reason> {
-        let actors: Vec<ActorId> = self.kind.keys().cloned().collect();
+        let actors: Vec<ActorId> = self.control_type.keys().cloned().collect();
         for actor in &actors {
             let read = |act: &Act| count_value(counter.get(act).into());
             let key = counter.key(actor.to_string());

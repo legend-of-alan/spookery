@@ -767,7 +767,7 @@ round_index: 0
 world_time: 0
 last_round_at: ''
 actors:
-  kind: {{ ada: pc }}
+  control_type: {{ ada: pc }}
   place: {{ ada: room }}
   acts:
     ada: {{ last_act_round: 0, idle_acts_this_window: 0, live_acts_this_window: 0 }}

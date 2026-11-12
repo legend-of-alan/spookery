@@ -21,7 +21,6 @@ use serde::{Deserialize, Serialize};
 pub use component::Act;
 pub(crate) use component::ActCounter;
 pub use component::PendingAction;
-pub use entity::actors::ActorKind;
 use id::ActorId;
 pub use notes::Note;
 #[cfg(test)]
@@ -126,8 +125,8 @@ impl<E> Deref for Reader<'_, E> {
 ///
 /// ```compile_fail
 /// # fn bypass(state: &mut spookery_engine::State) {
-/// let kind = *state.actors().kind.values().next().unwrap();
-/// state.actors().kind.insert("x".into(), kind);
+/// let control_type = *state.actors().control_type.values().next().unwrap();
+/// state.actors().control_type.insert("x".into(), control_type);
 /// # }
 /// ```
 pub struct Writer<'a, E> {
@@ -188,7 +187,7 @@ impl Save {
 
     /// The seat actor `id` acts from.
     pub(crate) fn viewer_of(&self, id: &ActorId) -> Option<Viewer> {
-        self.actors.kind.get(id).map(|kind| kind.viewer(id))
+        (self.actors.control_type.get(id)).map(|control| control.viewer(id))
     }
 
     /// The actors in `place`, in id order.

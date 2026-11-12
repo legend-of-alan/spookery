@@ -40,7 +40,7 @@ pub mod testing {
     pub use crate::round::replay::replay_journal;
     pub use crate::rules::roll::{faces, RollKey};
     pub use crate::state::entity::Actors;
-    pub use crate::state::{Act, ActorKind, PendingAction};
+    pub use crate::state::{Act, PendingAction};
 
     /// The write guard of the pack `world` holds the lock on.
     pub fn lock_write(world: &crate::World) -> Result<WriteGuard, crate::Reason> {
@@ -258,7 +258,7 @@ pub mod testing {
         edit_save(pack, |state| {
             let nell = crate::ActorId::from("nell");
             let mut actors = state.actors_mut();
-            actors.add_actor(&nell, crate::state::ActorKind::Pc, "docks_shop");
+            actors.add_actor(&nell, crate::component::ControlType::Pc, "docks_shop");
             for (key, base) in [("grit", 100), ("rest", 3)] {
                 let meter = crate::Meter { base, offset: 0 };
                 let set = (actors.get_mut::<crate::Meter>(&nell)).set(key, Some(meter));

@@ -308,7 +308,7 @@ mod tests {
     use crate::state::component::meter::{Meter, MeterWrite};
     use crate::state::id::{ActorId, PlaceId, StoryId};
     use crate::state::{component, entity};
-    use crate::state::{ActorKind, Presence, Save, State};
+    use crate::state::{Presence, Save, State};
     use crate::{Reason, World};
 
     fn docks() -> World<()> {
@@ -449,7 +449,7 @@ mod tests {
         let nell = ActorId::from("nell");
         state
             .actors_mut()
-            .add_actor(&nell, ActorKind::Npc, "docks_shop");
+            .add_actor(&nell, component::ControlType::Npc, "docks_shop");
         assert!(state.actors().acts.contains_key(&nell), "Nell is added");
         state.rollback(point);
         assert_eq!(*state, *before, "her kind, place and action state all go");

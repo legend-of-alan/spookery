@@ -3,16 +3,22 @@
 
 use super::component::{self, Meter};
 use super::id::ActorId;
-use super::{entity, nested_map, Act, ActorKind, Writer};
+use super::{entity, nested_map, Act, Writer};
 use crate::Reason;
 
 impl Writer<'_, entity::Actors> {
-    /// Add `actor`, of `kind`, standing at `place`: the three stores every actor has, together.
-    pub fn add_actor(&mut self, actor: &ActorId, kind: ActorKind, place: &str) {
+    /// Add `actor`, controlled as `control_type` says, standing at `place`: the three stores every
+    /// actor has, together.
+    pub fn add_actor(
+        &mut self,
+        actor: &ActorId,
+        control_type: component::ControlType,
+        place: &str,
+    ) {
         let (components, transaction) = (&mut *self.components, &mut *self.transaction);
         let added = components
-            .kind
-            .set(transaction, actor.clone(), Some(kind), []);
+            .control_type
+            .set(transaction, actor.clone(), Some(control_type), []);
         added.expect("a write that reports nothing is never refused");
         components
             .place
@@ -26,7 +32,7 @@ impl Writer<'_, entity::Actors> {
     pub fn copy_actor(&mut self, from: &ActorId, to: &ActorId, place: &str) -> Result<(), Reason> {
         // Every store, with no `..`: a store added later must be copied here to compile.
         let entity::Actors {
-            kind,
+            control_type,
             place: _,
             wielded,
             known_facts,
@@ -37,7 +43,7 @@ impl Writer<'_, entity::Actors> {
             modifiers,
             flags,
         } = (*self.components).clone();
-        self.add_actor(to, *kind.get(from).ok_or(Reason::UnknownId)?, place);
+        self.add_actor(to, *control_type.get(from).ok_or(Reason::UnknownId)?, place);
         let act = acts.get(from).cloned();
         self.components.acts.put(self.transaction, to, act);
         for (id, count) in nested_map::entries_of(&items, from) {
@@ -62,11 +68,11 @@ impl Writer<'_, entity::Actors> {
         Ok(())
     }
 
-    /// Take `actor` off every store, `kind` last.
+    /// Take `actor` off every store, `control_type` last.
     pub fn remove_actor(&mut self, actor: &ActorId) -> Result<(), Reason> {
         // Every store, with no `..`: a store added later must be emptied here to compile.
         let entity::Actors {
-            kind: _,
+            control_type: _,
             place: _,
             wielded: _,
             known_facts: _,
@@ -101,6 +107,6 @@ impl Writer<'_, entity::Actors> {
         }
         components.acts.put(transaction, actor, None);
         components.place.put(transaction, actor, None);
-        components.kind.set(transaction, actor.clone(), None, [])
+        (components.control_type).set(transaction, actor.clone(), None, [])
     }
 }

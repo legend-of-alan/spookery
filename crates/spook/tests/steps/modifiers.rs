@@ -199,7 +199,7 @@ fn two_modifiers_on_sight(world: &mut World, rain: String, fog: String) {
     meters.push_str("  - id: sight\n    min: 0\n    base_cap: 10\n    max: 10\n    base: 5\n");
     fs::write(path, meters).unwrap();
     support::edit_save(&pack, |now| {
-        let actors: Vec<_> = now.actors().kind.keys().cloned().collect();
+        let actors: Vec<_> = now.actors().control_type.keys().cloned().collect();
         for actor in actors {
             support::put_meter(now, &entity::Id::Actor(actor), "sight", 5);
         }

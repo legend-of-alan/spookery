@@ -12,7 +12,7 @@ use crate::rules::visibility::can_see_fact;
 use crate::state::component::meter::MeterWrite;
 use crate::state::component::modifier::{self, Modifier};
 use crate::state::id::{ActorId, ExitId, PlaceId};
-use crate::state::{self, component, ActorKind, MemoryLine, Note, Presence, State};
+use crate::state::{self, component, MemoryLine, Note, Presence, State};
 use crate::Reason;
 
 /// One effect. JSON is `kind`, `as`, `intent_id`, then the fields of `kind`.
@@ -349,7 +349,9 @@ fn move_actor(
         return Err(Reason::ActorMismatch);
     }
     let actors = state.actors();
-    if presence.players == 0 && actors.kind.get(actor_id) == Some(&ActorKind::Pc) {
+    if presence.players == 0
+        && actors.control_type.get(actor_id) == Some(&component::ControlType::Pc)
+    {
         return Err(Reason::TableEmpty);
     }
     // The place is read to compare with `from`; an actor the save lacks has none, and is refused

@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use spookery_engine::testing::{
     self as support, insert_nell, journal::list_round_keys, read_round as round_value, resume,
-    stamp_pack_rev, state_of, write_save, ActorKind, Canon,
+    stamp_pack_rev, state_of, write_save, Canon,
 };
 use spookery_engine::{
     component, emit_save, entity, load_canon, play_pack_once, ActorId, Meter, MoveReport, Note,
@@ -18,10 +18,16 @@ use crate::World;
 
 const LEDGER: &str = "The lamp-oil ledger is short.";
 
-/// Put actor `id` of `kind` in `place`, with grit `grit` and rest 3 and nothing else.
-fn add_actor(state: &mut State, id: &str, kind: ActorKind, place: &str, grit: i64) {
+/// Put actor `id`, controlled as `control_type` says, in `place`, with grit `grit` and rest 3 and nothing else.
+fn add_actor(
+    state: &mut State,
+    id: &str,
+    control_type: component::ControlType,
+    place: &str,
+    grit: i64,
+) {
     let (mut actors, id) = (state.actors_mut(), ActorId::from(id));
-    actors.add_actor(&id, kind, place);
+    actors.add_actor(&id, control_type, place);
     for (key, base) in [("grit", grit), ("rest", 3)] {
         let meter = Meter { base, offset: 0 };
         actors.get_mut::<Meter>(&id).set(key, Some(meter)).unwrap();
@@ -46,7 +52,7 @@ fn lamp_oil(state: &Save) -> u32 {
 }
 
 fn flags_of(state: &State, id: &str) -> Vec<String> {
-    assert!(state.actors().kind.contains_key(id), "{id} missing");
+    assert!(state.actors().control_type.contains_key(id), "{id} missing");
     let id = id.into();
     let flags = state.actors().get::<component::Flag>(&id);
     flags.iter().map(|(flag, ())| flag.to_string()).collect()
@@ -335,7 +341,7 @@ Rowan.
     }
     let rev = spookery_engine::pack_rev(&pack).unwrap();
     let mut state = empty_save(load_canon(&pack).unwrap(), "ex", &rev);
-    add_actor(&mut state, "rowan", ActorKind::Pc, "gate", 1);
+    add_actor(&mut state, "rowan", component::ControlType::Pc, "gate", 1);
     write_text(&pack.join("state/save.yaml"), &emit_save(&state).unwrap());
     let place_before = fs::read(pack.join("world/places/gate.md")).unwrap();
     let cast_before = fs::read(pack.join("cast/rowan.md")).unwrap();
@@ -450,7 +456,7 @@ rules:
     let rev = spookery_engine::pack_rev(&pack).unwrap();
     let mut state = empty_save(load_canon(&pack).unwrap(), "crowd", &rev);
     for id in &npcs {
-        add_actor(&mut state, id, ActorKind::Npc, "yard", 1);
+        add_actor(&mut state, id, component::ControlType::Npc, "yard", 1);
     }
     write_text(&pack.join("state/save.yaml"), &emit_save(&state).unwrap());
     play_pack_once(&pack).unwrap_or_else(|err| panic!("round: {err}"));
@@ -459,9 +465,9 @@ rules:
     assert_eq!(
         state
             .actors()
-            .kind
+            .control_type
             .values()
-            .filter(|kind| **kind == ActorKind::Npc)
+            .filter(|control_type| **control_type == component::ControlType::Npc)
             .count(),
         50
     );
