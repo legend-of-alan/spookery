@@ -412,7 +412,7 @@ fn neither_keeps_the_dropped_meter(world: &mut World) {
     let meters = &now.actors().meters;
     assert!(!meters.contains_key(&("rowan".into(), "luck".to_string())));
     assert!(meters.contains_key(&("rowan".into(), "grit".to_string())));
-    assert!(!now.globals().meters.contains_key("tide"));
+    assert!(!now.globals().meters.keys().any(|(_, id)| id == "tide"));
 }
 
 #[then(expr = "the GM sees {string} as a changed key")]

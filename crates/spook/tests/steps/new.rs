@@ -178,7 +178,7 @@ fn the_keeper_habit_has_set_tended(world: &mut World) {
     assert_eq!(kind, Some(&ActorKind::Npc), "keeper missing: {kind:?}");
     let flags = &now.actors().flags;
     assert!(
-        flags.contains(&("keeper".into(), "tended".to_string())),
+        flags.contains_key(&("keeper".into(), "tended".to_string())),
         "{flags:?}"
     );
     let _ = fs::remove_dir_all(idle);

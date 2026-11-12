@@ -1,12 +1,12 @@
-//! The entities: each collection's stores, any entity's id as rules and the journal spell it,
-//! and the borrowed form the canon's lookups take.
+//! The entities: each collection's stores and the components it registers, any entity's id as
+//! rules and the journal spell it, and the borrowed form the canon's lookups take.
 
 pub(in crate::state) mod actors;
 mod globals;
 mod places;
 mod stories;
 
-use std::fmt;
+use std::fmt::{self, Debug};
 
 use serde::{Deserialize, Serialize};
 
@@ -15,7 +15,42 @@ pub use globals::Globals;
 pub use places::Places;
 pub use stories::Stories;
 
-use crate::state::id::{ActorId, PlaceId, StoryId};
+use crate::canon::Canon;
+use crate::state::component::{self, Component};
+use crate::state::id::{self, ActorId, PlaceId, StoryId};
+use crate::state::undo;
+
+/// A collection of entities: the actors, the places, the stories, or the one world. Its id type
+/// is its own, so an id of another collection does not compile.
+pub trait Entities {
+    type Id: Ord + Clone + Debug + id::AsIdRef;
+
+    /// Whether `id` is one of this collection's entities. The save lists the actors; the pack's
+    /// `canon` defines the places and the stories; the world always is.
+    fn contains(&self, canon: &Canon, id: &Self::Id) -> bool;
+}
+
+/// A collection that stores component `C` under each entity's names.
+pub trait Has<C: Component>: Entities {
+    fn store(&self) -> &undo::Store<component::Map<Self::Id, C>>;
+    fn store_mut(&mut self) -> &mut undo::Store<component::Map<Self::Id, C>>;
+}
+
+/// Declares that `$entities` stores `$component` in its field `$store`. The caller has `undo` and
+/// `component` in scope, as a collection's file does for its stores.
+macro_rules! has {
+    ($entities:ty, $component:ty, $store:ident) => {
+        impl $crate::state::entity::Has<$component> for $entities {
+            fn store(&self) -> &undo::Store<component::Map<Self::Id, $component>> {
+                &self.$store
+            }
+            fn store_mut(&mut self) -> &mut undo::Store<component::Map<Self::Id, $component>> {
+                &mut self.$store
+            }
+        }
+    };
+}
+pub(in crate::state) use has;
 
 /// Who holds a meter, a flag or an item count, as a rule's `of` names it and the journal
 /// writes it: `world`, `{actor: id}`, `{place: id}` or `{story: id}`.

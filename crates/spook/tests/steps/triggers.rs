@@ -95,7 +95,7 @@ fn briar_has_flag_downed(world: &mut World) {
         state_of(pack)
             .actors()
             .flags
-            .contains(&("briar".into(), "downed".to_string())),
+            .contains_key(&("briar".into(), "downed".to_string())),
         "briar is not downed"
     );
 }
@@ -169,8 +169,8 @@ rules:
     write_nell(&pack, &["found_key"]);
     edit_table(world, &pack, |now, seated| {
         insert_actor_copy(now, seated, ("rowan", "nell"), "docks_street");
-        let mut actors = now.actors_mut();
-        actors.set_flag(&"nell".into(), "found_key", true).unwrap();
+        let nell = entity::Id::Actor("nell".into());
+        now.entity_mut(&nell).set_flag("found_key", true).unwrap();
         support::put_meter(now, &entity::Id::Global, "tide", 0);
     });
     play(
@@ -190,7 +190,8 @@ fn nell_knows_the_ledger(world: &mut World, tide: i64) {
             .any(|fact| fact == "fact_ledger"),
         "nell does not know fact_ledger"
     );
-    let live = &now.globals().meters["tide"];
+    let tide_meter = (now.globals().stores().meters.iter()).find(|((_, id), _)| id == "tide");
+    let live = tide_meter.expect("the world's tide").1;
     assert_eq!(live.base + live.offset, tide, "{live:?}");
 }
 
@@ -660,7 +661,7 @@ fn nell_sets_the_tide(world: &mut World) {
 fn the_world_has_the_tide(world: &mut World) {
     let now = state_of(world.pack.as_ref().unwrap());
     assert!(
-        now.globals().flags.iter().any(|flag| flag == "tide_turned"),
+        now.entity(&entity::Id::Global).has_flag("tide_turned"),
         "flags: {:?}",
         now.globals().flags
     );
@@ -825,7 +826,7 @@ fn the_rounds_only_refusal_is(world: &mut World, code: String) {
 #[then(expr = "no place has the {string} flag")]
 fn no_place_has_the_flag(world: &mut World, flag: String) {
     let now = state_of(world.pack.as_ref().unwrap());
-    assert!(!now.places().flags.iter().any(|(_, set)| *set == flag));
+    assert!(!now.places().flags.keys().any(|(_, set)| *set == flag));
 }
 
 #[when(expr = "nell travels from docks_street into docks_shop")]
@@ -1049,10 +1050,10 @@ rules:
     .unwrap();
     edit_table(world, &pack, |now, seated| {
         insert_actor_copy(now, seated, ("aldric", "briar"), "docks_shop");
-        let briar = spookery_engine::ActorId::from("briar");
-        support::put_meter(now, &entity::Id::Actor(briar.clone()), "hp", hp);
+        let briar = entity::Id::Actor("briar".into());
+        support::put_meter(now, &briar, "hp", hp);
         if downed {
-            now.actors_mut().set_flag(&briar, "downed", true).unwrap();
+            now.entity_mut(&briar).set_flag("downed", true).unwrap();
         }
         sit(seated, &["rowan"]);
     });
@@ -1142,15 +1143,17 @@ fn insert_actor_copy(
     let (from, to) = (from.into(), id.into());
     let mut actors = now.actors_mut();
     actors.copy_actor(&from, &to, place).unwrap();
-    let flags: Vec<String> = (actors.flags.iter())
+    let flags: Vec<String> = (actors.flags.keys())
         .filter(|(owner, _)| *owner == to)
         .map(|(_, key)| key.clone())
         .collect();
+    let copy = entity::Id::Actor(to);
+    let mut actors = now.entity_mut(&copy);
     for key in flags {
-        actors.set_flag(&to, &key, false).unwrap();
+        actors.set_flag(&key, false).unwrap();
     }
     // Only rowan carries the debt, so a copy of them does not.
-    actors.set_meter(&to, "assassination_debt", None).unwrap();
+    actors.set_meter("assassination_debt", None).unwrap();
     sit(seated, &[id]);
 }
 

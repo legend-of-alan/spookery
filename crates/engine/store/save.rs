@@ -10,7 +10,7 @@ use crate::diagnostic::{check_tag, error, locate_nth, parse_file, schema_error, 
 use crate::entity;
 use crate::state::component::meter::{self, Meter};
 use crate::state::component::modifier::{self, Modifier};
-use crate::state::id::ActorId;
+use crate::state::id::{ActorId, GlobalId};
 use crate::state::{nested_map, Save, State};
 use crate::store::records::{AddedMeter, DroppedMeter, MigrateRecord};
 use crate::Reason;
@@ -107,13 +107,13 @@ pub(crate) fn find_lacking_carriers(
                 Some(entity::Id::Actor(one)) => one == *actor,
                 _ => true,
             };
-            let lacks = |actor: &&ActorId| actors.meter(actor, id).is_none();
+            let lacks = |actor: &&ActorId| nested_map::get(&actors.meters, actor, id).is_none();
             let lacking = actors.kind.keys().filter(named).filter(lacks).cloned();
             return lacking.map(entity::Id::Actor).collect();
         }
         Some(entity::Id::Place(place)) => nested_map::get(&save.places().meters, place, id),
         Some(entity::Id::Story(story)) => nested_map::get(&save.stories().meters, story, id),
-        Some(entity::Id::Global) => save.globals().meters.get(id),
+        Some(entity::Id::Global) => nested_map::get(&save.globals().meters, &GlobalId, id),
     };
     held.is_none()
         .then(|| carrier.clone())
@@ -131,7 +131,7 @@ fn held_meters(save: &Save) -> impl Iterator<Item = (entity::Id, &String, &Meter
     (actors.map(|((id, key), held)| (entity::Id::Actor(id.clone()), key, held)))
         .chain(places.map(|((id, key), held)| (entity::Id::Place(id.clone()), key, held)))
         .chain(stories.map(|((id, key), held)| (entity::Id::Story(id.clone()), key, held)))
-        .chain(world.map(|(key, held)| (entity::Id::Global, key, held)))
+        .chain(world.map(|((_, key), held)| (entity::Id::Global, key, held)))
 }
 
 /// Meters an actor, place, story or the world lists that the pack no longer gives it.
@@ -216,7 +216,7 @@ pub fn check_save(state: &State) -> Result<(), Vec<Diagnostic>> {
         .chain(items.keys().map(|(id, _)| ("items", id)))
         .chain(meters.keys().map(|(id, _)| ("meters", id)))
         .chain(modifiers.keys().map(|(id, _)| ("modifiers", id)))
-        .chain(flags.iter().map(|(id, _)| ("flags", id)))
+        .chain(flags.keys().map(|(id, _)| ("flags", id)))
         .collect();
     for (store, id) in held.iter().filter(|(_, id)| !actors.kind.contains_key(*id)) {
         let problem = format!("actor '{id}' has {store} but no kind");
@@ -379,6 +379,33 @@ fn meter_error(carrier: &entity::Id, key: &str, problem: &str, hint: &str) -> Di
 mod tests {
     use super::*;
     use std::fs;
+
+    #[test]
+    fn world_stores_round_trip_byte_for_byte() {
+        let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../packs/oneshot-docks/state/save.yaml");
+        let empty = "world:
+  meters: {}
+  flags: []
+";
+        let held = "world:
+  meters:
+    dawn:
+      base: 4
+      offset: -1
+    tide:
+      base: 9
+      offset: 0
+  flags:
+    - gate_locked
+    - rang
+";
+        let original = fs::read_to_string(&path).unwrap();
+        assert!(original.contains(empty));
+        let original = original.replace(empty, held);
+        let state = parse(&original).unwrap();
+        assert_eq!(emit(&state).unwrap(), original);
+    }
 
     #[test]
     fn docks_now_round_trips_through_emitter() {

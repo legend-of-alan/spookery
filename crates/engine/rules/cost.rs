@@ -6,6 +6,7 @@ use crate::rules::context::Context;
 use crate::rules::expr::{self, Dice};
 use crate::rules::gate;
 use crate::rules::rule::Cost;
+use crate::state::component::{self, modifier, Meter};
 use crate::state::{change, Presence, State};
 use crate::Reason;
 
@@ -28,7 +29,7 @@ pub(crate) fn afford(context: &Context, cost: &Cost) -> Result<(), gate::Refusal
         if amount < 0 {
             return Err(cant_afford(key));
         }
-        let current = (state.actors().meter_value(who, key)).map_err(|_| cant_afford(key))?;
+        let current = modifier::value(state.actors(), who, key).map_err(|_| cant_afford(key))?;
         if current < amount {
             return Err(cant_afford(key));
         }
@@ -39,13 +40,8 @@ pub(crate) fn afford(context: &Context, cost: &Cost) -> Result<(), gate::Refusal
         }
         let amount = expr::eval(context, expr).map_err(|_| cant_afford(id))?;
         let count = item_count(amount).map_err(|_| cant_afford(id))?;
-        let held = state
-            .actors()
-            .items
-            .get(&(who.clone(), id.clone()))
-            .copied()
-            .unwrap_or(0);
-        if held < count {
+        let held = state.actors().get::<component::Item>(who);
+        if held.get(id).copied().unwrap_or(0) < count {
             return Err(cant_afford(id));
         }
     }
@@ -72,7 +68,7 @@ pub(crate) fn pay(
         if amount < 0 {
             return Err(Reason::CantAfford);
         }
-        state.actors_mut().shift_meter(who, key, -amount)?;
+        (state.actors_mut().get_mut::<Meter>(who)).shift(key, -amount)?;
         if amount == 0 {
             // A cost of 0 leaves the meter as it was and still takes a key of the budget.
             state.count_key(&change::Key::ActorMeter(who.to_string(), key.clone()))?;
@@ -82,10 +78,8 @@ pub(crate) fn pay(
         let context = Context::new(canon, state, presence, intent);
         let count = item_count(expr::eval_with_dice(&context, expr, dice)?)?;
         // The key budget keeps its own code; any other refusal of the take is a shortfall.
-        match state
-            .actors_mut()
-            .shift_item(who, id, -i64::from(count), None)
-        {
+        let taken = -i64::from(count);
+        match (state.actors_mut().get_mut::<component::Item>(who)).shift(id, taken, None) {
             Err(Reason::Budget) => return Err(Reason::Budget),
             Err(_) => return Err(Reason::CantAfford),
             Ok(()) => {}

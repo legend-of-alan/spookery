@@ -1,9 +1,11 @@
-//! The id of an actor, of a place and of a story, and the address of an exit.
+//! The id of an actor, of a place, of a story and of the world, and the address of an exit.
 
 use std::borrow::Borrow;
 use std::fmt;
 
 use serde::{Deserialize, Serialize};
+
+use crate::state::entity;
 
 /// Declares `$name`, the id of an entity in one collection: a string saved as itself, which an id
 /// from another collection cannot stand in for.
@@ -71,6 +73,39 @@ string_id! {
 string_id! {
     /// A story's id, as the pack's stories key them.
     StoryId
+}
+
+/// The world's id. There is one world, so its id says nothing more.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
+pub struct GlobalId;
+
+/// An id of one collection, in the borrowed form the canon's lookups take.
+pub trait AsIdRef {
+    fn as_id_ref(&self) -> entity::IdRef<'_>;
+}
+
+impl AsIdRef for ActorId {
+    fn as_id_ref(&self) -> entity::IdRef<'_> {
+        entity::IdRef::Actor(self)
+    }
+}
+
+impl AsIdRef for PlaceId {
+    fn as_id_ref(&self) -> entity::IdRef<'_> {
+        entity::IdRef::Place(self)
+    }
+}
+
+impl AsIdRef for StoryId {
+    fn as_id_ref(&self) -> entity::IdRef<'_> {
+        entity::IdRef::Story(self)
+    }
+}
+
+impl AsIdRef for GlobalId {
+    fn as_id_ref(&self) -> entity::IdRef<'_> {
+        entity::IdRef::Global
+    }
 }
 
 /// One exit's door, by its place and its name. An address, not an entity: it holds nothing but

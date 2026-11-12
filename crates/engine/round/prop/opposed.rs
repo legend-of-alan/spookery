@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 
 use crate::intent::{Intent, Source, Target};
 use crate::rules::gate;
+use crate::state::component::Meter;
 use crate::state::id::ActorId;
 use crate::state::Presence;
 use crate::store::journal;
@@ -66,17 +67,16 @@ fn lunge_pack(limit: Option<&str>, rule: &str) -> PathBuf {
     crate::testing::append(&pack.join("rules/verbs.yaml"), &format!("{LUNGE}{rule}"));
     crate::testing::edit_save(&pack, |state| {
         let briar = ActorId::from("briar");
-        let held = state
-            .actors()
-            .stores()
-            .meter(&briar, "might")
-            .expect("Briar's might");
-        let might = crate::state::component::meter::Meter {
+        let held = state.actors().get::<Meter>(&briar).get("might").cloned();
+        let might = Meter {
             base: 30,
-            ..held.clone()
+            ..held.expect("Briar's might")
         };
         let mut actors = state.actors_mut();
-        actors.set_meter(&briar, "might", Some(might)).unwrap();
+        actors
+            .get_mut::<Meter>(&briar)
+            .set("might", Some(might))
+            .unwrap();
     });
     pack
 }

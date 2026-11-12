@@ -6,7 +6,7 @@ use crate::rules::context::Context;
 use crate::rules::expr;
 use crate::rules::grammar;
 use crate::rules::rule::Cond;
-use crate::state::{Presence, State};
+use crate::state::{component, Presence, State};
 use crate::Reason;
 
 /// Every condition holds. A failed `has_item` is [`Reason::MissingItem`].
@@ -59,13 +59,8 @@ fn holds(context: &Context, cond: &Cond) -> Result<bool, Reason> {
         Cond::HasItem { subject, id, count } => {
             let actor = expr::resolve_actor(context, subject)?;
             let id = expr::resolve_item_id(context, id)?;
-            let held = state
-                .actors()
-                .items
-                .get(&(actor.clone(), id))
-                .copied()
-                .unwrap_or(0);
-            Ok(held >= *count)
+            let held = state.actors().get::<component::Item>(actor);
+            Ok(held.get(&id).copied().unwrap_or(0) >= *count)
         }
         Cond::Wielding { subject, id } => {
             let actor = expr::resolve_actor(context, subject)?;

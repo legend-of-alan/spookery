@@ -2,8 +2,10 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::state::change::{self, Change};
+use crate::state::change;
+use crate::state::component::{Component, Mut, Ref};
 use crate::state::entity;
+use crate::state::prelude::*;
 use crate::Reason;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -63,54 +65,60 @@ pub fn value(def: &MeterDef, live: &Meter, modifiers: i64) -> Result<i64, Reason
     Ok(sum.clamp(def.min, def.max))
 }
 
-/// The current value of a meter no modifier reaches, or `UNKNOWN_ID` when the pack does not give
-/// it or the save does not hold it.
-pub fn read(def: Option<&MeterDef>, held: Option<&Meter>) -> Result<i64, Reason> {
-    value(
-        def.ok_or(Reason::UnknownId)?,
-        held.ok_or(Reason::UnknownId)?,
-        0,
-    )
-}
-
-/// `held` with its offset moved by `delta` inside `def`'s bounds, and the change that reports
-/// under `key`, its value read with `modifiers`: `UNKNOWN_ID` when nothing is held. A sum past
-/// `i64` reads as no value and never refuses the write.
-pub(in crate::state) fn shift(
-    held: Option<&Meter>,
-    def: &MeterDef,
-    modifiers: Result<i64, Reason>,
-    delta: i64,
-    key: change::Key,
-) -> Result<(Meter, Change), Reason> {
+/// `held` with its offset moved by `delta` inside `def`'s bounds: `UNKNOWN_ID` when nothing is
+/// held.
+fn shift(held: Option<&Meter>, def: &MeterDef, delta: i64) -> Result<Meter, Reason> {
     let held = held.ok_or(Reason::UnknownId)?;
     let offset = held.offset.checked_add(delta).ok_or(Reason::OutOfRange)?;
     if !is_storable(def, held.base, offset) {
         return Err(Reason::OutOfRange);
     }
-    let next = Meter { offset, ..*held };
-    let reading =
-        |held: &Meter| change::Value::from_reading(modifiers.and_then(|sum| value(def, held, sum)));
-    let change = Change::new(key, reading(held), reading(&next));
-    Ok((next, change))
+    Ok(Meter { offset, ..*held })
 }
 
-/// `meter` in place of `held`, `None` taking it off, outside a round's rules, and the change that
-/// reports under `key`, each value read with `def` and `modifiers`.
-pub(in crate::state) fn next(
-    held: Option<&Meter>,
-    meter: Option<Meter>,
-    def: Option<&MeterDef>,
-    modifiers: Result<i64, Reason>,
-    key: change::Key,
-) -> (Option<Meter>, Change) {
-    let reading = |held: Option<&Meter>| {
-        let reading = (def.zip(held).ok_or(Reason::UnknownId))
-            .and_then(|(def, held)| value(def, held, modifiers?));
-        change::Value::from_reading(reading)
-    };
-    let change = Change::new(key, reading(held), reading(meter.as_ref()));
-    (meter, change)
+impl Component for Meter {
+    type Value = Meter;
+}
+
+impl<E: entity::Has<Meter>> Ref<'_, E, Meter> {
+    /// The stored meter `name` inside the pack's bounds, with no modifiers: `modifier::value`
+    /// adds an actor's. `UNKNOWN_ID` when the entity does not carry the meter.
+    pub fn value(&self, name: &str) -> Result<i64, Reason> {
+        let def = (self.entities.canon).meter_def(self.id.as_id_ref(), name);
+        let held = self.get(name).ok_or(Reason::UnknownId);
+        value(def.ok_or(Reason::UnknownId)?, held?, 0)
+    }
+}
+
+impl<E: entity::Has<Meter>> Mut<'_, E, Meter> {
+    /// Move meter `name` by `delta` inside its bounds. It reports the meter's key with the
+    /// stored meter it replaced; the change is read, as rules read the meter, when the changes
+    /// are taken.
+    pub fn shift(&mut self, name: &str, delta: i64) -> Result<(), Reason> {
+        self.check_exists()?;
+        let id = self.id.as_id_ref();
+        let def = (self.writer.canon.meter_def(id, name)).ok_or(Reason::UnknownId)?;
+        let entry = (self.id.clone(), name.to_string());
+        let held = self.writer.components.store().get(&entry);
+        let next = shift(held, def, delta)?;
+        let report = change::Report::Meter(change::Key::meter(id, name), held.cloned());
+        let store = self.writer.components.store_mut();
+        store.set(self.writer.transaction, entry, Some(next), [report])
+    }
+
+    /// Give the entity meter `name` as `meter` says, `None` taking it off, outside a round's
+    /// rules: migrate and fixtures. It reports as `shift` does. Taking a meter off checks no
+    /// owner: the entry is its own evidence.
+    pub fn set(&mut self, name: &str, meter: Option<Meter>) -> Result<(), Reason> {
+        if meter.is_some() {
+            self.check_exists()?;
+        }
+        let entry = (self.id.clone(), name.to_string());
+        let held = self.writer.components.store().get(&entry).cloned();
+        let report = change::Report::Meter(change::Key::meter(self.id.as_id_ref(), name), held);
+        let store = self.writer.components.store_mut();
+        store.set(self.writer.transaction, entry, meter, [report])
+    }
 }
 
 #[cfg(test)]

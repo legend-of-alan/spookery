@@ -11,8 +11,7 @@ use crate::rules::cost;
 use crate::rules::perceive::perceive_as;
 use crate::rules::rule::{Owner, Rule, TargetKind, When};
 use crate::state::id::ActorId;
-use crate::state::nested_map;
-use crate::state::{Presence, State};
+use crate::state::{component, Presence, State};
 use crate::Reason;
 
 /// One refused intent: its id, its code, and a detail when there is one. Returned from the
@@ -250,11 +249,11 @@ pub(crate) fn list_nameable(
     presence: &Presence,
     viewer: &Viewer,
 ) -> Vec<NamedId> {
-    let mut nameable: Vec<NamedId> =
-        nested_map::entries_of(&state.actors().items, viewer.actor_id())
-            .filter(|(_, count)| **count > 0)
-            .map(|(id, _)| NamedId::new(id, canon.display_name(id)))
-            .collect();
+    let mut nameable: Vec<NamedId> = (state.actors().get::<component::Item>(viewer.actor_id()))
+        .iter()
+        .filter(|(_, count)| **count > 0)
+        .map(|(id, _)| NamedId::new(id, canon.display_name(id)))
+        .collect();
     if let Ok(view) = perceive_as(canon, state, presence, viewer) {
         nameable.push(NamedId::new(&view.place, view.place_name));
         let me = viewer.actor_id();

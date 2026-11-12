@@ -8,6 +8,7 @@ mod fixtures;
 pub(crate) mod id;
 pub(crate) mod nested_map;
 mod notes;
+pub(crate) mod prelude;
 mod transaction;
 pub mod undo;
 
@@ -103,6 +104,13 @@ impl<'a, E> Reader<'a, E> {
     }
 }
 
+impl<'a, E: entity::Entities> Reader<'a, E> {
+    /// `id`'s component `C`, borrowed. A collection that does not hold `C` has no reads on it.
+    pub fn get<C: component::Component>(self, id: &'a E::Id) -> component::Ref<'a, E, C> {
+        component::Ref::new(self, id)
+    }
+}
+
 impl<E> Deref for Reader<'_, E> {
     type Target = E;
     fn deref(&self) -> &E {
@@ -140,6 +148,17 @@ impl<'a, E> Writer<'a, E> {
             transaction,
             canon,
         }
+    }
+}
+
+impl<E: entity::Entities> Writer<'_, E> {
+    /// `id`'s component `C`, to write. A collection that does not hold `C` has no writes on it.
+    pub fn get_mut<'a, C>(&'a mut self, id: &'a E::Id) -> component::Mut<'a, E, C>
+    where
+        C: component::Component,
+    {
+        let writer = Writer::new(&mut *self.components, &mut *self.transaction, self.canon);
+        component::Mut::new(writer, id)
     }
 }
 

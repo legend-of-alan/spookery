@@ -5,7 +5,7 @@ use std::path::Path;
 
 use cucumber::{given, then, when};
 use spookery_engine::testing::state_of;
-use spookery_engine::{Presence, World as Opened};
+use spookery_engine::{entity, Presence, World as Opened};
 
 use super::common::replace_in_file;
 use super::meters::{assert_refused, migrate_and_play};
@@ -218,7 +218,9 @@ fn a_rule_tests_the_flag(world: &mut World, key: String, of: String) {
         ),
     );
     migrate_and_play(world, vec![intent("test", "rowan", "test_mark", None)]);
-    assert!(state_of(&pack).globals().flags.contains("mark_seen"));
+    assert!(state_of(&pack)
+        .entity(&entity::Id::Global)
+        .has_flag("mark_seen"));
 }
 
 #[then(expr = "the GM sees the flag change on the siege story")]

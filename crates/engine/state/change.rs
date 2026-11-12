@@ -2,6 +2,10 @@
 
 use std::fmt;
 
+use crate::state::component::Meter;
+use crate::state::entity;
+use crate::Reason;
+
 /// One budget identity. The commit diff summary is this type's `Display`,
 /// sorted as text. It is not a path inside `save.yaml`.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -58,6 +62,28 @@ impl fmt::Display for Key {
 }
 
 impl Key {
+    /// The key of flag `name` on `id`.
+    pub(crate) fn flag(id: entity::IdRef<'_>, name: &str) -> Key {
+        let name = name.to_string();
+        match id {
+            entity::IdRef::Actor(id) => Key::ActorFlag(id.to_string(), name),
+            entity::IdRef::Place(id) => Key::PlaceFlag(id.to_string(), name),
+            entity::IdRef::Story(id) => Key::StoryFlag(id.to_string(), name),
+            entity::IdRef::Global => Key::WorldFlag(name),
+        }
+    }
+
+    /// The key of meter `name` on `id`.
+    pub(crate) fn meter(id: entity::IdRef<'_>, name: &str) -> Key {
+        let name = name.to_string();
+        match id {
+            entity::IdRef::Actor(id) => Key::ActorMeter(id.to_string(), name),
+            entity::IdRef::Place(id) => Key::PlaceMeter(id.to_string(), name),
+            entity::IdRef::Story(id) => Key::StoryMeter(id.to_string(), name),
+            entity::IdRef::Global => Key::WorldMeter(name),
+        }
+    }
+
     /// The actor this key belongs to, when it has one.
     pub fn actor(&self) -> Option<&str> {
         match self {
@@ -139,5 +165,32 @@ pub struct Change {
 impl Change {
     pub(crate) fn new(key: Key, before: Value, after: Value) -> Change {
         Change { key, before, after }
+    }
+}
+
+/// What a store's write reports: a change with both its values, or a meter's key with what the
+/// write had in hand of its reading before, read as rules read the meter when the changes are
+/// taken.
+#[derive(Clone, Debug)]
+pub(crate) enum Report {
+    Change(Change),
+    /// A meter's write: the stored meter it replaced.
+    Meter(Key, Option<Meter>),
+    /// A modifier's write: what the actor's modifiers added to the meter before it.
+    Modifiers(Key, Result<i64, Reason>),
+}
+
+impl Report {
+    pub(crate) fn key(&self) -> &Key {
+        match self {
+            Report::Change(change) => &change.key,
+            Report::Meter(key, _) | Report::Modifiers(key, _) => key,
+        }
+    }
+}
+
+impl From<Change> for Report {
+    fn from(change: Change) -> Report {
+        Report::Change(change)
     }
 }

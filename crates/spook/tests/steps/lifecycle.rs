@@ -3,7 +3,7 @@
 use std::fs;
 
 use cucumber::{given, then, when};
-use spookery_engine::{Presence, World as Engine};
+use spookery_engine::{entity, Presence, World as Engine};
 
 use super::common::give_key;
 use super::rules::open;
@@ -156,7 +156,8 @@ fn travel_is_cancellable(world: &mut World) {
 fn never_finished(world: &mut World, verb: String, rest: i64) {
     let now = state_of(world.pack.as_ref().unwrap());
     assert!(
-        !now.globals().flags.contains(&format!("{verb}_done")),
+        !now.entity(&entity::Id::Global)
+            .has_flag(&format!("{verb}_done")),
         "{:?}",
         now.globals().flags
     );
@@ -171,7 +172,8 @@ fn never_finished(world: &mut World, verb: String, rest: i64) {
 fn finished(world: &mut World, verb: String) {
     let now = state_of(world.pack.as_ref().unwrap());
     assert!(
-        now.globals().flags.contains(&format!("{verb}_done")),
+        now.entity(&entity::Id::Global)
+            .has_flag(&format!("{verb}_done")),
         "{:?}",
         now.globals().flags
     );

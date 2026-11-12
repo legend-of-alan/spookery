@@ -38,6 +38,6 @@ impl Writer<'_, undo::Store<Vec<Note>>> {
         let key = change::Key::Note(note.id.clone());
         let change = Change::new(key, change::Value::Empty, change::Value::Bool(true));
         let leave = |notes: &mut Vec<Note>| notes.push(note);
-        components.record(transaction, leave, [change])
+        components.record(transaction, leave, [change.into()])
     }
 }

@@ -5,7 +5,7 @@ use std::path::Path;
 use cucumber::{given, then, when};
 use spookery_engine::testing::journal::list_round_keys;
 use spookery_engine::testing::{ActorKind, PendingAction};
-use spookery_engine::{ActorId, State};
+use spookery_engine::{ActorId, Meter, State};
 
 use super::common::{
     add_trapdoor, capture_play_stdout, edit_save, give_key, join_play, set_busy, wait_play_until,
@@ -196,7 +196,10 @@ fn add_nell(now: &mut State, place: &str, walk: Option<(u64, PendingAction)>) {
     let mut actors = now.actors_mut();
     actors.add_actor(&nell, ActorKind::Pc, place);
     for (key, meter) in meters {
-        actors.set_meter(&nell, &key, Some(meter)).unwrap();
+        actors
+            .get_mut::<Meter>(&nell)
+            .set(&key, Some(meter))
+            .unwrap();
     }
     if let Some((until, pending)) = walk {
         actors.set_busy(&nell, until, Some(pending)).unwrap();

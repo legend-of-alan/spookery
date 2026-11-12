@@ -1,9 +1,14 @@
-//! Modifier defs from the pack, and the stacks an actor holds of each.
+//! Modifier defs from the pack, the stacks an actor holds of each, and an actor's meter as it
+//! reads with them.
 
 use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
+use crate::state::component::meter::{self, Meter};
+use crate::state::entity;
+use crate::state::id::ActorId;
+use crate::state::Reader;
 use crate::Reason;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -88,6 +93,31 @@ pub fn sum<'a>(held: impl Iterator<Item = &'a Modifier>, key: &str) -> Result<i6
         .flat_map(|live| &live.stacks)
         .try_fold(0i64, |total, add| total.checked_add(*add))
         .ok_or(Reason::OutOfRange)
+}
+
+/// Meter `name` on `actor` as rolls, costs, conditions and views read it: the stored meter plus
+/// what the actor's modifiers add, inside the pack's bounds. `UNKNOWN_ID` when the actor does not
+/// carry the meter.
+pub fn value(
+    actors: Reader<'_, entity::Actors>,
+    actor: &ActorId,
+    name: &str,
+) -> Result<i64, Reason> {
+    value_with(actors, actor, name, actors.modifier_sum(actor, name))
+}
+
+/// The same with `modifiers` in place of what the actor's modifiers add, for a write that has not
+/// landed: the same refusals as `value`, in the same order.
+pub(in crate::state) fn value_with(
+    actors: Reader<'_, entity::Actors>,
+    actor: &ActorId,
+    name: &str,
+    modifiers: Result<i64, Reason>,
+) -> Result<i64, Reason> {
+    let def = actors.canon.meter_def(entity::IdRef::Actor(actor), name);
+    let held = actors.get::<Meter>(actor).get(name);
+    let held = held.ok_or(Reason::UnknownId);
+    meter::value(def.ok_or(Reason::UnknownId)?, held?, modifiers?)
 }
 
 #[cfg(test)]

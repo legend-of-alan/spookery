@@ -22,9 +22,8 @@ fn keep_briar_busy(now: &mut State) {
 
 /// Give `actor` one more of `item`.
 fn give(now: &mut State, actor: &str, item: &str) {
-    now.actors_mut()
-        .shift_item(&actor.into(), item, 1, None)
-        .unwrap();
+    let actor = entity::Id::Actor(actor.into());
+    now.entity_mut(&actor).shift_item(item, 1, None).unwrap();
 }
 
 fn hp(pack: &Path, actor: &str) -> i64 {
@@ -664,7 +663,10 @@ fn the_poison_fades(world: &mut World, text: String) {
     let pack = world.pack.as_ref().unwrap();
     assert_eq!(hp(pack, "nell"), 7);
     let poisoned = ("nell".into(), "poisoned".to_string());
-    assert!(!support::state_of(pack).actors().flags.contains(&poisoned));
+    assert!(!support::state_of(pack)
+        .actors()
+        .flags
+        .contains_key(&poisoned));
     let round: Value = serde_json::from_str(read_first_round_line(pack).trim()).unwrap();
     assert!(round["refused"].as_array().unwrap().is_empty(), "{round}");
     let effects = round["effects"].to_string();
