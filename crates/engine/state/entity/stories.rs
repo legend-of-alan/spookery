@@ -74,8 +74,10 @@ impl Writer<'_, Stories> {
         components.meters.set(transaction, entry, next, [change])
     }
 
+    /// Set or clear `story`'s flag `key`. A story the pack does not define is `UNKNOWN_ID`.
     pub fn set_flag(&mut self, story: &StoryId, key: &str, on: bool) -> Result<(), Reason> {
         let (components, transaction) = (&mut *self.components, &mut *self.transaction);
+        self.canon.stories.get(story).ok_or(Reason::UnknownId)?;
         let entry = (story.clone(), key.to_string());
         let watched = change::Key::StoryFlag(story.to_string(), key.to_string());
         let (next, change) = flag::next(on, watched);

@@ -237,7 +237,7 @@ mod tests {
     use crate::rules::effect::{Effect, EffectKind};
     use crate::state::component::meter::{Meter, MeterWrite};
     use crate::state::entity;
-    use crate::state::id::ActorId;
+    use crate::state::id::{ActorId, PlaceId, StoryId};
     use crate::state::{ActorKind, Presence, Save, State};
     use crate::{Reason, World};
 
@@ -328,5 +328,29 @@ mod tests {
         assert!(state.actors().acts.contains_key(&nell), "Nell is added");
         state.rollback(point);
         assert_eq!(*state, *before, "her kind, place and action state all go");
+    }
+
+    #[test]
+    fn a_flag_goes_only_on_a_place_or_story_the_pack_defines() {
+        let world = docks();
+        let mut state = world.begin_round();
+        let before = state.clone();
+        let place = state
+            .places_mut()
+            .set_flag(&PlaceId::from("nowhere"), "lit", true);
+        assert_eq!(
+            place,
+            Err(Reason::UnknownId),
+            "the pack has no place nowhere"
+        );
+        let story = state
+            .stories_mut()
+            .set_flag(&StoryId::from("nowhere"), "lit", true);
+        assert_eq!(
+            story,
+            Err(Reason::UnknownId),
+            "the pack has no story nowhere"
+        );
+        assert_eq!(*state, *before, "the save is unchanged");
     }
 }
