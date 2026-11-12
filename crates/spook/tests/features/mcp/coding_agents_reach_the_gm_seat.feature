@@ -104,3 +104,10 @@ Feature: Coding agents reach the GM seat
     Given a docks table with a seated player and an open MCP endpoint
     When a coding agent says good evening over HTTP
     Then the player saw a say from the GM
+
+  Scenario: An HTTP agent's say reaches the tape, and an unknown tool is refused
+    Given a docks table with a seated player
+    When a coding agent says good evening and calls an unknown tool over HTTP
+    Then the player saw a say from the GM
+    And the tape from is gm
+    And the unknown tool call was refused

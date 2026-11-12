@@ -7,7 +7,7 @@ use cucumber::gherkin::Step;
 use cucumber::{given, then, when};
 use rmcp::model::ProtocolVersion;
 use serde_json::{json, Map, Value};
-use spookery::protocol::{ServerBody, ServerMessage};
+use spookery::protocol::{SayArgs, ServerBody, ServerMessage};
 
 use crate::mcp_client::{GmClient, RawSession};
 use crate::support;
@@ -384,6 +384,33 @@ fn agent_says_over_http(world: &mut World) {
     assert_not_refused(&said, "say");
     support::block_on(gm.close());
     world.player_added = table::wait_player_from(world, mark, "{\"kind\":\"say\"");
+}
+
+#[when(expr = "a coding agent says good evening and calls an unknown tool over HTTP")]
+fn agent_says_and_calls_an_unknown_tool(world: &mut World) {
+    let mark = table::player_mark(world);
+    let mcp_addr = table::mcp_addr(world).parse().unwrap();
+    let mut gm =
+        support::block_on(GmClient::connect(mcp_addr)).unwrap_or_else(|err| panic!("{err}"));
+    let evening = SayArgs::Table {
+        text: "good evening".to_string(),
+    };
+    let said =
+        support::block_on(gm.call("say", &json!(evening))).unwrap_or_else(|err| panic!("{err}"));
+    world.player_added = table::wait_player_from(world, mark, "{\"kind\":\"say\"");
+    world.scratch = json!(said).to_string();
+    let reply =
+        support::block_on(gm.call("not_in_spec", &json!({}))).unwrap_or_else(|err| panic!("{err}"));
+    support::block_on(gm.close());
+    world.stdout = match reply.last().map(|reply| &reply.body) {
+        Some(ServerBody::Refused(_)) => "refused".to_string(),
+        other => format!("{other:?}"),
+    };
+}
+
+#[then(expr = "the unknown tool call was refused")]
+fn the_unknown_tool_call_was_refused(world: &mut World) {
+    assert_eq!(world.stdout, "refused", "{}", world.scratch);
 }
 
 fn call_each_gm_tool(gm: &mut GmClient) {

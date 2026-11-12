@@ -47,6 +47,10 @@ pub struct World {
     pub model: scripted_gm::ScriptedModel,
     /// The AI GM once it sits, run in this process.
     pub ai_gm: Option<scripted_gm::AiGm>,
+    /// World time before a scenario's player acts.
+    pub start_ticks: u64,
+    /// The world times of the rounds a scenario's player heard.
+    pub round_times: Vec<u64>,
 }
 
 impl std::fmt::Debug for World {
