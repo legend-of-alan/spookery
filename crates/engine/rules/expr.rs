@@ -191,7 +191,7 @@ fn negate_body(body: &str) -> String {
 
 fn read_meter(context: &Context, of: &grammar::Object, key: &str) -> Result<i64, Reason> {
     let id = resolve_entity(context, of)?;
-    context.state.entity(&id).meter_value(key)
+    (context.state.entities().get::<component::Meter>(&id)).value(key)
 }
 
 /// `id: target` is the intent's target token. Any other id is itself.

@@ -1,7 +1,7 @@
 //! The sample-d20 and demo-d20 arcs: ways onto a timed lane, then an ending.
 
-use spookery_engine::entity;
 use spookery_engine::testing::state_of;
+use spookery_engine::{component, entity};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -272,8 +272,9 @@ fn larks_tonic(now: &spookery_engine::State) -> u32 {
 
 fn is_finished(pack: &Path) -> bool {
     state_of(pack)
-        .entity(&entity::Id::Global)
-        .has_flag("finished")
+        .entities()
+        .get::<component::Flag>(&entity::Id::Global)
+        .contains("finished")
 }
 
 fn lane_cost(pack: &Path) -> u64 {

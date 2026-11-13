@@ -70,7 +70,7 @@ fn holds(context: &Context, cond: &Cond) -> Result<bool, Reason> {
         }
         Cond::Meter { of, key, op, value } => {
             let entity = expr::resolve_entity(context, of)?;
-            let current = state.entity(&entity).meter_value(key)?;
+            let current = (state.entities().get::<component::Meter>(&entity)).value(key)?;
             let right = expr::eval(context, value)?;
             Ok(op.holds(current, right))
         }
@@ -81,7 +81,8 @@ fn holds(context: &Context, cond: &Cond) -> Result<bool, Reason> {
         } => Ok((key == OPEN && state.places().is_exit_open(exit)) == *is),
         Cond::Flag { of, key, is } => {
             let entity = expr::resolve_entity(context, of)?;
-            Ok(state.entity(&entity).has_flag(key) == *is)
+            let flag = state.entities().get::<component::Flag>(&entity);
+            Ok(flag.contains(key) == *is)
         }
         Cond::At { subject, place } => {
             let actor = expr::resolve_actor(context, subject)?;

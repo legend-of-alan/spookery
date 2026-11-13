@@ -7,7 +7,7 @@ use std::path::Path;
 
 use cucumber::{given, then, when};
 use spookery_engine::testing::journal::list_round_keys;
-use spookery_engine::{component, entity, State};
+use spookery_engine::{component, State};
 
 use super::table;
 use crate::support::{self, copy_docks};
@@ -26,9 +26,9 @@ pub(crate) use crate::support::edit_save;
 /// Rowan holds brass_key, and the stair door is open, as a round that ended with him in the
 /// shop would have left it.
 pub(crate) fn give_key(now: &mut State) {
-    let rowan = entity::Id::Actor("rowan".into());
-    now.entity_mut(&rowan)
-        .shift_item("brass_key", 1, None)
+    now.actors_mut()
+        .get_mut::<component::Item>(&"rowan".into())
+        .shift("brass_key", 1, None)
         .unwrap();
     let stairs = spookery_engine::ExitId {
         place: "docks_shop".into(),

@@ -3,9 +3,10 @@
 use serde::{Deserialize, Serialize};
 
 use crate::state::change;
-use crate::state::component::{Component, Mut, Ref};
-use crate::state::entity;
+use crate::state::component::{modifier, Component, Mut, Ref};
+use crate::state::entity::{self, in_collection, Id};
 use crate::state::prelude::*;
+use crate::state::{Reader, Save, Writer};
 use crate::Reason;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -80,16 +81,6 @@ impl Component for Meter {
     type Value = Meter;
 }
 
-impl<E: entity::Has<Meter>> Ref<'_, E, Meter> {
-    /// The stored meter `name` inside the pack's bounds, with no modifiers: `modifier::value`
-    /// adds an actor's. `UNKNOWN_ID` when the entity does not carry the meter.
-    pub fn value(&self, name: &str) -> Result<i64, Reason> {
-        let def = (self.entities.canon).meter_def(self.id.as_id_ref(), name);
-        let held = self.get(name).ok_or(Reason::UnknownId);
-        value(def.ok_or(Reason::UnknownId)?, held?, 0)
-    }
-}
-
 impl<E: entity::Has<Meter>> Mut<'_, E, Meter> {
     /// Move meter `name` by `delta` inside its bounds. It reports the meter's key with the
     /// stored meter it replaced; the change is read, as rules read the meter, when the changes
@@ -118,6 +109,47 @@ impl<E: entity::Has<Meter>> Mut<'_, E, Meter> {
         let report = change::Report::Meter(change::Key::meter(self.id.as_id_ref(), name), held);
         let store = self.writer.components.store_mut();
         store.set(self.writer.transaction, entry, meter, [report])
+    }
+}
+
+impl Ref<'_, Save, Meter> {
+    /// Meter `name` as rolls, conditions and views read it: the stored meter inside the pack's
+    /// bounds, plus an actor's modifiers (`modifier::value`). `UNKNOWN_ID` when the entity does
+    /// not carry the meter.
+    pub fn value(&self, name: &str) -> Result<i64, Reason> {
+        let (save, canon) = (self.entities.components, self.entities.canon);
+        match self.id {
+            Id::Actor(actor) => modifier::value(Reader::new(&save.actors, canon), actor, name),
+            id => {
+                let def = canon.meter_def(id.as_ref(), name).ok_or(Reason::UnknownId);
+                let held = in_collection!(id, [&save], |entities, id| {
+                    Reader::new(entities, canon).get::<Meter>(id).get(name)
+                });
+                value(def?, held.ok_or(Reason::UnknownId)?, 0)
+            }
+        }
+    }
+}
+
+impl Mut<'_, Save, Meter> {
+    /// As on its collection.
+    pub fn shift(&mut self, name: &str, delta: i64) -> Result<(), Reason> {
+        let (transaction, canon) = (&mut *self.writer.transaction, self.writer.canon);
+        in_collection!(self.id, [&mut self.writer.components], |entities, id| {
+            Writer::new(entities, transaction, canon)
+                .get_mut::<Meter>(id)
+                .shift(name, delta)
+        })
+    }
+
+    /// As on its collection: migrate and fixtures.
+    pub fn set(&mut self, name: &str, meter: Option<Meter>) -> Result<(), Reason> {
+        let (transaction, canon) = (&mut *self.writer.transaction, self.writer.canon);
+        in_collection!(self.id, [&mut self.writer.components], |entities, id| {
+            Writer::new(entities, transaction, canon)
+                .get_mut::<Meter>(id)
+                .set(name, meter)
+        })
     }
 }
 
