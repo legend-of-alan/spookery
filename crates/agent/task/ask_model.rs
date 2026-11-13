@@ -5,7 +5,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use graph_flow::{NextAction, Task, TaskResult};
 
-use crate::model::Message;
+use crate::model;
 use crate::turn::{ASK_MODEL, DONE, MAX_MODEL_CALLS, MODEL_CALL_COUNT};
 use crate::{Agent, Connection, Model};
 
@@ -28,13 +28,13 @@ impl<M: Model, C: Connection> Task for AskModel<M, C> {
             return Ok(TaskResult::new(None, NextAction::ContinueAndExecute));
         }
         context.set(MODEL_CALL_COUNT, count + 1)?;
-        let messages = self.0.turn().messages.clone();
-        match self.0.model.request_tool_calls(&messages).await {
+        let conversation = self.0.turn().conversation.clone();
+        match self.0.model.request_tool_calls(&conversation).await {
             Ok(tool_calls) if !tool_calls.is_empty() => {
                 self.0
                     .turn()
-                    .messages
-                    .push(Message::Assistant { tool_calls });
+                    .conversation
+                    .push(model::Message::Assistant { tool_calls });
             }
             Ok(_) => context.set(DONE, true)?,
             Err(err) => {

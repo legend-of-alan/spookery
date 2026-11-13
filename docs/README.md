@@ -95,7 +95,7 @@ If a move leaves every seated player busy, the clock runs on until they arrive.
 
 It posts to `{SPOOK_GM_URL}/chat/completions` with four tools. Three are the GM seat's commands: `perceive`, `say` and `queue`, with the parameters `crates/protocol/schema/client.json` gives them. The fourth, `end_turn`, plays the round: the AI GM sends `commit` for it.
 
-Each turn is a loop. A player's say or a queued move wakes it. The model calls tools, and each call goes to the table as it is. The table's reply comes back as that call's result, refusals included, so the model can look around first, try again after a refusal, and queue moves for several NPCs before it ends the turn. After `end_turn` it gets the rolls and can say what happened. The turn ends when the model answers with no tool calls.
+Each turn is a loop. A player's "say" or a queued move starts it. The model calls tools, and each call goes to the table as it is. The table's reply comes back as that call's result, refusals included, so the model can look around first, try again after a refusal, and queue moves for several NPCs before it ends the turn. After `end_turn` it gets the rolls and can say what happened. The turn ends when the model answers with no tool calls.
 
 The engine still decides every effect. A turn commits when a move is queued, and it commits that move itself when the model stops without `end_turn`. A turn stops after 20 model calls and prints a `model call limit` warning. If a command goes out and its reply can't be read, `spook ai-gm` stops and names the command, because the table may have applied it. Start it again and it reads the table afresh.
 
@@ -150,7 +150,7 @@ Type `help` to see the GM commands. A line is a command the hello listed, then i
 
 Each call is one chat-completions POST. The body has the model name, `"stream": false`, the four tools and the turn's conversation so far.
 
-The conversation starts with one user message, a bounded JSON prompt. It holds the last 16 says this process has handled, the new player lines, the move menu, the queued intents, what woke the turn and who is seated. Then come the model's tool calls and the table's reply to each: the views it perceived, the says, the queue replies and refusals, and after `end_turn` the rolls with their dice faces. The conversation lasts one turn. The next turn starts again from a new prompt.
+The conversation starts with one user message, a bounded JSON prompt. It holds the last 16 "says" this process has handled, the new player lines, the move menu, the queued intents, what started the turn (`cause`) and who is seated. Then come the model's tool calls and the table's reply to each: the views it perceived, the "says", the queue replies and refusals, and after `end_turn` the rolls with their dice faces. The conversation lasts one turn. The next turn starts again from a new prompt.
 
 The views are trimmed on purpose. A player's view is only a room census: it drops known facts, notes and unknown mentions. An NPC's view keeps each fact's id and text and its notes. Fact bodies are always dropped.
 

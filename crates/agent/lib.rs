@@ -2,7 +2,7 @@
 //! awaits two adapters the client implements: a `Model` and a `Connection`. It reads the
 //! server's one ordered stream and decides from everything up to the last `seq` it read.
 
-mod chat_completions;
+pub mod chat_completions;
 mod connection;
 mod context;
 pub mod model;
@@ -18,7 +18,6 @@ use graph_flow::GraphError;
 use serde_json::{json, Value};
 use spookery_protocol as protocol;
 
-pub use crate::chat_completions::{parse_completion, render_chat_body};
 pub use crate::connection::{Connection, ConnectionError};
 use crate::context::ClientState;
 pub use crate::model::{
@@ -173,7 +172,6 @@ mod tests {
     use std::collections::VecDeque;
 
     use super::*;
-    use crate::model::Message;
     use crate::protocol::ServerMessage;
 
     const STATUS: &str = r#"{"kind":"status","presence":{"players":1,"actors_present":["pc"]},"world_time":0,"round_index":0,"state_rev":1,"pack_rev":"p","last_round_at":"","queued":[],"pack":{"menu":[],"kinds":{"pc":"pc_template"},"places":{},"cast":{}}}"#;
@@ -206,8 +204,8 @@ mod tests {
         }
     }
 
-    /// The agent's first status, then a player's say that wakes a turn.
-    fn status_then_wake() -> Answer {
+    /// The agent's first status, then a player's "say" that starts a turn.
+    fn status_then_player_say() -> Answer {
         Answer {
             then: vec![PLAYER_SAY],
             ..answer("status", &[STATUS])
@@ -280,11 +278,11 @@ mod tests {
     }
 
     /// A model that answers each call with the next scripted tool calls, read through
-    /// `parse_completion`, and with none once they run out.
+    /// `chat_completions::parse_reply`, and with none once they run out.
     #[derive(Default)]
     struct ScriptedModel {
         replies: Mutex<VecDeque<Vec<(&'static str, &'static str)>>>,
-        calls: Mutex<Vec<Vec<Message>>>,
+        calls: Mutex<Vec<Vec<model::Message>>>,
     }
 
     impl ScriptedModel {
@@ -295,7 +293,7 @@ mod tests {
             })
         }
 
-        fn calls(&self) -> Vec<Vec<Message>> {
+        fn calls(&self) -> Vec<Vec<model::Message>> {
             self.calls.lock().unwrap().clone()
         }
     }
@@ -303,7 +301,7 @@ mod tests {
     impl Model for Arc<ScriptedModel> {
         async fn request_tool_calls(
             &self,
-            messages: &[Message],
+            messages: &[model::Message],
         ) -> Result<Vec<ToolCall>, CompletionError> {
             self.calls.lock().unwrap().push(messages.to_vec());
             let tools = self.replies.lock().unwrap().pop_front().unwrap_or_default();
@@ -317,7 +315,7 @@ mod tests {
                 .collect();
             let reply =
                 json!({"choices": [{"message": {"role": "assistant", "tool_calls": calls}}]});
-            parse_completion(&reply.to_string())
+            chat_completions::parse_reply(&reply.to_string())
         }
     }
 
@@ -338,14 +336,14 @@ mod tests {
             ("end_turn", "{}"),
         ]]);
         let connection =
-            ScriptedConnection::new(vec![status_then_wake(), answer("perceive", &[VIEW])]);
+            ScriptedConnection::new(vec![status_then_player_say(), answer("perceive", &[VIEW])]);
         assert_eq!(play(&model, &connection).await, Ok(()));
         let calls = model.calls();
         assert_eq!(calls.len(), 2);
         let results: Vec<(&str, &str)> = calls[1]
             .iter()
             .filter_map(|message| match message {
-                Message::Tool {
+                model::Message::Tool {
                     tool_call_id,
                     content,
                 } => Some((tool_call_id.as_str(), content.as_str())),
@@ -363,10 +361,10 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
-    async fn a_round_the_agent_did_not_play_drops_the_queued_wake() {
+    async fn a_round_the_agent_did_not_play_drops_the_queued_move_cause() {
         let model = ScriptedModel::new(vec![vec![SAY]]);
         let connection = ScriptedConnection::new(vec![
-            status_then_wake(),
+            status_then_player_say(),
             answer("say", &[QUEUED, ROUND, GM_SAY]),
         ]);
         assert_eq!(play(&model, &connection).await, Ok(()));
@@ -381,7 +379,7 @@ mod tests {
         for lost in [BROKEN, SILENT] {
             let model = ScriptedModel::new(vec![vec![PERCEIVE, SAY]]);
             let connection = ScriptedConnection::new(vec![
-                status_then_wake(),
+                status_then_player_say(),
                 answer("perceive", &[lost, VIEW]),
             ]);
             let command = "perceive".to_string();

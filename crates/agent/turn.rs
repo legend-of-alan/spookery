@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use graph_flow::{Graph, GraphBuilder, Session};
 
-use crate::model::Message;
+use crate::model;
 use crate::task::{AskModel, FinishTurn, RunToolCall};
 use crate::{Agent, Connection, Model, ToolCall};
 
@@ -23,23 +23,23 @@ pub(crate) const MODEL_CALL_COUNT: &str = "model_call_count";
 /// Set when the model is done, its call failed or the turn reached `MAX_MODEL_CALLS`.
 pub(crate) const DONE: &str = "done";
 
-/// One GM turn: it handles one wake, may span several model calls, and is not a Spookery round.
+/// One GM turn: it handles one turn cause, may span several model calls, and is not a Spookery round.
 #[derive(Default)]
 pub(crate) struct Turn {
-    pub(crate) messages: Vec<Message>,
+    pub(crate) conversation: Vec<model::Message>,
 }
 
 impl Turn {
     /// The first call of the model's last reply that has no tool result yet. Each call's
     /// result follows its reply in order, so the results after the reply count the calls run.
     pub(crate) fn next_call(&self) -> Option<ToolCall> {
-        self.messages
+        self.conversation
             .iter()
             .enumerate()
             .rev()
             .find_map(|(i, message)| match message {
-                Message::Assistant { tool_calls } => {
-                    let results_after = self.messages.len() - i - 1;
+                model::Message::Assistant { tool_calls } => {
+                    let results_after = self.conversation.len() - i - 1;
                     Some(tool_calls.get(results_after).cloned())
                 }
                 _ => None,

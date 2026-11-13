@@ -3,8 +3,7 @@
 use std::time::Duration;
 
 use spookery_agent::{
-    model, parse_completion, redact_error_body, render_chat_body, CompletionError, FailureKind,
-    Model, ToolCall,
+    chat_completions, model, redact_error_body, CompletionError, FailureKind, Model, ToolCall,
 };
 
 use crate::Error;
@@ -103,7 +102,7 @@ impl HttpModel {
     }
 
     async fn post_chat_completion(&self, messages: &[model::Message]) -> Attempt {
-        let body = render_chat_body(&self.settings.model, messages);
+        let body = chat_completions::render_request(&self.settings.model, messages);
         let url = format!("{}/chat/completions", self.settings.url);
         let response = match self
             .client
@@ -136,7 +135,7 @@ impl HttpModel {
         };
         Attempt {
             retry: false,
-            result: parse_completion(&text),
+            result: chat_completions::parse_reply(&text),
         }
     }
 

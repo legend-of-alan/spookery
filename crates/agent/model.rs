@@ -6,6 +6,8 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
+use crate::model;
+
 /// Sent from the agent to its `Model`: one message of a turn's conversation.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Message {
@@ -68,7 +70,7 @@ impl std::error::Error for CompletionError {}
 pub trait Model: Send + Sync + 'static {
     fn request_tool_calls(
         &self,
-        messages: &[Message],
+        messages: &[model::Message],
     ) -> impl Future<Output = Result<Vec<ToolCall>, CompletionError>> + Send;
 }
 

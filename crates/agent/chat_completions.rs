@@ -3,47 +3,46 @@
 
 use serde_json::{json, Value};
 
-use crate::model::{CompletionError, Message, ToolCall};
+use crate::model::{self, CompletionError, ToolCall};
 use crate::tool::TOOLS;
 
-/// The chat-completions body: the turn's `messages`, `model`, `stream` and the GM's tools.
-pub fn render_chat_body(model: &str, messages: &[Message]) -> Value {
-    let messages: Vec<Value> = messages.iter().map(render_message).collect();
+/// The request body: the turn's conversation as `messages`, `model`, `stream` and the GM's tools.
+pub fn render_request(model_name: &str, conversation: &[model::Message]) -> Value {
+    let messages: Vec<Value> = conversation
+        .iter()
+        .map(|message| match message {
+            model::Message::User { content } => json!({ "role": "user", "content": content }),
+            model::Message::Assistant { tool_calls } => {
+                let calls: Vec<Value> = tool_calls
+                    .iter()
+                    .map(|call| {
+                        json!({
+                            "id": call.id,
+                            "type": "function",
+                            "function": { "name": call.name, "arguments": call.arguments }
+                        })
+                    })
+                    .collect();
+                json!({ "role": "assistant", "content": null, "tool_calls": calls })
+            }
+            model::Message::Tool {
+                tool_call_id,
+                content,
+            } => json!({ "role": "tool", "tool_call_id": tool_call_id, "content": content }),
+        })
+        .collect();
     json!({
         "messages": messages,
-        "model": model,
+        "model": model_name,
         "stream": false,
         "tools": *TOOLS
     })
 }
 
-fn render_message(message: &Message) -> Value {
-    match message {
-        Message::User { content } => json!({ "role": "user", "content": content }),
-        Message::Assistant { tool_calls } => {
-            let calls: Vec<Value> = tool_calls
-                .iter()
-                .map(|call| {
-                    json!({
-                        "id": call.id,
-                        "type": "function",
-                        "function": { "name": call.name, "arguments": call.arguments }
-                    })
-                })
-                .collect();
-            json!({ "role": "assistant", "content": null, "tool_calls": calls })
-        }
-        Message::Tool {
-            tool_call_id,
-            content,
-        } => json!({ "role": "tool", "tool_call_id": tool_call_id, "content": content }),
-    }
-}
-
 /// Read a chat-completions reply: its tool calls in order, none when it has none. A call
 /// without an id gets `call_<index>`, and arguments that are not a string keep their JSON
 /// text, so the agent answers them itself.
-pub fn parse_completion(text: &str) -> Result<Vec<ToolCall>, CompletionError> {
+pub fn parse_reply(text: &str) -> Result<Vec<ToolCall>, CompletionError> {
     let invalid = |what: &str| CompletionError::InvalidReply(what.to_string());
     let value: Value =
         serde_json::from_str(text).map_err(|err| CompletionError::InvalidReply(err.to_string()))?;
@@ -87,7 +86,7 @@ mod tests {
 
     #[test]
     fn the_tools_are_the_gm_commands_and_end_turn_with_schema_parameters() {
-        let body = render_chat_body("grok-test", &[]);
+        let body = render_request("grok-test", &[]);
         let tools = body["tools"].as_array().unwrap();
         let names: Vec<&str> = tools
             .iter()
@@ -111,18 +110,18 @@ mod tests {
             arguments: r#"{"address":"table","text":"hi"}"#.into(),
         };
         let messages = [
-            Message::User {
+            model::Message::User {
                 content: "the table is quiet".into(),
             },
-            Message::Assistant {
+            model::Message::Assistant {
                 tool_calls: vec![call],
             },
-            Message::Tool {
+            model::Message::Tool {
                 tool_call_id: "call_7".into(),
                 content: "said".into(),
             },
         ];
-        let body = render_chat_body("grok-test", &messages);
+        let body = render_request("grok-test", &messages);
         assert_eq!(
             body["messages"],
             json!([
@@ -140,8 +139,8 @@ mod tests {
     #[test]
     fn prose_without_a_tool_call_means_done() {
         let text = r#"{"choices":[{"message":{"role":"assistant","content":"hello"}}]}"#;
-        assert_eq!(parse_completion(text), Ok(Vec::new()));
-        assert!(parse_completion("not json").is_err());
+        assert_eq!(parse_reply(text), Ok(Vec::new()));
+        assert!(parse_reply("not json").is_err());
     }
 
     #[test]
@@ -151,7 +150,7 @@ mod tests {
             {"type":"function","function":{"name":"end_turn","arguments":{}}},
             {"id":"c","type":"function","function":{"name":"perceive","arguments":"not json"}}
         ]}}]}"#;
-        let calls = parse_completion(text).unwrap();
+        let calls = parse_reply(text).unwrap();
         let call = |id: &str, name: &str, arguments: &str| ToolCall {
             id: id.into(),
             name: name.into(),

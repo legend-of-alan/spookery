@@ -5,7 +5,7 @@ use std::collections::VecDeque;
 
 use serde::Serialize;
 
-use crate::model::Message;
+use crate::model;
 use crate::protocol::{
     MenuRow, PackSummary, QueuedMove, Say, ServerBody, ServerMessage, Speaker, TableStatus,
 };
@@ -15,7 +15,7 @@ use crate::turn::Turn;
 const RECENT_LINES: usize = 16;
 
 /// The server's state as its messages have shown this client so far, and the turns they
-/// wake.
+/// start.
 #[derive(Default)]
 pub(crate) struct ClientState {
     pub(crate) pack: PackSummary,
@@ -23,28 +23,28 @@ pub(crate) struct ClientState {
     actors_present: Vec<String>,
     /// The queued moves, as of the last message read.
     pub(crate) queued_moves: Vec<QueuedMove>,
-    /// Player says read since a turn last showed them to the model.
+    /// Player "says" read since a turn last showed them to the model.
     new_player_lines: Vec<TapeLine>,
-    wakes: VecDeque<Wake>,
+    causes: VecDeque<TurnCause>,
     /// The recent tape every observation shows.
     tape_lines: Vec<TapeLine>,
 }
 
 impl ClientState {
     /// Fills the state from the first `status`: the pack, the actors present and the queue,
-    /// which wakes a turn when a move already waits.
+    /// which starts a turn when a move already waits.
     pub(crate) fn initialize(&mut self, status: TableStatus) {
         self.pack = status.pack;
         self.actors_present = status.presence.actors_present;
         self.queued_moves = status.queued;
-        if !self.queued_moves.is_empty() && !self.wakes.contains(&Wake::QueuedMove) {
-            self.wakes.push_front(Wake::QueuedMove);
+        if !self.queued_moves.is_empty() && !self.causes.contains(&TurnCause::QueuedMove) {
+            self.causes.push_front(TurnCause::QueuedMove);
         }
     }
 
-    /// Records what one server message says about the game: a player's say wakes a turn, the
-    /// GM's own say (the reply to its command) joins `tape_lines`, a queued move joins the
-    /// queued moves and wakes a turn, a round empties them, and presence names the actors
+    /// Records what one server message shows about the game: a player's "say" starts a turn,
+    /// the GM's own "say" (the reply to its command) joins `tape_lines`, a queued move joins the
+    /// queued moves and starts a turn, a round empties them, and presence names the actors
     /// present.
     pub(crate) fn record_server_message(&mut self, message: &ServerMessage) {
         let seq = message.seq.unwrap_or_default();
@@ -52,7 +52,7 @@ impl ClientState {
             ServerBody::Say(say) if matches!(say.from, Speaker::Player(_)) => {
                 let line = TapeLine::new(seq, say.clone());
                 self.new_player_lines.push(line.clone());
-                self.wakes.push_back(Wake::Say(line));
+                self.causes.push_back(TurnCause::Say(line));
             }
             ServerBody::Say(say) if say.from == Speaker::Gm => {
                 push_recent(&mut self.tape_lines, TapeLine::new(seq, say.clone()));
@@ -68,13 +68,13 @@ impl ClientState {
                     actor_id: actor.clone(),
                     move_name: move_name.clone(),
                 });
-                if !self.wakes.contains(&Wake::QueuedMove) {
-                    self.wakes.push_back(Wake::QueuedMove);
+                if !self.causes.contains(&TurnCause::QueuedMove) {
+                    self.causes.push_back(TurnCause::QueuedMove);
                 }
             }
             ServerBody::Round { .. } => {
                 self.queued_moves.clear();
-                self.wakes.retain(|wake| *wake != Wake::QueuedMove);
+                self.causes.retain(|cause| *cause != TurnCause::QueuedMove);
             }
             ServerBody::Presence { actors_present } => {
                 self.actors_present = actors_present.clone();
@@ -83,29 +83,29 @@ impl ClientState {
         }
     }
 
-    /// The next turn, when a wake waits: its observation shows the new player lines, which
-    /// then join `tape_lines`, and a say the model has now read wakes no turn.
+    /// The next turn, when a turn cause waits: its observation shows the new player lines,
+    /// which then join `tape_lines`, and a "say" the model has now read starts no turn.
     pub(crate) fn start_turn(&mut self) -> Option<Turn> {
-        let wake = self.wakes.pop_front()?;
+        let cause = self.causes.pop_front()?;
         let prompt = render_prompt(&Observation {
             menu: &self.pack.menu,
             tape_lines: &self.tape_lines,
             new_player_lines: &self.new_player_lines,
             queued_moves: &self.queued_moves,
-            wake: &wake,
+            cause: &cause,
             actors_present: &self.actors_present,
         });
         for line in std::mem::take(&mut self.new_player_lines) {
             push_recent(&mut self.tape_lines, line);
         }
-        self.wakes.retain(|wake| *wake == Wake::QueuedMove);
+        self.causes.retain(|cause| *cause == TurnCause::QueuedMove);
         Some(Turn {
-            messages: vec![Message::User { content: prompt }],
+            conversation: vec![model::Message::User { content: prompt }],
         })
     }
 }
 
-/// One say as the model reads it in the prompt's `tape_lines` and `new_player_lines`, with the `seq` of the
+/// One "say" as the model reads it in the prompt's `tape_lines` and `new_player_lines`, with the `seq` of the
 /// message that carried it and without `recipients`. The GM's own lines carry the `seq` of
 /// the server's reply.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -121,7 +121,7 @@ pub(crate) struct TapeLine {
 }
 
 impl TapeLine {
-    /// The say a message with `seq` carried.
+    /// The "say" a message with `seq` carried.
     pub(crate) fn new(seq: u64, say: Say) -> Self {
         Self {
             seq,
@@ -134,10 +134,10 @@ impl TapeLine {
     }
 }
 
-/// What starts a turn: a player's say, or a queued move.
+/// What starts a turn: a player's "say", or a queued move.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
-enum Wake {
+enum TurnCause {
     Say(TapeLine),
     QueuedMove,
 }
@@ -152,14 +152,14 @@ fn push_recent(tape_lines: &mut Vec<TapeLine>, line: TapeLine) {
 
 /// What the GM can see of the game when a turn starts, sent as the turn's first message on
 /// every model call: the menu, the recent tape, the new player lines, the queued moves, what
-/// woke the turn and the actors present.
+/// started the turn and the actors present.
 #[derive(Serialize)]
 struct Observation<'a> {
     menu: &'a [MenuRow],
     tape_lines: &'a [TapeLine],
     new_player_lines: &'a [TapeLine],
     queued_moves: &'a [QueuedMove],
-    wake: &'a Wake,
+    cause: &'a TurnCause,
     actors_present: &'a [String],
 }
 

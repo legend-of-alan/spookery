@@ -110,13 +110,13 @@ fn the_player_says(world: &mut World, text: String) {
     player_says(world, &text);
 }
 
-/// The player's say wakes the turn whose queue the table refuses.
+/// The player's "say" starts the turn whose queue the table refuses.
 #[when(expr = "the table refuses the queue")]
 fn the_table_refuses_the_queue(world: &mut World) {
     player_says(world, "evening");
 }
 
-/// Starts the AI GM, has the player say `text`, and waits until the turn it woke is done.
+/// Starts the AI GM, has the player say `text`, and waits until the turn it started is done.
 fn player_says(world: &mut World, text: &str) {
     start_ai_gm_once(world);
     world.mark = table::player_mark(world);

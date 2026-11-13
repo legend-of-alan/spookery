@@ -8,7 +8,7 @@ use std::thread;
 use std::time::Duration;
 
 use serde_json::{json, Value};
-use spookery::agent::{model, parse_completion, CompletionError, Model, ToolCall};
+use spookery::agent::{chat_completions, model, CompletionError, Model, ToolCall};
 use spookery::ai_gm;
 
 use crate::support;
@@ -20,7 +20,7 @@ use super::table;
 pub const HOLD: Duration = Duration::from_secs(1);
 
 /// A model that answers each call with the next scripted tool calls, read through
-/// `parse_completion` the way `HttpModel` reads a reply. With no script left it answers with
+/// `chat_completions::parse_reply` the way `HttpModel` reads a reply. With no script left it answers with
 /// its `repeat` calls, none unless set.
 #[derive(Clone, Default)]
 pub struct ScriptedModel {
@@ -102,7 +102,7 @@ impl Model for ScriptedModel {
         if held {
             tokio::time::sleep(HOLD).await;
         }
-        parse_completion(&reply?)
+        chat_completions::parse_reply(&reply?)
     }
 }
 
