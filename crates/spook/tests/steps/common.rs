@@ -504,13 +504,18 @@ fn world_time_is_1085(world: &mut World) {
     table::wait_round(world, 1085);
 }
 
+pub(crate) fn rowan_place(pack: &Path) -> String {
+    state_of(pack)
+        .actors()
+        .place
+        .get("rowan")
+        .unwrap()
+        .to_string()
+}
+
 #[then(expr = "Rowan is in docks_street")]
 fn rowan_is_in_docks_street(world: &mut World) {
-    let state = state_of(table::pack(world));
-    assert_eq!(
-        state.actors().place.get("rowan").map(String::as_str),
-        Some("docks_street")
-    );
+    assert_eq!(rowan_place(table::pack(world)), "docks_street");
 }
 
 #[when(expr = "the player waits")]

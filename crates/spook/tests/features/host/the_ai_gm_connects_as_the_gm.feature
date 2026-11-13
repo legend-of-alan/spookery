@@ -52,8 +52,7 @@ Feature: The AI GM connects as the GM
     Given a docks table with the scripted AI GM and a seated player
     And a scripted model that says evening to the table
     When the player says hello
-    Then world_time is 1080
-    And the tape from is gm
+    Then the tape from is gm
     And the tape contains the text "evening"
     And the GM's own say did not call the model
     And world_time is 1080
