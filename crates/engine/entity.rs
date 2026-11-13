@@ -54,8 +54,8 @@ impl State {
 }
 
 /// `$body`, with `$entities` the `Reader` or `Writer` of the collection the `entity::Ref` or
-/// `entity::Mut` `$entity` selects and `$id` the entity's id there: the one place a component
-/// read or write picks the collection.
+/// `entity::Mut` `$entity` selects and `$id` the entity's id there. Every component read and
+/// write picks the collection here, except a meter's value, whose actor arm adds modifiers.
 macro_rules! in_collection {
     ($entity:expr, $enum:ident($entities:ident, $id:ident) => $body:expr) => {
         match $entity {
