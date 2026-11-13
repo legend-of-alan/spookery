@@ -82,8 +82,9 @@ impl Component for Meter {
 }
 
 impl<E: entity::Has<Meter>> Ref<'_, E, Meter> {
-    /// The stored meter `name` inside the pack's bounds, with no modifiers: `modifier::value`
-    /// adds an actor's. `UNKNOWN_ID` when the entity does not carry the meter.
+    /// The stored meter `name` inside the pack's bounds, with no modifiers, even on an actor:
+    /// `state.entities()` adds them through `modifier::value`. Issue #549 removes the difference.
+    /// `UNKNOWN_ID` when the entity does not carry the meter.
     pub fn value(&self, name: &str) -> Result<i64, Reason> {
         let def = (self.entities.canon).meter_def(self.id.as_id_ref(), name);
         let held = self.get(name).ok_or(Reason::UnknownId);
@@ -123,7 +124,8 @@ impl<E: entity::Has<Meter>> Mut<'_, E, Meter> {
 }
 
 impl Ref<'_, Save, Meter> {
-    /// As on its collection, but an actor's adds their modifiers: `modifier::value`.
+    /// As on its collection, but an actor's adds their modifiers through `modifier::value`, which
+    /// `state.actors()` does not. Issue #549 removes the difference.
     pub fn value(&self, name: &str) -> Result<i64, Reason> {
         let (save, canon) = (self.entities.components, self.entities.canon);
         match self.id {
@@ -138,9 +140,9 @@ impl Ref<'_, Save, Meter> {
 impl Mut<'_, Save, Meter> {
     /// As on its collection.
     pub fn shift(&mut self, name: &str, delta: i64) -> Result<(), Reason> {
-        let (tx, canon) = (&mut *self.writer.transaction, self.writer.canon);
+        let (transaction, canon) = (&mut *self.writer.transaction, self.writer.canon);
         in_collection!(self.id, [&mut self.writer.components], |entities, id| {
-            Writer::new(entities, tx, canon)
+            Writer::new(entities, transaction, canon)
                 .get_mut::<Meter>(id)
                 .shift(name, delta)
         })
@@ -148,9 +150,9 @@ impl Mut<'_, Save, Meter> {
 
     /// As on its collection: migrate and fixtures.
     pub fn set(&mut self, name: &str, meter: Option<Meter>) -> Result<(), Reason> {
-        let (tx, canon) = (&mut *self.writer.transaction, self.writer.canon);
+        let (transaction, canon) = (&mut *self.writer.transaction, self.writer.canon);
         in_collection!(self.id, [&mut self.writer.components], |entities, id| {
-            Writer::new(entities, tx, canon)
+            Writer::new(entities, transaction, canon)
                 .get_mut::<Meter>(id)
                 .set(name, meter)
         })

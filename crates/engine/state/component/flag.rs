@@ -35,9 +35,9 @@ impl Ref<'_, Save, Flag> {
 impl Mut<'_, Save, Flag> {
     /// As on its collection.
     pub fn set(&mut self, name: &str, on: bool) -> Result<(), Reason> {
-        let (tx, canon) = (&mut *self.writer.transaction, self.writer.canon);
+        let (transaction, canon) = (&mut *self.writer.transaction, self.writer.canon);
         in_collection!(self.id, [&mut self.writer.components], |entities, id| {
-            Writer::new(entities, tx, canon)
+            Writer::new(entities, transaction, canon)
                 .get_mut::<Flag>(id)
                 .set(name, on)
         })
