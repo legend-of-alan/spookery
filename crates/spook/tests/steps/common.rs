@@ -504,6 +504,15 @@ fn world_time_is_1085(world: &mut World) {
     table::wait_round(world, 1085);
 }
 
+#[then(expr = "Rowan is in docks_street")]
+fn rowan_is_in_docks_street(world: &mut World) {
+    let state = state_of(table::pack(world));
+    assert_eq!(
+        state.actors().place.get("rowan").map(String::as_str),
+        Some("docks_street")
+    );
+}
+
 #[when(expr = "the player waits")]
 fn the_player_waits(world: &mut World) {
     let (mark, added) = table::player_send(world, "wait", "\"kind\":");

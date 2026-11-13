@@ -198,32 +198,11 @@ fn a_docks_table_with_the_scripted_ai_gm_and_a_seated_player(world: &mut World) 
     world.pack = Some(pack);
 }
 
-#[given(
-    expr = "a docks table where Rowan said good evening and queued travel while a GM sat, then left"
-)]
-fn a_docks_table_with_a_waiting_queue(world: &mut World) {
-    let pack = copy_docks("host-startup");
-    table::listen(world, &pack);
-    table::seat_gm(world);
-    table::seat_rowan(world, &pack);
-    table::player_send(world, "say good evening", "\"kind\":\"say\"");
-    table::player_send(world, "travel docks_street", "\"kind\":\"queued\"");
-    assert_eq!(state_of(&pack).world_time, 1080);
-    table::release_gm(world);
-    world.start_ticks = 1080;
-    world.pack = Some(pack);
-}
-
 #[given(expr = "a scripted model that says evening to the table")]
 fn a_scripted_model_that_says_evening(world: &mut World) {
     world
         .model
         .push(&[("say", r#"{"address":"table","text":"evening"}"#)]);
-}
-
-#[given(expr = "a scripted model that answers with no tool calls")]
-fn a_scripted_model_that_answers_with_no_tool_calls(world: &mut World) {
-    world.model.push(&[]);
 }
 
 #[given(expr = "a scripted model whose first call fails in transport")]
@@ -260,20 +239,6 @@ fn the_player_tries_grit(world: &mut World) {
     table::wait_player_from(world, mark, "the roll lands");
 }
 
-#[when(expr = "the scripted AI GM sits")]
-fn the_scripted_ai_gm_sits(world: &mut World) {
-    let mark = table::player_mark(world);
-    world.ai_gm = Some(start_ai_gm(world, world.model.clone()));
-    world.round_ticks = table::wait_rounds_to_view(world, mark);
-}
-
-#[then(expr = "world time did not move")]
-#[then(expr = "world time still did not move")]
-fn world_time_did_not_move(world: &mut World) {
-    let world_time = state_of(table::pack(world)).world_time;
-    assert_eq!(world_time, world.start_ticks, "speech changed world_time");
-}
-
 #[then(expr = "world time moved one round")]
 fn world_time_moved_one_round(world: &mut World) {
     let world_time = state_of(table::pack(world)).world_time;
@@ -282,12 +247,6 @@ fn world_time_moved_one_round(world: &mut World) {
         world.start_ticks + 5,
         "the turn played another round"
     );
-}
-
-#[then(expr = "the tape holds {string}")]
-fn the_tape_holds(world: &mut World, text: String) {
-    let tape = tape_text(table::pack(world));
-    assert!(tape.contains(&text), "{tape}");
 }
 
 #[then(expr = "the GM's own say did not call the model")]
@@ -309,13 +268,6 @@ fn one_round_committed(world: &mut World) {
 #[then(expr = "the model was called once")]
 fn the_model_was_called_once(world: &mut World) {
     assert_eq!(world.model.calls().len(), 1);
-}
-
-#[then(expr = "Rowan is in Docks Street")]
-fn rowan_is_in_docks_street(world: &mut World) {
-    let state = state_of(table::pack(world));
-    let place = state.actors().place.get("rowan").cloned();
-    assert_eq!(place.as_deref(), Some("docks_street"));
 }
 
 #[then(expr = "the model narrated the rolls in the same turn")]

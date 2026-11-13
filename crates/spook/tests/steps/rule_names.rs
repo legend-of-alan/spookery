@@ -57,11 +57,6 @@ fn rowan_is_in_docks_shop(world: &mut World) {
     assert_eq!(rowan_place(table::pack(world)), "docks_shop");
 }
 
-#[then(expr = "Rowan is in docks_street")]
-fn rowan_is_in_docks_street(world: &mut World) {
-    assert_eq!(rowan_place(table::pack(world)), "docks_street");
-}
-
 #[then(expr = "the round records the move to the street")]
 fn the_round_records_the_move(world: &mut World) {
     assert_location(table::pack(world), "round-0001");

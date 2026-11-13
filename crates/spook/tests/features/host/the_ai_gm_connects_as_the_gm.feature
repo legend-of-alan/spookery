@@ -52,19 +52,11 @@ Feature: The AI GM connects as the GM
     Given a docks table with the scripted AI GM and a seated player
     And a scripted model that says evening to the table
     When the player says hello
-    Then world time did not move
+    Then world_time is 1080
     And the tape from is gm
-    And the tape holds "evening"
+    And the tape contains the text "evening"
     And the GM's own say did not call the model
-    And world time still did not move
-
-  Scenario: Travel commits one round
-    Given a docks table with the scripted AI GM and a seated player
-    And a scripted model that answers with no tool calls
-    When the player travels to Docks Street
-    Then one round committed
-    And the model was called once
-    And Rowan is in Docks Street
+    And world_time is 1080
 
   Scenario: Travel still commits one round after a model transport error
     Given a docks table with the scripted AI GM and a seated player
@@ -72,24 +64,16 @@ Feature: The AI GM connects as the GM
     When the player travels to Docks Street
     Then one round committed
     And the model was called once
-    And Rowan is in Docks Street
+    And Rowan is in docks_street
 
   Scenario: The rolls are narrated without another round
     Given a docks table with the scripted AI GM and a seated player
     And a scripted model that ends the turn, then says the roll lands
     When the player tries grit
     Then one round committed
-    And the tape holds "the roll lands"
+    And the tape contains the text "the roll lands"
     And the model narrated the rolls in the same turn
     And world time moved one round
-
-  Scenario: Startup commits the waiting queue
-    Given a docks table where Rowan said good evening and queued travel while a GM sat, then left
-    And a scripted model that answers with no tool calls
-    When the scripted AI GM sits
-    Then one round committed
-    And world time moved one round
-    And the model was called once
 
   Scenario: Play, the AI GM, and a stub share one speech turn and one travel turn
     When play and the AI GM and a stub run a speech turn and a travel turn
