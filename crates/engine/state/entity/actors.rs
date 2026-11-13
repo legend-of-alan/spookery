@@ -47,11 +47,6 @@ impl entity::Entities for Actors {
     fn contains(&self, _: &Canon, id: &ActorId) -> bool {
         self.control_type.contains_key(id)
     }
-
-    fn modifier_sum(&self, actor: &ActorId, key: &str) -> Result<i64, Reason> {
-        let held = nested_map::entries_of(&self.modifiers, actor).map(|(_, held)| held);
-        modifier::sum(held, key)
-    }
 }
 
 entity::has!(Actors, component::Item, items);
@@ -61,6 +56,12 @@ entity::has!(Actors, Modifier, modifiers);
 entity::has!(Actors, component::Visit, visited);
 
 impl Actors {
+    /// What `actor`'s modifiers add to meter `key`.
+    pub fn modifier_sum(&self, actor: &ActorId, key: &str) -> Result<i64, Reason> {
+        let held = nested_map::entries_of(&self.modifiers, actor).map(|(_, held)| held);
+        modifier::sum(held, key)
+    }
+
     /// Every store, as the log a rollback undoes and an accept clears.
     pub(in crate::state) fn logs_mut(&mut self) -> [&mut dyn undo::Log; 10] {
         // Every store, with no `..`: a store added later must be listed here to compile.

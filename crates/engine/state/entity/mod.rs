@@ -19,7 +19,6 @@ use crate::canon::Canon;
 use crate::state::component::{self, Component};
 use crate::state::id::{self, ActorId, PlaceId, StoryId};
 use crate::state::undo;
-use crate::Reason;
 
 /// A collection of entities: the actors, the places, the stories, or the one world. Its id type
 /// is its own, so an id of another collection does not compile.
@@ -29,11 +28,6 @@ pub trait Entities {
     /// Whether `id` is one of this collection's entities. The save lists the actors; the pack's
     /// `canon` defines the places and the stories; the world always is.
     fn contains(&self, canon: &Canon, id: &Self::Id) -> bool;
-
-    /// What `id`'s modifiers add to meter `key`. Only actors hold modifiers.
-    fn modifier_sum(&self, _: &Self::Id, _: &str) -> Result<i64, Reason> {
-        Ok(0)
-    }
 }
 
 /// A collection that stores component `C` under each entity's names.

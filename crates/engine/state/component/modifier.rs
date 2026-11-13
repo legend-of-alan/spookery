@@ -6,11 +6,10 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
 use crate::state::change::{self, Change};
-use crate::state::component::meter::Meter;
+use crate::state::component::meter::{self, Meter};
 use crate::state::component::{Component, Mut};
 use crate::state::entity;
 use crate::state::id::ActorId;
-use crate::state::prelude::*;
 use crate::state::{Reader, Writer};
 use crate::Reason;
 
@@ -102,6 +101,31 @@ pub fn sum<'a>(held: impl Iterator<Item = &'a Modifier>, key: &str) -> Result<i6
         .ok_or(Reason::OutOfRange)
 }
 
+/// Meter `name` on `actor` as rolls, costs, conditions and views read it: the stored meter plus
+/// what the actor's modifiers add, inside the pack's bounds. `UNKNOWN_ID` when the actor does not
+/// carry the meter.
+pub fn value(
+    actors: Reader<'_, entity::Actors>,
+    actor: &ActorId,
+    name: &str,
+) -> Result<i64, Reason> {
+    value_with(actors, actor, name, actors.modifier_sum(actor, name))
+}
+
+/// The same with `modifiers` in place of what the actor's modifiers add, for a write that has not
+/// landed: the same refusals as `value`, in the same order.
+pub(in crate::state) fn value_with(
+    actors: Reader<'_, entity::Actors>,
+    actor: &ActorId,
+    name: &str,
+    modifiers: Result<i64, Reason>,
+) -> Result<i64, Reason> {
+    let def = actors.canon.meter_def(entity::IdRef::Actor(actor), name);
+    let held = actors.get::<Meter>(actor).get(name);
+    let held = held.ok_or(Reason::UnknownId);
+    meter::value(def.ok_or(Reason::UnknownId)?, held?, modifiers?)
+}
+
 impl Mut<'_, entity::Actors, Modifier> {
     /// Put `next` on as modifier `id`, `None` taking it off. The meter's key is counted when the
     /// stacks move, the meter must still read with `next` on, then the modifier's own key: the
@@ -137,7 +161,7 @@ impl Mut<'_, entity::Actors, Modifier> {
         let others = (actors.get::<Modifier>(actor).iter()).filter(|(held, _)| *held != id);
         let with_next = sum(others.map(|(_, held)| held).chain(&next), &meter);
         if next.is_some() {
-            actors.get::<Meter>(actor).value_with(&meter, with_next)?;
+            value_with(actors, actor, &meter, with_next)?;
         }
         let before = actors.modifier_sum(actor, &meter);
         let watched = stacks_move.then_some(change::Report::Modifiers(watched, before));

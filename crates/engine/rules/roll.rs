@@ -2,7 +2,7 @@
 
 use crate::hash::blake2s_256;
 use crate::rules::gate;
-use crate::state::component::Meter;
+use crate::state::component::modifier;
 use crate::state::id::ActorId;
 use crate::state::State;
 use crate::Reason;
@@ -91,7 +91,7 @@ pub(crate) fn roll_check(
     threshold: i64,
     partial_at: Option<i64>,
 ) -> Result<Roll, Reason> {
-    let stat = state.actors().get::<Meter>(actor_id).value(&check.stat)?;
+    let stat = modifier::value(state.actors(), actor_id, &check.stat)?;
     let faces = faces(key, 0, check.dice_count, check.dice_sides)?;
     let total = faces.iter().map(|face| i64::from(*face)).sum::<i64>() + stat;
     Ok(Roll {

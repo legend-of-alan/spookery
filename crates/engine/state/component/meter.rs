@@ -81,23 +81,12 @@ impl Component for Meter {
 }
 
 impl<E: entity::Has<Meter>> Ref<'_, E, Meter> {
-    /// Meter `name` as rolls, costs, conditions and views read it: the stored meter plus what the
-    /// entity's modifiers add, inside the pack's bounds. `UNKNOWN_ID` when the entity does not
-    /// carry the meter.
+    /// The stored meter `name` inside the pack's bounds, with no modifiers: `modifier::value`
+    /// adds an actor's. `UNKNOWN_ID` when the entity does not carry the meter.
     pub fn value(&self, name: &str) -> Result<i64, Reason> {
-        self.value_with(name, self.entities.modifier_sum(self.id, name))
-    }
-
-    /// The same with `modifiers` in place of what the entity's modifiers add, for a write that
-    /// has not landed: the same refusals as `value`, in the same order.
-    pub(in crate::state) fn value_with(
-        &self,
-        name: &str,
-        modifiers: Result<i64, Reason>,
-    ) -> Result<i64, Reason> {
         let def = (self.entities.canon).meter_def(self.id.as_id_ref(), name);
         let held = self.get(name).ok_or(Reason::UnknownId);
-        value(def.ok_or(Reason::UnknownId)?, held?, modifiers?)
+        value(def.ok_or(Reason::UnknownId)?, held?, 0)
     }
 }
 

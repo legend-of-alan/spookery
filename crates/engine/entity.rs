@@ -4,7 +4,7 @@
 
 use std::marker::PhantomData;
 
-use crate::state::component::{Component, Flag, Meter};
+use crate::state::component::{modifier, Component, Flag, Meter};
 pub use crate::state::entity::{Id, IdRef};
 use crate::state::id::{ActorId, GlobalId, PlaceId, StoryId};
 use crate::state::{self, Reader, State, Writer};
@@ -79,9 +79,14 @@ impl<'a> Ref<'a> {
 }
 
 impl ComponentRef<'_, Meter> {
-    /// As `component::Ref::value`: an actor's adds their modifiers.
+    /// As `component::Ref::value`, but an actor's adds their modifiers: `modifier::value`.
     pub fn value(&self, name: &str) -> Result<i64, Reason> {
-        in_collection!(self.0, Ref(entities, id) => entities.get::<Meter>(id).value(name))
+        match self.0 {
+            Ref::Actor(actors, id) => modifier::value(actors, id, name),
+            Ref::Place(places, id) => places.get::<Meter>(id).value(name),
+            Ref::Story(stories, id) => stories.get::<Meter>(id).value(name),
+            Ref::Global(globals, id) => globals.get::<Meter>(id).value(name),
+        }
     }
 }
 

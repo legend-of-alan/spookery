@@ -6,7 +6,7 @@ use crate::rules::context::Context;
 use crate::rules::expr::{self, Dice};
 use crate::rules::gate;
 use crate::rules::rule::Cost;
-use crate::state::component::{self, Meter};
+use crate::state::component::{self, modifier, Meter};
 use crate::state::{change, Presence, State};
 use crate::Reason;
 
@@ -29,8 +29,7 @@ pub(crate) fn afford(context: &Context, cost: &Cost) -> Result<(), gate::Refusal
         if amount < 0 {
             return Err(cant_afford(key));
         }
-        let current =
-            (state.actors().get::<Meter>(who).value(key)).map_err(|_| cant_afford(key))?;
+        let current = modifier::value(state.actors(), who, key).map_err(|_| cant_afford(key))?;
         if current < amount {
             return Err(cant_afford(key));
         }

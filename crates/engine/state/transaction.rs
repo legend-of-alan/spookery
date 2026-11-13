@@ -8,7 +8,6 @@ use std::collections::{BTreeMap, BTreeSet};
 use super::change::{self, Change};
 use super::component::{meter, Meter};
 use super::id::{ActorId, GlobalId, PlaceId, StoryId};
-use super::prelude::*;
 use super::{entity, nested_map, sort_unique, undo, MemoryLine, Save, State};
 use crate::canon::Budget;
 use crate::Reason;
@@ -392,7 +391,7 @@ mod tests {
 
     #[test]
     fn a_meter_that_comes_back_inside_one_take_is_not_taken_and_stays_counted() {
-        use crate::state::component::modifier::{Modifier, ModifierDef};
+        use crate::state::component::modifier::{self, Modifier, ModifierDef};
         let opened = docks();
         let mut canon = opened.canon().clone();
         let burn = ModifierDef {
@@ -413,10 +412,7 @@ mod tests {
                 .shift("rest", delta);
             shifted.expect("rest moves");
         }
-        assert_eq!(
-            state.actors().get::<component::Meter>(&mira).value("rest"),
-            Ok(3)
-        );
+        assert_eq!(modifier::value(state.actors(), &mira, "rest"), Ok(3));
         assert_eq!(
             state.take_changes(),
             [],
@@ -432,10 +428,7 @@ mod tests {
         };
         let put = (state.actors_mut().get_mut::<Modifier>(&mira)).set("burn", Some(lowers));
         put.unwrap();
-        assert_eq!(
-            state.actors().get::<component::Meter>(&mira).value("rest"),
-            Ok(1)
-        );
+        assert_eq!(modifier::value(state.actors(), &mira, "rest"), Ok(1));
         let taken = (state.actors_mut().get_mut::<Modifier>(&mira)).set("burn", None);
         taken.unwrap();
         let changes = state.take_changes();
