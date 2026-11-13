@@ -51,7 +51,7 @@ impl Settings {
 }
 
 /// How a model call failed on the transport.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug)]
 enum TransportFailure {
     Timeout,
     Connect,
@@ -213,7 +213,7 @@ mod tests {
     /// The scenarios cover a timeout and a 500 that retry, and a 401 that does not and
     /// whose line is redacted. These are the failures they never meet.
     #[test]
-    fn connect_429_and_5xx_retry_and_other_failures_do_not() {
+    fn connect_429_and_5xx_retry_and_each_failure_has_its_line() {
         let retried = [
             TransportFailure::Connect,
             TransportFailure::Status(429),

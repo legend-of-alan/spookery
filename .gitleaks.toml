@@ -1,6 +1,7 @@
-# The only finding is a unit-test stand-in for a model key in
-# crates/client/http_model.rs (a_long_error_body_is_cut_after_the_key_is_replaced),
-# introduced in ff4ca659. It was never a credential. Main history stays.
+# The only finding is a unit-test stand-in for a model key, first committed in
+# ff4ca659 and now in crates/client/http_model.rs
+# (a_long_error_body_is_cut_after_the_key_is_replaced). It was never a credential.
+# Main history stays.
 [extend]
 useDefault = true
 
