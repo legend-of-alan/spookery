@@ -27,7 +27,7 @@ pub(crate) const CALL_COUNT: &str = "call_count";
 /// Set when the model is done or its call failed.
 pub(crate) const DONE: &str = "done";
 
-/// One turn: the conversation with the model, and the player and GM lines it records.
+/// One GM turn: it handles one wake, may span several model calls, and is not a Spookery round.
 #[derive(Default)]
 pub(crate) struct Turn {
     pub(crate) messages: Vec<Message>,
