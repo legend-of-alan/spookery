@@ -17,7 +17,7 @@ use crate::Reason;
 /// tagged with. At rest it has no limits and no change made.
 /// `Clone` gives one at rest and any two are equal: a copy of the save holds no round.
 #[derive(Debug, Default)]
-pub(crate) struct Transaction {
+pub struct Transaction {
     /// The round's limits, or `None` at rest.
     limits: Option<Limits>,
     keys: BTreeSet<change::Key>,

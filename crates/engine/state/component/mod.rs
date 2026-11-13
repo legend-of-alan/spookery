@@ -64,13 +64,15 @@ impl<'a, E: entity::Entities, C: Component> Ref<'a, E, C> {
 impl<'a, E: entity::Has<C>, C: Component> Ref<'a, E, C> {
     /// What the entity holds under `name`.
     pub fn get(&self, name: &str) -> Option<&'a C::Value> {
-        nested_map::get(self.entities.components.store(), self.id, name)
+        self.entities.components.get(self.id, name)
     }
 
     pub fn contains(&self, name: &str) -> bool {
         self.get(name).is_some()
     }
+}
 
+impl<'a, E: entity::Stores<C>, C: Component> Ref<'a, E, C> {
     /// Each name the entity holds with its value, in name order.
     pub fn iter(&self) -> impl Iterator<Item = (&'a str, &'a C::Value)> {
         nested_map::entries_of(self.entities.components.store(), self.id)
@@ -107,9 +109,8 @@ impl<E: entity::Has<C>, C: Component<Value = ()>> Mut<'_, E, C> {
     fn set_with_key(&mut self, name: &str, on: bool, key: change::Key) -> Result<(), Reason> {
         self.check_exists()?;
         let change = Change::new(key, change::Value::Bool(!on), change::Value::Bool(on));
-        let entry = (self.id.clone(), name.to_string());
-        let (store, reports) = (self.writer.components.store_mut(), [change.into()]);
-        store.set(self.writer.transaction, entry, on.then_some(()), reports)
+        let (id, value) = (self.id, on.then_some(()));
+        (self.writer.components).set(self.writer.transaction, id, name, value, [change.into()])
     }
 }
 

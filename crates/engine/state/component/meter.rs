@@ -3,9 +3,11 @@
 use serde::{Deserialize, Serialize};
 
 use crate::state::change;
-use crate::state::component::{Component, Mut, Ref};
-use crate::state::entity;
+use crate::state::component::{modifier, Component, Mut, Ref};
+use crate::state::entity::{self, Id};
+use crate::state::id::GlobalId;
 use crate::state::prelude::*;
+use crate::state::{Reader, Save};
 use crate::Reason;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -80,13 +82,32 @@ impl Component for Meter {
     type Value = Meter;
 }
 
-impl<E: entity::Has<Meter>> Ref<'_, E, Meter> {
+impl<E: entity::Stores<Meter>> Ref<'_, E, Meter> {
     /// The stored meter `name` inside the pack's bounds, with no modifiers: `modifier::value`
     /// adds an actor's. `UNKNOWN_ID` when the entity does not carry the meter.
     pub fn value(&self, name: &str) -> Result<i64, Reason> {
         let def = (self.entities.canon).meter_def(self.id.as_id_ref(), name);
         let held = self.get(name).ok_or(Reason::UnknownId);
         value(def.ok_or(Reason::UnknownId)?, held?, 0)
+    }
+}
+
+/// A meter on any entity reads as rules read it: an actor's through `modifier::value`.
+impl Ref<'_, Save, Meter> {
+    pub fn value(&self, name: &str) -> Result<i64, Reason> {
+        let (save, canon) = (self.entities.components, self.entities.canon);
+        match self.id {
+            Id::Actor(actor) => modifier::value(Reader::new(&save.actors, canon), actor, name),
+            Id::Place(place) => Reader::new(&save.places, canon)
+                .get::<Meter>(place)
+                .value(name),
+            Id::Story(story) => Reader::new(&save.stories, canon)
+                .get::<Meter>(story)
+                .value(name),
+            Id::Global => Reader::new(&save.world, canon)
+                .get::<Meter>(&GlobalId)
+                .value(name),
+        }
     }
 }
 
@@ -98,12 +119,11 @@ impl<E: entity::Has<Meter>> Mut<'_, E, Meter> {
         self.check_exists()?;
         let id = self.id.as_id_ref();
         let def = (self.writer.canon.meter_def(id, name)).ok_or(Reason::UnknownId)?;
-        let entry = (self.id.clone(), name.to_string());
-        let held = self.writer.components.store().get(&entry);
+        let held = self.writer.components.get(self.id, name);
         let next = shift(held, def, delta)?;
         let report = change::Report::Meter(change::Key::meter(id, name), held.cloned());
-        let store = self.writer.components.store_mut();
-        store.set(self.writer.transaction, entry, Some(next), [report])
+        let tx = &mut *self.writer.transaction;
+        (self.writer.components).set(tx, self.id, name, Some(next), [report])
     }
 
     /// Give the entity meter `name` as `meter` says, `None` taking it off, outside a round's
@@ -113,11 +133,10 @@ impl<E: entity::Has<Meter>> Mut<'_, E, Meter> {
         if meter.is_some() {
             self.check_exists()?;
         }
-        let entry = (self.id.clone(), name.to_string());
-        let held = self.writer.components.store().get(&entry).cloned();
+        let held = self.writer.components.get(self.id, name).cloned();
         let report = change::Report::Meter(change::Key::meter(self.id.as_id_ref(), name), held);
-        let store = self.writer.components.store_mut();
-        store.set(self.writer.transaction, entry, meter, [report])
+        let tx = &mut *self.writer.transaction;
+        (self.writer.components).set(tx, self.id, name, meter, [report])
     }
 }
 

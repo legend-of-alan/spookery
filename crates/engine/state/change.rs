@@ -171,7 +171,7 @@ impl Change {
 /// What a store's write reports: a finished change, or, for a meter, what the write replaced, so
 /// the take can read the meter's change as rules read the meter.
 #[derive(Clone, Debug)]
-pub(crate) enum Report {
+pub enum Report {
     Change(Change),
     /// A meter's write: the stored meter it replaced.
     Meter(Key, Option<Meter>),

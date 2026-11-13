@@ -23,22 +23,13 @@ impl<E: entity::Has<Item>> Mut<'_, E, Item> {
         key: change::Key,
     ) -> Result<(), Reason> {
         self.check_exists()?;
-        let entry = (self.id.clone(), name.to_string());
-        let current = self
-            .writer
-            .components
-            .store()
-            .get(&entry)
-            .copied()
-            .unwrap_or(0);
+        let current = self.writer.components.get(self.id, name).copied();
+        let current = current.unwrap_or(0);
         let next = shift_count(current, delta, max)?;
         let count = |count: u32| change::Value::Number(count.into());
         let change = Change::new(key, count(current), count(next));
-        let (store, next) = (
-            self.writer.components.store_mut(),
-            (next > 0).then_some(next),
-        );
-        store.set(self.writer.transaction, entry, next, [change.into()])
+        let (tx, next) = (&mut *self.writer.transaction, (next > 0).then_some(next));
+        (self.writer.components).set(tx, self.id, name, next, [change.into()])
     }
 }
 
