@@ -40,14 +40,20 @@ pub enum CompletionError {
 }
 
 impl CompletionError {
-    /// The error line for a model call that failed as `kind`. `total` is the call's limit.
-    pub fn transport(kind: FailureKind, total: Duration, detail: &str) -> Self {
-        let message = match kind {
-            FailureKind::Timeout => format!("model call timed out after {}s", total.as_secs()),
-            FailureKind::Connect => "model call failed to connect".to_string(),
-            FailureKind::Status(code) if detail.is_empty() => format!("model call returned {code}"),
-            FailureKind::Status(code) => format!("model call returned {code}: {detail}"),
-            FailureKind::Other => format!("model call failed: {detail}"),
+    /// The error line for a model call that failed as `failure`. `total` is the call's limit.
+    pub fn transport(failure: model::TransportFailure, total: Duration, detail: &str) -> Self {
+        let message = match failure {
+            model::TransportFailure::Timeout => {
+                format!("model call timed out after {}s", total.as_secs())
+            }
+            model::TransportFailure::Connect => "model call failed to connect".to_string(),
+            model::TransportFailure::Status(code) if detail.is_empty() => {
+                format!("model call returned {code}")
+            }
+            model::TransportFailure::Status(code) => {
+                format!("model call returned {code}: {detail}")
+            }
+            model::TransportFailure::Other => format!("model call failed: {detail}"),
         };
         CompletionError::Transport(message)
     }
@@ -77,20 +83,20 @@ pub trait Model: Send + Sync + 'static {
 /// How a model call failed on the transport, as the client that made it saw it. The client
 /// passes it to `CompletionError::transport`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum FailureKind {
+pub enum TransportFailure {
     Timeout,
     Connect,
     Status(u16),
     Other,
 }
 
-impl FailureKind {
+impl model::TransportFailure {
     /// A timeout, a failed connect, 429 and 5xx are worth one more attempt.
     pub fn is_retryable(self) -> bool {
         match self {
-            FailureKind::Timeout | FailureKind::Connect => true,
-            FailureKind::Status(code) => matches!(code, 429 | 500..=599),
-            FailureKind::Other => false,
+            model::TransportFailure::Timeout | model::TransportFailure::Connect => true,
+            model::TransportFailure::Status(code) => matches!(code, 429 | 500..=599),
+            model::TransportFailure::Other => false,
         }
     }
 }
@@ -126,37 +132,43 @@ mod tests {
 
     #[test]
     fn retry_classifier_retries_timeout_connect_429_and_5xx_only() {
-        assert!(FailureKind::Timeout.is_retryable());
-        assert!(FailureKind::Connect.is_retryable());
+        assert!(model::TransportFailure::Timeout.is_retryable());
+        assert!(model::TransportFailure::Connect.is_retryable());
         for code in [429, 500, 503, 599] {
-            assert!(FailureKind::Status(code).is_retryable(), "{code}");
+            assert!(
+                model::TransportFailure::Status(code).is_retryable(),
+                "{code}"
+            );
         }
         for code in [400, 401, 404, 418] {
-            assert!(!FailureKind::Status(code).is_retryable(), "{code}");
+            assert!(
+                !model::TransportFailure::Status(code).is_retryable(),
+                "{code}"
+            );
         }
-        assert!(!FailureKind::Other.is_retryable());
+        assert!(!model::TransportFailure::Other.is_retryable());
         assert_eq!(
-            line(FailureKind::Timeout, 60),
+            line(model::TransportFailure::Timeout, 60),
             "model call timed out after 60s"
         );
         assert_eq!(
-            line(FailureKind::Timeout, 1),
+            line(model::TransportFailure::Timeout, 1),
             "model call timed out after 1s"
         );
         assert_eq!(
-            line(FailureKind::Connect, 60),
+            line(model::TransportFailure::Connect, 60),
             "model call failed to connect"
         );
         assert_eq!(
-            line(FailureKind::Status(401), 60),
+            line(model::TransportFailure::Status(401), 60),
             "model call returned 401"
         );
         assert_eq!(
-            line(FailureKind::Status(429), 60),
+            line(model::TransportFailure::Status(429), 60),
             "model call returned 429"
         );
         assert_eq!(
-            line(FailureKind::Status(500), 60),
+            line(model::TransportFailure::Status(500), 60),
             "model call returned 500"
         );
     }
@@ -178,18 +190,18 @@ mod tests {
         assert!(detail.ends_with("..."), "{detail}");
         assert_eq!(redact_error_body("", key), "");
         let error = CompletionError::transport(
-            FailureKind::Status(401),
+            model::TransportFailure::Status(401),
             Duration::from_secs(60),
             "bad key",
         );
         assert_eq!(error.to_string(), "model call returned 401: bad key");
     }
 
-    fn line(kind: FailureKind, secs: u64) -> String {
-        let detail = match kind {
-            FailureKind::Status(_) => "",
+    fn line(failure: model::TransportFailure, secs: u64) -> String {
+        let detail = match failure {
+            model::TransportFailure::Status(_) => "",
             _ => "detail",
         };
-        CompletionError::transport(kind, Duration::from_secs(secs), detail).to_string()
+        CompletionError::transport(failure, Duration::from_secs(secs), detail).to_string()
     }
 }

@@ -3,7 +3,7 @@
 use std::time::Duration;
 
 use spookery_agent::{
-    chat_completions, model, redact_error_body, CompletionError, FailureKind, Model, ToolCall,
+    chat_completions, model, redact_error_body, CompletionError, Model, ToolCall,
 };
 
 use crate::Error;
@@ -50,13 +50,13 @@ impl Settings {
     }
 }
 
-fn kind_of(err: &reqwest::Error) -> FailureKind {
+fn failure_of(err: &reqwest::Error) -> model::TransportFailure {
     if err.is_timeout() {
-        FailureKind::Timeout
+        model::TransportFailure::Timeout
     } else if err.is_connect() {
-        FailureKind::Connect
+        model::TransportFailure::Connect
     } else {
-        FailureKind::Other
+        model::TransportFailure::Other
     }
 }
 
@@ -67,11 +67,11 @@ struct Attempt {
 
 impl Attempt {
     fn transport_failed(err: &reqwest::Error) -> Self {
-        let kind = kind_of(err);
+        let failure = failure_of(err);
         Attempt {
-            retry: kind.is_retryable(),
+            retry: failure.is_retryable(),
             result: Err(CompletionError::transport(
-                kind,
+                failure,
                 MODEL_CALL_TIMEOUT,
                 &err.to_string(),
             )),
@@ -82,7 +82,7 @@ impl Attempt {
         Attempt {
             retry: true,
             result: Err(CompletionError::transport(
-                FailureKind::Timeout,
+                model::TransportFailure::Timeout,
                 MODEL_CALL_TIMEOUT,
                 "",
             )),
@@ -117,13 +117,13 @@ impl HttpModel {
         };
         let status = response.status();
         if !status.is_success() {
-            let kind = FailureKind::Status(status.as_u16());
+            let failure = model::TransportFailure::Status(status.as_u16());
             let body = response.text().await.unwrap_or_default();
             let detail = redact_error_body(&body, &self.settings.key);
             return Attempt {
-                retry: kind.is_retryable(),
+                retry: failure.is_retryable(),
                 result: Err(CompletionError::transport(
-                    kind,
+                    failure,
                     MODEL_CALL_TIMEOUT,
                     &detail,
                 )),
