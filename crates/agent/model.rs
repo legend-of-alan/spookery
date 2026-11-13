@@ -2,7 +2,6 @@
 
 use std::fmt;
 use std::future::Future;
-use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
@@ -39,26 +38,6 @@ pub enum CompletionError {
     InvalidReply(String),
 }
 
-impl CompletionError {
-    /// The error line for a model call that failed as `failure`. `total` is the call's limit.
-    pub fn transport(failure: model::TransportFailure, total: Duration, detail: &str) -> Self {
-        let message = match failure {
-            model::TransportFailure::Timeout => {
-                format!("model call timed out after {}s", total.as_secs())
-            }
-            model::TransportFailure::Connect => "model call failed to connect".to_string(),
-            model::TransportFailure::Status(code) if detail.is_empty() => {
-                format!("model call returned {code}")
-            }
-            model::TransportFailure::Status(code) => {
-                format!("model call returned {code}: {detail}")
-            }
-            model::TransportFailure::Other => format!("model call failed: {detail}"),
-        };
-        CompletionError::Transport(message)
-    }
-}
-
 impl fmt::Display for CompletionError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -78,130 +57,4 @@ pub trait Model: Send + Sync + 'static {
         &self,
         messages: &[model::Message],
     ) -> impl Future<Output = Result<Vec<ToolCall>, CompletionError>> + Send;
-}
-
-/// How a model call failed on the transport, as the client that made it saw it. The client
-/// passes it to `CompletionError::transport`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum TransportFailure {
-    Timeout,
-    Connect,
-    Status(u16),
-    Other,
-}
-
-impl model::TransportFailure {
-    /// A timeout, a failed connect, 429 and 5xx are worth one more attempt.
-    pub fn is_retryable(self) -> bool {
-        match self {
-            model::TransportFailure::Timeout | model::TransportFailure::Connect => true,
-            model::TransportFailure::Status(code) => matches!(code, 429 | 500..=599),
-            model::TransportFailure::Other => false,
-        }
-    }
-}
-
-/// Longest provider error text kept on the error line, in characters.
-pub const MAX_DETAIL_CHARS: usize = 200;
-
-/// The provider's error body as one short line. The key is replaced before the
-/// cut so no part of it can survive, and control characters and runs of
-/// whitespace collapse to single spaces.
-pub fn redact_error_body(body: &str, key: &str) -> String {
-    let redacted = if key.is_empty() {
-        body.to_string()
-    } else {
-        body.replace(key, "[key]")
-    };
-    let line = redacted
-        .split(|c: char| c.is_whitespace() || c.is_control())
-        .filter(|part| !part.is_empty())
-        .collect::<Vec<_>>()
-        .join(" ");
-    if line.chars().count() <= MAX_DETAIL_CHARS {
-        return line;
-    }
-    let mut cut: String = line.chars().take(MAX_DETAIL_CHARS).collect();
-    cut.push_str("...");
-    cut
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn retry_classifier_retries_timeout_connect_429_and_5xx_only() {
-        assert!(model::TransportFailure::Timeout.is_retryable());
-        assert!(model::TransportFailure::Connect.is_retryable());
-        for code in [429, 500, 503, 599] {
-            assert!(
-                model::TransportFailure::Status(code).is_retryable(),
-                "{code}"
-            );
-        }
-        for code in [400, 401, 404, 418] {
-            assert!(
-                !model::TransportFailure::Status(code).is_retryable(),
-                "{code}"
-            );
-        }
-        assert!(!model::TransportFailure::Other.is_retryable());
-        assert_eq!(
-            line(model::TransportFailure::Timeout, 60),
-            "model call timed out after 60s"
-        );
-        assert_eq!(
-            line(model::TransportFailure::Timeout, 1),
-            "model call timed out after 1s"
-        );
-        assert_eq!(
-            line(model::TransportFailure::Connect, 60),
-            "model call failed to connect"
-        );
-        assert_eq!(
-            line(model::TransportFailure::Status(401), 60),
-            "model call returned 401"
-        );
-        assert_eq!(
-            line(model::TransportFailure::Status(429), 60),
-            "model call returned 429"
-        );
-        assert_eq!(
-            line(model::TransportFailure::Status(500), 60),
-            "model call returned 500"
-        );
-    }
-
-    #[test]
-    fn redact_error_body_is_one_short_line_without_the_key() {
-        let key = "xai-SECRETKEY123";
-        let body = format!("{{\"error\":\n  \"Incorrect API key provided: {key}\"\r\n}}");
-        let detail = redact_error_body(&body, key);
-        assert_eq!(
-            detail,
-            "{\"error\": \"Incorrect API key provided: [key]\" }"
-        );
-        let long = format!("{}{key}{}", "a".repeat(195), "b".repeat(300));
-        let detail = redact_error_body(&long, key);
-        assert!(!detail.contains("xai-"), "{detail}");
-        assert!(!detail.contains('\n'), "{detail}");
-        assert_eq!(detail.chars().count(), MAX_DETAIL_CHARS + 3, "{detail}");
-        assert!(detail.ends_with("..."), "{detail}");
-        assert_eq!(redact_error_body("", key), "");
-        let error = CompletionError::transport(
-            model::TransportFailure::Status(401),
-            Duration::from_secs(60),
-            "bad key",
-        );
-        assert_eq!(error.to_string(), "model call returned 401: bad key");
-    }
-
-    fn line(failure: model::TransportFailure, secs: u64) -> String {
-        let detail = match failure {
-            model::TransportFailure::Status(_) => "",
-            _ => "detail",
-        };
-        CompletionError::transport(failure, Duration::from_secs(secs), detail).to_string()
-    }
 }

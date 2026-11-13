@@ -20,7 +20,7 @@ use spookery_protocol as protocol;
 
 pub use crate::connection::{Connection, ConnectionError};
 use crate::context::ClientState;
-pub use crate::model::{redact_error_body, CompletionError, Model, ToolCall, MAX_DETAIL_CHARS};
+pub use crate::model::{CompletionError, Model, ToolCall};
 use crate::protocol::{ClientMessage, Refusal, ServerBody};
 use crate::turn::Turn;
 pub use crate::turn::MAX_MODEL_CALLS;
