@@ -20,8 +20,6 @@ pub(crate) const ASK_MODEL: &str = "ask_model";
 pub(crate) const RUN_TOOL_CALL: &str = "run_tool_call";
 pub(crate) const FINISH_TURN: &str = "finish_turn";
 
-/// The calls of the model's last reply that wait for a result.
-pub(crate) const PENDING_CALLS: &str = "pending_calls";
 /// How many model calls this turn made.
 pub(crate) const MODEL_CALL_COUNT: &str = "model_call_count";
 /// Set when the model is done, its call failed or the turn reached `MAX_MODEL_CALLS`.
@@ -45,10 +43,21 @@ impl Turn {
             self.gm_lines.push(TapeLine::new(seq, say.clone()));
         }
     }
-}
 
-pub(crate) fn pending_calls(context: &graph_flow::Context) -> Vec<ToolCall> {
-    context.get(PENDING_CALLS).unwrap_or_default()
+    /// The first call of the model's last reply that has no tool result yet. Each call's
+    /// result follows its reply in order, so the results after the reply count the calls run.
+    pub(crate) fn next_call(&self) -> Option<ToolCall> {
+        let len = self.messages.len();
+        self.messages
+            .iter()
+            .enumerate()
+            .rev()
+            .find_map(|(i, message)| match message {
+                Message::Assistant { tool_calls } => Some(tool_calls.get(len - i - 1).cloned()),
+                _ => None,
+            })
+            .flatten()
+    }
 }
 
 fn is_done(context: &graph_flow::Context) -> bool {
@@ -64,7 +73,10 @@ pub(crate) fn build_graph<M: Model, C: Connection>(agent: &Arc<Agent<M, C>>) -> 
         .add_conditional_edge(ASK_MODEL, is_done, FINISH_TURN, RUN_TOOL_CALL)
         .add_conditional_edge(
             RUN_TOOL_CALL,
-            |c| !pending_calls(c).is_empty(),
+            {
+                let agent = Arc::clone(agent);
+                move |_: &graph_flow::Context| agent.turn().next_call().is_some()
+            },
             RUN_TOOL_CALL,
             ASK_MODEL,
         )
