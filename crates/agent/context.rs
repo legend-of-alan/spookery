@@ -50,9 +50,8 @@ impl ClientState {
         let seq = message.seq.unwrap_or_default();
         match &message.body {
             ServerBody::Say(say) if matches!(say.from, Speaker::Player(_)) => {
-                let line = TapeLine::new(seq, say.clone());
-                self.new_player_lines.push(line.clone());
-                self.causes.push_back(TurnCause::Say(line));
+                self.new_player_lines.push(TapeLine::new(seq, say.clone()));
+                self.causes.push_back(TurnCause::Say);
             }
             ServerBody::Say(say) if say.from == Speaker::Gm => {
                 push_recent(&mut self.tape_lines, TapeLine::new(seq, say.clone()));
@@ -134,11 +133,12 @@ impl TapeLine {
     }
 }
 
-/// What starts a turn: a player's "say", or a queued move.
+/// What starts a turn: a player's "say", which the prompt shows in `new_player_lines`, or a
+/// queued move.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 enum TurnCause {
-    Say(TapeLine),
+    Say,
     QueuedMove,
 }
 
