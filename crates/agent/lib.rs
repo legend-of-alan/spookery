@@ -131,7 +131,7 @@ impl<M: Model, C: Connection> Agent<M, C> {
     /// an error, and `end_run` says why.
     async fn send_command(&self, command: &str, args: Value) -> graph_flow::Result<ServerBody> {
         let id = format!("a{}", self.last_id.fetch_add(1, Ordering::Relaxed) + 1);
-        let lost = || GraphError::TaskExecutionFailed(format!("no reply to {command}"));
+        let lost = || GraphError::TaskExecutionFailed(String::new());
         *self.in_flight.lock().expect("in flight") = Some(command.to_string());
         let message = ClientMessage::new(&id, command, args);
         self.connection.send(message).await.map_err(|_| lost())?;
@@ -150,6 +150,15 @@ impl<M: Model, C: Connection> Agent<M, C> {
                 return Ok(message.body);
             }
         }
+    }
+
+    /// Commits the queued moves with their round: the reply, or `None` when no move is queued.
+    async fn commit_queued_moves(&self) -> graph_flow::Result<Option<ServerBody>> {
+        if self.state().queued_moves.is_empty() {
+            return Ok(None);
+        }
+        let args = json!({ "include_round": true });
+        self.send_command("commit", args).await.map(Some)
     }
 
     /// How `run` ends once the connection or the graph stopped with `detail`: quietly when

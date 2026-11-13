@@ -37,9 +37,7 @@ impl ClientState {
         self.pack = status.pack;
         self.actors_present = status.presence.actors_present;
         self.queued_moves = status.queued;
-        if !self.queued_moves.is_empty() && !self.causes.contains(&TurnCause::QueuedMove) {
-            self.causes.push_front(TurnCause::QueuedMove);
-        }
+        self.add_queued_move_cause(VecDeque::push_front);
     }
 
     /// Records what one server message shows about the game: a player's "say" starts a turn,
@@ -67,9 +65,7 @@ impl ClientState {
                     actor_id: actor.clone(),
                     move_name: move_name.clone(),
                 });
-                if !self.causes.contains(&TurnCause::QueuedMove) {
-                    self.causes.push_back(TurnCause::QueuedMove);
-                }
+                self.add_queued_move_cause(VecDeque::push_back);
             }
             ServerBody::Round { .. } => {
                 self.queued_moves.clear();
@@ -82,18 +78,26 @@ impl ClientState {
         }
     }
 
+    /// Adds the queued-move turn cause with `push` when a move is queued and none waits yet.
+    fn add_queued_move_cause(&mut self, push: fn(&mut VecDeque<TurnCause>, TurnCause)) {
+        if !self.queued_moves.is_empty() && !self.causes.contains(&TurnCause::QueuedMove) {
+            push(&mut self.causes, TurnCause::QueuedMove);
+        }
+    }
+
     /// The next turn, when a turn cause waits: its observation shows the new player lines,
     /// which then join `tape_lines`, and a "say" the model has now read starts no turn.
     pub(crate) fn start_turn(&mut self) -> Option<Turn> {
         let cause = self.causes.pop_front()?;
-        let prompt = render_prompt(&Observation {
+        let prompt = serde_json::to_string(&Observation {
             menu: &self.pack.menu,
             tape_lines: &self.tape_lines,
             new_player_lines: &self.new_player_lines,
             queued_moves: &self.queued_moves,
             cause: &cause,
             actors_present: &self.actors_present,
-        });
+        })
+        .expect("prompt json");
         for line in std::mem::take(&mut self.new_player_lines) {
             push_recent(&mut self.tape_lines, line);
         }
@@ -161,10 +165,6 @@ struct Observation<'a> {
     queued_moves: &'a [QueuedMove],
     cause: &'a TurnCause,
     actors_present: &'a [String],
-}
-
-fn render_prompt(observation: &Observation) -> String {
-    serde_json::to_string(observation).expect("prompt json")
 }
 
 #[cfg(test)]

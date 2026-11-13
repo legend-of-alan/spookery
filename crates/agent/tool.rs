@@ -5,16 +5,21 @@ use std::collections::BTreeMap;
 use std::sync::LazyLock;
 
 use serde::Serialize;
-use serde_json::{json, Map, Value};
+use serde_json::{json, Value};
 
 use crate::protocol::{
-    CastKind, CommitArgs, ItemStack, MeterView, NoteView, PackSummary, ServerBody, CLIENT_SCHEMA,
+    CastKind, ItemStack, MeterView, NoteView, PackSummary, ServerBody, CLIENT_SCHEMA,
     PERCEIVE_BODY_CHARS,
 };
 use crate::{Agent, Connection, Model, ToolCall};
 
-/// The GM's tools: the GM commands `perceive`, `say` and `queue`, their parameters read from
-/// the published client schema, and `end_turn`, which the agent answers with `commit`.
+/// The tools that send the GM command of the same name.
+const COMMAND_TOOLS: [&str; 3] = ["perceive", "say", "queue"];
+
+/// The tool the agent answers with `commit`.
+const END_TURN: &str = "end_turn";
+
+/// The GM's tools: the `COMMAND_TOOLS`, with parameters from the client schema, and `END_TURN`.
 pub(crate) static TOOLS: LazyLock<Value> = LazyLock::new(|| {
     let schema: Value = serde_json::from_str(CLIENT_SCHEMA).expect("client schema");
     let tool = |name: &str, description: &str, parameters: &Value| {
@@ -24,35 +29,30 @@ pub(crate) static TOOLS: LazyLock<Value> = LazyLock::new(|| {
         })
     };
     let args = |name: &str| &schema["$defs"][name];
+    let [perceive, say, queue] = COMMAND_TOOLS;
     json!([
         tool(
-            "perceive",
+            perceive,
             "See what one actor sees now: where they are, who is there, what they carry and know. `as` is the actor's id.",
             args("PerceiveArgs"),
         ),
         tool(
-            "say",
+            say,
             "Speak to everyone (address `table`), to everyone in one place, or to one actor. No game time passes.",
             args("SayArgs"),
         ),
         tool(
-            "queue",
+            queue,
             "Queue a move from the menu for an actor. The server answers queued or refused.",
             args("QueueArgs"),
         ),
         tool(
-            "end_turn",
+            END_TURN,
             "Play the round: the engine resolves every queued move and answers with the rolls. You may say what happened afterwards. Answer with no tool calls when you are done.",
             &json!({ "type": "object", "properties": {}, "additionalProperties": false }),
         ),
     ])
 });
-
-/// `commit` with its rounds, as the `end_turn` tool and `FinishTurn` send it.
-pub(crate) const COMMIT_ROUND: CommitArgs = CommitArgs {
-    include_round: true,
-    session_id: None,
-};
 
 /// Answers `tool_call`: the server's reply to the command it asks for, or the agent's own
 /// answer when no command goes out.
@@ -61,19 +61,20 @@ pub(crate) async fn call<M: Model, C: Connection>(
     tool_call: &ToolCall,
 ) -> graph_flow::Result<String> {
     let args = match tool_call.arguments.trim() {
-        "" => Map::new(),
+        "" => json!({}),
         text => match serde_json::from_str(text) {
-            Ok(Value::Object(args)) => args,
+            Ok(args @ Value::Object(_)) => args,
             _ => return Ok("refused: the arguments are not a JSON object".to_string()),
         },
     };
-    let (command, args) = match tool_call.name.as_str() {
-        "perceive" | "say" | "queue" => (tool_call.name.as_str(), Value::Object(args)),
-        "end_turn" if !agent.state().queued_moves.is_empty() => ("commit", json!(COMMIT_ROUND)),
-        "end_turn" => return Ok("nothing is queued, so there is no round to play".into()),
+    let body = match tool_call.name.as_str() {
+        name if COMMAND_TOOLS.contains(&name) => agent.send_command(name, args).await?,
+        END_TURN => match agent.commit_queued_moves().await? {
+            Some(body) => body,
+            None => return Ok("nothing is queued, so there is no round to play".into()),
+        },
         name => return Ok(format!("refused: there is no tool named {name}")),
     };
-    let body = agent.send_command(command, args).await?;
     Ok(render_result(&agent.state().pack, body))
 }
 
