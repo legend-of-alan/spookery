@@ -22,13 +22,13 @@ Feature: The AI GM plays a turn as a loop
     Then the round resolves the player's, Mira's and Aldric's moves together
     And the player sees the GM narrate the result, not the dice
 
-  Scenario: The step limit commits for a stuck model
+  Scenario: The model call limit commits for a stuck model
     Given a docks table with a seated player who has queued a move
     And a scripted model that only ever calls perceive
     When the GM's turn runs
-    Then the client stops after 20 tool calls
+    Then the client stops after 20 model calls
     And the client commits the round itself
-    And the GM reports a step limit warning
+    And the GM reports a model call limit warning
 
   Scenario: A quiet table outlasts the graph's task timeout
     Given a docks table with a seated player and the AI GM connected

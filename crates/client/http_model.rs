@@ -3,8 +3,7 @@
 use std::time::Duration;
 
 use spookery_agent::{
-    parse_completion, provider_detail, render_chat_body, ChatMessage, CompletionError, FailureKind,
-    Model, ToolCall,
+    chat_completions, model, redact_error_body, CompletionError, Model, ToolCall,
 };
 
 use crate::Error;
@@ -51,13 +50,13 @@ impl Settings {
     }
 }
 
-fn kind_of(err: &reqwest::Error) -> FailureKind {
+fn failure_of(err: &reqwest::Error) -> model::TransportFailure {
     if err.is_timeout() {
-        FailureKind::Timeout
+        model::TransportFailure::Timeout
     } else if err.is_connect() {
-        FailureKind::Connect
+        model::TransportFailure::Connect
     } else {
-        FailureKind::Other
+        model::TransportFailure::Other
     }
 }
 
@@ -68,11 +67,11 @@ struct Attempt {
 
 impl Attempt {
     fn transport_failed(err: &reqwest::Error) -> Self {
-        let kind = kind_of(err);
+        let failure = failure_of(err);
         Attempt {
-            retry: kind.is_retryable(),
+            retry: failure.is_retryable(),
             result: Err(CompletionError::transport(
-                kind,
+                failure,
                 MODEL_CALL_TIMEOUT,
                 &err.to_string(),
             )),
@@ -83,7 +82,7 @@ impl Attempt {
         Attempt {
             retry: true,
             result: Err(CompletionError::transport(
-                FailureKind::Timeout,
+                model::TransportFailure::Timeout,
                 MODEL_CALL_TIMEOUT,
                 "",
             )),
@@ -102,8 +101,8 @@ impl HttpModel {
         Ok(Self { settings, client })
     }
 
-    async fn post_chat_completion(&self, messages: &[ChatMessage]) -> Attempt {
-        let body = render_chat_body(&self.settings.model, messages);
+    async fn post_chat_completion(&self, messages: &[model::Message]) -> Attempt {
+        let body = chat_completions::render_request(&self.settings.model, messages);
         let url = format!("{}/chat/completions", self.settings.url);
         let response = match self
             .client
@@ -118,13 +117,13 @@ impl HttpModel {
         };
         let status = response.status();
         if !status.is_success() {
-            let kind = FailureKind::Status(status.as_u16());
+            let failure = model::TransportFailure::Status(status.as_u16());
             let body = response.text().await.unwrap_or_default();
-            let detail = provider_detail(&body, &self.settings.key);
+            let detail = redact_error_body(&body, &self.settings.key);
             return Attempt {
-                retry: kind.is_retryable(),
+                retry: failure.is_retryable(),
                 result: Err(CompletionError::transport(
-                    kind,
+                    failure,
                     MODEL_CALL_TIMEOUT,
                     &detail,
                 )),
@@ -136,11 +135,11 @@ impl HttpModel {
         };
         Attempt {
             retry: false,
-            result: parse_completion(&text),
+            result: chat_completions::parse_reply(&text),
         }
     }
 
-    async fn attempt(&self, messages: &[ChatMessage]) -> Attempt {
+    async fn attempt(&self, messages: &[model::Message]) -> Attempt {
         // A timed-out attempt is dropped before this returns, which closes its socket.
         match tokio::time::timeout(MODEL_CALL_TIMEOUT, self.post_chat_completion(messages)).await {
             Ok(attempt) => attempt,
@@ -152,7 +151,7 @@ impl HttpModel {
 impl Model for HttpModel {
     async fn request_tool_calls(
         &self,
-        messages: &[ChatMessage],
+        messages: &[model::Message],
     ) -> Result<Vec<ToolCall>, CompletionError> {
         let first = self.attempt(messages).await;
         if !first.retry {
