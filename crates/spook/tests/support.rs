@@ -25,7 +25,10 @@ pub fn edit_meter(now: &mut State, actor: &str, key: &str, edit: impl FnOnce(&mu
 /// Give `id` meter `key` at `base`, with no offset, through the writer.
 pub fn put_meter(now: &mut State, id: &entity::Id, key: &str, base: i64) {
     let meter = Meter { base, offset: 0 };
-    now.entity_mut(id).set_meter(key, Some(meter)).unwrap();
+    now.entities_mut()
+        .get_mut::<component::Meter>(id)
+        .set(key, Some(meter))
+        .unwrap();
 }
 
 /// Edit the save as its file holds it, for a fixture no writer makes: a count set outright, a
@@ -38,13 +41,19 @@ pub fn edit_as_saved(now: &mut State, edit: impl FnOnce(&mut serde_json::Value))
 
 /// Leave `id`, an actor or a place, holding `count` of `item`, through the writer.
 pub fn put_items(now: &mut State, id: &entity::Id, item: &str, count: u32) {
-    let held = match id {
-        entity::Id::Actor(actor) => now.actors().get::<component::Item>(actor).get(item),
-        entity::Id::Place(place) => now.places().get::<component::Item>(place).get(item),
+    let to_count = |held: Option<&u32>| i64::from(count) - i64::from(held.copied().unwrap_or(0));
+    let put = match id {
+        entity::Id::Actor(actor) => {
+            let delta = to_count(now.actors().get::<component::Item>(actor).get(item));
+            (now.actors_mut().get_mut::<component::Item>(actor)).shift(item, delta, None)
+        }
+        entity::Id::Place(place) => {
+            let delta = to_count(now.places().get::<component::Item>(place).get(item));
+            (now.places_mut().get_mut::<component::Item>(place)).shift(item, delta, None)
+        }
         _ => panic!("{id} holds no items"),
     };
-    let delta = i64::from(count) - i64::from(held.copied().unwrap_or(0));
-    now.entity_mut(id).shift_item(item, delta, None).unwrap();
+    put.unwrap();
 }
 
 /// Run async work from a sync step on the test runtime.

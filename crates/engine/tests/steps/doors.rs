@@ -88,10 +88,10 @@ exits:";
             .get_mut::<component::Place>(&"mira".into())
             .set("docks_street")
             .unwrap();
-        let mira = entity::Id::Actor("mira".into());
         state
-            .entity_mut(&mira)
-            .shift_item("brass_key", 1, None)
+            .actors_mut()
+            .get_mut::<component::Item>(&"mira".into())
+            .shift("brass_key", 1, None)
             .unwrap();
     });
     world.pack = Some(pack);
@@ -205,8 +205,9 @@ fn the_watch_ran(world: &mut World) {
     let saved = spookery_engine::World::peek(world.pack()).unwrap();
     assert!(saved
         .state()
-        .entity(&entity::Id::Global)
-        .has_flag("creaked"));
+        .entities()
+        .get::<component::Flag>(&entity::Id::Global)
+        .contains("creaked"));
     drop(saved);
     let round = support::read_round(world.pack(), "round-0001");
     let creaked = round["effects"].as_array().unwrap().iter().any(|effect| {

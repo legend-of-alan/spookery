@@ -461,7 +461,8 @@ impl<L> World<L> {
         carried
             .chain(world_meters)
             .filter_map(|(carrier, id)| {
-                let value = self.state.entity(&carrier).meter_value(id).ok()?;
+                let meter = self.state.entities().get::<component::Meter>(&carrier);
+                let value = meter.value(id).ok()?;
                 let max = self.canon().meter_def(carrier.as_ref(), id)?.max;
                 Some(format!("meter {carrier} {id} {value} {max}"))
             })

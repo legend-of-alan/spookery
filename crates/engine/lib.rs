@@ -2,7 +2,6 @@
 
 pub(crate) mod canon;
 pub(crate) mod diagnostic;
-pub mod entity;
 pub(crate) mod hash;
 pub(crate) mod intent;
 pub(crate) mod round;
@@ -10,6 +9,11 @@ pub(crate) mod rules;
 pub(crate) mod state;
 pub(crate) mod store;
 pub(crate) mod world;
+
+/// Any entity's id, as rules name it; `State::entities` reads its components.
+pub mod entity {
+    pub use crate::state::entity::{Id, IdRef};
+}
 
 pub use canon::{load_canon, pack_rev};
 pub use diagnostic::{first_reason, Code, Diagnostic};

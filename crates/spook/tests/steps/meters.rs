@@ -6,7 +6,7 @@ use std::path::Path;
 use cucumber::{given, then, when};
 use serde_json::Value;
 use spookery_engine::testing::state_of;
-use spookery_engine::{entity, load_canon, Meter, Presence};
+use spookery_engine::{component, entity, load_canon, Meter, Presence};
 
 use super::common::replace_in_file;
 use super::record::read_extra_steps;
@@ -67,7 +67,11 @@ fn pack(world: &World) -> &Path {
 }
 
 fn value_on(pack: &Path, id: &entity::Id, key: &str) -> Option<i64> {
-    state_of(pack).entity(id).meter_value(key).ok()
+    state_of(pack)
+        .entities()
+        .get::<component::Meter>(id)
+        .value(key)
+        .ok()
 }
 
 fn mira() -> entity::Id {
@@ -390,8 +394,9 @@ fn the_vigil_fires_once(world: &mut World) {
         .count();
     assert_eq!(fired, 1);
     assert!(state_of(pack)
-        .entity(&entity::Id::Global)
-        .has_flag("dawn_broke"));
+        .entities()
+        .get::<component::Flag>(&entity::Id::Global)
+        .contains("dawn_broke"));
 }
 
 /// Give the world a `morning` meter from 0, and append effects to the vigil's dawn rule, the
@@ -598,8 +603,9 @@ fn dawn_has_fallen(world: &mut World, value: i64) {
             offset: value - 6,
         };
         let world_meters = now
-            .entity_mut(&entity::Id::Global)
-            .set_meter("dawn", Some(fallen));
+            .entities_mut()
+            .get_mut::<component::Meter>(&entity::Id::Global)
+            .set("dawn", Some(fallen));
         world_meters.unwrap();
         support::put_meter(now, &entity::Id::Global, "doom", 6);
     });

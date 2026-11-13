@@ -123,7 +123,7 @@ fn nested_rollbacks_put_the_save_back_exactly() {
             base: def.expect("the meter's definition").start,
             offset: 0,
         };
-        let put = state.entity_mut(carrier).set_meter(key, Some(start));
+        let put = (state.entities_mut().get_mut::<Meter>(carrier)).set(key, Some(start));
         put.expect("the meter goes on");
     }
     state.accept();

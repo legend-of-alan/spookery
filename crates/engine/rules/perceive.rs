@@ -7,6 +7,7 @@ use crate::entity;
 use crate::intent::Viewer;
 use crate::rules::habits::list_whose_if_holds;
 use crate::rules::visibility::can_see_fact;
+use crate::state::component::Meter;
 use crate::state::id::{ActorId, PlaceId};
 use crate::state::{component, Note, Presence, State};
 use crate::world::World;
@@ -203,7 +204,7 @@ fn shown_meters(canon: &Canon, state: &State, carrier: &entity::Id) -> Vec<Meter
             let def = canon
                 .meter_def(carrier.as_ref(), id)
                 .filter(|def| !def.hidden)?;
-            let value = state.entity(carrier).meter_value(id).ok()?;
+            let value = state.entities().get::<Meter>(carrier).value(id).ok()?;
             Some(MeterView {
                 id: id.to_string(),
                 value,
