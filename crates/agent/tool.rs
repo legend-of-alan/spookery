@@ -8,8 +8,8 @@ use serde::Serialize;
 use serde_json::{json, Map, Value};
 
 use crate::protocol::{
-    self, CastKind, CommitArgs, ItemStack, MeterView, NoteView, PackSummary, ServerBody,
-    CLIENT_SCHEMA, PERCEIVE_BODY_CHARS,
+    CastKind, CommitArgs, ItemStack, MeterView, NoteView, PackSummary, ServerBody, CLIENT_SCHEMA,
+    PERCEIVE_BODY_CHARS,
 };
 use crate::{Agent, Connection, Model, ToolCall};
 
@@ -78,98 +78,65 @@ pub(crate) async fn call<M: Model, C: Connection>(
 }
 
 /// One reply as the model reads it in a tool result: the body as sent, but for a view.
-/// A view is a player's census, or an NPC's view with its facts and notes, plus the prose
-/// of the place and of the viewer and everyone it sees, each cut at the perceive budget.
-/// Fact bodies never come through.
 fn render_result(pack: &PackSummary, body: ServerBody) -> String {
     let ServerBody::View(view) = body else {
         return serde_json::to_string(&body).expect("server body");
     };
     let cut = |body: &String| body.chars().take(PERCEIVE_BODY_CHARS).collect::<String>();
-    let place_body = pack.places.get(&view.place).map(cut).unwrap_or_default();
-    let cast: BTreeMap<String, String> = std::iter::once(&view.viewer)
+    let cast = std::iter::once(&view.viewer)
         .chain(&view.visible_actors)
         .filter_map(|id| Some((id.clone(), cut(pack.cast.get(id)?))))
         .collect();
-    let mut seen = match pack.kinds.get(&view.viewer) {
-        Some(CastKind::PcTemplate) => json!(PlayerView::from(*view)),
-        _ => json!(NpcView::from(*view)),
+    let npc = pack.kinds.get(&view.viewer) != Some(&CastKind::PcTemplate);
+    let facts = view.known_facts.into_iter().map(|fact| FactLine {
+        id: fact.id,
+        text: fact.text,
+    });
+    let result = PerceiveResult {
+        place_body: pack.places.get(&view.place).map(cut).unwrap_or_default(),
+        viewer: view.viewer,
+        place: view.place,
+        visible_actors: view.visible_actors,
+        facts: npc.then(|| facts.collect()),
+        notes: npc.then_some(view.notes),
+        meters: view.meters,
+        items: view.items,
+        habits: view.habits,
+        cast,
     };
-    seen["place_body"] = json!(place_body);
-    seen["cast"] = json!(cast);
-    seen.to_string()
+    serde_json::to_string(&result).expect("perceive result")
 }
 
-/// A player's view as `perceive` shows it to the model: who and what is here, no facts and no notes.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
-struct PlayerView {
+/// A view as `perceive` shows it to the model: who and what is here, an NPC's facts and notes
+/// (a player's view has neither), and the prose of the place and of the viewer and everyone it
+/// sees, each cut at the perceive budget.
+#[derive(Serialize)]
+struct PerceiveResult {
     viewer: String,
     place: String,
     visible_actors: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    facts: Option<Vec<FactLine>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    notes: Option<Vec<NoteView>>,
     meters: Vec<MeterView>,
     items: Vec<ItemStack>,
     habits: Vec<String>,
-}
-
-/// An NPC's view as `perceive` shows it to the model: a player's, plus its facts and its notes as
-/// `messages`.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
-struct NpcView {
-    viewer: String,
-    place: String,
-    visible_actors: Vec<String>,
-    facts: Vec<FactLine>,
-    messages: Vec<NoteView>,
-    meters: Vec<MeterView>,
-    items: Vec<ItemStack>,
-    habits: Vec<String>,
+    place_body: String,
+    cast: BTreeMap<String, String>,
 }
 
 /// A known fact as the model reads it. Never `owner_body`: a type rule, not a filter.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[derive(Serialize)]
 struct FactLine {
     id: String,
     text: String,
 }
 
-impl From<protocol::View> for PlayerView {
-    fn from(view: protocol::View) -> Self {
-        Self {
-            viewer: view.viewer,
-            place: view.place,
-            visible_actors: view.visible_actors,
-            meters: view.meters,
-            items: view.items,
-            habits: view.habits,
-        }
-    }
-}
-
-impl From<protocol::View> for NpcView {
-    fn from(view: protocol::View) -> Self {
-        Self {
-            viewer: view.viewer,
-            place: view.place,
-            visible_actors: view.visible_actors,
-            facts: view
-                .known_facts
-                .into_iter()
-                .map(|fact| FactLine {
-                    id: fact.id,
-                    text: fact.text,
-                })
-                .collect(),
-            messages: view.notes,
-            meters: view.meters,
-            items: view.items,
-            habits: view.habits,
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::protocol;
 
     fn docks() -> PackSummary {
         PackSummary {
