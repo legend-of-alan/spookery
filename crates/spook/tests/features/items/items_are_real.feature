@@ -2,7 +2,7 @@ Feature: Items are real
 
   Scenario: Tonic is used up
     Given nell holds 1 tonic and has 3 of 10 hp
-    When nell types "use tonic"
+    When Nell types "use tonic"
     Then nell has 7 hp and 0 tonic
     And "use tonic" again is rejected with NOT_IN_SPEC by the engine
 
@@ -14,7 +14,7 @@ Feature: Items are real
   Scenario: An item target and an exit target keep their own journal keys
     Given docks_shop has 3 lamp_oil
     When rowan takes lamp_oil
-    And rowan types "travel docks_street"
+    And Rowan types "travel docks_street"
     Then the journal targets item lamp_oil, then exit docks_street
     When the operator runs verify
     Then the command exits 0
@@ -33,16 +33,17 @@ Feature: Items are real
 
   Scenario: The tonic has one verb, use
     Given nell holds 1 tonic and has 3 of 10 hp
-    When nell types "drink"
+    When Nell types "drink"
     Then the line is rejected with NOT_IN_SPEC and no round was written
 
   Scenario: Taking an item that is not there is refused
     Given docks_shop has no lamp_oil
-    When rowan types "take lamp_oil"
+    When Rowan types "take lamp_oil"
     Then the line is rejected with NOT_IN_SPEC and no round was written
 
   Scenario Outline: Something out of sight reads like an unknown word
-    When lark types "<line>"
+    Given a copy of the sample-d20 pack where briar is busy
+    When Lark types "<line>"
     Then the line is rejected with NOT_IN_SPEC and no round was written
 
     Examples:
@@ -54,7 +55,8 @@ Feature: Items are real
       | take latch        |
 
   Scenario: A verb that takes an actor can't name the player's own actor
-    When lark types "strike lark"
+    Given a copy of the sample-d20 pack where briar is busy
+    When Lark types "strike lark"
     Then the line is rejected with NOT_IN_SPEC and no round was written
 
   Scenario: Dropping an item you do not hold is refused
@@ -68,11 +70,12 @@ Feature: Items are real
 
   Scenario: Wield a weapon
     Given lark holds a poisoned_dagger tagged weapon
-    When lark types "wield poisoned_dagger"
+    When Lark types "wield poisoned_dagger"
     Then lark's wielded slot is poisoned_dagger
 
   Scenario: Only weapons can be wielded
-    When lark types "wield tonic"
+    Given a copy of the sample-d20 pack where briar is busy
+    When Lark types "wield tonic"
     Then it is rejected with NOT_A_WEAPON and the slot is unchanged
 
   Scenario: Attack uses the wielded weapon's rule
@@ -87,7 +90,7 @@ Feature: Items are real
 
   Scenario: A wielded item's rule wins for any verb
     Given lark wields a poisoned_dagger with a strike rule
-    When lark types "strike nell"
+    When Lark types "strike nell"
     Then item:poisoned_dagger/strike ran, not verb:strike
 
   Scenario: Dropping the wielded item empties the slot

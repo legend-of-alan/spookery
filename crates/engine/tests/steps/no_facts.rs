@@ -7,7 +7,7 @@ use cucumber::{given, then, when};
 use spookery_engine::testing::{self as support, journal::list_round_keys};
 use spookery_engine::Presence;
 
-use crate::{split_line, World};
+use crate::{id_named, split_line, World};
 
 #[given(expr = "a copy of the sample-d20 pack")]
 fn a_copy_of_the_sample_d20_pack(world: &mut World) {
@@ -32,9 +32,10 @@ fn two_location_effects_for_lark(world: &mut World) {
     );
 }
 
-#[then(expr = "Lark is in the Gate Yard")]
-fn lark_is_in_the_gate_yard(world: &mut World) {
-    assert_eq!(place_of(world.pack(), "lark"), "gate_yard");
+#[then(regex = r#"^(\S+) is in (\S+|"[^"]+")$"#)]
+fn is_in(world: &mut World, actor: String, place: String) {
+    let place = id_named(world.pack(), place.trim_matches('"'));
+    assert_eq!(place_of(world.pack(), &actor), place);
 }
 
 #[when(expr = "Nell waits")]
@@ -148,11 +149,12 @@ fn strip_room_facts(pack: &Path) {
         .unwrap_or_else(|err| panic!("write rooms: {err}"));
 }
 
+/// Where the cast member named `actor` stands in the replayed save.
 fn place_of(pack: &Path, actor: &str) -> String {
     support::state_of(pack)
         .actors()
         .place
-        .get(actor)
+        .get(id_named(pack, actor).as_str())
         .unwrap_or_else(|| panic!("{actor} missing"))
         .to_string()
 }

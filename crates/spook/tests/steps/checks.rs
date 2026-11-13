@@ -190,13 +190,6 @@ fn the_gm_queues_miras_defense(world: &mut World) {
     queue_mira(world, "defend");
 }
 
-#[when(expr = "the player marks Mira")]
-fn the_player_marks_mira(world: &mut World) {
-    let (mark, added) = table::player_send(world, "mark mira", "\"kind\":");
-    world.mark = mark;
-    world.player_added = added;
-}
-
 #[when(expr = "an engine habit rolls a check for Mira")]
 fn an_engine_habit_rolls_a_check_for_mira(world: &mut World) {
     let pack = copy_docks("npc-habit");

@@ -7,7 +7,7 @@ use serde_json::Value;
 use spookery_engine::testing::{faces, RollKey};
 use spookery_engine::{component, entity, State};
 
-use super::common::split_line;
+use super::common::{id_named, split_line};
 use super::table;
 use crate::support;
 use crate::World;
@@ -183,13 +183,14 @@ fn nell_holds_a_tonic(world: &mut World) {
     world.pack = Some(pack);
 }
 
-#[when(expr = "nell types {string}")]
-fn nell_types(world: &mut World, line: String) {
+// A capital first letter keeps `play types {string}`, which types into the play client, apart.
+#[when(regex = r#"^([A-Z]\S*) types "(.*)"$"#)]
+fn actor_types(world: &mut World, actor: String, line: String) {
     let pack = world.pack.clone().unwrap();
-    match handle_move(&pack, "nell", &line) {
-        Ok(_) => world.scratch = "ok".to_string(),
-        Err(err) => world.scratch = err.code.as_str().to_string(),
-    }
+    world.scratch = match handle_move(&pack, &id_named(&pack, &actor), &line) {
+        Ok(_) => "ok".to_string(),
+        Err(err) => err.code.as_str().to_string(),
+    };
 }
 
 #[then(expr = "nell has 7 hp and 0 tonic")]
@@ -274,15 +275,6 @@ fn the_journal_targets_item_then_exit(world: &mut World, item: String, exit: Str
             serde_json::json!({ "exit": exit })
         ]
     );
-}
-
-#[when(expr = "rowan types {string}")]
-fn rowan_types(world: &mut World, line: String) {
-    let pack = world.pack.clone().unwrap();
-    world.scratch = match handle_move(&pack, "rowan", &line) {
-        Ok(_) => "ok".to_string(),
-        Err(err) => err.code.as_str().to_string(),
-    };
 }
 
 #[given(expr = "lark holds 1 latch at a seated table")]
@@ -428,21 +420,11 @@ fn lark_holds_a_dagger(world: &mut World) {
     world.pack = Some(pack);
 }
 
-#[when(expr = "lark types {string}")]
-fn lark_types(world: &mut World, line: String) {
-    let pack = world.pack.clone().unwrap_or_else(|| {
-        let pack = support::copy_pack("sample-d20", "wield-tonic");
-        support::edit_save(&pack, |now| {
-            keep_briar_busy(now);
-        });
-        world.pack = Some(pack.clone());
-        pack
-    });
-    match handle_move(&pack, "lark", &line) {
-        Ok(_) => {}
-        Err(err) => world.scratch = err.code.as_str().to_string(),
-    }
-    world.player_added = line;
+#[given(expr = "a copy of the sample-d20 pack where briar is busy")]
+fn a_sample_pack_where_briar_is_busy(world: &mut World) {
+    let pack = support::copy_pack("sample-d20", "briar-busy");
+    support::edit_save(&pack, keep_briar_busy);
+    world.pack = Some(pack);
 }
 
 #[then(expr = "lark's wielded slot is poisoned_dagger")]

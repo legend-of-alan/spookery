@@ -56,6 +56,16 @@ pub fn split_line(line: &str) -> (&str, Option<&str>) {
         .map_or((line, None), |(head, rest)| (head, Some(rest)))
 }
 
+/// The id of the cast member or place in `pack` whose display name is `name`; any other text,
+/// such as an id or an exit address, as written.
+pub fn id_named(pack: &Path, name: &str) -> String {
+    let canon = spookery_engine::load_canon(pack).unwrap_or_else(|err| panic!("load: {err:?}"));
+    let cast = canon.cast.keys().map(spookery_engine::ActorId::as_str);
+    let mut ids = cast.chain(canon.places.keys().map(spookery_engine::PlaceId::as_str));
+    let named = ids.find(|id| canon.display_name(id) == name);
+    named.unwrap_or(name).to_string()
+}
+
 #[tokio::main]
 async fn main() {
     let failed = World::cucumber()

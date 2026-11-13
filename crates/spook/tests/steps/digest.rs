@@ -231,12 +231,6 @@ fn the_docks_pack_where_a_fact_has_no_hidden(world: &mut World, fact_id: String)
     world.pack = Some(pack);
 }
 
-#[given(expr = "{string} is in {string}")]
-fn is_in(world: &mut World, actor: String, place: String) {
-    let now = state_of(table::pack(world));
-    assert_eq!(now.actors().place[actor.as_str()], place);
-}
-
 #[then(expr = "the perceive view for {string} lists the fact {string}")]
 fn the_perceive_view_lists_the_fact(world: &mut World, actor: String, fact_id: String) {
     assert!(
