@@ -5,7 +5,7 @@ use std::fs;
 use cucumber::{given, then, when};
 use spookery_engine::{component, entity, Presence, World as Engine};
 
-use super::common::give_key;
+use super::common::{give_key, resolve_id};
 use super::rules::open;
 use crate::support::{append, copy_docks, edit_save, read_round, stamp_pack_rev, state_of};
 use crate::World;
@@ -192,11 +192,12 @@ fn spook_check_refuses_the_verb(world: &mut World, verb: String) {
     assert!(refused, "{diags:?}");
 }
 
-#[given(expr = "Rowan stands on {word} in the save")]
-fn rowan_stands_on(world: &mut World, place: String) {
+#[given(regex = r"^(?P<actor>\S+) stands on (?P<place>\S+) in the save$")]
+fn stands_on(world: &mut World, actor: String, place: String) {
     edit_save(world.pack.as_ref().unwrap(), |now| {
+        let [actor, place] = [actor, place].map(|name| resolve_id(now.canon(), &name));
         now.actors_mut()
-            .get_mut::<component::Place>(&"rowan".into())
+            .get_mut::<component::Place>(&actor.into())
             .set(&place)
             .unwrap();
     });
@@ -251,12 +252,6 @@ fn the_gm_queues_miras(world: &mut World, habit: String) {
         Ok(_) => "queued".to_string(),
         Err(code) => code.as_str().to_string(),
     };
-}
-
-#[then(expr = "Rowan is at {word}")]
-fn rowan_is_at(world: &mut World, place: String) {
-    let now = state_of(world.pack.as_ref().unwrap());
-    assert_eq!(now.actors().place["rowan"], place);
 }
 
 #[then(expr = "Rowan holds lamp_oil")]

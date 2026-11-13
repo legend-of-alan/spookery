@@ -7,7 +7,7 @@ use cucumber::{given, then, when};
 use spookery_engine::testing::{self as support, journal::list_round_keys};
 use spookery_engine::Presence;
 
-use crate::{split_line, World};
+use crate::{resolve_id, split_line, World};
 
 #[given(expr = "a copy of the sample-d20 pack")]
 fn a_copy_of_the_sample_d20_pack(world: &mut World) {
@@ -32,9 +32,12 @@ fn two_location_effects_for_lark(world: &mut World) {
     );
 }
 
-#[then(expr = "Lark is in the Gate Yard")]
-fn lark_is_in_the_gate_yard(world: &mut World) {
-    assert_eq!(place_of(world.pack(), "lark"), "gate_yard");
+#[then(regex = r#"^(?P<actor>\S+) is in (?P<place>\S+|"[^"]+")$"#)]
+fn is_in(world: &mut World, actor: String, place: String) {
+    let now = support::state_of(world.pack());
+    let [actor, place] =
+        [&actor, &place].map(|name| resolve_id(now.canon(), name.trim_matches('"')));
+    assert_eq!(now.actors().place[actor.as_str()], place);
 }
 
 #[when(expr = "Nell waits")]
@@ -146,15 +149,6 @@ fn strip_room_facts(pack: &Path) {
     assert!(unix.contains(from), "room facts were not found\n{unix}");
     fs::write(&path, unix.replace(from, "facts: []\n"))
         .unwrap_or_else(|err| panic!("write rooms: {err}"));
-}
-
-fn place_of(pack: &Path, actor: &str) -> String {
-    support::state_of(pack)
-        .actors()
-        .place
-        .get(actor)
-        .unwrap_or_else(|| panic!("{actor} missing"))
-        .to_string()
 }
 
 fn location_effects(pack: &Path, actor: &str) -> Vec<(String, String)> {

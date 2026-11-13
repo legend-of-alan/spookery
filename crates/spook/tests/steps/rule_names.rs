@@ -7,7 +7,6 @@ use spookery_engine::Reason;
 use crate::support::{copy_docks, insert_nell, read_round, stamp_pack_rev};
 use crate::World;
 
-use super::common::rowan_place;
 use super::table;
 
 #[given(expr = "a docks table where mark needs a knife")]
@@ -36,12 +35,6 @@ fn append_verbs(world: &mut World, extra: &str) {
     fs::write(pack.join("rules/verbs.yaml"), verbs).unwrap();
 }
 
-#[when(expr = "the player marks nell")]
-fn the_player_marks_nell(world: &mut World) {
-    let (_mark, added) = table::player_send(world, "mark nell", "\"kind\":");
-    world.player_added = added;
-}
-
 #[then(expr = "the load refusal is SCHEMA")]
 fn the_load_refusal_is_schema(world: &mut World) {
     assert_eq!(
@@ -50,11 +43,6 @@ fn the_load_refusal_is_schema(world: &mut World) {
         ),
         Reason::Schema
     );
-}
-
-#[then(expr = "Rowan is in docks_shop")]
-fn rowan_is_in_docks_shop(world: &mut World) {
-    assert_eq!(rowan_place(table::pack(world)), "docks_shop");
 }
 
 #[then(expr = "the round records the move to the street")]

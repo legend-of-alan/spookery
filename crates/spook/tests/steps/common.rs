@@ -504,18 +504,32 @@ fn world_time_is_1085(world: &mut World) {
     table::wait_round(world, 1085);
 }
 
-pub(crate) fn rowan_place(pack: &Path) -> String {
-    state_of(pack)
-        .actors()
-        .place
-        .get("rowan")
-        .unwrap()
-        .to_string()
+/// The id of the cast member or place in `canon` whose display name is `name`; any other text,
+/// such as an id or an exit address, as written.
+pub(crate) fn resolve_id(canon: &spookery_engine::testing::Canon, name: &str) -> String {
+    let cast = canon.cast.keys().map(spookery_engine::ActorId::as_str);
+    let mut ids = cast.chain(canon.places.keys().map(spookery_engine::PlaceId::as_str));
+    let named = ids.find(|id| canon.display_name(id) == name);
+    named.unwrap_or(name).to_string()
 }
 
-#[then(expr = "Rowan is in docks_street")]
-fn rowan_is_in_docks_street(world: &mut World) {
-    assert_eq!(rowan_place(table::pack(world)), "docks_street");
+#[given(regex = r#"^(?P<actor>\S+) is (?:in|at) (?P<place>\S+|"[^"]+")$"#)]
+#[then(regex = r#"^(?P<actor>\S+) is (?:in|at) (?P<place>\S+|"[^"]+")$"#)]
+fn is_in(world: &mut World, actor: String, place: String) {
+    let now = state_of(table::pack(world));
+    let [actor, place] =
+        [&actor, &place].map(|name| resolve_id(now.canon(), name.trim_matches('"')));
+    assert_eq!(now.actors().place[actor.as_str()], place);
+}
+
+#[when(regex = r"^the player marks (?P<actor>\S+)$")]
+fn the_player_marks(world: &mut World, actor: String) {
+    let canon = spookery_engine::load_canon(table::pack(world))
+        .unwrap_or_else(|err| panic!("load: {err:?}"));
+    let line = format!("mark {}", resolve_id(&canon, &actor));
+    let (mark, added) = table::player_send(world, &line, "\"kind\":");
+    world.mark = mark;
+    world.player_added = added;
 }
 
 #[when(expr = "the player waits")]

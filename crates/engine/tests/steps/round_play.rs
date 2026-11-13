@@ -6,7 +6,7 @@ use serde_json::Value;
 use spookery_engine::testing::{faces, RollKey};
 use spookery_engine::{component, MoveReport};
 
-use crate::World;
+use crate::{resolve_id, World};
 use spookery_engine::testing::{self as support, read_round};
 
 #[given(expr = "a round where Lark rolls grit")]
@@ -359,18 +359,14 @@ fn rowan_asks_aldric_until_it_finishes(world: &mut World) {
         }
         assert!(round < 6, "Rowan is still busy after {round} rounds");
     }
-    let state = table.state();
-    let aldric = spookery_engine::entity::Id::Actor("aldric".into());
-    let rest = state
-        .entities()
-        .get::<component::Meter>(&aldric)
-        .value("rest");
-    world.count = usize::try_from(rest.unwrap()).unwrap();
 }
 
-#[then(expr = "Aldric's rest is {int}")]
-fn aldrics_rest_is(world: &mut World, rest: usize) {
-    assert_eq!(world.count, rest);
+#[then(regex = r"^(?P<actor>\S+)'s rest is (?P<rest>\d+)$")]
+fn rest_is(world: &mut World, actor: String, rest: i64) {
+    let now = support::state_of(world.pack());
+    let actor = spookery_engine::entity::Id::Actor(resolve_id(now.canon(), &actor).into());
+    let held = now.entities().get::<component::Meter>(&actor).value("rest");
+    assert_eq!(held, Ok(rest), "{}", world.scratch);
 }
 
 #[given(
@@ -536,15 +532,8 @@ fn a_docks_pack_with_two_rummage_rules(world: &mut World, shop: i64, shared: i64
 #[when(expr = "Rowan walks to the street and rummages in the same round")]
 fn rowan_walks_and_rummages(world: &mut World) {
     let rummage = intent("rummage", "rowan", "rummage", None);
-    let (state, round) = rowan_walks(world.pack(), vec![rummage]);
-    let rest = &state.actors().meters[&("rowan".into(), "rest".to_string())];
-    world.count = usize::try_from(rest.base + rest.offset).unwrap();
+    let (_state, round) = rowan_walks(world.pack(), vec![rummage]);
     world.scratch = round.to_string();
-}
-
-#[then(expr = "Rowan's rest is {int}")]
-fn rowans_rest_is(world: &mut World, rest: usize) {
-    assert_eq!(world.count, rest, "{}", world.scratch);
 }
 
 #[then(expr = "the journal records {string} and not {string}")]

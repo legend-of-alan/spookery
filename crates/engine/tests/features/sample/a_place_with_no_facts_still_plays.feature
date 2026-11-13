@@ -5,7 +5,7 @@ Feature: A place with no facts still plays
     When Lark plays "travel loft"
     And Lark plays "travel gate_yard"
     Then the journal commits two location effects for Lark
-    And Lark is in the Gate Yard
+    And Lark is in "Gate Yard"
 
   Scenario: Nell waits on Mill Lane
     Given a copy of the sample-d20 pack

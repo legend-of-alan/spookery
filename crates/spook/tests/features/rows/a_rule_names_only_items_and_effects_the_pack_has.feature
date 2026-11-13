@@ -7,6 +7,6 @@ Feature: A rule names only items and effects the pack has
 
   Scenario: A mark without the knife does not play a round
     Given a docks table where mark needs a knife
-    When the player marks nell
+    When the player marks Nell
     Then world_time is 1080
     And no round record was written
