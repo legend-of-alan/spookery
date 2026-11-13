@@ -3,9 +3,10 @@
 use serde::{Deserialize, Serialize};
 
 use crate::state::change;
-use crate::state::component::{Component, Mut, Ref};
-use crate::state::entity;
+use crate::state::component::{modifier, Component, Mut, Ref};
+use crate::state::entity::{self, in_collection, Id};
 use crate::state::prelude::*;
+use crate::state::{Reader, Save, Writer};
 use crate::Reason;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -118,6 +119,41 @@ impl<E: entity::Has<Meter>> Mut<'_, E, Meter> {
         let report = change::Report::Meter(change::Key::meter(self.id.as_id_ref(), name), held);
         let store = self.writer.components.store_mut();
         store.set(self.writer.transaction, entry, meter, [report])
+    }
+}
+
+impl Ref<'_, Save, Meter> {
+    /// As on its collection, but an actor's adds their modifiers: `modifier::value`.
+    pub fn value(&self, name: &str) -> Result<i64, Reason> {
+        let (save, canon) = (self.entities.components, self.entities.canon);
+        match self.id {
+            Id::Actor(actor) => modifier::value(Reader::new(&save.actors, canon), actor, name),
+            id => in_collection!(id, [&save], |entities, id| {
+                Reader::new(entities, canon).get::<Meter>(id).value(name)
+            }),
+        }
+    }
+}
+
+impl Mut<'_, Save, Meter> {
+    /// As on its collection.
+    pub fn shift(&mut self, name: &str, delta: i64) -> Result<(), Reason> {
+        let (tx, canon) = (&mut *self.writer.transaction, self.writer.canon);
+        in_collection!(self.id, [&mut self.writer.components], |entities, id| {
+            Writer::new(entities, tx, canon)
+                .get_mut::<Meter>(id)
+                .shift(name, delta)
+        })
+    }
+
+    /// As on its collection: migrate and fixtures.
+    pub fn set(&mut self, name: &str, meter: Option<Meter>) -> Result<(), Reason> {
+        let (tx, canon) = (&mut *self.writer.transaction, self.writer.canon);
+        in_collection!(self.id, [&mut self.writer.components], |entities, id| {
+            Writer::new(entities, tx, canon)
+                .get_mut::<Meter>(id)
+                .set(name, meter)
+        })
     }
 }
 

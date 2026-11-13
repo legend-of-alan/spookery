@@ -765,8 +765,8 @@ fn a_held_knife_still_runs_the_opposed_row() {
 fn rowans_debt(pack: &Path) -> i64 {
     let rowan = entity::Id::Actor("rowan".into());
     state_of(pack)
-        .entity(&rowan)
-        .get::<component::Meter>()
+        .entities()
+        .get::<component::Meter>(&rowan)
         .value("assassination_debt")
         .unwrap_or_else(|err| panic!("assassination_debt: {err}"))
 }

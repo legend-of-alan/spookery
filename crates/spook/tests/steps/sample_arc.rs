@@ -272,8 +272,8 @@ fn larks_tonic(now: &spookery_engine::State) -> u32 {
 
 fn is_finished(pack: &Path) -> bool {
     state_of(pack)
-        .entity(&entity::Id::Global)
-        .get::<component::Flag>()
+        .entities()
+        .get::<component::Flag>(&entity::Id::Global)
         .contains("finished")
 }
 

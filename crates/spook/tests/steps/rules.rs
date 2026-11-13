@@ -1011,8 +1011,8 @@ fn briars_ask_runs_on_briar(world: &mut World) {
     assert_eq!(world.scratch, r#"{"actor":"briar"} cast:briar/ask"#);
     let now = state_of(world.pack.as_ref().unwrap());
     assert!(
-        now.entity(&entity::Id::Global)
-            .get::<component::Flag>()
+        now.entities()
+            .get::<component::Flag>(&entity::Id::Global)
             .contains("passage"),
         "{:?}",
         now.globals().flags

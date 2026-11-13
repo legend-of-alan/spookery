@@ -68,8 +68,8 @@ fn pack(world: &World) -> &Path {
 
 fn value_on(pack: &Path, id: &entity::Id, key: &str) -> Option<i64> {
     state_of(pack)
-        .entity(id)
-        .get::<component::Meter>()
+        .entities()
+        .get::<component::Meter>(id)
         .value(key)
         .ok()
 }
@@ -394,8 +394,8 @@ fn the_vigil_fires_once(world: &mut World) {
         .count();
     assert_eq!(fired, 1);
     assert!(state_of(pack)
-        .entity(&entity::Id::Global)
-        .get::<component::Flag>()
+        .entities()
+        .get::<component::Flag>(&entity::Id::Global)
         .contains("dawn_broke"));
 }
 
@@ -603,8 +603,8 @@ fn dawn_has_fallen(world: &mut World, value: i64) {
             offset: value - 6,
         };
         let world_meters = now
-            .entity_mut(&entity::Id::Global)
-            .get_mut::<component::Meter>()
+            .entities_mut()
+            .get_mut::<component::Meter>(&entity::Id::Global)
             .set("dawn", Some(fallen));
         world_meters.unwrap();
         support::put_meter(now, &entity::Id::Global, "doom", 6);

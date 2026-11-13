@@ -18,7 +18,7 @@ pub use stories::Stories;
 use crate::canon::Canon;
 use crate::state::component::{self, Component};
 use crate::state::id::{self, ActorId, PlaceId, StoryId};
-use crate::state::undo;
+use crate::state::{undo, Save};
 
 /// A collection of entities: the actors, the places, the stories, or the one world. Its id type
 /// is its own, so an id of another collection does not compile.
@@ -55,6 +55,34 @@ macro_rules! has {
 }
 pub(in crate::state) use has;
 
+/// `$body`, with `$typed` the id in the collection `$id` names and `$entities` that collection,
+/// the field of the save `$save` (`&save` or `&mut save`). The one place an `entity::Id` picks
+/// its collection, except a meter's value, whose actor arm adds modifiers.
+macro_rules! in_collection {
+    ($id:expr, [$($save:tt)+], |$entities:ident, $typed:ident| $body:expr) => {
+        match $id {
+            $crate::state::entity::Id::Actor($typed) => { let $entities = $($save)+.actors; $body },
+            $crate::state::entity::Id::Place($typed) => { let $entities = $($save)+.places; $body },
+            $crate::state::entity::Id::Story($typed) => { let $entities = $($save)+.stories; $body },
+            $crate::state::entity::Id::Global => {
+                let ($entities, $typed) = ($($save)+.world, &$crate::state::id::GlobalId);
+                $body
+            }
+        }
+    };
+}
+pub(in crate::state) use in_collection;
+
+/// The save, as the collection of every entity: the `entity::Id` picks the collection. Only a
+/// component every collection holds has reads and writes on it, so an item does not compile.
+impl Entities for Save {
+    type Id = Id;
+
+    fn contains(&self, canon: &Canon, id: &Id) -> bool {
+        in_collection!(id, [&self], |entities, id| entities.contains(canon, id))
+    }
+}
+
 /// Who holds a meter, a flag or an item count, as a rule's `of` names it and the journal
 /// writes it: `world`, `{actor: id}`, `{place: id}` or `{story: id}`.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -87,6 +115,12 @@ pub enum IdRef<'a> {
     Place(&'a PlaceId),
     Story(&'a StoryId),
     Global,
+}
+
+impl id::AsIdRef for Id {
+    fn as_id_ref(&self) -> IdRef<'_> {
+        self.as_ref()
+    }
 }
 
 impl Id {
