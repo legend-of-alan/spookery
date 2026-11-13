@@ -33,13 +33,15 @@ impl Turn {
     /// The first call of the model's last reply that has no tool result yet. Each call's
     /// result follows its reply in order, so the results after the reply count the calls run.
     pub(crate) fn next_call(&self) -> Option<ToolCall> {
-        let len = self.messages.len();
         self.messages
             .iter()
             .enumerate()
             .rev()
             .find_map(|(i, message)| match message {
-                Message::Assistant { tool_calls } => Some(tool_calls.get(len - i - 1).cloned()),
+                Message::Assistant { tool_calls } => {
+                    let results_after = self.messages.len() - i - 1;
+                    Some(tool_calls.get(results_after).cloned())
+                }
                 _ => None,
             })
             .flatten()
