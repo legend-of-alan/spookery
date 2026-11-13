@@ -11,7 +11,7 @@ use crate::protocol::{
 };
 use crate::turn::Turn;
 
-/// How many tape lines the prompt's `buffer` keeps.
+/// How many tape lines the prompt's `tape_lines` keeps.
 const RECENT_LINES: usize = 16;
 
 /// The server's state as its messages have shown this client so far, and the turns they
@@ -27,7 +27,7 @@ pub(crate) struct ClientState {
     new_player_lines: Vec<TapeLine>,
     wakes: VecDeque<Wake>,
     /// The recent tape every opening prompt shows.
-    buffer: Vec<TapeLine>,
+    tape_lines: Vec<TapeLine>,
 }
 
 impl ClientState {
@@ -84,7 +84,7 @@ impl ClientState {
         let player_lines = std::mem::take(&mut self.new_player_lines);
         let prompt = render_prompt(&Opening {
             menu: &self.pack.menu,
-            buffer: &self.buffer,
+            tape_lines: &self.tape_lines,
             new_player_lines: &player_lines,
             queued_moves: &self.queued_moves,
             wake: &wake,
@@ -98,12 +98,12 @@ impl ClientState {
         })
     }
 
-    /// Records a played turn: its player and GM lines join the buffer, and a say the model
+    /// Records a played turn: its player and GM lines join `tape_lines`, and a say the model
     /// has now read wakes no turn.
     pub(crate) fn record_turn(&mut self, turn: Turn) {
         let seen = turn.player_lines.iter().map(|line| line.seq).max();
         for line in turn.player_lines.into_iter().chain(turn.gm_lines) {
-            keep_recent(&mut self.buffer, line);
+            keep_recent(&mut self.tape_lines, line);
         }
         if let Some(seen) = seen {
             self.wakes.retain(|wake| match wake {
@@ -114,7 +114,7 @@ impl ClientState {
     }
 }
 
-/// One say as the model reads it in the prompt's `buffer` and `new_player_lines`, with the `seq` of the
+/// One say as the model reads it in the prompt's `tape_lines` and `new_player_lines`, with the `seq` of the
 /// message that carried it and without `recipients`. The GM's own lines carry the `seq` of
 /// the server's reply.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -151,11 +151,11 @@ enum Wake {
     QueuedMove,
 }
 
-/// Add `line` to the prompt's `buffer`, which keeps the latest `RECENT_LINES`.
-fn keep_recent(buffer: &mut Vec<TapeLine>, line: TapeLine) {
-    buffer.push(line);
-    if buffer.len() > RECENT_LINES {
-        buffer.drain(..buffer.len() - RECENT_LINES);
+/// Add `line` to the prompt's `tape_lines`, which keeps the latest `RECENT_LINES`.
+fn keep_recent(tape_lines: &mut Vec<TapeLine>, line: TapeLine) {
+    tape_lines.push(line);
+    if tape_lines.len() > RECENT_LINES {
+        tape_lines.drain(..tape_lines.len() - RECENT_LINES);
     }
 }
 
@@ -164,7 +164,7 @@ fn keep_recent(buffer: &mut Vec<TapeLine>, line: TapeLine) {
 #[derive(Serialize)]
 struct Opening<'a> {
     menu: &'a [MenuRow],
-    buffer: &'a [TapeLine],
+    tape_lines: &'a [TapeLine],
     new_player_lines: &'a [TapeLine],
     queued_moves: &'a [QueuedMove],
     wake: &'a Wake,
@@ -180,8 +180,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_buffer_keeps_sixteen_and_drops_the_oldest() {
-        let mut buffer = Vec::new();
+    fn the_tape_lines_keep_sixteen_and_drop_the_oldest() {
+        let mut tape_lines = Vec::new();
         for index in 0..20 {
             let line = TapeLine {
                 seq: index,
@@ -191,10 +191,10 @@ mod tests {
                 actor: None,
                 text: index.to_string(),
             };
-            keep_recent(&mut buffer, line);
+            keep_recent(&mut tape_lines, line);
         }
-        assert_eq!(buffer.len(), RECENT_LINES);
-        assert_eq!(buffer[0].text, "4");
-        assert_eq!(buffer[15].text, "19");
+        assert_eq!(tape_lines.len(), RECENT_LINES);
+        assert_eq!(tape_lines[0].text, "4");
+        assert_eq!(tape_lines[15].text, "19");
     }
 }
