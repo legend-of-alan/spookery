@@ -231,7 +231,7 @@ fn a_docks_table_where_one_pc_knows_a_hidden_fact(world: &mut World) {
     );
     fs::write(&path, text).unwrap_or_else(|err| panic!("write shop: {err}"));
     crate::support::edit_save(&pack, |now| {
-        assert!(now.actors().control_type.contains_key("wren"), "wren");
+        assert!(now.actors().contains(&"wren".into()), "wren");
         let mut actors = now.actors_mut();
         actors
             .get_mut::<component::KnownFacts>(&"wren".into())
@@ -516,8 +516,8 @@ fn a_round_commits(world: &mut World) {
 fn street_oil(world: &World) -> u32 {
     let now = state_of(table::pack(world));
     now.places()
-        .items
-        .get(&("docks_street".into(), HUMMED_OIL.to_string()))
+        .get::<component::Item>(&"docks_street".into())
+        .get(HUMMED_OIL)
         .copied()
         .unwrap_or(0)
 }

@@ -1,6 +1,6 @@
 //! Steps used by more than one cucumber program.
 
-use spookery_engine::testing::state_of;
+use spookery_engine::testing::{place_of, state_of};
 use std::fs;
 use std::io::Write;
 use std::path::Path;
@@ -519,7 +519,7 @@ fn is_in(world: &mut World, actor: String, place: String) {
     let now = state_of(table::pack(world));
     let [actor, place] =
         [&actor, &place].map(|name| resolve_id(now.canon(), name.trim_matches('"')));
-    assert_eq!(now.actors().place[actor.as_str()], place);
+    assert_eq!(place_of(&now, &actor), place);
 }
 
 #[when(regex = r"^the player marks (?P<actor>\S+)$")]

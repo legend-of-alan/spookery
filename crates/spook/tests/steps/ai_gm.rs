@@ -1,3 +1,4 @@
+use spookery_engine::component;
 use spookery_engine::testing::state_of;
 use std::fs;
 use std::io::{Read, Write};
@@ -165,8 +166,9 @@ fn play_and_ai_gm_and_a_stub(world: &mut World) {
     wait_stub(&seen, 2, 0);
     // The view after the round shows the street.
     table::wait_suffix(&play.stdout, mark, "You are in Docks Street.");
-    let place = state_of(&pack).actors().place.get("rowan").cloned();
-    assert_eq!(place.as_deref(), Some("docks_street"));
+    let (now, rowan) = (state_of(&pack), "rowan".into());
+    let place = now.actors().get::<component::Place>(&rowan).get();
+    assert_eq!(place, Some("docks_street"));
     let second = seen.lock().unwrap().posts[1].clone();
     assert!(second.contains("end_turn"), "{second}");
     assert_chat_post(&second);

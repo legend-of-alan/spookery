@@ -309,7 +309,9 @@ fn effect(state: &State, step: &Step, index: usize) -> Effect {
             value: *value,
         },
         Step::Walk(to) => EffectKind::Location {
-            from: state.actors().place.get(&mira).cloned().unwrap_or_default(),
+            from: (state.actors().get::<component::Place>(&mira).get())
+                .map(String::from)
+                .unwrap_or_default(),
             actor_id: mira,
             to: to.to_string(),
             arrived_at: None,

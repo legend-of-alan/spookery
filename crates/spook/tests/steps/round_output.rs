@@ -1,3 +1,4 @@
+use spookery_engine::component;
 use spookery_engine::testing::state_of;
 use std::fs;
 
@@ -70,8 +71,8 @@ fn both_players_are_travelling(world: &mut World) {
     for actor in ["rowan", "wren"] {
         assert!(
             now.actors()
-                .acts
-                .get(actor)
+                .get::<component::Act>(&actor.into())
+                .get()
                 .unwrap_or_else(|| panic!("no {actor}"))
                 .is_busy(now.world_time),
             "{actor} is not travelling"

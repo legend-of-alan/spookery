@@ -1,4 +1,4 @@
-use spookery_engine::testing::state_of;
+use spookery_engine::testing::{act_of, place_of, state_of};
 use std::fs;
 use std::path::Path;
 
@@ -55,7 +55,7 @@ fn refused_no_exit_and_stays(world: &mut World) {
         world.player_added
     );
     let now = state_of(table::pack(world));
-    assert_eq!(now.actors().place["rowan"], "docks_street");
+    assert_eq!(place_of(&now, "rowan"), "docks_street");
     assert_eq!(now.world_time, 1080);
     assert!(
         list_round_keys(table::pack(world)).is_empty(),
@@ -78,7 +78,7 @@ fn rowan_travels_via_stairs(world: &mut World) {
         "{} {} {}",
         before.world_time,
         before.round_index,
-        before.actors().place["rowan"]
+        place_of(&before, "rowan")
     );
     let (_mark, added) = table::player_send(world, "travel stairs", "locked");
     world.player_added = added;
@@ -91,11 +91,11 @@ fn rowan_sees_locked_and_nothing_changes(world: &mut World, text: String) {
     let mut parts = world.scratch.split(' ');
     assert_eq!(now.world_time.to_string(), parts.next().unwrap());
     assert_eq!(now.round_index.to_string(), parts.next().unwrap());
-    assert_eq!(now.actors().place["rowan"], parts.next().unwrap());
+    assert_eq!(place_of(&now, "rowan"), parts.next().unwrap());
     assert_eq!(
         now.actors()
-            .items
-            .get(&("rowan".into(), "brass_key".to_string()))
+            .get::<component::Item>(&"rowan".into())
+            .get("brass_key")
             .copied()
             .unwrap_or(0),
         0
@@ -118,7 +118,7 @@ fn rowan_travels_holding_the_key(world: &mut World) {
 fn rowan_arrives_and_the_cost_is_stamped(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
     let now = state_of(&pack);
-    assert_eq!(now.actors().place["rowan"], "mira_rooms");
+    assert_eq!(place_of(&now, "rowan"), "mira_rooms");
     assert_eq!(now.world_time, 1085, "the round shortened or skipped");
     let round = crate::support::read_round(&pack, "round-0001");
     assert_eq!(arrival(&round, "rowan")["arrived_at"], 1082);
@@ -146,7 +146,7 @@ fn a_place_rule_teleports(world: &mut World) {
 fn the_pc_reaches_the_cellar(world: &mut World) {
     let (_mark, added) = table::player_send(world, "slip", "cellar");
     assert_eq!(
-        state_of(table::pack(world)).actors().place["rowan"],
+        place_of(&state_of(table::pack(world)), "rowan"),
         "cellar",
         "{added}"
     );
@@ -156,7 +156,7 @@ fn the_pc_reaches_the_cellar(world: &mut World) {
 fn rowan_is_in_mira_rooms_at_tick_1300(world: &mut World) {
     let now = state_of(table::pack(world));
     assert_eq!(now.world_time, EVENING + 10);
-    assert_eq!(now.actors().place["rowan"], "mira_rooms");
+    assert_eq!(place_of(&now, "rowan"), "mira_rooms");
 }
 
 #[then(expr = "rowan's line shows {string}")]
@@ -190,9 +190,9 @@ fn two_arrivals(world: &mut World) {
 /// until its tick when it is `Some`.
 fn add_nell(now: &mut State, place: &str, walk: Option<(u64, PendingAction)>) {
     let nell = ActorId::from("nell");
-    let meters: Vec<_> = (now.actors().meters.iter())
-        .filter(|((owner, _), _)| *owner == *"wren")
-        .map(|((_, key), meter)| (key.clone(), meter.clone()))
+    let wren = "wren".into();
+    let meters: Vec<_> = (now.actors().get::<Meter>(&wren).iter())
+        .map(|(key, meter)| (key.to_string(), meter.clone()))
         .collect();
     let mut actors = now.actors_mut();
     actors.add_actor(&nell, component::ControlType::Pc, place);
@@ -268,7 +268,7 @@ fn the_next_round_accepts_a_move(world: &mut World) {
     assert!(!added.contains("BUSY"), "{added}");
     let now = state_of(table::pack(world));
     assert_eq!(now.world_time, EVENING + 10);
-    assert!(!now.actors().acts["rowan"].is_busy(now.world_time));
+    assert!(!act_of(&now, "rowan").is_busy(now.world_time));
 }
 
 #[then(
@@ -393,7 +393,7 @@ fn twelve_rounds_then_more(world: &mut World) {
     assert_eq!(list_round_keys(&pack).len(), 12, "first burst");
     let mid = state_of(&pack).world_time;
     assert_eq!(mid, EVENING + 12 * 5);
-    assert!(state_of(&pack).actors().acts["rowan"].is_busy(mid));
+    assert!(act_of(&state_of(&pack), "rowan").is_busy(mid));
     let mark = table::player_write(world, "wait");
     table::wait_round_count(&pack, 24);
     let added = table::wait_player_from(world, mark, "BUSY");

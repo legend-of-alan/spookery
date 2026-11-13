@@ -132,7 +132,8 @@ fn apply_scene(
     save["notes"] = serde_json::json!([]);
     **state = serde_json::from_value(save).expect("the save deserializes");
     for (actor_id, place_index) in actors.iter().zip(&scene.place_of) {
-        if state.actors().place.contains_key(actor_id) {
+        let current = state.actors().get::<component::Place>(actor_id).get();
+        if current.is_some() {
             let place = places[place_index % places.len()].as_str();
             state
                 .actors_mut()
@@ -142,7 +143,7 @@ fn apply_scene(
         }
     }
     for (actor_id, known) in actors.iter().zip(&scene.known) {
-        if !state.actors().control_type.contains_key(actor_id) {
+        if !state.actors().contains(actor_id) {
             continue;
         }
         let mut known_facts: Vec<String> = known

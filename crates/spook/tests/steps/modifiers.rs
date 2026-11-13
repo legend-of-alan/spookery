@@ -67,8 +67,8 @@ fn hit_rowan(world: &mut World, moves: &[(&str, &str)]) {
 
 fn modifier_of(pack: &Path, id: &str) -> Option<Modifier> {
     let now = state_of(pack);
-    let modifiers = &now.actors().modifiers;
-    modifiers.get(&("rowan".into(), id.to_string())).cloned()
+    let rowan = "rowan".into();
+    now.actors().get::<Modifier>(&rowan).get(id).cloned()
 }
 
 fn stacks_of(pack: &Path, id: &str) -> Vec<i64> {
@@ -81,8 +81,9 @@ fn stacks_of(pack: &Path, id: &str) -> Vec<i64> {
 fn lowered(pack: &Path, meter: &str) -> i64 {
     let now = state_of(pack);
     let rowan = entity::Id::Actor("rowan".into());
-    let key = ("rowan".into(), meter.to_string());
-    let Meter { base, offset } = now.actors().meters[&key].clone();
+    let actor = "rowan".into();
+    let meters = now.actors().get::<Meter>(&actor);
+    let Meter { base, offset } = meters.get(meter).unwrap().clone();
     let value = now.entities().get::<component::Meter>(&rowan).value(meter);
     base + offset - value.unwrap()
 }
@@ -90,7 +91,9 @@ fn lowered(pack: &Path, meter: &str) -> i64 {
 /// Ticks from the latest round until modifier `id` expires.
 fn ticks_left(pack: &Path, id: &str) -> u64 {
     let now = state_of(pack);
-    now.actors().modifiers[&("rowan".into(), id.to_string())].ticks_left(now.world_time)
+    let rowan = "rowan".into();
+    let modifier = now.actors().get::<Modifier>(&rowan).get(id).unwrap();
+    modifier.ticks_left(now.world_time)
 }
 
 /// Give rowan these stacks of modifier `id`, expiring `left` ticks from now, `left` being the longest so far.
@@ -408,16 +411,17 @@ fn rowan_has_no_burn(world: &mut World) {
 #[then(expr = "rowan has neither burn nor soaked")]
 fn rowan_has_neither(world: &mut World) {
     let now = state_of(pack(world));
-    let modifiers = &now.actors().modifiers;
-    assert!(!modifiers.keys().any(|(owner, _)| *owner == *"rowan"));
+    let rowan = "rowan".into();
+    assert!(now.actors().get::<Modifier>(&rowan).iter().next().is_none());
 }
 
 #[then(expr = "rowan has no luck and the world has no tide")]
 fn neither_keeps_the_dropped_meter(world: &mut World) {
     let now = state_of(pack(world));
-    let meters = &now.actors().meters;
-    assert!(!meters.contains_key(&("rowan".into(), "luck".to_string())));
-    assert!(meters.contains_key(&("rowan".into(), "grit".to_string())));
+    let rowan = "rowan".into();
+    let meters = now.actors().get::<Meter>(&rowan);
+    assert!(!meters.contains("luck"));
+    assert!(meters.contains("grit"));
     assert!(!now.globals().meters.keys().any(|(_, id)| id == "tide"));
 }
 

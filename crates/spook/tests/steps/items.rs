@@ -13,7 +13,7 @@ use crate::support;
 use crate::World;
 
 fn keep_briar_busy(now: &mut State) {
-    if let Some(briar) = now.actors().acts.get("briar") {
+    if let Some(briar) = now.actors().get::<component::Act>(&"briar".into()).get() {
         let pending = briar.pending.clone();
         let mut actors = now.actors_mut();
         actors
@@ -42,14 +42,18 @@ fn hp(pack: &Path, actor: &str) -> i64 {
 fn count(pack: &Path, actor: &str, item: &str) -> u32 {
     support::state_of(pack)
         .actors()
-        .items
-        .get(&(actor.into(), item.to_string()))
+        .get::<component::Item>(&actor.into())
+        .get(item)
         .copied()
         .unwrap_or(0)
 }
 
 fn wielded(pack: &Path, actor: &str) -> Option<String> {
-    support::state_of(pack).actors().wielded.get(actor).cloned()
+    support::state_of(pack)
+        .actors()
+        .get::<component::WieldedItem>(&actor.into())
+        .get()
+        .map(String::from)
 }
 
 /// One line at a table with no GM: queue it, then commit its round.
@@ -241,15 +245,15 @@ fn the_oil_moved(world: &mut World) {
     let now = support::state_of(pack);
     assert_eq!(
         now.places()
-            .items
-            .get(&("docks_shop".into(), "lamp_oil".to_string()))
+            .get::<component::Item>(&"docks_shop".into())
+            .get("lamp_oil")
             .copied(),
         Some(2)
     );
     assert_eq!(
         now.actors()
-            .items
-            .get(&("rowan".into(), "lamp_oil".to_string()))
+            .get::<component::Item>(&"rowan".into())
+            .get("lamp_oil")
             .copied()
             .unwrap_or(0),
         1
@@ -323,8 +327,8 @@ fn no_round_was_spent(world: &mut World) {
     assert!(spookery_engine::testing::journal::list_round_keys(pack).is_empty());
     assert_eq!(
         now.actors()
-            .items
-            .get(&("lark".into(), "latch".to_string()))
+            .get::<component::Item>(&"lark".into())
+            .get("latch")
             .copied()
             .unwrap_or(0),
         1
@@ -372,16 +376,16 @@ fn the_drop_was_missing(world: &mut World) {
     let now = support::state_of(pack);
     assert_eq!(
         now.actors()
-            .items
-            .get(&("rowan".into(), "lamp_oil".to_string()))
+            .get::<component::Item>(&"rowan".into())
+            .get("lamp_oil")
             .copied()
             .unwrap_or(0),
         0
     );
     assert_eq!(
         now.places()
-            .items
-            .get(&("docks_shop".into(), "lamp_oil".to_string()))
+            .get::<component::Item>(&"docks_shop".into())
+            .get("lamp_oil")
             .copied(),
         Some(3)
     );
@@ -519,19 +523,23 @@ fn the_slot_clears_in_the_round(world: &mut World) {
     let pack = world.pack.as_ref().unwrap();
     let now = support::state_of(pack);
     assert_eq!(now.round_index, 1);
-    assert_eq!(now.actors().wielded.get("lark"), None);
+    let lark = "lark".into();
+    assert_eq!(
+        now.actors().get::<component::WieldedItem>(&lark).get(),
+        None
+    );
     assert_eq!(
         now.actors()
-            .items
-            .get(&("lark".into(), "poisoned_dagger".to_string()))
+            .get::<component::Item>(&"lark".into())
+            .get("poisoned_dagger")
             .copied()
             .unwrap_or(0),
         0
     );
     assert_eq!(
         now.places()
-            .items
-            .get(&("gate_yard".into(), "poisoned_dagger".to_string()))
+            .get::<component::Item>(&"gate_yard".into())
+            .get("poisoned_dagger")
             .copied(),
         Some(1)
     );
@@ -657,11 +665,10 @@ fn lark_hits_with_the_dagger(world: &mut World) {
 fn the_poison_fades(world: &mut World, text: String) {
     let pack = world.pack.as_ref().unwrap();
     assert_eq!(hp(pack, "nell"), 7);
-    let poisoned = ("nell".into(), "poisoned".to_string());
     assert!(!support::state_of(pack)
         .actors()
-        .flags
-        .contains_key(&poisoned));
+        .get::<component::Flag>(&"nell".into())
+        .contains("poisoned"));
     let round: Value = serde_json::from_str(read_first_round_line(pack).trim()).unwrap();
     assert!(round["refused"].as_array().unwrap().is_empty(), "{round}");
     let effects = round["effects"].to_string();

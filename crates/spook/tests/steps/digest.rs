@@ -4,7 +4,7 @@ use std::path::Path;
 
 use cucumber::{given, then, when};
 use spookery::protocol::ItemStack;
-use spookery_engine::Presence;
+use spookery_engine::{component, Meter, Presence};
 
 use crate::support::run_spook;
 use crate::World;
@@ -57,12 +57,14 @@ fn the_host_text_lists_the_door_note(world: &mut World) {
     assert_eq!(now.last_round_at, "2026-01-01T00:00:00Z");
     assert_eq!(
         now.places()
-            .items
-            .get(&("docks_shop".into(), "lamp_oil".to_string()))
+            .get::<component::Item>(&"docks_shop".into())
+            .get("lamp_oil")
             .copied(),
         Some(4u32)
     );
-    let debt = &now.actors().meters[&("rowan".into(), "assassination_debt".to_string())];
+    let rowan = "rowan".into();
+    let meters = now.actors().get::<Meter>(&rowan);
+    let debt = meters.get("assassination_debt").unwrap();
     assert_eq!((debt.base, debt.offset), (2, 0));
 }
 

@@ -94,8 +94,8 @@ fn briar_has_flag_downed(world: &mut World) {
     assert!(
         state_of(pack)
             .actors()
-            .flags
-            .contains_key(&("briar".into(), "downed".to_string())),
+            .get::<component::Flag>(&"briar".into())
+            .contains("downed"),
         "briar is not downed"
     );
 }
@@ -188,7 +188,10 @@ rules:
 fn nell_knows_the_ledger(world: &mut World, tide: i64) {
     let now = state_of(world.pack.as_ref().unwrap());
     assert!(
-        now.actors().known_facts["nell"]
+        now.actors()
+            .get::<component::KnownFacts>(&"nell".into())
+            .get()
+            .unwrap()
             .iter()
             .any(|fact| fact == "fact_ledger"),
         "nell does not know fact_ledger"
@@ -541,7 +544,9 @@ fn nell_reveals_the_trapdoor(world: &mut World) {
         &pack,
         vec![intent("nell-uncover", "nell", "uncover", None)],
     );
-    world.scratch = now.actors().known_facts["nell"].join(",");
+    let nell = "nell".into();
+    let known_facts = now.actors().get::<component::KnownFacts>(&nell).get();
+    world.scratch = known_facts.unwrap().join(",");
     world.pack = Some(pack);
 }
 

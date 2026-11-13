@@ -40,11 +40,6 @@ fn mira_plays(pack: &Path, verb: &str, target: Option<&str>) {
         .unwrap_or_else(|err| panic!("play: {err}"));
 }
 
-fn miras_place(pack: &Path) -> String {
-    let saved = spookery_engine::World::peek(pack).unwrap();
-    saved.state().actors().place["mira"].clone()
-}
-
 /// The exit names Mira's map lists for the Docks Shop.
 fn shop_exits_on_miras_map(pack: &Path) -> Vec<String> {
     let saved = spookery_engine::World::peek(pack).unwrap();
@@ -111,7 +106,8 @@ fn the_shop_has_a_trapdoor(world: &mut World) {
 fn mira_has_visited_the_shop_and_left(world: &mut World) {
     mira_plays(world.pack(), "wait", None);
     mira_plays(world.pack(), "travel", Some("docks_street"));
-    assert_eq!(miras_place(world.pack()), "docks_street");
+    let saved = spookery_engine::World::peek(world.pack()).unwrap();
+    assert_eq!(support::place_of(saved.state(), "mira"), "docks_street");
 }
 
 #[given(expr = "Mira is standing in the shop")]
@@ -124,21 +120,28 @@ fn mira_is_standing_in_the_shop(world: &mut World) {
 fn mira_learns_on_the_street(world: &mut World) {
     mira_plays(world.pack(), "dig", None);
     let saved = spookery_engine::World::peek(world.pack()).unwrap();
-    let actors = &saved.state().actors();
-    assert_eq!(actors.place["mira"], "docks_street");
-    assert!(actors.known_facts["mira"].contains(&"fact_trapdoor".to_string()));
+    assert_eq!(support::place_of(saved.state(), "mira"), "docks_street");
+    let mira = "mira".into();
+    let known_facts = saved
+        .state()
+        .actors()
+        .get::<component::KnownFacts>(&mira)
+        .get();
+    assert!(known_facts.unwrap().contains(&"fact_trapdoor".to_string()));
 }
 
 #[when(expr = "Mira learns fact_trapdoor")]
 fn mira_learns(world: &mut World) {
     mira_plays(world.pack(), "dig", None);
-    assert_eq!(miras_place(world.pack()), "docks_shop");
+    let saved = spookery_engine::World::peek(world.pack()).unwrap();
+    assert_eq!(support::place_of(saved.state(), "mira"), "docks_shop");
 }
 
 #[when(expr = "Mira walks back to the shop")]
 fn mira_walks_back(world: &mut World) {
     mira_plays(world.pack(), "travel", Some("docks_shop"));
-    assert_eq!(miras_place(world.pack()), "docks_shop");
+    let saved = spookery_engine::World::peek(world.pack()).unwrap();
+    assert_eq!(support::place_of(saved.state(), "mira"), "docks_shop");
 }
 
 #[then(expr = "Mira's map shows the shop without the trapdoor")]

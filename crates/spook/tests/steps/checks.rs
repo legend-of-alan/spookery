@@ -368,7 +368,7 @@ fn snapshot_pack(pack: &Path) -> PathBuf {
 
 fn flags_of(world: &World, id: &str) -> Vec<String> {
     let now = state_of(table::pack(world));
-    assert!(now.actors().control_type.contains_key(id), "{id} missing");
+    assert!(now.actors().contains(&id.into()), "{id} missing");
     let id = id.into();
     let flags = now.actors().get::<component::Flag>(&id);
     flags.iter().map(|(flag, ())| flag.to_string()).collect()

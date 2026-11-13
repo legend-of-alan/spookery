@@ -1,6 +1,6 @@
 //! The sample-d20 and demo-d20 arcs: ways onto a timed lane, then an ending.
 
-use spookery_engine::testing::state_of;
+use spookery_engine::testing::{place_of, state_of};
 use spookery_engine::{component, entity};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -155,7 +155,7 @@ fn they_arrive_at_the_exits_cost(world: &mut World) {
     let cost = lane_cost(&pack);
     let now = state_of(&pack);
     let arrived = arrival_tick(&pack);
-    assert_eq!(now.actors().place["lark"], "mill_lane");
+    assert_eq!(place_of(&now, "lark"), "mill_lane");
     assert_eq!(arrived.saturating_sub(started), cost);
     assert!(cost > 0);
     assert!(is_finished(&pack));
@@ -266,8 +266,9 @@ fn commit_line(world: &mut World, line: &str) {
 }
 
 fn larks_tonic(now: &spookery_engine::State) -> u32 {
-    let tonic = ("lark".into(), "tonic".to_string());
-    now.actors().items.get(&tonic).copied().unwrap_or(0)
+    let lark = "lark".into();
+    let held = now.actors().get::<component::Item>(&lark);
+    held.get("tonic").copied().unwrap_or(0)
 }
 
 fn is_finished(pack: &Path) -> bool {

@@ -4,7 +4,7 @@ use std::fs;
 use std::path::Path;
 
 use cucumber::{given, then, when};
-use spookery_engine::testing::state_of;
+use spookery_engine::testing::{place_of, state_of};
 use spookery_engine::{component, entity, Presence, World as Opened};
 
 use super::common::replace_in_file;
@@ -106,8 +106,8 @@ fn story_declares_a_shown_meter(world: &mut World, story: String, key: String) {
 fn rowan_and_wren_are_seated_apart(world: &mut World) {
     let pack = world.pack.clone().unwrap();
     edit_table(world, &pack, |now, seated| {
-        assert_eq!(now.actors().place["rowan"], "docks_shop");
-        assert_eq!(now.actors().place["wren"], "docks_street");
+        assert_eq!(place_of(now, "rowan"), "docks_shop");
+        assert_eq!(place_of(now, "wren"), "docks_street");
         sit(seated, &["rowan", "wren"]);
     });
 }
@@ -190,8 +190,9 @@ fn the_rule_runs(world: &mut World) {
 fn the_gm_sees_dread(world: &mut World) {
     assert_gm_saw(world, "story_meter ending dread");
     let now = state_of(world.pack.as_deref().unwrap());
-    let dread = ("ending".into(), "dread".to_string());
-    assert_eq!(now.stories().meters[&dread].offset, 1);
+    let ending = "ending".into();
+    let meters = now.stories().get::<component::Meter>(&ending);
+    assert_eq!(meters.get("dread").unwrap().offset, 1);
 }
 
 #[then(expr = "no player's view lists dread")]
