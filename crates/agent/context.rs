@@ -42,15 +42,20 @@ impl ClientState {
         }
     }
 
-    /// What one message says about the server's state: a player's say wakes a turn, a queued
-    /// move joins the queued moves and wakes one, a round empties them, and presence names the
-    /// actors present.
-    pub(crate) fn record(&mut self, message: &ServerMessage) {
+    /// Records what one server message says about the game: a player's say wakes a turn, the
+    /// GM's own say (the reply to its command) joins `tape_lines`, a queued move joins the
+    /// queued moves and wakes a turn, a round empties them, and presence names the actors
+    /// present.
+    pub(crate) fn record_server_message(&mut self, message: &ServerMessage) {
+        let seq = message.seq.unwrap_or_default();
         match &message.body {
             ServerBody::Say(say) if matches!(say.from, Speaker::Player(_)) => {
-                let line = TapeLine::new(message.seq.unwrap_or_default(), say.clone());
+                let line = TapeLine::new(seq, say.clone());
                 self.new_player_lines.push(line.clone());
                 self.wakes.push_back(Wake::Say(line));
+            }
+            ServerBody::Say(say) if say.from == Speaker::Gm => {
+                push_recent(&mut self.tape_lines, TapeLine::new(seq, say.clone()));
             }
             ServerBody::Queued {
                 intent,
@@ -78,38 +83,25 @@ impl ClientState {
         }
     }
 
-    /// The next turn, when a wake waits: its observation and the new player lines.
+    /// The next turn, when a wake waits: its observation shows the new player lines, which
+    /// then join `tape_lines`, and a say the model has now read wakes no turn.
     pub(crate) fn start_turn(&mut self) -> Option<Turn> {
         let wake = self.wakes.pop_front()?;
-        let player_lines = std::mem::take(&mut self.new_player_lines);
         let prompt = render_prompt(&Observation {
             menu: &self.pack.menu,
             tape_lines: &self.tape_lines,
-            new_player_lines: &player_lines,
+            new_player_lines: &self.new_player_lines,
             queued_moves: &self.queued_moves,
             wake: &wake,
             actors_present: &self.actors_present,
         });
-        Some(Turn {
-            messages: vec![Message::User { content: prompt }],
-            player_lines,
-            gm_lines: Vec::new(),
-        })
-    }
-
-    /// Records a played turn: its player and GM lines join `tape_lines`, and a say the model
-    /// has now read wakes no turn.
-    pub(crate) fn record_turn(&mut self, turn: Turn) {
-        let seen = turn.player_lines.iter().map(|line| line.seq).max();
-        for line in turn.player_lines.into_iter().chain(turn.gm_lines) {
+        for line in std::mem::take(&mut self.new_player_lines) {
             push_recent(&mut self.tape_lines, line);
         }
-        if let Some(seen) = seen {
-            self.wakes.retain(|wake| match wake {
-                Wake::Say(line) => line.seq > seen,
-                Wake::QueuedMove => true,
-            });
-        }
+        self.wakes.retain(|wake| *wake == Wake::QueuedMove);
+        Some(Turn {
+            messages: vec![Message::User { content: prompt }],
+        })
     }
 }
 

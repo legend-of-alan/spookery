@@ -6,9 +6,7 @@ use std::sync::Arc;
 
 use graph_flow::{Graph, GraphBuilder, Session};
 
-use crate::context::TapeLine;
 use crate::model::Message;
-use crate::protocol::ServerBody;
 use crate::task::{AskModel, FinishTurn, RunToolCall};
 use crate::{Agent, Connection, Model, ToolCall};
 
@@ -29,21 +27,9 @@ pub(crate) const DONE: &str = "done";
 #[derive(Default)]
 pub(crate) struct Turn {
     pub(crate) messages: Vec<Message>,
-    /// The player says this turn shows the model.
-    pub(crate) player_lines: Vec<TapeLine>,
-    /// The says the GM sent this turn, as the server confirmed them.
-    pub(crate) gm_lines: Vec<TapeLine>,
 }
 
 impl Turn {
-    /// Records the reply to one of the agent's commands: the GM's confirmed say joins
-    /// `gm_lines`. Every other reply leaves the turn as it is.
-    pub(crate) fn record_reply(&mut self, seq: u64, body: &ServerBody) {
-        if let ServerBody::Say(say) = body {
-            self.gm_lines.push(TapeLine::new(seq, say.clone()));
-        }
-    }
-
     /// The first call of the model's last reply that has no tool result yet. Each call's
     /// result follows its reply in order, so the results after the reply count the calls run.
     pub(crate) fn next_call(&self) -> Option<ToolCall> {
@@ -84,7 +70,7 @@ pub(crate) fn build_graph<M: Model, C: Connection>(agent: &Arc<Agent<M, C>>) -> 
         .expect("turn graph")
 }
 
-/// Plays `turn` through `graph` to its end, then hands it back to the client state.
+/// Plays `turn` through `graph` to its end.
 pub(crate) async fn play<M: Model, C: Connection>(
     graph: &Graph,
     agent: &Agent<M, C>,
@@ -93,7 +79,5 @@ pub(crate) async fn play<M: Model, C: Connection>(
     *agent.turn() = turn;
     let mut session = Session::new_from_task(String::new(), ASK_MODEL);
     graph.execute_session(&mut session).await?;
-    let turn = std::mem::take(&mut *agent.turn());
-    agent.state().record_turn(turn);
     Ok(())
 }

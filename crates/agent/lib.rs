@@ -96,7 +96,7 @@ pub async fn run<M: Model, C: Connection>(
                 }
             }
             None => match agent.connection.recv().await {
-                Some(Ok(message)) => agent.state().record(&message),
+                Some(Ok(message)) => agent.state().record_server_message(&message),
                 Some(Err(err)) => return Err(Error::Connection(err)),
                 None => return Ok(()),
             },
@@ -130,8 +130,8 @@ impl<M: Model, C: Connection> Agent<M, C> {
     }
 
     /// Sends `command` with `args`, a JSON object, and reads until its reply. Every message on
-    /// the way goes to the client state, and the reply's bookkeeping to the turn. A reply
-    /// that can't be read is an error, and `end_run` says why.
+    /// the way, the reply included, goes to the client state. A reply that can't be read is
+    /// an error, and `end_run` says why.
     async fn send_command(&self, command: &str, args: Value) -> graph_flow::Result<ServerBody> {
         let id = format!("a{}", self.last_id.fetch_add(1, Ordering::Relaxed) + 1);
         let lost = || GraphError::TaskExecutionFailed(format!("no reply to {command}"));
@@ -147,11 +147,9 @@ impl<M: Model, C: Connection> Agent<M, C> {
                     return Err(lost());
                 }
             };
-            self.state().record(&message);
+            self.state().record_server_message(&message);
             if message.reply_to.as_deref() == Some(id.as_str()) {
                 self.in_flight.lock().expect("in flight").take();
-                let seq = message.seq.unwrap_or_default();
-                self.turn().record_reply(seq, &message.body);
                 return Ok(message.body);
             }
         }
