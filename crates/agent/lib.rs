@@ -2,13 +2,15 @@
 //! awaits two adapters the client implements: a `Model` and a `Connection`. It reads the
 //! server's one ordered stream and decides from everything up to the last `seq` it read.
 
-mod model;
-mod prompt;
+pub mod chat_completions;
+mod connection;
+mod context;
+pub mod model;
+mod task;
+mod tool;
 mod turn;
 
-use std::collections::VecDeque;
 use std::fmt;
-use std::future::Future;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 
@@ -16,40 +18,12 @@ use graph_flow::GraphError;
 use serde_json::{json, Value};
 use spookery_protocol as protocol;
 
-pub use crate::model::{
-    parse_completion, provider_detail, render_chat_body, ChatMessage, CompletionError, FailureKind,
-    Model, ToolCall, MAX_DETAIL_CHARS,
-};
-use crate::prompt::{keep_recent, render_prompt, Opening, TapeLine, Wake};
-use crate::protocol::{
-    ClientMessage, PackSummary, QueuedMove, Refusal, ServerBody, ServerMessage, Speaker,
-    TableStatus,
-};
-
-/// The most tool calls one turn makes, valid or not, `end_turn` included.
-pub const MAX_TOOL_CALLS: usize = 20;
-
-/// The GM's connection to the server: the server's one ordered stream of messages, as the
-/// client carries it.
-pub trait Connection: Send + Sync + 'static {
-    fn send(
-        &self,
-        message: ClientMessage,
-    ) -> impl Future<Output = Result<(), ConnectionError>> + Send;
-    /// The server's next message. `None` when the server closed the connection.
-    fn recv(&self) -> impl Future<Output = Option<Result<ServerMessage, ConnectionError>>> + Send;
-}
-
-/// Returned from a client's `Connection` to the agent: why it could not send or read.
-/// Display is the client's line for it.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ConnectionError(pub String);
-
-impl fmt::Display for ConnectionError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.0)
-    }
-}
+pub use crate::connection::{Connection, ConnectionError};
+use crate::context::ClientState;
+pub use crate::model::{redact_error_body, CompletionError, Model, ToolCall, MAX_DETAIL_CHARS};
+use crate::protocol::{ClientMessage, Refusal, ServerBody};
+use crate::turn::Turn;
+pub use crate::turn::MAX_MODEL_CALLS;
 
 /// Why `run` stopped before the server closed the connection. Display is the line the client prints.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -119,7 +93,7 @@ pub async fn run<M: Model, C: Connection>(
                 }
             }
             None => match agent.connection.recv().await {
-                Some(Ok(message)) => agent.state().record(&message),
+                Some(Ok(message)) => agent.state().record_server_message(&message),
                 Some(Err(err)) => return Err(Error::Connection(err)),
                 None => return Ok(()),
             },
@@ -153,8 +127,8 @@ impl<M: Model, C: Connection> Agent<M, C> {
     }
 
     /// Sends `command` with `args`, a JSON object, and reads until its reply. Every message on
-    /// the way goes to the client state, and the reply's bookkeeping to the turn. A reply
-    /// that can't be read is an error, and `end_run` says why.
+    /// the way, the reply included, goes to the client state. A reply that can't be read is
+    /// an error, and `end_run` says why.
     async fn send_command(&self, command: &str, args: Value) -> graph_flow::Result<ServerBody> {
         let id = format!("a{}", self.last_id.fetch_add(1, Ordering::Relaxed) + 1);
         let lost = || GraphError::TaskExecutionFailed(format!("no reply to {command}"));
@@ -170,11 +144,9 @@ impl<M: Model, C: Connection> Agent<M, C> {
                     return Err(lost());
                 }
             };
-            self.state().record(&message);
+            self.state().record_server_message(&message);
             if message.reply_to.as_deref() == Some(id.as_str()) {
                 self.in_flight.lock().expect("in flight").take();
-                let seq = message.seq.unwrap_or_default();
-                self.turn().record_reply(seq, &message.body);
                 return Ok(message.body);
             }
         }
@@ -193,136 +165,12 @@ impl<M: Model, C: Connection> Agent<M, C> {
     }
 }
 
-/// The server's state as its messages have shown this client so far, and the turns they
-/// wake.
-#[derive(Default)]
-struct ClientState {
-    pack: PackSummary,
-    /// The actors present, as of the last message read.
-    actors_present: Vec<String>,
-    /// The queued moves, as of the last message read.
-    queued_moves: Vec<QueuedMove>,
-    /// Player says read since a turn last showed them to the model.
-    new_player_lines: Vec<TapeLine>,
-    wakes: VecDeque<Wake>,
-    /// The recent tape every opening prompt shows.
-    buffer: Vec<TapeLine>,
-}
-
-/// One turn: the conversation with the model and what the commit rule reads.
-#[derive(Default)]
-struct Turn {
-    messages: Vec<ChatMessage>,
-    /// A move waits for a commit: the turn saw a queue when it started, or queued a move
-    /// itself since its last commit.
-    move_waiting: bool,
-    /// The player says this turn shows the model.
-    player_lines: Vec<TapeLine>,
-    /// The says the GM sent this turn, as the server confirmed them.
-    gm_lines: Vec<TapeLine>,
-}
-
-impl Turn {
-    /// Records the reply to one of the agent's commands: a `queued` reply means a move
-    /// waits, a `committed` reply means none does, and the GM's confirmed say joins
-    /// `gm_lines`. Every other reply leaves the turn as it is.
-    fn record_reply(&mut self, seq: u64, body: &ServerBody) {
-        match body {
-            ServerBody::Queued { .. } => self.move_waiting = true,
-            ServerBody::Committed(_) => self.move_waiting = false,
-            ServerBody::Say(say) => self.gm_lines.push(TapeLine::new(seq, say.clone())),
-            _ => {}
-        }
-    }
-}
-
-impl ClientState {
-    /// Fills the state from the first `status`: the pack, the actors present and the queue,
-    /// which wakes a turn when a move already waits.
-    fn initialize(&mut self, status: TableStatus) {
-        self.pack = status.pack;
-        self.actors_present = status.presence.actors_present;
-        self.queued_moves = status.queued;
-        if !self.queued_moves.is_empty() && !self.wakes.contains(&Wake::QueuedMove) {
-            self.wakes.push_front(Wake::QueuedMove);
-        }
-    }
-
-    /// What one message says about the server's state: a player's say wakes a turn, a queued
-    /// move joins the queued moves and wakes one, a round empties them, and presence names the
-    /// actors present.
-    fn record(&mut self, message: &ServerMessage) {
-        match &message.body {
-            ServerBody::Say(say) if matches!(say.from, Speaker::Player(_)) => {
-                let line = TapeLine::new(message.seq.unwrap_or_default(), say.clone());
-                self.new_player_lines.push(line.clone());
-                self.wakes.push_back(Wake::Say(line));
-            }
-            ServerBody::Queued {
-                intent,
-                actor,
-                move_name,
-                ..
-            } => {
-                self.queued_moves.push(QueuedMove {
-                    id: intent.clone(),
-                    actor_id: actor.clone(),
-                    move_name: move_name.clone(),
-                });
-                if !self.wakes.contains(&Wake::QueuedMove) {
-                    self.wakes.push_back(Wake::QueuedMove);
-                }
-            }
-            ServerBody::Round { .. } => {
-                self.queued_moves.clear();
-                self.wakes.retain(|wake| *wake != Wake::QueuedMove);
-            }
-            ServerBody::Presence { actors_present } => {
-                self.actors_present = actors_present.clone();
-            }
-            _ => {}
-        }
-    }
-
-    /// The next turn, when a wake waits: its opening prompt and the new player lines.
-    fn start_turn(&mut self) -> Option<Turn> {
-        let wake = self.wakes.pop_front()?;
-        let player_lines = std::mem::take(&mut self.new_player_lines);
-        let prompt = render_prompt(&Opening {
-            menu: &self.pack.menu,
-            buffer: &self.buffer,
-            new_player_lines: &player_lines,
-            queued_moves: &self.queued_moves,
-            wake: &wake,
-            actors_present: &self.actors_present,
-        });
-        Some(Turn {
-            messages: vec![ChatMessage::Prompt { content: prompt }],
-            move_waiting: !self.queued_moves.is_empty(),
-            player_lines,
-            gm_lines: Vec::new(),
-        })
-    }
-
-    /// Records a played turn: its player and GM lines join the buffer, and a say the model
-    /// has now read wakes no turn.
-    fn record_turn(&mut self, turn: Turn) {
-        let seen = turn.player_lines.iter().map(|line| line.seq).max();
-        for line in turn.player_lines.into_iter().chain(turn.gm_lines) {
-            keep_recent(&mut self.buffer, line);
-        }
-        if let Some(seen) = seen {
-            self.wakes.retain(|wake| match wake {
-                Wake::Say(line) => line.seq > seen,
-                Wake::QueuedMove => true,
-            });
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
+    use std::collections::VecDeque;
+
     use super::*;
+    use crate::protocol::ServerMessage;
 
     const STATUS: &str = r#"{"kind":"status","presence":{"players":1,"actors_present":["pc"]},"world_time":0,"round_index":0,"state_rev":1,"pack_rev":"p","last_round_at":"","queued":[],"pack":{"menu":[],"kinds":{"pc":"pc_template"},"places":{},"cast":{}}}"#;
     const VIEW: &str = r#"{"kind":"view","viewer":"pc","place":"docks","visible_actors":["pc"],"known_facts":[],"notes":[],"unknown_mentions":[],"items":[],"habits":[]}"#;
@@ -354,8 +202,8 @@ mod tests {
         }
     }
 
-    /// The agent's first status, then a player's say that wakes a turn.
-    fn status_then_wake() -> Answer {
+    /// The agent's first status, then a player's "say" that starts a turn.
+    fn status_then_player_say() -> Answer {
         Answer {
             then: vec![PLAYER_SAY],
             ..answer("status", &[STATUS])
@@ -428,11 +276,11 @@ mod tests {
     }
 
     /// A model that answers each call with the next scripted tool calls, read through
-    /// `parse_completion`, and with none once they run out.
+    /// `chat_completions::parse_reply`, and with none once they run out.
     #[derive(Default)]
     struct ScriptedModel {
         replies: Mutex<VecDeque<Vec<(&'static str, &'static str)>>>,
-        calls: Mutex<Vec<Vec<ChatMessage>>>,
+        calls: Mutex<Vec<Vec<model::Message>>>,
     }
 
     impl ScriptedModel {
@@ -443,7 +291,7 @@ mod tests {
             })
         }
 
-        fn calls(&self) -> Vec<Vec<ChatMessage>> {
+        fn calls(&self) -> Vec<Vec<model::Message>> {
             self.calls.lock().unwrap().clone()
         }
     }
@@ -451,7 +299,7 @@ mod tests {
     impl Model for Arc<ScriptedModel> {
         async fn request_tool_calls(
             &self,
-            messages: &[ChatMessage],
+            messages: &[model::Message],
         ) -> Result<Vec<ToolCall>, CompletionError> {
             self.calls.lock().unwrap().push(messages.to_vec());
             let tools = self.replies.lock().unwrap().pop_front().unwrap_or_default();
@@ -465,7 +313,7 @@ mod tests {
                 .collect();
             let reply =
                 json!({"choices": [{"message": {"role": "assistant", "tool_calls": calls}}]});
-            parse_completion(&reply.to_string())
+            chat_completions::parse_reply(&reply.to_string())
         }
     }
 
@@ -486,14 +334,14 @@ mod tests {
             ("end_turn", "{}"),
         ]]);
         let connection =
-            ScriptedConnection::new(vec![status_then_wake(), answer("perceive", &[VIEW])]);
+            ScriptedConnection::new(vec![status_then_player_say(), answer("perceive", &[VIEW])]);
         assert_eq!(play(&model, &connection).await, Ok(()));
         let calls = model.calls();
         assert_eq!(calls.len(), 2);
         let results: Vec<(&str, &str)> = calls[1]
             .iter()
             .filter_map(|message| match message {
-                ChatMessage::ToolResult {
+                model::Message::Tool {
                     tool_call_id,
                     content,
                 } => Some((tool_call_id.as_str(), content.as_str())),
@@ -511,10 +359,10 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
-    async fn a_round_the_agent_did_not_play_drops_the_queued_wake() {
+    async fn a_round_the_agent_did_not_play_drops_the_queued_move_cause() {
         let model = ScriptedModel::new(vec![vec![SAY]]);
         let connection = ScriptedConnection::new(vec![
-            status_then_wake(),
+            status_then_player_say(),
             answer("say", &[QUEUED, ROUND, GM_SAY]),
         ]);
         assert_eq!(play(&model, &connection).await, Ok(()));
@@ -529,7 +377,7 @@ mod tests {
         for lost in [BROKEN, SILENT] {
             let model = ScriptedModel::new(vec![vec![PERCEIVE, SAY]]);
             let connection = ScriptedConnection::new(vec![
-                status_then_wake(),
+                status_then_player_say(),
                 answer("perceive", &[lost, VIEW]),
             ]);
             let command = "perceive".to_string();

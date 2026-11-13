@@ -251,7 +251,7 @@ fn world_time_moved_one_round(world: &mut World) {
 
 #[then(expr = "the GM's own say did not call the model")]
 fn the_gms_own_say_did_not_call_the_model(world: &mut World) {
-    // The say's turn asks once more and ends. The GM's own say wakes no turn.
+    // The say's turn asks once more and ends. The GM's own say starts no turn.
     let calls = world.model.wait_past_script();
     assert_eq!(calls.len(), 2, "a gm say called the model");
 }
