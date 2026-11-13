@@ -81,17 +81,6 @@ impl Component for Meter {
     type Value = Meter;
 }
 
-impl<E: entity::Has<Meter>> Ref<'_, E, Meter> {
-    /// The stored meter `name` inside the pack's bounds, with no modifiers, even on an actor:
-    /// `state.entities()` adds them through `modifier::value`. Issue #549 removes the difference.
-    /// `UNKNOWN_ID` when the entity does not carry the meter.
-    pub fn value(&self, name: &str) -> Result<i64, Reason> {
-        let def = (self.entities.canon).meter_def(self.id.as_id_ref(), name);
-        let held = self.get(name).ok_or(Reason::UnknownId);
-        value(def.ok_or(Reason::UnknownId)?, held?, 0)
-    }
-}
-
 impl<E: entity::Has<Meter>> Mut<'_, E, Meter> {
     /// Move meter `name` by `delta` inside its bounds. It reports the meter's key with the
     /// stored meter it replaced; the change is read, as rules read the meter, when the changes
@@ -124,15 +113,20 @@ impl<E: entity::Has<Meter>> Mut<'_, E, Meter> {
 }
 
 impl Ref<'_, Save, Meter> {
-    /// As on its collection, but an actor's adds their modifiers through `modifier::value`, which
-    /// `state.actors()` does not. Issue #549 removes the difference.
+    /// Meter `name` as rolls, conditions and views read it: the stored meter inside the pack's
+    /// bounds, plus an actor's modifiers (`modifier::value`). `UNKNOWN_ID` when the entity does
+    /// not carry the meter.
     pub fn value(&self, name: &str) -> Result<i64, Reason> {
         let (save, canon) = (self.entities.components, self.entities.canon);
         match self.id {
             Id::Actor(actor) => modifier::value(Reader::new(&save.actors, canon), actor, name),
-            id => in_collection!(id, [&save], |entities, id| {
-                Reader::new(entities, canon).get::<Meter>(id).value(name)
-            }),
+            id => {
+                let def = canon.meter_def(id.as_ref(), name).ok_or(Reason::UnknownId);
+                let held = in_collection!(id, [&save], |entities, id| {
+                    Reader::new(entities, canon).get::<Meter>(id).get(name)
+                });
+                value(def?, held.ok_or(Reason::UnknownId)?, 0)
+            }
         }
     }
 }
