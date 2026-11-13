@@ -26,7 +26,7 @@ pub use crate::model::{
 };
 use crate::protocol::{ClientMessage, Refusal, ServerBody};
 use crate::turn::Turn;
-pub use crate::turn::MAX_TOOL_CALLS;
+pub use crate::turn::MAX_MODEL_CALLS;
 
 /// Why `run` stopped before the server closed the connection. Display is the line the client prints.
 #[derive(Clone, Debug, PartialEq, Eq)]

@@ -97,7 +97,7 @@ It posts to `{SPOOK_GM_URL}/chat/completions` with four tools. Three are the GM 
 
 Each turn is a loop. A player's say or a queued move wakes it. The model calls tools, and each call goes to the table as it is. The table's reply comes back as that call's result, refusals included, so the model can look around first, try again after a refusal, and queue moves for several NPCs before it ends the turn. After `end_turn` it gets the rolls and can say what happened. The turn ends when the model answers with no tool calls.
 
-The engine still decides every effect. A turn commits when a move is queued, and it commits that move itself when the model stops without `end_turn`. A turn stops after 20 tool calls and prints a `step limit` warning. If a command goes out and its reply can't be read, `spook ai-gm` stops and names the command, because the table may have applied it. Start it again and it reads the table afresh.
+The engine still decides every effect. A turn commits when a move is queued, and it commits that move itself when the model stops without `end_turn`. A turn stops after 20 model calls and prints a `model call limit` warning. If a command goes out and its reply can't be read, `spook ai-gm` stops and names the command, because the table may have applied it. Start it again and it reads the table afresh.
 
 You need all three of these. There's no default URL.
 

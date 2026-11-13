@@ -12,8 +12,8 @@ use crate::protocol::ServerBody;
 use crate::task::{AskModel, FinishTurn, RunToolCall};
 use crate::{Agent, Connection, Model, ToolCall};
 
-/// The most tool calls one turn makes, valid or not, `end_turn` included.
-pub const MAX_TOOL_CALLS: usize = 20;
+/// The most model calls one turn makes. It stops a model that never ends its turn.
+pub const MAX_MODEL_CALLS: usize = 20;
 
 /// The graph's nodes.
 pub(crate) const ASK_MODEL: &str = "ask_model";
@@ -22,9 +22,9 @@ pub(crate) const FINISH_TURN: &str = "finish_turn";
 
 /// The calls of the model's last reply that wait for a result.
 pub(crate) const PENDING_CALLS: &str = "pending_calls";
-/// How many tool calls this turn made.
-pub(crate) const CALL_COUNT: &str = "call_count";
-/// Set when the model is done or its call failed.
+/// How many model calls this turn made.
+pub(crate) const MODEL_CALL_COUNT: &str = "model_call_count";
+/// Set when the model is done, its call failed or the turn reached `MAX_MODEL_CALLS`.
 pub(crate) const DONE: &str = "done";
 
 /// One GM turn: it handles one wake, may span several model calls, and is not a Spookery round.
@@ -51,29 +51,17 @@ pub(crate) fn pending_calls(context: &graph_flow::Context) -> Vec<ToolCall> {
     context.get(PENDING_CALLS).unwrap_or_default()
 }
 
-pub(crate) fn call_count(context: &graph_flow::Context) -> usize {
-    context.get(CALL_COUNT).unwrap_or_default()
-}
-
 fn is_done(context: &graph_flow::Context) -> bool {
     context.get(DONE).unwrap_or_default()
 }
 
-/// Built once per `run`. Edges are checked in the order added and the first match wins, so
-/// from `run_tool_call` the step limit comes before the waiting calls, and `ask_model` is the
-/// fallback.
+/// Built once per `run`.
 pub(crate) fn build_graph<M: Model, C: Connection>(agent: &Arc<Agent<M, C>>) -> Graph {
     GraphBuilder::new("gm_turn")
         .add_task(Arc::new(AskModel(Arc::clone(agent))))
         .add_task(Arc::new(RunToolCall(Arc::clone(agent))))
         .add_task(Arc::new(FinishTurn(Arc::clone(agent))))
         .add_conditional_edge(ASK_MODEL, is_done, FINISH_TURN, RUN_TOOL_CALL)
-        .add_conditional_edge(
-            RUN_TOOL_CALL,
-            |c| call_count(c) >= MAX_TOOL_CALLS,
-            FINISH_TURN,
-            ASK_MODEL,
-        )
         .add_conditional_edge(
             RUN_TOOL_CALL,
             |c| !pending_calls(c).is_empty(),

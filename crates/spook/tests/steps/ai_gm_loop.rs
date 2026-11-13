@@ -1,12 +1,12 @@
 //! The AI GM's turn loop against a real table: perceive first, recover from a refusal,
-//! queue several NPCs, stop at the step limit, and outwait the graph's task timeout.
+//! queue several NPCs, stop at the model call limit, and outwait the graph's task timeout.
 
 use spookery_engine::component;
 use std::time::Duration;
 
 use cucumber::{given, then, when};
 use serde_json::Value;
-use spookery::agent::{model, MAX_TOOL_CALLS};
+use spookery::agent::{model, MAX_MODEL_CALLS};
 use spookery_engine::testing::journal::{list_round_keys, read_record_line};
 use spookery_engine::testing::state_of;
 
@@ -214,18 +214,18 @@ fn the_player_sees_the_narration(world: &mut World) {
     assert!(!seen.contains("faces"), "{seen}");
 }
 
-#[then(expr = "the client stops after {int} tool calls")]
+#[then(expr = "the client stops after {int} model calls")]
 fn the_client_stops_after(world: &mut World, count: usize) {
-    assert_eq!(count, MAX_TOOL_CALLS);
+    assert_eq!(count, MAX_MODEL_CALLS);
     let calls = world.model.calls();
     assert_eq!(calls.len(), count);
     assert_eq!(read_tool_results(&calls[count - 1]).len(), count - 1);
 }
 
-#[then(expr = "the GM reports a step limit warning")]
-fn the_gm_reports_a_step_limit_warning(world: &mut World) {
+#[then(expr = "the GM reports a model call limit warning")]
+fn the_gm_reports_a_model_call_limit_warning(world: &mut World) {
     let gm = world.ai_gm.as_ref().expect("the AI GM runs");
-    table::wait_suffix(&gm.err, 0, "step limit");
+    table::wait_suffix(&gm.err, 0, "model call limit");
 }
 
 #[then(expr = "the scripted model is called for that say")]
