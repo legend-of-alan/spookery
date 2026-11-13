@@ -50,7 +50,7 @@ pub struct World {
     /// World time before a scenario's player acts.
     pub start_ticks: u64,
     /// The world times of the rounds a scenario's player heard.
-    pub round_times: Vec<u64>,
+    pub round_ticks: Vec<u64>,
 }
 
 impl std::fmt::Debug for World {

@@ -250,13 +250,13 @@ fn the_player_says_hello(world: &mut World) {
 #[when(expr = "the player travels to Docks Street")]
 fn the_player_travels_to_docks_street(world: &mut World) {
     let (mark, _) = table::player_send(world, "travel docks_street", "\"kind\":\"queued\"");
-    world.round_times = table::wait_rounds_to_view(world, mark);
+    world.round_ticks = table::wait_rounds_to_view(world, mark);
 }
 
 #[when(expr = "the player tries grit")]
 fn the_player_tries_grit(world: &mut World) {
     let (mark, _) = table::player_send(world, "grit", "\"kind\":\"queued\"");
-    world.round_times = table::wait_rounds_to_view(world, mark);
+    world.round_ticks = table::wait_rounds_to_view(world, mark);
     table::wait_player_from(world, mark, "the roll lands");
 }
 
@@ -264,7 +264,7 @@ fn the_player_tries_grit(world: &mut World) {
 fn the_scripted_ai_gm_sits(world: &mut World) {
     let mark = table::player_mark(world);
     world.ai_gm = Some(start_ai_gm(world, world.model.clone()));
-    world.round_times = table::wait_rounds_to_view(world, mark);
+    world.round_ticks = table::wait_rounds_to_view(world, mark);
 }
 
 #[then(expr = "world time did not move")]
@@ -300,9 +300,9 @@ fn the_gms_own_say_did_not_call_the_model(world: &mut World) {
 #[then(expr = "one round committed")]
 fn one_round_committed(world: &mut World) {
     assert_eq!(
-        world.round_times,
+        world.round_ticks,
         [world.start_ticks + 5],
-        "travel ran twice"
+        "more than one round committed"
     );
 }
 

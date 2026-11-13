@@ -7,7 +7,7 @@ use cucumber::gherkin::Step;
 use cucumber::{given, then, when};
 use rmcp::model::ProtocolVersion;
 use serde_json::{json, Map, Value};
-use spookery::protocol::{SayArgs, ServerBody, ServerMessage};
+use spookery::protocol::{ServerBody, ServerMessage};
 
 use crate::mcp_client::{GmClient, RawSession};
 use crate::support;
@@ -382,35 +382,31 @@ fn agent_says_over_http(world: &mut World) {
         json!({"address": "table", "text": "good evening"}),
     );
     assert_not_refused(&said, "say");
-    support::block_on(gm.close());
     world.player_added = table::wait_player_from(world, mark, "{\"kind\":\"say\"");
+    world.http_gm = Some(gm);
 }
 
-#[when(expr = "a coding agent says good evening and calls an unknown tool over HTTP")]
-fn agent_says_and_calls_an_unknown_tool(world: &mut World) {
-    let mark = table::player_mark(world);
-    let mcp_addr = table::mcp_addr(world).parse().unwrap();
-    let mut gm =
-        support::block_on(GmClient::connect(mcp_addr)).unwrap_or_else(|err| panic!("{err}"));
-    let evening = SayArgs::Table {
-        text: "good evening".to_string(),
-    };
-    let said =
-        support::block_on(gm.call("say", &json!(evening))).unwrap_or_else(|err| panic!("{err}"));
-    world.player_added = table::wait_player_from(world, mark, "{\"kind\":\"say\"");
-    world.scratch = json!(said).to_string();
-    let reply =
-        support::block_on(gm.call("not_in_spec", &json!({}))).unwrap_or_else(|err| panic!("{err}"));
+#[when(expr = "the agent calls an unknown tool over HTTP")]
+fn agent_calls_an_unknown_tool(world: &mut World) {
+    let mut gm = world
+        .http_gm
+        .take()
+        .unwrap_or_else(|| panic!("no agent holds the seat"));
+    let reply = call(&mut gm, "not_in_spec", json!({}));
     support::block_on(gm.close());
-    world.stdout = match reply.last().map(|reply| &reply.body) {
-        Some(ServerBody::Refused(_)) => "refused".to_string(),
-        other => format!("{other:?}"),
-    };
+    world.scratch = json!(reply).to_string();
 }
 
 #[then(expr = "the unknown tool call was refused")]
 fn the_unknown_tool_call_was_refused(world: &mut World) {
-    assert_eq!(world.stdout, "refused", "{}", world.scratch);
+    let reply: Vec<ServerMessage> =
+        serde_json::from_str(&world.scratch).unwrap_or_else(|err| panic!("reply: {err}"));
+    let last = reply.last().map(|reply| &reply.body);
+    assert!(
+        matches!(last, Some(ServerBody::Refused(_))),
+        "{}",
+        world.scratch
+    );
 }
 
 fn call_each_gm_tool(gm: &mut GmClient) {
