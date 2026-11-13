@@ -33,8 +33,8 @@ fn give(now: &mut State, actor: &str, item: &str) {
 fn hp(pack: &Path, actor: &str) -> i64 {
     let now = support::state_of(pack);
     let id = spookery_engine::entity::Id::Actor(actor.into());
-    now.entity(&id)
-        .get::<component::Meter>()
+    now.entities()
+        .get::<component::Meter>(&id)
         .value("hp")
         .unwrap()
 }

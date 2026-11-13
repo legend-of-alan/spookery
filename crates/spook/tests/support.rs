@@ -25,8 +25,8 @@ pub fn edit_meter(now: &mut State, actor: &str, key: &str, edit: impl FnOnce(&mu
 /// Give `id` meter `key` at `base`, with no offset, through the writer.
 pub fn put_meter(now: &mut State, id: &entity::Id, key: &str, base: i64) {
     let meter = Meter { base, offset: 0 };
-    now.entity_mut(id)
-        .get_mut::<component::Meter>()
+    now.entities_mut()
+        .get_mut::<component::Meter>(id)
         .set(key, Some(meter))
         .unwrap();
 }

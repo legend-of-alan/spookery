@@ -247,6 +247,15 @@ impl State {
         Writer::new(&mut self.save.world, &mut self.transaction, &self.canon)
     }
 
+    /// Every entity, each read and write going to the collection its `entity::Id` names.
+    pub fn entities(&self) -> Reader<'_, Save> {
+        Reader::new(&self.save, &self.canon)
+    }
+
+    pub fn entities_mut(&mut self) -> Writer<'_, Save> {
+        Writer::new(&mut self.save, &mut self.transaction, &self.canon)
+    }
+
     pub fn notes_mut(&mut self) -> Writer<'_, undo::Store<Vec<Note>>> {
         Writer::new(&mut self.save.notes, &mut self.transaction, &self.canon)
     }

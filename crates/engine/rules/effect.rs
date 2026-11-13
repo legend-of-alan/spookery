@@ -185,7 +185,7 @@ impl Effect {
         match self.kind {
             EffectKind::Meter { entity, key, write } => {
                 let MeterWrite::Offset(delta) = write;
-                (state.entity_mut(&entity).get_mut::<component::Meter>()).shift(&key, delta)
+                (state.entities_mut().get_mut::<component::Meter>(&entity)).shift(&key, delta)
             }
             EffectKind::Item {
                 actor_id,
@@ -233,7 +233,7 @@ impl Effect {
                 if !canon.carries_flag(entity.as_ref(), &key) {
                     return Err(Reason::UnknownId);
                 }
-                (state.entity_mut(&entity).get_mut::<component::Flag>()).set(&key, value)
+                (state.entities_mut().get_mut::<component::Flag>(&entity)).set(&key, value)
             }
             // An exit with no `if` has no door.
             EffectKind::ExitOpen { exit, open } => {

@@ -139,9 +139,13 @@ fn wren_is_refused(world: &mut World) {
     assert_eq!(refused[0]["code"], "NOT_IN_SPEC", "{round}");
     let now = state_of(world.pack.as_ref().unwrap());
     assert_eq!(now.actors().place["rowan"], "docks_street");
-    let world_flags = now.entity(&entity::Id::Global);
-    assert!(world_flags.get::<component::Flag>().contains("gate_locked"));
-    assert!(!world_flags.get::<component::Flag>().contains("gate_passed"));
+    let world_flags = now.entities();
+    assert!(world_flags
+        .get::<component::Flag>(&entity::Id::Global)
+        .contains("gate_locked"));
+    assert!(!world_flags
+        .get::<component::Flag>(&entity::Id::Global)
+        .contains("gate_passed"));
 }
 
 #[given(
@@ -168,8 +172,8 @@ fn both_chains_ran(world: &mut World) {
     let now = state_of(world.pack.as_ref().unwrap());
     for flag in ["rang", "echoed"] {
         assert!(
-            now.entity(&entity::Id::Global)
-                .get::<component::Flag>()
+            now.entities()
+                .get::<component::Flag>(&entity::Id::Global)
                 .contains(flag),
             "{:?}",
             now.globals().flags

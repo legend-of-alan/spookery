@@ -219,8 +219,8 @@ fn a_rule_tests_the_flag(world: &mut World, key: String, of: String) {
     );
     migrate_and_play(world, vec![intent("test", "rowan", "test_mark", None)]);
     assert!(state_of(&pack)
-        .entity(&entity::Id::Global)
-        .get::<component::Flag>()
+        .entities()
+        .get::<component::Flag>(&entity::Id::Global)
         .contains("mark_seen"));
 }
 

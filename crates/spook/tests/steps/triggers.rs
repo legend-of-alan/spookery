@@ -170,8 +170,8 @@ rules:
     edit_table(world, &pack, |now, seated| {
         insert_actor_copy(now, seated, ("rowan", "nell"), "docks_street");
         let nell = entity::Id::Actor("nell".into());
-        now.entity_mut(&nell)
-            .get_mut::<component::Flag>()
+        now.entities_mut()
+            .get_mut::<component::Flag>(&nell)
             .set("found_key", true)
             .unwrap();
         support::put_meter(now, &entity::Id::Global, "tide", 0);
@@ -665,8 +665,8 @@ fn nell_sets_the_tide(world: &mut World) {
 fn the_world_has_the_tide(world: &mut World) {
     let now = state_of(world.pack.as_ref().unwrap());
     assert!(
-        now.entity(&entity::Id::Global)
-            .get::<component::Flag>()
+        now.entities()
+            .get::<component::Flag>(&entity::Id::Global)
             .contains("tide_turned"),
         "flags: {:?}",
         now.globals().flags
@@ -1062,8 +1062,8 @@ rules:
         let briar = entity::Id::Actor("briar".into());
         support::put_meter(now, &briar, "hp", hp);
         if downed {
-            now.entity_mut(&briar)
-                .get_mut::<component::Flag>()
+            now.entities_mut()
+                .get_mut::<component::Flag>(&briar)
                 .set("downed", true)
                 .unwrap();
         }
@@ -1160,16 +1160,16 @@ fn insert_actor_copy(
         .map(|(_, key)| key.clone())
         .collect();
     let copy = entity::Id::Actor(to);
-    let mut actors = now.entity_mut(&copy);
+    let mut actors = now.entities_mut();
     for key in flags {
         actors
-            .get_mut::<component::Flag>()
+            .get_mut::<component::Flag>(&copy)
             .set(&key, false)
             .unwrap();
     }
     // Only rowan carries the debt, so a copy of them does not.
     actors
-        .get_mut::<component::Meter>()
+        .get_mut::<component::Meter>(&copy)
         .set("assassination_debt", None)
         .unwrap();
     sit(seated, &[id]);

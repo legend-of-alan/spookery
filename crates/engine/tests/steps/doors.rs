@@ -205,8 +205,8 @@ fn the_watch_ran(world: &mut World) {
     let saved = spookery_engine::World::peek(world.pack()).unwrap();
     assert!(saved
         .state()
-        .entity(&entity::Id::Global)
-        .get::<component::Flag>()
+        .entities()
+        .get::<component::Flag>(&entity::Id::Global)
         .contains("creaked"));
     drop(saved);
     let round = support::read_round(world.pack(), "round-0001");

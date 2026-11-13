@@ -83,7 +83,7 @@ fn lowered(pack: &Path, meter: &str) -> i64 {
     let rowan = entity::Id::Actor("rowan".into());
     let key = ("rowan".into(), meter.to_string());
     let Meter { base, offset } = now.actors().meters[&key].clone();
-    let value = now.entity(&rowan).get::<component::Meter>().value(meter);
+    let value = now.entities().get::<component::Meter>(&rowan).value(meter);
     base + offset - value.unwrap()
 }
 
@@ -398,8 +398,8 @@ fn rowan_has_no_burn(world: &mut World) {
     let rowan = entity::Id::Actor("rowan".into());
     assert_eq!(
         state_of(pack(world))
-            .entity(&rowan)
-            .get::<component::Meter>()
+            .entities()
+            .get::<component::Meter>(&rowan)
             .value("grit"),
         Ok(20)
     );
@@ -549,8 +549,8 @@ fn rowan_pays_one_grit(world: &mut World) {
 fn strained(pack: &Path, flag: &str) -> bool {
     let strain = entity::Id::Story("strain".into());
     state_of(pack)
-        .entity(&strain)
-        .get::<component::Flag>()
+        .entities()
+        .get::<component::Flag>(&strain)
         .contains(flag)
 }
 
