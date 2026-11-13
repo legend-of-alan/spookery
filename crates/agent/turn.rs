@@ -27,13 +27,10 @@ pub(crate) const CALL_COUNT: &str = "call_count";
 /// Set when the model is done or its call failed.
 pub(crate) const DONE: &str = "done";
 
-/// One turn: the conversation with the model and what the commit rule reads.
+/// One turn: the conversation with the model, and the player and GM lines it records.
 #[derive(Default)]
 pub(crate) struct Turn {
     pub(crate) messages: Vec<Message>,
-    /// A move waits for a commit: the turn saw a queue when it started, or queued a move
-    /// itself since its last commit.
-    pub(crate) move_waiting: bool,
     /// The player says this turn shows the model.
     pub(crate) player_lines: Vec<TapeLine>,
     /// The says the GM sent this turn, as the server confirmed them.
@@ -41,15 +38,11 @@ pub(crate) struct Turn {
 }
 
 impl Turn {
-    /// Records the reply to one of the agent's commands: a `queued` reply means a move
-    /// waits, a `committed` reply means none does, and the GM's confirmed say joins
+    /// Records the reply to one of the agent's commands: the GM's confirmed say joins
     /// `gm_lines`. Every other reply leaves the turn as it is.
     pub(crate) fn record_reply(&mut self, seq: u64, body: &ServerBody) {
-        match body {
-            ServerBody::Queued { .. } => self.move_waiting = true,
-            ServerBody::Committed(_) => self.move_waiting = false,
-            ServerBody::Say(say) => self.gm_lines.push(TapeLine::new(seq, say.clone())),
-            _ => {}
+        if let ServerBody::Say(say) = body {
+            self.gm_lines.push(TapeLine::new(seq, say.clone()));
         }
     }
 }

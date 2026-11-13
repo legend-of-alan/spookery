@@ -67,10 +67,9 @@ pub(crate) async fn call<M: Model, C: Connection>(
             _ => return Ok("refused: the arguments are not a JSON object".to_string()),
         },
     };
-    let move_waiting = agent.turn().move_waiting;
     let (command, args) = match tool_call.name.as_str() {
         "perceive" | "say" | "queue" => (tool_call.name.as_str(), Value::Object(args)),
-        "end_turn" if move_waiting => ("commit", json!(COMMIT_ROUND)),
+        "end_turn" if !agent.state().queued_moves.is_empty() => ("commit", json!(COMMIT_ROUND)),
         "end_turn" => return Ok("nothing is queued, so there is no round to play".into()),
         name => return Ok(format!("refused: there is no tool named {name}")),
     };

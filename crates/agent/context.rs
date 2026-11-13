@@ -22,7 +22,7 @@ pub(crate) struct ClientState {
     /// The actors present, as of the last message read.
     actors_present: Vec<String>,
     /// The queued moves, as of the last message read.
-    queued_moves: Vec<QueuedMove>,
+    pub(crate) queued_moves: Vec<QueuedMove>,
     /// Player says read since a turn last showed them to the model.
     new_player_lines: Vec<TapeLine>,
     wakes: VecDeque<Wake>,
@@ -92,7 +92,6 @@ impl ClientState {
         });
         Some(Turn {
             messages: vec![Message::User { content: prompt }],
-            move_waiting: !self.queued_moves.is_empty(),
             player_lines,
             gm_lines: Vec::new(),
         })

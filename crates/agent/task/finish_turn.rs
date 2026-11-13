@@ -10,7 +10,7 @@ use crate::tool::COMMIT_ROUND;
 use crate::turn::{call_count, FINISH_TURN, MAX_TOOL_CALLS};
 use crate::{Agent, Connection, Model};
 
-/// Finishes the turn: warns when the step limit cut it short, and commits a waiting move.
+/// Finishes the turn: warns when the step limit cut it short, and commits a queued move.
 pub(crate) struct FinishTurn<M, C>(pub(crate) Arc<Agent<M, C>>);
 
 #[async_trait]
@@ -25,8 +25,7 @@ impl<M: Model, C: Connection> Task for FinishTurn<M, C> {
                 "step limit: the GM turn stopped after {MAX_TOOL_CALLS} tool calls"
             ));
         }
-        let move_waiting = self.0.turn().move_waiting;
-        if move_waiting {
+        if !self.0.state().queued_moves.is_empty() {
             self.0.send_command("commit", json!(COMMIT_ROUND)).await?;
         }
         Ok(TaskResult::new(None, NextAction::End))
