@@ -54,7 +54,7 @@ packs/                 sample-d20 is the starter. demo-d20 is the short demo. on
 crates/
   protocol/            spookery-protocol: the message envelope, its bodies, and the command table
   engine/              spookery-engine: world model, rules, rounds, and journal
-  agent/               spookery-agent: the reusable GM brain: connection, model, chat_completions, context (the opening prompt), tool, turn and task (the turn graph)
+  agent/               spookery-agent: the reusable GM brain: connection, model, chat_completions, context (the observation), tool, turn and task (the turn graph)
   client/              spookery-client: play, gm, ai_gm (the three clients), ws, http_model, text
   server/              spookery-server: the table, the game port's WebSocket endpoint, MCP endpoint, GM commands, seats, idle timer
   spook/               package and binary spook, library spookery

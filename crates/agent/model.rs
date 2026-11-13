@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 /// Sent from the agent to its `Model`: one message of a turn's conversation.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Message {
-    /// The turn's opening prompt.
+    /// The turn's observation.
     User { content: String },
     /// One model reply, its tool calls echoed back as they came.
     Assistant { tool_calls: Vec<ToolCall> },

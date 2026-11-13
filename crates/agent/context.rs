@@ -1,5 +1,5 @@
 //! What the model reads first on a turn: the server's state as this client has read it, and the
-//! opening prompt built from it.
+//! observation built from it.
 
 use std::collections::VecDeque;
 
@@ -26,7 +26,7 @@ pub(crate) struct ClientState {
     /// Player says read since a turn last showed them to the model.
     new_player_lines: Vec<TapeLine>,
     wakes: VecDeque<Wake>,
-    /// The recent tape every opening prompt shows.
+    /// The recent tape every observation shows.
     tape_lines: Vec<TapeLine>,
 }
 
@@ -78,11 +78,11 @@ impl ClientState {
         }
     }
 
-    /// The next turn, when a wake waits: its opening prompt and the new player lines.
+    /// The next turn, when a wake waits: its observation and the new player lines.
     pub(crate) fn start_turn(&mut self) -> Option<Turn> {
         let wake = self.wakes.pop_front()?;
         let player_lines = std::mem::take(&mut self.new_player_lines);
-        let prompt = render_prompt(&Opening {
+        let prompt = render_prompt(&Observation {
             menu: &self.pack.menu,
             tape_lines: &self.tape_lines,
             new_player_lines: &player_lines,
@@ -158,10 +158,11 @@ fn push_recent(tape_lines: &mut Vec<TapeLine>, line: TapeLine) {
     }
 }
 
-/// What the model reads first on a turn: the menu, the recent tape, the new player lines,
-/// the queued moves, what woke the turn and the actors present.
+/// What the GM can see of the game when a turn starts, sent as the turn's first message on
+/// every model call: the menu, the recent tape, the new player lines, the queued moves, what
+/// woke the turn and the actors present.
 #[derive(Serialize)]
-struct Opening<'a> {
+struct Observation<'a> {
     menu: &'a [MenuRow],
     tape_lines: &'a [TapeLine],
     new_player_lines: &'a [TapeLine],
@@ -170,8 +171,8 @@ struct Opening<'a> {
     actors_present: &'a [String],
 }
 
-fn render_prompt(opening: &Opening) -> String {
-    serde_json::to_string(opening).expect("prompt json")
+fn render_prompt(observation: &Observation) -> String {
+    serde_json::to_string(observation).expect("prompt json")
 }
 
 #[cfg(test)]
