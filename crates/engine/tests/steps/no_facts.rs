@@ -7,7 +7,7 @@ use cucumber::{given, then, when};
 use spookery_engine::testing::{self as support, journal::list_round_keys};
 use spookery_engine::Presence;
 
-use crate::{id_named, split_line, World};
+use crate::{resolve_id, split_line, World};
 
 #[given(expr = "a copy of the sample-d20 pack")]
 fn a_copy_of_the_sample_d20_pack(world: &mut World) {
@@ -34,7 +34,7 @@ fn two_location_effects_for_lark(world: &mut World) {
 
 #[then(regex = r#"^(\S+) is in (\S+|"[^"]+")$"#)]
 fn is_in(world: &mut World, actor: String, place: String) {
-    let place = id_named(world.pack(), place.trim_matches('"'));
+    let place = resolve_id(world.pack(), place.trim_matches('"'));
     assert_eq!(place_of(world.pack(), &actor), place);
 }
 
@@ -154,7 +154,7 @@ fn place_of(pack: &Path, actor: &str) -> String {
     support::state_of(pack)
         .actors()
         .place
-        .get(id_named(pack, actor).as_str())
+        .get(resolve_id(pack, actor).as_str())
         .unwrap_or_else(|| panic!("{actor} missing"))
         .to_string()
 }

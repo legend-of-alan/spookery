@@ -506,7 +506,7 @@ fn world_time_is_1085(world: &mut World) {
 
 /// The id of the cast member or place in `pack` whose display name is `name`; any other text,
 /// such as an id or an exit address, as written.
-pub(crate) fn id_named(pack: &Path, name: &str) -> String {
+pub(crate) fn resolve_id(pack: &Path, name: &str) -> String {
     let canon = spookery_engine::load_canon(pack).unwrap_or_else(|err| panic!("load: {err:?}"));
     let cast = canon.cast.keys().map(spookery_engine::ActorId::as_str);
     let mut ids = cast.chain(canon.places.keys().map(spookery_engine::PlaceId::as_str));
@@ -519,7 +519,7 @@ fn place_of(pack: &Path, actor: &str) -> String {
     state_of(pack)
         .actors()
         .place
-        .get(id_named(pack, actor).as_str())
+        .get(resolve_id(pack, actor).as_str())
         .unwrap_or_else(|| panic!("{actor} has no place"))
         .to_string()
 }
@@ -529,12 +529,12 @@ fn place_of(pack: &Path, actor: &str) -> String {
 fn is_in(world: &mut World, actor: String, place: String) {
     let pack = table::pack(world);
     let [actor, place] = [&actor, &place].map(|name| name.trim_matches('"'));
-    assert_eq!(place_of(pack, actor), id_named(pack, place));
+    assert_eq!(place_of(pack, actor), resolve_id(pack, place));
 }
 
 #[when(expr = "the player marks {word}")]
 fn the_player_marks(world: &mut World, actor: String) {
-    let line = format!("mark {}", id_named(table::pack(world), &actor));
+    let line = format!("mark {}", resolve_id(table::pack(world), &actor));
     let (mark, added) = table::player_send(world, &line, "\"kind\":");
     world.mark = mark;
     world.player_added = added;

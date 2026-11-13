@@ -7,7 +7,7 @@ use serde_json::Value;
 use spookery_engine::testing::{faces, RollKey};
 use spookery_engine::{component, entity, State};
 
-use super::common::{id_named, split_line};
+use super::common::{resolve_id, split_line};
 use super::table;
 use crate::support;
 use crate::World;
@@ -187,7 +187,7 @@ fn nell_holds_a_tonic(world: &mut World) {
 #[when(regex = r#"^([A-Z]\S*) types "(.*)"$"#)]
 fn actor_types(world: &mut World, actor: String, line: String) {
     let pack = world.pack.clone().unwrap();
-    world.scratch = match handle_move(&pack, &id_named(&pack, &actor), &line) {
+    world.scratch = match handle_move(&pack, &resolve_id(&pack, &actor), &line) {
         Ok(_) => "ok".to_string(),
         Err(err) => err.code.as_str().to_string(),
     };

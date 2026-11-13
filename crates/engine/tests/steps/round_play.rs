@@ -6,7 +6,7 @@ use serde_json::Value;
 use spookery_engine::testing::{faces, RollKey};
 use spookery_engine::{component, MoveReport};
 
-use crate::{id_named, World};
+use crate::{resolve_id, World};
 use spookery_engine::testing::{self as support, read_round};
 
 #[given(expr = "a round where Lark rolls grit")]
@@ -363,7 +363,7 @@ fn rowan_asks_aldric_until_it_finishes(world: &mut World) {
 
 #[then(expr = "{word}'s rest is {int}")]
 fn rest_is(world: &mut World, actor: String, rest: i64) {
-    let actor = spookery_engine::entity::Id::Actor(id_named(world.pack(), &actor).into());
+    let actor = spookery_engine::entity::Id::Actor(resolve_id(world.pack(), &actor).into());
     let now = support::state_of(world.pack());
     let held = now.entities().get::<component::Meter>(&actor).value("rest");
     assert_eq!(held, Ok(rest), "{}", world.scratch);

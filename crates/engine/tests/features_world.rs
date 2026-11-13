@@ -58,7 +58,7 @@ pub fn split_line(line: &str) -> (&str, Option<&str>) {
 
 /// The id of the cast member or place in `pack` whose display name is `name`; any other text,
 /// such as an id or an exit address, as written.
-pub fn id_named(pack: &Path, name: &str) -> String {
+pub fn resolve_id(pack: &Path, name: &str) -> String {
     let canon = spookery_engine::load_canon(pack).unwrap_or_else(|err| panic!("load: {err:?}"));
     let cast = canon.cast.keys().map(spookery_engine::ActorId::as_str);
     let mut ids = cast.chain(canon.places.keys().map(spookery_engine::PlaceId::as_str));

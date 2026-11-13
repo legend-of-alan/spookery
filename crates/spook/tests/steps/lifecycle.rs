@@ -5,7 +5,7 @@ use std::fs;
 use cucumber::{given, then, when};
 use spookery_engine::{component, entity, Presence, World as Engine};
 
-use super::common::{give_key, id_named};
+use super::common::{give_key, resolve_id};
 use super::rules::open;
 use crate::support::{append, copy_docks, edit_save, read_round, stamp_pack_rev, state_of};
 use crate::World;
@@ -195,7 +195,7 @@ fn spook_check_refuses_the_verb(world: &mut World, verb: String) {
 #[given(expr = "{word} stands on {word} in the save")]
 fn stands_on(world: &mut World, actor: String, place: String) {
     let pack = world.pack.as_ref().unwrap();
-    let [actor, place] = [actor, place].map(|name| id_named(pack, &name));
+    let [actor, place] = [actor, place].map(|name| resolve_id(pack, &name));
     edit_save(pack, |now| {
         now.actors_mut()
             .get_mut::<component::Place>(&actor.into())
