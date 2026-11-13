@@ -102,7 +102,7 @@ impl ClientState {
     pub(crate) fn record_turn(&mut self, turn: Turn) {
         let seen = turn.player_lines.iter().map(|line| line.seq).max();
         for line in turn.player_lines.into_iter().chain(turn.gm_lines) {
-            keep_recent(&mut self.tape_lines, line);
+            push_recent(&mut self.tape_lines, line);
         }
         if let Some(seen) = seen {
             self.wakes.retain(|wake| match wake {
@@ -150,8 +150,8 @@ enum Wake {
     QueuedMove,
 }
 
-/// Add `line` to the prompt's `tape_lines`, which keeps the latest `RECENT_LINES`.
-fn keep_recent(tape_lines: &mut Vec<TapeLine>, line: TapeLine) {
+/// Pushes `line` onto the prompt's `tape_lines`, and drops the oldest past `RECENT_LINES`.
+fn push_recent(tape_lines: &mut Vec<TapeLine>, line: TapeLine) {
     tape_lines.push(line);
     if tape_lines.len() > RECENT_LINES {
         tape_lines.drain(..tape_lines.len() - RECENT_LINES);
@@ -190,7 +190,7 @@ mod tests {
                 actor: None,
                 text: index.to_string(),
             };
-            keep_recent(&mut tape_lines, line);
+            push_recent(&mut tape_lines, line);
         }
         assert_eq!(tape_lines.len(), RECENT_LINES);
         assert_eq!(tape_lines[0].text, "4");
