@@ -504,37 +504,29 @@ fn world_time_is_1085(world: &mut World) {
     table::wait_round(world, 1085);
 }
 
-/// The id of the cast member or place in `pack` whose display name is `name`; any other text,
+/// The id of the cast member or place in `canon` whose display name is `name`; any other text,
 /// such as an id or an exit address, as written.
-pub(crate) fn resolve_id(pack: &Path, name: &str) -> String {
-    let canon = spookery_engine::load_canon(pack).unwrap_or_else(|err| panic!("load: {err:?}"));
+pub(crate) fn resolve_id(canon: &spookery_engine::testing::Canon, name: &str) -> String {
     let cast = canon.cast.keys().map(spookery_engine::ActorId::as_str);
     let mut ids = cast.chain(canon.places.keys().map(spookery_engine::PlaceId::as_str));
     let named = ids.find(|id| canon.display_name(id) == name);
     named.unwrap_or(name).to_string()
 }
 
-/// Where the cast member named `actor` stands in the replayed save.
-fn place_of(pack: &Path, actor: &str) -> String {
-    state_of(pack)
-        .actors()
-        .place
-        .get(resolve_id(pack, actor).as_str())
-        .unwrap_or_else(|| panic!("{actor} has no place"))
-        .to_string()
-}
-
-#[given(regex = r#"^(\S+) is (?:in|at) (\S+|"[^"]+")$"#)]
-#[then(regex = r#"^(\S+) is (?:in|at) (\S+|"[^"]+")$"#)]
+#[given(regex = r#"^(?P<actor>\S+) is (?:in|at) (?P<place>\S+|"[^"]+")$"#)]
+#[then(regex = r#"^(?P<actor>\S+) is (?:in|at) (?P<place>\S+|"[^"]+")$"#)]
 fn is_in(world: &mut World, actor: String, place: String) {
-    let pack = table::pack(world);
-    let [actor, place] = [&actor, &place].map(|name| name.trim_matches('"'));
-    assert_eq!(place_of(pack, actor), resolve_id(pack, place));
+    let now = state_of(table::pack(world));
+    let [actor, place] =
+        [&actor, &place].map(|name| resolve_id(now.canon(), name.trim_matches('"')));
+    assert_eq!(now.actors().place[actor.as_str()], place);
 }
 
-#[when(expr = "the player marks {word}")]
+#[when(regex = r"^the player marks (?P<actor>\S+)$")]
 fn the_player_marks(world: &mut World, actor: String) {
-    let line = format!("mark {}", resolve_id(table::pack(world), &actor));
+    let canon = spookery_engine::load_canon(table::pack(world))
+        .unwrap_or_else(|err| panic!("load: {err:?}"));
+    let line = format!("mark {}", resolve_id(&canon, &actor));
     let (mark, added) = table::player_send(world, &line, "\"kind\":");
     world.mark = mark;
     world.player_added = added;

@@ -59,6 +59,7 @@ fn handle_move(
     line: &str,
 ) -> Result<Vec<spookery_engine::RoundOutput>, spookery_engine::Refusal> {
     let mut world = super::rules::open(pack);
+    let actor = resolve_id(world.canon(), actor);
     let (verb, target) = split_line(line);
     let nobody = spookery_engine::Presence::default();
     world.queue_player_move(&nobody, &actor.into(), verb, target)?;
@@ -184,10 +185,10 @@ fn nell_holds_a_tonic(world: &mut World) {
 }
 
 // A capital first letter keeps `play types {string}`, which types into the play client, apart.
-#[when(regex = r#"^([A-Z]\S*) types "(.*)"$"#)]
+#[when(regex = r#"^(?P<actor>[A-Z]\S*) types "(?P<text>.*)"$"#)]
 fn actor_types(world: &mut World, actor: String, line: String) {
     let pack = world.pack.clone().unwrap();
-    world.scratch = match handle_move(&pack, &resolve_id(&pack, &actor), &line) {
+    world.scratch = match handle_move(&pack, &actor, &line) {
         Ok(_) => "ok".to_string(),
         Err(err) => err.code.as_str().to_string(),
     };

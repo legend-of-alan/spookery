@@ -361,10 +361,10 @@ fn rowan_asks_aldric_until_it_finishes(world: &mut World) {
     }
 }
 
-#[then(expr = "{word}'s rest is {int}")]
+#[then(regex = r"^(?P<actor>\S+)'s rest is (?P<rest>\d+)$")]
 fn rest_is(world: &mut World, actor: String, rest: i64) {
-    let actor = spookery_engine::entity::Id::Actor(resolve_id(world.pack(), &actor).into());
     let now = support::state_of(world.pack());
+    let actor = spookery_engine::entity::Id::Actor(resolve_id(now.canon(), &actor).into());
     let held = now.entities().get::<component::Meter>(&actor).value("rest");
     assert_eq!(held, Ok(rest), "{}", world.scratch);
 }

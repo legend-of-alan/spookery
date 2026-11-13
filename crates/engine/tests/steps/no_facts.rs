@@ -32,10 +32,12 @@ fn two_location_effects_for_lark(world: &mut World) {
     );
 }
 
-#[then(regex = r#"^(\S+) is in (\S+|"[^"]+")$"#)]
+#[then(regex = r#"^(?P<actor>\S+) is in (?P<place>\S+|"[^"]+")$"#)]
 fn is_in(world: &mut World, actor: String, place: String) {
-    let place = resolve_id(world.pack(), place.trim_matches('"'));
-    assert_eq!(place_of(world.pack(), &actor), place);
+    let now = support::state_of(world.pack());
+    let [actor, place] =
+        [&actor, &place].map(|name| resolve_id(now.canon(), name.trim_matches('"')));
+    assert_eq!(now.actors().place[actor.as_str()], place);
 }
 
 #[when(expr = "Nell waits")]
@@ -147,16 +149,6 @@ fn strip_room_facts(pack: &Path) {
     assert!(unix.contains(from), "room facts were not found\n{unix}");
     fs::write(&path, unix.replace(from, "facts: []\n"))
         .unwrap_or_else(|err| panic!("write rooms: {err}"));
-}
-
-/// Where the cast member named `actor` stands in the replayed save.
-fn place_of(pack: &Path, actor: &str) -> String {
-    support::state_of(pack)
-        .actors()
-        .place
-        .get(resolve_id(pack, actor).as_str())
-        .unwrap_or_else(|| panic!("{actor} missing"))
-        .to_string()
 }
 
 fn location_effects(pack: &Path, actor: &str) -> Vec<(String, String)> {

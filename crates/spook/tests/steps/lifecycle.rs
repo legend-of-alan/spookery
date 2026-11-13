@@ -192,11 +192,10 @@ fn spook_check_refuses_the_verb(world: &mut World, verb: String) {
     assert!(refused, "{diags:?}");
 }
 
-#[given(expr = "{word} stands on {word} in the save")]
+#[given(regex = r"^(?P<actor>\S+) stands on (?P<place>\S+) in the save$")]
 fn stands_on(world: &mut World, actor: String, place: String) {
-    let pack = world.pack.as_ref().unwrap();
-    let [actor, place] = [actor, place].map(|name| resolve_id(pack, &name));
-    edit_save(pack, |now| {
+    edit_save(world.pack.as_ref().unwrap(), |now| {
+        let [actor, place] = [actor, place].map(|name| resolve_id(now.canon(), &name));
         now.actors_mut()
             .get_mut::<component::Place>(&actor.into())
             .set(&place)
