@@ -1,4 +1,3 @@
-use spookery_engine::testing::state_of;
 use std::fs;
 use std::path::Path;
 
@@ -8,6 +7,7 @@ use spookery_engine::Reason;
 use crate::support::{copy_docks, insert_nell, read_round, stamp_pack_rev};
 use crate::World;
 
+use super::common::rowan_place;
 use super::table;
 
 #[given(expr = "a docks table where mark needs a knife")]
@@ -57,11 +57,6 @@ fn rowan_is_in_docks_shop(world: &mut World) {
     assert_eq!(rowan_place(table::pack(world)), "docks_shop");
 }
 
-#[then(expr = "Rowan is in docks_street")]
-fn rowan_is_in_docks_street(world: &mut World) {
-    assert_eq!(rowan_place(table::pack(world)), "docks_street");
-}
-
 #[then(expr = "the round records the move to the street")]
 fn the_round_records_the_move(world: &mut World) {
     assert_location(table::pack(world), "round-0001");
@@ -78,15 +73,6 @@ fn assert_location(pack: &Path, name: &str) {
     assert_eq!(hits.len(), 1);
     assert_eq!(hits[0]["from"], "docks_shop");
     assert_eq!(hits[0]["to"], "docks_street");
-}
-
-fn rowan_place(pack: &Path) -> String {
-    state_of(pack)
-        .actors()
-        .place
-        .get("rowan")
-        .unwrap()
-        .to_string()
 }
 
 fn add_knife_and_mark_rule(pack: &Path) {

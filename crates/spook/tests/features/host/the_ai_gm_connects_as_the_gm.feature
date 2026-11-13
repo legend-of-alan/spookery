@@ -48,15 +48,31 @@ Feature: The AI GM connects as the GM
     And the queued line committed one round
     And the error line shows the provider's text without the key
 
-  Scenario: The AI GM seat submits a say and reports a refused call
-    Given a docks table with a seated player
-    When the GM seat says good evening and calls an unknown tool
-    Then the player saw a say from the GM
-    And the tape from is gm
-    And the GM call was refused
+  Scenario: A say leaves world time alone and the GM's own say does not call the model
+    Given a docks table with the scripted AI GM and a seated player
+    And a scripted model that says evening to the table
+    When the player says hello
+    Then the tape from is gm
+    And the tape contains the text "evening"
+    And the GM's own say did not call the model
+    And world_time is 1080
 
-  Scenario: A scripted AI GM follows the turn rules
-    When the scripted AI GM plays the turn checks
+  Scenario: Travel still commits one round after a model transport error
+    Given a docks table with the scripted AI GM and a seated player
+    And a scripted model whose first call fails in transport
+    When the player travels to Docks Street
+    Then one round committed
+    And the model was called once
+    And Rowan is in docks_street
+
+  Scenario: The rolls are narrated without another round
+    Given a docks table with the scripted AI GM and a seated player
+    And a scripted model that ends the turn, then says the roll lands
+    When the player tries grit
+    Then one round committed
+    And the tape contains the text "the roll lands"
+    And the model narrated the rolls in the same turn
+    And world time moved one round
 
   Scenario: Play, the AI GM, and a stub share one speech turn and one travel turn
     When play and the AI GM and a stub run a speech turn and a travel turn

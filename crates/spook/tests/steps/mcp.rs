@@ -382,8 +382,31 @@ fn agent_says_over_http(world: &mut World) {
         json!({"address": "table", "text": "good evening"}),
     );
     assert_not_refused(&said, "say");
-    support::block_on(gm.close());
     world.player_added = table::wait_player_from(world, mark, "{\"kind\":\"say\"");
+    world.http_gm = Some(gm);
+}
+
+#[when(expr = "the agent calls an unknown tool over HTTP")]
+fn agent_calls_an_unknown_tool(world: &mut World) {
+    let mut gm = world
+        .http_gm
+        .take()
+        .unwrap_or_else(|| panic!("no agent holds the seat"));
+    let reply = call(&mut gm, "not_in_spec", json!({}));
+    support::block_on(gm.close());
+    world.scratch = json!(reply).to_string();
+}
+
+#[then(expr = "the unknown tool call was refused")]
+fn the_unknown_tool_call_was_refused(world: &mut World) {
+    let reply: Vec<ServerMessage> =
+        serde_json::from_str(&world.scratch).unwrap_or_else(|err| panic!("reply: {err}"));
+    let last = reply.last().map(|reply| &reply.body);
+    assert!(
+        matches!(last, Some(ServerBody::Refused(_))),
+        "{}",
+        world.scratch
+    );
 }
 
 fn call_each_gm_tool(gm: &mut GmClient) {
