@@ -141,15 +141,25 @@ pub fn drain(reader: impl Read + Send + 'static, slot: Arc<Mutex<String>>) -> Jo
     std::thread::spawn(move || {
         let mut reader = reader;
         let mut buf = [0u8; 256];
+        // Bytes of a character split across reads wait for the rest of it.
+        let mut pending = Vec::new();
         loop {
             match reader.read(&mut buf) {
                 Ok(0) | Err(_) => break,
-                Ok(n) => slot
-                    .lock()
-                    .unwrap_or_else(|err| err.into_inner())
-                    .push_str(&String::from_utf8_lossy(&buf[..n])),
+                Ok(n) => {
+                    pending.extend_from_slice(&buf[..n]);
+                    let complete_len = match std::str::from_utf8(&pending) {
+                        Err(err) if err.error_len().is_none() => err.valid_up_to(),
+                        _ => pending.len(),
+                    };
+                    let mut text = slot.lock().unwrap_or_else(|err| err.into_inner());
+                    text.push_str(&String::from_utf8_lossy(&pending[..complete_len]));
+                    pending.drain(..complete_len);
+                }
             }
         }
+        let mut text = slot.lock().unwrap_or_else(|err| err.into_inner());
+        text.push_str(&String::from_utf8_lossy(&pending));
     })
 }
 
