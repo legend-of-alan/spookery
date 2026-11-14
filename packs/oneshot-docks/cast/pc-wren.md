@@ -1,7 +1,7 @@
 ---
 schema: cast
 id: wren
-kind: pc_template
+control_type: pc_template
 display_name: Wren
 idle:
   eligible: false

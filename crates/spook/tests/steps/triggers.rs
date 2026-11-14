@@ -924,7 +924,7 @@ fn a_cast_id_world_and_a_bad_reveal(world: &mut World) {
 ---
 schema: cast
 id: world
-kind: npc
+control_type: npc
 display_name: World
 idle:
   eligible: false
@@ -1026,7 +1026,7 @@ fn downed_pack(
 ---
 schema: cast
 id: briar
-kind: npc
+control_type: npc
 display_name: Briar
 flags:
   - downed
@@ -1136,7 +1136,7 @@ fn write_nell(pack: &Path, flags: &[&str]) {
 ---
 schema: cast
 id: nell
-kind: pc_template
+control_type: pc_template
 display_name: Nell
 idle:
   eligible: false

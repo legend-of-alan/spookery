@@ -581,7 +581,7 @@ fn both_see_the_same_messages(world: &mut World) {
         panic!("two GMs did not both send");
     };
     assert_eq!(mcp, ws);
-    let kinds: Vec<Value> = mcp
+    let reply_kinds: Vec<Value> = mcp
         .iter()
         .map(|call| {
             let messages: Vec<Value> = serde_json::from_str(call).unwrap();
@@ -589,7 +589,7 @@ fn both_see_the_same_messages(world: &mut World) {
         })
         .collect();
     assert_eq!(
-        kinds,
+        reply_kinds,
         [json!("refused"), json!("queued"), json!("committed")]
     );
     assert!(mcp[2].contains("\"kind\":\"round\""), "{}", mcp[2]);

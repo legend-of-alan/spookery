@@ -171,7 +171,7 @@ fn two_arrivals(world: &mut World) {
     let pack = copy_docks("two-arrivals");
     fs::write(
         pack.join("cast/pc-nell.md"),
-        "---\nschema: cast\nid: nell\nkind: pc_template\ndisplay_name: Nell\nidle:\n  eligible: false\n---\nNell.\n",
+        "---\nschema: cast\nid: nell\ncontrol_type: pc_template\ndisplay_name: Nell\nidle:\n  eligible: false\n---\nNell.\n",
     )
     .unwrap();
     edit_save(&pack, |now| {
@@ -310,7 +310,7 @@ fn both_busy_without_a_gm(world: &mut World) {
     });
     fs::write(
         pack.join("cast/pc-nell.md"),
-        "---\nschema: cast\nid: nell\nkind: pc_template\ndisplay_name: Nell\nidle:\n  eligible: false\n---\nNell.\n",
+        "---\nschema: cast\nid: nell\ncontrol_type: pc_template\ndisplay_name: Nell\nidle:\n  eligible: false\n---\nNell.\n",
     )
     .unwrap();
     edit_save(&pack, |now| {

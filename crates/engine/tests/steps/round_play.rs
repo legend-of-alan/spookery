@@ -950,7 +950,7 @@ fn a_cast_member_the_save_does_not_list(world: &mut World, row: String) {
     let pack = support::copy_pack("oneshot-docks", "unlisted-actor");
     fs::write(
         pack.join("cast/pc-nell.md"),
-        "---\nschema: cast\nid: nell\nkind: pc_template\ndisplay_name: Nell\nidle:\n  eligible: false\nflags:\n    - marked\n---\nNell.\n",
+        "---\nschema: cast\nid: nell\ncontrol_type: pc_template\ndisplay_name: Nell\nidle:\n  eligible: false\nflags:\n    - marked\n---\nNell.\n",
     )
     .unwrap();
     support::append(

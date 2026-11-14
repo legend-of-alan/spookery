@@ -5,6 +5,7 @@ use std::path::Path;
 
 use serde::Deserialize;
 
+use crate::canon;
 use crate::diagnostic::Diagnostic;
 use crate::entity;
 use crate::hash::blake2s_tagged;
@@ -14,7 +15,7 @@ use crate::state::component::meter::MeterDef;
 use crate::state::component::modifier::ModifierDef;
 use crate::state::id::{ActorId, ExitId, PlaceId, StoryId};
 use crate::Reason;
-pub use spookery_protocol::{CastKind, MenuRow, PackSummary};
+pub use spookery_protocol::{ControlType, MenuRow, PackSummary};
 
 mod budget;
 mod cast;
@@ -143,7 +144,7 @@ pub struct StoryDef {
 
 #[derive(Clone, Debug)]
 pub struct CastDef {
-    pub kind: CastKind,
+    pub control_type: canon::ControlType,
     pub display_name: String,
     /// The flags an effect may set on this actor.
     pub flags: Vec<String>,
@@ -188,10 +189,10 @@ impl Canon {
                 target: token.to_string(),
             })
             .collect();
-        let kinds = self
+        let control_types = self
             .cast
             .iter()
-            .map(|(k, m)| (k.to_string(), m.kind))
+            .map(|(k, m)| (k.to_string(), m.control_type))
             .collect();
         let clip = |s: &str| s.chars().take(800).collect();
         let places = self
@@ -206,7 +207,7 @@ impl Canon {
             .collect();
         PackSummary {
             menu,
-            kinds,
+            control_types,
             places,
             cast,
         }
@@ -470,7 +471,7 @@ mod tests {
     }
 
     #[test]
-    fn menu_rows_keep_verbs_and_habits_and_kinds() {
+    fn menu_rows_keep_verbs_and_habits_and_control_types() {
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packs/oneshot-docks");
         let mut canon = load_canon(&root).expect("docks canon");
         canon.cast.get_mut("mira").unwrap().body = "CAST-BODY-SENTINEL".to_string();
@@ -484,9 +485,15 @@ mod tests {
             .menu
             .iter()
             .any(|row| row.name == "restock_lamp_oil" && row.kind == "habit"));
-        assert_eq!(summary.kinds.get("mira"), Some(&CastKind::Npc));
-        assert_eq!(summary.kinds.get("rowan"), Some(&CastKind::PcTemplate));
-        let rendered = format!("{:?}{:?}", summary.menu, summary.kinds);
+        assert_eq!(
+            summary.control_types.get("mira"),
+            Some(&canon::ControlType::Npc)
+        );
+        assert_eq!(
+            summary.control_types.get("rowan"),
+            Some(&canon::ControlType::PcTemplate)
+        );
+        let rendered = format!("{:?}{:?}", summary.menu, summary.control_types);
         assert!(!rendered.contains("CAST-BODY-SENTINEL"));
         assert_eq!(
             summary.cast.get("mira").map(String::as_str),

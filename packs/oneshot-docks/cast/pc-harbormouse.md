@@ -1,7 +1,7 @@
 ---
 schema: cast
 id: harbormouse
-kind: pc_template
+control_type: pc_template
 display_name: Harbormouse
 idle:
   eligible: false

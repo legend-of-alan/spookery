@@ -1,7 +1,7 @@
 ---
 schema: cast
 id: lark
-kind: pc_template
+control_type: pc_template
 display_name: Lark
 idle:
   eligible: false

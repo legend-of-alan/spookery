@@ -205,6 +205,11 @@ fn break_pack(pack: &Path, fault: &str) {
             "      verb: wait\n",
             "      verb: say\n",
         ),
+        "a cast role named kind" => replace_in_file(
+            &pack.join("cast/pc-rowan.md"),
+            "control_type: pc_template\n",
+            "kind: pc_template\n",
+        ),
         "flags under idle" => replace_in_file(
             &pack.join("cast/pc-rowan.md"),
             "  eligible: false\n",

@@ -1,7 +1,7 @@
 ---
 schema: cast
 id: rowan
-kind: pc_template
+control_type: pc_template
 display_name: Rowan
 idle:
   eligible: false

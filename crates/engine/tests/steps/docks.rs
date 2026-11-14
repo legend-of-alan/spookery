@@ -326,7 +326,7 @@ A gate.
 ---
 schema: cast
 id: rowan
-kind: pc_template
+control_type: pc_template
 display_name: Rowan
 ---
 Rowan.
@@ -434,7 +434,7 @@ A yard.
 ---
 schema: cast
 id: {id}
-kind: npc
+control_type: npc
 display_name: {id}
 idle:
   eligible: true

@@ -41,6 +41,7 @@ Feature: spook check explains a broken pack
       | a verb named look            | rules/verbs.yaml           | SCHEMA            | 'look' is a built-in command       |
       | a verb named say             | rules/verbs.yaml           | SCHEMA            | 'say' is a built-in command        |
       | flags under idle             | cast/pc-rowan.md           | SCHEMA            | unknown field                      |
+      | a cast role named kind       | cast/pc-rowan.md           | SCHEMA            | unknown field 'kind'               |
       | missing display_name         | cast/pc-rowan.md           | SCHEMA            | display_name                       |
       | idle maybe                   | rules/budget.yaml          | SCHEMA            | not on or off                      |
       | zero round interval          | rules/budget.yaml          | SCHEMA            | round_every_real_seconds           |
@@ -101,9 +102,9 @@ Feature: spook check explains a broken pack
     And stderr is empty
     And the pack bytes are unchanged
 
-  Scenario: A component on an actor with no kind is refused
+  Scenario: A component on an actor with no control type is refused
     Given a docks table
-    When the save gives meters to an actor with no kind
+    When the save gives meters to an actor with no control type
     And the operator runs spook check --json
     Then the check exits 1
     And the JSON array is one diagnostic code "SCHEMA" file "state/save.yaml" path "actors.meters.nobody"

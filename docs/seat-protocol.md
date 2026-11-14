@@ -181,7 +181,7 @@ A move the table can judge at once is refused before it is queued. Here Rowan se
 
 ### status
 
-The table's state for a GM. `world_time` is the game clock in ticks. `pack_rev` is the canon hash. A client that opened the pack on disk should compare it and leave on a mismatch. `last_round_at` is the save's stamp. `queued` lists the waiting moves. `pack` is the move menu, the cast kinds, and the place and cast prose.
+The table's state for a GM. `world_time` is the game clock in ticks. `pack_rev` is the canon hash. A client that opened the pack on disk should compare it and leave on a mismatch. `last_round_at` is the save's stamp. `queued` lists the waiting moves. `pack` is the move menu, each cast entry's `control_type` (`npc` or `pc_template`), and the place and cast prose.
 
 <!-- example: gm-status -->
 ```json
@@ -199,7 +199,7 @@ The table's state for a GM. `world_time` is the game clock in ticks. `pack_rev` 
     "world_time": 1080,
     "round_index": 0,
     "state_rev": 0,
-    "pack_rev": "blake2s:f83d3bd86eb8b01d3b4c4a7e8b8863dc6d2e478405a3cc5e2ef6a9e44e387e0c",
+    "pack_rev": "blake2s:9526c8f8ed5a3d0c551cc714b446c19568d7228a3215b9b48e851d857b20ac4d",
     "last_round_at": "2026-01-01T00:00:00Z",
     "queued": [],
     "pack": {
@@ -250,7 +250,7 @@ The table's state for a GM. `world_time` is the game clock in ticks. `pack_rev` 
           "target": "none"
         }
       ],
-      "kinds": {
+      "control_types": {
         "aldric": "npc",
         "bram": "npc",
         "mira": "npc",
@@ -516,5 +516,6 @@ The MCP endpoint answers with an HTTP status before any seat: 400 for an `MCP-Pr
 - Version 2 narrowed one field before any release, on purpose, when every move got one start and finish: `cant_act` now means the viewer can't send a move at all, and being busy moved to the new `busy`. A walk's line moved with it. The version stayed 2 because no build had shipped.
 - Version 2 narrowed `status` before any release, on purpose: `pack` is now required, so a GM client no longer allows for a server that leaves it out. The version stayed 2 because no build had shipped.
 - Version 2 renamed the command fields before any release, on purpose, so a client body is named by `kind` like a server body: a client body's `word` became `kind`, and the `words` of `hello` and `help` became `commands`. The command names did not change. The recording took the new names with it. The version stayed 2 because no build had shipped.
+- Version 2 renamed the cast's role before any release, on purpose, so the cast and the engine say the same word: `pack.kinds` in `status` became `pack.control_types`, and a cast file's `kind` became `control_type`. The values did not change. The recording took the new name and the docks pack's new `pack_rev` with it. The version stayed 2 because no build had shipped.
 - The recorded session must still replay. Each message it got must still arrive at that seat, in order, with every field it had and the same value. New kinds and fields may come between. Only `seq`, which a new kind moves, and `token`, which each table mints, may differ.
 - The journal and refusal codes stay strict: `spook verify` fails on a code it does not know.

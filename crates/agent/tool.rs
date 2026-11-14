@@ -8,7 +8,7 @@ use serde::Serialize;
 use serde_json::{json, Value};
 
 use crate::protocol::{
-    CastKind, ItemStack, MeterView, NoteView, PackSummary, Reason, ServerBody, CLIENT_SCHEMA,
+    self, ItemStack, MeterView, NoteView, PackSummary, Reason, ServerBody, CLIENT_SCHEMA,
     PERCEIVE_BODY_CHARS,
 };
 use crate::{Agent, Connection, Model, ToolCall};
@@ -89,7 +89,7 @@ fn render_result(pack: &PackSummary, body: ServerBody) -> String {
         .chain(&view.visible_actors)
         .filter_map(|id| Some((id.clone(), cut(pack.cast.get(id)?))))
         .collect();
-    let npc = pack.kinds.get(&view.viewer) != Some(&CastKind::PcTemplate);
+    let npc = pack.control_types.get(&view.viewer) != Some(&protocol::ControlType::PcTemplate);
     let facts = view.known_facts.into_iter().map(|fact| FactLine {
         id: fact.id,
         text: fact.text,
@@ -143,11 +143,11 @@ mod tests {
     fn docks() -> PackSummary {
         PackSummary {
             menu: Vec::new(),
-            kinds: BTreeMap::from([
-                ("aldric".into(), CastKind::Npc),
-                ("bram".into(), CastKind::Npc),
-                ("mira".into(), CastKind::Npc),
-                ("rowan".into(), CastKind::PcTemplate),
+            control_types: BTreeMap::from([
+                ("aldric".into(), protocol::ControlType::Npc),
+                ("bram".into(), protocol::ControlType::Npc),
+                ("mira".into(), protocol::ControlType::Npc),
+                ("rowan".into(), protocol::ControlType::PcTemplate),
             ]),
             places: BTreeMap::from([("docks_shop".into(), "The shop smells of tar.".into())]),
             cast: BTreeMap::from([
