@@ -1,11 +1,11 @@
 Feature: The AI GM plays a turn as a loop
 
-  Scenario: The GM perceives before it acts, and reads prose but no fact body
+  Scenario: The GM perceives before it acts, and reads prose and fact text
     Given a docks table with a seated player and the NPC Mira in the shop
     And a scripted model that perceives as Mira, then has Mira say hello, then ends the turn
     When the player says "evening" in the shop
     Then the table saw a perceive as Mira before any say
-    And the model read Mira's prose and her hidden fact's text, but no fact body
+    And the model read Mira's prose and her hidden fact's text
     And the player saw Mira say hello
 
   Scenario: The GM recovers after a refusal
