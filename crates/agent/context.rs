@@ -78,7 +78,8 @@ impl ClientState {
         }
     }
 
-    /// Adds the queued-move turn cause with `push` when a move is queued and none waits yet.
+    /// Adds the queued-move turn cause with `push` when a move is queued and no queued-move
+    /// cause waits yet.
     fn add_queued_move_cause(&mut self, push: fn(&mut VecDeque<TurnCause>, TurnCause)) {
         if !self.queued_moves.is_empty() && !self.causes.contains(&TurnCause::QueuedMove) {
             push(&mut self.causes, TurnCause::QueuedMove);

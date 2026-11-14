@@ -21,7 +21,7 @@ use spookery_protocol as protocol;
 pub use crate::connection::{Connection, ConnectionError};
 use crate::context::ClientState;
 pub use crate::model::{CompletionError, Model, ToolCall};
-use crate::protocol::{ClientMessage, Refusal, ServerBody};
+use crate::protocol::{ClientMessage, CommitArgs, Refusal, ServerBody};
 use crate::turn::Turn;
 pub use crate::turn::MAX_MODEL_CALLS;
 
@@ -157,7 +157,10 @@ impl<M: Model, C: Connection> Agent<M, C> {
         if self.state().queued_moves.is_empty() {
             return Ok(None);
         }
-        let args = json!({ "include_round": true });
+        let args = json!(CommitArgs {
+            include_round: true,
+            session_id: None
+        });
         self.send_command("commit", args).await.map(Some)
     }
 
