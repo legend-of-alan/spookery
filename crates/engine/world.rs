@@ -202,7 +202,7 @@ impl<L> World<L> {
         let actors = self.state.actors();
         let pcs = actors.query::<(ActorId, &component::ControlType)>();
         (pcs.iter())
-            .filter(|(_, control_type)| control_type.is_pc())
+            .filter(|(_, control_type)| matches!(control_type, component::ControlType::Pc))
             .map(|(id, _)| id)
     }
 
@@ -322,7 +322,8 @@ impl<L> World<L> {
             .move_name
             .filter(|m| !m.is_empty())
             .ok_or(Reason::Schema)?;
-        let viewer = self.state.viewer_of(&actor_id).ok_or(Reason::UnknownId)?;
+        let control = self.state.actors().get::<component::ControlType>(&actor_id);
+        let viewer = control.viewer().ok_or(Reason::UnknownId)?;
         let token = spec.target.as_deref().filter(|t| !t.is_empty());
         let (canon, state) = (self.canon(), &self.state);
         let rule = gate::pick(canon, state, &viewer, Source::Gm, &move_name, token)?;
@@ -763,15 +764,15 @@ pub fn check_pack(root: &Path) -> Vec<Diagnostic> {
 
 fn check_save_text(state: &Save, bytes: &[u8]) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
-    if state.viewer_of(&ActorId::from("world")).is_some() {
-        diags.push(
-            schema_error(
-                "state/save.yaml",
-                "actor id world is reserved",
-                "rename that actor",
-            )
-            .at_path("actors.world"),
+    // Read as the file holds it: a save on its own has no canon to read its actors against.
+    let saved = serde_json::to_value(state).unwrap_or_default();
+    if saved["actors"]["control_type"].get("world").is_some() {
+        let diag = schema_error(
+            "state/save.yaml",
+            "actor id world is reserved",
+            "rename that actor",
         );
+        diags.push(diag.at_path("actors.world"));
     }
     match save::emit(state) {
         Ok(emitted) if emitted.as_bytes() != bytes => {

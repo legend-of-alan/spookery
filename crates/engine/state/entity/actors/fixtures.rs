@@ -1,9 +1,9 @@
 //! The actor lifecycle only fixtures need: production has no path that adds or removes an actor.
 //! Each component goes through its production writer where one exists.
 
-use super::component::{self, Meter};
-use super::id::ActorId;
-use super::{entity, nested_map, Act, Writer};
+use crate::state::component::{self, Meter};
+use crate::state::id::ActorId;
+use crate::state::{entity, nested_map, Act, Writer};
 use crate::Reason;
 
 impl Writer<'_, entity::Actors> {
@@ -51,8 +51,8 @@ impl Writer<'_, entity::Actors> {
         }
         let wielded = wielded.get(from).map(String::as_str);
         (self.get_mut::<component::WieldedItem>(to)).set(wielded)?;
-        let known = known_facts.get(from).map(Vec::as_slice).unwrap_or_default();
-        (self.get_mut::<component::KnownFacts>(to)).learn(known)?;
+        (self.get_mut::<component::KnownFacts>(to))
+            .learn(known_facts.get(from).into_iter().flatten())?;
         for (place, exits) in nested_map::entries_of(&visited, from) {
             (self.get_mut::<component::Visit>(to)).set(place, exits.clone())?;
         }

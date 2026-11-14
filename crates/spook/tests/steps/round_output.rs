@@ -1,5 +1,4 @@
-use spookery_engine::component;
-use spookery_engine::testing::state_of;
+use spookery_engine::testing::{is_busy, state_of};
 use std::fs;
 
 use cucumber::{given, then, when};
@@ -69,14 +68,7 @@ fn a_docks_table_with_two_players_and_no_gm(world: &mut World) {
 fn both_players_are_travelling(world: &mut World) {
     let now = state_of(table::pack(world));
     for actor in ["rowan", "wren"] {
-        assert!(
-            now.actors()
-                .get::<component::Act>(&actor.into())
-                .get()
-                .unwrap_or_else(|| panic!("no {actor}"))
-                .is_busy(now.world_time),
-            "{actor} is not travelling"
-        );
+        assert!(is_busy(&now, actor), "{actor} is not travelling");
     }
 }
 

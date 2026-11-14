@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 use crate::intent::{Intent, Source, Target};
 use crate::rules::gate;
-use crate::state::component::Meter;
+use crate::state::component::{ControlType, Meter};
 use crate::state::id::ActorId;
 use crate::state::Presence;
 use crate::store::journal;
@@ -107,7 +107,9 @@ fn fight(base: &Path, warmup: u32, refused: Option<Reason>) -> Result<(), String
         ("briar-strike", "briar", "strike", "lark"),
         ("lark-lunge", "lark", "lunge", "briar"),
     ] {
-        let viewer = world.state().viewer_of(&actor.into());
+        let viewer = (world.state().actors())
+            .get::<ControlType>(&actor.into())
+            .viewer();
         let target = Target::Actor(target.into());
         let intent = Intent::new(
             id.to_string(),

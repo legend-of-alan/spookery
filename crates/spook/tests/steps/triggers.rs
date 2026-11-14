@@ -543,7 +543,7 @@ fn nell_reveals_the_trapdoor(world: &mut World) {
     );
     let nell = "nell".into();
     let known_facts = now.actors().get::<component::KnownFacts>(&nell).get();
-    world.scratch = known_facts.unwrap().join(",");
+    world.scratch = Vec::from_iter(known_facts.unwrap().clone()).join(",");
     world.pack = Some(pack);
 }
 
@@ -918,9 +918,12 @@ fn the_empty_table_narrates_and_then_rowan_narrates(world: &mut World) {
     world.pack = Some(pack);
 }
 
-#[given(expr = "a cast id world and a reveal of a missing fact")]
+#[given(expr = "a cast id world, a saved actor world and a reveal of a missing fact")]
 fn a_cast_id_world_and_a_bad_reveal(world: &mut World) {
     let pack = copy_docks("trigger-check-reveal");
+    crate::support::edit_save(&pack, |now| {
+        (now.actors_mut()).add_actor(&"world".into(), component::ControlType::Npc, "docks_shop");
+    });
     fs::write(
         pack.join("cast/world.md"),
         "\

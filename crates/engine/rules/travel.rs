@@ -115,7 +115,7 @@ fn is_revealed(canon: &Canon, state: &State, actor_id: &ActorId, exit: &Exit) ->
     let Some(fact) = &exit.revealed_by else {
         return false;
     };
-    let Some(viewer) = state.viewer_of(actor_id) else {
+    let Some(viewer) = (state.actors().get::<component::ControlType>(actor_id)).viewer() else {
         return false;
     };
     can_see_fact(canon, state, &viewer, fact)
@@ -140,7 +140,7 @@ pub(crate) fn open_doors(
         let here: Vec<Viewer> = state
             .actors_at(place.as_str())
             .iter()
-            .filter_map(|id| state.viewer_of(id))
+            .filter_map(|id| state.actors().get::<component::ControlType>(id).viewer())
             .collect();
         for exit in def.exits.iter().filter(|exit| is_locked(state, exit)) {
             let target = Target::Exit(exit.name.clone());

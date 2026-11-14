@@ -465,7 +465,7 @@ rules:
             .actors()
             .query::<&component::ControlType>()
             .iter()
-            .filter(|control_type| !control_type.is_pc())
+            .filter(|control_type| !matches!(control_type, component::ControlType::Pc))
             .count(),
         50
     );

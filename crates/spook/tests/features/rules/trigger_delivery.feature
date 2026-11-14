@@ -73,10 +73,11 @@ Feature: Trigger delivery
     And "rowan" is not told "The shop is quiet."
 
   Scenario: Check rejects a reserved world actor and a reveal that cannot apply
-    Given a cast id world and a reveal of a missing fact
+    Given a cast id world, a saved actor world and a reveal of a missing fact
     When the operator runs spook check
     Then the check exits 1
-    And the report says "reserved"
+    And the report says "rename this cast member"
+    And the report says "actor id world is reserved"
     And the report says "not a fact"
     And the report says "reveals to the world"
 

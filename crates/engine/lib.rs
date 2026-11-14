@@ -60,6 +60,14 @@ pub mod testing {
         act.unwrap_or_else(|| panic!("{actor} has no action state"))
     }
 
+    /// Whether `actor` is busy at the save's world time.
+    pub fn is_busy(state: &crate::State, actor: &str) -> bool {
+        state
+            .actors()
+            .get::<Act>(&actor.into())
+            .is_busy(state.world_time)
+    }
+
     /// The write guard of the pack `world` holds the lock on.
     pub fn lock_write(world: &crate::World) -> Result<WriteGuard, crate::Reason> {
         crate::store::lock::lock_write(world.root(), &world.lock)

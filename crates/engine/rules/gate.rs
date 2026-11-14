@@ -137,11 +137,11 @@ pub(crate) fn admit(
     nameable: Option<&[NamedId]>,
 ) -> Result<(), Refusal> {
     let (state, intent) = (context.state, context.intent);
-    if let Some(act) = intent
-        .actor_id()
-        .and_then(|id| state.actors().get::<component::Act>(id).get())
-    {
-        let acted = act.last_act_round == intent.round_index;
+    if let Some(id) = intent.actor_id() {
+        let act = state.actors().get::<component::Act>(id);
+        let acted = act
+            .get()
+            .is_some_and(|act| act.last_act_round == intent.round_index);
         if acted && rule.start.counts_as_act && matches!(rule.when, When::Habit) {
             return Err(Refusal::new(intent, Reason::Ineligible));
         }

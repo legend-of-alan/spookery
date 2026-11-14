@@ -106,7 +106,11 @@ impl<E: entity::Entities> QueryFilter<E> for () {
 }
 
 /// A component an entity holds many of gives its `component::Ref`, to read by name.
-impl<E: entity::Has<C>, C: component::Component> QueryData<E> for &C {
+impl<E, C> QueryData<E> for &C
+where
+    E: entity::Has<C, Store = entity::MapStore<E, C>>,
+    C: component::Component,
+{
     type Item<'a>
         = component::Ref<'a, E, C>
     where
@@ -141,32 +145,6 @@ where
         Some(<&'c C>::fetch(entities, id))
     }
 }
-
-/// Declares that `$entities` holds at most one `$component` per entity, in its field `$store`.
-macro_rules! has_one {
-    ($entities:ty, $component:ty, $store:ident) => {
-        const _: () = {
-            use $crate::state::entity::{self, query::Ids, QueryData};
-            use $crate::state::{component, Reader};
-
-            impl QueryData<$entities> for &$component {
-                type Item<'a> = &'a <$component as component::Component>::Value;
-
-                fn carriers<'a>(entities: Reader<'a, $entities>) -> Option<Ids<'a, $entities>> {
-                    Some(Box::new(entities.components.$store.keys()))
-                }
-
-                fn fetch<'a>(
-                    entities: Reader<'a, $entities>,
-                    id: &'a <$entities as entity::Entities>::Id,
-                ) -> Option<Self::Item<'a>> {
-                    entities.components.$store.get(id)
-                }
-            }
-        };
-    };
-}
-pub(in crate::state) use has_one;
 
 /// The entity's own id, in the place of Bevy's `Entity`.
 macro_rules! id_data {
@@ -234,7 +212,7 @@ mod tests {
             .map(|(id, control_type, place, meters)| {
                 (
                     id.as_str(),
-                    control_type.is_pc(),
+                    matches!(control_type, component::ControlType::Pc),
                     place.as_str(),
                     meters.iter().count(),
                 )
@@ -281,7 +259,10 @@ mod tests {
         let world = docks();
         let actors = world.state().actors();
         let facts = actors.query::<Option<&component::KnownFacts>>();
-        let counts: Vec<_> = facts.iter().map(|facts| facts.map(Vec::len)).collect();
+        let counts: Vec<_> = facts
+            .iter()
+            .map(|facts| facts.map(|known| known.len()))
+            .collect();
         assert_eq!(
             counts,
             [None, None, None, Some(1), None, None],
@@ -292,7 +273,7 @@ mod tests {
         assert_eq!(knowing.map(|(id, _)| id).collect::<Vec<_>>(), ["mira"]);
         let (mira, rowan) = (ActorId::from("mira"), ActorId::from("rowan"));
         let knowing = actors.query::<&component::KnownFacts>();
-        assert_eq!(knowing.get(&mira).map(Vec::len), Some(1));
+        assert_eq!(knowing.get(&mira).map(|known| known.len()), Some(1));
         assert_eq!(knowing.get(&rowan), None);
         assert!(knowing.contains(&mira) && !knowing.contains(&rowan));
         let unknowing = actors.query_filtered::<ActorId, Without<component::KnownFacts>>();

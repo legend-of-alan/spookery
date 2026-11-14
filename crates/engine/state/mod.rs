@@ -1,10 +1,8 @@
 //! The save as the file holds it, and the live save that reads it against the pack's canon.
 
 pub(crate) mod change;
-pub mod component;
 pub(crate) mod entity;
-#[cfg(any(test, feature = "testing"))]
-mod fixtures;
+pub use entity::component;
 pub(crate) mod id;
 pub(crate) mod nested_map;
 mod notes;
@@ -28,7 +26,6 @@ pub(crate) use transaction::Savepoint;
 use transaction::Transaction;
 
 use crate::canon::Canon;
-use crate::intent::Viewer;
 
 /// The save as the file holds it: the clock, each collection's components, and the notes. It has
 /// no canon and no writers; `State::new` opens it to read and write.
@@ -173,17 +170,6 @@ impl<E: entity::Entities> Writer<'_, E> {
     }
 }
 
-impl Save {
-    pub fn notes(&self) -> &[Note] {
-        &self.notes
-    }
-
-    /// The seat actor `id` acts from.
-    pub(crate) fn viewer_of(&self, id: &ActorId) -> Option<Viewer> {
-        (self.actors.control_type.get(id)).map(|control| control.viewer(id))
-    }
-}
-
 impl State {
     /// The live save of `save`, read against `canon`.
     pub fn new(save: Save, canon: Arc<Canon>) -> State {
@@ -244,6 +230,10 @@ impl State {
 
     pub fn entities_mut(&mut self) -> Writer<'_, Save> {
         Writer::new(&mut self.save, &mut self.transaction, &self.canon)
+    }
+
+    pub fn notes(&self) -> &[Note] {
+        &self.save.notes
     }
 
     pub fn notes_mut(&mut self) -> Writer<'_, undo::Store<Vec<Note>>> {
