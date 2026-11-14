@@ -5,6 +5,7 @@ use std::path::Path;
 
 use serde::Deserialize;
 
+use crate::canon;
 use crate::diagnostic::Diagnostic;
 use crate::entity;
 use crate::hash::blake2s_tagged;
@@ -143,7 +144,7 @@ pub struct StoryDef {
 
 #[derive(Clone, Debug)]
 pub struct CastDef {
-    pub control_type: ControlType,
+    pub control_type: canon::ControlType,
     pub display_name: String,
     /// The flags an effect may set on this actor.
     pub flags: Vec<String>,
@@ -484,10 +485,13 @@ mod tests {
             .menu
             .iter()
             .any(|row| row.name == "restock_lamp_oil" && row.kind == "habit"));
-        assert_eq!(summary.control_types.get("mira"), Some(&ControlType::Npc));
+        assert_eq!(
+            summary.control_types.get("mira"),
+            Some(&canon::ControlType::Npc)
+        );
         assert_eq!(
             summary.control_types.get("rowan"),
-            Some(&ControlType::PcTemplate)
+            Some(&canon::ControlType::PcTemplate)
         );
         let rendered = format!("{:?}{:?}", summary.menu, summary.control_types);
         assert!(!rendered.contains("CAST-BODY-SENTINEL"));

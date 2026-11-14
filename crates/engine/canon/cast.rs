@@ -7,7 +7,7 @@ use serde::Deserialize;
 use crate::canon::meters::{add_own_meters, meter_defs, MeterYaml};
 use crate::canon::rule_list::{self, RuleYaml};
 use crate::canon::source::{load_tagged, Diags, FileText, Locator, Page, Problem, CAST_SCHEMA};
-use crate::canon::{CastDef, ControlType, IdleProfile};
+use crate::canon::{self, CastDef, IdleProfile};
 use crate::diagnostic::Diagnostic;
 use crate::entity;
 use crate::rules::rule::{Owner, Rule};
@@ -29,9 +29,9 @@ pub(super) fn add_cast(
     };
     // `load_cast` validates `file.control_type` is `"npc"` or `"pc_template"`.
     let control_type = if file.control_type == "npc" {
-        ControlType::Npc
+        canon::ControlType::Npc
     } else {
-        ControlType::PcTemplate
+        canon::ControlType::PcTemplate
     };
     let hint = "keep one cast file with this id";
     let twice = ("cast id", "is already defined", hint);
