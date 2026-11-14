@@ -54,8 +54,8 @@ pub(crate) fn perceive_budget<L>(
     }
     let (canon, state) = (world.canon(), world.state());
     let id = ActorId::from(as_arg);
-    let control_type = state.actors().get::<component::ControlType>(&id).get();
-    let viewer = control_type.ok_or(Reason::UnknownId)?.viewer(&id);
+    let control = state.actors().get::<component::ControlType>(&id);
+    let viewer = control.viewer().ok_or(Reason::UnknownId)?;
     perceive_viewer_budget(canon, state, presence, &viewer, max_body_chars)
 }
 
