@@ -10,7 +10,7 @@ use spookery_engine::testing::{
 };
 use spookery_engine::{
     component, emit_save, entity, load_canon, play_pack_once, ActorId, Meter, MoveReport, Note,
-    Presence, Save, State,
+    PlaceId, Presence, State,
 };
 use spookery_protocol::Outcome;
 
@@ -42,13 +42,10 @@ fn write_text(path: &Path, text: &str) {
     fs::write(path, text).unwrap_or_else(|err| panic!("write {}: {err}", path.display()));
 }
 
-fn lamp_oil(state: &Save) -> u32 {
-    state
-        .places()
-        .items
-        .get(&("docks_shop".into(), "lamp_oil".to_string()))
-        .copied()
-        .unwrap_or_else(|| panic!("lamp_oil missing"))
+fn lamp_oil(state: &State) -> u32 {
+    let shop = PlaceId::from("docks_shop");
+    let items = state.places().get::<component::Item>(&shop);
+    *items.get("lamp_oil").expect("lamp_oil missing")
 }
 
 fn flags_of(state: &State, id: &str) -> Vec<String> {
@@ -466,16 +463,16 @@ rules:
     assert_eq!(
         state
             .actors()
-            .control_type
-            .values()
+            .query::<&component::ControlType>()
+            .iter()
             .filter(|control_type| !control_type.is_pc())
             .count(),
         50
     );
     let acted = state
         .actors()
-        .acts
-        .values()
+        .query::<&component::Act>()
+        .iter()
         .filter(|act| act.last_act_round == 1)
         .count();
     let applied = round_value(&pack, "round-0001")["extra_steps"]
@@ -918,6 +915,7 @@ fn the_next_host_opens_at_the_same_state(world: &mut World) {
     let before = spookery_engine::parse_save(&world.scratch).unwrap();
     let host = resume(world.pack());
     assert_eq!(host.state().state_rev, before.state_rev);
+    let before = State::new(before, host.state().canon().clone());
     assert_eq!(lamp_oil(host.state()), lamp_oil(&before));
 }
 

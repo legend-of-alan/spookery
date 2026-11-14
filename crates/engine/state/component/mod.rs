@@ -75,6 +75,12 @@ impl<'a, E: entity::Has<C>, C: Component> Ref<'a, E, C> {
     pub fn iter(&self) -> impl Iterator<Item = (&'a str, &'a C::Value)> {
         nested_map::entries_of(self.entities.components.store(), self.id)
     }
+
+    /// The same, each after the entity's id: a query's entities, walked one value at a time.
+    pub fn iter_with_id(&self) -> impl Iterator<Item = (&'a E::Id, &'a str, &'a C::Value)> {
+        let id = self.id;
+        self.iter().map(move |(name, value)| (id, name, value))
+    }
 }
 
 /// One entity's component `C`, to write. Every write is one `undo::Store::set`, with what it

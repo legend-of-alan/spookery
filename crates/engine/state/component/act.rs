@@ -6,7 +6,7 @@ use crate::intent::Target;
 use crate::state::change::{self, Change};
 use crate::state::component::{Component, Mut, Ref};
 use crate::state::id::ActorId;
-use crate::state::{entity, Writer};
+use crate::state::{entity, Reader, Writer};
 use crate::Reason;
 
 /// How many times an actor has acted, and the action they are still on.
@@ -56,7 +56,7 @@ impl Mut<'_, entity::Actors, Act> {
         edit: impl FnOnce(&mut Act),
     ) -> Result<(), Reason> {
         self.check_exists()?;
-        let held = self.writer.acts.get(self.id);
+        let held = self.writer.components.acts.get(self.id);
         let before = held.map_or(change::Value::Empty, &read);
         let mut next = held.cloned().unwrap_or_default();
         edit(&mut next);
@@ -106,7 +106,8 @@ impl Mut<'_, entity::Actors, Act> {
 impl Writer<'_, entity::Actors> {
     /// Set `counter` back to 0 on every actor.
     pub(crate) fn reset_acts(&mut self, counter: ActCounter) -> Result<(), Reason> {
-        let actors: Vec<ActorId> = self.control_type.keys().cloned().collect();
+        let actors = Reader::new(&*self.components, self.canon).query::<ActorId>();
+        let actors: Vec<ActorId> = actors.iter().cloned().collect();
         for actor in &actors {
             let read = |act: &Act| count_value(counter.get(act).into());
             let key = counter.key(actor.to_string());

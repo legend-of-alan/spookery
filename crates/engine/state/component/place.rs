@@ -24,7 +24,7 @@ impl Mut<'_, entity::Actors, Place> {
     pub fn set(&mut self, to: &str) -> Result<(), Reason> {
         self.check_exists()?;
         let key = change::Key::ActorPlace(self.id.to_string());
-        let before = text_value(self.writer.place.get(self.id));
+        let before = text_value(self.writer.components.place.get(self.id));
         let change = Change::new(key, before, text_value(Some(to)));
         let (place, to) = (&mut self.writer.components.place, to.to_string());
         place.set(self.writer.transaction, self.id, to, [change.into()])

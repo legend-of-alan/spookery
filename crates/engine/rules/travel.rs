@@ -202,7 +202,8 @@ pub(crate) fn exit_view(canon: &Canon, state: &State, exit: &Exit) -> ExitView {
 /// of each round, after triggers, so a reveal is seen in the round it lands.
 pub(crate) fn note_exits(canon: &Canon, state: &mut State) -> Result<(), Reason> {
     // A walker on an exit is in no place, so there is nothing to note.
-    let seen: Vec<(ActorId, String, Vec<String>)> = (state.actors().place.iter())
+    let actors = state.actors().query::<(ActorId, &component::Place)>();
+    let seen: Vec<(ActorId, String, Vec<String>)> = (actors.iter())
         .filter(|(_, place)| canon.places.contains_key(place.as_str()))
         .map(|(id, place)| {
             let exits = visible_exits(canon, state, id);
@@ -244,7 +245,7 @@ pub(crate) struct DueAction {
 
 /// Clear every action that finishes at or before `end`, earliest first.
 pub(crate) fn take_due_actions(state: &mut State, end: u64) -> Result<Vec<DueAction>, Reason> {
-    let mut due_keys: Vec<(u64, ActorId)> = (state.actors().acts)
+    let mut due_keys: Vec<(u64, ActorId)> = (state.actors().query::<(ActorId, &component::Act)>())
         .iter()
         .filter_map(|(id, act)| {
             let until = act.busy_until?;

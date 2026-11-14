@@ -7,6 +7,7 @@ use spookery_engine::{component, entity, Presence};
 
 use super::record::read_extra_steps;
 use super::rules::open;
+use super::triggers::world_flags;
 use crate::support::{append, copy_docks, edit_save, read_round, stamp_pack_rev, state_of};
 use crate::World;
 
@@ -170,13 +171,8 @@ fn both_chains_ran(world: &mut World) {
     let steps = read_extra_steps(&round);
     assert!(!steps.iter().any(|name| name == "trigger_depth"), "{round}");
     let now = state_of(world.pack.as_ref().unwrap());
+    let flags = now.entities().get::<component::Flag>(&entity::Id::Global);
     for flag in ["rang", "echoed"] {
-        assert!(
-            now.entities()
-                .get::<component::Flag>(&entity::Id::Global)
-                .contains(flag),
-            "{:?}",
-            now.globals().flags
-        );
+        assert!(flags.contains(flag), "{:?}", world_flags(&now));
     }
 }

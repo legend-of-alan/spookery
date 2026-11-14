@@ -12,7 +12,7 @@ pub(crate) mod world;
 
 /// Any entity's id, as rules name it; `State::entities` reads its components.
 pub mod entity {
-    pub use crate::state::entity::{Id, IdRef};
+    pub use crate::state::entity::{Id, IdRef, Query, QueryData, QueryFilter, With, Without};
 }
 
 pub use canon::{load_canon, pack_rev};

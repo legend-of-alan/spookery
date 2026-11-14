@@ -109,7 +109,8 @@ pub fn value(
     actor: &ActorId,
     name: &str,
 ) -> Result<i64, Reason> {
-    value_with(actors, actor, name, actors.modifier_sum(actor, name))
+    let modifiers = actors.components.modifier_sum(actor, name);
+    value_with(actors, actor, name, modifiers)
 }
 
 /// The same with `modifiers` in place of what the actor's modifiers add, for a write that has not
@@ -163,7 +164,7 @@ impl Mut<'_, entity::Actors, Modifier> {
         if next.is_some() {
             value_with(actors, actor, &meter, with_next)?;
         }
-        let before = actors.modifier_sum(actor, &meter);
+        let before = actors.components.modifier_sum(actor, &meter);
         let watched = stacks_move.then_some(change::Report::Modifiers(watched, before));
         let reports = watched.into_iter().chain([own.into()]);
         let entry = (actor.clone(), id.to_string());
@@ -174,10 +175,11 @@ impl Mut<'_, entity::Actors, Modifier> {
 impl Writer<'_, entity::Actors> {
     /// Take off every modifier whose tick has come by `world_time`, all its stacks at once.
     pub fn expire_modifiers(&mut self, world_time: u64) -> Result<(), Reason> {
-        let due: Vec<(ActorId, String)> = (self.modifiers.iter())
-            .filter(|(_, held)| held.until <= world_time)
-            .map(|(due, _)| due.clone())
-            .collect();
+        let actors = Reader::new(&*self.components, self.canon).query::<&Modifier>();
+        let held = actors.iter().flat_map(|held| held.iter_with_id());
+        let due = held.filter(|(_, _, held)| held.until <= world_time);
+        let due: Vec<(ActorId, String)> =
+            (due.map(|(actor, id, _)| (actor.clone(), id.to_string()))).collect();
         for (actor, id) in due {
             self.get_mut::<Modifier>(&actor).set(&id, None)?;
         }

@@ -4,6 +4,7 @@
 pub(in crate::state) mod actors;
 mod globals;
 mod places;
+pub(in crate::state) mod query;
 mod stories;
 
 use std::fmt::{self, Debug};
@@ -13,6 +14,8 @@ use serde::{Deserialize, Serialize};
 pub use actors::Actors;
 pub use globals::Globals;
 pub use places::Places;
+pub(in crate::state) use query::has_one;
+pub use query::{Query, QueryData, QueryFilter, With, Without};
 pub use stories::Stories;
 
 use crate::canon::Canon;
@@ -28,6 +31,9 @@ pub trait Entities {
     /// Whether `id` is one of this collection's entities. The save lists the actors; the pack's
     /// `canon` defines the places and the stories; the world always is.
     fn contains(&self, canon: &Canon, id: &Self::Id) -> bool;
+
+    /// Every one of this collection's entities, in id order, as `contains` lists them.
+    fn ids<'a>(&'a self, canon: &'a Canon) -> query::Ids<'a, Self>;
 }
 
 /// A collection that stores component `C` under each entity's names.
@@ -80,6 +86,11 @@ impl Entities for Save {
 
     fn contains(&self, canon: &Canon, id: &Id) -> bool {
         in_collection!(id, [&self], |entities, id| entities.contains(canon, id))
+    }
+
+    /// None: an `entity::Id` is built from a collection's id, not stored, so no query walks it.
+    fn ids<'a>(&'a self, _: &'a Canon) -> query::Ids<'a, Self> {
+        Box::new(std::iter::empty())
     }
 }
 

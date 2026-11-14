@@ -199,8 +199,9 @@ impl<L> World<L> {
 
     /// Every PC in the cast.
     pub fn pcs(&self) -> impl Iterator<Item = &ActorId> {
-        // The ids are borrowed from the save, which outlives a read handle.
-        (Save::actors(&self.state).control_type.iter())
+        let actors = self.state.actors();
+        let pcs = actors.query::<(ActorId, &component::ControlType)>();
+        (pcs.iter())
             .filter(|(_, control_type)| control_type.is_pc())
             .map(|(id, _)| id)
     }

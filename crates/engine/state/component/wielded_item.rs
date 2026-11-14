@@ -24,9 +24,9 @@ impl Mut<'_, entity::Actors, WieldedItem> {
     pub fn set(&mut self, item: Option<&str>) -> Result<(), Reason> {
         self.check_exists()?;
         let key = change::Key::ActorWielded(self.id.to_string());
-        let before = text_value(self.writer.wielded.get(self.id));
+        let before = text_value(self.writer.components.wielded.get(self.id));
         let reports = [Change::new(key, before, text_value(item)).into()];
-        let items = &self.writer.items;
+        let items = &self.writer.components.items;
         if item.is_some_and(|item| nested_map::get(items, self.id, item).is_none()) {
             return Err(Reason::MissingItem);
         }
