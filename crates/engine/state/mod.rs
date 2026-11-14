@@ -170,12 +170,6 @@ impl<E: entity::Entities> Writer<'_, E> {
     }
 }
 
-impl Save {
-    pub fn notes(&self) -> &[Note] {
-        &self.notes
-    }
-}
-
 impl State {
     /// The live save of `save`, read against `canon`.
     pub fn new(save: Save, canon: Arc<Canon>) -> State {
@@ -236,6 +230,10 @@ impl State {
 
     pub fn entities_mut(&mut self) -> Writer<'_, Save> {
         Writer::new(&mut self.save, &mut self.transaction, &self.canon)
+    }
+
+    pub fn notes(&self) -> &[Note] {
+        &self.save.notes
     }
 
     pub fn notes_mut(&mut self) -> Writer<'_, undo::Store<Vec<Note>>> {
