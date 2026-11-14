@@ -111,7 +111,7 @@ impl Actors {
     }
 
     /// Each actor's known facts sorted with no repeats, as the file keeps them: out of a round.
-    pub(in crate::state) fn sort(&mut self) {
+    pub(in crate::state) fn sort_known_facts(&mut self) {
         for known in self.known_facts.value_mut().values_mut() {
             sort_unique(known);
         }

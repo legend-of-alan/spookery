@@ -270,7 +270,7 @@ impl Save {
             sort_unique(&mut note.to);
             sort_unique(&mut note.fact_ids);
         }
-        self.actors.sort();
+        self.actors.sort_known_facts();
     }
 }
 
