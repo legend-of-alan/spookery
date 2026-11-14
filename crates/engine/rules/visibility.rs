@@ -78,13 +78,8 @@ pub(crate) fn show_to(
     let mut views = Vec::new();
     for change in &visible {
         keys.insert(change.key.to_string());
-        // A modifier's and busy's values are the journal's, with no wire meaning yet.
-        let internal = matches!(
-            change.key,
-            change::Key::ActorModifier(..) | change::Key::ActorBusy(_)
-        );
-        if actor.is_some() && !internal {
-            views.push(to_change_view(canon, change));
+        if actor.is_some() {
+            views.extend(to_change_view(canon, change));
         }
     }
     Delivery {
@@ -94,8 +89,15 @@ pub(crate) fn show_to(
     }
 }
 
-/// The entry a player is sent for a change they may know.
-fn to_change_view(canon: &Canon, change: &Change) -> ChangeView {
+/// The entry a player is sent for a change they may know, or none while its value has no wire
+/// meaning: a modifier's and busy's values are the journal's.
+fn to_change_view(canon: &Canon, change: &Change) -> Option<ChangeView> {
+    if matches!(
+        change.key,
+        change::Key::ActorModifier(..) | change::Key::ActorBusy(_)
+    ) {
+        return None;
+    }
     let (component, entity, key) = change.key.to_parts();
     let entity_name = match &entity {
         entity::Id::Actor(id) => canon.display_name(id.as_str()),
@@ -109,7 +111,7 @@ fn to_change_view(canon: &Canon, change: &Change) -> ChangeView {
         }
         _ => canon.display_name(key),
     };
-    ChangeView {
+    Some(ChangeView {
         component: component.to_string(),
         entity: entity.to_string(),
         entity_name,
@@ -117,7 +119,7 @@ fn to_change_view(canon: &Canon, change: &Change) -> ChangeView {
         name: if name == key { String::new() } else { name },
         before: to_change_value(&change.before),
         after: to_change_value(&change.after),
-    }
+    })
 }
 
 /// A watched value as the wire writes it: none when the key was absent.
