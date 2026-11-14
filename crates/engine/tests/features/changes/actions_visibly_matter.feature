@@ -32,7 +32,7 @@ Feature: Actions visibly matter
     When lark takes the tonic
     Then lark sees one line saying she picked up the tonic
 
-  Scenario: A move to another place reaches the player as a plain sentence
+  Scenario: A change with no sentence of its own reads as a plain sentence
     Given sample-d20 with player "lark" seated facing "briar"
     When lark climbs to the loft
     Then lark sees one line saying she is in the loft
