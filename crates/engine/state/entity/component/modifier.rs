@@ -42,7 +42,7 @@ impl Component for Modifier {
 }
 
 /// The modifier as a change value: its stacks, the tick it expires at and its longest ticks.
-fn change_value(live: &Modifier) -> change::Value {
+fn stacks_value(live: &Modifier) -> change::Value {
     let (stacks, until, max_ticks) = (&live.stacks, live.until, live.max_ticks);
     change::Value::Text(format!("{stacks:?} until {until} max_ticks {max_ticks}"))
 }
@@ -150,7 +150,7 @@ impl Mut<'_, entity::Actors, Modifier> {
         if next.is_some() {
             self.check_exists()?;
         }
-        let own = |held: Option<&Modifier>| held.map_or(change::Value::Empty, change_value);
+        let own = |held: Option<&Modifier>| held.map_or(change::Value::Empty, stacks_value);
         let own_key = change::Key::ActorModifier(actor.to_string(), id.to_string());
         let own = Change::new(own_key, own(held), own(next.as_ref()));
         let stacks_move = held.map(|held| &held.stacks) != next.as_ref().map(|next| &next.stacks);
