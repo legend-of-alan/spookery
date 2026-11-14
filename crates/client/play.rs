@@ -181,10 +181,9 @@ impl Printer {
     }
 }
 
-/// Prints `text` in one write, so a reader never sees a block without its last line.
 fn print_text(text: &str) {
-    let block = format!("{text}\n");
-    let _ = io::stdout().write_all(block.as_bytes());
+    println!("{text}");
+    let _ = io::stdout().flush();
 }
 
 /// The picker: every PC by the name the hello gives it, the taken ones marked in use.
