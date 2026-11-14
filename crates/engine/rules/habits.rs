@@ -69,13 +69,14 @@ fn is_eligible(canon: &Canon, state: &State, presence: &Presence, npc_id: &Actor
     if !profile.eligible {
         return false;
     }
+    let act = state.actors().get::<component::Act>(npc_id);
     let (Some(counters), Some(place)) = (
-        state.actors().get::<component::Act>(npc_id).get(),
+        act.get(),
         state.actors().get::<component::Place>(npc_id).get(),
     ) else {
         return false;
     };
-    if counters.is_busy(state.world_time) || is_player_at(state, presence, place) {
+    if act.is_busy(state.world_time) || is_player_at(state, presence, place) {
         return false;
     }
     if counters.last_act_round == state.round_index {

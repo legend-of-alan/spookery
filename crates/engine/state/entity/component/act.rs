@@ -26,23 +26,18 @@ impl Component for Act {
     type Value = Act;
 }
 
-impl Act {
-    /// The tick the actor is busy until, as a change value.
-    fn busy_value(&self) -> change::Value {
-        self.busy_until.map_or(change::Value::Empty, count_value)
-    }
-
-    /// Busy means an action under way, or a cooldown whose `busy_until` is still after this
-    /// tick. An action stays under way until the round that reaches its finish ends.
-    pub fn is_busy(&self, world_time: u64) -> bool {
-        self.pending.is_some() || self.busy_until.is_some_and(|until| until > world_time)
-    }
-}
-
 impl<'a> Ref<'a, entity::Actors, Act> {
     /// The actor's action state.
     pub fn get(&self) -> Option<&'a Act> {
         self.store().get(self.id)
+    }
+
+    /// Busy means an action under way, or a cooldown whose `busy_until` is still after
+    /// `world_time`. An action stays under way until the round that reaches its finish ends.
+    pub fn is_busy(&self, world_time: u64) -> bool {
+        self.get().is_some_and(|act| {
+            act.pending.is_some() || act.busy_until.is_some_and(|until| until > world_time)
+        })
     }
 }
 
@@ -69,7 +64,7 @@ impl Mut<'_, entity::Actors, Act> {
     /// `None` through a cooldown.
     pub fn set_busy(&mut self, until: u64, pending: Option<PendingAction>) -> Result<(), Reason> {
         let key = change::Key::ActorBusy(self.id.to_string());
-        self.write(key, Act::busy_value, |act| {
+        self.write(key, busy_value, |act| {
             (act.busy_until, act.pending) = (Some(until), pending);
         })
     }
@@ -78,7 +73,7 @@ impl Mut<'_, entity::Actors, Act> {
     /// `finish` see it.
     pub fn take_pending(&mut self) -> Result<Option<PendingAction>, Reason> {
         let (key, mut taken) = (change::Key::ActorBusy(self.id.to_string()), None);
-        self.write(key, Act::busy_value, |act| {
+        self.write(key, busy_value, |act| {
             taken = act.pending.take();
             act.busy_until = None;
         })?;
@@ -116,6 +111,11 @@ impl Writer<'_, entity::Actors> {
         }
         Ok(())
     }
+}
+
+/// The tick the actor is busy until, as a change value.
+fn busy_value(act: &Act) -> change::Value {
+    act.busy_until.map_or(change::Value::Empty, count_value)
 }
 
 /// A count as a change value.

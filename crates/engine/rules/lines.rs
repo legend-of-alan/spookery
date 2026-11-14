@@ -160,9 +160,10 @@ pub(crate) fn map(
 /// `chanting until tick 1300` on any other timed action, read from its verb, and
 /// `recovering until tick 1300` in a cooldown.
 pub(crate) fn busy_line(canon: &Canon, state: &State, actor_id: &ActorId) -> Option<String> {
-    let act = state.actors().get::<component::Act>(actor_id).get()?;
+    let actions = state.actors().get::<component::Act>(actor_id);
+    let act = actions.get()?;
     let place = state.actors().get::<component::Place>(actor_id).get()?;
-    if !act.is_busy(state.world_time) {
+    if !actions.is_busy(state.world_time) {
         return None;
     }
     let until = act.busy_until?;

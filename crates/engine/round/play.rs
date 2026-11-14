@@ -101,12 +101,11 @@ pub(crate) fn fast_forward(
 
 /// Whether each seated PC is busy at the current world time.
 fn seated_busy<L>(world: &World<L>, presence: &Presence) -> Vec<bool> {
-    let state = world.state();
+    let (state, actors) = (world.state(), world.state().actors());
     presence
         .actors_present
         .iter()
-        .map(|id| state.actors().get::<component::Act>(id).get())
-        .map(|act| act.is_some_and(|act| act.is_busy(state.world_time)))
+        .map(|id| actors.get::<component::Act>(id).is_busy(state.world_time))
         .collect()
 }
 
