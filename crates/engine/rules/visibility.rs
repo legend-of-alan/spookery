@@ -36,9 +36,9 @@ pub(crate) enum Recipient {
 
 /// The changes and narrate lines for one seat.
 pub(crate) struct Delivery {
-    pub changes: Vec<String>,
+    pub changed_keys: Vec<String>,
     /// The changes this seat may know, as its player is sent them.
-    pub entries: Vec<ChangeView>,
+    pub changes: Vec<ChangeView>,
     pub narrations: Vec<String>,
 }
 
@@ -50,11 +50,11 @@ pub struct RecipientLine {
 }
 
 /// The change keys one actor can see, and the changes they are shown. Returned
-/// from the engine's round to the host table, which sends the entries to that actor's player.
+/// from the engine's round to the host table, which sends the changes to that actor's player.
 pub struct ViewerChanges {
     pub viewer: ActorId,
-    pub changes: Vec<String>,
-    pub entries: Vec<ChangeView>,
+    pub changed_keys: Vec<String>,
+    pub changes: Vec<ChangeView>,
 }
 
 /// Changes and narrate lines this seat can receive.
@@ -75,16 +75,16 @@ pub(crate) fn show_to(
         .cloned()
         .collect();
     let mut keys = BTreeSet::new();
-    let mut entries = Vec::new();
+    let mut views = Vec::new();
     for change in &visible {
         keys.insert(change.key.to_string());
         if actor.is_some() {
-            entries.push(to_change_view(canon, change));
+            views.push(to_change_view(canon, change));
         }
     }
     Delivery {
-        changes: keys.into_iter().collect(),
-        entries,
+        changed_keys: keys.into_iter().collect(),
+        changes: views,
         narrations: narrations(canon, state, effects, actor),
     }
 }

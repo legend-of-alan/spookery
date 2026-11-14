@@ -562,10 +562,10 @@ impl Table {
                     bodies.push(ServerBody::Lines { text });
                 }
                 for item in &output.seen {
-                    if item.viewer == actor_id && !item.entries.is_empty() {
+                    if item.viewer == actor_id && !item.changes.is_empty() {
                         bodies.push(ServerBody::Changes {
                             viewer: actor_id.to_string(),
-                            entries: item.entries.clone(),
+                            entries: item.changes.clone(),
                         });
                     }
                 }

@@ -229,18 +229,18 @@ fn command_line(command: &CommandView) -> String {
 }
 
 /// One sentence per change, on one line.
-fn render_changes(viewer: &str, entries: &[ChangeView]) -> String {
-    let sentences: Vec<String> = entries
+fn render_changes(viewer: &str, changes: &[ChangeView]) -> String {
+    let sentences: Vec<String> = changes
         .iter()
         .filter_map(
-            |entry| match (entry.component.as_str(), as_number(&entry.after)) {
+            |change| match (change.component.as_str(), as_number(&change.after)) {
                 ("meter", Some(after)) => Some(format!(
                     "{} {} is now {after}.",
-                    render_owner(viewer, entry),
-                    entry.key
+                    render_owner(viewer, change),
+                    change.key
                 )),
-                ("item", Some(_)) => render_item_change(viewer, entry, entries),
-                _ => Some(render_any_change(viewer, entry)),
+                ("item", Some(_)) => render_item_change(viewer, change, changes),
+                _ => Some(render_any_change(viewer, change)),
             },
         )
         .collect();
@@ -248,14 +248,14 @@ fn render_changes(viewer: &str, entries: &[ChangeView]) -> String {
 }
 
 /// The sentence for a change with no sentence of its own, like `Your place is now loft.`
-fn render_any_change(viewer: &str, entry: &ChangeView) -> String {
-    let mut what = entry.component.replace('_', " ");
-    let which = display_name(entry);
+fn render_any_change(viewer: &str, change: &ChangeView) -> String {
+    let mut what = change.component.replace('_', " ");
+    let which = display_name(change);
     if !which.is_empty() {
         what = format!("{what} {which}");
     }
-    let whose = render_owner(viewer, entry);
-    match &entry.after {
+    let whose = render_owner(viewer, change);
+    match &change.after {
         None => format!("{whose} {what} is gone."),
         Some(ChangeValue::Number(number)) => format!("{whose} {what} is now {number}."),
         Some(ChangeValue::Text(text)) => format!("{whose} {what} is now {text}."),
@@ -266,11 +266,11 @@ fn render_any_change(viewer: &str, entry: &ChangeView) -> String {
 }
 
 /// The display name of what changed, which is its key when the two are the same.
-fn display_name(entry: &ChangeView) -> &str {
-    if entry.name.is_empty() {
-        &entry.key
+fn display_name(change: &ChangeView) -> &str {
+    if change.name.is_empty() {
+        &change.key
     } else {
-        &entry.name
+        &change.name
     }
 }
 
@@ -284,30 +284,30 @@ fn as_number(value: &Option<ChangeValue>) -> Option<i64> {
 
 /// A change to what an actor carries or what lies in the viewer's place. A place's change that
 /// matches an actor's is told by the actor's sentence.
-fn render_item_change(viewer: &str, entry: &ChangeView, entries: &[ChangeView]) -> Option<String> {
-    let after = as_number(&entry.after)?;
-    let lost = after < as_number(&entry.before)?;
-    let name = display_name(entry);
-    let other_side = entries.iter().find(|other| {
+fn render_item_change(viewer: &str, change: &ChangeView, changes: &[ChangeView]) -> Option<String> {
+    let after = as_number(&change.after)?;
+    let lost = after < as_number(&change.before)?;
+    let name = display_name(change);
+    let other_side = changes.iter().find(|other| {
         other.component == "item"
-            && other.key == entry.key
+            && other.key == change.key
             && (as_number(&other.before).zip(as_number(&other.after)))
                 .is_some_and(|(before, after)| (after < before) != lost)
     });
     let other_is_actor = other_side.map(|other| is_actor(&other.entity));
-    if !is_actor(&entry.entity) {
+    if !is_actor(&change.entity) {
         return match (other_is_actor, lost) {
             (Some(true), _) => None,
             (_, true) => Some(format!("The {name} here is gone.")),
             (_, false) => Some(format!("A {name} turned up here.")),
         };
     }
-    let who = if entry.entity == viewer {
+    let who = if change.entity == viewer {
         "You"
     } else {
-        &entry.entity_name
+        &change.entity_name
     };
-    let whose = render_owner(viewer, entry);
+    let whose = render_owner(viewer, change);
     let sentence = match (lost, other_is_actor) {
         (true, Some(true)) => format!("{who} handed over the {name}."),
         (true, Some(false)) => format!("{who} dropped the {name}."),
@@ -321,13 +321,13 @@ fn render_item_change(viewer: &str, entry: &ChangeView, entries: &[ChangeView]) 
 }
 
 /// `Your`, `Briar's`, `Gate Yard's`, `The strain story's` or `The world's`.
-fn render_owner(viewer: &str, entry: &ChangeView) -> String {
-    let name = &entry.entity_name;
-    if entry.entity == viewer {
+fn render_owner(viewer: &str, change: &ChangeView) -> String {
+    let name = &change.entity_name;
+    if change.entity == viewer {
         "Your".to_string()
-    } else if entry.entity == "world" {
+    } else if change.entity == "world" {
         "The world's".to_string()
-    } else if entry.entity.starts_with("story:") {
+    } else if change.entity.starts_with("story:") {
         format!("The {name} story's")
     } else {
         format!("{name}'s")

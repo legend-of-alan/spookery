@@ -1251,17 +1251,16 @@ pub(crate) fn play_round(
     let seen = output
         .seen
         .iter()
-        .map(|item| (item.viewer.to_string(), item.changes.clone()))
+        .map(|item| (item.viewer.to_string(), item.changed_keys.clone()))
         .collect();
     let change_lines = output
         .seen
         .iter()
         .map(|item| {
             let viewer = item.viewer.to_string();
-            let entries = item.entries.clone();
             let line = text::render(&ServerBody::Changes {
                 viewer: viewer.clone(),
-                entries,
+                entries: item.changes.clone(),
             });
             (viewer, line)
         })

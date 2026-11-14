@@ -283,7 +283,7 @@ fn change_line(output: &spookery_engine::RoundOutput) -> String {
         .map(|seen| {
             text::render(&ServerBody::Changes {
                 viewer: "lark".into(),
-                entries: seen.entries.clone(),
+                entries: seen.changes.clone(),
             })
         })
         .unwrap_or_default()
