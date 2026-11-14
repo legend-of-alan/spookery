@@ -34,6 +34,10 @@ use crate::canon::Canon;
 pub struct Save {
     pub schema: String,
     pub world_id: String,
+    /// The world's dice seed. Empty in a shipped save; chosen the first time the world opens
+    /// for play.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub seed: String,
     pub pack_rev: String,
     /// Engine rules version. Missing means 0, which is not the current version.
     #[serde(default)]

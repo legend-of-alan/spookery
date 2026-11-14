@@ -51,7 +51,8 @@ pub enum MoveReport {
 /// Identifies one roll. A later `resist:` roll uses the same shape: subject plus index.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RollKey {
-    pub world_id: String,
+    /// The save's dice seed.
+    pub seed: String,
     pub round_index: u64,
     pub rule_id: String,
     /// The actor the rule runs for, or `None` for a change rule on a world change.
@@ -61,11 +62,10 @@ pub struct RollKey {
 
 impl RollKey {
     pub(crate) fn preimage(&self) -> String {
-        let (world, round, rule, index) =
-            (&self.world_id, self.round_index, &self.rule_id, self.index);
+        let (seed, round, rule, index) = (&self.seed, self.round_index, &self.rule_id, self.index);
         match &self.subject_id {
-            Some(subject) => format!("{world}|{round}|{rule}|{subject}|{index}"),
-            None => format!("{world}|{round}|{rule}|{index}"),
+            Some(subject) => format!("{seed}|{round}|{rule}|{subject}|{index}"),
+            None => format!("{seed}|{round}|{rule}|{index}"),
         }
     }
 }
@@ -140,7 +140,7 @@ mod tests {
 
     fn key(index: u32) -> RollKey {
         RollKey {
-            world_id: "docks".to_string(),
+            seed: "docks".to_string(),
             round_index: 1,
             rule_id: "grit".to_string(),
             subject_id: Some("mira".into()),

@@ -21,6 +21,8 @@ use cucumber::World as _;
 #[derive(Debug, Default, cucumber::World)]
 pub struct World {
     pub pack: Option<PathBuf>,
+    /// Packs a scenario copies besides `pack`, removed with it.
+    pub copies: Vec<PathBuf>,
     pub scratch: String,
     pub seen: String,
     pub count: usize,
@@ -71,12 +73,16 @@ async fn main() {
         .max_concurrent_scenarios(1)
         .fail_on_skipped()
         .after(|_, _, _, _, world| {
-            let pack = world.and_then(|w| {
+            let packs = world.map_or_else(Vec::new, |w| {
                 w.writer = None;
                 w.lock_clone = None;
-                w.pack.take()
+                w.pack
+                    .take()
+                    .into_iter()
+                    .chain(w.copies.drain(..))
+                    .collect()
             });
-            if let Some(pack) = pack {
+            for pack in packs {
                 let _ = std::fs::remove_dir_all(pack);
             }
             Box::pin(async {})

@@ -18,7 +18,6 @@ use crate::store::save;
 use crate::world::World;
 use crate::Reason;
 
-use crate::round::dice::round_seed;
 use crate::round::play::replay_round;
 
 #[derive(Debug)]
@@ -231,10 +230,31 @@ pub fn replay_journal(
 /// Records after that checkpoint are in the live bundle, so closed bundles stay unread.
 /// The caller holds the pack lock, so a crash is repaired and the checkpoint settled.
 pub(crate) fn open_at_tip(path: &Path, lock: &PackGuard) -> Result<World<()>, Reason> {
+    choose_seed(path, lock)?;
     rebuild_save(path, lock).map_err(Error::into_reason)?;
     let world = peek_at_tip(path)?;
     crate::store::commit::settle_checkpoint(&world, &lock_write(&world.root, lock)?)?;
     Ok(world)
+}
+
+/// Write a fresh dice seed into `save.yaml` when it has none and the journal is still empty,
+/// so the first round, and replay from the base save, roll from it. A seed already there stays.
+fn choose_seed(path: &Path, lock: &PackGuard) -> Result<(), Reason> {
+    if journal::read_head(path)
+        .map_err(|fault| fault.reason)?
+        .is_some()
+        || journal::find_live_bundle(path).is_some()
+    {
+        return Ok(());
+    }
+    let save_path = journal::save_path(path);
+    let mut save = load_save_bytes(&journal::read_save(&save_path)?).map_err(Error::into_reason)?;
+    if !save.seed.is_empty() {
+        return Ok(());
+    }
+    save.seed = uuid::Uuid::new_v4().simple().to_string();
+    let _write = lock_write(path, lock)?;
+    write_atomic(&save_path, save::emit(&save)?.as_bytes())
 }
 
 /// The journal tip in memory. Writes nothing.
@@ -250,6 +270,7 @@ pub(crate) fn peek_at_tip(path: &Path) -> Result<World<()>, Reason> {
 /// Migrate the journal tip. A save that the journal has not passed is migrated as it stands.
 pub fn migrate_pack(path: &Path) -> Result<(), Reason> {
     let lock = lock_pack(path)?;
+    choose_seed(path, &lock)?;
     let (save, edited) = load_migrate_tip(path, &lock)?;
     let canon = load_canon(path).map_err(|diags| first_reason(&diags))?;
     let state = State::new(save, Arc::new(canon));
@@ -488,10 +509,6 @@ fn apply_recorded_round(world: &mut World<()>, record: &RoundRecord) -> Result<(
     require_rules_rev(record.rules_rev).map_err(Error::Reason)?;
     if world.state().round_index + 1 != record.round_index {
         return Err(round_diverged(record, "round_index differed").into());
-    }
-    let seed = round_seed(&world.state().world_id, record.round_index);
-    if record.seed != seed {
-        return Err(round_diverged(record, "seed differed").into());
     }
     let replayed = replay_round(
         world,

@@ -74,9 +74,12 @@ run, verify names that round and the first effect that differs. Each journal
 record reads back as the bytes that were written. Verify leaves the pack
 unchanged. Each roll keeps its own dice. An
 unrelated roll in the same round does not move them, and verify reproduces
-them. A number in a rule can roll dice, including an NPC habit's effect. Those faces are seeded with the
-round, written on the journal line, and shown to the GM. `spook verify` replays
-the journal, rolls them again from that seed, and checks the save. A condition's value does not roll; dice there fail the pack check. A change of who is present, and a migrate between rounds, verify too.
+them. A number in a rule can roll dice, including an NPC habit's effect. Those faces derive from the world's
+seed and the round, are written on the journal line, and are shown to the GM. A
+save with no seed gets a fresh one the first time the world opens for play, so
+each copy of a shipped pack rolls its own dice; writing `seed:` into
+`state/save.yaml` pins them. The base save keeps the seed, and `spook verify`
+replays the journal, rolls the dice again from it, and checks the save. A condition's value does not roll; dice there fail the pack check. A change of who is present, and a migrate between rounds, verify too.
 A pack author can edit the pack's world, cast, or rules while a save exists,
 and migrate fits that save to the new canon.
 Migrate may carry a hand edit of `save.yaml`. It writes a checkpoint of the

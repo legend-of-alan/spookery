@@ -79,6 +79,43 @@ fn spook_verify_passes_and_re_derives_every_roll(world: &mut World) {
     );
 }
 
+#[given(expr = "two fresh copies of oneshot-docks as shipped")]
+fn two_fresh_copies_of_oneshot_docks_as_shipped(world: &mut World) {
+    let shipped = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../packs/oneshot-docks");
+    for label in ["fresh-a", "fresh-b"] {
+        let pack = support::fresh_dir(label);
+        support::copy_dir(&shipped, &pack);
+        world.copies.push(pack);
+    }
+}
+
+#[when(expr = "one round is played on each")]
+fn one_round_is_played_on_each(world: &mut World) {
+    for pack in &world.copies {
+        play_queued(pack, &[], vec![intent("grit", "rowan", "grit", None)]);
+    }
+}
+
+#[then(expr = "the two saves hold different seeds")]
+fn the_two_saves_hold_different_seeds(world: &mut World) {
+    let seeds: Vec<String> = world.copies.iter().map(|pack| saved_seed(pack)).collect();
+    assert!(seeds.iter().all(|seed| !seed.is_empty()), "{seeds:?}");
+    assert_ne!(seeds[0], seeds[1]);
+}
+
+#[then(expr = "spook verify passes on each")]
+fn spook_verify_passes_on_each(world: &mut World) {
+    for pack in &world.copies {
+        spookery_engine::verify_pack(pack, None)
+            .unwrap_or_else(|err| panic!("verify {}: {err:?}", pack.display()));
+    }
+}
+
+fn saved_seed(pack: &Path) -> String {
+    let text = fs::read_to_string(pack.join("state/save.yaml")).unwrap();
+    spookery_engine::parse_save(&text).unwrap().seed
+}
+
 #[given(expr = "a docks row overreach that adds {int} lamp oil and then removes {int}")]
 fn a_docks_row_overreach(world: &mut World, add: i64, remove: i64) {
     let pack = support::copy_pack("oneshot-docks", "rollback");
@@ -777,7 +814,7 @@ fn indexed_roll(pack: &Path, actor_id: &str, roll_index: u32) -> (String, i64) {
     let stat = (live.base + live.offset).clamp(def.min, def.max);
     let rolled = faces(
         &RollKey {
-            world_id: world.state().world_id.clone(),
+            seed: world.state().seed.clone(),
             round_index: world.state().round_index,
             rule_id: "verb:strike".to_string(),
             subject_id: Some(actor_id.into()),
