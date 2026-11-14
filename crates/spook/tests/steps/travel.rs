@@ -455,7 +455,9 @@ fn plays_map_lists_both_rooms(world: &mut World) {
         |stdout| stdout[mark..].contains("Mira's Rooms\n  ") && stdout.ends_with('\n'),
         "the map",
     );
-    let map = capture_play_stdout(world)[mark..].to_string();
+    // The join's view can still be landing after the mark, so the map starts at its first line.
+    let after = &capture_play_stdout(world)[mark..];
+    let map = &after[after.find("Docks Shop\n  ").unwrap_or_default()..];
     assert!(map.starts_with("Docks Shop\n  "), "{map}");
     assert!(map.contains("Mira's Rooms\n  "), "{map}");
     assert!(!map.contains("trapdoor"), "{map}");
