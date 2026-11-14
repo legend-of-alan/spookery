@@ -1,5 +1,6 @@
-//! The AI GM's turn loop against a real table: perceive first, recover from a refusal,
-//! queue several NPCs, stop at the model call limit, and outwait the graph's task timeout.
+//! The AI GM's turn loop against a real table: perceive first and read no fact body,
+//! recover from a refusal, queue several NPCs, stop at the model call limit, and outwait
+//! the graph's task timeout.
 
 use spookery_engine::component;
 use std::time::Duration;
@@ -158,6 +159,19 @@ fn a_perceive_came_before_any_say(world: &mut World) {
     let view = first("\"viewer\":\"mira\"").unwrap_or_else(|| panic!("{results:?}"));
     let say = first("\"kind\":\"say\"").unwrap_or_else(|| panic!("{results:?}"));
     assert!(view < say, "{results:?}");
+}
+
+#[then(expr = "the model read Mira's prose and her hidden fact's text, but no fact body")]
+fn the_model_read_prose_but_no_fact_body(world: &mut World) {
+    let results = read_last_results(world);
+    let view = results
+        .iter()
+        .find(|result| result.contains("\"viewer\":\"mira\""))
+        .unwrap_or_else(|| panic!("{results:?}"));
+    // Mira's cast prose, and the text of the hidden fact she knows from the docks save.
+    assert!(view.contains("Mira keeps the shop neat"), "{view}");
+    assert!(view.contains("The lamp-oil ledger is short."), "{view}");
+    assert!(!view.contains("owner_body"), "{view}");
 }
 
 #[then(expr = "the player saw Mira say hello")]

@@ -363,8 +363,8 @@ mod tests {
         let ids: Vec<&str> = results.iter().map(|(id, _)| *id).collect();
         assert_eq!(ids, ["call_0", "call_1", "call_2", "call_3"]);
         assert!(results[0].1.contains("\"viewer\":\"pc\""), "{results:?}");
-        assert!(results[1].1.contains("no tool named dance"), "{results:?}");
-        assert!(results[2].1.contains("not a JSON object"), "{results:?}");
+        let refused = r#"{"kind":"refused","code":"SCHEMA"}"#;
+        assert_eq!([results[1].1, results[2].1], [refused, refused]);
         // Nothing was queued, so end_turn sends no command.
         assert!(results[3].1.contains("nothing is queued"), "{results:?}");
         assert_eq!(connection.commands(), ["status", "perceive"]);

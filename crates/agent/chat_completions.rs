@@ -43,24 +43,26 @@ pub fn render_request(model_name: &str, conversation: &[model::Message]) -> Valu
 /// without an id gets `call_<index>`, and arguments that are not a string keep their JSON
 /// text, so the agent answers them itself.
 pub fn parse_reply(text: &str) -> Result<Vec<ToolCall>, CompletionError> {
-    let invalid = |what: &str| CompletionError::InvalidReply(what.to_string());
+    let missing = |field: &str| CompletionError::InvalidReply(format!("the reply has no {field}"));
     let value: Value =
         serde_json::from_str(text).map_err(|err| CompletionError::InvalidReply(err.to_string()))?;
     let message = value
         .get("choices")
         .and_then(|choices| choices.get(0))
-        .ok_or_else(|| invalid("choices"))?
+        .ok_or_else(|| missing("choices"))?
         .get("message")
-        .ok_or_else(|| invalid("message"))?;
+        .ok_or_else(|| missing("message in its first choice"))?;
     let calls = match message.get("tool_calls") {
         None | Some(Value::Null) => return Ok(Vec::new()),
-        Some(calls) => calls.as_array().ok_or_else(|| invalid("tool_calls"))?,
+        Some(calls) => calls.as_array().ok_or_else(|| missing("tool_calls list"))?,
     };
     calls
         .iter()
         .enumerate()
         .map(|(index, call)| {
-            let function = call.get("function").ok_or_else(|| invalid("function"))?;
+            let function = call
+                .get("function")
+                .ok_or_else(|| missing("function in a tool call"))?;
             let name = function.get("name").and_then(Value::as_str);
             let arguments = match function.get("arguments") {
                 Some(Value::String(text)) => text.clone(),
@@ -72,7 +74,9 @@ pub fn parse_reply(text: &str) -> Result<Vec<ToolCall>, CompletionError> {
                     .get("id")
                     .and_then(Value::as_str)
                     .map_or_else(|| format!("call_{index}"), str::to_string),
-                name: name.ok_or_else(|| invalid("name"))?.to_string(),
+                name: name
+                    .ok_or_else(|| missing("function name in a tool call"))?
+                    .to_string(),
                 arguments,
             })
         })
@@ -141,6 +145,8 @@ mod tests {
         let text = r#"{"choices":[{"message":{"role":"assistant","content":"hello"}}]}"#;
         assert_eq!(parse_reply(text), Ok(Vec::new()));
         assert!(parse_reply("not json").is_err());
+        let no_choices = CompletionError::InvalidReply("the reply has no choices".into());
+        assert_eq!(parse_reply("{}"), Err(no_choices));
     }
 
     #[test]
