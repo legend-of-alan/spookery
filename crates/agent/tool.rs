@@ -8,7 +8,7 @@ use serde::Serialize;
 use serde_json::{json, Value};
 
 use crate::protocol::{
-    CastKind, ItemStack, MeterView, NoteView, PackSummary, ServerBody, CLIENT_SCHEMA,
+    CastKind, ItemStack, MeterView, NoteView, PackSummary, Reason, ServerBody, CLIENT_SCHEMA,
     PERCEIVE_BODY_CHARS,
 };
 use crate::{Agent, Connection, Model, ToolCall};
@@ -61,19 +61,20 @@ pub(crate) async fn call<M: Model, C: Connection>(
     tool_call: &ToolCall,
 ) -> graph_flow::Result<String> {
     let args = match tool_call.arguments.trim() {
-        "" => json!({}),
-        text => match serde_json::from_str(text) {
-            Ok(args @ Value::Object(_)) => args,
-            _ => return Ok("refused: the arguments are not a JSON object".to_string()),
-        },
+        "" => Some(json!({})),
+        text => serde_json::from_str(text).ok().filter(Value::is_object),
     };
-    let body = match tool_call.name.as_str() {
-        name if COMMAND_TOOLS.contains(&name) => agent.send_command(name, args).await?,
-        END_TURN => match agent.commit_queued_moves().await? {
+    let body = match (tool_call.name.as_str(), args) {
+        (name, Some(args)) if COMMAND_TOOLS.contains(&name) => {
+            agent.send_command(name, args).await?
+        }
+        (END_TURN, Some(_)) => match agent.commit_queued_moves().await? {
             Some(body) => body,
             None => return Ok("nothing is queued, so there is no round to play".into()),
         },
-        name => return Ok(format!("refused: there is no tool named {name}")),
+        // Arguments that are not a JSON object, or a tool the GM does not have: the table
+        // refuses a GM command it cannot read the same way.
+        _ => ServerBody::Refused(Reason::Schema.into()),
     };
     Ok(render_result(&agent.state().pack, body))
 }
