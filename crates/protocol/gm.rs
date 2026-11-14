@@ -48,9 +48,12 @@ struct SayWire {
     place: Option<String>,
     #[serde(default)]
     actor: Option<String>,
+    #[serde(default, rename = "as")]
+    as_npc: Option<String>,
 }
 
-/// The `say` command arguments of either seat, sent from a client to the table.
+/// The `say` command arguments of either seat, sent from a client to the table. Only the GM
+/// may set `as`, the bare id of an NPC to speak as.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 // The schema shows the three tagged shapes, closed and with non-empty names as `SayWire`
@@ -60,25 +63,40 @@ struct SayWire {
 pub enum SayArgs {
     Table {
         text: String,
+        #[serde(rename = "as", default, skip_serializing_if = "Option::is_none")]
+        as_npc: Option<String>,
     },
     Place {
         #[cfg_attr(feature = "schema", schemars(length(min = 1)))]
         place: String,
         text: String,
+        #[serde(rename = "as", default, skip_serializing_if = "Option::is_none")]
+        as_npc: Option<String>,
     },
     Actor {
         #[cfg_attr(feature = "schema", schemars(length(min = 1)))]
         actor: String,
         text: String,
+        #[serde(rename = "as", default, skip_serializing_if = "Option::is_none")]
+        as_npc: Option<String>,
     },
 }
 
 impl SayArgs {
     pub fn text(&self) -> &str {
         match self {
-            SayArgs::Table { text } | SayArgs::Place { text, .. } | SayArgs::Actor { text, .. } => {
-                text
-            }
+            SayArgs::Table { text, .. }
+            | SayArgs::Place { text, .. }
+            | SayArgs::Actor { text, .. } => text,
+        }
+    }
+
+    /// The NPC the GM speaks as, if any.
+    pub fn as_npc(&self) -> Option<&str> {
+        match self {
+            SayArgs::Table { as_npc, .. }
+            | SayArgs::Place { as_npc, .. }
+            | SayArgs::Actor { as_npc, .. } => as_npc.as_deref(),
         }
     }
 }
@@ -87,15 +105,18 @@ impl TryFrom<SayWire> for SayArgs {
     type Error = &'static str;
 
     fn try_from(args: SayWire) -> Result<Self, Self::Error> {
+        let (text, as_npc) = (args.text, args.as_npc);
         match (args.address.as_str(), args.place, args.actor) {
-            ("table", None, None) => Ok(SayArgs::Table { text: args.text }),
+            ("table", None, None) => Ok(SayArgs::Table { text, as_npc }),
             ("place", Some(place), None) if !place.is_empty() => Ok(SayArgs::Place {
                 place,
-                text: args.text,
+                text,
+                as_npc,
             }),
             ("actor", None, Some(actor)) if !actor.is_empty() => Ok(SayArgs::Actor {
                 actor,
-                text: args.text,
+                text,
+                as_npc,
             }),
             _ => Err("say"),
         }

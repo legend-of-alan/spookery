@@ -22,7 +22,7 @@ use crate::store::records::Record;
 use crate::store::save;
 use crate::store::tape::{append_record, read_scrollback, TapeRecord};
 use crate::Reason;
-use spookery_protocol::{QueuedMove, Refusal, Speaker, PERCEIVE_BODY_CHARS};
+use spookery_protocol::{QueuedMove, Refusal, SayArgs, Speaker, PERCEIVE_BODY_CHARS};
 
 /// One say, in characters. Four kibibytes still fits in an 8 KiB client message.
 const MAX_SAY_CHARS: usize = 4 * 1024;
@@ -32,6 +32,16 @@ pub enum Address<'a> {
     Table,
     Place(&'a str),
     Actor(&'a str),
+}
+
+impl<'a> From<&'a SayArgs> for Address<'a> {
+    fn from(args: &'a SayArgs) -> Self {
+        match args {
+            SayArgs::Table { .. } => Address::Table,
+            SayArgs::Place { place, .. } => Address::Place(place),
+            SayArgs::Actor { actor, .. } => Address::Actor(actor),
+        }
+    }
 }
 
 pub struct World<L = crate::PackGuard> {
@@ -135,15 +145,30 @@ impl World {
         Ok(self.append_speech(presence, from, Some(actor_id), heard, text)?)
     }
 
+    /// Append a GM say, spoken as the NPC `as_npc` names when it is set. An `as_npc` that
+    /// is not an NPC is `SCHEMA`.
     pub fn say_as_gm(
         &self,
         presence: &Presence,
+        as_npc: Option<&ActorId>,
         heard: Address<'_>,
         text: &str,
     ) -> Result<TapeRecord, Reason> {
-        self.append_speech(presence, Speaker::Gm, None, heard, text)
+        let from = match as_npc {
+            None => Speaker::Gm,
+            Some(id)
+                if self.state.actors().get::<component::ControlType>(id).get()
+                    == Some(component::ControlType::Npc) =>
+            {
+                Speaker::Npc(id.to_string())
+            }
+            Some(_) => return Err(Reason::Schema),
+        };
+        self.append_speech(presence, from, as_npc, heard, text)
     }
 
+    /// Append one say to the tape. An `actor` say must name an actor in the world, and a
+    /// speaker's `place` say must be where that speaker stands.
     fn append_speech(
         &self,
         presence: &Presence,
@@ -153,10 +178,17 @@ impl World {
         text: &str,
     ) -> Result<TapeRecord, Reason> {
         let text = check_say_text(text)?.to_string();
-        if let Address::Actor(actor) = heard {
-            if !self.state.actors().contains(&ActorId::from(actor)) {
+        let actors = self.state.actors();
+        match (heard, speaker) {
+            (Address::Actor(actor), _) if !actors.contains(&ActorId::from(actor)) => {
                 return Err(Reason::Schema);
             }
+            (Address::Place(place), Some(speaker))
+                if actors.get::<component::Place>(speaker).get() != Some(place) =>
+            {
+                return Err(Reason::Schema);
+            }
+            _ => {}
         }
         let (address, place, actor) = match heard {
             Address::Table => ("table", None, None),
@@ -558,7 +590,7 @@ impl World<()> {
     }
 }
 
-/// Seated players who hear this say. The speaker is included.
+/// Seated players who hear this say. A seated speaker is included.
 fn speech_recipients(
     state: &State,
     presence: &Presence,
@@ -586,7 +618,7 @@ fn speech_recipients(
             }
         }
     }
-    if let Some(speaker) = speaker {
+    if let Some(speaker) = speaker.filter(|speaker| seated.contains(speaker)) {
         ids.insert(speaker.to_string());
     }
     ids.into_iter().collect()

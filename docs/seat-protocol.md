@@ -64,7 +64,7 @@ Each command reads `args` as one type, and the schema's `$defs` in `client.json`
 |---|---|---|---|
 | `claim` | player | `ClaimArgs`: `actor`, or `token` and `last_seq` | `claimed`, then a `resume` and a `view` |
 | `release` | both | `NoArgs` | `released` |
-| `say` | both | `SayArgs`: `address`, `text`, and `place` or `actor` | the sender's own `say` |
+| `say` | both | `SayArgs`: `address`, `text`, `place` or `actor`, and for the GM `as` | the sender's own `say` |
 | `look` | player | `NoArgs` | `view` |
 | `help` | player | `NoArgs` | `help` |
 | `map` | player | `NoArgs` | `map` |
@@ -111,7 +111,7 @@ A GM's `release` frees the seat before its reply. A later command on that connec
 
 ### say
 
-`address` is `table`, `place` with a `place` id, or `actor` with an `actor`. A player's actor say is read as one line, `actor` then `text`, so `spook play` sends `say Mira Vell hi` (or `tell Mira Vell hi`, the same line) as `actor` `Mira` and `text` `Vell hi`. The longest run of leading words that names an actor in sight, by id or display name and ignoring case and outer spaces as a move's target does, is who it is said to, and the rest is the text. A name two in sight share is `AMBIGUOUS_NAME`, with the move's `detail`. A line that names nobody in sight is said at the table, its text the whole line. `text` is at most 4096 characters. The table sets `from` from the connection: `player:<id>` or `gm`. A `from` in `args` is `SCHEMA`. A say goes on the session tape and takes no round. Every seat that hears it gets one `say` under one `seq`, and the sender's copy is the reply. The GM's copy lists `recipients`, the seated players who heard it.
+`address` is `table`, `place` with a `place` id, or `actor` with an `actor`. A player's actor say is read as one line, `actor` then `text`, so `spook play` sends `say Mira Vell hi` (or `tell Mira Vell hi`, the same line) as `actor` `Mira` and `text` `Vell hi`. The longest run of leading words that names an actor in sight, by id or display name and ignoring case and outer spaces as a move's target does, is who it is said to, and the rest is the text. A name two in sight share is `AMBIGUOUS_NAME`, with the move's `detail`. A line that names nobody in sight is said at the table, its text the whole line. `text` is at most 4096 characters. The table sets `from` from the connection: `player:<id>` or `gm`. A `from` in `args` is `SCHEMA`. The GM may add `as`, the bare id of an NPC, to speak as that NPC, and `from` is then `npc:<id>`. An `as` that names a PC, no actor or anything but a bare id is `SCHEMA`, and so is a player's `as`. A `place` say from a player or from the NPC in `as` must be said where that speaker stands, or it is `SCHEMA`. A say goes on the session tape and takes no round. Every seat that hears it gets one `say` under one `seq`, and the sender's copy is the reply. The GM's copy lists `recipients`, the seated players who heard it, so an NPC is never in it.
 
 <!-- example: player-say -->
 ```json

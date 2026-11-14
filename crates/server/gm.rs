@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use rmcp::handler::server::tool::schema_for_type;
 use serde_json::{Map, Value};
-use spookery_engine::{Address, Presence, Reason, RoundOutput, TapeRecord, World};
+use spookery_engine::{ActorId, Address, Presence, Reason, RoundOutput, TapeRecord, World};
 
 use super::frames;
 use super::table::commit_then_fast_forward;
@@ -78,7 +78,7 @@ pub(super) fn describe(command: &str) -> Option<(&'static str, Arc<Map<String, V
             schema_for_type::<QueueArgs>(),
         ),
         "say" => (
-            "say requires address and text. place is required when address is place. actor is required when address is actor. table takes neither place nor actor. A supplied from is SCHEMA.",
+            "say requires address and text. place is required when address is place. actor is required when address is actor. table takes neither place nor actor. as may name an NPC's id to speak as that NPC. A supplied from is SCHEMA.",
             schema_for_type::<SayArgs>(),
         ),
         "commit" => (
@@ -94,19 +94,15 @@ pub(super) fn describe(command: &str) -> Option<(&'static str, Arc<Map<String, V
     Some(described)
 }
 
-/// GM `say`. `from` is the seat. A supplied `from` appends nothing.
+/// GM `say`. `from` is the seat, or the NPC `as` names. A supplied `from` appends nothing.
 fn say(
     world: &mut World,
     presence: &Presence,
     arguments: Option<&Map<String, Value>>,
 ) -> Result<Reply, Reason> {
     let args: SayArgs = parse_args(arguments).map_err(|_| Reason::Schema)?;
-    let heard = match &args {
-        SayArgs::Table { .. } => Address::Table,
-        SayArgs::Place { place, .. } => Address::Place(place),
-        SayArgs::Actor { actor, .. } => Address::Actor(actor),
-    };
-    let said = world.say_as_gm(presence, heard, args.text())?;
+    let as_npc = args.as_npc().map(ActorId::from);
+    let said = world.say_as_gm(presence, as_npc.as_ref(), Address::from(&args), args.text())?;
     let mut reply = Reply::new(frames::render_say(&said, true));
     reply.said = Some(said);
     Ok(reply)

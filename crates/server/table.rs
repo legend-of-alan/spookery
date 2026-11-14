@@ -7,8 +7,8 @@ use std::sync::mpsc::{Receiver, Sender};
 
 use serde_json::{Map, Value};
 use spookery_engine::{
-    component, emit_tape_record, ActorId, Address, Presence, Reason, RecipientLine, RoundOutput,
-    TapeRecord, World,
+    emit_tape_record, ActorId, Address, Presence, Reason, RecipientLine, RoundOutput, TapeRecord,
+    World,
 };
 use tokio::sync::{oneshot, watch};
 
@@ -277,7 +277,7 @@ impl Table {
         let presence = self.seats.presence();
         let body = match command.as_str() {
             "release" if read::<NoArgs>(&args).is_some() => return self.release_claim(conn, id),
-            "say" => match read::<SayArgs>(&args) {
+            "say" => match read::<SayArgs>(&args).filter(|args| args.as_npc().is_none()) {
                 Some(args) => return self.say_as_player(conn, id, &actor_id, &args),
                 None => ServerBody::Refused(Reason::Schema.into()),
             },
@@ -396,7 +396,6 @@ impl Table {
         self.announce_presence();
     }
 
-    /// A player's `place` say is heard where that player stands, and nowhere else.
     fn say_as_player(
         &mut self,
         conn: ConnId,
@@ -404,21 +403,8 @@ impl Table {
         actor_id: &ActorId,
         args: &SayArgs,
     ) {
-        let here = self
-            .world
-            .state()
-            .actors()
-            .get::<component::Place>(actor_id)
-            .get();
-        let heard = match args {
-            SayArgs::Table { .. } => Address::Table,
-            SayArgs::Place { place, .. } if here == Some(place.as_str()) => Address::Place(place),
-            SayArgs::Actor { actor, .. } => Address::Actor(actor),
-            SayArgs::Place { .. } => {
-                return self.reply(conn, id, ServerBody::Refused(Reason::Schema.into()));
-            }
-        };
         let presence = self.seats.presence();
+        let heard = Address::from(args);
         match self
             .world
             .say_as_player(&presence, actor_id, heard, args.text())
