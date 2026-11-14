@@ -132,10 +132,10 @@ fn lark_climbs_to_the_loft(world: &mut World) {
     world.seen = change_line(&output);
 }
 
-#[then(expr = "lark sees one line saying she is in the loft")]
-fn lark_sees_she_is_in_the_loft(world: &mut World) {
+#[then(expr = "lark sees one line naming the Loft as her place")]
+fn lark_sees_the_loft_named_as_her_place(world: &mut World) {
     let line = one_line(&world.seen);
-    assert_eq!(line, "Your place is now loft.");
+    assert_eq!(line, "Your place is now Loft.");
 }
 
 #[given(expr = "a tonic is on the ground")]

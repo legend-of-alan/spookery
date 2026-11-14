@@ -322,7 +322,7 @@
           ]
         },
         {
-          "description": "The meter and item changes one round showed `viewer`, in the order they happened.",
+          "description": "The changes one round showed `viewer`, in the order they happened.",
           "type": "object",
           "properties": {
             "viewer": {

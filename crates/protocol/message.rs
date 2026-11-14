@@ -133,7 +133,7 @@ pub enum ServerBody {
     Lines {
         text: String,
     },
-    /// The meter and item changes one round showed `viewer`, in the order they happened.
+    /// The changes one round showed `viewer`, in the order they happened.
     Changes {
         viewer: String,
         changes: Vec<ChangeView>,

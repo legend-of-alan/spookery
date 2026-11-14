@@ -228,41 +228,23 @@ fn command_line(command: &CommandView) -> String {
     }
 }
 
-/// One sentence per change, on one line.
+/// One sentence per change it can word, on one line. Other components print nothing.
 fn render_changes(viewer: &str, changes: &[ChangeView]) -> String {
     let sentences: Vec<String> = changes
         .iter()
-        .filter_map(
-            |change| match (change.component.as_str(), as_number(&change.after)) {
-                ("meter", Some(after)) => Some(format!(
-                    "{} {} is now {after}.",
-                    render_owner(viewer, change),
-                    change.key
-                )),
+        .filter_map(|change| {
+            let whose = render_owner(viewer, change);
+            match (change.component.as_str(), as_number(&change.after)) {
+                ("meter", Some(after)) => Some(format!("{whose} {} is now {after}.", change.key)),
                 ("item", Some(_)) => render_item_change(viewer, change, changes),
-                _ => Some(render_any_change(viewer, change)),
-            },
-        )
+                ("place", _) if !change.name.is_empty() => {
+                    Some(format!("{whose} place is now {}.", change.name))
+                }
+                _ => None,
+            }
+        })
         .collect();
     sentences.join(" ")
-}
-
-/// The sentence for a change with no sentence of its own, like `Your place is now loft.`
-fn render_any_change(viewer: &str, change: &ChangeView) -> String {
-    let mut what = change.component.replace('_', " ");
-    let which = display_name(change);
-    if !which.is_empty() {
-        what = format!("{what} {which}");
-    }
-    let whose = render_owner(viewer, change);
-    match &change.after {
-        None => format!("{whose} {what} is gone."),
-        Some(ChangeValue::Number(number)) => format!("{whose} {what} is now {number}."),
-        Some(ChangeValue::Text(text)) => format!("{whose} {what} is now {text}."),
-        Some(ChangeValue::Bool(true)) => format!("{whose} {what} is now on."),
-        Some(ChangeValue::Bool(false)) => format!("{whose} {what} is now off."),
-        Some(ChangeValue::List(ids)) => format!("{whose} {what} is now {}.", ids.join(", ")),
-    }
 }
 
 /// The display name of what changed, which is its key when the two are the same.

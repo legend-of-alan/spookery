@@ -78,7 +78,12 @@ pub(crate) fn show_to(
     let mut views = Vec::new();
     for change in &visible {
         keys.insert(change.key.to_string());
-        if actor.is_some() {
+        // A modifier's and busy's values are the journal's, with no wire meaning yet.
+        let internal = matches!(
+            change.key,
+            change::Key::ActorModifier(..) | change::Key::ActorBusy(_)
+        );
+        if actor.is_some() && !internal {
             views.push(to_change_view(canon, change));
         }
     }
@@ -98,7 +103,12 @@ fn to_change_view(canon: &Canon, change: &Change) -> ChangeView {
         entity::Id::Story(id) => id.to_string(),
         entity::Id::Global => String::new(),
     };
-    let name = canon.display_name(key);
+    let name = match (&change.key, &change.after) {
+        (change::Key::ActorPlace(_), change::Value::Text(place)) => {
+            crate::rules::lines::place_name(canon, place)
+        }
+        _ => canon.display_name(key),
+    };
     ChangeView {
         component: component.to_string(),
         entity: entity.to_string(),
