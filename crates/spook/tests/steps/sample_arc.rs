@@ -79,10 +79,10 @@ const DEMO_GATE: &[&str] = &[
 ];
 const DEMO_WARD: &[&str] = &[
     "travel loft",
-    "travel yard",
-    "travel shed",
-    "travel yard",
-    "travel loft",
+    "banish goblin",
+    "banish goblin",
+    "banish goblin",
+    "use tonic",
     "banish goblin",
     "banish goblin",
     "take nail",
@@ -91,10 +91,10 @@ const DEMO_WARD: &[&str] = &[
     "travel cart",
 ];
 const DEMO_BRACE: &[&str] = &[
-    "ask briar",
-    "travel shed",
-    "travel yard",
     "travel loft",
+    "banish goblin",
+    "banish goblin",
+    "banish goblin",
     "use tonic",
     "banish goblin",
     "banish goblin",
@@ -112,13 +112,26 @@ const DEMO_KNOCKED_OUT: &[&str] = &[
     "banish goblin",
     "banish goblin",
     "banish goblin",
+    "banish goblin",
+    "banish goblin",
 ];
-// The brace script up to the brace, then four more walks until the lamps are lit.
-const DEMO_DUSK: &[&str] = &[
-    "ask briar",
+// A line that starts with `GM queues ` is the GM queueing that actor's move, not the player.
+const DEMO_GOBLIN_BITE: &[&str] = &[
     "travel shed",
     "travel yard",
     "travel loft",
+    "banish goblin",
+    "banish goblin",
+    "banish goblin",
+    "GM queues goblin bite",
+];
+// The brace script up to the brace, then six more walks until the lamps are lit, and one back
+// to the yard.
+const DEMO_DUSK: &[&str] = &[
+    "travel loft",
+    "banish goblin",
+    "banish goblin",
+    "banish goblin",
     "use tonic",
     "banish goblin",
     "banish goblin",
@@ -130,6 +143,8 @@ const DEMO_DUSK: &[&str] = &[
     "travel loft",
     "travel yard",
     "travel shed",
+    "travel yard",
+    "travel loft",
     "travel yard",
 ];
 
@@ -288,12 +303,16 @@ fn the_demo_script_is_played_with_the_stub_gm(world: &mut World) {
         "ward" => DEMO_WARD,
         "brace" => DEMO_BRACE,
         "knocked-out" => DEMO_KNOCKED_OUT,
+        "goblin-bite" => DEMO_GOBLIN_BITE,
         "dusk" => DEMO_DUSK,
         other => panic!("unknown demo script: {other}"),
     };
     seat_gm_and_actor(world, "demo-d20", "corin", "demo-script");
     for line in lines {
-        commit_line(world, line);
+        match line.strip_prefix("GM queues ") {
+            Some(queued) => commit_gm_move(world, queued),
+            None => commit_line(world, line),
+        }
     }
 }
 
@@ -333,6 +352,16 @@ fn seat_gm_and_actor(world: &mut World, pack_name: &str, actor_id: &str, label: 
 fn commit_line(world: &mut World, line: &str) {
     let mark = table::player_write(world, line);
     table::wait_player_from(world, mark, "\"kind\":\"queued\"");
+    let before = list_round_keys(table::pack(world)).len();
+    table::gm_tool_call(world, 2, "commit", r#"{"include_round":true}"#);
+    table::wait_round_count(table::pack(world), before + 1);
+}
+
+/// The GM queues `<actor> <move>` and commits it as one round.
+fn commit_gm_move(world: &mut World, queued: &str) {
+    let (actor_id, move_name) = queued.split_once(' ').unwrap();
+    let queue = serde_json::json!({ "actor_id": actor_id, "move": move_name }).to_string();
+    table::gm_tool_call(world, 3, "queue", &queue);
     let before = list_round_keys(table::pack(world)).len();
     table::gm_tool_call(world, 2, "commit", r#"{"include_round":true}"#);
     table::wait_round_count(table::pack(world), before + 1);

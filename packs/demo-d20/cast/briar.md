@@ -89,6 +89,6 @@ rules:
     do:
       - narrate:
           to: self
-          text: "Briar says: \"Best me with a weapon, or bring me cold iron for my gate. Before the lamps.\""
+          text: "Briar says: \"Best me with a weapon, before the lamps.\""
 ---
-Briar keeps the gate with his staff. He wants to be bested in a fair fight or paid in cold iron before the lamps are lit, and he swings back at anyone who swings at him.
+Briar keeps the gate with his staff. He wants to be bested in a fair fight before the lamps are lit, and he swings back at anyone who swings at him.

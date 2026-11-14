@@ -21,6 +21,11 @@ Feature: The demo pack can be finished
     When the demo script is played with the stub GM
     Then the player sees only the knocked-out ending
 
+  Scenario: The player the GM's goblin bites at 1 hp sees only the knocked-out ending
+    Given demo-d20 and Corin and the goblin-bite script
+    When the demo script is played with the stub GM
+    Then the player sees only the knocked-out ending
+
   Scenario: The player still out at dusk sees only the dusk ending, and the cart is refused
     Given demo-d20 and Corin and the dusk script
     When the demo script is played with the stub GM

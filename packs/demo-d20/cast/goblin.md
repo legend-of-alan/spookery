@@ -12,6 +12,32 @@ meters:
     max: 3
     base: 3
 rules:
+  - id: bite
+    when: habit
+    if:
+      - at:
+          subject: corin
+          place: loft
+      - meter:
+          of: goblin
+          id: nerve
+          op: ">="
+          value: 1
+    roll:
+      check: strike
+      threshold: 12
+    success:
+      - meter:
+          of: corin
+          key: hp
+          add: -2
+      - narrate:
+          to: corin
+          text: The goblin darts out of the straw and bites your ankle.
+    miss:
+      - narrate:
+          to: corin
+          text: The goblin snaps at your ankle and misses.
   - id: banish
     when:
       verb: banish
@@ -24,28 +50,24 @@ rules:
           value: 1
     roll:
       check: banish
-      threshold: 14
-      partial_at: 9
+      threshold: 12
+      partial_at: 7
     success:
       - meter:
           of: target
           key: nerve
-          add: -2
+          add: -1
       - narrate:
           to: self
           text: The goblin shrinks back into the straw.
     partial:
-      - meter:
-          of: target
-          key: nerve
-          add: -1
       - meter:
           of: self
           key: hp
           add: -2
       - narrate:
           to: self
-          text: The goblin flinches, then bites your hand.
+          text: The goblin holds its ground and bites your hand.
     miss:
       - meter:
           of: self
@@ -77,4 +99,4 @@ rules:
           to: here
           text: The goblin shrieks and burrows deep into the straw. The nail drops at your feet.
 ---
-Something hunches in the straw: a goblin, or a knot of straw shaped like one. It wants the iron nail out of everyone's reach and bites whoever comes for it, but cold iron and a firm word send it burrowing.
+Something hunches in the straw: a goblin, or a knot of straw shaped like one. It wants the iron nail out of everyone's reach and bites whoever comes for it, but cold iron and a firm word send it burrowing. It can't stand being mocked, and an insult earns a bite.
