@@ -199,6 +199,10 @@ pub fn check_save(state: &State) -> Result<(), Vec<Diagnostic>> {
     let canon = state.canon();
     let mut diags = Vec::new();
     let actors = state.actors();
+    if actors.contains(&ActorId::from("world")) {
+        let diag = schema_error(FILE, "actor id world is reserved", "rename that actor");
+        diags.push(diag.at_path("actors.world"));
+    }
     let held = actors.carriers_by_store();
     let lacking = held.iter().filter(|(_, id)| !actors.contains(id));
     for (store, id) in lacking {

@@ -259,7 +259,10 @@ mod tests {
         let world = docks();
         let actors = world.state().actors();
         let facts = actors.query::<Option<&component::KnownFacts>>();
-        let counts: Vec<_> = facts.iter().map(|facts| facts.map(Vec::len)).collect();
+        let counts: Vec<_> = facts
+            .iter()
+            .map(|facts| facts.map(|known| known.len()))
+            .collect();
         assert_eq!(
             counts,
             [None, None, None, Some(1), None, None],
@@ -270,7 +273,7 @@ mod tests {
         assert_eq!(knowing.map(|(id, _)| id).collect::<Vec<_>>(), ["mira"]);
         let (mira, rowan) = (ActorId::from("mira"), ActorId::from("rowan"));
         let knowing = actors.query::<&component::KnownFacts>();
-        assert_eq!(knowing.get(&mira).map(Vec::len), Some(1));
+        assert_eq!(knowing.get(&mira).map(|known| known.len()), Some(1));
         assert_eq!(knowing.get(&rowan), None);
         assert!(knowing.contains(&mira) && !knowing.contains(&rowan));
         let unknowing = actors.query_filtered::<ActorId, Without<component::KnownFacts>>();

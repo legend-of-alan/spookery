@@ -26,7 +26,6 @@ pub(crate) use transaction::Savepoint;
 use transaction::Transaction;
 
 use crate::canon::Canon;
-use crate::intent::Viewer;
 
 /// The save as the file holds it: the clock, each collection's components, and the notes. It has
 /// no canon and no writers; `State::new` opens it to read and write.
@@ -174,11 +173,6 @@ impl<E: entity::Entities> Writer<'_, E> {
 impl Save {
     pub fn notes(&self) -> &[Note] {
         &self.notes
-    }
-
-    /// The seat actor `id` acts from.
-    pub(crate) fn viewer_of(&self, id: &ActorId) -> Option<Viewer> {
-        self.actors.viewer_of(id)
     }
 }
 

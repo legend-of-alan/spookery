@@ -322,7 +322,8 @@ impl<L> World<L> {
             .move_name
             .filter(|m| !m.is_empty())
             .ok_or(Reason::Schema)?;
-        let viewer = self.state.viewer_of(&actor_id).ok_or(Reason::UnknownId)?;
+        let control = self.state.actors().get::<component::ControlType>(&actor_id);
+        let viewer = control.viewer().ok_or(Reason::UnknownId)?;
         let token = spec.target.as_deref().filter(|t| !t.is_empty());
         let (canon, state) = (self.canon(), &self.state);
         let rule = gate::pick(canon, state, &viewer, Source::Gm, &move_name, token)?;
@@ -763,16 +764,6 @@ pub fn check_pack(root: &Path) -> Vec<Diagnostic> {
 
 fn check_save_text(state: &Save, bytes: &[u8]) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
-    if state.viewer_of(&ActorId::from("world")).is_some() {
-        diags.push(
-            schema_error(
-                "state/save.yaml",
-                "actor id world is reserved",
-                "rename that actor",
-            )
-            .at_path("actors.world"),
-        );
-    }
     match save::emit(state) {
         Ok(emitted) if emitted.as_bytes() != bytes => {
             let line = std::str::from_utf8(bytes)

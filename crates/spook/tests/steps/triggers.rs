@@ -543,7 +543,7 @@ fn nell_reveals_the_trapdoor(world: &mut World) {
     );
     let nell = "nell".into();
     let known_facts = now.actors().get::<component::KnownFacts>(&nell).get();
-    world.scratch = known_facts.unwrap().join(",");
+    world.scratch = Vec::from_iter(known_facts.unwrap().clone()).join(",");
     world.pack = Some(pack);
 }
 

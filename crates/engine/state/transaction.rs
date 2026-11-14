@@ -6,7 +6,7 @@ use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, BTreeSet};
 
 use super::change::{self, Change};
-use super::component::{meter, Meter};
+use super::component::{meter, Meter, Modifier};
 use super::{entity, sort_unique, undo, MemoryLine, Reader, Save, State};
 use crate::canon::Budget;
 use crate::Reason;
@@ -211,7 +211,7 @@ impl State {
             Reader::new(entities, canon).get::<Meter>(id).get(name)
         });
         let sum_now = match &id {
-            entity::Id::Actor(actor) => save.actors.modifier_sum(actor, name),
+            entity::Id::Actor(actor) => self.actors().get::<Modifier>(actor).sum(name),
             _ => Ok(0),
         };
         let reading = |held: Option<&Meter>, sum: Result<i64, Reason>| {
@@ -261,8 +261,8 @@ impl State {
 }
 
 impl Save {
-    /// Put the save in file order: the notes by id, and each list a note or an actor's known facts
-    /// hold sorted with no repeats.
+    /// Put the save in file order: the notes by id, and each list a note holds sorted with no
+    /// repeats.
     pub(crate) fn sort(&mut self) {
         let notes = self.notes.value_mut();
         notes.sort_by(|a, b| a.id.cmp(&b.id));
@@ -270,7 +270,6 @@ impl Save {
             sort_unique(&mut note.to);
             sort_unique(&mut note.fact_ids);
         }
-        self.actors.sort_known_facts();
     }
 }
 

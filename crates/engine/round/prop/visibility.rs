@@ -146,15 +146,10 @@ fn apply_scene(
         if !state.actors().contains(actor_id) {
             continue;
         }
-        let mut known_facts: Vec<String> = known
-            .iter()
-            .map(|index| facts[index % facts.len()].clone())
-            .collect();
-        sort_unique(&mut known_facts);
         state
             .actors_mut()
             .get_mut::<component::KnownFacts>(actor_id)
-            .learn(&known_facts)
+            .learn(known.iter().map(|index| &facts[index % facts.len()]))
             .unwrap();
     }
     for (index, note) in scene.notes.iter().enumerate() {

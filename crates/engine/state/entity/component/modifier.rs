@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::state::change::{self, Change};
 use crate::state::component::meter::{self, Meter};
-use crate::state::component::{Component, Mut};
+use crate::state::component::{Component, Mut, Ref};
 use crate::state::entity;
 use crate::state::id::ActorId;
 use crate::state::{Reader, Writer};
@@ -101,6 +101,13 @@ pub fn sum<'a>(held: impl Iterator<Item = &'a Modifier>, key: &str) -> Result<i6
         .ok_or(Reason::OutOfRange)
 }
 
+impl Ref<'_, entity::Actors, Modifier> {
+    /// What the actor's modifiers add to meter `key`.
+    pub fn sum(&self, key: &str) -> Result<i64, Reason> {
+        sum(self.iter().map(|(_, held)| held), key)
+    }
+}
+
 /// Meter `name` on `actor` as rolls, costs, conditions and views read it: the stored meter plus
 /// what the actor's modifiers add, inside the pack's bounds. `UNKNOWN_ID` when the actor does not
 /// carry the meter.
@@ -109,7 +116,7 @@ pub fn value(
     actor: &ActorId,
     name: &str,
 ) -> Result<i64, Reason> {
-    let modifiers = actors.components.modifier_sum(actor, name);
+    let modifiers = actors.get::<Modifier>(actor).sum(name);
     value_with(actors, actor, name, modifiers)
 }
 
@@ -164,7 +171,7 @@ impl Mut<'_, entity::Actors, Modifier> {
         if next.is_some() {
             value_with(actors, actor, &meter, with_next)?;
         }
-        let before = actors.components.modifier_sum(actor, &meter);
+        let before = actors.get::<Modifier>(actor).sum(&meter);
         let watched = stacks_move.then_some(change::Report::Modifiers(watched, before));
         let reports = watched.into_iter().chain([own.into()]);
         let entry = (actor.clone(), id.to_string());

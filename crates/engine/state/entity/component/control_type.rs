@@ -45,4 +45,9 @@ impl Ref<'_, entity::Actors, ControlType> {
     pub fn is_pc(&self) -> bool {
         self.get().is_some_and(ControlType::is_pc)
     }
+
+    /// The seat the actor acts from. An actor the save lacks has none.
+    pub fn viewer(&self) -> Option<Viewer> {
+        self.get().map(|control| control.viewer(self.id))
+    }
 }

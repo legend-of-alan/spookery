@@ -7,7 +7,7 @@ use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::rules::rule::TargetKind;
 use crate::state::id::{ActorId, PlaceId};
-use crate::state::State;
+use crate::state::{component, State};
 use crate::Reason;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -197,10 +197,11 @@ impl Intent {
         rule_id: &str,
     ) -> Result<Self, Reason> {
         let (actor, id) = match subject {
-            Some(actor_id) => (
-                Some(state.viewer_of(actor_id).ok_or(Reason::UnknownId)?),
-                format!("trigger:{rule_id}:{actor_id}"),
-            ),
+            Some(actor_id) => {
+                let control = state.actors().get::<component::ControlType>(actor_id);
+                let actor = control.viewer().ok_or(Reason::UnknownId)?;
+                (Some(actor), format!("trigger:{rule_id}:{actor_id}"))
+            }
             None => (None, format!("trigger:{rule_id}")),
         };
         let intent = Self::new(
@@ -223,7 +224,8 @@ impl Intent {
         verb: &str,
         target: Target,
     ) -> Result<Self, Reason> {
-        let actor = Some(state.viewer_of(actor_id).ok_or(Reason::UnknownId)?);
+        let control = state.actors().get::<component::ControlType>(actor_id);
+        let actor = Some(control.viewer().ok_or(Reason::UnknownId)?);
         let id = format!("finish:{actor_id}");
         Ok(Self::new(
             id,
