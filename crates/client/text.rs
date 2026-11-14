@@ -233,10 +233,12 @@ fn render_changes(viewer: &str, entries: &[ChangeView]) -> String {
     let sentences: Vec<String> = entries
         .iter()
         .filter_map(|entry| match entry.component {
-            protocol::Component::Meter => {
-                let (whose, key) = (render_owner(viewer, entry), &entry.key);
-                Some(format!("{whose} {key} is now {}.", entry.after))
-            }
+            protocol::Component::Meter => Some(format!(
+                "{} {} is now {}.",
+                render_owner(viewer, entry),
+                entry.key,
+                entry.after
+            )),
             protocol::Component::Item => render_item_change(viewer, entry, entries),
         })
         .collect();
