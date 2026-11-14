@@ -764,6 +764,16 @@ pub fn check_pack(root: &Path) -> Vec<Diagnostic> {
 
 fn check_save_text(state: &Save, bytes: &[u8]) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
+    // Read as the file holds it: a save on its own has no canon to read its actors against.
+    let saved = serde_json::to_value(state).unwrap_or_default();
+    if saved["actors"]["control_type"].get("world").is_some() {
+        let diag = schema_error(
+            "state/save.yaml",
+            "actor id world is reserved",
+            "rename that actor",
+        );
+        diags.push(diag.at_path("actors.world"));
+    }
     match save::emit(state) {
         Ok(emitted) if emitted.as_bytes() != bytes => {
             let line = std::str::from_utf8(bytes)
