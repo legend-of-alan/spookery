@@ -233,7 +233,7 @@ fn render_changes(viewer: &str, changes: &[ChangeView]) -> String {
     let sentences: Vec<String> = changes
         .iter()
         .filter_map(|change| {
-            let whose = render_owner(viewer, change);
+            let whose = render_possessive(viewer, change);
             match (change.component.as_str(), as_number(&change.after)) {
                 ("meter", Some(after)) => Some(format!("{whose} {} is now {after}.", change.key)),
                 ("item", Some(_)) => render_item_change(viewer, change, changes),
@@ -289,7 +289,7 @@ fn render_item_change(viewer: &str, change: &ChangeView, changes: &[ChangeView])
     } else {
         &change.entity_name
     };
-    let whose = render_owner(viewer, change);
+    let whose = render_possessive(viewer, change);
     let sentence = match (lost, other_is_actor) {
         (true, Some(true)) => format!("{who} handed over the {name}."),
         (true, Some(false)) => format!("{who} dropped the {name}."),
@@ -303,7 +303,7 @@ fn render_item_change(viewer: &str, change: &ChangeView, changes: &[ChangeView])
 }
 
 /// `Your`, `Briar's`, `Gate Yard's`, `The strain story's` or `The world's`.
-fn render_owner(viewer: &str, change: &ChangeView) -> String {
+fn render_possessive(viewer: &str, change: &ChangeView) -> String {
     let name = &change.entity_name;
     if change.entity == viewer {
         "Your".to_string()
