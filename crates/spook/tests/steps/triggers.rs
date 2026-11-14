@@ -663,7 +663,7 @@ fn nell_sets_the_tide(world: &mut World) {
     );
 }
 
-/// The flags the world holds, in name order.
+/// The flags the world holds, in name order, for a failure message.
 pub(crate) fn world_flags(state: &State) -> Vec<String> {
     let world = state.globals().query::<&component::Flag>();
     let flags = world.iter().flat_map(|held| held.iter_with_id());
@@ -673,11 +673,9 @@ pub(crate) fn world_flags(state: &State) -> Vec<String> {
 #[then(expr = "the world has flag tide_turned")]
 fn the_world_has_the_tide(world: &mut World) {
     let now = state_of(world.pack.as_ref().unwrap());
-    let flags = world_flags(&now);
-    assert!(
-        flags.iter().any(|flag| flag == "tide_turned"),
-        "flags: {flags:?}"
-    );
+    let flags = now.entities().get::<component::Flag>(&entity::Id::Global);
+    let held = world_flags(&now);
+    assert!(flags.contains("tide_turned"), "flags: {held:?}");
 }
 
 #[then(expr = "the GM summary lists {string}")]

@@ -67,7 +67,7 @@ entity::has_one!(Actors, Act, acts);
 impl Reader<'_, Actors> {
     /// Each store's name, as the save names it, with each actor it carries something for. The
     /// control type is left out: an actor exists when it has one.
-    pub fn carriers_by_store(&self) -> BTreeSet<(&'static str, &ActorId)> {
+    pub(crate) fn carriers_by_store(&self) -> BTreeSet<(&'static str, &ActorId)> {
         // Every store, with no `..`: a store added later must be listed here to compile.
         let Actors {
             control_type: _,
