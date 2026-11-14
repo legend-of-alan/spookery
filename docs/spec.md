@@ -34,4 +34,4 @@ An integer is still an integer. `{ meter: { of, key }, plus: N }` is still that 
 
 Overflow is refused when the effect is applied. That effect changes nothing. Dividing by zero at play, when the divisor is not a literal `0`, is refused the same way.
 
-Dice use the round's roll seed. Each die group in one expression continues that seed. The journal line records the faces, and the GM commit shows them, in the form `2d6 → 4, 5 = 9 + 3`. The player does not see the faces.
+Dice derive from the world's seed and the round. A save with no `seed:` gets a fresh one the first time the world opens for play, before its first round, so two copies of a shipped pack roll differently. Writing `seed:` into `state/save.yaml` pins the dice. Each die group in one expression continues where the last one stopped. The journal line records the faces, and the GM commit shows them, in the form `2d6 → 4, 5 = 9 + 3`. The player does not see the faces.

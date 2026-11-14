@@ -520,7 +520,7 @@ fn lark_attacks(world: &mut World) {
     let loaded = state_of(&pack);
     let face = faces(
         &RollKey {
-            world_id: loaded.world_id.clone(),
+            seed: loaded.seed.clone(),
             round_index: loaded.round_index + 1,
             rule_id: "verb:attack".to_string(),
             subject_id: Some("lark".into()),

@@ -162,7 +162,7 @@ fn run_stages(
     queue: &[Intent],
 ) -> Result<StagedRound, Reason> {
     let clock = advance::run(canon, &mut state, presence, wall)?;
-    let mut dice = RoundDice::new(state.world_id.clone(), clock.round_index);
+    let mut dice = RoundDice::new(state.seed.clone(), clock.round_index);
     let mut log = RoundLog::default();
     let picked = pick::run(canon, &state, presence, queue, &mut log)?;
     let candidates = resolve::run(canon, &state, presence, &picked, queue, &mut dice, &mut log);

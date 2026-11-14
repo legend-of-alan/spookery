@@ -14,26 +14,21 @@ use crate::state::id::ActorId;
 use crate::state::State;
 use crate::Reason;
 
-/// The round line's `seed` field. A roll uses `RollKey`, not this string.
-pub(crate) fn round_seed(world_id: &str, round_index: u64) -> String {
-    format!("{world_id}|{round_index}")
-}
-
-pub(crate) fn shuffle_key(world_id: &str, round_index: u64, actor_id: &ActorId) -> [u8; 32] {
-    blake2s_256(format!("{world_id}|{round_index}|{actor_id}").as_bytes())
+pub(crate) fn shuffle_key(seed: &str, round_index: u64, actor_id: &ActorId) -> [u8; 32] {
+    blake2s_256(format!("{seed}|{round_index}|{actor_id}").as_bytes())
 }
 
 /// Every roll key of one round.
 pub(crate) struct RoundDice {
-    world_id: String,
+    seed: String,
     round_index: u64,
     counts: BTreeMap<(String, Option<ActorId>), u32>,
 }
 
 impl RoundDice {
-    pub(crate) fn new(world_id: String, round_index: u64) -> Self {
+    pub(crate) fn new(seed: String, round_index: u64) -> Self {
         Self {
-            world_id,
+            seed,
             round_index,
             counts: BTreeMap::new(),
         }
@@ -48,7 +43,7 @@ impl RoundDice {
         let roll_index = *index;
         *index += 1;
         RollKey {
-            world_id: self.world_id.clone(),
+            seed: self.seed.clone(),
             round_index: self.round_index,
             rule_id: rule.to_string(),
             subject_id: subject.cloned(),

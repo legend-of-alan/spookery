@@ -113,7 +113,7 @@ fn priority(canon: &Canon, state: &State, presence: &Presence, intent: &Intent) 
         Some(Viewer::Player(_)) => (ActorRank::Player, [0u8; 32]),
         Some(Viewer::Npc(id)) => (
             ActorRank::Npc,
-            shuffle_key(&state.world_id, state.round_index, id),
+            shuffle_key(&state.seed, state.round_index, id),
         ),
         None => (ActorRank::Npc, [0u8; 32]),
     };

@@ -187,10 +187,17 @@ pub mod testing {
         copy_pack("oneshot-docks", label)
     }
 
+    /// Copy a shipped pack with its dice pinned: the save's seed is its world id.
     pub fn copy_pack(name: &str, label: &str) -> PathBuf {
         let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         let pack = fresh_dir(label);
         copy_dir(&manifest.join("../../packs").join(name), &pack);
+        let text = fs::read_to_string(crate::store::journal::save_path(&pack))
+            .unwrap_or_else(|err| panic!("read {name} save: {err}"));
+        let mut save = crate::store::save::parse(&text)
+            .unwrap_or_else(|err| panic!("load {name} save: {err:?}"));
+        save.seed.clone_from(&save.world_id);
+        write_save(&pack, &save);
         pack
     }
 

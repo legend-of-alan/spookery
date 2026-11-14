@@ -544,7 +544,7 @@ fn nell_resists_on_a_seeded_roll(world: &mut World) {
     let pack = support::copy_pack("sample-d20", "resist");
     let face = faces(
         &RollKey {
-            world_id: "sample-d20".to_string(),
+            seed: "sample-d20".to_string(),
             round_index: 1,
             rule_id: "item:poisoned_dagger/attack".to_string(),
             subject_id: Some("nell".into()),
