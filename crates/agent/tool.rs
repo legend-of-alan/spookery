@@ -175,13 +175,22 @@ mod tests {
         .unwrap()
     }
 
+    /// Feature: The AI GM gets non-hidden prose
+    ///
+    /// Scenario: Cast prose reaches the perceive result, and hidden facts never do
+    ///   Given a hidden fact body "BODY-SENTINEL"
+    ///   Then the result holds the place's and the seen cast's bodies and the fact text
+    ///   And it does not contain "BODY-SENTINEL"
     #[test]
-    fn an_npc_view_keeps_place_cast_and_note_prose_but_not_unseen_cast_or_unknown_mentions() {
+    fn an_npc_view_keeps_prose_and_fact_text_and_never_a_fact_body() {
         let seen = render_result(&docks(), ServerBody::View(Box::new(shop("aldric"))));
+        assert!(seen.contains("MIRA-PROSE-SENTINEL"), "{seen}");
         assert!(seen.contains("The shop smells of tar."), "{seen}");
         assert!(seen.contains("Aldric keeps the counter."), "{seen}");
         assert!(!seen.contains("BRAM-ABSENT"), "{seen}");
+        assert!(seen.contains("FACT-TEXT-SENTINEL"), "{seen}");
         assert!(seen.contains("MESSAGE-SENTINEL"), "{seen}");
+        assert!(!seen.contains("BODY-SENTINEL"), "{seen}");
         assert!(!seen.contains("UNKNOWN-SENTINEL"), "{seen}");
     }
 
