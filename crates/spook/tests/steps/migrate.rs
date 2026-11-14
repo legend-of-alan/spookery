@@ -1,5 +1,5 @@
 use spookery_engine::testing::{place_of, state_of};
-use spookery_engine::{component, Meter};
+use spookery_engine::{component, ActorId, Meter};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -108,7 +108,7 @@ fn the_pack_adds_meter(world: &mut World, id: String, start: i64) {
 #[then(expr = "every actor has {string} at {int}")]
 fn every_actor_has_meter_at(world: &mut World, id: String, base: i64) {
     let now = state_of(table::pack(world));
-    for actor in now.actors().control_type.keys() {
+    for actor in now.actors().query::<ActorId>().iter() {
         let meter = now.actors().get::<component::Meter>(actor).get(&id);
         let got = meter.map(|meter| meter.base);
         assert_eq!(got, Some(base), "{actor} {id}");

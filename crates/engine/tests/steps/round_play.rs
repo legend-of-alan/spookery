@@ -354,7 +354,7 @@ fn rowan_asks_aldric_until_it_finishes(world: &mut World) {
         let output = table.play(&rowan, &wall);
         output.unwrap_or_else(|err| panic!("round {round}: {err}"));
         let state = table.state();
-        if !act_of(state, "rowan").is_busy(state.world_time) {
+        if !support::is_busy(state, "rowan") {
             break;
         }
         assert!(round < 6, "Rowan is still busy after {round} rounds");
@@ -409,7 +409,7 @@ fn rowan_hauls_until_it_finishes(world: &mut World) {
             return;
         }
         let state = table.state();
-        if !act_of(state, "rowan").is_busy(state.world_time) {
+        if !support::is_busy(state, "rowan") {
             break;
         }
     }
@@ -432,7 +432,7 @@ fn the_refused_finish_commits(world: &mut World) {
     );
     let saved = spookery_engine::World::peek(pack).unwrap_or_else(|err| panic!("open: {err}"));
     let state = saved.state();
-    assert!(!act_of(state, "rowan").is_busy(state.world_time), "{round}");
+    assert!(!support::is_busy(state, "rowan"), "{round}");
     spookery_engine::verify_pack(pack, None).unwrap_or_else(|err| panic!("verify: {err}"));
 }
 

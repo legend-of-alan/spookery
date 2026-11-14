@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::state::change::{self, Change};
 use crate::state::component::meter::{self, Meter};
-use crate::state::component::{Component, Mut};
+use crate::state::component::{Component, Mut, Ref};
 use crate::state::entity;
 use crate::state::id::ActorId;
 use crate::state::{Reader, Writer};
@@ -41,17 +41,10 @@ impl Component for Modifier {
     type Value = Modifier;
 }
 
-impl Modifier {
-    /// The modifier as a change value: its stacks, the tick it expires at and its longest ticks.
-    pub(crate) fn to_value(&self) -> crate::state::change::Value {
-        let (stacks, until, max_ticks) = (&self.stacks, self.until, self.max_ticks);
-        crate::state::change::Value::Text(format!("{stacks:?} until {until} max_ticks {max_ticks}"))
-    }
-
-    /// Ticks from `now` until it expires.
-    pub fn ticks_left(&self, now: u64) -> u64 {
-        self.until.saturating_sub(now)
-    }
+/// The modifier as a change value: its stacks, the tick it expires at and its longest ticks.
+fn stacks_value(live: &Modifier) -> change::Value {
+    let (stacks, until, max_ticks) = (&live.stacks, live.until, live.max_ticks);
+    change::Value::Text(format!("{stacks:?} until {until} max_ticks {max_ticks}"))
 }
 
 /// Apply `add`, lasting `ticks`, at tick `now`. The ticks left plus `ticks` are the new
@@ -61,7 +54,7 @@ impl Modifier {
 /// go first, weakest first.
 pub fn stack(def: &ModifierDef, live: &mut Modifier, add: i64, ticks: u64, now: u64) {
     live.max_ticks = live.max_ticks.max(ticks);
-    let left = live.ticks_left(now).saturating_add(ticks);
+    let left = live.until.saturating_sub(now).saturating_add(ticks);
     live.until = now.saturating_add(left.min(live.max_ticks));
     while live.stacks.len() > def.max_stacks {
         if let Some(index) = weakest(&live.stacks) {
@@ -101,6 +94,13 @@ pub fn sum<'a>(held: impl Iterator<Item = &'a Modifier>, key: &str) -> Result<i6
         .ok_or(Reason::OutOfRange)
 }
 
+impl Ref<'_, entity::Actors, Modifier> {
+    /// What the actor's modifiers add to meter `key`.
+    pub fn sum(&self, key: &str) -> Result<i64, Reason> {
+        sum(self.iter().map(|(_, held)| held), key)
+    }
+}
+
 /// Meter `name` on `actor` as rolls, costs, conditions and views read it: the stored meter plus
 /// what the actor's modifiers add, inside the pack's bounds. `UNKNOWN_ID` when the actor does not
 /// carry the meter.
@@ -109,7 +109,8 @@ pub fn value(
     actor: &ActorId,
     name: &str,
 ) -> Result<i64, Reason> {
-    value_with(actors, actor, name, actors.modifier_sum(actor, name))
+    let modifiers = actors.get::<Modifier>(actor).sum(name);
+    value_with(actors, actor, name, modifiers)
 }
 
 /// The same with `modifiers` in place of what the actor's modifiers add, for a write that has not
@@ -149,7 +150,7 @@ impl Mut<'_, entity::Actors, Modifier> {
         if next.is_some() {
             self.check_exists()?;
         }
-        let own = |held: Option<&Modifier>| held.map_or(change::Value::Empty, Modifier::to_value);
+        let own = |held: Option<&Modifier>| held.map_or(change::Value::Empty, stacks_value);
         let own_key = change::Key::ActorModifier(actor.to_string(), id.to_string());
         let own = Change::new(own_key, own(held), own(next.as_ref()));
         let stacks_move = held.map(|held| &held.stacks) != next.as_ref().map(|next| &next.stacks);
@@ -163,21 +164,23 @@ impl Mut<'_, entity::Actors, Modifier> {
         if next.is_some() {
             value_with(actors, actor, &meter, with_next)?;
         }
-        let before = actors.modifier_sum(actor, &meter);
+        let before = actors.get::<Modifier>(actor).sum(&meter);
         let watched = stacks_move.then_some(change::Report::Modifiers(watched, before));
         let reports = watched.into_iter().chain([own.into()]);
         let entry = (actor.clone(), id.to_string());
-        (self.writer.components.modifiers).set(self.writer.transaction, entry, next, reports)
+        let (modifiers, transaction) = self.store_mut();
+        modifiers.set(transaction, entry, next, reports)
     }
 }
 
 impl Writer<'_, entity::Actors> {
     /// Take off every modifier whose tick has come by `world_time`, all its stacks at once.
     pub fn expire_modifiers(&mut self, world_time: u64) -> Result<(), Reason> {
-        let due: Vec<(ActorId, String)> = (self.modifiers.iter())
-            .filter(|(_, held)| held.until <= world_time)
-            .map(|(due, _)| due.clone())
-            .collect();
+        let actors = Reader::new(&*self.components, self.canon).query::<&Modifier>();
+        let held = actors.iter().flat_map(|held| held.iter_with_id());
+        let due = held.filter(|(_, _, held)| held.until <= world_time);
+        let due: Vec<(ActorId, String)> =
+            (due.map(|(actor, id, _)| (actor.clone(), id.to_string()))).collect();
         for (actor, id) in due {
             self.get_mut::<Modifier>(&actor).set(&id, None)?;
         }

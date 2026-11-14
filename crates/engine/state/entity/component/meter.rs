@@ -81,7 +81,7 @@ impl Component for Meter {
     type Value = Meter;
 }
 
-impl<E: entity::Has<Meter>> Mut<'_, E, Meter> {
+impl<E: entity::Has<Meter, Store = entity::MapStore<E, Meter>>> Mut<'_, E, Meter> {
     /// Move meter `name` by `delta` inside its bounds. It reports the meter's key with the
     /// stored meter it replaced; the change is read, as rules read the meter, when the changes
     /// are taken.
@@ -90,11 +90,11 @@ impl<E: entity::Has<Meter>> Mut<'_, E, Meter> {
         let id = self.id.as_id_ref();
         let def = (self.writer.canon.meter_def(id, name)).ok_or(Reason::UnknownId)?;
         let entry = (self.id.clone(), name.to_string());
-        let held = self.writer.components.store().get(&entry);
+        let held = self.store().get(&entry);
         let next = shift(held, def, delta)?;
         let report = change::Report::Meter(change::Key::meter(id, name), held.cloned());
-        let store = self.writer.components.store_mut();
-        store.set(self.writer.transaction, entry, Some(next), [report])
+        let (store, transaction) = self.store_mut();
+        store.set(transaction, entry, Some(next), [report])
     }
 
     /// Give the entity meter `name` as `meter` says, `None` taking it off, outside a round's
@@ -105,10 +105,10 @@ impl<E: entity::Has<Meter>> Mut<'_, E, Meter> {
             self.check_exists()?;
         }
         let entry = (self.id.clone(), name.to_string());
-        let held = self.writer.components.store().get(&entry).cloned();
+        let held = self.store().get(&entry).cloned();
         let report = change::Report::Meter(change::Key::meter(self.id.as_id_ref(), name), held);
-        let store = self.writer.components.store_mut();
-        store.set(self.writer.transaction, entry, meter, [report])
+        let (store, transaction) = self.store_mut();
+        store.set(transaction, entry, meter, [report])
     }
 }
 

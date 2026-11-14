@@ -4,6 +4,7 @@ use crate::canon::Canon;
 use crate::rules::effect::Effect;
 use crate::rules::visibility::{self, Recipient, RecipientLine, ViewerChanges};
 use crate::state::change::Change;
+use crate::state::id::ActorId;
 use crate::state::{Presence, State};
 
 /// What the GM and each viewer may see and hear. Passed from the deliver stage to `record`,
@@ -32,7 +33,7 @@ pub(crate) fn run(
     if presence.players == 0 {
         return delivered;
     }
-    for id in state.actors().control_type.keys().cloned() {
+    for id in state.actors().query::<ActorId>().iter().cloned() {
         let delivery = visibility::show_to(
             canon,
             state,

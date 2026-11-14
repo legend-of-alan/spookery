@@ -12,7 +12,7 @@ pub(crate) mod world;
 
 /// Any entity's id, as rules name it; `State::entities` reads its components.
 pub mod entity {
-    pub use crate::state::entity::{Id, IdRef};
+    pub use crate::state::entity::{Id, IdRef, Query, QueryData, QueryFilter, With, Without};
 }
 
 pub use canon::{load_canon, pack_rev};
@@ -58,6 +58,14 @@ pub mod testing {
     pub fn act_of(state: &crate::State, actor: &str) -> Act {
         let act = state.actors().get::<Act>(&actor.into()).get().cloned();
         act.unwrap_or_else(|| panic!("{actor} has no action state"))
+    }
+
+    /// Whether `actor` is busy at the save's world time.
+    pub fn is_busy(state: &crate::State, actor: &str) -> bool {
+        state
+            .actors()
+            .get::<Act>(&actor.into())
+            .is_busy(state.world_time)
     }
 
     /// The write guard of the pack `world` holds the lock on.

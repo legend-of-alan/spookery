@@ -47,8 +47,8 @@ fn no_hidden_fact_reaches_a_player() {
     let actors: Vec<ActorId> = world
         .state()
         .actors()
-        .control_type
-        .keys()
+        .query::<ActorId>()
+        .iter()
         .cloned()
         .collect();
     let places: Vec<PlaceId> = world.canon().places.keys().cloned().collect();
@@ -146,15 +146,10 @@ fn apply_scene(
         if !state.actors().contains(actor_id) {
             continue;
         }
-        let mut known_facts: Vec<String> = known
-            .iter()
-            .map(|index| facts[index % facts.len()].clone())
-            .collect();
-        sort_unique(&mut known_facts);
         state
             .actors_mut()
             .get_mut::<component::KnownFacts>(actor_id)
-            .learn(&known_facts)
+            .learn(known.iter().map(|index| &facts[index % facts.len()]))
             .unwrap();
     }
     for (index, note) in scene.notes.iter().enumerate() {
@@ -184,8 +179,9 @@ fn apply_scene(
 }
 
 fn assert_hidden_stays_hidden(canon: &Canon, state: &State) -> Result<(), TestCaseError> {
-    for (pc, control_type) in state.actors().control_type.iter() {
-        if !control_type.is_pc() {
+    let actors = state.actors().query::<(ActorId, &component::ControlType)>();
+    for (pc, control_type) in actors.iter() {
+        if !matches!(control_type, component::ControlType::Pc) {
             continue;
         }
         let known_facts = state.actors().get::<component::KnownFacts>(pc).get();

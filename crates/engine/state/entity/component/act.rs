@@ -6,7 +6,7 @@ use crate::intent::Target;
 use crate::state::change::{self, Change};
 use crate::state::component::{Component, Mut, Ref};
 use crate::state::id::ActorId;
-use crate::state::{entity, Writer};
+use crate::state::{entity, Reader, Writer};
 use crate::Reason;
 
 /// How many times an actor has acted, and the action they are still on.
@@ -26,23 +26,18 @@ impl Component for Act {
     type Value = Act;
 }
 
-impl Act {
-    /// The tick the actor is busy until, as a change value.
-    fn busy_value(&self) -> change::Value {
-        self.busy_until.map_or(change::Value::Empty, count_value)
-    }
-
-    /// Busy means an action under way, or a cooldown whose `busy_until` is still after this
-    /// tick. An action stays under way until the round that reaches its finish ends.
-    pub fn is_busy(&self, world_time: u64) -> bool {
-        self.pending.is_some() || self.busy_until.is_some_and(|until| until > world_time)
-    }
-}
-
 impl<'a> Ref<'a, entity::Actors, Act> {
     /// The actor's action state.
     pub fn get(&self) -> Option<&'a Act> {
-        self.entities.components.acts.get(self.id)
+        self.store().get(self.id)
+    }
+
+    /// Busy means an action under way, or a cooldown whose `busy_until` is still after
+    /// `world_time`. An action stays under way until the round that reaches its finish ends.
+    pub fn is_busy(&self, world_time: u64) -> bool {
+        self.get().is_some_and(|act| {
+            act.pending.is_some() || act.busy_until.is_some_and(|until| until > world_time)
+        })
     }
 }
 
@@ -56,20 +51,20 @@ impl Mut<'_, entity::Actors, Act> {
         edit: impl FnOnce(&mut Act),
     ) -> Result<(), Reason> {
         self.check_exists()?;
-        let held = self.writer.acts.get(self.id);
+        let held = self.store().get(self.id);
         let before = held.map_or(change::Value::Empty, &read);
         let mut next = held.cloned().unwrap_or_default();
         edit(&mut next);
         let change = Change::new(key, before, read(&next));
-        let acts = &mut self.writer.components.acts;
-        acts.set(self.writer.transaction, self.id, next, [change.into()])
+        let (id, (acts, transaction)) = (self.id, self.store_mut());
+        acts.set(transaction, id, next, [change.into()])
     }
 
     /// Keep the actor busy until `until`, on `pending` while an action is under way and on
     /// `None` through a cooldown.
     pub fn set_busy(&mut self, until: u64, pending: Option<PendingAction>) -> Result<(), Reason> {
         let key = change::Key::ActorBusy(self.id.to_string());
-        self.write(key, Act::busy_value, |act| {
+        self.write(key, busy_value, |act| {
             (act.busy_until, act.pending) = (Some(until), pending);
         })
     }
@@ -78,7 +73,7 @@ impl Mut<'_, entity::Actors, Act> {
     /// `finish` see it.
     pub fn take_pending(&mut self) -> Result<Option<PendingAction>, Reason> {
         let (key, mut taken) = (change::Key::ActorBusy(self.id.to_string()), None);
-        self.write(key, Act::busy_value, |act| {
+        self.write(key, busy_value, |act| {
             taken = act.pending.take();
             act.busy_until = None;
         })?;
@@ -106,7 +101,8 @@ impl Mut<'_, entity::Actors, Act> {
 impl Writer<'_, entity::Actors> {
     /// Set `counter` back to 0 on every actor.
     pub(crate) fn reset_acts(&mut self, counter: ActCounter) -> Result<(), Reason> {
-        let actors: Vec<ActorId> = self.control_type.keys().cloned().collect();
+        let actors = Reader::new(&*self.components, self.canon).query::<ActorId>();
+        let actors: Vec<ActorId> = actors.iter().cloned().collect();
         for actor in &actors {
             let read = |act: &Act| count_value(counter.get(act).into());
             let key = counter.key(actor.to_string());
@@ -115,6 +111,11 @@ impl Writer<'_, entity::Actors> {
         }
         Ok(())
     }
+}
+
+/// The tick the actor is busy until, as a change value.
+fn busy_value(act: &Act) -> change::Value {
+    act.busy_until.map_or(change::Value::Empty, count_value)
 }
 
 /// A count as a change value.

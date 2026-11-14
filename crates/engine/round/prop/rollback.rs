@@ -250,13 +250,14 @@ fn every_moved_meter_is_reported(
         let value = modifier::value(state.actors(), actor, key);
         value.map_or(change::Value::Empty, change::Value::Number)
     };
-    for (actor, key) in now.actors().meters.keys() {
+    let meters = now.actors().query::<&Meter>();
+    for (actor, key, _) in meters.iter().flat_map(|held| held.iter_with_id()) {
         let (before, after) = (read(taken, actor, key), read(now, actor, key));
         if before == after {
             continue;
         }
         let moved = Change {
-            key: change::Key::ActorMeter(actor.to_string(), key.clone()),
+            key: change::Key::ActorMeter(actor.to_string(), key.to_string()),
             before,
             after,
         };
