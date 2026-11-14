@@ -19,13 +19,6 @@ impl Component for ControlType {
     type Value = ControlType;
 }
 
-impl ControlType {
-    /// Whether a player controls the actor. An actor no player controls is an NPC.
-    pub fn is_pc(self) -> bool {
-        self == ControlType::Pc
-    }
-}
-
 impl Ref<'_, entity::Actors, ControlType> {
     /// Who controls the actor.
     pub fn get(&self) -> Option<ControlType> {
@@ -34,7 +27,7 @@ impl Ref<'_, entity::Actors, ControlType> {
 
     /// Whether a player controls the actor. An actor the save lacks is not a PC.
     pub fn is_pc(&self) -> bool {
-        self.get().is_some_and(ControlType::is_pc)
+        self.get() == Some(ControlType::Pc)
     }
 
     /// The seat the actor acts from. An actor the save lacks has none.

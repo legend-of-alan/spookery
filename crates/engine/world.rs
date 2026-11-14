@@ -202,7 +202,7 @@ impl<L> World<L> {
         let actors = self.state.actors();
         let pcs = actors.query::<(ActorId, &component::ControlType)>();
         (pcs.iter())
-            .filter(|(_, control_type)| control_type.is_pc())
+            .filter(|(_, control_type)| matches!(control_type, component::ControlType::Pc))
             .map(|(id, _)| id)
     }
 

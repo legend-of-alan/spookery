@@ -212,7 +212,7 @@ mod tests {
             .map(|(id, control_type, place, meters)| {
                 (
                     id.as_str(),
-                    control_type.is_pc(),
+                    matches!(control_type, component::ControlType::Pc),
                     place.as_str(),
                     meters.iter().count(),
                 )
