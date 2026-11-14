@@ -13,9 +13,9 @@ use crate::state::{entity, nested_map, undo};
 pub struct Stories {
     /// The meters each story file declares.
     #[serde(with = "nested_map")]
-    pub meters: undo::Store<component::Map<StoryId, Meter>>,
+    pub(in crate::state) meters: undo::Store<component::Map<StoryId, Meter>>,
     #[serde(with = "nested_map::lists")]
-    pub flags: undo::Store<component::Map<StoryId, component::Flag>>,
+    pub(in crate::state) flags: undo::Store<component::Map<StoryId, component::Flag>>,
 }
 
 impl entity::Entities for Stories {
@@ -23,6 +23,10 @@ impl entity::Entities for Stories {
 
     fn contains(&self, canon: &Canon, id: &StoryId) -> bool {
         canon.stories.contains_key(id)
+    }
+
+    fn ids<'a>(&'a self, canon: &'a Canon) -> entity::query::Ids<'a, Self> {
+        Box::new(canon.stories.keys())
     }
 }
 

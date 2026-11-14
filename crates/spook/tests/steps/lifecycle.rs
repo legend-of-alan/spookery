@@ -3,10 +3,11 @@
 use std::fs;
 
 use cucumber::{given, then, when};
-use spookery_engine::{component, entity, Presence, World as Engine};
+use spookery_engine::{component, Presence, World as Engine};
 
 use super::common::{give_key, resolve_id};
 use super::rules::open;
+use super::triggers::world_flags;
 use crate::support::{act_of, append, copy_docks, edit_save, read_round, stamp_pack_rev, state_of};
 use crate::World;
 
@@ -156,13 +157,8 @@ fn travel_is_cancellable(world: &mut World) {
 #[then(expr = "{string} never finished and Rowan paid {int} rest")]
 fn never_finished(world: &mut World, verb: String, rest: i64) {
     let now = state_of(world.pack.as_ref().unwrap());
-    assert!(
-        !now.entities()
-            .get::<component::Flag>(&entity::Id::Global)
-            .contains(&format!("{verb}_done")),
-        "{:?}",
-        now.globals().flags
-    );
+    let flags = world_flags(&now);
+    assert!(!flags.contains(&format!("{verb}_done")), "{flags:?}");
     let act = act_of(&now, "rowan");
     assert_eq!(act.pending, None);
     assert_eq!(act.busy_until, None);
@@ -175,13 +171,8 @@ fn never_finished(world: &mut World, verb: String, rest: i64) {
 #[then(expr = "{string} finished")]
 fn finished(world: &mut World, verb: String) {
     let now = state_of(world.pack.as_ref().unwrap());
-    assert!(
-        now.entities()
-            .get::<component::Flag>(&entity::Id::Global)
-            .contains(&format!("{verb}_done")),
-        "{:?}",
-        now.globals().flags
-    );
+    let flags = world_flags(&now);
+    assert!(flags.contains(&format!("{verb}_done")), "{flags:?}");
 }
 
 #[then(expr = "spook check refuses the verb {string}")]

@@ -5,7 +5,7 @@ use std::path::Path;
 
 use cucumber::{given, then, when};
 use spookery_engine::testing::{stamp_pack_rev, state_of};
-use spookery_engine::{component, entity, Meter, Modifier};
+use spookery_engine::{component, entity, ActorId, Meter, Modifier};
 
 use super::common::replace_in_file;
 use super::meters::{assert_refused, run_check};
@@ -201,7 +201,7 @@ fn two_modifiers_on_sight(world: &mut World, rain: String, fog: String) {
     meters.push_str("  - id: sight\n    min: 0\n    base_cap: 10\n    max: 10\n    base: 5\n");
     fs::write(path, meters).unwrap();
     support::edit_save(&pack, |now| {
-        let actors: Vec<_> = now.actors().control_type.keys().cloned().collect();
+        let actors: Vec<_> = now.actors().query::<ActorId>().iter().cloned().collect();
         for actor in actors {
             support::put_meter(now, &entity::Id::Actor(actor), "sight", 5);
         }
@@ -420,7 +420,8 @@ fn neither_keeps_the_dropped_meter(world: &mut World) {
     let meters = now.actors().get::<Meter>(&rowan);
     assert!(!meters.contains("luck"));
     assert!(meters.contains("grit"));
-    assert!(!now.globals().meters.keys().any(|(_, id)| id == "tide"));
+    let world_meters = now.globals().query::<&Meter>();
+    assert!(!world_meters.iter().any(|held| held.contains("tide")));
 }
 
 #[then(expr = "the GM sees {string} as a changed key")]

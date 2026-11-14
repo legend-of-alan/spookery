@@ -23,7 +23,7 @@ impl Mut<'_, entity::Actors, KnownFacts> {
     /// The actor knows `facts` from now on, kept in order with no repeats.
     pub fn learn(&mut self, facts: &[String]) -> Result<(), Reason> {
         self.check_exists()?;
-        let held = self.writer.known_facts.get(self.id).cloned();
+        let held = self.writer.components.known_facts.get(self.id).cloned();
         let held = held.unwrap_or_default();
         if facts.iter().all(|fact| held.contains(fact)) {
             return Ok(());

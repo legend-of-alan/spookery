@@ -7,10 +7,11 @@ use spookery_engine::testing::{faces, RollKey};
 
 use crate::support::{edit_as_saved, edit_meter, put_items};
 use spookery_engine::MoveReport;
-use spookery_engine::{component, entity, Meter, Presence, Reason};
+use spookery_engine::{component, entity, ActorId, Meter, Presence, Reason};
 
 use super::common::{flags_of, split_line};
 use super::table;
+use super::triggers::world_flags;
 use crate::support::{
     append, copy_docks, copy_pack, edit_save, place_of, read_round, run_spook, stamp_pack_rev,
     state_of,
@@ -450,7 +451,8 @@ fn a_seated_round_runs(world: &mut World) {
 fn every_actor_idle_acts(world: &mut World, tick: u64, acts: u32) {
     let now = state_of(world.pack.as_ref().unwrap());
     assert_eq!(now.world_time, tick);
-    for (id, act) in now.actors().acts.iter() {
+    let actors = now.actors().query::<(ActorId, &component::Act)>();
+    for (id, act) in actors.iter() {
         assert_eq!(act.idle_acts_this_window, acts, "{id}");
     }
 }
@@ -998,8 +1000,8 @@ fn lark_in_the_yard_plays(world: &mut World, line: String) {
 #[when(regex = r"^lark, alone in the yard, plays (.+)$")]
 fn lark_alone_plays(world: &mut World, line: String) {
     let now = state_of(world.pack.as_ref().unwrap());
-    let actors = now.actors();
-    let yard = (actors.place.iter()).filter(|(_, place)| *place == "gate_yard");
+    let actors = now.actors().query::<(ActorId, &component::Place)>();
+    let yard = actors.iter().filter(|(_, place)| *place == "gate_yard");
     assert_eq!(
         yard.map(|(id, _)| id.as_str()).collect::<Vec<_>>(),
         ["lark"]
@@ -1011,13 +1013,8 @@ fn lark_alone_plays(world: &mut World, line: String) {
 fn briars_ask_runs_on_briar(world: &mut World) {
     assert_eq!(world.scratch, r#"{"actor":"briar"} cast:briar/ask"#);
     let now = state_of(world.pack.as_ref().unwrap());
-    assert!(
-        now.entities()
-            .get::<component::Flag>(&entity::Id::Global)
-            .contains("passage"),
-        "{:?}",
-        now.globals().flags
-    );
+    let flags = world_flags(&now);
+    assert!(flags.iter().any(|flag| flag == "passage"), "{flags:?}");
 }
 
 #[then(expr = "the move is refused NOT_IN_SPEC before the round and the save is unchanged")]

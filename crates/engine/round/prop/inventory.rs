@@ -43,8 +43,8 @@ fn random_item_changes_never_leave_a_negative_count() {
     let actors: Vec<ActorId> = world
         .state()
         .actors()
-        .control_type
-        .keys()
+        .query::<ActorId>()
+        .iter()
         .cloned()
         .collect();
     let places: Vec<PlaceId> = world.canon().places.keys().cloned().collect();
@@ -113,12 +113,14 @@ fn assert_same_save(state: &State, before: &State) -> Result<(), TestCaseError> 
 
 /// A stored count is a `u32`, so it cannot be negative. A count of 0 is omitted.
 fn assert_no_stored_zero(state: &State) -> Result<(), TestCaseError> {
-    for ((actor_id, item_id), count) in state.actors().items.iter() {
+    let actor_items = state.actors().query::<&component::Item>();
+    for (actor_id, item_id, count) in actor_items.iter().flat_map(|held| held.iter_with_id()) {
         if *count == 0 {
             return fail(format!("{actor_id} stores a zero count of {item_id}"));
         }
     }
-    for ((place_id, item_id), count) in state.places().items.iter() {
+    let place_items = state.places().query::<&component::Item>();
+    for (place_id, item_id, count) in place_items.iter().flat_map(|held| held.iter_with_id()) {
         if *count == 0 {
             return fail(format!("{place_id} stores a zero count of {item_id}"));
         }

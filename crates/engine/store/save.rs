@@ -1,7 +1,5 @@
 //! Read, write, migrate and check the save.
 
-use std::collections::BTreeSet;
-
 use serde::Deserialize;
 use serde_saphyr::SerializerOptions;
 
@@ -11,7 +9,7 @@ use crate::entity;
 use crate::state::component::meter::{self, Meter};
 use crate::state::component::modifier::{self, Modifier};
 use crate::state::id::{ActorId, GlobalId};
-use crate::state::{nested_map, Save, State};
+use crate::state::{component, Save, State};
 use crate::store::records::{AddedMeter, DroppedMeter, MigrateRecord};
 use crate::Reason;
 
@@ -96,25 +94,25 @@ pub(crate) fn find_missing_meters(state: &State) -> Vec<AddedMeter> {
 /// off the save's actors, so a cast member the save does not list names nobody; any other carrier
 /// is itself. Migrate and `check_save` both read it, so they agree on who lacks a meter.
 pub(crate) fn find_lacking_carriers(
-    save: &Save,
+    state: &State,
     carrier: &Option<entity::Id>,
     id: &str,
 ) -> Vec<entity::Id> {
     let held = match carrier {
         None | Some(entity::Id::Actor(_)) => {
-            let actors = save.actors();
+            let actors = state.actors();
             let named = |actor: &&ActorId| match carrier {
                 Some(entity::Id::Actor(one)) => one == *actor,
                 _ => true,
             };
-            let lacks = |actor: &&ActorId| nested_map::get(&actors.meters, actor, id).is_none();
-            let ids = actors.control_type.keys();
-            let lacking = ids.filter(named).filter(lacks).cloned();
+            let lacks = |actor: &&ActorId| !actors.get::<Meter>(actor).contains(id);
+            let ids = actors.query::<ActorId>();
+            let lacking = ids.iter().filter(named).filter(lacks).cloned();
             return lacking.map(entity::Id::Actor).collect();
         }
-        Some(entity::Id::Place(place)) => nested_map::get(&save.places().meters, place, id),
-        Some(entity::Id::Story(story)) => nested_map::get(&save.stories().meters, story, id),
-        Some(entity::Id::Global) => nested_map::get(&save.globals().meters, &GlobalId, id),
+        Some(entity::Id::Place(place)) => state.places().get::<Meter>(place).get(id),
+        Some(entity::Id::Story(story)) => state.stories().get::<Meter>(story).get(id),
+        Some(entity::Id::Global) => state.globals().get::<Meter>(&GlobalId).get(id),
     };
     held.is_none()
         .then(|| carrier.clone())
@@ -124,15 +122,20 @@ pub(crate) fn find_lacking_carriers(
 }
 
 /// Every meter the save lists, with the actor, place, story or world that holds it.
-fn held_meters(save: &Save) -> impl Iterator<Item = (entity::Id, &String, &Meter)> {
-    let actors = save.actors().meters.iter();
-    let places = save.places().meters.iter();
-    let stories = save.stories().meters.iter();
-    let world = save.globals().meters.iter();
-    (actors.map(|((id, key), held)| (entity::Id::Actor(id.clone()), key, held)))
-        .chain(places.map(|((id, key), held)| (entity::Id::Place(id.clone()), key, held)))
-        .chain(stories.map(|((id, key), held)| (entity::Id::Story(id.clone()), key, held)))
-        .chain(world.map(|((_, key), held)| (entity::Id::Global, key, held)))
+fn held_meters(state: &State) -> impl Iterator<Item = (entity::Id, &str, &Meter)> {
+    let actors = state.actors().query::<&Meter>();
+    let places = state.places().query::<&Meter>();
+    let stories = state.stories().query::<&Meter>();
+    let world = state.globals().query::<&Meter>();
+    let actors = (actors.iter().flat_map(|held| held.iter_with_id()))
+        .map(|(id, key, held)| (entity::Id::Actor(id.clone()), key, held));
+    let places = (places.iter().flat_map(|held| held.iter_with_id()))
+        .map(|(id, key, held)| (entity::Id::Place(id.clone()), key, held));
+    let stories = (stories.iter().flat_map(|held| held.iter_with_id()))
+        .map(|(id, key, held)| (entity::Id::Story(id.clone()), key, held));
+    let world = (world.iter().flat_map(|held| held.iter_with_id()))
+        .map(|(_, key, held)| (entity::Id::Global, key, held));
+    actors.chain(places).chain(stories).chain(world)
 }
 
 /// Meters an actor, place, story or the world lists that the pack no longer gives it.
@@ -140,18 +143,18 @@ pub(crate) fn find_stale_meters(state: &State) -> Vec<DroppedMeter> {
     held_meters(state)
         .filter(|(carrier, id, _)| state.canon().meter_def(carrier.as_ref(), id).is_none())
         .map(|(carrier, id, _)| DroppedMeter {
-            id: id.clone(),
+            id: id.to_string(),
             carrier,
         })
         .collect()
 }
 
 /// Each actor's modifiers that the pack no longer defines, or now defines on another meter:
-/// the actor and modifier id, with the modifier as the save holds it.
-pub(crate) fn find_stale_modifiers(state: &State) -> Vec<(&(ActorId, String), &Modifier)> {
-    // The modifiers are borrowed from the save, which outlives a read handle.
-    let held = Save::actors(state).modifiers.iter();
-    held.filter(|((_, id), live)| !modifier::is_defined(&state.canon().modifiers, id, live))
+/// the actor, the modifier id and the modifier as the save holds it.
+pub(crate) fn find_stale_modifiers(state: &State) -> Vec<(&ActorId, &str, &Modifier)> {
+    let actors = state.actors().query::<&Modifier>();
+    let held = actors.iter().flat_map(|held| held.iter_with_id());
+    held.filter(|(_, id, live)| !modifier::is_defined(&state.canon().modifiers, id, live))
         .collect()
 }
 
@@ -170,9 +173,11 @@ pub fn migrate(mut state: State, record: &MigrateRecord) -> Result<State, Reason
             (state.entities_mut().get_mut::<Meter>(&id)).set(&meter.id, Some(start.clone()))?;
         }
     }
-    let actors = state.actors();
-    let dropped = |(_, id): &&(ActorId, String)| record.dropped_modifiers.contains(id);
-    let held: Vec<(ActorId, String)> = (actors.modifiers.keys().filter(dropped)).cloned().collect();
+    let actors = state.actors().query::<&Modifier>();
+    let held = actors.iter().flat_map(|held| held.iter_with_id());
+    let dropped = held.filter(|(_, id, _)| record.dropped_modifiers.iter().any(|drop| drop == id));
+    let held: Vec<(ActorId, String)> =
+        (dropped.map(|(actor, id, _)| (actor.clone(), id.to_string()))).collect();
     for (actor, id) in &held {
         (state.actors_mut().get_mut::<Modifier>(actor)).set(id, None)?;
     }
@@ -194,29 +199,7 @@ pub fn check_save(state: &State) -> Result<(), Vec<Diagnostic>> {
     let canon = state.canon();
     let mut diags = Vec::new();
     let actors = state.actors();
-    // Every store, with no `..`: a store added later must be listed here to compile.
-    let crate::state::entity::Actors {
-        control_type: _,
-        place,
-        wielded,
-        known_facts,
-        visited,
-        acts,
-        items,
-        meters,
-        modifiers,
-        flags,
-    } = &*actors;
-    let held: BTreeSet<(&str, &ActorId)> = (place.keys().map(|id| ("place", id)))
-        .chain(wielded.keys().map(|id| ("wielded", id)))
-        .chain(known_facts.keys().map(|id| ("known_facts", id)))
-        .chain(visited.keys().map(|(id, _)| ("visited", id)))
-        .chain(acts.keys().map(|id| ("acts", id)))
-        .chain(items.keys().map(|(id, _)| ("items", id)))
-        .chain(meters.keys().map(|(id, _)| ("meters", id)))
-        .chain(modifiers.keys().map(|(id, _)| ("modifiers", id)))
-        .chain(flags.keys().map(|(id, _)| ("flags", id)))
-        .collect();
+    let held = actors.carriers_by_store();
     let lacking = held.iter().filter(|(_, id)| !actors.contains(id));
     for (store, id) in lacking {
         let problem = format!("actor '{id}' has {store} but no control type");
@@ -224,7 +207,7 @@ pub fn check_save(state: &State) -> Result<(), Vec<Diagnostic>> {
         let diag = schema_error(FILE, &problem, hint);
         diags.push(diag.at_path(format!("actors.{store}.{id}")));
     }
-    for id in actors.control_type.keys() {
+    for id in actors.query::<ActorId>().iter() {
         for store in ["place", "acts"] {
             if !held.contains(&(store, id)) {
                 let problem = format!("actor '{id}' has a control type but no {store}");
@@ -233,7 +216,7 @@ pub fn check_save(state: &State) -> Result<(), Vec<Diagnostic>> {
             }
         }
     }
-    for (id, place) in actors.place.iter() {
+    for (id, place) in actors.query::<(ActorId, &component::Place)>().iter() {
         // A walker stands on an exit, which must be one of the pack's.
         let known = match crate::state::exit_parts(place) {
             Some(_) => crate::rules::travel::exit_stood_on(canon, place).is_some(),
@@ -268,7 +251,7 @@ pub fn check_save(state: &State) -> Result<(), Vec<Diagnostic>> {
             diags.push(meter_error(&carrier, key, &problem, hint));
         }
     }
-    for ((id, key), live) in find_stale_modifiers(state) {
+    for (id, key, live) in find_stale_modifiers(state) {
         let problem = format!(
             "actor '{id}' holds modifier '{key}' on meter '{}', which the pack does not define",
             live.meter
@@ -276,7 +259,9 @@ pub fn check_save(state: &State) -> Result<(), Vec<Diagnostic>> {
         let diag = schema_error(FILE, &problem, "run spook migrate to drop the modifier");
         diags.push(diag.at_path(format!("actors.modifiers.{id}.{key}")));
     }
-    for ((id, item), count) in actors.items.iter() {
+    let held = actors.query::<&component::Item>();
+    let actor_items: Vec<_> = held.iter().flat_map(|held| held.iter_with_id()).collect();
+    for &(id, item, count) in &actor_items {
         if item.is_empty() {
             diags.push(
                 schema_error(
@@ -298,7 +283,9 @@ pub fn check_save(state: &State) -> Result<(), Vec<Diagnostic>> {
             );
         }
     }
-    for ((place, item), count) in state.places().items.iter() {
+    let held = state.places().query::<&component::Item>();
+    let place_items: Vec<_> = held.iter().flat_map(|held| held.iter_with_id()).collect();
+    for &(place, item, count) in &place_items {
         if *count == 0 {
             diags.push(
                 schema_error(
@@ -310,13 +297,13 @@ pub fn check_save(state: &State) -> Result<(), Vec<Diagnostic>> {
             );
         }
     }
-    for (actor_id, item) in actors.items.keys() {
+    for (actor_id, item, _) in actor_items {
         if !canon.items.contains_key(item) {
             let path = format!("actors.items.{actor_id}.{item}");
             diags.push(unknown_item(FILE, item, &path));
         }
     }
-    for (actor_id, wielded) in actors.wielded.iter() {
+    for (actor_id, wielded) in actors.query::<(ActorId, &component::WieldedItem)>().iter() {
         if !canon.items.contains_key(wielded) {
             diags.push(unknown_item(
                 FILE,
@@ -336,10 +323,7 @@ pub fn check_save(state: &State) -> Result<(), Vec<Diagnostic>> {
                 )
                 .at_path(format!("actors.wielded.{actor_id}")),
             );
-        } else if !actors
-            .items
-            .contains_key(&(actor_id.clone(), wielded.clone()))
-        {
+        } else if !actors.get::<component::Item>(actor_id).contains(wielded) {
             diags.push(
                 schema_error(
                     FILE,
@@ -350,7 +334,7 @@ pub fn check_save(state: &State) -> Result<(), Vec<Diagnostic>> {
             );
         }
     }
-    for (place, item) in state.places().items.keys() {
+    for (place, item, _) in place_items {
         if !canon.items.contains_key(item) {
             let path = format!("places.items.{place}.{item}");
             diags.push(unknown_item(FILE, item, &path));

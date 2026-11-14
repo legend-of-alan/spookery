@@ -101,7 +101,7 @@ pub fn commit_migrate(
     let state_rev_before = state.state_rev;
     let state_rev_after = state_rev_before.checked_add(1).ok_or(Reason::OutOfRange)?;
     let stale = save::find_stale_modifiers(&state).into_iter();
-    let mut dropped_modifiers: Vec<String> = stale.map(|((_, id), _)| id.clone()).collect();
+    let mut dropped_modifiers: Vec<String> = stale.map(|(_, id, _)| id.to_string()).collect();
     sort_unique(&mut dropped_modifiers);
     let mut record = MigrateRecord {
         pack_rev_before,

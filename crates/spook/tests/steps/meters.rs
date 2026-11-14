@@ -6,7 +6,7 @@ use std::path::Path;
 use cucumber::{given, then, when};
 use serde_json::Value;
 use spookery_engine::testing::state_of;
-use spookery_engine::{component, entity, load_canon, Meter, Presence};
+use spookery_engine::{component, entity, load_canon, ActorId, Meter, Presence};
 
 use super::common::replace_in_file;
 use super::record::read_extra_steps;
@@ -377,7 +377,7 @@ fn dawn_is_zero(world: &mut World) {
 #[then(expr = "no actor carries a dawn meter")]
 fn no_actor_carries_dawn(world: &mut World) {
     let now = state_of(pack(world));
-    for id in now.actors().control_type.keys() {
+    for id in now.actors().query::<ActorId>().iter() {
         assert!(!now.actors().get::<Meter>(id).contains("dawn"), "{id}");
     }
 }

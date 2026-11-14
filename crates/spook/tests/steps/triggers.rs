@@ -9,7 +9,7 @@ use spookery_engine::testing::{stamp_pack_rev, state_of};
 use spookery_engine::{component, emit_save, parse_save};
 use spookery_engine::{entity, Presence, State};
 
-use super::common::replace_in_file;
+use super::common::{flags_of, replace_in_file};
 use super::meters::write_world_meters;
 use super::record::read_extra_steps;
 use crate::support::{self, copy_docks};
@@ -193,9 +193,9 @@ fn nell_knows_the_ledger(world: &mut World, tide: i64) {
         known_facts.unwrap().contains(&ledger),
         "nell does not know fact_ledger"
     );
-    let globals = now.globals();
-    let tide_meter = (globals.meters.iter()).find(|((_, id), _)| id == "tide");
-    let live = tide_meter.expect("the world's tide").1;
+    let world_meters = now.globals().query::<&component::Meter>();
+    let tide_meter = world_meters.iter().find_map(|held| held.get("tide"));
+    let live = tide_meter.expect("the world's tide");
     assert_eq!(live.base + live.offset, tide, "{live:?}");
 }
 
@@ -663,15 +663,20 @@ fn nell_sets_the_tide(world: &mut World) {
     );
 }
 
+/// The flags the world holds, in name order.
+pub(crate) fn world_flags(state: &State) -> Vec<String> {
+    let world = state.globals().query::<&component::Flag>();
+    let flags = world.iter().flat_map(|held| held.iter_with_id());
+    flags.map(|(_, flag, ())| flag.to_string()).collect()
+}
+
 #[then(expr = "the world has flag tide_turned")]
 fn the_world_has_the_tide(world: &mut World) {
     let now = state_of(world.pack.as_ref().unwrap());
+    let flags = world_flags(&now);
     assert!(
-        now.entities()
-            .get::<component::Flag>(&entity::Id::Global)
-            .contains("tide_turned"),
-        "flags: {:?}",
-        now.globals().flags
+        flags.iter().any(|flag| flag == "tide_turned"),
+        "flags: {flags:?}"
     );
 }
 
@@ -834,7 +839,8 @@ fn the_rounds_only_refusal_is(world: &mut World, code: String) {
 #[then(expr = "no place has the {string} flag")]
 fn no_place_has_the_flag(world: &mut World, flag: String) {
     let now = state_of(world.pack.as_ref().unwrap());
-    assert!(!now.places().flags.keys().any(|(_, set)| *set == flag));
+    let places = now.places().query::<&component::Flag>();
+    assert!(!places.iter().any(|held| held.contains(&flag)));
 }
 
 #[when(expr = "nell travels from docks_street into docks_shop")]
@@ -1155,12 +1161,8 @@ fn insert_actor_copy(
     place: &str,
 ) {
     let (from, to) = (from.into(), id.into());
-    let mut actors = now.actors_mut();
-    actors.copy_actor(&from, &to, place).unwrap();
-    let flags: Vec<String> = (actors.flags.keys())
-        .filter(|(owner, _)| *owner == to)
-        .map(|(_, key)| key.clone())
-        .collect();
+    now.actors_mut().copy_actor(&from, &to, place).unwrap();
+    let flags = flags_of(now, id);
     let copy = entity::Id::Actor(to);
     let mut actors = now.entities_mut();
     for key in flags {

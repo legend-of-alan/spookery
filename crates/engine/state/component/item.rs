@@ -48,7 +48,7 @@ impl Mut<'_, entity::Actors, Item> {
     pub fn shift(&mut self, name: &str, delta: i64, max: Option<i64>) -> Result<(), Reason> {
         let key = change::Key::ActorItem(self.id.to_string(), name.to_string());
         self.shift_with_key(name, delta, max, key)?;
-        let (actors, actor) = (&self.writer, self.id);
+        let (actors, actor) = (&self.writer.components, self.id);
         let wielded = actors.wielded.get(actor);
         if wielded.is_some_and(|held| nested_map::get(&actors.items, actor, held).is_none()) {
             (self.writer.get_mut::<WieldedItem>(self.id)).set(None)?;

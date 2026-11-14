@@ -47,8 +47,8 @@ fn no_hidden_fact_reaches_a_player() {
     let actors: Vec<ActorId> = world
         .state()
         .actors()
-        .control_type
-        .keys()
+        .query::<ActorId>()
+        .iter()
         .cloned()
         .collect();
     let places: Vec<PlaceId> = world.canon().places.keys().cloned().collect();
@@ -184,7 +184,8 @@ fn apply_scene(
 }
 
 fn assert_hidden_stays_hidden(canon: &Canon, state: &State) -> Result<(), TestCaseError> {
-    for (pc, control_type) in state.actors().control_type.iter() {
+    let actors = state.actors().query::<(ActorId, &component::ControlType)>();
+    for (pc, control_type) in actors.iter() {
         if !control_type.is_pc() {
             continue;
         }
