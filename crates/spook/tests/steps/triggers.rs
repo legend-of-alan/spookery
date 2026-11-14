@@ -674,8 +674,7 @@ pub(crate) fn world_flags(state: &State) -> Vec<String> {
 fn the_world_has_the_tide(world: &mut World) {
     let now = state_of(world.pack.as_ref().unwrap());
     let flags = now.entities().get::<component::Flag>(&entity::Id::Global);
-    let held = world_flags(&now);
-    assert!(flags.contains("tide_turned"), "flags: {held:?}");
+    assert!(flags.contains("tide_turned"), "{:?}", world_flags(&now));
 }
 
 #[then(expr = "the GM summary lists {string}")]

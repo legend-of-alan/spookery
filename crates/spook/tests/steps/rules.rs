@@ -1014,8 +1014,7 @@ fn briars_ask_runs_on_briar(world: &mut World) {
     assert_eq!(world.scratch, r#"{"actor":"briar"} cast:briar/ask"#);
     let now = state_of(world.pack.as_ref().unwrap());
     let flags = now.entities().get::<component::Flag>(&entity::Id::Global);
-    let held = world_flags(&now);
-    assert!(flags.contains("passage"), "{held:?}");
+    assert!(flags.contains("passage"), "{:?}", world_flags(&now));
 }
 
 #[then(expr = "the move is refused NOT_IN_SPEC before the round and the save is unchanged")]

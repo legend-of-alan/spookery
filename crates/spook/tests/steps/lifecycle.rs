@@ -158,8 +158,8 @@ fn travel_is_cancellable(world: &mut World) {
 fn never_finished(world: &mut World, verb: String, rest: i64) {
     let now = state_of(world.pack.as_ref().unwrap());
     let flags = now.entities().get::<component::Flag>(&entity::Id::Global);
-    let held = world_flags(&now);
-    assert!(!flags.contains(&format!("{verb}_done")), "{held:?}");
+    let done = format!("{verb}_done");
+    assert!(!flags.contains(&done), "{:?}", world_flags(&now));
     let act = act_of(&now, "rowan");
     assert_eq!(act.pending, None);
     assert_eq!(act.busy_until, None);
@@ -173,8 +173,8 @@ fn never_finished(world: &mut World, verb: String, rest: i64) {
 fn finished(world: &mut World, verb: String) {
     let now = state_of(world.pack.as_ref().unwrap());
     let flags = now.entities().get::<component::Flag>(&entity::Id::Global);
-    let held = world_flags(&now);
-    assert!(flags.contains(&format!("{verb}_done")), "{held:?}");
+    let done = format!("{verb}_done");
+    assert!(flags.contains(&done), "{:?}", world_flags(&now));
 }
 
 #[then(expr = "spook check refuses the verb {string}")]

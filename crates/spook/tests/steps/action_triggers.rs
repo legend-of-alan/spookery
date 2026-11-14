@@ -172,8 +172,7 @@ fn both_chains_ran(world: &mut World) {
     assert!(!steps.iter().any(|name| name == "trigger_depth"), "{round}");
     let now = state_of(world.pack.as_ref().unwrap());
     let flags = now.entities().get::<component::Flag>(&entity::Id::Global);
-    let held = world_flags(&now);
     for flag in ["rang", "echoed"] {
-        assert!(flags.contains(flag), "{held:?}");
+        assert!(flags.contains(flag), "{:?}", world_flags(&now));
     }
 }
