@@ -150,11 +150,11 @@ const DEMO_DUSK: &[&str] = &[
 ];
 
 const DEMO_ENDINGS: &[(&str, &str)] = &[
-    ("gate", "Briar sits down hard in the mud and waves you through."),
-    ("warded", "The cart rolls. The nail stays in the wheel for good."),
+    ("gate", "Briar sits down hard in the mud and waves you through. The end."),
+    ("warded", "The cart rolls. The nail stays in the wheel for good. The end."),
     (
         "braced",
-        "The cart rolls, and the nail is still in your pocket. Oden will remember.",
+        "The cart rolls, and the nail is still in your pocket. Oden will remember. The end.",
     ),
     (
         "knocked-out",
