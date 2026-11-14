@@ -168,7 +168,8 @@ impl Mut<'_, entity::Actors, Modifier> {
         let watched = stacks_move.then_some(change::Report::Modifiers(watched, before));
         let reports = watched.into_iter().chain([own.into()]);
         let entry = (actor.clone(), id.to_string());
-        (self.writer.components.modifiers).set(self.writer.transaction, entry, next, reports)
+        let (modifiers, transaction) = self.store_mut();
+        modifiers.set(transaction, entry, next, reports)
     }
 }
 

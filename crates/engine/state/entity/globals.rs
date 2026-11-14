@@ -15,9 +15,9 @@ use crate::state::{entity, nested_map, undo};
 pub struct Globals {
     /// The meters `world/meters.yaml` declares.
     #[serde(with = "nested_map::flat")]
-    pub(in crate::state) meters: undo::Store<component::Map<GlobalId, Meter>>,
+    meters: undo::Store<component::Map<GlobalId, Meter>>,
     #[serde(with = "nested_map::flat::lists")]
-    pub(in crate::state) flags: undo::Store<component::Map<GlobalId, component::Flag>>,
+    flags: undo::Store<component::Map<GlobalId, component::Flag>>,
 }
 
 impl entity::Entities for Globals {

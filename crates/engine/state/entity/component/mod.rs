@@ -31,7 +31,7 @@ pub use visit::Visit;
 pub use wielded_item::WieldedItem;
 
 use crate::state::change::{self, Change};
-use crate::state::{entity, nested_map, Reader, Writer};
+use crate::state::{entity, nested_map, Reader, Transaction, Writer};
 use crate::Reason;
 
 /// One component. The type that implements it is the component's name in code, and `Value` is
@@ -60,11 +60,22 @@ impl<'a, E: entity::Entities, C: Component> Ref<'a, E, C> {
     }
 }
 
-/// A component an entity holds many of, one under each name.
+/// The component's store: only the component views under `component` reach it.
 impl<'a, E: entity::Has<C>, C: Component> Ref<'a, E, C> {
+    fn store(&self) -> &'a E::Store {
+        self.entities.components.store()
+    }
+}
+
+/// A component an entity holds many of, one under each name.
+impl<'a, E, C> Ref<'a, E, C>
+where
+    E: entity::Has<C, Store = entity::Named<E, C>>,
+    C: Component,
+{
     /// What the entity holds under `name`.
     pub fn get(&self, name: &str) -> Option<&'a C::Value> {
-        nested_map::get(self.entities.components.store(), self.id, name)
+        nested_map::get(self.store(), self.id, name)
     }
 
     pub fn contains(&self, name: &str) -> bool {
@@ -73,7 +84,7 @@ impl<'a, E: entity::Has<C>, C: Component> Ref<'a, E, C> {
 
     /// Each name the entity holds with its value, in name order.
     pub fn iter(&self) -> impl Iterator<Item = (&'a str, &'a C::Value)> {
-        nested_map::entries_of(self.entities.components.store(), self.id)
+        nested_map::entries_of(self.store(), self.id)
     }
 
     /// The same, each after the entity's id: a query's entities, walked one value at a time.
@@ -107,15 +118,31 @@ impl<'a, E: entity::Entities, C: Component> Mut<'a, E, C> {
     }
 }
 
+/// The component's store, and the round's transaction its writes go through: only the
+/// component views under `component` reach them.
+impl<E: entity::Has<C>, C: Component> Mut<'_, E, C> {
+    fn store(&self) -> &E::Store {
+        self.writer.components.store()
+    }
+
+    fn store_mut(&mut self) -> (&mut E::Store, &mut Transaction) {
+        (self.writer.components.store_mut(), self.writer.transaction)
+    }
+}
+
 /// A component that is there or not, such as a flag: every one is set the same way.
-impl<E: entity::Has<C>, C: Component<Value = ()>> Mut<'_, E, C> {
+impl<E, C> Mut<'_, E, C>
+where
+    E: entity::Has<C, Store = entity::Named<E, C>>,
+    C: Component<Value = ()>,
+{
     /// Put `name` on or take it off, reporting the change under `key`.
     fn set_with_key(&mut self, name: &str, on: bool, key: change::Key) -> Result<(), Reason> {
         self.check_exists()?;
         let change = Change::new(key, change::Value::Bool(!on), change::Value::Bool(on));
         let entry = (self.id.clone(), name.to_string());
-        let (store, reports) = (self.writer.components.store_mut(), [change.into()]);
-        store.set(self.writer.transaction, entry, on.then_some(()), reports)
+        let (store, transaction) = self.store_mut();
+        store.set(transaction, entry, on.then_some(()), [change.into()])
     }
 }
 

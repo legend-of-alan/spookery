@@ -1,14 +1,18 @@
 //! The actors' components, one store per component, keyed by actor id.
 
+#[cfg(any(test, feature = "testing"))]
+mod fixtures;
+
 use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
 use crate::canon::Canon;
+use crate::intent::Viewer;
 use crate::state::component::modifier::{self, Modifier};
 use crate::state::component::{self, Act, Meter};
 use crate::state::id::ActorId;
-use crate::state::{entity, nested_map, undo, Reader};
+use crate::state::{entity, nested_map, sort_unique, undo, Reader};
 use crate::Reason;
 
 /// Every actor's components, by actor id. An actor exists when it has a control type;
@@ -18,27 +22,27 @@ use crate::Reason;
 #[serde(default, deny_unknown_fields)]
 pub struct Actors {
     /// Who controls each actor, a player or the engine. An actor exists when it has one.
-    pub(in crate::state) control_type: undo::Store<BTreeMap<ActorId, component::ControlType>>,
+    control_type: undo::Store<BTreeMap<ActorId, component::ControlType>>,
     /// Where each actor stands: a place id, or `exit:<place>.<exit>` while they walk.
-    pub(in crate::state) place: undo::DenseStore<String>,
+    place: undo::DenseStore<String>,
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
-    pub(in crate::state) wielded: undo::Store<BTreeMap<ActorId, String>>,
+    wielded: undo::Store<BTreeMap<ActorId, String>>,
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
-    pub(in crate::state) known_facts: undo::Store<BTreeMap<ActorId, Vec<String>>>,
+    known_facts: undo::Store<BTreeMap<ActorId, Vec<String>>>,
     /// Each place an actor has stood at the end of a round, with the names of the exits they
     /// saw there then.
     #[serde(with = "nested_map", skip_serializing_if = "BTreeMap::is_empty")]
-    pub(in crate::state) visited: undo::Store<component::Map<ActorId, component::Visit>>,
-    pub(in crate::state) acts: undo::DenseStore<Act>,
+    visited: undo::Store<component::Map<ActorId, component::Visit>>,
+    acts: undo::DenseStore<Act>,
     #[serde(with = "nested_map")]
-    pub(in crate::state) items: undo::Store<component::Map<ActorId, component::Item>>,
+    items: undo::Store<component::Map<ActorId, component::Item>>,
     #[serde(with = "nested_map")]
-    pub(in crate::state) meters: undo::Store<component::Map<ActorId, Meter>>,
+    meters: undo::Store<component::Map<ActorId, Meter>>,
     /// The modifiers each actor holds, by modifier id.
     #[serde(with = "nested_map")]
-    pub(in crate::state) modifiers: undo::Store<component::Map<ActorId, Modifier>>,
+    modifiers: undo::Store<component::Map<ActorId, Modifier>>,
     #[serde(with = "nested_map::lists")]
-    pub(in crate::state) flags: undo::Store<component::Map<ActorId, component::Flag>>,
+    flags: undo::Store<component::Map<ActorId, component::Flag>>,
 }
 
 impl entity::Entities for Actors {
@@ -58,11 +62,11 @@ entity::has!(Actors, Meter, meters);
 entity::has!(Actors, component::Flag, flags);
 entity::has!(Actors, Modifier, modifiers);
 entity::has!(Actors, component::Visit, visited);
-entity::has_one!(Actors, component::ControlType, control_type);
-entity::has_one!(Actors, component::Place, place);
-entity::has_one!(Actors, component::WieldedItem, wielded);
-entity::has_one!(Actors, component::KnownFacts, known_facts);
-entity::has_one!(Actors, Act, acts);
+entity::has!(Actors, component::ControlType, control_type: undo::Store<BTreeMap<ActorId, component::ControlType>>);
+entity::has!(Actors, component::Place, place: undo::DenseStore<String>);
+entity::has!(Actors, component::WieldedItem, wielded: undo::Store<BTreeMap<ActorId, String>>);
+entity::has!(Actors, component::KnownFacts, known_facts: undo::Store<BTreeMap<ActorId, Vec<String>>>);
+entity::has!(Actors, Act, acts: undo::DenseStore<Act>);
 
 impl Reader<'_, Actors> {
     /// Each store's name, as the save names it, with each actor it carries something for. The
@@ -99,6 +103,18 @@ impl Actors {
     pub fn modifier_sum(&self, actor: &ActorId, key: &str) -> Result<i64, Reason> {
         let held = nested_map::entries_of(&self.modifiers, actor).map(|(_, held)| held);
         modifier::sum(held, key)
+    }
+
+    /// The seat actor `id` acts from, read with no canon: a save on its own.
+    pub(in crate::state) fn viewer_of(&self, id: &ActorId) -> Option<Viewer> {
+        (self.control_type.get(id)).map(|control| control.viewer(id))
+    }
+
+    /// Each actor's known facts sorted with no repeats, as the file keeps them: out of a round.
+    pub(in crate::state) fn sort(&mut self) {
+        for known in self.known_facts.value_mut().values_mut() {
+            sort_unique(known);
+        }
     }
 
     /// Every store, as the log a rollback undoes and an accept clears.

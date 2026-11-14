@@ -42,7 +42,7 @@ impl Act {
 impl<'a> Ref<'a, entity::Actors, Act> {
     /// The actor's action state.
     pub fn get(&self) -> Option<&'a Act> {
-        self.entities.components.acts.get(self.id)
+        self.store().get(self.id)
     }
 }
 
@@ -56,13 +56,13 @@ impl Mut<'_, entity::Actors, Act> {
         edit: impl FnOnce(&mut Act),
     ) -> Result<(), Reason> {
         self.check_exists()?;
-        let held = self.writer.components.acts.get(self.id);
+        let held = self.store().get(self.id);
         let before = held.map_or(change::Value::Empty, &read);
         let mut next = held.cloned().unwrap_or_default();
         edit(&mut next);
         let change = Change::new(key, before, read(&next));
-        let acts = &mut self.writer.components.acts;
-        acts.set(self.writer.transaction, self.id, next, [change.into()])
+        let (id, (acts, transaction)) = (self.id, self.store_mut());
+        acts.set(transaction, id, next, [change.into()])
     }
 
     /// Keep the actor busy until `until`, on `pending` while an action is under way and on

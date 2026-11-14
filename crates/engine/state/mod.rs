@@ -1,10 +1,8 @@
 //! The save as the file holds it, and the live save that reads it against the pack's canon.
 
 pub(crate) mod change;
-pub mod component;
 pub(crate) mod entity;
-#[cfg(any(test, feature = "testing"))]
-mod fixtures;
+pub use entity::component;
 pub(crate) mod id;
 pub(crate) mod nested_map;
 mod notes;
@@ -180,7 +178,7 @@ impl Save {
 
     /// The seat actor `id` acts from.
     pub(crate) fn viewer_of(&self, id: &ActorId) -> Option<Viewer> {
-        (self.actors.control_type.get(id)).map(|control| control.viewer(id))
+        self.actors.viewer_of(id)
     }
 }
 

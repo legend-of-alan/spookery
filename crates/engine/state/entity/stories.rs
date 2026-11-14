@@ -13,9 +13,9 @@ use crate::state::{entity, nested_map, undo};
 pub struct Stories {
     /// The meters each story file declares.
     #[serde(with = "nested_map")]
-    pub(in crate::state) meters: undo::Store<component::Map<StoryId, Meter>>,
+    meters: undo::Store<component::Map<StoryId, Meter>>,
     #[serde(with = "nested_map::lists")]
-    pub(in crate::state) flags: undo::Store<component::Map<StoryId, component::Flag>>,
+    flags: undo::Store<component::Map<StoryId, component::Flag>>,
 }
 
 impl entity::Entities for Stories {

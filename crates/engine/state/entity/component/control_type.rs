@@ -38,7 +38,7 @@ impl ControlType {
 impl Ref<'_, entity::Actors, ControlType> {
     /// Who controls the actor.
     pub fn get(&self) -> Option<ControlType> {
-        self.entities.components.control_type.get(self.id).copied()
+        self.store().get(self.id).copied()
     }
 
     /// Whether a player controls the actor. An actor the save lacks is not a PC.
