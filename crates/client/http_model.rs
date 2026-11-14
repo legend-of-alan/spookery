@@ -2,9 +2,7 @@
 
 use std::time::Duration;
 
-use spookery_agent::{
-    chat_completions, model, redact_error_body, CompletionError, Model, ToolCall,
-};
+use spookery_agent::{chat_completions, model, CompletionError, Model, ToolCall};
 
 use crate::Error;
 
@@ -14,6 +12,8 @@ pub const MODEL_CALL_TIMEOUT: Duration = Duration::from_secs(60);
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 /// The pause before the one retry of an attempt that failed in a way worth retrying.
 pub const RETRY_BACKOFF: Duration = Duration::from_secs(2);
+/// Longest provider error text kept on the error line, in characters.
+const MAX_DETAIL_CHARS: usize = 200;
 
 pub struct Settings {
     key: String,
@@ -50,14 +50,77 @@ impl Settings {
     }
 }
 
-fn failure_of(err: &reqwest::Error) -> model::TransportFailure {
-    if err.is_timeout() {
-        model::TransportFailure::Timeout
-    } else if err.is_connect() {
-        model::TransportFailure::Connect
-    } else {
-        model::TransportFailure::Other
+/// How a model call failed on the transport.
+#[derive(Clone, Copy, Debug)]
+enum TransportFailure {
+    Timeout,
+    Connect,
+    Status(u16),
+    Other,
+}
+
+impl TransportFailure {
+    /// A timeout, a failed connect, 429 and 5xx are worth one more attempt.
+    fn is_retryable(self) -> bool {
+        match self {
+            TransportFailure::Timeout | TransportFailure::Connect => true,
+            TransportFailure::Status(code) => matches!(code, 429 | 500..=599),
+            TransportFailure::Other => false,
+        }
     }
+
+    /// The error line for a model call that failed this way, with the provider's `detail`.
+    fn to_error(self, detail: &str) -> CompletionError {
+        let message = match self {
+            TransportFailure::Timeout => {
+                format!(
+                    "model call timed out after {}s",
+                    MODEL_CALL_TIMEOUT.as_secs()
+                )
+            }
+            TransportFailure::Connect => "model call failed to connect".to_string(),
+            TransportFailure::Status(code) if detail.is_empty() => {
+                format!("model call returned {code}")
+            }
+            TransportFailure::Status(code) => format!("model call returned {code}: {detail}"),
+            TransportFailure::Other => format!("model call failed: {detail}"),
+        };
+        CompletionError::Transport(message)
+    }
+}
+
+impl From<&reqwest::Error> for TransportFailure {
+    fn from(err: &reqwest::Error) -> Self {
+        if err.is_timeout() {
+            TransportFailure::Timeout
+        } else if err.is_connect() {
+            TransportFailure::Connect
+        } else {
+            TransportFailure::Other
+        }
+    }
+}
+
+/// The provider's error body as one short line. The key is replaced before the
+/// cut so no part of it can survive, and control characters and runs of
+/// whitespace collapse to single spaces.
+fn redact_error_body(body: &str, key: &str) -> String {
+    let redacted = if key.is_empty() {
+        body.to_string()
+    } else {
+        body.replace(key, "[key]")
+    };
+    let line = redacted
+        .split(|c: char| c.is_whitespace() || c.is_control())
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ");
+    if line.chars().count() <= MAX_DETAIL_CHARS {
+        return line;
+    }
+    let mut cut: String = line.chars().take(MAX_DETAIL_CHARS).collect();
+    cut.push_str("...");
+    cut
 }
 
 struct Attempt {
@@ -66,26 +129,10 @@ struct Attempt {
 }
 
 impl Attempt {
-    fn transport_failed(err: &reqwest::Error) -> Self {
-        let failure = failure_of(err);
+    fn from_failure(failure: TransportFailure, detail: &str) -> Self {
         Attempt {
             retry: failure.is_retryable(),
-            result: Err(CompletionError::transport(
-                failure,
-                MODEL_CALL_TIMEOUT,
-                &err.to_string(),
-            )),
-        }
-    }
-
-    fn timed_out() -> Self {
-        Attempt {
-            retry: true,
-            result: Err(CompletionError::transport(
-                model::TransportFailure::Timeout,
-                MODEL_CALL_TIMEOUT,
-                "",
-            )),
+            result: Err(failure.to_error(detail)),
         }
     }
 }
@@ -113,25 +160,22 @@ impl HttpModel {
             .await
         {
             Ok(response) => response,
-            Err(err) => return Attempt::transport_failed(&err),
+            Err(err) => {
+                return Attempt::from_failure(TransportFailure::from(&err), &err.to_string())
+            }
         };
         let status = response.status();
         if !status.is_success() {
-            let failure = model::TransportFailure::Status(status.as_u16());
+            let failure = TransportFailure::Status(status.as_u16());
             let body = response.text().await.unwrap_or_default();
             let detail = redact_error_body(&body, &self.settings.key);
-            return Attempt {
-                retry: failure.is_retryable(),
-                result: Err(CompletionError::transport(
-                    failure,
-                    MODEL_CALL_TIMEOUT,
-                    &detail,
-                )),
-            };
+            return Attempt::from_failure(failure, &detail);
         }
         let text = match response.text().await {
             Ok(text) => text,
-            Err(err) => return Attempt::transport_failed(&err),
+            Err(err) => {
+                return Attempt::from_failure(TransportFailure::from(&err), &err.to_string())
+            }
         };
         Attempt {
             retry: false,
@@ -143,7 +187,7 @@ impl HttpModel {
         // A timed-out attempt is dropped before this returns, which closes its socket.
         match tokio::time::timeout(MODEL_CALL_TIMEOUT, self.post_chat_completion(messages)).await {
             Ok(attempt) => attempt,
-            Err(_) => Attempt::timed_out(),
+            Err(_) => Attempt::from_failure(TransportFailure::Timeout, ""),
         }
     }
 }
@@ -165,6 +209,50 @@ impl Model for HttpModel {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The scenarios cover a timeout and a 500 that retry, and a 401 that does not and
+    /// whose line is redacted. These are the failures they never meet.
+    #[test]
+    fn connect_429_and_5xx_retry_and_each_failure_has_its_line() {
+        let retried = [
+            TransportFailure::Connect,
+            TransportFailure::Status(429),
+            TransportFailure::Status(599),
+        ];
+        for failure in retried {
+            assert!(failure.is_retryable(), "{failure:?}");
+        }
+        for failure in [TransportFailure::Status(404), TransportFailure::Other] {
+            assert!(!failure.is_retryable(), "{failure:?}");
+        }
+        let line = |failure: TransportFailure, detail| failure.to_error(detail).to_string();
+        assert_eq!(
+            line(TransportFailure::Connect, ""),
+            "model call failed to connect"
+        );
+        assert_eq!(
+            line(TransportFailure::Status(429), ""),
+            "model call returned 429"
+        );
+        assert_eq!(
+            line(TransportFailure::Status(404), "gone"),
+            "model call returned 404: gone"
+        );
+        assert_eq!(
+            line(TransportFailure::Other, "body"),
+            "model call failed: body"
+        );
+    }
+
+    #[test]
+    fn a_long_error_body_is_cut_after_the_key_is_replaced() {
+        let key = "xai-SECRETKEY123";
+        let long = format!("{}{key}{}", "a".repeat(195), "b".repeat(300));
+        let detail = redact_error_body(&long, key);
+        assert!(!detail.contains("xai-"), "{detail}");
+        assert_eq!(detail.chars().count(), MAX_DETAIL_CHARS + 3, "{detail}");
+        assert!(detail.ends_with("..."), "{detail}");
+    }
 
     #[tokio::test]
     async fn each_missing_setting_is_named() {
