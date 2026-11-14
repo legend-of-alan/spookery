@@ -1,8 +1,8 @@
 //! Readable text for player and GM messages, and the status and commit replies.
 
 use crate::protocol::{
-    self, CommandView, CommitBody, ExitView, MeterView, NoteView, Outcome, PlaceView, Roll, Say,
-    ServerBody, Speaker, TableStatus,
+    self, ChangeView, CommandView, CommitBody, ExitView, MeterView, NoteView, Outcome, PlaceView,
+    Roll, Say, ServerBody, Speaker, TableStatus,
 };
 
 /// Readable text for one player body. Empty means print nothing.
@@ -17,6 +17,7 @@ pub fn render(body: &ServerBody) -> String {
         },
         ServerBody::Resume { notes } => render_resume(notes),
         ServerBody::Lines { text } => text.clone(),
+        ServerBody::Changes { viewer, entries } => render_changes(viewer, entries),
         ServerBody::Refused(refusal) => refusal.to_string(),
         ServerBody::View(view) => render_view(view),
         ServerBody::Help { commands } => render_help(commands),
@@ -56,6 +57,7 @@ fn render_scrollback(says: &[Say]) -> String {
 }
 
 /// Readable text for the messages of one sitting.
+#[derive(Default)]
 pub struct PlayerText {
     seen_resume: bool,
     after_scrollback: bool,
@@ -63,10 +65,7 @@ pub struct PlayerText {
 
 impl PlayerText {
     pub fn new() -> Self {
-        Self {
-            seen_resume: false,
-            after_scrollback: false,
-        }
+        Self::default()
     }
 
     /// Text for this body. Empty means print nothing.
@@ -227,6 +226,80 @@ fn command_line(command: &CommandView) -> String {
     } else {
         format!("{line}: {}", command.names.join(", "))
     }
+}
+
+/// One sentence per change, on one line.
+fn render_changes(viewer: &str, entries: &[ChangeView]) -> String {
+    let sentences: Vec<String> = entries
+        .iter()
+        .filter_map(|entry| match entry.component {
+            protocol::Component::Meter => Some(format!(
+                "{} {} is now {}.",
+                render_owner(viewer, entry),
+                entry.key,
+                entry.after
+            )),
+            protocol::Component::Item => render_item_change(viewer, entry, entries),
+        })
+        .collect();
+    sentences.join(" ")
+}
+
+/// A change to what an actor carries or what lies in the viewer's place. A place's change that
+/// matches an actor's is told by the actor's sentence.
+fn render_item_change(viewer: &str, entry: &ChangeView, entries: &[ChangeView]) -> Option<String> {
+    let lost = entry.after < entry.before?;
+    let name = &entry.name;
+    let other_side = entries.iter().find(|other| {
+        other.component == protocol::Component::Item
+            && other.key == entry.key
+            && other
+                .before
+                .is_some_and(|before| (other.after < before) != lost)
+    });
+    let other_is_actor = other_side.map(|other| is_actor(&other.entity));
+    if !is_actor(&entry.entity) {
+        return match (other_is_actor, lost) {
+            (Some(true), _) => None,
+            (_, true) => Some(format!("The {name} here is gone.")),
+            (_, false) => Some(format!("A {name} turned up here.")),
+        };
+    }
+    let who = if entry.entity == viewer {
+        "You"
+    } else {
+        &entry.entity_name
+    };
+    let whose = render_owner(viewer, entry);
+    let sentence = match (lost, other_is_actor) {
+        (true, Some(true)) => format!("{who} handed over the {name}."),
+        (true, Some(false)) => format!("{who} dropped the {name}."),
+        (false, Some(true)) => format!("{who} received the {name}."),
+        (false, Some(false)) => format!("{who} picked up the {name}."),
+        (true, None) if entry.after == 0 => format!("{whose} {name} was used up."),
+        (true, None) => format!("{whose} {name} was lost."),
+        (false, None) => format!("{whose} {name} was gained."),
+    };
+    Some(sentence)
+}
+
+/// `Your`, `Briar's`, `Gate Yard's`, `The strain story's` or `The world's`.
+fn render_owner(viewer: &str, entry: &ChangeView) -> String {
+    let name = &entry.entity_name;
+    if entry.entity == viewer {
+        "Your".to_string()
+    } else if entry.entity == "world" {
+        "The world's".to_string()
+    } else if entry.entity.starts_with("story:") {
+        format!("The {name} story's")
+    } else {
+        format!("{name}'s")
+    }
+}
+
+/// Whether a change's entity is an actor: an actor id has no `place:` or `story:` prefix.
+fn is_actor(entity: &str) -> bool {
+    entity != "world" && !entity.contains(':')
 }
 
 /// Each place, then its exits indented under it.

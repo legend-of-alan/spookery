@@ -2,6 +2,8 @@
 
 use std::collections::BTreeSet;
 
+use spookery_protocol::{self as protocol, ChangeView};
+
 use crate::canon::Canon;
 use crate::entity;
 use crate::intent::Viewer;
@@ -35,8 +37,8 @@ pub(crate) enum Recipient {
 /// The changes and narrate lines for one seat.
 pub(crate) struct Delivery {
     pub changes: Vec<String>,
-    /// One plain line of the meter and item changes this seat may know.
-    pub line: String,
+    /// The meter and item changes this seat may know.
+    pub entries: Vec<ChangeView>,
     pub narrations: Vec<String>,
 }
 
@@ -47,12 +49,12 @@ pub struct RecipientLine {
     pub text: String,
 }
 
-/// The change keys one actor can see, and the line they are shown. Returned from the engine's
-/// round to the host table, which sends the line to that actor's player.
+/// The change keys one actor can see, and the meter and item changes they are shown. Returned
+/// from the engine's round to the host table, which sends the entries to that actor's player.
 pub struct ViewerChanges {
     pub viewer: ActorId,
     pub changes: Vec<String>,
-    pub line: String,
+    pub entries: Vec<ChangeView>,
 }
 
 /// Changes and narrate lines this seat can receive.
@@ -73,170 +75,78 @@ pub(crate) fn show_to(
         .cloned()
         .collect();
     let mut keys = BTreeSet::new();
-    let mut spoken = Vec::new();
+    let mut entries = Vec::new();
     for change in &visible {
         keys.insert(change.key.to_string());
-        if let Some(id) = actor {
-            if let Some(sentence) = sentence(canon, id, change, &visible) {
-                spoken.push(sentence);
-            }
+        if actor.is_some() {
+            entries.extend(to_change_view(canon, change));
         }
     }
     Delivery {
         changes: keys.into_iter().collect(),
-        line: spoken.join(" "),
+        entries,
         narrations: narrations(canon, state, effects, actor),
     }
 }
 
-/// One sentence for a meter or item change this viewer may know.
-fn sentence(
-    canon: &Canon,
-    viewer: &ActorId,
-    change: &Change,
-    changes: &[Change],
-) -> Option<String> {
-    match &change.key {
-        change::Key::ActorMeter(actor, key) => {
-            let whose = possessive_for(canon, viewer, actor);
-            meter_sentence(
-                canon,
-                &entity::Id::Actor(actor.clone().into()),
-                key,
-                &whose,
-                &change.after,
-            )
-        }
-        change::Key::WorldMeter(key) => meter_sentence(
-            canon,
-            &entity::Id::Global,
+/// The entry for a change a player may know when it is a meter that reads and is not hidden, or
+/// an item whose count moved.
+fn to_change_view(canon: &Canon, change: &Change) -> Option<ChangeView> {
+    let (component, entity, key) = match &change.key {
+        change::Key::ActorMeter(actor, key) => (
+            protocol::Component::Meter,
+            entity::Id::Actor(actor.clone().into()),
             key,
-            "The world's",
-            &change.after,
         ),
-        change::Key::StoryMeter(story, key) => {
-            let id = entity::Id::Story(story.clone().into());
-            let whose = format!("The {story} story's");
-            meter_sentence(canon, &id, key, &whose, &change.after)
-        }
-        change::Key::PlaceMeter(place, key) => {
-            let id = entity::Id::Place(place.clone().into());
-            let whose = format!("{}'s", crate::rules::lines::place_name(canon, place));
-            meter_sentence(canon, &id, key, &whose, &change.after)
-        }
-        change::Key::ActorItem(actor, id) => {
-            actor_item_sentence(canon, viewer, actor, id, change, changes)
-        }
-        change::Key::PlaceItem(_, id) => place_item_sentence(canon, id, change, changes),
-        _ => None,
-    }
-}
-
-fn meter_sentence(
-    canon: &Canon,
-    id: &entity::Id,
-    key: &str,
-    whose: &str,
-    after: &change::Value,
-) -> Option<String> {
-    if canon
-        .meter_def(id.as_ref(), key)
-        .is_none_or(|def| def.hidden)
-    {
-        return None;
-    }
-    let change::Value::Number(value) = after else {
-        return None;
+        change::Key::PlaceMeter(place, key) => (
+            protocol::Component::Meter,
+            entity::Id::Place(place.clone().into()),
+            key,
+        ),
+        change::Key::StoryMeter(story, key) => (
+            protocol::Component::Meter,
+            entity::Id::Story(story.clone().into()),
+            key,
+        ),
+        change::Key::WorldMeter(key) => (protocol::Component::Meter, entity::Id::Global, key),
+        change::Key::ActorItem(actor, id) => (
+            protocol::Component::Item,
+            entity::Id::Actor(actor.clone().into()),
+            id,
+        ),
+        change::Key::PlaceItem(place, id) => (
+            protocol::Component::Item,
+            entity::Id::Place(place.clone().into()),
+            id,
+        ),
+        _ => return None,
     };
-    Some(format!("{whose} {key} is now {value}."))
-}
-
-/// A change to what one actor carries.
-fn actor_item_sentence(
-    canon: &Canon,
-    viewer: &ActorId,
-    actor: &str,
-    id: &str,
-    change: &Change,
-    changes: &[Change],
-) -> Option<String> {
-    let (before, after) = counts(change)?;
-    let name = canon.display_name(id);
-    let who = subject_for(canon, viewer, actor);
-    let owner = possessive_for(canon, viewer, actor);
-    let sentence = match (after < before, other_side(changes, change, id)) {
-        (true, Some(entity::Id::Actor(_))) => format!("{who} handed over the {name}."),
-        (true, Some(_)) => format!("{who} dropped the {name}."),
-        (false, Some(entity::Id::Actor(_))) => format!("{who} received the {name}."),
-        (false, Some(_)) => format!("{who} picked up the {name}."),
-        (true, None) if after == 0 => format!("{owner} {name} was used up."),
-        (true, None) => format!("{owner} {name} was lost."),
-        (false, None) => format!("{owner} {name} was gained."),
+    let (before, after) = (change.before.as_number(), change.after.as_number()?);
+    let (shown, name) = match component {
+        protocol::Component::Meter => (is_shown(canon, &entity, key), String::new()),
+        protocol::Component::Item => (
+            before.is_some_and(|before| before != after),
+            canon.display_name(key),
+        ),
     };
-    Some(sentence)
-}
-
-/// A change to what lies in the viewer's place. A move to or from an actor is told by the actor's sentence.
-fn place_item_sentence(
-    canon: &Canon,
-    id: &str,
-    change: &Change,
-    changes: &[Change],
-) -> Option<String> {
-    let (before, after) = counts(change)?;
-    if matches!(other_side(changes, change, id), Some(entity::Id::Actor(_))) {
+    if !shown {
         return None;
     }
-    let name = canon.display_name(id);
-    if after < before {
-        Some(format!("The {name} here is gone."))
-    } else {
-        Some(format!("A {name} turned up here."))
-    }
-}
-
-/// The before and after counts of an item change, when the count changed.
-fn counts(change: &Change) -> Option<(i64, i64)> {
-    let (before, after) = (change.before.as_number()?, change.after.as_number()?);
-    (before != after).then_some((before, after))
-}
-
-/// Where the item went to or came from, among changes this viewer can see.
-fn other_side(changes: &[Change], change: &Change, id: &str) -> Option<entity::Id> {
-    let (before, after) = counts(change)?;
-    let down = after < before;
-    changes.iter().find_map(|other| {
-        let (other_before, other_after) = counts(other)?;
-        if (other_after < other_before) == down {
-            return None;
-        }
-        match &other.key {
-            change::Key::ActorItem(actor, item) if item == id => {
-                Some(entity::Id::Actor(actor.clone().into()))
-            }
-            change::Key::PlaceItem(place, item) if item == id => {
-                Some(entity::Id::Place(place.clone().into()))
-            }
-            _ => None,
-        }
+    let entity_name = match &entity {
+        entity::Id::Actor(id) => canon.display_name(id.as_str()),
+        entity::Id::Place(id) => crate::rules::lines::place_name(canon, id.as_str()),
+        entity::Id::Story(id) => id.to_string(),
+        entity::Id::Global => String::new(),
+    };
+    Some(ChangeView {
+        component,
+        entity: entity.to_string(),
+        entity_name,
+        key: key.clone(),
+        name,
+        before,
+        after,
     })
-}
-
-/// "You" for the viewer, the display name for anyone else.
-fn subject_for(canon: &Canon, viewer: &ActorId, actor: &str) -> String {
-    if *viewer == *actor {
-        "You".to_string()
-    } else {
-        canon.display_name(actor)
-    }
-}
-
-fn possessive_for(canon: &Canon, viewer: &ActorId, actor: &str) -> String {
-    if *viewer == *actor {
-        "Your".to_string()
-    } else {
-        format!("{}'s", canon.display_name(actor))
-    }
 }
 
 fn narrations(

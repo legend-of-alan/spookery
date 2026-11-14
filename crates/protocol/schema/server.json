@@ -305,7 +305,7 @@
           ]
         },
         {
-          "description": "A round's narrate lines and the changes one player saw, already the text to print.",
+          "description": "One narrate line, already the text to print.",
           "type": "object",
           "properties": {
             "text": {
@@ -319,6 +319,30 @@
           "required": [
             "kind",
             "text"
+          ]
+        },
+        {
+          "description": "The meter and item changes one round showed `viewer`, in the order they happened.",
+          "type": "object",
+          "properties": {
+            "viewer": {
+              "type": "string"
+            },
+            "entries": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/ChangeView"
+              }
+            },
+            "kind": {
+              "type": "string",
+              "const": "changes"
+            }
+          },
+          "required": [
+            "kind",
+            "viewer",
+            "entries"
           ]
         },
         {
@@ -935,6 +959,52 @@
         "unknown_mentions",
         "items",
         "habits"
+      ]
+    },
+    "ChangeView": {
+      "description": "One meter or item change of a `changes` body, sent from the table to a player client.\n`entity` is whose it is as a rule's `of` names it: an actor id, `place:<id>`,\n`story:<id>` or `world`. `entity_name` is that actor's or place's display name, or the\nstory's id. `key` is the meter or item id, and `name` the item's display name.\n`before` is left out when the meter did not read before the round.",
+      "type": "object",
+      "properties": {
+        "component": {
+          "$ref": "#/$defs/Component"
+        },
+        "entity": {
+          "type": "string"
+        },
+        "entity_name": {
+          "type": "string"
+        },
+        "key": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "before": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "int64"
+        },
+        "after": {
+          "type": "integer",
+          "format": "int64"
+        }
+      },
+      "required": [
+        "component",
+        "entity",
+        "key",
+        "after"
+      ]
+    },
+    "Component": {
+      "description": "What a `ChangeView` changed: a meter's value or an item's count.",
+      "type": "string",
+      "enum": [
+        "meter",
+        "item"
       ]
     },
     "CommandView": {

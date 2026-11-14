@@ -156,7 +156,7 @@ fn capture() -> BTreeMap<String, Example> {
     next_kind(&player, "resume");
     next_kind(&player, "view");
 
-    // A second round moves an item the player can see, so the change line is not empty.
+    // A second round moves an item the player can see, so the player gets a `changes`.
     send(&mut player, "take", json!({"target": "lamp_oil"}));
     next_kind(&player, "queued");
     next_kind(&gm, "queued");
@@ -166,7 +166,7 @@ fn capture() -> BTreeMap<String, Example> {
     next_kind(&player, "round");
     next_kind(&player, "resume");
     next_kind(&player, "view");
-    insert_json(&mut out, "player-lines", next_kind(&player, "lines"));
+    insert_json(&mut out, "player-changes", next_kind(&player, "changes"));
 
     send(&mut player, "travel", json!({"target": "stairs"}));
     insert_json(&mut out, "player-no-exit", next_kind(&player, "refused"));

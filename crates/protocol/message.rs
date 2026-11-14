@@ -6,7 +6,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
 use crate::{
-    CommandView, CommitBody, NoteView, Outcome, PlaceView, Refusal, Speaker, TableStatus, View,
+    ChangeView, CommandView, CommitBody, NoteView, Outcome, PlaceView, Refusal, Speaker,
+    TableStatus, View,
 };
 
 /// The wire version the hello announces.
@@ -128,9 +129,14 @@ pub enum ServerBody {
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         notes: Vec<NoteView>,
     },
-    /// A round's narrate lines and the changes one player saw, already the text to print.
+    /// One narrate line, already the text to print.
     Lines {
         text: String,
+    },
+    /// The meter and item changes one round showed `viewer`, in the order they happened.
+    Changes {
+        viewer: String,
+        entries: Vec<ChangeView>,
     },
     /// The reply to `help`: the commands this player can use now.
     Help {

@@ -50,7 +50,7 @@ pub(crate) fn run(
             delivered.seen.push(ViewerChanges {
                 viewer: id,
                 changes: delivery.changes,
-                line: delivery.line,
+                entries: delivery.entries,
             });
         }
     }
