@@ -565,7 +565,7 @@ impl Table {
                     if item.viewer == actor_id && !item.changes.is_empty() {
                         bodies.push(ServerBody::Changes {
                             viewer: actor_id.to_string(),
-                            entries: item.changes.clone(),
+                            changes: item.changes.clone(),
                         });
                     }
                 }

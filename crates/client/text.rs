@@ -17,7 +17,7 @@ pub fn render(body: &ServerBody) -> String {
         },
         ServerBody::Resume { notes } => render_resume(notes),
         ServerBody::Lines { text } => text.clone(),
-        ServerBody::Changes { viewer, entries } => render_changes(viewer, entries),
+        ServerBody::Changes { viewer, changes } => render_changes(viewer, changes),
         ServerBody::Refused(refusal) => refusal.to_string(),
         ServerBody::View(view) => render_view(view),
         ServerBody::Help { commands } => render_help(commands),

@@ -1260,7 +1260,7 @@ pub(crate) fn play_round(
             let viewer = item.viewer.to_string();
             let line = text::render(&ServerBody::Changes {
                 viewer: viewer.clone(),
-                entries: item.changes.clone(),
+                changes: item.changes.clone(),
             });
             (viewer, line)
         })

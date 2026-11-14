@@ -136,7 +136,7 @@ pub enum ServerBody {
     /// The meter and item changes one round showed `viewer`, in the order they happened.
     Changes {
         viewer: String,
-        entries: Vec<ChangeView>,
+        changes: Vec<ChangeView>,
     },
     /// The reply to `help`: the commands this player can use now.
     Help {

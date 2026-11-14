@@ -335,7 +335,7 @@ A client ignores a `kind` or a field it does not know. `server.json` gives every
 | `view` | a player, or the GM on `perceive` | what one actor can see |
 | `resume` | a player | the `notes` addressed to that PC |
 | `lines` | a player | `text` to print: one narrate line |
-| `changes` | a player | `viewer` and `entries`: the changes one round showed that player |
+| `changes` | a player | `viewer` and `changes`: the changes one round showed that player |
 | `help` | the asking player | `commands`, each with `name`, `target`, `names` and `owner` |
 | `map` | the asking player | `places`, each with `name` and `exits` |
 
@@ -422,9 +422,9 @@ A client ignores a `kind` or a field it does not know. `server.json` gives every
 
 ### After a round
 
-Each seated player gets, in order: the `round`, a `check` for each of their own rolls, a `refused` for each of their own moves the round refused, a fresh `resume` and `view`, a `lines` for each narrate line they may hear, and a last `changes` with every change that player may know. A player is told their own meter changes and the world's shown ones, not another actor's, even in the same place, and never a flag change. They are also told the items, place, wielded item and busy time of each actor in their place, their own known facts and shown modifiers, and the notes they may read. A `changes` with no entries is not sent, and a narrate line that would show a fact the player may not know is left out.
+Each seated player gets, in order: the `round`, a `check` for each of their own rolls, a `refused` for each of their own moves the round refused, a fresh `resume` and `view`, a `lines` for each narrate line they may hear, and a last `changes` with every change that player may know. A player is told their own meter changes and the world's shown ones, not another actor's, even in the same place, and never a flag change. They are also told the items, place, wielded item and busy time of each actor in their place, their own known facts and shown modifiers, and the notes they may read. An empty `changes` is not sent, and a narrate line that would show a fact the player may not know is left out.
 
-Each entry of `changes` is one change, in key order, not the order the round made them, and the client writes the sentence. `component` names what changed, as an open set: `meter`, `item`, `place`, `wielded_item`, `busy`, `known_facts`, `modifier` and `note` today, and a client words one it does not know with a plain sentence. `entity` is whose it is as a rule's `of` names it: an actor id, `place:<id>`, `story:<id>` or `world`. `entity_name` is that actor's or place's display name, or the story's id, and is left out for the world. `key` is which one of the entity's, such as the meter or item id, and is left out when the entity holds one, as with `place`. `name` is the key's display name, left out when it is the key. `before` and `after` are the values as JSON writes them: a number for a meter or an item count, text for a place or a wielded item, `true` for a note, and a list for known facts. Either is left out when there was none, as with a meter that did not read. When an item moves between an actor and a place, both counts are entries, so `spook play` reads the take below as `You picked up the Lamp oil.` A component without its own sentence reads like `Your place is now docks_street.` An NPC's roll or refused habit sends no player message.
+`changes` holds one object per change, in key order, not the order the round made them, and the client writes the sentence. `component` names what changed, as an open set: `meter`, `item`, `place`, `wielded_item`, `busy`, `known_facts`, `modifier` and `note` today, and a client words one it does not know with a plain sentence. `entity` is whose it is as a rule's `of` names it: an actor id, `place:<id>`, `story:<id>` or `world`. `entity_name` is that actor's or place's display name, or the story's id, and is left out for the world. `key` is which one of the entity's, such as the meter or item id, and is left out when the entity holds one, as with `place`. `name` is the key's display name, left out when it is the key. `before` and `after` are the values as JSON writes them: a number for a meter or an item count, text for a place or a wielded item, `true` for a note, and a list for known facts. Either is left out when there was none, as with a meter that did not read. When an item moves between an actor and a place, both counts are in `changes`, so `spook play` reads the take below as `You picked up the Lamp oil.` A component without its own sentence reads like `Your place is now docks_street.` An NPC's roll or refused habit sends no player message.
 
 <!-- example: player-round -->
 ```json
@@ -443,7 +443,7 @@ Each entry of `changes` is one change, in key order, not the order the round mad
   "body": {
     "kind": "changes",
     "viewer": "rowan",
-    "entries": [
+    "changes": [
       {"component": "item", "entity": "rowan", "entity_name": "Rowan", "key": "lamp_oil", "name": "Lamp oil", "before": 0, "after": 1},
       {"component": "item", "entity": "place:docks_shop", "entity_name": "Docks Shop", "key": "lamp_oil", "name": "Lamp oil", "before": 4, "after": 3}
     ]
@@ -530,6 +530,6 @@ The MCP endpoint answers with an HTTP status before any seat: 400 for an `MCP-Pr
 - Version 2 narrowed `status` before any release, on purpose: `pack` is now required, so a GM client no longer allows for a server that leaves it out. The version stayed 2 because no build had shipped.
 - Version 2 renamed the command fields before any release, on purpose, so a client body is named by `kind` like a server body: a client body's `word` became `kind`, and the `words` of `hello` and `help` became `commands`. The command names did not change. The recording took the new names with it. The version stayed 2 because no build had shipped.
 - Version 2 renamed the cast's role before any release, on purpose, so the cast and the engine say the same word: `pack.kinds` in `status` became `pack.control_types`, and a cast file's `kind` became `control_type`. The values did not change. The recording took the new name and the docks pack's new `pack_rev` with it. The version stayed 2 because no build had shipped.
-- Version 2 split one body before any release, on purpose, so a client writes the change sentences as it writes the view: `lines` now carries only narrate lines, and the changes a round showed a player moved to the new `changes`, as data: each entry names its component as open text and carries its values as JSON values, so a new component needs no protocol change. The recording took the new body with it. The version stayed 2 because no build had shipped.
+- Version 2 split one body before any release, on purpose, so a client writes the change sentences as it writes the view: `lines` now carries only narrate lines, and the changes a round showed a player moved to the new `changes`, as data: each change names its component as open text and carries its values as JSON values, so a new component needs no protocol change. The recording took the new body with it. The version stayed 2 because no build had shipped.
 - The recorded session must still replay. Each message it got must still arrive at that seat, in order, with every field it had and the same value. New kinds and fields may come between. Only `seq`, which a new kind moves, and `token`, which each table mints, may differ.
 - The journal and refusal codes stay strict: `spook verify` fails on a code it does not know.

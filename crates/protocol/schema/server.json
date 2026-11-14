@@ -328,7 +328,7 @@
             "viewer": {
               "type": "string"
             },
-            "entries": {
+            "changes": {
               "type": "array",
               "items": {
                 "$ref": "#/$defs/ChangeView"
@@ -342,7 +342,7 @@
           "required": [
             "kind",
             "viewer",
-            "entries"
+            "changes"
           ]
         },
         {
