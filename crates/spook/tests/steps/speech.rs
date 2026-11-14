@@ -79,22 +79,12 @@ fn that_say_is_refused(world: &mut World) {
 
 #[then(expr = "{string} reads {string} under the GM's seq")]
 fn reads_under_the_gms_seq(world: &mut World, actor: String, line: String) {
-    let result: Value = serde_json::from_str(&world.scratch).unwrap_or_else(|err| {
-        panic!(
-            "result json: {err}
-{}",
-            world.scratch
-        )
-    });
+    let result: Value = serde_json::from_str(&world.scratch)
+        .unwrap_or_else(|err| panic!("result json: {err}\n{}", world.scratch));
     let reply = result["result"]["structuredContent"]["messages"]
         .as_array()
         .and_then(|messages| messages.last())
-        .unwrap_or_else(|| {
-            panic!(
-                "no reply
-{result}"
-            )
-        });
+        .unwrap_or_else(|| panic!("no reply\n{result}"));
     let said = wait_said(world, &actor, 0, &line);
     assert_eq!(said.seq, reply["seq"].as_u64(), "{reply}");
 }

@@ -277,7 +277,7 @@ impl Table {
         let presence = self.seats.presence();
         let body = match command.as_str() {
             "release" if read::<NoArgs>(&args).is_some() => return self.release_claim(conn, id),
-            "say" => match read::<SayArgs>(&args).filter(|args| args.as_npc().is_none()) {
+            "say" => match read::<SayArgs>(&args).filter(|args| args.npc().is_none()) {
                 Some(args) => return self.say_as_player(conn, id, &actor_id, &args),
                 None => ServerBody::Refused(Reason::Schema.into()),
             },

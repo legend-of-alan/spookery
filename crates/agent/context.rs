@@ -41,9 +41,9 @@ impl ClientState {
     }
 
     /// Records what one server message shows about the game: a player's "say" starts a turn,
-    /// the GM's own "say" (the reply to its command, as the GM or an NPC) joins `tape_lines`, a queued move joins the
-    /// queued moves and starts a turn, a round empties them, and presence names the actors
-    /// present.
+    /// the GM's own "say" (the reply to its command, as the GM or an NPC) joins `tape_lines`,
+    /// a queued move joins the queued moves and starts a turn, a round empties them, and
+    /// presence names the actors present.
     pub(crate) fn record_server_message(&mut self, message: &ServerMessage) {
         let seq = message.seq.unwrap_or_default();
         match &message.body {
