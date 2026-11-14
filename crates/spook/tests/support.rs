@@ -148,16 +148,18 @@ pub fn drain(reader: impl Read + Send + 'static, slot: Arc<Mutex<String>>) -> Jo
                 Ok(0) | Err(_) => break,
                 Ok(n) => {
                     pending.extend_from_slice(&buf[..n]);
-                    let whole = match std::str::from_utf8(&pending) {
-                        Ok(text) => text.len(),
-                        Err(err) => err.valid_up_to(),
+                    let complete_len = match std::str::from_utf8(&pending) {
+                        Err(err) if err.error_len().is_none() => err.valid_up_to(),
+                        _ => pending.len(),
                     };
                     let mut text = slot.lock().unwrap_or_else(|err| err.into_inner());
-                    text.push_str(&String::from_utf8_lossy(&pending[..whole]));
-                    pending.drain(..whole);
+                    text.push_str(&String::from_utf8_lossy(&pending[..complete_len]));
+                    pending.drain(..complete_len);
                 }
             }
         }
+        let mut text = slot.lock().unwrap_or_else(|err| err.into_inner());
+        text.push_str(&String::from_utf8_lossy(&pending));
     })
 }
 
