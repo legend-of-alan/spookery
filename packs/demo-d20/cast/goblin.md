@@ -44,7 +44,7 @@ rules:
       target: actor
     if:
       - meter:
-          of: goblin
+          of: target
           id: nerve
           op: ">="
           value: 1
@@ -99,4 +99,4 @@ rules:
           to: here
           text: The goblin shrieks and burrows deep into the straw. The nail drops at your feet.
 ---
-Something hunches in the straw: a goblin, or a knot of straw shaped like one. It wants the iron nail out of everyone's reach and bites whoever comes for it, but cold iron and a firm word send it burrowing. It can't stand being mocked, and an insult earns a bite.
+Something hunches in the straw: a goblin, or a knot of straw shaped like one. It wants the iron nail out of everyone's reach and bites whoever comes for it, but a firm word sends it burrowing. It can't stand being mocked, and an insult earns a bite.

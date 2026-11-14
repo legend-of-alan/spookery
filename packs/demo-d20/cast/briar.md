@@ -28,7 +28,7 @@ rules:
           subject: self
           id: cudgel
       - meter:
-          of: briar
+          of: target
           id: hp
           op: ">="
           value: 1

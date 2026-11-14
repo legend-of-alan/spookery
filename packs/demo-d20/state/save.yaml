@@ -1,6 +1,6 @@
 schema: save
 world_id: demo-d20
-pack_rev: blake2s:6e3f0b633fb166451b2e9b2e4ca1501a192556ce55d18324c0a2aadeff9f8e0e
+pack_rev: blake2s:c38e7463af106a84c6a6840758c370c5e7dc3f67a25b77b1df89e23cec9cb310
 rules_rev: 25
 state_rev: 0
 round_index: 0
