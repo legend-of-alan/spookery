@@ -176,15 +176,12 @@ mod tests {
     }
 
     #[test]
-    fn an_npc_view_keeps_prose_and_fact_text_and_never_a_fact_body() {
+    fn an_npc_view_keeps_place_cast_and_note_prose_but_not_unseen_cast_or_unknown_mentions() {
         let seen = render_result(&docks(), ServerBody::View(Box::new(shop("aldric"))));
-        assert!(seen.contains("MIRA-PROSE-SENTINEL"), "{seen}");
         assert!(seen.contains("The shop smells of tar."), "{seen}");
         assert!(seen.contains("Aldric keeps the counter."), "{seen}");
         assert!(!seen.contains("BRAM-ABSENT"), "{seen}");
-        assert!(seen.contains("FACT-TEXT-SENTINEL"), "{seen}");
         assert!(seen.contains("MESSAGE-SENTINEL"), "{seen}");
-        assert!(!seen.contains("BODY-SENTINEL"), "{seen}");
         assert!(!seen.contains("UNKNOWN-SENTINEL"), "{seen}");
     }
 

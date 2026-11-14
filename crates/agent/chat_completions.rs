@@ -43,18 +43,21 @@ pub fn render_request(model_name: &str, conversation: &[model::Message]) -> Valu
 /// without an id gets `call_<index>`, and arguments that are not a string keep their JSON
 /// text, so the agent answers them itself.
 pub fn parse_reply(text: &str) -> Result<Vec<ToolCall>, CompletionError> {
-    let missing = |field: &str| CompletionError::InvalidReply(format!("the reply has no {field}"));
+    let reply_lacks =
+        |field: &str| CompletionError::InvalidReply(format!("the reply has no {field}"));
     let value: Value =
         serde_json::from_str(text).map_err(|err| CompletionError::InvalidReply(err.to_string()))?;
     let message = value
         .get("choices")
         .and_then(|choices| choices.get(0))
-        .ok_or_else(|| missing("choices"))?
+        .ok_or_else(|| reply_lacks("choices"))?
         .get("message")
-        .ok_or_else(|| missing("message in its first choice"))?;
+        .ok_or_else(|| reply_lacks("message in its first choice"))?;
     let calls = match message.get("tool_calls") {
         None | Some(Value::Null) => return Ok(Vec::new()),
-        Some(calls) => calls.as_array().ok_or_else(|| missing("tool_calls list"))?,
+        Some(calls) => calls
+            .as_array()
+            .ok_or_else(|| reply_lacks("tool_calls list"))?,
     };
     calls
         .iter()
@@ -62,7 +65,7 @@ pub fn parse_reply(text: &str) -> Result<Vec<ToolCall>, CompletionError> {
         .map(|(index, call)| {
             let function = call
                 .get("function")
-                .ok_or_else(|| missing("function in a tool call"))?;
+                .ok_or_else(|| reply_lacks("function in a tool call"))?;
             let name = function.get("name").and_then(Value::as_str);
             let arguments = match function.get("arguments") {
                 Some(Value::String(text)) => text.clone(),
@@ -75,7 +78,7 @@ pub fn parse_reply(text: &str) -> Result<Vec<ToolCall>, CompletionError> {
                     .and_then(Value::as_str)
                     .map_or_else(|| format!("call_{index}"), str::to_string),
                 name: name
-                    .ok_or_else(|| missing("function name in a tool call"))?
+                    .ok_or_else(|| reply_lacks("function name in a tool call"))?
                     .to_string(),
                 arguments,
             })
