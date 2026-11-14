@@ -5,8 +5,8 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use spookery_engine::testing::{
-    self as support, insert_nell, journal::list_round_keys, read_round as round_value, resume,
-    stamp_pack_rev, state_of, write_save, Canon,
+    self as support, act_of, insert_nell, journal::list_round_keys, place_of,
+    read_round as round_value, resume, stamp_pack_rev, state_of, write_save, Canon,
 };
 use spookery_engine::{
     component, emit_save, entity, load_canon, play_pack_once, ActorId, Meter, MoveReport, Note,
@@ -52,7 +52,7 @@ fn lamp_oil(state: &Save) -> u32 {
 }
 
 fn flags_of(state: &State, id: &str) -> Vec<String> {
-    assert!(state.actors().control_type.contains_key(id), "{id} missing");
+    assert!(state.actors().contains(&id.into()), "{id} missing");
     let id = id.into();
     let flags = state.actors().get::<component::Flag>(&id);
     flags.iter().map(|(flag, ())| flag.to_string()).collect()
@@ -103,7 +103,7 @@ fn evening_note() {
     play_pack_once(&pack).unwrap_or_else(|err| panic!("round: {err}"));
     let state = state_of(&pack);
     assert_eq!(lamp_oil(&state), 4);
-    assert_eq!(state.actors().place["mira"], "mira_rooms");
+    assert_eq!(place_of(&state, "mira"), "mira_rooms");
     assert_eq!(state.notes().len(), 1);
     assert_eq!(state.notes()[0].id, "note_mira_door");
     assert_eq!(state.notes()[0].place, Some("docks_shop".into()));
@@ -125,11 +125,11 @@ fn morning_restock() {
             .unwrap();
         write_save(&pack, &state);
     }
-    assert_eq!(state_of(&pack).actors().place["mira"], "mira_rooms");
+    assert_eq!(place_of(&state_of(&pack), "mira"), "mira_rooms");
     play_pack_once(&pack).unwrap_or_else(|err| panic!("round: {err}"));
     let state = state_of(&pack);
     assert_eq!(lamp_oil(&state), 8);
-    assert_eq!(state.actors().place["mira"], "mira_rooms");
+    assert_eq!(place_of(&state, "mira"), "mira_rooms");
     assert_eq!(state.notes().len(), 1);
     let _ = fs::remove_dir_all(&pack);
 }
@@ -148,7 +148,8 @@ fn capped_restock() -> u32 {
             .set("docks_street")
             .unwrap();
         let entry = ("docks_shop".into(), "lamp_oil".to_string());
-        let held = i64::from(state.places().items.get(&entry).copied().unwrap_or(0));
+        let stock = state.places().get::<component::Item>(&entry.0);
+        let held = i64::from(stock.get(&entry.1).copied().unwrap_or(0));
         let mut places = state.places_mut();
         let mut shop = places.get_mut::<component::Item>(&entry.0);
         shop.shift("lamp_oil", 6 - held, None).unwrap();
@@ -199,7 +200,7 @@ fn player_in_the_shop() {
     let state = state_of(&pack);
     assert_eq!(lamp_oil(&state), 4);
     assert_eq!(state.notes().len(), 1);
-    assert_eq!(state.actors().acts["mira"].last_act_round, 0);
+    assert_eq!(act_of(&state, "mira").last_act_round, 0);
     let _ = fs::remove_dir_all(&pack);
 }
 
@@ -388,8 +389,8 @@ fn a_busy_npc_skips() {
     play_pack_once(&pack).unwrap_or_else(|err| panic!("round: {err}"));
     let state = state_of(&pack);
     assert_eq!(lamp_oil(&state), 4);
-    assert_eq!(state.actors().acts["mira"].last_act_round, 0);
-    assert_eq!(state.actors().acts["bram"].last_act_round, 0);
+    assert_eq!(act_of(&state, "mira").last_act_round, 0);
+    assert_eq!(act_of(&state, "bram").last_act_round, 0);
     let _ = fs::remove_dir_all(&pack);
 }
 

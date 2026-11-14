@@ -22,7 +22,7 @@ pub(crate) fn help(
     presence: &Presence,
     actor_id: &ActorId,
 ) -> Result<Vec<CommandView>, Reason> {
-    if !state.actors().control_type.contains_key(actor_id) {
+    if !state.actors().contains(actor_id) {
         return Err(Reason::UnknownId);
     }
     let viewer = Viewer::Player(actor_id.clone());
@@ -106,7 +106,7 @@ fn names_for(
             .collect(),
         TargetKind::Actor => nameable
             .iter()
-            .filter(|name| state.actors().control_type.contains_key(name.as_str()))
+            .filter(|name| state.actors().contains(&ActorId::from(name.as_str())))
             .cloned()
             .collect(),
         TargetKind::Item => nameable
@@ -134,7 +134,7 @@ pub(crate) fn map(
     state: &State,
     actor_id: &ActorId,
 ) -> Result<Vec<PlaceView>, Reason> {
-    if !state.actors().control_type.contains_key(actor_id) {
+    if !state.actors().contains(actor_id) {
         return Err(Reason::UnknownId);
     }
     let places =

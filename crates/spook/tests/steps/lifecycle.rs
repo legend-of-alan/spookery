@@ -7,7 +7,7 @@ use spookery_engine::{component, entity, Presence, World as Engine};
 
 use super::common::{give_key, resolve_id};
 use super::rules::open;
-use crate::support::{append, copy_docks, edit_save, read_round, stamp_pack_rev, state_of};
+use crate::support::{act_of, append, copy_docks, edit_save, read_round, stamp_pack_rev, state_of};
 use crate::World;
 
 fn seated() -> Presence {
@@ -163,10 +163,12 @@ fn never_finished(world: &mut World, verb: String, rest: i64) {
         "{:?}",
         now.globals().flags
     );
-    let act = &now.actors().acts["rowan"];
+    let act = act_of(&now, "rowan");
     assert_eq!(act.pending, None);
     assert_eq!(act.busy_until, None);
-    let meter = &now.actors().meters[&("rowan".into(), "rest".to_string())];
+    let rowan = "rowan".into();
+    let meters = now.actors().get::<component::Meter>(&rowan);
+    let meter = meters.get("rest").unwrap();
     assert_eq!(meter.base + meter.offset, 3 - rest);
 }
 
@@ -265,13 +267,13 @@ fn rowan_holds_lamp_oil(world: &mut World) {
 #[then(expr = "Rowan has used no act")]
 fn rowan_used_no_act(world: &mut World) {
     let now = state_of(world.pack.as_ref().unwrap());
-    assert_eq!(now.actors().acts["rowan"].last_act_round, 0);
+    assert_eq!(act_of(&now, "rowan").last_act_round, 0);
 }
 
 #[then(expr = "Rowan has used the act of round {int}")]
 fn rowan_used_the_act(world: &mut World, round: u64) {
     let now = state_of(world.pack.as_ref().unwrap());
-    assert_eq!(now.actors().acts["rowan"].last_act_round, round);
+    assert_eq!(act_of(&now, "rowan").last_act_round, round);
 }
 
 #[then(expr = "Wren's look does not show Rowan")]
@@ -327,9 +329,7 @@ fn the_gm_is_refused_at_once(world: &mut World) {
 fn a_round_later_the_shop_holds(world: &mut World, count: u32) {
     let mut opened = open(world.pack.as_ref().unwrap());
     play(&mut opened);
-    let oil = ("docks_shop".into(), "lamp_oil".to_string());
-    assert_eq!(
-        opened.state().places().items.get(&oil).copied(),
-        Some(count)
-    );
+    let shop = "docks_shop".into();
+    let stock = opened.state().places().get::<component::Item>(&shop);
+    assert_eq!(stock.get("lamp_oil").copied(), Some(count));
 }

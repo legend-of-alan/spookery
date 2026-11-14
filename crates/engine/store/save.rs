@@ -217,9 +217,7 @@ pub fn check_save(state: &State) -> Result<(), Vec<Diagnostic>> {
         .chain(modifiers.keys().map(|(id, _)| ("modifiers", id)))
         .chain(flags.keys().map(|(id, _)| ("flags", id)))
         .collect();
-    let lacking = held
-        .iter()
-        .filter(|(_, id)| !actors.control_type.contains_key(*id));
+    let lacking = held.iter().filter(|(_, id)| !actors.contains(id));
     for (store, id) in lacking {
         let problem = format!("actor '{id}' has {store} but no control type");
         let hint = "give the actor a control type under actors.control_type";

@@ -19,7 +19,7 @@ use crate::entity;
 use crate::intent::{Intent, IntentArgs, Source, Target, Viewer};
 use crate::rules::effect::{Effect, EffectKind};
 use crate::state::id::{ActorId, PlaceId};
-use crate::state::State;
+use crate::state::{component, State};
 use crate::testing::copy_docks;
 use crate::world::World;
 
@@ -128,7 +128,7 @@ fn assert_no_stored_zero(state: &State) -> Result<(), TestCaseError> {
 
 fn is_known_entity(canon: &Canon, state: &State, carrier: &entity::Id) -> bool {
     match carrier {
-        entity::Id::Actor(id) => state.actors().control_type.contains_key(id),
+        entity::Id::Actor(id) => state.actors().contains(id),
         entity::Id::Place(id) => canon.places.contains_key(id),
         entity::Id::Story(_) | entity::Id::Global => false,
     }
@@ -138,14 +138,14 @@ fn count_of(state: &State, carrier: &entity::Id, id: &str) -> u32 {
     match carrier {
         entity::Id::Actor(actor_id) => state
             .actors()
-            .items
-            .get(&(actor_id.clone(), id.to_string()))
+            .get::<component::Item>(actor_id)
+            .get(id)
             .copied()
             .unwrap_or(0),
         entity::Id::Place(place_id) => state
             .places()
-            .items
-            .get(&(place_id.clone(), id.to_string()))
+            .get::<component::Item>(place_id)
+            .get(id)
             .copied()
             .unwrap_or(0),
         entity::Id::Story(_) | entity::Id::Global => 0,

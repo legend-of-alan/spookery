@@ -1,4 +1,4 @@
-use spookery_engine::testing::state_of;
+use spookery_engine::testing::{place_of, state_of};
 use spookery_engine::{component, Meter};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -191,11 +191,11 @@ fn state_rev_is_2(world: &mut World) {
     let now = state_of(table::pack(world));
     assert_eq!(now.state_rev, 2);
     assert_eq!(now.pack_rev, docks_pack_rev());
-    assert_eq!(now.actors().place["rowan"], "docks_shop");
+    assert_eq!(place_of(&now, "rowan"), "docks_shop");
     assert_eq!(
         now.places()
-            .items
-            .get(&("docks_shop".into(), "lamp_oil".to_string()))
+            .get::<component::Item>(&"docks_shop".into())
+            .get("lamp_oil")
             .copied(),
         Some(4u32)
     );
@@ -218,7 +218,7 @@ fn migrate_keeps_the_hand_edit(world: &mut World) {
     assert_eq!(now.world_time, 7);
     assert_eq!(now.round_index, 0);
     assert_eq!(now.last_round_at, "2026-01-01T00:00:00Z");
-    assert_eq!(now.actors().place["rowan"], "mira_rooms");
+    assert_eq!(place_of(&now, "rowan"), "mira_rooms");
     assert!(spookery_engine::testing::journal::list_round_keys(pack).is_empty());
     assert_eq!(read_migrate_revs(pack), [1]);
 }
@@ -241,8 +241,9 @@ fn the_shops_lamp_oil_is_hand_edited(world: &mut World, count: u32) {
 #[then(expr = "the shop has {int} lamp oil")]
 fn the_shop_has_lamp_oil(world: &mut World, count: u32) {
     let now = state_of(table::pack(world));
-    let oil = ("docks_shop".into(), "lamp_oil".to_string());
-    assert_eq!(now.places().items.get(&oil).copied(), Some(count));
+    let shop = "docks_shop".into();
+    let stock = now.places().get::<component::Item>(&shop);
+    assert_eq!(stock.get("lamp_oil").copied(), Some(count));
 }
 
 #[then(expr = "verify trusts the operator edit at state_rev {int}")]

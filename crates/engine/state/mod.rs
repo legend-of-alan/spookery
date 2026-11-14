@@ -104,6 +104,11 @@ impl<'a, E: entity::Entities> Reader<'a, E> {
     pub fn get<C: component::Component>(self, id: &'a E::Id) -> component::Ref<'a, E, C> {
         component::Ref::new(self, id)
     }
+
+    /// Whether `id` is one of this collection's entities.
+    pub fn contains(self, id: &E::Id) -> bool {
+        self.components.contains(self.canon, id)
+    }
 }
 
 impl<E> Deref for Reader<'_, E> {

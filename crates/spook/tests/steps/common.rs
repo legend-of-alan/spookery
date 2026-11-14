@@ -1,6 +1,6 @@
 //! Steps used by more than one cucumber program.
 
-use spookery_engine::testing::state_of;
+use spookery_engine::testing::{place_of, state_of};
 use std::fs;
 use std::io::Write;
 use std::path::Path;
@@ -25,6 +25,13 @@ pub(crate) use crate::support::edit_save;
 
 /// Rowan holds brass_key, and the stair door is open, as a round that ended with him in the
 /// shop would have left it.
+/// The flags `actor` holds, in name order.
+pub(crate) fn flags_of(state: &State, actor: &str) -> Vec<String> {
+    let actor = actor.into();
+    let flags = state.actors().get::<component::Flag>(&actor);
+    flags.iter().map(|(flag, ())| flag.to_string()).collect()
+}
+
 pub(crate) fn give_key(now: &mut State) {
     now.actors_mut()
         .get_mut::<component::Item>(&"rowan".into())
@@ -519,7 +526,7 @@ fn is_in(world: &mut World, actor: String, place: String) {
     let now = state_of(table::pack(world));
     let [actor, place] =
         [&actor, &place].map(|name| resolve_id(now.canon(), name.trim_matches('"')));
-    assert_eq!(now.actors().place[actor.as_str()], place);
+    assert_eq!(place_of(&now, &actor), place);
 }
 
 #[when(regex = r"^the player marks (?P<actor>\S+)$")]

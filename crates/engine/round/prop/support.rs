@@ -6,8 +6,8 @@ use std::path::{Path, PathBuf};
 use crate::canon::pack_rev;
 use crate::intent::Target;
 use crate::rules::travel::visible_exits;
+use crate::state::component;
 use crate::state::id::{ActorId, PlaceId};
-use crate::state::nested_map;
 use crate::state::Presence;
 use crate::store::journal;
 use crate::store::save;
@@ -176,14 +176,12 @@ fn target_for(world: &World, actor: &ActorId, verb: &str, token: usize) -> Optio
 fn item_tokens(world: &World, actor: &ActorId) -> Vec<String> {
     let mut ids: Vec<String> = world.canon().items.keys().cloned().collect();
     let state = world.state();
-    if let Some(place) = state.actors().place.get(actor) {
-        ids.extend(
-            nested_map::entries_of(&state.actors().items, actor).map(|(id, _)| id.to_string()),
-        );
-        let place = PlaceId::from(place.clone());
-        ids.extend(
-            nested_map::entries_of(&state.places().items, &place).map(|(id, _)| id.to_string()),
-        );
+    if let Some(place) = state.actors().get::<component::Place>(actor).get() {
+        let held = state.actors().get::<component::Item>(actor);
+        ids.extend(held.iter().map(|(id, _)| id.to_string()));
+        let place = PlaceId::from(place);
+        let lying = state.places().get::<component::Item>(&place);
+        ids.extend(lying.iter().map(|(id, _)| id.to_string()));
     }
     ids.sort();
     ids.dedup();

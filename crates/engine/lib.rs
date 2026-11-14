@@ -38,6 +38,7 @@ pub mod testing {
     use std::fs;
     use std::path::{Path, PathBuf};
 
+    use crate::state::component::Place;
     use crate::store::lock::WriteGuard;
 
     pub use crate::canon::{strip_body, Canon};
@@ -45,6 +46,19 @@ pub mod testing {
     pub use crate::rules::roll::{faces, RollKey};
     pub use crate::state::entity::Actors;
     pub use crate::state::{Act, PendingAction};
+
+    /// Where `actor` stands, read through `Reader::get`. Panics when they stand nowhere.
+    pub fn place_of(state: &crate::State, actor: &str) -> String {
+        let actors = state.actors();
+        let place = actors.get::<Place>(&actor.into()).get().map(String::from);
+        place.unwrap_or_else(|| panic!("{actor} stands nowhere"))
+    }
+
+    /// What `actor` is doing, read through `Reader::get`. Panics when they have no action state.
+    pub fn act_of(state: &crate::State, actor: &str) -> Act {
+        let act = state.actors().get::<Act>(&actor.into()).get().cloned();
+        act.unwrap_or_else(|| panic!("{actor} has no action state"))
+    }
 
     /// The write guard of the pack `world` holds the lock on.
     pub fn lock_write(world: &crate::World) -> Result<WriteGuard, crate::Reason> {

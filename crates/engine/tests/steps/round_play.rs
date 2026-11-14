@@ -7,7 +7,7 @@ use spookery_engine::testing::{faces, RollKey};
 use spookery_engine::{component, MoveReport};
 
 use crate::{resolve_id, World};
-use spookery_engine::testing::{self as support, read_round};
+use spookery_engine::testing::{self as support, act_of, place_of, read_round};
 
 #[given(expr = "a round where Lark rolls grit")]
 fn a_round_where_lark_rolls_grit(world: &mut World) {
@@ -140,8 +140,8 @@ fn mira_plays(world: &mut World, move_name: String) {
         play_queued(&pack, &[], vec![intent(&id, "mira", &move_name, None)]);
     let oil = state
         .places()
-        .items
-        .get(&("docks_shop".into(), "lamp_oil".to_string()))
+        .get::<component::Item>(&"docks_shop".into())
+        .get("lamp_oil")
         .copied()
         .map(i64::from)
         .unwrap_or(-1);
@@ -207,7 +207,7 @@ fn the_wait_lands_and_miras_habit_is_ineligible(world: &mut World) {
     assert_eq!(refused[0]["code"], "INELIGIBLE", "{round}");
     assert_ne!(refused[0]["id"], "gm-wait", "{round}");
     let state = support::state_of(world.pack());
-    assert_eq!(state.actors().acts["mira"].last_act_round, 1);
+    assert_eq!(act_of(&state, "mira").last_act_round, 1);
     assert!(state.notes().is_empty(), "{:?}", state.notes());
 }
 
@@ -290,8 +290,8 @@ fn max_effects_per_intent_is_1_and_a_row_with_2_effects(world: &mut World) {
         "{}",
         state
             .places()
-            .items
-            .get(&("docks_shop".into(), "lamp_oil".to_string()))
+            .get::<component::Item>(&"docks_shop".into())
+            .get("lamp_oil")
             .copied()
             .map(i64::from)
             .unwrap_or(-1)
@@ -354,7 +354,7 @@ fn rowan_asks_aldric_until_it_finishes(world: &mut World) {
         let output = table.play(&rowan, &wall);
         output.unwrap_or_else(|err| panic!("round {round}: {err}"));
         let state = table.state();
-        if !state.actors().acts["rowan"].is_busy(state.world_time) {
+        if !act_of(state, "rowan").is_busy(state.world_time) {
             break;
         }
         assert!(round < 6, "Rowan is still busy after {round} rounds");
@@ -409,7 +409,7 @@ fn rowan_hauls_until_it_finishes(world: &mut World) {
             return;
         }
         let state = table.state();
-        if !state.actors().acts["rowan"].is_busy(state.world_time) {
+        if !act_of(state, "rowan").is_busy(state.world_time) {
             break;
         }
     }
@@ -432,10 +432,7 @@ fn the_refused_finish_commits(world: &mut World) {
     );
     let saved = spookery_engine::World::peek(pack).unwrap_or_else(|err| panic!("open: {err}"));
     let state = saved.state();
-    assert!(
-        !state.actors().acts["rowan"].is_busy(state.world_time),
-        "{round}"
-    );
+    assert!(!act_of(state, "rowan").is_busy(state.world_time), "{round}");
     spookery_engine::verify_pack(pack, None).unwrap_or_else(|err| panic!("verify: {err}"));
 }
 
@@ -477,7 +474,7 @@ fn wrens_pick_is_refused(world: &mut World, code: String) {
         "{round}"
     );
     let saved = spookery_engine::World::peek(world.pack()).unwrap();
-    assert_eq!(saved.state().actors().place["rowan"], "docks_street");
+    assert_eq!(place_of(saved.state(), "rowan"), "docks_street");
 }
 
 #[then(expr = "the next round plays and spook verify passes")]
@@ -626,15 +623,11 @@ fn miras_travel_is_picked_first(world: &mut World) {
 #[then(expr = "Mira has visited the Docks Shop")]
 fn mira_has_visited_the_shop(world: &mut World) {
     let saved = spookery_engine::World::peek(world.pack()).unwrap();
-    let actors = &saved.state().actors();
-    assert_eq!(actors.place["mira"], "docks_shop");
-    assert!(
-        actors
-            .visited
-            .contains_key(&("mira".into(), "docks_shop".to_string())),
-        "{:?}",
-        actors.visited
-    );
+    let (state, mira) = (saved.state(), "mira".into());
+    assert_eq!(place_of(state, "mira"), "docks_shop");
+    let visits = state.actors().get::<component::Visit>(&mira);
+    let visited: Vec<&str> = visits.iter().map(|(place, _)| place).collect();
+    assert!(visits.contains("docks_shop"), "{visited:?}");
 }
 
 #[given(expr = "the d20 pack allows {int} intent per round")]
@@ -730,7 +723,7 @@ fn rowan_walks(
     let mut intents = vec![intent("walk", "rowan", "travel", Some("docks_street"))];
     intents.extend(then);
     let (state, _rolls, round) = play_queued(pack, &["rowan"], intents);
-    assert_eq!(state.actors().place["rowan"], "docks_street", "{round}");
+    assert_eq!(place_of(&state, "rowan"), "docks_street", "{round}");
     (state, round)
 }
 

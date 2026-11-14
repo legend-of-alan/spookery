@@ -37,7 +37,7 @@ fn is_in(world: &mut World, actor: String, place: String) {
     let now = support::state_of(world.pack());
     let [actor, place] =
         [&actor, &place].map(|name| resolve_id(now.canon(), name.trim_matches('"')));
-    assert_eq!(now.actors().place[actor.as_str()], place);
+    assert_eq!(support::place_of(&now, &actor), place);
 }
 
 #[when(expr = "Nell waits")]

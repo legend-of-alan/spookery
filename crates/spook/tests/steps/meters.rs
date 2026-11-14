@@ -139,8 +139,8 @@ fn mira_has_shop_day(world: &mut World) {
 fn bram_and_rowan_do_not(world: &mut World) {
     let now = state_of(pack(world));
     for id in ["bram", "rowan"] {
-        let shop_day = (id.into(), "shop_day".to_string());
-        assert!(!now.actors().meters.contains_key(&shop_day), "{id}");
+        let id = id.into();
+        assert!(!now.actors().get::<Meter>(&id).contains("shop_day"), "{id}");
     }
 }
 
@@ -378,8 +378,7 @@ fn dawn_is_zero(world: &mut World) {
 fn no_actor_carries_dawn(world: &mut World) {
     let now = state_of(pack(world));
     for id in now.actors().control_type.keys() {
-        let dawn = (id.clone(), "dawn".to_string());
-        assert!(!now.actors().meters.contains_key(&dawn), "{id}");
+        assert!(!now.actors().get::<Meter>(id).contains("dawn"), "{id}");
     }
 }
 

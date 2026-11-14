@@ -116,7 +116,7 @@ impl World {
         let viewer = Viewer::Player(actor_id.clone());
         let mut nameable = gate::list_nameable(self.canon(), &self.state, presence, &viewer);
         let actors = self.state.actors();
-        nameable.retain(|thing| actors.control_type.contains_key(thing.id.as_str()));
+        nameable.retain(|thing| actors.contains(&ActorId::from(thing.id.as_str())));
         let line = format!("{typed} {text}");
         let line = line.trim();
         let mut said_to = (Address::Table, line);
@@ -154,7 +154,7 @@ impl World {
     ) -> Result<TapeRecord, Reason> {
         let text = check_say_text(text)?.to_string();
         if let Address::Actor(actor) = heard {
-            if !self.state.actors().control_type.contains_key(actor) {
+            if !self.state.actors().contains(&ActorId::from(actor)) {
                 return Err(Reason::Schema);
             }
         }
@@ -762,7 +762,7 @@ pub fn check_pack(root: &Path) -> Vec<Diagnostic> {
 
 fn check_save_text(state: &Save, bytes: &[u8]) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
-    if state.actors().control_type.contains_key("world") {
+    if state.viewer_of(&ActorId::from("world")).is_some() {
         diags.push(
             schema_error(
                 "state/save.yaml",

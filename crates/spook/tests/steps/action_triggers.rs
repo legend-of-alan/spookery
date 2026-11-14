@@ -138,7 +138,7 @@ fn wren_is_refused(world: &mut World) {
     assert_eq!(refused.len(), 1, "{round}");
     assert_eq!(refused[0]["code"], "NOT_IN_SPEC", "{round}");
     let now = state_of(world.pack.as_ref().unwrap());
-    assert_eq!(now.actors().place["rowan"], "docks_street");
+    assert_eq!(crate::support::place_of(&now, "rowan"), "docks_street");
     let world_flags = now.entities();
     assert!(world_flags
         .get::<component::Flag>(&entity::Id::Global)

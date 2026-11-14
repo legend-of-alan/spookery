@@ -1,5 +1,5 @@
 use spookery_engine::component;
-use spookery_engine::testing::state_of;
+use spookery_engine::testing::{place_of, state_of};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -8,7 +8,7 @@ use cucumber::{given, then, when};
 use crate::support;
 use crate::World;
 
-use super::common::{spawn_play, wait_play};
+use super::common::{flags_of, spawn_play, wait_play};
 use super::table;
 
 #[when(expr = "the operator runs spook new in a fresh directory")]
@@ -144,7 +144,7 @@ fn the_travel_committed_a_round(world: &mut World) {
     wait_play(world, "You are in Lane.");
     let pack = table::pack(world);
     let now = state_of(pack);
-    assert_eq!(now.actors().place["ada"], "lane");
+    assert_eq!(place_of(&now, "ada"), "lane");
     assert!(
         spookery_engine::testing::journal::list_round_keys(pack)
             .contains(&"round-0001".to_string()),
@@ -179,11 +179,8 @@ fn the_keeper_habit_has_set_tended(world: &mut World) {
     let control_type = now.actors().get::<component::ControlType>(&keeper).get();
     let npc = Some(component::ControlType::Npc);
     assert_eq!(control_type, npc, "keeper missing: {control_type:?}");
-    let flags = &now.actors().flags;
-    assert!(
-        flags.contains_key(&("keeper".into(), "tended".to_string())),
-        "{flags:?}"
-    );
+    let flags = flags_of(&now, "keeper");
+    assert!(flags.iter().any(|flag| flag == "tended"), "{flags:?}");
     let _ = fs::remove_dir_all(idle);
 }
 
