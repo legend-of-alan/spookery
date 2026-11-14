@@ -60,8 +60,9 @@ const BRANCHES: &[&[&str]] = &[
     ],
 ];
 
-// The demo scripts. A roll's dice come from the world id and the round index, so each line
-// lands on the same rolls every run: these are the pinned seeds the outcomes below rely on.
+// The demo scripts. A roll's dice come from the save's seed and the round index, and
+// `copy_pack` pins the seed to the world id, so each line lands on the same rolls every run:
+// these are the pinned seeds the outcomes below rely on.
 const DEMO_GATE: &[&str] = &[
     "travel shed",
     "take cudgel",

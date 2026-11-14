@@ -101,12 +101,11 @@ pub(crate) fn fast_forward(
 
 /// Whether each seated PC is busy at the current world time.
 fn seated_busy<L>(world: &World<L>, presence: &Presence) -> Vec<bool> {
-    let state = world.state();
+    let (state, actors) = (world.state(), world.state().actors());
     presence
         .actors_present
         .iter()
-        .map(|id| state.actors().get::<component::Act>(id).get())
-        .map(|act| act.is_some_and(|act| act.is_busy(state.world_time)))
+        .map(|id| actors.get::<component::Act>(id).is_busy(state.world_time))
         .collect()
 }
 
@@ -162,7 +161,7 @@ fn run_stages(
     queue: &[Intent],
 ) -> Result<StagedRound, Reason> {
     let clock = advance::run(canon, &mut state, presence, wall)?;
-    let mut dice = RoundDice::new(state.world_id.clone(), clock.round_index);
+    let mut dice = RoundDice::new(state.seed.clone(), clock.round_index);
     let mut log = RoundLog::default();
     let picked = pick::run(canon, &state, presence, queue, &mut log)?;
     let candidates = resolve::run(canon, &state, presence, &picked, queue, &mut dice, &mut log);

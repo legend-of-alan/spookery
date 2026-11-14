@@ -262,7 +262,7 @@ fn narrations(
 }
 
 fn can_see_facts(canon: &Canon, state: &State, viewer: &ActorId, fact_ids: &[String]) -> bool {
-    let Some(seat) = state.viewer_of(viewer) else {
+    let Some(seat) = (state.actors().get::<component::ControlType>(viewer)).viewer() else {
         return false;
     };
     fact_ids
@@ -352,7 +352,7 @@ fn can_see_note(canon: &Canon, state: &State, viewer: &ActorId, id: &str) -> boo
     if !in_room && !addressed {
         return false;
     }
-    let Some(seat) = state.viewer_of(viewer) else {
+    let Some(seat) = (state.actors().get::<component::ControlType>(viewer)).viewer() else {
         return false;
     };
     note.fact_ids

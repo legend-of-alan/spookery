@@ -1,10 +1,8 @@
 //! The save as the file holds it, and the live save that reads it against the pack's canon.
 
 pub(crate) mod change;
-pub mod component;
 pub(crate) mod entity;
-#[cfg(any(test, feature = "testing"))]
-mod fixtures;
+pub use entity::component;
 pub(crate) mod id;
 pub(crate) mod nested_map;
 mod notes;
@@ -28,7 +26,6 @@ pub(crate) use transaction::Savepoint;
 use transaction::Transaction;
 
 use crate::canon::Canon;
-use crate::intent::Viewer;
 
 /// The save as the file holds it: the clock, each collection's components, and the notes. It has
 /// no canon and no writers; `State::new` opens it to read and write.
@@ -37,6 +34,10 @@ use crate::intent::Viewer;
 pub struct Save {
     pub schema: String,
     pub world_id: String,
+    /// The world's dice seed. Empty in a shipped save; chosen the first time the world opens
+    /// for play.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub seed: String,
     pub pack_rev: String,
     /// Engine rules version. Missing means 0, which is not the current version.
     #[serde(default)]
@@ -78,8 +79,8 @@ impl DerefMut for State {
     }
 }
 
-/// One collection with the pack's canon, borrowed to read. It is `Copy`, and reads the stores
-/// through `Deref`; only `State`'s getters build one.
+/// One collection with the pack's canon, borrowed to read. It is `Copy`, and reads through `get`,
+/// `contains` and `query`; only `State`'s getters build one.
 pub struct Reader<'a, E> {
     components: &'a E,
     canon: &'a Canon,
@@ -109,18 +110,30 @@ impl<'a, E: entity::Entities> Reader<'a, E> {
     pub fn contains(self, id: &E::Id) -> bool {
         self.components.contains(self.canon, id)
     }
-}
 
-impl<E> Deref for Reader<'_, E> {
-    type Target = E;
-    fn deref(&self) -> &E {
-        self.components
+    /// What `D` reads from each entity that holds it: Bevy's `World::query`.
+    pub fn query<D: entity::QueryData<E>>(self) -> entity::Query<'a, E, D> {
+        self.query_filtered()
+    }
+
+    /// What `D` reads from each entity that holds it and passes `F`: Bevy's
+    /// `World::query_filtered`.
+    pub fn query_filtered<D, F>(self) -> entity::Query<'a, E, D, F>
+    where
+        D: entity::QueryData<E>,
+        F: entity::QueryFilter<E>,
+    {
+        let data_and_filter = std::marker::PhantomData;
+        entity::Query {
+            entities: self,
+            data_and_filter,
+        }
     }
 }
 
 /// One collection's components, or the notes, with the round's transaction and the pack's canon,
-/// borrowed apart from the rest of the save: the only way to write them. Reads go through `Deref`; there is no
-/// `DerefMut`, and only `State`'s `*_mut` getters build one.
+/// borrowed apart from the rest of the save: the only way to write them. It reads and writes only
+/// through `get_mut` and its own methods, and only `State`'s `*_mut` getters build one.
 ///
 /// ```compile_fail
 /// # fn bypass(state: &mut spookery_engine::State) {
@@ -129,9 +142,8 @@ impl<E> Deref for Reader<'_, E> {
 /// ```
 ///
 /// ```compile_fail
-/// # fn bypass(state: &mut spookery_engine::State) {
-/// let control_type = *state.actors().control_type.values().next().unwrap();
-/// state.actors().control_type.insert("x".into(), control_type);
+/// # fn bypass(state: &spookery_engine::State) {
+/// let _ = state.actors().control_type.len();
 /// # }
 /// ```
 pub struct Writer<'a, E> {
@@ -162,50 +174,6 @@ impl<E: entity::Entities> Writer<'_, E> {
     }
 }
 
-impl<E> Deref for Writer<'_, E> {
-    type Target = E;
-    fn deref(&self) -> &E {
-        self.components
-    }
-}
-
-impl Save {
-    pub fn actors(&self) -> &entity::Actors {
-        &self.actors
-    }
-
-    pub fn places(&self) -> &entity::Places {
-        &self.places
-    }
-
-    pub fn stories(&self) -> &entity::Stories {
-        &self.stories
-    }
-
-    pub fn globals(&self) -> &entity::Globals {
-        &self.world
-    }
-
-    pub fn notes(&self) -> &[Note] {
-        &self.notes
-    }
-
-    /// The seat actor `id` acts from.
-    pub(crate) fn viewer_of(&self, id: &ActorId) -> Option<Viewer> {
-        (self.actors.control_type.get(id)).map(|control| control.viewer(id))
-    }
-
-    /// The actors in `place`, in id order.
-    pub(crate) fn actors_at(&self, place: &str) -> Vec<ActorId> {
-        self.actors
-            .place
-            .iter()
-            .filter(|(_, at)| *at == place)
-            .map(|(id, _)| id.clone())
-            .collect()
-    }
-}
-
 impl State {
     /// The live save of `save`, read against `canon`.
     pub fn new(save: Save, canon: Arc<Canon>) -> State {
@@ -218,6 +186,13 @@ impl State {
 
     pub fn canon(&self) -> &Arc<Canon> {
         &self.canon
+    }
+
+    /// The actors in `place`, in id order.
+    pub(crate) fn actors_at(&self, place: &str) -> Vec<ActorId> {
+        let actors = self.actors().query::<(ActorId, &component::Place)>();
+        let here = actors.iter().filter(|(_, at)| *at == place);
+        here.map(|(id, _)| id.clone()).collect()
     }
 
     pub fn actors(&self) -> Reader<'_, entity::Actors> {
@@ -259,6 +234,10 @@ impl State {
 
     pub fn entities_mut(&mut self) -> Writer<'_, Save> {
         Writer::new(&mut self.save, &mut self.transaction, &self.canon)
+    }
+
+    pub fn notes(&self) -> &[Note] {
+        &self.save.notes
     }
 
     pub fn notes_mut(&mut self) -> Writer<'_, undo::Store<Vec<Note>>> {

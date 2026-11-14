@@ -14,7 +14,7 @@ impl Component for Flag {
     type Value = ();
 }
 
-impl<E: entity::Has<Flag>> Mut<'_, E, Flag> {
+impl<E: entity::Has<Flag, Store = entity::MapStore<E, Flag>>> Mut<'_, E, Flag> {
     /// Set flag `name` on or off. An entity the save or the pack does not have is `UNKNOWN_ID`.
     pub fn set(&mut self, name: &str, on: bool) -> Result<(), Reason> {
         let key = change::Key::flag(self.id.as_id_ref(), name);

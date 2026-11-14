@@ -102,9 +102,9 @@ fn pc_count(world: &World) -> usize {
     world
         .state()
         .actors()
-        .control_type
-        .values()
-        .filter(|control_type| control_type.is_pc())
+        .query::<&component::ControlType>()
+        .iter()
+        .filter(|control_type| matches!(control_type, component::ControlType::Pc))
         .count()
 }
 
@@ -135,9 +135,9 @@ fn queue_move(world: &mut World, plan: &MovePlan) {
     let pcs: Vec<ActorId> = world
         .state()
         .actors()
-        .control_type
+        .query::<(ActorId, &component::ControlType)>()
         .iter()
-        .filter(|(_, control_type)| control_type.is_pc())
+        .filter(|(_, control_type)| matches!(control_type, component::ControlType::Pc))
         .map(|(id, _)| id.clone())
         .collect();
     if pcs.is_empty() {

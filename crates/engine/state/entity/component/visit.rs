@@ -18,6 +18,7 @@ impl Mut<'_, entity::Actors, Visit> {
     pub fn set(&mut self, place: &str, exits: Vec<String>) -> Result<(), Reason> {
         self.check_exists()?;
         let entry = (self.id.clone(), place.to_string());
-        (self.writer.components.visited).set(self.writer.transaction, entry, Some(exits), [])
+        let (visited, transaction) = self.store_mut();
+        visited.set(transaction, entry, Some(exits), [])
     }
 }

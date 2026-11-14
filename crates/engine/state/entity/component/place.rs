@@ -15,7 +15,7 @@ impl Component for Place {
 impl<'a> Ref<'a, entity::Actors, Place> {
     /// Where the actor stands.
     pub fn get(&self) -> Option<&'a str> {
-        (self.entities.components.place.get(self.id)).map(String::as_str)
+        self.store().get(self.id).map(String::as_str)
     }
 }
 
@@ -24,9 +24,9 @@ impl Mut<'_, entity::Actors, Place> {
     pub fn set(&mut self, to: &str) -> Result<(), Reason> {
         self.check_exists()?;
         let key = change::Key::ActorPlace(self.id.to_string());
-        let before = text_value(self.writer.place.get(self.id));
+        let before = text_value(self.store().get(self.id));
         let change = Change::new(key, before, text_value(Some(to)));
-        let (place, to) = (&mut self.writer.components.place, to.to_string());
-        place.set(self.writer.transaction, self.id, to, [change.into()])
+        let (id, (place, transaction)) = (self.id, self.store_mut());
+        place.set(transaction, id, to.to_string(), [change.into()])
     }
 }

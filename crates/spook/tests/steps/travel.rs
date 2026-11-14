@@ -1,4 +1,4 @@
-use spookery_engine::testing::{act_of, place_of, state_of};
+use spookery_engine::testing::{is_busy, place_of, state_of};
 use std::fs;
 use std::path::Path;
 
@@ -268,7 +268,7 @@ fn the_next_round_accepts_a_move(world: &mut World) {
     assert!(!added.contains("BUSY"), "{added}");
     let now = state_of(table::pack(world));
     assert_eq!(now.world_time, EVENING + 10);
-    assert!(!act_of(&now, "rowan").is_busy(now.world_time));
+    assert!(!is_busy(&now, "rowan"));
 }
 
 #[then(
@@ -393,7 +393,7 @@ fn twelve_rounds_then_more(world: &mut World) {
     assert_eq!(list_round_keys(&pack).len(), 12, "first burst");
     let mid = state_of(&pack).world_time;
     assert_eq!(mid, EVENING + 12 * 5);
-    assert!(act_of(&state_of(&pack), "rowan").is_busy(mid));
+    assert!(is_busy(&state_of(&pack), "rowan"));
     let mark = table::player_write(world, "wait");
     table::wait_round_count(&pack, 24);
     let added = table::wait_player_from(world, mark, "BUSY");

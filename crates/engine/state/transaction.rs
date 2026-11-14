@@ -6,9 +6,8 @@ use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, BTreeSet};
 
 use super::change::{self, Change};
-use super::component::{meter, Meter};
-use super::id::{ActorId, GlobalId, PlaceId, StoryId};
-use super::{entity, nested_map, sort_unique, undo, MemoryLine, Save, State};
+use super::component::{meter, Meter, Modifier};
+use super::{entity, sort_unique, undo, MemoryLine, Reader, Save, State};
 use crate::canon::Budget;
 use crate::Reason;
 
@@ -194,40 +193,26 @@ impl State {
         sum: Option<Result<i64, Reason>>,
     ) -> Change {
         let (canon, save) = (&*self.canon, &self.save);
-        let (def, now, sum_now) = match key {
+        let (id, name) = match key {
             change::Key::ActorMeter(actor, name) => {
-                let actor = ActorId::from(actor.as_str());
-                let def = canon.meter_def(entity::IdRef::Actor(&actor), name);
-                let now = nested_map::get(&save.actors.meters, &actor, name);
-                (def, now, save.actors.modifier_sum(&actor, name))
+                (entity::Id::Actor(actor.as_str().into()), name)
             }
             change::Key::PlaceMeter(place, name) => {
-                let place = PlaceId::from(place.as_str());
-                let def = canon.meter_def(entity::IdRef::Place(&place), name);
-                (
-                    def,
-                    nested_map::get(&save.places.meters, &place, name),
-                    Ok(0),
-                )
+                (entity::Id::Place(place.as_str().into()), name)
             }
             change::Key::StoryMeter(story, name) => {
-                let story = StoryId::from(story.as_str());
-                let def = canon.meter_def(entity::IdRef::Story(&story), name);
-                (
-                    def,
-                    nested_map::get(&save.stories.meters, &story, name),
-                    Ok(0),
-                )
+                (entity::Id::Story(story.as_str().into()), name)
             }
-            change::Key::WorldMeter(name) => {
-                let def = canon.meter_def(entity::IdRef::Global, name);
-                (
-                    def,
-                    nested_map::get(&save.world.meters, &GlobalId, name),
-                    Ok(0),
-                )
-            }
+            change::Key::WorldMeter(name) => (entity::Id::Global, name),
             _ => unreachable!("only a meter's write reports a meter's key alone"),
+        };
+        let def = canon.meter_def(id.as_ref(), name);
+        let now = entity::in_collection!(&id, [&save], |entities, id| {
+            Reader::new(entities, canon).get::<Meter>(id).get(name)
+        });
+        let sum_now = match &id {
+            entity::Id::Actor(actor) => self.actors().get::<Modifier>(actor).sum(name),
+            _ => Ok(0),
         };
         let reading = |held: Option<&Meter>, sum: Result<i64, Reason>| {
             let value = (def.zip(held).ok_or(Reason::UnknownId))
@@ -276,17 +261,14 @@ impl State {
 }
 
 impl Save {
-    /// Put the save in file order: the notes by id, and each list a note or an actor's known facts
-    /// hold sorted with no repeats.
+    /// Put the save in file order: the notes by id, and each list a note holds sorted with no
+    /// repeats.
     pub(crate) fn sort(&mut self) {
         let notes = self.notes.value_mut();
         notes.sort_by(|a, b| a.id.cmp(&b.id));
         for note in notes {
             sort_unique(&mut note.to);
             sort_unique(&mut note.fact_ids);
-        }
-        for known in self.actors.known_facts.value_mut().values_mut() {
-            sort_unique(known);
         }
     }
 }

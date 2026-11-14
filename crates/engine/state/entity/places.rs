@@ -13,15 +13,15 @@ use crate::Reason;
 #[serde(default, deny_unknown_fields)]
 pub struct Places {
     #[serde(with = "nested_map")]
-    pub items: undo::Store<component::Map<PlaceId, component::Item>>,
+    items: undo::Store<component::Map<PlaceId, component::Item>>,
     /// The meters each place file declares.
     #[serde(with = "nested_map")]
-    pub meters: undo::Store<component::Map<PlaceId, Meter>>,
+    meters: undo::Store<component::Map<PlaceId, Meter>>,
     #[serde(with = "nested_map::lists")]
-    pub flags: undo::Store<component::Map<PlaceId, component::Flag>>,
+    flags: undo::Store<component::Map<PlaceId, component::Flag>>,
     /// The name of each exit whose door is open, by its place.
     #[serde(with = "nested_map::lists")]
-    pub open_exits: undo::Store<component::Map<PlaceId, component::OpenExit>>,
+    open_exits: undo::Store<component::Map<PlaceId, component::OpenExit>>,
 }
 
 impl entity::Entities for Places {
@@ -29,6 +29,10 @@ impl entity::Entities for Places {
 
     fn contains(&self, canon: &Canon, id: &PlaceId) -> bool {
         canon.places.contains_key(id)
+    }
+
+    fn ids<'a>(&'a self, canon: &'a Canon) -> entity::query::Ids<'a, Self> {
+        Box::new(canon.places.keys())
     }
 }
 

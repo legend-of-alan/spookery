@@ -12,7 +12,7 @@ pub(crate) mod world;
 
 /// Any entity's id, as rules name it; `State::entities` reads its components.
 pub mod entity {
-    pub use crate::state::entity::{Id, IdRef};
+    pub use crate::state::entity::{Id, IdRef, Query, QueryData, QueryFilter, With, Without};
 }
 
 pub use canon::{load_canon, pack_rev};
@@ -58,6 +58,14 @@ pub mod testing {
     pub fn act_of(state: &crate::State, actor: &str) -> Act {
         let act = state.actors().get::<Act>(&actor.into()).get().cloned();
         act.unwrap_or_else(|| panic!("{actor} has no action state"))
+    }
+
+    /// Whether `actor` is busy at the save's world time.
+    pub fn is_busy(state: &crate::State, actor: &str) -> bool {
+        state
+            .actors()
+            .get::<Act>(&actor.into())
+            .is_busy(state.world_time)
     }
 
     /// The write guard of the pack `world` holds the lock on.
@@ -187,10 +195,17 @@ pub mod testing {
         copy_pack("oneshot-docks", label)
     }
 
+    /// Copy a shipped pack with its dice pinned: the save's seed is its world id.
     pub fn copy_pack(name: &str, label: &str) -> PathBuf {
         let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         let pack = fresh_dir(label);
         copy_dir(&manifest.join("../../packs").join(name), &pack);
+        let text = fs::read_to_string(crate::store::journal::save_path(&pack))
+            .unwrap_or_else(|err| panic!("read {name} save: {err}"));
+        let mut save = crate::store::save::parse(&text)
+            .unwrap_or_else(|err| panic!("load {name} save: {err:?}"));
+        save.seed.clone_from(&save.world_id);
+        write_save(&pack, &save);
         pack
     }
 

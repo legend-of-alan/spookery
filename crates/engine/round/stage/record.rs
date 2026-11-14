@@ -5,7 +5,6 @@ use crate::store::{commit, RULES_REV};
 use crate::world::World;
 use crate::Reason;
 
-use crate::round::dice::round_seed;
 use crate::round::log::RoundLog;
 use crate::round::play::{RoundOutput, StagedRound};
 use crate::round::stage::deliver::Deliveries;
@@ -48,7 +47,6 @@ pub(crate) fn run(
         world_time_after: clock.world_time_after,
         presence_players: presence.players,
         actors_present: presence.actors_present.clone(),
-        seed: round_seed(&state.world_id, clock.round_index),
         last_round_at: wall.to_string(),
         intents: world.queued_intents().to_vec(),
         refused: log.refused,
