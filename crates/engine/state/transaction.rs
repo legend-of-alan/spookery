@@ -450,10 +450,8 @@ mod tests {
         state
             .actors_mut()
             .add_actor(&nell, component::ControlType::Npc, "docks_shop");
-        assert!(
-            state.actors().get::<component::Act>(&nell).get().is_some(),
-            "Nell is added"
-        );
+        let added = state.actors().get::<component::Act>(&nell).get().is_some();
+        assert!(added, "Nell is added");
         state.rollback(point);
         assert_eq!(
             *state, *before,

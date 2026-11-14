@@ -49,11 +49,9 @@ fn count(pack: &Path, actor: &str, item: &str) -> u32 {
 }
 
 fn wielded(pack: &Path, actor: &str) -> Option<String> {
-    support::state_of(pack)
-        .actors()
-        .get::<component::WieldedItem>(&actor.into())
-        .get()
-        .map(String::from)
+    let (now, actor) = (support::state_of(pack), actor.into());
+    let held = now.actors().get::<component::WieldedItem>(&actor).get();
+    held.map(String::from)
 }
 
 /// One line at a table with no GM: queue it, then commit its round.
@@ -523,11 +521,7 @@ fn the_slot_clears_in_the_round(world: &mut World) {
     let pack = world.pack.as_ref().unwrap();
     let now = support::state_of(pack);
     assert_eq!(now.round_index, 1);
-    let lark = "lark".into();
-    assert_eq!(
-        now.actors().get::<component::WieldedItem>(&lark).get(),
-        None
-    );
+    assert_eq!(wielded(pack, "lark"), None);
     assert_eq!(
         now.actors()
             .get::<component::Item>(&"lark".into())

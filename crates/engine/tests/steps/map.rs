@@ -120,13 +120,9 @@ fn mira_is_standing_in_the_shop(world: &mut World) {
 fn mira_learns_on_the_street(world: &mut World) {
     mira_plays(world.pack(), "dig", None);
     let saved = spookery_engine::World::peek(world.pack()).unwrap();
-    assert_eq!(support::place_of(saved.state(), "mira"), "docks_street");
-    let mira = "mira".into();
-    let known_facts = saved
-        .state()
-        .actors()
-        .get::<component::KnownFacts>(&mira)
-        .get();
+    let (state, mira) = (saved.state(), "mira".into());
+    assert_eq!(support::place_of(state, "mira"), "docks_street");
+    let known_facts = state.actors().get::<component::KnownFacts>(&mira).get();
     assert!(known_facts.unwrap().contains(&"fact_trapdoor".to_string()));
 }
 

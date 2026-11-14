@@ -91,9 +91,7 @@ fn lowered(pack: &Path, meter: &str) -> i64 {
 /// Ticks from the latest round until modifier `id` expires.
 fn ticks_left(pack: &Path, id: &str) -> u64 {
     let now = state_of(pack);
-    let rowan = "rowan".into();
-    let modifier = now.actors().get::<Modifier>(&rowan).get(id).unwrap();
-    modifier.ticks_left(now.world_time)
+    modifier_of(pack, id).unwrap().ticks_left(now.world_time)
 }
 
 /// Give rowan these stacks of modifier `id`, expiring `left` ticks from now, `left` being the longest so far.

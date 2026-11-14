@@ -187,13 +187,10 @@ rules:
 #[then(expr = "nell knows fact_ledger and the world's tide is {int}")]
 fn nell_knows_the_ledger(world: &mut World, tide: i64) {
     let now = state_of(world.pack.as_ref().unwrap());
+    let (nell, ledger) = ("nell".into(), "fact_ledger".to_string());
+    let known_facts = now.actors().get::<component::KnownFacts>(&nell).get();
     assert!(
-        now.actors()
-            .get::<component::KnownFacts>(&"nell".into())
-            .get()
-            .unwrap()
-            .iter()
-            .any(|fact| fact == "fact_ledger"),
+        known_facts.unwrap().contains(&ledger),
         "nell does not know fact_ledger"
     );
     let globals = now.globals();
