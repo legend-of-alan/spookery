@@ -1,7 +1,7 @@
 ---
 schema: cast
 id: nell
-kind: pc_template
+control_type: pc_template
 display_name: Nell
 flags:
   - marked

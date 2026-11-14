@@ -1,7 +1,7 @@
 ---
 schema: cast
 id: briar
-kind: npc
+control_type: npc
 display_name: Briar
 idle:
   eligible: true

@@ -1,7 +1,7 @@
 ---
 schema: cast
 id: keeper
-kind: npc
+control_type: npc
 display_name: Keeper
 flags:
   - tended

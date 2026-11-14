@@ -183,11 +183,11 @@ pub struct Roll {
     pub outcome: Outcome,
 }
 
-/// Whether a `MenuRow` is a PC or an NPC, sent from the table to a GM client.
+/// Whether a cast entry is an NPC or a PC template, sent from the table to a GM client.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case")]
-pub enum CastKind {
+pub enum ControlType {
     Npc,
     PcTemplate,
 }
@@ -206,7 +206,7 @@ pub struct MenuRow {
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct PackSummary {
     pub menu: Vec<MenuRow>,
-    pub kinds: std::collections::BTreeMap<String, CastKind>,
+    pub control_types: std::collections::BTreeMap<String, ControlType>,
     pub places: std::collections::BTreeMap<String, String>,
     pub cast: std::collections::BTreeMap<String, String>,
 }
@@ -234,7 +234,7 @@ mod tests {
             assert_eq!(back, v);
         }
         assert_reencodes::<TableStatus>(
-            r#"{"presence":{"players":1,"actors_present":["rowan"],"x":1},"world_time":10,"round_index":1,"state_rev":2,"pack_rev":"p","last_round_at":"t","queued":[{"id":"q1","actor_id":"rowan","move":"wait","x":1}],"pack":{"menu":[],"kinds":{},"places":{},"cast":{},"x":1},"x":1}"#,
+            r#"{"presence":{"players":1,"actors_present":["rowan"],"x":1},"world_time":10,"round_index":1,"state_rev":2,"pack_rev":"p","last_round_at":"t","queued":[{"id":"q1","actor_id":"rowan","move":"wait","x":1}],"pack":{"menu":[],"control_types":{},"places":{},"cast":{},"x":1},"x":1}"#,
         );
         assert_reencodes::<CommitBody>(
             r#"{"state_rev":3,"changed_keys":["d"],"journal_path":null,"rolls":[{"faces":[3,4],"stat":1,"total":8,"target":7,"outcome":"partial","x":1}],"x":1}"#,

@@ -1,7 +1,7 @@
 ---
 schema: cast
 id: mira
-kind: npc
+control_type: npc
 display_name: Mira
 idle:
   eligible: true

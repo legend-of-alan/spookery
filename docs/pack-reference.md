@@ -211,7 +211,7 @@ A short knife.
 
 ## Cast
 
-`kind` is `npc` or `pc_template`. A template does not sit a player. The save does. The file name is not the id: `cast/pc-ada.md` has id `ada`. `display_name` is required, and it is the name a player sees. A cast page has no `facts`: what an actor knows is `known_facts` on the save.
+`control_type` is `npc` or `pc_template`. A template does not sit a player. The save does. The file name is not the id: `cast/pc-ada.md` has id `ada`. `display_name` is required, and it is the name a player sees. A cast page has no `facts`: what an actor knows is `known_facts` on the save.
 
 `flags` lists the flags an effect may set on this actor. A flag effect or condition whose `of` is fixed by the pack, as for meters, names a flag that entity's file lists, or check refuses it. World flags are not listed: any name but `busy` is one. `meters` lists the meters only this actor carries, in the shape of `rules/meters.yaml`; see [Meters](#meters). `idle.eligible` says whether the idle runner may pick this NPC. `when: habit` is a habit of that NPC. The runner takes the first habit whose `if` holds and whose `do` list expands.
 
@@ -221,7 +221,7 @@ A meter never pauses. To stop a rule from advancing a meter while no player is s
 ---
 schema: cast
 id: ada
-kind: pc_template
+control_type: pc_template
 display_name: Ada
 flags: []
 idle:
@@ -252,7 +252,7 @@ Ada keeps the yard.
 ---
 schema: cast
 id: keeper
-kind: npc
+control_type: npc
 display_name: Keeper
 flags:
   - tended

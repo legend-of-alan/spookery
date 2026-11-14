@@ -7,7 +7,7 @@ use serde::Deserialize;
 use crate::canon::meters::{add_own_meters, meter_defs, MeterYaml};
 use crate::canon::rule_list::{self, RuleYaml};
 use crate::canon::source::{load_tagged, Diags, FileText, Locator, Page, Problem, CAST_SCHEMA};
-use crate::canon::{CastDef, CastKind, IdleProfile};
+use crate::canon::{CastDef, ControlType, IdleProfile};
 use crate::diagnostic::Diagnostic;
 use crate::entity;
 use crate::rules::rule::{Owner, Rule};
@@ -27,11 +27,11 @@ pub(super) fn add_cast(
         text: &page.text,
         line_base: 0,
     };
-    // `load_cast` validates `file.kind` is `"npc"` or `"pc_template"`.
-    let kind = if file.kind == "npc" {
-        CastKind::Npc
+    // `load_cast` validates `file.control_type` is `"npc"` or `"pc_template"`.
+    let control_type = if file.control_type == "npc" {
+        ControlType::Npc
     } else {
-        CastKind::PcTemplate
+        ControlType::PcTemplate
     };
     let hint = "keep one cast file with this id";
     let twice = ("cast id", "is already defined", hint);
@@ -51,7 +51,7 @@ pub(super) fn add_cast(
     cast.insert(
         id.clone(),
         CastDef {
-            kind,
+            control_type,
             display_name: file.display_name,
             flags: file.flags,
             body: page.body,
@@ -89,14 +89,17 @@ fn load_cast(file: &str, yaml: &str, line_base: u32) -> Result<CastDoc, Vec<Diag
         );
     }
     diags.extend(source.refuse_empty_display_name(&parsed.display_name));
-    if parsed.kind != "npc" && parsed.kind != "pc_template" {
+    if parsed.control_type != "npc" && parsed.control_type != "pc_template" {
         diags.push(
             Problem {
                 source: &source,
-                path: "kind",
-                at: Locator::Key("kind:"),
-                message: format!("kind is '{}', which is not npc or pc_template", parsed.kind),
-                hint: "set kind to npc or pc_template",
+                path: "control_type",
+                at: Locator::Key("control_type:"),
+                message: format!(
+                    "control_type is '{}', which is not npc or pc_template",
+                    parsed.control_type
+                ),
+                hint: "set control_type to npc or pc_template",
             }
             .into_diagnostic(),
         );
@@ -110,7 +113,7 @@ struct CastDoc {
     #[serde(rename = "schema")]
     _schema: String,
     id: String,
-    kind: String,
+    control_type: String,
     display_name: String,
     #[serde(default)]
     flags: Vec<String>,

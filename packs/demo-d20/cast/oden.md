@@ -1,7 +1,7 @@
 ---
 schema: cast
 id: oden
-kind: npc
+control_type: npc
 display_name: Oden
 idle:
   eligible: true

@@ -184,7 +184,7 @@ mod tests {
     use super::*;
     use crate::protocol::ServerMessage;
 
-    const STATUS: &str = r#"{"kind":"status","presence":{"players":1,"actors_present":["pc"]},"world_time":0,"round_index":0,"state_rev":1,"pack_rev":"p","last_round_at":"","queued":[],"pack":{"menu":[],"kinds":{"pc":"pc_template"},"places":{},"cast":{}}}"#;
+    const STATUS: &str = r#"{"kind":"status","presence":{"players":1,"actors_present":["pc"]},"world_time":0,"round_index":0,"state_rev":1,"pack_rev":"p","last_round_at":"","queued":[],"pack":{"menu":[],"control_types":{"pc":"pc_template"},"places":{},"cast":{}}}"#;
     const VIEW: &str = r#"{"kind":"view","viewer":"pc","place":"docks","visible_actors":["pc"],"known_facts":[],"notes":[],"unknown_mentions":[],"items":[],"habits":[]}"#;
     const ROUND: &str = r#"{"kind":"round","round_index":1,"world_time":5}"#;
     const QUEUED: &str = r#"{"kind":"queued","intent":"q2","actor":"pc","move":"wait"}"#;

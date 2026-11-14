@@ -607,10 +607,10 @@
             "$ref": "#/$defs/MenuRow"
           }
         },
-        "kinds": {
+        "control_types": {
           "type": "object",
           "additionalProperties": {
-            "$ref": "#/$defs/CastKind"
+            "$ref": "#/$defs/ControlType"
           }
         },
         "places": {
@@ -628,7 +628,7 @@
       },
       "required": [
         "menu",
-        "kinds",
+        "control_types",
         "places",
         "cast"
       ]
@@ -653,8 +653,8 @@
         "target"
       ]
     },
-    "CastKind": {
-      "description": "Whether a `MenuRow` is a PC or an NPC, sent from the table to a GM client.",
+    "ControlType": {
+      "description": "Whether a cast entry is an NPC or a PC template, sent from the table to a GM client.",
       "type": "string",
       "enum": [
         "npc",
