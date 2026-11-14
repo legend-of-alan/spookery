@@ -81,7 +81,7 @@ impl Component for Meter {
     type Value = Meter;
 }
 
-impl<E: entity::Has<Meter, Store = entity::Named<E, Meter>>> Mut<'_, E, Meter> {
+impl<E: entity::Has<Meter, Store = entity::MapStore<E, Meter>>> Mut<'_, E, Meter> {
     /// Move meter `name` by `delta` inside its bounds. It reports the meter's key with the
     /// stored meter it replaced; the change is read, as rules read the meter, when the changes
     /// are taken.

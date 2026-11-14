@@ -12,7 +12,7 @@ impl Component for Item {
     type Value = u32;
 }
 
-impl<E: entity::Has<Item, Store = entity::Named<E, Item>>> Mut<'_, E, Item> {
+impl<E: entity::Has<Item, Store = entity::MapStore<E, Item>>> Mut<'_, E, Item> {
     /// Move the count of `name` as `shift_count` says, reporting the change under `key`. A count
     /// of 0 is no entry.
     fn shift_with_key(

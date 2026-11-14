@@ -108,7 +108,7 @@ impl<E: entity::Entities> QueryFilter<E> for () {
 /// A component an entity holds many of gives its `component::Ref`, to read by name.
 impl<E, C> QueryData<E> for &C
 where
-    E: entity::Has<C, Store = entity::Named<E, C>>,
+    E: entity::Has<C, Store = entity::MapStore<E, C>>,
     C: component::Component,
 {
     type Item<'a>

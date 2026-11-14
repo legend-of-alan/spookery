@@ -50,15 +50,15 @@ mod storage {
     }
 
     /// The store of a component an entity holds many of, one under each name.
-    pub type Named<E, C> = undo::Store<Map<<E as Entities>::Id, C>>;
+    pub type MapStore<E, C> = undo::Store<Map<<E as Entities>::Id, C>>;
 }
-use storage::{Has, Named};
+use storage::{Has, MapStore};
 
 /// Declares that `$entities` keeps `$component` in its field `$store`: by name, or, given the
 /// field's type, at most one per entity.
 macro_rules! has {
     ($entities:ty, $component:ty, $store:ident) => {
-        entity::has!(@store $entities, $component, $store: entity::Named<$entities, $component>);
+        entity::has!(@store $entities, $component, $store: entity::MapStore<$entities, $component>);
     };
     ($entities:ty, $component:ty, $store:ident: $type:ty) => {
         entity::has!(@store $entities, $component, $store: $type);

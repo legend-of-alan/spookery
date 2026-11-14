@@ -70,7 +70,7 @@ impl<'a, E: entity::Has<C>, C: Component> Ref<'a, E, C> {
 /// A component an entity holds many of, one under each name.
 impl<'a, E, C> Ref<'a, E, C>
 where
-    E: entity::Has<C, Store = entity::Named<E, C>>,
+    E: entity::Has<C, Store = entity::MapStore<E, C>>,
     C: Component,
 {
     /// What the entity holds under `name`.
@@ -133,7 +133,7 @@ impl<E: entity::Has<C>, C: Component> Mut<'_, E, C> {
 /// A component that is there or not, such as a flag: every one is set the same way.
 impl<E, C> Mut<'_, E, C>
 where
-    E: entity::Has<C, Store = entity::Named<E, C>>,
+    E: entity::Has<C, Store = entity::MapStore<E, C>>,
     C: Component<Value = ()>,
 {
     /// Put `name` on or take it off, reporting the change under `key`.
