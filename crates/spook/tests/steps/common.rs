@@ -25,6 +25,13 @@ pub(crate) use crate::support::edit_save;
 
 /// Rowan holds brass_key, and the stair door is open, as a round that ended with him in the
 /// shop would have left it.
+/// The flags `actor` holds, in name order.
+pub(crate) fn flags_of(state: &State, actor: &str) -> Vec<String> {
+    let actor = actor.into();
+    let flags = state.actors().get::<component::Flag>(&actor);
+    flags.iter().map(|(flag, ())| flag.to_string()).collect()
+}
+
 pub(crate) fn give_key(now: &mut State) {
     now.actors_mut()
         .get_mut::<component::Item>(&"rowan".into())

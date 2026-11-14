@@ -8,7 +8,7 @@ use cucumber::{given, then, when};
 use crate::support;
 use crate::World;
 
-use super::common::{spawn_play, wait_play};
+use super::common::{flags_of, spawn_play, wait_play};
 use super::table;
 
 #[when(expr = "the operator runs spook new in a fresh directory")]
@@ -179,9 +179,8 @@ fn the_keeper_habit_has_set_tended(world: &mut World) {
     let control_type = now.actors().get::<component::ControlType>(&keeper).get();
     let npc = Some(component::ControlType::Npc);
     assert_eq!(control_type, npc, "keeper missing: {control_type:?}");
-    let flags = now.actors().get::<component::Flag>(&keeper);
-    let held: Vec<&str> = flags.iter().map(|(flag, ())| flag).collect();
-    assert!(flags.contains("tended"), "{held:?}");
+    let flags = flags_of(&now, "keeper");
+    assert!(flags.iter().any(|flag| flag == "tended"), "{flags:?}");
     let _ = fs::remove_dir_all(idle);
 }
 

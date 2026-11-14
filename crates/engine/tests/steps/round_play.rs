@@ -623,15 +623,11 @@ fn miras_travel_is_picked_first(world: &mut World) {
 #[then(expr = "Mira has visited the Docks Shop")]
 fn mira_has_visited_the_shop(world: &mut World) {
     let saved = spookery_engine::World::peek(world.pack()).unwrap();
-    let actors = &saved.state().actors();
-    assert_eq!(place_of(saved.state(), "mira"), "docks_shop");
-    assert!(
-        actors
-            .get::<component::Visit>(&"mira".into())
-            .contains("docks_shop"),
-        "{:?}",
-        actors.visited
-    );
+    let (state, mira) = (saved.state(), "mira".into());
+    assert_eq!(place_of(state, "mira"), "docks_shop");
+    let visits = state.actors().get::<component::Visit>(&mira);
+    let visited: Vec<&str> = visits.iter().map(|(place, _)| place).collect();
+    assert!(visits.contains("docks_shop"), "{visited:?}");
 }
 
 #[given(expr = "the d20 pack allows {int} intent per round")]

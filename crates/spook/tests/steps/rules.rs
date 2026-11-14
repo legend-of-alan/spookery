@@ -9,7 +9,7 @@ use crate::support::{edit_as_saved, edit_meter, put_items};
 use spookery_engine::MoveReport;
 use spookery_engine::{component, entity, Meter, Presence, Reason};
 
-use super::common::split_line;
+use super::common::{flags_of, split_line};
 use super::table;
 use crate::support::{
     append, copy_docks, copy_pack, edit_save, place_of, read_round, run_spook, stamp_pack_rev,
@@ -261,12 +261,10 @@ fn the_ferry_rule_runs(world: &mut World) {
         "ferry_dock",
         "verb:travel moved the PC"
     );
-    let rowan = "rowan".into();
-    let flags = now.actors().get::<component::Flag>(&rowan);
-    let held: Vec<&str> = flags.iter().map(|(flag, ())| flag).collect();
+    let flags = flags_of(&now, "rowan");
     assert!(
-        flags.contains("took_the_ferry"),
-        "ferry flag missing: {held:?}"
+        flags.iter().any(|flag| flag == "took_the_ferry"),
+        "ferry flag missing: {flags:?}"
     );
 }
 
@@ -567,11 +565,9 @@ fn lark_attacks(world: &mut World) {
 fn the_outcome_is_a_miss(world: &mut World) {
     assert_eq!(world.scratch, "miss");
     let now = state_of(world.pack.as_ref().unwrap());
-    let briar = "briar".into();
-    let flags = now.actors().get::<component::Flag>(&briar);
-    let held: Vec<&str> = flags.iter().map(|(flag, ())| flag).collect();
-    assert!(flags.contains("missed"), "{held:?}");
-    assert!(!flags.contains("hit"), "{held:?}");
+    let flags = flags_of(&now, "briar");
+    assert!(flags.iter().any(|flag| flag == "missed"), "{flags:?}");
+    assert!(!flags.iter().any(|flag| flag == "hit"), "{flags:?}");
 }
 
 #[given(expr = "a pack with rules\\/moves.yaml")]

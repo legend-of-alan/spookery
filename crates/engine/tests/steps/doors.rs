@@ -40,6 +40,11 @@ fn plays(pack: &Path, actor: &str, verb: &str, target: Option<&str>) -> serde_js
     support::read_round(pack, &format!("round-{round:04}"))
 }
 
+/// Where `actor` stands in the pack's saved state.
+fn saved_place_of(pack: &Path, actor: &str) -> String {
+    support::place_of(spookery_engine::World::peek(pack).unwrap().state(), actor)
+}
+
 fn stairs_open(pack: &Path) -> bool {
     let saved = spookery_engine::World::peek(pack).unwrap();
     saved
@@ -96,8 +101,7 @@ exits:";
 fn mira_arrives_with_the_key(world: &mut World) {
     assert!(!stairs_open(world.pack()));
     plays(world.pack(), "mira", "travel", Some("docks_shop"));
-    let saved = spookery_engine::World::peek(world.pack()).unwrap();
-    assert_eq!(support::place_of(saved.state(), "mira"), "docks_shop");
+    assert_eq!(saved_place_of(world.pack(), "mira"), "docks_shop");
 }
 
 #[given(expr = "Mira opened the stair door")]
@@ -105,8 +109,7 @@ fn mira_opened_the_door(world: &mut World) {
     the_stair_door_needs_the_key(world);
     mira_arrives_with_the_key(world);
     plays(world.pack(), "mira", "travel", Some("docks_street"));
-    let saved = spookery_engine::World::peek(world.pack()).unwrap();
-    assert_eq!(support::place_of(saved.state(), "mira"), "docks_street");
+    assert_eq!(saved_place_of(world.pack(), "mira"), "docks_street");
     assert!(stairs_open(world.pack()));
 }
 
@@ -127,9 +130,8 @@ fn mira_drops_the_key(world: &mut World) {
 #[then(expr = "Mira can still take the stairs")]
 fn mira_takes_the_stairs(world: &mut World) {
     let round = plays(world.pack(), "mira", "travel", Some("stairs"));
-    let saved = spookery_engine::World::peek(world.pack()).unwrap();
     assert_eq!(
-        support::place_of(saved.state(), "mira"),
+        saved_place_of(world.pack(), "mira"),
         "mira_rooms",
         "{round}"
     );
@@ -147,9 +149,8 @@ fn aldric_takes_the_stairs(world: &mut World) {
 
 #[then(expr = "Aldric reaches Mira's rooms")]
 fn aldric_reaches_the_rooms(world: &mut World) {
-    let saved = spookery_engine::World::peek(world.pack()).unwrap();
     assert_eq!(
-        support::place_of(saved.state(), "aldric"),
+        saved_place_of(world.pack(), "aldric"),
         "mira_rooms",
         "{}",
         world.scratch
@@ -182,8 +183,7 @@ fn the_door_refuses_aldric(world: &mut World) {
     assert_eq!(queued.unwrap_err(), spookery_engine::Reason::NoExit);
     assert!(opened.queued_intents().is_empty());
     drop(opened);
-    let saved = spookery_engine::World::peek(world.pack()).unwrap();
-    assert_eq!(support::place_of(saved.state(), "aldric"), "docks_shop");
+    assert_eq!(saved_place_of(world.pack(), "aldric"), "docks_shop");
 }
 
 #[then(expr = "it opens again only when someone holding brass_key is in the shop")]
