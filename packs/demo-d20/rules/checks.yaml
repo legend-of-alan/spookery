@@ -5,3 +5,8 @@ checks:
       count: 1
       sides: 20
     meter: might
+  - id: banish
+    dice:
+      count: 1
+      sides: 20
+    meter: grace

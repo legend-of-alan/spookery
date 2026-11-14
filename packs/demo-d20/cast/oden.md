@@ -6,25 +6,22 @@ display_name: Oden
 idle:
   eligible: true
 rules:
-  - id: hold_the_cart
+  - id: call_from_the_shed
     when: habit
     if:
-      - at:
-          subject: corin
-          place: wheel_shed
       - not:
-          note_exists: note_cart
-      - flag:
-          of: world
-          key: chocked
-          is: false
+          at:
+            subject: corin
+            place: shed
+      - not:
+          note_exists: note_oden_hint
     do:
       - note:
-          id: note_cart
+          id: note_oden_hint
           to:
             - corin
-          place: wheel_shed
+          place: shed
           fact_ids: []
-          text: Oden is ready when you are.
+          text: "Oden calls from the shed: \"Bring iron, or bring a shoulder. And don't go mocking that goblin. It bites.\""
 ---
-Oden works in the shed and stays out of the yard.
+Oden works in the shed and stays out of the yard. He wants the cart's wheel set before dark, and he will put his shoulder to it with anyone who comes to the shed with the nail.

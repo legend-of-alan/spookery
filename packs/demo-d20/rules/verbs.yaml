@@ -12,24 +12,9 @@ rules:
     do:
       - location:
           via: target
-
-  - id: strike
-    when:
-      verb: strike
-      target: actor
-    roll:
-      check: strike
-      threshold: 38
-      partial_at: 32
-    success:
       - meter:
-          of: target
-          key: hp
-          add: "-(self.might / 10)"
-    partial:
-      - meter:
-          of: target
-          key: hp
+          of: world
+          key: daylight
           add: -1
 
   - id: take
@@ -82,7 +67,7 @@ rules:
     if:
       - at:
           subject: self
-          place: gate_yard
+          place: yard
       - has_item:
           subject: self
           id: nail
@@ -92,11 +77,11 @@ rules:
     do:
       - flag:
           of: world
-          key: chocked
+          key: wheel_set
           value: true
       - narrate:
           to: self
-          text: The nail holds the wheel. The cart settles.
+          text: You drive the nail into the hub. The wheel holds.
 
   - id: brace
     when:
@@ -104,17 +89,24 @@ rules:
     if:
       - at:
           subject: self
-          place: wheel_shed
+          place: shed
       - at:
           subject: oden
-          place: wheel_shed
+          place: shed
+      - has_item:
+          subject: self
+          id: nail
     cost:
       ticks: 15
     do:
       - flag:
           of: world
-          key: chocked
+          key: wheel_set
           value: true
+      - meter:
+          of: world
+          key: daylight
+          add: -3
       - narrate:
           to: self
-          text: The two of you lean into the cart. It takes longer than a nail would, and then the wheel holds.
+          text: Oden reads the rune on your nail, nods, and carries a brace out to the cart with you. The wheel holds, and the sun drops low behind the mill.

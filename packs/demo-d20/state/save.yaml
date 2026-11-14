@@ -1,6 +1,6 @@
 schema: save
 world_id: demo-d20
-pack_rev: blake2s:45c2663be9cecf4bf87b8bae0ce817c860af7206bcd7b030e2826ff61f642cc9
+pack_rev: blake2s:c38e7463af106a84c6a6840758c370c5e7dc3f67a25b77b1df89e23cec9cb310
 rules_rev: 25
 state_rev: 0
 round_index: 0
@@ -10,28 +10,32 @@ actors:
   control_type:
     briar: npc
     corin: pc
-    nell: pc
+    goblin: npc
+    nell: npc
     oden: npc
   place:
-    briar: gate_yard
-    corin: gate_yard
-    nell: mill_lane
-    oden: wheel_shed
+    briar: yard
+    corin: yard
+    goblin: loft
+    nell: lane
+    oden: shed
   visited:
     corin:
-      gate_yard:
-        - mill_lane
+      yard:
+        - cart
+        - gate
         - loft
-        - wheel_shed
-    nell:
-      mill_lane:
-        - gate_yard
+        - shed
   acts:
     briar:
       last_act_round: 0
       idle_acts_this_window: 0
       live_acts_this_window: 0
     corin:
+      last_act_round: 0
+      idle_acts_this_window: 0
+      live_acts_this_window: 0
+    goblin:
       last_act_round: 0
       idle_acts_this_window: 0
       live_acts_this_window: 0
@@ -46,6 +50,8 @@ actors:
   items:
     corin:
       tonic: 1
+    goblin:
+      nail: 1
   meters:
     briar:
       defense:
@@ -55,7 +61,7 @@ actors:
         base: 1
         offset: 0
       hp:
-        base: 8
+        base: 12
         offset: 0
       might:
         base: 2
@@ -72,6 +78,22 @@ actors:
         offset: 0
       might:
         base: 30
+        offset: 0
+    goblin:
+      defense:
+        base: 10
+        offset: 0
+      grace:
+        base: 1
+        offset: 0
+      hp:
+        base: 8
+        offset: 0
+      might:
+        base: 1
+        offset: 0
+      nerve:
+        base: 3
         offset: 0
     nell:
       defense:
@@ -103,12 +125,12 @@ actors:
   flags:
     briar:
       - warden
+    corin:
+      - carter
 places:
   items:
-    loft:
-      latch: 1
-    wheel_shed:
-      nail: 1
+    shed:
+      cudgel: 1
   meters: {}
   flags: {}
   open_exits: {}
@@ -116,6 +138,9 @@ stories:
   meters: {}
   flags: {}
 world:
-  meters: {}
+  meters:
+    daylight:
+      base: 12
+      offset: 0
   flags: []
 notes: []

@@ -1,12 +1,50 @@
 schema: story
 id: ending
 rules:
-  - id: lane_clear
+  # A walk that takes ticks stands on its exit, so this sees which way Corin left the yard.
+  - id: through_the_gate
     when:
       change:
-        arrive: mill_lane
+        leave: yard
         subject: pc
     if:
+      - at:
+          subject: self
+          place: exit:yard.gate
+    do:
+      - flag:
+          of: world
+          key: via_gate
+          value: true
+  - id: gate_after_a_fight
+    when:
+      change:
+        arrive: lane
+        subject: pc
+    if:
+      - flag:
+          of: world
+          key: via_gate
+          is: true
+    do:
+      - flag:
+          of: world
+          key: finished
+          value: true
+      - narrate:
+          to: self
+          text: Briar sits down hard in the mud and waves you through. The end.
+  - id: cart_warded
+    when:
+      change:
+        arrive: lane
+        subject: pc
+    if:
+      - not:
+          flag:
+            of: world
+            key: via_gate
+            is: true
       - not:
           has_item:
             subject: self
@@ -18,13 +56,18 @@ rules:
           value: true
       - narrate:
           to: self
-          text: Nell is on the lane. That is the end.
-  - id: lane_clear_nail_kept
+          text: The cart rolls. The nail stays in the wheel for good. The end.
+  - id: cart_braced
     when:
       change:
-        arrive: mill_lane
+        arrive: lane
         subject: pc
     if:
+      - not:
+          flag:
+            of: world
+            key: via_gate
+            is: true
       - has_item:
           subject: self
           id: nail
@@ -35,4 +78,63 @@ rules:
           value: true
       - narrate:
           to: self
-          text: The nail is still in Corin's pocket, unspent. Oden will remember who put a shoulder to his cart. That is the end.
+          text: The cart rolls, and the nail is still in your pocket. Oden will remember. The end.
+  - id: knocked_out
+    when:
+      change:
+        meter: hp
+        crosses: "<=0"
+    if:
+      - flag:
+          of: self
+          key: carter
+          is: true
+      - not:
+          flag:
+            of: world
+            key: finished
+            is: true
+    do:
+      - flag:
+          of: world
+          key: lost
+          value: true
+      - narrate:
+          to: self
+          text: You go down in the mud. When you wake, the lamps are lit and the lane is shut. Nell goes home without her flour. The end.
+  - id: dusk
+    when:
+      change:
+        meter: daylight
+        crosses: "<=0"
+    if:
+      - not:
+          flag:
+            of: world
+            key: finished
+            is: true
+    do:
+      - flag:
+          of: world
+          key: lost
+          value: true
+      - narrate:
+          text: The lamps are lit. Briar bars the gate, and the cart won't move in the dark. The end.
+  - id: lane_shut
+    when:
+      change:
+        flag: lost
+        becomes: true
+    do:
+      - flag:
+          of: world
+          key: finished
+          value: true
+      - flag:
+          of: exit:yard.gate
+          key: open
+          value: false
+      - flag:
+          of: exit:yard.cart
+          key: open
+          value: false

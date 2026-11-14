@@ -1,0 +1,4 @@
+schema: modifiers
+modifiers:
+  - id: cursed
+    meter: grace

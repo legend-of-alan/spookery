@@ -6,4 +6,4 @@ display_name: Corin
 idle:
   eligible: false
 ---
-Corin carries a short stick and a clay tonic.
+Corin carries a clay tonic.
