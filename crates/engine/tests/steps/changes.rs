@@ -2,9 +2,11 @@ use std::fs;
 use std::path::Path;
 
 use cucumber::{given, then, when};
+use spookery_client::text;
 use spookery_engine::testing::{self, stamp_pack_rev};
 use spookery_engine::World as EngineWorld;
 use spookery_engine::{component, Meter, Presence};
+use spookery_protocol::ServerBody;
 
 use crate::{split_line, World};
 
@@ -264,7 +266,12 @@ fn change_line(output: &spookery_engine::RoundOutput) -> String {
         .seen
         .iter()
         .find(|seen| seen.viewer == *"lark")
-        .map(|seen| seen.line.clone())
+        .map(|seen| {
+            text::render(&ServerBody::Changes {
+                viewer: "lark".into(),
+                entries: seen.entries.clone(),
+            })
+        })
         .unwrap_or_default()
 }
 

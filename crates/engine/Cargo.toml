@@ -27,6 +27,7 @@ spookery-protocol = { path = "../protocol" }
 cucumber = "=0.23.0"
 proptest = { version = "=1.12.0", default-features = false, features = ["std"] }
 serde-saphyr = "=1.3.0"
+spookery-client = { path = "../client" }
 spookery-engine = { path = ".", features = ["testing"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "time"] }
 

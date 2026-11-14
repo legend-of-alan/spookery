@@ -334,7 +334,8 @@ A client ignores a `kind` or a field it does not know. `server.json` gives every
 | `status` | the GM | the reply to `status` |
 | `view` | a player, or the GM on `perceive` | what one actor can see |
 | `resume` | a player | the `notes` addressed to that PC |
-| `lines` | a player | text to print: one narrate line, or the changes that player saw |
+| `lines` | a player | `text` to print: one narrate line |
+| `changes` | a player | `viewer` and `entries`: the meter and item changes one round showed that player |
 | `help` | the asking player | `commands`, each with `name`, `target`, `names` and `owner` |
 | `map` | the asking player | `places`, each with `name` and `exits` |
 
@@ -421,7 +422,9 @@ A client ignores a `kind` or a field it does not know. `server.json` gives every
 
 ### After a round
 
-Each seated player gets, in order: the `round`, a `check` for each of their own rolls, a `refused` for each of their own moves the round refused, a fresh `resume` and `view`, a `lines` for each narrate line they may hear, and a last `lines` with the meter changes and items gained or lost that player may know. A player is told their own meter changes and the world's shown ones, not another actor's, even in the same place, and never a flag change. A `lines` that would be empty is not sent, and a narrate line that would show a fact the player may not know is left out. An NPC's roll or refused habit sends no player message.
+Each seated player gets, in order: the `round`, a `check` for each of their own rolls, a `refused` for each of their own moves the round refused, a fresh `resume` and `view`, a `lines` for each narrate line they may hear, and a last `changes` with the meter changes and items gained or lost that player may know. A player is told their own meter changes and the world's shown ones, not another actor's, even in the same place, and never a flag change. A `changes` with no entries is not sent, and a narrate line that would show a fact the player may not know is left out.
+
+Each entry of `changes` is one change, in the order the round made them, and the client writes the sentence. `component` is `meter` or `item`. `entity` is whose it is as a rule's `of` names it: an actor id, `place:<id>`, `story:<id>` or `world`. `entity_name` is that actor's or place's display name, or the story's id, and is left out for the world. `key` is the meter or item id, and `name` the item's display name. `before` and `after` are the meter's value or the item count. `before` is left out when the meter did not read before the round. A hidden meter and an item whose count ended where it started send no entry. When an item moves between an actor and a place, both counts are entries, so `spook play` reads the take below as `You picked up the Lamp oil.` An NPC's roll or refused habit sends no player message.
 
 <!-- example: player-round -->
 ```json
@@ -433,9 +436,19 @@ Each seated player gets, in order: the `round`, a `check` for each of their own 
 {"seq":11,"body":{"kind":"check","outcome":"success"}}
 ```
 
-<!-- example: player-lines -->
+<!-- example: player-changes -->
 ```json
-{"seq":19,"body":{"kind":"lines","text":"You picked up the Lamp oil."}}
+{
+  "seq": 19,
+  "body": {
+    "kind": "changes",
+    "viewer": "rowan",
+    "entries": [
+      {"component": "item", "entity": "rowan", "entity_name": "Rowan", "key": "lamp_oil", "name": "Lamp oil", "before": 0, "after": 1},
+      {"component": "item", "entity": "place:docks_shop", "entity_name": "Docks Shop", "key": "lamp_oil", "name": "Lamp oil", "before": 4, "after": 3}
+    ]
+  }
+}
 ```
 
 ## MCP
@@ -517,5 +530,6 @@ The MCP endpoint answers with an HTTP status before any seat: 400 for an `MCP-Pr
 - Version 2 narrowed `status` before any release, on purpose: `pack` is now required, so a GM client no longer allows for a server that leaves it out. The version stayed 2 because no build had shipped.
 - Version 2 renamed the command fields before any release, on purpose, so a client body is named by `kind` like a server body: a client body's `word` became `kind`, and the `words` of `hello` and `help` became `commands`. The command names did not change. The recording took the new names with it. The version stayed 2 because no build had shipped.
 - Version 2 renamed the cast's role before any release, on purpose, so the cast and the engine say the same word: `pack.kinds` in `status` became `pack.control_types`, and a cast file's `kind` became `control_type`. The values did not change. The recording took the new name and the docks pack's new `pack_rev` with it. The version stayed 2 because no build had shipped.
+- Version 2 split one body before any release, on purpose, so a client writes the change sentences as it writes the view: `lines` now carries only narrate lines, and the meter and item changes a round showed a player moved to the new `changes`, as data. The recording took the new body with it. The version stayed 2 because no build had shipped.
 - The recorded session must still replay. Each message it got must still arrive at that seat, in order, with every field it had and the same value. New kinds and fields may come between. Only `seq`, which a new kind moves, and `token`, which each table mints, may differ.
 - The journal and refusal codes stay strict: `spook verify` fails on a code it does not know.
