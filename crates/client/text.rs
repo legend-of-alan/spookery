@@ -1,8 +1,8 @@
 //! Readable text for player and GM messages, and the status and commit replies.
 
 use crate::protocol::{
-    self, ChangeView, CommandView, CommitBody, ExitView, MeterView, NoteView, Outcome, PlaceView,
-    Roll, Say, ServerBody, Speaker, TableStatus,
+    self, ChangeValue, ChangeView, CommandView, CommitBody, ExitView, MeterView, NoteView, Outcome,
+    PlaceView, Roll, Say, ServerBody, Speaker, TableStatus,
 };
 
 /// Readable text for one player body. Empty means print nothing.
@@ -232,30 +232,67 @@ fn command_line(command: &CommandView) -> String {
 fn render_changes(viewer: &str, entries: &[ChangeView]) -> String {
     let sentences: Vec<String> = entries
         .iter()
-        .filter_map(|entry| match entry.component {
-            protocol::Component::Meter => Some(format!(
-                "{} {} is now {}.",
-                render_owner(viewer, entry),
-                entry.key,
-                entry.after
-            )),
-            protocol::Component::Item => render_item_change(viewer, entry, entries),
-        })
+        .filter_map(
+            |entry| match (entry.component.as_str(), as_number(&entry.after)) {
+                ("meter", Some(after)) => Some(format!(
+                    "{} {} is now {after}.",
+                    render_owner(viewer, entry),
+                    entry.key
+                )),
+                ("item", Some(_)) => render_item_change(viewer, entry, entries),
+                _ => Some(render_any_change(viewer, entry)),
+            },
+        )
         .collect();
     sentences.join(" ")
+}
+
+/// The sentence for a change with no sentence of its own, like `Your place is now loft.`
+fn render_any_change(viewer: &str, entry: &ChangeView) -> String {
+    let mut what = entry.component.replace('_', " ");
+    let which = display_name(entry);
+    if !which.is_empty() {
+        what = format!("{what} {which}");
+    }
+    let whose = render_owner(viewer, entry);
+    match &entry.after {
+        None => format!("{whose} {what} is gone."),
+        Some(ChangeValue::Number(number)) => format!("{whose} {what} is now {number}."),
+        Some(ChangeValue::Text(text)) => format!("{whose} {what} is now {text}."),
+        Some(ChangeValue::Bool(true)) => format!("{whose} {what} is now on."),
+        Some(ChangeValue::Bool(false)) => format!("{whose} {what} is now off."),
+        Some(ChangeValue::List(ids)) => format!("{whose} {what} is now {}.", ids.join(", ")),
+    }
+}
+
+/// The display name of what changed, which is its key when the two are the same.
+fn display_name(entry: &ChangeView) -> &str {
+    if entry.name.is_empty() {
+        &entry.key
+    } else {
+        &entry.name
+    }
+}
+
+/// A change's value when it is a number: a meter's reading or an item's count.
+fn as_number(value: &Option<ChangeValue>) -> Option<i64> {
+    match value {
+        Some(ChangeValue::Number(number)) => Some(*number),
+        _ => None,
+    }
 }
 
 /// A change to what an actor carries or what lies in the viewer's place. A place's change that
 /// matches an actor's is told by the actor's sentence.
 fn render_item_change(viewer: &str, entry: &ChangeView, entries: &[ChangeView]) -> Option<String> {
-    let lost = entry.after < entry.before?;
-    let name = &entry.name;
+    let after = as_number(&entry.after)?;
+    let lost = after < as_number(&entry.before)?;
+    let name = display_name(entry);
     let other_side = entries.iter().find(|other| {
-        other.component == protocol::Component::Item
+        other.component == "item"
             && other.key == entry.key
-            && other
-                .before
-                .is_some_and(|before| (other.after < before) != lost)
+            && (as_number(&other.before).zip(as_number(&other.after)))
+                .is_some_and(|(before, after)| (after < before) != lost)
     });
     let other_is_actor = other_side.map(|other| is_actor(&other.entity));
     if !is_actor(&entry.entity) {
@@ -276,7 +313,7 @@ fn render_item_change(viewer: &str, entry: &ChangeView, entries: &[ChangeView]) 
         (true, Some(false)) => format!("{who} dropped the {name}."),
         (false, Some(true)) => format!("{who} received the {name}."),
         (false, Some(false)) => format!("{who} picked up the {name}."),
-        (true, None) if entry.after == 0 => format!("{whose} {name} was used up."),
+        (true, None) if after == 0 => format!("{whose} {name} was used up."),
         (true, None) => format!("{whose} {name} was lost."),
         (false, None) => format!("{whose} {name} was gained."),
     };

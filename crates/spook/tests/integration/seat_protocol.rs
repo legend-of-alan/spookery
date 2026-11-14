@@ -155,6 +155,8 @@ fn capture() -> BTreeMap<String, Example> {
     insert_json(&mut out, "player-check", next_kind(&player, "check"));
     next_kind(&player, "resume");
     next_kind(&player, "view");
+    // The round left Mira's note at the shop, a change the player may know.
+    next_kind(&player, "changes");
 
     // A second round moves an item the player can see, so the player gets a `changes`.
     send(&mut player, "take", json!({"target": "lamp_oil"}));

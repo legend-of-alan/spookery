@@ -962,11 +962,11 @@
       ]
     },
     "ChangeView": {
-      "description": "One meter or item change of a `changes` body, sent from the table to a player client.\n`entity` is whose it is as a rule's `of` names it: an actor id, `place:<id>`,\n`story:<id>` or `world`. `entity_name` is that actor's or place's display name, or the\nstory's id. `key` is the meter or item id, and `name` the item's display name.\n`before` is left out when the meter did not read before the round.",
+      "description": "One change of a `changes` body, sent from the table to a player client. `component` names\nwhat changed, such as `meter`, `item` or `place`. `entity` is whose it is as a rule's `of`\nnames it: an actor id, `place:<id>`, `story:<id>` or `world`. `entity_name` is that actor's\nor place's display name, or the story's id. `key` is which one of the entity's, such as the\nmeter or item id, and `name` its display name. `before` and `after` are left out when there\nwas none.",
       "type": "object",
       "properties": {
         "component": {
-          "$ref": "#/$defs/Component"
+          "type": "string"
         },
         "entity": {
           "type": "string"
@@ -981,30 +981,50 @@
           "type": "string"
         },
         "before": {
-          "type": [
-            "integer",
-            "null"
-          ],
-          "format": "int64"
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ChangeValue"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "after": {
-          "type": "integer",
-          "format": "int64"
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ChangeValue"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "required": [
         "component",
-        "entity",
-        "key",
-        "after"
+        "entity"
       ]
     },
-    "Component": {
-      "description": "What a `ChangeView` changed: a meter's value or an item's count.",
-      "type": "string",
-      "enum": [
-        "meter",
-        "item"
+    "ChangeValue": {
+      "description": "One side of a `ChangeView`, written as the JSON value it is: a number, text, a mark or a list.",
+      "anyOf": [
+        {
+          "type": "integer",
+          "format": "int64"
+        },
+        {
+          "type": "string"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
       ]
     },
     "CommandView": {

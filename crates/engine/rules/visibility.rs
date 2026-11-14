@@ -2,7 +2,7 @@
 
 use std::collections::BTreeSet;
 
-use spookery_protocol::{self as protocol, ChangeView};
+use spookery_protocol::{ChangeValue, ChangeView};
 
 use crate::canon::Canon;
 use crate::entity;
@@ -37,7 +37,7 @@ pub(crate) enum Recipient {
 /// The changes and narrate lines for one seat.
 pub(crate) struct Delivery {
     pub changes: Vec<String>,
-    /// The meter and item changes this seat may know.
+    /// The changes this seat may know, as its player is sent them.
     pub entries: Vec<ChangeView>,
     pub narrations: Vec<String>,
 }
@@ -49,7 +49,7 @@ pub struct RecipientLine {
     pub text: String,
 }
 
-/// The change keys one actor can see, and the meter and item changes they are shown. Returned
+/// The change keys one actor can see, and the changes they are shown. Returned
 /// from the engine's round to the host table, which sends the entries to that actor's player.
 pub struct ViewerChanges {
     pub viewer: ActorId,
@@ -79,7 +79,7 @@ pub(crate) fn show_to(
     for change in &visible {
         keys.insert(change.key.to_string());
         if actor.is_some() {
-            entries.extend(to_change_view(canon, change));
+            entries.push(to_change_view(canon, change));
         }
     }
     Delivery {
@@ -89,63 +89,35 @@ pub(crate) fn show_to(
     }
 }
 
-/// The entry for a change a player may know when it is a meter that reads and is not hidden, or
-/// an item whose count moved.
-fn to_change_view(canon: &Canon, change: &Change) -> Option<ChangeView> {
-    let (component, entity, key) = match &change.key {
-        change::Key::ActorMeter(actor, key) => (
-            protocol::Component::Meter,
-            entity::Id::Actor(actor.clone().into()),
-            key,
-        ),
-        change::Key::PlaceMeter(place, key) => (
-            protocol::Component::Meter,
-            entity::Id::Place(place.clone().into()),
-            key,
-        ),
-        change::Key::StoryMeter(story, key) => (
-            protocol::Component::Meter,
-            entity::Id::Story(story.clone().into()),
-            key,
-        ),
-        change::Key::WorldMeter(key) => (protocol::Component::Meter, entity::Id::Global, key),
-        change::Key::ActorItem(actor, id) => (
-            protocol::Component::Item,
-            entity::Id::Actor(actor.clone().into()),
-            id,
-        ),
-        change::Key::PlaceItem(place, id) => (
-            protocol::Component::Item,
-            entity::Id::Place(place.clone().into()),
-            id,
-        ),
-        _ => return None,
-    };
-    let (before, after) = (change.before.as_number(), change.after.as_number()?);
-    let (shown, name) = match component {
-        protocol::Component::Meter => (is_shown(canon, &entity, key), String::new()),
-        protocol::Component::Item => (
-            before.is_some_and(|before| before != after),
-            canon.display_name(key),
-        ),
-    };
-    if !shown {
-        return None;
-    }
+/// The entry a player is sent for a change they may know.
+fn to_change_view(canon: &Canon, change: &Change) -> ChangeView {
+    let (component, entity, key) = change.key.to_parts();
     let entity_name = match &entity {
         entity::Id::Actor(id) => canon.display_name(id.as_str()),
         entity::Id::Place(id) => crate::rules::lines::place_name(canon, id.as_str()),
         entity::Id::Story(id) => id.to_string(),
         entity::Id::Global => String::new(),
     };
-    Some(ChangeView {
-        component,
+    let name = canon.display_name(key);
+    ChangeView {
+        component: component.to_string(),
         entity: entity.to_string(),
         entity_name,
-        key: key.clone(),
-        name,
-        before,
-        after,
+        key: key.to_string(),
+        name: if name == key { String::new() } else { name },
+        before: to_change_value(&change.before),
+        after: to_change_value(&change.after),
+    }
+}
+
+/// A watched value as the wire writes it: none when the key was absent.
+fn to_change_value(value: &change::Value) -> Option<ChangeValue> {
+    Some(match value {
+        change::Value::Empty => return None,
+        change::Value::Text(text) => ChangeValue::Text(text.clone()),
+        change::Value::Number(number) => ChangeValue::Number(*number),
+        change::Value::Bool(mark) => ChangeValue::Bool(*mark),
+        change::Value::List(ids) => ChangeValue::List(ids.clone()),
     })
 }
 
@@ -202,9 +174,10 @@ fn can_see(canon: &Canon, state: &State, viewer: &ActorId, change: &Change) -> b
             place_of(state, viewer) == Some(place.as_str())
                 && is_shown(canon, &entity::Id::Place(place.clone().into()), key)
         }
-        change::Key::ActorKnownFact(actor) | change::Key::ActorMeter(actor, _) => {
-            *viewer == **actor
+        change::Key::ActorMeter(actor, key) => {
+            *viewer == **actor && is_shown(canon, &entity::Id::Actor(actor.clone().into()), key)
         }
+        change::Key::ActorKnownFact(actor) => *viewer == **actor,
         change::Key::ActorModifier(actor, id) => {
             *viewer == **actor && canon.modifiers.get(id).is_some_and(|def| !def.hidden)
         }

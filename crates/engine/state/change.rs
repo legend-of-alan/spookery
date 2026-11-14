@@ -84,6 +84,36 @@ impl Key {
         }
     }
 
+    /// The component this key watches, whose entity it is, and which one of that entity's it
+    /// is: empty when the entity holds one.
+    pub(crate) fn to_parts(&self) -> (&'static str, entity::Id, &str) {
+        let actor = |id: &String| entity::Id::Actor(id.as_str().into());
+        let place = |id: &String| entity::Id::Place(id.as_str().into());
+        let story = |id: &String| entity::Id::Story(id.as_str().into());
+        match self {
+            Key::ActorPlace(id) => ("place", actor(id), ""),
+            Key::ActorFlag(id, key) => ("flag", actor(id), key),
+            Key::ActorMeter(id, key) => ("meter", actor(id), key),
+            Key::ActorModifier(id, key) => ("modifier", actor(id), key),
+            Key::ActorBusy(id) => ("busy", actor(id), ""),
+            Key::ActorKnownFact(id) => ("known_facts", actor(id), ""),
+            Key::LastActRound(id) => ("last_act_round", actor(id), ""),
+            Key::IdleActsThisWindow(id) => ("idle_acts_this_window", actor(id), ""),
+            Key::LiveActsThisWindow(id) => ("live_acts_this_window", actor(id), ""),
+            Key::ActorItem(id, key) => ("item", actor(id), key),
+            Key::PlaceItem(id, key) => ("item", place(id), key),
+            Key::PlaceMeter(id, key) => ("meter", place(id), key),
+            Key::PlaceFlag(id, key) => ("flag", place(id), key),
+            Key::StoryMeter(id, key) => ("meter", story(id), key),
+            Key::StoryFlag(id, key) => ("flag", story(id), key),
+            Key::ExitOpen(id, exit) => ("exit_open", place(id), exit),
+            Key::ActorWielded(id) => ("wielded_item", actor(id), ""),
+            Key::Note(id) => ("note", entity::Id::Global, id),
+            Key::WorldFlag(key) => ("flag", entity::Id::Global, key),
+            Key::WorldMeter(key) => ("meter", entity::Id::Global, key),
+        }
+    }
+
     /// The actor this key belongs to, when it has one.
     pub fn actor(&self) -> Option<&str> {
         match self {

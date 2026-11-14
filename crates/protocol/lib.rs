@@ -41,7 +41,7 @@ pub use message::{
     Seat, ServerBody, ServerMessage, COMMANDS, VERSION,
 };
 pub use player::{
-    is_named, ChangeView, CommandView, Component, ExitView, ItemStack, KnownFact, MeterView,
+    is_named, ChangeValue, ChangeView, CommandView, ExitView, ItemStack, KnownFact, MeterView,
     NoteView, PlaceView, View,
 };
 

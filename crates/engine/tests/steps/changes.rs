@@ -124,6 +124,20 @@ fn lark_drops_the_tonic(world: &mut World) {
     world.seen = change_line(&output);
 }
 
+#[when(expr = "lark climbs to the loft")]
+fn lark_climbs_to_the_loft(world: &mut World) {
+    let pack = world.pack().to_path_buf();
+    let mut opened = resume_with_lark(&pack);
+    let output = play(&mut opened, "travel loft");
+    world.seen = change_line(&output);
+}
+
+#[then(expr = "lark sees one line saying she is in the loft")]
+fn lark_sees_she_is_in_the_loft(world: &mut World) {
+    let line = one_line(&world.seen);
+    assert_eq!(line, "Your place is now loft.");
+}
+
 #[given(expr = "a tonic is on the ground")]
 fn a_tonic_is_on_the_ground(world: &mut World) {
     let pack = world.pack().to_path_buf();
