@@ -3,10 +3,10 @@ schema: place
 id: loft
 display_name: Loft
 exits:
-  - to: gate_yard
-    name: gate_yard
+  - to: yard
+    name: yard
 facts:
-  - id: fact_ask_briar
-    text: Briar steps aside if asked. A swing at him can miss.
+  - id: fact_goblin_nail
+    text: A goblin hoards the rune-cut nail in the straw. Goblins fear cold iron, and a firm word can banish one.
 ---
-A ladder leads to a dry loft above the yard. A bent iron latch lies by the slate on the ladder.
+A dry loft above the yard, deep in straw. Goblins fear cold iron.

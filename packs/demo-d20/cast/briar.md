@@ -16,10 +16,55 @@ rules:
           id: note_gate_watch
           to:
             - corin
-          place: gate_yard
+          place: yard
           fact_ids: []
           text: The yard stays watched.
-  - id: yield_the_lane
+  - id: strike
+    when:
+      verb: strike
+      target: actor
+    if:
+      - wielding:
+          subject: self
+          id: cudgel
+      - meter:
+          of: briar
+          id: hp
+          op: ">="
+          value: 1
+    roll:
+      check: strike
+      threshold: 40
+      partial_at: 34
+    success:
+      - meter:
+          of: target
+          key: hp
+          add: -4
+      - narrate:
+          to: self
+          text: The cudgel lands hard. Briar staggers.
+    partial:
+      - meter:
+          of: target
+          key: hp
+          add: -2
+      - meter:
+          of: self
+          key: hp
+          add: -2
+      - narrate:
+          to: self
+          text: You trade blows. Briar grunts, and his staff clips your jaw.
+    miss:
+      - meter:
+          of: self
+          key: hp
+          add: -3
+      - narrate:
+          to: self
+          text: Briar's staff cracks your ribs.
+  - id: yield_the_gate
     when:
       change:
         meter: hp
@@ -34,17 +79,16 @@ rules:
           of: world
           key: passage
           value: true
+      - narrate:
+          to: here
+          text: Briar drops his staff and steps back from the gate.
   - id: ask
     when:
       verb: ask
       target: actor
     do:
-      - flag:
-          of: world
-          key: passage
-          value: true
       - narrate:
           to: self
-          text: Briar steps aside.
+          text: "Briar says: \"Best me with a weapon, or bring me cold iron for my gate. Before the lamps.\""
 ---
-Briar blocks the yard and does not step aside.
+Briar keeps the gate with his staff. He wants to be bested in a fair fight or paid in cold iron before the lamps are lit, and he swings back at anyone who swings at him.

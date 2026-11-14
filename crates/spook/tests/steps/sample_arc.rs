@@ -60,26 +60,95 @@ const BRANCHES: &[&[&str]] = &[
     ],
 ];
 
-const DEMO_WARD: &[&str] = &[
+// The demo scripts. A roll's dice come from the world id and the round index, so each line
+// lands on the same rolls every run: these are the pinned seeds the outcomes below rely on.
+const DEMO_GATE: &[&str] = &[
+    "travel shed",
+    "take cudgel",
+    "wield cudgel",
+    "travel yard",
     "ask briar",
-    "travel wheel_shed",
+    "strike briar",
+    "strike briar",
+    "strike briar",
+    "use tonic",
+    "strike briar",
+    "strike briar",
+    "strike briar",
+    "travel gate",
+];
+const DEMO_WARD: &[&str] = &[
+    "travel loft",
+    "travel yard",
+    "travel shed",
+    "travel yard",
+    "travel loft",
+    "banish goblin",
+    "banish goblin",
     "take nail",
-    "travel gate_yard",
+    "travel yard",
     "ward",
-    "travel mill_lane",
+    "travel cart",
 ];
 const DEMO_BRACE: &[&str] = &[
     "ask briar",
-    "travel wheel_shed",
+    "travel shed",
+    "travel yard",
+    "travel loft",
+    "use tonic",
+    "banish goblin",
+    "banish goblin",
     "take nail",
+    "travel yard",
+    "travel shed",
     "brace",
-    "travel gate_yard",
-    "travel mill_lane",
+    "travel yard",
+    "travel cart",
+];
+const DEMO_KNOCKED_OUT: &[&str] = &[
+    "travel shed",
+    "travel yard",
+    "travel loft",
+    "banish goblin",
+    "banish goblin",
+    "banish goblin",
+];
+// The brace script up to the brace, then four more walks until the lamps are lit.
+const DEMO_DUSK: &[&str] = &[
+    "ask briar",
+    "travel shed",
+    "travel yard",
+    "travel loft",
+    "use tonic",
+    "banish goblin",
+    "banish goblin",
+    "take nail",
+    "travel yard",
+    "travel shed",
+    "brace",
+    "travel yard",
+    "travel loft",
+    "travel yard",
+    "travel shed",
+    "travel yard",
 ];
 
-const DEFAULT_ENDING: &str = "Nell is on the lane. That is the end.";
-const NAIL_KEPT_ENDING: &str =
-    "The nail is still in Corin's pocket, unspent. Oden will remember who put a shoulder to his cart. That is the end.";
+const DEMO_ENDINGS: &[(&str, &str)] = &[
+    ("gate", "Briar sits down hard in the mud and waves you through."),
+    ("warded", "The cart rolls. The nail stays in the wheel for good."),
+    (
+        "braced",
+        "The cart rolls, and the nail is still in your pocket. Oden will remember.",
+    ),
+    (
+        "knocked-out",
+        "You go down in the mud. When you wake, the lamps are lit and the lane is shut. Nell goes home without her flour. The end.",
+    ),
+    (
+        "dusk",
+        "The lamps are lit. Briar bars the gate, and the cart won't move in the dark. The end.",
+    ),
+];
 
 #[given(expr = "sample-d20 and a recorded line script")]
 fn sample_d20_and_a_recorded_line_script(world: &mut World) {
@@ -207,21 +276,19 @@ fn the_attempt_is_refused_and_in_the_log(world: &mut World) {
     assert_eq!(saved, table::live_mut(world).opened_save);
 }
 
-#[given(expr = "demo-d20 and Corin and the ward script")]
-fn demo_d20_and_corin_and_the_ward_script(world: &mut World) {
-    world.scratch = "ward".to_string();
-}
-
-#[given(expr = "demo-d20 and Corin and the brace script")]
-fn demo_d20_and_corin_and_the_brace_script(world: &mut World) {
-    world.scratch = "brace".to_string();
+#[given(expr = "demo-d20 and Corin and the {word} script")]
+fn demo_d20_and_corin_and_a_script(world: &mut World, script: String) {
+    world.scratch = script;
 }
 
 #[when(expr = "the demo script is played with the stub GM")]
 fn the_demo_script_is_played_with_the_stub_gm(world: &mut World) {
     let lines = match world.scratch.as_str() {
+        "gate" => DEMO_GATE,
         "ward" => DEMO_WARD,
         "brace" => DEMO_BRACE,
+        "knocked-out" => DEMO_KNOCKED_OUT,
+        "dusk" => DEMO_DUSK,
         other => panic!("unknown demo script: {other}"),
     };
     seat_gm_and_actor(world, "demo-d20", "corin", "demo-script");
@@ -230,18 +297,24 @@ fn the_demo_script_is_played_with_the_stub_gm(world: &mut World) {
     }
 }
 
-#[then(expr = "the player sees the default ending")]
-fn the_player_sees_the_default_ending(world: &mut World) {
-    table::wait_player_from(world, 0, DEFAULT_ENDING);
+#[then(expr = "the player sees only the {word} ending")]
+fn the_player_sees_only_that_ending(world: &mut World, ending: String) {
+    let (_, shown) = DEMO_ENDINGS
+        .iter()
+        .find(|(name, _)| *name == ending)
+        .unwrap_or_else(|| panic!("unknown demo ending: {ending}"));
+    let text = table::wait_player_from(world, 0, shown);
+    for (name, other) in DEMO_ENDINGS.iter().filter(|(name, _)| *name != ending) {
+        assert!(
+            !text.contains(other),
+            "the {name} ending was also shown\n{text}"
+        );
+    }
 }
 
-#[then(expr = "the player sees the nail-kept ending and not the default ending")]
-fn the_player_sees_the_nail_kept_ending_and_not_the_default(world: &mut World) {
-    let text = table::wait_player_from(world, 0, NAIL_KEPT_ENDING);
-    assert!(
-        !text.contains(DEFAULT_ENDING),
-        "the default ending was also shown\n{text}"
-    );
+#[then(expr = "the player's {string} is refused with {string}")]
+fn the_players_line_is_refused_with(world: &mut World, line: String, shown: String) {
+    table::player_send(world, &line, &shown);
 }
 
 fn seat_gm_and_lark(world: &mut World, label: &str) -> PathBuf {

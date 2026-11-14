@@ -1,0 +1,8 @@
+schema: meters
+meters:
+  - id: daylight
+    min: 0
+    base_cap: 12
+    max: 12
+    base: 12
+    hidden: false
