@@ -23,13 +23,13 @@ Download the archive for your computer from [Releases](https://github.com/legend
 
 The builds are unsigned. If macOS refuses to open `spook`, run `xattr -d com.apple.quarantine spook` once. If Windows shows a SmartScreen warning, pick More info, then Run anyway.
 
-The host saves into the pack folder, so copy `packs/demo-d20` to a new folder, `my-demo`, and play that. Start the host:
+The host saves into the pack folder, so copy `packs/demo-d20` to a new folder, `my-demo`, and play that. On macOS and Linux type `./spook` for `spook`, and in PowerShell `.\spook`. Start the host:
 
 ```sh
 spook run my-demo
 ```
 
-On macOS and Linux type `./spook`, and in PowerShell `.\spook`. It prints a `listening` line and waits. Open a second terminal in the same folder and join:
+It prints a `listening` line and waits. Open a second terminal in the same folder and join:
 
 ```sh
 spook play
