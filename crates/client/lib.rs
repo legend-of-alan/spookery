@@ -9,7 +9,7 @@ pub mod gm;
 pub mod http_model;
 pub mod play;
 use spookery_protocol as protocol;
-mod text;
+pub mod text;
 pub mod ws;
 
 /// A client failure: what `play::run`, `gm::run` and `ai_gm::run` return to `spook`, and what

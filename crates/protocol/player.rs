@@ -110,6 +110,40 @@ pub struct MeterView {
     pub max: i64,
 }
 
+/// One change of a `changes` body, sent from the table to a player client. `component` names
+/// what changed, such as `meter`, `item` or `place`. `entity` is whose it is as a rule's `of`
+/// names it: an actor id, `place:<id>`, `story:<id>` or `world`. `entity_name` is that actor's
+/// or place's display name, or the story's id. `key` is which one of the entity's, such as the
+/// meter or item id, and `name` its display name. `before` and `after` are left out when there
+/// was none.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+pub struct ChangeView {
+    pub component: String,
+    pub entity: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub entity_name: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub key: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub before: Option<ChangeValue>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub after: Option<ChangeValue>,
+}
+
+/// One side of a `ChangeView`, written as the JSON value it is: a number, text, a mark or a list.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[serde(untagged)]
+pub enum ChangeValue {
+    Number(i64),
+    Text(String),
+    Bool(bool),
+    List(Vec<String>),
+}
+
 /// One command of a `help` reply. `target` is what the command takes: `none`, `actor`, `place`,
 /// `exit` or `item`. `names` lists what the player can name for it now, by the names they
 /// read. `owner` is the id of the cast member or item whose verb this is, reached by naming

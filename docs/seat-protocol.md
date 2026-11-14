@@ -97,12 +97,12 @@ Only `release` ends a claim. A connection that closes or is dropped leaves its P
 
 <!-- example: player-claim-token -->
 ```json
-{"id":"c1","body":{"kind":"claim","args":{"token":"<token>","last_seq":21}}}
+{"id":"c1","body":{"kind":"claim","args":{"token":"<token>","last_seq":22}}}
 ```
 
 <!-- example: player-claimed-token -->
 ```json
-{"seq":23,"reply_to":"c1","body":{"kind":"claimed","actor":"rowan","token":"<token>","missed":[{"seq":22,"body":{"kind":"say","from":"gm","address":"table","text":"still there?"}}]}}
+{"seq":24,"reply_to":"c1","body":{"kind":"claimed","actor":"rowan","token":"<token>","missed":[{"seq":23,"body":{"kind":"say","from":"gm","address":"table","text":"still there?"}}]}}
 ```
 
 A new claim's `claimed` carries `scrollback` instead, the says this PC heard before, oldest first.
@@ -148,14 +148,14 @@ A move the table can judge at once is refused before it is queued. Here Rowan se
 
 <!-- example: player-no-exit -->
 ```json
-{"seq":21,"reply_to":"c5","body":{"kind":"refused","code":"NO_EXIT","detail":"The stair door is locked."}}
+{"seq":22,"reply_to":"c5","body":{"kind":"refused","code":"NO_EXIT","detail":"The stair door is locked."}}
 ```
 
 `look` takes no round and answers with a fresh `view`. `help` and `map` take none either, and answer with data the client prints. `help` lists the player commands but `claim`, then each pack verb this PC can use here and now. Each command has a `target`: `none`, `actor`, `place`, `exit` or `item`. `names` lists what the PC can name for it now, by the names the player reads: the exits from here, the actors or items it may name, or the places it visited. A cast member's or item's verb carries that `owner` id, and its name as its one name, so it reads as `ask Briar`, and it shows only while they are in sight. A verb whose `if` fails now is left out, but cost is not checked. The exits and the busy line are in the `view`, not in `help`.
 
 <!-- example: player-help -->
 ```json
-{"seq":30,"reply_to":"c3","body":{"kind":"help","commands":[
+{"seq":31,"reply_to":"c3","body":{"kind":"help","commands":[
   {"name":"release","target":"none"},
   {"name":"say","target":"none"},
   {"name":"look","target":"none"},
@@ -176,7 +176,7 @@ A move the table can judge at once is refused before it is queued. Here Rowan se
 
 <!-- example: player-map -->
 ```json
-{"seq":31,"reply_to":"c4","body":{"kind":"map","places":[{"name":"Docks Shop","exits":[{"name":"docks_street","to":"docks_street","place_name":"Docks Street","ticks":0,"locked":false},{"name":"stairs","to":"mira_rooms","place_name":"Mira's Rooms","ticks":2,"locked":true}]}]}}
+{"seq":32,"reply_to":"c4","body":{"kind":"map","places":[{"name":"Docks Shop","exits":[{"name":"docks_street","to":"docks_street","place_name":"Docks Street","ticks":0,"locked":false},{"name":"stairs","to":"mira_rooms","place_name":"Mira's Rooms","ticks":2,"locked":true}]}]}}
 ```
 
 ### status
@@ -310,7 +310,7 @@ The table's state for a GM. `world_time` is the game clock in ticks. `pack_rev` 
 
 <!-- example: gm-committed -->
 ```json
-{"seq":14,"reply_to":"c3","body":{"kind":"committed","state_rev":1,"changed_keys":["last_act_round aldric","last_act_round mira","last_act_round rowan","live_acts_this_window aldric","live_acts_this_window mira","live_acts_this_window rowan","note note_mira_door"],"journal_path":"state/journal/bundle-0000.jsonl","rolls":[{"faces":[1,6],"stat":1,"total":8,"target":0,"outcome":"success"}]}}
+{"seq":15,"reply_to":"c3","body":{"kind":"committed","state_rev":1,"changed_keys":["last_act_round aldric","last_act_round mira","last_act_round rowan","live_acts_this_window aldric","live_acts_this_window mira","live_acts_this_window rowan","note note_mira_door"],"journal_path":"state/journal/bundle-0000.jsonl","rolls":[{"faces":[1,6],"stat":1,"total":8,"target":0,"outcome":"success"}]}}
 ```
 
 `changed_keys` are the state keys the round changed, every one of them: a meter is `actor_meter <actor> <id>` or `world_meter <id>`, a modifier is `modifier <actor> <id>`, and a flag is `actor_flag <actor> <key>` or `world_flag <key>`. `journal_path` is the round's journal file, or null when the round wrote none. `rolls` are the checks rolled, faces and all. Faces go to the GM only.
@@ -334,7 +334,8 @@ A client ignores a `kind` or a field it does not know. `server.json` gives every
 | `status` | the GM | the reply to `status` |
 | `view` | a player, or the GM on `perceive` | what one actor can see |
 | `resume` | a player | the `notes` addressed to that PC |
-| `lines` | a player | text to print: one narrate line, or the changes that player saw |
+| `lines` | a player | `text` to print: one narrate line |
+| `changes` | a player | `viewer` and `changes`: the changes one round showed that player |
 | `help` | the asking player | `commands`, each with `name`, `target`, `names` and `owner` |
 | `map` | the asking player | `places`, each with `name` and `exits` |
 
@@ -421,7 +422,9 @@ A client ignores a `kind` or a field it does not know. `server.json` gives every
 
 ### After a round
 
-Each seated player gets, in order: the `round`, a `check` for each of their own rolls, a `refused` for each of their own moves the round refused, a fresh `resume` and `view`, a `lines` for each narrate line they may hear, and a last `lines` with the meter changes and items gained or lost that player may know. A player is told their own meter changes and the world's shown ones, not another actor's, even in the same place, and never a flag change. A `lines` that would be empty is not sent, and a narrate line that would show a fact the player may not know is left out. An NPC's roll or refused habit sends no player message.
+Each seated player gets, in order: the `round`, a `check` for each of their own rolls, a `refused` for each of their own moves the round refused, a fresh `resume` and `view`, a `lines` for each narrate line they may hear, and a last `changes` with every change that player may know. A player is told their own meter changes and the world's shown ones, not another actor's, even in the same place, and never a flag change. They are also told the items, place and wielded item of each actor in their place, their own known facts, and the notes they may read. A modifier or busy change is not sent: neither has a wire value yet. An empty `changes` is not sent, and a narrate line that would show a fact the player may not know is left out.
+
+`changes` holds one object per change, in key order, not the order the round made them, and the client writes the sentence. `component` names what changed, as an open set: `meter`, `item`, `place`, `wielded_item`, `known_facts` and `note` today, and a client ignores one it does not know. `entity` is whose it is as a rule's `of` names it: an actor id, `place:<id>`, `story:<id>` or `world`. `entity_name` is that actor's or place's display name, or the story's id, and is left out for the world. `key` is which one of the entity's, such as the meter or item id, and is left out when the entity holds one, as with `place`. `name` is the key's display name, left out when it is the key, or for `place` the display name of the place moved to. `before` and `after` are the values as JSON writes them: a number for a meter or an item count, text for a place or a wielded item, `true` for a note, and a list for known facts. Either is left out when there was none, as with a meter that did not read. When an item moves between an actor and a place, both counts are in `changes`, so `spook play` reads the take below as `You picked up the Lamp oil.` `spook play` words only meters, items and places, so a move reads like `Your place is now Docks Street.`, and prints nothing for the rest. An NPC's roll or refused habit sends no player message.
 
 <!-- example: player-round -->
 ```json
@@ -433,9 +436,19 @@ Each seated player gets, in order: the `round`, a `check` for each of their own 
 {"seq":11,"body":{"kind":"check","outcome":"success"}}
 ```
 
-<!-- example: player-lines -->
+<!-- example: player-changes -->
 ```json
-{"seq":19,"body":{"kind":"lines","text":"You picked up the Lamp oil."}}
+{
+  "seq": 20,
+  "body": {
+    "kind": "changes",
+    "viewer": "rowan",
+    "changes": [
+      {"component": "item", "entity": "rowan", "entity_name": "Rowan", "key": "lamp_oil", "name": "Lamp oil", "before": 0, "after": 1},
+      {"component": "item", "entity": "place:docks_shop", "entity_name": "Docks Shop", "key": "lamp_oil", "name": "Lamp oil", "before": 4, "after": 3}
+    ]
+  }
+}
 ```
 
 ## MCP
@@ -451,14 +464,14 @@ The result's `structuredContent` is `messages`: every message the command sent t
 
 <!-- example: mcp-result -->
 ```json
-{"messages":[{"seq":27,"reply_to":"1","body":{"kind":"queued","intent":"mcp-wait","actor":"aldric","move":"wait"}}]}
+{"messages":[{"seq":28,"reply_to":"1","body":{"kind":"queued","intent":"mcp-wait","actor":"aldric","move":"wait"}}]}
 ```
 
 Every other message the table sends this seat, the hello first, comes as a `spook/event` notification whose params are the message:
 
 <!-- example: mcp-event -->
 ```json
-{"jsonrpc":"2.0","method":"spook/event","params":{"seq":28,"body":{"kind":"queued","intent":"c802d4b692c7ee8e5a8fde0a4043d7d1ba27f3c2b63da88472f7a132f21f0ee6","actor":"rowan","move":"grit"}}}
+{"jsonrpc":"2.0","method":"spook/event","params":{"seq":29,"body":{"kind":"queued","intent":"c802d4b692c7ee8e5a8fde0a4043d7d1ba27f3c2b63da88472f7a132f21f0ee6","actor":"rowan","move":"grit"}}}
 ```
 
 An `initialize` opens a session and is never refused for a full table. POST it with `Accept` listing both `application/json` and `text/event-stream` and with `Content-Type: application/json`. Keep the `mcp-session-id` response header, and send the negotiated `protocolVersion` as `MCP-Protocol-Version` on every later request.
@@ -467,7 +480,7 @@ The session's `GET /mcp` event stream takes the GM seat, and its first event is 
 
 <!-- example: mcp-table-full -->
 ```json
-{"jsonrpc":"2.0","method":"spook/event","params":{"seq":29,"body":{"kind":"refused","code":"TABLE_FULL"}}}
+{"jsonrpc":"2.0","method":"spook/event","params":{"seq":30,"body":{"kind":"refused","code":"TABLE_FULL"}}}
 ```
 
 ## Limits
@@ -517,5 +530,6 @@ The MCP endpoint answers with an HTTP status before any seat: 400 for an `MCP-Pr
 - Version 2 narrowed `status` before any release, on purpose: `pack` is now required, so a GM client no longer allows for a server that leaves it out. The version stayed 2 because no build had shipped.
 - Version 2 renamed the command fields before any release, on purpose, so a client body is named by `kind` like a server body: a client body's `word` became `kind`, and the `words` of `hello` and `help` became `commands`. The command names did not change. The recording took the new names with it. The version stayed 2 because no build had shipped.
 - Version 2 renamed the cast's role before any release, on purpose, so the cast and the engine say the same word: `pack.kinds` in `status` became `pack.control_types`, and a cast file's `kind` became `control_type`. The values did not change. The recording took the new name and the docks pack's new `pack_rev` with it. The version stayed 2 because no build had shipped.
+- Version 2 split one body before any release, on purpose, so a client writes the change sentences as it writes the view: `lines` now carries only narrate lines, and the changes a round showed a player moved to the new `changes`, as data: each change names its component as open text and carries its values as JSON values, so a new component needs no protocol change. The recording took the new body with it. The version stayed 2 because no build had shipped.
 - The recorded session must still replay. Each message it got must still arrive at that seat, in order, with every field it had and the same value. New kinds and fields may come between. Only `seq`, which a new kind moves, and `token`, which each table mints, may differ.
 - The journal and refusal codes stay strict: `spook verify` fails on a code it does not know.

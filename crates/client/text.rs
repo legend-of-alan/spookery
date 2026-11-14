@@ -1,8 +1,8 @@
 //! Readable text for player and GM messages, and the status and commit replies.
 
 use crate::protocol::{
-    self, CommandView, CommitBody, ExitView, MeterView, NoteView, Outcome, PlaceView, Roll, Say,
-    ServerBody, Speaker, TableStatus,
+    self, ChangeValue, ChangeView, CommandView, CommitBody, ExitView, MeterView, NoteView, Outcome,
+    PlaceView, Roll, Say, ServerBody, Speaker, TableStatus,
 };
 
 /// Readable text for one player body. Empty means print nothing.
@@ -17,6 +17,7 @@ pub fn render(body: &ServerBody) -> String {
         },
         ServerBody::Resume { notes } => render_resume(notes),
         ServerBody::Lines { text } => text.clone(),
+        ServerBody::Changes { viewer, changes } => render_changes(viewer, changes),
         ServerBody::Refused(refusal) => refusal.to_string(),
         ServerBody::View(view) => render_view(view),
         ServerBody::Help { commands } => render_help(commands),
@@ -56,6 +57,7 @@ fn render_scrollback(says: &[Say]) -> String {
 }
 
 /// Readable text for the messages of one sitting.
+#[derive(Default)]
 pub struct PlayerText {
     seen_resume: bool,
     after_scrollback: bool,
@@ -63,10 +65,7 @@ pub struct PlayerText {
 
 impl PlayerText {
     pub fn new() -> Self {
-        Self {
-            seen_resume: false,
-            after_scrollback: false,
-        }
+        Self::default()
     }
 
     /// Text for this body. Empty means print nothing.
@@ -227,6 +226,99 @@ fn command_line(command: &CommandView) -> String {
     } else {
         format!("{line}: {}", command.names.join(", "))
     }
+}
+
+/// One sentence per change it can word, on one line. Other components print nothing.
+fn render_changes(viewer: &str, changes: &[ChangeView]) -> String {
+    let sentences: Vec<String> = changes
+        .iter()
+        .filter_map(|change| {
+            let whose = render_possessive(viewer, change);
+            match (change.component.as_str(), as_number(&change.after)) {
+                ("meter", Some(after)) => Some(format!("{whose} {} is now {after}.", change.key)),
+                ("item", Some(_)) => render_item_change(viewer, change, changes),
+                ("place", _) if !change.name.is_empty() => {
+                    Some(format!("{whose} place is now {}.", change.name))
+                }
+                _ => None,
+            }
+        })
+        .collect();
+    sentences.join(" ")
+}
+
+/// The display name of what changed, which is its key when the two are the same.
+fn display_name(change: &ChangeView) -> &str {
+    if change.name.is_empty() {
+        &change.key
+    } else {
+        &change.name
+    }
+}
+
+/// A change's value when it is a number: a meter's reading or an item's count.
+fn as_number(value: &Option<ChangeValue>) -> Option<i64> {
+    match value {
+        Some(ChangeValue::Number(number)) => Some(*number),
+        _ => None,
+    }
+}
+
+/// A change to what an actor carries or what lies in the viewer's place. A place's change that
+/// matches an actor's is told by the actor's sentence.
+fn render_item_change(viewer: &str, change: &ChangeView, changes: &[ChangeView]) -> Option<String> {
+    let after = as_number(&change.after)?;
+    let lost = after < as_number(&change.before)?;
+    let name = display_name(change);
+    let other_side = changes.iter().find(|other| {
+        other.component == "item"
+            && other.key == change.key
+            && (as_number(&other.before).zip(as_number(&other.after)))
+                .is_some_and(|(before, after)| (after < before) != lost)
+    });
+    let other_is_actor = other_side.map(|other| is_actor(&other.entity));
+    if !is_actor(&change.entity) {
+        return match (other_is_actor, lost) {
+            (Some(true), _) => None,
+            (_, true) => Some(format!("The {name} here is gone.")),
+            (_, false) => Some(format!("A {name} turned up here.")),
+        };
+    }
+    let who = if change.entity == viewer {
+        "You"
+    } else {
+        &change.entity_name
+    };
+    let whose = render_possessive(viewer, change);
+    let sentence = match (lost, other_is_actor) {
+        (true, Some(true)) => format!("{who} handed over the {name}."),
+        (true, Some(false)) => format!("{who} dropped the {name}."),
+        (false, Some(true)) => format!("{who} received the {name}."),
+        (false, Some(false)) => format!("{who} picked up the {name}."),
+        (true, None) if after == 0 => format!("{whose} {name} was used up."),
+        (true, None) => format!("{whose} {name} was lost."),
+        (false, None) => format!("{whose} {name} was gained."),
+    };
+    Some(sentence)
+}
+
+/// `Your`, `Briar's`, `Gate Yard's`, `The strain story's` or `The world's`.
+fn render_possessive(viewer: &str, change: &ChangeView) -> String {
+    let name = &change.entity_name;
+    if change.entity == viewer {
+        "Your".to_string()
+    } else if change.entity == "world" {
+        "The world's".to_string()
+    } else if change.entity.starts_with("story:") {
+        format!("The {name} story's")
+    } else {
+        format!("{name}'s")
+    }
+}
+
+/// Whether a change's entity is an actor: an actor id has no `place:` or `story:` prefix.
+fn is_actor(entity: &str) -> bool {
+    entity != "world" && !entity.contains(':')
 }
 
 /// Each place, then its exits indented under it.

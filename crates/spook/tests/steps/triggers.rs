@@ -4,7 +4,8 @@ use std::sync::Arc;
 
 use cucumber::{given, then, when};
 use serde_json::Value;
-use spookery::protocol;
+use spookery::protocol::{self, ServerBody};
+use spookery_client::text;
 use spookery_engine::testing::{stamp_pack_rev, state_of};
 use spookery_engine::{component, emit_save, parse_save};
 use spookery_engine::{entity, Presence, State};
@@ -1252,12 +1253,19 @@ pub(crate) fn play_round(
     let seen = output
         .seen
         .iter()
-        .map(|item| (item.viewer.to_string(), item.changes.clone()))
+        .map(|item| (item.viewer.to_string(), item.changed_keys.clone()))
         .collect();
     let change_lines = output
         .seen
         .iter()
-        .map(|item| (item.viewer.to_string(), item.line.clone()))
+        .map(|item| {
+            let viewer = item.viewer.to_string();
+            let line = text::render(&ServerBody::Changes {
+                viewer: viewer.clone(),
+                changes: item.changes.clone(),
+            });
+            (viewer, line)
+        })
         .collect();
     PlayedRound {
         now: round.state().clone(),

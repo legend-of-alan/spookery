@@ -2,9 +2,11 @@ use std::fs;
 use std::path::Path;
 
 use cucumber::{given, then, when};
+use spookery_client::text;
 use spookery_engine::testing::{self, stamp_pack_rev};
 use spookery_engine::World as EngineWorld;
 use spookery_engine::{component, Meter, Presence};
+use spookery_protocol::ServerBody;
 
 use crate::{split_line, World};
 
@@ -120,6 +122,20 @@ fn lark_drops_the_tonic(world: &mut World) {
     let mut opened = resume_with_lark(&pack);
     let output = play(&mut opened, "drop tonic");
     world.seen = change_line(&output);
+}
+
+#[when(expr = "lark climbs to the loft")]
+fn lark_climbs_to_the_loft(world: &mut World) {
+    let pack = world.pack().to_path_buf();
+    let mut opened = resume_with_lark(&pack);
+    let output = play(&mut opened, "travel loft");
+    world.seen = change_line(&output);
+}
+
+#[then(expr = "lark sees one line naming the Loft as her place")]
+fn lark_sees_the_loft_named_as_her_place(world: &mut World) {
+    let line = one_line(&world.seen);
+    assert_eq!(line, "Your place is now Loft.");
 }
 
 #[given(expr = "a tonic is on the ground")]
@@ -264,7 +280,12 @@ fn change_line(output: &spookery_engine::RoundOutput) -> String {
         .seen
         .iter()
         .find(|seen| seen.viewer == *"lark")
-        .map(|seen| seen.line.clone())
+        .map(|seen| {
+            text::render(&ServerBody::Changes {
+                viewer: "lark".into(),
+                changes: seen.changes.clone(),
+            })
+        })
         .unwrap_or_default()
 }
 

@@ -26,7 +26,7 @@ pub(crate) fn run(
 ) -> Deliveries {
     let gm = visibility::show_to(canon, state, &Recipient::Gm, changes, effects);
     let mut delivered = Deliveries {
-        changed_keys: gm.changes,
+        changed_keys: gm.changed_keys,
         lines: Vec::new(),
         seen: Vec::new(),
     };
@@ -47,11 +47,11 @@ pub(crate) fn run(
                 text,
             });
         }
-        if !delivery.changes.is_empty() {
+        if !delivery.changed_keys.is_empty() {
             delivered.seen.push(ViewerChanges {
                 viewer: id,
+                changed_keys: delivery.changed_keys,
                 changes: delivery.changes,
-                line: delivery.line,
             });
         }
     }
