@@ -41,17 +41,10 @@ impl Component for Modifier {
     type Value = Modifier;
 }
 
-impl Modifier {
-    /// The modifier as a change value: its stacks, the tick it expires at and its longest ticks.
-    pub(crate) fn to_value(&self) -> crate::state::change::Value {
-        let (stacks, until, max_ticks) = (&self.stacks, self.until, self.max_ticks);
-        crate::state::change::Value::Text(format!("{stacks:?} until {until} max_ticks {max_ticks}"))
-    }
-
-    /// Ticks from `now` until it expires.
-    pub fn ticks_left(&self, now: u64) -> u64 {
-        self.until.saturating_sub(now)
-    }
+/// The modifier as a change value: its stacks, the tick it expires at and its longest ticks.
+fn change_value(live: &Modifier) -> change::Value {
+    let (stacks, until, max_ticks) = (&live.stacks, live.until, live.max_ticks);
+    change::Value::Text(format!("{stacks:?} until {until} max_ticks {max_ticks}"))
 }
 
 /// Apply `add`, lasting `ticks`, at tick `now`. The ticks left plus `ticks` are the new
@@ -61,7 +54,7 @@ impl Modifier {
 /// go first, weakest first.
 pub fn stack(def: &ModifierDef, live: &mut Modifier, add: i64, ticks: u64, now: u64) {
     live.max_ticks = live.max_ticks.max(ticks);
-    let left = live.ticks_left(now).saturating_add(ticks);
+    let left = live.until.saturating_sub(now).saturating_add(ticks);
     live.until = now.saturating_add(left.min(live.max_ticks));
     while live.stacks.len() > def.max_stacks {
         if let Some(index) = weakest(&live.stacks) {
@@ -157,7 +150,7 @@ impl Mut<'_, entity::Actors, Modifier> {
         if next.is_some() {
             self.check_exists()?;
         }
-        let own = |held: Option<&Modifier>| held.map_or(change::Value::Empty, Modifier::to_value);
+        let own = |held: Option<&Modifier>| held.map_or(change::Value::Empty, change_value);
         let own_key = change::Key::ActorModifier(actor.to_string(), id.to_string());
         let own = Change::new(own_key, own(held), own(next.as_ref()));
         let stacks_move = held.map(|held| &held.stacks) != next.as_ref().map(|next| &next.stacks);
