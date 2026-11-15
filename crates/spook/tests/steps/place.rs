@@ -18,6 +18,42 @@ fn rowan_starts_in_docks_street(world: &mut World) {
     world.pack = Some(pack);
 }
 
+/// The street's exits stay hidden behind the ledger fact, which rowan does not know.
+#[given(expr = "a docks copy where the world shows dawn and the street's exits are hidden")]
+fn the_world_shows_dawn_and_the_street_exits_are_hidden(world: &mut World) {
+    let pack = crate::support::copy_pack("docks", "view-sections");
+    let dawn = "schema: meters\nmeters:\n  - id: dawn\n    min: 0\n    base_cap: 6\n    max: 6\n    base: 6\n    hidden: false\n";
+    fs::write(pack.join("world/meters.yaml"), dawn).unwrap();
+    for exit in ["docks_shop", "gate_yard"] {
+        common::replace_in_file(
+            &pack.join("world/places/docks_street.md"),
+            &format!("    name: {exit}\n"),
+            &format!("    name: {exit}\n    hidden: true\n    revealed_by: fact_ledger_short\n"),
+        );
+    }
+    spookery_engine::migrate_pack(&pack).unwrap_or_else(|err| panic!("migrate: {err}"));
+    world.pack = Some(pack);
+}
+
+/// The view of Docks Street ends `Exits:` `none`, with no `Items:` heading for its empty floor.
+#[then(expr = "the Docks Street view shows no exits and no Items heading")]
+fn the_docks_street_view_shows_no_exits(world: &mut World) {
+    let find_street_view = |stdout: &str| {
+        let start = stdout.rfind("You are in Docks Street.")?;
+        let exits = stdout[start..].find("Exits:\n")? + "Exits:\n".len();
+        let end = exits + stdout[start + exits..].find('\n')?;
+        Some(stdout[start..start + end].to_string())
+    };
+    common::wait_play_until(
+        world,
+        |stdout| find_street_view(stdout).is_some(),
+        "Docks Street",
+    );
+    let view = find_street_view(&world.stdout).unwrap();
+    assert!(view.ends_with("Exits:\nnone"), "{view}");
+    assert!(!view.contains("Items:"), "{view}");
+}
+
 #[given(expr = "wren is seated and not travelling")]
 fn wren_is_seated(world: &mut World) {
     let pack = world.pack.clone().unwrap();

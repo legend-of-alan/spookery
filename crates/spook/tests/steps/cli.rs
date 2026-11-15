@@ -9,6 +9,12 @@ use crate::World;
 use super::common::{capture_play_stdout, join_play, spawn_play, wait_play, wait_play_until};
 use super::table;
 
+/// The blank-line separated blocks of a step's docstring.
+pub(crate) fn split_blocks(step: &Step) -> Vec<&str> {
+    let text = step.docstring.as_deref().unwrap_or_default();
+    text.trim().split("\n\n").collect()
+}
+
 #[when(expr = "the operator asks spook for help")]
 fn the_operator_asks_spook_for_help(world: &mut World) {
     table::run(world, &["--help"]);
@@ -72,6 +78,13 @@ fn play_received_the_first_perceive(world: &mut World) {
     let stdout = capture_play_stdout(world);
     assert!(stdout.contains("Docks Shop"), "{stdout}");
     assert!(!stdout.contains("\"kind\":\"view\""), "{stdout}");
+}
+
+#[then(expr = "play shows each of these blocks:")]
+fn play_shows_each_block(world: &mut World, step: &Step) {
+    for block in split_blocks(step) {
+        wait_play(world, block);
+    }
 }
 
 #[then(expr = "play does not show {string}")]

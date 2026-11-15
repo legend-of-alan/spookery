@@ -2,6 +2,7 @@ use spookery_engine::testing::state_of;
 use std::fs;
 use std::io::Write;
 
+use cucumber::gherkin::Step;
 use cucumber::{given, then, when};
 
 use crate::support::{self, Process};
@@ -193,6 +194,24 @@ fn gm_with_nothing_listening(world: &mut World) {
 #[then(expr = "the GM shows {string}")]
 fn the_gm_shows(world: &mut World, text: String) {
     wait_gm(world, &text);
+}
+
+#[then(expr = "the GM shows each of these blocks:")]
+fn the_gm_shows_each_block(world: &mut World, step: &Step) {
+    for block in super::cli::split_blocks(step) {
+        wait_gm(world, block);
+    }
+}
+
+#[then(expr = "the GM shows {string} twice")]
+fn the_gm_shows_twice(world: &mut World, text: String) {
+    wait_gm_count(world, &text, 2);
+}
+
+#[then(expr = "the GM does not show {string}")]
+fn the_gm_does_not_show(world: &mut World, text: String) {
+    let stdout = capture_gm_stdout(world);
+    assert!(!stdout.contains(&text), "{stdout}");
 }
 
 #[then(expr = "the GM shows {int} rolls")]

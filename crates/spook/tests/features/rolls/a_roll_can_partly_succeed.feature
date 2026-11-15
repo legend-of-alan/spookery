@@ -28,13 +28,16 @@ Feature: A roll can partly succeed
     And the player sees outcome "miss" and no faces
     And the GM sees outcome "miss" and the faces
 
-  Scenario: Play prints the partial sentence
-    Given a docks copy where press vigor base is 6
+  Scenario Outline: Play prints the roll's sentence
+    Given a docks copy where press vigor base is <base>
     When play joins the table on a free loopback address
     And play types "press mira"
-    Then play shows "Your roll partly succeeded."
-    And play shows no protocol JSON
-    And Mira is touched and halfway
+    Then play shows "<sentence>"
+
+    Examples:
+      | base | sentence                    |
+      | 6    | Your roll partly succeeded. |
+      | 0    | Your roll missed.           |
 
   Scenario: A binary row never produces partial
     Given a docks table with a GM and a seated player

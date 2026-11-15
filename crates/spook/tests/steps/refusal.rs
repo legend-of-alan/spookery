@@ -298,6 +298,28 @@ fn harbormouse_saps_bram(world: &mut World) {
     world.player_added = added;
 }
 
+#[then(expr = "play does not show the round's intent ids")]
+fn play_does_not_show_the_intent_ids(world: &mut World) {
+    let pack = table::pack(world).to_path_buf();
+    let stdout = capture_play_stdout(world);
+    let mut ids = Vec::new();
+    for key in list_round_keys(&pack) {
+        let line = spookery_engine::testing::journal::read_record_line(&pack, &key)
+            .unwrap_or_else(|err| panic!("{key}: {}", err.detail));
+        let round: Value = serde_json::from_str(&line).unwrap_or_else(|err| panic!("{key}: {err}"));
+        let intents = round["intents"].as_array().cloned().unwrap_or_default();
+        ids.extend(
+            intents
+                .iter()
+                .filter_map(|intent| Some(intent["id"].as_str()?.to_string())),
+        );
+    }
+    assert!(!ids.is_empty(), "no intents");
+    for id in ids {
+        assert!(!stdout.contains(&id), "{id}\n{stdout}");
+    }
+}
+
 #[then(expr = "the round rejects that habit with {string}")]
 fn the_round_rejects_that_habit_with(world: &mut World, word: String) {
     assert_one_rejection(world, &word);

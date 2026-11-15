@@ -8,6 +8,7 @@ Feature: A round refusal names the gap
     And the GM commits the round
     Then play's error shows "You cannot afford vigor. [CANT_AFFORD]" once
     And the round rejects that habit with "CANT_AFFORD vigor"
+    And play does not show the round's intent ids
 
   Scenario: A locked exit refused during the round keeps its sentence
     Given a docks table where dropping the tonic locks the loft

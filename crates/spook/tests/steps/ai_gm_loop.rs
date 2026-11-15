@@ -89,6 +89,15 @@ fn a_model_that_perceives_first(world: &mut World) {
     world.model.push(&[END_TURN]);
 }
 
+#[given(expr = "a scripted model that perceives as Mira and as Rowan, then ends the turn")]
+fn a_model_that_perceives_mira_and_rowan(world: &mut World) {
+    world.model.push(&[
+        ("perceive", r#"{"as":"mira"}"#),
+        ("perceive", r#"{"as":"rowan"}"#),
+    ]);
+    world.model.push(&[END_TURN]);
+}
+
 #[given(expr = "a scripted model that queues a move Mira can't make")]
 fn a_model_that_queues_a_bad_move(world: &mut World) {
     world
@@ -188,6 +197,57 @@ fn a_perceive_came_before_any_say(world: &mut World) {
     let view = first("\"viewer\":\"mira\"").unwrap_or_else(|| panic!("{results:?}"));
     let say = first("\"kind\":\"say\"").unwrap_or_else(|| panic!("{results:?}"));
     assert!(view < say, "{results:?}");
+}
+
+/// The perceive result the model read for `viewer`, on its last call.
+fn read_perceive_result(world: &World, viewer: &str) -> Value {
+    let results = read_last_results(world);
+    results
+        .iter()
+        .filter_map(|result| serde_json::from_str::<Value>(result).ok())
+        .find(|result| result["viewer"] == viewer)
+        .unwrap_or_else(|| panic!("no perceive as {viewer}\n{results:?}"))
+}
+
+/// The shop's prose and the prose of each actor in it, and none for Bram in the street.
+fn assert_shop_prose(result: &Value) {
+    let shop = result["place_body"].as_str().unwrap_or_default();
+    assert!(shop.starts_with("The shop faces the water."), "{result}");
+    for (id, prose) in [
+        ("aldric", "Aldric sweeps the shop"),
+        ("mira", "Mira keeps the shop neat"),
+        ("rowan", "Rowan keeps the shop"),
+    ] {
+        let shown = result["cast"][id].as_str().unwrap_or_default();
+        assert!(shown.starts_with(prose), "{result}");
+    }
+    assert!(result["cast"].get("bram").is_none(), "{result}");
+}
+
+#[then(expr = "the perceive as Mira holds the cast's prose and Mira's facts, but no fact body")]
+fn miras_perceive_holds_her_facts(world: &mut World) {
+    let result = read_perceive_result(world, "mira");
+    assert_shop_prose(&result);
+    let facts = result["facts"]
+        .as_array()
+        .unwrap_or_else(|| panic!("{result}"));
+    let texts: Vec<&str> = facts
+        .iter()
+        .filter_map(|fact| fact["text"].as_str())
+        .collect();
+    assert!(texts.contains(&"The lamp-oil ledger is short."), "{result}");
+    for fact in facts {
+        let keys: Vec<&String> = fact.as_object().unwrap().keys().collect();
+        assert_eq!(keys, ["id", "text"], "{result}");
+    }
+}
+
+#[then(expr = "the perceive as Rowan holds the cast's prose but no facts or notes")]
+fn rowans_perceive_holds_no_facts(world: &mut World) {
+    let result = read_perceive_result(world, "rowan");
+    assert_shop_prose(&result);
+    assert!(result.get("facts").is_none(), "{result}");
+    assert!(result.get("notes").is_none(), "{result}");
 }
 
 #[then(expr = "the player saw Mira say hello")]

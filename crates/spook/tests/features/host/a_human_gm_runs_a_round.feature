@@ -78,11 +78,37 @@ Feature: A human GM runs a round
     And spook run stops
     Then the GM exits
 
-  Scenario: The GM perceives an actor
+  Scenario: The GM's status names who is seated and the queue
+    Given a docks table
+    When play and a human GM share a free loopback port
+    And the GM types "status"
+    Then the GM shows each of these blocks:
+      """
+      Seated: Rowan
+      Queue: empty
+      """
+
+  Scenario: The GM perceives as an actor and sees no ids, habits or fact bodies
     Given a docks table
     When a human GM sits on a free loopback port
-    And the GM types "perceive rowan"
-    Then the GM shows "You are in Docks Shop."
+    And the GM types "perceive mira"
+    Then the GM shows each of these blocks:
+      """
+      You are in Mira's Rooms.
+
+      You know:
+      The lamp-oil ledger is short.
+
+      Meters:
+      Hp: 8/16
+      """
+    And the GM does not show "The shop faces the water."
+    And the GM does not show "leave_door_note"
+    And the GM does not show "mira_rooms"
+    And the GM does not show "fact_"
+    When the GM types 'perceive {"as": "mira", "max_body_chars": 0}'
+    Then the GM shows "You are in Mira's Rooms." twice
+    And the GM does not show "fact_"
 
   Scenario: An unknown GM command points at help
     Given a docks table
