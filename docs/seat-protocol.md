@@ -181,7 +181,7 @@ A move the table can judge at once is refused before it is queued. Here Rowan se
 
 ### status
 
-The table's state for a GM. `world_time` is the game clock in ticks. `pack_rev` is the canon hash. A client that opened the pack on disk should compare it and leave on a mismatch. `last_round_at` is the save's stamp. `queued` lists the waiting moves. `pack` is the move menu, each cast entry's `control_type` (`npc` or `pc_template`), the place and cast prose, and `gm`, the pack's tone and flavor text for the GM from `pack.yaml`, as written. `gm` is left out when the pack has none, as the docks pack below does.
+The table's state for a GM. `world_time` is the game clock in ticks. `pack_rev` is the canon hash. A client that opened the pack on disk should compare it and leave on a mismatch. `last_round_at` is the save's stamp. `queued` lists the waiting moves. `pack` is the move menu, each cast entry's `control_type` (`npc` or `pc_template`), the place and cast prose, and `gm_notes`, the pack's tone and flavor text for the GM from `pack.yaml`, as written. `gm_notes` is left out when the pack has none, as the docks pack below does.
 
 <!-- example: gm-status -->
 ```json

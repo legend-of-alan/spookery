@@ -15,7 +15,7 @@ use crate::turn::Turn;
 const RECENT_LINES: usize = 16;
 
 /// How to be the GM, the same for every pack: the system message starts with it, and the
-/// pack's `gm` text follows.
+/// pack's `gm_notes` follow.
 pub(crate) const GM_INSTRUCTIONS: &str = "\
 You are the game master. You can't change the game state. Only the engine changes it, by applying the pack's rules and rolling its dice. You can look at the world, speak, and propose moves, and the engine decides what happens.
 
@@ -133,11 +133,11 @@ impl ClientState {
         })
     }
 
-    /// `GM_INSTRUCTIONS`, then the pack's `gm` text after a blank line when it has one.
+    /// `GM_INSTRUCTIONS`, then the pack's `gm_notes` after a blank line when it has one.
     fn system_text(&self) -> String {
-        match self.pack.gm.as_str() {
+        match self.pack.gm_notes.as_str() {
             "" => GM_INSTRUCTIONS.to_string(),
-            gm => format!("{GM_INSTRUCTIONS}\n\n{gm}"),
+            notes => format!("{GM_INSTRUCTIONS}\n\n{notes}"),
         }
     }
 }

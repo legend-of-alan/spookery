@@ -73,8 +73,8 @@ pub struct Canon {
     pub budget: Budget,
     /// Rounds between journal checkpoints. `save.yaml` is rewritten then.
     pub checkpoint_every: u64,
-    /// `gm` in `pack.yaml`: tone and flavor for the GM, empty when the pack has none.
-    pub gm: String,
+    /// `gm_notes` in `pack.yaml`: tone and flavor for the GM, empty when the pack has none.
+    pub gm_notes: String,
 }
 
 #[derive(Clone, Debug)]
@@ -212,7 +212,7 @@ impl Canon {
             control_types,
             places,
             cast,
-            gm: self.gm.clone(),
+            gm_notes: self.gm_notes.clone(),
         }
     }
 
@@ -452,7 +452,7 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
         items,
         budget,
         checkpoint_every,
-        gm: pack.gm,
+        gm_notes: pack.gm_notes,
     })
 }
 

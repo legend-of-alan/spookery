@@ -39,7 +39,7 @@ pub(super) struct PackDoc {
     pub(super) start: StartYaml,
     checkpoint_every: Option<u64>,
     #[serde(default)]
-    pub(super) gm: String,
+    pub(super) gm_notes: String,
 }
 
 #[derive(Deserialize)]

@@ -10,7 +10,7 @@ use crate::model;
 /// Sent from the agent to its `Model`: one message of a turn's conversation.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Message {
-    /// How to be the GM: the agent's own text, then the pack's `gm` text.
+    /// How to be the GM: the agent's own text, then the pack's `gm_notes`.
     System { content: String },
     /// The turn's observation.
     User { content: String },

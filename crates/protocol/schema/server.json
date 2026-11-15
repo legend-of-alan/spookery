@@ -649,8 +649,8 @@
             "type": "string"
           }
         },
-        "gm": {
-          "description": "The pack's tone and flavor for the GM, `gm` in `pack.yaml` as written. Left out when\nthe pack has none.",
+        "gm_notes": {
+          "description": "The pack's tone and flavor for the GM, `gm_notes` in `pack.yaml` as written. Left out when\nthe pack has none.",
           "type": "string"
         }
       },

@@ -156,7 +156,7 @@ mod tests {
                 ("mira".into(), "MIRA-PROSE-SENTINEL".into()),
                 ("rowan".into(), "Rowan came in from the rain.".into()),
             ]),
-            gm: String::new(),
+            gm_notes: String::new(),
         }
     }
 

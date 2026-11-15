@@ -338,8 +338,9 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
-    async fn every_model_call_opens_with_one_system_message_and_the_pack_gm_text_last() {
-        let grim_status = STATUS.replace(r#""cast":{}}"#, r#""cast":{},"gm":"Keep it grim."}"#);
+    async fn every_model_call_opens_with_one_system_message_and_the_pack_gm_notes_last() {
+        let grim_status =
+            STATUS.replace(r#""cast":{}}"#, r#""cast":{},"gm_notes":"Keep it grim."}"#);
         assert_ne!(grim_status, STATUS);
         let grim_status: &'static str = grim_status.leak();
         let grim = format!("{}\n\nKeep it grim.", context::GM_INSTRUCTIONS);
