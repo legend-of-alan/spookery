@@ -13,7 +13,7 @@ use crate::Reason;
 /// Refuse a cost the actor cannot pay as `CANT_AFFORD`, with the meter or item id as `detail`.
 pub(crate) fn afford(context: &Context, cost: &Cost) -> Result<(), gate::Refusal> {
     let (state, intent) = (context.state, context.intent);
-    let who = intent
+    let actor_id = intent
         .actor_id()
         .ok_or_else(|| gate::Refusal::new(intent, Reason::UnknownId))?;
     let cant_afford = |missing: &str| gate::Refusal {
@@ -29,7 +29,8 @@ pub(crate) fn afford(context: &Context, cost: &Cost) -> Result<(), gate::Refusal
         if amount < 0 {
             return Err(cant_afford(key));
         }
-        let current = modifier::value(state.actors(), who, key).map_err(|_| cant_afford(key))?;
+        let current =
+            modifier::value(state.actors(), actor_id, key).map_err(|_| cant_afford(key))?;
         if current < amount {
             return Err(cant_afford(key));
         }
@@ -40,7 +41,7 @@ pub(crate) fn afford(context: &Context, cost: &Cost) -> Result<(), gate::Refusal
         }
         let amount = expr::eval(context, expr).map_err(|_| cant_afford(id))?;
         let count = item_count(amount).map_err(|_| cant_afford(id))?;
-        let held = state.actors().get::<component::Item>(who);
+        let held = state.actors().get::<component::Item>(actor_id);
         if held.get(id).copied().unwrap_or(0) < count {
             return Err(cant_afford(id));
         }
@@ -61,19 +62,19 @@ pub(crate) fn pay(
     cost: &Cost,
     dice: &mut dyn Dice,
 ) -> Result<(), Reason> {
-    let who = intent.actor_id().ok_or(Reason::UnknownId)?;
+    let actor_id = intent.actor_id().ok_or(Reason::UnknownId)?;
     for (key, expr) in &cost.meters {
         let context = Context::new(canon, state, presence, intent);
         let amount = expr::eval_with_dice(&context, expr, dice)?;
         if amount < 0 {
             return Err(Reason::CantAfford);
         }
-        (state.actors_mut().get_mut::<Meter>(who)).shift(key, -amount)?;
+        (state.actors_mut().get_mut::<Meter>(actor_id)).shift(key, -amount)?;
         if amount == 0 {
             // A cost of 0 leaves the meter as it was and still takes a key of the budget.
             state.count_key(&change::Key::new(
                 Meter::NAME,
-                entity::IdRef::Actor(who),
+                entity::IdRef::Actor(actor_id),
                 key,
             ))?;
         }
@@ -83,7 +84,7 @@ pub(crate) fn pay(
         let count = item_count(expr::eval_with_dice(&context, expr, dice)?)?;
         // The key budget keeps its own code; any other refusal of the take is a shortfall.
         let taken = -i64::from(count);
-        match (state.actors_mut().get_mut::<component::Item>(who)).shift(id, taken, None) {
+        match (state.actors_mut().get_mut::<component::Item>(actor_id)).shift(id, taken, None) {
             Err(Reason::Budget) => return Err(Reason::Budget),
             Err(_) => return Err(Reason::CantAfford),
             Ok(()) => {}
