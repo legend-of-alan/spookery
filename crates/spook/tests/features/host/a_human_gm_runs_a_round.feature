@@ -88,7 +88,7 @@ Feature: A human GM runs a round
       Queue: empty
       """
 
-  Scenario: The GM perceives an actor and sees no ids, habits or fact bodies
+  Scenario: The GM perceives as an actor and sees no ids, habits or fact bodies
     Given a docks table
     When a human GM sits on a free loopback port
     And the GM types "perceive mira"
