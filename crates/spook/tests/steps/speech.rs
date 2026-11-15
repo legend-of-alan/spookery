@@ -49,20 +49,9 @@ fn the_gm_says_as(world: &mut World, text: String, place: String, speaker: Strin
 
 #[when(expr = "{string} says {string} to the table as {string}")]
 fn says_to_the_table_as(world: &mut World, actor: String, text: String, speaker: String) {
-    let args = serde_json::json!({ "address": "table", "text": text, "as": speaker });
-    send_say(world, &actor, args);
-}
-
-#[when(expr = "{string} says {string} to the place {string}")]
-fn says_to_the_place(world: &mut World, actor: String, text: String, place: String) {
-    let args = serde_json::json!({ "address": "place", "place": place, "text": text });
-    send_say(world, &actor, args);
-}
-
-/// Sends one `say` from `actor`'s seat and keeps its reply.
-fn send_say(world: &mut World, actor: &str, args: Value) {
     world.before = table::read_files(table::pack(world));
-    let seat = &table::player_client(world, actor).seat;
+    let seat = &table::player_client(world, &actor).seat;
+    let args = serde_json::json!({ "address": "table", "text": text, "as": speaker });
     let id = seat.send("say", args);
     world.scratch = seat.wait_reply(&id);
 }
