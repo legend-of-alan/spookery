@@ -72,6 +72,7 @@ Feature: Items are real
     Given lark holds a poisoned_dagger tagged weapon
     When Lark types "wield poisoned_dagger"
     Then lark's wielded slot is poisoned_dagger
+    And the GM summary lists "actor_wielded_item lark"
 
   Scenario: Only weapons can be wielded
     Given a copy of the sample-d20 pack where briar is busy

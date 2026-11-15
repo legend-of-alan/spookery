@@ -3,7 +3,6 @@
 //! the graph's task timeout.
 
 use spookery_engine::component;
-use std::fs;
 use std::time::Duration;
 
 use cucumber::{given, then, when};
@@ -43,9 +42,7 @@ fn a_docks_table_with_mira_and_gm_notes(world: &mut World, notes: String) {
 fn start_docks_table_with_mira(world: &mut World, notes: Option<&str>) {
     let pack = copy_docks("ai-gm-loop");
     if let Some(notes) = notes {
-        let path = pack.join("pack.yaml");
-        let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read pack.yaml: {err}"));
-        fs::write(&path, format!("{}\ngm_notes: {notes}\n", text.trim_end())).unwrap();
+        table::append_gm_notes(&pack, notes);
     }
     // Aldric starts in the shop. Mira starts upstairs.
     super::common::edit_save(&pack, |now| {

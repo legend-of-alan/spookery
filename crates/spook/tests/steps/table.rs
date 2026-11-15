@@ -328,6 +328,13 @@ pub fn pack(world: &World) -> &Path {
         .unwrap_or_else(|| panic!("no docks table"))
 }
 
+/// Appends `gm_notes: <notes>` to the pack's `pack.yaml`.
+pub fn append_gm_notes(pack: &Path, notes: &str) {
+    let path = pack.join("pack.yaml");
+    let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read pack.yaml: {err}"));
+    fs::write(&path, format!("{}\ngm_notes: {notes}\n", text.trim_end())).unwrap();
+}
+
 /// The actors whose player `wait` is in that round.
 pub fn list_player_waits(pack: &Path, name: &str) -> Vec<String> {
     let text = spookery_engine::testing::journal::read_record_line(pack, name)

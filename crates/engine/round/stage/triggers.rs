@@ -9,8 +9,9 @@ use crate::rules::gate;
 use crate::rules::grammar;
 use crate::rules::rule::{ChangeWatch, Op, Rule, When};
 use crate::state::change::{self, Change};
+use crate::state::component::{Component, Flag, Item, KnownFacts, Meter, OpenExit, Place};
 use crate::state::id::ActorId;
-use crate::state::{component, Presence, State};
+use crate::state::{component, entity, Presence, State};
 use crate::store::records::Step;
 
 use crate::round::dice::RoundDice;
@@ -85,7 +86,10 @@ fn match_rules<'a>(state: &State, rules: &[&'a Rule], changes: &[Change]) -> Vec
             if !matches_watch(state, rule, watch, change) {
                 continue;
             }
-            let subject = change.key.actor().map(ActorId::from);
+            let subject = match &change.key.entity_id {
+                entity::Id::Actor(actor) => Some(actor.clone()),
+                _ => None,
+            };
             if !subject_ids.contains(&subject) {
                 subject_ids.push(subject);
             }
@@ -126,64 +130,46 @@ fn fire(
 }
 
 fn matches_watch(state: &State, rule: &Rule, watch: &ChangeWatch, change: &Change) -> bool {
-    match watch {
-        ChangeWatch::Arrive { place, subject } => match &change.key {
-            change::Key::ActorPlace(actor) => {
-                let place = rule.watched_place(place);
-                change.before.as_text() != Some(place)
-                    && change.after.as_text() == Some(place)
-                    && matches_subject(state, subject, actor)
+    let changed = &change.key;
+    match (watch, changed.component_id, &changed.entity_id) {
+        (ChangeWatch::Arrive { place, subject }, Place::NAME, entity::Id::Actor(actor)) => {
+            let place = rule.watched_place(place);
+            change.before.as_text() != Some(place)
+                && change.after.as_text() == Some(place)
+                && matches_subject(state, subject, actor)
+        }
+        (ChangeWatch::Leave { place, subject }, Place::NAME, entity::Id::Actor(actor)) => {
+            let place = rule.watched_place(place);
+            change.before.as_text() == Some(place)
+                && change.after.as_text() != Some(place)
+                && matches_subject(state, subject, actor)
+        }
+        (ChangeWatch::Meter { key, op, bound }, Meter::NAME, _)
+            if changed.entry_id.as_ref() == Some(key) =>
+        {
+            crosses(&change.before, &change.after, *op, *bound)
+        }
+        (ChangeWatch::Flag { key, becomes }, Flag::NAME, _)
+            if changed.entry_id.as_ref() == Some(key) =>
+        {
+            flips(change, *becomes)
+        }
+        (ChangeWatch::Flag { key, becomes }, OpenExit::NAME, _) if key == OPEN => {
+            flips(change, *becomes)
+        }
+        (ChangeWatch::Item { id, gained }, Item::NAME, entity::Id::Actor(_))
+            if changed.entry_id.as_ref() == Some(id) =>
+        {
+            match (change.before.as_number(), change.after.as_number()) {
+                (Some(before), Some(after)) if *gained => after > before,
+                (Some(before), Some(after)) => after < before,
+                _ => false,
             }
-            _ => false,
-        },
-        ChangeWatch::Leave { place, subject } => match &change.key {
-            change::Key::ActorPlace(actor) => {
-                let place = rule.watched_place(place);
-                change.before.as_text() == Some(place)
-                    && change.after.as_text() != Some(place)
-                    && matches_subject(state, subject, actor)
-            }
-            _ => false,
-        },
-        ChangeWatch::Meter { key, op, bound } => match &change.key {
-            change::Key::ActorMeter(_, meter)
-            | change::Key::PlaceMeter(_, meter)
-            | change::Key::StoryMeter(_, meter)
-            | change::Key::WorldMeter(meter)
-                if meter == key =>
-            {
-                crosses(&change.before, &change.after, *op, *bound)
-            }
-            _ => false,
-        },
-        ChangeWatch::Flag { key, becomes } => match &change.key {
-            change::Key::ActorFlag(_, flag)
-            | change::Key::PlaceFlag(_, flag)
-            | change::Key::StoryFlag(_, flag)
-            | change::Key::WorldFlag(flag)
-                if flag == key =>
-            {
-                flips(change, *becomes)
-            }
-            change::Key::ExitOpen(_, _) if key == OPEN => flips(change, *becomes),
-            _ => false,
-        },
-        ChangeWatch::Item { id, gained } => match &change.key {
-            change::Key::ActorItem(_, item) if item == id => {
-                match (change.before.as_number(), change.after.as_number()) {
-                    (Some(before), Some(after)) if *gained => after > before,
-                    (Some(before), Some(after)) => after < before,
-                    _ => false,
-                }
-            }
-            _ => false,
-        },
-        ChangeWatch::Knows { fact } => match &change.key {
-            change::Key::ActorKnownFact(_) => {
-                change.after.contains(fact) && !change.before.contains(fact)
-            }
-            _ => false,
-        },
+        }
+        (ChangeWatch::Knows { fact }, KnownFacts::NAME, _) => {
+            change.after.contains(fact) && !change.before.contains(fact)
+        }
+        _ => false,
     }
 }
 
@@ -192,16 +178,15 @@ fn flips(change: &Change, becomes: bool) -> bool {
     change.before.as_bool() == Some(!becomes) && change.after.as_bool() == Some(becomes)
 }
 
-fn matches_subject(state: &State, subject: &grammar::Subject, actor_id: &str) -> bool {
-    let actor = ActorId::from(actor_id);
-    let Some(control_type) = state.actors().get::<component::ControlType>(&actor).get() else {
+fn matches_subject(state: &State, subject: &grammar::Subject, actor: &ActorId) -> bool {
+    let Some(control_type) = state.actors().get::<component::ControlType>(actor).get() else {
         return false;
     };
     match subject {
         grammar::Subject::Any => true,
         grammar::Subject::Pc => control_type == component::ControlType::Pc,
         grammar::Subject::Npc => control_type == component::ControlType::Npc,
-        grammar::Subject::Actor(expected) => expected == actor_id,
+        grammar::Subject::Actor(expected) => expected == actor.as_str(),
     }
 }
 

@@ -987,22 +987,22 @@
       ]
     },
     "ChangeView": {
-      "description": "One change of a `changes` body, sent from the table to a player client. `component` names\nwhat changed, such as `meter`, `item` or `place`. `entity` is whose it is as a rule's `of`\nnames it: an actor id, `place:<id>`, `story:<id>` or `world`. `entity_name` is that actor's\nor place's display name, or the story's id. `key` is which one of the entity's, such as the\nmeter or item id, and `name` its display name. `before` and `after` are left out when there\nwas none.",
+      "description": "One change of a `changes` body, sent from the table to a player client. `component_id`\nnames what changed, such as `meter`, `item` or `place`. `entity_id` is whose it is as a\nrule's `of` names it: an actor id, `place:<id>`, `story:<id>` or `world`.\n`entity_name` is that actor's or place's display name, or the story's id.\n`entry_id` is which one of the entity's, such as the meter or item id, and\n`entry_name` its display name. `before` and `after` are left out when there\nwas none.",
       "type": "object",
       "properties": {
-        "component": {
+        "component_id": {
           "type": "string"
         },
-        "entity": {
+        "entity_id": {
           "type": "string"
         },
         "entity_name": {
           "type": "string"
         },
-        "key": {
+        "entry_id": {
           "type": "string"
         },
-        "name": {
+        "entry_name": {
           "type": "string"
         },
         "before": {
@@ -1027,8 +1027,8 @@
         }
       },
       "required": [
-        "component",
-        "entity"
+        "component_id",
+        "entity_id"
       ]
     },
     "ChangeValue": {

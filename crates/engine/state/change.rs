@@ -6,137 +6,54 @@ use crate::state::component::Meter;
 use crate::state::entity;
 use crate::Reason;
 
-/// One budget identity. The commit diff summary is this type's `Display`,
-/// sorted as text. It is not a path inside `save.yaml`.
+/// One budget identity: the component a commit changed, the entity that holds it, and the
+/// id of the entry under that component, `None` when the entity holds one value of it. The
+/// commit diff summary is this type's `Display`, sorted as text. It is not a path inside
+/// `save.yaml`.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub enum Key {
-    ActorPlace(String),
-    ActorFlag(String, String),
-    ActorMeter(String, String),
-    /// An actor's modifier: its stacks and the tick it expires at.
-    ActorModifier(String, String),
-    ActorBusy(String),
-    ActorKnownFact(String),
-    LastActRound(String),
-    IdleActsThisWindow(String),
-    LiveActsThisWindow(String),
-    ActorItem(String, String),
-    PlaceItem(String, String),
-    PlaceMeter(String, String),
-    PlaceFlag(String, String),
-    StoryMeter(String, String),
-    StoryFlag(String, String),
-    /// Whether a door is open: the exit's place and its name.
-    ExitOpen(String, String),
-    ActorWielded(String),
-    Note(String),
-    WorldFlag(String),
-    WorldMeter(String),
+pub struct Key {
+    /// The component's `NAME` or, for an actor's action state, the part of it that moved.
+    pub component_id: &'static str,
+    pub entity_id: entity::Id,
+    /// The id the entity holds the value under, such as meter `grit` or item `rope`.
+    pub entry_id: Option<String>,
 }
 
+/// `<collection>_<component> <id> [<entry>]`, such as `actor_meter rowan grit` or
+/// `world_flag bells_rung`: the world has no id to spell.
 impl fmt::Display for Key {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Key::ActorPlace(id) => write!(f, "actor_place {id}"),
-            Key::ActorFlag(id, key) => write!(f, "actor_flag {id} {key}"),
-            Key::ActorMeter(id, key) => write!(f, "actor_meter {id} {key}"),
-            Key::ActorModifier(id, key) => write!(f, "modifier {id} {key}"),
-            Key::ActorBusy(id) => write!(f, "actor_busy {id}"),
-            Key::ActorKnownFact(id) => write!(f, "actor_known_fact {id}"),
-            Key::LastActRound(id) => write!(f, "last_act_round {id}"),
-            Key::IdleActsThisWindow(id) => write!(f, "idle_acts_this_window {id}"),
-            Key::LiveActsThisWindow(id) => write!(f, "live_acts_this_window {id}"),
-            Key::ActorItem(actor, id) => write!(f, "actor_item {actor} {id}"),
-            Key::PlaceItem(place, id) => write!(f, "place_item {place} {id}"),
-            Key::PlaceMeter(place, key) => write!(f, "place_meter {place} {key}"),
-            Key::PlaceFlag(place, key) => write!(f, "place_flag {place} {key}"),
-            Key::StoryMeter(story, key) => write!(f, "story_meter {story} {key}"),
-            Key::StoryFlag(story, key) => write!(f, "story_flag {story} {key}"),
-            Key::ExitOpen(place, exit) => write!(f, "exit_open {place} {exit}"),
-            Key::ActorWielded(actor) => write!(f, "actor_wielded {actor}"),
-            Key::Note(id) => write!(f, "note {id}"),
-            Key::WorldFlag(key) => write!(f, "world_flag {key}"),
-            Key::WorldMeter(key) => write!(f, "world_meter {key}"),
+        let component = self.component_id;
+        match &self.entity_id {
+            entity::Id::Actor(id) => write!(f, "actor_{component} {id}")?,
+            entity::Id::Place(id) => write!(f, "place_{component} {id}")?,
+            entity::Id::Story(id) => write!(f, "story_{component} {id}")?,
+            entity::Id::Global => write!(f, "world_{component}")?,
+        }
+        match &self.entry_id {
+            Some(entry_id) => write!(f, " {entry_id}"),
+            None => Ok(()),
         }
     }
 }
 
 impl Key {
-    /// The key of flag `name` on `id`.
-    pub(crate) fn flag(id: entity::IdRef<'_>, name: &str) -> Key {
-        let name = name.to_string();
-        match id {
-            entity::IdRef::Actor(id) => Key::ActorFlag(id.to_string(), name),
-            entity::IdRef::Place(id) => Key::PlaceFlag(id.to_string(), name),
-            entity::IdRef::Story(id) => Key::StoryFlag(id.to_string(), name),
-            entity::IdRef::Global => Key::WorldFlag(name),
-        }
-    }
-
-    /// The key of meter `name` on `id`.
-    pub(crate) fn meter(id: entity::IdRef<'_>, name: &str) -> Key {
-        let name = name.to_string();
-        match id {
-            entity::IdRef::Actor(id) => Key::ActorMeter(id.to_string(), name),
-            entity::IdRef::Place(id) => Key::PlaceMeter(id.to_string(), name),
-            entity::IdRef::Story(id) => Key::StoryMeter(id.to_string(), name),
-            entity::IdRef::Global => Key::WorldMeter(name),
-        }
-    }
-
-    /// The component this key watches, whose entity it is, and which one of that entity's it
-    /// is: empty when the entity holds one.
-    pub(crate) fn to_parts(&self) -> (&'static str, entity::Id, &str) {
-        let actor = |id: &String| entity::Id::Actor(id.as_str().into());
-        let place = |id: &String| entity::Id::Place(id.as_str().into());
-        let story = |id: &String| entity::Id::Story(id.as_str().into());
-        match self {
-            Key::ActorPlace(id) => ("place", actor(id), ""),
-            Key::ActorFlag(id, key) => ("flag", actor(id), key),
-            Key::ActorMeter(id, key) => ("meter", actor(id), key),
-            Key::ActorModifier(id, key) => ("modifier", actor(id), key),
-            Key::ActorBusy(id) => ("busy", actor(id), ""),
-            Key::ActorKnownFact(id) => ("known_facts", actor(id), ""),
-            Key::LastActRound(id) => ("last_act_round", actor(id), ""),
-            Key::IdleActsThisWindow(id) => ("idle_acts_this_window", actor(id), ""),
-            Key::LiveActsThisWindow(id) => ("live_acts_this_window", actor(id), ""),
-            Key::ActorItem(id, key) => ("item", actor(id), key),
-            Key::PlaceItem(id, key) => ("item", place(id), key),
-            Key::PlaceMeter(id, key) => ("meter", place(id), key),
-            Key::PlaceFlag(id, key) => ("flag", place(id), key),
-            Key::StoryMeter(id, key) => ("meter", story(id), key),
-            Key::StoryFlag(id, key) => ("flag", story(id), key),
-            Key::ExitOpen(id, exit) => ("exit_open", place(id), exit),
-            Key::ActorWielded(id) => ("wielded_item", actor(id), ""),
-            Key::Note(id) => ("note", entity::Id::Global, id),
-            Key::WorldFlag(key) => ("flag", entity::Id::Global, key),
-            Key::WorldMeter(key) => ("meter", entity::Id::Global, key),
-        }
-    }
-
-    /// The actor this key belongs to, when it has one.
-    pub fn actor(&self) -> Option<&str> {
-        match self {
-            Key::ActorPlace(id)
-            | Key::ActorFlag(id, _)
-            | Key::ActorMeter(id, _)
-            | Key::ActorModifier(id, _)
-            | Key::ActorBusy(id)
-            | Key::ActorKnownFact(id)
-            | Key::LastActRound(id)
-            | Key::IdleActsThisWindow(id)
-            | Key::LiveActsThisWindow(id)
-            | Key::ActorItem(id, _)
-            | Key::ActorWielded(id) => Some(id),
-            Key::PlaceItem(_, _)
-            | Key::PlaceMeter(_, _)
-            | Key::PlaceFlag(_, _)
-            | Key::StoryMeter(_, _)
-            | Key::StoryFlag(_, _)
-            | Key::ExitOpen(_, _)
-            | Key::Note(_)
-            | Key::WorldFlag(_)
-            | Key::WorldMeter(_) => None,
+    /// The key of `component_id`'s `entry_id` on `entity_id`: `None` when the entity holds one
+    /// value of it.
+    pub(crate) fn new(
+        component_id: &'static str,
+        entity_id: entity::IdRef<'_>,
+        entry_id: Option<&str>,
+    ) -> Key {
+        Key {
+            component_id,
+            entity_id: match entity_id {
+                entity::IdRef::Actor(id) => entity::Id::Actor(id.clone()),
+                entity::IdRef::Place(id) => entity::Id::Place(id.clone()),
+                entity::IdRef::Story(id) => entity::Id::Story(id.clone()),
+                entity::IdRef::Global => entity::Id::Global,
+            },
+            entry_id: entry_id.map(str::to_string),
         }
     }
 }

@@ -152,6 +152,21 @@ Feature: spook check explains a broken pack
     And a JSON diagnostic has code "WARNING" file "rules/verbs.yaml" path "rules[1]" and null line and column
     And stderr is empty
 
+  Scenario: Long gm_notes are a warning and the check still exits 0
+    Given a docks table
+    When the pack's gm_notes run to 1001 characters
+    And the operator runs spook check
+    Then the check exits 0
+    And the report names "WARNING"
+    And the report names "gm_notes"
+    And the report says "1000 characters"
+    And the report says "tone"
+    And stdout is empty
+    When the operator runs spook check --json
+    Then the check exits 0
+    And the JSON array is one diagnostic code "WARNING" file "pack.yaml" path "gm_notes"
+    And stderr is empty
+
   Scenario: The authoring example move passes check
     Given a docks table
     When the worked example row is appended to the verbs file
