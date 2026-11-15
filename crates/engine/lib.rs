@@ -288,7 +288,7 @@ pub mod testing {
             let nell = crate::ActorId::from("nell");
             let mut actors = state.actors_mut();
             actors.add_actor(&nell, crate::component::ControlType::Pc, "docks_shop");
-            for (key, base) in [("grit", 100), ("hp", 8), ("might", 1), ("rest", 3)] {
+            for (key, base) in [("hp", 8), ("might", 1), ("rest", 3), ("vigor", 100)] {
                 let meter = crate::Meter { base, offset: 0 };
                 let set = (actors.get_mut::<crate::Meter>(&nell)).set(key, Some(meter));
                 set.unwrap();

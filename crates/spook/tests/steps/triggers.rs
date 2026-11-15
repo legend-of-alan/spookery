@@ -378,12 +378,12 @@ rules:
     success:
       - meter:
           of: self
-          key: grit
+          key: vigor
           add: 0
     miss:
       - meter:
           of: self
-          key: grit
+          key: vigor
           add: -1
 ---
 The ground gives.
@@ -392,8 +392,8 @@ The ground gives.
     .unwrap();
     replace_in_file(
         &pack.join("rules/checks.yaml"),
-        "    meter: grit\n",
-        "    meter: grit\n  - id: stamina\n    dice:\n      count: 1\n      sides: 6\n    meter: grit\n",
+        "    meter: vigor\n",
+        "    meter: vigor\n  - id: stamina\n    dice:\n      count: 1\n      sides: 6\n    meter: vigor\n",
     );
     write_nell(&pack, &[]);
     edit_table(world, &pack, |now, seated| {
@@ -419,12 +419,12 @@ fn the_bog_roll_reproduces(world: &mut World) {
     let pack = world.pack.as_ref().unwrap();
     let now = state_of(pack);
     let nell = "nell".into();
-    let grit = now
+    let vigor = now
         .actors()
         .get::<component::Meter>(&nell)
-        .get("grit")
+        .get("vigor")
         .unwrap();
-    assert_eq!(grit.offset, -1, "the miss band did not spend grit");
+    assert_eq!(vigor.offset, -1, "the miss band did not spend vigor");
     let output = support::run_spook(&["verify", &pack.to_string_lossy()]);
     let stderr = String::from_utf8_lossy(&output.stderr);
     let stdout = String::from_utf8_lossy(&output.stdout);

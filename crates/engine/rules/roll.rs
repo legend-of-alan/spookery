@@ -134,7 +134,7 @@ mod tests {
         Check {
             dice_count: count,
             dice_sides: 6,
-            stat: "grit".to_string(),
+            stat: "vigor".to_string(),
         }
     }
 
@@ -142,7 +142,7 @@ mod tests {
         RollKey {
             seed: "docks".to_string(),
             round_index: 1,
-            rule_id: "grit".to_string(),
+            rule_id: "exert".to_string(),
             subject_id: Some("mira".into()),
             index,
         }

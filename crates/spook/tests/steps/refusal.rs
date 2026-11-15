@@ -77,9 +77,9 @@ fn the_player_sees_no_refused_frame(world: &mut World) {
     );
 }
 
-#[given(expr = "a docks table where push and shove each cost 1 grit")]
-fn push_and_shove_cost_grit(world: &mut World) {
-    let pack = support::copy_pack("docks", "grit-gap");
+#[given(expr = "a docks table where push and shove each cost 1 vigor")]
+fn push_and_shove_cost_vigor(world: &mut World) {
+    let pack = support::copy_pack("docks", "vigor-gap");
     crate::support::append(
         &pack.join("rules/verbs.yaml"),
         "\
@@ -88,7 +88,7 @@ fn push_and_shove_cost_grit(world: &mut World) {
       verb: push
     cost:
       meters:
-        grit: 1
+        vigor: 1
     do: []
 
   - id: shove
@@ -96,7 +96,7 @@ fn push_and_shove_cost_grit(world: &mut World) {
       verb: shove
     cost:
       meters:
-        grit: 1
+        vigor: 1
     do: []
 ",
     );
@@ -246,9 +246,9 @@ fn harbormouses_refused_frame_has_no_missing_field(world: &mut World, code: Stri
     );
 }
 
-#[given(expr = "Bram can pay for a habit until Harbormouse spends Bram's grit")]
-fn bram_can_pay_until_harbormouse_spends_brams_grit(world: &mut World) {
-    let pack = support::copy_pack("docks", "bram-grit");
+#[given(expr = "Bram can pay for a habit until Harbormouse spends Bram's vigor")]
+fn bram_can_pay_until_harbormouse_spends_brams_vigor(world: &mut World) {
+    let pack = support::copy_pack("docks", "bram-vigor");
     let path = pack.join("cast/bram.md");
     let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read bram: {err}"));
     let next = replace_brams_habits(
@@ -263,7 +263,7 @@ rules:
     when: habit
     cost:
       meters:
-        grit: 1
+        vigor: 1
     do:
       - flag:
           of: self
@@ -281,7 +281,7 @@ rules:
     do:
       - meter:
           of: bram
-          key: grit
+          key: vigor
           add: -1
 ",
     );

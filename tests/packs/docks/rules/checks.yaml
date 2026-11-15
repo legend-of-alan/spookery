@@ -1,10 +1,10 @@
 schema: checks
 checks:
-  - id: grit
+  - id: exert
     dice:
       count: 2
       sides: 6
-    meter: grit
+    meter: vigor
   - id: strike
     dice:
       count: 1

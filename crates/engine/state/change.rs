@@ -15,11 +15,11 @@ pub struct Key {
     /// The component's `NAME` or, for an actor's action state, the part of it that moved.
     pub component_id: &'static str,
     pub entity_id: entity::Id,
-    /// The id the entity holds the value under, such as meter `grit` or item `rope`.
+    /// The id the entity holds the value under, such as meter `vigor` or item `rope`.
     pub entry_id: Option<String>,
 }
 
-/// `<collection>_<component> <id> [<entry>]`, such as `actor_meter rowan grit` or
+/// `<collection>_<component> <id> [<entry>]`, such as `actor_meter rowan vigor` or
 /// `world_flag bells_rung`: the world has no id to spell.
 impl fmt::Display for Key {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

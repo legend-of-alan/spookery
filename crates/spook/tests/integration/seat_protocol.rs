@@ -141,8 +141,8 @@ fn capture() -> BTreeMap<String, Example> {
     insert_json(&mut out, "gm-queued", next_kind(&gm, "queued"));
     insert_json(
         &mut out,
-        "player-grit",
-        send(&mut player, "grit", json!({})),
+        "player-exert",
+        send(&mut player, "exert", json!({})),
     );
     insert_json(&mut out, "player-queued", next_kind(&player, "queued"));
     next_kind(&gm, "queued");
@@ -209,7 +209,7 @@ fn capture() -> BTreeMap<String, Example> {
     let queue_args = json!({"actor_id": "aldric", "move": "wait", "id": "mcp-wait"});
     insert_json(&mut out, "mcp-call", tool_call(1, "queue", &queue_args));
     insert_json(&mut out, "mcp-result", call(&mut mcp, "queue", queue_args));
-    send(&mut back, "grit", json!({}));
+    send(&mut back, "exert", json!({}));
     next_kind(&back, "queued");
     insert_json(&mut out, "mcp-event", one_event(&mut mcp));
     let mut newcomer = RawSession::open(table.mcp_port);

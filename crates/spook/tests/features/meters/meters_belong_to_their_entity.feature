@@ -17,10 +17,10 @@ Feature: Meters belong to their entity
     Then it refuses Bram's habit, saying only Mira carries shop_day
 
   Scenario: A scoped meter id that is already global is refused
-    Given rules/meters.yaml defines "grit"
-    And cast/mira.md also declares a "grit" meter
+    Given rules/meters.yaml defines "vigor"
+    And cast/mira.md also declares a "vigor" meter
     When the author runs spook check
-    Then it refuses the second grit
+    Then it refuses the second vigor
 
   Scenario: A player in the same room does not see another actor's meter change
     Given rowan and Mira stand in the shop

@@ -435,7 +435,7 @@ mod tests {
             "You cannot afford g. [CANT_AFFORD]"
         );
         for raw in [
-            r#"{"kind":"refused","code":"CANT_AFFORD","detail":"grit"}"#,
+            r#"{"kind":"refused","code":"CANT_AFFORD","detail":"vigor"}"#,
             r#"{"kind":"refused","code":"SCHEMA"}"#,
             r#"{"kind":"refused","code":"NEW_CODE"}"#,
         ] {

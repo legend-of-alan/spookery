@@ -1,7 +1,7 @@
 Feature: Each roll has its own seed
 
   Scenario: An unrelated intent doesn't change another intent's dice
-    Given a round where Harbormouse rolls grit
+    Given a round where Harbormouse rolls exert
     When the same round is played again with an extra unrelated NPC roll queued first
     Then Harbormouse's faces and total are identical
 

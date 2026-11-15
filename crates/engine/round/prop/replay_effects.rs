@@ -5,7 +5,7 @@
 //!
 //!   Scenario: Running a round's effects again matches the logged effects
 //!     Given the docks pack
-//!     And a successful grit check adds one lamp oil
+//!     And a successful exert check adds one lamp oil
 //!     When random legal player moves and habit rounds are played
 //!     Then running each round again yields the effects written in the journal
 //! ```
@@ -60,7 +60,7 @@ fn replay_each_round(played: &Path) -> Result<(), TestCaseError> {
         fs::read(journal::save_path(played))
     }
     .map_err(|err| TestCaseError::fail(err.to_string()))?;
-    // Same rules as the played copy, including the grit success effect, at the snapshot.
+    // Same rules as the played copy, including the exert success effect, at the snapshot.
     let pack = TempPack(fresh_dir("prop-rerun-again"));
     copy_dir(played, &pack.0);
     fs::write(journal::save_path(&pack.0), snapshot)

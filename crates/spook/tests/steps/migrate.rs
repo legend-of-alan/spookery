@@ -263,23 +263,23 @@ fn the_journal_line_is(world: &mut World, key: String, step: &Step) {
     assert_eq!(line, golden.trim());
 }
 
-#[when(expr = "Rowan's grit offset is hand edited to {int} and Nell joins without grit")]
-fn rowan_moves_grit_and_nell_joins(world: &mut World, offset: i64) {
+#[when(expr = "Rowan's vigor offset is hand edited to {int} and Nell joins without vigor")]
+fn rowan_moves_vigor_and_nell_joins(world: &mut World, offset: i64) {
     let pack = table::pack(world).to_path_buf();
     spookery_engine::testing::edit_save(&pack, |now| {
-        support::edit_meter(now, "rowan", "grit", |grit| grit.offset = offset);
+        support::edit_meter(now, "rowan", "vigor", |vigor| vigor.offset = offset);
         let (rowan, nell) = (&"rowan".into(), &"nell".into());
         let mut actors = now.actors_mut();
         actors.copy_actor(rowan, nell, "docks_shop").unwrap();
-        actors.get_mut::<Meter>(nell).set("grit", None).unwrap();
+        actors.get_mut::<Meter>(nell).set("vigor", None).unwrap();
     });
 }
 
-#[then(expr = "{word}'s grit is at base {int} and offset {int}")]
-fn grit_is_at(world: &mut World, actor: String, base: i64, offset: i64) {
+#[then(expr = "{word}'s vigor is at base {int} and offset {int}")]
+fn vigor_is_at(world: &mut World, actor: String, base: i64, offset: i64) {
     let now = state_of(table::pack(world));
     let id = actor.as_str().into();
-    let grit = now.actors().get::<component::Meter>(&id).get("grit");
-    let got = grit.map(|grit| (grit.base, grit.offset));
+    let vigor = now.actors().get::<component::Meter>(&id).get("vigor");
+    let got = vigor.map(|vigor| (vigor.base, vigor.offset));
     assert_eq!(got, Some((base, offset)), "{actor}");
 }

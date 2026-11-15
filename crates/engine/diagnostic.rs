@@ -279,14 +279,14 @@ mod tests {
     fn a_diagnostic_serializes_and_prints_the_line_form() {
         let diag = schema_error(
             "rules/verbs.yaml",
-            "rule 'grit' is missing when",
+            "rule 'exert' is missing when",
             "add when",
         )
         .at_path("rules[0].when")
         .at_line(14, Some(5));
         assert_eq!(
             diag.to_string(),
-            "rules/verbs.yaml:14: rule 'grit' is missing when; add when (SCHEMA)"
+            "rules/verbs.yaml:14: rule 'exert' is missing when; add when (SCHEMA)"
         );
         let json = serde_json::to_value(&diag).unwrap();
         assert_eq!(json["file"], "rules/verbs.yaml");

@@ -9,9 +9,9 @@ use spookery_engine::{component, MoveReport};
 use crate::{resolve_id, World};
 use spookery_engine::testing::{self as support, act_of, place_of, read_round};
 
-#[given(expr = "a round where Harbormouse rolls grit")]
-fn a_round_where_harbormouse_rolls_grit(world: &mut World) {
-    let clean = support::copy_pack("docks", "harbormouse-grit");
+#[given(expr = "a round where Harbormouse rolls exert")]
+fn a_round_where_harbormouse_rolls_exert(world: &mut World) {
+    let clean = support::copy_pack("docks", "harbormouse-exert");
     let played = support::fresh_dir("harbormouse-alone");
     support::copy_dir(&clean, &played);
     let (faces, total) = harbormouse_roll(&played, false);
@@ -36,7 +36,7 @@ fn harbormouses_faces_and_total_are_identical(world: &mut World) {
 fn ten_rolling_intents_in_one_round(world: &mut World) {
     let pack = support::copy_pack("docks", "ten-dice");
     let intents = (0..10)
-        .map(|index| intent(&format!("grit-{index}"), "rowan", "grit", None))
+        .map(|index| intent(&format!("exert-{index}"), "rowan", "exert", None))
         .collect();
     let (_state, rolls, round) = play_queued(&pack, &[], intents);
     world.scratch = round.to_string();
@@ -97,7 +97,7 @@ fn two_fresh_copies_of_the_docks_pack_as_shipped(world: &mut World) {
 #[when(expr = "one round is played on each")]
 fn one_round_is_played_on_each(world: &mut World) {
     for pack in &world.copies {
-        play_queued(pack, &[], vec![intent("grit", "rowan", "grit", None)]);
+        play_queued(pack, &[], vec![intent("exert", "rowan", "exert", None)]);
     }
 }
 
@@ -148,7 +148,7 @@ fn a_docks_row_overreach(world: &mut World, add: i64, remove: i64) {
     world.pack = Some(pack);
 }
 
-#[given(expr = "a docks row spilled that rolls grit and then removes {int} lamp oil")]
+#[given(expr = "a docks row spilled that rolls exert and then removes {int} lamp oil")]
 fn a_docks_row_spilled(world: &mut World, remove: i64) {
     let pack = support::copy_pack("docks", "spilled");
     support::append(
@@ -159,7 +159,7 @@ fn a_docks_row_spilled(world: &mut World, remove: i64) {
     when:
       verb: spilled
     roll:
-      check: grit
+      check: exert
       threshold: 0
     do:
       - item:
@@ -491,17 +491,17 @@ fn the_refused_finish_commits(world: &mut World) {
 }
 
 #[given(
-    expr = "a docks pack whose \"pick\" rule rolls grit against a threshold that divides by zero"
+    expr = "a docks pack whose \"pick\" rule rolls exert against a threshold that divides by zero"
 )]
 fn a_docks_pack_with_a_broken_pick(world: &mut World) {
     let pack = support::copy_pack("docks", "broken-threshold");
-    // Grit starts at 1, so the divisor is 0 only at play, past `spook check`.
+    // Vigor starts at 1, so the divisor is 0 only at play, past `spook check`.
     support::append(
         &pack.join("rules/verbs.yaml"),
         "
   - id: pick
     when: { verb: pick }
-    roll: { check: grit, threshold: \"10 / (self.grit - 1)\" }
+    roll: { check: exert, threshold: \"10 / (self.vigor - 1)\" }
     do: []
 ",
     );
@@ -562,7 +562,7 @@ fn a_docks_pack_with_two_rummage_rules(world: &mut World, shop: i64, shared: i64
         "  - id: rummage
     when: {{ verb: rummage }}
     cost: {{ meters: {{ rest: {shop} }} }}
-    roll: {{ check: grit, threshold: 0 }}
+    roll: {{ check: exert, threshold: 0 }}
     do: []"
     );
     add_place_rules(&pack, "docks_shop", &rule);
@@ -861,7 +861,7 @@ fn harbormouse_roll(pack: &Path, extra_first: bool) -> (String, i64) {
             Some("harbormouse"),
         ));
     }
-    intents.push(intent("harbormouse-grit", "harbormouse", "grit", None));
+    intents.push(intent("harbormouse-exert", "harbormouse", "exert", None));
     let (_state, rolls, _round) = play_queued(pack, &[], intents);
     let rolled = rolls.into_iter().find_map(|report| match report {
         MoveReport::Rolled {
@@ -937,14 +937,14 @@ fn make_mira_ineligible(pack: &Path) {
 }
 
 #[given(
-    regex = r#"^the docks pack allows (\d+) state keys per round and a row "brace" that adds (\d+) to grit through a modifier$"#
+    regex = r#"^the docks pack allows (\d+) state keys per round and a row "brace" that adds (\d+) to vigor through a modifier$"#
 )]
 fn the_docks_pack_allows_keys_and_braces(world: &mut World, limit: u64, add: i64) {
     let pack = support::copy_pack("docks", "key-limit-brace");
     set_budget(&pack, "max_state_keys_mutated", limit);
     fs::write(
         pack.join("rules/modifiers.yaml"),
-        "schema: modifiers\nmodifiers:\n  - id: brace\n    meter: grit\n",
+        "schema: modifiers\nmodifiers:\n  - id: brace\n    meter: vigor\n",
     )
     .unwrap();
     support::append(

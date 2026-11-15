@@ -224,13 +224,13 @@ fn mira_also_declares(world: &mut World, key: String) {
     add_mira_meter(pack(world), (&key, 1, None));
 }
 
-#[then(expr = "it refuses the second grit")]
-fn it_refuses_the_second_grit(world: &mut World) {
+#[then(expr = "it refuses the second vigor")]
+fn it_refuses_the_second_vigor(world: &mut World) {
     assert_refused(
         world,
         &[
             "cast/mira.md",
-            "meter 'grit' is already in rules/meters.yaml",
+            "meter 'vigor' is already in rules/meters.yaml",
         ],
     );
 }

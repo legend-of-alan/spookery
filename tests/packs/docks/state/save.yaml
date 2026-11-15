@@ -1,6 +1,6 @@
 schema: save
 world_id: docks-001
-pack_rev: blake2s:ad8faf02cb35b38a7996c43d4c2bd5715c17191ec5a9f5a903246c38d6fd9e6e
+pack_rev: blake2s:778f2e207a12de8dc5ff33a7a4d36387ddcdd9e3939e4aee64cd2600a7cb8910
 rules_rev: 25
 state_rev: 0
 round_index: 0
@@ -75,9 +75,6 @@ actors:
       tonic: 1
   meters:
     aldric:
-      grit:
-        base: 1
-        offset: 0
       hp:
         base: 8
         offset: 0
@@ -86,11 +83,11 @@ actors:
         offset: 0
       rest:
         base: 3
+        offset: 0
+      vigor:
+        base: 1
         offset: 0
     bram:
-      grit:
-        base: 1
-        offset: 0
       hp:
         base: 8
         offset: 0
@@ -100,10 +97,10 @@ actors:
       rest:
         base: 3
         offset: 0
-    briar:
-      grit:
+      vigor:
         base: 1
         offset: 0
+    briar:
       hp:
         base: 8
         offset: 0
@@ -113,10 +110,10 @@ actors:
       rest:
         base: 3
         offset: 0
-    harbormouse:
-      grit:
+      vigor:
         base: 1
         offset: 0
+    harbormouse:
       hp:
         base: 8
         offset: 0
@@ -126,10 +123,10 @@ actors:
       rest:
         base: 3
         offset: 0
-    mira:
-      grit:
+      vigor:
         base: 1
         offset: 0
+    mira:
       hp:
         base: 8
         offset: 0
@@ -142,13 +139,13 @@ actors:
       shop_day:
         base: 1
         offset: 0
+      vigor:
+        base: 1
+        offset: 0
     rowan:
       assassination_debt:
         base: 2
         offset: 0
-      grit:
-        base: 1
-        offset: 0
       hp:
         base: 8
         offset: 0
@@ -157,11 +154,11 @@ actors:
         offset: 0
       rest:
         base: 3
+        offset: 0
+      vigor:
+        base: 1
         offset: 0
     wren:
-      grit:
-        base: 1
-        offset: 0
       hp:
         base: 8
         offset: 0
@@ -170,6 +167,9 @@ actors:
         offset: 0
       rest:
         base: 3
+        offset: 0
+      vigor:
+        base: 1
         offset: 0
   modifiers: {}
   flags: {}

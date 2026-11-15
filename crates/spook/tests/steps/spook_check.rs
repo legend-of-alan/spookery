@@ -254,8 +254,8 @@ fn the_save_gives_meters_to_an_actor_with_no_control_type(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
     support::edit_save(&pack, |now| {
         support::edit_as_saved(now, |save| {
-            let grit = serde_json::json!({ "grit": { "base": 1, "offset": 0 } });
-            save["actors"]["meters"]["nobody"] = grit;
+            let vigor = serde_json::json!({ "vigor": { "base": 1, "offset": 0 } });
+            save["actors"]["meters"]["nobody"] = vigor;
         });
     });
 }

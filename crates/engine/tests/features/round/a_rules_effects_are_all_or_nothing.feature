@@ -20,7 +20,7 @@ Feature: A rule's effects are all or nothing
     Then neither flag is set and the round log names the change rule's BUDGET refusal
 
   Scenario: A refused roll is not reported as a success
-    Given a docks row spilled that rolls grit and then removes 8 lamp oil
+    Given a docks row spilled that rolls exert and then removes 8 lamp oil
     When Mira plays spilled
     Then lamp oil stays 4, the round names OUT_OF_RANGE, and no roll is reported
 

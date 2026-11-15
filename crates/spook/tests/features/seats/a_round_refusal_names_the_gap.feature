@@ -1,13 +1,13 @@
 Feature: A round refusal names the gap
 
-  Scenario: A move refused during the round names the grit
-    Given a docks table where push and shove each cost 1 grit
+  Scenario: A move refused during the round names the vigor it lacks
+    Given a docks table where push and shove each cost 1 vigor
     When the GM is seated and play joins
     And play queues "push"
     And play queues "shove"
     And the GM commits the round
-    Then play's error shows "You cannot afford grit. [CANT_AFFORD]" once
-    And the round rejects that habit with "CANT_AFFORD grit"
+    Then play's error shows "You cannot afford vigor. [CANT_AFFORD]" once
+    And the round rejects that habit with "CANT_AFFORD vigor"
 
   Scenario: A locked exit refused during the round keeps its sentence
     Given a docks table where dropping the tonic locks the loft
@@ -43,7 +43,7 @@ Feature: A round refusal names the gap
     Then Harbormouse's refused frame for "BUDGET" has no missing field
 
   Scenario: An NPC habit refused for cost sends no player frame
-    Given Bram can pay for a habit until Harbormouse spends Bram's grit
+    Given Bram can pay for a habit until Harbormouse spends Bram's vigor
     When Harbormouse saps Bram
     Then the player sees no refused frame
-    And the round rejects that habit with "CANT_AFFORD grit"
+    And the round rejects that habit with "CANT_AFFORD vigor"

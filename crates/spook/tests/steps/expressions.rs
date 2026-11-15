@@ -11,17 +11,17 @@ use spookery_engine::testing::journal::list_round_keys;
 use super::table;
 use crate::World;
 
-#[when(expr = "the pack's hit adds {string} to grit")]
+#[when(expr = "the pack's hit adds {string} to vigor")]
 fn the_packs_hit_adds(world: &mut World, add: String) {
     append_hit(world, "self", &format!("\"{add}\""));
 }
 
-#[when(expr = "the pack's hit raises the grit of {string}")]
-fn the_packs_hit_raises_the_grit_of(world: &mut World, of: String) {
+#[when(expr = "the pack's hit raises the vigor of {string}")]
+fn the_packs_hit_raises_the_vigor_of(world: &mut World, of: String) {
     append_hit(world, &of, "1");
 }
 
-#[when(expr = "Mira's habit adds {string} to grit")]
+#[when(expr = "Mira's habit adds {string} to vigor")]
 fn miras_habit_adds(world: &mut World, add: String) {
     let pack = table::pack(world).to_path_buf();
     let path = pack.join("cast/mira.md");
@@ -29,7 +29,7 @@ fn miras_habit_adds(world: &mut World, add: String) {
     let next = text.replacen(
         "rules:\n  - id: leave_door_note\n",
         &format!(
-            "rules:\n  - id: toss\n    when: habit\n    do:\n      - meter:\n          of: self\n          key: grit\n          add: \"{add}\"\n  - id: leave_door_note\n"
+            "rules:\n  - id: toss\n    when: habit\n    do:\n      - meter:\n          of: self\n          key: vigor\n          add: \"{add}\"\n  - id: leave_door_note\n"
         ),
         1,
     );
@@ -44,13 +44,13 @@ fn one_round_plays(world: &mut World) {
     spookery_engine::play_pack_once(&pack).unwrap_or_else(|err| panic!("round: {err}"));
 }
 
-#[when(expr = "the pack's hit requires grit of at least {string}")]
+#[when(expr = "the pack's hit requires vigor of at least {string}")]
 fn the_packs_hit_requires(world: &mut World, value: String) {
     let pack = table::pack(world).to_path_buf();
     let path = pack.join("rules/verbs.yaml");
     let mut text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read verbs: {err}"));
     text.push_str(&format!(
-        "\n  - id: hit\n    when:\n      verb: hit\n    if:\n      - meter:\n          of: self\n          id: grit\n          op: \">=\"\n          value: \"{value}\"\n    do:\n      - meter:\n          of: self\n          key: grit\n          add: 1\n"
+        "\n  - id: hit\n    when:\n      verb: hit\n    if:\n      - meter:\n          of: self\n          id: vigor\n          op: \">=\"\n          value: \"{value}\"\n    do:\n      - meter:\n          of: self\n          key: vigor\n          add: 1\n"
     ));
     fs::write(&path, text).unwrap_or_else(|err| panic!("write verbs: {err}"));
 }
@@ -69,16 +69,16 @@ fn the_player_hits_and_the_gm_commits(world: &mut World) {
     world.stdout = table::gm_tool_call(world, 7, "commit", r#"{"include_round":true}"#);
 }
 
-#[then(expr = "Rowan's grit is {int}")]
-fn rowans_grit_is(world: &mut World, expected: i64) {
-    assert_eq!(grit(world), expected);
+#[then(expr = "Rowan's vigor is {int}")]
+fn rowans_vigor_is(world: &mut World, expected: i64) {
+    assert_eq!(vigor(world), expected);
 }
 
-#[then(expr = "Mira's grit rose by the 1d4 face")]
-fn miras_grit_rose_by_the_1d4_face(world: &mut World) {
+#[then(expr = "Mira's vigor rose by the 1d4 face")]
+fn miras_vigor_rose_by_the_1d4_face(world: &mut World) {
     let faces = dice_faces(world, "1d4");
     assert_eq!(faces.len(), 1, "{faces:?}");
-    assert_eq!(grit_of(world, "mira"), 1 + i64::from(faces[0]));
+    assert_eq!(vigor_of(world, "mira"), 1 + i64::from(faces[0]));
 }
 
 #[then(expr = "the journal records the 1d4 face")]
@@ -107,19 +107,19 @@ fn the_report_names_the_line_holding(world: &mut World, needle: String) {
     );
 }
 
-#[then(expr = "Rowan's grit rose by the 2d6 faces")]
-fn rowans_grit_rose_by_the_2d6_faces(world: &mut World) {
+#[then(expr = "Rowan's vigor rose by the 2d6 faces")]
+fn rowans_vigor_rose_by_the_2d6_faces(world: &mut World) {
     let faces = dice_faces(world, "2d6");
     let sum: i64 = faces.iter().map(|face| i64::from(*face)).sum();
     assert_eq!(faces.len(), 2, "{faces:?}");
-    assert_eq!(grit(world), 1 + sum);
+    assert_eq!(vigor(world), 1 + sum);
 }
 
-#[then(expr = "Rowan's grit rose by the higher d20")]
-fn rowans_grit_rose_by_the_higher_d20(world: &mut World) {
+#[then(expr = "Rowan's vigor rose by the higher d20")]
+fn rowans_vigor_rose_by_the_higher_d20(world: &mut World) {
     let faces = dice_faces(world, "2d20kh1");
     let high = faces.iter().copied().max().unwrap_or(0);
-    assert_eq!(grit(world), 1 + i64::from(high));
+    assert_eq!(vigor(world), 1 + i64::from(high));
 }
 
 #[then(expr = "the journal records the 2d6 faces")]
@@ -188,24 +188,24 @@ fn append_hit(world: &World, of: &str, add: &str) {
     let path = pack.join("rules/verbs.yaml");
     let mut text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read verbs: {err}"));
     text.push_str(&format!(
-        "\n  - id: hit\n    when:\n      verb: hit\n    do:\n      - meter:\n          of: {of}\n          key: grit\n          add: {add}\n"
+        "\n  - id: hit\n    when:\n      verb: hit\n    do:\n      - meter:\n          of: {of}\n          key: vigor\n          add: {add}\n"
     ));
     fs::write(&path, &text).unwrap_or_else(|err| panic!("write verbs: {err}"));
     crate::support::stamp_pack_rev(&pack);
 }
 
-fn grit(world: &World) -> i64 {
-    grit_of(world, "rowan")
+fn vigor(world: &World) -> i64 {
+    vigor_of(world, "rowan")
 }
 
-fn grit_of(world: &World, actor: &str) -> i64 {
+fn vigor_of(world: &World, actor: &str) -> i64 {
     let now = state_of(table::pack(world));
     let id = actor.into();
     let live = now
         .actors()
         .get::<component::Meter>(&id)
-        .get("grit")
-        .unwrap_or_else(|| panic!("{actor}'s grit missing"));
+        .get("vigor")
+        .unwrap_or_else(|| panic!("{actor}'s vigor missing"));
     live.base + live.offset
 }
 

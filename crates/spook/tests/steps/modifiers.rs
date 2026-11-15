@@ -120,7 +120,7 @@ fn numbers(list: &str) -> Vec<i64> {
 }
 
 #[given(
-    expr = "the docks pack with one-tick rounds and rowan's grit at 20, with three PCs in the shop"
+    expr = "the docks pack with one-tick rounds and rowan's vigor at 20, with three PCs in the shop"
 )]
 fn docks_with_one_tick_rounds(world: &mut World) {
     let pack = copy_pack("docks", "modifiers");
@@ -136,7 +136,7 @@ fn docks_with_one_tick_rounds(world: &mut World) {
             .get_mut::<component::Place>(&"rowan".into())
             .set("docks_shop")
             .unwrap();
-        support::edit_meter(now, "rowan", "grit", |grit| grit.base = 20);
+        support::edit_meter(now, "rowan", "vigor", |vigor| vigor.base = 20);
         sit(seated, &["harbormouse", "rowan", "wren"]);
     });
     world.pack = Some(pack);
@@ -157,17 +157,17 @@ fn modifier_without_a_cap(world: &mut World, id: String, meter: String) {
     add_modifier(pack(world), &id, &meter, "");
 }
 
-#[given(expr = "{string} is a hidden modifier of grit")]
+#[given(expr = "{string} is a hidden modifier of vigor")]
 fn hidden_modifier(world: &mut World, id: String) {
-    add_modifier(pack(world), &id, "grit", "    hidden: true\n");
+    add_modifier(pack(world), &id, "vigor", "    hidden: true\n");
 }
 
 #[given(
-    expr = "the torch verb applies burn -1 and the brand verb applies burn -2, each for 10 ticks"
+    expr = "the jab verb applies fatigue -1 and the slam verb applies fatigue -2, each for 10 ticks"
 )]
-fn torch_and_brand(world: &mut World) {
-    add_modifier_verb(pack(world), "torch", "target", &[("burn", -1)]);
-    add_modifier_verb(pack(world), "brand", "target", &[("burn", -2)]);
+fn jab_and_slam(world: &mut World) {
+    add_modifier_verb(pack(world), "jab", "target", &[("fatigue", -1)]);
+    add_modifier_verb(pack(world), "slam", "target", &[("fatigue", -2)]);
 }
 
 #[given(
@@ -187,9 +187,9 @@ fn rowan_holds_fresh_stacks(world: &mut World, count: usize, id: String) {
     hold(pack(world), &id, vec![-1; count], 10);
 }
 
-#[given(expr = "rowan has 3 stacks of burn and 1 of soaked")]
-fn rowan_holds_burn_and_soaked(world: &mut World) {
-    hold(pack(world), "burn", vec![-1, -2, -1], 10);
+#[given(expr = "rowan has 3 stacks of fatigue and 1 of soaked")]
+fn rowan_holds_fatigue_and_soaked(world: &mut World) {
+    hold(pack(world), "fatigue", vec![-1, -2, -1], 10);
     hold(pack(world), "soaked", vec![-1], 10);
 }
 
@@ -216,9 +216,9 @@ fn modifier_of_no_meter(world: &mut World, id: String) {
     add_modifier(pack(world), &id, "warmth", "");
 }
 
-#[given(expr = "{string} modifies grit and a verb applies it for 0 ticks")]
+#[given(expr = "{string} modifies vigor and a verb applies it for 0 ticks")]
 fn modifier_of_no_ticks(world: &mut World, id: String) {
-    add_modifier(pack(world), &id, "grit", "");
+    add_modifier(pack(world), &id, "vigor", "");
     add_timed_verb(pack(world), "numbing", "self", &[(&id, -1)], 0);
 }
 
@@ -227,9 +227,9 @@ fn verb_applies_an_undefined_modifier(world: &mut World, id: String) {
     add_modifier_verb(pack(world), "scorch", "self", &[(&id, -1)]);
 }
 
-#[when(expr = "rowan is hit by the torch and then the brand in one round")]
-fn rowan_is_torched_and_branded(world: &mut World) {
-    hit_rowan(world, &[("wren", "torch"), ("harbormouse", "brand")]);
+#[when(expr = "rowan is hit by the jab and then the slam in one round")]
+fn rowan_is_jabbed_and_slammed(world: &mut World) {
+    hit_rowan(world, &[("wren", "jab"), ("harbormouse", "slam")]);
 }
 
 #[when(regex = r"^the (\w+) applies (\w+) (-?\d+) for (\d+) ticks$")]
@@ -281,18 +281,18 @@ fn rowan_stands_in_the_weather(world: &mut World) {
     );
 }
 
-#[when(expr = "wren burns rowan and fills them with dread")]
+#[when(expr = "wren tires rowan and fills them with dread")]
 fn wren_torments_rowan(world: &mut World) {
     add_modifier_verb(
         pack(world),
         "torment",
         "target",
-        &[("burn", -1), ("dread", -1)],
+        &[("fatigue", -1), ("dread", -1)],
     );
     hit_rowan(world, &[("wren", "torment")]);
 }
 
-#[when(expr = "the pack drops burn and soaked now modifies rest")]
+#[when(expr = "the pack drops fatigue and soaked now modifies rest")]
 fn the_pack_moves_soaked(world: &mut World) {
     let text = "schema: modifiers\nmodifiers:\n  - id: soaked\n    meter: rest\n";
     fs::write(pack(world).join("rules/modifiers.yaml"), text).unwrap();
@@ -371,10 +371,10 @@ fn rowan_has_these_stacks(world: &mut World, id: String, list: String) {
     assert_eq!(stacks_of(pack(world), &id), numbers(&list));
 }
 
-#[then(regex = r"^rowan still has (\d+) stacks of (-?\d+) and grit is (\d+) lower$")]
-fn rowan_still_has_burn(world: &mut World, count: usize, add: i64, by: i64) {
-    assert_eq!(stacks_of(pack(world), "burn"), vec![add; count]);
-    assert_eq!(lowered(pack(world), "grit"), by);
+#[then(regex = r"^rowan still has (\d+) stacks of (-?\d+) and vigor is (\d+) lower$")]
+fn rowan_still_has_fatigue(world: &mut World, count: usize, add: i64, by: i64) {
+    assert_eq!(stacks_of(pack(world), "fatigue"), vec![add; count]);
+    assert_eq!(lowered(pack(world), "vigor"), by);
 }
 
 #[then(regex = r"^(\w+) is (\d+) lower(?:, not \d+)?$")]
@@ -392,21 +392,21 @@ fn modifier_left_after_the_second(world: &mut World, id: String, ticks: u64) {
     assert_eq!(ticks_left(pack(world), &id), ticks);
 }
 
-#[then(expr = "rowan has no burn and grit is back")]
-fn rowan_has_no_burn(world: &mut World) {
-    assert_eq!(modifier_of(pack(world), "burn"), None);
-    assert_eq!(lowered(pack(world), "grit"), 0);
+#[then(expr = "rowan has no fatigue and vigor is back")]
+fn rowan_has_no_fatigue(world: &mut World) {
+    assert_eq!(modifier_of(pack(world), "fatigue"), None);
+    assert_eq!(lowered(pack(world), "vigor"), 0);
     let rowan = entity::Id::Actor("rowan".into());
     assert_eq!(
         state_of(pack(world))
             .entities()
             .get::<component::Meter>(&rowan)
-            .value("grit"),
+            .value("vigor"),
         Ok(20)
     );
 }
 
-#[then(expr = "rowan has neither burn nor soaked")]
+#[then(expr = "rowan has neither fatigue nor soaked")]
 fn rowan_has_neither(world: &mut World) {
     let now = state_of(pack(world));
     let rowan = "rowan".into();
@@ -419,7 +419,7 @@ fn neither_keeps_the_dropped_meter(world: &mut World) {
     let rowan = "rowan".into();
     let meters = now.actors().get::<Meter>(&rowan);
     assert!(!meters.contains("luck"));
-    assert!(meters.contains("grit"));
+    assert!(meters.contains("vigor"));
     let world_meters = now.globals().query::<&Meter>();
     assert!(!world_meters.iter().any(|held| held.contains("tide")));
 }
@@ -429,11 +429,11 @@ fn the_gm_sees_the_key(world: &mut World, key: String) {
     assert!(world.summary.contains(&key), "{:?}", world.summary);
 }
 
-#[then(expr = "rowan's change line shows burn and not dread")]
-fn rowan_sees_burn_only(world: &mut World) {
+#[then(expr = "rowan's change line shows fatigue and not dread")]
+fn rowan_sees_fatigue_only(world: &mut World) {
     let seen = seen_of(world, "rowan");
     assert!(
-        seen.contains(&"actor_modifier rowan burn".to_string()),
+        seen.contains(&"actor_modifier rowan fatigue".to_string()),
         "{seen:?}"
     );
     assert!(
@@ -471,10 +471,10 @@ fn it_refuses_the_bad_rows(world: &mut World) {
     }
 }
 
-#[then(expr = "it refuses burn as listed twice at line {int}")]
-fn it_refuses_the_second_burn(world: &mut World, line: u32) {
+#[then(expr = "it refuses fatigue as listed twice at line {int}")]
+fn it_refuses_the_second_fatigue(world: &mut World, line: u32) {
     assert_eq!(world.code, Some(1), "{}", world.stderr);
-    let needle = format!("rules/modifiers.yaml:{line}: modifier 'burn' is listed twice");
+    let needle = format!("rules/modifiers.yaml:{line}: modifier 'fatigue' is listed twice");
     assert!(world.stderr.contains(&needle), "{}", world.stderr);
 }
 
@@ -491,19 +491,19 @@ fn verify_reproduces_the_journal(world: &mut World) {
 }
 
 #[given(
-    expr = "{string} modifies grit, and rowan holds one stack of burn of -2 over a stored grit of 5"
+    expr = "{string} modifies vigor, and rowan holds one stack of fatigue of -2 over a stored vigor of 5"
 )]
-fn burn_over_stored_grit(world: &mut World, id: String) {
-    add_modifier(pack(world), &id, "grit", "    max_stacks: 4\n");
+fn fatigue_over_stored_vigor(world: &mut World, id: String) {
+    add_modifier(pack(world), &id, "vigor", "    max_stacks: 4\n");
     support::edit_save(pack(world), |now| {
-        support::edit_meter(now, "rowan", "grit", |grit| {
-            *grit = Meter { base: 5, offset: 0 }
+        support::edit_meter(now, "rowan", "vigor", |vigor| {
+            *vigor = Meter { base: 5, offset: 0 }
         });
     });
     hold(pack(world), &id, vec![-2], 10);
 }
 
-/// A story whose rules watch grit cross below 3 and below 4, each setting a flag of its own.
+/// A story whose rules watch vigor cross below 3 and below 4, each setting a flag of its own.
 const STRAIN: &str = "schema: story
 id: strain
 flags:
@@ -513,7 +513,7 @@ rules:
   - id: under_3
     when:
       change:
-        meter: grit
+        meter: vigor
         crosses: \"<3\"
     do:
       - flag:
@@ -523,7 +523,7 @@ rules:
   - id: under_4
     when:
       change:
-        meter: grit
+        meter: vigor
         crosses: \"<4\"
     do:
       - flag:
@@ -532,14 +532,14 @@ rules:
           value: true
 ";
 
-#[when(expr = "rowan makes a move that costs 1 grit")]
-fn rowan_pays_one_grit(world: &mut World) {
+#[when(expr = "rowan makes a move that costs 1 vigor")]
+fn rowan_pays_one_vigor(world: &mut World) {
     let pack = world.pack.clone().unwrap();
     fs::create_dir_all(pack.join("story")).unwrap();
     fs::write(pack.join("story/strain.yaml"), STRAIN).unwrap();
     add_verb(
         &pack,
-        "\n  - id: brace\n    when:\n      verb: brace\n    cost:\n      meters:\n        grit: 1\n    do: []\n",
+        "\n  - id: brace\n    when:\n      verb: brace\n    cost:\n      meters:\n        vigor: 1\n    do: []\n",
     );
     stamp_pack_rev(&pack);
     let played = play_round(world, &pack, vec![intent("brace", "rowan", "brace", None)]);
@@ -562,17 +562,17 @@ fn strained(pack: &Path, flag: &str) -> bool {
 /// The change's `after` is the line rowan reads. Its `before` is below 4, since the rule on `<4`
 /// does not fire, and the next step's rule on `<3` firing puts it at 3 or more.
 #[then(expr = "the GM sees {string} as a changed key, going from 3 to 2")]
-fn the_gm_sees_grit_go_from_3_to_2(world: &mut World, key: String) {
+fn the_gm_sees_vigor_go_from_3_to_2(world: &mut World, key: String) {
     assert!(world.summary.contains(&key), "{:?}", world.summary);
     let line = &world.scratch;
-    assert!(line.contains("grit is now 2."), "{line:?}");
-    assert!(!strained(pack(world), "under_4"), "grit started below 4");
+    assert!(line.contains("vigor is now 2."), "{line:?}");
+    assert!(!strained(pack(world), "under_4"), "vigor started below 4");
 }
 
-#[then(expr = "a change rule that waits for grit below 3 fires")]
+#[then(expr = "a change rule that waits for vigor below 3 fires")]
 fn the_rule_below_three_fires(world: &mut World) {
     assert!(
         strained(pack(world), "under_3"),
-        "grit started at 3 or more"
+        "vigor started at 3 or more"
     );
 }

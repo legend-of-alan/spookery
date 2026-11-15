@@ -47,12 +47,12 @@ fn append_story_rule(pack: &Path, story: &str, effect: &str) {
     fs::write(path, text).unwrap();
 }
 
-/// Write `world/places/loft.md`, above the shop, with these extra keys.
-fn write_loft(world: &mut World, keys: &str) {
+/// Write `world/places/attic.md`, above the shop, with these extra keys.
+fn write_attic(world: &mut World, keys: &str) {
     let text = format!(
-        "---\nschema: place\nid: loft\ndisplay_name: Loft\nfacts:\n  - id: fact_loft_dust\n    text: Dust lies on the boards.\nexits:\n  - to: docks_shop\n    name: ladder\n{keys}---\nThe loft is over the shop.\n"
+        "---\nschema: place\nid: attic\ndisplay_name: Attic\nfacts:\n  - id: fact_attic_dust\n    text: Dust lies on the boards.\nexits:\n  - to: docks_shop\n    name: ladder\n{keys}---\nThe attic is over the shop.\n"
     );
-    fs::write(pack(world).join("world/places/loft.md"), text).unwrap();
+    fs::write(pack(world).join("world/places/attic.md"), text).unwrap();
 }
 
 fn meter_effect(of: &str, key: &str) -> String {
@@ -71,11 +71,11 @@ fn add_verb_doing(pack: &Path, verb: &str, effects: &str) {
     );
 }
 
-/// Put rowan in the loft, seated, and Mira in the shop.
-fn stand_in_the_loft(world: &mut World) {
+/// Put rowan in the attic, seated, and Mira in the shop.
+fn stand_in_the_attic(world: &mut World) {
     let pack = world.pack.clone().unwrap();
     edit_table(world, &pack, |now, seated| {
-        set_place(now, "rowan", "loft");
+        set_place(now, "rowan", "attic");
         set_place(now, "mira", "docks_shop");
         sit(seated, &["rowan"]);
     });
@@ -135,7 +135,7 @@ fn it_refuses_the_story_meter(world: &mut World, key: String, why: String) {
 
 #[then(expr = "the GM sees both light and draft")]
 fn the_gm_sees_light_and_draft(world: &mut World) {
-    for key in ["place_meter loft light", "place_meter loft draft"] {
+    for key in ["place_meter attic light", "place_meter attic draft"] {
         assert_gm_saw(world, key);
     }
 }
@@ -254,48 +254,48 @@ fn it_refuses_the_prologue_meter(world: &mut World) {
     );
 }
 
-#[given(expr = "world\\/places\\/loft.md declares the flag {string}")]
-fn loft_declares_a_flag(world: &mut World, flag: String) {
-    write_loft(world, &format!("flags:\n  - {flag}\n"));
+#[given(expr = "world\\/places\\/attic.md declares the flag {string}")]
+fn attic_declares_a_flag(world: &mut World, flag: String) {
+    write_attic(world, &format!("flags:\n  - {flag}\n"));
 }
 
-#[given(expr = "world\\/places\\/loft.md declares no meters")]
-fn loft_declares_no_meters(world: &mut World) {
-    write_loft(world, "");
+#[given(expr = "world\\/places\\/attic.md declares no meters")]
+fn attic_declares_no_meters(world: &mut World) {
+    write_attic(world, "");
 }
 
 #[given(
-    expr = "world\\/places\\/loft.md declares {string} with hidden false and {string} with no hidden key"
+    expr = "world\\/places\\/attic.md declares {string} with hidden false and {string} with no hidden key"
 )]
-fn loft_declares_shown_and_hidden(world: &mut World, shown: String, hidden: String) {
+fn attic_declares_shown_and_hidden(world: &mut World, shown: String, hidden: String) {
     let rows = meter_row(&shown, Some(false)) + &meter_row(&hidden, None);
-    write_loft(world, &format!("meters:\n{rows}"));
+    write_attic(world, &format!("meters:\n{rows}"));
 }
 
-#[then(expr = "the GM sees the flag change on the loft")]
-fn the_gm_sees_the_loft_flag(world: &mut World) {
-    assert_gm_saw(world, "place_flag loft lamp_lit");
+#[then(expr = "the GM sees the flag change on the attic")]
+fn the_gm_sees_the_attic_flag(world: &mut World) {
+    assert_gm_saw(world, "place_flag attic lamp_lit");
 }
 
-#[then(expr = "it refuses the rule, saying the loft does not declare light")]
-fn it_refuses_the_loft_meter(world: &mut World) {
+#[then(expr = "it refuses the rule, saying the attic does not declare light")]
+fn it_refuses_the_attic_meter(world: &mut World) {
     assert_refused(
         world,
         &[
             "rules/verbs.yaml",
-            "rule 'bump' names meter 'light', but place:loft carries no meter 'light'",
+            "rule 'bump' names meter 'light', but place:attic carries no meter 'light'",
         ],
     );
 }
 
-#[given(expr = "rowan stands in the loft and Mira stands in the shop")]
-fn rowan_in_the_loft_mira_in_the_shop(world: &mut World) {
-    stand_in_the_loft(world);
+#[given(expr = "rowan stands in the attic and Mira stands in the shop")]
+fn rowan_in_the_attic_mira_in_the_shop(world: &mut World) {
+    stand_in_the_attic(world);
 }
 
-#[given(expr = "rowan stands in the loft")]
-fn rowan_in_the_loft(world: &mut World) {
-    stand_in_the_loft(world);
+#[given(expr = "rowan stands in the attic")]
+fn rowan_in_the_attic(world: &mut World) {
+    stand_in_the_attic(world);
 }
 
 #[when(expr = "a rule adds 1 to meters light and draft of {string}")]
@@ -319,7 +319,7 @@ fn a_verb_sets_and_runs(world: &mut World, key: String, of: String) {
 fn rowan_sees_light_not_draft(world: &mut World) {
     let seen = seen_of(world, "rowan");
     assert!(
-        seen.contains(&"place_meter loft light".to_string()),
+        seen.contains(&"place_meter attic light".to_string()),
         "{seen:?}"
     );
     assert!(seen.iter().all(|key| !key.contains("draft")), "{seen:?}");
@@ -334,9 +334,9 @@ fn mira_sees_neither(world: &mut World) {
     );
 }
 
-#[given(expr = "the docks pack gains world\\/places\\/loft.md and is migrated")]
-fn the_docks_pack_gains_the_loft(world: &mut World) {
-    write_loft(world, "");
+#[given(expr = "the docks pack gains world\\/places\\/attic.md and is migrated")]
+fn the_docks_pack_gains_the_attic(world: &mut World) {
+    write_attic(world, "");
     spookery_engine::migrate_pack(pack(world)).unwrap_or_else(|err| panic!("migrate: {err}"));
 }
 
@@ -353,21 +353,21 @@ fn a_rule_gives_lamp_oil(world: &mut World, of: String) {
     migrate_and_play(world, vec![intent("stash", "rowan", "stash", None)]);
 }
 
-#[then(expr = "the loft holds 1 lamp_oil")]
-fn the_loft_holds_lamp_oil(world: &mut World) {
+#[then(expr = "the attic holds 1 lamp_oil")]
+fn the_attic_holds_lamp_oil(world: &mut World) {
     let now = state_of(world.pack.as_deref().unwrap());
-    let loft = "loft".into();
-    let held = now.places().get::<component::Item>(&loft).get("lamp_oil");
+    let attic = "attic".into();
+    let held = now.places().get::<component::Item>(&attic).get("lamp_oil");
     assert_eq!(held, Some(&1));
 }
 
-#[when(expr = "a rule leaves a note in the loft")]
-fn a_rule_leaves_a_note_in_the_loft(world: &mut World) {
+#[when(expr = "a rule leaves a note in the attic")]
+fn a_rule_leaves_a_note_in_the_attic(world: &mut World) {
     let effect = "      - note:
-          id: note_loft
+          id: note_attic
           to:
             - mira
-          place: loft
+          place: attic
           text: Mind the ladder.
 ";
     let pack = world.pack.clone().unwrap();
@@ -376,7 +376,7 @@ fn a_rule_leaves_a_note_in_the_loft(world: &mut World) {
     world.seated.push((pack.clone(), seated));
     add_verb_doing(&pack, "scrawl", effect);
     let ladder = "exits:
-  - to: loft
+  - to: attic
     name: ladder
 ";
     replace_in_file(
@@ -385,24 +385,24 @@ fn a_rule_leaves_a_note_in_the_loft(world: &mut World) {
 ",
         ladder,
     );
-    // Mira leaves the note before anyone has stood in the loft; then Rowan climbs to it.
+    // Mira leaves the note before anyone has stood in the attic; then Rowan climbs to it.
     migrate_and_play(world, vec![intent("scrawl", "mira", "scrawl", None)]);
     let climb = intent("climb", "rowan", "travel", Some("ladder"));
     migrate_and_play(world, vec![climb]);
 }
 
-#[then(expr = "rowan, standing in the loft, perceives the note")]
-fn rowan_in_the_loft_perceives_the_note(world: &mut World) {
+#[then(expr = "rowan, standing in the attic, perceives the note")]
+fn rowan_in_the_attic_perceives_the_note(world: &mut World) {
     let pack = world.pack.clone().unwrap();
     let opened = Opened::peek(&pack).unwrap_or_else(|err| panic!("peek: {err:?}"));
     let view = opened.perceive(&Presence::default(), "rowan").unwrap();
     let ids: Vec<&str> = view.notes.iter().map(|note| note.id.as_str()).collect();
-    assert!(ids.contains(&"note_loft"), "{ids:?}");
+    assert!(ids.contains(&"note_attic"), "{ids:?}");
 }
 
 #[then(expr = "rowan's change line does not show it")]
 fn rowan_does_not_see_the_flag(world: &mut World) {
-    assert_gm_saw(world, "place_flag loft lamp_lit");
+    assert_gm_saw(world, "place_flag attic lamp_lit");
     let seen = seen_of(world, "rowan");
     assert!(seen.iter().all(|key| !key.contains("lamp_lit")), "{seen:?}");
 }

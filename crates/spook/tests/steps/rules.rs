@@ -677,8 +677,8 @@ fn check_reports_two_conditions(world: &mut World) {
     );
 }
 
-#[given(expr = "steady costs 5 grit and the sitter has 1")]
-fn steady_costs_five_grit(world: &mut World) {
+#[given(expr = "steady costs 5 vigor and the sitter has 1")]
+fn steady_costs_five_vigor(world: &mut World) {
     let pack = copy_pack("docks", "rules-cost");
     append(
         &pack.join("rules/verbs.yaml"),
@@ -688,13 +688,13 @@ fn steady_costs_five_grit(world: &mut World) {
       verb: steady
     cost:
       meters:
-        grit: 5
+        vigor: 5
     do: []
 "#,
     );
     edit_save(&pack, |now| {
-        edit_meter(now, "rowan", "grit", |grit| {
-            (grit.base, grit.offset) = (1, 0)
+        edit_meter(now, "rowan", "vigor", |vigor| {
+            (vigor.base, vigor.offset) = (1, 0)
         });
     });
     world.pack = Some(pack);
@@ -711,11 +711,11 @@ fn the_seated_pc_plays_steady(world: &mut World) {
     };
 }
 
-#[then(expr = "the refusal is CANT_AFFORD naming grit and world_time stays 1080")]
+#[then(expr = "the refusal is CANT_AFFORD naming vigor and world_time stays 1080")]
 fn the_refusal_is_cant_afford(world: &mut World) {
     assert_eq!(
         world.scratch,
-        format!("{} grit", Reason::CantAfford.as_str())
+        format!("{} vigor", Reason::CantAfford.as_str())
     );
     let now = state_of(world.pack.as_ref().unwrap());
     assert_eq!(now.world_time, 1080);
@@ -870,11 +870,11 @@ fn a_verb_with_time_and_resist(world: &mut World) {
     do:
       - meter:
           of: self
-          key: grit
+          key: vigor
           add: 1
           resist:
             subject: self
-            check: grit
+            check: exert
             threshold: 2
 "#,
     );
@@ -899,7 +899,7 @@ const BARE_SAME: &str = "
     do:
       - meter:
           of: self
-          key: grit
+          key: vigor
           add: 1
           resist: same
 ";
@@ -911,16 +911,16 @@ const SAME_AFTER_ROLL: &str = "
     do:
       - meter:
           of: self
-          key: grit
+          key: vigor
           add: -1
           resist:
             subject: self
-            check: grit
+            check: exert
             threshold: 2
             resisted: []
       - meter:
           of: self
-          key: grit
+          key: vigor
           add: 1
           resist: same
 ";

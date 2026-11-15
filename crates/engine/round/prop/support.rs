@@ -22,7 +22,7 @@ pub(crate) const CASES: u32 = 64;
 pub(crate) const SEED: u64 = 0x0018_0018;
 
 const VERBS: [&str; 8] = [
-    "wait", "grit", "unwield", "travel", "take", "drop", "use", "wield",
+    "wait", "exert", "unwield", "travel", "take", "drop", "use", "wield",
 ];
 
 #[derive(Clone, Debug)]
@@ -71,22 +71,25 @@ fn pick_move() -> impl Strategy<Value = MovePlan> {
 
 /// Queue the moves the gate accepts, then play the round. Habits are gathered with them.
 pub(crate) fn play_rounds(pack: &Path, rounds: &[RoundPlan]) -> Result<(), String> {
-    add_grit_success(pack)?;
+    add_exert_success(pack)?;
     let lock = crate::lock_pack(pack).map_err(|err| err.to_string())?;
     let mut world = World::resume(pack, lock).map_err(|err| err.to_string())?;
-    let grit = VERBS.iter().position(|verb| *verb == "grit").expect("grit");
+    let exert = VERBS
+        .iter()
+        .position(|verb| *verb == "exert")
+        .expect("exert");
     for (index, round) in rounds.iter().enumerate() {
         for plan in &round.moves {
             queue_move(&mut world, plan);
         }
-        // Every round rolls when the PC can. `grit` is the pack's only check.
+        // Every round rolls when the PC can, by `exert`.
         let pcs = pc_count(&world);
         for pc in 0..pcs {
             queue_move(
                 &mut world,
                 &MovePlan {
                     pc,
-                    verb: grit,
+                    verb: exert,
                     token: 0,
                 },
             );
@@ -108,15 +111,15 @@ fn pc_count(world: &World) -> usize {
         .count()
 }
 
-/// A successful `grit` check adds one lamp oil. The docks list is empty, so the
+/// A successful `exert` check adds one lamp oil. The docks list is empty, so the
 /// roll would not otherwise change the save.
-fn add_grit_success(pack: &Path) -> Result<(), String> {
+fn add_exert_success(pack: &Path) -> Result<(), String> {
     let path = pack.join("rules/verbs.yaml");
     let text = fs::read_to_string(&path).map_err(|err| err.to_string())?;
     let needle = "      threshold: 0\n    do: []\n";
     let replacement = "      threshold: 0\n    do: []\n    success:\n      - item:\n          of: self\n          id: lamp_oil\n          add: 1\n";
     if !text.contains(needle) {
-        return Err("the grit check was not where the property expected".to_string());
+        return Err("the exert check was not where the property expected".to_string());
     }
     fs::write(&path, text.replacen(needle, replacement, 1)).map_err(|err| err.to_string())?;
     let rev = pack_rev(pack).map_err(|err| err.to_string())?;
@@ -154,7 +157,7 @@ fn queue_move(world: &mut World, plan: &MovePlan) {
 
 fn target_for(world: &World, actor: &ActorId, verb: &str, token: usize) -> Option<Target> {
     match verb {
-        "wait" | "grit" | "unwield" => Some(Target::Empty),
+        "wait" | "exert" | "unwield" => Some(Target::Empty),
         "travel" => {
             let exits = visible_exits(world.canon(), world.state(), actor);
             if exits.is_empty() {

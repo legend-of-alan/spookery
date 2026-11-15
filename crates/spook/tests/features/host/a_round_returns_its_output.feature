@@ -2,7 +2,7 @@ Feature: A round returns its output
 
   Scenario: A GM commit that fast-forwards still reports the committed round's rolls
     Given a docks table with a GM and a travelling wren seated
-    When the GM queues "grit" for "rowan"
+    When the GM queues "exert" for "rowan"
     And the GM queues "hit" for "rowan"
     And the GM queues a 10-tick travel for "rowan"
     And the GM commits the round
@@ -19,6 +19,6 @@ Feature: A round returns its output
 
   Scenario: A commit with no fast-forward reports the same as before
     Given a docks table with a GM and wren seated
-    When the GM queues "grit" for "rowan"
+    When the GM queues "exert" for "rowan"
     And the GM commits the round
     Then the commit reply lists one check for "rowan"

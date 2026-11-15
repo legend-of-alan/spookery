@@ -34,7 +34,7 @@ fn listen_with_wren(world: &mut World, travelling: bool) {
     let verbs = pack.join("rules/verbs.yaml");
     let mut rules = fs::read_to_string(&verbs).unwrap_or_else(|err| panic!("read verbs: {err}"));
     rules.push_str(
-        "\n  - id: hit\n    when:\n      verb: hit\n    do:\n      - meter:\n          of: self\n          key: grit\n          add: \"2d6\"\n",
+        "\n  - id: hit\n    when:\n      verb: hit\n    do:\n      - meter:\n          of: self\n          key: vigor\n          add: \"2d6\"\n",
     );
     fs::write(&verbs, rules).unwrap_or_else(|err| panic!("write verbs: {err}"));
     support::stamp_pack_rev(&pack);
@@ -108,9 +108,9 @@ fn the_commit_reply_lists_one_check(world: &mut World, actor: String) {
         let text = spookery_engine::testing::journal::read_record_line(&pack, key)
             .unwrap_or_else(|err| panic!("read {key}: {}", err.detail));
         text.contains(&format!("\"actor\":\"player:{actor}\""))
-            && text.contains("\"move\":\"grit\"")
+            && text.contains("\"move\":\"exert\"")
     });
-    assert!(found, "no grit intent for {actor}");
+    assert!(found, "no exert intent for {actor}");
 }
 
 #[then(expr = "the commit reply lists the committed round's dice line")]

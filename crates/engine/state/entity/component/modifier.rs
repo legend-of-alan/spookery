@@ -192,9 +192,9 @@ impl Writer<'_, entity::Actors> {
 mod tests {
     use super::*;
 
-    fn burn(max_stacks: usize) -> ModifierDef {
+    fn fatigue(max_stacks: usize) -> ModifierDef {
         ModifierDef {
-            meter: "grit".to_string(),
+            meter: "vigor".to_string(),
             max_stacks,
             hidden: false,
         }
@@ -202,7 +202,7 @@ mod tests {
 
     fn held(stacks: &[i64]) -> Modifier {
         Modifier {
-            meter: "grit".to_string(),
+            meter: "vigor".to_string(),
             until: 2,
             max_ticks: 10,
             stacks: stacks.to_vec(),
@@ -212,13 +212,13 @@ mod tests {
     #[test]
     fn a_lowered_cap_drops_the_weakest_extra_stacks_on_the_next_application() {
         let mut live = held(&[-1, -3, -2, -1]);
-        stack(&burn(2), &mut live, -1, 10, 2);
+        stack(&fatigue(2), &mut live, -1, 10, 2);
         assert_eq!(live.stacks, vec![-3, -2]);
     }
 
     #[test]
     fn sum_counts_only_the_named_meter_and_refuses_an_overflow() {
-        let mut map = BTreeMap::from([("burn".to_string(), held(&[-1, -2]))]);
+        let mut map = BTreeMap::from([("fatigue".to_string(), held(&[-1, -2]))]);
         map.insert(
             "calm".to_string(),
             Modifier {
@@ -228,9 +228,9 @@ mod tests {
                 stacks: vec![5],
             },
         );
-        assert_eq!(sum(map.values(), "grit"), Ok(-3));
+        assert_eq!(sum(map.values(), "vigor"), Ok(-3));
         assert_eq!(sum(map.values(), "nerve"), Ok(0));
         map.insert("vast".to_string(), held(&[i64::MIN]));
-        assert_eq!(sum(map.values(), "grit"), Err(Reason::OutOfRange));
+        assert_eq!(sum(map.values(), "vigor"), Err(Reason::OutOfRange));
     }
 }

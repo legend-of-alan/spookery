@@ -46,7 +46,7 @@ The table speaks first, with `version`, the `commands` this seat may send, and, 
 
 <!-- example: player-hello -->
 ```json
-{"body":{"kind":"hello","version":2,"commands":["claim","release","say","look","help","map","cancel","drop","grit","take","travel","unwield","wait","wield"],"open":["harbormouse","rowan","wren"],"pc_names":{"harbormouse":"Harbormouse","rowan":"Rowan","wren":"Wren"}}}
+{"body":{"kind":"hello","version":2,"commands":["claim","release","say","look","help","map","cancel","ask","chock","drop","exert","strike","take","travel","unwield","use","wait","wield"],"open":["harbormouse","rowan","wren"],"pc_names":{"harbormouse":"Harbormouse","rowan":"Rowan","wren":"Wren"}}}
 ```
 
 <!-- example: gm-hello -->
@@ -130,16 +130,16 @@ A GM's `release` frees the seat before its reply. A later command on that connec
 
 ### Moves
 
-A move is a pack verb, its target in `target`. The target is an id or a display name the player sees, ignoring case and outer spaces, and an exit also answers to the place it goes to, by id or name. A name that two things in sight share is refused `AMBIGUOUS_NAME` before it is queued, and `detail` is that name and every id that has it, `Briar: briar, oden`. With a GM seated, the move waits for `commit`. The reply is `queued`, and the GM gets the same `queued` under the same `seq`. `intent` is the queue id. With no GM seated, the move commits its own round, and the reply comes after that round is written.
+A move is a pack verb, its target in `target`. The target is an id or a display name the player sees, ignoring case and outer spaces, and an exit also answers to the place it goes to, by id or name. A name that two things in sight share is refused `AMBIGUOUS_NAME` before it is queued, and `detail` is that name and every id that has it, `Briar: bram, briar`. With a GM seated, the move waits for `commit`. The reply is `queued`, and the GM gets the same `queued` under the same `seq`. `intent` is the queue id. With no GM seated, the move commits its own round, and the reply comes after that round is written.
 
-<!-- example: player-grit -->
+<!-- example: player-exert -->
 ```json
-{"id":"c3","body":{"kind":"grit"}}
+{"id":"c3","body":{"kind":"exert"}}
 ```
 
 <!-- example: player-queued -->
 ```json
-{"seq":9,"reply_to":"c3","body":{"kind":"queued","intent":"53dc6ddc605a3b0dbfe37bab2b4b7af0665868159e8efaa8df153a5634a84976","actor":"rowan","move":"grit"}}
+{"seq":9,"reply_to":"c3","body":{"kind":"queued","intent":"150ad41608eafe8bfb76d88485e665c77021363782bbb8bc1f5eafb2345ac8b6","actor":"rowan","move":"exert"}}
 ```
 
 `cancel` is a move too, and a busy player may send it. It drops the PC's own action under way when its rule says `cancellable`, with no refund, and the action never finishes. A walk is never cancelled. With nothing to cancel, or an action whose rule does not allow it, `cancel` is refused `INELIGIBLE` and the action still lands.
@@ -163,7 +163,8 @@ A move the table can judge at once is refused before it is queued. Here Rowan se
   {"name":"map","target":"none"},
   {"name":"cancel","target":"none"},
   {"name":"drop","target":"item","names":["Lamp oil"]},
-  {"name":"grit","target":"none"},
+  {"name":"exert","target":"none"},
+  {"name":"strike","target":"actor","names":["Aldric"]},
   {"name":"take","target":"item","names":["Lamp oil"]},
   {"name":"travel","target":"exit","names":["Docks Street","stairs"]},
   {"name":"unwield","target":"none"},
@@ -199,7 +200,7 @@ The table's state for a GM. `world_time` is the game clock in ticks. `pack_rev` 
     "world_time": 1080,
     "round_index": 0,
     "state_rev": 0,
-    "pack_rev": "blake2s:9526c8f8ed5a3d0c551cc714b446c19568d7228a3215b9b48e851d857b20ac4d",
+    "pack_rev": "blake2s:778f2e207a12de8dc5ff33a7a4d36387ddcdd9e3939e4aee64cd2600a7cb8910",
     "last_round_at": "2026-01-01T00:00:00Z",
     "queued": [],
     "pack": {
@@ -225,9 +226,14 @@ The table's state for a GM. `world_time` is the game clock in ticks. `pack_rev` 
           "target": "exit"
         },
         {
-          "name": "grit",
+          "name": "exert",
           "kind": "verb",
           "target": "none"
+        },
+        {
+          "name": "strike",
+          "kind": "verb",
+          "target": "actor"
         },
         {
           "name": "take",
@@ -253,21 +259,27 @@ The table's state for a GM. `world_time` is the game clock in ticks. `pack_rev` 
       "control_types": {
         "aldric": "npc",
         "bram": "npc",
-        "mira": "npc",
+        "briar": "npc",
         "harbormouse": "pc_template",
+        "mira": "npc",
         "rowan": "pc_template",
         "wren": "pc_template"
       },
       "places": {
         "docks_shop": "The shop faces the water. Tins sit in a row.\n",
         "docks_street": "The street runs between the shop and the rooms.\n",
-        "mira_rooms": "A lamp burns past the shop's back stair.\n"
+        "gate_yard": "Wagon ruts cross the mud behind the street. A stick leans by the post. Briar stands in the ruts, and a mill cart sits across the lane.\n",
+        "loft": "A ladder leads to a dry loft above the yard.\n",
+        "mill_lane": "The lane runs past a small mill. Flour dusts the step.\n",
+        "mira_rooms": "A lamp burns past the shop's back stair.\n",
+        "wheel_shed": "The shed smells of grease. A nail by the door holds a wooden chock.\n"
       },
       "cast": {
         "aldric": "Aldric sweeps the shop and does not keep the books.\n",
         "bram": "Bram walks the night watch between the street and the shop.\n",
+        "briar": "Briar blocks the yard and does not step aside.\n",
+        "harbormouse": "Harbormouse walks the night street, sleeps in a coil of rope, and carries a clay tonic.\n",
         "mira": "Mira keeps the shop neat and the tin out of sight.\n",
-        "harbormouse": "Harbormouse walks the night street and sleeps in a coil of rope.\n",
         "rowan": "Rowan keeps the shop and walks the street.\n",
         "wren": "Wren mends nets on the street and keeps the tide chart in their head.\n"
       }
@@ -310,7 +322,7 @@ The table's state for a GM. `world_time` is the game clock in ticks. `pack_rev` 
 
 <!-- example: gm-committed -->
 ```json
-{"seq":15,"reply_to":"c3","body":{"kind":"committed","state_rev":1,"changed_keys":["actor_last_act_round aldric","actor_last_act_round mira","actor_last_act_round rowan","actor_live_acts_this_window aldric","actor_live_acts_this_window mira","actor_live_acts_this_window rowan","world_note note_mira_door"],"journal_path":"state/journal/bundle-0000.jsonl","rolls":[{"faces":[1,6],"stat":1,"total":8,"target":0,"outcome":"success"}]}}
+{"seq":15,"reply_to":"c3","body":{"kind":"committed","state_rev":1,"changed_keys":["actor_last_act_round aldric","actor_last_act_round mira","actor_last_act_round rowan","actor_live_acts_this_window aldric","actor_live_acts_this_window mira","actor_live_acts_this_window rowan","world_note note_mira_door"],"journal_path":"state/journal/bundle-0000.jsonl","rolls":[{"faces":[5,2],"stat":1,"total":8,"target":0,"outcome":"success"}]}}
 ```
 
 `changed_keys` are the state keys the round changed, every one of them. Each is spelled `<collection>_<component> <id> <entry>`: the collection is `actor`, `place`, `story` or `world`, the world has no `<id>`, and a component an entity holds one of has no `<entry>`. So a meter is `actor_meter <actor> <id>` or `world_meter <id>`, a modifier is `actor_modifier <actor> <id>`, and a door is `place_exit_open <place> <exit>`. The keys are:
@@ -397,14 +409,24 @@ A client ignores a `kind` or a field it does not know. `server.json` gives every
         "max": 6
       },
       {
-        "id": "grit",
+        "id": "hp",
+        "value": 8,
+        "max": 16
+      },
+      {
+        "id": "might",
         "value": 1,
-        "max": 110
+        "max": 45
       },
       {
         "id": "rest",
         "value": 3,
         "max": 5
+      },
+      {
+        "id": "vigor",
+        "value": 1,
+        "max": 110
       }
     ],
     "habits": [],
@@ -479,7 +501,7 @@ Every other message the table sends this seat, the hello first, comes as a `spoo
 
 <!-- example: mcp-event -->
 ```json
-{"jsonrpc":"2.0","method":"spook/event","params":{"seq":29,"body":{"kind":"queued","intent":"c802d4b692c7ee8e5a8fde0a4043d7d1ba27f3c2b63da88472f7a132f21f0ee6","actor":"rowan","move":"grit"}}}
+{"jsonrpc":"2.0","method":"spook/event","params":{"seq":29,"body":{"kind":"queued","intent":"d32e26ecab93720f81c493ca1330c145246d058f0b2d692bfe8500621c8ce1de","actor":"rowan","move":"exert"}}}
 ```
 
 An `initialize` opens a session and is never refused for a full table. POST it with `Accept` listing both `application/json` and `text/event-stream` and with `Content-Type: application/json`. Keep the `mcp-session-id` response header, and send the negotiated `protocolVersion` as `MCP-Protocol-Version` on every later request.

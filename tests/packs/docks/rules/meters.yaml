@@ -1,6 +1,6 @@
 schema: meters
 meters:
-  - id: grit
+  - id: vigor
     min: 0
     base_cap: 100
     max: 110

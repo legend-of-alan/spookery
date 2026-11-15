@@ -13,11 +13,11 @@ rules:
       - location:
           via: target
 
-  - id: grit
+  - id: exert
     when:
-      verb: grit
+      verb: exert
     roll:
-      check: grit
+      check: exert
       threshold: 0
     do: []
 

@@ -33,9 +33,9 @@ Feature: Rules live with their owner
     Then spook check reports two conditions under one dash
 
   Scenario: A cost the actor cannot pay changes nothing
-    Given steady costs 5 grit and the sitter has 1
+    Given steady costs 5 vigor and the sitter has 1
     When the seated PC plays steady
-    Then the refusal is CANT_AFFORD naming grit and world_time stays 1080
+    Then the refusal is CANT_AFFORD naming vigor and world_time stays 1080
 
   Scenario: A full id does not select a rule
     Given a habit cast:mira/leave_door_note and a place rule place:docks_street/travel while the PC stays in the shop

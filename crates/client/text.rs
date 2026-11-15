@@ -590,7 +590,7 @@ mod tests {
                 name: "Lamp oil".to_string(),
             }],
             meters: vec![MeterView {
-                id: "grit".to_string(),
+                id: "vigor".to_string(),
                 value: 1,
                 max: 110,
             }],
@@ -627,7 +627,7 @@ Items:
 Lamp oil: 4
 
 Meters:
-Grit: 1/110
+Vigor: 1/110
 
 The world:
 Dawn: 3/6
@@ -748,14 +748,14 @@ none"
     fn a_commit_shows_its_changes_rolls_and_dice() {
         let body = CommitBody {
             state_rev: 2,
-            changed_keys: vec!["actor_meter rowan grit".to_string()],
+            changed_keys: vec!["actor_meter rowan vigor".to_string()],
             journal_path: None,
             rolls: vec![roll(vec![4, 2], 1, 7, 0, Outcome::Success)],
             dice: vec!["2d6 = 3 + 4 = 7".to_string()],
         };
         assert_eq!(
             render_gm(&ServerBody::Committed(body)),
-            "Changed:\nactor_meter rowan grit\nRoll: 4 + 2, +1 = 7 vs 0, success\ndice 2d6 = 3 + 4 = 7"
+            "Changed:\nactor_meter rowan vigor\nRoll: 4 + 2, +1 = 7 vs 0, success\ndice 2d6 = 3 + 4 = 7"
         );
     }
 }

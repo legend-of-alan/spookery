@@ -5,7 +5,7 @@
 //!
 //!   Scenario: Random play replays to the same save
 //!     Given the docks pack
-//!     And a successful grit check adds one lamp oil
+//!     And a successful exert check adds one lamp oil
 //!     When random legal player moves and habit rounds are played
 //!     Then replaying the journal yields the state hash stored on the last record
 //! ```

@@ -231,9 +231,9 @@ fn the_player_travels_to_docks_street(world: &mut World) {
     world.round_ticks = table::wait_rounds_to_view(world, mark);
 }
 
-#[when(expr = "the player tries grit")]
-fn the_player_tries_grit(world: &mut World) {
-    let (mark, _) = table::player_send(world, "grit", "\"kind\":\"queued\"");
+#[when(expr = "the player tries exert")]
+fn the_player_tries_exert(world: &mut World) {
+    let (mark, _) = table::player_send(world, "exert", "\"kind\":\"queued\"");
     world.round_ticks = table::wait_rounds_to_view(world, mark);
     table::wait_player_from(world, mark, "the roll lands");
 }

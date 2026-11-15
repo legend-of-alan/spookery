@@ -11,13 +11,13 @@ use crate::World;
 
 use super::{common, table};
 
-// Docks grit is 2d6 plus a meter of 1, so the total is 3..=13.
+// Docks exert is 2d6 plus a vigor of 1, so the total is 3..=13.
 const NOTICE_ROWS: &str = "
   - id: notice_sure
     when:
       verb: notice_sure
     roll:
-      check: grit
+      check: exert
       threshold: 3
     success:
       - flag:
@@ -33,7 +33,7 @@ const NOTICE_ROWS: &str = "
     when:
       verb: notice_hard
     roll:
-      check: grit
+      check: exert
       threshold: 14
     success:
       - flag:
@@ -53,7 +53,7 @@ const OPPOSE_ROWS: &str = "
       verb: mark
       target: actor
     roll:
-      check: grit
+      check: exert
       threshold: 0
     success:
       - flag:
@@ -69,7 +69,7 @@ const OPPOSE_ROWS: &str = "
     when:
       verb: defend
     roll:
-      check: grit
+      check: exert
       threshold: 0
     success:
       - flag:
@@ -78,9 +78,9 @@ const OPPOSE_ROWS: &str = "
           value: true
 ";
 
-#[when(expr = "the player rolls grit")]
-fn the_player_rolls_grit(world: &mut World) {
-    let (mark, added) = table::player_send(world, "grit", "\"kind\":");
+#[when(expr = "the player rolls exert")]
+fn the_player_rolls_exert(world: &mut World) {
+    let (mark, added) = table::player_send(world, "exert", "\"kind\":");
     world.mark = mark;
     world.player_added = added;
 }
@@ -113,8 +113,8 @@ fn the_round_log_resolves_the_check_without_faces(world: &mut World) {
     assert!(!text.contains("faces"), "{text}");
 }
 
-#[then(expr = "the GM sees the grit faces")]
-fn the_gm_sees_the_grit_faces(world: &mut World) {
+#[then(expr = "the GM sees the exert faces")]
+fn the_gm_sees_the_exert_faces(world: &mut World) {
     let text = table::wait_gm(world, "\"rolls\"");
     let roll = committed_checks(&text)
         .into_iter()
@@ -164,7 +164,7 @@ fn a_docks_table_where_mira_can_oppose_a_mark(world: &mut World) {
     world.pack = Some(pack.clone());
     append_verbs(&pack, OPPOSE_ROWS);
     insert_mira_flags(&pack, "    - marked\n    - missed\n    - guarded\n");
-    set_grit(&pack, "mira", 100);
+    set_vigor(&pack, "mira", 100);
     super::common::edit_save(&pack, |now| {
         now.actors_mut()
             .get_mut::<component::Place>(&"mira".into())
@@ -204,7 +204,7 @@ fn an_engine_habit_rolls_a_check_for_mira(world: &mut World) {
 
 #[when(expr = "the player sends a line with a player prefix")]
 fn the_player_sends_a_line_with_a_player_prefix(world: &mut World) {
-    let (mark, added) = table::player_send(world, "player:nell grit", "\"kind\":\"refused\"");
+    let (mark, added) = table::player_send(world, "player:nell exert", "\"kind\":\"refused\"");
     world.mark = mark;
     world.player_added = added;
 }
@@ -343,17 +343,17 @@ fn insert_brace_habit(pack: &Path) {
     let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read mira: {err}"));
     let next = text.replacen(
         "rules:\n  - id: leave_door_note\n",
-        "rules:\n  - id: brace\n    when: habit\n    roll:\n      check: grit\n      threshold: 14\n    success:\n      - flag:\n          of: self\n          key: braced\n          value: true\n    miss:\n      - flag:\n          of: self\n          key: slipped\n          value: true\n  - id: leave_door_note\n",
+        "rules:\n  - id: brace\n    when: habit\n    roll:\n      check: exert\n      threshold: 14\n    success:\n      - flag:\n          of: self\n          key: braced\n          value: true\n    miss:\n      - flag:\n          of: self\n          key: slipped\n          value: true\n  - id: leave_door_note\n",
         1,
     );
     assert_ne!(next, text, "mira habit was not inserted");
     fs::write(&path, next).unwrap_or_else(|err| panic!("write mira: {err}"));
 }
 
-/// Set `actor`'s grit to `base`, through the writer.
-fn set_grit(pack: &Path, actor: &str, base: i64) {
+/// Set `actor`'s vigor to `base`, through the writer.
+fn set_vigor(pack: &Path, actor: &str, base: i64) {
     support::edit_save(pack, |now| {
-        support::edit_meter(now, actor, "grit", |grit| grit.base = base);
+        support::edit_meter(now, actor, "vigor", |vigor| vigor.base = base);
     });
 }
 
@@ -499,7 +499,7 @@ const DEFEND_ROW: &str = "
     when:
       verb: defend
     roll:
-      check: grit
+      check: exert
       threshold: 0
     success:
       - flag:
@@ -513,19 +513,19 @@ const BAND_CHECK: &str = "
     dice:
       count: 1
       sides: 1
-    meter: grit
+    meter: vigor
 ";
 
 const PRESS_FLAGS: &str =
     "    - touched\n    - clean\n    - halfway\n    - missed\n    - guarded\n";
 
-#[given(expr = "a docks table where press grit base is {int}")]
-fn a_docks_table_where_press_grit_base_is(world: &mut World, base: usize) {
+#[given(expr = "a docks table where press vigor base is {int}")]
+fn a_docks_table_where_press_vigor_base_is(world: &mut World, base: usize) {
     prepare_press(world, base as i64, true);
 }
 
-#[given(expr = "a docks copy where press grit base is {int}")]
-fn a_docks_copy_where_press_grit_base_is(world: &mut World, base: usize) {
+#[given(expr = "a docks copy where press vigor base is {int}")]
+fn a_docks_copy_where_press_vigor_base_is(world: &mut World, base: usize) {
     prepare_press(world, base as i64, false);
 }
 
@@ -537,8 +537,8 @@ fn a_docks_table_where_mira_opposes_a_three_band_press(world: &mut World) {
     append_verbs(&pack, DEFEND_ROW);
     append_check(&pack, BAND_CHECK);
     insert_mira_flags(&pack, PRESS_FLAGS);
-    set_grit(&pack, "rowan", 6);
-    set_grit(&pack, "mira", 100);
+    set_vigor(&pack, "rowan", 6);
+    set_vigor(&pack, "mira", 100);
     super::common::edit_save(&pack, |now| {
         now.actors_mut()
             .get_mut::<component::Place>(&"mira".into())
@@ -556,7 +556,7 @@ fn a_docks_table_where_mira_can_partly_notice(world: &mut World) {
     append_verbs(&pack, NOTICE_PARTIAL_ROW);
     append_check(&pack, BAND_CHECK);
     insert_mira_flags(&pack, PRESS_FLAGS);
-    set_grit(&pack, "mira", 6);
+    set_vigor(&pack, "mira", 6);
     support::stamp_pack_rev(&pack);
     listen_and_seat_both(world, &pack);
     world.scratch = snapshot_pack(&pack).display().to_string();
@@ -579,13 +579,13 @@ fn the_gm_queues_miras_partial_notice(world: &mut World) {
 fn the_verbs_file_gains(world: &mut World, fault: String) {
     let row = match fault.as_str() {
         "partial_at without partial" => {
-            "\n  - id: press\n    when:\n      verb: press\n    roll:\n      check: grit\n      threshold: 10\n      partial_at: 7\n    do:\n      - flag:\n          of: self\n          key: touched\n          value: true\n"
+            "\n  - id: press\n    when:\n      verb: press\n    roll:\n      check: exert\n      threshold: 10\n      partial_at: 7\n    do:\n      - flag:\n          of: self\n          key: touched\n          value: true\n"
         }
         "partial without partial_at" => {
-            "\n  - id: press\n    when:\n      verb: press\n    roll:\n      check: grit\n      threshold: 10\n    partial:\n      - flag:\n          of: self\n          key: halfway\n          value: true\n"
+            "\n  - id: press\n    when:\n      verb: press\n    roll:\n      check: exert\n      threshold: 10\n    partial:\n      - flag:\n          of: self\n          key: halfway\n          value: true\n"
         }
         "partial_at above difficulty" => {
-            "\n  - id: press\n    when:\n      verb: press\n    roll:\n      check: grit\n      threshold: 10\n      partial_at: 10\n    success:\n      - flag:\n          of: self\n          key: touched\n          value: true\n    partial:\n      - flag:\n          of: self\n          key: halfway\n          value: true\n"
+            "\n  - id: press\n    when:\n      verb: press\n    roll:\n      check: exert\n      threshold: 10\n      partial_at: 10\n    success:\n      - flag:\n          of: self\n          key: touched\n          value: true\n    partial:\n      - flag:\n          of: self\n          key: halfway\n          value: true\n"
         }
         "partial_at without a check" => {
             "\n  - id: press\n    when:\n      verb: press\n    partial:\n      - flag:\n          of: self\n          key: halfway\n          value: true\n"
@@ -688,7 +688,7 @@ fn prepare_press(world: &mut World, base: i64, sit: bool) {
     append_verbs(&pack, PRESS_ROW);
     append_check(&pack, BAND_CHECK);
     insert_mira_flags(&pack, PRESS_FLAGS);
-    set_grit(&pack, "rowan", base);
+    set_vigor(&pack, "rowan", base);
     super::common::edit_save(&pack, |now| {
         now.actors_mut()
             .get_mut::<component::Place>(&"mira".into())

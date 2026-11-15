@@ -25,7 +25,7 @@ An integer is still an integer. `{ meter: { of, key }, plus: N }` is still that 
 | `world.dawn` | The world's meter, declared in `world/meters.yaml`. |
 | `place:loft.light` | The named place's meter, as for `here`. |
 | `story:ending.dread` | The named story's meter. |
-| `mira.grit` | That cast member's meter. |
+| `mira.vigor` | That cast member's meter. |
 | `a + b`, `a - b`, `a * b`, `a / b` | Arithmetic. `/` rounds toward negative infinity. |
 | `min(a, b)`, `max(a, b)` | The lower or higher value. |
 | `(a + b) * c` | Parentheses. |

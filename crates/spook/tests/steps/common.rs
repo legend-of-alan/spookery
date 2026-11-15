@@ -87,23 +87,23 @@ fn break_pack(pack: &Path, fault: &str) {
     match fault {
         "missing when" => replace_in_file(
             &pack.join("rules/verbs.yaml"),
-            "  - id: grit\n    when:\n      verb: grit\n",
-            "  - id: grit\n",
+            "  - id: exert\n    when:\n      verb: exert\n",
+            "  - id: exert\n",
         ),
         "unknown field" => replace_in_file(
             &pack.join("rules/verbs.yaml"),
-            "  - id: grit\n    when:\n",
-            "  - id: grit\n    audiance: player\n    when:\n",
+            "  - id: exert\n    when:\n",
+            "  - id: exert\n    audiance: player\n    when:\n",
         ),
         "unknown check" => replace_in_file(
             &pack.join("rules/verbs.yaml"),
-            "    check: grit\n",
+            "    check: exert\n",
             "    check: courage\n",
         ),
         "duplicate move" => replace_in_file(
             &pack.join("rules/verbs.yaml"),
             "  - id: wait\n",
-            "  - id: grit\n",
+            "  - id: exert\n",
         ),
         "unknown format tag" => replace_in_file(
             &pack.join("rules/verbs.yaml"),
@@ -154,7 +154,7 @@ fn break_pack(pack: &Path, fault: &str) {
         ),
         "check names no meter" => replace_in_file(
             &pack.join("rules/checks.yaml"),
-            "    meter: grit
+            "    meter: vigor
 ",
             "    meter: \"\"
 ",
