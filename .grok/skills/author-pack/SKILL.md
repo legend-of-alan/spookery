@@ -28,6 +28,7 @@ description: >
 
 - `state/save.yaml` is the save. Don't hand-edit its keys. `pack_rev` in it is a hash of `world/`, `cast/`, and `rules/`, and only `spook migrate <pack>` stores a new one.
 - After you edit anything under `world/`, `cast/`, or `rules/`, check reports `PACK_REV_MISMATCH` until you run `spook migrate <pack>`, then check again. Editing `pack.yaml` does not, because it is not hashed. Migrate does not fix a shape error.
+- `gm_notes` in `pack.yaml` is the pack's tone, narrative style and story goal only, not how the GM uses its tools. The full rule is in `docs/pack-reference.md`.
 
 ## Worked example
 

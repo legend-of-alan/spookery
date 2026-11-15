@@ -35,7 +35,7 @@ A verb uses the wielded item's rule for it, then the target item's rule, then th
 
 `start.place` is the root of the exit graph. `checkpoint_every` is optional. It is the number of rounds between journal checkpoints. The default is 100. Zero is rejected. The field is not part of the canon hash.
 
-`gm_notes` is optional text for the GM: the pack's tone and flavor, its narrative style, and any goal the GM should steer toward. It is sent unchanged to every GM seat in `status`, and the AI GM puts it after its own instructions on every model call, so keep it to a few sentences. How the GM uses its tools and the rules of the seat are the AI GM's own and need no words here. A pack without `gm_notes` still gets a working GM. The field is not part of the canon hash.
+`gm_notes` is optional text for the GM: the pack's tone, its narrative style, and any story goal. It is sent unchanged to every GM seat in `status`, and the AI GM puts it after its own instructions on every model call, so keep it to a few sentences. Write only that, like the example below. Don't put how the GM uses its tools, the seat rules, turn handling, output format, or 'you are the GM' instructions here. Those belong to the AI GM itself. A line such as 'End the turn when every player has a move queued' does not belong here. A pack without `gm_notes` still gets a working GM. The field is not part of the canon hash.
 
 ```yaml file=pack.yaml
 schema: pack
