@@ -123,7 +123,9 @@ fn say_to_mira_on_an_empty_table(world: &mut World, text: String) {
         .say_as_player(
             &spookery_engine::Presence::default(),
             &"rowan".into(),
-            spookery_engine::Address::Actor("aldric"),
+            &spookery_protocol::Address::Actor {
+                actor: "aldric".into(),
+            },
             &text,
         )
         .unwrap_or_else(|err| panic!("speak: {err}"));

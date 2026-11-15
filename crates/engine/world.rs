@@ -22,27 +22,10 @@ use crate::store::records::Record;
 use crate::store::save;
 use crate::store::tape::{append_record, read_scrollback, TapeRecord};
 use crate::Reason;
-use spookery_protocol::{QueuedMove, Refusal, SayArgs, Speaker, PERCEIVE_BODY_CHARS};
+use spookery_protocol::{Address, QueuedMove, Refusal, Speaker, PERCEIVE_BODY_CHARS};
 
 /// One say, in characters. Four kibibytes still fits in an 8 KiB client message.
 const MAX_SAY_CHARS: usize = 4 * 1024;
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Address<'a> {
-    Table,
-    Place(&'a str),
-    Actor(&'a str),
-}
-
-impl<'a> From<&'a SayArgs> for Address<'a> {
-    fn from(args: &'a SayArgs) -> Self {
-        match args {
-            SayArgs::Table { .. } => Address::Table,
-            SayArgs::Place { place, .. } => Address::Place(place),
-            SayArgs::Actor { actor, .. } => Address::Actor(actor),
-        }
-    }
-}
 
 pub struct World<L = crate::PackGuard> {
     pub(crate) root: PathBuf,
@@ -112,7 +95,7 @@ impl World {
         &self,
         presence: &Presence,
         actor_id: &ActorId,
-        heard: Address<'_>,
+        heard: &Address,
         text: &str,
     ) -> Result<TapeRecord, Refusal> {
         let actors = self.state.actors();
@@ -120,7 +103,7 @@ impl World {
             return Err(Reason::Schema.into());
         }
         let from = Speaker::Player(actor_id.to_string());
-        let Address::Actor(typed) = heard else {
+        let Address::Actor { actor: typed } = heard else {
             return Ok(self.append_speech(presence, from, Some(actor_id), heard, text)?);
         };
         let viewer = Viewer::Player(actor_id.clone());
@@ -137,24 +120,29 @@ impl World {
                 ..Reason::AmbiguousName.into()
             })?;
             if let Some(addressee) = found {
-                said_to = (Address::Actor(addressee), said.trim());
+                said_to = (
+                    Address::Actor {
+                        actor: addressee.to_string(),
+                    },
+                    said.trim(),
+                );
                 break;
             }
         }
         let (heard, text) = said_to;
-        Ok(self.append_speech(presence, from, Some(actor_id), heard, text)?)
+        Ok(self.append_speech(presence, from, Some(actor_id), &heard, text)?)
     }
 
-    /// Append a GM say, spoken as `npc` when it is set. An `npc` that is not an NPC is
-    /// `SCHEMA`.
+    /// Append a GM say, spoken as `as_speaker` when it is set. An `as_speaker` that is not an
+    /// NPC is `SCHEMA`.
     pub fn say_as_gm(
         &self,
         presence: &Presence,
-        npc: Option<&ActorId>,
-        heard: Address<'_>,
+        as_speaker: Option<&ActorId>,
+        heard: &Address,
         text: &str,
     ) -> Result<TapeRecord, Reason> {
-        let from = match npc {
+        let from = match as_speaker {
             None => Speaker::Gm,
             Some(id)
                 if self.state.actors().get::<component::ControlType>(id).get()
@@ -164,7 +152,7 @@ impl World {
             }
             Some(_) => return Err(Reason::Schema),
         };
-        self.append_speech(presence, from, npc, heard, text)
+        self.append_speech(presence, from, as_speaker, heard, text)
     }
 
     /// Append one say to the tape. An `actor` say must name an actor in the world, and a
@@ -174,17 +162,17 @@ impl World {
         presence: &Presence,
         from: Speaker,
         speaker: Option<&ActorId>,
-        heard: Address<'_>,
+        heard: &Address,
         text: &str,
     ) -> Result<TapeRecord, Reason> {
         let text = check_say_text(text)?.to_string();
         let actors = self.state.actors();
         match (heard, speaker) {
-            (Address::Actor(actor), _) if !actors.contains(&ActorId::from(actor)) => {
+            (Address::Actor { actor }, _) if !actors.contains(&ActorId::from(actor.as_str())) => {
                 return Err(Reason::Schema);
             }
-            (Address::Place(place), Some(speaker))
-                if actors.get::<component::Place>(speaker).get() != Some(place) =>
+            (Address::Place { place }, Some(speaker))
+                if actors.get::<component::Place>(speaker).get() != Some(place.as_str()) =>
             {
                 return Err(Reason::Schema);
             }
@@ -192,8 +180,8 @@ impl World {
         }
         let (address, place, actor) = match heard {
             Address::Table => ("table", None, None),
-            Address::Place(place) => ("place", Some(place.to_string()), None),
-            Address::Actor(actor) => ("actor", None, Some(actor.to_string())),
+            Address::Place { place } => ("place", Some(place.clone()), None),
+            Address::Actor { actor } => ("actor", None, Some(actor.clone())),
         };
         let recipients = speech_recipients(&self.state, presence, speaker, heard);
         let record = TapeRecord {
@@ -595,7 +583,7 @@ fn speech_recipients(
     state: &State,
     presence: &Presence,
     speaker: Option<&ActorId>,
-    heard: Address<'_>,
+    heard: &Address,
 ) -> Vec<String> {
     let mut ids = BTreeSet::new();
     let seated = &presence.actors_present;
@@ -603,7 +591,7 @@ fn speech_recipients(
         Address::Table => {
             ids.extend(seated.iter().map(ActorId::to_string));
         }
-        Address::Place(place) => {
+        Address::Place { place } => {
             let here = state.actors_at(place);
             ids.extend(
                 seated
@@ -612,8 +600,8 @@ fn speech_recipients(
                     .map(ActorId::to_string),
             );
         }
-        Address::Actor(actor) => {
-            if seated.iter().any(|id| *id == *actor) {
+        Address::Actor { actor } => {
+            if seated.iter().any(|id| *id == *actor.as_str()) {
                 ids.insert(actor.to_string());
             }
         }

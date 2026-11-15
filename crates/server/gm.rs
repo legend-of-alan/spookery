@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use rmcp::handler::server::tool::schema_for_type;
 use serde_json::{Map, Value};
-use spookery_engine::{ActorId, Address, Presence, Reason, RoundOutput, TapeRecord, World};
+use spookery_engine::{ActorId, Presence, Reason, RoundOutput, TapeRecord, World};
 
 use super::frames;
 use super::table::commit_then_fast_forward;
@@ -101,8 +101,8 @@ fn say(
     arguments: Option<&Map<String, Value>>,
 ) -> Result<Reply, Reason> {
     let args: SayArgs = parse_args(arguments).map_err(|_| Reason::Schema)?;
-    let npc = args.npc().map(ActorId::from);
-    let said = world.say_as_gm(presence, npc.as_ref(), Address::from(&args), args.text())?;
+    let as_speaker = args.as_speaker.as_deref().map(ActorId::from);
+    let said = world.say_as_gm(presence, as_speaker.as_ref(), &args.address, &args.text)?;
     let mut reply = Reply::new(frames::render_say(&said, true));
     reply.said = Some(said);
     Ok(reply)

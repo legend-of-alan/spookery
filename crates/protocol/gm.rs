@@ -49,7 +49,23 @@ struct SayWire {
     #[serde(default)]
     actor: Option<String>,
     #[serde(default, rename = "as")]
-    npc: Option<String>,
+    as_speaker: Option<String>,
+}
+
+/// Who hears a say: everyone at the table, everyone in one place, or one actor.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[serde(tag = "address", rename_all = "lowercase")]
+pub enum Address {
+    Table,
+    Place {
+        #[cfg_attr(feature = "schema", schemars(length(min = 1)))]
+        place: String,
+    },
+    Actor {
+        #[cfg_attr(feature = "schema", schemars(length(min = 1)))]
+        actor: String,
+    },
 }
 
 /// The `say` command arguments of either seat, sent from a client to the table. Only the GM
@@ -58,46 +74,33 @@ struct SayWire {
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 // The schema shows the three tagged shapes, closed and with non-empty names as `SayWire`
 // checks them, and an object at its root, which MCP wants.
-#[cfg_attr(feature = "schema", schemars(!try_from, deny_unknown_fields, extend("type" = "object")))]
-#[serde(tag = "address", rename_all = "lowercase", try_from = "SayWire")]
-pub enum SayArgs {
-    Table {
-        text: String,
-        #[serde(rename = "as", default, skip_serializing_if = "Option::is_none")]
-        npc: Option<String>,
-    },
-    Place {
-        #[cfg_attr(feature = "schema", schemars(length(min = 1)))]
-        place: String,
-        text: String,
-        #[serde(rename = "as", default, skip_serializing_if = "Option::is_none")]
-        npc: Option<String>,
-    },
-    Actor {
-        #[cfg_attr(feature = "schema", schemars(length(min = 1)))]
-        actor: String,
-        text: String,
-        #[serde(rename = "as", default, skip_serializing_if = "Option::is_none")]
-        npc: Option<String>,
-    },
+#[cfg_attr(feature = "schema", schemars(!try_from, transform = close_each_shape, extend("type" = "object")))]
+#[serde(try_from = "SayWire")]
+pub struct SayArgs {
+    #[serde(flatten)]
+    pub address: Address,
+    pub text: String,
+    #[serde(rename = "as", default, skip_serializing_if = "Option::is_none")]
+    pub as_speaker: Option<String>,
 }
 
-impl SayArgs {
-    pub fn text(&self) -> &str {
-        match self {
-            SayArgs::Table { text, .. }
-            | SayArgs::Place { text, .. }
-            | SayArgs::Actor { text, .. } => text,
-        }
-    }
-
-    /// The NPC the GM speaks as, if any.
-    pub fn npc(&self) -> Option<&str> {
-        match self {
-            SayArgs::Table { npc, .. }
-            | SayArgs::Place { npc, .. }
-            | SayArgs::Actor { npc, .. } => npc.as_deref(),
-        }
+/// Moves the keys every `SayArgs` shape shares into each shape, and closes each one.
+#[cfg(feature = "schema")]
+fn close_each_shape(schema: &mut schemars::Schema) {
+    let shared = schema.remove("properties").unwrap_or_default();
+    let required = schema.remove("required").unwrap_or_default();
+    let shapes = schema.get_mut("oneOf").and_then(Value::as_array_mut);
+    for shape in shapes.into_iter().flatten() {
+        let mut properties = shared.as_object().cloned().unwrap_or_default();
+        properties.extend(shape["properties"].as_object().cloned().unwrap_or_default());
+        shape["properties"] = properties.into();
+        shape["additionalProperties"] = false.into();
+        shape["required"] = [&shape["required"], &required]
+            .into_iter()
+            .filter_map(Value::as_array)
+            .flatten()
+            .cloned()
+            .collect();
     }
 }
 
@@ -105,17 +108,17 @@ impl TryFrom<SayWire> for SayArgs {
     type Error = &'static str;
 
     fn try_from(args: SayWire) -> Result<Self, Self::Error> {
-        let (text, npc) = (args.text, args.npc);
-        match (args.address.as_str(), args.place, args.actor) {
-            ("table", None, None) => Ok(SayArgs::Table { text, npc }),
-            ("place", Some(place), None) if !place.is_empty() => {
-                Ok(SayArgs::Place { place, text, npc })
-            }
-            ("actor", None, Some(actor)) if !actor.is_empty() => {
-                Ok(SayArgs::Actor { actor, text, npc })
-            }
-            _ => Err("say"),
-        }
+        let address = match (args.address.as_str(), args.place, args.actor) {
+            ("table", None, None) => Address::Table,
+            ("place", Some(place), None) if !place.is_empty() => Address::Place { place },
+            ("actor", None, Some(actor)) if !actor.is_empty() => Address::Actor { actor },
+            _ => return Err("say"),
+        };
+        Ok(SayArgs {
+            address,
+            text: args.text,
+            as_speaker: args.as_speaker,
+        })
     }
 }
 

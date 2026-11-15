@@ -31,7 +31,7 @@ pub use state::id::{ActorId, ExitId, PlaceId, StoryId};
 pub use state::{Note, Presence, Reader, Save, State, Writer};
 pub use store::save::{emit as emit_save, parse as parse_save};
 pub use store::{emit_tape_record, lock_pack, PackGuard, TapeRecord};
-pub use world::{check_pack, Address, World};
+pub use world::{check_pack, World};
 
 #[cfg(feature = "testing")]
 pub mod testing {

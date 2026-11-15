@@ -7,8 +7,7 @@ use std::sync::mpsc::{Receiver, Sender};
 
 use serde_json::{Map, Value};
 use spookery_engine::{
-    emit_tape_record, ActorId, Address, Presence, Reason, RecipientLine, RoundOutput, TapeRecord,
-    World,
+    emit_tape_record, ActorId, Presence, Reason, RecipientLine, RoundOutput, TapeRecord, World,
 };
 use tokio::sync::{oneshot, watch};
 
@@ -277,7 +276,7 @@ impl Table {
         let presence = self.seats.presence();
         let body = match command.as_str() {
             "release" if read::<NoArgs>(&args).is_some() => return self.release_claim(conn, id),
-            "say" => match read::<SayArgs>(&args).filter(|args| args.npc().is_none()) {
+            "say" => match read::<SayArgs>(&args).filter(|args| args.as_speaker.is_none()) {
                 Some(args) => return self.say_as_player(conn, id, &actor_id, &args),
                 None => ServerBody::Refused(Reason::Schema.into()),
             },
@@ -404,10 +403,9 @@ impl Table {
         args: &SayArgs,
     ) {
         let presence = self.seats.presence();
-        let heard = Address::from(args);
         match self
             .world
-            .say_as_player(&presence, actor_id, heard, args.text())
+            .say_as_player(&presence, actor_id, &args.address, &args.text)
         {
             Ok(said) => self.deliver_say(&said, Some((conn, id))),
             Err(refusal) => self.reply(conn, id, ServerBody::Refused(refusal)),

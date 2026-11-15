@@ -31,8 +31,8 @@ impl Outcome {
 }
 
 pub use gm::{
-    parse_args, CommitArgs, CommitBody, ControlType, MenuRow, PackSummary, PerceiveArgs, QueueArgs,
-    QueuedMove, Roll, SayArgs, StatusPresence, TableStatus, ToolResult,
+    parse_args, Address, CommitArgs, CommitBody, ControlType, MenuRow, PackSummary, PerceiveArgs,
+    QueueArgs, QueuedMove, Roll, SayArgs, StatusPresence, TableStatus, ToolResult,
 };
 #[cfg(feature = "schema")]
 pub use message::{generate_client_schema, generate_server_schema};
