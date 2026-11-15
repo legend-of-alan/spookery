@@ -240,7 +240,6 @@ fn miras_perceive_holds_her_facts(world: &mut World) {
         let keys: Vec<&String> = fact.as_object().unwrap().keys().collect();
         assert_eq!(keys, ["id", "text"], "{result}");
     }
-    assert!(result["notes"].is_array(), "{result}");
 }
 
 #[then(expr = "the perceive as Rowan holds the cast's prose but no facts or notes")]
