@@ -234,12 +234,15 @@ fn render_changes(viewer: &str, changes: &[ChangeView]) -> String {
         .iter()
         .filter_map(|change| {
             let whose = render_possessive(viewer, change);
-            match (change.component.as_str(), as_number(&change.after)) {
-                ("meter", Some(after)) => Some(format!("{whose} {} is now {after}.", change.key)),
-                ("item", Some(_)) => render_item_change(viewer, change, changes),
-                ("place", _) if !change.name.is_empty() => {
-                    Some(format!("{whose} place is now {}.", change.name))
+            match (change.component_name.as_str(), as_number(&change.after)) {
+                ("meter", Some(after)) => {
+                    Some(format!("{whose} {} is now {after}.", change.entry_id))
                 }
+                ("item", Some(_)) => render_item_change(viewer, change, changes),
+                ("place", _) if !change.entry_display_name.is_empty() => Some(format!(
+                    "{whose} place is now {}.",
+                    change.entry_display_name
+                )),
                 _ => None,
             }
         })
@@ -249,10 +252,10 @@ fn render_changes(viewer: &str, changes: &[ChangeView]) -> String {
 
 /// The display name of what changed, which is its key when the two are the same.
 fn display_name(change: &ChangeView) -> &str {
-    if change.name.is_empty() {
-        &change.key
+    if change.entry_display_name.is_empty() {
+        &change.entry_id
     } else {
-        &change.name
+        &change.entry_display_name
     }
 }
 
@@ -271,23 +274,23 @@ fn render_item_change(viewer: &str, change: &ChangeView, changes: &[ChangeView])
     let lost = after < as_number(&change.before)?;
     let name = display_name(change);
     let other_side = changes.iter().find(|other| {
-        other.component == "item"
-            && other.key == change.key
+        other.component_name == "item"
+            && other.entry_id == change.entry_id
             && (as_number(&other.before).zip(as_number(&other.after)))
                 .is_some_and(|(before, after)| (after < before) != lost)
     });
-    let other_is_actor = other_side.map(|other| is_actor(&other.entity));
-    if !is_actor(&change.entity) {
+    let other_is_actor = other_side.map(|other| is_actor(&other.entity_id));
+    if !is_actor(&change.entity_id) {
         return match (other_is_actor, lost) {
             (Some(true), _) => None,
             (_, true) => Some(format!("The {name} here is gone.")),
             (_, false) => Some(format!("A {name} turned up here.")),
         };
     }
-    let who = if change.entity == viewer {
+    let who = if change.entity_id == viewer {
         "You"
     } else {
-        &change.entity_name
+        &change.entity_display_name
     };
     let whose = render_possessive(viewer, change);
     let sentence = match (lost, other_is_actor) {
@@ -304,12 +307,12 @@ fn render_item_change(viewer: &str, change: &ChangeView, changes: &[ChangeView])
 
 /// `Your`, `Briar's`, `Gate Yard's`, `The strain story's` or `The world's`.
 fn render_possessive(viewer: &str, change: &ChangeView) -> String {
-    let name = &change.entity_name;
-    if change.entity == viewer {
+    let name = &change.entity_display_name;
+    if change.entity_id == viewer {
         "Your".to_string()
-    } else if change.entity == "world" {
+    } else if change.entity_id == "world" {
         "The world's".to_string()
-    } else if change.entity.starts_with("story:") {
+    } else if change.entity_id.starts_with("story:") {
         format!("The {name} story's")
     } else {
         format!("{name}'s")
@@ -317,8 +320,8 @@ fn render_possessive(viewer: &str, change: &ChangeView) -> String {
 }
 
 /// Whether a change's entity is an actor: an actor id has no `place:` or `story:` prefix.
-fn is_actor(entity: &str) -> bool {
-    entity != "world" && !entity.contains(':')
+fn is_actor(entity_id: &str) -> bool {
+    entity_id != "world" && !entity_id.contains(':')
 }
 
 /// Each place, then its exits indented under it.

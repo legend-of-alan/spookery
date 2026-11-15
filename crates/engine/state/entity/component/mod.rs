@@ -115,9 +115,9 @@ impl<'a, E: entity::Entities, C: Component> Mut<'a, E, C> {
         }
     }
 
-    /// The key a write of the entity's `entry_name` reports: `None` when it holds one value of `C`.
-    fn key(&self, entry_name: Option<&str>) -> change::Key {
-        change::Key::new(C::NAME, self.id.as_id_ref(), entry_name)
+    /// The key a write of the entity's `entry_id` reports: `None` when it holds one value of `C`.
+    fn key(&self, entry_id: Option<&str>) -> change::Key {
+        change::Key::new(C::NAME, self.id.as_id_ref(), entry_id)
     }
 
     /// `UNKNOWN_ID` unless the entity exists: a value goes only on one that does.

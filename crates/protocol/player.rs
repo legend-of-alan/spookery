@@ -110,23 +110,24 @@ pub struct MeterView {
     pub max: i64,
 }
 
-/// One change of a `changes` body, sent from the table to a player client. `component` names
-/// what changed, such as `meter`, `item` or `place`. `entity` is whose it is as a rule's `of`
-/// names it: an actor id, `place:<id>`, `story:<id>` or `world`. `entity_name` is that actor's
-/// or place's display name, or the story's id. `key` is which one of the entity's, such as the
-/// meter or item id, and `name` its display name. `before` and `after` are left out when there
+/// One change of a `changes` body, sent from the table to a player client. `component_name`
+/// names what changed, such as `meter`, `item` or `place`. `entity_id` is whose it is as a
+/// rule's `of` names it: an actor id, `place:<id>`, `story:<id>` or `world`.
+/// `entity_display_name` is that actor's or place's display name, or the story's id.
+/// `entry_id` is which one of the entity's, such as the meter or item id, and
+/// `entry_display_name` its display name. `before` and `after` are left out when there
 /// was none.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct ChangeView {
-    pub component: String,
-    pub entity: String,
+    pub component_name: String,
+    pub entity_id: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub entity_name: String,
+    pub entity_display_name: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub key: String,
+    pub entry_id: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub name: String,
+    pub entry_display_name: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub before: Option<ChangeValue>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

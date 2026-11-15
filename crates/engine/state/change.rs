@@ -15,8 +15,8 @@ pub struct Key {
     /// The component's `NAME` or, for an actor's action state, the part of it that moved.
     pub component_name: &'static str,
     pub entity_id: entity::Id,
-    /// The name the entity holds the value under, such as meter `grit` or item `rope`.
-    pub entry_name: Option<String>,
+    /// The id the entity holds the value under, such as meter `grit` or item `rope`.
+    pub entry_id: Option<String>,
 }
 
 /// `<collection>_<component> <id> [<entry>]`, such as `actor_meter rowan grit` or
@@ -30,19 +30,19 @@ impl fmt::Display for Key {
             entity::Id::Story(id) => write!(f, "story_{component} {id}")?,
             entity::Id::Global => write!(f, "world_{component}")?,
         }
-        match &self.entry_name {
-            Some(entry_name) => write!(f, " {entry_name}"),
+        match &self.entry_id {
+            Some(entry_id) => write!(f, " {entry_id}"),
             None => Ok(()),
         }
     }
 }
 
 impl Key {
-    /// The key of `component_name`'s `entry_name` on `id`: `None` when `id` holds one value of it.
+    /// The key of `component_name`'s `entry_id` on `id`: `None` when `id` holds one value of it.
     pub(crate) fn new(
         component_name: &'static str,
         id: entity::IdRef<'_>,
-        entry_name: Option<&str>,
+        entry_id: Option<&str>,
     ) -> Key {
         let entity_id = match id {
             entity::IdRef::Actor(id) => entity::Id::Actor(id.clone()),
@@ -53,7 +53,7 @@ impl Key {
         Key {
             component_name,
             entity_id,
-            entry_name: entry_name.map(str::to_string),
+            entry_id: entry_id.map(str::to_string),
         }
     }
 }

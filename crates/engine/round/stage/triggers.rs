@@ -145,12 +145,12 @@ fn matches_watch(state: &State, rule: &Rule, watch: &ChangeWatch, change: &Chang
                 && matches_subject(state, subject, actor)
         }
         (ChangeWatch::Meter { key, op, bound }, Meter::NAME, _)
-            if changed.entry_name.as_ref() == Some(key) =>
+            if changed.entry_id.as_ref() == Some(key) =>
         {
             crosses(&change.before, &change.after, *op, *bound)
         }
         (ChangeWatch::Flag { key, becomes }, Flag::NAME, _)
-            if changed.entry_name.as_ref() == Some(key) =>
+            if changed.entry_id.as_ref() == Some(key) =>
         {
             flips(change, *becomes)
         }
@@ -158,7 +158,7 @@ fn matches_watch(state: &State, rule: &Rule, watch: &ChangeWatch, change: &Chang
             flips(change, *becomes)
         }
         (ChangeWatch::Item { id, gained }, Item::NAME, entity::Id::Actor(_))
-            if changed.entry_name.as_ref() == Some(id) =>
+            if changed.entry_id.as_ref() == Some(id) =>
         {
             match (change.before.as_number(), change.after.as_number()) {
                 (Some(before), Some(after)) if *gained => after > before,
