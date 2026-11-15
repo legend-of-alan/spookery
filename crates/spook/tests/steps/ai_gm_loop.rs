@@ -171,12 +171,16 @@ fn read_last_results(world: &World) -> Vec<String> {
     read_tool_results(calls.last().expect("a model call"))
 }
 
-#[then(expr = "the model's call carries the pack's gm_notes {string}")]
-fn the_models_call_carries_the_pack_gm_notes(world: &mut World, notes: String) {
-    let shown = world.model.calls().iter().flatten().any(
-        |message| matches!(message, model::Message::System { content } if content.contains(&notes)),
-    );
-    assert!(shown, "{:?}", world.model.calls());
+#[then(expr = "every model call carries the pack's gm_notes {string}")]
+fn every_model_call_carries_the_pack_gm_notes(world: &mut World, notes: String) {
+    let calls = world.model.calls();
+    assert!(!calls.is_empty(), "{calls:?}");
+    for messages in &calls {
+        let shown = messages.iter().any(
+            |message| matches!(message, model::Message::System { content } if content.contains(&notes)),
+        );
+        assert!(shown, "{calls:?}");
+    }
 }
 
 #[then(expr = "the table saw a perceive as Mira before any say")]
