@@ -568,7 +568,28 @@ pub(crate) fn check_canon(canon: &Canon) -> Vec<Diagnostic> {
     diags.extend(check_trigger_leaks(canon));
     diags.extend(check_world_change_subjects(canon));
     diags.extend(check_cycles(canon));
+    diags.extend(check_gm_notes_length(canon));
     diags
+}
+
+/// `gm_notes` in characters, about 250 tokens. A local model under Ollama may have only a few
+/// thousand tokens of context, shared on every call by the AI GM's instructions, its tools, the
+/// game state and the notes.
+const MAX_GM_NOTES_CHARS: usize = 1000;
+
+/// `gm_notes` past `MAX_GM_NOTES_CHARS` is a warning, so an author can still go over on purpose.
+fn check_gm_notes_length(canon: &Canon) -> Option<Diagnostic> {
+    let chars = canon.gm_notes.chars().count();
+    (chars > MAX_GM_NOTES_CHARS).then(|| {
+        warning(
+            "pack.yaml",
+            &format!(
+                "gm_notes is {chars} characters, over the cap of {MAX_GM_NOTES_CHARS} characters"
+            ),
+            "cut it to the pack's tone, narrative style and story goal",
+        )
+        .at_path("gm_notes")
+    })
 }
 
 /// `cycle` conditions, on a rule or an exit, that name no cycle in the budget or have a bound
