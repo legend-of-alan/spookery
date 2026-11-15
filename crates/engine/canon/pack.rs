@@ -1,4 +1,4 @@
-//! `pack.yaml`: the pack's id, title, system and start.
+//! `pack.yaml`: the pack's id, title, system, start and the GM's tone and flavor.
 
 use serde::Deserialize;
 
@@ -38,6 +38,8 @@ pub(super) struct PackDoc {
     pub(super) system: String,
     pub(super) start: StartYaml,
     checkpoint_every: Option<u64>,
+    #[serde(default)]
+    pub(super) gm: String,
 }
 
 #[derive(Deserialize)]

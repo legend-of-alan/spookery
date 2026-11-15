@@ -232,7 +232,7 @@ fn the_gm_reports_a_model_call_limit_warning(world: &mut World) {
 fn the_model_is_called_for_that_say(world: &mut World) {
     let calls = world.model.calls();
     assert_eq!(calls.len(), 1);
-    let model::Message::User { content } = &calls[0][0] else {
+    let model::Message::User { content } = &calls[0][1] else {
         panic!("{:?}", calls[0]);
     };
     assert!(content.contains("evening"), "{content}");

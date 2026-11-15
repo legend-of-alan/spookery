@@ -11,6 +11,7 @@ pub fn render_request(model_name: &str, conversation: &[model::Message]) -> Valu
     let messages: Vec<Value> = conversation
         .iter()
         .map(|message| match message {
+            model::Message::System { content } => json!({ "role": "system", "content": content }),
             model::Message::User { content } => json!({ "role": "user", "content": content }),
             model::Message::Assistant { tool_calls } => {
                 let calls: Vec<Value> = tool_calls
@@ -110,13 +111,16 @@ mod tests {
     }
 
     #[test]
-    fn each_tool_call_is_echoed_and_answered_by_its_id() {
+    fn the_system_text_leads_and_each_tool_call_is_echoed_and_answered_by_its_id() {
         let call = ToolCall {
             id: "call_7".into(),
             name: "say".into(),
             arguments: r#"{"address":"table","text":"hi"}"#.into(),
         };
         let messages = [
+            model::Message::System {
+                content: "you are the GM".into(),
+            },
             model::Message::User {
                 content: "the table is quiet".into(),
             },
@@ -132,6 +136,7 @@ mod tests {
         assert_eq!(
             body["messages"],
             json!([
+                { "role": "system", "content": "you are the GM" },
                 { "role": "user", "content": "the table is quiet" },
                 { "role": "assistant", "content": null, "tool_calls": [{
                     "id": "call_7",

@@ -750,6 +750,7 @@ mod tests {
             items: BTreeMap::new(),
             budget: crate::canon::Budget::default(),
             checkpoint_every: 100,
+            gm: String::new(),
         }
     }
 

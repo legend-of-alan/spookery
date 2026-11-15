@@ -338,6 +338,35 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
+    async fn every_model_call_opens_with_one_system_message_and_the_pack_gm_text_last() {
+        const GRIM_STATUS: &str = r#"{"kind":"status","presence":{"players":1,"actors_present":["pc"]},"world_time":0,"round_index":0,"state_rev":1,"pack_rev":"p","last_round_at":"","queued":[],"pack":{"menu":[],"control_types":{"pc":"pc_template"},"places":{},"cast":{},"gm":"Keep it grim."}}"#;
+        let grim = format!("{}\n\nKeep it grim.", context::GM_INSTRUCTIONS);
+        for (status, system_text) in [(STATUS, context::GM_INSTRUCTIONS), (GRIM_STATUS, &grim)] {
+            let model = ScriptedModel::new(vec![vec![PERCEIVE]]);
+            let connection = ScriptedConnection::new(vec![
+                Answer {
+                    then: vec![PLAYER_SAY],
+                    ..answer("status", &[status])
+                },
+                answer("perceive", &[VIEW]),
+            ]);
+            assert_eq!(play(&model, &connection).await, Ok(()));
+            let calls = model.calls();
+            assert_eq!(calls.len(), 2);
+            for messages in &calls {
+                let system = model::Message::System {
+                    content: system_text.to_string(),
+                };
+                assert_eq!(messages[0], system);
+                let systems = messages
+                    .iter()
+                    .filter(|message| matches!(message, model::Message::System { .. }));
+                assert_eq!(systems.count(), 1, "{messages:?}");
+            }
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
     async fn every_call_in_a_reply_is_answered_before_the_next_ask() {
         let model = ScriptedModel::new(vec![vec![
             PERCEIVE,

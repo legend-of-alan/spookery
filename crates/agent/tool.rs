@@ -48,7 +48,7 @@ pub(crate) static TOOLS: LazyLock<Value> = LazyLock::new(|| {
         ),
         tool(
             END_TURN,
-            "Play the round: the engine resolves every queued move and answers with the rolls. You may say what happened afterwards. Answer with no tool calls when you are done.",
+            "Play the round: the engine resolves every queued move and answers with the rolls.",
             &json!({ "type": "object", "properties": {}, "additionalProperties": false }),
         ),
     ])
@@ -156,6 +156,7 @@ mod tests {
                 ("mira".into(), "MIRA-PROSE-SENTINEL".into()),
                 ("rowan".into(), "Rowan came in from the rain.".into()),
             ]),
+            gm: String::new(),
         }
     }
 
