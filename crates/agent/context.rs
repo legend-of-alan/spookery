@@ -60,9 +60,9 @@ impl ClientState {
     }
 
     /// Records what one server message shows about the game: a player's "say" starts a turn,
-    /// the GM's own "say" (the reply to its command) joins `tape_lines`, a queued move joins the
-    /// queued moves and starts a turn, a round empties them, and presence names the actors
-    /// present.
+    /// the GM's own "say" (the reply to its command, as the GM or an NPC) joins `tape_lines`,
+    /// a queued move joins the queued moves and starts a turn, a round empties them, and
+    /// presence names the actors present.
     pub(crate) fn record_server_message(&mut self, message: &ServerMessage) {
         let seq = message.seq.unwrap_or_default();
         match &message.body {
@@ -70,7 +70,7 @@ impl ClientState {
                 self.new_player_lines.push(TapeLine::new(seq, say.clone()));
                 self.causes.push_back(TurnCause::Say);
             }
-            ServerBody::Say(say) if say.from == Speaker::Gm => {
+            ServerBody::Say(say) if matches!(say.from, Speaker::Gm | Speaker::Npc(_)) => {
                 push_recent(&mut self.tape_lines, TapeLine::new(seq, say.clone()));
             }
             ServerBody::Queued {

@@ -82,3 +82,9 @@ Feature: A human GM runs a round
     When a human GM sits on a free loopback port
     And the GM types "dance"
     Then the GM's stderr shows "The table does not understand that. Type help."
+
+  Scenario: A GM command with wrong arguments is refused
+    Given a docks table
+    When a human GM sits on a free loopback port
+    And the GM types "perceive a b"
+    Then the GM's stderr shows "That line is not valid. [SCHEMA]"

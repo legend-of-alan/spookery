@@ -85,9 +85,10 @@ fn a_docks_table_with_the_ai_gm_sitting(world: &mut World) {
 )]
 fn a_model_that_perceives_first(world: &mut World) {
     world.model.push(&[("perceive", r#"{"as":"mira"}"#)]);
-    world
-        .model
-        .push(&[("say", r#"{"address":"table","text":"Mira: hello"}"#)]);
+    world.model.push(&[(
+        "say",
+        r#"{"address":"place","place":"docks_shop","text":"hello","as":"mira"}"#,
+    )]);
     world.model.push(&[END_TURN]);
 }
 
@@ -194,7 +195,31 @@ fn a_perceive_came_before_any_say(world: &mut World) {
 
 #[then(expr = "the player saw Mira say hello")]
 fn the_player_saw_mira_say_hello(world: &mut World) {
-    table::wait_player_from(world, world.mark, "Mira: hello");
+    super::speech::wait_said(world, "rowan", world.mark, "Mira: hello");
+}
+
+#[then(expr = "the model's next call shows Mira's \"hello\" from npc:mira")]
+fn the_next_call_shows_miras_hello(world: &mut World) {
+    table::poll_until(
+        "Mira's hello from npc:mira on the model's next call",
+        || {
+            let calls = world.model.calls();
+            let Some(call) = calls.last() else {
+                return Err("no model call".to_string());
+            };
+            let Some(content) = call.iter().find_map(|message| match message {
+                model::Message::User { content } => Some(content),
+                _ => None,
+            }) else {
+                return Err(format!("{call:?}"));
+            };
+            if content.contains("npc:mira") && content.contains("hello") {
+                Ok(())
+            } else {
+                Err(content.clone())
+            }
+        },
+    );
 }
 
 #[then(expr = "the model's next call carries the refusal as the tool result")]

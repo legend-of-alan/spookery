@@ -54,9 +54,9 @@ Feature: Coding agents reach the GM seat
       | status   |                                                       |                    |
       | perceive | as max_body_chars                                     | as                 |
       | queue    | id round_index actor_id move target to rationale_code | actor_id move      |
-      | say      | address text                                          | address text       |
-      | say      | address place text                                    | address place text |
-      | say      | address actor text                                    | address actor text |
+      | say      | address text as                                       | address text       |
+      | say      | address place text as                                 | address place text |
+      | say      | address actor text as                                 | address actor text |
       | commit   | include_round session_id                              | include_round      |
       | release  |                                                       |                    |
     And a queue call with "actor_id", "move" and "to" is accepted

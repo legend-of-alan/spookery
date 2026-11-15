@@ -5,7 +5,7 @@ use spookery_protocol::{CommandView, PlaceView, Seat, COMMANDS};
 use crate::canon::Canon;
 use crate::intent::{Target, Viewer};
 use crate::rules::cond;
-use crate::rules::gate::{list_nameable, verb_for};
+use crate::rules::gate::{list_ids, verb_for, NamedId};
 use crate::rules::rule::{Owner, TargetKind, When};
 use crate::rules::travel::{exit_stood_on, exit_view, exits_at};
 use crate::state::id::ActorId;
@@ -14,7 +14,7 @@ use crate::Reason;
 
 /// `help`: the built-in player commands but `claim`, then each pack verb `verb_for` reaches
 /// now and whose `if` holds. A cast member's or item's verb is reached by naming them
-/// (`list_nameable`), so it carries that owner as its one name. Each name is the one the
+/// (`list_ids`), so it carries that owner as its one name. Each name is the one the
 /// player reads. Cost is not checked.
 pub(crate) fn help(
     canon: &Canon,
@@ -36,14 +36,14 @@ pub(crate) fn help(
             owner: None,
         })
         .collect();
-    let nameable = list_nameable(canon, state, presence, &viewer);
-    let name_of = |id: &String| match nameable.iter().find(|thing| thing.id == *id) {
-        Some(thing) => thing.name.clone(),
+    let ids = list_ids(canon, state, presence, &viewer);
+    let name_of = |id: &String| match ids.iter().find(|named_id| named_id.id == *id) {
+        Some(named_id) => named_id.name.clone(),
         None => place_name(canon, id),
     };
-    let ids: Vec<String> = nameable.iter().map(|thing| thing.id.clone()).collect();
-    let hints = std::iter::once(None).chain(ids.iter().map(|id| Some(id.as_str())));
-    let hints: Vec<Option<&str>> = hints.collect();
+    let hints: Vec<Option<&str>> = std::iter::once(None)
+        .chain(ids.iter().map(|named_id| Some(named_id.id.as_str())))
+        .collect();
     for verb in canon.verbs() {
         for &hint in &hints {
             let Some(rule) = verb_for(canon, state, actor_id, &verb, hint) else {
@@ -84,13 +84,13 @@ pub(crate) fn help(
 }
 
 /// What the actor can name now for a command that takes `kind`: the exits from here, the
-/// actors or items among `nameable`, or the places they visited.
+/// actors or items among `ids`, or the places they visited.
 fn names_for(
     canon: &Canon,
     state: &State,
     actor_id: &ActorId,
     kind: TargetKind,
-    nameable: &[String],
+    ids: &[NamedId],
 ) -> Vec<String> {
     let picked: Vec<String> = match kind {
         TargetKind::None => Vec::new(),
@@ -104,15 +104,19 @@ fn names_for(
             .into_iter()
             .map(|exit| exit.name)
             .collect(),
-        TargetKind::Actor => nameable
+        TargetKind::Actor => ids
             .iter()
-            .filter(|name| state.actors().contains(&ActorId::from(name.as_str())))
-            .cloned()
+            .filter(|named_id| {
+                state
+                    .actors()
+                    .contains(&ActorId::from(named_id.id.as_str()))
+            })
+            .map(|named_id| named_id.id.clone())
             .collect(),
-        TargetKind::Item => nameable
+        TargetKind::Item => ids
             .iter()
-            .filter(|name| canon.items.contains_key(*name))
-            .cloned()
+            .filter(|named_id| canon.items.contains_key(&named_id.id))
+            .map(|named_id| named_id.id.clone())
             .collect(),
         TargetKind::Place => (state.actors().get::<component::Visit>(actor_id).iter())
             .map(|(place, _)| place.to_string())

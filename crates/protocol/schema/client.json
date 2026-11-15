@@ -87,7 +87,7 @@
       "additionalProperties": false
     },
     "SayArgs": {
-      "description": "The `say` command arguments of either seat, sent from a client to the table.",
+      "description": "The `say` command arguments of either seat, sent from a client to the table. Only the GM\nmay set `as`, the bare id of an NPC to speak as.",
       "type": "object",
       "oneOf": [
         {
@@ -95,6 +95,12 @@
           "properties": {
             "text": {
               "type": "string"
+            },
+            "as": {
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "address": {
               "type": "string",
@@ -117,6 +123,12 @@
             "text": {
               "type": "string"
             },
+            "as": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
             "address": {
               "type": "string",
               "const": "place"
@@ -138,6 +150,12 @@
             },
             "text": {
               "type": "string"
+            },
+            "as": {
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "address": {
               "type": "string",

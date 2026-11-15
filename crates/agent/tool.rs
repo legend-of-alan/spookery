@@ -38,7 +38,7 @@ pub(crate) static TOOLS: LazyLock<Value> = LazyLock::new(|| {
         ),
         tool(
             say,
-            "Speak to everyone (address `table`), to everyone in one place, or to one actor. No game time passes.",
+            "Speak to everyone (address `table`), to everyone in one place, or to one actor. `as` is an NPC's id to speak as that NPC. No game time passes.",
             args("SayArgs"),
         ),
         tool(

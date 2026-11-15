@@ -64,3 +64,26 @@ Feature: Speech appends to the tape and does not play a round
     When the player says "still here"
     And "rowan" leaves and sits again
     Then the newest replayed say line is "still here"
+
+  Scenario: The GM says a line as Aldric
+    Given a docks table with "rowan" seated
+    When the GM says "Mind the counter." to the place "docks_shop" as "aldric"
+    Then "rowan" reads "Aldric: Mind the counter." under the GM's seq
+    And the tape line is from "npc:aldric"
+    And the tape recipients are "rowan"
+
+  Scenario Outline: The GM can't speak as a PC, a missing actor or an NPC somewhere else
+    Given a docks table with "rowan" seated
+    When the GM says "hello" to the place "docks_shop" as "<speaker>"
+    Then that say is refused SCHEMA and nothing was written
+
+    Examples:
+      | speaker |
+      | rowan   |
+      | nobody  |
+      | mira    |
+
+  Scenario: A player can't speak as an NPC
+    Given a docks table with "rowan" seated
+    When "rowan" says "hello" to the table as "aldric"
+    Then that say is refused SCHEMA and nothing was written

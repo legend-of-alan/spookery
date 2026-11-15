@@ -67,14 +67,14 @@ pub async fn run(addr: SocketAddr, raw: bool) -> Result<(), Error> {
                 }
             }
             _ = &mut ctrl_c => return seat.release().await,
-            typed = input.recv() => {
-                let Some(typed) = typed else {
+            line = input.recv() => {
+                let Some(line) = line else {
                     return seat.release().await;
                 };
-                if typed.trim() == "release" {
+                if line.trim() == "release" {
                     return seat.release().await;
                 }
-                let Some((command, args)) = parse_typed(&typed, &here) else {
+                let Some((command, args)) = parse_command(&line, &here) else {
                     continue;
                 };
                 // A command the hello did not list points at help, and is not sent.
@@ -214,7 +214,7 @@ fn parse_pc_choice(line: &str) -> Result<String, Error> {
 /// goes to the table as typed, the first word in `actor` and the rest in `text`, and the
 /// table finds who it names. Any other first word is a move with the rest of the line as
 /// its target. An empty line names none.
-fn parse_typed<'l>(line: &'l str, here: &protocol::View) -> Option<(&'l str, Value)> {
+fn parse_command<'l>(line: &'l str, here: &protocol::View) -> Option<(&'l str, Value)> {
     let (command, rest) = line.trim().split_once(' ').unwrap_or((line.trim(), ""));
     if command.is_empty() {
         return None;
@@ -240,7 +240,7 @@ fn parse_typed<'l>(line: &'l str, here: &protocol::View) -> Option<(&'l str, Val
 mod tests {
     use serde_json::json;
 
-    use super::{parse_pc_choice, parse_typed};
+    use super::{parse_command, parse_pc_choice};
     use crate::protocol::View;
 
     #[test]
@@ -263,28 +263,31 @@ mod tests {
         }))
         .unwrap();
         let here = &view;
-        assert_eq!(parse_typed("wait", here), Some(("wait", json!({}))));
+        assert_eq!(parse_command("wait", here), Some(("wait", json!({}))));
         assert_eq!(
-            parse_typed("travel docks_street", here),
+            parse_command("travel docks_street", here),
             Some(("travel", json!({ "target": "docks_street" })))
         );
         assert_eq!(
-            parse_typed("say hi", here),
+            parse_command("say hi", here),
             Some(("say", json!({ "address": "table", "text": "hi" })))
         );
         assert_eq!(
-            parse_typed("say place hi", here),
+            parse_command("say place hi", here),
             Some((
                 "say",
                 json!({ "address": "place", "place": "docks_gate", "text": "hi" })
             ))
         );
-        let typed = json!({ "address": "actor", "actor": "Mira", "text": "Vell hi" });
+        let args = json!({ "address": "actor", "actor": "Mira", "text": "Vell hi" });
         assert_eq!(
-            parse_typed("say Mira Vell hi", here),
-            Some(("say", typed.clone()))
+            parse_command("say Mira Vell hi", here),
+            Some(("say", args.clone()))
         );
-        assert_eq!(parse_typed("tell Mira Vell hi", here), Some(("say", typed)));
-        assert_eq!(parse_typed("  ", here), None);
+        assert_eq!(
+            parse_command("tell Mira Vell hi", here),
+            Some(("say", args))
+        );
+        assert_eq!(parse_command("  ", here), None);
     }
 }

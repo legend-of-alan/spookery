@@ -3,8 +3,10 @@ use std::fs;
 
 use cucumber::{given, then, when};
 use serde_json::Value;
+use spookery::protocol::{ServerBody, ServerMessage};
+use spookery_client::text;
 
-use crate::support::copy_docks;
+use crate::support::{self, copy_docks};
 use crate::World;
 
 use super::table;
@@ -34,6 +36,72 @@ fn say_as_rowan(world: &World, args: Value) {
     assert!(reply.contains("\"kind\":\"say\""), "{reply}");
 }
 
+#[when(expr = "the GM says {string} to the place {string} as {string}")]
+fn the_gm_says_as(world: &mut World, text: String, place: String, speaker: String) {
+    if table::live_mut(world).gm.is_none() {
+        table::seat_gm(world);
+    }
+    world.before = table::read_files(table::pack(world));
+    let args =
+        serde_json::json!({ "address": "place", "place": place, "text": text, "as": speaker });
+    world.scratch = table::gm_tool_call(world, 1, "say", &args.to_string());
+}
+
+#[when(expr = "{string} says {string} to the table as {string}")]
+fn says_to_the_table_as(world: &mut World, actor: String, text: String, speaker: String) {
+    world.before = table::read_files(table::pack(world));
+    let seat = &table::player_client(world, &actor).seat;
+    let args = serde_json::json!({ "address": "table", "text": text, "as": speaker });
+    let id = seat.send("say", args);
+    world.scratch = seat.wait_reply(&id);
+}
+
+#[then(expr = "that say is refused SCHEMA and nothing was written")]
+fn that_say_is_refused(world: &mut World) {
+    assert!(
+        world.scratch.contains("\"code\":\"SCHEMA\""),
+        "{}",
+        world.scratch
+    );
+    assert_eq!(table::read_files(table::pack(world)), world.before);
+}
+
+#[then(expr = "{string} reads {string} under the GM's seq")]
+fn reads_under_the_gms_seq(world: &mut World, actor: String, line: String) {
+    let result: Value = serde_json::from_str(&world.scratch)
+        .unwrap_or_else(|err| panic!("result json: {err}\n{}", world.scratch));
+    let reply = result["result"]["structuredContent"]["messages"]
+        .as_array()
+        .and_then(|messages| messages.last())
+        .unwrap_or_else(|| panic!("no reply\n{result}"));
+    let said = wait_said(world, &actor, 0, &line);
+    assert_eq!(said.seq, reply["seq"].as_u64(), "{reply}");
+}
+
+/// The first say after `mark` that `actor`'s client writes as `line`.
+pub(super) fn wait_said(world: &World, actor: &str, mark: usize, line: &str) -> ServerMessage {
+    let seen = table::player_client(world, actor).text();
+    table::poll_until(line, || {
+        let added = support::text_of(seen)
+            .get(mark..)
+            .unwrap_or_default()
+            .to_string();
+        let said = added
+            .lines()
+            .filter_map(|line| serde_json::from_str::<ServerMessage>(line).ok())
+            .find(|message| {
+                matches!(message.body, ServerBody::Say(_)) && text::render(&message.body) == line
+            });
+        said.ok_or(added)
+    })
+}
+
+#[then(expr = "the tape line is from {string}")]
+fn the_tape_line_is_from(world: &mut World, from: String) {
+    let tape = tape_text(world);
+    assert!(tape.contains(&format!("\"from\":\"{from}\"")), "{tape}");
+}
+
 #[when(expr = "say to aldric is submitted on an empty table saying {string}")]
 fn say_to_mira_on_an_empty_table(world: &mut World, text: String) {
     let pack = table::pack(world);
@@ -44,7 +112,9 @@ fn say_to_mira_on_an_empty_table(world: &mut World, text: String) {
         .say_as_player(
             &spookery_engine::Presence::default(),
             &"rowan".into(),
-            spookery_engine::Address::Actor("aldric"),
+            &spookery_protocol::Audience::Actor {
+                actor: "aldric".into(),
+            },
             &text,
         )
         .unwrap_or_else(|err| panic!("speak: {err}"));
