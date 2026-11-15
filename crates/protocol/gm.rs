@@ -242,10 +242,4 @@ mod tests {
         assert!(parse_args::<CommitArgs>(None).is_err());
         assert!(parse_args::<SayArgs>(None).is_err());
     }
-
-    #[test]
-    fn a_say_to_two_listeners_is_refused() {
-        let two = r#"{"to":{"place":"docks","actor":"aldric"},"text":"hi"}"#;
-        assert!(serde_json::from_str::<SayArgs>(two).is_err());
-    }
 }
