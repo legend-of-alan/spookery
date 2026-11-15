@@ -193,25 +193,13 @@ impl State {
         sum: Option<Result<i64, Reason>>,
     ) -> Change {
         let (canon, save) = (&*self.canon, &self.save);
-        let (id, name) = match key {
-            change::Key::ActorMeter(actor, name) => {
-                (entity::Id::Actor(actor.as_str().into()), name)
-            }
-            change::Key::PlaceMeter(place, name) => {
-                (entity::Id::Place(place.as_str().into()), name)
-            }
-            change::Key::StoryMeter(story, name) => {
-                (entity::Id::Story(story.as_str().into()), name)
-            }
-            change::Key::WorldMeter(name) => (entity::Id::Global, name),
-            _ => unreachable!("only a meter's write reports a meter's key alone"),
-        };
-        let def = canon.meter_def(id.as_ref(), name);
-        let now = entity::in_collection!(&id, [&save], |entities, id| {
-            Reader::new(entities, canon).get::<Meter>(id).get(name)
+        let (id, entry_id) = (&key.entity_id, key.entry_id.as_deref().unwrap_or_default());
+        let def = canon.meter_def(id.as_ref(), entry_id);
+        let now = entity::in_collection!(id, [&save], |entities, id| {
+            Reader::new(entities, canon).get::<Meter>(id).get(entry_id)
         });
-        let sum_now = match &id {
-            entity::Id::Actor(actor) => self.actors().get::<Modifier>(actor).sum(name),
+        let sum_now = match id {
+            entity::Id::Actor(actor) => self.actors().get::<Modifier>(actor).sum(entry_id),
             _ => Ok(0),
         };
         let reading = |held: Option<&Meter>, sum: Result<i64, Reason>| {

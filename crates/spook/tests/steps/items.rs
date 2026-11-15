@@ -191,7 +191,10 @@ fn nell_holds_a_tonic(world: &mut World) {
 fn actor_types(world: &mut World, actor: String, line: String) {
     let pack = world.pack.clone().unwrap();
     world.scratch = match handle_move(&pack, &actor, &line) {
-        Ok(_) => "ok".to_string(),
+        Ok(outputs) => {
+            world.summary = outputs.into_iter().flat_map(|o| o.changed_keys).collect();
+            "ok".to_string()
+        }
         Err(err) => err.code.as_str().to_string(),
     };
 }

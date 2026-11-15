@@ -10,6 +10,7 @@ pub struct Visit;
 
 impl Component for Visit {
     type Value = Vec<String>;
+    const NAME: &'static str = "visit";
 }
 
 impl Mut<'_, entity::Actors, Visit> {

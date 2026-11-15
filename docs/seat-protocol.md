@@ -310,10 +310,18 @@ The table's state for a GM. `world_time` is the game clock in ticks. `pack_rev` 
 
 <!-- example: gm-committed -->
 ```json
-{"seq":15,"reply_to":"c3","body":{"kind":"committed","state_rev":1,"changed_keys":["last_act_round aldric","last_act_round mira","last_act_round rowan","live_acts_this_window aldric","live_acts_this_window mira","live_acts_this_window rowan","note note_mira_door"],"journal_path":"state/journal/bundle-0000.jsonl","rolls":[{"faces":[1,6],"stat":1,"total":8,"target":0,"outcome":"success"}]}}
+{"seq":15,"reply_to":"c3","body":{"kind":"committed","state_rev":1,"changed_keys":["actor_last_act_round aldric","actor_last_act_round mira","actor_last_act_round rowan","actor_live_acts_this_window aldric","actor_live_acts_this_window mira","actor_live_acts_this_window rowan","world_note note_mira_door"],"journal_path":"state/journal/bundle-0000.jsonl","rolls":[{"faces":[1,6],"stat":1,"total":8,"target":0,"outcome":"success"}]}}
 ```
 
-`changed_keys` are the state keys the round changed, every one of them: a meter is `actor_meter <actor> <id>` or `world_meter <id>`, a modifier is `modifier <actor> <id>`, and a flag is `actor_flag <actor> <key>` or `world_flag <key>`. `journal_path` is the round's journal file, or null when the round wrote none. `rolls` are the checks rolled, faces and all. Faces go to the GM only.
+`changed_keys` are the state keys the round changed, every one of them. Each is spelled `<collection>_<component> <id> <entry>`: the collection is `actor`, `place`, `story` or `world`, the world has no `<id>`, and a component an entity holds one of has no `<entry>`. So a meter is `actor_meter <actor> <id>` or `world_meter <id>`, a modifier is `actor_modifier <actor> <id>`, and a door is `place_exit_open <place> <exit>`. The keys are:
+
+- `actor_place`, `actor_busy`, `actor_known_facts`, `actor_wielded_item`, `actor_last_act_round`, `actor_idle_acts_this_window` and `actor_live_acts_this_window`, one per actor;
+- `actor_flag`, `actor_meter`, `actor_modifier` and `actor_item`, under the flag, meter, modifier or item;
+- `place_flag`, `place_meter`, `place_item` and `place_exit_open`, under the flag, meter, item or exit;
+- `story_flag` and `story_meter`;
+- `world_flag`, `world_meter`, and `world_note` under the note's id.
+
+`journal_path` is the round's journal file, or null when the round wrote none. `rolls` are the checks rolled, faces and all. Faces go to the GM only.
 
 ## Bodies
 
@@ -424,7 +432,7 @@ A client ignores a `kind` or a field it does not know. `server.json` gives every
 
 Each seated player gets, in order: the `round`, a `check` for each of their own rolls, a `refused` for each of their own moves the round refused, a fresh `resume` and `view`, a `lines` for each narrate line they may hear, and a last `changes` with every change that player may know. A player is told their own meter changes and the world's shown ones, not another actor's, even in the same place, and never a flag change. They are also told the items, place and wielded item of each actor in their place, their own known facts, and the notes they may read. A modifier or busy change is not sent: neither has a wire value yet. An empty `changes` is not sent, and a narrate line that would show a fact the player may not know is left out.
 
-`changes` holds one object per change, in key order, not the order the round made them, and the client writes the sentence. `component` names what changed, as an open set: `meter`, `item`, `place`, `wielded_item`, `known_facts` and `note` today, and a client ignores one it does not know. `entity` is whose it is as a rule's `of` names it: an actor id, `place:<id>`, `story:<id>` or `world`. `entity_name` is that actor's or place's display name, or the story's id, and is left out for the world. `key` is which one of the entity's, such as the meter or item id, and is left out when the entity holds one, as with `place`. `name` is the key's display name, left out when it is the key, or for `place` the display name of the place moved to. `before` and `after` are the values as JSON writes them: a number for a meter or an item count, text for a place or a wielded item, `true` for a note, and a list for known facts. Either is left out when there was none, as with a meter that did not read. When an item moves between an actor and a place, both counts are in `changes`, so `spook play` reads the take below as `You picked up the Lamp oil.` `spook play` words only meters, items and places, so a move reads like `Your place is now Docks Street.`, and prints nothing for the rest. An NPC's roll or refused habit sends no player message.
+`changes` holds one object per change, in key order, not the order the round made them, and the client writes the sentence. `component_id` names what changed, as an open set: `meter`, `item`, `place`, `wielded_item`, `known_facts` and `note` today, and a client ignores one it does not know. `entity_id` is whose it is as a rule's `of` names it: an actor id, `place:<id>`, `story:<id>` or `world`. `entity_name` is that actor's or place's display name, or the story's id, and is left out for the world. `entry_id` is which one of the entity's, such as the meter or item id, and is left out when the entity holds one, as with `place`. `entry_name` is the entry's display name, left out when there is no entry, or for `place` the display name of the place moved to. `before` and `after` are the values as JSON writes them: a number for a meter or an item count, text for a place or a wielded item, `true` for a note, and a list for known facts. Either is left out when there was none, as with a meter that did not read. When an item moves between an actor and a place, both counts are in `changes`, so `spook play` reads the take below as `You picked up the Lamp oil.` `spook play` words only meters, items and places, so a move reads like `Your place is now Docks Street.`, and prints nothing for the rest. An NPC's roll or refused habit sends no player message.
 
 <!-- example: player-round -->
 ```json
@@ -444,8 +452,8 @@ Each seated player gets, in order: the `round`, a `check` for each of their own 
     "kind": "changes",
     "viewer": "rowan",
     "changes": [
-      {"component": "item", "entity": "rowan", "entity_name": "Rowan", "key": "lamp_oil", "name": "Lamp oil", "before": 0, "after": 1},
-      {"component": "item", "entity": "place:docks_shop", "entity_name": "Docks Shop", "key": "lamp_oil", "name": "Lamp oil", "before": 4, "after": 3}
+      {"component_id": "item", "entity_id": "rowan", "entity_name": "Rowan", "entry_id": "lamp_oil", "entry_name": "Lamp oil", "before": 0, "after": 1},
+      {"component_id": "item", "entity_id": "place:docks_shop", "entity_name": "Docks Shop", "entry_id": "lamp_oil", "entry_name": "Lamp oil", "before": 4, "after": 3}
     ]
   }
 }
@@ -529,6 +537,7 @@ The MCP endpoint answers with an HTTP status before any seat: 400 for an `MCP-Pr
 - Version 2 narrowed one field before any release, on purpose, when every move got one start and finish: `cant_act` now means the viewer can't send a move at all, and being busy moved to the new `busy`. A walk's line moved with it. The version stayed 2 because no build had shipped.
 - Version 2 narrowed `status` before any release, on purpose: `pack` is now required, so a GM client no longer allows for a server that leaves it out. The version stayed 2 because no build had shipped.
 - Version 2 renamed the command fields before any release, on purpose, so a client body is named by `kind` like a server body: a client body's `word` became `kind`, and the `words` of `hello` and `help` became `commands`. The command names did not change. The recording took the new names with it. The version stayed 2 because no build had shipped.
+- Version 2 respelled eight changed keys before any release, on purpose, so every key is `<collection>_<component> <id> <entry>`: `modifier` became `actor_modifier`, `exit_open` became `place_exit_open`, `actor_known_fact` became `actor_known_facts`, `actor_wielded` became `actor_wielded_item`, `note` became `world_note`, and `last_act_round`, `idle_acts_this_window` and `live_acts_this_window` took the `actor_` prefix. The recording took the new keys with it. The version stayed 2 because no build had shipped.
 - Version 2 renamed the cast's role before any release, on purpose, so the cast and the engine say the same word: `pack.kinds` in `status` became `pack.control_types`, and a cast file's `kind` became `control_type`. The values did not change. The recording took the new name and the docks pack's new `pack_rev` with it. The version stayed 2 because no build had shipped.
 - Version 2 split one body before any release, on purpose, so a client writes the change sentences as it writes the view: `lines` now carries only narrate lines, and the changes a round showed a player moved to the new `changes`, as data: each change names its component as open text and carries its values as JSON values, so a new component needs no protocol change. The recording took the new body with it. The version stayed 2 because no build had shipped.
 - The recorded session must still replay. Each message it got must still arrive at that seat, in order, with every field it had and the same value. New kinds and fields may come between. Only `seq`, which a new kind moves, and `token`, which each table mints, may differ.

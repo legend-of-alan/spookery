@@ -39,6 +39,7 @@ pub struct Modifier {
 
 impl Component for Modifier {
     type Value = Modifier;
+    const NAME: &'static str = "modifier";
 }
 
 /// The modifier as a change value: its stacks, the tick it expires at and its longest ticks.
@@ -151,10 +152,9 @@ impl Mut<'_, entity::Actors, Modifier> {
             self.check_exists()?;
         }
         let own = |held: Option<&Modifier>| held.map_or(change::Value::Empty, stacks_value);
-        let own_key = change::Key::ActorModifier(actor.to_string(), id.to_string());
-        let own = Change::new(own_key, own(held), own(next.as_ref()));
+        let own = Change::new(self.key(Some(id)), own(held), own(next.as_ref()));
         let stacks_move = held.map(|held| &held.stacks) != next.as_ref().map(|next| &next.stacks);
-        let watched = change::Key::ActorMeter(actor.to_string(), meter.clone());
+        let watched = change::Key::new(Meter::NAME, entity::IdRef::Actor(actor), Some(&meter));
         if stacks_move {
             self.writer.transaction.count_key(&watched)?;
         }

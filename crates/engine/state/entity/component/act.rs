@@ -6,6 +6,7 @@ use crate::intent::Target;
 use crate::state::change::{self, Change};
 use crate::state::component::{Component, Mut, Ref};
 use crate::state::id::ActorId;
+use crate::state::prelude::*;
 use crate::state::{entity, Reader, Writer};
 use crate::Reason;
 
@@ -22,8 +23,20 @@ pub struct Act {
     pub pending: Option<PendingAction>,
 }
 
+/// Its change keys name what moved instead: `busy`, `last_act_round` or an act window's count,
+/// such as `actor_busy rowan`.
 impl Component for Act {
     type Value = Act;
+    const NAME: &'static str = "act";
+}
+
+/// The names `Act`'s change keys spell.
+impl Act {
+    /// `busy_until` and `pending`.
+    pub(crate) const BUSY: &'static str = "busy";
+    const LAST_ACT_ROUND: &'static str = "last_act_round";
+    const IDLE_ACTS_THIS_WINDOW: &'static str = "idle_acts_this_window";
+    const LIVE_ACTS_THIS_WINDOW: &'static str = "live_acts_this_window";
 }
 
 impl<'a> Ref<'a, entity::Actors, Act> {
@@ -42,11 +55,11 @@ impl<'a> Ref<'a, entity::Actors, Act> {
 }
 
 impl Mut<'_, entity::Actors, Act> {
-    /// The one write to the actor's action state: `edit` made to what they hold, reporting
-    /// `key`'s change as `read` reads the action state before and after.
+    /// The one write to the actor's action state: `edit` made to what they hold, reporting the
+    /// change under `component_id` as `read` reads the action state before and after.
     fn write(
         &mut self,
-        key: change::Key,
+        component_id: &'static str,
         read: impl Fn(&Act) -> change::Value,
         edit: impl FnOnce(&mut Act),
     ) -> Result<(), Reason> {
@@ -55,6 +68,7 @@ impl Mut<'_, entity::Actors, Act> {
         let before = held.map_or(change::Value::Empty, &read);
         let mut next = held.cloned().unwrap_or_default();
         edit(&mut next);
+        let key = change::Key::new(component_id, self.id.as_id_ref(), None);
         let change = Change::new(key, before, read(&next));
         let (id, (acts, transaction)) = (self.id, self.store_mut());
         acts.set(transaction, id, next, [change.into()])
@@ -63,8 +77,7 @@ impl Mut<'_, entity::Actors, Act> {
     /// Keep the actor busy until `until`, on `pending` while an action is under way and on
     /// `None` through a cooldown.
     pub fn set_busy(&mut self, until: u64, pending: Option<PendingAction>) -> Result<(), Reason> {
-        let key = change::Key::ActorBusy(self.id.to_string());
-        self.write(key, busy_value, |act| {
+        self.write(Act::BUSY, busy_value, |act| {
             (act.busy_until, act.pending) = (Some(until), pending);
         })
     }
@@ -72,8 +85,8 @@ impl Mut<'_, entity::Actors, Act> {
     /// End the actor's action under way, if any, and free them. The action, so `cancel` and
     /// `finish` see it.
     pub fn take_pending(&mut self) -> Result<Option<PendingAction>, Reason> {
-        let (key, mut taken) = (change::Key::ActorBusy(self.id.to_string()), None);
-        self.write(key, busy_value, |act| {
+        let mut taken = None;
+        self.write(Act::BUSY, busy_value, |act| {
             taken = act.pending.take();
             act.busy_until = None;
         })?;
@@ -83,15 +96,16 @@ impl Mut<'_, entity::Actors, Act> {
     /// Count one act for the actor in round `round_index`, in the act window the table is in:
     /// the idle one when no player is seated. Only the keys whose values move are reported.
     pub fn count(&mut self, round_index: u64, players: u32) -> Result<(), Reason> {
-        let key = change::Key::LastActRound(self.id.to_string());
         let read = |act: &Act| count_value(act.last_act_round);
-        self.write(key, read, |act| act.last_act_round = round_index)?;
+        self.write(Act::LAST_ACT_ROUND, read, |act| {
+            act.last_act_round = round_index
+        })?;
         let counter = match players {
             0 => ActCounter::IdleActsThisWindow,
             _ => ActCounter::LiveActsThisWindow,
         };
         let read = |act: &Act| count_value(counter.get(act).into());
-        self.write(counter.key(self.id.to_string()), read, |act| {
+        self.write(counter.id(), read, |act| {
             let count = counter.get_mut(act);
             *count = count.saturating_add(1);
         })
@@ -105,9 +119,8 @@ impl Writer<'_, entity::Actors> {
         let actors: Vec<ActorId> = actors.iter().cloned().collect();
         for actor in &actors {
             let read = |act: &Act| count_value(counter.get(act).into());
-            let key = counter.key(actor.to_string());
             let mut action_state = self.get_mut::<Act>(actor);
-            action_state.write(key, read, |act| *counter.get_mut(act) = 0)?;
+            action_state.write(counter.id(), read, |act| *counter.get_mut(act) = 0)?;
         }
         Ok(())
     }
@@ -131,11 +144,11 @@ pub(crate) enum ActCounter {
 }
 
 impl ActCounter {
-    /// The key this count is tracked under for actor `id`.
-    pub(crate) fn key(self, id: String) -> change::Key {
+    /// The id this count's change keys spell.
+    fn id(self) -> &'static str {
         match self {
-            ActCounter::IdleActsThisWindow => change::Key::IdleActsThisWindow(id),
-            ActCounter::LiveActsThisWindow => change::Key::LiveActsThisWindow(id),
+            ActCounter::IdleActsThisWindow => Act::IDLE_ACTS_THIS_WINDOW,
+            ActCounter::LiveActsThisWindow => Act::LIVE_ACTS_THIS_WINDOW,
         }
     }
 

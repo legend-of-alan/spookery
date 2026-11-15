@@ -12,6 +12,7 @@ pub struct KnownFacts;
 
 impl Component for KnownFacts {
     type Value = BTreeSet<String>;
+    const NAME: &'static str = "known_facts";
 }
 
 impl<'a> Ref<'a, entity::Actors, KnownFacts> {
@@ -31,7 +32,7 @@ impl Mut<'_, entity::Actors, KnownFacts> {
         if next == held {
             return Ok(());
         }
-        let key = change::Key::ActorKnownFact(self.id.to_string());
+        let key = self.key(None);
         let before = change::Value::List(held.into_iter().collect());
         let after = change::Value::List(next.iter().cloned().collect());
         let reports = [Change::new(key, before, after).into()];
