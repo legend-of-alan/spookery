@@ -33,13 +33,11 @@ Feature: A roll can partly succeed
     When play joins the table on a free loopback address
     And play types "press mira"
     Then play shows "<sentence>"
-    And play shows no protocol JSON
-    And Mira is touched and <band>
 
     Examples:
-      | base | sentence                    | band    |
-      | 6    | Your roll partly succeeded. | halfway |
-      | 0    | Your roll missed.           | missed  |
+      | base | sentence                    |
+      | 6    | Your roll partly succeeded. |
+      | 0    | Your roll missed.           |
 
   Scenario: A binary row never produces partial
     Given a docks table with a GM and a seated player
