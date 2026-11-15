@@ -49,7 +49,7 @@ struct SayWire {
     #[serde(default)]
     actor: Option<String>,
     #[serde(default, rename = "as")]
-    as_speaker: Option<String>,
+    npc: Option<String>,
 }
 
 /// Who hears a say: everyone at the table, everyone in one place, or one actor.
@@ -81,7 +81,7 @@ pub struct SayArgs {
     pub address: Address,
     pub text: String,
     #[serde(rename = "as", default, skip_serializing_if = "Option::is_none")]
-    pub as_speaker: Option<String>,
+    pub npc: Option<String>,
 }
 
 /// Moves the keys every `SayArgs` shape shares into each shape, and closes each one.
@@ -117,7 +117,7 @@ impl TryFrom<SayWire> for SayArgs {
         Ok(SayArgs {
             address,
             text: args.text,
-            as_speaker: args.as_speaker,
+            npc: args.npc,
         })
     }
 }

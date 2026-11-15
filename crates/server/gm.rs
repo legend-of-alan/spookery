@@ -101,8 +101,8 @@ fn say(
     arguments: Option<&Map<String, Value>>,
 ) -> Result<Reply, Reason> {
     let args: SayArgs = parse_args(arguments).map_err(|_| Reason::Schema)?;
-    let as_speaker = args.as_speaker.as_deref().map(ActorId::from);
-    let said = world.say_as_gm(presence, as_speaker.as_ref(), &args.address, &args.text)?;
+    let npc = args.npc.as_deref().map(ActorId::from);
+    let said = world.say_as_gm(presence, npc.as_ref(), &args.address, &args.text)?;
     let mut reply = Reply::new(frames::render_say(&said, true));
     reply.said = Some(said);
     Ok(reply)

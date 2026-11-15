@@ -133,16 +133,15 @@ impl World {
         Ok(self.append_speech(presence, from, Some(actor_id), &heard, text)?)
     }
 
-    /// Append a GM say, spoken as `as_speaker` when it is set. An `as_speaker` that is not an
-    /// NPC is `SCHEMA`.
+    /// Append a GM say, spoken as `npc` when it is set. An `npc` that is not an NPC is `SCHEMA`.
     pub fn say_as_gm(
         &self,
         presence: &Presence,
-        as_speaker: Option<&ActorId>,
+        npc: Option<&ActorId>,
         heard: &Address,
         text: &str,
     ) -> Result<TapeRecord, Reason> {
-        let from = match as_speaker {
+        let from = match npc {
             None => Speaker::Gm,
             Some(id)
                 if self.state.actors().get::<component::ControlType>(id).get()
@@ -152,7 +151,7 @@ impl World {
             }
             Some(_) => return Err(Reason::Schema),
         };
-        self.append_speech(presence, from, as_speaker, heard, text)
+        self.append_speech(presence, from, npc, heard, text)
     }
 
     /// Append one say to the tape. An `actor` say must name an actor in the world, and a
