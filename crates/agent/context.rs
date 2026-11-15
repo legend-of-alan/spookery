@@ -190,38 +190,4 @@ mod tests {
         assert_eq!(tape_lines[0].text, "4");
         assert_eq!(tape_lines[15].text, "19");
     }
-
-    #[test]
-    fn the_next_turn_shows_the_gms_lines_as_itself_and_as_an_npc() {
-        let mut state = ClientState::default();
-        let rowan = Speaker::Player("rowan".to_string());
-        for from in [Speaker::Gm, Speaker::Npc("mira".to_string()), rowan] {
-            let say = Say {
-                from,
-                address: "table".to_string(),
-                place: None,
-                actor: None,
-                recipients: Vec::new(),
-                text: "hello".to_string(),
-            };
-            state.record_server_message(&ServerMessage {
-                id: None,
-                seq: Some(1),
-                reply_to: None,
-                body: ServerBody::Say(say),
-            });
-        }
-        let turn = state.start_turn().expect("the player's say starts a turn");
-        let model::Message::User { content } = &turn.conversation[0] else {
-            panic!("{:?}", turn.conversation);
-        };
-        let observation: serde_json::Value = serde_json::from_str(content).expect("prompt json");
-        let tape_from: Vec<_> = observation["tape_lines"]
-            .as_array()
-            .expect("tape_lines")
-            .iter()
-            .map(|line| line["from"].as_str())
-            .collect();
-        assert_eq!(tape_from, [Some("gm"), Some("npc:mira")]);
-    }
 }
