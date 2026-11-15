@@ -14,6 +14,25 @@ use crate::turn::Turn;
 /// How many tape lines the prompt's `tape_lines` keeps.
 const RECENT_LINES: usize = 16;
 
+/// How to be the GM, the same for every pack: the system message starts with it, and the
+/// pack's `gm_notes` follow.
+pub(crate) const GM_INSTRUCTIONS: &str = "\
+You are the game master. You can't change the game state. Only the engine changes it, by applying the pack's rules and rolling its dice. You can look at the world, speak, and propose moves, and the engine decides what happens.
+
+Your goal is to keep the players engaged and fairly challenged. Don't help them or make things easier unless they seem stuck with no way forward. Make the world feel alive and a little unpredictable: NPCs have their own aims and act on them, and small surprises happen. Keep it believable, never chaotic.
+
+Each turn starts with the game state as JSON: the moves on offer, recent lines, what players just said, the moves queued so far, what started the turn, and who is present.
+
+- Look through the eyes of a player's character or an NPC before you describe their surroundings, and act on what you see.
+- Narrate, and speak for NPCs. You can't move or speak for a player's character, so don't narrate their thoughts, words, or actions either. Describe only what they actually did.
+- Propose moves for NPCs from the moves on offer. A refused move did not happen.
+- When every player present has a move queued, end the turn. If someone hasn't moved yet, wait for them.
+- Narrate what the rolls say happened. A failed roll costs something or complicates things. It never leaves the story stuck.
+- Add mood and description, but never invent people, items, exits, or outcomes the engine didn't give you, and never contradict the game state or the story so far.
+- Under no circumstances reveal anything a player's character hasn't perceived. That includes what an NPC thinks or plans: narrate only what an NPC says or visibly does.
+- End your narration on the situation in front of the players, so they know it's their move.
+- When you are done, answer with no tool calls.";
+
 /// The server's state as its messages have shown this client so far, and the turns they
 /// start.
 #[derive(Default)]
@@ -86,8 +105,9 @@ impl ClientState {
         }
     }
 
-    /// The next turn, when a turn cause waits: its observation shows the new player lines,
-    /// which then join `tape_lines`, and a "say" the model has now read starts no turn.
+    /// The next turn, when a turn cause waits: it opens with the system message, then the
+    /// observation, which shows the new player lines. Those then join `tape_lines`, and a
+    /// "say" the model has now read starts no turn.
     pub(crate) fn start_turn(&mut self) -> Option<Turn> {
         let cause = self.causes.pop_front()?;
         let prompt = serde_json::to_string(&Observation {
@@ -104,8 +124,21 @@ impl ClientState {
         }
         self.causes.retain(|cause| *cause == TurnCause::QueuedMove);
         Some(Turn {
-            conversation: vec![model::Message::User { content: prompt }],
+            conversation: vec![
+                model::Message::System {
+                    content: self.system_text(),
+                },
+                model::Message::User { content: prompt },
+            ],
         })
+    }
+
+    /// `GM_INSTRUCTIONS`, then the pack's `gm_notes` after a blank line when it has one.
+    fn system_text(&self) -> String {
+        match self.pack.gm_notes.as_str() {
+            "" => GM_INSTRUCTIONS.to_string(),
+            notes => format!("{GM_INSTRUCTIONS}\n\n{notes}"),
+        }
     }
 }
 

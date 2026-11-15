@@ -1,0 +1,145 @@
+name: Release
+
+# A date tag such as alpha-2026.11.14 (alpha-2026.11.14.2 for a second release that
+# day) publishes a pre-alpha GitHub prerelease of `spook`: one archive per platform,
+# each with the binary, packs/demo-d20 and the three licenses, plus SHA256SUMS.
+# A pull request that changes this file, or a run by hand (gh workflow run Release
+# --ref <branch>), builds and checks every archive but publishes nothing. No step
+# uses a model key.
+
+on:
+  push:
+    tags: ["alpha-*"]
+  pull_request:
+    branches: [main]
+    paths: [.github/workflows/release.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, target: x86_64-unknown-linux-gnu, archive: tar.gz }
+          - { os: macos-latest, target: aarch64-apple-darwin, archive: tar.gz }
+          # Cross-compiled on the arm64 runner. The check runs it under Rosetta.
+          - { os: macos-latest, target: x86_64-apple-darwin, archive: tar.gz }
+          - { os: windows-latest, target: x86_64-pc-windows-msvc, archive: zip }
+    steps:
+      - name: Keep checkout line endings
+        if: runner.os == 'Windows'
+        run: git config --global core.autocrlf false
+
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - run: rustup toolchain install && rustup target add ${{ matrix.target }} && rustc --version
+
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: build
+        shell: bash
+        run: |
+          # `spook --version` prints the tag and commit, as alpha-2026.11.14 (97960932).
+          export SPOOK_RELEASE="$GITHUB_REF_NAME (${GITHUB_SHA::8})"
+          cargo build -p spook --profile dist --locked --target ${{ matrix.target }}
+
+      - name: pack
+        shell: bash
+        run: |
+          name="spook-${GITHUB_REF_NAME//\//-}-${{ matrix.target }}"
+          mkdir -p "dist/$name/packs"
+          cp target/${{ matrix.target }}/dist/spook${{ runner.os == 'Windows' && '.exe' || '' }} "dist/$name/"
+          cp -r packs/demo-d20 "dist/$name/packs/"
+          cp LICENSE LICENSE-MIT LICENSE-CC-BY-4.0 "dist/$name/"
+          cd dist
+          # macOS tar would add ._ files for extended attributes.
+          export COPYFILE_DISABLE=1
+          if [ "${{ matrix.archive }}" = zip ]; then 7z a "$name.zip" "$name"; else tar czf "$name.tar.gz" "$name"; fi
+          rm -r "$name"
+          echo "NAME=$name" >> "$GITHUB_ENV"
+
+      - name: check the archive in a clean directory
+        shell: bash
+        run: |
+          clean="$RUNNER_TEMP/clean"
+          mkdir "$clean"
+          if [ "${{ matrix.archive }}" = zip ]; then 7z x "dist/$NAME.zip" -o"$clean"; else tar xzf "dist/$NAME.tar.gz" -C "$clean"; fi
+          cd "$clean/$NAME"
+          ./spook --version | grep -F "$GITHUB_REF_NAME (${GITHUB_SHA::8})"
+          ./spook check packs/demo-d20
+          cp -r packs/demo-d20 play
+
+      - name: run the archived host until listening, then stop it with Ctrl+C
+        shell: python
+        working-directory: ${{ runner.temp }}/clean/${{ env.NAME }}
+        run: |
+          import os, signal, subprocess, sys
+          windows = os.name == "nt"
+          spook = os.path.abspath("spook.exe" if windows else "spook")
+          if windows:
+              from ctypes import windll
+              console = windll.kernel32
+              # Drop an "ignore Ctrl+C" this step inherited, so spook does not inherit it.
+              console.SetConsoleCtrlHandler(None, False)
+          # On Windows spook gets a console of its own, so the Ctrl+C below reaches only it.
+          host = subprocess.Popen(
+              [spook, "run", "play"],
+              stdout=subprocess.PIPE,
+              text=True,
+              creationflags=subprocess.CREATE_NO_WINDOW if windows else 0,
+          )
+          line = host.stdout.readline()
+          print(line, end="")
+          if '"listening"' not in line:
+              sys.exit(f"spook run exited {host.wait()} before listening")
+          if windows:
+              console.FreeConsole()
+              console.AttachConsole(host.pid)
+              console.SetConsoleCtrlHandler(None, True)
+              console.GenerateConsoleCtrlEvent(signal.CTRL_C_EVENT, 0)
+          else:
+              host.send_signal(signal.SIGINT)
+          code = host.wait(timeout=60)
+          if code:
+              sys.exit(f"spook run exited {code} after Ctrl+C")
+          subprocess.run([spook, "verify", "play"], check=True)
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ${{ env.NAME }}
+          path: dist/${{ env.NAME }}.${{ matrix.archive }}
+          if-no-files-found: error
+
+  publish:
+    # Only a pushed alpha-* tag publishes. A pull request or a run by hand stops after the checks.
+    if: github.event_name == 'push'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd dist
+          sha256sum * > SHA256SUMS
+          cat SHA256SUMS
+          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --verify-tag --prerelease \
+            --title "$GITHUB_REF_NAME" \
+            --notes "Pre-alpha build of ${GITHUB_SHA::8}. The binaries are unsigned, so macOS and Windows warn on first run; the README says how to start one." \
+            *

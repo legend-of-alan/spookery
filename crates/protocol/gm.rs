@@ -230,6 +230,10 @@ pub struct PackSummary {
     pub control_types: std::collections::BTreeMap<String, ControlType>,
     pub places: std::collections::BTreeMap<String, String>,
     pub cast: std::collections::BTreeMap<String, String>,
+    /// The pack's tone and flavor for the GM, `gm_notes` in `pack.yaml` as written. Left out when
+    /// the pack has none.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub gm_notes: String,
 }
 
 /// The structured content of an `/mcp` tool result, sent from the table to an MCP GM client:

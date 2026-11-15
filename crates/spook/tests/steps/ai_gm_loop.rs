@@ -1,7 +1,9 @@
-//! The AI GM's turn loop against a real table: perceive first, recover from a refusal,
-//! queue several NPCs, stop at the model call limit, and outwait the graph's task timeout.
+//! The AI GM's turn loop against a real table: perceive first, carry the pack's gm_notes,
+//! recover from a refusal, queue several NPCs, stop at the model call limit, and outwait
+//! the graph's task timeout.
 
 use spookery_engine::component;
+use std::fs;
 use std::time::Duration;
 
 use cucumber::{given, then, when};
@@ -26,7 +28,25 @@ const NARRATION: &str = "The street opens past the shop door.";
 #[given(expr = "a docks table with a seated player and the NPC Mira in the shop")]
 #[given(expr = "a docks table with a seated player and the NPCs Mira and Aldric in the shop")]
 fn a_docks_table_with_npcs_in_the_shop(world: &mut World) {
+    start_docks_table_with_mira(world, None);
+}
+
+#[given(
+    expr = "a docks table with a seated player, the NPC Mira in the shop, and gm_notes {string}"
+)]
+fn a_docks_table_with_mira_and_gm_notes(world: &mut World, notes: String) {
+    start_docks_table_with_mira(world, Some(&notes));
+}
+
+/// Copies the docks pack, writes `notes` into `pack.yaml` when some are given, moves Mira
+/// to the shop, and seats a player. The notes have to be on disk before the table starts.
+fn start_docks_table_with_mira(world: &mut World, notes: Option<&str>) {
     let pack = copy_docks("ai-gm-loop");
+    if let Some(notes) = notes {
+        let path = pack.join("pack.yaml");
+        let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read pack.yaml: {err}"));
+        fs::write(&path, format!("{}\ngm_notes: {notes}\n", text.trim_end())).unwrap();
+    }
     // Aldric starts in the shop. Mira starts upstairs.
     super::common::edit_save(&pack, |now| {
         now.actors_mut()
@@ -152,6 +172,18 @@ fn read_last_results(world: &World) -> Vec<String> {
     read_tool_results(calls.last().expect("a model call"))
 }
 
+#[then(expr = "every model call carries the pack's gm_notes {string}")]
+fn every_model_call_carries_the_pack_gm_notes(world: &mut World, notes: String) {
+    let calls = world.model.calls();
+    assert!(!calls.is_empty(), "{calls:?}");
+    for messages in &calls {
+        let shown = messages.iter().any(
+            |message| matches!(message, model::Message::System { content } if content.contains(&notes)),
+        );
+        assert!(shown, "{calls:?}");
+    }
+}
+
 #[then(expr = "the table saw a perceive as Mira before any say")]
 fn a_perceive_came_before_any_say(world: &mut World) {
     let results = read_last_results(world);
@@ -254,7 +286,7 @@ fn the_gm_reports_a_model_call_limit_warning(world: &mut World) {
 fn the_model_is_called_for_that_say(world: &mut World) {
     let calls = world.model.calls();
     assert_eq!(calls.len(), 1);
-    let model::Message::User { content } = &calls[0][0] else {
+    let model::Message::User { content } = &calls[0][1] else {
         panic!("{:?}", calls[0]);
     };
     assert!(content.contains("evening"), "{content}");
