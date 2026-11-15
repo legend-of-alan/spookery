@@ -15,7 +15,7 @@ use crate::rules::context::Context;
 use crate::rules::effect::{payload_json, Effect};
 use crate::rules::gate;
 use crate::rules::rule::{Rule, TargetKind, When};
-use crate::state::id::ActorId;
+use crate::state::id::{ActorId, PlaceId};
 use crate::state::{component, Presence, Save, State};
 use crate::store::journal;
 use crate::store::records::Record;
@@ -149,8 +149,8 @@ impl World {
         self.append_speech(presence, from, npc, audience, text)
     }
 
-    /// Append one line of speech to the tape. Speech to an actor must name an actor in the
-    /// world, and a speaker's speech to a place must be where that speaker stands. With no
+    /// Append one line of speech to the tape. Speech to an actor or a place must name one in
+    /// the world, and a speaker's speech to a place must be where that speaker stands. With no
     /// `audience`, the speaker's place hears it.
     fn append_speech(
         &self,
@@ -168,6 +168,11 @@ impl World {
                 return Err(Reason::Schema);
             }
             Some(Audience::Place(place)) if speaker.is_some() && here != Some(place.as_str()) => {
+                return Err(Reason::Schema);
+            }
+            Some(Audience::Place(place))
+                if !self.state.places().contains(&PlaceId::from(place.as_str())) =>
+            {
                 return Err(Reason::Schema);
             }
             Some(audience) => audience.clone(),

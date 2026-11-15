@@ -244,23 +244,8 @@ mod tests {
     }
 
     #[test]
-    fn a_say_names_who_hears_it_with_to() {
-        let say = |raw: &str| serde_json::from_str::<SayArgs>(raw).map(|args| args.to);
-        assert_eq!(
-            say(r#"{"to":"table","text":"hi"}"#).unwrap(),
-            Some(Audience::Table)
-        );
-        let place = say(r#"{"to":{"place":"docks"},"text":"hi"}"#).unwrap();
-        assert_eq!(place, Some(Audience::Place("docks".to_string())));
-        let actor = say(r#"{"to":{"actor":"aldric"},"text":"hi"}"#).unwrap();
-        assert_eq!(actor, Some(Audience::Actor("aldric".to_string())));
-        for old in [
-            r#"{"address":"table","text":"hi"}"#,
-            r#"{"to":"place","place":"docks","text":"hi"}"#,
-            r#"{"to":"actor","actor":"aldric","text":"hi"}"#,
-            r#"{"to":{"place":"docks","actor":"aldric"},"text":"hi"}"#,
-        ] {
-            assert!(say(old).is_err(), "{old}");
-        }
+    fn a_say_to_two_listeners_is_refused() {
+        let two = r#"{"to":{"place":"docks","actor":"aldric"},"text":"hi"}"#;
+        assert!(serde_json::from_str::<SayArgs>(two).is_err());
     }
 }

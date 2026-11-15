@@ -138,11 +138,11 @@ fn parse_command(line: &str) -> Option<(&str, Option<Value>)> {
     }
     let parts: Vec<&str> = rest.split_whitespace().collect();
     let args = match (command, parts.as_slice()) {
-        // `rest` starts with `as`, then `npc`, as `parts` split it.
-        ("say", ["as", npc, _, ..]) => {
-            let text = rest[2..].trim_start()[npc.len()..].trim_start();
-            Some(json!({ "as": npc, "text": text }))
-        }
+        ("say", ["as", npc, _, ..]) => rest
+            .strip_prefix("as")
+            .map(str::trim_start)
+            .and_then(|rest| rest.strip_prefix(npc))
+            .map(|text| json!({ "as": npc, "text": text.trim_start() })),
         ("say", [_, ..]) => Some(json!({ "to": "table", "text": rest })),
         ("perceive", [actor]) => Some(json!({ "as": actor })),
         ("queue", [actor, move_name]) => Some(json!({ "actor_id": actor, "move": move_name })),

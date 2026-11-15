@@ -78,7 +78,7 @@ pub(super) fn describe(command: &str) -> Option<(&'static str, Arc<Map<String, V
             schema_for_type::<QueueArgs>(),
         ),
         "say" => (
-            "say requires to and text. to is \"table\", {\"place\": id} or {\"actor\": id}. as may name an NPC's id to speak as that NPC, and then a missing to is the place that NPC stands. A supplied from is SCHEMA.",
+            "say requires text. to is \"table\", {\"place\": id} or {\"actor\": id}, and may be left out only with as, an NPC's id to speak as that NPC, which then speaks to the place that NPC stands. A supplied from is SCHEMA.",
             schema_for_type::<SayArgs>(),
         ),
         "commit" => (

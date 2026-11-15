@@ -16,6 +16,7 @@ Feature: A human GM runs a round
     When play and a human GM share a free loopback port
     And the GM types "say as aldric Mind the counter."
     Then play shows "Aldric: Mind the counter."
+    And the tape line is said to the place "docks_shop"
 
   Scenario: Two players queue and one commit runs both
     Given a docks table

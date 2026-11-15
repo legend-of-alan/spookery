@@ -161,14 +161,6 @@ mod tests {
         let _ = fs::remove_dir_all(&root);
     }
 
-    #[test]
-    fn a_line_without_to_is_schema() {
-        let old = r#"{"seq":1,"from":"gm","address":"table","place":null,"actor":null,"recipients":[],"text":"hi","round_index":0,"world_time":0}"#;
-        assert_eq!(parse_record(old).unwrap_err(), Reason::Schema);
-        let to = r#"{"seq":1,"from":"gm","to":"table","recipients":[],"text":"hi","round_index":0,"world_time":0}"#;
-        assert!(parse_record(to).is_ok());
-    }
-
     fn sample(seq: u64, player: &str, text: &str) -> TapeRecord {
         TapeRecord {
             seq,

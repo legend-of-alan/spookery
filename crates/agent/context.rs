@@ -145,8 +145,8 @@ impl ClientState {
 }
 
 /// One line of speech as the model reads it in the prompt's `tape_lines` and
-/// `new_player_lines`, with the `seq` of the message that carried it and without `recipients`. The GM's own lines carry the `seq` of
-/// the server's reply.
+/// `new_player_lines`, with the `seq` of the message that carried it and without `recipients`.
+/// The GM's own lines carry the `seq` of the server's reply.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub(crate) struct TapeLine {
     pub(crate) seq: u64,
