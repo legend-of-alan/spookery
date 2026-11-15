@@ -8,7 +8,7 @@ Feature: Modifiers stack per application, add ticks on reapply, and expire at on
     And the torch verb applies burn -1 and the brand verb applies burn -2, each for 10 ticks
     When rowan is hit by the torch and then the brand in one round
     Then rowan has 2 stacks of burn and grit is 3 lower
-    And the GM sees "modifier rowan burn" as a changed key
+    And the GM sees "actor_modifier rowan burn" as a changed key
     And the GM sees "actor_meter rowan grit" as a changed key
     And spook verify reproduces the journal
 
@@ -58,7 +58,7 @@ Feature: Modifiers stack per application, add ticks on reapply, and expire at on
     And rowan has 3 stacks of burn
     When the burn's 10 ticks pass with no reapply
     Then rowan has no burn and grit is back
-    And the GM sees "modifier rowan burn" as a changed key
+    And the GM sees "actor_modifier rowan burn" as a changed key
     And the GM sees "actor_meter rowan grit" as a changed key
     And spook verify reproduces the journal
 

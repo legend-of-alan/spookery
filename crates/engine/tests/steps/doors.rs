@@ -7,13 +7,15 @@ use spookery_engine::{component, entity, Presence};
 
 use crate::World;
 
-/// One round in which the GM has `actor` play `verb` at `target`. Rowan sits at the table, so
-/// the round is a short seated one. Returns the round's journal line.
-fn plays(pack: &Path, actor: &str, verb: &str, target: Option<&str>) -> serde_json::Value {
-    let lock = spookery_engine::lock_pack(pack).unwrap();
-    let mut world =
-        spookery_engine::World::resume(pack, lock).unwrap_or_else(|err| panic!("open: {err}"));
-    let round = world.state().round_index + 1;
+/// One round in which the GM has `actor` play `verb` at `target`, keeping the keys the GM sees
+/// change. Rowan sits at the table, so the round is a short seated one. Returns the round's
+/// journal line.
+fn plays(world: &mut World, actor: &str, verb: &str, target: Option<&str>) -> serde_json::Value {
+    let pack = world.pack().to_path_buf();
+    let lock = spookery_engine::lock_pack(&pack).unwrap();
+    let mut opened =
+        spookery_engine::World::resume(&pack, lock).unwrap_or_else(|err| panic!("open: {err}"));
+    let round = opened.state().round_index + 1;
     let intent = spookery_protocol::QueueArgs {
         id: Some(format!("{actor}-{round}")),
         round_index: None,
@@ -23,21 +25,22 @@ fn plays(pack: &Path, actor: &str, verb: &str, target: Option<&str>) -> serde_js
         message_to: None,
         rationale_code: "test".to_string(),
     };
-    world
+    opened
         .queue_gm_intent(&spookery_engine::Presence::default(), intent, || {
             panic!("the GM chose the id")
         })
         .unwrap_or_else(|code| panic!("queue: {code}"));
-    let wall = world.state().last_round_at.clone();
+    let wall = opened.state().last_round_at.clone();
     let seated = Presence {
         players: 1,
         actors_present: vec!["rowan".into()],
     };
-    world
+    let output = opened
         .play(&seated, &wall)
         .unwrap_or_else(|err| panic!("play: {err}"));
-    drop(world);
-    support::read_round(pack, &format!("round-{round:04}"))
+    world.summary_lines = output.changed_keys;
+    drop(opened);
+    support::read_round(&pack, &format!("round-{round:04}"))
 }
 
 /// Where `actor` stands in the pack's saved state.
@@ -100,7 +103,7 @@ exits:";
 #[when(expr = "Mira arrives at the shop holding brass_key")]
 fn mira_arrives_with_the_key(world: &mut World) {
     assert!(!stairs_open(world.pack()));
-    plays(world.pack(), "mira", "travel", Some("docks_shop"));
+    plays(world, "mira", "travel", Some("docks_shop"));
     assert_eq!(saved_place_of(world.pack(), "mira"), "docks_shop");
 }
 
@@ -108,7 +111,7 @@ fn mira_arrives_with_the_key(world: &mut World) {
 fn mira_opened_the_door(world: &mut World) {
     the_stair_door_needs_the_key(world);
     mira_arrives_with_the_key(world);
-    plays(world.pack(), "mira", "travel", Some("docks_street"));
+    plays(world, "mira", "travel", Some("docks_street"));
     assert_eq!(saved_place_of(world.pack(), "mira"), "docks_street");
     assert!(stairs_open(world.pack()));
 }
@@ -118,9 +121,20 @@ fn the_door_is_open(world: &mut World) {
     assert!(stairs_open(world.pack()));
 }
 
+#[then(expr = "the GM sees {string} and {string} change")]
+fn the_gm_sees_both_change(world: &mut World, door: String, place: String) {
+    for key in [door, place] {
+        assert!(
+            world.summary_lines.contains(&key),
+            "{key}: {:?}",
+            world.summary_lines
+        );
+    }
+}
+
 #[when(expr = "Mira drops brass_key")]
 fn mira_drops_the_key(world: &mut World) {
-    plays(world.pack(), "mira", "drop", Some("brass_key"));
+    plays(world, "mira", "drop", Some("brass_key"));
     let saved = spookery_engine::World::peek(world.pack()).unwrap();
     let mira = "mira".into();
     let held = saved.state().actors().get::<component::Item>(&mira);
@@ -129,7 +143,7 @@ fn mira_drops_the_key(world: &mut World) {
 
 #[then(expr = "Mira can still take the stairs")]
 fn mira_takes_the_stairs(world: &mut World) {
-    let round = plays(world.pack(), "mira", "travel", Some("stairs"));
+    let round = plays(world, "mira", "travel", Some("stairs"));
     assert_eq!(
         saved_place_of(world.pack(), "mira"),
         "mira_rooms",
@@ -144,7 +158,7 @@ fn aldric_takes_the_stairs(world: &mut World) {
     let held = saved.state().actors().get::<component::Item>(&aldric);
     assert!(!held.contains("brass_key"));
     drop(saved);
-    world.scratch = plays(world.pack(), "aldric", "travel", Some("stairs")).to_string();
+    world.scratch = plays(world, "aldric", "travel", Some("stairs")).to_string();
 }
 
 #[then(expr = "Aldric reaches Mira's rooms")]
@@ -159,7 +173,7 @@ fn aldric_reaches_the_rooms(world: &mut World) {
 
 #[when(expr = "a rule runs a flag effect on exit:docks_shop.stairs setting open to false")]
 fn a_rule_locks_the_door(world: &mut World) {
-    let round = plays(world.pack(), "aldric", "bolt", None);
+    let round = plays(world, "aldric", "bolt", None);
     assert!(round["refused"].as_array().unwrap().is_empty(), "{round}");
     assert!(!stairs_open(world.pack()));
 }
@@ -188,9 +202,9 @@ fn the_door_refuses_aldric(world: &mut World) {
 
 #[then(expr = "it opens again only when someone holding brass_key is in the shop")]
 fn it_opens_again_with_the_key(world: &mut World) {
-    plays(world.pack(), "aldric", "wait", None);
+    plays(world, "aldric", "wait", None);
     assert!(!stairs_open(world.pack()), "a round with no key opened it");
-    plays(world.pack(), "mira", "travel", Some("docks_shop"));
+    plays(world, "mira", "travel", Some("docks_shop"));
     assert!(stairs_open(world.pack()));
 }
 

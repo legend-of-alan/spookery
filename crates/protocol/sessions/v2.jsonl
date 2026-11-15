@@ -30,7 +30,7 @@
 {"seat":"gm","get":{"seq":14,"reply_to":"g7","body":{"kind":"refused","code":"NOT_IN_SPEC"}}}
 {"seat":"gm","send":{"id":"g8","body":{"kind":"commit","args":{"include_round":true}}}}
 {"seat":"gm","get":{"seq":15,"body":{"kind":"round","round_index":1,"world_time":1085}}}
-{"seat":"gm","get":{"seq":19,"reply_to":"g8","body":{"kind":"committed","state_rev":1,"changed_keys":["last_act_round aldric","last_act_round mira","live_acts_this_window aldric","live_acts_this_window mira","note note_mira_door"],"journal_path":"state/journal/bundle-0000.jsonl","rolls":[{"faces":[1,6],"stat":1,"total":8,"target":0,"outcome":"success"}]}}}
+{"seat":"gm","get":{"seq":19,"reply_to":"g8","body":{"kind":"committed","state_rev":1,"changed_keys":["actor_last_act_round aldric","actor_last_act_round mira","actor_live_acts_this_window aldric","actor_live_acts_this_window mira","world_note note_mira_door"],"journal_path":"state/journal/bundle-0000.jsonl","rolls":[{"faces":[1,6],"stat":1,"total":8,"target":0,"outcome":"success"}]}}}
 {"seat":"player:rowan","get":{"seq":15,"body":{"kind":"round","round_index":1,"world_time":1085}}}
 {"seat":"player:rowan","get":{"seq":16,"body":{"kind":"check","outcome":"success"}}}
 {"seat":"player:rowan","get":{"seq":17,"body":{"kind":"resume","notes":[{"id":"note_mira_door","to":["rowan"],"place":"docks_shop","fact_ids":[],"text":"Back at dusk. Oil on the shelf."}]}}}

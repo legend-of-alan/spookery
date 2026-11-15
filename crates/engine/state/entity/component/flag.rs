@@ -1,9 +1,7 @@
 //! Flags: a name set on an entity, or not there.
 
-use crate::state::change;
 use crate::state::component::{Component, Mut, Ref};
-use crate::state::entity::{self, in_collection};
-use crate::state::prelude::*;
+use crate::state::entity::in_collection;
 use crate::state::{Reader, Save, Writer};
 use crate::Reason;
 
@@ -12,14 +10,7 @@ pub struct Flag;
 
 impl Component for Flag {
     type Value = ();
-}
-
-impl<E: entity::Has<Flag, Store = entity::MapStore<E, Flag>>> Mut<'_, E, Flag> {
-    /// Set flag `name` on or off. An entity the save or the pack does not have is `UNKNOWN_ID`.
-    pub fn set(&mut self, name: &str, on: bool) -> Result<(), Reason> {
-        let key = change::Key::flag(self.id.as_id_ref(), name);
-        self.set_with_key(name, on, key)
-    }
+    const NAME: &'static str = "flag";
 }
 
 impl Ref<'_, Save, Flag> {

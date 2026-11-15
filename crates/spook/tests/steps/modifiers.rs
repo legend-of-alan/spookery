@@ -433,21 +433,23 @@ fn the_gm_sees_the_key(world: &mut World, key: String) {
 fn rowan_sees_burn_only(world: &mut World) {
     let seen = seen_of(world, "rowan");
     assert!(
-        seen.contains(&"modifier rowan burn".to_string()),
+        seen.contains(&"actor_modifier rowan burn".to_string()),
         "{seen:?}"
     );
     assert!(
-        !seen.contains(&"modifier rowan dread".to_string()),
+        !seen.contains(&"actor_modifier rowan dread".to_string()),
         "{seen:?}"
     );
-    assert!(world.summary.contains(&"modifier rowan dread".to_string()));
+    assert!(world
+        .summary
+        .contains(&"actor_modifier rowan dread".to_string()));
 }
 
 #[then(expr = "wren's change line shows neither")]
 fn wren_sees_neither(world: &mut World) {
     let seen = seen_of(world, "wren");
     assert!(
-        seen.iter().all(|key| !key.starts_with("modifier ")),
+        seen.iter().all(|key| !key.starts_with("actor_modifier ")),
         "{seen:?}"
     );
 }

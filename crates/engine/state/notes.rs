@@ -3,6 +3,7 @@
 use serde::{Deserialize, Serialize};
 
 use super::change::{self, Change};
+use super::entity;
 use super::id::{ActorId, PlaceId};
 use super::{sort_unique, undo, Writer};
 use crate::Reason;
@@ -16,6 +17,11 @@ pub struct Note {
     pub place: Option<PlaceId>,
     pub fact_ids: Vec<String>,
     pub text: String,
+}
+
+impl Note {
+    /// The name a note's change key spells: notes are the world's, under their id.
+    pub(crate) const NAME: &'static str = "note";
 }
 
 impl undo::Undo for Vec<Note> {
@@ -35,7 +41,7 @@ impl Writer<'_, undo::Store<Vec<Note>>> {
         }
         sort_unique(&mut note.to);
         sort_unique(&mut note.fact_ids);
-        let key = change::Key::Note(note.id.clone());
+        let key = change::Key::new(Note::NAME, entity::IdRef::Global, &note.id);
         let change = Change::new(key, change::Value::Empty, change::Value::Bool(true));
         let leave = |notes: &mut Vec<Note>| notes.push(note);
         components.record(transaction, leave, [change.into()])

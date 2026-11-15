@@ -310,10 +310,18 @@ The table's state for a GM. `world_time` is the game clock in ticks. `pack_rev` 
 
 <!-- example: gm-committed -->
 ```json
-{"seq":15,"reply_to":"c3","body":{"kind":"committed","state_rev":1,"changed_keys":["last_act_round aldric","last_act_round mira","last_act_round rowan","live_acts_this_window aldric","live_acts_this_window mira","live_acts_this_window rowan","note note_mira_door"],"journal_path":"state/journal/bundle-0000.jsonl","rolls":[{"faces":[1,6],"stat":1,"total":8,"target":0,"outcome":"success"}]}}
+{"seq":15,"reply_to":"c3","body":{"kind":"committed","state_rev":1,"changed_keys":["actor_last_act_round aldric","actor_last_act_round mira","actor_last_act_round rowan","actor_live_acts_this_window aldric","actor_live_acts_this_window mira","actor_live_acts_this_window rowan","world_note note_mira_door"],"journal_path":"state/journal/bundle-0000.jsonl","rolls":[{"faces":[1,6],"stat":1,"total":8,"target":0,"outcome":"success"}]}}
 ```
 
-`changed_keys` are the state keys the round changed, every one of them: a meter is `actor_meter <actor> <id>` or `world_meter <id>`, a modifier is `modifier <actor> <id>`, and a flag is `actor_flag <actor> <key>` or `world_flag <key>`. `journal_path` is the round's journal file, or null when the round wrote none. `rolls` are the checks rolled, faces and all. Faces go to the GM only.
+`changed_keys` are the state keys the round changed, every one of them. Each is spelled `<collection>_<component> <id> <entry>`: the collection is `actor`, `place`, `story` or `world`, the world has no `<id>`, and a component an entity holds one of has no `<entry>`. So a meter is `actor_meter <actor> <id>` or `world_meter <id>`, a modifier is `actor_modifier <actor> <id>`, and a door is `place_exit_open <place> <exit>`. The keys are:
+
+- `actor_place`, `actor_busy`, `actor_known_facts`, `actor_wielded_item`, `actor_last_act_round`, `actor_idle_acts_this_window` and `actor_live_acts_this_window`, one per actor;
+- `actor_flag`, `actor_meter`, `actor_modifier` and `actor_item`, under the flag, meter, modifier or item;
+- `place_flag`, `place_meter`, `place_item` and `place_exit_open`, under the flag, meter, item or exit;
+- `story_flag` and `story_meter`;
+- `world_flag`, `world_meter`, and `world_note` under the note's id.
+
+`journal_path` is the round's journal file, or null when the round wrote none. `rolls` are the checks rolled, faces and all. Faces go to the GM only.
 
 ## Bodies
 
@@ -529,6 +537,7 @@ The MCP endpoint answers with an HTTP status before any seat: 400 for an `MCP-Pr
 - Version 2 narrowed one field before any release, on purpose, when every move got one start and finish: `cant_act` now means the viewer can't send a move at all, and being busy moved to the new `busy`. A walk's line moved with it. The version stayed 2 because no build had shipped.
 - Version 2 narrowed `status` before any release, on purpose: `pack` is now required, so a GM client no longer allows for a server that leaves it out. The version stayed 2 because no build had shipped.
 - Version 2 renamed the command fields before any release, on purpose, so a client body is named by `kind` like a server body: a client body's `word` became `kind`, and the `words` of `hello` and `help` became `commands`. The command names did not change. The recording took the new names with it. The version stayed 2 because no build had shipped.
+- Version 2 respelled eight changed keys before any release, on purpose, so every key is `<collection>_<component> <id> <entry>`: `modifier` became `actor_modifier`, `exit_open` became `place_exit_open`, `actor_known_fact` became `actor_known_facts`, `actor_wielded` became `actor_wielded_item`, `note` became `world_note`, and `last_act_round`, `idle_acts_this_window` and `live_acts_this_window` took the `actor_` prefix. The recording took the new keys with it. The version stayed 2 because no build had shipped.
 - Version 2 renamed the cast's role before any release, on purpose, so the cast and the engine say the same word: `pack.kinds` in `status` became `pack.control_types`, and a cast file's `kind` became `control_type`. The values did not change. The recording took the new name and the docks pack's new `pack_rev` with it. The version stayed 2 because no build had shipped.
 - Version 2 split one body before any release, on purpose, so a client writes the change sentences as it writes the view: `lines` now carries only narrate lines, and the changes a round showed a player moved to the new `changes`, as data: each change names its component as open text and carries its values as JSON values, so a new component needs no protocol change. The recording took the new body with it. The version stayed 2 because no build had shipped.
 - The recorded session must still replay. Each message it got must still arrive at that seat, in order, with every field it had and the same value. New kinds and fields may come between. Only `seq`, which a new kind moves, and `token`, which each table mints, may differ.

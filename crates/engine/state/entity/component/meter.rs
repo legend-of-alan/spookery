@@ -79,6 +79,7 @@ fn shift(held: Option<&Meter>, def: &MeterDef, delta: i64) -> Result<Meter, Reas
 
 impl Component for Meter {
     type Value = Meter;
+    const NAME: &'static str = "meter";
 }
 
 impl<E: entity::Has<Meter, Store = entity::MapStore<E, Meter>>> Mut<'_, E, Meter> {
@@ -92,7 +93,7 @@ impl<E: entity::Has<Meter, Store = entity::MapStore<E, Meter>>> Mut<'_, E, Meter
         let entry = (self.id.clone(), name.to_string());
         let held = self.store().get(&entry);
         let next = shift(held, def, delta)?;
-        let report = change::Report::Meter(change::Key::meter(id, name), held.cloned());
+        let report = change::Report::Meter(self.key(name), held.cloned());
         let (store, transaction) = self.store_mut();
         store.set(transaction, entry, Some(next), [report])
     }
@@ -106,7 +107,7 @@ impl<E: entity::Has<Meter, Store = entity::MapStore<E, Meter>>> Mut<'_, E, Meter
         }
         let entry = (self.id.clone(), name.to_string());
         let held = self.store().get(&entry).cloned();
-        let report = change::Report::Meter(change::Key::meter(self.id.as_id_ref(), name), held);
+        let report = change::Report::Meter(self.key(name), held);
         let (store, transaction) = self.store_mut();
         store.set(transaction, entry, meter, [report])
     }

@@ -9,8 +9,11 @@ use crate::entity;
 use crate::intent::Viewer;
 use crate::rules::effect::{Effect, EffectKind};
 use crate::state::change::{self, Change};
+use crate::state::component::{
+    Act, Component, Item, KnownFacts, Meter, Modifier, Place, WieldedItem,
+};
 use crate::state::id::{ActorId, PlaceId};
-use crate::state::{component, State};
+use crate::state::{component, Note, State};
 
 pub(crate) fn can_see_fact(canon: &Canon, state: &State, viewer: &Viewer, fact_id: &str) -> bool {
     let actor_id = viewer.actor_id();
@@ -92,31 +95,30 @@ pub(crate) fn show_to(
 /// The entry a player is sent for a change they may know, or none while its value has no wire
 /// meaning: a modifier's and busy's values are the journal's.
 fn to_change_view(canon: &Canon, change: &Change) -> Option<ChangeView> {
-    if matches!(
-        change.key,
-        change::Key::ActorModifier(..) | change::Key::ActorBusy(_)
-    ) {
+    let key = &change.key;
+    if [Modifier::NAME, Act::BUSY].contains(&key.component) {
         return None;
     }
-    let (component, entity, key) = change.key.to_parts();
-    let entity_name = match &entity {
+    let entity_name = match &key.entity {
         entity::Id::Actor(id) => canon.display_name(id.as_str()),
         entity::Id::Place(id) => crate::rules::lines::place_name(canon, id.as_str()),
         entity::Id::Story(id) => id.to_string(),
         entity::Id::Global => String::new(),
     };
-    let name = match (&change.key, &change.after) {
-        (change::Key::ActorPlace(_), change::Value::Text(place)) => {
-            crate::rules::lines::place_name(canon, place)
-        }
-        _ => canon.display_name(key),
+    let name = match (key.component, &change.after) {
+        (Place::NAME, change::Value::Text(place)) => crate::rules::lines::place_name(canon, place),
+        _ => canon.display_name(&key.entry),
     };
     Some(ChangeView {
-        component: component.to_string(),
-        entity: entity.to_string(),
+        component: key.component.to_string(),
+        entity: key.entity.to_string(),
         entity_name,
-        key: key.to_string(),
-        name: if name == key { String::new() } else { name },
+        key: key.entry.clone(),
+        name: if name == key.entry {
+            String::new()
+        } else {
+            name
+        },
         before: to_change_value(&change.before),
         after: to_change_value(&change.after),
     })
@@ -168,44 +170,34 @@ fn can_see(canon: &Canon, state: &State, viewer: &ActorId, change: &Change) -> b
     if !state.actors().contains(viewer) {
         return false;
     }
-    match &change.key {
-        // Flags are rules bookkeeping: the GM narrates what one means.
-        change::Key::WorldFlag(_)
-        | change::Key::ActorFlag(_, _)
-        | change::Key::PlaceFlag(_, _)
-        | change::Key::StoryFlag(_, _)
-        | change::Key::ExitOpen(_, _)
-        | change::Key::LastActRound(_)
-        | change::Key::IdleActsThisWindow(_)
-        | change::Key::LiveActsThisWindow(_) => false,
-        change::Key::WorldMeter(key) => is_shown(canon, &entity::Id::Global, key),
-        change::Key::StoryMeter(story, key) => {
-            is_shown(canon, &entity::Id::Story(story.clone().into()), key)
+    let (key, entry) = (&change.key, change.key.entry.as_str());
+    match (key.component, &key.entity) {
+        (Meter::NAME, entity::Id::Global | entity::Id::Story(_)) => {
+            is_shown(canon, &key.entity, entry)
         }
-        change::Key::PlaceMeter(place, key) => {
-            place_of(state, viewer) == Some(place.as_str())
-                && is_shown(canon, &entity::Id::Place(place.clone().into()), key)
+        (Meter::NAME, entity::Id::Place(place)) => {
+            place_of(state, viewer) == Some(place.as_str()) && is_shown(canon, &key.entity, entry)
         }
-        change::Key::ActorMeter(actor, key) => {
-            *viewer == **actor && is_shown(canon, &entity::Id::Actor(actor.clone().into()), key)
+        (Meter::NAME, entity::Id::Actor(actor)) => {
+            viewer == actor && is_shown(canon, &key.entity, entry)
         }
-        change::Key::ActorKnownFact(actor) => *viewer == **actor,
-        change::Key::ActorModifier(actor, id) => {
-            *viewer == **actor && canon.modifiers.get(id).is_some_and(|def| !def.hidden)
+        (KnownFacts::NAME, entity::Id::Actor(actor)) => viewer == actor,
+        (Modifier::NAME, entity::Id::Actor(actor)) => {
+            viewer == actor && canon.modifiers.get(entry).is_some_and(|def| !def.hidden)
         }
-        change::Key::PlaceItem(place, _) => place_of(state, viewer) == Some(place.as_str()),
-        change::Key::Note(id) => can_see_note(canon, state, viewer, id),
-        change::Key::ActorPlace(actor) => {
-            *viewer == **actor
+        (Item::NAME, entity::Id::Place(place)) => place_of(state, viewer) == Some(place.as_str()),
+        (Note::NAME, entity::Id::Global) => can_see_note(canon, state, viewer, entry),
+        (Place::NAME, entity::Id::Actor(actor)) => {
+            viewer == actor
                 || same_place(state, viewer, actor)
                 || is_at(state, viewer, &change.before)
                 || is_at(state, viewer, &change.after)
         }
-        change::Key::ActorBusy(actor)
-        | change::Key::ActorItem(actor, _)
-        | change::Key::ActorWielded(actor) => {
-            *viewer == **actor || same_place(state, viewer, actor)
+        (Act::BUSY | Item::NAME | WieldedItem::NAME, entity::Id::Actor(actor)) => {
+            viewer == actor || same_place(state, viewer, actor)
         }
+        // Flags, doors and act counts are rules bookkeeping: the GM narrates what one means.
+        _ => false,
     }
 }
 
@@ -221,10 +213,8 @@ fn place_of<'a>(state: &'a State, viewer: &'a ActorId) -> Option<&'a str> {
     state.actors().get::<component::Place>(viewer).get()
 }
 
-fn same_place(state: &State, viewer: &ActorId, actor: &str) -> bool {
-    // The actor comes out of a change key as text, so it is read under its id.
-    let actor = ActorId::from(actor);
-    let actor_place = state.actors().get::<component::Place>(&actor).get();
+fn same_place(state: &State, viewer: &ActorId, actor: &ActorId) -> bool {
+    let actor_place = state.actors().get::<component::Place>(actor).get();
     match (place_of(state, viewer), actor_place) {
         (Some(left), Some(right)) => left == right,
         _ => false,

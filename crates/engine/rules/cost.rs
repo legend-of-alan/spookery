@@ -6,8 +6,8 @@ use crate::rules::context::Context;
 use crate::rules::expr::{self, Dice};
 use crate::rules::gate;
 use crate::rules::rule::Cost;
-use crate::state::component::{self, modifier, Meter};
-use crate::state::{change, Presence, State};
+use crate::state::component::{self, modifier, Component, Meter};
+use crate::state::{change, entity, Presence, State};
 use crate::Reason;
 
 /// Refuse a cost the actor cannot pay as `CANT_AFFORD`, with the meter or item id as `detail`.
@@ -71,7 +71,11 @@ pub(crate) fn pay(
         (state.actors_mut().get_mut::<Meter>(who)).shift(key, -amount)?;
         if amount == 0 {
             // A cost of 0 leaves the meter as it was and still takes a key of the budget.
-            state.count_key(&change::Key::ActorMeter(who.to_string(), key.clone()))?;
+            state.count_key(&change::Key::new(
+                Meter::NAME,
+                entity::IdRef::Actor(who),
+                key,
+            ))?;
         }
     }
     for (id, expr) in &cost.items {

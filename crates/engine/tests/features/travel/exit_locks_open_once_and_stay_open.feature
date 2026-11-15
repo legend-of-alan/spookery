@@ -4,6 +4,7 @@ Feature: Exit locks open once and stay open
     Given the stair door in the shop needs brass_key
     When Mira arrives at the shop holding brass_key
     Then after that round the stair door is open
+    And the GM sees "place_exit_open docks_shop stairs" and "actor_place mira" change
     When Mira drops brass_key
     Then Mira can still take the stairs
 

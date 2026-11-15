@@ -10,24 +10,19 @@ pub struct Item;
 
 impl Component for Item {
     type Value = u32;
+    const NAME: &'static str = "item";
 }
 
 impl<E: entity::Has<Item, Store = entity::MapStore<E, Item>>> Mut<'_, E, Item> {
-    /// Move the count of `name` as `shift_count` says, reporting the change under `key`. A count
-    /// of 0 is no entry.
-    fn shift_with_key(
-        &mut self,
-        name: &str,
-        delta: i64,
-        max: Option<i64>,
-        key: change::Key,
-    ) -> Result<(), Reason> {
+    /// Move the count of `name` the entity holds as `shift_count` says. A count of 0 is no
+    /// entry.
+    fn shift_held(&mut self, name: &str, delta: i64, max: Option<i64>) -> Result<(), Reason> {
         self.check_exists()?;
         let entry = (self.id.clone(), name.to_string());
         let current = self.store().get(&entry).copied().unwrap_or(0);
         let next = shift_count(current, delta, max)?;
         let count = |count: u32| change::Value::Number(count.into());
-        let change = Change::new(key, count(current), count(next));
+        let change = Change::new(self.key(name), count(current), count(next));
         let (store, transaction) = self.store_mut();
         store.set(
             transaction,
@@ -42,8 +37,7 @@ impl Mut<'_, entity::Actors, Item> {
     /// Move the actor's count of `name` as `shift_count` says. An actor who no longer holds the
     /// item they wield lets go of it.
     pub fn shift(&mut self, name: &str, delta: i64, max: Option<i64>) -> Result<(), Reason> {
-        let key = change::Key::ActorItem(self.id.to_string(), name.to_string());
-        self.shift_with_key(name, delta, max, key)?;
+        self.shift_held(name, delta, max)?;
         let actors = Reader::new(&*self.writer.components, self.writer.canon);
         let wielded = actors.get::<WieldedItem>(self.id).get();
         if wielded.is_some_and(|held| !actors.get::<Item>(self.id).contains(held)) {
@@ -57,8 +51,7 @@ impl Mut<'_, entity::Places, Item> {
     /// Move the count of `name` lying in the place as `shift_count` says. A place the pack does
     /// not define is `UNKNOWN_ID`.
     pub fn shift(&mut self, name: &str, delta: i64, max: Option<i64>) -> Result<(), Reason> {
-        let key = change::Key::PlaceItem(self.id.to_string(), name.to_string());
-        self.shift_with_key(name, delta, max, key)
+        self.shift_held(name, delta, max)
     }
 }
 

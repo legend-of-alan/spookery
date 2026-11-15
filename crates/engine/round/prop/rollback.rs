@@ -20,9 +20,9 @@ use crate::entity;
 use crate::intent::{Intent, IntentArgs, Source, Target, Viewer};
 use crate::rules::effect::{Effect, EffectKind};
 use crate::state::change::{self, Change};
-use crate::state::component;
 use crate::state::component::meter::{Meter, MeterDef, MeterWrite};
 use crate::state::component::modifier::{self, ModifierDef};
+use crate::state::component::{self, Component};
 use crate::state::id::{ActorId, ExitId};
 use crate::state::{ActCounter, Presence, Save, State};
 use crate::testing::copy_docks;
@@ -257,7 +257,7 @@ fn every_moved_meter_is_reported(
             continue;
         }
         let moved = Change {
-            key: change::Key::ActorMeter(actor.to_string(), key.to_string()),
+            key: change::Key::new(Meter::NAME, entity::IdRef::Actor(actor), key),
             before,
             after,
         };

@@ -37,9 +37,9 @@ Feature: Trigger delivery
 
   Scenario: A learned fact is told only to that person
     When nell learns fact_trapdoor while wren is in the same room
-    Then the GM summary lists "actor_known_fact nell"
-    And "nell"'s summary lists "actor_known_fact nell"
-    And "wren"'s summary does not list "actor_known_fact nell"
+    Then the GM summary lists "actor_known_facts nell"
+    And "nell"'s summary lists "actor_known_facts nell"
+    And "wren"'s summary does not list "actor_known_facts nell"
 
   Scenario: An item change is seen in that room only
     When an item is taken from docks_shop
@@ -63,9 +63,9 @@ Feature: Trigger delivery
 
   Scenario: A message is seen only by those allowed
     When a message hidden from wren is written
-    Then the GM summary lists "note note_private"
-    And "nell"'s summary lists "note note_private"
-    And "wren"'s summary does not list "note note_private"
+    Then the GM summary lists "world_note note_private"
+    And "nell"'s summary lists "world_note note_private"
+    And "wren"'s summary does not list "world_note note_private"
 
   Scenario: An idle round does not linger for the next player
     When the empty table narrates and then Rowan narrates

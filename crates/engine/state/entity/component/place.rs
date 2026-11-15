@@ -1,6 +1,6 @@
 //! Where each actor stands.
 
-use crate::state::change::{self, Change};
+use crate::state::change::Change;
 use crate::state::component::{text_value, Component, Mut, Ref};
 use crate::state::entity;
 use crate::Reason;
@@ -10,6 +10,7 @@ pub struct Place;
 
 impl Component for Place {
     type Value = String;
+    const NAME: &'static str = "place";
 }
 
 impl<'a> Ref<'a, entity::Actors, Place> {
@@ -23,7 +24,7 @@ impl Mut<'_, entity::Actors, Place> {
     /// Stand the actor at `to`: a place id, or an exit address while they walk.
     pub fn set(&mut self, to: &str) -> Result<(), Reason> {
         self.check_exists()?;
-        let key = change::Key::ActorPlace(self.id.to_string());
+        let key = self.key("");
         let before = text_value(self.store().get(self.id));
         let change = Change::new(key, before, text_value(Some(to)));
         let (id, (place, transaction)) = (self.id, self.store_mut());

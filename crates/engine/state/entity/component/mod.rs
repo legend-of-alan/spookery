@@ -31,6 +31,7 @@ pub use visit::Visit;
 pub use wielded_item::WieldedItem;
 
 use crate::state::change::{self, Change};
+use crate::state::prelude::*;
 use crate::state::{entity, nested_map, Reader, Transaction, Writer};
 use crate::Reason;
 
@@ -38,6 +39,8 @@ use crate::Reason;
 /// what an entity holds under each name.
 pub trait Component {
     type Value: PartialEq + Debug + 'static;
+    /// The component's name, as change keys and a player's change view spell it.
+    const NAME: &'static str;
 }
 
 /// The map a store keeps component `C` in, for a collection whose ids are `Id`.
@@ -111,6 +114,11 @@ impl<'a, E: entity::Entities, C: Component> Mut<'a, E, C> {
         }
     }
 
+    /// The key a write of the entity's `entry` reports: `""` when it holds one value of `C`.
+    fn key(&self, entry: &str) -> change::Key {
+        change::Key::new(C::NAME, self.id.as_id_ref(), entry)
+    }
+
     /// `UNKNOWN_ID` unless the entity exists: a value goes only on one that does.
     fn check_exists(&self) -> Result<(), Reason> {
         let exists = (self.writer.components).contains(self.writer.canon, self.id);
@@ -136,10 +144,11 @@ where
     E: entity::Has<C, Store = entity::MapStore<E, C>>,
     C: Component<Value = ()>,
 {
-    /// Put `name` on or take it off, reporting the change under `key`.
-    fn set_with_key(&mut self, name: &str, on: bool, key: change::Key) -> Result<(), Reason> {
+    /// Put `name` on or take it off: set a flag, or open or shut a door.
+    pub fn set(&mut self, name: &str, on: bool) -> Result<(), Reason> {
         self.check_exists()?;
-        let change = Change::new(key, change::Value::Bool(!on), change::Value::Bool(on));
+        let (before, after) = (change::Value::Bool(!on), change::Value::Bool(on));
+        let change = Change::new(self.key(name), before, after);
         let entry = (self.id.clone(), name.to_string());
         let (store, transaction) = self.store_mut();
         store.set(transaction, entry, on.then_some(()), [change.into()])
