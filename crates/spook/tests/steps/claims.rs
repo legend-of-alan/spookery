@@ -79,7 +79,7 @@ fn the_player_reconnects(world: &mut World) {
 fn it_holds_rowan_and_catches_up(world: &mut World) {
     let missed = held_again(world, false);
     let texts: Vec<String> = (1..=100).map(|index| format!("line {index}")).collect();
-    assert_eq!(speeches_in(&missed), texts);
+    assert_eq!(texts_in(&missed), texts);
     let player = table::player_client(world, "rowan");
     let id = player.seat.send("look", json!({}));
     let looked = parse(&player.seat.wait_reply(&id));
@@ -90,7 +90,7 @@ fn it_holds_rowan_and_catches_up(world: &mut World) {
 fn it_holds_rowan_with_a_gap(world: &mut World) {
     let missed = held_again(world, true);
     let texts: Vec<String> = (45..=300).map(|index| format!("line {index}")).collect();
-    assert_eq!(speeches_in(&missed), texts);
+    assert_eq!(texts_in(&missed), texts);
 }
 
 #[then(expr = "a GM intent for rowan is refused while it is held")]
@@ -133,7 +133,7 @@ fn held_again(world: &World, gap: bool) -> Vec<Value> {
     missed
 }
 
-fn speeches_in(missed: &[Value]) -> Vec<String> {
+fn texts_in(missed: &[Value]) -> Vec<String> {
     missed
         .iter()
         .map(|message| {

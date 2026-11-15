@@ -43,11 +43,11 @@ fn render_speech(speech: &Speech) -> String {
 }
 
 /// The speech a claim replays, under an `Earlier:` heading.
-fn render_scrollback(speeches: &[Speech]) -> String {
-    if speeches.is_empty() {
+fn render_scrollback(scrollback: &[Speech]) -> String {
+    if scrollback.is_empty() {
         return String::new();
     }
-    let lines: Vec<String> = speeches.iter().map(render_speech).collect();
+    let lines: Vec<String> = scrollback.iter().map(render_speech).collect();
     format!(
         "Earlier:
 {}",
