@@ -339,9 +339,11 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn every_model_call_opens_with_one_system_message_and_the_pack_gm_text_last() {
-        const GRIM_STATUS: &str = r#"{"kind":"status","presence":{"players":1,"actors_present":["pc"]},"world_time":0,"round_index":0,"state_rev":1,"pack_rev":"p","last_round_at":"","queued":[],"pack":{"menu":[],"control_types":{"pc":"pc_template"},"places":{},"cast":{},"gm":"Keep it grim."}}"#;
+        let grim_status = STATUS.replace(r#""cast":{}}"#, r#""cast":{},"gm":"Keep it grim."}"#);
+        assert_ne!(grim_status, STATUS);
+        let grim_status: &'static str = grim_status.leak();
         let grim = format!("{}\n\nKeep it grim.", context::GM_INSTRUCTIONS);
-        for (status, system_text) in [(STATUS, context::GM_INSTRUCTIONS), (GRIM_STATUS, &grim)] {
+        for (status, system_text) in [(STATUS, context::GM_INSTRUCTIONS), (grim_status, &grim)] {
             let model = ScriptedModel::new(vec![vec![PERCEIVE]]);
             let connection = ScriptedConnection::new(vec![
                 Answer {
