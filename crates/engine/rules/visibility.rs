@@ -96,28 +96,28 @@ pub(crate) fn show_to(
 /// meaning: a modifier's and busy's values are the journal's.
 fn to_change_view(canon: &Canon, change: &Change) -> Option<ChangeView> {
     let key = &change.key;
-    if [Modifier::NAME, Act::BUSY].contains(&key.component_name) {
+    if [Modifier::NAME, Act::BUSY].contains(&key.component_id) {
         return None;
     }
-    let entity_display_name = match &key.entity_id {
+    let entity_name = match &key.entity_id {
         entity::Id::Actor(id) => canon.display_name(id.as_str()),
         entity::Id::Place(id) => crate::rules::lines::place_name(canon, id.as_str()),
         entity::Id::Story(id) => id.to_string(),
         entity::Id::Global => String::new(),
     };
     let entry_id = key.entry_id.clone().unwrap_or_default();
-    let entry_display_name = match (key.component_name, &change.after) {
+    let entry_name = match (key.component_id, &change.after) {
         (Place::NAME, change::Value::Text(place)) => crate::rules::lines::place_name(canon, place),
         _ => canon.display_name(&entry_id),
     };
     Some(ChangeView {
-        component_name: key.component_name.to_string(),
+        component_id: key.component_id.to_string(),
         entity_id: key.entity_id.to_string(),
-        entity_display_name,
-        entry_display_name: if entry_display_name == entry_id {
+        entity_name,
+        entry_name: if entry_name == entry_id {
             String::new()
         } else {
-            entry_display_name
+            entry_name
         },
         entry_id,
         before: to_change_value(&change.before),
@@ -173,7 +173,7 @@ fn can_see(canon: &Canon, state: &State, viewer: &ActorId, change: &Change) -> b
     }
     let key = &change.key;
     let entry = key.entry_id.as_deref().unwrap_or_default();
-    match (key.component_name, &key.entity_id) {
+    match (key.component_id, &key.entity_id) {
         (Meter::NAME, entity::Id::Global | entity::Id::Story(_)) => {
             is_shown(canon, &key.entity_id, entry)
         }

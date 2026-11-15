@@ -13,7 +13,7 @@ use crate::Reason;
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Key {
     /// The component's `NAME` or, for an actor's action state, the part of it that moved.
-    pub component_name: &'static str,
+    pub component_id: &'static str,
     pub entity_id: entity::Id,
     /// The id the entity holds the value under, such as meter `grit` or item `rope`.
     pub entry_id: Option<String>,
@@ -23,7 +23,7 @@ pub struct Key {
 /// `world_flag bells_rung`: the world has no id to spell.
 impl fmt::Display for Key {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let component = self.component_name;
+        let component = self.component_id;
         match &self.entity_id {
             entity::Id::Actor(id) => write!(f, "actor_{component} {id}")?,
             entity::Id::Place(id) => write!(f, "place_{component} {id}")?,
@@ -38,9 +38,9 @@ impl fmt::Display for Key {
 }
 
 impl Key {
-    /// The key of `component_name`'s `entry_id` on `id`: `None` when `id` holds one value of it.
+    /// The key of `component_id`'s `entry_id` on `id`: `None` when `id` holds one value of it.
     pub(crate) fn new(
-        component_name: &'static str,
+        component_id: &'static str,
         id: entity::IdRef<'_>,
         entry_id: Option<&str>,
     ) -> Key {
@@ -51,7 +51,7 @@ impl Key {
             entity::IdRef::Global => entity::Id::Global,
         };
         Key {
-            component_name,
+            component_id,
             entity_id,
             entry_id: entry_id.map(str::to_string),
         }

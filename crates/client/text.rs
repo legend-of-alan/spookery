@@ -234,15 +234,14 @@ fn render_changes(viewer: &str, changes: &[ChangeView]) -> String {
         .iter()
         .filter_map(|change| {
             let whose = render_possessive(viewer, change);
-            match (change.component_name.as_str(), as_number(&change.after)) {
+            match (change.component_id.as_str(), as_number(&change.after)) {
                 ("meter", Some(after)) => {
                     Some(format!("{whose} {} is now {after}.", change.entry_id))
                 }
                 ("item", Some(_)) => render_item_change(viewer, change, changes),
-                ("place", _) if !change.entry_display_name.is_empty() => Some(format!(
-                    "{whose} place is now {}.",
-                    change.entry_display_name
-                )),
+                ("place", _) if !change.entry_name.is_empty() => {
+                    Some(format!("{whose} place is now {}.", change.entry_name))
+                }
                 _ => None,
             }
         })
@@ -252,10 +251,10 @@ fn render_changes(viewer: &str, changes: &[ChangeView]) -> String {
 
 /// The display name of what changed, which is its key when the two are the same.
 fn display_name(change: &ChangeView) -> &str {
-    if change.entry_display_name.is_empty() {
+    if change.entry_name.is_empty() {
         &change.entry_id
     } else {
-        &change.entry_display_name
+        &change.entry_name
     }
 }
 
@@ -274,7 +273,7 @@ fn render_item_change(viewer: &str, change: &ChangeView, changes: &[ChangeView])
     let lost = after < as_number(&change.before)?;
     let name = display_name(change);
     let other_side = changes.iter().find(|other| {
-        other.component_name == "item"
+        other.component_id == "item"
             && other.entry_id == change.entry_id
             && (as_number(&other.before).zip(as_number(&other.after)))
                 .is_some_and(|(before, after)| (after < before) != lost)
@@ -290,7 +289,7 @@ fn render_item_change(viewer: &str, change: &ChangeView, changes: &[ChangeView])
     let who = if change.entity_id == viewer {
         "You"
     } else {
-        &change.entity_display_name
+        &change.entity_name
     };
     let whose = render_possessive(viewer, change);
     let sentence = match (lost, other_is_actor) {
@@ -307,7 +306,7 @@ fn render_item_change(viewer: &str, change: &ChangeView, changes: &[ChangeView])
 
 /// `Your`, `Briar's`, `Gate Yard's`, `The strain story's` or `The world's`.
 fn render_possessive(viewer: &str, change: &ChangeView) -> String {
-    let name = &change.entity_display_name;
+    let name = &change.entity_name;
     if change.entity_id == viewer {
         "Your".to_string()
     } else if change.entity_id == "world" {

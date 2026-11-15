@@ -131,7 +131,7 @@ fn fire(
 
 fn matches_watch(state: &State, rule: &Rule, watch: &ChangeWatch, change: &Change) -> bool {
     let changed = &change.key;
-    match (watch, changed.component_name, &changed.entity_id) {
+    match (watch, changed.component_id, &changed.entity_id) {
         (ChangeWatch::Arrive { place, subject }, Place::NAME, entity::Id::Actor(actor)) => {
             let place = rule.watched_place(place);
             change.before.as_text() != Some(place)
