@@ -9,6 +9,13 @@ Feature: The AI GM plays a turn as a loop
     When the player says "thanks" in the shop
     Then the model's next call shows Mira's "hello" from npc:mira
 
+  Scenario: An NPC's perceive holds its facts and a player's holds only who is here
+    Given a docks table with a seated player and the NPC Mira in the shop
+    And a scripted model that perceives as Mira and as Rowan, then ends the turn
+    When the player says "evening" in the shop
+    Then the perceive as Mira holds the cast's prose and Mira's facts, but no fact body
+    And the perceive as Rowan holds the cast's prose but no facts or notes
+
   Scenario: The GM recovers after a refusal
     Given a docks table with a seated player and the NPC Mira in the shop
     And a scripted model that queues a move Mira can't make

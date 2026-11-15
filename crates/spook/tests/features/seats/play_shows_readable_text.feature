@@ -5,6 +5,7 @@ Feature: Play shows readable text
     When play joins the table on a free loopback address
     Then play shows "You are in Docks Shop."
     And play shows "Here: Aldric, You"
+    And play does not show "While you were away:"
     And play shows no protocol JSON
 
   Scenario: Speech is the speaker and the text
@@ -16,6 +17,8 @@ Feature: Play shows readable text
     Then play shows "You: hi"
     When play types "tell aldric good evening"
     Then play shows "You: good evening"
+    When play types "say place hi there"
+    Then play shows "You: hi there"
     And play shows no protocol JSON
 
   Scenario: A second player is refused in a sentence

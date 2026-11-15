@@ -138,88 +138,25 @@ struct FactLine {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::protocol;
 
-    fn docks() -> PackSummary {
-        PackSummary {
-            menu: Vec::new(),
-            control_types: BTreeMap::from([
-                ("aldric".into(), protocol::ControlType::Npc),
-                ("bram".into(), protocol::ControlType::Npc),
-                ("mira".into(), protocol::ControlType::Npc),
-                ("rowan".into(), protocol::ControlType::PcTemplate),
-            ]),
-            places: BTreeMap::from([("docks_shop".into(), "The shop smells of tar.".into())]),
-            cast: BTreeMap::from([
-                ("aldric".into(), "Aldric keeps the counter.".into()),
-                ("bram".into(), "BRAM-ABSENT".into()),
-                ("mira".into(), "MIRA-PROSE-SENTINEL".into()),
-                ("rowan".into(), "Rowan came in from the rain.".into()),
-            ]),
-            gm_notes: String::new(),
-        }
-    }
-
-    /// A shop view by `viewer` that sees Aldric, Mira and Rowan, with one hidden fact, one
-    /// note and one unknown mention.
-    fn shop(viewer: &str) -> protocol::View {
-        serde_json::from_value(json!({
-            "viewer": viewer,
-            "place": "docks_shop",
-            "visible_actors": ["aldric", "mira", "rowan"],
-            "known_facts": [{"id": "f", "text": "FACT-TEXT-SENTINEL", "owner_body": "BODY-SENTINEL"}],
-            "notes": [{"id": "m", "to": [], "fact_ids": [], "text": "MESSAGE-SENTINEL"}],
-            "unknown_mentions": ["UNKNOWN-SENTINEL"],
-            "items": [],
-            "habits": []
-        }))
-        .unwrap()
-    }
-
-    /// Feature: The AI GM gets non-hidden prose
-    ///
-    /// Scenario: Cast prose reaches the perceive result, and hidden facts never do
-    ///   Given a hidden fact body "BODY-SENTINEL"
-    ///   Then the result holds the place's and the seen cast's bodies and the fact text
-    ///   And it does not contain "BODY-SENTINEL"
-    #[test]
-    fn an_npc_view_keeps_prose_and_fact_text_and_never_a_fact_body() {
-        let seen = render_result(&docks(), ServerBody::View(Box::new(shop("aldric"))));
-        assert!(seen.contains("MIRA-PROSE-SENTINEL"), "{seen}");
-        assert!(seen.contains("The shop smells of tar."), "{seen}");
-        assert!(seen.contains("Aldric keeps the counter."), "{seen}");
-        assert!(!seen.contains("BRAM-ABSENT"), "{seen}");
-        assert!(seen.contains("FACT-TEXT-SENTINEL"), "{seen}");
-        assert!(seen.contains("MESSAGE-SENTINEL"), "{seen}");
-        assert!(!seen.contains("BODY-SENTINEL"), "{seen}");
-        assert!(!seen.contains("UNKNOWN-SENTINEL"), "{seen}");
-    }
-
+    /// No pack's prose runs past the perceive budget, so no scenario reaches the cut.
     #[test]
     fn a_long_body_is_cut_at_the_budget() {
-        let mut pack = docks();
         let budget = PERCEIVE_BODY_CHARS;
-        pack.cast.insert("aldric".into(), "Z".repeat(budget + 1));
-        pack.places
-            .insert("docks_shop".into(), "Y".repeat(budget + 1));
-        let seen = render_result(&pack, ServerBody::View(Box::new(shop("mira"))));
+        let pack = PackSummary {
+            places: BTreeMap::from([("docks_shop".into(), "Y".repeat(budget + 1))]),
+            cast: BTreeMap::from([("aldric".into(), "Z".repeat(budget + 1))]),
+            ..PackSummary::default()
+        };
+        let view = serde_json::from_value(json!({
+            "viewer": "mira", "place": "docks_shop", "visible_actors": ["aldric", "mira"],
+            "known_facts": [], "notes": [], "unknown_mentions": [], "items": [], "habits": []
+        }))
+        .unwrap();
+        let seen = render_result(&pack, ServerBody::View(Box::new(view)));
         for letter in ["Z", "Y"] {
             assert!(seen.contains(&letter.repeat(budget)), "{seen}");
             assert!(!seen.contains(&letter.repeat(budget + 1)), "{seen}");
-        }
-    }
-
-    #[test]
-    fn a_player_view_is_a_census_without_facts_or_notes() {
-        let seen = render_result(&docks(), ServerBody::View(Box::new(shop("rowan"))));
-        assert!(seen.contains("MIRA-PROSE-SENTINEL"), "{seen}");
-        for hidden in [
-            "FACT-TEXT",
-            "BODY-SENTINEL",
-            "MESSAGE-SENTINEL",
-            "UNKNOWN-SENTINEL",
-        ] {
-            assert!(!seen.contains(hidden), "{seen}");
         }
     }
 }
