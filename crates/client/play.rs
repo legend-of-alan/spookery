@@ -67,14 +67,14 @@ pub async fn run(addr: SocketAddr, raw: bool) -> Result<(), Error> {
                 }
             }
             _ = &mut ctrl_c => return seat.release().await,
-            typed = input.recv() => {
-                let Some(typed) = typed else {
+            line = input.recv() => {
+                let Some(line) = line else {
                     return seat.release().await;
                 };
-                if typed.trim() == "release" {
+                if line.trim() == "release" {
                     return seat.release().await;
                 }
-                let Some((command, args)) = parse_typed(&typed, &here) else {
+                let Some((command, args)) = parse_typed(&line, &here) else {
                     continue;
                 };
                 // A command the hello did not list points at help, and is not sent.

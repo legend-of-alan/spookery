@@ -64,11 +64,11 @@ pub async fn run(addr: SocketAddr, raw: bool) -> Result<(), Error> {
                 None => return Ok(()),
             },
             _ = &mut ctrl_c => return seat.release().await,
-            typed = input.recv() => {
-                let Some(typed) = typed else {
+            line = input.recv() => {
+                let Some(line) = line else {
                     return seat.release().await;
                 };
-                match read_typed(&typed) {
+                match read_typed(&line) {
                     None => {}
                     Some(("help", _)) => emit(HELP),
                     Some((command, _)) if !commands.iter().any(|known| known == command) => {

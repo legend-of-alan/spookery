@@ -22,7 +22,7 @@ use crate::store::records::Record;
 use crate::store::save;
 use crate::store::tape::{append_record, read_scrollback, TapeRecord};
 use crate::Reason;
-use spookery_protocol::{Address, QueuedMove, Refusal, Speaker, PERCEIVE_BODY_CHARS};
+use spookery_protocol::{Audience, QueuedMove, Refusal, Speaker, PERCEIVE_BODY_CHARS};
 
 /// One say, in characters. Four kibibytes still fits in an 8 KiB client message.
 const MAX_SAY_CHARS: usize = 4 * 1024;
@@ -86,8 +86,8 @@ impl World {
         crate::round::play_catch_up(self, now_wall, downtime_hours)
     }
 
-    /// Append a player's say. `presence` is who can hear it. An actor say reads `typed` and
-    /// `text` as one line, and its addressee is the longest run of leading words that names
+    /// Append a player's say. `presence` is who can hear it. An actor say reads `input` and
+    /// `text` as one line, and its listener is the longest run of leading words that names
     /// an actor in sight, by id or display name, as a move's target is; the rest is the text.
     /// A name two of them share is `AMBIGUOUS_NAME`, and a line that names nobody is said
     /// at the table, its text the whole line.
@@ -95,7 +95,7 @@ impl World {
         &self,
         presence: &Presence,
         actor_id: &ActorId,
-        heard: &Address,
+        audience: &Audience,
         text: &str,
     ) -> Result<TapeRecord, Refusal> {
         let actors = self.state.actors();
@@ -103,34 +103,34 @@ impl World {
             return Err(Reason::Schema.into());
         }
         let from = Speaker::Player(actor_id.to_string());
-        let Address::Actor { actor: typed } = heard else {
-            return Ok(self.append_speech(presence, from, Some(actor_id), heard, text)?);
+        let Audience::Actor { actor: input } = audience else {
+            return Ok(self.append_speech(presence, from, Some(actor_id), audience, text)?);
         };
         let viewer = Viewer::Player(actor_id.clone());
         let mut nameable = gate::list_nameable(self.canon(), &self.state, presence, &viewer);
         let actors = self.state.actors();
         nameable.retain(|thing| actors.contains(&ActorId::from(thing.id.as_str())));
-        let line = format!("{typed} {text}");
+        let line = format!("{input} {text}");
         let line = line.trim();
-        let mut said_to = (Address::Table, line);
+        let mut said_to = (Audience::Table, line);
         let breaks = line.match_indices(' ').map(|(at, _)| at).rev();
         for (name, said) in breaks.map(|at| line.split_at(at)) {
             let found = gate::find_named(&nameable, name).map_err(|detail| Refusal {
                 detail: Some(detail),
                 ..Reason::AmbiguousName.into()
             })?;
-            if let Some(addressee) = found {
+            if let Some(listener) = found {
                 said_to = (
-                    Address::Actor {
-                        actor: addressee.to_string(),
+                    Audience::Actor {
+                        actor: listener.to_string(),
                     },
                     said.trim(),
                 );
                 break;
             }
         }
-        let (heard, text) = said_to;
-        Ok(self.append_speech(presence, from, Some(actor_id), &heard, text)?)
+        let (audience, text) = said_to;
+        Ok(self.append_speech(presence, from, Some(actor_id), &audience, text)?)
     }
 
     /// Append a GM say, spoken as `npc` when it is set. An `npc` that is not an NPC is `SCHEMA`.
@@ -138,7 +138,7 @@ impl World {
         &self,
         presence: &Presence,
         npc: Option<&ActorId>,
-        heard: &Address,
+        audience: &Audience,
         text: &str,
     ) -> Result<TapeRecord, Reason> {
         let from = match npc {
@@ -151,7 +151,7 @@ impl World {
             }
             Some(_) => return Err(Reason::Schema),
         };
-        self.append_speech(presence, from, npc, heard, text)
+        self.append_speech(presence, from, npc, audience, text)
     }
 
     /// Append one say to the tape. An `actor` say must name an actor in the world, and a
@@ -161,28 +161,28 @@ impl World {
         presence: &Presence,
         from: Speaker,
         speaker: Option<&ActorId>,
-        heard: &Address,
+        audience: &Audience,
         text: &str,
     ) -> Result<TapeRecord, Reason> {
         let text = check_say_text(text)?.to_string();
         let actors = self.state.actors();
-        match (heard, speaker) {
-            (Address::Actor { actor }, _) if !actors.contains(&ActorId::from(actor.as_str())) => {
+        match (audience, speaker) {
+            (Audience::Actor { actor }, _) if !actors.contains(&ActorId::from(actor.as_str())) => {
                 return Err(Reason::Schema);
             }
-            (Address::Place { place }, Some(speaker))
+            (Audience::Place { place }, Some(speaker))
                 if actors.get::<component::Place>(speaker).get() != Some(place.as_str()) =>
             {
                 return Err(Reason::Schema);
             }
             _ => {}
         }
-        let (address, place, actor) = match heard {
-            Address::Table => ("table", None, None),
-            Address::Place { place } => ("place", Some(place.clone()), None),
-            Address::Actor { actor } => ("actor", None, Some(actor.clone())),
+        let (address, place, actor) = match audience {
+            Audience::Table => ("table", None, None),
+            Audience::Place { place } => ("place", Some(place.clone()), None),
+            Audience::Actor { actor } => ("actor", None, Some(actor.clone())),
         };
-        let recipients = speech_recipients(&self.state, presence, speaker, heard);
+        let recipients = speech_recipients(&self.state, presence, speaker, audience);
         let record = TapeRecord {
             seq: 0,
             from,
@@ -225,14 +225,14 @@ impl<L> World<L> {
             .map(|(id, _)| id)
     }
 
-    /// The PC `typed` names, by id or display name, ignoring case and outer spaces. `None`
+    /// The PC `input` names, by id or display name, ignoring case and outer spaces. `None`
     /// when no PC has that name, and `AMBIGUOUS_NAME` when two do.
-    pub fn find_pc(&self, typed: &str) -> Result<Option<ActorId>, Reason> {
+    pub fn find_pc(&self, input: &str) -> Result<Option<ActorId>, Reason> {
         let pcs = self
             .pcs()
             .map(|id| (id.as_str(), self.canon().display_name(id.as_str())));
         let pcs: Vec<gate::NamedId> = pcs.map(|(id, name)| gate::NamedId::new(id, name)).collect();
-        let found = gate::find_named(&pcs, typed).map_err(|_| Reason::AmbiguousName)?;
+        let found = gate::find_named(&pcs, input).map_err(|_| Reason::AmbiguousName)?;
         Ok(found.map(ActorId::from))
     }
 
@@ -258,18 +258,18 @@ impl<L> World<L> {
         verb: &str,
         target: Option<&str>,
     ) -> Result<(QueuedMove, Option<String>), gate::Refusal> {
-        let typed = target.filter(|token| !token.is_empty());
+        let input = target.filter(|token| !token.is_empty());
         let viewer = Viewer::Player(actor_id.clone());
-        let nameable = match typed {
+        let nameable = match input {
             Some(_) => gate::list_nameable(self.canon(), &self.state, presence, &viewer),
             None => Vec::new(),
         };
-        let named = match typed {
-            Some(typed) => gate::find_named(&nameable, typed).map(|id| id.map(String::from)),
+        let named = match input {
+            Some(input) => gate::find_named(&nameable, input).map(|id| id.map(String::from)),
             None => Ok(None),
         };
         let resolved = named.clone().unwrap_or_default();
-        let token = resolved.as_deref().or(typed);
+        let token = resolved.as_deref().or(input);
         let Ok(mut intent) = Intent::player(&self.state, actor_id, verb, token) else {
             return Err(gate::Refusal {
                 id: String::new(),
@@ -582,15 +582,15 @@ fn speech_recipients(
     state: &State,
     presence: &Presence,
     speaker: Option<&ActorId>,
-    heard: &Address,
+    audience: &Audience,
 ) -> Vec<String> {
     let mut ids = BTreeSet::new();
     let seated = &presence.actors_present;
-    match heard {
-        Address::Table => {
+    match audience {
+        Audience::Table => {
             ids.extend(seated.iter().map(ActorId::to_string));
         }
-        Address::Place { place } => {
+        Audience::Place { place } => {
             let here = state.actors_at(place);
             ids.extend(
                 seated
@@ -599,7 +599,7 @@ fn speech_recipients(
                     .map(ActorId::to_string),
             );
         }
-        Address::Actor { actor } => {
+        Audience::Actor { actor } => {
             if seated.iter().any(|id| *id == *actor.as_str()) {
                 ids.insert(actor.to_string());
             }

@@ -271,16 +271,16 @@ pub(crate) fn list_nameable(
     nameable
 }
 
-/// The id `typed` names among `nameable`, by the id or any name, ignoring case and outer
+/// The id `input` names among `nameable`, by the id or any name, ignoring case and outer
 /// spaces. `None` when nothing has that name. When two or more ids have it, the `Err` is the
 /// detail of the `AMBIGUOUS_NAME` refusal: the name and those ids, `Briar: briar, oden`.
 pub(crate) fn find_named<'a>(
     nameable: &'a [NamedId],
-    typed: &str,
+    input: &str,
 ) -> Result<Option<&'a str>, String> {
     let has_name = |thing: &NamedId| {
         let mut names = [&thing.id, &thing.name].into_iter().chain(&thing.aliases);
-        names.any(|name| is_named(typed, name))
+        names.any(|name| is_named(input, name))
     };
     let mut ids: Vec<&str> = (nameable.iter().filter(|thing| has_name(thing)))
         .map(|thing| thing.id.as_str())
@@ -290,6 +290,6 @@ pub(crate) fn find_named<'a>(
     match ids[..] {
         [] => Ok(None),
         [id] => Ok(Some(id)),
-        _ => Err(format!("{}: {}", typed.trim(), ids.join(", "))),
+        _ => Err(format!("{}: {}", input.trim(), ids.join(", "))),
     }
 }

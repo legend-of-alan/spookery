@@ -56,7 +56,7 @@ struct SayWire {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(tag = "address", rename_all = "lowercase")]
-pub enum Address {
+pub enum Audience {
     Table,
     Place {
         #[cfg_attr(feature = "schema", schemars(length(min = 1)))]
@@ -78,7 +78,7 @@ pub enum Address {
 #[serde(try_from = "SayWire")]
 pub struct SayArgs {
     #[serde(flatten)]
-    pub address: Address,
+    pub address: Audience,
     pub text: String,
     #[serde(rename = "as", default, skip_serializing_if = "Option::is_none")]
     pub npc: Option<String>,
@@ -109,9 +109,9 @@ impl TryFrom<SayWire> for SayArgs {
 
     fn try_from(args: SayWire) -> Result<Self, Self::Error> {
         let address = match (args.address.as_str(), args.place, args.actor) {
-            ("table", None, None) => Address::Table,
-            ("place", Some(place), None) if !place.is_empty() => Address::Place { place },
-            ("actor", None, Some(actor)) if !actor.is_empty() => Address::Actor { actor },
+            ("table", None, None) => Audience::Table,
+            ("place", Some(place), None) if !place.is_empty() => Audience::Place { place },
+            ("actor", None, Some(actor)) if !actor.is_empty() => Audience::Actor { actor },
             _ => return Err("say"),
         };
         Ok(SayArgs {

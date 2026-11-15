@@ -112,7 +112,7 @@ fn say_to_mira_on_an_empty_table(world: &mut World, text: String) {
         .say_as_player(
             &spookery_engine::Presence::default(),
             &"rowan".into(),
-            &spookery_protocol::Address::Actor {
+            &spookery_protocol::Audience::Actor {
                 actor: "aldric".into(),
             },
             &text,
