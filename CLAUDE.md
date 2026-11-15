@@ -28,7 +28,7 @@ cargo test -p spook --test features_world -- --name "Locked exit"      # BDD sce
 
 The live model round (`crates/spook/tests/integration/live_round.rs`) is `#[ignore]`d; run it with `-- --ignored` and `SPOOK_GM_KEY`, `SPOOK_GM_URL`, `SPOOK_GM_MODEL` set (Ollama works: key `ollama`, URL `http://127.0.0.1:11434/v1`).
 
-Pack tooling (after `cargo build`): `spook check --json <pack>` (stdout is `[]` when clean), `spook status`, `spook round`, `spook migrate`, `spook verify`. `spook run <pack>` writes `state/` into the pack it is given, so always run it on a copy, never on `packs/*` in the repo.
+Pack tooling (after `cargo build`): `spook check --json <pack>` (stdout is `[]` when clean), `spook status`, `spook round`, `spook migrate`, `spook verify`. `spook run <pack>` writes `state/` into the pack it is given, so always run it on a copy, never on `packs/*` or `tests/packs/*` in the repo.
 
 ## Crate layering (enforced by CI)
 
@@ -61,8 +61,8 @@ Crates other than `spook` keep sources at the crate root (`lib.rs`, not `src/lib
 - BDD scenarios live in `crates/engine/tests/features/<folder>` and `crates/spook/tests/features/<folder>`, run by cucumber. The engine runs all of its folders in one program, `features_world`. Spook runs the folders named in `HOST` (`crates/spook/tests/feature_main.rs`) in `features_host` and everything else under `tests/features` in `features_world`, so a new folder runs without being listed. New step modules are registered with `#[path]` in `features_host.rs` / `features_world.rs`.
 - `docs/engine-guarantees.md` states what the engine promises; every `##` section must cite feature files that exist (`engine_guarantees` test). The feature files win if the two disagree.
 - Every YAML fence in `docs/pack-reference.md` must form a pack that `spook check` accepts (`pack_reference` test), so pack schema changes need doc updates in the same PR.
-- `packs/sample-d20` is played to its ending by tests; `packs/demo-d20` is a short demo with a gate path, two ways to set the cart's wheel and two losses, all played by tests; `packs/oneshot-docks` is the multi-PC fixture the engine and seat tests rely on, so leave it unchanged. `spook new` writes the template in `crates/spook/templates/starter/`.
-- Tests copy packs into temp dirs (`testing::copy_pack`, `testing::fresh_dir`); never let a test write into `packs/`.
+- `tests/packs/docks` is the one test pack, the fixture every engine and seat test copies with `testing::copy_pack("docks", label)`: three PCs at the docks, and a yard with a d20 strike beside the 2d6 `exert` check, a fight and a lane ending. A canon edit there moves its `pack_rev`, so `crates/protocol/sessions/v2.jsonl`, `docs/seat-protocol.md` and the pinned `migrate-0001` line move with it. `packs/demo-d20` is the shipped demo: no test plays it, and CI only runs `spook check` on it. `spook new` writes the template in `crates/spook/templates/starter/`.
+- Tests copy packs into temp dirs (`testing::copy_pack`, `testing::fresh_dir`); never let a test write into `packs/` or `tests/packs/`.
 
 ## Conventions
 

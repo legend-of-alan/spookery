@@ -15,7 +15,7 @@ use crate::support;
 use crate::World;
 
 /// The way onto the lane: Briar steps aside, and the chock holds the cart's wheel.
-const SCRIPT: &[&str] = &[
+const YARD_SCRIPT: &[&str] = &[
     "ask briar",
     "travel wheel_shed",
     "take chock",
@@ -57,7 +57,7 @@ fn the_yard_script_is_played_with_the_stub_gm(world: &mut World) {
     table::seat_gm(world);
     table::seat_actor(world, &pack, "harbormouse");
     world.pack = Some(pack.clone());
-    let (lane, way) = SCRIPT.split_last().unwrap();
+    let (lane, way) = YARD_SCRIPT.split_last().unwrap();
     for line in way {
         commit_line(world, line);
     }

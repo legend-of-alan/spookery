@@ -71,7 +71,7 @@ fn the_player_hits_and_the_gm_commits(world: &mut World) {
 
 #[then(expr = "Rowan's vigor is {int}")]
 fn rowans_vigor_is(world: &mut World, expected: i64) {
-    assert_eq!(vigor(world), expected);
+    assert_eq!(rowans_vigor(world), expected);
 }
 
 #[then(expr = "Mira's vigor rose by the 1d4 face")]
@@ -112,14 +112,14 @@ fn rowans_vigor_rose_by_the_2d6_faces(world: &mut World) {
     let faces = dice_faces(world, "2d6");
     let sum: i64 = faces.iter().map(|face| i64::from(*face)).sum();
     assert_eq!(faces.len(), 2, "{faces:?}");
-    assert_eq!(vigor(world), 1 + sum);
+    assert_eq!(rowans_vigor(world), 1 + sum);
 }
 
 #[then(expr = "Rowan's vigor rose by the higher d20")]
 fn rowans_vigor_rose_by_the_higher_d20(world: &mut World) {
     let faces = dice_faces(world, "2d20kh1");
     let high = faces.iter().copied().max().unwrap_or(0);
-    assert_eq!(vigor(world), 1 + i64::from(high));
+    assert_eq!(rowans_vigor(world), 1 + i64::from(high));
 }
 
 #[then(expr = "the journal records the 2d6 faces")]
@@ -194,7 +194,7 @@ fn append_hit(world: &World, of: &str, add: &str) {
     crate::support::stamp_pack_rev(&pack);
 }
 
-fn vigor(world: &World) -> i64 {
+fn rowans_vigor(world: &World) -> i64 {
     vigor_of(world, "rowan")
 }
 

@@ -87,7 +87,7 @@ Items in the guidelines that only matter for a published library, such as stabil
 Each commit that changes the save appends one journal record under `state/journal`, and the first commit stores a replay base there. `spook verify` replays that journal and checks the save byte for byte. It does not write the pack, take the lock, or bind a port. A later commit from a running server is ignored, because verify reads the save once and stops at that counter.
 
 ```sh
-cp -r packs/oneshot-docks /tmp/docks
+cp -r tests/packs/docks /tmp/docks
 spook round /tmp/docks
 spook verify /tmp/docks
 ```
@@ -103,7 +103,7 @@ The `Live AI` workflow runs the live round test (`crates/spook/tests/integration
 `spook run` serves one MCP endpoint at `/mcp` on the game port plus one. The default is `http://127.0.0.1:9738/mcp`. `--mcp-addr 127.0.0.1:<port>` overrides it, and `--mcp-addr 127.0.0.1:0` lets the operating system choose. `--addr 127.0.0.1:0` does the same for the game port and chooses the MCP endpoint's port on its own. The process prints the bound addresses once, as one JSON line on stdout, before it serves. Point the agent at `127.0.0.1`, not `localhost`. The endpoint checks the `Host` header, and `http://localhost:9738/mcp` gets a 403.
 
 ```sh
-cp -r packs/oneshot-docks /tmp/docks
+cp -r tests/packs/docks /tmp/docks
 spook run /tmp/docks
 ```
 

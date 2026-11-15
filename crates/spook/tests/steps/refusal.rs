@@ -39,7 +39,7 @@ fn brams_habit_takes_a_missing_tonic(world: &mut World) {
     let pack = support::copy_pack("docks", "bram-habit");
     let path = pack.join("cast/bram.md");
     let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read bram: {err}"));
-    let next = replace_brams_habits(
+    let next = replace_idle_and_rules(
         &text,
         "\
 idle:
@@ -251,7 +251,7 @@ fn bram_can_pay_until_harbormouse_spends_brams_vigor(world: &mut World) {
     let pack = support::copy_pack("docks", "bram-vigor");
     let path = pack.join("cast/bram.md");
     let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read bram: {err}"));
-    let next = replace_brams_habits(
+    let next = replace_idle_and_rules(
         &text,
         "\
 idle:
@@ -310,13 +310,13 @@ fn seat_gm_and_harbormouse(world: &mut World, pack: std::path::PathBuf) {
     world.pack = Some(pack);
 }
 
-/// Replace the cast file's `idle` block and the rest of its frontmatter with `rules`.
-fn replace_brams_habits(text: &str, rules: &str) -> String {
-    let start = text.find("idle:\n").expect("bram's idle block");
-    let end = text.find("\n---\n").expect("bram's frontmatter end");
-    assert!(start < end, "bram's idle block is outside the frontmatter");
-    let next = format!("{}{}{}", &text[..start], rules, &text[end + 1..]);
-    assert_ne!(text, next, "bram's habit was not inserted");
+/// Replace a cast file's `idle` block and the rest of its frontmatter with `block`.
+fn replace_idle_and_rules(text: &str, block: &str) -> String {
+    let start = text.find("idle:\n").expect("the idle block");
+    let end = text.find("\n---\n").expect("the frontmatter end");
+    assert!(start < end, "the idle block is outside the frontmatter");
+    let next = format!("{}{}{}", &text[..start], block, &text[end + 1..]);
+    assert_ne!(text, next, "the habit was not inserted");
     next
 }
 

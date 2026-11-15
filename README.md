@@ -52,7 +52,7 @@ That gives you one binary, `target/release/spook`, and the demo pack is at `pack
 
 ## At the table
 
-Type `help` any time. It lists the commands you can type here and now, and what each one can name, as `travel <exit>: docks_street, stairs`. `map` lists the places you have visited, with their exits.
+Type `help` any time. It lists the commands you can type here and now, and what each one can name, as `travel <exit>: gate, cart, Loft, Shed`. `map` lists the places you have visited, with their exits.
 
 | Type | What it does |
 | --- | --- |
@@ -61,15 +61,13 @@ Type `help` any time. It lists the commands you can type here and now, and what 
 | `travel <exit>` | Walks to another place |
 | `take <item>` | Picks something up |
 
-`help`, `map`, `look` and `say` work in every pack. The other verbs come from the pack, so `travel` and `take` are the sample's.
+`help`, `map`, `look` and `say` work in every pack. The other verbs come from the pack, so `travel` and `take` are the demo's.
 
 ## The packs
 
-`packs/demo-d20` is the one to play first, and the one each release bundles. It's a short demo in a small yard. Corin can best Briar with a cudgel and go through the gate, or banish a goblin for its nail and take the cart, setting the wheel with `ward` or with Oden's help through `brace`. Corin loses if knocked out, or if daylight runs out before he reaches the lane. The tests play it to all three endings and both losses.
+`packs/demo-d20` is the one to play first, and the one each release bundles. It's a short demo in a small yard. Corin can best Briar with a cudgel and go through the gate, or banish a goblin for its nail and take the cart, setting the wheel with `ward` or with Oden's help through `brace`. Corin loses if knocked out, or if daylight runs out before he reaches the lane. CI checks that it loads. No test plays it, so its story can change without breaking a test.
 
-`packs/sample-d20` is the yard the demo grew from, with a single puzzle and a few ways to solve it. The tests play it to the ending.
-
-`packs/oneshot-docks` is a test fixture. It has three player characters at the docks, and the engine and seat tests use it to check multi-player rules. You can host it too, but there's no story to finish.
+Test packs live in `tests/packs`. They are fixtures, not games. `tests/packs/docks` is the one the engine and seat tests use: three player characters at the docks, and a yard behind the street with a fight, a d20 strike beside a 2d6 check, and a lane that ends the story.
 
 ## Other commands
 

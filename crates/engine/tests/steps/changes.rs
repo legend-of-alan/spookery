@@ -232,7 +232,7 @@ fn one_line(text: &str) -> &str {
 }
 
 /// Harbormouse is the one seated player.
-fn harbormouse() -> Presence {
+fn seated_harbormouse() -> Presence {
     Presence {
         players: 1,
         actors_present: vec!["harbormouse".into()],
@@ -243,10 +243,10 @@ fn play(world: &mut EngineWorld, line: &str) -> spookery_engine::RoundOutput {
     let (verb, target) = split_line(line);
     let wall = world.state().last_round_at.clone();
     world
-        .queue_player_move(&harbormouse(), &"harbormouse".into(), verb, target)
+        .queue_player_move(&seated_harbormouse(), &"harbormouse".into(), verb, target)
         .unwrap_or_else(|err| panic!("{line}: {}", err.code.as_str()));
     let outputs = world
-        .commit_then_fast_forward(&harbormouse(), &wall)
+        .commit_then_fast_forward(&seated_harbormouse(), &wall)
         .unwrap_or_else(|err| panic!("{line}: {err}"));
     outputs.into_iter().next().unwrap()
 }
@@ -267,7 +267,7 @@ fn change_line(output: &spookery_engine::RoundOutput) -> String {
 
 fn meter_lines(world: &EngineWorld) -> String {
     let view = world
-        .perceive(&harbormouse(), "harbormouse")
+        .perceive(&seated_harbormouse(), "harbormouse")
         .unwrap_or_else(|err| panic!("perceive: {}", err.as_str()));
     view.meters
         .iter()
