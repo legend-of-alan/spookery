@@ -38,6 +38,11 @@ fn travel_in_verbs_yaml_teleports(world: &mut World) {
     );
 }
 
+#[when(expr = "the pack's gm_notes run to {int} characters")]
+fn the_pack_gm_notes_run_to(world: &mut World, chars: usize) {
+    table::append_gm_notes(table::pack(world), &"a".repeat(chars));
+}
+
 #[when(expr = "the pack_rev is restamped")]
 fn the_pack_rev_is_restamped(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
