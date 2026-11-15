@@ -16,7 +16,7 @@ Feature: The game port speaks one message envelope
     Then the WebSocket GM gets the round and then the commit reply
     And the player hears that round under the same seq
     When the WebSocket GM says "good evening"
-    Then the WebSocket GM's reply is its own say
+    Then the WebSocket GM's reply is its own speech
     And the player hears the GM say "good evening"
     When the WebSocket GM releases the seat
     Then the WebSocket GM is told the seat is free

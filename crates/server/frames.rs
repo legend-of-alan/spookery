@@ -1,7 +1,7 @@
 //! Engine output as message bodies. The one place a `protocol::Refusal` is rendered.
 
 use crate::protocol::{
-    self, CommitBody, NoteView, PackSummary, QueuedMove, Roll, Say, ServerBody, StatusPresence,
+    self, CommitBody, NoteView, PackSummary, QueuedMove, Roll, ServerBody, Speech, StatusPresence,
     TableStatus,
 };
 use spookery_engine::{
@@ -18,19 +18,18 @@ pub(super) fn render_refused_move(refusal: &engine::Refusal) -> protocol::Refusa
     }
 }
 
-/// One say as a seat hears it. Only the GM's copy lists the recipients.
-pub(super) fn render_say(tape: &TapeRecord, gm: bool) -> ServerBody {
-    ServerBody::Say(build_say(tape, gm))
+/// One line of speech as a seat hears it: a `say` message. Only the GM's copy lists the
+/// recipients.
+pub(super) fn render_speech(tape: &TapeRecord, gm: bool) -> ServerBody {
+    ServerBody::Say(build_speech(tape, gm))
 }
 
-fn build_say(tape: &TapeRecord, gm: bool) -> Say {
-    Say {
+fn build_speech(tape: &TapeRecord, gm: bool) -> Speech {
+    Speech {
         from: tape.from.clone(),
-        address: tape.address.clone(),
-        place: tape.place.clone(),
-        actor: tape.actor.clone(),
-        recipients: if gm {
-            tape.recipients.clone()
+        to: tape.to.clone(),
+        recipient_ids: if gm {
+            tape.recipient_ids.clone()
         } else {
             Vec::new()
         },
@@ -38,7 +37,7 @@ fn build_say(tape: &TapeRecord, gm: bool) -> Say {
     }
 }
 
-/// The reply to a new claim: the PC, its token, and the says it heard before.
+/// The reply to a new claim: the PC, its token, and the speech it heard before.
 pub(super) fn render_claimed(
     actor: &ActorId,
     token: &str,
@@ -49,7 +48,7 @@ pub(super) fn render_claimed(
         token: token.to_string(),
         scrollback: scrollback
             .iter()
-            .map(|tape| build_say(tape, false))
+            .map(|tape| build_speech(tape, false))
             .collect(),
         missed: Vec::new(),
         gap: false,

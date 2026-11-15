@@ -42,18 +42,18 @@ pub struct View {
 pub(crate) fn perceive_budget<L>(
     world: &World<L>,
     presence: &Presence,
-    as_arg: &str,
+    viewer_id: &str,
     max_body_chars: usize,
 ) -> Result<View, Reason> {
-    if as_arg.is_empty()
-        || as_arg == "gm"
-        || as_arg.contains(':')
-        || as_arg.chars().any(char::is_whitespace)
+    if viewer_id.is_empty()
+        || viewer_id == "gm"
+        || viewer_id.contains(':')
+        || viewer_id.chars().any(char::is_whitespace)
     {
         return Err(Reason::UnscopedPerceive);
     }
     let (canon, state) = (world.canon(), world.state());
-    let id = ActorId::from(as_arg);
+    let id = ActorId::from(viewer_id);
     let control = state.actors().get::<component::ControlType>(&id);
     let viewer = control.viewer().ok_or(Reason::UnknownId)?;
     perceive_viewer_budget(canon, state, presence, &viewer, max_body_chars)

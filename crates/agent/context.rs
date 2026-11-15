@@ -7,7 +7,8 @@ use serde::Serialize;
 
 use crate::model;
 use crate::protocol::{
-    MenuRow, PackSummary, QueuedMove, Say, ServerBody, ServerMessage, Speaker, TableStatus,
+    Audience, MenuRow, PackSummary, QueuedMove, ServerBody, ServerMessage, Speaker, Speech,
+    TableStatus,
 };
 use crate::turn::Turn;
 
@@ -42,7 +43,7 @@ pub(crate) struct ClientState {
     actors_present: Vec<String>,
     /// The queued moves, as of the last message read.
     pub(crate) queued_moves: Vec<QueuedMove>,
-    /// Player "says" read since a turn last showed them to the model.
+    /// Player speech read since a turn last showed it to the model.
     new_player_lines: Vec<TapeLine>,
     causes: VecDeque<TurnCause>,
     /// The recent tape every observation shows.
@@ -59,19 +60,20 @@ impl ClientState {
         self.add_queued_move_cause(VecDeque::push_front);
     }
 
-    /// Records what one server message shows about the game: a player's "say" starts a turn,
-    /// the GM's own "say" (the reply to its command, as the GM or an NPC) joins `tape_lines`,
+    /// Records what one server message shows about the game: a player's speech starts a turn,
+    /// the GM's own speech (the reply to its `say`, as the GM or an NPC) joins `tape_lines`,
     /// a queued move joins the queued moves and starts a turn, a round empties them, and
     /// presence names the actors present.
     pub(crate) fn record_server_message(&mut self, message: &ServerMessage) {
         let seq = message.seq.unwrap_or_default();
         match &message.body {
-            ServerBody::Say(say) if matches!(say.from, Speaker::Player(_)) => {
-                self.new_player_lines.push(TapeLine::new(seq, say.clone()));
-                self.causes.push_back(TurnCause::Say);
+            ServerBody::Say(speech) if matches!(speech.from, Speaker::Player(_)) => {
+                self.new_player_lines
+                    .push(TapeLine::new(seq, speech.clone()));
+                self.causes.push_back(TurnCause::Speech);
             }
-            ServerBody::Say(say) if matches!(say.from, Speaker::Gm | Speaker::Npc(_)) => {
-                push_recent(&mut self.tape_lines, TapeLine::new(seq, say.clone()));
+            ServerBody::Say(speech) if matches!(speech.from, Speaker::Gm | Speaker::Npc(_)) => {
+                push_recent(&mut self.tape_lines, TapeLine::new(seq, speech.clone()));
             }
             ServerBody::Queued {
                 intent,
@@ -107,7 +109,7 @@ impl ClientState {
 
     /// The next turn, when a turn cause waits: it opens with the system message, then the
     /// observation, which shows the new player lines. Those then join `tape_lines`, and a
-    /// "say" the model has now read starts no turn.
+    /// speech the model has now read starts no turn.
     pub(crate) fn start_turn(&mut self) -> Option<Turn> {
         let cause = self.causes.pop_front()?;
         let prompt = serde_json::to_string(&Observation {
@@ -142,41 +144,35 @@ impl ClientState {
     }
 }
 
-/// One "say" as the model reads it in the prompt's `tape_lines` and `new_player_lines`, with the `seq` of the
-/// message that carried it and without `recipients`. The GM's own lines carry the `seq` of
-/// the server's reply.
+/// One line of speech as the model reads it in the prompt's `tape_lines` and
+/// `new_player_lines`, with the `seq` of the message that carried it and without `recipient_ids`.
+/// The GM's own lines carry the `seq` of the server's reply.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub(crate) struct TapeLine {
     pub(crate) seq: u64,
     from: Speaker,
-    address: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    place: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    actor: Option<String>,
+    to: Audience,
     text: String,
 }
 
 impl TapeLine {
-    /// The "say" a message with `seq` carried.
-    pub(crate) fn new(seq: u64, say: Say) -> Self {
+    /// The speech a message with `seq` carried.
+    pub(crate) fn new(seq: u64, speech: Speech) -> Self {
         Self {
             seq,
-            from: say.from,
-            address: say.address,
-            place: say.place,
-            actor: say.actor,
-            text: say.text,
+            from: speech.from,
+            to: speech.to,
+            text: speech.text,
         }
     }
 }
 
-/// What starts a turn: a player's "say", which the prompt shows in `new_player_lines`, or a
+/// What starts a turn: a player's speech, which the prompt shows in `new_player_lines`, or a
 /// queued move.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 enum TurnCause {
-    Say,
+    Speech,
     QueuedMove,
 }
 
@@ -212,9 +208,7 @@ mod tests {
             let line = TapeLine {
                 seq: index,
                 from: Speaker::Player("rowan".to_string()),
-                address: "table".to_string(),
-                place: None,
-                actor: None,
+                to: Audience::Table,
                 text: index.to_string(),
             };
             push_recent(&mut tape_lines, line);

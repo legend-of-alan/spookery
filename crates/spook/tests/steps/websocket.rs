@@ -115,15 +115,15 @@ fn the_player_hears_that_round(world: &mut World) {
 
 #[when(expr = "the WebSocket GM says {string}")]
 fn the_websocket_gm_says(world: &mut World, text: String) {
-    world.scratch = send_gm_command(world, "say", json!({ "address": "table", "text": text }));
+    world.scratch = send_gm_command(world, "say", json!({ "to": "table", "text": text }));
 }
 
-#[then(expr = "the WebSocket GM's reply is its own say")]
-fn the_gm_reply_is_its_own_say(world: &mut World) {
+#[then(expr = "the WebSocket GM's reply is its own speech")]
+fn the_gm_reply_is_its_own_speech(world: &mut World) {
     let reply: Value = serde_json::from_str(&world.scratch).unwrap();
     assert_eq!(reply["body"]["kind"], "say", "{reply}");
     assert_eq!(reply["body"]["from"], "gm", "{reply}");
-    assert_eq!(reply["body"]["recipients"], json!(["rowan"]), "{reply}");
+    assert_eq!(reply["body"]["recipient_ids"], json!(["rowan"]), "{reply}");
 }
 
 #[when(expr = "the WebSocket GM releases the seat")]

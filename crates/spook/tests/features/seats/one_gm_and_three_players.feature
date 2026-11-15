@@ -74,7 +74,7 @@ Feature: One GM seat and up to three player seats
   Scenario: A place say reaches only the players in that place
     Given a docks table with two PCs in the shop
     When the shop player speaks to the place
-    Then only the shop players receive the say
+    Then only the shop players receive the speech
 
   Scenario: Three play clients reach their first perceive
     Given a docks table

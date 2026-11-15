@@ -7,7 +7,7 @@ Feature: Play shows readable text
     And play shows "Here: Aldric, You"
     And play shows no protocol JSON
 
-  Scenario: A say is the speaker and the text
+  Scenario: Speech is the speaker and the text
     Given a docks table
     When play joins the table on a free loopback address
     And play says "hello"

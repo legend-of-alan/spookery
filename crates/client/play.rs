@@ -211,7 +211,7 @@ fn parse_pc_choice(line: &str) -> Result<String, Error> {
 
 /// The command a typed line names, and its arguments. `tell` is the word `say`.
 /// `say place <text>` speaks to the place `here` shows. Any other say of two or more words
-/// goes to the table as typed, the first word in `actor` and the rest in `text`, and the
+/// goes to the table as typed, the first word as the actor in `to` and the rest in `text`, and the
 /// table finds who it names. Any other first word is a move with the rest of the line as
 /// its target. An empty line names none.
 fn parse_command<'l>(line: &'l str, here: &protocol::View) -> Option<(&'l str, Value)> {
@@ -222,11 +222,11 @@ fn parse_command<'l>(line: &'l str, here: &protocol::View) -> Option<(&'l str, V
     if command == "say" || command == "tell" {
         let (head, text) = rest.split_once(' ').unwrap_or((rest, ""));
         let args = if head == "place" && !text.is_empty() {
-            json!({ "address": "place", "place": here.place, "text": text })
+            json!({ "to": { "place": here.place }, "text": text })
         } else if !text.is_empty() {
-            json!({ "address": "actor", "actor": head, "text": text })
+            json!({ "to": { "actor": head }, "text": text })
         } else {
-            json!({ "address": "table", "text": rest })
+            json!({ "to": "table", "text": rest })
         };
         return Some(("say", args));
     }
@@ -270,16 +270,16 @@ mod tests {
         );
         assert_eq!(
             parse_command("say hi", here),
-            Some(("say", json!({ "address": "table", "text": "hi" })))
+            Some(("say", json!({ "to": "table", "text": "hi" })))
         );
         assert_eq!(
             parse_command("say place hi", here),
             Some((
                 "say",
-                json!({ "address": "place", "place": "docks_gate", "text": "hi" })
+                json!({ "to": { "place": "docks_gate" }, "text": "hi" })
             ))
         );
-        let args = json!({ "address": "actor", "actor": "Mira", "text": "Vell hi" });
+        let args = json!({ "to": { "actor": "Mira" }, "text": "Vell hi" });
         assert_eq!(
             parse_command("say Mira Vell hi", here),
             Some(("say", args.clone()))

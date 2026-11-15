@@ -80,7 +80,7 @@
           ]
         },
         {
-          "description": "The reply to `claim`. `token` takes this PC back after a dropped connection. A new\nclaim carries `scrollback`, the says this PC heard before, oldest first. A claim by\ntoken carries `missed`, the messages sent to this PC after the `last_seq` it named, and\n`gap` when more than `MISSED_MESSAGE_CAP` messages were missed.",
+          "description": "The reply to `claim`. `token` takes this PC back after a dropped connection. A new\nclaim carries `scrollback`, the speech this PC heard before, oldest first. A claim by\ntoken carries `missed`, the messages sent to this PC after the `last_seq` it named, and\n`gap` when more than `MISSED_MESSAGE_CAP` messages were missed.",
           "type": "object",
           "properties": {
             "actor": {
@@ -92,7 +92,7 @@
             "scrollback": {
               "type": "array",
               "items": {
-                "$ref": "#/$defs/Say"
+                "$ref": "#/$defs/Speech"
               }
             },
             "missed": {
@@ -198,7 +198,7 @@
               "const": "say"
             }
           },
-          "$ref": "#/$defs/Say",
+          "$ref": "#/$defs/Speech",
           "required": [
             "kind"
           ]
@@ -387,29 +387,50 @@
         }
       ]
     },
-    "Say": {
-      "description": "One say. The GM's copy lists its `recipients`; a player's copy does not.",
+    "Speech": {
+      "description": "One line of speech. The GM's copy lists its `recipient_ids`; a player's copy does not.",
       "type": "object",
       "properties": {
         "from": {
           "$ref": "#/$defs/Speaker"
         },
-        "address": {
-          "type": "string"
-        },
-        "place": {
-          "type": [
-            "string",
-            "null"
+        "to": {
+          "description": "Who hears a say: everyone at the table, everyone in one place, or one actor. On the wire\nit is `\"table\"`, `{\"place\": \"<id>\"}` or `{\"actor\": \"<id>\"}`.",
+          "oneOf": [
+            {
+              "type": "string",
+              "enum": [
+                "table"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "place": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "place"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "actor": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "actor"
+              ],
+              "additionalProperties": false
+            }
           ]
         },
-        "actor": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "recipients": {
+        "recipient_ids": {
+          "description": "Who actually heard it: the ids of the seated players' actors that `to` reached when it\nwas said, plus a seated speaker. `to` is who the speaker addressed; this is who was\nthere, kept because seats and places change later. Empty on a player's copy.",
           "type": "array",
           "items": {
             "type": "string"
@@ -421,12 +442,12 @@
       },
       "required": [
         "from",
-        "address",
+        "to",
         "text"
       ]
     },
     "Speaker": {
-      "description": "Who spoke: the `from` of a say on the wire and the tape. Written `gm`, `player:<id>` or\n`npc:<id>`; `FromStr` refuses an empty or whitespace id and any other prefix.",
+      "description": "Who spoke: the `from` of a speech on the wire and the tape. Written `gm`, `player:<id>` or\n`npc:<id>`; `FromStr` refuses an empty or whitespace id and any other prefix.",
       "type": "string"
     },
     "Code": {

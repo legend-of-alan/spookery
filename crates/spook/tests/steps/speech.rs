@@ -19,13 +19,13 @@ fn the_player_says(world: &mut World, text: String) {
 #[when(expr = "the player says {string} to the place")]
 fn the_player_says_to_the_place(world: &mut World, text: String) {
     let place = place_of(&state_of(table::pack(world)), "rowan");
-    let args = serde_json::json!({ "address": "place", "place": place, "text": text });
+    let args = serde_json::json!({ "to": { "place": place }, "text": text });
     say_as_rowan(world, args);
 }
 
 #[when(expr = "the player says {string} to {word}")]
 fn the_player_says_to(world: &mut World, text: String, actor: String) {
-    let args = serde_json::json!({ "address": "actor", "actor": actor, "text": text });
+    let args = serde_json::json!({ "to": { "actor": actor }, "text": text });
     say_as_rowan(world, args);
 }
 
@@ -42,8 +42,7 @@ fn the_gm_says_as(world: &mut World, text: String, place: String, speaker: Strin
         table::seat_gm(world);
     }
     world.before = table::read_files(table::pack(world));
-    let args =
-        serde_json::json!({ "address": "place", "place": place, "text": text, "as": speaker });
+    let args = serde_json::json!({ "to": { "place": place }, "text": text, "as": speaker });
     world.scratch = table::gm_tool_call(world, 1, "say", &args.to_string());
 }
 
@@ -51,7 +50,7 @@ fn the_gm_says_as(world: &mut World, text: String, place: String, speaker: Strin
 fn says_to_the_table_as(world: &mut World, actor: String, text: String, speaker: String) {
     world.before = table::read_files(table::pack(world));
     let seat = &table::player_client(world, &actor).seat;
-    let args = serde_json::json!({ "address": "table", "text": text, "as": speaker });
+    let args = serde_json::json!({ "to": "table", "text": text, "as": speaker });
     let id = seat.send("say", args);
     world.scratch = seat.wait_reply(&id);
 }
@@ -74,25 +73,30 @@ fn reads_under_the_gms_seq(world: &mut World, actor: String, line: String) {
         .as_array()
         .and_then(|messages| messages.last())
         .unwrap_or_else(|| panic!("no reply\n{result}"));
-    let said = wait_said(world, &actor, 0, &line);
-    assert_eq!(said.seq, reply["seq"].as_u64(), "{reply}");
+    let speech = wait_for_speech(world, &actor, 0, &line);
+    assert_eq!(speech.seq, reply["seq"].as_u64(), "{reply}");
 }
 
-/// The first say after `mark` that `actor`'s client writes as `line`.
-pub(super) fn wait_said(world: &World, actor: &str, mark: usize, line: &str) -> ServerMessage {
+/// The first speech after `mark` that `actor`'s client writes as `line`.
+pub(super) fn wait_for_speech(
+    world: &World,
+    actor: &str,
+    mark: usize,
+    line: &str,
+) -> ServerMessage {
     let seen = table::player_client(world, actor).text();
     table::poll_until(line, || {
         let added = support::text_of(seen)
             .get(mark..)
             .unwrap_or_default()
             .to_string();
-        let said = added
+        let speech = added
             .lines()
             .filter_map(|line| serde_json::from_str::<ServerMessage>(line).ok())
             .find(|message| {
                 matches!(message.body, ServerBody::Say(_)) && text::render(&message.body) == line
             });
-        said.ok_or(added)
+        speech.ok_or(added)
     })
 }
 
@@ -112,9 +116,7 @@ fn say_to_mira_on_an_empty_table(world: &mut World, text: String) {
         .say_as_player(
             &spookery_engine::Presence::default(),
             &"rowan".into(),
-            &spookery_protocol::Audience::Actor {
-                actor: "aldric".into(),
-            },
+            &spookery_protocol::Audience::Actor("aldric".into()),
             &text,
         )
         .unwrap_or_else(|err| panic!("speak: {err}"));
@@ -127,10 +129,8 @@ fn the_tape_already_holds_a_full_mib(world: &mut World) {
         let mut line = spookery_engine::emit_tape_record(&spookery_engine::TapeRecord {
             seq,
             from: spookery::protocol::Speaker::Gm,
-            address: "table".to_string(),
-            place: None,
-            actor: None,
-            recipients: vec!["rowan".to_string()],
+            to: spookery_protocol::Audience::Table,
+            recipient_ids: vec!["rowan".to_string()],
             text: format!("old line {seq}"),
             round_index: 0,
             world_time: 0,
@@ -151,34 +151,26 @@ fn the_tape_contains(world: &mut World, text: String) {
     assert!(tape.contains(&format!("\"text\":\"{text}\"")), "{tape}");
 }
 
-#[then(expr = "the tape address is {string}")]
-fn the_tape_address_is(world: &mut World, address: String) {
+#[then(expr = "the tape line is said to the table")]
+fn the_tape_line_is_said_to_the_table(world: &mut World) {
     let tape = tape_text(world);
-    assert!(
-        tape.contains(&format!("\"address\":\"{address}\"")),
-        "{tape}"
-    );
+    assert!(tape.contains("\"to\":\"table\""), "{tape}");
 }
 
-#[then(expr = "the tape names the actor {string}")]
-fn the_tape_names_the_actor(world: &mut World, actor: String) {
+#[then(expr = "the tape line is said to the {word} {string}")]
+fn the_tape_line_is_said_to(world: &mut World, audience: String, id: String) {
     let tape = tape_text(world);
-    assert!(tape.contains(&format!("\"actor\":\"{actor}\"")), "{tape}");
+    let to = format!("\"to\":{{\"{audience}\":\"{id}\"}}");
+    assert!(tape.contains(&to), "{tape}");
 }
 
 #[then(expr = "the tape recipients are {string}")]
 fn the_tape_recipients_are(world: &mut World, id: String) {
     let tape = tape_text(world);
     assert!(
-        tape.contains(&format!("\"recipients\":[\"{id}\"]")),
+        tape.contains(&format!("\"recipient_ids\":[\"{id}\"]")),
         "{tape}"
     );
-}
-
-#[then(expr = "the tape names the place {string}")]
-fn the_tape_names_the_place(world: &mut World, place: String) {
-    let tape = tape_text(world);
-    assert!(tape.contains(&format!("\"place\":\"{place}\"")), "{tape}");
 }
 
 fn tape_text(world: &World) -> String {
@@ -218,7 +210,7 @@ fn a_docks_table_with_two_seated(world: &mut World, first: String, second: Strin
 
 #[given(expr = "the GM has said {int} numbered lines to {string}")]
 fn the_gm_has_said_numbered_lines(world: &mut World, count: usize, actor: String) {
-    say_lines(world, &actor, count);
+    speech_lines(world, &actor, count);
 }
 
 #[given(expr = "the GM has said {int} lines to {string} and then {int} lines to {string}")]
@@ -229,8 +221,8 @@ fn the_gm_has_said_lines_then_more(
     second_count: usize,
     second: String,
 ) {
-    say_lines(world, &first, first_count);
-    let lines = say_lines(world, &second, second_count);
+    speech_lines(world, &first, first_count);
+    let lines = speech_lines(world, &second, second_count);
     world.scratch = lines.join("\n");
 }
 
@@ -247,8 +239,8 @@ fn leaves_and_sits_again(world: &mut World, actor: String) {
     table::seat_actor(world, &pack, &actor);
 }
 
-#[then(expr = "the replayed say lines are {string} through {string}, in order")]
-fn the_replayed_say_lines_are(world: &mut World, start: String, end: String) {
+#[then(expr = "the replayed lines are {string} through {string}, in order")]
+fn the_replayed_lines_are(world: &mut World, start: String, end: String) {
     let start = line_index(&start);
     let end = line_index(&end);
     let expected: Vec<String> = (start..=end).map(|index| format!("line{index}")).collect();
@@ -261,16 +253,16 @@ fn the_replayed_lines_ride_in_the_claims_reply(world: &mut World) {
     let actor = latest_actor(world);
     let claimed = last_claimed(world, &actor);
     assert!(claimed.get("reply_to").is_some(), "{claimed}");
-    // Live says come after; none was said since the claim.
-    let live_says = table::actor_text(world, &actor)
+    // Live speech comes after; none was said since the claim.
+    let live_speech = table::actor_text(world, &actor)
         .lines()
         .filter(|line| line.contains("\"kind\":\"say\""))
         .count();
-    assert_eq!(live_says, 0, "{}", table::actor_text(world, &actor));
+    assert_eq!(live_speech, 0, "{}", table::actor_text(world, &actor));
 }
 
-#[then(expr = "the newest replayed say line is {string}")]
-fn the_newest_replayed_say_line_is(world: &mut World, text: String) {
+#[then(expr = "the newest replayed line is {string}")]
+fn the_newest_replayed_line_is(world: &mut World, text: String) {
     let actor = latest_actor(world);
     assert_eq!(replay_texts(world, &actor).last(), Some(&text));
 }
@@ -282,17 +274,17 @@ fn gets_exactly_those_lines(world: &mut World, actor: String, count: usize) {
     assert_eq!(replay_texts(world, &actor), expected);
 }
 
-fn say_lines(world: &mut World, actor: &str, count: usize) -> Vec<String> {
+fn speech_lines(world: &mut World, actor: &str, count: usize) -> Vec<String> {
     if table::live_mut(world).gm.is_none() {
         table::seat_gm(world);
     }
     let mut texts = Vec::with_capacity(count);
     for index in 0..count {
         let text = format!("line{index}");
-        let args = format!(r#"{{"address":"actor","actor":"{actor}","text":"{text}"}}"#);
+        let args = format!(r#"{{"to":{{"actor":"{actor}"}},"text":"{text}"}}"#);
         let body = table::call_gm_tool(world, "say", &args);
         let addressed = body
-            .get("recipients")
+            .get("recipient_ids")
             .and_then(Value::as_array)
             .is_some_and(|ids| ids.iter().any(|id| id.as_str() == Some(actor)));
         assert!(addressed, "say {text} was not addressed to {actor}: {body}");
@@ -311,19 +303,20 @@ fn latest_actor(world: &mut World) -> String {
 }
 
 fn replay_texts(world: &World, actor: &str) -> Vec<String> {
-    replay_says(world, actor)
+    replay_speech(world, actor)
         .iter()
-        .map(|say| {
-            say.get("text")
+        .map(|speech| {
+            speech
+                .get("text")
                 .and_then(Value::as_str)
-                .unwrap_or_else(|| panic!("say text\n{say}"))
+                .unwrap_or_else(|| panic!("speech text\n{speech}"))
                 .to_string()
         })
         .collect()
 }
 
-/// The says the actor's last claim replayed.
-fn replay_says(world: &World, actor: &str) -> Vec<Value> {
+/// The speech the actor's last claim replayed.
+fn replay_speech(world: &World, actor: &str) -> Vec<Value> {
     let claimed = last_claimed(world, actor);
     claimed["body"]["scrollback"]
         .as_array()

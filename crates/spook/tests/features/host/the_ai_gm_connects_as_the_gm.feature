@@ -35,8 +35,8 @@ Feature: The AI GM connects as the GM
     And both hung calls closed
     And the seat stayed up
 
-  Scenario: A model that answers 500 once is retried and the say lands
-    When a model answers 500 once and then a say
+  Scenario: A model that answers 500 once is retried and its speech lands
+    When a model answers 500 once and then speaks
     Then the stub saw 3 model posts
     And the model's say landed
     And the queued line committed one round
@@ -48,13 +48,13 @@ Feature: The AI GM connects as the GM
     And the queued line committed one round
     And the error line shows the provider's text without the key
 
-  Scenario: A say leaves world time alone and the GM's own say does not call the model
+  Scenario: Speech leaves world time alone and the GM's own speech does not call the model
     Given a docks table with the scripted AI GM and a seated player
     And a scripted model that says evening to the table
     When the player says hello
     Then the tape from is gm
     And the tape contains the text "evening"
-    And the GM's own say did not call the model
+    And the GM's own speech did not call the model
     And world_time is 1080
 
   Scenario: Travel still commits one round after a model transport error
@@ -77,7 +77,7 @@ Feature: The AI GM connects as the GM
   Scenario: Play, the AI GM, and a stub share one speech turn and one travel turn
     When play and the AI GM and a stub run a speech turn and a travel turn
 
-  Scenario: A move queued while the model answers a say gets its own turn
+  Scenario: A move queued while the model answers a player's speech gets its own turn
     When a player queues travel while the model answers their say
     Then the stub saw 2 model posts
     And the queued line committed one round

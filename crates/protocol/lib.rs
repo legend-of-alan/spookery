@@ -37,8 +37,8 @@ pub use gm::{
 #[cfg(feature = "schema")]
 pub use message::{generate_client_schema, generate_server_schema};
 pub use message::{
-    is_built_in, ClaimArgs, ClientBody, ClientMessage, Command, Message, MoveArgs, NoArgs, Say,
-    Seat, ServerBody, ServerMessage, COMMANDS, VERSION,
+    is_built_in, ClaimArgs, ClientBody, ClientMessage, Command, Message, MoveArgs, NoArgs, Seat,
+    ServerBody, ServerMessage, Speech, COMMANDS, VERSION,
 };
 pub use player::{
     is_named, ChangeValue, ChangeView, CommandView, ExitView, ItemStack, KnownFact, MeterView,
@@ -264,7 +264,7 @@ impl fmt::Display for Refusal {
     }
 }
 
-/// Who spoke: the `from` of a say on the wire and the tape. Written `gm`, `player:<id>` or
+/// Who spoke: the `from` of a speech on the wire and the tape. Written `gm`, `player:<id>` or
 /// `npc:<id>`; `FromStr` refuses an empty or whitespace id and any other prefix.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]

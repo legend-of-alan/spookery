@@ -490,8 +490,8 @@ fn a_zero_budget_strips_fact_bodies() {
     let pack = support::copy_docks("scope");
     let before = snapshot(&pack);
     let opened = spookery_engine::World::open(&pack).unwrap();
-    let call = |as_viewer: &str, budget: usize| {
-        opened.perceive_trimmed(&Presence::default(), as_viewer, budget)
+    let call = |viewer_id: &str, budget: usize| {
+        opened.perceive_trimmed(&Presence::default(), viewer_id, budget)
     };
     let kernel = opened.perceive(&Presence::default(), "mira").unwrap();
     assert_eq!(call("mira", 800).unwrap(), kernel);

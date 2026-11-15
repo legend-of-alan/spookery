@@ -23,7 +23,7 @@ pub struct PerceiveArgs {
     // field reads as `None` without `default`, and the schema says it is required.
     #[cfg_attr(feature = "schema", schemars(required))]
     #[serde(rename = "as", skip_serializing_if = "Option::is_none")]
-    pub as_viewer: Option<String>,
+    pub viewer_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_body_chars: Option<u64>,
 }
@@ -38,89 +38,31 @@ pub struct CommitArgs {
     pub session_id: Option<String>,
 }
 
-/// The raw `say` arguments from a client, before `SayArgs` checks them.
-#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct SayWire {
-    address: String,
-    text: String,
-    #[serde(default)]
-    place: Option<String>,
-    #[serde(default)]
-    actor: Option<String>,
-    #[serde(default, rename = "as")]
-    npc: Option<String>,
-}
-
-/// Who hears a say: everyone at the table, everyone in one place, or one actor.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+/// Who hears a say: everyone at the table, everyone in one place, or one actor. On the wire
+/// it is `"table"`, `{"place": "<id>"}` or `{"actor": "<id>"}`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
-#[serde(tag = "address", rename_all = "lowercase")]
+// Inline, so the schema of a command's `args` stands alone as a model tool's parameters.
+#[cfg_attr(feature = "schema", schemars(inline))]
+#[serde(rename_all = "lowercase")]
 pub enum Audience {
     Table,
-    Place {
-        #[cfg_attr(feature = "schema", schemars(length(min = 1)))]
-        place: String,
-    },
-    Actor {
-        #[cfg_attr(feature = "schema", schemars(length(min = 1)))]
-        actor: String,
-    },
+    Place(String),
+    Actor(String),
 }
 
 /// The `say` command arguments of either seat, sent from a client to the table. Only the GM
-/// may set `as`, the bare id of an NPC to speak as.
+/// may set `as`, the bare id of an NPC to speak as, and may then leave out `to`: the NPC's
+/// place hears it.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
-// The schema shows the three tagged shapes, closed and with non-empty names as `SayWire`
-// checks them, and an object at its root, which MCP wants.
-#[cfg_attr(feature = "schema", schemars(!try_from, transform = close_each_shape, extend("type" = "object")))]
-#[serde(try_from = "SayWire")]
+#[serde(deny_unknown_fields)]
 pub struct SayArgs {
-    /// Serializes as `address` until issue #640 replaces it with `to`.
-    #[serde(flatten, rename = "address")]
-    pub audience: Audience,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub to: Option<Audience>,
     pub text: String,
     #[serde(rename = "as", default, skip_serializing_if = "Option::is_none")]
-    pub npc: Option<String>,
-}
-
-/// Moves the keys every `SayArgs` shape shares into each shape, and closes each one.
-#[cfg(feature = "schema")]
-fn close_each_shape(schema: &mut schemars::Schema) {
-    let shared = schema.remove("properties").unwrap_or_default();
-    let required = schema.remove("required").unwrap_or_default();
-    let shapes = schema.get_mut("oneOf").and_then(Value::as_array_mut);
-    for shape in shapes.into_iter().flatten() {
-        let mut properties = shared.as_object().cloned().unwrap_or_default();
-        properties.extend(shape["properties"].as_object().cloned().unwrap_or_default());
-        shape["properties"] = properties.into();
-        shape["additionalProperties"] = false.into();
-        shape["required"] = [&shape["required"], &required]
-            .into_iter()
-            .filter_map(Value::as_array)
-            .flatten()
-            .cloned()
-            .collect();
-    }
-}
-
-impl TryFrom<SayWire> for SayArgs {
-    type Error = &'static str;
-
-    fn try_from(args: SayWire) -> Result<Self, Self::Error> {
-        let audience = match (args.address.as_str(), args.place, args.actor) {
-            ("table", None, None) => Audience::Table,
-            ("place", Some(place), None) if !place.is_empty() => Audience::Place { place },
-            ("actor", None, Some(actor)) if !actor.is_empty() => Audience::Actor { actor },
-            _ => return Err("say"),
-        };
-        Ok(SayArgs {
-            audience,
-            text: args.text,
-            npc: args.npc,
-        })
-    }
+    pub npc_id: Option<String>,
 }
 
 /// The GM's `queue` command arguments, sent from a GM client to the table.

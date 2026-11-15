@@ -54,9 +54,7 @@ Feature: Coding agents reach the GM seat
       | status   |                                                       |                    |
       | perceive | as max_body_chars                                     | as                 |
       | queue    | id round_index actor_id move target to rationale_code | actor_id move      |
-      | say      | address text as                                       | address text       |
-      | say      | address place text as                                 | address place text |
-      | say      | address actor text as                                 | address actor text |
+      | say      | to text as                                            | text               |
       | commit   | include_round session_id                              | include_round      |
       | release  |                                                       |                    |
     And a queue call with "actor_id", "move" and "to" is accepted
@@ -103,7 +101,7 @@ Feature: Coding agents reach the GM seat
   Scenario: An HTTP agent's say reaches the player and the tape, and an unknown tool is refused
     Given a docks table with a seated player and an open MCP endpoint
     When a coding agent says good evening over HTTP
-    Then the player saw a say from the GM
+    Then the player saw speech from the GM
     And the tape from is gm
     When the agent calls an unknown tool over HTTP
     Then the unknown tool call was refused

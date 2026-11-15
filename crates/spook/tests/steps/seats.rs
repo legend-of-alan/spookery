@@ -366,13 +366,12 @@ fn a_docks_table_with_two_pcs_in_the_shop(world: &mut World) {
 fn the_shop_player_speaks_to_the_place(world: &mut World) {
     let rowan = &table::player_client(world, "rowan").seat;
     let say = serde_json::json!({
-        "address": "place",
-        "place": "docks_shop",
+        "to": { "place": "docks_shop" },
         "text": "the blue rope is tied",
     });
     let id = rowan.send("say", say);
     rowan.wait_reply(&id);
-    table::poll_until("harbormouse to hear the place say", || {
+    table::poll_until("harbormouse to hear the speech in the place", || {
         let heard = table::actor_text(world, "harbormouse");
         if heard.contains("the blue rope is tied") {
             Ok(())
@@ -382,11 +381,11 @@ fn the_shop_player_speaks_to_the_place(world: &mut World) {
     });
 }
 
-#[then(expr = "only the shop players receive the say")]
-fn only_the_shop_players_receive_the_say(world: &mut World) {
+#[then(expr = "only the shop players receive the speech")]
+fn only_the_shop_players_receive_the_speech(world: &mut World) {
     assert!(table::actor_text(world, "rowan").contains("the blue rope is tied"));
     assert!(table::actor_text(world, "harbormouse").contains("the blue rope is tied"));
-    // The table answers in order, so Wren's seat would have the say before this reply.
+    // The table answers in order, so Wren's seat would have the speech before this reply.
     let wren = &table::player_client(world, "wren").seat;
     let id = wren.send("look", serde_json::json!({}));
     wren.wait_reply(&id);
@@ -548,14 +547,18 @@ fn the_gm_says_a_line_to_the_table(world: &mut World) {
     if table::live_mut(world).gm.is_none() {
         table::seat_gm(world);
     }
-    let args = format!(r#"{{"address":"table","text":"{TABLE_LINE}"}}"#);
+    let args = format!(r#"{{"to":"table","text":"{TABLE_LINE}"}}"#);
     world.scratch = table::gm_tool_call(world, 3, "say", &args);
 }
 
 #[then(expr = "{string} hears it and {string} does not")]
 fn hears_it_and_does_not(world: &mut World, seated: String, free: String) {
-    let said = table::read_reply(&world.scratch);
-    assert_eq!(said["recipients"], serde_json::json!([seated]), "{said}");
+    let speech = table::read_reply(&world.scratch);
+    assert_eq!(
+        speech["recipient_ids"],
+        serde_json::json!([seated]),
+        "{speech}"
+    );
     let _ = table::wait_actor_from(world, &seated, 0, TABLE_LINE);
     let pack = table::pack(world).to_path_buf();
     table::seat_actor(world, &pack, &free);

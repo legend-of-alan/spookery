@@ -123,7 +123,7 @@ fn capture() -> BTreeMap<String, Example> {
     let say = send(
         &mut player,
         "say",
-        json!({"address": "table", "text": "evening"}),
+        json!({"to": "table", "text": "evening"}),
     );
     insert_json(&mut out, "player-say", say);
     insert_json(&mut out, "player-said", next_kind(&player, "say"));
@@ -184,7 +184,7 @@ fn capture() -> BTreeMap<String, Example> {
     send(
         &mut gm,
         "say",
-        json!({"address": "table", "text": "still there?"}),
+        json!({"to": "table", "text": "still there?"}),
     );
     next_kind(&gm, "say");
     let mut back = open_unclaimed(table.game);
