@@ -7,7 +7,7 @@ use crate::state::entity;
 use crate::Reason;
 
 /// One budget identity: the component a commit changed, the entity that holds it, and the
-/// name of the entry under that component, `None` when the entity holds one value of it. The
+/// id of the entry under that component, `None` when the entity holds one value of it. The
 /// commit diff summary is this type's `Display`, sorted as text. It is not a path inside
 /// `save.yaml`.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]

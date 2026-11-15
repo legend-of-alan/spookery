@@ -56,10 +56,10 @@ impl<'a> Ref<'a, entity::Actors, Act> {
 
 impl Mut<'_, entity::Actors, Act> {
     /// The one write to the actor's action state: `edit` made to what they hold, reporting the
-    /// change under `name` as `read` reads the action state before and after.
+    /// change under `component_id` as `read` reads the action state before and after.
     fn write(
         &mut self,
-        name: &'static str,
+        component_id: &'static str,
         read: impl Fn(&Act) -> change::Value,
         edit: impl FnOnce(&mut Act),
     ) -> Result<(), Reason> {
@@ -68,7 +68,7 @@ impl Mut<'_, entity::Actors, Act> {
         let before = held.map_or(change::Value::Empty, &read);
         let mut next = held.cloned().unwrap_or_default();
         edit(&mut next);
-        let key = change::Key::new(name, self.id.as_id_ref(), None);
+        let key = change::Key::new(component_id, self.id.as_id_ref(), None);
         let change = Change::new(key, before, read(&next));
         let (id, (acts, transaction)) = (self.id, self.store_mut());
         acts.set(transaction, id, next, [change.into()])
@@ -105,7 +105,7 @@ impl Mut<'_, entity::Actors, Act> {
             _ => ActCounter::LiveActsThisWindow,
         };
         let read = |act: &Act| count_value(counter.get(act).into());
-        self.write(counter.name(), read, |act| {
+        self.write(counter.id(), read, |act| {
             let count = counter.get_mut(act);
             *count = count.saturating_add(1);
         })
@@ -120,7 +120,7 @@ impl Writer<'_, entity::Actors> {
         for actor in &actors {
             let read = |act: &Act| count_value(counter.get(act).into());
             let mut action_state = self.get_mut::<Act>(actor);
-            action_state.write(counter.name(), read, |act| *counter.get_mut(act) = 0)?;
+            action_state.write(counter.id(), read, |act| *counter.get_mut(act) = 0)?;
         }
         Ok(())
     }
@@ -144,8 +144,8 @@ pub(crate) enum ActCounter {
 }
 
 impl ActCounter {
-    /// The name this count's change keys spell.
-    fn name(self) -> &'static str {
+    /// The id this count's change keys spell.
+    fn id(self) -> &'static str {
         match self {
             ActCounter::IdleActsThisWindow => Act::IDLE_ACTS_THIS_WINDOW,
             ActCounter::LiveActsThisWindow => Act::LIVE_ACTS_THIS_WINDOW,

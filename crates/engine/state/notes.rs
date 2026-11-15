@@ -20,7 +20,7 @@ pub struct Note {
 }
 
 impl Note {
-    /// The name a note's change key spells: notes are the world's, under their id.
+    /// The id a note's change key spells: notes are the world's, under their id.
     pub(crate) const NAME: &'static str = "note";
 }
 

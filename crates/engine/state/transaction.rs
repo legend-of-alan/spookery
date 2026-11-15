@@ -193,13 +193,13 @@ impl State {
         sum: Option<Result<i64, Reason>>,
     ) -> Change {
         let (canon, save) = (&*self.canon, &self.save);
-        let (id, name) = (&key.entity_id, key.entry_id.as_deref().unwrap_or_default());
-        let def = canon.meter_def(id.as_ref(), name);
+        let (id, entry_id) = (&key.entity_id, key.entry_id.as_deref().unwrap_or_default());
+        let def = canon.meter_def(id.as_ref(), entry_id);
         let now = entity::in_collection!(id, [&save], |entities, id| {
-            Reader::new(entities, canon).get::<Meter>(id).get(name)
+            Reader::new(entities, canon).get::<Meter>(id).get(entry_id)
         });
         let sum_now = match id {
-            entity::Id::Actor(actor) => self.actors().get::<Modifier>(actor).sum(name),
+            entity::Id::Actor(actor) => self.actors().get::<Modifier>(actor).sum(entry_id),
             _ => Ok(0),
         };
         let reading = |held: Option<&Meter>, sum: Result<i64, Reason>| {

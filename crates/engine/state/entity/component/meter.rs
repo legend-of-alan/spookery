@@ -83,48 +83,50 @@ impl Component for Meter {
 }
 
 impl<E: entity::Has<Meter, Store = entity::MapStore<E, Meter>>> Mut<'_, E, Meter> {
-    /// Move meter `name` by `delta` inside its bounds. It reports the meter's key with the
+    /// Move meter `entry_id` by `delta` inside its bounds. It reports the meter's key with the
     /// stored meter it replaced; the change is read, as rules read the meter, when the changes
     /// are taken.
-    pub fn shift(&mut self, name: &str, delta: i64) -> Result<(), Reason> {
+    pub fn shift(&mut self, entry_id: &str, delta: i64) -> Result<(), Reason> {
         self.check_exists()?;
         let id = self.id.as_id_ref();
-        let def = (self.writer.canon.meter_def(id, name)).ok_or(Reason::UnknownId)?;
-        let entry = (self.id.clone(), name.to_string());
+        let def = (self.writer.canon.meter_def(id, entry_id)).ok_or(Reason::UnknownId)?;
+        let entry = (self.id.clone(), entry_id.to_string());
         let held = self.store().get(&entry);
         let next = shift(held, def, delta)?;
-        let report = change::Report::Meter(self.key(Some(name)), held.cloned());
+        let report = change::Report::Meter(self.key(Some(entry_id)), held.cloned());
         let (store, transaction) = self.store_mut();
         store.set(transaction, entry, Some(next), [report])
     }
 
-    /// Give the entity meter `name` as `meter` says, `None` taking it off, outside a round's
+    /// Give the entity meter `entry_id` as `meter` says, `None` taking it off, outside a round's
     /// rules: migrate and fixtures. It reports as `shift` does. Taking a meter off checks no
     /// owner: the entry is its own evidence.
-    pub fn set(&mut self, name: &str, meter: Option<Meter>) -> Result<(), Reason> {
+    pub fn set(&mut self, entry_id: &str, meter: Option<Meter>) -> Result<(), Reason> {
         if meter.is_some() {
             self.check_exists()?;
         }
-        let entry = (self.id.clone(), name.to_string());
+        let entry = (self.id.clone(), entry_id.to_string());
         let held = self.store().get(&entry).cloned();
-        let report = change::Report::Meter(self.key(Some(name)), held);
+        let report = change::Report::Meter(self.key(Some(entry_id)), held);
         let (store, transaction) = self.store_mut();
         store.set(transaction, entry, meter, [report])
     }
 }
 
 impl Ref<'_, Save, Meter> {
-    /// Meter `name` as rolls, conditions and views read it: the stored meter inside the pack's
+    /// Meter `entry_id` as rolls, conditions and views read it: the stored meter inside the pack's
     /// bounds, plus an actor's modifiers (`modifier::value`). `UNKNOWN_ID` when the entity does
     /// not carry the meter.
-    pub fn value(&self, name: &str) -> Result<i64, Reason> {
+    pub fn value(&self, entry_id: &str) -> Result<i64, Reason> {
         let (save, canon) = (self.entities.components, self.entities.canon);
         match self.id {
-            Id::Actor(actor) => modifier::value(Reader::new(&save.actors, canon), actor, name),
+            Id::Actor(actor) => modifier::value(Reader::new(&save.actors, canon), actor, entry_id),
             id => {
-                let def = canon.meter_def(id.as_ref(), name).ok_or(Reason::UnknownId);
+                let def = canon
+                    .meter_def(id.as_ref(), entry_id)
+                    .ok_or(Reason::UnknownId);
                 let held = in_collection!(id, [&save], |entities, id| {
-                    Reader::new(entities, canon).get::<Meter>(id).get(name)
+                    Reader::new(entities, canon).get::<Meter>(id).get(entry_id)
                 });
                 value(def?, held.ok_or(Reason::UnknownId)?, 0)
             }
@@ -134,22 +136,22 @@ impl Ref<'_, Save, Meter> {
 
 impl Mut<'_, Save, Meter> {
     /// As on its collection.
-    pub fn shift(&mut self, name: &str, delta: i64) -> Result<(), Reason> {
+    pub fn shift(&mut self, entry_id: &str, delta: i64) -> Result<(), Reason> {
         let (transaction, canon) = (&mut *self.writer.transaction, self.writer.canon);
         in_collection!(self.id, [&mut self.writer.components], |entities, id| {
             Writer::new(entities, transaction, canon)
                 .get_mut::<Meter>(id)
-                .shift(name, delta)
+                .shift(entry_id, delta)
         })
     }
 
     /// As on its collection: migrate and fixtures.
-    pub fn set(&mut self, name: &str, meter: Option<Meter>) -> Result<(), Reason> {
+    pub fn set(&mut self, entry_id: &str, meter: Option<Meter>) -> Result<(), Reason> {
         let (transaction, canon) = (&mut *self.writer.transaction, self.writer.canon);
         in_collection!(self.id, [&mut self.writer.components], |entities, id| {
             Writer::new(entities, transaction, canon)
                 .get_mut::<Meter>(id)
-                .set(name, meter)
+                .set(entry_id, meter)
         })
     }
 }

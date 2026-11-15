@@ -71,22 +71,22 @@ impl<'a, E: entity::Has<C>, C: Component> Ref<'a, E, C> {
     }
 }
 
-/// A component an entity holds many of, one under each name.
+/// A component an entity holds many of, one under each id.
 impl<'a, E, C> Ref<'a, E, C>
 where
     E: entity::Has<C, Store = entity::MapStore<E, C>>,
     C: Component,
 {
-    /// What the entity holds under `name`.
-    pub fn get(&self, name: &str) -> Option<&'a C::Value> {
-        nested_map::get(self.store(), self.id, name)
+    /// What the entity holds under `entry_id`.
+    pub fn get(&self, entry_id: &str) -> Option<&'a C::Value> {
+        nested_map::get(self.store(), self.id, entry_id)
     }
 
-    pub fn contains(&self, name: &str) -> bool {
-        self.get(name).is_some()
+    pub fn contains(&self, entry_id: &str) -> bool {
+        self.get(entry_id).is_some()
     }
 
-    /// Each name the entity holds with its value, in name order.
+    /// Each id the entity holds with its value, in id order.
     pub fn iter(&self) -> impl Iterator<Item = (&'a str, &'a C::Value)> {
         nested_map::entries_of(self.store(), self.id)
     }
@@ -94,7 +94,8 @@ where
     /// The same, each after the entity's id: a query's entities, walked one value at a time.
     pub fn iter_with_id(&self) -> impl Iterator<Item = (&'a E::Id, &'a str, &'a C::Value)> {
         let id = self.id;
-        self.iter().map(move |(name, value)| (id, name, value))
+        self.iter()
+            .map(move |(entry_id, value)| (id, entry_id, value))
     }
 }
 
@@ -145,12 +146,12 @@ where
     E: entity::Has<C, Store = entity::MapStore<E, C>>,
     C: Component<Value = ()>,
 {
-    /// Put `name` on or take it off: set a flag, or open or shut a door.
-    pub fn set(&mut self, name: &str, on: bool) -> Result<(), Reason> {
+    /// Put `entry_id` on or take it off: set a flag, or open or shut a door.
+    pub fn set(&mut self, entry_id: &str, on: bool) -> Result<(), Reason> {
         self.check_exists()?;
         let (before, after) = (change::Value::Bool(!on), change::Value::Bool(on));
-        let change = Change::new(self.key(Some(name)), before, after);
-        let entry = (self.id.clone(), name.to_string());
+        let change = Change::new(self.key(Some(entry_id)), before, after);
+        let entry = (self.id.clone(), entry_id.to_string());
         let (store, transaction) = self.store_mut();
         store.set(transaction, entry, on.then_some(()), [change.into()])
     }
