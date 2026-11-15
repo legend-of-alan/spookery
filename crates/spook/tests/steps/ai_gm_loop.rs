@@ -207,8 +207,11 @@ fn the_next_call_shows_miras_hello(world: &mut World) {
             let Some(call) = calls.last() else {
                 return Err("no model call".to_string());
             };
-            let Some(model::Message::User { content }) = call.first() else {
-                return Err(format!("{:?}", call.first()));
+            let Some(content) = call.iter().find_map(|message| match message {
+                model::Message::User { content } => Some(content),
+                _ => None,
+            }) else {
+                return Err(format!("{call:?}"));
             };
             if content.contains("npc:mira") && content.contains("hello") {
                 Ok(())
