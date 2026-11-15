@@ -6,6 +6,8 @@ Feature: The AI GM plays a turn as a loop
     When the player says "evening" in the shop
     Then the table saw a perceive as Mira before any say
     And the player saw Mira say hello
+    When the player says "thanks" in the shop
+    Then the model's next call shows Mira's "hello" from npc:mira
 
   Scenario: The GM recovers after a refusal
     Given a docks table with a seated player and the NPC Mira in the shop

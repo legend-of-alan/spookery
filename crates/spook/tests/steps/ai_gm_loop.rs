@@ -166,6 +166,27 @@ fn the_player_saw_mira_say_hello(world: &mut World) {
     super::speech::wait_said(world, "rowan", world.mark, "Mira: hello");
 }
 
+#[then(expr = "the model's next call shows Mira's \"hello\" from npc:mira")]
+fn the_next_call_shows_miras_hello(world: &mut World) {
+    table::poll_until(
+        "Mira's hello from npc:mira on the model's next call",
+        || {
+            let calls = world.model.calls();
+            let Some(call) = calls.last() else {
+                return Err("no model call".to_string());
+            };
+            let Some(model::Message::User { content }) = call.first() else {
+                return Err(format!("{:?}", call.first()));
+            };
+            if content.contains("npc:mira") && content.contains("hello") {
+                Ok(())
+            } else {
+                Err(content.clone())
+            }
+        },
+    );
+}
+
 #[then(expr = "the model's next call carries the refusal as the tool result")]
 fn the_next_call_carries_the_refusal(world: &mut World) {
     let calls = world.model.calls();
