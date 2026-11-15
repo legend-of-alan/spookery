@@ -388,7 +388,7 @@
       ]
     },
     "Speech": {
-      "description": "One line of speech. The GM's copy lists its `recipients`; a player's copy does not.",
+      "description": "One line of speech. The GM's copy lists its `recipient_ids`; a player's copy does not.",
       "type": "object",
       "properties": {
         "from": {
@@ -429,7 +429,8 @@
             }
           ]
         },
-        "recipients": {
+        "recipient_ids": {
+          "description": "Who actually heard it: the ids of the seated players' actors that `to` reached when it\nwas said, plus a seated speaker. `to` is who the speaker addressed; this is who was\nthere, kept because seats and places change later. Empty on a player's copy.",
           "type": "array",
           "items": {
             "type": "string"

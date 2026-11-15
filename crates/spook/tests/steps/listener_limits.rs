@@ -308,7 +308,7 @@ fn one_player_stops_reading(world: &mut World) {
         body: ServerBody::Say(Speech {
             from: Speaker::Gm,
             to: Audience::Table,
-            recipients: Vec::new(),
+            recipient_ids: Vec::new(),
             text: say.clone(),
         }),
     }

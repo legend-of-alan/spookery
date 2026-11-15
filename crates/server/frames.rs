@@ -28,8 +28,8 @@ fn build_speech(tape: &TapeRecord, gm: bool) -> Speech {
     Speech {
         from: tape.from.clone(),
         to: tape.to.clone(),
-        recipients: if gm {
-            tape.recipients.clone()
+        recipient_ids: if gm {
+            tape.recipient_ids.clone()
         } else {
             Vec::new()
         },

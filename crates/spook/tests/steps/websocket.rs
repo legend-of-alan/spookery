@@ -123,7 +123,7 @@ fn the_gm_reply_is_its_own_speech(world: &mut World) {
     let reply: Value = serde_json::from_str(&world.scratch).unwrap();
     assert_eq!(reply["body"]["kind"], "say", "{reply}");
     assert_eq!(reply["body"]["from"], "gm", "{reply}");
-    assert_eq!(reply["body"]["recipients"], json!(["rowan"]), "{reply}");
+    assert_eq!(reply["body"]["recipient_ids"], json!(["rowan"]), "{reply}");
 }
 
 #[when(expr = "the WebSocket GM releases the seat")]

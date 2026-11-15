@@ -555,7 +555,7 @@ fn the_gm_says_a_line_to_the_table(world: &mut World) {
 fn hears_it_and_does_not(world: &mut World, seated: String, free: String) {
     let speech = table::read_reply(&world.scratch);
     assert_eq!(
-        speech["recipients"],
+        speech["recipient_ids"],
         serde_json::json!([seated]),
         "{speech}"
     );

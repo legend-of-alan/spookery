@@ -130,7 +130,7 @@ fn the_tape_already_holds_a_full_mib(world: &mut World) {
             seq,
             from: spookery::protocol::Speaker::Gm,
             to: spookery_protocol::Audience::Table,
-            recipients: vec!["rowan".to_string()],
+            recipient_ids: vec!["rowan".to_string()],
             text: format!("old line {seq}"),
             round_index: 0,
             world_time: 0,
@@ -168,7 +168,7 @@ fn the_tape_line_is_said_to(world: &mut World, audience: String, id: String) {
 fn the_tape_recipients_are(world: &mut World, id: String) {
     let tape = tape_text(world);
     assert!(
-        tape.contains(&format!("\"recipients\":[\"{id}\"]")),
+        tape.contains(&format!("\"recipient_ids\":[\"{id}\"]")),
         "{tape}"
     );
 }
@@ -284,7 +284,7 @@ fn speech_lines(world: &mut World, actor: &str, count: usize) -> Vec<String> {
         let args = format!(r#"{{"to":{{"actor":"{actor}"}},"text":"{text}"}}"#);
         let body = table::call_gm_tool(world, "say", &args);
         let addressed = body
-            .get("recipients")
+            .get("recipient_ids")
             .and_then(Value::as_array)
             .is_some_and(|ids| ids.iter().any(|id| id.as_str() == Some(actor)));
         assert!(addressed, "say {text} was not addressed to {actor}: {body}");

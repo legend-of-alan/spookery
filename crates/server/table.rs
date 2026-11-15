@@ -581,7 +581,7 @@ impl Table {
             .claims
             .iter()
             .filter(|claim| {
-                speech.recipients.iter().any(|id| claim.actor == **id)
+                speech.recipient_ids.iter().any(|id| claim.actor == **id)
                     || claim.conn.is_some_and(|conn| sender == Some(conn))
             })
             .map(|claim| (claim.actor.clone(), claim.conn))

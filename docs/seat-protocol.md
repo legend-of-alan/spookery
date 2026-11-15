@@ -111,7 +111,7 @@ A GM's `release` frees the seat before its reply. A later command on that connec
 
 ### say
 
-`to` names who hears it: `"table"`, `{"place": "<id>"}` or `{"actor": "<id>"}`. A player's say to an actor is read as one line, the actor then `text`, so `spook play` sends `say Mira Vell hi` (or `tell Mira Vell hi`, the same line) as `to` `{"actor": "Mira"}` and `text` `Vell hi`. The longest run of leading words that names an actor in sight, by id or display name and ignoring case and outer spaces as a move's target does, is who it is said to, and the rest is the text. A name two in sight share is `AMBIGUOUS_NAME`, with the move's `detail`. A line that names nobody in sight is said at the table, its text the whole line. `text` is at most 4096 characters. The table sets `from` from the connection: `player:<id>` or `gm`. A `from` in `args` is `SCHEMA`. The GM may add `as`, the bare id of an NPC, to speak as that NPC, and `from` is then `npc:<id>`. An `as` that names a PC, no actor or anything but a bare id is `SCHEMA`, and so is a player's `as`. A GM say with `as` and no `to` is heard where that NPC stands. Any other say without `to` is `SCHEMA`. A `place` say from a player or from the NPC in `as` must name where that speaker stands, or it is `SCHEMA`. A say puts one line of speech on the session tape and takes no round. Every seat that hears it gets one `say` under one `seq`, and the sender's copy is the reply. The GM's copy lists `recipients`, the seated players who heard it, so an NPC is never in it.
+`to` names who hears it: `"table"`, `{"place": "<id>"}` or `{"actor": "<id>"}`. A player's say to an actor is read as one line, the actor then `text`, so `spook play` sends `say Mira Vell hi` (or `tell Mira Vell hi`, the same line) as `to` `{"actor": "Mira"}` and `text` `Vell hi`. The longest run of leading words that names an actor in sight, by id or display name and ignoring case and outer spaces as a move's target does, is who it is said to, and the rest is the text. A name two in sight share is `AMBIGUOUS_NAME`, with the move's `detail`. A line that names nobody in sight is said at the table, its text the whole line. `text` is at most 4096 characters. The table sets `from` from the connection: `player:<id>` or `gm`. A `from` in `args` is `SCHEMA`. The GM may add `as`, the bare id of an NPC, to speak as that NPC, and `from` is then `npc:<id>`. An `as` that names a PC, no actor or anything but a bare id is `SCHEMA`, and so is a player's `as`. A GM say with `as` and no `to` is heard where that NPC stands. Any other say without `to` is `SCHEMA`. A `place` say from a player or from the NPC in `as` must name where that speaker stands, or it is `SCHEMA`. A say puts one line of speech on the session tape and takes no round. Every seat that hears it gets one `say` under one `seq`, and the sender's copy is the reply. The GM's copy lists `recipient_ids`, the seated players who heard it, so an NPC is never in it.
 
 <!-- example: player-say -->
 ```json
@@ -125,7 +125,7 @@ A GM's `release` frees the seat before its reply. A later command on that connec
 
 <!-- example: gm-heard -->
 ```json
-{"seq":6,"body":{"kind":"say","from":"player:rowan","to":"table","recipients":["rowan"],"text":"evening"}}
+{"seq":6,"body":{"kind":"say","from":"player:rowan","to":"table","recipient_ids":["rowan"],"text":"evening"}}
 ```
 
 ### Moves
@@ -327,7 +327,7 @@ A client ignores a `kind` or a field it does not know. `server.json` gives every
 | `presence` | the GM | `actors_present` after a claim starts or ends |
 | `refused` | the sender | `code` and, when the refusal names something, `detail` |
 | `queued` | the sender and the GM | `intent`, `actor`, `move`, `target` |
-| `say` | every seat that hears it | `from`, `to`, `text`, and for the GM `recipients` |
+| `say` | every seat that hears it | `from`, `to`, `text`, and for the GM `recipient_ids` |
 | `round` | every seat | `round_index` and `world_time` of one committed round |
 | `check` | the player who rolled | `outcome`: `success`, `partial` or `miss` |
 | `committed` | the GM | the reply to `commit` |

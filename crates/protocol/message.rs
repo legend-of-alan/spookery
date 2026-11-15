@@ -148,14 +148,17 @@ pub enum ServerBody {
     },
 }
 
-/// One line of speech. The GM's copy lists its `recipients`; a player's copy does not.
+/// One line of speech. The GM's copy lists its `recipient_ids`; a player's copy does not.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct Speech {
     pub from: Speaker,
     pub to: Audience,
+    /// Who actually heard it: the ids of the seated players' actors that `to` reached when it
+    /// was said, plus a seated speaker. `to` is who the speaker addressed; this is who was
+    /// there, kept because seats and places change later. Empty on a player's copy.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub recipients: Vec<String>,
+    pub recipient_ids: Vec<String>,
     pub text: String,
 }
 

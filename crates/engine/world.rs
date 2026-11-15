@@ -178,12 +178,12 @@ impl World {
             Some(audience) => audience.clone(),
             None => Audience::Place(here.ok_or(Reason::Schema)?.to_string()),
         };
-        let recipients = speech_recipients(&self.state, presence, speaker, &to);
+        let recipient_ids = speech_recipients(&self.state, presence, speaker, &to);
         let record = TapeRecord {
             seq: 0,
             from,
             to,
-            recipients,
+            recipient_ids,
             text,
             round_index: self.state.round_index,
             world_time: self.state.world_time,

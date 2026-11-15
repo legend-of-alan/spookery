@@ -25,7 +25,8 @@ pub struct TapeRecord {
     pub seq: u64,
     pub from: Speaker,
     pub to: Audience,
-    pub recipients: Vec<String>,
+    /// Who heard it, as in [`spookery_protocol::Speech::recipient_ids`].
+    pub recipient_ids: Vec<String>,
     pub text: String,
     pub round_index: u64,
     pub world_time: u64,
@@ -98,7 +99,7 @@ pub fn append_record(root: &Path, mut record: TapeRecord) -> Result<TapeRecord, 
 pub fn read_scrollback(root: &Path, player: &str) -> Result<Vec<TapeRecord>, Reason> {
     let mut matched = Vec::new();
     for record in read_records(root)? {
-        if record.recipients.iter().any(|id| id == player) {
+        if record.recipient_ids.iter().any(|id| id == player) {
             matched.push(record);
         }
     }
@@ -145,7 +146,7 @@ mod tests {
         let root = fresh_dir("tape-bytes");
         let stored = append_record(&root, sample(0, "rowan", "line0")).unwrap();
         let bytes = fs::read(root.join("state/tape.jsonl")).unwrap();
-        let line = "{\"seq\":1,\"from\":\"gm\",\"to\":{\"actor\":\"rowan\"},\"recipients\":[\"rowan\"],\"text\":\"line0\",\"round_index\":0,\"world_time\":1080}\n";
+        let line = "{\"seq\":1,\"from\":\"gm\",\"to\":{\"actor\":\"rowan\"},\"recipient_ids\":[\"rowan\"],\"text\":\"line0\",\"round_index\":0,\"world_time\":1080}\n";
         assert_eq!(bytes, line.as_bytes());
         assert_eq!(parse_record(line.trim_end()).unwrap(), stored);
         let _ = fs::remove_dir_all(&root);
@@ -166,7 +167,7 @@ mod tests {
             seq,
             from: Speaker::Gm,
             to: Audience::Actor(player.to_string()),
-            recipients: vec![player.to_string()],
+            recipient_ids: vec![player.to_string()],
             text: text.to_string(),
             round_index: 0,
             world_time: 1080,
