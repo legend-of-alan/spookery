@@ -41,8 +41,8 @@ pub(crate) fn help(
         Some(thing) => thing.name.clone(),
         None => place_name(canon, id),
     };
-    let nameable: Vec<String> = ids.iter().map(|thing| thing.id.clone()).collect();
-    let hints = std::iter::once(None).chain(nameable.iter().map(|id| Some(id.as_str())));
+    let id_list: Vec<String> = ids.iter().map(|thing| thing.id.clone()).collect();
+    let hints = std::iter::once(None).chain(id_list.iter().map(|id| Some(id.as_str())));
     let hints: Vec<Option<&str>> = hints.collect();
     for verb in canon.verbs() {
         for &hint in &hints {
@@ -67,7 +67,7 @@ pub(crate) fn help(
             };
             let names = match owner {
                 Some(owner) => vec![owner.clone()],
-                None => names_for(canon, state, actor_id, kind, &nameable),
+                None => names_for(canon, state, actor_id, kind, &id_list),
             };
             let command = CommandView {
                 name: verb.clone(),
@@ -84,13 +84,13 @@ pub(crate) fn help(
 }
 
 /// What the actor can name now for a command that takes `kind`: the exits from here, the
-/// actors or items among `nameable`, or the places they visited.
+/// actors or items among `id_list`, or the places they visited.
 fn names_for(
     canon: &Canon,
     state: &State,
     actor_id: &ActorId,
     kind: TargetKind,
-    nameable: &[String],
+    id_list: &[String],
 ) -> Vec<String> {
     let picked: Vec<String> = match kind {
         TargetKind::None => Vec::new(),
@@ -104,12 +104,12 @@ fn names_for(
             .into_iter()
             .map(|exit| exit.name)
             .collect(),
-        TargetKind::Actor => nameable
+        TargetKind::Actor => id_list
             .iter()
             .filter(|name| state.actors().contains(&ActorId::from(name.as_str())))
             .cloned()
             .collect(),
-        TargetKind::Item => nameable
+        TargetKind::Item => id_list
             .iter()
             .filter(|name| canon.items.contains_key(*name))
             .cloned()

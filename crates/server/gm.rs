@@ -102,7 +102,7 @@ fn say(
 ) -> Result<Reply, Reason> {
     let args: SayArgs = parse_args(arguments).map_err(|_| Reason::Schema)?;
     let npc = args.npc.as_deref().map(ActorId::from);
-    let said = world.say_as_gm(presence, npc.as_ref(), &args.address, &args.text)?;
+    let said = world.say_as_gm(presence, npc.as_ref(), &args.audience, &args.text)?;
     let mut reply = Reply::new(frames::render_say(&said, true));
     reply.said = Some(said);
     Ok(reply)

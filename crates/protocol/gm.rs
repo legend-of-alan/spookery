@@ -77,8 +77,9 @@ pub enum Audience {
 #[cfg_attr(feature = "schema", schemars(!try_from, transform = close_each_shape, extend("type" = "object")))]
 #[serde(try_from = "SayWire")]
 pub struct SayArgs {
-    #[serde(flatten)]
-    pub address: Audience,
+    /// Serializes as `address` until issue #640 replaces it with `to`.
+    #[serde(flatten, rename = "address")]
+    pub audience: Audience,
     pub text: String,
     #[serde(rename = "as", default, skip_serializing_if = "Option::is_none")]
     pub npc: Option<String>,
@@ -108,14 +109,14 @@ impl TryFrom<SayWire> for SayArgs {
     type Error = &'static str;
 
     fn try_from(args: SayWire) -> Result<Self, Self::Error> {
-        let address = match (args.address.as_str(), args.place, args.actor) {
+        let audience = match (args.address.as_str(), args.place, args.actor) {
             ("table", None, None) => Audience::Table,
             ("place", Some(place), None) if !place.is_empty() => Audience::Place { place },
             ("actor", None, Some(actor)) if !actor.is_empty() => Audience::Actor { actor },
             _ => return Err("say"),
         };
         Ok(SayArgs {
-            address,
+            audience,
             text: args.text,
             npc: args.npc,
         })

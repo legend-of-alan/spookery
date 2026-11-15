@@ -405,7 +405,7 @@ impl Table {
         let presence = self.seats.presence();
         match self
             .world
-            .say_as_player(&presence, actor_id, &args.address, &args.text)
+            .say_as_player(&presence, actor_id, &args.audience, &args.text)
         {
             Ok(said) => self.deliver_say(&said, Some((conn, id))),
             Err(refusal) => self.reply(conn, id, ServerBody::Refused(refusal)),
