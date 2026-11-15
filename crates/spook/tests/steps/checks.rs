@@ -164,7 +164,7 @@ fn a_docks_table_where_mira_can_oppose_a_mark(world: &mut World) {
     world.pack = Some(pack.clone());
     append_verbs(&pack, OPPOSE_ROWS);
     insert_mira_flags(&pack, "    - marked\n    - missed\n    - guarded\n");
-    set_mira_grit(&pack, 100);
+    set_grit(&pack, "mira", 100);
     super::common::edit_save(&pack, |now| {
         now.actors_mut()
             .get_mut::<component::Place>(&"mira".into())
@@ -350,14 +350,11 @@ fn insert_brace_habit(pack: &Path) {
     fs::write(&path, next).unwrap_or_else(|err| panic!("write mira: {err}"));
 }
 
-fn set_mira_grit(pack: &Path, base: i64) {
-    let path = pack.join("state/save.yaml");
-    let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read now: {err}"));
-    let from = "    mira:\n      grit:\n        base: 1\n";
-    let to = format!("    mira:\n      grit:\n        base: {base}\n");
-    let next = text.replacen(from, &to, 1);
-    assert_ne!(next, text, "mira grit was not changed");
-    fs::write(&path, next).unwrap_or_else(|err| panic!("write now: {err}"));
+/// Set `actor`'s grit to `base`, through the writer.
+fn set_grit(pack: &Path, actor: &str, base: i64) {
+    support::edit_save(pack, |now| {
+        support::edit_meter(now, actor, "grit", |grit| grit.base = base);
+    });
 }
 
 fn snapshot_pack(pack: &Path) -> PathBuf {
@@ -540,8 +537,8 @@ fn a_docks_table_where_mira_opposes_a_three_band_press(world: &mut World) {
     append_verbs(&pack, DEFEND_ROW);
     append_check(&pack, BAND_CHECK);
     insert_mira_flags(&pack, PRESS_FLAGS);
-    set_rowan_grit(&pack, 6);
-    set_mira_grit(&pack, 100);
+    set_grit(&pack, "rowan", 6);
+    set_grit(&pack, "mira", 100);
     super::common::edit_save(&pack, |now| {
         now.actors_mut()
             .get_mut::<component::Place>(&"mira".into())
@@ -559,7 +556,7 @@ fn a_docks_table_where_mira_can_partly_notice(world: &mut World) {
     append_verbs(&pack, NOTICE_PARTIAL_ROW);
     append_check(&pack, BAND_CHECK);
     insert_mira_flags(&pack, PRESS_FLAGS);
-    set_mira_grit(&pack, 6);
+    set_grit(&pack, "mira", 6);
     support::stamp_pack_rev(&pack);
     listen_and_seat_both(world, &pack);
     world.scratch = snapshot_pack(&pack).display().to_string();
@@ -691,7 +688,7 @@ fn prepare_press(world: &mut World, base: i64, sit: bool) {
     append_verbs(&pack, PRESS_ROW);
     append_check(&pack, BAND_CHECK);
     insert_mira_flags(&pack, PRESS_FLAGS);
-    set_rowan_grit(&pack, base);
+    set_grit(&pack, "rowan", base);
     super::common::edit_save(&pack, |now| {
         now.actors_mut()
             .get_mut::<component::Place>(&"mira".into())
@@ -709,16 +706,6 @@ fn append_check(pack: &Path, extra: &str) {
     let mut text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read checks: {err}"));
     text.push_str(extra);
     fs::write(&path, text).unwrap_or_else(|err| panic!("write checks: {err}"));
-}
-
-fn set_rowan_grit(pack: &Path, base: i64) {
-    let path = pack.join("state/save.yaml");
-    let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read now: {err}"));
-    let from = "    rowan:\n      assassination_debt:\n        base: 2\n        offset: 0\n      grit:\n        base: 1\n";
-    let to = format!("    rowan:\n      assassination_debt:\n        base: 2\n        offset: 0\n      grit:\n        base: {base}\n");
-    let next = text.replacen(from, &to, 1);
-    assert_ne!(next, text, "rowan grit was not changed");
-    fs::write(&path, next).unwrap_or_else(|err| panic!("write now: {err}"));
 }
 
 fn assert_outcome_faces(roll: &Value, outcome: &str) {

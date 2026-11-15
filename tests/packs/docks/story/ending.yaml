@@ -13,4 +13,4 @@ rules:
           value: true
       - narrate:
           to: self
-          text: Oden and Nell are on the lane. That is the end.
+          text: The cart rolls out onto the lane. That is the end.

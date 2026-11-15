@@ -37,7 +37,7 @@ fn the_seated_player_sees(world: &mut World, text: String) {
 #[given(expr = "the CLI is connected as a player holding rowan")]
 fn the_cli_holds_rowan(world: &mut World) {
     world.pack = Some(crate::support::copy_pack("docks", "cli"));
-    common::join_play(world, false);
+    common::join_play(world, "rowan", false);
 }
 
 #[when(expr = "I type {string}")]
@@ -89,7 +89,7 @@ fn add_rule_and_join(world: &mut World, label: &str, page: &str, from: &str, rul
     fs::write(&path, next).unwrap();
     crate::support::stamp_pack_rev(&pack);
     world.pack = Some(pack);
-    common::join_play(world, false);
+    common::join_play(world, "rowan", false);
 }
 
 #[given(expr = "Aldric has an ask verb and the CLI holds rowan in the shop")]

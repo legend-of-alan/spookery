@@ -68,8 +68,9 @@ fn nested_rollbacks_put_the_save_back_exactly() {
         !text.contains("\n    docks_street:"),
         "the street holds something"
     );
-    let actor_items = "\n  items:\n    mira:\n      brass_key: 1\n";
-    let edited = text.replacen("\n  items: {}\n", actor_items, 1);
+    let held = "\n  items:\n    harbormouse:\n      tonic: 1\n";
+    let actor_items = &format!("{held}    mira:\n      brass_key: 1\n");
+    let edited = text.replacen(held, actor_items, 1);
     assert!(edited.contains(actor_items), "Mira holds no key");
     let edited = crate::store::save::parse(&edited).expect("the edited save reads");
     let edited = crate::store::save::emit(&edited).expect("the edited save writes");

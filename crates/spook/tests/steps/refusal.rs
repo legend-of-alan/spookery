@@ -1,7 +1,6 @@
 //! A move refused while its round runs tells that player why.
 
 use std::fs;
-use std::path::Path;
 
 use cucumber::{given, then, when};
 use serde_json::Value;
@@ -35,12 +34,12 @@ fn play_error_shows_once(world: &mut World, text: String) {
     assert_eq!(count, 1, "saw {text} {count} times\n{stderr}");
 }
 
-#[given(expr = "Oden's habit takes a tonic that is not there")]
-fn odens_habit_takes_a_missing_tonic(world: &mut World) {
-    let pack = support::copy_pack("sample-d20", "oden-habit");
-    let path = pack.join("cast/oden.md");
-    let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read oden: {err}"));
-    let next = replace_oden_budget_and_rules(
+#[given(expr = "Bram's habit takes a tonic that is not there")]
+fn brams_habit_takes_a_missing_tonic(world: &mut World) {
+    let pack = support::copy_pack("docks", "bram-habit");
+    let path = pack.join("cast/bram.md");
+    let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read bram: {err}"));
+    let next = replace_brams_habits(
         &text,
         "\
 idle:
@@ -55,10 +54,10 @@ rules:
           add: -1
 ",
     );
-    fs::write(&path, next).unwrap_or_else(|err| panic!("write oden: {err}"));
+    fs::write(&path, next).unwrap_or_else(|err| panic!("write bram: {err}"));
     edit_save(&pack, |_| {});
     table::listen(world, &pack);
-    table::seat_actor(world, &pack, "lark");
+    table::seat_actor(world, &pack, "harbormouse");
     world.pack = Some(pack);
 }
 
@@ -78,10 +77,9 @@ fn the_player_sees_no_refused_frame(world: &mut World) {
     );
 }
 
-#[given(expr = "a sample table where push and shove each cost 1 grit")]
+#[given(expr = "a docks table where push and shove each cost 1 grit")]
 fn push_and_shove_cost_grit(world: &mut World) {
-    let pack = support::copy_pack("sample-d20", "grit-gap");
-    add_grit_meter(&pack);
+    let pack = support::copy_pack("docks", "grit-gap");
     crate::support::append(
         &pack.join("rules/verbs.yaml"),
         "\
@@ -103,15 +101,14 @@ fn push_and_shove_cost_grit(world: &mut World) {
 ",
     );
     edit_save(&pack, |_| {});
-    spookery_engine::migrate_pack(&pack).unwrap_or_else(|err| panic!("migrate: {err}"));
     world.pack = Some(pack);
 }
 
 /// The loft is a door the tonic opens, and it stands open. Dropping an item in the yard bars
 /// it again.
-#[given(expr = "a sample table where dropping the tonic locks the loft")]
+#[given(expr = "a docks table where dropping the tonic locks the loft")]
 fn dropping_the_tonic_locks_the_loft(world: &mut World) {
-    let pack = support::copy_pack("sample-d20", "locked-loft");
+    let pack = support::copy_pack("docks", "locked-loft");
     let path = pack.join("world/places/gate_yard.md");
     let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read yard: {err}"));
     let next = text.replacen(
@@ -134,8 +131,8 @@ fn dropping_the_tonic_locks_the_loft(world: &mut World) {
       - item: { of: self, id: target, add: -1 }
       - item: { of: here, id: target, add: 1 }
       - flag: { of: \"exit:gate_yard.loft\", key: open, value: false }
-exits:";
-    let next = next.replacen("exits:", drop, 1);
+";
+    let next = next.replacen("rules:\n", drop, 1);
     assert_ne!(text, next, "the loft exit was not locked");
     fs::write(&path, next).unwrap_or_else(|err| panic!("write yard: {err}"));
     edit_save(&pack, |now| {
@@ -148,26 +145,15 @@ exits:";
     world.pack = Some(pack);
 }
 
-#[given(expr = "a sample table with the GM seated")]
-fn a_sample_table_with_the_gm_seated(world: &mut World) {
-    let pack = support::copy_pack("sample-d20", "named-gap");
-    edit_save(&pack, |_| {});
-    seat_gm_and_lark(world, pack);
+#[given(expr = "a docks table with the GM and Harbormouse seated")]
+fn a_docks_table_with_the_gm_and_harbormouse_seated(world: &mut World) {
+    let pack = support::copy_pack("docks", "named-gap");
+    seat_gm_and_harbormouse(world, pack);
 }
 
-/// No player holds Lark, so the GM may drive him.
-#[given(expr = "a sample table with only the GM seated")]
-fn a_sample_table_with_only_the_gm_seated(world: &mut World) {
-    let pack = support::copy_pack("sample-d20", "named-gap-gm");
-    edit_save(&pack, |_| {});
-    table::listen(world, &pack);
-    table::seat_gm(world);
-    world.pack = Some(pack);
-}
-
-#[given(expr = "a sample table where one effect is over budget and the GM is seated")]
+#[given(expr = "a docks table where one effect is over budget and the GM is seated")]
 fn one_effect_is_over_budget(world: &mut World) {
-    let pack = support::copy_pack("sample-d20", "over-budget");
+    let pack = support::copy_pack("docks", "over-budget");
     let path = pack.join("rules/budget.yaml");
     let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read budget: {err}"));
     let next = text.replacen(
@@ -191,7 +177,7 @@ fn one_effect_is_over_budget(world: &mut World) {
 ",
     );
     edit_save(&pack, |_| {});
-    seat_gm_and_lark(world, pack);
+    seat_gm_and_harbormouse(world, pack);
 }
 
 #[when(expr = "the GM is seated and play joins")]
@@ -200,7 +186,7 @@ fn the_gm_is_seated_and_play_joins(world: &mut World) {
     table::listen(world, &pack);
     table::seat_gm(world);
     let addr = table::game_addr(world);
-    world.play = Some(spawn_play(&addr, "lark", &[]));
+    world.play = Some(spawn_play(&addr, "harbormouse", &[]));
     wait_play(world, "You are in");
 }
 
@@ -217,16 +203,16 @@ fn play_queues(world: &mut World, line: String) {
     );
 }
 
-#[when(expr = "Lark queues {string}")]
-fn lark_queues(world: &mut World, line: String) {
+#[when(expr = "Harbormouse queues {string}")]
+fn harbormouse_queues(world: &mut World, line: String) {
     let (mark, added) = table::player_send(world, &line, "\"kind\":\"queued\"");
     world.mark = mark;
     world.player_added = added;
 }
 
-#[when(expr = "the GM sends Lark's strike on {word}")]
-fn the_gm_sends_larks_strike(world: &mut World, target: String) {
-    let args = format!(r#"{{"actor_id":"lark","move":"strike","target":"{target}"}}"#);
+#[when(expr = "the GM sends Harbormouse's strike on {word}")]
+fn the_gm_sends_harbormouses_strike(world: &mut World, target: String) {
+    let args = format!(r#"{{"actor_id":"harbormouse","move":"strike","target":"{target}"}}"#);
     world.scratch = table::gm_tool_call(world, 4, "queue", &args);
 }
 
@@ -237,8 +223,8 @@ fn the_gms_queue_is_refused(world: &mut World, code: String) {
     assert!(!text.contains("\"kind\":\"queued\""), "{text}");
 }
 
-#[then(expr = "Lark's refused frame for {string} has no missing field")]
-fn larks_refused_frame_has_no_missing_field(world: &mut World, code: String) {
+#[then(expr = "Harbormouse's refused frame for {string} has no missing field")]
+fn harbormouses_refused_frame_has_no_missing_field(world: &mut World, code: String) {
     let body = serde_json::json!({ "kind": "refused", "code": code });
     let added = table::wait_player_from(world, world.mark, &format!("\"code\":\"{code}\""));
     let refusals: Vec<serde_json::Value> = added
@@ -260,13 +246,12 @@ fn larks_refused_frame_has_no_missing_field(world: &mut World, code: String) {
     );
 }
 
-#[given(expr = "Oden can pay for a habit until Lark spends his grit")]
-fn oden_can_pay_until_lark_spends_his_grit(world: &mut World) {
-    let pack = support::copy_pack("sample-d20", "oden-grit");
-    add_grit_meter(&pack);
-    let path = pack.join("cast/oden.md");
-    let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read oden: {err}"));
-    let next = replace_oden_budget_and_rules(
+#[given(expr = "Bram can pay for a habit until Harbormouse spends Bram's grit")]
+fn bram_can_pay_until_harbormouse_spends_brams_grit(world: &mut World) {
+    let pack = support::copy_pack("docks", "bram-grit");
+    let path = pack.join("cast/bram.md");
+    let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read bram: {err}"));
+    let next = replace_brams_habits(
         &text,
         "\
 idle:
@@ -286,7 +271,7 @@ rules:
           value: true
 ",
     );
-    fs::write(&path, next).unwrap_or_else(|err| panic!("write oden: {err}"));
+    fs::write(&path, next).unwrap_or_else(|err| panic!("write bram: {err}"));
     crate::support::append(
         &pack.join("rules/verbs.yaml"),
         "\
@@ -295,20 +280,19 @@ rules:
       verb: sap
     do:
       - meter:
-          of: oden
+          of: bram
           key: grit
           add: -1
 ",
     );
     edit_save(&pack, |_| {});
-    spookery_engine::migrate_pack(&pack).unwrap_or_else(|err| panic!("migrate: {err}"));
     table::listen(world, &pack);
-    table::seat_actor(world, &pack, "lark");
+    table::seat_actor(world, &pack, "harbormouse");
     world.pack = Some(pack);
 }
 
-#[when(expr = "Lark saps Oden")]
-fn lark_saps_oden(world: &mut World) {
+#[when(expr = "Harbormouse saps Bram")]
+fn harbormouse_saps_bram(world: &mut World) {
     let (mark, added) = table::player_send(world, "sap", "\"kind\":\"resume\"");
     world.mark = mark;
     world.player_added = added;
@@ -319,33 +303,21 @@ fn the_round_rejects_that_habit_with(world: &mut World, word: String) {
     assert_one_rejection(world, &word);
 }
 
-fn seat_gm_and_lark(world: &mut World, pack: std::path::PathBuf) {
+fn seat_gm_and_harbormouse(world: &mut World, pack: std::path::PathBuf) {
     table::listen(world, &pack);
     table::seat_gm(world);
-    table::seat_actor(world, &pack, "lark");
+    table::seat_actor(world, &pack, "harbormouse");
     world.pack = Some(pack);
 }
 
-fn replace_oden_budget_and_rules(text: &str, rules: &str) -> String {
-    let start = text.find("idle:\n").expect("oden round");
-    let end = text.find("\n---\n").expect("oden close");
-    assert!(start < end, "oden round is outside the frontmatter");
+/// Replace the cast file's `idle` block and the rest of its frontmatter with `rules`.
+fn replace_brams_habits(text: &str, rules: &str) -> String {
+    let start = text.find("idle:\n").expect("bram's idle block");
+    let end = text.find("\n---\n").expect("bram's frontmatter end");
+    assert!(start < end, "bram's idle block is outside the frontmatter");
     let next = format!("{}{}{}", &text[..start], rules, &text[end + 1..]);
-    assert_ne!(text, next, "oden's habit was not inserted");
+    assert_ne!(text, next, "bram's habit was not inserted");
     next
-}
-
-fn add_grit_meter(pack: &Path) {
-    crate::support::append(
-        &pack.join("rules/meters.yaml"),
-        "\
-\n  - id: grit
-    min: 0
-    base_cap: 5
-    max: 5
-    base: 1
-",
-    );
 }
 
 /// `word` is a code, optionally followed by the missing meter or item.

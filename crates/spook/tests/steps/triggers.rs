@@ -1018,33 +1018,15 @@ fn downed_pack(
     crosses: &str,
 ) -> std::path::PathBuf {
     let pack = copy_pack("docks", label);
-    replace_in_file(
-        &pack.join("rules/meters.yaml"),
-        "    base: 1\n",
-        "    base: 1\n  - id: hp\n    min: 0\n    base_cap: 12\n    max: 16\n    base: 8\n",
-    );
     add_verb(
         &pack,
         "\n  - id: hit\n    when:\n      verb: hit\n      target: actor\n    do:\n      - meter:\n          of: target\n          key: hp\n          add: -4\n  - id: nick\n    when:\n      verb: nick\n      target: actor\n    do:\n      - meter:\n          of: target\n          key: hp\n          add: -1\n",
     );
-    fs::write(
-        pack.join("cast/briar.md"),
-        "\
----
-schema: cast
-id: briar
-control_type: npc
-display_name: Briar
-flags:
-  - downed
-idle:
-  eligible: false
----
-Briar keeps their feet until they cannot.
-",
-    )
-    .unwrap();
-    fs::create_dir_all(pack.join("story")).unwrap();
+    replace_in_file(
+        &pack.join("cast/briar.md"),
+        "idle:\n",
+        "flags:\n  - downed\nidle:\n",
+    );
     fs::write(
         pack.join("story/injury.yaml"),
         format!(
@@ -1067,7 +1049,7 @@ rules:
     )
     .unwrap();
     edit_table(world, &pack, |now, seated| {
-        insert_actor_copy(now, seated, ("aldric", "briar"), "docks_shop");
+        set_place(now, "briar", "docks_shop");
         let briar = entity::Id::Actor("briar".into());
         support::put_meter(now, &briar, "hp", hp);
         if downed {

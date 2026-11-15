@@ -18,7 +18,8 @@ use crate::World;
 
 const LEDGER: &str = "The lamp-oil ledger is short.";
 
-/// Put actor `id`, controlled as `control_type` says, in `place`, with grit `grit` and rest 3 and nothing else.
+/// Put actor `id`, controlled as `control_type` says, in `place`, with grit `grit`, the docks
+/// pack's other meters at their base, and nothing else.
 fn add_actor(
     state: &mut State,
     id: &str,
@@ -28,7 +29,7 @@ fn add_actor(
 ) {
     let (mut actors, id) = (state.actors_mut(), ActorId::from(id));
     actors.add_actor(&id, control_type, place);
-    for (key, base) in [("grit", grit), ("rest", 3)] {
+    for (key, base) in [("grit", grit), ("hp", 8), ("might", 1), ("rest", 3)] {
         let meter = Meter { base, offset: 0 };
         actors.get_mut::<Meter>(&id).set(key, Some(meter)).unwrap();
     }
@@ -731,16 +732,13 @@ fn a_held_knife_still_runs_the_opposed_row() {
     )
     .unwrap();
     insert_nell(&held);
-    let now_path = held.join("state/save.yaml");
-    let text = fs::read_to_string(&now_path).unwrap();
-    let next = text.replacen(
-        "  items: {}\n  meters:\n",
-        "  items:\n    rowan:\n      knife: 1\n  meters:\n",
-        1,
-    );
-    assert_ne!(next, text);
-    fs::write(&now_path, next).unwrap();
-    stamp_pack_rev(&held);
+    support::edit_save(&held, |state| {
+        let (mut actors, rowan) = (state.actors_mut(), "rowan".into());
+        let shifted = actors
+            .get_mut::<component::Item>(&rowan)
+            .shift("knife", 1, None);
+        shifted.unwrap();
+    });
     let mut opened = resume(&held);
     queue_gm_intent(&mut opened, "gm-1", "nell", "defend");
     let wall = opened.state().last_round_at.clone();

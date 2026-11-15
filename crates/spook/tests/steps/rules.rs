@@ -5,7 +5,7 @@ use cucumber::{given, then, when};
 use serde_json::Value;
 use spookery_engine::testing::{faces, RollKey};
 
-use crate::support::{edit_as_saved, edit_meter, put_items};
+use crate::support::{edit_as_saved, edit_meter, put_items, put_meter};
 use spookery_engine::MoveReport;
 use spookery_engine::{component, entity, ActorId, Meter, Presence, Reason};
 
@@ -467,7 +467,7 @@ fn docks_shop_holds_lamp_oil(world: &mut World, count: u32) {
 
 #[given(expr = "attack targets defense + 10 and briar's defense is 12")]
 fn attack_targets_defense(world: &mut World) {
-    let pack = copy_pack("sample-d20", "rules-attack");
+    let pack = copy_pack("docks", "rules-attack");
     append(
         &pack.join("rules/verbs.yaml"),
         r#"
@@ -498,14 +498,12 @@ fn attack_targets_defense(world: &mut World) {
     let text = fs::read_to_string(&briar).unwrap();
     let next = text.replace(
         "  eligible: true\n",
-        "  eligible: true\nflags:\n    - hit\n    - missed\n",
+        "  eligible: true\nflags:\n    - hit\n    - missed\nmeters:\n  - id: defense\n    min: 0\n    base_cap: 20\n    max: 20\n    base: 12\n",
     );
     assert_ne!(text, next, "briar profile was not found");
     fs::write(&briar, next).unwrap();
     edit_save(&pack, |now| {
-        edit_meter(now, "briar", "defense", |defense| {
-            (defense.base, defense.offset) = (12, 0);
-        });
+        put_meter(now, &entity::Id::Actor("briar".into()), "defense", 12);
         let mut actors = now.actors_mut();
         actors
             .get_mut::<component::Act>(&"briar".into())
@@ -515,8 +513,8 @@ fn attack_targets_defense(world: &mut World) {
     world.pack = Some(pack);
 }
 
-#[when(expr = "lark attacks with a seeded total of 21")]
-fn lark_attacks(world: &mut World) {
+#[when(expr = "harbormouse attacks with a seeded total of 21")]
+fn harbormouse_attacks(world: &mut World) {
     let pack = world.pack.clone().unwrap();
     let loaded = state_of(&pack);
     let face = faces(
@@ -524,7 +522,7 @@ fn lark_attacks(world: &mut World) {
             seed: loaded.seed.clone(),
             round_index: loaded.round_index + 1,
             rule_id: "verb:attack".to_string(),
-            subject_id: Some("lark".into()),
+            subject_id: Some("harbormouse".into()),
             index: 0,
         },
         0,
@@ -533,14 +531,14 @@ fn lark_attacks(world: &mut World) {
     )
     .unwrap_or_else(|err| panic!("faces {}", err.as_str()))[0];
     edit_save(&pack, |now| {
-        edit_meter(now, "lark", "might", |might| {
+        edit_meter(now, "harbormouse", "might", |might| {
             (might.base, might.offset) = (21 - i64::from(face), 0);
         });
     });
     let mut opened = open(&pack);
     let nobody = Presence::default();
     opened
-        .queue_player_move(&nobody, &"lark".into(), "attack", Some("briar"))
+        .queue_player_move(&nobody, &"harbormouse".into(), "attack", Some("briar"))
         .unwrap_or_else(|err| panic!("attack {}", err.code.as_str()));
     let wall = opened.state().last_round_at.clone();
     let outputs = opened
@@ -548,10 +546,10 @@ fn lark_attacks(world: &mut World) {
         .unwrap_or_else(|err| panic!("attack {err}"));
     let reports = outputs.into_iter().next().unwrap().reports;
     let rolled = reports.into_iter().find_map(|report| match report {
-        MoveReport::Rolled { actor_id, roll } if actor_id == *"lark" => Some(roll),
+        MoveReport::Rolled { actor_id, roll } if actor_id == *"harbormouse" => Some(roll),
         _ => None,
     });
-    let rolled = rolled.unwrap_or_else(|| panic!("Lark did not roll"));
+    let rolled = rolled.unwrap_or_else(|| panic!("Harbormouse did not roll"));
     assert_eq!(rolled.total, 21, "{rolled:?}");
     assert_eq!(rolled.target, 22, "{rolled:?}");
     world.scratch = match rolled.outcome {
@@ -970,14 +968,14 @@ fn check_accepts_resist_same_after_a_roll(world: &mut World) {
     expr = "briar's cast file holds a verb \"ask\" that targets an actor and sets the world flag passage"
 )]
 fn briar_holds_ask(world: &mut World) {
-    world.pack = Some(copy_pack("sample-d20", "rules-scoped-here"));
+    world.pack = Some(copy_pack("docks", "rules-scoped-here"));
 }
 
 #[given(
     expr = "briar's cast file holds a verb \"ask\" that targets an actor, and the save puts briar in the lane"
 )]
 fn briar_holds_ask_in_the_lane(world: &mut World) {
-    let pack = copy_pack("sample-d20", "rules-scoped-gone");
+    let pack = copy_pack("docks", "rules-scoped-gone");
     edit_save(&pack, |now| {
         now.actors_mut()
             .get_mut::<component::Place>(&"briar".into())
@@ -987,30 +985,35 @@ fn briar_holds_ask_in_the_lane(world: &mut World) {
     world.pack = Some(pack);
 }
 
-#[when(regex = r"^lark, in the yard with briar, plays (.+)$")]
-fn lark_in_the_yard_plays(world: &mut World, line: String) {
+#[when(regex = r"^harbormouse, in the yard with briar, plays (.+)$")]
+fn harbormouse_in_the_yard_plays(world: &mut World, line: String) {
     let now = state_of(world.pack.as_ref().unwrap());
-    for actor in ["lark", "briar"] {
+    for actor in ["harbormouse", "briar"] {
         assert_eq!(place_of(&now, actor), "gate_yard");
     }
-    play_larks_line(world, &line);
+    play_harbormouse_line(world, &line);
 }
 
-#[when(regex = r"^lark, alone in the yard, plays (.+)$")]
-fn lark_alone_plays(world: &mut World, line: String) {
+#[when(regex = r"^harbormouse, alone in the yard, plays (.+)$")]
+fn harbormouse_alone_plays(world: &mut World, line: String) {
     let now = state_of(world.pack.as_ref().unwrap());
     let actors = now.actors().query::<(ActorId, &component::Place)>();
     let yard = actors.iter().filter(|(_, place)| *place == "gate_yard");
     assert_eq!(
         yard.map(|(id, _)| id.as_str()).collect::<Vec<_>>(),
-        ["lark"]
+        ["harbormouse"]
     );
-    play_larks_line(world, &line);
+    play_harbormouse_line(world, &line);
 }
 
 #[then(expr = "cast:briar\\/ask runs with briar as its target and passage is set")]
 fn briars_ask_runs_on_briar(world: &mut World) {
-    assert_eq!(world.scratch, r#"{"actor":"briar"} cast:briar/ask"#);
+    let (target, rules) = world.scratch.split_once(' ').unwrap();
+    assert_eq!(target, r#"{"actor":"briar"}"#);
+    assert!(
+        rules.split(' ').any(|rule| rule == "cast:briar/ask"),
+        "{rules}"
+    );
     let now = state_of(world.pack.as_ref().unwrap());
     let flags = now.entities().get::<component::Flag>(&entity::Id::Global);
     assert!(flags.contains("passage"), "{:?}", world_flags(&now));
@@ -1027,20 +1030,20 @@ fn ask_is_refused_before_the_round(world: &mut World) {
     );
 }
 
-/// Lark plays `line` seated, keeping the pack's bytes from before. A queued line plays its
+/// Harbormouse plays `line` seated, keeping the pack's bytes from before. A queued line plays its
 /// round, and the scratch holds that round's target and rule steps, else the refusal code.
-fn play_larks_line(world: &mut World, line: &str) {
+fn play_harbormouse_line(world: &mut World, line: &str) {
     let pack = world.pack.clone().unwrap();
     world.before = table::read_files(&pack);
     let (verb, target) = split_line(line);
-    let (lark, mut opened) = (seated_lark(), open(&pack));
-    if let Err(refusal) = opened.queue_player_move(&lark, &"lark".into(), verb, target) {
+    let (seated, mut opened) = (seated_harbormouse(), open(&pack));
+    if let Err(refusal) = opened.queue_player_move(&seated, &"harbormouse".into(), verb, target) {
         world.scratch = refusal.code.as_str().to_string();
         return;
     }
     let wall = opened.state().last_round_at.clone();
     opened
-        .play(&lark, &wall)
+        .play(&seated, &wall)
         .unwrap_or_else(|err| panic!("{line}: {err}"));
     let round = read_round(&pack, "round-0001");
     let steps = round["extra_steps"].as_array().unwrap();
@@ -1051,10 +1054,10 @@ fn play_larks_line(world: &mut World, line: &str) {
     world.scratch = format!("{} {}", round["intents"][0]["target"], rules.join(" "));
 }
 
-fn seated_lark() -> Presence {
+fn seated_harbormouse() -> Presence {
     Presence {
         players: 1,
-        actors_present: vec!["lark".into()],
+        actors_present: vec!["harbormouse".into()],
     }
 }
 

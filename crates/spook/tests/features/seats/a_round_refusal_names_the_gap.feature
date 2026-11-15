@@ -1,7 +1,7 @@
 Feature: A round refusal names the gap
 
   Scenario: A move refused during the round names the grit
-    Given a sample table where push and shove each cost 1 grit
+    Given a docks table where push and shove each cost 1 grit
     When the GM is seated and play joins
     And play queues "push"
     And play queues "shove"
@@ -10,7 +10,7 @@ Feature: A round refusal names the gap
     And the round rejects that habit with "CANT_AFFORD grit"
 
   Scenario: A locked exit refused during the round keeps its sentence
-    Given a sample table where dropping the tonic locks the loft
+    Given a docks table where dropping the tonic locks the loft
     When the GM is seated and play joins
     And play queues "drop tonic"
     And play queues "travel loft"
@@ -18,32 +18,32 @@ Feature: A round refusal names the gap
     Then play's error shows "The loft door is locked. [NO_EXIT]" once
 
   Scenario: A missing item refused during the round sends no missing field
-    Given a sample table with the GM seated
-    When Lark queues "drop tonic"
-    And Lark queues "use tonic"
+    Given a docks table with the GM and Harbormouse seated
+    When Harbormouse queues "drop tonic"
+    And Harbormouse queues "use tonic"
     And the GM commits the round
-    Then Lark's refused frame for "MISSING_ITEM" has no missing field
+    Then Harbormouse's refused frame for "MISSING_ITEM" has no missing field
 
   Scenario: A strike on someone who is out of sight when the round applies is refused
-    Given a sample table with the GM seated
-    When Lark queues "travel wheel_shed"
-    And Lark queues "strike briar"
+    Given a docks table with the GM and Harbormouse seated
+    When Harbormouse queues "travel wheel_shed"
+    And Harbormouse queues "strike briar"
     And the GM commits the round
-    Then Lark's refused frame for "NOT_IN_SPEC" has no missing field
+    Then Harbormouse's refused frame for "NOT_IN_SPEC" has no missing field
 
   Scenario: A strike the GM sends across rooms is refused at once
-    Given a sample table with only the GM seated
-    When the GM sends Lark's strike on oden
+    Given a docks table with a seated GM
+    When the GM sends Harbormouse's strike on bram
     Then the GM's queue is refused "NOT_IN_SPEC"
 
   Scenario: A budget refusal during the round sends no missing field
-    Given a sample table where one effect is over budget and the GM is seated
-    When Lark queues "tap"
+    Given a docks table where one effect is over budget and the GM is seated
+    When Harbormouse queues "tap"
     And the GM commits the round
-    Then Lark's refused frame for "BUDGET" has no missing field
+    Then Harbormouse's refused frame for "BUDGET" has no missing field
 
   Scenario: An NPC habit refused for cost sends no player frame
-    Given Oden can pay for a habit until Lark spends his grit
-    When Lark saps Oden
+    Given Bram can pay for a habit until Harbormouse spends Bram's grit
+    When Harbormouse saps Bram
     Then the player sees no refused frame
     And the round rejects that habit with "CANT_AFFORD grit"

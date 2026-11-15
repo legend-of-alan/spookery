@@ -9,12 +9,12 @@ use spookery_engine::{component, MoveReport};
 use crate::{resolve_id, World};
 use spookery_engine::testing::{self as support, act_of, place_of, read_round};
 
-#[given(expr = "a round where Lark rolls grit")]
-fn a_round_where_lark_rolls_grit(world: &mut World) {
-    let clean = lark_pack();
-    let played = support::fresh_dir("lark-alone");
+#[given(expr = "a round where Harbormouse rolls grit")]
+fn a_round_where_harbormouse_rolls_grit(world: &mut World) {
+    let clean = support::copy_pack("docks", "harbormouse-grit");
+    let played = support::fresh_dir("harbormouse-alone");
     support::copy_dir(&clean, &played);
-    let (faces, total) = lark_roll(&played, false);
+    let (faces, total) = harbormouse_roll(&played, false);
     let _ = fs::remove_dir_all(played);
     world.scratch = format!("{faces}|{total}");
     world.pack = Some(clean);
@@ -23,12 +23,12 @@ fn a_round_where_lark_rolls_grit(world: &mut World) {
 #[when(expr = "the same round is played again with an extra unrelated NPC roll queued first")]
 fn the_same_round_is_played_again_with_an_extra_roll(world: &mut World) {
     let pack = world.pack.as_ref().unwrap().clone();
-    let (faces, total) = lark_roll(&pack, true);
+    let (faces, total) = harbormouse_roll(&pack, true);
     world.intent_id = format!("{faces}|{total}");
 }
 
-#[then(expr = "Lark's faces and total are identical")]
-fn larks_faces_and_total_are_identical(world: &mut World) {
+#[then(expr = "Harbormouse's faces and total are identical")]
+fn harbormouses_faces_and_total_are_identical(world: &mut World) {
     assert_eq!(world.intent_id, world.scratch);
 }
 
@@ -55,10 +55,15 @@ fn all_ten_resolve_and_none_is_refused_not_in_spec(world: &mut World) {
     );
 }
 
-#[given(expr = "a played d20 fight")]
-fn a_played_d20_fight(world: &mut World) {
-    let pack = support::copy_pack("sample-d20", "d20-fight");
-    let intents = vec![intent("strike-lark", "lark", "strike", Some("briar"))];
+#[given(expr = "a played d20 strike")]
+fn a_played_d20_strike(world: &mut World) {
+    let pack = support::copy_pack("docks", "d20-strike");
+    let intents = vec![intent(
+        "strike-harbormouse",
+        "harbormouse",
+        "strike",
+        Some("briar"),
+    )];
     let (state, _rolls, _round) = play_queued(&pack, &[], intents);
     world.oil = spookery_engine::emit_save(&state).unwrap().into_bytes();
     world.pack = Some(pack);
@@ -248,15 +253,15 @@ fn the_wait_lands_and_miras_habit_is_ineligible(world: &mut World) {
     assert!(state.notes().is_empty(), "{:?}", state.notes());
 }
 
-#[when(expr = "Lark and Briar strike each other")]
-fn lark_and_briar_strike_each_other(world: &mut World) {
-    let pack = support::copy_pack("sample-d20", "mutual-strike");
+#[when(expr = "Harbormouse and Briar strike each other")]
+fn harbormouse_and_briar_strike_each_other(world: &mut World) {
+    let pack = support::copy_pack("docks", "mutual-strike");
     let (_state, rolls, _round) = play_queued(
         &pack,
         &[],
         vec![
-            intent("lark-strike", "lark", "strike", Some("briar")),
-            intent("briar-strike", "briar", "strike", Some("lark")),
+            intent("harbormouse-strike", "harbormouse", "strike", Some("briar")),
+            intent("briar-strike", "briar", "strike", Some("harbormouse")),
         ],
     );
     world.pack = Some(pack);
@@ -282,20 +287,32 @@ fn lark_and_briar_strike_each_other(world: &mut World) {
 #[then(expr = "each strike is scored on the other's own roll")]
 fn each_strike_is_scored_on_the_others_own_roll(world: &mut World) {
     let pack = world.pack.as_ref().unwrap();
-    let lark = strike_line(&world.scratch, "lark");
+    let harbormouse = strike_line(&world.scratch, "harbormouse");
     let briar = strike_line(&world.scratch, "briar");
-    let lark_once = indexed_roll(pack, "lark", 0);
-    let lark_again = indexed_roll(pack, "lark", 1);
+    let harbormouse_once = indexed_roll(pack, "harbormouse", 0);
+    let harbormouse_again = indexed_roll(pack, "harbormouse", 1);
     let briar_once = indexed_roll(pack, "briar", 0);
     let briar_again = indexed_roll(pack, "briar", 1);
-    assert_ne!(lark_once.1, lark_again.1, "lark's two indexes collide");
+    assert_ne!(
+        harbormouse_once.1, harbormouse_again.1,
+        "harbormouse's two indexes collide"
+    );
     assert_ne!(briar_once.1, briar_again.1, "briar's two indexes collide");
-    assert_eq!(lark.0, lark_once.0, "lark was rolled twice");
+    assert_eq!(
+        harbormouse.0, harbormouse_once.0,
+        "harbormouse was rolled twice"
+    );
     assert_eq!(briar.0, briar_once.0, "briar was rolled twice");
-    assert_eq!(lark.1, lark_once.1);
+    assert_eq!(harbormouse.1, harbormouse_once.1);
     assert_eq!(briar.1, briar_once.1);
-    assert_eq!(lark.2, briar.1, "lark's target is not briar's roll");
-    assert_eq!(briar.2, lark.1, "briar's target is not lark's roll");
+    assert_eq!(
+        harbormouse.2, briar.1,
+        "harbormouse's target is not briar's roll"
+    );
+    assert_eq!(
+        briar.2, harbormouse.1,
+        "briar's target is not harbormouse's roll"
+    );
 }
 
 #[given(expr = "max_effects_per_intent is 1 and a row with 2 effects")]
@@ -667,18 +684,18 @@ fn mira_has_visited_the_shop(world: &mut World) {
     assert!(visits.contains("docks_shop"), "{visited:?}");
 }
 
-#[given(expr = "the d20 pack allows {int} intent per round")]
-fn the_d20_pack_allows_intents(world: &mut World, limit: u64) {
-    let pack = support::copy_pack("sample-d20", "intent-limit");
+#[given(expr = "the docks pack allows {int} intent per round")]
+fn the_docks_pack_allows_intents(world: &mut World, limit: u64) {
+    let pack = support::copy_pack("docks", "intent-limit");
     set_budget(&pack, "max_intents_applied", limit);
     support::stamp_pack_rev(&pack);
     world.pack = Some(pack);
 }
 
-#[when(expr = "Lark waits and Briar waits in the same round")]
-fn lark_and_briar_wait(world: &mut World) {
+#[when(expr = "Harbormouse waits and Briar waits in the same round")]
+fn harbormouse_and_briar_wait(world: &mut World) {
     let intents = vec![
-        intent("lark-wait", "lark", "wait", None),
+        intent("harbormouse-wait", "harbormouse", "wait", None),
         intent("briar-wait", "briar", "wait", None),
     ];
     let (_state, _rolls, round) = play_queued(world.pack(), &[], intents);
@@ -834,57 +851,23 @@ fn indexed_roll(pack: &Path, actor_id: &str, roll_index: u32) -> (String, i64) {
     (faces, total)
 }
 
-fn lark_pack() -> PathBuf {
-    let pack = support::copy_pack("sample-d20", "lark-grit");
-    support::append(
-        &pack.join("rules/meters.yaml"),
-        "
-  - id: grit
-    min: 0
-    base_cap: 100
-    max: 110
-    base: 1
-",
-    );
-    support::append(
-        &pack.join("rules/checks.yaml"),
-        "
-  - id: grit
-    dice:
-      count: 2
-      sides: 6
-    meter: grit
-",
-    );
-    support::append(
-        &pack.join("rules/verbs.yaml"),
-        "
-  - id: grit
-    when:
-      verb: grit
-    roll:
-      check: grit
-      threshold: 0
-    do: []
-",
-    );
-    support::stamp_pack_rev(&pack);
-    spookery_engine::migrate_pack(&pack).unwrap_or_else(|err| panic!("migrate: {err}"));
-    pack
-}
-
-fn lark_roll(pack: &Path, extra_first: bool) -> (String, i64) {
+fn harbormouse_roll(pack: &Path, extra_first: bool) -> (String, i64) {
     let mut intents = Vec::new();
     if extra_first {
-        intents.push(intent("briar-strike", "briar", "strike", Some("lark")));
+        intents.push(intent(
+            "briar-strike",
+            "briar",
+            "strike",
+            Some("harbormouse"),
+        ));
     }
-    intents.push(intent("lark-grit", "lark", "grit", None));
+    intents.push(intent("harbormouse-grit", "harbormouse", "grit", None));
     let (_state, rolls, _round) = play_queued(pack, &[], intents);
     let rolled = rolls.into_iter().find_map(|report| match report {
         MoveReport::Rolled {
             actor_id,
             roll: out,
-        } if actor_id == *"lark" => Some((
+        } if actor_id == *"harbormouse" => Some((
             out.faces
                 .iter()
                 .map(|face| face.to_string())
@@ -894,7 +877,7 @@ fn lark_roll(pack: &Path, extra_first: bool) -> (String, i64) {
         )),
         _ => None,
     });
-    rolled.unwrap_or_else(|| panic!("Lark did not roll"))
+    rolled.unwrap_or_else(|| panic!("Harbormouse did not roll"))
 }
 
 /// The GM queues `intents`, then one round plays. Any `seated` players are at the table for it.

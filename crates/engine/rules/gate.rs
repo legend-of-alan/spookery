@@ -273,7 +273,7 @@ pub(crate) fn list_ids(
 
 /// The id `name` names among `ids`, by the id or any name, ignoring case and outer
 /// spaces. `None` when nothing has that name. When two or more ids have it, the `Err` is the
-/// detail of the `AMBIGUOUS_NAME` refusal: the name and those ids, `Briar: briar, oden`.
+/// detail of the `AMBIGUOUS_NAME` refusal: the name and those ids, `Briar: bram, briar`.
 pub(crate) fn find_id<'a>(ids: &'a [NamedId], name: &str) -> Result<Option<&'a str>, String> {
     let has_name = |named_id: &NamedId| {
         let mut names = [&named_id.id, &named_id.name]

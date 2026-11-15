@@ -21,6 +21,25 @@ rules:
       threshold: 0
     do: []
 
+  - id: strike
+    when:
+      verb: strike
+      target: actor
+    roll:
+      check: strike
+      threshold: 38
+      partial_at: 32
+    success:
+      - meter:
+          of: target
+          key: hp
+          add: "-(self.might / 10)"
+    partial:
+      - meter:
+          of: target
+          key: hp
+          add: -1
+
   - id: take
     when:
       verb: take

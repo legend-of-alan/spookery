@@ -12,17 +12,6 @@ use super::table;
 use crate::support;
 use crate::World;
 
-fn keep_briar_busy(now: &mut State) {
-    if let Some(briar) = now.actors().get::<component::Act>(&"briar".into()).get() {
-        let pending = briar.pending.clone();
-        let mut actors = now.actors_mut();
-        actors
-            .get_mut::<component::Act>(&"briar".into())
-            .set_busy(u64::MAX, pending)
-            .unwrap();
-    }
-}
-
 /// Give `actor` one more of `item`.
 fn give(now: &mut State, actor: &str, item: &str) {
     let (actor, mut actors) = (actor.into(), now.actors_mut());
@@ -148,40 +137,29 @@ fn add_attack_rules(pack: &Path, attack: &str) {
 
 fn hold_dagger(now: &mut State, wield: bool) {
     now.actors_mut()
-        .get_mut::<component::Place>(&"lark".into())
+        .get_mut::<component::Place>(&"wren".into())
         .set("gate_yard")
         .unwrap();
-    now.actors_mut()
-        .get_mut::<component::Place>(&"nell".into())
-        .set("gate_yard")
-        .unwrap();
-    keep_briar_busy(now);
-    give(now, "lark", "poisoned_dagger");
+    give(now, "harbormouse", "poisoned_dagger");
     if wield {
         let mut actors = now.actors_mut();
         actors
-            .get_mut::<component::WieldedItem>(&"lark".into())
+            .get_mut::<component::WieldedItem>(&"harbormouse".into())
             .set(Some("poisoned_dagger"))
             .unwrap();
     }
 }
 
-#[given(expr = "nell holds 1 tonic and has 3 of 10 hp")]
-fn nell_holds_a_tonic(world: &mut World) {
-    let pack = support::copy_pack("sample-d20", "tonic");
+#[given(expr = "harbormouse holds 1 tonic and has 3 of 10 hp")]
+fn harbormouse_holds_a_tonic(world: &mut World) {
+    let pack = support::copy_pack("docks", "tonic");
     let meters = pack.join("rules/meters.yaml");
     let text = fs::read_to_string(&meters).unwrap();
     let next = text.replace("base_cap: 12\n    max: 16", "base_cap: 10\n    max: 10");
     assert_ne!(text, next, "hp meter was not narrowed");
     fs::write(&meters, next).unwrap();
     support::edit_save(&pack, |now| {
-        now.actors_mut()
-            .get_mut::<component::Place>(&"nell".into())
-            .set("gate_yard")
-            .unwrap();
-        keep_briar_busy(now);
-        give(now, "nell", "tonic");
-        support::edit_meter(now, "nell", "hp", |hp| hp.base = 3);
+        support::edit_meter(now, "harbormouse", "hp", |hp| hp.base = 3);
     });
     world.pack = Some(pack);
 }
@@ -199,23 +177,23 @@ fn actor_types(world: &mut World, actor: String, line: String) {
     };
 }
 
-#[then(expr = "nell has 7 hp and 0 tonic")]
-fn nell_is_healed_and_empty(world: &mut World) {
+#[then(expr = "harbormouse has 7 hp and 0 tonic")]
+fn harbormouse_is_healed_and_empty(world: &mut World) {
     let pack = world.pack.as_ref().unwrap();
-    assert_eq!(hp(pack, "nell"), 7);
-    assert_eq!(count(pack, "nell", "tonic"), 0);
+    assert_eq!(hp(pack, "harbormouse"), 7);
+    assert_eq!(count(pack, "harbormouse", "tonic"), 0);
 }
 
 #[then(expr = "{string} again is rejected with {word} by the engine")]
 fn again_is_refused(world: &mut World, line: String, code: String) {
     let pack = world.pack.as_ref().unwrap();
-    let err = match handle_move(pack, "nell", &line) {
+    let err = match handle_move(pack, "harbormouse", &line) {
         Err(err) => err,
         Ok(_) => panic!("the second use was accepted"),
     };
     assert_eq!(err.code.as_str(), code);
-    assert_eq!(hp(pack, "nell"), 7);
-    assert_eq!(count(pack, "nell", "tonic"), 0);
+    assert_eq!(hp(pack, "harbormouse"), 7);
+    assert_eq!(count(pack, "harbormouse", "tonic"), 0);
     assert_eq!(
         support::state_of(pack).round_index,
         1,
@@ -283,19 +261,16 @@ fn the_journal_targets_item_then_exit(world: &mut World, item: String, exit: Str
     );
 }
 
-#[given(expr = "lark holds 1 latch at a seated table")]
-fn lark_holds_a_latch_at_a_table(world: &mut World) {
-    let pack = support::copy_pack("sample-d20", "use-latch");
-    support::edit_save(&pack, |now| {
-        keep_briar_busy(now);
-        give(now, "lark", "latch");
-    });
+#[given(expr = "harbormouse holds 1 latch at a seated table")]
+fn harbormouse_holds_a_latch_at_a_table(world: &mut World) {
+    let pack = support::copy_pack("docks", "use-latch");
+    support::edit_save(&pack, |now| give(now, "harbormouse", "latch"));
     table::listen(world, &pack);
-    table::seat_actor(world, &pack, "lark");
+    table::seat_actor(world, &pack, "harbormouse");
     world.pack = Some(pack);
 }
 
-#[when(expr = "lark plays {string}")]
+#[when(expr = "harbormouse plays {string}")]
 fn lark_plays(world: &mut World, line: String) {
     let before = state_of(world.pack.as_ref().unwrap());
     world.scratch = format!("{} {}", before.world_time, before.round_index);
@@ -303,7 +278,7 @@ fn lark_plays(world: &mut World, line: String) {
     world.player_added = added;
 }
 
-#[then(expr = "lark is refused with {word}")]
+#[then(expr = "harbormouse is refused with {word}")]
 fn lark_is_refused(world: &mut World, code: String) {
     let row = world
         .player_added
@@ -316,7 +291,7 @@ fn lark_is_refused(world: &mut World, code: String) {
     assert!(frame.get("detail").is_none(), "{frame}");
 }
 
-#[then(expr = "no round was spent and lark still holds 1 latch")]
+#[then(expr = "no round was spent and harbormouse still holds 1 latch")]
 fn no_round_was_spent(world: &mut World) {
     let pack = world.pack.as_ref().unwrap();
     let now = state_of(pack);
@@ -328,7 +303,7 @@ fn no_round_was_spent(world: &mut World) {
     assert!(spookery_engine::testing::journal::list_round_keys(pack).is_empty());
     assert_eq!(
         now.actors()
-            .get::<component::Item>(&"lark".into())
+            .get::<component::Item>(&"harbormouse".into())
             .get("latch")
             .copied()
             .unwrap_or(0),
@@ -411,32 +386,18 @@ fn check_reports_an_unknown_item(world: &mut World) {
     assert!(report.contains("unknown item 'ghost'"), "{report}");
 }
 
-#[given(expr = "lark holds a poisoned_dagger tagged weapon")]
-fn lark_holds_a_dagger(world: &mut World) {
-    let pack = support::copy_pack("sample-d20", "wield");
+#[given(expr = "harbormouse holds a poisoned_dagger tagged weapon")]
+fn harbormouse_holds_a_dagger(world: &mut World) {
+    let pack = support::copy_pack("docks", "wield");
     write_dagger(&pack, "");
-    support::edit_save(&pack, |now| {
-        now.actors_mut()
-            .get_mut::<component::Place>(&"lark".into())
-            .set("gate_yard")
-            .unwrap();
-        keep_briar_busy(now);
-        give(now, "lark", "poisoned_dagger");
-    });
+    support::edit_save(&pack, |now| give(now, "harbormouse", "poisoned_dagger"));
     world.pack = Some(pack);
 }
 
-#[given(expr = "a copy of the sample-d20 pack where briar is busy")]
-fn a_sample_pack_where_briar_is_busy(world: &mut World) {
-    let pack = support::copy_pack("sample-d20", "briar-busy");
-    support::edit_save(&pack, keep_briar_busy);
-    world.pack = Some(pack);
-}
-
-#[then(expr = "lark's wielded slot is poisoned_dagger")]
+#[then(expr = "harbormouse's wielded slot is poisoned_dagger")]
 fn lark_wields_the_dagger(world: &mut World) {
     assert_eq!(
-        wielded(world.pack.as_ref().unwrap(), "lark").as_deref(),
+        wielded(world.pack.as_ref().unwrap(), "harbormouse").as_deref(),
         Some("poisoned_dagger")
     );
 }
@@ -450,43 +411,45 @@ fn tonic_is_not_a_weapon(world: &mut World) {
         rejected.iter().any(|item| item["code"] == "NOT_A_WEAPON"),
         "{round}"
     );
-    assert_eq!(wielded(pack, "lark"), None);
+    assert_eq!(wielded(pack, "harbormouse"), None);
 }
 
-#[given(expr = "lark wields poisoned_dagger")]
+#[given(expr = "harbormouse wields poisoned_dagger")]
 fn lark_wields_for_attack(world: &mut World) {
-    let pack = support::copy_pack("sample-d20", "armed");
+    let pack = support::copy_pack("docks", "armed");
     add_attack_rules(&pack, DAGGER_ATTACK);
     support::edit_save(&pack, |now| hold_dagger(now, true));
     world.pack = Some(pack);
 }
 
-#[given(expr = "lark wields a poisoned_dagger with a strike rule")]
+#[given(expr = "harbormouse wields a poisoned_dagger with a strike rule")]
 fn lark_wields_for_strike(world: &mut World) {
-    let pack = support::copy_pack("sample-d20", "armed-strike");
+    let pack = support::copy_pack("docks", "armed-strike");
     write_dagger(&pack, DAGGER_STRIKE);
     support::edit_save(&pack, |now| hold_dagger(now, true));
     world.pack = Some(pack);
 }
 
-#[given(expr = "lark wields nothing")]
+#[given(expr = "harbormouse wields nothing")]
 fn lark_wields_nothing(world: &mut World) {
-    let pack = support::copy_pack("sample-d20", "bare");
+    let pack = support::copy_pack("docks", "bare");
     add_attack_rules(&pack, DAGGER_ATTACK);
     support::edit_save(&pack, |now| hold_dagger(now, false));
     world.pack = Some(pack);
 }
 
-#[when(expr = "lark attacks nell and hits")]
+#[when(expr = "harbormouse attacks wren and hits")]
 fn lark_attacks_and_hits(world: &mut World) {
     let pack = world.pack.clone().unwrap();
-    handle_move(&pack, "lark", "attack nell").unwrap_or_else(|err| panic!("{}", err.code.as_str()));
+    handle_move(&pack, "harbormouse", "attack wren")
+        .unwrap_or_else(|err| panic!("{}", err.code.as_str()));
 }
 
-#[when(expr = "lark attacks nell")]
+#[when(expr = "harbormouse attacks wren")]
 fn lark_attacks(world: &mut World) {
     let pack = world.pack.clone().unwrap();
-    handle_move(&pack, "lark", "attack nell").unwrap_or_else(|err| panic!("{}", err.code.as_str()));
+    handle_move(&pack, "harbormouse", "attack wren")
+        .unwrap_or_else(|err| panic!("{}", err.code.as_str()));
 }
 
 #[then(expr = "item:poisoned_dagger\\/{word} ran, not verb:{word}")]
@@ -499,7 +462,7 @@ fn the_dagger_rule_ran(world: &mut World, verb: String, shared: String) {
         "{steps}"
     );
     assert!(!steps.contains(&format!("verb:{shared}")), "{steps}");
-    assert_eq!(hp(pack, "nell"), 5);
+    assert_eq!(hp(pack, "wren"), 5);
 }
 
 #[then(expr = "verb:attack ran")]
@@ -509,25 +472,25 @@ fn bare_hands_ran(world: &mut World) {
     let steps = round["extra_steps"].to_string();
     assert!(steps.contains("verb:attack"), "{steps}");
     assert!(!steps.contains("item:poisoned_dagger/attack"), "{steps}");
-    assert_eq!(hp(pack, "nell"), 7);
+    assert_eq!(hp(pack, "wren"), 7);
 }
 
-#[when(expr = "lark drops poisoned_dagger")]
+#[when(expr = "harbormouse drops poisoned_dagger")]
 fn lark_drops_the_dagger(world: &mut World) {
     let pack = world.pack.clone().unwrap();
-    handle_move(&pack, "lark", "drop poisoned_dagger")
+    handle_move(&pack, "harbormouse", "drop poisoned_dagger")
         .unwrap_or_else(|err| panic!("{}", err.code.as_str()));
 }
 
-#[then(expr = "lark's wielded slot is empty in the same round")]
+#[then(expr = "harbormouse's wielded slot is empty in the same round")]
 fn the_slot_clears_in_the_round(world: &mut World) {
     let pack = world.pack.as_ref().unwrap();
     let now = support::state_of(pack);
     assert_eq!(now.round_index, 1);
-    assert_eq!(wielded(pack, "lark"), None);
+    assert_eq!(wielded(pack, "harbormouse"), None);
     assert_eq!(
         now.actors()
-            .get::<component::Item>(&"lark".into())
+            .get::<component::Item>(&"harbormouse".into())
             .get("poisoned_dagger")
             .copied()
             .unwrap_or(0),
@@ -542,15 +505,15 @@ fn the_slot_clears_in_the_round(world: &mut World) {
     );
 }
 
-#[given(expr = "nell resists the poison with a seeded Constitution roll of 15 vs 12")]
+#[given(expr = "wren resists the poison with a seeded Constitution roll of 15 vs 12")]
 fn nell_resists_on_a_seeded_roll(world: &mut World) {
-    let pack = support::copy_pack("sample-d20", "resist");
+    let pack = support::copy_pack("docks", "resist");
     let face = faces(
         &RollKey {
-            seed: "sample-d20".to_string(),
+            seed: "docks-001".to_string(),
             round_index: 1,
             rule_id: "item:poisoned_dagger/attack".to_string(),
-            subject_id: Some("nell".into()),
+            subject_id: Some("wren".into()),
             index: 0,
         },
         0,
@@ -575,13 +538,13 @@ fn nell_resists_on_a_seeded_roll(world: &mut World) {
         ),
     )
     .unwrap();
-    let nell = fs::read_to_string(pack.join("cast/pc-nell.md")).unwrap();
-    let next = nell.replace(
+    let wren = fs::read_to_string(pack.join("cast/pc-wren.md")).unwrap();
+    let next = wren.replace(
         "  eligible: false\n",
         "  eligible: false\nflags:\n    - poisoned\n",
     );
-    assert_ne!(nell, next);
-    fs::write(pack.join("cast/pc-nell.md"), next).unwrap();
+    assert_ne!(wren, next);
+    fs::write(pack.join("cast/pc-wren.md"), next).unwrap();
     write_dagger(
         &pack,
         "
@@ -625,52 +588,52 @@ fn nell_resists_on_a_seeded_roll(world: &mut World) {
     fs::write(pack.join("rules/verbs.yaml"), verbs).unwrap();
     support::edit_save(&pack, |now| {
         hold_dagger(now, true);
-        support::edit_meter(now, "nell", "hp", |hp| hp.base = 10);
-        let nell = entity::Id::Actor("nell".into());
-        support::put_meter(now, &nell, "constitution", stat);
+        support::edit_meter(now, "wren", "hp", |hp| hp.base = 10);
+        let wren = entity::Id::Actor("wren".into());
+        support::put_meter(now, &wren, "constitution", stat);
     });
     spookery_engine::migrate_pack(&pack).unwrap_or_else(|err| panic!("migrate: {err}"));
     world.pack = Some(pack);
     world.scratch = stat.to_string();
 }
 
-#[when(expr = "lark hits nell with poisoned_dagger")]
+#[when(expr = "harbormouse hits wren with poisoned_dagger")]
 fn lark_hits_with_the_dagger(world: &mut World) {
     let pack = world.pack.clone().unwrap();
-    let outputs = handle_move(&pack, "lark", "attack nell")
+    let outputs = handle_move(&pack, "harbormouse", "attack wren")
         .unwrap_or_else(|err| panic!("{}", err.code.as_str()));
     let output = &outputs[0];
-    let nell = output.reports.iter().find_map(|report| match report {
-        spookery_engine::MoveReport::Rolled { actor_id, roll } if actor_id == "nell" => {
+    let wren = output.reports.iter().find_map(|report| match report {
+        spookery_engine::MoveReport::Rolled { actor_id, roll } if actor_id == "wren" => {
             Some(roll.clone())
         }
         _ => None,
     });
-    let Some(nell) = nell else {
-        panic!("nell did not roll: {:?}", output.reports);
+    let Some(wren) = wren else {
+        panic!("wren did not roll: {:?}", output.reports);
     };
     assert_eq!(
-        nell.total, 15,
+        wren.total, 15,
         "stat {} face {:?}",
-        world.scratch, nell.faces
+        world.scratch, wren.faces
     );
-    assert_eq!(nell.target, 12);
+    assert_eq!(wren.target, 12);
     assert_eq!(output.reports.len(), 2, "{:?}", output.reports);
 }
 
-#[then(expr = "nell loses 3 hp, is not poisoned, sees {string}, and the round shows no refusal")]
+#[then(expr = "wren loses 3 hp, is not poisoned, sees {string}, and the round shows no refusal")]
 fn the_poison_fades(world: &mut World, text: String) {
     let pack = world.pack.as_ref().unwrap();
-    assert_eq!(hp(pack, "nell"), 7);
+    assert_eq!(hp(pack, "wren"), 7);
     assert!(!support::state_of(pack)
         .actors()
-        .get::<component::Flag>(&"nell".into())
+        .get::<component::Flag>(&"wren".into())
         .contains("poisoned"));
     let round: Value = serde_json::from_str(read_first_round_line(pack).trim()).unwrap();
     assert!(round["refused"].as_array().unwrap().is_empty(), "{round}");
     let effects = round["effects"].to_string();
     assert!(effects.contains(&text), "{effects}");
-    assert!(effects.contains("nell"), "{effects}");
+    assert!(effects.contains("wren"), "{effects}");
 }
 
 #[then(expr = "spook verify reproduces both rolls")]

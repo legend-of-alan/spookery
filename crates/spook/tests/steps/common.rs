@@ -254,12 +254,13 @@ fn break_pack(pack: &Path, fault: &str) {
     }
 }
 
-pub(crate) fn join_play(world: &mut World, raw: bool) {
+/// Hosts the pack and runs play on it, picking `pc`, with `--raw` when `raw` is set.
+pub(crate) fn join_play(world: &mut World, pc: &str, raw: bool) {
     let pack = table::pack(world).to_path_buf();
     table::listen(world, &pack);
     let addr = table::game_addr(world);
     let flags: &[&str] = if raw { &["--raw"] } else { &[] };
-    world.play = Some(spawn_play(&addr, "rowan", flags));
+    world.play = Some(spawn_play(&addr, pc, flags));
     let needle = if raw {
         "\"kind\":\"view\""
     } else {
@@ -431,26 +432,12 @@ fn the_report_says(world: &mut World, text: String) {
 
 #[when(expr = "play joins the table on a free loopback address")]
 fn play_joins_the_table_on_a_free_loopback_address(world: &mut World) {
-    join_play(world, false);
+    join_play(world, "rowan", false);
 }
 
-#[when(expr = "play joins the sample table")]
-fn play_joins_the_sample_table(world: &mut World) {
-    join_sample(world, "lark");
-}
-
-#[when(expr = "play joins the sample table as {string}")]
-fn play_joins_the_sample_table_as(world: &mut World, pick: String) {
-    join_sample(world, &pick);
-}
-
-/// Runs play on the sample table, picks `pick` and waits for the Gate Yard.
-fn join_sample(world: &mut World, pick: &str) {
-    let pack = table::pack(world).to_path_buf();
-    table::listen(world, &pack);
-    let addr = table::game_addr(world);
-    world.play = Some(spawn_play(&addr, pick, &[]));
-    wait_play(world, "Gate Yard");
+#[when(expr = "play joins the table as {string}")]
+fn play_joins_the_table_as(world: &mut World, pick: String) {
+    join_play(world, &pick, false);
 }
 
 #[when(expr = "play types {string}")]

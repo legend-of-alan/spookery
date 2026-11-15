@@ -1,8 +1,8 @@
 Feature: An intent the round has no room for is refused BUDGET
 
   Scenario: A move past the round's intent limit is refused BUDGET
-    Given the d20 pack allows 1 intent per round
-    When Lark waits and Briar waits in the same round
+    Given the docks pack allows 1 intent per round
+    When Harbormouse waits and Briar waits in the same round
     Then Briar's wait is refused BUDGET and nothing is left queued
 
   Scenario: A rule over the state-key limit and every move after it are refused BUDGET
