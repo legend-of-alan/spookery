@@ -346,12 +346,12 @@ impl Table {
 
     /// A new claim on a free PC, named by id or display name, under a new token, with the
     /// says this PC heard before.
-    fn claim_free_pc(&mut self, query: &str) -> Result<(String, ActorId, ServerBody), Reason> {
+    fn claim_free_pc(&mut self, name: &str) -> Result<(String, ActorId, ServerBody), Reason> {
         let presence = self.seats.presence();
         if presence.actors_present.len() >= MAX_PLAYER_SEATS {
             return Err(Reason::TableFull);
         }
-        let actor = self.world.find_pc(query)?.ok_or(Reason::Schema)?;
+        let actor = self.world.find_pc(name)?.ok_or(Reason::Schema)?;
         if presence.actors_present.contains(&actor) {
             return Err(Reason::SeatTaken);
         }

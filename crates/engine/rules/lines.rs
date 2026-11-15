@@ -5,7 +5,7 @@ use spookery_protocol::{CommandView, PlaceView, Seat, COMMANDS};
 use crate::canon::Canon;
 use crate::intent::{Target, Viewer};
 use crate::rules::cond;
-use crate::rules::gate::{list_nameable, verb_for};
+use crate::rules::gate::{list_ids, verb_for};
 use crate::rules::rule::{Owner, TargetKind, When};
 use crate::rules::travel::{exit_stood_on, exit_view, exits_at};
 use crate::state::id::ActorId;
@@ -14,7 +14,7 @@ use crate::Reason;
 
 /// `help`: the built-in player commands but `claim`, then each pack verb `verb_for` reaches
 /// now and whose `if` holds. A cast member's or item's verb is reached by naming them
-/// (`list_nameable`), so it carries that owner as its one name. Each name is the one the
+/// (`list_ids`), so it carries that owner as its one name. Each name is the one the
 /// player reads. Cost is not checked.
 pub(crate) fn help(
     canon: &Canon,
@@ -36,13 +36,13 @@ pub(crate) fn help(
             owner: None,
         })
         .collect();
-    let nameable = list_nameable(canon, state, presence, &viewer);
-    let name_of = |id: &String| match nameable.iter().find(|thing| thing.id == *id) {
+    let ids = list_ids(canon, state, presence, &viewer);
+    let name_of = |id: &String| match ids.iter().find(|thing| thing.id == *id) {
         Some(thing) => thing.name.clone(),
         None => place_name(canon, id),
     };
-    let ids: Vec<String> = nameable.iter().map(|thing| thing.id.clone()).collect();
-    let hints = std::iter::once(None).chain(ids.iter().map(|id| Some(id.as_str())));
+    let nameable: Vec<String> = ids.iter().map(|thing| thing.id.clone()).collect();
+    let hints = std::iter::once(None).chain(nameable.iter().map(|id| Some(id.as_str())));
     let hints: Vec<Option<&str>> = hints.collect();
     for verb in canon.verbs() {
         for &hint in &hints {
@@ -67,7 +67,7 @@ pub(crate) fn help(
             };
             let names = match owner {
                 Some(owner) => vec![owner.clone()],
-                None => names_for(canon, state, actor_id, kind, &ids),
+                None => names_for(canon, state, actor_id, kind, &nameable),
             };
             let command = CommandView {
                 name: verb.clone(),

@@ -168,9 +168,9 @@ pub struct PlaceView {
     pub exits: Vec<ExitView>,
 }
 
-/// Whether `query` is `name`, ignoring case and outer spaces.
-pub fn is_named(query: &str, name: &str) -> bool {
-    query.trim().to_lowercase() == name.trim().to_lowercase()
+/// Whether `name` is `candidate`, ignoring case and outer spaces.
+pub fn is_named(name: &str, candidate: &str) -> bool {
+    name.trim().to_lowercase() == candidate.trim().to_lowercase()
 }
 
 #[cfg(test)]

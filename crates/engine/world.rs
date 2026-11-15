@@ -86,7 +86,7 @@ impl World {
         crate::round::play_catch_up(self, now_wall, downtime_hours)
     }
 
-    /// Append a player's say. `presence` is who can hear it. An actor say reads `query` and
+    /// Append a player's say. `presence` is who can hear it. An actor say reads `opening` and
     /// `text` as one line, and its listener is the longest run of leading words that names
     /// an actor in sight, by id or display name, as a move's target is; the rest is the text.
     /// A name two of them share is `AMBIGUOUS_NAME`, and a line that names nobody is said
@@ -103,19 +103,19 @@ impl World {
             return Err(Reason::Schema.into());
         }
         let from = Speaker::Player(actor_id.to_string());
-        let Audience::Actor { actor: query } = audience else {
+        let Audience::Actor { actor: opening } = audience else {
             return Ok(self.append_speech(presence, from, Some(actor_id), audience, text)?);
         };
         let viewer = Viewer::Player(actor_id.clone());
-        let mut nameable = gate::list_nameable(self.canon(), &self.state, presence, &viewer);
+        let mut ids = gate::list_ids(self.canon(), &self.state, presence, &viewer);
         let actors = self.state.actors();
-        nameable.retain(|thing| actors.contains(&ActorId::from(thing.id.as_str())));
-        let line = format!("{query} {text}");
+        ids.retain(|thing| actors.contains(&ActorId::from(thing.id.as_str())));
+        let line = format!("{opening} {text}");
         let line = line.trim();
         let mut said_to = (Audience::Table, line);
         let breaks = line.match_indices(' ').map(|(at, _)| at).rev();
         for (name, said) in breaks.map(|at| line.split_at(at)) {
-            let id = gate::find_named(&nameable, name).map_err(|detail| Refusal {
+            let id = gate::find_id(&ids, name).map_err(|detail| Refusal {
                 detail: Some(detail),
                 ..Reason::AmbiguousName.into()
             })?;
@@ -225,14 +225,14 @@ impl<L> World<L> {
             .map(|(id, _)| id)
     }
 
-    /// The PC `query` names, by id or display name, ignoring case and outer spaces. `None`
+    /// The PC `name` names, by id or display name, ignoring case and outer spaces. `None`
     /// when no PC has that name, and `AMBIGUOUS_NAME` when two do.
-    pub fn find_pc(&self, query: &str) -> Result<Option<ActorId>, Reason> {
+    pub fn find_pc(&self, name: &str) -> Result<Option<ActorId>, Reason> {
         let pcs = self
             .pcs()
             .map(|id| (id.as_str(), self.canon().display_name(id.as_str())));
         let pcs: Vec<gate::NamedId> = pcs.map(|(id, name)| gate::NamedId::new(id, name)).collect();
-        let id = gate::find_named(&pcs, query).map_err(|_| Reason::AmbiguousName)?;
+        let id = gate::find_id(&pcs, name).map_err(|_| Reason::AmbiguousName)?;
         Ok(id.map(ActorId::from))
     }
 
@@ -258,18 +258,18 @@ impl<L> World<L> {
         verb: &str,
         target: Option<&str>,
     ) -> Result<(QueuedMove, Option<String>), gate::Refusal> {
-        let query = target.filter(|token| !token.is_empty());
+        let name = target.filter(|token| !token.is_empty());
         let viewer = Viewer::Player(actor_id.clone());
-        let nameable = match query {
-            Some(_) => gate::list_nameable(self.canon(), &self.state, presence, &viewer),
+        let ids = match name {
+            Some(_) => gate::list_ids(self.canon(), &self.state, presence, &viewer),
             None => Vec::new(),
         };
-        let match_id = match query {
-            Some(query) => gate::find_named(&nameable, query).map(|id| id.map(String::from)),
+        let match_id = match name {
+            Some(name) => gate::find_id(&ids, name).map(|id| id.map(String::from)),
             None => Ok(None),
         };
         let id = match_id.clone().unwrap_or_default();
-        let token = id.as_deref().or(query);
+        let token = id.as_deref().or(name);
         let Ok(mut intent) = Intent::player(&self.state, actor_id, verb, token) else {
             return Err(gate::Refusal {
                 id: String::new(),
@@ -293,7 +293,7 @@ impl<L> World<L> {
             let (rule, target) = shaped.map_err(|code| gate::Refusal::new(&intent, code))?;
             intent.target = target;
             let context = Context::new(self.canon(), &self.state, presence, &intent);
-            gate::admit(&context, rule, Some(&nameable))?;
+            gate::admit(&context, rule, Some(&ids))?;
         }
         let queued = QueuedMove {
             id: intent.id.clone(),
