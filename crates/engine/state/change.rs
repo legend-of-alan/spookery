@@ -38,21 +38,21 @@ impl fmt::Display for Key {
 }
 
 impl Key {
-    /// The key of `component_id`'s `entry_id` on `id`: `None` when `id` holds one value of it.
+    /// The key of `component_id`'s `entry_id` on `entity_id`: `None` when the entity holds one
+    /// value of it.
     pub(crate) fn new(
         component_id: &'static str,
-        id: entity::IdRef<'_>,
+        entity_id: entity::IdRef<'_>,
         entry_id: Option<&str>,
     ) -> Key {
-        let entity_id = match id {
-            entity::IdRef::Actor(id) => entity::Id::Actor(id.clone()),
-            entity::IdRef::Place(id) => entity::Id::Place(id.clone()),
-            entity::IdRef::Story(id) => entity::Id::Story(id.clone()),
-            entity::IdRef::Global => entity::Id::Global,
-        };
         Key {
             component_id,
-            entity_id,
+            entity_id: match entity_id {
+                entity::IdRef::Actor(id) => entity::Id::Actor(id.clone()),
+                entity::IdRef::Place(id) => entity::Id::Place(id.clone()),
+                entity::IdRef::Story(id) => entity::Id::Story(id.clone()),
+                entity::IdRef::Global => entity::Id::Global,
+            },
             entry_id: entry_id.map(str::to_string),
         }
     }

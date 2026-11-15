@@ -249,15 +249,6 @@ fn render_changes(viewer: &str, changes: &[ChangeView]) -> String {
     sentences.join(" ")
 }
 
-/// The display name of what changed, which is its key when the two are the same.
-fn display_name(change: &ChangeView) -> &str {
-    if change.entry_name.is_empty() {
-        &change.entry_id
-    } else {
-        &change.entry_name
-    }
-}
-
 /// A change's value when it is a number: a meter's reading or an item's count.
 fn as_number(value: &Option<ChangeValue>) -> Option<i64> {
     match value {
@@ -271,7 +262,7 @@ fn as_number(value: &Option<ChangeValue>) -> Option<i64> {
 fn render_item_change(viewer: &str, change: &ChangeView, changes: &[ChangeView]) -> Option<String> {
     let after = as_number(&change.after)?;
     let lost = after < as_number(&change.before)?;
-    let name = display_name(change);
+    let name = &change.entry_name;
     let other_side = changes.iter().find(|other| {
         other.component_id == "item"
             && other.entry_id == change.entry_id

@@ -114,11 +114,7 @@ fn to_change_view(canon: &Canon, change: &Change) -> Option<ChangeView> {
         component_id: key.component_id.to_string(),
         entity_id: key.entity_id.to_string(),
         entity_name,
-        entry_name: if entry_name == entry_id {
-            String::new()
-        } else {
-            entry_name
-        },
+        entry_name,
         entry_id,
         before: to_change_value(&change.before),
         after: to_change_value(&change.after),
