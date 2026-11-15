@@ -87,88 +87,64 @@
       "additionalProperties": false
     },
     "SayArgs": {
-      "description": "The `say` command arguments of either seat, sent from a client to the table. Only the GM\nmay set `as`, the bare id of an NPC to speak as.",
+      "description": "The `say` command arguments of either seat, sent from a client to the table. Only the GM\nmay set `as`, the bare id of an NPC to speak as, and may then leave out `to`: the NPC's\nplace hears it.",
       "type": "object",
-      "oneOf": [
-        {
-          "type": "object",
-          "properties": {
-            "text": {
-              "type": "string"
-            },
-            "as": {
-              "type": [
-                "string",
-                "null"
+      "properties": {
+        "to": {
+          "anyOf": [
+            {
+              "description": "Who hears a say: everyone at the table, everyone in one place, or one actor. On the wire\nit is `\"table\"`, `{\"place\": \"<id>\"}` or `{\"actor\": \"<id>\"}`.",
+              "oneOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "table"
+                  ]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "place": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "place"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "actor": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "actor"
+                  ],
+                  "additionalProperties": false
+                }
               ]
             },
-            "address": {
-              "type": "string",
-              "const": "table"
+            {
+              "type": "null"
             }
-          },
-          "additionalProperties": false,
-          "required": [
-            "address",
-            "text"
           ]
         },
-        {
-          "type": "object",
-          "properties": {
-            "place": {
-              "type": "string",
-              "minLength": 1
-            },
-            "text": {
-              "type": "string"
-            },
-            "as": {
-              "type": [
-                "string",
-                "null"
-              ]
-            },
-            "address": {
-              "type": "string",
-              "const": "place"
-            }
-          },
-          "additionalProperties": false,
-          "required": [
-            "address",
-            "place",
-            "text"
-          ]
+        "text": {
+          "type": "string"
         },
-        {
-          "type": "object",
-          "properties": {
-            "actor": {
-              "type": "string",
-              "minLength": 1
-            },
-            "text": {
-              "type": "string"
-            },
-            "as": {
-              "type": [
-                "string",
-                "null"
-              ]
-            },
-            "address": {
-              "type": "string",
-              "const": "actor"
-            }
-          },
-          "additionalProperties": false,
-          "required": [
-            "address",
-            "actor",
-            "text"
+        "as": {
+          "type": [
+            "string",
+            "null"
           ]
         }
+      },
+      "additionalProperties": false,
+      "required": [
+        "text"
       ]
     },
     "PerceiveArgs": {

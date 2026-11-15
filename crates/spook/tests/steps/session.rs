@@ -34,7 +34,7 @@ fn the_player_closes_the_seat(world: &mut World) {
 
 #[when(expr = "the GM says {string} to the table")]
 fn the_gm_says(world: &mut World, text: String) {
-    let args = serde_json::json!({ "address": "table", "text": text }).to_string();
+    let args = serde_json::json!({ "to": "table", "text": text }).to_string();
     table::call_gm_tool(world, "say", &args);
 }
 

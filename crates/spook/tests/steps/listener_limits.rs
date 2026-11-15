@@ -7,7 +7,7 @@ use serde_json::json;
 use spookery_engine::testing::journal::list_round_keys;
 use tungstenite::Message;
 
-use spookery::protocol::{Say, ServerBody, ServerMessage, Speaker};
+use spookery::protocol::{Audience, ServerBody, ServerMessage, Speaker, Speech};
 
 use crate::support;
 use crate::World;
@@ -100,7 +100,7 @@ fn another_gm_sits(world: &mut World) {
 fn the_closed_session_calls_say(world: &mut World) {
     world.before = table::read_files(table::pack(world));
     world.scratch =
-        table::closed_gm_tool_call(world, "say", r#"{"address":"table","text":"good evening"}"#);
+        table::closed_gm_tool_call(world, "say", r#"{"to":"table","text":"good evening"}"#);
 }
 
 #[then(expr = "that call is refused and nothing was written")]
@@ -178,12 +178,7 @@ fn that_call_is_refused_with(world: &mut World, code: String) {
 
 #[then(expr = "the GM can still say")]
 fn the_gm_can_still_say(world: &mut World) {
-    let text = table::gm_tool_call(
-        world,
-        93,
-        "say",
-        r#"{"address":"table","text":"still here"}"#,
-    );
+    let text = table::gm_tool_call(world, 93, "say", r#"{"to":"table","text":"still here"}"#);
     assert!(text.contains("\"seq\":"), "the GM lost the seat\n{text}");
 }
 
@@ -310,11 +305,9 @@ fn one_player_stops_reading(world: &mut World) {
         id: None,
         seq: Some(u64::from(u32::MAX)),
         reply_to: None,
-        body: ServerBody::Say(Say {
+        body: ServerBody::Say(Speech {
             from: Speaker::Gm,
-            address: "table".to_string(),
-            place: None,
-            actor: None,
+            to: Audience::Table,
             recipients: Vec::new(),
             text: say.clone(),
         }),
@@ -331,7 +324,7 @@ fn one_player_stops_reading(world: &mut World) {
         .saturating_add(margin);
     let start = Instant::now();
     let mut sent = 0usize;
-    let args = format!(r#"{{"address":"table","text":"{say}"}}"#);
+    let args = format!(r#"{{"to":"table","text":"{say}"}}"#);
     // A write fails once the table has closed the connection. The claim stays held.
     while is_open(table::player_client(world, "rowan")) {
         if start.elapsed() > Duration::from_secs(60) || sent > budget {

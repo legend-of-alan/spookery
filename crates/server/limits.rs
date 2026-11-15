@@ -28,7 +28,7 @@ pub(super) const OUTBOUND_FRAME_CAP: usize = 256;
 pub(super) const MISSED_MESSAGE_CAP: usize = 256;
 
 /// Bytes queued toward one socket before that socket is dropped.
-/// A 256-frame queue of large says fills the tape before a large TCP
+/// A 256-frame queue of long speech fills the tape before a large TCP
 /// window fills, so the byte cap is what drops a stopped reader there.
 pub(super) const OUTBOUND_BYTE_CAP: usize = 64 * 1024;
 

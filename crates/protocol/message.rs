@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
 use crate::{
-    ChangeView, CommandView, CommitBody, NoteView, Outcome, PlaceView, Refusal, Speaker,
+    Audience, ChangeView, CommandView, CommitBody, NoteView, Outcome, PlaceView, Refusal, Speaker,
     TableStatus, View,
 };
 
@@ -83,14 +83,14 @@ pub enum ServerBody {
         pc_names: BTreeMap<String, String>,
     },
     /// The reply to `claim`. `token` takes this PC back after a dropped connection. A new
-    /// claim carries `scrollback`, the says this PC heard before, oldest first. A claim by
+    /// claim carries `scrollback`, the speech this PC heard before, oldest first. A claim by
     /// token carries `missed`, the messages sent to this PC after the `last_seq` it named, and
     /// `gap` when more than `MISSED_MESSAGE_CAP` messages were missed.
     Claimed {
         actor: String,
         token: String,
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
-        scrollback: Vec<Say>,
+        scrollback: Vec<Speech>,
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         missed: Vec<ServerMessage>,
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
@@ -110,7 +110,7 @@ pub enum ServerBody {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         target: Option<String>,
     },
-    Say(Say),
+    Say(Speech),
     /// One committed round. Every seat gets it.
     Round {
         round_index: u64,
@@ -148,16 +148,12 @@ pub enum ServerBody {
     },
 }
 
-/// One say. The GM's copy lists its `recipients`; a player's copy does not.
+/// One line of speech. The GM's copy lists its `recipients`; a player's copy does not.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
-pub struct Say {
+pub struct Speech {
     pub from: Speaker,
-    pub address: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub place: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub actor: Option<String>,
+    pub to: Audience,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub recipients: Vec<String>,
     pub text: String,

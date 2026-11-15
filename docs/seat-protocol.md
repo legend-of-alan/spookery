@@ -64,7 +64,7 @@ Each command reads `args` as one type, and the schema's `$defs` in `client.json`
 |---|---|---|---|
 | `claim` | player | `ClaimArgs`: `actor`, or `token` and `last_seq` | `claimed`, then a `resume` and a `view` |
 | `release` | both | `NoArgs` | `released` |
-| `say` | both | `SayArgs`: `address`, `text`, `place` or `actor`, and for the GM `as` | the sender's own `say` |
+| `say` | both | `SayArgs`: `to` and `text`, and for the GM `as` | the sender's own `say` |
 | `look` | player | `NoArgs` | `view` |
 | `help` | player | `NoArgs` | `help` |
 | `map` | player | `NoArgs` | `map` |
@@ -102,30 +102,30 @@ Only `release` ends a claim. A connection that closes or is dropped leaves its P
 
 <!-- example: player-claimed-token -->
 ```json
-{"seq":24,"reply_to":"c1","body":{"kind":"claimed","actor":"rowan","token":"<token>","missed":[{"seq":23,"body":{"kind":"say","from":"gm","address":"table","text":"still there?"}}]}}
+{"seq":24,"reply_to":"c1","body":{"kind":"claimed","actor":"rowan","token":"<token>","missed":[{"seq":23,"body":{"kind":"say","from":"gm","to":"table","text":"still there?"}}]}}
 ```
 
-A new claim's `claimed` carries `scrollback` instead, the says this PC heard before, oldest first.
+A new claim's `claimed` carries `scrollback` instead, the speech this PC heard before, oldest first.
 
 A GM's `release` frees the seat before its reply. A later command on that connection is `NOT_IN_SPEC`. With the GM seat empty, each player move commits its own round.
 
 ### say
 
-`address` is `table`, `place` with a `place` id, or `actor` with an `actor`. A player's actor say is read as one line, `actor` then `text`, so `spook play` sends `say Mira Vell hi` (or `tell Mira Vell hi`, the same line) as `actor` `Mira` and `text` `Vell hi`. The longest run of leading words that names an actor in sight, by id or display name and ignoring case and outer spaces as a move's target does, is who it is said to, and the rest is the text. A name two in sight share is `AMBIGUOUS_NAME`, with the move's `detail`. A line that names nobody in sight is said at the table, its text the whole line. `text` is at most 4096 characters. The table sets `from` from the connection: `player:<id>` or `gm`. A `from` in `args` is `SCHEMA`. The GM may add `as`, the bare id of an NPC, to speak as that NPC, and `from` is then `npc:<id>`. An `as` that names a PC, no actor or anything but a bare id is `SCHEMA`, and so is a player's `as`. A `place` say from a player or from the NPC in `as` must be said where that speaker stands, or it is `SCHEMA`. A say goes on the session tape and takes no round. Every seat that hears it gets one `say` under one `seq`, and the sender's copy is the reply. The GM's copy lists `recipients`, the seated players who heard it, so an NPC is never in it.
+`to` names who hears it: `"table"`, `{"place": "<id>"}` or `{"actor": "<id>"}`. A player's say to an actor is read as one line, the actor then `text`, so `spook play` sends `say Mira Vell hi` (or `tell Mira Vell hi`, the same line) as `to` `{"actor": "Mira"}` and `text` `Vell hi`. The longest run of leading words that names an actor in sight, by id or display name and ignoring case and outer spaces as a move's target does, is who it is said to, and the rest is the text. A name two in sight share is `AMBIGUOUS_NAME`, with the move's `detail`. A line that names nobody in sight is said at the table, its text the whole line. `text` is at most 4096 characters. The table sets `from` from the connection: `player:<id>` or `gm`. A `from` in `args` is `SCHEMA`. The GM may add `as`, the bare id of an NPC, to speak as that NPC, and `from` is then `npc:<id>`. An `as` that names a PC, no actor or anything but a bare id is `SCHEMA`, and so is a player's `as`. A GM say with `as` and no `to` is heard where that NPC stands. Any other say without `to` is `SCHEMA`. A `place` say from a player or from the NPC in `as` must name where that speaker stands, or it is `SCHEMA`. A say puts one line of speech on the session tape and takes no round. Every seat that hears it gets one `say` under one `seq`, and the sender's copy is the reply. The GM's copy lists `recipients`, the seated players who heard it, so an NPC is never in it.
 
 <!-- example: player-say -->
 ```json
-{"id":"c2","body":{"kind":"say","args":{"address":"table","text":"evening"}}}
+{"id":"c2","body":{"kind":"say","args":{"to":"table","text":"evening"}}}
 ```
 
 <!-- example: player-said -->
 ```json
-{"seq":6,"reply_to":"c2","body":{"kind":"say","from":"player:rowan","address":"table","text":"evening"}}
+{"seq":6,"reply_to":"c2","body":{"kind":"say","from":"player:rowan","to":"table","text":"evening"}}
 ```
 
 <!-- example: gm-heard -->
 ```json
-{"seq":6,"body":{"kind":"say","from":"player:rowan","address":"table","recipients":["rowan"],"text":"evening"}}
+{"seq":6,"body":{"kind":"say","from":"player:rowan","to":"table","recipients":["rowan"],"text":"evening"}}
 ```
 
 ### Moves
@@ -327,7 +327,7 @@ A client ignores a `kind` or a field it does not know. `server.json` gives every
 | `presence` | the GM | `actors_present` after a claim starts or ends |
 | `refused` | the sender | `code` and, when the refusal names something, `detail` |
 | `queued` | the sender and the GM | `intent`, `actor`, `move`, `target` |
-| `say` | every seat that hears it | `from`, `address`, `place` or `actor`, `text`, and for the GM `recipients` |
+| `say` | every seat that hears it | `from`, `to`, `text`, and for the GM `recipients` |
 | `round` | every seat | `round_index` and `world_time` of one committed round |
 | `check` | the player who rolled | `outcome`: `success`, `partial` or `miss` |
 | `committed` | the GM | the reply to `commit` |
@@ -500,7 +500,7 @@ A refusal is a `refused` body, and the connection stays up. `detail` is there on
 | `SEAT_TAKEN` | That PC is held. Claim another. |
 | `CHOOSE_PC` | Claim one of the PCs in the hello's `open`. An empty `open` means none is free. |
 | `SCHEMA` | Fix the message: its shape, its command, or its arguments. |
-| `NOT_IN_SPEC` | The verb has no rule that applies, its target or a say's actor is not in sight, `commit` set `include_round` false with a move queued, or the seat was released or, over MCP, never taken. |
+| `NOT_IN_SPEC` | The verb has no rule that applies, its target or the actor in a say's `to` is not in sight, `commit` set `include_round` false with a move queued, or the seat was released or, over MCP, never taken. |
 | `LINE_TOO_LONG` | Send a message under 8 KiB. |
 | `UNSCOPED_PERCEIVE` | Send `perceive` with `as` set to a bare actor id. |
 | `ACTOR_MISMATCH` | That actor is a player's, or the move is not this actor's. |
@@ -531,5 +531,6 @@ The MCP endpoint answers with an HTTP status before any seat: 400 for an `MCP-Pr
 - Version 2 renamed the command fields before any release, on purpose, so a client body is named by `kind` like a server body: a client body's `word` became `kind`, and the `words` of `hello` and `help` became `commands`. The command names did not change. The recording took the new names with it. The version stayed 2 because no build had shipped.
 - Version 2 renamed the cast's role before any release, on purpose, so the cast and the engine say the same word: `pack.kinds` in `status` became `pack.control_types`, and a cast file's `kind` became `control_type`. The values did not change. The recording took the new name and the docks pack's new `pack_rev` with it. The version stayed 2 because no build had shipped.
 - Version 2 split one body before any release, on purpose, so a client writes the change sentences as it writes the view: `lines` now carries only narrate lines, and the changes a round showed a player moved to the new `changes`, as data: each change names its component as open text and carries its values as JSON values, so a new component needs no protocol change. The recording took the new body with it. The version stayed 2 because no build had shipped.
+- Version 2 renamed a say's listener before any release, on purpose, so a say reads `from`, `to` and `as`: `address` and its `place` or `actor` key became one `to`, which is `"table"`, `{"place": "<id>"}` or `{"actor": "<id>"}`, in the `say` command, the `say` message and the session tape. The schema's `$defs/Say` became `$defs/Speech`. The recording took the new key with it. The version stayed 2 because no build had shipped.
 - The recorded session must still replay. Each message it got must still arrive at that seat, in order, with every field it had and the same value. New kinds and fields may come between. Only `seq`, which a new kind moves, and `token`, which each table mints, may differ.
 - The journal and refusal codes stay strict: `spook verify` fails on a code it does not know.

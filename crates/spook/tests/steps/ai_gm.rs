@@ -108,8 +108,8 @@ fn ai_gm_dialed_that_address(world: &mut World) {
     assert_eq!(world.scratch, "dialed");
 }
 
-#[then(expr = "the player saw a say from the GM")]
-fn the_player_saw_a_say(world: &mut World) {
+#[then(expr = "the player saw speech from the GM")]
+fn the_player_saw_speech(world: &mut World) {
     assert!(
         world.player_added.contains("{\"kind\":\"say\""),
         "{}",
@@ -201,7 +201,7 @@ fn a_docks_table_with_the_scripted_ai_gm_and_a_seated_player(world: &mut World) 
 fn a_scripted_model_that_says_evening(world: &mut World) {
     world
         .model
-        .push(&[("say", r#"{"address":"table","text":"evening"}"#)]);
+        .push(&[("say", r#"{"to":"table","text":"evening"}"#)]);
 }
 
 #[given(expr = "a scripted model whose first call fails in transport")]
@@ -216,7 +216,7 @@ fn a_scripted_model_that_ends_the_turn_then_says_the_roll_lands(world: &mut Worl
     world.model.push(&[("end_turn", "{}")]);
     world
         .model
-        .push(&[("say", r#"{"address":"table","text":"the roll lands"}"#)]);
+        .push(&[("say", r#"{"to":"table","text":"the roll lands"}"#)]);
 }
 
 #[when(expr = "the player says hello")]
@@ -248,11 +248,12 @@ fn world_time_moved_one_round(world: &mut World) {
     );
 }
 
-#[then(expr = "the GM's own say did not call the model")]
-fn the_gms_own_say_did_not_call_the_model(world: &mut World) {
-    // The say's turn asks once more and ends. The GM's own say starts no turn.
+#[then(expr = "the GM's own speech did not call the model")]
+fn the_gms_own_speech_did_not_call_the_model(world: &mut World) {
+    // The player's speech starts a turn that asks once more and ends. The GM's own speech
+    // starts no turn.
     let calls = world.model.wait_past_script();
-    assert_eq!(calls.len(), 2, "a gm say called the model");
+    assert_eq!(calls.len(), 2, "the GM's own speech called the model");
 }
 
 #[then(expr = "one round committed")]
@@ -329,7 +330,7 @@ fn accepted_any(listeners: &[TcpListener]) -> bool {
     false
 }
 
-const STUB_SAY: &[(&str, &str)] = &[("say", r#"{"address":"table","text":"STUB-SAY-FIXTURE"}"#)];
+const STUB_SAY: &[(&str, &str)] = &[("say", r#"{"to":"table","text":"STUB-SAY-FIXTURE"}"#)];
 
 #[when(expr = "a hung model call meets a queued player line")]
 fn a_hung_model_call_meets_a_queued_player_line(world: &mut World) {
@@ -360,8 +361,8 @@ fn a_hung_model_call_meets_a_queued_player_line(world: &mut World) {
     world.scratch = seen.closes.to_string();
 }
 
-#[when(expr = "a model answers 500 once and then a say")]
-fn a_model_answers_500_once_and_then_a_say(world: &mut World) {
+#[when(expr = "a model answers 500 once and then speaks")]
+fn a_model_answers_500_once_and_then_speaks(world: &mut World) {
     let (pack, _) = queued_travel(world, "host-retry");
     let replies = [
         Reply::Status(500, "{\"error\":\"busy\"}"),

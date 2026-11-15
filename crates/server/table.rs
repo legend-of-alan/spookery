@@ -17,8 +17,8 @@ use super::idle::{self, now_stamp};
 use super::seat::{Claim, ConnId, Connection, FrameSender, Seats};
 use super::Error;
 use crate::protocol::{
-    is_built_in, parse_args, ClaimArgs, ClientBody, ClientMessage, MoveArgs, NoArgs, SayArgs, Seat,
-    ServerBody, ServerMessage, COMMANDS, VERSION,
+    is_built_in, parse_args, Audience, ClaimArgs, ClientBody, ClientMessage, MoveArgs, NoArgs,
+    SayArgs, Seat, ServerBody, ServerMessage, COMMANDS, VERSION,
 };
 
 /// The host's cap. A pack may define more PCs than this.
@@ -277,8 +277,10 @@ impl Table {
         let body = match command.as_str() {
             "release" if read::<NoArgs>(&args).is_some() => return self.release_claim(conn, id),
             "say" => match read::<SayArgs>(&args).filter(|args| args.npc.is_none()) {
-                Some(args) => return self.say_as_player(conn, id, &actor_id, &args),
-                None => ServerBody::Refused(Reason::Schema.into()),
+                Some(SayArgs {
+                    to: Some(to), text, ..
+                }) => return self.say_as_player(conn, id, &actor_id, &to, &text),
+                _ => ServerBody::Refused(Reason::Schema.into()),
             },
             // The view, not text: the client writes the look from it.
             "look" if read::<NoArgs>(&args).is_some() => {
@@ -345,7 +347,7 @@ impl Table {
     }
 
     /// A new claim on a free PC, named by id or display name, under a new token, with the
-    /// says this PC heard before.
+    /// speech this PC heard before.
     fn claim_free_pc(&mut self, name: &str) -> Result<(String, ActorId, ServerBody), Reason> {
         let presence = self.seats.presence();
         if presence.actors_present.len() >= MAX_PLAYER_SEATS {
@@ -400,14 +402,12 @@ impl Table {
         conn: ConnId,
         id: Option<String>,
         actor_id: &ActorId,
-        args: &SayArgs,
+        to: &Audience,
+        text: &str,
     ) {
         let presence = self.seats.presence();
-        match self
-            .world
-            .say_as_player(&presence, actor_id, &args.audience, &args.text)
-        {
-            Ok(said) => self.deliver_say(&said, Some((conn, id))),
+        match self.world.say_as_player(&presence, actor_id, to, text) {
+            Ok(speech) => self.deliver_speech(&speech, Some((conn, id))),
             Err(refusal) => self.reply(conn, id, ServerBody::Refused(refusal)),
         }
     }
@@ -470,9 +470,9 @@ impl Table {
             .unwrap_or_else(Reply::refused);
         self.log_refused(&body.kind, &reply);
         self.after_rounds(&reply.outputs);
-        // A say's reply is the GM's copy of it.
-        match &reply.said {
-            Some(said) => self.deliver_say(said, Some((conn, id))),
+        // A say's reply is the GM's copy of its speech.
+        match &reply.speech {
+            Some(speech) => self.deliver_speech(speech, Some((conn, id))),
             None => self.reply(conn, id, reply.body),
         }
         if reply.release_seat {
@@ -567,10 +567,10 @@ impl Table {
             .send_modify(|count| *count = count.wrapping_add(1));
     }
 
-    /// The one say path: the host's tape line, then one `say` with one `seq` to the GM and
+    /// The one speech path: the host's tape line, then one `say` with one `seq` to the GM and
     /// to each player who hears it. The sender's copy is its reply.
-    fn deliver_say(&mut self, said: &TapeRecord, sender: Option<(ConnId, Option<String>)>) {
-        let _ = writeln!(self.out, "{}", emit_tape_record(said));
+    fn deliver_speech(&mut self, speech: &TapeRecord, sender: Option<(ConnId, Option<String>)>) {
+        let _ = writeln!(self.out, "{}", emit_tape_record(speech));
         let _ = self.out.flush();
         let seq = self.next_seq();
         let (sender, id) = sender.unzip();
@@ -581,17 +581,17 @@ impl Table {
             .claims
             .iter()
             .filter(|claim| {
-                said.recipients.iter().any(|id| claim.actor == **id)
+                speech.recipients.iter().any(|id| claim.actor == **id)
                     || claim.conn.is_some_and(|conn| sender == Some(conn))
             })
             .map(|claim| (claim.actor.clone(), claim.conn))
             .collect();
         if let Some(gm) = self.seats.gm {
-            let body = frames::render_say(said, true);
+            let body = frames::render_speech(speech, true);
             self.send(gm, stamp_message(seq, reply_to(gm), body));
         }
         for (actor_id, conn) in hears {
-            let body = frames::render_say(said, false);
+            let body = frames::render_speech(speech, false);
             let message = stamp_message(seq, conn.and_then(reply_to), body);
             self.send_to_pc(&actor_id, message);
         }

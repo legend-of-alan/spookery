@@ -11,6 +11,12 @@ Feature: A human GM runs a round
     Then world time advanced one live tick
     And the round log records Mira's door note
 
+  Scenario: The GM speaks as an NPC where it stands
+    Given a docks table
+    When play and a human GM share a free loopback port
+    And the GM types "say as aldric Mind the counter."
+    Then play shows "Aldric: Mind the counter."
+
   Scenario: Two players queue and one commit runs both
     Given a docks table
     When two players and a human GM share a free loopback port

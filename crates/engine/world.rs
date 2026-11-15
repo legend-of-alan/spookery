@@ -86,11 +86,11 @@ impl World {
         crate::round::play_catch_up(self, now_wall, downtime_hours)
     }
 
-    /// Append a player's say. `presence` is who can hear it. An actor say reads `opening` and
-    /// `text` as one line, and its listener is the longest run of leading words that names
-    /// an actor in sight, by id or display name, as a move's target is; the rest is the text.
-    /// A name two of them share is `AMBIGUOUS_NAME`, and a line that names nobody is said
-    /// at the table, its text the whole line.
+    /// Append a player's speech. `presence` is who can hear it. Speech to an actor reads
+    /// `opening` and `text` as one line, and its listener is the longest run of leading words
+    /// that names an actor in sight, by id or display name, as a move's target is; the rest is
+    /// the text. A name two of them share is `AMBIGUOUS_NAME`, and a line that names nobody is
+    /// said at the table, its text the whole line.
     pub fn say_as_player(
         &self,
         presence: &Presence,
@@ -103,8 +103,8 @@ impl World {
             return Err(Reason::Schema.into());
         }
         let from = Speaker::Player(actor_id.to_string());
-        let Audience::Actor { actor: opening } = audience else {
-            return Ok(self.append_speech(presence, from, Some(actor_id), audience, text)?);
+        let Audience::Actor(opening) = audience else {
+            return Ok(self.append_speech(presence, from, Some(actor_id), Some(audience), text)?);
         };
         let viewer = Viewer::Player(actor_id.clone());
         let mut ids = gate::list_ids(self.canon(), &self.state, presence, &viewer);
@@ -112,33 +112,28 @@ impl World {
         ids.retain(|named_id| actors.contains(&ActorId::from(named_id.id.as_str())));
         let line = format!("{opening} {text}");
         let line = line.trim();
-        let mut said_to = (Audience::Table, line);
+        let (mut to, mut text) = (Audience::Table, line);
         let breaks = line.match_indices(' ').map(|(at, _)| at).rev();
-        for (name, said) in breaks.map(|at| line.split_at(at)) {
+        for (name, rest) in breaks.map(|at| line.split_at(at)) {
             let id = gate::find_id(&ids, name).map_err(|detail| Refusal {
                 detail: Some(detail),
                 ..Reason::AmbiguousName.into()
             })?;
             if let Some(listener) = id {
-                said_to = (
-                    Audience::Actor {
-                        actor: listener.to_string(),
-                    },
-                    said.trim(),
-                );
+                (to, text) = (Audience::Actor(listener.to_string()), rest.trim());
                 break;
             }
         }
-        let (audience, text) = said_to;
-        Ok(self.append_speech(presence, from, Some(actor_id), &audience, text)?)
+        Ok(self.append_speech(presence, from, Some(actor_id), Some(&to), text)?)
     }
 
-    /// Append a GM say, spoken as `npc` when it is set. An `npc` that is not an NPC is `SCHEMA`.
+    /// Append a GM's speech, spoken as `npc` when it is set. An `npc` that is not an NPC is
+    /// `SCHEMA`. With no `audience`, the place `npc` stands in hears it.
     pub fn say_as_gm(
         &self,
         presence: &Presence,
         npc: Option<&ActorId>,
-        audience: &Audience,
+        audience: Option<&Audience>,
         text: &str,
     ) -> Result<TapeRecord, Reason> {
         let from = match npc {
@@ -154,41 +149,35 @@ impl World {
         self.append_speech(presence, from, npc, audience, text)
     }
 
-    /// Append one say to the tape. An `actor` say must name an actor in the world, and a
-    /// speaker's `place` say must be where that speaker stands.
+    /// Append one line of speech to the tape. Speech to an actor must name an actor in the
+    /// world, and a speaker's speech to a place must be where that speaker stands. With no
+    /// `audience`, the speaker's place hears it.
     fn append_speech(
         &self,
         presence: &Presence,
         from: Speaker,
         speaker: Option<&ActorId>,
-        audience: &Audience,
+        audience: Option<&Audience>,
         text: &str,
     ) -> Result<TapeRecord, Reason> {
-        let text = check_say_text(text)?.to_string();
+        let text = check_speech_text(text)?.to_string();
         let actors = self.state.actors();
-        match (audience, speaker) {
-            (Audience::Actor { actor }, _) if !actors.contains(&ActorId::from(actor.as_str())) => {
+        let here = speaker.and_then(|speaker| actors.get::<component::Place>(speaker).get());
+        let to = match audience {
+            Some(Audience::Actor(actor)) if !actors.contains(&ActorId::from(actor.as_str())) => {
                 return Err(Reason::Schema);
             }
-            (Audience::Place { place }, Some(speaker))
-                if actors.get::<component::Place>(speaker).get() != Some(place.as_str()) =>
-            {
+            Some(Audience::Place(place)) if speaker.is_some() && here != Some(place.as_str()) => {
                 return Err(Reason::Schema);
             }
-            _ => {}
-        }
-        let (address, place, actor) = match audience {
-            Audience::Table => ("table", None, None),
-            Audience::Place { place } => ("place", Some(place.clone()), None),
-            Audience::Actor { actor } => ("actor", None, Some(actor.clone())),
+            Some(audience) => audience.clone(),
+            None => Audience::Place(here.ok_or(Reason::Schema)?.to_string()),
         };
-        let recipients = speech_recipients(&self.state, presence, speaker, audience);
+        let recipients = speech_recipients(&self.state, presence, speaker, &to);
         let record = TapeRecord {
             seq: 0,
             from,
-            address: address.to_string(),
-            place,
-            actor,
+            to,
             recipients,
             text,
             round_index: self.state.round_index,
@@ -577,7 +566,7 @@ impl World<()> {
     }
 }
 
-/// Seated players who hear this say. A seated speaker is included.
+/// Seated players who hear this speech. A seated speaker is included.
 fn speech_recipients(
     state: &State,
     presence: &Presence,
@@ -590,7 +579,7 @@ fn speech_recipients(
         Audience::Table => {
             ids.extend(seated.iter().map(ActorId::to_string));
         }
-        Audience::Place { place } => {
+        Audience::Place(place) => {
             let here = state.actors_at(place);
             ids.extend(
                 seated
@@ -599,7 +588,7 @@ fn speech_recipients(
                     .map(ActorId::to_string),
             );
         }
-        Audience::Actor { actor } => {
+        Audience::Actor(actor) => {
             if seated.iter().any(|id| *id == *actor.as_str()) {
                 ids.insert(actor.to_string());
             }
@@ -626,7 +615,7 @@ fn target_for(rule: &Rule, token: Option<&str>) -> Result<Target, Reason> {
     }
 }
 
-fn check_say_text(text: &str) -> Result<&str, Reason> {
+fn check_speech_text(text: &str) -> Result<&str, Reason> {
     if text.is_empty() || text.contains('\n') || text.chars().count() > MAX_SAY_CHARS {
         return Err(Reason::Schema);
     }

@@ -2,13 +2,13 @@
 
 use crate::protocol::{
     self, ChangeValue, ChangeView, CommandView, CommitBody, ExitView, MeterView, NoteView, Outcome,
-    PlaceView, Roll, Say, ServerBody, Speaker, TableStatus,
+    PlaceView, Roll, ServerBody, Speaker, Speech, TableStatus,
 };
 
 /// Readable text for one player body. Empty means print nothing.
 pub fn render(body: &ServerBody) -> String {
     match body {
-        ServerBody::Say(say) => render_say(say),
+        ServerBody::Say(speech) => render_speech(speech),
         ServerBody::Queued { .. } => "Your action is queued.".to_string(),
         ServerBody::Check { outcome } => match outcome {
             Outcome::Success => "Your roll succeeded.".to_string(),
@@ -32,20 +32,22 @@ pub fn render(body: &ServerBody) -> String {
     }
 }
 
-fn render_say(say: &Say) -> String {
-    match &say.from {
+fn render_speech(speech: &Speech) -> String {
+    match &speech.from {
         // One player sits this socket, so a player id is the seated PC.
-        Speaker::Player(_) => format!("You: {}", say.text),
-        from @ (Speaker::Gm | Speaker::Npc(_)) => format!("{}: {}", speaker_name(from), say.text),
+        Speaker::Player(_) => format!("You: {}", speech.text),
+        from @ (Speaker::Gm | Speaker::Npc(_)) => {
+            format!("{}: {}", speaker_name(from), speech.text)
+        }
     }
 }
 
-/// The says a claim replays, under an `Earlier:` heading.
-fn render_scrollback(says: &[Say]) -> String {
-    if says.is_empty() {
+/// The speech a claim replays, under an `Earlier:` heading.
+fn render_scrollback(speeches: &[Speech]) -> String {
+    if speeches.is_empty() {
         return String::new();
     }
-    let lines: Vec<String> = says.iter().map(render_say).collect();
+    let lines: Vec<String> = speeches.iter().map(render_speech).collect();
     format!(
         "Earlier:
 {}",
@@ -429,7 +431,7 @@ pub(crate) fn render_refusal(refusal: &protocol::Refusal, raw: bool) -> String {
     }
 }
 
-/// The name a say shows for who spoke: `GM`, or the speaker's id as words.
+/// The name speech shows for who spoke: `GM`, or the speaker's id as words.
 fn speaker_name(from: &Speaker) -> String {
     match from {
         Speaker::Gm => "GM".to_string(),
@@ -440,7 +442,7 @@ fn speaker_name(from: &Speaker) -> String {
 /// Readable text for one GM body. Empty means print nothing.
 pub fn render_gm(body: &ServerBody) -> String {
     match body {
-        ServerBody::Say(say) => format!("{}: {}", speaker_name(&say.from), say.text),
+        ServerBody::Say(speech) => format!("{}: {}", speaker_name(&speech.from), speech.text),
         ServerBody::Queued {
             actor, move_name, ..
         } => format!("{} queued: {move_name}", humanize(actor)),
@@ -497,37 +499,22 @@ mod tests {
     }
 
     #[test]
-    fn a_say_is_a_name_and_the_text() {
-        let mira = render(&ServerBody::Say(Say {
-            from: Speaker::Npc("mira".to_string()),
-            address: "table".to_string(),
-            text: "the lamp is lit".to_string(),
-            place: None,
-            actor: None,
-            recipients: Vec::new(),
-        }));
+    fn speech_is_a_name_and_the_text() {
+        let mira = render(&ServerBody::Say(table_speech(
+            Speaker::Npc("mira".to_string()),
+            "the lamp is lit",
+        )));
         assert_eq!(mira, "Mira: the lamp is lit");
         assert_readable(&mira);
 
-        let gm = render(&ServerBody::Say(Say {
-            from: Speaker::Gm,
-            address: "table".to_string(),
-            text: "evening".to_string(),
-            place: None,
-            actor: None,
-            recipients: Vec::new(),
-        }));
+        let gm = render(&ServerBody::Say(table_speech(Speaker::Gm, "evening")));
         assert_eq!(gm, "GM: evening");
         assert_readable(&gm);
 
-        let you = render(&ServerBody::Say(Say {
-            from: Speaker::Player("rowan".to_string()),
-            address: "actor".to_string(),
-            text: "hello".to_string(),
-            place: None,
-            actor: None,
-            recipients: Vec::new(),
-        }));
+        let you = render(&ServerBody::Say(table_speech(
+            Speaker::Player("rowan".to_string()),
+            "hello",
+        )));
         assert_eq!(you, "You: hello");
         assert_readable(&you);
     }
@@ -601,12 +588,10 @@ mod tests {
         assert_eq!(later, "");
     }
 
-    fn table_say(from: Speaker, text: &str) -> Say {
-        Say {
+    fn table_speech(from: Speaker, text: &str) -> Speech {
+        Speech {
             from,
-            address: "table".to_string(),
-            place: None,
-            actor: None,
+            to: protocol::Audience::Table,
             recipients: Vec::new(),
             text: text.to_string(),
         }
@@ -619,8 +604,8 @@ mod tests {
             actor: "lark".to_string(),
             token: "t1".to_string(),
             scrollback: vec![
-                table_say(Speaker::Player("lark".to_string()), "hello Briar"),
-                table_say(Speaker::Gm, "evening"),
+                table_speech(Speaker::Player("lark".to_string()), "hello Briar"),
+                table_speech(Speaker::Gm, "evening"),
             ],
             missed: Vec::new(),
             gap: false,
@@ -774,7 +759,7 @@ none"
     }
 
     fn say(from: &str, text: &str) -> ServerBody {
-        ServerBody::Say(table_say(from.parse().unwrap(), text))
+        ServerBody::Say(table_speech(from.parse().unwrap(), text))
     }
 
     fn roll(faces: Vec<u32>, stat: i64, total: i64, target: i64, outcome: Outcome) -> Roll {

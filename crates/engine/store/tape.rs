@@ -8,27 +8,23 @@ use serde::{Deserialize, Serialize};
 
 use crate::store::durability::{fsync_dir, refuse_io, write_atomic};
 use crate::Reason;
-use spookery_protocol::Speaker;
+use spookery_protocol::{Audience, Speaker};
 
 /// Size bound for `state/tape.jsonl`. An append that would pass it first drops the oldest half.
 const MAX_BYTES: u64 = 1024 * 1024;
 
-/// How many says a new claim's scrollback carries.
+/// How many lines of speech a new claim's scrollback carries.
 const SCROLLBACK_LINES: usize = 256;
 
 /// One tape line, written by the engine and relayed by the host table to players and the GM.
 /// Field order is the order of the bytes on disk.
-/// `from` is stored as the `Speaker`'s text. `place` and `actor` may be null. A missing key
-/// is not a record.
+/// `from` is stored as the `Speaker`'s text, and `to` as the `Audience` is on the wire. A
+/// missing key is not a record.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TapeRecord {
     pub seq: u64,
     pub from: Speaker,
-    pub address: String,
-    #[serde(deserialize_with = "Option::deserialize")]
-    pub place: Option<String>,
-    #[serde(deserialize_with = "Option::deserialize")]
-    pub actor: Option<String>,
+    pub to: Audience,
     pub recipients: Vec<String>,
     pub text: String,
     pub round_index: u64,
@@ -145,11 +141,11 @@ mod tests {
     use crate::testing::fresh_dir;
 
     #[test]
-    fn an_appended_say_keeps_the_tape_bytes() {
+    fn an_appended_speech_keeps_the_tape_bytes() {
         let root = fresh_dir("tape-bytes");
         let stored = append_record(&root, sample(0, "rowan", "line0")).unwrap();
         let bytes = fs::read(root.join("state/tape.jsonl")).unwrap();
-        let line = "{\"seq\":1,\"from\":\"gm\",\"address\":\"actor\",\"place\":null,\"actor\":\"rowan\",\"recipients\":[\"rowan\"],\"text\":\"line0\",\"round_index\":0,\"world_time\":1080}\n";
+        let line = "{\"seq\":1,\"from\":\"gm\",\"to\":{\"actor\":\"rowan\"},\"recipients\":[\"rowan\"],\"text\":\"line0\",\"round_index\":0,\"world_time\":1080}\n";
         assert_eq!(bytes, line.as_bytes());
         assert_eq!(parse_record(line.trim_end()).unwrap(), stored);
         let _ = fs::remove_dir_all(&root);
@@ -166,22 +162,18 @@ mod tests {
     }
 
     #[test]
-    fn a_line_missing_place_or_actor_is_schema() {
-        let missing_place = r#"{"seq":1,"from":"gm","address":"table","actor":null,"recipients":[],"text":"hi","round_index":0,"world_time":0}"#;
-        let missing_actor = r#"{"seq":1,"from":"gm","address":"table","place":null,"recipients":[],"text":"hi","round_index":0,"world_time":0}"#;
-        assert_eq!(parse_record(missing_place).unwrap_err(), Reason::Schema);
-        assert_eq!(parse_record(missing_actor).unwrap_err(), Reason::Schema);
-        let present = r#"{"seq":1,"from":"gm","address":"table","place":null,"actor":null,"recipients":[],"text":"hi","round_index":0,"world_time":0}"#;
-        assert!(parse_record(present).is_ok());
+    fn a_line_without_to_is_schema() {
+        let old = r#"{"seq":1,"from":"gm","address":"table","place":null,"actor":null,"recipients":[],"text":"hi","round_index":0,"world_time":0}"#;
+        assert_eq!(parse_record(old).unwrap_err(), Reason::Schema);
+        let to = r#"{"seq":1,"from":"gm","to":"table","recipients":[],"text":"hi","round_index":0,"world_time":0}"#;
+        assert!(parse_record(to).is_ok());
     }
 
     fn sample(seq: u64, player: &str, text: &str) -> TapeRecord {
         TapeRecord {
             seq,
             from: Speaker::Gm,
-            address: "actor".to_string(),
-            place: None,
-            actor: Some(player.to_string()),
+            to: Audience::Actor(player.to_string()),
             recipients: vec![player.to_string()],
             text: text.to_string(),
             round_index: 0,

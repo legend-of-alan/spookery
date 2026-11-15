@@ -145,7 +145,7 @@ impl Seat {
 /// speaks to the table, and any other first word is a move with the rest as its target.
 pub fn parse_command(line: &str) -> (&str, Value) {
     match line.split_once(' ') {
-        Some(("say", text)) => ("say", json!({ "address": "table", "text": text })),
+        Some(("say", text)) => ("say", json!({ "to": "table", "text": text })),
         Some((command, target)) => (command, json!({ "target": target })),
         None => (line, json!({})),
     }

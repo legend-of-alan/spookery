@@ -18,7 +18,7 @@ pub(super) struct Reply {
     pub(super) body: ServerBody,
     /// The speech this command put on the tape. The table delivers it, and the GM's copy is
     /// the reply.
-    pub(super) said: Option<TapeRecord>,
+    pub(super) speech: Option<TapeRecord>,
     /// The GM seat is cleared once this reply is sent.
     pub(super) release_seat: bool,
     /// Rounds this command played, commit first.
@@ -29,7 +29,7 @@ impl Reply {
     fn new(body: ServerBody) -> Self {
         Self {
             body,
-            said: None,
+            speech: None,
             release_seat: false,
             outputs: Vec::new(),
         }
@@ -78,7 +78,7 @@ pub(super) fn describe(command: &str) -> Option<(&'static str, Arc<Map<String, V
             schema_for_type::<QueueArgs>(),
         ),
         "say" => (
-            "say requires address and text. place is required when address is place. actor is required when address is actor. table takes neither place nor actor. as may name an NPC's id to speak as that NPC. A supplied from is SCHEMA.",
+            "say requires to and text. to is \"table\", {\"place\": id} or {\"actor\": id}. as may name an NPC's id to speak as that NPC, and then a missing to is the place that NPC stands. A supplied from is SCHEMA.",
             schema_for_type::<SayArgs>(),
         ),
         "commit" => (
@@ -102,9 +102,9 @@ fn say(
 ) -> Result<Reply, Reason> {
     let args: SayArgs = parse_args(arguments).map_err(|_| Reason::Schema)?;
     let npc = args.npc.as_deref().map(ActorId::from);
-    let said = world.say_as_gm(presence, npc.as_ref(), &args.audience, &args.text)?;
-    let mut reply = Reply::new(frames::render_say(&said, true));
-    reply.said = Some(said);
+    let speech = world.say_as_gm(presence, npc.as_ref(), args.to.as_ref(), &args.text)?;
+    let mut reply = Reply::new(frames::render_speech(&speech, true));
+    reply.speech = Some(speech);
     Ok(reply)
 }
 
@@ -233,7 +233,7 @@ mod tests {
             ("status", json!({})),
             ("perceive", json!({"as": "rowan"})),
             ("queue", json!({"actor_id": "rowan", "move": "wait"})),
-            ("say", json!({"address": "table", "text": "hi"})),
+            ("say", json!({"to": "table", "text": "hi"})),
             ("commit", json!({"include_round": false})),
             ("release", json!({})),
         ];

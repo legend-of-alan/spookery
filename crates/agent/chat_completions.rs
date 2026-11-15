@@ -115,7 +115,7 @@ mod tests {
         let call = ToolCall {
             id: "call_7".into(),
             name: "say".into(),
-            arguments: r#"{"address":"table","text":"hi"}"#.into(),
+            arguments: r#"{"to":"table","text":"hi"}"#.into(),
         };
         let messages = [
             model::Message::System {
@@ -141,7 +141,7 @@ mod tests {
                 { "role": "assistant", "content": null, "tool_calls": [{
                     "id": "call_7",
                     "type": "function",
-                    "function": { "name": "say", "arguments": r#"{"address":"table","text":"hi"}"# }
+                    "function": { "name": "say", "arguments": r#"{"to":"table","text":"hi"}"# }
                 }] },
                 { "role": "tool", "tool_call_id": "call_7", "content": "said" }
             ])

@@ -188,15 +188,15 @@ mod tests {
     const VIEW: &str = r#"{"kind":"view","viewer":"pc","place":"docks","visible_actors":["pc"],"known_facts":[],"notes":[],"unknown_mentions":[],"items":[],"habits":[]}"#;
     const ROUND: &str = r#"{"kind":"round","round_index":1,"world_time":5}"#;
     const QUEUED: &str = r#"{"kind":"queued","intent":"q2","actor":"pc","move":"wait"}"#;
-    const PLAYER_SAY: &str = r#"{"kind":"say","from":"player:pc","address":"table","text":"ok"}"#;
-    const GM_SAY: &str = r#"{"kind":"say","from":"gm","address":"table","text":"ok"}"#;
+    const PLAYER_SAY: &str = r#"{"kind":"say","from":"player:pc","to":"table","text":"ok"}"#;
+    const GM_SAY: &str = r#"{"kind":"say","from":"gm","to":"table","text":"ok"}"#;
     /// Read as a failed read rather than as a body.
     const BROKEN: &str = "broken";
     /// Read as a read that never ends.
     const SILENT: &str = "silent";
 
     const PERCEIVE: (&str, &str) = ("perceive", r#"{"as":"pc"}"#);
-    const SAY: (&str, &str) = ("say", r#"{"address":"table","text":"ok"}"#);
+    const SAY: (&str, &str) = ("say", r#"{"to":"table","text":"ok"}"#);
 
     /// What the scripted server sends for one command: `bodies`, the last of them the reply, and
     /// then `then`, which arrive while the agent waits.
@@ -214,7 +214,7 @@ mod tests {
         }
     }
 
-    /// The agent's first status, then a player's "say" that starts a turn.
+    /// The agent's first status, then a player's speech that starts a turn.
     fn status_then_player_say() -> Answer {
         Answer {
             then: vec![PLAYER_SAY],

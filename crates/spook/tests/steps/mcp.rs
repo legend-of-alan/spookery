@@ -300,35 +300,28 @@ fn the_gm_lists_the_tools(world: &mut World) {
     world.scratch = serde_json::to_string(&tools).unwrap_or_else(|err| panic!("tools: {err}"));
 }
 
-/// One row per shape a tool accepts, in the order `tools/list` gives: a `oneOf` schema has
-/// one shape per branch. Each shape must refuse keys it does not name, so its fields are all
-/// a GM may send.
+/// One row per tool, in the order `tools/list` gives. Each input schema must refuse keys it
+/// does not name, so its fields are all a GM may send.
 #[then(expr = "the tools are the GM commands, and each input schema names these fields")]
 fn the_tools_are_the_gm_commands(world: &mut World, step: &Step) {
     let tools: Vec<Value> =
         serde_json::from_str(&world.scratch).unwrap_or_else(|err| panic!("tools: {err}"));
-    let mut shapes = Vec::new();
+    let mut rows = Vec::new();
     for tool in &tools {
         let name = tool["name"].as_str().unwrap_or_default();
         let schema = &tool["inputSchema"];
-        let branches = match schema.get("oneOf").and_then(Value::as_array) {
-            Some(branches) => branches.iter().collect(),
-            None => vec![schema],
-        };
-        for shape in branches {
-            let closed = shape["additionalProperties"] == false;
-            assert!(closed, "{name} takes keys it does not name: {shape}");
-            let fields = shape["properties"]
-                .as_object()
-                .into_iter()
-                .flat_map(Map::keys);
-            let required = shape["required"].as_array().into_iter().flatten();
-            shapes.push([
-                name.to_string(),
-                sort_words(fields.map(String::as_str)),
-                sort_words(required.filter_map(Value::as_str)),
-            ]);
-        }
+        let closed = schema["additionalProperties"] == false;
+        assert!(closed, "{name} takes keys it does not name: {schema}");
+        let fields = schema["properties"]
+            .as_object()
+            .into_iter()
+            .flat_map(Map::keys);
+        let required = schema["required"].as_array().into_iter().flatten();
+        rows.push([
+            name.to_string(),
+            sort_words(fields.map(String::as_str)),
+            sort_words(required.filter_map(Value::as_str)),
+        ]);
     }
     let table = step
         .table
@@ -344,7 +337,7 @@ fn the_tools_are_the_gm_commands(world: &mut World, step: &Step) {
             ]
         })
         .collect();
-    assert_eq!(shapes, want);
+    assert_eq!(rows, want);
 }
 
 fn sort_words<'a>(words: impl Iterator<Item = &'a str>) -> String {
@@ -376,12 +369,12 @@ fn agent_says_over_http(world: &mut World) {
     let mark = table::player_mark(world);
     let mut gm = support::block_on(GmClient::connect(mcp_addr(http)))
         .unwrap_or_else(|err| panic!("HTTP: {err}"));
-    let said = call(
+    let speech = call(
         &mut gm,
         "say",
-        json!({"address": "table", "text": "good evening"}),
+        json!({"to": "table", "text": "good evening"}),
     );
-    assert_not_refused(&said, "say");
+    assert_not_refused(&speech, "say");
     world.player_added = table::wait_player_from(world, mark, "{\"kind\":\"say\"");
     world.http_gm = Some(gm);
 }
@@ -414,7 +407,7 @@ fn call_each_gm_tool(gm: &mut GmClient) {
         ("status", json!({})),
         ("perceive", json!({"as": "rowan"})),
         ("queue", json!({"actor_id": "rowan", "move": "wait"})),
-        ("say", json!({"address": "table", "text": "good evening"})),
+        ("say", json!({"to": "table", "text": "good evening"})),
         ("commit", json!({"include_round": true})),
     ] {
         let result = call(gm, name, arguments);

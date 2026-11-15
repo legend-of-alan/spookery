@@ -18,13 +18,15 @@ Commands:
       What that actor sees. A bare actor id.
   say <text>
       Speak to the whole table.
+  say as <npc> <text>
+      Speak as that NPC to the place it stands in.
   queue <actor> <move> [target]
       Queue a move. A target is a place id or an actor id.
   commit
       Commit the queue as one round.
   <command> {...}
       Send a command with these JSON arguments, such as
-      say {\"address\": \"place\", \"place\": \"docks_shop\", \"text\": \"...\"}.
+      say {\"to\": {\"place\": \"docks_shop\"}, \"text\": \"...\"}.
   release
       Leave the seat.
   help
@@ -119,7 +121,8 @@ fn report(line: &str) {
 
 /// The command a typed line names and its arguments, or `None` for an empty line. A JSON object
 /// after the command is sent as it is. Otherwise `say`, `perceive`, `queue` and `commit` read the
-/// rest of the line, and any other command takes nothing after it. No arguments means the command
+/// rest of the line (`say as <npc> <text>` speaks as that NPC, heard where it stands), and any
+/// other command takes nothing after it. No arguments means the command
 /// cannot read that line.
 fn parse_command(line: &str) -> Option<(&str, Option<Value>)> {
     let line = line.trim();
@@ -135,7 +138,12 @@ fn parse_command(line: &str) -> Option<(&str, Option<Value>)> {
     }
     let parts: Vec<&str> = rest.split_whitespace().collect();
     let args = match (command, parts.as_slice()) {
-        ("say", [_, ..]) => Some(json!({ "address": "table", "text": rest })),
+        // `rest` starts with `as`, then `npc`, as `parts` split it.
+        ("say", ["as", npc, _, ..]) => {
+            let text = rest[2..].trim_start()[npc.len()..].trim_start();
+            Some(json!({ "as": npc, "text": text }))
+        }
+        ("say", [_, ..]) => Some(json!({ "to": "table", "text": rest })),
         ("perceive", [actor]) => Some(json!({ "as": actor })),
         ("queue", [actor, move_name]) => Some(json!({ "actor_id": actor, "move": move_name })),
         ("queue", [actor, move_name, target]) => {
