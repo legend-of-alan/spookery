@@ -68,7 +68,7 @@ pub async fn run(addr: SocketAddr, raw: bool) -> Result<(), Error> {
                 let Some(line) = line else {
                     return seat.release().await;
                 };
-                match read_typed(&line) {
+                match parse_command(&line) {
                     None => {}
                     Some(("help", _)) => emit(HELP),
                     Some((command, _)) if !commands.iter().any(|known| known == command) => {
@@ -121,7 +121,7 @@ fn report(line: &str) {
 /// after the command is sent as it is. Otherwise `say`, `perceive`, `queue` and `commit` read the
 /// rest of the line, and any other command takes nothing after it. No arguments means the command
 /// cannot read that line.
-fn read_typed(line: &str) -> Option<(&str, Option<Value>)> {
+fn parse_command(line: &str) -> Option<(&str, Option<Value>)> {
     let line = line.trim();
     let (command, rest) = line
         .split_once(' ')
@@ -153,42 +153,42 @@ fn read_typed(line: &str) -> Option<(&str, Option<Value>)> {
 mod tests {
     use serde_json::json;
 
-    use super::read_typed;
+    use super::parse_command;
 
     #[test]
     fn a_typed_line_is_a_command_and_its_args() {
-        assert_eq!(read_typed("status"), Some(("status", Some(json!({})))));
+        assert_eq!(parse_command("status"), Some(("status", Some(json!({})))));
         assert_eq!(
-            read_typed("commit"),
+            parse_command("commit"),
             Some(("commit", Some(json!({ "include_round": true }))))
         );
         assert_eq!(
-            read_typed("perceive rowan"),
+            parse_command("perceive rowan"),
             Some(("perceive", Some(json!({ "as": "rowan" }))))
         );
         assert_eq!(
-            read_typed("say good evening"),
+            parse_command("say good evening"),
             Some((
                 "say",
                 Some(json!({ "address": "table", "text": "good evening" }))
             ))
         );
         assert_eq!(
-            read_typed("queue mira restock_lamp_oil"),
+            parse_command("queue mira restock_lamp_oil"),
             Some((
                 "queue",
                 Some(json!({ "actor_id": "mira", "move": "restock_lamp_oil" }))
             ))
         );
         assert_eq!(
-            read_typed("queue rowan travel docks_street"),
+            parse_command("queue rowan travel docks_street"),
             Some((
                 "queue",
                 Some(json!({ "actor_id": "rowan", "move": "travel", "target": "docks_street" }))
             ))
         );
         assert_eq!(
-            read_typed(r#"say {"address": "actor", "actor": "mira", "text": "come in"}"#),
+            parse_command(r#"say {"address": "actor", "actor": "mira", "text": "come in"}"#),
             Some((
                 "say",
                 Some(json!({ "address": "actor", "actor": "mira", "text": "come in" }))
@@ -198,17 +198,17 @@ mod tests {
 
     #[test]
     fn a_line_a_command_cannot_read_has_no_args() {
-        assert_eq!(read_typed("   "), None);
-        assert_eq!(read_typed("status now"), Some(("status", None)));
-        assert_eq!(read_typed("perceive"), Some(("perceive", None)));
-        assert_eq!(read_typed("perceive a b"), Some(("perceive", None)));
-        assert_eq!(read_typed("say"), Some(("say", None)));
-        assert_eq!(read_typed("queue mira"), Some(("queue", None)));
-        assert_eq!(read_typed("queue a b c d"), Some(("queue", None)));
-        assert_eq!(read_typed("commit now"), Some(("commit", None)));
-        assert_eq!(read_typed("say {not json"), Some(("say", None)));
+        assert_eq!(parse_command("   "), None);
+        assert_eq!(parse_command("status now"), Some(("status", None)));
+        assert_eq!(parse_command("perceive"), Some(("perceive", None)));
+        assert_eq!(parse_command("perceive a b"), Some(("perceive", None)));
+        assert_eq!(parse_command("say"), Some(("say", None)));
+        assert_eq!(parse_command("queue mira"), Some(("queue", None)));
+        assert_eq!(parse_command("queue a b c d"), Some(("queue", None)));
+        assert_eq!(parse_command("commit now"), Some(("commit", None)));
+        assert_eq!(parse_command("say {not json"), Some(("say", None)));
         assert_eq!(
-            read_typed("say [1]"),
+            parse_command("say [1]"),
             Some(("say", Some(json!({ "address": "table", "text": "[1]" }))))
         );
     }

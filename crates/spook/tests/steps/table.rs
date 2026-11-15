@@ -143,7 +143,7 @@ impl Seat {
 
 /// The command a typed line names and its arguments, as `spook play` sends it: `say <text>`
 /// speaks to the table, and any other first word is a move with the rest as its target.
-pub fn parse_typed(line: &str) -> (&str, Value) {
+pub fn parse_command(line: &str) -> (&str, Value) {
     match line.split_once(' ') {
         Some(("say", text)) => ("say", json!({ "address": "table", "text": text })),
         Some((command, target)) => (command, json!({ "target": target })),
@@ -804,7 +804,7 @@ pub fn actor_text(world: &World, actor_id: &str) -> String {
 pub fn actor_send(world: &mut World, actor_id: &str, line: &str, needle: &str) -> String {
     let player = player_client(world, actor_id);
     let mark = player.seat.mark();
-    let (command, args) = parse_typed(line);
+    let (command, args) = parse_command(line);
     let id = player.seat.send(command, args);
     player.seat.wait_reply(&id);
     wait_actor_from(world, actor_id, mark, needle)
@@ -814,7 +814,7 @@ pub fn actor_send(world: &mut World, actor_id: &str, line: &str, needle: &str) -
 pub fn actor_write(world: &mut World, actor_id: &str, line: &str) -> usize {
     let player = player_client(world, actor_id);
     let mark = player.seat.mark();
-    let (command, args) = parse_typed(line);
+    let (command, args) = parse_command(line);
     player.seat.send(command, args);
     mark
 }

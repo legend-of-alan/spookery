@@ -86,7 +86,7 @@ impl World {
         crate::round::play_catch_up(self, now_wall, downtime_hours)
     }
 
-    /// Append a player's say. `presence` is who can hear it. An actor say reads `input` and
+    /// Append a player's say. `presence` is who can hear it. An actor say reads `query` and
     /// `text` as one line, and its listener is the longest run of leading words that names
     /// an actor in sight, by id or display name, as a move's target is; the rest is the text.
     /// A name two of them share is `AMBIGUOUS_NAME`, and a line that names nobody is said
@@ -103,23 +103,23 @@ impl World {
             return Err(Reason::Schema.into());
         }
         let from = Speaker::Player(actor_id.to_string());
-        let Audience::Actor { actor: input } = audience else {
+        let Audience::Actor { actor: query } = audience else {
             return Ok(self.append_speech(presence, from, Some(actor_id), audience, text)?);
         };
         let viewer = Viewer::Player(actor_id.clone());
         let mut nameable = gate::list_nameable(self.canon(), &self.state, presence, &viewer);
         let actors = self.state.actors();
         nameable.retain(|thing| actors.contains(&ActorId::from(thing.id.as_str())));
-        let line = format!("{input} {text}");
+        let line = format!("{query} {text}");
         let line = line.trim();
         let mut said_to = (Audience::Table, line);
         let breaks = line.match_indices(' ').map(|(at, _)| at).rev();
         for (name, said) in breaks.map(|at| line.split_at(at)) {
-            let found = gate::find_named(&nameable, name).map_err(|detail| Refusal {
+            let id = gate::find_named(&nameable, name).map_err(|detail| Refusal {
                 detail: Some(detail),
                 ..Reason::AmbiguousName.into()
             })?;
-            if let Some(listener) = found {
+            if let Some(listener) = id {
                 said_to = (
                     Audience::Actor {
                         actor: listener.to_string(),
@@ -225,15 +225,15 @@ impl<L> World<L> {
             .map(|(id, _)| id)
     }
 
-    /// The PC `input` names, by id or display name, ignoring case and outer spaces. `None`
+    /// The PC `query` names, by id or display name, ignoring case and outer spaces. `None`
     /// when no PC has that name, and `AMBIGUOUS_NAME` when two do.
-    pub fn find_pc(&self, input: &str) -> Result<Option<ActorId>, Reason> {
+    pub fn find_pc(&self, query: &str) -> Result<Option<ActorId>, Reason> {
         let pcs = self
             .pcs()
             .map(|id| (id.as_str(), self.canon().display_name(id.as_str())));
         let pcs: Vec<gate::NamedId> = pcs.map(|(id, name)| gate::NamedId::new(id, name)).collect();
-        let found = gate::find_named(&pcs, input).map_err(|_| Reason::AmbiguousName)?;
-        Ok(found.map(ActorId::from))
+        let id = gate::find_named(&pcs, query).map_err(|_| Reason::AmbiguousName)?;
+        Ok(id.map(ActorId::from))
     }
 
     pub fn state(&self) -> &State {
@@ -258,18 +258,18 @@ impl<L> World<L> {
         verb: &str,
         target: Option<&str>,
     ) -> Result<(QueuedMove, Option<String>), gate::Refusal> {
-        let input = target.filter(|token| !token.is_empty());
+        let query = target.filter(|token| !token.is_empty());
         let viewer = Viewer::Player(actor_id.clone());
-        let nameable = match input {
+        let nameable = match query {
             Some(_) => gate::list_nameable(self.canon(), &self.state, presence, &viewer),
             None => Vec::new(),
         };
-        let named = match input {
-            Some(input) => gate::find_named(&nameable, input).map(|id| id.map(String::from)),
+        let match_id = match query {
+            Some(query) => gate::find_named(&nameable, query).map(|id| id.map(String::from)),
             None => Ok(None),
         };
-        let resolved = named.clone().unwrap_or_default();
-        let token = resolved.as_deref().or(input);
+        let id = match_id.clone().unwrap_or_default();
+        let token = id.as_deref().or(query);
         let Ok(mut intent) = Intent::player(&self.state, actor_id, verb, token) else {
             return Err(gate::Refusal {
                 id: String::new(),
@@ -277,7 +277,7 @@ impl<L> World<L> {
                 detail: None,
             });
         };
-        if let Err(detail) = named {
+        if let Err(detail) = match_id {
             return Err(gate::Refusal {
                 detail: Some(detail),
                 ..gate::Refusal::new(&intent, Reason::AmbiguousName)
