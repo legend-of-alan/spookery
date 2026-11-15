@@ -127,16 +127,16 @@ impl World {
         Ok(self.append_speech(presence, from, Some(actor_id), Some(&to), text)?)
     }
 
-    /// Append a GM's speech, spoken as `npc` when it is set. An `npc` that is not an NPC is
-    /// `SCHEMA`. With no `audience`, the place `npc` stands in hears it.
+    /// Append a GM's speech, spoken as `npc_id` when it is set. An `npc_id` that is not an NPC is
+    /// `SCHEMA`. With no `audience`, the place `npc_id` stands in hears it.
     pub fn say_as_gm(
         &self,
         presence: &Presence,
-        npc: Option<&ActorId>,
+        npc_id: Option<&ActorId>,
         audience: Option<&Audience>,
         text: &str,
     ) -> Result<TapeRecord, Reason> {
-        let from = match npc {
+        let from = match npc_id {
             None => Speaker::Gm,
             Some(id)
                 if self.state.actors().get::<component::ControlType>(id).get()
@@ -146,7 +146,7 @@ impl World {
             }
             Some(_) => return Err(Reason::Schema),
         };
-        self.append_speech(presence, from, npc, audience, text)
+        self.append_speech(presence, from, npc_id, audience, text)
     }
 
     /// Append one line of speech to the tape. Speech to an actor or a place must name one in
@@ -410,9 +410,9 @@ impl<L> World<L> {
     pub fn perceive(
         &self,
         presence: &Presence,
-        as_arg: &str,
+        viewer_id: &str,
     ) -> Result<crate::rules::perceive::View, Reason> {
-        crate::rules::perceive::perceive_budget(self, presence, as_arg, PERCEIVE_BODY_CHARS)
+        crate::rules::perceive::perceive_budget(self, presence, viewer_id, PERCEIVE_BODY_CHARS)
     }
 
     /// The `help` commands for `actor_id`: what they can do now, and what they can name.
@@ -432,10 +432,10 @@ impl<L> World<L> {
     pub fn perceive_trimmed(
         &self,
         presence: &Presence,
-        as_arg: &str,
+        viewer_id: &str,
         max_body_chars: usize,
     ) -> Result<crate::rules::perceive::View, Reason> {
-        crate::rules::perceive::perceive_budget(self, presence, as_arg, max_body_chars)
+        crate::rules::perceive::perceive_budget(self, presence, viewer_id, max_body_chars)
     }
 
     fn read_digest(&self) -> Result<String, Reason> {

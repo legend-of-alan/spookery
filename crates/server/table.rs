@@ -276,7 +276,7 @@ impl Table {
         let presence = self.seats.presence();
         let body = match command.as_str() {
             "release" if read::<NoArgs>(&args).is_some() => return self.release_claim(conn, id),
-            "say" => match read::<SayArgs>(&args).filter(|args| args.npc.is_none()) {
+            "say" => match read::<SayArgs>(&args).filter(|args| args.npc_id.is_none()) {
                 Some(SayArgs {
                     to: Some(to), text, ..
                 }) => return self.say_as_player(conn, id, &actor_id, &to, &text),

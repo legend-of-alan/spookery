@@ -23,7 +23,7 @@ pub struct PerceiveArgs {
     // field reads as `None` without `default`, and the schema says it is required.
     #[cfg_attr(feature = "schema", schemars(required))]
     #[serde(rename = "as", skip_serializing_if = "Option::is_none")]
-    pub as_viewer: Option<String>,
+    pub viewer_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_body_chars: Option<u64>,
 }
@@ -62,7 +62,7 @@ pub struct SayArgs {
     pub to: Option<Audience>,
     pub text: String,
     #[serde(rename = "as", default, skip_serializing_if = "Option::is_none")]
-    pub npc: Option<String>,
+    pub npc_id: Option<String>,
 }
 
 /// The GM's `queue` command arguments, sent from a GM client to the table.

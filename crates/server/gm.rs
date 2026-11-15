@@ -101,8 +101,8 @@ fn say(
     arguments: Option<&Map<String, Value>>,
 ) -> Result<Reply, Reason> {
     let args: SayArgs = parse_args(arguments).map_err(|_| Reason::Schema)?;
-    let npc = args.npc.as_deref().map(ActorId::from);
-    let speech = world.say_as_gm(presence, npc.as_ref(), args.to.as_ref(), &args.text)?;
+    let npc_id = args.npc_id.as_deref().map(ActorId::from);
+    let speech = world.say_as_gm(presence, npc_id.as_ref(), args.to.as_ref(), &args.text)?;
     let mut reply = Reply::new(frames::render_speech(&speech, true));
     reply.speech = Some(speech);
     Ok(reply)
@@ -163,12 +163,12 @@ fn perceive(
     arguments: Option<&Map<String, Value>>,
 ) -> Result<Reply, Reason> {
     let args: PerceiveArgs = parse_args(arguments).map_err(|_| Reason::Schema)?;
-    let as_arg = args.as_viewer.ok_or(Reason::UnscopedPerceive)?;
+    let viewer_id = args.viewer_id.ok_or(Reason::UnscopedPerceive)?;
     let budget = args
         .max_body_chars
         .map_or(Ok(PERCEIVE_BODY_CHARS), usize::try_from)
         .map_err(|_| Reason::Schema)?;
-    let view = world.perceive_trimmed(presence, &as_arg, budget)?;
+    let view = world.perceive_trimmed(presence, &viewer_id, budget)?;
     Ok(Reply::new(frames::render_view(&view)))
 }
 
