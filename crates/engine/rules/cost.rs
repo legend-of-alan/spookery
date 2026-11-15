@@ -75,7 +75,7 @@ pub(crate) fn pay(
             state.count_key(&change::Key::new(
                 Meter::NAME,
                 entity::IdRef::Actor(actor_id),
-                key,
+                Some(key),
             ))?;
         }
     }

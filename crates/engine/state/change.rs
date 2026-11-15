@@ -7,48 +7,53 @@ use crate::state::entity;
 use crate::Reason;
 
 /// One budget identity: the component a commit changed, the entity that holds it, and the
-/// entry under that component, which is empty when the entity holds one value of it. The
+/// name of the entry under that component, `None` when the entity holds one value of it. The
 /// commit diff summary is this type's `Display`, sorted as text. It is not a path inside
 /// `save.yaml`.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Key {
     /// The component's `NAME` or, for an actor's action state, the part of it that moved.
-    pub component: &'static str,
-    pub entity: entity::Id,
-    pub entry: String,
+    pub component_name: &'static str,
+    pub entity_id: entity::Id,
+    /// The name the entity holds the value under, such as meter `grit` or item `rope`.
+    pub entry_name: Option<String>,
 }
 
 /// `<collection>_<component> <id> [<entry>]`, such as `actor_meter rowan grit` or
 /// `world_flag bells_rung`: the world has no id to spell.
 impl fmt::Display for Key {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let component = self.component;
-        match &self.entity {
+        let component = self.component_name;
+        match &self.entity_id {
             entity::Id::Actor(id) => write!(f, "actor_{component} {id}")?,
             entity::Id::Place(id) => write!(f, "place_{component} {id}")?,
             entity::Id::Story(id) => write!(f, "story_{component} {id}")?,
             entity::Id::Global => write!(f, "world_{component}")?,
         }
-        match self.entry.as_str() {
-            "" => Ok(()),
-            entry => write!(f, " {entry}"),
+        match &self.entry_name {
+            Some(entry_name) => write!(f, " {entry_name}"),
+            None => Ok(()),
         }
     }
 }
 
 impl Key {
-    /// The key of `component`'s `entry` on `id`: `""` when `id` holds one value of it.
-    pub(crate) fn new(component: &'static str, id: entity::IdRef<'_>, entry: &str) -> Key {
-        let entity = match id {
+    /// The key of `component_name`'s `entry_name` on `id`: `None` when `id` holds one value of it.
+    pub(crate) fn new(
+        component_name: &'static str,
+        id: entity::IdRef<'_>,
+        entry_name: Option<&str>,
+    ) -> Key {
+        let entity_id = match id {
             entity::IdRef::Actor(id) => entity::Id::Actor(id.clone()),
             entity::IdRef::Place(id) => entity::Id::Place(id.clone()),
             entity::IdRef::Story(id) => entity::Id::Story(id.clone()),
             entity::IdRef::Global => entity::Id::Global,
         };
         Key {
-            component,
-            entity,
-            entry: entry.to_string(),
+            component_name,
+            entity_id,
+            entry_name: entry_name.map(str::to_string),
         }
     }
 }

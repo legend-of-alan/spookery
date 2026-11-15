@@ -257,7 +257,7 @@ fn every_moved_meter_is_reported(
             continue;
         }
         let moved = Change {
-            key: change::Key::new(Meter::NAME, entity::IdRef::Actor(actor), key),
+            key: change::Key::new(Meter::NAME, entity::IdRef::Actor(actor), Some(key)),
             before,
             after,
         };

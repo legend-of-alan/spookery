@@ -193,7 +193,10 @@ impl State {
         sum: Option<Result<i64, Reason>>,
     ) -> Change {
         let (canon, save) = (&*self.canon, &self.save);
-        let (id, name) = (&key.entity, &key.entry);
+        let (id, name) = (
+            &key.entity_id,
+            key.entry_name.as_deref().unwrap_or_default(),
+        );
         let def = canon.meter_def(id.as_ref(), name);
         let now = entity::in_collection!(id, [&save], |entities, id| {
             Reader::new(entities, canon).get::<Meter>(id).get(name)

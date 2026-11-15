@@ -96,29 +96,30 @@ pub(crate) fn show_to(
 /// meaning: a modifier's and busy's values are the journal's.
 fn to_change_view(canon: &Canon, change: &Change) -> Option<ChangeView> {
     let key = &change.key;
-    if [Modifier::NAME, Act::BUSY].contains(&key.component) {
+    if [Modifier::NAME, Act::BUSY].contains(&key.component_name) {
         return None;
     }
-    let entity_name = match &key.entity {
+    let entity_name = match &key.entity_id {
         entity::Id::Actor(id) => canon.display_name(id.as_str()),
         entity::Id::Place(id) => crate::rules::lines::place_name(canon, id.as_str()),
         entity::Id::Story(id) => id.to_string(),
         entity::Id::Global => String::new(),
     };
-    let name = match (key.component, &change.after) {
+    let entry_name = key.entry_name.clone().unwrap_or_default();
+    let name = match (key.component_name, &change.after) {
         (Place::NAME, change::Value::Text(place)) => crate::rules::lines::place_name(canon, place),
-        _ => canon.display_name(&key.entry),
+        _ => canon.display_name(&entry_name),
     };
     Some(ChangeView {
-        component: key.component.to_string(),
-        entity: key.entity.to_string(),
+        component: key.component_name.to_string(),
+        entity: key.entity_id.to_string(),
         entity_name,
-        key: key.entry.clone(),
-        name: if name == key.entry {
+        name: if name == entry_name {
             String::new()
         } else {
             name
         },
+        key: entry_name,
         before: to_change_value(&change.before),
         after: to_change_value(&change.after),
     })
@@ -170,16 +171,18 @@ fn can_see(canon: &Canon, state: &State, viewer: &ActorId, change: &Change) -> b
     if !state.actors().contains(viewer) {
         return false;
     }
-    let (key, entry) = (&change.key, change.key.entry.as_str());
-    match (key.component, &key.entity) {
+    let key = &change.key;
+    let entry = key.entry_name.as_deref().unwrap_or_default();
+    match (key.component_name, &key.entity_id) {
         (Meter::NAME, entity::Id::Global | entity::Id::Story(_)) => {
-            is_shown(canon, &key.entity, entry)
+            is_shown(canon, &key.entity_id, entry)
         }
         (Meter::NAME, entity::Id::Place(place)) => {
-            place_of(state, viewer) == Some(place.as_str()) && is_shown(canon, &key.entity, entry)
+            place_of(state, viewer) == Some(place.as_str())
+                && is_shown(canon, &key.entity_id, entry)
         }
         (Meter::NAME, entity::Id::Actor(actor)) => {
-            viewer == actor && is_shown(canon, &key.entity, entry)
+            viewer == actor && is_shown(canon, &key.entity_id, entry)
         }
         (KnownFacts::NAME, entity::Id::Actor(actor)) => viewer == actor,
         (Modifier::NAME, entity::Id::Actor(actor)) => {

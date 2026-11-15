@@ -93,7 +93,7 @@ impl<E: entity::Has<Meter, Store = entity::MapStore<E, Meter>>> Mut<'_, E, Meter
         let entry = (self.id.clone(), name.to_string());
         let held = self.store().get(&entry);
         let next = shift(held, def, delta)?;
-        let report = change::Report::Meter(self.key(name), held.cloned());
+        let report = change::Report::Meter(self.key(Some(name)), held.cloned());
         let (store, transaction) = self.store_mut();
         store.set(transaction, entry, Some(next), [report])
     }
@@ -107,7 +107,7 @@ impl<E: entity::Has<Meter, Store = entity::MapStore<E, Meter>>> Mut<'_, E, Meter
         }
         let entry = (self.id.clone(), name.to_string());
         let held = self.store().get(&entry).cloned();
-        let report = change::Report::Meter(self.key(name), held);
+        let report = change::Report::Meter(self.key(Some(name)), held);
         let (store, transaction) = self.store_mut();
         store.set(transaction, entry, meter, [report])
     }

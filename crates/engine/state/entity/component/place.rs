@@ -24,7 +24,7 @@ impl Mut<'_, entity::Actors, Place> {
     /// Stand the actor at `to`: a place id, or an exit address while they walk.
     pub fn set(&mut self, to: &str) -> Result<(), Reason> {
         self.check_exists()?;
-        let key = self.key("");
+        let key = self.key(None);
         let before = text_value(self.store().get(self.id));
         let change = Change::new(key, before, text_value(Some(to)));
         let (id, (place, transaction)) = (self.id, self.store_mut());

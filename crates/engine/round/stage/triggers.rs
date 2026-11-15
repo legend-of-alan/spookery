@@ -86,7 +86,7 @@ fn match_rules<'a>(state: &State, rules: &[&'a Rule], changes: &[Change]) -> Vec
             if !matches_watch(state, rule, watch, change) {
                 continue;
             }
-            let subject = match &change.key.entity {
+            let subject = match &change.key.entity_id {
                 entity::Id::Actor(actor) => Some(actor.clone()),
                 _ => None,
             };
@@ -131,7 +131,7 @@ fn fire(
 
 fn matches_watch(state: &State, rule: &Rule, watch: &ChangeWatch, change: &Change) -> bool {
     let changed = &change.key;
-    match (watch, changed.component, &changed.entity) {
+    match (watch, changed.component_name, &changed.entity_id) {
         (ChangeWatch::Arrive { place, subject }, Place::NAME, entity::Id::Actor(actor)) => {
             let place = rule.watched_place(place);
             change.before.as_text() != Some(place)
@@ -144,17 +144,21 @@ fn matches_watch(state: &State, rule: &Rule, watch: &ChangeWatch, change: &Chang
                 && change.after.as_text() != Some(place)
                 && matches_subject(state, subject, actor)
         }
-        (ChangeWatch::Meter { key, op, bound }, Meter::NAME, _) if changed.entry == *key => {
+        (ChangeWatch::Meter { key, op, bound }, Meter::NAME, _)
+            if changed.entry_name.as_ref() == Some(key) =>
+        {
             crosses(&change.before, &change.after, *op, *bound)
         }
-        (ChangeWatch::Flag { key, becomes }, Flag::NAME, _) if changed.entry == *key => {
+        (ChangeWatch::Flag { key, becomes }, Flag::NAME, _)
+            if changed.entry_name.as_ref() == Some(key) =>
+        {
             flips(change, *becomes)
         }
         (ChangeWatch::Flag { key, becomes }, OpenExit::NAME, _) if key == OPEN => {
             flips(change, *becomes)
         }
         (ChangeWatch::Item { id, gained }, Item::NAME, entity::Id::Actor(_))
-            if changed.entry == *id =>
+            if changed.entry_name.as_ref() == Some(id) =>
         {
             match (change.before.as_number(), change.after.as_number()) {
                 (Some(before), Some(after)) if *gained => after > before,

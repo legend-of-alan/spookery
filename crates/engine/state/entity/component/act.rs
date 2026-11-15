@@ -68,7 +68,7 @@ impl Mut<'_, entity::Actors, Act> {
         let before = held.map_or(change::Value::Empty, &read);
         let mut next = held.cloned().unwrap_or_default();
         edit(&mut next);
-        let key = change::Key::new(name, self.id.as_id_ref(), "");
+        let key = change::Key::new(name, self.id.as_id_ref(), None);
         let change = Change::new(key, before, read(&next));
         let (id, (acts, transaction)) = (self.id, self.store_mut());
         acts.set(transaction, id, next, [change.into()])

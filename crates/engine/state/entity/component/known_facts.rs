@@ -32,7 +32,7 @@ impl Mut<'_, entity::Actors, KnownFacts> {
         if next == held {
             return Ok(());
         }
-        let key = self.key("");
+        let key = self.key(None);
         let before = change::Value::List(held.into_iter().collect());
         let after = change::Value::List(next.iter().cloned().collect());
         let reports = [Change::new(key, before, after).into()];

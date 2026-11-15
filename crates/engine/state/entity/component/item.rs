@@ -22,7 +22,7 @@ impl<E: entity::Has<Item, Store = entity::MapStore<E, Item>>> Mut<'_, E, Item> {
         let current = self.store().get(&entry).copied().unwrap_or(0);
         let next = shift_count(current, delta, max)?;
         let count = |count: u32| change::Value::Number(count.into());
-        let change = Change::new(self.key(name), count(current), count(next));
+        let change = Change::new(self.key(Some(name)), count(current), count(next));
         let (store, transaction) = self.store_mut();
         store.set(
             transaction,

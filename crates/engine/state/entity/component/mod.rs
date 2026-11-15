@@ -115,9 +115,9 @@ impl<'a, E: entity::Entities, C: Component> Mut<'a, E, C> {
         }
     }
 
-    /// The key a write of the entity's `entry` reports: `""` when it holds one value of `C`.
-    fn key(&self, entry: &str) -> change::Key {
-        change::Key::new(C::NAME, self.id.as_id_ref(), entry)
+    /// The key a write of the entity's `entry_name` reports: `None` when it holds one value of `C`.
+    fn key(&self, entry_name: Option<&str>) -> change::Key {
+        change::Key::new(C::NAME, self.id.as_id_ref(), entry_name)
     }
 
     /// `UNKNOWN_ID` unless the entity exists: a value goes only on one that does.
@@ -149,7 +149,7 @@ where
     pub fn set(&mut self, name: &str, on: bool) -> Result<(), Reason> {
         self.check_exists()?;
         let (before, after) = (change::Value::Bool(!on), change::Value::Bool(on));
-        let change = Change::new(self.key(name), before, after);
+        let change = Change::new(self.key(Some(name)), before, after);
         let entry = (self.id.clone(), name.to_string());
         let (store, transaction) = self.store_mut();
         store.set(transaction, entry, on.then_some(()), [change.into()])

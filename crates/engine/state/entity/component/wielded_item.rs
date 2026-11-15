@@ -24,7 +24,7 @@ impl Mut<'_, entity::Actors, WieldedItem> {
     /// Wield `item`, which the actor must hold, or with `None` let go of what they wield.
     pub fn set(&mut self, item: Option<&str>) -> Result<(), Reason> {
         self.check_exists()?;
-        let key = self.key("");
+        let key = self.key(None);
         let before = text_value(self.store().get(self.id));
         let reports = [Change::new(key, before, text_value(item)).into()];
         let items = Reader::new(&*self.writer.components, self.writer.canon).get::<Item>(self.id);
