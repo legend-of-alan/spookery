@@ -8,7 +8,7 @@ license = "MIT"
 [lib]
 path = "lib.rs"
 [dependencies]
-reqwest = { version = "0.12", features = ["json"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls-native-roots"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 spookery-agent = { path = "../agent" }

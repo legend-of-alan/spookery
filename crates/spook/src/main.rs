@@ -7,9 +7,16 @@ use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
 
+/// `--version`: the release workflow sets `SPOOK_RELEASE` to the tag and commit, as
+/// `alpha-2026.11.14 (97960932)`. A local build shows the Cargo version.
+const VERSION: &str = match option_env!("SPOOK_RELEASE") {
+    Some(release) => release,
+    None => env!("CARGO_PKG_VERSION"),
+};
+
 /// One loopback table.
 #[derive(Parser)]
-#[command(name = "spook", version)]
+#[command(name = "spook", version = VERSION)]
 struct Cli {
     /// Loopback address. `127.0.0.1` means port 9737. On `run`, port 0 lets the OS choose.
     #[arg(long, global = true, default_value = "127.0.0.1:9737")]
