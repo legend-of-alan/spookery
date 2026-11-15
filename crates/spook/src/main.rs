@@ -300,26 +300,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn every_command_refuses_an_open_address_before_the_pack_opens() {
-        for command in [
-            "run", "play", "gm", "ai-gm", "round", "status", "migrate", "check", "verify", "new",
-        ] {
-            for addr in ["0.0.0.0", "10.0.0.1:9737"] {
-                let cli = Cli::try_parse_from(["spook", command, "--addr", addr])
-                    .or_else(|_| {
-                        Cli::try_parse_from(["spook", command, "--addr", addr, "no-such-pack"])
-                    })
-                    .unwrap();
-                assert_eq!(
-                    dispatch(cli).await.unwrap_err(),
-                    "NOT_IN_SPEC",
-                    "{command} --addr {addr}"
-                );
-            }
-        }
-    }
-
-    #[tokio::test]
     async fn usage_is_not_an_engine_refusal() {
         assert!(Cli::try_parse_from(["spook", "rnu", "x"]).is_err());
         assert!(Cli::try_parse_from(["spook", "gm", "pack"]).is_err());

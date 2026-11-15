@@ -22,6 +22,7 @@ Feature: Only loopback binds
       | check   | 0.0.0.0       |
       | verify  | 10.0.0.1:9737 |
       | migrate | 10.0.0.1:9737 |
+      | new     | 0.0.0.0       |
 
   Scenario: Run help names the default loopback address
     When the operator asks the "run" command for help

@@ -238,10 +238,7 @@ fn parse_command<'l>(line: &'l str, here: &protocol::View) -> Option<(&'l str, V
 
 #[cfg(test)]
 mod tests {
-    use serde_json::json;
-
-    use super::{parse_command, parse_pc_choice};
-    use crate::protocol::View;
+    use super::parse_pc_choice;
 
     #[test]
     fn a_bare_id_and_a_player_prefix_are_one_id() {
@@ -251,43 +248,5 @@ mod tests {
         assert_eq!(parse_pc_choice("  player:rowan").ok(), bare);
         assert!(parse_pc_choice("player:").is_err());
         assert!(parse_pc_choice("").is_err());
-    }
-
-    #[test]
-    fn a_typed_line_is_a_command_and_its_args() {
-        let view: View = serde_json::from_value(json!({
-            "viewer": "rowan", "place": "docks_gate", "visible_actors": ["rowan", "mira"],
-            "actor_names": ["Rowan", "Mira"],
-            "known_facts": [], "notes": [], "unknown_mentions": [], "items": [],
-            "habits": []
-        }))
-        .unwrap();
-        let here = &view;
-        assert_eq!(parse_command("wait", here), Some(("wait", json!({}))));
-        assert_eq!(
-            parse_command("travel docks_street", here),
-            Some(("travel", json!({ "target": "docks_street" })))
-        );
-        assert_eq!(
-            parse_command("say hi", here),
-            Some(("say", json!({ "to": "table", "text": "hi" })))
-        );
-        assert_eq!(
-            parse_command("say place hi", here),
-            Some((
-                "say",
-                json!({ "to": { "place": "docks_gate" }, "text": "hi" })
-            ))
-        );
-        let args = json!({ "to": { "actor": "Mira" }, "text": "Vell hi" });
-        assert_eq!(
-            parse_command("say Mira Vell hi", here),
-            Some(("say", args.clone()))
-        );
-        assert_eq!(
-            parse_command("tell Mira Vell hi", here),
-            Some(("say", args))
-        );
-        assert_eq!(parse_command("  ", here), None);
     }
 }

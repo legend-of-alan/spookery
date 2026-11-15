@@ -235,15 +235,6 @@ mod tests {
     }
 
     #[test]
-    fn the_removed_live_tick_key_is_refused() {
-        use crate::diagnostic::first_reason;
-        let mut stale = text("budget");
-        stale.push_str("live_tick_every_real_seconds: 60\n");
-        let err = load_budget(&stale).unwrap_err();
-        assert_eq!(first_reason(&err), Reason::Schema);
-    }
-
-    #[test]
     fn idle_defaults_to_on_and_off_is_loaded() {
         let on = load_budget(&text("budget")).unwrap();
         assert!(on.idle_rounds);

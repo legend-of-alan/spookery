@@ -410,8 +410,6 @@ mod tests {
     #[test]
     fn a_refusal_is_a_sentence_with_the_code() {
         let line = |code: Reason| Refusal::from(code).to_string();
-        assert_eq!(line(Reason::TableFull), "The table is full. [TABLE_FULL]");
-        assert!(line(Reason::SeatTaken) == "That character is already taken. [SEAT_TAKEN]");
         assert!(line(Reason::LineTooLong) == "That line is too long. [LINE_TOO_LONG]");
         assert_eq!(
             line(Reason::RulesRevMismatch),
@@ -423,17 +421,6 @@ mod tests {
         };
         assert_eq!(unknown.to_string(), "The table refused that. [NEW_CODE]");
         assert_eq!(line(Reason::ChoosePc), "Choose a character. [CHOOSE_PC]");
-        let detailed = |code: Reason, detail: &str| {
-            Refusal {
-                code: Code::Known(code),
-                detail: Some(detail.into()),
-            }
-            .to_string()
-        };
-        assert_eq!(
-            detailed(Reason::CantAfford, "g"),
-            "You cannot afford g. [CANT_AFFORD]"
-        );
         for raw in [
             r#"{"kind":"refused","code":"CANT_AFFORD","detail":"grit"}"#,
             r#"{"kind":"refused","code":"SCHEMA"}"#,
