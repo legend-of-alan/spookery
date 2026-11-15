@@ -225,7 +225,7 @@ fn again_is_refused(world: &mut World, line: String, code: String) {
 
 #[given(expr = "docks_shop has 3 lamp_oil")]
 fn docks_shop_has_3_lamp_oil(world: &mut World) {
-    let pack = support::copy_pack("oneshot-docks", "take");
+    let pack = support::copy_pack("docks", "take");
     support::edit_save(&pack, |now| {
         let shop = entity::Id::Place("docks_shop".into());
         support::put_items(now, &shop, "lamp_oil", 3);
@@ -346,7 +346,7 @@ fn the_line_is_refused_and_quiet(world: &mut World, code: String) {
 
 #[given(expr = "docks_shop has no lamp_oil")]
 fn the_shop_has_no_oil(world: &mut World) {
-    let pack = support::copy_pack("oneshot-docks", "take-none");
+    let pack = support::copy_pack("docks", "take-none");
     support::edit_save(&pack, |now| {
         let shop = entity::Id::Place("docks_shop".into());
         support::put_items(now, &shop, "lamp_oil", 0);
@@ -394,7 +394,7 @@ fn the_drop_was_missing(world: &mut World) {
 
 #[given(expr = "save.yaml lists an item with no definition")]
 fn the_save_lists_an_unknown_item(world: &mut World) {
-    let pack = support::copy_pack("oneshot-docks", "unknown-item");
+    let pack = support::copy_pack("docks", "unknown-item");
     support::edit_save(&pack, |now| give(now, "rowan", "ghost"));
     world.pack = Some(pack);
 }

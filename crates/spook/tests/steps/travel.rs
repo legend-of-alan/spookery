@@ -12,7 +12,7 @@ use super::common::{
     walk, write_play, EVENING,
 };
 use super::table;
-use crate::support::{self, copy_docks};
+use crate::support::{self, copy_pack};
 use crate::World;
 
 fn add_toll(pack: &Path) {
@@ -28,7 +28,7 @@ fn add_toll(pack: &Path) {
 
 #[given(expr = "docks_street has no exit to mira_rooms")]
 fn docks_street_has_no_exit_to_mira_rooms(world: &mut World) {
-    let pack = copy_docks("no-exit");
+    let pack = copy_pack("docks", "no-exit");
     edit_save(&pack, |now| {
         now.actors_mut()
             .get_mut::<component::Place>(&"rowan".into())
@@ -65,7 +65,7 @@ fn refused_no_exit_and_stays(world: &mut World) {
 
 #[given(expr = "the stairs exit needs brass_key and rowan has none")]
 fn stairs_need_a_key(world: &mut World) {
-    let pack = copy_docks("locked");
+    let pack = copy_pack("docks", "locked");
     table::listen(world, &pack);
     table::seat_rowan(world, &pack);
     world.pack = Some(pack);
@@ -104,7 +104,7 @@ fn rowan_sees_locked_and_nothing_changes(world: &mut World, text: String) {
 
 #[when(expr = "rowan travels via stairs holding brass_key")]
 fn rowan_travels_holding_the_key(world: &mut World) {
-    let pack = copy_docks("stairs-key");
+    let pack = copy_pack("docks", "stairs-key");
     add_trapdoor(&pack);
     edit_save(&pack, give_key);
     table::listen(world, &pack);
@@ -128,7 +128,7 @@ fn rowan_arrives_and_the_cost_is_stamped(world: &mut World) {
 
 #[given(expr = "a place rule with location to cellar, teleport true")]
 fn a_place_rule_teleports(world: &mut World) {
-    let pack = copy_docks("teleport");
+    let pack = copy_pack("docks", "teleport");
     add_trapdoor(&pack);
     let path = pack.join("world/places/docks_shop.md");
     let text = fs::read_to_string(&path).unwrap();
@@ -168,7 +168,7 @@ fn rowans_line_shows(world: &mut World, text: String) {
 
 #[given(expr = "rowan arrives at tick 1300 and nell at tick 1295")]
 fn two_arrivals(world: &mut World) {
-    let pack = copy_docks("two-arrivals");
+    let pack = copy_pack("docks", "two-arrivals");
     fs::write(
         pack.join("cast/pc-nell.md"),
         "---\nschema: cast\nid: nell\ncontrol_type: pc_template\ndisplay_name: Nell\nidle:\n  eligible: false\n---\nNell.\n",
@@ -227,7 +227,7 @@ fn arrivals_are_in_time_order(world: &mut World) {
 
 #[given(expr = "rounds are 5 ticks while seated and the stairs exit costs 2 ticks")]
 fn seated_rounds_are_five_ticks(world: &mut World) {
-    let pack = copy_docks("exact-tick");
+    let pack = copy_pack("docks", "exact-tick");
     edit_save(&pack, |now| {
         give_key(now);
         now.world_time = EVENING;
@@ -275,7 +275,7 @@ fn the_next_round_accepts_a_move(world: &mut World) {
     expr = "every round line shows world_time_after minus world_time_before equal to 5 seated or 60 unseated"
 )]
 fn rounds_never_shorten(_world: &mut World) {
-    let seated = copy_docks("seated-length");
+    let seated = copy_pack("docks", "seated-length");
     let mut seated_world = spookery_engine::testing::resume(&seated);
     let one_human = spookery_engine::Presence {
         players: 1,
@@ -284,7 +284,7 @@ fn rounds_never_shorten(_world: &mut World) {
     let wall = seated_world.state().last_round_at.clone();
     seated_world.play(&one_human, &wall).unwrap();
     drop(seated_world);
-    let idle = copy_docks("idle-length");
+    let idle = copy_pack("docks", "idle-length");
     spookery_engine::play_pack_once(&idle).unwrap();
     let seated_round = crate::support::read_round(&seated, "round-0001");
     let idle_round = crate::support::read_round(&idle, "round-0001");
@@ -302,7 +302,7 @@ fn rounds_never_shorten(_world: &mut World) {
 
 #[given(expr = "rowan and nell are seated and both busy, with no GM")]
 fn both_busy_without_a_gm(world: &mut World) {
-    let pack = copy_docks("fast-forward");
+    let pack = copy_pack("docks", "fast-forward");
     add_toll(&pack);
     edit_save(&pack, |now| {
         now.world_time = EVENING;
@@ -372,7 +372,7 @@ fn nothing_advances_until_commit(world: &mut World) {
 
 #[given(expr = "busy_until is 200 rounds away and max_fastforward_rounds is 12")]
 fn a_long_journey_and_the_cap(world: &mut World) {
-    let pack = copy_docks("cap");
+    let pack = copy_pack("docks", "cap");
     edit_save(&pack, |now| {
         now.world_time = EVENING;
         set_busy(now, "rowan", EVENING + 200 * 5, "docks_shop.stairs");
@@ -404,7 +404,7 @@ fn twelve_rounds_then_more(world: &mut World) {
 
 #[then(expr = "spook verify passes over a fast-forwarded journey")]
 fn verify_passes(world: &mut World) {
-    let pack = copy_docks("verify-journey");
+    let pack = copy_pack("docks", "verify-journey");
     edit_save(&pack, |now| {
         now.world_time = EVENING;
         set_busy(now, "rowan", EVENING + 10, "docks_shop.stairs");
@@ -423,7 +423,7 @@ fn verify_passes(world: &mut World) {
 
 #[given(expr = "rowan visited the shop and mira_rooms in an earlier sitting")]
 fn rowan_visited_both_rooms(world: &mut World) {
-    let pack = copy_docks("map");
+    let pack = copy_pack("docks", "map");
     add_trapdoor(&pack);
     edit_save(&pack, |now| {
         // No writer forgets a visit, so Rowan's visits are replaced in the save as the file

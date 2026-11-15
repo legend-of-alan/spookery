@@ -20,7 +20,7 @@ use crate::intent::{Intent, IntentArgs, Source, Target, Viewer};
 use crate::rules::effect::{Effect, EffectKind};
 use crate::state::id::{ActorId, PlaceId};
 use crate::state::{component, State};
-use crate::testing::copy_docks;
+use crate::testing::copy_pack;
 use crate::world::World;
 
 use super::support::{runner_config, TempPack};
@@ -38,7 +38,7 @@ struct ItemChange {
 
 #[test]
 fn random_item_changes_never_leave_a_negative_count() {
-    let pack = TempPack(copy_docks("inventory"));
+    let pack = TempPack(copy_pack("docks", "inventory"));
     let world = World::open(&pack.0).expect("docks pack opens");
     let actors: Vec<ActorId> = world
         .state()

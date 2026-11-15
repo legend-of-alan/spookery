@@ -173,8 +173,7 @@ mod tests {
 
     #[test]
     fn the_same_key_rolls_the_same_faces() {
-        let pack =
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packs/oneshot-docks");
+        let pack = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/packs/docks");
         let docks = crate::World::open(&pack).expect("open");
         let (state, mira) = (docks.state(), ActorId::from("mira"));
         let check = check_of(2);

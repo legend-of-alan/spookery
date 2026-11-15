@@ -4,14 +4,14 @@ use std::path::Path;
 use cucumber::{given, then, when};
 use spookery_engine::Reason;
 
-use crate::support::{copy_docks, insert_nell, read_round, stamp_pack_rev};
+use crate::support::{copy_pack, insert_nell, read_round, stamp_pack_rev};
 use crate::World;
 
 use super::table;
 
 #[given(expr = "a docks table where mark needs a knife")]
 fn mark_needs_a_knife(world: &mut World) {
-    let pack = copy_docks("item");
+    let pack = copy_pack("docks", "item");
     add_knife_and_mark_rule(&pack);
     insert_nell(&pack);
     stamp_pack_rev(&pack);

@@ -96,7 +96,7 @@ fn rowan() -> Presence {
 }
 
 fn evening_note() {
-    let pack = support::copy_docks("evening");
+    let pack = support::copy_pack("docks", "evening");
     play_pack_once(&pack).unwrap_or_else(|err| panic!("round: {err}"));
     let state = state_of(&pack);
     assert_eq!(lamp_oil(&state), 4);
@@ -108,7 +108,7 @@ fn evening_note() {
 }
 
 fn morning_restock() {
-    let pack = support::copy_docks("morning");
+    let pack = support::copy_pack("docks", "morning");
     {
         let opened = resume(&pack);
         let mut state = opened.state().clone();
@@ -132,7 +132,7 @@ fn morning_restock() {
 }
 
 fn capped_restock() -> u32 {
-    let pack = support::copy_docks("capped");
+    let pack = support::copy_pack("docks", "capped");
     {
         let opened = resume(&pack);
         let mut state = opened.state().clone();
@@ -159,7 +159,7 @@ fn capped_restock() -> u32 {
 }
 
 fn off_hours_hold() {
-    let pack = support::copy_docks("off-hours");
+    let pack = support::copy_pack("docks", "off-hours");
     {
         let opened = resume(&pack);
         let mut state = opened.state().clone();
@@ -175,7 +175,7 @@ fn off_hours_hold() {
 }
 
 fn player_in_the_shop() {
-    let pack = support::copy_docks("present");
+    let pack = support::copy_pack("docks", "present");
     {
         let opened = resume(&pack);
         let mut state = opened.state().clone();
@@ -220,7 +220,7 @@ fn queue_gm_intent(opened: &mut spookery_engine::World, id: &str, actor: &str, m
 }
 
 fn gm_restocks() {
-    let pack = support::copy_docks("gm-restock");
+    let pack = support::copy_pack("docks", "gm-restock");
     {
         let opened = resume(&pack);
         let mut state = opened.state().clone();
@@ -244,7 +244,7 @@ fn gm_restocks() {
 }
 
 fn claimed_note_sorts_first() {
-    let pack = support::copy_docks("claimed");
+    let pack = support::copy_pack("docks", "claimed");
     {
         let opened = resume(&pack);
         let mut state = opened.state().clone();
@@ -291,7 +291,7 @@ fn catch_up_for(hours: u64, rounds: u64) {
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let pack = support::fresh_dir("catch_up");
     let _ = fs::remove_dir_all(&pack);
-    let rules = manifest.join("../../packs/oneshot-docks/rules");
+    let rules = manifest.join("../../tests/packs/docks/rules");
     write_text(
         &pack.join("pack.yaml"),
         "\
@@ -364,7 +364,7 @@ Rowan.
 }
 
 fn a_busy_npc_skips() {
-    let pack = support::copy_docks("busy");
+    let pack = support::copy_pack("docks", "busy");
     {
         let opened = resume(&pack);
         let mut state = opened.state().clone();
@@ -395,7 +395,7 @@ fn budget_caps() {
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let pack = support::fresh_dir("budget");
     let _ = fs::remove_dir_all(&pack);
-    let rules = manifest.join("../../packs/oneshot-docks/rules");
+    let rules = manifest.join("../../tests/packs/docks/rules");
     write_text(
         &pack.join("pack.yaml"),
         "\
@@ -487,7 +487,7 @@ rules:
 }
 
 fn a_zero_budget_strips_fact_bodies() {
-    let pack = support::copy_docks("scope");
+    let pack = support::copy_pack("docks", "scope");
     let before = snapshot(&pack);
     let opened = spookery_engine::World::open(&pack).unwrap();
     let call = |viewer_id: &str, budget: usize| {
@@ -546,7 +546,7 @@ fn collect_markdown_files(dir: &Path, out: &mut Vec<PathBuf>) {
 }
 
 fn strip_bodies() {
-    let pack = support::copy_docks("strip");
+    let pack = support::copy_pack("docks", "strip");
     let mut files = Vec::new();
     collect_markdown_files(&pack.join("cast"), &mut files);
     collect_markdown_files(&pack.join("world"), &mut files);
@@ -615,7 +615,7 @@ fn play_mark(pack: &Path) -> State {
 
 fn effects_run_on_both_outcomes_and_lists_run_on_one() {
     for (label, difficulty, success) in [("effects-pass", 0, true), ("effects-fail", 14, false)] {
-        let pack = support::copy_docks(label);
+        let pack = support::copy_pack("docks", label);
         let mut moves = fs::read_to_string(pack.join("rules/verbs.yaml")).unwrap();
         moves.push_str(&format!(
             "\n  - id: mark\n    when:\n      verb: mark\n      target: actor\n    roll:\n      check: grit\n      threshold: {difficulty}\n    do:\n      - flag:\n          of: target\n          key: marked\n          value: true\n",
@@ -645,7 +645,7 @@ fn effects_run_on_both_outcomes_and_lists_run_on_one() {
     }
 
     for (label, difficulty, flag) in [("lists-pass", 0, "marked"), ("lists-fail", 14, "missed")] {
-        let pack = support::copy_docks(label);
+        let pack = support::copy_pack("docks", label);
         let mut moves = fs::read_to_string(pack.join("rules/verbs.yaml")).unwrap();
         moves.push_str(&format!(
             "\n  - id: mark\n    when:\n      verb: mark\n      target: actor\n    roll:\n      check: grit\n      threshold: {difficulty}\n    success:\n      - flag:\n          of: target\n          key: marked\n          value: true\n    miss:\n      - flag:\n          of: target\n          key: missed\n          value: true\n",
@@ -673,7 +673,7 @@ fn roll_with_stat(reports: &[MoveReport], stat: i64) -> spookery_protocol::Roll 
 fn opposing_total_reused() {
     for opposed in [false, true] {
         let label = if opposed { "opposed" } else { "open-check" };
-        let pack = support::copy_docks(label);
+        let pack = support::copy_pack("docks", label);
         let mut moves = fs::read_to_string(pack.join("rules/verbs.yaml")).unwrap();
         moves.push_str(
             "\n  - id: mark\n    when:\n      verb: mark\n      target: actor\n    roll:\n      check: grit\n      threshold: 0\n    success:\n      - flag:\n          of: target\n          key: marked\n          value: true\n    miss:\n      - flag:\n          of: target\n          key: missed\n          value: true\n  - id: defend\n    when:\n      verb: defend\n    roll:\n      check: grit\n      threshold: 0\n    success:\n      - flag:\n          of: self\n          key: guarded\n          value: true\n",
@@ -717,7 +717,7 @@ fn opposing_total_reused() {
 }
 
 fn a_held_knife_still_runs_the_opposed_row() {
-    let held = support::copy_docks("item-held");
+    let held = support::copy_pack("docks", "item-held");
     let mut moves = fs::read_to_string(held.join("rules/verbs.yaml")).unwrap();
     moves.push_str(
         "\n  - id: mark\n    when:\n      verb: mark\n      target: actor\n    if:\n      - has_item:\n          subject: self\n          id: knife\n    roll:\n      check: grit\n      threshold: 0\n    success:\n      - flag:\n          of: target\n          key: marked\n          value: true\n    miss:\n      - flag:\n          of: target\n          key: missed\n          value: true\n  - id: defend\n    when:\n      verb: defend\n    roll:\n      check: grit\n      threshold: 0\n    success:\n      - flag:\n          of: self\n          key: guarded\n          value: true\n",
@@ -772,7 +772,7 @@ fn rowans_debt(pack: &Path) -> i64 {
 #[given(expr = "rowan's {string} meter is {int}")]
 fn rowans_meter_is(world: &mut World, key: String, value: i64) {
     assert_eq!(key, "assassination_debt");
-    let pack = support::copy_docks("debt");
+    let pack = support::copy_pack("docks", "debt");
     assert_eq!(rowans_debt(&pack), value);
     world.pack = Some(pack);
 }
@@ -879,7 +879,7 @@ fn mira_is_busy(_world: &mut World) {
 
 #[given(expr = "a docks table")]
 fn a_docks_table(world: &mut World) {
-    let pack = support::copy_docks("crash");
+    let pack = support::copy_pack("docks", "crash");
     world.scratch = fs::read_to_string(pack.join("state/save.yaml")).unwrap();
     world.pack = Some(pack);
 }

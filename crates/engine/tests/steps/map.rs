@@ -55,7 +55,7 @@ fn shop_exits_on_miras_map(pack: &Path) -> Vec<String> {
 /// teaches whoever digs `fact_trapdoor`. Mira starts in the shop and keeps no habits.
 #[given(expr = "the shop has a hidden exit revealed by fact_trapdoor")]
 fn the_shop_has_a_trapdoor(world: &mut World) {
-    let pack = support::copy_pack("oneshot-docks", "map-last-seen");
+    let pack = support::copy_pack("docks", "map-last-seen");
     let path = pack.join("world/places/docks_shop.md");
     let text = fs::read_to_string(&path).unwrap();
     let next = text

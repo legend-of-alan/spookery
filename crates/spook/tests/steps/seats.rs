@@ -130,7 +130,7 @@ fn three_players_and_a_gm_sit(world: &mut World) {
 
 #[given(expr = "a docks table whose pack defines four PCs")]
 fn a_docks_table_whose_pack_defines_four_pcs(world: &mut World) {
-    let pack = crate::support::copy_docks("four-pcs");
+    let pack = crate::support::copy_pack("docks", "four-pcs");
     let cast = "\
 ---
 schema: cast
@@ -180,7 +180,7 @@ fn the_present_actors_are_the_three_docks_pcs(world: &mut World) {
 
 #[given(expr = "a one-player docks table")]
 fn a_one_player_docks_table(world: &mut World) {
-    let pack = crate::support::copy_docks("one-pc");
+    let pack = crate::support::copy_pack("docks", "one-pc");
     fs::remove_file(pack.join("cast/pc-harbormouse.md"))
         .unwrap_or_else(|err| panic!("remove harbormouse: {err}"));
     fs::remove_file(pack.join("cast/pc-wren.md"))
@@ -198,7 +198,7 @@ fn a_one_player_docks_table(world: &mut World) {
 
 #[given(expr = "a docks table with three seated players")]
 fn a_docks_table_with_three_seated_players(world: &mut World) {
-    let pack = crate::support::copy_docks("three-players");
+    let pack = crate::support::copy_pack("docks", "three-players");
     table::listen(world, &pack);
     seat_three(world, &pack);
     world.pack = Some(pack);
@@ -220,7 +220,7 @@ fn the_present_actors_are_harbormouse_and_wren(world: &mut World) {
 
 #[given(expr = "a docks table where one PC knows a hidden fact")]
 fn a_docks_table_where_one_pc_knows_a_hidden_fact(world: &mut World) {
-    let pack = crate::support::copy_docks("hidden-fact");
+    let pack = crate::support::copy_pack("docks", "hidden-fact");
     let path = pack.join("world/places/docks_shop.md");
     let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read shop: {err}"));
     let from = "    text: Oil is on the shelf.\n";
@@ -266,7 +266,7 @@ fn that_pc_says_the_hidden_fact(world: &mut World) {
 
 #[given(expr = "a docks table with a GM and two seated players")]
 fn a_docks_table_with_a_gm_and_two_seated_players(world: &mut World) {
-    let pack = crate::support::copy_docks("two-queue");
+    let pack = crate::support::copy_pack("docks", "two-queue");
     table::listen(world, &pack);
     table::seat_gm(world);
     table::seat_actor(world, &pack, "rowan");
@@ -276,7 +276,7 @@ fn a_docks_table_with_a_gm_and_two_seated_players(world: &mut World) {
 
 #[given(expr = "a docks table with two seated players")]
 fn a_docks_table_with_two_seated_players(world: &mut World) {
-    let pack = crate::support::copy_docks("two-live");
+    let pack = crate::support::copy_pack("docks", "two-live");
     table::listen(world, &pack);
     table::seat_actor(world, &pack, "rowan");
     table::seat_actor(world, &pack, "harbormouse");
@@ -349,7 +349,7 @@ fn each_wait_committed_its_own_round(world: &mut World) {
 
 #[given(expr = "a docks table with two PCs in the shop")]
 fn a_docks_table_with_two_pcs_in_the_shop(world: &mut World) {
-    let pack = crate::support::copy_docks("two-shop");
+    let pack = crate::support::copy_pack("docks", "two-shop");
     crate::support::edit_save(&pack, |now| {
         let mut actors = now.actors_mut();
         actors
@@ -444,7 +444,7 @@ const HUMMED_OIL: &str = "lamp_oil";
 
 #[given(expr = "a pack with a habit rule that requires players == 0")]
 fn a_pack_with_a_players_habit(world: &mut World) {
-    let pack = crate::support::copy_docks("players-habit");
+    let pack = crate::support::copy_pack("docks", "players-habit");
     let path = pack.join("cast/bram.md");
     let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read bram: {err}"));
     let habit = "\
@@ -535,7 +535,7 @@ const TABLE_LINE: &str = "the tide turns at the quay";
 
 #[given(expr = "a docks table with {string} seated and {string} not seated")]
 fn a_docks_table_with_one_seated_and_one_not(world: &mut World, seated: String, free: String) {
-    let pack = crate::support::copy_docks("say-seated");
+    let pack = crate::support::copy_pack("docks", "say-seated");
     table::listen(world, &pack);
     table::seat_actor(world, &pack, &seated);
     world.pack = Some(pack);

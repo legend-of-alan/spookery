@@ -495,7 +495,7 @@ mod tests {
             let refused = parse_line("bundle-0000.jsonl", torn).unwrap_err();
             assert_eq!(refused.reason, Reason::JournalDiverged, "{torn}");
         }
-        let pack = crate::testing::copy_docks("old-head");
+        let pack = crate::testing::copy_pack("docks", "old-head");
         let head = head_path(&pack);
         fs::create_dir_all(head.parent().unwrap()).unwrap();
         fs::write(

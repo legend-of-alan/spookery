@@ -173,7 +173,7 @@ fn mcp_port(world: &World) -> u16 {
 
 #[given(expr = "a docks table with a seated player and an open MCP endpoint")]
 fn a_docks_table_with_a_seated_player_and_an_open_mcp_endpoint(world: &mut World) {
-    world.pack = Some(support::copy_docks("http-say"));
+    world.pack = Some(support::copy_pack("docks", "http-say"));
     let (_tcp, http) = listen_on_free_ports(world);
     let pack = table::pack(world).to_path_buf();
     table::seat_rowan(world, &pack);
@@ -493,11 +493,11 @@ pub fn post_initialize(port: u16, host: &str, origin: Option<&str>) -> String {
 
 #[given(expr = "an AI GM on \\/mcp and a plain GM client on WebSocket")]
 fn an_mcp_gm_and_a_websocket_gm(world: &mut World) {
-    let pack = support::copy_docks("parity-mcp");
+    let pack = support::copy_pack("docks", "parity-mcp");
     world.pack = Some(pack.clone());
     table::listen(world, &pack);
     table::seat_gm(world);
-    let ws_pack = support::copy_docks("parity-ws");
+    let ws_pack = support::copy_pack("docks", "parity-ws");
     let running = table::wait_addrs(table::spawn_table(&ws_pack, &["--addr", "127.0.0.1:0"]));
     let gm = table::Seat::open(running.game.port(), "gm");
     table::wait_suffix(&gm.text, 0, "\"kind\":\"hello\"");

@@ -24,14 +24,14 @@ use super::support::{arb_rounds, play_rounds, runner_config, TempPack};
 use crate::round::play::replay_round;
 use crate::round::replay::first_effect_diff;
 use crate::state::Presence;
-use crate::testing::{copy_dir, copy_docks, fresh_dir};
+use crate::testing::{copy_dir, copy_pack, fresh_dir};
 
 #[test]
 fn running_a_round_again_matches_the_logged_effects() {
     let mut runner = TestRunner::new(runner_config());
     runner
         .run(&arb_rounds(), |rounds| {
-            let played = TempPack(copy_docks("prop-rerun"));
+            let played = TempPack(copy_pack("docks", "prop-rerun"));
             play_rounds(&played.0, &rounds).map_err(TestCaseError::fail)?;
             replay_each_round(&played.0)
         })

@@ -34,7 +34,7 @@ fn larks_faces_and_total_are_identical(world: &mut World) {
 
 #[given(expr = "ten rolling intents in one round")]
 fn ten_rolling_intents_in_one_round(world: &mut World) {
-    let pack = support::copy_pack("oneshot-docks", "ten-dice");
+    let pack = support::copy_pack("docks", "ten-dice");
     let intents = (0..10)
         .map(|index| intent(&format!("grit-{index}"), "rowan", "grit", None))
         .collect();
@@ -79,9 +79,9 @@ fn spook_verify_passes_and_re_derives_every_roll(world: &mut World) {
     );
 }
 
-#[given(expr = "two fresh copies of oneshot-docks as shipped")]
-fn two_fresh_copies_of_oneshot_docks_as_shipped(world: &mut World) {
-    let shipped = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../packs/oneshot-docks");
+#[given(expr = "two fresh copies of the docks pack as shipped")]
+fn two_fresh_copies_of_the_docks_pack_as_shipped(world: &mut World) {
+    let shipped = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/packs/docks");
     for label in ["fresh-a", "fresh-b"] {
         let pack = support::fresh_dir(label);
         support::copy_dir(&shipped, &pack);
@@ -118,7 +118,7 @@ fn saved_seed(pack: &Path) -> String {
 
 #[given(expr = "a docks row overreach that adds {int} lamp oil and then removes {int}")]
 fn a_docks_row_overreach(world: &mut World, add: i64, remove: i64) {
-    let pack = support::copy_pack("oneshot-docks", "rollback");
+    let pack = support::copy_pack("docks", "rollback");
     support::append(
         &pack.join("rules/verbs.yaml"),
         &format!(
@@ -145,7 +145,7 @@ fn a_docks_row_overreach(world: &mut World, add: i64, remove: i64) {
 
 #[given(expr = "a docks row spilled that rolls grit and then removes {int} lamp oil")]
 fn a_docks_row_spilled(world: &mut World, remove: i64) {
-    let pack = support::copy_pack("oneshot-docks", "spilled");
+    let pack = support::copy_pack("docks", "spilled");
     support::append(
         &pack.join("rules/verbs.yaml"),
         &format!(
@@ -211,7 +211,7 @@ fn lamp_oil_stays_the_round_names_and_no_roll_is_reported(
 
 #[given(expr = "the docks pack, where Mira's door-note habit is due")]
 fn the_docks_pack_where_miras_habit_is_due(world: &mut World) {
-    let pack = support::copy_pack("oneshot-docks", "habit-ineligible");
+    let pack = support::copy_pack("docks", "habit-ineligible");
     let opened = spookery_engine::World::peek(&pack).unwrap_or_else(|err| panic!("open: {err}"));
     let view = opened
         .perceive(&spookery_engine::Presence::default(), "mira")
@@ -300,7 +300,7 @@ fn each_strike_is_scored_on_the_others_own_roll(world: &mut World) {
 
 #[given(expr = "max_effects_per_intent is 1 and a row with 2 effects")]
 fn max_effects_per_intent_is_1_and_a_row_with_2_effects(world: &mut World) {
-    let pack = support::copy_pack("oneshot-docks", "effect-cap");
+    let pack = support::copy_pack("docks", "effect-cap");
     set_budget(&pack, "max_effects_per_intent", 1);
     support::append(
         &pack.join("rules/verbs.yaml"),
@@ -356,7 +356,7 @@ fn no_effect_from_that_row_applies(world: &mut World) {
     expr = "a docks pack where Aldric's cast file holds a ten-tick verb \"ask\" that lowers the target's rest"
 )]
 fn a_docks_pack_where_aldric_holds_a_timed_verb(world: &mut World) {
-    let pack = support::copy_pack("oneshot-docks", "timed-target");
+    let pack = support::copy_pack("docks", "timed-target");
     let path = pack.join("cast/aldric.md");
     let text = fs::read_to_string(&path).unwrap();
     let rule = "  eligible: false
@@ -410,7 +410,7 @@ fn rest_is(world: &mut World, actor: String, rest: i64) {
     expr = "a docks pack whose verbs hold a ten-tick verb \"haul\" that takes {int} lamp oil from the actor"
 )]
 fn a_docks_pack_with_a_timed_haul(world: &mut World, oil: i64) {
-    let pack = support::copy_pack("oneshot-docks", "timed-refused");
+    let pack = support::copy_pack("docks", "timed-refused");
     support::append(
         &pack.join("rules/verbs.yaml"),
         &format!(
@@ -477,7 +477,7 @@ fn the_refused_finish_commits(world: &mut World) {
     expr = "a docks pack whose \"pick\" rule rolls grit against a threshold that divides by zero"
 )]
 fn a_docks_pack_with_a_broken_pick(world: &mut World) {
-    let pack = support::copy_pack("oneshot-docks", "broken-threshold");
+    let pack = support::copy_pack("docks", "broken-threshold");
     // Grit starts at 1, so the divisor is 0 only at play, past `spook check`.
     support::append(
         &pack.join("rules/verbs.yaml"),
@@ -540,7 +540,7 @@ fn the_next_round_plays_and_verify_passes(world: &mut World) {
     expr = "a docks pack where the shop's \"rummage\" costs {int} rest and the shared \"rummage\" costs {int}"
 )]
 fn a_docks_pack_with_two_rummage_rules(world: &mut World, shop: i64, shared: i64) {
-    let pack = support::copy_pack("oneshot-docks", "rummage");
+    let pack = support::copy_pack("docks", "rummage");
     let rule = format!(
         "  - id: rummage
     when: {{ verb: rummage }}
@@ -587,7 +587,7 @@ fn the_journal_records_and_not(world: &mut World, ran: String, skipped: String) 
     expr = "max_effects_per_intent is 1 and a street rule that sets 2 flags when Rowan arrives"
 )]
 fn a_street_rule_over_the_cap(world: &mut World) {
-    let pack = support::copy_pack("oneshot-docks", "trigger-cap");
+    let pack = support::copy_pack("docks", "trigger-cap");
     set_budget(&pack, "max_effects_per_intent", 1);
     let rule = "  - id: greeted
     when: { change: { arrive: here, subject: rowan } }
@@ -625,7 +625,7 @@ fn neither_flag_is_set(world: &mut World, code: String) {
 
 #[given(expr = "the docks pack with Rowan seated in the shop")]
 fn the_docks_pack_with_rowan_seated(world: &mut World) {
-    world.pack = Some(support::copy_pack("oneshot-docks", "exit-touch"));
+    world.pack = Some(support::copy_pack("docks", "exit-touch"));
 }
 
 #[when(expr = "Bram and Aldric wait and then Mira travels through the {string} exit")]
@@ -694,7 +694,7 @@ fn briars_wait_is_refused_budget(world: &mut World) {
     expr = "the docks pack allows {int} state key per round and a row \"overset\" that sets 2 flags"
 )]
 fn the_docks_pack_allows_keys(world: &mut World, limit: u64) {
-    let pack = support::copy_pack("oneshot-docks", "key-limit");
+    let pack = support::copy_pack("docks", "key-limit");
     set_budget(&pack, "max_state_keys_mutated", limit);
     support::append(
         &pack.join("rules/verbs.yaml"),
@@ -957,7 +957,7 @@ fn make_mira_ineligible(pack: &Path) {
     regex = r#"^the docks pack allows (\d+) state keys per round and a row "brace" that adds (\d+) to grit through a modifier$"#
 )]
 fn the_docks_pack_allows_keys_and_braces(world: &mut World, limit: u64, add: i64) {
-    let pack = support::copy_pack("oneshot-docks", "key-limit-brace");
+    let pack = support::copy_pack("docks", "key-limit-brace");
     set_budget(&pack, "max_state_keys_mutated", limit);
     fs::write(
         pack.join("rules/modifiers.yaml"),
@@ -984,7 +984,7 @@ fn the_docks_pack_allows_keys_and_braces(world: &mut World, limit: u64, add: i64
     expr = "the docks pack has a cast member nell the save does not list and a row {string} that marks her"
 )]
 fn a_cast_member_the_save_does_not_list(world: &mut World, row: String) {
-    let pack = support::copy_pack("oneshot-docks", "unlisted-actor");
+    let pack = support::copy_pack("docks", "unlisted-actor");
     fs::write(
         pack.join("cast/pc-nell.md"),
         "---\nschema: cast\nid: nell\ncontrol_type: pc_template\ndisplay_name: Nell\nidle:\n  eligible: false\nflags:\n    - marked\n---\nNell.\n",

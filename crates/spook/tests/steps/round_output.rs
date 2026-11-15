@@ -7,7 +7,7 @@ use spookery_engine::testing::journal::list_round_keys;
 
 use super::common::{edit_save, set_busy};
 use super::table;
-use crate::support::{self, copy_docks};
+use crate::support::{self, copy_pack};
 use crate::World;
 
 #[given(expr = "a docks table with a GM and wren seated")]
@@ -24,7 +24,7 @@ fn a_docks_table_with_a_gm_and_a_busy_pc(world: &mut World) {
 }
 
 fn listen_with_wren(world: &mut World, travelling: bool) {
-    let pack = copy_docks("round-output");
+    let pack = copy_pack("docks", "round-output");
     let path = pack.join("world/places/docks_shop.md");
     let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read shop: {err}"));
     let from = "  - to: docks_street\n    name: docks_street\n";
@@ -52,7 +52,7 @@ fn listen_with_wren(world: &mut World, travelling: bool) {
 
 #[given(expr = "a docks table with rowan and wren seated and no GM")]
 fn a_docks_table_with_two_players_and_no_gm(world: &mut World) {
-    let pack = copy_docks("round-output-busy");
+    let pack = copy_pack("docks", "round-output-busy");
     edit_save(&pack, |now| {
         let until = now.world_time + 10;
         set_busy(now, "rowan", until, "docks_shop.docks_street");

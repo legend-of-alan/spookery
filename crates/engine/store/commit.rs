@@ -295,14 +295,14 @@ mod tests {
     use crate::store::durability;
     use crate::store::lock::lock_pack;
     use crate::store::records::RoundRecord;
-    use crate::testing::copy_docks;
+    use crate::testing::copy_pack;
     use crate::world::World;
 
     use super::commit;
 
     #[test]
     fn a_reopen_keeps_every_journal_record_the_commit_wrote() {
-        let root = copy_docks("journal-reopen");
+        let root = copy_pack("docks", "journal-reopen");
         let mut world = crate::testing::resume(&root);
         let pre = fs::read(root.join("state/save.yaml")).unwrap();
         let mut state = world.begin_round();
@@ -344,7 +344,7 @@ mod tests {
 
     #[test]
     fn a_failed_gzip_keeps_the_round_and_the_next_commit_starts_a_bundle() {
-        let root = copy_docks("gzip-fail");
+        let root = copy_pack("docks", "gzip-fail");
         let _clear = FailGuard;
         set_checkpoint_every(&root, 1);
         let mut world = crate::testing::resume(&root);
@@ -385,7 +385,7 @@ mod tests {
 
     #[test]
     fn a_failed_save_stays_committed_and_the_next_commit_starts_a_bundle() {
-        let root = copy_docks("save-fail");
+        let root = copy_pack("docks", "save-fail");
         let _clear = FailGuard;
         set_checkpoint_every(&root, 2);
         let mut world = crate::testing::resume(&root);

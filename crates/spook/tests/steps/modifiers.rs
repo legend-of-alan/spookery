@@ -10,7 +10,7 @@ use spookery_engine::{component, entity, ActorId, Meter, Modifier};
 use super::common::replace_in_file;
 use super::meters::{assert_refused, run_check};
 use super::triggers::{add_verb, edit_table, intent, play_round, seen_of, set_place, sit};
-use crate::support::{self, copy_docks};
+use crate::support::{self, copy_pack};
 use crate::World;
 
 fn pack(world: &World) -> &Path {
@@ -123,7 +123,7 @@ fn numbers(list: &str) -> Vec<i64> {
     expr = "the docks pack with one-tick rounds and rowan's grit at 20, with three PCs in the shop"
 )]
 fn docks_with_one_tick_rounds(world: &mut World) {
-    let pack = copy_docks("modifiers");
+    let pack = copy_pack("docks", "modifiers");
     replace_in_file(
         &pack.join("rules/budget.yaml"),
         "live_ticks_per_round: 5\n",

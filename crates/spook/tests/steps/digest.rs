@@ -70,7 +70,7 @@ fn the_host_text_lists_the_door_note(world: &mut World) {
 
 #[given(expr = "a docks table with {string} seated and no GM")]
 fn a_docks_table_with_one_pc_and_no_gm(world: &mut World, actor: String) {
-    let pack = crate::support::copy_docks("host-round");
+    let pack = crate::support::copy_pack("docks", "host-round");
     table::listen(world, &pack);
     let printed = table::host_stdout(world).matches(PRINTOUT_END).count();
     table::seat_actor(world, &pack, &actor);
@@ -166,7 +166,7 @@ fn the_hosts_last_printout_lists_the_meters(world: &mut World) {
 
 #[given(expr = "the docks pack where Mira's door note carries the hidden fact {string}")]
 fn the_docks_pack_where_miras_door_note_carries(world: &mut World, fact_id: String) {
-    let pack = crate::support::copy_docks("hidden-note");
+    let pack = crate::support::copy_pack("docks", "hidden-note");
     rewrite_mira(
         &pack,
         "          fact_ids: []\n",
@@ -223,7 +223,7 @@ fn the_perceive_view_for_does_not_list(world: &mut World, actor: String, note: S
 
 #[given(expr = "the docks pack where {string} is written without hidden")]
 fn the_docks_pack_where_a_fact_has_no_hidden(world: &mut World, fact_id: String) {
-    let pack = crate::support::copy_docks("no-hidden");
+    let pack = crate::support::copy_pack("docks", "no-hidden");
     let shop = fs::read_to_string(pack.join("world/places/docks_shop.md")).unwrap();
     let (_, row) = shop
         .split_once(&format!("  - id: {fact_id}\n"))

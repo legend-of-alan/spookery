@@ -10,7 +10,7 @@ use spookery_engine::testing::journal::list_round_keys;
 use spookery_engine::{component, State};
 
 use super::table;
-use crate::support::{self, copy_docks};
+use crate::support::{self, copy_pack};
 use crate::World;
 
 pub(crate) const EVENING: u64 = 1290;
@@ -352,7 +352,7 @@ pub(crate) fn walk(exit: &str) -> spookery_engine::testing::PendingAction {
 
 #[given(expr = "a docks table")]
 fn a_docks_table(world: &mut World) {
-    let pack = crate::support::copy_docks("status");
+    let pack = crate::support::copy_pack("docks", "status");
     world.before = table::read_files(&pack);
     world.pack = Some(pack);
 }
@@ -372,7 +372,7 @@ fn the_pack_bytes_are_unchanged(world: &mut World) {
 
 #[given(expr = "a docks table with a seated GM")]
 fn a_docks_table_with_a_seated_gm(world: &mut World) {
-    let pack = copy_docks("gm-seat");
+    let pack = copy_pack("docks", "gm-seat");
     let opened = fs::read(pack.join("state/save.yaml"))
         .unwrap_or_else(|err| panic!("read save.yaml: {err}"));
     table::listen(world, &pack);
@@ -383,7 +383,7 @@ fn a_docks_table_with_a_seated_gm(world: &mut World) {
 
 #[given(expr = "a docks table with a seated player")]
 fn a_docks_table_with_a_seated_player(world: &mut World) {
-    let pack = copy_docks("speech");
+    let pack = copy_pack("docks", "speech");
     table::listen(world, &pack);
     table::seat_rowan(world, &pack);
     world.pack = Some(pack);
@@ -605,7 +605,7 @@ fn the_operator_runs_verify(world: &mut World) {
 
 #[given(expr = "the trapdoor is hidden and rowan does not know fact_trapdoor")]
 fn the_trapdoor_is_hidden(world: &mut World) {
-    let pack = copy_docks("trapdoor");
+    let pack = copy_pack("docks", "trapdoor");
     add_trapdoor(&pack);
     edit_save(&pack, |_| {});
     table::listen(world, &pack);
@@ -624,7 +624,7 @@ fn the_view_hides_the_trapdoor(world: &mut World) {
 
 #[given(expr = "the stairs exit costs 10 ticks")]
 fn the_stairs_cost_ten_ticks(world: &mut World) {
-    let pack = copy_docks("ten-ticks");
+    let pack = copy_pack("docks", "ten-ticks");
     replace_in_file(
         &pack.join("world/places/docks_shop.md"),
         "ticks: 2\n",

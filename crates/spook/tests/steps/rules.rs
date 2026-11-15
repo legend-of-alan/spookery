@@ -13,14 +13,13 @@ use super::common::{flags_of, split_line};
 use super::table;
 use super::triggers::world_flags;
 use crate::support::{
-    append, copy_docks, copy_pack, edit_save, place_of, read_round, run_spook, stamp_pack_rev,
-    state_of,
+    append, copy_pack, edit_save, place_of, read_round, run_spook, stamp_pack_rev, state_of,
 };
 use crate::World;
 #[given(expr = "a save from older rules")]
 fn a_save_from_older_rules(world: &mut World) {
     let rev = spookery_engine::testing::RULES_REV;
-    let pack = crate::support::copy_docks("rules-rev");
+    let pack = crate::support::copy_pack("docks", "rules-rev");
     let path = pack.join("state/save.yaml");
     let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read save: {err}"));
     let stamped = text.replacen(
@@ -78,7 +77,7 @@ fn it_refuses_with_rules_rev_and_says_to_start_a_fresh_save(world: &mut World) {
 
 #[given(expr = "logged effects that differ from the re-run")]
 fn logged_effects_that_differ_from_the_re_run(world: &mut World) {
-    let pack = crate::support::copy_docks("rules-diverge");
+    let pack = crate::support::copy_pack("docks", "rules-diverge");
     world.pack = Some(pack.clone());
     table::run(world, &["round", pack.to_str().unwrap()]);
     assert_eq!(world.code, Some(0), "{}", world.stderr);
@@ -127,7 +126,7 @@ fn spook_verify_names_the_round_and_the_first_differing_effect(world: &mut World
 
 #[given(expr = "a place rule \"bell\" in docks_shop and a story rule \"bell\"")]
 fn a_place_rule_and_a_story_rule(world: &mut World) {
-    let pack = copy_docks("rules-ids");
+    let pack = copy_pack("docks", "rules-ids");
     insert_before_fence(
         &pack.join("world/places/docks_shop.md"),
         "\
@@ -195,7 +194,7 @@ fn check_rules_lists_both_bells(world: &mut World) {
 
 #[given(expr = "verb:travel and place:ferry_dock\\/travel")]
 fn verb_travel_and_the_ferry_rule(world: &mut World) {
-    let pack = copy_docks("rules-ferry");
+    let pack = copy_pack("docks", "rules-ferry");
     write(
         &pack.join("world/places/ferry_dock.md"),
         "\
@@ -271,7 +270,7 @@ fn the_ferry_rule_runs(world: &mut World) {
 
 #[given(expr = "cast:briar\\/restock with cycle day 360..540 and players == 0")]
 fn briar_restocks_before_the_shop_opens(world: &mut World) {
-    let pack = copy_docks("rules-briar");
+    let pack = copy_pack("docks", "rules-briar");
     write_briar(&pack, "day", 360, 540);
     world.pack = Some(pack);
 }
@@ -279,7 +278,7 @@ fn briar_restocks_before_the_shop_opens(world: &mut World) {
 /// Set cycle `name` to `length` ticks, adding it beside the docks `day` when it is new.
 #[given(expr = "rules\\/budget.yaml sets cycle {word} to {int}")]
 fn budget_sets_cycle(world: &mut World, name: String, length: u64) {
-    let pack = copy_docks("rules-cycle");
+    let pack = copy_pack("docks", "rules-cycle");
     let budget = pack.join("rules/budget.yaml");
     let (old, new) = match name.as_str() {
         "day" => ("  day: 1440\n".to_string(), format!("  day: {length}\n")),
@@ -299,7 +298,7 @@ fn briar_restocks_on_cycle(world: &mut World, name: String, from: u64, to: u64) 
 
 #[given(expr = "the docks pack, whose budget sets cycle day to 1440")]
 fn the_docks_day(world: &mut World) {
-    let pack = copy_docks("rules-docks-day");
+    let pack = copy_pack("docks", "rules-docks-day");
     let budget = fs::read_to_string(pack.join("rules/budget.yaml")).unwrap();
     assert!(budget.contains("cycles:\n  day: 1440\n"), "{budget}");
     world.pack = Some(pack);
@@ -416,7 +415,7 @@ fn lamp_oil_increases_by_4(world: &mut World) {
     expr = "idle_act_window_ticks is {int} and every actor has used its idle acts at tick {int}"
 )]
 fn every_actor_used_its_idle_acts(world: &mut World, window: u64, tick: u64) {
-    let pack = copy_docks("rules-idle-window");
+    let pack = copy_pack("docks", "rules-idle-window");
     super::common::replace_in_file(
         &pack.join("rules/budget.yaml"),
         "idle_act_window_ticks: 1440\n",
@@ -574,7 +573,7 @@ fn the_outcome_is_a_miss(world: &mut World) {
 
 #[given(expr = "a pack with rules\\/moves.yaml")]
 fn a_pack_with_moves_yaml(world: &mut World) {
-    let pack = copy_docks("rules-moves");
+    let pack = copy_pack("docks", "rules-moves");
     fs::write(pack.join("rules/moves.yaml"), "schema: moves\n").unwrap();
     world.pack = Some(pack);
 }
@@ -594,7 +593,7 @@ fn check_says_moves_was_replaced(world: &mut World) {
 
 #[given(expr = "a verb file where the word bogus appears in earlier text")]
 fn bogus_appears_in_earlier_text(world: &mut World) {
-    let pack = copy_docks("rules-bogus");
+    let pack = copy_pack("docks", "rules-bogus");
     append(
         &pack.join("rules/verbs.yaml"),
         r#"
@@ -647,7 +646,7 @@ fn check_reports_the_key(world: &mut World) {
 
 #[given(expr = "a verb whose if dash holds two conditions")]
 fn two_conditions_under_one_dash(world: &mut World) {
-    let pack = copy_docks("rules-two");
+    let pack = copy_pack("docks", "rules-two");
     append(
         &pack.join("rules/verbs.yaml"),
         r#"
@@ -682,7 +681,7 @@ fn check_reports_two_conditions(world: &mut World) {
 
 #[given(expr = "steady costs 5 grit and the sitter has 1")]
 fn steady_costs_five_grit(world: &mut World) {
-    let pack = copy_docks("rules-cost");
+    let pack = copy_pack("docks", "rules-cost");
     append(
         &pack.join("rules/verbs.yaml"),
         r#"
@@ -729,7 +728,7 @@ fn the_refusal_is_cant_afford(world: &mut World) {
     expr = "a habit cast:mira\\/leave_door_note and a place rule place:docks_street\\/travel while the PC stays in the shop"
 )]
 fn a_far_place_rule_while_the_pc_stays(world: &mut World) {
-    let pack = copy_docks("rules-full-id");
+    let pack = copy_pack("docks", "rules-full-id");
     insert_before_fence(
         &pack.join("world/places/docks_street.md"),
         "\
@@ -797,7 +796,7 @@ fn both_full_ids_are_refused(world: &mut World) {
 
 #[given(expr = "use on tonic targets an item and the shared use takes no target")]
 fn use_on_tonic_targets_an_item(world: &mut World) {
-    let pack = copy_docks("rules-owned");
+    let pack = copy_pack("docks", "rules-owned");
     write(
         &pack.join("world/items/tonic.md"),
         "\
@@ -861,7 +860,7 @@ fn the_queued_target_is_that_item(world: &mut World) {
 
 #[given(expr = "a verb with a time cost and a resist roll")]
 fn a_verb_with_time_and_resist(world: &mut World) {
-    let pack = copy_docks("rules-unused");
+    let pack = copy_pack("docks", "rules-unused");
     append(
         &pack.join("rules/verbs.yaml"),
         r#"
@@ -930,7 +929,7 @@ const SAME_AFTER_ROLL: &str = "
 
 #[given(expr = "a verb whose only resist is same")]
 fn a_verb_whose_only_resist_is_same(world: &mut World) {
-    let pack = copy_docks("rules-bare-same");
+    let pack = copy_pack("docks", "rules-bare-same");
     append(&pack.join("rules/verbs.yaml"), BARE_SAME);
     stamp_pack_rev(&pack);
     world.pack = Some(pack);
@@ -950,7 +949,7 @@ fn check_reports_bare_resist_same(world: &mut World) {
 
 #[given(expr = "a verb whose resist same follows a roll")]
 fn a_verb_whose_resist_same_follows_a_roll(world: &mut World) {
-    let pack = copy_docks("rules-same-after");
+    let pack = copy_pack("docks", "rules-same-after");
     append(&pack.join("rules/verbs.yaml"), SAME_AFTER_ROLL);
     edit_save(&pack, |_| {});
     world.pack = Some(pack);

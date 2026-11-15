@@ -191,15 +191,11 @@ pub mod testing {
         panic!("no fresh dir for {label}");
     }
 
-    pub fn copy_docks(label: &str) -> PathBuf {
-        copy_pack("oneshot-docks", label)
-    }
-
-    /// Copy a shipped pack with its dice pinned: the save's seed is its world id.
+    /// Copy a test pack from `tests/packs` with its dice pinned: the save's seed is its world id.
     pub fn copy_pack(name: &str, label: &str) -> PathBuf {
         let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         let pack = fresh_dir(label);
-        copy_dir(&manifest.join("../../packs").join(name), &pack);
+        copy_dir(&manifest.join("../../tests/packs").join(name), &pack);
         let text = fs::read_to_string(crate::store::journal::save_path(&pack))
             .unwrap_or_else(|err| panic!("read {name} save: {err}"));
         let mut save = crate::store::save::parse(&text)

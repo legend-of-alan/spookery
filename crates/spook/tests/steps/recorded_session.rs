@@ -10,7 +10,7 @@ use cucumber::{given, then, when};
 use serde_json::{json, Value};
 use tungstenite::Message;
 
-use crate::support::{self, copy_docks};
+use crate::support::{self, copy_pack};
 use crate::World;
 
 use super::table::{self, Seat};
@@ -26,7 +26,7 @@ fn a_recorded_session(world: &mut World) {
 /// Replays the sends and writes this build's own recording of the session to the temp dir.
 #[when(expr = "CI replays it against this build")]
 fn ci_replays_it(world: &mut World) {
-    let pack = copy_docks("recorded-session");
+    let pack = copy_pack("docks", "recorded-session");
     table::listen(world, &pack);
     world.pack = Some(pack);
     let port = table::live_mut(world).game_port;

@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use cucumber::{given, then, when};
 use serde_json::Value;
 
-use crate::support::{self, copy_docks};
+use crate::support::{self, copy_pack};
 use crate::World;
 
 use super::{common, table};
@@ -148,7 +148,7 @@ fn the_player_sees_a_check_result_without_faces(world: &mut World) {
 
 #[given(expr = "a docks table where Mira can notice")]
 fn a_docks_table_where_mira_can_notice(world: &mut World) {
-    let pack = copy_docks("npc-notice");
+    let pack = copy_pack("docks", "npc-notice");
     world.pack = Some(pack.clone());
     append_verbs(&pack, NOTICE_ROWS);
     insert_mira_flags(&pack, "    - braced\n    - slipped\n");
@@ -160,7 +160,7 @@ fn a_docks_table_where_mira_can_notice(world: &mut World) {
 
 #[given(expr = "a docks table where Mira can oppose a mark")]
 fn a_docks_table_where_mira_can_oppose_a_mark(world: &mut World) {
-    let pack = copy_docks("npc-oppose");
+    let pack = copy_pack("docks", "npc-oppose");
     world.pack = Some(pack.clone());
     append_verbs(&pack, OPPOSE_ROWS);
     insert_mira_flags(&pack, "    - marked\n    - missed\n    - guarded\n");
@@ -192,7 +192,7 @@ fn the_gm_queues_miras_defense(world: &mut World) {
 
 #[when(expr = "an engine habit rolls a check for Mira")]
 fn an_engine_habit_rolls_a_check_for_mira(world: &mut World) {
-    let pack = copy_docks("npc-habit");
+    let pack = copy_pack("docks", "npc-habit");
     world.pack = Some(pack.clone());
     insert_mira_flags(&pack, "    - braced\n    - slipped\n");
     insert_brace_habit(&pack);
@@ -534,7 +534,7 @@ fn a_docks_copy_where_press_grit_base_is(world: &mut World, base: usize) {
 
 #[given(expr = "a docks table where Mira opposes a three-band press")]
 fn a_docks_table_where_mira_opposes_a_three_band_press(world: &mut World) {
-    let pack = copy_docks("press-oppose");
+    let pack = copy_pack("docks", "press-oppose");
     world.pack = Some(pack.clone());
     append_verbs(&pack, PRESS_ROW);
     append_verbs(&pack, DEFEND_ROW);
@@ -554,7 +554,7 @@ fn a_docks_table_where_mira_opposes_a_three_band_press(world: &mut World) {
 
 #[given(expr = "a docks table where Mira can partly notice")]
 fn a_docks_table_where_mira_can_partly_notice(world: &mut World) {
-    let pack = copy_docks("press-notice");
+    let pack = copy_pack("docks", "press-notice");
     world.pack = Some(pack.clone());
     append_verbs(&pack, NOTICE_PARTIAL_ROW);
     append_check(&pack, BAND_CHECK);
@@ -686,7 +686,7 @@ fn the_gm_sees_a_binary_opposed_press(world: &mut World) {
 }
 
 fn prepare_press(world: &mut World, base: i64, sit: bool) {
-    let pack = copy_docks("press");
+    let pack = copy_pack("docks", "press");
     world.pack = Some(pack.clone());
     append_verbs(&pack, PRESS_ROW);
     append_check(&pack, BAND_CHECK);

@@ -18,7 +18,7 @@ Feature: Each roll has its own seed
     Then each strike is scored on the other's own roll
 
   Scenario: A fresh world picks its own seed, and spook verify replays it
-    Given two fresh copies of oneshot-docks as shipped
+    Given two fresh copies of the docks pack as shipped
     When one round is played on each
     Then the two saves hold different seeds
     And spook verify passes on each

@@ -8,7 +8,7 @@ use crate::World;
 
 #[given(expr = "rowan starts in docks_street")]
 fn rowan_starts_in_docks_street(world: &mut World) {
-    let pack = crate::support::copy_docks("arrive");
+    let pack = crate::support::copy_pack("docks", "arrive");
     crate::support::edit_save(&pack, |now| {
         now.actors_mut()
             .get_mut::<component::Place>(&"rowan".into())
@@ -36,7 +36,7 @@ fn the_seated_player_sees(world: &mut World, text: String) {
 
 #[given(expr = "the CLI is connected as a player holding rowan")]
 fn the_cli_holds_rowan(world: &mut World) {
-    world.pack = Some(crate::support::copy_docks("cli"));
+    world.pack = Some(crate::support::copy_pack("docks", "cli"));
     common::join_play(world, false);
 }
 
@@ -81,7 +81,7 @@ fn i_see_the_lines(world: &mut World, first: String, second: String, third: Stri
 /// Writes `rules` into the frontmatter of the docks page at `page`, in place of `from`, then
 /// seats play as rowan.
 fn add_rule_and_join(world: &mut World, label: &str, page: &str, from: &str, rules: &str) {
-    let pack = crate::support::copy_docks(label);
+    let pack = crate::support::copy_pack("docks", label);
     let path = pack.join(page);
     let text = fs::read_to_string(&path).unwrap();
     let next = text.replacen(from, rules, 1);

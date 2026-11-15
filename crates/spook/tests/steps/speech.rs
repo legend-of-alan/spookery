@@ -6,7 +6,7 @@ use serde_json::Value;
 use spookery::protocol::{ServerBody, ServerMessage};
 use spookery_client::text;
 
-use crate::support::{self, copy_docks};
+use crate::support::{self, copy_pack};
 use crate::World;
 
 use super::table;
@@ -193,7 +193,7 @@ fn save_matches_the_bytes_from_before_the_line(world: &mut World) {
 
 #[given(expr = "a docks table with {string} seated")]
 fn a_docks_table_with_one_seated(world: &mut World, actor: String) {
-    let pack = copy_docks("speech");
+    let pack = copy_pack("docks", "speech");
     table::listen(world, &pack);
     table::seat_actor(world, &pack, &actor);
     world.pack = Some(pack);
@@ -201,7 +201,7 @@ fn a_docks_table_with_one_seated(world: &mut World, actor: String) {
 
 #[given(expr = "a docks table with {string} and {string} seated")]
 fn a_docks_table_with_two_seated(world: &mut World, first: String, second: String) {
-    let pack = copy_docks("speech");
+    let pack = copy_pack("docks", "speech");
     table::listen(world, &pack);
     table::seat_actor(world, &pack, &first);
     table::seat_actor(world, &pack, &second);

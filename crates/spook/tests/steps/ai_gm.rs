@@ -12,7 +12,7 @@ use cucumber::{given, then, when};
 use spookery::agent::CompletionError;
 use spookery::http_model::{HttpModel, Settings, MODEL_CALL_TIMEOUT, RETRY_BACKOFF};
 
-use crate::support::{self, copy_docks};
+use crate::support::{self, copy_pack};
 use crate::World;
 
 use super::scripted_gm::{
@@ -126,7 +126,7 @@ fn the_tape_from_is_gm(world: &mut World) {
 
 #[when(expr = "play and the AI GM and a stub run a speech turn and a travel turn")]
 fn play_and_ai_gm_and_a_stub(world: &mut World) {
-    let pack = copy_docks("host-stub");
+    let pack = copy_pack("docks", "host-stub");
     let (stub_port, seen) = start_model_stub(std::iter::repeat(Reply::Tools(&[])));
     table::listen(world, &pack);
     let addr = table::game_addr(world);
@@ -189,7 +189,7 @@ fn play_and_ai_gm_and_a_stub(world: &mut World) {
 
 #[given(expr = "a docks table with the scripted AI GM and a seated player")]
 fn a_docks_table_with_the_scripted_ai_gm_and_a_seated_player(world: &mut World) {
-    let pack = copy_docks("host-turns");
+    let pack = copy_pack("docks", "host-turns");
     table::listen(world, &pack);
     world.ai_gm = Some(start_ai_gm(world, world.model.clone()));
     table::seat_rowan(world, &pack);
@@ -280,7 +280,7 @@ fn the_model_narrated_the_rolls_in_the_same_turn(world: &mut World) {
 
 #[when(expr = "a player queues travel while the model answers their say")]
 fn a_player_queues_travel_while_the_model_answers_their_say(world: &mut World) {
-    let pack = copy_docks("host-close-turns");
+    let pack = copy_pack("docks", "host-close-turns");
     table::listen(world, &pack);
     let model = ScriptedModel::default();
     model.push(&[]);
@@ -462,7 +462,7 @@ fn finish_http_turn(world: &mut World, gm: AiGm, pack: &Path, seen: &Mutex<Seen>
 
 /// A pack copy with Rowan seated and travel queued while a GM held the seat, then let go.
 pub fn queued_travel(world: &mut World, label: &str) -> (PathBuf, u64) {
-    let pack = copy_docks(label);
+    let pack = copy_pack("docks", label);
     table::listen(world, &pack);
     table::seat_gm(world);
     table::seat_rowan(world, &pack);

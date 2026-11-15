@@ -3,14 +3,14 @@
 use cucumber::{given, then, when};
 use serde_json::Value;
 
-use crate::support::copy_docks;
+use crate::support::copy_pack;
 use crate::World;
 
 use super::table;
 
 #[given(expr = "rowan is in the shop and a GM is seated")]
 fn rowan_with_a_gm(world: &mut World) {
-    let pack = copy_docks("session");
+    let pack = copy_pack("docks", "session");
     table::listen(world, &pack);
     table::seat_gm(world);
     table::seat_rowan(world, &pack);

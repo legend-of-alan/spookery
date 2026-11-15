@@ -68,7 +68,7 @@ fn the_wait_commits_with_nothing_rejected(world: &mut World) {
 
 #[given(expr = "Mira stands in a place with no facts")]
 fn mira_stands_in_a_place_with_no_facts(world: &mut World) {
-    let pack = support::copy_docks("no-facts");
+    let pack = support::copy_pack("docks", "no-facts");
     strip_room_facts(&pack);
     support::edit_save(&pack, |state| {
         // No writer forgets a fact, so Mira's come off the save as the file holds it.

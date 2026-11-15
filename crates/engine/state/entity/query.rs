@@ -198,8 +198,7 @@ mod tests {
     use crate::World;
 
     fn docks() -> World<()> {
-        let pack =
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packs/oneshot-docks");
+        let pack = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/packs/docks");
         World::open(&pack).expect("open")
     }
 

@@ -25,7 +25,7 @@ use crate::state::component::modifier::{self, ModifierDef};
 use crate::state::component::{self, Component};
 use crate::state::id::{ActorId, ExitId};
 use crate::state::{ActCounter, Presence, Save, State};
-use crate::testing::copy_docks;
+use crate::testing::copy_pack;
 use crate::world::World;
 
 use super::support::{runner_config, TempPack};
@@ -58,7 +58,7 @@ enum Step {
 
 #[test]
 fn nested_rollbacks_put_the_save_back_exactly() {
-    let pack = TempPack(copy_docks("rollback"));
+    let pack = TempPack(copy_pack("docks", "rollback"));
     // The street holds nothing yet, so lighting it puts its first component on it, which a
     // rollback takes off whole. Mira holds one brass key, so a take under a savepoint can take
     // her last one out, and she can wield it.

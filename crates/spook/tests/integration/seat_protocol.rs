@@ -224,7 +224,7 @@ fn capture() -> BTreeMap<String, Example> {
 }
 
 fn listen() -> Table {
-    let pack = crate::support::copy_docks("seat-protocol");
+    let pack = crate::support::copy_pack("docks", "seat-protocol");
     let mut command = Command::new(env!("CARGO_BIN_EXE_spook"));
     command
         .arg("run")

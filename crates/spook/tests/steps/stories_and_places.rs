@@ -10,7 +10,7 @@ use spookery_engine::{component, entity, Presence, World as Opened};
 use super::common::replace_in_file;
 use super::meters::{assert_refused, migrate_and_play};
 use super::triggers::{add_verb, edit_table, intent, seen_of, set_place, sit};
-use crate::support::copy_docks;
+use crate::support::copy_pack;
 use crate::World;
 
 /// One meter row from 0 to 6 at base 0, with its `hidden` key when it has one.
@@ -21,7 +21,9 @@ fn meter_row(id: &str, hidden: Option<bool>) -> String {
 
 /// The pack this scenario already set up, or a fresh docks copy.
 fn pack(world: &mut World) -> &Path {
-    world.pack.get_or_insert_with(|| copy_docks("entities"))
+    world
+        .pack
+        .get_or_insert_with(|| copy_pack("docks", "entities"))
 }
 
 /// Write `story/<id>.yaml` with these extra keys and an empty rule list to append to.

@@ -229,5 +229,5 @@ fn fail(message: String) -> TestCaseError {
 }
 
 fn docks() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../packs/oneshot-docks")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/packs/docks")
 }

@@ -28,7 +28,7 @@ fn player_wait_ids(round: &Value) -> Vec<String> {
 
 /// A docks copy served in this process, on a paused clock.
 fn serve_docks(world: &mut World, name: &str, idle: Option<&str>) -> PathBuf {
-    let pack = support::copy_docks(name);
+    let pack = support::copy_pack("docks", name);
     if let Some(value) = idle {
         write_idle(&pack, value);
     }

@@ -21,7 +21,7 @@ fn read_state_files(pack: &Path) -> Vec<(PathBuf, Vec<u8>)> {
 }
 
 fn docks_pack_rev() -> String {
-    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../packs/oneshot-docks");
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/packs/docks");
     spookery_engine::pack_rev(&root).unwrap()
 }
 
