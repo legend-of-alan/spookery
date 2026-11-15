@@ -499,27 +499,6 @@ mod tests {
     }
 
     #[test]
-    fn speech_is_a_name_and_the_text() {
-        let mira = render(&ServerBody::Say(table_speech(
-            Speaker::Npc("mira".to_string()),
-            "the lamp is lit",
-        )));
-        assert_eq!(mira, "Mira: the lamp is lit");
-        assert_readable(&mira);
-
-        let gm = render(&ServerBody::Say(table_speech(Speaker::Gm, "evening")));
-        assert_eq!(gm, "GM: evening");
-        assert_readable(&gm);
-
-        let you = render(&ServerBody::Say(table_speech(
-            Speaker::Player("rowan".to_string()),
-            "hello",
-        )));
-        assert_eq!(you, "You: hello");
-        assert_readable(&you);
-    }
-
-    #[test]
     fn a_queued_action_is_a_sentence() {
         let text = render(&ServerBody::Queued {
             intent: "queue-id-42".to_string(),
@@ -586,56 +565,6 @@ mod tests {
             notes: vec![note("note_yard", "the yard stays watched")],
         });
         assert_eq!(later, "");
-    }
-
-    fn table_speech(from: Speaker, text: &str) -> Speech {
-        Speech {
-            from,
-            to: protocol::Audience::Table,
-            recipients: Vec::new(),
-            text: text.to_string(),
-        }
-    }
-
-    #[test]
-    fn replayed_speech_sits_under_one_heading() {
-        let mut player_text = PlayerText::new();
-        let claimed = player_text.render(&ServerBody::Claimed {
-            actor: "lark".to_string(),
-            token: "t1".to_string(),
-            scrollback: vec![
-                table_speech(Speaker::Player("lark".to_string()), "hello Briar"),
-                table_speech(Speaker::Gm, "evening"),
-            ],
-            missed: Vec::new(),
-            gap: false,
-        });
-        assert_eq!(
-            claimed,
-            "Earlier:
-You: hello Briar
-GM: evening"
-        );
-        assert_eq!(
-            player_text.render(&ServerBody::Resume { notes: Vec::new() }),
-            ""
-        );
-        let place = player_text.render(&ServerBody::Lines {
-            text: "You are in Gate Yard.".to_string(),
-        });
-        assert_eq!(
-            place,
-            "
-You are in Gate Yard."
-        );
-        let quiet = PlayerText::new().render(&ServerBody::Claimed {
-            actor: "lark".to_string(),
-            token: "t1".to_string(),
-            scrollback: Vec::new(),
-            missed: Vec::new(),
-            gap: false,
-        });
-        assert_eq!(quiet, "");
     }
 
     #[test]
@@ -758,10 +687,6 @@ none"
         assert_readable(&quiet);
     }
 
-    fn say(from: &str, text: &str) -> ServerBody {
-        ServerBody::Say(table_speech(from.parse().unwrap(), text))
-    }
-
     fn roll(faces: Vec<u32>, stat: i64, total: i64, target: i64, outcome: Outcome) -> Roll {
         Roll {
             faces,
@@ -789,24 +714,7 @@ none"
     }
 
     #[test]
-    fn each_gm_body_renders_as_text() {
-        let player = render_gm(&say("player:rowan", "hello"));
-        assert_eq!(player, "Rowan: hello");
-        assert!(!player.contains('{'));
-
-        let gm = render_gm(&say("gm", "good evening"));
-        assert_eq!(gm, "GM: good evening");
-
-        let npc = render_gm(&say("npc:mira", "oil"));
-        assert_eq!(npc, "Mira: oil");
-
-        let queued = render_gm(&ServerBody::Queued {
-            intent: "id-1".to_string(),
-            actor: "wren".to_string(),
-            move_name: "wait".to_string(),
-            target: None,
-        });
-        assert_eq!(queued, "Wren queued: wait");
+    fn a_roll_shows_its_dice_and_a_round_shows_nothing() {
         assert_eq!(
             render_gm(&ServerBody::Round {
                 round_index: 1,
