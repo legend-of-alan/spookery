@@ -36,3 +36,9 @@ Feature: The AI GM plays a turn as a loop
     And the player says "evening" in the shop
     Then the scripted model is called for that say
     And the AI GM is still connected
+
+  Scenario: Every model call carries the pack's gm_notes
+    Given a docks table with a seated player, the NPC Mira in the shop, and gm_notes "Keep it grim."
+    And a scripted model that perceives as Mira, then has Mira say hello, then ends the turn
+    When the player says "evening" in the shop
+    Then every model call carries the pack's gm_notes "Keep it grim."
