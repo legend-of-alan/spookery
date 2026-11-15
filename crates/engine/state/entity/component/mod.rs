@@ -39,7 +39,8 @@ use crate::Reason;
 /// what an entity holds under each name.
 pub trait Component {
     type Value: PartialEq + Debug + 'static;
-    /// The component's name, as change keys and a player's change view spell it.
+    /// The component's name, as change keys and a player's change view spell it. `Act`'s keys
+    /// name the part of it that moved instead.
     const NAME: &'static str;
 }
 

@@ -30,9 +30,13 @@ impl Component for Act {
     const NAME: &'static str = "act";
 }
 
+/// The names `Act`'s change keys spell.
 impl Act {
-    /// The name the change keys of `busy_until` and `pending` spell.
+    /// `busy_until` and `pending`.
     pub(crate) const BUSY: &'static str = "busy";
+    const LAST_ACT_ROUND: &'static str = "last_act_round";
+    const IDLE_ACTS_THIS_WINDOW: &'static str = "idle_acts_this_window";
+    const LIVE_ACTS_THIS_WINDOW: &'static str = "live_acts_this_window";
 }
 
 impl<'a> Ref<'a, entity::Actors, Act> {
@@ -93,7 +97,7 @@ impl Mut<'_, entity::Actors, Act> {
     /// the idle one when no player is seated. Only the keys whose values move are reported.
     pub fn count(&mut self, round_index: u64, players: u32) -> Result<(), Reason> {
         let read = |act: &Act| count_value(act.last_act_round);
-        self.write("last_act_round", read, |act| {
+        self.write(Act::LAST_ACT_ROUND, read, |act| {
             act.last_act_round = round_index
         })?;
         let counter = match players {
@@ -143,8 +147,8 @@ impl ActCounter {
     /// The name this count's change keys spell.
     fn name(self) -> &'static str {
         match self {
-            ActCounter::IdleActsThisWindow => "idle_acts_this_window",
-            ActCounter::LiveActsThisWindow => "live_acts_this_window",
+            ActCounter::IdleActsThisWindow => Act::IDLE_ACTS_THIS_WINDOW,
+            ActCounter::LiveActsThisWindow => Act::LIVE_ACTS_THIS_WINDOW,
         }
     }
 
