@@ -3,10 +3,9 @@
 use spookery_engine::testing::journal::list_round_keys;
 use spookery_engine::testing::{place_of, state_of};
 use spookery_engine::{component, entity};
-use std::fs;
 use std::path::Path;
 
-use cucumber::{given, then, when};
+use cucumber::{then, when};
 use serde_json::Value;
 
 use super::common::wait_play_until;
@@ -98,31 +97,6 @@ fn verify_passes_on_the_save(world: &mut World) {
         "verify failed\n{verify_out}\n{verify_err}"
     );
     assert!(verify_out.contains("verified"), "{verify_out}");
-}
-
-#[given(expr = "the stub GM attempts to set gold directly")]
-fn the_stub_gm_attempts_to_set_gold(world: &mut World) {
-    let pack = support::copy_pack("docks", "yard-gold");
-    table::listen(world, &pack);
-    table::seat_gm(world);
-    world.pack = Some(pack);
-    world.stdout = table::gm_tool_call(world, 4, "set_gold", r#"{"gold":5}"#);
-}
-
-#[then(expr = "the attempt is refused and the refusal is in the log")]
-fn the_attempt_is_refused_and_in_the_log(world: &mut World) {
-    assert_eq!(
-        table::read_reply(&world.stdout)["code"],
-        "SCHEMA",
-        "{}",
-        world.stdout
-    );
-    table::wait_host_until(world, "the refusal in the host log", |log| {
-        log.contains("refused set_gold SCHEMA")
-    });
-    let saved = fs::read(table::pack(world).join("state/save.yaml"))
-        .unwrap_or_else(|err| panic!("read save: {err}"));
-    assert_eq!(saved, table::live_mut(world).opened_save);
 }
 
 /// The player sends `line`, then the GM commits its round.

@@ -1,6 +1,6 @@
 schema: pack
 id: docks-001
-title: Oneshot Docks
-system: oneshot-docks
+title: Docks
+system: docks
 start:
   place: docks_shop

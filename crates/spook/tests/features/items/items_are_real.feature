@@ -47,12 +47,12 @@ Feature: Items are real
     Then the line is rejected with NOT_IN_SPEC and no round was written
 
     Examples:
-      | line              |
+      | line          |
       | strike bram   |
       | strike nobody |
-      | wield chock       |
-      | wield zzz         |
-      | take latch        |
+      | wield chock   |
+      | wield zzz     |
+      | take latch    |
 
   Scenario: A verb that takes an actor can't name the player's own actor
     Given a docks table

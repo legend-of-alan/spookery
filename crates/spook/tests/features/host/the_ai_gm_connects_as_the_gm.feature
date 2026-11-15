@@ -86,3 +86,7 @@ Feature: The AI GM connects as the GM
     Given a docks table
     When the AI GM is pointed at a game port
     Then the AI GM dialed that address
+
+  Scenario: The engine refuses an AI write
+    Given the stub GM attempts to set gold directly
+    Then the attempt is refused and the refusal is in the log
