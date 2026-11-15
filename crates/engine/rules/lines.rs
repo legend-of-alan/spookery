@@ -5,7 +5,7 @@ use spookery_protocol::{CommandView, PlaceView, Seat, COMMANDS};
 use crate::canon::Canon;
 use crate::intent::{Target, Viewer};
 use crate::rules::cond;
-use crate::rules::gate::{list_ids, verb_for};
+use crate::rules::gate::{list_ids, verb_for, NamedId};
 use crate::rules::rule::{Owner, TargetKind, When};
 use crate::rules::travel::{exit_stood_on, exit_view, exits_at};
 use crate::state::id::ActorId;
@@ -37,13 +37,13 @@ pub(crate) fn help(
         })
         .collect();
     let ids = list_ids(canon, state, presence, &viewer);
-    let name_of = |id: &String| match ids.iter().find(|thing| thing.id == *id) {
-        Some(thing) => thing.name.clone(),
+    let name_of = |id: &String| match ids.iter().find(|named_id| named_id.id == *id) {
+        Some(named_id) => named_id.name.clone(),
         None => place_name(canon, id),
     };
-    let id_list: Vec<String> = ids.iter().map(|thing| thing.id.clone()).collect();
-    let hints = std::iter::once(None).chain(id_list.iter().map(|id| Some(id.as_str())));
-    let hints: Vec<Option<&str>> = hints.collect();
+    let hints: Vec<Option<&str>> = std::iter::once(None)
+        .chain(ids.iter().map(|named_id| Some(named_id.id.as_str())))
+        .collect();
     for verb in canon.verbs() {
         for &hint in &hints {
             let Some(rule) = verb_for(canon, state, actor_id, &verb, hint) else {
@@ -67,7 +67,7 @@ pub(crate) fn help(
             };
             let names = match owner {
                 Some(owner) => vec![owner.clone()],
-                None => names_for(canon, state, actor_id, kind, &id_list),
+                None => names_for(canon, state, actor_id, kind, &ids),
             };
             let command = CommandView {
                 name: verb.clone(),
@@ -84,13 +84,13 @@ pub(crate) fn help(
 }
 
 /// What the actor can name now for a command that takes `kind`: the exits from here, the
-/// actors or items among `id_list`, or the places they visited.
+/// actors or items among `ids`, or the places they visited.
 fn names_for(
     canon: &Canon,
     state: &State,
     actor_id: &ActorId,
     kind: TargetKind,
-    id_list: &[String],
+    ids: &[NamedId],
 ) -> Vec<String> {
     let picked: Vec<String> = match kind {
         TargetKind::None => Vec::new(),
@@ -104,15 +104,19 @@ fn names_for(
             .into_iter()
             .map(|exit| exit.name)
             .collect(),
-        TargetKind::Actor => id_list
+        TargetKind::Actor => ids
             .iter()
-            .filter(|name| state.actors().contains(&ActorId::from(name.as_str())))
-            .cloned()
+            .filter(|named_id| {
+                state
+                    .actors()
+                    .contains(&ActorId::from(named_id.id.as_str()))
+            })
+            .map(|named_id| named_id.id.clone())
             .collect(),
-        TargetKind::Item => id_list
+        TargetKind::Item => ids
             .iter()
-            .filter(|name| canon.items.contains_key(*name))
-            .cloned()
+            .filter(|named_id| canon.items.contains_key(&named_id.id))
+            .map(|named_id| named_id.id.clone())
             .collect(),
         TargetKind::Place => (state.actors().get::<component::Visit>(actor_id).iter())
             .map(|(place, _)| place.to_string())

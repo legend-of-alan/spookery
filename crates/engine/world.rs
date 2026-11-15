@@ -109,7 +109,7 @@ impl World {
         let viewer = Viewer::Player(actor_id.clone());
         let mut ids = gate::list_ids(self.canon(), &self.state, presence, &viewer);
         let actors = self.state.actors();
-        ids.retain(|thing| actors.contains(&ActorId::from(thing.id.as_str())));
+        ids.retain(|named_id| actors.contains(&ActorId::from(named_id.id.as_str())));
         let line = format!("{opening} {text}");
         let line = line.trim();
         let mut said_to = (Audience::Table, line);

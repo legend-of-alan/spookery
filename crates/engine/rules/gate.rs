@@ -217,7 +217,7 @@ fn can_name(context: &Context, ids: Option<&[NamedId]>) -> bool {
             &listed
         }
     };
-    ids.iter().any(|thing| thing.id == id)
+    ids.iter().any(|named_id| named_id.id == id)
 }
 
 /// An id a seat may name, with the names a player reads and types for it.
@@ -275,12 +275,14 @@ pub(crate) fn list_ids(
 /// spaces. `None` when nothing has that name. When two or more ids have it, the `Err` is the
 /// detail of the `AMBIGUOUS_NAME` refusal: the name and those ids, `Briar: briar, oden`.
 pub(crate) fn find_id<'a>(ids: &'a [NamedId], name: &str) -> Result<Option<&'a str>, String> {
-    let has_name = |thing: &NamedId| {
-        let mut names = [&thing.id, &thing.name].into_iter().chain(&thing.aliases);
+    let has_name = |named_id: &NamedId| {
+        let mut names = [&named_id.id, &named_id.name]
+            .into_iter()
+            .chain(&named_id.aliases);
         names.any(|candidate| is_named(name, candidate))
     };
-    let mut matches: Vec<&str> = (ids.iter().filter(|thing| has_name(thing)))
-        .map(|thing| thing.id.as_str())
+    let mut matches: Vec<&str> = (ids.iter().filter(|named_id| has_name(named_id)))
+        .map(|named_id| named_id.id.as_str())
         .collect();
     matches.sort_unstable();
     matches.dedup();
