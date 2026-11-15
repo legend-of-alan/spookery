@@ -40,19 +40,7 @@ fn travel_in_verbs_yaml_teleports(world: &mut World) {
 
 #[when(expr = "the pack's gm_notes run to {int} characters")]
 fn the_pack_gm_notes_run_to(world: &mut World, chars: usize) {
-    let path = table::pack(world).join("pack.yaml");
-    let text = fs::read_to_string(&path).unwrap();
-    let notes = "a".repeat(chars);
-    fs::write(
-        &path,
-        format!(
-            "{}
-gm_notes: {notes}
-",
-            text.trim_end()
-        ),
-    )
-    .unwrap();
+    table::append_gm_notes(table::pack(world), &"a".repeat(chars));
 }
 
 #[when(expr = "the pack_rev is restamped")]

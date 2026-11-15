@@ -572,9 +572,9 @@ pub(crate) fn check_canon(canon: &Canon) -> Vec<Diagnostic> {
     diags
 }
 
-/// `gm_notes` in characters, about 250 tokens. A local model under Ollama may have only a few
-/// thousand tokens of context, shared on every call by the AI GM's instructions, its tools, the
-/// game state and the notes.
+/// The longest `gm_notes`, in characters (about 250 tokens), that `spook check` passes without a
+/// warning. A local model under Ollama may have only a few thousand tokens of context, shared on
+/// every call by the AI GM's instructions, its tools, the game state and the notes.
 const MAX_GM_NOTES_CHARS: usize = 1000;
 
 /// `gm_notes` past `MAX_GM_NOTES_CHARS` is a warning, so an author can still go over on purpose.
