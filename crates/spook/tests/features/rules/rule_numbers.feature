@@ -32,12 +32,12 @@ Feature: Dice and arithmetic in rule numbers
     And the report names the expression line
 
     Examples:
-      | expression   | phrase                                           |
-      | 2d6 +        | is not a number                                  |
-      | self.nope    | meter 'nope'                                     |
-      | world.vigor   | the world carries no meter 'vigor'                |
+      | expression    | phrase                                           |
+      | 2d6 +         | is not a number                                  |
+      | self.nope     | meter 'nope'                                     |
+      | world.vigor   | the world carries no meter 'vigor'               |
       | subject.vigor | names 'subject', which is not an owner; use self |
-      | 100000000d6  | rolls more than 1000 dice                        |
+      | 100000000d6   | rolls more than 1000 dice                        |
 
   Scenario: An owner named subject fails spook check
     Given a docks table

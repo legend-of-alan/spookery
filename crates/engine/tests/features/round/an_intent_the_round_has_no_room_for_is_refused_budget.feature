@@ -16,8 +16,8 @@ Feature: An intent the round has no room for is refused BUDGET
     Then Rowan's brace <outcome>
 
     Examples:
-      | keys | outcome                                                                                      |
-      | 3    | is refused BUDGET                                                                            |
+      | keys | outcome                                                                                       |
+      | 3    | is refused BUDGET                                                                             |
       | 4    | lands, and the GM sees both "actor_modifier rowan brace" and "actor_meter rowan vigor" change |
 
   Scenario Outline: A modifier that overflows its meter is refused BUDGET only when the meter's key does not fit

@@ -19,14 +19,14 @@ Feature: A round refusal names the gap
     Then play's error shows "The loft door is locked. [NO_EXIT]" once
 
   Scenario: A missing item refused during the round sends no missing field
-    Given a docks table with the GM and Harbormouse seated
+    Given a docks table with a stub GM and Harbormouse seated
     When Harbormouse queues "drop tonic"
     And Harbormouse queues "use tonic"
     And the GM commits the round
     Then Harbormouse's refused frame for "MISSING_ITEM" has no missing field
 
   Scenario: A strike on someone who is out of sight when the round applies is refused
-    Given a docks table with the GM and Harbormouse seated
+    Given a docks table with a stub GM and Harbormouse seated
     When Harbormouse queues "travel wheel_shed"
     And Harbormouse queues "strike briar"
     And the GM commits the round

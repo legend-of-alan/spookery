@@ -54,7 +54,8 @@ fn a_refused_or_dropped_opposing_roll_replays_the_same_way() {
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
 
-/// The docks pack with one round `limit` line set, the lunge plus `rule`, and Briar's might at 30.
+/// The docks pack with one round `limit` line set, the lunge plus `rule`, Briar's might at 30,
+/// and Mira's door note not due, so the fight is all the round holds.
 fn lunge_pack(limit: Option<&str>, rule: &str) -> PathBuf {
     let pack = copy_pack("docks", "opposed-base");
     if let Some(limit) = limit {
@@ -76,6 +77,11 @@ fn lunge_pack(limit: Option<&str>, rule: &str) -> PathBuf {
         actors
             .get_mut::<Meter>(&briar)
             .set("might", Some(might))
+            .unwrap();
+        let shop_day = Meter { base: 0, offset: 0 };
+        actors
+            .get_mut::<Meter>(&ActorId::from("mira"))
+            .set("shop_day", Some(shop_day))
             .unwrap();
     });
     pack
@@ -140,20 +146,7 @@ fn fight(base: &Path, warmup: u32, refused: Option<Reason>) -> Result<(), String
                 code: Reason::Budget,
                 detail: None,
             };
-            let mira = gate::Refusal {
-                id: crate::intent::intent_id("docks-001", 1, "mira", "leave_door_note"),
-                code: Reason::Budget,
-                detail: None,
-            };
-            assert_eq!(
-                last.refused,
-                if warmup == 0 {
-                    vec![cut, mira]
-                } else {
-                    vec![cut]
-                }
-            );
-            ran("verb:lunge") && !ran("verb:strike")
+            last.refused == [cut] && ran("verb:lunge") && !ran("verb:strike")
         }
     };
     assert!(

@@ -60,17 +60,17 @@ Feature: Rules live with their owner
     Then spook check does not report a bare resist same
 
   Scenario: A cast member's rule is at hand while they share the room
-    Given briar's cast file holds a verb "ask" that targets an actor and sets the world flag passage
+    Given briar's cast file holds a verb "ask" that targets an actor and sets the world flag passage, and Mira's door note is not due
     When harbormouse, in the yard with briar, plays ask briar
     Then cast:briar/ask runs with briar as its target and passage is set
 
   Scenario: A cast member's rule needs its owner named
-    Given briar's cast file holds a verb "ask" that targets an actor and sets the world flag passage
+    Given briar's cast file holds a verb "ask" that targets an actor and sets the world flag passage, and Mira's door note is not due
     When harbormouse, in the yard with briar, plays ask
     Then the move is refused NOT_IN_SPEC before the round and the save is unchanged
 
   Scenario: A cast member's rule refuses a target other than its owner
-    Given briar's cast file holds a verb "ask" that targets an actor and sets the world flag passage
+    Given briar's cast file holds a verb "ask" that targets an actor and sets the world flag passage, and Mira's door note is not due
     When harbormouse, in the yard with briar, plays ask harbormouse
     Then the move is refused NOT_IN_SPEC before the round and the save is unchanged
 

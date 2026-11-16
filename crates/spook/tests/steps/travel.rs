@@ -475,3 +475,73 @@ fn arrival(round: &serde_json::Value, actor: &str) -> serde_json::Value {
         .unwrap_or_else(|| panic!("no arrival for {actor}: {round}"))
         .clone()
 }
+
+/// The way onto the lane: Briar steps aside, and the chock holds the cart's wheel.
+const LANE_SCRIPT: &[&str] = &[
+    "ask briar",
+    "travel wheel_shed",
+    "take chock",
+    "travel gate_yard",
+    "chock",
+    "travel mill_lane",
+];
+
+#[when(expr = "the lane script is played with the stub GM")]
+fn the_lane_script_is_played_with_the_stub_gm(world: &mut World) {
+    let pack = copy_pack("docks", "lane-script");
+    table::listen(world, &pack);
+    table::seat_gm(world);
+    table::seat_actor(world, &pack, "harbormouse");
+    world.pack = Some(pack.clone());
+    let (lane, way) = LANE_SCRIPT.split_last().unwrap();
+    for line in way {
+        commit_line(world, line);
+    }
+    world.start_ticks = state_of(&pack).world_time;
+    commit_line(world, lane);
+}
+
+#[then(expr = "Harbormouse reaches the lane at the exit's cost in ticks and hears the ending")]
+fn harbormouse_reaches_the_lane_and_hears_the_ending(world: &mut World) {
+    let pack = table::pack(world).to_path_buf();
+    let canon =
+        spookery_engine::load_canon(&pack).unwrap_or_else(|err| panic!("load canon: {err:?}"));
+    let yard = canon.places.get("gate_yard").unwrap();
+    let cost = yard.exits.iter().find(|exit| exit.name == "mill_lane");
+    let cost = cost.unwrap().cost.ticks;
+    assert!(cost > 0);
+    let now = state_of(&pack);
+    assert_eq!(place_of(&now, "harbormouse"), "mill_lane");
+    let rounds: Vec<_> = (list_round_keys(&pack).iter())
+        .map(|key| support::read_round(&pack, key))
+        .collect();
+    let arrival = (rounds.iter())
+        .flat_map(|round| round["effects"].as_array().cloned().unwrap_or_default())
+        .find(|effect| effect["kind"] == "location" && effect["to"] == "mill_lane");
+    let arrived_at = arrival.unwrap_or_else(|| panic!("no arrival on mill lane"))["arrived_at"]
+        .as_u64()
+        .unwrap();
+    assert_eq!(arrived_at.saturating_sub(world.start_ticks), cost);
+    assert!(
+        rounds.iter().any(|round| round["fast_forward"] == true),
+        "the journey did not fast-forward"
+    );
+    let flags = now
+        .entities()
+        .get::<component::Flag>(&spookery_engine::entity::Id::Global);
+    assert!(flags.contains("finished"), "finished is not set");
+    table::wait_player_from(
+        world,
+        0,
+        "The cart rolls out onto the lane. That is the end.",
+    );
+}
+
+/// The player sends `line`, then the GM commits its round.
+fn commit_line(world: &mut World, line: &str) {
+    let mark = table::player_write(world, line);
+    table::wait_player_from(world, mark, "\"kind\":\"queued\"");
+    let before = list_round_keys(table::pack(world)).len();
+    table::gm_tool_call(world, 2, "commit", r#"{"include_round":true}"#);
+    table::wait_round_count(table::pack(world), before + 1);
+}

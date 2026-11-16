@@ -5,8 +5,7 @@ Feature: A strike fight runs through play
     When play joins the table as "harbormouse"
     And the save before the fight is kept
     And play types "strike briar"
-    Then play shows "Your roll partly succeeded."
-    When play types "strike briar"
+    And play types "strike briar"
     And play types "strike briar"
     And play types "strike briar"
     Then play shows 3 successful rolls

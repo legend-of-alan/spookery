@@ -200,7 +200,7 @@ The table's state for a GM. `world_time` is the game clock in ticks. `pack_rev` 
     "world_time": 1080,
     "round_index": 0,
     "state_rev": 0,
-    "pack_rev": "blake2s:778f2e207a12de8dc5ff33a7a4d36387ddcdd9e3939e4aee64cd2600a7cb8910",
+    "pack_rev": "blake2s:b81d7ee672f6ac87e74ca79eda521b7cdaa8a59ec0f6db917727b9df47a54c74",
     "last_round_at": "2026-01-01T00:00:00Z",
     "queued": [],
     "pack": {
@@ -278,7 +278,7 @@ The table's state for a GM. `world_time` is the game clock in ticks. `pack_rev` 
         "aldric": "Aldric sweeps the shop and does not keep the books.\n",
         "bram": "Bram walks the night watch between the street and the shop.\n",
         "briar": "Briar blocks the yard and does not step aside.\n",
-        "harbormouse": "Harbormouse walks the night street, sleeps in a coil of rope, and carries a clay tonic.\n",
+        "harbormouse": "Harbormouse walks the night street, sleeps in a coil of rope, and carries a bitter tonic.\n",
         "mira": "Mira keeps the shop neat and the tin out of sight.\n",
         "rowan": "Rowan keeps the shop and walks the street.\n",
         "wren": "Wren mends nets on the street and keeps the tide chart in their head.\n"

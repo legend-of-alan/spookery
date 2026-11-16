@@ -145,8 +145,8 @@ fn dropping_the_tonic_locks_the_loft(world: &mut World) {
     world.pack = Some(pack);
 }
 
-#[given(expr = "a docks table with the GM and Harbormouse seated")]
-fn a_docks_table_with_the_gm_and_harbormouse_seated(world: &mut World) {
+#[given(expr = "a docks table with a stub GM and Harbormouse seated")]
+fn a_docks_table_with_a_stub_gm_and_harbormouse_seated(world: &mut World) {
     let pack = support::copy_pack("docks", "named-gap");
     seat_gm_and_harbormouse(world, pack);
 }

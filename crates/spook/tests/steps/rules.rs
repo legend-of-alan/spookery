@@ -965,9 +965,9 @@ fn check_accepts_resist_same_after_a_roll(world: &mut World) {
 }
 
 #[given(
-    expr = "briar's cast file holds a verb \"ask\" that targets an actor and sets the world flag passage"
+    expr = "briar's cast file holds a verb \"ask\" that targets an actor and sets the world flag passage, and Mira's door note is not due"
 )]
-fn briar_holds_ask(world: &mut World) {
+fn briar_holds_ask_with_miras_note_not_due(world: &mut World) {
     let pack = copy_pack("docks", "rules-scoped-here");
     edit_save(&pack, |now| {
         edit_meter(now, "mira", "shop_day", |shop_day| shop_day.base = 0);

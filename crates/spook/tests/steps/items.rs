@@ -506,7 +506,7 @@ fn the_slot_clears_in_the_round(world: &mut World) {
 }
 
 #[given(expr = "wren resists the poison with a seeded Constitution roll of 15 vs 12")]
-fn nell_resists_on_a_seeded_roll(world: &mut World) {
+fn wren_resists_on_a_seeded_roll(world: &mut World) {
     let pack = support::copy_pack("docks", "resist");
     let face = faces(
         &RollKey {
