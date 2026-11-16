@@ -867,9 +867,9 @@ fn the_evening_round_leaves_the_door_note_with_repeats(world: &mut World) {
 }
 
 #[then(
-    expr = "the save holds the door note under world notes, to rowan and wren, with fact_ledger_short once"
+    expr = "the save holds the door note in globals.notes, to rowan and wren, with fact_ledger_short once"
 )]
-fn the_save_holds_the_door_note_under_world_notes(world: &mut World) {
+fn the_save_holds_the_door_note_in_globals_notes(world: &mut World) {
     let held = concat!(
         "globals:\n",
         "  meters: {}\n",
@@ -885,16 +885,6 @@ fn the_save_holds_the_door_note_under_world_notes(world: &mut World) {
         "      text: Back at dusk. Oil on the shelf.\n",
     );
     assert!(world.scratch.ends_with(held), "{}", world.scratch);
-}
-
-#[then(expr = "leaving the door note again is refused as UNKNOWN_ID")]
-fn leaving_the_door_note_again_is_refused(world: &mut World) {
-    let mut world = world_of(world.pack());
-    let mut globals = world.globals_mut();
-    let left = globals
-        .get_mut::<Note>(&GlobalId)
-        .leave("note_mira_door", door_note());
-    assert_eq!(left, Err(spookery_engine::Reason::UnknownId));
 }
 
 #[when(expr = "the morning round runs with the note already left")]

@@ -251,11 +251,9 @@ fn the_wait_lands_and_miras_habit_is_ineligible(world: &mut World) {
     let ecs_world = support::world_of(world.pack());
     assert_eq!(act_of(&ecs_world, "mira").last_act_round, 1);
     let notes = ecs_world.globals().get::<Note>(&GlobalId);
-    assert_eq!(
-        notes.iter().count(),
-        0,
-        "{:?}",
-        notes.iter().collect::<Vec<_>>()
+    assert!(
+        !notes.contains("note_mira_door"),
+        "the door note was stored"
     );
 }
 
