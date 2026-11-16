@@ -36,9 +36,7 @@ fn render_speech(speech: &Speech) -> String {
     match &speech.from {
         // One player sits this socket, so a player id is the seated PC.
         Speaker::Player(_) => format!("You: {}", speech.text),
-        from @ (Speaker::Gm | Speaker::Npc(_)) => {
-            format!("{}: {}", speaker_name(from), speech.text)
-        }
+        Speaker::Gm | Speaker::Npc(_) => format!("{}: {}", speaker_name(speech), speech.text),
     }
 }
 
@@ -115,20 +113,11 @@ fn render_resume(notes: &[NoteView]) -> String {
     }
 }
 
-/// The place name a view shows, or its id when it has none.
-fn place_title(view: &protocol::View) -> &str {
-    if view.place_name.is_empty() {
-        &view.place
-    } else {
-        &view.place_name
-    }
-}
-
 pub fn render_view(view: &protocol::View) -> String {
     let protocol::View {
         viewer,
         place: _,
-        place_name: _,
+        place_name,
         body,
         actor_names,
         cant_act,
@@ -144,9 +133,8 @@ pub fn render_view(view: &protocol::View) -> String {
         habits: _,
     } = view;
     let mut sections = Vec::new();
-    let titled = place_title(view);
-    if !titled.is_empty() {
-        sections.push(format!("You are in {titled}."));
+    if !place_name.is_empty() {
+        sections.push(format!("You are in {place_name}."));
     }
     for line in [cant_act, busy] {
         if !line.is_empty() {
@@ -160,18 +148,8 @@ pub fn render_view(view: &protocol::View) -> String {
     if !visible_actors.is_empty() {
         let names = visible_actors
             .iter()
-            .enumerate()
-            .map(|(index, id)| {
-                if id == viewer {
-                    "You".to_string()
-                } else {
-                    actor_names
-                        .get(index)
-                        .filter(|name| !name.is_empty())
-                        .cloned()
-                        .unwrap_or_else(|| id.to_string())
-                }
-            })
+            .zip(actor_names)
+            .map(|(id, name)| if id == viewer { "You" } else { name })
             .collect::<Vec<_>>()
             .join(", ");
         sections.push(format!("Here: {names}"));
@@ -189,11 +167,7 @@ pub fn render_view(view: &protocol::View) -> String {
     if !items.is_empty() {
         let mut lines = Vec::new();
         for item in items {
-            let name = match item.name.as_str() {
-                "" => humanize(&item.id),
-                name => name.to_string(),
-            };
-            lines.push(format!("{name}: {}", item.count));
+            lines.push(format!("{}: {}", item.name, item.count));
         }
         sections.push(format!("Items:\n{}", lines.join("\n")));
     }
@@ -214,15 +188,15 @@ pub fn render_help(commands: &[CommandView]) -> String {
 }
 
 fn command_line(command: &CommandView) -> String {
-    let name = &command.name;
+    let id = &command.id;
     if let Some(owner) = &command.owner {
         let owner = command.names.first().unwrap_or(owner);
-        return format!("{name} {owner}");
+        return format!("{id} {owner}");
     }
     if command.target == "none" {
-        return name.clone();
+        return id.clone();
     }
-    let line = format!("{name} <{}>", command.target);
+    let line = format!("{id} <{}>", command.target);
     if command.names.is_empty() {
         line
     } else {
@@ -331,7 +305,7 @@ pub fn render_map(places: &[PlaceView]) -> String {
 /// `stairs (locked) — 2 ticks`, or `Docks Street — 0 ticks` for an exit named by where it
 /// goes.
 fn exit_phrase(exit: &ExitView) -> String {
-    let (name, ticks) = (exit.display_name(), exit.ticks);
+    let (name, ticks) = (&exit.name, exit.ticks);
     if exit.locked {
         format!("{name} (locked) — {ticks} ticks")
     } else {
@@ -394,7 +368,7 @@ pub fn render_status(status: &TableStatus) -> String {
         let lines = status
             .queued
             .iter()
-            .map(|row| format!("{}: {}", humanize(&row.actor_id), row.move_name))
+            .map(|row| format!("{}: {}", humanize(&row.actor_id), row.move_id))
             .collect::<Vec<_>>()
             .join("\n");
         format!("Queue:\n{lines}")
@@ -424,21 +398,21 @@ pub(crate) fn render_refusal(refusal: &protocol::Refusal, raw: bool) -> String {
     }
 }
 
-/// The name speech shows for who spoke: `GM`, or the speaker's id as words.
-fn speaker_name(from: &Speaker) -> String {
-    match from {
-        Speaker::Gm => "GM".to_string(),
-        Speaker::Player(id) | Speaker::Npc(id) => humanize(id),
+/// The name speech shows for who spoke: `GM`, or the speaking actor's name.
+fn speaker_name(speech: &Speech) -> &str {
+    match speech.from {
+        Speaker::Gm => "GM",
+        Speaker::Player(_) | Speaker::Npc(_) => &speech.from_name,
     }
 }
 
 /// Readable text for one GM body. Empty means print nothing.
 pub fn render_gm(body: &ServerBody) -> String {
     match body {
-        ServerBody::Say(speech) => format!("{}: {}", speaker_name(&speech.from), speech.text),
-        ServerBody::Queued {
-            actor, move_name, ..
-        } => format!("{} queued: {move_name}", humanize(actor)),
+        ServerBody::Say(speech) => format!("{}: {}", speaker_name(speech), speech.text),
+        ServerBody::Queued { actor, move_id, .. } => {
+            format!("{} queued: {move_id}", humanize(actor))
+        }
         ServerBody::Status(status) => render_status(status),
         ServerBody::View(view) => render_view(view),
         ServerBody::Committed(body) => render_commit(body),

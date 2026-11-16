@@ -24,11 +24,12 @@ pub enum Message {
 }
 
 /// Returned from a `Model` to the agent, and echoed back to the model in the next call:
-/// one tool call. `arguments` is the raw text the model sent.
+/// one tool call. `id` is the call's, `tool_id` the tool's, and `arguments` the raw text the
+/// model sent.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ToolCall {
     pub id: String,
-    pub name: String,
+    pub tool_id: String,
     pub arguments: String,
 }
 

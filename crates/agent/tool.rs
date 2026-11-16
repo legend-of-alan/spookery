@@ -22,13 +22,13 @@ const END_TURN: &str = "end_turn";
 /// The GM's tools: the `COMMAND_TOOLS`, with parameters from the client schema, and `END_TURN`.
 pub(crate) static TOOLS: LazyLock<Value> = LazyLock::new(|| {
     let schema: Value = serde_json::from_str(CLIENT_SCHEMA).expect("client schema");
-    let tool = |name: &str, description: &str, parameters: &Value| {
+    let tool = |tool_id: &str, description: &str, parameters: &Value| {
         json!({
             "type": "function",
-            "function": { "name": name, "description": description, "parameters": parameters }
+            "function": { "name": tool_id, "description": description, "parameters": parameters }
         })
     };
-    let args = |name: &str| &schema["$defs"][name];
+    let args = |type_id: &str| &schema["$defs"][type_id];
     let [perceive, say, queue] = COMMAND_TOOLS;
     json!([
         tool(
@@ -64,9 +64,9 @@ pub(crate) async fn call<M: Model, C: Connection>(
         "" => Some(json!({})),
         text => serde_json::from_str(text).ok().filter(Value::is_object),
     };
-    let body = match (tool_call.name.as_str(), args) {
-        (name, Some(args)) if COMMAND_TOOLS.contains(&name) => {
-            agent.send_command(name, args).await?
+    let body = match (tool_call.tool_id.as_str(), args) {
+        (tool_id, Some(args)) if COMMAND_TOOLS.contains(&tool_id) => {
+            agent.send_command(tool_id, args).await?
         }
         (END_TURN, Some(_)) => match agent.commit_queued_moves().await? {
             Some(body) => body,

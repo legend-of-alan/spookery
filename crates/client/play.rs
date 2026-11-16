@@ -199,7 +199,7 @@ fn list_pcs(open: &[String], taken: &[String], pc_names: &BTreeMap<String, Strin
     text
 }
 
-/// The PC a picker line names, by id, `player:<id>` or display name.
+/// The PC a picker line names, by id, `player:<id>` or name.
 fn parse_pc_choice(line: &str) -> Result<String, Error> {
     let line = line.trim();
     let choice = line.strip_prefix("player:").unwrap_or(line).trim();
