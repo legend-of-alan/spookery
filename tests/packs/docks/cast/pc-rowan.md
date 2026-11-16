@@ -2,7 +2,7 @@
 schema: cast
 id: rowan
 control_type: pc_template
-display_name: Rowan
+name: Rowan
 idle:
   eligible: false
 meters:

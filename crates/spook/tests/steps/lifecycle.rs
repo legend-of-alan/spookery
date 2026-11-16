@@ -59,12 +59,26 @@ fn the_stairs_take(world: &mut World, ticks: u64) {
     let path = pack.join("world/places/docks_shop.md");
     let text = fs::read_to_string(&path).unwrap();
     let next = text.replace(
-        "    name: stairs\n    cost:\n      ticks: 2\n",
-        &format!("    name: stairs\n    cost:\n      ticks: {ticks}\n"),
+        "    id: stairs\n    cost:\n      ticks: 2\n",
+        &format!("    id: stairs\n    cost:\n      ticks: {ticks}\n"),
     );
     assert_ne!(next, text, "the stairs cost moved");
     fs::write(&path, next).unwrap();
     edit_save(&pack, give_key);
+}
+
+#[given(expr = "the shop's exit to the street takes {int} ticks")]
+fn the_street_exit_takes(world: &mut World, ticks: u64) {
+    let pack = world.pack.clone().unwrap();
+    let path = pack.join("world/places/docks_shop.md");
+    let text = fs::read_to_string(&path).unwrap();
+    let next = text.replace(
+        "    id: docks_street\n",
+        &format!("    id: docks_street\n    cost:\n      ticks: {ticks}\n"),
+    );
+    assert_ne!(next, text, "the street exit cost moved");
+    fs::write(&path, next).unwrap();
+    stamp_pack_rev(&pack);
 }
 
 #[given(expr = "the rule {string} teleports Rowan to mira_rooms and takes {int} ticks")]
@@ -190,7 +204,7 @@ fn spook_check_refuses_the_verb(world: &mut World, verb: String) {
 #[given(regex = r"^(?P<actor>\S+) stands on (?P<place>\S+) in the save$")]
 fn stands_on(world: &mut World, actor: String, place: String) {
     edit_save(world.pack.as_ref().unwrap(), |now| {
-        let [actor, place] = [actor, place].map(|name| resolve_id(now.canon(), &name));
+        let [actor, place] = [actor, place].map(|text| resolve_id(now.canon(), &text));
         now.actors_mut()
             .get_mut::<component::Place>(&actor.into())
             .set(&place)
@@ -238,7 +252,7 @@ fn the_gm_queues_miras(world: &mut World, habit: String) {
         id: Some("gm-1".to_string()),
         round_index: None,
         actor_id: Some("mira".to_string()),
-        move_name: Some(habit),
+        move_id: Some(habit),
         target: None,
         message_to: None,
         rationale_code: String::new(),

@@ -131,14 +131,14 @@ impl<'de> Deserialize<'de> for Effect {
             .shift_remove("intent_id")
             .ok_or_else(|| D::Error::missing_field("intent_id"))?;
         let intent_id = String::deserialize(intent_id).map_err(D::Error::custom)?;
-        let kind_name = fields
+        let variant = fields
             .get("kind")
             .and_then(Value::as_str)
             .map(str::to_owned);
         let kind = EffectKind::deserialize(Value::Object(fields)).map_err(|err| {
-            let unknown = kind_name.is_some_and(|name| {
+            let unknown = variant.is_some_and(|variant| {
                 err.to_string()
-                    .starts_with(&format!("unknown variant `{name}`"))
+                    .starts_with(&format!("unknown variant `{variant}`"))
             });
             if unknown {
                 D::Error::custom(Reason::UnknownEffect)

@@ -2,7 +2,7 @@
 schema: cast
 id: goblin
 control_type: npc
-display_name: Goblin
+name: Goblin
 idle:
   eligible: false
 meters:

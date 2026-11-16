@@ -45,7 +45,7 @@ pub(crate) use lint::{check_canon, unknown_item};
 use meters::{add_own_meters, load_meters};
 use modifiers::{load_modifiers, MODIFIERS_FILE};
 use pack::load_pack_yaml;
-use place::add_place;
+use place::{add_place, name_exits};
 use rule_list::load_verbs;
 use source::{collect_files, collect_markdown_files, read_text, Diags, FileText, Locator};
 use story::load_stories;
@@ -79,6 +79,7 @@ pub struct Canon {
 
 #[derive(Clone, Debug)]
 pub struct ItemDef {
+    /// The name a player reads, the id when the pack gives none.
     pub name: String,
     pub tags: Vec<String>,
     pub body: String,
@@ -97,6 +98,10 @@ pub(crate) const OPEN: &str = "open";
 /// One way out of a place. `cost.ticks` is the game time the walk takes.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Exit {
+    /// Unique among this place's exits.
+    pub id: String,
+    /// The name a player reads and types. Left out by the pack, it is the name of the place it
+    /// goes to when `id` is that place's id, or else `id`.
     pub name: String,
     /// The place this exit leaves.
     pub from: PlaceId,
@@ -111,18 +116,19 @@ pub struct Exit {
 }
 
 impl Exit {
-    /// This exit's door, by its place and its name.
-    pub(crate) fn id(&self) -> ExitId {
+    /// This exit's door, by its place and its id.
+    pub(crate) fn qualified_id(&self) -> ExitId {
         ExitId {
             place: self.from.clone(),
-            exit: self.name.clone(),
+            exit: self.id.clone(),
         }
     }
 }
 
 #[derive(Clone, Debug)]
 pub struct PlaceDef {
-    pub display_name: String,
+    /// The name a player reads, the id when the pack gives none.
+    pub name: String,
     pub body: String,
     pub exits: Vec<Exit>,
     /// The flags an effect may set on this place.
@@ -130,16 +136,18 @@ pub struct PlaceDef {
 }
 
 impl PlaceDef {
-    /// Whether exit `name` here is a door: it has an `if`, so it carries the flag `open`.
-    pub(crate) fn has_door(&self, name: &str) -> bool {
+    /// Whether exit `exit_id` here is a door: it has an `if`, so it carries the flag `open`.
+    pub(crate) fn has_door(&self, exit_id: &str) -> bool {
         self.exits
             .iter()
-            .any(|exit| exit.name == name && !exit.if_.is_empty())
+            .any(|exit| exit.id == exit_id && !exit.if_.is_empty())
     }
 }
 
 #[derive(Clone, Debug)]
 pub struct StoryDef {
+    /// The name a player reads, the id when the pack gives none.
+    pub name: String,
     /// The flags an effect may set on this story.
     pub flags: Vec<String>,
 }
@@ -147,7 +155,8 @@ pub struct StoryDef {
 #[derive(Clone, Debug)]
 pub struct CastDef {
     pub control_type: canon::ControlType,
-    pub display_name: String,
+    /// The name a player reads, the id when the pack gives none.
+    pub name: String,
     /// The flags an effect may set on this actor.
     pub flags: Vec<String>,
     pub body: String,
@@ -167,7 +176,7 @@ impl Canon {
             .rules
             .iter()
             .filter_map(|rule| match &rule.when {
-                When::Verb { verb, .. } => Some(verb.as_str()),
+                When::Verb { verb_id, .. } => Some(verb_id.as_str()),
                 _ => None,
             })
             .collect();
@@ -179,14 +188,14 @@ impl Canon {
             .rules
             .iter()
             .filter_map(|rule| match &rule.when {
-                When::Verb { verb, target } if matches!(rule.owner, Owner::Verb) => {
-                    Some((verb.clone(), "verb", target.as_str()))
+                When::Verb { verb_id, target } if matches!(rule.owner, Owner::Verb) => {
+                    Some((verb_id.clone(), "verb", target.as_str()))
                 }
                 When::Habit => Some((rule.local_id.clone(), "habit", TargetKind::None.as_str())),
                 _ => None,
             })
-            .map(|(name, audience, token)| MenuRow {
-                name,
+            .map(|(id, audience, token)| MenuRow {
+                id,
                 kind: audience.to_string(),
                 target: token.to_string(),
             })
@@ -241,20 +250,17 @@ impl Canon {
         self.cast.get(actor_id).and_then(|cast| cast.idle.as_ref())
     }
 
-    /// The name a player sees for a cast member, place or item: its `display_name`, an
-    /// unnamed item's id with spaces, or else the id.
-    pub fn display_name(&self, id: &str) -> String {
-        if let Some(cast) = self.cast.get(id) {
-            return cast.display_name.clone();
-        }
-        if let Some(place) = self.places.get(id) {
-            return place.display_name.clone();
-        }
-        match self.items.get(id) {
-            Some(item) if !item.name.is_empty() => item.name.clone(),
-            Some(_) => id.replace('_', " "),
-            None => id.to_string(),
-        }
+    /// The name a player reads for the cast member, place, item or story `id`, or `None` when
+    /// the pack has no such id.
+    pub fn name(&self, id: &str) -> Option<&str> {
+        let cast = self.cast.get(id).map(|cast| &cast.name);
+        let place = || self.places.get(id).map(|place| &place.name);
+        let item = || self.items.get(id).map(|item| &item.name);
+        let story = || self.stories.get(id).map(|story| &story.name);
+        cast.or_else(place)
+            .or_else(item)
+            .or_else(story)
+            .map(String::as_str)
     }
 
     pub(crate) fn body_of_fact(&self, fact_id: &str) -> &str {
@@ -326,6 +332,7 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
         };
         loaded.extend(rules.unwrap_or_default());
     }
+    name_exits(&mut places);
     // world/meters.yaml is optional.
     let world_meters = if root.join("world/meters.yaml").is_file() {
         let rel = "world/meters.yaml";
@@ -484,11 +491,11 @@ mod tests {
         assert!(summary
             .menu
             .iter()
-            .any(|row| row.name == "travel" && row.kind == "verb" && row.target == "exit"));
+            .any(|row| row.id == "travel" && row.kind == "verb" && row.target == "exit"));
         assert!(summary
             .menu
             .iter()
-            .any(|row| row.name == "restock_lamp_oil" && row.kind == "habit"));
+            .any(|row| row.id == "restock_lamp_oil" && row.kind == "habit"));
         assert_eq!(
             summary.control_types.get("mira"),
             Some(&canon::ControlType::Npc)

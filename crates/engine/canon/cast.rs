@@ -52,7 +52,7 @@ pub(super) fn add_cast(
         id.clone(),
         CastDef {
             control_type,
-            display_name: file.display_name,
+            name: file.name.unwrap_or(file.id),
             flags: file.flags,
             body: page.body,
             idle: file.idle,
@@ -88,7 +88,6 @@ fn load_cast(file: &str, yaml: &str, line_base: u32) -> Result<CastDoc, Vec<Diag
             .into_diagnostic(),
         );
     }
-    diags.extend(source.refuse_empty_display_name(&parsed.display_name));
     if parsed.control_type != "npc" && parsed.control_type != "pc_template" {
         diags.push(
             Problem {
@@ -114,7 +113,7 @@ struct CastDoc {
     _schema: String,
     id: String,
     control_type: String,
-    display_name: String,
+    name: Option<String>,
     #[serde(default)]
     flags: Vec<String>,
     /// The meters only this actor carries.

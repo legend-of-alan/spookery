@@ -1,7 +1,7 @@
 ---
 schema: item
 id: lamp_oil
-display_name: Lamp oil
+name: Lamp oil
 tags: []
 rules: []
 ---

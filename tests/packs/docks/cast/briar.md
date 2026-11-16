@@ -2,7 +2,7 @@
 schema: cast
 id: briar
 control_type: npc
-display_name: Briar
+name: Briar
 idle:
   eligible: true
 rules:

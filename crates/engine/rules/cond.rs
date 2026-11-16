@@ -94,8 +94,8 @@ fn holds(context: &Context, cond: &Cond) -> Result<bool, Reason> {
             let known = state.actors().get::<component::KnownFacts>(actor).get();
             Ok(known.is_some_and(|facts| facts.iter().any(|id| id == fact)))
         }
-        Cond::Cycle { name, from, to } => {
-            let length = context.canon.budget.cycles.get(name);
+        Cond::Cycle { id, from, to } => {
+            let length = context.canon.budget.cycles.get(id);
             let tick = state.world_time % length.ok_or(Reason::UnknownId)?;
             Ok(is_in_window(*from, *to, tick))
         }

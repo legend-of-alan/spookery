@@ -208,7 +208,7 @@ fn queue(
     Ok(Reply::new(ServerBody::Queued {
         intent: queued.id,
         actor: queued.actor_id,
-        move_name: queued.move_name,
+        move_id: queued.move_id,
         target,
     }))
 }
@@ -240,7 +240,7 @@ mod tests {
         let gm_commands: Vec<&str> = COMMANDS
             .iter()
             .filter(|command| command.seat == Seat::Gm)
-            .map(|command| command.name)
+            .map(|command| command.id)
             .collect();
         let called: Vec<&str> = calls.iter().map(|(command, _)| *command).collect();
         assert_eq!(called, gm_commands);
@@ -260,7 +260,7 @@ mod tests {
     #[test]
     fn each_gm_command_is_described() {
         for command in COMMANDS.iter().filter(|command| command.seat == Seat::Gm) {
-            assert!(gm::describe(command.name).is_some(), "{}", command.name);
+            assert!(gm::describe(command.id).is_some(), "{}", command.id);
         }
         assert!(gm::describe("fly").is_none());
     }
@@ -277,11 +277,11 @@ mod tests {
         let want = QueuedMove {
             id: "i1".into(),
             actor_id: "rowan".into(),
-            move_name: "wait".into(),
+            move_id: "wait".into(),
         };
         assert_eq!(queued, want);
         let intent = &world.queued_intents()[0];
-        assert_eq!(intent.move_name, "wait");
+        assert_eq!(intent.move_id, "wait");
         assert_eq!(intent.args.message_to, Some(vec!["wren".into()]));
     }
 }

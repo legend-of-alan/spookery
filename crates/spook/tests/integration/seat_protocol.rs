@@ -1,5 +1,5 @@
 //! `docs/seat-protocol.md` is a capture of one live docks table.
-//! Each fenced example is named. This test fails when a name is missing,
+//! Each fenced example has an id. This test fails when an id is missing,
 //! extra, or different from the table.
 
 use std::collections::BTreeMap;
@@ -64,21 +64,21 @@ async fn the_seat_page_matches_a_live_table() {
     let doc = std::fs::read_to_string(&path).unwrap_or_default();
     let documented = examples_in(&doc);
     let mut problems = Vec::new();
-    for name in captured.keys() {
-        if !documented.contains_key(name) {
-            problems.push(format!("missing example `{name}`"));
+    for example_id in captured.keys() {
+        if !documented.contains_key(example_id) {
+            problems.push(format!("missing example `{example_id}`"));
         }
     }
-    for name in documented.keys() {
-        if !captured.contains_key(name) {
-            problems.push(format!("doc example `{name}` was not captured"));
+    for example_id in documented.keys() {
+        if !captured.contains_key(example_id) {
+            problems.push(format!("doc example `{example_id}` was not captured"));
         }
     }
-    for (name, live) in &captured {
-        let Some(doc_example) = documented.get(name) else {
+    for (example_id, live) in &captured {
+        let Some(doc_example) = documented.get(example_id) else {
             continue;
         };
-        if let Some(problem) = differ(name, live, doc_example) {
+        if let Some(problem) = differ(example_id, live, doc_example) {
             problems.push(problem);
         }
     }
@@ -385,32 +385,32 @@ fn one_event(gm: &mut GmClient) -> Value {
     serde_json::from_str(&line).unwrap_or_else(|err| panic!("{err} in {line}"))
 }
 
-fn tool_call(id: u64, name: &str, arguments: &Value) -> Value {
+fn tool_call(id: u64, tool_id: &str, arguments: &Value) -> Value {
     serde_json::json!({
         "jsonrpc": "2.0",
         "id": id,
         "method": "tools/call",
-        "params": { "name": name, "arguments": arguments }
+        "params": { "name": tool_id, "arguments": arguments }
     })
 }
 
-fn insert_json(out: &mut BTreeMap<String, Example>, name: &str, value: Value) {
-    out.insert(name.to_string(), Example::Json(value));
+fn insert_json(out: &mut BTreeMap<String, Example>, example_id: &str, value: Value) {
+    out.insert(example_id.to_string(), Example::Json(value));
 }
 
-fn out_json<'a>(out: &'a BTreeMap<String, Example>, name: &str) -> &'a Value {
-    match out.get(name) {
+fn out_json<'a>(out: &'a BTreeMap<String, Example>, example_id: &str) -> &'a Value {
+    match out.get(example_id) {
         Some(Example::Json(value)) => value,
-        _ => panic!("no json example {name}"),
+        _ => panic!("no json example {example_id}"),
     }
 }
 
-fn differ(name: &str, live: &Example, documented: &Example) -> Option<String> {
+fn differ(example_id: &str, live: &Example, documented: &Example) -> Option<String> {
     match (live, documented) {
         (Example::Text(live), Example::Text(doc)) if live == doc => None,
-        (Example::Text(live), Example::Text(doc)) => {
-            Some(format!("`{name}` text\n  live: {live}\n  doc:  {doc}"))
-        }
+        (Example::Text(live), Example::Text(doc)) => Some(format!(
+            "`{example_id}` text\n  live: {live}\n  doc:  {doc}"
+        )),
         (Example::Json(live), Example::Json(doc)) => {
             let mut live = live.clone();
             let mut doc = doc.clone();
@@ -419,10 +419,12 @@ fn differ(name: &str, live: &Example, documented: &Example) -> Option<String> {
             if live == doc {
                 None
             } else {
-                Some(format!("`{name}` json\n  live: {live}\n  doc:  {doc}"))
+                Some(format!(
+                    "`{example_id}` json\n  live: {live}\n  doc:  {doc}"
+                ))
             }
         }
-        _ => Some(format!("`{name}` is not the same kind of example")),
+        _ => Some(format!("`{example_id}` is not the same kind of example")),
     }
 }
 
@@ -461,7 +463,7 @@ fn loopback_port(text: &str) -> Option<u16> {
 }
 
 struct Fence {
-    name: Option<String>,
+    example_id: Option<String>,
     kind: String,
     body: String,
 }
@@ -469,10 +471,10 @@ struct Fence {
 fn examples_in(doc: &str) -> BTreeMap<String, Example> {
     let mut out = BTreeMap::new();
     for fence in fences(doc) {
-        let Some(name) = fence.name else {
+        let Some(example_id) = fence.example_id else {
             assert!(
                 fence.kind != "json",
-                "json fence has no example name:\n{}",
+                "json fence has no example id:\n{}",
                 fence.body
             );
             continue;
@@ -480,14 +482,14 @@ fn examples_in(doc: &str) -> BTreeMap<String, Example> {
         let example = match fence.kind.as_str() {
             "json" => Example::Json(
                 serde_json::from_str(&fence.body)
-                    .unwrap_or_else(|err| panic!("example `{name}`: {err}\n{}", fence.body)),
+                    .unwrap_or_else(|err| panic!("example `{example_id}`: {err}\n{}", fence.body)),
             ),
             "text" => Example::Text(fence.body.trim_end().to_string()),
-            other => panic!("example `{name}` uses `{other}`, not json or text"),
+            other => panic!("example `{example_id}` uses `{other}`, not json or text"),
         };
         assert!(
-            out.insert(name.clone(), example).is_none(),
-            "duplicate example `{name}`"
+            out.insert(example_id.clone(), example).is_none(),
+            "duplicate example `{example_id}`"
         );
     }
     out
@@ -498,11 +500,11 @@ fn fences(doc: &str) -> Vec<Fence> {
     let mut pending = None;
     let mut lines = doc.lines().peekable();
     while let Some(line) = lines.next() {
-        if let Some(name) = line
+        if let Some(example_id) = line
             .strip_prefix("<!-- example: ")
             .and_then(|rest| rest.strip_suffix(" -->"))
         {
-            pending = Some(name.to_string());
+            pending = Some(example_id.to_string());
             continue;
         }
         let Some(kind) = line.strip_prefix("```") else {
@@ -520,7 +522,7 @@ fn fences(doc: &str) -> Vec<Fence> {
             body.push('\n');
         }
         out.push(Fence {
-            name: pending.take(),
+            example_id: pending.take(),
             kind: kind.to_string(),
             body,
         });
@@ -530,8 +532,8 @@ fn fences(doc: &str) -> Vec<Fence> {
 
 fn render(captured: &BTreeMap<String, Example>) -> String {
     let mut out = String::new();
-    for (name, example) in captured {
-        out.push_str(&format!("<!-- example: {name} -->\n"));
+    for (example_id, example) in captured {
+        out.push_str(&format!("<!-- example: {example_id} -->\n"));
         match example {
             Example::Json(value) => {
                 out.push_str("```json\n");

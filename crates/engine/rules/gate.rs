@@ -38,7 +38,7 @@ impl Refusal {
     }
 }
 
-/// The rule `actor`'s `verb` runs, the queue's and the round's alike. An NPC's habit is
+/// The rule `actor`'s `verb_id` runs, the queue's and the round's alike. An NPC's habit is
 /// picked by its local id first; any other verb is `verb_for`'s, looking in `hint` first.
 /// A full rule id picks nothing. A player's move never runs a habit, and a missing rule is
 /// `NOT_IN_SPEC` for it and `UNKNOWN_MOVE` for anyone else.
@@ -47,15 +47,15 @@ pub(crate) fn pick<'a>(
     state: &State,
     actor: &Viewer,
     source: Source,
-    verb: &str,
+    verb_id: &str,
     hint: Option<&str>,
 ) -> Result<&'a Rule, Reason> {
-    let found = verb_for(canon, state, actor.actor_id(), verb, hint);
+    let found = verb_for(canon, state, actor.actor_id(), verb_id, hint);
     if source == Source::Player && matches!(actor, Viewer::Player(_)) {
         return found.ok_or(Reason::NotInSpec);
     }
     let habits = canon.rules.habits_of(actor.actor_id());
-    let habit = habits.into_iter().find(|rule| rule.local_id == verb);
+    let habit = habits.into_iter().find(|rule| rule.local_id == verb_id);
     habit.or(found).ok_or(Reason::UnknownMove)
 }
 
@@ -77,41 +77,42 @@ pub(crate) fn verb_for<'a>(
     canon: &'a Canon,
     state: &State,
     actor_id: &ActorId,
-    verb: &str,
+    verb_id: &str,
     hint: Option<&str>,
 ) -> Option<&'a Rule> {
     let wielded = state.actors().get::<component::WieldedItem>(actor_id).get();
     if let Some(item) = wielded.filter(|item| !item.is_empty()) {
-        if let Some(rule) = owner_verb(canon, &Owner::Item(item.to_string()), verb) {
+        if let Some(rule) = owner_verb(canon, &Owner::Item(item.to_string()), verb_id) {
             return Some(rule);
         }
     }
     if let Some(token) = hint.filter(|token| !token.is_empty()) {
-        if let Some(rule) = owner_verb(canon, &Owner::Item(token.to_string()), verb) {
+        if let Some(rule) = owner_verb(canon, &Owner::Item(token.to_string()), verb_id) {
             return Some(rule);
         }
-        if let Some(rule) = owner_verb(canon, &Owner::Cast(token.to_string()), verb) {
+        if let Some(rule) = owner_verb(canon, &Owner::Cast(token.to_string()), verb_id) {
             return Some(rule);
         }
     }
     if let Some(place) = state.actors().get::<component::Place>(actor_id).get() {
-        if let Some(rule) = owner_verb(canon, &Owner::Place(place.to_string()), verb) {
+        if let Some(rule) = owner_verb(canon, &Owner::Place(place.to_string()), verb_id) {
             return Some(rule);
         }
     }
-    canon.rules.verb(verb)
+    owner_verb(canon, &Owner::Verb, verb_id)
 }
 
-fn owner_verb<'a>(canon: &'a Canon, owner: &Owner, verb: &str) -> Option<&'a Rule> {
+fn owner_verb<'a>(canon: &'a Canon, owner: &Owner, verb_id: &str) -> Option<&'a Rule> {
     canon.rules.iter().find(|rule| {
-        &rule.owner == owner && matches!(&rule.when, When::Verb { verb: name, .. } if name == verb)
+        &rule.owner == owner
+            && matches!(&rule.when, When::Verb { verb_id: id, .. } if id == verb_id)
     })
 }
 
 /// The rule the intent's verb picks, for its actor and target.
 pub(crate) fn rule_of<'c>(context: &Context<'c, '_>) -> Result<&'c Rule, Refusal> {
     let intent = context.intent;
-    let (verb, hint) = (&intent.move_name, hint_of(&intent.target));
+    let (verb_id, hint) = (&intent.move_id, hint_of(&intent.target));
     let actor = intent
         .actor
         .as_ref()
@@ -121,7 +122,7 @@ pub(crate) fn rule_of<'c>(context: &Context<'c, '_>) -> Result<&'c Rule, Refusal
         context.state,
         actor,
         intent.source,
-        verb,
+        verb_id,
         hint,
     );
     picked.map_err(|code| Refusal::new(intent, code))
@@ -177,7 +178,7 @@ pub(crate) const CANCEL: &str = "cancel";
 
 /// Whether this intent is a player's `cancel`.
 pub(crate) fn is_cancel(intent: &Intent) -> bool {
-    intent.source == Source::Player && intent.move_name == CANCEL
+    intent.source == Source::Player && intent.move_id == CANCEL
 }
 
 /// A player may cancel only their own action under way, off any exit, whose rule is
@@ -225,7 +226,7 @@ pub(crate) struct NamedId {
     pub(crate) id: String,
     /// The name the seat reads for it.
     pub(crate) name: String,
-    /// The other names it answers to when typed: where an exit goes, by id and by name.
+    /// The other words it answers to when typed: where an exit goes, by place id and name.
     pub(crate) aliases: Vec<String>,
 }
 
@@ -252,7 +253,7 @@ pub(crate) fn list_ids(
     let mut ids: Vec<NamedId> = (state.actors().get::<component::Item>(viewer.actor_id()))
         .iter()
         .filter(|(_, count)| **count > 0)
-        .map(|(id, _)| NamedId::new(id, canon.display_name(id)))
+        .filter_map(|(id, _)| Some(NamedId::new(id, canon.name(id)?.to_string())))
         .collect();
     if let Ok(view) = perceive_as(canon, state, presence, viewer) {
         ids.push(NamedId::new(&view.place, view.place_name));
@@ -263,23 +264,23 @@ pub(crate) fn list_ids(
         let items = view.items.into_iter();
         ids.extend(items.map(|item| NamedId::new(&item.id, item.name)));
         ids.extend(view.exits.into_iter().map(|exit| NamedId {
-            name: exit.display_name().to_string(),
-            aliases: vec![exit.to, exit.place_name],
-            id: exit.name,
+            id: exit.exit_id,
+            name: exit.name,
+            aliases: vec![exit.place_id, exit.place_name],
         }));
     }
     ids
 }
 
-/// The id `name` names among `ids`, by the id or any name, ignoring case and outer
+/// The id `text` names among `ids`, by the id or any name, ignoring case and outer
 /// spaces. `None` when nothing has that name. When two or more ids have it, the `Err` is the
-/// detail of the `AMBIGUOUS_NAME` refusal: the name and those ids, `Briar: bram, briar`.
-pub(crate) fn find_id<'a>(ids: &'a [NamedId], name: &str) -> Result<Option<&'a str>, String> {
+/// detail of the `AMBIGUOUS_NAME` refusal: the text and those ids, `Briar: bram, briar`.
+pub(crate) fn find_id<'a>(ids: &'a [NamedId], text: &str) -> Result<Option<&'a str>, String> {
     let has_name = |named_id: &NamedId| {
-        let mut names = [&named_id.id, &named_id.name]
+        let mut candidates = [&named_id.id, &named_id.name]
             .into_iter()
             .chain(&named_id.aliases);
-        names.any(|candidate| is_named(name, candidate))
+        candidates.any(|candidate| is_named(text, candidate))
     };
     let mut matches: Vec<&str> = (ids.iter().filter(|named_id| has_name(named_id)))
         .map(|named_id| named_id.id.as_str())
@@ -289,6 +290,6 @@ pub(crate) fn find_id<'a>(ids: &'a [NamedId], name: &str) -> Result<Option<&'a s
     match matches[..] {
         [] => Ok(None),
         [id] => Ok(Some(id)),
-        _ => Err(format!("{}: {}", name.trim(), matches.join(", "))),
+        _ => Err(format!("{}: {}", text.trim(), matches.join(", "))),
     }
 }

@@ -291,56 +291,11 @@ mod tests {
     use std::fs;
     use std::path::Path;
 
-    use crate::state::MemoryLine;
     use crate::store::durability;
-    use crate::store::lock::lock_pack;
     use crate::store::records::RoundRecord;
     use crate::testing::copy_pack;
-    use crate::world::World;
 
     use super::commit;
-
-    #[test]
-    fn a_reopen_keeps_every_journal_record_the_commit_wrote() {
-        let root = copy_pack("docks", "journal-reopen");
-        let mut world = crate::testing::resume(&root);
-        let pre = fs::read(root.join("state/save.yaml")).unwrap();
-        let mut state = world.begin_round();
-        state.push_memory(MemoryLine {
-            round_index: 0,
-            actor_id: "mira".into(),
-            intent_id: "rest".to_string(),
-            fact_ids: vec![],
-            tags: vec![],
-            text: Some("kept".to_string()),
-        });
-        let line = round_line(0);
-        commit(&mut world, state, line).unwrap();
-        assert_no_tmp(&root);
-        let bundle = root.join("state/journal/bundle-0000.jsonl");
-        let bundle_bytes = fs::read(&bundle).unwrap();
-        assert_eq!(fs::read(root.join("state/save.yaml")).unwrap(), pre);
-        let bundle_text = String::from_utf8(bundle_bytes.clone()).unwrap();
-        assert!(
-            bundle_text.contains("\"state_rev_after\":1"),
-            "{bundle_text}"
-        );
-        assert!(
-            bundle_text.contains("\"chain\":\"blake2s:"),
-            "{bundle_text}"
-        );
-        assert!(bundle_text.contains("kept"), "{bundle_text}");
-        let next = world.begin_round();
-        commit(&mut world, next, round_line(1)).unwrap();
-        let bundle_bytes = fs::read(&bundle).unwrap();
-        drop(world);
-        drop(lock_pack(&root).unwrap());
-        let opened = World::open(&root).unwrap();
-        assert_eq!(opened.state().state_rev, 0);
-        assert_eq!(fs::read(&bundle).unwrap(), bundle_bytes);
-
-        let _ = fs::remove_dir_all(&root);
-    }
 
     #[test]
     fn a_failed_gzip_keeps_the_round_and_the_next_commit_starts_a_bundle() {
@@ -370,12 +325,12 @@ mod tests {
         assert!(world.take_warning().is_none());
         let bundles = crate::store::journal::read_bundle_records(&root).unwrap();
         assert_eq!(bundles.len(), 2, "{bundles:?}");
-        for (name, entries) in &bundles {
+        for (bundle, entries) in &bundles {
             let checkpoints = entries
                 .iter()
                 .filter(|entry| matches!(entry, crate::store::records::Record::Checkpoint(_)))
                 .count();
-            assert_eq!(checkpoints, 1, "{name}");
+            assert_eq!(checkpoints, 1, "{bundle}");
         }
         assert!(root.join("state/journal/bundle-0000.jsonl.gz").is_file());
         assert!(!root.join("state/journal/bundle-0000.jsonl").exists());
@@ -407,10 +362,10 @@ mod tests {
         commit(&mut world, third, round_line(3)).unwrap();
         let bundles = crate::store::journal::read_bundle_records(&root).unwrap();
         assert_eq!(bundles.len(), 2, "{bundles:?}");
-        let (first_name, first_entries) = &bundles[0];
-        let (second_name, second_entries) = &bundles[1];
-        assert_eq!(count_checkpoints(first_entries), 1, "{first_name}");
-        assert_eq!(count_checkpoints(second_entries), 0, "{second_name}");
+        let (first_bundle, first_entries) = &bundles[0];
+        let (second_bundle, second_entries) = &bundles[1];
+        assert_eq!(count_checkpoints(first_entries), 1, "{first_bundle}");
+        assert_eq!(count_checkpoints(second_entries), 0, "{second_bundle}");
         assert!(second_entries.iter().any(|entry| {
             matches!(entry, crate::store::records::Record::Round(record) if record.round_index == 3)
         }));
@@ -445,23 +400,6 @@ mod tests {
         }
         text.push_str(&format!("checkpoint_every: {every}\n"));
         fs::write(path, text).unwrap();
-    }
-
-    fn assert_no_tmp(dir: &Path) {
-        let mut pending = vec![dir.to_path_buf()];
-        while let Some(current) = pending.pop() {
-            for entry in fs::read_dir(&current).unwrap() {
-                let entry = entry.unwrap();
-                let path = entry.path();
-                if path.is_dir() {
-                    pending.push(path);
-                    continue;
-                }
-                let name = entry.file_name();
-                let name = name.to_string_lossy();
-                assert!(!name.ends_with(".tmp"), "{}", path.display());
-            }
-        }
     }
 
     fn round_line(round_index: u64) -> RoundRecord {

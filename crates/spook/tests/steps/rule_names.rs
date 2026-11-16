@@ -50,8 +50,8 @@ fn the_round_records_the_move(world: &mut World) {
     assert_location(table::pack(world), "round-0001");
 }
 
-fn assert_location(pack: &Path, name: &str) {
-    let round = read_round(pack, name);
+fn assert_location(pack: &Path, key: &str) {
+    let round = read_round(pack, key);
     let hits: Vec<_> = round["effects"]
         .as_array()
         .unwrap()
@@ -68,7 +68,7 @@ fn add_knife_and_mark_rule(pack: &Path) {
     fs::create_dir_all(item.parent().unwrap()).unwrap();
     fs::write(
         &item,
-        "---\nschema: item\nid: knife\ndisplay_name: Knife\ntags: []\nrules: []\n---\n\nA knife.\n",
+        "---\nschema: item\nid: knife\nname: Knife\ntags: []\nrules: []\n---\n\nA knife.\n",
     )
     .unwrap();
     let mut verbs = fs::read_to_string(pack.join("rules/verbs.yaml")).unwrap();

@@ -23,7 +23,7 @@ pub enum Object {
     Global,
     Place(PlaceId),
     Story(StoryId),
-    /// An exit, by its place and its name: `exit:<place>.<exit>`.
+    /// An exit, by its place and its exit id: `exit:<place>.<exit>`.
     Exit(ExitId),
     Actor(ActorId),
 }

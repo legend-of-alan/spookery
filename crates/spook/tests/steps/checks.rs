@@ -336,8 +336,8 @@ fn listen_and_seat_both(world: &mut World, pack: &Path) {
     table::seat_rowan(world, pack);
 }
 
-fn queue_mira(world: &mut World, move_name: &str) {
-    let args = format!(r#"{{"actor_id":"mira","move":"{move_name}"}}"#);
+fn queue_mira(world: &mut World, move_id: &str) {
+    let args = format!(r#"{{"actor_id":"mira","move":"{move_id}"}}"#);
     let text = table::gm_tool_call(world, 4, "queue", &args);
     assert!(text.contains("\"id\""), "{text}");
     assert!(!text.contains("UNKNOWN_ID"), "{text}");

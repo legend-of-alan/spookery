@@ -145,9 +145,9 @@ fn parse_command(line: &str) -> Option<(&str, Option<Value>)> {
             .map(|text| json!({ "as": npc, "text": text.trim_start() })),
         ("say", [_, ..]) => Some(json!({ "to": "table", "text": rest })),
         ("perceive", [actor]) => Some(json!({ "as": actor })),
-        ("queue", [actor, move_name]) => Some(json!({ "actor_id": actor, "move": move_name })),
-        ("queue", [actor, move_name, target]) => {
-            Some(json!({ "actor_id": actor, "move": move_name, "target": target }))
+        ("queue", [actor, move_id]) => Some(json!({ "actor_id": actor, "move": move_id })),
+        ("queue", [actor, move_id, target]) => {
+            Some(json!({ "actor_id": actor, "move": move_id, "target": target }))
         }
         ("commit", []) => Some(json!({ "include_round": true })),
         ("say" | "perceive" | "queue" | "commit", _) => None,

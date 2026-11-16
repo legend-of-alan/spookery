@@ -73,7 +73,7 @@ pub(crate) fn pay(
         if amount == 0 {
             // A cost of 0 leaves the meter as it was and still takes a key of the budget.
             state.count_key(&change::Key::new(
-                Meter::NAME,
+                Meter::ID,
                 entity::IdRef::Actor(actor_id),
                 Some(key),
             ))?;

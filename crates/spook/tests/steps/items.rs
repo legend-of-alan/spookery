@@ -76,7 +76,7 @@ fn write_dagger(pack: &Path, rules: &str) {
     fs::write(
         path,
         format!(
-            "---\nschema: item\nid: poisoned_dagger\ndisplay_name: Poisoned dagger\ntags:\n  - weapon\n{section}---\n\nA dark blade.\n"
+            "---\nschema: item\nid: poisoned_dagger\nname: Poisoned dagger\ntags:\n  - weapon\n{section}---\n\nA dark blade.\n"
         ),
     )
     .unwrap();

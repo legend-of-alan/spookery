@@ -81,8 +81,8 @@ pub fn verify_quick(pack: &Path) -> Result<Report, Error> {
             trusted_edits: Vec::new(),
         });
     };
-    let (name, _) = bundles.last().expect("bundle");
-    let end = check_bundle_end(pack, name, entries, replay_bundle(pack, &start, entries))?;
+    let (bundle, _) = bundles.last().expect("bundle");
+    let end = check_bundle_end(pack, bundle, entries, replay_bundle(pack, &start, entries))?;
     check_save_file(pack, &records, &base)?;
     Ok(Report {
         state_rev: state_rev_of(&end)?,
@@ -100,7 +100,7 @@ fn check_bundle_starts<'a>(
 ) -> Result<Vec<BundleStart<'a>>, Error> {
     let mut starts = Vec::with_capacity(bundles.len());
     let mut current = base.to_vec();
-    for (index, (name, entries)) in bundles.iter().enumerate() {
+    for (index, (bundle, entries)) in bundles.iter().enumerate() {
         starts.push((current, entries.as_slice()));
         if index + 1 == bundles.len() {
             break;
@@ -110,7 +110,7 @@ fn check_bundle_starts<'a>(
                 DivergenceKind::Checkpoint,
                 0,
                 None,
-                format!("{name}: a closed bundle has no checkpoint"),
+                format!("{bundle}: a closed bundle has no checkpoint"),
             )
             .into());
         };
@@ -118,7 +118,7 @@ fn check_bundle_starts<'a>(
             checkpoint_diverged(
                 mark.state_rev,
                 mark.round_index,
-                format!("{name}: {detail}"),
+                format!("{bundle}: {detail}"),
             )
         };
         current = fs::read(journal::checkpoint_path(pack, mark.state_rev))
@@ -132,14 +132,14 @@ fn check_bundle_starts<'a>(
 
 fn check_bundle_end(
     pack: &Path,
-    name: &str,
+    bundle: &str,
     entries: &[Record],
     end: Result<Vec<u8>, Error>,
 ) -> Result<Vec<u8>, Error> {
     let end = end.map_err(|err| name_save_line(pack, err))?;
     if let Some(mark) = journal::latest_checkpoint(entries) {
         if blake2s_tagged(&end) != mark.state_hash {
-            let detail = format!("{name}: state hash differed");
+            let detail = format!("{bundle}: state hash differed");
             return Err(
                 checkpoint_diverged(mark.state_rev, mark.round_index, detail)
                     .replayed(end)

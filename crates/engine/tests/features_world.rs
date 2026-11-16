@@ -58,13 +58,13 @@ pub fn split_line(line: &str) -> (&str, Option<&str>) {
         .map_or((line, None), |(head, rest)| (head, Some(rest)))
 }
 
-/// The id of the cast member or place in `canon` whose display name is `name`; any other text,
-/// such as an id or an exit address, as written.
-pub fn resolve_id(canon: &spookery_engine::testing::Canon, name: &str) -> String {
+/// The id of the cast member or place in `canon` whose name is `text`; any other text, such as
+/// an id or an exit address, as written.
+pub fn resolve_id(canon: &spookery_engine::testing::Canon, text: &str) -> String {
     let cast = canon.cast.keys().map(spookery_engine::ActorId::as_str);
     let mut ids = cast.chain(canon.places.keys().map(spookery_engine::PlaceId::as_str));
-    let named = ids.find(|id| canon.display_name(id) == name);
-    named.unwrap_or(name).to_string()
+    let named = ids.find(|id| canon.name(id) == Some(text));
+    named.unwrap_or(text).to_string()
 }
 
 #[tokio::main]

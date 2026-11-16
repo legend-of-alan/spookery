@@ -92,7 +92,7 @@ fn is_loopback(headers: &HeaderMap) -> bool {
             .and_then(|value| value.strip_prefix(prefix))
             .is_some_and(|rest| rest.is_empty() || rest.starts_with(':'))
     };
-    let text = |name| headers.get(name).and_then(|value| value.to_str().ok());
+    let text = |header| headers.get(header).and_then(|value| value.to_str().ok());
     named(text(header::HOST), "127.0.0.1")
         && (headers.get(header::ORIGIN).is_none()
             || named(text(header::ORIGIN), "http://127.0.0.1"))

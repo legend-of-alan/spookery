@@ -2,7 +2,7 @@
 schema: cast
 id: nell
 control_type: pc_template
-display_name: Nell
+name: Nell
 flags:
   - marked
   - missed

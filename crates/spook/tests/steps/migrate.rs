@@ -266,6 +266,8 @@ fn the_journal_line_is(world: &mut World, key: String, step: &Step) {
 #[when(expr = "Rowan's vigor offset is hand edited to {int} and Nell joins without vigor")]
 fn rowan_moves_vigor_and_nell_joins(world: &mut World, offset: i64) {
     let pack = table::pack(world).to_path_buf();
+    let nell = "---\nschema: cast\nid: nell\ncontrol_type: pc_template\nname: Nell\n---\nNell.\n";
+    fs::write(pack.join("cast/pc-nell.md"), nell).unwrap_or_else(|err| panic!("nell: {err}"));
     spookery_engine::testing::edit_save(&pack, |now| {
         support::edit_meter(now, "rowan", "vigor", |vigor| vigor.offset = offset);
         let (rowan, nell) = (&"rowan".into(), &"nell".into());

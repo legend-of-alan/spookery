@@ -1,10 +1,10 @@
 ---
 schema: place
 id: lane
-display_name: Lane
+name: Lane
 exits:
   - to: yard
-    name: yard
+    id: yard
 facts: []
 ---
 The lane runs past a small mill. Flour dusts the step.

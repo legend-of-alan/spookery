@@ -46,27 +46,17 @@ impl View {
     }
 }
 
-/// Part of a `View`, sent from the table to a player client.
+/// Part of a `View`, sent from the table to a player client. `name` is what a player reads for
+/// the exit, such as `stairs` or `Docks Street`. `place_id` and `place_name` are where it goes.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct ExitView {
+    pub exit_id: String,
     pub name: String,
-    pub to: String,
+    pub place_id: String,
     pub place_name: String,
     pub ticks: u64,
     pub locked: bool,
-}
-
-impl ExitView {
-    /// The name a player reads for this exit: where it goes, when the exit is named by the
-    /// place it goes to, or else its own name, such as `stairs`.
-    pub fn display_name(&self) -> &str {
-        if self.name == self.to && !self.place_name.is_empty() {
-            &self.place_name
-        } else {
-            &self.name
-        }
-    }
 }
 
 /// Part of a `View`, sent from the table to a player client.
@@ -96,7 +86,7 @@ pub struct NoteView {
 pub struct ItemStack {
     pub id: String,
     pub count: u32,
-    /// The item's display name.
+    /// The item's name.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub name: String,
 }
@@ -113,10 +103,9 @@ pub struct MeterView {
 /// One change of a `changes` body, sent from the table to a player client. `component_id`
 /// names what changed, such as `meter`, `item` or `place`. `entity_id` is whose it is as a
 /// rule's `of` names it: an actor id, `place:<id>`, `story:<id>` or `world`.
-/// `entity_name` is that actor's or place's display name, or the story's id.
-/// `entry_id` is which one of the entity's, such as the meter or item id, and
-/// `entry_name` its display name. `before` and `after` are left out when there
-/// was none.
+/// `entity_name` is that actor's, place's or story's name. `entry_id` is which one of the
+/// entity's, such as the meter or item id, and `entry_name` the item's name, or for `place` the
+/// name of the place moved to. `before` and `after` are left out when there was none.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct ChangeView {
@@ -145,14 +134,14 @@ pub enum ChangeValue {
     List(Vec<String>),
 }
 
-/// One command of a `help` reply. `target` is what the command takes: `none`, `actor`, `place`,
-/// `exit` or `item`. `names` lists what the player can name for it now, by the names they
-/// read. `owner` is the id of the cast member or item whose verb this is, reached by naming
-/// them, and then `names` holds its name alone.
+/// One command of a `help` reply. `id` is the command, as a player types it. `target` is what
+/// it takes: `none`, `actor`, `place`, `exit` or `item`. `names` lists what the player can name
+/// for it now, by the names they read. `owner` is the id of the cast member or item whose verb
+/// this is, reached by naming them, and then `names` holds its name alone.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct CommandView {
-    pub name: String,
+    pub id: String,
     pub target: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub names: Vec<String>,
@@ -160,7 +149,7 @@ pub struct CommandView {
     pub owner: Option<String>,
 }
 
-/// One place of a `map` reply: its display name and the exits the player may see there.
+/// One place of a `map` reply: its name and the exits the player may see there.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct PlaceView {
@@ -169,9 +158,9 @@ pub struct PlaceView {
     pub exits: Vec<ExitView>,
 }
 
-/// Whether `name` is `candidate`, ignoring case and outer spaces.
-pub fn is_named(name: &str, candidate: &str) -> bool {
-    name.trim().to_lowercase() == candidate.trim().to_lowercase()
+/// Whether `text` is `candidate`, ignoring case and outer spaces.
+pub fn is_named(text: &str, candidate: &str) -> bool {
+    text.trim().to_lowercase() == candidate.trim().to_lowercase()
 }
 
 #[cfg(test)]

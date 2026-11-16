@@ -175,11 +175,10 @@ fn a_docks_row_spilled(world: &mut World, remove: i64) {
 }
 
 #[when(expr = "Mira plays {word}")]
-fn mira_plays(world: &mut World, move_name: String) {
+fn mira_plays(world: &mut World, move_id: String) {
     let pack = world.pack.as_ref().unwrap().clone();
-    let id = format!("{move_name}-1");
-    let (state, rolls, round) =
-        play_queued(&pack, &[], vec![intent(&id, "mira", &move_name, None)]);
+    let id = format!("{move_id}-1");
+    let (state, rolls, round) = play_queued(&pack, &[], vec![intent(&id, "mira", &move_id, None)]);
     let oil = state
         .places()
         .get::<component::Item>(&"docks_shop".into())
@@ -920,7 +919,7 @@ fn intent(
         id: Some(id.to_string()),
         round_index: None,
         actor_id: Some(actor_id.to_string()),
-        move_name: Some(verb.to_string()),
+        move_id: Some(verb.to_string()),
         target: target.map(str::to_string),
         message_to: None,
         rationale_code: "test".to_string(),
@@ -970,7 +969,7 @@ fn a_cast_member_the_save_does_not_list(world: &mut World, row: String) {
     let pack = support::copy_pack("docks", "unlisted-actor");
     fs::write(
         pack.join("cast/pc-nell.md"),
-        "---\nschema: cast\nid: nell\ncontrol_type: pc_template\ndisplay_name: Nell\nidle:\n  eligible: false\nflags:\n    - marked\n---\nNell.\n",
+        "---\nschema: cast\nid: nell\ncontrol_type: pc_template\nname: Nell\nidle:\n  eligible: false\nflags:\n    - marked\n---\nNell.\n",
     )
     .unwrap();
     support::append(

@@ -44,7 +44,7 @@ fn bell_fires_in_the_same_round(world: &mut World) {
     assert!(
         read_extra_steps(&round)
             .iter()
-            .any(|name| name == "place:docks_shop/bell"),
+            .any(|step| step == "place:docks_shop/bell"),
         "bell did not fire\n{round}"
     );
 }
@@ -61,7 +61,7 @@ fn teleport_also_fires_the_bell(world: &mut World) {
     assert!(
         read_extra_steps(&round)
             .iter()
-            .any(|name| name == "place:docks_shop/bell"),
+            .any(|step| step == "place:docks_shop/bell"),
         "a teleport did not fire the bell\n{round}"
     );
 }
@@ -89,7 +89,7 @@ fn briar_has_flag_downed(world: &mut World) {
     assert!(
         read_extra_steps(&round)
             .iter()
-            .any(|name| name == "story:injury/downed"),
+            .any(|step| step == "story:injury/downed"),
         "the downed rule did not fire\n{round}"
     );
     assert!(
@@ -123,7 +123,7 @@ fn the_rule_does_not_fire_again(world: &mut World) {
     assert!(
         read_extra_steps(&round)
             .iter()
-            .all(|name| name != "story:injury/downed"),
+            .all(|step| step != "story:injury/downed"),
         "the downed rule fired again\n{round}"
     );
 }
@@ -272,19 +272,19 @@ fn a_round_stops_at_depth_4(world: &mut World) {
         vec![intent("raise-sun", "nell", "raise", None)],
     );
     let round = read_latest_round(&pack);
-    let names = read_extra_steps(&round);
-    let suns = names
+    let steps = read_extra_steps(&round);
+    let suns = steps
         .iter()
-        .filter(|name| name.as_str() == "story:loop/sun_to_moon")
+        .filter(|step| step.as_str() == "story:loop/sun_to_moon")
         .count();
-    let moons = names
+    let moons = steps
         .iter()
-        .filter(|name| name.as_str() == "story:loop/moon_to_sun")
+        .filter(|step| step.as_str() == "story:loop/moon_to_sun")
         .count();
     assert_eq!(suns, 2, "sun rule ran {suns} times\n{round}");
     assert_eq!(moons, 2, "moon rule ran {moons} times\n{round}");
     assert!(
-        names.iter().any(|name| name == "trigger_depth"),
+        steps.iter().any(|step| step == "trigger_depth"),
         "trigger_depth was not logged\n{round}"
     );
 }
@@ -354,8 +354,8 @@ fn nell_enters_the_bog(world: &mut World) {
     let pack = copy_pack("docks", "trigger-bog");
     replace_in_file(
         &pack.join("world/places/docks_street.md"),
-        "    name: docks_shop\n",
-        "    name: docks_shop\n  - to: bog\n    name: bog\n",
+        "    id: docks_shop\n",
+        "    id: docks_shop\n  - to: bog\n    id: bog\n",
     );
     fs::write(
         pack.join("world/places/bog.md"),
@@ -363,7 +363,7 @@ fn nell_enters_the_bog(world: &mut World) {
 ---
 schema: place
 id: bog
-display_name: Bog
+name: Bog
 facts: []
 exits: []
 rules:
@@ -501,8 +501,8 @@ fn the_street_has_a_hidden_trapdoor(world: &mut World) {
     let pack = copy_pack("docks", "trigger-reveal");
     replace_in_file(
         &pack.join("world/places/docks_street.md"),
-        "    name: docks_shop\n",
-        "    name: docks_shop\n  - to: cellar\n    name: trapdoor\n    hidden: true\n    revealed_by: fact_trapdoor\n",
+        "    id: docks_shop\n",
+        "    id: docks_shop\n  - to: cellar\n    id: trapdoor\n    hidden: true\n    revealed_by: fact_trapdoor\n",
     );
     replace_in_file(
         &pack.join("world/places/docks_street.md"),
@@ -515,7 +515,7 @@ fn the_street_has_a_hidden_trapdoor(world: &mut World) {
 ---
 schema: place
 id: cellar
-display_name: Cellar
+name: Cellar
 facts: []
 exits: []
 ---
@@ -566,7 +566,7 @@ fn nell_can_see_the_trapdoor(world: &mut World) {
         .unwrap()
         .exits;
     assert!(
-        exits.iter().any(|exit| exit.name == "trapdoor"),
+        exits.iter().any(|exit| exit.exit_id == "trapdoor"),
         "trapdoor stayed hidden: {exits:?}"
     );
 }
@@ -932,7 +932,7 @@ fn a_cast_id_world_and_a_bad_reveal(world: &mut World) {
 schema: cast
 id: world
 control_type: npc
-display_name: World
+name: World
 idle:
   eligible: false
 ---
@@ -1067,16 +1067,16 @@ rules:
 fn add_door(pack: &Path) {
     replace_in_file(
         &pack.join("world/places/docks_street.md"),
-        "    name: docks_shop\n",
-        "    name: docks_shop\n  - to: docks_shop\n    name: door\n",
+        "    id: docks_shop\n",
+        "    id: docks_shop\n  - to: docks_shop\n    id: door\n",
     );
 }
 
 fn add_rooms(pack: &Path) {
     replace_in_file(
         &pack.join("world/places/docks_street.md"),
-        "    name: docks_shop\n",
-        "    name: docks_shop\n  - to: mira_rooms\n    name: rooms\n",
+        "    id: docks_shop\n",
+        "    id: docks_shop\n  - to: mira_rooms\n    id: rooms\n",
     );
 }
 
@@ -1099,9 +1099,9 @@ pub(crate) fn add_verb(pack: &Path, yaml: &str) {
 }
 
 fn flag_pcs(pack: &Path, flag: &str) {
-    for name in ["pc-rowan.md", "pc-wren.md", "pc-harbormouse.md"] {
+    for file in ["pc-rowan.md", "pc-wren.md", "pc-harbormouse.md"] {
         replace_in_file(
-            &pack.join("cast").join(name),
+            &pack.join("cast").join(file),
             "  eligible: false\n",
             &format!("  eligible: false\nflags:\n    - {flag}\n"),
         );
@@ -1126,7 +1126,7 @@ fn write_nell(pack: &Path, flags: &[&str]) {
 schema: cast
 id: nell
 control_type: pc_template
-display_name: Nell
+name: Nell
 idle:
   eligible: false
 {flags}---
@@ -1271,7 +1271,7 @@ pub(crate) fn intent(
         id: Some(id.to_string()),
         round_index: None,
         actor_id: Some(actor_id.to_string()),
-        move_name: Some(verb.to_string()),
+        move_id: Some(verb.to_string()),
         target: target.map(str::to_string),
         message_to: None,
         rationale_code: "test".to_string(),
@@ -1288,11 +1288,11 @@ fn queue(round: &mut spookery_engine::World, intent: protocol::QueueArgs) {
 }
 
 fn read_latest_round(pack: &Path) -> Value {
-    let names = spookery_engine::testing::journal::list_round_keys(pack);
-    let name = names
+    let keys = spookery_engine::testing::journal::list_round_keys(pack);
+    let key = keys
         .last()
         .unwrap_or_else(|| panic!("no round was written"));
-    let text = spookery_engine::testing::journal::read_record_line(pack, name)
+    let text = spookery_engine::testing::journal::read_record_line(pack, key)
         .unwrap_or_else(|err| panic!("{}", err.detail));
-    serde_json::from_str(&text).unwrap_or_else(|err| panic!("{name}: {err}"))
+    serde_json::from_str(&text).unwrap_or_else(|err| panic!("{key}: {err}"))
 }

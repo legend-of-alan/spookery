@@ -188,7 +188,7 @@ fn print_text(text: &str) {
 
 /// The picker: every PC by the name the hello gives it, the taken ones marked in use.
 fn list_pcs(open: &[String], taken: &[String], pc_names: &BTreeMap<String, String>) -> String {
-    let name = |id: &String| pc_names.get(id).unwrap_or(id).clone();
+    let name = |id: &String| pc_names.get(id).cloned().unwrap_or_default();
     let mut pcs: Vec<String> = open.iter().map(name).collect();
     pcs.extend(taken.iter().map(|id| format!("{} (in use)", name(id))));
     pcs.sort();
@@ -199,7 +199,7 @@ fn list_pcs(open: &[String], taken: &[String], pc_names: &BTreeMap<String, Strin
     text
 }
 
-/// The PC a picker line names, by id, `player:<id>` or display name.
+/// The PC a picker line names, by id, `player:<id>` or name.
 fn parse_pc_choice(line: &str) -> Result<String, Error> {
     let line = line.trim();
     let choice = line.strip_prefix("player:").unwrap_or(line).trim();

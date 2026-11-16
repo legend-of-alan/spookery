@@ -114,7 +114,7 @@ fn the_bell_rings_twice(world: &mut World) {
     let round = latest_round(world);
     let rings = read_extra_steps(&round)
         .iter()
-        .filter(|name| name.as_str() == "story:cellar/ring")
+        .filter(|step| step.as_str() == "story:cellar/ring")
         .count();
     assert_eq!(rings, 2, "{round}");
 }
@@ -169,7 +169,7 @@ fn both_chains_ran(world: &mut World) {
     let round = latest_round(world);
     assert_eq!(round["refused"], serde_json::json!([]), "{round}");
     let steps = read_extra_steps(&round);
-    assert!(!steps.iter().any(|name| name == "trigger_depth"), "{round}");
+    assert!(!steps.iter().any(|step| step == "trigger_depth"), "{round}");
     let now = state_of(world.pack.as_ref().unwrap());
     let flags = now.entities().get::<component::Flag>(&entity::Id::Global);
     for flag in ["rang", "echoed"] {

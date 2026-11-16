@@ -7,53 +7,53 @@ use serde::{Deserialize, Serialize};
 
 use crate::state::entity;
 
-/// Declares `$name`, the id of an entity in one collection: a string saved as itself, which an id
-/// from another collection cannot stand in for.
+/// Declares `$id_type`, the id of an entity in one collection: a string saved as itself, which an
+/// id from another collection cannot stand in for.
 macro_rules! string_id {
-    ($(#[$doc:meta])* $name:ident) => {
+    ($(#[$doc:meta])* $id_type:ident) => {
         $(#[$doc])*
         #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
         #[serde(transparent)]
-        pub struct $name(String);
+        pub struct $id_type(String);
 
-        impl $name {
+        impl $id_type {
             pub fn as_str(&self) -> &str {
                 &self.0
             }
         }
 
-        impl fmt::Display for $name {
+        impl fmt::Display for $id_type {
             fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
                 f.write_str(&self.0)
             }
         }
 
-        impl Borrow<str> for $name {
+        impl Borrow<str> for $id_type {
             fn borrow(&self) -> &str {
                 &self.0
             }
         }
 
-        impl PartialEq<str> for $name {
+        impl PartialEq<str> for $id_type {
             fn eq(&self, other: &str) -> bool {
                 self.0 == other
             }
         }
 
-        impl From<&str> for $name {
+        impl From<&str> for $id_type {
             fn from(id: &str) -> Self {
-                $name(id.to_string())
+                $id_type(id.to_string())
             }
         }
 
-        impl From<String> for $name {
+        impl From<String> for $id_type {
             fn from(id: String) -> Self {
-                $name(id)
+                $id_type(id)
             }
         }
 
-        impl From<$name> for String {
-            fn from(id: $name) -> Self {
+        impl From<$id_type> for String {
+            fn from(id: $id_type) -> Self {
                 id.0
             }
         }
@@ -108,7 +108,7 @@ impl AsIdRef for GlobalId {
     }
 }
 
-/// One exit's door, by its place and its name. An address, not an entity: it holds nothing but
+/// One exit's door, by its place and its exit id. An address, not an entity: it holds nothing but
 /// whether the door is open.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct ExitId {

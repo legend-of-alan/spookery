@@ -32,7 +32,7 @@ Feature: Actions visibly matter
     When harbormouse takes the tonic
     Then harbormouse sees one line saying they picked up the tonic
 
-  Scenario: A move to another place shows the place's display name
+  Scenario: A move to another place shows the place's name
     Given a docks table
     When harbormouse climbs to the loft
     Then harbormouse sees one line naming the Loft as their place

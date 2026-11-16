@@ -1,7 +1,7 @@
 ---
 schema: item
 id: nail
-display_name: Rune-cut iron nail
+name: Rune-cut iron nail
 tags: []
 rules: []
 ---

@@ -108,7 +108,7 @@ impl Owner {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum When {
-    Verb { verb: String, target: TargetKind },
+    Verb { verb_id: String, target: TargetKind },
     Habit,
     Change(ChangeWatch),
 }
@@ -209,9 +209,9 @@ pub enum Cond {
         subject: grammar::Object,
         fact: String,
     },
-    /// A tick of the named cycle in `from..to`, wrapping past the cycle's end when `from > to`.
+    /// A tick of cycle `id` in `from..to`, wrapping past the cycle's end when `from > to`.
     Cycle {
-        name: String,
+        id: String,
         from: u64,
         to: u64,
     },
@@ -398,13 +398,6 @@ impl RuleTable {
 
     pub(crate) fn get(&self, id: &str) -> Option<&Rule> {
         self.rules.iter().find(|rule| rule.id == id)
-    }
-
-    pub(crate) fn verb(&self, name: &str) -> Option<&Rule> {
-        self.rules.iter().find(|rule| {
-            matches!(&rule.owner, Owner::Verb)
-                && matches!(&rule.when, When::Verb { verb, .. } if verb == name)
-        })
     }
 
     pub(crate) fn habits_of(&self, actor: &ActorId) -> Vec<&Rule> {

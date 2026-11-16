@@ -87,6 +87,7 @@ fn nested_rollbacks_put_the_save_back_exactly() {
     let key = canon.items.get_mut("brass_key").expect("the brass key");
     key.tags.push("weapon".to_string());
     let tale = StoryDef {
+        name: "tale".to_string(),
         flags: vec!["told".to_string()],
     };
     canon.stories.insert("tale".into(), tale);
@@ -258,7 +259,7 @@ fn every_moved_meter_is_reported(
             continue;
         }
         let moved = Change {
-            key: change::Key::new(Meter::NAME, entity::IdRef::Actor(actor), Some(key)),
+            key: change::Key::new(Meter::ID, entity::IdRef::Actor(actor), Some(key)),
             before,
             after,
         };
@@ -355,7 +356,7 @@ fn mira_intent() -> Intent {
         round_index: 0,
         actor: Some(Viewer::Npc("mira".into())),
         source: Source::Engine,
-        move_name: "rollback".to_string(),
+        move_id: "rollback".to_string(),
         target: Target::Empty,
         args: IntentArgs::default(),
         rationale_code: String::new(),

@@ -1,6 +1,6 @@
 schema: save
 world_id: docks-001
-pack_rev: blake2s:b81d7ee672f6ac87e74ca79eda521b7cdaa8a59ec0f6db917727b9df47a54c74
+pack_rev: blake2s:cf06bf0a60bd01c4c66fb46b45d8fe9d1ea11d5f11859f338d57f60c9ae34bf3
 rules_rev: 25
 state_rev: 0
 round_index: 0
@@ -181,7 +181,11 @@ places:
       latch: 1
     wheel_shed:
       chock: 1
-  meters: {}
+  meters:
+    docks_shop:
+      comfort:
+        base: 2
+        offset: 0
   flags: {}
   open_exits: {}
 stories:

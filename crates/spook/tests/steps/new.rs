@@ -105,12 +105,12 @@ fn the_marker_file_is_unchanged(world: &mut World) {
 #[then(expr = "the parent gained only the new pack")]
 fn the_parent_gained_only_the_new_pack(world: &mut World) {
     let parent = table::pack(world);
-    let mut names = fs::read_dir(parent)
+    let mut files = fs::read_dir(parent)
         .unwrap()
         .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
         .collect::<Vec<_>>();
-    names.sort();
-    assert_eq!(names, vec!["keep.txt".to_string(), "pack".to_string()]);
+    files.sort();
+    assert_eq!(files, vec!["keep.txt".to_string(), "pack".to_string()]);
     let pack = parent.join("pack");
     assert_eq!(
         read_relative_files(&pack),
@@ -155,8 +155,8 @@ fn the_travel_committed_a_round(world: &mut World) {
 #[when(expr = "the operator runs spook new beside that pack")]
 fn the_operator_runs_spook_new_beside_that_pack(world: &mut World) {
     let pack = table::pack(world);
-    let name = pack.file_name().unwrap().to_string_lossy();
-    let idle = pack.parent().unwrap().join(format!("{name}-idle"));
+    let dir = pack.file_name().unwrap().to_string_lossy();
+    let idle = pack.parent().unwrap().join(format!("{dir}-idle"));
     let _ = fs::remove_dir_all(&idle);
     run_new(world, &idle);
     assert_eq!(world.code, Some(0), "{}", world.stderr);

@@ -1,10 +1,10 @@
 ---
 schema: place
 id: mira_rooms
-display_name: Mira's Rooms
+name: Mira's Rooms
 exits:
   - to: docks_shop
-    name: stairs
+    id: stairs
     cost:
       ticks: 2
 facts:

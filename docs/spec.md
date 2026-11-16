@@ -21,7 +21,7 @@ An integer is still an integer. `{ meter: { of, key }, plus: N }` is still that 
 | `2d6` | Roll two six-sided dice and add the faces. |
 | `2d20kh1`, `2d20kl1` | Roll two twenty-sided dice and keep the higher or lower face. |
 | `self.might`, `target.hp` | That actor's meter. |
-| `here.light` | The actor's place's meter. A place carries no meters yet, so the read is refused in play. |
+| `here.light` | The actor's place's meter. |
 | `world.dawn` | The world's meter, declared in `world/meters.yaml`. |
 | `place:loft.light` | The named place's meter, as for `here`. |
 | `story:ending.dread` | The named story's meter. |

@@ -2,7 +2,7 @@
 schema: cast
 id: mira
 control_type: npc
-display_name: Mira
+name: Mira
 idle:
   eligible: true
 meters:
@@ -35,7 +35,7 @@ rules:
     when: habit
     if:
       - cycle:
-          name: day
+          id: day
           from: 480
           to: 960
     do:

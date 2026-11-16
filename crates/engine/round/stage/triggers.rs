@@ -132,32 +132,32 @@ fn fire(
 fn matches_watch(state: &State, rule: &Rule, watch: &ChangeWatch, change: &Change) -> bool {
     let changed = &change.key;
     match (watch, changed.component_id, &changed.entity_id) {
-        (ChangeWatch::Arrive { place, subject }, Place::NAME, entity::Id::Actor(actor)) => {
+        (ChangeWatch::Arrive { place, subject }, Place::ID, entity::Id::Actor(actor)) => {
             let place = rule.watched_place(place);
             change.before.as_text() != Some(place)
                 && change.after.as_text() == Some(place)
                 && matches_subject(state, subject, actor)
         }
-        (ChangeWatch::Leave { place, subject }, Place::NAME, entity::Id::Actor(actor)) => {
+        (ChangeWatch::Leave { place, subject }, Place::ID, entity::Id::Actor(actor)) => {
             let place = rule.watched_place(place);
             change.before.as_text() == Some(place)
                 && change.after.as_text() != Some(place)
                 && matches_subject(state, subject, actor)
         }
-        (ChangeWatch::Meter { key, op, bound }, Meter::NAME, _)
+        (ChangeWatch::Meter { key, op, bound }, Meter::ID, _)
             if changed.entry_id.as_ref() == Some(key) =>
         {
             crosses(&change.before, &change.after, *op, *bound)
         }
-        (ChangeWatch::Flag { key, becomes }, Flag::NAME, _)
+        (ChangeWatch::Flag { key, becomes }, Flag::ID, _)
             if changed.entry_id.as_ref() == Some(key) =>
         {
             flips(change, *becomes)
         }
-        (ChangeWatch::Flag { key, becomes }, OpenExit::NAME, _) if key == OPEN => {
+        (ChangeWatch::Flag { key, becomes }, OpenExit::ID, _) if key == OPEN => {
             flips(change, *becomes)
         }
-        (ChangeWatch::Item { id, gained }, Item::NAME, entity::Id::Actor(_))
+        (ChangeWatch::Item { id, gained }, Item::ID, entity::Id::Actor(_))
             if changed.entry_id.as_ref() == Some(id) =>
         {
             match (change.before.as_number(), change.after.as_number()) {
@@ -166,7 +166,7 @@ fn matches_watch(state: &State, rule: &Rule, watch: &ChangeWatch, change: &Chang
                 _ => false,
             }
         }
-        (ChangeWatch::Knows { fact }, KnownFacts::NAME, _) => {
+        (ChangeWatch::Knows { fact }, KnownFacts::ID, _) => {
             change.after.contains(fact) && !change.before.contains(fact)
         }
         _ => false,

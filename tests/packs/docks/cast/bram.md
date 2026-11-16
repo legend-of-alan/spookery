@@ -2,7 +2,7 @@
 schema: cast
 id: bram
 control_type: npc
-display_name: Bram
+name: Bram
 idle:
   eligible: true
 ---

@@ -27,7 +27,7 @@ pub struct Act {
 /// such as `actor_busy rowan`.
 impl Component for Act {
     type Value = Act;
-    const NAME: &'static str = "act";
+    const ID: &'static str = "act";
 }
 
 /// The names `Act`'s change keys spell.

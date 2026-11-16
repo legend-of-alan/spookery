@@ -26,10 +26,10 @@ pub struct HttpModel {
     client: reqwest::Client,
 }
 
-fn env_var(name: &str) -> Result<String, Error> {
-    match std::env::var(name) {
+fn env_var(var: &str) -> Result<String, Error> {
+    match std::env::var(var) {
         Ok(value) => Ok(value),
-        Err(_) => Err(Error::Message(format!("{name} is unset"))),
+        Err(_) => Err(Error::Message(format!("{var} is unset"))),
     }
 }
 

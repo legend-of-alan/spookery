@@ -10,18 +10,32 @@ Feature: Dice and arithmetic in rule numbers
     And the player text has no dice faces
     And replaying the round reproduces the save
 
-  Scenario: An ability modifier is computed from a meter
+  Scenario Outline: A rule number reads an actor's or a place's meter, min, max and minus, and division rounds down
     Given a docks table
-    When the pack's hit adds "self.vigor + 2" to vigor
+    When the pack's hit adds "<expression>" to vigor
     And the player hits and the GM commits
-    Then Rowan's vigor is 4
+    Then Rowan's vigor is <vigor>
 
-  Scenario: Advantage keeps the higher d20
+    Examples:
+      | expression               | vigor |
+      | self.vigor + 2           | 4     |
+      | place:docks_shop.comfort | 3     |
+      | min(self.vigor, 3)       | 2     |
+      | max(self.vigor, 3)       | 4     |
+      | -(self.vigor - 3)        | 3     |
+      | (0 - 5) / 2 + 4          | 2     |
+
+  Scenario Outline: Advantage keeps the higher d20 and disadvantage the lower
     Given a docks table
-    When the pack's hit adds "2d20kh1" to vigor
+    When the pack's hit adds "<dice>" to vigor
     And the player hits and the GM commits
-    Then Rowan's vigor rose by the higher d20
+    Then Rowan's vigor rose by the <kept> d20
     And the journal records both d20 faces
+
+    Examples:
+      | dice    | kept   |
+      | 2d20kh1 | higher |
+      | 2d20kl1 | lower  |
 
   Scenario Outline: A bad expression fails spook check with its line
     Given a docks table
@@ -38,6 +52,8 @@ Feature: Dice and arithmetic in rule numbers
       | world.vigor   | the world carries no meter 'vigor'               |
       | subject.vigor | names 'subject', which is not an owner; use self |
       | 100000000d6   | rolls more than 1000 dice                        |
+      | 0d6           | rolls no dice                                    |
+      | 10 / 0        | divides by zero                                  |
 
   Scenario: An owner named subject fails spook check
     Given a docks table

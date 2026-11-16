@@ -41,7 +41,7 @@ impl Facts {
             row,
             key: "id:",
         };
-        let empty = ("a fact id is empty", "set id to a short name");
+        let empty = ("a fact id is empty", "set id to a short fact id");
         let twice = ("fact", "is already defined", "keep one fact with this id");
         let taken = self.0.contains_key(&id);
         let refused = source

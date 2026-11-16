@@ -1,5 +1,6 @@
 //! The chat-completions codec: the request body a model call sends, and the tool calls its
-//! reply brings.
+//! reply brings. A tool call's `function.name` key holds the tool's id. The key is OpenAI's
+//! word, not ours.
 
 use serde_json::{json, Value};
 
@@ -7,7 +8,7 @@ use crate::model::{self, CompletionError, ToolCall};
 use crate::tool::TOOLS;
 
 /// The request body: the turn's conversation as `messages`, `model`, `stream` and the GM's tools.
-pub fn render_request(model_name: &str, conversation: &[model::Message]) -> Value {
+pub fn render_request(model: &str, conversation: &[model::Message]) -> Value {
     let messages: Vec<Value> = conversation
         .iter()
         .map(|message| match message {
@@ -20,7 +21,7 @@ pub fn render_request(model_name: &str, conversation: &[model::Message]) -> Valu
                         json!({
                             "id": call.id,
                             "type": "function",
-                            "function": { "name": call.name, "arguments": call.arguments }
+                            "function": { "name": call.tool_id, "arguments": call.arguments }
                         })
                     })
                     .collect();
@@ -34,7 +35,7 @@ pub fn render_request(model_name: &str, conversation: &[model::Message]) -> Valu
         .collect();
     json!({
         "messages": messages,
-        "model": model_name,
+        "model": model,
         "stream": false,
         "tools": *TOOLS
     })
@@ -67,7 +68,7 @@ pub fn parse_reply(text: &str) -> Result<Vec<ToolCall>, CompletionError> {
             let function = call
                 .get("function")
                 .ok_or_else(|| reply_lacks("function in a tool call"))?;
-            let name = function.get("name").and_then(Value::as_str);
+            let tool_id = function.get("name").and_then(Value::as_str);
             let arguments = match function.get("arguments") {
                 Some(Value::String(text)) => text.clone(),
                 Some(other) => other.to_string(),
@@ -78,7 +79,7 @@ pub fn parse_reply(text: &str) -> Result<Vec<ToolCall>, CompletionError> {
                     .get("id")
                     .and_then(Value::as_str)
                     .map_or_else(|| format!("call_{index}"), str::to_string),
-                name: name
+                tool_id: tool_id
                     .ok_or_else(|| reply_lacks("function name in a tool call"))?
                     .to_string(),
                 arguments,
@@ -96,11 +97,11 @@ mod tests {
     fn the_tools_are_the_gm_commands_and_end_turn_with_schema_parameters() {
         let body = render_request("grok-test", &[]);
         let tools = body["tools"].as_array().unwrap();
-        let names: Vec<&str> = tools
+        let tool_ids: Vec<&str> = tools
             .iter()
             .map(|tool| tool["function"]["name"].as_str().unwrap())
             .collect();
-        assert_eq!(names, ["perceive", "say", "queue", "end_turn"]);
+        assert_eq!(tool_ids, ["perceive", "say", "queue", "end_turn"]);
         let schema: Value = serde_json::from_str(CLIENT_SCHEMA).unwrap();
         for (tool, args) in tools.iter().zip(["PerceiveArgs", "SayArgs", "QueueArgs"]) {
             assert_eq!(tool["function"]["parameters"], schema["$defs"][args]);
@@ -114,7 +115,7 @@ mod tests {
     fn the_system_text_leads_and_each_tool_call_is_echoed_and_answered_by_its_id() {
         let call = ToolCall {
             id: "call_7".into(),
-            name: "say".into(),
+            tool_id: "say".into(),
             arguments: r#"{"to":"table","text":"hi"}"#.into(),
         };
         let messages = [
@@ -165,9 +166,9 @@ mod tests {
             {"id":"c","type":"function","function":{"name":"perceive","arguments":"not json"}}
         ]}}]}"#;
         let calls = parse_reply(text).unwrap();
-        let call = |id: &str, name: &str, arguments: &str| ToolCall {
+        let call = |id: &str, tool_id: &str, arguments: &str| ToolCall {
             id: id.into(),
-            name: name.into(),
+            tool_id: tool_id.into(),
             arguments: arguments.into(),
         };
         assert_eq!(

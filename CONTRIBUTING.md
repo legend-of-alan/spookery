@@ -79,6 +79,7 @@ Default to the [Rust API Guidelines](https://rust-lang.github.io/api-guidelines/
 14. End a stream with `None` and report a failure with `Err`. Don't add `Eof` or `Unreadable` variants for them.
 15. A name that mirrors a tool or wire name uses that exact name, such as `ServerBody::Queued` for `queued`.
 16. Use one word per wire concept across docs, code and flags. The player side is the game port everywhere.
+17. An identifier is `id` or ends in `_id`, whatever type backs it (a `String` today, a typed or interned id later). `name` is only ever text a player reads. Nothing else is called a name, and an id never stands in for a name or a name for an id. A map, set or lookup is keyed by id, never by name: code that starts from a name a player typed resolves it to an id first. An outside format's keys keep their spelling, such as the `name` that OpenAI and MCP tool calls use for a tool's id.
 
 Items in the guidelines that only matter for a published library, such as stability and future-proofing, don't apply yet.
 

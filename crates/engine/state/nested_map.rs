@@ -1,34 +1,34 @@
-//! Maps keyed by an owner's id and a name, written as a nested map by owner: the pair-keyed map
-//! `{(mira, vigor): meter}` is `mira: { vigor: meter }` in the save, and an owner with no entries
-//! writes nothing.
+//! Maps keyed by an owner's id and an entry's id, written as a nested map by owner: the
+//! pair-keyed map `{(mira, vigor): meter}` is `mira: { vigor: meter }` in the save, and an owner
+//! with no entries writes nothing.
 
 use std::collections::BTreeMap;
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-/// The key `name` has under `owner`. It clones both: std's maps look a key up by a borrowed
+/// The key `id` has under `owner`. It clones both: std's maps look a key up by a borrowed
 /// form only through `Borrow`, which a pair of owned strings cannot give to `(&Id, &str)`.
-fn key_of<Id: Clone>(owner: &Id, name: &str) -> (Id, String) {
-    (owner.clone(), name.to_string())
+fn key_of<Id: Clone>(owner: &Id, id: &str) -> (Id, String) {
+    (owner.clone(), id.to_string())
 }
 
-/// The entry `name` that `owner` holds in a map keyed by `(owner, name)`.
+/// The entry `id` that `owner` holds in a map keyed by `(owner, id)`.
 pub fn get<'a, Id: Ord + Clone, V>(
     map: &'a BTreeMap<(Id, String), V>,
     owner: &Id,
-    name: &str,
+    id: &str,
 ) -> Option<&'a V> {
-    map.get(&key_of(owner, name))
+    map.get(&key_of(owner, id))
 }
 
-/// The entries `owner` holds in a map keyed by `(owner, name)`, in name order.
+/// The entries `owner` holds in a map keyed by `(owner, id)`, in id order.
 pub fn entries_of<'a, Id: Ord + Clone, V>(
     map: &'a BTreeMap<(Id, String), V>,
     owner: &'a Id,
 ) -> impl Iterator<Item = (&'a str, &'a V)> {
     map.range(key_of(owner, "")..)
         .take_while(move |((held_by, _), _)| held_by == owner)
-        .map(|((_, name), value)| (name.as_str(), value))
+        .map(|((_, id), value)| (id.as_str(), value))
 }
 
 pub fn serialize<S, Id, V>(
@@ -41,8 +41,8 @@ where
     V: Serialize,
 {
     let mut grouped: BTreeMap<&Id, BTreeMap<&str, &V>> = BTreeMap::new();
-    for ((owner, name), value) in map {
-        grouped.entry(owner).or_default().insert(name, value);
+    for ((owner, id), value) in map {
+        grouped.entry(owner).or_default().insert(id, value);
     }
     grouped.serialize(serializer)
 }
@@ -56,16 +56,16 @@ where
     T: From<BTreeMap<(Id, String), V>>,
 {
     let grouped = BTreeMap::<Id, BTreeMap<String, V>>::deserialize(deserializer)?;
-    let pairs = grouped.into_iter().flat_map(|(owner, named)| {
-        named
+    let pairs = grouped.into_iter().flat_map(|(owner, entries)| {
+        entries
             .into_iter()
-            .map(move |(name, value)| ((owner.clone(), name), value))
+            .map(move |(id, value)| ((owner.clone(), id), value))
     });
     Ok(pairs.collect::<BTreeMap<_, _>>().into())
 }
 
-/// The names set on each owner in a map of `(owner, name)` to `()`, such as the flags set on each
-/// actor, written as each owner's list of names: `mira: [calm, wary]`.
+/// The ids set on each owner in a map of `(owner, id)` to `()`, such as the flags set on each
+/// actor, written as each owner's list of ids: `mira: [calm, wary]`.
 pub mod lists {
     use super::*;
 
@@ -78,8 +78,8 @@ pub mod lists {
         Id: Serialize + Ord,
     {
         let mut grouped: BTreeMap<&Id, Vec<&str>> = BTreeMap::new();
-        for (owner, name) in set.keys() {
-            grouped.entry(owner).or_default().push(name);
+        for (owner, id) in set.keys() {
+            grouped.entry(owner).or_default().push(id);
         }
         grouped.serialize(serializer)
     }
@@ -91,11 +91,9 @@ pub mod lists {
         T: From<BTreeMap<(Id, String), ()>>,
     {
         let grouped = BTreeMap::<Id, Vec<String>>::deserialize(deserializer)?;
-        let pairs = grouped.into_iter().flat_map(|(owner, names)| {
-            names
-                .into_iter()
-                .map(move |name| ((owner.clone(), name), ()))
-        });
+        let pairs = grouped
+            .into_iter()
+            .flat_map(|(owner, ids)| ids.into_iter().map(move |id| ((owner.clone(), id), ())));
         Ok(pairs.collect::<BTreeMap<_, _>>().into())
     }
 }
@@ -113,7 +111,7 @@ pub mod flat {
         S: Serializer,
         V: Serialize,
     {
-        serializer.collect_map(map.iter().map(|((_, name), value)| (name, value)))
+        serializer.collect_map(map.iter().map(|((_, id), value)| (id, value)))
     }
 
     pub fn deserialize<'de, D, Id, V, T>(deserializer: D) -> Result<T, D::Error>
@@ -123,14 +121,14 @@ pub mod flat {
         V: Deserialize<'de>,
         T: From<BTreeMap<(Id, String), V>>,
     {
-        let named = BTreeMap::<String, V>::deserialize(deserializer)?;
-        let pairs = named
+        let entries = BTreeMap::<String, V>::deserialize(deserializer)?;
+        let pairs = entries
             .into_iter()
-            .map(|(name, value)| ((Id::default(), name), value));
+            .map(|(id, value)| ((Id::default(), id), value));
         Ok(pairs.collect::<BTreeMap<_, _>>().into())
     }
 
-    /// The names set on that one owner, written as a list: `[calm, wary]`.
+    /// The ids set on that one owner, written as a list: `[calm, wary]`.
     pub mod lists {
         use super::*;
 
@@ -141,7 +139,7 @@ pub mod flat {
         where
             S: Serializer,
         {
-            serializer.collect_seq(set.keys().map(|(_, name)| name))
+            serializer.collect_seq(set.keys().map(|(_, id)| id))
         }
 
         pub fn deserialize<'de, D, Id, T>(deserializer: D) -> Result<T, D::Error>
@@ -150,8 +148,8 @@ pub mod flat {
             Id: Default + Ord,
             T: From<BTreeMap<(Id, String), ()>>,
         {
-            let names = Vec::<String>::deserialize(deserializer)?;
-            let pairs = names.into_iter().map(|name| ((Id::default(), name), ()));
+            let ids = Vec::<String>::deserialize(deserializer)?;
+            let pairs = ids.into_iter().map(|id| ((Id::default(), id), ()));
             Ok(pairs.collect::<BTreeMap<_, _>>().into())
         }
     }

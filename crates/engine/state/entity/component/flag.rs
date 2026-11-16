@@ -10,7 +10,7 @@ pub struct Flag;
 
 impl Component for Flag {
     type Value = ();
-    const NAME: &'static str = "flag";
+    const ID: &'static str = "flag";
 }
 
 impl Ref<'_, Save, Flag> {

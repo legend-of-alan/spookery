@@ -78,13 +78,13 @@ impl ClientState {
             ServerBody::Queued {
                 intent,
                 actor,
-                move_name,
+                move_id,
                 ..
             } => {
                 self.queued_moves.push(QueuedMove {
                     id: intent.clone(),
                     actor_id: actor.clone(),
-                    move_name: move_name.clone(),
+                    move_id: move_id.clone(),
                 });
                 self.add_queued_move_cause(VecDeque::push_back);
             }

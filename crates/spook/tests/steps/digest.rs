@@ -13,6 +13,7 @@ use super::table;
 
 const METERS: &str = "\
 meter rowan assassination_debt 2 6
+meter place:docks_shop comfort 2 3
 meter mira shop_day 1 1
 ";
 
@@ -24,6 +25,7 @@ const DOOR_NOTE: &str = "effect note 1 {\"note_id\":\"note_mira_door\",\"to\":[\
 const HOST: &str = "\
 effect note 1 {\"note_id\":\"note_mira_door\",\"to\":[\"rowan\"],\"place\":\"docks_shop\",\"fact_ids\":[],\"text\":\"Back at dusk. Oil on the shelf.\"}
 meter rowan assassination_debt 2 6
+meter place:docks_shop comfort 2 3
 meter mira shop_day 1 1
 ";
 

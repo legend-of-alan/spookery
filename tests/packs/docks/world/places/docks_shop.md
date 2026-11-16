@@ -1,7 +1,7 @@
 ---
 schema: place
 id: docks_shop
-display_name: Docks Shop
+name: Docks Shop
 facts:
   - id: fact_oil_on_shelf
     text: Oil is on the shelf.
@@ -10,9 +10,9 @@ facts:
     hidden: true
 exits:
   - to: docks_street
-    name: docks_street
+    id: docks_street
   - to: mira_rooms
-    name: stairs
+    id: stairs
     cost:
       ticks: 2
     if:
@@ -20,5 +20,11 @@ exits:
           subject: self
           id: brass_key
     locked_text: The stair door is locked.
+meters:
+  - id: comfort
+    min: 0
+    base_cap: 3
+    max: 3
+    base: 2
 ---
 The shop faces the water. Tins sit in a row.

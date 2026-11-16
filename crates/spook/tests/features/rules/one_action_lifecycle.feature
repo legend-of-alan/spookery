@@ -21,6 +21,12 @@ Feature: One action lifecycle
     When rounds pass until tick 1090
     Then Rowan is at mira_rooms
 
+  Scenario: A walker on an unnamed exit to the street reads the street's name
+    Given the shop's exit to the street takes 10 ticks
+    When Rowan plays "travel docks_street"
+    Then Rowan is at exit:docks_shop.docks_street
+    And Rowan's look shows "on the Docks Street until tick 1090"
+
   Scenario: A save with a walker on an exit the pack lacks is refused
     Given Rowan stands on exit:docks_shop.ladder in the save
     Then spook check refuses Rowan's place

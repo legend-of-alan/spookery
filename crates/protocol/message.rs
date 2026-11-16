@@ -71,7 +71,7 @@ impl ClientMessage {
 pub enum ServerBody {
     /// The first message on a connection, and the only one with no `seq`. On a player seat,
     /// `open` lists the PCs nobody holds, `taken` the PCs held right now, and `pc_names`
-    /// each one's display name by id.
+    /// each one's name by id.
     Hello {
         version: u32,
         commands: Vec<String>,
@@ -106,7 +106,7 @@ pub enum ServerBody {
         intent: String,
         actor: String,
         #[serde(rename = "move")]
-        move_name: String,
+        move_id: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         target: Option<String>,
     },
@@ -149,10 +149,13 @@ pub enum ServerBody {
 }
 
 /// One line of speech. The GM's copy lists its `recipient_ids`; a player's copy does not.
+/// `from_name` is the speaking actor's name, left out when the GM speaks as itself.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct Speech {
     pub from: Speaker,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub from_name: String,
     pub to: Audience,
     /// Who actually heard it: the ids of the seated players' actors that `to` reached when it
     /// was said, plus a seated speaker. `to` is who the speaker addressed; this is who was
@@ -169,15 +172,16 @@ pub enum Seat {
     Gm,
 }
 
-/// One built-in command. A player seat also has the pack's verbs as commands.
+/// One built-in command, by the `kind` a client message sends. A player seat also has the
+/// pack's verbs as commands.
 pub struct Command {
-    pub name: &'static str,
+    pub id: &'static str,
     pub seat: Seat,
 }
 
 impl Command {
-    const fn new(name: &'static str, seat: Seat) -> Self {
-        Self { name, seat }
+    const fn new(id: &'static str, seat: Seat) -> Self {
+        Self { id, seat }
     }
 }
 
@@ -198,11 +202,11 @@ pub const COMMANDS: &[Command] = &[
     Command::new("release", Seat::Gm),
 ];
 
-/// Whether `name` is a built-in command for `seat`.
-pub fn is_built_in(seat: Seat, name: &str) -> bool {
+/// Whether `kind` is a built-in command for `seat`.
+pub fn is_built_in(seat: Seat, kind: &str) -> bool {
     COMMANDS
         .iter()
-        .any(|command| command.seat == seat && command.name == name)
+        .any(|command| command.seat == seat && command.id == kind)
 }
 
 /// `claim` arguments: a free PC, or the token of a claim this player held before and the

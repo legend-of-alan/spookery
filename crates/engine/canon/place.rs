@@ -54,7 +54,7 @@ pub(super) fn add_place(
     places.insert(
         id,
         PlaceDef {
-            display_name: file.display_name,
+            name: file.name.unwrap_or_else(|| file.id.clone()),
             body: page.body,
             exits,
             flags: file.flags,
@@ -67,6 +67,22 @@ pub(super) fn add_place(
     ))
 }
 
+/// Name each exit the pack leaves unnamed: an exit whose id is the place it goes to takes that
+/// place's name, and any other takes its id.
+pub(super) fn name_exits(places: &mut BTreeMap<PlaceId, PlaceDef>) {
+    let place_names: BTreeMap<PlaceId, String> = (places.iter())
+        .map(|(id, place)| (id.clone(), place.name.clone()))
+        .collect();
+    for exit in places.values_mut().flat_map(|place| place.exits.iter_mut()) {
+        if exit.name.is_empty() {
+            let destination = place_names
+                .get(exit.to.as_str())
+                .filter(|_| exit.id == exit.to);
+            exit.name = destination.unwrap_or(&exit.id).clone();
+        }
+    }
+}
+
 fn load_place(file: &str, yaml: &str, line_base: u32) -> Result<PlaceDoc, Vec<Diagnostic>> {
     let parsed: PlaceDoc = load_tagged(file, yaml, PLACE_SCHEMA, line_base)?;
     let source = FileText {
@@ -77,7 +93,6 @@ fn load_place(file: &str, yaml: &str, line_base: u32) -> Result<PlaceDoc, Vec<Di
     let mut diags = Diags::default();
     let empty = ("id is empty", "set id to a short place id");
     diags.extend(source.refuse_empty(&parsed.id, "id", Locator::Key("id:"), empty));
-    diags.extend(source.refuse_empty_display_name(&parsed.display_name));
     diags.into_result(parsed)
 }
 
@@ -85,20 +100,20 @@ fn compile_exits(file: &str, from: &str, exits: &[ExitYaml]) -> Result<Vec<Exit>
     let source = FileText::named(file);
     let mut diags = Diags::default();
     let mut compiled = Vec::new();
-    let mut names = BTreeSet::new();
+    let mut ids = BTreeSet::new();
     for (index, exit) in exits.iter().enumerate() {
-        if exit.name.is_empty() || exit.to.is_empty() {
+        if exit.id.is_empty() || exit.to.is_empty() {
             diags.push(
-                schema_error(file, "an exit needs a name and a to", "set both")
+                schema_error(file, "an exit needs an id and a to", "set both")
                     .at_path(format!("exits[{index}]")),
             );
             continue;
         }
-        let path = format!("exits[{index}].name");
-        let twice = ("exit", "is listed twice", "keep one exit with this name");
-        let taken = !names.insert(exit.name.clone());
+        let path = format!("exits[{index}].id");
+        let twice = ("exit", "is listed twice", "keep one exit with this id");
+        let taken = !ids.insert(exit.id.clone());
         if let Some(diag) =
-            taken.then(|| source.refuse_duplicate(&exit.name, &path, Locator::Nowhere, twice))
+            taken.then(|| source.refuse_duplicate(&exit.id, &path, Locator::Nowhere, twice))
         {
             diags.push(diag);
             continue;
@@ -140,7 +155,9 @@ fn compile_exits(file: &str, from: &str, exits: &[ExitYaml]) -> Result<Vec<Exit>
             continue;
         }
         compiled.push(Exit {
-            name: exit.name.clone(),
+            id: exit.id.clone(),
+            // `name_exits` names an exit the pack leaves unnamed once every place has loaded.
+            name: exit.name.clone().unwrap_or_default(),
             from: from.into(),
             to: exit.to.clone(),
             cost,
@@ -161,7 +178,7 @@ struct PlaceDoc {
     #[serde(rename = "schema")]
     _schema: String,
     id: String,
-    display_name: String,
+    name: Option<String>,
     facts: Vec<FactYaml>,
     #[serde(default)]
     exits: Vec<ExitYaml>,
@@ -177,7 +194,8 @@ struct PlaceDoc {
 #[serde(deny_unknown_fields)]
 struct ExitYaml {
     to: String,
-    name: String,
+    id: String,
+    name: Option<String>,
     cost: Option<rule_list::CostYaml>,
     #[serde(default, rename = "if")]
     if_: Vec<rule_list::CondYaml>,

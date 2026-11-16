@@ -35,6 +35,7 @@ Feature: spook check explains a broken pack
       | a die with zero sides        | rules/checks.yaml          | SCHEMA            | a die with zero sides              |
       | check names no meter         | rules/checks.yaml          | SCHEMA            | names no meter                     |
       | pack_rev mismatch            | state/save.yaml            | PACK_REV_MISMATCH | pack_rev                           |
+      | an actor the cast lacks      | state/save.yaml            | SCHEMA            | is not a cast member               |
       | exit to an unknown place     | world/places/docks_shop.md | SCHEMA            | not a place                        |
       | duplicate exit               | world/places/docks_shop.md | SCHEMA            | listed twice                       |
       | a target alias               | rules/verbs.yaml           | SCHEMA            | not a target kind                  |
@@ -42,7 +43,6 @@ Feature: spook check explains a broken pack
       | a verb named say             | rules/verbs.yaml           | SCHEMA            | 'say' is a built-in command        |
       | flags under idle             | cast/pc-rowan.md           | SCHEMA            | unknown field                      |
       | a cast role named kind       | cast/pc-rowan.md           | SCHEMA            | unknown field 'kind'               |
-      | missing display_name         | cast/pc-rowan.md           | SCHEMA            | display_name                       |
       | idle maybe                   | rules/budget.yaml          | SCHEMA            | not on or off                      |
       | zero round interval          | rules/budget.yaml          | SCHEMA            | round_every_real_seconds           |
       | zero idle ticks              | rules/budget.yaml          | SCHEMA            | idle_ticks_per_round               |

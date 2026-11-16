@@ -63,18 +63,6 @@ impl<'a> FileText<'a> {
         self.refusal(path, at, format!("{before} '{id}' {after}"), hint)
     }
 
-    /// The refusal for a blank `display_name`, which places and cast both have.
-    pub fn refuse_empty_display_name(&self, name: &str) -> Option<Diagnostic> {
-        let hint = "set display_name to the name players see";
-        let empty = ("display_name is empty", hint);
-        self.refuse_empty(
-            name.trim(),
-            "display_name",
-            Locator::Key("display_name:"),
-            empty,
-        )
-    }
-
     /// The refusals for the `row`th item of the top-level `{noun}s:` list, whose id is
     /// `id`: an empty id, then each rule the row breaks, then, when nothing else is wrong
     /// and `taken` says an earlier row has this id, the repeat.
@@ -103,7 +91,7 @@ impl<'a> FileText<'a> {
         let broken = rules.into_iter().filter(|(broken, ..)| *broken);
         let mut found: Vec<Diagnostic> = id
             .is_empty()
-            .then(|| refuse("id", empty, "set id to a short name"))
+            .then(|| refuse("id", empty, &format!("set id to a short {noun} id")))
             .into_iter()
             .chain(broken.map(|(_, field, message, hint)| refuse(field, message, hint)))
             .collect();

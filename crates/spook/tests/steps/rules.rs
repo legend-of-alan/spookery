@@ -143,7 +143,7 @@ rules:
 ---
 schema: item
 id: tonic
-display_name: Tonic
+name: Tonic
 tags: []
 rules:
   - id: use
@@ -201,7 +201,7 @@ fn verb_travel_and_the_ferry_rule(world: &mut World) {
 ---
 schema: place
 id: ferry_dock
-display_name: Ferry Dock
+name: Ferry Dock
 facts:
   - id: fact_ferry_waits
     text: The ferry waits.
@@ -275,16 +275,16 @@ fn briar_restocks_before_the_shop_opens(world: &mut World) {
     world.pack = Some(pack);
 }
 
-/// Set cycle `name` to `length` ticks, adding it beside the docks `day` when it is new.
+/// Set cycle `cycle_id` to `length` ticks, adding it beside the docks `day` when it is new.
 #[given(expr = "rules\\/budget.yaml sets cycle {word} to {int}")]
-fn budget_sets_cycle(world: &mut World, name: String, length: u64) {
+fn budget_sets_cycle(world: &mut World, cycle_id: String, length: u64) {
     let pack = copy_pack("docks", "rules-cycle");
     let budget = pack.join("rules/budget.yaml");
-    let (old, new) = match name.as_str() {
+    let (old, new) = match cycle_id.as_str() {
         "day" => ("  day: 1440\n".to_string(), format!("  day: {length}\n")),
         _ => (
             "cycles:\n".to_string(),
-            format!("cycles:\n  {name}: {length}\n"),
+            format!("cycles:\n  {cycle_id}: {length}\n"),
         ),
     };
     super::common::replace_in_file(&budget, &old, &new);
@@ -292,8 +292,8 @@ fn budget_sets_cycle(world: &mut World, name: String, length: u64) {
 }
 
 #[given(expr = "briar restocks on cycle {word} from {int} to {int}")]
-fn briar_restocks_on_cycle(world: &mut World, name: String, from: u64, to: u64) {
-    write_briar(table::pack(world), &name, from, to);
+fn briar_restocks_on_cycle(world: &mut World, cycle_id: String, from: u64, to: u64) {
+    write_briar(table::pack(world), &cycle_id, from, to);
 }
 
 #[given(expr = "the docks pack, whose budget sets cycle day to 1440")]
@@ -313,7 +313,7 @@ fn write_briar(pack: &Path, cycle: &str, from: u64, to: u64) {
 schema: cast
 id: briar
 control_type: npc
-display_name: Briar
+name: Briar
 idle:
   eligible: true
 rules:
@@ -321,7 +321,7 @@ rules:
     when: habit
     if:
       - cycle:
-          name: {cycle}
+          id: {cycle}
           from: {from}
           to: {to}
       - players:
@@ -753,12 +753,12 @@ fn a_pc_is_gated_on_those_full_ids(world: &mut World) {
     let pack = world.pack.clone().unwrap();
     let mut opened = open(&pack);
     let mut codes = Vec::new();
-    for move_name in ["cast:mira/leave_door_note", "place:docks_street/travel"] {
-        match opened.queue_player_move(&Presence::default(), &"rowan".into(), move_name, None) {
+    for move_id in ["cast:mira/leave_door_note", "place:docks_street/travel"] {
+        match opened.queue_player_move(&Presence::default(), &"rowan".into(), move_id, None) {
             Err(miss) if miss.code == Reason::NotInSpec => {
                 codes.push(miss.code.as_str());
             }
-            other => panic!("{move_name}: {other:?}"),
+            other => panic!("{move_id}: {other:?}"),
         }
     }
     world.scratch = codes.join(" ");
@@ -801,7 +801,7 @@ fn use_on_tonic_targets_an_item(world: &mut World) {
 ---
 schema: item
 id: tonic
-display_name: Tonic
+name: Tonic
 tags: []
 rules:
   - id: use
@@ -841,7 +841,7 @@ fn the_seated_pc_queues_use_tonic(world: &mut World) {
                 .iter()
                 .find(|intent| intent.id == queued.id)
                 .unwrap();
-            format!("{:?} {}", intent.target, intent.move_name)
+            format!("{:?} {}", intent.target, intent.move_id)
         }
         Err(err) => err.code.as_str().to_string(),
     };

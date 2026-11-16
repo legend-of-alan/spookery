@@ -19,7 +19,7 @@ pub struct Places {
     meters: undo::Store<component::Map<PlaceId, Meter>>,
     #[serde(with = "nested_map::lists")]
     flags: undo::Store<component::Map<PlaceId, component::Flag>>,
-    /// The name of each exit whose door is open, by its place.
+    /// The id of each exit whose door is open, by its place.
     #[serde(with = "nested_map::lists")]
     open_exits: undo::Store<component::Map<PlaceId, component::OpenExit>>,
 }

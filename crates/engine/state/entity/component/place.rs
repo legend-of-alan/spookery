@@ -10,7 +10,7 @@ pub struct Place;
 
 impl Component for Place {
     type Value = String;
-    const NAME: &'static str = "place";
+    const ID: &'static str = "place";
 }
 
 impl<'a> Ref<'a, entity::Actors, Place> {

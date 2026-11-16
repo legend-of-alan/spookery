@@ -49,12 +49,12 @@ mod storage {
         fn store_mut(&mut self) -> &mut Self::Store;
     }
 
-    /// The store of a component an entity holds many of, one under each name.
+    /// The store of a component an entity holds many of, one under each entry id.
     pub type MapStore<E, C> = undo::Store<Map<<E as Entities>::Id, C>>;
 }
 use storage::{Has, MapStore};
 
-/// Declares that `$entities` keeps `$component` in its field `$store`: by name, or, given the
+/// Declares that `$entities` keeps `$component` in its field `$store`: by entry id, or, given the
 /// field's type, at most one per entity.
 macro_rules! has {
     ($entities:ty, $component:ty, $store:ident) => {

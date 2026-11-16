@@ -58,12 +58,12 @@ fn the_player_hears_the_gm(world: &mut World, text: String) {
 }
 
 #[then(expr = "the player is shown {string} with an exit to {string}")]
-fn the_player_is_shown(world: &mut World, place_name: String, to: String) {
+fn the_player_is_shown(world: &mut World, place_name: String, place_id: String) {
     wait_player_frame(world, &format!("a view of {place_name}"), |frame| {
         let exits = frame["exits"].as_array().cloned().unwrap_or_default();
         frame["kind"] == "view"
             && frame["place_name"] == place_name
-            && exits.iter().any(|exit| exit["to"] == to)
+            && exits.iter().any(|exit| exit["place_id"] == place_id)
     });
 }
 
@@ -139,9 +139,9 @@ fn parse_lines(text: &str) -> Vec<Value> {
 }
 
 #[then(expr = "the player is offered {string}")]
-fn the_player_is_offered(world: &mut World, name: String) {
-    wait_player_frame(world, &format!("help with {name}"), |frame| {
-        help_command(frame, &name).is_some()
+fn the_player_is_offered(world: &mut World, command_id: String) {
+    wait_player_frame(world, &format!("help with {command_id}"), |frame| {
+        help_command(frame, &command_id).is_some()
     });
 }
 
@@ -153,11 +153,11 @@ fn the_players_map_lists(world: &mut World, place_name: String) {
     });
 }
 
-/// The command `name` of a `help` body.
-fn help_command<'a>(frame: &'a Value, name: &str) -> Option<&'a Value> {
+/// The command `command_id` of a `help` body.
+fn help_command<'a>(frame: &'a Value, command_id: &str) -> Option<&'a Value> {
     if frame["kind"] != "help" {
         return None;
     }
     let commands = frame["commands"].as_array()?;
-    commands.iter().find(|command| command["name"] == name)
+    commands.iter().find(|command| command["id"] == command_id)
 }

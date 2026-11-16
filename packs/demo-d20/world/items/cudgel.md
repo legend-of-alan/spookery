@@ -1,7 +1,7 @@
 ---
 schema: item
 id: cudgel
-display_name: Cudgel
+name: Cudgel
 tags:
   - weapon
 rules: []

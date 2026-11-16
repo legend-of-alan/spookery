@@ -103,6 +103,13 @@ Feature: A player knows where they are and what they can do
     When play types "take Wheel chock"
     Then play shows "You picked up the Wheel chock."
 
+  Scenario: A cast member, place or item the pack gives no name shows its id
+    Given a docks table where the shop, Aldric and the lamp oil have no name
+    When play joins the table on a free loopback address
+    Then play shows "You are in docks_shop."
+    And play shows "Here: aldric, You"
+    And play shows "lamp_oil: 4"
+
   Scenario: Two things here with one name are refused, naming both ids
     Given a docks table where Bram is called "Briar" and stands in the Gate Yard
     When play joins the table as "harbormouse"

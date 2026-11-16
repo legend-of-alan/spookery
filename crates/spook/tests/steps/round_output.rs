@@ -27,8 +27,8 @@ fn listen_with_wren(world: &mut World, travelling: bool) {
     let pack = copy_pack("docks", "round-output");
     let path = pack.join("world/places/docks_shop.md");
     let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read shop: {err}"));
-    let from = "  - to: docks_street\n    name: docks_street\n";
-    let to = "  - to: docks_street\n    name: docks_street\n    cost:\n      ticks: 10\n";
+    let from = "  - to: docks_street\n    id: docks_street\n";
+    let to = "  - to: docks_street\n    id: docks_street\n    cost:\n      ticks: 10\n";
     assert!(text.contains(from), "{text}");
     fs::write(&path, text.replacen(from, to, 1)).unwrap_or_else(|err| panic!("write shop: {err}"));
     let verbs = pack.join("rules/verbs.yaml");
@@ -73,8 +73,8 @@ fn both_players_are_travelling(world: &mut World) {
 }
 
 #[when(expr = "the GM queues {string} for {string}")]
-fn the_gm_queues_a_move(world: &mut World, move_name: String, actor: String) {
-    queue_move(world, &actor, &move_name, None);
+fn the_gm_queues_a_move(world: &mut World, move_id: String, actor: String) {
+    queue_move(world, &actor, &move_id, None);
 }
 
 #[when(expr = "the GM queues a 10-tick travel for {string}")]
@@ -170,17 +170,17 @@ fn the_host_prints_its_status_once(world: &mut World) {
 
 const STATUS_LINE: &str = "meter mira shop_day 1 1";
 
-fn queue_move(world: &mut World, actor: &str, move_name: &str, place: Option<&str>) {
+fn queue_move(world: &mut World, actor: &str, move_id: &str, place: Option<&str>) {
     let target = match place {
         Some(place) => format!(r#","target":"{place}""#),
         None => String::new(),
     };
-    let args = format!(r#"{{"actor_id":"{actor}","move":"{move_name}"{target}}}"#);
+    let args = format!(r#"{{"actor_id":"{actor}","move":"{move_id}"{target}}}"#);
     let text = table::gm_tool_call(world, 4, "queue", &args);
     assert_eq!(
         table::read_reply(&text)["kind"],
         "queued",
-        "queue {move_name} for {actor}\n{text}"
+        "queue {move_id} for {actor}\n{text}"
     );
 }
 

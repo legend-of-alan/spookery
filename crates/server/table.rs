@@ -201,7 +201,7 @@ impl Table {
         let mut commands: Vec<String> = COMMANDS
             .iter()
             .filter(|command| command.seat == seat)
-            .map(|command| command.name.to_string())
+            .map(|command| command.id.to_string())
             .collect();
         let (mut open, mut taken, mut pc_names) = (Vec::new(), Vec::new(), BTreeMap::new());
         if seat == Seat::Player {
@@ -209,7 +209,9 @@ impl Table {
             (open, taken) = self.open_and_taken();
             let canon = self.world.canon();
             let ids = open.iter().chain(&taken);
-            pc_names = ids.map(|id| (id.clone(), canon.display_name(id))).collect();
+            // Load refuses a save actor the cast lacks, so each PC is a cast member.
+            let name = |id: &String| canon.cast[id.as_str()].name.clone();
+            pc_names = ids.map(|id| (id.clone(), name(id))).collect();
         }
         let hello = ServerMessage {
             id: None,
@@ -346,14 +348,14 @@ impl Table {
         }
     }
 
-    /// A new claim on a free PC, named by id or display name, under a new token, with the
-    /// speech this PC heard before.
-    fn claim_free_pc(&mut self, name: &str) -> Result<(String, ActorId, ServerBody), Reason> {
+    /// A new claim on a free PC, named by id or name, under a new token, with the speech this PC
+    /// heard before.
+    fn claim_free_pc(&mut self, text: &str) -> Result<(String, ActorId, ServerBody), Reason> {
         let presence = self.seats.presence();
         if presence.actors_present.len() >= MAX_PLAYER_SEATS {
             return Err(Reason::TableFull);
         }
-        let actor = self.world.find_pc(name)?.ok_or(Reason::Schema)?;
+        let actor = self.world.find_pc(text)?.ok_or(Reason::Schema)?;
         if presence.actors_present.contains(&actor) {
             return Err(Reason::SeatTaken);
         }
@@ -433,7 +435,7 @@ impl Table {
             Ok((queued, target)) => ServerBody::Queued {
                 intent: queued.id,
                 actor: queued.actor_id,
-                move_name: queued.move_name,
+                move_id: queued.move_id,
                 target,
             },
             Err(refused) if gm.is_none() && refused.code == Reason::Busy => {

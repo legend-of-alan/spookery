@@ -1,10 +1,10 @@
 ---
 schema: place
 id: yard
-display_name: Yard
+name: Yard
 exits:
   - to: lane
-    name: lane
+    id: lane
   # more-exits
 facts:
   - id: fact_yard_quiet

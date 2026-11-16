@@ -12,7 +12,7 @@ pub struct KnownFacts;
 
 impl Component for KnownFacts {
     type Value = BTreeSet<String>;
-    const NAME: &'static str = "known_facts";
+    const ID: &'static str = "known_facts";
 }
 
 impl<'a> Ref<'a, entity::Actors, KnownFacts> {
