@@ -326,8 +326,8 @@ fn effect(world: &ecs::World, step: &Step, index: usize) -> Effect {
         Step::Unwield => EffectKind::Unwield { actor_id: mira },
         Step::Note => EffectKind::Note {
             note_id: format!("note_rollback_{index}"),
-            to: vec!["rowan".into()],
-            place: Some("docks_shop".into()),
+            to_ids: vec!["rowan".into()],
+            place_id: Some("docks_shop".into()),
             fact_ids: Vec::new(),
             text: "A test note.".to_string(),
         },

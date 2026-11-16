@@ -102,13 +102,13 @@ Append a yield to `rules/verbs.yaml`. A yield commits a round and changes no num
     success:
       - note:
           id: note_press
-          to:
+          to_ids:
             - ada
           text: The press holds.
     partial:
       - note:
           id: note_press_part
-          to:
+          to_ids:
             - ada
           text: The press slips.
 ```
@@ -123,9 +123,9 @@ A habit is a rule on the cast file with `when: habit`. The cast file keeps a `# 
     do:
       - note:
           id: note_lamp
-          to:
+          to_ids:
             - ada
-          place: yard
+          place_id: yard
           fact_ids: []
           text: The lamp is lit.
 ```

@@ -29,8 +29,8 @@ use proptest::test_runner::{TestCaseError, TestRunner};
 
 #[derive(Clone, Debug)]
 struct NotePlan {
-    to: Vec<usize>,
-    place: Option<usize>,
+    to_indices: Vec<usize>,
+    place_index: Option<usize>,
     fact_ids: Vec<usize>,
 }
 
@@ -106,9 +106,9 @@ fn pick_note(
         prop::option::of(0..place_count),
         prop::collection::vec(0..fact_count, 0..=2),
     )
-        .prop_map(|(to, place, fact_ids)| NotePlan {
-            to,
-            place,
+        .prop_map(|(to_indices, place_index, fact_ids)| NotePlan {
+            to_indices,
+            place_index,
             fact_ids,
         })
 }
@@ -155,10 +155,12 @@ fn apply_scene(
     }
     for (index, note) in scene.notes.iter().enumerate() {
         let note = Note {
-            to_ids: (note.to.iter())
-                .map(|actor| actors[actor % actors.len()].clone())
+            to_ids: (note.to_indices.iter())
+                .map(|actor_index| actors[actor_index % actors.len()].clone())
                 .collect(),
-            place_id: note.place.map(|place| places[place % places.len()].clone()),
+            place_id: note
+                .place_index
+                .map(|place_index| places[place_index % places.len()].clone()),
             fact_ids: (note.fact_ids.iter())
                 .map(|fact| facts[fact % facts.len()].clone())
                 .collect(),

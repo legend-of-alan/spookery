@@ -331,9 +331,9 @@ rules:
           value: true
       - note:
           id: note_tended
-          to:
+          to_ids:
             - ada
-          place: yard
+          place_id: yard
           fact_ids: []
           text: The yard is swept.
 ---
@@ -656,9 +656,9 @@ rules:
     do:
       - note:
           id: note_lane
-          to:
+          to_ids:
             - ada
-          place: yard
+          place_id: yard
           fact_ids: []
           text: A chalk mark points down the lane.
 
@@ -863,7 +863,7 @@ One effect under each dash. The rules in `rules/verbs.yaml` are the examples. `s
 
 `location.via` names an exit from the actor's current place. `travel` uses `via: target`. `location.to` names a place, or `target`. Playing `to` without `teleport: true` is refused. `teleport: true` in `rules/verbs.yaml` is a warning.
 
-`note` is stored on the save under `globals.notes`, keyed by the note's `id`, with its `to_ids` and `fact_ids` each in order and listed once. A note is shown to everyone named in `to_ids`, wherever they are, and to anyone standing in `place_id`. It is hidden from a viewer when one of its `fact_ids` is one that viewer may not know. Place bodies and note text are shown as written. A hidden fact's sentence pasted into either one reaches every reader, and `spook check` does not warn. `narrate` is one-off text for the people its `to` names, written on the round and left out of the save. `to` is `self`, `here`, or an actor id. A world change rule may leave it out, and then it is every player present; check refuses a missing `to` anywhere else. `reveal` adds its fact to the actor `to` names and writes no memory line. `memory` writes a memory line to the actor `to` names and teaches them its facts. The save groups what each kind of entity holds by component: an actor's flags are under `actors.flags`, a place's items, meters and flags under `places.items`, `places.meters` and `places.flags` and its open doors under `places.open_exits`, a story's under `stories`, and the world's under `globals.meters`, `globals.flags` and `globals.notes`, each listed by the entity's id. The save lists no places or stories of its own: every place and story the pack defines exists.
+`note` names its readers as `to_ids` and its place as `place_id`. It is stored on the save under `globals.notes`, keyed by the note's `id`, with its `to_ids` and `fact_ids` each in order and listed once. A note is shown to everyone named in `to_ids`, wherever they are, and to anyone standing in `place_id`. It is hidden from a viewer when one of its `fact_ids` is one that viewer may not know. Place bodies and note text are shown as written. A hidden fact's sentence pasted into either one reaches every reader, and `spook check` does not warn. `narrate` is one-off text for the people its `to` names, written on the round and left out of the save. `to` is `self`, `here`, or an actor id. A world change rule may leave it out, and then it is every player present; check refuses a missing `to` anywhere else. `reveal` adds its fact to the actor `to` names and writes no memory line. `memory` writes a memory line to the actor `to` names and teaches them its facts. The save groups what each kind of entity holds by component: an actor's flags are under `actors.flags`, a place's items, meters and flags under `places.items`, `places.meters` and `places.flags` and its open doors under `places.open_exits`, a story's under `stories`, and the world's under `globals.meters`, `globals.flags` and `globals.notes`, each listed by the entity's id. The save lists no places or stories of its own: every place and story the pack defines exists.
 
 `wield` fills the actor's one wielded slot. `unwield` empties it. `subject` on those effects, and on `has_item`, `at`, `knows`, and `wielding`, is the subject of that verb. `to` on `reveal`, `modifier`, and `memory` is who the fact, the modifier, or the memory line lands on. `of` on a meter, flag, or item is the owner whose value or count the line reads or changes.
 

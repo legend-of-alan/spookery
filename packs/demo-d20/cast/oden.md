@@ -18,9 +18,9 @@ rules:
     do:
       - note:
           id: note_oden_hint
-          to:
+          to_ids:
             - corin
-          place: shed
+          place_id: shed
           fact_ids: []
           text: "Oden calls from the shed: \"Bring iron, or bring a shoulder. And don't go mocking that goblin. It bites.\""
 ---

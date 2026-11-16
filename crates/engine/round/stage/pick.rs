@@ -70,8 +70,8 @@ fn stamp_target(canon: &Canon, world: &ecs::World, presence: &Presence, intent: 
                 intent.target = Target::Place(to.clone().into());
             }
         }
-        if let EffectKind::Note { to, .. } = &effect.kind {
-            intent.args.message_to = Some(to.clone());
+        if let EffectKind::Note { to_ids, .. } = &effect.kind {
+            intent.args.message_to = Some(to_ids.clone());
         }
     }
 }

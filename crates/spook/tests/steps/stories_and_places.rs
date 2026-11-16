@@ -365,9 +365,9 @@ fn the_attic_holds_lamp_oil(world: &mut World) {
 fn a_rule_leaves_a_note_in_the_attic(world: &mut World) {
     let effect = "      - note:
           id: note_attic
-          to:
+          to_ids:
             - mira
-          place: attic
+          place_id: attic
           text: Mind the ladder.
 ";
     let pack = world.pack.clone().unwrap();

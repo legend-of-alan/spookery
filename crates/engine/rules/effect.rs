@@ -86,9 +86,9 @@ pub enum EffectKind {
     },
     Note {
         note_id: String,
-        to: Vec<ActorId>,
+        to_ids: Vec<ActorId>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        place: Option<PlaceId>,
+        place_id: Option<PlaceId>,
         fact_ids: Vec<String>,
         text: String,
     },
@@ -246,20 +246,20 @@ impl Effect {
             }
             EffectKind::Note {
                 note_id,
-                to,
-                place,
+                to_ids,
+                place_id,
                 fact_ids,
                 text,
             } => {
-                if place
+                if place_id
                     .as_ref()
                     .is_some_and(|place_id| !canon.places.contains_key(place_id))
                 {
                     return Err(Reason::UnknownId);
                 }
                 let note = Note {
-                    to_ids: to.into_iter().collect(),
-                    place_id: place,
+                    to_ids: to_ids.into_iter().collect(),
+                    place_id,
                     fact_ids: fact_ids.into_iter().collect(),
                     text,
                 };

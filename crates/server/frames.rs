@@ -86,7 +86,7 @@ pub(super) fn render_resume(view: &engine::View) -> ServerBody {
     let notes = view
         .notes
         .iter()
-        .filter(|note| note.to.iter().any(|to_id| to_id == actor_id.as_str()))
+        .filter(|note| note.to_ids.iter().any(|to_id| to_id == actor_id.as_str()))
         .cloned()
         .collect();
     ServerBody::Resume { notes }

@@ -296,7 +296,7 @@ fn claimed_note_sorts_first() {
         .iter()
         .find(|effect| effect["kind"] == "note")
         .unwrap_or_else(|| panic!("no door note: {log}"));
-    assert_eq!(note["to"], serde_json::json!(["rowan"]));
+    assert_eq!(note["to_ids"], serde_json::json!(["rowan"]));
     let _ = fs::remove_dir_all(&pack);
 }
 

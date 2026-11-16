@@ -232,8 +232,8 @@ fn expand_template(
         }
         EffectTemplate::Note {
             id,
-            to,
-            place,
+            to_ids,
+            place_id,
             fact_ids,
             text,
         } => {
@@ -242,8 +242,8 @@ fn expand_template(
                 &intent.id,
                 EffectKind::Note {
                     note_id: id.clone(),
-                    to: to.clone(),
-                    place: place.clone(),
+                    to_ids: to_ids.clone(),
+                    place_id: place_id.clone(),
                     fact_ids: fact_ids.clone(),
                     text: text.clone(),
                 },

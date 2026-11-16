@@ -307,8 +307,8 @@ pub enum EffectTemplate {
     },
     Note {
         id: String,
-        to: Vec<ActorId>,
-        place: Option<PlaceId>,
+        to_ids: Vec<ActorId>,
+        place_id: Option<PlaceId>,
         fact_ids: Vec<String>,
         text: String,
     },
