@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::ecs::change::{self, Change};
+use crate::ecs::change::{self, Change, ChangeValue};
 use crate::ecs::component::{Component, Mut, Ref};
 use crate::ecs::id::ActorId;
 use crate::ecs::prelude::*;
@@ -60,12 +60,12 @@ impl Mut<'_, entity::Actors, Act> {
     fn write(
         &mut self,
         component_id: &'static str,
-        read: impl Fn(&Act) -> change::Value,
+        read: impl Fn(&Act) -> Option<ChangeValue>,
         edit: impl FnOnce(&mut Act),
     ) -> Result<(), Reason> {
         self.check_exists()?;
         let held = self.store().get(self.id);
-        let before = held.map_or(change::Value::Empty, &read);
+        let before = held.and_then(&read);
         let mut next = held.cloned().unwrap_or_default();
         edit(&mut next);
         let key = change::Key::new(component_id, self.id.as_id_ref(), None);
@@ -96,7 +96,7 @@ impl Mut<'_, entity::Actors, Act> {
     /// Count one act for the actor in round `round_index`, in the act window the table is in:
     /// the idle one when no player is seated. Only the keys whose values move are reported.
     pub fn count(&mut self, round_index: u64, players: u32) -> Result<(), Reason> {
-        let read = |act: &Act| count_value(act.last_act_round);
+        let read = |act: &Act| Some(count_value(act.last_act_round));
         self.write(Act::LAST_ACT_ROUND, read, |act| {
             act.last_act_round = round_index
         })?;
@@ -104,7 +104,7 @@ impl Mut<'_, entity::Actors, Act> {
             0 => ActCounter::IdleActsThisWindow,
             _ => ActCounter::LiveActsThisWindow,
         };
-        let read = |act: &Act| count_value(counter.get(act).into());
+        let read = |act: &Act| Some(count_value(counter.get(act).into()));
         self.write(counter.id(), read, |act| {
             let count = counter.get_mut(act);
             *count = count.saturating_add(1);
@@ -118,7 +118,7 @@ impl Writer<'_, entity::Actors> {
         let actors = Reader::new(&*self.components, self.canon).query::<ActorId>();
         let actors: Vec<ActorId> = actors.iter().cloned().collect();
         for actor in &actors {
-            let read = |act: &Act| count_value(counter.get(act).into());
+            let read = |act: &Act| Some(count_value(counter.get(act).into()));
             let mut action_state = self.get_mut::<Act>(actor);
             action_state.write(counter.id(), read, |act| *counter.get_mut(act) = 0)?;
         }
@@ -127,13 +127,13 @@ impl Writer<'_, entity::Actors> {
 }
 
 /// The tick the actor is busy until, as a change value.
-fn busy_value(act: &Act) -> change::Value {
-    act.busy_until.map_or(change::Value::Empty, count_value)
+fn busy_value(act: &Act) -> Option<ChangeValue> {
+    act.busy_until.map(count_value)
 }
 
 /// A count as a change value.
-fn count_value(count: u64) -> change::Value {
-    change::Value::Number(i64::try_from(count).unwrap_or(i64::MAX))
+fn count_value(count: u64) -> ChangeValue {
+    ChangeValue::Number(count.try_into().unwrap_or(i64::MAX))
 }
 
 /// One of the `Act` counts the end of its act window sets back to 0.

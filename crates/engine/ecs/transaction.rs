@@ -5,7 +5,7 @@
 use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, BTreeSet};
 
-use super::change::{self, Change};
+use super::change::{self, Change, ChangeValue};
 use super::component::{meter, Meter, Modifier};
 use super::{entity, sort_unique, undo, MemoryLine, Reader, Save};
 use crate::canon::Budget;
@@ -206,7 +206,7 @@ impl ecs::World {
         let reading = |held: Option<&Meter>, sum: Result<i64, Reason>| {
             let value = (def.zip(held).ok_or(Reason::UnknownId))
                 .and_then(|(def, held)| meter::value(def, held, sum?));
-            change::Value::from_reading(value)
+            value.ok().map(ChangeValue::Number)
         };
         let before = reading(held.unwrap_or(now), sum.unwrap_or(sum_now));
         Change::new(key.clone(), before, reading(now, sum_now))
