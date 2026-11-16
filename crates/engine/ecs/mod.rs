@@ -1,4 +1,5 @@
-//! The save as the file holds it, and the live save that reads it against the pack's canon.
+//! The ECS: the save as the file holds it, and the `World` that owns its components and reads
+//! them against the pack's canon.
 
 pub(crate) mod change;
 pub(crate) mod entity;
@@ -8,7 +9,7 @@ pub(crate) mod nested_map;
 mod notes;
 pub(crate) mod prelude;
 mod transaction;
-pub mod undo;
+pub(crate) mod undo;
 
 use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
@@ -28,7 +29,7 @@ use transaction::Transaction;
 use crate::canon::Canon;
 
 /// The save as the file holds it: the clock, each collection's components, and the notes. It has
-/// no canon and no writers; `State::new` opens it to read and write.
+/// no canon and no writers; `World::new` opens it to read and write.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Save {
@@ -53,34 +54,34 @@ pub struct Save {
     #[serde(default)]
     stories: entity::Stories,
     #[serde(default)]
-    world: entity::Globals,
+    globals: entity::Globals,
     notes: undo::Store<Vec<Note>>,
 }
 
-/// The live save: what the file holds, the pack's canon it is read against, and the round's
-/// transaction. A `State` never exists without its canon.
+/// The ECS world, which owns every component, like Bevy's `World`: the save, the pack's canon it
+/// is read against, and the round's transaction. A `World` never exists without its canon.
 #[derive(Clone, Debug)]
-pub struct State {
+pub struct World {
     save: Save,
     canon: Arc<Canon>,
     transaction: Transaction,
 }
 
-impl Deref for State {
+impl Deref for World {
     type Target = Save;
     fn deref(&self) -> &Save {
         &self.save
     }
 }
 
-impl DerefMut for State {
+impl DerefMut for World {
     fn deref_mut(&mut self) -> &mut Save {
         &mut self.save
     }
 }
 
 /// One collection with the pack's canon, borrowed to read. It is `Copy`, and reads through `get`,
-/// `contains` and `query`; only `State`'s getters build one.
+/// `contains` and `query`; only `World`'s getters build one.
 pub struct Reader<'a, E> {
     components: &'a E,
     canon: &'a Canon,
@@ -100,7 +101,7 @@ impl<'a, E> Reader<'a, E> {
     }
 }
 
-impl<'a, E: entity::Entities> Reader<'a, E> {
+impl<'a, E: entity::Collection> Reader<'a, E> {
     /// `id`'s component `C`, borrowed. A collection that does not hold `C` has no reads on it.
     pub fn get<C: component::Component>(self, id: &'a E::Id) -> component::Ref<'a, E, C> {
         component::Ref::new(self, id)
@@ -133,17 +134,17 @@ impl<'a, E: entity::Entities> Reader<'a, E> {
 
 /// One collection's components, or the notes, with the round's transaction and the pack's canon,
 /// borrowed apart from the rest of the save: the only way to write them. It reads and writes only
-/// through `get_mut` and its own methods, and only `State`'s `*_mut` getters build one.
+/// through `get_mut` and its own methods, and only `World`'s `*_mut` getters build one.
 ///
 /// ```compile_fail
-/// # fn bypass(state: &mut spookery_engine::State) {
-/// *state.actors_mut() = Default::default();
+/// # fn bypass(world: &mut spookery_engine::ecs::World) {
+/// *world.actors_mut() = Default::default();
 /// # }
 /// ```
 ///
 /// ```compile_fail
-/// # fn bypass(state: &spookery_engine::State) {
-/// let _ = state.actors().control_type.len();
+/// # fn bypass(world: &spookery_engine::ecs::World) {
+/// let _ = world.actors().control_type.len();
 /// # }
 /// ```
 pub struct Writer<'a, E> {
@@ -153,7 +154,7 @@ pub struct Writer<'a, E> {
 }
 
 impl<'a, E> Writer<'a, E> {
-    /// The one place a `Writer` is built; only `State`'s `*_mut` getters call it.
+    /// The one place a `Writer` is built; only `World`'s `*_mut` getters call it.
     fn new(components: &'a mut E, transaction: &'a mut Transaction, canon: &'a Canon) -> Self {
         Writer {
             components,
@@ -163,7 +164,7 @@ impl<'a, E> Writer<'a, E> {
     }
 }
 
-impl<E: entity::Entities> Writer<'_, E> {
+impl<E: entity::Collection> Writer<'_, E> {
     /// `id`'s component `C`, to write. A collection that does not hold `C` has no writes on it.
     pub fn get_mut<'a, C>(&'a mut self, id: &'a E::Id) -> component::Mut<'a, E, C>
     where
@@ -174,10 +175,10 @@ impl<E: entity::Entities> Writer<'_, E> {
     }
 }
 
-impl State {
-    /// The live save of `save`, read against `canon`.
-    pub fn new(save: Save, canon: Arc<Canon>) -> State {
-        State {
+impl World {
+    /// The ECS world of `save`, read against `canon`.
+    pub fn new(save: Save, canon: Arc<Canon>) -> World {
+        World {
             save,
             canon,
             transaction: Transaction::default(),
@@ -208,7 +209,7 @@ impl State {
     }
 
     pub fn globals(&self) -> Reader<'_, entity::Globals> {
-        Reader::new(&self.save.world, &self.canon)
+        Reader::new(&self.save.globals, &self.canon)
     }
 
     pub fn actors_mut(&mut self) -> Writer<'_, entity::Actors> {
@@ -224,7 +225,7 @@ impl State {
     }
 
     pub fn globals_mut(&mut self) -> Writer<'_, entity::Globals> {
-        Writer::new(&mut self.save.world, &mut self.transaction, &self.canon)
+        Writer::new(&mut self.save.globals, &mut self.transaction, &self.canon)
     }
 
     /// Every entity, each read and write going to the collection its `entity::Id` names.

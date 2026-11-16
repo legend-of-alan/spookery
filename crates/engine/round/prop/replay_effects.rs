@@ -15,15 +15,15 @@
 use std::fs;
 use std::path::Path;
 
+use crate::session;
 use crate::store::journal;
 use crate::store::records::Record;
-use crate::world::World;
 use proptest::test_runner::{TestCaseError, TestRunner};
 
 use super::support::{arb_rounds, play_rounds, runner_config, TempPack};
+use crate::ecs::Presence;
 use crate::round::play::replay_round;
 use crate::round::replay::first_effect_diff;
-use crate::state::Presence;
 use crate::testing::{copy_dir, copy_pack, fresh_dir};
 
 #[test]
@@ -65,10 +65,11 @@ fn replay_each_round(played: &Path) -> Result<(), TestCaseError> {
     copy_dir(played, &pack.0);
     fs::write(journal::save_path(&pack.0), snapshot)
         .map_err(|err| TestCaseError::fail(err.to_string()))?;
-    let mut world = World::open(&pack.0).map_err(|err| TestCaseError::fail(err.to_string()))?;
+    let mut session =
+        session::Session::open(&pack.0).map_err(|err| TestCaseError::fail(err.to_string()))?;
     for record in &round_records {
         let effects = replay_round(
-            &mut world,
+            &mut session,
             &record.last_round_at,
             &record.intents,
             &Presence {

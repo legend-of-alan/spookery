@@ -3,6 +3,8 @@
 use std::collections::BTreeMap;
 
 use crate::canon::Canon;
+use crate::ecs;
+use crate::ecs::id::ActorId;
 use crate::hash::blake2s_256;
 use crate::round::log::RoundLog;
 use crate::rules::context::Context;
@@ -10,8 +12,6 @@ use crate::rules::expr::{eval_with_dice, Dice};
 use crate::rules::roll::Outcome;
 use crate::rules::roll::{self, faces, MoveReport, Roll, RollKey};
 use crate::rules::rule::RollSpec;
-use crate::state::id::ActorId;
-use crate::state::State;
 use crate::Reason;
 
 pub(crate) fn shuffle_key(seed: &str, round_index: u64, actor_id: &ActorId) -> [u8; 32] {
@@ -55,7 +55,7 @@ impl RoundDice {
     pub(crate) fn roll_check(
         &mut self,
         canon: &Canon,
-        state: &State,
+        world: &ecs::World,
         key: RollKey,
         check_id: &str,
         threshold: i64,
@@ -64,10 +64,10 @@ impl RoundDice {
         let actor_id = key
             .subject_id
             .as_ref()
-            .filter(|id| state.actors().contains(id))
+            .filter(|id| world.actors().contains(id))
             .ok_or(Reason::UnknownId)?;
         let check = canon.checks.get(check_id).ok_or(Reason::UnknownId)?;
-        roll::roll_check(check, state, actor_id, &key, threshold, partial_at)
+        roll::roll_check(check, world, actor_id, &key, threshold, partial_at)
     }
 
     pub(crate) fn roller<'a>(
@@ -107,7 +107,7 @@ impl Roller<'_> {
         let key = self.dice.next_key(self.rule, self.subject);
         self.dice.roll_check(
             context.canon,
-            context.state,
+            context.world,
             key,
             &spec.check,
             threshold,
@@ -157,7 +157,7 @@ impl Dice for Roller<'_> {
     fn resist(
         &mut self,
         canon: &Canon,
-        state: &State,
+        world: &ecs::World,
         actor_id: &ActorId,
         check_id: &str,
         threshold: i64,
@@ -165,7 +165,7 @@ impl Dice for Roller<'_> {
         let key = self.dice.next_key(self.rule, Some(actor_id));
         let out = self
             .dice
-            .roll_check(canon, state, key, check_id, threshold, None)?;
+            .roll_check(canon, world, key, check_id, threshold, None)?;
         self.reports.push(MoveReport::Rolled {
             actor_id: actor_id.clone(),
             roll: out.clone(),

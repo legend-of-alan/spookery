@@ -5,12 +5,12 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::state::change::{self, Change};
-use crate::state::component::meter::{self, Meter};
-use crate::state::component::{Component, Mut, Ref};
-use crate::state::entity;
-use crate::state::id::ActorId;
-use crate::state::{Reader, Writer};
+use crate::ecs::change::{self, Change};
+use crate::ecs::component::meter::{self, Meter};
+use crate::ecs::component::{Component, Mut, Ref};
+use crate::ecs::entity;
+use crate::ecs::id::ActorId;
+use crate::ecs::{Reader, Writer};
 use crate::Reason;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -116,7 +116,7 @@ pub fn value(
 
 /// The same with `modifiers` in place of what the actor's modifiers add, for a write that has not
 /// landed: the same refusals as `value`, in the same order.
-pub(in crate::state) fn value_with(
+pub(in crate::ecs) fn value_with(
     actors: Reader<'_, entity::Actors>,
     actor: &ActorId,
     key: &str,

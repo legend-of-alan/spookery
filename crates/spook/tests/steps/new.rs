@@ -1,5 +1,5 @@
 use spookery_engine::component;
-use spookery_engine::testing::{place_of, state_of};
+use spookery_engine::testing::{place_of, world_of};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -143,7 +143,7 @@ fn the_travel_committed_a_round(world: &mut World) {
     // The view after the round shows the lane.
     wait_play(world, "You are in Lane.");
     let pack = table::pack(world);
-    let now = state_of(pack);
+    let now = world_of(pack);
     assert_eq!(place_of(&now, "ada"), "lane");
     assert!(
         spookery_engine::testing::journal::list_round_keys(pack)
@@ -173,7 +173,7 @@ fn the_operator_plays_a_round_on_that_untouched_pack(world: &mut World) {
 fn the_keeper_habit_has_set_tended(world: &mut World) {
     let idle = PathBuf::from(&world.scratch);
     assert_eq!(world.code, Some(0), "{}", world.stderr);
-    let now = state_of(&idle);
+    let now = world_of(&idle);
     assert_eq!(now.world_time, 60, "idle round did not advance 60 ticks");
     let keeper = "keeper".into();
     let control_type = now.actors().get::<component::ControlType>(&keeper).get();

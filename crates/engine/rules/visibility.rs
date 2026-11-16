@@ -5,22 +5,27 @@ use std::collections::BTreeSet;
 use spookery_protocol::{ChangeValue, ChangeView};
 
 use crate::canon::Canon;
+use crate::ecs::change::{self, Change};
+use crate::ecs::component::{
+    Act, Component, Item, KnownFacts, Meter, Modifier, Place, WieldedItem,
+};
+use crate::ecs::id::{ActorId, PlaceId};
+use crate::ecs::{self, component, Note};
 use crate::entity;
 use crate::intent::Viewer;
 use crate::rules::effect::{Effect, EffectKind};
-use crate::state::change::{self, Change};
-use crate::state::component::{
-    Act, Component, Item, KnownFacts, Meter, Modifier, Place, WieldedItem,
-};
-use crate::state::id::{ActorId, PlaceId};
-use crate::state::{component, Note, State};
 
-pub(crate) fn can_see_fact(canon: &Canon, state: &State, viewer: &Viewer, fact_id: &str) -> bool {
+pub(crate) fn can_see_fact(
+    canon: &Canon,
+    world: &ecs::World,
+    viewer: &Viewer,
+    fact_id: &str,
+) -> bool {
     let actor_id = viewer.actor_id();
-    let Some(place) = state.actors().get::<component::Place>(actor_id).get() else {
+    let Some(place) = world.actors().get::<component::Place>(actor_id).get() else {
         return false;
     };
-    let known = state.actors().get::<component::KnownFacts>(actor_id).get();
+    let known = world.actors().get::<component::KnownFacts>(actor_id).get();
     if known.is_some_and(|facts| facts.iter().any(|id| id == fact_id)) {
         return true;
     }
@@ -63,7 +68,7 @@ pub struct ViewerChanges {
 /// Changes and narrate lines this seat can receive.
 pub(crate) fn show_to(
     canon: &Canon,
-    state: &State,
+    world: &ecs::World,
     seat: &Recipient,
     changes: &[Change],
     effects: &[Effect],
@@ -74,7 +79,7 @@ pub(crate) fn show_to(
     };
     let visible: Vec<Change> = changes
         .iter()
-        .filter(|change| actor.is_none_or(|id| can_see(canon, state, id, change)))
+        .filter(|change| actor.is_none_or(|id| can_see(canon, world, id, change)))
         .cloned()
         .collect();
     let mut keys = BTreeSet::new();
@@ -88,7 +93,7 @@ pub(crate) fn show_to(
     Delivery {
         changed_keys: keys.into_iter().collect(),
         changes: views,
-        narrations: narrations(canon, state, effects, actor),
+        narrations: narrations(canon, world, effects, actor),
     }
 }
 
@@ -138,7 +143,7 @@ fn to_change_value(value: &change::Value) -> Option<ChangeValue> {
 
 fn narrations(
     canon: &Canon,
-    state: &State,
+    world: &ecs::World,
     effects: &[Effect],
     viewer: Option<&ActorId>,
 ) -> Vec<String> {
@@ -151,24 +156,24 @@ fn narrations(
             lines.push(text.clone());
             continue;
         };
-        if to.iter().any(|actor_id| actor_id == id) && can_see_facts(canon, state, id, fact_ids) {
+        if to.iter().any(|actor_id| actor_id == id) && can_see_facts(canon, world, id, fact_ids) {
             lines.push(text.clone());
         }
     }
     lines
 }
 
-fn can_see_facts(canon: &Canon, state: &State, viewer: &ActorId, fact_ids: &[String]) -> bool {
-    let Some(seat) = (state.actors().get::<component::ControlType>(viewer)).viewer() else {
+fn can_see_facts(canon: &Canon, world: &ecs::World, viewer: &ActorId, fact_ids: &[String]) -> bool {
+    let Some(seat) = (world.actors().get::<component::ControlType>(viewer)).viewer() else {
         return false;
     };
     fact_ids
         .iter()
-        .all(|fact| can_see_fact(canon, state, &seat, fact))
+        .all(|fact| can_see_fact(canon, world, &seat, fact))
 }
 
-fn can_see(canon: &Canon, state: &State, viewer: &ActorId, change: &Change) -> bool {
-    if !state.actors().contains(viewer) {
+fn can_see(canon: &Canon, world: &ecs::World, viewer: &ActorId, change: &Change) -> bool {
+    if !world.actors().contains(viewer) {
         return false;
     }
     let key = &change.key;
@@ -178,7 +183,7 @@ fn can_see(canon: &Canon, state: &State, viewer: &ActorId, change: &Change) -> b
             is_shown(canon, &key.entity_id, entry)
         }
         (Meter::ID, entity::Id::Place(place)) => {
-            place_of(state, viewer) == Some(place.as_str())
+            place_of(world, viewer) == Some(place.as_str())
                 && is_shown(canon, &key.entity_id, entry)
         }
         (Meter::ID, entity::Id::Actor(actor)) => {
@@ -188,16 +193,16 @@ fn can_see(canon: &Canon, state: &State, viewer: &ActorId, change: &Change) -> b
         (Modifier::ID, entity::Id::Actor(actor)) => {
             viewer == actor && canon.modifiers.get(entry).is_some_and(|def| !def.hidden)
         }
-        (Item::ID, entity::Id::Place(place)) => place_of(state, viewer) == Some(place.as_str()),
-        (Note::ID, entity::Id::Global) => can_see_note(canon, state, viewer, entry),
+        (Item::ID, entity::Id::Place(place)) => place_of(world, viewer) == Some(place.as_str()),
+        (Note::ID, entity::Id::Global) => can_see_note(canon, world, viewer, entry),
         (Place::ID, entity::Id::Actor(actor)) => {
             viewer == actor
-                || same_place(state, viewer, actor)
-                || is_at(state, viewer, &change.before)
-                || is_at(state, viewer, &change.after)
+                || same_place(world, viewer, actor)
+                || is_at(world, viewer, &change.before)
+                || is_at(world, viewer, &change.after)
         }
         (Act::BUSY | Item::ID | WieldedItem::ID, entity::Id::Actor(actor)) => {
-            viewer == actor || same_place(state, viewer, actor)
+            viewer == actor || same_place(world, viewer, actor)
         }
         // Flags, doors and act counts are rules bookkeeping: the GM narrates what one means.
         _ => false,
@@ -212,38 +217,38 @@ fn is_shown(canon: &Canon, id: &entity::Id, key: &str) -> bool {
 }
 
 /// Where `viewer` stands. The place is borrowed for as long as both the save and the id are.
-fn place_of<'a>(state: &'a State, viewer: &'a ActorId) -> Option<&'a str> {
-    state.actors().get::<component::Place>(viewer).get()
+fn place_of<'a>(world: &'a ecs::World, viewer: &'a ActorId) -> Option<&'a str> {
+    world.actors().get::<component::Place>(viewer).get()
 }
 
-fn same_place(state: &State, viewer: &ActorId, actor: &ActorId) -> bool {
-    let actor_place = state.actors().get::<component::Place>(actor).get();
-    match (place_of(state, viewer), actor_place) {
+fn same_place(world: &ecs::World, viewer: &ActorId, actor: &ActorId) -> bool {
+    let actor_place = world.actors().get::<component::Place>(actor).get();
+    match (place_of(world, viewer), actor_place) {
         (Some(left), Some(right)) => left == right,
         _ => false,
     }
 }
 
-fn is_at(state: &State, viewer: &ActorId, value: &change::Value) -> bool {
-    match (place_of(state, viewer), value) {
+fn is_at(world: &ecs::World, viewer: &ActorId, value: &change::Value) -> bool {
+    match (place_of(world, viewer), value) {
         (Some(place), change::Value::Text(text)) => place == text,
         _ => false,
     }
 }
 
-fn can_see_note(canon: &Canon, state: &State, viewer: &ActorId, id: &str) -> bool {
-    let Some(note) = state.notes().iter().find(|note| note.id == id) else {
+fn can_see_note(canon: &Canon, world: &ecs::World, viewer: &ActorId, id: &str) -> bool {
+    let Some(note) = world.notes().iter().find(|note| note.id == id) else {
         return false;
     };
-    let in_room = note.place.as_ref().map(PlaceId::as_str) == place_of(state, viewer);
+    let in_room = note.place.as_ref().map(PlaceId::as_str) == place_of(world, viewer);
     let addressed = note.to.iter().any(|actor_id| actor_id == viewer);
     if !in_room && !addressed {
         return false;
     }
-    let Some(seat) = (state.actors().get::<component::ControlType>(viewer)).viewer() else {
+    let Some(seat) = (world.actors().get::<component::ControlType>(viewer)).viewer() else {
         return false;
     };
     note.fact_ids
         .iter()
-        .all(|fact| can_see_fact(canon, state, &seat, fact))
+        .all(|fact| can_see_fact(canon, world, &seat, fact))
 }

@@ -1,11 +1,11 @@
-use spookery_engine::testing::state_of;
+use spookery_engine::testing::world_of;
 use std::fs;
 use std::path::Path;
 
 use cucumber::{given, then, when};
 use serde_json::Value;
 use spookery_engine::testing::{faces, RollKey};
-use spookery_engine::{component, entity, State};
+use spookery_engine::{component, ecs, entity};
 
 use super::common::{resolve_id, split_line};
 use super::table;
@@ -13,14 +13,14 @@ use crate::support;
 use crate::World;
 
 /// Give `actor` one more of `item`.
-fn give(now: &mut State, actor: &str, item: &str) {
+fn give(now: &mut ecs::World, actor: &str, item: &str) {
     let (actor, mut actors) = (actor.into(), now.actors_mut());
     let mut held = actors.get_mut::<component::Item>(&actor);
     held.shift(item, 1, None).unwrap();
 }
 
 fn hp(pack: &Path, actor: &str) -> i64 {
-    let now = support::state_of(pack);
+    let now = support::world_of(pack);
     let id = spookery_engine::entity::Id::Actor(actor.into());
     now.entities()
         .get::<component::Meter>(&id)
@@ -29,7 +29,7 @@ fn hp(pack: &Path, actor: &str) -> i64 {
 }
 
 fn count(pack: &Path, actor: &str, item: &str) -> u32 {
-    support::state_of(pack)
+    support::world_of(pack)
         .actors()
         .get::<component::Item>(&actor.into())
         .get(item)
@@ -38,7 +38,7 @@ fn count(pack: &Path, actor: &str, item: &str) -> u32 {
 }
 
 fn wielded(pack: &Path, actor: &str) -> Option<String> {
-    let (now, actor) = (support::state_of(pack), actor.into());
+    let (now, actor) = (support::world_of(pack), actor.into());
     let held = now.actors().get::<component::WieldedItem>(&actor).get();
     held.map(String::from)
 }
@@ -49,13 +49,13 @@ fn handle_move(
     actor: &str,
     line: &str,
 ) -> Result<Vec<spookery_engine::RoundOutput>, spookery_engine::Refusal> {
-    let mut world = super::rules::open(pack);
-    let actor = resolve_id(world.canon(), actor);
+    let mut session = super::rules::open(pack);
+    let actor = resolve_id(session.canon(), actor);
     let (verb, target) = split_line(line);
     let nobody = spookery_engine::Presence::default();
-    world.queue_player_move(&nobody, &actor.into(), verb, target)?;
-    let stamp = world.state().last_round_at.clone();
-    Ok(world
+    session.queue_player_move(&nobody, &actor.into(), verb, target)?;
+    let stamp = session.world().last_round_at.clone();
+    Ok(session
         .commit_then_fast_forward(&nobody, &stamp)
         .unwrap_or_else(|err| panic!("{line}: {err}")))
 }
@@ -135,7 +135,7 @@ fn add_attack_rules(pack: &Path, attack: &str) {
     fs::write(pack.join("rules/verbs.yaml"), verbs).unwrap();
 }
 
-fn hold_dagger(now: &mut State, wield: bool) {
+fn hold_dagger(now: &mut ecs::World, wield: bool) {
     now.actors_mut()
         .get_mut::<component::Place>(&"wren".into())
         .set("gate_yard")
@@ -195,7 +195,7 @@ fn again_is_refused(world: &mut World, line: String, code: String) {
     assert_eq!(hp(pack, "harbormouse"), 7);
     assert_eq!(count(pack, "harbormouse", "tonic"), 0);
     assert_eq!(
-        support::state_of(pack).round_index,
+        support::world_of(pack).round_index,
         1,
         "the refusal committed another round"
     );
@@ -221,7 +221,7 @@ fn rowan_takes_oil(world: &mut World) {
 #[then(expr = "docks_shop has 2 and rowan has 1")]
 fn the_oil_moved(world: &mut World) {
     let pack = world.pack.as_ref().unwrap();
-    let now = support::state_of(pack);
+    let now = support::world_of(pack);
     assert_eq!(
         now.places()
             .get::<component::Item>(&"docks_shop".into())
@@ -272,7 +272,7 @@ fn harbormouse_holds_a_latch_at_a_table(world: &mut World) {
 
 #[when(expr = "harbormouse plays {string}")]
 fn harbormouse_plays(world: &mut World, line: String) {
-    let before = state_of(world.pack.as_ref().unwrap());
+    let before = world_of(world.pack.as_ref().unwrap());
     world.scratch = format!("{} {}", before.world_time, before.round_index);
     let (_mark, added) = table::player_send(world, &line, "\"kind\":\"refused\"");
     world.player_added = added;
@@ -294,7 +294,7 @@ fn harbormouse_is_refused(world: &mut World, code: String) {
 #[then(expr = "no round was spent and harbormouse still holds 1 latch")]
 fn no_round_was_spent(world: &mut World) {
     let pack = world.pack.as_ref().unwrap();
-    let now = state_of(pack);
+    let now = world_of(pack);
     assert_eq!(
         format!("{} {}", now.world_time, now.round_index),
         world.scratch,
@@ -315,7 +315,7 @@ fn no_round_was_spent(world: &mut World) {
 fn the_line_is_refused_and_quiet(world: &mut World, code: String) {
     assert_eq!(world.scratch, code);
     let pack = world.pack.as_ref().unwrap();
-    assert_eq!(support::state_of(pack).round_index, 0);
+    assert_eq!(support::world_of(pack).round_index, 0);
     assert!(spookery_engine::testing::journal::list_round_keys(pack).is_empty());
 }
 
@@ -349,7 +349,7 @@ fn assert_round_rejects_missing_item(pack: &Path) {
 fn the_drop_was_missing(world: &mut World) {
     let pack = world.pack.as_ref().unwrap();
     assert_round_rejects_missing_item(pack);
-    let now = support::state_of(pack);
+    let now = support::world_of(pack);
     assert_eq!(
         now.actors()
             .get::<component::Item>(&"rowan".into())
@@ -485,7 +485,7 @@ fn harbormouse_drops_poisoned_dagger(world: &mut World) {
 #[then(expr = "harbormouse's wielded slot is empty in the same round")]
 fn the_slot_clears_in_the_round(world: &mut World) {
     let pack = world.pack.as_ref().unwrap();
-    let now = support::state_of(pack);
+    let now = support::world_of(pack);
     assert_eq!(now.round_index, 1);
     assert_eq!(wielded(pack, "harbormouse"), None);
     assert_eq!(
@@ -625,7 +625,7 @@ fn harbormouse_hits_wren_with_the_dagger(world: &mut World) {
 fn the_poison_fades(world: &mut World, text: String) {
     let pack = world.pack.as_ref().unwrap();
     assert_eq!(hp(pack, "wren"), 7);
-    assert!(!support::state_of(pack)
+    assert!(!support::world_of(pack)
         .actors()
         .get::<component::Flag>(&"wren".into())
         .contains("poisoned"));

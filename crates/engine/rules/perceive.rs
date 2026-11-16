@@ -3,14 +3,14 @@
 use std::collections::BTreeSet;
 
 use crate::canon::Canon;
+use crate::ecs::component::Meter;
+use crate::ecs::id::{ActorId, PlaceId};
+use crate::ecs::{self, component, Note, Presence};
 use crate::entity;
 use crate::intent::Viewer;
 use crate::rules::habits::list_whose_if_holds;
 use crate::rules::visibility::can_see_fact;
-use crate::state::component::Meter;
-use crate::state::id::{ActorId, PlaceId};
-use crate::state::{component, Note, Presence, State};
-use crate::world::World;
+use crate::session;
 use crate::Reason;
 use spookery_protocol::{ExitView, PERCEIVE_BODY_CHARS};
 pub use spookery_protocol::{ItemStack, KnownFact, MeterView};
@@ -40,7 +40,7 @@ pub struct View {
 }
 
 pub(crate) fn perceive_budget<L>(
-    world: &World<L>,
+    session: &session::Session<L>,
     presence: &Presence,
     viewer_id: &str,
     max_body_chars: usize,
@@ -52,43 +52,43 @@ pub(crate) fn perceive_budget<L>(
     {
         return Err(Reason::UnscopedPerceive);
     }
-    let (canon, state) = (world.canon(), world.state());
+    let (canon, world) = (session.canon(), session.world());
     let id = ActorId::from(viewer_id);
-    let control = state.actors().get::<component::ControlType>(&id);
+    let control = world.actors().get::<component::ControlType>(&id);
     let viewer = control.viewer().ok_or(Reason::UnknownId)?;
-    perceive_viewer_budget(canon, state, presence, &viewer, max_body_chars)
+    perceive_viewer_budget(canon, world, presence, &viewer, max_body_chars)
 }
 
 pub(crate) fn perceive_as(
     canon: &Canon,
-    state: &State,
+    world: &ecs::World,
     presence: &Presence,
     viewer: &Viewer,
 ) -> Result<View, Reason> {
-    perceive_viewer_budget(canon, state, presence, viewer, PERCEIVE_BODY_CHARS)
+    perceive_viewer_budget(canon, world, presence, viewer, PERCEIVE_BODY_CHARS)
 }
 
 fn perceive_viewer_budget(
     canon: &Canon,
-    state: &State,
+    world: &ecs::World,
     presence: &Presence,
     viewer: &Viewer,
     max_body_chars: usize,
 ) -> Result<View, Reason> {
-    let place = state
+    let place = world
         .actors()
         .get::<component::Place>(viewer.actor_id())
         .get()
         .ok_or(Reason::UnknownId)?
         .to_string();
-    let mut visible_actors: Vec<ActorId> = state.actors_at(&place);
+    let mut visible_actors: Vec<ActorId> = world.actors_at(&place);
     visible_actors.sort();
 
     let mut ids = BTreeSet::new();
     for id in canon.facts.keys() {
         ids.insert(id.clone());
     }
-    for id in state
+    for id in world
         .actors()
         .get::<component::KnownFacts>(viewer.actor_id())
         .get()
@@ -100,7 +100,7 @@ fn perceive_viewer_budget(
     let mut known_facts = Vec::new();
     let mut public_flags = Vec::new();
     for id in ids {
-        if !can_see_fact(canon, state, viewer, &id) {
+        if !can_see_fact(canon, world, viewer, &id) {
             continue;
         }
         let text = canon
@@ -128,7 +128,7 @@ fn perceive_viewer_budget(
     unknown_mentions.sort();
 
     let mut notes = Vec::new();
-    for note in state.notes() {
+    for note in world.notes() {
         let here = note.place.as_ref().is_some_and(|at| at == place.as_str());
         let addressed = note.to.iter().any(|id| id == viewer.actor_id());
         if !here && !addressed {
@@ -137,7 +137,7 @@ fn perceive_viewer_budget(
         if note
             .fact_ids
             .iter()
-            .any(|fact| !can_see_fact(canon, state, viewer, fact))
+            .any(|fact| !can_see_fact(canon, world, viewer, fact))
         {
             continue;
         }
@@ -149,7 +149,7 @@ fn perceive_viewer_budget(
     notes.sort_by(|a, b| a.id.cmp(&b.id));
 
     let place_id = PlaceId::from(place.clone());
-    let items = (state.places().get::<component::Item>(&place_id).iter())
+    let items = (world.places().get::<component::Item>(&place_id).iter())
         .map(|(id, count)| {
             Ok(ItemStack {
                 id: id.to_string(),
@@ -159,14 +159,14 @@ fn perceive_viewer_budget(
         })
         .collect::<Result<_, Reason>>()?;
 
-    let meters = shown_meters(canon, state, &entity::Id::Actor(viewer.actor_id().clone()));
-    let world_meters = shown_meters(canon, state, &entity::Id::Global);
+    let meters = shown_meters(canon, world, &entity::Id::Actor(viewer.actor_id().clone()));
+    let world_meters = shown_meters(canon, world, &entity::Id::Global);
 
     let habits = match viewer {
         Viewer::Player(_) => Vec::new(),
-        Viewer::Npc(id) => list_whose_if_holds(canon, state, presence, id),
+        Viewer::Npc(id) => list_whose_if_holds(canon, world, presence, id),
     };
-    let exits = crate::rules::travel::visible_exits(canon, state, viewer.actor_id());
+    let exits = crate::rules::travel::visible_exits(canon, world, viewer.actor_id());
     let actor_names = visible_actors
         .iter()
         .map(|id| canon.name(id.as_str()).map(str::to_string))
@@ -174,8 +174,8 @@ fn perceive_viewer_budget(
         .ok_or(Reason::UnknownId)?;
     let place_name =
         crate::rules::lines::find_place_name(canon, &place).ok_or(Reason::UnknownId)?;
-    let prose = crate::rules::lines::place_prose(canon, state, viewer.actor_id());
-    let busy = crate::rules::lines::busy_line(canon, state, viewer.actor_id()).unwrap_or_default();
+    let prose = crate::rules::lines::place_prose(canon, world, viewer.actor_id());
+    let busy = crate::rules::lines::busy_line(canon, world, viewer.actor_id()).unwrap_or_default();
 
     Ok(View {
         viewer: viewer.clone(),
@@ -197,7 +197,7 @@ fn perceive_viewer_budget(
 }
 
 /// The meters `carrier` carries that are not hidden, in id order.
-fn shown_meters(canon: &Canon, state: &State, carrier: &entity::Id) -> Vec<MeterView> {
+fn shown_meters(canon: &Canon, world: &ecs::World, carrier: &entity::Id) -> Vec<MeterView> {
     let defs = if *carrier == entity::Id::Global {
         &canon.world_meters
     } else {
@@ -208,7 +208,7 @@ fn shown_meters(canon: &Canon, state: &State, carrier: &entity::Id) -> Vec<Meter
             let def = canon
                 .meter_def(carrier.as_ref(), id)
                 .filter(|def| !def.hidden)?;
-            let value = state.entities().get::<Meter>(carrier).value(id).ok()?;
+            let value = world.entities().get::<Meter>(carrier).value(id).ok()?;
             Some(MeterView {
                 id: id.to_string(),
                 value,

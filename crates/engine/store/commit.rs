@@ -6,15 +6,15 @@ use std::path::Path;
 
 use crate::canon::pack_rev;
 use crate::diagnostic::first_reason;
+use crate::ecs::{self, sort_unique};
 use crate::hash::blake2s_tagged;
-use crate::state::{sort_unique, State};
+use crate::session;
 use crate::store::durability::{fsync_dir, fsync_file, refuse_io, write_atomic};
 use crate::store::journal;
 use crate::store::lock::{lock_write, PackGuard, WriteGuard};
 use crate::store::records::{MigrateRecord, Record, RoundRecord};
 use crate::store::recovery::close_finished;
 use crate::store::save::{self, check_save, find_missing_meters};
-use crate::world::World;
 use crate::Reason;
 
 const CHECKPOINT_WARNING: &str = "the checkpoint bundle was not closed";
@@ -27,80 +27,83 @@ pub struct CommitOutcome {
     pub world_time: u64,
 }
 
-/// Seal one played round, append it, finish a due checkpoint, and clear the queue. `state` is
+/// Seal one played round, append it, finish a due checkpoint, and clear the queue. `world` is
 /// the round's working copy of the save, published only once the round is on disk.
 pub fn commit(
-    world: &mut World,
-    mut state: State,
+    session: &mut session::Session,
+    mut world: ecs::World,
     record: RoundRecord,
 ) -> Result<CommitOutcome, Reason> {
-    let write = lock_write(&world.root, &world.lock)?;
-    settle_checkpoint(world, &write)?;
-    bump_state_rev(&mut state)?;
-    let now_bytes = save::emit(&state)?.into_bytes();
+    let write = lock_write(&session.root, &session.lock)?;
+    settle_checkpoint(session, &write)?;
+    bump_state_rev(&mut world)?;
+    let now_bytes = save::emit(&world)?.into_bytes();
     let line = seal_round(
         record,
-        world.state.state_rev,
-        &mut state,
+        session.world.state_rev,
+        &mut world,
         &now_bytes,
-        &world.root,
+        &session.root,
     )?;
-    let due = is_checkpoint_due(world.canon().checkpoint_every, state.round_index);
+    let due = is_checkpoint_due(session.canon().checkpoint_every, world.round_index);
     let (payload, chain) = if due {
-        let (payload, chain) = seal_checkpoint(line, &state, &now_bytes)?;
+        let (payload, chain) = seal_checkpoint(line, &world, &now_bytes)?;
         (payload, Some(chain))
     } else {
         (line, None)
     };
-    let mut log_path = append_to_bundle(&world.root, &payload, &write)?;
-    state.accept();
-    world.state = state;
-    world.queue.clear();
+    let mut log_path = append_to_bundle(&session.root, &payload, &write)?;
+    world.accept();
+    session.world = world;
+    session.queue.clear();
     if let Some(chain) = chain {
-        if finish_checkpoint(world, &now_bytes, &chain, &write) {
+        if finish_checkpoint(session, &now_bytes, &chain, &write) {
             if !log_path.ends_with(".gz") {
                 log_path.push_str(".gz");
             }
         } else {
-            world.set_warning(CHECKPOINT_WARNING);
+            session.set_warning(CHECKPOINT_WARNING);
         }
     }
     Ok(CommitOutcome {
-        state_rev: world.state.state_rev,
+        state_rev: session.world.state_rev,
         log_path,
-        round_index: world.state.round_index,
-        world_time: world.state.world_time,
+        round_index: session.world.round_index,
+        world_time: session.world.world_time,
     })
 }
 
 /// The journal already has this round. Keep the new state in memory.
-pub fn keep_in_memory(world: &mut World<()>, mut state: State) -> Result<(), Reason> {
-    bump_state_rev(&mut state)?;
-    state.accept();
-    world.state = state;
+pub fn keep_in_memory(
+    session: &mut session::Session<()>,
+    mut world: ecs::World,
+) -> Result<(), Reason> {
+    bump_state_rev(&mut world)?;
+    world.accept();
+    session.world = world;
     Ok(())
 }
 
-fn bump_state_rev(state: &mut State) -> Result<(), Reason> {
-    state.state_rev = state.state_rev.checked_add(1).ok_or(Reason::OutOfRange)?;
+fn bump_state_rev(world: &mut ecs::World) -> Result<(), Reason> {
+    world.state_rev = world.state_rev.checked_add(1).ok_or(Reason::OutOfRange)?;
     Ok(())
 }
 
-/// Seal a migrate record for `state`, which is already the journal tip or the on-disk save.
-/// `edited` means `state` is a hand edit of the checkpoint head. The journal does not hold
+/// Seal a migrate record for `world`, which is already the journal tip or the on-disk save.
+/// `edited` means `world` is a hand edit of the checkpoint head. The journal does not hold
 /// that edit, so a checkpoint of the migrated save follows the record and replay restarts
 /// from it. The caller holds the pack lock.
 pub fn commit_migrate(
     root: &Path,
-    state: State,
+    world: ecs::World,
     edited: bool,
     lock: &PackGuard,
 ) -> Result<(), Reason> {
     let pack_rev_after = pack_rev(root)?;
-    let pack_rev_before = state.pack_rev.clone();
-    let state_rev_before = state.state_rev;
+    let pack_rev_before = world.pack_rev.clone();
+    let state_rev_before = world.state_rev;
     let state_rev_after = state_rev_before.checked_add(1).ok_or(Reason::OutOfRange)?;
-    let stale = save::find_stale_modifiers(&state).into_iter();
+    let stale = save::find_stale_modifiers(&world).into_iter();
     let mut dropped_modifiers: Vec<String> = stale.map(|(_, id, _)| id.to_string()).collect();
     sort_unique(&mut dropped_modifiers);
     let mut record = MigrateRecord {
@@ -109,16 +112,16 @@ pub fn commit_migrate(
         state_rev_before,
         state_rev_after,
         state_hash: String::new(),
-        meters: find_missing_meters(&state),
+        meters: find_missing_meters(&world),
         dropped_modifiers,
-        dropped_meters: save::find_stale_meters(&state),
+        dropped_meters: save::find_stale_meters(&world),
         edited,
         prev: String::new(),
         chain: String::new(),
     };
-    let state = save::migrate(state, &record)?;
-    check_save(&state).map_err(|diags| first_reason(&diags))?;
-    let emitted = save::emit(&state)?.into_bytes();
+    let world = save::migrate(world, &record)?;
+    check_save(&world).map_err(|diags| first_reason(&diags))?;
+    let emitted = save::emit(&world)?.into_bytes();
     record.state_hash = blake2s_tagged(&emitted);
     let entry = Record::Migrate(record);
     let write = lock_write(root, lock)?;
@@ -129,14 +132,14 @@ pub fn commit_migrate(
         return Ok(());
     }
     // The snapshot lands before the record, so a crash after the append still replays.
-    write_atomic(&journal::checkpoint_path(root, state.state_rev), &emitted)?;
-    let (payload, chain) = seal_checkpoint(line, &state, &emitted)?;
+    write_atomic(&journal::checkpoint_path(root, world.state_rev), &emitted)?;
+    let (payload, chain) = seal_checkpoint(line, &world, &emitted)?;
     append_to_bundle(root, &payload, &write)?;
     store_checkpoint(
         root,
         &emitted,
-        state.state_rev,
-        state.round_index,
+        world.state_rev,
+        world.round_index,
         &chain,
         &write,
     )?;
@@ -145,17 +148,17 @@ pub fn commit_migrate(
     Ok(())
 }
 
-/// Follow a sealed `line` with a checkpoint of `state`. Returns both lines and the
+/// Follow a sealed `line` with a checkpoint of `world`. Returns both lines and the
 /// checkpoint's chain.
 fn seal_checkpoint(
     line: String,
-    state: &State,
+    world: &ecs::World,
     now_bytes: &[u8],
 ) -> Result<(String, String), Reason> {
     let prev = journal::sealed_chain(&line).map_err(|fault| fault.reason)?;
     let mark = journal::checkpoint_record(
-        state.round_index,
-        state.state_rev,
+        world.round_index,
+        world.state_rev,
         &blake2s_tagged(now_bytes),
     );
     let sealed = journal::seal(&mark, &prev);
@@ -166,13 +169,13 @@ fn seal_checkpoint(
 fn seal_round(
     mut record: RoundRecord,
     state_rev_before: u64,
-    state: &mut State,
+    world: &mut ecs::World,
     now_bytes: &[u8],
     root: &Path,
 ) -> Result<String, Reason> {
     record.state_rev_before = state_rev_before;
-    record.state_rev_after = state.state_rev;
-    record.memories = state.take_memories();
+    record.state_rev_after = world.state_rev;
+    record.memories = world.take_memories();
     record.state_hash = blake2s_tagged(now_bytes);
     let prev = journal::read_chain_tip(root).map_err(|fault| fault.reason)?;
     Ok(journal::seal(&Record::Round(record), &prev))
@@ -249,32 +252,40 @@ fn store_checkpoint(
 
 /// The journal line is already durable. `false` means `save.yaml` or the gzip did
 /// not finish. The round stays committed either way.
-fn finish_checkpoint(world: &mut World, now_bytes: &[u8], chain: &str, write: &WriteGuard) -> bool {
-    let (rev, round) = (world.state.state_rev, world.state.round_index);
-    store_checkpoint(&world.root, now_bytes, rev, round, chain, write).is_ok()
-        && close_finished(&world.root, write).is_ok()
+fn finish_checkpoint(
+    session: &mut session::Session,
+    now_bytes: &[u8],
+    chain: &str,
+    write: &WriteGuard,
+) -> bool {
+    let (rev, round) = (session.world.state_rev, session.world.round_index);
+    store_checkpoint(&session.root, now_bytes, rev, round, chain, write).is_ok()
+        && close_finished(&session.root, write).is_ok()
 }
 
 /// Publish `save.yaml` and the snapshot for a checkpoint that is already in the
 /// journal, then close that bundle. The next round can then start a new file.
-pub(crate) fn settle_checkpoint<L>(world: &World<L>, write: &WriteGuard) -> Result<(), Reason> {
-    let Some(path) = journal::find_live_bundle(&world.root) else {
+pub(crate) fn settle_checkpoint<L>(
+    session: &session::Session<L>,
+    write: &WriteGuard,
+) -> Result<(), Reason> {
+    let Some(path) = journal::find_live_bundle(&session.root) else {
         return Ok(());
     };
     let Some(mark) = journal::trailing_checkpoint(&path) else {
         return Ok(());
     };
-    let now_bytes = save::emit(world.state())?.into_bytes();
+    let now_bytes = save::emit(session.world())?.into_bytes();
     if blake2s_tagged(&now_bytes) != mark.state_hash {
         return Ok(());
     }
-    let save = journal::save_path(&world.root);
-    let snap = journal::checkpoint_path(&world.root, mark.state_rev);
+    let save = journal::save_path(&session.root);
+    let snap = journal::checkpoint_path(&session.root, mark.state_rev);
     let save_ok = journal::hashes_to(&save, &mark.state_hash);
     let snap_ok = journal::hashes_to(&snap, &mark.state_hash);
     if !save_ok || !snap_ok {
         store_checkpoint(
-            &world.root,
+            &session.root,
             &now_bytes,
             mark.state_rev,
             mark.round_index,
@@ -282,7 +293,7 @@ pub(crate) fn settle_checkpoint<L>(world: &World<L>, write: &WriteGuard) -> Resu
             write,
         )?;
     }
-    let _ = close_finished(&world.root, write);
+    let _ = close_finished(&session.root, write);
     Ok(())
 }
 
@@ -302,27 +313,27 @@ mod tests {
         let root = copy_pack("docks", "gzip-fail");
         let _clear = FailGuard;
         set_checkpoint_every(&root, 1);
-        let mut world = crate::testing::resume(&root);
-        let mut state = world.begin_round();
-        state.round_index = 1;
+        let mut session = crate::testing::resume(&root);
+        let mut world = session.begin_round();
+        world.round_index = 1;
         durability::fail_next(".jsonl.gz.tmp");
-        commit(&mut world, state, round_line(1)).unwrap();
+        commit(&mut session, world, round_line(1)).unwrap();
         let live = crate::store::journal::read_live_records(&root).unwrap();
         let round_rev = live.iter().rev().find_map(|entry| match entry {
             crate::store::records::Record::Round(record) => Some(record.state_rev_after),
             _ => None,
         });
         let mark = crate::store::journal::latest_checkpoint(&live).unwrap();
-        assert_eq!(world.state().state_rev, round_rev.unwrap());
-        assert_eq!(world.state().state_rev, mark.state_rev);
-        assert_eq!(world.take_warning(), Some(super::CHECKPOINT_WARNING));
+        assert_eq!(session.world().state_rev, round_rev.unwrap());
+        assert_eq!(session.world().state_rev, mark.state_rev);
+        assert_eq!(session.take_warning(), Some(super::CHECKPOINT_WARNING));
         assert!(root.join("state/journal/bundle-0000.jsonl").is_file());
         assert!(!root.join("state/journal/bundle-0000.jsonl.gz").is_file());
 
-        let mut again = world.begin_round();
+        let mut again = session.begin_round();
         again.round_index = 2;
-        commit(&mut world, again, round_line(2)).unwrap();
-        assert!(world.take_warning().is_none());
+        commit(&mut session, again, round_line(2)).unwrap();
+        assert!(session.take_warning().is_none());
         let bundles = crate::store::journal::read_bundle_records(&root).unwrap();
         assert_eq!(bundles.len(), 2, "{bundles:?}");
         for (bundle, entries) in &bundles {
@@ -343,23 +354,23 @@ mod tests {
         let root = copy_pack("docks", "save-fail");
         let _clear = FailGuard;
         set_checkpoint_every(&root, 2);
-        let mut world = crate::testing::resume(&root);
-        let mut first = world.begin_round();
+        let mut session = crate::testing::resume(&root);
+        let mut first = session.begin_round();
         first.round_index = 1;
-        commit(&mut world, first, round_line(1)).unwrap();
+        commit(&mut session, first, round_line(1)).unwrap();
 
-        let mut second = world.begin_round();
+        let mut second = session.begin_round();
         second.round_index = 2;
         durability::fail_next("save.yaml.tmp");
-        commit(&mut world, second, round_line(2)).unwrap();
+        commit(&mut session, second, round_line(2)).unwrap();
         let live = crate::store::journal::read_live_records(&root).unwrap();
         let mark = crate::store::journal::latest_checkpoint(&live).unwrap();
-        assert_eq!(world.state().state_rev, mark.state_rev);
-        assert_eq!(world.take_warning(), Some(super::CHECKPOINT_WARNING));
+        assert_eq!(session.world().state_rev, mark.state_rev);
+        assert_eq!(session.take_warning(), Some(super::CHECKPOINT_WARNING));
 
-        let mut third = world.begin_round();
+        let mut third = session.begin_round();
         third.round_index = 3;
-        commit(&mut world, third, round_line(3)).unwrap();
+        commit(&mut session, third, round_line(3)).unwrap();
         let bundles = crate::store::journal::read_bundle_records(&root).unwrap();
         assert_eq!(bundles.len(), 2, "{bundles:?}");
         let (first_bundle, first_entries) = &bundles[0];

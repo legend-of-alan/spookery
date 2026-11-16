@@ -3,7 +3,7 @@ use std::fs;
 use cucumber::{given, then, when};
 use spookery_client::text;
 use spookery_engine::testing::{self, stamp_pack_rev};
-use spookery_engine::World as EngineWorld;
+use spookery_engine::Session as EngineWorld;
 use spookery_engine::{component, Meter, Presence};
 use spookery_protocol::ServerBody;
 
@@ -49,12 +49,12 @@ fn a_round_that_changes_a_hidden_fact(world: &mut World) {
 #[when(expr = "harbormouse's might is raised and the seeded strike succeeds")]
 fn harbormouses_might_is_raised(world: &mut World) {
     let pack = world.pack().to_path_buf();
-    testing::edit_save(&pack, |state| {
+    testing::edit_save(&pack, |ecs_world| {
         let might = Meter {
             base: 40,
             offset: 0,
         };
-        let mut actors = state.actors_mut();
+        let mut actors = ecs_world.actors_mut();
         let harbormouse = "harbormouse".into();
         actors
             .get_mut::<Meter>(&harbormouse)
@@ -133,8 +133,8 @@ fn harbormouse_sees_the_loft_named_as_their_place(world: &mut World) {
 #[given(expr = "a tonic is on the ground")]
 fn a_tonic_is_on_the_ground(world: &mut World) {
     let pack = world.pack().to_path_buf();
-    testing::edit_save(&pack, |state| {
-        state
+    testing::edit_save(&pack, |ecs_world| {
+        ecs_world
             .places_mut()
             .get_mut::<component::Item>(&"gate_yard".into())
             .shift("tonic", 1, None)
@@ -239,13 +239,13 @@ fn seated_harbormouse() -> Presence {
     }
 }
 
-fn play(world: &mut EngineWorld, line: &str) -> spookery_engine::RoundOutput {
+fn play(session: &mut EngineWorld, line: &str) -> spookery_engine::RoundOutput {
     let (verb, target) = split_line(line);
-    let wall = world.state().last_round_at.clone();
-    world
+    let wall = session.world().last_round_at.clone();
+    session
         .queue_player_move(&seated_harbormouse(), &"harbormouse".into(), verb, target)
         .unwrap_or_else(|err| panic!("{line}: {}", err.code.as_str()));
-    let outputs = world
+    let outputs = session
         .commit_then_fast_forward(&seated_harbormouse(), &wall)
         .unwrap_or_else(|err| panic!("{line}: {err}"));
     outputs.into_iter().next().unwrap()
@@ -265,8 +265,8 @@ fn change_line(output: &spookery_engine::RoundOutput) -> String {
         .unwrap_or_default()
 }
 
-fn meter_lines(world: &EngineWorld) -> String {
-    let view = world
+fn meter_lines(session: &EngineWorld) -> String {
+    let view = session
         .perceive(&seated_harbormouse(), "harbormouse")
         .unwrap_or_else(|err| panic!("perceive: {}", err.as_str()));
     view.meters

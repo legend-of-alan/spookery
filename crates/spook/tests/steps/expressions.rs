@@ -1,7 +1,7 @@
 //! Dice and arithmetic in rule numbers.
 
 use spookery_engine::component;
-use spookery_engine::testing::state_of;
+use spookery_engine::testing::world_of;
 use std::fs;
 
 use cucumber::{then, when};
@@ -203,7 +203,7 @@ fn rowans_vigor(world: &World) -> i64 {
 }
 
 fn vigor_of(world: &World, actor: &str) -> i64 {
-    let now = state_of(table::pack(world));
+    let now = world_of(table::pack(world));
     let id = actor.into();
     let live = now
         .actors()

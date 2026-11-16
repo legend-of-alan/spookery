@@ -1,13 +1,13 @@
 //! Steps used by more than one cucumber program.
 
-use spookery_engine::testing::{place_of, state_of};
+use spookery_engine::testing::{place_of, world_of};
 use std::fs;
 use std::io::Write;
 use std::path::Path;
 
 use cucumber::{given, then, when};
 use spookery_engine::testing::journal::list_round_keys;
-use spookery_engine::{component, State};
+use spookery_engine::{component, ecs};
 
 use super::table;
 use crate::support::{self, copy_pack};
@@ -26,13 +26,13 @@ pub(crate) use crate::support::edit_save;
 /// Rowan holds brass_key, and the stair door is open, as a round that ended with him in the
 /// shop would have left it.
 /// The flags `actor` holds, in name order.
-pub(crate) fn flags_of(state: &State, actor: &str) -> Vec<String> {
+pub(crate) fn flags_of(world: &ecs::World, actor: &str) -> Vec<String> {
     let actor = actor.into();
-    let flags = state.actors().get::<component::Flag>(&actor);
+    let flags = world.actors().get::<component::Flag>(&actor);
     flags.iter().map(|(flag, ())| flag.to_string()).collect()
 }
 
-pub(crate) fn give_key(now: &mut State) {
+pub(crate) fn give_key(now: &mut ecs::World) {
     now.actors_mut()
         .get_mut::<component::Item>(&"rowan".into())
         .shift("brass_key", 1, None)
@@ -336,7 +336,7 @@ pub(crate) fn capture_play_stdout(world: &mut World) -> String {
 }
 
 /// Put `actor` on the exit `<place>.<exit>`, walking it until tick `until`.
-pub(crate) fn set_busy(now: &mut State, actor: &str, until: u64, exit: &str) {
+pub(crate) fn set_busy(now: &mut ecs::World, actor: &str, until: u64, exit: &str) {
     let (mut actors, actor) = (now.actors_mut(), actor.into());
     actors
         .get_mut::<component::Place>(&actor)
@@ -505,7 +505,7 @@ fn stdout_is_empty(world: &mut World) {
 
 #[then(expr = "world_time is 1080")]
 fn world_time_is_1080(world: &mut World) {
-    assert_eq!(state_of(table::pack(world)).world_time, 1080);
+    assert_eq!(world_of(table::pack(world)).world_time, 1080);
 }
 
 #[then(expr = "world_time is 1085")]
@@ -525,7 +525,7 @@ pub(crate) fn resolve_id(canon: &spookery_engine::testing::Canon, text: &str) ->
 #[given(regex = r#"^(?P<actor>\S+) is (?:in|at) (?P<place>\S+|"[^"]+")$"#)]
 #[then(regex = r#"^(?P<actor>\S+) is (?:in|at) (?P<place>\S+|"[^"]+")$"#)]
 fn is_in(world: &mut World, actor: String, place: String) {
-    let now = state_of(table::pack(world));
+    let now = world_of(table::pack(world));
     let [actor, place] =
         [&actor, &place].map(|text| resolve_id(now.canon(), text.trim_matches('"')));
     assert_eq!(place_of(&now, &actor), place);
@@ -638,7 +638,7 @@ fn the_stairs_cost_ten_ticks(world: &mut World) {
 
 #[when(expr = "rowan travels via stairs at tick {int}")]
 fn rowan_travels_via_stairs(world: &mut World, tick: u64) {
-    assert_eq!(state_of(table::pack(world)).world_time, tick);
+    assert_eq!(world_of(table::pack(world)).world_time, tick);
     let (mark, added) = table::player_send(world, "travel stairs", "\"kind\":");
     world.mark = mark;
     world.player_added = added;

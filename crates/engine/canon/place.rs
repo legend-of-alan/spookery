@@ -10,10 +10,10 @@ use crate::canon::rule_list::{self, RuleYaml};
 use crate::canon::source::{load_tagged, Diags, FileText, Locator, Page, PLACE_SCHEMA};
 use crate::canon::{Exit, PlaceDef};
 use crate::diagnostic::{schema_error, Diagnostic};
+use crate::ecs::component::meter::MeterDef;
+use crate::ecs::id::PlaceId;
 use crate::entity;
 use crate::rules::rule::{Cost, Owner, Rule};
-use crate::state::component::meter::MeterDef;
-use crate::state::id::PlaceId;
 
 /// The meters one place file declares, by that file, for `load_canon` to add once the meters
 /// every actor carries have loaded.

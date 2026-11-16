@@ -1,8 +1,8 @@
 //! Item counts, and the rule for shifting one, the same in every collection that holds items.
 
-use crate::state::change::{self, Change};
-use crate::state::component::{Component, Mut, WieldedItem};
-use crate::state::{entity, Reader};
+use crate::ecs::change::{self, Change};
+use crate::ecs::component::{Component, Mut, WieldedItem};
+use crate::ecs::{entity, Reader};
 use crate::Reason;
 
 /// An item: how many of it an entity holds. Actors and places hold items.

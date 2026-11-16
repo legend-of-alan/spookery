@@ -3,12 +3,12 @@
 use std::fs;
 
 use cucumber::{given, then, when};
-use spookery_engine::{component, entity, Presence, World as Engine};
+use spookery_engine::{component, entity, Presence};
 
 use super::common::{give_key, resolve_id};
 use super::rules::open;
 use super::triggers::world_flags;
-use crate::support::{act_of, append, copy_pack, edit_save, read_round, stamp_pack_rev, state_of};
+use crate::support::{act_of, append, copy_pack, edit_save, read_round, stamp_pack_rev, world_of};
 use crate::World;
 
 fn seated() -> Presence {
@@ -18,15 +18,15 @@ fn seated() -> Presence {
     }
 }
 
-fn play(opened: &mut Engine) {
-    let wall = opened.state().last_round_at.clone();
+fn play(opened: &mut spookery_engine::Session) {
+    let wall = opened.world().last_round_at.clone();
     opened
         .play(&seated(), &wall)
         .unwrap_or_else(|err| panic!("round: {err}"));
 }
 
 /// Queue Rowan's `line`, or panic with its refusal.
-fn queue(opened: &mut Engine, line: &str) {
+fn queue(opened: &mut spookery_engine::Session, line: &str) {
     let (verb, target) = line
         .split_once(' ')
         .map_or((line, None), |(v, t)| (v, Some(t)));
@@ -170,7 +170,7 @@ fn travel_is_cancellable(world: &mut World) {
 
 #[then(expr = "{string} never finished and Rowan paid {int} rest")]
 fn never_finished(world: &mut World, verb: String, rest: i64) {
-    let now = state_of(world.pack.as_ref().unwrap());
+    let now = world_of(world.pack.as_ref().unwrap());
     let flags = now.entities().get::<component::Flag>(&entity::Id::Global);
     let done = format!("{verb}_done");
     assert!(!flags.contains(&done), "{:?}", world_flags(&now));
@@ -185,7 +185,7 @@ fn never_finished(world: &mut World, verb: String, rest: i64) {
 
 #[then(expr = "{string} finished")]
 fn finished(world: &mut World, verb: String) {
-    let now = state_of(world.pack.as_ref().unwrap());
+    let now = world_of(world.pack.as_ref().unwrap());
     let flags = now.entities().get::<component::Flag>(&entity::Id::Global);
     let done = format!("{verb}_done");
     assert!(flags.contains(&done), "{:?}", world_flags(&now));
@@ -239,10 +239,10 @@ fn rowan_plays_both(world: &mut World, first: String, second: String) {
 #[when(expr = "rounds pass until tick {int}")]
 fn rounds_pass_until(world: &mut World, tick: u64) {
     let mut opened = open(world.pack.as_ref().unwrap());
-    while opened.state().world_time < tick {
+    while opened.world().world_time < tick {
         play(&mut opened);
     }
-    assert_eq!(opened.state().world_time, tick);
+    assert_eq!(opened.world().world_time, tick);
 }
 
 #[when(expr = "the GM queues Mira's {string} outside the hours its if allows")]
@@ -265,7 +265,7 @@ fn the_gm_queues_miras(world: &mut World, habit: String) {
 
 #[then(expr = "Rowan holds lamp_oil")]
 fn rowan_holds_lamp_oil(world: &mut World) {
-    let now = state_of(world.pack.as_ref().unwrap());
+    let now = world_of(world.pack.as_ref().unwrap());
     let rowan = "rowan".into();
     let oil = now.actors().get::<component::Item>(&rowan).get("lamp_oil");
     assert_eq!(oil.copied().unwrap_or(0), 1);
@@ -273,13 +273,13 @@ fn rowan_holds_lamp_oil(world: &mut World) {
 
 #[then(expr = "Rowan has used no act")]
 fn rowan_used_no_act(world: &mut World) {
-    let now = state_of(world.pack.as_ref().unwrap());
+    let now = world_of(world.pack.as_ref().unwrap());
     assert_eq!(act_of(&now, "rowan").last_act_round, 0);
 }
 
 #[then(expr = "Rowan has used the act of round {int}")]
 fn rowan_used_the_act(world: &mut World, round: u64) {
-    let now = state_of(world.pack.as_ref().unwrap());
+    let now = world_of(world.pack.as_ref().unwrap());
     assert_eq!(act_of(&now, "rowan").last_act_round, round);
 }
 
@@ -315,7 +315,7 @@ fn refused_at_once(world: &mut World, line: String, code: String) {
 fn rowans_line_lands(world: &mut World, line: String) {
     let mut opened = open(world.pack.as_ref().unwrap());
     queue(&mut opened, &line);
-    let round = opened.state().round_index + 1;
+    let round = opened.world().round_index + 1;
     play(&mut opened);
     let record = read_round(world.pack.as_ref().unwrap(), &format!("round-{round:04}"));
     assert_eq!(record["refused"], serde_json::json!([]), "{record}");
@@ -337,6 +337,6 @@ fn a_round_later_the_shop_holds(world: &mut World, count: u32) {
     let mut opened = open(world.pack.as_ref().unwrap());
     play(&mut opened);
     let shop = "docks_shop".into();
-    let stock = opened.state().places().get::<component::Item>(&shop);
+    let stock = opened.world().places().get::<component::Item>(&shop);
     assert_eq!(stock.get("lamp_oil").copied(), Some(count));
 }

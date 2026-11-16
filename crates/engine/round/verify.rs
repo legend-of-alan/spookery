@@ -152,15 +152,15 @@ fn check_bundle_end(
 
 fn check_save_file(pack: &Path, records: &[Record], base: &[u8]) -> Result<(), Error> {
     let live = journal::read_save(&journal::save_path(pack)).map_err(Error::Reason)?;
-    let state = load_save_bytes(&live)?;
+    let save = load_save_bytes(&live)?;
     if records.is_empty() {
-        let canonical = save::emit(&state)
+        let canonical = save::emit(&save)
             .map(|text| text.into_bytes())
             .map_err(Error::Reason)?;
         if live != canonical {
             let diverged = Divergence::new(
                 DivergenceKind::Save,
-                state.state_rev,
+                save.state_rev,
                 None,
                 Reason::HandEdit.as_str(),
             );
@@ -184,7 +184,7 @@ fn check_save_file(pack: &Path, records: &[Record], base: &[u8]) -> Result<(), E
     } else if live != base {
         let diverged = Divergence::new(
             DivergenceKind::Save,
-            state.state_rev,
+            save.state_rev,
             None,
             "state hash differed",
         );
@@ -198,7 +198,7 @@ fn set_save_line(mut diverged: Divergence, live: &[u8]) -> Error {
     diverged.save_line = diverged.replayed.as_deref().and_then(|replayed| {
         let live_text = std::str::from_utf8(live).ok()?;
         let replayed_text = std::str::from_utf8(replayed).ok()?;
-        crate::world::first_diff_line(live_text, replayed_text)
+        crate::session::first_diff_line(live_text, replayed_text)
     });
     diverged.into()
 }
@@ -223,14 +223,14 @@ fn read_base(pack: &Path) -> Result<Vec<u8>, Error> {
 }
 
 fn replay_bundle(pack: &Path, start: &[u8], entries: &[Record]) -> Result<Vec<u8>, Error> {
-    let mut world = open_for_replay(pack, start)?;
+    let mut session = open_for_replay(pack, start)?;
     let mut changed = false;
     for entry in entries {
-        replay_record(&mut world, entry)?;
+        replay_record(&mut session, entry)?;
         changed |= entry.changes_state();
     }
     if changed {
-        emit_save_bytes(&world)
+        emit_save_bytes(&session)
     } else {
         Ok(start.to_vec())
     }

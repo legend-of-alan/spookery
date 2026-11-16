@@ -6,7 +6,7 @@ use std::time::Duration;
 use chrono::{DateTime, NaiveDateTime, Utc};
 use tokio::sync::watch;
 
-use spookery_engine::{Reason, World};
+use spookery_engine::Reason;
 
 use super::table::Request;
 
@@ -59,15 +59,15 @@ fn format_utc(now: DateTime<Utc>) -> String {
 
 /// Plays the catch-up rounds when the last round is an interval old.
 /// Returns whether `world_time` advanced.
-pub(super) fn catch_up_if_due(world: &mut World) -> Result<bool, Reason> {
+pub(super) fn catch_up_if_due(session: &mut spookery_engine::Session) -> Result<bool, Reason> {
     let now = Utc::now();
-    let elapsed = elapsed_secs(&world.state().last_round_at, now)?;
-    if elapsed < world.budget().round_every_real_seconds {
+    let elapsed = elapsed_secs(&session.world().last_round_at, now)?;
+    if elapsed < session.budget().round_every_real_seconds {
         return Ok(false);
     }
-    let before = world.state().world_time;
-    world.catch_up(&format_utc(now), elapsed / 3600)?;
-    Ok(world.state().world_time != before)
+    let before = session.world().world_time;
+    session.catch_up(&format_utc(now), elapsed / 3600)?;
+    Ok(session.world().world_time != before)
 }
 
 #[cfg(test)]

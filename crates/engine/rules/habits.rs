@@ -1,20 +1,20 @@
 //! Which habits an NPC may run this round.
 
 use crate::canon::Canon;
+use crate::ecs::id::ActorId;
+use crate::ecs::{self, component, Presence};
 use crate::intent::{Intent, Target, Viewer};
 use crate::rules::cond;
 use crate::rules::context::Context;
 use crate::rules::expand;
 use crate::rules::gate;
-use crate::state::id::ActorId;
-use crate::state::{component, Presence, State};
 
 /// One habit intent per NPC whose habit the gate admits, its target not yet stamped.
-pub(crate) fn intents(canon: &Canon, state: &State, presence: &Presence) -> Vec<Intent> {
-    let actors = state.actors().query::<ActorId>();
+pub(crate) fn intents(canon: &Canon, world: &ecs::World, presence: &Presence) -> Vec<Intent> {
+    let actors = world.actors().query::<ActorId>();
     let intents = actors
         .iter()
-        .filter_map(|actor_id| intent_of(canon, state, presence, actor_id));
+        .filter_map(|actor_id| intent_of(canon, world, presence, actor_id));
     intents.collect()
 }
 
@@ -22,17 +22,17 @@ pub(crate) fn intents(canon: &Canon, state: &State, presence: &Presence) -> Vec<
 /// and whose effects expand.
 fn intent_of(
     canon: &Canon,
-    state: &State,
+    world: &ecs::World,
     presence: &Presence,
     actor_id: &ActorId,
 ) -> Option<Intent> {
-    if !is_eligible(canon, state, presence, actor_id) {
+    if !is_eligible(canon, world, presence, actor_id) {
         return None;
     }
     let habits = canon.rules.habits_of(actor_id);
     habits.into_iter().find_map(|rule| {
-        let intent = Intent::habit(state, actor_id, &rule.local_id);
-        let context = Context::new(canon, state, presence, &intent);
+        let intent = Intent::habit(world, actor_id, &rule.local_id);
+        let context = Context::new(canon, world, presence, &intent);
         let runs =
             gate::admit(&context, rule, None).is_ok() && expand::preview(&context, rule).is_ok();
         runs.then_some(intent)
@@ -42,7 +42,7 @@ fn intent_of(
 /// This NPC's habits whose `if` holds, for its view.
 pub(crate) fn list_whose_if_holds(
     canon: &Canon,
-    state: &State,
+    world: &ecs::World,
     presence: &Presence,
     npc_id: &ActorId,
 ) -> Vec<String> {
@@ -51,7 +51,7 @@ pub(crate) fn list_whose_if_holds(
     habits
         .filter(|rule| {
             let (verb, conds) = (&rule.local_id, &rule.if_);
-            cond::if_holds(canon, state, presence, &npc, verb, Target::Empty, conds)
+            cond::if_holds(canon, world, presence, &npc, verb, Target::Empty, conds)
         })
         .map(|rule| rule.local_id.clone())
         .collect()
@@ -59,8 +59,8 @@ pub(crate) fn list_whose_if_holds(
 
 /// Whether the engine may run one of this NPC's habits on its own this round: its idle
 /// profile allows it, it is free, no seated player is with it, and its act window has room.
-fn is_eligible(canon: &Canon, state: &State, presence: &Presence, npc_id: &ActorId) -> bool {
-    if state.actors().get::<component::ControlType>(npc_id).is_pc() {
+fn is_eligible(canon: &Canon, world: &ecs::World, presence: &Presence, npc_id: &ActorId) -> bool {
+    if world.actors().get::<component::ControlType>(npc_id).is_pc() {
         return false;
     }
     let Some(profile) = canon.idle_profile(npc_id) else {
@@ -69,17 +69,17 @@ fn is_eligible(canon: &Canon, state: &State, presence: &Presence, npc_id: &Actor
     if !profile.eligible {
         return false;
     }
-    let act = state.actors().get::<component::Act>(npc_id);
+    let act = world.actors().get::<component::Act>(npc_id);
     let (Some(counters), Some(place)) = (
         act.get(),
-        state.actors().get::<component::Place>(npc_id).get(),
+        world.actors().get::<component::Place>(npc_id).get(),
     ) else {
         return false;
     };
-    if act.is_busy(state.world_time) || is_player_at(state, presence, place) {
+    if act.is_busy(world.world_time) || is_player_at(world, presence, place) {
         return false;
     }
-    if counters.last_act_round == state.round_index {
+    if counters.last_act_round == world.round_index {
         return false;
     }
     if presence.players == 0 {
@@ -90,9 +90,9 @@ fn is_eligible(canon: &Canon, state: &State, presence: &Presence, npc_id: &Actor
 }
 
 /// A seated player's PC is in `place`.
-pub(crate) fn is_player_at(state: &State, presence: &Presence, place: &str) -> bool {
-    state.actors_at(place).iter().any(|id| {
-        let is_pc = state.actors().get::<component::ControlType>(id).is_pc();
+pub(crate) fn is_player_at(world: &ecs::World, presence: &Presence, place: &str) -> bool {
+    world.actors_at(place).iter().any(|id| {
+        let is_pc = world.actors().get::<component::ControlType>(id).is_pc();
         presence.actors_present.contains(id) && is_pc
     })
 }

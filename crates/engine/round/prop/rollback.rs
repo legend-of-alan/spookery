@@ -16,17 +16,17 @@
 use std::sync::Arc;
 
 use crate::canon::StoryDef;
+use crate::ecs::change::{self, Change};
+use crate::ecs::component::meter::{Meter, MeterDef, MeterWrite};
+use crate::ecs::component::modifier::{self, ModifierDef};
+use crate::ecs::component::{self, Component};
+use crate::ecs::id::{ActorId, ExitId};
+use crate::ecs::{self, ActCounter, Presence, Save};
 use crate::entity;
 use crate::intent::{Intent, IntentArgs, Source, Target, Viewer};
 use crate::rules::effect::{Effect, EffectKind};
-use crate::state::change::{self, Change};
-use crate::state::component::meter::{Meter, MeterDef, MeterWrite};
-use crate::state::component::modifier::{self, ModifierDef};
-use crate::state::component::{self, Component};
-use crate::state::id::{ActorId, ExitId};
-use crate::state::{ActCounter, Presence, Save, State};
+use crate::session;
 use crate::testing::copy_pack;
-use crate::world::World;
 
 use super::support::{runner_config, TempPack};
 use proptest::prelude::*;
@@ -75,7 +75,7 @@ fn nested_rollbacks_put_the_save_back_exactly() {
     let edited = crate::store::save::parse(&edited).expect("the edited save reads");
     let edited = crate::store::save::emit(&edited).expect("the edited save writes");
     std::fs::write(&path, edited).expect("write the save");
-    let opened = World::open(&pack.0).expect("docks pack opens");
+    let opened = session::Session::open(&pack.0).expect("docks pack opens");
     let mut canon = opened.canon().clone();
     // Room for every key the steps can touch: a refusal past the budget is the unit tests'.
     canon.budget.max_state_keys_mutated = 1000;
@@ -118,123 +118,123 @@ fn nested_rollbacks_put_the_save_back_exactly() {
             _ => canon.meters.insert(key.to_string(), def),
         };
     }
-    let mut state = State::new(Save::clone(opened.state()), Arc::new(canon));
+    let mut world = ecs::World::new(Save::clone(opened.world()), Arc::new(canon));
     for (carrier, key) in &carried {
-        let def = state.canon().meter_def(carrier.as_ref(), key);
+        let def = world.canon().meter_def(carrier.as_ref(), key);
         let start = Meter {
             base: def.expect("the meter's definition").start,
             offset: 0,
         };
-        let put = (state.entities_mut().get_mut::<Meter>(carrier)).set(key, Some(start));
+        let put = (world.entities_mut().get_mut::<Meter>(carrier)).set(key, Some(start));
         put.expect("the meter goes on");
     }
-    state.accept();
-    let world = World::from_parts(&pack.0, state);
+    world.accept();
+    let session = session::Session::from_parts(&pack.0, world);
     let mut runner = TestRunner::new(runner_config());
     runner
         .run(&prop::collection::vec(pick_step(), 1..40), |steps| {
-            play_steps(&world, &steps)
+            play_steps(&session, &steps)
         })
         .unwrap_or_else(|err| panic!("rollback property failed: {err}"));
 }
 
 /// A savepoint, with the save and the counted keys as they were when it was taken.
 struct Open {
-    point: crate::state::Savepoint,
-    saved: State,
+    point: crate::ecs::Savepoint,
+    saved: ecs::World,
     keys: usize,
 }
 
-fn play_steps(world: &World<()>, steps: &[Step]) -> Result<(), TestCaseError> {
+fn play_steps(session: &session::Session<()>, steps: &[Step]) -> Result<(), TestCaseError> {
     let nobody = Presence::default();
-    let canon = world.canon();
-    let mut state = world.begin_round();
+    let canon = session.canon();
+    let mut world = session.begin_round();
     let intent = mira_intent();
     let mira = ActorId::from("mira");
-    let open_at = |state: &State| Open {
-        point: state.savepoint(),
-        saved: state.clone(),
-        keys: state.keys_counted(),
+    let open_at = |world: &ecs::World| Open {
+        point: world.savepoint(),
+        saved: world.clone(),
+        keys: world.keys_counted(),
     };
-    let mut open = vec![open_at(&state)];
-    let mut taken = state.clone();
+    let mut open = vec![open_at(&world)];
+    let mut taken = world.clone();
     for (index, step) in steps.iter().enumerate() {
         // A refused write is left for a savepoint to undo, as in a round.
         match step {
-            Step::Savepoint => open.push(open_at(&state)),
+            Step::Savepoint => open.push(open_at(&world)),
             Step::Rollback if open.len() > 1 => {
                 let at = open.pop().expect("an open savepoint");
-                roll_back(&mut state, at)?;
+                roll_back(&mut world, at)?;
             }
             Step::Rollback => {}
             // A round takes changes only between actions, outside any savepoint but the first.
             Step::Take if open.len() == 1 => {
-                let changes = state.take_changes();
-                every_moved_meter_is_reported(&taken, &state, &changes)?;
-                taken = state.clone();
+                let changes = world.take_changes();
+                every_moved_meter_is_reported(&taken, &world, &changes)?;
+                taken = world.clone();
             }
             Step::Take => {}
             Step::Expire => {
-                let _ = state.actors_mut().expire_modifiers(u64::MAX);
+                let _ = world.actors_mut().expire_modifiers(u64::MAX);
             }
             Step::Act(players) => {
-                let _ = state
+                let _ = world
                     .actors_mut()
                     .get_mut::<component::Act>(&mira)
                     .count(1, *players);
             }
             Step::ResetActs => {
-                let _ = (state.actors_mut()).reset_acts(ActCounter::IdleActsThisWindow);
+                let _ = (world.actors_mut()).reset_acts(ActCounter::IdleActsThisWindow);
             }
             Step::Busy(true) => {
-                let _ = state
+                let _ = world
                     .actors_mut()
                     .get_mut::<component::Act>(&mira)
                     .set_busy(9, None);
             }
             Step::Busy(false) => {
-                let _ = state
+                let _ = world
                     .actors_mut()
                     .get_mut::<component::Act>(&mira)
                     .take_pending();
             }
             Step::NoteExits => {
-                let _ = crate::rules::travel::note_exits(canon, &mut state);
+                let _ = crate::rules::travel::note_exits(canon, &mut world);
             }
             // Mira's memory of the shop's exits, written over with another list.
             Step::SeeExits(both) => {
                 let exits = ["docks_street", "stairs"][..if *both { 2 } else { 1 }].iter();
                 let exits = exits.map(|exit| exit.to_string()).collect();
-                let mut actors = state.actors_mut();
+                let mut actors = world.actors_mut();
                 let _ = (actors.get_mut::<component::Visit>(&mira)).set("docks_shop", exits);
             }
             _ => {
-                let effect = effect(&state, step, index);
-                let _ = effect.apply(canon, &mut state, &nobody, &intent);
+                let effect = effect(&world, step, index);
+                let _ = effect.apply(canon, &mut world, &nobody, &intent);
             }
         }
     }
     while let Some(at) = open.pop() {
-        roll_back(&mut state, at)?;
+        roll_back(&mut world, at)?;
     }
-    if !state.take_changes().is_empty() {
+    if !world.take_changes().is_empty() {
         return Err(TestCaseError::fail("a rolled-back write is still reported"));
     }
     Ok(())
 }
 
-fn roll_back(state: &mut State, at: Open) -> Result<(), TestCaseError> {
-    state.rollback(at.point);
-    if **state != *at.saved {
+fn roll_back(world: &mut ecs::World, at: Open) -> Result<(), TestCaseError> {
+    world.rollback(at.point);
+    if **world != *at.saved {
         return Err(TestCaseError::fail(format!(
             "the rollback left {:#?}\ninstead of {:#?}",
-            state, at.saved
+            world, at.saved
         )));
     }
-    if state.keys_counted() != at.keys {
+    if world.keys_counted() != at.keys {
         return Err(TestCaseError::fail(format!(
             "the rollback left {} keys counted instead of {}",
-            state.keys_counted(),
+            world.keys_counted(),
             at.keys
         )));
     }
@@ -244,12 +244,12 @@ fn roll_back(state: &mut State, at: Open) -> Result<(), TestCaseError> {
 /// Every actor meter whose value differs between `taken` and `now` is in `changes`, with the
 /// value it had at the last take and the value it has now.
 fn every_moved_meter_is_reported(
-    taken: &State,
-    now: &State,
+    taken: &ecs::World,
+    now: &ecs::World,
     changes: &[Change],
 ) -> Result<(), TestCaseError> {
-    let read = |state: &State, actor: &ActorId, key: &str| {
-        let value = modifier::value(state.actors(), actor, key);
+    let read = |world: &ecs::World, actor: &ActorId, key: &str| {
+        let value = modifier::value(world.actors(), actor, key);
         value.map_or(change::Value::Empty, change::Value::Number)
     };
     let meters = now.actors().query::<&Meter>();
@@ -272,7 +272,7 @@ fn every_moved_meter_is_reported(
     Ok(())
 }
 
-fn effect(state: &State, step: &Step, index: usize) -> Effect {
+fn effect(world: &ecs::World, step: &Step, index: usize) -> Effect {
     let mira = ActorId::from("mira");
     let kind = match step {
         Step::Item(carrier, id, delta) => {
@@ -312,7 +312,7 @@ fn effect(state: &State, step: &Step, index: usize) -> Effect {
             value: *value,
         },
         Step::Walk(to) => EffectKind::Location {
-            from: (state.actors().get::<component::Place>(&mira).get())
+            from: (world.actors().get::<component::Place>(&mira).get())
                 .map(String::from)
                 .unwrap_or_default(),
             actor_id: mira,

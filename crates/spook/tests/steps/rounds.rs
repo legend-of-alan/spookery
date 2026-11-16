@@ -1,6 +1,6 @@
 use cucumber::{given, then, when};
 use serde_json::Value;
-use spookery_engine::testing::state_of;
+use spookery_engine::testing::world_of;
 
 use crate::support::copy_pack;
 use crate::World;
@@ -24,7 +24,7 @@ fn the_operator_runs_spook_round(world: &mut World) {
 
 #[then(expr = "round index is {int}")]
 fn round_index_is(world: &mut World, index: u64) {
-    assert_eq!(state_of(table::pack(world)).round_index, index);
+    assert_eq!(world_of(table::pack(world)).round_index, index);
 }
 
 #[then(expr = "the player line is queued")]

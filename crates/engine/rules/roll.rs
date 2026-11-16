@@ -1,10 +1,10 @@
 //! Check definitions, one roll of a check, and the band its total lands in.
 
+use crate::ecs;
+use crate::ecs::component::modifier;
+use crate::ecs::id::ActorId;
 use crate::hash::blake2s_256;
 use crate::rules::gate;
-use crate::state::component::modifier;
-use crate::state::id::ActorId;
-use crate::state::State;
 use crate::Reason;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -85,13 +85,13 @@ pub fn faces(key: &RollKey, start: usize, count: u32, sides: u32) -> Result<Vec<
 /// `threshold`. `partial_at` `None` keeps the roll binary; an opposing total passes `None`.
 pub(crate) fn roll_check(
     check: &Check,
-    state: &State,
+    world: &ecs::World,
     actor_id: &ActorId,
     key: &RollKey,
     threshold: i64,
     partial_at: Option<i64>,
 ) -> Result<Roll, Reason> {
-    let stat = modifier::value(state.actors(), actor_id, &check.stat)?;
+    let stat = modifier::value(world.actors(), actor_id, &check.stat)?;
     let faces = faces(key, 0, check.dice_count, check.dice_sides)?;
     let total = faces.iter().map(|face| i64::from(*face)).sum::<i64>() + stat;
     Ok(Roll {
@@ -128,7 +128,7 @@ fn block_bytes(seed: &[u8; 32], block: usize) -> [u8; 32] {
 #[cfg(test)]
 mod tests {
     use super::{classify, face_at, roll_check, Check, Outcome, RollKey};
-    use crate::state::id::ActorId;
+    use crate::ecs::id::ActorId;
 
     fn check_of(count: u32) -> Check {
         Check {
@@ -174,11 +174,11 @@ mod tests {
     #[test]
     fn the_same_key_rolls_the_same_faces() {
         let pack = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/packs/docks");
-        let docks = crate::World::open(&pack).expect("open");
-        let (state, mira) = (docks.state(), ActorId::from("mira"));
+        let docks = crate::session::Session::open(&pack).expect("open");
+        let (world, mira) = (docks.world(), ActorId::from("mira"));
         let check = check_of(2);
-        let once = roll_check(&check, state, &mira, &key(0), 9, None).unwrap();
-        let twice = roll_check(&check, state, &mira, &key(0), 9, None).unwrap();
+        let once = roll_check(&check, world, &mira, &key(0), 9, None).unwrap();
+        let twice = roll_check(&check, world, &mira, &key(0), 9, None).unwrap();
         assert_eq!(once, twice);
         assert_eq!(once.faces.len(), 2);
     }

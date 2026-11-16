@@ -6,9 +6,9 @@ use cucumber::{given, then, when};
 use serde_json::Value;
 use spookery::protocol::{self, ServerBody};
 use spookery_client::text;
-use spookery_engine::testing::{stamp_pack_rev, state_of};
+use spookery_engine::testing::{stamp_pack_rev, world_of};
 use spookery_engine::{component, emit_save, parse_save};
-use spookery_engine::{entity, Presence, State};
+use spookery_engine::{ecs, entity, Presence};
 
 use super::common::{flags_of, replace_in_file};
 use super::meters::write_world_meters;
@@ -93,7 +93,7 @@ fn briar_has_flag_downed(world: &mut World) {
         "the downed rule did not fire\n{round}"
     );
     assert!(
-        state_of(pack)
+        world_of(pack)
             .actors()
             .get::<component::Flag>(&"briar".into())
             .contains("downed"),
@@ -187,7 +187,7 @@ rules:
 
 #[then(expr = "nell knows fact_ledger and the world's tide is {int}")]
 fn nell_knows_the_ledger(world: &mut World, tide: i64) {
-    let now = state_of(world.pack.as_ref().unwrap());
+    let now = world_of(world.pack.as_ref().unwrap());
     let (nell, ledger) = ("nell".into(), "fact_ledger".to_string());
     let known_facts = now.actors().get::<component::KnownFacts>(&nell).get();
     assert!(
@@ -417,7 +417,7 @@ The ground gives.
 fn the_bog_roll_reproduces(world: &mut World) {
     assert_eq!(world.scratch, "rolled");
     let pack = world.pack.as_ref().unwrap();
-    let now = state_of(pack);
+    let now = world_of(pack);
     let nell = "nell".into();
     let vigor = now
         .actors()
@@ -560,7 +560,7 @@ fn nell_knows_the_trapdoor(world: &mut World) {
 #[then(expr = "nell can see the trapdoor")]
 fn nell_can_see_the_trapdoor(world: &mut World) {
     let pack = world.pack.as_ref().unwrap();
-    let world_now = spookery_engine::World::peek(pack).unwrap();
+    let world_now = spookery_engine::Session::peek(pack).unwrap();
     let exits = world_now
         .perceive(&Presence::default(), "nell")
         .unwrap()
@@ -665,15 +665,15 @@ fn nell_sets_the_tide(world: &mut World) {
 }
 
 /// The flags the world holds, in name order, for a failure message.
-pub(crate) fn world_flags(state: &State) -> Vec<String> {
-    let world = state.globals().query::<&component::Flag>();
-    let flags = world.iter().flat_map(|held| held.iter_with_id());
+pub(crate) fn world_flags(world: &ecs::World) -> Vec<String> {
+    let globals = world.globals().query::<&component::Flag>();
+    let flags = globals.iter().flat_map(|held| held.iter_with_id());
     flags.map(|(_, flag, ())| flag.to_string()).collect()
 }
 
 #[then(expr = "the world has flag tide_turned")]
 fn the_world_has_the_tide(world: &mut World) {
-    let now = state_of(world.pack.as_ref().unwrap());
+    let now = world_of(world.pack.as_ref().unwrap());
     let flags = now.entities().get::<component::Flag>(&entity::Id::Global);
     assert!(flags.contains("tide_turned"), "{:?}", world_flags(&now));
 }
@@ -836,7 +836,7 @@ fn the_rounds_only_refusal_is(world: &mut World, code: String) {
 
 #[then(expr = "no place has the {string} flag")]
 fn no_place_has_the_flag(world: &mut World, flag: String) {
-    let now = state_of(world.pack.as_ref().unwrap());
+    let now = world_of(world.pack.as_ref().unwrap());
     let places = now.places().query::<&component::Flag>();
     assert!(!places.iter().any(|held| held.contains(&flag)));
 }
@@ -893,10 +893,10 @@ fn the_empty_table_narrates_and_then_rowan_narrates(world: &mut World) {
         "\n  - id: quiet\n    when:\n      verb: quiet\n    do:\n      - narrate:\n          to: rowan\n          text: The shop is quiet.\n  - id: back\n    when:\n      verb: back\n    do:\n      - narrate:\n          to: self\n          text: You are back.\n",
     );
     edit_table(world, &pack, |_, _| {});
-    let mut kernel = spookery_engine::testing::resume(&pack);
-    queue(&mut kernel, intent("quiet", "rowan", "quiet", None));
-    let wall = kernel.state().last_round_at.clone();
-    let quiet = kernel
+    let mut session = spookery_engine::testing::resume(&pack);
+    queue(&mut session, intent("quiet", "rowan", "quiet", None));
+    let wall = session.world().last_round_at.clone();
+    let quiet = session
         .play(&Presence::default(), &wall)
         .unwrap_or_else(|err| {
             panic!("quiet: {err}");
@@ -905,9 +905,9 @@ fn the_empty_table_narrates_and_then_rowan_narrates(world: &mut World) {
         players: 1,
         actors_present: vec!["rowan".into()],
     };
-    queue(&mut kernel, intent("back", "rowan", "back", None));
-    let wall = kernel.state().last_round_at.clone();
-    let back = kernel
+    queue(&mut session, intent("back", "rowan", "back", None));
+    let wall = session.world().last_round_at.clone();
+    let back = session
         .play(&rowan, &wall)
         .unwrap_or_else(|err| panic!("back: {err}"));
     world.told = quiet
@@ -974,7 +974,7 @@ fn play_and_keep_summaries(
     world.pack = Some(pack);
 }
 
-pub(crate) fn set_place(now: &mut State, id: &str, place: &str) {
+pub(crate) fn set_place(now: &mut ecs::World, id: &str, place: &str) {
     now.actors_mut()
         .get_mut::<component::Place>(&id.into())
         .set(place)
@@ -1138,7 +1138,7 @@ Nell walks the docks.
 }
 
 fn insert_actor_copy(
-    now: &mut State,
+    now: &mut ecs::World,
     seated: &mut Presence,
     (from, id): (&str, &str),
     place: &str,
@@ -1166,12 +1166,12 @@ fn insert_actor_copy(
 pub(crate) fn edit_table(
     world: &mut World,
     pack: &Path,
-    edit: impl FnOnce(&mut State, &mut Presence),
+    edit: impl FnOnce(&mut ecs::World, &mut Presence),
 ) {
     let path = pack.join("state/save.yaml");
     let save = parse_save(&fs::read_to_string(&path).unwrap()).unwrap();
     let canon = spookery_engine::load_canon(pack).unwrap_or_else(|err| panic!("canon: {err:?}"));
-    let mut now = State::new(save, Arc::new(canon));
+    let mut now = ecs::World::new(save, Arc::new(canon));
     let mut seated = Presence::default();
     edit(&mut now, &mut seated);
     remember_presence(world, pack, seated);
@@ -1193,7 +1193,7 @@ fn remembered_presence(world: &World, pack: &Path) -> Option<Presence> {
 }
 
 pub(crate) struct PlayedRound {
-    now: State,
+    now: ecs::World,
     reports: Vec<spookery_engine::MoveReport>,
     record: Value,
     pub(crate) changed_keys: Vec<String>,
@@ -1207,7 +1207,7 @@ fn play(
     world: &mut World,
     pack: &Path,
     intents: Vec<protocol::QueueArgs>,
-) -> (State, Vec<spookery_engine::MoveReport>, Value) {
+) -> (ecs::World, Vec<spookery_engine::MoveReport>, Value) {
     let played = play_round(world, pack, intents);
     (played.now, played.reports, played.record)
 }
@@ -1217,13 +1217,13 @@ pub(crate) fn play_round(
     pack: &Path,
     intents: Vec<protocol::QueueArgs>,
 ) -> PlayedRound {
-    let mut round = super::rules::open(pack);
+    let mut session = super::rules::open(pack);
     let presence = remembered_presence(scenario, pack).unwrap_or_default();
-    let wall = round.state().last_round_at.clone();
+    let wall = session.world().last_round_at.clone();
     for intent in intents {
-        queue(&mut round, intent);
+        queue(&mut session, intent);
     }
-    let output = round
+    let output = session
         .play(&presence, &wall)
         .unwrap_or_else(|err| panic!("play: {err}"));
     let record = read_latest_round(pack);
@@ -1250,7 +1250,7 @@ pub(crate) fn play_round(
         })
         .collect();
     PlayedRound {
-        now: round.state().clone(),
+        now: session.world().clone(),
         reports: output.reports,
         record,
         changed_keys: output.changed_keys,
@@ -1279,8 +1279,8 @@ pub(crate) fn intent(
 }
 
 /// The GM queues `intent` under the id it names.
-fn queue(round: &mut spookery_engine::World, intent: protocol::QueueArgs) {
-    round
+fn queue(session: &mut spookery_engine::Session, intent: protocol::QueueArgs) {
+    session
         .queue_gm_intent(&spookery_engine::Presence::default(), intent, || {
             panic!("the GM chose the id")
         })

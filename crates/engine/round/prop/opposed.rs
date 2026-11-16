@@ -3,14 +3,14 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use crate::ecs::component::{ControlType, Meter};
+use crate::ecs::id::ActorId;
+use crate::ecs::Presence;
 use crate::intent::{Intent, Source, Target};
 use crate::rules::gate;
-use crate::state::component::{ControlType, Meter};
-use crate::state::id::ActorId;
-use crate::state::Presence;
+use crate::session;
 use crate::store::journal;
 use crate::store::records::{Record, Step};
-use crate::world::World;
 use crate::Reason;
 
 use super::support::TempPack;
@@ -66,14 +66,14 @@ fn lunge_pack(limit: Option<&str>, rule: &str) -> PathBuf {
         fs::write(&path, text.replacen(old.expect("limit key"), limit, 1)).unwrap();
     }
     crate::testing::append(&pack.join("rules/verbs.yaml"), &format!("{LUNGE}{rule}"));
-    crate::testing::edit_save(&pack, |state| {
+    crate::testing::edit_save(&pack, |world| {
         let briar = ActorId::from("briar");
-        let held = state.actors().get::<Meter>(&briar).get("might").cloned();
+        let held = world.actors().get::<Meter>(&briar).get("might").cloned();
         let might = Meter {
             base: 30,
             ..held.expect("Briar's might")
         };
-        let mut actors = state.actors_mut();
+        let mut actors = world.actors_mut();
         actors
             .get_mut::<Meter>(&briar)
             .set("might", Some(might))
@@ -95,25 +95,26 @@ fn fight(base: &Path, warmup: u32, refused: Option<Reason>) -> Result<(), String
     copy_dir(base, &pack.0);
     let fail = |what: &str, detail: String| format!("warm-up {warmup}: {what}: {detail}");
     let lock = crate::lock_pack(&pack.0).map_err(|err| fail("lock", err.to_string()))?;
-    let mut world = World::resume(&pack.0, lock).map_err(|err| fail("resume", err.to_string()))?;
+    let mut session =
+        session::Session::resume(&pack.0, lock).map_err(|err| fail("resume", err.to_string()))?;
     let harbormouse = Presence {
         players: 1,
         actors_present: vec!["harbormouse".into()],
     };
-    let wall = world.state().last_round_at.clone();
+    let wall = session.world().last_round_at.clone();
     for _ in 0..warmup {
-        world
+        session
             .play(&harbormouse, &wall)
             .map_err(|err| fail("warm-up", err.to_string()))?;
     }
     // Queued past the queue's gate, as if the world changed before the start, so the start's
     // gate is what refuses the lunge.
-    let round_index = world.state().round_index + 1;
+    let round_index = session.world().round_index + 1;
     for (id, actor, verb, target) in [
         ("briar-strike", "briar", "strike", "harbormouse"),
         ("harbormouse-lunge", "harbormouse", "lunge", "briar"),
     ] {
-        let viewer = (world.state().actors())
+        let viewer = (session.world().actors())
             .get::<ControlType>(&actor.into())
             .viewer();
         let target = Target::Actor(target.into());
@@ -125,9 +126,9 @@ fn fight(base: &Path, warmup: u32, refused: Option<Reason>) -> Result<(), String
             verb,
             target,
         );
-        world.queue_intent(intent);
+        session.queue_intent(intent);
     }
-    world
+    session
         .play(&harbormouse, &wall)
         .map_err(|err| fail("fight", err.to_string()))?;
     let entries = journal::read_records(&pack.0).map_err(|fault| fail("journal", fault.detail))?;
@@ -154,8 +155,8 @@ fn fight(base: &Path, warmup: u32, refused: Option<Reason>) -> Result<(), String
         "warm-up {warmup}: not refused with {refused:?}: {last:?}"
     );
     crate::round::verify_pack(&pack.0, None).map_err(|err| fail("verify", err.to_string()))?;
-    drop(world);
-    World::resume(
+    drop(session);
+    session::Session::resume(
         &pack.0,
         crate::lock_pack(&pack.0).map_err(|err| fail("lock", err.to_string()))?,
     )

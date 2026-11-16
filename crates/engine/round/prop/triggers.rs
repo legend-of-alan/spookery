@@ -24,9 +24,9 @@ use std::fs;
 use std::path::Path;
 
 use crate::rules::effect::EffectKind;
+use crate::session;
 use crate::store::journal;
 use crate::store::records::{Record, RoundRecord, Step};
-use crate::world::World;
 use proptest::prelude::*;
 use proptest::test_runner::{TestCaseError, TestRunner};
 
@@ -73,7 +73,7 @@ fn assert_triggers_stop(
     rules: &[RuleSpec],
     rounds: usize,
 ) -> Result<(), TestCaseError> {
-    let max = World::open(pack)
+    let max = session::Session::open(pack)
         .map_err(|err| TestCaseError::fail(err.to_string()))?
         .budget()
         .max_trigger_depth;

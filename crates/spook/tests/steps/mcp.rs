@@ -1,4 +1,4 @@
-use spookery_engine::testing::state_of;
+use spookery_engine::testing::world_of;
 use std::io::{Read, Write};
 use std::net::TcpStream;
 use std::time::Duration;
@@ -359,7 +359,7 @@ fn a_queue_call_with_to_is_accepted(world: &mut World) {
 
 #[then(expr = "world time moved forward")]
 fn world_time_moved_forward(world: &mut World) {
-    let now = state_of(table::pack(world));
+    let now = world_of(table::pack(world));
     assert!(now.world_time > 1080, "world_time {}", now.world_time);
 }
 

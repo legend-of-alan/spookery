@@ -123,7 +123,8 @@ async fn dispatch(cli: Cli) -> Result<(), String> {
             let mcp_addr = parse_mcp_addr(mcp_addr)?;
             // Lock before resume: taking the lock repairs a crashed pack, which is a write.
             let lock = spookery_engine::lock_pack(&pack).map_err(|e| e.to_string())?;
-            let world = spookery_engine::World::resume(&pack, lock).map_err(|e| e.to_string())?;
+            let session =
+                spookery_engine::Session::resume(&pack, lock).map_err(|e| e.to_string())?;
             let mut config = spookery_server::Config::new(addr);
             config.mcp_addr = mcp_addr;
             config.out = Box::new(std::io::stdout());
@@ -140,7 +141,7 @@ async fn dispatch(cli: Cli) -> Result<(), String> {
                     std::process::exit(130);
                 });
             };
-            spookery_server::serve(world, config, shutdown)
+            spookery_server::serve(session, config, shutdown)
                 .await
                 .map_err(|e| e.to_string())
         }
@@ -174,7 +175,7 @@ async fn dispatch(cli: Cli) -> Result<(), String> {
         #[cfg(feature = "server")]
         Command::Status { pack } => {
             // Status holds a read guard, not the pack lock, and writes nothing but that lock file.
-            let text = spookery_engine::World::peek_digest(&pack).map_err(|e| e.to_string())?;
+            let text = spookery_engine::Session::peek_digest(&pack).map_err(|e| e.to_string())?;
             print!("{text}");
             Ok(())
         }

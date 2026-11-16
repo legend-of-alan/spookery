@@ -3,13 +3,13 @@
 use spookery_protocol::{CommandView, PlaceView, Seat, COMMANDS};
 
 use crate::canon::Canon;
+use crate::ecs::id::ActorId;
+use crate::ecs::{self, component, Presence};
 use crate::intent::{Target, Viewer};
 use crate::rules::cond;
 use crate::rules::gate::{list_ids, verb_for, NamedId};
 use crate::rules::rule::{Owner, TargetKind, When};
 use crate::rules::travel::{exit_stood_on, exit_view, exits_at};
-use crate::state::id::ActorId;
-use crate::state::{component, Presence, State};
 use crate::Reason;
 
 /// `help`: the built-in player commands but `claim`, then each pack verb `verb_for` reaches
@@ -18,11 +18,11 @@ use crate::Reason;
 /// player reads. Cost is not checked.
 pub(crate) fn help(
     canon: &Canon,
-    state: &State,
+    world: &ecs::World,
     presence: &Presence,
     actor_id: &ActorId,
 ) -> Result<Vec<CommandView>, Reason> {
-    if !state.actors().contains(actor_id) {
+    if !world.actors().contains(actor_id) {
         return Err(Reason::UnknownId);
     }
     let viewer = Viewer::Player(actor_id.clone());
@@ -36,7 +36,7 @@ pub(crate) fn help(
             owner: None,
         })
         .collect();
-    let ids = list_ids(canon, state, presence, &viewer);
+    let ids = list_ids(canon, world, presence, &viewer);
     let name_of = |id: &String| match ids.iter().find(|named_id| named_id.id == *id) {
         Some(named_id) => Ok(named_id.name.clone()),
         None => find_place_name(canon, id).ok_or(Reason::UnknownId),
@@ -46,7 +46,7 @@ pub(crate) fn help(
         .collect();
     for verb_id in canon.verbs() {
         for &hint in &hints {
-            let Some(rule) = verb_for(canon, state, actor_id, &verb_id, hint) else {
+            let Some(rule) = verb_for(canon, world, actor_id, &verb_id, hint) else {
                 continue;
             };
             // A rule reached by naming its owner carries that owner. Any other is bare.
@@ -58,7 +58,7 @@ pub(crate) fn help(
                 (Owner::Item(id), Some(hint)) if id == hint => (Some(id), Target::Item(id.clone())),
                 _ => continue,
             };
-            if !cond::if_holds(canon, state, presence, &viewer, &verb_id, target, &rule.if_) {
+            if !cond::if_holds(canon, world, presence, &viewer, &verb_id, target, &rule.if_) {
                 continue;
             }
             let kind = match &rule.when {
@@ -67,7 +67,7 @@ pub(crate) fn help(
             };
             let target_ids = match owner {
                 Some(owner) => vec![owner.clone()],
-                None => list_target_ids(canon, state, actor_id, kind, &ids),
+                None => list_target_ids(canon, world, actor_id, kind, &ids),
             };
             let command = CommandView {
                 id: verb_id.clone(),
@@ -87,19 +87,19 @@ pub(crate) fn help(
 /// actors or items among `ids`, or the places they visited.
 fn list_target_ids(
     canon: &Canon,
-    state: &State,
+    world: &ecs::World,
     actor_id: &ActorId,
     kind: TargetKind,
     ids: &[NamedId],
 ) -> Vec<String> {
     let picked: Vec<String> = match kind {
         TargetKind::None => Vec::new(),
-        TargetKind::Exit => state
+        TargetKind::Exit => world
             .actors()
             .get::<component::Place>(actor_id)
             .get()
             .and_then(|place| canon.places.get(place))
-            .map(|place| exits_at(canon, state, actor_id, place))
+            .map(|place| exits_at(canon, world, actor_id, place))
             .unwrap_or_default()
             .into_iter()
             .map(|exit| exit.exit_id)
@@ -107,7 +107,7 @@ fn list_target_ids(
         TargetKind::Actor => ids
             .iter()
             .filter(|named_id| {
-                state
+                world
                     .actors()
                     .contains(&ActorId::from(named_id.id.as_str()))
             })
@@ -118,7 +118,7 @@ fn list_target_ids(
             .filter(|named_id| canon.items.contains_key(&named_id.id))
             .map(|named_id| named_id.id.clone())
             .collect(),
-        TargetKind::Place => (state.actors().get::<component::Visit>(actor_id).iter())
+        TargetKind::Place => (world.actors().get::<component::Visit>(actor_id).iter())
             .map(|(place, _)| place.to_string())
             .collect(),
     };
@@ -135,13 +135,13 @@ fn list_target_ids(
 /// exit goes, its ticks and whether it is locked are read now.
 pub(crate) fn map(
     canon: &Canon,
-    state: &State,
+    world: &ecs::World,
     actor_id: &ActorId,
 ) -> Result<Vec<PlaceView>, Reason> {
-    if !state.actors().contains(actor_id) {
+    if !world.actors().contains(actor_id) {
         return Err(Reason::UnknownId);
     }
-    let places = (state.actors().get::<component::Visit>(actor_id).iter()).map(|(id, seen)| {
+    let places = (world.actors().get::<component::Visit>(actor_id).iter()).map(|(id, seen)| {
         Ok(PlaceView {
             name: find_place_name(canon, id).ok_or(Reason::UnknownId)?,
             exits: canon
@@ -152,7 +152,7 @@ pub(crate) fn map(
                         .exits
                         .iter()
                         .filter(|exit| seen.contains(&exit.id))
-                        .map(|exit| exit_view(canon, state, exit))
+                        .map(|exit| exit_view(canon, world, exit))
                         .collect()
                 })
                 .unwrap_or_default(),
@@ -164,11 +164,11 @@ pub(crate) fn map(
 /// What keeps this actor busy, and until when: `on the stairs until tick 1300` on a walk,
 /// `chanting until tick 1300` on any other timed action, read from its verb, and
 /// `recovering until tick 1300` in a cooldown.
-pub(crate) fn busy_line(canon: &Canon, state: &State, actor_id: &ActorId) -> Option<String> {
-    let act = state.actors().get::<component::Act>(actor_id);
+pub(crate) fn busy_line(canon: &Canon, world: &ecs::World, actor_id: &ActorId) -> Option<String> {
+    let act = world.actors().get::<component::Act>(actor_id);
     let busy = act.get()?;
-    let place = state.actors().get::<component::Place>(actor_id).get()?;
-    if !act.is_busy(state.world_time) {
+    let place = world.actors().get::<component::Place>(actor_id).get()?;
+    if !act.is_busy(world.world_time) {
         return None;
     }
     let until = busy.busy_until?;
@@ -192,8 +192,8 @@ fn gerund(verb: &str) -> String {
 }
 
 /// Place prose for this actor's current place.
-pub(crate) fn place_prose(canon: &Canon, state: &State, actor_id: &ActorId) -> String {
-    let place = state.actors().get::<component::Place>(actor_id).get();
+pub(crate) fn place_prose(canon: &Canon, world: &ecs::World, actor_id: &ActorId) -> String {
+    let place = world.actors().get::<component::Place>(actor_id).get();
     let Some(place) = place.and_then(|place| canon.places.get(place)) else {
         return String::new();
     };

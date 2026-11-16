@@ -1,4 +1,4 @@
-use spookery_engine::testing::{place_of, state_of};
+use spookery_engine::testing::{place_of, world_of};
 use spookery_engine::{component, ActorId, Meter};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -107,7 +107,7 @@ fn the_pack_adds_meter(world: &mut World, id: String, start: i64) {
 
 #[then(expr = "every actor has {string} at {int}")]
 fn every_actor_has_meter_at(world: &mut World, id: String, base: i64) {
-    let now = state_of(table::pack(world));
+    let now = world_of(table::pack(world));
     for actor in now.actors().query::<ActorId>().iter() {
         let meter = now.actors().get::<component::Meter>(actor).get(&id);
         let got = meter.map(|meter| meter.base);
@@ -188,7 +188,7 @@ fn the_host_refuses_to_start(world: &mut World, code: String) {
 
 #[then(expr = "state_rev is 2")]
 fn state_rev_is_2(world: &mut World) {
-    let now = state_of(table::pack(world));
+    let now = world_of(table::pack(world));
     assert_eq!(now.state_rev, 2);
     assert_eq!(now.pack_rev, docks_pack_rev());
     assert_eq!(place_of(&now, "rowan"), "docks_shop");
@@ -212,7 +212,7 @@ fn migrate_keeps_the_hand_edit(world: &mut World) {
     let pack = table::pack(world);
     let rev = spookery_engine::pack_rev(pack).unwrap();
     assert_ne!(rev, docks_pack_rev());
-    let now = state_of(pack);
+    let now = world_of(pack);
     assert_eq!(now.pack_rev, rev);
     assert_eq!(now.state_rev, 1);
     assert_eq!(now.world_time, 7);
@@ -240,7 +240,7 @@ fn the_shops_lamp_oil_is_hand_edited(world: &mut World, count: u32) {
 
 #[then(expr = "the shop has {int} lamp oil")]
 fn the_shop_has_lamp_oil(world: &mut World, count: u32) {
-    let now = state_of(table::pack(world));
+    let now = world_of(table::pack(world));
     let shop = "docks_shop".into();
     let stock = now.places().get::<component::Item>(&shop);
     assert_eq!(stock.get("lamp_oil").copied(), Some(count));
@@ -279,7 +279,7 @@ fn rowan_moves_vigor_and_nell_joins(world: &mut World, offset: i64) {
 
 #[then(expr = "{word}'s vigor is at base {int} and offset {int}")]
 fn vigor_is_at(world: &mut World, actor: String, base: i64, offset: i64) {
-    let now = state_of(table::pack(world));
+    let now = world_of(table::pack(world));
     let id = actor.as_str().into();
     let vigor = now.actors().get::<component::Meter>(&id).get("vigor");
     let got = vigor.map(|vigor| (vigor.base, vigor.offset));

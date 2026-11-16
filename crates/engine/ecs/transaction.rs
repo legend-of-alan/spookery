@@ -7,8 +7,9 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use super::change::{self, Change};
 use super::component::{meter, Meter, Modifier};
-use super::{entity, sort_unique, undo, MemoryLine, Reader, Save, State};
+use super::{entity, sort_unique, undo, MemoryLine, Reader, Save};
 use crate::canon::Budget;
+use crate::ecs;
 use crate::Reason;
 
 /// What the round's writes owe it: the keys counted toward the budget, in the order they were
@@ -94,7 +95,7 @@ pub(crate) struct Savepoint {
     memory_writes: u64,
 }
 
-impl State {
+impl ecs::World {
     /// Open a round on this save under `budget`'s limits. Opening it on writes not yet accepted
     /// would forget what the round counted, so that panics in every build.
     pub(crate) fn open_round(&mut self, budget: &Budget) {
@@ -145,7 +146,7 @@ impl State {
         (save.actors.logs_mut().into_iter())
             .chain(save.places.logs_mut())
             .chain(save.stories.logs_mut())
-            .chain(save.world.logs_mut())
+            .chain(save.globals.logs_mut())
             .chain([notes])
     }
 
@@ -262,7 +263,7 @@ impl Save {
 }
 
 #[cfg(test)]
-impl State {
+impl ecs::World {
     /// How many keys the round has counted toward the budget.
     pub(crate) fn keys_counted(&self) -> usize {
         self.transaction.key_order.len()
@@ -273,17 +274,17 @@ impl State {
 mod tests {
     use std::sync::Arc;
 
+    use crate::ecs::component::meter::{Meter, MeterWrite};
+    use crate::ecs::id::{ActorId, PlaceId, StoryId};
+    use crate::ecs::{self, Presence, Save};
+    use crate::ecs::{component, entity};
     use crate::intent::Intent;
     use crate::rules::effect::{Effect, EffectKind};
-    use crate::state::component::meter::{Meter, MeterWrite};
-    use crate::state::id::{ActorId, PlaceId, StoryId};
-    use crate::state::{component, entity};
-    use crate::state::{Presence, Save, State};
-    use crate::{Reason, World};
+    use crate::{session, Reason};
 
-    fn docks() -> World<()> {
+    fn docks() -> session::Session<()> {
         let pack = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/packs/docks");
-        World::open(&pack).expect("open")
+        session::Session::open(&pack).expect("open")
     }
 
     #[test]
@@ -291,22 +292,23 @@ mod tests {
         let opened = docks();
         let mut canon = opened.canon().clone();
         canon.budget.max_state_keys_mutated = 2;
-        let mut state = State::new(Save::clone(opened.state()), Arc::new(canon));
+        let mut world = ecs::World::new(Save::clone(opened.world()), Arc::new(canon));
         // Bram's vigor sits clamped at its minimum: taking more moves the offset, not the value.
         let bram = ActorId::from("bram");
         let vigor = Meter {
             base: 1,
             offset: -5,
         };
-        let mut actors = state.actors_mut();
+        let mut actors = world.actors_mut();
         actors
             .get_mut::<Meter>(&bram)
             .set("vigor", Some(vigor))
             .unwrap();
-        state.accept();
-        let world = World::from_parts(opened.root(), state);
-        let (canon, mut state, nobody) = (world.canon(), world.begin_round(), Presence::default());
-        let intent = Intent::habit(world.state(), &"mira".into(), "leave_door_note");
+        world.accept();
+        let session = session::Session::from_parts(opened.root(), world);
+        let (canon, mut world, nobody) =
+            (session.canon(), session.begin_round(), Presence::default());
+        let intent = Intent::habit(session.world(), &"mira".into(), "leave_door_note");
         let mut write = |actor: &str, key: &str, delta: i64| {
             let kind = EffectKind::Meter {
                 entity: entity::Id::Actor(actor.into()),
@@ -314,7 +316,7 @@ mod tests {
                 write: MeterWrite::Offset(delta),
             };
             let effect = Effect::new(intent.actor.as_ref(), &intent.id, kind);
-            effect.apply(canon, &mut state, &nobody, &intent)
+            effect.apply(canon, &mut world, &nobody, &intent)
         };
         assert_eq!(write("mira", "rest", 0), Ok(()), "unchanged: no key");
         assert_eq!(write("mira", "rest", 1), Ok(()), "the first key");
@@ -326,27 +328,27 @@ mod tests {
 
     #[test]
     fn a_rollback_undoes_the_writes_after_its_savepoint_and_keeps_those_before() {
-        let world = docks();
-        let mut state = world.begin_round();
+        let session = docks();
+        let mut world = session.begin_round();
         let mira = ActorId::from("mira");
-        let rest = |state: &mut State, actor: &ActorId, delta: i64| {
-            let shifted = state
+        let rest = |world: &mut ecs::World, actor: &ActorId, delta: i64| {
+            let shifted = world
                 .actors_mut()
                 .get_mut::<Meter>(actor)
                 .shift("rest", delta);
             shifted.expect("rest moves");
         };
         // The write just before the savepoint stays; the one just after it goes.
-        rest(&mut state, &mira, -1);
-        let before = state.clone();
-        let point = state.savepoint();
-        rest(&mut state, &mira, -1);
-        state.rollback(point);
+        rest(&mut world, &mira, -1);
+        let before = world.clone();
+        let point = world.savepoint();
+        rest(&mut world, &mira, -1);
+        world.rollback(point);
         assert_eq!(
-            *state, *before,
+            *world, *before,
             "only the write after the savepoint is undone"
         );
-        let changes = state.take_changes();
+        let changes = world.take_changes();
         let keys: Vec<_> = changes
             .iter()
             .map(|change| change.key.to_string())
@@ -360,7 +362,7 @@ mod tests {
 
     #[test]
     fn a_meter_that_comes_back_inside_one_take_is_not_taken_and_stays_counted() {
-        use crate::state::component::modifier::{self, Modifier, ModifierDef};
+        use crate::ecs::component::modifier::{self, Modifier, ModifierDef};
         let opened = docks();
         let mut canon = opened.canon().clone();
         let fatigue = ModifierDef {
@@ -369,25 +371,26 @@ mod tests {
             hidden: false,
         };
         canon.modifiers.insert("fatigue".to_string(), fatigue);
-        let save = Save::clone(opened.state());
-        let world = World::from_parts(opened.root(), State::new(save, Arc::new(canon)));
-        let mut state = world.begin_round();
+        let save = Save::clone(opened.world());
+        let session =
+            session::Session::from_parts(opened.root(), ecs::World::new(save, Arc::new(canon)));
+        let mut world = session.begin_round();
         let mira = ActorId::from("mira");
         // A: down one, B: back up one, in one take window.
         for delta in [-1, 1] {
-            let shifted = state
+            let shifted = world
                 .actors_mut()
                 .get_mut::<Meter>(&mira)
                 .shift("rest", delta);
             shifted.expect("rest moves");
         }
-        assert_eq!(modifier::value(state.actors(), &mira, "rest"), Ok(3));
+        assert_eq!(modifier::value(world.actors(), &mira, "rest"), Ok(3));
         assert_eq!(
-            state.take_changes(),
+            world.take_changes(),
             [],
             "the key that came back is dropped"
         );
-        assert_eq!(state.keys_counted(), 1, "and still counted");
+        assert_eq!(world.keys_counted(), 1, "and still counted");
         // The same with a modifier that lowers rest, put on and taken off.
         let lowers = Modifier {
             meter: "rest".to_string(),
@@ -395,15 +398,15 @@ mod tests {
             max_ticks: 99,
             stacks: vec![-2],
         };
-        let put = (state.actors_mut().get_mut::<Modifier>(&mira)).set("fatigue", Some(lowers));
+        let put = (world.actors_mut().get_mut::<Modifier>(&mira)).set("fatigue", Some(lowers));
         put.unwrap();
-        assert_eq!(modifier::value(state.actors(), &mira, "rest"), Ok(1));
-        let taken = (state.actors_mut().get_mut::<Modifier>(&mira)).set("fatigue", None);
+        assert_eq!(modifier::value(world.actors(), &mira, "rest"), Ok(1));
+        let taken = (world.actors_mut().get_mut::<Modifier>(&mira)).set("fatigue", None);
         taken.unwrap();
-        let changes = state.take_changes();
+        let changes = world.take_changes();
         assert_eq!(changes, [], "the meter and the modifier are dropped");
         assert_eq!(
-            state.keys_counted(),
+            world.keys_counted(),
             2,
             "the meter's key was counted already; the modifier's key is new"
         );
@@ -411,29 +414,29 @@ mod tests {
 
     #[test]
     fn a_rollback_takes_an_added_actor_off_every_store_it_was_put_on() {
-        let world = docks();
-        let mut state = world.begin_round();
-        let before = state.clone();
-        let point = state.savepoint();
+        let session = docks();
+        let mut world = session.begin_round();
+        let before = world.clone();
+        let point = world.savepoint();
         let nell = ActorId::from("nell");
-        state
+        world
             .actors_mut()
             .add_actor(&nell, component::ControlType::Npc, "docks_shop");
-        let added = state.actors().get::<component::Act>(&nell).get().is_some();
+        let added = world.actors().get::<component::Act>(&nell).get().is_some();
         assert!(added, "Nell is added");
-        state.rollback(point);
+        world.rollback(point);
         assert_eq!(
-            *state, *before,
+            *world, *before,
             "her control type, place and action state all go"
         );
     }
 
     #[test]
     fn a_flag_goes_only_on_a_place_or_story_the_pack_defines() {
-        let world = docks();
-        let mut state = world.begin_round();
-        let before = state.clone();
-        let place = state
+        let session = docks();
+        let mut world = session.begin_round();
+        let before = world.clone();
+        let place = world
             .places_mut()
             .get_mut::<component::Flag>(&PlaceId::from("nowhere"))
             .set("lit", true);
@@ -442,7 +445,7 @@ mod tests {
             Err(Reason::UnknownId),
             "the pack has no place nowhere"
         );
-        let story = state
+        let story = world
             .stories_mut()
             .get_mut::<component::Flag>(&StoryId::from("nowhere"))
             .set("lit", true);
@@ -451,6 +454,6 @@ mod tests {
             Err(Reason::UnknownId),
             "the pack has no story nowhere"
         );
-        assert_eq!(*state, *before, "the save is unchanged");
+        assert_eq!(*world, *before, "the save is unchanged");
     }
 }

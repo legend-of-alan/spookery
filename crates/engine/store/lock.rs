@@ -75,7 +75,7 @@ pub struct WriteGuard {
     _file: LockedFile,
 }
 
-/// Held while a reader builds a World from the files on disk.
+/// Held while a reader builds a session from the files on disk.
 pub struct ReadGuard {
     _file: LockedFile,
 }

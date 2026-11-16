@@ -1,9 +1,9 @@
 //! The actor lifecycle only fixtures need: production has no path that adds or removes an actor.
 //! Each component goes through its production writer where one exists.
 
-use crate::state::component::{self, Meter};
-use crate::state::id::ActorId;
-use crate::state::{entity, nested_map, Act, Writer};
+use crate::ecs::component::{self, Meter};
+use crate::ecs::id::ActorId;
+use crate::ecs::{entity, nested_map, Act, Writer};
 use crate::Reason;
 
 impl Writer<'_, entity::Actors> {

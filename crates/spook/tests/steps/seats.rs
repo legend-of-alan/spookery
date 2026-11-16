@@ -1,5 +1,5 @@
 use spookery_engine::component;
-use spookery_engine::testing::state_of;
+use spookery_engine::testing::world_of;
 use std::fs;
 
 use cucumber::{given, then, when};
@@ -73,7 +73,7 @@ fn the_present_actor_is(world: &mut World, actor: String) {
 
 #[then(expr = "state_rev is 0")]
 fn state_rev_is_0(world: &mut World) {
-    assert_eq!(state_of(table::pack(world)).state_rev, 0);
+    assert_eq!(world_of(table::pack(world)).state_rev, 0);
 }
 
 #[when(expr = "the state directory is remembered")]
@@ -148,7 +148,7 @@ Lark watches the street from a dry doorway.
         let mut actors = now.actors_mut();
         actors.copy_actor(from, to, "docks_street").unwrap();
     });
-    spookery_engine::World::open(&pack).unwrap_or_else(|err| panic!("four-pc pack: {err}"));
+    spookery_engine::Session::open(&pack).unwrap_or_else(|err| panic!("four-pc pack: {err}"));
     world.pack = Some(pack);
 }
 
@@ -190,7 +190,7 @@ fn a_one_player_docks_table(world: &mut World) {
         actors.remove_actor(&"harbormouse".into()).unwrap();
         actors.remove_actor(&"wren".into()).unwrap();
     });
-    spookery_engine::World::open(&pack).unwrap_or_else(|err| panic!("one-pc pack: {err}"));
+    spookery_engine::Session::open(&pack).unwrap_or_else(|err| panic!("one-pc pack: {err}"));
     table::listen(world, &pack);
     table::seat_actor(world, &pack, "rowan");
     world.pack = Some(pack);
@@ -238,7 +238,7 @@ fn a_docks_table_where_one_pc_knows_a_hidden_fact(world: &mut World) {
             .learn(&[HIDDEN_FACT.to_string()])
             .unwrap();
     });
-    spookery_engine::World::open(&pack).unwrap_or_else(|err| panic!("hidden fact pack: {err}"));
+    spookery_engine::Session::open(&pack).unwrap_or_else(|err| panic!("hidden fact pack: {err}"));
     world.pack = Some(pack);
 }
 
@@ -332,7 +332,7 @@ fn the_round_log_records_both_waits(world: &mut World) {
 fn each_wait_committed_its_own_round(world: &mut World) {
     table::wait_round(world, 1090);
     let pack = table::pack(world);
-    assert_eq!(state_of(pack).round_index, 2);
+    assert_eq!(world_of(pack).round_index, 2);
     assert_eq!(
         list_round_keys(pack),
         vec!["round-0001".to_string(), "round-0002".to_string()]
@@ -513,7 +513,7 @@ fn a_round_commits(world: &mut World) {
 }
 
 fn street_oil(world: &World) -> u32 {
-    let now = state_of(table::pack(world));
+    let now = world_of(table::pack(world));
     now.places()
         .get::<component::Item>(&"docks_street".into())
         .get(HUMMED_OIL)

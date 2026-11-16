@@ -2,9 +2,9 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::ecs::component::{Component, Ref};
+use crate::ecs::entity;
 use crate::intent::Viewer;
-use crate::state::component::{Component, Ref};
-use crate::state::entity;
 
 /// Who controls an actor: a player, for a PC, or the engine, for an NPC. An actor exists when it
 /// has one.

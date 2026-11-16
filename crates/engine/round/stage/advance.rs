@@ -1,7 +1,7 @@
 //! Move world time forward.
 
 use crate::canon::{Budget, Canon};
-use crate::state::{ActCounter, Presence, State};
+use crate::ecs::{self, ActCounter, Presence};
 use crate::Reason;
 
 /// Where the round stands: its index and the ticks it spans.
@@ -13,12 +13,12 @@ pub(crate) struct RoundTime {
 
 pub(crate) fn run(
     canon: &Canon,
-    state: &mut State,
+    world: &mut ecs::World,
     presence: &Presence,
     wall: &str,
 ) -> Result<RoundTime, Reason> {
-    let round_index = state.round_index + 1;
-    let world_before = state.world_time;
+    let round_index = world.round_index + 1;
+    let world_before = world.world_time;
     let budget = &canon.budget;
     let ticks = round_ticks(presence.players, budget);
     let world_after = world_before.saturating_add(ticks);
@@ -26,14 +26,14 @@ pub(crate) fn run(
         (ActCounter::IdleActsThisWindow, budget.idle_act_window_ticks),
         (ActCounter::LiveActsThisWindow, budget.live_act_window_ticks),
     ];
-    state.round_index = round_index;
-    state.world_time = world_after;
-    state.last_round_at = wall.to_string();
-    state.actors_mut().expire_modifiers(world_after)?;
+    world.round_index = round_index;
+    world.world_time = world_after;
+    world.last_round_at = wall.to_string();
+    world.actors_mut().expire_modifiers(world_after)?;
     // Each act count resets when the round crosses the end of its window.
     for (counter, ticks) in windows {
         if world_before / ticks != world_after / ticks {
-            state.actors_mut().reset_acts(counter)?;
+            world.actors_mut().reset_acts(counter)?;
         }
     }
     Ok(RoundTime {

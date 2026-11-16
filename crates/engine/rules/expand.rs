@@ -1,6 +1,9 @@
 //! Turn a rule template into effects for one intent.
 
 use crate::canon::{Canon, OPEN};
+use crate::ecs::component::meter::MeterWrite;
+use crate::ecs::id::ActorId;
+use crate::ecs::{self, component};
 use crate::entity;
 use crate::intent::Target;
 use crate::round::dice::Roller;
@@ -11,9 +14,6 @@ use crate::rules::grammar;
 use crate::rules::roll::Outcome;
 use crate::rules::roll::{MoveReport, Roll};
 use crate::rules::rule::{EffectTemplate, LocationTo, NarrateTo, ResistSpec, Rule};
-use crate::state::component::meter::MeterWrite;
-use crate::state::id::ActorId;
-use crate::state::{component, State};
 use crate::Reason;
 
 /// Why a rule's effects are expanded and landed, which decides what the landing journals.
@@ -100,7 +100,7 @@ fn expand_template(
     last_resist: &mut Option<Outcome>,
     dice: &mut dyn Dice,
 ) -> Result<(), Reason> {
-    let (canon, state, intent) = (context.canon, context.state, context.intent);
+    let (canon, world, intent) = (context.canon, context.world, context.intent);
     let viewer = intent.actor.as_ref();
     if let Some(spec) = template.resist() {
         let shrugged = match spec {
@@ -118,7 +118,7 @@ fn expand_template(
             } => {
                 let actor = expr::resolve_actor(context, subject)?;
                 let number = expr::eval_with_dice(context, threshold, dice)?;
-                let band = dice.resist(canon, state, actor, check, number)?;
+                let band = dice.resist(canon, world, actor, check, number)?;
                 *last_resist = Some(band);
                 if band == Outcome::Success {
                     for alt in resisted {
@@ -253,7 +253,7 @@ fn expand_template(
             to, text, fact_ids, ..
         } => {
             let to = match to {
-                NarrateTo::Here => state.actors_at(expr::resolve_here(context)?),
+                NarrateTo::Here => world.actors_at(expr::resolve_here(context)?),
                 NarrateTo::Self_ => {
                     vec![expr::resolve_actor(context, &grammar::Object::Self_)?.clone()]
                 }
@@ -312,7 +312,7 @@ fn meter_offset(
         )?));
     }
     let desired = expr::eval_with_dice(context, set.ok_or(Reason::Schema)?, dice)?;
-    let current = (context.state.entities().get::<component::Meter>(id)).value(key)?;
+    let current = (context.world.entities().get::<component::Meter>(id)).value(key)?;
     Ok(MeterWrite::Offset(
         desired.checked_sub(current).ok_or(Reason::OutOfRange)?,
     ))
@@ -322,7 +322,7 @@ fn location_effect(context: &Context, to: &str) -> Result<Effect, Reason> {
     let intent = context.intent;
     let actor_id = expr::resolve_actor(context, &grammar::Object::Self_)?.clone();
     let from = context
-        .state
+        .world
         .actors()
         .get::<component::Place>(&actor_id)
         .get();
@@ -356,7 +356,7 @@ impl Dice for PreviewDice {
     fn resist(
         &mut self,
         _: &Canon,
-        _: &State,
+        _: &ecs::World,
         _: &ActorId,
         _: &str,
         _: i64,

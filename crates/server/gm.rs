@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use rmcp::handler::server::tool::schema_for_type;
 use serde_json::{Map, Value};
-use spookery_engine::{ActorId, Presence, Reason, RoundOutput, TapeRecord, World};
+use spookery_engine::{ActorId, Presence, Reason, RoundOutput, TapeRecord};
 
 use super::frames;
 use super::table::commit_then_fast_forward;
@@ -44,18 +44,18 @@ impl Reply {
 /// Run one GM command. `presence` is who the seats hold. A command that is not a GM command is
 /// `SCHEMA`.
 pub(super) fn run(
-    world: &mut World,
+    session: &mut spookery_engine::Session,
     presence: &Presence,
     command: &str,
     args: &Map<String, Value>,
 ) -> Result<Reply, Reason> {
     let args = Some(args);
     match command {
-        "status" => status(world, presence, args),
-        "perceive" => perceive(world, presence, args),
-        "queue" => queue(world, presence, args),
-        "say" => say(world, presence, args),
-        "commit" => commit(world, presence, args),
+        "status" => status(session, presence, args),
+        "perceive" => perceive(session, presence, args),
+        "queue" => queue(session, presence, args),
+        "say" => say(session, presence, args),
+        "commit" => commit(session, presence, args),
         "release" => release(args),
         _ => Err(Reason::Schema),
     }
@@ -96,13 +96,13 @@ pub(super) fn describe(command: &str) -> Option<(&'static str, Arc<Map<String, V
 
 /// GM `say`. `from` is the seat, or the NPC `as` names. A supplied `from` appends nothing.
 fn say(
-    world: &mut World,
+    session: &mut spookery_engine::Session,
     presence: &Presence,
     arguments: Option<&Map<String, Value>>,
 ) -> Result<Reply, Reason> {
     let args: SayArgs = parse_args(arguments).map_err(|_| Reason::Schema)?;
     let npc_id = args.npc_id.as_deref().map(ActorId::from);
-    let speech = world.say_as_gm(presence, npc_id.as_ref(), args.to.as_ref(), &args.text)?;
+    let speech = session.say_as_gm(presence, npc_id.as_ref(), args.to.as_ref(), &args.text)?;
     let mut reply = Reply::new(frames::render_speech(&speech, true));
     reply.speech = Some(speech);
     Ok(reply)
@@ -118,19 +118,19 @@ fn release(arguments: Option<&Map<String, Value>>) -> Result<Reply, Reason> {
 
 /// Without `include_round` only an empty queue commits, and it plays nothing.
 fn commit(
-    world: &mut World,
+    session: &mut spookery_engine::Session,
     presence: &Presence,
     arguments: Option<&Map<String, Value>>,
 ) -> Result<Reply, Reason> {
     let include_round = parse_args::<CommitArgs>(arguments)
         .map_err(|_| Reason::Schema)?
         .include_round;
-    let committed = !world.queued_intents().is_empty();
+    let committed = !session.queued_intents().is_empty();
     if committed && !include_round {
         return Err(Reason::NotInSpec);
     }
     let outputs = if include_round {
-        commit_then_fast_forward(world, presence)?
+        commit_then_fast_forward(session, presence)?
     } else {
         Vec::new()
     };
@@ -148,7 +148,7 @@ fn commit(
                 journal_path,
             )
         }
-        None => (world.state().state_rev, &[][..], None),
+        None => (session.world().state_rev, &[][..], None),
     };
     let body = frames::render_committed(state_rev, changed_keys, journal_path, &outputs);
     Ok(Reply {
@@ -158,7 +158,7 @@ fn commit(
 }
 
 fn perceive(
-    world: &mut World,
+    session: &mut spookery_engine::Session,
     presence: &Presence,
     arguments: Option<&Map<String, Value>>,
 ) -> Result<Reply, Reason> {
@@ -168,27 +168,27 @@ fn perceive(
         .max_body_chars
         .map_or(Ok(PERCEIVE_BODY_CHARS), usize::try_from)
         .map_err(|_| Reason::Schema)?;
-    let view = world.perceive_trimmed(presence, &viewer_id, budget)?;
+    let view = session.perceive_trimmed(presence, &viewer_id, budget)?;
     Ok(Reply::new(frames::render_view(&view)))
 }
 
 fn status(
-    world: &mut World,
+    session: &mut spookery_engine::Session,
     presence: &Presence,
     arguments: Option<&Map<String, Value>>,
 ) -> Result<Reply, Reason> {
     parse_args::<NoArgs>(arguments).map_err(|_| Reason::Schema)?;
     Ok(Reply::new(frames::render_status(
-        world.state(),
+        session.world(),
         presence,
-        world.queued_intents(),
-        world.pack_summary(),
+        session.queued_intents(),
+        session.pack_summary(),
     )))
 }
 
 /// A PC a player holds takes only that player's moves, so the GM's is `ACTOR_MISMATCH`.
 fn queue(
-    world: &mut World,
+    session: &mut spookery_engine::Session,
     presence: &Presence,
     arguments: Option<&Map<String, Value>>,
 ) -> Result<Reply, Reason> {
@@ -204,7 +204,7 @@ fn queue(
     }
     let target = call.target.clone().filter(|target| !target.is_empty());
     let new_id = || Ok(uuid::Uuid::new_v4().to_string());
-    let queued = world.queue_gm_intent(presence, call, new_id)?;
+    let queued = session.queue_gm_intent(presence, call, new_id)?;
     Ok(Reply::new(ServerBody::Queued {
         intent: queued.id,
         actor: queued.actor_id,
@@ -216,7 +216,7 @@ fn queue(
 #[cfg(test)]
 mod tests {
     use serde_json::json;
-    use spookery_engine::{testing::copy_pack, World};
+    use spookery_engine::testing::copy_pack;
 
     use spookery_engine::{Presence, Reason};
 
@@ -228,7 +228,7 @@ mod tests {
     #[test]
     fn each_gm_command_runs() {
         let pack = copy_pack("docks", "gm_commands");
-        let mut world = spookery_engine::testing::resume(&pack);
+        let mut session = spookery_engine::testing::resume(&pack);
         let calls = [
             ("status", json!({})),
             ("perceive", json!({"as": "rowan"})),
@@ -246,11 +246,16 @@ mod tests {
         assert_eq!(called, gm_commands);
         for (command, args) in calls {
             let args = args.as_object().cloned().unwrap_or_default();
-            let ran = gm::run(&mut world, &Presence::default(), command, &args);
+            let ran = gm::run(&mut session, &Presence::default(), command, &args);
             assert!(!matches!(ran, Err(Reason::Schema)), "{command}");
         }
         assert!(matches!(
-            gm::run(&mut world, &Presence::default(), "fly", &Default::default()),
+            gm::run(
+                &mut session,
+                &Presence::default(),
+                "fly",
+                &Default::default()
+            ),
             Err(Reason::Schema)
         ));
     }
@@ -266,12 +271,12 @@ mod tests {
     }
 
     #[test]
-    fn parsed_intent_reaches_the_world_with_move_and_to() {
+    fn parsed_intent_reaches_the_session_with_move_and_to() {
         let pack = copy_pack("docks", "gm_intent");
-        let mut world = World::open(&pack).unwrap();
+        let mut session = spookery_engine::Session::open(&pack).unwrap();
         let args = json!({"actor_id": "rowan", "move": "wait", "to": ["wren"]});
         let call = crate::protocol::parse_args(args.as_object()).unwrap();
-        let queued = world
+        let queued = session
             .queue_gm_intent(&Presence::default(), call, || Ok("i1".into()))
             .unwrap();
         let want = QueuedMove {
@@ -280,7 +285,7 @@ mod tests {
             move_id: "wait".into(),
         };
         assert_eq!(queued, want);
-        let intent = &world.queued_intents()[0];
+        let intent = &session.queued_intents()[0];
         assert_eq!(intent.move_id, "wait");
         assert_eq!(intent.args.message_to, Some(vec!["wren".into()]));
     }

@@ -12,13 +12,13 @@ use crate::canon::source::{
     load_tagged, spot_of, Diags, Fault, FileText, Locator, Problem, VERBS_SCHEMA,
 };
 use crate::diagnostic::{schema_error, Diagnostic};
+use crate::ecs::id::{ActorId, ExitId, PlaceId};
 use crate::rules::expr::{stamp_expr, BinOp, Expr};
 use crate::rules::grammar;
 use crate::rules::rule::{
     ChangeWatch, Cond, Cost, EffectTemplate, LineColumn, LocationTo, NarrateTo, Op, Owner, Phase,
     ResistSpec, RollSpec, Rule, TargetKind, When,
 };
-use crate::state::id::{ActorId, ExitId, PlaceId};
 
 const MOVES_REPLACED: &str = "rules/moves.yaml was replaced by rules/verbs.yaml";
 

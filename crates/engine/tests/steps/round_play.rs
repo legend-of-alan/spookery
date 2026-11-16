@@ -64,8 +64,8 @@ fn a_played_d20_strike(world: &mut World) {
         "strike",
         Some("briar"),
     )];
-    let (state, _rolls, _round) = play_queued(&pack, &[], intents);
-    world.oil = spookery_engine::emit_save(&state).unwrap().into_bytes();
+    let (ecs_world, _rolls, _round) = play_queued(&pack, &[], intents);
+    world.oil = spookery_engine::emit_save(&ecs_world).unwrap().into_bytes();
     world.pack = Some(pack);
 }
 
@@ -178,8 +178,9 @@ fn a_docks_row_spilled(world: &mut World, remove: i64) {
 fn mira_plays(world: &mut World, move_id: String) {
     let pack = world.pack.as_ref().unwrap().clone();
     let id = format!("{move_id}-1");
-    let (state, rolls, round) = play_queued(&pack, &[], vec![intent(&id, "mira", &move_id, None)]);
-    let oil = state
+    let (ecs_world, rolls, round) =
+        play_queued(&pack, &[], vec![intent(&id, "mira", &move_id, None)]);
+    let oil = ecs_world
         .places()
         .get::<component::Item>(&"docks_shop".into())
         .get("lamp_oil")
@@ -216,7 +217,7 @@ fn lamp_oil_stays_the_round_names_and_no_roll_is_reported(
 #[given(expr = "the docks pack, where Mira's door-note habit is due")]
 fn the_docks_pack_where_miras_habit_is_due(world: &mut World) {
     let pack = support::copy_pack("docks", "habit-ineligible");
-    let opened = spookery_engine::World::peek(&pack).unwrap_or_else(|err| panic!("open: {err}"));
+    let opened = spookery_engine::Session::peek(&pack).unwrap_or_else(|err| panic!("open: {err}"));
     let view = opened
         .perceive(&spookery_engine::Presence::default(), "mira")
         .unwrap_or_else(|err| panic!("perceive: {err}"));
@@ -247,9 +248,9 @@ fn the_wait_lands_and_miras_habit_is_ineligible(world: &mut World) {
     assert_eq!(refused.len(), 1, "{round}");
     assert_eq!(refused[0]["code"], "INELIGIBLE", "{round}");
     assert_ne!(refused[0]["id"], "gm-wait", "{round}");
-    let state = support::state_of(world.pack());
-    assert_eq!(act_of(&state, "mira").last_act_round, 1);
-    assert!(state.notes().is_empty(), "{:?}", state.notes());
+    let ecs_world = support::world_of(world.pack());
+    assert_eq!(act_of(&ecs_world, "mira").last_act_round, 1);
+    assert!(ecs_world.notes().is_empty(), "{:?}", ecs_world.notes());
 }
 
 #[when(expr = "Harbormouse and Briar strike each other")]
@@ -337,11 +338,11 @@ fn max_effects_per_intent_is_1_and_a_row_with_2_effects(world: &mut World) {
     );
     support::stamp_pack_rev(&pack);
     make_mira_ineligible(&pack);
-    let (state, _rolls, round) =
+    let (ecs_world, _rolls, round) =
         play_queued(&pack, &[], vec![intent("two-1", "mira", "two_stock", None)]);
     world.oil = format!(
         "{}",
-        state
+        ecs_world
             .places()
             .get::<component::Item>(&"docks_shop".into())
             .get("lamp_oil")
@@ -394,20 +395,21 @@ rules:
 fn rowan_asks_aldric_until_it_finishes(world: &mut World) {
     let pack = world.pack().to_path_buf();
     let lock = spookery_engine::lock_pack(&pack).unwrap();
-    let mut table = spookery_engine::World::resume(&pack, lock).unwrap_or_else(|e| panic!("{e}"));
+    let mut session =
+        spookery_engine::Session::resume(&pack, lock).unwrap_or_else(|e| panic!("{e}"));
     let rowan = spookery_engine::Presence {
         players: 1,
         actors_present: vec!["rowan".into()],
     };
-    table
+    session
         .queue_player_move(&rowan, &"rowan".into(), "ask", Some("aldric"))
         .unwrap_or_else(|refusal| panic!("ask aldric: {refusal:?}"));
-    let wall = table.state().last_round_at.clone();
+    let wall = session.world().last_round_at.clone();
     for round in 1..=6 {
-        let output = table.play(&rowan, &wall);
+        let output = session.play(&rowan, &wall);
         output.unwrap_or_else(|err| panic!("round {round}: {err}"));
-        let state = table.state();
-        if !support::is_busy(state, "rowan") {
+        let ecs_world = session.world();
+        if !support::is_busy(ecs_world, "rowan") {
             break;
         }
         assert!(round < 6, "Rowan is still busy after {round} rounds");
@@ -416,7 +418,7 @@ fn rowan_asks_aldric_until_it_finishes(world: &mut World) {
 
 #[then(regex = r"^(?P<actor>\S+)'s rest is (?P<rest>\d+)$")]
 fn rest_is(world: &mut World, actor: String, rest: i64) {
-    let now = support::state_of(world.pack());
+    let now = support::world_of(world.pack());
     let actor = spookery_engine::entity::Id::Actor(resolve_id(now.canon(), &actor).into());
     let held = now.entities().get::<component::Meter>(&actor).value("rest");
     assert_eq!(held, Ok(rest), "{}", world.scratch);
@@ -446,27 +448,27 @@ fn a_docks_pack_with_a_timed_haul(world: &mut World, oil: i64) {
 #[when(expr = "Rowan hauls with no lamp oil and the table plays until the action finishes")]
 fn rowan_hauls_until_it_finishes(world: &mut World) {
     let pack = world.pack().to_path_buf();
-    let mut table = support::resume(&pack);
+    let mut session = support::resume(&pack);
     let rowan = spookery_engine::Presence {
         players: 1,
         actors_present: vec!["rowan".into()],
     };
-    table
+    session
         .queue_player_move(&rowan, &"rowan".into(), "haul", None)
         .unwrap_or_else(|refusal| panic!("haul: {refusal:?}"));
-    let wall = table.state().last_round_at.clone();
+    let wall = session.world().last_round_at.clone();
     world.scratch.clear();
     for round in 1..=6 {
-        if let Err(err) = table.play(&rowan, &wall) {
+        if let Err(err) = session.play(&rowan, &wall) {
             world.scratch = format!("round {round} failed: {err}");
             return;
         }
-        let state = table.state();
-        if !support::is_busy(state, "rowan") {
+        let ecs_world = session.world();
+        if !support::is_busy(ecs_world, "rowan") {
             break;
         }
     }
-    world.count = usize::try_from(table.state().round_index).unwrap();
+    world.count = usize::try_from(session.world().round_index).unwrap();
 }
 
 #[then(
@@ -483,9 +485,9 @@ fn the_refused_finish_commits(world: &mut World) {
             .any(|item| item["id"] == "finish:rowan" && item["code"] == "MISSING_ITEM"),
         "{round}"
     );
-    let saved = spookery_engine::World::peek(pack).unwrap_or_else(|err| panic!("open: {err}"));
-    let state = saved.state();
-    assert!(!support::is_busy(state, "rowan"), "{round}");
+    let saved = spookery_engine::Session::peek(pack).unwrap_or_else(|err| panic!("open: {err}"));
+    let ecs_world = saved.world();
+    assert!(!support::is_busy(ecs_world, "rowan"), "{round}");
     spookery_engine::verify_pack(pack, None).unwrap_or_else(|err| panic!("verify: {err}"));
 }
 
@@ -526,8 +528,8 @@ fn wrens_pick_is_refused(world: &mut World, code: String) {
             .any(|item| item["id"] == "pick-1" && item["code"] == code.as_str()),
         "{round}"
     );
-    let saved = spookery_engine::World::peek(world.pack()).unwrap();
-    assert_eq!(place_of(saved.state(), "rowan"), "docks_street");
+    let saved = spookery_engine::Session::peek(world.pack()).unwrap();
+    assert_eq!(place_of(saved.world(), "rowan"), "docks_street");
 }
 
 #[then(expr = "the next round plays and spook verify passes")]
@@ -535,8 +537,8 @@ fn the_next_round_plays_and_verify_passes(world: &mut World) {
     let pack = world.pack();
     let lock = spookery_engine::lock_pack(pack).unwrap();
     let mut table =
-        spookery_engine::World::resume(pack, lock).unwrap_or_else(|err| panic!("open: {err}"));
-    let wall = table.state().last_round_at.clone();
+        spookery_engine::Session::resume(pack, lock).unwrap_or_else(|err| panic!("open: {err}"));
+    let wall = table.world().last_round_at.clone();
     table
         .queue_gm_intent(
             &spookery_engine::Presence::default(),
@@ -547,7 +549,7 @@ fn the_next_round_plays_and_verify_passes(world: &mut World) {
     table
         .play(&spookery_engine::Presence::default(), &wall)
         .unwrap_or_else(|err| panic!("play: {err}"));
-    assert_eq!(table.state().round_index, 2);
+    assert_eq!(table.world().round_index, 2);
     drop(table);
     spookery_engine::verify_pack(pack, None).unwrap_or_else(|err| panic!("verify: {err}"));
 }
@@ -618,9 +620,9 @@ fn a_street_rule_over_the_cap(world: &mut World) {
 
 #[when(expr = "Rowan walks to the street")]
 fn rowan_walks_to_the_street(world: &mut World) {
-    let (state, round) = rowan_walks(world.pack(), Vec::new());
+    let (ecs_world, round) = rowan_walks(world.pack(), Vec::new());
     let rowan = "rowan".into();
-    let flags = state.actors().get::<component::Flag>(&rowan);
+    let flags = ecs_world.actors().get::<component::Flag>(&rowan);
     world.count = flags.iter().count();
     world.scratch = round.to_string();
 }
@@ -675,10 +677,10 @@ fn miras_travel_is_picked_first(world: &mut World) {
 
 #[then(expr = "Mira has visited the Docks Shop")]
 fn mira_has_visited_the_shop(world: &mut World) {
-    let saved = spookery_engine::World::peek(world.pack()).unwrap();
-    let (state, mira) = (saved.state(), "mira".into());
-    assert_eq!(place_of(state, "mira"), "docks_shop");
-    let visits = state.actors().get::<component::Visit>(&mira);
+    let saved = spookery_engine::Session::peek(world.pack()).unwrap();
+    let (ecs_world, mira) = (saved.world(), "mira".into());
+    assert_eq!(place_of(ecs_world, "mira"), "docks_shop");
+    let visits = ecs_world.actors().get::<component::Visit>(&mira);
     let visited: Vec<&str> = visits.iter().map(|(place, _)| place).collect();
     assert!(visits.contains("docks_shop"), "{visited:?}");
 }
@@ -753,7 +755,7 @@ fn assert_budget_refusals(world: &World, ids: &[&str]) {
             "{id}: {round}"
         );
     }
-    let saved = spookery_engine::World::peek(world.pack()).unwrap();
+    let saved = spookery_engine::Session::peek(world.pack()).unwrap();
     assert!(saved.queued_intents().is_empty());
 }
 
@@ -772,12 +774,12 @@ fn set_budget(pack: &Path, key: &str, value: u64) {
 fn rowan_walks(
     pack: &Path,
     then: Vec<spookery_protocol::QueueArgs>,
-) -> (spookery_engine::State, Value) {
+) -> (spookery_engine::ecs::World, Value) {
     let mut intents = vec![intent("walk", "rowan", "travel", Some("docks_street"))];
     intents.extend(then);
-    let (state, _rolls, round) = play_queued(pack, &["rowan"], intents);
-    assert_eq!(place_of(&state, "rowan"), "docks_street", "{round}");
-    (state, round)
+    let (world, _rolls, round) = play_queued(pack, &["rowan"], intents);
+    assert_eq!(place_of(&world, "rowan"), "docks_street", "{round}");
+    (world, round)
 }
 
 /// Give `place` its own `rules:` list, written just before its exits.
@@ -817,12 +819,12 @@ fn strike_line(scratch: &str, actor: &str) -> (String, i64, i64) {
 }
 
 fn indexed_roll(pack: &Path, actor_id: &str, roll_index: u32) -> (String, i64) {
-    let world = spookery_engine::World::peek(pack).unwrap_or_else(|err| panic!("open: {err}"));
-    let check = world.canon().checks.get("strike").unwrap();
-    let def = world.canon().meters.get(&check.stat).unwrap();
+    let session = spookery_engine::Session::peek(pack).unwrap_or_else(|err| panic!("open: {err}"));
+    let check = session.canon().checks.get("strike").unwrap();
+    let def = session.canon().meters.get(&check.stat).unwrap();
     let actor = actor_id.into();
-    let live = world
-        .state()
+    let live = session
+        .world()
         .actors()
         .get::<component::Meter>(&actor)
         .get(&check.stat)
@@ -830,8 +832,8 @@ fn indexed_roll(pack: &Path, actor_id: &str, roll_index: u32) -> (String, i64) {
     let stat = (live.base + live.offset).clamp(def.min, def.max);
     let rolled = faces(
         &RollKey {
-            seed: world.state().seed.clone(),
-            round_index: world.state().round_index,
+            seed: session.world().seed.clone(),
+            round_index: session.world().round_index,
             rule_id: "verb:strike".to_string(),
             subject_id: Some(actor_id.into()),
             index: roll_index,
@@ -884,28 +886,28 @@ fn play_queued(
     pack: &Path,
     seated: &[&str],
     intents: Vec<spookery_protocol::QueueArgs>,
-) -> (spookery_engine::State, Vec<MoveReport>, Value) {
+) -> (spookery_engine::ecs::World, Vec<MoveReport>, Value) {
     let lock = spookery_engine::lock_pack(pack).unwrap();
-    let mut world =
-        spookery_engine::World::resume(pack, lock).unwrap_or_else(|err| panic!("open: {err}"));
+    let mut session =
+        spookery_engine::Session::resume(pack, lock).unwrap_or_else(|err| panic!("open: {err}"));
     let presence = spookery_engine::Presence {
         players: u32::try_from(seated.len()).unwrap(),
         actors_present: seated.iter().map(|id| (*id).into()).collect(),
     };
-    let wall = world.state().last_round_at.clone();
+    let wall = session.world().last_round_at.clone();
     for intent in intents {
-        world
+        session
             .queue_gm_intent(&spookery_engine::Presence::default(), intent, || {
                 panic!("the GM chose the id")
             })
             .unwrap_or_else(|code| panic!("queue: {code}"));
     }
-    let output = world
+    let output = session
         .play(&presence, &wall)
         .unwrap_or_else(|err| panic!("play: {err}"));
     let round = read_round(pack, "round-0001");
-    let state = world.state().clone();
-    (state, output.reports, round)
+    let ecs_world = session.world().clone();
+    (ecs_world, output.reports, round)
 }
 
 /// The GM's `queue` command: `actor_id` plays `verb` at `target`, under the id `id`.
@@ -991,8 +993,8 @@ fn a_cast_member_the_save_does_not_list(world: &mut World, row: String) {
 fn rowan_plays(world: &mut World, verb: String) {
     let pack = world.pack().to_path_buf();
     let lock = spookery_engine::lock_pack(&pack).unwrap();
-    let mut opened = spookery_engine::World::resume(&pack, lock).unwrap();
-    let wall = opened.state().last_round_at.clone();
+    let mut opened = spookery_engine::Session::resume(&pack, lock).unwrap();
+    let wall = opened.world().last_round_at.clone();
     let nobody = spookery_engine::Presence::default();
     opened
         .queue_gm_intent(

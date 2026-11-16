@@ -1,17 +1,17 @@
 //! What an entity holds, one module per component. A marker type names each component;
 //! `Reader::get` borrows one entity's share of its store, and `Writer::get_mut` writes it.
 
-pub(in crate::state) mod act;
-pub(in crate::state) mod control_type;
-pub(in crate::state) mod exit;
-pub(in crate::state) mod flag;
-pub(in crate::state) mod item;
-pub(in crate::state) mod known_facts;
+pub(in crate::ecs) mod act;
+pub(in crate::ecs) mod control_type;
+pub(in crate::ecs) mod exit;
+pub(in crate::ecs) mod flag;
+pub(in crate::ecs) mod item;
+pub(in crate::ecs) mod known_facts;
 pub(crate) mod meter;
 pub(crate) mod modifier;
-pub(in crate::state) mod place;
-pub(in crate::state) mod visit;
-pub(in crate::state) mod wielded_item;
+pub(in crate::ecs) mod place;
+pub(in crate::ecs) mod visit;
+pub(in crate::ecs) mod wielded_item;
 
 use std::collections::BTreeMap;
 use std::fmt::Debug;
@@ -30,9 +30,9 @@ pub use place::Place;
 pub use visit::Visit;
 pub use wielded_item::WieldedItem;
 
-use crate::state::change::{self, Change};
-use crate::state::prelude::*;
-use crate::state::{entity, nested_map, Reader, Transaction, Writer};
+use crate::ecs::change::{self, Change};
+use crate::ecs::prelude::*;
+use crate::ecs::{entity, nested_map, Reader, Transaction, Writer};
 use crate::Reason;
 
 /// One component. The type that implements it is the component in code, and `Value` is what an
@@ -48,14 +48,14 @@ pub trait Component {
 pub type Map<Id, C> = BTreeMap<(Id, String), <C as Component>::Value>;
 
 /// One entity's component `C`, borrowed from its collection's store. Nothing is copied.
-pub struct Ref<'a, E: entity::Entities, C: Component> {
+pub struct Ref<'a, E: entity::Collection, C: Component> {
     entities: Reader<'a, E>,
     id: &'a E::Id,
     component: PhantomData<C>,
 }
 
-impl<'a, E: entity::Entities, C: Component> Ref<'a, E, C> {
-    pub(in crate::state) fn new(entities: Reader<'a, E>, id: &'a E::Id) -> Self {
+impl<'a, E: entity::Collection, C: Component> Ref<'a, E, C> {
+    pub(in crate::ecs) fn new(entities: Reader<'a, E>, id: &'a E::Id) -> Self {
         Ref {
             entities,
             id,
@@ -101,14 +101,14 @@ where
 
 /// One entity's component `C`, to write. Every write is one `undo::Store::set`, with what it
 /// reports.
-pub struct Mut<'a, E: entity::Entities, C: Component> {
+pub struct Mut<'a, E: entity::Collection, C: Component> {
     writer: Writer<'a, E>,
     id: &'a E::Id,
     component: PhantomData<C>,
 }
 
-impl<'a, E: entity::Entities, C: Component> Mut<'a, E, C> {
-    pub(in crate::state) fn new(writer: Writer<'a, E>, id: &'a E::Id) -> Self {
+impl<'a, E: entity::Collection, C: Component> Mut<'a, E, C> {
+    pub(in crate::ecs) fn new(writer: Writer<'a, E>, id: &'a E::Id) -> Self {
         Mut {
             writer,
             id,

@@ -13,7 +13,7 @@ use super::common::{flags_of, split_line};
 use super::table;
 use super::triggers::world_flags;
 use crate::support::{
-    append, copy_pack, edit_save, place_of, read_round, run_spook, stamp_pack_rev, state_of,
+    append, copy_pack, edit_save, place_of, read_round, run_spook, stamp_pack_rev, world_of,
 };
 use crate::World;
 #[given(expr = "a save from older rules")]
@@ -247,7 +247,7 @@ fn a_pc_at_ferry_dock_travels(world: &mut World) {
     opened
         .queue_player_move(&one_human, &"rowan".into(), "travel", Some("ferry_dock"))
         .unwrap_or_else(|err| panic!("travel {}", err.code.as_str()));
-    let wall = opened.state().last_round_at.clone();
+    let wall = opened.world().last_round_at.clone();
     opened
         .commit_then_fast_forward(&one_human, &wall)
         .unwrap_or_else(|err| panic!("travel {err}"));
@@ -255,7 +255,7 @@ fn a_pc_at_ferry_dock_travels(world: &mut World) {
 
 #[then(expr = "place:ferry_dock\\/travel runs and verb:travel does not")]
 fn the_ferry_rule_runs(world: &mut World) {
-    let now = state_of(world.pack.as_ref().unwrap());
+    let now = world_of(world.pack.as_ref().unwrap());
     assert_eq!(
         place_of(&now, "rowan"),
         "ferry_dock",
@@ -384,7 +384,7 @@ fn an_empty_round_lands_with_mira(world: &mut World, tick: u64) {
 
 fn play_an_empty_round(pack: &Path) {
     let mut opened = open(pack);
-    let wall = opened.state().last_round_at.clone();
+    let wall = opened.world().last_round_at.clone();
     opened
         .play(&Presence::default(), &wall)
         .unwrap_or_else(|err| {
@@ -402,7 +402,7 @@ fn play_an_empty_round(pack: &Path) {
 
 #[then(expr = "docks_shop lamp_oil increases by 4")]
 fn lamp_oil_increases_by_4(world: &mut World) {
-    let now = state_of(world.pack.as_ref().unwrap());
+    let now = world_of(world.pack.as_ref().unwrap());
     let oil = now
         .places()
         .get::<component::Item>(&"docks_shop".into())
@@ -440,7 +440,7 @@ fn a_seated_round_runs(world: &mut World) {
         actors_present: vec!["rowan".into()],
     };
     let mut opened = open(&pack);
-    let wall = opened.state().last_round_at.clone();
+    let wall = opened.world().last_round_at.clone();
     opened
         .play(&rowan, &wall)
         .unwrap_or_else(|err| panic!("seated round: {}", err.as_str()));
@@ -448,7 +448,7 @@ fn a_seated_round_runs(world: &mut World) {
 
 #[then(expr = "the round ends at tick {int} and every actor's idle acts this window are {int}")]
 fn every_actor_idle_acts(world: &mut World, tick: u64, acts: u32) {
-    let now = state_of(world.pack.as_ref().unwrap());
+    let now = world_of(world.pack.as_ref().unwrap());
     assert_eq!(now.world_time, tick);
     let actors = now.actors().query::<(ActorId, &component::Act)>();
     for (id, act) in actors.iter() {
@@ -458,7 +458,7 @@ fn every_actor_idle_acts(world: &mut World, tick: u64, acts: u32) {
 
 #[then(expr = "docks_shop holds {int} lamp_oil")]
 fn docks_shop_holds_lamp_oil(world: &mut World, count: u32) {
-    let now = state_of(world.pack.as_ref().unwrap());
+    let now = world_of(world.pack.as_ref().unwrap());
     let shop = "docks_shop".into();
     let stock = now.places().get::<component::Item>(&shop);
     let oil = stock.get("lamp_oil").copied();
@@ -516,7 +516,7 @@ fn attack_targets_defense(world: &mut World) {
 #[when(expr = "harbormouse attacks with a seeded total of 21")]
 fn harbormouse_attacks(world: &mut World) {
     let pack = world.pack.clone().unwrap();
-    let loaded = state_of(&pack);
+    let loaded = world_of(&pack);
     let face = faces(
         &RollKey {
             seed: loaded.seed.clone(),
@@ -540,7 +540,7 @@ fn harbormouse_attacks(world: &mut World) {
     opened
         .queue_player_move(&nobody, &"harbormouse".into(), "attack", Some("briar"))
         .unwrap_or_else(|err| panic!("attack {}", err.code.as_str()));
-    let wall = opened.state().last_round_at.clone();
+    let wall = opened.world().last_round_at.clone();
     let outputs = opened
         .commit_then_fast_forward(&nobody, &wall)
         .unwrap_or_else(|err| panic!("attack {err}"));
@@ -563,7 +563,7 @@ fn harbormouse_attacks(world: &mut World) {
 #[then(expr = "the outcome is a miss")]
 fn the_outcome_is_a_miss(world: &mut World) {
     assert_eq!(world.scratch, "miss");
-    let now = state_of(world.pack.as_ref().unwrap());
+    let now = world_of(world.pack.as_ref().unwrap());
     let flags = flags_of(&now, "briar");
     assert!(flags.iter().any(|flag| flag == "missed"), "{flags:?}");
     assert!(!flags.iter().any(|flag| flag == "hit"), "{flags:?}");
@@ -717,7 +717,7 @@ fn the_refusal_is_cant_afford(world: &mut World) {
         world.scratch,
         format!("{} vigor", Reason::CantAfford.as_str())
     );
-    let now = state_of(world.pack.as_ref().unwrap());
+    let now = world_of(world.pack.as_ref().unwrap());
     assert_eq!(now.world_time, 1080);
     assert_eq!(now.round_index, 0);
 }
@@ -743,7 +743,7 @@ rules:
 ",
     );
     edit_save(&pack, |_| {});
-    let now = state_of(&pack);
+    let now = world_of(&pack);
     assert_eq!(place_of(&now, "rowan"), "docks_shop");
     world.pack = Some(pack);
 }
@@ -774,7 +774,7 @@ fn both_full_ids_are_refused(world: &mut World) {
             Reason::NotInSpec.as_str()
         )
     );
-    let now = state_of(world.pack.as_ref().unwrap());
+    let now = world_of(world.pack.as_ref().unwrap());
     assert_eq!(place_of(&now, "rowan"), "docks_shop");
     assert_eq!(now.world_time, 1080);
     assert_eq!(now.round_index, 0);
@@ -850,7 +850,7 @@ fn the_seated_pc_queues_use_tonic(world: &mut World) {
 #[then(expr = "the queued target is that item and the save is unchanged")]
 fn the_queued_target_is_that_item(world: &mut World) {
     assert_eq!(world.scratch, "Item(\"tonic\") use");
-    let now = state_of(world.pack.as_ref().unwrap());
+    let now = world_of(world.pack.as_ref().unwrap());
     assert_eq!(place_of(&now, "rowan"), "docks_shop");
     assert_eq!(now.world_time, 1080);
     assert_eq!(now.round_index, 0);
@@ -991,7 +991,7 @@ fn briar_holds_ask_in_the_lane(world: &mut World) {
 
 #[when(regex = r"^harbormouse, in the yard with briar, plays (.+)$")]
 fn harbormouse_in_the_yard_plays(world: &mut World, line: String) {
-    let now = state_of(world.pack.as_ref().unwrap());
+    let now = world_of(world.pack.as_ref().unwrap());
     for actor in ["harbormouse", "briar"] {
         assert_eq!(place_of(&now, actor), "gate_yard");
     }
@@ -1000,7 +1000,7 @@ fn harbormouse_in_the_yard_plays(world: &mut World, line: String) {
 
 #[when(regex = r"^harbormouse, alone in the yard, plays (.+)$")]
 fn harbormouse_alone_plays(world: &mut World, line: String) {
-    let now = state_of(world.pack.as_ref().unwrap());
+    let now = world_of(world.pack.as_ref().unwrap());
     let actors = now.actors().query::<(ActorId, &component::Place)>();
     let yard = actors.iter().filter(|(_, place)| *place == "gate_yard");
     assert_eq!(
@@ -1013,7 +1013,7 @@ fn harbormouse_alone_plays(world: &mut World, line: String) {
 #[then(expr = "cast:briar\\/ask runs with briar as its target and passage is set")]
 fn briars_ask_runs_on_briar(world: &mut World) {
     assert_eq!(world.scratch, r#"{"actor":"briar"} cast:briar/ask"#);
-    let now = state_of(world.pack.as_ref().unwrap());
+    let now = world_of(world.pack.as_ref().unwrap());
     let flags = now.entities().get::<component::Flag>(&entity::Id::Global);
     assert!(flags.contains("passage"), "{:?}", world_flags(&now));
 }
@@ -1040,7 +1040,7 @@ fn play_harbormouse_line(world: &mut World, line: &str) {
         world.scratch = refusal.code.as_str().to_string();
         return;
     }
-    let wall = opened.state().last_round_at.clone();
+    let wall = opened.world().last_round_at.clone();
     opened
         .play(&seated, &wall)
         .unwrap_or_else(|err| panic!("{line}: {err}"));
@@ -1072,9 +1072,9 @@ fn run(world: &mut World, args: &[&str]) {
 }
 
 /// The world owns the pack lock, so the caller writes while holding it.
-pub(super) fn open(pack: &Path) -> spookery_engine::World {
+pub(super) fn open(pack: &Path) -> spookery_engine::Session {
     let lock = spookery_engine::lock_pack(pack).unwrap();
-    spookery_engine::World::resume(pack, lock).unwrap_or_else(|err| {
+    spookery_engine::Session::resume(pack, lock).unwrap_or_else(|err| {
         panic!(
             "open {}: {}",
             err.as_str(),

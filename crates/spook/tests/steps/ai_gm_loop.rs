@@ -9,7 +9,7 @@ use cucumber::{given, then, when};
 use serde_json::Value;
 use spookery::agent::{model, MAX_MODEL_CALLS};
 use spookery_engine::testing::journal::{list_round_keys, read_record_line};
-use spookery_engine::testing::state_of;
+use spookery_engine::testing::world_of;
 
 use crate::support::copy_pack;
 use crate::World;
@@ -51,10 +51,10 @@ fn start_docks_table_with_mira(world: &mut World, notes: Option<&str>) {
             .set("docks_shop")
             .unwrap();
     });
-    let state = state_of(&pack);
+    let ecs_world = world_of(&pack);
     for npc in ["mira", "aldric"] {
         let npc = npc.into();
-        let place = state.actors().get::<component::Place>(&npc).get();
+        let place = ecs_world.actors().get::<component::Place>(&npc).get();
         assert_eq!(place, Some("docks_shop"), "{npc}");
     }
     table::listen(world, &pack);

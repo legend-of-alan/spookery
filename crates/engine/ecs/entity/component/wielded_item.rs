@@ -1,8 +1,8 @@
 //! The item each actor wields.
 
-use crate::state::change::Change;
-use crate::state::component::{text_value, Component, Item, Mut, Ref};
-use crate::state::{entity, Reader};
+use crate::ecs::change::Change;
+use crate::ecs::component::{text_value, Component, Item, Mut, Ref};
+use crate::ecs::{entity, Reader};
 use crate::Reason;
 
 /// The item an actor wields, which they must hold.

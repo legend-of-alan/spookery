@@ -1,8 +1,8 @@
 //! Flags: an id set on an entity, or not there.
 
-use crate::state::component::{Component, Mut, Ref};
-use crate::state::entity::in_collection;
-use crate::state::{Reader, Save, Writer};
+use crate::ecs::component::{Component, Mut, Ref};
+use crate::ecs::entity::in_collection;
+use crate::ecs::{Reader, Save, Writer};
 use crate::Reason;
 
 /// A flag: set on an entity under its id, or not there.

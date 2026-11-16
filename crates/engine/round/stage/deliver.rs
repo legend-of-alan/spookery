@@ -1,11 +1,11 @@
 //! Decide what the GM and each seated viewer may see and hear.
 
 use crate::canon::Canon;
+use crate::ecs::change::Change;
+use crate::ecs::id::ActorId;
+use crate::ecs::{self, Presence};
 use crate::rules::effect::Effect;
 use crate::rules::visibility::{self, Recipient, RecipientLine, ViewerChanges};
-use crate::state::change::Change;
-use crate::state::id::ActorId;
-use crate::state::{Presence, State};
 
 /// What the GM and each viewer may see and hear. Passed from the deliver stage to `record`,
 /// which puts it on the `RoundOutput`.
@@ -19,12 +19,12 @@ pub(crate) struct Deliveries {
 /// An empty table gets only the GM summary.
 pub(crate) fn run(
     canon: &Canon,
-    state: &State,
+    world: &ecs::World,
     presence: &Presence,
     changes: &[Change],
     effects: &[Effect],
 ) -> Deliveries {
-    let gm = visibility::show_to(canon, state, &Recipient::Gm, changes, effects);
+    let gm = visibility::show_to(canon, world, &Recipient::Gm, changes, effects);
     let mut delivered = Deliveries {
         changed_keys: gm.changed_keys,
         lines: Vec::new(),
@@ -33,10 +33,10 @@ pub(crate) fn run(
     if presence.players == 0 {
         return delivered;
     }
-    for id in state.actors().query::<ActorId>().iter().cloned() {
+    for id in world.actors().query::<ActorId>().iter().cloned() {
         let delivery = visibility::show_to(
             canon,
-            state,
+            world,
             &Recipient::Actor(id.clone()),
             changes,
             effects,

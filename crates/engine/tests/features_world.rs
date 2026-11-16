@@ -33,9 +33,9 @@ pub struct World {
     pub lock_clone: Option<std::fs::File>,
 }
 
-/// The World a scenario holds open as the pack's writer. It owns the pack lock.
+/// The session a scenario holds open as the pack's writer. It owns the pack lock.
 pub struct Writer {
-    pub world: spookery_engine::World,
+    pub session: spookery_engine::Session,
 }
 
 impl std::fmt::Debug for Writer {

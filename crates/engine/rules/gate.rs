@@ -4,14 +4,14 @@ use serde::{Deserialize, Serialize};
 use spookery_protocol::is_named;
 
 use crate::canon::Canon;
+use crate::ecs::id::ActorId;
+use crate::ecs::{self, component, Presence};
 use crate::intent::{Intent, Source, Target, Viewer};
 use crate::rules::cond;
 use crate::rules::context::Context;
 use crate::rules::cost;
 use crate::rules::perceive::perceive_as;
 use crate::rules::rule::{Owner, Rule, TargetKind, When};
-use crate::state::id::ActorId;
-use crate::state::{component, Presence, State};
 use crate::Reason;
 
 /// One refused intent: its id, its code, and a detail when there is one. Returned from the
@@ -44,13 +44,13 @@ impl Refusal {
 /// `NOT_IN_SPEC` for it and `UNKNOWN_MOVE` for anyone else.
 pub(crate) fn pick<'a>(
     canon: &'a Canon,
-    state: &State,
+    world: &ecs::World,
     actor: &Viewer,
     source: Source,
     verb_id: &str,
     hint: Option<&str>,
 ) -> Result<&'a Rule, Reason> {
-    let found = verb_for(canon, state, actor.actor_id(), verb_id, hint);
+    let found = verb_for(canon, world, actor.actor_id(), verb_id, hint);
     if source == Source::Player && matches!(actor, Viewer::Player(_)) {
         return found.ok_or(Reason::NotInSpec);
     }
@@ -75,12 +75,12 @@ pub(crate) fn hint_of(target: &Target) -> Option<&str> {
 /// place.
 pub(crate) fn verb_for<'a>(
     canon: &'a Canon,
-    state: &State,
+    world: &ecs::World,
     actor_id: &ActorId,
     verb_id: &str,
     hint: Option<&str>,
 ) -> Option<&'a Rule> {
-    let wielded = state.actors().get::<component::WieldedItem>(actor_id).get();
+    let wielded = world.actors().get::<component::WieldedItem>(actor_id).get();
     if let Some(item) = wielded.filter(|item| !item.is_empty()) {
         if let Some(rule) = owner_verb(canon, &Owner::Item(item.to_string()), verb_id) {
             return Some(rule);
@@ -94,7 +94,7 @@ pub(crate) fn verb_for<'a>(
             return Some(rule);
         }
     }
-    if let Some(place) = state.actors().get::<component::Place>(actor_id).get() {
+    if let Some(place) = world.actors().get::<component::Place>(actor_id).get() {
         if let Some(rule) = owner_verb(canon, &Owner::Place(place.to_string()), verb_id) {
             return Some(rule);
         }
@@ -119,7 +119,7 @@ pub(crate) fn rule_of<'c>(context: &Context<'c, '_>) -> Result<&'c Rule, Refusal
         .ok_or_else(|| Refusal::new(intent, Reason::UnknownId))?;
     let picked = pick(
         context.canon,
-        context.state,
+        context.world,
         actor,
         intent.source,
         verb_id,
@@ -137,16 +137,16 @@ pub(crate) fn admit(
     rule: &Rule,
     ids: Option<&[NamedId]>,
 ) -> Result<(), Refusal> {
-    let (state, intent) = (context.state, context.intent);
+    let (world, intent) = (context.world, context.intent);
     if let Some(id) = intent.actor_id() {
-        let act = state.actors().get::<component::Act>(id);
+        let act = world.actors().get::<component::Act>(id);
         let acted = act
             .get()
             .is_some_and(|act| act.last_act_round == intent.round_index);
         if acted && rule.start.counts_as_act && matches!(rule.when, When::Habit) {
             return Err(Refusal::new(intent, Reason::Ineligible));
         }
-        if act.is_busy(state.world_time) {
+        if act.is_busy(world.world_time) {
             return Err(Refusal::new(intent, Reason::Busy));
         }
     }
@@ -185,14 +185,14 @@ pub(crate) fn is_cancel(intent: &Intent) -> bool {
 /// `cancellable`. Anything else is `INELIGIBLE`.
 pub(crate) fn admit_cancel(context: &Context) -> Result<(), Refusal> {
     let intent = context.intent;
-    let actors = context.state.actors();
+    let actors = context.world.actors();
     let actor_id = intent.actor_id();
     let pending = actor_id
         .and_then(|id| actors.get::<component::Act>(id).get())
         .and_then(|act| act.pending.as_ref());
     let walking = actor_id
         .and_then(|id| actors.get::<component::Place>(id).get())
-        .is_some_and(|place| crate::state::exit_parts(place).is_some());
+        .is_some_and(|place| crate::ecs::exit_parts(place).is_some());
     let rule = pending.and_then(|pending| context.canon.rules.get(&pending.rule));
     if walking || !rule.is_some_and(|rule| rule.cancellable) {
         return Err(Refusal::new(intent, Reason::Ineligible));
@@ -214,7 +214,7 @@ fn can_name(context: &Context, ids: Option<&[NamedId]>) -> bool {
     let ids = match ids {
         Some(ids) => ids,
         None => {
-            listed = list_ids(context.canon, context.state, context.presence, actor);
+            listed = list_ids(context.canon, context.world, context.presence, actor);
             &listed
         }
     };
@@ -246,16 +246,16 @@ impl NamedId {
 /// names its own actor.
 pub(crate) fn list_ids(
     canon: &Canon,
-    state: &State,
+    world: &ecs::World,
     presence: &Presence,
     viewer: &Viewer,
 ) -> Vec<NamedId> {
-    let mut ids: Vec<NamedId> = (state.actors().get::<component::Item>(viewer.actor_id()))
+    let mut ids: Vec<NamedId> = (world.actors().get::<component::Item>(viewer.actor_id()))
         .iter()
         .filter(|(_, count)| **count > 0)
         .filter_map(|(id, _)| Some(NamedId::new(id, canon.name(id)?.to_string())))
         .collect();
-    if let Ok(view) = perceive_as(canon, state, presence, viewer) {
+    if let Ok(view) = perceive_as(canon, world, presence, viewer) {
         ids.push(NamedId::new(&view.place, view.place_name));
         let me = viewer.actor_id();
         let actors = view.visible_actors.iter().zip(view.actor_names);

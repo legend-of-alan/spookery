@@ -1,6 +1,6 @@
 //! Open exits: the doors that stand open, each on its place.
 
-use crate::state::component::Component;
+use crate::ecs::component::Component;
 
 /// An exit whose door is open, on its place under the exit's id.
 pub struct OpenExit;

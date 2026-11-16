@@ -1,4 +1,4 @@
-use spookery_engine::testing::state_of;
+use spookery_engine::testing::world_of;
 use std::fs;
 
 use cucumber::{given, then, when};
@@ -117,7 +117,7 @@ fn the_pack_bytes_are_remembered(world: &mut World) {
 
 #[then(expr = "stdout says the save was verified")]
 fn stdout_says_the_save_was_verified(world: &mut World) {
-    let rev = state_of(table::pack(world)).state_rev;
+    let rev = world_of(table::pack(world)).state_rev;
     assert!(
         world.stdout.contains("verified ") && world.stdout.contains("records, state_rev "),
         "{}",
@@ -295,7 +295,7 @@ fn the_table_is_opened_again(world: &mut World) {
 /// Take the lock the way a host does, which recovers a crashed pack, then resume it.
 fn resume_as_writer(pack: &std::path::Path) {
     let lock = spookery_engine::lock_pack(pack).unwrap_or_else(|err| panic!("lock: {err}"));
-    spookery_engine::World::resume(pack, lock).unwrap_or_else(|err| panic!("resume: {err}"));
+    spookery_engine::Session::resume(pack, lock).unwrap_or_else(|err| panic!("resume: {err}"));
 }
 
 #[then(expr = "the torn tail is gone")]

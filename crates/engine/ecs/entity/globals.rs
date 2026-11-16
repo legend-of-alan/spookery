@@ -3,13 +3,13 @@
 use serde::{Deserialize, Serialize};
 
 use crate::canon::Canon;
-use crate::state::component::{self, Meter};
-use crate::state::id::GlobalId;
-use crate::state::{entity, nested_map, undo};
+use crate::ecs::component::{self, Meter};
+use crate::ecs::id::GlobalId;
+use crate::ecs::{entity, nested_map, undo};
 
-/// The world's collection: what the one world holds. The wire and the save still say `world`
-/// (`world_flag`, `world_meter`, the `world:` key, and `entity::Id::Global`, which serializes as
-/// `world`), and those names do not change.
+/// The world's collection: what the one world holds. The save keeps it under `globals:`. The
+/// wire and the journal still say `world` (`world_flag`, `world_meter`, and `entity::Id::Global`,
+/// which serializes as `world`), and those names do not change.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Globals {
@@ -20,7 +20,7 @@ pub struct Globals {
     flags: undo::Store<component::Map<GlobalId, component::Flag>>,
 }
 
-impl entity::Entities for Globals {
+impl entity::Collection for Globals {
     type Id = GlobalId;
 
     fn contains(&self, _: &Canon, _: &GlobalId) -> bool {
@@ -37,7 +37,7 @@ entity::has!(Globals, component::Flag, flags);
 
 impl Globals {
     /// Every store, as the log a rollback undoes and an accept clears.
-    pub(in crate::state) fn logs_mut(&mut self) -> [&mut dyn undo::Log; 2] {
+    pub(in crate::ecs) fn logs_mut(&mut self) -> [&mut dyn undo::Log; 2] {
         // Every store, with no `..`: a store added later must be listed here to compile.
         let Globals { meters, flags } = self;
         [meters, flags]
