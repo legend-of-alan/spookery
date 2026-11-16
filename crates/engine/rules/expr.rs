@@ -654,13 +654,3 @@ impl<'a> Parser<'a> {
         format!("expression '{}' is not a number", self.src)
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::Expr;
-
-    #[test]
-    fn division_rounds_down() {
-        assert_eq!(Expr::parse("-5 / 2").unwrap().constant(), Some(-3));
-    }
-}

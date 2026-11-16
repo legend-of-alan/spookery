@@ -115,11 +115,15 @@ fn rowans_vigor_rose_by_the_2d6_faces(world: &mut World) {
     assert_eq!(rowans_vigor(world), 1 + sum);
 }
 
-#[then(expr = "Rowan's vigor rose by the higher d20")]
-fn rowans_vigor_rose_by_the_higher_d20(world: &mut World) {
-    let faces = dice_faces(world, "2d20kh1");
-    let high = faces.iter().copied().max().unwrap_or(0);
-    assert_eq!(rowans_vigor(world), 1 + i64::from(high));
+#[then(expr = "Rowan's vigor rose by the {word} d20")]
+fn rowans_vigor_rose_by_the_kept_d20(world: &mut World, kept: String) {
+    let faces = dice_faces(world, "2d20k").into_iter();
+    let face = if kept == "higher" {
+        faces.max()
+    } else {
+        faces.min()
+    };
+    assert_eq!(rowans_vigor(world), 1 + i64::from(face.unwrap_or(0)));
 }
 
 #[then(expr = "the journal records the 2d6 faces")]
@@ -131,7 +135,7 @@ fn the_journal_records_the_2d6_faces(world: &mut World) {
 
 #[then(expr = "the journal records both d20 faces")]
 fn the_journal_records_both_d20_faces(world: &mut World) {
-    let faces = dice_faces(world, "2d20kh1");
+    let faces = dice_faces(world, "2d20k");
     assert_eq!(faces.len(), 2, "{faces:?}");
 }
 
