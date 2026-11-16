@@ -44,9 +44,9 @@ pub(crate) fn help(
     let hints: Vec<Option<&str>> = std::iter::once(None)
         .chain(ids.iter().map(|named_id| Some(named_id.id.as_str())))
         .collect();
-    for verb in canon.verbs() {
+    for verb_id in canon.verbs() {
         for &hint in &hints {
-            let Some(rule) = verb_for(canon, state, actor_id, &verb, hint) else {
+            let Some(rule) = verb_for(canon, state, actor_id, &verb_id, hint) else {
                 continue;
             };
             // A rule reached by naming its owner carries that owner. Any other is bare.
@@ -58,7 +58,7 @@ pub(crate) fn help(
                 (Owner::Item(id), Some(hint)) if id == hint => (Some(id), Target::Item(id.clone())),
                 _ => continue,
             };
-            if !cond::if_holds(canon, state, presence, &viewer, &verb, target, &rule.if_) {
+            if !cond::if_holds(canon, state, presence, &viewer, &verb_id, target, &rule.if_) {
                 continue;
             }
             let kind = match &rule.when {
@@ -70,7 +70,7 @@ pub(crate) fn help(
                 None => list_target_ids(canon, state, actor_id, kind, &ids),
             };
             let command = CommandView {
-                id: verb.clone(),
+                id: verb_id.clone(),
                 target: kind.as_str().to_string(),
                 names: target_ids.iter().map(name_of).collect::<Result<_, _>>()?,
                 owner: owner.cloned(),
