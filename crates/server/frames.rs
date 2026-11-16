@@ -27,6 +27,7 @@ pub(super) fn render_speech(tape: &TapeRecord, gm: bool) -> ServerBody {
 fn build_speech(tape: &TapeRecord, gm: bool) -> Speech {
     Speech {
         from: tape.from.clone(),
+        from_name: tape.from_name.clone(),
         to: tape.to.clone(),
         recipient_ids: if gm {
             tape.recipient_ids.clone()
@@ -161,7 +162,7 @@ pub(super) fn render_status(
                 Some(QueuedMove {
                     id: intent.id.clone(),
                     actor_id: intent.actor_id()?.to_string(),
-                    move_name: intent.move_name.clone(),
+                    move_id: intent.move_id.clone(),
                 })
             })
             .collect(),

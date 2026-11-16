@@ -82,7 +82,7 @@ pub struct QueueArgs {
     pub actor_id: Option<String>,
     #[cfg_attr(feature = "schema", schemars(required))]
     #[serde(rename = "move", skip_serializing_if = "Option::is_none")]
-    pub move_name: Option<String>,
+    pub move_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub target: Option<String>,
     #[serde(rename = "to", default, skip_serializing_if = "Option::is_none")]
@@ -120,7 +120,7 @@ pub struct QueuedMove {
     pub id: String,
     pub actor_id: String,
     #[serde(rename = "move")]
-    pub move_name: String,
+    pub move_id: String,
 }
 
 /// The body of the GM's `committed` reply, sent from the table to a GM client.
@@ -159,7 +159,7 @@ pub enum ControlType {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct MenuRow {
-    pub name: String,
+    pub id: String,
     pub kind: String,
     pub target: String,
 }
@@ -210,7 +210,7 @@ mod tests {
             serde_json::from_str(r#"{"actor_id":"a","move":"m","target":"t","to":["b"]}"#).unwrap();
         let c: QueueArgs = parse_args(Some(&m)).unwrap();
         assert_eq!(c.actor_id.as_deref(), Some("a"));
-        assert_eq!(c.move_name.as_deref(), Some("m"));
+        assert_eq!(c.move_id.as_deref(), Some("m"));
         assert_eq!(c.target.as_deref(), Some("t"));
         assert_eq!(c.message_to, Some(vec!["b".to_string()]));
         let nested =

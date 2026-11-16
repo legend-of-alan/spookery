@@ -325,9 +325,9 @@ fn list_gm_tools() -> Vec<Tool> {
         .iter()
         .filter(|command| command.seat == Seat::Gm)
         .filter_map(|command| {
-            let (about, schema) = gm::describe(command.name)?;
+            let (about, schema) = gm::describe(command.id)?;
             Some(Tool::new(
-                command.name,
+                command.id,
                 format!("{about} {SEAT_NOTES}"),
                 schema,
             ))
@@ -462,8 +462,9 @@ mod tests {
             .lines()
             .take_while(|line| !line.is_empty())
             .find_map(|line| {
-                let (name, value) = line.split_once(':')?;
-                name.eq_ignore_ascii_case("mcp-session-id")
+                let (header, value) = line.split_once(':')?;
+                header
+                    .eq_ignore_ascii_case("mcp-session-id")
                     .then(|| value.trim().to_string())
             });
         (session, raw)

@@ -42,7 +42,7 @@ Every message, the client's and the table's alike, is one JSON object in one Web
 
 ## Hello
 
-The table speaks first, with `version`, the `commands` this seat may send, and, on `/player`, `open`, the PCs nobody holds now, `taken`, the PCs held now, and `pc_names`, each of those PCs' display name by id. A claim on an open PC is still refused with `TABLE_FULL` while every player seat is held. Each is left out when empty. A player's commands are the table's own and then every verb the pack's rules name.
+The table speaks first, with `version`, the `commands` this seat may send, and, on `/player`, `open`, the PCs nobody holds now, `taken`, the PCs held now, and `pc_names`, each of those PCs' name by id. A claim on an open PC is still refused with `TABLE_FULL` while every player seat is held. Each is left out when empty. A player's commands are the table's own and then every verb the pack's rules name.
 
 <!-- example: player-hello -->
 ```json
@@ -84,7 +84,7 @@ A player claims one PC, and the table holds three claims at most. A command othe
 {"seq":5,"reply_to":"c1","body":{"kind":"refused","code":"CHOOSE_PC"}}
 ```
 
-`actor` names the PC by id or by display name, ignoring case and outer spaces. A PC another claim holds is `SEAT_TAKEN`, a fourth claim is `TABLE_FULL`, a name two PCs share is `AMBIGUOUS_NAME`, and anything that names no live PC is `SCHEMA`. A refused claim leaves the connection up.
+`actor` names the PC by id or by name, ignoring case and outer spaces. A PC another claim holds is `SEAT_TAKEN`, a fourth claim is `TABLE_FULL`, a name two PCs share is `AMBIGUOUS_NAME`, and anything that names no live PC is `SCHEMA`. A refused claim leaves the connection up.
 
 Only `release` ends a claim. A connection that closes or is dropped leaves its PC held and present, so no other player can claim it, the GM cannot queue for it, and rounds still count it. The claim lasts until a `release` or until `spook run` stops. Presence is kept in memory and does not bump `state_rev`. The GM hears a `presence` whenever a claim starts or ends:
 
@@ -111,7 +111,7 @@ A GM's `release` frees the seat before its reply. A later command on that connec
 
 ### say
 
-`to` names who hears it: `"table"`, `{"place": "<id>"}` or `{"actor": "<id>"}`. A player's say to an actor is read as one line, the actor then `text`, so `spook play` sends `say Mira Vell hi` (or `tell Mira Vell hi`, the same line) as `to` `{"actor": "Mira"}` and `text` `Vell hi`. The longest run of leading words that names an actor in sight, by id or display name and ignoring case and outer spaces as a move's target does, is who it is said to, and the rest is the text. A name two in sight share is `AMBIGUOUS_NAME`, with the move's `detail`. A line that names nobody in sight is said at the table, its text the whole line. `text` is at most 4096 characters. The table sets `from` from the connection: `player:<id>` or `gm`. A `from` in `args` is `SCHEMA`. The GM may add `as`, the bare id of an NPC, to speak as that NPC, and `from` is then `npc:<id>`. An `as` that names a PC, no actor or anything but a bare id is `SCHEMA`, and so is a player's `as`. A GM say with `as` and no `to` is heard where that NPC stands. Any other say without `to` is `SCHEMA`. A `place` say from a player or from the NPC in `as` must name where that speaker stands, or it is `SCHEMA`. A say puts one line of speech on the session tape and takes no round. Every seat that hears it gets one `say` under one `seq`, and the sender's copy is the reply. The GM's copy lists `recipient_ids`, the seated players who heard it, so an NPC is never in it.
+`to` names who hears it: `"table"`, `{"place": "<id>"}` or `{"actor": "<id>"}`. A player's say to an actor is read as one line, the actor then `text`, so `spook play` sends `say Mira Vell hi` (or `tell Mira Vell hi`, the same line) as `to` `{"actor": "Mira"}` and `text` `Vell hi`. The longest run of leading words that names an actor in sight, by id or name and ignoring case and outer spaces as a move's target does, is who it is said to, and the rest is the text. A name two in sight share is `AMBIGUOUS_NAME`, with the move's `detail`. A line that names nobody in sight is said at the table, its text the whole line. `text` is at most 4096 characters. The table sets `from` from the connection: `player:<id>` or `gm`. A `from` in `args` is `SCHEMA`. The GM may add `as`, the bare id of an NPC, to speak as that NPC, and `from` is then `npc:<id>`. A `say` message carries `from_name`, the speaking PC's or NPC's name, and leaves it out when the GM speaks as itself. An `as` that names a PC, no actor or anything but a bare id is `SCHEMA`, and so is a player's `as`. A GM say with `as` and no `to` is heard where that NPC stands. Any other say without `to` is `SCHEMA`. A `place` say from a player or from the NPC in `as` must name where that speaker stands, or it is `SCHEMA`. A say puts one line of speech on the session tape and takes no round. Every seat that hears it gets one `say` under one `seq`, and the sender's copy is the reply. The GM's copy lists `recipient_ids`, the seated players who heard it, so an NPC is never in it.
 
 <!-- example: player-say -->
 ```json
@@ -120,17 +120,17 @@ A GM's `release` frees the seat before its reply. A later command on that connec
 
 <!-- example: player-said -->
 ```json
-{"seq":6,"reply_to":"c2","body":{"kind":"say","from":"player:rowan","to":"table","text":"evening"}}
+{"seq":6,"reply_to":"c2","body":{"kind":"say","from":"player:rowan","from_name":"Rowan","to":"table","text":"evening"}}
 ```
 
 <!-- example: gm-heard -->
 ```json
-{"seq":6,"body":{"kind":"say","from":"player:rowan","to":"table","recipient_ids":["rowan"],"text":"evening"}}
+{"seq":6,"body":{"kind":"say","from":"player:rowan","from_name":"Rowan","to":"table","recipient_ids":["rowan"],"text":"evening"}}
 ```
 
 ### Moves
 
-A move is a pack verb, its target in `target`. The target is an id or a display name the player sees, ignoring case and outer spaces, and an exit also answers to the place it goes to, by id or name. A name that two things in sight share is refused `AMBIGUOUS_NAME` before it is queued, and `detail` is that name and every id that has it, `Briar: bram, briar`. With a GM seated, the move waits for `commit`. The reply is `queued`, and the GM gets the same `queued` under the same `seq`. `intent` is the queue id. With no GM seated, the move commits its own round, and the reply comes after that round is written.
+A move is a pack verb, its target in `target`. The target is an id or a name the player sees, ignoring case and outer spaces, and an exit also answers to the place it goes to, by id or name. A name that two things in sight share is refused `AMBIGUOUS_NAME` before it is queued, and `detail` is that name and every id that has it, `Briar: bram, briar`. With a GM seated, the move waits for `commit`. The reply is `queued`, and the GM gets the same `queued` under the same `seq`. `intent` is the queue id. With no GM seated, the move commits its own round, and the reply comes after that round is written.
 
 <!-- example: player-exert -->
 ```json
@@ -151,33 +151,33 @@ A move the table can judge at once is refused before it is queued. Here Rowan se
 {"seq":22,"reply_to":"c5","body":{"kind":"refused","code":"NO_EXIT","detail":"The stair door is locked."}}
 ```
 
-`look` takes no round and answers with a fresh `view`. `help` and `map` take none either, and answer with data the client prints. `help` lists the player commands but `claim`, then each pack verb this PC can use here and now. Each command has a `target`: `none`, `actor`, `place`, `exit` or `item`. `names` lists what the PC can name for it now, by the names the player reads: the exits from here, the actors or items it may name, or the places it visited. A cast member's or item's verb carries that `owner` id, and its name as its one name, so it reads as `ask Briar`, and it shows only while they are in sight. A verb whose `if` fails now is left out, but cost is not checked. The exits and the busy line are in the `view`, not in `help`.
+`look` takes no round and answers with a fresh `view`. `help` and `map` take none either, and answer with data the client prints. `help` lists the player commands but `claim`, then each pack verb this PC can use here and now. Each command has its `id`, as the player types it, and a `target`: `none`, `actor`, `place`, `exit` or `item`. `names` lists what the PC can name for it now, by the names the player reads: the exits from here, the actors or items it may name, or the places it visited. A cast member's or item's verb carries that `owner` id, and its name as its one name, so it reads as `ask Briar`, and it shows only while they are in sight. A verb whose `if` fails now is left out, but cost is not checked. The exits and the busy line are in the `view`, not in `help`.
 
 <!-- example: player-help -->
 ```json
 {"seq":31,"reply_to":"c3","body":{"kind":"help","commands":[
-  {"name":"release","target":"none"},
-  {"name":"say","target":"none"},
-  {"name":"look","target":"none"},
-  {"name":"help","target":"none"},
-  {"name":"map","target":"none"},
-  {"name":"cancel","target":"none"},
-  {"name":"drop","target":"item","names":["Lamp oil"]},
-  {"name":"exert","target":"none"},
-  {"name":"strike","target":"actor","names":["Aldric"]},
-  {"name":"take","target":"item","names":["Lamp oil"]},
-  {"name":"travel","target":"exit","names":["Docks Street","stairs"]},
-  {"name":"unwield","target":"none"},
-  {"name":"wait","target":"none"},
-  {"name":"wield","target":"item","names":["Lamp oil"]}
+  {"id":"release","target":"none"},
+  {"id":"say","target":"none"},
+  {"id":"look","target":"none"},
+  {"id":"help","target":"none"},
+  {"id":"map","target":"none"},
+  {"id":"cancel","target":"none"},
+  {"id":"drop","target":"item","names":["Lamp oil"]},
+  {"id":"exert","target":"none"},
+  {"id":"strike","target":"actor","names":["Aldric"]},
+  {"id":"take","target":"item","names":["Lamp oil"]},
+  {"id":"travel","target":"exit","names":["Docks Street","stairs"]},
+  {"id":"unwield","target":"none"},
+  {"id":"wait","target":"none"},
+  {"id":"wield","target":"item","names":["Lamp oil"]}
 ]}}
 ```
 
-`map` lists each place the PC's save says they visited, by display name, with the exits they saw there when they last stood there at the end of a round. A hidden exit revealed since then shows only after they go back. Where each exit goes, its ticks and `locked` are read now.
+`map` lists each place the PC's save says they visited, by name, with the exits they saw there when they last stood there at the end of a round. A hidden exit revealed since then shows only after they go back. Where each exit goes, its ticks and `locked` are read now.
 
 <!-- example: player-map -->
 ```json
-{"seq":32,"reply_to":"c4","body":{"kind":"map","places":[{"name":"Docks Shop","exits":[{"name":"docks_street","to":"docks_street","place_name":"Docks Street","ticks":0,"locked":false},{"name":"stairs","to":"mira_rooms","place_name":"Mira's Rooms","ticks":2,"locked":true}]}]}}
+{"seq":32,"reply_to":"c4","body":{"kind":"map","places":[{"name":"Docks Shop","exits":[{"exit_id":"docks_street","name":"Docks Street","place_id":"docks_street","place_name":"Docks Street","ticks":0,"locked":false},{"exit_id":"stairs","name":"stairs","place_id":"mira_rooms","place_name":"Mira's Rooms","ticks":2,"locked":true}]}]}}
 ```
 
 ### status
@@ -200,58 +200,58 @@ The table's state for a GM. `world_time` is the game clock in ticks. `pack_rev` 
     "world_time": 1080,
     "round_index": 0,
     "state_rev": 0,
-    "pack_rev": "blake2s:b81d7ee672f6ac87e74ca79eda521b7cdaa8a59ec0f6db917727b9df47a54c74",
+    "pack_rev": "blake2s:f180125da352d2e9c8ab3df0ca07bd7da0aeb66fa5e1de3e2c432b13da9fdc75",
     "last_round_at": "2026-01-01T00:00:00Z",
     "queued": [],
     "pack": {
       "menu": [
         {
-          "name": "leave_door_note",
+          "id": "leave_door_note",
           "kind": "habit",
           "target": "none"
         },
         {
-          "name": "restock_lamp_oil",
+          "id": "restock_lamp_oil",
           "kind": "habit",
           "target": "none"
         },
         {
-          "name": "wait",
+          "id": "wait",
           "kind": "verb",
           "target": "none"
         },
         {
-          "name": "travel",
+          "id": "travel",
           "kind": "verb",
           "target": "exit"
         },
         {
-          "name": "exert",
+          "id": "exert",
           "kind": "verb",
           "target": "none"
         },
         {
-          "name": "strike",
+          "id": "strike",
           "kind": "verb",
           "target": "actor"
         },
         {
-          "name": "take",
+          "id": "take",
           "kind": "verb",
           "target": "item"
         },
         {
-          "name": "drop",
+          "id": "drop",
           "kind": "verb",
           "target": "item"
         },
         {
-          "name": "wield",
+          "id": "wield",
           "kind": "verb",
           "target": "item"
         },
         {
-          "name": "unwield",
+          "id": "unwield",
           "kind": "verb",
           "target": "none"
         }
@@ -347,7 +347,7 @@ A client ignores a `kind` or a field it does not know. `server.json` gives every
 | `presence` | the GM | `actors_present` after a claim starts or ends |
 | `refused` | the sender | `code` and, when the refusal names something, `detail` |
 | `queued` | the sender and the GM | `intent`, `actor`, `move`, `target` |
-| `say` | every seat that hears it | `from`, `to`, `text`, and for the GM `recipient_ids` |
+| `say` | every seat that hears it | `from`, `from_name`, `to`, `text`, and for the GM `recipient_ids` |
 | `round` | every seat | `round_index` and `world_time` of one committed round |
 | `check` | the player who rolled | `outcome`: `success`, `partial` or `miss` |
 | `committed` | the GM | the reply to `commit` |
@@ -356,12 +356,12 @@ A client ignores a `kind` or a field it does not know. `server.json` gives every
 | `resume` | a player | the `notes` addressed to that PC |
 | `lines` | a player | `text` to print: one narrate line |
 | `changes` | a player | `viewer` and `changes`: the changes one round showed that player |
-| `help` | the asking player | `commands`, each with `name`, `target`, `names` and `owner` |
+| `help` | the asking player | `commands`, each with `id`, `target`, `names` and `owner` |
 | `map` | the asking player | `places`, each with `name` and `exits` |
 
 ### view and resume
 
-`viewer` is the bare actor id. `place_name`, `actor_names` and each item's `name` are the pack's display names, and `body` is the place prose. `known_facts` hold only the facts that actor knows, with the prose that actor may read. `meters` are the viewer's own, without hidden ones. `world_meters` are the world's meters whose pack row says `hidden: false`, at their current values, so a player who comes back sees them. `exits` is left out when the place has none. `busy` says what keeps the viewer busy and until when, and is left out when they are free: `on the stairs until tick 1300` on a walk, `chanting until tick 1300` on any other timed move, read from its verb, and `recovering until tick 1300` in a cooldown. A busy player may still send a move, and it is refused `BUSY`, except `cancel` (see [Moves](#moves)). `cant_act` says why the viewer can't send a move at all, and is left out when they can, so `View::can_act()` is `cant_act` being empty. Nothing sets it yet.
+`viewer` is the bare actor id. `place_name`, `actor_names` and each item's `name` are the pack's names, and `body` is the place prose. Each exit has its `exit_id`, the `name` a player reads for it, and where it goes as `place_id` and `place_name`. `known_facts` hold only the facts that actor knows, with the prose that actor may read. `meters` are the viewer's own, without hidden ones. `world_meters` are the world's meters whose pack row says `hidden: false`, at their current values, so a player who comes back sees them. `exits` is left out when the place has none. `busy` says what keeps the viewer busy and until when, and is left out when they are free: `on the stairs until tick 1300` on a walk, `chanting until tick 1300` on any other timed move, read from its verb, and `recovering until tick 1300` in a cooldown. A busy player may still send a move, and it is refused `BUSY`, except `cancel` (see [Moves](#moves)). `cant_act` says why the viewer can't send a move at all, and is left out when they can, so `View::can_act()` is `cant_act` being empty. Nothing sets it yet.
 
 <!-- example: player-resume -->
 ```json
@@ -432,15 +432,17 @@ A client ignores a `kind` or a field it does not know. `server.json` gives every
     "habits": [],
     "exits": [
       {
-        "name": "docks_street",
-        "to": "docks_street",
+        "exit_id": "docks_street",
+        "name": "Docks Street",
+        "place_id": "docks_street",
         "place_name": "Docks Street",
         "ticks": 0,
         "locked": false
       },
       {
+        "exit_id": "stairs",
         "name": "stairs",
-        "to": "mira_rooms",
+        "place_id": "mira_rooms",
         "place_name": "Mira's Rooms",
         "ticks": 2,
         "locked": true
@@ -454,7 +456,7 @@ A client ignores a `kind` or a field it does not know. `server.json` gives every
 
 Each seated player gets, in order: the `round`, a `check` for each of their own rolls, a `refused` for each of their own moves the round refused, a fresh `resume` and `view`, a `lines` for each narrate line they may hear, and a last `changes` with every change that player may know. A player is told their own meter changes and the world's shown ones, not another actor's, even in the same place, and never a flag change. They are also told the items, place and wielded item of each actor in their place, their own known facts, and the notes they may read. A modifier or busy change is not sent: neither has a wire value yet. An empty `changes` is not sent, and a narrate line that would show a fact the player may not know is left out.
 
-`changes` holds one object per change, in key order, not the order the round made them, and the client writes the sentence. `component_id` names what changed, as an open set: `meter`, `item`, `place`, `wielded_item`, `known_facts` and `note` today, and a client ignores one it does not know. `entity_id` is whose it is as a rule's `of` names it: an actor id, `place:<id>`, `story:<id>` or `world`. `entity_name` is that actor's or place's display name, or the story's id, and is left out for the world. `entry_id` is which one of the entity's, such as the meter or item id, and is left out when the entity holds one, as with `place`. `entry_name` is the entry's display name, left out when there is no entry, or for `place` the display name of the place moved to. `before` and `after` are the values as JSON writes them: a number for a meter or an item count, text for a place or a wielded item, `true` for a note, and a list for known facts. Either is left out when there was none, as with a meter that did not read. When an item moves between an actor and a place, both counts are in `changes`, so `spook play` reads the take below as `You picked up the Lamp oil.` `spook play` words only meters, items and places, so a move reads like `Your place is now Docks Street.`, and prints nothing for the rest. An NPC's roll or refused habit sends no player message.
+`changes` holds one object per change, in key order, not the order the round made them, and the client writes the sentence. `component_id` names what changed, as an open set: `meter`, `item`, `place`, `wielded_item`, `known_facts` and `note` today, and a client ignores one it does not know. `entity_id` is whose it is as a rule's `of` names it: an actor id, `place:<id>`, `story:<id>` or `world`. `entity_name` is that actor's, place's or story's name, and is left out for the world. `entry_id` is which one of the entity's, such as the meter or item id, and is left out when the entity holds one, as with `place`. `entry_name` is the item's name for `item`, or for `place` the name of the place moved to, and is left out otherwise. `before` and `after` are the values as JSON writes them: a number for a meter or an item count, text for a place or a wielded item, `true` for a note, and a list for known facts. Either is left out when there was none, as with a meter that did not read. When an item moves between an actor and a place, both counts are in `changes`, so `spook play` reads the take below as `You picked up the Lamp oil.` `spook play` words only meters, items and places, so a move reads like `Your place is now Docks Street.`, and prints nothing for the rest. An NPC's roll or refused habit sends no player message.
 
 <!-- example: player-round -->
 ```json
@@ -563,5 +565,6 @@ The MCP endpoint answers with an HTTP status before any seat: 400 for an `MCP-Pr
 - Version 2 renamed the cast's role before any release, on purpose, so the cast and the engine say the same word: `pack.kinds` in `status` became `pack.control_types`, and a cast file's `kind` became `control_type`. The values did not change. The recording took the new name and the docks pack's new `pack_rev` with it. The version stayed 2 because no build had shipped.
 - Version 2 split one body before any release, on purpose, so a client writes the change sentences as it writes the view: `lines` now carries only narrate lines, and the changes a round showed a player moved to the new `changes`, as data: each change names its component as open text and carries its values as JSON values, so a new component needs no protocol change. The recording took the new body with it. The version stayed 2 because no build had shipped.
 - Version 2 renamed a say's listener before any release, on purpose, so a say reads `from`, `to` and `as`: `address` and its `place` or `actor` key became one `to`, which is `"table"`, `{"place": "<id>"}` or `{"actor": "<id>"}`, in the `say` command, the `say` message and the session tape. The schema's `$defs/Say` became `$defs/Speech`, and a speech's `recipients` became `recipient_ids` on the `say` message and the tape. The recording took the new key with it. The version stayed 2 because no build had shipped.
+- Version 2 renamed every identifier to `id` before any release, on purpose, so `name` is only text a player reads: a `help` command's `name` and a `status` menu row's `name` became `id`, and an exit's `name` and `to` became `exit_id` and `place_id`, with `name` now the text a player reads for it. A `say` gained `from_name`, and `entry_name` is left out for an entry with no name, such as a meter. The recording took the new names and the docks pack's new `pack_rev` with it. The version stayed 2 because no build had shipped.
 - The recorded session must still replay. Each message it got must still arrive at that seat, in order, with every field it had and the same value. New kinds and fields may come between. Only `seq`, which a new kind moves, and `token`, which each table mints, may differ.
 - The journal and refusal codes stay strict: `spook verify` fails on a code it does not know.
