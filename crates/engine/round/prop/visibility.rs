@@ -155,10 +155,10 @@ fn apply_scene(
     }
     for (index, note) in scene.notes.iter().enumerate() {
         let note = Note {
-            to: (note.to.iter())
+            to_ids: (note.to.iter())
                 .map(|actor| actors[actor % actors.len()].clone())
                 .collect(),
-            place: note.place.map(|place| places[place % places.len()].clone()),
+            place_id: note.place.map(|place| places[place % places.len()].clone()),
             fact_ids: (note.fact_ids.iter())
                 .map(|fact| facts[fact % facts.len()].clone())
                 .collect(),

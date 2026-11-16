@@ -229,8 +229,8 @@ fn can_see_note(canon: &Canon, world: &ecs::World, viewer: &ActorId, id: &str) -
     let Some(note) = world.globals().get::<Note>(&GlobalId).get(id) else {
         return false;
     };
-    let in_room = note.place.as_ref().map(PlaceId::as_str) == place_of(world, viewer);
-    let addressed = note.to.contains(viewer);
+    let in_room = note.place_id.as_ref().map(PlaceId::as_str) == place_of(world, viewer);
+    let addressed = note.to_ids.contains(viewer);
     if !in_room && !addressed {
         return false;
     }

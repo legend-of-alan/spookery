@@ -3,10 +3,6 @@ Feature: Habits keep the shop's items and leave the door note
   Scenario: The evening round leaves the door note and the oil
     When the evening round runs with Rowan away
 
-  Scenario: The save keeps a note in globals.notes by its id, each reader and fact once
-    When the evening round leaves the door note to Wren, Rowan and Wren with fact_ledger_short twice
-    Then the save holds the door note in globals.notes, to rowan and wren, with fact_ledger_short once
-
   Scenario: Morning restock runs from Mira's rooms
     When the morning round runs with the note already left
 

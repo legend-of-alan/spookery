@@ -129,9 +129,12 @@ fn perceive_viewer_budget(
     unknown_mentions.sort();
 
     let mut notes = Vec::new();
-    for (id, note) in world.globals().get::<Note>(&GlobalId).iter() {
-        let here = note.place.as_ref().is_some_and(|at| at == place.as_str());
-        let addressed = note.to.contains(viewer.actor_id());
+    for (note_id, note) in world.globals().get::<Note>(&GlobalId).iter() {
+        let here = note
+            .place_id
+            .as_ref()
+            .is_some_and(|place_id| place_id == place.as_str());
+        let addressed = note.to_ids.contains(viewer.actor_id());
         if !here && !addressed {
             continue;
         }
@@ -143,9 +146,9 @@ fn perceive_viewer_budget(
             continue;
         }
         notes.push(NoteView {
-            id: id.to_string(),
-            to: note.to.iter().map(ActorId::to_string).collect(),
-            place: note.place.as_ref().map(PlaceId::to_string),
+            id: note_id.to_string(),
+            to: note.to_ids.iter().map(ActorId::to_string).collect(),
+            place: note.place_id.as_ref().map(PlaceId::to_string),
             fact_ids: note.fact_ids.iter().cloned().collect(),
             text: note.text.clone(),
         });

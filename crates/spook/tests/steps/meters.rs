@@ -161,8 +161,8 @@ fn miras_habit_reads_and_resets(world: &mut World) {
 fn the_habit_runs_as_before(world: &mut World) {
     let now = world_of(pack(world));
     let notes = now.globals().get::<Note>(&GlobalId);
-    let to = notes.get("note_mira_door").map(|note| note.to.clone());
-    assert_eq!(to, Some(BTreeSet::from(["rowan".into()])));
+    let to_ids = notes.get("note_mira_door").map(|note| note.to_ids.clone());
+    assert_eq!(to_ids, Some(BTreeSet::from(["rowan".into()])));
     assert_eq!(value_on(pack(world), &mira(), "shop_day"), Some(0));
 }
 

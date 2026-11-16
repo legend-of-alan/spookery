@@ -253,13 +253,13 @@ impl Effect {
             } => {
                 if place
                     .as_ref()
-                    .is_some_and(|at| !canon.places.contains_key(at))
+                    .is_some_and(|place_id| !canon.places.contains_key(place_id))
                 {
                     return Err(Reason::UnknownId);
                 }
                 let note = Note {
-                    to: to.into_iter().collect(),
-                    place,
+                    to_ids: to.into_iter().collect(),
+                    place_id: place,
                     fact_ids: fact_ids.into_iter().collect(),
                     text,
                 };

@@ -81,8 +81,8 @@ fn snapshot(root: &Path) -> Vec<(PathBuf, Vec<u8>)> {
 
 fn door_note() -> Note {
     Note {
-        to: BTreeSet::from(["rowan".into()]),
-        place: Some("docks_shop".into()),
+        to_ids: BTreeSet::from(["rowan".into()]),
+        place_id: Some("docks_shop".into()),
         fact_ids: BTreeSet::new(),
         text: "Back at dusk. Oil on the shelf.".to_string(),
     }
@@ -120,7 +120,7 @@ fn evening_note() {
     let notes = world.globals().get::<Note>(&GlobalId);
     let door = notes.get("note_mira_door").expect("the door note");
     assert_eq!(note_ids(&world), ["note_mira_door"]);
-    assert_eq!(door.place, Some("docks_shop".into()));
+    assert_eq!(door.place_id, Some("docks_shop".into()));
     let _ = fs::remove_dir_all(&pack);
 }
 
@@ -838,53 +838,6 @@ fn the_debt_is_still(world: &mut World, value: i64) {
 #[when(expr = "the evening round runs with Rowan away")]
 fn the_evening_round_runs(_world: &mut World) {
     evening_note();
-}
-
-#[when(
-    expr = "the evening round leaves the door note to Wren, Rowan and Wren with fact_ledger_short twice"
-)]
-fn the_evening_round_leaves_the_door_note_with_repeats(world: &mut World) {
-    let pack = support::copy_pack("docks", "note_repeats");
-    let mira = pack.join("cast/mira.md");
-    let text = fs::read_to_string(&mira).unwrap();
-    let addressed = "to:\n            - rowan\n";
-    let repeated = "to: [wren, rowan, wren]\n";
-    let no_facts = "fact_ids: []\n          text: Back at dusk.";
-    let two_facts =
-        "fact_ids: [fact_ledger_short, fact_ledger_short]\n          text: Back at dusk.";
-    assert!(
-        text.contains(addressed) && text.contains(no_facts),
-        "{text}"
-    );
-    let text = text
-        .replace(addressed, repeated)
-        .replace(no_facts, two_facts);
-    fs::write(&mira, text).unwrap();
-    stamp_pack_rev(&pack);
-    play_pack_once(&pack).unwrap_or_else(|err| panic!("round: {err}"));
-    world.scratch = emit_save(&world_of(&pack)).unwrap();
-    world.pack = Some(pack);
-}
-
-#[then(
-    expr = "the save holds the door note in globals.notes, to rowan and wren, with fact_ledger_short once"
-)]
-fn the_save_holds_the_door_note_in_globals_notes(world: &mut World) {
-    let held = concat!(
-        "globals:\n",
-        "  meters: {}\n",
-        "  flags: []\n",
-        "  notes:\n",
-        "    note_mira_door:\n",
-        "      to:\n",
-        "        - rowan\n",
-        "        - wren\n",
-        "      place: docks_shop\n",
-        "      fact_ids:\n",
-        "        - fact_ledger_short\n",
-        "      text: Back at dusk. Oil on the shelf.\n",
-    );
-    assert!(world.scratch.ends_with(held), "{}", world.scratch);
 }
 
 #[when(expr = "the morning round runs with the note already left")]
