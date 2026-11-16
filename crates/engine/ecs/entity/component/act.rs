@@ -1,9 +1,8 @@
 //! Action state: how many times an actor has acted, and the action they are still on.
 
 use serde::{Deserialize, Serialize};
-use spookery_protocol::ChangeValue;
 
-use crate::ecs::change::{self, Change};
+use crate::ecs::change::{self, Change, ChangeValue};
 use crate::ecs::component::{Component, Mut, Ref};
 use crate::ecs::id::ActorId;
 use crate::ecs::prelude::*;

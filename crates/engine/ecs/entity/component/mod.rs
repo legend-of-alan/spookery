@@ -17,8 +17,6 @@ use std::collections::BTreeMap;
 use std::fmt::Debug;
 use std::marker::PhantomData;
 
-use spookery_protocol::ChangeValue;
-
 pub(crate) use act::ActCounter;
 pub use act::{Act, PendingAction};
 pub use control_type::ControlType;
@@ -32,7 +30,7 @@ pub use place::Place;
 pub use visit::Visit;
 pub use wielded_item::WieldedItem;
 
-use crate::ecs::change::{self, Change};
+use crate::ecs::change::{self, Change, ChangeValue};
 use crate::ecs::prelude::*;
 use crate::ecs::{entity, nested_map, Reader, Transaction, Writer};
 use crate::Reason;

@@ -15,10 +15,8 @@
 
 use std::sync::Arc;
 
-use spookery_protocol::ChangeValue;
-
 use crate::canon::StoryDef;
-use crate::ecs::change::{self, Change};
+use crate::ecs::change::{self, Change, ChangeValue};
 use crate::ecs::component::meter::{Meter, MeterDef, MeterWrite};
 use crate::ecs::component::modifier::{self, ModifierDef};
 use crate::ecs::component::{self, Component};

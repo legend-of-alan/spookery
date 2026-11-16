@@ -1,9 +1,8 @@
 //! The notes left in the world, and leaving one.
 
 use serde::{Deserialize, Serialize};
-use spookery_protocol::ChangeValue;
 
-use super::change::{self, Change};
+use super::change::{self, Change, ChangeValue};
 use super::entity;
 use super::id::{ActorId, PlaceId};
 use super::{sort_unique, undo, Writer};

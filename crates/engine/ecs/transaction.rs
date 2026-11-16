@@ -5,9 +5,7 @@
 use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, BTreeSet};
 
-use spookery_protocol::ChangeValue;
-
-use super::change::{self, Change};
+use super::change::{self, Change, ChangeValue};
 use super::component::{meter, Meter, Modifier};
 use super::{entity, sort_unique, undo, MemoryLine, Reader, Save};
 use crate::canon::Budget;

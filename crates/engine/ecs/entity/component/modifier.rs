@@ -4,9 +4,8 @@
 use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
-use spookery_protocol::ChangeValue;
 
-use crate::ecs::change::{self, Change};
+use crate::ecs::change::{self, Change, ChangeValue};
 use crate::ecs::component::meter::{self, Meter};
 use crate::ecs::component::{Component, Mut, Ref};
 use crate::ecs::entity;

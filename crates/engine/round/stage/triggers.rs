@@ -1,9 +1,7 @@
 //! Change rules, edge-triggered, to a fixpoint, after each start and each finish lands.
 
-use spookery_protocol::ChangeValue;
-
 use crate::canon::{Canon, OPEN};
-use crate::ecs::change::Change;
+use crate::ecs::change::{Change, ChangeValue};
 use crate::ecs::component::{Component, Flag, Item, KnownFacts, Meter, OpenExit, Place};
 use crate::ecs::id::ActorId;
 use crate::ecs::{self, component, entity, Presence};

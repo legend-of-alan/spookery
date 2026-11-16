@@ -2,10 +2,10 @@
 
 use std::collections::BTreeSet;
 
-use spookery_protocol::{ChangeValue, ChangeView};
+use spookery_protocol::ChangeView;
 
 use crate::canon::Canon;
-use crate::ecs::change::Change;
+use crate::ecs::change::{Change, ChangeValue};
 use crate::ecs::component::{
     Act, Component, Item, KnownFacts, Meter, Modifier, Place, WieldedItem,
 };

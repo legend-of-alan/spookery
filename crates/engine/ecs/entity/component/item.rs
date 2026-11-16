@@ -1,8 +1,6 @@
 //! Item counts, and the rule for shifting one, the same in every collection that holds items.
 
-use spookery_protocol::ChangeValue;
-
-use crate::ecs::change::Change;
+use crate::ecs::change::{Change, ChangeValue};
 use crate::ecs::component::{Component, Mut, WieldedItem};
 use crate::ecs::{entity, Reader};
 use crate::Reason;

@@ -2,7 +2,7 @@
 
 use std::fmt;
 
-use spookery_protocol::ChangeValue;
+pub use spookery_protocol::ChangeValue;
 
 use crate::ecs::component::Meter;
 use crate::ecs::entity;

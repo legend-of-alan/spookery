@@ -2,9 +2,7 @@
 
 use std::collections::BTreeSet;
 
-use spookery_protocol::ChangeValue;
-
-use crate::ecs::change::Change;
+use crate::ecs::change::{Change, ChangeValue};
 use crate::ecs::component::{Component, Mut, Ref};
 use crate::ecs::entity;
 use crate::Reason;
