@@ -8,7 +8,7 @@ use spookery_engine::{component, entity, Presence, World as Engine};
 use super::common::{give_key, resolve_id};
 use super::rules::open;
 use super::triggers::world_flags;
-use crate::support::{act_of, append, copy_docks, edit_save, read_round, stamp_pack_rev, state_of};
+use crate::support::{act_of, append, copy_pack, edit_save, read_round, stamp_pack_rev, state_of};
 use crate::World;
 
 fn seated() -> Presence {
@@ -43,7 +43,7 @@ fn add_verb(world: &World, rule: &str) {
 
 #[given(expr = "a docks table with Rowan and Wren seated in the shop")]
 fn rowan_and_wren_in_the_shop(world: &mut World) {
-    let pack = copy_docks("lifecycle");
+    let pack = copy_pack("docks", "lifecycle");
     edit_save(&pack, |now| {
         now.actors_mut()
             .get_mut::<component::Place>(&"wren".into())

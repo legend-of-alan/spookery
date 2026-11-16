@@ -30,13 +30,14 @@ Feature: The character picker shows every PC
       """
 
   Scenario: A player picks a character by the name the picker shows
-    Given a copy of the sample-d20 pack
-    When play joins the sample table as "Lark"
+    Given a docks table
+    When play joins the table as "Harbormouse"
     Then stdout shows the picker:
       """
       Choose a character:
-      Lark
-      Nell
+      Harbormouse
+      Rowan
+      Wren
       """
     And play shows "Gate Yard"
-    And the present actor is lark
+    And the present actor is harbormouse

@@ -31,7 +31,7 @@ use proptest::prelude::*;
 use proptest::test_runner::{TestCaseError, TestRunner};
 
 use super::support::{arb_rounds, assert_replay_matches, play_rounds, runner_config, TempPack};
-use crate::testing::copy_docks;
+use crate::testing::copy_pack;
 
 #[derive(Clone, Debug)]
 struct Chain {
@@ -54,7 +54,7 @@ fn random_play_stops_trigger_chains_at_the_cap() {
     let chain = pick_chain();
     runner
         .run(&(rounds, chain), |(rounds, chain)| {
-            let pack = TempPack(copy_docks("prop-triggers"));
+            let pack = TempPack(copy_pack("docks", "prop-triggers"));
             let rules = install(&pack.0, &chain).map_err(TestCaseError::fail)?;
             play_rounds(&pack.0, &rounds).map_err(TestCaseError::fail)?;
             assert_triggers_stop(&pack.0, &rules, rounds.len())

@@ -13,12 +13,12 @@ use spookery_engine::{entity, Presence, State};
 use super::common::{flags_of, replace_in_file};
 use super::meters::write_world_meters;
 use super::record::read_extra_steps;
-use crate::support::{self, copy_docks};
+use crate::support::{self, copy_pack};
 use crate::World;
 
 #[when(expr = "nell travels via door into docks_shop")]
 fn nell_travels_via_door(world: &mut World) {
-    let pack = copy_docks("trigger-door");
+    let pack = copy_pack("docks", "trigger-door");
     add_door(&pack);
     add_bell(&pack);
     add_verb(
@@ -130,7 +130,7 @@ fn the_rule_does_not_fire_again(world: &mut World) {
 
 #[given(expr = "nell has flag found_key and arrives at mira_rooms")]
 fn nell_arrives_with_the_key(world: &mut World) {
-    let pack = copy_docks("trigger-ledger");
+    let pack = copy_pack("docks", "trigger-ledger");
     add_rooms(&pack);
     write_world_meters(&pack, &[("tide", 0, None)]);
     replace_in_file(
@@ -202,7 +202,7 @@ fn nell_knows_the_ledger(world: &mut World, tide: i64) {
 
 #[given(expr = "two rules that set each other's watched flag")]
 fn two_rules_set_each_others_flag(world: &mut World) {
-    let pack = copy_docks("trigger-loop");
+    let pack = copy_pack("docks", "trigger-loop");
     write_nell(&pack, &["sun", "moon"]);
     add_verb(
         &pack,
@@ -302,7 +302,7 @@ fn a_known_fact_narrates_to_the_subject(world: &mut World) {
 }
 
 fn write_secret_pack(world: &mut World, label: &str, to: &str) -> std::path::PathBuf {
-    let pack = copy_docks(label);
+    let pack = copy_pack("docks", label);
     fs::create_dir_all(pack.join("story")).unwrap();
     fs::write(
         pack.join("story/secret.yaml"),
@@ -329,7 +329,7 @@ rules:
 
 #[then(expr = "spook verify passes after rounds that fired triggers")]
 fn verify_passes_after_triggers(world: &mut World) {
-    let pack = copy_docks("trigger-verify");
+    let pack = copy_pack("docks", "trigger-verify");
     add_door(&pack);
     add_bell(&pack);
     flag_pcs(&pack, "heard_bell");
@@ -351,7 +351,7 @@ fn verify_passes_after_triggers(world: &mut World) {
 
 #[when(expr = "nell enters the bog")]
 fn nell_enters_the_bog(world: &mut World) {
-    let pack = copy_docks("trigger-bog");
+    let pack = copy_pack("docks", "trigger-bog");
     replace_in_file(
         &pack.join("world/places/docks_street.md"),
         "    name: docks_shop\n",
@@ -378,12 +378,12 @@ rules:
     success:
       - meter:
           of: self
-          key: grit
+          key: vigor
           add: 0
     miss:
       - meter:
           of: self
-          key: grit
+          key: vigor
           add: -1
 ---
 The ground gives.
@@ -392,8 +392,8 @@ The ground gives.
     .unwrap();
     replace_in_file(
         &pack.join("rules/checks.yaml"),
-        "    meter: grit\n",
-        "    meter: grit\n  - id: stamina\n    dice:\n      count: 1\n      sides: 6\n    meter: grit\n",
+        "    meter: vigor\n",
+        "    meter: vigor\n  - id: stamina\n    dice:\n      count: 1\n      sides: 6\n    meter: vigor\n",
     );
     write_nell(&pack, &[]);
     edit_table(world, &pack, |now, seated| {
@@ -419,12 +419,12 @@ fn the_bog_roll_reproduces(world: &mut World) {
     let pack = world.pack.as_ref().unwrap();
     let now = state_of(pack);
     let nell = "nell".into();
-    let grit = now
+    let vigor = now
         .actors()
         .get::<component::Meter>(&nell)
-        .get("grit")
+        .get("vigor")
         .unwrap();
-    assert_eq!(grit.offset, -1, "the miss band did not spend grit");
+    assert_eq!(vigor.offset, -1, "the miss band did not spend vigor");
     let output = support::run_spook(&["verify", &pack.to_string_lossy()]);
     let stderr = String::from_utf8_lossy(&output.stderr);
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -433,7 +433,7 @@ fn the_bog_roll_reproduces(world: &mut World) {
 
 #[when(expr = "nell travels into the shop and the bell narrates")]
 fn nell_travels_and_the_bell_narrates(world: &mut World) {
-    let pack = copy_docks("trigger-narrate");
+    let pack = copy_pack("docks", "trigger-narrate");
     add_door(&pack);
     add_bell_narrate(&pack);
     flag_pcs(&pack, "heard_bell");
@@ -498,7 +498,7 @@ fn the_viewer_is_told(world: &mut World, viewer: String, text: String) {
 
 #[given(expr = "the street has a hidden trapdoor")]
 fn the_street_has_a_hidden_trapdoor(world: &mut World) {
-    let pack = copy_docks("trigger-reveal");
+    let pack = copy_pack("docks", "trigger-reveal");
     replace_in_file(
         &pack.join("world/places/docks_street.md"),
         "    name: docks_shop\n",
@@ -573,7 +573,7 @@ fn nell_can_see_the_trapdoor(world: &mut World) {
 
 #[given(expr = "a verb sets world flag tide_turned")]
 fn a_verb_sets_the_tide(world: &mut World) {
-    let pack = copy_docks("trigger-tide");
+    let pack = copy_pack("docks", "trigger-tide");
     add_verb(
         &pack,
         "
@@ -707,7 +707,7 @@ fn the_viewer_summary_omits(world: &mut World, viewer: String, key: String) {
 
 #[when(expr = "a round runs")]
 fn a_round_runs(world: &mut World) {
-    let pack = copy_docks("trigger-round-counter");
+    let pack = copy_pack("docks", "trigger-round-counter");
     write_nell(&pack, &[]);
     edit_table(world, &pack, |now, seated| {
         insert_actor_copy(now, seated, ("rowan", "nell"), "docks_street");
@@ -735,7 +735,7 @@ fn the_viewer_summary_omits_round_counters(world: &mut World, viewer: String) {
 
 #[when(expr = "nell learns fact_trapdoor while wren is in the same room")]
 fn nell_learns_the_trapdoor_beside_wren(world: &mut World) {
-    let pack = copy_docks("trigger-known-fact");
+    let pack = copy_pack("docks", "trigger-known-fact");
     replace_in_file(
         &pack.join("world/places/docks_street.md"),
         "    text: The street is quiet.\n",
@@ -759,7 +759,7 @@ fn nell_learns_the_trapdoor_beside_wren(world: &mut World) {
 
 #[when(expr = "an item is taken from docks_shop")]
 fn an_item_is_taken_from_the_shop(world: &mut World) {
-    let pack = copy_docks("trigger-place-item");
+    let pack = copy_pack("docks", "trigger-place-item");
     edit_table(world, &pack, |_, seated| {
         sit(seated, &["rowan"]);
     });
@@ -772,7 +772,7 @@ fn an_item_is_taken_from_the_shop(world: &mut World) {
 
 #[when(expr = "rowan takes an item while nell is in the same room")]
 fn rowan_takes_an_item_beside_nell(world: &mut World) {
-    let pack = copy_docks("trigger-actor-item");
+    let pack = copy_pack("docks", "trigger-actor-item");
     write_nell(&pack, &[]);
     edit_table(world, &pack, |now, seated| {
         insert_actor_copy(now, seated, ("rowan", "nell"), "docks_shop");
@@ -790,7 +790,7 @@ fn rowan_takes_an_item_beside_nell(world: &mut World) {
     expr = "Mira has a habit that sets the {string} flag on her place, which its file does not list"
 )]
 fn mira_has_an_unlisted_place_flag_habit(world: &mut World, flag: String) {
-    let pack = copy_docks("habit-flag");
+    let pack = copy_pack("docks", "habit-flag");
     replace_in_file(
         &pack.join("cast/mira.md"),
         "rules:\n  - id: leave_door_note\n",
@@ -843,7 +843,7 @@ fn no_place_has_the_flag(world: &mut World, flag: String) {
 
 #[when(expr = "nell travels from docks_street into docks_shop")]
 fn nell_travels_from_the_street_into_the_shop(world: &mut World) {
-    let pack = copy_docks("trigger-both-rooms");
+    let pack = copy_pack("docks", "trigger-both-rooms");
     write_nell(&pack, &[]);
     edit_table(world, &pack, |now, seated| {
         insert_actor_copy(now, seated, ("rowan", "nell"), "docks_street");
@@ -859,7 +859,7 @@ fn nell_travels_from_the_street_into_the_shop(world: &mut World) {
 
 #[when(expr = "a message hidden from wren is written")]
 fn a_message_hidden_from_wren_is_written(world: &mut World) {
-    let pack = copy_docks("trigger-message");
+    let pack = copy_pack("docks", "trigger-message");
     add_verb(
         &pack,
         "\n  - id: pass_word\n    when:\n      verb: pass_word\n    do:\n      - note:\n          id: note_private\n          to:\n            - nell\n          text: The tide turns at dusk.\n",
@@ -887,7 +887,7 @@ fn verify_passes_on_this_pack(world: &mut World) {
 
 #[when(expr = "the empty table narrates and then Rowan narrates")]
 fn the_empty_table_narrates_and_then_rowan_narrates(world: &mut World) {
-    let pack = copy_docks("trigger-idle-narrate");
+    let pack = copy_pack("docks", "trigger-idle-narrate");
     add_verb(
         &pack,
         "\n  - id: quiet\n    when:\n      verb: quiet\n    do:\n      - narrate:\n          to: rowan\n          text: The shop is quiet.\n  - id: back\n    when:\n      verb: back\n    do:\n      - narrate:\n          to: self\n          text: You are back.\n",
@@ -921,7 +921,7 @@ fn the_empty_table_narrates_and_then_rowan_narrates(world: &mut World) {
 
 #[given(expr = "a cast id world, a saved actor world and a reveal of a missing fact")]
 fn a_cast_id_world_and_a_bad_reveal(world: &mut World) {
-    let pack = copy_docks("trigger-check-reveal");
+    let pack = copy_pack("docks", "trigger-check-reveal");
     crate::support::edit_save(&pack, |now| {
         (now.actors_mut()).add_actor(&"world".into(), component::ControlType::Npc, "docks_shop");
     });
@@ -1017,34 +1017,16 @@ fn downed_pack(
     downed: bool,
     crosses: &str,
 ) -> std::path::PathBuf {
-    let pack = copy_docks(label);
-    replace_in_file(
-        &pack.join("rules/meters.yaml"),
-        "    base: 1\n",
-        "    base: 1\n  - id: hp\n    min: 0\n    base_cap: 12\n    max: 16\n    base: 8\n",
-    );
+    let pack = copy_pack("docks", label);
     add_verb(
         &pack,
         "\n  - id: hit\n    when:\n      verb: hit\n      target: actor\n    do:\n      - meter:\n          of: target\n          key: hp\n          add: -4\n  - id: nick\n    when:\n      verb: nick\n      target: actor\n    do:\n      - meter:\n          of: target\n          key: hp\n          add: -1\n",
     );
-    fs::write(
-        pack.join("cast/briar.md"),
-        "\
----
-schema: cast
-id: briar
-control_type: npc
-display_name: Briar
-flags:
-  - downed
-idle:
-  eligible: false
----
-Briar keeps their feet until they cannot.
-",
-    )
-    .unwrap();
-    fs::create_dir_all(pack.join("story")).unwrap();
+    replace_in_file(
+        &pack.join("cast/briar.md"),
+        "idle:\n",
+        "flags:\n  - downed\nidle:\n",
+    );
     fs::write(
         pack.join("story/injury.yaml"),
         format!(
@@ -1067,7 +1049,7 @@ rules:
     )
     .unwrap();
     edit_table(world, &pack, |now, seated| {
-        insert_actor_copy(now, seated, ("aldric", "briar"), "docks_shop");
+        set_place(now, "briar", "docks_shop");
         let briar = entity::Id::Actor("briar".into());
         support::put_meter(now, &briar, "hp", hp);
         if downed {

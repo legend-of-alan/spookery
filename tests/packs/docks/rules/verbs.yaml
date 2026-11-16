@@ -1,0 +1,85 @@
+schema: verbs
+rules:
+  - id: wait
+    when:
+      verb: wait
+    do: []
+
+  - id: travel
+    when:
+      verb: travel
+      target: exit
+    do:
+      - location:
+          via: target
+
+  - id: exert
+    when:
+      verb: exert
+    roll:
+      check: exert
+      threshold: 0
+    do: []
+
+  - id: strike
+    when:
+      verb: strike
+      target: actor
+    roll:
+      check: strike
+      threshold: 38
+      partial_at: 32
+    success:
+      - meter:
+          of: target
+          key: hp
+          add: "-(self.might / 10)"
+    partial:
+      - meter:
+          of: target
+          key: hp
+          add: -1
+
+  - id: take
+    when:
+      verb: take
+      target: item
+    do:
+      - item:
+          of: here
+          id: target
+          add: -1
+      - item:
+          of: self
+          id: target
+          add: 1
+
+  - id: drop
+    when:
+      verb: drop
+      target: item
+    do:
+      - item:
+          of: self
+          id: target
+          add: -1
+      - item:
+          of: here
+          id: target
+          add: 1
+
+  - id: wield
+    when:
+      verb: wield
+      target: item
+    do:
+      - wield:
+          subject: self
+          id: target
+
+  - id: unwield
+    when:
+      verb: unwield
+    do:
+      - unwield:
+          subject: self

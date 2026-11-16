@@ -476,7 +476,7 @@ mod tests {
 
     #[test]
     fn menu_rows_keep_verbs_and_habits_and_control_types() {
-        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packs/oneshot-docks");
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/packs/docks");
         let mut canon = load_canon(&root).expect("docks canon");
         canon.cast.get_mut("mira").unwrap().body = "CAST-BODY-SENTINEL".to_string();
         let summary = canon.to_pack_summary();

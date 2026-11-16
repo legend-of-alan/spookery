@@ -1,0 +1,16 @@
+schema: story
+id: ending
+rules:
+  - id: lane_clear
+    when:
+      change:
+        arrive: mill_lane
+        subject: pc
+    do:
+      - flag:
+          of: world
+          key: finished
+          value: true
+      - narrate:
+          to: self
+          text: The cart rolls out onto the lane. That is the end.

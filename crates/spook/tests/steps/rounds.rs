@@ -2,14 +2,14 @@ use cucumber::{given, then, when};
 use serde_json::Value;
 use spookery_engine::testing::state_of;
 
-use crate::support::copy_docks;
+use crate::support::copy_pack;
 use crate::World;
 
 use super::table;
 
 #[given(expr = "a docks table with a GM and a seated player")]
 fn a_docks_table_with_a_gm_and_a_seated_player(world: &mut World) {
-    let pack = copy_docks("round");
+    let pack = copy_pack("docks", "round");
     table::listen(world, &pack);
     table::seat_gm(world);
     table::seat_rowan(world, &pack);

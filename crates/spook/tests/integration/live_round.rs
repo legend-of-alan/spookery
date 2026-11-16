@@ -23,7 +23,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use crate::support::{copy_docks, drain, pack_arg, text_of, Process};
+use crate::support::{copy_pack, drain, pack_arg, text_of, Process};
 
 /// Long enough for one call, one retry, and a slow CPU-only model.
 const ROUND_BOUND: Duration = Duration::from_secs(240);
@@ -41,7 +41,7 @@ fn a_live_model_plays_one_round() {
     let model = env_var("SPOOK_GM_MODEL");
     println!("live round: model {model} at {upstream}");
 
-    let pack = copy_docks("live-round");
+    let pack = copy_pack("docks", "live-round");
     let pack_text = pack_arg(&pack);
     let port = free_port();
     let addr = format!("127.0.0.1:{port}");

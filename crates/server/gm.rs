@@ -227,7 +227,7 @@ mod tests {
     /// `SCHEMA`, and a command that is not one is.
     #[test]
     fn each_gm_command_runs() {
-        let pack = copy_pack("oneshot-docks", "gm_commands");
+        let pack = copy_pack("docks", "gm_commands");
         let mut world = spookery_engine::testing::resume(&pack);
         let calls = [
             ("status", json!({})),
@@ -267,7 +267,7 @@ mod tests {
 
     #[test]
     fn parsed_intent_reaches_the_world_with_move_and_to() {
-        let pack = copy_pack("oneshot-docks", "gm_intent");
+        let pack = copy_pack("docks", "gm_intent");
         let mut world = World::open(&pack).unwrap();
         let args = json!({"actor_id": "rowan", "move": "wait", "to": ["wren"]});
         let call = crate::protocol::parse_args(args.as_object()).unwrap();

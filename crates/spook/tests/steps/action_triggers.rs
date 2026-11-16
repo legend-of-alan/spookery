@@ -8,7 +8,7 @@ use spookery_engine::{component, entity, Presence};
 use super::record::read_extra_steps;
 use super::rules::open;
 use super::triggers::world_flags;
-use crate::support::{append, copy_docks, edit_save, read_round, stamp_pack_rev, state_of};
+use crate::support::{append, copy_pack, edit_save, read_round, stamp_pack_rev, state_of};
 use crate::World;
 
 const PCS: [&str; 3] = ["rowan", "wren", "harbormouse"];
@@ -77,7 +77,7 @@ fn latest_round(world: &World) -> serde_json::Value {
 
 #[given(expr = "a docks table with Rowan, Wren and Harbormouse seated in the shop")]
 fn three_in_the_shop(world: &mut World) {
-    let pack = copy_docks("action-triggers");
+    let pack = copy_pack("docks", "action-triggers");
     edit_save(&pack, |now| {
         for id in PCS {
             now.actors_mut()

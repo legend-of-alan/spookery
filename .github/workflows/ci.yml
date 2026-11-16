@@ -61,6 +61,10 @@ jobs:
       - name: build
         run: cargo build --workspace --locked
 
+      - name: demo pack
+        # No scenario plays the demo, so this only checks that the shipped pack loads.
+        run: cargo run -p spook --locked -- check packs/demo-d20
+
       - name: dependency-and-feature-checks
         if: runner.os == 'Linux'
         shell: bash

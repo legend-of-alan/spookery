@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use cucumber::{given, then, when};
 
-use spookery_engine::testing::{copy_docks, journal, lock_write};
+use spookery_engine::testing::{copy_pack, journal, lock_write};
 use spookery_engine::{emit_save, lock_pack};
 
 use crate::{World, Writer};
@@ -66,12 +66,12 @@ fn peek_during(world: &mut World, halfway: impl FnOnce(), finish: impl FnOnce())
 
 #[given(expr = "the writer holds a docks pack")]
 fn the_writer_holds_a_docks_pack(world: &mut World) {
-    hold(world, copy_docks("read-lock"));
+    hold(world, copy_pack("docks", "read-lock"));
 }
 
 #[given(expr = "the writer holds a docks pack that checkpoints every round")]
 fn the_writer_holds_a_checkpointing_pack(world: &mut World) {
-    let pack = copy_docks("read-lock-checkpoint");
+    let pack = copy_pack("docks", "read-lock-checkpoint");
     let path = pack.join("pack.yaml");
     let mut text = fs::read_to_string(&path).unwrap();
     if !text.ends_with('\n') {

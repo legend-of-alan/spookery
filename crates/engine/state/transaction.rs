@@ -282,8 +282,7 @@ mod tests {
     use crate::{Reason, World};
 
     fn docks() -> World<()> {
-        let pack =
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packs/oneshot-docks");
+        let pack = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/packs/docks");
         World::open(&pack).expect("open")
     }
 
@@ -293,16 +292,16 @@ mod tests {
         let mut canon = opened.canon().clone();
         canon.budget.max_state_keys_mutated = 2;
         let mut state = State::new(Save::clone(opened.state()), Arc::new(canon));
-        // Bram's grit sits clamped at its minimum: taking more moves the offset, not the value.
+        // Bram's vigor sits clamped at its minimum: taking more moves the offset, not the value.
         let bram = ActorId::from("bram");
-        let grit = Meter {
+        let vigor = Meter {
             base: 1,
             offset: -5,
         };
         let mut actors = state.actors_mut();
         actors
             .get_mut::<Meter>(&bram)
-            .set("grit", Some(grit))
+            .set("vigor", Some(vigor))
             .unwrap();
         state.accept();
         let world = World::from_parts(opened.root(), state);
@@ -319,7 +318,7 @@ mod tests {
         };
         assert_eq!(write("mira", "rest", 0), Ok(()), "unchanged: no key");
         assert_eq!(write("mira", "rest", 1), Ok(()), "the first key");
-        assert_eq!(write("bram", "grit", -1), Ok(()), "offset moved: key two");
+        assert_eq!(write("bram", "vigor", -1), Ok(()), "offset moved: key two");
         assert_eq!(write("mira", "rest", 1), Ok(()), "a counted key is free");
         assert_eq!(write("aldric", "rest", 0), Ok(()), "unchanged: no key");
         assert_eq!(write("aldric", "rest", 1), Err(Reason::Budget));
@@ -364,12 +363,12 @@ mod tests {
         use crate::state::component::modifier::{self, Modifier, ModifierDef};
         let opened = docks();
         let mut canon = opened.canon().clone();
-        let burn = ModifierDef {
+        let fatigue = ModifierDef {
             meter: "rest".to_string(),
             max_stacks: 1,
             hidden: false,
         };
-        canon.modifiers.insert("burn".to_string(), burn);
+        canon.modifiers.insert("fatigue".to_string(), fatigue);
         let save = Save::clone(opened.state());
         let world = World::from_parts(opened.root(), State::new(save, Arc::new(canon)));
         let mut state = world.begin_round();
@@ -396,10 +395,10 @@ mod tests {
             max_ticks: 99,
             stacks: vec![-2],
         };
-        let put = (state.actors_mut().get_mut::<Modifier>(&mira)).set("burn", Some(lowers));
+        let put = (state.actors_mut().get_mut::<Modifier>(&mira)).set("fatigue", Some(lowers));
         put.unwrap();
         assert_eq!(modifier::value(state.actors(), &mira, "rest"), Ok(1));
-        let taken = (state.actors_mut().get_mut::<Modifier>(&mira)).set("burn", None);
+        let taken = (state.actors_mut().get_mut::<Modifier>(&mira)).set("fatigue", None);
         taken.unwrap();
         let changes = state.take_changes();
         assert_eq!(changes, [], "the meter and the modifier are dropped");

@@ -13,7 +13,7 @@ description: >
 ## Start
 
 - New pack: `spook new <dir>`. To change an existing pack, copy it first and edit the copy.
-- Leave `packs/oneshot-docks` as it is. `spook run` writes `state/` into the pack you pass.
+- Leave `tests/packs/docks` as it is. `spook run` writes `state/` into the pack you pass.
 - File shapes: `docs/pack-reference.md`. `spook check` reports any unknown or missing key. Walkthrough: `docs/first-pack.md`. Behaviour: `docs/engine-guarantees.md`.
 
 ## The loop
@@ -32,7 +32,7 @@ description: >
 
 ## Worked example
 
-On a copy of `packs/oneshot-docks`, append this rule to the `rules` list in `rules/verbs.yaml`:
+On a copy of `tests/packs/docks`, append this rule to the `rules` list in `rules/verbs.yaml`:
 
 ```yaml
   - id: scan_the_street

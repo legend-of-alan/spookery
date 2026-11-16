@@ -16,7 +16,7 @@ Feature: Rules live with their owner
 
   Scenario: Difficulty from defense
     Given attack targets defense + 10 and briar's defense is 12
-    When lark attacks with a seeded total of 21
+    When harbormouse attacks with a seeded total of 21
     Then the outcome is a miss
 
   Scenario: A pack with rules/moves.yaml fails check
@@ -33,9 +33,9 @@ Feature: Rules live with their owner
     Then spook check reports two conditions under one dash
 
   Scenario: A cost the actor cannot pay changes nothing
-    Given steady costs 5 grit and the sitter has 1
+    Given steady costs 5 vigor and the sitter has 1
     When the seated PC plays steady
-    Then the refusal is CANT_AFFORD naming grit and world_time stays 1080
+    Then the refusal is CANT_AFFORD naming vigor and world_time stays 1080
 
   Scenario: A full id does not select a rule
     Given a habit cast:mira/leave_door_note and a place rule place:docks_street/travel while the PC stays in the shop
@@ -60,21 +60,21 @@ Feature: Rules live with their owner
     Then spook check does not report a bare resist same
 
   Scenario: A cast member's rule is at hand while they share the room
-    Given briar's cast file holds a verb "ask" that targets an actor and sets the world flag passage
-    When lark, in the yard with briar, plays ask briar
+    Given briar's cast file holds a verb "ask" that targets an actor and sets the world flag passage, and Mira's door note is not due
+    When harbormouse, in the yard with briar, plays ask briar
     Then cast:briar/ask runs with briar as its target and passage is set
 
   Scenario: A cast member's rule needs its owner named
-    Given briar's cast file holds a verb "ask" that targets an actor and sets the world flag passage
-    When lark, in the yard with briar, plays ask
+    Given briar's cast file holds a verb "ask" that targets an actor and sets the world flag passage, and Mira's door note is not due
+    When harbormouse, in the yard with briar, plays ask
     Then the move is refused NOT_IN_SPEC before the round and the save is unchanged
 
   Scenario: A cast member's rule refuses a target other than its owner
-    Given briar's cast file holds a verb "ask" that targets an actor and sets the world flag passage
-    When lark, in the yard with briar, plays ask lark
+    Given briar's cast file holds a verb "ask" that targets an actor and sets the world flag passage, and Mira's door note is not due
+    When harbormouse, in the yard with briar, plays ask harbormouse
     Then the move is refused NOT_IN_SPEC before the round and the save is unchanged
 
   Scenario: A cast member's rule leaves with them
     Given briar's cast file holds a verb "ask" that targets an actor, and the save puts briar in the lane
-    When lark, alone in the yard, plays ask briar
+    When harbormouse, alone in the yard, plays ask briar
     Then the move is refused NOT_IN_SPEC before the round and the save is unchanged

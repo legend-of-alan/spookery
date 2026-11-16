@@ -258,7 +258,7 @@ mod tests {
     #[test]
     fn docks_budget_leaves_idle_on() {
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../packs/oneshot-docks/rules/budget.yaml");
+            .join("../../tests/packs/docks/rules/budget.yaml");
         let text = std::fs::read_to_string(path).unwrap();
         let budget = load_budget(&text).unwrap();
         assert!(budget.idle_rounds);

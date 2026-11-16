@@ -1,7 +1,7 @@
 Feature: A roll can partly succeed
 
   Scenario: A high total applies the success list and the shared effects
-    Given a docks table where press grit base is 9
+    Given a docks table where press vigor base is 9
     When the player presses Mira
     Then the player line is queued
     When the GM commits the round
@@ -10,7 +10,7 @@ Feature: A roll can partly succeed
     And the GM sees outcome "success" and the faces
 
   Scenario: A middle total applies the partial list and the shared effects
-    Given a docks table where press grit base is 6
+    Given a docks table where press vigor base is 6
     When the player presses Mira
     Then the player line is queued
     When the GM commits the round
@@ -20,7 +20,7 @@ Feature: A roll can partly succeed
     And replaying the round reproduces the save
 
   Scenario: A low total applies the failure list and the shared effects
-    Given a docks table where press grit base is 0
+    Given a docks table where press vigor base is 0
     When the player presses Mira
     Then the player line is queued
     When the GM commits the round
@@ -29,7 +29,7 @@ Feature: A roll can partly succeed
     And the GM sees outcome "miss" and the faces
 
   Scenario Outline: Play prints the roll's sentence
-    Given a docks copy where press grit base is <base>
+    Given a docks copy where press vigor base is <base>
     When play joins the table on a free loopback address
     And play types "press mira"
     Then play shows "<sentence>"
@@ -41,7 +41,7 @@ Feature: A roll can partly succeed
 
   Scenario: A binary row never produces partial
     Given a docks table with a GM and a seated player
-    When the player rolls grit
+    When the player rolls exert
     Then the player line is queued
     When the GM commits the round
     Then the player sees outcome "success" and no faces

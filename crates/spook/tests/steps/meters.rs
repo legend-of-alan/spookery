@@ -14,7 +14,7 @@ use super::table;
 use super::triggers::{
     add_verb, edit_table, intent, play_round, seen_of, set_place, sit, PlayedRound,
 };
-use crate::support::{self, copy_docks};
+use crate::support::{self, copy_pack};
 use crate::World;
 
 /// One row of a meters list: its id, its base, and its `hidden` key when it has one.
@@ -116,7 +116,7 @@ fn mira_declares_a_meter(world: &mut World, key: String) {
     let pack = world
         .pack
         .clone()
-        .unwrap_or_else(|| copy_docks("cast-meter"));
+        .unwrap_or_else(|| copy_pack("docks", "cast-meter"));
     let text = fs::read_to_string(pack.join("cast/mira.md")).unwrap();
     assert!(
         text.contains(&format!("meters:\n  - id: {key}\n")),
@@ -213,7 +213,7 @@ fn it_refuses_brams_habit(world: &mut World) {
 
 #[given(expr = "rules\\/meters.yaml defines {string}")]
 fn rules_meters_defines(world: &mut World, key: String) {
-    let pack = copy_docks("global-meter");
+    let pack = copy_pack("docks", "global-meter");
     let text = fs::read_to_string(pack.join("rules/meters.yaml")).unwrap();
     assert!(text.contains(&format!("  - id: {key}\n")), "{text}");
     world.pack = Some(pack);
@@ -224,20 +224,20 @@ fn mira_also_declares(world: &mut World, key: String) {
     add_mira_meter(pack(world), (&key, 1, None));
 }
 
-#[then(expr = "it refuses the second grit")]
-fn it_refuses_the_second_grit(world: &mut World) {
+#[then(expr = "it refuses the second vigor")]
+fn it_refuses_the_second_vigor(world: &mut World) {
     assert_refused(
         world,
         &[
             "cast/mira.md",
-            "meter 'grit' is already in rules/meters.yaml",
+            "meter 'vigor' is already in rules/meters.yaml",
         ],
     );
 }
 
 #[given(expr = "rowan and Mira stand in the shop")]
 fn rowan_and_mira_stand_in_the_shop(world: &mut World) {
-    let pack = copy_docks("meter-sight");
+    let pack = copy_pack("docks", "meter-sight");
     add_mira_meter_habit(&pack, "shop_day", 1);
     edit_table(world, &pack, |now, seated| {
         set_place(now, "mira", "docks_shop");
@@ -271,7 +271,7 @@ fn rowans_change_line_does_not(world: &mut World) {
 
 #[given(expr = "rowan stands in the shop")]
 fn rowan_stands_in_the_shop(world: &mut World) {
-    let pack = copy_docks("flag-sight");
+    let pack = copy_pack("docks", "flag-sight");
     replace_in_file(
         &pack.join("cast/mira.md"),
         "  eligible: true\n",
@@ -319,7 +319,7 @@ fn the_gm_sees_both_flags(world: &mut World) {
 
 #[given(expr = "world\\/meters.yaml declares a {string} meter at {int}")]
 fn world_meters_declares_at(world: &mut World, key: String, base: i64) {
-    let pack = copy_docks("world-meter");
+    let pack = copy_pack("docks", "world-meter");
     write_world_meters(&pack, &[(&key, base, None)]);
     world.pack = Some(pack);
 }
@@ -558,7 +558,7 @@ fn it_refuses_the_world_rule(world: &mut World) {
     expr = "world\\/meters.yaml declares {string} with hidden false and {string} with no hidden key"
 )]
 fn world_meters_shown_and_hidden(world: &mut World, shown: String, hidden: String) {
-    let pack = copy_docks("world-sight");
+    let pack = copy_pack("docks", "world-sight");
     write_world_meters(&pack, &[(&shown, 6, Some(false)), (&hidden, 6, None)]);
     world.pack = Some(pack);
 }
@@ -653,7 +653,7 @@ fn it_does_not_list_doom(world: &mut World) {
 
 #[given(expr = "a verb narrates {string} with no to")]
 fn a_verb_narrates_with_no_to(world: &mut World, text: String) {
-    let pack = copy_docks("narrate-no-to");
+    let pack = copy_pack("docks", "narrate-no-to");
     add_verb(
         &pack,
         &format!("\n  - id: ring\n    when:\n      verb: ring\n    do:\n      - narrate:\n          text: {text}\n"),

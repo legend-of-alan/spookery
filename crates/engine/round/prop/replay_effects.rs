@@ -5,7 +5,7 @@
 //!
 //!   Scenario: Running a round's effects again matches the logged effects
 //!     Given the docks pack
-//!     And a successful grit check adds one lamp oil
+//!     And a successful exert check adds one lamp oil
 //!     When random legal player moves and habit rounds are played
 //!     Then running each round again yields the effects written in the journal
 //! ```
@@ -24,14 +24,14 @@ use super::support::{arb_rounds, play_rounds, runner_config, TempPack};
 use crate::round::play::replay_round;
 use crate::round::replay::first_effect_diff;
 use crate::state::Presence;
-use crate::testing::{copy_dir, copy_docks, fresh_dir};
+use crate::testing::{copy_dir, copy_pack, fresh_dir};
 
 #[test]
 fn running_a_round_again_matches_the_logged_effects() {
     let mut runner = TestRunner::new(runner_config());
     runner
         .run(&arb_rounds(), |rounds| {
-            let played = TempPack(copy_docks("prop-rerun"));
+            let played = TempPack(copy_pack("docks", "prop-rerun"));
             play_rounds(&played.0, &rounds).map_err(TestCaseError::fail)?;
             replay_each_round(&played.0)
         })
@@ -60,7 +60,7 @@ fn replay_each_round(played: &Path) -> Result<(), TestCaseError> {
         fs::read(journal::save_path(played))
     }
     .map_err(|err| TestCaseError::fail(err.to_string()))?;
-    // Same rules as the played copy, including the grit success effect, at the snapshot.
+    // Same rules as the played copy, including the exert success effect, at the snapshot.
     let pack = TempPack(fresh_dir("prop-rerun-again"));
     copy_dir(played, &pack.0);
     fs::write(journal::save_path(&pack.0), snapshot)

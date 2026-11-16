@@ -57,15 +57,15 @@ fn the_gm_queues_the_door_note_and_commits(world: &mut World) {
 
 #[given(expr = "a docks table with a GM and {string} seated")]
 fn a_docks_table_with_a_gm_terminal(world: &mut World, actor: String) {
-    let pack = support::copy_docks("typed-gm");
+    let pack = support::copy_pack("docks", "typed-gm");
     world.pack = Some(pack);
     let pack = table::pack(world).to_path_buf();
-    // Stock grit rolls a check and notes no expression dice. A 2d6 on the
+    // Stock exert rolls a check and notes no expression dice. A 2d6 on the
     // verb gives the commit reply one dice line beside that check.
     let verbs = pack.join("rules/verbs.yaml");
     let text = fs::read_to_string(&verbs).unwrap_or_else(|err| panic!("read verbs: {err}"));
-    let from = "    roll:\n      check: grit\n      threshold: 0\n    do: []\n";
-    let to = "    roll:\n      check: grit\n      threshold: 0\n    do:\n      - meter:\n          of: self\n          key: grit\n          add: \"2d6\"\n";
+    let from = "    roll:\n      check: exert\n      threshold: 0\n    do: []\n";
+    let to = "    roll:\n      check: exert\n      threshold: 0\n    do:\n      - meter:\n          of: self\n          key: vigor\n          add: \"2d6\"\n";
     assert!(text.contains(from), "{text}");
     fs::write(&verbs, text.replacen(from, to, 1))
         .unwrap_or_else(|err| panic!("write verbs: {err}"));
@@ -102,10 +102,10 @@ fn the_gm_terminal_shows_one_check_and_one_dice(world: &mut World, shown: String
 }
 
 /// Play holds Rowan, so the GM drives Wren.
-#[when(expr = "the GM queues Wren's grit and commits")]
-fn the_gm_queues_grit_and_commits(world: &mut World) {
+#[when(expr = "the GM queues Wren's exert and commits")]
+fn the_gm_queues_exert_and_commits(world: &mut World) {
     let before = count_gm_matches(world, "Queue:");
-    write_gm(world, "queue wren grit");
+    write_gm(world, "queue wren exert");
     write_gm(world, "commit");
     // The status result follows every check event of that commit on the
     // socket, so its Queue line means the client has read them all.

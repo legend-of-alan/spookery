@@ -11,7 +11,7 @@ use spookery::agent::{model, MAX_MODEL_CALLS};
 use spookery_engine::testing::journal::{list_round_keys, read_record_line};
 use spookery_engine::testing::state_of;
 
-use crate::support::copy_docks;
+use crate::support::copy_pack;
 use crate::World;
 
 use super::scripted_gm::{read_tool_results, start_ai_gm};
@@ -40,7 +40,7 @@ fn a_docks_table_with_mira_and_gm_notes(world: &mut World, notes: String) {
 /// Copies the docks pack, writes `notes` into `pack.yaml` when some are given, moves Mira
 /// to the shop, and seats a player. The notes have to be on disk before the table starts.
 fn start_docks_table_with_mira(world: &mut World, notes: Option<&str>) {
-    let pack = copy_docks("ai-gm-loop");
+    let pack = copy_pack("docks", "ai-gm-loop");
     if let Some(notes) = notes {
         table::append_gm_notes(&pack, notes);
     }
@@ -70,7 +70,7 @@ fn a_docks_table_with_a_queued_move(world: &mut World) {
 
 #[given(expr = "a docks table with a seated player and the AI GM connected")]
 fn a_docks_table_with_the_ai_gm_sitting(world: &mut World) {
-    let pack = copy_docks("ai-gm-quiet");
+    let pack = copy_pack("docks", "ai-gm-quiet");
     table::listen(world, &pack);
     table::seat_rowan(world, &pack);
     world.pack = Some(pack);

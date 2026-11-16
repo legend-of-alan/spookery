@@ -4,7 +4,7 @@
 //! Feature: A rollback puts the save back exactly
 //!
 //!   Scenario: Random writes to every store under nested savepoints roll back to each savepoint's save
-//!     Given the docks pack, with Mira holding one brass key, a flag Mira can carry, two flags and a meter the street can carry, a story with a meter and a flag, a world meter, and a burn on grit
+//!     Given the docks pack, with Mira holding one brass key, a flag Mira can carry, two flags and a meter the street can carry, a story with a meter and a flag, a world meter, and a fatigue on vigor
 //!     When random effects on every store, the actor's place, wielded item, known facts, visited places and action state included, land under savepoints opened and rolled back at random, Mira's memory of the shop's exits written over among them
 //!     Then each rollback leaves the save and the counted keys as they were when its savepoint was taken
 //!     And each take reports every meter whose value moved since the last take
@@ -25,7 +25,7 @@ use crate::state::component::modifier::{self, ModifierDef};
 use crate::state::component::{self, Component};
 use crate::state::id::{ActorId, ExitId};
 use crate::state::{ActCounter, Presence, Save, State};
-use crate::testing::copy_docks;
+use crate::testing::copy_pack;
 use crate::world::World;
 
 use super::support::{runner_config, TempPack};
@@ -40,7 +40,7 @@ enum Step {
     Take,
     Item(entity::Id, &'static str, i64),
     Meter(entity::Id, &'static str, i64),
-    Burn(i64),
+    Fatigue(i64),
     Expire,
     Door(bool),
     Flag(entity::Id, &'static str, bool),
@@ -58,7 +58,7 @@ enum Step {
 
 #[test]
 fn nested_rollbacks_put_the_save_back_exactly() {
-    let pack = TempPack(copy_docks("rollback"));
+    let pack = TempPack(copy_pack("docks", "rollback"));
     // The street holds nothing yet, so lighting it puts its first component on it, which a
     // rollback takes off whole. Mira holds one brass key, so a take under a savepoint can take
     // her last one out, and she can wield it.
@@ -68,8 +68,9 @@ fn nested_rollbacks_put_the_save_back_exactly() {
         !text.contains("\n    docks_street:"),
         "the street holds something"
     );
-    let actor_items = "\n  items:\n    mira:\n      brass_key: 1\n";
-    let edited = text.replacen("\n  items: {}\n", actor_items, 1);
+    let held = "\n  items:\n    harbormouse:\n      tonic: 1\n";
+    let actor_items = &format!("{held}    mira:\n      brass_key: 1\n");
+    let edited = text.replacen(held, actor_items, 1);
     assert!(edited.contains(actor_items), "Mira holds no key");
     let edited = crate::store::save::parse(&edited).expect("the edited save reads");
     let edited = crate::store::save::emit(&edited).expect("the edited save writes");
@@ -89,12 +90,12 @@ fn nested_rollbacks_put_the_save_back_exactly() {
         flags: vec!["told".to_string()],
     };
     canon.stories.insert("tale".into(), tale);
-    let burn = ModifierDef {
-        meter: "grit".to_string(),
+    let fatigue = ModifierDef {
+        meter: "vigor".to_string(),
         max_stacks: 2,
         hidden: false,
     };
-    canon.modifiers.insert("burn".to_string(), burn);
+    canon.modifiers.insert("fatigue".to_string(), fatigue);
     // The street, the tale and the world each carry a meter, put on the save at its start as
     // migrate puts on a meter the pack adds, so every store takes writes.
     let carried = [
@@ -291,9 +292,9 @@ fn effect(state: &State, step: &Step, index: usize) -> Effect {
             key: key.to_string(),
             write: MeterWrite::Offset(*delta),
         },
-        Step::Burn(add) => EffectKind::Modifier {
+        Step::Fatigue(add) => EffectKind::Modifier {
             actor_id: mira,
-            id: "burn".to_string(),
+            id: "fatigue".to_string(),
             add: *add,
             ticks: 3,
         },
@@ -369,8 +370,8 @@ fn pick_step() -> impl Strategy<Value = Step> {
     ]);
     // A meter and a flag in each collection that carries one.
     let meters = vec![
-        (entity::Id::Actor("mira".into()), "grit"),
-        (entity::Id::Actor("bram".into()), "grit"),
+        (entity::Id::Actor("mira".into()), "vigor"),
+        (entity::Id::Actor("bram".into()), "vigor"),
         (entity::Id::Place("docks_street".into()), "glow"),
         (entity::Id::Story("tale".into()), "tension"),
         (entity::Id::Global, "tide"),
@@ -390,7 +391,7 @@ fn pick_step() -> impl Strategy<Value = Step> {
             .prop_map(|(carrier, id, delta)| Step::Item(carrier, id, delta)),
         2 => (select(meters), -2i64..=2)
             .prop_map(|((carrier, key), delta)| Step::Meter(carrier, key, delta)),
-        1 => (-2i64..=2).prop_map(Step::Burn),
+        1 => (-2i64..=2).prop_map(Step::Fatigue),
         1 => Just(Step::Expire),
         1 => any::<bool>().prop_map(Step::Door),
         2 => (select(flags), any::<bool>())

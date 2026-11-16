@@ -27,7 +27,7 @@ Feature: A player knows where they are and what they can do
     And no round record was written
     When I type "travel docks_street"
     And I type "help"
-    Then help shows "travel <exit>: Docks Shop" and not "ask Aldric"
+    Then help shows "travel <exit>: Docks Shop, Gate Yard" and not "ask Aldric"
 
   Scenario: help hides a verb whose if fails
     Given the shop has a pray verb if rowan holds lamp_oil, and the CLI holds rowan
@@ -49,7 +49,7 @@ Feature: A player knows where they are and what they can do
     And world_time is 1080
 
   Scenario: A view shows each section it has and skips the empty ones
-    Given a docks copy where the world shows dawn and the street's exit is hidden
+    Given a docks copy where the world shows dawn and the street's exits are hidden
     When play joins the table on a free loopback address
     Then play shows each of these blocks:
       """
@@ -84,15 +84,15 @@ Feature: A player knows where they are and what they can do
     And world_time is 1080
 
   Scenario: A player can read and type the names they see
-    Given a copy of the sample-d20 pack
-    When play joins the sample table
-    Then play shows "Lark"
-    And play does not show "lark"
+    Given a docks table
+    When play joins the table as "harbormouse"
+    Then play shows "Harbormouse"
+    And play does not show "harbormouse"
     And play shows "Mill Lane (locked) — 15 ticks"
     And play does not show "mill_lane"
     When play types "help"
     Then play shows "ask Briar"
-    And play shows "travel <exit>: Mill Lane, Loft, Wheel Shed"
+    And play shows "travel <exit>: Mill Lane, Loft, Wheel Shed, Docks Street"
     When play types "travel Mill Lane"
     Then play's error shows "The lane is shut."
     And no round record was written
@@ -104,17 +104,17 @@ Feature: A player knows where they are and what they can do
     Then play shows "You picked up the Wheel chock."
 
   Scenario: Two things here with one name are refused, naming both ids
-    Given a copy of the sample-d20 pack where Oden is called "Briar" and stands in the Gate Yard
-    When play joins the sample table
+    Given a docks table where Bram is called "Briar" and stands in the Gate Yard
+    When play joins the table as "harbormouse"
     And play types "ask Briar"
-    Then play's error shows "More than one thing here is called Briar: briar, oden."
+    Then play's error shows "More than one thing here is called Briar: bram, briar."
     And no round record was written
     When play types "say briar hello"
-    Then play's error shows "More than one thing here is called briar: briar, oden."
+    Then play's error shows "More than one thing here is called briar: bram, briar."
 
   Scenario: Speech reaches a name with a space in it, and half the name stays at the table
-    Given a copy of the sample-d20 pack where Oden is called "Old Vell" and stands in the Gate Yard
-    When play joins the sample table
+    Given a docks table where Bram is called "Old Vell" and stands in the Gate Yard
+    When play joins the table as "harbormouse"
     And play types "say Old Vell hi"
     Then play shows "You: hi"
     When play types "say Old hi"

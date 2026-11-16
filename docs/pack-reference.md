@@ -397,7 +397,7 @@ A pack line reads as a clause. Each word keeps one part of speech and one role:
 
 **One role per preposition.** A preposition is used only for the role it fits, and a word never changes role from one line to the next. `for` and `by` are not used. The number a roll has to beat is `threshold`, never `target`, because `target` is only ever the thing the verb acts on. `grammar::Object` in Rust is any grammatical object a line names, including but not limited to a direct object, an indirect object or the object of a preposition.
 
-The arrival in `packs/sample-d20/story/ending.yaml`:
+The arrival in `tests/packs/docks/story/ending.yaml`:
 
 ```
     when:
@@ -411,12 +411,12 @@ The arrival in `packs/sample-d20/story/ending.yaml`:
           value: true
       - narrate:
           to: self
-          text: Oden and Nell are on the lane. That is the end.
+          text: The cart rolls out onto the lane. That is the end.
 ```
 
 reads as *when a PC (the subject) arrives at mill_lane, set the flag finished of the world to true, and narrate to self.* `arrive` names the verb and its place together. `subject` is the actor whose arrival the rule watches; omitted, it is `any`.
 
-The strike in `packs/sample-d20/rules/verbs.yaml`:
+The strike in `tests/packs/docks/rules/verbs.yaml`:
 
 ```
     when:
@@ -448,9 +448,9 @@ The take in the same file:
           add: 1
 ```
 
-reads as *one fewer of the target item here, one more of it on self.* `id: target` names which item; `of` names whose count changes. `location: { via: target }` in `packs/oneshot-docks/rules/verbs.yaml` reads as *move the subject via the target exit*; a location may name `to` instead, the place the subject ends up.
+reads as *one fewer of the target item here, one more of it on self.* `id: target` names which item; `of` names whose count changes. `location: { via: target }` in the same file reads as *move the subject via the target exit*; a location may name `to` instead, the place the subject ends up.
 
-Mira's restock in `packs/oneshot-docks/cast/mira.md`:
+Mira's restock in `tests/packs/docks/cast/mira.md`:
 
 ```
     if:

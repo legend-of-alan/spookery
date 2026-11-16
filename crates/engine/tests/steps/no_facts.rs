@@ -9,19 +9,14 @@ use spookery_engine::Presence;
 
 use crate::{resolve_id, split_line, World};
 
-#[given(expr = "a copy of the sample-d20 pack")]
-fn a_copy_of_the_sample_d20_pack(world: &mut World) {
-    world.pack = Some(support::copy_pack("sample-d20", "sample"));
+#[when(expr = "Harbormouse plays {string}")]
+fn harbormouse_plays(world: &mut World, line: String) {
+    play(world, "harbormouse", &line);
 }
 
-#[when(expr = "Lark plays {string}")]
-fn lark_plays(world: &mut World, line: String) {
-    play(world, "lark", &line);
-}
-
-#[then(expr = "the journal commits two location effects for Lark")]
-fn two_location_effects_for_lark(world: &mut World) {
-    let moves = location_effects(world.pack(), "lark");
+#[then(expr = "the journal commits two location effects for Harbormouse")]
+fn two_location_effects_for_harbormouse(world: &mut World) {
+    let moves = location_effects(world.pack(), "harbormouse");
     assert_eq!(
         moves,
         vec![
@@ -40,11 +35,6 @@ fn is_in(world: &mut World, actor: String, place: String) {
     assert_eq!(support::place_of(&now, &actor), place);
 }
 
-#[when(expr = "Nell waits")]
-fn nell_waits(world: &mut World) {
-    play(world, "nell", "wait");
-}
-
 #[then(expr = "the wait commits with nothing rejected")]
 fn the_wait_commits_with_nothing_rejected(world: &mut World) {
     let pack = world.pack();
@@ -54,7 +44,7 @@ fn the_wait_commits_with_nothing_rejected(world: &mut World) {
         let waited = round["intents"].as_array().is_some_and(|intents| {
             intents
                 .iter()
-                .any(|intent| intent["move"] == "wait" && intent["actor"] == "player:nell")
+                .any(|intent| intent["move"] == "wait" && intent["actor"] == "player:harbormouse")
         });
         if !waited {
             continue;
@@ -63,12 +53,12 @@ fn the_wait_commits_with_nothing_rejected(world: &mut World) {
         let rejected = round["refused"].as_array().unwrap();
         assert!(rejected.is_empty(), "{key}: {rejected:?}");
     }
-    assert!(found, "Nell's wait was not committed");
+    assert!(found, "Harbormouse's wait was not committed");
 }
 
 #[given(expr = "Mira stands in a place with no facts")]
 fn mira_stands_in_a_place_with_no_facts(world: &mut World) {
-    let pack = support::copy_docks("no-facts");
+    let pack = support::copy_pack("docks", "no-facts");
     strip_room_facts(&pack);
     support::edit_save(&pack, |state| {
         // No writer forgets a fact, so Mira's come off the save as the file holds it.

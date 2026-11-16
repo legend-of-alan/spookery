@@ -242,11 +242,11 @@ mod tests {
 
     use super::{journal, verify_pack, verify_quick};
     use crate::round::play_pack_once;
-    use crate::testing::copy_docks;
+    use crate::testing::copy_pack;
 
     #[test]
     fn verify_names_a_round_whose_hash_no_longer_matches() {
-        let pack = copy_docks("replay-tamper");
+        let pack = copy_pack("docks", "replay-tamper");
         play_pack_once(&pack).unwrap();
         let path = pack.join("state/journal/bundle-0000.jsonl");
         let text = fs::read_to_string(&path).unwrap();
@@ -267,7 +267,7 @@ mod tests {
 
     #[test]
     fn verify_and_quick_verify_reject_tampered_save_after_checkpoint() {
-        let pack = copy_docks("replay-save-tamper");
+        let pack = copy_pack("docks", "replay-save-tamper");
         let pack_yaml = pack.join("pack.yaml");
         let mut cfg = fs::read_to_string(&pack_yaml).unwrap();
         cfg.push_str("\ncheckpoint_every: 2\n");

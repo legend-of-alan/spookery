@@ -1,0 +1,22 @@
+schema: meters
+meters:
+  - id: vigor
+    min: 0
+    base_cap: 100
+    max: 110
+    base: 1
+  - id: hp
+    min: 0
+    base_cap: 12
+    max: 16
+    base: 8
+  - id: might
+    min: 0
+    base_cap: 40
+    max: 45
+    base: 1
+  - id: rest
+    min: 0
+    base_cap: 5
+    max: 5
+    base: 3

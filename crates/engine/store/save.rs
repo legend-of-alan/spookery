@@ -368,7 +368,7 @@ mod tests {
     #[test]
     fn docks_now_round_trips_through_emitter() {
         let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../../packs/oneshot-docks/state/save.yaml");
+            .join("../../tests/packs/docks/state/save.yaml");
         let original = fs::read_to_string(&path).unwrap();
         // The same save with a world that holds meters and flags, which key on `GlobalId`.
         let empty = "world:

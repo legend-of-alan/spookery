@@ -621,11 +621,11 @@ mod tests {
     use super::replay_journal;
     use crate::round::play_pack_once;
     use crate::store::journal;
-    use crate::testing::copy_docks;
+    use crate::testing::copy_pack;
 
     #[test]
     fn two_replays_in_one_process_do_not_collide() {
-        let pack = copy_docks("replay-collide");
+        let pack = copy_pack("docks", "replay-collide");
         play_pack_once(&pack).unwrap();
         let records = journal::read_records(&pack).unwrap();
         let left = replay_journal(&pack, &records, None, None).unwrap();

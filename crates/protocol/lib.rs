@@ -422,7 +422,7 @@ mod tests {
         assert_eq!(unknown.to_string(), "The table refused that. [NEW_CODE]");
         assert_eq!(line(Reason::ChoosePc), "Choose a character. [CHOOSE_PC]");
         for raw in [
-            r#"{"kind":"refused","code":"CANT_AFFORD","detail":"grit"}"#,
+            r#"{"kind":"refused","code":"CANT_AFFORD","detail":"vigor"}"#,
             r#"{"kind":"refused","code":"SCHEMA"}"#,
             r#"{"kind":"refused","code":"NEW_CODE"}"#,
         ] {

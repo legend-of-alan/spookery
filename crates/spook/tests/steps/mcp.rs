@@ -173,7 +173,7 @@ fn mcp_port(world: &World) -> u16 {
 
 #[given(expr = "a docks table with a seated player and an open MCP endpoint")]
 fn a_docks_table_with_a_seated_player_and_an_open_mcp_endpoint(world: &mut World) {
-    world.pack = Some(support::copy_docks("http-say"));
+    world.pack = Some(support::copy_pack("docks", "http-say"));
     let (_tcp, http) = listen_on_free_ports(world);
     let pack = table::pack(world).to_path_buf();
     table::seat_rowan(world, &pack);
@@ -390,16 +390,23 @@ fn agent_calls_an_unknown_tool(world: &mut World) {
     world.scratch = json!(reply).to_string();
 }
 
-#[then(expr = "the unknown tool call was refused")]
+#[then(
+    expr = "the unknown tool call was refused SCHEMA, the host logged it, and the save is unchanged"
+)]
 fn the_unknown_tool_call_was_refused(world: &mut World) {
     let reply: Vec<ServerMessage> =
         serde_json::from_str(&world.scratch).unwrap_or_else(|err| panic!("reply: {err}"));
     let last = reply.last().map(|reply| &reply.body);
-    assert!(
-        matches!(last, Some(ServerBody::Refused(_))),
-        "{}",
-        world.scratch
-    );
+    let Some(ServerBody::Refused(refused)) = last else {
+        panic!("not refused: {}", world.scratch);
+    };
+    assert_eq!(refused.code.as_str(), "SCHEMA", "{}", world.scratch);
+    table::wait_host_until(world, "the refusal in the host log", |log| {
+        log.contains("refused not_in_spec SCHEMA")
+    });
+    let saved = std::fs::read(table::pack(world).join("state/save.yaml"))
+        .unwrap_or_else(|err| panic!("read save: {err}"));
+    assert_eq!(saved, table::live_mut(world).opened_save);
 }
 
 fn call_each_gm_tool(gm: &mut GmClient) {
@@ -493,11 +500,11 @@ pub fn post_initialize(port: u16, host: &str, origin: Option<&str>) -> String {
 
 #[given(expr = "an AI GM on \\/mcp and a plain GM client on WebSocket")]
 fn an_mcp_gm_and_a_websocket_gm(world: &mut World) {
-    let pack = support::copy_docks("parity-mcp");
+    let pack = support::copy_pack("docks", "parity-mcp");
     world.pack = Some(pack.clone());
     table::listen(world, &pack);
     table::seat_gm(world);
-    let ws_pack = support::copy_docks("parity-ws");
+    let ws_pack = support::copy_pack("docks", "parity-ws");
     let running = table::wait_addrs(table::spawn_table(&ws_pack, &["--addr", "127.0.0.1:0"]));
     let gm = table::Seat::open(running.game.port(), "gm");
     table::wait_suffix(&gm.text, 0, "\"kind\":\"hello\"");

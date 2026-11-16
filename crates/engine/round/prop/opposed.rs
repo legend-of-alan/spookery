@@ -30,7 +30,7 @@ fn a_refused_or_dropped_opposing_roll_replays_the_same_way() {
     let cases = [
         // Two effects over a cap of one.
         (Some("max_effects_per_intent: 1"), "", Some(Reason::Budget)),
-        // A failed gate at the start: Lark holds no chock.
+        // A failed gate at the start: Harbormouse holds no chock.
         (
             None,
             "    if: [has_item: { subject: self, id: chock }]\n",
@@ -54,9 +54,10 @@ fn a_refused_or_dropped_opposing_roll_replays_the_same_way() {
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
 
-/// The d20 pack with one round `limit` line set, the lunge plus `rule`, and Briar's might at 30.
+/// The docks pack with one round `limit` line set, the lunge plus `rule`, Briar's might at 30,
+/// and Mira's door note not due, so the fight is all the round holds.
 fn lunge_pack(limit: Option<&str>, rule: &str) -> PathBuf {
-    let pack = copy_pack("sample-d20", "opposed-base");
+    let pack = copy_pack("docks", "opposed-base");
     if let Some(limit) = limit {
         let (key, _) = limit.split_once(':').expect("a `key: value` line");
         let path = pack.join("rules/budget.yaml");
@@ -77,11 +78,16 @@ fn lunge_pack(limit: Option<&str>, rule: &str) -> PathBuf {
             .get_mut::<Meter>(&briar)
             .set("might", Some(might))
             .unwrap();
+        let shop_day = Meter { base: 0, offset: 0 };
+        actors
+            .get_mut::<Meter>(&ActorId::from("mira"))
+            .set("shop_day", Some(shop_day))
+            .unwrap();
     });
     pack
 }
 
-/// After `warmup` empty rounds, Briar strikes Lark and Lark lunges at Briar.
+/// After `warmup` empty rounds, Briar strikes Harbormouse and Harbormouse lunges at Briar.
 /// `refused` is the lunge's refusal, or `None` when the strike is cut from the round and
 /// refused `BUDGET`.
 fn fight(base: &Path, warmup: u32, refused: Option<Reason>) -> Result<(), String> {
@@ -90,22 +96,22 @@ fn fight(base: &Path, warmup: u32, refused: Option<Reason>) -> Result<(), String
     let fail = |what: &str, detail: String| format!("warm-up {warmup}: {what}: {detail}");
     let lock = crate::lock_pack(&pack.0).map_err(|err| fail("lock", err.to_string()))?;
     let mut world = World::resume(&pack.0, lock).map_err(|err| fail("resume", err.to_string()))?;
-    let lark = Presence {
+    let harbormouse = Presence {
         players: 1,
-        actors_present: vec!["lark".into()],
+        actors_present: vec!["harbormouse".into()],
     };
     let wall = world.state().last_round_at.clone();
     for _ in 0..warmup {
         world
-            .play(&lark, &wall)
+            .play(&harbormouse, &wall)
             .map_err(|err| fail("warm-up", err.to_string()))?;
     }
     // Queued past the queue's gate, as if the world changed before the start, so the start's
     // gate is what refuses the lunge.
     let round_index = world.state().round_index + 1;
     for (id, actor, verb, target) in [
-        ("briar-strike", "briar", "strike", "lark"),
-        ("lark-lunge", "lark", "lunge", "briar"),
+        ("briar-strike", "briar", "strike", "harbormouse"),
+        ("harbormouse-lunge", "harbormouse", "lunge", "briar"),
     ] {
         let viewer = (world.state().actors())
             .get::<ControlType>(&actor.into())
@@ -122,7 +128,7 @@ fn fight(base: &Path, warmup: u32, refused: Option<Reason>) -> Result<(), String
         world.queue_intent(intent);
     }
     world
-        .play(&lark, &wall)
+        .play(&harbormouse, &wall)
         .map_err(|err| fail("fight", err.to_string()))?;
     let entries = journal::read_records(&pack.0).map_err(|fault| fail("journal", fault.detail))?;
     let Some(Record::Round(last)) = entries.iter().rev().find(|entry| entry.changes_state()) else {
@@ -133,7 +139,7 @@ fn fight(base: &Path, warmup: u32, refused: Option<Reason>) -> Result<(), String
         Some(code) => last
             .refused
             .iter()
-            .any(|rejected| rejected.id == "lark-lunge" && rejected.code == code),
+            .any(|rejected| rejected.id == "harbormouse-lunge" && rejected.code == code),
         None => {
             let cut = gate::Refusal {
                 id: "briar-strike".to_string(),

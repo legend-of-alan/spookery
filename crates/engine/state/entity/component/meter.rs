@@ -160,7 +160,7 @@ impl Mut<'_, Save, Meter> {
 mod tests {
     use super::*;
 
-    fn grit() -> MeterDef {
+    fn vigor() -> MeterDef {
         MeterDef {
             min: 0,
             base_cap: 100,
@@ -173,7 +173,7 @@ mod tests {
 
     #[test]
     fn stored_accepts_a_sum_past_max_and_current_clamps() {
-        let def = grit();
+        let def = vigor();
         assert!(is_storable(&def, 100, 20));
         let live = Meter {
             base: 100,
@@ -185,6 +185,6 @@ mod tests {
 
     #[test]
     fn stored_rejects_a_sum_that_does_not_fit() {
-        assert!(!is_storable(&grit(), 3, i64::MAX));
+        assert!(!is_storable(&vigor(), 3, i64::MAX));
     }
 }

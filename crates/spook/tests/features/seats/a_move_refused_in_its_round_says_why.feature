@@ -1,8 +1,8 @@
 Feature: A move refused in its round says why
 
   Scenario: A move refused in its round says why
-    Given a copy of the sample-d20 pack
-    When play joins the sample table
+    Given a docks table
+    When play joins the table as "harbormouse"
     And play types "take stick"
     Then play's error shows "The table does not understand that. Type help. [NOT_IN_SPEC]"
     When play types "wield tonic"
@@ -12,7 +12,7 @@ Feature: A move refused in its round says why
     And play shows no protocol JSON
 
   Scenario: A refused NPC habit sends no player frame
-    Given Oden's habit takes a tonic that is not there
+    Given Bram's habit takes a tonic that is not there
     When the player waits for the resume
     Then the player sees no refused frame
     And the round rejects that habit with "MISSING_ITEM"

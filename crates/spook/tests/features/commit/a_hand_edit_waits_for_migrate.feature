@@ -170,14 +170,14 @@ Feature: A hand edit waits for migrate
     Then the command exits 0
     And the journal line migrate-0001 is
       """
-      {"kind":"migrate","pack_rev_before":"blake2s:9526c8f8ed5a3d0c551cc714b446c19568d7228a3215b9b48e851d857b20ac4d","pack_rev_after":"blake2s:9526c8f8ed5a3d0c551cc714b446c19568d7228a3215b9b48e851d857b20ac4d","state_rev_before":0,"state_rev_after":1,"state_hash":"blake2s:46c92d301cc3799f0d16a0fd5422b2cb809e1b381b0e610b08b9bc3027af4344","prev":"blake2s:772ce21a23eab821793eb60a0c4b4166a9ef33a588b53c946029efb4638cf6c3","chain":"blake2s:0deceaf47f6942688c77e9b76adcc5c1e1db7bdc8d10482dee06533d9203edff"}
+      {"kind":"migrate","pack_rev_before":"blake2s:b81d7ee672f6ac87e74ca79eda521b7cdaa8a59ec0f6db917727b9df47a54c74","pack_rev_after":"blake2s:b81d7ee672f6ac87e74ca79eda521b7cdaa8a59ec0f6db917727b9df47a54c74","state_rev_before":0,"state_rev_after":1,"state_hash":"blake2s:aca78d1d978022f12de444193df0f5535ecf8b4b02889168f0541cb58c4f139b","prev":"blake2s:7d651290368b3b3a8aa5c88b003d9a3a7beebdab21c163a23131009328526876","chain":"blake2s:8c370c7c40e9c6afae71fefc2db061d515ba037f12d7669af451865a778e4385"}
       """
 
   Scenario: Migrate gives a meter only to the actors that lack it
     Given a docks table
-    When Rowan's grit offset is hand edited to 3 and Nell joins without grit
+    When Rowan's vigor offset is hand edited to 3 and Nell joins without vigor
     And the operator runs migrate
     Then the command exits 0
-    And rowan's grit is at base 1 and offset 3
-    And nell's grit is at base 1 and offset 0
+    And rowan's vigor is at base 1 and offset 3
+    And nell's vigor is at base 1 and offset 0
     And spook verify passes

@@ -142,7 +142,7 @@ mod tests {
     fn load_meters_rejects_an_unknown_key_at_its_line() {
         let unknown = "schema: meters
 meters:
-  - id: grit
+  - id: vigor
     min: 0
     base_cap: 1
     max: 1

@@ -48,7 +48,7 @@ fn stdout_names_the_default_loopback_address(world: &mut World) {
 
 #[when(expr = "play joins the table with raw frames")]
 fn play_joins_the_table_with_raw_frames(world: &mut World) {
-    join_play(world, true);
+    join_play(world, "rowan", true);
 }
 
 #[when(expr = "play says {string}")]

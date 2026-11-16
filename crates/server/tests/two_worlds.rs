@@ -1,4 +1,4 @@
-use spookery_engine::testing::copy_docks;
+use spookery_engine::testing::copy_pack;
 use spookery_engine::{lock_pack, Reason, World};
 use spookery_server::{Config, Error};
 use std::{fs, io::*, net::*, path::Path};
@@ -49,8 +49,8 @@ fn host(
 
 #[tokio::test(flavor = "multi_thread")]
 async fn two_worlds_serve_on_port_zero_and_stop_independently() {
-    let first_dir = copy_docks("2w-1");
-    let second_dir = copy_docks("2w-2");
+    let first_dir = copy_pack("docks", "2w-1");
+    let second_dir = copy_pack("docks", "2w-2");
     let (mut c1, stop1, first) = host(&first_dir);
     assert_eq!(lock_pack(&first_dir).err(), Some(Reason::CommitConflict));
     let (mut c2, stop2, second) = host(&second_dir);

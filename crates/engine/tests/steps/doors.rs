@@ -62,7 +62,7 @@ fn stairs_open(pack: &Path) -> bool {
 /// `creaked` when a door opens.
 #[given(expr = "the stair door in the shop needs brass_key")]
 fn the_stair_door_needs_the_key(world: &mut World) {
-    let pack = support::copy_pack("oneshot-docks", "door");
+    let pack = support::copy_pack("docks", "door");
     let path = pack.join("world/places/docks_shop.md");
     let text = fs::read_to_string(&path).unwrap();
     let bolt = "rules:

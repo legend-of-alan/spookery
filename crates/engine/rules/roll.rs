@@ -134,7 +134,7 @@ mod tests {
         Check {
             dice_count: count,
             dice_sides: 6,
-            stat: "grit".to_string(),
+            stat: "vigor".to_string(),
         }
     }
 
@@ -142,7 +142,7 @@ mod tests {
         RollKey {
             seed: "docks".to_string(),
             round_index: 1,
-            rule_id: "grit".to_string(),
+            rule_id: "exert".to_string(),
             subject_id: Some("mira".into()),
             index,
         }
@@ -173,8 +173,7 @@ mod tests {
 
     #[test]
     fn the_same_key_rolls_the_same_faces() {
-        let pack =
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packs/oneshot-docks");
+        let pack = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/packs/docks");
         let docks = crate::World::open(&pack).expect("open");
         let (state, mira) = (docks.state(), ActorId::from("mira"));
         let check = check_of(2);

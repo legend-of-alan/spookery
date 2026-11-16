@@ -68,7 +68,7 @@ Feature: The AI GM connects as the GM
   Scenario: The rolls are narrated without another round
     Given a docks table with the scripted AI GM and a seated player
     And a scripted model that ends the turn, then says the roll lands
-    When the player tries grit
+    When the player tries exert
     Then one round committed
     And the tape contains the text "the roll lands"
     And the model narrated the rolls in the same turn

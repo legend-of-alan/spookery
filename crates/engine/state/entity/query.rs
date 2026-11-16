@@ -198,8 +198,7 @@ mod tests {
     use crate::World;
 
     fn docks() -> World<()> {
-        let pack =
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packs/oneshot-docks");
+        let pack = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/packs/docks");
         World::open(&pack).expect("open")
     }
 
@@ -218,9 +217,9 @@ mod tests {
                 )
             })
             .collect();
-        assert_eq!(read[0], ("aldric", false, "docks_shop", 2));
-        assert_eq!(read[4], ("rowan", true, "docks_shop", 3));
-        assert_eq!(read.len(), 6, "every actor holds all four");
+        assert_eq!(read[0], ("aldric", false, "docks_shop", 4));
+        assert_eq!(read[5], ("rowan", true, "docks_shop", 5));
+        assert_eq!(read.len(), 7, "every actor holds all four");
         let knowing = actors.query::<(ActorId, &component::KnownFacts)>();
         let knowing: Vec<_> = knowing
             .iter()
@@ -247,11 +246,14 @@ mod tests {
             filter.iter().collect::<Vec<_>>(),
             ["harbormouse", "rowan", "wren"]
         );
-        let with_oil = world
+        let stocked = world
             .state()
             .places()
             .query_filtered::<PlaceId, With<component::Item>>();
-        assert_eq!(with_oil.iter().collect::<Vec<_>>(), ["docks_shop"]);
+        assert_eq!(
+            stocked.iter().collect::<Vec<_>>(),
+            ["docks_shop", "loft", "wheel_shed"]
+        );
     }
 
     #[test]
@@ -265,7 +267,7 @@ mod tests {
             .collect();
         assert_eq!(
             counts,
-            [None, None, None, Some(1), None, None],
+            [None, None, None, None, Some(1), None, None],
             "Mira knows one"
         );
         let ids = actors.query::<(ActorId, Option<&component::KnownFacts>)>();

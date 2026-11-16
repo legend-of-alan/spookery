@@ -30,8 +30,8 @@ Feature: A human GM runs a round
   Scenario: Each commit's roll shows once
     Given a docks table
     When play and a human GM share a free loopback port
-    And the GM queues Wren's grit and commits
-    And the GM queues Wren's grit and commits
+    And the GM queues Wren's exert and commits
+    And the GM queues Wren's exert and commits
     Then the GM shows 2 rolls
 
   Scenario: The GM's output is text
@@ -100,7 +100,7 @@ Feature: A human GM runs a round
       The lamp-oil ledger is short.
 
       Meters:
-      Grit: 1/110
+      Hp: 8/16
       """
     And the GM does not show "The shop faces the water."
     And the GM does not show "leave_door_note"

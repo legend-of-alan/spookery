@@ -5,7 +5,7 @@ use cucumber::{given, then, when};
 use serde_json::Value;
 use spookery_engine::testing::{faces, RollKey};
 
-use crate::support::{edit_as_saved, edit_meter, put_items};
+use crate::support::{edit_as_saved, edit_meter, put_items, put_meter};
 use spookery_engine::MoveReport;
 use spookery_engine::{component, entity, ActorId, Meter, Presence, Reason};
 
@@ -13,14 +13,13 @@ use super::common::{flags_of, split_line};
 use super::table;
 use super::triggers::world_flags;
 use crate::support::{
-    append, copy_docks, copy_pack, edit_save, place_of, read_round, run_spook, stamp_pack_rev,
-    state_of,
+    append, copy_pack, edit_save, place_of, read_round, run_spook, stamp_pack_rev, state_of,
 };
 use crate::World;
 #[given(expr = "a save from older rules")]
 fn a_save_from_older_rules(world: &mut World) {
     let rev = spookery_engine::testing::RULES_REV;
-    let pack = crate::support::copy_docks("rules-rev");
+    let pack = crate::support::copy_pack("docks", "rules-rev");
     let path = pack.join("state/save.yaml");
     let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read save: {err}"));
     let stamped = text.replacen(
@@ -78,7 +77,7 @@ fn it_refuses_with_rules_rev_and_says_to_start_a_fresh_save(world: &mut World) {
 
 #[given(expr = "logged effects that differ from the re-run")]
 fn logged_effects_that_differ_from_the_re_run(world: &mut World) {
-    let pack = crate::support::copy_docks("rules-diverge");
+    let pack = crate::support::copy_pack("docks", "rules-diverge");
     world.pack = Some(pack.clone());
     table::run(world, &["round", pack.to_str().unwrap()]);
     assert_eq!(world.code, Some(0), "{}", world.stderr);
@@ -127,7 +126,7 @@ fn spook_verify_names_the_round_and_the_first_differing_effect(world: &mut World
 
 #[given(expr = "a place rule \"bell\" in docks_shop and a story rule \"bell\"")]
 fn a_place_rule_and_a_story_rule(world: &mut World) {
-    let pack = copy_docks("rules-ids");
+    let pack = copy_pack("docks", "rules-ids");
     insert_before_fence(
         &pack.join("world/places/docks_shop.md"),
         "\
@@ -195,7 +194,7 @@ fn check_rules_lists_both_bells(world: &mut World) {
 
 #[given(expr = "verb:travel and place:ferry_dock\\/travel")]
 fn verb_travel_and_the_ferry_rule(world: &mut World) {
-    let pack = copy_docks("rules-ferry");
+    let pack = copy_pack("docks", "rules-ferry");
     write(
         &pack.join("world/places/ferry_dock.md"),
         "\
@@ -271,7 +270,7 @@ fn the_ferry_rule_runs(world: &mut World) {
 
 #[given(expr = "cast:briar\\/restock with cycle day 360..540 and players == 0")]
 fn briar_restocks_before_the_shop_opens(world: &mut World) {
-    let pack = copy_docks("rules-briar");
+    let pack = copy_pack("docks", "rules-briar");
     write_briar(&pack, "day", 360, 540);
     world.pack = Some(pack);
 }
@@ -279,7 +278,7 @@ fn briar_restocks_before_the_shop_opens(world: &mut World) {
 /// Set cycle `name` to `length` ticks, adding it beside the docks `day` when it is new.
 #[given(expr = "rules\\/budget.yaml sets cycle {word} to {int}")]
 fn budget_sets_cycle(world: &mut World, name: String, length: u64) {
-    let pack = copy_docks("rules-cycle");
+    let pack = copy_pack("docks", "rules-cycle");
     let budget = pack.join("rules/budget.yaml");
     let (old, new) = match name.as_str() {
         "day" => ("  day: 1440\n".to_string(), format!("  day: {length}\n")),
@@ -299,7 +298,7 @@ fn briar_restocks_on_cycle(world: &mut World, name: String, from: u64, to: u64) 
 
 #[given(expr = "the docks pack, whose budget sets cycle day to 1440")]
 fn the_docks_day(world: &mut World) {
-    let pack = copy_docks("rules-docks-day");
+    let pack = copy_pack("docks", "rules-docks-day");
     let budget = fs::read_to_string(pack.join("rules/budget.yaml")).unwrap();
     assert!(budget.contains("cycles:\n  day: 1440\n"), "{budget}");
     world.pack = Some(pack);
@@ -416,7 +415,7 @@ fn lamp_oil_increases_by_4(world: &mut World) {
     expr = "idle_act_window_ticks is {int} and every actor has used its idle acts at tick {int}"
 )]
 fn every_actor_used_its_idle_acts(world: &mut World, window: u64, tick: u64) {
-    let pack = copy_docks("rules-idle-window");
+    let pack = copy_pack("docks", "rules-idle-window");
     super::common::replace_in_file(
         &pack.join("rules/budget.yaml"),
         "idle_act_window_ticks: 1440\n",
@@ -468,7 +467,7 @@ fn docks_shop_holds_lamp_oil(world: &mut World, count: u32) {
 
 #[given(expr = "attack targets defense + 10 and briar's defense is 12")]
 fn attack_targets_defense(world: &mut World) {
-    let pack = copy_pack("sample-d20", "rules-attack");
+    let pack = copy_pack("docks", "rules-attack");
     append(
         &pack.join("rules/verbs.yaml"),
         r#"
@@ -499,14 +498,12 @@ fn attack_targets_defense(world: &mut World) {
     let text = fs::read_to_string(&briar).unwrap();
     let next = text.replace(
         "  eligible: true\n",
-        "  eligible: true\nflags:\n    - hit\n    - missed\n",
+        "  eligible: true\nflags:\n    - hit\n    - missed\nmeters:\n  - id: defense\n    min: 0\n    base_cap: 20\n    max: 20\n    base: 12\n",
     );
     assert_ne!(text, next, "briar profile was not found");
     fs::write(&briar, next).unwrap();
     edit_save(&pack, |now| {
-        edit_meter(now, "briar", "defense", |defense| {
-            (defense.base, defense.offset) = (12, 0);
-        });
+        put_meter(now, &entity::Id::Actor("briar".into()), "defense", 12);
         let mut actors = now.actors_mut();
         actors
             .get_mut::<component::Act>(&"briar".into())
@@ -516,8 +513,8 @@ fn attack_targets_defense(world: &mut World) {
     world.pack = Some(pack);
 }
 
-#[when(expr = "lark attacks with a seeded total of 21")]
-fn lark_attacks(world: &mut World) {
+#[when(expr = "harbormouse attacks with a seeded total of 21")]
+fn harbormouse_attacks(world: &mut World) {
     let pack = world.pack.clone().unwrap();
     let loaded = state_of(&pack);
     let face = faces(
@@ -525,7 +522,7 @@ fn lark_attacks(world: &mut World) {
             seed: loaded.seed.clone(),
             round_index: loaded.round_index + 1,
             rule_id: "verb:attack".to_string(),
-            subject_id: Some("lark".into()),
+            subject_id: Some("harbormouse".into()),
             index: 0,
         },
         0,
@@ -534,14 +531,14 @@ fn lark_attacks(world: &mut World) {
     )
     .unwrap_or_else(|err| panic!("faces {}", err.as_str()))[0];
     edit_save(&pack, |now| {
-        edit_meter(now, "lark", "might", |might| {
+        edit_meter(now, "harbormouse", "might", |might| {
             (might.base, might.offset) = (21 - i64::from(face), 0);
         });
     });
     let mut opened = open(&pack);
     let nobody = Presence::default();
     opened
-        .queue_player_move(&nobody, &"lark".into(), "attack", Some("briar"))
+        .queue_player_move(&nobody, &"harbormouse".into(), "attack", Some("briar"))
         .unwrap_or_else(|err| panic!("attack {}", err.code.as_str()));
     let wall = opened.state().last_round_at.clone();
     let outputs = opened
@@ -549,10 +546,10 @@ fn lark_attacks(world: &mut World) {
         .unwrap_or_else(|err| panic!("attack {err}"));
     let reports = outputs.into_iter().next().unwrap().reports;
     let rolled = reports.into_iter().find_map(|report| match report {
-        MoveReport::Rolled { actor_id, roll } if actor_id == *"lark" => Some(roll),
+        MoveReport::Rolled { actor_id, roll } if actor_id == *"harbormouse" => Some(roll),
         _ => None,
     });
-    let rolled = rolled.unwrap_or_else(|| panic!("Lark did not roll"));
+    let rolled = rolled.unwrap_or_else(|| panic!("Harbormouse did not roll"));
     assert_eq!(rolled.total, 21, "{rolled:?}");
     assert_eq!(rolled.target, 22, "{rolled:?}");
     world.scratch = match rolled.outcome {
@@ -574,7 +571,7 @@ fn the_outcome_is_a_miss(world: &mut World) {
 
 #[given(expr = "a pack with rules\\/moves.yaml")]
 fn a_pack_with_moves_yaml(world: &mut World) {
-    let pack = copy_docks("rules-moves");
+    let pack = copy_pack("docks", "rules-moves");
     fs::write(pack.join("rules/moves.yaml"), "schema: moves\n").unwrap();
     world.pack = Some(pack);
 }
@@ -594,7 +591,7 @@ fn check_says_moves_was_replaced(world: &mut World) {
 
 #[given(expr = "a verb file where the word bogus appears in earlier text")]
 fn bogus_appears_in_earlier_text(world: &mut World) {
-    let pack = copy_docks("rules-bogus");
+    let pack = copy_pack("docks", "rules-bogus");
     append(
         &pack.join("rules/verbs.yaml"),
         r#"
@@ -647,7 +644,7 @@ fn check_reports_the_key(world: &mut World) {
 
 #[given(expr = "a verb whose if dash holds two conditions")]
 fn two_conditions_under_one_dash(world: &mut World) {
-    let pack = copy_docks("rules-two");
+    let pack = copy_pack("docks", "rules-two");
     append(
         &pack.join("rules/verbs.yaml"),
         r#"
@@ -680,9 +677,9 @@ fn check_reports_two_conditions(world: &mut World) {
     );
 }
 
-#[given(expr = "steady costs 5 grit and the sitter has 1")]
-fn steady_costs_five_grit(world: &mut World) {
-    let pack = copy_docks("rules-cost");
+#[given(expr = "steady costs 5 vigor and the sitter has 1")]
+fn steady_costs_five_vigor(world: &mut World) {
+    let pack = copy_pack("docks", "rules-cost");
     append(
         &pack.join("rules/verbs.yaml"),
         r#"
@@ -691,13 +688,13 @@ fn steady_costs_five_grit(world: &mut World) {
       verb: steady
     cost:
       meters:
-        grit: 5
+        vigor: 5
     do: []
 "#,
     );
     edit_save(&pack, |now| {
-        edit_meter(now, "rowan", "grit", |grit| {
-            (grit.base, grit.offset) = (1, 0)
+        edit_meter(now, "rowan", "vigor", |vigor| {
+            (vigor.base, vigor.offset) = (1, 0)
         });
     });
     world.pack = Some(pack);
@@ -714,11 +711,11 @@ fn the_seated_pc_plays_steady(world: &mut World) {
     };
 }
 
-#[then(expr = "the refusal is CANT_AFFORD naming grit and world_time stays 1080")]
+#[then(expr = "the refusal is CANT_AFFORD naming vigor and world_time stays 1080")]
 fn the_refusal_is_cant_afford(world: &mut World) {
     assert_eq!(
         world.scratch,
-        format!("{} grit", Reason::CantAfford.as_str())
+        format!("{} vigor", Reason::CantAfford.as_str())
     );
     let now = state_of(world.pack.as_ref().unwrap());
     assert_eq!(now.world_time, 1080);
@@ -729,7 +726,7 @@ fn the_refusal_is_cant_afford(world: &mut World) {
     expr = "a habit cast:mira\\/leave_door_note and a place rule place:docks_street\\/travel while the PC stays in the shop"
 )]
 fn a_far_place_rule_while_the_pc_stays(world: &mut World) {
-    let pack = copy_docks("rules-full-id");
+    let pack = copy_pack("docks", "rules-full-id");
     insert_before_fence(
         &pack.join("world/places/docks_street.md"),
         "\
@@ -797,7 +794,7 @@ fn both_full_ids_are_refused(world: &mut World) {
 
 #[given(expr = "use on tonic targets an item and the shared use takes no target")]
 fn use_on_tonic_targets_an_item(world: &mut World) {
-    let pack = copy_docks("rules-owned");
+    let pack = copy_pack("docks", "rules-owned");
     write(
         &pack.join("world/items/tonic.md"),
         "\
@@ -861,7 +858,7 @@ fn the_queued_target_is_that_item(world: &mut World) {
 
 #[given(expr = "a verb with a time cost and a resist roll")]
 fn a_verb_with_time_and_resist(world: &mut World) {
-    let pack = copy_docks("rules-unused");
+    let pack = copy_pack("docks", "rules-unused");
     append(
         &pack.join("rules/verbs.yaml"),
         r#"
@@ -873,11 +870,11 @@ fn a_verb_with_time_and_resist(world: &mut World) {
     do:
       - meter:
           of: self
-          key: grit
+          key: vigor
           add: 1
           resist:
             subject: self
-            check: grit
+            check: exert
             threshold: 2
 "#,
     );
@@ -902,7 +899,7 @@ const BARE_SAME: &str = "
     do:
       - meter:
           of: self
-          key: grit
+          key: vigor
           add: 1
           resist: same
 ";
@@ -914,23 +911,23 @@ const SAME_AFTER_ROLL: &str = "
     do:
       - meter:
           of: self
-          key: grit
+          key: vigor
           add: -1
           resist:
             subject: self
-            check: grit
+            check: exert
             threshold: 2
             resisted: []
       - meter:
           of: self
-          key: grit
+          key: vigor
           add: 1
           resist: same
 ";
 
 #[given(expr = "a verb whose only resist is same")]
 fn a_verb_whose_only_resist_is_same(world: &mut World) {
-    let pack = copy_docks("rules-bare-same");
+    let pack = copy_pack("docks", "rules-bare-same");
     append(&pack.join("rules/verbs.yaml"), BARE_SAME);
     stamp_pack_rev(&pack);
     world.pack = Some(pack);
@@ -950,7 +947,7 @@ fn check_reports_bare_resist_same(world: &mut World) {
 
 #[given(expr = "a verb whose resist same follows a roll")]
 fn a_verb_whose_resist_same_follows_a_roll(world: &mut World) {
-    let pack = copy_docks("rules-same-after");
+    let pack = copy_pack("docks", "rules-same-after");
     append(&pack.join("rules/verbs.yaml"), SAME_AFTER_ROLL);
     edit_save(&pack, |_| {});
     world.pack = Some(pack);
@@ -968,17 +965,21 @@ fn check_accepts_resist_same_after_a_roll(world: &mut World) {
 }
 
 #[given(
-    expr = "briar's cast file holds a verb \"ask\" that targets an actor and sets the world flag passage"
+    expr = "briar's cast file holds a verb \"ask\" that targets an actor and sets the world flag passage, and Mira's door note is not due"
 )]
-fn briar_holds_ask(world: &mut World) {
-    world.pack = Some(copy_pack("sample-d20", "rules-scoped-here"));
+fn briar_holds_ask_with_miras_note_not_due(world: &mut World) {
+    let pack = copy_pack("docks", "rules-scoped-here");
+    edit_save(&pack, |now| {
+        edit_meter(now, "mira", "shop_day", |shop_day| shop_day.base = 0);
+    });
+    world.pack = Some(pack);
 }
 
 #[given(
     expr = "briar's cast file holds a verb \"ask\" that targets an actor, and the save puts briar in the lane"
 )]
 fn briar_holds_ask_in_the_lane(world: &mut World) {
-    let pack = copy_pack("sample-d20", "rules-scoped-gone");
+    let pack = copy_pack("docks", "rules-scoped-gone");
     edit_save(&pack, |now| {
         now.actors_mut()
             .get_mut::<component::Place>(&"briar".into())
@@ -988,25 +989,25 @@ fn briar_holds_ask_in_the_lane(world: &mut World) {
     world.pack = Some(pack);
 }
 
-#[when(regex = r"^lark, in the yard with briar, plays (.+)$")]
-fn lark_in_the_yard_plays(world: &mut World, line: String) {
+#[when(regex = r"^harbormouse, in the yard with briar, plays (.+)$")]
+fn harbormouse_in_the_yard_plays(world: &mut World, line: String) {
     let now = state_of(world.pack.as_ref().unwrap());
-    for actor in ["lark", "briar"] {
+    for actor in ["harbormouse", "briar"] {
         assert_eq!(place_of(&now, actor), "gate_yard");
     }
-    play_larks_line(world, &line);
+    play_harbormouse_line(world, &line);
 }
 
-#[when(regex = r"^lark, alone in the yard, plays (.+)$")]
-fn lark_alone_plays(world: &mut World, line: String) {
+#[when(regex = r"^harbormouse, alone in the yard, plays (.+)$")]
+fn harbormouse_alone_plays(world: &mut World, line: String) {
     let now = state_of(world.pack.as_ref().unwrap());
     let actors = now.actors().query::<(ActorId, &component::Place)>();
     let yard = actors.iter().filter(|(_, place)| *place == "gate_yard");
     assert_eq!(
         yard.map(|(id, _)| id.as_str()).collect::<Vec<_>>(),
-        ["lark"]
+        ["harbormouse"]
     );
-    play_larks_line(world, &line);
+    play_harbormouse_line(world, &line);
 }
 
 #[then(expr = "cast:briar\\/ask runs with briar as its target and passage is set")]
@@ -1028,20 +1029,20 @@ fn ask_is_refused_before_the_round(world: &mut World) {
     );
 }
 
-/// Lark plays `line` seated, keeping the pack's bytes from before. A queued line plays its
+/// Harbormouse plays `line` seated, keeping the pack's bytes from before. A queued line plays its
 /// round, and the scratch holds that round's target and rule steps, else the refusal code.
-fn play_larks_line(world: &mut World, line: &str) {
+fn play_harbormouse_line(world: &mut World, line: &str) {
     let pack = world.pack.clone().unwrap();
     world.before = table::read_files(&pack);
     let (verb, target) = split_line(line);
-    let (lark, mut opened) = (seated_lark(), open(&pack));
-    if let Err(refusal) = opened.queue_player_move(&lark, &"lark".into(), verb, target) {
+    let (seated, mut opened) = (seated_harbormouse(), open(&pack));
+    if let Err(refusal) = opened.queue_player_move(&seated, &"harbormouse".into(), verb, target) {
         world.scratch = refusal.code.as_str().to_string();
         return;
     }
     let wall = opened.state().last_round_at.clone();
     opened
-        .play(&lark, &wall)
+        .play(&seated, &wall)
         .unwrap_or_else(|err| panic!("{line}: {err}"));
     let round = read_round(&pack, "round-0001");
     let steps = round["extra_steps"].as_array().unwrap();
@@ -1052,10 +1053,10 @@ fn play_larks_line(world: &mut World, line: &str) {
     world.scratch = format!("{} {}", round["intents"][0]["target"], rules.join(" "));
 }
 
-fn seated_lark() -> Presence {
+fn seated_harbormouse() -> Presence {
     Presence {
         players: 1,
-        actors_present: vec!["lark".into()],
+        actors_present: vec!["harbormouse".into()],
     }
 }
 

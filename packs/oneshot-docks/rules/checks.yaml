@@ -1,7 +1,0 @@
-schema: checks
-checks:
-  - id: grit
-    dice:
-      count: 2
-      sides: 6
-    meter: grit

@@ -10,7 +10,7 @@ use spookery_engine::testing::journal::list_round_keys;
 use spookery_engine::{component, State};
 
 use super::table;
-use crate::support::{self, copy_docks};
+use crate::support::{self, copy_pack};
 use crate::World;
 
 pub(crate) const EVENING: u64 = 1290;
@@ -87,23 +87,23 @@ fn break_pack(pack: &Path, fault: &str) {
     match fault {
         "missing when" => replace_in_file(
             &pack.join("rules/verbs.yaml"),
-            "  - id: grit\n    when:\n      verb: grit\n",
-            "  - id: grit\n",
+            "  - id: exert\n    when:\n      verb: exert\n",
+            "  - id: exert\n",
         ),
         "unknown field" => replace_in_file(
             &pack.join("rules/verbs.yaml"),
-            "  - id: grit\n    when:\n",
-            "  - id: grit\n    audiance: player\n    when:\n",
+            "  - id: exert\n    when:\n",
+            "  - id: exert\n    audiance: player\n    when:\n",
         ),
         "unknown check" => replace_in_file(
             &pack.join("rules/verbs.yaml"),
-            "    check: grit\n",
+            "    check: exert\n",
             "    check: courage\n",
         ),
         "duplicate move" => replace_in_file(
             &pack.join("rules/verbs.yaml"),
             "  - id: wait\n",
-            "  - id: grit\n",
+            "  - id: exert\n",
         ),
         "unknown format tag" => replace_in_file(
             &pack.join("rules/verbs.yaml"),
@@ -154,7 +154,7 @@ fn break_pack(pack: &Path, fault: &str) {
         ),
         "check names no meter" => replace_in_file(
             &pack.join("rules/checks.yaml"),
-            "    meter: grit
+            "    meter: vigor
 ",
             "    meter: \"\"
 ",
@@ -254,12 +254,13 @@ fn break_pack(pack: &Path, fault: &str) {
     }
 }
 
-pub(crate) fn join_play(world: &mut World, raw: bool) {
+/// Hosts the pack and runs play on it, picking `pc`, with `--raw` when `raw` is set.
+pub(crate) fn join_play(world: &mut World, pc: &str, raw: bool) {
     let pack = table::pack(world).to_path_buf();
     table::listen(world, &pack);
     let addr = table::game_addr(world);
     let flags: &[&str] = if raw { &["--raw"] } else { &[] };
-    world.play = Some(spawn_play(&addr, "rowan", flags));
+    world.play = Some(spawn_play(&addr, pc, flags));
     let needle = if raw {
         "\"kind\":\"view\""
     } else {
@@ -352,7 +353,7 @@ pub(crate) fn walk(exit: &str) -> spookery_engine::testing::PendingAction {
 
 #[given(expr = "a docks table")]
 fn a_docks_table(world: &mut World) {
-    let pack = crate::support::copy_docks("status");
+    let pack = crate::support::copy_pack("docks", "status");
     world.before = table::read_files(&pack);
     world.pack = Some(pack);
 }
@@ -372,7 +373,7 @@ fn the_pack_bytes_are_unchanged(world: &mut World) {
 
 #[given(expr = "a docks table with a seated GM")]
 fn a_docks_table_with_a_seated_gm(world: &mut World) {
-    let pack = copy_docks("gm-seat");
+    let pack = copy_pack("docks", "gm-seat");
     let opened = fs::read(pack.join("state/save.yaml"))
         .unwrap_or_else(|err| panic!("read save.yaml: {err}"));
     table::listen(world, &pack);
@@ -383,7 +384,7 @@ fn a_docks_table_with_a_seated_gm(world: &mut World) {
 
 #[given(expr = "a docks table with a seated player")]
 fn a_docks_table_with_a_seated_player(world: &mut World) {
-    let pack = copy_docks("speech");
+    let pack = copy_pack("docks", "speech");
     table::listen(world, &pack);
     table::seat_rowan(world, &pack);
     world.pack = Some(pack);
@@ -431,26 +432,12 @@ fn the_report_says(world: &mut World, text: String) {
 
 #[when(expr = "play joins the table on a free loopback address")]
 fn play_joins_the_table_on_a_free_loopback_address(world: &mut World) {
-    join_play(world, false);
+    join_play(world, "rowan", false);
 }
 
-#[when(expr = "play joins the sample table")]
-fn play_joins_the_sample_table(world: &mut World) {
-    join_sample(world, "lark");
-}
-
-#[when(expr = "play joins the sample table as {string}")]
-fn play_joins_the_sample_table_as(world: &mut World, pick: String) {
-    join_sample(world, &pick);
-}
-
-/// Runs play on the sample table, picks `pick` and waits for the Gate Yard.
-fn join_sample(world: &mut World, pick: &str) {
-    let pack = table::pack(world).to_path_buf();
-    table::listen(world, &pack);
-    let addr = table::game_addr(world);
-    world.play = Some(spawn_play(&addr, pick, &[]));
-    wait_play(world, "Gate Yard");
+#[when(expr = "play joins the table as {string}")]
+fn play_joins_the_table_as(world: &mut World, pick: String) {
+    join_play(world, &pick, false);
 }
 
 #[when(expr = "play types {string}")]
@@ -605,7 +592,7 @@ fn the_operator_runs_verify(world: &mut World) {
 
 #[given(expr = "the trapdoor is hidden and rowan does not know fact_trapdoor")]
 fn the_trapdoor_is_hidden(world: &mut World) {
-    let pack = copy_docks("trapdoor");
+    let pack = copy_pack("docks", "trapdoor");
     add_trapdoor(&pack);
     edit_save(&pack, |_| {});
     table::listen(world, &pack);
@@ -624,7 +611,7 @@ fn the_view_hides_the_trapdoor(world: &mut World) {
 
 #[given(expr = "the stairs exit costs 10 ticks")]
 fn the_stairs_cost_ten_ticks(world: &mut World) {
-    let pack = copy_docks("ten-ticks");
+    let pack = copy_pack("docks", "ten-ticks");
     replace_in_file(
         &pack.join("world/places/docks_shop.md"),
         "ticks: 2\n",

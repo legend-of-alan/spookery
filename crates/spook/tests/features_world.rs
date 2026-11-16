@@ -73,12 +73,6 @@ mod modifiers;
 #[path = "steps/wake.rs"]
 mod wake;
 
-#[path = "steps/sample.rs"]
-mod sample;
-
-#[path = "steps/sample_arc.rs"]
-mod sample_arc;
-
 fn runs(folder: &str) -> bool {
     !HOST.contains(&folder)
 }

@@ -8,7 +8,7 @@ use crate::World;
 
 #[given(expr = "rowan starts in docks_street")]
 fn rowan_starts_in_docks_street(world: &mut World) {
-    let pack = crate::support::copy_docks("arrive");
+    let pack = crate::support::copy_pack("docks", "arrive");
     crate::support::edit_save(&pack, |now| {
         now.actors_mut()
             .get_mut::<component::Place>(&"rowan".into())
@@ -18,17 +18,19 @@ fn rowan_starts_in_docks_street(world: &mut World) {
     world.pack = Some(pack);
 }
 
-/// The street's one exit stays hidden behind the ledger fact, which rowan does not know.
-#[given(expr = "a docks copy where the world shows dawn and the street's exit is hidden")]
-fn the_world_shows_dawn_and_the_street_exit_is_hidden(world: &mut World) {
-    let pack = crate::support::copy_docks("view-sections");
+/// The street's exits stay hidden behind the ledger fact, which rowan does not know.
+#[given(expr = "a docks copy where the world shows dawn and the street's exits are hidden")]
+fn the_world_shows_dawn_and_the_street_exits_are_hidden(world: &mut World) {
+    let pack = crate::support::copy_pack("docks", "view-sections");
     let dawn = "schema: meters\nmeters:\n  - id: dawn\n    min: 0\n    base_cap: 6\n    max: 6\n    base: 6\n    hidden: false\n";
     fs::write(pack.join("world/meters.yaml"), dawn).unwrap();
-    common::replace_in_file(
-        &pack.join("world/places/docks_street.md"),
-        "    name: docks_shop\n",
-        "    name: docks_shop\n    hidden: true\n    revealed_by: fact_ledger_short\n",
-    );
+    for exit in ["docks_shop", "gate_yard"] {
+        common::replace_in_file(
+            &pack.join("world/places/docks_street.md"),
+            &format!("    name: {exit}\n"),
+            &format!("    name: {exit}\n    hidden: true\n    revealed_by: fact_ledger_short\n"),
+        );
+    }
     spookery_engine::migrate_pack(&pack).unwrap_or_else(|err| panic!("migrate: {err}"));
     world.pack = Some(pack);
 }
@@ -70,8 +72,8 @@ fn the_seated_player_sees(world: &mut World, text: String) {
 
 #[given(expr = "the CLI is connected as a player holding rowan")]
 fn the_cli_holds_rowan(world: &mut World) {
-    world.pack = Some(crate::support::copy_docks("cli"));
-    common::join_play(world, false);
+    world.pack = Some(crate::support::copy_pack("docks", "cli"));
+    common::join_play(world, "rowan", false);
 }
 
 #[when(expr = "I type {string}")]
@@ -115,7 +117,7 @@ fn i_see_the_lines(world: &mut World, first: String, second: String, third: Stri
 /// Writes `rules` into the frontmatter of the docks page at `page`, in place of `from`, then
 /// seats play as rowan.
 fn add_rule_and_join(world: &mut World, label: &str, page: &str, from: &str, rules: &str) {
-    let pack = crate::support::copy_docks(label);
+    let pack = crate::support::copy_pack("docks", label);
     let path = pack.join(page);
     let text = fs::read_to_string(&path).unwrap();
     let next = text.replacen(from, rules, 1);
@@ -123,7 +125,7 @@ fn add_rule_and_join(world: &mut World, label: &str, page: &str, from: &str, rul
     fs::write(&path, next).unwrap();
     crate::support::stamp_pack_rev(&pack);
     world.pack = Some(pack);
-    common::join_play(world, false);
+    common::join_play(world, "rowan", false);
 }
 
 #[given(expr = "Aldric has an ask verb and the CLI holds rowan in the shop")]
