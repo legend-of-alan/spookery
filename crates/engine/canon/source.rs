@@ -103,8 +103,8 @@ impl<'a> FileText<'a> {
     }
 
     /// A converter's `fault` at the spot it recorded, refused as a schema error.
-    pub fn fault(&self, path: &str, fault: Fault, hint: &str) -> Diagnostic {
-        self.refusal(path, Locator::Spot(fault.spot), fault.message, hint)
+    pub fn fault(&self, path: &str, fault: Fault) -> Diagnostic {
+        self.refusal(path, Locator::Spot(fault.spot), fault.message, "")
     }
 
     fn refusal(&self, path: &str, at: Locator, problem: String, hint: &str) -> Diagnostic {
