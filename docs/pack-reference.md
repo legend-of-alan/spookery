@@ -6,6 +6,8 @@ Reference for people and agents writing a pack. The walkthrough is [Write your f
 
 The first key in each file is `schema`, with no version suffix. In a Markdown file that key sits in the frontmatter.
 
+A place, item, cast member or story may have `name`, the name a player sees. Without one, a player sees its id as written.
+
 ## Layout
 
 | Path | What it holds |
@@ -50,17 +52,17 @@ gm_notes: >-
 
 ## Places and exits
 
-A place file is Markdown. The header between the `---` lines is the frontmatter. The prose after the closing `---` is the body a viewer can read. `display_name` is required. It is the name a player sees. The id is not turned into a title.
+A place file is Markdown. The header between the `---` lines is the frontmatter. The prose after the closing `---` is the body a viewer can read.
 
 Only places own facts. A fact has `id`, `text`, and optional `hidden`, which defaults to false. A player in the place sees every fact that is not hidden. A hidden fact is seen only by an actor whose `known_facts` lists it.
 
-An exit has `to` and `name`. It may have `cost`, `if`, `locked_text`, and `hidden` together with `revealed_by`. `to` is a place id. Two exits on one place with the same name are rejected. A hidden exit needs `revealed_by`, and that value is a fact id from this pack. A place no path reaches from the start, counting hidden and locked exits, is a warning. A player's `map` shows each place's exits as they last saw them: at the end of each round, every actor notes the exits they can see where they stand. A hidden exit revealed while they are elsewhere shows on the map only after they go back. Where an exit goes and whether it is locked are read when `map` prints.
+An exit has `to` and `id`. It may have `name`, `cost`, `if`, `locked_text`, and `hidden` together with `revealed_by`. `to` is a place id. Two exits on one place with the same id are rejected. `name` is what a player reads and types for the exit, its id when left out. An exit whose id is the place it goes to reads as that place's name. A hidden exit needs `revealed_by`, and that value is a fact id from this pack. A place no path reaches from the start, counting hidden and locked exits, is a warning. A player's `map` shows each place's exits as they last saw them: at the end of each round, every actor notes the exits they can see where they stand. A hidden exit revealed while they are elsewhere shows on the map only after they go back. Where an exit goes and whether it is locked are read when `map` prints.
 
 `flags` lists the flags an effect may set on this place, and `meters` lists the meters only this place carries, in the shape of `rules/meters.yaml`. A rule names them with `of: place:<id>`, or `of: here` for the actor's own place. `world/places/loft.md` declares both.
 
 `cost.ticks` is the game time the cost takes, a whole number of ticks. Omitted means 0. An exit with an `if` is a door, and the `if`, in the same conditions as a rule, is what it takes to open it. A door starts locked: travel through it shows `locked_text` and changes nothing.
 
-To start a door already open, list its exit name under that place in `places.open_exits` in the starting save. Meeting its `if` alone opens it only at the end of each round, after change rules, when any actor in its place meets that `if`, and it stays open for everyone, whoever holds the key after. The engine opens it with an `exit_open` effect it records in the journal.
+To start a door already open, list its exit id under that place in `places.open_exits` in the starting save. Meeting its `if` alone opens it only at the end of each round, after change rules, when any actor in its place meets that `if`, and it stays open for everyone, whoever holds the key after. The engine opens it with an `exit_open` effect it records in the journal.
 
 A door carries one flag, `open`, which the engine owns: a rule names it with `of: exit:<place>.<exit>` and `key: open`, sets it to `false` to lock the door again, and may watch it like any flag. An exit with no `if` has no flag and is always open. The `bar` rule below locks the cellar door again.
 
@@ -70,7 +72,7 @@ A walk that takes ticks puts the traveller on the exit as soon as it starts. The
 ---
 schema: place
 id: yard
-display_name: Yard
+name: Yard
 facts:
   - id: fact_yard_open
     text: The yard gate stands open.
@@ -79,15 +81,15 @@ facts:
     hidden: true
 exits:
   - to: lane
-    name: lane
+    id: lane
     cost:
       ticks: 10
   - to: loft
-    name: loft
+    id: loft
     hidden: true
     revealed_by: fact_hidden_stair
   - to: cellar
-    name: cellar
+    id: cellar
     if:
       - has_item:
           subject: self
@@ -124,13 +126,13 @@ Gravel underfoot.
 ---
 schema: place
 id: lane
-display_name: Lane
+name: Lane
 facts:
   - id: fact_lane_empty
     text: The lane is empty.
 exits:
   - to: yard
-    name: yard
+    id: yard
 ---
 The lane runs past the yard.
 ```
@@ -139,13 +141,13 @@ The lane runs past the yard.
 ---
 schema: place
 id: loft
-display_name: Loft
+name: Loft
 facts:
   - id: fact_loft_rope
     text: The loft smells of rope.
 exits:
   - to: yard
-    name: yard
+    id: yard
 flags:
   - lamp_lit
 meters:
@@ -163,7 +165,7 @@ Rope, and a view of the yard.
 ---
 schema: place
 id: cellar
-display_name: Cellar
+name: Cellar
 facts:
   - id: fact_cellar_dark
     text: The cellar is dark.
@@ -172,7 +174,7 @@ facts:
     hidden: true
 exits:
   - to: yard
-    name: yard
+    id: yard
 ---
 Stone, and a low door.
 ```
@@ -185,7 +187,7 @@ An item file is Markdown with the same frontmatter shape. `tags` may include `we
 ---
 schema: item
 id: oil
-display_name: Oil
+name: Oil
 tags: []
 rules:
   - id: use
@@ -205,7 +207,7 @@ A tin of oil.
 ---
 schema: item
 id: knife
-display_name: Knife
+name: Knife
 tags:
   - weapon
 rules: []
@@ -215,7 +217,7 @@ A short knife.
 
 ## Cast
 
-`control_type` is `npc` or `pc_template`. A template does not sit a player. The save does. The file name is not the id: `cast/pc-ada.md` has id `ada`. `display_name` is required, and it is the name a player sees. A cast page has no `facts`: what an actor knows is `known_facts` on the save.
+`control_type` is `npc` or `pc_template`. A template does not sit a player. The save does. The file name is not the id: `cast/pc-ada.md` has id `ada`. A cast page has no `facts`: what an actor knows is `known_facts` on the save.
 
 `flags` lists the flags an effect may set on this actor. A flag effect or condition whose `of` is fixed by the pack, as for meters, names a flag that entity's file lists, or check refuses it. World flags are not listed: any name but `busy` is one. `meters` lists the meters only this actor carries, in the shape of `rules/meters.yaml`; see [Meters](#meters). `idle.eligible` says whether the idle runner may pick this NPC. `when: habit` is a habit of that NPC. The runner takes the first habit whose `if` holds and whose `do` list expands.
 
@@ -226,7 +228,7 @@ A meter never pauses. To stop a rule from advancing a meter while no player is s
 schema: cast
 id: ada
 control_type: pc_template
-display_name: Ada
+name: Ada
 flags: []
 idle:
   eligible: false
@@ -257,7 +259,7 @@ Ada keeps the yard.
 schema: cast
 id: keeper
 control_type: npc
-display_name: Keeper
+name: Keeper
 flags:
   - tended
 idle:
@@ -274,7 +276,7 @@ rules:
     if:
       - all:
           - cycle:
-              name: day
+              id: day
               from: 480
               to: 960
           - players:
@@ -455,7 +457,7 @@ Mira's restock in `tests/packs/docks/cast/mira.md`:
 ```
     if:
       - cycle:
-          name: day
+          id: day
           from: 480
           to: 960
     do:
@@ -500,7 +502,7 @@ A change rule has no `cost`, `start`, `finish`, `cooldown`, or `cancellable`. Ch
 
 Matching change rules run in owner order (shared verbs, then place, item, cast, story), then by file path, then by position in the file. They run again on the changes they just wrote, until a pass matches nothing. In one pass a rule runs at most once for each subject. The subject is the actor whose value changed. A flag or meter of the world, a place, a story or an exit has no subject, so a rule watching one runs once per change, whoever is seated, and check refuses `self`, `here`, `location`, and `roll` in it: name the actor, or `world`. A flag counts as the world's when a rule sets it with `of: world`; a world flag only the save sets is not checked, and a `self` there is refused when the rule runs. A key the world and an actor both carry fires the rule for each, and `TRIGGER_LEAK` reads it as an actor's change. Change rules run right after each action starts and right after each one finishes, so a rule sees every action's change and can change the world before the next action in the round. A walk fires `leave` at its start and `arrive` at its finish. Two changes to one key inside one action count as one. They run once more at the end of the round, after doors open. `max_trigger_depth` in `rules/budget.yaml` caps the passes each time they run. Omitted, it is 4. The next pass is recorded and does not run. Check warns when change rules set each other's watched values. A `narrate` or `note` on a change rule that can reach a viewer who cannot see that change is `TRIGGER_LEAK`.
 
-`if` is a list. Each dash is one condition. `all` is and, `any` is or, and `not` negates one condition. Two conditions under one dash are rejected. `subject` on `has_item`, `at`, `knows`, and `wielding` is the subject of that verb: `has_item: { subject: self, id: key }` reads as *self has the key*. `of` on a meter, flag, or item is the owner whose value or count the line reads or changes. Each is `self`, `target`, `here`, `world`, `place:<id>`, `story:<id>`, `exit:<place>.<exit>`, or an actor id. An exit holds only its flag `open`. On `has_item`, `wielding`, and an item effect, `id: target` is the intent's target. The habit on `cast/keeper.md` uses each condition. `op` is `<`, `<=`, `==`, `>=`, or `>`. `cycle` holds while the tick of the cycle `name`, world time modulo that cycle's length in `cycles`, is in `from..to`. When `from` is above `to` the window wraps past the cycle's end. `from` and `to` are integers below the cycle's length and they differ.
+`if` is a list. Each dash is one condition. `all` is and, `any` is or, and `not` negates one condition. Two conditions under one dash are rejected. `subject` on `has_item`, `at`, `knows`, and `wielding` is the subject of that verb: `has_item: { subject: self, id: key }` reads as *self has the key*. `of` on a meter, flag, or item is the owner whose value or count the line reads or changes. Each is `self`, `target`, `here`, `world`, `place:<id>`, `story:<id>`, `exit:<place>.<exit>`, or an actor id. An exit holds only its flag `open`. On `has_item`, `wielding`, and an item effect, `id: target` is the intent's target. The habit on `cast/keeper.md` uses each condition. `op` is `<`, `<=`, `==`, `>=`, or `>`. `cycle` holds while the tick of the cycle `id`, world time modulo that cycle's length in `cycles`, is in `from..to`. When `from` is above `to` the window wraps past the cycle's end. `from` and `to` are integers below the cycle's length and they differ.
 
 Every move but `say` is an action that starts and finishes. `cost` is what the start costs, and it may name `ticks`, `meters`, and `items`. `cost.ticks` is how long the action takes; omitted, it finishes in the round it starts. A cost the actor cannot pay is refused when the move is played, and the world stays as it was. The start is checked again when the round runs it, since an earlier move may have changed the world.
 

@@ -273,8 +273,9 @@ impl RawSession {
             .lines()
             .take_while(|line| !line.is_empty())
             .find_map(|line| {
-                let (name, value) = line.split_once(':')?;
-                name.eq_ignore_ascii_case("mcp-session-id")
+                let (header, value) = line.split_once(':')?;
+                header
+                    .eq_ignore_ascii_case("mcp-session-id")
                     .then(|| value.trim().to_string())
             })
             .unwrap_or_else(|| panic!("no session\n{opened}"));

@@ -136,7 +136,7 @@ fn a_docks_table_whose_pack_defines_four_pcs(world: &mut World) {
 schema: cast
 id: lark
 control_type: pc_template
-display_name: Lark
+name: Lark
 idle:
   eligible: false
 ---

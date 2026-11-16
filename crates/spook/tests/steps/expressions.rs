@@ -212,10 +212,10 @@ fn vigor_of(world: &World, actor: &str) -> i64 {
 fn latest_round(world: &World) -> Value {
     let pack = table::pack(world);
     let keys = list_round_keys(pack);
-    let name = keys.last().unwrap_or_else(|| panic!("no round"));
-    let text = spookery_engine::testing::journal::read_record_line(pack, name)
-        .unwrap_or_else(|err| panic!("read {name}: {}", err.detail));
-    serde_json::from_str(text.trim_end()).unwrap_or_else(|err| panic!("{name}: {err}"))
+    let key = keys.last().unwrap_or_else(|| panic!("no round"));
+    let text = spookery_engine::testing::journal::read_record_line(pack, key)
+        .unwrap_or_else(|err| panic!("read {key}: {}", err.detail));
+    serde_json::from_str(text.trim_end()).unwrap_or_else(|err| panic!("{key}: {err}"))
 }
 
 fn dice_line(world: &World) -> String {

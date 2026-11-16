@@ -323,9 +323,9 @@ fn one_record_in_a_closed_bundle_is_changed(world: &mut World) {
     let pack = table::pack(world);
     let bundles = spookery_engine::testing::journal::list_bundles(pack)
         .unwrap_or_else(|err| panic!("{}", err.detail));
-    let (name, path) = bundles
+    let (bundle, path) = bundles
         .into_iter()
-        .find(|(name, _)| name.ends_with(".gz"))
+        .find(|(bundle, _)| bundle.ends_with(".gz"))
         .unwrap_or_else(|| panic!("no closed bundle"));
     let compressed = fs::read(&path).unwrap();
     let plain = spookery_engine::testing::journal::gunzip_bytes(&compressed)
@@ -334,7 +334,7 @@ fn one_record_in_a_closed_bundle_is_changed(world: &mut World) {
     let next = spookery_engine::testing::journal::gzip_bytes(&change_payload(&text))
         .unwrap_or_else(|err| panic!("gzip: {err}"));
     fs::write(&path, next).unwrap();
-    world.scratch = name;
+    world.scratch = bundle;
 }
 
 #[when(expr = "one record in the live bundle is changed")]
@@ -342,14 +342,14 @@ fn one_record_in_the_live_bundle_is_changed(world: &mut World) {
     let pack = table::pack(world);
     let path = spookery_engine::testing::journal::find_live_bundle(pack)
         .unwrap_or_else(|| panic!("no live bundle"));
-    let name = path
+    let bundle = path
         .file_name()
         .and_then(|file| file.to_str())
         .unwrap_or("bundle")
         .to_string();
     let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read: {err}"));
     fs::write(&path, change_payload(&text)).unwrap();
-    world.scratch = name;
+    world.scratch = bundle;
 }
 
 /// Change a value the chain hash covers, not the stored hash itself.
@@ -370,10 +370,10 @@ fn every_closed_bundle_is_made_unreadable(world: &mut World) {
         .unwrap_or_else(|err| panic!("{}", err.detail));
     let closed: Vec<_> = bundles
         .into_iter()
-        .filter(|(name, _)| name.ends_with(".gz"))
+        .filter(|(bundle, _)| bundle.ends_with(".gz"))
         .collect();
     assert!(!closed.is_empty(), "no closed bundle");
-    for (_name, path) in closed {
+    for (_bundle, path) in closed {
         fs::write(&path, b"not a gzip bundle").unwrap();
     }
 }
@@ -447,17 +447,17 @@ fn the_operator_plays_a_round(world: &mut World) {
 
 #[when(expr = "the closed bundle is expanded back to plain JSONL")]
 fn the_closed_bundle_is_expanded_back_to_plain_jsonl(world: &mut World) {
-    let (name, path) = only_closed_bundle(world);
+    let (bundle, path) = only_closed_bundle(world);
     let plain = gunzip_closed(&path);
-    fs::write(path.with_file_name(name.trim_end_matches(".gz")), plain).unwrap();
+    fs::write(path.with_file_name(bundle.trim_end_matches(".gz")), plain).unwrap();
     fs::remove_file(&path).unwrap();
 }
 
 #[when(expr = "the closed bundle is copied back beside its gzip")]
 fn the_closed_bundle_is_copied_back_beside_its_gzip(world: &mut World) {
-    let (name, path) = only_closed_bundle(world);
+    let (bundle, path) = only_closed_bundle(world);
     let plain = gunzip_closed(&path);
-    fs::write(path.with_file_name(name.trim_end_matches(".gz")), plain).unwrap();
+    fs::write(path.with_file_name(bundle.trim_end_matches(".gz")), plain).unwrap();
     assert!(path.is_file(), "gzip removed");
 }
 
@@ -487,18 +487,18 @@ fn the_checkpoints_save_and_snapshot_are_rolled_back(world: &mut World) {
 fn the_live_bundle_is(world: &mut World, expected: String) {
     let path = spookery_engine::testing::journal::find_live_bundle(table::pack(world))
         .unwrap_or_else(|| panic!("no live bundle"));
-    let name = path
+    let bundle = path
         .file_name()
         .and_then(|file| file.to_str())
         .unwrap_or("");
-    assert_eq!(name, expected);
+    assert_eq!(bundle, expected);
 }
 
 #[then(expr = "{word} is closed")]
-fn the_bundle_is_closed(world: &mut World, name: String) {
+fn the_bundle_is_closed(world: &mut World, bundle: String) {
     let journal = table::pack(world).join("state/journal");
-    assert!(journal.join(format!("{name}.gz")).is_file(), "no gzip");
-    assert!(!journal.join(&name).exists(), "plain bundle still open");
+    assert!(journal.join(format!("{bundle}.gz")).is_file(), "no gzip");
+    assert!(!journal.join(&bundle).exists(), "plain bundle still open");
 }
 
 #[then(expr = "the plain bundle file is gone")]
@@ -507,10 +507,10 @@ fn the_plain_bundle_file_is_gone(world: &mut World) {
     let mut plain = Vec::new();
     for entry in fs::read_dir(&journal).unwrap_or_else(|err| panic!("read journal: {err}")) {
         let entry = entry.unwrap();
-        let name = entry.file_name();
-        let name = name.to_string_lossy().into_owned();
-        if name.ends_with(".jsonl") {
-            plain.push(name);
+        let bundle = entry.file_name();
+        let bundle = bundle.to_string_lossy().into_owned();
+        if bundle.ends_with(".jsonl") {
+            plain.push(bundle);
         }
     }
     assert!(plain.is_empty(), "{plain:?}");
@@ -521,7 +521,7 @@ fn only_closed_bundle(world: &World) -> (String, std::path::PathBuf) {
         .unwrap_or_else(|err| panic!("{}", err.detail));
     let mut closed: Vec<_> = bundles
         .into_iter()
-        .filter(|(name, _)| name.ends_with(".gz"))
+        .filter(|(bundle, _)| bundle.ends_with(".gz"))
         .collect();
     assert_eq!(closed.len(), 1, "{closed:?}");
     closed.pop().unwrap()

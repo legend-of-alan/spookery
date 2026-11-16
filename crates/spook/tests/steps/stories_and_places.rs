@@ -50,7 +50,7 @@ fn append_story_rule(pack: &Path, story: &str, effect: &str) {
 /// Write `world/places/attic.md`, above the shop, with these extra keys.
 fn write_attic(world: &mut World, keys: &str) {
     let text = format!(
-        "---\nschema: place\nid: attic\ndisplay_name: Attic\nfacts:\n  - id: fact_attic_dust\n    text: Dust lies on the boards.\nexits:\n  - to: docks_shop\n    name: ladder\n{keys}---\nThe attic is over the shop.\n"
+        "---\nschema: place\nid: attic\nname: Attic\nfacts:\n  - id: fact_attic_dust\n    text: Dust lies on the boards.\nexits:\n  - to: docks_shop\n    id: ladder\n{keys}---\nThe attic is over the shop.\n"
     );
     fs::write(pack(world).join("world/places/attic.md"), text).unwrap();
 }
@@ -377,7 +377,7 @@ fn a_rule_leaves_a_note_in_the_attic(world: &mut World) {
     add_verb_doing(&pack, "scrawl", effect);
     let ladder = "exits:
   - to: attic
-    name: ladder
+    id: ladder
 ";
     replace_in_file(
         &pack.join("world/places/docks_shop.md"),

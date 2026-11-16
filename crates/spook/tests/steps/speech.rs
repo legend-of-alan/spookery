@@ -129,6 +129,7 @@ fn the_tape_already_holds_a_full_mib(world: &mut World) {
         let mut line = spookery_engine::emit_tape_record(&spookery_engine::TapeRecord {
             seq,
             from: spookery::protocol::Speaker::Gm,
+            from_name: String::new(),
             to: spookery_protocol::Audience::Table,
             recipient_ids: vec!["rowan".to_string()],
             text: format!("old line {seq}"),

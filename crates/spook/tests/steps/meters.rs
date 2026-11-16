@@ -387,9 +387,9 @@ fn the_vigil_fires_once(world: &mut World) {
     let pack = pack(world);
     let fired = spookery_engine::testing::journal::list_round_keys(pack)
         .iter()
-        .map(|name| support::read_round(pack, name))
+        .map(|key| support::read_round(pack, key))
         .flat_map(|round| read_extra_steps(&round))
-        .filter(|name| name == "story:vigil/dawn_breaks")
+        .filter(|step| step == "story:vigil/dawn_breaks")
         .count();
     assert_eq!(fired, 1);
     assert!(state_of(pack)

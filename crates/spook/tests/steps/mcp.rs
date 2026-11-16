@@ -308,17 +308,17 @@ fn the_tools_are_the_gm_commands(world: &mut World, step: &Step) {
         serde_json::from_str(&world.scratch).unwrap_or_else(|err| panic!("tools: {err}"));
     let mut rows = Vec::new();
     for tool in &tools {
-        let name = tool["name"].as_str().unwrap_or_default();
+        let tool_id = tool["name"].as_str().unwrap_or_default();
         let schema = &tool["inputSchema"];
         let closed = schema["additionalProperties"] == false;
-        assert!(closed, "{name} takes keys it does not name: {schema}");
+        assert!(closed, "{tool_id} takes keys it does not name: {schema}");
         let fields = schema["properties"]
             .as_object()
             .into_iter()
             .flat_map(Map::keys);
         let required = schema["required"].as_array().into_iter().flatten();
         rows.push([
-            name.to_string(),
+            tool_id.to_string(),
             sort_words(fields.map(String::as_str)),
             sort_words(required.filter_map(Value::as_str)),
         ]);
@@ -410,15 +410,15 @@ fn the_unknown_tool_call_was_refused(world: &mut World) {
 }
 
 fn call_each_gm_tool(gm: &mut GmClient) {
-    for (name, arguments) in [
+    for (tool_id, arguments) in [
         ("status", json!({})),
         ("perceive", json!({"as": "rowan"})),
         ("queue", json!({"actor_id": "rowan", "move": "wait"})),
         ("say", json!({"to": "table", "text": "good evening"})),
         ("commit", json!({"include_round": true})),
     ] {
-        let result = call(gm, name, arguments);
-        assert_not_refused(&result, name);
+        let result = call(gm, tool_id, arguments);
+        assert_not_refused(&result, tool_id);
     }
 }
 

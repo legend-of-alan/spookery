@@ -347,8 +347,8 @@ Tested in `features/loopback/only_loopback_binds.feature`,
 
 ## The place
 
-A player arriving in a place sees its display name, the prose they are allowed
-to read, the display names of who is there, and the visible exits with travel
+A player arriving in a place sees its name, the prose they are allowed
+to read, the names of who is there, and the visible exits with travel
 time. The same view lists that player's own meters. A meter marked hidden stays
 off it, and so does anyone else's. After a round, the player sees one line of
 what changed, built from the change records they are allowed to know. That line
@@ -362,21 +362,20 @@ when they last stood there at the end of a round. Where those exits go and
 whether they are locked is read now. A busy player sees what keeps them busy:
 `on the stairs until tick 1300` on a walk, `chanting until tick 1300` on any
 other timed move, and `recovering until tick 1300` in a cooldown. A player names only
-what they hold or what that view shows, by its id or by the display name they
+what they hold or what that view shows, by its id or by the name they
 read, in any case. `help`, the room's items, the exits and the character
-picker show display names, and an exit named by where it goes shows that
+picker show names, and an exit whose id is where it goes shows that
 place's name. A name two things in sight share is refused by that name and
 takes no round. Anything else reads like an unknown word and takes no round.
-A pack that omits `display_name` fails check. An unknown command tells the
-player to type help.
+A cast member, place or item the pack gives no name shows its id. An unknown
+command tells the player to type help.
 
 Tested in `features/seats/a_player_knows_the_place.feature`,
 `features/seats/the_picker_shows_every_pc.feature`,
 `features/seats/play_shows_readable_text.feature`,
 `features/changes/actions_visibly_matter.feature`,
-`features/items/items_are_real.feature`,
-`features/perceive/the_map_shows_exits_as_the_actor_last_saw_them.feature` and
-`features/check/spook_check_explains_a_broken_pack.feature`.
+`features/items/items_are_real.feature` and
+`features/perceive/the_map_shows_exits_as_the_actor_last_saw_them.feature`.
 
 ## What the engine does not do
 

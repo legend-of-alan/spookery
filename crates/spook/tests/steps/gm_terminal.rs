@@ -78,8 +78,8 @@ fn a_docks_table_with_a_gm_terminal(world: &mut World, actor: String) {
 }
 
 #[when(expr = "the GM queues {string} for {string} and commits")]
-fn the_gm_queues_for_and_commits(world: &mut World, move_name: String, actor: String) {
-    write_gm(world, &format!("queue {actor} {move_name}"));
+fn the_gm_queues_for_and_commits(world: &mut World, move_id: String, actor: String) {
+    write_gm(world, &format!("queue {actor} {move_id}"));
     write_gm(world, "commit");
 }
 

@@ -41,12 +41,12 @@ fn the_operator_runs_ai_gm_with_nothing_listening(world: &mut World) {
 }
 
 #[when(expr = "the operator runs ai-gm without {string}")]
-fn the_operator_runs_ai_gm_without(world: &mut World, name: String) {
+fn the_operator_runs_ai_gm_without(world: &mut World, var: String) {
     let (listener, addr) = free_listener();
     let listeners = [listener];
     let mut command = Command::new(env!("CARGO_BIN_EXE_spook"));
     command.args(["ai-gm", "--addr", &addr]);
-    apply_model_env(&mut command, Some(&name));
+    apply_model_env(&mut command, Some(&var));
     let output = command
         .output()
         .unwrap_or_else(|err| panic!("spawn host: {err}"));
@@ -61,9 +61,9 @@ fn the_operator_runs_ai_gm_without(world: &mut World, name: String) {
 }
 
 #[then(expr = "stderr names {string} as unset")]
-fn stderr_names_as_unset(world: &mut World, name: String) {
+fn stderr_names_as_unset(world: &mut World, var: String) {
     assert!(
-        world.stderr.contains(&format!("{name} is unset")),
+        world.stderr.contains(&format!("{var} is unset")),
         "{}",
         world.stderr
     );
@@ -565,15 +565,15 @@ fn wait_stub(seen: &Mutex<Seen>, posts: usize, closes: usize) {
 }
 
 fn apply_model_env(command: &mut Command, missing: Option<&str>) {
-    for (name, value) in [
+    for (var, value) in [
         ("SPOOK_GM_KEY", "test-key"),
         ("SPOOK_GM_URL", "http://127.0.0.1:9"),
         ("SPOOK_GM_MODEL", "grok-test"),
     ] {
-        if missing == Some(name) {
-            command.env_remove(name);
+        if missing == Some(var) {
+            command.env_remove(var);
         } else {
-            command.env(name, value);
+            command.env(var, value);
         }
     }
 }

@@ -2,7 +2,7 @@
 schema: cast
 id: nell
 control_type: npc
-display_name: Nell
+name: Nell
 idle:
   eligible: false
 ---

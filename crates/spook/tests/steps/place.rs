@@ -27,8 +27,8 @@ fn the_world_shows_dawn_and_the_street_exits_are_hidden(world: &mut World) {
     for exit in ["docks_shop", "gate_yard"] {
         common::replace_in_file(
             &pack.join("world/places/docks_street.md"),
-            &format!("    name: {exit}\n"),
-            &format!("    name: {exit}\n    hidden: true\n    revealed_by: fact_ledger_short\n"),
+            &format!("    id: {exit}\n"),
+            &format!("    id: {exit}\n    hidden: true\n    revealed_by: fact_ledger_short\n"),
         );
     }
     spookery_engine::migrate_pack(&pack).unwrap_or_else(|err| panic!("migrate: {err}"));

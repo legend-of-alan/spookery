@@ -2,7 +2,7 @@
 schema: cast
 id: corin
 control_type: pc_template
-display_name: Corin
+name: Corin
 idle:
   eligible: false
 ---

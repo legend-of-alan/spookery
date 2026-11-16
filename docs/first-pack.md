@@ -40,7 +40,7 @@ checks:
     meter: nerve
 ```
 
-`rules/verbs.yaml` has `wait`, `travel`, and `steady`. `wait` is a yield: `do: []` and no success, partial, or miss list. `travel` follows an exit of the current place: `travel lane` uses the exit named `lane`. `steady` names the `nerve` check. `tend_the_yard` is a habit rule on `cast/keeper.md`, with `when: habit`.
+`rules/verbs.yaml` has `wait`, `travel`, and `steady`. `wait` is a yield: `do: []` and no success, partial, or miss list. `travel` follows an exit of the current place: `travel lane` uses the exit `lane`. `steady` names the `nerve` check. `tend_the_yard` is a habit rule on `cast/keeper.md`, with `when: habit`.
 
 `rules/budget.yaml` uses the same counters as the docks pack and sets `idle: on`, so an empty table still wakes.
 
@@ -48,19 +48,19 @@ checks:
 
 ## Add a place
 
-A place is a Markdown file under `world/places/`. The header is the frontmatter. The prose after the closing `---` is what a viewer can read when the fact is public. `display_name` is the name they see.
+A place is a Markdown file under `world/places/`. The header is the frontmatter. The prose after the closing `---` is what a viewer can read when the fact is public. `name` is the name they see. Without one they see the id.
 
 ```yaml path=world/places/porch.md mode=create
 ---
 schema: place
 id: porch
-display_name: Porch
+name: Porch
 facts:
   - id: fact_porch_dry
     text: The porch is dry.
 exits:
   - to: yard
-    name: yard
+    id: yard
 ---
 The porch faces the yard.
 ```
@@ -69,10 +69,10 @@ The yard needs an exit to the porch, or `spook check` warns that the porch canno
 
 ```yaml path=world/places/yard.md mode=insert-before anchor=  # more-exits
   - to: porch
-    name: porch
+    id: porch
 ```
 
-`travel porch` follows the exit named `porch`. A place with no path from the start place is a warning from `spook check`.
+`travel porch` follows the exit `porch`. A place with no path from the start place is a warning from `spook check`.
 
 ## Add a player move
 

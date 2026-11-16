@@ -2,7 +2,7 @@
 schema: cast
 id: keeper
 control_type: npc
-display_name: Keeper
+name: Keeper
 flags:
   - tended
 idle:

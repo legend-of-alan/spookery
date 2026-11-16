@@ -64,12 +64,29 @@ fn a_docks_table_where_bram_is_called(world: &mut World, name: String) {
     let pack = support::copy_pack("docks", "bram-renamed");
     let bram = pack.join("cast/bram.md");
     let text = std::fs::read_to_string(&bram).unwrap_or_else(|err| panic!("bram: {err}"));
-    let renamed = text.replace("display_name: Bram", &format!("display_name: {name}"));
+    let renamed = text.replace("name: Bram", &format!("name: {name}"));
     std::fs::write(&bram, renamed).unwrap_or_else(|err| panic!("bram: {err}"));
     spookery_engine::testing::edit_save(&pack, |now| {
         let mut actors = now.actors_mut();
         actors.get_mut::<component::Place>(&"bram".into()).set("gate_yard").unwrap();
     });
+    world.pack = Some(pack);
+}
+
+#[cucumber::given(expr = "a docks table where the shop, Aldric and the lamp oil have no name")]
+fn a_docks_table_where_three_have_no_name(world: &mut World) {
+    let pack = support::copy_pack("docks", "no-names");
+    for (file, line) in [
+        ("world/places/docks_shop.md", "name: Docks Shop\n"),
+        ("cast/aldric.md", "name: Aldric\n"),
+        ("world/items/lamp_oil.md", "name: Lamp oil\n"),
+    ] {
+        let path = pack.join(file);
+        let text = std::fs::read_to_string(&path).unwrap_or_else(|err| panic!("{file}: {err}"));
+        assert!(text.contains(line), "{file} has no {line}");
+        std::fs::write(&path, text.replace(line, "")).unwrap_or_else(|err| panic!("{file}: {err}"));
+    }
+    spookery_engine::testing::stamp_pack_rev(&pack);
     world.pack = Some(pack);
 }
 

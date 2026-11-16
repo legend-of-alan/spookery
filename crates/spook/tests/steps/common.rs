@@ -53,13 +53,13 @@ pub(crate) fn add_trapdoor(pack: &Path) {
     );
     let next = next.replace(
         "    locked_text: The stair door is locked.\n",
-        "    locked_text: The stair door is locked.\n  - to: cellar\n    name: trapdoor\n    hidden: true\n    revealed_by: fact_trapdoor\n",
+        "    locked_text: The stair door is locked.\n  - to: cellar\n    id: trapdoor\n    hidden: true\n    revealed_by: fact_trapdoor\n",
     );
     assert_ne!(text, next);
     fs::write(&path, next).unwrap();
     fs::write(
         pack.join("world/places/cellar.md"),
-        "---\nschema: place\nid: cellar\ndisplay_name: Cellar\nfacts: []\nexits: []\n---\nUnder the shop.\n",
+        "---\nschema: place\nid: cellar\nname: Cellar\nfacts: []\nexits: []\n---\nUnder the shop.\n",
     )
     .unwrap();
 }
@@ -159,9 +159,6 @@ fn break_pack(pack: &Path, fault: &str) {
             "    meter: \"\"
 ",
         ),
-        "missing display_name" => {
-            replace_in_file(&pack.join("cast/pc-rowan.md"), "display_name: Rowan\n", "")
-        }
         "pack_rev mismatch" => {
             let path = pack.join("state/save.yaml");
             let text = fs::read_to_string(&path).unwrap();
@@ -177,8 +174,8 @@ fn break_pack(pack: &Path, fault: &str) {
         ),
         "duplicate exit" => replace_in_file(
             &pack.join("world/places/docks_shop.md"),
-            "    name: docks_street\n",
-            "    name: docks_street\n  - to: docks_street\n    name: docks_street\n",
+            "    id: docks_street\n",
+            "    id: docks_street\n  - to: docks_street\n    id: docks_street\n",
         ),
         "duplicate place fact" => replace_in_file(
             &pack.join("world/places/docks_shop.md"),
@@ -187,8 +184,8 @@ fn break_pack(pack: &Path, fault: &str) {
         ),
         "cast facts" => replace_in_file(
             &pack.join("cast/pc-rowan.md"),
-            "display_name: Rowan\n",
-            "display_name: Rowan\nfacts: []\n",
+            "name: Rowan\n",
+            "name: Rowan\nfacts: []\n",
         ),
         "a target alias" => replace_in_file(
             &pack.join("rules/verbs.yaml"),
@@ -247,8 +244,8 @@ fn break_pack(pack: &Path, fault: &str) {
         ),
         "an unknown cycle" => replace_in_file(
             &pack.join("cast/mira.md"),
-            "          name: day\n",
-            "          name: tide\n",
+            "          id: day\n",
+            "          id: tide\n",
         ),
         other => panic!("unknown fault {other}"),
     }
@@ -340,13 +337,13 @@ pub(crate) fn set_busy(now: &mut State, actor: &str, until: u64, exit: &str) {
 
 /// A walk through the exit `<place>.<exit>` by the travel verb.
 pub(crate) fn walk(exit: &str) -> spookery_engine::testing::PendingAction {
-    let (_, name) = exit
+    let (_, exit_id) = exit
         .split_once('.')
         .unwrap_or_else(|| panic!("no exit in {exit}"));
     spookery_engine::testing::PendingAction {
         verb: "travel".to_string(),
         source: spookery_engine::Source::Player,
-        target: spookery_engine::Target::Exit(name.to_string()),
+        target: spookery_engine::Target::Exit(exit_id.to_string()),
         rule: "verb:travel".to_string(),
     }
 }
@@ -503,13 +500,13 @@ fn world_time_is_1085(world: &mut World) {
     table::wait_round(world, 1085);
 }
 
-/// The id of the cast member or place in `canon` whose display name is `name`; any other text,
-/// such as an id or an exit address, as written.
-pub(crate) fn resolve_id(canon: &spookery_engine::testing::Canon, name: &str) -> String {
+/// The id of the cast member or place in `canon` whose name is `text`; any other text, such as
+/// an id or an exit address, as written.
+pub(crate) fn resolve_id(canon: &spookery_engine::testing::Canon, text: &str) -> String {
     let cast = canon.cast.keys().map(spookery_engine::ActorId::as_str);
     let mut ids = cast.chain(canon.places.keys().map(spookery_engine::PlaceId::as_str));
-    let named = ids.find(|id| canon.display_name(id) == name);
-    named.unwrap_or(name).to_string()
+    let named = ids.find(|id| canon.name(id) == Some(text));
+    named.unwrap_or(text).to_string()
 }
 
 #[given(regex = r#"^(?P<actor>\S+) is (?:in|at) (?P<place>\S+|"[^"]+")$"#)]
@@ -517,7 +514,7 @@ pub(crate) fn resolve_id(canon: &spookery_engine::testing::Canon, name: &str) ->
 fn is_in(world: &mut World, actor: String, place: String) {
     let now = state_of(table::pack(world));
     let [actor, place] =
-        [&actor, &place].map(|name| resolve_id(now.canon(), name.trim_matches('"')));
+        [&actor, &place].map(|text| resolve_id(now.canon(), text.trim_matches('"')));
     assert_eq!(place_of(&now, &actor), place);
 }
 

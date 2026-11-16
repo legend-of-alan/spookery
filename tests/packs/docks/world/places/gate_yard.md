@@ -1,10 +1,10 @@
 ---
 schema: place
 id: gate_yard
-display_name: Gate Yard
+name: Gate Yard
 exits:
   - to: mill_lane
-    name: mill_lane
+    id: mill_lane
     cost:
       ticks: 15
     if:
@@ -18,11 +18,11 @@ exits:
           is: true
     locked_text: The lane is shut.
   - to: loft
-    name: loft
+    id: loft
   - to: wheel_shed
-    name: wheel_shed
+    id: wheel_shed
   - to: docks_street
-    name: docks_street
+    id: docks_street
 facts: []
 rules:
   - id: chock

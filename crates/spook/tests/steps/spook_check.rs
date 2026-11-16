@@ -23,7 +23,7 @@ fn the_street_exit_is_removed(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
     super::common::replace_in_file(
         &pack.join("world/places/docks_shop.md"),
-        "  - to: docks_street\n    name: docks_street\n",
+        "  - to: docks_street\n    id: docks_street\n",
         "",
     );
 }

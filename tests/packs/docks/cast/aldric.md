@@ -2,7 +2,7 @@
 schema: cast
 id: aldric
 control_type: npc
-display_name: Aldric
+name: Aldric
 idle:
   eligible: false
 ---

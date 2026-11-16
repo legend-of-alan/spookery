@@ -20,7 +20,7 @@ fn add_toll(pack: &Path) {
     let text = fs::read_to_string(&path).unwrap();
     let next = text.replace(
         "  eligible: true\n",
-        "  eligible: true\nflags:\n    - tolled\nrules:\n  - id: toll\n    when: habit\n    if:\n      - cycle:\n          name: day\n          from: 1260\n          to: 1320\n    do:\n      - flag:\n          of: self\n          key: tolled\n          value: true\n",
+        "  eligible: true\nflags:\n    - tolled\nrules:\n  - id: toll\n    when: habit\n    if:\n      - cycle:\n          id: day\n          from: 1260\n          to: 1320\n    do:\n      - flag:\n          of: self\n          key: tolled\n          value: true\n",
     );
     assert_ne!(text, next);
     fs::write(path, next).unwrap();
@@ -171,7 +171,7 @@ fn two_arrivals(world: &mut World) {
     let pack = copy_pack("docks", "two-arrivals");
     fs::write(
         pack.join("cast/pc-nell.md"),
-        "---\nschema: cast\nid: nell\ncontrol_type: pc_template\ndisplay_name: Nell\nidle:\n  eligible: false\n---\nNell.\n",
+        "---\nschema: cast\nid: nell\ncontrol_type: pc_template\nname: Nell\nidle:\n  eligible: false\n---\nNell.\n",
     )
     .unwrap();
     edit_save(&pack, |now| {
@@ -310,7 +310,7 @@ fn both_busy_without_a_gm(world: &mut World) {
     });
     fs::write(
         pack.join("cast/pc-nell.md"),
-        "---\nschema: cast\nid: nell\ncontrol_type: pc_template\ndisplay_name: Nell\nidle:\n  eligible: false\n---\nNell.\n",
+        "---\nschema: cast\nid: nell\ncontrol_type: pc_template\nname: Nell\nidle:\n  eligible: false\n---\nNell.\n",
     )
     .unwrap();
     edit_save(&pack, |now| {
@@ -329,11 +329,11 @@ fn both_busy_without_a_gm(world: &mut World) {
 fn the_table_plays_rounds_through_both_arrivals(world: &mut World) {
     let (_mark, _added) = table::player_send(world, "wait", "BUSY");
     let pack = table::pack(world).to_path_buf();
-    let names = list_round_keys(&pack);
-    let ends: Vec<u64> = names
+    let keys = list_round_keys(&pack);
+    let ends: Vec<u64> = keys
         .iter()
-        .map(|name| {
-            crate::support::read_round(&pack, name)["world_time_after"]
+        .map(|key| {
+            crate::support::read_round(&pack, key)["world_time_after"]
                 .as_u64()
                 .unwrap()
         })
@@ -347,7 +347,7 @@ fn the_habit_due_at_tick_1295_runs(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
     let round = list_round_keys(&pack)
         .into_iter()
-        .find(|name| crate::support::read_round(&pack, name)["world_time_after"] == EVENING + 5)
+        .find(|key| crate::support::read_round(&pack, key)["world_time_after"] == EVENING + 5)
         .unwrap_or_else(|| panic!("no round ending at tick 1295"));
     let steps = crate::support::read_round(&pack, &round)["extra_steps"].to_string();
     assert!(steps.contains("cast:bram/toll"), "{steps}");
@@ -507,7 +507,7 @@ fn harbormouse_reaches_the_lane_and_hears_the_ending(world: &mut World) {
     let canon =
         spookery_engine::load_canon(&pack).unwrap_or_else(|err| panic!("load canon: {err:?}"));
     let yard = canon.places.get("gate_yard").unwrap();
-    let cost = yard.exits.iter().find(|exit| exit.name == "mill_lane");
+    let cost = yard.exits.iter().find(|exit| exit.id == "mill_lane");
     let cost = cost.unwrap().cost.ticks;
     assert!(cost > 0);
     let now = state_of(&pack);

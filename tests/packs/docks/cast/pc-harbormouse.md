@@ -2,7 +2,7 @@
 schema: cast
 id: harbormouse
 control_type: pc_template
-display_name: Harbormouse
+name: Harbormouse
 idle:
   eligible: false
 ---

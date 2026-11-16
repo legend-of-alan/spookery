@@ -106,16 +106,16 @@ impl Model for ScriptedModel {
     }
 }
 
-/// A chat-completions reply that makes `calls`, each a tool name and its arguments.
+/// A chat-completions reply that makes `calls`, each a tool id and its arguments.
 pub fn render_completion(calls: &[(&str, &str)]) -> String {
     let calls: Vec<Value> = calls
         .iter()
         .enumerate()
-        .map(|(index, (name, arguments))| {
+        .map(|(index, (tool_id, arguments))| {
             json!({
                 "id": format!("call_{index}"),
                 "type": "function",
-                "function": { "name": name, "arguments": arguments }
+                "function": { "name": tool_id, "arguments": arguments }
             })
         })
         .collect();

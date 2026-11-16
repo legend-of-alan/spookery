@@ -121,10 +121,10 @@ fn a_live_model_plays_one_round() {
     );
 }
 
-fn env_var(name: &str) -> String {
-    match std::env::var(name) {
+fn env_var(var: &str) -> String {
+    match std::env::var(var) {
         Ok(value) if !value.is_empty() => value,
-        _ => panic!("{name} is unset; this test needs a live provider"),
+        _ => panic!("{var} is unset; this test needs a live provider"),
     }
 }
 

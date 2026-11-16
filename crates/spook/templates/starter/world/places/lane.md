@@ -1,10 +1,10 @@
 ---
 schema: place
 id: lane
-display_name: Lane
+name: Lane
 exits:
   - to: yard
-    name: yard
+    id: yard
 facts:
   - id: fact_lane_open
     text: The lane is open.

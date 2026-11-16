@@ -112,10 +112,10 @@ fn dropping_the_tonic_locks_the_loft(world: &mut World) {
     let path = pack.join("world/places/gate_yard.md");
     let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read yard: {err}"));
     let next = text.replacen(
-        "  - to: loft\n    name: loft\n",
+        "  - to: loft\n    id: loft\n",
         "\
 \n  - to: loft
-    name: loft
+    id: loft
     if:
       - has_item:
           subject: self

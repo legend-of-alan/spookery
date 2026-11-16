@@ -336,11 +336,11 @@ pub fn append_gm_notes(pack: &Path, notes: &str) {
 }
 
 /// The actors whose player `wait` is in that round.
-pub fn list_player_waits(pack: &Path, name: &str) -> Vec<String> {
-    let text = spookery_engine::testing::journal::read_record_line(pack, name)
-        .unwrap_or_else(|err| panic!("read {name}: {}", err.detail));
+pub fn list_player_waits(pack: &Path, key: &str) -> Vec<String> {
+    let text = spookery_engine::testing::journal::read_record_line(pack, key)
+        .unwrap_or_else(|err| panic!("read {key}: {}", err.detail));
     let round: Value =
-        serde_json::from_str(text.trim_end()).unwrap_or_else(|err| panic!("{name}: {err}"));
+        serde_json::from_str(text.trim_end()).unwrap_or_else(|err| panic!("{key}: {err}"));
     round["intents"]
         .as_array()
         .unwrap_or_else(|| panic!("intents"))
@@ -655,20 +655,20 @@ pub fn player_client<'w>(world: &'w World, actor_id: &str) -> &'w PlayerClient {
         .unwrap_or_else(|| panic!("no seat for {actor_id}"))
 }
 
-pub fn gm_tool_call(world: &mut World, id: u64, name: &str, arguments: &str) -> String {
+pub fn gm_tool_call(world: &mut World, id: u64, tool_id: &str, arguments: &str) -> String {
     let live = live_mut(world);
     let gm = live.gm.as_mut().unwrap_or_else(|| panic!("no seated GM"));
-    send_tool_call(gm, &live.gm_text, id, name, arguments)
+    send_tool_call(gm, &live.gm_text, id, tool_id, arguments)
 }
 
 /// A tool call from the GM that called `release` and kept its session.
-pub fn closed_gm_tool_call(world: &mut World, name: &str, arguments: &str) -> String {
+pub fn closed_gm_tool_call(world: &mut World, tool_id: &str, arguments: &str) -> String {
     let live = live_mut(world);
     let gm = live
         .closed_gm
         .as_mut()
         .unwrap_or_else(|| panic!("no closed GM"));
-    send_tool_call(gm, &live.gm_text, 92, name, arguments)
+    send_tool_call(gm, &live.gm_text, 92, tool_id, arguments)
 }
 
 /// One tool call. Its events and its result land in the GM text.

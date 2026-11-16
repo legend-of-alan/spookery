@@ -2,7 +2,7 @@
 schema: cast
 id: ada
 control_type: pc_template
-display_name: Ada
+name: Ada
 idle:
   eligible: false
 ---
