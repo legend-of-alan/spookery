@@ -163,8 +163,7 @@ fn matches_watch(world: &ecs::World, rule: &Rule, watch: &ChangeWatch, change: &
         (ChangeWatch::Item { id, gained }, Item::ID, entity::Id::Actor(_))
             if changed.entry_id.as_ref() == Some(id) =>
         {
-            let count = |value: Option<&ChangeValue>| value.and_then(ChangeValue::as_number);
-            match (count(before), count(after)) {
+            match (as_number(before), as_number(after)) {
                 (Some(before), Some(after)) if *gained => after > before,
                 (Some(before), Some(after)) => after < before,
                 _ => false,
@@ -181,8 +180,7 @@ fn matches_watch(world: &ecs::World, rule: &Rule, watch: &ChangeWatch, change: &
 
 /// Whether a flag change went from `!becomes` to `becomes`.
 fn flips(before: Option<&ChangeValue>, after: Option<&ChangeValue>, becomes: bool) -> bool {
-    let mark = |value: Option<&ChangeValue>| value.and_then(ChangeValue::as_bool);
-    mark(before) == Some(!becomes) && mark(after) == Some(becomes)
+    before == Some(&ChangeValue::Bool(!becomes)) && after == Some(&ChangeValue::Bool(becomes))
 }
 
 fn matches_subject(world: &ecs::World, subject: &grammar::Subject, actor: &ActorId) -> bool {
@@ -198,9 +196,13 @@ fn matches_subject(world: &ecs::World, subject: &grammar::Subject, actor: &Actor
 }
 
 fn crosses(before: Option<&ChangeValue>, after: Option<&ChangeValue>, op: Op, bound: i64) -> bool {
-    let reading = |value: Option<&ChangeValue>| value.and_then(ChangeValue::as_number);
-    let (Some(before), Some(after)) = (reading(before), reading(after)) else {
+    let (Some(before), Some(after)) = (as_number(before), as_number(after)) else {
         return false;
     };
     !op.holds(before, bound) && op.holds(after, bound)
+}
+
+/// A side of a change as a number: a meter's reading or an item's count.
+fn as_number(value: Option<&ChangeValue>) -> Option<i64> {
+    value?.as_number()
 }

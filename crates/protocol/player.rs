@@ -135,6 +135,7 @@ pub enum ChangeValue {
 }
 
 impl ChangeValue {
+    /// The text, when this is text.
     pub fn as_text(&self) -> Option<&str> {
         match self {
             ChangeValue::Text(text) => Some(text),
@@ -142,16 +143,10 @@ impl ChangeValue {
         }
     }
 
+    /// The number, when this is a number.
     pub fn as_number(&self) -> Option<i64> {
         match self {
             ChangeValue::Number(number) => Some(*number),
-            _ => None,
-        }
-    }
-
-    pub fn as_bool(&self) -> Option<bool> {
-        match self {
-            ChangeValue::Bool(mark) => Some(*mark),
             _ => None,
         }
     }

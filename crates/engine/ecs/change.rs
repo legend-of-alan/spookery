@@ -60,11 +60,11 @@ impl Key {
     }
 }
 
-/// A key that changed, with the value before the change and the value after it.
+/// A key that changed, with the value before the change and the value after it: `None` when
+/// the key was absent.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Change {
     pub key: Key,
-    /// `None` when the key was absent.
     pub before: Option<ChangeValue>,
     pub after: Option<ChangeValue>,
 }

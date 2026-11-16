@@ -187,8 +187,8 @@ fn can_see(canon: &Canon, world: &ecs::World, viewer: &ActorId, change: &Change)
         (Place::ID, entity::Id::Actor(actor)) => {
             viewer == actor
                 || same_place(world, viewer, actor)
-                || is_at(world, viewer, &change.before)
-                || is_at(world, viewer, &change.after)
+                || is_at(world, viewer, change.before.as_ref())
+                || is_at(world, viewer, change.after.as_ref())
         }
         (Act::BUSY | Item::ID | WieldedItem::ID, entity::Id::Actor(actor)) => {
             viewer == actor || same_place(world, viewer, actor)
@@ -218,7 +218,7 @@ fn same_place(world: &ecs::World, viewer: &ActorId, actor: &ActorId) -> bool {
     }
 }
 
-fn is_at(world: &ecs::World, viewer: &ActorId, value: &Option<ChangeValue>) -> bool {
+fn is_at(world: &ecs::World, viewer: &ActorId, value: Option<&ChangeValue>) -> bool {
     match (place_of(world, viewer), value) {
         (Some(place), Some(ChangeValue::Text(text))) => place == text,
         _ => false,

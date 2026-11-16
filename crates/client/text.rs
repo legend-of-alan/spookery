@@ -210,7 +210,10 @@ fn render_changes(viewer: &str, changes: &[ChangeView]) -> String {
         .iter()
         .filter_map(|change| {
             let whose = render_possessive(viewer, change);
-            match (change.component_id.as_str(), as_number(&change.after)) {
+            match (
+                change.component_id.as_str(),
+                as_number(change.after.as_ref()),
+            ) {
                 ("meter", Some(after)) => {
                     Some(format!("{whose} {} is now {after}.", change.entry_id))
                 }
@@ -226,20 +229,20 @@ fn render_changes(viewer: &str, changes: &[ChangeView]) -> String {
 }
 
 /// A change's value when it is a number: a meter's reading or an item's count.
-fn as_number(value: &Option<ChangeValue>) -> Option<i64> {
-    value.as_ref()?.as_number()
+fn as_number(value: Option<&ChangeValue>) -> Option<i64> {
+    value?.as_number()
 }
 
 /// A change to what an actor carries or what lies in the viewer's place. A place's change that
 /// matches an actor's is told by the actor's sentence.
 fn render_item_change(viewer: &str, change: &ChangeView, changes: &[ChangeView]) -> Option<String> {
-    let after = as_number(&change.after)?;
-    let lost = after < as_number(&change.before)?;
+    let after = as_number(change.after.as_ref())?;
+    let lost = after < as_number(change.before.as_ref())?;
     let name = &change.entry_name;
     let other_side = changes.iter().find(|other| {
         other.component_id == "item"
             && other.entry_id == change.entry_id
-            && (as_number(&other.before).zip(as_number(&other.after)))
+            && (as_number(other.before.as_ref()).zip(as_number(other.after.as_ref())))
                 .is_some_and(|(before, after)| (after < before) != lost)
     });
     let other_is_actor = other_side.map(|other| is_actor(&other.entity_id));
