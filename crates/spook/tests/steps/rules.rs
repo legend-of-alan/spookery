@@ -671,7 +671,9 @@ fn check_reports_two_conditions(world: &mut World) {
     run(world, &["check"]);
     assert_eq!(world.code, Some(1), "{}\n{}", world.stdout, world.stderr);
     assert!(
-        world.stderr.contains("two conditions under one dash"),
+        world
+            .stderr
+            .contains("two conditions under one dash; use any: or not: to combine (SCHEMA)"),
         "{}",
         world.stderr
     );

@@ -46,14 +46,14 @@ Feature: Dice and arithmetic in rule numbers
     And the report names the expression line
 
     Examples:
-      | expression    | phrase                                           |
-      | 2d6 +         | is not a number                                  |
-      | self.nope     | meter 'nope'                                     |
-      | world.vigor   | the world carries no meter 'vigor'               |
-      | subject.vigor | names 'subject', which is not an owner; use self |
-      | 100000000d6   | rolls more than 1000 dice                        |
-      | 0d6           | rolls no dice                                    |
-      | 10 / 0        | divides by zero                                  |
+      | expression    | phrase                                                                                                                                     |
+      | 2d6 +         | expression '2d6 +' is not a number (SCHEMA)                                                                                                |
+      | self.nope     | expression reads meter 'nope', but no file declares meter 'nope'; declare the meter on that entity, or read one that exists (SCHEMA)       |
+      | world.vigor   | expression reads meter 'vigor', but the world carries no meter 'vigor'; declare the meter on that entity, or read one that exists (SCHEMA) |
+      | subject.vigor | expression names 'subject', which is not an owner; use self, target, here, world, place:<id>, story:<id>, or a cast id (SCHEMA)            |
+      | 100000000d6   | expression '100000000d6' rolls more than 1000 dice (SCHEMA)                                                                                |
+      | 0d6           | expression '0d6' rolls no dice (SCHEMA)                                                                                                    |
+      | 10 / 0        | expression '10 / 0' divides by zero (SCHEMA)                                                                                               |
 
   Scenario: An owner named subject fails spook check
     Given a docks table

@@ -497,18 +497,14 @@ fn compile_one(
     let if_ = match entry.if_.as_ref().map(if_of).transpose() {
         Ok(list) => list.unwrap_or_default(),
         Err(fault) => {
-            diags.push(source.fault(
-                "",
-                fault,
-                "put one condition under each dash; use any: or not: to combine",
-            ));
+            diags.push(source.fault("", fault));
             Vec::new()
         }
     };
     let cost = match entry.cost.as_ref().map(cost_of).transpose() {
         Ok(cost) => cost,
         Err(fault) => {
-            diags.push(source.fault("", fault, "write time as 30s, 10m, 2h, or 1d"));
+            diags.push(source.fault("", fault));
             None
         }
     };
@@ -527,14 +523,14 @@ fn compile_one(
         }
         Ok(cost) => cost,
         Err(fault) => {
-            diags.push(source.fault("", fault, "name meters and items"));
+            diags.push(source.fault("", fault));
             None
         }
     };
     let roll = match entry.roll.as_ref().map(roll_of).transpose() {
         Ok(roll) => roll,
         Err(fault) => {
-            diags.push(source.fault("", fault, "name a check and a threshold"));
+            diags.push(source.fault("", fault));
             None
         }
     };
@@ -824,7 +820,7 @@ pub(super) fn cond_of(yaml: &CondYaml) -> Result<Cond, Fault> {
     if found == 1 {
         return Ok(cond.expect("one condition"));
     }
-    Err("two conditions under one dash".into())
+    Err("two conditions under one dash; use any: or not: to combine".into())
 }
 
 pub(super) fn cost_of(yaml: &CostYaml) -> Result<Cost, Fault> {
@@ -903,11 +899,7 @@ fn effects_of(file: &str, list: &[EffectYaml]) -> Result<Vec<EffectTemplate>, Ve
         match effect_of(effect) {
             Ok(effect) => out.push(effect),
             Err(fault) => {
-                return Err(vec![FileText::named(file).fault(
-                    "",
-                    fault,
-                    "one effect key under each dash",
-                )]);
+                return Err(vec![FileText::named(file).fault("", fault)]);
             }
         }
     }
@@ -1036,7 +1028,7 @@ fn effect_of(yaml: &EffectYaml) -> Result<EffectTemplate, Fault> {
     if found == 1 {
         return Ok(effect.expect("one effect"));
     }
-    Err("one effect per dash".into())
+    Err("write one effect key under each dash".into())
 }
 
 fn resist_of(yaml: Option<&ResistYaml>) -> Result<Option<ResistSpec>, Fault> {

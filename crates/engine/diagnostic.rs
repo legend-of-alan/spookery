@@ -82,15 +82,20 @@ pub struct Diagnostic {
 }
 
 impl Diagnostic {
+    /// An empty `hint` leaves the message as the problem alone.
     pub fn new(file: &str, code: Code, problem: &str, hint: &str) -> Self {
+        let (message, hint) = match hint {
+            "" => (problem.to_string(), None),
+            hint => (format!("{problem}; {hint}"), Some(hint.to_string())),
+        };
         Self {
             file: file.replace('\\', "/"),
             line: None,
             column: None,
             path: None,
             code,
-            message: format!("{problem}; {hint}"),
-            hint: Some(hint.to_string()),
+            message,
+            hint,
         }
     }
 

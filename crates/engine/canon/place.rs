@@ -122,11 +122,7 @@ fn compile_exits(file: &str, from: &str, exits: &[ExitYaml]) -> Result<Vec<Exit>
             Some(yaml) => match rule_list::cost_of(yaml) {
                 Ok(cost) => cost,
                 Err(fault) => {
-                    diags.push(source.fault(
-                        &format!("exits[{index}].cost"),
-                        fault,
-                        "fix the exit cost",
-                    ));
+                    diags.push(source.fault(&format!("exits[{index}].cost"), fault));
                     continue;
                 }
             },
@@ -142,11 +138,7 @@ fn compile_exits(file: &str, from: &str, exits: &[ExitYaml]) -> Result<Vec<Exit>
             match rule_list::cond_of(cond) {
                 Ok(cond) => if_.push(cond),
                 Err(fault) => {
-                    diags.push(source.fault(
-                        &format!("exits[{index}].if"),
-                        fault,
-                        "fix the exit condition",
-                    ));
+                    diags.push(source.fault(&format!("exits[{index}].if"), fault));
                     bad = true;
                 }
             }
