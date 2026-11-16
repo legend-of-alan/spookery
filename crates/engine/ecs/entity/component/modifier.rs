@@ -4,6 +4,7 @@
 use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
+use spookery_protocol::ChangeValue;
 
 use crate::ecs::change::{self, Change};
 use crate::ecs::component::meter::{self, Meter};
@@ -43,9 +44,9 @@ impl Component for Modifier {
 }
 
 /// The modifier as a change value: its stacks, the tick it expires at and its longest ticks.
-fn stacks_value(live: &Modifier) -> change::Value {
+fn stacks_value(live: &Modifier) -> ChangeValue {
     let (stacks, until, max_ticks) = (&live.stacks, live.until, live.max_ticks);
-    change::Value::Text(format!("{stacks:?} until {until} max_ticks {max_ticks}"))
+    ChangeValue::Text(format!("{stacks:?} until {until} max_ticks {max_ticks}"))
 }
 
 /// Apply `add`, lasting `ticks`, at tick `now`. The ticks left plus `ticks` are the new
@@ -151,7 +152,7 @@ impl Mut<'_, entity::Actors, Modifier> {
         if next.is_some() {
             self.check_exists()?;
         }
-        let own = |held: Option<&Modifier>| held.map_or(change::Value::Empty, stacks_value);
+        let own = |held: Option<&Modifier>| held.map(stacks_value);
         let own = Change::new(self.key(Some(id)), own(held), own(next.as_ref()));
         let stacks_move = held.map(|held| &held.stacks) != next.as_ref().map(|next| &next.stacks);
         let watched = change::Key::new(Meter::ID, entity::IdRef::Actor(actor), Some(&meter));

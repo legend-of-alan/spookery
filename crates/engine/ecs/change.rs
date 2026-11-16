@@ -2,6 +2,8 @@
 
 use std::fmt;
 
+use spookery_protocol::ChangeValue;
+
 use crate::ecs::component::Meter;
 use crate::ecs::entity;
 use crate::Reason;
@@ -58,59 +60,17 @@ impl Key {
     }
 }
 
-/// One watched value. `Empty` means the key was absent.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Value {
-    Empty,
-    Text(String),
-    Number(i64),
-    Bool(bool),
-    List(Vec<String>),
-}
-
-impl Value {
-    /// A meter's reading as a change value: `Empty` when it does not read.
-    pub(crate) fn from_reading(value: Result<i64, crate::Reason>) -> Value {
-        value.map_or(Value::Empty, Value::Number)
-    }
-
-    pub(crate) fn as_text(&self) -> Option<&str> {
-        match self {
-            Value::Text(text) => Some(text),
-            _ => None,
-        }
-    }
-
-    pub(crate) fn as_number(&self) -> Option<i64> {
-        match self {
-            Value::Number(number) => Some(*number),
-            _ => None,
-        }
-    }
-
-    pub(crate) fn as_bool(&self) -> Option<bool> {
-        match self {
-            Value::Bool(mark) => Some(*mark),
-            _ => None,
-        }
-    }
-
-    /// Whether this is a list that holds `id`.
-    pub(crate) fn contains(&self, id: &str) -> bool {
-        matches!(self, Value::List(ids) if ids.iter().any(|listed| listed == id))
-    }
-}
-
 /// A key that changed, with the value before the change and the value after it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Change {
     pub key: Key,
-    pub before: Value,
-    pub after: Value,
+    /// `None` when the key was absent.
+    pub before: Option<ChangeValue>,
+    pub after: Option<ChangeValue>,
 }
 
 impl Change {
-    pub(crate) fn new(key: Key, before: Value, after: Value) -> Change {
+    pub(crate) fn new(key: Key, before: Option<ChangeValue>, after: Option<ChangeValue>) -> Change {
         Change { key, before, after }
     }
 }

@@ -1,7 +1,9 @@
 //! Change rules, edge-triggered, to a fixpoint, after each start and each finish lands.
 
+use spookery_protocol::ChangeValue;
+
 use crate::canon::{Canon, OPEN};
-use crate::ecs::change::{self, Change};
+use crate::ecs::change::Change;
 use crate::ecs::component::{Component, Flag, Item, KnownFacts, Meter, OpenExit, Place};
 use crate::ecs::id::ActorId;
 use crate::ecs::{self, component, entity, Presence};
@@ -131,51 +133,56 @@ fn fire(
 
 fn matches_watch(world: &ecs::World, rule: &Rule, watch: &ChangeWatch, change: &Change) -> bool {
     let changed = &change.key;
+    let (before, after) = (change.before.as_ref(), change.after.as_ref());
     match (watch, changed.component_id, &changed.entity_id) {
         (ChangeWatch::Arrive { place, subject }, Place::ID, entity::Id::Actor(actor)) => {
             let place = rule.watched_place(place);
-            change.before.as_text() != Some(place)
-                && change.after.as_text() == Some(place)
+            before.and_then(ChangeValue::as_text) != Some(place)
+                && after.and_then(ChangeValue::as_text) == Some(place)
                 && matches_subject(world, subject, actor)
         }
         (ChangeWatch::Leave { place, subject }, Place::ID, entity::Id::Actor(actor)) => {
             let place = rule.watched_place(place);
-            change.before.as_text() == Some(place)
-                && change.after.as_text() != Some(place)
+            before.and_then(ChangeValue::as_text) == Some(place)
+                && after.and_then(ChangeValue::as_text) != Some(place)
                 && matches_subject(world, subject, actor)
         }
         (ChangeWatch::Meter { key, op, bound }, Meter::ID, _)
             if changed.entry_id.as_ref() == Some(key) =>
         {
-            crosses(&change.before, &change.after, *op, *bound)
+            crosses(before, after, *op, *bound)
         }
         (ChangeWatch::Flag { key, becomes }, Flag::ID, _)
             if changed.entry_id.as_ref() == Some(key) =>
         {
-            flips(change, *becomes)
+            flips(before, after, *becomes)
         }
         (ChangeWatch::Flag { key, becomes }, OpenExit::ID, _) if key == OPEN => {
-            flips(change, *becomes)
+            flips(before, after, *becomes)
         }
         (ChangeWatch::Item { id, gained }, Item::ID, entity::Id::Actor(_))
             if changed.entry_id.as_ref() == Some(id) =>
         {
-            match (change.before.as_number(), change.after.as_number()) {
+            let count = |value: Option<&ChangeValue>| value.and_then(ChangeValue::as_number);
+            match (count(before), count(after)) {
                 (Some(before), Some(after)) if *gained => after > before,
                 (Some(before), Some(after)) => after < before,
                 _ => false,
             }
         }
         (ChangeWatch::Knows { fact }, KnownFacts::ID, _) => {
-            change.after.contains(fact) && !change.before.contains(fact)
+            let lists_fact =
+                |value: Option<&ChangeValue>| value.is_some_and(|ids| ids.contains(fact));
+            lists_fact(after) && !lists_fact(before)
         }
         _ => false,
     }
 }
 
 /// Whether a flag change went from `!becomes` to `becomes`.
-fn flips(change: &Change, becomes: bool) -> bool {
-    change.before.as_bool() == Some(!becomes) && change.after.as_bool() == Some(becomes)
+fn flips(before: Option<&ChangeValue>, after: Option<&ChangeValue>, becomes: bool) -> bool {
+    let mark = |value: Option<&ChangeValue>| value.and_then(ChangeValue::as_bool);
+    mark(before) == Some(!becomes) && mark(after) == Some(becomes)
 }
 
 fn matches_subject(world: &ecs::World, subject: &grammar::Subject, actor: &ActorId) -> bool {
@@ -190,8 +197,9 @@ fn matches_subject(world: &ecs::World, subject: &grammar::Subject, actor: &Actor
     }
 }
 
-fn crosses(before: &change::Value, after: &change::Value, op: Op, bound: i64) -> bool {
-    let (Some(before), Some(after)) = (before.as_number(), after.as_number()) else {
+fn crosses(before: Option<&ChangeValue>, after: Option<&ChangeValue>, op: Op, bound: i64) -> bool {
+    let reading = |value: Option<&ChangeValue>| value.and_then(ChangeValue::as_number);
+    let (Some(before), Some(after)) = (reading(before), reading(after)) else {
         return false;
     };
     !op.holds(before, bound) && op.holds(after, bound)

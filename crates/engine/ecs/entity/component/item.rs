@@ -1,6 +1,8 @@
 //! Item counts, and the rule for shifting one, the same in every collection that holds items.
 
-use crate::ecs::change::{self, Change};
+use spookery_protocol::ChangeValue;
+
+use crate::ecs::change::Change;
 use crate::ecs::component::{Component, Mut, WieldedItem};
 use crate::ecs::{entity, Reader};
 use crate::Reason;
@@ -21,7 +23,7 @@ impl<E: entity::Has<Item, Store = entity::MapStore<E, Item>>> Mut<'_, E, Item> {
         let entry = (self.id.clone(), entry_id.to_string());
         let current = self.store().get(&entry).copied().unwrap_or(0);
         let next = shift_count(current, delta, max)?;
-        let count = |count: u32| change::Value::Number(count.into());
+        let count = |count: u32| Some(ChangeValue::Number(count.into()));
         let change = Change::new(self.key(Some(entry_id)), count(current), count(next));
         let (store, transaction) = self.store_mut();
         store.set(

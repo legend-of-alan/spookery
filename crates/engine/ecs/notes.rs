@@ -1,6 +1,7 @@
 //! The notes left in the world, and leaving one.
 
 use serde::{Deserialize, Serialize};
+use spookery_protocol::ChangeValue;
 
 use super::change::{self, Change};
 use super::entity;
@@ -42,7 +43,7 @@ impl Writer<'_, undo::Store<Vec<Note>>> {
         sort_unique(&mut note.to);
         sort_unique(&mut note.fact_ids);
         let key = change::Key::new(Note::ID, entity::IdRef::Global, Some(&note.id));
-        let change = Change::new(key, change::Value::Empty, change::Value::Bool(true));
+        let change = Change::new(key, None, Some(ChangeValue::Bool(true)));
         let leave = |notes: &mut Vec<Note>| notes.push(note);
         components.record(transaction, leave, [change.into()])
     }

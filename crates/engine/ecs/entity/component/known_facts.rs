@@ -2,7 +2,9 @@
 
 use std::collections::BTreeSet;
 
-use crate::ecs::change::{self, Change};
+use spookery_protocol::ChangeValue;
+
+use crate::ecs::change::Change;
 use crate::ecs::component::{Component, Mut, Ref};
 use crate::ecs::entity;
 use crate::Reason;
@@ -33,8 +35,8 @@ impl Mut<'_, entity::Actors, KnownFacts> {
             return Ok(());
         }
         let key = self.key(None);
-        let before = change::Value::List(held.into_iter().collect());
-        let after = change::Value::List(next.iter().cloned().collect());
+        let before = Some(ChangeValue::List(held.into_iter().collect()));
+        let after = Some(ChangeValue::List(next.iter().cloned().collect()));
         let reports = [Change::new(key, before, after).into()];
         let (id, (known_facts, transaction)) = (self.id.clone(), self.store_mut());
         known_facts.set(transaction, id, Some(next), reports)

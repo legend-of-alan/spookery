@@ -15,6 +15,8 @@
 
 use std::sync::Arc;
 
+use spookery_protocol::ChangeValue;
+
 use crate::canon::StoryDef;
 use crate::ecs::change::{self, Change};
 use crate::ecs::component::meter::{Meter, MeterDef, MeterWrite};
@@ -250,7 +252,7 @@ fn every_moved_meter_is_reported(
 ) -> Result<(), TestCaseError> {
     let read = |world: &ecs::World, actor: &ActorId, key: &str| {
         let value = modifier::value(world.actors(), actor, key);
-        value.map_or(change::Value::Empty, change::Value::Number)
+        value.ok().map(ChangeValue::Number)
     };
     let meters = now.actors().query::<&Meter>();
     for (actor, key, _) in meters.iter().flat_map(|held| held.iter_with_id()) {

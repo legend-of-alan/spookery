@@ -134,6 +134,34 @@ pub enum ChangeValue {
     List(Vec<String>),
 }
 
+impl ChangeValue {
+    pub fn as_text(&self) -> Option<&str> {
+        match self {
+            ChangeValue::Text(text) => Some(text),
+            _ => None,
+        }
+    }
+
+    pub fn as_number(&self) -> Option<i64> {
+        match self {
+            ChangeValue::Number(number) => Some(*number),
+            _ => None,
+        }
+    }
+
+    pub fn as_bool(&self) -> Option<bool> {
+        match self {
+            ChangeValue::Bool(mark) => Some(*mark),
+            _ => None,
+        }
+    }
+
+    /// Whether this is a list that holds `id`.
+    pub fn contains(&self, id: &str) -> bool {
+        matches!(self, ChangeValue::List(ids) if ids.iter().any(|listed| listed == id))
+    }
+}
+
 /// One command of a `help` reply. `id` is the command, as a player types it. `target` is what
 /// it takes: `none`, `actor`, `place`, `exit` or `item`. `names` lists what the player can name
 /// for it now, by the names they read. `owner` is the id of the cast member or item whose verb

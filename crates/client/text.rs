@@ -227,10 +227,7 @@ fn render_changes(viewer: &str, changes: &[ChangeView]) -> String {
 
 /// A change's value when it is a number: a meter's reading or an item's count.
 fn as_number(value: &Option<ChangeValue>) -> Option<i64> {
-    match value {
-        Some(ChangeValue::Number(number)) => Some(*number),
-        _ => None,
-    }
+    value.as_ref()?.as_number()
 }
 
 /// A change to what an actor carries or what lies in the viewer's place. A place's change that

@@ -5,7 +5,7 @@ use std::collections::BTreeSet;
 use spookery_protocol::{ChangeValue, ChangeView};
 
 use crate::canon::Canon;
-use crate::ecs::change::{self, Change};
+use crate::ecs::change::Change;
 use crate::ecs::component::{
     Act, Component, Item, KnownFacts, Meter, Modifier, Place, WieldedItem,
 };
@@ -113,7 +113,7 @@ fn to_change_view(canon: &Canon, change: &Change) -> Option<ChangeView> {
     };
     let entry_id = key.entry_id.clone().unwrap_or_default();
     let entry_name = match (key.component_id, &change.after) {
-        (Place::ID, change::Value::Text(place)) => {
+        (Place::ID, Some(ChangeValue::Text(place))) => {
             crate::rules::lines::find_place_name(canon, place)
         }
         (Item::ID, _) => canon.name(&entry_id).map(str::to_string),
@@ -125,19 +125,8 @@ fn to_change_view(canon: &Canon, change: &Change) -> Option<ChangeView> {
         entity_name: entity_name.unwrap_or_default(),
         entry_name: entry_name.unwrap_or_default(),
         entry_id,
-        before: to_change_value(&change.before),
-        after: to_change_value(&change.after),
-    })
-}
-
-/// A watched value as the wire writes it: none when the key was absent.
-fn to_change_value(value: &change::Value) -> Option<ChangeValue> {
-    Some(match value {
-        change::Value::Empty => return None,
-        change::Value::Text(text) => ChangeValue::Text(text.clone()),
-        change::Value::Number(number) => ChangeValue::Number(*number),
-        change::Value::Bool(mark) => ChangeValue::Bool(*mark),
-        change::Value::List(ids) => ChangeValue::List(ids.clone()),
+        before: change.before.clone(),
+        after: change.after.clone(),
     })
 }
 
@@ -229,9 +218,9 @@ fn same_place(world: &ecs::World, viewer: &ActorId, actor: &ActorId) -> bool {
     }
 }
 
-fn is_at(world: &ecs::World, viewer: &ActorId, value: &change::Value) -> bool {
+fn is_at(world: &ecs::World, viewer: &ActorId, value: &Option<ChangeValue>) -> bool {
     match (place_of(world, viewer), value) {
-        (Some(place), change::Value::Text(text)) => place == text,
+        (Some(place), Some(ChangeValue::Text(text))) => place == text,
         _ => false,
     }
 }

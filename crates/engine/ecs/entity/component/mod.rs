@@ -17,6 +17,8 @@ use std::collections::BTreeMap;
 use std::fmt::Debug;
 use std::marker::PhantomData;
 
+use spookery_protocol::ChangeValue;
+
 pub(crate) use act::ActCounter;
 pub use act::{Act, PendingAction};
 pub use control_type::ControlType;
@@ -149,7 +151,7 @@ where
     /// Put `entry_id` on or take it off: set a flag, or open or shut a door.
     pub fn set(&mut self, entry_id: &str, on: bool) -> Result<(), Reason> {
         self.check_exists()?;
-        let (before, after) = (change::Value::Bool(!on), change::Value::Bool(on));
+        let (before, after) = (Some(ChangeValue::Bool(!on)), Some(ChangeValue::Bool(on)));
         let change = Change::new(self.key(Some(entry_id)), before, after);
         let entry = (self.id.clone(), entry_id.to_string());
         let (store, transaction) = self.store_mut();
@@ -157,9 +159,7 @@ where
     }
 }
 
-/// A component's text as a change value, `Empty` when there is none.
-fn text_value(held: Option<impl AsRef<str>>) -> change::Value {
-    held.map_or(change::Value::Empty, |held| {
-        change::Value::Text(held.as_ref().to_string())
-    })
+/// A component's text as a change value, `None` when there is none.
+fn text_value(held: Option<impl AsRef<str>>) -> Option<ChangeValue> {
+    held.map(|held| ChangeValue::Text(held.as_ref().to_string()))
 }

@@ -1,6 +1,7 @@
 //! Action state: how many times an actor has acted, and the action they are still on.
 
 use serde::{Deserialize, Serialize};
+use spookery_protocol::ChangeValue;
 
 use crate::ecs::change::{self, Change};
 use crate::ecs::component::{Component, Mut, Ref};
@@ -60,12 +61,12 @@ impl Mut<'_, entity::Actors, Act> {
     fn write(
         &mut self,
         component_id: &'static str,
-        read: impl Fn(&Act) -> change::Value,
+        read: impl Fn(&Act) -> Option<ChangeValue>,
         edit: impl FnOnce(&mut Act),
     ) -> Result<(), Reason> {
         self.check_exists()?;
         let held = self.store().get(self.id);
-        let before = held.map_or(change::Value::Empty, &read);
+        let before = held.and_then(&read);
         let mut next = held.cloned().unwrap_or_default();
         edit(&mut next);
         let key = change::Key::new(component_id, self.id.as_id_ref(), None);
@@ -127,13 +128,13 @@ impl Writer<'_, entity::Actors> {
 }
 
 /// The tick the actor is busy until, as a change value.
-fn busy_value(act: &Act) -> change::Value {
-    act.busy_until.map_or(change::Value::Empty, count_value)
+fn busy_value(act: &Act) -> Option<ChangeValue> {
+    act.busy_until.and_then(count_value)
 }
 
 /// A count as a change value.
-fn count_value(count: u64) -> change::Value {
-    change::Value::Number(i64::try_from(count).unwrap_or(i64::MAX))
+fn count_value(count: u64) -> Option<ChangeValue> {
+    Some(ChangeValue::Number(count.try_into().unwrap_or(i64::MAX)))
 }
 
 /// One of the `Act` counts the end of its act window sets back to 0.
