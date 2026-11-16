@@ -8,8 +8,9 @@ use serde_json::{Map, Value};
 use crate::canon::Canon;
 use crate::ecs::component::meter::MeterWrite;
 use crate::ecs::component::modifier::{self, Modifier};
-use crate::ecs::id::{ActorId, ExitId, PlaceId};
-use crate::ecs::{self, component, MemoryLine, Note, Presence};
+use crate::ecs::component::Note;
+use crate::ecs::id::{ActorId, ExitId, GlobalId, PlaceId};
+use crate::ecs::{self, component, MemoryLine, Presence};
 use crate::entity;
 use crate::intent::{Intent, Viewer};
 use crate::rules::visibility::can_see_fact;
@@ -256,15 +257,14 @@ impl Effect {
                 {
                     return Err(Reason::UnknownId);
                 }
-                let id = note_id;
                 let note = Note {
-                    id,
-                    to,
+                    to: to.into_iter().collect(),
                     place,
-                    fact_ids,
+                    fact_ids: fact_ids.into_iter().collect(),
                     text,
                 };
-                world.notes_mut().leave(note)
+                let mut globals = world.globals_mut();
+                globals.get_mut::<Note>(&GlobalId).leave(&note_id, note)
             }
             EffectKind::Narrate { .. } => Ok(()),
             EffectKind::Reveal { actor_id, fact } => {

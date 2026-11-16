@@ -16,8 +16,9 @@
 use std::path::PathBuf;
 
 use crate::canon::Canon;
-use crate::ecs::id::{ActorId, PlaceId};
-use crate::ecs::{self, component, sort_unique, Note, Presence};
+use crate::ecs::component::Note;
+use crate::ecs::id::{ActorId, GlobalId, PlaceId};
+use crate::ecs::{self, component, Presence};
 use crate::intent::Viewer;
 use crate::rules::perceive::{perceive_as, View};
 use crate::session;
@@ -129,7 +130,7 @@ fn apply_scene(
     // file holds it with neither.
     let mut save = serde_json::to_value(&**world).expect("the save serializes");
     save["actors"]["known_facts"] = serde_json::json!({});
-    save["notes"] = serde_json::json!([]);
+    save["globals"]["notes"] = serde_json::json!({});
     **world = serde_json::from_value(save).expect("the save deserializes");
     for (actor_id, place_index) in actors.iter().zip(&scene.place_of) {
         let current = world.actors().get::<component::Place>(actor_id).get();
@@ -153,28 +154,19 @@ fn apply_scene(
             .unwrap();
     }
     for (index, note) in scene.notes.iter().enumerate() {
-        let mut fact_ids: Vec<String> = note
-            .fact_ids
-            .iter()
-            .map(|fact| facts[fact % facts.len()].clone())
-            .collect();
-        sort_unique(&mut fact_ids);
-        let mut to: Vec<ActorId> = note
-            .to
-            .iter()
-            .map(|actor| actors[actor % actors.len()].clone())
-            .collect();
-        sort_unique(&mut to);
-        world
-            .notes_mut()
-            .leave(Note {
-                id: format!("note-{index}"),
-                to,
-                place: note.place.map(|place| places[place % places.len()].clone()),
-                fact_ids,
-                text: "The hour is late.".to_string(),
-            })
-            .unwrap();
+        let note = Note {
+            to: (note.to.iter())
+                .map(|actor| actors[actor % actors.len()].clone())
+                .collect(),
+            place: note.place.map(|place| places[place % places.len()].clone()),
+            fact_ids: (note.fact_ids.iter())
+                .map(|fact| facts[fact % facts.len()].clone())
+                .collect(),
+            text: "The hour is late.".to_string(),
+        };
+        let mut globals = world.globals_mut();
+        let id = format!("note-{index}");
+        globals.get_mut::<Note>(&GlobalId).leave(&id, note).unwrap();
     }
 }
 

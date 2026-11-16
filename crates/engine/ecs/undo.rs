@@ -128,13 +128,6 @@ impl<T: Undo> Store<T> {
         self.log.push((transaction.next_change_no(), inverse));
         (reports.into_iter()).try_for_each(|report| transaction.report(report))
     }
-
-    /// The value, to change past the log: only out of a round, so it panics while an inverse is
-    /// held.
-    pub(super) fn value_mut(&mut self) -> &mut T {
-        assert!(self.log.is_empty(), "a store changed past its log");
-        &mut self.value
-    }
 }
 
 impl<T: Undo> Log for Store<T> {

@@ -4,15 +4,16 @@ use std::collections::BTreeSet;
 
 use crate::canon::Canon;
 use crate::ecs::component::Meter;
-use crate::ecs::id::{ActorId, PlaceId};
-use crate::ecs::{self, component, Note, Presence};
+use crate::ecs::component::Note;
+use crate::ecs::id::{ActorId, GlobalId, PlaceId};
+use crate::ecs::{self, component, Presence};
 use crate::entity;
 use crate::intent::Viewer;
 use crate::rules::habits::list_whose_if_holds;
 use crate::rules::visibility::can_see_fact;
 use crate::session;
 use crate::Reason;
-use spookery_protocol::{ExitView, PERCEIVE_BODY_CHARS};
+use spookery_protocol::{ExitView, NoteView, PERCEIVE_BODY_CHARS};
 pub use spookery_protocol::{ItemStack, KnownFact, MeterView};
 
 /// What one viewer is shown. Returned from the engine to the host table, which renders it as
@@ -26,7 +27,7 @@ pub struct View {
     pub visible_actors: Vec<ActorId>,
     pub actor_names: Vec<String>,
     pub known_facts: Vec<KnownFact>,
-    pub notes: Vec<Note>,
+    pub notes: Vec<NoteView>,
     pub unknown_mentions: Vec<String>,
     pub items: Vec<ItemStack>,
     /// The viewer's own meters. A hidden meter is not here.
@@ -128,9 +129,9 @@ fn perceive_viewer_budget(
     unknown_mentions.sort();
 
     let mut notes = Vec::new();
-    for note in world.notes() {
+    for (id, note) in world.globals().get::<Note>(&GlobalId).iter() {
         let here = note.place.as_ref().is_some_and(|at| at == place.as_str());
-        let addressed = note.to.iter().any(|id| id == viewer.actor_id());
+        let addressed = note.to.contains(viewer.actor_id());
         if !here && !addressed {
             continue;
         }
@@ -141,12 +142,14 @@ fn perceive_viewer_budget(
         {
             continue;
         }
-        let mut copy = note.clone();
-        copy.to.sort();
-        copy.fact_ids.sort();
-        notes.push(copy);
+        notes.push(NoteView {
+            id: id.to_string(),
+            to: note.to.iter().map(ActorId::to_string).collect(),
+            place: note.place.as_ref().map(PlaceId::to_string),
+            fact_ids: note.fact_ids.iter().cloned().collect(),
+            text: note.text.clone(),
+        });
     }
-    notes.sort_by(|a, b| a.id.cmp(&b.id));
 
     let place_id = PlaceId::from(place.clone());
     let items = (world.places().get::<component::Item>(&place_id).iter())

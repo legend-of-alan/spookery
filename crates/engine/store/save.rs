@@ -53,7 +53,6 @@ pub fn emit(save: &Save) -> Result<String, Reason> {
     let mut canonical = save.clone();
     canonical.schema = crate::diagnostic::SAVE_SCHEMA.to_string();
     canonical.rules_rev = super::RULES_REV;
-    canonical.sort();
     let text = serde_saphyr::to_string_with_options(&canonical, emit_options())
         .map_err(|_| Reason::Schema)?;
     Ok(one_trailing_lf(text))
@@ -415,7 +414,6 @@ round_index: 0
 world_time: 0
 last_round_at: \"2026-01-01T00:00:00Z\"
 actors: {{}}
-notes: []
 ",
             rules = crate::store::RULES_REV,
         )

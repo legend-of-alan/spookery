@@ -3,7 +3,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::canon::Canon;
-use crate::ecs::component::{self, Meter};
+use crate::ecs::component::{self, Meter, Note};
 use crate::ecs::id::GlobalId;
 use crate::ecs::{entity, nested_map, undo};
 
@@ -18,6 +18,9 @@ pub struct Globals {
     meters: undo::Store<component::Map<GlobalId, Meter>>,
     #[serde(with = "nested_map::flat::lists")]
     flags: undo::Store<component::Map<GlobalId, component::Flag>>,
+    /// The notes left in the world, by id.
+    #[serde(with = "nested_map::flat")]
+    notes: undo::Store<component::Map<GlobalId, Note>>,
 }
 
 impl entity::Collection for Globals {
@@ -34,12 +37,17 @@ impl entity::Collection for Globals {
 
 entity::has!(Globals, Meter, meters);
 entity::has!(Globals, component::Flag, flags);
+entity::has!(Globals, Note, notes);
 
 impl Globals {
     /// Every store, as the log a rollback undoes and an accept clears.
-    pub(in crate::ecs) fn logs_mut(&mut self) -> [&mut dyn undo::Log; 2] {
+    pub(in crate::ecs) fn logs_mut(&mut self) -> [&mut dyn undo::Log; 3] {
         // Every store, with no `..`: a store added later must be listed here to compile.
-        let Globals { meters, flags } = self;
-        [meters, flags]
+        let Globals {
+            meters,
+            flags,
+            notes,
+        } = self;
+        [meters, flags, notes]
     }
 }

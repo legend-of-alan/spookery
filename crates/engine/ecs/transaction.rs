@@ -7,7 +7,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use super::change::{self, Change, ChangeValue};
 use super::component::{meter, Meter, Modifier};
-use super::{entity, sort_unique, undo, MemoryLine, Reader, Save};
+use super::{entity, undo, MemoryLine, Reader};
 use crate::canon::Budget;
 use crate::ecs;
 use crate::Reason;
@@ -139,15 +139,13 @@ impl ecs::World {
         transaction.memory_writes = point.memory_writes;
     }
 
-    /// Every collection's stores and the notes, as the logs a rollback undoes and an accept clears.
+    /// Every collection's stores, as the logs a rollback undoes and an accept clears.
     fn logs_mut(&mut self) -> impl Iterator<Item = &mut dyn undo::Log> {
         let save = &mut self.save;
-        let notes: &mut dyn undo::Log = &mut save.notes;
         (save.actors.logs_mut().into_iter())
             .chain(save.places.logs_mut())
             .chain(save.stories.logs_mut())
             .chain(save.globals.logs_mut())
-            .chain([notes])
     }
 
     /// The changes since the last take, one per key from its first value to its last, less the
@@ -238,27 +236,12 @@ impl ecs::World {
         self.transaction.memories.push(line);
     }
 
-    /// Close the round: every store forgets its inverses, the transaction goes back to rest, and
-    /// the save into file order.
+    /// Close the round: every store forgets its inverses, and the transaction goes back to rest.
     pub fn accept(&mut self) {
         for log in self.logs_mut() {
             log.clear();
         }
         self.transaction = Transaction::default();
-        self.save.sort();
-    }
-}
-
-impl Save {
-    /// Put the save in file order: the notes by id, and each list a note holds sorted with no
-    /// repeats.
-    pub(crate) fn sort(&mut self) {
-        let notes = self.notes.value_mut();
-        notes.sort_by(|a, b| a.id.cmp(&b.id));
-        for note in notes {
-            sort_unique(&mut note.to);
-            sort_unique(&mut note.fact_ids);
-        }
     }
 }
 

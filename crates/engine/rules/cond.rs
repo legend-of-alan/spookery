@@ -1,6 +1,8 @@
 //! Whether the conditions on a rule hold.
 
 use crate::canon::{Canon, OPEN};
+use crate::ecs::component::Note;
+use crate::ecs::id::GlobalId;
 use crate::ecs::{self, component, Presence};
 use crate::intent::{Intent, Source, Target, Viewer};
 use crate::rules::context::Context;
@@ -100,7 +102,7 @@ fn holds(context: &Context, cond: &Cond) -> Result<bool, Reason> {
             Ok(is_in_window(*from, *to, tick))
         }
         Cond::Players { op, value } => Ok(op.holds(i64::from(context.presence.players), *value)),
-        Cond::NoteExists(id) => Ok(world.notes().iter().any(|note| &note.id == id)),
+        Cond::NoteExists(id) => Ok(world.globals().get::<Note>(&GlobalId).contains(id)),
         Cond::All(inner) => {
             for cond in inner {
                 if !holds(context, cond)? {

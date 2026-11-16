@@ -1,5 +1,6 @@
 use cucumber::{given, then, when};
 
+use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -9,8 +10,8 @@ use spookery_engine::testing::{
     read_round as round_value, resume, stamp_pack_rev, world_of, write_save, Canon,
 };
 use spookery_engine::{
-    component, ecs, emit_save, entity, load_canon, play_pack_once, ActorId, Meter, MoveReport,
-    Note, PlaceId, Presence,
+    component, ecs, emit_save, entity, load_canon, play_pack_once, ActorId, GlobalId, Meter,
+    MoveReport, Note, PlaceId, Presence,
 };
 use spookery_protocol::Outcome;
 
@@ -80,12 +81,26 @@ fn snapshot(root: &Path) -> Vec<(PathBuf, Vec<u8>)> {
 
 fn door_note() -> Note {
     Note {
-        id: "note_mira_door".to_string(),
-        to: vec!["rowan".into()],
+        to: BTreeSet::from(["rowan".into()]),
         place: Some("docks_shop".into()),
-        fact_ids: Vec::new(),
+        fact_ids: BTreeSet::new(),
         text: "Back at dusk. Oil on the shelf.".to_string(),
     }
+}
+
+/// Leave Mira's door note, as her habit would.
+fn leave_door_note(world: &mut ecs::World) {
+    let mut globals = world.globals_mut();
+    let left = globals
+        .get_mut::<Note>(&GlobalId)
+        .leave("note_mira_door", door_note());
+    left.unwrap();
+}
+
+/// The ids of the notes left in the world, in order.
+fn note_ids(world: &ecs::World) -> Vec<&str> {
+    let notes = world.globals().get::<Note>(&GlobalId);
+    notes.iter().map(|(id, _)| id).collect()
 }
 
 /// Rowan is the one seated player.
@@ -102,9 +117,10 @@ fn evening_note() {
     let world = world_of(&pack);
     assert_eq!(lamp_oil(&world), 4);
     assert_eq!(place_of(&world, "mira"), "mira_rooms");
-    assert_eq!(world.notes().len(), 1);
-    assert_eq!(world.notes()[0].id, "note_mira_door");
-    assert_eq!(world.notes()[0].place, Some("docks_shop".into()));
+    let notes = world.globals().get::<Note>(&GlobalId);
+    let door = notes.get("note_mira_door").expect("the door note");
+    assert_eq!(note_ids(&world), ["note_mira_door"]);
+    assert_eq!(door.place, Some("docks_shop".into()));
     let _ = fs::remove_dir_all(&pack);
 }
 
@@ -115,7 +131,7 @@ fn morning_restock() {
         let mut world = opened.world().clone();
         drop(opened);
         world.world_time = 600;
-        world.notes_mut().leave(door_note()).unwrap();
+        leave_door_note(&mut world);
         world
             .actors_mut()
             .get_mut::<component::Place>(&"rowan".into())
@@ -128,7 +144,7 @@ fn morning_restock() {
     let world = world_of(&pack);
     assert_eq!(lamp_oil(&world), 8);
     assert_eq!(place_of(&world, "mira"), "mira_rooms");
-    assert_eq!(world.notes().len(), 1);
+    assert_eq!(note_ids(&world), ["note_mira_door"]);
     let _ = fs::remove_dir_all(&pack);
 }
 
@@ -139,7 +155,7 @@ fn capped_restock() -> u32 {
         let mut world = opened.world().clone();
         drop(opened);
         world.world_time = 600;
-        world.notes_mut().leave(door_note()).unwrap();
+        leave_door_note(&mut world);
         world
             .actors_mut()
             .get_mut::<component::Place>(&"rowan".into())
@@ -165,13 +181,13 @@ fn off_hours_hold() {
         let opened = resume(&pack);
         let mut world = opened.world().clone();
         drop(opened);
-        world.notes_mut().leave(door_note()).unwrap();
+        leave_door_note(&mut world);
         write_save(&pack, &world);
     }
     play_pack_once(&pack).unwrap_or_else(|err| panic!("round: {err}"));
     let world = world_of(&pack);
     assert_eq!(lamp_oil(&world), 4);
-    assert_eq!(world.notes().len(), 1);
+    assert_eq!(note_ids(&world), ["note_mira_door"]);
     let _ = fs::remove_dir_all(&pack);
 }
 
@@ -182,7 +198,7 @@ fn player_in_the_shop() {
         let mut world = opened.world().clone();
         drop(opened);
         world.world_time = 600;
-        world.notes_mut().leave(door_note()).unwrap();
+        leave_door_note(&mut world);
         world
             .actors_mut()
             .get_mut::<component::Place>(&"mira".into())
@@ -197,7 +213,7 @@ fn player_in_the_shop() {
         .unwrap_or_else(|err| panic!("round: {err}"));
     let world = world_of(&pack);
     assert_eq!(lamp_oil(&world), 4);
-    assert_eq!(world.notes().len(), 1);
+    assert_eq!(note_ids(&world), ["note_mira_door"]);
     assert_eq!(act_of(&world, "mira").last_act_round, 0);
     let _ = fs::remove_dir_all(&pack);
 }
@@ -227,7 +243,7 @@ fn gm_restocks() {
         let mut world = opened.world().clone();
         drop(opened);
         world.world_time = 600;
-        world.notes_mut().leave(door_note()).unwrap();
+        leave_door_note(&mut world);
         world
             .actors_mut()
             .get_mut::<component::Place>(&"mira".into())
@@ -240,7 +256,7 @@ fn gm_restocks() {
     queue_gm_intent(&mut opened, "gm-1", "mira", "restock_lamp_oil");
     opened.play(&rowan(), &wall).unwrap();
     assert_eq!(lamp_oil(opened.world()), 8);
-    assert_eq!(opened.world().notes().len(), 1);
+    assert_eq!(note_ids(opened.world()), ["note_mira_door"]);
     let _ = fs::remove_dir_all(&pack);
 }
 
@@ -371,7 +387,7 @@ fn a_busy_npc_skips() {
         let mut world = opened.world().clone();
         drop(opened);
         world.world_time = 600;
-        world.notes_mut().leave(door_note()).unwrap();
+        leave_door_note(&mut world);
         let mut actors = world.actors_mut();
         actors
             .get_mut::<component::Act>(&"mira".into())
@@ -824,6 +840,63 @@ fn the_evening_round_runs(_world: &mut World) {
     evening_note();
 }
 
+#[when(
+    expr = "the evening round leaves the door note to Wren, Rowan and Wren with fact_ledger_short twice"
+)]
+fn the_evening_round_leaves_the_door_note_with_repeats(world: &mut World) {
+    let pack = support::copy_pack("docks", "note_repeats");
+    let mira = pack.join("cast/mira.md");
+    let text = fs::read_to_string(&mira).unwrap();
+    let addressed = "to:\n            - rowan\n";
+    let repeated = "to: [wren, rowan, wren]\n";
+    let no_facts = "fact_ids: []\n          text: Back at dusk.";
+    let two_facts =
+        "fact_ids: [fact_ledger_short, fact_ledger_short]\n          text: Back at dusk.";
+    assert!(
+        text.contains(addressed) && text.contains(no_facts),
+        "{text}"
+    );
+    let text = text
+        .replace(addressed, repeated)
+        .replace(no_facts, two_facts);
+    fs::write(&mira, text).unwrap();
+    stamp_pack_rev(&pack);
+    play_pack_once(&pack).unwrap_or_else(|err| panic!("round: {err}"));
+    world.scratch = emit_save(&world_of(&pack)).unwrap();
+    world.pack = Some(pack);
+}
+
+#[then(
+    expr = "the save holds the door note under world notes, to rowan and wren, with fact_ledger_short once"
+)]
+fn the_save_holds_the_door_note_under_world_notes(world: &mut World) {
+    let held = concat!(
+        "globals:\n",
+        "  meters: {}\n",
+        "  flags: []\n",
+        "  notes:\n",
+        "    note_mira_door:\n",
+        "      to:\n",
+        "        - rowan\n",
+        "        - wren\n",
+        "      place: docks_shop\n",
+        "      fact_ids:\n",
+        "        - fact_ledger_short\n",
+        "      text: Back at dusk. Oil on the shelf.\n",
+    );
+    assert!(world.scratch.ends_with(held), "{}", world.scratch);
+}
+
+#[then(expr = "leaving the door note again is refused as UNKNOWN_ID")]
+fn leaving_the_door_note_again_is_refused(world: &mut World) {
+    let mut world = world_of(world.pack());
+    let mut globals = world.globals_mut();
+    let left = globals
+        .get_mut::<Note>(&GlobalId)
+        .leave("note_mira_door", door_note());
+    assert_eq!(left, Err(spookery_engine::Reason::UnknownId));
+}
+
 #[when(expr = "the morning round runs with the note already left")]
 fn the_morning_round_runs(_world: &mut World) {
     morning_restock();
@@ -970,7 +1043,6 @@ round_index: 0
 world_time: 0
 last_round_at: \"2026-01-01T00:00:00Z\"
 actors: {{}}
-notes: []
 "
     );
     let save = spookery_engine::parse_save(&text).unwrap_or_else(|err| panic!("save: {err:?}"));

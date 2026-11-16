@@ -1,11 +1,11 @@
 //! Engine output as message bodies. The one place a `protocol::Refusal` is rendered.
 
 use crate::protocol::{
-    self, CommitBody, NoteView, PackSummary, QueuedMove, Roll, ServerBody, Speech, StatusPresence,
+    self, CommitBody, PackSummary, QueuedMove, Roll, ServerBody, Speech, StatusPresence,
     TableStatus,
 };
 use spookery_engine::{
-    self as engine, ActorId, Intent, MoveReport, Note, PlaceId, Presence, RoundOutput, TapeRecord,
+    self as engine, ActorId, Intent, MoveReport, Presence, RoundOutput, TapeRecord,
 };
 
 /// A move the gate or a round refused. Its `detail` is the meter or item id, or the
@@ -86,8 +86,8 @@ pub(super) fn render_resume(view: &engine::View) -> ServerBody {
     let notes = view
         .notes
         .iter()
-        .filter(|note| note.to.iter().any(|to| to == actor_id))
-        .map(note_view)
+        .filter(|note| note.to.iter().any(|to| to == actor_id.as_str()))
+        .cloned()
         .collect();
     ServerBody::Resume { notes }
 }
@@ -103,7 +103,7 @@ pub(super) fn render_view(view: &engine::View) -> ServerBody {
         busy: view.busy.clone(),
         visible_actors: view.visible_actors.iter().map(ActorId::to_string).collect(),
         known_facts: view.known_facts.clone(),
-        notes: view.notes.iter().map(note_view).collect(),
+        notes: view.notes.clone(),
         unknown_mentions: view.unknown_mentions.clone(),
         items: view.items.clone(),
         meters: view.meters.clone(),
@@ -167,14 +167,4 @@ pub(super) fn render_status(
             .collect(),
         pack,
     }))
-}
-
-fn note_view(note: &Note) -> NoteView {
-    NoteView {
-        id: note.id.clone(),
-        to: note.to.iter().map(ActorId::to_string).collect(),
-        place: note.place.as_ref().map(PlaceId::to_string),
-        fact_ids: note.fact_ids.clone(),
-        text: note.text.clone(),
-    }
 }

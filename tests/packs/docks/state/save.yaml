@@ -1,7 +1,7 @@
 schema: save
 world_id: docks-001
 pack_rev: blake2s:cf06bf0a60bd01c4c66fb46b45d8fe9d1ea11d5f11859f338d57f60c9ae34bf3
-rules_rev: 26
+rules_rev: 27
 state_rev: 0
 round_index: 0
 world_time: 1080
@@ -194,4 +194,4 @@ stories:
 globals:
   meters: {}
   flags: []
-notes: []
+  notes: {}

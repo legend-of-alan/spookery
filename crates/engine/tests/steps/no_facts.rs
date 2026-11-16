@@ -5,7 +5,7 @@ use std::path::Path;
 
 use cucumber::{given, then, when};
 use spookery_engine::testing::{self as support, journal::list_round_keys};
-use spookery_engine::Presence;
+use spookery_engine::{GlobalId, Note, Presence};
 
 use crate::{resolve_id, split_line, World};
 
@@ -103,11 +103,9 @@ fn miras_habit_fires(world: &mut World) {
     });
     assert!(fired, "leave_door_note did not run");
     let ecs_world = support::world_of(pack);
+    let notes = ecs_world.globals().get::<Note>(&GlobalId);
     assert!(
-        ecs_world
-            .notes()
-            .iter()
-            .any(|message| message.id == "note_mira_door"),
+        notes.contains("note_mira_door"),
         "the door note was not stored"
     );
 }
