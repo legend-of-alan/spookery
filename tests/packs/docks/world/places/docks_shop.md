@@ -20,5 +20,11 @@ exits:
           subject: self
           id: brass_key
     locked_text: The stair door is locked.
+meters:
+  - id: comfort
+    min: 0
+    base_cap: 3
+    max: 3
+    base: 2
 ---
 The shop faces the water. Tins sit in a row.

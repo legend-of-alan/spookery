@@ -200,7 +200,7 @@ The table's state for a GM. `world_time` is the game clock in ticks. `pack_rev` 
     "world_time": 1080,
     "round_index": 0,
     "state_rev": 0,
-    "pack_rev": "blake2s:f180125da352d2e9c8ab3df0ca07bd7da0aeb66fa5e1de3e2c432b13da9fdc75",
+    "pack_rev": "blake2s:cf06bf0a60bd01c4c66fb46b45d8fe9d1ea11d5f11859f338d57f60c9ae34bf3",
     "last_round_at": "2026-01-01T00:00:00Z",
     "queued": [],
     "pack": {
