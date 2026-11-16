@@ -210,7 +210,7 @@ pub mod testing {
         let lock = crate::lock_pack(pack)
             .unwrap_or_else(|err| panic!("lock_pack {}: {err}", pack.display()));
         crate::session::Session::resume(pack, lock)
-            .unwrap_or_else(|err| panic!("World::resume {}: {err}", pack.display()))
+            .unwrap_or_else(|err| panic!("Session::resume {}: {err}", pack.display()))
     }
 
     /// Read the pack's journal and replay all of it.
