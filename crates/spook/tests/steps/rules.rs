@@ -968,7 +968,11 @@ fn check_accepts_resist_same_after_a_roll(world: &mut World) {
     expr = "briar's cast file holds a verb \"ask\" that targets an actor and sets the world flag passage"
 )]
 fn briar_holds_ask(world: &mut World) {
-    world.pack = Some(copy_pack("docks", "rules-scoped-here"));
+    let pack = copy_pack("docks", "rules-scoped-here");
+    edit_save(&pack, |now| {
+        edit_meter(now, "mira", "shop_day", |shop_day| shop_day.base = 0);
+    });
+    world.pack = Some(pack);
 }
 
 #[given(
@@ -1008,12 +1012,7 @@ fn harbormouse_alone_plays(world: &mut World, line: String) {
 
 #[then(expr = "cast:briar\\/ask runs with briar as its target and passage is set")]
 fn briars_ask_runs_on_briar(world: &mut World) {
-    let (target, rules) = world.scratch.split_once(' ').unwrap();
-    assert_eq!(target, r#"{"actor":"briar"}"#);
-    assert!(
-        rules.split(' ').any(|rule| rule == "cast:briar/ask"),
-        "{rules}"
-    );
+    assert_eq!(world.scratch, r#"{"actor":"briar"} cast:briar/ask"#);
     let now = state_of(world.pack.as_ref().unwrap());
     let flags = now.entities().get::<component::Flag>(&entity::Id::Global);
     assert!(flags.contains("passage"), "{:?}", world_flags(&now));

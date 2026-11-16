@@ -140,8 +140,20 @@ fn fight(base: &Path, warmup: u32, refused: Option<Reason>) -> Result<(), String
                 code: Reason::Budget,
                 detail: None,
             };
-            // Mira's door-note habit can be cut beside the strike.
-            last.refused.contains(&cut) && ran("verb:lunge") && !ran("verb:strike")
+            let mira = gate::Refusal {
+                id: crate::intent::intent_id("docks-001", 1, "mira", "leave_door_note"),
+                code: Reason::Budget,
+                detail: None,
+            };
+            assert_eq!(
+                last.refused,
+                if warmup == 0 {
+                    vec![cut, mira]
+                } else {
+                    vec![cut]
+                }
+            );
+            ran("verb:lunge") && !ran("verb:strike")
         }
     };
     assert!(

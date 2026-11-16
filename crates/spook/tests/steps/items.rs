@@ -271,7 +271,7 @@ fn harbormouse_holds_a_latch_at_a_table(world: &mut World) {
 }
 
 #[when(expr = "harbormouse plays {string}")]
-fn lark_plays(world: &mut World, line: String) {
+fn harbormouse_plays(world: &mut World, line: String) {
     let before = state_of(world.pack.as_ref().unwrap());
     world.scratch = format!("{} {}", before.world_time, before.round_index);
     let (_mark, added) = table::player_send(world, &line, "\"kind\":\"refused\"");
@@ -279,7 +279,7 @@ fn lark_plays(world: &mut World, line: String) {
 }
 
 #[then(expr = "harbormouse is refused with {word}")]
-fn lark_is_refused(world: &mut World, code: String) {
+fn harbormouse_is_refused(world: &mut World, code: String) {
     let row = world
         .player_added
         .lines()
@@ -395,7 +395,7 @@ fn harbormouse_holds_a_dagger(world: &mut World) {
 }
 
 #[then(expr = "harbormouse's wielded slot is poisoned_dagger")]
-fn lark_wields_the_dagger(world: &mut World) {
+fn harbormouse_wielded_slot_is_poisoned_dagger(world: &mut World) {
     assert_eq!(
         wielded(world.pack.as_ref().unwrap(), "harbormouse").as_deref(),
         Some("poisoned_dagger")
@@ -415,7 +415,7 @@ fn tonic_is_not_a_weapon(world: &mut World) {
 }
 
 #[given(expr = "harbormouse wields poisoned_dagger")]
-fn lark_wields_for_attack(world: &mut World) {
+fn harbormouse_wields_poisoned_dagger(world: &mut World) {
     let pack = support::copy_pack("docks", "armed");
     add_attack_rules(&pack, DAGGER_ATTACK);
     support::edit_save(&pack, |now| hold_dagger(now, true));
@@ -423,7 +423,7 @@ fn lark_wields_for_attack(world: &mut World) {
 }
 
 #[given(expr = "harbormouse wields a poisoned_dagger with a strike rule")]
-fn lark_wields_for_strike(world: &mut World) {
+fn harbormouse_wields_a_poisoned_dagger_with_a_strike_rule(world: &mut World) {
     let pack = support::copy_pack("docks", "armed-strike");
     write_dagger(&pack, DAGGER_STRIKE);
     support::edit_save(&pack, |now| hold_dagger(now, true));
@@ -431,7 +431,7 @@ fn lark_wields_for_strike(world: &mut World) {
 }
 
 #[given(expr = "harbormouse wields nothing")]
-fn lark_wields_nothing(world: &mut World) {
+fn harbormouse_wields_nothing(world: &mut World) {
     let pack = support::copy_pack("docks", "bare");
     add_attack_rules(&pack, DAGGER_ATTACK);
     support::edit_save(&pack, |now| hold_dagger(now, false));
@@ -439,14 +439,14 @@ fn lark_wields_nothing(world: &mut World) {
 }
 
 #[when(expr = "harbormouse attacks wren and hits")]
-fn lark_attacks_and_hits(world: &mut World) {
+fn harbormouse_attacks_wren_and_hits(world: &mut World) {
     let pack = world.pack.clone().unwrap();
     handle_move(&pack, "harbormouse", "attack wren")
         .unwrap_or_else(|err| panic!("{}", err.code.as_str()));
 }
 
 #[when(expr = "harbormouse attacks wren")]
-fn lark_attacks(world: &mut World) {
+fn harbormouse_attacks_wren(world: &mut World) {
     let pack = world.pack.clone().unwrap();
     handle_move(&pack, "harbormouse", "attack wren")
         .unwrap_or_else(|err| panic!("{}", err.code.as_str()));
@@ -476,7 +476,7 @@ fn bare_hands_ran(world: &mut World) {
 }
 
 #[when(expr = "harbormouse drops poisoned_dagger")]
-fn lark_drops_the_dagger(world: &mut World) {
+fn harbormouse_drops_poisoned_dagger(world: &mut World) {
     let pack = world.pack.clone().unwrap();
     handle_move(&pack, "harbormouse", "drop poisoned_dagger")
         .unwrap_or_else(|err| panic!("{}", err.code.as_str()));
@@ -598,7 +598,7 @@ fn nell_resists_on_a_seeded_roll(world: &mut World) {
 }
 
 #[when(expr = "harbormouse hits wren with poisoned_dagger")]
-fn lark_hits_with_the_dagger(world: &mut World) {
+fn harbormouse_hits_wren_with_the_dagger(world: &mut World) {
     let pack = world.pack.clone().unwrap();
     let outputs = handle_move(&pack, "harbormouse", "attack wren")
         .unwrap_or_else(|err| panic!("{}", err.code.as_str()));
