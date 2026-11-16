@@ -869,13 +869,13 @@ One effect under each dash. The rules in `rules/verbs.yaml` are the examples. `s
 
 ## Check codes
 
-`spook check` prints one line per problem: `file:line: message (CODE)` when it has a line, or `file: path: message (CODE)` when the location is a key path. A clean pack prints `no problems` and exits 0. `WARNING` is printed and does not by itself fail the command. Any other code exits 1. `--json` prints the same records as one array, and `hint` is the fix.
+`spook check` prints one line per problem: `file:line: message (CODE)` when it has a line, or `file: path: message (CODE)` when the location is a key path. A clean pack prints `no problems` and exits 0. `WARNING` is printed and does not by itself fail the command. Any other code exits 1. `--json` prints the same records as one array, and `hint` is the fix when the message doesn't already say it.
 
 The message and the hint can change. The code stays.
 
 | Code | Fix hint |
 |---|---|
-| `SCHEMA` | The diagnostic's `hint`. A bad shape, an unknown key, or an unknown id. |
+| `SCHEMA` | The diagnostic's `message`, and its `hint` when it has one. A bad shape, an unknown key, or an unknown id. |
 | `NOT_IN_SPEC` | `add <file>` when a file the loader requires is missing. |
 | `PACK_REV_MISMATCH` | `run spook migrate to store the current hash` |
 | `RULES_REV_MISMATCH` | `start a fresh save` |
