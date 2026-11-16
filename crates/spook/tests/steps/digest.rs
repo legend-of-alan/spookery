@@ -4,7 +4,7 @@ use std::path::Path;
 
 use cucumber::{given, then, when};
 use spookery::protocol::ItemStack;
-use spookery_engine::{component, Meter, Presence};
+use spookery_engine::{component, GlobalId, Meter, Note, Presence};
 
 use crate::support::run_spook;
 use crate::World;
@@ -20,10 +20,10 @@ meter mira shop_day 1 1
 /// `shop_day` sorts last, so its meter line ends every host printout.
 const PRINTOUT_END: &str = "meter mira shop_day ";
 
-const DOOR_NOTE: &str = "effect note 1 {\"note_id\":\"note_mira_door\",\"to\":[\"rowan\"],\"place\":\"docks_shop\",\"fact_ids\":[],\"text\":\"Back at dusk. Oil on the shelf.\"}";
+const DOOR_NOTE: &str = "effect note 1 {\"note_id\":\"note_mira_door\",\"to_ids\":[\"rowan\"],\"place_id\":\"docks_shop\",\"fact_ids\":[],\"text\":\"Back at dusk. Oil on the shelf.\"}";
 
 const HOST: &str = "\
-effect note 1 {\"note_id\":\"note_mira_door\",\"to\":[\"rowan\"],\"place\":\"docks_shop\",\"fact_ids\":[],\"text\":\"Back at dusk. Oil on the shelf.\"}
+effect note 1 {\"note_id\":\"note_mira_door\",\"to_ids\":[\"rowan\"],\"place_id\":\"docks_shop\",\"fact_ids\":[],\"text\":\"Back at dusk. Oil on the shelf.\"}
 meter rowan assassination_debt 2 6
 meter place:docks_shop comfort 2 3
 meter mira shop_day 1 1
@@ -187,8 +187,8 @@ fn the_player_resume_lists_the_door_message(world: &mut World) {
             "notes": [
                 {
                     "id": "note_mira_door",
-                    "to": ["rowan"],
-                    "place": "docks_shop",
+                    "to_ids": ["rowan"],
+                    "place_id": "docks_shop",
                     "fact_ids": [],
                     "text": "Back at dusk. Oil on the shelf."
                 }
@@ -204,10 +204,8 @@ fn the_player_resume_lists_the_door_message(world: &mut World) {
 fn the_player_resume_for_does_not_list(world: &mut World, actor: String, note: String) {
     let pack = table::pack(world);
     let now = world_of(pack);
-    assert!(
-        now.notes().iter().any(|message| message.id == note),
-        "the save has no {note}"
-    );
+    let notes = now.globals().get::<Note>(&GlobalId);
+    assert!(notes.contains(&note), "the save has no {note}");
     let resume = read_player_resume(world, &actor);
     assert!(!resume.contains(&note), "resume listed {note}:\n{resume}");
 }

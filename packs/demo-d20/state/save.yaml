@@ -1,7 +1,7 @@
 schema: save
 world_id: demo-d20
-pack_rev: blake2s:5370cc37a7e0dc73aa8e60be39897b8ad3603c3859cd740c98d7a2dfe22529e5
-rules_rev: 26
+pack_rev: blake2s:e69b689abdddce7e5559cd726a456330e470a373889cf8eb5b83bb4a189566a5
+rules_rev: 27
 state_rev: 0
 round_index: 0
 world_time: 1080
@@ -143,4 +143,4 @@ globals:
       base: 12
       offset: 0
   flags: []
-notes: []
+  notes: {}

@@ -7,7 +7,7 @@ use spookery_engine::testing::{faces, RollKey};
 
 use crate::support::{edit_as_saved, edit_meter, put_items, put_meter};
 use spookery_engine::MoveReport;
-use spookery_engine::{component, entity, ActorId, Meter, Presence, Reason};
+use spookery_engine::{component, entity, ActorId, GlobalId, Meter, Note, Presence, Reason};
 
 use super::common::{flags_of, split_line};
 use super::table;
@@ -780,10 +780,9 @@ fn both_full_ids_are_refused(world: &mut World) {
     assert_eq!(place_of(&now, "rowan"), "docks_shop");
     assert_eq!(now.world_time, 1080);
     assert_eq!(now.round_index, 0);
+    let notes = now.globals().get::<Note>(&GlobalId);
     assert!(
-        now.notes()
-            .iter()
-            .all(|message| message.id != "note_mira_door"),
+        !notes.contains("note_mira_door"),
         "the habit note was stored"
     );
     assert!(

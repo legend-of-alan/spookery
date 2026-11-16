@@ -25,9 +25,9 @@ rules:
     do:
       - note:
           id: note_mira_door
-          to:
+          to_ids:
             - rowan
-          place: docks_shop
+          place_id: docks_shop
           fact_ids: []
           text: Back at dusk. Oil on the shelf.
 

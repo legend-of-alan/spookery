@@ -73,9 +73,9 @@ pub struct KnownFact {
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct NoteView {
     pub id: String,
-    pub to: Vec<String>,
+    pub to_ids: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub place: Option<String>,
+    pub place_id: Option<String>,
     pub fact_ids: Vec<String>,
     pub text: String,
 }

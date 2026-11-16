@@ -352,8 +352,8 @@ pub struct LocationYaml {
 pub struct NoteYaml {
     pub id: String,
     #[serde(default)]
-    pub to: Vec<ActorId>,
-    pub place: Option<PlaceId>,
+    pub to_ids: Vec<ActorId>,
+    pub place_id: Option<PlaceId>,
     #[serde(default)]
     pub fact_ids: Vec<String>,
     pub text: String,
@@ -961,13 +961,13 @@ fn effect_of(yaml: &EffectYaml) -> Result<EffectTemplate, Fault> {
     }
     if let Some(note) = &yaml.note {
         found += 1;
-        if note.id.is_empty() || note.text.is_empty() || note.to.is_empty() {
-            return Err("a note needs id, text, and to".into());
+        if note.id.is_empty() || note.text.is_empty() || note.to_ids.is_empty() {
+            return Err("a note needs id, text, and to_ids".into());
         }
         effect = Some(EffectTemplate::Note {
             id: note.id.clone(),
-            to: note.to.clone(),
-            place: note.place.clone(),
+            to_ids: note.to_ids.clone(),
+            place_id: note.place_id.clone(),
             fact_ids: note.fact_ids.clone(),
             text: note.text.clone(),
         });

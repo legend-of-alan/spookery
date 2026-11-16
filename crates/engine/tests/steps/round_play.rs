@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use cucumber::{given, then, when};
 use serde_json::Value;
 use spookery_engine::testing::{faces, RollKey};
-use spookery_engine::{component, MoveReport};
+use spookery_engine::{component, GlobalId, MoveReport, Note};
 
 use crate::{resolve_id, World};
 use spookery_engine::testing::{self as support, act_of, place_of, read_round};
@@ -250,7 +250,11 @@ fn the_wait_lands_and_miras_habit_is_ineligible(world: &mut World) {
     assert_ne!(refused[0]["id"], "gm-wait", "{round}");
     let ecs_world = support::world_of(world.pack());
     assert_eq!(act_of(&ecs_world, "mira").last_act_round, 1);
-    assert!(ecs_world.notes().is_empty(), "{:?}", ecs_world.notes());
+    let notes = ecs_world.globals().get::<Note>(&GlobalId);
+    assert!(
+        !notes.contains("note_mira_door"),
+        "the door note was stored"
+    );
 }
 
 #[when(expr = "Harbormouse and Briar strike each other")]

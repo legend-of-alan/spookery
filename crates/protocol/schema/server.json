@@ -789,13 +789,13 @@
         "id": {
           "type": "string"
         },
-        "to": {
+        "to_ids": {
           "type": "array",
           "items": {
             "type": "string"
           }
         },
-        "place": {
+        "place_id": {
           "type": [
             "string",
             "null"
@@ -813,7 +813,7 @@
       },
       "required": [
         "id",
-        "to",
+        "to_ids",
         "fact_ids",
         "text"
       ]

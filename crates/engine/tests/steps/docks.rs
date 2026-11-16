@@ -1,5 +1,6 @@
 use cucumber::{given, then, when};
 
+use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -9,8 +10,8 @@ use spookery_engine::testing::{
     read_round as round_value, resume, stamp_pack_rev, world_of, write_save, Canon,
 };
 use spookery_engine::{
-    component, ecs, emit_save, entity, load_canon, play_pack_once, ActorId, Meter, MoveReport,
-    Note, PlaceId, Presence,
+    component, ecs, emit_save, entity, load_canon, play_pack_once, ActorId, GlobalId, Meter,
+    MoveReport, Note, PlaceId, Presence,
 };
 use spookery_protocol::Outcome;
 
@@ -80,12 +81,26 @@ fn snapshot(root: &Path) -> Vec<(PathBuf, Vec<u8>)> {
 
 fn door_note() -> Note {
     Note {
-        id: "note_mira_door".to_string(),
-        to: vec!["rowan".into()],
-        place: Some("docks_shop".into()),
-        fact_ids: Vec::new(),
+        to_ids: BTreeSet::from(["rowan".into()]),
+        place_id: Some("docks_shop".into()),
+        fact_ids: BTreeSet::new(),
         text: "Back at dusk. Oil on the shelf.".to_string(),
     }
+}
+
+/// Leave Mira's door note, as her habit would.
+fn leave_door_note(world: &mut ecs::World) {
+    let mut globals = world.globals_mut();
+    let left = globals
+        .get_mut::<Note>(&GlobalId)
+        .leave("note_mira_door", door_note());
+    left.unwrap();
+}
+
+/// The ids of the notes left in the world, in order.
+fn note_ids(world: &ecs::World) -> Vec<&str> {
+    let notes = world.globals().get::<Note>(&GlobalId);
+    notes.iter().map(|(id, _)| id).collect()
 }
 
 /// Rowan is the one seated player.
@@ -102,9 +117,10 @@ fn evening_note() {
     let world = world_of(&pack);
     assert_eq!(lamp_oil(&world), 4);
     assert_eq!(place_of(&world, "mira"), "mira_rooms");
-    assert_eq!(world.notes().len(), 1);
-    assert_eq!(world.notes()[0].id, "note_mira_door");
-    assert_eq!(world.notes()[0].place, Some("docks_shop".into()));
+    let notes = world.globals().get::<Note>(&GlobalId);
+    let door = notes.get("note_mira_door").expect("the door note");
+    assert_eq!(note_ids(&world), ["note_mira_door"]);
+    assert_eq!(door.place_id, Some("docks_shop".into()));
     let _ = fs::remove_dir_all(&pack);
 }
 
@@ -115,7 +131,7 @@ fn morning_restock() {
         let mut world = opened.world().clone();
         drop(opened);
         world.world_time = 600;
-        world.notes_mut().leave(door_note()).unwrap();
+        leave_door_note(&mut world);
         world
             .actors_mut()
             .get_mut::<component::Place>(&"rowan".into())
@@ -128,7 +144,7 @@ fn morning_restock() {
     let world = world_of(&pack);
     assert_eq!(lamp_oil(&world), 8);
     assert_eq!(place_of(&world, "mira"), "mira_rooms");
-    assert_eq!(world.notes().len(), 1);
+    assert_eq!(note_ids(&world), ["note_mira_door"]);
     let _ = fs::remove_dir_all(&pack);
 }
 
@@ -139,7 +155,7 @@ fn capped_restock() -> u32 {
         let mut world = opened.world().clone();
         drop(opened);
         world.world_time = 600;
-        world.notes_mut().leave(door_note()).unwrap();
+        leave_door_note(&mut world);
         world
             .actors_mut()
             .get_mut::<component::Place>(&"rowan".into())
@@ -165,13 +181,13 @@ fn off_hours_hold() {
         let opened = resume(&pack);
         let mut world = opened.world().clone();
         drop(opened);
-        world.notes_mut().leave(door_note()).unwrap();
+        leave_door_note(&mut world);
         write_save(&pack, &world);
     }
     play_pack_once(&pack).unwrap_or_else(|err| panic!("round: {err}"));
     let world = world_of(&pack);
     assert_eq!(lamp_oil(&world), 4);
-    assert_eq!(world.notes().len(), 1);
+    assert_eq!(note_ids(&world), ["note_mira_door"]);
     let _ = fs::remove_dir_all(&pack);
 }
 
@@ -182,7 +198,7 @@ fn player_in_the_shop() {
         let mut world = opened.world().clone();
         drop(opened);
         world.world_time = 600;
-        world.notes_mut().leave(door_note()).unwrap();
+        leave_door_note(&mut world);
         world
             .actors_mut()
             .get_mut::<component::Place>(&"mira".into())
@@ -197,7 +213,7 @@ fn player_in_the_shop() {
         .unwrap_or_else(|err| panic!("round: {err}"));
     let world = world_of(&pack);
     assert_eq!(lamp_oil(&world), 4);
-    assert_eq!(world.notes().len(), 1);
+    assert_eq!(note_ids(&world), ["note_mira_door"]);
     assert_eq!(act_of(&world, "mira").last_act_round, 0);
     let _ = fs::remove_dir_all(&pack);
 }
@@ -227,7 +243,7 @@ fn gm_restocks() {
         let mut world = opened.world().clone();
         drop(opened);
         world.world_time = 600;
-        world.notes_mut().leave(door_note()).unwrap();
+        leave_door_note(&mut world);
         world
             .actors_mut()
             .get_mut::<component::Place>(&"mira".into())
@@ -240,7 +256,7 @@ fn gm_restocks() {
     queue_gm_intent(&mut opened, "gm-1", "mira", "restock_lamp_oil");
     opened.play(&rowan(), &wall).unwrap();
     assert_eq!(lamp_oil(opened.world()), 8);
-    assert_eq!(opened.world().notes().len(), 1);
+    assert_eq!(note_ids(opened.world()), ["note_mira_door"]);
     let _ = fs::remove_dir_all(&pack);
 }
 
@@ -280,7 +296,7 @@ fn claimed_note_sorts_first() {
         .iter()
         .find(|effect| effect["kind"] == "note")
         .unwrap_or_else(|| panic!("no door note: {log}"));
-    assert_eq!(note["to"], serde_json::json!(["rowan"]));
+    assert_eq!(note["to_ids"], serde_json::json!(["rowan"]));
     let _ = fs::remove_dir_all(&pack);
 }
 
@@ -371,7 +387,7 @@ fn a_busy_npc_skips() {
         let mut world = opened.world().clone();
         drop(opened);
         world.world_time = 600;
-        world.notes_mut().leave(door_note()).unwrap();
+        leave_door_note(&mut world);
         let mut actors = world.actors_mut();
         actors
             .get_mut::<component::Act>(&"mira".into())
@@ -970,7 +986,6 @@ round_index: 0
 world_time: 0
 last_round_at: \"2026-01-01T00:00:00Z\"
 actors: {{}}
-notes: []
 "
     );
     let save = spookery_engine::parse_save(&text).unwrap_or_else(|err| panic!("save: {err:?}"));

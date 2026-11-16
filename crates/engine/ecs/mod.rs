@@ -6,7 +6,6 @@ pub(crate) mod entity;
 pub use entity::component;
 pub(crate) mod id;
 pub(crate) mod nested_map;
-mod notes;
 pub(crate) mod prelude;
 mod transaction;
 pub(crate) mod undo;
@@ -21,15 +20,14 @@ pub use component::Act;
 pub(crate) use component::ActCounter;
 pub use component::PendingAction;
 use id::ActorId;
-pub use notes::Note;
 #[cfg(test)]
 pub(crate) use transaction::Savepoint;
 use transaction::Transaction;
 
 use crate::canon::Canon;
 
-/// The save as the file holds it: the clock, each collection's components, and the notes. It has
-/// no canon and no writers; `World::new` opens it to read and write.
+/// The save as the file holds it: the clock and each collection's components. It has no canon
+/// and no writers; `World::new` opens it to read and write.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Save {
@@ -55,7 +53,6 @@ pub struct Save {
     stories: entity::Stories,
     #[serde(default)]
     globals: entity::Globals,
-    notes: undo::Store<Vec<Note>>,
 }
 
 /// The ECS world, which owns every component, like Bevy's `World`: the save, the pack's canon it
@@ -132,8 +129,8 @@ impl<'a, E: entity::Collection> Reader<'a, E> {
     }
 }
 
-/// One collection's components, or the notes, with the round's transaction and the pack's canon,
-/// borrowed apart from the rest of the save: the only way to write them. It reads and writes only
+/// One collection's components, with the round's transaction and the pack's canon, borrowed
+/// apart from the rest of the save: the only way to write them. It reads and writes only
 /// through `get_mut` and its own methods, and only `World`'s `*_mut` getters build one.
 ///
 /// ```compile_fail
@@ -235,14 +232,6 @@ impl World {
 
     pub fn entities_mut(&mut self) -> Writer<'_, Save> {
         Writer::new(&mut self.save, &mut self.transaction, &self.canon)
-    }
-
-    pub fn notes(&self) -> &[Note] {
-        &self.save.notes
-    }
-
-    pub fn notes_mut(&mut self) -> Writer<'_, undo::Store<Vec<Note>>> {
-        Writer::new(&mut self.save.notes, &mut self.transaction, &self.canon)
     }
 }
 

@@ -8,8 +8,9 @@ use serde_json::{Map, Value};
 use crate::canon::Canon;
 use crate::ecs::component::meter::MeterWrite;
 use crate::ecs::component::modifier::{self, Modifier};
-use crate::ecs::id::{ActorId, ExitId, PlaceId};
-use crate::ecs::{self, component, MemoryLine, Note, Presence};
+use crate::ecs::component::Note;
+use crate::ecs::id::{ActorId, ExitId, GlobalId, PlaceId};
+use crate::ecs::{self, component, MemoryLine, Presence};
 use crate::entity;
 use crate::intent::{Intent, Viewer};
 use crate::rules::visibility::can_see_fact;
@@ -85,9 +86,9 @@ pub enum EffectKind {
     },
     Note {
         note_id: String,
-        to: Vec<ActorId>,
+        to_ids: Vec<ActorId>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        place: Option<PlaceId>,
+        place_id: Option<PlaceId>,
         fact_ids: Vec<String>,
         text: String,
     },
@@ -245,26 +246,25 @@ impl Effect {
             }
             EffectKind::Note {
                 note_id,
-                to,
-                place,
+                to_ids,
+                place_id,
                 fact_ids,
                 text,
             } => {
-                if place
+                if place_id
                     .as_ref()
-                    .is_some_and(|at| !canon.places.contains_key(at))
+                    .is_some_and(|place_id| !canon.places.contains_key(place_id))
                 {
                     return Err(Reason::UnknownId);
                 }
-                let id = note_id;
                 let note = Note {
-                    id,
-                    to,
-                    place,
-                    fact_ids,
+                    to_ids: to_ids.into_iter().collect(),
+                    place_id,
+                    fact_ids: fact_ids.into_iter().collect(),
                     text,
                 };
-                world.notes_mut().leave(note)
+                let mut globals = world.globals_mut();
+                globals.get_mut::<Note>(&GlobalId).leave(&note_id, note)
             }
             EffectKind::Narrate { .. } => Ok(()),
             EffectKind::Reveal { actor_id, fact } => {

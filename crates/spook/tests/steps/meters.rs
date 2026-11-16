@@ -1,12 +1,13 @@
 //! Meters that one actor or the world carries.
 
+use std::collections::BTreeSet;
 use std::fs;
 use std::path::Path;
 
 use cucumber::{given, then, when};
 use serde_json::Value;
 use spookery_engine::testing::world_of;
-use spookery_engine::{component, entity, load_canon, ActorId, Meter, Presence};
+use spookery_engine::{component, entity, load_canon, ActorId, GlobalId, Meter, Note, Presence};
 
 use super::common::replace_in_file;
 use super::record::read_extra_steps;
@@ -159,8 +160,9 @@ fn miras_habit_reads_and_resets(world: &mut World) {
 #[then(expr = "the habit runs as it did when shop_day was a clock")]
 fn the_habit_runs_as_before(world: &mut World) {
     let now = world_of(pack(world));
-    let note = now.notes().iter().find(|note| note.id == "note_mira_door");
-    assert_eq!(note.map(|note| note.to.clone()), Some(vec!["rowan".into()]));
+    let notes = now.globals().get::<Note>(&GlobalId);
+    let to_ids = notes.get("note_mira_door").map(|note| note.to_ids.clone());
+    assert_eq!(to_ids, Some(BTreeSet::from(["rowan".into()])));
     assert_eq!(value_on(pack(world), &mira(), "shop_day"), Some(0));
 }
 
