@@ -1,7 +1,7 @@
 //! Visits: the places an actor has stood, and the exits they saw there.
 
-use crate::state::component::{Component, Mut};
-use crate::state::entity;
+use crate::ecs::component::{Component, Mut};
+use crate::ecs::entity;
 use crate::Reason;
 
 /// A visit: a place an actor has stood at the end of a round, under the place's id, with the

@@ -2,9 +2,9 @@
 
 use std::collections::BTreeSet;
 
-use crate::state::change::{self, Change};
-use crate::state::component::{Component, Mut, Ref};
-use crate::state::entity;
+use crate::ecs::change::{self, Change};
+use crate::ecs::component::{Component, Mut, Ref};
+use crate::ecs::entity;
 use crate::Reason;
 
 /// The facts an actor knows, in order with no repeats.

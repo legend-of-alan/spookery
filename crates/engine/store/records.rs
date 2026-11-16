@@ -2,13 +2,13 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::ecs::component::meter::MeterDef;
+use crate::ecs::id::ActorId;
+use crate::ecs::MemoryLine;
 use crate::entity;
 use crate::intent::Intent;
 use crate::rules::effect::Effect;
 use crate::rules::gate;
-use crate::state::component::meter::MeterDef;
-use crate::state::id::ActorId;
-use crate::state::MemoryLine;
 
 /// One meter a migrate added, stored at that meter's `start`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

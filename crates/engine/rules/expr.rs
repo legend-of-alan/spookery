@@ -1,14 +1,14 @@
 //! Dice and arithmetic inside a rule number.
 
 use crate::canon::Canon;
+use crate::ecs::id::ActorId;
+use crate::ecs::{self, component};
 use crate::entity;
 use crate::intent::Target;
 use crate::rules::context::Context;
 use crate::rules::grammar;
 use crate::rules::roll::Outcome;
 use crate::rules::rule::LineColumn;
-use crate::state::id::ActorId;
-use crate::state::{component, State};
 use crate::Reason;
 
 /// Faces for one expression. `begin` starts a new roll seed. `note` records the shown line.
@@ -20,7 +20,7 @@ pub(crate) trait Dice {
     fn resist(
         &mut self,
         canon: &Canon,
-        state: &State,
+        world: &ecs::World,
         actor_id: &ActorId,
         check_id: &str,
         threshold: i64,
@@ -42,7 +42,7 @@ impl Dice for NoDice {
     fn resist(
         &mut self,
         _: &Canon,
-        _: &State,
+        _: &ecs::World,
         _: &ActorId,
         _: &str,
         _: i64,
@@ -191,7 +191,7 @@ fn negate_body(body: &str) -> String {
 
 fn read_meter(context: &Context, of: &grammar::Object, key: &str) -> Result<i64, Reason> {
     let id = resolve_entity(context, of)?;
-    (context.state.entities().get::<component::Meter>(&id)).value(key)
+    (context.world.entities().get::<component::Meter>(&id)).value(key)
 }
 
 /// `id: target` is the intent's target token. Any other id is itself.
@@ -251,7 +251,7 @@ pub(crate) fn resolve_actor<'a>(
 /// Where the acting actor stands: a place id, or an exit's address while they walk.
 pub(crate) fn resolve_here<'a>(context: &Context<'_, 'a>) -> Result<&'a str, Reason> {
     let actor_id = context.intent.actor_id().ok_or(Reason::Schema)?;
-    let place = context.state.actors().get::<component::Place>(actor_id);
+    let place = context.world.actors().get::<component::Place>(actor_id);
     place.get().ok_or(Reason::UnknownId)
 }
 

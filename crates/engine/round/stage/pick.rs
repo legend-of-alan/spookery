@@ -3,6 +3,7 @@
 use std::collections::BTreeSet;
 
 use crate::canon::Canon;
+use crate::ecs::{self, component, Presence};
 use crate::intent::{Intent, Target, Viewer};
 use crate::rules::context::Context;
 use crate::rules::effect::EffectKind;
@@ -11,7 +12,6 @@ use crate::rules::gate;
 use crate::rules::habits::{self, is_player_at};
 use crate::rules::rule::{TargetKind, When};
 use crate::rules::travel::find_exit;
-use crate::state::{component, Presence, State};
 use crate::Reason;
 
 use crate::round::dice::shuffle_key;
@@ -22,17 +22,17 @@ use crate::round::stage::apply::refuse;
 /// the cut is refused `BUDGET`.
 pub(crate) fn run(
     canon: &Canon,
-    state: &State,
+    world: &ecs::World,
     presence: &Presence,
     queue: &[Intent],
     log: &mut RoundLog,
 ) -> Result<Vec<Intent>, Reason> {
     let mut candidates = queue.to_vec();
-    candidates.extend(habits::intents(canon, state, presence));
+    candidates.extend(habits::intents(canon, world, presence));
     for intent in &mut candidates {
-        stamp_target(canon, state, presence, intent);
+        stamp_target(canon, world, presence, intent);
     }
-    candidates.sort_by_cached_key(|intent| priority(canon, state, presence, intent));
+    candidates.sort_by_cached_key(|intent| priority(canon, world, presence, intent));
     check_unique_ids(&candidates)?;
     let limit = (canon.budget.max_intents_applied as usize).min(candidates.len());
     for intent in candidates.split_off(limit) {
@@ -45,15 +45,15 @@ pub(crate) fn run(
 /// Fill an empty target from a preview of the intent's effects, a place it moves to, and
 /// its note recipients, so priority sees what it touches. A verb
 /// with no target keeps it empty: a filled one would make the gate refuse `SCHEMA`.
-fn stamp_target(canon: &Canon, state: &State, presence: &Presence, intent: &mut Intent) {
+fn stamp_target(canon: &Canon, world: &ecs::World, presence: &Presence, intent: &mut Intent) {
     let (verb, hint) = (&intent.move_id, gate::hint_of(&intent.target));
     let Some(actor) = &intent.actor else {
         return;
     };
-    let Ok(rule) = gate::pick(canon, state, actor, intent.source, verb, hint) else {
+    let Ok(rule) = gate::pick(canon, world, actor, intent.source, verb, hint) else {
         return;
     };
-    let context = Context::new(canon, state, presence, intent);
+    let context = Context::new(canon, world, presence, intent);
     let Ok(effects) = expand::preview(&context, rule) else {
         return;
     };
@@ -107,17 +107,17 @@ enum SeatedRank {
     Unclaimed,
 }
 
-fn priority(canon: &Canon, state: &State, presence: &Presence, intent: &Intent) -> Priority {
+fn priority(canon: &Canon, world: &ecs::World, presence: &Presence, intent: &Intent) -> Priority {
     // Player lines that share a priority keep the queue order. NPC ties still shuffle.
     let (actor, shuffle) = match &intent.actor {
         Some(Viewer::Player(_)) => (ActorRank::Player, [0u8; 32]),
         Some(Viewer::Npc(id)) => (
             ActorRank::Npc,
-            shuffle_key(&state.seed, state.round_index, id),
+            shuffle_key(&world.seed, world.round_index, id),
         ),
         None => (ActorRank::Npc, [0u8; 32]),
     };
-    let claim = if touches_seated_player(canon, state, presence, intent) {
+    let claim = if touches_seated_player(canon, world, presence, intent) {
         SeatedRank::Claimed
     } else {
         SeatedRank::Unclaimed
@@ -131,7 +131,7 @@ fn priority(canon: &Canon, state: &State, presence: &Presence, intent: &Intent) 
 
 fn touches_seated_player(
     canon: &Canon,
-    state: &State,
+    world: &ecs::World,
     presence: &Presence,
     intent: &Intent,
 ) -> bool {
@@ -139,12 +139,12 @@ fn touches_seated_player(
     let target_hit = match &intent.target {
         Target::Actor(id) => present.contains(id),
         Target::Item(id) => present.iter().any(|actor| *actor == **id),
-        Target::Place(place) => is_player_at(state, presence, place.as_str()),
+        Target::Place(place) => is_player_at(world, presence, place.as_str()),
         Target::Exit(exit_id) => intent
             .actor_id()
-            .and_then(|id| state.actors().get::<component::Place>(id).get())
+            .and_then(|id| world.actors().get::<component::Place>(id).get())
             .and_then(|place| find_exit(canon, place, exit_id))
-            .is_some_and(|exit| is_player_at(state, presence, &exit.to)),
+            .is_some_and(|exit| is_player_at(world, presence, &exit.to)),
         _ => false,
     };
     let message_hit = intent

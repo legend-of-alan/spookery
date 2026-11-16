@@ -1,4 +1,4 @@
-use spookery_engine::testing::state_of;
+use spookery_engine::testing::world_of;
 use std::fs;
 use std::path::Path;
 
@@ -53,7 +53,7 @@ fn the_host_text_lists_the_meters(world: &mut World) {
 #[then(expr = "the host text lists the door note")]
 fn the_host_text_lists_the_door_note(world: &mut World) {
     assert_eq!(world.stdout, HOST);
-    let now = state_of(table::pack(world));
+    let now = world_of(table::pack(world));
     assert_eq!(now.round_index, 13);
     assert_eq!(now.world_time, 1860);
     assert_eq!(now.last_round_at, "2026-01-01T00:00:00Z");
@@ -203,7 +203,7 @@ fn the_player_resume_lists_the_door_message(world: &mut World) {
 #[then(expr = "the player resume for {string} does not list {string}")]
 fn the_player_resume_for_does_not_list(world: &mut World, actor: String, note: String) {
     let pack = table::pack(world);
-    let now = state_of(pack);
+    let now = world_of(pack);
     assert!(
         now.notes().iter().any(|message| message.id == note),
         "the save has no {note}"
@@ -215,7 +215,7 @@ fn the_player_resume_for_does_not_list(world: &mut World, actor: String, note: S
 #[then(expr = "the perceive view for {string} does not list {string}")]
 fn the_perceive_view_for_does_not_list(world: &mut World, actor: String, note: String) {
     let pack = table::pack(world);
-    let opened = spookery_engine::World::peek(pack).unwrap();
+    let opened = spookery_engine::Session::peek(pack).unwrap();
     let view = opened.perceive(&Presence::default(), &actor).unwrap();
     assert!(
         view.notes.iter().all(|message| message.id != note),
@@ -252,7 +252,7 @@ fn the_perceive_view_does_not_list_the_fact(world: &mut World, actor: String, fa
 }
 
 fn view_has_fact(world: &World, actor: &str, fact_id: &str) -> bool {
-    let opened = spookery_engine::World::peek(table::pack(world)).unwrap();
+    let opened = spookery_engine::Session::peek(table::pack(world)).unwrap();
     let view = opened.perceive(&Presence::default(), actor).unwrap();
     view.known_facts.iter().any(|fact| fact.id == fact_id)
 }
@@ -284,7 +284,7 @@ fn rewrite_mira(pack: &Path, from: &str, to: &str) {
 #[then(expr = "the shop lists the oil and the rooms do not")]
 fn the_shop_lists_the_oil(world: &mut World) {
     let pack = table::pack(world);
-    let opened = spookery_engine::World::peek(pack).unwrap();
+    let opened = spookery_engine::Session::peek(pack).unwrap();
     let shop = opened.perceive(&Presence::default(), "rowan").unwrap();
     assert_eq!(shop.place, "docks_shop");
     assert_eq!(

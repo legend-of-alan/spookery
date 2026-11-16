@@ -2,8 +2,8 @@
 //! trigger pass after each.
 
 use crate::canon::Canon;
+use crate::ecs::{self, PendingAction, Presence};
 use crate::intent::Intent;
-use crate::state::{PendingAction, Presence, State};
 use crate::Reason;
 
 use crate::round::dice::RoundDice;
@@ -13,13 +13,13 @@ use crate::round::stage::{apply, triggers};
 /// Finish every due action, earliest first.
 pub(crate) fn run(
     canon: &Canon,
-    state: &mut State,
+    world: &mut ecs::World,
     presence: &Presence,
     end: u64,
     dice: &mut RoundDice,
     log: &mut RoundLog,
 ) -> Result<(), Reason> {
-    let due_actions = crate::rules::travel::take_due_actions(state, end)?;
+    let due_actions = crate::rules::travel::take_due_actions(world, end)?;
     for due_action in due_actions {
         let PendingAction {
             verb,
@@ -28,13 +28,13 @@ pub(crate) fn run(
             rule,
         } = due_action.pending;
         let actor_id = &due_action.actor_id;
-        let intent = Intent::finish(state, actor_id, source, &verb, target)?;
+        let intent = Intent::finish(world, actor_id, source, &verb, target)?;
         let rule = canon.rules.get(&rule).ok_or(Reason::UnknownMove)?;
         let until = due_action.until;
         apply::finish(
-            canon, state, presence, &intent, rule, None, until, dice, log,
+            canon, world, presence, &intent, rule, None, until, dice, log,
         );
-        triggers::run(canon, state, presence, dice, log);
+        triggers::run(canon, world, presence, dice, log);
     }
     Ok(())
 }

@@ -2,12 +2,12 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::ecs::change::{self, Change};
+use crate::ecs::component::{Component, Mut, Ref};
+use crate::ecs::id::ActorId;
+use crate::ecs::prelude::*;
+use crate::ecs::{entity, Reader, Writer};
 use crate::intent::Target;
-use crate::state::change::{self, Change};
-use crate::state::component::{Component, Mut, Ref};
-use crate::state::id::ActorId;
-use crate::state::prelude::*;
-use crate::state::{entity, Reader, Writer};
 use crate::Reason;
 
 /// How many times an actor has acted, and the action they are still on.

@@ -9,14 +9,14 @@ use spookery_protocol::{CommandView, PlaceView};
 use crate::canon::Budget;
 use crate::canon::{load_canon, pack_rev, Canon};
 use crate::diagnostic::{error, first_reason, locate_nth, schema_error, Code, Diagnostic};
+use crate::ecs::id::{ActorId, PlaceId};
+use crate::ecs::{self, component, Presence, Save};
 use crate::entity;
 use crate::intent::{Intent, IntentArgs, Source, Target, Viewer};
 use crate::rules::context::Context;
 use crate::rules::effect::{payload_json, Effect};
 use crate::rules::gate;
 use crate::rules::rule::{Rule, TargetKind, When};
-use crate::state::id::{ActorId, PlaceId};
-use crate::state::{component, Presence, Save, State};
 use crate::store::journal;
 use crate::store::records::Record;
 use crate::store::save;
@@ -27,28 +27,30 @@ use spookery_protocol::{Audience, QueuedMove, Refusal, Speaker, PERCEIVE_BODY_CH
 /// One say, in characters. Four kibibytes still fits in an 8 KiB client message.
 const MAX_SAY_CHARS: usize = 4 * 1024;
 
-pub struct World<L = crate::PackGuard> {
+/// An open pack: its root, the ECS world its save reads into, the queued intents and the pack
+/// lock `L`, which is `()` for a session that only reads.
+pub struct Session<L = crate::PackGuard> {
     pub(crate) root: PathBuf,
-    pub(crate) state: State,
+    pub(crate) world: ecs::World,
     pub(crate) queue: Vec<Intent>,
     warning: Option<&'static str>,
     pub(crate) lock: L,
 }
 
-impl World {
+impl Session {
     /// Open the pack at the journal tip. `save.yaml` stays the last checkpoint.
     /// Records after that checkpoint are in the live bundle, so closed bundles stay unread.
     pub fn resume(root: &Path, lock: crate::PackGuard) -> Result<Self, Reason> {
-        let World {
+        let Session {
             root,
-            state,
+            world,
             queue,
             warning,
             lock: (),
         } = crate::round::replay::open_at_tip(root, &lock)?;
-        Ok(World {
+        Ok(Session {
             root,
-            state,
+            world,
             queue,
             warning,
             lock,
@@ -98,7 +100,7 @@ impl World {
         audience: &Audience,
         text: &str,
     ) -> Result<TapeRecord, Refusal> {
-        let actors = self.state.actors();
+        let actors = self.world.actors();
         if !actors.get::<component::ControlType>(actor_id).is_pc() {
             return Err(Reason::Schema.into());
         }
@@ -107,8 +109,8 @@ impl World {
             return Ok(self.append_speech(presence, from, Some(actor_id), Some(audience), text)?);
         };
         let viewer = Viewer::Player(actor_id.clone());
-        let mut ids = gate::list_ids(self.canon(), &self.state, presence, &viewer);
-        let actors = self.state.actors();
+        let mut ids = gate::list_ids(self.canon(), &self.world, presence, &viewer);
+        let actors = self.world.actors();
         ids.retain(|named_id| actors.contains(&ActorId::from(named_id.id.as_str())));
         let line = format!("{opening} {text}");
         let line = line.trim();
@@ -139,7 +141,7 @@ impl World {
         let from = match npc_id {
             None => Speaker::Gm,
             Some(id)
-                if self.state.actors().get::<component::ControlType>(id).get()
+                if self.world.actors().get::<component::ControlType>(id).get()
                     == Some(component::ControlType::Npc) =>
             {
                 Speaker::Npc(id.to_string())
@@ -161,7 +163,7 @@ impl World {
         text: &str,
     ) -> Result<TapeRecord, Reason> {
         let text = check_speech_text(text)?.to_string();
-        let actors = self.state.actors();
+        let actors = self.world.actors();
         let here = speaker.and_then(|speaker| actors.get::<component::Place>(speaker).get());
         let to = match audience {
             Some(Audience::Actor(actor)) if !actors.contains(&ActorId::from(actor.as_str())) => {
@@ -171,14 +173,14 @@ impl World {
                 return Err(Reason::Schema);
             }
             Some(Audience::Place(place))
-                if !self.state.places().contains(&PlaceId::from(place.as_str())) =>
+                if !self.world.places().contains(&PlaceId::from(place.as_str())) =>
             {
                 return Err(Reason::Schema);
             }
             Some(audience) => audience.clone(),
             None => Audience::Place(here.ok_or(Reason::Schema)?.to_string()),
         };
-        let recipient_ids = speech_recipients(&self.state, presence, speaker, &to);
+        let recipient_ids = speech_recipients(&self.world, presence, speaker, &to);
         let from_name = match speaker {
             Some(id) => self.canon().name(id.as_str()).ok_or(Reason::UnknownId)?,
             None => "",
@@ -190,20 +192,20 @@ impl World {
             to,
             recipient_ids,
             text,
-            round_index: self.state.round_index,
-            world_time: self.state.world_time,
+            round_index: self.world.round_index,
+            world_time: self.world.world_time,
         };
         append_record(&self.root, record)
     }
 }
 
-impl<L> World<L> {
+impl<L> Session<L> {
     pub fn root(&self) -> &Path {
         &self.root
     }
 
     pub fn canon(&self) -> &Canon {
-        self.state.canon()
+        self.world.canon()
     }
 
     pub fn pack_summary(&self) -> spookery_protocol::PackSummary {
@@ -217,7 +219,7 @@ impl<L> World<L> {
 
     /// Every PC in the cast.
     pub fn pcs(&self) -> impl Iterator<Item = &ActorId> {
-        let actors = self.state.actors();
+        let actors = self.world.actors();
         let pcs = actors.query::<(ActorId, &component::ControlType)>();
         (pcs.iter())
             .filter(|(_, control_type)| matches!(control_type, component::ControlType::Pc))
@@ -236,13 +238,13 @@ impl<L> World<L> {
         Ok(id.map(ActorId::from))
     }
 
-    pub fn state(&self) -> &State {
-        &self.state
+    pub fn world(&self) -> &ecs::World {
+        &self.world
     }
 
-    /// Replace the in-memory state after a replay. This does not write `save.yaml`.
-    pub(crate) fn set_state(&mut self, state: State) {
-        self.state = state;
+    /// Replace the ECS world after a replay. This does not write `save.yaml`.
+    pub(crate) fn set_world(&mut self, world: ecs::World) {
+        self.world = world;
     }
 
     /// Gate a player's line with `presence` seated, then queue it. The line is an intent
@@ -261,7 +263,7 @@ impl<L> World<L> {
         let words = target.filter(|token| !token.is_empty());
         let viewer = Viewer::Player(actor_id.clone());
         let ids = match words {
-            Some(_) => gate::list_ids(self.canon(), &self.state, presence, &viewer),
+            Some(_) => gate::list_ids(self.canon(), &self.world, presence, &viewer),
             None => Vec::new(),
         };
         let match_id = match words {
@@ -270,7 +272,7 @@ impl<L> World<L> {
         };
         let id = match_id.clone().unwrap_or_default();
         let token = id.as_deref().or(words);
-        let Ok(mut intent) = Intent::player(&self.state, actor_id, verb, token) else {
+        let Ok(mut intent) = Intent::player(&self.world, actor_id, verb, token) else {
             return Err(gate::Refusal {
                 id: String::new(),
                 code: Reason::Schema,
@@ -287,12 +289,12 @@ impl<L> World<L> {
             if token.is_some() || self.queue.iter().any(|queued| queued.id == intent.id) {
                 return Err(gate::Refusal::new(&intent, Reason::Schema));
             }
-            gate::admit_cancel(&Context::new(self.canon(), &self.state, presence, &intent))?;
+            gate::admit_cancel(&Context::new(self.canon(), &self.world, presence, &intent))?;
         } else {
             let shaped = self.shape_line(&intent, token);
             let (rule, target) = shaped.map_err(|code| gate::Refusal::new(&intent, code))?;
             intent.target = target;
-            let context = Context::new(self.canon(), &self.state, presence, &intent);
+            let context = Context::new(self.canon(), &self.world, presence, &intent);
             gate::admit(&context, rule, Some(&ids))?;
         }
         let queued = QueuedMove {
@@ -311,12 +313,12 @@ impl<L> World<L> {
         let Some(viewer) = &line.actor else {
             return Err(Reason::Schema);
         };
-        let actors = self.state.actors();
+        let actors = self.world.actors();
         if !(actors.get::<component::ControlType>(viewer.actor_id())).is_pc() {
             return Err(Reason::Schema);
         }
         let (actor, verb) = (viewer, &line.move_id);
-        let rule = gate::pick(self.canon(), &self.state, actor, line.source, verb, token)?;
+        let rule = gate::pick(self.canon(), &self.world, actor, line.source, verb, token)?;
         let target = target_for(rule, token)?;
         if self.queue.iter().any(|queued| queued.id == line.id) {
             return Err(Reason::Schema);
@@ -341,11 +343,11 @@ impl<L> World<L> {
             .move_id
             .filter(|m| !m.is_empty())
             .ok_or(Reason::Schema)?;
-        let control = self.state.actors().get::<component::ControlType>(&actor_id);
+        let control = self.world.actors().get::<component::ControlType>(&actor_id);
         let viewer = control.viewer().ok_or(Reason::UnknownId)?;
         let token = spec.target.as_deref().filter(|t| !t.is_empty());
-        let (canon, state) = (self.canon(), &self.state);
-        let rule = gate::pick(canon, state, &viewer, Source::Gm, &move_id, token)?;
+        let (canon, world) = (self.canon(), &self.world);
+        let rule = gate::pick(canon, world, &viewer, Source::Gm, &move_id, token)?;
         let target = target_for(rule, token)?;
         let id = match spec.id {
             Some(id) if !id.is_empty() => id,
@@ -358,7 +360,7 @@ impl<L> World<L> {
         let round_index = match spec.round_index {
             Some(index) => index,
             None => self
-                .state
+                .world
                 .round_index
                 .checked_add(1)
                 .ok_or(Reason::Schema)?,
@@ -378,7 +380,7 @@ impl<L> World<L> {
             args,
             rationale_code: spec.rationale_code,
         };
-        let context = Context::new(canon, state, presence, &intent);
+        let context = Context::new(canon, world, presence, &intent);
         gate::admit(&context, rule, None).map_err(|refusal| refusal.code)?;
         self.queue_intent(intent);
         Ok(QueuedMove {
@@ -427,12 +429,12 @@ impl<L> World<L> {
         presence: &Presence,
         actor_id: &ActorId,
     ) -> Result<Vec<CommandView>, Reason> {
-        crate::rules::lines::help(self.canon(), &self.state, presence, actor_id)
+        crate::rules::lines::help(self.canon(), &self.world, presence, actor_id)
     }
 
     /// The `map` for `actor_id`: each place they visited, with the exits they saw there last.
     pub fn map(&self, actor_id: &ActorId) -> Result<Vec<PlaceView>, Reason> {
-        crate::rules::lines::map(self.canon(), &self.state, actor_id)
+        crate::rules::lines::map(self.canon(), &self.world, actor_id)
     }
 
     pub fn perceive_trimmed(
@@ -462,10 +464,10 @@ impl<L> World<L> {
     /// `meter <entity> <id> <value> <max>`, the entity spelled as a rule's `of` names it.
     /// A working copy of the save with a round open on it under the pack's budget. A stage that
     /// refuses, or a commit that fails, drops the copy and the save stays as it was.
-    pub(crate) fn begin_round(&self) -> State {
-        let mut state = self.state.clone();
-        state.open_round(&self.canon().budget);
-        state
+    pub(crate) fn begin_round(&self) -> ecs::World {
+        let mut world = self.world.clone();
+        world.open_round(&self.canon().budget);
+        world
     }
 
     fn carried_meter_rows(&self) -> Vec<String> {
@@ -482,7 +484,7 @@ impl<L> World<L> {
         carried
             .chain(world_meters)
             .filter_map(|(carrier, id)| {
-                let meter = self.state.entities().get::<component::Meter>(&carrier);
+                let meter = self.world.entities().get::<component::Meter>(&carrier);
                 let value = meter.value(id).ok()?;
                 let max = self.canon().meter_def(carrier.as_ref(), id)?.max;
                 Some(format!("meter {carrier} {id} {value} {max}"))
@@ -492,7 +494,7 @@ impl<L> World<L> {
 
     /// Effect rows for `outputs`, which end at this world's `round_index`, then the meter rows.
     pub fn digest(&self, outputs: &[crate::RoundOutput]) -> String {
-        let start = self.state.round_index + 1 - outputs.len() as u64;
+        let start = self.world.round_index + 1 - outputs.len() as u64;
         let mut effects = Vec::new();
         for (offset, output) in outputs.iter().enumerate() {
             let round_index = start + offset as u64;
@@ -521,25 +523,25 @@ impl<L> World<L> {
     }
 }
 
-impl World<()> {
+impl Session<()> {
     /// Open the pack at the journal tip and write nothing, so the pack lock is not needed.
-    /// A read guard waits out a write in progress and drops once the World is built.
+    /// A read guard waits out a write in progress and drops once the session is built.
     /// A crash the writer has not recovered is read as it stands.
     ///
-    /// A peeked World holds no lock, so it cannot play a round:
+    /// A peeked session holds no lock, so it cannot play a round:
     ///
     /// ```compile_fail
     /// # let root = std::path::Path::new("pack");
     /// let presence = spookery_engine::Presence::default();
-    /// spookery_engine::World::peek(root).unwrap().play(&presence, "");
+    /// spookery_engine::Session::peek(root).unwrap().play(&presence, "");
     /// ```
-    pub fn peek(root: &Path) -> Result<World<()>, Reason> {
+    pub fn peek(root: &Path) -> Result<Session<()>, Reason> {
         let _read = crate::store::lock::lock_read(root)?;
         crate::round::replay::peek_at_tip(root)
     }
 
     /// The host text at the journal tip: effect rows from the journal, then the meter rows.
-    /// One read guard covers the World and the journal read, so both come from one state.
+    /// One read guard covers the session and the journal read, so both come from one save.
     pub fn peek_digest(root: &Path) -> Result<String, Reason> {
         let _read = crate::store::lock::lock_read(root)?;
         crate::round::replay::peek_at_tip(root)?.read_digest()
@@ -557,19 +559,19 @@ impl World<()> {
             load_save_file(root, Some(&canon), &now_bytes).map_err(|diags| first_reason(&diags))?;
         Ok(Self {
             root: root.to_path_buf(),
-            state: State::new(save, canon),
+            world: ecs::World::new(save, canon),
             queue: Vec::new(),
             warning: None,
             lock: (),
         })
     }
 
-    /// A live save from memory, for replay. Nothing is checked: each journal record's hash proves
-    /// the state it reaches.
-    pub(crate) fn from_parts(pack: &Path, state: State) -> Self {
+    /// A session on an ECS world from memory, for replay. Nothing is checked: each journal
+    /// record's hash proves the save it reaches.
+    pub(crate) fn from_parts(pack: &Path, world: ecs::World) -> Self {
         Self {
             root: pack.to_path_buf(),
-            state,
+            world,
             queue: Vec::new(),
             warning: None,
             lock: (),
@@ -579,7 +581,7 @@ impl World<()> {
 
 /// Seated players who hear this speech. A seated speaker is included.
 fn speech_recipients(
-    state: &State,
+    world: &ecs::World,
     presence: &Presence,
     speaker: Option<&ActorId>,
     audience: &Audience,
@@ -591,7 +593,7 @@ fn speech_recipients(
             ids.extend(seated.iter().map(ActorId::to_string));
         }
         Audience::Place(place) => {
-            let here = state.actors_at(place);
+            let here = world.actors_at(place);
             ids.extend(
                 seated
                     .iter()
@@ -634,15 +636,15 @@ fn check_speech_text(text: &str) -> Result<&str, Reason> {
 }
 
 /// Hash of the newest migrate in `live` past the checkpoint, or the save's own hash.
-fn tip_pack_rev<'a>(live: &'a [Record], state: &'a Save) -> &'a str {
+fn tip_pack_rev<'a>(live: &'a [Record], save: &'a Save) -> &'a str {
     live.iter()
         .rev()
-        .filter(|entry| entry.state_rev_after() > state.state_rev)
+        .filter(|entry| entry.state_rev_after() > save.state_rev)
         .find_map(|entry| match entry {
             Record::Migrate(record) => Some(record.pack_rev_after.as_str()),
             _ => None,
         })
-        .unwrap_or(&state.pack_rev)
+        .unwrap_or(&save.pack_rev)
 }
 
 /// `Some` when the canon files are not the journal tip's hash.
@@ -677,10 +679,10 @@ fn check_pack_rev(root: &Path, tip: &str, bytes: &[u8]) -> Option<Diagnostic> {
 }
 
 /// The on-disk save is a checkpoint. Later live records still have to be replayed.
-fn journal_continues(live: &[Record], state: &Save) -> bool {
+fn journal_continues(live: &[Record], save: &Save) -> bool {
     live.iter().any(|entry| match entry {
         Record::Checkpoint(_) => false,
-        _ => entry.state_rev_after() > state.state_rev,
+        _ => entry.state_rev_after() > save.state_rev,
     })
 }
 
@@ -700,21 +702,21 @@ fn load_save_file(
         )
         .at_path("schema")]
     })?;
-    let state = save::parse(text)?;
+    let save = save::parse(text)?;
     let live = journal::read_live_records(root).unwrap_or_default();
-    let mut problems = check_save_text(&state, bytes);
-    if let Some(diag) = check_pack_rev(root, tip_pack_rev(&live, &state), bytes) {
+    let mut problems = check_save_text(&save, bytes);
+    if let Some(diag) = check_pack_rev(root, tip_pack_rev(&live, &save), bytes) {
         problems.insert(0, diag);
     }
     let migrate_follows = live.iter().any(|entry| {
-        matches!(entry, Record::Migrate(_)) && entry.state_rev_after() > state.state_rev
+        matches!(entry, Record::Migrate(_)) && entry.state_rev_after() > save.state_rev
     });
-    let continues = journal_continues(&live, &state);
+    let continues = journal_continues(&live, &save);
     let is_hand_edit = |diag: &Diagnostic| diag.code == Code::Error(Reason::HandEdit);
     if migrate_follows {
         problems.retain(|diag| !is_hand_edit(diag));
     } else if !problems.iter().any(is_hand_edit) {
-        match journal::edits_head(root, state.state_rev, bytes) {
+        match journal::edits_head(root, save.state_rev, bytes) {
             Ok(false) => {}
             Ok(true) => problems.push(
                 error(
@@ -737,12 +739,12 @@ fn load_save_file(
         }
     }
     if let Some(canon) = canon.filter(|_| !continues) {
-        if let Err(more) = save::check_save(&State::new(state.clone(), Arc::clone(canon))) {
+        if let Err(more) = save::check_save(&ecs::World::new(save.clone(), Arc::clone(canon))) {
             problems.extend(more);
         }
     }
     if problems.is_empty() {
-        Ok(state)
+        Ok(save)
     } else {
         Err(problems)
     }
@@ -781,10 +783,10 @@ pub fn check_pack(root: &Path) -> Vec<Diagnostic> {
     diags
 }
 
-fn check_save_text(state: &Save, bytes: &[u8]) -> Vec<Diagnostic> {
+fn check_save_text(save: &Save, bytes: &[u8]) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
     // Read as the file holds it: a save on its own has no canon to read its actors against.
-    let saved = serde_json::to_value(state).unwrap_or_default();
+    let saved = serde_json::to_value(save).unwrap_or_default();
     if saved["actors"]["control_type"].get("world").is_some() {
         let diag = schema_error(
             "state/save.yaml",
@@ -793,7 +795,7 @@ fn check_save_text(state: &Save, bytes: &[u8]) -> Vec<Diagnostic> {
         );
         diags.push(diag.at_path("actors.world"));
     }
-    match save::emit(state) {
+    match save::emit(save) {
         Ok(emitted) if emitted.as_bytes() != bytes => {
             let line = std::str::from_utf8(bytes)
                 .ok()

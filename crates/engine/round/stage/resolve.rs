@@ -7,10 +7,10 @@ use crate::rules::gate;
 use crate::rules::roll::classify;
 
 use crate::canon::Canon;
+use crate::ecs::{self, Presence};
 use crate::intent::{Intent, Target};
 use crate::rules::roll::Roll;
 use crate::rules::rule::{RollSpec, Rule, When};
-use crate::state::{Presence, State};
 use crate::store::records::Step;
 use crate::Reason;
 
@@ -44,7 +44,7 @@ pub(crate) enum Resolution<'a> {
 /// and the save.
 struct Resolver<'c, 'a, 'r> {
     canon: &'c Canon,
-    state: &'a State,
+    world: &'a ecs::World,
     presence: &'a Presence,
     queue: &'a [Intent],
     rolled: BTreeMap<String, Roll>,
@@ -54,7 +54,7 @@ struct Resolver<'c, 'a, 'r> {
 
 pub(crate) fn run<'c>(
     canon: &'c Canon,
-    state: &State,
+    world: &ecs::World,
     presence: &Presence,
     picked: &'c [Intent],
     queue: &[Intent],
@@ -63,7 +63,7 @@ pub(crate) fn run<'c>(
 ) -> Vec<Candidate<'c>> {
     let mut resolver = Resolver {
         canon,
-        state,
+        world,
         presence,
         queue,
         rolled: BTreeMap::new(),
@@ -83,7 +83,7 @@ fn resolve_intent<'c>(resolver: &mut Resolver<'c, '_, '_>, intent: &'c Intent) -
     if gate::is_cancel(intent) {
         return Resolution::Cancel;
     }
-    let context = Context::new(resolver.canon, resolver.state, resolver.presence, intent);
+    let context = Context::new(resolver.canon, resolver.world, resolver.presence, intent);
     let rule = match gate::rule_of(&context) {
         Ok(rule) => rule,
         Err(refusal) => return Resolution::Refused(refusal),
@@ -132,10 +132,10 @@ fn roll_check(
     let out = match opposed {
         Some(total) => {
             let key = resolver.dice.next_key(rule_id, actor_id);
-            let (canon, state) = (resolver.canon, resolver.state);
+            let (canon, world) = (resolver.canon, resolver.world);
             resolver
                 .dice
-                .roll_check(canon, state, key, &roll.check, total, None)?
+                .roll_check(canon, world, key, &roll.check, total, None)?
         }
         None => resolver
             .dice
@@ -150,9 +150,9 @@ fn opposing_total(resolver: &mut Resolver, intent: &Intent) -> Result<Option<i64
     let Target::Actor(named) = &intent.target else {
         return Ok(None);
     };
-    let (canon, state, presence, queue) = (
+    let (canon, world, presence, queue) = (
         resolver.canon,
-        resolver.state,
+        resolver.world,
         resolver.presence,
         resolver.queue,
     );
@@ -160,7 +160,7 @@ fn opposing_total(resolver: &mut Resolver, intent: &Intent) -> Result<Option<i64
         if other.id == intent.id || other.actor_id() != Some(named) {
             return None;
         }
-        let rule = gate::rule_of(&Context::new(canon, state, presence, other)).ok()?;
+        let rule = gate::rule_of(&Context::new(canon, world, presence, other)).ok()?;
         // Only a verb opposes: a habit is never the actor's answer to a move.
         if !matches!(rule.when, When::Verb { .. }) {
             return None;
@@ -175,7 +175,7 @@ fn opposing_total(resolver: &mut Resolver, intent: &Intent) -> Result<Option<i64
     let key = resolver.dice.next_key(rule_id, opposing.actor_id());
     let out = resolver
         .dice
-        .roll_check(canon, state, key, check_id, 0, None)?;
+        .roll_check(canon, world, key, check_id, 0, None)?;
     let total = out.total;
     resolver.rolled.insert(opposing.id.clone(), out);
     Ok(Some(total))

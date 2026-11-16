@@ -1,5 +1,5 @@
 use spookery_engine::testing::copy_pack;
-use spookery_engine::{lock_pack, Reason, World};
+use spookery_engine::{lock_pack, Reason};
 use spookery_server::{Config, Error};
 use std::{fs, io::*, net::*, path::Path};
 use tokio::sync::oneshot;
@@ -34,8 +34,8 @@ fn host(
     let mut config = Config::new("127.0.0.1:0".parse().unwrap());
     config.out = Box::new(writer);
     let (stop, stopped) = oneshot::channel::<()>();
-    let world = World::resume(dir, lock_pack(dir).unwrap()).unwrap();
-    let served = tokio::spawn(spookery_server::serve(world, config, async {
+    let session = spookery_engine::Session::resume(dir, lock_pack(dir).unwrap()).unwrap();
+    let served = tokio::spawn(spookery_server::serve(session, config, async {
         stopped.await.unwrap()
     }));
     let mut line = String::new();
@@ -60,12 +60,30 @@ async fn two_worlds_serve_on_port_zero_and_stop_independently() {
     send_until_perceive(&mut c1, "wait", none.clone());
     send_until_perceive(&mut c2, "claim", rowan);
     send_until_perceive(&mut c2, "wait", none.clone());
-    assert_eq!(World::peek(&first_dir).unwrap().state().round_index, 1);
-    assert_eq!(World::peek(&second_dir).unwrap().state().round_index, 1);
+    assert_eq!(
+        spookery_engine::Session::peek(&first_dir)
+            .unwrap()
+            .world()
+            .round_index,
+        1
+    );
+    assert_eq!(
+        spookery_engine::Session::peek(&second_dir)
+            .unwrap()
+            .world()
+            .round_index,
+        1
+    );
     stop1.send(()).unwrap();
     first.await.unwrap().unwrap();
     send_until_perceive(&mut c2, "wait", none);
-    assert_eq!(World::peek(&second_dir).unwrap().state().round_index, 2);
+    assert_eq!(
+        spookery_engine::Session::peek(&second_dir)
+            .unwrap()
+            .world()
+            .round_index,
+        2
+    );
     stop2.send(()).unwrap();
     second.await.unwrap().unwrap();
     fs::remove_dir_all(&first_dir).unwrap();

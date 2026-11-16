@@ -1,8 +1,8 @@
 //! Where each actor stands.
 
-use crate::state::change::Change;
-use crate::state::component::{text_value, Component, Mut, Ref};
-use crate::state::entity;
+use crate::ecs::change::Change;
+use crate::ecs::component::{text_value, Component, Mut, Ref};
+use crate::ecs::entity;
 use crate::Reason;
 
 /// Where an actor stands: a place id, or `exit:<place>.<exit>` while they walk.

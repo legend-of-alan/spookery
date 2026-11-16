@@ -4,7 +4,7 @@ use std::fs;
 use std::path::Path;
 
 use cucumber::{given, then, when};
-use spookery_engine::testing::{stamp_pack_rev, state_of};
+use spookery_engine::testing::{stamp_pack_rev, world_of};
 use spookery_engine::{component, entity, ActorId, Meter, Modifier};
 
 use super::common::replace_in_file;
@@ -66,7 +66,7 @@ fn hit_rowan(world: &mut World, moves: &[(&str, &str)]) {
 }
 
 fn modifier_of(pack: &Path, id: &str) -> Option<Modifier> {
-    let now = state_of(pack);
+    let now = world_of(pack);
     let rowan = "rowan".into();
     now.actors().get::<Modifier>(&rowan).get(id).cloned()
 }
@@ -79,7 +79,7 @@ fn stacks_of(pack: &Path, id: &str) -> Vec<i64> {
 
 /// How far rowan's modifiers hold `meter` below its stored base and offset.
 fn lowered(pack: &Path, meter: &str) -> i64 {
-    let now = state_of(pack);
+    let now = world_of(pack);
     let rowan = entity::Id::Actor("rowan".into());
     let actor = "rowan".into();
     let meters = now.actors().get::<Meter>(&actor);
@@ -91,7 +91,7 @@ fn lowered(pack: &Path, meter: &str) -> i64 {
 /// Ticks from the latest round until modifier `id` expires.
 fn ticks_left(pack: &Path, id: &str) -> u64 {
     let until = modifier_of(pack, id).unwrap().until;
-    until.saturating_sub(state_of(pack).world_time)
+    until.saturating_sub(world_of(pack).world_time)
 }
 
 /// Give rowan these stacks of modifier `id`, expiring `left` ticks from now, `left` being the longest so far.
@@ -398,7 +398,7 @@ fn rowan_has_no_fatigue(world: &mut World) {
     assert_eq!(lowered(pack(world), "vigor"), 0);
     let rowan = entity::Id::Actor("rowan".into());
     assert_eq!(
-        state_of(pack(world))
+        world_of(pack(world))
             .entities()
             .get::<component::Meter>(&rowan)
             .value("vigor"),
@@ -408,14 +408,14 @@ fn rowan_has_no_fatigue(world: &mut World) {
 
 #[then(expr = "rowan has neither fatigue nor soaked")]
 fn rowan_has_neither(world: &mut World) {
-    let now = state_of(pack(world));
+    let now = world_of(pack(world));
     let rowan = "rowan".into();
     assert!(now.actors().get::<Modifier>(&rowan).iter().next().is_none());
 }
 
 #[then(expr = "rowan has no luck and the world has no tide")]
 fn neither_keeps_the_dropped_meter(world: &mut World) {
-    let now = state_of(pack(world));
+    let now = world_of(pack(world));
     let rowan = "rowan".into();
     let meters = now.actors().get::<Meter>(&rowan);
     assert!(!meters.contains("luck"));
@@ -553,7 +553,7 @@ fn rowan_pays_one_vigor(world: &mut World) {
 
 fn strained(pack: &Path, flag: &str) -> bool {
     let strain = entity::Id::Story("strain".into());
-    state_of(pack)
+    world_of(pack)
         .entities()
         .get::<component::Flag>(&strain)
         .contains(flag)

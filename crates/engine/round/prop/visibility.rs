@@ -16,11 +16,11 @@
 use std::path::PathBuf;
 
 use crate::canon::Canon;
+use crate::ecs::id::{ActorId, PlaceId};
+use crate::ecs::{self, component, sort_unique, Note, Presence};
 use crate::intent::Viewer;
 use crate::rules::perceive::{perceive_as, View};
-use crate::state::id::{ActorId, PlaceId};
-use crate::state::{component, sort_unique, Note, Presence, State};
-use crate::world::World;
+use crate::session;
 
 use super::support::runner_config;
 use proptest::prelude::*;
@@ -43,31 +43,31 @@ struct Scene {
 
 #[test]
 fn no_hidden_fact_reaches_a_player() {
-    let world = World::open(&docks()).expect("docks pack opens");
-    let actors: Vec<ActorId> = world
-        .state()
+    let session = session::Session::open(&docks()).expect("docks pack opens");
+    let actors: Vec<ActorId> = session
+        .world()
         .actors()
         .query::<ActorId>()
         .iter()
         .cloned()
         .collect();
-    let places: Vec<PlaceId> = world.canon().places.keys().cloned().collect();
-    let facts: Vec<String> = world.canon().facts.keys().cloned().collect();
+    let places: Vec<PlaceId> = session.canon().places.keys().cloned().collect();
+    let facts: Vec<String> = session.canon().facts.keys().cloned().collect();
     assert!(
         !actors.is_empty() && !places.is_empty() && !facts.is_empty(),
         "the pack needs actors, places, and facts"
     );
-    let canon = world.canon().clone();
-    let state = world.state().clone();
+    let canon = session.canon().clone();
+    let world = session.world().clone();
     let mut runner = TestRunner::new(runner_config());
     runner
         .run(
             &pick_scene(actors.len(), places.len(), facts.len()),
             |scene| {
                 let mut canon = canon.clone();
-                let mut state = state.clone();
-                apply_scene(&mut canon, &mut state, &actors, &places, &facts, &scene);
-                assert_hidden_stays_hidden(&canon, &state)
+                let mut world = world.clone();
+                apply_scene(&mut canon, &mut world, &actors, &places, &facts, &scene);
+                assert_hidden_stays_hidden(&canon, &world)
             },
         )
         .unwrap_or_else(|err| panic!("visibility property failed: {err}"));
@@ -114,7 +114,7 @@ fn pick_note(
 
 fn apply_scene(
     canon: &mut Canon,
-    state: &mut State,
+    world: &mut ecs::World,
     actors: &[ActorId],
     places: &[PlaceId],
     facts: &[String],
@@ -127,15 +127,15 @@ fn apply_scene(
     }
     // No writer forgets a fact or takes a note back, so the scene starts from the save as the
     // file holds it with neither.
-    let mut save = serde_json::to_value(&**state).expect("the save serializes");
+    let mut save = serde_json::to_value(&**world).expect("the save serializes");
     save["actors"]["known_facts"] = serde_json::json!({});
     save["notes"] = serde_json::json!([]);
-    **state = serde_json::from_value(save).expect("the save deserializes");
+    **world = serde_json::from_value(save).expect("the save deserializes");
     for (actor_id, place_index) in actors.iter().zip(&scene.place_of) {
-        let current = state.actors().get::<component::Place>(actor_id).get();
+        let current = world.actors().get::<component::Place>(actor_id).get();
         if current.is_some() {
             let place = places[place_index % places.len()].as_str();
-            state
+            world
                 .actors_mut()
                 .get_mut::<component::Place>(actor_id)
                 .set(place)
@@ -143,10 +143,10 @@ fn apply_scene(
         }
     }
     for (actor_id, known) in actors.iter().zip(&scene.known) {
-        if !state.actors().contains(actor_id) {
+        if !world.actors().contains(actor_id) {
             continue;
         }
-        state
+        world
             .actors_mut()
             .get_mut::<component::KnownFacts>(actor_id)
             .learn(known.iter().map(|index| &facts[index % facts.len()]))
@@ -165,7 +165,7 @@ fn apply_scene(
             .map(|actor| actors[actor % actors.len()].clone())
             .collect();
         sort_unique(&mut to);
-        state
+        world
             .notes_mut()
             .leave(Note {
                 id: format!("note-{index}"),
@@ -178,16 +178,16 @@ fn apply_scene(
     }
 }
 
-fn assert_hidden_stays_hidden(canon: &Canon, state: &State) -> Result<(), TestCaseError> {
-    let actors = state.actors().query::<(ActorId, &component::ControlType)>();
+fn assert_hidden_stays_hidden(canon: &Canon, world: &ecs::World) -> Result<(), TestCaseError> {
+    let actors = world.actors().query::<(ActorId, &component::ControlType)>();
     for (pc, control_type) in actors.iter() {
         if !matches!(control_type, component::ControlType::Pc) {
             continue;
         }
-        let known_facts = state.actors().get::<component::KnownFacts>(pc).get();
+        let known_facts = world.actors().get::<component::KnownFacts>(pc).get();
         let view = perceive_as(
             canon,
-            state,
+            world,
             &Presence::default(),
             &Viewer::Player(pc.clone()),
         )

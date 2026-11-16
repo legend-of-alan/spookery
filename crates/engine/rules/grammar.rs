@@ -1,6 +1,6 @@
 //! The words a pack line names its actor, its owner and its receiver with: `subject:`, `of:` and `to:`.
 
-use crate::state::id::{ActorId, ExitId, PlaceId, StoryId};
+use crate::ecs::id::{ActorId, ExitId, PlaceId, StoryId};
 
 /// The actor an arrive or leave watch names with `subject:`. Omitted, it is `any`.
 #[derive(Clone, Debug, PartialEq, Eq)]

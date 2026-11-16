@@ -4,8 +4,8 @@ use std::fs;
 use std::path::Path;
 
 use cucumber::{given, then, when};
-use spookery_engine::testing::{place_of, state_of};
-use spookery_engine::{component, entity, Presence, World as Opened};
+use spookery_engine::testing::{place_of, world_of};
+use spookery_engine::{component, entity, Presence};
 
 use super::common::replace_in_file;
 use super::meters::{assert_refused, migrate_and_play};
@@ -191,7 +191,7 @@ fn the_rule_runs(world: &mut World) {
 #[then(expr = "the GM sees dread change on the ending story")]
 fn the_gm_sees_dread(world: &mut World) {
     assert_gm_saw(world, "story_meter ending dread");
-    let now = state_of(world.pack.as_deref().unwrap());
+    let now = world_of(world.pack.as_deref().unwrap());
     let ending = "ending".into();
     let meters = now.stories().get::<component::Meter>(&ending);
     assert_eq!(meters.get("dread").unwrap().offset, 1);
@@ -200,7 +200,7 @@ fn the_gm_sees_dread(world: &mut World) {
 #[then(expr = "no player's view lists dread")]
 fn no_view_lists_dread(world: &mut World) {
     let pack = world.pack.clone().unwrap();
-    let opened = Opened::peek(&pack).unwrap();
+    let opened = spookery_engine::Session::peek(&pack).unwrap();
     for id in ["rowan", "wren", "harbormouse"] {
         let view = opened.perceive(&Presence::default(), id).unwrap();
         let mut listed = view.meters.iter().chain(&view.world_meters);
@@ -221,7 +221,7 @@ fn a_rule_tests_the_flag(world: &mut World, key: String, of: String) {
         ),
     );
     migrate_and_play(world, vec![intent("test", "rowan", "test_mark", None)]);
-    assert!(state_of(&pack)
+    assert!(world_of(&pack)
         .entities()
         .get::<component::Flag>(&entity::Id::Global)
         .contains("mark_seen"));
@@ -355,7 +355,7 @@ fn a_rule_gives_lamp_oil(world: &mut World, of: String) {
 
 #[then(expr = "the attic holds 1 lamp_oil")]
 fn the_attic_holds_lamp_oil(world: &mut World) {
-    let now = state_of(world.pack.as_deref().unwrap());
+    let now = world_of(world.pack.as_deref().unwrap());
     let attic = "attic".into();
     let held = now.places().get::<component::Item>(&attic).get("lamp_oil");
     assert_eq!(held, Some(&1));
@@ -394,7 +394,8 @@ fn a_rule_leaves_a_note_in_the_attic(world: &mut World) {
 #[then(expr = "rowan, standing in the attic, perceives the note")]
 fn rowan_in_the_attic_perceives_the_note(world: &mut World) {
     let pack = world.pack.clone().unwrap();
-    let opened = Opened::peek(&pack).unwrap_or_else(|err| panic!("peek: {err:?}"));
+    let opened =
+        spookery_engine::Session::peek(&pack).unwrap_or_else(|err| panic!("peek: {err:?}"));
     let view = opened.perceive(&Presence::default(), "rowan").unwrap();
     let ids: Vec<&str> = view.notes.iter().map(|note| note.id.as_str()).collect();
     assert!(ids.contains(&"note_attic"), "{ids:?}");

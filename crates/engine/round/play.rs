@@ -4,15 +4,15 @@ use std::path::Path;
 use std::sync::Arc;
 
 use crate::canon::{Budget, Canon};
+use crate::ecs::{self, component, Presence};
 use crate::intent::Intent;
 use crate::rules::effect::Effect;
 use crate::rules::roll::MoveReport;
 use crate::rules::travel;
 use crate::rules::visibility::{RecipientLine, ViewerChanges};
-use crate::state::{component, Presence, State};
+use crate::session;
 use crate::store::commit::CommitOutcome;
 use crate::store::lock::lock_pack;
-use crate::world::World;
 use crate::Reason;
 
 use crate::round::dice::RoundDice;
@@ -36,22 +36,26 @@ pub struct RoundOutput {
 /// Play one round from the save. `Some` is a warning the host prints: the round
 /// was committed, and the checkpoint bundle was not closed.
 pub fn play_pack_once(path: &Path) -> Result<Option<&'static str>, Reason> {
-    let mut world = World::resume(path, lock_pack(path)?)?;
-    let wall = world.state().last_round_at.clone();
-    play_round(&mut world, &Presence::default(), &wall, false)?;
-    Ok(world.take_warning())
+    let mut session = session::Session::resume(path, lock_pack(path)?)?;
+    let wall = session.world().last_round_at.clone();
+    play_round(&mut session, &Presence::default(), &wall, false)?;
+    Ok(session.take_warning())
 }
 
 /// Play the rounds `real_hours` of absence earn, at an empty table. A short absence plays one.
-pub(crate) fn play_catch_up(world: &mut World, wall: &str, real_hours: u64) -> Result<(), Reason> {
+pub(crate) fn play_catch_up(
+    session: &mut session::Session,
+    wall: &str,
+    real_hours: u64,
+) -> Result<(), Reason> {
     let rounds = if real_hours == 0 {
         1
     } else {
-        planned_rounds(world.budget(), real_hours)?.max(1)
+        planned_rounds(session.budget(), real_hours)?.max(1)
     };
     let empty = Presence::default();
     for _ in 0..rounds {
-        play_round(world, &empty, wall, false)?;
+        play_round(session, &empty, wall, false)?;
     }
     Ok(())
 }
@@ -77,107 +81,107 @@ fn planned_rounds(budget: &Budget, real_hours: u64) -> Result<u64, Reason> {
 /// seated PC is busy. `already` counts a round this call did not play, and the burst
 /// stops at `max_fastforward_rounds` including that round.
 pub(crate) fn fast_forward(
-    world: &mut World,
+    session: &mut session::Session,
     presence: &Presence,
     wall: &str,
     already: u32,
 ) -> Result<Vec<RoundOutput>, Reason> {
-    let cap = world.budget().max_fastforward_rounds;
-    let busy = seated_busy(world, presence);
+    let cap = session.budget().max_fastforward_rounds;
+    let busy = seated_busy(session, presence);
     if busy.is_empty() || busy.contains(&false) {
         return Ok(Vec::new());
     }
     let mut ran = already;
     let mut outputs = Vec::new();
     while u64::from(ran) < cap
-        && seated_busy(world, presence).contains(&true)
-        && world.queued_intents().is_empty()
+        && seated_busy(session, presence).contains(&true)
+        && session.queued_intents().is_empty()
     {
-        outputs.push(play_round(world, presence, wall, true)?);
+        outputs.push(play_round(session, presence, wall, true)?);
         ran += 1;
     }
     Ok(outputs)
 }
 
 /// Whether each seated PC is busy at the current world time.
-fn seated_busy<L>(world: &World<L>, presence: &Presence) -> Vec<bool> {
-    let (state, actors) = (world.state(), world.state().actors());
+fn seated_busy<L>(session: &session::Session<L>, presence: &Presence) -> Vec<bool> {
+    let (world, actors) = (session.world(), session.world().actors());
     presence
         .actors_present
         .iter()
-        .map(|id| actors.get::<component::Act>(id).is_busy(state.world_time))
+        .map(|id| actors.get::<component::Act>(id).is_busy(world.world_time))
         .collect()
 }
 
-/// Play the queue and commit the round. Only a World that owns the pack lock can.
+/// Play the queue and commit the round. Only a session that owns the pack lock can.
 pub(crate) fn play_round(
-    world: &mut World,
+    session: &mut session::Session,
     presence: &Presence,
     wall: &str,
     fast_forward: bool,
 ) -> Result<RoundOutput, Reason> {
-    let canon = Arc::clone(world.state.canon());
-    let state = world.begin_round();
-    let staged = run_stages(&canon, state, presence, wall, world.queued_intents())?;
-    record::run(world, staged, presence, wall, fast_forward)
+    let canon = Arc::clone(session.world.canon());
+    let world = session.begin_round();
+    let staged = run_stages(&canon, world, presence, wall, session.queued_intents())?;
+    record::run(session, staged, presence, wall, fast_forward)
 }
 
 /// Play the queue a journal line kept, in memory, with the seats it recorded.
 pub(crate) fn replay_round(
-    world: &mut World<()>,
+    session: &mut session::Session<()>,
     wall: &str,
     queue: &[Intent],
     presence: &Presence,
 ) -> Result<RoundOutput, Reason> {
-    let canon = Arc::clone(world.state.canon());
-    let state = world.begin_round();
+    let canon = Arc::clone(session.world.canon());
+    let world = session.begin_round();
     let StagedRound {
-        state,
+        world,
         mut log,
         delivered,
         ..
-    } = run_stages(&canon, state, presence, wall, queue)?;
+    } = run_stages(&canon, world, presence, wall, queue)?;
     let output = record::take_output(&mut log, delivered);
-    crate::store::commit::keep_in_memory(world, state)?;
+    crate::store::commit::keep_in_memory(session, world)?;
     Ok(output)
 }
 
 /// What the stages leave for `record`: the round's working copy of the save, its time, its log,
 /// and what each seat hears.
 pub(crate) struct StagedRound {
-    pub(crate) state: State,
+    pub(crate) world: ecs::World,
     pub(crate) clock: RoundTime,
     pub(crate) log: RoundLog,
     pub(crate) delivered: deliver::Deliveries,
 }
 
-/// Every stage but `record`, in order, on `state`, the round's working copy of the save. The
+/// Every stage but `record`, in order, on `world`, the round's working copy of the save. The
 /// candidates' rules borrow the canon, not the save, while the later stages write it.
 fn run_stages(
     canon: &Canon,
-    mut state: State,
+    mut world: ecs::World,
     presence: &Presence,
     wall: &str,
     queue: &[Intent],
 ) -> Result<StagedRound, Reason> {
-    let clock = advance::run(canon, &mut state, presence, wall)?;
-    let mut dice = RoundDice::new(state.seed.clone(), clock.round_index);
+    let clock = advance::run(canon, &mut world, presence, wall)?;
+    let mut dice = RoundDice::new(world.seed.clone(), clock.round_index);
     let mut log = RoundLog::default();
-    let picked = pick::run(canon, &state, presence, queue, &mut log)?;
-    let candidates = resolve::run(canon, &state, presence, &picked, queue, &mut dice, &mut log);
+    let picked = pick::run(canon, &world, presence, queue, &mut log)?;
+    let candidates = resolve::run(canon, &world, presence, &picked, queue, &mut dice, &mut log);
     apply::run(
-        canon, &mut state, presence, candidates, &clock, &mut dice, &mut log,
+        canon, &mut world, presence, candidates, &clock, &mut dice, &mut log,
     );
     let end = clock.world_time_after;
-    finish::run(canon, &mut state, presence, end, &mut dice, &mut log)?;
+    finish::run(canon, &mut world, presence, end, &mut dice, &mut log)?;
     // A door that opens is a flag change, so change rules see it before the map refresh. This
     // pass also takes the clock's changes in a round where no action ran.
-    travel::open_doors(canon, &mut state, presence, &mut log);
-    triggers::run(canon, &mut state, presence, &mut dice, &mut log);
-    travel::note_exits(canon, &mut state)?;
-    let delivered = deliver::run(canon, &state, presence, &log.changes, &log.effects);
+    travel::open_doors(canon, &mut world, presence, &mut log);
+    triggers::run(canon, &mut world, presence, &mut dice, &mut log);
+    travel::note_exits(canon, &mut world)?;
+    let delivered = deliver::run(canon, &world, presence, &log.changes, &log.effects);
     Ok(StagedRound {
-        state,
+        world,
         clock,
         log,
         delivered,

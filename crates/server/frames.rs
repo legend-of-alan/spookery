@@ -5,8 +5,7 @@ use crate::protocol::{
     TableStatus,
 };
 use spookery_engine::{
-    self as engine, ActorId, Intent, MoveReport, Note, PlaceId, Presence, RoundOutput, State,
-    TapeRecord,
+    self as engine, ActorId, Intent, MoveReport, Note, PlaceId, Presence, RoundOutput, TapeRecord,
 };
 
 /// A move the gate or a round refused. Its `detail` is the meter or item id, or the
@@ -137,7 +136,7 @@ pub(super) fn render_committed(
 }
 
 pub(super) fn render_status(
-    now: &State,
+    now: &engine::ecs::World,
     presence: &Presence,
     queued: &[Intent],
     pack: PackSummary,

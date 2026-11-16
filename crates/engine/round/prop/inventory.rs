@@ -15,13 +15,13 @@
 //! Deterministic in CI: 64 cases, seed `0x0018_0018`, no failure file.
 
 use crate::canon::Canon;
+use crate::ecs::id::{ActorId, PlaceId};
+use crate::ecs::{self, component};
 use crate::entity;
 use crate::intent::{Intent, IntentArgs, Source, Target, Viewer};
 use crate::rules::effect::{Effect, EffectKind};
-use crate::state::id::{ActorId, PlaceId};
-use crate::state::{component, State};
+use crate::session;
 use crate::testing::copy_pack;
-use crate::world::World;
 
 use super::support::{runner_config, TempPack};
 use proptest::prelude::*;
@@ -39,15 +39,15 @@ struct ItemChange {
 #[test]
 fn random_item_changes_never_leave_a_negative_count() {
     let pack = TempPack(copy_pack("docks", "inventory"));
-    let world = World::open(&pack.0).expect("docks pack opens");
-    let actors: Vec<ActorId> = world
-        .state()
+    let session = session::Session::open(&pack.0).expect("docks pack opens");
+    let actors: Vec<ActorId> = session
+        .world()
         .actors()
         .query::<ActorId>()
         .iter()
         .cloned()
         .collect();
-    let places: Vec<PlaceId> = world.canon().places.keys().cloned().collect();
+    let places: Vec<PlaceId> = session.canon().places.keys().cloned().collect();
     assert!(
         actors.len() >= 2 && !places.is_empty(),
         "the pack needs actors and places to shift"
@@ -55,32 +55,35 @@ fn random_item_changes_never_leave_a_negative_count() {
     let mut runner = TestRunner::new(runner_config());
     let strategy = pick_changes(&actors, &places);
     runner
-        .run(&strategy, |steps| apply_changes(&world, &steps))
+        .run(&strategy, |steps| apply_changes(&session, &steps))
         .unwrap_or_else(|err| panic!("inventory property failed: {err}"));
 }
 
-fn apply_changes(world: &World<()>, steps: &[ItemChange]) -> Result<(), TestCaseError> {
-    let nobody = crate::state::Presence::default();
-    let (canon, mut state) = (world.canon(), world.begin_round());
+fn apply_changes(
+    session: &session::Session<()>,
+    steps: &[ItemChange],
+) -> Result<(), TestCaseError> {
+    let nobody = crate::ecs::Presence::default();
+    let (canon, mut world) = (session.canon(), session.begin_round());
     let intent = npc_intent();
     for step in steps {
-        let before = state.clone();
-        let known = is_known_entity(canon, &state, &step.carrier);
-        let held = count_of(&state, &step.carrier, &step.id);
-        let outcome = item_effect(step).apply(canon, &mut state, &nobody, &intent);
-        assert_no_stored_zero(&state)?;
+        let before = world.clone();
+        let known = is_known_entity(canon, &world, &step.carrier);
+        let held = count_of(&world, &step.carrier, &step.id);
+        let outcome = item_effect(step).apply(canon, &mut world, &nobody, &intent);
+        assert_no_stored_zero(&world)?;
         if !known {
             if outcome.is_ok() {
                 return fail("an unknown entity accepted an item effect");
             }
-            assert_same_save(&state, &before)?;
+            assert_same_save(&world, &before)?;
             continue;
         }
         if outcome.is_err() {
-            assert_same_save(&state, &before)?;
+            assert_same_save(&world, &before)?;
             continue;
         }
-        let got = count_of(&state, &step.carrier, &step.id);
+        let got = count_of(&world, &step.carrier, &step.id);
         if takes_more_than_held(held, step.delta) {
             return fail(format!(
                 "taking {} from {held} of {} was accepted and the count is {got}",
@@ -103,8 +106,8 @@ fn fail(message: impl Into<String>) -> Result<(), TestCaseError> {
     Err(TestCaseError::fail(message.into()))
 }
 
-fn assert_same_save(state: &State, before: &State) -> Result<(), TestCaseError> {
-    if **state == **before {
+fn assert_same_save(world: &ecs::World, before: &ecs::World) -> Result<(), TestCaseError> {
+    if **world == **before {
         Ok(())
     } else {
         fail("a refused item effect changed the save")
@@ -112,14 +115,14 @@ fn assert_same_save(state: &State, before: &State) -> Result<(), TestCaseError> 
 }
 
 /// A stored count is a `u32`, so it cannot be negative. A count of 0 is omitted.
-fn assert_no_stored_zero(state: &State) -> Result<(), TestCaseError> {
-    let actor_items = state.actors().query::<&component::Item>();
+fn assert_no_stored_zero(world: &ecs::World) -> Result<(), TestCaseError> {
+    let actor_items = world.actors().query::<&component::Item>();
     for (actor_id, item_id, count) in actor_items.iter().flat_map(|held| held.iter_with_id()) {
         if *count == 0 {
             return fail(format!("{actor_id} stores a zero count of {item_id}"));
         }
     }
-    let place_items = state.places().query::<&component::Item>();
+    let place_items = world.places().query::<&component::Item>();
     for (place_id, item_id, count) in place_items.iter().flat_map(|held| held.iter_with_id()) {
         if *count == 0 {
             return fail(format!("{place_id} stores a zero count of {item_id}"));
@@ -128,23 +131,23 @@ fn assert_no_stored_zero(state: &State) -> Result<(), TestCaseError> {
     Ok(())
 }
 
-fn is_known_entity(canon: &Canon, state: &State, carrier: &entity::Id) -> bool {
+fn is_known_entity(canon: &Canon, world: &ecs::World, carrier: &entity::Id) -> bool {
     match carrier {
-        entity::Id::Actor(id) => state.actors().contains(id),
+        entity::Id::Actor(id) => world.actors().contains(id),
         entity::Id::Place(id) => canon.places.contains_key(id),
         entity::Id::Story(_) | entity::Id::Global => false,
     }
 }
 
-fn count_of(state: &State, carrier: &entity::Id, id: &str) -> u32 {
+fn count_of(world: &ecs::World, carrier: &entity::Id, id: &str) -> u32 {
     match carrier {
-        entity::Id::Actor(actor_id) => state
+        entity::Id::Actor(actor_id) => world
             .actors()
             .get::<component::Item>(actor_id)
             .get(id)
             .copied()
             .unwrap_or(0),
-        entity::Id::Place(place_id) => state
+        entity::Id::Place(place_id) => world
             .places()
             .get::<component::Item>(place_id)
             .get(id)

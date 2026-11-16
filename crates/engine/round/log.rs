@@ -1,10 +1,10 @@
 //! What a round writes down.
 
+use crate::ecs::change::Change;
+use crate::ecs::id::ActorId;
 use crate::rules::effect::Effect;
 use crate::rules::gate;
 use crate::rules::roll::{MoveReport, Roll};
-use crate::state::change::Change;
-use crate::state::id::ActorId;
 use crate::store::records::Step;
 
 /// Everything a round writes down, in the order it happened. `record` consumes it.

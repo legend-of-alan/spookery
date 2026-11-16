@@ -2,11 +2,11 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::state::change;
-use crate::state::component::{modifier, Component, Mut, Ref};
-use crate::state::entity::{self, in_collection, Id};
-use crate::state::prelude::*;
-use crate::state::{Reader, Save, Writer};
+use crate::ecs::change;
+use crate::ecs::component::{modifier, Component, Mut, Ref};
+use crate::ecs::entity::{self, in_collection, Id};
+use crate::ecs::prelude::*;
+use crate::ecs::{Reader, Save, Writer};
 use crate::Reason;
 
 #[derive(Clone, Debug, PartialEq, Eq)]

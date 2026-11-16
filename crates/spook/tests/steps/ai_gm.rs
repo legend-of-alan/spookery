@@ -1,4 +1,4 @@
-use spookery_engine::testing::{place_of, state_of};
+use spookery_engine::testing::{place_of, world_of};
 use std::fs;
 use std::io::{Read, Write};
 use std::net::{Shutdown, TcpListener, TcpStream};
@@ -155,7 +155,7 @@ fn play_and_ai_gm_and_a_stub(world: &mut World) {
     writeln!(play_in, "say hello").unwrap();
     play_in.flush().unwrap();
     wait_stub(&seen, 1, 0);
-    assert_eq!(state_of(&pack).world_time, 1080, "speech played a round");
+    assert_eq!(world_of(&pack).world_time, 1080, "speech played a round");
     let first = seen.lock().unwrap().posts[0].clone();
     assert!(first.contains("end_turn"), "{first}");
     assert_chat_post(&first);
@@ -165,7 +165,7 @@ fn play_and_ai_gm_and_a_stub(world: &mut World) {
     wait_stub(&seen, 2, 0);
     // The view after the round shows the street.
     table::wait_suffix(&play.stdout, mark, "You are in Docks Street.");
-    assert_eq!(place_of(&state_of(&pack), "rowan"), "docks_street");
+    assert_eq!(place_of(&world_of(&pack), "rowan"), "docks_street");
     let second = seen.lock().unwrap().posts[1].clone();
     assert!(second.contains("end_turn"), "{second}");
     assert_chat_post(&second);
@@ -174,7 +174,7 @@ fn play_and_ai_gm_and_a_stub(world: &mut World) {
     writeln!(play_in, "look").unwrap();
     play_in.flush().unwrap();
     table::wait_suffix(&play.stdout, mark, "Exits:");
-    assert_eq!(state_of(&pack).world_time, 1085, "travel played two rounds");
+    assert_eq!(world_of(&pack).world_time, 1085, "travel played two rounds");
     assert_eq!(seen.lock().unwrap().posts.len(), 2);
     assert!(
         support::text_of(&host_stdout).is_empty(),
@@ -193,7 +193,7 @@ fn a_docks_table_with_the_scripted_ai_gm_and_a_seated_player(world: &mut World) 
     table::listen(world, &pack);
     world.ai_gm = Some(start_ai_gm(world, world.model.clone()));
     table::seat_rowan(world, &pack);
-    world.start_ticks = state_of(&pack).world_time;
+    world.start_ticks = world_of(&pack).world_time;
     world.pack = Some(pack);
 }
 
@@ -240,7 +240,7 @@ fn the_player_tries_exert(world: &mut World) {
 
 #[then(expr = "world time moved one round")]
 fn world_time_moved_one_round(world: &mut World) {
-    let world_time = state_of(table::pack(world)).world_time;
+    let world_time = world_of(table::pack(world)).world_time;
     assert_eq!(
         world_time,
         world.start_ticks + 5,
@@ -288,7 +288,7 @@ fn a_player_queues_travel_while_the_model_answers_their_say(world: &mut World) {
     model.hold_next();
     let gm = start_ai_gm(world, model.clone());
     table::seat_rowan(world, &pack);
-    world.start_ticks = state_of(&pack).world_time;
+    world.start_ticks = world_of(&pack).world_time;
     table::player_send(world, "say hello", "\"kind\":\"say\"");
     table::poll_until("the say's model call", || match model.calls().len() {
         1 => Ok(()),
@@ -466,10 +466,10 @@ pub fn queued_travel(world: &mut World, label: &str) -> (PathBuf, u64) {
     table::listen(world, &pack);
     table::seat_gm(world);
     table::seat_rowan(world, &pack);
-    world.start_ticks = state_of(&pack).world_time;
+    world.start_ticks = world_of(&pack).world_time;
     world.mark = table::player_send(world, "travel docks_street", "\"kind\":\"queued\"").0;
     assert_eq!(
-        state_of(&pack).world_time,
+        world_of(&pack).world_time,
         world.start_ticks,
         "travel committed before the host"
     );

@@ -58,10 +58,10 @@ impl Config {
 }
 
 /// Bind both ports, report them and serve on the caller's runtime until
-/// `shutdown` resolves. `world` owns the pack lock until the table ends.
-/// Returns the world's result.
+/// `shutdown` resolves. `session` owns the pack lock until the table ends.
+/// Returns the table's result.
 pub async fn serve(
-    world: spookery_engine::World,
+    session: spookery_engine::Session,
     mut config: Config,
     shutdown: impl Future<Output = ()>,
 ) -> Result<(), Error> {
@@ -70,7 +70,7 @@ pub async fn serve(
     let game = listener.local_addr().map_err(Error::Io)?;
     let mcp_addr = mcp_listener.local_addr().map_err(Error::Io)?;
     print_addrs(&mut *config.out, game, mcp_addr)?;
-    let idle_rounds = world.budget().idle_rounds;
+    let idle_rounds = session.budget().idle_rounds;
     let (tx, rx) = std::sync::mpsc::channel();
     let mut tasks = tokio::task::JoinSet::new();
     let next_conn = Arc::new(AtomicU64::new(1));
@@ -86,11 +86,11 @@ pub async fn serve(
         tasks.spawn(idle::run(
             tx.clone(),
             restart_rx,
-            world.budget().round_every_real_seconds,
+            session.budget().round_every_real_seconds,
         ));
     }
     let mut table = tokio::task::spawn_blocking(move || {
-        Table::new(world, restart_tx, config.out, config.err).run(rx)
+        Table::new(session, restart_tx, config.out, config.err).run(rx)
     });
     // A table that ends on its own (a store fault) ends `serve` too.
     let done = tokio::select! {

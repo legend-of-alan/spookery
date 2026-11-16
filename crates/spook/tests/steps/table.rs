@@ -12,7 +12,7 @@ use crate::mcp_client::{event_line, GmClient};
 use serde_json::{json, Value};
 use spookery::protocol::{self, ClientMessage};
 use spookery_engine::testing::journal::list_round_keys;
-use spookery_engine::testing::state_of;
+use spookery_engine::testing::world_of;
 use tungstenite::protocol::Role;
 use tungstenite::{Message, WebSocket};
 
@@ -214,7 +214,7 @@ impl Drop for InProcess {
 /// Opens the pack the way `spook run` does and serves it in this process.
 pub fn serve_in_process(world: &mut World, pack: &Path) {
     drop(world.live.take());
-    // `lock_pack` then `World::resume`, as `spook run` opens it.
+    // `lock_pack` then `Session::resume`, as `spook run` opens it.
     let opened = support::resume(pack);
     let (mut out, out_pipe) = std::io::pipe().unwrap_or_else(|err| panic!("pipe: {err}"));
     let (err, err_pipe) = std::io::pipe().unwrap_or_else(|err| panic!("pipe: {err}"));
@@ -567,7 +567,7 @@ pub fn seat_actor(world: &mut World, pack: &Path, actor_id: &str) {
     let seat = connect_actor(port, actor_id);
     let seated_now = fs::read(pack.join("state/save.yaml"))
         .unwrap_or_else(|err| panic!("read save.yaml: {err}"));
-    let seated_rev = state_of(pack).state_rev;
+    let seated_rev = world_of(pack).state_rev;
     let live = live_mut(world);
     live.players.push(PlayerClient {
         actor_id: actor_id.to_string(),

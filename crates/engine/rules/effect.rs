@@ -6,13 +6,13 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::{Map, Value};
 
 use crate::canon::Canon;
+use crate::ecs::component::meter::MeterWrite;
+use crate::ecs::component::modifier::{self, Modifier};
+use crate::ecs::id::{ActorId, ExitId, PlaceId};
+use crate::ecs::{self, component, MemoryLine, Note, Presence};
 use crate::entity;
 use crate::intent::{Intent, Viewer};
 use crate::rules::visibility::can_see_fact;
-use crate::state::component::meter::MeterWrite;
-use crate::state::component::modifier::{self, Modifier};
-use crate::state::id::{ActorId, ExitId, PlaceId};
-use crate::state::{self, component, MemoryLine, Note, Presence, State};
 use crate::Reason;
 
 /// One effect. JSON is `kind`, `as`, `intent_id`, then the fields of `kind`.
@@ -175,7 +175,7 @@ impl Effect {
     pub(crate) fn apply(
         self,
         canon: &Canon,
-        state: &mut State,
+        world: &mut ecs::World,
         presence: &Presence,
         intent: &Intent,
     ) -> Result<(), Reason> {
@@ -185,7 +185,7 @@ impl Effect {
         match self.kind {
             EffectKind::Meter { entity, key, write } => {
                 let MeterWrite::Offset(delta) = write;
-                (state.entities_mut().get_mut::<component::Meter>(&entity)).shift(&key, delta)
+                (world.entities_mut().get_mut::<component::Meter>(&entity)).shift(&key, delta)
             }
             EffectKind::Item {
                 actor_id,
@@ -195,9 +195,9 @@ impl Effect {
                 max,
             } => {
                 match (actor_id, place) {
-                    (Some(actor), None) => (state.actors_mut().get_mut::<component::Item>(&actor))
+                    (Some(actor), None) => (world.actors_mut().get_mut::<component::Item>(&actor))
                         .shift(&id, delta, max),
-                    (None, Some(place)) => (state.places_mut().get_mut::<component::Item>(&place))
+                    (None, Some(place)) => (world.places_mut().get_mut::<component::Item>(&place))
                         .shift(&id, delta, max),
                     _ => Err(Reason::Schema),
                 }
@@ -207,33 +207,33 @@ impl Effect {
                 id,
                 add,
                 ticks,
-            } => apply_modifier(canon, state, &actor_id, &id, add, ticks),
+            } => apply_modifier(canon, world, &actor_id, &id, add, ticks),
             EffectKind::Wield { actor_id, id } => {
                 let item = canon.items.get(&id).ok_or(Reason::UnknownId)?;
                 if !item.tags.iter().any(|tag| tag == "weapon") {
                     return Err(Reason::NotAWeapon);
                 }
-                let mut actors = state.actors_mut();
+                let mut actors = world.actors_mut();
                 (actors.get_mut::<component::WieldedItem>(&actor_id)).set(Some(&id))
             }
             EffectKind::Unwield { actor_id } => {
-                let mut actors = state.actors_mut();
+                let mut actors = world.actors_mut();
                 (actors.get_mut::<component::WieldedItem>(&actor_id)).set(None)
             }
             EffectKind::Location {
                 actor_id, from, to, ..
-            } => move_actor(canon, state, presence, intent, &actor_id, &from, &to),
+            } => move_actor(canon, world, presence, intent, &actor_id, &from, &to),
             EffectKind::Memory {
                 actor_id,
                 fact_ids,
                 tags,
                 text,
-            } => remember(canon, state, intent, &actor_id, fact_ids, tags, text),
+            } => remember(canon, world, intent, &actor_id, fact_ids, tags, text),
             EffectKind::Flag { entity, key, value } => {
                 if !canon.carries_flag(entity.as_ref(), &key) {
                     return Err(Reason::UnknownId);
                 }
-                (state.entities_mut().get_mut::<component::Flag>(&entity)).set(&key, value)
+                (world.entities_mut().get_mut::<component::Flag>(&entity)).set(&key, value)
             }
             // An exit with no `if` has no door.
             EffectKind::ExitOpen { exit, open } => {
@@ -241,7 +241,7 @@ impl Effect {
                     .has_door(&exit)
                     .then_some(())
                     .ok_or(Reason::UnknownId)?;
-                state.places_mut().set_exit_open(&exit, open)
+                world.places_mut().set_exit_open(&exit, open)
             }
             EffectKind::Note {
                 note_id,
@@ -264,14 +264,14 @@ impl Effect {
                     fact_ids,
                     text,
                 };
-                state.notes_mut().leave(note)
+                world.notes_mut().leave(note)
             }
             EffectKind::Narrate { .. } => Ok(()),
             EffectKind::Reveal { actor_id, fact } => {
                 if !canon.facts.contains_key(&fact) {
                     return Err(Reason::UnknownId);
                 }
-                let mut actors = state.actors_mut();
+                let mut actors = world.actors_mut();
                 (actors.get_mut::<component::KnownFacts>(&actor_id)).learn(&[fact])
             }
         }
@@ -314,7 +314,7 @@ fn viewer_matches(intent: &Intent, effect: &Effect) -> bool {
 /// `modifier::stack` says.
 fn apply_modifier(
     canon: &Canon,
-    state: &mut State,
+    world: &mut ecs::World,
     actor_id: &ActorId,
     id: &str,
     add: i64,
@@ -323,8 +323,8 @@ fn apply_modifier(
     let def = canon.modifiers.get(id).ok_or(Reason::UnknownId)?;
     let carried = canon.meter_def(entity::IdRef::Actor(actor_id), &def.meter);
     carried.ok_or(Reason::UnknownId)?;
-    let now = state.world_time;
-    let held = state.actors().get::<Modifier>(actor_id).get(id);
+    let now = world.world_time;
+    let held = world.actors().get::<Modifier>(actor_id).get(id);
     let mut next = held.cloned().unwrap_or_else(|| Modifier {
         meter: def.meter.clone(),
         until: now,
@@ -332,14 +332,14 @@ fn apply_modifier(
         stacks: Vec::new(),
     });
     modifier::stack(def, &mut next, add, ticks, now);
-    (state.actors_mut().get_mut::<Modifier>(actor_id)).set(id, Some(next))
+    (world.actors_mut().get_mut::<Modifier>(actor_id)).set(id, Some(next))
 }
 
 /// Move the intent's own actor from `from` to `to`, a place or the exit they walk. A PC moves
 /// only while a player is seated.
 fn move_actor(
     canon: &Canon,
-    state: &mut State,
+    world: &mut ecs::World,
     presence: &Presence,
     intent: &Intent,
     actor_id: &ActorId,
@@ -349,7 +349,7 @@ fn move_actor(
     if intent.actor_id() != Some(actor_id) {
         return Err(Reason::ActorMismatch);
     }
-    let actors = state.actors();
+    let actors = world.actors();
     if presence.players == 0 && actors.get::<component::ControlType>(actor_id).is_pc() {
         return Err(Reason::TableEmpty);
     }
@@ -364,12 +364,12 @@ fn move_actor(
     if !canon.places.contains_key(to) && !on_exit {
         return Err(Reason::NoExit);
     }
-    (state.actors_mut().get_mut::<component::Place>(actor_id)).set(to)
+    (world.actors_mut().get_mut::<component::Place>(actor_id)).set(to)
 }
 
 fn remember(
     canon: &Canon,
-    state: &mut State,
+    world: &mut ecs::World,
     intent: &Intent,
     actor_id: &ActorId,
     mut fact_ids: Vec<String>,
@@ -387,17 +387,17 @@ fn remember(
         return Err(Reason::Schema);
     }
     for fact in &fact_ids {
-        if !can_see_fact(canon, state, viewer, fact) {
+        if !can_see_fact(canon, world, viewer, fact) {
             return Err(Reason::IllegalKnowledge);
         }
     }
-    state.count_memory_write()?;
-    state::sort_unique(&mut fact_ids);
-    let mut actors = state.actors_mut();
+    world.count_memory_write()?;
+    ecs::sort_unique(&mut fact_ids);
+    let mut actors = world.actors_mut();
     (actors.get_mut::<component::KnownFacts>(actor_id)).learn(&fact_ids)?;
-    state::sort_unique(&mut tags);
-    state.push_memory(MemoryLine {
-        round_index: state.round_index,
+    ecs::sort_unique(&mut tags);
+    world.push_memory(MemoryLine {
+        round_index: world.round_index,
         actor_id: actor_id.clone(),
         intent_id: intent.id.clone(),
         fact_ids,

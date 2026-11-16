@@ -1,14 +1,14 @@
 //! Write the round line and commit a live round.
 
+use crate::session;
 use crate::store::records::RoundRecord;
 use crate::store::{commit, RULES_REV};
-use crate::world::World;
 use crate::Reason;
 
+use crate::ecs::Presence;
 use crate::round::log::RoundLog;
 use crate::round::play::{RoundOutput, StagedRound};
 use crate::round::stage::deliver::Deliveries;
-use crate::state::Presence;
 
 /// What the round showed. A live round adds its commit outcome.
 pub(crate) fn take_output(log: &mut RoundLog, delivered: Deliveries) -> RoundOutput {
@@ -23,16 +23,16 @@ pub(crate) fn take_output(log: &mut RoundLog, delivered: Deliveries) -> RoundOut
     }
 }
 
-/// Write the round line and commit it. The World owns the pack lock.
+/// Write the round line and commit it. The session owns the pack lock.
 pub(crate) fn run(
-    world: &mut World,
+    session: &mut session::Session,
     staged: StagedRound,
     presence: &Presence,
     wall: &str,
     fast_forward: bool,
 ) -> Result<RoundOutput, Reason> {
     let StagedRound {
-        state,
+        world,
         clock,
         mut log,
         delivered,
@@ -48,7 +48,7 @@ pub(crate) fn run(
         presence_players: presence.players,
         actors_present: presence.actors_present.clone(),
         last_round_at: wall.to_string(),
-        intents: world.queued_intents().to_vec(),
+        intents: session.queued_intents().to_vec(),
         refused: log.refused,
         effects: log.effects,
         fast_forward,
@@ -59,7 +59,7 @@ pub(crate) fn run(
         prev: String::new(),
         chain: String::new(),
     };
-    output.commit = Some(commit::commit(world, state, record)?);
+    output.commit = Some(commit::commit(session, world, record)?);
     Ok(output)
 }
 

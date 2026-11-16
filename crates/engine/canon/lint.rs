@@ -5,6 +5,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use crate::canon::source::{FileText, Locator, Problem};
 use crate::canon::{declared_flags, Canon, CastDef, FactDef, ItemDef, PlaceDef, StoryDef, OPEN};
 use crate::diagnostic::{error, schema_error, warning, Diagnostic};
+use crate::ecs::component::meter::MeterDef;
+use crate::ecs::component::modifier::ModifierDef;
+use crate::ecs::id::{ActorId, PlaceId, StoryId};
 use crate::entity;
 use crate::rules::expr::Expr;
 use crate::rules::grammar;
@@ -13,9 +16,6 @@ use crate::rules::rule::{
     ChangeWatch, Cond, Cost, EffectTemplate, LocationTo, NarrateTo, Owner, ResistSpec, Rule,
     RuleTable, When,
 };
-use crate::state::component::meter::MeterDef;
-use crate::state::component::modifier::ModifierDef;
-use crate::state::id::{ActorId, PlaceId, StoryId};
 use crate::Reason;
 
 /// Exits whose `to` is not a place, and facts or items an exit names but the pack does not.

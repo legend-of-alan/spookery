@@ -1,6 +1,8 @@
 //! Exits, admission, and the journeys that follow them.
 
 use crate::canon::{Canon, Exit, PlaceDef};
+use crate::ecs::id::ActorId;
+use crate::ecs::{self, component, PendingAction, Presence};
 use crate::intent::{Intent, Source, Target, Viewer};
 use crate::round::log::RoundLog;
 use crate::rules::cond;
@@ -11,8 +13,6 @@ use crate::rules::gate;
 use crate::rules::lines::find_place_name;
 use crate::rules::rule::{EffectTemplate, LocationTo, Rule};
 use crate::rules::visibility::can_see_fact;
-use crate::state::id::ActorId;
-use crate::state::{component, PendingAction, Presence, State};
 use crate::Reason;
 use spookery_protocol::ExitView;
 
@@ -59,7 +59,7 @@ pub(crate) fn exit_via<'a>(
     let from = context
         .intent
         .actor_id()
-        .and_then(|id| context.state.actors().get::<component::Place>(id).get())
+        .and_then(|id| context.world.actors().get::<component::Place>(id).get())
         .unwrap_or("");
     if let Some(exit) = exit_stood_on(context.canon, from) {
         return Ok(Some(exit));
@@ -72,7 +72,7 @@ pub(crate) fn exit_via<'a>(
 /// The exit a walker stands on, from the place id `exit:<place>.<exit>` they hold while
 /// walking. `None` for a place.
 pub(crate) fn exit_stood_on<'a>(canon: &'a Canon, place: &str) -> Option<&'a Exit> {
-    let (from, exit_id) = crate::state::exit_parts(place)?;
+    let (from, exit_id) = crate::ecs::exit_parts(place)?;
     find_exit(canon, from, exit_id)
 }
 
@@ -86,14 +86,14 @@ pub(crate) fn admit(context: &Context, rule: &Rule) -> Result<(), gate::Refusal>
     let Some(exit) = exit_of(context, rule)? else {
         return Ok(());
     };
-    let (canon, state, intent) = (context.canon, context.state, context.intent);
+    let (canon, world, intent) = (context.canon, context.world, context.intent);
     let actor_id = intent
         .actor_id()
         .ok_or_else(|| gate::Refusal::new(intent, Reason::UnknownId))?;
-    if !is_revealed(canon, state, actor_id, exit) {
+    if !is_revealed(canon, world, actor_id, exit) {
         return Err(gate::Refusal::new(intent, Reason::NoExit));
     }
-    if is_locked(state, exit) {
+    if is_locked(world, exit) {
         let text = if exit.locked_text.is_empty() {
             "The way is locked.".to_string()
         } else {
@@ -108,22 +108,22 @@ pub(crate) fn admit(context: &Context, rule: &Rule) -> Result<(), gate::Refusal>
     cost::afford(context, &exit.cost)
 }
 
-fn is_revealed(canon: &Canon, state: &State, actor_id: &ActorId, exit: &Exit) -> bool {
+fn is_revealed(canon: &Canon, world: &ecs::World, actor_id: &ActorId, exit: &Exit) -> bool {
     if !exit.hidden {
         return true;
     }
     let Some(fact) = &exit.revealed_by else {
         return false;
     };
-    let Some(viewer) = (state.actors().get::<component::ControlType>(actor_id)).viewer() else {
+    let Some(viewer) = (world.actors().get::<component::ControlType>(actor_id)).viewer() else {
         return false;
     };
-    can_see_fact(canon, state, &viewer, fact)
+    can_see_fact(canon, world, &viewer, fact)
 }
 
 /// A door is locked until it opens. An exit with no `if` is no door, so it is always open.
-fn is_locked(state: &State, exit: &Exit) -> bool {
-    !exit.if_.is_empty() && !state.places().is_exit_open(&exit.qualified_id())
+fn is_locked(world: &ecs::World, exit: &Exit) -> bool {
+    !exit.if_.is_empty() && !world.places().is_exit_open(&exit.qualified_id())
 }
 
 /// Open each locked door whose `if` some actor in its place meets, with an `exit_open` effect
@@ -131,28 +131,28 @@ fn is_locked(state: &State, exit: &Exit) -> bool {
 /// after triggers.
 pub(crate) fn open_doors(
     canon: &Canon,
-    state: &mut State,
+    world: &mut ecs::World,
     presence: &Presence,
     log: &mut RoundLog,
 ) {
     let mut opens = Vec::new();
     for (place, def) in &canon.places {
-        let here: Vec<Viewer> = state
+        let here: Vec<Viewer> = world
             .actors_at(place.as_str())
             .iter()
-            .filter_map(|id| state.actors().get::<component::ControlType>(id).viewer())
+            .filter_map(|id| world.actors().get::<component::ControlType>(id).viewer())
             .collect();
-        for exit in def.exits.iter().filter(|exit| is_locked(state, exit)) {
+        for exit in def.exits.iter().filter(|exit| is_locked(world, exit)) {
             let target = Target::Exit(exit.id.clone());
             let met = here.iter().any(|viewer| {
                 let target = target.clone();
-                cond::if_holds(canon, state, presence, viewer, "travel", target, &exit.if_)
+                cond::if_holds(canon, world, presence, viewer, "travel", target, &exit.if_)
             });
             if !met {
                 continue;
             }
             let id = format!("door:{place}.{}", exit.id);
-            let intent = Intent::new(id, state.round_index, None, Source::Engine, "door", target);
+            let intent = Intent::new(id, world.round_index, None, Source::Engine, "door", target);
             let kind = EffectKind::ExitOpen {
                 exit: exit.qualified_id(),
                 open: true,
@@ -161,11 +161,11 @@ pub(crate) fn open_doors(
         }
     }
     for (effect, intent) in opens {
-        let point = state.savepoint();
-        match effect.clone().apply(canon, state, presence, &intent) {
+        let point = world.savepoint();
+        match effect.clone().apply(canon, world, presence, &intent) {
             Ok(()) => log.effects.push(effect),
             Err(code) => {
-                state.rollback(point);
+                world.rollback(point);
                 log.refused.push(gate::Refusal::new(&intent, code));
             }
         }
@@ -175,20 +175,20 @@ pub(crate) fn open_doors(
 /// The exits of `place` this actor is allowed to see. A hidden exit stays off the list.
 pub(crate) fn exits_at(
     canon: &Canon,
-    state: &State,
+    world: &ecs::World,
     actor_id: &ActorId,
     place: &PlaceDef,
 ) -> Vec<ExitView> {
     place
         .exits
         .iter()
-        .filter(|exit| is_revealed(canon, state, actor_id, exit))
-        .map(|exit| exit_view(canon, state, exit))
+        .filter(|exit| is_revealed(canon, world, actor_id, exit))
+        .map(|exit| exit_view(canon, world, exit))
         .collect()
 }
 
 /// `exit` as it is now: where it goes, its ticks, and whether it is locked.
-pub(crate) fn exit_view(canon: &Canon, state: &State, exit: &Exit) -> ExitView {
+pub(crate) fn exit_view(canon: &Canon, world: &ecs::World, exit: &Exit) -> ExitView {
     ExitView {
         exit_id: exit.id.clone(),
         name: exit.name.clone(),
@@ -196,24 +196,24 @@ pub(crate) fn exit_view(canon: &Canon, state: &State, exit: &Exit) -> ExitView {
         // Load refuses an exit whose `to` is not a place, so the place has a name.
         place_name: find_place_name(canon, &exit.to).unwrap_or_default(),
         ticks: exit.cost.ticks,
-        locked: is_locked(state, exit),
+        locked: is_locked(world, exit),
     }
 }
 
 /// Every actor notes the exits they see where they stand, for `map`. Runs once at the end
 /// of each round, after triggers, so a reveal is seen in the round it lands.
-pub(crate) fn note_exits(canon: &Canon, state: &mut State) -> Result<(), Reason> {
+pub(crate) fn note_exits(canon: &Canon, world: &mut ecs::World) -> Result<(), Reason> {
     // A walker on an exit is in no place, so there is nothing to note.
-    let actors = state.actors().query::<(ActorId, &component::Place)>();
+    let actors = world.actors().query::<(ActorId, &component::Place)>();
     let seen: Vec<(ActorId, String, Vec<String>)> = (actors.iter())
         .filter(|(_, place)| canon.places.contains_key(place.as_str()))
         .map(|(id, place)| {
-            let exits = visible_exits(canon, state, id);
+            let exits = visible_exits(canon, world, id);
             let exit_ids = exits.into_iter().map(|exit| exit.exit_id).collect();
             (id.clone(), place.clone(), exit_ids)
         })
         .collect();
-    let mut actors = state.actors_mut();
+    let mut actors = world.actors_mut();
     for (actor, place, exits) in seen {
         (actors.get_mut::<component::Visit>(&actor)).set(&place, exits)?;
     }
@@ -221,10 +221,14 @@ pub(crate) fn note_exits(canon: &Canon, state: &mut State) -> Result<(), Reason>
 }
 
 /// The exits of this actor's place that they are allowed to see.
-pub(crate) fn visible_exits(canon: &Canon, state: &State, actor_id: &ActorId) -> Vec<ExitView> {
-    let place = state.actors().get::<component::Place>(actor_id).get();
+pub(crate) fn visible_exits(
+    canon: &Canon,
+    world: &ecs::World,
+    actor_id: &ActorId,
+) -> Vec<ExitView> {
+    let place = world.actors().get::<component::Place>(actor_id).get();
     match place.and_then(|place| canon.places.get(place)) {
-        Some(place) => exits_at(canon, state, actor_id, place),
+        Some(place) => exits_at(canon, world, actor_id, place),
         None => Vec::new(),
     }
 }
@@ -246,8 +250,8 @@ pub(crate) struct DueAction {
 }
 
 /// Clear every action that finishes at or before `end`, earliest first.
-pub(crate) fn take_due_actions(state: &mut State, end: u64) -> Result<Vec<DueAction>, Reason> {
-    let mut due_keys: Vec<(u64, ActorId)> = (state.actors().query::<(ActorId, &component::Act)>())
+pub(crate) fn take_due_actions(world: &mut ecs::World, end: u64) -> Result<Vec<DueAction>, Reason> {
+    let mut due_keys: Vec<(u64, ActorId)> = (world.actors().query::<(ActorId, &component::Act)>())
         .iter()
         .filter_map(|(id, act)| {
             let until = act.busy_until?;
@@ -260,7 +264,7 @@ pub(crate) fn take_due_actions(state: &mut State, end: u64) -> Result<Vec<DueAct
     due_keys.sort();
     let mut due_actions = Vec::new();
     for (until, actor_id) in due_keys {
-        let mut actors = state.actors_mut();
+        let mut actors = world.actors_mut();
         let Some(pending) = actors.get_mut::<component::Act>(&actor_id).take_pending()? else {
             continue;
         };

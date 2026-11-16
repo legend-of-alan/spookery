@@ -2,8 +2,8 @@
 
 use std::fmt;
 
-use crate::state::component::Meter;
-use crate::state::entity;
+use crate::ecs::component::Meter;
+use crate::ecs::entity;
 use crate::Reason;
 
 /// One budget identity: the component a commit changed, the entity that holds it, and the

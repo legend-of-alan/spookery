@@ -13,10 +13,10 @@ use crate::canon::source::{
 };
 use crate::canon::StoryDef;
 use crate::diagnostic::schema_error;
+use crate::ecs::component::meter::MeterDef;
+use crate::ecs::id::StoryId;
 use crate::entity;
 use crate::rules::rule::{Owner, Rule};
-use crate::state::component::meter::MeterDef;
-use crate::state::id::StoryId;
 
 /// Every `story/*.yaml` file in directory order: its rules compiled, and its meters added to
 /// `meters` when those loaded. A file with an empty id, or an id an earlier file has, is refused

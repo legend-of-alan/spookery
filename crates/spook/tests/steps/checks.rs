@@ -1,5 +1,5 @@
 use spookery_engine::component;
-use spookery_engine::testing::state_of;
+use spookery_engine::testing::world_of;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -296,7 +296,7 @@ fn briars_hp_is(world: &mut World, expected: i64) {
     let pack = table::pack(world).to_path_buf();
     let briar = spookery_engine::entity::Id::Actor("briar".into());
     table::poll_until(&format!("briar hp {expected}"), || {
-        let now = state_of(&pack);
+        let now = world_of(&pack);
         match now.entities().get::<component::Meter>(&briar).value("hp") {
             Ok(hp) if hp == expected => Ok(()),
             held => Err(format!("hp {held:?}")),
@@ -388,7 +388,7 @@ fn snapshot_pack(pack: &Path) -> PathBuf {
 }
 
 fn flags_of(world: &World, id: &str) -> Vec<String> {
-    let now = state_of(table::pack(world));
+    let now = world_of(table::pack(world));
     assert!(now.actors().contains(&id.into()), "{id} missing");
     let id = id.into();
     let flags = now.actors().get::<component::Flag>(&id);

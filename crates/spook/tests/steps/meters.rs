@@ -5,7 +5,7 @@ use std::path::Path;
 
 use cucumber::{given, then, when};
 use serde_json::Value;
-use spookery_engine::testing::state_of;
+use spookery_engine::testing::world_of;
 use spookery_engine::{component, entity, load_canon, ActorId, Meter, Presence};
 
 use super::common::replace_in_file;
@@ -67,7 +67,7 @@ fn pack(world: &World) -> &Path {
 }
 
 fn value_on(pack: &Path, id: &entity::Id, key: &str) -> Option<i64> {
-    state_of(pack)
+    world_of(pack)
         .entities()
         .get::<component::Meter>(id)
         .value(key)
@@ -137,7 +137,7 @@ fn mira_has_shop_day(world: &mut World) {
 
 #[then(expr = "Bram and rowan do not")]
 fn bram_and_rowan_do_not(world: &mut World) {
-    let now = state_of(pack(world));
+    let now = world_of(pack(world));
     for id in ["bram", "rowan"] {
         let id = id.into();
         assert!(!now.actors().get::<Meter>(&id).contains("shop_day"), "{id}");
@@ -158,7 +158,7 @@ fn miras_habit_reads_and_resets(world: &mut World) {
 
 #[then(expr = "the habit runs as it did when shop_day was a clock")]
 fn the_habit_runs_as_before(world: &mut World) {
-    let now = state_of(pack(world));
+    let now = world_of(pack(world));
     let note = now.notes().iter().find(|note| note.id == "note_mira_door");
     assert_eq!(note.map(|note| note.to.clone()), Some(vec!["rowan".into()]));
     assert_eq!(value_on(pack(world), &mira(), "shop_day"), Some(0));
@@ -166,7 +166,7 @@ fn the_habit_runs_as_before(world: &mut World) {
 
 #[then(expr = "the GM sees shop_day on Mira's meters")]
 fn the_gm_sees_shop_day(world: &mut World) {
-    let opened = spookery_engine::World::peek(pack(world)).unwrap();
+    let opened = spookery_engine::Session::peek(pack(world)).unwrap();
     let view = opened.perceive(&Presence::default(), "mira").unwrap();
     let shop_day = view.meters.iter().find(|meter| meter.id == "shop_day");
     assert_eq!(shop_day.map(|meter| (meter.value, meter.max)), Some((0, 1)));
@@ -174,7 +174,7 @@ fn the_gm_sees_shop_day(world: &mut World) {
 
 #[then(expr = "rowan's view does not list it")]
 fn rowans_view_does_not_list_it(world: &mut World) {
-    let opened = spookery_engine::World::peek(pack(world)).unwrap();
+    let opened = spookery_engine::Session::peek(pack(world)).unwrap();
     let view = opened.perceive(&Presence::default(), "rowan").unwrap();
     let ids: Vec<&str> = view
         .meters
@@ -376,7 +376,7 @@ fn dawn_is_zero(world: &mut World) {
 
 #[then(expr = "no actor carries a dawn meter")]
 fn no_actor_carries_dawn(world: &mut World) {
-    let now = state_of(pack(world));
+    let now = world_of(pack(world));
     for id in now.actors().query::<ActorId>().iter() {
         assert!(!now.actors().get::<Meter>(id).contains("dawn"), "{id}");
     }
@@ -392,7 +392,7 @@ fn the_vigil_fires_once(world: &mut World) {
         .filter(|step| step == "story:vigil/dawn_breaks")
         .count();
     assert_eq!(fired, 1);
-    assert!(state_of(pack)
+    assert!(world_of(pack)
         .entities()
         .get::<component::Flag>(&entity::Id::Global)
         .contains("dawn_broke"));

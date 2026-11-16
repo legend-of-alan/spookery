@@ -1,4 +1,4 @@
-use spookery_engine::testing::state_of;
+use spookery_engine::testing::world_of;
 use std::fs;
 use std::io::Write;
 
@@ -236,7 +236,7 @@ fn the_gm_shows_no_protocol_json(world: &mut World) {
 #[then(expr = "world time advanced one live tick")]
 fn world_time_advanced(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
-    table::poll_until("world_time 1085", || match state_of(&pack).world_time {
+    table::poll_until("world_time 1085", || match world_of(&pack).world_time {
         1085 => Ok(()),
         now => Err(now),
     });

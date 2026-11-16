@@ -8,7 +8,7 @@ use spookery_engine::{component, entity, Presence};
 use super::record::read_extra_steps;
 use super::rules::open;
 use super::triggers::world_flags;
-use crate::support::{append, copy_pack, edit_save, read_round, stamp_pack_rev, state_of};
+use crate::support::{append, copy_pack, edit_save, read_round, stamp_pack_rev, world_of};
 use crate::World;
 
 const PCS: [&str; 3] = ["rowan", "wren", "harbormouse"];
@@ -28,7 +28,7 @@ fn play_in_one_round(world: &World, moves: &[(&str, &str)]) {
             panic!("{actor} {verb}: {}", refusal.code.as_str());
         }
     }
-    let wall = opened.state().last_round_at.clone();
+    let wall = opened.world().last_round_at.clone();
     opened
         .play(&seated(), &wall)
         .unwrap_or_else(|err| panic!("round: {err}"));
@@ -71,7 +71,7 @@ fn chain_rule(id: &str, watch: &str, then: &str, if_: &str) -> String {
 
 fn latest_round(world: &World) -> serde_json::Value {
     let pack = world.pack.as_ref().unwrap();
-    let round = state_of(pack).round_index;
+    let round = world_of(pack).round_index;
     read_round(pack, &format!("round-{round:04}"))
 }
 
@@ -138,7 +138,7 @@ fn wren_is_refused(world: &mut World) {
     let refused = round["refused"].as_array().unwrap();
     assert_eq!(refused.len(), 1, "{round}");
     assert_eq!(refused[0]["code"], "NOT_IN_SPEC", "{round}");
-    let now = state_of(world.pack.as_ref().unwrap());
+    let now = world_of(world.pack.as_ref().unwrap());
     assert_eq!(crate::support::place_of(&now, "rowan"), "docks_street");
     let world_flags = now.entities();
     assert!(world_flags
@@ -170,7 +170,7 @@ fn both_chains_ran(world: &mut World) {
     assert_eq!(round["refused"], serde_json::json!([]), "{round}");
     let steps = read_extra_steps(&round);
     assert!(!steps.iter().any(|step| step == "trigger_depth"), "{round}");
-    let now = state_of(world.pack.as_ref().unwrap());
+    let now = world_of(world.pack.as_ref().unwrap());
     let flags = now.entities().get::<component::Flag>(&entity::Id::Global);
     for flag in ["rang", "echoed"] {
         assert!(flags.contains(flag), "{:?}", world_flags(&now));

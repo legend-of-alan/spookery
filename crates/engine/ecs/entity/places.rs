@@ -4,9 +4,9 @@
 use serde::{Deserialize, Serialize};
 
 use crate::canon::Canon;
-use crate::state::component::{self, Meter};
-use crate::state::id::{ExitId, PlaceId};
-use crate::state::{entity, nested_map, undo, Reader, Writer};
+use crate::ecs::component::{self, Meter};
+use crate::ecs::id::{ExitId, PlaceId};
+use crate::ecs::{entity, nested_map, undo, Reader, Writer};
 use crate::Reason;
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -24,7 +24,7 @@ pub struct Places {
     open_exits: undo::Store<component::Map<PlaceId, component::OpenExit>>,
 }
 
-impl entity::Entities for Places {
+impl entity::Collection for Places {
     type Id = PlaceId;
 
     fn contains(&self, canon: &Canon, id: &PlaceId) -> bool {
@@ -43,7 +43,7 @@ entity::has!(Places, component::OpenExit, open_exits);
 
 impl Places {
     /// Every store, as the log a rollback undoes and an accept clears.
-    pub(in crate::state) fn logs_mut(&mut self) -> [&mut dyn undo::Log; 4] {
+    pub(in crate::ecs) fn logs_mut(&mut self) -> [&mut dyn undo::Log; 4] {
         // Every store, with no `..`: a store added later must be listed here to compile.
         let Places {
             items,

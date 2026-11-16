@@ -7,8 +7,8 @@ use serde::Deserialize;
 
 use crate::canon::source::{load_tagged, Diags, DuplicateWords, FileText, Locator, METERS_SCHEMA};
 use crate::diagnostic::Diagnostic;
+use crate::ecs::component::meter::MeterDef;
 use crate::entity;
-use crate::state::component::meter::MeterDef;
 
 /// A meters file, whose meters `carrier` carries.
 pub(super) fn load_meters(

@@ -3,19 +3,19 @@
 
 use std::marker::PhantomData;
 
-use crate::state::component;
-use crate::state::entity::{self, Actors, Globals, Places, Stories};
-use crate::state::id::{ActorId, GlobalId, PlaceId, StoryId};
-use crate::state::Reader;
+use crate::ecs::component;
+use crate::ecs::entity::{self, Actors, Globals, Places, Stories};
+use crate::ecs::id::{ActorId, GlobalId, PlaceId, StoryId};
+use crate::ecs::Reader;
 
 /// Entity ids, in id order, as a query walks them.
-pub(in crate::state) type Ids<'a, E> =
-    Box<dyn Iterator<Item = &'a <E as entity::Entities>::Id> + 'a>;
+pub(in crate::ecs) type Ids<'a, E> =
+    Box<dyn Iterator<Item = &'a <E as entity::Collection>::Id> + 'a>;
 
 /// What a query reads from each entity: its id, a component, `Option` of one, or a tuple of up to
 /// four of them. `&C` gives the value of a component an entity holds one of, and a
 /// `component::Ref` of one it holds many of, by entry id.
-pub trait QueryData<E: entity::Entities> {
+pub trait QueryData<E: entity::Collection> {
     type Item<'a>
     where
         E: 'a;
@@ -30,7 +30,7 @@ pub trait QueryData<E: entity::Entities> {
 }
 
 /// Which entities a query keeps: `With<C>`, `Without<C>`, or a tuple of up to four of them.
-pub trait QueryFilter<E: entity::Entities> {
+pub trait QueryFilter<E: entity::Collection> {
     /// The entities that carry the first component this requires, or `None` when it requires none.
     fn carriers<'a>(_: Reader<'a, E>) -> Option<Ids<'a, E>> {
         None
@@ -45,11 +45,11 @@ pub trait QueryFilter<E: entity::Entities> {
 /// the collection lists; a component the save holds for an entity that does not exist is walked
 /// too.
 pub struct Query<'a, E, D, F = ()> {
-    pub(in crate::state) entities: Reader<'a, E>,
-    pub(in crate::state) data_and_filter: PhantomData<fn() -> (D, F)>,
+    pub(in crate::ecs) entities: Reader<'a, E>,
+    pub(in crate::ecs) data_and_filter: PhantomData<fn() -> (D, F)>,
 }
 
-impl<'a, E: entity::Entities, D: QueryData<E>, F: QueryFilter<E>> Query<'a, E, D, F> {
+impl<'a, E: entity::Collection, D: QueryData<E>, F: QueryFilter<E>> Query<'a, E, D, F> {
     /// What each entity that passes gives, in id order. The items borrow the save, not the query.
     pub fn iter(&self) -> impl Iterator<Item = D::Item<'a>> {
         let entities = self.entities;
@@ -77,7 +77,7 @@ pub struct With<C>(PhantomData<C>);
 /// Keep the entities that do not hold `C`.
 pub struct Without<C>(PhantomData<C>);
 
-impl<E: entity::Entities, C: 'static> QueryFilter<E> for With<C>
+impl<E: entity::Collection, C: 'static> QueryFilter<E> for With<C>
 where
     for<'x> &'x C: QueryData<E>,
 {
@@ -90,7 +90,7 @@ where
     }
 }
 
-impl<E: entity::Entities, C: 'static> QueryFilter<E> for Without<C>
+impl<E: entity::Collection, C: 'static> QueryFilter<E> for Without<C>
 where
     for<'x> &'x C: QueryData<E>,
 {
@@ -99,7 +99,7 @@ where
     }
 }
 
-impl<E: entity::Entities> QueryFilter<E> for () {
+impl<E: entity::Collection> QueryFilter<E> for () {
     fn matches<'a>(_: Reader<'a, E>, _: &'a E::Id) -> bool {
         true
     }
@@ -132,7 +132,7 @@ where
 
 /// `Option<&C>` gives what `&C` gives, or `None` for an entity without `C`. It names no carriers,
 /// so it never picks which entities a query walks: alone, it walks every entity.
-impl<'c, E: entity::Entities, C> QueryData<E> for Option<&'c C>
+impl<'c, E: entity::Collection, C> QueryData<E> for Option<&'c C>
 where
     &'c C: QueryData<E>,
 {
@@ -163,7 +163,7 @@ id_data!(Actors: ActorId, Places: PlaceId, Stories: StoryId, Globals: GlobalId);
 /// Tuples of up to four parts read each part, and keep an entity when every part does.
 macro_rules! tuples {
     ($($part:ident),+) => {
-        impl<E: entity::Entities, $($part: QueryData<E>),+> QueryData<E> for ($($part,)+) {
+        impl<E: entity::Collection, $($part: QueryData<E>),+> QueryData<E> for ($($part,)+) {
             type Item<'a> = ($($part::Item<'a>,)+) where E: 'a;
 
             fn carriers<'a>(entities: Reader<'a, E>) -> Option<Ids<'a, E>> {
@@ -175,7 +175,7 @@ macro_rules! tuples {
             }
         }
 
-        impl<E: entity::Entities, $($part: QueryFilter<E>),+> QueryFilter<E> for ($($part,)+) {
+        impl<E: entity::Collection, $($part: QueryFilter<E>),+> QueryFilter<E> for ($($part,)+) {
             fn carriers<'a>(entities: Reader<'a, E>) -> Option<Ids<'a, E>> {
                 None $(.or_else(|| $part::carriers(entities)))+
             }
@@ -192,20 +192,20 @@ tuples!(A, B, C, D);
 
 #[cfg(test)]
 mod tests {
-    use crate::state::component::{self, Meter};
-    use crate::state::entity::{With, Without};
-    use crate::state::id::{ActorId, PlaceId};
-    use crate::World;
+    use crate::ecs::component::{self, Meter};
+    use crate::ecs::entity::{With, Without};
+    use crate::ecs::id::{ActorId, PlaceId};
+    use crate::session;
 
-    fn docks() -> World<()> {
+    fn docks() -> session::Session<()> {
         let pack = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/packs/docks");
-        World::open(&pack).expect("open")
+        session::Session::open(&pack).expect("open")
     }
 
     #[test]
     fn a_query_reads_each_part_of_a_tuple_from_every_entity_that_holds_them_all() {
-        let world = docks();
-        let actors = world.state().actors();
+        let session = docks();
+        let actors = session.world().actors();
         let query = actors.query::<(ActorId, &component::ControlType, &component::Place, &Meter)>();
         let read: Vec<_> = (query.iter())
             .map(|(id, control_type, place, meters)| {
@@ -226,18 +226,18 @@ mod tests {
             .map(|(id, facts)| (id.as_str(), facts.len()))
             .collect();
         assert_eq!(knowing, [("mira", 1)], "only Mira knows a fact");
-        let places = world.state().places().query::<PlaceId>();
+        let places = session.world().places().query::<PlaceId>();
         assert_eq!(
             places.iter().count(),
-            world.canon().places.len(),
+            session.canon().places.len(),
             "every place the pack defines"
         );
     }
 
     #[test]
     fn with_and_without_keep_the_entities_that_hold_or_lack_a_component() {
-        let world = docks();
-        let actors = world.state().actors();
+        let session = docks();
+        let actors = session.world().actors();
         let knowing = actors.query_filtered::<ActorId, With<component::KnownFacts>>();
         assert_eq!(knowing.iter().collect::<Vec<_>>(), ["mira"]);
         let filter = actors
@@ -246,8 +246,8 @@ mod tests {
             filter.iter().collect::<Vec<_>>(),
             ["harbormouse", "rowan", "wren"]
         );
-        let stocked = world
-            .state()
+        let stocked = session
+            .world()
             .places()
             .query_filtered::<PlaceId, With<component::Item>>();
         assert_eq!(
@@ -258,8 +258,8 @@ mod tests {
 
     #[test]
     fn an_option_walks_every_entity_and_get_and_contains_read_one() {
-        let world = docks();
-        let actors = world.state().actors();
+        let session = docks();
+        let actors = session.world().actors();
         let facts = actors.query::<Option<&component::KnownFacts>>();
         let counts: Vec<_> = facts
             .iter()

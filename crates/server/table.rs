@@ -1,4 +1,4 @@
-//! The table, the one owner of the world and its seats: connections, commands, say and rounds.
+//! The table, the one owner of the session and its seats: connections, commands, say and rounds.
 //! Every message it sends but a hello takes the next `seq` from its one counter.
 
 use std::collections::BTreeMap;
@@ -7,7 +7,7 @@ use std::sync::mpsc::{Receiver, Sender};
 
 use serde_json::{Map, Value};
 use spookery_engine::{
-    emit_tape_record, ActorId, Presence, Reason, RecipientLine, RoundOutput, TapeRecord, World,
+    emit_tape_record, ActorId, Presence, Reason, RecipientLine, RoundOutput, TapeRecord,
 };
 use tokio::sync::{oneshot, watch};
 
@@ -27,11 +27,11 @@ const MAX_PLAYER_SEATS: usize = 3;
 /// Commit a queued round, then fast-forward while every seated PC is busy.
 /// An empty queue only fast-forwards.
 pub(crate) fn commit_then_fast_forward(
-    world: &mut World,
+    session: &mut spookery_engine::Session,
     presence: &Presence,
 ) -> Result<Vec<RoundOutput>, Reason> {
     let wall = now_stamp();
-    world.commit_then_fast_forward(presence, &wall)
+    session.commit_then_fast_forward(presence, &wall)
 }
 
 /// Sent from the game port, the MCP endpoint and the idle timer to the table thread.
@@ -82,7 +82,7 @@ pub(super) async fn report_close(tx: &Sender<Request>, conn: ConnId) {
 }
 
 pub(crate) struct Table {
-    world: World,
+    session: spookery_engine::Session,
     seats: Seats,
     /// The `seq` of the last message sent.
     seq: u64,
@@ -98,14 +98,14 @@ pub(crate) struct Table {
 
 impl Table {
     pub(crate) fn new(
-        world: World,
+        session: spookery_engine::Session,
         idle: watch::Sender<u64>,
         out: Box<dyn Write>,
         err: Box<dyn Write>,
     ) -> Self {
-        let verbs = world.verbs();
+        let verbs = session.verbs();
         Self {
-            world,
+            session,
             seats: Seats::default(),
             seq: 0,
             verbs,
@@ -168,7 +168,7 @@ impl Table {
                     return Ok(());
                 }
             }
-            if let Some(warning) = self.world.take_warning() {
+            if let Some(warning) = self.session.take_warning() {
                 let _ = writeln!(self.err, "{warning}");
                 let _ = self.err.flush();
             }
@@ -207,7 +207,7 @@ impl Table {
         if seat == Seat::Player {
             commands.extend(self.verbs.iter().cloned());
             (open, taken) = self.open_and_taken();
-            let canon = self.world.canon();
+            let canon = self.session.canon();
             let ids = open.iter().chain(&taken);
             // Load refuses a save actor the cast lacks, so each PC is a cast member.
             let name = |id: &String| canon.cast[id.as_str()].name.clone();
@@ -232,7 +232,7 @@ impl Table {
     /// The hello's `open` and `taken`: the PCs nobody holds now, and the PCs held now.
     fn open_and_taken(&self) -> (Vec<String>, Vec<String>) {
         let presence = self.seats.presence();
-        self.world.pcs().map(ActorId::to_string).partition(|id| {
+        self.session.pcs().map(ActorId::to_string).partition(|id| {
             !presence
                 .actors_present
                 .iter()
@@ -286,19 +286,19 @@ impl Table {
             },
             // The view, not text: the client writes the look from it.
             "look" if read::<NoArgs>(&args).is_some() => {
-                match self.world.perceive(&presence, actor_id.as_str()) {
+                match self.session.perceive(&presence, actor_id.as_str()) {
                     Ok(view) => frames::render_view(&view),
                     Err(code) => ServerBody::Refused(code.into()),
                 }
             }
             // Data, read from the world as it is now. The client writes the text.
             "help" if read::<NoArgs>(&args).is_some() => {
-                match self.world.help(&presence, &actor_id) {
+                match self.session.help(&presence, &actor_id) {
                     Ok(commands) => ServerBody::Help { commands },
                     Err(code) => ServerBody::Refused(code.into()),
                 }
             }
-            "map" if read::<NoArgs>(&args).is_some() => match self.world.map(&actor_id) {
+            "map" if read::<NoArgs>(&args).is_some() => match self.session.map(&actor_id) {
                 Ok(places) => ServerBody::Map { places },
                 Err(code) => ServerBody::Refused(code.into()),
             },
@@ -326,7 +326,7 @@ impl Table {
             Err(code) => return self.reply(conn, id, ServerBody::Refused(code.into())),
         };
         // After the claim, so the view counts this player as present.
-        let [resume, view] = match refresh(&self.world, &self.seats.presence(), &actor) {
+        let [resume, view] = match refresh(&self.session, &self.seats.presence(), &actor) {
             Ok(bodies) => bodies,
             Err(code) => {
                 if fresh {
@@ -355,11 +355,11 @@ impl Table {
         if presence.actors_present.len() >= MAX_PLAYER_SEATS {
             return Err(Reason::TableFull);
         }
-        let actor = self.world.find_pc(text)?.ok_or(Reason::Schema)?;
+        let actor = self.session.find_pc(text)?.ok_or(Reason::Schema)?;
         if presence.actors_present.contains(&actor) {
             return Err(Reason::SeatTaken);
         }
-        let scrollback = self.world.player_scrollback(&actor)?;
+        let scrollback = self.session.player_scrollback(&actor)?;
         let token = uuid::Uuid::new_v4().simple().to_string();
         let claimed = frames::render_claimed(&actor, &token, &scrollback);
         self.seats
@@ -408,7 +408,7 @@ impl Table {
         text: &str,
     ) {
         let presence = self.seats.presence();
-        match self.world.say_as_player(&presence, actor_id, to, text) {
+        match self.session.say_as_player(&presence, actor_id, to, text) {
             Ok(speech) => self.deliver_speech(&speech, Some((conn, id))),
             Err(refusal) => self.reply(conn, id, ServerBody::Refused(refusal)),
         }
@@ -428,33 +428,34 @@ impl Table {
         let gm = self.seats.gm;
         let presence = self.seats.presence();
         let target = target.filter(|target| !target.is_empty());
-        let reply = match self
-            .world
-            .queue_player_move(&presence, actor_id, verb, target.as_deref())
-        {
-            Ok((queued, target)) => ServerBody::Queued {
-                intent: queued.id,
-                actor: queued.actor_id,
-                move_id: queued.move_id,
-                target,
-            },
-            Err(refused) if gm.is_none() && refused.code == Reason::Busy => {
-                ServerBody::Refused(frames::render_refused_move(&refused))
-            }
-            Err(refused) => {
-                return self.reply(
-                    conn,
-                    id,
-                    ServerBody::Refused(frames::render_refused_move(&refused)),
-                );
-            }
-        };
+        let reply =
+            match self
+                .session
+                .queue_player_move(&presence, actor_id, verb, target.as_deref())
+            {
+                Ok((queued, target)) => ServerBody::Queued {
+                    intent: queued.id,
+                    actor: queued.actor_id,
+                    move_id: queued.move_id,
+                    target,
+                },
+                Err(refused) if gm.is_none() && refused.code == Reason::Busy => {
+                    ServerBody::Refused(frames::render_refused_move(&refused))
+                }
+                Err(refused) => {
+                    return self.reply(
+                        conn,
+                        id,
+                        ServerBody::Refused(frames::render_refused_move(&refused)),
+                    );
+                }
+            };
         if let Some(gm) = gm {
             let seq = self.next_seq();
             self.send_to_pc(actor_id, stamp_message(seq, id, reply.clone()));
             return self.send(gm, stamp_message(seq, None, reply));
         }
-        match commit_then_fast_forward(&mut self.world, &presence) {
+        match commit_then_fast_forward(&mut self.session, &presence) {
             Ok(outputs) => {
                 self.reply(conn, id, reply);
                 self.after_rounds(&outputs);
@@ -468,7 +469,7 @@ impl Table {
             return self.reply(conn, id, ServerBody::Refused(Reason::NotInSpec.into()));
         }
         let presence = self.seats.presence();
-        let reply = gm::run(&mut self.world, &presence, &body.kind, &body.args)
+        let reply = gm::run(&mut self.session, &presence, &body.kind, &body.args)
             .unwrap_or_else(Reply::refused);
         self.log_refused(&body.kind, &reply);
         self.after_rounds(&reply.outputs);
@@ -501,7 +502,7 @@ impl Table {
         if !self.seats.claims.is_empty() || self.seats.gm.is_some() {
             return Ok(());
         }
-        if idle::catch_up_if_due(&mut self.world)? {
+        if idle::catch_up_if_due(&mut self.session)? {
             self.restart_idle_timer();
         }
         Ok(())
@@ -539,7 +540,7 @@ impl Table {
                 .iter()
                 .flat_map(|output| frames::render_checks(&output.reports, &actor_id))
                 .collect();
-            match refresh(&self.world, &presence, &actor_id) {
+            match refresh(&self.session, &presence, &actor_id) {
                 Ok(refreshed) => bodies.extend(refreshed),
                 Err(code) => bodies.push(ServerBody::Refused(code.into())),
             }
@@ -686,7 +687,7 @@ impl Table {
     }
 
     fn write_digest(&mut self, outputs: &[RoundOutput]) {
-        let text = self.world.digest(outputs);
+        let text = self.session.digest(outputs);
         if !text.is_empty() {
             let _ = self.out.write_all(text.as_bytes());
             let _ = self.out.flush();
@@ -719,10 +720,10 @@ fn narrate_lines_for(lines: &[RecipientLine], viewer: &ActorId) -> Vec<String> {
 }
 
 fn refresh(
-    world: &World,
+    session: &spookery_engine::Session,
     presence: &Presence,
     actor_id: &ActorId,
 ) -> Result<[ServerBody; 2], Reason> {
-    let view = world.perceive(presence, actor_id.as_str())?;
+    let view = session.perceive(presence, actor_id.as_str())?;
     Ok([frames::render_resume(&view), frames::render_view(&view)])
 }

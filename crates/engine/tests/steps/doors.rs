@@ -14,8 +14,8 @@ fn plays(world: &mut World, actor: &str, verb: &str, target: Option<&str>) -> se
     let pack = world.pack().to_path_buf();
     let lock = spookery_engine::lock_pack(&pack).unwrap();
     let mut opened =
-        spookery_engine::World::resume(&pack, lock).unwrap_or_else(|err| panic!("open: {err}"));
-    let round = opened.state().round_index + 1;
+        spookery_engine::Session::resume(&pack, lock).unwrap_or_else(|err| panic!("open: {err}"));
+    let round = opened.world().round_index + 1;
     let intent = spookery_protocol::QueueArgs {
         id: Some(format!("{actor}-{round}")),
         round_index: None,
@@ -30,7 +30,7 @@ fn plays(world: &mut World, actor: &str, verb: &str, target: Option<&str>) -> se
             panic!("the GM chose the id")
         })
         .unwrap_or_else(|code| panic!("queue: {code}"));
-    let wall = opened.state().last_round_at.clone();
+    let wall = opened.world().last_round_at.clone();
     let seated = Presence {
         players: 1,
         actors_present: vec!["rowan".into()],
@@ -45,13 +45,13 @@ fn plays(world: &mut World, actor: &str, verb: &str, target: Option<&str>) -> se
 
 /// Where `actor` stands in the pack's saved state.
 fn saved_place_of(pack: &Path, actor: &str) -> String {
-    support::place_of(spookery_engine::World::peek(pack).unwrap().state(), actor)
+    support::place_of(spookery_engine::Session::peek(pack).unwrap().world(), actor)
 }
 
 fn stairs_open(pack: &Path) -> bool {
-    let saved = spookery_engine::World::peek(pack).unwrap();
+    let saved = spookery_engine::Session::peek(pack).unwrap();
     saved
-        .state()
+        .world()
         .places()
         .get::<component::OpenExit>(&"docks_shop".into())
         .contains("stairs")
@@ -85,13 +85,13 @@ exits:";
         text.replace("  eligible: true\n", "  eligible: false\n"),
     )
     .unwrap();
-    support::edit_save(&pack, |state| {
-        state
+    support::edit_save(&pack, |ecs_world| {
+        ecs_world
             .actors_mut()
             .get_mut::<component::Place>(&"mira".into())
             .set("docks_street")
             .unwrap();
-        state
+        ecs_world
             .actors_mut()
             .get_mut::<component::Item>(&"mira".into())
             .shift("brass_key", 1, None)
@@ -135,9 +135,9 @@ fn the_gm_sees_both_change(world: &mut World, door: String, place: String) {
 #[when(expr = "Mira drops brass_key")]
 fn mira_drops_the_key(world: &mut World) {
     plays(world, "mira", "drop", Some("brass_key"));
-    let saved = spookery_engine::World::peek(world.pack()).unwrap();
+    let saved = spookery_engine::Session::peek(world.pack()).unwrap();
     let mira = "mira".into();
-    let held = saved.state().actors().get::<component::Item>(&mira);
+    let held = saved.world().actors().get::<component::Item>(&mira);
     assert!(!held.contains("brass_key"));
 }
 
@@ -153,9 +153,9 @@ fn mira_takes_the_stairs(world: &mut World) {
 
 #[when(expr = "Aldric, who has no key, takes the stairs")]
 fn aldric_takes_the_stairs(world: &mut World) {
-    let saved = spookery_engine::World::peek(world.pack()).unwrap();
+    let saved = spookery_engine::Session::peek(world.pack()).unwrap();
     let aldric = "aldric".into();
-    let held = saved.state().actors().get::<component::Item>(&aldric);
+    let held = saved.world().actors().get::<component::Item>(&aldric);
     assert!(!held.contains("brass_key"));
     drop(saved);
     world.scratch = plays(world, "aldric", "travel", Some("stairs")).to_string();
@@ -181,7 +181,7 @@ fn a_rule_locks_the_door(world: &mut World) {
 #[then(expr = "the GM's travel for Aldric up the stairs is refused NO_EXIT at once")]
 fn the_door_refuses_aldric(world: &mut World) {
     let lock = spookery_engine::lock_pack(world.pack()).unwrap();
-    let mut opened = spookery_engine::World::resume(world.pack(), lock).unwrap();
+    let mut opened = spookery_engine::Session::resume(world.pack(), lock).unwrap();
     let intent = spookery_protocol::QueueArgs {
         id: Some("aldric-stairs".to_string()),
         round_index: None,
@@ -222,9 +222,9 @@ fn the_journal_has_the_open(world: &mut World) {
 
 #[then(expr = "a change rule watching open has run in that round")]
 fn the_watch_ran(world: &mut World) {
-    let saved = spookery_engine::World::peek(world.pack()).unwrap();
+    let saved = spookery_engine::Session::peek(world.pack()).unwrap();
     assert!(saved
-        .state()
+        .world()
         .entities()
         .get::<component::Flag>(&entity::Id::Global)
         .contains("creaked"));

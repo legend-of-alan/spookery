@@ -1,8 +1,8 @@
 //! One rule shape. The id is namespaced by the file that owns it.
 
+use crate::ecs::id::{ActorId, PlaceId};
 use crate::rules::expr::Expr;
 use crate::rules::grammar;
-use crate::state::id::{ActorId, PlaceId};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Rule {

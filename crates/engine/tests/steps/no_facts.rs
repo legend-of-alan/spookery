@@ -29,7 +29,7 @@ fn two_location_effects_for_harbormouse(world: &mut World) {
 
 #[then(regex = r#"^(?P<actor>\S+) is in (?P<place>\S+|"[^"]+")$"#)]
 fn is_in(world: &mut World, actor: String, place: String) {
-    let now = support::state_of(world.pack());
+    let now = support::world_of(world.pack());
     let [actor, place] =
         [&actor, &place].map(|text| resolve_id(now.canon(), text.trim_matches('"')));
     assert_eq!(support::place_of(&now, &actor), place);
@@ -60,15 +60,15 @@ fn the_wait_commits_with_nothing_rejected(world: &mut World) {
 fn mira_stands_in_a_place_with_no_facts(world: &mut World) {
     let pack = support::copy_pack("docks", "no-facts");
     strip_room_facts(&pack);
-    support::edit_save(&pack, |state| {
+    support::edit_save(&pack, |ecs_world| {
         // No writer forgets a fact, so Mira's come off the save as the file holds it.
-        let mut save = serde_json::to_value(&**state).unwrap();
+        let mut save = serde_json::to_value(&**ecs_world).unwrap();
         if let Some(known) = save["actors"]["known_facts"].as_object_mut() {
             known.remove("mira");
         }
-        **state = serde_json::from_value(save).unwrap();
+        **ecs_world = serde_json::from_value(save).unwrap();
     });
-    let opened = spookery_engine::World::open(&pack).unwrap_or_else(|err| panic!("open: {err}"));
+    let opened = spookery_engine::Session::open(&pack).unwrap_or_else(|err| panic!("open: {err}"));
     let view = opened
         .perceive(&Presence::default(), "mira")
         .unwrap_or_else(|err| panic!("perceive: {err}"));
@@ -102,9 +102,9 @@ fn miras_habit_fires(world: &mut World) {
             })
     });
     assert!(fired, "leave_door_note did not run");
-    let state = support::state_of(pack);
+    let ecs_world = support::world_of(pack);
     assert!(
-        state
+        ecs_world
             .notes()
             .iter()
             .any(|message| message.id == "note_mira_door"),
@@ -116,13 +116,13 @@ fn play(world: &mut World, actor: &str, line: &str) {
     let pack = world.pack();
     let lock = spookery_engine::lock_pack(pack).unwrap();
     let mut opened =
-        spookery_engine::World::resume(pack, lock).unwrap_or_else(|err| panic!("resume: {err}"));
+        spookery_engine::Session::resume(pack, lock).unwrap_or_else(|err| panic!("resume: {err}"));
     let seated = Presence {
         players: 1,
         actors_present: vec![actor.into()],
     };
     let (verb, target) = split_line(line);
-    let wall = opened.state().last_round_at.clone();
+    let wall = opened.world().last_round_at.clone();
     opened
         .queue_player_move(&seated, &actor.into(), verb, target)
         .unwrap_or_else(|err| panic!("{line}: {}", err.code.as_str()));

@@ -8,10 +8,10 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde::{Deserialize, Serialize};
 
 use crate::canon::Canon;
-use crate::state::component::modifier::Modifier;
-use crate::state::component::{self, Act, Meter};
-use crate::state::id::ActorId;
-use crate::state::{entity, nested_map, undo, Reader};
+use crate::ecs::component::modifier::Modifier;
+use crate::ecs::component::{self, Act, Meter};
+use crate::ecs::id::ActorId;
+use crate::ecs::{entity, nested_map, undo, Reader};
 
 /// Every actor's components, by actor id. An actor exists when it has a control type;
 /// `control_type`, `place` and `acts` have an entry for every actor, the rest only for actors
@@ -43,7 +43,7 @@ pub struct Actors {
     flags: undo::Store<component::Map<ActorId, component::Flag>>,
 }
 
-impl entity::Entities for Actors {
+impl entity::Collection for Actors {
     type Id = ActorId;
 
     fn contains(&self, _: &Canon, id: &ActorId) -> bool {
@@ -98,7 +98,7 @@ impl Reader<'_, Actors> {
 
 impl Actors {
     /// Every store, as the log a rollback undoes and an accept clears.
-    pub(in crate::state) fn logs_mut(&mut self) -> [&mut dyn undo::Log; 10] {
+    pub(in crate::ecs) fn logs_mut(&mut self) -> [&mut dyn undo::Log; 10] {
         // Every store, with no `..`: a store added later must be listed here to compile.
         let Actors {
             control_type,

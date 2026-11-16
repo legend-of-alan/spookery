@@ -5,7 +5,7 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
-use crate::state::entity;
+use crate::ecs::entity;
 
 /// Declares `$id_type`, the id of an entity in one collection: a string saved as itself, which an
 /// id from another collection cannot stand in for.

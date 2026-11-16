@@ -2,81 +2,81 @@
 
 pub(crate) mod canon;
 pub(crate) mod diagnostic;
+pub mod ecs;
 pub(crate) mod hash;
 pub(crate) mod intent;
 pub(crate) mod round;
 pub(crate) mod rules;
-pub(crate) mod state;
+pub(crate) mod session;
 pub(crate) mod store;
-pub(crate) mod world;
 
-/// Any entity's id, as rules name it; `State::entities` reads its components.
+/// Any entity's id, as rules name it; `ecs::World::entities` reads its components.
 pub mod entity {
-    pub use crate::state::entity::{Id, IdRef, Query, QueryData, QueryFilter, With, Without};
+    pub use crate::ecs::entity::{Id, IdRef, Query, QueryData, QueryFilter, With, Without};
 }
 
 pub use canon::{load_canon, pack_rev};
 pub use diagnostic::{first_reason, Code, Diagnostic};
+pub use ecs::component;
+pub use ecs::component::meter::Meter;
+pub use ecs::component::modifier::Modifier;
+pub use ecs::id::{ActorId, ExitId, PlaceId, StoryId};
+pub use ecs::{Note, Presence, Reader, Save, Writer};
 pub use intent::{Intent, IntentArgs, Source, Target, Viewer};
 pub use round::{migrate_pack, play_pack_once, verify_pack, verify_quick, RoundOutput};
 pub use rules::gate::Refusal;
 pub use rules::perceive::View;
 pub use rules::roll::MoveReport;
 pub use rules::visibility::RecipientLine;
+pub use session::{check_pack, Session};
 pub use spookery_protocol::Reason;
-pub use state::component;
-pub use state::component::meter::Meter;
-pub use state::component::modifier::Modifier;
-pub use state::id::{ActorId, ExitId, PlaceId, StoryId};
-pub use state::{Note, Presence, Reader, Save, State, Writer};
 pub use store::save::{emit as emit_save, parse as parse_save};
 pub use store::{emit_tape_record, lock_pack, PackGuard, TapeRecord};
-pub use world::{check_pack, World};
 
 #[cfg(feature = "testing")]
 pub mod testing {
     use std::fs;
     use std::path::{Path, PathBuf};
 
-    use crate::state::component::Place;
+    use crate::ecs::component::Place;
     use crate::store::lock::WriteGuard;
 
     pub use crate::canon::{strip_body, Canon};
+    pub use crate::ecs::entity::Actors;
+    pub use crate::ecs::{Act, PendingAction};
     pub use crate::round::replay::replay_journal;
     pub use crate::rules::roll::{faces, RollKey};
-    pub use crate::state::entity::Actors;
-    pub use crate::state::{Act, PendingAction};
 
     /// Where `actor` stands, read through `Reader::get`. Panics when they stand nowhere.
-    pub fn place_of(state: &crate::State, actor: &str) -> String {
-        let actors = state.actors();
+    pub fn place_of(world: &crate::ecs::World, actor: &str) -> String {
+        let actors = world.actors();
         let place = actors.get::<Place>(&actor.into()).get().map(String::from);
         place.unwrap_or_else(|| panic!("{actor} stands nowhere"))
     }
 
     /// What `actor` is doing, read through `Reader::get`. Panics when they have no action state.
-    pub fn act_of(state: &crate::State, actor: &str) -> Act {
-        let act = state.actors().get::<Act>(&actor.into()).get().cloned();
+    pub fn act_of(world: &crate::ecs::World, actor: &str) -> Act {
+        let act = world.actors().get::<Act>(&actor.into()).get().cloned();
         act.unwrap_or_else(|| panic!("{actor} has no action state"))
     }
 
     /// Whether `actor` is busy at the save's world time.
-    pub fn is_busy(state: &crate::State, actor: &str) -> bool {
-        state
+    pub fn is_busy(world: &crate::ecs::World, actor: &str) -> bool {
+        world
             .actors()
             .get::<Act>(&actor.into())
-            .is_busy(state.world_time)
+            .is_busy(world.world_time)
     }
 
-    /// The write guard of the pack `world` holds the lock on.
-    pub fn lock_write(world: &crate::World) -> Result<WriteGuard, crate::Reason> {
-        crate::store::lock::lock_write(world.root(), &world.lock)
+    /// The write guard of the pack `session` holds the lock on.
+    pub fn lock_write(session: &crate::session::Session) -> Result<WriteGuard, crate::Reason> {
+        crate::store::lock::lock_write(session.root(), &session.lock)
     }
     pub use crate::store::RULES_REV;
 
     /// A second handle on the lock file, like the copy a spawned child holds until it execs.
-    pub fn clone_lock_file(world: &crate::World) -> std::fs::File {
-        world.lock.file().try_clone().unwrap()
+    pub fn clone_lock_file(session: &crate::session::Session) -> std::fs::File {
+        session.lock.file().try_clone().unwrap()
     }
 
     pub mod journal {
@@ -206,10 +206,10 @@ pub mod testing {
     }
 
     /// Lock the pack and open its save, for a test that plays rounds on it.
-    pub fn resume(pack: &Path) -> crate::World {
+    pub fn resume(pack: &Path) -> crate::session::Session {
         let lock = crate::lock_pack(pack)
             .unwrap_or_else(|err| panic!("lock_pack {}: {err}", pack.display()));
-        crate::World::resume(pack, lock)
+        crate::session::Session::resume(pack, lock)
             .unwrap_or_else(|err| panic!("World::resume {}: {err}", pack.display()))
     }
 
@@ -221,7 +221,8 @@ pub mod testing {
         replay_journal(pack, &records, None, None)
     }
 
-    pub fn state_of(pack: &Path) -> crate::state::State {
+    /// The ECS world the pack's journal replays to, read against the pack's canon.
+    pub fn world_of(pack: &Path) -> crate::ecs::World {
         let report =
             replay_pack(pack).unwrap_or_else(|err| panic!("replay_pack {}: {err}", pack.display()));
         let yaml = std::str::from_utf8(&report.now_yaml)
@@ -230,10 +231,10 @@ pub mod testing {
             .unwrap_or_else(|err| panic!("load {}: {err:?}", pack.display()));
         let canon = crate::canon::load_canon(pack)
             .unwrap_or_else(|err| panic!("canon {}: {err:?}", pack.display()));
-        crate::state::State::new(save, std::sync::Arc::new(canon))
+        crate::ecs::World::new(save, std::sync::Arc::new(canon))
     }
 
-    pub fn write_save(pack: &Path, save: &crate::state::Save) {
+    pub fn write_save(pack: &Path, save: &crate::ecs::Save) {
         let path = crate::store::journal::save_path(pack);
         let bytes = crate::store::save::emit(save)
             .unwrap_or_else(|err| panic!("emit {}: {err}", path.display()));
@@ -242,7 +243,7 @@ pub mod testing {
 
     /// Edit the pack's save through the writers, with no round open, on the pack's canon, and
     /// write it back stamped with the pack's revision.
-    pub fn edit_save(pack: &Path, edit: impl FnOnce(&mut crate::state::State)) {
+    pub fn edit_save(pack: &Path, edit: impl FnOnce(&mut crate::ecs::World)) {
         let path = crate::store::journal::save_path(pack);
         let text = fs::read_to_string(&path)
             .unwrap_or_else(|err| panic!("read {}: {err}", path.display()));
@@ -250,10 +251,10 @@ pub mod testing {
             .unwrap_or_else(|err| panic!("load {}: {err:?}", path.display()));
         let canon = crate::canon::load_canon(pack)
             .unwrap_or_else(|err| panic!("canon {}: {err:?}", pack.display()));
-        let mut state = crate::state::State::new(save, std::sync::Arc::new(canon));
-        edit(&mut state);
-        state.accept();
-        write_save(pack, &state);
+        let mut world = crate::ecs::World::new(save, std::sync::Arc::new(canon));
+        edit(&mut world);
+        world.accept();
+        write_save(pack, &world);
         stamp_pack_rev(pack);
     }
 
@@ -284,9 +285,9 @@ pub mod testing {
         let from = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("fixtures/cast/pc-nell.md");
         fs::copy(&from, pack.join("cast/pc-nell.md"))
             .unwrap_or_else(|err| panic!("copy {}: {err}", from.display()));
-        edit_save(pack, |state| {
+        edit_save(pack, |world| {
             let nell = crate::ActorId::from("nell");
-            let mut actors = state.actors_mut();
+            let mut actors = world.actors_mut();
             actors.add_actor(&nell, crate::component::ControlType::Pc, "docks_shop");
             for (key, base) in [("hp", 8), ("might", 1), ("rest", 3), ("vigor", 100)] {
                 let meter = crate::Meter { base, offset: 0 };

@@ -1,4 +1,4 @@
-use spookery_engine::testing::{place_of, state_of};
+use spookery_engine::testing::{place_of, world_of};
 use std::fs;
 
 use cucumber::{given, then, when};
@@ -18,7 +18,7 @@ fn the_player_says(world: &mut World, text: String) {
 
 #[when(expr = "the player says {string} to the place")]
 fn the_player_says_to_the_place(world: &mut World, text: String) {
-    let place = place_of(&state_of(table::pack(world)), "rowan");
+    let place = place_of(&world_of(table::pack(world)), "rowan");
     let args = serde_json::json!({ "to": { "place": place }, "text": text });
     say_as_rowan(world, args);
 }
@@ -182,7 +182,7 @@ fn tape_text(world: &World) -> String {
 #[then(expr = "state_rev is unchanged")]
 fn state_rev_is_unchanged(world: &mut World) {
     let rev = table::live_mut(world).seated_rev;
-    assert_eq!(state_of(table::pack(world)).state_rev, rev);
+    assert_eq!(world_of(table::pack(world)).state_rev, rev);
 }
 
 #[then(expr = "save.yaml matches the bytes from before the line")]

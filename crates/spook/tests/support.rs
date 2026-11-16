@@ -5,10 +5,10 @@ use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 
 pub use spookery_engine::testing::*;
-use spookery_engine::{component, entity, ActorId, Meter, State};
+use spookery_engine::{component, ecs, entity, ActorId, Meter};
 
 /// Change `actor`'s meter `key` as `edit` says, through the writer.
-pub fn edit_meter(now: &mut State, actor: &str, key: &str, edit: impl FnOnce(&mut Meter)) {
+pub fn edit_meter(now: &mut ecs::World, actor: &str, key: &str, edit: impl FnOnce(&mut Meter)) {
     let actor = ActorId::from(actor);
     let held = now.actors().get::<Meter>(&actor).get(key);
     let mut meter = held
@@ -23,7 +23,7 @@ pub fn edit_meter(now: &mut State, actor: &str, key: &str, edit: impl FnOnce(&mu
 }
 
 /// Give `id` meter `key` at `base`, with no offset, through the writer.
-pub fn put_meter(now: &mut State, id: &entity::Id, key: &str, base: i64) {
+pub fn put_meter(now: &mut ecs::World, id: &entity::Id, key: &str, base: i64) {
     let meter = Meter { base, offset: 0 };
     now.entities_mut()
         .get_mut::<component::Meter>(id)
@@ -33,14 +33,14 @@ pub fn put_meter(now: &mut State, id: &entity::Id, key: &str, base: i64) {
 
 /// Edit the save as its file holds it, for a fixture no writer makes: a count set outright, a
 /// fact forgotten.
-pub fn edit_as_saved(now: &mut State, edit: impl FnOnce(&mut serde_json::Value)) {
+pub fn edit_as_saved(now: &mut ecs::World, edit: impl FnOnce(&mut serde_json::Value)) {
     let mut save = serde_json::to_value(&**now).unwrap();
     edit(&mut save);
     **now = serde_json::from_value(save).unwrap_or_else(|err| panic!("edited save: {err}"));
 }
 
 /// Leave `id`, an actor or a place, holding `count` of `item`, through the writer.
-pub fn put_items(now: &mut State, id: &entity::Id, item: &str, count: u32) {
+pub fn put_items(now: &mut ecs::World, id: &entity::Id, item: &str, count: u32) {
     let to_count = |held: Option<&u32>| i64::from(count) - i64::from(held.copied().unwrap_or(0));
     let put = match id {
         entity::Id::Actor(actor) => {

@@ -4,14 +4,14 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::canon::pack_rev;
+use crate::ecs::component;
+use crate::ecs::id::{ActorId, PlaceId};
+use crate::ecs::Presence;
 use crate::intent::Target;
 use crate::rules::travel::visible_exits;
-use crate::state::component;
-use crate::state::id::{ActorId, PlaceId};
-use crate::state::Presence;
+use crate::session;
 use crate::store::journal;
 use crate::store::save;
-use crate::world::World;
 use proptest::prelude::*;
 use proptest::test_runner::{Config, RngSeed, TestCaseError};
 
@@ -73,20 +73,20 @@ fn pick_move() -> impl Strategy<Value = MovePlan> {
 pub(crate) fn play_rounds(pack: &Path, rounds: &[RoundPlan]) -> Result<(), String> {
     add_exert_success(pack)?;
     let lock = crate::lock_pack(pack).map_err(|err| err.to_string())?;
-    let mut world = World::resume(pack, lock).map_err(|err| err.to_string())?;
+    let mut session = session::Session::resume(pack, lock).map_err(|err| err.to_string())?;
     let exert = VERBS
         .iter()
         .position(|verb| *verb == "exert")
         .expect("exert");
     for (index, round) in rounds.iter().enumerate() {
         for plan in &round.moves {
-            queue_move(&mut world, plan);
+            queue_move(&mut session, plan);
         }
         // Every round rolls when the PC can, by `exert`.
-        let pcs = pc_count(&world);
+        let pcs = pc_count(&session);
         for pc in 0..pcs {
             queue_move(
-                &mut world,
+                &mut session,
                 &MovePlan {
                     pc,
                     verb: exert,
@@ -94,16 +94,16 @@ pub(crate) fn play_rounds(pack: &Path, rounds: &[RoundPlan]) -> Result<(), Strin
                 },
             );
         }
-        let wall = world.state().last_round_at.clone();
-        play_round(&mut world, &Presence::default(), &wall, false)
+        let wall = session.world().last_round_at.clone();
+        play_round(&mut session, &Presence::default(), &wall, false)
             .map_err(|err| format!("round {} refused to play: {err}", index + 1))?;
     }
     Ok(())
 }
 
-fn pc_count(world: &World) -> usize {
-    world
-        .state()
+fn pc_count(session: &session::Session) -> usize {
+    session
+        .world()
         .actors()
         .query::<&component::ControlType>()
         .iter()
@@ -125,18 +125,18 @@ fn add_exert_success(pack: &Path) -> Result<(), String> {
     let rev = pack_rev(pack).map_err(|err| err.to_string())?;
     let save_path = journal::save_path(pack);
     let save_text = fs::read_to_string(&save_path).map_err(|err| err.to_string())?;
-    let mut state = save::parse(&save_text).map_err(|err| format!("{err:?}"))?;
-    state.pack_rev = rev;
+    let mut save = save::parse(&save_text).map_err(|err| format!("{err:?}"))?;
+    save.pack_rev = rev;
     fs::write(
         &save_path,
-        save::emit(&state).map_err(|err| err.to_string())?,
+        save::emit(&save).map_err(|err| err.to_string())?,
     )
     .map_err(|err| err.to_string())
 }
 
-fn queue_move(world: &mut World, plan: &MovePlan) {
-    let pcs: Vec<ActorId> = world
-        .state()
+fn queue_move(session: &mut session::Session, plan: &MovePlan) {
+    let pcs: Vec<ActorId> = session
+        .world()
         .actors()
         .query::<(ActorId, &component::ControlType)>()
         .iter()
@@ -148,25 +148,30 @@ fn queue_move(world: &mut World, plan: &MovePlan) {
     }
     let actor = &pcs[plan.pc % pcs.len()];
     let verb = VERBS[plan.verb % VERBS.len()];
-    let Some(target) = target_for(world, actor, verb, plan.token) else {
+    let Some(target) = target_for(session, actor, verb, plan.token) else {
         return;
     };
     // A line the gate refuses, or one already queued, is left out.
-    let _ = world.queue_player_move(&Presence::default(), actor, verb, target.token());
+    let _ = session.queue_player_move(&Presence::default(), actor, verb, target.token());
 }
 
-fn target_for(world: &World, actor: &ActorId, verb: &str, token: usize) -> Option<Target> {
+fn target_for(
+    session: &session::Session,
+    actor: &ActorId,
+    verb: &str,
+    token: usize,
+) -> Option<Target> {
     match verb {
         "wait" | "exert" | "unwield" => Some(Target::Empty),
         "travel" => {
-            let exits = visible_exits(world.canon(), world.state(), actor);
+            let exits = visible_exits(session.canon(), session.world(), actor);
             if exits.is_empty() {
                 return None;
             }
             Some(Target::Exit(exits[token % exits.len()].exit_id.clone()))
         }
         "take" | "drop" | "use" | "wield" => {
-            let items = item_tokens(world, actor);
+            let items = item_tokens(session, actor);
             if items.is_empty() {
                 return None;
             }
@@ -176,14 +181,14 @@ fn target_for(world: &World, actor: &ActorId, verb: &str, token: usize) -> Optio
     }
 }
 
-fn item_tokens(world: &World, actor: &ActorId) -> Vec<String> {
-    let mut ids: Vec<String> = world.canon().items.keys().cloned().collect();
-    let state = world.state();
-    if let Some(place) = state.actors().get::<component::Place>(actor).get() {
-        let held = state.actors().get::<component::Item>(actor);
+fn item_tokens(session: &session::Session, actor: &ActorId) -> Vec<String> {
+    let mut ids: Vec<String> = session.canon().items.keys().cloned().collect();
+    let world = session.world();
+    if let Some(place) = world.actors().get::<component::Place>(actor).get() {
+        let held = world.actors().get::<component::Item>(actor);
         ids.extend(held.iter().map(|(id, _)| id.to_string()));
         let place = PlaceId::from(place);
-        let lying = state.places().get::<component::Item>(&place);
+        let lying = world.places().get::<component::Item>(&place);
         ids.extend(lying.iter().map(|(id, _)| id.to_string()));
     }
     ids.sort();

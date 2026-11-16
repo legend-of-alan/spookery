@@ -5,9 +5,9 @@ use std::str::FromStr;
 
 use serde::{Deserialize, Deserializer, Serialize};
 
+use crate::ecs::id::{ActorId, PlaceId};
+use crate::ecs::{self, component};
 use crate::rules::rule::TargetKind;
-use crate::state::id::{ActorId, PlaceId};
-use crate::state::{component, State};
 use crate::Reason;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -166,39 +166,39 @@ impl Intent {
     /// `actor_id`'s line `verb token` for the next round. The id is the line's, so the queue
     /// can refuse it by id before the rule it picks shapes the target, which starts empty.
     pub(crate) fn player(
-        state: &State,
+        world: &ecs::World,
         actor_id: &ActorId,
         verb: &str,
         token: Option<&str>,
     ) -> Result<Self, Reason> {
-        let round = state.round_index.checked_add(1).ok_or(Reason::Schema)?;
+        let round = world.round_index.checked_add(1).ok_or(Reason::Schema)?;
         let line = match token {
             Some(token) => format!("{verb} {token}"),
             None => verb.to_string(),
         };
-        let id = intent_id(&state.world_id, round, actor_id.as_str(), &line);
+        let id = intent_id(&world.world_id, round, actor_id.as_str(), &line);
         let actor = Some(Viewer::Player(actor_id.clone()));
         let intent = Self::new(id, round, actor, Source::Player, verb, Target::Empty);
         Ok(intent)
     }
 
     /// The engine running `actor_id`'s habit `local_id` this round.
-    pub(crate) fn habit(state: &State, actor_id: &ActorId, local_id: &str) -> Self {
-        let (round, npc) = (state.round_index, Some(Viewer::Npc(actor_id.clone())));
-        let id = intent_id(&state.world_id, round, actor_id.as_str(), local_id);
+    pub(crate) fn habit(world: &ecs::World, actor_id: &ActorId, local_id: &str) -> Self {
+        let (round, npc) = (world.round_index, Some(Viewer::Npc(actor_id.clone())));
+        let id = intent_id(&world.world_id, round, actor_id.as_str(), local_id);
         Self::new(id, round, npc, Source::Engine, local_id, Target::Empty)
     }
 
     /// The engine firing change rule `rule_id` this round: for `subject` as
     /// `trigger:<rule>:<actor>`, or for a world change, with no subject, as `trigger:<rule>`.
     pub(crate) fn trigger(
-        state: &State,
+        world: &ecs::World,
         subject: Option<&ActorId>,
         rule_id: &str,
     ) -> Result<Self, Reason> {
         let (actor, id) = match subject {
             Some(actor_id) => {
-                let control = state.actors().get::<component::ControlType>(actor_id);
+                let control = world.actors().get::<component::ControlType>(actor_id);
                 let actor = control.viewer().ok_or(Reason::UnknownId)?;
                 (Some(actor), format!("trigger:{rule_id}:{actor_id}"))
             }
@@ -206,7 +206,7 @@ impl Intent {
         };
         let intent = Self::new(
             id,
-            state.round_index,
+            world.round_index,
             actor,
             Source::Engine,
             rule_id,
@@ -218,18 +218,18 @@ impl Intent {
     /// The finish of `actor_id`'s timed action, as `finish:<actor>`, with the source, verb
     /// and target it began with.
     pub(crate) fn finish(
-        state: &State,
+        world: &ecs::World,
         actor_id: &ActorId,
         source: Source,
         verb: &str,
         target: Target,
     ) -> Result<Self, Reason> {
-        let control = state.actors().get::<component::ControlType>(actor_id);
+        let control = world.actors().get::<component::ControlType>(actor_id);
         let actor = Some(control.viewer().ok_or(Reason::UnknownId)?);
         let id = format!("finish:{actor_id}");
         Ok(Self::new(
             id,
-            state.round_index,
+            world.round_index,
             actor,
             source,
             verb,

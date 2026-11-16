@@ -6,11 +6,11 @@ use std::sync::Arc;
 
 use spookery_engine::testing::{
     self as support, act_of, insert_nell, journal::list_round_keys, place_of,
-    read_round as round_value, resume, stamp_pack_rev, state_of, write_save, Canon,
+    read_round as round_value, resume, stamp_pack_rev, world_of, write_save, Canon,
 };
 use spookery_engine::{
-    component, emit_save, entity, load_canon, play_pack_once, ActorId, Meter, MoveReport, Note,
-    PlaceId, Presence, State,
+    component, ecs, emit_save, entity, load_canon, play_pack_once, ActorId, Meter, MoveReport,
+    Note, PlaceId, Presence,
 };
 use spookery_protocol::Outcome;
 
@@ -21,13 +21,13 @@ const LEDGER: &str = "The lamp-oil ledger is short.";
 /// Put actor `id`, controlled as `control_type` says, in `place`, with vigor `vigor`, the docks
 /// pack's other meters at their base, and nothing else.
 fn add_actor(
-    state: &mut State,
+    world: &mut ecs::World,
     id: &str,
     control_type: component::ControlType,
     place: &str,
     vigor: i64,
 ) {
-    let (mut actors, id) = (state.actors_mut(), ActorId::from(id));
+    let (mut actors, id) = (world.actors_mut(), ActorId::from(id));
     actors.add_actor(&id, control_type, place);
     for (key, base) in [("hp", 8), ("might", 1), ("rest", 3), ("vigor", vigor)] {
         let meter = Meter { base, offset: 0 };
@@ -43,16 +43,16 @@ fn write_text(path: &Path, text: &str) {
     fs::write(path, text).unwrap_or_else(|err| panic!("write {}: {err}", path.display()));
 }
 
-fn lamp_oil(state: &State) -> u32 {
+fn lamp_oil(world: &ecs::World) -> u32 {
     let shop = PlaceId::from("docks_shop");
-    let items = state.places().get::<component::Item>(&shop);
+    let items = world.places().get::<component::Item>(&shop);
     *items.get("lamp_oil").expect("lamp_oil missing")
 }
 
-fn flags_of(state: &State, id: &str) -> Vec<String> {
-    assert!(state.actors().contains(&id.into()), "{id} missing");
+fn flags_of(world: &ecs::World, id: &str) -> Vec<String> {
+    assert!(world.actors().contains(&id.into()), "{id} missing");
     let id = id.into();
-    let flags = state.actors().get::<component::Flag>(&id);
+    let flags = world.actors().get::<component::Flag>(&id);
     flags.iter().map(|(flag, ())| flag.to_string()).collect()
 }
 
@@ -99,12 +99,12 @@ fn rowan() -> Presence {
 fn evening_note() {
     let pack = support::copy_pack("docks", "evening");
     play_pack_once(&pack).unwrap_or_else(|err| panic!("round: {err}"));
-    let state = state_of(&pack);
-    assert_eq!(lamp_oil(&state), 4);
-    assert_eq!(place_of(&state, "mira"), "mira_rooms");
-    assert_eq!(state.notes().len(), 1);
-    assert_eq!(state.notes()[0].id, "note_mira_door");
-    assert_eq!(state.notes()[0].place, Some("docks_shop".into()));
+    let world = world_of(&pack);
+    assert_eq!(lamp_oil(&world), 4);
+    assert_eq!(place_of(&world, "mira"), "mira_rooms");
+    assert_eq!(world.notes().len(), 1);
+    assert_eq!(world.notes()[0].id, "note_mira_door");
+    assert_eq!(world.notes()[0].place, Some("docks_shop".into()));
     let _ = fs::remove_dir_all(&pack);
 }
 
@@ -112,23 +112,23 @@ fn morning_restock() {
     let pack = support::copy_pack("docks", "morning");
     {
         let opened = resume(&pack);
-        let mut state = opened.state().clone();
+        let mut world = opened.world().clone();
         drop(opened);
-        state.world_time = 600;
-        state.notes_mut().leave(door_note()).unwrap();
-        state
+        world.world_time = 600;
+        world.notes_mut().leave(door_note()).unwrap();
+        world
             .actors_mut()
             .get_mut::<component::Place>(&"rowan".into())
             .set("docks_street")
             .unwrap();
-        write_save(&pack, &state);
+        write_save(&pack, &world);
     }
-    assert_eq!(place_of(&state_of(&pack), "mira"), "mira_rooms");
+    assert_eq!(place_of(&world_of(&pack), "mira"), "mira_rooms");
     play_pack_once(&pack).unwrap_or_else(|err| panic!("round: {err}"));
-    let state = state_of(&pack);
-    assert_eq!(lamp_oil(&state), 8);
-    assert_eq!(place_of(&state, "mira"), "mira_rooms");
-    assert_eq!(state.notes().len(), 1);
+    let world = world_of(&pack);
+    assert_eq!(lamp_oil(&world), 8);
+    assert_eq!(place_of(&world, "mira"), "mira_rooms");
+    assert_eq!(world.notes().len(), 1);
     let _ = fs::remove_dir_all(&pack);
 }
 
@@ -136,25 +136,25 @@ fn capped_restock() -> u32 {
     let pack = support::copy_pack("docks", "capped");
     {
         let opened = resume(&pack);
-        let mut state = opened.state().clone();
+        let mut world = opened.world().clone();
         drop(opened);
-        state.world_time = 600;
-        state.notes_mut().leave(door_note()).unwrap();
-        state
+        world.world_time = 600;
+        world.notes_mut().leave(door_note()).unwrap();
+        world
             .actors_mut()
             .get_mut::<component::Place>(&"rowan".into())
             .set("docks_street")
             .unwrap();
         let entry = ("docks_shop".into(), "lamp_oil".to_string());
-        let stock = state.places().get::<component::Item>(&entry.0);
+        let stock = world.places().get::<component::Item>(&entry.0);
         let held = i64::from(stock.get(&entry.1).copied().unwrap_or(0));
-        let mut places = state.places_mut();
+        let mut places = world.places_mut();
         let mut shop = places.get_mut::<component::Item>(&entry.0);
         shop.shift("lamp_oil", 6 - held, None).unwrap();
-        write_save(&pack, &state);
+        write_save(&pack, &world);
     }
     play_pack_once(&pack).unwrap_or_else(|err| panic!("round: {err}"));
-    let oil = lamp_oil(&state_of(&pack));
+    let oil = lamp_oil(&world_of(&pack));
     let _ = fs::remove_dir_all(&pack);
     oil
 }
@@ -163,15 +163,15 @@ fn off_hours_hold() {
     let pack = support::copy_pack("docks", "off-hours");
     {
         let opened = resume(&pack);
-        let mut state = opened.state().clone();
+        let mut world = opened.world().clone();
         drop(opened);
-        state.notes_mut().leave(door_note()).unwrap();
-        write_save(&pack, &state);
+        world.notes_mut().leave(door_note()).unwrap();
+        write_save(&pack, &world);
     }
     play_pack_once(&pack).unwrap_or_else(|err| panic!("round: {err}"));
-    let state = state_of(&pack);
-    assert_eq!(lamp_oil(&state), 4);
-    assert_eq!(state.notes().len(), 1);
+    let world = world_of(&pack);
+    assert_eq!(lamp_oil(&world), 4);
+    assert_eq!(world.notes().len(), 1);
     let _ = fs::remove_dir_all(&pack);
 }
 
@@ -179,30 +179,30 @@ fn player_in_the_shop() {
     let pack = support::copy_pack("docks", "present");
     {
         let opened = resume(&pack);
-        let mut state = opened.state().clone();
+        let mut world = opened.world().clone();
         drop(opened);
-        state.world_time = 600;
-        state.notes_mut().leave(door_note()).unwrap();
-        state
+        world.world_time = 600;
+        world.notes_mut().leave(door_note()).unwrap();
+        world
             .actors_mut()
             .get_mut::<component::Place>(&"mira".into())
             .set("docks_shop")
             .unwrap();
-        write_save(&pack, &state);
+        write_save(&pack, &world);
     }
     let mut opened = resume(&pack);
-    let wall = opened.state().last_round_at.clone();
+    let wall = opened.world().last_round_at.clone();
     opened
         .play(&rowan(), &wall)
         .unwrap_or_else(|err| panic!("round: {err}"));
-    let state = state_of(&pack);
-    assert_eq!(lamp_oil(&state), 4);
-    assert_eq!(state.notes().len(), 1);
-    assert_eq!(act_of(&state, "mira").last_act_round, 0);
+    let world = world_of(&pack);
+    assert_eq!(lamp_oil(&world), 4);
+    assert_eq!(world.notes().len(), 1);
+    assert_eq!(act_of(&world, "mira").last_act_round, 0);
     let _ = fs::remove_dir_all(&pack);
 }
 
-fn queue_gm_intent(opened: &mut spookery_engine::World, id: &str, actor: &str, move_id: &str) {
+fn queue_gm_intent(opened: &mut spookery_engine::Session, id: &str, actor: &str, move_id: &str) {
     opened
         .queue_gm_intent(
             &spookery_engine::Presence::default(),
@@ -224,23 +224,23 @@ fn gm_restocks() {
     let pack = support::copy_pack("docks", "gm-restock");
     {
         let opened = resume(&pack);
-        let mut state = opened.state().clone();
+        let mut world = opened.world().clone();
         drop(opened);
-        state.world_time = 600;
-        state.notes_mut().leave(door_note()).unwrap();
-        state
+        world.world_time = 600;
+        world.notes_mut().leave(door_note()).unwrap();
+        world
             .actors_mut()
             .get_mut::<component::Place>(&"mira".into())
             .set("docks_shop")
             .unwrap();
-        write_save(&pack, &state);
+        write_save(&pack, &world);
     }
     let mut opened = resume(&pack);
-    let wall = opened.state().last_round_at.clone();
+    let wall = opened.world().last_round_at.clone();
     queue_gm_intent(&mut opened, "gm-1", "mira", "restock_lamp_oil");
     opened.play(&rowan(), &wall).unwrap();
-    assert_eq!(lamp_oil(opened.state()), 8);
-    assert_eq!(opened.state().notes().len(), 1);
+    assert_eq!(lamp_oil(opened.world()), 8);
+    assert_eq!(opened.world().notes().len(), 1);
     let _ = fs::remove_dir_all(&pack);
 }
 
@@ -248,17 +248,17 @@ fn claimed_note_sorts_first() {
     let pack = support::copy_pack("docks", "claimed");
     {
         let opened = resume(&pack);
-        let mut state = opened.state().clone();
+        let mut world = opened.world().clone();
         drop(opened);
-        state
+        world
             .actors_mut()
             .get_mut::<component::Place>(&"mira".into())
             .set("docks_shop")
             .unwrap();
-        write_save(&pack, &state);
+        write_save(&pack, &world);
     }
     let mut opened = resume(&pack);
-    let wall = opened.state().last_round_at.clone();
+    let wall = opened.world().last_round_at.clone();
     for (id, actor, move_id) in [
         ("gm-1", "bram", "wait"),
         ("gm-2", "mira", "leave_door_note"),
@@ -339,22 +339,22 @@ Rowan.
         .unwrap_or_else(|err| panic!("copy {file}: {err}"));
     }
     let rev = spookery_engine::pack_rev(&pack).unwrap();
-    let mut state = empty_save(load_canon(&pack).unwrap(), "ex", &rev);
-    add_actor(&mut state, "rowan", component::ControlType::Pc, "gate", 1);
-    write_text(&pack.join("state/save.yaml"), &emit_save(&state).unwrap());
+    let mut world = empty_save(load_canon(&pack).unwrap(), "ex", &rev);
+    add_actor(&mut world, "rowan", component::ControlType::Pc, "gate", 1);
+    write_text(&pack.join("state/save.yaml"), &emit_save(&world).unwrap());
     let place_before = fs::read(pack.join("world/places/gate.md")).unwrap();
     let cast_before = fs::read(pack.join("cast/rowan.md")).unwrap();
     let mut opened = resume(&pack);
-    let wall = opened.state().last_round_at.clone();
+    let wall = opened.world().last_round_at.clone();
     opened
         .catch_up(&wall, hours)
         .unwrap_or_else(|err| panic!("catch-up: {err}"));
-    let saved = spookery_engine::World::peek(&pack).unwrap_or_else(|err| panic!("peek: {err}"));
-    let state = saved.state();
-    assert_eq!(state.state_rev, rounds, "{hours} hours");
-    assert_eq!(state.round_index, rounds);
-    assert_eq!(state.world_time, rounds * 60);
-    assert_eq!(state.last_round_at, "2026-01-01T00:00:00Z");
+    let saved = spookery_engine::Session::peek(&pack).unwrap_or_else(|err| panic!("peek: {err}"));
+    let world = saved.world();
+    assert_eq!(world.state_rev, rounds, "{hours} hours");
+    assert_eq!(world.round_index, rounds);
+    assert_eq!(world.world_time, rounds * 60);
+    assert_eq!(world.last_round_at, "2026-01-01T00:00:00Z");
     assert_eq!(list_round_keys(&pack).len() as u64, rounds);
     assert_eq!(
         fs::read(pack.join("world/places/gate.md")).unwrap(),
@@ -368,27 +368,27 @@ fn a_busy_npc_skips() {
     let pack = support::copy_pack("docks", "busy");
     {
         let opened = resume(&pack);
-        let mut state = opened.state().clone();
+        let mut world = opened.world().clone();
         drop(opened);
-        state.world_time = 600;
-        state.notes_mut().leave(door_note()).unwrap();
-        let mut actors = state.actors_mut();
+        world.world_time = 600;
+        world.notes_mut().leave(door_note()).unwrap();
+        let mut actors = world.actors_mut();
         actors
             .get_mut::<component::Act>(&"mira".into())
             .set_busy(u64::MAX, None)
             .unwrap();
-        state
+        world
             .actors_mut()
             .get_mut::<component::Place>(&"rowan".into())
             .set("docks_street")
             .unwrap();
-        write_save(&pack, &state);
+        write_save(&pack, &world);
     }
     play_pack_once(&pack).unwrap_or_else(|err| panic!("round: {err}"));
-    let state = state_of(&pack);
-    assert_eq!(lamp_oil(&state), 4);
-    assert_eq!(act_of(&state, "mira").last_act_round, 0);
-    assert_eq!(act_of(&state, "bram").last_act_round, 0);
+    let world = world_of(&pack);
+    assert_eq!(lamp_oil(&world), 4);
+    assert_eq!(act_of(&world, "mira").last_act_round, 0);
+    assert_eq!(act_of(&world, "bram").last_act_round, 0);
     let _ = fs::remove_dir_all(&pack);
 }
 
@@ -452,16 +452,16 @@ rules:
         fs::copy(rules.join(file), &dest).unwrap();
     }
     let rev = spookery_engine::pack_rev(&pack).unwrap();
-    let mut state = empty_save(load_canon(&pack).unwrap(), "crowd", &rev);
+    let mut world = empty_save(load_canon(&pack).unwrap(), "crowd", &rev);
     for id in &npcs {
-        add_actor(&mut state, id, component::ControlType::Npc, "yard", 1);
+        add_actor(&mut world, id, component::ControlType::Npc, "yard", 1);
     }
-    write_text(&pack.join("state/save.yaml"), &emit_save(&state).unwrap());
+    write_text(&pack.join("state/save.yaml"), &emit_save(&world).unwrap());
     play_pack_once(&pack).unwrap_or_else(|err| panic!("round: {err}"));
-    let state = state_of(&pack);
-    assert_eq!(state.round_index, 1);
+    let world = world_of(&pack);
+    assert_eq!(world.round_index, 1);
     assert_eq!(
-        state
+        world
             .actors()
             .query::<&component::ControlType>()
             .iter()
@@ -469,7 +469,7 @@ rules:
             .count(),
         50
     );
-    let acted = state
+    let acted = world
         .actors()
         .query::<&component::Act>()
         .iter()
@@ -489,7 +489,7 @@ rules:
 fn a_zero_budget_strips_fact_bodies() {
     let pack = support::copy_pack("docks", "scope");
     let before = snapshot(&pack);
-    let opened = spookery_engine::World::open(&pack).unwrap();
+    let opened = spookery_engine::Session::open(&pack).unwrap();
     let call = |viewer_id: &str, budget: usize| {
         opened.perceive_trimmed(&Presence::default(), viewer_id, budget)
     };
@@ -593,24 +593,24 @@ fn patch_mira_flags_and_place(pack: &Path, flags: &str) {
     let now_path = pack.join("state/save.yaml");
     let save = spookery_engine::parse_save(&fs::read_to_string(&now_path).unwrap()).unwrap();
     let canon = load_canon(pack).unwrap_or_else(|err| panic!("load: {err:?}"));
-    let mut state = State::new(save, Arc::new(canon));
-    state
+    let mut world = ecs::World::new(save, Arc::new(canon));
+    world
         .actors_mut()
         .get_mut::<component::Place>(&"mira".into())
         .set("docks_shop")
         .unwrap();
-    write_save(pack, &state);
+    write_save(pack, &world);
 }
 
-fn play_mark(pack: &Path) -> State {
+fn play_mark(pack: &Path) -> ecs::World {
     let mut opened = resume(pack);
-    let wall = opened.state().last_round_at.clone();
+    let wall = opened.world().last_round_at.clone();
     opened
         .queue_player_move(&rowan(), &"rowan".into(), "mark", Some("mira"))
         .unwrap();
     let played = opened.commit_then_fast_forward(&rowan(), &wall).unwrap();
     assert!(!played.is_empty(), "mark mira did not commit");
-    opened.state().clone()
+    opened.world().clone()
 }
 
 fn effects_run_on_both_outcomes_and_lists_run_on_one() {
@@ -623,10 +623,10 @@ fn effects_run_on_both_outcomes_and_lists_run_on_one() {
         fs::write(pack.join("rules/verbs.yaml"), moves).unwrap();
         patch_mira_flags_and_place(&pack, "    - marked\n");
         stamp_pack_rev(&pack);
-        let state = play_mark(&pack);
-        assert_eq!(state.world_time, 1085);
+        let world = play_mark(&pack);
+        assert_eq!(world.world_time, 1085);
         assert_eq!(
-            flags_of(&state, "mira"),
+            flags_of(&world, "mira"),
             vec!["marked".to_string()],
             "{label} success {success}"
         );
@@ -653,9 +653,9 @@ fn effects_run_on_both_outcomes_and_lists_run_on_one() {
         fs::write(pack.join("rules/verbs.yaml"), moves).unwrap();
         patch_mira_flags_and_place(&pack, "    - marked\n    - missed\n");
         stamp_pack_rev(&pack);
-        let state = play_mark(&pack);
-        assert_eq!(flags_of(&state, "mira"), vec![flag.to_string()], "{label}");
-        assert_eq!(state.world_time, 1085);
+        let world = play_mark(&pack);
+        assert_eq!(flags_of(&world, "mira"), vec![flag.to_string()], "{label}");
+        assert_eq!(world.world_time, 1085);
         let _ = fs::remove_dir_all(&pack);
     }
 }
@@ -685,15 +685,15 @@ fn opposing_total_reused() {
         if opposed {
             queue_gm_intent(&mut opened, "gm-1", "nell", "defend");
         }
-        let wall = opened.state().last_round_at.clone();
+        let wall = opened.world().last_round_at.clone();
         opened
             .queue_player_move(&rowan(), &"rowan".into(), "mark", Some("nell"))
             .unwrap();
-        assert_eq!(opened.state().world_time, 1080);
+        assert_eq!(opened.world().world_time, 1080);
         let outputs = opened.commit_then_fast_forward(&rowan(), &wall).unwrap();
         let reports = outputs.into_iter().next().unwrap().reports;
         let rowan = roll_with_stat(&reports, 1);
-        assert_eq!(opened.state().world_time, 1085);
+        assert_eq!(opened.world().world_time, 1085);
         let round = spookery_engine::testing::journal::read_record_line(&pack, "round-0001")
             .unwrap_or_else(|err| panic!("{}", err.detail));
         assert!(!round.contains("faces"));
@@ -704,13 +704,13 @@ fn opposing_total_reused() {
             assert!(nell.total >= 102, "{nell:?}");
             assert_eq!(rowan.target, nell.total);
             assert_eq!(rowan.outcome, Outcome::Miss);
-            let mut flags = flags_of(opened.state(), "nell");
+            let mut flags = flags_of(opened.world(), "nell");
             flags.sort();
             assert_eq!(flags, vec!["guarded".to_string(), "missed".to_string()]);
         } else {
             assert_eq!(rowan.target, 0);
             assert_eq!(rowan.outcome, Outcome::Success);
-            assert_eq!(flags_of(opened.state(), "nell"), vec!["marked".to_string()]);
+            assert_eq!(flags_of(opened.world(), "nell"), vec!["marked".to_string()]);
         }
         let _ = fs::remove_dir_all(&pack);
     }
@@ -731,8 +731,8 @@ fn a_held_knife_still_runs_the_opposed_row() {
     )
     .unwrap();
     insert_nell(&held);
-    support::edit_save(&held, |state| {
-        let (mut actors, rowan) = (state.actors_mut(), "rowan".into());
+    support::edit_save(&held, |world| {
+        let (mut actors, rowan) = (world.actors_mut(), "rowan".into());
         let shifted = actors
             .get_mut::<component::Item>(&rowan)
             .shift("knife", 1, None);
@@ -740,13 +740,13 @@ fn a_held_knife_still_runs_the_opposed_row() {
     });
     let mut opened = resume(&held);
     queue_gm_intent(&mut opened, "gm-1", "nell", "defend");
-    let wall = opened.state().last_round_at.clone();
+    let wall = opened.world().last_round_at.clone();
     opened
         .queue_player_move(&rowan(), &"rowan".into(), "mark", Some("nell"))
         .unwrap();
-    let before = opened.state().world_time;
+    let before = opened.world().world_time;
     let outputs = opened.commit_then_fast_forward(&rowan(), &wall).unwrap();
-    assert_ne!(opened.state().world_time, before);
+    assert_ne!(opened.world().world_time, before);
     let rowan = roll_with_stat(&outputs[0].reports, 1);
     assert_eq!(rowan.outcome, Outcome::Miss);
     assert!(
@@ -759,7 +759,7 @@ fn a_held_knife_still_runs_the_opposed_row() {
 
 fn rowans_debt(pack: &Path) -> i64 {
     let rowan = entity::Id::Actor("rowan".into());
-    state_of(pack)
+    world_of(pack)
         .entities()
         .get::<component::Meter>(&rowan)
         .value("assassination_debt")
@@ -808,7 +808,7 @@ fn twelve_empty_rounds_pass(world: &mut World) {
         play_pack_once(world.pack()).unwrap_or_else(|err| panic!("round {round}: {err}"));
     }
     assert_eq!(
-        state_of(world.pack()).round_index,
+        world_of(world.pack()).round_index,
         12,
         "twelve empty-table rounds commit"
     );
@@ -911,9 +911,9 @@ fn the_save_bytes_are_unchanged(world: &mut World) {
 fn the_next_host_opens_at_the_same_state(world: &mut World) {
     let before = spookery_engine::parse_save(&world.scratch).unwrap();
     let host = resume(world.pack());
-    assert_eq!(host.state().state_rev, before.state_rev);
-    let before = State::new(before, host.state().canon().clone());
-    assert_eq!(lamp_oil(host.state()), lamp_oil(&before));
+    assert_eq!(host.world().state_rev, before.state_rev);
+    let before = ecs::World::new(before, host.world().canon().clone());
+    assert_eq!(lamp_oil(host.world()), lamp_oil(&before));
 }
 
 #[then(expr = "no .tmp file remains under state\\/")]
@@ -957,7 +957,7 @@ fn rowan_marks_nell_while_holding_the_knife(_world: &mut World) {
 }
 
 /// A save with no actors on `canon`, for world `world_id` at pack revision `rev`.
-fn empty_save(canon: Canon, world_id: &str, rev: &str) -> State {
+fn empty_save(canon: Canon, world_id: &str, rev: &str) -> ecs::World {
     let rules_rev = spookery_engine::testing::RULES_REV;
     let text = format!(
         "\
@@ -974,5 +974,5 @@ notes: []
 "
     );
     let save = spookery_engine::parse_save(&text).unwrap_or_else(|err| panic!("save: {err:?}"));
-    State::new(save, Arc::new(canon))
+    ecs::World::new(save, Arc::new(canon))
 }

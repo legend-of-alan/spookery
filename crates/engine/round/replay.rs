@@ -6,16 +6,16 @@ use std::sync::Arc;
 
 use crate::canon::load_canon;
 use crate::diagnostic::first_reason;
+use crate::ecs::{self, Presence, Save};
 use crate::hash::blake2s_tagged;
 use crate::rules::effect::Effect;
-use crate::state::{Presence, Save, State};
+use crate::session;
 use crate::store::durability::write_atomic;
 use crate::store::journal;
 use crate::store::lock::{lock_pack, lock_write, PackGuard};
 use crate::store::records::{emit_effect, MigrateRecord, Record, RoundRecord};
 use crate::store::require_rules_rev;
 use crate::store::save;
-use crate::world::World;
 use crate::Reason;
 
 use crate::round::play::replay_round;
@@ -208,33 +208,33 @@ pub fn replay_journal(
             now_yaml: base_bytes,
         });
     }
-    let mut world = open_for_replay(pack, &base_bytes)?;
+    let mut session = open_for_replay(pack, &base_bytes)?;
     for entry in records.iter() {
         let rev = entry.state_rev_after();
         if rev <= base_rev || rev > cap {
             continue;
         }
-        replay_record(&mut world, entry)?;
+        replay_record(&mut session, entry)?;
         if entry.changes_state() {
             applied += 1;
         }
     }
     Ok(Report {
-        state_rev: world.state().state_rev,
+        state_rev: session.world().state_rev,
         applied,
-        now_yaml: emit_save_bytes(&world)?,
+        now_yaml: emit_save_bytes(&session)?,
     })
 }
 
 /// Open the pack at the journal tip. `save.yaml` stays the last checkpoint.
 /// Records after that checkpoint are in the live bundle, so closed bundles stay unread.
 /// The caller holds the pack lock, so a crash is repaired and the checkpoint settled.
-pub(crate) fn open_at_tip(path: &Path, lock: &PackGuard) -> Result<World<()>, Reason> {
+pub(crate) fn open_at_tip(path: &Path, lock: &PackGuard) -> Result<session::Session<()>, Reason> {
     choose_seed(path, lock)?;
     rebuild_save(path, lock).map_err(Error::into_reason)?;
-    let world = peek_at_tip(path)?;
-    crate::store::commit::settle_checkpoint(&world, &lock_write(&world.root, lock)?)?;
-    Ok(world)
+    let session = peek_at_tip(path)?;
+    crate::store::commit::settle_checkpoint(&session, &lock_write(&session.root, lock)?)?;
+    Ok(session)
 }
 
 /// Write a fresh dice seed into `save.yaml` when it has none and the journal is still empty,
@@ -258,13 +258,13 @@ fn choose_seed(path: &Path, lock: &PackGuard) -> Result<(), Reason> {
 }
 
 /// The journal tip in memory. Writes nothing.
-pub(crate) fn peek_at_tip(path: &Path) -> Result<World<()>, Reason> {
-    let mut world = World::open(path)?;
+pub(crate) fn peek_at_tip(path: &Path) -> Result<session::Session<()>, Reason> {
+    let mut session = session::Session::open(path)?;
     // Open checked a save with nothing past it. A replayed tip is checked here.
-    if replay_tail(&mut world)? {
-        save::check_save(world.state()).map_err(|diags| first_reason(&diags))?;
+    if replay_tail(&mut session)? {
+        save::check_save(session.world()).map_err(|diags| first_reason(&diags))?;
     }
-    Ok(world)
+    Ok(session)
 }
 
 /// Migrate the journal tip. A save that the journal has not passed is migrated as it stands.
@@ -273,8 +273,8 @@ pub fn migrate_pack(path: &Path) -> Result<(), Reason> {
     choose_seed(path, &lock)?;
     let (save, edited) = load_migrate_tip(path, &lock)?;
     let canon = load_canon(path).map_err(|diags| first_reason(&diags))?;
-    let state = State::new(save, Arc::new(canon));
-    crate::store::commit::commit_migrate(path, state, edited, &lock)?;
+    let world = ecs::World::new(save, Arc::new(canon));
+    crate::store::commit::commit_migrate(path, world, edited, &lock)?;
     Ok(())
 }
 
@@ -296,7 +296,7 @@ fn load_migrate_tip(path: &Path, lock: &PackGuard) -> Result<(Save, bool), Reaso
     match (ahead, edited) {
         (true, true) => Err(Reason::HandEdit),
         (true, false) => Ok((
-            Save::clone(replay_tip_unchecked(path, lock)?.state()),
+            Save::clone(replay_tip_unchecked(path, lock)?.world()),
             false,
         )),
         (false, _) => Ok((file_state, edited)),
@@ -305,33 +305,36 @@ fn load_migrate_tip(path: &Path, lock: &PackGuard) -> Result<(Save, bool), Reaso
 
 /// The journal tip in memory and unchecked. Migrate checks it after adding its meters.
 /// The caller holds the pack lock.
-fn replay_tip_unchecked(path: &Path, lock: &PackGuard) -> Result<World<()>, Reason> {
+fn replay_tip_unchecked(path: &Path, lock: &PackGuard) -> Result<session::Session<()>, Reason> {
     rebuild_save(path, lock).map_err(Error::into_reason)?;
     let save = journal::read_save(&journal::save_path(path))?;
-    let mut world = open_for_replay(path, &save).map_err(Error::into_reason)?;
-    replay_tail(&mut world)?;
-    crate::store::commit::settle_checkpoint(&world, &lock_write(&world.root, lock)?)?;
-    Ok(world)
+    let mut session = open_for_replay(path, &save).map_err(Error::into_reason)?;
+    replay_tail(&mut session)?;
+    crate::store::commit::settle_checkpoint(&session, &lock_write(&session.root, lock)?)?;
+    Ok(session)
 }
 
 /// A replay world at `base` with the pack's canon.
-pub(crate) fn open_for_replay(pack: &Path, base: &[u8]) -> Result<World<()>, Error> {
+pub(crate) fn open_for_replay(pack: &Path, base: &[u8]) -> Result<session::Session<()>, Error> {
     let save = load_save_bytes(base)?;
     let canon = load_canon(pack).map_err(|diags| Error::Reason(first_reason(&diags)))?;
-    Ok(World::from_parts(pack, State::new(save, Arc::new(canon))))
+    Ok(session::Session::from_parts(
+        pack,
+        ecs::World::new(save, Arc::new(canon)),
+    ))
 }
 
 /// Replay the live records past the save. `true` when any record was replayed.
-fn replay_tail(world: &mut World<()>) -> Result<bool, Reason> {
-    let entries = journal::read_live_records(world.root())
+fn replay_tail(session: &mut session::Session<()>) -> Result<bool, Reason> {
+    let entries = journal::read_live_records(session.root())
         .map_err(|fault| Error::from(fault).into_reason())?;
-    let base_rev = world.state().state_rev;
+    let base_rev = session.world().state_rev;
     let mut replayed = false;
     for entry in &entries {
         if entry.state_rev_after() <= base_rev {
             continue;
         }
-        replay_record(world, entry).map_err(Error::into_reason)?;
+        replay_record(session, entry).map_err(Error::into_reason)?;
         replayed = true;
     }
     Ok(replayed)
@@ -358,9 +361,9 @@ fn rebuild_save(path: &Path, lock: &PackGuard) -> Result<(), Error> {
             }
             // A hand edit is left for open to refuse. Only a save the head has passed is rebuilt.
             if let Ok(text) = std::str::from_utf8(&bytes) {
-                if let Ok(state) = save::parse(text) {
-                    if state.state_rev == mark.state_rev
-                        || save::emit(&state)
+                if let Ok(save) = save::parse(text) {
+                    if save.state_rev == mark.state_rev
+                        || save::emit(&save)
                             .map(|emitted| emitted.into_bytes())
                             .ok()
                             .as_deref()
@@ -485,12 +488,15 @@ fn check_base_migrate(entry: &Record, base_bytes: &[u8]) -> Result<(), Error> {
     Ok(())
 }
 
-pub(crate) fn replay_record(world: &mut World<()>, entry: &Record) -> Result<(), Error> {
+pub(crate) fn replay_record(
+    session: &mut session::Session<()>,
+    entry: &Record,
+) -> Result<(), Error> {
     match entry {
-        Record::Round(record) => apply_recorded_round(world, record),
-        Record::Migrate(record) => apply_migrate(world, record),
+        Record::Round(record) => apply_recorded_round(session, record),
+        Record::Migrate(record) => apply_migrate(session, record),
         Record::Checkpoint(record) => {
-            let written = emit_save_bytes(world)?;
+            let written = emit_save_bytes(session)?;
             if blake2s_tagged(&written) != record.state_hash {
                 return Err(checkpoint_diverged(
                     record.state_rev,
@@ -505,13 +511,16 @@ pub(crate) fn replay_record(world: &mut World<()>, entry: &Record) -> Result<(),
     }
 }
 
-fn apply_recorded_round(world: &mut World<()>, record: &RoundRecord) -> Result<(), Error> {
+fn apply_recorded_round(
+    session: &mut session::Session<()>,
+    record: &RoundRecord,
+) -> Result<(), Error> {
     require_rules_rev(record.rules_rev).map_err(Error::Reason)?;
-    if world.state().round_index + 1 != record.round_index {
+    if session.world().round_index + 1 != record.round_index {
         return Err(round_diverged(record, "round_index differed").into());
     }
     let replayed = replay_round(
-        world,
+        session,
         &record.last_round_at,
         &record.intents,
         &Presence {
@@ -521,18 +530,18 @@ fn apply_recorded_round(world: &mut World<()>, record: &RoundRecord) -> Result<(
     )
     .map(|output| output.effects)
     .map_err(|code| Divergence {
-        replayed: emit_save_bytes(world).ok(),
+        replayed: emit_save_bytes(session).ok(),
         ..round_diverged(record, code.as_str())
     })?;
     let effect_diff = first_effect_diff(&record.effects, &replayed);
-    if world.state().state_rev != record.state_rev_after {
+    if session.world().state_rev != record.state_rev_after {
         return Err(Divergence {
-            replayed: emit_save_bytes(world).ok(),
+            replayed: emit_save_bytes(session).ok(),
             ..round_diverged(record, "state_rev differed")
         }
         .into());
     }
-    let written = emit_save_bytes(world)?;
+    let written = emit_save_bytes(session)?;
     if blake2s_tagged(&written) != record.state_hash {
         let detail = effect_diff.unwrap_or_else(|| "state_hash differed".to_string());
         return Err(round_diverged(record, detail).replayed(written).into());
@@ -567,7 +576,7 @@ fn effect_text(effect: Option<&Effect>) -> String {
     }
 }
 
-fn apply_migrate(world: &mut World<()>, record: &MigrateRecord) -> Result<(), Error> {
+fn apply_migrate(session: &mut session::Session<()>, record: &MigrateRecord) -> Result<(), Error> {
     let diverged = |detail| {
         Divergence::new(
             DivergenceKind::Migrate,
@@ -576,26 +585,26 @@ fn apply_migrate(world: &mut World<()>, record: &MigrateRecord) -> Result<(), Er
             detail,
         )
     };
-    if world.state().pack_rev != record.pack_rev_before {
+    if session.world().pack_rev != record.pack_rev_before {
         return Err(diverged("pack_rev differed").into());
     }
     if record.edited {
         // A migrate of a hand edit restarts from the checkpoint written with it.
-        let path = journal::checkpoint_path(world.root(), record.state_rev_after);
+        let path = journal::checkpoint_path(session.root(), record.state_rev_after);
         let bytes = fs::read(path).map_err(|_| diverged("missing snapshot"))?;
         if blake2s_tagged(&bytes) != record.state_hash {
             return Err(diverged("state_hash differed").replayed(bytes).into());
         }
-        let canon = Arc::clone(world.state().canon());
-        world.set_state(State::new(load_save_bytes(&bytes)?, canon));
+        let canon = Arc::clone(session.world().canon());
+        session.set_world(ecs::World::new(load_save_bytes(&bytes)?, canon));
         return Ok(());
     }
-    let next = save::migrate(world.state().clone(), record).map_err(Error::Reason)?;
+    let next = save::migrate(session.world().clone(), record).map_err(Error::Reason)?;
     let bytes = save::emit(&next).map_err(Error::Reason)?.into_bytes();
     if blake2s_tagged(&bytes) != record.state_hash {
         return Err(diverged("state_hash differed").replayed(bytes).into());
     }
-    world.set_state(next);
+    session.set_world(next);
     Ok(())
 }
 
@@ -608,8 +617,8 @@ pub(crate) fn state_rev_of(bytes: &[u8]) -> Result<u64, Error> {
     Ok(load_save_bytes(bytes)?.state_rev)
 }
 
-pub(crate) fn emit_save_bytes<L>(world: &World<L>) -> Result<Vec<u8>, Error> {
-    save::emit(world.state())
+pub(crate) fn emit_save_bytes<L>(session: &session::Session<L>) -> Result<Vec<u8>, Error> {
+    save::emit(session.world())
         .map(|text| text.into_bytes())
         .map_err(Error::Reason)
 }

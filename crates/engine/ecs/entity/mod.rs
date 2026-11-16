@@ -5,7 +5,7 @@ mod actors;
 pub mod component;
 mod globals;
 mod places;
-pub(in crate::state) mod query;
+pub(in crate::ecs) mod query;
 mod stories;
 
 use std::fmt::{self, Debug};
@@ -19,12 +19,12 @@ pub use query::{Query, QueryData, QueryFilter, With, Without};
 pub use stories::Stories;
 
 use crate::canon::Canon;
-use crate::state::id::{self, ActorId, PlaceId, StoryId};
-use crate::state::Save;
+use crate::ecs::id::{self, ActorId, PlaceId, StoryId};
+use crate::ecs::Save;
 
 /// A collection of entities: the actors, the places, the stories, or the one world. Its id type
 /// is its own, so an id of another collection does not compile.
-pub trait Entities {
+pub trait Collection {
     type Id: Ord + Clone + Debug + id::AsIdRef;
 
     /// Whether `id` is one of this collection's entities. The save lists the actors; the pack's
@@ -39,18 +39,18 @@ pub trait Entities {
 /// collections, queries and component views under `entity` can name `Has`; code anywhere else
 /// reads and writes through `Reader::get` and `Writer::get_mut`.
 mod storage {
-    use crate::state::component::{Component, Map};
-    use crate::state::{entity::Entities, undo};
+    use crate::ecs::component::{Component, Map};
+    use crate::ecs::{entity::Collection, undo};
 
     /// A collection that keeps component `C` in its store `Store`.
-    pub trait Has<C: Component>: Entities {
+    pub trait Has<C: Component>: Collection {
         type Store;
         fn store(&self) -> &Self::Store;
         fn store_mut(&mut self) -> &mut Self::Store;
     }
 
     /// The store of a component an entity holds many of, one under each entry id.
-    pub type MapStore<E, C> = undo::Store<Map<<E as Entities>::Id, C>>;
+    pub type MapStore<E, C> = undo::Store<Map<<E as Collection>::Id, C>>;
 }
 use storage::{Has, MapStore};
 
@@ -72,7 +72,7 @@ macro_rules! has {
 
             fn fetch<'a>(
                 entities: Reader<'a, $entities>,
-                id: &'a <$entities as entity::Entities>::Id,
+                id: &'a <$entities as entity::Collection>::Id,
             ) -> Option<Self::Item<'a>> {
                 entities.components.$store.get(id)
             }
@@ -98,21 +98,21 @@ use has;
 macro_rules! in_collection {
     ($id:expr, [$($save:tt)+], |$entities:ident, $typed:ident| $body:expr) => {
         match $id {
-            $crate::state::entity::Id::Actor($typed) => { let $entities = $($save)+.actors; $body },
-            $crate::state::entity::Id::Place($typed) => { let $entities = $($save)+.places; $body },
-            $crate::state::entity::Id::Story($typed) => { let $entities = $($save)+.stories; $body },
-            $crate::state::entity::Id::Global => {
-                let ($entities, $typed) = ($($save)+.world, &$crate::state::id::GlobalId);
+            $crate::ecs::entity::Id::Actor($typed) => { let $entities = $($save)+.actors; $body },
+            $crate::ecs::entity::Id::Place($typed) => { let $entities = $($save)+.places; $body },
+            $crate::ecs::entity::Id::Story($typed) => { let $entities = $($save)+.stories; $body },
+            $crate::ecs::entity::Id::Global => {
+                let ($entities, $typed) = ($($save)+.globals, &$crate::ecs::id::GlobalId);
                 $body
             }
         }
     };
 }
-pub(in crate::state) use in_collection;
+pub(in crate::ecs) use in_collection;
 
 /// The save, as the collection of every entity: the `entity::Id` picks the collection. Only a
 /// component every collection holds has reads and writes on it, so an item does not compile.
-impl Entities for Save {
+impl Collection for Save {
     type Id = Id;
 
     fn contains(&self, canon: &Canon, id: &Id) -> bool {
