@@ -67,6 +67,20 @@ fn the_stairs_take(world: &mut World, ticks: u64) {
     edit_save(&pack, give_key);
 }
 
+#[given(expr = "the shop's exit to the street takes {int} ticks")]
+fn the_street_exit_takes(world: &mut World, ticks: u64) {
+    let pack = world.pack.clone().unwrap();
+    let path = pack.join("world/places/docks_shop.md");
+    let text = fs::read_to_string(&path).unwrap();
+    let next = text.replace(
+        "    id: docks_street\n",
+        &format!("    id: docks_street\n    cost:\n      ticks: {ticks}\n"),
+    );
+    assert_ne!(next, text, "the street exit cost moved");
+    fs::write(&path, next).unwrap();
+    stamp_pack_rev(&pack);
+}
+
 #[given(expr = "the rule {string} teleports Rowan to mira_rooms and takes {int} ticks")]
 fn a_timed_teleport(world: &mut World, verb: String, ticks: u64) {
     add_verb(

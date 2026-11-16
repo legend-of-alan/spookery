@@ -863,7 +863,7 @@
       ]
     },
     "ExitView": {
-      "description": "Part of a `View`, sent from the table to a player client. `name` is what a player reads\nfor the exit, such as `stairs`, and for an exit whose id is the place it goes to, that\nplace's name. `place_id` and `place_name` are where it goes.",
+      "description": "Part of a `View`, sent from the table to a player client. `name` is what a player reads for\nthe exit, such as `stairs` or `Docks Street`. `place_id` and `place_name` are where it goes.",
       "type": "object",
       "properties": {
         "exit_id": {

@@ -209,8 +209,9 @@ impl Table {
             (open, taken) = self.open_and_taken();
             let canon = self.world.canon();
             let ids = open.iter().chain(&taken);
-            let named = |id: &String| Some((id.clone(), canon.name(id)?.to_string()));
-            pc_names = ids.filter_map(named).collect();
+            // Load refuses a save actor the cast lacks, so each PC is a cast member.
+            let name = |id: &String| canon.cast[id.as_str()].name.clone();
+            pc_names = ids.map(|id| (id.clone(), name(id))).collect();
         }
         let hello = ServerMessage {
             id: None,

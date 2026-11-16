@@ -364,7 +364,7 @@ whether they are locked is read now. A busy player sees what keeps them busy:
 other timed move, and `recovering until tick 1300` in a cooldown. A player names only
 what they hold or what that view shows, by its id or by the name they
 read, in any case. `help`, the room's items, the exits and the character
-picker show names, and an exit whose id is where it goes shows that
+picker show names, and an unnamed exit whose id is where it goes shows that
 place's name. A name two things in sight share is refused by that name and
 takes no round. Anything else reads like an unknown word and takes no round.
 A cast member, place or item the pack gives no name shows its id. An unknown

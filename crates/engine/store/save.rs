@@ -191,10 +191,10 @@ pub fn migrate(mut state: State, record: &MigrateRecord) -> Result<State, Reason
 }
 
 /// Check the save against the pack without changing it. Refuse every component on an actor with no
-/// control type, every actor without a place or an action state, every actor in a place or on an
-/// exit the pack lacks, every meter, item and wielded slot the pack does not define, every meter
-/// the pack gives an entity that the entity lacks, every meter outside its rules, every modifier
-/// the pack no longer gives that meter, and every empty id or zero count.
+/// control type, every actor the cast lacks, every actor without a place or an action state, every
+/// actor in a place or on an exit the pack lacks, every meter, item and wielded slot the pack does
+/// not define, every meter the pack gives an entity that the entity lacks, every meter outside its
+/// rules, every modifier the pack no longer gives that meter, and every empty id or zero count.
 pub fn check_save(state: &State) -> Result<(), Vec<Diagnostic>> {
     let canon = state.canon();
     let mut diags = Vec::new();
@@ -208,6 +208,13 @@ pub fn check_save(state: &State) -> Result<(), Vec<Diagnostic>> {
         diags.push(diag.at_path(format!("actors.{store}.{id}")));
     }
     for id in actors.query::<ActorId>().iter() {
+        if !canon.cast.contains_key(id) {
+            let problem = format!("actor '{id}' is not a cast member");
+            let hint = "add a cast file with this id, or remove the actor from the save";
+            diags.push(
+                schema_error(FILE, &problem, hint).at_path(format!("actors.control_type.{id}")),
+            );
+        }
         for store in ["place", "acts"] {
             if !held.contains(&(store, id)) {
                 let problem = format!("actor '{id}' has a control type but no {store}");

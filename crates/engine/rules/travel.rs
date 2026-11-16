@@ -78,7 +78,7 @@ pub(crate) fn exit_stood_on<'a>(canon: &'a Canon, place: &str) -> Option<&'a Exi
 
 /// Where a walker stands while they walk through `exit`: `exit:<place>.<exit>`.
 pub(crate) fn on_exit(exit: &Exit) -> String {
-    exit.exit_id().to_string()
+    exit.qualified_id().to_string()
 }
 
 /// Refuse a missing, hidden, locked, or unpaid exit. A clear exit is `Ok`.
@@ -123,7 +123,7 @@ fn is_revealed(canon: &Canon, state: &State, actor_id: &ActorId, exit: &Exit) ->
 
 /// A door is locked until it opens. An exit with no `if` is no door, so it is always open.
 fn is_locked(state: &State, exit: &Exit) -> bool {
-    !exit.if_.is_empty() && !state.places().is_exit_open(&exit.exit_id())
+    !exit.if_.is_empty() && !state.places().is_exit_open(&exit.qualified_id())
 }
 
 /// Open each locked door whose `if` some actor in its place meets, with an `exit_open` effect
@@ -154,7 +154,7 @@ pub(crate) fn open_doors(
             let id = format!("door:{place}.{}", exit.id);
             let intent = Intent::new(id, state.round_index, None, Source::Engine, "door", target);
             let kind = EffectKind::ExitOpen {
-                exit: exit.exit_id(),
+                exit: exit.qualified_id(),
                 open: true,
             };
             opens.push((Effect::new(None, &intent.id, kind), intent));
@@ -187,21 +187,14 @@ pub(crate) fn exits_at(
         .collect()
 }
 
-/// `exit` as it is now: where it goes, its ticks, and whether it is locked. An exit whose id is
-/// the place it goes to reads as that place's name.
+/// `exit` as it is now: where it goes, its ticks, and whether it is locked.
 pub(crate) fn exit_view(canon: &Canon, state: &State, exit: &Exit) -> ExitView {
-    // Load refuses an exit whose `to` is not a place, so the place has a name.
-    let place_name = find_place_name(canon, &exit.to).unwrap_or_default();
-    let name = if exit.id == exit.to {
-        place_name.clone()
-    } else {
-        exit.name.clone()
-    };
     ExitView {
         exit_id: exit.id.clone(),
-        name,
+        name: exit.name.clone(),
         place_id: exit.to.clone(),
-        place_name,
+        // Load refuses an exit whose `to` is not a place, so the place has a name.
+        place_name: find_place_name(canon, &exit.to).unwrap_or_default(),
         ticks: exit.cost.ticks,
         locked: is_locked(state, exit),
     }

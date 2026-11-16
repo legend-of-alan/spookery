@@ -167,6 +167,19 @@ fn break_pack(pack: &Path, fault: &str) {
             // inserting one 0 changes the stored hash.
             fs::write(path, text).unwrap();
         }
+        "an actor the cast lacks" => {
+            let path = pack.join("state/save.yaml");
+            for (after, ghost) in [
+                ("    aldric: npc\n", "    ghost: pc\n"),
+                ("    aldric: docks_shop\n", "    ghost: docks_shop\n"),
+                (
+                    "  acts:\n",
+                    "    ghost:\n      last_act_round: 0\n      idle_acts_this_window: 0\n      live_acts_this_window: 0\n",
+                ),
+            ] {
+                replace_in_file(&path, after, &format!("{after}{ghost}"));
+            }
+        }
         "exit to an unknown place" => replace_in_file(
             &pack.join("world/places/docks_shop.md"),
             "  - to: docks_street\n",

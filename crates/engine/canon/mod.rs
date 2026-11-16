@@ -45,7 +45,7 @@ pub(crate) use lint::{check_canon, unknown_item};
 use meters::{add_own_meters, load_meters};
 use modifiers::{load_modifiers, MODIFIERS_FILE};
 use pack::load_pack_yaml;
-use place::add_place;
+use place::{add_place, name_exits};
 use rule_list::load_verbs;
 use source::{collect_files, collect_markdown_files, read_text, Diags, FileText, Locator};
 use story::load_stories;
@@ -100,7 +100,8 @@ pub(crate) const OPEN: &str = "open";
 pub struct Exit {
     /// Unique among this place's exits.
     pub id: String,
-    /// The name a player reads and types, the id when the pack gives none.
+    /// The name a player reads and types. Left out by the pack, it is the name of the place it
+    /// goes to when `id` is that place's id, or else `id`.
     pub name: String,
     /// The place this exit leaves.
     pub from: PlaceId,
@@ -116,7 +117,7 @@ pub struct Exit {
 
 impl Exit {
     /// This exit's door, by its place and its id.
-    pub(crate) fn exit_id(&self) -> ExitId {
+    pub(crate) fn qualified_id(&self) -> ExitId {
         ExitId {
             place: self.from.clone(),
             exit: self.id.clone(),
@@ -331,6 +332,7 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
         };
         loaded.extend(rules.unwrap_or_default());
     }
+    name_exits(&mut places);
     // world/meters.yaml is optional.
     let world_meters = if root.join("world/meters.yaml").is_file() {
         let rel = "world/meters.yaml";

@@ -46,9 +46,8 @@ impl View {
     }
 }
 
-/// Part of a `View`, sent from the table to a player client. `name` is what a player reads
-/// for the exit, such as `stairs`, and for an exit whose id is the place it goes to, that
-/// place's name. `place_id` and `place_name` are where it goes.
+/// Part of a `View`, sent from the table to a player client. `name` is what a player reads for
+/// the exit, such as `stairs` or `Docks Street`. `place_id` and `place_name` are where it goes.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct ExitView {

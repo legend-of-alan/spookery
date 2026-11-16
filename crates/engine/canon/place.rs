@@ -67,6 +67,22 @@ pub(super) fn add_place(
     ))
 }
 
+/// Name each exit the pack leaves unnamed: an exit whose id is the place it goes to takes that
+/// place's name, and any other takes its id.
+pub(super) fn name_exits(places: &mut BTreeMap<PlaceId, PlaceDef>) {
+    let place_names: BTreeMap<PlaceId, String> = (places.iter())
+        .map(|(id, place)| (id.clone(), place.name.clone()))
+        .collect();
+    for exit in places.values_mut().flat_map(|place| place.exits.iter_mut()) {
+        if exit.name.is_empty() {
+            let destination = place_names
+                .get(exit.to.as_str())
+                .filter(|_| exit.id == exit.to);
+            exit.name = destination.unwrap_or(&exit.id).clone();
+        }
+    }
+}
+
 fn load_place(file: &str, yaml: &str, line_base: u32) -> Result<PlaceDoc, Vec<Diagnostic>> {
     let parsed: PlaceDoc = load_tagged(file, yaml, PLACE_SCHEMA, line_base)?;
     let source = FileText {
@@ -140,7 +156,8 @@ fn compile_exits(file: &str, from: &str, exits: &[ExitYaml]) -> Result<Vec<Exit>
         }
         compiled.push(Exit {
             id: exit.id.clone(),
-            name: exit.name.clone().unwrap_or_else(|| exit.id.clone()),
+            // `name_exits` names an exit the pack leaves unnamed once every place has loaded.
+            name: exit.name.clone().unwrap_or_default(),
             from: from.into(),
             to: exit.to.clone(),
             cost,
