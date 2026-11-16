@@ -10,10 +10,10 @@ use crate::turn::{ASK_MODEL, DONE, MAX_MODEL_CALLS, MODEL_CALL_COUNT};
 use crate::{Agent, Connection, Model};
 
 /// Asks the model for its next tool calls, or ends the turn at `MAX_MODEL_CALLS`.
-pub(crate) struct AskModel<M, C>(pub(crate) Arc<Agent<M, C>>);
+pub(crate) struct AskModel<M, Conn>(pub(crate) Arc<Agent<M, Conn>>);
 
 #[async_trait]
-impl<M: Model, C: Connection> Task for AskModel<M, C> {
+impl<M: Model, Conn: Connection> Task for AskModel<M, Conn> {
     fn id(&self) -> &str {
         ASK_MODEL
     }

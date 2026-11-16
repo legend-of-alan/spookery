@@ -265,8 +265,8 @@ fn finish_checkpoint(
 
 /// Publish `save.yaml` and the snapshot for a checkpoint that is already in the
 /// journal, then close that bundle. The next round can then start a new file.
-pub(crate) fn settle_checkpoint<L>(
-    session: &session::Session<L>,
+pub(crate) fn settle_checkpoint<Lock>(
+    session: &session::Session<Lock>,
     write: &WriteGuard,
 ) -> Result<(), Reason> {
     let Some(path) = journal::find_live_bundle(&session.root) else {

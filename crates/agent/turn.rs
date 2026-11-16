@@ -53,7 +53,7 @@ fn is_done(context: &graph_flow::Context) -> bool {
 }
 
 /// Built once per `run`.
-pub(crate) fn build_graph<M: Model, C: Connection>(agent: &Arc<Agent<M, C>>) -> Graph {
+pub(crate) fn build_graph<M: Model, Conn: Connection>(agent: &Arc<Agent<M, Conn>>) -> Graph {
     GraphBuilder::new("gm_turn")
         .add_task(Arc::new(AskModel(Arc::clone(agent))))
         .add_task(Arc::new(RunToolCall(Arc::clone(agent))))
@@ -73,9 +73,9 @@ pub(crate) fn build_graph<M: Model, C: Connection>(agent: &Arc<Agent<M, C>>) -> 
 }
 
 /// Plays `turn` through `graph` to its end.
-pub(crate) async fn play<M: Model, C: Connection>(
+pub(crate) async fn play<M: Model, Conn: Connection>(
     graph: &Graph,
-    agent: &Agent<M, C>,
+    agent: &Agent<M, Conn>,
     turn: Turn,
 ) -> graph_flow::Result<()> {
     *agent.turn() = turn;

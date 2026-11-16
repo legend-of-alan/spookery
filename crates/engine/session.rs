@@ -28,13 +28,13 @@ use spookery_protocol::{Audience, QueuedMove, Refusal, Speaker, PERCEIVE_BODY_CH
 const MAX_SAY_CHARS: usize = 4 * 1024;
 
 /// An open pack: its root, the ECS world its save reads into, the queued intents and the pack
-/// lock `L`, which is `()` for a session that only reads.
-pub struct Session<L = crate::PackGuard> {
+/// lock `Lock`, which is `()` for a session that only reads.
+pub struct Session<Lock = crate::PackGuard> {
     pub(crate) root: PathBuf,
     pub(crate) world: ecs::World,
     pub(crate) queue: Vec<Intent>,
     warning: Option<&'static str>,
-    pub(crate) lock: L,
+    pub(crate) lock: Lock,
 }
 
 impl Session {
@@ -199,7 +199,7 @@ impl Session {
     }
 }
 
-impl<L> Session<L> {
+impl<Lock> Session<Lock> {
     pub fn root(&self) -> &Path {
         &self.root
     }

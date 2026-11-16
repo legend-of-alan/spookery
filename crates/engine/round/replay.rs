@@ -617,7 +617,7 @@ pub(crate) fn state_rev_of(bytes: &[u8]) -> Result<u64, Error> {
     Ok(load_save_bytes(bytes)?.state_rev)
 }
 
-pub(crate) fn emit_save_bytes<L>(session: &session::Session<L>) -> Result<Vec<u8>, Error> {
+pub(crate) fn emit_save_bytes<Lock>(session: &session::Session<Lock>) -> Result<Vec<u8>, Error> {
     save::emit(session.world())
         .map(|text| text.into_bytes())
         .map_err(Error::Reason)

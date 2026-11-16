@@ -485,12 +485,12 @@ pub fn wait_addrs(mut pending: Pending) -> RunningTable {
     }
 }
 
-fn attach_host<'w>(
-    world: &'w mut World,
+fn attach_host<'a>(
+    world: &'a mut World,
     pack: &Path,
     game: SocketAddr,
     mcp_addr: SocketAddr,
-) -> &'w mut Host {
+) -> &'a mut Host {
     let opened_now = fs::read(pack.join("state/save.yaml"))
         .unwrap_or_else(|err| panic!("read save.yaml: {err}"));
     drop(world.live.take());
@@ -647,7 +647,7 @@ pub fn wait_actor_from(world: &World, actor_id: &str, mark: usize, needle: &str)
 }
 
 /// The seated player for `actor_id`.
-pub fn player_client<'w>(world: &'w World, actor_id: &str) -> &'w PlayerClient {
+pub fn player_client<'a>(world: &'a World, actor_id: &str) -> &'a PlayerClient {
     live(world)
         .players
         .iter()
