@@ -96,25 +96,29 @@ pub(crate) fn show_to(
 /// meaning: a modifier's and busy's values are the journal's.
 fn to_change_view(canon: &Canon, change: &Change) -> Option<ChangeView> {
     let key = &change.key;
-    if [Modifier::NAME, Act::BUSY].contains(&key.component_id) {
+    if [Modifier::ID, Act::BUSY].contains(&key.component_id) {
         return None;
     }
+    // A name the pack lacks stays empty, and the wire leaves it out.
     let entity_name = match &key.entity_id {
-        entity::Id::Actor(id) => canon.display_name(id.as_str()),
-        entity::Id::Place(id) => crate::rules::lines::place_name(canon, id.as_str()),
-        entity::Id::Story(id) => id.to_string(),
-        entity::Id::Global => String::new(),
+        entity::Id::Actor(id) => canon.name(id.as_str()).map(str::to_string),
+        entity::Id::Place(id) => crate::rules::lines::find_place_name(canon, id.as_str()),
+        entity::Id::Story(id) => canon.name(id.as_str()).map(str::to_string),
+        entity::Id::Global => None,
     };
     let entry_id = key.entry_id.clone().unwrap_or_default();
     let entry_name = match (key.component_id, &change.after) {
-        (Place::NAME, change::Value::Text(place)) => crate::rules::lines::place_name(canon, place),
-        _ => canon.display_name(&entry_id),
+        (Place::ID, change::Value::Text(place)) => {
+            crate::rules::lines::find_place_name(canon, place)
+        }
+        (Item::ID, _) => canon.name(&entry_id).map(str::to_string),
+        _ => None,
     };
     Some(ChangeView {
         component_id: key.component_id.to_string(),
         entity_id: key.entity_id.to_string(),
-        entity_name,
-        entry_name,
+        entity_name: entity_name.unwrap_or_default(),
+        entry_name: entry_name.unwrap_or_default(),
         entry_id,
         before: to_change_value(&change.before),
         after: to_change_value(&change.after),
@@ -147,7 +151,7 @@ fn narrations(
             lines.push(text.clone());
             continue;
         };
-        if to.iter().any(|name| name == id) && can_see_facts(canon, state, id, fact_ids) {
+        if to.iter().any(|actor_id| actor_id == id) && can_see_facts(canon, state, id, fact_ids) {
             lines.push(text.clone());
         }
     }
@@ -170,29 +174,29 @@ fn can_see(canon: &Canon, state: &State, viewer: &ActorId, change: &Change) -> b
     let key = &change.key;
     let entry = key.entry_id.as_deref().unwrap_or_default();
     match (key.component_id, &key.entity_id) {
-        (Meter::NAME, entity::Id::Global | entity::Id::Story(_)) => {
+        (Meter::ID, entity::Id::Global | entity::Id::Story(_)) => {
             is_shown(canon, &key.entity_id, entry)
         }
-        (Meter::NAME, entity::Id::Place(place)) => {
+        (Meter::ID, entity::Id::Place(place)) => {
             place_of(state, viewer) == Some(place.as_str())
                 && is_shown(canon, &key.entity_id, entry)
         }
-        (Meter::NAME, entity::Id::Actor(actor)) => {
+        (Meter::ID, entity::Id::Actor(actor)) => {
             viewer == actor && is_shown(canon, &key.entity_id, entry)
         }
-        (KnownFacts::NAME, entity::Id::Actor(actor)) => viewer == actor,
-        (Modifier::NAME, entity::Id::Actor(actor)) => {
+        (KnownFacts::ID, entity::Id::Actor(actor)) => viewer == actor,
+        (Modifier::ID, entity::Id::Actor(actor)) => {
             viewer == actor && canon.modifiers.get(entry).is_some_and(|def| !def.hidden)
         }
-        (Item::NAME, entity::Id::Place(place)) => place_of(state, viewer) == Some(place.as_str()),
-        (Note::NAME, entity::Id::Global) => can_see_note(canon, state, viewer, entry),
-        (Place::NAME, entity::Id::Actor(actor)) => {
+        (Item::ID, entity::Id::Place(place)) => place_of(state, viewer) == Some(place.as_str()),
+        (Note::ID, entity::Id::Global) => can_see_note(canon, state, viewer, entry),
+        (Place::ID, entity::Id::Actor(actor)) => {
             viewer == actor
                 || same_place(state, viewer, actor)
                 || is_at(state, viewer, &change.before)
                 || is_at(state, viewer, &change.after)
         }
-        (Act::BUSY | Item::NAME | WieldedItem::NAME, entity::Id::Actor(actor)) => {
+        (Act::BUSY | Item::ID | WieldedItem::ID, entity::Id::Actor(actor)) => {
             viewer == actor || same_place(state, viewer, actor)
         }
         // Flags, doors and act counts are rules bookkeeping: the GM narrates what one means.
@@ -232,7 +236,7 @@ fn can_see_note(canon: &Canon, state: &State, viewer: &ActorId, id: &str) -> boo
         return false;
     };
     let in_room = note.place.as_ref().map(PlaceId::as_str) == place_of(state, viewer);
-    let addressed = note.to.iter().any(|name| name == viewer);
+    let addressed = note.to.iter().any(|actor_id| actor_id == viewer);
     if !in_room && !addressed {
         return false;
     }

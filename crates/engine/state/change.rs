@@ -12,7 +12,7 @@ use crate::Reason;
 /// `save.yaml`.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Key {
-    /// The component's `NAME` or, for an actor's action state, the part of it that moved.
+    /// The component's `ID` or, for an actor's action state, the part of it that moved.
     pub component_id: &'static str,
     pub entity_id: entity::Id,
     /// The id the entity holds the value under, such as meter `vigor` or item `rope`.

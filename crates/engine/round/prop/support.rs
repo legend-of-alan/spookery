@@ -163,7 +163,7 @@ fn target_for(world: &World, actor: &ActorId, verb: &str, token: usize) -> Optio
             if exits.is_empty() {
                 return None;
             }
-            Some(Target::Exit(exits[token % exits.len()].name.clone()))
+            Some(Target::Exit(exits[token % exits.len()].exit_id.clone()))
         }
         "take" | "drop" | "use" | "wield" => {
             let items = item_tokens(world, actor);

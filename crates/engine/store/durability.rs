@@ -31,9 +31,9 @@ pub fn write_atomic(target: &Path, bytes: &[u8]) -> Result<(), Reason> {
 
 /// `path` with `suffix` added to its file name, such as `save.yaml.tmp`.
 pub(crate) fn add_suffix(path: &Path, suffix: &str) -> PathBuf {
-    let mut name = path.file_name().unwrap_or_default().to_os_string();
-    name.push(suffix);
-    path.with_file_name(name)
+    let mut file = path.file_name().unwrap_or_default().to_os_string();
+    file.push(suffix);
+    path.with_file_name(file)
 }
 
 pub(crate) fn fsync_file(path: &Path) -> Result<(), Reason> {
@@ -114,7 +114,7 @@ mod fail_hook {
             let hit = path
                 .file_name()
                 .and_then(|file| file.to_str())
-                .is_some_and(|name| name.ends_with(suffix));
+                .is_some_and(|file| file.ends_with(suffix));
             if hit {
                 *slot = None;
             }

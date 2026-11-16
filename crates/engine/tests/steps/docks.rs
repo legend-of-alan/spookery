@@ -202,7 +202,7 @@ fn player_in_the_shop() {
     let _ = fs::remove_dir_all(&pack);
 }
 
-fn queue_gm_intent(opened: &mut spookery_engine::World, id: &str, actor: &str, move_name: &str) {
+fn queue_gm_intent(opened: &mut spookery_engine::World, id: &str, actor: &str, move_id: &str) {
     opened
         .queue_gm_intent(
             &spookery_engine::Presence::default(),
@@ -210,7 +210,7 @@ fn queue_gm_intent(opened: &mut spookery_engine::World, id: &str, actor: &str, m
                 id: None,
                 round_index: None,
                 actor_id: Some(actor.to_string()),
-                move_name: Some(move_name.to_string()),
+                move_id: Some(move_id.to_string()),
                 target: None,
                 message_to: None,
                 rationale_code: String::new(),
@@ -259,11 +259,11 @@ fn claimed_note_sorts_first() {
     }
     let mut opened = resume(&pack);
     let wall = opened.state().last_round_at.clone();
-    for (id, actor, move_name) in [
+    for (id, actor, move_id) in [
         ("gm-1", "bram", "wait"),
         ("gm-2", "mira", "leave_door_note"),
     ] {
-        queue_gm_intent(&mut opened, id, actor, move_name);
+        queue_gm_intent(&mut opened, id, actor, move_id);
     }
     opened.play(&rowan(), &wall).unwrap();
     let log = round_value(&pack, "round-0001");
@@ -310,7 +310,7 @@ start:
 ---
 schema: place
 id: gate
-display_name: Gate
+name: Gate
 facts:
   - id: fact_gate
     text: The gate is shut.
@@ -325,18 +325,18 @@ A gate.
 schema: cast
 id: rowan
 control_type: pc_template
-display_name: Rowan
+name: Rowan
 ---
 Rowan.
 ",
     );
-    for name in ["verbs.yaml", "checks.yaml", "meters.yaml", "budget.yaml"] {
-        fs::copy(rules.join(name), {
-            let dest = pack.join("rules").join(name);
+    for file in ["verbs.yaml", "checks.yaml", "meters.yaml", "budget.yaml"] {
+        fs::copy(rules.join(file), {
+            let dest = pack.join("rules").join(file);
             fs::create_dir_all(dest.parent().unwrap()).unwrap();
             dest
         })
-        .unwrap_or_else(|err| panic!("copy {name}: {err}"));
+        .unwrap_or_else(|err| panic!("copy {file}: {err}"));
     }
     let rev = spookery_engine::pack_rev(&pack).unwrap();
     let mut state = empty_save(load_canon(&pack).unwrap(), "ex", &rev);
@@ -414,7 +414,7 @@ start:
 ---
 schema: place
 id: yard
-display_name: Yard
+name: Yard
 facts:
   - id: fact_yard
     text: The yard is open.
@@ -433,7 +433,6 @@ A yard.
 schema: cast
 id: {id}
 control_type: npc
-display_name: {id}
 idle:
   eligible: true
 rules:
@@ -447,10 +446,10 @@ rules:
         );
         npcs.push(id);
     }
-    for name in ["verbs.yaml", "checks.yaml", "meters.yaml", "budget.yaml"] {
-        let dest = pack.join("rules").join(name);
+    for file in ["verbs.yaml", "checks.yaml", "meters.yaml", "budget.yaml"] {
+        let dest = pack.join("rules").join(file);
         fs::create_dir_all(dest.parent().unwrap()).unwrap();
-        fs::copy(rules.join(name), &dest).unwrap();
+        fs::copy(rules.join(file), &dest).unwrap();
     }
     let rev = spookery_engine::pack_rev(&pack).unwrap();
     let mut state = empty_save(load_canon(&pack).unwrap(), "crowd", &rev);
@@ -636,7 +635,7 @@ fn effects_run_on_both_outcomes_and_lists_run_on_one() {
             .as_array()
             .unwrap()
             .iter()
-            .any(|name| name == "check_rolled"));
+            .any(|step| step == "check_rolled"));
         assert!(
             !spookery_engine::testing::journal::read_record_line(&pack, "round-0001")
                 .unwrap_or_else(|err| panic!("{}", err.detail))
@@ -728,7 +727,7 @@ fn a_held_knife_still_runs_the_opposed_row() {
     fs::create_dir_all(knife.parent().unwrap()).unwrap();
     fs::write(
         &knife,
-        "---\nschema: item\nid: knife\ndisplay_name: Knife\ntags: []\nrules: []\n---\n\nA knife.\n",
+        "---\nschema: item\nid: knife\nname: Knife\ntags: []\nrules: []\n---\n\nA knife.\n",
     )
     .unwrap();
     insert_nell(&held);

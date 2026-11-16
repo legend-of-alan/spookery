@@ -31,7 +31,7 @@ fn two_location_effects_for_harbormouse(world: &mut World) {
 fn is_in(world: &mut World, actor: String, place: String) {
     let now = support::state_of(world.pack());
     let [actor, place] =
-        [&actor, &place].map(|name| resolve_id(now.canon(), name.trim_matches('"')));
+        [&actor, &place].map(|text| resolve_id(now.canon(), text.trim_matches('"')));
     assert_eq!(support::place_of(&now, &actor), place);
 }
 

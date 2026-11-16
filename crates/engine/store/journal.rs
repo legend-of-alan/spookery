@@ -129,16 +129,16 @@ pub(crate) fn check_chain(pack: &Path, bundles: &[(String, Vec<Record>)]) -> Res
         return Ok(());
     }
     let mut prev = base_hash(pack)?;
-    for (name, entries) in bundles {
+    for (bundle, entries) in bundles {
         for entry in entries {
             if entry.prev() != prev {
                 return Err(Error::new(
-                    Path::new(name),
+                    Path::new(bundle),
                     Reason::JournalDiverged,
                     "the record does not follow the previous hash",
                 ));
             }
-            check_record_chain(name, entry)?;
+            check_record_chain(bundle, entry)?;
             prev = entry.chain().to_string();
         }
     }
@@ -183,9 +183,9 @@ pub fn seal(entry: &Record, prev: &str) -> String {
 
 /// Chain of the last live record, or of the checkpoint head when the live bundle is empty.
 pub(crate) fn read_chain_tip(pack: &Path) -> Result<String, Error> {
-    if let Some((name, text)) = read_live_bundle(pack)? {
+    if let Some((bundle, text)) = read_live_bundle(pack)? {
         if let Some(line) = find_last_line(&text) {
-            return check_line_chain(&name, line);
+            return check_line_chain(&bundle, line);
         }
     }
     if let Some(head) = read_head(pack)? {
@@ -196,10 +196,10 @@ pub(crate) fn read_chain_tip(pack: &Path) -> Result<String, Error> {
 
 /// Records in the plain live bundle. Closed bundles stay unread.
 pub(crate) fn read_live_records(pack: &Path) -> Result<Vec<Record>, Error> {
-    let Some((name, text)) = read_live_bundle(pack)? else {
+    let Some((bundle, text)) = read_live_bundle(pack)? else {
         return Ok(Vec::new());
     };
-    parse_complete(&name, &text)
+    parse_complete(&bundle, &text)
 }
 
 /// Name and text of the plain live bundle, if one is open.
@@ -207,8 +207,8 @@ fn read_live_bundle(pack: &Path) -> Result<Option<(String, String)>, Error> {
     let Some(path) = find_live_bundle(pack) else {
         return Ok(None);
     };
-    let name = path.file_name().unwrap_or_default().to_string_lossy();
-    Ok(Some((name.to_string(), read_bundle(&name, &path)?)))
+    let bundle = path.file_name().unwrap_or_default().to_string_lossy();
+    Ok(Some((bundle.to_string(), read_bundle(&bundle, &path)?)))
 }
 
 fn base_hash(pack: &Path) -> Result<String, Error> {
@@ -229,9 +229,9 @@ pub fn latest_checkpoint(entries: &[Record]) -> Option<&CheckpointRecord> {
 /// Records in each bundle, in file order. A torn tail is not included.
 pub(crate) fn read_bundle_records(pack: &Path) -> Result<Vec<(String, Vec<Record>)>, Error> {
     let mut out = Vec::new();
-    for (name, path) in list_bundles(pack)? {
-        let entries = parse_complete(&name, &read_bundle(&name, &path)?)?;
-        out.push((name, entries));
+    for (bundle, path) in list_bundles(pack)? {
+        let entries = parse_complete(&bundle, &read_bundle(&bundle, &path)?)?;
+        out.push((bundle, entries));
     }
     Ok(out)
 }
@@ -239,8 +239,8 @@ pub(crate) fn read_bundle_records(pack: &Path) -> Result<Vec<(String, Vec<Record
 /// Plain live bundle, if one is open.
 pub fn find_live_bundle(pack: &Path) -> Option<PathBuf> {
     let files = list_bundles(pack).ok()?;
-    let (name, path) = files.last()?;
-    if name.ends_with(".jsonl") {
+    let (bundle, path) = files.last()?;
+    if bundle.ends_with(".jsonl") {
         Some(path.clone())
     } else {
         None
@@ -276,8 +276,8 @@ pub(crate) fn next_bundle_path(pack: &Path) -> PathBuf {
         return path;
     }
     let files = list_bundles(pack).unwrap_or_default();
-    let index = files.last().map_or(0, |(name, _)| {
-        bundle_index(name).unwrap_or(0).saturating_add(1)
+    let index = files.last().map_or(0, |(bundle, _)| {
+        bundle_index(bundle).unwrap_or(0).saturating_add(1)
     });
     pack.join("state/journal")
         .join(format!("bundle-{index:04}.jsonl"))
@@ -295,20 +295,20 @@ fn chain_of(entry: &Record) -> String {
     chain_hash(entry.prev(), body.trim_end())
 }
 
-fn parse_line(name: &str, line: &str) -> Result<Record, Error> {
-    parse_json(name, line).map_err(|fault| {
+fn parse_line(bundle: &str, line: &str) -> Result<Record, Error> {
+    parse_json(bundle, line).map_err(|fault| {
         let value: serde_json::Value = serde_json::from_str(line).unwrap_or_default();
         let rules_rev = value.get("rules_rev").and_then(|rev| rev.as_u64());
         if let Some(Err(reason)) = rules_rev.map(super::require_rules_rev) {
-            return Error::new(Path::new(name), reason, "written by older rules");
+            return Error::new(Path::new(bundle), reason, "written by older rules");
         }
-        name_the_field(name, line, &value).unwrap_or(fault)
+        name_the_field(bundle, line, &value).unwrap_or(fault)
     })
 }
 
 /// Serde buffers a tagged line, so its error loses the field and the column.
 /// Blank the leading tag and read the body as that record to get them back.
-fn name_the_field(name: &str, line: &str, value: &serde_json::Value) -> Option<Error> {
+fn name_the_field(bundle: &str, line: &str, value: &serde_json::Value) -> Option<Error> {
     let kind = value.get("kind")?.as_str()?;
     let tag = format!(r#"{{"kind":"{kind}","#);
     let body = format!(
@@ -317,9 +317,9 @@ fn name_the_field(name: &str, line: &str, value: &serde_json::Value) -> Option<E
         line.strip_prefix(&tag)?
     );
     match kind {
-        "round" => parse_json::<RoundRecord>(name, &body).err(),
-        "migrate" => parse_json::<MigrateRecord>(name, &body).err(),
-        "checkpoint" => parse_json::<CheckpointRecord>(name, &body).err(),
+        "round" => parse_json::<RoundRecord>(bundle, &body).err(),
+        "migrate" => parse_json::<MigrateRecord>(bundle, &body).err(),
+        "checkpoint" => parse_json::<CheckpointRecord>(bundle, &body).err(),
         _ => None,
     }
 }
@@ -337,24 +337,24 @@ pub fn list_bundles(pack: &Path) -> Result<Vec<(String, PathBuf)>, Error> {
         let entry = entry.map_err(|_| {
             Error::new(&dir, Reason::StoreIo, "the log directory could not be read")
         })?;
-        let name = entry.file_name();
-        let name = name.to_string_lossy().into_owned();
-        let Some(index) = bundle_index(&name) else {
+        let bundle = entry.file_name();
+        let bundle = bundle.to_string_lossy().into_owned();
+        let Some(index) = bundle_index(&bundle) else {
             continue;
         };
         let replace = match by_index.get(&index) {
-            Some((have, _)) => name.ends_with(".gz") || !have.ends_with(".gz"),
+            Some((have, _)) => bundle.ends_with(".gz") || !have.ends_with(".gz"),
             None => true,
         };
         if replace {
-            by_index.insert(index, (name, entry.path()));
+            by_index.insert(index, (bundle, entry.path()));
         }
     }
     Ok(by_index.into_values().collect())
 }
 
-pub(crate) fn bundle_index(name: &str) -> Option<u32> {
-    let rest = name.strip_prefix("bundle-")?;
+pub(crate) fn bundle_index(bundle: &str) -> Option<u32> {
+    let rest = bundle.strip_prefix("bundle-")?;
     let digits = rest
         .strip_suffix(".jsonl.gz")
         .or_else(|| rest.strip_suffix(".jsonl"))?;
@@ -369,16 +369,16 @@ fn find_last_line(text: &str) -> Option<&str> {
     complete.lines().rev().find(|line| !line.is_empty())
 }
 
-fn check_line_chain(name: &str, line: &str) -> Result<String, Error> {
-    let entry = parse_line(name, line)?;
-    check_record_chain(name, &entry)?;
+fn check_line_chain(bundle: &str, line: &str) -> Result<String, Error> {
+    let entry = parse_line(bundle, line)?;
+    check_record_chain(bundle, &entry)?;
     Ok(entry.chain().to_string())
 }
 
-fn check_record_chain(name: &str, entry: &Record) -> Result<(), Error> {
+fn check_record_chain(bundle: &str, entry: &Record) -> Result<(), Error> {
     if entry.chain() != chain_of(entry) {
         return Err(Error::new(
-            Path::new(name),
+            Path::new(bundle),
             Reason::JournalDiverged,
             "the chain hash does not cover this record",
         ));
@@ -397,18 +397,18 @@ fn trim_torn_tail(text: &str) -> &str {
     }
 }
 
-fn parse_complete(name: &str, text: &str) -> Result<Vec<Record>, Error> {
+fn parse_complete(bundle: &str, text: &str) -> Result<Vec<Record>, Error> {
     let mut entries = Vec::new();
     for line in trim_torn_tail(text).lines() {
         if line.is_empty() {
             continue;
         }
-        entries.push(parse_line(name, line)?);
+        entries.push(parse_line(bundle, line)?);
     }
     Ok(entries)
 }
 
-fn read_bundle(name: &str, path: &Path) -> Result<String, Error> {
+fn read_bundle(bundle: &str, path: &Path) -> Result<String, Error> {
     let mut bytes = fs::read(path).map_err(|_| {
         Error::new(
             path,
@@ -423,7 +423,7 @@ fn read_bundle(name: &str, path: &Path) -> Result<String, Error> {
             "the journal bundle could not be decoded",
         )
     };
-    if name.ends_with(".gz") {
+    if bundle.ends_with(".gz") {
         bytes = gunzip_bytes(&bytes).map_err(|_| undecoded())?;
     }
     String::from_utf8(bytes).map_err(|_| undecoded())
@@ -444,10 +444,10 @@ pub fn gunzip_bytes(bytes: &[u8]) -> Result<Vec<u8>, Reason> {
     Ok(out)
 }
 
-fn parse_json<T: DeserializeOwned>(name: &str, text: &str) -> Result<T, Error> {
+fn parse_json<T: DeserializeOwned>(bundle: &str, text: &str) -> Result<T, Error> {
     let mut de = serde_json::Deserializer::from_str(text.trim_end());
     serde_path_to_error::deserialize(&mut de)
-        .map_err(|err| Error::new(Path::new(name), Reason::JournalDiverged, &err.to_string()))
+        .map_err(|err| Error::new(Path::new(bundle), Reason::JournalDiverged, &err.to_string()))
 }
 
 #[cfg(test)]

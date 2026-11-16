@@ -17,7 +17,7 @@ pub enum ControlType {
 
 impl Component for ControlType {
     type Value = ControlType;
-    const NAME: &'static str = "control_type";
+    const ID: &'static str = "control_type";
 }
 
 impl Ref<'_, entity::Actors, ControlType> {

@@ -20,7 +20,7 @@ pub struct Budget {
     pub live_acts_per_window: u64,
     /// Ticks in one live act window. `live_acts_per_window` resets when a window ends.
     pub live_act_window_ticks: u64,
-    /// Each named cycle's length in ticks. `cycle` conditions read it.
+    /// Each cycle's length in ticks, by its id. `cycle` conditions read it.
     pub cycles: BTreeMap<String, u64>,
     pub round_every_real_seconds: u64,
     /// Empty-table wakes. `false` leaves an empty table still.
@@ -87,17 +87,17 @@ pub(crate) fn load_budget(rel: &str, text: &str) -> Result<Budget, Vec<Diagnosti
         live_act_window_ticks >= 1,
         round_every_real_seconds >= 1,
     );
-    for (name, length) in doc.cycles.unwrap_or_default() {
+    for (id, length) in doc.cycles.unwrap_or_default() {
         match u64::try_from(length) {
             Ok(ticks) if ticks > 0 => {
-                budget.cycles.insert(name, ticks);
+                budget.cycles.insert(id, ticks);
             }
             _ => diags.push(
                 Problem {
                     source: &source,
-                    path: &format!("cycles.{name}"),
-                    at: Locator::Key(&format!("{name}:")),
-                    message: format!("cycle {name} is {length}, which is not a positive length"),
+                    path: &format!("cycles.{id}"),
+                    at: Locator::Key(&format!("{id}:")),
+                    message: format!("cycle {id} is {length}, which is not a positive length"),
                     hint: "give the cycle a length of one tick or more",
                 }
                 .into_diagnostic(),

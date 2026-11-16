@@ -88,7 +88,7 @@ impl World {
 
     /// Append a player's speech. `presence` is who can hear it. Speech to an actor reads
     /// `opening` and `text` as one line, and its listener is the longest run of leading words
-    /// that names an actor in sight, by id or display name, as a move's target is; the rest is
+    /// that names an actor in sight, by id or name, as a move's target is; the rest is
     /// the text. A name two of them share is `AMBIGUOUS_NAME`, and a line that names nobody is
     /// said at the table, its text the whole line.
     pub fn say_as_player(
@@ -114,8 +114,8 @@ impl World {
         let line = line.trim();
         let (mut to, mut text) = (Audience::Table, line);
         let breaks = line.match_indices(' ').map(|(at, _)| at).rev();
-        for (name, rest) in breaks.map(|at| line.split_at(at)) {
-            let id = gate::find_id(&ids, name).map_err(|detail| Refusal {
+        for (words, rest) in breaks.map(|at| line.split_at(at)) {
+            let id = gate::find_id(&ids, words).map_err(|detail| Refusal {
                 detail: Some(detail),
                 ..Reason::AmbiguousName.into()
             })?;
@@ -179,9 +179,14 @@ impl World {
             None => Audience::Place(here.ok_or(Reason::Schema)?.to_string()),
         };
         let recipient_ids = speech_recipients(&self.state, presence, speaker, &to);
+        let from_name = match speaker {
+            Some(id) => self.canon().name(id.as_str()).ok_or(Reason::UnknownId)?,
+            None => "",
+        };
         let record = TapeRecord {
             seq: 0,
             from,
+            from_name: from_name.to_string(),
             to,
             recipient_ids,
             text,
@@ -219,14 +224,15 @@ impl<L> World<L> {
             .map(|(id, _)| id)
     }
 
-    /// The PC `name` names, by id or display name, ignoring case and outer spaces. `None`
-    /// when no PC has that name, and `AMBIGUOUS_NAME` when two do.
-    pub fn find_pc(&self, name: &str) -> Result<Option<ActorId>, Reason> {
-        let pcs = self
-            .pcs()
-            .map(|id| (id.as_str(), self.canon().display_name(id.as_str())));
-        let pcs: Vec<gate::NamedId> = pcs.map(|(id, name)| gate::NamedId::new(id, name)).collect();
-        let id = gate::find_id(&pcs, name).map_err(|_| Reason::AmbiguousName)?;
+    /// The PC `text` names, by id or name, ignoring case and outer spaces. `None` when no PC
+    /// has that id or name, and `AMBIGUOUS_NAME` when two do.
+    pub fn find_pc(&self, text: &str) -> Result<Option<ActorId>, Reason> {
+        let pcs = self.pcs().map(|id| {
+            let name = self.canon().name(id.as_str()).ok_or(Reason::UnknownId)?;
+            Ok(gate::NamedId::new(id.as_str(), name.to_string()))
+        });
+        let pcs = pcs.collect::<Result<Vec<_>, Reason>>()?;
+        let id = gate::find_id(&pcs, text).map_err(|_| Reason::AmbiguousName)?;
         Ok(id.map(ActorId::from))
     }
 
@@ -252,18 +258,18 @@ impl<L> World<L> {
         verb: &str,
         target: Option<&str>,
     ) -> Result<(QueuedMove, Option<String>), gate::Refusal> {
-        let name = target.filter(|token| !token.is_empty());
+        let words = target.filter(|token| !token.is_empty());
         let viewer = Viewer::Player(actor_id.clone());
-        let ids = match name {
+        let ids = match words {
             Some(_) => gate::list_ids(self.canon(), &self.state, presence, &viewer),
             None => Vec::new(),
         };
-        let match_id = match name {
-            Some(name) => gate::find_id(&ids, name).map(|id| id.map(String::from)),
+        let match_id = match words {
+            Some(words) => gate::find_id(&ids, words).map(|id| id.map(String::from)),
             None => Ok(None),
         };
         let id = match_id.clone().unwrap_or_default();
-        let token = id.as_deref().or(name);
+        let token = id.as_deref().or(words);
         let Ok(mut intent) = Intent::player(&self.state, actor_id, verb, token) else {
             return Err(gate::Refusal {
                 id: String::new(),
@@ -292,7 +298,7 @@ impl<L> World<L> {
         let queued = QueuedMove {
             id: intent.id.clone(),
             actor_id: actor_id.to_string(),
-            move_name: verb.to_string(),
+            move_id: verb.to_string(),
         };
         let target = intent.target.token().map(String::from);
         self.queue_intent(intent);
@@ -309,7 +315,7 @@ impl<L> World<L> {
         if !(actors.get::<component::ControlType>(viewer.actor_id())).is_pc() {
             return Err(Reason::Schema);
         }
-        let (actor, verb) = (viewer, &line.move_name);
+        let (actor, verb) = (viewer, &line.move_id);
         let rule = gate::pick(self.canon(), &self.state, actor, line.source, verb, token)?;
         let target = target_for(rule, token)?;
         if self.queue.iter().any(|queued| queued.id == line.id) {
@@ -331,15 +337,15 @@ impl<L> World<L> {
             .filter(|id| !id.is_empty() && !id.contains(':'))
             .ok_or(Reason::Schema)?
             .into();
-        let move_name = spec
-            .move_name
+        let move_id = spec
+            .move_id
             .filter(|m| !m.is_empty())
             .ok_or(Reason::Schema)?;
         let control = self.state.actors().get::<component::ControlType>(&actor_id);
         let viewer = control.viewer().ok_or(Reason::UnknownId)?;
         let token = spec.target.as_deref().filter(|t| !t.is_empty());
         let (canon, state) = (self.canon(), &self.state);
-        let rule = gate::pick(canon, state, &viewer, Source::Gm, &move_name, token)?;
+        let rule = gate::pick(canon, state, &viewer, Source::Gm, &move_id, token)?;
         let target = target_for(rule, token)?;
         let id = match spec.id {
             Some(id) if !id.is_empty() => id,
@@ -367,7 +373,7 @@ impl<L> World<L> {
             round_index,
             actor: Some(viewer),
             source: Source::Gm,
-            move_name: move_name.clone(),
+            move_id: move_id.clone(),
             target,
             args,
             rationale_code: spec.rationale_code,
@@ -378,7 +384,7 @@ impl<L> World<L> {
         Ok(QueuedMove {
             id,
             actor_id: actor_id.into(),
-            move_name,
+            move_id,
         })
     }
 

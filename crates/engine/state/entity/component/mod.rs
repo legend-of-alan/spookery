@@ -35,13 +35,13 @@ use crate::state::prelude::*;
 use crate::state::{entity, nested_map, Reader, Transaction, Writer};
 use crate::Reason;
 
-/// One component. The type that implements it is the component's name in code, and `Value` is
-/// what an entity holds under each name.
+/// One component. The type that implements it is the component in code, and `Value` is what an
+/// entity holds under each entry id.
 pub trait Component {
     type Value: PartialEq + Debug + 'static;
-    /// The component's name, as change keys and a player's change view spell it. `Act`'s keys
+    /// The component's id, as change keys and a player's change view spell it. `Act`'s keys
     /// name the part of it that moved instead.
-    const NAME: &'static str;
+    const ID: &'static str;
 }
 
 /// The map a store keeps component `C` in, for a collection whose ids are `Id`.
@@ -118,7 +118,7 @@ impl<'a, E: entity::Entities, C: Component> Mut<'a, E, C> {
 
     /// The key a write of the entity's `entry_id` reports: `None` when it holds one value of `C`.
     fn key(&self, entry_id: Option<&str>) -> change::Key {
-        change::Key::new(C::NAME, self.id.as_id_ref(), entry_id)
+        change::Key::new(C::ID, self.id.as_id_ref(), entry_id)
     }
 
     /// `UNKNOWN_ID` unless the entity exists: a value goes only on one that does.

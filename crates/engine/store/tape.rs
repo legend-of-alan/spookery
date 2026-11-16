@@ -18,12 +18,15 @@ const SCROLLBACK_LINES: usize = 256;
 
 /// One tape line, written by the engine and relayed by the host table to players and the GM.
 /// Field order is the order of the bytes on disk.
-/// `from` is stored as the `Speaker`'s text, and `to` as the `Audience` is on the wire. A
+/// `from` is stored as the `Speaker`'s text, and `to` as the `Audience` is on the wire.
+/// `from_name` is the speaking actor's name, left out when the GM speaks as itself. Any other
 /// missing key is not a record.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TapeRecord {
     pub seq: u64,
     pub from: Speaker,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub from_name: String,
     pub to: Audience,
     /// Who heard it, as in [`spookery_protocol::Speech::recipient_ids`].
     pub recipient_ids: Vec<String>,
@@ -166,6 +169,7 @@ mod tests {
         TapeRecord {
             seq,
             from: Speaker::Gm,
+            from_name: String::new(),
             to: Audience::Actor(player.to_string()),
             recipient_ids: vec![player.to_string()],
             text: text.to_string(),

@@ -347,16 +347,16 @@ pub fn check_save(state: &State) -> Result<(), Vec<Diagnostic>> {
     }
 }
 
-/// A save error on meter `key` of `carrier`, at the meter's path: the carrier's name, then
+/// A save error on meter `key` of `carrier`, at the meter's path: who carries it, then
 /// `problem`.
 fn meter_error(carrier: &entity::Id, key: &str, problem: &str, hint: &str) -> Diagnostic {
-    let (name, path) = match carrier {
+    let (who, path) = match carrier {
         entity::Id::Actor(id) => (format!("actor '{id}'"), format!("actors.meters.{id}")),
         entity::Id::Place(id) => (carrier.to_string(), format!("places.meters.{id}")),
         entity::Id::Story(id) => (carrier.to_string(), format!("stories.meters.{id}")),
         entity::Id::Global => ("the world".to_string(), "world.meters".to_string()),
     };
-    let diag = schema_error(FILE, &format!("{name} {problem}"), hint);
+    let diag = schema_error(FILE, &format!("{who} {problem}"), hint);
     diag.at_path(format!("{path}.{key}"))
 }
 

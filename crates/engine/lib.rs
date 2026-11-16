@@ -124,9 +124,9 @@ pub mod testing {
 
         /// The bundle a logical record lives in, so a test can edit that line.
         pub fn locate(pack: &Path, key: &str) -> Result<PathBuf, Error> {
-            for (name, entries) in read_bundle_records(pack)? {
+            for (bundle, entries) in read_bundle_records(pack)? {
                 if entries.iter().any(|entry| format_record_key(entry) == key) {
-                    return Ok(pack.join("state/journal").join(name));
+                    return Ok(pack.join("state/journal").join(bundle));
                 }
             }
             Err(Error::new(
@@ -192,14 +192,14 @@ pub mod testing {
     }
 
     /// Copy a test pack from `tests/packs` with its dice pinned: the save's seed is its world id.
-    pub fn copy_pack(name: &str, label: &str) -> PathBuf {
+    pub fn copy_pack(dir: &str, label: &str) -> PathBuf {
         let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         let pack = fresh_dir(label);
-        copy_dir(&manifest.join("../../tests/packs").join(name), &pack);
+        copy_dir(&manifest.join("../../tests/packs").join(dir), &pack);
         let text = fs::read_to_string(crate::store::journal::save_path(&pack))
-            .unwrap_or_else(|err| panic!("read {name} save: {err}"));
+            .unwrap_or_else(|err| panic!("read {dir} save: {err}"));
         let mut save = crate::store::save::parse(&text)
-            .unwrap_or_else(|err| panic!("load {name} save: {err:?}"));
+            .unwrap_or_else(|err| panic!("load {dir} save: {err:?}"));
         save.seed.clone_from(&save.world_id);
         write_save(&pack, &save);
         pack

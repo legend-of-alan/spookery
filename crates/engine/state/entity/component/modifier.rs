@@ -39,7 +39,7 @@ pub struct Modifier {
 
 impl Component for Modifier {
     type Value = Modifier;
-    const NAME: &'static str = "modifier";
+    const ID: &'static str = "modifier";
 }
 
 /// The modifier as a change value: its stacks, the tick it expires at and its longest ticks.
@@ -102,16 +102,16 @@ impl Ref<'_, entity::Actors, Modifier> {
     }
 }
 
-/// Meter `name` on `actor` as rolls, costs, conditions and views read it: the stored meter plus
+/// Meter `key` on `actor` as rolls, costs, conditions and views read it: the stored meter plus
 /// what the actor's modifiers add, inside the pack's bounds. `UNKNOWN_ID` when the actor does not
 /// carry the meter.
 pub fn value(
     actors: Reader<'_, entity::Actors>,
     actor: &ActorId,
-    name: &str,
+    key: &str,
 ) -> Result<i64, Reason> {
-    let modifiers = actors.get::<Modifier>(actor).sum(name);
-    value_with(actors, actor, name, modifiers)
+    let modifiers = actors.get::<Modifier>(actor).sum(key);
+    value_with(actors, actor, key, modifiers)
 }
 
 /// The same with `modifiers` in place of what the actor's modifiers add, for a write that has not
@@ -119,11 +119,11 @@ pub fn value(
 pub(in crate::state) fn value_with(
     actors: Reader<'_, entity::Actors>,
     actor: &ActorId,
-    name: &str,
+    key: &str,
     modifiers: Result<i64, Reason>,
 ) -> Result<i64, Reason> {
-    let def = actors.canon.meter_def(entity::IdRef::Actor(actor), name);
-    let held = actors.get::<Meter>(actor).get(name);
+    let def = actors.canon.meter_def(entity::IdRef::Actor(actor), key);
+    let held = actors.get::<Meter>(actor).get(key);
     let held = held.ok_or(Reason::UnknownId);
     meter::value(def.ok_or(Reason::UnknownId)?, held?, modifiers?)
 }
@@ -154,7 +154,7 @@ impl Mut<'_, entity::Actors, Modifier> {
         let own = |held: Option<&Modifier>| held.map_or(change::Value::Empty, stacks_value);
         let own = Change::new(self.key(Some(id)), own(held), own(next.as_ref()));
         let stacks_move = held.map(|held| &held.stacks) != next.as_ref().map(|next| &next.stacks);
-        let watched = change::Key::new(Meter::NAME, entity::IdRef::Actor(actor), Some(&meter));
+        let watched = change::Key::new(Meter::ID, entity::IdRef::Actor(actor), Some(&meter));
         if stacks_move {
             self.writer.transaction.count_key(&watched)?;
         }

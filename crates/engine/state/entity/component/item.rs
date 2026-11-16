@@ -10,7 +10,7 @@ pub struct Item;
 
 impl Component for Item {
     type Value = u32;
-    const NAME: &'static str = "item";
+    const ID: &'static str = "item";
 }
 
 impl<E: entity::Has<Item, Store = entity::MapStore<E, Item>>> Mut<'_, E, Item> {

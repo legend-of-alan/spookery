@@ -28,9 +28,9 @@ pub(crate) fn help(
     let viewer = Viewer::Player(actor_id.clone());
     let mut commands: Vec<CommandView> = COMMANDS
         .iter()
-        .filter(|command| command.seat == Seat::Player && command.name != "claim")
+        .filter(|command| command.seat == Seat::Player && command.id != "claim")
         .map(|command| CommandView {
-            name: command.name.to_string(),
+            id: command.id.to_string(),
             target: TargetKind::None.as_str().to_string(),
             names: Vec::new(),
             owner: None,
@@ -38,8 +38,8 @@ pub(crate) fn help(
         .collect();
     let ids = list_ids(canon, state, presence, &viewer);
     let name_of = |id: &String| match ids.iter().find(|named_id| named_id.id == *id) {
-        Some(named_id) => named_id.name.clone(),
-        None => place_name(canon, id),
+        Some(named_id) => Ok(named_id.name.clone()),
+        None => find_place_name(canon, id).ok_or(Reason::UnknownId),
     };
     let hints: Vec<Option<&str>> = std::iter::once(None)
         .chain(ids.iter().map(|named_id| Some(named_id.id.as_str())))
@@ -65,14 +65,14 @@ pub(crate) fn help(
                 When::Verb { target, .. } => *target,
                 _ => TargetKind::None,
             };
-            let names = match owner {
+            let target_ids = match owner {
                 Some(owner) => vec![owner.clone()],
-                None => names_for(canon, state, actor_id, kind, &ids),
+                None => list_target_ids(canon, state, actor_id, kind, &ids),
             };
             let command = CommandView {
-                name: verb.clone(),
+                id: verb.clone(),
                 target: kind.as_str().to_string(),
-                names: names.iter().map(name_of).collect(),
+                names: target_ids.iter().map(name_of).collect::<Result<_, _>>()?,
                 owner: owner.cloned(),
             };
             if !commands.contains(&command) {
@@ -83,9 +83,9 @@ pub(crate) fn help(
     Ok(commands)
 }
 
-/// What the actor can name now for a command that takes `kind`: the exits from here, the
+/// The ids the actor can name now for a command that takes `kind`: the exits from here, the
 /// actors or items among `ids`, or the places they visited.
-fn names_for(
+fn list_target_ids(
     canon: &Canon,
     state: &State,
     actor_id: &ActorId,
@@ -102,7 +102,7 @@ fn names_for(
             .map(|place| exits_at(canon, state, actor_id, place))
             .unwrap_or_default()
             .into_iter()
-            .map(|exit| exit.name)
+            .map(|exit| exit.exit_id)
             .collect(),
         TargetKind::Actor => ids
             .iter()
@@ -122,13 +122,13 @@ fn names_for(
             .map(|(place, _)| place.to_string())
             .collect(),
     };
-    let mut names = Vec::new();
-    for name in picked {
-        if !names.contains(&name) {
-            names.push(name);
+    let mut unique = Vec::new();
+    for id in picked {
+        if !unique.contains(&id) {
+            unique.push(id);
         }
     }
-    names
+    unique
 }
 
 /// `map`: each place in the actor's `visited`, with the exits they saw there last. Where an
@@ -141,9 +141,9 @@ pub(crate) fn map(
     if !state.actors().contains(actor_id) {
         return Err(Reason::UnknownId);
     }
-    let places =
-        (state.actors().get::<component::Visit>(actor_id).iter()).map(|(id, seen)| PlaceView {
-            name: place_name(canon, id),
+    let places = (state.actors().get::<component::Visit>(actor_id).iter()).map(|(id, seen)| {
+        Ok(PlaceView {
+            name: find_place_name(canon, id).ok_or(Reason::UnknownId)?,
             exits: canon
                 .places
                 .get(id)
@@ -151,13 +151,14 @@ pub(crate) fn map(
                     place
                         .exits
                         .iter()
-                        .filter(|exit| seen.contains(&exit.name))
+                        .filter(|exit| seen.contains(&exit.id))
                         .map(|exit| exit_view(canon, state, exit))
                         .collect()
                 })
                 .unwrap_or_default(),
-        });
-    Ok(places.collect())
+        })
+    });
+    places.collect()
 }
 
 /// What keeps this actor busy, and until when: `on the stairs until tick 1300` on a walk,
@@ -205,13 +206,11 @@ pub(crate) fn place_prose(canon: &Canon, state: &State, actor_id: &ActorId) -> S
         .join("\n")
 }
 
-/// The place's display name, the exit's name for a walker on one, or else the id.
-pub(crate) fn place_name(canon: &Canon, id: &str) -> String {
-    if let Some(exit) = exit_stood_on(canon, id) {
-        return exit.name.clone();
+/// The name a player reads for where `id` stands: the place's name, or the exit's for a walker
+/// on one. `None` when the pack has no such place or exit.
+pub(crate) fn find_place_name(canon: &Canon, id: &str) -> Option<String> {
+    match exit_stood_on(canon, id) {
+        Some(exit) => Some(exit.name.clone()),
+        None => canon.places.get(id).map(|place| place.name.clone()),
     }
-    canon
-        .places
-        .get(id)
-        .map_or_else(|| id.to_string(), |place| place.display_name.clone())
 }

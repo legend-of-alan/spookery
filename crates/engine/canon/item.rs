@@ -18,7 +18,7 @@ pub(super) fn add_item(
 ) -> Option<Vec<Rule>> {
     let item: ItemDoc = diags.keep(load_tagged(&page.file, &page.yaml, ITEM_SCHEMA, 1))?;
     let source = FileText::named(&page.file);
-    let empty = ("an item id is empty", "set id to a short name");
+    let empty = ("an item id is empty", "set id to a short item id");
     let twice = ("item", "is already defined", "keep one item with this id");
     let taken = items.contains_key(&item.id);
     let refused = source
@@ -30,9 +30,9 @@ pub(super) fn add_item(
     }
     let rules = rule_list::compile(&page.file, item.rules, &Owner::Item(item.id.clone()));
     items.insert(
-        item.id,
+        item.id.clone(),
         ItemDef {
-            name: item.display_name,
+            name: item.name.unwrap_or(item.id),
             tags: item.tags,
             body: page.body.trim().to_string(),
         },
@@ -46,8 +46,7 @@ struct ItemDoc {
     #[serde(rename = "schema")]
     _schema: String,
     id: String,
-    #[serde(default)]
-    display_name: String,
+    name: Option<String>,
     #[serde(default)]
     tags: Vec<String>,
     #[serde(default)]

@@ -14,7 +14,7 @@ pub(in crate::state) type Ids<'a, E> =
 
 /// What a query reads from each entity: its id, a component, `Option` of one, or a tuple of up to
 /// four of them. `&C` gives the value of a component an entity holds one of, and a
-/// `component::Ref` of one it holds many of, by name.
+/// `component::Ref` of one it holds many of, by entry id.
 pub trait QueryData<E: entity::Entities> {
     type Item<'a>
     where
@@ -105,7 +105,7 @@ impl<E: entity::Entities> QueryFilter<E> for () {
     }
 }
 
-/// A component an entity holds many of gives its `component::Ref`, to read by name.
+/// A component an entity holds many of gives its `component::Ref`, to read by entry id.
 impl<E, C> QueryData<E> for &C
 where
     E: entity::Has<C, Store = entity::MapStore<E, C>>,

@@ -79,7 +79,7 @@ fn shift(held: Option<&Meter>, def: &MeterDef, delta: i64) -> Result<Meter, Reas
 
 impl Component for Meter {
     type Value = Meter;
-    const NAME: &'static str = "meter";
+    const ID: &'static str = "meter";
 }
 
 impl<E: entity::Has<Meter, Store = entity::MapStore<E, Meter>>> Mut<'_, E, Meter> {

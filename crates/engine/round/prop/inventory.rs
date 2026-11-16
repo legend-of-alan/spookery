@@ -167,7 +167,7 @@ fn npc_intent() -> Intent {
         round_index: 0,
         actor: Some(Viewer::Npc("mira".into())),
         source: Source::Engine,
-        move_name: "shift_item".to_string(),
+        move_id: "shift_item".to_string(),
         target: Target::Empty,
         args: IntentArgs::default(),
         rationale_code: String::new(),

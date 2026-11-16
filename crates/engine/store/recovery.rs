@@ -84,11 +84,11 @@ fn plain_bundles(root: &Path) -> Vec<PathBuf> {
     };
     let mut plains = Vec::new();
     for entry in entries.flatten() {
-        let name = entry.file_name();
-        let Some(name) = name.to_str() else {
+        let file = entry.file_name();
+        let Some(file) = file.to_str() else {
             continue;
         };
-        if name.ends_with(".jsonl") && journal::bundle_index(name).is_some() {
+        if file.ends_with(".jsonl") && journal::bundle_index(file).is_some() {
             plains.push(entry.path());
         }
     }
@@ -128,8 +128,8 @@ fn remove_tmp(dir: &Path) {
             remove_tmp(&path);
         } else if path
             .file_name()
-            .and_then(|name| name.to_str())
-            .is_some_and(|name| name.ends_with(".tmp"))
+            .and_then(|file| file.to_str())
+            .is_some_and(|file| file.ends_with(".tmp"))
         {
             let _ = fs::remove_file(path);
         }

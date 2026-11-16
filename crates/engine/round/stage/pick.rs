@@ -46,7 +46,7 @@ pub(crate) fn run(
 /// its note recipients, so priority sees what it touches. A verb
 /// with no target keeps it empty: a filled one would make the gate refuse `SCHEMA`.
 fn stamp_target(canon: &Canon, state: &State, presence: &Presence, intent: &mut Intent) {
-    let (verb, hint) = (&intent.move_name, gate::hint_of(&intent.target));
+    let (verb, hint) = (&intent.move_id, gate::hint_of(&intent.target));
     let Some(actor) = &intent.actor else {
         return;
     };
@@ -140,10 +140,10 @@ fn touches_seated_player(
         Target::Actor(id) => present.contains(id),
         Target::Item(id) => present.iter().any(|actor| *actor == **id),
         Target::Place(place) => is_player_at(state, presence, place.as_str()),
-        Target::Exit(name) => intent
+        Target::Exit(exit_id) => intent
             .actor_id()
             .and_then(|id| state.actors().get::<component::Place>(id).get())
-            .and_then(|place| find_exit(canon, place, name))
+            .and_then(|place| find_exit(canon, place, exit_id))
             .is_some_and(|exit| is_player_at(state, presence, &exit.to)),
         _ => false,
     };

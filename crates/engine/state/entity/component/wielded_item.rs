@@ -10,7 +10,7 @@ pub struct WieldedItem;
 
 impl Component for WieldedItem {
     type Value = String;
-    const NAME: &'static str = "wielded_item";
+    const ID: &'static str = "wielded_item";
 }
 
 impl<'a> Ref<'a, entity::Actors, WieldedItem> {

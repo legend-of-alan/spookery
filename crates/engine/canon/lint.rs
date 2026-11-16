@@ -33,7 +33,7 @@ pub(super) fn broken_exits(
                         &exit.file,
                         &format!(
                             "exit '{}' goes to '{}', which is not a place",
-                            exit.name, exit.to
+                            exit.id, exit.to
                         ),
                         "set to: to a place id",
                     )
@@ -44,7 +44,7 @@ pub(super) fn broken_exits(
                 diags.push(
                     schema_error(
                         &exit.file,
-                        &format!("hidden exit '{}' has no revealed_by fact", exit.name),
+                        &format!("hidden exit '{}' has no revealed_by fact", exit.id),
                         "set revealed_by to a fact id",
                     )
                     .at_path(format!("exits[{}].revealed_by", exit.index)),
@@ -55,7 +55,7 @@ pub(super) fn broken_exits(
                     diags.push(
                         schema_error(
                             &exit.file,
-                            &format!("exit '{}' reveals '{fact}', which is not a fact", exit.name),
+                            &format!("exit '{}' reveals '{fact}', which is not a fact", exit.id),
                             "use a fact id from this pack",
                         )
                         .at_path(format!("exits[{}].revealed_by", exit.index)),
@@ -81,7 +81,7 @@ pub(super) fn broken_exits(
                     diags.push(
                         schema_error(
                             &exit.file,
-                            &format!("exit '{}' names unknown item '{id}'", exit.name),
+                            &format!("exit '{}' names unknown item '{id}'", exit.id),
                             &format!("add world/items/{id}.md"),
                         )
                         .at_path(format!("exits[{}]", exit.index)),
@@ -431,7 +431,7 @@ impl EntityScope<'_> {
         }
     }
 
-    /// The name `of` gives when no place, story or cast member has it.
+    /// The id `of` gives when no place, story or cast member has it.
     fn unknown_object(&self, of: &grammar::Object) -> Option<String> {
         match of {
             grammar::Object::Self_
@@ -444,7 +444,7 @@ impl EntityScope<'_> {
             grammar::Object::Story(id) => Some(format!("story:{id}")),
             grammar::Object::Exit(exit) => {
                 let exits = self.places.get(&exit.place).map(|at| at.exits.as_slice());
-                let known = exits.is_some_and(|exits| exits.iter().any(|at| at.name == exit.exit));
+                let known = exits.is_some_and(|exits| exits.iter().any(|at| at.id == exit.exit));
                 (!known).then(|| exit.to_string())
             }
             grammar::Object::Actor(id) if self.cast.contains_key(id) => None,
@@ -480,9 +480,9 @@ impl EntityScope<'_> {
                         "declare the meter on that entity, or read one that exists",
                     ));
                 }
-                if let Some(name) = self.unknown_object(of) {
+                if let Some(id) = self.unknown_object(of) {
                     diags.push(refuse(
-                        format!("expression names '{name}', which is not an owner"),
+                        format!("expression names '{id}', which is not an owner"),
                         "use self, target, here, world, place:<id>, story:<id>, or a cast id",
                     ));
                 }
@@ -612,17 +612,17 @@ fn check_cycles(canon: &Canon) -> Vec<Diagnostic> {
         let mut cycles = Vec::new();
         for cond in conds {
             cond.visit(|cond| {
-                if let Cond::Cycle { name, from, to } = cond {
-                    cycles.push((name.as_str(), *from, *to));
+                if let Cond::Cycle { id, from, to } = cond {
+                    cycles.push((id.as_str(), *from, *to));
                 }
             });
         }
-        for (name, from, to) in cycles {
-            let Some(&length) = canon.budget.cycles.get(name) else {
+        for (id, from, to) in cycles {
+            let Some(&length) = canon.budget.cycles.get(id) else {
                 diags.push(
                     schema_error(
                         file,
-                        &format!("there is no cycle {name}"),
+                        &format!("there is no cycle {id}"),
                         "name a cycle from cycles in rules/budget.yaml, or add it there",
                     )
                     .at_path(path.clone()),
@@ -633,7 +633,7 @@ fn check_cycles(canon: &Canon) -> Vec<Diagnostic> {
                 diags.push(
                     schema_error(
                         file,
-                        &format!("cycle bound is not below cycle {name}, which is {length} ticks"),
+                        &format!("cycle bound is not below cycle {id}, which is {length} ticks"),
                         "set from and to to ticks of the cycle, below its length",
                     )
                     .at_path(path.clone()),

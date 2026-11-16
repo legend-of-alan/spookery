@@ -191,7 +191,7 @@ fn pend(
         log.effects.push(effect);
     }
     let pending = PendingAction {
-        verb: intent.move_name.clone(),
+        verb: intent.move_id.clone(),
         source: intent.source,
         target: intent.target.clone(),
         rule: rule.id.clone(),

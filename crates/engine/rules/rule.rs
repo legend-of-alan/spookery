@@ -209,9 +209,9 @@ pub enum Cond {
         subject: grammar::Object,
         fact: String,
     },
-    /// A tick of the named cycle in `from..to`, wrapping past the cycle's end when `from > to`.
+    /// A tick of cycle `id` in `from..to`, wrapping past the cycle's end when `from > to`.
     Cycle {
-        name: String,
+        id: String,
         from: u64,
         to: u64,
     },
@@ -400,10 +400,10 @@ impl RuleTable {
         self.rules.iter().find(|rule| rule.id == id)
     }
 
-    pub(crate) fn verb(&self, name: &str) -> Option<&Rule> {
+    pub(crate) fn verb(&self, verb_id: &str) -> Option<&Rule> {
         self.rules.iter().find(|rule| {
             matches!(&rule.owner, Owner::Verb)
-                && matches!(&rule.when, When::Verb { verb, .. } if verb == name)
+                && matches!(&rule.when, When::Verb { verb, .. } if verb == verb_id)
         })
     }
 

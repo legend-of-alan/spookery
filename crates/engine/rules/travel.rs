@@ -8,7 +8,7 @@ use crate::rules::context::Context;
 use crate::rules::cost;
 use crate::rules::effect::{Effect, EffectKind};
 use crate::rules::gate;
-use crate::rules::lines::place_name;
+use crate::rules::lines::find_place_name;
 use crate::rules::rule::{EffectTemplate, LocationTo, Rule};
 use crate::rules::visibility::can_see_fact;
 use crate::state::id::ActorId;
@@ -16,11 +16,11 @@ use crate::state::{component, PendingAction, Presence, State};
 use crate::Reason;
 use spookery_protocol::ExitView;
 
-pub(crate) fn find_exit<'a>(canon: &'a Canon, from: &str, name: &str) -> Option<&'a Exit> {
+pub(crate) fn find_exit<'a>(canon: &'a Canon, from: &str, exit_id: &str) -> Option<&'a Exit> {
     canon
         .places
         .get(from)
-        .and_then(|place| place.exits.iter().find(|exit| exit.name == name))
+        .and_then(|place| place.exits.iter().find(|exit| exit.id == exit_id))
 }
 
 /// The exit this rule travels by: the one its first `location via` that is not a teleport
@@ -45,16 +45,16 @@ pub(crate) fn exit_of<'a>(
 }
 
 /// The exit `via` names from the actor's place, or `NO_EXIT`. `via: target` is the intent's
-/// exit target, and `None` when the target is not an exit; any other word is an exit name.
+/// exit target, and `None` when the target is not an exit; any other word is an exit id.
 /// A walker on an exit is still on it when the walk finishes, so it is that exit.
 pub(crate) fn exit_via<'a>(
     context: &Context<'a, '_>,
     via: &str,
 ) -> Result<Option<&'a Exit>, Reason> {
-    let name = match (via, &context.intent.target) {
-        ("target", Target::Exit(name)) => name.as_str(),
+    let exit_id = match (via, &context.intent.target) {
+        ("target", Target::Exit(exit_id)) => exit_id.as_str(),
         ("target", _) => return Ok(None),
-        (name, _) => name,
+        (exit_id, _) => exit_id,
     };
     let from = context
         .intent
@@ -64,7 +64,7 @@ pub(crate) fn exit_via<'a>(
     if let Some(exit) = exit_stood_on(context.canon, from) {
         return Ok(Some(exit));
     }
-    find_exit(context.canon, from, name)
+    find_exit(context.canon, from, exit_id)
         .map(Some)
         .ok_or(Reason::NoExit)
 }
@@ -72,13 +72,13 @@ pub(crate) fn exit_via<'a>(
 /// The exit a walker stands on, from the place id `exit:<place>.<exit>` they hold while
 /// walking. `None` for a place.
 pub(crate) fn exit_stood_on<'a>(canon: &'a Canon, place: &str) -> Option<&'a Exit> {
-    let (from, name) = crate::state::exit_parts(place)?;
-    find_exit(canon, from, name)
+    let (from, exit_id) = crate::state::exit_parts(place)?;
+    find_exit(canon, from, exit_id)
 }
 
 /// Where a walker stands while they walk through `exit`: `exit:<place>.<exit>`.
 pub(crate) fn on_exit(exit: &Exit) -> String {
-    exit.id().to_string()
+    exit.exit_id().to_string()
 }
 
 /// Refuse a missing, hidden, locked, or unpaid exit. A clear exit is `Ok`.
@@ -123,7 +123,7 @@ fn is_revealed(canon: &Canon, state: &State, actor_id: &ActorId, exit: &Exit) ->
 
 /// A door is locked until it opens. An exit with no `if` is no door, so it is always open.
 fn is_locked(state: &State, exit: &Exit) -> bool {
-    !exit.if_.is_empty() && !state.places().is_exit_open(&exit.id())
+    !exit.if_.is_empty() && !state.places().is_exit_open(&exit.exit_id())
 }
 
 /// Open each locked door whose `if` some actor in its place meets, with an `exit_open` effect
@@ -143,7 +143,7 @@ pub(crate) fn open_doors(
             .filter_map(|id| state.actors().get::<component::ControlType>(id).viewer())
             .collect();
         for exit in def.exits.iter().filter(|exit| is_locked(state, exit)) {
-            let target = Target::Exit(exit.name.clone());
+            let target = Target::Exit(exit.id.clone());
             let met = here.iter().any(|viewer| {
                 let target = target.clone();
                 cond::if_holds(canon, state, presence, viewer, "travel", target, &exit.if_)
@@ -151,10 +151,10 @@ pub(crate) fn open_doors(
             if !met {
                 continue;
             }
-            let id = format!("door:{place}.{}", exit.name);
+            let id = format!("door:{place}.{}", exit.id);
             let intent = Intent::new(id, state.round_index, None, Source::Engine, "door", target);
             let kind = EffectKind::ExitOpen {
-                exit: exit.id(),
+                exit: exit.exit_id(),
                 open: true,
             };
             opens.push((Effect::new(None, &intent.id, kind), intent));
@@ -187,12 +187,21 @@ pub(crate) fn exits_at(
         .collect()
 }
 
-/// `exit` as it is now: where it goes, its ticks, and whether it is locked.
+/// `exit` as it is now: where it goes, its ticks, and whether it is locked. An exit whose id is
+/// the place it goes to reads as that place's name.
 pub(crate) fn exit_view(canon: &Canon, state: &State, exit: &Exit) -> ExitView {
+    // Load refuses an exit whose `to` is not a place, so the place has a name.
+    let place_name = find_place_name(canon, &exit.to).unwrap_or_default();
+    let name = if exit.id == exit.to {
+        place_name.clone()
+    } else {
+        exit.name.clone()
+    };
     ExitView {
-        name: exit.name.clone(),
-        to: exit.to.clone(),
-        place_name: place_name(canon, &exit.to),
+        exit_id: exit.id.clone(),
+        name,
+        place_id: exit.to.clone(),
+        place_name,
         ticks: exit.cost.ticks,
         locked: is_locked(state, exit),
     }
@@ -207,8 +216,8 @@ pub(crate) fn note_exits(canon: &Canon, state: &mut State) -> Result<(), Reason>
         .filter(|(_, place)| canon.places.contains_key(place.as_str()))
         .map(|(id, place)| {
             let exits = visible_exits(canon, state, id);
-            let names = exits.into_iter().map(|exit| exit.name).collect();
-            (id.clone(), place.clone(), names)
+            let exit_ids = exits.into_iter().map(|exit| exit.exit_id).collect();
+            (id.clone(), place.clone(), exit_ids)
         })
         .collect();
     let mut actors = state.actors_mut();

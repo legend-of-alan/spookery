@@ -138,13 +138,13 @@ fn eval_node(context: &Context, expr: &Expr, dice: &mut dyn Dice) -> Result<Eval
             };
             let mut rolled = left.dice;
             rolled.extend(right.dice);
-            let name = match fun {
+            let function = match fun {
                 Func::Min => "min",
                 Func::Max => "max",
             };
             Ok(EvalStep {
                 value,
-                text: format!("{name}({}, {})", left.text, right.text),
+                text: format!("{function}({}, {})", left.text, right.text),
                 dice: rolled,
             })
         }
@@ -715,7 +715,7 @@ mod tests {
             round_index: 0,
             actor: Some(Viewer::Player(actor.into())),
             source: Source::Player,
-            move_name: "hit".to_string(),
+            move_id: "hit".to_string(),
             target: Target::Actor(target.into()),
             args: IntentArgs::default(),
             rationale_code: String::new(),

@@ -370,12 +370,12 @@ mod tests {
         assert!(world.take_warning().is_none());
         let bundles = crate::store::journal::read_bundle_records(&root).unwrap();
         assert_eq!(bundles.len(), 2, "{bundles:?}");
-        for (name, entries) in &bundles {
+        for (bundle, entries) in &bundles {
             let checkpoints = entries
                 .iter()
                 .filter(|entry| matches!(entry, crate::store::records::Record::Checkpoint(_)))
                 .count();
-            assert_eq!(checkpoints, 1, "{name}");
+            assert_eq!(checkpoints, 1, "{bundle}");
         }
         assert!(root.join("state/journal/bundle-0000.jsonl.gz").is_file());
         assert!(!root.join("state/journal/bundle-0000.jsonl").exists());
@@ -407,10 +407,10 @@ mod tests {
         commit(&mut world, third, round_line(3)).unwrap();
         let bundles = crate::store::journal::read_bundle_records(&root).unwrap();
         assert_eq!(bundles.len(), 2, "{bundles:?}");
-        let (first_name, first_entries) = &bundles[0];
-        let (second_name, second_entries) = &bundles[1];
-        assert_eq!(count_checkpoints(first_entries), 1, "{first_name}");
-        assert_eq!(count_checkpoints(second_entries), 0, "{second_name}");
+        let (first_bundle, first_entries) = &bundles[0];
+        let (second_bundle, second_entries) = &bundles[1];
+        assert_eq!(count_checkpoints(first_entries), 1, "{first_bundle}");
+        assert_eq!(count_checkpoints(second_entries), 0, "{second_bundle}");
         assert!(second_entries.iter().any(|entry| {
             matches!(entry, crate::store::records::Record::Round(record) if record.round_index == 3)
         }));
@@ -457,9 +457,9 @@ mod tests {
                     pending.push(path);
                     continue;
                 }
-                let name = entry.file_name();
-                let name = name.to_string_lossy();
-                assert!(!name.ends_with(".tmp"), "{}", path.display());
+                let file = entry.file_name();
+                let file = file.to_string_lossy();
+                assert!(!file.ends_with(".tmp"), "{}", path.display());
             }
         }
     }

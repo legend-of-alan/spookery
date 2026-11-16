@@ -214,7 +214,7 @@ pub struct KnowsYaml {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CycleYaml {
-    pub name: String,
+    pub id: String,
     pub from: u64,
     pub to: u64,
 }
@@ -471,7 +471,7 @@ fn compile_one(
                 path: &format!("rules[{index}].id"),
                 at: Locator::Spot(spot_of(&entry.id)),
                 message: "a rule id is empty or is say".into(),
-                hint: "set id to a short name; say is speech",
+                hint: "set id to a short rule id; say is speech",
             }
             .into_diagnostic(),
         );
@@ -646,7 +646,7 @@ fn when_of(yaml: &WhenYaml) -> Result<When, String> {
                 }
                 if is_built_in(Seat::Player, verb) {
                     return Err(format!(
-                        "verb '{verb}' is a built-in command; give the rule another verb name"
+                        "verb '{verb}' is a built-in command; give the rule another verb"
                     ));
                 }
                 let target = match map.target.as_deref() {
@@ -780,7 +780,7 @@ pub(super) fn cond_of(yaml: &CondYaml) -> Result<Cond, Fault> {
             return Err("cycle needs from and to that differ".into());
         }
         cond = Some(Cond::Cycle {
-            name: cycle.name.clone(),
+            id: cycle.id.clone(),
             from: cycle.from,
             to: cycle.to,
         });
@@ -1080,8 +1080,8 @@ fn object_of(yaml: &Spanned<String>) -> Result<grammar::Object, Fault> {
     }
     if let Some(exit) = word.strip_prefix("exit:") {
         return match exit.split_once('.') {
-            Some((place, name)) if !place.is_empty() && !name.is_empty() => {
-                let (place, exit) = (place.into(), name.to_string());
+            Some((place, exit_id)) if !place.is_empty() && !exit_id.is_empty() => {
+                let (place, exit) = (place.into(), exit_id.to_string());
                 Ok(grammar::Object::Exit(ExitId { place, exit }))
             }
             _ => Err(fault("exit: needs <place>.<exit>".to_string())),

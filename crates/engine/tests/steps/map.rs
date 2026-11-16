@@ -24,7 +24,7 @@ fn mira_plays(pack: &Path, verb: &str, target: Option<&str>) {
         id: Some(format!("mira-{}", world.state().round_index + 1)),
         round_index: None,
         actor_id: Some("mira".to_string()),
-        move_name: Some(verb.to_string()),
+        move_id: Some(verb.to_string()),
         target: target.map(str::to_string),
         message_to: None,
         rationale_code: "test".to_string(),
@@ -40,7 +40,7 @@ fn mira_plays(pack: &Path, verb: &str, target: Option<&str>) {
         .unwrap_or_else(|err| panic!("play: {err}"));
 }
 
-/// The exit names Mira's map lists for the Docks Shop.
+/// The exit ids Mira's map lists for the Docks Shop.
 fn shop_exits_on_miras_map(pack: &Path) -> Vec<String> {
     let saved = spookery_engine::World::peek(pack).unwrap();
     let places = saved.map(&"mira".into()).unwrap();
@@ -48,7 +48,7 @@ fn shop_exits_on_miras_map(pack: &Path) -> Vec<String> {
         .iter()
         .find(|place| place.name == "Docks Shop")
         .unwrap_or_else(|| panic!("no shop on the map: {places:?}"));
-    shop.exits.iter().map(|exit| exit.name.clone()).collect()
+    shop.exits.iter().map(|exit| exit.exit_id.clone()).collect()
 }
 
 /// The trapdoor under the shop's rug, and a `dig` verb on the shop and the street that
@@ -65,13 +65,13 @@ fn the_shop_has_a_trapdoor(world: &mut World) {
         )
         .replace(
             "    locked_text: The stair door is locked.\n",
-            "    locked_text: The stair door is locked.\n  - to: cellar\n    name: trapdoor\n    hidden: true\n    revealed_by: fact_trapdoor\n",
+            "    locked_text: The stair door is locked.\n  - to: cellar\n    id: trapdoor\n    hidden: true\n    revealed_by: fact_trapdoor\n",
         );
     assert_ne!(text, next);
     fs::write(&path, next).unwrap();
     fs::write(
         pack.join("world/places/cellar.md"),
-        "---\nschema: place\nid: cellar\ndisplay_name: Cellar\nfacts: []\nexits: []\n---\nUnder the shop.\n",
+        "---\nschema: place\nid: cellar\nname: Cellar\nfacts: []\nexits: []\n---\nUnder the shop.\n",
     )
     .unwrap();
     let dig = "  - id: dig

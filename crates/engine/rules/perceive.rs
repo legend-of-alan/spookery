@@ -150,12 +150,14 @@ fn perceive_viewer_budget(
 
     let place_id = PlaceId::from(place.clone());
     let items = (state.places().get::<component::Item>(&place_id).iter())
-        .map(|(id, count)| ItemStack {
-            id: id.to_string(),
-            count: *count,
-            name: canon.display_name(id),
+        .map(|(id, count)| {
+            Ok(ItemStack {
+                id: id.to_string(),
+                count: *count,
+                name: canon.name(id).ok_or(Reason::UnknownId)?.to_string(),
+            })
         })
-        .collect();
+        .collect::<Result<_, Reason>>()?;
 
     let meters = shown_meters(canon, state, &entity::Id::Actor(viewer.actor_id().clone()));
     let world_meters = shown_meters(canon, state, &entity::Id::Global);
@@ -167,9 +169,11 @@ fn perceive_viewer_budget(
     let exits = crate::rules::travel::visible_exits(canon, state, viewer.actor_id());
     let actor_names = visible_actors
         .iter()
-        .map(|id| canon.display_name(id.as_str()))
-        .collect();
-    let place_name = crate::rules::lines::place_name(canon, &place);
+        .map(|id| canon.name(id.as_str()).map(str::to_string))
+        .collect::<Option<_>>()
+        .ok_or(Reason::UnknownId)?;
+    let place_name =
+        crate::rules::lines::find_place_name(canon, &place).ok_or(Reason::UnknownId)?;
     let prose = crate::rules::lines::place_prose(canon, state, viewer.actor_id());
     let busy = crate::rules::lines::busy_line(canon, state, viewer.actor_id()).unwrap_or_default();
 
