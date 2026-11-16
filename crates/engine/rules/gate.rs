@@ -38,7 +38,7 @@ impl Refusal {
     }
 }
 
-/// The rule `actor`'s `verb` runs, the queue's and the round's alike. An NPC's habit is
+/// The rule `actor`'s `verb_id` runs, the queue's and the round's alike. An NPC's habit is
 /// picked by its local id first; any other verb is `verb_for`'s, looking in `hint` first.
 /// A full rule id picks nothing. A player's move never runs a habit, and a missing rule is
 /// `NOT_IN_SPEC` for it and `UNKNOWN_MOVE` for anyone else.
@@ -47,15 +47,15 @@ pub(crate) fn pick<'a>(
     state: &State,
     actor: &Viewer,
     source: Source,
-    verb: &str,
+    verb_id: &str,
     hint: Option<&str>,
 ) -> Result<&'a Rule, Reason> {
-    let found = verb_for(canon, state, actor.actor_id(), verb, hint);
+    let found = verb_for(canon, state, actor.actor_id(), verb_id, hint);
     if source == Source::Player && matches!(actor, Viewer::Player(_)) {
         return found.ok_or(Reason::NotInSpec);
     }
     let habits = canon.rules.habits_of(actor.actor_id());
-    let habit = habits.into_iter().find(|rule| rule.local_id == verb);
+    let habit = habits.into_iter().find(|rule| rule.local_id == verb_id);
     habit.or(found).ok_or(Reason::UnknownMove)
 }
 
@@ -77,42 +77,42 @@ pub(crate) fn verb_for<'a>(
     canon: &'a Canon,
     state: &State,
     actor_id: &ActorId,
-    verb: &str,
+    verb_id: &str,
     hint: Option<&str>,
 ) -> Option<&'a Rule> {
     let wielded = state.actors().get::<component::WieldedItem>(actor_id).get();
     if let Some(item) = wielded.filter(|item| !item.is_empty()) {
-        if let Some(rule) = owner_verb(canon, &Owner::Item(item.to_string()), verb) {
+        if let Some(rule) = owner_verb(canon, &Owner::Item(item.to_string()), verb_id) {
             return Some(rule);
         }
     }
     if let Some(token) = hint.filter(|token| !token.is_empty()) {
-        if let Some(rule) = owner_verb(canon, &Owner::Item(token.to_string()), verb) {
+        if let Some(rule) = owner_verb(canon, &Owner::Item(token.to_string()), verb_id) {
             return Some(rule);
         }
-        if let Some(rule) = owner_verb(canon, &Owner::Cast(token.to_string()), verb) {
+        if let Some(rule) = owner_verb(canon, &Owner::Cast(token.to_string()), verb_id) {
             return Some(rule);
         }
     }
     if let Some(place) = state.actors().get::<component::Place>(actor_id).get() {
-        if let Some(rule) = owner_verb(canon, &Owner::Place(place.to_string()), verb) {
+        if let Some(rule) = owner_verb(canon, &Owner::Place(place.to_string()), verb_id) {
             return Some(rule);
         }
     }
-    canon.rules.verb(verb)
+    owner_verb(canon, &Owner::Verb, verb_id)
 }
 
-fn owner_verb<'a>(canon: &'a Canon, owner: &Owner, verb: &str) -> Option<&'a Rule> {
+fn owner_verb<'a>(canon: &'a Canon, owner: &Owner, verb_id: &str) -> Option<&'a Rule> {
     canon.rules.iter().find(|rule| {
         &rule.owner == owner
-            && matches!(&rule.when, When::Verb { verb: rule_verb, .. } if rule_verb == verb)
+            && matches!(&rule.when, When::Verb { verb_id: id, .. } if id == verb_id)
     })
 }
 
 /// The rule the intent's verb picks, for its actor and target.
 pub(crate) fn rule_of<'c>(context: &Context<'c, '_>) -> Result<&'c Rule, Refusal> {
     let intent = context.intent;
-    let (verb, hint) = (&intent.move_id, hint_of(&intent.target));
+    let (verb_id, hint) = (&intent.move_id, hint_of(&intent.target));
     let actor = intent
         .actor
         .as_ref()
@@ -122,7 +122,7 @@ pub(crate) fn rule_of<'c>(context: &Context<'c, '_>) -> Result<&'c Rule, Refusal
         context.state,
         actor,
         intent.source,
-        verb,
+        verb_id,
         hint,
     );
     picked.map_err(|code| Refusal::new(intent, code))

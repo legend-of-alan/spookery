@@ -433,17 +433,19 @@ pub(crate) fn compile(
     let source = FileText::named(file);
     let mut diags = Diags::default();
     let mut rules: Vec<Rule> = Vec::new();
-    let mut verbs = Vec::new();
+    let mut verb_ids = Vec::new();
     for (index, entry) in entries.into_iter().enumerate() {
         let Some(rule) = diags.keep(compile_one(file, index, entry, owner)) else {
             continue;
         };
-        if let When::Verb { verb, .. } = &rule.when {
+        if let When::Verb { verb_id, .. } = &rule.when {
             let hint = "keep one rule for that verb in this file";
             let twice = ("two verb rules for", "at the same level", hint);
-            let taken = verbs.contains(verb);
-            diags.extend(taken.then(|| source.refuse_duplicate(verb, "", Locator::Nowhere, twice)));
-            verbs.push(verb.clone());
+            let taken = verb_ids.contains(verb_id);
+            diags.extend(
+                taken.then(|| source.refuse_duplicate(verb_id, "", Locator::Nowhere, twice)),
+            );
+            verb_ids.push(verb_id.clone());
         }
         let twice = ("rule", "is listed twice", "keep one rule with this id");
         let taken = rules.iter().any(|earlier| earlier.id == rule.id);
@@ -658,7 +660,7 @@ fn when_of(yaml: &WhenYaml) -> Result<When, String> {
                     Some(other) => return Err(format!("target '{other}' is not a target kind")),
                 };
                 Ok(When::Verb {
-                    verb: verb.clone(),
+                    verb_id: verb.clone(),
                     target,
                 })
             }

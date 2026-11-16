@@ -176,7 +176,7 @@ impl Canon {
             .rules
             .iter()
             .filter_map(|rule| match &rule.when {
-                When::Verb { verb, .. } => Some(verb.as_str()),
+                When::Verb { verb_id, .. } => Some(verb_id.as_str()),
                 _ => None,
             })
             .collect();
@@ -188,8 +188,8 @@ impl Canon {
             .rules
             .iter()
             .filter_map(|rule| match &rule.when {
-                When::Verb { verb, target } if matches!(rule.owner, Owner::Verb) => {
-                    Some((verb.clone(), "verb", target.as_str()))
+                When::Verb { verb_id, target } if matches!(rule.owner, Owner::Verb) => {
+                    Some((verb_id.clone(), "verb", target.as_str()))
                 }
                 When::Habit => Some((rule.local_id.clone(), "habit", TargetKind::None.as_str())),
                 _ => None,

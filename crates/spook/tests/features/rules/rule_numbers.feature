@@ -38,6 +38,8 @@ Feature: Dice and arithmetic in rule numbers
       | world.vigor   | the world carries no meter 'vigor'               |
       | subject.vigor | names 'subject', which is not an owner; use self |
       | 100000000d6   | rolls more than 1000 dice                        |
+      | 0d6           | rolls no dice                                    |
+      | 10 / 0        | divides by zero                                  |
 
   Scenario: An owner named subject fails spook check
     Given a docks table

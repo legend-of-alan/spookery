@@ -108,7 +108,7 @@ impl Owner {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum When {
-    Verb { verb: String, target: TargetKind },
+    Verb { verb_id: String, target: TargetKind },
     Habit,
     Change(ChangeWatch),
 }
@@ -398,13 +398,6 @@ impl RuleTable {
 
     pub(crate) fn get(&self, id: &str) -> Option<&Rule> {
         self.rules.iter().find(|rule| rule.id == id)
-    }
-
-    pub(crate) fn verb(&self, verb_id: &str) -> Option<&Rule> {
-        self.rules.iter().find(|rule| {
-            matches!(&rule.owner, Owner::Verb)
-                && matches!(&rule.when, When::Verb { verb, .. } if verb == verb_id)
-        })
     }
 
     pub(crate) fn habits_of(&self, actor: &ActorId) -> Vec<&Rule> {

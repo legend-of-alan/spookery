@@ -1,5 +1,6 @@
 //! The chat-completions codec: the request body a model call sends, and the tool calls its
-//! reply brings.
+//! reply brings. A tool call's `function.name` key holds the tool's id. The key is OpenAI's
+//! word, not ours.
 
 use serde_json::{json, Value};
 
