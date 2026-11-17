@@ -7,9 +7,9 @@ use cucumber::{given, then, when};
 use spookery_engine::testing::{stamp_pack_rev, world_of};
 use spookery_engine::{component, entity, ActorId, Meter, Modifier};
 
-use super::common::replace_in_file;
+use super::common::{add_verb, replace_in_file};
 use super::meters::{assert_refused, run_check};
-use super::triggers::{add_verb, edit_table, intent, play_round, seen_of, set_place, sit};
+use super::triggers::{edit_table, intent, play_round, seen_of, set_place, sit};
 use crate::support::{self, copy_pack};
 use crate::World;
 
@@ -544,11 +544,14 @@ fn rowan_pays_one_vigor(world: &mut World) {
     stamp_pack_rev(&pack);
     let played = play_round(world, &pack, vec![intent("brace", "rowan", "brace", None)]);
     world.summary = played.changed_keys;
-    let rowan = played
-        .change_lines
-        .into_iter()
-        .find(|(who, _)| who == "rowan");
-    world.scratch = rowan.map(|(_, line)| line).unwrap_or_default();
+    let vigor = played
+        .changes
+        .iter()
+        .filter(|(viewer, _)| viewer == "rowan")
+        .flat_map(|(_, changes)| changes)
+        .find(|change| change.entity_id == "rowan" && change.entry_id == "vigor");
+    let after = vigor.and_then(|change| change.after.as_ref()?.as_number());
+    world.scratch = after.map(|after| after.to_string()).unwrap_or_default();
 }
 
 fn strained(pack: &Path, flag: &str) -> bool {
@@ -559,13 +562,12 @@ fn strained(pack: &Path, flag: &str) -> bool {
         .contains(flag)
 }
 
-/// The change's `after` is the line rowan reads. Its `before` is below 4, since the rule on `<4`
+/// The change's `after` is the vigor rowan reads. Its `before` is below 4, since the rule on `<4`
 /// does not fire, and the next step's rule on `<3` firing puts it at 3 or more.
 #[then(expr = "the GM sees {string} as a changed key, going from 3 to 2")]
 fn the_gm_sees_vigor_go_from_3_to_2(world: &mut World, key: String) {
     assert!(world.summary.contains(&key), "{:?}", world.summary);
-    let line = &world.scratch;
-    assert!(line.contains("vigor is now 2."), "{line:?}");
+    assert_eq!(world.scratch, "2", "rowan's reported vigor");
     assert!(!strained(pack(world), "under_4"), "vigor started below 4");
 }
 

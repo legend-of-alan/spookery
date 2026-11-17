@@ -77,6 +77,17 @@ pub(crate) fn read_first_round(world: &World) -> serde_json::Value {
     crate::support::read_round(table::pack(world), "round-0001")
 }
 
+/// Appends `yaml`, one or more verb rules, to the pack's `rules/verbs.yaml`.
+pub(crate) fn add_verb(pack: &Path, yaml: &str) {
+    let path = pack.join("rules/verbs.yaml");
+    let mut text = fs::read_to_string(&path).unwrap();
+    if !text.ends_with('\n') {
+        text.push('\n');
+    }
+    text.push_str(yaml);
+    fs::write(path, text).unwrap();
+}
+
 pub(crate) fn replace_in_file(path: &Path, from: &str, to: &str) {
     let text = fs::read_to_string(path).unwrap();
     assert!(text.contains(from), "missing {from} in {}", path.display());
@@ -362,7 +373,7 @@ pub(crate) fn walk(exit: &str) -> spookery_engine::testing::PendingAction {
 }
 
 #[given(expr = "a docks table")]
-fn a_docks_table(world: &mut World) {
+pub(crate) fn a_docks_table(world: &mut World) {
     let pack = crate::support::copy_pack("docks", "status");
     world.before = table::read_files(&pack);
     world.pack = Some(pack);

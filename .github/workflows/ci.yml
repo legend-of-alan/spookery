@@ -72,9 +72,35 @@ jobs:
         if: runner.os == 'Linux'
         shell: bash
         run: |
+          # Every workspace edge, dev ones included, and every feature that turns one on. `testing`
+          # rides only dev edges. Change the layering here and in CLAUDE.md's Crate layering.
+          diff -u - <(cargo metadata --format-version 1 --no-deps --locked | jq -r '.packages[] | .name as $n
+            | (.dependencies[] | select(.path) | [$n, .name, .kind // "normal", (if .optional then "optional" else "-" end), (.features | join(",") | if . == "" then "-" else . end)]),
+              (.features | to_entries[] | [$n, "feature", .key, (.value | join(",") | if . == "" then "-" else . end)])
+            | join(" ")' | sort) <<'EOF'
+          spook feature client dep:spookery-agent,dep:spookery-client
+          spook feature default server,client
+          spook feature server dep:spookery-engine,dep:spookery-server,dep:serde_json
+          spook spookery-agent normal optional -
+          spook spookery-client normal optional -
+          spook spookery-engine dev - testing
+          spook spookery-engine normal optional -
+          spook spookery-protocol normal - -
+          spook spookery-server normal optional -
+          spookery-agent spookery-protocol normal - -
+          spookery-client spookery-agent normal - -
+          spookery-client spookery-protocol normal - -
+          spookery-engine feature testing -
+          spookery-engine spookery-engine dev - testing
+          spookery-engine spookery-protocol normal - -
+          spookery-protocol feature schema dep:schemars
+          spookery-server spookery-engine dev - testing
+          spookery-server spookery-engine normal - -
+          spookery-server spookery-protocol normal - schema
+          EOF
           cargo tree -e normal -p spookery-engine --locked | (! grep -E 'tracing-subscriber')
-          cargo tree -e normal -p spookery-client --locked | (! grep -E 'spookery-engine|spookery-server|rmcp|tracing-subscriber')
-          cargo tree -e normal -p spookery-agent --locked | (! grep -E 'spookery-(engine|server|client)|reqwest|rmcp|socket2|mio|tokio-macros|tracing-subscriber')
+          cargo tree -e normal -p spookery-client --locked | (! grep -E 'rmcp|tracing-subscriber')
+          cargo tree -e normal -p spookery-agent --locked | (! grep -E 'reqwest|rmcp|socket2|mio|tokio-macros|tracing-subscriber')
           # The agent awaits its adapters on the caller's runtime: it never builds, enters or blocks on one.
           (! grep -rnE 'tokio::runtime|Handle::current|block_on|spawn_blocking' crates/agent --include='*.rs')
           # Naming rule 8: in each Rust file this change touches, no type, trait or function name starts
@@ -104,11 +130,10 @@ jobs:
               }
               END { exit bad }'
           done
-          cargo tree -e normal -p spookery-server --locked | (! grep -E 'spookery-client|spookery-agent|reqwest|tracing-subscriber')
+          cargo tree -e normal -p spookery-server --locked | (! grep -E 'reqwest|tracing-subscriber')
           # Only the `spook play` and `spook gm` terminals print. Library code hands output to a writer.
           (! grep -rnE '\b(e?print(ln)?!|io::std(out|err)\(\))' crates/{engine,protocol,agent,server,client} --include='*.rs' | grep -vE '^crates/client/(play|gm)\.rs:')
-          cargo tree -e normal -p spook --no-default-features --features client --locked | (! grep -E 'spookery-engine|spookery-server')
-          cargo tree -e normal -p spook --no-default-features --features server --locked | (! grep -E 'spookery-client|spookery-agent|reqwest')
+          cargo tree -e normal -p spook --no-default-features --features server --locked | (! grep -E 'reqwest')
           cargo build -p spook --no-default-features --features server --locked
           cargo build -p spook --no-default-features --features client --locked
           cargo build -p spook --locked

@@ -32,10 +32,10 @@ Pack tooling (after `cargo build`): `spook check --json <pack>` (stdout is `[]` 
 
 ## Crate layering (enforced by CI)
 
-The `dependency-and-feature-checks` job in `.github/workflows/ci.yml` fails the build if these edges appear in the normal dependency tree:
+The `dependency-and-feature-checks` job in `.github/workflows/ci.yml` lists every allowed workspace edge, dev edges included, and every feature that turns one on; any other edge or feature fails the build. `testing` rides only dev edges. It also bans the outside crates named below from each crate's normal tree:
 
 - `protocol` (`spookery-protocol`): player and GM wire types. MIT licensed, like `agent` and `client`, so every dependency must be permissively licensed.
-- `engine` (`spookery-engine`): world model, rules, rounds, save and journal. Synchronous; of the workspace crates it depends only on `protocol`, and it logs through the `tracing` facade.
+- `engine` (`spookery-engine`): world model, rules, rounds, save and journal. Synchronous; of the workspace crates it depends only on `protocol`; its tests add only itself with `testing`. It logs through the `tracing` facade.
 - `server` (`spookery-server`): the table, the game port's WebSocket endpoint, idle timer, the MCP endpoint. Must not depend on `client`, `agent` or `reqwest`.
 - `agent` (`spookery-agent`): the GM brain any client can reuse. One module per concern: `connection` and `model` are the `Connection`/`Model` adapters it awaits, `chat_completions` the model request and reply codec, `context` the client state and observation, `tool` the tool list, dispatch and results, `turn` the GM turn graph (graph-flow) and `task/` one file per graph task. MIT licensed. Async but runtime-free: tokio reaches it only through graph-flow (`rt`, `time`); it never builds, enters or blocks on a runtime and does no I/O itself. No `engine`, `server`, `client`, `reqwest`, `rmcp`, `socket2` or `mio`.
 - `client` (`spookery-client`): MIT licensed. One module per job. `play` and `gm` are the `spook play` / `spook gm` terminals and `text` their readable text, `ws` is the WebSocket seat connection, `ai_gm` runs `spook ai-gm`: it implements the agent's `Connection` over the WebSocket connection and runs `agent::run`, and `http_model` calls the model over HTTP. Must not depend on `engine`, `server` or `rmcp`; it only talks to the host over the wire.
