@@ -44,6 +44,9 @@ jobs:
         run: git config --global core.autocrlf false
 
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          # HEAD^ is the base: the PR's merge commit's first parent, or main before a squash merge.
+          fetch-depth: 2
 
       - run: rustup toolchain install && rustc --version
 
@@ -73,6 +76,18 @@ jobs:
           cargo tree -e normal -p spookery-agent --locked | (! grep -E 'spookery-(engine|server|client)|reqwest|rmcp|socket2|mio|tokio-macros')
           # The agent awaits its adapters on the caller's runtime: it never builds, enters or blocks on one.
           (! grep -rnE 'tokio::runtime|Handle::current|block_on|spawn_blocking' crates/agent --include='*.rs')
+          # Naming rule 8: in each Rust file this change touches, no type, trait or function name starts
+          # or ends with its module's name, unless it is that name (query::Query).
+          for f in $(git diff --name-only --diff-filter=d HEAD^ HEAD -- '*.rs'); do
+            m=$(basename "$f" .rs); [ "$m" = mod ] && m=$(basename "$(dirname "$f")")
+            [[ $m =~ ^(lib|main|build)$ ]] && continue
+            awk -v m="$m" -v M="$(sed -E 's/(^|_)(.)/\U\2/g' <<< "$m")" '!/\/\/ repeats module: ./ &&
+              match($0, /^(pub(\([^)]*\))? )?((const|async|unsafe) )*(struct|enum|trait|type|union|fn) [A-Za-z0-9_]+/) {
+                n = substr($0, 1, RLENGTH); sub(/.* /, "", n); w = n ~ /^[a-z]/ ? m : M
+                if (n != w && (index(n, w) == 1 || substr(n, length(n) - length(w) + 1) == w)) { print FILENAME ":" FNR ": " n " repeats its module " m; bad = 1 }
+              } END { exit bad }' "$f" || repeats=1
+          done
+          [ -z "$repeats" ] || { echo "Rename each one, or end its line with '// repeats module: <reason>' (CONTRIBUTING.md Naming rule 8)."; exit 1; }
           # protocol, agent and client are MIT: every AND term of every license in their
           # trees must offer a permissive choice.
           for crate in spookery-protocol spookery-agent spookery-client; do
