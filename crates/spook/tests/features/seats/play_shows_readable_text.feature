@@ -73,3 +73,59 @@ Feature: Play shows readable text
     Then play shows "You: hello Briar"
     When play joins the table on a free loopback address
     Then play shows earlier speech under one heading
+
+  Scenario: A strike keeps the target's hp off the player's line
+    Given a docks table where harbormouse's might is 40
+    When play joins the table as "harbormouse"
+    And play types "strike Briar"
+    And play says "done"
+    Then play shows "You: done"
+    And play shows "Your roll succeeded."
+    And play does not show "hp is now"
+    And the round record has a meter effect on briar
+
+  Scenario: A used item shows as used up
+    Given a docks table
+    When play joins the table as "harbormouse"
+    And play types "use Bitter tonic"
+    Then play shows "Your Bitter tonic was used up. Your hp is now 12."
+
+  Scenario: An unseen gain does not turn a use into a move
+    Given a docks table where a sip costs harbormouse a tonic and gives Bram one
+    When play joins the table as "harbormouse"
+    And play types "sip"
+    Then play shows "Your Bitter tonic was used up."
+    And play does not show "gained"
+    And play does not show "Bram"
+    And the round record has an item effect on bram
+
+  Scenario: An item gained and given back in one action is no change
+    Given a docks table where a juggle gains harbormouse a tonic and gives it back
+    When play joins the table as "harbormouse"
+    And play types "juggle"
+    And play says "done"
+    Then play shows "You: done"
+    And play does not show "Bitter tonic was"
+
+  Scenario: Dropping an item is a move
+    Given a docks table
+    When play joins the table as "harbormouse"
+    And play types "drop Bitter tonic"
+    Then play shows "You dropped the Bitter tonic."
+
+  Scenario: A move to another place shows the place's name
+    Given a docks table
+    When play joins the table as "harbormouse"
+    And play types "travel Loft"
+    Then play shows "Your place is now Loft."
+
+  Scenario: Changes the player may not know stay hidden
+    Given a docks table where a spill reveals a hidden fact to Briar and costs Briar 1 hp
+    When play joins the table as "harbormouse"
+    And play types "spill"
+    And play says "done"
+    Then play shows "You: done"
+    And play does not show "Briar's hp"
+    And play does not show "the sealed name"
+    And the round record has a meter effect on briar
+    And the round record has a flag effect on world
