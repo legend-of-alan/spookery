@@ -1,0 +1,16 @@
+Copyright (C) 2026 legend-of-alan
+
+legend-of-alan is the sole copyright holder.
+
+Runtime code, its tests, and repository tooling and scripts are licensed
+under the GNU Affero General Public License as published by the Free
+Software Foundation, either version 3 of the License, or (at your option)
+any later version. The terms are in LICENSE-AGPL.
+
+The spookery-protocol, spookery-agent and spookery-client crates
+(crates/protocol, crates/agent and crates/client, with their tests) are
+licensed under the MIT License. The terms are in LICENSE-MIT.
+
+Documentation, schemas, and packs (including packs/demo-d20) are licensed
+under Creative Commons Attribution 4.0 International (CC BY 4.0). The
+terms are in LICENSE-CC-BY.
