@@ -84,10 +84,10 @@ pub(crate) async fn play<M: Model, Conn: Connection>(
     *agent.turn() = turn;
     let mut session = Session::new_from_task(String::new(), ASK_MODEL);
     graph.execute_session(&mut session).await?;
-    let model_calls: usize = session.context.get(MODEL_CALL_COUNT).unwrap_or_default();
+    let model_call_count: usize = session.context.get(MODEL_CALL_COUNT).unwrap_or_default();
     tracing::info!(
         ?cause,
-        model_calls,
+        model_call_count,
         elapsed_ms = started.elapsed().as_millis(),
         "GM turn finished"
     );

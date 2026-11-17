@@ -135,7 +135,7 @@ impl<M: Model, Conn: Connection> Agent<M, Conn> {
         *self.in_flight.lock().expect("in flight") = Some(command.to_string());
         let message = ClientMessage::new(&id, command, args);
         self.connection.send(message).await.map_err(|error| {
-            tracing::debug!(command_id = command, %error, "the reply could not be read");
+            tracing::debug!(command_id = command, %error, "the command could not be sent");
             lost()
         })?;
         loop {

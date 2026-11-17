@@ -179,16 +179,16 @@ impl Table {
         out: FrameSender,
     ) -> Result<(), Box<ServerMessage>> {
         if seat == Seat::Gm && (self.seats.gm.is_some() || self.seats.connection(conn).is_some()) {
-            tracing::debug!(conn_id = ?conn, code = Reason::TableFull.as_str(), "GM seat refused");
+            tracing::debug!(conn_id = %conn, code = Reason::TableFull.as_str(), "GM seat refused");
             let seq = self.next_seq();
             let refused = stamp_message(seq, None, ServerBody::Refused(Reason::TableFull.into()));
             return Err(Box::new(refused));
         }
         if seat == Seat::Gm {
-            tracing::info!(conn_id = ?conn, "GM seated");
+            tracing::info!(conn_id = %conn, "GM seated");
             self.seats.gm = Some(conn);
         }
-        tracing::debug!(conn_id = ?conn, ?seat, "connection opened");
+        tracing::debug!(conn_id = %conn, ?seat, "connection opened");
         self.seats.connections.push(Connection {
             id: conn,
             seat,
@@ -250,7 +250,7 @@ impl Table {
                 return self.reply(conn, id, ServerBody::Refused(code.into()))
             }
         };
-        tracing::debug!(conn_id = ?conn, ?seat, command_id = %body.kind, "command received");
+        tracing::debug!(conn_id = %conn, ?seat, command_id = %body.kind, "command received");
         match seat {
             Seat::Player => self.handle_player_command(conn, id, body),
             Seat::Gm => self.handle_gm_command(conn, id, body),
@@ -335,7 +335,7 @@ impl Table {
         // The reply goes out before this connection drives the claim, so no catch-up
         // carries it.
         self.reply(conn, id, claimed);
-        tracing::info!(conn_id = ?conn, actor_id = %actor, by_token = !fresh, "PC claimed");
+        tracing::info!(conn_id = %conn, actor_id = %actor, by_token = !fresh, "PC claimed");
         if let Some(claim) = self.seats.claim_of_actor_mut(&actor) {
             claim.conn = Some(conn);
         }
@@ -393,7 +393,7 @@ impl Table {
 
     fn release_claim(&mut self, conn: ConnId, id: Option<String>) {
         if let Some(claim) = self.seats.claim_of(conn) {
-            tracing::info!(conn_id = ?conn, actor_id = %claim.actor, "PC released");
+            tracing::info!(conn_id = %conn, actor_id = %claim.actor, "PC released");
         }
         self.seats.claims.retain(|claim| claim.conn != Some(conn));
         self.reply(conn, id, ServerBody::Released);
@@ -621,7 +621,7 @@ impl Table {
     /// to that PC.
     fn reply(&mut self, conn: ConnId, id: Option<String>, body: ServerBody) {
         if let ServerBody::Refused(refused) = &body {
-            tracing::debug!(conn_id = ?conn, code = refused.code.as_str(), "refused");
+            tracing::debug!(conn_id = %conn, code = refused.code.as_str(), "refused");
         }
         let seq = self.next_seq();
         let message = stamp_message(seq, id, body);
@@ -666,7 +666,7 @@ impl Table {
             .connection(conn)
             .is_some_and(|connection| !connection.out.send(bytes))
         {
-            tracing::debug!(conn_id = ?conn, "outbound queue full or closed");
+            tracing::debug!(conn_id = %conn, "outbound queue full or closed");
             self.drop_connection(conn);
         }
     }
@@ -674,7 +674,7 @@ impl Table {
     /// Drops a connection. Dropping it cancels its socket. A claim it drove is held
     /// for its token, and a GM seat it held is free.
     fn drop_connection(&mut self, conn: ConnId) {
-        tracing::debug!(conn_id = ?conn, "connection closed");
+        tracing::debug!(conn_id = %conn, "connection closed");
         if self.seats.gm == Some(conn) {
             self.release_gm();
         }

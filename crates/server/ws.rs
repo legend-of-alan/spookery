@@ -152,7 +152,7 @@ async fn run(socket: WebSocket, acceptor: Acceptor, seat: Seat) {
             _ = cancel_rx.changed() => break,
             received = stream.next() => received,
             () = first_message_deadline => {
-                tracing::debug!(conn_id = ?conn, "closed a connection that sent nothing");
+                tracing::debug!(conn_id = %conn, "closed a connection that sent nothing");
                 report_close(&acceptor.tx, conn).await;
                 break;
             }

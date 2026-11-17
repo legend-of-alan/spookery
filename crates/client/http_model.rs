@@ -214,7 +214,7 @@ impl Model for HttpModel {
                 model_id,
                 attempts,
                 elapsed_ms,
-                tool_calls = tool_calls.len(),
+                tool_call_count = tool_calls.len(),
                 prompt_tokens = usage.prompt_tokens,
                 completion_tokens = usage.completion_tokens,
                 cached_tokens = usage.cached_tokens,
