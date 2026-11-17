@@ -2,15 +2,15 @@
 
 > Pre-alpha. Download a build from [Releases](https://github.com/legend-of-alan/spookery/releases) and expect things to change.
 
-Spookery is the game engine underneath your AI GM. Let a model run an RPG on its own and the world slips: an NPC forgets what it said, a roll gets fudged, a locked door opens anyway. Creativity isn't discord, it's controlled chaos.
+Spookery is a text RPG engine for shared, living worlds. Let a model run an RPG on its own and the world slips. An NPC forgets what it said. A roll gets fudged. A locked door opens anyway.
 
-You write a world as a pack of plain YAML rules and Markdown pages for places and people. Coding agents like Claude Code and Cursor can build one with `spook new` and `spook check`. Then you host it as a living world and sit down with up to three players and a GM.
+You write a world as a pack of plain YAML rules and Markdown pages for places and people. Coding agents like Claude Code and Cursor can build one with `spook new` and `spook check`. Then you host it and sit down with up to three players and a GM.
 
 Bring a friend to GM or bring your own model key. Either way, the engine is the only thing that changes the world. The GM tells the story and asks the engine to commit.
 
 - ⚙️ Play moves in rounds. Everyone queues a move, and the engine resolves them.
 - 🎲 Dice are seeded. A d20 check can partly succeed, and NPCs roll their own checks.
-- 📙 Every commit goes in a hash-chained journal, so you can replay a game and check every roll.
+- 📙 Every commit goes in a hash-chained journal. You can replay a game and check every roll.
 - ⚡ Triggers fire for in-round changes.
 - 🕰️ A world clock keeps time, and NPCs keep habits, like restocking the shop.
 - 🙈 Players see whether they succeeded, and only the GM sees the dice.
@@ -35,8 +35,6 @@ cp -r packs/demo-d20 my-demo
 
 > NOTE: The builds are unsigned. On a Mac you may need `xattr -d com.apple.quarantine spook` once. Windows may say More info, then Run anyway.
 
-> NOTE: On Windows in PowerShell, use `Copy-Item -Recurse packs\demo-d20 my-demo` and `.\spook`.
-
 Leave that running. Open a second terminal in the same folder, join, and pick Corin.
 
 ```sh
@@ -47,7 +45,7 @@ You're in the Yard. Daylight is running out. Press Ctrl+C in the host terminal w
 
 ## Build from source
 
-You need [rustup](https://rustup.rs), which installs the Rust version pinned in `rust-toolchain.toml`.
+You need [rustup](https://rustup.rs). It installs the Rust version pinned in `rust-toolchain.toml`.
 
 ```sh
 git clone https://github.com/legend-of-alan/spookery.git
@@ -56,7 +54,7 @@ cargo build --release --locked
 export PATH="$PWD/target/release:$PATH"
 ```
 
-That gives you one binary, `target/release/spook`, and the demo pack is at `packs/demo-d20`.
+That gives you one binary, `target/release/spook`. The demo pack is at `packs/demo-d20`.
 
 ## At the table
 
@@ -69,13 +67,17 @@ Type `help` any time. It lists the commands you can type here and now, and what 
 | `travel <exit>` | Walks to another place |
 | `take <item>` | Picks something up |
 
-`help`, `map`, `look` and `say` work in every pack. The other verbs come from the pack, so `travel` and `take` are the demo's.
+> NOTE: `help`, `map`, `look` and `say` work in every pack. The other verbs come from the pack, so `travel` and `take` are the demo's.
 
 ## The packs
 
-`packs/demo-d20` is the one to play first, and the one each release bundles. It's a short demo in a small yard. Corin can best Briar with a cudgel and go through the gate, or banish a goblin for its nail and take the cart, setting the wheel with `ward` or with Oden's help through `brace`. Corin loses if knocked out, or if daylight runs out before he reaches the lane. CI checks that it loads. No test plays it, so its story can change without breaking a test.
+`packs/demo-d20` is the one to play first. Each release bundles it. It's a short demo in a small yard. Corin can best Briar with a cudgel and go through the gate. Or he can banish a goblin for its nail and take the cart, setting the wheel with `ward` or with Oden's help through `brace`. Corin loses if he is knocked out, or if daylight runs out before he reaches the lane.
 
-Test packs live in `tests/packs`. They are fixtures, not games. `tests/packs/docks` is the one the engine and seat tests use: three player characters at the docks, and a yard behind the street with a fight, a d20 strike beside a 2d6 check, and a lane that ends the story.
+> NOTE: CI checks that it loads. No test plays it, so its story can change without breaking a test.
+
+Test packs live in `tests/packs`. `tests/packs/docks` is the one the engine and seat tests use. It has three player characters at the docks, and a yard behind the street with a fight, a d20 strike beside a 2d6 check, and a lane that ends the story.
+
+> NOTE: Test packs are fixtures, not games.
 
 ## Other commands
 
