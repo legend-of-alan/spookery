@@ -48,9 +48,13 @@ pub(super) async fn serve(
         .route("/{seat}", axum::routing::get(upgrade))
         .with_state(acceptor);
     let listener = listener.tap_io(|stream| {
-        let _ = set_socket_options(stream);
+        if let Err(error) = set_socket_options(stream) {
+            tracing::warn!(%error, "could not set socket options");
+        }
     });
-    let _ = axum::serve(listener, app).await;
+    if let Err(error) = axum::serve(listener, app).await {
+        tracing::error!(%error, "the game port stopped serving");
+    }
 }
 
 /// Sends small messages at once, drops a peer that stops answering keepalive probes, and
@@ -75,6 +79,8 @@ async fn upgrade(
         _ => return StatusCode::NOT_FOUND.into_response(),
     };
     if !is_loopback(&headers) {
+        let (host, origin) = (headers.get(header::HOST), headers.get(header::ORIGIN));
+        tracing::debug!(?host, ?origin, "refused a seat from outside loopback");
         return StatusCode::FORBIDDEN.into_response();
     }
     socket
@@ -146,6 +152,7 @@ async fn run(socket: WebSocket, acceptor: Acceptor, seat: Seat) {
             _ = cancel_rx.changed() => break,
             received = stream.next() => received,
             () = first_message_deadline => {
+                tracing::debug!(conn_id = %conn, "closed a connection that sent nothing");
                 report_close(&acceptor.tx, conn).await;
                 break;
             }

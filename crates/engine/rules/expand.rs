@@ -350,7 +350,7 @@ impl Dice for PreviewDice {
         Ok(vec![1; count as usize])
     }
 
-    fn log(&mut self, _text: String) {}
+    fn push_line(&mut self, _text: String) {}
 
     /// A resist roll that does not shrug the effect off.
     fn resist(

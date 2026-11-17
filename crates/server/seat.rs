@@ -2,6 +2,7 @@
 //! each connection's capped outbound queue and its writer.
 
 use std::collections::VecDeque;
+use std::fmt;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::task::{ready, Context, Poll};
@@ -15,6 +16,13 @@ use crate::protocol::{Seat, ServerMessage};
 /// One connection's id, on the game port or the MCP endpoint.
 #[derive(Clone, Copy, PartialEq)]
 pub(crate) struct ConnId(u64);
+
+/// The bare number, as a log's `conn_id` field shows it.
+impl fmt::Display for ConnId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
 
 impl ConnId {
     /// The next id from the one counter both ports share.

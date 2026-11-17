@@ -39,11 +39,12 @@ The model does not keep the world. It can talk, and it can ask the engine to com
 | **Engine** | The code that decides what is legal, rolls checks and tracks who knows what. |
 | **Tick** | The only unit of game time. The engine counts world time in ticks. The engine knows no day or hour: a pack names its own cycles, such as a day or a tide, in `rules/budget.yaml`. Talking takes no ticks. Moving and acting do. Players and the GM see plain ticks. |
 | **Speech** | One spoken line on the session tape. The command that writes it is `say`. Talking takes no ticks. |
-| **Round** | One batch of work, in which queued intents are settled together and the results are logged. A round writes some ticks, but it is not a unit of time. |
+| **Round** | One batch of work, in which queued intents are settled together and the results are journaled. A round writes some ticks, but it is not a unit of time. |
 | **Intent** | A proposed move from a player, an NPC or the engine's scheduler. |
 | **Effect** | A checked change to the world, produced from an intent. |
 | **Expression** | A number in a rule. An integer, dice such as `2d6` or `2d20kh1`, a meter read such as `self.might`, and `+`, `-`, `*`, `/`, `min`, and `max`. A condition's value does not roll dice. |
 | **GM** | The storyteller seat. Usually an agent that talks to the MCP endpoint. `spook ai-gm` is the built-in model GM. |
+| **Log** | A `tracing` event about what `spook` did, for an operator or developer. `spook run` and `spook ai-gm` write theirs to `logs/` under the directory they start in, and `spook run` names the file on stderr. Other commands log to stderr. The journal and the tape are the game record. Neither is a log. |
 
 ## Repo layout
 
@@ -141,6 +142,8 @@ SPOOK_GM_KEY=ollama SPOOK_GM_URL=http://127.0.0.1:11434/v1 SPOOK_GM_MODEL=qwen2.
 
 If the provider refuses a call, stderr shows `model call returned <status>: <text>`. The text is the provider's error on one line, cut to 200 characters, with your key replaced by `[key]`.
 
+Each model call is one line in the `spook ai-gm` log file: the model id, the attempts, the time it took and, when the reply has them, its `prompt_tokens`, `completion_tokens`, `cached_tokens` and `reasoning_tokens`. That file is where spend data collects, with no setting to change.
+
 `crates/spook/tests/integration/live_round.rs` plays one real round against whatever those variables point at. It's ignored by default. CI runs it as described in [Live AI CI](../CONTRIBUTING.md#live-ai-ci).
 
 ### Human GM
@@ -168,6 +171,8 @@ The views are trimmed on purpose. A player's view is only a room census: it drop
 A view does include the Markdown body of its place and of the viewer and each cast member it sees. Each body is cut at 800 characters.
 
 It never sends `save.yaml` or the tape file. Those stay on disk in the pack. A new `spook ai-gm` process starts fresh and remembers nothing from the last one.
+
+Logs carry no table text. `spook run` and `spook ai-gm` write them to `logs/<command>-<time>.log` in the directory they start in, never inside `state/`, and other commands write them to stderr. By default those files hold seat and round events and each model call's model id, attempts, time and token counts, never the prompt or the reply. The exception is `rmcp` at `debug` or `trace`, which logs whole MCP messages.
 
 ## License
 

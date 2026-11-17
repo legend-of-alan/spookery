@@ -15,14 +15,12 @@ use crate::store::commit::CommitOutcome;
 use crate::store::lock::lock_pack;
 use crate::Reason;
 
-use crate::round::dice::RoundDice;
-use crate::round::log::RoundLog;
-use crate::round::stage::advance::RoundTime;
 use crate::round::stage::{advance, apply, deliver, finish, pick, record, resolve, triggers};
+use crate::round::{self, Ledger};
 
 /// What one round showed. Returned from the engine's round to the host table, which sends it on
 /// to players, the GM and the digest. `lines` and `seen` are empty when no human was seated.
-pub struct RoundOutput {
+pub struct Output {
     pub reports: Vec<MoveReport>,
     pub dice: Vec<String>,
     pub changed_keys: Vec<String>,
@@ -33,13 +31,12 @@ pub struct RoundOutput {
     pub commit: Option<CommitOutcome>,
 }
 
-/// Play one round from the save. `Some` is a warning the host prints: the round
-/// was committed, and the checkpoint bundle was not closed.
-pub fn play_pack_once(path: &Path) -> Result<Option<&'static str>, Reason> {
+/// Play one round from the save.
+pub fn play_pack_once(path: &Path) -> Result<(), Reason> {
     let mut session = session::Session::resume(path, lock_pack(path)?)?;
     let wall = session.world().last_round_at.clone();
     play_round(&mut session, &Presence::default(), &wall, false)?;
-    Ok(session.take_warning())
+    Ok(())
 }
 
 /// Play the rounds `real_hours` of absence earn, at an empty table. A short absence plays one.
@@ -85,7 +82,7 @@ pub(crate) fn fast_forward(
     presence: &Presence,
     wall: &str,
     already: u32,
-) -> Result<Vec<RoundOutput>, Reason> {
+) -> Result<Vec<Output>, Reason> {
     let cap = session.budget().max_fastforward_rounds;
     let busy = seated_busy(session, presence);
     if busy.is_empty() || busy.contains(&false) {
@@ -119,7 +116,7 @@ pub(crate) fn play_round(
     presence: &Presence,
     wall: &str,
     fast_forward: bool,
-) -> Result<RoundOutput, Reason> {
+) -> Result<Output, Reason> {
     let canon = Arc::clone(session.world.canon());
     let world = session.begin_round();
     let staged = run_stages(&canon, world, presence, wall, session.queued_intents())?;
@@ -132,26 +129,26 @@ pub(crate) fn replay_round(
     wall: &str,
     queue: &[Intent],
     presence: &Presence,
-) -> Result<RoundOutput, Reason> {
+) -> Result<Output, Reason> {
     let canon = Arc::clone(session.world.canon());
     let world = session.begin_round();
     let StagedRound {
         world,
-        mut log,
+        mut ledger,
         delivered,
         ..
     } = run_stages(&canon, world, presence, wall, queue)?;
-    let output = record::take_output(&mut log, delivered);
+    let output = record::take_output(&mut ledger, delivered);
     crate::store::commit::keep_in_memory(session, world)?;
     Ok(output)
 }
 
-/// What the stages leave for `record`: the round's working copy of the save, its time, its log,
+/// What the stages leave for `record`: the round's working copy of the save, its time, its ledger,
 /// and what each seat hears.
 pub(crate) struct StagedRound {
     pub(crate) world: ecs::World,
-    pub(crate) clock: RoundTime,
-    pub(crate) log: RoundLog,
+    pub(crate) clock: round::Time,
+    pub(crate) ledger: Ledger,
     pub(crate) delivered: deliver::Deliveries,
 }
 
@@ -165,25 +162,39 @@ fn run_stages(
     queue: &[Intent],
 ) -> Result<StagedRound, Reason> {
     let clock = advance::run(canon, &mut world, presence, wall)?;
-    let mut dice = RoundDice::new(world.seed.clone(), clock.round_index);
-    let mut log = RoundLog::default();
-    let picked = pick::run(canon, &world, presence, queue, &mut log)?;
-    let candidates = resolve::run(canon, &world, presence, &picked, queue, &mut dice, &mut log);
+    let mut dice = round::Dice::new(world.seed.clone(), clock.round_index);
+    let mut ledger = Ledger::default();
+    let picked = pick::run(canon, &world, presence, queue, &mut ledger)?;
+    let candidates = resolve::run(
+        canon,
+        &world,
+        presence,
+        &picked,
+        queue,
+        &mut dice,
+        &mut ledger,
+    );
     apply::run(
-        canon, &mut world, presence, candidates, &clock, &mut dice, &mut log,
+        canon,
+        &mut world,
+        presence,
+        candidates,
+        &clock,
+        &mut dice,
+        &mut ledger,
     );
     let end = clock.world_time_after;
-    finish::run(canon, &mut world, presence, end, &mut dice, &mut log)?;
+    finish::run(canon, &mut world, presence, end, &mut dice, &mut ledger)?;
     // A door that opens is a flag change, so change rules see it before the map refresh. This
     // pass also takes the clock's changes in a round where no action ran.
-    travel::open_doors(canon, &mut world, presence, &mut log);
-    triggers::run(canon, &mut world, presence, &mut dice, &mut log);
+    travel::open_doors(canon, &mut world, presence, &mut ledger);
+    triggers::run(canon, &mut world, presence, &mut dice, &mut ledger);
     travel::note_exits(canon, &mut world)?;
-    let delivered = deliver::run(canon, &world, presence, &log.changes, &log.effects);
+    let delivered = deliver::run(canon, &world, presence, &ledger.changes, &ledger.effects);
     Ok(StagedRound {
         world,
         clock,
-        log,
+        ledger,
         delivered,
     })
 }

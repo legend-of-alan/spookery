@@ -1,6 +1,6 @@
-//! The chat-completions codec: the request body a model call sends, and the tool calls its
-//! reply brings. A tool call's `function.name` key holds the tool's id. The key is OpenAI's
-//! word, not ours.
+//! The chat-completions codec: the request body a model call sends, and the tool calls and
+//! token counts its reply brings. A tool call's `function.name` key holds the tool's id. The
+//! key is OpenAI's word, not ours.
 
 use serde_json::{json, Value};
 
@@ -41,10 +41,28 @@ pub fn render_request(model: &str, conversation: &[model::Message]) -> Value {
     })
 }
 
+/// A chat-completions reply: its tool calls in order, and the token counts it reported.
+#[derive(Debug, PartialEq)]
+pub struct Reply {
+    pub tool_calls: Vec<ToolCall>,
+    pub usage: Usage,
+}
+
+/// The token counts in a reply's `usage`. Each is `None` when the reply leaves it out.
+#[derive(Debug, Default, PartialEq)]
+pub struct Usage {
+    pub prompt_tokens: Option<u64>,
+    pub completion_tokens: Option<u64>,
+    /// `usage.prompt_tokens_details.cached_tokens`: prompt tokens the provider had cached.
+    pub cached_tokens: Option<u64>,
+    /// `usage.completion_tokens_details.reasoning_tokens`: completion tokens spent reasoning.
+    pub reasoning_tokens: Option<u64>,
+}
+
 /// Read a chat-completions reply: its tool calls in order, none when it has none. A call
 /// without an id gets `call_<index>`, and arguments that are not a string keep their JSON
 /// text, so the agent answers them itself.
-pub fn parse_reply(text: &str) -> Result<Vec<ToolCall>, CompletionError> {
+pub fn parse_reply(text: &str) -> Result<Reply, CompletionError> {
     let reply_lacks =
         |field: &str| CompletionError::InvalidReply(format!("the reply has no {field}"));
     let value: Value =
@@ -55,13 +73,20 @@ pub fn parse_reply(text: &str) -> Result<Vec<ToolCall>, CompletionError> {
         .ok_or_else(|| reply_lacks("choices"))?
         .get("message")
         .ok_or_else(|| reply_lacks("message in its first choice"))?;
+    let count = |pointer: &str| value.pointer(pointer).and_then(Value::as_u64);
+    let usage = Usage {
+        prompt_tokens: count("/usage/prompt_tokens"),
+        completion_tokens: count("/usage/completion_tokens"),
+        cached_tokens: count("/usage/prompt_tokens_details/cached_tokens"),
+        reasoning_tokens: count("/usage/completion_tokens_details/reasoning_tokens"),
+    };
     let calls = match message.get("tool_calls") {
-        None | Some(Value::Null) => return Ok(Vec::new()),
+        None | Some(Value::Null) => &[][..],
         Some(calls) => calls
             .as_array()
             .ok_or_else(|| reply_lacks("tool_calls list"))?,
     };
-    calls
+    let tool_calls = calls
         .iter()
         .enumerate()
         .map(|(index, call)| {
@@ -85,7 +110,8 @@ pub fn parse_reply(text: &str) -> Result<Vec<ToolCall>, CompletionError> {
                 arguments,
             })
         })
-        .collect()
+        .collect::<Result<_, _>>()?;
+    Ok(Reply { tool_calls, usage })
 }
 
 #[cfg(test)]
@@ -152,7 +178,9 @@ mod tests {
     #[test]
     fn prose_without_a_tool_call_means_done() {
         let text = r#"{"choices":[{"message":{"role":"assistant","content":"hello"}}]}"#;
-        assert_eq!(parse_reply(text), Ok(Vec::new()));
+        let reply = parse_reply(text).unwrap();
+        assert_eq!(reply.tool_calls, []);
+        assert_eq!(reply.usage, Usage::default());
         assert!(parse_reply("not json").is_err());
         let no_choices = CompletionError::InvalidReply("the reply has no choices".into());
         assert_eq!(parse_reply("{}"), Err(no_choices));
@@ -164,20 +192,31 @@ mod tests {
             {"id":"a","type":"function","function":{"name":"queue","arguments":"{\"actor_id\":\"mira\",\"move\":\"wait\"}"}},
             {"type":"function","function":{"name":"end_turn","arguments":{}}},
             {"id":"c","type":"function","function":{"name":"perceive","arguments":"not json"}}
-        ]}}]}"#;
-        let calls = parse_reply(text).unwrap();
+        ]}}],"usage":{"prompt_tokens":812,"completion_tokens":64,
+            "prompt_tokens_details":{"cached_tokens":512},
+            "completion_tokens_details":{"reasoning_tokens":20}}}"#;
+        let Reply { tool_calls, usage } = parse_reply(text).unwrap();
         let call = |id: &str, tool_id: &str, arguments: &str| ToolCall {
             id: id.into(),
             tool_id: tool_id.into(),
             arguments: arguments.into(),
         };
         assert_eq!(
-            calls,
+            tool_calls,
             [
                 call("a", "queue", r#"{"actor_id":"mira","move":"wait"}"#),
                 call("call_1", "end_turn", "{}"),
                 call("c", "perceive", "not json"),
             ]
+        );
+        assert_eq!(
+            usage,
+            Usage {
+                prompt_tokens: Some(812),
+                completion_tokens: Some(64),
+                cached_tokens: Some(512),
+                reasoning_tokens: Some(20),
+            }
         );
     }
 }

@@ -6,9 +6,9 @@ use crate::canon::Canon;
 use crate::ecs;
 use crate::ecs::id::ActorId;
 use crate::hash::blake2s_256;
-use crate::round::log::RoundLog;
+use crate::round::Ledger;
 use crate::rules::context::Context;
-use crate::rules::expr::{eval_with_dice, Dice};
+use crate::rules::expr::{self, eval_with_dice};
 use crate::rules::roll::Outcome;
 use crate::rules::roll::{self, faces, MoveReport, Roll, RollKey};
 use crate::rules::rule::RollSpec;
@@ -19,13 +19,13 @@ pub(crate) fn shuffle_key(seed: &str, round_index: u64, actor_id: &ActorId) -> [
 }
 
 /// Every roll key of one round.
-pub(crate) struct RoundDice {
+pub(crate) struct Dice {
     seed: String,
     round_index: u64,
     counts: BTreeMap<(String, Option<ActorId>), u32>,
 }
 
-impl RoundDice {
+impl Dice {
     pub(crate) fn new(seed: String, round_index: u64) -> Self {
         Self {
             seed,
@@ -72,13 +72,13 @@ impl RoundDice {
 
     pub(crate) fn roller<'a>(
         &'a mut self,
-        log: &'a mut RoundLog,
+        ledger: &'a mut Ledger,
         rule: &'a str,
         subject: Option<&'a ActorId>,
     ) -> Roller<'a> {
         Roller {
             dice: self,
-            log,
+            ledger,
             rule,
             subject,
             key: None,
@@ -91,8 +91,8 @@ impl RoundDice {
 /// Expression dice and resist rolls for one rule and subject, all keyed by the rule id.
 /// `into_reports` returns the resist reports. Dropping the roller discards them.
 pub(crate) struct Roller<'a> {
-    dice: &'a mut RoundDice,
-    log: &'a mut RoundLog,
+    dice: &'a mut Dice,
+    ledger: &'a mut Ledger,
     rule: &'a str,
     subject: Option<&'a ActorId>,
     key: Option<RollKey>,
@@ -135,7 +135,7 @@ impl Roller<'_> {
     }
 }
 
-impl Dice for Roller<'_> {
+impl expr::Dice for Roller<'_> {
     fn begin(&mut self) {
         self.key = None;
         self.drawn = 0;
@@ -150,8 +150,8 @@ impl Dice for Roller<'_> {
         Ok(faces)
     }
 
-    fn log(&mut self, text: String) {
-        self.log.dice.push(text);
+    fn push_line(&mut self, text: String) {
+        self.ledger.dice.push(text);
     }
 
     fn resist(

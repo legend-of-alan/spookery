@@ -4,9 +4,7 @@ use crate::protocol::{
     self, CommitBody, PackSummary, QueuedMove, Roll, ServerBody, Speech, StatusPresence,
     TableStatus,
 };
-use spookery_engine::{
-    self as engine, ActorId, Intent, MoveReport, Presence, RoundOutput, TapeRecord,
-};
+use spookery_engine::{self as engine, ActorId, Intent, MoveReport, Presence, TapeRecord};
 
 /// A move the gate or a round refused. Its `detail` is the meter or item id, or the
 /// sentence a locked exit shows.
@@ -117,7 +115,7 @@ pub(super) fn render_committed(
     state_rev: u64,
     changed_keys: &[String],
     journal_path: Option<&str>,
-    outputs: &[RoundOutput],
+    outputs: &[engine::round::Output],
 ) -> ServerBody {
     let checks = rolls(outputs.iter().flat_map(|output| &output.reports))
         .cloned()

@@ -33,7 +33,6 @@ pub struct Session<Lock = crate::PackGuard> {
     pub(crate) root: PathBuf,
     pub(crate) world: ecs::World,
     pub(crate) queue: Vec<Intent>,
-    warning: Option<&'static str>,
     pub(crate) lock: Lock,
 }
 
@@ -45,14 +44,19 @@ impl Session {
             root,
             world,
             queue,
-            warning,
             lock: (),
         } = crate::round::replay::open_at_tip(root, &lock)?;
+        tracing::info!(
+            pack_rev = world.pack_rev.as_str(),
+            state_rev = world.state_rev,
+            round_index = world.round_index,
+            world_time = world.world_time,
+            "pack opened"
+        );
         Ok(Session {
             root,
             world,
             queue,
-            warning,
             lock,
         })
     }
@@ -62,7 +66,7 @@ impl Session {
         &mut self,
         presence: &Presence,
         now_wall: &str,
-    ) -> Result<crate::RoundOutput, Reason> {
+    ) -> Result<crate::round::Output, Reason> {
         crate::round::play_round(self, presence, now_wall, false)
     }
 
@@ -72,7 +76,7 @@ impl Session {
         &mut self,
         presence: &Presence,
         wall: &str,
-    ) -> Result<Vec<crate::RoundOutput>, Reason> {
+    ) -> Result<Vec<crate::round::Output>, Reason> {
         let mut outputs = Vec::new();
         let committed = !self.queue.is_empty();
         if committed {
@@ -406,15 +410,6 @@ impl<Lock> Session<Lock> {
         self.queue.push(intent);
     }
 
-    /// A committed round whose checkpoint file was not finished. The host prints it.
-    pub fn take_warning(&mut self) -> Option<&'static str> {
-        self.warning.take()
-    }
-
-    pub(crate) fn set_warning(&mut self, text: &'static str) {
-        self.warning = Some(text);
-    }
-
     pub fn perceive(
         &self,
         presence: &Presence,
@@ -493,7 +488,7 @@ impl<Lock> Session<Lock> {
     }
 
     /// Effect rows for `outputs`, which end at this world's `round_index`, then the meter rows.
-    pub fn digest(&self, outputs: &[crate::RoundOutput]) -> String {
+    pub fn digest(&self, outputs: &[crate::round::Output]) -> String {
         let start = self.world.round_index + 1 - outputs.len() as u64;
         let mut effects = Vec::new();
         for (offset, output) in outputs.iter().enumerate() {
@@ -561,7 +556,6 @@ impl Session<()> {
             root: root.to_path_buf(),
             world: ecs::World::new(save, canon),
             queue: Vec::new(),
-            warning: None,
             lock: (),
         })
     }
@@ -573,7 +567,6 @@ impl Session<()> {
             root: pack.to_path_buf(),
             world,
             queue: Vec::new(),
-            warning: None,
             lock: (),
         }
     }

@@ -102,7 +102,7 @@ impl Model for ScriptedModel {
         if held {
             tokio::time::sleep(HOLD).await;
         }
-        chat_completions::parse_reply(&reply?)
+        chat_completions::parse_reply(&reply?).map(|reply| reply.tool_calls)
     }
 }
 

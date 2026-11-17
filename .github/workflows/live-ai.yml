@@ -132,4 +132,5 @@ jobs:
           SPOOK_GM_KEY: ${{ secrets.XAI_API_KEY }}
           SPOOK_GM_URL: https://api.x.ai/v1
           SPOOK_GM_MODEL: ${{ vars.SPOOK_XAI_MODEL || env.XAI_DEFAULT_MODEL }}
+          RUST_LOG: warn,spookery_client::http_model=info
         run: cargo test -p spook --test integration "live_round::" --locked -- --ignored --nocapture

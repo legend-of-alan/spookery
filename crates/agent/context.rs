@@ -107,10 +107,10 @@ impl ClientState {
         }
     }
 
-    /// The next turn, when a turn cause waits: it opens with the system message, then the
-    /// observation, which shows the new player lines. Those then join `tape_lines`, and a
-    /// speech the model has now read starts no turn.
-    pub(crate) fn start_turn(&mut self) -> Option<Turn> {
+    /// The next turn and its cause, when a turn cause waits: it opens with the system message,
+    /// then the observation, which shows the new player lines. Those then join `tape_lines`, and
+    /// a speech the model has now read starts no turn.
+    pub(crate) fn start_turn(&mut self) -> Option<(TurnCause, Turn)> {
         let cause = self.causes.pop_front()?;
         let prompt = serde_json::to_string(&Observation {
             menu: &self.pack.menu,
@@ -125,14 +125,13 @@ impl ClientState {
             push_recent(&mut self.tape_lines, line);
         }
         self.causes.retain(|cause| *cause == TurnCause::QueuedMove);
-        Some(Turn {
-            conversation: vec![
-                model::Message::System {
-                    content: self.system_text(),
-                },
-                model::Message::User { content: prompt },
-            ],
-        })
+        let conversation = vec![
+            model::Message::System {
+                content: self.system_text(),
+            },
+            model::Message::User { content: prompt },
+        ];
+        Some((cause, Turn { conversation }))
     }
 
     /// `GM_INSTRUCTIONS`, then the pack's `gm_notes` after a blank line when it has one.
@@ -171,7 +170,7 @@ impl TapeLine {
 /// queued move.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
-enum TurnCause {
+pub(crate) enum TurnCause {
     Speech,
     QueuedMove,
 }

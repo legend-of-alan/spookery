@@ -17,11 +17,9 @@ use crate::store::recovery::close_finished;
 use crate::store::save::{self, check_save, find_missing_meters};
 use crate::Reason;
 
-const CHECKPOINT_WARNING: &str = "the checkpoint bundle was not closed";
-
 pub struct CommitOutcome {
     pub state_rev: u64,
-    pub log_path: String,
+    pub journal_path: String,
     /// The committed round's index and the world time it ended at.
     pub round_index: u64,
     pub world_time: u64,
@@ -34,6 +32,7 @@ pub fn commit(
     mut world: ecs::World,
     record: RoundRecord,
 ) -> Result<CommitOutcome, Reason> {
+    let started = std::time::Instant::now();
     let write = lock_write(&session.root, &session.lock)?;
     settle_checkpoint(session, &write)?;
     bump_state_rev(&mut world)?;
@@ -52,22 +51,28 @@ pub fn commit(
     } else {
         (line, None)
     };
-    let mut log_path = append_to_bundle(&session.root, &payload, &write)?;
+    let mut journal_path = append_to_bundle(&session.root, &payload, &write)?;
     world.accept();
     session.world = world;
     session.queue.clear();
     if let Some(chain) = chain {
-        if finish_checkpoint(session, &now_bytes, &chain, &write) {
-            if !log_path.ends_with(".gz") {
-                log_path.push_str(".gz");
-            }
-        } else {
-            session.set_warning(CHECKPOINT_WARNING);
+        if warn_if_left_open(finish_checkpoint(session, &now_bytes, &chain, &write))
+            && !journal_path.ends_with(".gz")
+        {
+            journal_path.push_str(".gz");
         }
     }
+    tracing::info!(
+        round_index = session.world.round_index,
+        world_time = session.world.world_time,
+        state_rev = session.world.state_rev,
+        checkpoint_sealed = due,
+        elapsed_ms = started.elapsed().as_millis(),
+        "round committed"
+    );
     Ok(CommitOutcome {
         state_rev: session.world.state_rev,
-        log_path,
+        journal_path,
         round_index: session.world.round_index,
         world_time: session.world.world_time,
     })
@@ -127,24 +132,30 @@ pub fn commit_migrate(
     let write = lock_write(root, lock)?;
     let prev = journal::read_chain_tip(root).map_err(|fault| fault.reason)?;
     let line = journal::seal(&entry, &prev);
-    if !edited {
+    if edited {
+        // The snapshot lands before the record, so a crash after the append still replays.
+        write_atomic(&journal::checkpoint_path(root, world.state_rev), &emitted)?;
+        let (payload, chain) = seal_checkpoint(line, &world, &emitted)?;
+        append_to_bundle(root, &payload, &write)?;
+        store_checkpoint(
+            root,
+            &emitted,
+            world.state_rev,
+            world.round_index,
+            &chain,
+            &write,
+        )?;
+        // The migrate is committed.
+        warn_if_left_open(close_finished(root, &write));
+    } else {
         append_to_bundle(root, &line, &write)?;
-        return Ok(());
     }
-    // The snapshot lands before the record, so a crash after the append still replays.
-    write_atomic(&journal::checkpoint_path(root, world.state_rev), &emitted)?;
-    let (payload, chain) = seal_checkpoint(line, &world, &emitted)?;
-    append_to_bundle(root, &payload, &write)?;
-    store_checkpoint(
-        root,
-        &emitted,
-        world.state_rev,
-        world.round_index,
-        &chain,
-        &write,
-    )?;
-    // The migrate is committed. A bundle left open is closed by the next append.
-    let _ = close_finished(root, &write);
+    tracing::info!(
+        pack_rev = world.pack_rev.as_str(),
+        state_rev = world.state_rev,
+        operator_edit_trusted = edited,
+        "pack migrated"
+    );
     Ok(())
 }
 
@@ -187,7 +198,7 @@ fn is_checkpoint_due(every: u64, round_index: u64) -> bool {
 
 fn append_to_bundle(root: &Path, payload: &str, write: &WriteGuard) -> Result<String, Reason> {
     // A failed close must not refuse this round or append into the closed bundle.
-    let _ = close_finished(root, write);
+    warn_if_left_open(close_finished(root, write));
     let path = journal::next_bundle_path(root);
     let created = !path.is_file();
     if let Some(parent) = path.parent() {
@@ -250,17 +261,26 @@ fn store_checkpoint(
     Ok(())
 }
 
-/// The journal line is already durable. `false` means `save.yaml` or the gzip did
+/// The journal line is already durable. An error means `save.yaml` or the gzip did
 /// not finish. The round stays committed either way.
 fn finish_checkpoint(
     session: &mut session::Session,
     now_bytes: &[u8],
     chain: &str,
     write: &WriteGuard,
-) -> bool {
+) -> Result<(), Reason> {
     let (rev, round) = (session.world.state_rev, session.world.round_index);
-    store_checkpoint(&session.root, now_bytes, rev, round, chain, write).is_ok()
-        && close_finished(&session.root, write).is_ok()
+    store_checkpoint(&session.root, now_bytes, rev, round, chain, write)?;
+    close_finished(&session.root, write)
+}
+
+/// A finished bundle that could not be closed stays open, and the next commit closes it.
+/// Returns whether it closed.
+fn warn_if_left_open(closed: Result<(), Reason>) -> bool {
+    if let Err(code) = &closed {
+        tracing::warn!(code = %code, "a finished journal bundle stays open until the next commit");
+    }
+    closed.is_ok()
 }
 
 /// Publish `save.yaml` and the snapshot for a checkpoint that is already in the
@@ -293,7 +313,7 @@ pub(crate) fn settle_checkpoint<Lock>(
             write,
         )?;
     }
-    let _ = close_finished(&session.root, write);
+    warn_if_left_open(close_finished(&session.root, write));
     Ok(())
 }
 
@@ -326,14 +346,12 @@ mod tests {
         let mark = crate::store::journal::latest_checkpoint(&live).unwrap();
         assert_eq!(session.world().state_rev, round_rev.unwrap());
         assert_eq!(session.world().state_rev, mark.state_rev);
-        assert_eq!(session.take_warning(), Some(super::CHECKPOINT_WARNING));
         assert!(root.join("state/journal/bundle-0000.jsonl").is_file());
         assert!(!root.join("state/journal/bundle-0000.jsonl.gz").is_file());
 
         let mut again = session.begin_round();
         again.round_index = 2;
         commit(&mut session, again, round_line(2)).unwrap();
-        assert!(session.take_warning().is_none());
         let bundles = crate::store::journal::read_bundle_records(&root).unwrap();
         assert_eq!(bundles.len(), 2, "{bundles:?}");
         for (bundle, entries) in &bundles {
@@ -366,7 +384,6 @@ mod tests {
         let live = crate::store::journal::read_live_records(&root).unwrap();
         let mark = crate::store::journal::latest_checkpoint(&live).unwrap();
         assert_eq!(session.world().state_rev, mark.state_rev);
-        assert_eq!(session.take_warning(), Some(super::CHECKPOINT_WARNING));
 
         let mut third = session.begin_round();
         third.round_index = 3;

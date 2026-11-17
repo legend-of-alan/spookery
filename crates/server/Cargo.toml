@@ -21,6 +21,7 @@ socket2 = { version = "0.6", features = ["all"] }
 spookery-engine = { path = "../engine" }
 spookery-protocol = { path = "../protocol", features = ["schema"] }
 tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread", "time", "net", "io-util", "sync"] }
+tracing = "0.1.44"
 uuid = { version = "1", features = ["v4"] }
 
 [dev-dependencies]

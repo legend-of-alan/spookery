@@ -58,8 +58,8 @@ impl<K: Ord + Clone + Debug, V: PartialEq + Debug> Entries for BTreeMap<K, V> {
     }
 }
 
-/// A store's log of inverses, as a rollback and an accept work through it.
-pub trait Log {
+/// A store's history of inverses, as a rollback and an accept work through it.
+pub trait History {
     /// A rollback: undo every change numbered `change_no` or later, newest first.
     fn undo_to(&mut self, change_no: u64);
     /// An accept: drop every inverse, so nothing rolls the value back past here.
@@ -74,7 +74,7 @@ pub trait Log {
 pub struct Store<T: Undo> {
     value: T,
     #[serde(skip)]
-    log: Vec<(u64, T::Inverse)>,
+    history: Vec<(u64, T::Inverse)>,
 }
 
 impl<T: Undo + Clone> Clone for Store<T> {
@@ -101,7 +101,7 @@ impl<T: Undo> From<T> for Store<T> {
     fn from(value: T) -> Self {
         Store {
             value,
-            log: Vec::new(),
+            history: Vec::new(),
         }
     }
 }
@@ -115,9 +115,10 @@ impl<T: Undo> Deref for Store<T> {
 }
 
 impl<T: Undo> Store<T> {
-    /// Make one change with `change`, which hands back its inverse; log the inverse under the
-    /// transaction's next change number, then count and keep each of `reports` in order. A
-    /// `BUDGET` from a report leaves the change made, for the caller's savepoint to undo.
+    /// Make one change with `change`, which hands back its inverse; push the inverse onto the
+    /// history under the transaction's next change number, then count and keep each of `reports`
+    /// in order. A `BUDGET` from a report leaves the change made, for the caller's savepoint to
+    /// undo.
     pub(super) fn record(
         &mut self,
         transaction: &mut Transaction,
@@ -125,28 +126,28 @@ impl<T: Undo> Store<T> {
         reports: impl IntoIterator<Item = change::Report>,
     ) -> Result<(), Reason> {
         let inverse = change(&mut self.value);
-        self.log.push((transaction.next_change_no(), inverse));
+        self.history.push((transaction.next_change_no(), inverse));
         (reports.into_iter()).try_for_each(|report| transaction.report(report))
     }
 }
 
-impl<T: Undo> Log for Store<T> {
+impl<T: Undo> History for Store<T> {
     fn undo_to(&mut self, change_no: u64) {
-        while let Some((_, inverse)) = self.log.pop_if(|(at, _)| *at >= change_no) {
+        while let Some((_, inverse)) = self.history.pop_if(|(at, _)| *at >= change_no) {
             self.value.undo(inverse);
         }
     }
 
     fn clear(&mut self) {
-        self.log.clear();
+        self.history.clear();
     }
 }
 
 impl<T: Entries> Store<T> {
-    /// Set `value` under `key`, `None` taking the entry off. If the entry moves, its inverse is
-    /// logged and `reports` are counted and kept, as `record` says; if it does not, nothing is,
-    /// and `reports` are dropped unread. The one way an entry changes, and the one place its
-    /// write reports.
+    /// Set `value` under `key`, `None` taking the entry off. If the entry moves, its inverse goes
+    /// onto the history and `reports` are counted and kept, as `record` says; if it does not,
+    /// nothing is, and `reports` are dropped unread. The one way an entry changes, and the one
+    /// place its write reports.
     pub(super) fn set(
         &mut self,
         transaction: &mut Transaction,
@@ -200,7 +201,7 @@ impl<V: PartialEq + Debug> DenseStore<V> {
     }
 }
 
-impl<V: PartialEq + Debug> Log for DenseStore<V> {
+impl<V: PartialEq + Debug> History for DenseStore<V> {
     fn undo_to(&mut self, change_no: u64) {
         self.0.undo_to(change_no);
     }

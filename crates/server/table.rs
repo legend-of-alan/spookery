@@ -6,9 +6,7 @@ use std::io::Write;
 use std::sync::mpsc::{Receiver, Sender};
 
 use serde_json::{Map, Value};
-use spookery_engine::{
-    emit_tape_record, ActorId, Presence, Reason, RecipientLine, RoundOutput, TapeRecord,
-};
+use spookery_engine::{emit_tape_record, ActorId, Presence, Reason, RecipientLine, TapeRecord};
 use tokio::sync::{oneshot, watch};
 
 use super::frames;
@@ -29,7 +27,7 @@ const MAX_PLAYER_SEATS: usize = 3;
 pub(crate) fn commit_then_fast_forward(
     session: &mut spookery_engine::Session,
     presence: &Presence,
-) -> Result<Vec<RoundOutput>, Reason> {
+) -> Result<Vec<spookery_engine::round::Output>, Reason> {
     let wall = now_stamp();
     session.commit_then_fast_forward(presence, &wall)
 }
@@ -93,7 +91,6 @@ pub(crate) struct Table {
     /// While an MCP tool call runs: its connection, and the messages sent to it so far.
     tool_call: Option<(ConnId, Vec<ServerMessage>)>,
     out: Box<dyn Write>,
-    err: Box<dyn Write>,
 }
 
 impl Table {
@@ -101,7 +98,6 @@ impl Table {
         session: spookery_engine::Session,
         idle: watch::Sender<u64>,
         out: Box<dyn Write>,
-        err: Box<dyn Write>,
     ) -> Self {
         let verbs = session.verbs();
         Self {
@@ -112,7 +108,6 @@ impl Table {
             idle,
             tool_call: None,
             out,
-            err,
         }
     }
 
@@ -168,10 +163,6 @@ impl Table {
                     return Ok(());
                 }
             }
-            if let Some(warning) = self.session.take_warning() {
-                let _ = writeln!(self.err, "{warning}");
-                let _ = self.err.flush();
-            }
             handled.map_err(Error::Reason)?;
         }
     }
@@ -186,13 +177,16 @@ impl Table {
         out: FrameSender,
     ) -> Result<(), Box<ServerMessage>> {
         if seat == Seat::Gm && (self.seats.gm.is_some() || self.seats.connection(conn).is_some()) {
+            tracing::debug!(conn_id = %conn, code = Reason::TableFull.as_str(), "GM seat refused");
             let seq = self.next_seq();
             let refused = stamp_message(seq, None, ServerBody::Refused(Reason::TableFull.into()));
             return Err(Box::new(refused));
         }
         if seat == Seat::Gm {
+            tracing::info!(conn_id = %conn, "GM seated");
             self.seats.gm = Some(conn);
         }
+        tracing::debug!(conn_id = %conn, ?seat, "connection opened");
         self.seats.connections.push(Connection {
             id: conn,
             seat,
@@ -254,6 +248,7 @@ impl Table {
                 return self.reply(conn, id, ServerBody::Refused(code.into()))
             }
         };
+        tracing::debug!(conn_id = %conn, ?seat, command_id = %body.kind, "command received");
         match seat {
             Seat::Player => self.handle_player_command(conn, id, body),
             Seat::Gm => self.handle_gm_command(conn, id, body),
@@ -338,6 +333,7 @@ impl Table {
         // The reply goes out before this connection drives the claim, so no catch-up
         // carries it.
         self.reply(conn, id, claimed);
+        tracing::info!(conn_id = %conn, actor_id = %actor, by_token = !fresh, "PC claimed");
         if let Some(claim) = self.seats.claim_of_actor_mut(&actor) {
             claim.conn = Some(conn);
         }
@@ -394,6 +390,9 @@ impl Table {
     }
 
     fn release_claim(&mut self, conn: ConnId, id: Option<String>) {
+        if let Some(claim) = self.seats.claim_of(conn) {
+            tracing::info!(conn_id = %conn, actor_id = %claim.actor, "PC released");
+        }
         self.seats.claims.retain(|claim| claim.conn != Some(conn));
         self.reply(conn, id, ServerBody::Released);
         self.announce_presence();
@@ -471,7 +470,6 @@ impl Table {
         let presence = self.seats.presence();
         let reply = gm::run(&mut self.session, &presence, &body.kind, &body.args)
             .unwrap_or_else(Reply::refused);
-        self.log_refused(&body.kind, &reply);
         self.after_rounds(&reply.outputs);
         // A say's reply is the GM's copy of its speech.
         match &reply.speech {
@@ -483,14 +481,7 @@ impl Table {
         }
     }
 
-    fn log_refused(&mut self, command: &str, reply: &Reply) {
-        if let ServerBody::Refused(refused) = &reply.body {
-            let _ = writeln!(self.out, "refused {command} {}", refused.code.as_str());
-            let _ = self.out.flush();
-        }
-    }
-
-    /// Frees the GM seat and says so on the host log, so the operator sees the seat is open.
+    /// Frees the GM seat and says so on the host console, so the operator sees the seat is open.
     fn release_gm(&mut self) {
         self.seats.gm = None;
         let _ = writeln!(self.out, "gm seat free");
@@ -510,7 +501,7 @@ impl Table {
 
     /// The one order after rounds: a `round` to every seat, then each player's checks,
     /// refresh and lines, then the digest, then the idle timer restarts.
-    fn after_rounds(&mut self, outputs: &[RoundOutput]) {
+    fn after_rounds(&mut self, outputs: &[spookery_engine::round::Output]) {
         if outputs.is_empty() {
             return;
         }
@@ -627,6 +618,9 @@ impl Table {
     /// The reply to the message `id` named. One to a connection that drives a claim goes
     /// to that PC.
     fn reply(&mut self, conn: ConnId, id: Option<String>, body: ServerBody) {
+        if let ServerBody::Refused(refused) = &body {
+            tracing::debug!(conn_id = %conn, code = refused.code.as_str(), "refused");
+        }
         let seq = self.next_seq();
         let message = stamp_message(seq, id, body);
         match self.seats.claim_of(conn).map(|claim| claim.actor.clone()) {
@@ -670,6 +664,7 @@ impl Table {
             .connection(conn)
             .is_some_and(|connection| !connection.out.send(bytes))
         {
+            tracing::debug!(conn_id = %conn, "outbound queue full or closed");
             self.drop_connection(conn);
         }
     }
@@ -677,6 +672,7 @@ impl Table {
     /// Drops a connection. Dropping it cancels its socket. A claim it drove is held
     /// for its token, and a GM seat it held is free.
     fn drop_connection(&mut self, conn: ConnId) {
+        tracing::debug!(conn_id = %conn, "connection closed");
         if self.seats.gm == Some(conn) {
             self.release_gm();
         }
@@ -686,7 +682,7 @@ impl Table {
         self.seats.take(conn);
     }
 
-    fn write_digest(&mut self, outputs: &[RoundOutput]) {
+    fn write_digest(&mut self, outputs: &[spookery_engine::round::Output]) {
         let text = self.session.digest(outputs);
         if !text.is_empty() {
             let _ = self.out.write_all(text.as_bytes());

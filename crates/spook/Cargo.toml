@@ -22,6 +22,7 @@ server = ["dep:spookery-engine", "dep:spookery-server", "dep:serde_json"]
 client = ["dep:spookery-agent", "dep:spookery-client"]
 
 [dependencies]
+chrono = { version = "0.4", default-features = false, features = ["now"] }
 clap = { version = "4.6.7", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"], optional = true }
 spookery-agent = { path = "../agent", optional = true }
@@ -30,6 +31,7 @@ spookery-engine = { path = "../engine", optional = true }
 spookery-protocol = { path = "../protocol" }
 spookery-server = { path = "../server", optional = true }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal"] }
+tracing-subscriber = { version = "0.3.23", default-features = false, features = ["env-filter", "fmt", "std", "tracing-log"] }
 
 [dev-dependencies]
 cucumber = "=0.23.0"

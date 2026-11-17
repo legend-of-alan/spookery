@@ -217,14 +217,11 @@ pub fn serve_in_process(world: &mut World, pack: &Path) {
     // `lock_pack` then `Session::resume`, as `spook run` opens it.
     let opened = support::resume(pack);
     let (mut out, out_pipe) = std::io::pipe().unwrap_or_else(|err| panic!("pipe: {err}"));
-    let (err, err_pipe) = std::io::pipe().unwrap_or_else(|err| panic!("pipe: {err}"));
     let stderr = Arc::new(Mutex::new(String::new()));
-    drop(support::drain(err, Arc::clone(&stderr)));
     let loopback: SocketAddr = "127.0.0.1:0".parse().unwrap();
     let mut config = spookery_server::Config::new(loopback);
     config.mcp_addr = Some(loopback);
     config.out = Box::new(out_pipe);
-    config.err = Box::new(err_pipe);
     let (advance, mut advances) = tokio::sync::mpsc::unbounded_channel::<Advance>();
     let (stop, stopped) = tokio::sync::oneshot::channel::<()>();
     let failed = Arc::clone(&stderr);
@@ -407,12 +404,14 @@ pub struct RunningTable {
 }
 
 pub fn listen(world: &mut World, pack: &Path) {
-    let _ = run_with_flags(world, pack, &["--addr", "127.0.0.1:0"]);
+    let flags = ["--addr", "127.0.0.1:0"];
+    let _ = run_with_flags(world, &std::env::temp_dir(), pack, &flags);
 }
 
-pub fn run_with_flags(world: &mut World, pack: &Path, flags: &[&str]) -> (u16, u16) {
+/// Starts `spook run` on `pack` in `dir`, where it writes its `logs/`.
+pub fn run_with_flags(world: &mut World, dir: &Path, pack: &Path, flags: &[&str]) -> (u16, u16) {
     drop(world.live.take());
-    let addrs = wait_addrs(spawn_table(pack, flags));
+    let addrs = wait_addrs(spawn_table(dir, pack, flags));
     let ports = (addrs.game.port(), addrs.mcp_addr.port());
     attach_host(world, pack, addrs.game, addrs.mcp_addr).host = Some(addrs.host);
     ports
@@ -434,10 +433,12 @@ pub fn parse_addrs(stdout: &str) -> (SocketAddr, SocketAddr) {
         .unwrap_or_else(|| panic!("no listening line\n{stdout}"))
 }
 
-pub fn spawn_table(pack: &Path, flags: &[&str]) -> Pending {
+/// Starts `spook run` on `pack` in `dir`, where it writes its `logs/`.
+pub fn spawn_table(dir: &Path, pack: &Path, flags: &[&str]) -> Pending {
     let mut command = Command::new(env!("CARGO_BIN_EXE_spook"));
     command.arg("run").arg(support::pack_arg(pack)).args(flags);
     command
+        .current_dir(dir)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
@@ -757,6 +758,12 @@ pub fn poll_until<T, Seen: std::fmt::Display>(
             Err(_) => std::thread::sleep(Duration::from_millis(20)),
         }
     }
+}
+
+pub fn host_stderr(world: &World) -> String {
+    let host = live(world).host.as_ref();
+    host.map(|server| support::text_of(&server.stderr))
+        .unwrap_or_default()
 }
 
 pub fn host_stdout(world: &World) -> String {

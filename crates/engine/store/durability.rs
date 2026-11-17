@@ -7,7 +7,8 @@ use std::path::{Path, PathBuf};
 use crate::Reason;
 
 /// Refuse a filesystem failure in the store. The disk refused, so a resend will not help.
-pub(crate) fn refuse_io(_: std::io::Error) -> Reason {
+pub(crate) fn refuse_io(error: std::io::Error) -> Reason {
+    tracing::debug!(%error, "the disk refused a store read or write");
     Reason::StoreIo
 }
 

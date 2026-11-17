@@ -6,19 +6,19 @@ use crate::store::{commit, RULES_REV};
 use crate::Reason;
 
 use crate::ecs::Presence;
-use crate::round::log::RoundLog;
-use crate::round::play::{RoundOutput, StagedRound};
+use crate::round::play::StagedRound;
 use crate::round::stage::deliver::Deliveries;
+use crate::round::{self, Ledger};
 
 /// What the round showed. A live round adds its commit outcome.
-pub(crate) fn take_output(log: &mut RoundLog, delivered: Deliveries) -> RoundOutput {
-    RoundOutput {
-        reports: std::mem::take(&mut log.reports),
-        dice: log.dice.clone(),
+pub(crate) fn take_output(ledger: &mut Ledger, delivered: Deliveries) -> round::Output {
+    round::Output {
+        reports: std::mem::take(&mut ledger.reports),
+        dice: ledger.dice.clone(),
         changed_keys: delivered.changed_keys,
         lines: delivered.lines,
         seen: delivered.seen,
-        effects: log.effects.clone(),
+        effects: ledger.effects.clone(),
         commit: None,
     }
 }
@@ -30,14 +30,14 @@ pub(crate) fn run(
     presence: &Presence,
     wall: &str,
     fast_forward: bool,
-) -> Result<RoundOutput, Reason> {
+) -> Result<round::Output, Reason> {
     let StagedRound {
         world,
         clock,
-        mut log,
+        mut ledger,
         delivered,
     } = staged;
-    let mut output = take_output(&mut log, delivered);
+    let mut output = take_output(&mut ledger, delivered);
     let record = RoundRecord {
         round_index: clock.round_index,
         rules_rev: RULES_REV,
@@ -49,11 +49,11 @@ pub(crate) fn run(
         actors_present: presence.actors_present.clone(),
         last_round_at: wall.to_string(),
         intents: session.queued_intents().to_vec(),
-        refused: log.refused,
-        effects: log.effects,
+        refused: ledger.refused,
+        effects: ledger.effects,
         fast_forward,
-        dice: log.dice,
-        extra_steps: log.extra_steps,
+        dice: ledger.dice,
+        extra_steps: ledger.extra_steps,
         memories: Vec::new(),
         state_hash: String::new(),
         prev: String::new(),

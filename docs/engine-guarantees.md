@@ -53,7 +53,7 @@ The journal is a hash chain of bundle files. Each record's hash covers its own
 bytes and the previous record's hash. Closed bundles stay, gzip-compressed. A
 plain bundle whose checkpoint matches `save.yaml` is closed on the next open
 or the next commit, and the next round starts a new bundle. If `save.yaml` or
-the gzip does not land, the round stays committed and the host prints a
+the gzip does not land, the round stays committed and the engine logs a
 warning. The next commit publishes that checkpoint and then starts a new
 bundle. A plain copy beside a finished gzip is removed. `save.yaml` is the latest
 checkpoint, taken every `checkpoint_every` rounds (100 when the pack omits it;
@@ -118,7 +118,7 @@ Tested in `features/seats/one_gm_and_three_players.feature`,
 
 A later move sees what an earlier move in that round already changed. One
 refused effect rolls the whole rule back. A rule over the effect cap is refused
-whole, not cut short, and the log records the refusal. That holds for a change
+whole, not cut short, and the journal records the refusal. That holds for a change
 rule too. A refused roll is not reported as a success. A roll target that
 fails to evaluate refuses that move with its error, and the rest of the round
 lands and commits. A move pays the cost of the rule it rolled for, even when an

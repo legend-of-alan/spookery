@@ -164,7 +164,7 @@ fn two_chains_at_depth_one(world: &mut World) {
     write_rules(world, &verbs, "chains", &rules);
 }
 
-#[then(expr = "both rules ran and the round logged no trigger_depth")]
+#[then(expr = "both rules ran and the journal records no trigger_depth")]
 fn both_chains_ran(world: &mut World) {
     let round = latest_round(world);
     assert_eq!(round["refused"], serde_json::json!([]), "{round}");

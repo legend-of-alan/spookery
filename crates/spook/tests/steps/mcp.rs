@@ -390,9 +390,7 @@ fn agent_calls_an_unknown_tool(world: &mut World) {
     world.scratch = json!(reply).to_string();
 }
 
-#[then(
-    expr = "the unknown tool call was refused SCHEMA, the host logged it, and the save is unchanged"
-)]
+#[then(expr = "the unknown tool call was refused SCHEMA and the save is unchanged")]
 fn the_unknown_tool_call_was_refused(world: &mut World) {
     let reply: Vec<ServerMessage> =
         serde_json::from_str(&world.scratch).unwrap_or_else(|err| panic!("reply: {err}"));
@@ -401,9 +399,6 @@ fn the_unknown_tool_call_was_refused(world: &mut World) {
         panic!("not refused: {}", world.scratch);
     };
     assert_eq!(refused.code.as_str(), "SCHEMA", "{}", world.scratch);
-    table::wait_host_until(world, "the refusal in the host log", |log| {
-        log.contains("refused not_in_spec SCHEMA")
-    });
     let saved = std::fs::read(table::pack(world).join("state/save.yaml"))
         .unwrap_or_else(|err| panic!("read save: {err}"));
     assert_eq!(saved, table::live_mut(world).opened_save);
@@ -446,6 +441,7 @@ fn listen_on_free_ports(world: &mut World) -> (u16, u16) {
     let pack = table::pack(world).to_path_buf();
     table::run_with_flags(
         world,
+        &std::env::temp_dir(),
         &pack,
         &["--addr", "127.0.0.1:0", "--mcp-addr", "127.0.0.1:0"],
     )
@@ -505,7 +501,8 @@ fn an_mcp_gm_and_a_websocket_gm(world: &mut World) {
     table::listen(world, &pack);
     table::seat_gm(world);
     let ws_pack = support::copy_pack("docks", "parity-ws");
-    let running = table::wait_addrs(table::spawn_table(&ws_pack, &["--addr", "127.0.0.1:0"]));
+    let flags = ["--addr", "127.0.0.1:0"];
+    let running = table::wait_addrs(table::spawn_table(&std::env::temp_dir(), &ws_pack, &flags));
     let gm = table::Seat::open(running.game.port(), "gm");
     table::wait_suffix(&gm.text, 0, "\"kind\":\"hello\"");
     table::live_mut(world).ws_gm = Some(gm);

@@ -20,4 +20,4 @@ Feature: Change rules fire after each action
   Scenario: Each action's pass gets the whole trigger depth
     Given the trigger depth is 1 and two change rules, the second's if reading the first's flag
     When Rowan plays "pull" and Wren plays "push" in the same round
-    Then both rules ran and the round logged no trigger_depth
+    Then both rules ran and the journal records no trigger_depth

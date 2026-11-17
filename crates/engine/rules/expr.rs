@@ -11,11 +11,11 @@ use crate::rules::roll::Outcome;
 use crate::rules::rule::LineColumn;
 use crate::Reason;
 
-/// Faces for one expression. `begin` starts a new roll seed. `note` records the shown line.
+/// Faces for one expression. `begin` starts a new roll seed. `push_line` records the shown line.
 pub(crate) trait Dice {
     fn begin(&mut self);
     fn draw(&mut self, count: u32, sides: u32) -> Result<Vec<u32>, Reason>;
-    fn log(&mut self, text: String);
+    fn push_line(&mut self, text: String);
     /// The band of `actor_id`'s resist roll against `threshold`.
     fn resist(
         &mut self,
@@ -37,7 +37,7 @@ impl Dice for NoDice {
         Err(Reason::Schema)
     }
 
-    fn log(&mut self, _text: String) {}
+    fn push_line(&mut self, _text: String) {}
 
     fn resist(
         &mut self,
@@ -64,7 +64,7 @@ pub(crate) fn eval_with_dice(
     dice.begin();
     let step = eval_node(context, expr, dice)?;
     if !step.dice.is_empty() {
-        dice.log(format!("{} = {}", step.dice.join("; "), step.text));
+        dice.push_line(format!("{} = {}", step.dice.join("; "), step.text));
     }
     Ok(step.value)
 }

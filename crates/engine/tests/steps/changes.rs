@@ -239,7 +239,7 @@ fn seated_harbormouse() -> Presence {
     }
 }
 
-fn play(session: &mut EngineWorld, line: &str) -> spookery_engine::RoundOutput {
+fn play(session: &mut EngineWorld, line: &str) -> spookery_engine::round::Output {
     let (verb, target) = split_line(line);
     let wall = session.world().last_round_at.clone();
     session
@@ -251,7 +251,7 @@ fn play(session: &mut EngineWorld, line: &str) -> spookery_engine::RoundOutput {
     outputs.into_iter().next().unwrap()
 }
 
-fn change_line(output: &spookery_engine::RoundOutput) -> String {
+fn change_line(output: &spookery_engine::round::Output) -> String {
     output
         .seen
         .iter()

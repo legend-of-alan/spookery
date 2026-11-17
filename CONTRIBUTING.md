@@ -20,23 +20,13 @@ cargo test --workspace --test features_host --test features_world
 
 Issue titles are plain sentences. Every issue gets an area label and a size label.
 
-- `area: rules` (`R:`): round stages and triggers
-- `area: world` (`W:`): places, exits, travel, items, pack rule schema
-- `area: engine` (`E:`): journal, save, replay, verify
-- `area: host` (`H:`): server, seat protocol, CLI and agent clients
-- `area: naming` (`N:`)
-- `area: docs` (`D:`)
-- `area: tests` (`T:`): tests, flaky-test fixes and CI
-
-Sizes: `size: S` about one sitting, `size: M` a focused PR, `size: L` likely split into sub-issues.
-
-A PR squashes into one commit titled after the PR, so a PR title starts with its issue's area letter and ends with its size, like `N: Rename Hangup to Close [S]`.
+A PR squashes into one commit titled after the PR, so the title starts with the first letter of its issue's area label and ends with its size label, like `N: Rename Hangup to Close [S]`. CI checks it.
 
 Every issue gets a priority label from `P0` (most urgent) to `P4` (a parked idea). It also gets a type label, which is `enhancement`, `bug` or `documentation`. Phases are milestones.
 
 ## Design principles
 
-- **Keep it simple.** The best fix is often deleting code, not adding it. Before you write something new, check whether you can remove, reuse or derive what you need from what's already there. Build only as much as the job needs. In your PR, say how many lines it adds or removes, and if it grows the code, say why.
+- **Keep it simple.** The best fix is often deleting code, not adding it. Before you write something new, check whether you can remove, reuse or derive what you need from what's already there. Build only as much as the job needs. Your PR body has a `Net: +N production, +M tests` line for the lines it adds or removes, and CI checks the numbers. If it grows the code, say why.
 - **Say it once.** Each message, rule, check or format should live in one place. If you find the same thing in two places, merge them instead of adding a flag to keep them in sync.
 - **No side doors.** Tests should use the same code path as the real program. If a test needs a shortcut, fix the test or the design.
 - **Use the words people already know.** Good code reads the way people expect, so it needs no tutorial, like WASD in a game. Names follow [Naming](#naming) below.
@@ -55,6 +45,40 @@ A test earns its place by failing when something a player, GM or pack author wou
 - **Assert what people see.** Check output, refusals, the save or `spook verify`. Don't check journal keys, private fields, call counts or the order of internal steps when a visible outcome already shows the result. A refactor that keeps behavior should break no test.
 - **Unit tests only where no scenario can reach.** A parser edge case is a good one. A parser test for an argument that doesn't exist is not.
 - **Name it for what the steps prove.** A scenario title says what its `Then` lines check. If they disagree, fix one of them.
+
+## Logs and output
+
+**Output** is what a command or seat is for: what `spook` shows a player, a GM, a pack author or the operator of `spook run` so they can play, run the table or fix a pack. Game text, refusals, the error a command exits with, the `spook check`, `status` and `verify` reports, the AI GM's `listening` and warning lines, and the host console are output. Output has fixed wording that tests check, and no log setting changes it.
+
+A **log** is everything else: a `tracing` event that records what the program did, read only to find out why it behaved as it did. Turning logs off never costs a user information.
+
+- **The test.** If `RUST_LOG=off` would hide something a user needs, it is output. A line a user can do nothing with except report it is a log.
+- **Where logs go.** `spook run` and `spook ai-gm` write their logs to `logs/<command>-<time>.log` under the directory they were started in, and `spook run` prints that path on stderr once its pack is open. Every other command logs to stderr. Logs never go to stdout and never under a pack's `state/`.
+- **Only the terminals print.** `spook`'s `main.rs` and the `spook play` and `spook gm` terminals (`client/play.rs`, `client/gm.rs`) write to stdout and stderr. Other crates hand their output to a writer or callback the caller passes in: `spookery_server::Config::out` for the host console, and the AI GM's `report`. Output never goes through `tracing`, and a log never stands in for output.
+- **Refusals and errors are output.** Logging one again at `warn` or `error` would report it twice. If it lacks its cause, such as the disk error behind `STORE_IO`, log the cause at `debug`.
+- **Logs never copy the game record.** The tape holds what was said and the journal holds what each round did. A log names a round, seat or command by its id. It never carries speech, effects, dice, views or message bodies.
+- **Logs never carry secrets or prompts.** No key, claim token, model prompt, model reply text or fact body, at any level.
+- **No flag sets the log level.** `RUST_LOG` is the only setting, and `spook` reads it once. Spookery has no `-v` or `-q`. A command that someday shows more or less output decides that itself, and never reads or sets the log level.
+- **Fields, not formatted text.** Write `tracing::info!` with its crate path and keep the default target, which is the module path. Fields are ids and codes (named by Naming rule 17, so `actor_id`, `conn_id` and `command_id`), counts, and `elapsed_ms`. A field that copies a wire or save name keeps that name, such as `world_time`.
+
+| Level | When | For example |
+| --- | --- | --- |
+| `error` | A fault stopped part of the program, and no output says so. | The game port stopped serving. |
+| `warn` | The program worked around a fault or runs degraded, and no output says so. A healthy run logs none. | A journal bundle left open, a torn journal record cut at startup, a model call retried. |
+| `info` | One event per thing on an operator's timeline: a seat claimed or freed, a round committed, a GM turn, a model call. | `round committed round_index=4 state_rev=9 elapsed_ms=3` |
+| `debug` | One event per command or reply, for a developer. Never one per frame, tick or loop pass. | A command received, a refusal sent, the cause behind an output code. |
+| `trace` | Spookery logs nothing here. Dependencies do. | |
+
+With `RUST_LOG` unset or empty, `spook run` and `spook ai-gm` write Spookery's `info` events and every crate's warnings and errors (`warn,spook=info`) to their file. Every other command writes only warnings and errors (`warn`) to stderr. `RUST_LOG` replaces that default. It takes `EnvFilter` directives, and a target matches by prefix, so `spook` names every Spookery crate and no dependency:
+
+```sh
+RUST_LOG=warn,spook=debug spook run pack
+RUST_LOG=warn,spookery_client::http_model=info spook ai-gm
+RUST_LOG=warn,spookery_engine=debug spook verify pack
+RUST_LOG=off spook run pack
+```
+
+A `RUST_LOG` that names only targets turns every other target off, so start it with `warn,`. A bare `RUST_LOG=debug` also turns on `rmcp`, which logs every MCP request with its arguments. Tests start `spook` with the environment they run in, so while `RUST_LOG` is set, scenarios that check the stderr of a one-shot command fail. Narrow the run with `--name` first.
 
 ## Naming
 

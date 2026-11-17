@@ -8,7 +8,7 @@ use crate::rules::effect::Effect;
 use crate::rules::visibility::{self, Recipient, RecipientLine, ViewerChanges};
 
 /// What the GM and each viewer may see and hear. Passed from the deliver stage to `record`,
-/// which puts it on the `RoundOutput`.
+/// which puts it on the `round::Output`.
 pub(crate) struct Deliveries {
     pub changed_keys: Vec<String>,
     pub lines: Vec<RecipientLine>,
