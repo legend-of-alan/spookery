@@ -2,7 +2,7 @@
 
 > Pre-alpha. Download a build from [Releases](https://github.com/legend-of-alan/spookery/releases) and expect things to change.
 
-Spookery is a text RPG engine for shared, living worlds. Let a model run an RPG on its own and the world slips. An NPC forgets what it said. A roll gets fudged. A locked door opens anyway.
+Spookery is a text RPG engine for shared, living worlds. Let a model run an RPG on its own and the world slips. An NPC forgets what it said. A roll gets fudged. A locked door opens anyway. Creativity isn't discord, it's controlled chaos.
 
 You write a world as a pack of plain YAML rules and Markdown pages for places and people. Coding agents like Claude Code and Cursor can build one with `spook new` and `spook check`. Then you host it and sit down with up to three players and a GM.
 
