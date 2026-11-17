@@ -6,9 +6,7 @@ use std::io::Write;
 use std::sync::mpsc::{Receiver, Sender};
 
 use serde_json::{Map, Value};
-use spookery_engine::{
-    emit_tape_record, ActorId, Presence, Reason, RecipientLine, RoundOutput, TapeRecord,
-};
+use spookery_engine::{emit_tape_record, ActorId, Presence, Reason, RecipientLine, TapeRecord};
 use tokio::sync::{oneshot, watch};
 
 use super::frames;
@@ -29,7 +27,7 @@ const MAX_PLAYER_SEATS: usize = 3;
 pub(crate) fn commit_then_fast_forward(
     session: &mut spookery_engine::Session,
     presence: &Presence,
-) -> Result<Vec<RoundOutput>, Reason> {
+) -> Result<Vec<spookery_engine::round::Output>, Reason> {
     let wall = now_stamp();
     session.commit_then_fast_forward(presence, &wall)
 }
@@ -503,7 +501,7 @@ impl Table {
 
     /// The one order after rounds: a `round` to every seat, then each player's checks,
     /// refresh and lines, then the digest, then the idle timer restarts.
-    fn after_rounds(&mut self, outputs: &[RoundOutput]) {
+    fn after_rounds(&mut self, outputs: &[spookery_engine::round::Output]) {
         if outputs.is_empty() {
             return;
         }
@@ -684,7 +682,7 @@ impl Table {
         self.seats.take(conn);
     }
 
-    fn write_digest(&mut self, outputs: &[RoundOutput]) {
+    fn write_digest(&mut self, outputs: &[spookery_engine::round::Output]) {
         let text = self.session.digest(outputs);
         if !text.is_empty() {
             let _ = self.out.write_all(text.as_bytes());

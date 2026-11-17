@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use rmcp::handler::server::tool::schema_for_type;
 use serde_json::{Map, Value};
-use spookery_engine::{ActorId, Presence, Reason, RoundOutput, TapeRecord};
+use spookery_engine::{ActorId, Presence, Reason, TapeRecord};
 
 use super::frames;
 use super::table::commit_then_fast_forward;
@@ -22,7 +22,7 @@ pub(super) struct Reply {
     /// The GM seat is cleared once this reply is sent.
     pub(super) release_seat: bool,
     /// Rounds this command played, commit first.
-    pub(super) outputs: Vec<RoundOutput>,
+    pub(super) outputs: Vec<spookery_engine::round::Output>,
 }
 
 impl Reply {

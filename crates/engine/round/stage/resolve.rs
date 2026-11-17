@@ -14,8 +14,7 @@ use crate::rules::rule::{RollSpec, Rule, When};
 use crate::store::records::Step;
 use crate::Reason;
 
-use crate::round::dice::RoundDice;
-use crate::round::Ledger;
+use crate::round::{self, Ledger};
 
 /// One candidate and how resolve left it for apply.
 pub(crate) struct Candidate<'a> {
@@ -49,7 +48,7 @@ struct Resolver<'c, 'a, 'r> {
     presence: &'a Presence,
     queue: &'a [Intent],
     rolled: BTreeMap<String, Roll>,
-    dice: &'r mut RoundDice,
+    dice: &'r mut round::Dice,
     ledger: &'r mut Ledger,
 }
 
@@ -59,7 +58,7 @@ pub(crate) fn run<'a>(
     presence: &Presence,
     picked: &'a [Intent],
     queue: &[Intent],
-    dice: &mut RoundDice,
+    dice: &mut round::Dice,
     ledger: &mut Ledger,
 ) -> Vec<Candidate<'a>> {
     let mut resolver = Resolver {

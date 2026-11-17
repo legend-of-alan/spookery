@@ -33,7 +33,7 @@ pub(crate) struct MovePlan {
 }
 
 #[derive(Clone, Debug)]
-pub(crate) struct RoundPlan {
+pub(crate) struct Plan {
     pub moves: Vec<MovePlan>,
 }
 
@@ -54,9 +54,9 @@ pub(crate) fn runner_config() -> Config {
     }
 }
 
-pub(crate) fn arb_rounds() -> impl Strategy<Value = Vec<RoundPlan>> {
+pub(crate) fn arb_rounds() -> impl Strategy<Value = Vec<Plan>> {
     prop::collection::vec(
-        prop::collection::vec(pick_move(), 0..=3).prop_map(|moves| RoundPlan { moves }),
+        prop::collection::vec(pick_move(), 0..=3).prop_map(|moves| Plan { moves }),
         1..=5,
     )
 }
@@ -70,7 +70,7 @@ fn pick_move() -> impl Strategy<Value = MovePlan> {
 }
 
 /// Queue the moves the gate accepts, then play the round. Habits are gathered with them.
-pub(crate) fn play_rounds(pack: &Path, rounds: &[RoundPlan]) -> Result<(), String> {
+pub(crate) fn play_rounds(pack: &Path, rounds: &[Plan]) -> Result<(), String> {
     add_exert_success(pack)?;
     let lock = crate::lock_pack(pack).map_err(|err| err.to_string())?;
     let mut session = session::Session::resume(pack, lock).map_err(|err| err.to_string())?;

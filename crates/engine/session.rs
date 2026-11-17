@@ -66,7 +66,7 @@ impl Session {
         &mut self,
         presence: &Presence,
         now_wall: &str,
-    ) -> Result<crate::RoundOutput, Reason> {
+    ) -> Result<crate::round::Output, Reason> {
         crate::round::play_round(self, presence, now_wall, false)
     }
 
@@ -76,7 +76,7 @@ impl Session {
         &mut self,
         presence: &Presence,
         wall: &str,
-    ) -> Result<Vec<crate::RoundOutput>, Reason> {
+    ) -> Result<Vec<crate::round::Output>, Reason> {
         let mut outputs = Vec::new();
         let committed = !self.queue.is_empty();
         if committed {
@@ -488,7 +488,7 @@ impl<Lock> Session<Lock> {
     }
 
     /// Effect rows for `outputs`, which end at this world's `round_index`, then the meter rows.
-    pub fn digest(&self, outputs: &[crate::RoundOutput]) -> String {
+    pub fn digest(&self, outputs: &[crate::round::Output]) -> String {
         let start = self.world.round_index + 1 - outputs.len() as u64;
         let mut effects = Vec::new();
         for (offset, output) in outputs.iter().enumerate() {

@@ -15,14 +15,12 @@ use crate::store::commit::CommitOutcome;
 use crate::store::lock::lock_pack;
 use crate::Reason;
 
-use crate::round::dice::RoundDice;
-use crate::round::stage::advance::RoundTime;
 use crate::round::stage::{advance, apply, deliver, finish, pick, record, resolve, triggers};
-use crate::round::Ledger;
+use crate::round::{self, Ledger};
 
 /// What one round showed. Returned from the engine's round to the host table, which sends it on
 /// to players, the GM and the digest. `lines` and `seen` are empty when no human was seated.
-pub struct RoundOutput {
+pub struct Output {
     pub reports: Vec<MoveReport>,
     pub dice: Vec<String>,
     pub changed_keys: Vec<String>,
@@ -84,7 +82,7 @@ pub(crate) fn fast_forward(
     presence: &Presence,
     wall: &str,
     already: u32,
-) -> Result<Vec<RoundOutput>, Reason> {
+) -> Result<Vec<Output>, Reason> {
     let cap = session.budget().max_fastforward_rounds;
     let busy = seated_busy(session, presence);
     if busy.is_empty() || busy.contains(&false) {
@@ -118,7 +116,7 @@ pub(crate) fn play_round(
     presence: &Presence,
     wall: &str,
     fast_forward: bool,
-) -> Result<RoundOutput, Reason> {
+) -> Result<Output, Reason> {
     let canon = Arc::clone(session.world.canon());
     let world = session.begin_round();
     let staged = run_stages(&canon, world, presence, wall, session.queued_intents())?;
@@ -131,7 +129,7 @@ pub(crate) fn replay_round(
     wall: &str,
     queue: &[Intent],
     presence: &Presence,
-) -> Result<RoundOutput, Reason> {
+) -> Result<Output, Reason> {
     let canon = Arc::clone(session.world.canon());
     let world = session.begin_round();
     let StagedRound {
@@ -149,7 +147,7 @@ pub(crate) fn replay_round(
 /// and what each seat hears.
 pub(crate) struct StagedRound {
     pub(crate) world: ecs::World,
-    pub(crate) clock: RoundTime,
+    pub(crate) clock: round::Time,
     pub(crate) ledger: Ledger,
     pub(crate) delivered: deliver::Deliveries,
 }
@@ -164,7 +162,7 @@ fn run_stages(
     queue: &[Intent],
 ) -> Result<StagedRound, Reason> {
     let clock = advance::run(canon, &mut world, presence, wall)?;
-    let mut dice = RoundDice::new(world.seed.clone(), clock.round_index);
+    let mut dice = round::Dice::new(world.seed.clone(), clock.round_index);
     let mut ledger = Ledger::default();
     let picked = pick::run(canon, &world, presence, queue, &mut ledger)?;
     let candidates = resolve::run(

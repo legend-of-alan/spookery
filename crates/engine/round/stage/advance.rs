@@ -5,7 +5,7 @@ use crate::ecs::{self, ActCounter, Presence};
 use crate::Reason;
 
 /// Where the round stands: its index and the ticks it spans.
-pub(crate) struct RoundTime {
+pub(crate) struct Time {
     pub round_index: u64,
     pub world_time_before: u64,
     pub world_time_after: u64,
@@ -16,7 +16,7 @@ pub(crate) fn run(
     world: &mut ecs::World,
     presence: &Presence,
     wall: &str,
-) -> Result<RoundTime, Reason> {
+) -> Result<Time, Reason> {
     let round_index = world.round_index + 1;
     let world_before = world.world_time;
     let budget = &canon.budget;
@@ -36,7 +36,7 @@ pub(crate) fn run(
             world.actors_mut().reset_acts(counter)?;
         }
     }
-    Ok(RoundTime {
+    Ok(Time {
         round_index,
         world_time_before: world_before,
         world_time_after: world_after,
