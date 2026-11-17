@@ -242,8 +242,8 @@ fn world_time_advanced(world: &mut World) {
     });
 }
 
-#[then(expr = "the round log records Mira's door note")]
-fn the_round_log_records_the_door_note(world: &mut World) {
+#[then(expr = "the journal records Mira's door note")]
+fn the_journal_records_the_door_note(world: &mut World) {
     let round = common::read_first_round(world);
     let queued = round["intents"].as_array().and_then(|intents| {
         intents
@@ -260,8 +260,8 @@ fn the_round_log_records_the_door_note(world: &mut World) {
     assert!(noted, "{round}");
 }
 
-#[then(expr = "the round log records Rowan and Wren waiting")]
-fn the_round_log_records_rowan_and_wren(world: &mut World) {
+#[then(expr = "the journal records Rowan and Wren waiting")]
+fn the_journal_records_rowan_and_wren(world: &mut World) {
     table::wait_round_count(table::pack(world), 1);
     let round = common::read_first_round(world);
     let waits = round["intents"]

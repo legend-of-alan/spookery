@@ -42,8 +42,8 @@ fn the_player_line_is_queued(world: &mut World) {
     world.mark = table::player_mark(world);
 }
 
-#[then(expr = "the round log records the player wait")]
-fn the_round_log_records_the_player_wait(world: &mut World) {
+#[then(expr = "the journal records the player wait")]
+fn the_journal_records_the_player_wait(world: &mut World) {
     let text =
         spookery_engine::testing::journal::read_record_line(table::pack(world), "round-0001")
             .unwrap_or_else(|err| panic!("read round: {}", err.detail));

@@ -9,7 +9,7 @@ Feature: A human GM runs a round
     Then play shows "GM: good evening"
     When the GM queues Mira's door note and commits
     Then world time advanced one live tick
-    And the round log records Mira's door note
+    And the journal records Mira's door note
 
   Scenario: The GM speaks as an NPC where it stands
     Given a docks table
@@ -25,7 +25,7 @@ Feature: A human GM runs a round
     Then the GM shows "Rowan queued: wait"
     And the GM shows "Wren queued: wait"
     When the GM commits the queue
-    Then the round log records Rowan and Wren waiting
+    Then the journal records Rowan and Wren waiting
 
   Scenario: Each commit's roll shows once
     Given a docks table

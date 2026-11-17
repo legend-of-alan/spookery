@@ -322,8 +322,8 @@ fn table_status_lists_both_queued_lines(world: &mut World) {
     );
 }
 
-#[then(expr = "the round log records both waits")]
-fn the_round_log_records_both_waits(world: &mut World) {
+#[then(expr = "the journal records both waits")]
+fn the_journal_records_both_waits(world: &mut World) {
     let actors = table::list_player_waits(table::pack(world), "round-0001");
     assert_eq!(actors, vec!["rowan".to_string(), "harbormouse".to_string()]);
 }

@@ -14,7 +14,7 @@ Feature: A rule's effects are all or nothing
     Given max_effects_per_intent is 1 and a row with 2 effects
     Then no effect from that row applies and the round record names the refusal
 
-  Scenario: A change rule over the effect cap is refused whole, and the log records it
+  Scenario: A change rule over the effect cap is refused whole, and the round record names it
     Given max_effects_per_intent is 1 and a street rule that sets 2 flags when Rowan arrives
     When Rowan walks to the street
     Then neither flag is set and the round record names the change rule's BUDGET refusal

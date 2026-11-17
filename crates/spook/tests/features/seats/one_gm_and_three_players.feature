@@ -64,7 +64,7 @@ Feature: One GM seat and up to three player seats
     Then both lines are queued for the GM
     And table status lists both queued lines
     When the GM commits the round
-    Then the round log records both waits
+    Then the journal records both waits
 
   Scenario: With no GM each player line commits its own round
     Given a docks table with two seated players
