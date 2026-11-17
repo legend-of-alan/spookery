@@ -15,8 +15,8 @@ use crate::rules::rule::{ChangeWatch, Op, Rule, When};
 use crate::store::records::Step;
 
 use crate::round::dice::RoundDice;
-use crate::round::ledger::RoundLedger;
 use crate::round::stage::apply;
+use crate::round::Ledger;
 
 /// One trigger pass: fire the change rules the changes since the last pass match, and again on
 /// what they write, at most `max_trigger_depth` times. Every change record goes on the ledger.
@@ -25,7 +25,7 @@ pub(crate) fn run(
     world: &mut ecs::World,
     presence: &Presence,
     dice: &mut RoundDice,
-    ledger: &mut RoundLedger,
+    ledger: &mut Ledger,
 ) {
     let max = canon.budget.max_trigger_depth;
     let rules = change_rules(canon);
@@ -109,7 +109,7 @@ fn fire(
     world: &mut ecs::World,
     presence: &Presence,
     dice: &mut RoundDice,
-    ledger: &mut RoundLedger,
+    ledger: &mut Ledger,
     rule: &Rule,
     subject: Option<&ActorId>,
 ) {

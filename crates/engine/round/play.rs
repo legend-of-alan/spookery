@@ -16,9 +16,9 @@ use crate::store::lock::lock_pack;
 use crate::Reason;
 
 use crate::round::dice::RoundDice;
-use crate::round::ledger::RoundLedger;
 use crate::round::stage::advance::RoundTime;
 use crate::round::stage::{advance, apply, deliver, finish, pick, record, resolve, triggers};
+use crate::round::Ledger;
 
 /// What one round showed. Returned from the engine's round to the host table, which sends it on
 /// to players, the GM and the digest. `lines` and `seen` are empty when no human was seated.
@@ -150,7 +150,7 @@ pub(crate) fn replay_round(
 pub(crate) struct StagedRound {
     pub(crate) world: ecs::World,
     pub(crate) clock: RoundTime,
-    pub(crate) ledger: RoundLedger,
+    pub(crate) ledger: Ledger,
     pub(crate) delivered: deliver::Deliveries,
 }
 
@@ -165,7 +165,7 @@ fn run_stages(
 ) -> Result<StagedRound, Reason> {
     let clock = advance::run(canon, &mut world, presence, wall)?;
     let mut dice = RoundDice::new(world.seed.clone(), clock.round_index);
-    let mut ledger = RoundLedger::default();
+    let mut ledger = Ledger::default();
     let picked = pick::run(canon, &world, presence, queue, &mut ledger)?;
     let candidates = resolve::run(
         canon,

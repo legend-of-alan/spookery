@@ -7,8 +7,8 @@ use crate::intent::Intent;
 use crate::Reason;
 
 use crate::round::dice::RoundDice;
-use crate::round::ledger::RoundLedger;
 use crate::round::stage::{apply, triggers};
+use crate::round::Ledger;
 
 /// Finish every due action, earliest first.
 pub(crate) fn run(
@@ -17,7 +17,7 @@ pub(crate) fn run(
     presence: &Presence,
     end: u64,
     dice: &mut RoundDice,
-    ledger: &mut RoundLedger,
+    ledger: &mut Ledger,
 ) -> Result<(), Reason> {
     let due_actions = crate::rules::travel::take_due_actions(world, end)?;
     for due_action in due_actions {

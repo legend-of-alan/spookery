@@ -15,7 +15,7 @@ use crate::store::records::Step;
 use crate::Reason;
 
 use crate::round::dice::RoundDice;
-use crate::round::ledger::RoundLedger;
+use crate::round::Ledger;
 
 /// One candidate and how resolve left it for apply.
 pub(crate) struct Candidate<'a> {
@@ -50,7 +50,7 @@ struct Resolver<'c, 'a, 'r> {
     queue: &'a [Intent],
     rolled: BTreeMap<String, Roll>,
     dice: &'r mut RoundDice,
-    ledger: &'r mut RoundLedger,
+    ledger: &'r mut Ledger,
 }
 
 pub(crate) fn run<'a>(
@@ -60,7 +60,7 @@ pub(crate) fn run<'a>(
     picked: &'a [Intent],
     queue: &[Intent],
     dice: &mut RoundDice,
-    ledger: &mut RoundLedger,
+    ledger: &mut Ledger,
 ) -> Vec<Candidate<'a>> {
     let mut resolver = Resolver {
         canon,

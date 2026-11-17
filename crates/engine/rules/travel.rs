@@ -4,7 +4,7 @@ use crate::canon::{Canon, Exit, PlaceDef};
 use crate::ecs::id::ActorId;
 use crate::ecs::{self, component, PendingAction, Presence};
 use crate::intent::{Intent, Source, Target, Viewer};
-use crate::round::ledger::RoundLedger;
+use crate::round::Ledger;
 use crate::rules::cond;
 use crate::rules::context::Context;
 use crate::rules::cost;
@@ -133,7 +133,7 @@ pub(crate) fn open_doors(
     canon: &Canon,
     world: &mut ecs::World,
     presence: &Presence,
-    ledger: &mut RoundLedger,
+    ledger: &mut Ledger,
 ) {
     let mut opens = Vec::new();
     for (place, def) in &canon.places {

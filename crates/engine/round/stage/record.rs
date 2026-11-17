@@ -6,12 +6,12 @@ use crate::store::{commit, RULES_REV};
 use crate::Reason;
 
 use crate::ecs::Presence;
-use crate::round::ledger::RoundLedger;
 use crate::round::play::{RoundOutput, StagedRound};
 use crate::round::stage::deliver::Deliveries;
+use crate::round::Ledger;
 
 /// What the round showed. A live round adds its commit outcome.
-pub(crate) fn take_output(ledger: &mut RoundLedger, delivered: Deliveries) -> RoundOutput {
+pub(crate) fn take_output(ledger: &mut Ledger, delivered: Deliveries) -> RoundOutput {
     RoundOutput {
         reports: std::mem::take(&mut ledger.reports),
         dice: ledger.dice.clone(),

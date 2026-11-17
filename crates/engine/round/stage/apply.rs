@@ -15,10 +15,10 @@ use crate::store::records::Step;
 use crate::Reason;
 
 use crate::round::dice::RoundDice;
-use crate::round::ledger::RoundLedger;
 use crate::round::stage::advance::RoundTime;
 use crate::round::stage::resolve::{Candidate, Resolution};
 use crate::round::stage::triggers;
+use crate::round::Ledger;
 
 /// What became of one rule's effects in `land`.
 pub(crate) enum Landing {
@@ -35,7 +35,7 @@ pub(crate) fn run(
     candidates: Vec<Candidate>,
     clock: &RoundTime,
     dice: &mut RoundDice,
-    ledger: &mut RoundLedger,
+    ledger: &mut Ledger,
 ) {
     let max_npcs = canon.budget.max_npcs_acting;
     let mut slots = 0u64;
@@ -99,7 +99,7 @@ fn start(
     rolled: Option<Roll>,
     at: u64,
     dice: &mut RoundDice,
-    ledger: &mut RoundLedger,
+    ledger: &mut Ledger,
 ) -> Landing {
     let context = Context::new(canon, world, presence, intent);
     let exit = travel::exit_of(&context, rule).ok().flatten().cloned();
@@ -151,7 +151,7 @@ fn cancel(
     world: &mut ecs::World,
     presence: &Presence,
     intent: &Intent,
-    ledger: &mut RoundLedger,
+    ledger: &mut Ledger,
 ) -> Landing {
     let context = Context::new(canon, world, presence, intent);
     if let Err(refusal) = gate::admit_cancel(&context) {
@@ -179,7 +179,7 @@ fn pend(
     rule: &Rule,
     exit: Option<&Exit>,
     until: u64,
-    ledger: &mut RoundLedger,
+    ledger: &mut Ledger,
 ) -> Result<(), Reason> {
     let actor_id = intent.actor_id().ok_or(Reason::UnknownId)?;
     if let Some(exit) = exit {
@@ -216,7 +216,7 @@ pub(crate) fn finish(
     rolled: Option<Roll>,
     at: u64,
     dice: &mut RoundDice,
-    ledger: &mut RoundLedger,
+    ledger: &mut Ledger,
 ) -> Landing {
     let context = Context::new(canon, world, presence, intent);
     let roller = dice.roller(ledger, &rule.id, intent.actor_id());
@@ -288,7 +288,7 @@ pub(crate) fn land(
     intent: &Intent,
     rule: &Rule,
     expansion: Expansion,
-    ledger: &mut RoundLedger,
+    ledger: &mut Ledger,
 ) -> Landing {
     let cause = expansion.cause;
     let point = world.savepoint();
@@ -319,7 +319,7 @@ pub(crate) fn land(
 /// Journal the refusal, and tell the actor its code and detail: a player always, an NPC only
 /// when `tell_npcs`.
 pub(crate) fn refuse(
-    ledger: &mut RoundLedger,
+    ledger: &mut Ledger,
     intent: &Intent,
     refusal: gate::Refusal,
     tell_npcs: bool,

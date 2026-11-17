@@ -6,7 +6,7 @@ use crate::canon::Canon;
 use crate::ecs;
 use crate::ecs::id::ActorId;
 use crate::hash::blake2s_256;
-use crate::round::ledger::RoundLedger;
+use crate::round::Ledger;
 use crate::rules::context::Context;
 use crate::rules::expr::{eval_with_dice, Dice};
 use crate::rules::roll::Outcome;
@@ -72,7 +72,7 @@ impl RoundDice {
 
     pub(crate) fn roller<'a>(
         &'a mut self,
-        ledger: &'a mut RoundLedger,
+        ledger: &'a mut Ledger,
         rule: &'a str,
         subject: Option<&'a ActorId>,
     ) -> Roller<'a> {
@@ -92,7 +92,7 @@ impl RoundDice {
 /// `into_reports` returns the resist reports. Dropping the roller discards them.
 pub(crate) struct Roller<'a> {
     dice: &'a mut RoundDice,
-    ledger: &'a mut RoundLedger,
+    ledger: &'a mut Ledger,
     rule: &'a str,
     subject: Option<&'a ActorId>,
     key: Option<RollKey>,
