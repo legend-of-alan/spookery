@@ -1,0 +1,56 @@
+name: Pull request
+
+# A PR squashes into one commit named after its title, so a wrong title stays in history.
+# This runs apart from CI so that editing a PR's title or body doesn't rebuild the code.
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  contents: read
+  issues: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  title-and-net-lines:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: check
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TITLE: ${{ github.event.pull_request.title }}
+          BODY: ${{ github.event.pull_request.body }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          failed=0
+          # The title takes the first letter of the closed issue's area label and its size label.
+          # A PR that closes no issue, like a stacked PR, skips this part.
+          issue=$(grep -oiE 'closes #[0-9]+' <<< "$BODY" | head -1 | tr -dc 0-9 || true)
+          if [ -n "$issue" ]; then
+            labels=$(gh api "repos/$GITHUB_REPOSITORY/issues/$issue" --jq '.labels[].name')
+            letter=$(sed -n 's/^area: \(.\).*/\1/p' <<< "$labels" | head -1 | tr a-z A-Z)
+            size=$(sed -n 's/^size: //p' <<< "$labels" | head -1)
+            want="$letter: $(sed -E 's/^[A-Z]: //; s/ \[[SML]\]$//' <<< "$TITLE") [$size]"
+            if [ -z "$letter" ] || [ -z "$size" ]; then
+              echo "::error::Issue #$issue needs an area: label and a size: label"; failed=1
+            elif [ "$TITLE" != "$want" ]; then
+              echo "::error::The title should be: $want"; failed=1
+            fi
+          fi
+          # Files under a tests/ directory and .feature files count as tests, everything else as production.
+          net=$(git diff --numstat "$BASE...HEAD" | awk -F '\t' '
+            { if ($3 ~ /(^|\/)tests\/|\.feature$/) t += $1 - $2; else p += $1 - $2 }
+            END { printf "Net: %+d production, %+d tests", p, t }')
+          if ! tr -d '\r' <<< "$BODY" | grep -qxF "$net"; then
+            echo "::error::The body needs this line: $net"; failed=1
+          fi
+          exit $failed

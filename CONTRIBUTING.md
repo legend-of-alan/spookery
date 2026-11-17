@@ -20,23 +20,13 @@ cargo test --workspace --test features_host --test features_world
 
 Issue titles are plain sentences. Every issue gets an area label and a size label.
 
-- `area: rules` (`R:`): round stages and triggers
-- `area: world` (`W:`): places, exits, travel, items, pack rule schema
-- `area: engine` (`E:`): journal, save, replay, verify
-- `area: host` (`H:`): server, seat protocol, CLI and agent clients
-- `area: naming` (`N:`)
-- `area: docs` (`D:`)
-- `area: tests` (`T:`): tests, flaky-test fixes and CI
-
-Sizes: `size: S` about one sitting, `size: M` a focused PR, `size: L` likely split into sub-issues.
-
-A PR squashes into one commit titled after the PR, so a PR title starts with its issue's area letter and ends with its size, like `N: Rename Hangup to Close [S]`.
+A PR squashes into one commit titled after the PR, so the title starts with the first letter of its issue's area label and ends with its size label, like `N: Rename Hangup to Close [S]`. CI checks it.
 
 Every issue gets a priority label from `P0` (most urgent) to `P4` (a parked idea). It also gets a type label, which is `enhancement`, `bug` or `documentation`. Phases are milestones.
 
 ## Design principles
 
-- **Keep it simple.** The best fix is often deleting code, not adding it. Before you write something new, check whether you can remove, reuse or derive what you need from what's already there. Build only as much as the job needs. In your PR, say how many lines it adds or removes, and if it grows the code, say why.
+- **Keep it simple.** The best fix is often deleting code, not adding it. Before you write something new, check whether you can remove, reuse or derive what you need from what's already there. Build only as much as the job needs. Your PR body has a `Net: +N production, +M tests` line for the lines it adds or removes, and CI checks the numbers. If it grows the code, say why.
 - **Say it once.** Each message, rule, check or format should live in one place. If you find the same thing in two places, merge them instead of adding a flag to keep them in sync.
 - **No side doors.** Tests should use the same code path as the real program. If a test needs a shortcut, fix the test or the design.
 - **Use the words people already know.** Good code reads the way people expect, so it needs no tutorial, like WASD in a game. Names follow [Naming](#naming) below.
