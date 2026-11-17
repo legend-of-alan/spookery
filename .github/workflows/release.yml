@@ -2,7 +2,7 @@ name: Release
 
 # A date tag such as alpha-2026.11.14 (alpha-2026.11.14.2 for a second release that
 # day) publishes a pre-alpha GitHub prerelease of `spook`: one archive per platform,
-# each with the binary, packs/demo-d20 and the three licenses, plus SHA256SUMS.
+# each with the binary, packs/demo-d20, NOTICE and the three licenses, plus SHA256SUMS.
 # A pull request that changes this file, or a run by hand (gh workflow run Release
 # --ref <branch>), builds and checks every archive but publishes nothing. No step
 # uses a model key.
@@ -59,7 +59,7 @@ jobs:
           mkdir -p "dist/$name/packs"
           cp target/${{ matrix.target }}/dist/spook${{ runner.os == 'Windows' && '.exe' || '' }} "dist/$name/"
           cp -r packs/demo-d20 "dist/$name/packs/"
-          cp LICENSE-AGPL LICENSE-MIT LICENSE-CC-BY "dist/$name/"
+          cp NOTICE LICENSE-AGPL LICENSE-MIT LICENSE-CC-BY "dist/$name/"
           cd dist
           # macOS tar would add ._ files for extended attributes.
           export COPYFILE_DISABLE=1

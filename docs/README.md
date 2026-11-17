@@ -166,4 +166,4 @@ The engine is open source under AGPL-3.0. Runtime code, its tests, and the repo'
 
 The `spookery-protocol`, `spookery-agent` and `spookery-client` crates are MIT, so a game client can reuse the wire codec, the GM brain and the connection freely. Docs, schemas and packs are CC BY 4.0.
 
-legend-of-alan is the sole copyright holder. The full terms are in [LICENSE-AGPL](../LICENSE-AGPL), [LICENSE-MIT](../LICENSE-MIT) and [LICENSE-CC-BY](../LICENSE-CC-BY).
+The copyright and license split are in [NOTICE](../NOTICE). The full terms are in [LICENSE-AGPL](../LICENSE-AGPL), [LICENSE-MIT](../LICENSE-MIT) and [LICENSE-CC-BY](../LICENSE-CC-BY).
