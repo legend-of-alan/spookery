@@ -9,12 +9,10 @@ use serde_json::Value;
 use spookery_engine::testing::world_of;
 use spookery_engine::{component, entity, load_canon, ActorId, GlobalId, Meter, Note, Presence};
 
-use super::common::replace_in_file;
+use super::common::{add_verb, replace_in_file};
 use super::record::read_extra_steps;
 use super::table;
-use super::triggers::{
-    add_verb, edit_table, intent, play_round, seen_of, set_place, sit, PlayedRound,
-};
+use super::triggers::{edit_table, intent, play_round, seen_of, set_place, sit, PlayedRound};
 use crate::support::{self, copy_pack};
 use crate::World;
 
@@ -34,7 +32,7 @@ fn meter_rows(rows: &[MeterRow]) -> String {
 }
 
 /// Write `world/meters.yaml` with these rows.
-pub(crate) fn write_world_meters(pack: &Path, rows: &[MeterRow]) {
+pub(crate) fn write_world_meter_rows(pack: &Path, rows: &[MeterRow]) {
     let text = format!("schema: meters\nmeters:\n{}", meter_rows(rows));
     fs::write(pack.join("world/meters.yaml"), text).unwrap();
 }
@@ -322,7 +320,7 @@ fn the_gm_sees_both_flags(world: &mut World) {
 #[given(expr = "world\\/meters.yaml declares a {string} meter at {int}")]
 fn world_meters_declares_at(world: &mut World, key: String, base: i64) {
     let pack = copy_pack("docks", "world-meter");
-    write_world_meters(&pack, &[(&key, base, None)]);
+    write_world_meter_rows(&pack, &[(&key, base, None)]);
     world.pack = Some(pack);
 }
 
@@ -561,7 +559,7 @@ fn it_refuses_the_world_rule(world: &mut World) {
 )]
 fn world_meters_shown_and_hidden(world: &mut World, shown: String, hidden: String) {
     let pack = copy_pack("docks", "world-sight");
-    write_world_meters(&pack, &[(&shown, 6, Some(false)), (&hidden, 6, None)]);
+    write_world_meter_rows(&pack, &[(&shown, 6, Some(false)), (&hidden, 6, None)]);
     world.pack = Some(pack);
 }
 
@@ -585,7 +583,7 @@ fn rowan_sees_dawn_not_doom(world: &mut World) {
 }
 
 #[then(expr = "the GM sees both")]
-fn the_gm_sees_both_meters(world: &mut World) {
+fn the_gm_sees_dawn_and_doom(world: &mut World) {
     for key in ["world_meter dawn", "world_meter doom"] {
         assert!(
             world.summary.iter().any(|item| item == key),
@@ -621,7 +619,7 @@ fn the_player_reconnects(world: &mut World) {
 }
 
 /// The `world_meters` of the view rowan's seat got after its claim.
-fn catch_up_meters(world: &World) -> Vec<(String, i64)> {
+fn world_meters_after_claim(world: &World) -> Vec<(String, i64)> {
     let text = table::actor_text(world, "rowan");
     let view = text
         .lines()
@@ -643,13 +641,13 @@ fn catch_up_meters(world: &World) -> Vec<(String, i64)> {
 
 #[then(expr = "the catch-up view lists dawn at {int}")]
 fn the_catch_up_view_lists_dawn(world: &mut World, value: i64) {
-    let meters = catch_up_meters(world);
+    let meters = world_meters_after_claim(world);
     assert!(meters.contains(&("dawn".to_string(), value)), "{meters:?}");
 }
 
 #[then(expr = "it does not list doom")]
 fn it_does_not_list_doom(world: &mut World) {
-    let meters = catch_up_meters(world);
+    let meters = world_meters_after_claim(world);
     assert!(meters.iter().all(|(id, _)| id != "doom"), "{meters:?}");
 }
 

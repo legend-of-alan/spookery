@@ -4,14 +4,13 @@ use std::sync::Arc;
 
 use cucumber::{given, then, when};
 use serde_json::Value;
-use spookery::protocol::{self, ServerBody};
-use spookery_client::text;
+use spookery::protocol::{self, ChangeView};
 use spookery_engine::testing::{stamp_pack_rev, world_of};
 use spookery_engine::{component, emit_save, parse_save};
 use spookery_engine::{ecs, entity, Presence};
 
-use super::common::{flags_of, replace_in_file};
-use super::meters::write_world_meters;
+use super::common::{add_verb, flags_of, replace_in_file};
+use super::meters::write_world_meter_rows;
 use super::record::read_extra_steps;
 use crate::support::{self, copy_pack};
 use crate::World;
@@ -132,7 +131,7 @@ fn the_rule_does_not_fire_again(world: &mut World) {
 fn nell_arrives_with_the_key(world: &mut World) {
     let pack = copy_pack("docks", "trigger-ledger");
     add_rooms(&pack);
-    write_world_meters(&pack, &[("tide", 0, None)]);
+    write_world_meter_rows(&pack, &[("tide", 0, None)]);
     replace_in_file(
         &pack.join("world/places/mira_rooms.md"),
         "    text: A lamp burns in the room.\n",
@@ -328,7 +327,7 @@ rules:
 }
 
 #[then(expr = "spook verify passes after rounds that fired triggers")]
-fn verify_passes_after_triggers(world: &mut World) {
+fn verify_passes_after_firing(world: &mut World) {
     let pack = copy_pack("docks", "trigger-verify");
     add_door(&pack);
     add_bell(&pack);
@@ -595,7 +594,7 @@ fn a_verb_sets_the_tide(world: &mut World) {
 )]
 fn a_rule_counts_tides(world: &mut World, of: String) {
     let pack = world.pack.as_ref().unwrap();
-    write_world_meters(pack, &[("tides", 0, None)]);
+    write_world_meter_rows(pack, &[("tides", 0, None)]);
     write_tide_story(
         pack,
         &format!(
@@ -1088,16 +1087,6 @@ fn add_bell(pack: &Path) {
     );
 }
 
-pub(crate) fn add_verb(pack: &Path, yaml: &str) {
-    let path = pack.join("rules/verbs.yaml");
-    let mut text = fs::read_to_string(&path).unwrap();
-    if !text.ends_with('\n') {
-        text.push('\n');
-    }
-    text.push_str(yaml);
-    fs::write(path, text).unwrap();
-}
-
 fn flag_pcs(pack: &Path, flag: &str) {
     for file in ["pc-rowan.md", "pc-wren.md", "pc-harbormouse.md"] {
         replace_in_file(
@@ -1199,8 +1188,8 @@ pub(crate) struct PlayedRound {
     pub(crate) changed_keys: Vec<String>,
     pub(crate) seen: Vec<(String, Vec<String>)>,
     pub(crate) lines: Vec<(String, String)>,
-    /// Each viewer's change line.
-    pub(crate) change_lines: Vec<(String, String)>,
+    /// Each viewer's changes, as the engine reports them.
+    pub(crate) changes: Vec<(String, Vec<ChangeView>)>,
 }
 
 fn play(
@@ -1237,17 +1226,10 @@ pub(crate) fn play_round(
         .iter()
         .map(|item| (item.viewer.to_string(), item.changed_keys.clone()))
         .collect();
-    let change_lines = output
+    let changes = output
         .seen
         .iter()
-        .map(|item| {
-            let viewer = item.viewer.to_string();
-            let line = text::render(&ServerBody::Changes {
-                viewer: viewer.clone(),
-                changes: item.changes.clone(),
-            });
-            (viewer, line)
-        })
+        .map(|item| (item.viewer.to_string(), item.changes.clone()))
         .collect();
     PlayedRound {
         now: session.world().clone(),
@@ -1256,7 +1238,7 @@ pub(crate) fn play_round(
         changed_keys: output.changed_keys,
         seen,
         lines: told,
-        change_lines,
+        changes,
     }
 }
 

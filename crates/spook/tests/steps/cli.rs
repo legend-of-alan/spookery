@@ -1,12 +1,17 @@
 use std::io::Write;
 
 use cucumber::gherkin::Step;
-use cucumber::{then, when};
+use cucumber::{given, then, when};
+use spookery_engine::testing::stamp_pack_rev;
+use spookery_engine::Meter;
 
 use crate::support;
 use crate::World;
 
-use super::common::{capture_play_stdout, join_play, spawn_play, wait_play, wait_play_until};
+use super::common::{
+    a_docks_table, add_verb, capture_play_stdout, edit_save, join_play, read_first_round,
+    replace_in_file, spawn_play, wait_play, wait_play_until,
+};
 use super::table;
 
 /// The blank-line separated blocks of a step's docstring.
@@ -230,4 +235,69 @@ fn stdout_shows_the_picker(world: &mut World, step: &Step) {
 fn stderr_has_no_protocol_json(world: &mut World) {
     assert!(!world.stderr.contains('{'), "{}", world.stderr);
     assert!(!world.stderr.contains("\"kind\""), "{}", world.stderr);
+}
+
+#[given(expr = "a docks table where harbormouse's might is 40")]
+fn harbormouses_might_is_40(world: &mut World) {
+    a_docks_table(world);
+    edit_save(table::pack(world), |now| {
+        let might = Meter {
+            base: 40,
+            offset: 0,
+        };
+        now.actors_mut()
+            .get_mut::<Meter>(&"harbormouse".into())
+            .set("might", Some(might))
+            .unwrap();
+    });
+}
+
+#[given(expr = "a docks table where a spill reveals a hidden fact to Briar and costs Briar 1 hp")]
+fn a_spill_reveals_a_hidden_fact(world: &mut World) {
+    a_docks_table(world);
+    let pack = table::pack(world).to_path_buf();
+    replace_in_file(
+        &pack.join("world/places/mill_lane.md"),
+        "facts: []\n",
+        "facts:\n  - id: fact_sealed_name\n    text: the sealed name\n    hidden: true\n",
+    );
+    add_verb(
+        &pack,
+        "  - id: spill\n    when:\n      verb: spill\n    do:\n      - reveal:\n          to: briar\n          fact: fact_sealed_name\n      - flag:\n          of: world\n          key: fact_sealed_name\n          value: true\n      - meter:\n          of: briar\n          key: hp\n          add: -1\n",
+    );
+    stamp_pack_rev(&pack);
+}
+
+#[given(expr = "a docks table where a sip costs harbormouse a tonic and gives Bram one")]
+fn a_sip_gives_bram_a_tonic(world: &mut World) {
+    a_docks_table(world);
+    let pack = table::pack(world).to_path_buf();
+    add_verb(
+        &pack,
+        "  - id: sip\n    when:\n      verb: sip\n    cost:\n      items:\n        tonic: 1\n    do:\n      - item:\n          of: bram\n          id: tonic\n          add: 1\n",
+    );
+    stamp_pack_rev(&pack);
+}
+
+#[given(expr = "a docks table where a juggle gains harbormouse a tonic and gives it back")]
+fn a_juggle_gives_the_tonic_back(world: &mut World) {
+    a_docks_table(world);
+    let pack = table::pack(world).to_path_buf();
+    add_verb(
+        &pack,
+        "  - id: juggle\n    when:\n      verb: juggle\n    do:\n      - item:\n          of: harbormouse\n          id: tonic\n          add: 1\n      - item:\n          of: harbormouse\n          id: tonic\n          add: -1\n",
+    );
+    stamp_pack_rev(&pack);
+}
+
+/// The round's effects hold a `kind` effect that names `id`, though the player was not told of it.
+#[then(expr = "the round record has a(n) {word} effect on {word}")]
+fn the_round_record_has_an_effect_on(world: &mut World, kind: String, id: String) {
+    let round = read_first_round(world);
+    let quoted = format!("\"{id}\"");
+    let effects = round["effects"].as_array().unwrap();
+    let found = effects
+        .iter()
+        .any(|effect| effect["kind"] == kind && effect.to_string().contains(&quoted));
+    assert!(found, "{round}");
 }

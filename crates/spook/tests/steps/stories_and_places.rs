@@ -7,9 +7,9 @@ use cucumber::{given, then, when};
 use spookery_engine::testing::{place_of, world_of};
 use spookery_engine::{component, entity, Presence};
 
-use super::common::replace_in_file;
+use super::common::{add_verb, replace_in_file};
 use super::meters::{assert_refused, migrate_and_play};
-use super::triggers::{add_verb, edit_table, intent, seen_of, set_place, sit};
+use super::triggers::{edit_table, intent, seen_of, set_place, sit};
 use crate::support::copy_pack;
 use crate::World;
 
