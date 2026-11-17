@@ -14,7 +14,7 @@ const ITEM_KEYWORDS: &[&str] = &[
 const HTTP_HEADERS: &[&str] = &["Accept", "Origin"];
 
 #[test]
-fn doc_code_names_exist() {
+fn named_code_exists() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let mut sources = Vec::new();
     collect_source_files(&root.join("crates"), &mut sources);
@@ -23,7 +23,9 @@ fn doc_code_names_exist() {
     for path in &sources {
         paths.push(path.to_string_lossy().replace('\\', "/"));
         declared.extend(
-            path.iter()
+            path.strip_prefix(&root)
+                .expect("source under the root")
+                .iter()
                 .map(|part| part.to_string_lossy().trim_end_matches(".rs").to_string()),
         );
         // A Cargo.toml's `name = "spookery-engine"` declares the crate `spookery_engine`.
