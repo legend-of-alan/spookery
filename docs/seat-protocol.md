@@ -515,6 +515,92 @@ The session's `GET /mcp` event stream takes the GM seat, and its first event is 
 {"jsonrpc":"2.0","method":"spook/event","params":{"seq":30,"body":{"kind":"refused","code":"TABLE_FULL"}}}
 ```
 
+## Coding agent clients
+
+```sh
+cp -r tests/packs/docks /tmp/docks
+spook run /tmp/docks
+```
+
+Register `http://127.0.0.1:9738/mcp`. The key names below are the ones each client documents for streamable HTTP.
+
+Claude Code:
+
+```sh
+claude mcp add --transport http spook http://127.0.0.1:9738/mcp
+```
+
+Or in `.mcp.json`:
+
+```
+{
+  "mcpServers": {
+    "spook": {
+      "type": "http",
+      "url": "http://127.0.0.1:9738/mcp"
+    }
+  }
+}
+```
+
+Grok Build, in `~/.grok/config.toml`. The key is `url` under `[mcp_servers]`, not a `mcpServers` JSON file.
+
+```toml
+[mcp_servers.spook]
+url = "http://127.0.0.1:9738/mcp"
+```
+
+Cursor, in `.cursor/mcp.json`:
+
+```
+{
+  "mcpServers": {
+    "spook": {
+      "url": "http://127.0.0.1:9738/mcp"
+    }
+  }
+}
+```
+
+Gemini CLI, in `~/.gemini/settings.json`. `httpUrl` is the streamable HTTP key. `url` is SSE.
+
+```
+{
+  "mcpServers": {
+    "spook": {
+      "httpUrl": "http://127.0.0.1:9738/mcp"
+    }
+  }
+}
+```
+
+Windsurf, in `~/.codeium/windsurf/mcp_config.json`. The key is `serverUrl`.
+
+```
+{
+  "mcpServers": {
+    "spook": {
+      "serverUrl": "http://127.0.0.1:9738/mcp"
+    }
+  }
+}
+```
+
+Claude Desktop's config file only takes stdio. `mcp-remote` reaches the MCP endpoint:
+
+```
+{
+  "mcpServers": {
+    "spook": {
+      "command": "npx",
+      "args": ["mcp-remote", "http://127.0.0.1:9738/mcp"]
+    }
+  }
+}
+```
+
+A client may ignore `spook/event` notifications. `release` answers after the GM seat is free.
+
 ## Limits
 
 - A client message is at most 8 KiB. A longer one is `LINE_TOO_LONG` and the connection stays up. One over 64 KiB closes the connection with no reply. An MCP request body is at most 1 MiB, and a longer one is HTTP 413.
