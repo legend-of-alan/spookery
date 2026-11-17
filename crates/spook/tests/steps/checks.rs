@@ -116,7 +116,7 @@ fn the_journal_records_the_check_without_faces(world: &mut World) {
 #[then(expr = "the GM sees the exert faces")]
 fn the_gm_sees_the_exert_faces(world: &mut World) {
     let text = table::wait_gm(world, "\"rolls\"");
-    let roll = read_committed(&text)
+    let roll = read_committed_rolls(&text)
         .into_iter()
         .next()
         .unwrap_or_else(|| panic!("{text}"));
@@ -126,7 +126,7 @@ fn the_gm_sees_the_exert_faces(world: &mut World) {
     let result = text
         .lines()
         .find(|line| line.contains("\"rolls\"") && line.contains("\"faces\""))
-        .unwrap_or_else(|| panic!("tool result has no checks\n{text}"));
+        .unwrap_or_else(|| panic!("tool result has no rolls\n{text}"));
     assert!(result.contains("\"faces\":["), "{result}");
     assert!(result.contains("\"stat\":"), "{result}");
     assert!(result.contains("\"outcome\":"), "{result}");
@@ -258,7 +258,7 @@ fn the_player_sees_only_their_own_check(world: &mut World) {
 #[then(expr = "the GM sees both rolls")]
 fn the_gm_sees_both_rolls(world: &mut World) {
     let text = table::wait_gm(world, "\"rolls\"");
-    assert_opposed(&read_committed(&text));
+    assert_opposed(&read_committed_rolls(&text));
 }
 
 #[then(expr = "the journal records Mira's engine brace")]
@@ -398,9 +398,9 @@ fn flags_of(world: &World, id: &str) -> Vec<String> {
 
 fn assert_one_roll(world: &mut World, stat: i64, target: i64, outcome: &str) {
     let text = table::wait_gm(world, "\"rolls\"");
-    let checks = read_committed(&text);
-    assert_eq!(checks.len(), 1, "{text}");
-    assert_roll(&checks[0], stat, target, outcome);
+    let rolls = read_committed_rolls(&text);
+    assert_eq!(rolls.len(), 1, "{text}");
+    assert_roll(&rolls[0], stat, target, outcome);
 }
 
 fn assert_opposed(rolls: &[Value]) {
@@ -433,22 +433,22 @@ fn assert_roll(roll: &Value, stat: i64, target: i64, outcome: &str) {
     assert!(roll.get("success").is_none(), "{roll}");
 }
 
-fn read_committed(text: &str) -> Vec<Value> {
+fn read_committed_rolls(text: &str) -> Vec<Value> {
     for line in text.lines() {
         let Ok(value) = serde_json::from_str::<Value>(line) else {
             continue;
         };
-        if let Some(checks) = find_rolls(&value) {
-            return checks;
+        if let Some(rolls) = find_rolls(&value) {
+            return rolls;
         }
     }
-    panic!("tool result has no checks\n{text}");
+    panic!("tool result has no rolls\n{text}");
 }
 
 fn find_rolls(value: &Value) -> Option<Vec<Value>> {
-    if let Some(checks) = value.get("rolls").and_then(Value::as_array) {
-        if checks.iter().any(|roll| roll.get("faces").is_some()) {
-            return Some(checks.clone());
+    if let Some(rolls) = value.get("rolls").and_then(Value::as_array) {
+        if rolls.iter().any(|roll| roll.get("faces").is_some()) {
+            return Some(rolls.clone());
         }
     }
     match value {
@@ -684,9 +684,9 @@ fn the_player_sees_outcome_and_no_faces(world: &mut World, outcome: String) {
 #[then(expr = "the GM sees outcome {string} and the faces")]
 fn the_gm_sees_outcome_and_the_faces(world: &mut World, outcome: String) {
     let text = table::wait_gm(world, "\"rolls\"");
-    let checks = read_committed(&text);
-    assert_eq!(checks.len(), 1, "{text}");
-    assert_outcome_faces(&checks[0], &outcome);
+    let rolls = read_committed_rolls(&text);
+    assert_eq!(rolls.len(), 1, "{text}");
+    assert_outcome_faces(&rolls[0], &outcome);
 }
 
 #[then(expr = "the check outcome is not {string}")]
@@ -704,7 +704,7 @@ fn the_check_outcome_is_not(world: &mut World, outcome: String) {
 #[then(expr = "the GM sees a binary opposed press")]
 fn the_gm_sees_a_binary_opposed_press(world: &mut World) {
     let text = table::wait_gm(world, "\"rolls\"");
-    assert_binary_opposed(&read_committed(&text));
+    assert_binary_opposed(&read_committed_rolls(&text));
 }
 
 fn prepare_press(world: &mut World, base: i64, sit: bool) {
