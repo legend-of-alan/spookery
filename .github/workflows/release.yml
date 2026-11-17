@@ -59,7 +59,7 @@ jobs:
           mkdir -p "dist/$name/packs"
           cp target/${{ matrix.target }}/dist/spook${{ runner.os == 'Windows' && '.exe' || '' }} "dist/$name/"
           cp -r packs/demo-d20 "dist/$name/packs/"
-          cp LICENSE LICENSE-MIT LICENSE-CC-BY-4.0 "dist/$name/"
+          cp LICENSE-AGPL LICENSE-MIT LICENSE-CC-BY "dist/$name/"
           cd dist
           # macOS tar would add ._ files for extended attributes.
           export COPYFILE_DISABLE=1
