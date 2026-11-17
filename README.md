@@ -45,6 +45,8 @@ Leave that running. Open a second terminal in the same folder, join, and pick Co
 
 You're in the Yard. Daylight is running out. Press Ctrl+C in the host terminal when you're done. It saves and quits.
 
+Want a model to run the GM seat? Set three env vars and run `spook ai-gm`. See [Model GM](docs/README.md#model-gm).
+
 ## Build from source
 
 You need [rustup](https://rustup.rs). It installs the Rust version pinned in `rust-toolchain.toml`.
@@ -91,7 +93,7 @@ Test packs live in `tests/packs`. `tests/packs/docks` is the one the engine and 
 | `spook gm` | Sits you in the GM seat |
 | `spook ai-gm` | Puts a model in the GM seat |
 
-Run `spook --help` for the full list. GM setup is in [docs/README.md](docs/README.md#game-master).
+Run `spook --help` for the full list.
 
 ## Docs
 
