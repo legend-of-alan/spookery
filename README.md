@@ -26,14 +26,16 @@ Grab the archive for your machine from [Releases](https://github.com/legend-of-a
 - Intel Mac: `x86_64-apple-darwin`
 - Windows: `x86_64-pc-windows-msvc`
 
-Unpack it and open a terminal in that folder. The builds are unsigned, so a Mac may need `xattr -d com.apple.quarantine spook` once, and Windows may want More info, then Run anyway.
-
-Copy the demo so the save doesn't land in the original pack, then start the host. You don't need a GM or a model key. On Windows in PowerShell, use `Copy-Item -Recurse packs\demo-d20 my-demo` and `.\spook`.
+Unpack it and open a terminal in that folder. Copy the demo, then start the host. You don't need a GM or a model key.
 
 ```sh
 cp -r packs/demo-d20 my-demo
 ./spook run my-demo
 ```
+
+> NOTE: The builds are unsigned. On a Mac you may need `xattr -d com.apple.quarantine spook` once. Windows may say More info, then Run anyway.
+
+> NOTE: On Windows in PowerShell, use `Copy-Item -Recurse packs\demo-d20 my-demo` and `.\spook`.
 
 Leave that running. Open a second terminal in the same folder, join, and pick Corin.
 
