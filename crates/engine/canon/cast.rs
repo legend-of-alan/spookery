@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 
 use serde::Deserialize;
 
-use crate::canon::meters::{self, meter_defs, MeterYaml};
+use crate::canon::meters::{self, meter_descs, MeterYaml};
 use crate::canon::rule_list::{self, RuleYaml};
 use crate::canon::source::{load_tagged, Diags, FileText, Locator, Page, Problem, CAST_SCHEMA};
 use crate::canon::{self, CastDef, IdleProfile};
@@ -44,7 +44,7 @@ pub(super) fn add(
     }
     let id: ActorId = file.id.clone().into();
     let carrier = Some(entity::Id::Actor(id.clone()));
-    let own = diags.keep(meter_defs(&whole, file.meters, carrier));
+    let own = diags.keep(meter_descs(&whole, file.meters, carrier));
     if let (Some(meters), Some(own)) = (meters, own) {
         meters::add_own(meters, own, None, &whole, diags);
     }

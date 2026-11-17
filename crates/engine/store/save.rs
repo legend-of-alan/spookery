@@ -83,9 +83,10 @@ fn one_trailing_lf(mut text: String) -> String {
 /// Meters the pack gives an entity that the entity lacks, each at its `start`.
 pub(crate) fn find_missing_meters(world: &ecs::World) -> Vec<AddedMeter> {
     let canon = world.canon();
-    let defs = canon.meters.iter().chain(&canon.world_meters);
-    defs.filter(|(id, def)| !find_lacking_carriers(world, &def.carrier, id).is_empty())
-        .map(|(id, def)| AddedMeter::new(id, def))
+    let descs = canon.meters.iter().chain(&canon.world_meters);
+    descs
+        .filter(|(id, desc)| !find_lacking_carriers(world, &desc.carrier, id).is_empty())
+        .map(|(id, desc)| AddedMeter::new(id, desc))
         .collect()
 }
 
@@ -140,7 +141,7 @@ fn held_meters(world: &ecs::World) -> impl Iterator<Item = (entity::Id, &str, &M
 /// Meters an actor, place, story or the world lists that the pack no longer gives it.
 pub(crate) fn find_stale_meters(world: &ecs::World) -> Vec<DroppedMeter> {
     held_meters(world)
-        .filter(|(carrier, id, _)| world.canon().meter_def(carrier.as_ref(), id).is_none())
+        .filter(|(carrier, id, _)| world.canon().meter_desc(carrier.as_ref(), id).is_none())
         .map(|(carrier, id, _)| DroppedMeter {
             id: id.to_string(),
             carrier,
@@ -234,8 +235,8 @@ pub fn check(world: &ecs::World) -> Result<(), Vec<Diagnostic>> {
             diags.push(diag.at_path(format!("actors.place.{id}")));
         }
     }
-    for (key, def) in canon.meters.iter().chain(&canon.world_meters) {
-        for carrier in find_lacking_carriers(world, &def.carrier, key) {
+    for (key, desc) in canon.meters.iter().chain(&canon.world_meters) {
+        for carrier in find_lacking_carriers(world, &desc.carrier, key) {
             let problem = format!("lacks meter '{key}', which the pack gives it");
             let hint = "run spook migrate to add the meter";
             diags.push(meter_error(&carrier, key, &problem, hint));
@@ -250,8 +251,8 @@ pub fn check(world: &ecs::World) -> Result<(), Vec<Diagnostic>> {
         diags.push(meter_error(&meter.carrier, &meter.id, &problem, hint));
     }
     for (carrier, key, held) in held_meters(world) {
-        let def = canon.meter_def(carrier.as_ref(), key);
-        if def.is_some_and(|def| !meter::is_storable(def, held.base, held.offset)) {
+        let desc = canon.meter_desc(carrier.as_ref(), key);
+        if desc.is_some_and(|desc| !meter::is_storable(desc, held.base, held.offset)) {
             let problem = format!("meter '{key}' is outside the rules");
             let hint = "set base and offset so the stored pair fits the meter";
             diags.push(meter_error(&carrier, key, &problem, hint));

@@ -413,20 +413,20 @@ impl EntityScope<'_> {
         of: &grammar::Object,
         key: &str,
     ) -> Option<String> {
-        let def = self.meters.get(key);
+        let desc = self.meters.get(key);
         if let grammar::Object::Exit(exit) = of {
             return Some(format!("{exit} carries no meter '{key}'"));
         }
         match self.fixed_entity(fixed_self, of) {
             Some(entity::Id::Global) if self.world_meters.contains_key(key) => None,
             Some(entity::Id::Global) => Some(format!("the world carries no meter '{key}'")),
-            Some(id) if !def.is_some_and(|def| def.is_on(id.as_ref())) => {
-                Some(match def.and_then(|def| def.carrier.as_ref()) {
+            Some(id) if !desc.is_some_and(|desc| desc.is_on(id.as_ref())) => {
+                Some(match desc.and_then(|desc| desc.carrier.as_ref()) {
                     Some(carrier) => format!("only {carrier} carries meter '{key}'"),
                     None => format!("{id} carries no meter '{key}'"),
                 })
             }
-            None if def.is_none() => Some(format!("no file declares meter '{key}'")),
+            None if desc.is_none() => Some(format!("no file declares meter '{key}'")),
             _ => None,
         }
     }
@@ -541,7 +541,7 @@ pub(super) fn unknown_meters(
     for (id, check) in checks {
         if meters
             .get(&check.stat)
-            .is_some_and(|def| def.carrier.is_none())
+            .is_some_and(|desc| desc.carrier.is_none())
         {
             continue;
         }
@@ -804,8 +804,8 @@ enum Sight {
 fn push_writes(canon: &Canon, effect: &EffectTemplate, out: &mut Vec<Write>) {
     match effect {
         EffectTemplate::Modifier { id, .. } => {
-            if let Some(def) = canon.modifiers.get(id) {
-                out.push(Write::Meter(def.meter.clone()));
+            if let Some(desc) = canon.modifiers.get(id) {
+                out.push(Write::Meter(desc.meter.clone()));
             }
         }
         EffectTemplate::Flag { key, value, .. } => {
@@ -911,7 +911,7 @@ fn watches_world(canon: &Canon, watch: &ChangeWatch) -> bool {
                 || canon
                     .meters
                     .get(key)
-                    .is_some_and(|def| !def.is_actor_meter())
+                    .is_some_and(|desc| !desc.is_actor_meter())
         }
         ChangeWatch::Flag { key, .. } => {
             let declared = |flags: &[String]| flags.contains(key);

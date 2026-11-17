@@ -47,12 +47,12 @@ pub(super) fn load(
         ];
         let found = source.refuse_row("modifier", row, id, modifiers.contains_key(id), rules);
         if found.is_empty() {
-            let def = modifier::Descriptor {
+            let desc = modifier::Descriptor {
                 meter: entry.meter,
                 max_stacks,
                 hidden: entry.hidden,
             };
-            modifiers.insert(entry.id, def);
+            modifiers.insert(entry.id, desc);
         } else {
             diags.extend(found);
         }

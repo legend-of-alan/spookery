@@ -35,6 +35,7 @@ fn meter_rows(rows: &[MeterRow]) -> String {
 
 /// Write `world/meters.yaml` with these rows.
 pub(crate) fn write_world_meters(pack: &Path, rows: &[MeterRow]) {
+    // repeats module: names the pack file it writes
     let text = format!("schema: meters\nmeters:\n{}", meter_rows(rows));
     fs::write(pack.join("world/meters.yaml"), text).unwrap();
 }
@@ -496,7 +497,7 @@ fn rowan_and_nell_each_see_once(world: &mut World, text: String) {
 #[given(expr = "Mira carries no dawn meter")]
 fn mira_carries_no_dawn(world: &mut World) {
     let canon = load_canon(pack(world)).unwrap_or_else(|err| panic!("load: {err:?}"));
-    assert!(canon.meter_def(mira().as_ref(), "dawn").is_none());
+    assert!(canon.meter_desc(mira().as_ref(), "dawn").is_none());
 }
 
 #[given(expr = "Mira has a habit that adds 1 to meter dawn of {string}")]
@@ -586,6 +587,7 @@ fn rowan_sees_dawn_not_doom(world: &mut World) {
 
 #[then(expr = "the GM sees both")]
 fn the_gm_sees_both_meters(world: &mut World) {
+    // repeats module: pre-existing step in this file
     for key in ["world_meter dawn", "world_meter doom"] {
         assert!(
             world.summary.iter().any(|item| item == key),
@@ -622,6 +624,7 @@ fn the_player_reconnects(world: &mut World) {
 
 /// The `world_meters` of the view rowan's seat got after its claim.
 fn catch_up_meters(world: &World) -> Vec<(String, i64)> {
+    // repeats module: reads the view's world_meters
     let text = table::actor_text(world, "rowan");
     let view = text
         .lines()

@@ -22,12 +22,12 @@ pub(super) fn load(
         text,
         line_base: 0,
     };
-    meter_defs(&source, doc.meters, carrier)
+    meter_descs(&source, doc.meters, carrier)
 }
 
 /// The meter rows of one file. A meter no actor carries is hidden unless its row says
 /// `hidden: false`.
-pub(super) fn meter_defs(
+pub(super) fn meter_descs(
     source: &FileText,
     rows: Vec<MeterYaml>,
     carrier: Option<entity::Id>,
@@ -87,7 +87,7 @@ pub(super) fn add_own(
     diags: &mut Diags,
 ) {
     const KEEP_ONE: &str = "keep one meter with this id";
-    for (key, def) in own {
+    for (key, desc) in own {
         let taken = if world.is_some_and(|world| world.contains_key(&key)) {
             Some(Some(entity::Id::Global))
         } else {
@@ -95,7 +95,7 @@ pub(super) fn add_own(
         };
         let (after, hint) = match taken {
             None => {
-                meters.insert(key, def);
+                meters.insert(key, desc);
                 continue;
             }
             Some(None) => (

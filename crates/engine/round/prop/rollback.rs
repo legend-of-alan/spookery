@@ -105,7 +105,7 @@ fn nested_rollbacks_put_the_save_back_exactly() {
         (entity::Id::Global, "tide"),
     ];
     for (carrier, key) in &carried {
-        let def = meter::Descriptor {
+        let desc = meter::Descriptor {
             min: 0,
             base_cap: 10,
             max: 10,
@@ -114,15 +114,15 @@ fn nested_rollbacks_put_the_save_back_exactly() {
             carrier: Some(carrier.clone()),
         };
         match carrier {
-            entity::Id::Global => canon.world_meters.insert(key.to_string(), def),
-            _ => canon.meters.insert(key.to_string(), def),
+            entity::Id::Global => canon.world_meters.insert(key.to_string(), desc),
+            _ => canon.meters.insert(key.to_string(), desc),
         };
     }
     let mut world = ecs::World::new(Save::clone(opened.world()), Arc::new(canon));
     for (carrier, key) in &carried {
-        let def = world.canon().meter_def(carrier.as_ref(), key);
+        let desc = world.canon().meter_desc(carrier.as_ref(), key);
         let start = Meter {
-            base: def.expect("the meter's definition").start,
+            base: desc.expect("the meter's descriptor").start,
             offset: 0,
         };
         let put = (world.entities_mut().get_mut::<Meter>(carrier)).set(key, Some(start));

@@ -180,7 +180,7 @@ fn can_see(canon: &Canon, world: &ecs::World, viewer: &ActorId, change: &Change)
         }
         (KnownFacts::ID, entity::Id::Actor(actor)) => viewer == actor,
         (Modifier::ID, entity::Id::Actor(actor)) => {
-            viewer == actor && canon.modifiers.get(entry).is_some_and(|def| !def.hidden)
+            viewer == actor && canon.modifiers.get(entry).is_some_and(|desc| !desc.hidden)
         }
         (Item::ID, entity::Id::Place(place)) => place_of(world, viewer) == Some(place.as_str()),
         (Note::ID, entity::Id::Global) => can_see_note(canon, world, viewer, entry),
@@ -201,8 +201,8 @@ fn can_see(canon: &Canon, world: &ecs::World, viewer: &ActorId, change: &Change)
 /// Whether the pack shows meter `key` on `id` to players.
 fn is_shown(canon: &Canon, id: &entity::Id, key: &str) -> bool {
     canon
-        .meter_def(id.as_ref(), key)
-        .is_some_and(|def| !def.hidden)
+        .meter_desc(id.as_ref(), key)
+        .is_some_and(|desc| !desc.hidden)
 }
 
 /// Where `viewer` stands. The place is borrowed for as long as both the save and the id are.

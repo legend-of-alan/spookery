@@ -6,7 +6,7 @@ use std::path::Path;
 
 use serde::Deserialize;
 
-use crate::canon::meters::{self, meter_defs, MeterYaml};
+use crate::canon::meters::{self, meter_descs, MeterYaml};
 use crate::canon::rule_list::{self, RuleYaml};
 use crate::canon::source::{
     collect_files, load_tagged, unreadable_dir, Diags, FileText, Locator, STORY_SCHEMA,
@@ -67,7 +67,7 @@ pub(super) fn load_stories(
         }
         let id: StoryId = story.id.clone().into();
         let carrier = Some(entity::Id::Story(id.clone()));
-        let own = diags.keep(meter_defs(&source, story.meters, carrier));
+        let own = diags.keep(meter_descs(&source, story.meters, carrier));
         if let (Some(meters), Some(own)) = (meters.as_deref_mut(), own) {
             meters::add_own(meters, own, world_meters, &source, diags);
         }

@@ -223,11 +223,11 @@ impl Canon {
         }
     }
 
-    /// The def of meter `key` on `id`, when that entity carries it.
-    pub fn meter_def(&self, id: entity::IdRef<'_>, key: &str) -> Option<&meter::Descriptor> {
+    /// The descriptor of meter `key` on `id`, when that entity carries it.
+    pub fn meter_desc(&self, id: entity::IdRef<'_>, key: &str) -> Option<&meter::Descriptor> {
         match id {
             entity::IdRef::Global => self.world_meters.get(key),
-            _ => self.meters.get(key).filter(|def| def.is_on(id)),
+            _ => self.meters.get(key).filter(|desc| desc.is_on(id)),
         }
     }
 

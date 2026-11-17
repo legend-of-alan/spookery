@@ -5,7 +5,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde::Deserialize;
 
 use crate::canon::fact::{FactYaml, Facts};
-use crate::canon::meters::{meter_defs, MeterYaml};
+use crate::canon::meters::{meter_descs, MeterYaml};
 use crate::canon::rule_list::{self, RuleYaml};
 use crate::canon::source::{load_tagged, Diags, FileText, Locator, Page, PLACE_SCHEMA};
 use crate::canon::{Exit, PlaceDef};
@@ -48,7 +48,7 @@ pub(super) fn add(
     }
     let id: PlaceId = file.id.clone().into();
     let carrier = Some(entity::Id::Place(id.clone()));
-    if let Some(own) = diags.keep(meter_defs(&whole, file.meters, carrier)) {
+    if let Some(own) = diags.keep(meter_descs(&whole, file.meters, carrier)) {
         meters.push((page.file.clone(), own));
     }
     places.insert(

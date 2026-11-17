@@ -25,7 +25,7 @@ pub struct Descriptor {
 
 /// One modifier on one actor: the meter it was applied to, the tick it expires at, the
 /// longest `ticks` applied so far, and each application's magnitude. The meter is kept so migrate
-/// can tell when the def now names another one.
+/// can tell when the descriptor now names another one.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Modifier {
@@ -53,16 +53,16 @@ fn stacks_value(live: &Modifier) -> ChangeValue {
 /// Below `max_stacks` it is one more stack. At the cap it replaces the first weakest
 /// stack when its absolute value is larger. Stacks past a `max_stacks` the pack lowered
 /// go first, weakest first.
-pub fn stack(def: &Descriptor, live: &mut Modifier, add: i64, ticks: u64, now: u64) {
+pub fn stack(desc: &Descriptor, live: &mut Modifier, add: i64, ticks: u64, now: u64) {
     live.max_ticks = live.max_ticks.max(ticks);
     let left = live.until.saturating_sub(now).saturating_add(ticks);
     live.until = now.saturating_add(left.min(live.max_ticks));
-    while live.stacks.len() > def.max_stacks {
+    while live.stacks.len() > desc.max_stacks {
         if let Some(index) = weakest(&live.stacks) {
             live.stacks.remove(index);
         }
     }
-    if live.stacks.len() < def.max_stacks {
+    if live.stacks.len() < desc.max_stacks {
         live.stacks.push(add);
         return;
     }
@@ -82,9 +82,9 @@ fn weakest(stacks: &[i64]) -> Option<usize> {
         .map(|(index, _)| index)
 }
 
-/// Whether `defs` still define modifier `id` on the meter `live` was applied to.
-pub fn is_defined(defs: &BTreeMap<String, Descriptor>, id: &str, live: &Modifier) -> bool {
-    defs.get(id).is_some_and(|def| def.meter == live.meter)
+/// Whether `descs` still define modifier `id` on the meter `live` was applied to.
+pub fn is_defined(descs: &BTreeMap<String, Descriptor>, id: &str, live: &Modifier) -> bool {
+    descs.get(id).is_some_and(|desc| desc.meter == live.meter)
 }
 
 /// What the modifiers in `held` add to meter `key`: the sum of their stacks.
@@ -122,10 +122,10 @@ pub(in crate::ecs) fn value_with(
     key: &str,
     modifiers: Result<i64, Reason>,
 ) -> Result<i64, Reason> {
-    let def = actors.canon.meter_def(entity::IdRef::Actor(actor), key);
+    let desc = actors.canon.meter_desc(entity::IdRef::Actor(actor), key);
     let held = actors.get::<Meter>(actor).get(key);
     let held = held.ok_or(Reason::UnknownId);
-    meter::value(def.ok_or(Reason::UnknownId)?, held?, modifiers?)
+    meter::value(desc.ok_or(Reason::UnknownId)?, held?, modifiers?)
 }
 
 impl Mut<'_, entity::Actors, Modifier> {
