@@ -87,8 +87,8 @@ pub async fn run<M: Model, Conn: Connection>(
     loop {
         let turn = agent.state().start_turn();
         match turn {
-            Some(turn) => {
-                if let Err(err) = turn::play(&graph, &agent, turn).await {
+            Some((cause, turn)) => {
+                if let Err(err) = turn::play(&graph, &agent, turn, cause).await {
                     return agent.end_run(err);
                 }
             }
@@ -134,11 +134,17 @@ impl<M: Model, Conn: Connection> Agent<M, Conn> {
         let lost = || GraphError::TaskExecutionFailed(String::new());
         *self.in_flight.lock().expect("in flight") = Some(command.to_string());
         let message = ClientMessage::new(&id, command, args);
-        self.connection.send(message).await.map_err(|_| lost())?;
+        self.connection.send(message).await.map_err(|error| {
+            tracing::debug!(command_id = command, %error, "the reply could not be read");
+            lost()
+        })?;
         loop {
             let message = match self.connection.recv().await {
                 Some(Ok(message)) => message,
-                Some(Err(_)) => return Err(lost()),
+                Some(Err(error)) => {
+                    tracing::debug!(command_id = command, %error, "the reply could not be read");
+                    return Err(lost());
+                }
                 None => {
                     self.closed.store(true, Ordering::Relaxed);
                     return Err(lost());
@@ -325,7 +331,7 @@ mod tests {
                 .collect();
             let reply =
                 json!({"choices": [{"message": {"role": "assistant", "tool_calls": calls}}]});
-            chat_completions::parse_reply(&reply.to_string())
+            chat_completions::parse_reply(&reply.to_string()).map(|reply| reply.tool_calls)
         }
     }
 

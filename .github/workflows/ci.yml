@@ -69,8 +69,9 @@ jobs:
         if: runner.os == 'Linux'
         shell: bash
         run: |
-          cargo tree -e normal -p spookery-client --locked | (! grep -E 'spookery-engine|spookery-server|rmcp')
-          cargo tree -e normal -p spookery-agent --locked | (! grep -E 'spookery-(engine|server|client)|reqwest|rmcp|socket2|mio|tokio-macros')
+          cargo tree -e normal -p spookery-engine --locked | (! grep -E 'tracing-subscriber')
+          cargo tree -e normal -p spookery-client --locked | (! grep -E 'spookery-engine|spookery-server|rmcp|tracing-subscriber')
+          cargo tree -e normal -p spookery-agent --locked | (! grep -E 'spookery-(engine|server|client)|reqwest|rmcp|socket2|mio|tokio-macros|tracing-subscriber')
           # The agent awaits its adapters on the caller's runtime: it never builds, enters or blocks on one.
           (! grep -rnE 'tokio::runtime|Handle::current|block_on|spawn_blocking' crates/agent --include='*.rs')
           # protocol, agent and client are MIT: every AND term of every license in their
@@ -87,7 +88,9 @@ jobs:
               }
               END { exit bad }'
           done
-          cargo tree -e normal -p spookery-server --locked | (! grep -E 'spookery-client|spookery-agent|reqwest')
+          cargo tree -e normal -p spookery-server --locked | (! grep -E 'spookery-client|spookery-agent|reqwest|tracing-subscriber')
+          # Only the `spook play` and `spook gm` terminals print. Library code hands output to a writer.
+          (! grep -rnE '\b(e?print(ln)?!|io::std(out|err)\(\))' crates/{engine,protocol,agent,server,client} --include='*.rs' | grep -vE '^crates/client/(play|gm)\.rs:')
           cargo tree -e normal -p spook --no-default-features --features client --locked | (! grep -E 'spookery-engine|spookery-server')
           cargo tree -e normal -p spook --no-default-features --features server --locked | (! grep -E 'spookery-client|spookery-agent|reqwest')
           cargo build -p spook --no-default-features --features server --locked

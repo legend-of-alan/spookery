@@ -33,13 +33,12 @@ pub struct RoundOutput {
     pub commit: Option<CommitOutcome>,
 }
 
-/// Play one round from the save. `Some` is a warning the host prints: the round
-/// was committed, and the checkpoint bundle was not closed.
-pub fn play_pack_once(path: &Path) -> Result<Option<&'static str>, Reason> {
+/// Play one round from the save.
+pub fn play_pack_once(path: &Path) -> Result<(), Reason> {
     let mut session = session::Session::resume(path, lock_pack(path)?)?;
     let wall = session.world().last_round_at.clone();
     play_round(&mut session, &Presence::default(), &wall, false)?;
-    Ok(session.take_warning())
+    Ok(())
 }
 
 /// Play the rounds `real_hours` of absence earn, at an empty table. A short absence plays one.

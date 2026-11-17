@@ -390,9 +390,7 @@ fn agent_calls_an_unknown_tool(world: &mut World) {
     world.scratch = json!(reply).to_string();
 }
 
-#[then(
-    expr = "the unknown tool call was refused SCHEMA, the host logged it, and the save is unchanged"
-)]
+#[then(expr = "the unknown tool call was refused SCHEMA and the save is unchanged")]
 fn the_unknown_tool_call_was_refused(world: &mut World) {
     let reply: Vec<ServerMessage> =
         serde_json::from_str(&world.scratch).unwrap_or_else(|err| panic!("reply: {err}"));
@@ -401,9 +399,6 @@ fn the_unknown_tool_call_was_refused(world: &mut World) {
         panic!("not refused: {}", world.scratch);
     };
     assert_eq!(refused.code.as_str(), "SCHEMA", "{}", world.scratch);
-    table::wait_host_until(world, "the refusal in the host log", |log| {
-        log.contains("refused not_in_spec SCHEMA")
-    });
     let saved = std::fs::read(table::pack(world).join("state/save.yaml"))
         .unwrap_or_else(|err| panic!("read save: {err}"));
     assert_eq!(saved, table::live_mut(world).opened_save);

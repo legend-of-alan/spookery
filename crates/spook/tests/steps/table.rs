@@ -217,14 +217,11 @@ pub fn serve_in_process(world: &mut World, pack: &Path) {
     // `lock_pack` then `Session::resume`, as `spook run` opens it.
     let opened = support::resume(pack);
     let (mut out, out_pipe) = std::io::pipe().unwrap_or_else(|err| panic!("pipe: {err}"));
-    let (err, err_pipe) = std::io::pipe().unwrap_or_else(|err| panic!("pipe: {err}"));
     let stderr = Arc::new(Mutex::new(String::new()));
-    drop(support::drain(err, Arc::clone(&stderr)));
     let loopback: SocketAddr = "127.0.0.1:0".parse().unwrap();
     let mut config = spookery_server::Config::new(loopback);
     config.mcp_addr = Some(loopback);
     config.out = Box::new(out_pipe);
-    config.err = Box::new(err_pipe);
     let (advance, mut advances) = tokio::sync::mpsc::unbounded_channel::<Advance>();
     let (stop, stopped) = tokio::sync::oneshot::channel::<()>();
     let failed = Arc::clone(&stderr);
@@ -438,6 +435,7 @@ pub fn spawn_table(pack: &Path, flags: &[&str]) -> Pending {
     let mut command = Command::new(env!("CARGO_BIN_EXE_spook"));
     command.arg("run").arg(support::pack_arg(pack)).args(flags);
     command
+        .current_dir(std::env::temp_dir())
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());

@@ -107,9 +107,13 @@ async fn reconnect(
     token: &str,
     printer: &mut Printer,
 ) -> Result<Option<(Connection, protocol::View, String)>, Error> {
-    let Ok((mut seat, _)) = Connection::open(addr, "player").await else {
-        eprintln!("host closed");
-        return Ok(None);
+    let mut seat = match Connection::open(addr, "player").await {
+        Ok((seat, _)) => seat,
+        Err(error) => {
+            tracing::debug!(%error, "could not dial the host again");
+            eprintln!("host closed");
+            return Ok(None);
+        }
     };
     let args = json!({ "token": token, "last_seq": printer.last_seq });
     let (here, token) = take_claim(&mut seat, args, printer).await?;

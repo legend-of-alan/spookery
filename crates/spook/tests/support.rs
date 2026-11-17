@@ -70,6 +70,7 @@ pub fn block_on<T: Send>(work: impl std::future::Future<Output = T> + Send) -> T
 pub fn run_spook(args: &[&str]) -> std::process::Output {
     Command::new(env!("CARGO_BIN_EXE_spook"))
         .args(args)
+        .current_dir(std::env::temp_dir())
         .output()
         .unwrap_or_else(|err| panic!("spawn spook: {err}"))
 }
@@ -112,6 +113,7 @@ pub fn spawn(args: &[&str]) -> Process {
     let mut command = Command::new(env!("CARGO_BIN_EXE_spook"));
     command.args(args);
     command
+        .current_dir(std::env::temp_dir())
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());

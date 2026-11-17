@@ -1,6 +1,6 @@
 //! The HTTP client that calls the model.
 
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use spookery_agent::{chat_completions, model, CompletionError, Model, ToolCall};
 
@@ -125,7 +125,7 @@ fn redact_error_body(body: &str, key: &str) -> String {
 
 struct Attempt {
     retry: bool,
-    result: Result<Vec<ToolCall>, CompletionError>,
+    result: Result<chat_completions::Reply, CompletionError>,
 }
 
 impl Attempt {
@@ -197,12 +197,35 @@ impl Model for HttpModel {
         &self,
         messages: &[model::Message],
     ) -> Result<Vec<ToolCall>, CompletionError> {
-        let first = self.attempt(messages).await;
-        if !first.retry {
-            return first.result;
+        let started = Instant::now();
+        let mut attempts = 1;
+        let mut attempt = self.attempt(messages).await;
+        if let (true, Err(error)) = (attempt.retry, &attempt.result) {
+            let elapsed_ms = started.elapsed().as_millis();
+            tracing::warn!(%error, elapsed_ms, "model call failed; retrying once");
+            tokio::time::sleep(RETRY_BACKOFF).await;
+            attempts = 2;
+            attempt = self.attempt(messages).await;
         }
-        tokio::time::sleep(RETRY_BACKOFF).await;
-        self.attempt(messages).await.result
+        let elapsed_ms = started.elapsed().as_millis();
+        let model_id = self.settings.model.as_str();
+        match &attempt.result {
+            Ok(chat_completions::Reply { tool_calls, usage }) => tracing::info!(
+                model_id,
+                attempts,
+                elapsed_ms,
+                tool_calls = tool_calls.len(),
+                prompt_tokens = usage.prompt_tokens,
+                completion_tokens = usage.completion_tokens,
+                cached_tokens = usage.cached_tokens,
+                reasoning_tokens = usage.reasoning_tokens,
+                "model call answered"
+            ),
+            Err(error) => {
+                tracing::info!(model_id, attempts, elapsed_ms, %error, "model call failed");
+            }
+        }
+        attempt.result.map(|reply| reply.tool_calls)
     }
 }
 

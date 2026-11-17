@@ -53,7 +53,7 @@ The journal is a hash chain of bundle files. Each record's hash covers its own
 bytes and the previous record's hash. Closed bundles stay, gzip-compressed. A
 plain bundle whose checkpoint matches `save.yaml` is closed on the next open
 or the next commit, and the next round starts a new bundle. If `save.yaml` or
-the gzip does not land, the round stays committed and the host prints a
+the gzip does not land, the round stays committed and the engine logs a
 warning. The next commit publishes that checkpoint and then starts a new
 bundle. A plain copy beside a finished gzip is removed. `save.yaml` is the latest
 checkpoint, taken every `checkpoint_every` rounds (100 when the pack omits it;

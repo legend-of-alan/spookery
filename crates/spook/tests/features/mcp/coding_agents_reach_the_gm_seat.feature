@@ -98,10 +98,10 @@ Feature: Coding agents reach the GM seat
     When an HTTP request arrives with Host 127.0.0.1
     Then the response is accepted
 
-  Scenario: An HTTP agent's say reaches the player and the tape, and an unknown tool is refused and logged
+  Scenario: An HTTP agent's say reaches the player and the tape, and an unknown tool is refused
     Given a docks table with a seated player and an open MCP endpoint
     When a coding agent says good evening over HTTP
     Then the player saw speech from the GM
     And the tape from is gm
     When the agent calls an unknown tool over HTTP
-    Then the unknown tool call was refused SCHEMA, the host logged it, and the save is unchanged
+    Then the unknown tool call was refused SCHEMA and the save is unchanged

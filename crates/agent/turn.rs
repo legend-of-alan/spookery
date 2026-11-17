@@ -6,6 +6,7 @@ use std::sync::Arc;
 
 use graph_flow::{Graph, GraphBuilder, Session};
 
+use crate::context::TurnCause;
 use crate::model;
 use crate::task::{AskModel, FinishTurn, RunToolCall};
 use crate::{Agent, Connection, Model, ToolCall};
@@ -72,14 +73,23 @@ pub(crate) fn build_graph<M: Model, Conn: Connection>(agent: &Arc<Agent<M, Conn>
         .expect("turn graph")
 }
 
-/// Plays `turn` through `graph` to its end.
+/// Plays `turn`, which `cause` started, through `graph` to its end.
 pub(crate) async fn play<M: Model, Conn: Connection>(
     graph: &Graph,
     agent: &Agent<M, Conn>,
     turn: Turn,
+    cause: TurnCause,
 ) -> graph_flow::Result<()> {
+    let started = std::time::Instant::now();
     *agent.turn() = turn;
     let mut session = Session::new_from_task(String::new(), ASK_MODEL);
     graph.execute_session(&mut session).await?;
+    let model_calls: usize = session.context.get(MODEL_CALL_COUNT).unwrap_or_default();
+    tracing::info!(
+        ?cause,
+        model_calls,
+        elapsed_ms = started.elapsed().as_millis(),
+        "GM turn finished"
+    );
     Ok(())
 }

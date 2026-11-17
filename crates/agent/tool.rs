@@ -60,6 +60,7 @@ pub(crate) async fn call<M: Model, Conn: Connection>(
     agent: &Agent<M, Conn>,
     tool_call: &ToolCall,
 ) -> graph_flow::Result<String> {
+    tracing::debug!(tool_id = %tool_call.tool_id, "tool call");
     let args = match tool_call.arguments.trim() {
         "" => Some(json!({})),
         text => serde_json::from_str(text).ok().filter(Value::is_object),

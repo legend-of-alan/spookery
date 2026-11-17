@@ -13,7 +13,7 @@ use super::limits::{MISSED_MESSAGE_CAP, OUTBOUND_BYTE_CAP, OUTBOUND_FRAME_CAP};
 use crate::protocol::{Seat, ServerMessage};
 
 /// One connection's id, on the game port or the MCP endpoint.
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct ConnId(u64);
 
 impl ConnId {

@@ -23,7 +23,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use crate::support::{copy_pack, drain, pack_arg, text_of, Process};
+use crate::support::{copy_pack, drain, fresh_dir, pack_arg, text_of, Process};
 
 /// Long enough for one call, one retry, and a slow CPU-only model.
 const ROUND_BOUND: Duration = Duration::from_secs(240);
@@ -50,7 +50,8 @@ fn a_live_model_plays_one_round() {
     wait_port(&addr, &mut server);
 
     let (proxy, calls) = start_proxy(upstream);
-    let mut host = spawn_ai_gm(&addr, &key, &format!("http://{proxy}"), &model);
+    let gm_dir = fresh_dir("live-round-ai-gm");
+    let mut host = spawn_ai_gm(&gm_dir, &addr, &key, &format!("http://{proxy}"), &model);
     wait_text(&host, &host.stderr, "listening", Duration::from_secs(20));
 
     let sit = world_time(&pack);
@@ -93,6 +94,10 @@ fn a_live_model_plays_one_round() {
     drop(host);
     drop(server);
     let _ = fs::remove_dir_all(&pack);
+    let logs = fs::read_dir(gm_dir.join("logs"));
+    for log in logs.into_iter().flatten().flatten() {
+        println!("{}", fs::read_to_string(log.path()).unwrap_or_default());
+    }
 
     assert!(
         !recorded.is_empty(),
@@ -128,10 +133,11 @@ fn env_var(var: &str) -> String {
     }
 }
 
-fn spawn_ai_gm(addr: &str, key: &str, url: &str, model: &str) -> Process {
+fn spawn_ai_gm(dir: &Path, addr: &str, key: &str, url: &str, model: &str) -> Process {
     let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_spook"));
     command
         .args(["--addr", addr, "ai-gm"])
+        .current_dir(dir)
         .env("SPOOK_GM_KEY", key)
         .env("SPOOK_GM_URL", url)
         .env("SPOOK_GM_MODEL", model)
