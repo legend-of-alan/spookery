@@ -56,8 +56,8 @@ pub(crate) static TOOLS: LazyLock<Value> = LazyLock::new(|| {
 
 /// Answers `tool_call`: the server's reply to the command it asks for, or the agent's own
 /// answer when no command goes out.
-pub(crate) async fn call<M: Model, C: Connection>(
-    agent: &Agent<M, C>,
+pub(crate) async fn call<M: Model, Conn: Connection>(
+    agent: &Agent<M, Conn>,
     tool_call: &ToolCall,
 ) -> graph_flow::Result<String> {
     let args = match tool_call.arguments.trim() {

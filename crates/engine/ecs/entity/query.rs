@@ -44,14 +44,14 @@ pub trait QueryFilter<E: entity::Collection> {
 /// carriers of the first component `D` reads, else of the first `F` requires, else every entity
 /// the collection lists; a component the save holds for an entity that does not exist is walked
 /// too.
-pub struct Query<'a, E, D, F = ()> {
-    pub(in crate::ecs) entities: Reader<'a, E>,
+pub struct Query<'w, E, D, F = ()> {
+    pub(in crate::ecs) entities: Reader<'w, E>,
     pub(in crate::ecs) data_and_filter: PhantomData<fn() -> (D, F)>,
 }
 
-impl<'a, E: entity::Collection, D: QueryData<E>, F: QueryFilter<E>> Query<'a, E, D, F> {
+impl<'w, E: entity::Collection, D: QueryData<E>, F: QueryFilter<E>> Query<'w, E, D, F> {
     /// What each entity that passes gives, in id order. The items borrow the save, not the query.
-    pub fn iter(&self) -> impl Iterator<Item = D::Item<'a>> {
+    pub fn iter(&self) -> impl Iterator<Item = D::Item<'w>> {
         let entities = self.entities;
         let carriers = D::carriers(entities).or_else(|| F::carriers(entities));
         let ids = carriers.unwrap_or_else(|| entities.components.ids(entities.canon));
@@ -60,13 +60,13 @@ impl<'a, E: entity::Collection, D: QueryData<E>, F: QueryFilter<E>> Query<'a, E,
     }
 
     /// What entity `id` gives, if it passes. No caller uses it yet.
-    pub fn get(&self, id: &'a E::Id) -> Option<D::Item<'a>> {
+    pub fn get(&self, id: &'w E::Id) -> Option<D::Item<'w>> {
         let passes = F::matches(self.entities, id);
         passes.then(|| D::fetch(self.entities, id)).flatten()
     }
 
     /// Whether entity `id` passes and gives what `D` reads. No caller uses it yet.
-    pub fn contains(&self, id: &'a E::Id) -> bool {
+    pub fn contains(&self, id: &'w E::Id) -> bool {
         self.get(id).is_some()
     }
 }
@@ -79,7 +79,7 @@ pub struct Without<C>(PhantomData<C>);
 
 impl<E: entity::Collection, C: 'static> QueryFilter<E> for With<C>
 where
-    for<'x> &'x C: QueryData<E>,
+    for<'a> &'a C: QueryData<E>,
 {
     fn carriers<'a>(entities: Reader<'a, E>) -> Option<Ids<'a, E>> {
         <&C>::carriers(entities)
@@ -92,7 +92,7 @@ where
 
 impl<E: entity::Collection, C: 'static> QueryFilter<E> for Without<C>
 where
-    for<'x> &'x C: QueryData<E>,
+    for<'a> &'a C: QueryData<E>,
 {
     fn matches<'a>(entities: Reader<'a, E>, id: &'a E::Id) -> bool {
         <&C>::fetch(entities, id).is_none()
@@ -132,17 +132,17 @@ where
 
 /// `Option<&C>` gives what `&C` gives, or `None` for an entity without `C`. It names no carriers,
 /// so it never picks which entities a query walks: alone, it walks every entity.
-impl<'c, E: entity::Collection, C> QueryData<E> for Option<&'c C>
+impl<'a, E: entity::Collection, C> QueryData<E> for Option<&'a C>
 where
-    &'c C: QueryData<E>,
+    &'a C: QueryData<E>,
 {
-    type Item<'a>
-        = Option<<&'c C as QueryData<E>>::Item<'a>>
+    type Item<'w>
+        = Option<<&'a C as QueryData<E>>::Item<'w>>
     where
-        E: 'a;
+        E: 'w;
 
-    fn fetch<'a>(entities: Reader<'a, E>, id: &'a E::Id) -> Option<Self::Item<'a>> {
-        Some(<&'c C>::fetch(entities, id))
+    fn fetch<'w>(entities: Reader<'w, E>, id: &'w E::Id) -> Option<Self::Item<'w>> {
+        Some(<&'a C>::fetch(entities, id))
     }
 }
 

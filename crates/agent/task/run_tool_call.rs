@@ -12,10 +12,10 @@ use crate::{Agent, Connection, Model};
 
 /// Runs the first waiting tool call, through the server or locally, and adds its one
 /// tool result to the conversation.
-pub(crate) struct RunToolCall<M, C>(pub(crate) Arc<Agent<M, C>>);
+pub(crate) struct RunToolCall<M, Conn>(pub(crate) Arc<Agent<M, Conn>>);
 
 #[async_trait]
-impl<M: Model, C: Connection> Task for RunToolCall<M, C> {
+impl<M: Model, Conn: Connection> Task for RunToolCall<M, Conn> {
     fn id(&self) -> &str {
         RUN_TOOL_CALL
     }

@@ -40,8 +40,8 @@ pub struct View {
     pub busy: String,
 }
 
-pub(crate) fn perceive_budget<L>(
-    session: &session::Session<L>,
+pub(crate) fn perceive_budget<Lock>(
+    session: &session::Session<Lock>,
     presence: &Presence,
     viewer_id: &str,
     max_body_chars: usize,

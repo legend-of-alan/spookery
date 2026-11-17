@@ -276,12 +276,12 @@ impl Canon {
 /// The flags `carrier`'s file declares, none for an id the pack lacks: `None` for the world,
 /// which carries any flag but `busy`. Lint asks before the canon is assembled, so it takes the
 /// three maps.
-pub(crate) fn declared_flags<'c>(
-    cast: &'c BTreeMap<ActorId, CastDef>,
-    places: &'c BTreeMap<PlaceId, PlaceDef>,
-    stories: &'c BTreeMap<StoryId, StoryDef>,
+pub(crate) fn declared_flags<'a>(
+    cast: &'a BTreeMap<ActorId, CastDef>,
+    places: &'a BTreeMap<PlaceId, PlaceDef>,
+    stories: &'a BTreeMap<StoryId, StoryDef>,
     carrier: entity::IdRef<'_>,
-) -> Option<&'c [String]> {
+) -> Option<&'a [String]> {
     let flags = match carrier {
         entity::IdRef::Actor(id) => cast.get(id).map(|cast| &cast.flags),
         entity::IdRef::Place(id) => places.get(id).map(|place| &place.flags),

@@ -104,7 +104,7 @@ pub(crate) fn fast_forward(
 }
 
 /// Whether each seated PC is busy at the current world time.
-fn seated_busy<L>(session: &session::Session<L>, presence: &Presence) -> Vec<bool> {
+fn seated_busy<Lock>(session: &session::Session<Lock>, presence: &Presence) -> Vec<bool> {
     let (world, actors) = (session.world(), session.world().actors());
     presence
         .actors_present

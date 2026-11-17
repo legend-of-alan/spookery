@@ -61,9 +61,9 @@ impl std::error::Error for Error {}
 
 /// Connects as the GM and plays turns until the server closes the connection. `report` gets "listening"
 /// and each warning, one line each.
-pub async fn run<M: Model, C: Connection>(
+pub async fn run<M: Model, Conn: Connection>(
     model: M,
-    connection: C,
+    connection: Conn,
     report: impl Fn(&str) + Send + Sync + 'static,
 ) -> Result<(), Error> {
     let agent = Arc::new(Agent {
@@ -103,9 +103,9 @@ pub async fn run<M: Model, C: Connection>(
 
 /// The AI GM on one connection: the adapters, the client state read so far, the turn being
 /// played, and the command in flight. `run` and the turn graph's tasks hold it in an `Arc`.
-struct Agent<M, C> {
+struct Agent<M, Conn> {
     model: M,
-    connection: C,
+    connection: Conn,
     report: Box<dyn Fn(&str) + Send + Sync>,
     state: Mutex<ClientState>,
     turn: Mutex<Turn>,
@@ -117,7 +117,7 @@ struct Agent<M, C> {
     closed: AtomicBool,
 }
 
-impl<M: Model, C: Connection> Agent<M, C> {
+impl<M: Model, Conn: Connection> Agent<M, Conn> {
     fn state(&self) -> MutexGuard<'_, ClientState> {
         self.state.lock().expect("client state")
     }

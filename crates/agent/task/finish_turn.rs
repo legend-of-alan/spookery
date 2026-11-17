@@ -9,10 +9,10 @@ use crate::turn::FINISH_TURN;
 use crate::{Agent, Connection, Model};
 
 /// Finishes the turn: commits a queued move.
-pub(crate) struct FinishTurn<M, C>(pub(crate) Arc<Agent<M, C>>);
+pub(crate) struct FinishTurn<M, Conn>(pub(crate) Arc<Agent<M, Conn>>);
 
 #[async_trait]
-impl<M: Model, C: Connection> Task for FinishTurn<M, C> {
+impl<M: Model, Conn: Connection> Task for FinishTurn<M, Conn> {
     fn id(&self) -> &str {
         FINISH_TURN
     }
