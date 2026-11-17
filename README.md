@@ -19,23 +19,29 @@ New words like seat and tick are explained in the [glossary](docs/README.md#glos
 
 ## Play
 
-Download the archive for your computer from [Releases](https://github.com/legend-of-alan/spookery/releases): `x86_64-unknown-linux-gnu` for Linux, `aarch64-apple-darwin` for an Apple silicon Mac, `x86_64-apple-darwin` for an Intel Mac, or `x86_64-pc-windows-msvc` for Windows. Unpack it and open a terminal in the unpacked folder. It holds `spook`, the licenses and the demo pack, `packs/demo-d20`.
+Grab the archive for your machine from [Releases](https://github.com/legend-of-alan/spookery/releases):
 
-The builds are unsigned. If macOS refuses to open `spook`, run `xattr -d com.apple.quarantine spook` once. If Windows shows a SmartScreen warning, pick More info, then Run anyway.
+- Linux: `x86_64-unknown-linux-gnu`
+- Apple silicon Mac: `aarch64-apple-darwin`
+- Intel Mac: `x86_64-apple-darwin`
+- Windows: `x86_64-pc-windows-msvc`
 
-The host saves into the pack folder, so copy `packs/demo-d20` to a new folder, `my-demo`, and play that. On macOS and Linux type `./spook` for `spook`, and in PowerShell `.\spook`. Start the host:
+Unpack it and open a terminal in that folder. The builds are unsigned, so a Mac may need `xattr -d com.apple.quarantine spook` once, and Windows may want More info, then Run anyway.
+
+Copy the demo so the save doesn't land in the original pack, then start the host. You don't need a GM or a model key. On Windows in PowerShell, use `Copy-Item -Recurse packs\demo-d20 my-demo` and `.\spook`.
 
 ```sh
-spook run my-demo
+cp -r packs/demo-d20 my-demo
+./spook run my-demo
 ```
 
-It prints a `listening` line and waits. Open a second terminal in the same folder and join:
+Leave that running. Open a second terminal in the same folder, join, and pick Corin.
 
 ```sh
-spook play
+./spook play
 ```
 
-Pick Corin when it asks who you are. You're in the Yard, and daylight is running out. With nobody in the GM seat, each line you type commits on its own. When you're done, press Ctrl+C in the host terminal. It saves and shuts down cleanly.
+You're in the Yard. Daylight is running out. Press Ctrl+C in the host terminal when you're done. It saves and quits.
 
 ## Build from source
 

@@ -368,8 +368,12 @@ mod tests {
     }
 
     fn split_spook_line(line: &str) -> Option<Vec<&str>> {
-        let args: Vec<&str> = line.split_whitespace().collect();
-        if args.first() == Some(&"spook") {
+        let mut args: Vec<&str> = line.split_whitespace().collect();
+        // Play commands use `./spook` so a release archive runs without PATH.
+        let first = args.first()?;
+        let cmd = first.strip_prefix("./").unwrap_or(first);
+        if cmd == "spook" {
+            args[0] = "spook";
             Some(args)
         } else {
             None
