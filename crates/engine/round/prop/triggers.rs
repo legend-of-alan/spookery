@@ -15,7 +15,7 @@
 //! The chain lives on rowan. It starts after each of that PC's actions that
 //! leaves its lamp oil count higher than before the action, and runs to the cap
 //! before the next action. Other PCs are not given the flags, so a fire for
-//! them rolls back and the log has one subject.
+//! them rolls back and the round record has one subject.
 //!
 //! Deterministic in CI: 64 cases, seed `0x0018_0018`, no failure file.
 

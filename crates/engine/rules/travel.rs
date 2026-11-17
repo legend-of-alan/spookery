@@ -4,7 +4,7 @@ use crate::canon::{Canon, Exit, PlaceDef};
 use crate::ecs::id::ActorId;
 use crate::ecs::{self, component, PendingAction, Presence};
 use crate::intent::{Intent, Source, Target, Viewer};
-use crate::round::log::RoundLog;
+use crate::round::ledger::RoundLedger;
 use crate::rules::cond;
 use crate::rules::context::Context;
 use crate::rules::cost;
@@ -133,7 +133,7 @@ pub(crate) fn open_doors(
     canon: &Canon,
     world: &mut ecs::World,
     presence: &Presence,
-    log: &mut RoundLog,
+    ledger: &mut RoundLedger,
 ) {
     let mut opens = Vec::new();
     for (place, def) in &canon.places {
@@ -163,10 +163,10 @@ pub(crate) fn open_doors(
     for (effect, intent) in opens {
         let point = world.savepoint();
         match effect.clone().apply(canon, world, presence, &intent) {
-            Ok(()) => log.effects.push(effect),
+            Ok(()) => ledger.effects.push(effect),
             Err(code) => {
                 world.rollback(point);
-                log.refused.push(gate::Refusal::new(&intent, code));
+                ledger.refused.push(gate::Refusal::new(&intent, code));
             }
         }
     }

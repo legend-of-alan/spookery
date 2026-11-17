@@ -84,7 +84,7 @@ Default to the [Rust API Guidelines](https://rust-lang.github.io/api-guidelines/
 
 Items in the guidelines that only matter for a published library, such as stability and future-proofing, don't apply yet.
 
-## Prove the log
+## Prove the journal
 
 Each commit that changes the save appends one journal record under `state/journal`, and the first commit stores a replay base there. `spook verify` replays that journal and checks the save byte for byte. It does not write the pack, take the lock, or bind a port. A later commit from a running server is ignored, because verify reads the save once and stops at that counter.
 

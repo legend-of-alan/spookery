@@ -21,7 +21,7 @@ const CHECKPOINT_WARNING: &str = "the checkpoint bundle was not closed";
 
 pub struct CommitOutcome {
     pub state_rev: u64,
-    pub log_path: String,
+    pub journal_path: String,
     /// The committed round's index and the world time it ended at.
     pub round_index: u64,
     pub world_time: u64,
@@ -52,14 +52,14 @@ pub fn commit(
     } else {
         (line, None)
     };
-    let mut log_path = append_to_bundle(&session.root, &payload, &write)?;
+    let mut journal_path = append_to_bundle(&session.root, &payload, &write)?;
     world.accept();
     session.world = world;
     session.queue.clear();
     if let Some(chain) = chain {
         if finish_checkpoint(session, &now_bytes, &chain, &write) {
-            if !log_path.ends_with(".gz") {
-                log_path.push_str(".gz");
+            if !journal_path.ends_with(".gz") {
+                journal_path.push_str(".gz");
             }
         } else {
             session.set_warning(CHECKPOINT_WARNING);
@@ -67,7 +67,7 @@ pub fn commit(
     }
     Ok(CommitOutcome {
         state_rev: session.world.state_rev,
-        log_path,
+        journal_path,
         round_index: session.world.round_index,
         world_time: session.world.world_time,
     })

@@ -1,7 +1,7 @@
 //! The round crate has no cucumber harness. This is the scenario:
 //!
 //! ```gherkin
-//! Feature: Re-run matches the log
+//! Feature: Re-run matches the journal
 //!
 //!   Scenario: Running a round's effects again matches the logged effects
 //!     Given the docks pack

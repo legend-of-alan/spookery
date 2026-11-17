@@ -118,7 +118,7 @@ Tested in `features/seats/one_gm_and_three_players.feature`,
 
 A later move sees what an earlier move in that round already changed. One
 refused effect rolls the whole rule back. A rule over the effect cap is refused
-whole, not cut short, and the log records the refusal. That holds for a change
+whole, not cut short, and the journal records the refusal. That holds for a change
 rule too. A refused roll is not reported as a success. A roll target that
 fails to evaluate refuses that move with its error, and the rest of the round
 lands and commits. A move pays the cost of the rule it rolled for, even when an

@@ -16,7 +16,7 @@ use crate::store::lock::lock_pack;
 use crate::Reason;
 
 use crate::round::dice::RoundDice;
-use crate::round::log::RoundLog;
+use crate::round::ledger::RoundLedger;
 use crate::round::stage::advance::RoundTime;
 use crate::round::stage::{advance, apply, deliver, finish, pick, record, resolve, triggers};
 
@@ -137,21 +137,21 @@ pub(crate) fn replay_round(
     let world = session.begin_round();
     let StagedRound {
         world,
-        mut log,
+        mut ledger,
         delivered,
         ..
     } = run_stages(&canon, world, presence, wall, queue)?;
-    let output = record::take_output(&mut log, delivered);
+    let output = record::take_output(&mut ledger, delivered);
     crate::store::commit::keep_in_memory(session, world)?;
     Ok(output)
 }
 
-/// What the stages leave for `record`: the round's working copy of the save, its time, its log,
+/// What the stages leave for `record`: the round's working copy of the save, its time, its ledger,
 /// and what each seat hears.
 pub(crate) struct StagedRound {
     pub(crate) world: ecs::World,
     pub(crate) clock: RoundTime,
-    pub(crate) log: RoundLog,
+    pub(crate) ledger: RoundLedger,
     pub(crate) delivered: deliver::Deliveries,
 }
 
@@ -166,24 +166,38 @@ fn run_stages(
 ) -> Result<StagedRound, Reason> {
     let clock = advance::run(canon, &mut world, presence, wall)?;
     let mut dice = RoundDice::new(world.seed.clone(), clock.round_index);
-    let mut log = RoundLog::default();
-    let picked = pick::run(canon, &world, presence, queue, &mut log)?;
-    let candidates = resolve::run(canon, &world, presence, &picked, queue, &mut dice, &mut log);
+    let mut ledger = RoundLedger::default();
+    let picked = pick::run(canon, &world, presence, queue, &mut ledger)?;
+    let candidates = resolve::run(
+        canon,
+        &world,
+        presence,
+        &picked,
+        queue,
+        &mut dice,
+        &mut ledger,
+    );
     apply::run(
-        canon, &mut world, presence, candidates, &clock, &mut dice, &mut log,
+        canon,
+        &mut world,
+        presence,
+        candidates,
+        &clock,
+        &mut dice,
+        &mut ledger,
     );
     let end = clock.world_time_after;
-    finish::run(canon, &mut world, presence, end, &mut dice, &mut log)?;
+    finish::run(canon, &mut world, presence, end, &mut dice, &mut ledger)?;
     // A door that opens is a flag change, so change rules see it before the map refresh. This
     // pass also takes the clock's changes in a round where no action ran.
-    travel::open_doors(canon, &mut world, presence, &mut log);
-    triggers::run(canon, &mut world, presence, &mut dice, &mut log);
+    travel::open_doors(canon, &mut world, presence, &mut ledger);
+    triggers::run(canon, &mut world, presence, &mut dice, &mut ledger);
     travel::note_exits(canon, &mut world)?;
-    let delivered = deliver::run(canon, &world, presence, &log.changes, &log.effects);
+    let delivered = deliver::run(canon, &world, presence, &ledger.changes, &ledger.effects);
     Ok(StagedRound {
         world,
         clock,
-        log,
+        ledger,
         delivered,
     })
 }

@@ -39,7 +39,7 @@ The model does not keep the world. It can talk, and it can ask the engine to com
 | **Engine** | The code that decides what is legal, rolls checks and tracks who knows what. |
 | **Tick** | The only unit of game time. The engine counts world time in ticks. The engine knows no day or hour: a pack names its own cycles, such as a day or a tide, in `rules/budget.yaml`. Talking takes no ticks. Moving and acting do. Players and the GM see plain ticks. |
 | **Speech** | One spoken line on the session tape. The command that writes it is `say`. Talking takes no ticks. |
-| **Round** | One batch of work, in which queued intents are settled together and the results are logged. A round writes some ticks, but it is not a unit of time. |
+| **Round** | One batch of work, in which queued intents are settled together and the results are journaled. A round writes some ticks, but it is not a unit of time. |
 | **Intent** | A proposed move from a player, an NPC or the engine's scheduler. |
 | **Effect** | A checked change to the world, produced from an intent. |
 | **Expression** | A number in a rule. An integer, dice such as `2d6` or `2d20kh1`, a meter read such as `self.might`, and `+`, `-`, `*`, `/`, `min`, and `max`. A condition's value does not roll dice. |

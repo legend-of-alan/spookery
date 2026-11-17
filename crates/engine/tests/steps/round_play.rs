@@ -359,7 +359,7 @@ fn max_effects_per_intent_is_1_and_a_row_with_2_effects(world: &mut World) {
     world.pack = Some(pack);
 }
 
-#[then(expr = "no effect from that row applies and the round log names the refusal")]
+#[then(expr = "no effect from that row applies and the round record names the refusal")]
 fn no_effect_from_that_row_applies(world: &mut World) {
     assert_eq!(String::from_utf8_lossy(&world.oil), "4");
     let round: Value = serde_json::from_str(&world.scratch).unwrap();
@@ -631,7 +631,7 @@ fn rowan_walks_to_the_street(world: &mut World) {
     world.scratch = round.to_string();
 }
 
-#[then(expr = "neither flag is set and the round log names the change rule's {word} refusal")]
+#[then(expr = "neither flag is set and the round record names the change rule's {word} refusal")]
 fn neither_flag_is_set(world: &mut World, code: String) {
     assert_eq!(world.count, 0, "flags were set");
     let round: Value = serde_json::from_str(&world.scratch).unwrap();

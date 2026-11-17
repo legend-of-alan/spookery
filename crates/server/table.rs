@@ -490,7 +490,7 @@ impl Table {
         }
     }
 
-    /// Frees the GM seat and says so on the host log, so the operator sees the seat is open.
+    /// Frees the GM seat and says so on the host console, so the operator sees the seat is open.
     fn release_gm(&mut self) {
         self.seats.gm = None;
         let _ = writeln!(self.out, "gm seat free");
