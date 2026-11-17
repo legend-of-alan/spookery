@@ -65,6 +65,7 @@ impl Facts {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(super) struct FactYaml {
+    // repeats module: every serde shape in canon ends in Yaml
     pub(super) id: String,
     pub(super) text: String,
     #[serde(default)]

@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::ecs::component::meter::MeterDef;
+use crate::ecs::component::meter;
 use crate::ecs::id::ActorId;
 use crate::ecs::MemoryLine;
 use crate::entity;
@@ -22,11 +22,11 @@ pub struct AddedMeter {
 }
 
 impl AddedMeter {
-    pub(crate) fn new(id: &str, def: &MeterDef) -> Self {
+    pub(crate) fn new(id: &str, desc: &meter::Descriptor) -> Self {
         Self {
             id: id.to_string(),
-            start: def.start,
-            carrier: def.carrier.clone(),
+            start: desc.start,
+            carrier: desc.carrier.clone(),
         }
     }
 }

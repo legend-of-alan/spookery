@@ -38,7 +38,7 @@ pub struct World {
     /// An MCP session opened over plain HTTP, and its event streams.
     pub mcp_session: Option<mcp_client::RawSession>,
     /// The table the WebSocket GM sits at, beside `live`, and the pack copy it runs.
-    pub ws_table: Option<(table::RunningTable, PathBuf)>,
+    pub ws_table: Option<(table::Process, PathBuf)>,
     /// A recorded session's lines, each one message a seat sent or got.
     pub recorded: Vec<serde_json::Value>,
     /// The seats a recorded session was replayed on, by the name the recording gives each.

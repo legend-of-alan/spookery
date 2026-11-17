@@ -15,8 +15,8 @@ use crate::store::save;
 use proptest::prelude::*;
 use proptest::test_runner::{Config, RngSeed, TestCaseError};
 
-use crate::round::play::play_round;
-use crate::round::replay::replay_journal;
+use crate::round::play;
+use crate::round::replay;
 
 pub(crate) const CASES: u32 = 64;
 pub(crate) const SEED: u64 = 0x0018_0018;
@@ -95,7 +95,7 @@ pub(crate) fn play_rounds(pack: &Path, rounds: &[Plan]) -> Result<(), String> {
             );
         }
         let wall = session.world().last_round_at.clone();
-        play_round(&mut session, &Presence::default(), &wall, false)
+        play::run_round(&mut session, &Presence::default(), &wall, false)
             .map_err(|err| format!("round {} refused to play: {err}", index + 1))?;
     }
     Ok(())
@@ -200,7 +200,7 @@ fn item_tokens(session: &session::Session, actor: &ActorId) -> Vec<String> {
 pub(crate) fn assert_replay_matches(pack: &Path) -> Result<(), TestCaseError> {
     let entries = journal::read_records(pack)
         .map_err(|fault| TestCaseError::fail(format!("{}: {}", fault.file, fault.detail)))?;
-    let report = replay_journal(pack, &entries, None, None)
+    let report = replay::apply_journal(pack, &entries, None, None)
         .map_err(|err| TestCaseError::fail(err.to_string()))?;
     let Some(last) = entries.iter().rev().find(|entry| entry.changes_state()) else {
         return Err(TestCaseError::fail(

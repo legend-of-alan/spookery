@@ -18,7 +18,7 @@ use super::table;
 #[when(expr = "a coding agent calls the GM tools over loopback HTTP")]
 fn agent_calls_over_http(world: &mut World) {
     let (_tcp, http) = listen_on_free_ports(world);
-    let mut gm = support::block_on(GmClient::connect(mcp_addr(http)))
+    let mut gm = support::block_on(GmClient::connect(to_addr(http)))
         .unwrap_or_else(|err| panic!("HTTP: {err}"));
     call_each_gm_tool(&mut gm);
     support::block_on(gm.close());
@@ -74,7 +74,7 @@ fn a_human_gm_sits_on_the_game_port(world: &mut World) {
 
 #[when(expr = "a coding agent tries to sit at that MCP endpoint")]
 fn a_coding_agent_tries_to_sit_at_that_mcp_endpoint(world: &mut World) {
-    let mut session = RawSession::open(mcp_port(world));
+    let mut session = RawSession::open(port(world));
     world.scratch = session.open_event_stream();
 }
 
@@ -103,7 +103,7 @@ fn the_human_gm_leaves(world: &mut World) {
 
 #[then(expr = "a coding agent can sit at that MCP endpoint")]
 fn a_coding_agent_can_sit_at_that_mcp_endpoint(world: &mut World) {
-    let http = mcp_port(world);
+    let http = port(world);
     table::poll_until("the agent to sit", || try_sit_gm(http));
 }
 
@@ -116,6 +116,7 @@ fn spook_run_listens_with_no_mcp_flag(world: &mut World) {
 
 #[then(expr = "the reported MCP address serves \\/mcp")]
 fn the_reported_mcp_addr_serves_mcp(world: &mut World) {
+    // repeats module: mirrors its step text
     let http = u16::try_from(world.mark).unwrap_or_else(|_| panic!("no MCP port"));
     let raw = post_initialize(http, "127.0.0.1", None);
     assert!(
@@ -167,7 +168,7 @@ fn the_response_is_accepted(world: &mut World) {
     );
 }
 
-fn mcp_port(world: &World) -> u16 {
+fn port(world: &World) -> u16 {
     u16::try_from(world.mark).unwrap_or_else(|_| panic!("no MCP port"))
 }
 
@@ -184,7 +185,7 @@ fn a_docks_table_with_a_seated_player_and_an_open_mcp_endpoint(world: &mut World
 fn gm_holds_over_http(world: &mut World) {
     let (_tcp, http) = listen_on_free_ports(world);
     world.mark = usize::from(http);
-    let mut holder = support::block_on(GmClient::connect(mcp_addr(http)))
+    let mut holder = support::block_on(GmClient::connect(to_addr(http)))
         .unwrap_or_else(|err| panic!("HTTP GM: {err}"));
     let status = call(&mut holder, "status", json!({}));
     assert_not_refused(&status, "status");
@@ -207,7 +208,7 @@ fn an_agent_opens_an_mcp_session(world: &mut World) {
         let (_tcp, http) = listen_on_free_ports(world);
         world.mark = usize::from(http);
     }
-    world.mcp_session = Some(RawSession::open(mcp_port(world)));
+    world.mcp_session = Some(RawSession::open(port(world)));
 }
 
 fn raw_session(world: &mut World) -> &mut RawSession {
@@ -276,13 +277,13 @@ fn the_http_gm_leaves(world: &mut World) {
 #[then(expr = "a GM can sit over HTTP")]
 fn a_gm_can_sit_over_http(world: &mut World) {
     // One attempt: the DELETE reply waits for the seat release (issue #214).
-    if let Err(err) = try_sit_gm(mcp_port(world)) {
+    if let Err(err) = try_sit_gm(port(world)) {
         panic!("no GM could sit over HTTP: {err}");
     }
 }
 
 fn try_sit_gm(port: u16) -> Result<(), String> {
-    let mut gm = support::block_on(GmClient::connect(mcp_addr(port)))?;
+    let mut gm = support::block_on(GmClient::connect(to_addr(port)))?;
     let status = call(&mut gm, "status", json!({}));
     assert_not_refused(&status, "status");
     support::block_on(gm.close());
@@ -365,9 +366,9 @@ fn world_time_moved_forward(world: &mut World) {
 
 #[when(expr = "a coding agent says good evening over HTTP")]
 fn agent_says_over_http(world: &mut World) {
-    let http = mcp_port(world);
+    let http = port(world);
     let mark = table::player_mark(world);
-    let mut gm = support::block_on(GmClient::connect(mcp_addr(http)))
+    let mut gm = support::block_on(GmClient::connect(to_addr(http)))
         .unwrap_or_else(|err| panic!("HTTP: {err}"));
     let speech = call(
         &mut gm,
@@ -433,7 +434,7 @@ fn assert_not_refused(messages: &[ServerMessage], command: &str) {
     );
 }
 
-fn mcp_addr(port: u16) -> std::net::SocketAddr {
+fn to_addr(port: u16) -> std::net::SocketAddr {
     std::net::SocketAddr::from(([127, 0, 0, 1], port))
 }
 
@@ -502,7 +503,7 @@ fn an_mcp_gm_and_a_websocket_gm(world: &mut World) {
     table::seat_gm(world);
     let ws_pack = support::copy_pack("docks", "parity-ws");
     let flags = ["--addr", "127.0.0.1:0"];
-    let running = table::wait_addrs(table::spawn_table(&std::env::temp_dir(), &ws_pack, &flags));
+    let running = table::wait_addrs(table::spawn(&std::env::temp_dir(), &ws_pack, &flags));
     let gm = table::Seat::open(running.game.port(), "gm");
     table::wait_suffix(&gm.text, 0, "\"kind\":\"hello\"");
     table::live_mut(world).ws_gm = Some(gm);

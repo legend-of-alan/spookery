@@ -1,7 +1,7 @@
 //! Turn a rule template into effects for one intent.
 
 use crate::canon::{Canon, OPEN};
-use crate::ecs::component::meter::MeterWrite;
+use crate::ecs::component::meter;
 use crate::ecs::id::ActorId;
 use crate::ecs::{self, component};
 use crate::entity;
@@ -51,7 +51,7 @@ pub(crate) fn expand(
         (rolled, _) => rolled,
     };
     let outcome = rolled.as_ref().map(|out| out.outcome);
-    let effects = expand_lists(context, rule, outcome, &mut roller)?;
+    let effects = build_effects(context, rule, outcome, &mut roller)?;
     if effects.len() > context.canon.budget.max_effects_per_intent as usize {
         return Err(Reason::Budget);
     }
@@ -66,12 +66,12 @@ pub(crate) fn expand(
 /// The effects the rule's `do` list makes, with faces of 1 and no resist: their shapes are
 /// what the pick stage and habits read before the round rolls.
 pub(crate) fn preview(context: &Context, rule: &Rule) -> Result<Vec<Effect>, Reason> {
-    expand_lists(context, rule, None, &mut PreviewDice)
+    build_effects(context, rule, None, &mut PreviewDice)
 }
 
 /// `do`, then the list `outcome` picks: `success`, `partial` or `miss`. `None` means the
 /// rule did not roll. `dice.resist` returns the subject's band; success shrugs the effect off.
-fn expand_lists(
+fn build_effects(
     context: &Context,
     rule: &Rule,
     outcome: Option<Outcome>,
@@ -88,12 +88,12 @@ fn expand_lists(
     let mut effects = Vec::with_capacity(selected.len());
     let mut last_resist = None;
     for template in selected {
-        expand_template(context, template, &mut effects, &mut last_resist, dice)?;
+        push_effects(context, template, &mut effects, &mut last_resist, dice)?;
     }
     Ok(effects)
 }
 
-fn expand_template(
+fn push_effects(
     context: &Context,
     template: &EffectTemplate,
     effects: &mut Vec<Effect>,
@@ -122,7 +122,7 @@ fn expand_template(
                 *last_resist = Some(band);
                 if band == Outcome::Success {
                     for alt in resisted {
-                        expand_template(context, alt, effects, last_resist, dice)?;
+                        push_effects(context, alt, effects, last_resist, dice)?;
                     }
                     return Ok(());
                 }
@@ -305,15 +305,15 @@ fn meter_offset(
     add: Option<&Expr>,
     set: Option<&Expr>,
     dice: &mut dyn Dice,
-) -> Result<MeterWrite, Reason> {
+) -> Result<meter::Write, Reason> {
     if let Some(expr) = add {
-        return Ok(MeterWrite::Offset(expr::eval_with_dice(
+        return Ok(meter::Write::Offset(expr::eval_with_dice(
             context, expr, dice,
         )?));
     }
     let desired = expr::eval_with_dice(context, set.ok_or(Reason::Schema)?, dice)?;
     let current = (context.world.entities().get::<component::Meter>(id)).value(key)?;
-    Ok(MeterWrite::Offset(
+    Ok(meter::Write::Offset(
         desired.checked_sub(current).ok_or(Reason::OutOfRange)?,
     ))
 }

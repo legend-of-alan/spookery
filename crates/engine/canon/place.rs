@@ -5,30 +5,30 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde::Deserialize;
 
 use crate::canon::fact::{FactYaml, Facts};
-use crate::canon::meters::{meter_defs, MeterYaml};
+use crate::canon::meters::{meter_descs, MeterYaml};
 use crate::canon::rule_list::{self, RuleYaml};
 use crate::canon::source::{load_tagged, Diags, FileText, Locator, Page, PLACE_SCHEMA};
 use crate::canon::{Exit, PlaceDef};
 use crate::diagnostic::{schema_error, Diagnostic};
-use crate::ecs::component::meter::MeterDef;
+use crate::ecs::component::meter;
 use crate::ecs::id::PlaceId;
 use crate::entity;
 use crate::rules::rule::{Cost, Owner, Rule};
 
 /// The meters one place file declares, by that file, for `load_canon` to add once the meters
 /// every actor carries have loaded.
-pub(super) type PlaceMeters = Vec<(String, BTreeMap<String, MeterDef>)>;
+pub(super) type Meters = Vec<(String, BTreeMap<String, meter::Descriptor>)>;
 
 /// One place page into `places`, its facts into `facts` and its meters into `meters`, and its
 /// rules. A bad fact stops the file; the exits compile before the duplicate id check.
-pub(super) fn add_place(
+pub(super) fn add(
     page: Page,
     facts: &mut Facts,
     places: &mut BTreeMap<PlaceId, PlaceDef>,
-    meters: &mut PlaceMeters,
+    meters: &mut Meters,
     diags: &mut Diags,
 ) -> Option<Vec<Rule>> {
-    let file = diags.keep(load_place(&page.file, &page.yaml, 1))?;
+    let file = diags.keep(load(&page.file, &page.yaml, 1))?;
     let whole = FileText {
         file: &page.file,
         text: &page.text,
@@ -48,7 +48,7 @@ pub(super) fn add_place(
     }
     let id: PlaceId = file.id.clone().into();
     let carrier = Some(entity::Id::Place(id.clone()));
-    if let Some(own) = diags.keep(meter_defs(&whole, file.meters, carrier)) {
+    if let Some(own) = diags.keep(meter_descs(&whole, file.meters, carrier)) {
         meters.push((page.file.clone(), own));
     }
     places.insert(
@@ -83,7 +83,7 @@ pub(super) fn name_exits(places: &mut BTreeMap<PlaceId, PlaceDef>) {
     }
 }
 
-fn load_place(file: &str, yaml: &str, line_base: u32) -> Result<PlaceDoc, Vec<Diagnostic>> {
+fn load(file: &str, yaml: &str, line_base: u32) -> Result<PlaceDoc, Vec<Diagnostic>> {
     let parsed: PlaceDoc = load_tagged(file, yaml, PLACE_SCHEMA, line_base)?;
     let source = FileText {
         file,
@@ -167,6 +167,7 @@ fn compile_exits(file: &str, from: &str, exits: &[ExitYaml]) -> Result<Vec<Exit>
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct PlaceDoc {
+    // repeats module: every file shape in canon ends in Doc
     #[serde(rename = "schema")]
     _schema: String,
     id: String,

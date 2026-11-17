@@ -40,7 +40,7 @@ pub struct View {
     pub busy: String,
 }
 
-pub(crate) fn perceive_budget<Lock>(
+pub(crate) fn build_view_by_id<Lock>(
     session: &session::Session<Lock>,
     presence: &Presence,
     viewer_id: &str,
@@ -57,19 +57,19 @@ pub(crate) fn perceive_budget<Lock>(
     let id = ActorId::from(viewer_id);
     let control = world.actors().get::<component::ControlType>(&id);
     let viewer = control.viewer().ok_or(Reason::UnknownId)?;
-    perceive_viewer_budget(canon, world, presence, &viewer, max_body_chars)
+    build_capped_view(canon, world, presence, &viewer, max_body_chars)
 }
 
-pub(crate) fn perceive_as(
+pub(crate) fn build_view(
     canon: &Canon,
     world: &ecs::World,
     presence: &Presence,
     viewer: &Viewer,
 ) -> Result<View, Reason> {
-    perceive_viewer_budget(canon, world, presence, viewer, PERCEIVE_BODY_CHARS)
+    build_capped_view(canon, world, presence, viewer, PERCEIVE_BODY_CHARS)
 }
 
-fn perceive_viewer_budget(
+fn build_capped_view(
     canon: &Canon,
     world: &ecs::World,
     presence: &Presence,
@@ -201,21 +201,22 @@ fn perceive_viewer_budget(
 
 /// The meters `carrier` carries that are not hidden, in id order.
 fn shown_meters(canon: &Canon, world: &ecs::World, carrier: &entity::Id) -> Vec<MeterView> {
-    let defs = if *carrier == entity::Id::Global {
+    let descs = if *carrier == entity::Id::Global {
         &canon.world_meters
     } else {
         &canon.meters
     };
-    defs.keys()
+    descs
+        .keys()
         .filter_map(|id| {
-            let def = canon
-                .meter_def(carrier.as_ref(), id)
-                .filter(|def| !def.hidden)?;
+            let desc = canon
+                .meter_desc(carrier.as_ref(), id)
+                .filter(|desc| !desc.hidden)?;
             let value = world.entities().get::<Meter>(carrier).value(id).ok()?;
             Some(MeterView {
                 id: id.to_string(),
                 value,
-                max: def.max,
+                max: desc.max,
             })
         })
         .collect()

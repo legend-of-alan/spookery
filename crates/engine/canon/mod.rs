@@ -7,13 +7,13 @@ use serde::Deserialize;
 
 use crate::canon;
 use crate::diagnostic::Diagnostic;
-use crate::ecs::component::meter::MeterDef;
-use crate::ecs::component::modifier::ModifierDef;
+use crate::ecs::component::meter;
+use crate::ecs::component::modifier;
 use crate::ecs::id::{ActorId, ExitId, PlaceId, StoryId};
 use crate::entity;
 use crate::hash::blake2s_tagged;
 use crate::rules::roll::Check;
-use crate::rules::rule::{Cond, Cost, Owner, RuleTable, TargetKind, When};
+use crate::rules::rule::{self, Cond, Cost, Owner, TargetKind, When};
 use crate::Reason;
 pub use spookery_protocol::{ControlType, MenuRow, PackSummary};
 
@@ -33,7 +33,6 @@ mod story;
 
 use budget::load_budget;
 pub(crate) use budget::Budget;
-use cast::add_cast;
 use checks::load_checks;
 use fact::Facts;
 use item::add_item;
@@ -42,10 +41,9 @@ use lint::{
     unknown_meters, unknown_modifiers, unknown_reads, unknown_rule_items, EntityScope,
 };
 pub(crate) use lint::{check_canon, unknown_item};
-use meters::{add_own_meters, load_meters};
-use modifiers::{load_modifiers, MODIFIERS_FILE};
+use modifiers::MODIFIERS_FILE;
 use pack::load_pack_yaml;
-use place::{add_place, name_exits};
+use place::name_exits;
 use rule_list::load_verbs;
 use source::{collect_files, collect_markdown_files, read_text, Diags, FileText, Locator};
 use story::load_stories;
@@ -60,15 +58,15 @@ pub struct Canon {
     pub cast: BTreeMap<ActorId, CastDef>,
     pub facts: BTreeMap<String, FactDef>,
     pub stories: BTreeMap<StoryId, StoryDef>,
-    pub rules: RuleTable,
+    pub rules: rule::Table,
     pub checks: BTreeMap<String, Check>,
     /// The meters `rules/meters.yaml` gives every actor, and those one cast, place or story
     /// file gives its entity. An id is listed once.
-    pub meters: BTreeMap<String, MeterDef>,
+    pub meters: BTreeMap<String, meter::Descriptor>,
     /// The meters `world/meters.yaml` gives the world. An id here may also be an actor meter.
-    pub world_meters: BTreeMap<String, MeterDef>,
+    pub world_meters: BTreeMap<String, meter::Descriptor>,
     /// The modifiers `rules/modifiers.yaml` defines. Each one modifies an actor meter.
-    pub modifiers: BTreeMap<String, ModifierDef>,
+    pub modifiers: BTreeMap<String, modifier::Descriptor>,
     pub items: BTreeMap<String, ItemDef>,
     pub budget: Budget,
     /// Rounds between journal checkpoints. `save.yaml` is rewritten then.
@@ -225,11 +223,11 @@ impl Canon {
         }
     }
 
-    /// The def of meter `key` on `id`, when that entity carries it.
-    pub fn meter_def(&self, id: entity::IdRef<'_>, key: &str) -> Option<&MeterDef> {
+    /// The descriptor of meter `key` on `id`, when that entity carries it.
+    pub fn meter_desc(&self, id: entity::IdRef<'_>, key: &str) -> Option<&meter::Descriptor> {
         match id {
             entity::IdRef::Global => self.world_meters.get(key),
-            _ => self.meters.get(key).filter(|def| def.is_on(id)),
+            _ => self.meters.get(key).filter(|desc| desc.is_on(id)),
         }
     }
 
@@ -309,6 +307,7 @@ pub fn pack_rev(root: &Path) -> Result<String, Reason> {
 
 /// Loads a pack in the numbered order below, which is also the order of its diagnostics.
 pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
+    // repeats module: re-exported at the crate root
     let mut diags = Diags::default();
     let mut places = BTreeMap::new();
     let mut cast = BTreeMap::new();
@@ -326,7 +325,7 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
         let rules = if page.file.starts_with("world/items/") {
             add_item(page, &mut items, &mut diags)
         } else if page.file.starts_with("world/places/") {
-            add_place(page, &mut facts, &mut places, &mut place_meters, &mut diags)
+            place::add(page, &mut facts, &mut places, &mut place_meters, &mut diags)
         } else {
             None
         };
@@ -337,7 +336,8 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
     let world_meters = if root.join("world/meters.yaml").is_file() {
         let rel = "world/meters.yaml";
         diags.keep(
-            read_text(root, rel).and_then(|text| load_meters(rel, &text, Some(entity::Id::Global))),
+            read_text(root, rel)
+                .and_then(|text| meters::load(rel, &text, Some(entity::Id::Global))),
         )
     } else {
         Some(BTreeMap::new())
@@ -346,23 +346,23 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
     // then each place file's own meters.
     let rel = "rules/meters.yaml";
     let mut meters =
-        diags.keep(read_text(root, rel).and_then(|text| load_meters(rel, &text, None)));
+        diags.keep(read_text(root, rel).and_then(|text| meters::load(rel, &text, None)));
     for page in collect_markdown_files(root, "cast") {
         let Some(page) = diags.keep(page) else {
             continue;
         };
-        let rules = add_cast(page, &mut cast, meters.as_mut(), &mut diags);
+        let rules = cast::add(page, &mut cast, meters.as_mut(), &mut diags);
         loaded.extend(rules.unwrap_or_default());
     }
     for (file, own) in place_meters {
         if let Some(meters) = meters.as_mut() {
-            add_own_meters(meters, own, None, &FileText::named(&file), &mut diags);
+            meters::add_own(meters, own, None, &FileText::named(&file), &mut diags);
         }
     }
     // rules/modifiers.yaml is optional. Its modifiers name the actor meters above.
     let modifiers = match &meters {
         Some(meters) if root.join(MODIFIERS_FILE).is_file() => diags
-            .keep(read_text(root, MODIFIERS_FILE).and_then(|text| load_modifiers(&text, meters))),
+            .keep(read_text(root, MODIFIERS_FILE).and_then(|text| modifiers::load(&text, meters))),
         _ => Some(BTreeMap::new()),
     };
     // 4. rules/moves.yaml is refused.
@@ -388,7 +388,7 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
         let source = FileText::named(&rule.file);
         diags.extend(taken.then(|| source.refuse_duplicate(&rule.id, "", Locator::Nowhere, twice)));
     }
-    let rules = RuleTable::new(loaded);
+    let rules = rule::Table::new(loaded);
     // 9. Checks. 10. Meters. 11. Budget.
     let checks = checks.and_then(|(rel, text)| diags.keep(load_checks(rel, &text)));
     let budget = budget.and_then(|(rel, text)| diags.keep(load_budget(rel, &text)));

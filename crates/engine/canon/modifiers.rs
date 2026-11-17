@@ -7,16 +7,16 @@ use serde::Deserialize;
 
 use crate::canon::source::{load_tagged, Diags, FileText, MODIFIERS_SCHEMA};
 use crate::diagnostic::Diagnostic;
-use crate::ecs::component::meter::MeterDef;
-use crate::ecs::component::modifier::ModifierDef;
+use crate::ecs::component::meter;
+use crate::ecs::component::modifier;
 
 pub(super) const MODIFIERS_FILE: &str = "rules/modifiers.yaml";
 
 /// The modifiers file. Each modifier names one of the actor `meters`.
-pub(super) fn load_modifiers(
+pub(super) fn load(
     text: &str,
-    meters: &BTreeMap<String, MeterDef>,
-) -> Result<BTreeMap<String, ModifierDef>, Vec<Diagnostic>> {
+    meters: &BTreeMap<String, meter::Descriptor>,
+) -> Result<BTreeMap<String, modifier::Descriptor>, Vec<Diagnostic>> {
     let doc: ModifiersDoc = load_tagged(MODIFIERS_FILE, text, MODIFIERS_SCHEMA, 0)?;
     let source = FileText {
         file: MODIFIERS_FILE,
@@ -47,12 +47,12 @@ pub(super) fn load_modifiers(
         ];
         let found = source.refuse_row("modifier", row, id, modifiers.contains_key(id), rules);
         if found.is_empty() {
-            let def = ModifierDef {
+            let desc = modifier::Descriptor {
                 meter: entry.meter,
                 max_stacks,
                 hidden: entry.hidden,
             };
-            modifiers.insert(entry.id, def);
+            modifiers.insert(entry.id, desc);
         } else {
             diags.extend(found);
         }
@@ -63,6 +63,7 @@ pub(super) fn load_modifiers(
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct ModifiersDoc {
+    // repeats module: every file shape in canon ends in Doc
     #[serde(rename = "schema")]
     _schema: String,
     modifiers: Vec<ModifierYaml>,

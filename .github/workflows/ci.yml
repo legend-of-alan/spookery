@@ -104,15 +104,16 @@ jobs:
           # The agent awaits its adapters on the caller's runtime: it never builds, enters or blocks on one.
           (! grep -rnE 'tokio::runtime|Handle::current|block_on|spawn_blocking' crates/agent --include='*.rs')
           # Naming rule 8: in each Rust file this change touches, no type, trait or function name starts
-          # or ends with its module's name, unless it is that name (query::Query).
+          # or ends with its module's name, unless it is that name (query::Query). A marker counts on the
+          # name's line or the next one, where rustfmt moves a comment that follows an opening brace.
           for f in $(git diff --name-only --diff-filter=d HEAD^ HEAD -- '*.rs'); do
             m=$(basename "$f" .rs); [ "$m" = mod ] && m=$(basename "$(dirname "$f")")
             [[ $m =~ ^(lib|main|build)$ ]] && continue
-            awk -v m="$m" -v M="$(sed -E 's/(^|_)(.)/\U\2/g' <<< "$m")" '!/\/\/ repeats module: ./ &&
-              match($0, /^(pub(\([^)]*\))? )?((const|async|unsafe) )*(struct|enum|trait|type|union|fn) [A-Za-z0-9_]+/) {
+            awk -v m="$m" -v M="$(sed -E 's/(^|_)(.)/\U\2/g' <<< "$m")" 'pending && !/\/\/ repeats module: ./ { print pending; bad = 1 } { pending = "" }
+              !/\/\/ repeats module: ./ && match($0, /^(pub(\([^)]*\))? )?((const|async|unsafe) )*(struct|enum|trait|type|union|fn) [A-Za-z0-9_]+/) {
                 n = substr($0, 1, RLENGTH); sub(/.* /, "", n); snake = n ~ /^[a-z]/; w = snake ? m : M
-                if (n != w && (n ~ ("^" w (snake ? "_" : "[A-Z_]")) || n ~ ((snake ? "_" : "") w "$"))) { print FILENAME ":" FNR ": " n " repeats its module " m; bad = 1 }
-              } END { exit bad }' "$f" || repeats=1
+                if (n != w && (n ~ ("^" w (snake ? "_" : "[A-Z_]")) || n ~ ((snake ? "_" : "") w "$"))) pending = FILENAME ":" FNR ": " n " repeats its module " m
+              } END { if (pending) { print pending; bad = 1 } exit bad }' "$f" || repeats=1
           done
           [ -z "$repeats" ] || { echo "Rename each one, or end its line with '// repeats module: <reason>' (CONTRIBUTING.md Naming rule 8)."; exit 1; }
           # protocol, agent and client are MIT: every AND term of every license in their

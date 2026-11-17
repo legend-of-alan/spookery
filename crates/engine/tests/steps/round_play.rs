@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 
 use cucumber::{given, then, when};
 use serde_json::Value;
-use spookery_engine::testing::{faces, RollKey};
+use spookery_engine::testing::roll;
 use spookery_engine::{component, GlobalId, MoveReport, Note};
 
 use crate::{resolve_id, World};
@@ -825,7 +825,7 @@ fn strike_line(scratch: &str, actor: &str) -> (String, i64, i64) {
 fn indexed_roll(pack: &Path, actor_id: &str, roll_index: u32) -> (String, i64) {
     let session = spookery_engine::Session::peek(pack).unwrap_or_else(|err| panic!("open: {err}"));
     let check = session.canon().checks.get("strike").unwrap();
-    let def = session.canon().meters.get(&check.stat).unwrap();
+    let desc = session.canon().meters.get(&check.stat).unwrap();
     let actor = actor_id.into();
     let live = session
         .world()
@@ -833,9 +833,9 @@ fn indexed_roll(pack: &Path, actor_id: &str, roll_index: u32) -> (String, i64) {
         .get::<component::Meter>(&actor)
         .get(&check.stat)
         .unwrap_or_else(|| panic!("missing {actor_id}'s {}", check.stat));
-    let stat = (live.base + live.offset).clamp(def.min, def.max);
-    let rolled = faces(
-        &RollKey {
+    let stat = (live.base + live.offset).clamp(desc.min, desc.max);
+    let rolled = roll::faces(
+        &roll::Key {
             seed: session.world().seed.clone(),
             round_index: session.world().round_index,
             rule_id: "verb:strike".to_string(),

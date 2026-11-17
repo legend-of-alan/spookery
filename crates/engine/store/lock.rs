@@ -84,35 +84,36 @@ pub struct ReadGuard {
 /// The lock makes this process the pack's writer, so only it repairs the pack.
 /// A path with no `state/` is `NOT_IN_SPEC`. A second writer is refused with `COMMIT_CONFLICT`.
 pub fn lock_pack(root: &Path) -> Result<PackGuard, Reason> {
-    let file = open_lock(root, "state/.pack.lock")?;
+    // repeats module: re-exported at the crate root
+    let file = open_file(root, "state/.pack.lock")?;
     let lock = PackGuard {
         _file: LockedFile::try_lock(file)?,
     };
-    recover(root, &lock_write(root, &lock)?)?;
+    recover(root, &take_write(root, &lock)?)?;
     Ok(lock)
 }
 
 /// Wait for readers to finish, then keep new ones out until the guard drops.
 /// Only the pack's writer takes it, and never inside another write guard.
-pub fn lock_write(root: &Path, _lock: &PackGuard) -> Result<WriteGuard, Reason> {
+pub fn take_write(root: &Path, _lock: &PackGuard) -> Result<WriteGuard, Reason> {
     Ok(WriteGuard {
-        _file: LockedFile::lock(open_lock(root, RW_LOCK)?)?,
+        _file: LockedFile::lock(open_file(root, RW_LOCK)?)?,
     })
 }
 
 /// Wait out a write in progress, then hold the next one off until the guard drops.
 /// An existing lock file opens read-only, so a reader needs no write access to `state/`.
-pub fn lock_read(root: &Path) -> Result<ReadGuard, Reason> {
+pub fn take_read(root: &Path) -> Result<ReadGuard, Reason> {
     let file = match File::open(root.join(RW_LOCK)) {
         Ok(file) => file,
-        Err(_) => open_lock(root, RW_LOCK)?,
+        Err(_) => open_file(root, RW_LOCK)?,
     };
     Ok(ReadGuard {
         _file: LockedFile::lock_shared(file)?,
     })
 }
 
-fn open_lock(root: &Path, rel: &str) -> Result<File, Reason> {
+fn open_file(root: &Path, rel: &str) -> Result<File, Reason> {
     OpenOptions::new()
         .read(true)
         .write(true)

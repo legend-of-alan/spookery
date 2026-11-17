@@ -193,7 +193,7 @@ impl ecs::World {
     ) -> Change {
         let (canon, save) = (&*self.canon, &self.save);
         let (id, entry_id) = (&key.entity_id, key.entry_id.as_deref().unwrap_or_default());
-        let def = canon.meter_def(id.as_ref(), entry_id);
+        let desc = canon.meter_desc(id.as_ref(), entry_id);
         let now = entity::in_collection!(id, [&save], |entities, id| {
             Reader::new(entities, canon).get::<Meter>(id).get(entry_id)
         });
@@ -202,8 +202,8 @@ impl ecs::World {
             _ => Ok(0),
         };
         let reading = |held: Option<&Meter>, sum: Result<i64, Reason>| {
-            let value = (def.zip(held).ok_or(Reason::UnknownId))
-                .and_then(|(def, held)| meter::value(def, held, sum?));
+            let value = (desc.zip(held).ok_or(Reason::UnknownId))
+                .and_then(|(desc, held)| meter::value(desc, held, sum?));
             value.ok().map(ChangeValue::Number)
         };
         let before = reading(held.unwrap_or(now), sum.unwrap_or(sum_now));
@@ -257,7 +257,7 @@ impl ecs::World {
 mod tests {
     use std::sync::Arc;
 
-    use crate::ecs::component::meter::{Meter, MeterWrite};
+    use crate::ecs::component::meter::{self, Meter};
     use crate::ecs::id::{ActorId, PlaceId, StoryId};
     use crate::ecs::{self, Presence, Save};
     use crate::ecs::{component, entity};
@@ -296,7 +296,7 @@ mod tests {
             let kind = EffectKind::Meter {
                 entity: entity::Id::Actor(actor.into()),
                 key: key.to_string(),
-                write: MeterWrite::Offset(delta),
+                write: meter::Write::Offset(delta),
             };
             let effect = Effect::new(intent.actor.as_ref(), &intent.id, kind);
             effect.apply(canon, &mut world, &nobody, &intent)
@@ -345,10 +345,10 @@ mod tests {
 
     #[test]
     fn a_meter_that_comes_back_inside_one_take_is_not_taken_and_stays_counted() {
-        use crate::ecs::component::modifier::{self, Modifier, ModifierDef};
+        use crate::ecs::component::modifier::{self, Modifier};
         let opened = docks();
         let mut canon = opened.canon().clone();
-        let fatigue = ModifierDef {
+        let fatigue = modifier::Descriptor {
             meter: "rest".to_string(),
             max_stacks: 1,
             hidden: false,

@@ -12,7 +12,7 @@ use crate::rules::effect::Effect;
 use crate::session;
 use crate::store::durability::write_atomic;
 use crate::store::journal;
-use crate::store::lock::{lock_pack, lock_write, PackGuard};
+use crate::store::lock::{self, lock_pack, PackGuard};
 use crate::store::records::{emit_effect, MigrateRecord, Record, RoundRecord};
 use crate::store::require_rules_rev;
 use crate::store::save;
@@ -162,7 +162,7 @@ pub(crate) fn checkpoint_diverged(
 /// Replay the journal's `records`. `from` is a directory whose `state/save.yaml` replaces
 /// the base. `until` ignores records with a later `state_rev`, so a live server cannot race
 /// a verify.
-pub fn replay_journal(
+pub fn apply_journal(
     pack: &Path,
     records: &[Record],
     from: Option<&Path>,
@@ -208,13 +208,13 @@ pub fn replay_journal(
             now_yaml: base_bytes,
         });
     }
-    let mut session = open_for_replay(pack, &base_bytes)?;
+    let mut session = open_at(pack, &base_bytes)?;
     for entry in records.iter() {
         let rev = entry.state_rev_after();
         if rev <= base_rev || rev > cap {
             continue;
         }
-        replay_record(&mut session, entry)?;
+        apply_record(&mut session, entry)?;
         if entry.changes_state() {
             applied += 1;
         }
@@ -233,7 +233,7 @@ pub(crate) fn open_at_tip(path: &Path, lock: &PackGuard) -> Result<session::Sess
     choose_seed(path, lock)?;
     rebuild_save(path, lock).map_err(Error::into_reason)?;
     let session = peek_at_tip(path)?;
-    crate::store::commit::settle_checkpoint(&session, &lock_write(&session.root, lock)?)?;
+    crate::store::commit::settle_checkpoint(&session, &lock::take_write(&session.root, lock)?)?;
     Ok(session)
 }
 
@@ -253,7 +253,7 @@ fn choose_seed(path: &Path, lock: &PackGuard) -> Result<(), Reason> {
         return Ok(());
     }
     save.seed = uuid::Uuid::new_v4().simple().to_string();
-    let _write = lock_write(path, lock)?;
+    let _write = lock::take_write(path, lock)?;
     write_atomic(&save_path, save::emit(&save)?.as_bytes())
 }
 
@@ -261,8 +261,8 @@ fn choose_seed(path: &Path, lock: &PackGuard) -> Result<(), Reason> {
 pub(crate) fn peek_at_tip(path: &Path) -> Result<session::Session<()>, Reason> {
     let mut session = session::Session::open(path)?;
     // Open checked a save with nothing past it. A replayed tip is checked here.
-    if replay_tail(&mut session)? {
-        save::check_save(session.world()).map_err(|diags| first_reason(&diags))?;
+    if apply_tail(&mut session)? {
+        save::check(session.world()).map_err(|diags| first_reason(&diags))?;
     }
     Ok(session)
 }
@@ -274,7 +274,7 @@ pub fn migrate_pack(path: &Path) -> Result<(), Reason> {
     let (save, edited) = load_migrate_tip(path, &lock)?;
     let canon = load_canon(path).map_err(|diags| first_reason(&diags))?;
     let world = ecs::World::new(save, Arc::new(canon));
-    crate::store::commit::commit_migrate(path, world, edited, &lock)?;
+    crate::store::commit::seal_migrate(path, world, edited, &lock)?;
     Ok(())
 }
 
@@ -295,27 +295,24 @@ fn load_migrate_tip(path: &Path, lock: &PackGuard) -> Result<(Save, bool), Reaso
         });
     match (ahead, edited) {
         (true, true) => Err(Reason::HandEdit),
-        (true, false) => Ok((
-            Save::clone(replay_tip_unchecked(path, lock)?.world()),
-            false,
-        )),
+        (true, false) => Ok((Save::clone(load_tip_unchecked(path, lock)?.world()), false)),
         (false, _) => Ok((file_state, edited)),
     }
 }
 
 /// The journal tip in memory and unchecked. Migrate checks it after adding its meters.
 /// The caller holds the pack lock.
-fn replay_tip_unchecked(path: &Path, lock: &PackGuard) -> Result<session::Session<()>, Reason> {
+fn load_tip_unchecked(path: &Path, lock: &PackGuard) -> Result<session::Session<()>, Reason> {
     rebuild_save(path, lock).map_err(Error::into_reason)?;
     let save = journal::read_save(&journal::save_path(path))?;
-    let mut session = open_for_replay(path, &save).map_err(Error::into_reason)?;
-    replay_tail(&mut session)?;
-    crate::store::commit::settle_checkpoint(&session, &lock_write(&session.root, lock)?)?;
+    let mut session = open_at(path, &save).map_err(Error::into_reason)?;
+    apply_tail(&mut session)?;
+    crate::store::commit::settle_checkpoint(&session, &lock::take_write(&session.root, lock)?)?;
     Ok(session)
 }
 
 /// A replay world at `base` with the pack's canon.
-pub(crate) fn open_for_replay(pack: &Path, base: &[u8]) -> Result<session::Session<()>, Error> {
+pub(crate) fn open_at(pack: &Path, base: &[u8]) -> Result<session::Session<()>, Error> {
     let save = load_save_bytes(base)?;
     let canon = load_canon(pack).map_err(|diags| Error::Reason(first_reason(&diags)))?;
     Ok(session::Session::from_parts(
@@ -325,7 +322,7 @@ pub(crate) fn open_for_replay(pack: &Path, base: &[u8]) -> Result<session::Sessi
 }
 
 /// Replay the live records past the save. `true` when any record was replayed.
-fn replay_tail(session: &mut session::Session<()>) -> Result<bool, Reason> {
+fn apply_tail(session: &mut session::Session<()>) -> Result<bool, Reason> {
     let entries = journal::read_live_records(session.root())
         .map_err(|fault| Error::from(fault).into_reason())?;
     let base_rev = session.world().state_rev;
@@ -334,7 +331,7 @@ fn replay_tail(session: &mut session::Session<()>) -> Result<bool, Reason> {
         if entry.state_rev_after() <= base_rev {
             continue;
         }
-        replay_record(session, entry).map_err(Error::into_reason)?;
+        apply_record(session, entry).map_err(Error::into_reason)?;
         replayed = true;
     }
     Ok(replayed)
@@ -379,7 +376,7 @@ fn rebuild_save(path: &Path, lock: &PackGuard) -> Result<(), Error> {
         Err(reason) => return Err(Error::Reason(reason)),
     }
     let records = journal::read_records(path)?;
-    let report = replay_journal(path, &records, None, Some(mark.state_rev))?;
+    let report = apply_journal(path, &records, None, Some(mark.state_rev))?;
     if blake2s_tagged(&report.now_yaml) != mark.state_hash {
         return Err(
             checkpoint_diverged(mark.state_rev, mark.round_index, "state hash differed")
@@ -387,7 +384,7 @@ fn rebuild_save(path: &Path, lock: &PackGuard) -> Result<(), Error> {
                 .into(),
         );
     }
-    let _write = lock_write(path, lock).map_err(Error::Reason)?;
+    let _write = lock::take_write(path, lock).map_err(Error::Reason)?;
     write_atomic(&save_path, &report.now_yaml).map_err(Error::Reason)?;
     Ok(())
 }
@@ -488,7 +485,7 @@ fn check_base_migrate(entry: &Record, base_bytes: &[u8]) -> Result<(), Error> {
     Ok(())
 }
 
-pub(crate) fn replay_record(
+pub(crate) fn apply_record(
     session: &mut session::Session<()>,
     entry: &Record,
 ) -> Result<(), Error> {
@@ -627,7 +624,7 @@ pub(crate) fn emit_save_bytes<Lock>(session: &session::Session<Lock>) -> Result<
 mod tests {
     use std::fs;
 
-    use super::replay_journal;
+    use super::apply_journal;
     use crate::round::play_pack_once;
     use crate::store::journal;
     use crate::testing::copy_pack;
@@ -637,8 +634,8 @@ mod tests {
         let pack = copy_pack("docks", "replay-collide");
         play_pack_once(&pack).unwrap();
         let records = journal::read_records(&pack).unwrap();
-        let left = replay_journal(&pack, &records, None, None).unwrap();
-        let right = replay_journal(&pack, &records, None, None).unwrap();
+        let left = apply_journal(&pack, &records, None, None).unwrap();
+        let right = apply_journal(&pack, &records, None, None).unwrap();
         assert_eq!(left.now_yaml, right.now_yaml);
         assert_eq!(left.applied, 1);
         assert_eq!(right.applied, 1);

@@ -10,8 +10,8 @@ use crate::store::save;
 use crate::Reason;
 
 use crate::round::replay::{
-    checkpoint_diverged, emit_save_bytes, load_save_bytes, open_for_replay, replay_journal,
-    replay_record, state_rev_of, Divergence, DivergenceKind, Error,
+    self, checkpoint_diverged, emit_save_bytes, load_save_bytes, state_rev_of, Divergence,
+    DivergenceKind, Error,
 };
 
 #[derive(Debug)]
@@ -24,6 +24,7 @@ pub struct Report {
 
 /// Read the journal, replay it, and check checkpoints and `state/save.yaml`.
 pub fn verify_pack(pack: &Path, from: Option<&Path>) -> Result<Report, Error> {
+    // repeats module: re-exported at the crate root
     if !pack.join("pack.yaml").is_file() {
         return Err(Error::Reason(Reason::NotInSpec));
     }
@@ -43,8 +44,8 @@ pub fn verify_pack(pack: &Path, from: Option<&Path>) -> Result<Report, Error> {
         });
     }
     let cap = records.iter().map(Record::state_rev_after).max();
-    let report =
-        replay_journal(pack, &records, from, cap).map_err(|err| name_save_line(pack, err))?;
+    let report = replay::apply_journal(pack, &records, from, cap)
+        .map_err(|err| name_save_line(pack, err))?;
     let trusted_edits = records
         .iter()
         .filter_map(|entry| match entry {
@@ -69,6 +70,7 @@ pub fn verify_pack(pack: &Path, from: Option<&Path>) -> Result<Report, Error> {
 
 /// Check every chain hash, then replay the latest bundle from the snapshot it starts at.
 pub fn verify_quick(pack: &Path) -> Result<Report, Error> {
+    // repeats module: re-exported at the crate root
     let bundles = journal::read_bundle_records(pack)?;
     journal::check_chain(pack, &bundles)?;
     let records = journal::flatten_bundles(&bundles);
@@ -223,10 +225,10 @@ fn read_base(pack: &Path) -> Result<Vec<u8>, Error> {
 }
 
 fn replay_bundle(pack: &Path, start: &[u8], entries: &[Record]) -> Result<Vec<u8>, Error> {
-    let mut session = open_for_replay(pack, start)?;
+    let mut session = replay::open_at(pack, start)?;
     let mut changed = false;
     for entry in entries {
-        replay_record(&mut session, entry)?;
+        replay::apply_record(&mut session, entry)?;
         changed |= entry.changes_state();
     }
     if changed {

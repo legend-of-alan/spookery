@@ -50,7 +50,7 @@ pub enum MoveReport {
 
 /// Identifies one roll. A later `resist:` roll uses the same shape: subject plus index.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct RollKey {
+pub struct Key {
     /// The save's dice seed.
     pub seed: String,
     pub round_index: u64,
@@ -60,7 +60,7 @@ pub struct RollKey {
     pub index: u32,
 }
 
-impl RollKey {
+impl Key {
     pub(crate) fn preimage(&self) -> String {
         let (seed, round, rule, index) = (&self.seed, self.round_index, &self.rule_id, self.index);
         match &self.subject_id {
@@ -72,7 +72,7 @@ impl RollKey {
 
 /// The faces this key rolls from die `start` of its seed, without a stat or a band. A later
 /// group in the same expression continues where the last one stopped.
-pub fn faces(key: &RollKey, start: usize, count: u32, sides: u32) -> Result<Vec<u32>, Reason> {
+pub fn faces(key: &Key, start: usize, count: u32, sides: u32) -> Result<Vec<u32>, Reason> {
     let seed = blake2s_256(key.preimage().as_bytes());
     let mut faces = Vec::with_capacity(count as usize);
     for n in 0..count {
@@ -83,11 +83,11 @@ pub fn faces(key: &RollKey, start: usize, count: u32, sides: u32) -> Result<Vec<
 
 /// The only roll: `check`'s dice from this key's own seed, plus the actor's stat, against
 /// `threshold`. `partial_at` `None` keeps the roll binary; an opposing total passes `None`.
-pub(crate) fn roll_check(
+pub(crate) fn check(
     check: &Check,
     world: &ecs::World,
     actor_id: &ActorId,
-    key: &RollKey,
+    key: &Key,
     threshold: i64,
     partial_at: Option<i64>,
 ) -> Result<Roll, Reason> {
@@ -127,7 +127,7 @@ fn block_bytes(seed: &[u8; 32], block: usize) -> [u8; 32] {
 
 #[cfg(test)]
 mod tests {
-    use super::{classify, face_at, roll_check, Check, Outcome, RollKey};
+    use super::{classify, face_at, Check, Key, Outcome};
     use crate::ecs::id::ActorId;
 
     fn check_of(count: u32) -> Check {
@@ -138,8 +138,8 @@ mod tests {
         }
     }
 
-    fn key(index: u32) -> RollKey {
-        RollKey {
+    fn key(index: u32) -> Key {
+        Key {
             seed: "docks".to_string(),
             round_index: 1,
             rule_id: "exert".to_string(),
@@ -177,8 +177,8 @@ mod tests {
         let docks = crate::session::Session::open(&pack).expect("open");
         let (world, mira) = (docks.world(), ActorId::from("mira"));
         let check = check_of(2);
-        let once = roll_check(&check, world, &mira, &key(0), 9, None).unwrap();
-        let twice = roll_check(&check, world, &mira, &key(0), 9, None).unwrap();
+        let once = super::check(&check, world, &mira, &key(0), 9, None).unwrap();
+        let twice = super::check(&check, world, &mira, &key(0), 9, None).unwrap();
         assert_eq!(once, twice);
         assert_eq!(once.faces.len(), 2);
     }

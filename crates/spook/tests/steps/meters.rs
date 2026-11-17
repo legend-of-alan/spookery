@@ -494,7 +494,7 @@ fn rowan_and_nell_each_see_once(world: &mut World, text: String) {
 #[given(expr = "Mira carries no dawn meter")]
 fn mira_carries_no_dawn(world: &mut World) {
     let canon = load_canon(pack(world)).unwrap_or_else(|err| panic!("load: {err:?}"));
-    assert!(canon.meter_def(mira().as_ref(), "dawn").is_none());
+    assert!(canon.meter_desc(mira().as_ref(), "dawn").is_none());
 }
 
 #[given(expr = "Mira has a habit that adds 1 to meter dawn of {string}")]

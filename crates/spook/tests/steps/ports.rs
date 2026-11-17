@@ -102,8 +102,8 @@ fn two_tables_listen_on_port_0_at_the_same_time(world: &mut World) {
     let second = copy_pack("docks", "ports-other");
     world.scratch = second.to_string_lossy().into_owned();
     let (dir, flags) = (std::env::temp_dir(), ["--addr", "127.0.0.1:0"]);
-    let started_first = table::spawn_table(&dir, &first, &flags);
-    let started_second = table::spawn_table(&dir, &second, &flags);
+    let started_first = table::spawn(&dir, &first, &flags);
+    let started_second = table::spawn(&dir, &second, &flags);
     let first = table::wait_addrs(started_first);
     let second = table::wait_addrs(started_second);
     world.stdout = format!(
@@ -116,6 +116,7 @@ fn two_tables_listen_on_port_0_at_the_same_time(world: &mut World) {
 
 #[then(expr = "the tables report distinct ports")]
 fn the_tables_report_distinct_ports(world: &mut World) {
+    // repeats module: mirrors its step text
     let ports: Vec<SocketAddr> = world
         .stdout
         .split_whitespace()

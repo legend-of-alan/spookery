@@ -45,8 +45,14 @@ pub mod testing {
     pub use crate::canon::{strip_body, Canon};
     pub use crate::ecs::entity::Actors;
     pub use crate::ecs::{Act, PendingAction};
-    pub use crate::round::replay::replay_journal;
-    pub use crate::rules::roll::{faces, RollKey};
+
+    pub mod replay {
+        pub use crate::round::replay::apply_journal;
+    }
+
+    pub mod roll {
+        pub use crate::rules::roll::{faces, Key};
+    }
 
     /// Where `actor` stands, read through `Reader::get`. Panics when they stand nowhere.
     pub fn place_of(world: &crate::ecs::World, actor: &str) -> String {
@@ -71,7 +77,7 @@ pub mod testing {
 
     /// The write guard of the pack `session` holds the lock on.
     pub fn lock_write(session: &crate::session::Session) -> Result<WriteGuard, crate::Reason> {
-        crate::store::lock::lock_write(session.root(), &session.lock)
+        crate::store::lock::take_write(session.root(), &session.lock)
     }
     pub use crate::store::RULES_REV;
 
@@ -219,7 +225,7 @@ pub mod testing {
         pack: &Path,
     ) -> Result<crate::round::replay::Report, crate::round::replay::Error> {
         let records = crate::store::journal::read_records(pack)?;
-        replay_journal(pack, &records, None, None)
+        replay::apply_journal(pack, &records, None, None)
     }
 
     /// The ECS world the pack's journal replays to, read against the pack's canon.
