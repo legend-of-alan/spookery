@@ -83,8 +83,8 @@ jobs:
             [[ $m =~ ^(lib|main|build)$ ]] && continue
             awk -v m="$m" -v M="$(sed -E 's/(^|_)(.)/\U\2/g' <<< "$m")" '!/\/\/ repeats module: ./ &&
               match($0, /^(pub(\([^)]*\))? )?((const|async|unsafe) )*(struct|enum|trait|type|union|fn) [A-Za-z0-9_]+/) {
-                n = substr($0, 1, RLENGTH); sub(/.* /, "", n); w = n ~ /^[a-z]/ ? m : M
-                if (n != w && (index(n, w) == 1 || substr(n, length(n) - length(w) + 1) == w)) { print FILENAME ":" FNR ": " n " repeats its module " m; bad = 1 }
+                n = substr($0, 1, RLENGTH); sub(/.* /, "", n); snake = n ~ /^[a-z]/; w = snake ? m : M
+                if (n != w && (n ~ ("^" w (snake ? "_" : "[A-Z_]")) || n ~ ((snake ? "_" : "") w "$"))) { print FILENAME ":" FNR ": " n " repeats its module " m; bad = 1 }
               } END { exit bad }' "$f" || repeats=1
           done
           [ -z "$repeats" ] || { echo "Rename each one, or end its line with '// repeats module: <reason>' (CONTRIBUTING.md Naming rule 8)."; exit 1; }
