@@ -36,12 +36,12 @@ jobs:
           # A PR that closes no issue, like a stacked PR, skips this part.
           issue=$(grep -oiE 'closes #[0-9]+' <<< "$BODY" | head -1 | tr -dc 0-9 || true)
           if [ -n "$issue" ]; then
-            labels=$(gh api "repos/$GITHUB_REPOSITORY/issues/$issue" --jq '.labels[].name')
+            labels=$(gh api "repos/$GITHUB_REPOSITORY/issues/$issue" --jq '.labels[].name' || true)
             letter=$(sed -n 's/^area: \(.\).*/\1/p' <<< "$labels" | head -1 | tr a-z A-Z)
             size=$(sed -n 's/^size: //p' <<< "$labels" | head -1)
             want="$letter: $(sed -E 's/^[A-Z]: //; s/ \[[SML]\]$//' <<< "$TITLE") [$size]"
             if [ -z "$letter" ] || [ -z "$size" ]; then
-              echo "::error::Issue #$issue needs an area: label and a size: label"; failed=1
+              echo "::error::Closes #$issue needs an issue with an area: label and a size: label"; failed=1
             elif [ "$TITLE" != "$want" ]; then
               echo "::error::The title should be: $want"; failed=1
             fi
