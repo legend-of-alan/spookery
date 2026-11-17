@@ -87,8 +87,8 @@ Run `spook --help` for the full list. GM setup is in [docs/README.md](docs/READM
 - [docs/first-pack.md](docs/first-pack.md) walks you through making a pack.
 - [docs/pack-reference.md](docs/pack-reference.md) lists every pack field.
 - [docs/engine-guarantees.md](docs/engine-guarantees.md) says what the engine promises.
-- [docs/seat-protocol.md](docs/seat-protocol.md) is the seat protocol for clients and GMs.
-- [CONTRIBUTING.md](CONTRIBUTING.md) covers issues, tests and hooking up coding agents.
+- [docs/seat-protocol.md](docs/seat-protocol.md) is the seat protocol for clients and GMs, including how to hook up a coding agent.
+- [CONTRIBUTING.md](CONTRIBUTING.md) covers issues and tests.
 
 ## License
 
