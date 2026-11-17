@@ -97,8 +97,8 @@ impl Reader<'_, Actors> {
 }
 
 impl Actors {
-    /// Every store, as the log a rollback undoes and an accept clears.
-    pub(in crate::ecs) fn logs_mut(&mut self) -> [&mut dyn undo::Log; 10] {
+    /// Every store, as the history a rollback undoes and an accept clears.
+    pub(in crate::ecs) fn history_mut(&mut self) -> [&mut dyn undo::History; 10] {
         // Every store, with no `..`: a store added later must be listed here to compile.
         let Actors {
             control_type,

@@ -125,8 +125,8 @@ impl ecs::World {
     /// Undo, in every store, each change made since `point`, and cut the transaction back to it.
     /// The round's limits stay.
     pub(crate) fn rollback(&mut self, point: Savepoint) {
-        for log in self.logs_mut() {
-            log.undo_to(point.change_no);
+        for history in self.history_mut() {
+            history.undo_to(point.change_no);
         }
         let transaction = &mut self.transaction;
         transaction.change_no = point.change_no;
@@ -139,13 +139,13 @@ impl ecs::World {
         transaction.memory_writes = point.memory_writes;
     }
 
-    /// Every collection's stores, as the logs a rollback undoes and an accept clears.
-    fn logs_mut(&mut self) -> impl Iterator<Item = &mut dyn undo::Log> {
+    /// Every collection's stores, as the histories a rollback undoes and an accept clears.
+    fn history_mut(&mut self) -> impl Iterator<Item = &mut dyn undo::History> {
         let save = &mut self.save;
-        (save.actors.logs_mut().into_iter())
-            .chain(save.places.logs_mut())
-            .chain(save.stories.logs_mut())
-            .chain(save.globals.logs_mut())
+        (save.actors.history_mut().into_iter())
+            .chain(save.places.history_mut())
+            .chain(save.stories.history_mut())
+            .chain(save.globals.history_mut())
     }
 
     /// The changes since the last take, one per key from its first value to its last, less the
@@ -238,8 +238,8 @@ impl ecs::World {
 
     /// Close the round: every store forgets its inverses, and the transaction goes back to rest.
     pub fn accept(&mut self) {
-        for log in self.logs_mut() {
-            log.clear();
+        for history in self.history_mut() {
+            history.clear();
         }
         self.transaction = Transaction::default();
     }
